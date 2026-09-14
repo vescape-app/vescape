@@ -896,3 +896,88 @@ data class VescFaultCaptureSampleEntity(
   val adc2: Double?,
   val state: Int?,
 )
+
+/**
+ * One enrolled Accessory: the durable half of an Accessory, and the only reason one auto-connects.
+ *
+ * Identity is [accessoryId] — the persistent UUID the manifest carries — never the BLE handle and
+ * never the name. Both of those move: Android reports a rotating MAC, iOS a per-install peripheral
+ * id, and the rider can rename the unit from its own firmware. Keying the row on the manifest id is
+ * what makes a renamed Accessory the same Accessory instead of a second one.
+ *
+ * [deviceId] is a reconnect hint and nothing more. It is where the Accessory answered last time, so
+ * the session has somewhere to look before falling back to a scan; a stale one costs a scan, never
+ * a duplicate row.
+ *
+ * [capabilitiesJson] is the capability set validated at the last successful handshake. Every
+ * reconnect reads the manifest again and compares: a capability whose declared limits moved is a
+ * capability whose saved per-capability settings may no longer fit, and the binding says setup is
+ * required rather than driving hardware to numbers it no longer accepts.
+ *
+ * @parity /modules/vescape-core/ios/telemetry/AccessoryPersistence.swift `SavedAccessory`
+ */
+@Entity(tableName = "accessories")
+data class SavedAccessoryEntity(
+  @PrimaryKey @ColumnInfo(name = "accessory_id") val accessoryId: String,
+  /** Manifest name at the last handshake. A label to show, refreshed on every reconnect. */
+  val name: String,
+  @ColumnInfo(name = "firmware_version") val firmwareVersion: String,
+  /** Last agreed protocol version, or null when the two sides found none. */
+  @ColumnInfo(name = "protocol_version") val protocolVersion: Int?,
+  /** Where it answered last. A hint for the next connect, not identity. */
+  @ColumnInfo(name = "device_id") val deviceId: String?,
+  @ColumnInfo(name = "capabilities_json") val capabilitiesJson: String,
+  @ColumnInfo(name = "enrolled_at") val enrolledAt: Long,
+  @ColumnInfo(name = "last_connected_at") val lastConnectedAt: Long?,
+)
+
+/**
+ * What the rider calibrated for one ground-clearance capability.
+ *
+ * Keyed on the Accessory *and* the capability, never on the Accessory alone: the protocol lets one
+ * unit declare several measurement capabilities, and the eventual hardware has a nose sensor and a
+ * tail sensor on the same board. Collapsing this onto the Accessory row would make those two share
+ * a calibration, which is the one thing they can never do.
+ *
+ * There is no partial row and no draft. A calibration is written when it is complete and valid, so
+ * anything stored here was a usable calibration at the moment it was saved. Whether it is still one
+ * is decided against the live manifest every session — a firmware that narrowed its measurement
+ * range invalidates a row it no longer fits, and the rider is asked to set it again rather than
+ * having their numbers quietly squeezed into the new limits.
+ *
+ * @parity /modules/vescape-core/ios/telemetry/AccessoryPersistence.swift `SavedGroundClearance`
+ * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/accessory/GroundClearance.kt `GroundClearanceCalibration`
+ */
+@Entity(tableName = "accessory_ground_clearance", primaryKeys = ["accessory_id", "capability_id"])
+data class AccessoryGroundClearanceEntity(
+  @ColumnInfo(name = "accessory_id") val accessoryId: String,
+  /** Stable within the Accessory and across firmware updates, exactly as the manifest declares it. */
+  @ColumnInfo(name = "capability_id") val capabilityId: String,
+  /** Clearance at which correction is at full strength. Always below [farCm]. */
+  @ColumnInfo(name = "near_cm") val nearCm: Double,
+  /** Clearance at which correction starts. Above it nothing is commanded. */
+  @ColumnInfo(name = "far_cm") val farCm: Double,
+  /** Raw wire value for where the sensor is mounted. A value this app cannot read is incomplete. */
+  val direction: String,
+  /** Maximum Remote Tilt input this binding may command, as a percentage. */
+  @ColumnInfo(name = "strength_percent") val strengthPercent: Int,
+  @ColumnInfo(name = "updated_at") val updatedAt: Long,
+)
+
+/** @parity /modules/vescape-core/ios/telemetry/AccessoryPersistence.swift `SavedBrakeLight` */
+@Entity(tableName = "accessory_brake_light", primaryKeys = ["accessory_id", "capability_id"])
+data class AccessoryBrakeLightEntity(
+ @ColumnInfo(name = "accessory_id") val accessoryId: String,
+ @ColumnInfo(name = "capability_id") val capabilityId: String,
+ val sensitivity: Int,
+ val parked: String,
+)
+
+/** @parity /modules/vescape-core/ios/telemetry/AccessoryPersistence.swift `SavedAccessoryCapabilitySettings` */
+@Entity(tableName = "accessory_capability_settings", primaryKeys = ["accessory_id", "capability_id"])
+data class AccessoryCapabilitySettingsEntity(
+  @ColumnInfo(name = "accessory_id") val accessoryId: String,
+  @ColumnInfo(name = "capability_id") val capabilityId: String,
+  val enabled: Boolean,
+  @ColumnInfo(name = "sampling_rate_hz") val samplingRateHz: Double? = null,
+)

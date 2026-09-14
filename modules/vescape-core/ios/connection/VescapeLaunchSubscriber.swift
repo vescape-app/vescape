@@ -29,6 +29,11 @@ public final class VescapeLaunchSubscriber: ExpoAppDelegateSubscriber {
     NSLog("[VescAutoConnect] didFinishLaunchingWithOptions")
     BoardSessionController.shared.prepareForLaunch()
     BoardSessionController.shared.autoConnectSelectedBoard()
+    // Enrolled Accessories come up on the same launch hook and for the same reason: their central
+    // carries its own restore identifier, and CoreBluetooth only replays a preserved central to one
+    // re-created during the launch sequence. They are not gated on a selected Board, the Board
+    // auto-connect setting, or a manual Board stop — an Accessory is enrolled in its own right.
+    AccessorySessionController.shared.prepareForLaunch()
     return false
   }
 }

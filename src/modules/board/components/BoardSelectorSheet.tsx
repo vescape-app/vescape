@@ -11,6 +11,8 @@ import type { BoardWarningSeverity } from 'vescape-core'
 
 import { Text } from '@/components/base/Text'
 import { EdgeDrawer } from '@/components/overlays/EdgeDrawer'
+import { Placeholder } from '@/components/base/Placeholder'
+import { SectionHeader } from '@/components/base/SectionHeader'
 import { TickText } from '@/components/base/TickText'
 import type { Board } from '@/modules/board/store/boardStore'
 import { severityStatus } from '@/modules/board/constants/boardWarnings'
@@ -27,6 +29,14 @@ export interface BoardSelectorLink {
 
 interface BoardSelectorContentProps {
   boards: Board[]
+  /**
+   * The Accessories half of the selector, supplied by the screen composing it.
+   *
+   * A plain node, not accessory data: the selector is the entry point for both domains but knows
+   * only one of them. Accessories target the connected Board rather than any Board in this list, so
+   * they sit beside the Boards section, never inside a Board's row.
+   */
+  accessories?: React.ReactNode
   activeBoardId: string | null
   /** True while the active board has a live telemetry link, so its row shows the pull rate. */
   activeBoardLive?: boolean
@@ -153,7 +163,7 @@ function BoardIcon({ active }: { active: boolean }) {
       <LightningIcon
         size={16}
         color={active ? theme.palette.sky.color : theme.neutral.textMuted}
-        weight={active ? 'fill' : 'regular'}
+        weight="regular"
       />
     </View>
   )
@@ -165,6 +175,7 @@ function BoardIcon({ active }: { active: boolean }) {
  */
 export function BoardSelectorContent({
   boards,
+  accessories,
   activeBoardId,
   activeBoardLive = false,
   warnings,
@@ -178,6 +189,15 @@ export function BoardSelectorContent({
 
   return (
     <>
+      {/* The drawer used to name both domains in one title, which said nothing about where either
+          one started. Each section wears its own name instead — the Accessories one comes with the
+          node, since Boards must not learn what an Accessory is. */}
+      <SectionHeader
+        icon={LightningIcon}
+        title="Boards"
+        color={theme.palette.sky.color}
+        align="center"
+      />
       {active && (
         <View style={styles.activeBlock}>
           <View style={[styles.row, styles.activeRow]}>
@@ -229,6 +249,13 @@ export function BoardSelectorContent({
       )}
 
       <View style={styles.frame}>
+        {boards.length === 0 ? (
+          <Placeholder
+            icon={LightningIcon}
+            description="No boards yet. Add your board to connect over Bluetooth."
+            compact
+          />
+        ) : null}
         {others.map((board) => (
           <Pressable
             key={board.id}
@@ -272,6 +299,13 @@ export function BoardSelectorContent({
           <Text style={styles.addText}>Add new board</Text>
         </Pressable>
       </View>
+
+      {accessories ? (
+        <>
+          <View style={styles.sectionDivider} />
+          {accessories}
+        </>
+      ) : null}
     </>
   )
 }
@@ -287,9 +321,6 @@ export function BoardSelectorSheet({
       visible={visible}
       triggerRef={triggerRef}
       edge="top"
-      title="Boards"
-      icon={LightningIcon}
-      iconColor={theme.palette.sky.color}
       backdropTestID="board-selector-backdrop"
       onClose={onClose}
     >
@@ -301,6 +332,13 @@ export function BoardSelectorSheet({
 const styles = StyleSheet.create({
   frame: {
     width: '100%',
+  },
+  sectionDivider: {
+    height: StyleSheet.hairlineWidth * 2,
+    alignSelf: 'stretch',
+    backgroundColor: theme.alpha(theme.neutral.border, 0.6),
+    marginTop: 8,
+    marginBottom: 10,
   },
   // The active board is a card, not a list row — it takes the drawer's full width and the same
   // surface every other widget in there wears.
@@ -333,7 +371,6 @@ const styles = StyleSheet.create({
     flex: 1,
     gap: 3,
   },
-  // Over a translucent drawer a filled tile disappears, so an inactive board is outlined instead.
   boardIcon: {
     width: 32,
     height: 32,
@@ -343,9 +380,10 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
+  // Outline only, like every other tile in the list: the active board is already told apart by the
+  // card it sits in, so a filled tile on top of that was one signal too many.
   boardIconActive: {
-    borderColor: theme.alpha(theme.palette.sky.color, 0.4),
-    backgroundColor: theme.palette.sky.bg,
+    borderColor: theme.alpha(theme.palette.sky.color, 0.3),
   },
   boardName: {
     color: theme.neutral.textSecondary,

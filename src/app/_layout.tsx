@@ -19,6 +19,7 @@ import { DiagnosticErrorBoundary } from '@/modules/diagnostics/DiagnosticErrorBo
 import { HeaderBackButton } from '@/components/base/HeaderBackButton'
 import { initSentry } from '@/config/sentry'
 import { stackScreens } from '@/navigation/routes'
+import { startAccessoryStateMirror } from '@/modules/accessories/store/accessoryStore'
 import { startAlertPresetConfigSync } from '@/modules/alerts/lib/alertPresetConfigSync'
 import { startAlertsBoardSync } from '@/bootstrap/alertsBoardSync'
 import { startAppDataSync } from '@/bootstrap/appDataSync'
@@ -106,6 +107,7 @@ function RootLayout() {
     const stopAppStatusSync = startAppStatusSync()
     const stopNavigationSync = startNavigationSync()
     const stopWeatherSync = startWeatherSync()
+    const stopAccessoryStateMirror = startAccessoryStateMirror()
     return () => {
       useGroupRideStore.getState().stopObserving()
       stopAppDataSync()
@@ -120,6 +122,7 @@ function RootLayout() {
       stopAppStatusSync()
       stopNavigationSync()
       stopWeatherSync()
+      stopAccessoryStateMirror()
     }
   }, [fixturesReady])
 
@@ -228,6 +231,16 @@ function RootLayout() {
             <Stack.Screen name={stackScreens.editBoard} options={{ title: 'Edit Board' }} />
             <Stack.Screen name={stackScreens.editBoardLink} options={{ title: 'Board Link' }} />
             <Stack.Screen name={stackScreens.editBoardConfig} options={{ title: 'Board Config' }} />
+            <Stack.Screen name={stackScreens.accessoryScan} options={{ title: 'Add Accessory' }} />
+            <Stack.Screen name={stackScreens.accessory} options={{ title: 'Accessory' }} />
+            <Stack.Screen
+              name={stackScreens.accessoryBrakeLight}
+              options={{ title: 'Brake light' }}
+            />
+            <Stack.Screen
+              name={stackScreens.accessoryGroundClearance}
+              options={{ title: 'Ground clearance' }}
+            />
           </Stack>
           {/* Above navigation so a Release surface covers every screen. Only ever one at a time. */}
           <ReleaseSurfaces />

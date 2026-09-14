@@ -34,6 +34,399 @@ export interface ErrorEvent {
 }
 
 /**
+ * An advertisement from something running the Vescape Accessory service. Discovery matches the
+ * service, never the name, so `name` is a label to show and nothing to trust: the Accessory's real
+ * identity only arrives with its manifest.
+ *
+ * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/accessory/AccessoryDiscovery.kt
+ * @parity /modules/vescape-core/ios/accessory/AccessoryDiscovery.swift
+ */
+export interface AccessoryDeviceEvent {
+  /** BLE address on Android, peripheral UUID on iOS — the handle `inspectAccessory` takes. */
+  id: string
+  name: string | null
+  rssi: number
+}
+
+export interface AccessoryScanErrorEvent {
+  error: 'bluetooth-unavailable' | 'scan-failed'
+}
+
+/**
+ * Capability types protocol v1 recognizes. An Accessory may advertise others; they arrive as raw
+ * strings with `supported: false` rather than being dropped.
+ *
+ * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/accessory/AccessoryProtocol.kt `TYPE_GROUND_CLEARANCE`
+ * @parity /modules/vescape-core/ios/accessory/AccessoryProtocol.swift `typeGroundClearance`
+ */
+export type AccessoryCapabilityType = 'ground_clearance' | 'brake_light'
+
+/**
+ * How much of a discovered Accessory this app can use. `unsupported-version` means the two sides
+ * found no common protocol version; `unsupported-capabilities` means the version is fine but
+ * nothing it offers is a capability type this app knows how to drive.
+ *
+ * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/accessory/AccessoryProtocol.kt `AccessoryCompatibility`
+ * @parity /modules/vescape-core/ios/accessory/AccessoryProtocol.swift `AccessoryCompatibility`
+ */
+export type AccessoryCompatibility =
+  | 'supported'
+  | 'unsupported-version'
+  | 'unsupported-capabilities'
+
+/**
+ * One capability an Accessory declares. `supported` is native's verdict, not a re-derivation
+ * target: it already accounts for the agreed protocol version and for limits this app can work
+ * within, so JS renders it rather than recomputing it.
+ *
+ * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/accessory/AccessoryProtocol.kt `AccessoryCapability`
+ * @parity /modules/vescape-core/ios/accessory/AccessoryProtocol.swift `AccessoryCapability`
+ */
+export interface AccessoryCapability {
+  /** Stable within the Accessory and across firmware updates. Saved settings key on it. */
+  id: string
+  /** Raw wire type. Widen past `AccessoryCapabilityType` on purpose — unknown types are shown. */
+  type: AccessoryCapabilityType | (string & {})
+  supported: boolean
+  unit: string | null
+  rangeMin: number | null
+  rangeMax: number | null
+  ratesHz: number[]
+  /** Saved switch, independent of calibration and current measurement demand.
+   * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/accessory/AccessorySessionManager.kt `describeCapability`
+   * @parity /modules/vescape-core/ios/accessory/AccessorySessionController.swift `describeCapability`
+   */
+  enabled?: boolean
+  /** Acknowledged sensor rate, null before configuration is acknowledged.
+   * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/accessory/AccessorySessionManager.kt `describeCapability`
+   * @parity /modules/vescape-core/ios/accessory/AccessorySessionController.swift `describeCapability`
+   */
+  samplingRateHz?: number | null
+  /** Saved rate resolved against the manifest; 10 Hz preferred until the rider chooses.
+   * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/accessory/AccessorySessionManager.kt `describeCapability`
+   * @parity /modules/vescape-core/ios/accessory/AccessorySessionController.swift `describeCapability`
+   */
+  selectedRateHz?: number | null
+  /**
+   * What the rider has saved for this capability, or null when they have not finished a setup.
+   *
+   * Rides along with the capability rather than in a list of its own: it is keyed on the capability
+   * and meaningless without it. Absent on capability types that have nothing to calibrate, and on
+   * a manifest read by `inspectAccessory`, which reads hardware rather than saved settings.
+   */
+  calibration?: GroundClearanceCalibration | null
+  /**
+   * Whether native currently has this capability measuring.
+   *
+   * The demand native actually resolved, not a restatement of what a screen asked for: a preview on
+   * a capability with no usable rate is a screen that is open and a sensor that is not measuring.
+   */
+  measuring?: boolean
+  /** @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/accessory/BrakeLight.kt `describe`
+   * @parity /modules/vescape-core/ios/accessory/BrakeLight.swift `describe`
+   */
+  brakeLight?: BrakeLightSettings
+  lightMode?: BrakeLightMode | null
+  lightPreview?: BrakeLightMode | null
+}
+
+/**
+ * Which way a mounted ground-clearance sensor corrects.
+ *
+ * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/accessory/GroundClearance.kt `GroundClearanceDirection`
+ * @parity /modules/vescape-core/ios/accessory/GroundClearance.swift `GroundClearanceDirection`
+ */
+export type GroundClearanceDirection = 'nose' | 'tail'
+
+/** @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/accessory/BrakeLight.kt `BrakeLightSettings`
+ * @parity /modules/vescape-core/ios/accessory/BrakeLight.swift `BrakeLightSettings`
+ */
+export interface BrakeLightSettings {
+  sensitivity: number
+  parked: 'off' | 'glow'
+}
+/** @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/accessory/BrakeLight.kt `MODES`
+ * @parity /modules/vescape-core/ios/accessory/BrakeLight.swift `modes`
+ */
+export type BrakeLightMode = 'riding' | 'braking' | 'hard_braking' | 'not_riding'
+
+/**
+ * Why a calibration is not one yet. Native's verdict, never re-derived here: a second definition of
+ * "valid" in JS could disagree with the one the binding actually uses.
+ *
+ * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/accessory/GroundClearance.kt `GroundClearanceProblem`
+ * @parity /modules/vescape-core/ios/accessory/GroundClearance.swift `GroundClearanceProblem`
+ */
+export type GroundClearanceProblem =
+  | 'not-a-number'
+  | 'near-not-below-far'
+  | 'unknown-direction'
+  | 'strength-out-of-bounds'
+  | 'outside-declared-range'
+
+/**
+ * What the rider calibrated for one ground-clearance capability.
+ *
+ * `farCm` is where correction starts and `nearCm` is where it is at full strength, so `near < far`
+ * always — less clearance means more correction. `problem` is re-decided against the *live* manifest
+ * on every push: a firmware that narrowed its measurement range turns a saved calibration into one
+ * that needs redoing, and this says which rule it now breaks.
+ *
+ * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/accessory/GroundClearance.kt `GroundClearanceCalibration`
+ * @parity /modules/vescape-core/ios/accessory/GroundClearance.swift `GroundClearanceCalibration`
+ */
+export interface GroundClearanceCalibration {
+  nearCm: number
+  farCm: number
+  /** Raw wire value. A direction this build does not know makes the calibration incomplete. */
+  direction: GroundClearanceDirection | (string & {})
+  strengthPercent: number
+  /** Null while this calibration still fits what the Accessory declares. */
+  problem: GroundClearanceProblem | null
+}
+
+/**
+ * Why the ground-clearance binding is not commanding tilt.
+ *
+ * Carried rather than collapsed to a bare "off" because these are nothing alike to explain: a rider
+ * who has not calibrated, a sensor that is erroring, a Board whose link stopped being trusted and a
+ * pair of sensors that cancel each other out all read as the same absent number and need four
+ * different sentences.
+ *
+ * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/accessory/GroundClearance.kt `GroundClearanceRelease`
+ * @parity /modules/vescape-core/ios/accessory/GroundClearance.swift `GroundClearanceRelease`
+ */
+export type GroundClearanceRelease =
+  | 'disabled'
+  | 'not-riding'
+  | 'no-link'
+  | 'not-calibrated'
+  | 'stale'
+  | 'out-of-range'
+  | 'sensor-error'
+  | 'board-untrusted'
+  | 'board-stale'
+  | 'contested'
+  | 'board-move'
+  | 'manual-tilt'
+
+/**
+ * What the ground-clearance Remote Tilt binding is doing, as native decided it.
+ *
+ * `bound` is what makes the tilt pad a read-only indicator: a configured Accessory is connected, so
+ * manual input is not this Board's input method any more. It is deliberately independent of
+ * `driving` — a binding waiting for the rider to set off is still the thing that owns the pad.
+ *
+ * Nothing here is a request. JS renders it; native decided it and will keep deciding it with the
+ * screen closed, the app backgrounded, or the JS runtime dead.
+ *
+ * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/connection/BoardSessionController.kt `groundClearanceTiltState`
+ * @parity /modules/vescape-core/ios/connection/BoardSessionController.swift `groundClearanceTiltState`
+ */
+export interface GroundClearanceTiltState {
+  /** A configured ground-clearance Accessory is connected. The manual pad is read-only. */
+  bound: boolean
+  /** The binding is commanding tilt right now. */
+  driving: boolean
+  /** Why it is not, or `null` while it is. */
+  release: GroundClearanceRelease | null
+}
+
+/**
+ * What a sample says about itself. Carried, never inferred.
+ *
+ * There is no fourth case and no "unknown": a line the app cannot read as a measurement is `error`,
+ * because the alternative — quietly treating it as the far end of the range — is a board told it has
+ * all the clearance in the world at the exact moment its sensor stopped working.
+ *
+ * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/accessory/AccessorySession.kt `AccessoryReadingStatus`
+ * @parity /modules/vescape-core/ios/accessory/AccessorySession.swift `AccessoryReadingStatus`
+ */
+export type AccessoryReadingStatus = 'ok' | 'out_of_range' | 'error'
+
+/** Native-owned 20-second preview window. Invalid/missing samples split chart segments.
+ * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/accessory/ClearancePreviewLog.kt
+ * @parity /modules/vescape-core/ios/accessory/ClearancePreviewLog.swift
+ */
+export interface ClearancePreviewDiagnostics {
+  /** Each segment is flattened sampleTimeMs/valueCm pairs. */
+  segments: number[][]
+  deliveredHz: number
+  dropped: number
+  invalid: number
+  samples: number
+}
+
+/**
+ * One accepted sample, pushed while a capability's configuration screen is open.
+ *
+ * `valueCm` is non-null **only** when `status` is `ok`. Native enforces that before this crosses the
+ * bridge, so a reading with a number is a measurement and a reading without one is never a distance.
+ *
+ * `sampleTimeMs` is the accessory's own monotonic clock since its session began. It orders samples
+ * against each other and nothing else — subtracting it from a phone timestamp compares two
+ * unsynchronised clocks.
+ *
+ * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/accessory/AccessorySessionManager.kt `onReading`
+ * @parity /modules/vescape-core/ios/accessory/AccessorySessionController.swift `onReading`
+ */
+
+export interface AccessoryReadingEvent {
+  /** Calibration-derived Remote Tilt percentage, independent of Board connection/engagement.
+   * Null for invalid readings or missing calibration. Never a command acknowledgement.
+   * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/accessory/GroundClearance.kt `acceptReading`
+   * @parity /modules/vescape-core/ios/accessory/GroundClearance.swift `acceptReading`
+   */
+  tiltPreviewPercent?: number | null
+  diagnostics?: ClearancePreviewDiagnostics | null
+  accessoryId: string
+  capabilityId: string
+  seq: number
+  sampleTimeMs: number
+  status: AccessoryReadingStatus
+  valueCm: number | null
+  /**
+   * How long this sample stays evidence, from the rate the accessory confirmed.
+   *
+   * A screen showing the number must stop showing it when this elapses without another sample. The
+   * window is native's — derived from the acknowledged rate, floored at the protocol's missing-stream
+   * default — and travels with the sample so JS never re-derives it.
+   */
+  staleAfterMs: number
+}
+
+/** What `saveGroundClearanceCalibration` decided. `problem` says why nothing was saved. */
+export interface GroundClearanceSaveResult {
+  saved: boolean
+  problem: GroundClearanceProblem | 'unknown-capability' | 'storage-unavailable' | null
+}
+
+/**
+ * What an Accessory said about itself on this connection.
+ *
+ * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/accessory/AccessoryProtocol.kt `AccessoryManifest`
+ * @parity /modules/vescape-core/ios/accessory/AccessoryProtocol.swift `AccessoryManifest`
+ */
+export interface AccessoryManifest {
+  /** Persistent Accessory identity. Survives reboots and firmware updates; a BLE address does not. */
+  accessoryId: string
+  name: string
+  firmwareVersion: string
+  /** Null when the Accessory found no common version — it then accepts no operational commands. */
+  protocolVersion: number | null
+  /** What the Accessory offers instead, present only when no version was agreed. */
+  supportedVersions: number[]
+  compatibility: AccessoryCompatibility
+  capabilities: AccessoryCapability[]
+}
+
+/**
+ * Why a handshake produced no manifest. The first three are protocol rejections, the rest are the
+ * link failing around it.
+ *
+ * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/accessory/AccessoryProtocol.kt `AccessoryHandshakeError`
+ * @parity /modules/vescape-core/ios/accessory/AccessoryProtocol.swift `AccessoryHandshakeError`
+ */
+export type AccessoryInspectionError =
+  | 'malformed'
+  | 'invalid'
+  | 'session-mismatch'
+  | 'oversized'
+  | 'invalid-utf8'
+  | 'bluetooth-unavailable'
+  | 'connect-failed'
+  | 'service-missing'
+  | 'write-failed'
+  | 'timeout'
+  | 'cancelled'
+  | 'busy'
+
+/**
+ * One completed discovery handshake. Exactly one of `manifest` and `error` is set.
+ *
+ * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/accessory/AccessoryDiscovery.kt `payload`
+ * @parity /modules/vescape-core/ios/accessory/AccessoryDiscovery.swift `payload`
+ */
+export interface AccessoryInspection {
+  deviceId: string
+  advertisedName: string | null
+  manifest: AccessoryManifest | null
+  error: AccessoryInspectionError | null
+}
+
+/**
+ * Where one enrolled Accessory's link stands, decided natively.
+ *
+ * JS never derives one of these from a boolean, exactly as it never derives a Board phase. A drop
+ * reads as `connecting`, not as an error: the OS keeps the reconnect alive on both platforms, and a
+ * rider who walked out of range has not lost their Accessory.
+ *
+ * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/accessory/AccessoryLink.kt `AccessoryLinkPhase`
+ * @parity /modules/vescape-core/ios/accessory/AccessoryLink.swift `AccessoryLinkPhase`
+ */
+export type AccessoryLinkPhase =
+  | 'idle'
+  | 'connecting'
+  | 'handshaking'
+  | 'connected'
+  | 'unavailable'
+  | 'incompatible'
+
+/**
+ * One enrolled Accessory, as native currently sees it: the durable row plus whatever the live
+ * session knows.
+ *
+ * Identity is `accessoryId`, the manifest's persistent UUID. `deviceId` is where it answered last
+ * and is a reconnect hint, never identity — a renamed unit on a new BLE handle is the same
+ * Accessory, which is why nothing here is keyed on either.
+ *
+ * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/accessory/AccessorySessionManager.kt `buildSnapshot`
+ * @parity /modules/vescape-core/ios/accessory/AccessorySessionController.swift `snapshot`
+ */
+export interface SavedAccessory {
+  accessoryId: string
+  /** Manifest name, refreshed on every handshake. */
+  name: string
+  firmwareVersion: string
+  /** Last agreed protocol version, or null when the two sides found none. */
+  protocolVersion: number | null
+  /** Where it answered last. A hint for the next connect, not identity. */
+  deviceId: string | null
+  enrolledAt: number
+  lastConnectedAt: number | null
+  phase: AccessoryLinkPhase
+  /** Wire string for the last failure, or null while nothing is wrong. */
+  error: string | null
+  /** Native's verdict from the live manifest; null while no session is established. */
+  compatibility: AccessoryCompatibility | null
+  /** Live capabilities while connected, else the set validated at the last handshake. */
+  capabilities: AccessoryCapability[]
+  /**
+   * The declared capability limits moved since enrollment. Anything calibrated against the old ones
+   * needs the rider to look at it again before it drives hardware.
+   */
+  capabilitiesChanged: boolean
+  /** How long ago the accessory last acknowledged a command, or null if it never has. */
+  leaseHeldMs: number | null
+}
+
+/**
+ * The saved Accessories and their live sessions, pushed on every change.
+ *
+ * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/accessory/AccessorySessionManager.kt `publish`
+ * @parity /modules/vescape-core/ios/accessory/AccessorySessionController.swift `publish`
+ */
+export interface AccessoryStateEvent {
+  accessories: SavedAccessory[]
+}
+
+/** What `enrollAccessory` decided. `accessoryId` is set only when a manifest was read and saved. */
+export interface AccessoryEnrollment {
+  accessoryId: string | null
+  error: AccessoryInspectionError | 'storage-unavailable' | null
+}
+
+/**
  * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/protocol/VescTelemetryModels.kt `LocationSnapshot`
  * @parity /modules/vescape-core/ios/telemetry/TelemetryPipeline.swift `TelemetryLocationCapture`
  */
@@ -542,6 +935,19 @@ export type ScanPhase = ScanStatus
  */
 export type RemoteTiltPhase = 'idle' | 'holding' | 'decaying' | 'locked'
 
+/**
+ * Who asked for the tilt the Board is currently holding.
+ *
+ * Refloat has one temporary remote input and three things want it — the pad, Board Move, and a
+ * ground-clearance Accessory — so native arbitrates and reports the winner. The pad renders the same
+ * stream either way, but "the Board is holding a tilt you did not command" is not the same sentence
+ * as "the Board is holding yours".
+ *
+ * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/RemoteInputArbiter.kt `RemoteInputOwner`
+ * @parity /modules/vescape-core/ios/RemoteInputArbiter.swift `RemoteInputOwner`
+ */
+export type RemoteTiltOwner = 'none' | 'manual' | 'sensor' | 'move'
+
 export interface RemoteTiltDecay {
   elapsedMs: number
   totalMs: number
@@ -551,6 +957,8 @@ export interface RemoteTiltDecay {
 export interface RemoteTiltState {
   value: number
   phase: Exclude<RemoteTiltPhase, 'idle'>
+  /** Who commanded it. `move` never appears here — Board Move does not stream a tilt. */
+  owner?: RemoteTiltOwner
   /** Present only while native is executing a release decay. */
   decay?: RemoteTiltDecay
 }
@@ -2129,6 +2537,14 @@ type VescapeCoreEvents = {
   onRouteProgress: (event: RouteProgressEvent) => void
   /** Native forecast, on every successful refresh and on subscribe. */
   onWeather: (event: WeatherEvent) => void
+  /** One advertisement from a device running the Vescape Accessory service. */
+  onAccessoryDevice: (event: AccessoryDeviceEvent) => void
+  /** The accessory scan could not run or stopped running. */
+  onAccessoryScanError: (event: AccessoryScanErrorEvent) => void
+  /** Every enrolled Accessory and its native link state, on every change and on subscribe. */
+  onAccessoryState: (event: AccessoryStateEvent) => void
+  /** One accepted measurement sample, only while that capability's screen asked for a preview. */
+  onAccessoryReading: (event: AccessoryReadingEvent) => void
 }
 
 interface NativeEventEmitter<TEvents extends Record<string, (...args: never[]) => void>> {
@@ -2146,6 +2562,44 @@ interface NativeEventEmitter<TEvents extends Record<string, (...args: never[]) =
 type VescapeCoreNativeModule = NativeEventEmitter<VescapeCoreEvents> & {
   scan(): void
   stopScan(): void
+  startAccessoryScan(): void
+  stopAccessoryScan(): void
+  cancelAccessoryInspection(): void
+  inspectAccessory(deviceId: string): Promise<AccessoryInspection>
+  enrollAccessory(deviceId: string): Promise<AccessoryEnrollment>
+  forgetAccessory(accessoryId: string): Promise<boolean>
+  getAccessories(): SavedAccessory[]
+  setAccessoryCapabilityEnabled(
+    accessoryId: string,
+    capabilityId: string,
+    enabled: boolean,
+  ): Promise<boolean>
+  setAccessorySamplingRate(
+    accessoryId: string,
+    capabilityId: string,
+    rateHz: number,
+  ): Promise<boolean>
+  saveBrakeLightSettings(
+    accessoryId: string,
+    capabilityId: string,
+    sensitivity: number,
+    parked: string,
+  ): Promise<boolean>
+  setBrakeLightPreview(
+    accessoryId: string,
+    capabilityId: string,
+    mode: BrakeLightMode | null,
+  ): Promise<boolean>
+  setAccessoryPreview(accessoryId: string, capabilityId: string, open: boolean): void
+  saveGroundClearanceCalibration(
+    accessoryId: string,
+    capabilityId: string,
+    nearCm: number,
+    farCm: number,
+    direction: string,
+    strengthPercent: number,
+  ): Promise<GroundClearanceSaveResult>
+  clearGroundClearanceCalibration(accessoryId: string, capabilityId: string): Promise<boolean>
   exitApp(): void
   startLocationUpdates(): void
   stopLocationUpdates(): void
@@ -2210,6 +2664,7 @@ type VescapeCoreNativeModule = NativeEventEmitter<VescapeCoreEvents> & {
   clearDeviceCredential(): void
   openAppUpdate(): void
   getRemoteTiltState(): Promise<RemoteTiltState | null>
+  getGroundClearanceTilt(): Promise<GroundClearanceTiltState>
   setSelectedBoard(boardId: string | null): void
   setCompanionPresenceEnabled(enabled: boolean): Promise<void>
   getCompanionPresenceBoards(): Promise<CompanionPresenceBoard[]>
@@ -2368,6 +2823,115 @@ export function stopScan(): void {
   }
 
   native.stopScan()
+}
+
+/**
+ * Start scanning for Vescape Accessories — emits `onAccessoryDevice` per advertisement.
+ *
+ * Matching is on the Accessory service UUID, so a renamed accessory is still found and a device
+ * that merely copies the name is not. Scanning alone enrolls nothing.
+ */
+export function startAccessoryScan(): void {
+  native.startAccessoryScan()
+}
+
+/** Stop the accessory scan. Also stopped natively for the duration of an inspection. */
+export function stopAccessoryScan(): void {
+  native.stopAccessoryScan()
+}
+
+/**
+ * Connect to one discovered device, read its manifest, and disconnect.
+ *
+ * The whole exchange is one `hello` and one manifest: no configuration is sent, no measurement
+ * starts, and no light changes. Native owns the framing, the session and the compatibility verdict;
+ * this returns what it decided.
+ */
+export function inspectAccessory(deviceId: string): Promise<AccessoryInspection> {
+  return native.inspectAccessory(deviceId)
+}
+
+/** Abandon an inspection whose screen the rider already left. */
+export function cancelAccessoryInspection(): void {
+  native.cancelAccessoryInspection()
+}
+
+/**
+ * Add one discovered Accessory, so it is remembered and auto-connects from now on.
+ *
+ * The manifest is read natively before anything is saved — this takes a device handle, never an
+ * identity. Enrollment is the rider's explicit act and the only thing that gives an Accessory a
+ * session; a device that merely advertises nearby is never added on its own.
+ */
+export function enrollAccessory(deviceId: string): Promise<AccessoryEnrollment> {
+  return native.enrollAccessory(deviceId)
+}
+
+/**
+ * Forget an Accessory: the saved identity goes, and its session and calibrations with it.
+ *
+ * One transaction natively, calibrations first. Re-adding the same hardware later starts from "not
+ * set up" rather than from numbers the rider set for a mounting position they have since changed.
+ */
+export function forgetAccessory(accessoryId: string): Promise<boolean> {
+  return native.forgetAccessory(accessoryId)
+}
+
+/**
+ * Ask native to keep one measurement capability running while its screen is open.
+ *
+ * A request to *measure*, never to tilt. Native's arbitration takes the union of this and the rider
+ * actually riding a calibrated board; a preview alone never permits sensor-driven tilt. Closing the
+ * screen — or backgrounding the app — drops the demand, and the accessory stops its continuous
+ * measurement while keeping BLE up.
+ */
+export function setAccessoryPreview(
+  accessoryId: string,
+  capabilityId: string,
+  open: boolean,
+): void {
+  native.setAccessoryPreview(accessoryId, capabilityId, open)
+}
+
+/**
+ * Offer a ground-clearance calibration. Native saves it if it is a complete and valid one.
+ *
+ * There is no Save step for the rider: send what they have as they change it, and native answers
+ * with whether it took and, if not, which rule it broke. Validity is judged against the limits the
+ * Accessory declares right now, and a calibration that fits them is also how the rider accepts
+ * limits that moved since enrollment.
+ */
+export function saveGroundClearanceCalibration(
+  accessoryId: string,
+  capabilityId: string,
+  calibration: {
+    nearCm: number
+    farCm: number
+    direction: GroundClearanceDirection
+    strengthPercent: number
+  },
+): Promise<GroundClearanceSaveResult> {
+  return native.saveGroundClearanceCalibration(
+    accessoryId,
+    capabilityId,
+    calibration.nearCm,
+    calibration.farCm,
+    calibration.direction,
+    calibration.strengthPercent,
+  )
+}
+
+/** Drop a calibration. The binding stops driving and the screen goes back to explaining setup. */
+export function clearGroundClearanceCalibration(
+  accessoryId: string,
+  capabilityId: string,
+): Promise<boolean> {
+  return native.clearGroundClearanceCalibration(accessoryId, capabilityId)
+}
+
+/** Current saved Accessories and their link state, for a late subscriber or a foreground restore. */
+export function getAccessories(): SavedAccessory[] {
+  return native.getAccessories()
 }
 
 /** Start app-level Android location updates independently of a board session. */
@@ -2765,6 +3329,21 @@ export function openAppUpdate(): void {
 export async function getRemoteTiltState(): Promise<RemoteTiltState | null> {
   if (E2E_ENABLED) return null
   return native.getRemoteTiltState()
+}
+
+/**
+ * What the ground-clearance Remote Tilt binding is doing.
+ *
+ * Polled rather than pushed: the only consumer is the tilt pad, which already reads the commanded
+ * tilt on its own interval, and a 10 Hz event carrying a release reason that mostly does not change
+ * would be bridge traffic for nothing.
+ *
+ * @parity /modules/vescape-core/ios/VescapeCoreModule.swift `getGroundClearanceTilt`
+ * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/VescapeCoreModule.kt `getGroundClearanceTilt`
+ */
+export async function getGroundClearanceTilt(): Promise<GroundClearanceTiltState> {
+  if (E2E_ENABLED) return { bound: false, driving: false, release: null }
+  return native.getGroundClearanceTilt()
 }
 
 /** Persist native auto-connect target. Native can use this while JS is frozen. */
@@ -3436,6 +4015,36 @@ export function addDeviceListener(cb: (event: DeviceFoundEvent) => void): EventS
   return emitter.addListener('onDevice', cb)
 }
 
+export function addAccessoryDeviceListener(
+  cb: (event: AccessoryDeviceEvent) => void,
+): EventSubscription {
+  return emitter.addListener('onAccessoryDevice', cb)
+}
+
+export function addAccessoryScanErrorListener(
+  cb: (event: AccessoryScanErrorEvent) => void,
+): EventSubscription {
+  return emitter.addListener('onAccessoryScanError', cb)
+}
+
+export function addAccessoryStateListener(
+  cb: (event: AccessoryStateEvent) => void,
+): EventSubscription {
+  return emitter.addListener('onAccessoryState', cb)
+}
+
+/**
+ * Live measurement samples for whichever capabilities asked for a preview.
+ *
+ * Native only pushes while `setAccessoryPreview` is open for that capability, so subscribing without
+ * asking for measurements is silent rather than merely quiet.
+ */
+export function addAccessoryReadingListener(
+  cb: (event: AccessoryReadingEvent) => void,
+): EventSubscription {
+  return emitter.addListener('onAccessoryReading', cb)
+}
+
 export function addErrorListener(cb: (event: ErrorEvent) => void): EventSubscription {
   return emitter.addListener('onError', cb)
 }
@@ -3626,4 +4235,52 @@ export function addGroupRideErrorListener(
   cb: (event: GroupRideErrorEvent) => void,
 ): EventSubscription {
   return emitter.addListener('onGroupRideError', cb)
+}
+
+/** @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/VescapeCoreModule.kt `saveBrakeLightSettings`
+ * @parity /modules/vescape-core/ios/VescapeCoreModule.swift `saveBrakeLightSettings`
+ */
+export function saveBrakeLightSettings(
+  accessoryId: string,
+  capabilityId: string,
+  settings: BrakeLightSettings,
+): Promise<boolean> {
+  return native.saveBrakeLightSettings(
+    accessoryId,
+    capabilityId,
+    settings.sensitivity,
+    settings.parked,
+  )
+}
+
+/** @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/VescapeCoreModule.kt `setAccessoryCapabilityEnabled`
+ * @parity /modules/vescape-core/ios/VescapeCoreModule.swift `setAccessoryCapabilityEnabled`
+ */
+export function setAccessoryCapabilityEnabled(
+  accessoryId: string,
+  capabilityId: string,
+  enabled: boolean,
+): Promise<boolean> {
+  return native.setAccessoryCapabilityEnabled(accessoryId, capabilityId, enabled)
+}
+
+/** @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/VescapeCoreModule.kt `setAccessorySamplingRate`
+ * @parity /modules/vescape-core/ios/VescapeCoreModule.swift `setAccessorySamplingRate`
+ */
+export function setAccessorySamplingRate(
+  accessoryId: string,
+  capabilityId: string,
+  rateHz: number,
+): Promise<boolean> {
+  return native.setAccessorySamplingRate(accessoryId, capabilityId, rateHz)
+}
+/** @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/VescapeCoreModule.kt `setBrakeLightPreview`
+ * @parity /modules/vescape-core/ios/VescapeCoreModule.swift `setBrakeLightPreview`
+ */
+export function setBrakeLightPreview(
+  accessoryId: string,
+  capabilityId: string,
+  mode: BrakeLightMode | null,
+): Promise<boolean> {
+  return native.setBrakeLightPreview(accessoryId, capabilityId, mode)
 }

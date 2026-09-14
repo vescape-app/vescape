@@ -825,6 +825,27 @@ enum TelemetryDatabase {
       try rebuildBucketsOnRecordingId(db)
     }
 
+    // @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/TelemetryMigrations.kt `MIGRATION_43_44`
+    migrator.registerMigration("v44_accessories") { db in
+      try PersistenceSchema.createAccessories(db)
+    }
+
+    // @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/TelemetryMigrations.kt `MIGRATION_44_45`
+    migrator.registerMigration("v45_accessory_ground_clearance") { db in
+      try PersistenceSchema.createAccessoryGroundClearance(db)
+    }
+
+    migrator.registerMigration("v46_accessory_brake_light") { db in
+      try PersistenceSchema.createAccessoryBrakeLight(db)
+    }
+    migrator.registerMigration("v47_accessory_capability_settings") { db in
+      try PersistenceSchema.createAccessoryCapabilitySettings(db)
+    }
+    // @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/TelemetryMigrations.kt `MIGRATION_47_48`
+    migrator.registerMigration("v48_accessory_sampling_rate") { db in
+      try db.execute(sql: "ALTER TABLE accessory_capability_settings ADD COLUMN sampling_rate_hz REAL")
+    }
+
     return migrator
   }
 }

@@ -979,6 +979,270 @@ if let exchangePath = ProcessInfo.processInfo.environment["VESCAPE_BACKUP_EXCHAN
   try DatabaseBackupArchive.archive(database: iosData, manifest: iosManifest)
     .write(to: exchange.appendingPathComponent("ios.zip"), options: .atomic)
 }
+// MARK: - Enrolled Accessories
+//
+// The scenario that actually matters for this table: an Accessory the rider renamed and re-flashed,
+// met again on a different peripheral id, must stay one Accessory. If identity ever slipped to the
+// name or the handle, this is where a second row would appear.
+//
+// @parity /modules/vescape-core/persistence-jvm/src/test/kotlin/expo/modules/vescapecore/telemetry/AccessoryPersistenceHostTest.kt
+let accessoryFixture = try JSONSerialization.jsonObject(
+  with: Data(contentsOf: root.appendingPathComponent("shared/accessory-persistence-contract.json"))
+) as! [String: Any]
+try require(
+  accessoryFixture["scenario"] as? String == "accessory-enrollment-close-reopen",
+  "unknown accessory scenario")
+let accessorySpec = accessoryFixture["accessory"] as! [String: Any]
+let otherAccessorySpec = accessoryFixture["other"] as! [String: Any]
+let accessoryURL = FileManager.default.temporaryDirectory
+  .appendingPathComponent("vescape-accessories-\(UUID().uuidString).db")
+var accessoryQueue: DatabaseQueue? = try DatabaseQueue(path: accessoryURL.path)
+try TelemetryDatabase.migrator.migrate(accessoryQueue!)
+var accessoryStore = AccessoryStore(dbWriter: accessoryQueue!)
+
+func savedAccessory(_ spec: [String: Any], overrides: [String: Any] = [:]) -> SavedAccessory {
+  func value(_ key: String) -> Any? { overrides[key] ?? spec[key] }
+  return SavedAccessory(
+    accessoryId: value("accessoryId") as! String,
+    name: value("name") as! String,
+    firmwareVersion: value("firmwareVersion") as! String,
+    protocolVersion: (value("protocolVersion") as? NSNumber)?.intValue,
+    deviceId: value("deviceId") as? String,
+    capabilitiesJson: value("capabilitiesJson") as! String,
+    enrolledAt: Int64(int(value("enrolledAt"))),
+    lastConnectedAt: (value("lastConnectedAt") as? NSNumber)?.int64Value)
+}
+
+try accessoryStore.upsert(savedAccessory(accessorySpec))
+try accessoryStore.upsert(savedAccessory(otherAccessorySpec))
+try accessoryQueue!.close()
+
+accessoryQueue = try DatabaseQueue(path: accessoryURL.path)
+accessoryStore = AccessoryStore(dbWriter: accessoryQueue!)
+let reopenedAccessories = try accessoryStore.accessories()
+try require(
+  reopenedAccessories.map(\.accessoryId)
+    == [accessorySpec["accessoryId"] as! String, otherAccessorySpec["accessoryId"] as! String],
+  "Accessory reopen order")
+try require(
+  reopenedAccessories.first?.capabilitiesJson == accessorySpec["capabilitiesJson"] as? String,
+  "Accessory capabilities reopen")
+try require(reopenedAccessories.first?.lastConnectedAt == nil, "Accessory connected before it was")
+
+let observedAccessory = savedAccessory(
+  accessorySpec,
+  overrides: [
+    "name": accessorySpec["renamedTo"]!,
+    "firmwareVersion": accessorySpec["updatedFirmwareVersion"]!,
+    "deviceId": accessorySpec["movedDeviceId"]!,
+    "capabilitiesJson": accessorySpec["changedCapabilitiesJson"]!,
+    "enrolledAt": accessorySpec["reEnrolledAt"]!,
+    "lastConnectedAt": accessorySpec["connectedAt"]!,
+  ])
+let revalidated = try accessoryStore.revalidate(observedAccessory)
+try require(revalidated, "Accessory revalidate")
+let afterRevalidation = try accessoryStore.accessories()
+try require(afterRevalidation.count == 2, "rename duplicated an Accessory")
+
+// Update-only: a handshake landing after the rider forgot an Accessory must not recreate it.
+let revalidatedUnknown = try accessoryStore.revalidate(
+  savedAccessory(accessorySpec, overrides: ["accessoryId": "not-enrolled"]))
+try require(!revalidatedUnknown, "revalidate invented an Accessory")
+let afterUnknownRevalidation = try accessoryStore.accessories()
+try require(afterUnknownRevalidation.count == 2, "revalidate added a row")
+try accessoryQueue!.close()
+
+accessoryQueue = try DatabaseQueue(path: accessoryURL.path)
+accessoryStore = AccessoryStore(dbWriter: accessoryQueue!)
+let persistedAccessory = try accessoryStore.accessory(accessorySpec["accessoryId"] as! String)
+try require(
+  persistedAccessory?.name == accessorySpec["renamedTo"] as? String, "Accessory rename reopen")
+try require(
+  persistedAccessory?.firmwareVersion == accessorySpec["updatedFirmwareVersion"] as? String,
+  "Accessory firmware reopen")
+// Reading a manifest again is not adding the Accessory again.
+try require(
+  persistedAccessory?.enrolledAt == Int64(int(accessorySpec["enrolledAt"])),
+  "Accessory enrolledAt moved")
+// The baseline the rider's saved settings were validated against survives revalidation. It is what
+// the "declared limits changed" warning is derived from, so overwriting it here would make the
+// warning vanish on the next launch.
+try require(
+  persistedAccessory?.capabilitiesJson == accessorySpec["capabilitiesJson"] as? String,
+  "Accessory capability baseline overwritten")
+try require(
+  persistedAccessory?.lastConnectedAt == Int64(int(accessorySpec["connectedAt"])),
+  "Accessory last connected reopen")
+
+// Forgetting takes the Accessory and nothing else.
+let forgotten = try accessoryStore.forget(accessorySpec["accessoryId"] as! String)
+try require(forgotten, "Accessory forget")
+let forgottenAgain = try accessoryStore.forget(accessorySpec["accessoryId"] as! String)
+try require(!forgottenAgain, "forgetting twice reported a second removal")
+try accessoryQueue!.close()
+
+accessoryQueue = try DatabaseQueue(path: accessoryURL.path)
+accessoryStore = AccessoryStore(dbWriter: accessoryQueue!)
+let remainingAccessories = try accessoryStore.accessories()
+try require(
+  remainingAccessories.map(\.accessoryId) == [otherAccessorySpec["accessoryId"] as! String],
+  "forget removed the wrong Accessory")
+try accessoryQueue!.close()
+try? FileManager.default.removeItem(at: accessoryURL)
+
+// Ground-clearance calibration, keyed on the Accessory *and* the capability.
+//
+// The composite key is the point: one unit declaring a nose sensor and a tail sensor keeps two
+// independent calibrations, and re-saving one must leave the other exactly as it was. Revalidating a
+// manifest must not disturb either; forgetting the Accessory must take both, because a re-enrollment
+// that inherited old numbers would drive the board to a mounting position the rider has since
+// changed.
+//
+// @parity /modules/vescape-core/persistence-jvm/src/test/kotlin/expo/modules/vescapecore/telemetry/AccessoryPersistenceHostTest.kt `calibrationSurvivesRestartAndIsForgottenWithItsAccessory`
+let clearanceSpec = accessoryFixture["groundClearance"] as! [String: Any]
+let clearanceOwner = accessorySpec["accessoryId"] as! String
+let clearanceOtherOwner = otherAccessorySpec["accessoryId"] as! String
+let noseCapability = clearanceSpec["capabilityId"] as! String
+let tailCapability = clearanceSpec["tailCapabilityId"] as! String
+let noseCalibrationSpec = clearanceSpec["calibration"] as! [String: Any]
+let noseRecalibratedSpec = clearanceSpec["recalibrated"] as! [String: Any]
+let tailCalibrationSpec = clearanceSpec["tailCalibration"] as! [String: Any]
+
+func savedCalibration(_ owner: String, _ capabilityId: String, _ spec: [String: Any])
+  -> SavedGroundClearance
+{
+  SavedGroundClearance(
+    accessoryId: owner, capabilityId: capabilityId,
+    nearCm: (spec["nearCm"] as! NSNumber).doubleValue,
+    farCm: (spec["farCm"] as! NSNumber).doubleValue,
+    direction: spec["direction"] as! String,
+    strengthPercent: (spec["strengthPercent"] as! NSNumber).intValue,
+    updatedAt: Int64(int(spec["updatedAt"])))
+}
+
+let clearanceURL = FileManager.default.temporaryDirectory
+  .appendingPathComponent("vescape-ground-clearance-\(UUID().uuidString).db")
+var clearanceQueue: DatabaseQueue? = try DatabaseQueue(path: clearanceURL.path)
+try TelemetryDatabase.migrator.migrate(clearanceQueue!)
+var clearanceStore = AccessoryStore(dbWriter: clearanceQueue!)
+try clearanceStore.upsert(savedAccessory(accessorySpec))
+try clearanceStore.upsert(savedAccessory(otherAccessorySpec))
+try clearanceStore.saveGroundClearance(
+  savedCalibration(clearanceOwner, noseCapability, noseCalibrationSpec))
+try clearanceStore.saveGroundClearance(
+  savedCalibration(clearanceOwner, tailCapability, tailCalibrationSpec))
+try clearanceStore.saveGroundClearance(
+  savedCalibration(
+    clearanceOtherOwner, otherAccessorySpec["capabilityId"] as! String,
+    otherAccessorySpec["calibration"] as! [String: Any]))
+try clearanceQueue!.close()
+
+// Settings survive restart: the whole reason this is a table and not process state.
+clearanceQueue = try DatabaseQueue(path: clearanceURL.path)
+clearanceStore = AccessoryStore(dbWriter: clearanceQueue!)
+let reopenedCalibration = try clearanceStore.groundClearance(clearanceOwner, noseCapability)
+try require(
+  reopenedCalibration == savedCalibration(clearanceOwner, noseCapability, noseCalibrationSpec),
+  "calibration did not survive close/reopen")
+let reopenedCalibrationCount = try clearanceStore.groundClearances().count
+try require(reopenedCalibrationCount == 3, "calibration reopen count")
+
+// Recalibrating the nose sensor leaves the tail sensor alone. Keyed on the Accessory alone, the
+// second row would have overwritten the first.
+try clearanceStore.saveGroundClearance(
+  savedCalibration(clearanceOwner, noseCapability, noseRecalibratedSpec))
+let afterRecalibration = try clearanceStore.groundClearances()
+try require(afterRecalibration.count == 3, "recalibration added a row")
+let recalibratedNose = try clearanceStore.groundClearance(clearanceOwner, noseCapability)
+try require(
+  recalibratedNose?.nearCm == (noseRecalibratedSpec["nearCm"] as! NSNumber).doubleValue,
+  "recalibration did not take")
+let untouchedTail = try clearanceStore.groundClearance(clearanceOwner, tailCapability)
+try require(
+  untouchedTail?.direction == tailCalibrationSpec["direction"] as? String,
+  "recalibrating one capability disturbed another")
+
+// Reading a manifest again must not disturb what the rider set, or move the frozen baseline.
+let clearanceRevalidated = try clearanceStore.revalidate(
+  savedAccessory(accessorySpec, overrides: ["name": accessorySpec["renamedTo"]!]))
+try require(clearanceRevalidated, "calibration-scenario revalidate")
+let afterClearanceRevalidation = try clearanceStore.groundClearances()
+try require(afterClearanceRevalidation.count == 3, "revalidate disturbed a calibration")
+let baselineAfterRevalidation = try clearanceStore.accessory(clearanceOwner)
+try require(
+  baselineAfterRevalidation?.capabilitiesJson == accessorySpec["capabilitiesJson"] as? String,
+  "revalidate moved the capability baseline")
+
+// Accepting limits that moved, which is what saving a fitting calibration means.
+let adopted = try clearanceStore.adoptCapabilities(
+  clearanceOwner, capabilitiesJson: accessorySpec["changedCapabilitiesJson"] as! String)
+try require(adopted, "adoptCapabilities on an enrolled Accessory")
+let baselineAfterAdoption = try clearanceStore.accessory(clearanceOwner)
+try require(
+  baselineAfterAdoption?.capabilitiesJson == accessorySpec["changedCapabilitiesJson"] as? String,
+  "adoptCapabilities did not rewrite the baseline")
+let adoptedUnknown = try clearanceStore.adoptCapabilities(
+  "not-enrolled", capabilitiesJson: accessorySpec["capabilitiesJson"] as! String)
+try require(!adoptedUnknown, "adoptCapabilities invented an Accessory")
+try clearanceQueue!.close()
+
+clearanceQueue = try DatabaseQueue(path: clearanceURL.path)
+clearanceStore = AccessoryStore(dbWriter: clearanceQueue!)
+let clearedTail = try clearanceStore.clearGroundClearance(clearanceOwner, tailCapability)
+try require(clearedTail, "clear calibration")
+let clearedTailAgain = try clearanceStore.clearGroundClearance(clearanceOwner, tailCapability)
+try require(!clearedTailAgain, "clearing twice reported a second removal")
+let afterClear = try clearanceStore.groundClearances()
+try require(afterClear.count == 2, "clear removed the wrong row")
+
+let lightSpec = accessoryFixture["brakeLight"] as! [String: Any]
+let lightSettings = SavedBrakeLight(accessoryId: clearanceOwner, capabilityId: lightSpec["capabilityId"] as! String, sensitivity: lightSpec["sensitivity"] as! Int, parked: lightSpec["parked"] as! String)
+try clearanceStore.saveBrakeLight(lightSettings)
+let otherLightSettings = SavedBrakeLight(accessoryId: clearanceOtherOwner, capabilityId: lightSettings.capabilityId, sensitivity: lightSettings.sensitivity, parked: lightSettings.parked)
+try clearanceStore.saveBrakeLight(otherLightSettings)
+let switchSpec = accessoryFixture["capabilitySettings"] as! [String: Any]
+let switchSettings = SavedAccessoryCapabilitySettings(accessoryId: clearanceOwner, capabilityId: noseCapability, enabled: switchSpec["enabled"] as! Bool, samplingRateHz: (switchSpec["samplingRateHz"] as! NSNumber).doubleValue)
+let otherSwitchSettings = SavedAccessoryCapabilitySettings(accessoryId: clearanceOtherOwner, capabilityId: noseCapability, enabled: switchSettings.enabled, samplingRateHz: (switchSpec["otherSamplingRateHz"] as! NSNumber).doubleValue)
+try clearanceStore.saveCapabilitySettings(switchSettings)
+try clearanceStore.saveCapabilitySettings(otherSwitchSettings)
+try clearanceQueue!.close()
+clearanceQueue = try DatabaseQueue(path: clearanceURL.path)
+clearanceStore = AccessoryStore(dbWriter: clearanceQueue!)
+let reopenedLights = try clearanceStore.brakeLights()
+try require(reopenedLights == [lightSettings, otherLightSettings].sorted { $0.accessoryId < $1.accessoryId }, "light settings survive reopen independently")
+let reopenedSwitches = try clearanceStore.capabilitySettings()
+try require(reopenedSwitches == [switchSettings, otherSwitchSettings].sorted { $0.accessoryId < $1.accessoryId }, "capability switches survive reopen independently")
+let calibrationBeforeToggle = try clearanceStore.groundClearance(clearanceOwner, noseCapability)
+try clearanceStore.saveCapabilitySettings(.init(accessoryId: clearanceOwner, capabilityId: noseCapability, enabled: true, samplingRateHz: switchSettings.samplingRateHz))
+let switchesAfterToggle = try clearanceStore.capabilitySettings()
+try require(switchesAfterToggle.first { $0.accessoryId == clearanceOwner }?.samplingRateHz == switchSettings.samplingRateHz, "toggle preserves sampling rate")
+let calibrationAfterToggle = try clearanceStore.groundClearance(clearanceOwner, noseCapability)
+try require(calibrationBeforeToggle == calibrationAfterToggle, "toggling must preserve calibration")
+try clearanceStore.saveCapabilitySettings(switchSettings)
+
+// Forgetting takes the Accessory and every calibration made against it, and nothing else.
+let clearanceForgotten = try clearanceStore.forget(clearanceOwner)
+try require(clearanceForgotten, "calibration-scenario forget")
+try clearanceQueue!.close()
+
+clearanceQueue = try DatabaseQueue(path: clearanceURL.path)
+clearanceStore = AccessoryStore(dbWriter: clearanceQueue!)
+let orphanCalibration = try clearanceStore.groundClearance(clearanceOwner, noseCapability)
+try require(orphanCalibration == nil, "forget left a calibration behind")
+let survivingLights = try clearanceStore.brakeLights()
+try require(survivingLights == [otherLightSettings], "forget removes only owned light settings")
+let survivingSwitches = try clearanceStore.capabilitySettings()
+try require(survivingSwitches == [otherSwitchSettings], "forget removes only owned capability switches")
+var rejectedOrphanSwitch = false
+do { try clearanceStore.saveCapabilitySettings(switchSettings) } catch { rejectedOrphanSwitch = true }
+try require(rejectedOrphanSwitch, "cannot save switches for a forgotten accessory")
+let survivingCalibrations = try clearanceStore.groundClearances()
+try require(
+  survivingCalibrations.map(\.accessoryId) == [clearanceOtherOwner],
+  "forget removed another Accessory's calibration")
+try clearanceQueue!.close()
+try? FileManager.default.removeItem(at: clearanceURL)
+
 print("recording-contract macOS runtimeMs=\(Int(Date().timeIntervalSince(started) * 1000)) scenario=\(fixture["scenario"]!)")
 
 private extension String {

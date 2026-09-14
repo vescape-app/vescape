@@ -847,6 +847,133 @@ interface TelemetryDao {
   @Query("DELETE FROM board_warnings WHERE board_id = :boardId")
   suspend fun deleteBoardWarnings(boardId: String): Int
 
+  // Enrolled Accessories. Deliberately unrelated to `boards`: an Accessory Binding targets whichever
+  // Board is connected, so deleting a Board must not forget the rider's hardware.
+  // @parity /modules/vescape-core/ios/telemetry/AccessoryPersistence.swift
+
+  @Query("SELECT * FROM accessories ORDER BY enrolled_at ASC")
+  suspend fun getAccessories(): List<SavedAccessoryEntity>
+
+  @Query("SELECT * FROM accessories WHERE accessory_id = :accessoryId LIMIT 1")
+  suspend fun getAccessory(accessoryId: String): SavedAccessoryEntity?
+
+  /**
+   * Enroll or re-validate. `REPLACE` on the manifest identity is the whole duplicate defence: the
+   * same hardware under a new name, a new firmware version or a new BLE handle updates its row
+   * instead of adding one.
+   */
+  @Insert(onConflict = OnConflictStrategy.REPLACE)
+  suspend fun upsertAccessory(accessory: SavedAccessoryEntity)
+
+  @Query("DELETE FROM accessories WHERE accessory_id = :accessoryId")
+  suspend fun deleteAccessory(accessoryId: String): Int
+
+  /**
+   * Forgetting, with everything the rider calibrated against this Accessory.
+   *
+   * One transaction, and the calibration goes first. Deleting the identity alone would leave rows
+   * nothing can reach and nothing can clean up — and re-adding the same hardware later would find
+   * them and drive the board to numbers the rider set for a mounting position they have since
+   * changed. "Forget" means forget.
+   */
+  @Transaction
+  suspend fun forgetAccessory(accessoryId: String): Int {
+    deleteGroundClearances(accessoryId)
+    deleteBrakeLights(accessoryId)
+    deleteAccessoryCapabilitySettings(accessoryId)
+    return deleteAccessory(accessoryId)
+  }
+
+  /**
+   * Adopts what the last handshake declared as the new baseline for saved settings.
+   *
+   * Separate from [revalidateAccessory] on purpose: that one deliberately preserves the baseline so
+   * the "declared limits changed" warning survives a restart. This is the other half — the rider
+   * saved a calibration that fits the *current* manifest, which is the moment the new limits stop
+   * being a change to warn about and start being the limits.
+   */
+  @Query("UPDATE accessories SET capabilities_json = :capabilitiesJson WHERE accessory_id = :accessoryId")
+  suspend fun adoptAccessoryCapabilities(accessoryId: String, capabilitiesJson: String): Int
+
+  // Ground-clearance calibration, keyed on the Accessory *and* the capability.
+  @Query("SELECT * FROM accessory_brake_light ORDER BY accessory_id, capability_id")
+  suspend fun getBrakeLights(): List<AccessoryBrakeLightEntity>
+
+  @Query("SELECT * FROM accessory_capability_settings ORDER BY accessory_id, capability_id")
+  suspend fun getAccessoryCapabilitySettings(): List<AccessoryCapabilitySettingsEntity>
+
+  @Insert(onConflict = OnConflictStrategy.REPLACE)
+  suspend fun upsertAccessoryCapabilitySettings(settings: AccessoryCapabilitySettingsEntity)
+
+  @Transaction
+  suspend fun saveAccessoryCapabilitySettings(settings: AccessoryCapabilitySettingsEntity) {
+    check(getAccessory(settings.accessoryId) != null) { "Accessory is no longer enrolled" }
+    upsertAccessoryCapabilitySettings(settings)
+  }
+
+  @Query("DELETE FROM accessory_capability_settings WHERE accessory_id = :accessoryId")
+  suspend fun deleteAccessoryCapabilitySettings(accessoryId: String): Int
+
+  @Insert(onConflict = OnConflictStrategy.REPLACE)
+  suspend fun upsertBrakeLight(settings: AccessoryBrakeLightEntity)
+
+  @Transaction
+  suspend fun saveBrakeLight(settings: AccessoryBrakeLightEntity) {
+    check(getAccessory(settings.accessoryId) != null) { "Accessory is no longer enrolled" }
+    upsertBrakeLight(settings)
+  }
+
+  @Query("DELETE FROM accessory_brake_light WHERE accessory_id = :accessoryId")
+  suspend fun deleteBrakeLights(accessoryId: String): Int
+
+  // @parity /modules/vescape-core/ios/telemetry/AccessoryPersistence.swift `GroundClearanceStore`
+
+  @Query("SELECT * FROM accessory_ground_clearance ORDER BY accessory_id ASC, capability_id ASC")
+  suspend fun getGroundClearances(): List<AccessoryGroundClearanceEntity>
+
+  @Query(
+    "SELECT * FROM accessory_ground_clearance WHERE accessory_id = :accessoryId AND capability_id = :capabilityId LIMIT 1",
+  )
+  suspend fun getGroundClearance(accessoryId: String, capabilityId: String): AccessoryGroundClearanceEntity?
+
+  @Insert(onConflict = OnConflictStrategy.REPLACE)
+  suspend fun upsertGroundClearance(calibration: AccessoryGroundClearanceEntity)
+
+  @Query(
+    "DELETE FROM accessory_ground_clearance WHERE accessory_id = :accessoryId AND capability_id = :capabilityId",
+  )
+  suspend fun deleteGroundClearance(accessoryId: String, capabilityId: String): Int
+
+  @Query("DELETE FROM accessory_ground_clearance WHERE accessory_id = :accessoryId")
+  suspend fun deleteGroundClearances(accessoryId: String): Int
+
+  /**
+   * Records what the last handshake observed, for a row that still exists.
+   *
+   * Update-only on purpose: a handshake landing just after the rider forgot the Accessory must not
+   * resurrect it. `capabilities_json` and `enrolled_at` are left alone — the first is the baseline
+   * saved settings were validated against, the second is when the rider added it.
+   */
+  @Query(
+    """
+    UPDATE accessories
+    SET name = :name,
+        firmware_version = :firmwareVersion,
+        protocol_version = :protocolVersion,
+        device_id = :deviceId,
+        last_connected_at = :connectedAt
+    WHERE accessory_id = :accessoryId
+    """,
+  )
+  suspend fun revalidateAccessory(
+    accessoryId: String,
+    name: String,
+    firmwareVersion: String,
+    protocolVersion: Int?,
+    deviceId: String?,
+    connectedAt: Long?,
+  ): Int
+
   // VESC Fault Occurrences — see VescFaultCoordinator for lifecycle rules. Deliberately absent from
   // `deleteBoardWithSettings`: fault evidence outlives the Board record.
   // @parity /modules/vescape-core/ios/faults/VescFaultStore.swift

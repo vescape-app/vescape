@@ -178,16 +178,26 @@ function nativeViolations(path: string, text: string): string[] {
     .map((match) => `${path}:${lineAt(text, match.index!)}`)
 }
 
-test('production failure suppressions require an explicit owner or reason', () => {
-  const js = JS_ROOTS.flatMap((root) =>
-    sourceFiles(root, new Set(['.ts', '.tsx', '.js', '.jsx', '.mjs', '.cjs'])),
-  )
-  const native = NATIVE_ROOTS.flatMap((root) => sourceFiles(root, new Set(['.swift', '.kt'])))
-  expect([
-    ...js.flatMap((path) => noopCatchViolations(path, readFileSync(path, 'utf8'))),
-    ...native.flatMap((path) => nativeViolations(path, readFileSync(path, 'utf8'))),
-  ]).toEqual([])
-})
+// Reads and lexes every source file in the repo, so it scales with the codebase and with whatever
+// disk the runner got. Well under a second locally, but it has already tripped Bun's 5s default on
+// a cold CI runner — the budget is explicit so a slow machine fails the build only when it is
+// genuinely stuck.
+const SCAN_TIMEOUT_MS = 60_000
+
+test(
+  'production failure suppressions require an explicit owner or reason',
+  () => {
+    const js = JS_ROOTS.flatMap((root) =>
+      sourceFiles(root, new Set(['.ts', '.tsx', '.js', '.jsx', '.mjs', '.cjs'])),
+    )
+    const native = NATIVE_ROOTS.flatMap((root) => sourceFiles(root, new Set(['.swift', '.kt'])))
+    expect([
+      ...js.flatMap((path) => noopCatchViolations(path, readFileSync(path, 'utf8'))),
+      ...native.flatMap((path) => nativeViolations(path, readFileSync(path, 'utf8'))),
+    ]).toEqual([])
+  },
+  SCAN_TIMEOUT_MS,
+)
 
 test('suppression scanner accepts only nearby markers in real comments', () => {
   expect(

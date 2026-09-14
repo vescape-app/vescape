@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Alert, Linking, Platform, ScrollView, StyleSheet, Switch } from 'react-native'
+import { Alert, Linking, Platform, ScrollView, StyleSheet } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import {
   BluetoothConnectedIcon,
@@ -13,6 +13,7 @@ import { useShallow } from 'zustand/react/shallow'
 import { theme } from '@/constants/theme'
 import { SettingsCard } from '@/components/settings/SettingsCard'
 import { SettingsRow } from '@/components/settings/SettingsRow'
+import { SettingsSwitch } from '@/components/settings/SettingsSwitch'
 import { Stepper } from '@/components/forms/Stepper'
 import { IconHero } from '@/components/settings/IconHero'
 import { SettingsSectionTitle } from '@/components/settings/SettingsSectionTitle'
@@ -187,23 +188,10 @@ export default function ConnectionSettingsScreen() {
                 : 'Connect to your board when the app opens'
             }
             right={
-              <Switch
+              <SettingsSwitch
                 value={autoConnect}
                 disabled={companionPresenceEnabled}
                 onValueChange={(v) => void set('autoConnect', v)}
-                trackColor={{
-                  false: theme.palette.slate.border,
-                  true: companionPresenceEnabled
-                    ? theme.palette.slate.border
-                    : theme.palette.sky.border,
-                }}
-                thumbColor={
-                  companionPresenceEnabled
-                    ? theme.palette.slate.textMuted
-                    : autoConnect
-                      ? theme.palette.sky.color
-                      : theme.palette.slate.textMuted
-                }
               />
             }
           />
@@ -214,11 +202,9 @@ export default function ConnectionSettingsScreen() {
             label="Auto recording"
             hint="Start recording when board connects"
             right={
-              <Switch
+              <SettingsSwitch
                 value={autoRecording}
                 onValueChange={(v) => void set('autoRecording', v)}
-                trackColor={{ false: theme.palette.slate.border, true: theme.palette.sky.border }}
-                thumbColor={autoRecording ? theme.palette.sky.color : theme.palette.slate.textMuted}
               />
             }
           />
@@ -228,13 +214,9 @@ export default function ConnectionSettingsScreen() {
             label="Connection sounds"
             hint="Play on/off sounds on connect and dropout"
             right={
-              <Switch
+              <SettingsSwitch
                 value={connectionSoundsEnabled}
                 onValueChange={(v) => void set('connectionSoundsEnabled', v)}
-                trackColor={{ false: theme.palette.slate.border, true: theme.palette.sky.border }}
-                thumbColor={
-                  connectionSoundsEnabled ? theme.palette.sky.color : theme.palette.slate.textMuted
-                }
               />
             }
           />
@@ -250,16 +232,9 @@ export default function ConnectionSettingsScreen() {
                 label="Auto close app"
                 hint="Close the app when the board stays disconnected"
                 right={
-                  <Switch
+                  <SettingsSwitch
                     value={autoCloseEnabled}
                     onValueChange={(v) => void set('autoCloseEnabled', v)}
-                    trackColor={{
-                      false: theme.palette.slate.border,
-                      true: theme.palette.sky.border,
-                    }}
-                    thumbColor={
-                      autoCloseEnabled ? theme.palette.sky.color : theme.palette.slate.textMuted
-                    }
                   />
                 }
               />

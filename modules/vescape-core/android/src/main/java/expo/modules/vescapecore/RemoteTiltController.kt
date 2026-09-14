@@ -28,7 +28,7 @@ private const val REMOTE_TILT_REPEAT_MS = 100L
  *
  * @parity /modules/vescape-core/ios/RemoteTiltController.swift `REMOTE_TILT_CANCEL_FULL_RANGE_MS`
  */
-private const val REMOTE_TILT_CANCEL_FULL_RANGE_MS = 600L
+internal const val REMOTE_TILT_CANCEL_FULL_RANGE_MS = 600L
 
 // @parity /modules/vescape-core/src/index.ts `RemoteTiltPhase`
 // @parity /modules/vescape-core/ios/RemoteTiltController.swift `RemoteTiltPhase`

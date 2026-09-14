@@ -163,6 +163,8 @@ export function LineChart({ chart, width, index }: LineChartProps) {
           {chart.series.map((series) => (
             <SeriesLayer
               key={series.key}
+              domainStartMs={domainStartMs}
+              domainEndMs={domainEndMs}
               paths={series.paths}
               color={series.color}
               ramp={series.ramp}

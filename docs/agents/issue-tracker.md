@@ -72,6 +72,7 @@ Use one or more app-area labels for filtering:
 | `area:core`         | `[Core]`         | app shell, storage, lifecycle, infra                                                                                        |
 | `area:server`       | `[Server]`       | Vescape backend APIs, relay behavior, server policy, and deployment-facing contracts                                        |
 | `area:board`        | `[Board]`        | board profiles, board table/settings                                                                                        |
+| `area:accessories`  | `[Accessories]`  | accessory discovery, protocol, configuration, and Board bindings                                                            |
 | `area:telemetry`    | `[Telemetry]`    | live telemetry ingest/display                                                                                               |
 | `area:tunes`        | `[Tunes]`        | VESC tune read/write flows                                                                                                  |
 | `area:alerts`       | `[Alerts]`       | alert rules, alert feedback, audio/TTS                                                                                      |

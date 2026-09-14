@@ -92,7 +92,7 @@ public class VescapeCoreModule: Module {
 
     // @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/VescapeCoreModule.kt `Events`
     // @parity /modules/vescape-core/src/index.ts `VescapeCoreEvents`
-    Events("onDevice", "onError", "onLiveState", "onLiveTick", "onLiveSeries", "onFocusedSeries", "onTelemetryHistory", "onBms", "onBmsSeries", "onLocation", "onReplayPhoneHeading", "onTelemetryRebuildProgress", "onBoardProbeProgress", "onAppDataChanged", "onGroupRideConnection", "onGroupRideSnapshot", "onGroupRideCreated", "onGroupRideUpdated", "onGroupRideEnded", "onGroupRideJoined", "onGroupRideRoster", "onGroupRideError", "onBoardWarnings", "onVescFaults", "onBoardConfigValues", "onMotorConfigValues", "onBoardConfigChangeNotice", "onBoardLights", "onAppStatus", "onNavigation", "onRouteProgress", "onWeather")
+    Events("onDevice", "onError", "onLiveState", "onLiveTick", "onLiveSeries", "onFocusedSeries", "onTelemetryHistory", "onBms", "onBmsSeries", "onLocation", "onReplayPhoneHeading", "onTelemetryRebuildProgress", "onBoardProbeProgress", "onAppDataChanged", "onGroupRideConnection", "onGroupRideSnapshot", "onGroupRideCreated", "onGroupRideUpdated", "onGroupRideEnded", "onGroupRideJoined", "onGroupRideRoster", "onGroupRideError", "onBoardWarnings", "onVescFaults", "onBoardConfigValues", "onMotorConfigValues", "onBoardConfigChangeNotice", "onBoardLights", "onAppStatus", "onNavigation", "onRouteProgress", "onWeather", "onAccessoryDevice", "onAccessoryScanError", "onAccessoryState", "onAccessoryReading")
 
     // Track per-event JS listeners so native skips emitting into the void, and gate the whole
     // firehose on app foreground (see `frontendActive`). Mirrors Android's observing + lifecycle
@@ -197,8 +197,31 @@ public class VescapeCoreModule: Module {
       self.sendEvent("onWeather", ["weather": WeatherCoordinator.shared.current?.map])
     }
     OnStopObserving("onWeather") { self.observedEvents.remove("onWeather") }
+    OnStartObserving("onAccessoryDevice") { self.observedEvents.insert("onAccessoryDevice") }
+    OnStopObserving("onAccessoryDevice") { self.observedEvents.remove("onAccessoryDevice") }
+    OnStartObserving("onAccessoryScanError") { self.observedEvents.insert("onAccessoryScanError") }
+    OnStopObserving("onAccessoryScanError") { self.observedEvents.remove("onAccessoryScanError") }
+    OnStartObserving("onAccessoryState") { self.observedEvents.insert("onAccessoryState") }
+    OnStopObserving("onAccessoryState") { self.observedEvents.remove("onAccessoryState") }
+    OnStartObserving("onAccessoryReading") { self.observedEvents.insert("onAccessoryReading") }
+    OnStopObserving("onAccessoryReading") { self.observedEvents.remove("onAccessoryReading") }
 
     OnCreate {
+      // Accessory discovery pushes devices as the radio finds them; the module is only the pipe.
+      // @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/VescapeCoreModule.kt `AccessoryDiscovery`
+      AccessoryDiscovery.shared.emit = { [weak self] name, body in
+        guard let self, self.shouldEmitToFrontend(name) else { return }
+        self.sendEvent(name, body)
+      }
+
+      // Enrolled Accessory sessions are native-owned and outlive this module; the bridge only
+      // mirrors their state while a JS runtime happens to exist.
+      // @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/VescapeCoreModule.kt `AccessorySessionManager`
+      AccessorySessionController.shared.emit = { [weak self] name, body in
+        guard let self, self.shouldEmitToFrontend(name) else { return }
+        self.sendEvent(name, body)
+      }
+
       RecordingStorageFailure.observeOutage { [weak self] in
         guard let self, self.shouldEmitToFrontend("onLiveState") else { return }
         self.sendEvent("onLiveState", self.liveState())
@@ -269,6 +292,16 @@ public class VescapeCoreModule: Module {
       self.observedEvents.removeAll()
       self.cancelActiveProbe(reason: "module_destroyed")
       self.stopAlertTest()
+      AccessoryDiscovery.shared.emit = nil
+      AccessoryDiscovery.shared.stopScan()
+      AccessoryDiscovery.shared.cancelInspection()
+      // Only the mirror is dropped. The sessions belong to the launch-created central, and JS going
+      // away is not a reason for an enrolled Accessory to stop working.
+      AccessorySessionController.shared.emit = nil
+      // A preview is the one piece of demand JS owns, so it dies with JS. Without this a runtime
+      // that reloaded or crashed with the sensor screen open would leave the accessory measuring
+      // with nobody watching, and native's own renewals would keep the lease alive forever.
+      AccessorySessionController.shared.releasePreviews()
     }
 
     // MARK: Scan
@@ -279,6 +312,89 @@ public class VescapeCoreModule: Module {
 
     Function("stopScan") {
       self.coordinator.stopScan()
+    }
+
+    // MARK: Accessory discovery
+
+    // Read-only: it scans for the Vescape Accessory service, reads one manifest, and disconnects.
+    // No Board or Accessory control can start from here.
+    // @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/VescapeCoreModule.kt `startAccessoryScan`
+    // @parity /modules/vescape-core/src/index.ts `startAccessoryScan`
+    Function("startAccessoryScan") {
+      AccessoryDiscovery.shared.startScan()
+    }
+
+    Function("stopAccessoryScan") {
+      AccessoryDiscovery.shared.stopScan()
+    }
+
+    Function("cancelAccessoryInspection") {
+      AccessoryDiscovery.shared.cancelInspection()
+    }
+
+    AsyncFunction("inspectAccessory") { (deviceId: String, promise: Promise) in
+      AccessoryDiscovery.shared.inspect(deviceId: deviceId) { promise.resolve($0) }
+    }
+
+    // Enrollment and the saved sessions. JS sends the intent and renders the snapshot; identity,
+    // the manifest and the session all stay native.
+    // @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/VescapeCoreModule.kt `enrollAccessory`
+    // @parity /modules/vescape-core/src/index.ts `enrollAccessory`
+    AsyncFunction("enrollAccessory") { (deviceId: String, promise: Promise) in
+      AccessorySessionController.shared.enroll(deviceId: deviceId) { promise.resolve($0) }
+    }
+
+    AsyncFunction("forgetAccessory") { (accessoryId: String, promise: Promise) in
+      AccessorySessionController.shared.forget(accessoryId: accessoryId) { promise.resolve($0) }
+    }
+
+    // @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/VescapeCoreModule.kt `saveBrakeLightSettings`
+    // @parity /modules/vescape-core/src/index.ts `saveBrakeLightSettings`
+    AsyncFunction("saveBrakeLightSettings") { (accessoryId: String, capabilityId: String, sensitivity: Int, parked: String, promise: Promise) in
+      AccessorySessionController.shared.saveBrakeLight(accessoryId: accessoryId, capabilityId: capabilityId, sensitivity: sensitivity, parked: parked) { promise.resolve($0) }
+    }
+    // @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/VescapeCoreModule.kt `setAccessoryCapabilityEnabled`
+    // @parity /modules/vescape-core/src/index.ts `setAccessoryCapabilityEnabled`
+    AsyncFunction("setAccessoryCapabilityEnabled") { (accessoryId: String, capabilityId: String, enabled: Bool, promise: Promise) in
+      AccessorySessionController.shared.setCapabilityEnabled(accessoryId: accessoryId, capabilityId: capabilityId, enabled: enabled) { promise.resolve($0) }
+    }
+    // @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/VescapeCoreModule.kt `setAccessorySamplingRate`
+    // @parity /modules/vescape-core/src/index.ts `setAccessorySamplingRate`
+    AsyncFunction("setAccessorySamplingRate") { (accessoryId: String, capabilityId: String, rateHz: Double, promise: Promise) in
+      AccessorySessionController.shared.setSamplingRate(accessoryId: accessoryId, capabilityId: capabilityId, rateHz: rateHz) { promise.resolve($0) }
+    }
+    // @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/VescapeCoreModule.kt `setBrakeLightPreview`
+    // @parity /modules/vescape-core/src/index.ts `setBrakeLightPreview`
+    AsyncFunction("setBrakeLightPreview") { (accessoryId: String, capabilityId: String, mode: String?, promise: Promise) in
+      AccessorySessionController.shared.setLightPreview(accessoryId: accessoryId, capabilityId: capabilityId, mode: mode) { promise.resolve($0) }
+    }
+    Function("getAccessories") {
+      AccessorySessionController.shared.snapshot()
+    }
+
+    // Ground clearance. JS asks for measurements and offers numbers; native decides whether the
+    // sensor runs and whether the numbers are a calibration.
+    // @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/VescapeCoreModule.kt `setAccessoryPreview`
+    // @parity /modules/vescape-core/src/index.ts `setAccessoryPreview`
+    Function("setAccessoryPreview") { (accessoryId: String, capabilityId: String, open: Bool) in
+      AccessorySessionController.shared.setPreview(
+        accessoryId: accessoryId, capabilityId: capabilityId, open: open)
+    }
+
+    AsyncFunction("saveGroundClearanceCalibration") {
+      (
+        accessoryId: String, capabilityId: String, nearCm: Double, farCm: Double, direction: String,
+        strengthPercent: Int, promise: Promise
+      ) in
+      AccessorySessionController.shared.saveGroundClearance(
+        accessoryId: accessoryId, capabilityId: capabilityId, nearCm: nearCm, farCm: farCm,
+        direction: direction, strengthPercent: strengthPercent) { promise.resolve($0) }
+    }
+
+    AsyncFunction("clearGroundClearanceCalibration") {
+      (accessoryId: String, capabilityId: String, promise: Promise) in
+      AccessorySessionController.shared.clearGroundClearance(
+        accessoryId: accessoryId, capabilityId: capabilityId) { promise.resolve($0) }
     }
 
     // MARK: Location
@@ -478,6 +594,11 @@ public class VescapeCoreModule: Module {
       self.liveState()
     }
 
+    // @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/VescapeCoreModule.kt `getGroundClearanceTilt`
+    // @parity /modules/vescape-core/src/index.ts `getGroundClearanceTilt`
+    AsyncFunction("getGroundClearanceTilt") { () -> [String: Any?] in
+      self.coordinator.groundClearanceTiltState()
+    }.runOnQueue(.main)
     // @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/VescapeCoreModule.kt `getRemoteTiltState`
     // @parity /modules/vescape-core/src/index.ts `getRemoteTiltState`
     AsyncFunction("getRemoteTiltState") { () -> [String: Any?]? in

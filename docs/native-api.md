@@ -26,6 +26,170 @@ Source of truth: `modules/vescape-core/src/index.ts` (types), `VescapeCoreModule
 | `scan()`     | sync | void. Emits `onDevice` events per advertisement |
 | `stopScan()` | sync | void                                            |
 
+## Accessory discovery
+
+Read-only. Scanning matches the Vescape Accessory service UUID, never a name. One inspection runs at
+a time; it writes one `hello`, reads the manifest, and disconnects, so nothing on an accessory is
+activated by finding it. Contract: [accessory-protocol.md](./accessory-protocol.md).
+
+| fn                            | sync  | returns                                                               |
+| ----------------------------- | ----- | --------------------------------------------------------------------- |
+| `startAccessoryScan()`        | sync  | void. Emits `onAccessoryDevice` per advertisement                     |
+| `stopAccessoryScan()`         | sync  | void                                                                  |
+| `inspectAccessory(deviceId)`  | async | `AccessoryInspection` — `{deviceId, advertisedName, manifest, error}` |
+| `cancelAccessoryInspection()` | sync  | void                                                                  |
+
+### AccessoryManifest shape
+
+```ts
+{
+  accessoryId: string       // persistent identity; saved settings key on it, never on the BLE handle
+  name: string
+  firmwareVersion: string
+  protocolVersion: number | null   // null = no common version
+  supportedVersions: number[]      // what the accessory offers instead, only when none was agreed
+  compatibility: 'supported' | 'unsupported-version' | 'unsupported-capabilities'
+  capabilities: { id, type, supported, unit, rangeMin, rangeMax, ratesHz }[]
+}
+```
+
+`compatibility` and each capability's `supported` are native's verdict, not JS's to re-derive.
+
+## Enrolled Accessories
+
+Durable. Only an Accessory the rider added gets a session, and native keeps that session running
+with the JS runtime dead — Android from `CoreForegroundService`, iOS from a restore-identified
+central created in `didFinishLaunchingWithOptions`. JS sends intents and renders `onAccessoryState`.
+
+`enrollAccessory` takes a **device handle**, never an identity: native performs its own handshake
+and saves what the hardware actually said, so an enrollment cannot record a manifest JS invented.
+
+| fn                             | sync  | returns                                                          |
+| ------------------------------ | ----- | ---------------------------------------------------------------- |
+| `enrollAccessory(deviceId)`    | async | `AccessoryEnrollment` — `{accessoryId, error}`                   |
+| `forgetAccessory(accessoryId)` | async | `boolean` — whether a saved Accessory was removed                |
+| `getAccessories()`             | sync  | `SavedAccessory[]` — the same snapshot `onAccessoryState` pushes |
+
+### SavedAccessory shape
+
+```ts
+{
+  accessoryId: string        // manifest identity; the row's primary key
+  name: string               // live manifest name while connected, else the saved one
+  firmwareVersion: string
+  protocolVersion: number | null
+  deviceId: string | null    // where it answered last; a reconnect hint, never identity
+  enrolledAt: number
+  lastConnectedAt: number | null
+  phase: 'idle' | 'connecting' | 'handshaking' | 'connected' | 'unavailable' | 'incompatible'
+  error: string | null       // native's wire string for the last failure
+  compatibility: AccessoryCompatibility | null   // null until a session reads a manifest
+  capabilities: AccessoryCapability[]
+  capabilitiesChanged: boolean   // declared limits moved since enrollment; saved settings suspect
+  leaseHeldMs: number | null     // since the accessory last acknowledged a command
+}
+```
+
+A drop is `connecting`, not an error: both platforms keep the reconnect alive on their own.
+
+## Ground clearance
+
+JS asks for measurements and offers numbers; native decides whether the sensor runs and whether the
+numbers are a calibration. There is no Save step for the rider: send what they have as they change
+it and read the answer.
+
+| fn                                                                       | sync  | returns                                                |
+| ------------------------------------------------------------------------ | ----- | ------------------------------------------------------ |
+| `setAccessoryPreview(accessoryId, capabilityId, open)`                   | sync  | void. Demand to _measure_, never to tilt               |
+| `saveGroundClearanceCalibration(accessoryId, capabilityId, calibration)` | async | `{saved, problem}` — `problem` names the rule it broke |
+| `clearGroundClearanceCalibration(accessoryId, capabilityId)`             | async | `boolean` — whether a calibration was removed          |
+
+Measurement demand is the **union** of an open preview and the rider riding a board this capability
+is calibrated for. Neither alone permits sensor-driven tilt: a preview shows numbers on a parked
+board and commands nothing. Dropping both demands sends `configure{enabled:false}`, which stops the
+accessory's continuous measurement while its BLE session stays up. Riding is decided natively from
+the Board Session's own engagement predicate, never from a value that crossed the bridge.
+
+`onAccessoryReading` pushes one accepted sample, and **only** while that capability has a preview
+open — nothing else in the app consumes single samples. Every sample is range-checked against the
+live manifest before it crosses:
+
+```ts
+{
+  accessoryId: string
+  capabilityId: string
+  seq: number // per capability, restarts with each protocol session
+  sampleTimeMs: number // the accessory's own monotonic clock; orders samples, nothing else
+  status: 'ok' | 'out_of_range' | 'error'
+  valueCm: number | null // non-null ONLY when status is 'ok'
+  staleAfterMs: number // how long this sample stays evidence, from the acked rate
+}
+```
+
+`staleAfterMs` travels with every sample so a screen can drop the number the moment it stops
+describing the ground, without re-deriving native's window. A frozen distance presented as a live one
+is the same lie as an invalid reading shown as the maximum range, just slower.
+
+A preview is the only demand JS owns, so it dies with JS: native releases every preview when the
+module is destroyed, because a runtime that reloaded or crashed with the screen open would otherwise
+leave the accessory measuring forever — native's own renewals keep the lease alive. Riding demand is
+untouched by that, since it comes from the Board Session.
+
+The one rule everything else rests on: a missing or unreadable measurement is never a distance, and
+never the maximum of the declared range. A value outside the declared window arrives as
+`out_of_range` with no value rather than clamped to the nearest limit; an `ok` carrying no number,
+a null, text, or a status this build does not know all arrive as `error`.
+
+Each `AccessoryCapability` in the snapshot carries `calibration` (with its own `problem`, re-decided
+against the live manifest on every push) and `measuring`, the demand native actually resolved.
+Saving a calibration that fits the current manifest is also how the rider accepts declared limits
+that moved since enrollment — it rewrites the frozen `capabilities_json` baseline and clears
+`capabilitiesChanged`.
+
+## Ground-clearance tilt
+
+The binding that turns those readings into Remote Tilt is entirely native: a 100 ms timer inside the
+Board Session, not a reaction to samples. A sensor that stops sending produces no events to react to,
+and releasing on silence is the whole point.
+
+| fn                         | sync  | returns                                |
+| -------------------------- | ----- | -------------------------------------- |
+| `getGroundClearanceTilt()` | async | `GroundClearanceTiltState` — see below |
+
+```ts
+{
+  bound: boolean // a configured ground-clearance Accessory is connected → the tilt pad is read-only
+  driving: boolean // the binding is commanding tilt right now
+  release: GroundClearanceRelease | null // why it is not, or null while it is
+}
+```
+
+Polled, not pushed: the only consumer is the tilt pad, which already reads the commanded tilt on its
+own interval. `bound` is independent of `driving` — a binding waiting for the rider to set off still
+owns the pad, because manual input is not this Board's input method any more.
+
+`release` is the full list of ways the binding lets go. The first six are the Accessory's own,
+decided by the capability runtime; the last five are the Board Session's, and did not exist before
+sensor readings could command tilt:
+
+| release           | means                                                                |
+| ----------------- | -------------------------------------------------------------------- |
+| `not-riding`      | The Board is not engaged. A parked Board is not corrected.           |
+| `no-link`         | No Accessory session, or one not acknowledging commands.             |
+| `not-calibrated`  | Nothing saved, or what is saved no longer fits the declared limits.  |
+| `stale`           | Samples stopped arriving inside the acked rate's window.             |
+| `out-of-range`    | The sensor answered, and the answer is not a distance.               |
+| `sensor-error`    | The sensor could not measure, or sent something unreadable.          |
+| `board-untrusted` | The Board is not connected, or its Board Link is not Trusted.        |
+| `board-stale`     | The Board is connected but has stopped answering.                    |
+| `contested`       | More than one calibrated ground-clearance capability wants the slot. |
+| `board-move`      | Board Move holds the remote-input slot.                              |
+| `manual-tilt`     | A rider-commanded tilt still holds the slot while the binding arms.  |
+
+Every path that writes the Board's one remote-input slot — the pad, Board Move, and the sensor — goes
+through a single native arbiter. `remoteTilt.owner` on the live state and on `getRemoteTiltState()`
+names the winner (`none | manual | sensor | move`). See [remote-tilt.md](./remote-tilt.md).
+
 ## Location
 
 | fn                       | sync | returns                                                |
@@ -352,14 +516,17 @@ Rejection codes are rider-facing; `src/modules/settings/lib/companionErrors.ts` 
 
 ## Events
 
-| event         | payload                            | when                                                                                                             |
-| ------------- | ---------------------------------- | ---------------------------------------------------------------------------------------------------------------- |
-| `onDevice`    | `{id, name, rssi, serviceUUIDs[]}` | BLE scan advertisement                                                                                           |
-| `onError`     | `{message}`                        | Native error                                                                                                     |
-| `onLiveState` | `LiveStateEvent`                   | Connection/GPS/scan/recording state change                                                                       |
-| `onTelemetry` | `TelemetryEvent`                   | Real-time board data. Includes `firedAlerts[]`                                                                   |
-| `onBms`       | `BmsEvent`                         | Smart-BMS cell-group values, ~1/8 telemetry rate. See [vescProtocol.md](./vescProtocol.md#bms-cell-group-values) |
-| `onLocation`  | `LocationEvent`                    | GPS fix from `startLocationUpdates()`                                                                            |
+| event                  | payload                            | when                                                                                                             |
+| ---------------------- | ---------------------------------- | ---------------------------------------------------------------------------------------------------------------- |
+| `onDevice`             | `{id, name, rssi, serviceUUIDs[]}` | BLE scan advertisement                                                                                           |
+| `onError`              | `{message}`                        | Native error                                                                                                     |
+| `onLiveState`          | `LiveStateEvent`                   | Connection/GPS/scan/recording state change                                                                       |
+| `onTelemetry`          | `TelemetryEvent`                   | Real-time board data. Includes `firedAlerts[]`                                                                   |
+| `onBms`                | `BmsEvent`                         | Smart-BMS cell-group values, ~1/8 telemetry rate. See [vescProtocol.md](./vescProtocol.md#bms-cell-group-values) |
+| `onLocation`           | `LocationEvent`                    | GPS fix from `startLocationUpdates()`                                                                            |
+| `onAccessoryDevice`    | `{id, name, rssi}`                 | Vescape Accessory service advertisement                                                                          |
+| `onAccessoryScanError` | `{error}`                          | The accessory scan could not run (`bluetooth-unavailable`, `scan-failed`)                                        |
+| `onAccessoryState`     | `{accessories}`                    | Every enrolled Accessory and its native link phase, on every change and on subscribe                             |
 
 ### TelemetryEvent shape (live, not history)
 

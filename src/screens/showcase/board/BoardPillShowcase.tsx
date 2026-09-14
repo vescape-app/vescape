@@ -6,6 +6,7 @@ import { Text } from '@/components/base/Text'
 import { ShowcaseCard } from '@/components/dev/ShowcaseCard'
 import { ToggleRow } from '@/components/dev/ShowcaseControls'
 import { BoardPill } from '@/modules/board/components/BoardPill'
+import { AccessoryIcon } from '@/modules/accessories/constants/accessoryIcon'
 import { theme } from '@/constants/theme'
 
 const CONNECTION_STATES: BoardPhase[] = [
@@ -32,6 +33,7 @@ export function BoardPillShowcase() {
   const [replay, setReplay] = useState(false)
   const [longName, setLongName] = useState(false)
   const [narrow, setNarrow] = useState(false)
+  const [accessory, setAccessory] = useState(false)
   const [width, setWidth] = useState(300)
   const [lastAction, setLastAction] = useState('Tap any pill button to see its action here.')
 
@@ -66,6 +68,7 @@ export function BoardPillShowcase() {
             }}
           />
           <ToggleRow label="VESC fault" value={faults} onToggle={setFaults} />
+          <ToggleRow label="accessory connected" value={accessory} onToggle={setAccessory} />
           <ToggleRow label="debug recording" value={recording} onToggle={setRecording} />
           <ToggleRow label="replay" value={replay} onToggle={setReplay} />
           <ToggleRow label="long board name" value={longName} onToggle={setLongName} />
@@ -108,6 +111,15 @@ export function BoardPillShowcase() {
               : undefined
           }
           fault={faults ? { onPress: () => setLastAction('Open VESC faults') } : undefined}
+          accessory={
+            accessory
+              ? {
+                  icon: AccessoryIcon,
+                  label: 'Clearance sensor, connected accessory',
+                  onPress: () => setLastAction('Open accessory details'),
+                }
+              : undefined
+          }
         />
         <Text style={styles.caption}>
           {status.replaceAll('_', ' ')} · {lastAction}

@@ -1,4 +1,4 @@
-import { View, Switch, StyleSheet, ScrollView } from 'react-native'
+import { View, StyleSheet, ScrollView } from 'react-native'
 import { Text } from '@/components/base/Text'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { GaugeIcon, ChartLineUpIcon } from 'phosphor-react-native'
@@ -13,6 +13,7 @@ import {
 } from '@/modules/history/lib/metricColorScale'
 import { SettingsCard } from '@/components/settings/SettingsCard'
 import { SettingsRow } from '@/components/settings/SettingsRow'
+import { SettingsSwitch } from '@/components/settings/SettingsSwitch'
 import { Stepper } from '@/components/forms/Stepper'
 import { IconHero } from '@/components/settings/IconHero'
 
@@ -67,18 +68,10 @@ export default function GraphsSettingsScreen() {
             label="Graph hot gradients"
             hint="Color live, history, and map graphs by metric value"
             right={
-              <Switch
+              <SettingsSwitch
                 value={historyMetricGradientsEnabled}
                 onValueChange={(v) => void set('historyMetricGradientsEnabled', v)}
-                trackColor={{
-                  false: theme.neutral.border,
-                  true: theme.status.warning.border,
-                }}
-                thumbColor={
-                  historyMetricGradientsEnabled
-                    ? theme.status.warning.color
-                    : theme.neutral.textMuted
-                }
+                accent={theme.status.warning}
               />
             }
           />

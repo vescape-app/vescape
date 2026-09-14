@@ -1,4 +1,4 @@
-import { ScrollView, StyleSheet, Switch } from 'react-native'
+import { ScrollView, StyleSheet } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import {
   ImageSquareIcon,
@@ -12,6 +12,7 @@ import { useShallow } from 'zustand/react/shallow'
 import { IconHero } from '@/components/settings/IconHero'
 import { SettingsCard } from '@/components/settings/SettingsCard'
 import { SettingsRow } from '@/components/settings/SettingsRow'
+import { SettingsSwitch } from '@/components/settings/SettingsSwitch'
 import { SettingsSectionTitle } from '@/components/settings/SettingsSectionTitle'
 import { Stepper } from '@/components/forms/Stepper'
 import { theme } from '@/constants/theme'
@@ -55,16 +56,9 @@ export default function MapSettingsScreen() {
             label="Hide telemetry map details"
             hint="Hide POI names and icons on the home map; Explore still shows full detail"
             right={
-              <Switch
+              <SettingsSwitch
                 value={hideTelemetryMapDetails}
                 onValueChange={(enabled) => void set('hideTelemetryMapDetails', enabled)}
-                trackColor={{
-                  false: theme.neutral.border,
-                  true: theme.palette.sky.border,
-                }}
-                thumbColor={
-                  hideTelemetryMapDetails ? theme.palette.sky.color : theme.neutral.textMuted
-                }
               />
             }
           />
@@ -78,16 +72,9 @@ export default function MapSettingsScreen() {
             label="Satellite overlay"
             hint="Use the toned satellite image with One Dark labels"
             right={
-              <Switch
+              <SettingsSwitch
                 value={satelliteOverlayEnabled}
                 onValueChange={(enabled) => void set('satelliteOverlayEnabled', enabled)}
-                trackColor={{
-                  false: theme.neutral.border,
-                  true: theme.palette.sky.border,
-                }}
-                thumbColor={
-                  satelliteOverlayEnabled ? theme.palette.sky.color : theme.neutral.textMuted
-                }
               />
             }
           />

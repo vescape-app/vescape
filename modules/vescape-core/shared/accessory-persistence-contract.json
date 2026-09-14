@@ -1,0 +1,68 @@
+{
+  "scenario": "accessory-enrollment-close-reopen",
+  "$comment": "Enrolled Accessories, the same case on Room and GRDB. The point of the scenario is that identity is the manifest's accessory id: the revalidation is the same physical unit after a rename and a firmware update, seen on a different BLE handle, and it must land on the same row with its original `enrolledAt` and its original `capabilitiesJson` baseline intact. Revalidation is update-only, so it must not recreate a row the rider just forgot. `other` exists so the reopen proves rows are kept apart rather than merged.",
+  "accessory": {
+    "accessoryId": "b36ed5bd-1d24-460c-8034-aaeaefc5d016",
+    "name": "Clearance sensor",
+    "renamedTo": "Nose sensor",
+    "firmwareVersion": "0.1.0",
+    "updatedFirmwareVersion": "0.3.0",
+    "protocolVersion": 1,
+    "deviceId": "AA:BB:CC:DD:EE:01",
+    "movedDeviceId": "AA:BB:CC:DD:EE:99",
+    "capabilitiesJson": "[{\"id\":\"clearance\",\"type\":\"ground_clearance\",\"supported\":true,\"unit\":\"cm\",\"rangeMin\":3,\"rangeMax\":100,\"ratesHz\":[10,20,30]}]",
+    "changedCapabilitiesJson": "[{\"id\":\"clearance\",\"type\":\"ground_clearance\",\"supported\":true,\"unit\":\"cm\",\"rangeMin\":5,\"rangeMax\":80,\"ratesHz\":[10,20]}]",
+    "enrolledAt": 1700000000000,
+    "reEnrolledAt": 1799999999000,
+    "connectedAt": 1700000060000
+  },
+  "other": {
+    "accessoryId": "0f0be7c8-6d97-4a56-9b1b-2d5f3b6a0c11",
+    "name": "Rear light",
+    "firmwareVersion": "0.2.1",
+    "protocolVersion": 1,
+    "deviceId": "AA:BB:CC:DD:EE:02",
+    "capabilitiesJson": "[{\"id\":\"rear_light\",\"type\":\"brake_light\",\"supported\":true,\"unit\":null,\"rangeMin\":null,\"rangeMax\":null,\"ratesHz\":[]}]",
+    "enrolledAt": 1700000001000,
+    "capabilityId": "rear_clearance",
+    "calibration": {
+      "nearCm": 6,
+      "farCm": 22,
+      "direction": "tail",
+      "strengthPercent": 55,
+      "updatedAt": 1700000400000
+    }
+  },
+  "groundClearance": {
+    "$comment": "What the rider calibrated, keyed on the Accessory *and* the capability. The scenario proves the composite key does real work: one unit declaring a nose sensor and a tail sensor keeps two independent calibrations, and re-saving one leaves the other exactly as it was. Revalidating a manifest must not disturb a calibration; forgetting the Accessory must take every calibration made against it, because a re-enrollment that inherited old numbers would drive the board to a mounting position the rider has since changed. `adoptCapabilities` is the other half of the frozen baseline: saving a calibration that fits the current manifest is how the rider accepts limits that moved, and it is the only operation allowed to rewrite `capabilities_json`.",
+    "capabilityId": "clearance",
+    "tailCapabilityId": "clearance_tail",
+    "calibration": {
+      "nearCm": 5,
+      "farCm": 20,
+      "direction": "nose",
+      "strengthPercent": 60,
+      "updatedAt": 1700000100000
+    },
+    "recalibrated": {
+      "nearCm": 7.5,
+      "farCm": 24,
+      "direction": "nose",
+      "strengthPercent": 80,
+      "updatedAt": 1700000200000
+    },
+    "tailCalibration": {
+      "nearCm": 4,
+      "farCm": 18,
+      "direction": "tail",
+      "strengthPercent": 40,
+      "updatedAt": 1700000300000
+    }
+  },
+  "brakeLight": {
+    "capabilityId": "rear_light",
+    "sensitivity": 73,
+    "parked": "glow"
+  },
+  "capabilitySettings": { "enabled": false, "samplingRateHz": 20, "otherSamplingRateHz": 30 }
+}

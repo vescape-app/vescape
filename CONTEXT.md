@@ -4,6 +4,30 @@ This context defines the shared language for the Vescape app. The app centers on
 
 ## Language
 
+**Accessory**:
+A saved external hardware unit that provides inputs, receives outputs, or reports its own telemetry to Vescape.
+_Avoid_: Board, sensor module (when referring to accessories generally)
+
+**Accessory Binding**:
+A rider-configured relationship that maps an Accessory input or Board telemetry to an Accessory output or Board action.
+_Avoid_: Sync, hardware mapping
+
+**Accessory Manifest**:
+What an Accessory declares about itself on every connection: its persistent Accessory ID, display name, firmware version, agreed protocol version, and Accessory Capabilities. Read again on each reconnect before saved settings are trusted.
+_Avoid_: Accessory info, device descriptor
+
+**Accessory Capability**:
+One thing an Accessory declares it can do, identified by a stable local id and a capability type. Types the app recognizes have predefined behavior; unrecognized ones are shown as unsupported rather than hidden.
+_Avoid_: Sensor, feature, channel
+
+**Accessory Compatibility**:
+The app's verdict on a read Accessory Manifest: supported, no common protocol version, or no capability the app can drive. Distinct from reachability — an Accessory can answer perfectly and still be unusable.
+_Avoid_: Accessory status, supported flag
+
+**Sensor Tilt Calibration**:
+The near and far ground clearances in centimetres, correction direction, and maximum Remote Tilt input defining a board-mounted distance sensor's Accessory Binding, with less clearance producing stronger correction.
+_Avoid_: Sensor sensitivity (for the full calibration)
+
 **Board**:
 A saved rideable device that can be connected over BLE and may expose one motor controller through CAN.
 _Avoid_: Device, controller, scooter
