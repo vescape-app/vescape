@@ -38,12 +38,12 @@ enum Rim {
   /// @parity /watch/wearos/src/main/java/app/vescape/wear/FrameGauges.kt `TOP_GAP`
   static let topGap: CGFloat = 5
 
-  /// Gap between the bottom (battery) gauge and a temperature gauge, and how far up the side edge
-  /// that temperature gauge is allowed to climb.
+  /// Gap between the bottom (battery) gauge and a temperature gauge, and how far up the *straight*
+  /// side edge that temperature gauge climbs once it has rounded the corner.
   ///
   /// @parity /watch/wearos/src/main/java/app/vescape/wear/FrameGauges.kt `TEMP_SWEEP`
   static let tempGap: CGFloat = 6
-  static let tempSpanRatio: CGFloat = 0.34
+  static let tempSpanRatio: CGFloat = 0.26
 
   /// The perimeter, clockwise from top centre. Trimming this by fraction is how every gauge is
   /// drawn, so the corner rounding is described once and no gauge restates it.
@@ -112,7 +112,9 @@ enum Rim {
 
     private var gap: CGFloat { Rim.topGap / perimeter }
     private var tempGap: CGFloat { Rim.tempGap / perimeter }
-    private var tempSpan: CGFloat { side * Rim.tempSpanRatio / perimeter }
+    /// A temperature starts where the battery stopped and has to get through the corner arc before
+    /// it reaches the straight edge, so the corner is part of its length rather than a gap in it.
+    private var tempSpan: CGFloat { (corner + side * Rim.tempSpanRatio) / perimeter }
 
     /// Speed climbs the left edge toward the top, duty the right: the same two quadrants Android
     /// uses, and the same direction of travel, so a rider moving between the wrists reads them the
@@ -125,18 +127,24 @@ enum Rim {
       RimSpan(origin: 1 - bottomEdgeStart, head: bottomEdgeStart)
     }
 
-    /// Temperatures grow out of the bottom corners up the side edges, in the gaps above the
-    /// battery — the same "small arcs either side of the battery gauge" as Android, moved to the
-    /// only place a rectangle has room for them.
-    /// Fractions increase clockwise, so "up the edge" is an increase on the left and a decrease on
-    /// the right. Both still grow out of the bottom corner, which is what a rider sees.
+    /// Temperatures continue out of the battery line through the bottom corners and up the side
+    /// edges — the same "small arcs either side of the battery gauge" as Android, laid onto the
+    /// only stretch of rim a rectangle has spare.
+    /// Each temperature picks up just past the end of the battery edge, rounds the bottom corner
+    /// and carries on up the side — one continuous line out of the battery's, the way speed and
+    /// duty run continuously into the top corners. Anchoring them to the straight edge instead left
+    /// the corner arc unused, and a bare corner between two lit gauges reads as a gap in the rim
+    /// rather than as two separate readings.
+    ///
+    /// Fractions increase clockwise, so "onward from the bottom edge" is an increase on the left
+    /// and a decrease on the right.
     var motorTemp: RimSpan {
-      let origin = 1 - rightEdgeEnd + tempGap
+      let origin = 1 - bottomEdgeStart + tempGap
       return RimSpan(origin: origin, head: origin + tempSpan)
     }
 
     var ctrlTemp: RimSpan {
-      let origin = rightEdgeEnd - tempGap
+      let origin = bottomEdgeStart - tempGap
       return RimSpan(origin: origin, head: origin - tempSpan)
     }
   }

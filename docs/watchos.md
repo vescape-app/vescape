@@ -206,8 +206,13 @@ The wrist now draws Android's gauges and carries Android's page structure, on th
 
 `watch/watchos/RimGauge.swift` builds the display's rounded-rectangle perimeter once and every gauge
 is a trimmed span of it: speed climbs the left edge to top centre, duty the right, battery owns the
-bottom edge, and the two temperatures grow out of the bottom corners up the sides. Same metrics,
-same colours, same directions of travel as Wear OS — the shape is the accepted platform difference.
+bottom edge, and the two temperatures pick up where the battery line ends, round the bottom corners
+and carry on up the sides. Same metrics, same colours, same directions of travel as Wear OS — the
+shape is the accepted platform difference.
+
+The temperatures deliberately include the corner arc in their length rather than starting above it.
+Anchored to the straight edge they left the corner unlit, and a bare corner between two lit gauges
+reads as a gap in the rim instead of as two separate readings.
 
 **Spans are anchored to edges, never to fixed perimeter fractions.** A circle has one radius, so
 Android can say "start at 180°, sweep 90°" and mean the same place on every watch. A rectangle does
