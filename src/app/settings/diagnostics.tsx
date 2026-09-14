@@ -1,4 +1,4 @@
-import { ScrollView, StyleSheet, Switch } from 'react-native'
+import { ScrollView, StyleSheet } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { router } from 'expo-router'
 import {
@@ -12,6 +12,7 @@ import { routes } from '@/navigation/routes'
 import { theme } from '@/constants/theme'
 import { SettingsCard } from '@/components/settings/SettingsCard'
 import { SettingsRow } from '@/components/settings/SettingsRow'
+import { SettingsSwitch } from '@/components/settings/SettingsSwitch'
 import { IconHero } from '@/components/settings/IconHero'
 import { useSettingsStore } from '@/modules/settings/store/settingsStore'
 
@@ -35,13 +36,9 @@ export default function DiagnosticsSettingsScreen() {
             label="Board warnings"
             hint="Master switch — off stops all detection and hides warnings"
             right={
-              <Switch
+              <SettingsSwitch
                 value={boardWarningsEnabled}
                 onValueChange={(v) => void set('boardWarningsEnabled', v)}
-                trackColor={{ false: theme.neutral.border, true: theme.palette.sky.border }}
-                thumbColor={
-                  boardWarningsEnabled ? theme.palette.sky.color : theme.neutral.textMuted
-                }
               />
             }
           />
@@ -51,13 +48,9 @@ export default function DiagnosticsSettingsScreen() {
             label="VESC fault collection"
             hint="Record live Refloat faults. Controller log loads when the fault drawer opens"
             right={
-              <Switch
+              <SettingsSwitch
                 value={vescFaultCollectionEnabled}
                 onValueChange={(v) => void set('vescFaultCollectionEnabled', v)}
-                trackColor={{ false: theme.neutral.border, true: theme.palette.sky.border }}
-                thumbColor={
-                  vescFaultCollectionEnabled ? theme.palette.sky.color : theme.neutral.textMuted
-                }
               />
             }
           />

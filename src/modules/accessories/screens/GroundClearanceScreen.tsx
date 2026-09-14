@@ -186,7 +186,7 @@ export function GroundClearanceScreen({
         <CapabilityEnabledControl
           accessoryId={accessoryId}
           capability={capability}
-          accent={theme.palette.sky.color}
+          accent={theme.palette.sky}
         />
         <SettingsSectionTitle>Sampling rate</SettingsSectionTitle>
         <SettingsCard>

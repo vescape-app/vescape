@@ -5,7 +5,7 @@ import { setAccessoryCapabilityEnabled, type AccessoryCapability } from 'vescape
 import { Text } from '@/components/base/Text'
 import { SettingsCard } from '@/components/settings/SettingsCard'
 import { SettingsRow } from '@/components/settings/SettingsRow'
-import { SettingsSwitch } from '@/components/settings/SettingsSwitch'
+import { SettingsSwitch, type SettingsSwitchAccent } from '@/components/settings/SettingsSwitch'
 import { capabilityPresentation } from '../constants/accessoryCapabilities'
 import { theme } from '@/constants/theme'
 
@@ -17,8 +17,8 @@ export function CapabilityEnabledControl({
 }: {
   accessoryId: string
   capability: AccessoryCapability
-  /** Tint of the switch, so a light's screen reads in its own colour. */
-  accent?: string
+  /** Tint of the row, so a light's screen reads in its own colour. */
+  accent?: SettingsSwitchAccent
 }) {
   const [saving, setSaving] = useState(false)
   const [failed, setFailed] = useState(false)
@@ -59,7 +59,7 @@ export function CapabilityEnabledSetting({
   onChange,
 }: {
   icon: Icon
-  accent?: string
+  accent?: SettingsSwitchAccent
   label: string
   enabled: boolean
   disabled?: boolean
@@ -71,7 +71,7 @@ export function CapabilityEnabledSetting({
       <SettingsCard>
         <SettingsRow
           icon={icon}
-          {...(accent ? { iconColor: accent } : {})}
+          {...(accent ? { iconColor: accent.color } : {})}
           label={label}
           right={
             <SettingsSwitch

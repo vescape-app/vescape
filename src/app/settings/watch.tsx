@@ -1,4 +1,4 @@
-import { StyleSheet, ScrollView, Switch } from 'react-native'
+import { StyleSheet, ScrollView } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { ClockCountdownIcon, NavigationArrowIcon, WatchIcon } from 'phosphor-react-native'
 import { useShallow } from 'zustand/react/shallow'
@@ -6,6 +6,7 @@ import { useShallow } from 'zustand/react/shallow'
 import { theme } from '@/constants/theme'
 import { SettingsCard } from '@/components/settings/SettingsCard'
 import { SettingsRow } from '@/components/settings/SettingsRow'
+import { SettingsSwitch } from '@/components/settings/SettingsSwitch'
 import { Stepper } from '@/components/forms/Stepper'
 import { IconHero } from '@/components/settings/IconHero'
 import { useSettingsStore } from '@/modules/settings/store/settingsStore'
@@ -34,13 +35,9 @@ export default function WatchSettingsScreen() {
             label="Open on connect"
             hint="Bring the watch app to the front when the board connects"
             right={
-              <Switch
+              <SettingsSwitch
                 value={wearAutoLaunchOnConnect}
                 onValueChange={(v) => void set('wearAutoLaunchOnConnect', v)}
-                trackColor={{ false: theme.neutral.border, true: theme.palette.sky.border }}
-                thumbColor={
-                  wearAutoLaunchOnConnect ? theme.palette.sky.color : theme.neutral.textMuted
-                }
               />
             }
           />
@@ -71,13 +68,9 @@ export default function WatchSettingsScreen() {
             label="Navigation arrow"
             hint="Draw the direction chevron over the route. Route and distance show either way"
             right={
-              <Switch
+              <SettingsSwitch
                 value={wearNavArrowEnabled}
                 onValueChange={(v) => void set('wearNavArrowEnabled', v)}
-                trackColor={{ false: theme.palette.slate.border, true: theme.palette.sky.border }}
-                thumbColor={
-                  wearNavArrowEnabled ? theme.palette.sky.color : theme.palette.slate.textMuted
-                }
               />
             }
           />
