@@ -155,10 +155,12 @@ export function BoardSelectorSheetShowcase() {
 
 const styles = StyleSheet.create({
   // The drawer the real selector lives in: full width, so the active card's extra width over the
-  // list column reads the same here as on the map.
+  // list column reads the same here as on the map. The gap is the drawer's own, without which the
+  // showcase spaces the sections tighter than the app ever does.
   sheet: {
     alignSelf: 'stretch',
     padding: 12,
+    gap: 12,
     borderRadius: 20,
     borderWidth: 1,
     borderColor: theme.neutral.border,

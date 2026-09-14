@@ -14,6 +14,8 @@ interface SectionHeaderProps {
   description?: string
   /** Action belonging to the section, pinned to the right of the title row. */
   right?: ReactNode
+  /** Centred headings name a section that owns the full width, such as one inside a drawer. */
+  align?: 'left' | 'center'
 }
 
 /**
@@ -27,15 +29,23 @@ export function SectionHeader({
   color = theme.neutral.textSecondary,
   description,
   right,
+  align = 'left',
 }: SectionHeaderProps) {
+  const centered = align === 'center'
   return (
-    <View style={styles.container}>
-      <View style={styles.row}>
+    <View style={[styles.container, centered && styles.containerCentered]}>
+      <View style={[styles.row, centered && styles.rowCentered]}>
         <HeaderIcon size={20} color={color} weight="duotone" />
         <Text style={styles.title}>{title}</Text>
-        <View style={styles.right}>{right}</View>
+        {/* Rendered only when there is an action: an empty auto-margin spacer still claims the
+            free space, which shoved a centred heading back to the left. */}
+        {right ? <View style={styles.right}>{right}</View> : null}
       </View>
-      {description ? <Text style={styles.description}>{description}</Text> : null}
+      {description ? (
+        <Text style={[styles.description, centered && styles.descriptionCentered]}>
+          {description}
+        </Text>
+      ) : null}
     </View>
   )
 }
@@ -45,10 +55,16 @@ const styles = StyleSheet.create({
     // The description is part of the heading, but it is not the title's second line.
     gap: 4,
   },
+  containerCentered: {
+    alignSelf: 'stretch',
+  },
   row: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
+  },
+  rowCentered: {
+    justifyContent: 'center',
   },
   title: {
     color: theme.neutral.textPrimary,
@@ -63,5 +79,8 @@ const styles = StyleSheet.create({
     color: theme.neutral.textSecondary,
     fontSize: 11,
     letterSpacing: 0.3,
+  },
+  descriptionCentered: {
+    textAlign: 'center',
   },
 })

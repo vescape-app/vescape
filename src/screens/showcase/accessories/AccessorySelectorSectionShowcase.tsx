@@ -73,10 +73,12 @@ export function AccessorySelectorSectionShowcase() {
 }
 
 const styles = StyleSheet.create({
-  // The drawer the real section lives in, so the rows read at their true width.
+  // The drawer the real section lives in, so the rows read at their true width — gap included,
+  // since the drawer separates its content and the showcase must not look tighter.
   sheet: {
     alignSelf: 'stretch',
     padding: 12,
+    gap: 12,
     borderRadius: 20,
     borderWidth: 1,
     borderColor: theme.neutral.border,

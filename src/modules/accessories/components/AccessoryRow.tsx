@@ -1,5 +1,4 @@
 import { Pressable, StyleSheet, View } from 'react-native'
-import { WarningCircleIcon } from 'phosphor-react-native'
 
 import { Text } from '@/components/base/Text'
 import { AccessoryIcon } from '@/modules/accessories/constants/accessoryIcon'
@@ -36,6 +35,9 @@ export function AccessoryRow({ name, detail, phase, needsSetup, onPress }: Acces
   const label = needsSetup ? 'Setup required' : copy.label
   const tone = needsSetup ? TONE.caution : TONE[copy.tone]
   const warn = needsSetup || phase === 'incompatible'
+  // Only a link that is actually answering lights the row up. Connecting keeps the quiet tile:
+  // the tint is a claim about the hardware, not about the app's intent.
+  const live = phase === 'connected' && !warn
 
   return (
     <Pressable
@@ -45,12 +47,14 @@ export function AccessoryRow({ name, detail, phase, needsSetup, onPress }: Acces
       accessibilityLabel={`${name}, ${label}`}
       testID={`accessory-row-${name}`}
     >
-      <View style={styles.icon}>
-        {warn ? (
-          <WarningCircleIcon size={16} color={TONE.caution} weight="duotone" />
-        ) : (
-          <AccessoryIcon size={16} color={theme.neutral.textMuted} weight="regular" />
-        )}
+      {/* One glyph in every state — an Accessory does not become a different thing because its
+          link dropped or its setup went stale. The tile's outline carries the state instead. */}
+      <View style={[styles.icon, (live || warn) && { borderColor: theme.alpha(tone, 0.3) }]}>
+        <AccessoryIcon
+          size={16}
+          color={live || warn ? tone : theme.neutral.textMuted}
+          weight="regular"
+        />
       </View>
       <View style={styles.info}>
         <Text style={styles.name} numberOfLines={1}>
@@ -64,7 +68,7 @@ export function AccessoryRow({ name, detail, phase, needsSetup, onPress }: Acces
                 borderColor: tone,
                 // Filled only while the link is actually up: a hollow dot is the honest shape for
                 // "trying", and a filled one must never promise a connection there isn't.
-                backgroundColor: phase === 'connected' && !warn ? tone : 'transparent',
+                backgroundColor: live ? tone : 'transparent',
               },
             ]}
           />

@@ -2,6 +2,9 @@ import { Pressable, StyleSheet, View } from 'react-native'
 import { PlusIcon } from 'phosphor-react-native'
 
 import { Text } from '@/components/base/Text'
+import { Placeholder } from '@/components/base/Placeholder'
+import { SectionHeader } from '@/components/base/SectionHeader'
+import { AccessoryIcon } from '@/modules/accessories/constants/accessoryIcon'
 import { AccessoryRow } from '@/modules/accessories/components/AccessoryRow'
 import type { AccessoryLinkPhase } from 'vescape-core'
 import { interaction, theme } from '@/constants/theme'
@@ -34,11 +37,18 @@ export function AccessorySelectorSection({
 }: AccessorySelectorSectionProps) {
   return (
     <View style={styles.frame}>
+      <SectionHeader
+        icon={AccessoryIcon}
+        title="Accessories"
+        color={theme.palette.sky.color}
+        align="center"
+      />
       {accessories.length === 0 ? (
-        <Text style={styles.empty}>
-          No accessories yet. Add one and Vescape connects to it on its own from then on, whatever
-          it is named.
-        </Text>
+        <Placeholder
+          icon={AccessoryIcon}
+          description="No accessories yet. Add one and Vescape connects to it on its own from then on, whatever it is named."
+          compact
+        />
       ) : (
         accessories.map((accessory) => (
           <AccessoryRow
@@ -71,17 +81,10 @@ export function AccessorySelectorSection({
 const styles = StyleSheet.create({
   frame: {
     width: '100%',
+    gap: 6,
   },
   rowPressed: {
     backgroundColor: interaction.pressedBg,
-  },
-  empty: {
-    color: theme.neutral.textDim,
-    fontSize: 11,
-    lineHeight: 15,
-    paddingHorizontal: 10,
-    paddingTop: 2,
-    paddingBottom: 6,
   },
   addRow: {
     flexDirection: 'row',

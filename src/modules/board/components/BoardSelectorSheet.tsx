@@ -11,6 +11,8 @@ import type { BoardWarningSeverity } from 'vescape-core'
 
 import { Text } from '@/components/base/Text'
 import { EdgeDrawer } from '@/components/overlays/EdgeDrawer'
+import { Placeholder } from '@/components/base/Placeholder'
+import { SectionHeader } from '@/components/base/SectionHeader'
 import { TickText } from '@/components/base/TickText'
 import type { Board } from '@/modules/board/store/boardStore'
 import { severityStatus } from '@/modules/board/constants/boardWarnings'
@@ -161,7 +163,7 @@ function BoardIcon({ active }: { active: boolean }) {
       <LightningIcon
         size={16}
         color={active ? theme.palette.sky.color : theme.neutral.textMuted}
-        weight={active ? 'fill' : 'regular'}
+        weight="regular"
       />
     </View>
   )
@@ -187,8 +189,15 @@ export function BoardSelectorContent({
 
   return (
     <>
-      {/* Headings appear only once there are two sections to tell apart. */}
-      {accessories ? <Text style={styles.sectionLabel}>Boards</Text> : null}
+      {/* The drawer used to name both domains in one title, which said nothing about where either
+          one started. Each section wears its own name instead — the Accessories one comes with the
+          node, since Boards must not learn what an Accessory is. */}
+      <SectionHeader
+        icon={LightningIcon}
+        title="Boards"
+        color={theme.palette.sky.color}
+        align="center"
+      />
       {active && (
         <View style={styles.activeBlock}>
           <View style={[styles.row, styles.activeRow]}>
@@ -240,6 +249,13 @@ export function BoardSelectorContent({
       )}
 
       <View style={styles.frame}>
+        {boards.length === 0 ? (
+          <Placeholder
+            icon={LightningIcon}
+            description="No boards yet. Add one to see its battery, warnings and rides here."
+            compact
+          />
+        ) : null}
         {others.map((board) => (
           <Pressable
             key={board.id}
@@ -287,7 +303,6 @@ export function BoardSelectorContent({
       {accessories ? (
         <>
           <View style={styles.sectionDivider} />
-          <Text style={styles.sectionLabel}>Accessories</Text>
           {accessories}
         </>
       ) : null}
@@ -306,9 +321,6 @@ export function BoardSelectorSheet({
       visible={visible}
       triggerRef={triggerRef}
       edge="top"
-      title={content.accessories ? 'Boards & accessories' : 'Boards'}
-      icon={LightningIcon}
-      iconColor={theme.palette.sky.color}
       backdropTestID="board-selector-backdrop"
       onClose={onClose}
     >
@@ -320,15 +332,6 @@ export function BoardSelectorSheet({
 const styles = StyleSheet.create({
   frame: {
     width: '100%',
-  },
-  sectionLabel: {
-    color: theme.neutral.textMuted,
-    fontSize: 11,
-    fontWeight: '700',
-    textTransform: 'uppercase',
-    letterSpacing: 0.5,
-    paddingLeft: 10,
-    paddingBottom: 4,
   },
   sectionDivider: {
     height: StyleSheet.hairlineWidth * 2,
@@ -368,7 +371,6 @@ const styles = StyleSheet.create({
     flex: 1,
     gap: 3,
   },
-  // Over a translucent drawer a filled tile disappears, so an inactive board is outlined instead.
   boardIcon: {
     width: 32,
     height: 32,
@@ -378,9 +380,10 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
+  // Outline only, like every other tile in the list: the active board is already told apart by the
+  // card it sits in, so a filled tile on top of that was one signal too many.
   boardIconActive: {
-    borderColor: theme.alpha(theme.palette.sky.color, 0.4),
-    backgroundColor: theme.palette.sky.bg,
+    borderColor: theme.alpha(theme.palette.sky.color, 0.3),
   },
   boardName: {
     color: theme.neutral.textSecondary,
