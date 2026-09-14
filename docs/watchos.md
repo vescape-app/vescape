@@ -70,8 +70,11 @@ of `watch/wearos/`; the generated `ios/` tree holds no watch source of its own.
 The watch target compiles against the watchOS simulator SDK:
 
 ```
-xcodebuild build -project ios/vescapedev.xcodeproj -scheme VescapeWatch -sdk watchsimulator26.5
+xcodebuild build -project ios/vescapedev.xcodeproj -target VescapeWatch -sdk watchsimulator26.5
 ```
+
+`-target`, not `-scheme`: `-sdk watchsimulator` applies to every target in a scheme, and the scheme
+also builds the iOS-only Live Activity widget, which then fails on `ActivityKit` (#485).
 
 **The watchOS platform must be installed** (`xcodebuild -downloadPlatform watchOS`). Without the
 simulator runtime, Xcode refuses the _iPhone_ scheme outright — "This scheme builds an embedded
@@ -194,3 +197,97 @@ instead of only while someone is watching the wrist.
 iPhone. No claim is made here about wrist-down execution, ambient cadence, behavior with no route,
 stationary behavior, connectivity loss and restoration, or permission-denied behavior. Those
 readings, and the decision the last acceptance criterion turns on, belong to the device session.
+
+## Gauges and navigation (#485)
+
+The wrist now draws Android's gauges and carries Android's page structure, on the rectangle.
+
+### The rim is a path, not a circle
+
+`watch/watchos/RimGauge.swift` builds the display's rounded-rectangle perimeter once and every gauge
+is a trimmed span of it: speed climbs the left edge to top centre, duty the right, battery owns the
+bottom edge, and the two temperatures grow out of the bottom corners up the sides. Same metrics,
+same colours, same directions of travel as Wear OS — the shape is the accepted platform difference.
+
+**Spans are anchored to edges, never to fixed perimeter fractions.** A circle has one radius, so
+Android can say "start at 180°, sweep 90°" and mean the same place on every watch. A rectangle does
+not: written as a share of the perimeter, a bottom span sized for one case runs off the short bottom
+edge of another and climbs the sides. `Rim.Metrics` derives every landmark from the actual edge and
+corner lengths, which is what keeps 40 mm and 44 mm the same layout rather than two tunings.
+
+The display corner radius is an approximation (`Rim.cornerRatio`) — Apple publishes no API for it.
+
+### What the rectangle changed, and what it did not
+
+- **No wall clock.** watchOS draws the system time over every app; Wear OS's full-screen activity
+  hides it, which is why `WatchClock.kt` exists and has no peer here. A second clock beside the real
+  one was the first thing the simulator showed.
+- **No curved text.** The bottom edge is flat and fits MOTOR / BATT / CTRL upright across it.
+- **No close prompt.** Android intercepts Back; the Digital Crown press is the system's, not the
+  app's.
+- **Ambient is one bit.** `isLuminanceReduced` is the whole signal. Android's `lowBit` and
+  `burnInProtection` branches, and its pixel walk, have no peer — the system does that itself.
+- **Focus is settled, not dragged.** Android fades its readouts against the live drag offset. A
+  `TabView` publishes no offset, so the transition animates between settled pages.
+- **The link reasons are inferred from two flags.** `WCSession.isPaired` is iOS-only, so the wrist
+  reads "app missing" and "link down" off companion-installed and reachable.
+
+Everything behavioural stays Android's: the same metrics and units, the same fresh/stale/waiting/
+disconnected reducer, the same cadence-derived disconnect window, the same page order on both axes,
+the same 45 s idle return on the control axis, and the same rule that a page is not interactive
+until its transition has settled.
+
+### Navigation
+
+`.verticalPage` gives the crown and the swipe on one axis, in Android's order — radar, weather,
+gauges, navigation. The control axis nests inside the gauges page — gauges, Move, Lights,
+diagnostics — and shows no page dots, because they land on the battery gauge and Android has none
+either. The pages those slices fill are placeholders today (#486–#491); the axes are the point.
+
+### Where the wrist logic lives
+
+The parts with a right answer — the reducer, the gauge fractions, the readout strings, the fixture
+parser — sit in `modules/vescape-core/ios/watch/` and are symlinked into `watch/watchos/`, the same
+arrangement `WatchFrame.swift` already used. That tree is the only one `bun run test:ios` compiles,
+so this is what buys the wrist unit tests at all. The cost is that the phone binary compiles a small
+amount of pure code it never calls.
+
+One real bug came straight out of that: Java's `String.format("%.0f", …)` rounds HALF_UP and C's
+`printf` rounds half to **even**, so 18.5 km/h read as `19` on Android and would have read `18` on
+the wrist. `WatchGauge` rounds away from zero explicitly, and a test pins it.
+
+### Simulator replay
+
+`watch/watchos/FrameReplay.swift` is the peer of `FrameReplay.kt`: it plays the Wear OS JSONL
+fixtures into `PhoneLink` on the same path a phone push takes. Gated to the simulator and to an
+explicit launch argument, so a real watch and a device build have no replay path. The fixture is
+read from the repo tree rather than bundled — a copy is a second artefact that drifts, and the whole
+point is that both wrists are fed the same bytes.
+
+```
+xcodebuild build -project ios/vescapedev.xcodeproj -target VescapeWatch \
+  -sdk watchsimulator26.5 -configuration Debug CODE_SIGNING_ALLOWED=NO
+xcrun simctl install <watch-udid> ios/build/Debug-watchsimulator/VescapeWatch.app
+xcrun simctl launch <watch-udid> app.vescape.dev.watchkitapp \
+  --replay "$PWD/watch/wearos/src/main/assets/watch-ride.jsonl"
+```
+
+Build with `-target VescapeWatch`, not `-scheme`: `-sdk watchsimulator` applies to every target in a
+scheme, and the Live Activity widget is iOS-only, so the scheme build fails on `ActivityKit`.
+
+### Verified on the simulator, 2026-09-15
+
+Apple Watch SE 3 40 mm and 44 mm, replaying `watch-ride.jsonl` and `watch-sweep.jsonl`:
+
+- Every metric and unit renders on both case sizes, with no interface fitted inside a circle.
+- The sweep fixture drives every lane across its full range: speed clamps at the 50 km/h full scale
+  instead of rescaling, both temperatures pin at 80 °C, and battery at 7 % takes the warning colour
+  in both the gauge and the readout.
+- Null lanes render as a dash at reduced size. At hero size an em dash reads as a filled progress
+  bar, which is the opposite of "no reading" — the same trap the first slice's readout documented.
+
+**Not verified.** Ambient rendering and the reduced ambient cadence: `isLuminanceReduced` cannot be
+forced on the simulator, and per Apple's Always On guidance a simulator would not prove runtime
+behaviour even if it could. Crown rotation, the swipe gestures and the transition gating were not
+exercised — `simctl` drives neither the crown nor a paired-phone frame stream. All of that belongs
+to the device session, along with everything the first slice already listed as unmeasured.

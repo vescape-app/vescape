@@ -69,6 +69,10 @@ import kotlin.math.sin
  *
  * The clock and the forecast readout at the top rim gap fade with the readouts; on the weather
  * centre they would otherwise duplicate the fuller forecast underneath.
+ *
+ * @parity /watch/watchos/FrameLayout.swift `FrameLayout`
+ * @parity /watch/watchos/RimGauge.swift
+ * @parity /modules/vescape-core/ios/watch/WatchGauge.swift
  */
 @Composable
 internal fun FrameLayout(

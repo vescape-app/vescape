@@ -6,13 +6,23 @@ import SwiftUI
 @main
 struct VescapeWatchApp: App {
   @StateObject private var link = PhoneLink()
+  @State private var replayer: FrameReplayer?
 
   var body: some Scene {
     WindowGroup {
-      MirrorView(link: link)
+      MirrorScreen(link: link)
         // Activated once, on appearance, and never torn down: `WCSession` is owned by the system
         // and the wrist has nothing else to do with its lifetime.
-        .onAppear { link.activate() }
+        .onAppear {
+          link.activate()
+          // Simulator only, and only when asked for by launch argument. On a watch and on a device
+          // build `requestedFixture` is nil and this is not reachable.
+          if let fixture = FrameReplayer.requestedFixture {
+            let replayer = FrameReplayer(link: link)
+            replayer.start(fixture: fixture)
+            self.replayer = replayer
+          }
+        }
     }
   }
 }

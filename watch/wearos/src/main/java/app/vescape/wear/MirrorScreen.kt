@@ -44,6 +44,8 @@ import kotlinx.coroutines.launch
  * Ambient does not replace this tree, it settles it: the pagers stay mounted and are parked on the
  * gauges with their gestures off, so going in and out of always-on never rebuilds the screen or
  * restarts the idle clock. What ambient changes is inside [AmbientMode].
+ *
+ * @parity /watch/watchos/MirrorScreen.swift `MirrorScreen`
  */
 @Composable
 internal fun MirrorScreen(

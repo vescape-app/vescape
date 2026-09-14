@@ -31,12 +31,14 @@ private const val REPLAY_FIXTURE_ROUTE = "watch-route.json"
 private const val REPLAY_FIXTURE_WEATHER = "watch-weather.json"
 
 /** One recorded moment: the frame to show and the recording-relative time to show it at. */
+/** @parity /modules/vescape-core/ios/watch/WatchReplay.swift `ReplaySample` */
 data class ReplaySample(val atMs: Long, val frame: WatchFrame)
 
 /**
  * Pure lane-fixture parser. A fixture is dev input that ships as an asset, so a malformed line is
  * skipped rather than crashing the Mirror — a partly-readable fixture still animates the gauges.
  */
+/** @parity /modules/vescape-core/ios/watch/WatchReplay.swift `ReplayFixtureParser` */
 object ReplayFixtureParser {
     fun parse(lines: Sequence<String>): List<ReplaySample> = lines.mapNotNull(::parseLine).toList()
 
@@ -130,6 +132,7 @@ object ReplaySceneParser {
  * The gate every emulator-only dev mode passes through: fixture replay, and the forced ambient
  * rendering the always-on layout is worked on with. A real watch and a release build have neither.
  */
+/** @parity /watch/watchos/FrameReplay.swift `FrameReplayer.requestedFixture` */
 object DevGate {
     /**
      * A dev mode is explicit and never inferred: `bun run wear:replay` asks for one, and a normal
@@ -153,6 +156,7 @@ object DevGate {
  * Plays a lane fixture into [TelemetryState] at its recorded pace, looping forever so the wrist
  * keeps moving while the visuals are being worked on. Main-thread only, like the message listener.
  */
+/** @parity /watch/watchos/FrameReplay.swift `FrameReplayer` */
 class FrameReplayer(private val context: Context) {
     private val handler = Handler(Looper.getMainLooper())
     private var samples: List<ReplaySample> = emptyList()

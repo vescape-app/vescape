@@ -28,6 +28,8 @@ import kotlinx.coroutines.delay
  *
  * [lowBit] and [burnInProtection] come from the ambient callback and describe the panel: a low-bit
  * screen has no usable colour palette, and a burn-in-prone one needs the centre content to move.
+ *
+ * @parity /watch/watchos/AmbientMode.swift `AmbientMode`
  */
 internal data class AmbientMode(
     val active: Boolean = false,

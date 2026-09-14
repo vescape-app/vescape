@@ -14,11 +14,14 @@ let WATCH_FRAME_FIELD_COUNT = 11
 /// Header (1 byte field-count + 1 byte flags) + Float32 lanes, little-endian.
 let WATCH_FRAME_BYTES = 2 + WATCH_FRAME_FIELD_COUNT * 4
 
-/// Flags-byte bits. Bit 2 ("waiting") is legacy on Android and unused here: the tick is session
-/// scoped and always has a frame worth drawing.
+/// Flags-byte bits. This phone side never sets "waiting" — the tick is session scoped and always
+/// has a frame worth drawing — but the decoder still reads it, because it is part of the wire
+/// format and a decoder that drops a defined bit is how a legacy phone ends up rendering its empty
+/// lanes as real readings.
 ///
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/watch/WatchFrame.kt `WATCH_FRAME_FLAG_STALE`
 let WATCH_FRAME_FLAG_STALE = 1
+let WATCH_FRAME_FLAG_WAITING = 2
 
 /// The decoded Watch Frame model. Nullable numeric lanes ride as `NaN` over the wire (ADR-0018).
 ///
@@ -35,6 +38,9 @@ struct WatchFrame: Equatable {
   var motorTemp: Double?
   var ctrlTemp: Double?
   var stale: Bool
+  /// "Session live, no board telemetry yet" — a legacy Android phone frame whose lanes carry no
+  /// data. `MirrorStateReducer` empties them; nothing downstream re-checks the flag.
+  var waiting: Bool
   /// Where the path goes next: absolute degrees clockwise from north, from Route Progress. The
   /// wrist rotates its north-up world by `courseDeg`, so this is never pre-rotated on the phone.
   /// Null whenever there is no Navigation, which is how the wrist hides its nav overlay.
@@ -57,6 +63,7 @@ struct WatchFrame: Equatable {
     motorTemp: Double? = nil,
     ctrlTemp: Double? = nil,
     stale: Bool = false,
+    waiting: Bool = false,
     navBearing: Double? = nil,
     navDistanceM: Double? = nil,
     riderEastM: Double? = nil,
@@ -70,6 +77,7 @@ struct WatchFrame: Equatable {
     self.motorTemp = motorTemp
     self.ctrlTemp = ctrlTemp
     self.stale = stale
+    self.waiting = waiting
     self.navBearing = navBearing
     self.navDistanceM = navDistanceM
     self.riderEastM = riderEastM
@@ -151,7 +159,7 @@ enum WatchFrameBuilder {
   static func encode(_ frame: WatchFrame) -> Data {
     var data = Data(capacity: WATCH_FRAME_BYTES)
     data.append(UInt8(WATCH_FRAME_FIELD_COUNT))
-    data.append(UInt8(frame.stale ? WATCH_FRAME_FLAG_STALE : 0))
+    data.append(UInt8((frame.stale ? WATCH_FRAME_FLAG_STALE : 0) | (frame.waiting ? WATCH_FRAME_FLAG_WAITING : 0)))
     for lane in laneOrder {
       // Nullable lanes ride as NaN; nav lanes do so whenever there is no Navigation, which is how
       // the wrist hides the overlay.
@@ -167,7 +175,10 @@ enum WatchFrameBuilder {
     guard data.count >= WATCH_FRAME_BYTES else { return nil }
     let bytes = [UInt8](data)
     guard Int(bytes[0]) == WATCH_FRAME_FIELD_COUNT else { return nil }
-    var frame = WatchFrame(stale: Int(bytes[1]) & WATCH_FRAME_FLAG_STALE != 0)
+    var frame = WatchFrame(
+      stale: Int(bytes[1]) & WATCH_FRAME_FLAG_STALE != 0,
+      waiting: Int(bytes[1]) & WATCH_FRAME_FLAG_WAITING != 0
+    )
     for (index, lane) in laneOrder.enumerated() {
       let offset = 2 + index * 4
       let raw = UInt32(bytes[offset])

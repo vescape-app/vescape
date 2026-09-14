@@ -29,6 +29,8 @@ import kotlinx.coroutines.delay
  * Readable straight off the wrist — no adb, and no phone round trip (the wrist->phone channel in
  * ADR-0033 carries rider commands, never diagnostics): counters answer "are frames arriving / decoding", the event ring shows link flaps and streak
  * starts with wall-clock times a rider can report or photograph.
+ *
+ * @parity /watch/watchos/DiagnosticsPanel.swift `DiagnosticsPanel`
  */
 @Composable
 fun DiagnosticsScreen() {
