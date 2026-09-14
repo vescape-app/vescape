@@ -57,7 +57,7 @@ export function ProfileStatsSummary({ active = true, action }: ProfileStatsSumma
         ) : !loading && empty ? (
           <Placeholder
             icon={ChartLineUpIcon}
-            description="Your riding totals appear once a ride is recorded"
+            description="Record a ride and your totals appear here"
             style={styles.empty}
           />
         ) : (

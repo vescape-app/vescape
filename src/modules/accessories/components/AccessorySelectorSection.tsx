@@ -46,7 +46,7 @@ export function AccessorySelectorSection({
       {accessories.length === 0 ? (
         <Placeholder
           icon={AccessoryIcon}
-          description="No accessories yet. Add one and Vescape connects to it on its own from then on, whatever it is named."
+          description="No accessories yet. Add one and Vescape connects to it every ride."
           compact
         />
       ) : (

@@ -1,4 +1,4 @@
-import { ScrollView, StyleSheet, Switch } from 'react-native'
+import { ScrollView, StyleSheet } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { useState } from 'react'
 import {
@@ -12,6 +12,7 @@ import {
 
 import { SettingsCard } from '@/components/settings/SettingsCard'
 import { SettingsRow } from '@/components/settings/SettingsRow'
+import { SettingsSwitch } from '@/components/settings/SettingsSwitch'
 import { SettingsSectionTitle } from '@/components/settings/SettingsSectionTitle'
 import { Stepper } from '@/components/forms/Stepper'
 import { ShowcaseCard } from '@/components/dev/ShowcaseCard'
@@ -91,14 +92,7 @@ export default function SettingsPage() {
               iconWeight="fill"
               label="Dark mode"
               hint="Use dark theme throughout the app"
-              right={
-                <Switch
-                  value={darkMode}
-                  onValueChange={setDarkMode}
-                  trackColor={{ false: theme.neutral.border, true: theme.palette.sky.border }}
-                  thumbColor={darkMode ? theme.palette.sky.color : theme.neutral.textMuted}
-                />
-              }
+              right={<SettingsSwitch value={darkMode} onValueChange={setDarkMode} />}
             />
           </SettingsCard>
 
@@ -126,14 +120,7 @@ export default function SettingsPage() {
               icon={BellIcon}
               label="Push notifications"
               hint="Receive alerts about your board"
-              right={
-                <Switch
-                  value={notifications}
-                  onValueChange={setNotifications}
-                  trackColor={{ false: theme.neutral.border, true: theme.palette.sky.border }}
-                  thumbColor={notifications ? theme.palette.sky.color : theme.neutral.textMuted}
-                />
-              }
+              right={<SettingsSwitch value={notifications} onValueChange={setNotifications} />}
             />
             <SettingsRow
               icon={WifiHighIcon}

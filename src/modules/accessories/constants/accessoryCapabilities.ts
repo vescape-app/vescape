@@ -48,16 +48,3 @@ export function capabilityPresentation(capability: AccessoryCapability): Capabil
     icon: QuestionIcon,
   }
 }
-
-/** Hardware limits the accessory declared, as one line. Empty when it declared none. */
-export function capabilityLimits(capability: AccessoryCapability): string | null {
-  const parts: string[] = []
-  if (capability.rangeMin != null && capability.rangeMax != null) {
-    const unit = capability.unit ?? ''
-    parts.push(`Range: ${capability.rangeMin}–${capability.rangeMax}${unit ? ` ${unit}` : ''}`)
-  }
-  if (capability.ratesHz.length > 0) {
-    parts.push(`Rates: ${capability.ratesHz.join(', ')} Hz`)
-  }
-  return parts.length > 0 ? parts.join('\n') : null
-}

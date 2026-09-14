@@ -1,7 +1,14 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { ScrollView, StyleSheet, View } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
-import { ArrowsVerticalIcon } from 'phosphor-react-native'
+import {
+  ArrowLineDownIcon,
+  ArrowLineUpIcon,
+  ArrowsVerticalIcon,
+  CompassIcon,
+  PulseIcon,
+  SlidersIcon,
+} from 'phosphor-react-native'
 import {
   saveGroundClearanceCalibration,
   setAccessorySamplingRate,
@@ -12,15 +19,15 @@ import { Text } from '@/components/base/Text'
 import { Stepper } from '@/components/forms/Stepper'
 import { SegmentedToggle } from '@/components/controls/SegmentedToggle'
 import { IconHero } from '@/components/settings/IconHero'
+import { SettingsCard } from '@/components/settings/SettingsCard'
+import { SettingsRow } from '@/components/settings/SettingsRow'
 import { SettingsSectionTitle } from '@/components/settings/SettingsSectionTitle'
 import { GroundClearanceTelemetry } from '@/modules/accessories/components/GroundClearanceTelemetry'
 import { CapabilityEnabledControl } from '../components/CapabilityEnabledControl'
-import { capabilityLimits } from '../constants/accessoryCapabilities'
 import {
   calibrationProblemCopy,
   directionCopy,
 } from '@/modules/accessories/lib/groundClearanceCopy'
-import { accessoryStatusCopy } from '@/modules/accessories/lib/accessoryStatus'
 import { useSavedAccessory } from '@/modules/accessories/store/accessoryStore'
 import { theme } from '@/constants/theme'
 
@@ -161,7 +168,6 @@ export function GroundClearanceScreen({
     )
   }
 
-  const status = accessoryStatusCopy(accessory.phase)
   // The saved calibration's own verdict, re-decided natively against the live manifest, outranks
   // the last save's answer: a firmware that narrowed its range invalidates a calibration nobody
   // touched, and the rider needs to hear that before they hear nothing at all.
@@ -171,18 +177,25 @@ export function GroundClearanceScreen({
   return (
     <SafeAreaView style={styles.container} edges={['bottom']}>
       <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
-        <View style={styles.statusHeader}>
-          <Text style={styles.fieldLabel}>{accessory.name}</Text>
-          <Text style={styles.hint}>{status.label}</Text>
-        </View>
-        <SettingsSectionTitle>Ground clearance</SettingsSectionTitle>
-        <CapabilityEnabledControl accessoryId={accessoryId} capability={capability} />
+        <IconHero
+          icon={ArrowsVerticalIcon}
+          iconColor={theme.palette.sky.color}
+          title="Ground clearance"
+          description="Measures how far the board sits above the ground and turns that into Remote Tilt while you ride."
+        />
+        <CapabilityEnabledControl
+          accessoryId={accessoryId}
+          capability={capability}
+          accent={theme.palette.sky.color}
+        />
         <SettingsSectionTitle>Sampling rate</SettingsSectionTitle>
-        <View style={styles.card}>
-          <Field
+        <SettingsCard>
+          <SettingsRow
+            icon={PulseIcon}
+            iconColor={theme.palette.sky.color}
             label="Rate"
             hint="How often the sensor reports a distance."
-            control={
+            right={
               <Choice
                 options={capability.ratesHz.map((rateHz) => ({
                   value: String(rateHz),
@@ -197,7 +210,7 @@ export function GroundClearanceScreen({
               />
             }
           />
-        </View>
+        </SettingsCard>
         {rateFailed ? (
           <Text style={styles.warning}>Could not save sampling rate. Try again.</Text>
         ) : null}
@@ -215,10 +228,8 @@ export function GroundClearanceScreen({
 
         {!configured ? (
           <Text style={styles.explainer}>
-            This sensor is not set up yet. Mount it on the board, watch the live distance above, and
-            set the two distances below: the far one is where correction starts, the near one is
-            where it is at full strength. It saves on its own once both are set and the board can
-            measure them.
+            Not set up yet. Watch the live distance above, then set the far and near distances
+            below.
           </Text>
         ) : null}
 
@@ -231,11 +242,13 @@ export function GroundClearanceScreen({
         {draft ? (
           <>
             <SettingsSectionTitle>Distances</SettingsSectionTitle>
-            <View style={styles.card}>
-              <Field
+            <SettingsCard>
+              <SettingsRow
+                icon={ArrowLineUpIcon}
+                iconColor={theme.palette.sky.color}
                 label="Far"
-                hint="Correction starts here. Above it, nothing is commanded."
-                control={
+                hint="Correction starts here."
+                right={
                   <Stepper
                     value={draft.farCm}
                     unit="cm"
@@ -246,10 +259,12 @@ export function GroundClearanceScreen({
                   />
                 }
               />
-              <Field
+              <SettingsRow
+                icon={ArrowLineDownIcon}
+                iconColor={theme.palette.sky.color}
                 label="Near"
-                hint="Full strength here. Always smaller than the far distance."
-                control={
+                hint="Full strength here. Always below the far distance."
+                right={
                   <Stepper
                     value={draft.nearCm}
                     unit="cm"
@@ -260,14 +275,16 @@ export function GroundClearanceScreen({
                   />
                 }
               />
-            </View>
+            </SettingsCard>
 
             <SettingsSectionTitle>Mounting</SettingsSectionTitle>
-            <View style={styles.card}>
-              <Field
+            <SettingsCard>
+              <SettingsRow
+                icon={CompassIcon}
+                iconColor={theme.neutral.textSecondary}
                 label="Mounted at"
                 hint={directionCopy(draft.direction)}
-                control={
+                right={
                   <Choice
                     options={[
                       { value: 'nose', label: 'Nose' },
@@ -279,10 +296,12 @@ export function GroundClearanceScreen({
                   />
                 }
               />
-              <Field
+              <SettingsRow
+                icon={SlidersIcon}
+                iconColor={theme.neutral.textSecondary}
                 label="Strength"
-                hint="The most Remote Tilt this sensor may command, at the near distance."
-                control={
+                hint="The most Remote Tilt this sensor may command."
+                right={
                   <Stepper
                     value={draft.strengthPercent}
                     unit="%"
@@ -294,26 +313,9 @@ export function GroundClearanceScreen({
                   />
                 }
               />
-            </View>
+            </SettingsCard>
           </>
         ) : null}
-
-        <SettingsSectionTitle>Sensor details</SettingsSectionTitle>
-        <Text style={styles.hint}>{capabilityLimits(capability)}</Text>
-        <Text style={styles.hint}>
-          Hardware limits
-          {capability.samplingRateHz
-            ? ` · currently sampling at ${capability.samplingRateHz} Hz`
-            : ''}
-          .
-        </Text>
-
-        <Text style={styles.footnote}>
-          Calibration belongs to this sensor in this mounting position. Moving it to another board,
-          or to the other end of this one, means setting these again. Sensor-driven tilt only runs
-          while you are riding — this screen measures on a parked board so you can set it up, and
-          commands nothing.
-        </Text>
       </ScrollView>
     </SafeAreaView>
   )
@@ -351,48 +353,10 @@ function Choice<T extends string>({
   )
 }
 
-function Field({
-  label,
-  hint,
-  control,
-}: {
-  label: string
-  hint: string
-  control: React.ReactNode
-}) {
-  return (
-    <View style={styles.field}>
-      <View style={styles.fieldText}>
-        <Text style={styles.fieldLabel}>{label}</Text>
-        <Text style={styles.hint}>{hint}</Text>
-      </View>
-      {control}
-    </View>
-  )
-}
-
 const styles = StyleSheet.create({
   inert: { opacity: 0.45 },
-  statusHeader: { padding: 12, gap: 4 },
   container: { flex: 1, backgroundColor: theme.neutral.bg },
-  content: { padding: 12, gap: 8, paddingBottom: 40 },
-  card: {
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: theme.neutral.border,
-    backgroundColor: theme.neutral.surface,
-    overflow: 'hidden',
-  },
-  field: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: 12,
-    paddingHorizontal: 14,
-    paddingVertical: 11,
-  },
-  fieldText: { flexShrink: 1, gap: 2 },
-  fieldLabel: { color: theme.neutral.textPrimary, fontSize: 14, fontWeight: '700' },
+  content: { padding: 12, gap: 10, paddingBottom: 40 },
   hint: { color: theme.neutral.textSecondary, fontSize: 12, lineHeight: 16 },
   explainer: {
     color: theme.neutral.textSecondary,
@@ -405,12 +369,5 @@ const styles = StyleSheet.create({
     fontSize: 12,
     lineHeight: 17,
     paddingHorizontal: 4,
-  },
-  footnote: {
-    color: theme.neutral.textDim,
-    fontSize: 11,
-    lineHeight: 16,
-    paddingHorizontal: 4,
-    paddingTop: 4,
   },
 })

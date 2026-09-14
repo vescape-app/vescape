@@ -3,7 +3,9 @@ import type { Icon } from 'phosphor-react-native'
 import { setAccessoryCapabilityEnabled, type AccessoryCapability } from 'vescape-core'
 
 import { Text } from '@/components/base/Text'
-import { SwitchWidget } from '@/components/widgets/SwitchWidget'
+import { SettingsCard } from '@/components/settings/SettingsCard'
+import { SettingsRow } from '@/components/settings/SettingsRow'
+import { SettingsSwitch } from '@/components/settings/SettingsSwitch'
 import { capabilityPresentation } from '../constants/accessoryCapabilities'
 import { theme } from '@/constants/theme'
 
@@ -56,7 +58,7 @@ export function CapabilityEnabledSetting({
   failed,
   onChange,
 }: {
-  icon?: Icon
+  icon: Icon
   accent?: string
   label: string
   enabled: boolean
@@ -66,17 +68,22 @@ export function CapabilityEnabledSetting({
 }) {
   return (
     <>
-      <SwitchWidget
-        icon={icon}
-        accent={accent}
-        label={label}
-        value={enabled}
-        onValueChange={onChange}
-        disabled={disabled}
-        hint={
-          enabled ? 'Turning this off keeps your settings.' : 'Switched off. Settings are kept.'
-        }
-      />
+      <SettingsCard>
+        <SettingsRow
+          icon={icon}
+          {...(accent ? { iconColor: accent } : {})}
+          label={label}
+          right={
+            <SettingsSwitch
+              value={enabled}
+              onValueChange={onChange}
+              {...(accent ? { accent } : {})}
+              {...(disabled ? { disabled } : {})}
+              accessibilityLabel={label}
+            />
+          }
+        />
+      </SettingsCard>
       {failed ? (
         <Text style={{ color: theme.status.caution.text }}>Could not save. Try again.</Text>
       ) : null}

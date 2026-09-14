@@ -2,8 +2,11 @@ import { useCallback, useState } from 'react'
 import { ScrollView, StyleSheet, View } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 
+import { TrashIcon } from 'phosphor-react-native'
+
 import { Text } from '@/components/base/Text'
 import { Button } from '@/components/base/Button'
+import { ConfirmModal } from '@/components/modals/ConfirmModal'
 import { IconHero } from '@/components/settings/IconHero'
 import { SettingsSectionTitle } from '@/components/settings/SettingsSectionTitle'
 import { AccessoryCapabilityRow } from '@/modules/accessories/components/AccessoryCapabilityRow'
@@ -42,6 +45,7 @@ export function AccessoryDetailScreen({
   const forget = useAccessoryStore((s) => s.forget)
   const [forgetting, setForgetting] = useState(false)
   const [forgetFailed, setForgetFailed] = useState(false)
+  const [confirming, setConfirming] = useState(false)
 
   const onForget = useCallback(async () => {
     setForgetting(true)
@@ -57,6 +61,7 @@ export function AccessoryDetailScreen({
       setForgetFailed(true)
     } finally {
       setForgetting(false)
+      setConfirming(false)
     }
   }, [accessoryId, forget, onForgotten])
 
@@ -141,25 +146,34 @@ export function AccessoryDetailScreen({
           )}
         </View>
 
-        <Button
-          label="Forget accessory"
-          variant="destructive"
-          onPress={onForget}
-          loading={forgetting}
-          testID="accessory-forget"
-        />
+        <View style={styles.forgetRow}>
+          <Button
+            label="Forget accessory"
+            variant="secondary"
+            size="sm"
+            icon={TrashIcon}
+            onPress={() => setConfirming(true)}
+            loading={forgetting}
+            testID="accessory-forget"
+          />
+        </View>
 
         {forgetFailed ? (
           <Text style={styles.warning}>
             This accessory could not be removed. It is still saved and still connecting; try again.
           </Text>
         ) : null}
-
-        <Text style={styles.footnote}>
-          Vescape connects to a saved accessory on its own, including with the app closed.
-          Forgetting it ends that and removes everything saved about it.
-        </Text>
       </ScrollView>
+      <ConfirmModal
+        visible={confirming}
+        title="Forget accessory"
+        message={`Vescape stops connecting to ${accessory.name} and everything saved about it — calibration, behaviour, capability switches — is removed from this phone.`}
+        confirmLabel="Forget"
+        destructive
+        loading={forgetting}
+        onConfirm={onForget}
+        onCancel={() => setConfirming(false)}
+      />
     </SafeAreaView>
   )
 }
@@ -208,11 +222,5 @@ const styles = StyleSheet.create({
     paddingHorizontal: 14,
     paddingVertical: 12,
   },
-  footnote: {
-    color: theme.neutral.textDim,
-    fontSize: 11,
-    lineHeight: 16,
-    paddingHorizontal: 4,
-    paddingTop: 4,
-  },
+  forgetRow: { alignItems: 'center', paddingTop: 40 },
 })

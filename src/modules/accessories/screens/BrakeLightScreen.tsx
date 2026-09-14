@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { AppState, ScrollView, StyleSheet, View } from 'react-native'
+import { AppState, ScrollView, StyleSheet } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { LightbulbFilamentIcon } from 'phosphor-react-native'
 import {
@@ -19,7 +19,6 @@ import { SettingsSectionTitle } from '@/components/settings/SettingsSectionTitle
 import { BrakeLightStates } from '@/modules/accessories/components/BrakeLightStates'
 import { CapabilityEnabledControl } from '@/modules/accessories/components/CapabilityEnabledControl'
 import { useSavedAccessory } from '@/modules/accessories/store/accessoryStore'
-import { accessoryStatusCopy } from '@/modules/accessories/lib/accessoryStatus'
 import { theme } from '@/constants/theme'
 
 /**
@@ -118,22 +117,17 @@ export function BrakeLightScreen({
           icon={LightbulbFilamentIcon}
           iconColor={theme.palette.red.color}
           title="Brake light"
-          description="Follows the current Board. Settings save automatically for this light."
+          description="Drives the light from the Board’s own telemetry, on whichever Board you are riding."
         />
         {!accessory || !capability || !draft ? (
           <Text style={styles.hint}>Brake light not available.</Text>
         ) : (
           <>
-            <SettingsSectionTitle>Brake light</SettingsSectionTitle>
             <CapabilityEnabledControl
               accessoryId={accessoryId}
               capability={capability}
               accent={theme.palette.red.color}
             />
-            <View style={styles.statusLine}>
-              <Text style={styles.hint}>{accessory.name}</Text>
-              <Text style={styles.hint}>{accessoryStatusCopy(accessory.phase).label}</Text>
-            </View>
 
             <SettingsSectionTitle>Light states</SettingsSectionTitle>
             <BrakeLightStates
@@ -144,11 +138,6 @@ export function BrakeLightScreen({
               disabled={accessory.phase !== 'connected' || capability.enabled === false}
               onPreview={preview}
             />
-            <Text style={styles.hint}>
-              The lit tile is what the app is asking the light for; the protocol never reports the
-              lamp back. Tap one to hold it for {PREVIEW_SECONDS} seconds and check the light itself
-              — riding hands it straight back to the Board.
-            </Text>
 
             <SettingsSectionTitle>Behaviour</SettingsSectionTitle>
             <SettingsCard>
@@ -202,12 +191,6 @@ export function BrakeLightScreen({
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: theme.neutral.bg },
   content: { padding: 12, gap: 10, paddingBottom: 40 },
-  statusLine: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    gap: 12,
-    paddingHorizontal: 4,
-  },
   hint: { color: theme.neutral.textMuted, fontSize: 12, lineHeight: 16 },
   problem: { color: theme.palette.red.color, fontSize: 12 },
 })

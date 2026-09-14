@@ -252,7 +252,7 @@ export function BoardSelectorContent({
         {boards.length === 0 ? (
           <Placeholder
             icon={LightningIcon}
-            description="No boards yet. Add one to see its battery, warnings and rides here."
+            description="No boards yet. Add your board to connect over Bluetooth."
             compact
           />
         ) : null}

@@ -237,7 +237,7 @@ export function HistoryDrawer({
             <Placeholder
               icon={StarIcon}
               title="No favorites yet"
-              description="Open a ride in History, tap the star, adjust the range, then save"
+              description="Star a stretch of a ride in History to keep it here"
               style={styles.placeholder}
             />
           ) : (
