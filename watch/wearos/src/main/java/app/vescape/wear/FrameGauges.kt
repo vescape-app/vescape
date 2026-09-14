@@ -429,9 +429,13 @@ private val HINT_ICON_SIZE = 22.dp
 
 /** Heroes sit on a fixed rim offset; the clock/forecast stack floats above them independently. */
 private val HERO_TOP_INSET = 56.dp
+/** @parity /watch/watchos/FrameLayout.swift `HERO_FOCUS_RISE` */
 private val HERO_FOCUS_RISE = 30.dp
+/** @parity /watch/watchos/FrameLayout.swift `HERO_FOCUS_SHRINK` */
 private const val HERO_FOCUS_SHRINK = 0.12f
+/** @parity /watch/watchos/FrameLayout.swift `BATTERY_FOCUS_DROP` */
 private val BATTERY_FOCUS_DROP = 18.dp
+/** @parity /watch/watchos/FrameLayout.swift `TEMP_FOCUS_SPREAD` */
 private const val TEMP_FOCUS_SPREAD = 0.06f
 
 // Curved temp text: clears the rim line with a small gap so it reads above the arc.

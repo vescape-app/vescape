@@ -22,8 +22,7 @@ import SwiftUI
 ///
 /// This layout is pinned at the root of the mirror, behind the pages: the rim gauges are permanent
 /// furniture and never move, whatever page the rider swipes or turns the crown to. `focus` says how
-/// far a page has taken over — read as a closure so a drag repaints the gauges without recomposing
-/// the layout around them.
+/// far a page has taken over. Readouts retreat toward their gauges as the page moves into view.
 ///
 /// @parity /watch/wearos/src/main/java/app/vescape/wear/FrameGauges.kt `FrameLayout`
 struct FrameLayout: View {
@@ -44,9 +43,26 @@ struct FrameLayout: View {
       if showReadouts {
         VStack(spacing: 0) {
           heroes(blind: blind)
+            .scaleEffect(1 - HERO_FOCUS_SHRINK * focus)
+            .offset(y: -HERO_FOCUS_RISE * focus)
           Spacer(minLength: 0)
-          bottomReadouts(blind: blind)
         }
+        .opacity(fadeOut(focus))
+
+        // Scale the temperature layer around the screen centre, matching Android's outward
+        // movement. The battery has its own layer because it retreats straight down.
+        VStack(spacing: 0) {
+          Spacer(minLength: 0)
+          bottomReadouts(blind: blind, temperatures: true)
+        }
+        .scaleEffect(1 + TEMP_FOCUS_SPREAD * focus)
+        .opacity(fadeOut(focus))
+
+        VStack(spacing: 0) {
+          Spacer(minLength: 0)
+          bottomReadouts(blind: blind, temperatures: false)
+        }
+        .offset(y: BATTERY_FOCUS_DROP * focus)
         .opacity(fadeOut(focus))
       }
     }
@@ -128,19 +144,25 @@ struct FrameLayout: View {
   /// Motor and controller sit over the corners their own arcs grow out of, battery between them
   /// over its own. Wear OS bends these along the rim; a rectangle has a flat bottom edge and three
   /// readouts fit across it upright, which is easier to read and needs no curved text at all.
-  private func bottomReadouts(blind: Bool) -> some View {
+  private func bottomReadouts(blind: Bool, temperatures: Bool) -> some View {
     HStack(alignment: .bottom, spacing: 0) {
       labelled(
         "MOTOR", WatchGauge.temp(frame.motorTemp, blind: blind),
         ambient.lane(frame.motorTemp, muted: muted, Palette.motorTemp)
       )
+      .opacity(temperatures ? 1 : 0)
+      .accessibilityHidden(!temperatures)
       labelled(
         "BATT", WatchGauge.batteryPercent(frame.battery, blind: blind), batteryColor
       )
+      .opacity(temperatures ? 0 : 1)
+      .accessibilityHidden(temperatures)
       labelled(
         "CTRL", WatchGauge.temp(frame.ctrlTemp, blind: blind),
         ambient.lane(frame.ctrlTemp, muted: muted, Palette.ctrlTemp)
       )
+      .opacity(temperatures ? 1 : 0)
+      .accessibilityHidden(!temperatures)
     }
     .padding(.bottom, BOTTOM_READOUT_INSET)
     .padding(.horizontal, Rim.innerInset)
@@ -195,3 +217,12 @@ private let BOTTOM_READOUT_INSET: CGFloat = 12
 /// The quieter gauges carry less glow than the headline pair, the same ratios Android uses.
 private let BATTERY_GLOW_SCALE = 0.55
 private let TEMP_GLOW_SCALE = 0.7
+
+/// @parity /watch/wearos/src/main/java/app/vescape/wear/FrameGauges.kt `HERO_FOCUS_RISE`
+private let HERO_FOCUS_RISE: CGFloat = 30
+/// @parity /watch/wearos/src/main/java/app/vescape/wear/FrameGauges.kt `HERO_FOCUS_SHRINK`
+private let HERO_FOCUS_SHRINK = 0.12
+/// @parity /watch/wearos/src/main/java/app/vescape/wear/FrameGauges.kt `BATTERY_FOCUS_DROP`
+private let BATTERY_FOCUS_DROP: CGFloat = 18
+/// @parity /watch/wearos/src/main/java/app/vescape/wear/FrameGauges.kt `TEMP_FOCUS_SPREAD`
+private let TEMP_FOCUS_SPREAD = 0.06
