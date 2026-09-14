@@ -60,33 +60,34 @@ struct FrameLayout: View {
       let rim = Rim.path(in: size, inset: Rim.inset)
       let metrics = Rim.Metrics(size: size, inset: Rim.inset)
       let glow = ambient.glow(STRONG_GLOW * dimGlow(focus))
+      let centre = CGPoint(x: metrics.rect.midX, y: metrics.rect.midY)
 
       context.drawRimGauge(
         rim, span: metrics.speed,
         fraction: blind ? 0 : WatchGauge.speedFraction(frame.speed),
-        color: speedColor, style: .strong, glow: glow
+        color: speedColor, style: .strong, glow: glow, center: centre
       )
       context.drawRimGauge(
         rim, span: metrics.duty,
         fraction: blind ? 0 : WatchGauge.dutyFraction(frame.duty),
-        color: dutyColor, style: .strong, glow: glow
+        color: dutyColor, style: .strong, glow: glow, center: centre
       )
       context.drawRimGauge(
         rim, span: metrics.battery,
         fraction: blind ? 0 : WatchGauge.batteryFraction(frame.battery),
-        color: batteryColor, style: .soft, glow: glow * BATTERY_GLOW_SCALE
+        color: batteryColor, style: .soft, glow: glow * BATTERY_GLOW_SCALE, center: centre
       )
       context.drawRimGauge(
         rim, span: metrics.motorTemp,
         fraction: blind ? 0 : WatchGauge.tempFraction(frame.motorTemp),
         color: ambient.lane(frame.motorTemp, muted: muted, Palette.motorTemp),
-        style: .soft, glow: glow * TEMP_GLOW_SCALE
+        style: .soft, glow: glow * TEMP_GLOW_SCALE, center: centre
       )
       context.drawRimGauge(
         rim, span: metrics.ctrlTemp,
         fraction: blind ? 0 : WatchGauge.tempFraction(frame.ctrlTemp),
         color: ambient.lane(frame.ctrlTemp, muted: muted, Palette.ctrlTemp),
-        style: .soft, glow: glow * TEMP_GLOW_SCALE
+        style: .soft, glow: glow * TEMP_GLOW_SCALE, center: centre
       )
     }
     .ignoresSafeArea()

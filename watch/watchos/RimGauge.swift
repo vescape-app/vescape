@@ -16,10 +16,12 @@ import SwiftUI
 ///
 /// @parity /watch/wearos/src/main/java/app/vescape/wear/FrameGauges.kt
 enum Rim {
-  /// Distance from the layout edge to the path every rim gauge is drawn on.
+  /// Distance from the layout edge to the path every rim gauge is drawn on. Wide enough that the
+  /// whole stroke clears the bezel: the gauge line has width, so a path laid on the very edge is
+  /// half-hidden even when its geometry is right.
   ///
   /// @parity /watch/wearos/src/main/java/app/vescape/wear/FrameGauges.kt `GAUGE_RIM_INSET`
-  static let inset: CGFloat = 3
+  static let inset: CGFloat = 5
 
   /// Distance from the layout edge to the area a centre page may use. Everything outside it belongs
   /// to the pinned rim gauges, so a page that ignores this insets its content into them.
@@ -28,10 +30,16 @@ enum Rim {
   static let innerInset: CGFloat = 14
 
   /// The display's own corner rounding, as a share of its short side. Apple publishes no API for
-  /// it, so this is measured against the simulator geometry rather than read from the device: close
-  /// enough that the path hugs the bezel, and wrong in the same direction on every case size rather
-  /// than tuned to one of them.
-  static let cornerRatio: CGFloat = 0.17
+  /// it, so this is matched against the known panel geometry rather than read from the device:
+  /// roughly 34.5 pt on the 162 pt-wide 40 mm display and 40 pt on the 184 pt 44 mm one, which is
+  /// the same ratio on both — so it is wrong in the same direction on every case size rather than
+  /// tuned to one of them.
+  ///
+  /// Getting this wrong is not subtle, and it fails in two different ways. Too large and the path
+  /// bows visibly inside the bezel at the corners; too small and the corner arcs fall outside the
+  /// rounded display entirely and are clipped away, leaving four straight runs with gaps where the
+  /// corners should be.
+  static let cornerRatio: CGFloat = 0.215
 
   /// A gap either side of top centre, so the two top gauges read as two rather than one ring.
   ///
@@ -93,7 +101,12 @@ enum Rim {
 
     init(size: CGSize, inset: CGFloat) {
       rect = CGRect(origin: .zero, size: size).insetBy(dx: inset, dy: inset)
-      radius = min(min(rect.width, rect.height) * Rim.cornerRatio, min(rect.width, rect.height) / 2)
+      // The ratio describes the *display*, so the inset comes off the radius rather than being
+      // folded into the size it is derived from. Taking the ratio of the already-inset rect
+      // shrinks the curve by a fraction of the inset instead of by the inset, and the path drifts
+      // off the bezel by more the further in it sits.
+      let display = min(size.width, size.height) * Rim.cornerRatio
+      radius = min(max(display - inset, 0), min(rect.width, rect.height) / 2)
     }
 
     /// Straight run along the top or bottom edge, and up a side.
@@ -194,7 +207,8 @@ extension GraphicsContext {
     fraction: Double,
     color: Color,
     style: RimStyle,
-    glow: Double
+    glow: Double,
+    center: CGPoint
   ) {
     let guide = span.full
     stroke(
@@ -218,13 +232,20 @@ extension GraphicsContext {
 
     guard style.drawsHead else { return }
     let tip = span.origin + (span.head - span.origin) * min(max(fraction, 0), 1)
-    drawHeadTick(rim, at: tip, color: color, width: style.valueWidth)
+    drawHeadTick(rim, at: tip, color: color, width: style.valueWidth, center: center)
   }
 
   /// A short tick across the rim at the current value, perpendicular to whichever edge it landed
   /// on. The normal is taken from the path itself rather than from the edge, so the tick stays
   /// square to the line as it travels through a rounded corner.
-  private func drawHeadTick(_ rim: Path, at position: Double, color: Color, width: CGFloat) {
+  ///
+  /// Which way it then points is decided by the screen centre, not by the direction of travel. The
+  /// perpendicular of a path tangent flips sign with the tangent, and the two headline gauges run
+  /// opposite ways around the rim — speed clockwise up the left edge, duty counter-clockwise up the
+  /// right — so taking the raw normal aimed one tick inward and the other out under the bezel.
+  private func drawHeadTick(
+    _ rim: Path, at position: Double, color: Color, width: CGFloat, center: CGPoint
+  ) {
     let epsilon = 0.002
     let before = max(position - epsilon, 0)
     let after = min(position + epsilon, 1)
@@ -239,9 +260,14 @@ extension GraphicsContext {
     let normal = CGPoint(x: -dy / length, y: dx / length)
     let point = CGPoint(x: (start.x + end.x) / 2, y: (start.y + end.y) / 2)
 
+    // Point the tick at the centre of the screen, whichever way the gauge happens to travel.
+    let toCentre = CGPoint(x: center.x - point.x, y: center.y - point.y)
+    let facesCentre = normal.x * toCentre.x + normal.y * toCentre.y >= 0
+    let inward = facesCentre ? normal : CGPoint(x: -normal.x, y: -normal.y)
+
     var tick = Path()
-    tick.move(to: CGPoint(x: point.x - normal.x * HEAD_TICK_INNER, y: point.y - normal.y * HEAD_TICK_INNER))
-    tick.addLine(to: CGPoint(x: point.x + normal.x * HEAD_TICK_OUTER, y: point.y + normal.y * HEAD_TICK_OUTER))
+    tick.move(to: CGPoint(x: point.x + inward.x * HEAD_TICK_INNER, y: point.y + inward.y * HEAD_TICK_INNER))
+    tick.addLine(to: CGPoint(x: point.x - inward.x * HEAD_TICK_OUTER, y: point.y - inward.y * HEAD_TICK_OUTER))
     stroke(tick, with: .color(color), style: StrokeStyle(lineWidth: width, lineCap: .butt))
   }
 }
