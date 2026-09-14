@@ -18,9 +18,27 @@ import WatchConnectivity
 /// there is nothing to cache and no node set to invalidate.
 final class WatchTelemetryPusher: NSObject, WCSessionDelegate {
   private let record: (String, [String: Any?]) -> Void
+  /// Wrist commands, already decoded. Set by the owner; nil until then, which is the correct
+  /// behavior for a process that has not started its Board Session controller yet.
+  var onCommand: ((WatchCommand) -> Void)?
   private var session: WCSession?
   private var activeIssue: String?
   private var lastReachable: Bool?
+
+  /// Cold-state channels (settings today, route and weather later). Lazily built so it reads the
+  /// live session rather than a copy taken before activation.
+  private lazy var coldState = WatchColdState(
+    context: { [weak self] in self?.session?.applicationContext ?? [:] },
+    write: { [weak self] merged in
+      guard let session = self?.session, session.activationState == .activated else {
+        // Not an ignorable no-op: the caller must not believe this landed. `flush()` on activation
+        // is what turns this into a retry rather than a setting the wrist never hears about.
+        throw WatchColdStateError.sessionNotActivated
+      }
+      try session.updateApplicationContext(merged)
+    },
+    record: { [weak self] name, props in self?.record(name, props) }
+  )
 
   init(record: @escaping (String, [String: Any?]) -> Void) {
     self.record = record
@@ -52,6 +70,12 @@ final class WatchTelemetryPusher: NSObject, WCSessionDelegate {
     session.activate()
   }
 
+  /// Publish one cold-state channel. Latest-value-wins and merged with the other channels; see
+  /// `WatchColdState` for why this is the Application Context and not a message or a transfer.
+  func pushColdState(channel: String, payload: [String: Any]) {
+    coldState.put(channel: channel, payload: payload)
+  }
+
   func pushFrame(_ frame: Data) {
     guard let session, canPush else { return }
     session.sendMessageData(
@@ -80,6 +104,18 @@ final class WatchTelemetryPusher: NSObject, WCSessionDelegate {
         "error": error?.localizedDescription,
       ]
     )
+    // The cold-state channels the process knew about before the session would accept them. Cold
+    // start is the one moment they are guaranteed to be waiting.
+    if activationState == .activated { coldState.flush() }
+  }
+
+  /// Wrist commands (ADR-0033). Two bytes, decoded off the delegate queue and handed to the owner;
+  /// an undecodable payload is dropped rather than guessed at.
+  ///
+  /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/watch/WatchCommandListenerService.kt
+  func session(_ session: WCSession, didReceiveMessageData messageData: Data) {
+    guard let command = WatchCommandCodec.decode(messageData) else { return }
+    onCommand?(command)
   }
 
   func sessionReachabilityDidChange(_ session: WCSession) {

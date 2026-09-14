@@ -175,7 +175,8 @@ Not yet filled on iOS, and marked `TODO(ios parity)` in `BoardSessionController`
   Navigation" case the wrist already draws.
 - Live `max_duty` exclusion. Android nulls duty per live sample; iOS decides exclusion at
   bucket-build time and has no live flag, so the wrist shows raw duty.
-- The rider-configurable refresh rate and the reduced ambient cadence.
+
+The rider-configurable refresh rate and the reduced ambient cadence landed with #486, below.
 
 ### Lifecycle instrumentation
 
@@ -313,3 +314,101 @@ and long holds on the device before enabling those controls.
 The inward glow uses 16 overlapping clipped strokes per active gauge, independent of display size.
 Its intensity and fade stops match Wear OS. This reduces draw calls from the previous size-dependent
 75–100 strokes per gauge; physical-device frame time and power improvements remain unmeasured.
+
+## Mirrored settings (#486)
+
+The rider's phone settings now reach the wrist, and the push cadence they set is applied live.
+
+### Cold state is the Application Context, and it is merged
+
+`WCSession` offers three deliveries and they are not interchangeable:
+
+- `sendMessageData` needs the counterpart reachable now and drops otherwise. Right for Watch
+  Frames — a frame is worthless a tick later — and wrong for a setting the rider may change with
+  the watch off the wrist and expect applied when they put it back on.
+- `transferUserInfo` queues FIFO and delivers every item. A bag changed five times out of range
+  would arrive five times, in order, and the wrist would animate through the rider's undo history.
+- `updateApplicationContext` keeps exactly one latest value, delivers it opportunistically, and the
+  system hands it to the watch app at its next launch through `receivedApplicationContext`.
+
+The third is the one that matches Android's Data Layer: latest-value-wins, survives restart and
+reconnect, no backlog. **No queue or buffer was written** — the platform already provides the
+semantics, which is also why the Android peer pusher has none.
+
+Android publishes each channel on its own path, so `/settings` and `/route` cannot overwrite each
+other. watchOS has one Application Context per session and a whole-dictionary replace, so the
+channels share a dictionary and `WatchColdState` is the only writer: it reads the current context,
+puts one channel back, and leaves every other key untouched. Writing a channel any other way
+silently deletes the route. It also keeps desired and delivered payloads apart, because the first
+push of a cold process races session activation — a write refused then is retried on
+`activationDidCompleteWith`, not mistaken for a write that landed.
+
+The settings bag itself is Android's, key for key. A missing key is the wrist default, never a
+zero: an absent Board Move strength coerced to a number reads as a rider choosing 0 %. A cleared
+rider colour rides as a blank string rather than an absent key, so the wrist can tell "cleared"
+from "phone too old to send it".
+
+`WatchSettings.swift` and `WatchCommand.swift` are compiled into both the phone and the watch
+target, the arrangement `WatchFrame.swift` already used — Android duplicates both by convention
+across two Gradle modules, which is why it has two `WatchSettings.kt`.
+
+### Cadence
+
+`wearPushRateHz` (1–20, default 4) is re-read by `BoardSessionController.reloadWatchSettings()` and
+re-arms the live tick; `WatchTick.setIntervalMs` already cancels and reschedules, so a lowered
+interval takes effect immediately rather than after the current, longer delay.
+
+This deliberately does **not** ride on `reloadTelemetrySettings`, which returns early with no Board
+Session. The Watch Mirror is process scoped, not session scoped, so a rider changing the push rate
+with no board connected must still reach the tick.
+
+The wrist reports how awake it is — active, ambient, asleep — as the same two-byte command Android
+uses, re-asserted every 15 s and immediately when the phone becomes reachable again. Ambient drops
+the push to 5 s, matching Android. The cadence has a single owner (`applyWatchInterval`) because
+both inputs must resolve together: applying either one directly lets a settings reload drop the
+ambient rate back to the live one for the rest of the ambient stretch.
+
+Two Android mechanisms have no peer here, both deliberately:
+
+- **No wake gate on the push.** Android's Data Layer will happily deliver 4 Hz into a stopped
+  activity, so it gates on the wake level. `WCSession.isReachable` is already false unless the watch
+  app is running and in touch, so `canPush` covers the gate and the wake level only picks a cadence.
+- **No capability probe.** Android ships phone and wrist on separate Play tracks, so it has to ask
+  whether the installed wrist build speaks the wake protocol. The watch app is embedded in the phone
+  app's bundle, so a wrist older than the phone cannot exist.
+
+### Open on connect is not possible on watchOS
+
+There is no public API for an iPhone app to launch its watchOS companion. The one API that starts a
+watch app from the phone is `HKHealthStore.startWatchApp(with:)`, and it starts a **HealthKit
+workout session** — fitness tracking, which docs above rule out, and which would also make the app
+claim a workout the rider is not doing. `WCSession` has no launch call in that direction at all.
+
+So the setting is not implemented and not silently dropped: the switch is shown disabled on iOS with
+the reason in its hint, and `wearAutoLaunchOnConnect` is documented as Android-only in both the TS
+settings contract and the iOS defaults. A rider who set it on Android and moved to an iPhone is told
+why it stopped working rather than left with a toggle that does nothing.
+
+### Naming
+
+The persisted keys keep their `wear` prefix (`wearPushRateHz`, `wearNavArrowEnabled`,
+`wearAutoLaunchOnConnect`). They predate the watchOS Mirror; renaming a stored settings key buys a
+migration for nothing. Rider-facing copy says "watch", and the Settings entry is no longer gated to
+Android.
+
+### Verified, 2026-09-15
+
+- `bun run test:ios` — the settings contract, the wire codec and the cold-state merge, including
+  that writing the settings channel preserves an unrelated route channel and that a refused write is
+  retried by the activation flush.
+- `VescapeWatch` against `watchsimulator26.5` — builds with the shared files compiled into the watch
+  target.
+- `bun run ts`, `bun run lint`.
+
+**Not verified.** Nothing here has run against a physical Apple Watch or a locked iPhone. The
+end-to-end round trip — a setting changed on the phone appearing on the wrist, surviving a watch
+restart, and the ambient cadence actually dropping to 5 s while the wrist is lowered — needs the
+device session, as does whether `scenePhase` reports `.inactive` for the Always On state on
+hardware. The `ios/` tree on this machine has no Pods and no workspace, so the iPhone app itself was
+not compiled: the one edit outside the SwiftPM package is the four-line settings-key hook in
+`VescapeCoreModule.swift`.

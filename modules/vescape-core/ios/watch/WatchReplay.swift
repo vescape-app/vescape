@@ -35,6 +35,7 @@ enum ReplayFixtureParser {
     guard !line.trimmingCharacters(in: .whitespaces).isEmpty else { return nil }
     guard
       let data = line.data(using: .utf8),
+      // intentional-suppression: an unparseable fixture line is a skipped sample, not a failure
       let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
       let atMs = (json["t"] as? NSNumber)?.int64Value,
       // Speed is the one required lane: a line without it is not a frame, it is a truncated write.

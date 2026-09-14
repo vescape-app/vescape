@@ -1,4 +1,4 @@
-import { StyleSheet, ScrollView } from 'react-native'
+import { Platform, StyleSheet, ScrollView } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { ClockCountdownIcon, NavigationArrowIcon, WatchIcon } from 'phosphor-react-native'
 import { useShallow } from 'zustand/react/shallow'
@@ -10,6 +10,17 @@ import { SettingsSwitch } from '@/components/settings/SettingsSwitch'
 import { Stepper } from '@/components/forms/Stepper'
 import { IconHero } from '@/components/settings/IconHero'
 import { useSettingsStore } from '@/modules/settings/store/settingsStore'
+
+/**
+ * watchOS has no public API for an iPhone app to launch its watch companion — the one that exists
+ * (`HKHealthStore.startWatchApp`) starts a HealthKit workout session, which is fitness tracking
+ * Vescape does not do. So the switch is shown and disabled rather than hidden: a rider who set it
+ * on Android and switched phones should be told why it stopped working, not left guessing.
+ *
+ * @parity /modules/vescape-core/ios/telemetry/AppDataRepository.swift `defaultSettings`
+ * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/watch/WatchMirrorLauncher.kt
+ */
+const AUTO_LAUNCH_SUPPORTED = Platform.OS === 'android'
 
 export default function WatchSettingsScreen() {
   const { wearAutoLaunchOnConnect, wearPushRateHz, wearNavArrowEnabled, set } = useSettingsStore(
@@ -24,19 +35,21 @@ export default function WatchSettingsScreen() {
   return (
     <SafeAreaView style={styles.container} edges={['bottom']}>
       <ScrollView contentContainerStyle={styles.content}>
-        <IconHero
-          icon={WatchIcon}
-          description="Live telemetry on your Wear OS watch while you ride."
-        />
+        <IconHero icon={WatchIcon} description="Live telemetry on your watch while you ride." />
         <SettingsCard>
           <SettingsRow
             icon={WatchIcon}
             iconColor={theme.palette.amber.color}
             label="Open on connect"
-            hint="Bring the watch app to the front when the board connects"
+            hint={
+              AUTO_LAUNCH_SUPPORTED
+                ? 'Bring the watch app to the front when the board connects'
+                : 'Apple Watch only. Open the Vescape app on the watch yourself'
+            }
             right={
               <SettingsSwitch
-                value={wearAutoLaunchOnConnect}
+                value={AUTO_LAUNCH_SUPPORTED && wearAutoLaunchOnConnect}
+                disabled={!AUTO_LAUNCH_SUPPORTED}
                 onValueChange={(v) => void set('wearAutoLaunchOnConnect', v)}
               />
             }

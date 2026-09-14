@@ -6,10 +6,15 @@ import UserNotifications
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/connection/BoardSessionController.kt `FAULT_CODE_UNKNOWN`
 private let faultCodeUnknown = -1
 private let manualFaultLogMaxSpeedKmh = 1.0
-/// Watch Frame cadence. Matches Android's active-mode default (4 Hz); the rider-configurable rate
-/// and the reduced ambient cadence follow with the rest of the port.
+/// Watch Frame cadence before the rider's `wearPushRateHz` is read. Matches Android's active-mode
+/// default (4 Hz).
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/connection/BoardSessionController.kt `WATCH_FRAME_INTERVAL_MS`
 private let WATCH_FRAME_INTERVAL_MS: Int64 = 250
+
+/// Cadence while the wrist is in the Always On state. The Mirror redraws rarely there, so the rate
+/// the rider chose buys nothing and costs both batteries a radio wake per frame.
+/// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/connection/BoardSessionController.kt `WATCH_FRAME_AMBIENT_INTERVAL_MS`
+private let WATCH_FRAME_AMBIENT_INTERVAL_MS: Int64 = 5_000
 
 /// Everything a runtime connect needs, resolved from the stored Board Link before the session
 /// starts. The transport is already known (ADR 0015 / #108) — connect never discovers it.
@@ -2418,8 +2423,86 @@ internal final class BoardSessionController: VescGattListener {
   /// `onServiceDestroy`. iOS has no service to bound it by — the process is the scope — so there is
   /// a start and no stop.
   func startWatchMirror() {
+    watchPusher.onCommand = { [weak self] command in
+      guard let self else { return }
+      switch command {
+      case .mirrorAwake(let level): scheduler.post { self.watchMirrorWakeLevel(level) }
+      }
+    }
     watchPusher.start()
+    reloadWatchSettings()
     watchTick.start()
+  }
+
+  /// Latest wrist wake level and when it landed. The Mirror re-sends on a heartbeat, so a level
+  /// older than `watchMirrorAwakeTimeoutMs` means the wrist app is gone (backgrounded, out of
+  /// range, or its stop message was lost) and is read as asleep.
+  /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/connection/BoardSessionController.kt `watchWakeLevel`
+  private var watchWakeLevel: WatchMirrorWakeLevel = .asleep
+  private var watchWakeLevelAtMs: Int64 = 0
+  /// The rider's `wearPushRateHz` as an interval, held so ambient can hand the cadence back to it.
+  private var configuredWatchIntervalMs: Int64 = WATCH_FRAME_INTERVAL_MS
+
+  private func effectiveWatchWakeLevel() -> WatchMirrorWakeLevel {
+    elapsedMs() - watchWakeLevelAtMs > watchMirrorAwakeTimeoutMs ? .asleep : watchWakeLevel
+  }
+
+  /// Wrist wake-level tick: picks the push cadence.
+  ///
+  /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/connection/BoardSessionController.kt `watchMirrorWakeLevel`
+  /// @platform-diff Android *gates* the push on this too, because its Data Layer will happily
+  ///   deliver 4 Hz into a stopped activity. `WCSession.isReachable` is already false unless the
+  ///   watch app is running and in touch, so `canPush` covers the gate and the wake level is only
+  ///   spent on the cadence. There is also no capability probe: the watch app is embedded in the
+  ///   phone app's bundle, so a wrist build older than this protocol cannot exist.
+  private func watchMirrorWakeLevel(_ level: WatchMirrorWakeLevel) {
+    let changed = level != watchWakeLevel
+    watchWakeLevel = level
+    watchWakeLevelAtMs = elapsedMs()
+    if !changed { return }
+    recordWatchDiagnostic("watch_mirror_wake_level", ["level": String(describing: level)])
+    applyWatchInterval()
+  }
+
+  /// Single owner of the push cadence. Two inputs set it — the rider's `wearPushRateHz` and the
+  /// wrist's wake level — so both must resolve here: applying either one directly lets a settings
+  /// reload silently drop the ambient rate back to the live one, where the level-change early
+  /// return then leaves it for the rest of the ambient stretch.
+  ///
+  /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/connection/BoardSessionController.kt `applyWatchInterval`
+  private func applyWatchInterval() {
+    watchTick.setIntervalMs(
+      effectiveWatchWakeLevel() == .ambient ? WATCH_FRAME_AMBIENT_INTERVAL_MS : configuredWatchIntervalMs
+    )
+  }
+
+  /// Re-read the settings the wrist depends on and apply them live: the push cadence on this side,
+  /// the mirrored bag on the wrist's.
+  ///
+  /// Separate from `reloadTelemetrySettings` on purpose. That one is Board Session scoped and
+  /// returns early with no session; the Watch Mirror is process scoped (see `startWatchMirror`), so
+  /// a rider changing the push rate with no board connected must still reach the tick.
+  ///
+  /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/connection/BoardSessionController.kt `loadTelemetrySettings`
+  func reloadWatchSettings() {
+    let settings: [String: Any?]
+    do { settings = try appData.getSettings() }
+    catch {
+      RecordingStorageFailure.reportRead(operation: "watch_settings_read", error: error)
+      return
+    }
+    let hz = AppDataRepository.wearPushRateHz(settings["wearPushRateHz"] ?? nil)
+      ?? AppDataRepository.defaultWearPushRateHz
+    configuredWatchIntervalMs = Int64(1000 / hz)
+    applyWatchInterval()
+    watchPusher.pushColdState(
+      channel: watchSettingsChannel,
+      payload: WatchSettings(
+        riderColor: (settings["riderColor"] ?? nil) as? String,
+        boardMoveStrengthPercent: AppDataRepository.boardMoveStrengthPercent(settings["boardMoveStrengthPercent"] ?? nil),
+        navArrowEnabled: (settings["wearNavArrowEnabled"] ?? nil) as? Bool ?? false
+      ).payload
+    )
   }
 
   /// Latest cold-path snapshot: board lanes are empty without telemetry.

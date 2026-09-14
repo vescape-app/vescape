@@ -22,6 +22,14 @@ enum Palette {
   /// The one colour ambient invents: a dimmed near-white the always-on panel can hold cheaply.
   static let ambientText = Color(red: 0.722, green: 0.769, blue: 0.808)  // #B8C4CE
 
+  /// The rider's chosen colour, resolved from the mirrored setting. Nil — unset, or a form this
+  /// build cannot parse — leaves the caller on the wrist's own palette.
+  ///
+  /// @parity /watch/wearos/src/main/java/app/vescape/wear/WatchSettings.kt `parseRiderColor`
+  static func rider(_ hex: String?) -> Color? {
+    parseWatchRiderColor(hex).map { Color(red: $0.red, green: $0.green, blue: $0.blue) }
+  }
+
   static func battery(for value: Double?) -> Color {
     guard let value else { return secondaryText }
     return value < WatchGauge.batteryWarningPercent ? warning : battery

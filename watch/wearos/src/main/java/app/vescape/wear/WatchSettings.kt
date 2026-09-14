@@ -13,6 +13,7 @@ import androidx.compose.ui.graphics.Color
  * falls back to the wrist default below.
  *
  * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/watch/WatchSettings.kt
+ * @parity /modules/vescape-core/ios/watch/WatchSettings.swift
  */
 const val SETTINGS_PATH = "/settings"
 

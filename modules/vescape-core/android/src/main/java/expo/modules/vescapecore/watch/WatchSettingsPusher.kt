@@ -17,6 +17,8 @@ import kotlinx.coroutines.sync.withLock
  *
  * The service is the only publisher, so a settings change made while it is down lands on the watch
  * at the next service start, before the first frame.
+ *
+ * @parity /modules/vescape-core/ios/watch/WatchColdState.swift
  */
 internal class WatchSettingsPusher(
     private val context: Context,

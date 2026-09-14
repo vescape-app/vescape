@@ -134,21 +134,17 @@ export default function SettingsScreen() {
           />
         </SettingsCard>
 
-        {Platform.OS === 'android' && (
-          <>
-            <SettingsSectionTitle>Watch</SettingsSectionTitle>
+        <SettingsSectionTitle>Watch</SettingsSectionTitle>
 
-            <SettingsCard>
-              <SettingsRow
-                icon={WatchIcon}
-                iconColor={theme.settingsIcon.watch}
-                label="Watch"
-                hint="Auto open and telemetry push rate"
-                onPress={() => router.push(routes.settingsWatch)}
-              />
-            </SettingsCard>
-          </>
-        )}
+        <SettingsCard>
+          <SettingsRow
+            icon={WatchIcon}
+            iconColor={theme.settingsIcon.watch}
+            label="Watch"
+            hint="Push rate and what the wrist shows"
+            onPress={() => router.push(routes.settingsWatch)}
+          />
+        </SettingsCard>
 
         <SettingsSectionTitle>Recording</SettingsSectionTitle>
 

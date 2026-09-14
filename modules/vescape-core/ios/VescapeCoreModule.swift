@@ -1538,6 +1538,12 @@ public class VescapeCoreModule: Module {
       ].contains(key) {
         self.coordinator.reloadTelemetrySettings()
       }
+      // The Watch Mirror is process scoped, not session scoped, so its settings reload cannot ride
+      // on `reloadTelemetrySettings` — that one returns early with no Board Session.
+      // @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/VescapeCoreModule.kt `updateSetting`
+      if ["wearPushRateHz", "wearNavArrowEnabled", "riderColor", "boardMoveStrengthPercent"].contains(key) {
+        self.coordinator.reloadWatchSettings()
+      }
     }
   }
 

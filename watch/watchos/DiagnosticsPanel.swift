@@ -23,6 +23,18 @@ struct DiagnosticsPanel: View {
           row("link", statusLabel)
           row("age", link.lastFrameAt.map { String(format: "%.1fs", context.date.timeIntervalSince($0)) } ?? WatchGauge.dash)
           row("rx", String(format: "%.1f / %.1f Hz", link.receivedHz, link.appliedHz))
+          // The mirrored settings, until the pages that consume them exist (#487 shows the Move
+          // strength, #489/#490 the navigation arrow). Without this the only proof a setting
+          // reached the wrist would be a page that does not draw it yet.
+          row(
+            "color",
+            link.settings.riderColor ?? WatchGauge.dash,
+            // Drawn in the colour it names: a hex string is not something a rider can check by
+            // reading, and a colour the wrist failed to parse falls back and is visibly wrong.
+            value: Palette.rider(link.settings.riderColor) ?? Palette.primaryText
+          )
+          row("nav arrow", link.settings.navArrowEnabled ? "on" : "off")
+          row("move", link.settings.boardMoveStrengthPercent.map { "\($0)%" } ?? WatchGauge.dash)
           if link.rejected > 0 {
             // Not a transient: a lane-count mismatch means the phone and the wrist were built from
             // different commits, and every frame will keep being rejected until one is reinstalled.
@@ -50,11 +62,11 @@ struct DiagnosticsPanel: View {
     return link.reachable ? "reachable" : "unreachable"
   }
 
-  private func row(_ label: String, _ value: String) -> some View {
+  private func row(_ label: String, _ text: String, value: Color = Palette.primaryText) -> some View {
     HStack(spacing: 3) {
       Text(label).foregroundStyle(Palette.secondaryText)
       Spacer(minLength: 2)
-      Text(value).monospacedDigit().foregroundStyle(Palette.primaryText)
+      Text(text).monospacedDigit().foregroundStyle(value)
     }
     .font(.system(size: 12))
   }

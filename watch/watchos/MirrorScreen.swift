@@ -34,6 +34,9 @@ struct MirrorScreen: View {
   @GestureState private var touching = false
   @GestureState private var dragging = false
   @State private var lastInteraction = Date()
+  /// Foreground/background, which is what decides whether the Mirror is awake at all. Ambient is a
+  /// second, narrower question asked only while it is.
+  @Environment(\.scenePhase) private var scenePhase
 
   private var ambient: AmbientMode { AmbientMode(active: isLuminanceReduced) }
 
@@ -85,6 +88,7 @@ struct MirrorScreen: View {
       .task(id: tick) { link.refresh() }
     }
     .onChange(of: isLuminanceReduced) { _, reduced in
+      reportWakeLevel()
       // The wrist goes always-on wherever the rider left it. Ambient only ever draws the gauges, so
       // park both axes there first — otherwise the gauges would be pinned over a control page the
       // rider can no longer swipe away.
@@ -93,6 +97,24 @@ struct MirrorScreen: View {
       control = .gauges
       verticalPagingEnabled = true
     }
+    .onChange(of: scenePhase) { _, _ in reportWakeLevel() }
+    .onAppear { reportWakeLevel() }
+  }
+
+  /// The phone owns the push cadence but not the fact it turns on: only the wrist knows whether it
+  /// is on screen, in the Always On state, or gone. Reported on every change of either input.
+  ///
+  /// @parity /watch/wearos/src/main/java/app/vescape/wear/MainActivity.kt `wakeHeartbeat`
+  private func reportWakeLevel() {
+    let level: WatchMirrorWakeLevel
+    switch scenePhase {
+    case .active: level = isLuminanceReduced ? .ambient : .active
+    // Inactive is the Always On state's phase as much as it is a transition, so it is reported as
+    // ambient rather than as gone: a wrist that is still drawing wants frames, only fewer.
+    case .inactive: level = .ambient
+    default: level = .asleep
+    }
+    link.reportWakeLevel(level)
   }
 
   /// Re-evaluation cadence: the phone's own push interval while the screen is on, and the reduced

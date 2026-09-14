@@ -35,6 +35,16 @@ final class PhoneLink: NSObject, ObservableObject, WCSessionDelegate {
   @Published private(set) var companionInstalled = false
   /// Frames that arrived but did not decode — a phone and a wrist built from different lane counts.
   @Published private(set) var rejected = 0
+  /// The rider's phone settings, as last pushed. Cold state: it is read out of the received
+  /// Application Context at activation, so a wrist restart or a reconnect finds the current values
+  /// already there instead of waiting for the rider to touch a switch again.
+  ///
+  /// @parity /watch/wearos/src/main/java/app/vescape/wear/WatchSettings.kt `SettingsState`
+  @Published private(set) var settings: WatchSettings = .wristDefaults
+
+  /// Latest wake level reported to the phone, and the heartbeat that keeps re-asserting it.
+  private var wakeLevel: WatchMirrorWakeLevel = .asleep
+  private var wakeHeartbeat: Timer?
 
   /// Arrival timestamps inside the rolling window. `applied` diverges from `received` only once
   /// something coalesces frames; today every decoded frame is published, so equal rates are the
@@ -57,6 +67,35 @@ final class PhoneLink: NSObject, ObservableObject, WCSessionDelegate {
     let session = WCSession.default
     session.delegate = self
     session.activate()
+  }
+
+  /// Tell the phone how awake the Mirror is. The phone picks its push cadence from this, so it is
+  /// re-asserted on a heartbeat: an absent level is what lets the phone notice a wrist that stopped
+  /// running without ever getting a chance to say so.
+  ///
+  /// The message is fire-and-forget on the same transport the frames use. A dropped tick costs
+  /// nothing — the next one is 15 s away, and until then the phone keeps the cadence it had.
+  ///
+  /// @parity /watch/wearos/src/main/java/app/vescape/wear/MainActivity.kt `wakeHeartbeat`
+  func reportWakeLevel(_ level: WatchMirrorWakeLevel) {
+    wakeLevel = level
+    sendWakeLevel()
+    wakeHeartbeat?.invalidate()
+    guard level != .asleep else { return }
+    wakeHeartbeat = Timer.scheduledTimer(
+      withTimeInterval: Double(watchMirrorAwakeHeartbeatMs) / 1000,
+      repeats: true
+    ) { [weak self] _ in self?.sendWakeLevel() }
+  }
+
+  private func sendWakeLevel() {
+    let session = WCSession.default
+    guard session.activationState == .activated, session.isReachable else { return }
+    session.sendMessageData(
+      WatchCommandCodec.encode(.mirrorAwake(wakeLevel)),
+      replyHandler: nil,
+      errorHandler: nil
+    )
   }
 
   /// Ages a stopped stream into `disconnected` without an explicit phone message. The UI drives
@@ -104,6 +143,11 @@ final class PhoneLink: NSObject, ObservableObject, WCSessionDelegate {
     activation = session.activationState
     reachable = session.isReachable
     companionInstalled = session.isCompanionAppInstalled
+    // Cold state the system already holds for this app, including from before this launch. Read on
+    // every counterpart change, not only at activation: `receivedApplicationContext` is the latest
+    // value either way, so re-reading it is free and covers a context that landed while the app
+    // was not running.
+    acceptColdState(session.receivedApplicationContext)
     link = {
       guard session.activationState == .activated else { return .unknown }
       if !session.isCompanionAppInstalled { return .phoneOnly }
@@ -131,6 +175,15 @@ final class PhoneLink: NSObject, ObservableObject, WCSessionDelegate {
     refresh()
   }
 
+  /// One context, several channels. Only the channels this build knows are read; the rest are the
+  /// phone's business, and a channel this build has never heard of must not look like a change.
+  ///
+  /// @parity /watch/wearos/src/main/java/app/vescape/wear/MainActivity.kt `dataListener`
+  private func acceptColdState(_ context: [String: Any]) {
+    let next = WatchSettings.decode(context: context)
+    if next != settings { settings = next }
+  }
+
   // MARK: - WCSessionDelegate
 
   func session(
@@ -142,7 +195,17 @@ final class PhoneLink: NSObject, ObservableObject, WCSessionDelegate {
   }
 
   func sessionReachabilityDidChange(_ session: WCSession) {
-    DispatchQueue.main.async { self.syncCounterpart(session) }
+    DispatchQueue.main.async {
+      self.syncCounterpart(session)
+      // A phone that just became reachable has not heard this wrist's wake level since it went
+      // away, and the heartbeat is up to 15 s out. Re-assert immediately so the cadence is right
+      // for the frames that start flowing now, not for the ones after the next tick.
+      if session.isReachable, self.wakeLevel != .asleep { self.sendWakeLevel() }
+    }
+  }
+
+  func session(_ session: WCSession, didReceiveApplicationContext applicationContext: [String: Any]) {
+    DispatchQueue.main.async { self.acceptColdState(applicationContext) }
   }
 
   func sessionCompanionAppInstalledDidChange(_ session: WCSession) {

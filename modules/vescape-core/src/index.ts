@@ -1586,19 +1586,36 @@ export interface AppSettings {
   /**
    * Watch push rate in Hz — the cadence of the dedicated watch tick, independent
    * of the board poll rate. Higher values increase the wrist update rate for
-   * stress-testing the link. Clamped to 1–20 Hz.
+   * stress-testing the link. Clamped to 1–20 Hz, default 4. Applied live on both
+   * platforms; the phone drops to a reduced cadence while the wrist is in its
+   * always-on state, whatever this says.
+   *
+   * The `wear` prefix is storage, not scope: these keys predate the watchOS Mirror
+   * and renaming a persisted key buys a migration for nothing.
+   *
+   * @parity /modules/vescape-core/ios/telemetry/AppDataRepository.swift `wearPushRateHz`
+   * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/AppDataRepository.kt `validWearPushRateHz`
    */
   wearPushRateHz: number
   /**
    * Android-only: bring the Watch Mirror to the foreground on the paired watch when a fresh
    * board session connects (never on mid-ride auto-reconnects). No-op unless the Mirror app
    * is installed and reachable.
+   *
+   * There is no watchOS peer: no public API lets an iPhone app launch its watch companion
+   * (see docs/watchos.md). The settings screen shows the switch disabled on iOS rather than
+   * offering a toggle that does nothing.
+   *
+   * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/watch/WatchMirrorLauncher.kt
    */
   wearAutoLaunchOnConnect: boolean
   /**
-   * Android-only, off by default: draw the direction chevron on the Watch Mirror. Only the
-   * chevron — the wrist keeps drawing the route, rider dot and remaining distance either way.
-   * Mirrored to the wrist over the settings path.
+   * Off by default: draw the direction chevron on the Watch Mirror. Only the chevron — the
+   * wrist keeps drawing the route, rider dot and remaining distance either way. Mirrored to
+   * both wrists as cold state, so it survives a watch restart without the rider re-toggling.
+   *
+   * @parity /modules/vescape-core/ios/watch/WatchSettings.swift `WatchSettings`
+   * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/watch/WatchSettings.kt
    */
   wearNavArrowEnabled: boolean
   /**

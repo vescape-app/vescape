@@ -12,6 +12,7 @@ package expo.modules.vescapecore.watch
  * degrades to "unknown kind, ignored" rather than to a misread command that moves the board.
  *
  * @parity /watch/wearos/src/main/java/app/vescape/wear/WatchCommand.kt
+ * @parity /modules/vescape-core/ios/watch/WatchCommand.swift
  */
 internal const val WATCH_COMMAND_PATH = "/command"
 
