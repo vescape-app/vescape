@@ -51,7 +51,10 @@ enum Rim {
   ///
   /// @parity /watch/wearos/src/main/java/app/vescape/wear/FrameGauges.kt `TEMP_SWEEP`
   static let tempGap: CGFloat = 6
-  static let tempSpanRatio: CGFloat = 0.26
+  static let tempSpanRatio: CGFloat = 0.10
+
+  /// Leave some of the flat bottom edge for the temperature corners.
+  static let batteryEndInset: CGFloat = 10
 
   /// The perimeter, clockwise from top centre. Trimming this by fraction is how every gauge is
   /// drawn, so the corner rounding is described once and no gauge restates it.
@@ -127,7 +130,7 @@ enum Rim {
     private var tempGap: CGFloat { Rim.tempGap / perimeter }
     /// A temperature starts where the battery stopped and has to get through the corner arc before
     /// it reaches the straight edge, so the corner is part of its length rather than a gap in it.
-    private var tempSpan: CGFloat { (corner + side * Rim.tempSpanRatio) / perimeter }
+    private var tempSpan: CGFloat { (corner + Rim.batteryEndInset + side * Rim.tempSpanRatio) / perimeter }
 
     /// Speed climbs the left edge toward the top, duty the right: the same two quadrants Android
     /// uses, and the same direction of travel, so a rider moving between the wrists reads them the
@@ -137,7 +140,10 @@ enum Rim {
 
     /// Battery owns the bottom edge and only the bottom edge, filling left to right.
     var battery: RimSpan {
-      RimSpan(origin: 1 - bottomEdgeStart, head: bottomEdgeStart)
+      RimSpan(
+        origin: 1 - bottomEdgeStart - Rim.batteryEndInset / perimeter,
+        head: bottomEdgeStart + Rim.batteryEndInset / perimeter
+      )
     }
 
     /// Temperatures continue out of the battery line through the bottom corners and up the side
@@ -152,12 +158,12 @@ enum Rim {
     /// Fractions increase clockwise, so "onward from the bottom edge" is an increase on the left
     /// and a decrease on the right.
     var motorTemp: RimSpan {
-      let origin = 1 - bottomEdgeStart + tempGap
+      let origin = battery.origin + tempGap
       return RimSpan(origin: origin, head: origin + tempSpan)
     }
 
     var ctrlTemp: RimSpan {
-      let origin = bottomEdgeStart - tempGap
+      let origin = battery.head - tempGap
       return RimSpan(origin: origin, head: origin - tempSpan)
     }
   }

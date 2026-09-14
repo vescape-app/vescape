@@ -51,16 +51,15 @@ struct FrameLayout: View {
 
         // Scale the temperature layer around the screen centre, matching Android's outward
         // movement. The battery has its own layer because it retreats straight down.
-        VStack(spacing: 0) {
-          Spacer(minLength: 0)
-          bottomReadouts(blind: blind, temperatures: true)
-        }
+        temperatureReadouts(blind: blind)
         .scaleEffect(1 + TEMP_FOCUS_SPREAD * focus)
         .opacity(fadeOut(focus))
 
         VStack(spacing: 0) {
           Spacer(minLength: 0)
-          bottomReadouts(blind: blind, temperatures: false)
+          secondaryValue(WatchGauge.batteryPercent(frame.battery, blind: blind), color: batteryColor)
+            .accessibilityLabel("Battery")
+            .padding(.bottom, BOTTOM_READOUT_INSET)
         }
         .offset(y: BATTERY_FOCUS_DROP * focus)
         .opacity(fadeOut(focus))
@@ -141,44 +140,58 @@ struct FrameLayout: View {
     .frame(maxWidth: .infinity)
   }
 
-  /// Motor and controller sit over the corners their own arcs grow out of, battery between them
-  /// over its own. Wear OS bends these along the rim; a rectangle has a flat bottom edge and three
-  /// readouts fit across it upright, which is easier to read and needs no curved text at all.
-  private func bottomReadouts(blind: Bool, temperatures: Bool) -> some View {
-    HStack(alignment: .bottom, spacing: 0) {
-      labelled(
-        "MOTOR", WatchGauge.temp(frame.motorTemp, blind: blind),
-        ambient.lane(frame.motorTemp, muted: muted, Palette.motorTemp)
+  /// Values sit inside the lower corners; labels follow the straight side above each value.
+  /// The entire layer still spreads from the screen centre during a swipe.
+  private func temperatureReadouts(blind: Bool) -> some View {
+    GeometryReader { geometry in
+      let metrics = Rim.Metrics(size: geometry.size, inset: Rim.inset)
+      let valueInset = metrics.radius * 0.85
+      let valueY = metrics.rect.maxY - metrics.radius * 0.6
+      let rim = Rim.path(in: geometry.size, inset: Rim.inset)
+      let lineTop = rim.trimmedPath(from: 0, to: metrics.ctrlTemp.head).currentPoint?.y
+        ?? metrics.rect.maxY - metrics.radius
+      let labelY = lineTop + TEMP_LABEL_LENGTH / 2
+
+      temperatureReadout(
+        "MOTOR", value: WatchGauge.temp(frame.motorTemp, blind: blind),
+        color: ambient.lane(frame.motorTemp, muted: muted, Palette.motorTemp),
+        valuePosition: CGPoint(x: metrics.rect.minX + valueInset, y: valueY),
+        labelPosition: CGPoint(x: metrics.rect.minX + 6, y: labelY), rotation: 90
       )
-      .opacity(temperatures ? 1 : 0)
-      .accessibilityHidden(!temperatures)
-      labelled(
-        "BATT", WatchGauge.batteryPercent(frame.battery, blind: blind), batteryColor
+      temperatureReadout(
+        "CTRL", value: WatchGauge.temp(frame.ctrlTemp, blind: blind),
+        color: ambient.lane(frame.ctrlTemp, muted: muted, Palette.ctrlTemp),
+        valuePosition: CGPoint(x: metrics.rect.maxX - valueInset, y: valueY),
+        labelPosition: CGPoint(x: metrics.rect.maxX - 6, y: labelY), rotation: -90
       )
-      .opacity(temperatures ? 0 : 1)
-      .accessibilityHidden(temperatures)
-      labelled(
-        "CTRL", WatchGauge.temp(frame.ctrlTemp, blind: blind),
-        ambient.lane(frame.ctrlTemp, muted: muted, Palette.ctrlTemp)
-      )
-      .opacity(temperatures ? 1 : 0)
-      .accessibilityHidden(!temperatures)
     }
-    .padding(.bottom, BOTTOM_READOUT_INSET)
-    .padding(.horizontal, Rim.innerInset)
   }
 
-  private func labelled(_ label: String, _ value: String, _ color: Color) -> some View {
-    VStack(spacing: 0) {
-      Text(value)
-        .font(.system(size: SECONDARY_FONT_SIZE, weight: .medium, design: .rounded))
-        .foregroundStyle(color)
-        .monospacedDigit()
+  private func temperatureReadout(
+    _ label: String, value: String, color: Color,
+    valuePosition: CGPoint, labelPosition: CGPoint, rotation: Double
+  ) -> some View {
+    ZStack {
+      secondaryValue(value, color: color)
+        .position(valuePosition)
       Text(label)
-        .font(.system(size: 8))
+        .font(.system(size: 7))
         .foregroundStyle(Palette.secondaryText)
+        .frame(width: TEMP_LABEL_LENGTH, height: 9, alignment: rotation > 0 ? .leading : .trailing)
+        .rotationEffect(.degrees(rotation))
+        .position(labelPosition)
     }
-    .frame(maxWidth: .infinity)
+    .accessibilityElement(children: .ignore)
+    .accessibilityLabel(label)
+    .accessibilityValue(value)
+  }
+
+  private func secondaryValue(_ value: String, color: Color) -> some View {
+    Text(value)
+      .font(.system(size: SECONDARY_FONT_SIZE, weight: .medium, design: .rounded))
+      .foregroundStyle(color)
+      .monospacedDigit()
+      .fixedSize()
   }
 
   // MARK: - Lane colours
@@ -206,12 +219,13 @@ struct FrameLayout: View {
 let EMPTY_FRAME = WatchFrame()
 
 /// Clear of the clock, and clear of the two gauges climbing toward it.
-private let HERO_TOP_INSET: CGFloat = 22
+private let HERO_TOP_INSET: CGFloat = 28
 private let HERO_FONT_SIZE: CGFloat = 38
 
 /// A dash is set well below hero size so it reads as "nothing here" rather than as a filled bar.
 private let HERO_EMPTY_FONT_SIZE: CGFloat = 20
-private let SECONDARY_FONT_SIZE: CGFloat = 15
+private let SECONDARY_FONT_SIZE: CGFloat = 14
+private let TEMP_LABEL_LENGTH: CGFloat = 28
 private let BOTTOM_READOUT_INSET: CGFloat = 12
 
 /// The quieter gauges carry less glow than the headline pair, the same ratios Android uses.
