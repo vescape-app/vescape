@@ -24,7 +24,9 @@ struct MirrorScreen: View {
   /// environment value is the whole of it.
   @Environment(\.isLuminanceReduced) private var isLuminanceReduced
 
-  @State private var vertical: VerticalPage = .gauges
+  /// Optional because `scrollPosition(id:)` binds an optional; it is only nil mid-flight between
+  /// pages, and every read below treats that as "not on the gauges".
+  @State private var vertical: VerticalPage? = .gauges
   @State private var control: ControlPage = .gauges
   /// A page is interactive only once it has settled: a tap landing mid-transition belongs to the
   /// gesture, not to the control it happened to be over.
@@ -73,19 +75,34 @@ struct MirrorScreen: View {
 
   // MARK: - Axes
 
-  /// One `TabView` owns the whole vertical axis, and the crown with it. Android stacks the same
+  /// One scroll view owns the whole vertical axis, and the crown with it. Android stacks the same
   /// four pages; nesting two vertical pagers there made them compete for the same drag, and the
   /// same would be true of two crown-bound views here.
+  ///
+  /// A paging `ScrollView` rather than `TabView(.verticalPage)`, for one reason: the vertical page
+  /// style draws a dot indicator down the right edge and offers no way to turn it off —
+  /// `indexDisplayMode` exists only on `.page`. Those dots land exactly on the duty gauge, which
+  /// runs up that same edge. watchOS binds the Digital Crown to a scroll view natively, so this
+  /// keeps the crown, keeps the swipe, gains page snapping, and lets the indicator be hidden.
   private var pages: some View {
-    TabView(selection: $vertical) {
-      ForEach(VerticalPage.allCases) { page in
-        verticalContent(page)
-          .tag(page)
+    ScrollView(.vertical) {
+      LazyVStack(spacing: 0) {
+        ForEach(VerticalPage.allCases) { page in
+          verticalContent(page)
+            // Each page is exactly one screen, which is what makes paging land on page boundaries.
+            .containerRelativeFrame([.horizontal, .vertical])
+            .id(page)
+        }
       }
+      .scrollTargetLayout()
     }
-    .tabViewStyle(.verticalPage)
+    .scrollTargetBehavior(.paging)
+    .scrollPosition(id: $vertical)
+    // The rim gauges are the furniture on this edge; a scroll bar over them is the thing being
+    // fixed here, not a thing to keep.
+    .scrollIndicators(.hidden)
     // Ambient has already parked the axis, and a page animation there is wasted panel.
-    .disabled(isLuminanceReduced)
+    .scrollDisabled(isLuminanceReduced)
     .onChange(of: vertical) { _, _ in beginSettling() }
   }
 
