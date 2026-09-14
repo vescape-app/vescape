@@ -39,3 +39,92 @@ Verify changing frame timestamps with the phone locked, wrist raised and lowered
 Then port the remaining Android channels, controls, and rectangular UI with bidirectional parity links and matching contract fixtures. Preserve the phone-side Board Move timeout, immediate stop on release, and rejection of controls on stale state. Validate delayed and lost commands before testing motor movement.
 
 If the runtime experiment cannot meet wrist-down behavior, record the measured limitation and revise the mechanism. Do not silently replace the agreed behavior with updates only after raising the wrist.
+
+## Project setup (#484)
+
+The watch app is a native SwiftUI companion. Its durable source is `watch/watchos/`, the Apple peer
+of `watch/wearos/`; the generated `ios/` tree holds no watch source of its own.
+
+- **Target generation.** `@bacons/apple-targets` builds the target from
+  `watch/watchos/expo-target.config.js` (`type: 'watch'`). It is registered once in `app.config.ts`
+  with `root: '.'` and `match: '{targets/*,watch/watchos}'` — one registration covering both the
+  extension root and the watch root. The plugin cannot be listed twice: its Xcode base-mod provider
+  must be the last mod added, and a second registration fails the prebuild with
+  `Cannot add mod to "ios.xcodeProjectBeta2"`.
+- **What prebuild produces.** `SDKROOT=watchos`, `TARGETED_DEVICE_FAMILY=4`,
+  `WATCHOS_DEPLOYMENT_TARGET=10.0`, an Embed Watch Content phase on the iPhone app, a target
+  dependency, and a `VescapeWatch` scheme. Targets are keyed by name, so repeated prebuilds update
+  the one target instead of appending another.
+- **Identity.** `bundleIdentifier: '.watchkitapp'` appends to the phone's, so the variants stay
+  paired with no second switch to maintain: `app.vescape.dev` → `app.vescape.dev.watchkitapp`,
+  `app.vescape` → `app.vescape.watchkitapp`. `WKCompanionAppBundleIdentifier` is filled from the
+  phone target. Version and build number come from the phone app (`CFBundleShortVersionString`
+  0.92.1, `CFBundleVersion` from `VERSION_CODE`). Signing uses `APPLE_TEAM_ID` from `.env.local`,
+  same as the rest of the project — nothing machine-specific is committed.
+- **Deployment target 10.0.** Series 6 runs anything from watchOS 7 to 26 and the rider's installed
+  version is not confirmed, so the floor sits below it rather than forcing an OS update before the
+  first test. Nothing in this slice needs newer API; WatchConnectivity is watchOS 2.
+
+### Building and running
+
+The watch target compiles against the watchOS simulator SDK:
+
+```
+xcodebuild build -project ios/vescapedev.xcodeproj -scheme VescapeWatch -sdk watchsimulator26.5
+```
+
+**The watchOS platform must be installed** (`xcodebuild -downloadPlatform watchOS`). Without the
+simulator runtime, Xcode refuses the _iPhone_ scheme outright — "This scheme builds an embedded
+Apple Watch app. watchOS 26.5 must be installed in order to run the scheme" — so `bun run ios`
+fails on a machine that has never done watchOS work, even though nothing about the phone app
+changed. This is a machine setup step, not a project one; do not work around it in project config.
+
+Installing on the paired watch is Xcode's normal flow: build and run the `VescapeWatch` scheme with
+the watch selected as destination, or install the phone app and let the watch pull the embedded
+companion from the Watch app on iPhone.
+
+### Telemetry path
+
+`vescape-core` owns the phone side, beside the telemetry truth, so the wrist keeps updating while
+JS is backgrounded mid-ride:
+
+- `ios/watch/WatchFrame.swift` — the frame model, builder, encoder and decoder. Symlinked into
+  `watch/watchos/`, so phone and wrist compile the _same_ lane order. This is the one place watchOS
+  is better off than Android, where the wrist decoder is a separate Gradle app and the lane list is
+  duplicated by convention (ADR-0018).
+- `ios/watch/WatchTick.swift` — the cadence, 4 Hz, matching Android's active-mode default.
+- `ios/watch/WatchTelemetryPusher.swift` — `WCSession.sendMessageData`, gated on
+  activated + paired + app installed + reachable.
+
+Started from `VescapeLaunchSubscriber` at process launch, not at session start: the wrist mirrors
+the phone, not the board session. Android starts the same tick in `CoreForegroundService.onCreate`
+and stops it on service destroy; iOS has no service to bound it by, so there is a start and no stop.
+
+Not yet filled on iOS, and marked `TODO(ios parity)` in `BoardSessionController`:
+
+- Navigation and route-placement lanes (5–10). They ride as `NaN`, which is exactly the "no
+  Navigation" case the wrist already draws.
+- Live `max_duty` exclusion. Android nulls duty per live sample; iOS decides exclusion at
+  bucket-build time and has no live flag, so the wrist shows raw duty.
+- The rider-configurable refresh rate and the reduced ambient cadence.
+
+### Lifecycle instrumentation
+
+The wrist readout is deliberately minimal and deliberately instrumented — the runtime question
+below the metrics is what this slice exists to answer, and a finished UI on an unproven execution
+model would make a stalled mirror look healthy. `MirrorView` shows session activation state, phone
+reachability, companion-installed, **frame age**, received Hz and drawn Hz. Age is the one that
+answers the wrist-down question: if the app stops executing while lowered, age climbs while the
+numbers above it freeze at a value that still looks plausible.
+
+`WKSupportsAlwaysOnDisplay` is set, and the readout uses `TimelineView` rather than a timer so the
+system decides the ambient re-evaluation rate — the degradation is itself the measurement.
+
+Phone-side counterpart transitions (activation, install, reachability) and send failures are
+recorded as Local Diagnostic Events, one per streak, so a field session is readable afterwards
+instead of only while someone is watching the wrist.
+
+**Not yet measured.** Nothing in this section has been run against a physical Series 6 or a locked
+iPhone. No claim is made here about wrist-down execution, ambient cadence, behavior with no route,
+stationary behavior, connectivity loss and restoration, or permission-denied behavior. Those
+readings, and the decision the last acceptance criterion turns on, belong to the device session.

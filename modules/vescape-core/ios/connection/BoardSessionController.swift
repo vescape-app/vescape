@@ -6,6 +6,10 @@ import UserNotifications
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/connection/BoardSessionController.kt `FAULT_CODE_UNKNOWN`
 private let faultCodeUnknown = -1
 private let manualFaultLogMaxSpeedKmh = 1.0
+/// Watch Frame cadence. Matches Android's active-mode default (4 Hz); the rider-configurable rate
+/// and the reduced ambient cadence follow with the rest of the port.
+/// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/connection/BoardSessionController.kt `WATCH_FRAME_INTERVAL_MS`
+private let WATCH_FRAME_INTERVAL_MS: Int64 = 250
 
 /// Everything a runtime connect needs, resolved from the stored Board Link before the session
 /// starts. The transport is already known (ADR 0015 / #108) — connect never discovers it.
@@ -274,6 +278,19 @@ internal final class BoardSessionController: VescGattListener {
   /// Persistent Board Session status surface (Live Activity) — the iOS peer of Android's foreground
   /// notification. Native-driven so it survives screen-off and a dead JS runtime.
   private lazy var liveActivity = RideLiveActivityController()
+  /// Phone -> wrist Watch Frame path (ADR-0019). Owned here, beside the telemetry truth, so the
+  /// wrist keeps updating while JS is backgrounded mid-ride.
+  private lazy var watchPusher = WatchTelemetryPusher(record: { [weak self] name, props in
+    self?.recordWatchDiagnostic(name, props)
+  })
+  private lazy var watchTick = WatchTick(
+    scheduler: scheduler,
+    snapshot: { [weak self] in self?.watchSnapshot() ?? WatchSnapshot() },
+    isStale: { [weak self] in self?.isTelemetryStale() ?? true },
+    canPush: { [weak self] in self?.watchPusher.canPush ?? false },
+    push: { [weak self] frame in self?.watchPusher.pushFrame(frame) },
+    intervalMs: WATCH_FRAME_INTERVAL_MS
+  )
   /// Critical local notifications are a narrow interruptive path only. Permission is explicit and
   /// never requested from the telemetry/connect path.
   private var criticalNotificationFaultCode: Int?
@@ -2388,6 +2405,46 @@ internal final class BoardSessionController: VescGattListener {
     ]
     for (key, value) in extra { props[key] = value }
     DiagnosticsRecorder.shared.record(eventName: eventName, properties: props)
+  }
+
+  // MARK: - Watch Mirror (phone -> wrist Watch Frames)
+
+  /// Start the wrist mirror for the lifetime of the process. Called from `VescapeLaunchSubscriber`,
+  /// not from session start: the wrist mirrors the phone, not the board session, so frames keep
+  /// flowing while no board is selected or connected (empty board lanes, `stale` set).
+  ///
+  /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/connection/BoardSessionController.kt `onCreate`
+  /// @platform-diff Android starts this from `CoreForegroundService.onCreate` and stops it in
+  /// `onServiceDestroy`. iOS has no service to bound it by — the process is the scope — so there is
+  /// a start and no stop.
+  func startWatchMirror() {
+    watchPusher.start()
+    watchTick.start()
+  }
+
+  /// Latest cold-path snapshot: board lanes are empty without telemetry.
+  ///
+  /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/connection/BoardSessionController.kt `watchSnapshot`
+  /// TODO(ios parity): navigation and route-placement lanes (#486 onward). Android fills them from
+  /// Route Progress and the pushed route origin; iOS has no route mirror on the wrist yet, so they
+  /// ride as null — which is exactly the "no Navigation" case the wrist already draws.
+  private func watchSnapshot() -> WatchSnapshot {
+    let current = latestTelemetry
+    return WatchSnapshot(
+      speed: current?.speed,
+      dutyCycle: current?.dutyCycle,
+      // TODO(ios parity): Android nulls duty while the live sample is excluded from `max_duty`. iOS
+      // decides that exclusion at bucket-build time, not per live sample, so there is no live flag
+      // to read here and the wrist shows raw duty.
+      dutyExcluded: current == nil,
+      batterySoc: current != nil ? latestBatterySoc : nil,
+      motorTemp: current?.tempMotor,
+      ctrlTemp: current?.tempMosfet
+    )
+  }
+
+  private func recordWatchDiagnostic(_ name: String, _ props: [String: Any?]) {
+    DiagnosticsRecorder.shared.record(eventName: name, properties: props)
   }
 
   // MARK: - Live Activity (Board Session status surface)
