@@ -83,6 +83,21 @@ Installing on the paired watch is Xcode's normal flow: build and run the `Vescap
 the watch selected as destination, or install the phone app and let the watch pull the embedded
 companion from the Watch app on iPhone.
 
+### Build verification, 2026-09-14
+
+Run on this machine, unsigned:
+
+- `VescapeWatch` against `watchsimulator26.5` — succeeds.
+- The iPhone app, Debug, iOS Simulator — succeeds, and the product carries
+  `vescapedev.app/Watch/VescapeWatch.app`.
+- The iPhone app, Release, `generic/platform=iOS` — succeeds, same embedded path. The watch binary
+  is `arm64_32` + `arm64`, so Series 6 is covered. This is the product `xcodebuild archive`
+  packages, which is as far as the archive claim can be taken without signing credentials: **no
+  archive or App Store export has been produced.**
+
+Release builds also need `SENTRY_DISABLE_AUTO_UPLOAD=true` (or a `SENTRY_AUTH_TOKEN`) locally. That
+gate predates the watch app and has nothing to do with it.
+
 ### Telemetry path
 
 `vescape-core` owns the phone side, beside the telemetry truth, so the wrist keeps updating while
