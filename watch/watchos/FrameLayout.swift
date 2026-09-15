@@ -217,7 +217,12 @@ struct FrameLayout: View {
       // Battery-% alignment: the 14pt rounded font's layout box sits ~2pt above where its glyphs
       // read, so the row-stepped value needs that much extra drop to share the battery baseline.
       let valueY = metrics.rect.maxY - BOTTOM_READOUT_INSET - SECONDARY_FONT_SIZE * 0.6 + TEMP_VALUE_NUDGE
-      let labelY = valueY - TEMP_LABEL_GAP
+      // The label anchors at the temperature arc's upper end: it starts where the arc reaches the
+      // straight side edge and runs down beside the value below it.
+      let rim = Rim.path(in: geometry.size, inset: Rim.inset)
+      let lineTop = rim.trimmedPath(from: 0, to: metrics.ctrlTemp.head).currentPoint?.y
+        ?? metrics.rect.maxY - metrics.radius
+      let labelY = lineTop + TEMP_LABEL_LENGTH / 2
 
       temperatureReadout(
         "MOTOR", value: WatchGauge.temp(frame.motorTemp, blind: blind),
@@ -302,8 +307,6 @@ private let HERO_FONT_SIZE: CGFloat = 38
 private let HERO_EMPTY_FONT_SIZE: CGFloat = 20
 private let SECONDARY_FONT_SIZE: CGFloat = 14
 private let TEMP_LABEL_LENGTH: CGFloat = 28
-/// Label sits a fixed step above its value, so the pair moves with the battery % row.
-private let TEMP_LABEL_GAP: CGFloat = 15
 private let TEMP_VALUE_NUDGE: CGFloat = 2
 private let BOTTOM_READOUT_INSET: CGFloat = 12
 
