@@ -303,7 +303,7 @@ private let HERO_EMPTY_FONT_SIZE: CGFloat = 20
 private let SECONDARY_FONT_SIZE: CGFloat = 14
 private let TEMP_LABEL_LENGTH: CGFloat = 28
 private let TEMP_VALUE_NUDGE: CGFloat = 2
-private let BOTTOM_READOUT_INSET: CGFloat = 12
+private let BOTTOM_READOUT_INSET: CGFloat = 8
 
 /// @parity /watch/wearos/src/main/java/app/vescape/wear/FrameGauges.kt `HERO_FOCUS_RISE`
 private let HERO_FOCUS_RISE: CGFloat = 30
