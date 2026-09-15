@@ -287,6 +287,13 @@ final class PhoneLink: NSObject, ObservableObject, WCSessionDelegate {
     refresh()
   }
 
+  /// Same forecast decoder as the phone context, without replacing unrelated channels.
+  /// @parity /watch/wearos/src/main/java/app/vescape/wear/FrameReplay.kt `loadScene`
+  @MainActor
+  func acceptReplayWeather(_ forecast: WatchWeather) {
+    weather = WatchWeather.decode(forecast.payload)
+  }
+
   /// One context, several channels. Only the channels this build knows are read; the rest are the
   /// phone's business, and a channel this build has never heard of must not look like a change.
   ///

@@ -66,6 +66,27 @@ struct MirrorScreen: View {
         frame
           .allowsHitTesting(false)
       }
+      .overlay(alignment: .topLeading) {
+        if case .disconnected = link.mirror.status {
+          EmptyView()
+        } else {
+          HStack(spacing: 0) {
+            WeatherReadout(
+              forecast: freshWeather,
+              ambient: ambient,
+              onTap: interactionEnabled(.gauges) ? { withAnimation { vertical = .weather } } : nil
+            )
+            .frame(maxWidth: .infinity)
+            Color.clear
+              .frame(maxWidth: .infinity)
+              .frame(height: 0)
+          }
+          .opacity(fadeOut(max(navFocus, awayFocus)))
+          .allowsHitTesting(interactionEnabled(.gauges))
+          .padding(.horizontal, Rim.innerInset)
+          .padding(.top, 10)
+        }
+      }
       .onPreferenceChange(PagePositionKey.self) { values in
         var transaction = Transaction()
         transaction.disablesAnimations = true
@@ -258,17 +279,8 @@ struct MirrorScreen: View {
       if case .disconnected = link.mirror.status {
         DisconnectedLayout(link: link.link, ambient: ambient)
       } else {
-        ZStack {
-          // Keep this pager slot even when WeatherReadout has no forecast to render.
-          Color.clear
-          WeatherReadout(
-            forecast: freshWeather,
-            ambient: ambient,
-            // Only tappable while this page actually owns the screen; mid-transition the target
-            // would swallow the drag that is moving the pager.
-            onTap: interactionEnabled(.gauges) ? { withAnimation { vertical = .weather } } : nil
-          )
-        }
+        // Keep the pager slot; weather and telemetry are pinned above it.
+        Color.clear
       }
     case .move:
       MoveScreen(

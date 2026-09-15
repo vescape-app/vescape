@@ -1,21 +1,17 @@
 import SwiftUI
 
-/// The forecast strip on the gauges page: condition glyph and temperature, with the chance of rain
-/// stacked under them whenever there is one. Sized to stay quiet — a rider glancing at speed should
-/// register it without it competing with a gauge, which is also why rain goes below rather than
-/// beside.
+/// Compact forecast above speed: condition and temperature, with rain below.
 ///
 /// Renders nothing until the phone has pushed a forecast, so the gauges page is unchanged on a
 /// phone that has not seen a GPS Fix yet. Tapping it opens the weather page.
 ///
 /// Wear OS hangs this under its own wall clock, in the gap the rim arcs leave at the top of the
-/// circle. watchOS draws the system clock there and the app has no clock of its own, so the strip
-/// takes the centre the rectangle leaves free between the heroes and the battery readout — the same
-/// place every other gauges-page content sits.
+/// circle. watchOS puts the strip inside the top-left rim, above the speed number and to the left
+/// of the system clock.
 ///
 /// @parity /watch/wearos/src/main/java/app/vescape/wear/WeatherReadout.kt `WeatherReadout`
 /// @platform-diff Wear OS places the strip under its own wall clock; on watchOS the system clock
-///   owns that band, so the strip sits in the free centre instead.
+///   sits at the upper right, so the strip sits above speed at the upper left.
 struct WeatherReadout: View {
   let forecast: WatchWeather?
   var ambient: AmbientMode = .off
@@ -34,8 +30,8 @@ struct WeatherReadout: View {
     let textColor = ambient.skeleton(Palette.secondaryText)
     let rainColor = ambient.active ? Palette.dimText : Palette.weather("cloud-rain")
 
-    return VStack(spacing: 1) {
-      HStack(spacing: 3) {
+    return VStack(alignment: .trailing, spacing: 1) {
+      HStack(spacing: 1) {
         WeatherGlyph(slug: forecast.icon, size: ICON_SIZE, color: iconColor)
         Text("\(forecast.temperatureC)°")
           .font(.system(size: FONT_SIZE))
@@ -54,6 +50,7 @@ struct WeatherReadout: View {
         .foregroundStyle(rainColor)
       }
     }
+    .fixedSize()
     .contentShape(Rectangle())
     // A disabled tap gesture still installs a gesture recognizer, so the modifier has to be absent
     // rather than switched off.
@@ -77,7 +74,7 @@ private struct OptionalTap: ViewModifier {
   }
 }
 
-private let ICON_SIZE: CGFloat = 13
+private let ICON_SIZE: CGFloat = 8
 private let DROP_SIZE: CGFloat = 8
-private let FONT_SIZE: CGFloat = 13
+private let FONT_SIZE: CGFloat = 9
 private let RAIN_FONT_SIZE: CGFloat = 9

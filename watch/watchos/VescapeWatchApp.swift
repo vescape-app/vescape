@@ -11,16 +11,18 @@ struct VescapeWatchApp: App {
   var body: some Scene {
     WindowGroup {
       MirrorScreen(link: link)
-        // Activated once, on appearance, and never torn down: `WCSession` is owned by the system
-        // and the wrist has nothing else to do with its lifetime.
+        // Replay owns its inputs; live phone context must not overwrite the fixtures.
+        // @parity /watch/wearos/src/main/java/app/vescape/wear/MainActivity.kt `onStart`
         .onAppear {
-          link.activate()
           // Simulator only, and only when asked for by launch argument. On a watch and on a device
           // build `requestedFixture` is nil and this is not reachable.
           if let fixture = FrameReplayer.requestedFixture {
+            guard replayer == nil else { return }
             let replayer = FrameReplayer(link: link)
             replayer.start(fixture: fixture)
             self.replayer = replayer
+          } else {
+            link.activate()
           }
         }
     }

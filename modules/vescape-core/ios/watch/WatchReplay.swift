@@ -1,5 +1,48 @@
 import Foundation
 
+/// Shared with Wear OS; forecast times are anchored once when replay starts.
+/// @parity /watch/wearos/src/main/java/app/vescape/wear/FrameReplay.kt `ReplaySceneParser.parseWeather`
+enum ReplaySceneParser {
+  static func parseWeather(json: String, nowMs: Int64, minuteOfDay: Int) -> WatchWeather? {
+    guard let fixture = try? JSONDecoder().decode(WeatherFixture.self, from: Data(json.utf8)) else {
+      return nil
+    }
+    let firstHour = (minuteOfDay / 60 + 1) * 60
+    return WatchWeather(
+      temperatureC: fixture.temperatureC, icon: fixture.icon, label: fixture.label,
+      precipitationProbability: fixture.precipitationProbability,
+      hourly: fixture.hourly.enumerated().map { index, hour in
+        WatchWeatherHour(
+          minuteOfDay: (firstHour + index * 60) % (24 * 60),
+          temperatureC: hour.temperatureC, icon: hour.icon,
+          precipitationProbability: hour.precipitationProbability
+        )
+      },
+      sunriseMinuteOfDay: fixture.sunriseMinuteOfDay,
+      sunsetMinuteOfDay: fixture.sunsetMinuteOfDay,
+      latitude: fixture.latitude, longitude: fixture.longitude, fetchedAtMs: nowMs
+    )
+  }
+
+  private struct WeatherFixture: Decodable {
+    let temperatureC: Int
+    let icon: String
+    let label: String
+    let precipitationProbability: Int
+    let sunriseMinuteOfDay: Int
+    let sunsetMinuteOfDay: Int
+    let latitude: Double?
+    let longitude: Double?
+    let hourly: [Hour]
+
+    struct Hour: Decodable {
+      let temperatureC: Int
+      let icon: String
+      let precipitationProbability: Int
+    }
+  }
+}
+
 /// One recorded moment: the frame to show and the recording-relative time to show it at.
 ///
 /// @parity /watch/wearos/src/main/java/app/vescape/wear/FrameReplay.kt `ReplaySample`

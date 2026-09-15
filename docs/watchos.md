@@ -270,6 +270,20 @@ explicit launch argument, so a real watch and a device build have no replay path
 read from the repo tree rather than bundled — a copy is a second artefact that drifts, and the whole
 point is that both wrists are fed the same bytes.
 
+Both platforms also read `watch/wearos/src/main/assets/watch-weather.json`. watchOS finds it beside
+the selected JSONL file; Wear OS loads it from assets. It supplies 17°C, partly cloudy conditions,
+12 forecast hours, sunrise/sunset and Warsaw coordinates (52.2297, 21.0122). Forecast freshness is
+stamped at replay start and hourly labels begin at the next local full hour, wrapping at midnight.
+Restart replay after three hours to refresh it. Replay skips live phone listeners on both platforms
+so an empty phone context cannot erase the fixture. Wear OS already supported this companion asset;
+watchOS now uses the same data and timing rules.
+
+The forecast is synthetic; radar uses real network imagery at the fixture coordinates. Open weather
+to check temperature, hourly scrolling and sun times, then radar to check loading and animation.
+No rain at that location can mean little visible radar color. A fetch failure is recorded in
+diagnostics. This checks rendering and radar networking, not phone-to-watch forecast delivery.
+Use the existing `bun run wear:replay` workflow for the same weather/radar inputs on Wear OS.
+
 ```
 xcodebuild build -project ios/vescapedev.xcodeproj -target VescapeWatch \
   -sdk watchsimulator26.5 -configuration Debug CODE_SIGNING_ALLOWED=NO
@@ -325,8 +339,8 @@ Keep these constraints when changing this screen:
 
 - Keep paging and gauge bounds aligned; changing only the gauge drawing does not enlarge the
   pager's touch region. Check page alignment before changing gesture arbitration.
-- Keep a full-size gauges page even without weather. A conditional `WeatherReadout` can render
-  nothing; its containing `ZStack` and `Color.clear` preserve the horizontal page slot.
+- Keep a full-size gauges page even without weather. `Color.clear` preserves the horizontal
+  page slot; the conditional weather readout is pinned outside the pager with the telemetry.
 - Move uses native `ButtonStyle.configuration.isPressed` tracking. Avoid adding a competing
   zero-distance drag recognizer to the buttons or root solely to observe touches.
 - Keep the horizontal scroll-enabled override when the outer vertical pager is locked. Both
@@ -509,9 +523,9 @@ telling them the watch has no network next time would be a lie.
 - **SF Symbols, not ported artwork.** Wear OS bundles Phosphor drawables because Android has no
   system set worth the name. The slugs — and therefore which condition gets which shape — are still
   the phone's; only the artwork is the platform's.
-- **The forecast strip sits in the free centre.** Wear OS hangs it under its own wall clock, in the
-  gap the rim arcs leave at the top. watchOS draws the system clock there and the app has no clock
-  of its own, so the strip takes the centre the rectangle leaves free, and tapping it opens the
+- **The forecast strip sits above speed at the top left**, inside the rim. Wear OS hangs it under
+  its own wall clock; watchOS leaves the upper right for the system clock. The compact row is pinned
+  outside the pager and uses the telemetry fade as pages move. Tapping it opens the
   weather page — only while the gauges page actually owns the screen, or the target would swallow
   drags meant for the pagers.
 

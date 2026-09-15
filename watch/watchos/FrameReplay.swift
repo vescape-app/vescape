@@ -50,6 +50,22 @@ final class FrameReplayer {
     guard !samples.isEmpty else { return }
     task = Task { @MainActor [samples, link] in
       link.recordReplay(fixture: (fixture as NSString).lastPathComponent, sampleCount: samples.count)
+      // Same companion asset as Wear OS, beside either ride or sweep telemetry.
+      // @parity /watch/wearos/src/main/java/app/vescape/wear/FrameReplay.kt `loadScene`
+      let weatherURL = URL(fileURLWithPath: fixture).deletingLastPathComponent()
+        .appendingPathComponent("watch-weather.json")
+      if let json = try? String(contentsOf: weatherURL, encoding: .utf8) {
+        let nowMs = Int64(Date().timeIntervalSince1970 * 1000)
+        if let weather = ReplaySceneParser.parseWeather(
+          json: json, nowMs: nowMs, minuteOfDay: watchMinuteOfDay(epochMs: nowMs)
+        ) {
+          link.acceptReplayWeather(weather)
+        } else {
+          print("[replay] invalid weather fixture: \(weatherURL.path)")
+        }
+      } else {
+        print("[replay] missing weather fixture: \(weatherURL.path)")
+      }
       while !Task.isCancelled {
         var previous: Int64 = 0
         for sample in samples {

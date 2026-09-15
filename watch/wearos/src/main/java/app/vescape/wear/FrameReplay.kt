@@ -98,6 +98,7 @@ object ReplaySceneParser {
      * The fixture forecast, anchored to [nowMs]: the fixture carries no clock times, so the hours are
      * laid out from the next full hour and the reading is stamped as fresh. A fixed clock time would
      * age out mid-session and read as yesterday's weather.
+     * @parity /modules/vescape-core/ios/watch/WatchReplay.swift `ReplaySceneParser.parseWeather`
      */
     fun parseWeather(json: String, nowMs: Long, minuteOfDay: Int): WatchWeather? = try {
         val root = JSONObject(json)
@@ -202,7 +203,11 @@ class FrameReplayer(private val context: Context) {
         )
     }
 
-    /** Route + forecast, the surroundings every lane fixture rides through. */
+    /**
+     * Route + forecast, the surroundings every lane fixture rides through.
+     * @parity /watch/watchos/FrameReplay.swift `FrameReplayer.start` (weather)
+     * @parity /watch/watchos/PhoneLink.swift `acceptReplayWeather`
+     */
     private fun loadScene() {
         readAsset(REPLAY_FIXTURE_ROUTE)?.let { RouteState.accept(ReplaySceneParser.parseRoute(it)) }
         readAsset(REPLAY_FIXTURE_WEATHER)?.let {
