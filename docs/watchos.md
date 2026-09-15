@@ -597,3 +597,89 @@ bearing against the road ahead, the rendered layout of the nav page on either ca
 frame cost of the route layer. The `ios/` tree on this machine has no Pods and no workspace, so the
 iPhone app itself was not compiled — the phone-side changes were compiled by the SwiftPM package
 `test:ios` builds, not by an app build.
+
+## Board lights (#489)
+
+The board's two light switches are on the wrist, and a wrist tap is the same `setBoardLights` write
+a phone tap makes.
+
+### The command is an edit, not a state
+
+This is the first slice to use the wrist -> phone direction (ADR-0033), and the shape of the two
+payload bytes is the whole safety argument. The wrist sends `[kind, value]` with **bit0 = the target
+on/off state and bit1 = which switch**, Android's numbering verbatim — deliberately not the Refloat
+`LIGHTS_CONTROL` mask, where both bits are values and `0b10` would mean the opposite thing.
+
+A command carrying both switches would let a wrist holding a slightly stale board push revert the
+switch the rider never touched. So the wrist names one switch and the phone composes the pair, in
+`WatchLightsRelay`, against its own `boardLights` truth — the same compose `useBoardLights` does.
+Two rapid taps compose on top of each other (the second builds on the first's pending pair rather
+than on the pre-edit value), and the moment the phone's own truth moves — echo, config seed, session
+end, a refused write — that truth wins again and the pending pair is forgotten. A value above the
+two defined bits decodes to nothing, the same "ignored" outcome an unknown kind gets.
+
+The write itself is `BoardSessionController.setBoardLights`, unchanged: the wrist never touches the
+board, and it inherits the legacy config rebase without knowing what one is.
+
+### Pending settles from phone truth, never from the send
+
+`sendMessageData` is fire-and-forget with no delivery guarantee, and `setBoardLights` can refuse with
+nothing to say. A tap therefore flips its half optimistically at a lower alpha and fires a haptic,
+and that value is cleared by exactly two things: the board's echoed state arriving on the cold
+channel, or two seconds of silence. Nothing treats "the command was sent" as success, which is what
+keeps a failure or a disconnection from rendering as unconfirmed success. Losing a gate mid-flight
+drops the optimistic value rather than leaving it dimmed but claimed.
+
+The gates are the phone's, repeated nowhere: `lightsControllable` is computed phone-side from
+`setBoardLights`' own guards (`firmwareCommandsTrusted()` and a live session), so the wrist
+duplicates no policy. It is pushed on every phase and link-integrity change as well as on every
+light change, because trust moves without the lights moving. The wrist adds two of its own — a LIVE
+mirror, which is what stops a persisted cold channel from offering switches over an hour-old truth,
+and both switches known, because a write states the pair.
+
+### Board state is a cold-state channel
+
+`WatchBoard.swift` is compiled into both targets, the arrangement the frame, settings, weather and
+route files already use. It rides the merged Application Context as the `board` channel through
+`WatchColdState` — still the only writer. Keys are Android's `/board` `DataMap`, key for key.
+
+Unlike the route there is no explicit-clear problem: the phone always _states_ this channel, and a
+teardown push simply omits the two light keys and says `lightsControllable: false`. Absence of a key
+is unknown, never off, on both wrists. `startWatchMirror` pushes the opening unknown so a wrist
+reconnecting to a phone that has never connected a board finds a stated channel rather than none.
+
+### What the rectangle changed
+
+- **The split is the display's shape, not a circle.** Wear OS splits the circle its rim gauges ring.
+  Here the two halves clip to `Rim.path` one step inside the rim, the same shape the route clips to.
+- **SF Symbols, not ported artwork.** `lightbulb.fill` and `headlight.low.beam.fill` stand in for the
+  Phosphor drawables Wear OS bundles.
+- **The haptic is `WKInterfaceDevice.play(.click)`.** Wear OS plays `HapticFeedbackType.LongPress`;
+  watchOS has no equivalent constant, and `.click` is the discrete tap confirmation the wrist offers.
+  Tagged `@platform-diff` at the call site's screen.
+
+Everything behavioural stays Android's: the same three gates, the same optimistic flip and 2 s
+pending timeout, the same resting tint as the state readout with a lower alpha while unsettled, the
+same order (LEDs on top, headlight below), and the same rule that a page is not interactive until
+its transition has settled.
+
+### Verified, 2026-09-15
+
+- `bun run test:ios` — the board wire contract (round trip, unknown switches omitted rather than sent
+  as false, an absent and an unreadable channel both reading unknown and not controllable, the
+  channel read out of a merged context) and the relay (an edit keeping the other switch at the
+  phone's value, an edit with no known lights dropped, a second edit before the echo composing on the
+  first, a phone-side change replacing the pending pair, a refused write leaving no pending pair),
+  plus the command wire (round trip for all four combinations, the exact Android byte values, bits
+  above the two defined ones ignored, Move still decoding to nothing).
+- `VescapeWatch` against `watchsimulator26.5` — builds, with both new wrist files confirmed present
+  in `VescapeWatch.SwiftFileList` rather than only in a build that succeeded.
+
+**Not verified.** Nothing here has run against a physical Apple Watch, a locked iPhone, or a real
+board. Not measured: a real echo settling a pending tap and how long that round trip actually takes,
+the 2 s timeout against that latency, a simultaneous phone and wrist edit on hardware, a reconnect
+mid-edit, a rejected write on a board that refuses one, the haptic's feel, and the rendered layout on
+either case size. The relay's behaviour under all of those is pinned by unit tests against the
+phone's own truth, which is not the same as having seen it. The `ios/` tree on this machine has no
+Pods and no workspace, so the iPhone app itself was not compiled — the phone-side changes were
+compiled by the SwiftPM package `test:ios` builds, not by an app build.

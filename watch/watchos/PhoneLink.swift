@@ -65,6 +65,16 @@ final class PhoneLink: NSObject, ObservableObject, WCSessionDelegate {
   /// @parity /watch/wearos/src/main/java/app/vescape/wear/WatchRoute.kt `RouteState`
   @Published private(set) var route: WatchRoute?
 
+  /// The board's two light switches, as last pushed. Cold state on the same merged context, so a
+  /// wrist restart or a reconnect finds the current switches already there rather than a dead Lights
+  /// page until the board next echoes.
+  ///
+  /// Unknown until the phone says otherwise, and unknown again the moment it says the board is gone:
+  /// the phone always states this channel, so there is no "absent means the last value still holds".
+  ///
+  /// @parity /watch/wearos/src/main/java/app/vescape/wear/WatchBoard.kt `BoardState`
+  @Published private(set) var board = WatchBoardLights()
+
   /// Bumped on every route change. The wrist's route animators are measured from the route's own
   /// origin, so a replacement route moves the frame underneath them; this is what tells the view to
   /// restart from the new numbers rather than glide across a jump that never happened.
@@ -114,6 +124,25 @@ final class PhoneLink: NSObject, ObservableObject, WCSessionDelegate {
       withTimeInterval: Double(watchMirrorAwakeHeartbeatMs) / 1000,
       repeats: true
     ) { [weak self] _ in self?.sendWakeLevel() }
+  }
+
+  /// Flip one of the board's light switches. The wrist sends the *edit* and never both switches:
+  /// the phone composes the pair it writes from its own board truth, so a wrist holding a slightly
+  /// stale board push cannot revert the switch the rider did not touch.
+  ///
+  /// Fire-and-forget, like every other wrist command. `sendMessageData` has no delivery guarantee,
+  /// which is exactly why the optimistic value the caller holds has to time out rather than wait —
+  /// see ``LightsScreen``.
+  ///
+  /// @parity /watch/wearos/src/main/java/app/vescape/wear/WatchCommand.kt `sendLights`
+  func sendLights(_ `switch`: WatchLightsSwitch, on: Bool) {
+    let session = WCSession.default
+    guard session.activationState == .activated, session.isReachable else { return }
+    session.sendMessageData(
+      WatchCommandCodec.encode(.lights(`switch`, on)),
+      replyHandler: nil,
+      errorHandler: nil
+    )
   }
 
   private func sendWakeLevel() {
@@ -215,6 +244,8 @@ final class PhoneLink: NSObject, ObservableObject, WCSessionDelegate {
     // ages a forecast off that stamp, and keeping the old one would retire weather the phone is
     // still refreshing. Only an absent channel leaves the wrist with nothing.
     if forecast != weather || forecast?.fetchedAtMs != weather?.fetchedAtMs { weather = forecast }
+    let lights = WatchBoardLights.decode(context: context)
+    if lights != board { board = lights }
     let path = WatchRoute.decode(context: context)
     if path != route {
       route = path

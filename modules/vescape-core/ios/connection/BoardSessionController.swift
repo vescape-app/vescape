@@ -654,6 +654,48 @@ internal final class BoardSessionController: VescGattListener {
     ["enabled": boardLights?.enabled, "headlightsEnabled": boardLights?.headlightsEnabled]
   }
 
+  /// Every point `boardLights` changes ends here: JS gets the event, the wrist gets the same truth
+  /// on the cold-state channel. Nils stay nil on both sides — the board is not saying, so neither is
+  /// the phone.
+  ///
+  /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/connection/BoardSessionController.kt `publishBoardLights`
+  private func publishBoardLights() {
+    emit?("onBoardLights", lightsEventBody())
+    pushWatchBoard()
+  }
+
+  /// Push the wrist's slice of the light state. Called from `publishBoardLights` and from every
+  /// phase and link-integrity change too, because `lightsControllable` moves on its own: a link that
+  /// drops trust or a session that goes away changes whether a write would be accepted without
+  /// changing either switch, and the wrist would otherwise keep offering taps the phone silently
+  /// refuses. `WatchColdState` deduplicates, so the extra calls cost nothing on the wire.
+  ///
+  /// `lightsControllable` repeats `setBoardLights`' own guards rather than stating a second policy,
+  /// so the wrist never has to know what a trusted Board Link is.
+  ///
+  /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/connection/BoardSessionController.kt `pushWatchBoard`
+  private func pushWatchBoard() {
+    watchPusher.pushColdState(
+      channel: watchBoardChannel,
+      payload: WatchBoardLights(
+        lightsEnabled: boardLights?.enabled,
+        headlightsEnabled: boardLights?.headlightsEnabled,
+        lightsControllable: firmwareCommandsTrusted() && config != nil
+      ).payload
+    )
+  }
+
+  /// Wrist light edits, composed against this phone's own truth and written as `setBoardLights`.
+  ///
+  /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/connection/BoardSessionController.kt `watchLightsRelay`
+  private lazy var watchLightsRelay = WatchLightsRelay(
+    currentLights: { [weak self] in self?.boardLights },
+    setLights: { [weak self] enabled, headlights in
+      self?.setBoardLights(enabled: enabled, headlightsEnabled: headlights) ?? false
+    },
+    record: { [weak self] name, props in self?.recordWatchDiagnostic(name, props) }
+  )
+
   /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/connection/BoardSessionController.kt `lightsGeneration`
   private func lightsGeneration() -> BoardLightsGeneration {
     BoardLightsGeneration.forBaseVersion(config?.refloatBaseVersion)
@@ -671,7 +713,7 @@ internal final class BoardSessionController: VescGattListener {
   /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/connection/BoardSessionController.kt `onBoardLightsEcho`
   private func onBoardLightsEcho(_ lights: BoardLightsState) {
     boardLights = lights
-    emit?("onBoardLights", lightsEventBody())
+    publishBoardLights()
     guard lightsGeneration() == .legacy, let values = boardConfigValues else { return }
     guard
       let boardId = values.boardId, let baseVersion = values.refloatBaseVersion,
@@ -703,7 +745,7 @@ internal final class BoardSessionController: VescGattListener {
     )
     guard lights != boardLights else { return }
     boardLights = lights
-    emit?("onBoardLights", lightsEventBody())
+    publishBoardLights()
   }
 
   /// State the board's lights: the LEDs and the headlights, each on or off. Both switches are always
@@ -1461,7 +1503,7 @@ internal final class BoardSessionController: VescGattListener {
     motorConfigRequested = false
     // Lights are per Board Session: what the last board's echo said means nothing for the next.
     boardLights = nil
-    emit?("onBoardLights", lightsEventBody())
+    publishBoardLights()
     recordingCoordinator.finishBoardSession(
       status: error == nil ? "stopped" : "disconnected",
       markerType: error == nil ? "disconnect" : "error"
@@ -1603,6 +1645,9 @@ internal final class BoardSessionController: VescGattListener {
   private func setPhase(_ phase: BoardPhase) {
     guard self.phase != phase else { return }
     self.phase = phase
+    // A phase change can flip whether a light write would be accepted, with the lights themselves
+    // unchanged. See `pushWatchBoard`.
+    pushWatchBoard()
     recordingCoordinator.recordState(phase.rawValue)
     onStateChanged?()
     refreshLiveActivity()
@@ -1694,7 +1739,7 @@ internal final class BoardSessionController: VescGattListener {
     // its runtime override and hands authority back to config. Keeping the old echo would leave the
     // switch showing pre-reboot state that nothing ever corrects.
     boardLights = nil
-    emit?("onBoardLights", lightsEventBody())
+    publishBoardLights()
     // Re-arm the post-trust read so the relinked session gets fresh values back.
     boardConfigReadScheduled = false
     // Same reasoning as the Refloat demote above.
@@ -2271,6 +2316,8 @@ internal final class BoardSessionController: VescGattListener {
     guard next != lastEmittedLinkIntegrity else { return }
     lastEmittedLinkIntegrity = next
     onStateChanged?()
+    // Trust is half of `lightsControllable`, and it moves without the lights moving.
+    pushWatchBoard()
     // Link just became trusted — schedule the one background config read for this session.
     if next == .trusted { scheduleBoardConfigRead() }
     // Mismatched firmware makes every cached offset meaningless: drop the held object and the
@@ -2427,10 +2474,19 @@ internal final class BoardSessionController: VescGattListener {
       guard let self else { return }
       switch command {
       case .mirrorAwake(let level): scheduler.post { self.watchMirrorWakeLevel(level) }
+      // Onto the controller's own thread before anything reads board truth or writes to the board:
+      // `WCSession` delivers on its own queue, and the relay composes the pair it writes from state
+      // only this thread may touch.
+      case .lights(let `switch`, let on): scheduler.post { self.watchLightsRelay.accept(`switch`, on: on) }
       }
     }
     watchPusher.start()
     reloadWatchSettings()
+    // The opening board push, before any board session exists: unknown switches and no write
+    // offered. Without it a wrist that reconnects to a phone that has never connected a board finds
+    // no board channel at all, which it would have to read as unknown anyway — stating it is how the
+    // channel stops being ambiguous.
+    pushWatchBoard()
     // Native, not through the module's `onChange`: that slot is re-assigned on every JS reload, and
     // the wrist forecast must survive one. A forecast already in hand at launch is pushed straight
     // away — the coordinator keeps it for the life of the process, so waiting for the next refresh

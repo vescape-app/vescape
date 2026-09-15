@@ -20,5 +20,7 @@ module.exports = {
   // that the device does not have to be updated before it can be tested on. Nothing in this slice
   // needs a newer API: WatchConnectivity is watchOS 2.
   deploymentTarget: '10.0',
-  frameworks: ['WatchConnectivity'],
+  // `WatchKit` is only linked for `WKInterfaceDevice.play(_:)`, the wrist's haptic engine; the UI
+  // itself is SwiftUI.
+  frameworks: ['WatchConnectivity', 'WatchKit'],
 }

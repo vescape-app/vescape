@@ -247,7 +247,7 @@ struct MirrorScreen: View {
     case .move:
       PendingPage(title: "Move")
     case .lights:
-      PendingPage(title: "Lights")
+      LightsScreen(link: link, interactionEnabled: interactionEnabled(.lights))
     case .diagnostics:
       DiagnosticsPanel(link: link, interactionEnabled: interactionEnabled(.diagnostics))
     }

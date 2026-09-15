@@ -24,6 +24,11 @@ enum Palette {
   /// @parity /watch/wearos/src/main/java/app/vescape/wear/Palette.kt `NavColor`
   static let nav = Color(red: 0.659, green: 0.333, blue: 0.969)  // purple #A855F7
 
+  /// Board lights accent — the tint that says a switch is on.
+  ///
+  /// @parity /watch/wearos/src/main/java/app/vescape/wear/Palette.kt `LightsColor`
+  static let lights = Color(red: 0.961, green: 0.620, blue: 0.043)  // amber.color #F59E0B
+
   /// The one colour ambient invents: a dimmed near-white the always-on panel can hold cheaply.
   static let ambientText = Color(red: 0.722, green: 0.769, blue: 0.808)  // #B8C4CE
 
