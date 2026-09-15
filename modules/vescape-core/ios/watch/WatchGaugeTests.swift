@@ -24,6 +24,24 @@ final class WatchGaugeTests: XCTestCase {
     return ReplayFixtureParser.parse(text: text)
   }
 
+  func testReplayRouteMatchesSharedRiderCoordinates() throws {
+    let json = try String(
+      contentsOf: Self.fixtures.appendingPathComponent("watch-route.json"), encoding: .utf8
+    )
+    let route = try XCTUnwrap(ReplaySceneParser.parseRoute(json: json))
+    let samples = try load("watch-sweep.jsonl")
+    XCTAssertGreaterThan(route.points.count, 1)
+    XCTAssertEqual(route.points[0].eastM, samples[0].frame.riderEastM)
+    XCTAssertEqual(route.points[0].northM, samples[0].frame.riderNorthM)
+    XCTAssertEqual(route.points[1], WatchRoutePoint(eastM: 0, northM: 25))
+  }
+
+  func testReplayRouteRejectsMissingOrMalformedGeometry() {
+    for json in ["{}", "{", #"{"points":[]}"#, #"{"points":[{"east":0}]}"#] {
+      XCTAssertNil(ReplaySceneParser.parseRoute(json: json))
+    }
+  }
+
   // MARK: - Decoding the shared fixtures
 
   func testDecodesTheRecordedRideFixture() throws {

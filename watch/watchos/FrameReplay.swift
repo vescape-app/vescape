@@ -52,8 +52,16 @@ final class FrameReplayer {
       link.recordReplay(fixture: (fixture as NSString).lastPathComponent, sampleCount: samples.count)
       // Same companion asset as Wear OS, beside either ride or sweep telemetry.
       // @parity /watch/wearos/src/main/java/app/vescape/wear/FrameReplay.kt `loadScene`
-      let weatherURL = URL(fileURLWithPath: fixture).deletingLastPathComponent()
-        .appendingPathComponent("watch-weather.json")
+      let sceneURL = URL(fileURLWithPath: fixture).deletingLastPathComponent()
+      let routeURL = sceneURL.appendingPathComponent("watch-route.json")
+      if let json = try? String(contentsOf: routeURL, encoding: .utf8) {
+        let route = ReplaySceneParser.parseRoute(json: json)
+        link.acceptReplayRoute(route)
+        if route == nil { print("[replay] invalid route fixture: \(routeURL.path)") }
+      } else {
+        print("[replay] missing route fixture: \(routeURL.path)")
+      }
+      let weatherURL = sceneURL.appendingPathComponent("watch-weather.json")
       if let json = try? String(contentsOf: weatherURL, encoding: .utf8) {
         let nowMs = Int64(Date().timeIntervalSince1970 * 1000)
         if let weather = ReplaySceneParser.parseWeather(

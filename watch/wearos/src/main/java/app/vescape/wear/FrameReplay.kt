@@ -79,6 +79,7 @@ object ReplayFixtureParser {
  */
 object ReplaySceneParser {
     /** Route points as metres east/north of the origin, the frame the rider lanes are relative to. */
+    // @parity /modules/vescape-core/ios/watch/WatchReplay.swift `ReplaySceneParser.parseRoute`
     fun parseRoute(json: String): WatchRoute? = try {
         val points = JSONObject(json).getJSONArray("points")
         WatchRoute(
@@ -205,8 +206,9 @@ class FrameReplayer(private val context: Context) {
 
     /**
      * Route + forecast, the surroundings every lane fixture rides through.
-     * @parity /watch/watchos/FrameReplay.swift `FrameReplayer.start` (weather)
+     * @parity /watch/watchos/FrameReplay.swift `FrameReplayer.start`
      * @parity /watch/watchos/PhoneLink.swift `acceptReplayWeather`
+     * @parity /watch/watchos/PhoneLink.swift `acceptReplayRoute`
      */
     private fun loadScene() {
         readAsset(REPLAY_FIXTURE_ROUTE)?.let { RouteState.accept(ReplaySceneParser.parseRoute(it)) }

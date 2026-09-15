@@ -3,6 +3,25 @@ import Foundation
 /// Shared with Wear OS; forecast times are anchored once when replay starts.
 /// @parity /watch/wearos/src/main/java/app/vescape/wear/FrameReplay.kt `ReplaySceneParser.parseWeather`
 enum ReplaySceneParser {
+  /// @parity /watch/wearos/src/main/java/app/vescape/wear/FrameReplay.kt `ReplaySceneParser.parseRoute`
+  static func parseRoute(json: String) -> WatchRoute? {
+    guard let fixture = try? JSONDecoder().decode(RouteFixture.self, from: Data(json.utf8)),
+      !fixture.points.isEmpty
+    else { return nil }
+    return WatchRoute(points: fixture.points.map {
+      WatchRoutePoint(eastM: $0.east, northM: $0.north)
+    })
+  }
+
+  private struct RouteFixture: Decodable {
+    let points: [Point]
+
+    struct Point: Decodable {
+      let east: Double
+      let north: Double
+    }
+  }
+
   static func parseWeather(json: String, nowMs: Int64, minuteOfDay: Int) -> WatchWeather? {
     guard let fixture = try? JSONDecoder().decode(WeatherFixture.self, from: Data(json.utf8)) else {
       return nil

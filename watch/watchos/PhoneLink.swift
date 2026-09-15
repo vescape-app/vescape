@@ -287,6 +287,20 @@ final class PhoneLink: NSObject, ObservableObject, WCSessionDelegate {
     refresh()
   }
 
+  /// Replay uses the same route replacement and animation reset as phone updates.
+  /// @parity /watch/wearos/src/main/java/app/vescape/wear/FrameReplay.kt `loadScene`
+  @MainActor
+  func acceptReplayRoute(_ path: WatchRoute?) {
+    acceptRoute(path)
+  }
+
+  private func acceptRoute(_ path: WatchRoute?) {
+    if path != route {
+      route = path
+      routeGeneration += 1
+    }
+  }
+
   /// Same forecast decoder as the phone context, without replacing unrelated channels.
   /// @parity /watch/wearos/src/main/java/app/vescape/wear/FrameReplay.kt `loadScene`
   @MainActor
@@ -308,11 +322,7 @@ final class PhoneLink: NSObject, ObservableObject, WCSessionDelegate {
     if forecast != weather || forecast?.fetchedAtMs != weather?.fetchedAtMs { weather = forecast }
     let lights = WatchBoardLights.decode(context: context)
     if lights != board { board = lights }
-    let path = WatchRoute.decode(context: context)
-    if path != route {
-      route = path
-      routeGeneration += 1
-    }
+    acceptRoute(WatchRoute.decode(context: context))
   }
 
   /// The pushed forecast while it is still worth believing, else nil.
