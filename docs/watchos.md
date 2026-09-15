@@ -270,6 +270,12 @@ the wrist. `WatchGauge` rounds away from zero explicitly, and a test pins it.
 
 ### Simulator replay
 
+`bun run watchos:build` builds the watch simulator target. `bun run watchos:replay` rebuilds,
+installs and relaunches ride replay on the single booted watch simulator. With multiple watches
+booted, select one using `WATCHOS_UDID=<uuid> bun run watchos:replay`. A booted iPhone is ignored.
+These commands use the selected Xcode's watch simulator SDK and discover the generated project,
+app path and bundle identifier. Generate `ios/` first with `bun run native:sync ios` if missing.
+
 `watch/watchos/FrameReplay.swift` is the peer of `FrameReplay.kt`: it plays the Wear OS JSONL
 fixtures into `PhoneLink` on the same path a phone push takes. Gated to the simulator and to an
 explicit launch argument, so a real watch and a device build have no replay path. The fixture is
