@@ -11,7 +11,7 @@ import SwiftUI
 /// @parity /watch/wearos/src/main/java/app/vescape/wear/NavRoute.kt `NavRoute`
 /// @platform-diff Wear OS clips the line to the circle its gauges ring, because a round panel's
 ///   drawing bounds are square and the line would otherwise run out to the bezel. Here the clip is
-///   the display's own rounded rectangle, one step inside the rim gauges (``Rim``), so the route
+///   the display's own rounded rectangle, on the rim gauges' guide path (``Rim``), so the route
 ///   uses the corners the rectangle actually has instead of the circle it does not.
 struct NavRoute: View {
   let route: WatchRoute?
@@ -54,8 +54,9 @@ struct NavRoute: View {
             )
           )
           // A route runs for kilometres; without this it reaches past the display and draws over
-          // the rim gauges. One step inside them, so the line stops just short of the gauge lines.
-          .clipShape(Rim.path(in: geometry.size, inset: Rim.innerInset))
+          // the rim gauges. On the gauge guides' own path, so the line at least touches them
+          // instead of stopping visibly short of the ring.
+          .clipShape(Rim.path(in: geometry.size, inset: Rim.inset))
           .animation(.linear(duration: ROUTE_MOTION_EASE), value: east)
           .animation(.linear(duration: ROUTE_MOTION_EASE), value: north)
           .animation(.linear(duration: ROUTE_MOTION_EASE), value: unwrappedCourse)
