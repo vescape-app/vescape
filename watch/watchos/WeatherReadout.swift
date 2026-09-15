@@ -31,12 +31,11 @@ struct WeatherReadout: View {
     let rainColor = ambient.active ? Palette.dimText : Palette.weather("cloud-rain")
 
     return VStack(alignment: .trailing, spacing: 1) {
-      HStack(spacing: 1) {
+      HStack(spacing: 0) {
         WeatherGlyph(slug: forecast.icon, size: ICON_SIZE, color: iconColor)
-        Text("\(forecast.temperatureC)°")
-          .font(WatchTypography.mono(size: FONT_SIZE))
-          .foregroundStyle(textColor)
-          .monospacedDigit()
+        // Tucked °, so the temp's trailing edge is its last digit and the rain row below hangs
+        // flush with it instead of clearing the mark's advance width.
+        DegreeNumber(value: "\(forecast.temperatureC)", size: FONT_SIZE, color: textColor)
       }
       if forecast.precipitationProbability > 0 {
         // All blue, glyph and number alike: rain is one reading, not an icon with a label.
@@ -74,7 +73,7 @@ private struct OptionalTap: ViewModifier {
   }
 }
 
-private let ICON_SIZE: CGFloat = 8
-private let DROP_SIZE: CGFloat = 8
-private let FONT_SIZE: CGFloat = 9
-private let RAIN_FONT_SIZE: CGFloat = 9
+private let ICON_SIZE: CGFloat = 10
+private let DROP_SIZE: CGFloat = 7
+private let FONT_SIZE: CGFloat = 11
+private let RAIN_FONT_SIZE: CGFloat = 8
