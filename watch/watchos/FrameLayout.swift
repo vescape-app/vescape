@@ -207,17 +207,17 @@ struct FrameLayout: View {
     .frame(maxWidth: .infinity)
   }
 
-  /// Values sit inside the lower corners; labels follow the straight side above each value.
-  /// The entire layer still spreads from the screen centre during a swipe.
+  /// Values sit in the lower corners, level with the battery % between them; labels follow the
+  /// straight side above each value. The entire layer still spreads from the screen centre during
+  /// a swipe.
   private func temperatureReadouts(blind: Bool) -> some View {
     GeometryReader { geometry in
       let metrics = Rim.Metrics(size: geometry.size, inset: Rim.inset)
       let valueInset = metrics.radius * 0.85
-      let valueY = metrics.rect.maxY - metrics.radius * 0.6
-      let rim = Rim.path(in: geometry.size, inset: Rim.inset)
-      let lineTop = rim.trimmedPath(from: 0, to: metrics.ctrlTemp.head).currentPoint?.y
-        ?? metrics.rect.maxY - metrics.radius
-      let labelY = lineTop + TEMP_LABEL_LENGTH / 2
+      // Battery-% alignment: the 14pt rounded font's layout box sits ~2pt above where its glyphs
+      // read, so the row-stepped value needs that much extra drop to share the battery baseline.
+      let valueY = metrics.rect.maxY - BOTTOM_READOUT_INSET - SECONDARY_FONT_SIZE * 0.6 + TEMP_VALUE_NUDGE
+      let labelY = valueY - TEMP_LABEL_GAP
 
       temperatureReadout(
         "MOTOR", value: WatchGauge.temp(frame.motorTemp, blind: blind),
@@ -301,6 +301,9 @@ private let HERO_FONT_SIZE: CGFloat = 38
 private let HERO_EMPTY_FONT_SIZE: CGFloat = 20
 private let SECONDARY_FONT_SIZE: CGFloat = 14
 private let TEMP_LABEL_LENGTH: CGFloat = 28
+/// Label sits a fixed step above its value, so the pair moves with the battery % row.
+private let TEMP_LABEL_GAP: CGFloat = 15
+private let TEMP_VALUE_NUDGE: CGFloat = 2
 private let BOTTOM_READOUT_INSET: CGFloat = 12
 
 /// @parity /watch/wearos/src/main/java/app/vescape/wear/FrameGauges.kt `HERO_FOCUS_RISE`

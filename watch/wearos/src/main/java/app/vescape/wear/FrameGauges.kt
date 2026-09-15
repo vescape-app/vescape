@@ -164,11 +164,12 @@ internal fun FrameLayout(
             NavAbsentHint(focus = focus, stackAlpha = navStackAlpha)
         }
 
-        // Temp readouts ride their own arc: curved text just inside the gauge line, centred on the
-        // arc's mid-angle. Colour carries which is which (red = motor, orange = controller).
+        // Temp readouts ride their own arc: curved text just inside the gauge line, anchored at the
+        // arc's lower end so the values drop into the bottom corners beside the battery %.
+        // Colour carries which is which (red = motor, orange = controller).
         if (showReadouts) {
-            CurvedTemp(MOTOR_ARC_START + TEMP_SWEEP / 2f, temp(frame.motorTemp, ambientBlind), "MOTOR", motorColor, readoutFocus)
-            CurvedTemp(CTRL_ARC_START - TEMP_SWEEP / 2f, temp(frame.ctrlTemp, ambientBlind), "CTRL", ctrlColor, readoutFocus)
+            CurvedTemp(MOTOR_ARC_START, temp(frame.motorTemp, ambientBlind), "MOTOR", motorColor, readoutFocus)
+            CurvedTemp(CTRL_ARC_START, temp(frame.ctrlTemp, ambientBlind), "CTRL", ctrlColor, readoutFocus)
         }
 
         // ── Top: wall clock at the rim gap, forecast under it ──
