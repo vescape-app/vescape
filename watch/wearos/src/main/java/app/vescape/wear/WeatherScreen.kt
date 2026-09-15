@@ -79,8 +79,8 @@ fun WeatherScreen() {
                     tint = weatherColor(forecast.icon),
                     modifier = Modifier.size(HERO_ICON_SIZE),
                 )
-                Text(
-                    text = "${forecast.temperatureC}°",
+                DegreeTemp(
+                    value = forecast.temperatureC,
                     style = WatchTypography.mono(MaterialTheme.typography.display3),
                     color = PrimaryText,
                     modifier = Modifier.padding(start = 8.dp),
@@ -110,9 +110,10 @@ fun WeatherScreen() {
                     )
                 }
             }
-            Spacer(modifier = Modifier.height(FORECAST_GAP))
+            // Flexible gaps yield space to the forecast and sun time on smaller watches.
+            Spacer(modifier = Modifier.weight(1f))
             FadingRule(modifier = Modifier.fillMaxWidth().padding(horizontal = PAGE_INSET + RULE_INSET))
-            Spacer(modifier = Modifier.height(12.dp))
+            Spacer(modifier = Modifier.weight(1f))
             LazyRow(
                 modifier = Modifier.fillMaxWidth(),
                 contentPadding = PaddingValues(horizontal = STRIP_INSET),
@@ -124,7 +125,7 @@ fun WeatherScreen() {
             // the circle, and the one already behind the rider is not what they are planning around.
             val nextSunEvent = nextSunEvent(forecast.sunriseMinuteOfDay, forecast.sunsetMinuteOfDay)
             if (nextSunEvent != null) {
-                Spacer(modifier = Modifier.height(SUN_TIMES_GAP))
+                Spacer(modifier = Modifier.weight(1f))
                 SunTime(nextSunEvent.minuteOfDay, rising = nextSunEvent.rising)
             }
         }
@@ -173,8 +174,8 @@ private fun HourColumn(hour: WatchWeatherHour) {
             tint = weatherColor(hour.icon),
             modifier = Modifier.size(HOUR_ICON_SIZE),
         )
-        Text(
-            text = "${hour.temperatureC}°",
+        DegreeTemp(
+            value = hour.temperatureC,
             style = WatchTypography.mono(MaterialTheme.typography.caption2),
             color = SecondaryText,
         )
@@ -271,9 +272,7 @@ private val RADAR_HINT_ICON_SIZE = 11.dp
 private val HERO_ICON_SIZE = 26.dp
 private val CURRENT_TOP_PADDING = 34.dp
 private val LABEL_TRACKING = 1.2.sp
-private val FORECAST_GAP = 12.dp
 private val RULE_INSET = 14.dp
-private val SUN_TIMES_GAP = 8.dp
 private val HOUR_GAP = 10.dp
 private val HOUR_ICON_SIZE = 18.dp
 private val HOUR_PRECIP_FONT_SIZE = 10.sp
