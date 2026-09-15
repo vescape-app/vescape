@@ -597,6 +597,122 @@ final class NavigationControllerTests: XCTestCase {
     XCTAssertNil(controller.currentProgress)
   }
 
+
+  // MARK: - The Watch Mirror seam
+
+  func testThePathSlotFiresOnlyWhenThePathItselfChanges() {
+    let routes = GatedRoutes()
+    let controller = NavigationController(api: routes, store: FakeStore())
+    let log = PathLog()
+    controller.onPathChange = { log.append($0) }
+
+    controller.setTarget(
+      toLatitude: targetLatitude,
+      toLongitude: targetLongitude,
+      fromLatitude: riderLatitude,
+      fromLongitude: riderLongitude
+    )
+    // The `computing` transition publishes a Navigation with no path; a route push there would send
+    // the wrist a clear the rider never asked for, and then the same route straight back.
+    XCTAssertEqual(log.values.count, 0)
+
+    routes.release(targetLatitude)
+    settle()
+    XCTAssertEqual(log.values.count, 1)
+    XCTAssertEqual(log.values[0]?.count, 2)
+
+    controller.clear()
+    settle()
+    XCTAssertEqual(log.values.count, 2)
+    XCTAssertNil(log.values[1] ?? nil)
+  }
+
+  func testAFailedNavigationClearsTheWristRatherThanDrawingAnEmptyLine() {
+    let controller = NavigationController(api: FixedRoutes(.failed), store: FakeStore())
+    let log = PathLog()
+    controller.onPathChange = { log.append($0) }
+
+    controller.setTarget(
+      toLatitude: targetLatitude,
+      toLongitude: targetLongitude,
+      fromLatitude: riderLatitude,
+      fromLongitude: riderLongitude
+    )
+    settle()
+
+    // A failure has no line. It is not an empty polyline the wrist has to tell from a missing one.
+    XCTAssertEqual(log.values.compactMap { $0 }.count, 0)
+  }
+
+  func testTheMirrorPushesAnExplicitClearWhenThereIsNoNavigationToRestore() {
+    let mirror = WatchRouteMirror()
+    let pushes = PayloadLog()
+    mirror.attach(to: NavigationController(api: GatedRoutes(), store: FakeStore())) {
+      pushes.append($0)
+    }
+
+    // The trap this exists for: with no push at all, a wrist reconnecting to the merged Application
+    // Context would still be holding the route from a previous run.
+    XCTAssertEqual(pushes.values.count, 1)
+    XCTAssertNil(pushes.values[0][WatchRouteKey.points])
+    XCTAssertNil(mirror.origin)
+  }
+
+  func testTheMirrorMovesItsOriginOnlyOnceTheRouteIsOnTheWrist() {
+    let routes = GatedRoutes()
+    let controller = NavigationController(api: routes, store: FakeStore())
+    let mirror = WatchRouteMirror()
+    let pushes = PayloadLog()
+    mirror.attach(to: controller) { pushes.append($0) }
+
+    controller.setTarget(
+      toLatitude: targetLatitude,
+      toLongitude: targetLongitude,
+      fromLatitude: riderLatitude,
+      fromLongitude: riderLongitude
+    )
+    routes.release(targetLatitude)
+    settle()
+
+    XCTAssertEqual(pushes.values.count, 2)
+    XCTAssertNotNil(pushes.values[1][WatchRouteKey.points])
+    // Pushed, but not yet known to have landed: the frame's rider lanes must not be measured from
+    // an origin the wrist has never seen.
+    XCTAssertNil(mirror.origin)
+
+    mirror.channelDelivered(watchRouteChannel)
+    XCTAssertEqual(mirror.origin?.latitude, riderLatitude)
+    XCTAssertEqual(mirror.origin?.longitude, riderLongitude)
+
+    controller.clear()
+    settle()
+    mirror.channelDelivered(watchRouteChannel)
+    // A route that goes away takes the origin with it, so the rider lanes go null in the same tick
+    // the polyline does.
+    XCTAssertNil(mirror.origin)
+  }
+
+  /// `onPathChange` fires from whichever thread published, so the log needs its own guard.
+  private final class PathLog: @unchecked Sendable {
+    private let lock = NSLock()
+    private var storage: [[(latitude: Double, longitude: Double)]?] = []
+
+    func append(_ path: [(latitude: Double, longitude: Double)]?) {
+      lock.withLock { storage.append(path) }
+    }
+
+    var values: [[(latitude: Double, longitude: Double)]?] { lock.withLock { storage } }
+  }
+
+  private final class PayloadLog: @unchecked Sendable {
+    private let lock = NSLock()
+    private var storage: [[String: Any]] = []
+
+    func append(_ payload: [String: Any]) { lock.withLock { storage.append(payload) } }
+
+    var values: [[String: Any]] { lock.withLock { storage } }
+  }
+
   /// `onProgressChange` fires from whichever thread published, so the log needs its own guard.
   private final class ProgressLog: @unchecked Sendable {
     private let lock = NSLock()

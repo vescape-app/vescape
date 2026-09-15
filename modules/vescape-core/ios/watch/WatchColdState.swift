@@ -49,6 +49,15 @@ final class WatchColdState {
   /// will accept them, and a write refused then must not look like a write that landed.
   private var desired: [String: NSDictionary] = [:]
 
+  /// Notified with a channel whose payload is now known to be on the wrist — on the push that
+  /// landed, and on the activation retry that landed for a push that did not.
+  ///
+  /// It exists for the route, which is half a picture: the polyline rides here and the rider's
+  /// position on it rides the Watch Frame lanes, measured from the route's origin. A mirror that
+  /// moved its origin on *intent* would place the rider against a route the wrist never received,
+  /// and unlike a one-frame skew that lasts until the next route change.
+  var onDelivered: ((String) -> Void)?
+
   init(
     context: @escaping () -> [String: Any],
     write: @escaping ([String: Any]) throws -> Void,
@@ -83,6 +92,7 @@ final class WatchColdState {
     do {
       try write(merged)
       pushed[channel] = payload as NSDictionary
+      onDelivered?(channel)
     } catch {
       pushed.removeValue(forKey: channel)
       record("watch_cold_state_push_failed", ["channel": channel, "error": error.localizedDescription])

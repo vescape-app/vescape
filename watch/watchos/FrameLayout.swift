@@ -30,7 +30,35 @@ struct FrameLayout: View {
   var muted: Bool = false
   var ambient: AmbientMode = .off
   var showReadouts: Bool = true
-  var focus: Double = 0
+  /// How far the *navigation* page has taken over. The telemetry readouts leave for it, but the nav
+  /// stack — route, chevron, distance — is what the page is, so it stays and grows.
+  var navFocus: Double = 0
+  /// How far a page that is not navigation has taken over (the control axis, weather, radar). Those
+  /// want the whole centre, so the nav stack leaves with the readouts.
+  var awayFocus: Double = 0
+  /// The route the phone pushed, drawn under everything else. Nil is no Navigation, or a route the
+  /// rider cleared — the frame then renders exactly as it did before there was one.
+  var route: WatchRoute?
+  var routeGeneration: Int = 0
+  /// The rider's own colour, so route, chevron and rider dot match the phone map.
+  var navColor: Color = Palette.nav
+  /// Whether the rider turned the direction arrow on (phone: Settings > Watch).
+  var navArrowEnabled: Bool = false
+
+  /// Readouts retreat for any page; this is the one the existing layout animates against.
+  private var focus: Double { max(navFocus, awayFocus) }
+
+  /// The opposite pull on the nav stack: it survives nav focus and leaves for everything else.
+  ///
+  /// @parity /watch/wearos/src/main/java/app/vescape/wear/FrameGauges.kt `navStackAlpha`
+  private var navStackAlpha: Double { fadeOut(awayFocus) }
+
+  /// Nav is all-or-nothing: the phone sends bearing and distance together or not at all, so one
+  /// without the other is a frame this build should not draw half of.
+  private var navLanes: (bearingDeg: Double, distanceM: Double)? {
+    guard let bearing = frame.navBearing, let distance = frame.navDistanceM else { return nil }
+    return (bearing, distance)
+  }
 
   var body: some View {
     // A stale frame in ambient is the one case with nothing to say: the readings it would keep are
@@ -38,7 +66,38 @@ struct FrameLayout: View {
     let blind = ambient.active && muted
 
     ZStack {
+      // Bottom layer: the route ahead and the rider on it, under every gauge and readout. Ambient
+      // skips it — the lanes animate their zoom, and a moving map is the most expensive thing the
+      // always-on panel could be asked to draw.
+      if navLanes != nil, !ambient.active {
+        NavRoute(
+          route: route,
+          generation: routeGeneration,
+          frame: frame,
+          focus: navFocus,
+          color: muted ? Palette.dimText : navColor
+        )
+        .opacity(navStackAlpha)
+      }
+
       gauges(blind: blind)
+
+      // Navigation, only while the phone is sending it. No destination means no nav lanes, and the
+      // frame renders exactly as it would without this slice.
+      if let navLanes {
+        NavPointer(
+          bearingDeg: navLanes.bearingDeg,
+          distanceM: navLanes.distanceM,
+          focus: navFocus,
+          stackAlpha: navStackAlpha,
+          arrowEnabled: navArrowEnabled,
+          color: (muted || ambient.active) ? Palette.dimText : navColor
+        )
+      } else {
+        // Nav focus with nothing to show would be a blank rectangle. Say why, but only once the
+        // drag is nearly done, so it never flickers under the departing readouts.
+        NavAbsentHint(focus: navFocus, stackAlpha: navStackAlpha)
+      }
 
       if showReadouts {
         VStack(spacing: 0) {

@@ -18,6 +18,10 @@ import kotlinx.coroutines.sync.withLock
  *
  * The rider's own position is *not* here: it moves every fix, so it rides the Watch Frame lanes
  * (see [WatchFrame.riderEastM]) as an offset from this route's origin.
+ *
+ * @parity /modules/vescape-core/ios/watch/WatchRouteMirror.swift `WatchRouteMirror`
+ * @platform-diff `updateApplicationContext` is synchronous and latest-value-wins, so the iOS peer
+ *   needs neither the write mutex nor the generation counter an async `putDataItem` requires here.
  */
 internal class WatchRoutePusher(
     private val context: Context,

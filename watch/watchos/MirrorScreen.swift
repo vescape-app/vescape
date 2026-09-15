@@ -195,8 +195,9 @@ struct MirrorScreen: View {
     case .gauges:
       controls
     case .nav:
-      // The pinned gauges shed their readouts as this page moves into view.
-      PendingPage(title: "Navigation")
+      // Empty on purpose, like the gauges control page: this page *is* the route and the nav stack,
+      // which the pinned frame already draws. It grows into the centre as the readouts leave.
+      Color.clear
     }
   }
 
@@ -263,16 +264,27 @@ struct MirrorScreen: View {
   private var frame: some View {
     switch link.mirror.status {
     case .disconnected:
-      FrameLayout(
-        frame: EMPTY_FRAME, muted: false, ambient: ambient, showReadouts: false, focus: focus
-      )
-    case .waiting:
-      FrameLayout(frame: link.mirror.frame ?? EMPTY_FRAME, muted: false, ambient: ambient, focus: focus)
+      layout(EMPTY_FRAME, muted: false, showReadouts: false)
+    case .waiting, .live:
+      layout(link.mirror.frame ?? EMPTY_FRAME, muted: false)
     case .stale:
-      FrameLayout(frame: link.mirror.frame ?? EMPTY_FRAME, muted: true, ambient: ambient, focus: focus)
-    case .live:
-      FrameLayout(frame: link.mirror.frame ?? EMPTY_FRAME, muted: false, ambient: ambient, focus: focus)
+      layout(link.mirror.frame ?? EMPTY_FRAME, muted: true)
     }
+  }
+
+  private func layout(_ frame: WatchFrame, muted: Bool, showReadouts: Bool = true) -> FrameLayout {
+    FrameLayout(
+      frame: frame,
+      muted: muted,
+      ambient: ambient,
+      showReadouts: showReadouts,
+      navFocus: navFocus,
+      awayFocus: awayFocus,
+      route: link.route,
+      routeGeneration: link.routeGeneration,
+      navColor: Palette.rider(link.settings.riderColor) ?? Palette.nav,
+      navArrowEnabled: link.settings.navArrowEnabled
+    )
   }
 
   /// Read actual page displacement so dragging, cancelling, crown scrolling and snapping all
@@ -290,12 +302,30 @@ struct MirrorScreen: View {
     }
   }
 
-  private var focus: Double {
+  /// Where the vertical axis is, relative to the gauges: positive toward navigation, negative
+  /// toward weather and radar.
+  private var verticalPosition: Double {
+    pagePositions[.vertical] ?? Double((vertical ?? .gauges).rawValue - VerticalPage.gauges.rawValue)
+  }
+
+  private var horizontalPosition: Double {
+    pagePositions[.horizontal] ?? Double((control ?? .gauges).rawValue)
+  }
+
+  /// The nav page taking over. The readouts leave for it; the nav stack is what it is made of, so
+  /// that stays and grows.
+  ///
+  /// @parity /watch/wearos/src/main/java/app/vescape/wear/MirrorScreen.kt `navFocus`
+  private var navFocus: Double {
     guard !isLuminanceReduced else { return 0 }
-    return min(1, max(
-      abs(pagePositions[.vertical] ?? (vertical == .gauges ? 0 : 1)),
-      abs(pagePositions[.horizontal] ?? (control == .gauges ? 0 : 1))
-    ))
+    return min(1, max(0, verticalPosition))
+  }
+
+  /// Any other page taking over — the control axis, weather, radar. Those want the whole centre, so
+  /// the nav stack leaves with the readouts.
+  private var awayFocus: Double {
+    guard !isLuminanceReduced else { return 0 }
+    return min(1, max(max(0, -verticalPosition), abs(horizontalPosition)))
   }
 
   // MARK: - Transition gating

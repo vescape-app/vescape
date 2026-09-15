@@ -19,6 +19,11 @@ enum Palette {
   static let battery = Color(red: 0.133, green: 0.773, blue: 0.369)  // green #22C55E
   static let warning = Color(red: 0.976, green: 0.451, blue: 0.086)  // orange #F97316
 
+  /// Navigation accent, used when the rider has not picked a colour of their own.
+  ///
+  /// @parity /watch/wearos/src/main/java/app/vescape/wear/Palette.kt `NavColor`
+  static let nav = Color(red: 0.659, green: 0.333, blue: 0.969)  // purple #A855F7
+
   /// The one colour ambient invents: a dimmed near-white the always-on panel can hold cheaply.
   static let ambientText = Color(red: 0.722, green: 0.769, blue: 0.808)  // #B8C4CE
 

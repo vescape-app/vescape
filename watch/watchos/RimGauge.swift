@@ -329,3 +329,45 @@ private let GLOW_FOCUS_DIM = 0.55
 func fadeOut(_ focus: Double) -> Double { min(max(1 - focus * FOCUS_FADE_RATE, 0), 1) }
 
 private let FOCUS_FADE_RATE = 1.8
+
+extension Rim {
+  /// The point on the rim path at a compass `bearingDeg` — 0° straight up, clockwise — cast from
+  /// the display centre.
+  ///
+  /// A circle needs no such function: Wear OS reads a rim point straight off one radius and an
+  /// angle. A rounded rectangle has a different distance to its edge in every direction, so the
+  /// bearing is a ray and the rim point is where that ray leaves the shape. Straight edges first,
+  /// then the corner arc, because a ray leaving through a corner exits the circle, not the box.
+  static func point(in size: CGSize, inset: CGFloat, bearingDeg: Double) -> CGPoint {
+    let metrics = Metrics(size: size, inset: inset)
+    let rect = metrics.rect
+    let radius = metrics.radius
+    let centre = CGPoint(x: rect.midX, y: rect.midY)
+    let angle = bearingDeg * .pi / 180
+    // Screen y grows downward, so "north" is negative y.
+    let direction = CGPoint(x: CGFloat(sin(angle)), y: CGFloat(-cos(angle)))
+    let halfWidth = rect.width / 2
+    let halfHeight = rect.height / 2
+
+    var distance = CGFloat.greatestFiniteMagnitude
+    if direction.x != 0 { distance = min(distance, halfWidth / abs(direction.x)) }
+    if direction.y != 0 { distance = min(distance, halfHeight / abs(direction.y)) }
+    guard distance.isFinite else { return centre }
+    var point = CGPoint(x: centre.x + direction.x * distance, y: centre.y + direction.y * distance)
+
+    guard abs(point.x - centre.x) > halfWidth - radius, abs(point.y - centre.y) > halfHeight - radius
+    else { return point }
+    let corner = CGPoint(
+      x: centre.x + (point.x > centre.x ? 1 : -1) * (halfWidth - radius),
+      y: centre.y + (point.y > centre.y ? 1 : -1) * (halfHeight - radius)
+    )
+    let offset = CGPoint(x: centre.x - corner.x, y: centre.y - corner.y)
+    let half = offset.x * direction.x + offset.y * direction.y
+    let outside = offset.x * offset.x + offset.y * offset.y - radius * radius
+    let discriminant = half * half - outside
+    guard discriminant >= 0 else { return point }
+    let hit = -half + sqrt(discriminant)
+    point = CGPoint(x: centre.x + direction.x * hit, y: centre.y + direction.y * hit)
+    return point
+  }
+}

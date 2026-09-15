@@ -679,8 +679,9 @@ public class VescapeCoreModule: Module {
     }
 
     // @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/VescapeCoreModule.kt `setWatchRouteSpanM`
-    // @platform-diff Wear Mirror is Android-only; keep the shared TS contract callable on iOS.
-    Function("setWatchRouteSpanM") { (_: Double?) in }
+    Function("setWatchRouteSpanM") { (spanM: Double?) in
+      WatchRouteMirror.shared.viewportSpanM = spanM
+    }
 
     AsyncFunction("stopDebugReplay") { (promise: Promise) in
       self.coordinator.stopBoard()

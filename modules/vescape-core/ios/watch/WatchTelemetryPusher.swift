@@ -76,6 +76,13 @@ final class WatchTelemetryPusher: NSObject, WCSessionDelegate {
     coldState.put(channel: channel, payload: payload)
   }
 
+  /// Notified with a channel that is now known to be on the wrist. Set by the owner; see
+  /// `WatchColdState.onDelivered` for the one caller that needs it.
+  var onColdStateDelivered: ((String) -> Void)? {
+    get { coldState.onDelivered }
+    set { coldState.onDelivered = newValue }
+  }
+
   func pushFrame(_ frame: Data) {
     guard let session, canPush else { return }
     session.sendMessageData(

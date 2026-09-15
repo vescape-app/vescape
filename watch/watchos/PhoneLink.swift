@@ -53,6 +53,23 @@ final class PhoneLink: NSObject, ObservableObject, WCSessionDelegate {
   /// @parity /watch/wearos/src/main/java/app/vescape/wear/WatchWeather.kt `WeatherState`
   @Published private(set) var weather: WatchWeather?
 
+  /// The phone's route, as last pushed. Cold state on the same merged context, so a wrist restart
+  /// or a reconnect finds the route already drawn instead of a blank nav page until the rider picks
+  /// a new destination.
+  ///
+  /// Nil covers three cases the wrist draws identically — never pushed, explicitly cleared, and a
+  /// payload this build cannot read. The one that matters is the middle one: the phone's clear is a
+  /// payload and not a removed channel, so the value that survives a reconnect is the clear rather
+  /// than the route it replaced.
+  ///
+  /// @parity /watch/wearos/src/main/java/app/vescape/wear/WatchRoute.kt `RouteState`
+  @Published private(set) var route: WatchRoute?
+
+  /// Bumped on every route change. The wrist's route animators are measured from the route's own
+  /// origin, so a replacement route moves the frame underneath them; this is what tells the view to
+  /// restart from the new numbers rather than glide across a jump that never happened.
+  @Published private(set) var routeGeneration = 0
+
   /// Latest wake level reported to the phone, and the heartbeat that keeps re-asserting it.
   private var wakeLevel: WatchMirrorWakeLevel = .asleep
   private var wakeHeartbeat: Timer?
@@ -198,6 +215,11 @@ final class PhoneLink: NSObject, ObservableObject, WCSessionDelegate {
     // ages a forecast off that stamp, and keeping the old one would retire weather the phone is
     // still refreshing. Only an absent channel leaves the wrist with nothing.
     if forecast != weather || forecast?.fetchedAtMs != weather?.fetchedAtMs { weather = forecast }
+    let path = WatchRoute.decode(context: context)
+    if path != route {
+      route = path
+      routeGeneration += 1
+    }
   }
 
   /// The pushed forecast while it is still worth believing, else nil.

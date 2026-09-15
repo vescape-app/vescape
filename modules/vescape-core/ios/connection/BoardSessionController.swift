@@ -2439,6 +2439,14 @@ internal final class BoardSessionController: VescGattListener {
       self?.scheduler.post { self?.pushWatchWeather(weather) }
     }
     if let known = WeatherCoordinator.shared.current { pushWatchWeather(known) }
+    // Native for the same reason: the module's `onChange` slot dies with every JS reload, and the
+    // route on the wrist must not. `attach` pushes whatever the controller already holds, which on
+    // a phone with no Navigation is the explicit clear — the one thing that stops a reconnecting
+    // wrist from restoring a route the rider already cleared.
+    watchPusher.onColdStateDelivered = { WatchRouteMirror.shared.channelDelivered($0) }
+    WatchRouteMirror.shared.attach(to: NavigationController.shared) { [weak self] payload in
+      self?.watchPusher.pushColdState(channel: watchRouteChannel, payload: payload)
+    }
     watchTick.start()
   }
 
@@ -2528,14 +2536,26 @@ internal final class BoardSessionController: VescGattListener {
     )
   }
 
-  /// Latest cold-path snapshot: board lanes are empty without telemetry.
+  /// Latest cold-path snapshot: board lanes are empty without telemetry; navigation stays live.
   ///
   /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/connection/BoardSessionController.kt `watchSnapshot`
-  /// TODO(ios parity): navigation and route-placement lanes (#486 onward). Android fills them from
-  /// Route Progress and the pushed route origin; iOS has no route mirror on the wrist yet, so they
-  /// ride as null — which is exactly the "no Navigation" case the wrist already draws.
   private func watchSnapshot() -> WatchSnapshot {
     let current = latestTelemetry
+    // Nav lanes are all-or-nothing: without Route Progress there is nothing to navigate by, and
+    // sending a rider position or a course alone would only place a dot on a route the wrist is not
+    // drawing. All five null is what hides the wrist overlay.
+    let progress = NavigationController.shared.currentProgress
+    let rider = locationTracker.riderPosition
+    // Measured from the origin of the route the wrist actually holds, not from the current
+    // Navigation's first point: a recompute landing between the push and this tick would otherwise
+    // place the rider against an origin the wrist has never seen.
+    let offset: (east: Double, north: Double)? = {
+      guard progress != nil, let origin = WatchRouteMirror.shared.origin, let rider else { return nil }
+      return watchOffsetMeters(
+        origin: origin,
+        point: WatchGeoPoint(latitude: rider.latitude, longitude: rider.longitude)
+      )
+    }()
     return WatchSnapshot(
       speed: current?.speed,
       dutyCycle: current?.dutyCycle,
@@ -2545,7 +2565,15 @@ internal final class BoardSessionController: VescGattListener {
       dutyExcluded: current == nil,
       batterySoc: current != nil ? latestBatterySoc : nil,
       motorTemp: current?.tempMotor,
-      ctrlTemp: current?.tempMosfet
+      ctrlTemp: current?.tempMosfet,
+      navBearing: offset != nil ? progress?.bearingDeg : nil,
+      navDistanceM: offset != nil ? progress?.remainingMeters : nil,
+      riderEastM: offset?.east,
+      riderNorthM: offset?.north,
+      // Absolute course, the rotation the wrist applies to its north-up world. Null while the fix
+      // carries no usable heading, which leaves the wrist drawing the route north-up.
+      courseDeg: offset != nil ? rider?.courseDeg : nil,
+      routeSpanM: WatchRouteMirror.shared.viewportSpanM
     )
   }
 

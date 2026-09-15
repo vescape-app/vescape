@@ -496,3 +496,104 @@ a stopped request rather than only as a cancelled task, and the rendered layout 
 hardware. The `ios/` tree on this machine has no Pods and no workspace, so the iPhone app itself was
 not compiled — the phone-side changes were compiled by the SwiftPM package that `test:ios` builds,
 not by an app build.
+
+## Route navigation (#487)
+
+The route the rider is following now reaches the wrist, and the Wear OS route, pointer and distance
+are on the rectangle.
+
+### The clear is a value, not a missing key
+
+Android publishes the polyline on its own `/route` Data Layer path and clears it by **deleting** the
+data item. There is no delete here. The channels share one Application Context, the delivery is
+latest-value-wins, and an absent key is indistinguishable from a key whose push never arrived — so a
+clear that rode as a removed channel would be undone by the next reconnect, and the wrist would
+restore the route the rider had already cleared. The clear is therefore an explicit payload: the
+version with no points. `WatchRoute.decode` reads it, an absent channel and an unreadable one
+identically as "no route", because the rider cannot act on the difference.
+
+The same reasoning is why `WatchRouteMirror.attach` pushes immediately instead of waiting for the
+first path change. On a phone with a restored Navigation that push is the route; on a phone with
+none it is the clear, which is the value that has to be in the context for a wrist that reconnects
+having never been told the last route ended.
+
+The polyline itself is Android's byte layout verbatim — version byte, uint16 count, float64 origin,
+then int32 micro-degree deltas measured against what the decoder will have reconstructed rather than
+against the source point, so rounding cannot accumulate along a long route. The one number that
+differs is the point ceiling: 2 000 rather than Android's 8 000, because a Data Layer item has a
+path to itself while this one shares a dictionary that is replaced as a unit. `updateApplicationContext`
+rejects an oversized payload with `WCErrorCodePayloadTooLarge` and Apple publishes no limit, so the
+cap is a margin rather than a number tuned against a measured one. Above it the route is strided
+down with its endpoints kept, exactly as Android does.
+
+### The origin moves only once the route has landed
+
+The wrist picture has two halves: the polyline on the cold channel, and where the rider is on it, in
+the Watch Frame's `riderEast`/`riderNorth` lanes as metres from the route's origin. An origin
+pointing at a route the wrist does not hold puts the rider off the line, and unlike a one-frame skew
+that state lasts until the next route change. So `WatchColdState` reports the channel it actually
+wrote — including on the activation retry — and the mirror promotes its origin only then. With no
+route the origin is nil and the nav lanes ride as `NaN`, which is the "no Navigation" case the wrist
+already drew before there was a route to draw.
+
+`updateApplicationContext` is synchronous and latest-value-wins, so the Android pusher's write mutex
+and generation counter have no peer: ordering here is already the call order.
+
+### Live progress is native, and the path slot is its own
+
+`NavigationController` gained `onPathChange` beside `onChange`, the same split Android has and for
+the same reason #488 documented for the forecast: `onChange` belongs to the Expo module and is
+re-assigned on every JS reload, and the route must survive one. It fires only when the drawn path
+itself changes, so a `computing` transition over an unchanged path does not re-push a route the wrist
+already has, and a failed Navigation is a `nil` path rather than an empty one — a failure has no
+line. Bearing and remaining distance come from `RouteProgress`, the phone's existing navigation
+truth, recomputed per GPS Fix in `vescape-core`; nothing on the live path touches JS.
+
+`setWatchRouteSpanM` is no longer an iOS no-op: the settled phone-map viewport span rides the frame
+and the wrist draws the route at the scale the rider set on the phone.
+
+### What the rectangle changed
+
+- **The chevron rides a rounded rectangle, not a circle.** Wear OS reads a rim point off one radius
+  and an angle. A rectangle has a different distance to its edge in every direction, so `Rim.point`
+  casts the bearing as a ray and takes where it leaves the shape — straight edges first, then the
+  corner arc. A bearing of 90° therefore points at the right _edge_, which is where "east" actually
+  is on this panel.
+- **The route clips to the display, not to a circle.** Wear OS clips to the circle its gauges ring,
+  because a round panel's drawing bounds are square and the line would otherwise run to the bezel.
+  Here the clip is the display's own rounded rectangle one step inside the rim gauges, so the route
+  uses the corners the rectangle has.
+- **Motion is a shape's `animatableData`, not four `Animatable`s.** The rider offset, the course and
+  the zoom interpolate together as one animatable pair rather than as three independent springs. The
+  course is kept unwrapped so a heading crossing north turns the short way, which is the same rule
+  `shortestAngleDelta` encodes on Android.
+- **SF Symbols for the empty-nav hint.** Wear OS bundles a Phosphor map-pin drawable; the chevron and
+  the pin beside the distance are drawn by hand on both wrists, so those match stroke for stroke.
+
+Everything behavioural stays Android's: the same default and clamped route spans, the same rider drop
+below centre, the same line widths and opacities at rest and in focus, the same rule that the arrow
+setting hides the chevron and nothing else, the same nav-focus behaviour where the readouts leave and
+the nav stack grows, and the same "No navigation / Set a destination on your phone" when the phone is
+not navigating. Ambient skips the route layer for Android's reason: a moving map is the most
+expensive thing an always-on panel could be asked to draw.
+
+### Verified, 2026-09-15
+
+- `bun run test:ios` — the route wire contract (round trip into metres, delta rounding that does not
+  accumulate over 500 points, the clear as an explicit payload, a clear replacing a route inside a
+  merged context, an absent channel, an unknown dictionary version, an unknown packed version, a
+  truncated buffer, a `points` value of the wrong type, striding a dense route with its endpoints
+  kept, and the origin of a cleared route), the distance label's rounding against Java's, and the
+  Navigation seam (the path slot firing only on a real path change, a failed Navigation clearing
+  rather than drawing an empty line, the mirror's opening clear, and the origin moving only once the
+  route is known to be on the wrist).
+- `VescapeWatch` against `watchsimulator26.5` — builds, with all three new wrist files confirmed
+  present in `VescapeWatch.SwiftFileList` rather than only in a build that succeeded.
+
+**Not verified.** Nothing here has run against a physical Apple Watch, a locked iPhone, or a live
+Navigation. Not measured: a real route arriving on the wrist and surviving a watch restart, a clear
+surviving a reconnect on hardware, the rider tracking the line while actually moving, the chevron's
+bearing against the road ahead, the rendered layout of the nav page on either case size, and the
+frame cost of the route layer. The `ios/` tree on this machine has no Pods and no workspace, so the
+iPhone app itself was not compiled — the phone-side changes were compiled by the SwiftPM package
+`test:ios` builds, not by an app build.

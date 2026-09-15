@@ -4,9 +4,9 @@ import Foundation
 ///   0 speed, 1 duty, 2 battery, 3 motorTemp, 4 ctrlTemp, 5 navBearing, 6 navDistance,
 ///   7 riderEast, 8 riderNorth, 9 course, 10 routeSpan.
 ///
-/// Lanes 5-10 are navigation and route placement. The iOS phone side does not fill them yet (#486
-/// onwards); they ride as `NaN`, which is exactly how the wrist already hides its nav overlay, so
-/// the wire format is the Android one from the first frame rather than something to widen later.
+/// Lanes 5-10 are navigation and route placement, filled from Route Progress and the origin of the
+/// route the wrist actually holds (`WatchRouteMirror`). They ride as `NaN` whenever there is no
+/// Navigation, which is exactly how the wrist hides its nav overlay.
 ///
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/watch/WatchFrame.kt
 let WATCH_FRAME_FIELD_COUNT = 11

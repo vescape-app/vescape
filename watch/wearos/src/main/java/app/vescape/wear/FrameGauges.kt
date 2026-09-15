@@ -234,6 +234,8 @@ internal fun FrameLayout(
  * What the nav focus page shows when the phone is not navigating: a centred, dim two-liner that
  * fades in as the readouts leave. Alpha is read inside the graphics layer so the drag never
  * recomposes.
+ *
+ * @parity /watch/watchos/NavPointer.swift `NavAbsentHint`
  */
 @Composable
 private fun NavAbsentHint(focus: () -> Float, stackAlpha: () -> Float) {

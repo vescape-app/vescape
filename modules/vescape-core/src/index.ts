@@ -4180,8 +4180,8 @@ export function addLocationListener(cb: (event: LocationEvent) => void): EventSu
 }
 
 /**
- * Sync the settled phone-map viewport scale to the Android Wear route. iOS accepts this as a no-op
- * because the Wear Mirror is Android-only.
+ * Sync the settled phone-map viewport scale to the route the watch draws, so the wrist shows the
+ * same world span the rider set on the phone map. Both platforms apply it.
  *
  * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/VescapeCoreModule.kt `setWatchRouteSpanM`
  * @parity /modules/vescape-core/ios/VescapeCoreModule.swift `setWatchRouteSpanM`
