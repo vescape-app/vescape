@@ -195,13 +195,13 @@ struct FrameLayout: View {
 
     return VStack(spacing: -2) {
       Text(value)
-        .font(.system(size: empty ? HERO_EMPTY_FONT_SIZE : HERO_FONT_SIZE, weight: .semibold, design: .rounded))
+        .font(WatchTypography.mono(size: empty ? HERO_EMPTY_FONT_SIZE : HERO_FONT_SIZE, weight: .semibold))
         .foregroundStyle(color)
         .monospacedDigit()
         .minimumScaleFactor(0.6)
         .lineLimit(1)
       Text(unit)
-        .font(.system(size: 10))
+        .font(WatchTypography.mono(size: 10))
         .foregroundStyle(Palette.secondaryText)
     }
     .frame(maxWidth: .infinity)
@@ -214,8 +214,7 @@ struct FrameLayout: View {
     GeometryReader { geometry in
       let metrics = Rim.Metrics(size: geometry.size, inset: Rim.inset)
       let valueInset = metrics.radius * 0.85
-      // Battery-% alignment: the 14pt rounded font's layout box sits ~2pt above where its glyphs
-      // read, so the row-stepped value needs that much extra drop to share the battery baseline.
+      // Align the row-stepped temperature values with the battery baseline.
       let valueY = metrics.rect.maxY - BOTTOM_READOUT_INSET - SECONDARY_FONT_SIZE * 0.6 + TEMP_VALUE_NUDGE
       // The label anchors at the temperature arc's upper end: it starts where the arc reaches the
       // straight side edge and runs down beside the value below it.
@@ -244,18 +243,14 @@ struct FrameLayout: View {
     valuePosition: CGPoint, labelPosition: CGPoint, rotation: Double
   ) -> some View {
     ZStack {
-      secondaryValue(value.hasSuffix("°") ? String(value.dropLast()) : value, color: color)
-        .overlay(alignment: .trailing) {
-          if value.hasSuffix("°") {
-            GeometryReader { geometry in
-              secondaryValue("°", color: color)
-                .offset(x: geometry.size.width + 1)
-            }
-          }
-        }
-        .position(valuePosition)
+      DegreeNumber(
+        value: value.hasSuffix("°") ? String(value.dropLast()) : value,
+        size: SECONDARY_FONT_SIZE,
+        color: color
+      )
+      .position(valuePosition)
       Text(label)
-        .font(.system(size: 7))
+        .font(WatchTypography.ui(size: 7))
         .foregroundStyle(Palette.secondaryText)
         .frame(width: TEMP_LABEL_LENGTH, height: 9, alignment: rotation > 0 ? .leading : .trailing)
         .rotationEffect(.degrees(rotation))
@@ -268,7 +263,7 @@ struct FrameLayout: View {
 
   private func secondaryValue(_ value: String, color: Color) -> some View {
     Text(value)
-      .font(.system(size: SECONDARY_FONT_SIZE, weight: .medium, design: .rounded))
+      .font(WatchTypography.mono(size: SECONDARY_FONT_SIZE, weight: .medium))
       .foregroundStyle(color)
       .monospacedDigit()
       .fixedSize()
@@ -300,7 +295,7 @@ let EMPTY_FRAME = WatchFrame()
 
 /// Down at the shoulders: the km/h / % label bottom sits at the height where the speed and duty
 /// arcs reach the rim, just under the clock and weather stack.
-private let HERO_TOP_INSET: CGFloat = 45
+private let HERO_TOP_INSET: CGFloat = 39.5
 private let HERO_FONT_SIZE: CGFloat = 38
 
 /// A dash is set well below hero size so it reads as "nothing here" rather than as a filled bar.

@@ -32,13 +32,14 @@ struct WeatherScreen: View {
       HStack(alignment: .firstTextBaseline, spacing: 6) {
         WeatherGlyph(slug: forecast.icon, size: HERO_ICON_SIZE, color: nil)
           .alignmentGuide(.firstTextBaseline) { $0[.bottom] - 3 }
-        Text("\(forecast.temperatureC)°")
-          .font(.system(size: HERO_FONT_SIZE, weight: .semibold, design: .rounded))
-          .foregroundStyle(Palette.primaryText)
-          .monospacedDigit()
+        DegreeNumber(
+          value: "\(forecast.temperatureC)",
+          size: HERO_FONT_SIZE,
+          color: Palette.primaryText
+        )
       }
       Text(forecast.label.uppercased())
-        .font(.system(size: 10))
+        .font(WatchTypography.ui(size: 10))
         .tracking(1.2)
         .foregroundStyle(Palette.secondaryText)
         .multilineTextAlignment(.center)
@@ -50,7 +51,7 @@ struct WeatherScreen: View {
           Image(systemName: rainSymbol)
             .font(.system(size: 9))
           Text("\(forecast.precipitationProbability)% rain")
-            .font(.system(size: 12))
+            .font(WatchTypography.mono(size: 12))
             .monospacedDigit()
         }
         .foregroundStyle(Palette.weather("cloud-rain"))
@@ -66,7 +67,7 @@ struct WeatherScreen: View {
         // Current conditions without an hourly array: a phone that got a partial provider response.
         // The page still has something true to say, so it says only that.
         Text("Hours unavailable")
-          .font(.system(size: 10))
+          .font(WatchTypography.ui(size: 10))
           .foregroundStyle(Palette.dimText)
       } else {
         hours(forecast.hourly)
@@ -97,18 +98,19 @@ struct WeatherScreen: View {
         ForEach(hourly, id: \.minuteOfDay) { hour in
           VStack(spacing: 2) {
             Text(watchFormatHour(hour.minuteOfDay))
-              .font(.system(size: 9))
+              .font(WatchTypography.mono(size: 9))
               .foregroundStyle(Palette.dimText)
               .monospacedDigit()
             WeatherGlyph(slug: hour.icon, size: HOUR_ICON_SIZE, color: nil)
-            Text("\(hour.temperatureC)°")
-              .font(.system(size: 12))
-              .foregroundStyle(Palette.secondaryText)
-              .monospacedDigit()
+            DegreeNumber(
+              value: "\(hour.temperatureC)",
+              size: 12,
+              color: Palette.secondaryText
+            )
             // Reserved whether or not it is filled, so the strip does not step up and down as the
             // rider scrolls past a dry hour.
             Text(hour.precipitationProbability > 0 ? "\(hour.precipitationProbability)%" : " ")
-              .font(.system(size: 9))
+              .font(WatchTypography.mono(size: 9))
               .foregroundStyle(Palette.weather("cloud-rain"))
               .monospacedDigit()
           }
@@ -138,10 +140,10 @@ private struct WeatherAbsent: View {
   var body: some View {
     VStack(spacing: 4) {
       Text(everReceived ? "Forecast too old" : "No forecast")
-        .font(.system(size: 15, weight: .semibold))
+        .font(WatchTypography.ui(size: 15, weight: .semibold))
         .foregroundStyle(Palette.secondaryText)
       Text(everReceived ? "Phone stopped updating" : "Waiting for your phone")
-        .font(.system(size: 11))
+        .font(WatchTypography.ui(size: 11))
         .foregroundStyle(Palette.dimText)
     }
     .multilineTextAlignment(.center)
@@ -167,7 +169,7 @@ private struct SunTime: View {
         .font(.system(size: 7, weight: .bold))
         .foregroundStyle(tint)
       Text(watchFormatHour(event.minuteOfDay))
-        .font(.system(size: 10))
+        .font(WatchTypography.mono(size: 10))
         .foregroundStyle(Palette.secondaryText)
         .monospacedDigit()
         .padding(.leading, 2)

@@ -29,6 +29,34 @@ func weatherSymbol(_ slug: String) -> String {
 let rainSymbol = "drop.fill"
 let radarSymbol = "dot.radiowaves.left.and.right"
 
+/// A readout number with its degree mark tucked against the last digit. The ° hangs off the
+/// number as an overlay, so it never shifts where the digits themselves land — "19°" and "20" sit
+/// on the same centre, and the mark is a tail, not part of the column.
+struct DegreeNumber: View {
+  let value: String
+  /// The size the font was built at — the ° tuck scales with it.
+  let size: CGFloat
+  let color: Color
+
+  var body: some View {
+    Text(value)
+      .font(WatchTypography.mono(size: size))
+      .foregroundStyle(color)
+      .monospacedDigit()
+      .fixedSize()
+      .overlay(alignment: .trailing) {
+        Text("°")
+          .font(WatchTypography.mono(size: size))
+          .foregroundStyle(color)
+          .fixedSize()
+          .offset(x: size * Self.degreeTuck)
+      }
+  }
+
+  /// Shift that leaves a hair of space between the last digit and the mark.
+  private static let degreeTuck: CGFloat = 0.45
+}
+
 /// A tinted condition glyph at an explicit point size. SF Symbols scale with Dynamic Type by
 /// default, which would let a rider's text size push a forecast strip into the rim gauges.
 struct WeatherGlyph: View {
@@ -38,7 +66,12 @@ struct WeatherGlyph: View {
 
   var body: some View {
     Image(systemName: weatherSymbol(slug))
-      .font(.system(size: size))
+      // Square-bounded rather than font-sized: SF Symbols of one condition family draw at
+      // different glyph sizes at the same point size, and a forecast row reads ragged unless
+      // every condition fills the same box.
+      .resizable()
+      .scaledToFit()
+      .frame(width: size, height: size)
       .foregroundStyle(color ?? Palette.weather(slug))
       .accessibilityHidden(true)
   }
