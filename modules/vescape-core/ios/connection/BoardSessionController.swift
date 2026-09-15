@@ -696,6 +696,29 @@ internal final class BoardSessionController: VescGattListener {
     record: { [weak self] name, props in self?.recordWatchDiagnostic(name, props) }
   )
 
+  /// Board Move strength as the rider set it on the phone, cached from the settings the wrist is
+  /// pushed. The wrist displays this number and never applies it: the phone is the only place that
+  /// turns a direction into motor output.
+  ///
+  /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/connection/BoardSessionController.kt `boardMoveStrengthPercent`
+  /// Seeded from the repository's own default rather than a second literal. The nil branch is
+  /// unreachable (the key is always present) and deliberately falls to 0, which `BoardMoveController`
+  /// reads as a stop: an unknown strength must not become a guessed one.
+  private var boardMoveStrengthPercent =
+    AppDataRepository.boardMoveStrengthPercent(AppDataRepository.defaultSettings["boardMoveStrengthPercent"]) ?? 0
+
+  /// Wrist Move ticks, scaled by the phone's strength setting and streamed through the same
+  /// `BoardMoveController` the phone UI drives — with a dead-man the wrist cannot see or extend.
+  ///
+  /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/connection/BoardSessionController.kt `watchMoveRelay`
+  private lazy var watchMoveRelay = WatchMoveRelay(
+    scheduler: scheduler,
+    strengthPercent: { [weak self] in self?.boardMoveStrengthPercent ?? 0 },
+    startMove: { [weak self] input in self?.startBoardMove(input: input) ?? false },
+    stopMove: { [weak self] in self?.stopBoardMove() ?? false },
+    record: { [weak self] name, props in self?.recordWatchDiagnostic(name, props) }
+  )
+
   /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/connection/BoardSessionController.kt `lightsGeneration`
   private func lightsGeneration() -> BoardLightsGeneration {
     BoardLightsGeneration.forBaseVersion(config?.refloatBaseVersion)
@@ -1501,6 +1524,10 @@ internal final class BoardSessionController: VescGattListener {
     boardConfigValues = nil
     motorConfigValues = nil
     motorConfigRequested = false
+    // A wrist hold does not survive the board it was holding. Releasing it here rather than
+    // leaving it to the dead-man means the next session never inherits a direction, and nothing
+    // stays scheduled against a session that is gone.
+    watchMoveRelay.cancel()
     // Lights are per Board Session: what the last board's echo said means nothing for the next.
     boardLights = nil
     publishBoardLights()
@@ -2478,6 +2505,9 @@ internal final class BoardSessionController: VescGattListener {
       // `WCSession` delivers on its own queue, and the relay composes the pair it writes from state
       // only this thread may touch.
       case .lights(let `switch`, let on): scheduler.post { self.watchLightsRelay.accept(`switch`, on: on) }
+      // Same hop, and here it is also what starts the dead-man on the phone's own clock: the tick
+      // is only "received" once this thread has it.
+      case .move(let direction): scheduler.post { self.watchMoveRelay.accept(direction) }
       }
     }
     watchPusher.start()
@@ -2582,11 +2612,13 @@ internal final class BoardSessionController: VescGattListener {
       ?? AppDataRepository.defaultWearPushRateHz
     configuredWatchIntervalMs = Int64(1000 / hz)
     applyWatchInterval()
+    let strengthPercent = AppDataRepository.boardMoveStrengthPercent(settings["boardMoveStrengthPercent"] ?? nil)
+    if let strengthPercent { boardMoveStrengthPercent = strengthPercent }
     watchPusher.pushColdState(
       channel: watchSettingsChannel,
       payload: WatchSettings(
         riderColor: (settings["riderColor"] ?? nil) as? String,
-        boardMoveStrengthPercent: AppDataRepository.boardMoveStrengthPercent(settings["boardMoveStrengthPercent"] ?? nil),
+        boardMoveStrengthPercent: strengthPercent,
         navArrowEnabled: (settings["wearNavArrowEnabled"] ?? nil) as? Bool ?? false
       ).payload
     )

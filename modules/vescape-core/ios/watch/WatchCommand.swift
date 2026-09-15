@@ -15,7 +15,7 @@ import Foundation
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/watch/WatchCommand.kt
 /// @parity /watch/wearos/src/main/java/app/vescape/wear/WatchCommand.kt
 enum WatchCommandKind {
-  /// Board Move. Wired by #490; the constant is reserved here so the wire numbering cannot drift.
+  /// Board Move (#490).
   static let move: UInt8 = 1
   static let mirrorAwake: UInt8 = 2
   /// Board lights (#489).
@@ -34,6 +34,29 @@ let watchMirrorAwakeTimeoutMs: Int64 = 45_000
 ///
 /// @parity /watch/wearos/src/main/java/app/vescape/wear/MainActivity.kt `wakeHeartbeat`
 let watchMirrorAwakeHeartbeatMs: Int64 = 15_000
+
+/// How long a held Board Move survives without a fresh wrist tick before the phone stops the board.
+/// The wrist re-sends every ``watchMoveRepeatMs`` (300 ms) while a half is held, so this is three
+/// missed ticks.
+///
+/// This is the safety property of the whole feature. Press/release alone is not enough: the release
+/// is the one message that must not be lost, and it is exactly the message a dropped link eats —
+/// a lost release would otherwise leave the phone streaming motor output forever, because the
+/// firmware's own ~1 s lapse never fires while the phone keeps talking. Lost release, app exit, a
+/// dead watch and a walk out of range are all the same event to the phone: ticks stopped.
+///
+/// Measured by the phone's own clock from the moment a tick is *received*, never from a timestamp
+/// the wrist wrote: the two devices have independent clock domains, and a wrist clock is not
+/// something a motor should be gated on.
+///
+/// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/watch/WatchCommand.kt `WATCH_MOVE_DEADMAN_MS`
+let watchMoveDeadManMs: Int64 = 900
+
+/// How often the wrist re-states the direction it is holding. A third of ``watchMoveDeadManMs``, so
+/// a release lost to a link drop costs the rider under a second of roll rather than an unbounded one.
+///
+/// @parity /watch/wearos/src/main/java/app/vescape/wear/WatchCommand.kt `MOVE_REPEAT_MS`
+let watchMoveRepeatMs: Int64 = 300
 
 /// How awake the wrist is, and therefore how fast frames are worth sending. Wire values — append,
 /// never renumber.
@@ -65,6 +88,11 @@ enum WatchLightsSwitch: UInt8 {
 
 /// A decoded wrist command.
 enum WatchCommand: Equatable {
+  /// Hold the board rolling in this direction (`-1` back, `0` stop, `1` forward) until the next
+  /// tick. A *direction*, never an input value: strength is a phone setting, and a wrist that could
+  /// name its own motor output would be a second place that decides how hard the board pushes.
+  case move(Int)
+
   /// The Mirror reporting how awake it is; re-sent on a heartbeat so its absence is meaningful.
   case mirrorAwake(WatchMirrorWakeLevel)
 
@@ -79,6 +107,9 @@ enum WatchCommand: Equatable {
 enum WatchCommandCodec {
   static func encode(_ command: WatchCommand) -> Data {
     switch command {
+    case .move(let direction):
+      // Two's complement, so `-1` is `0xFF` — the byte Android's signed `Byte` writes.
+      return Data([WatchCommandKind.move, UInt8(bitPattern: Int8(clampWatchMoveDirection(direction)))])
     case .mirrorAwake(let level):
       return Data([WatchCommandKind.mirrorAwake, level.rawValue])
     case .lights(let `switch`, let on):
@@ -87,14 +118,17 @@ enum WatchCommandCodec {
     }
   }
 
-  /// Nil for a short buffer, an unknown kind, or an unknown value of a known kind. Move is a
-  /// reserved kind with no phone-side handler yet (#490), so it decodes to nil today —
-  /// deliberately the same "ignored" outcome as a kind this build has never heard of.
+  /// Nil for a short buffer, an unknown kind, or an unknown value of a known kind — deliberately
+  /// the same "ignored" outcome as a kind this build has never heard of.
   static func decode(_ bytes: Data) -> WatchCommand? {
     guard bytes.count >= 2 else { return nil }
     let kind = bytes[bytes.startIndex]
     let value = bytes[bytes.startIndex + 1]
     switch kind {
+    case WatchCommandKind.move:
+      // Clamped rather than rejected: a direction from a future wrist must never become a bigger
+      // move than full reverse or full forward, and it must never fail to be readable as a stop.
+      return .move(clampWatchMoveDirection(Int(Int8(bitPattern: value))))
     case WatchCommandKind.mirrorAwake:
       return WatchMirrorWakeLevel(rawValue: value).map(WatchCommand.mirrorAwake)
     case WatchCommandKind.lights:
@@ -106,4 +140,11 @@ enum WatchCommandCodec {
       return nil
     }
   }
+}
+
+/// `-1` back, `0` stop, `1` forward. The only three values the Move wire has.
+///
+/// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/watch/WatchCommand.kt `WatchCommandDecoder`
+func clampWatchMoveDirection(_ direction: Int) -> Int {
+  min(max(direction, -1), 1)
 }

@@ -248,7 +248,7 @@ until its transition has settled.
 `.verticalPage` gives the crown and the swipe on one axis, in Android's order — radar, weather,
 gauges, navigation. The control axis nests inside the gauges page — gauges, Move, Lights,
 diagnostics — and shows no page dots, because they land on the battery gauge and Android has none
-either. The pages those slices fill are placeholders today (#486–#491); the axes are the point.
+either. The pages those slices fill arrived with later slices (#486–#491); the axes are the point.
 
 ### Where the wrist logic lives
 
@@ -306,10 +306,10 @@ geometry-based fallback, not native scroll-phase parity. The outer vertical page
 horizontal control page settles; the horizontal pager explicitly remains enabled for returning.
 Touches reset the 45-second idle return, and a finger held down prevents the return.
 
-Before implementing Board Move, connect its hold lifecycle to both pager locks and command release.
-Move is currently a placeholder; the touch observer only protects idle return and does not establish
-motor-control gesture safety. Verify cancelled drags, crown scrolling, nested diagnostics scrolling,
-and long holds on the device before enabling those controls.
+Board Move (#490) connects its hold lifecycle to both pager locks and to command release: while
+`moveHeld` is true the vertical axis is disabled, the horizontal axis loses its returning override,
+and the idle return is suspended. Cancelled drags, crown scrolling, nested diagnostics scrolling and
+long holds are still unverified on a device.
 
 The inward glow uses 16 overlapping clipped strokes per active gauge, independent of display size.
 Its intensity and fade stops match Wear OS. This reduces draw calls from the previous size-dependent
@@ -683,3 +683,104 @@ either case size. The relay's behaviour under all of those is pinned by unit tes
 phone's own truth, which is not the same as having seen it. The `ios/` tree on this machine has no
 Pods and no workspace, so the iPhone app itself was not compiled — the phone-side changes were
 compiled by the SwiftPM package `test:ios` builds, not by an app build.
+
+## Board Move (#490)
+
+A hold on the wrist and a press on the phone's Move card are the same action, reaching the same
+`BoardMoveController` stream. This is the one slice that makes a motor turn from a wrist, so almost
+all of it is about what happens when the wrist stops talking.
+
+### The wrist sends a direction, and only a direction
+
+Two bytes, `[1, direction]`, direction `-1` back / `0` stop / `1` forward — Android's numbering
+verbatim, including `-1` as `0xFF`. Strength is a phone setting: `WatchMoveRelay` multiplies
+`BOARD_MOVE_INPUT_MAX` by the rider's `boardMoveStrengthPercent` and hands the result to
+`startBoardMove`. A wrist that could name its own input value would be a second place deciding how
+hard the board pushes, and a wrist protocol is not a place to keep that decision.
+
+Everything else the phone already owned stays where it was. The relay calls `startBoardMove` /
+`stopBoardMove`, so the trusted-link check, the firmware generation's wire format and repeat cadence,
+and the arbiter's refusal while a sensor is correcting all apply to a wrist press exactly as they
+apply to a phone press. Nothing about Board Move's safety envelope is re-stated on the wrist.
+
+A direction from a future wrist is clamped rather than rejected: it must never become a bigger move
+than full scale, and it must never fail to be readable as a stop.
+
+### A hold is a stream of ticks, and the dead-man is the feature
+
+There is no press/release pair on this wire. The wrist re-states its direction every 300 ms, and the
+phone stops the board after 900 ms of silence — three missed ticks, Android's numbers exactly.
+
+Press/release alone would be unsafe for one reason: the release is the single message that must not
+be lost, and it is exactly the message a dropped link eats. A lost release would leave the phone
+streaming motor output indefinitely, because the firmware's own ~1 s lapse never fires while the
+phone keeps talking. Ticking instead turns lost release, wrist app exit, a dead watch and a walk out
+of range into one event the phone can see — ticks stopped — and one answer.
+
+The timeout runs on the phone's own scheduler, armed when a tick is _received_. No wrist timestamp
+is read anywhere in this path: the two devices have independent clock domains, and a clock the phone
+does not own is not a thing to gate a motor on.
+
+Re-issuing the hold each tick costs nothing (the controller's repeat loop is already running and
+only swaps its input) and it self-heals a hold that was refused when it started — a board that
+finished connecting mid-press starts rolling on the next tick instead of needing a second press.
+
+### Stale holds cannot queue
+
+The command rides `sendMessageData`, which drops when the phone is unreachable and never queues.
+That is load-bearing, not a limitation to work around: `transferUserInfo` and the Application Context
+deliver FIFO, so a reconnect would replay a backlog of stale holds and roll a board minutes after the
+rider let go. A release therefore cannot get stuck behind the holds that preceded it — there is
+nothing for it to be behind. Android has to build a latest-wins slot in front of its blocking Data
+Layer send to get the same property for free here.
+
+Even a hypothetical burst is bounded: each tick re-arms the same timer rather than adding one, so
+fifty stale holds are still 900 ms of roll and no more. A late hold landing after a release stops the
+board on arrival of the release and can only roll for one dead-man afterwards.
+
+A board session ending cancels the relay outright, so a hold never carries into the next session.
+
+### The press is read as gesture state
+
+`@GestureState` rather than a press/release callback pair, and that is the point rather than a
+convenience: SwiftUI resets it to its initial value whenever the gesture is cancelled — the pager
+claiming the drag, the finger leaving the glass, the view going away — so every way a press can end
+without an `onEnded` still ends the hold. It is a second layer under the phone's timeout, not a
+replacement for it. Move is offered only on a LIVE mirror and only on a settled page, and losing
+either mid-hold ends the hold.
+
+While a hold is active both pagers lock and the 45 s idle return is suspended: a hold must not be
+read as a page swipe, and the page must not move out from under a finger that is driving a motor.
+
+### What the rectangle changed
+
+- **The split is the display's shape, not a circle**, clipped to `Rim.path` like Lights and the route.
+- **SF Symbols `chevron.up` / `chevron.down`** stand in for Wear's triangle glyphs.
+- **The haptic is `WKInterfaceDevice.play(.start)` on hold and `.stop` on release.** Wear OS plays a
+  single `HapticFeedbackType.LongPress` at the start; watchOS has no equivalent constant, and the
+  start/stop pair is the closest the wrist offers to "this is running now". Tagged `@platform-diff`.
+
+### Verified, 2026-09-15
+
+- `bun run test:ios` — 17 tests in `WatchMoveRelayTests`, all against a virtual clock with no
+  wall-clock sleeps: strength scaling (including a strength that cannot exceed full scale or invert
+  the direction), a release stopping exactly once and disarming the dead-man, a release before any
+  hold touching nothing, silence stopping the board at the boundary and not before, ten ticks keeping
+  a hold alive with one diagnostic event, two missed ticks survivable and the third not, a refused
+  hold self-healing, a lost release stopping on the dead-man and staying stopped, a late hold after a
+  release outliving it by no more than one dead-man, fifty stale holds still being one dead-man,
+  teardown stopping an active hold, and the wire (round trip, the exact Android bytes including
+  `0xFF`, a future direction clamped, a short or unknown payload decoding to nothing).
+- `VescapeWatch` against `watchsimulator26.5` — builds, with `MoveScreen.swift` confirmed present in
+  `VescapeWatch.SwiftFileList` rather than only in a build that succeeded.
+
+**Not verified, and this is the slice where that matters most.** No motor has been turned by any of
+this. Nothing has run against a physical Apple Watch, a paired iPhone or a real board, so none of the
+following is measured: the actual wrist-to-phone-to-BLE latency of a hold, whether 300 ms ticks
+survive a real degraded Bluetooth link, the dead-man against that real latency, what a genuine
+out-of-range walk mid-hold does end to end, whether the pager locks hold up against a real cancelled
+drag or crown scroll, and how the start/stop haptics feel under a glove. The phone-side behaviour is
+pinned by deterministic fixtures against the phone's own truth, which is not the same as having seen
+a board stop. The `ios/` tree on this machine has no Pods and no workspace, so the iPhone app itself
+was not compiled — the phone-side changes were compiled by the SwiftPM package `test:ios` builds.
+Hardware validation is slice 8's job and Move must not be trusted on a board until it happens.

@@ -155,8 +155,8 @@ final class WatchBoardTests: XCTestCase {
     XCTAssertNil(WatchCommandCodec.decode(Data([WatchCommandKind.lights])))
   }
 
-  /// Board Move is a reserved kind with no phone-side handler yet (#490).
-  func testMoveStillDecodesToNothing() {
-    XCTAssertNil(WatchCommandCodec.decode(Data([WatchCommandKind.move, 1])))
+  /// Move shares this decoder but is its own contract; `WatchMoveRelayTests` owns it.
+  func testMoveDecodesOnItsOwnKind() {
+    XCTAssertEqual(WatchCommandCodec.decode(Data([WatchCommandKind.move, 1])), .move(1))
   }
 }

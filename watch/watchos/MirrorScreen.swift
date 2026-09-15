@@ -31,6 +31,12 @@ struct MirrorScreen: View {
   @State private var pagePositions: [Axis: Double] = [:]
   @State private var settledPositions: [Axis: Double] = [:]
   @State private var verticalPagingEnabled = true
+  /// A Board Move hold in progress. Both pagers lock while it is true and the idle return is
+  /// suspended: a hold must not be read as a page swipe, and the page must never move out from
+  /// under a finger that is driving a motor.
+  ///
+  /// @parity /watch/wearos/src/main/java/app/vescape/wear/MirrorScreen.kt `moveHeld`
+  @State private var moveHeld = false
   @GestureState private var touching = false
   @GestureState private var dragging = false
   @State private var lastInteraction = Date()
@@ -80,9 +86,13 @@ struct MirrorScreen: View {
           }
       )
       .onChange(of: touching) { _, _ in lastInteraction = Date() }
+      // A hold both suspends the countdown and, on release, restarts it: the 45 s is measured from
+      // the last thing the rider did, and a long hold is very much something they did.
+      .onChange(of: moveHeld) { _, _ in lastInteraction = Date() }
       .task(id: lastInteraction) {
         try? await Task.sleep(for: .seconds(CONTROL_IDLE_RETURN_SECONDS))
-        guard !Task.isCancelled, !touching, !isLuminanceReduced, control != .gauges else { return }
+        guard !Task.isCancelled, !touching, !moveHeld, !isLuminanceReduced, control != .gauges
+        else { return }
         withAnimation { control = .gauges }
       }
       .task(id: tick) { link.refresh() }
@@ -177,7 +187,7 @@ struct MirrorScreen: View {
     // fixed here, not a thing to keep.
     .scrollIndicators(.hidden)
     // Ambient has already parked the axis, and a page animation there is wasted panel.
-    .scrollDisabled(isLuminanceReduced || !verticalPagingEnabled)
+    .scrollDisabled(isLuminanceReduced || !verticalPagingEnabled || moveHeld)
     .onChange(of: vertical) { _, _ in lastInteraction = Date() }
   }
 
@@ -222,8 +232,10 @@ struct MirrorScreen: View {
     .scrollTargetBehavior(.paging)
     .scrollPosition(id: $control)
     .scrollIndicators(.hidden)
-    // Override the outer vertical scroll lock: returning horizontally must remain possible.
-    .environment(\.isScrollEnabled, !isLuminanceReduced)
+    // Override the outer vertical scroll lock: returning horizontally must remain possible. A held
+    // Move is the one thing that closes this axis too — leaving the Move page mid-hold would cancel
+    // the press and strand the rider's intent somewhere the page no longer shows.
+    .environment(\.isScrollEnabled, !isLuminanceReduced && !moveHeld)
     .onChange(of: control) { _, _ in lastInteraction = Date() }
   }
 
@@ -245,7 +257,14 @@ struct MirrorScreen: View {
         )
       }
     case .move:
-      PendingPage(title: "Move")
+      MoveScreen(
+        link: link,
+        // The transition gate and the pager locks answer different questions: this one refuses to
+        // *start* a hold on a page that has not settled, the locks stop a started hold from being
+        // taken away by a swipe.
+        interactionEnabled: interactionEnabled(.move),
+        onHoldChanged: { moveHeld = $0 }
+      )
     case .lights:
       LightsScreen(link: link, interactionEnabled: interactionEnabled(.lights))
     case .diagnostics:

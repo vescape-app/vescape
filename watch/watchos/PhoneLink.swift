@@ -145,6 +145,33 @@ final class PhoneLink: NSObject, ObservableObject, WCSessionDelegate {
     )
   }
 
+  /// Re-state the direction the rider is holding, or `0` for the release. Direction only: the
+  /// phone scales it by the rider's strength setting and owns every gate around it.
+  ///
+  /// Fire-and-forget on `sendMessageData`, and that is load-bearing rather than a limitation.
+  /// `sendMessageData` drops when the phone is unreachable; it never queues. The deferred paths —
+  /// `transferUserInfo`, the Application Context — must never be used here, because a FIFO queue
+  /// would deliver a backlog of stale holds after a reconnect, i.e. a board that starts rolling by
+  /// itself minutes after the rider let go. A dropped tick is covered by the next one, and the tick
+  /// that never comes is covered by the phone's dead-man.
+  ///
+  /// So a stop cannot get stuck behind the holds that preceded it: there is nothing for it to be
+  /// behind. Android has to build a latest-wins slot in front of its blocking Data Layer send to
+  /// get the same property.
+  ///
+  /// @parity /watch/wearos/src/main/java/app/vescape/wear/WatchCommand.kt `sendMove`
+  /// @platform-diff `WCSession.sendMessageData` is already latest-wins and non-blocking, so the
+  ///   wrist needs no coalescing queue of its own.
+  func sendMove(_ direction: Int) {
+    let session = WCSession.default
+    guard session.activationState == .activated, session.isReachable else { return }
+    session.sendMessageData(
+      WatchCommandCodec.encode(.move(direction)),
+      replyHandler: nil,
+      errorHandler: nil
+    )
+  }
+
   private func sendWakeLevel() {
     let session = WCSession.default
     guard session.activationState == .activated, session.isReachable else { return }
