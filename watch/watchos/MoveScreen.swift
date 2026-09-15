@@ -96,9 +96,13 @@ struct MoveScreen: View {
           Rectangle().fill(accent.opacity(held == .forward ? Self.heldTintAlpha : 0))
           Rectangle().fill(accent.opacity(held == .backward ? Self.heldTintAlpha : 0))
         }
-        Rectangle()
-          .fill(Palette.guide)
-          .frame(height: Self.dividerWidth)
+        // Split in two so the divider does not strike through the label sitting on it. Same
+        // centre gap as Wear OS's drawn divider.
+        HStack(spacing: geometry.size.width * Self.dividerGapShare) {
+          Rectangle().fill(Palette.guide)
+          Rectangle().fill(Palette.guide)
+        }
+        .frame(height: Self.dividerWidth)
       }
       .clipShape(shape)
     }
@@ -125,6 +129,11 @@ struct MoveScreen: View {
 
   private static let glyphSize: CGFloat = 30
   private static let dividerWidth: CGFloat = 1
+  /// Empty span under the centre label, as a share of the display width (inner circle vs
+  /// rectangle accounts for the rest).
+  ///
+  /// @parity /watch/wearos/src/main/java/app/vescape/wear/MoveScreen.kt `DIVIDER_GAP_FRACTION`
+  private static let dividerGapShare: CGFloat = 0.5
   private static let heldTintAlpha = 0.18
 }
 
@@ -171,7 +180,7 @@ private struct CenterLabel: View {
 
   var body: some View {
     Text(text)
-      .font(.system(size: 11))
+      .font(WatchTypography.ui(size: 11))
       .foregroundStyle(enabled ? Palette.secondaryText : Palette.dimText)
       .multilineTextAlignment(.center)
       .allowsHitTesting(false)
