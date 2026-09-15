@@ -140,7 +140,7 @@ fun RadarScreen(visible: Boolean) {
                 // Unit on the outermost ring only: the inner one reads as the same scale without
                 // repeating it next to a line 10 dp away.
                 text = if (km == rings.last().first) "$km km" else "$km",
-                style = MaterialTheme.typography.caption3.copy(fontSize = RING_FONT_SIZE),
+                style = WatchTypography.mono(MaterialTheme.typography.caption3.copy(fontSize = RING_FONT_SIZE)),
                 color = DimText,
                 modifier = Modifier
                     .align(Alignment.Center)
@@ -150,7 +150,7 @@ fun RadarScreen(visible: Boolean) {
         RadarHeader()
         Text(
             text = formatHour(minuteOfDay(frame.timeSec * 1_000L)),
-            style = MaterialTheme.typography.caption2,
+            style = WatchTypography.mono(MaterialTheme.typography.caption2),
             color = SecondaryText,
             modifier = Modifier
                 .align(Alignment.BottomCenter)

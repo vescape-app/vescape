@@ -97,7 +97,7 @@ internal fun MirrorScreen(
         }
     }
 
-    MaterialTheme {
+    MaterialTheme(typography = WatchTypography.material) {
         when {
             showClosePrompt -> Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                 ClosePrompt(onStay = { showClosePrompt = false }, onClose = onRequestClose)

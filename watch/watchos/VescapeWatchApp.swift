@@ -11,6 +11,7 @@ struct VescapeWatchApp: App {
   var body: some Scene {
     WindowGroup {
       MirrorScreen(link: link)
+        .font(WatchTypography.ui(size: 12))
         // Replay owns its inputs; live phone context must not overwrite the fixtures.
         // @parity /watch/wearos/src/main/java/app/vescape/wear/MainActivity.kt `onStart`
         .onAppear {

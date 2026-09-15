@@ -20,12 +20,12 @@ struct DisconnectedLayout: View {
 
     VStack(spacing: 4) {
       Text(title)
-        .font(.system(size: 15, weight: .semibold))
+        .font(WatchTypography.ui(size: 15, weight: .semibold))
         .foregroundStyle(ambient.readout(Palette.primaryText))
         .multilineTextAlignment(.center)
       if !caption.isEmpty {
         Text(caption)
-          .font(.system(size: 12))
+          .font(WatchTypography.ui(size: 12))
           .foregroundStyle(ambient.skeleton(Palette.secondaryText))
           .multilineTextAlignment(.center)
       }
@@ -60,10 +60,10 @@ struct PendingPage: View {
   var body: some View {
     VStack(spacing: 4) {
       Text(title)
-        .font(.system(size: 15, weight: .semibold))
+        .font(WatchTypography.ui(size: 15, weight: .semibold))
         .foregroundStyle(Palette.secondaryText)
       Text("Not on the wrist yet")
-        .font(.system(size: 11))
+        .font(WatchTypography.ui(size: 11))
         .foregroundStyle(Palette.dimText)
     }
     .multilineTextAlignment(.center)

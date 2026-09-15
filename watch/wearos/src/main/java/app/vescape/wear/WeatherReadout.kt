@@ -50,7 +50,7 @@ internal fun WeatherReadout(muted: Boolean, onClick: (() -> Unit)?, modifier: Mo
             )
             Text(
                 text = "${forecast.temperatureC}°",
-                style = MaterialTheme.typography.caption2.copy(fontSize = READOUT_FONT_SIZE),
+                style = WatchTypography.mono(MaterialTheme.typography.caption2.copy(fontSize = READOUT_FONT_SIZE)),
                 color = textColor,
                 modifier = Modifier.padding(start = 3.dp),
             )
@@ -67,7 +67,7 @@ internal fun WeatherReadout(muted: Boolean, onClick: (() -> Unit)?, modifier: Mo
                 )
                 Text(
                     text = "${forecast.precipitationProbability}%",
-                    style = MaterialTheme.typography.caption2.copy(fontSize = RAIN_FONT_SIZE),
+                    style = WatchTypography.mono(MaterialTheme.typography.caption2.copy(fontSize = RAIN_FONT_SIZE)),
                     color = rainColor,
                     modifier = Modifier.padding(start = 1.dp),
                 )

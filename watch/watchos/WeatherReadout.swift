@@ -34,7 +34,7 @@ struct WeatherReadout: View {
       HStack(spacing: 1) {
         WeatherGlyph(slug: forecast.icon, size: ICON_SIZE, color: iconColor)
         Text("\(forecast.temperatureC)°")
-          .font(.system(size: FONT_SIZE))
+          .font(WatchTypography.mono(size: FONT_SIZE))
           .foregroundStyle(textColor)
           .monospacedDigit()
       }
@@ -44,7 +44,7 @@ struct WeatherReadout: View {
           Image(systemName: rainSymbol)
             .font(.system(size: DROP_SIZE))
           Text("\(forecast.precipitationProbability)%")
-            .font(.system(size: RAIN_FONT_SIZE))
+            .font(WatchTypography.mono(size: RAIN_FONT_SIZE))
             .monospacedDigit()
         }
         .foregroundStyle(rainColor)

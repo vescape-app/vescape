@@ -43,7 +43,7 @@ struct DiagnosticsPanel: View {
 
           if link.diagnostics.events.isEmpty {
             Text("no events yet")
-              .font(.system(size: 12))
+              .font(WatchTypography.ui(size: 12))
               .foregroundStyle(Palette.dimText)
           } else {
             ForEach(Array(link.diagnostics.events.enumerated()), id: \.offset) { _, event in
@@ -79,7 +79,7 @@ struct DiagnosticsPanel: View {
         .foregroundStyle(event.warn ? Palette.warning : Palette.secondaryText)
         .frame(maxWidth: .infinity, alignment: .leading)
     }
-    .font(.system(size: 11))
+    .font(WatchTypography.ui(size: 11))
   }
 
   private func row(_ label: String, _ text: String, value: Color = Palette.primaryText) -> some View {
@@ -88,7 +88,7 @@ struct DiagnosticsPanel: View {
       Spacer(minLength: 2)
       Text(text).monospacedDigit().foregroundStyle(value)
     }
-    .font(.system(size: 12))
+    .font(WatchTypography.ui(size: 12))
   }
 
   /// Wall clock, seconds included: the ring is read against a phone log, and minute precision would

@@ -89,7 +89,7 @@ internal fun NavPointer(
             Text(
                 text = distanceLabel(distanceM),
                 modifier = Modifier.padding(start = PIN_GAP),
-                style = MaterialTheme.typography.caption2.copy(fontSize = DISTANCE_FONT_SIZE),
+                style = WatchTypography.mono(MaterialTheme.typography.caption2.copy(fontSize = DISTANCE_FONT_SIZE)),
                 color = color,
             )
         }

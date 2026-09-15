@@ -7,6 +7,13 @@
       `WKCompanionAppBundleIdentifier` is not written here: the config plugin fills it from the phone
       target's own bundle id, so the dev and production variants stay paired without a second switch.
     -->
+    <key>UIAppFonts</key>
+    <array>
+      <string>Raleway-500.ttf</string>
+      <string>Raleway-600.ttf</string>
+      <string>JetBrainsMono-500.ttf</string>
+      <string>JetBrainsMono-600.ttf</string>
+    </array>
     <key>WKApplication</key>
     <true/>
     <!--

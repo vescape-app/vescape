@@ -53,7 +53,7 @@ struct NavPointer: View {
           }
           .frame(width: PIN_BOX, height: PIN_BOX)
           Text(WatchGauge.distance(distanceM))
-            .font(.system(size: DISTANCE_FONT_SIZE))
+            .font(WatchTypography.mono(size: DISTANCE_FONT_SIZE))
             .foregroundStyle(color)
             .monospacedDigit()
         }
@@ -84,10 +84,10 @@ struct NavAbsentHint: View {
         .font(.system(size: HINT_ICON_SIZE))
         .foregroundStyle(Palette.dimText)
       Text("No navigation")
-        .font(.system(size: 14))
+        .font(WatchTypography.ui(size: 14))
         .foregroundStyle(Palette.secondaryText)
       Text("Set a destination on your phone")
-        .font(.system(size: HINT_FONT_SIZE))
+        .font(WatchTypography.ui(size: HINT_FONT_SIZE))
         .foregroundStyle(Palette.dimText)
         .multilineTextAlignment(.center)
     }

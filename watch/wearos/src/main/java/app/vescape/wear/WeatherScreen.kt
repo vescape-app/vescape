@@ -81,7 +81,7 @@ fun WeatherScreen() {
                 )
                 Text(
                     text = "${forecast.temperatureC}°",
-                    style = MaterialTheme.typography.display3,
+                    style = WatchTypography.mono(MaterialTheme.typography.display3),
                     color = PrimaryText,
                     modifier = Modifier.padding(start = 8.dp),
                 )
@@ -104,7 +104,7 @@ fun WeatherScreen() {
                     )
                     Text(
                         text = "${forecast.precipitationProbability}% rain",
-                        style = MaterialTheme.typography.caption2,
+                        style = WatchTypography.mono(MaterialTheme.typography.caption2),
                         color = weatherColor("cloud-rain"),
                         modifier = Modifier.padding(start = 4.dp),
                     )
@@ -164,7 +164,7 @@ private fun HourColumn(hour: WatchWeatherHour) {
     ) {
         Text(
             text = formatHour(hour.minuteOfDay),
-            style = MaterialTheme.typography.caption3,
+            style = WatchTypography.mono(MaterialTheme.typography.caption3),
             color = DimText,
         )
         Icon(
@@ -175,13 +175,13 @@ private fun HourColumn(hour: WatchWeatherHour) {
         )
         Text(
             text = "${hour.temperatureC}°",
-            style = MaterialTheme.typography.caption2,
+            style = WatchTypography.mono(MaterialTheme.typography.caption2),
             color = SecondaryText,
         )
         if (hour.precipitationProbability > 0) {
             Text(
                 text = "${hour.precipitationProbability}%",
-                style = MaterialTheme.typography.caption3.copy(fontSize = HOUR_PRECIP_FONT_SIZE),
+                style = WatchTypography.mono(MaterialTheme.typography.caption3.copy(fontSize = HOUR_PRECIP_FONT_SIZE)),
                 color = weatherColor("cloud-rain"),
             )
         } else {
@@ -234,7 +234,7 @@ private fun SunTime(minuteOfDay: Int, rising: Boolean) {
         )
         Text(
             text = formatHour(minuteOfDay),
-            style = MaterialTheme.typography.caption3,
+            style = WatchTypography.mono(MaterialTheme.typography.caption3),
             color = SecondaryText,
             modifier = Modifier.padding(start = 2.dp),
         )

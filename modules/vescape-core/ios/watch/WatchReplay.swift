@@ -5,6 +5,7 @@ import Foundation
 enum ReplaySceneParser {
   /// @parity /watch/wearos/src/main/java/app/vescape/wear/FrameReplay.kt `ReplaySceneParser.parseRoute`
   static func parseRoute(json: String) -> WatchRoute? {
+    // intentional-suppression: malformed replay fixtures return nil; the replay driver logs the failure.
     guard let fixture = try? JSONDecoder().decode(RouteFixture.self, from: Data(json.utf8)),
       !fixture.points.isEmpty
     else { return nil }
@@ -23,6 +24,7 @@ enum ReplaySceneParser {
   }
 
   static func parseWeather(json: String, nowMs: Int64, minuteOfDay: Int) -> WatchWeather? {
+    // intentional-suppression: malformed replay fixtures return nil; the replay driver logs the failure.
     guard let fixture = try? JSONDecoder().decode(WeatherFixture.self, from: Data(json.utf8)) else {
       return nil
     }

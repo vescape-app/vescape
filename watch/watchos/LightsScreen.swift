@@ -140,7 +140,7 @@ struct LightsScreen: View {
         .font(.system(size: Self.glyphSize))
         .foregroundStyle(tint)
       Text(label)
-        .font(.system(size: 11))
+        .font(WatchTypography.ui(size: 11))
         .foregroundStyle(tint)
     }
     .frame(maxWidth: .infinity, maxHeight: .infinity)

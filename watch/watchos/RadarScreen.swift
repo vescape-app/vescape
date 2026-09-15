@@ -46,7 +46,7 @@ struct RadarScreen: View {
         VStack {
           Spacer()
           Text(watchFormatHour(watchMinuteOfDay(epochMs: frame.timeSec * 1_000)))
-            .font(.system(size: 12))
+            .font(WatchTypography.mono(size: 12))
             .foregroundStyle(Palette.secondaryText)
             .monospacedDigit()
             .padding(.bottom, TIME_BOTTOM_INSET)
@@ -137,7 +137,7 @@ struct RadarScreen: View {
         // labels off the imagery the rider is reading ahead of them.
         ForEach(rings, id: \.0) { km, fraction in
           Text(km == rings.last?.0 ? "\(km) km" : "\(km)")
-            .font(.system(size: 8))
+            .font(WatchTypography.mono(size: 8))
             .foregroundStyle(Palette.dimText)
             .position(x: centre.x + side / 2 * fraction - RING_LABEL_INSET, y: centre.y)
         }
@@ -190,7 +190,7 @@ private struct RadarHeader: View {
         .font(.system(size: 12))
         .foregroundStyle(Palette.weather("cloud-rain"))
       Text("Rain radar")
-        .font(.system(size: 9))
+        .font(WatchTypography.ui(size: 9))
         .foregroundStyle(Palette.secondaryText)
       Spacer()
     }
@@ -208,11 +208,11 @@ private struct RadarAbsentHint: View {
   var body: some View {
     VStack(spacing: 4) {
       Text(loading ? "Loading radar" : "No radar")
-        .font(.system(size: 15, weight: .semibold))
+        .font(WatchTypography.ui(size: 15, weight: .semibold))
         .foregroundStyle(Palette.secondaryText)
       if !loading {
         Text(hasLocation ? "Watch has no network" : "Waiting for your phone")
-          .font(.system(size: 11))
+          .font(WatchTypography.ui(size: 11))
           .foregroundStyle(Palette.dimText)
       }
     }

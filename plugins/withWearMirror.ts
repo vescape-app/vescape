@@ -1,5 +1,5 @@
 import { withDangerousMod, type ConfigPlugin } from 'expo/config-plugins'
-import { cpSync, existsSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { cpSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import path from 'node:path'
 
 /**
@@ -18,6 +18,12 @@ import path from 'node:path'
  */
 const GRADLE_MODULE = ':wearos'
 const WATCH_SOURCE_DIR = path.join('watch', 'wearos')
+const WATCH_FONTS = {
+  'Raleway-500.ttf': 'raleway_500.ttf',
+  'Raleway-600.ttf': 'raleway_600.ttf',
+  'JetBrainsMono-500.ttf': 'jetbrains_mono_500.ttf',
+  'JetBrainsMono-600.ttf': 'jetbrains_mono_600.ttf',
+} as const
 
 const withWearMirror: ConfigPlugin = (config) =>
   withDangerousMod(config, [
@@ -40,6 +46,18 @@ const withWearMirror: ConfigPlugin = (config) =>
       const dest = path.join(androidRoot, 'wearos')
       rmSync(dest, { recursive: true, force: true })
       cpSync(source, dest, { recursive: true })
+
+      // Android resource names cannot contain capitals or hyphens. Copy the shared app faces
+      // under resource-safe names rather than maintaining a second set in the watch source.
+      const fontDest = path.join(dest, 'src', 'main', 'res', 'font')
+      mkdirSync(fontDest, { recursive: true })
+      for (const [assetName, resourceName] of Object.entries(WATCH_FONTS)) {
+        const fontSource = path.join(projectRoot, 'assets', 'fonts', assetName)
+        if (!existsSync(fontSource)) {
+          throw new Error(`[withWearMirror] missing shared font at ${fontSource}`)
+        }
+        cpSync(fontSource, path.join(fontDest, resourceName))
+      }
 
       // Keep phone and Wear application IDs aligned: the Wear Data Layer only connects apps with
       // the same application ID and signing certificate. Namespace/source packages stay stable.

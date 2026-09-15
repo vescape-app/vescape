@@ -164,12 +164,11 @@ internal fun FrameLayout(
             NavAbsentHint(focus = focus, stackAlpha = navStackAlpha)
         }
 
-        // Temp readouts ride their own arc: curved text just inside the gauge line, anchored at the
-        // arc's lower end so the values drop into the bottom corners beside the battery %.
+        // Center each label/value stack on its full gauge arc, independent of font width or fill.
         // Colour carries which is which (red = motor, orange = controller).
         if (showReadouts) {
-            CurvedTemp(MOTOR_ARC_START, temp(frame.motorTemp, ambientBlind), "MOTOR", motorColor, readoutFocus)
-            CurvedTemp(CTRL_ARC_START, temp(frame.ctrlTemp, ambientBlind), "CTRL", ctrlColor, readoutFocus)
+            CurvedTemp(MOTOR_ARC_START + TEMP_SWEEP / 2, temp(frame.motorTemp, ambientBlind), "MOTOR", motorColor, readoutFocus)
+            CurvedTemp(CTRL_ARC_START - TEMP_SWEEP / 2, temp(frame.ctrlTemp, ambientBlind), "CTRL", ctrlColor, readoutFocus)
         }
 
         // ── Top: wall clock at the rim gap, forecast under it ──
@@ -216,7 +215,7 @@ internal fun FrameLayout(
         if (showReadouts) Text(
             // Same size as the curved temp values so the three secondary readouts match.
             text = if (ambientBlind) DASH else frame.battery?.let { "${format(it, 0)}%" } ?: DASH,
-            style = MaterialTheme.typography.title3.copy(fontSize = TEMP_FONT_SIZE),
+            style = WatchTypography.mono(MaterialTheme.typography.title3.copy(fontSize = TEMP_FONT_SIZE)),
             color = battColor,
             modifier = Modifier
                 .align(Alignment.BottomCenter)
@@ -297,8 +296,16 @@ private fun CurvedTemp(anchorDeg: Float, value: String, label: String, color: Co
             radialDirection = CurvedDirection.Radial.OutsideIn,
             angularAlignment = CurvedAlignment.Angular.Center,
         ) {
-            curvedText(text = value, color = color, style = CurvedTextStyle(fontSize = TEMP_FONT_SIZE))
-            curvedText(text = label, color = SecondaryText, style = CurvedTextStyle(fontSize = TEMP_LABEL_FONT_SIZE))
+            curvedText(
+                text = value,
+                color = color,
+                style = WatchTypography.curvedMono(CurvedTextStyle(fontSize = TEMP_FONT_SIZE)),
+            )
+            curvedText(
+                text = label,
+                color = SecondaryText,
+                style = WatchTypography.curvedUi(CurvedTextStyle(fontSize = TEMP_LABEL_FONT_SIZE)),
+            )
         }
     }
 }
@@ -359,8 +366,8 @@ private fun DrawScope.drawGauge(
 @Composable
 private fun LargeGaugeValue(modifier: Modifier, value: String, unit: String, color: Color) {
     Column(modifier = modifier, horizontalAlignment = Alignment.CenterHorizontally) {
-        Text(text = value, style = MaterialTheme.typography.display1, color = color)
-        Text(text = unit, style = MaterialTheme.typography.caption3, color = SecondaryText)
+        Text(text = value, style = WatchTypography.mono(MaterialTheme.typography.display1), color = color)
+        Text(text = unit, style = WatchTypography.mono(MaterialTheme.typography.caption3), color = SecondaryText)
     }
 }
 
