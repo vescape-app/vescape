@@ -223,6 +223,12 @@ corner lengths, which is what keeps 40 mm and 44 mm the same layout rather than 
 
 The display corner radius is an approximation (`Rim.cornerRatio`) — Apple publishes no API for it.
 
+The pager uses full-screen bounds. Radar imagery reaches the display boundary. Gauge strokes are
+centered on their paths: the path inset is half the thickest stroke (2 pt for a 4 pt line), keeping
+its outer edge at the display boundary. Zero inset clips straight segments and makes them appear
+thinner than corners. Do not shrink radar imagery to the ring. Inner content uses 12 pt on watchOS
+(Wear OS retains 14 dp and a 3 dp gauge inset).
+
 ### What the rectangle changed, and what it did not
 
 - **No wall clock.** watchOS draws the system time over every app; Wear OS's full-screen activity

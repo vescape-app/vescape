@@ -16,18 +16,18 @@ import SwiftUI
 ///
 /// @parity /watch/wearos/src/main/java/app/vescape/wear/FrameGauges.kt
 enum Rim {
-  /// Distance from the layout edge to the path every rim gauge is drawn on. Wide enough that the
-  /// whole stroke clears the bezel: the gauge line has width, so a path laid on the very edge is
-  /// half-hidden even when its geometry is right.
+  /// Centered strokes need half the thickest line width inside the display to avoid clipping.
   ///
   /// @parity /watch/wearos/src/main/java/app/vescape/wear/FrameGauges.kt `GAUGE_RIM_INSET`
-  static let inset: CGFloat = 5
+  /// @platform-diff watchOS uses half its 4 pt stroke width; Wear OS keeps a 3 dp inset.
+  static let inset: CGFloat = RimStyle.strong.valueWidth / 2
 
   /// Distance from the layout edge to the area a centre page may use. Everything outside it belongs
   /// to the pinned rim gauges, so a page that ignores this insets its content into them.
   ///
   /// @parity /watch/wearos/src/main/java/app/vescape/wear/FrameGauges.kt `GAUGE_INNER_INSET`
-  static let innerInset: CGFloat = 14
+  /// @platform-diff watchOS uses 12 pt to reclaim space inside its rectangular rim; Wear OS uses 14 dp.
+  static let innerInset: CGFloat = 12
 
   /// The display's own corner rounding, as a share of its short side. Apple publishes no API for
   /// it, so this is matched against the known panel geometry rather than read from the device:
