@@ -186,9 +186,7 @@ private struct AnimationKey: Equatable {
 private struct RadarHeader: View {
   var body: some View {
     VStack(spacing: 1) {
-      Image(systemName: radarSymbol)
-        .font(.system(size: 12))
-        .foregroundStyle(Palette.weather("cloud-rain"))
+      RadarTargetGlyph(color: Palette.weather("cloud-rain"), size: 12)
       Text("Rain radar")
         .font(WatchTypography.ui(size: 9))
         .foregroundStyle(Palette.secondaryText)
@@ -234,6 +232,6 @@ private let RANGE_RING_KM = [50, 100]
 private let RING_MAX_FRACTION = 0.95
 private let RING_LABEL_INSET: CGFloat = 12
 private let RIDER_DOT_RADIUS: CGFloat = 3
-private let HEADER_TOP_INSET: CGFloat = 24
+private let HEADER_TOP_INSET: CGFloat = 12
 private let TIMELINE_INSET: CGFloat = 12
 private let TIME_BOTTOM_INSET: CGFloat = 18

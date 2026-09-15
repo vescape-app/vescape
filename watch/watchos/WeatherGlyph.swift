@@ -27,7 +27,42 @@ func weatherSymbol(_ slug: String) -> String {
 
 /// The chance-of-rain glyph, and the one the radar page is named by.
 let rainSymbol = "drop.fill"
-let radarSymbol = "dot.radiowaves.left.and.right"
+
+/// Phosphor's "target" mark — the crosshair circle with its aim arm — as the Wear OS radar
+/// header draws it. No SF Symbol matches that shape, so the wrist carries the geometry natively
+/// rather than an approximation from the system set.
+///
+/// @parity /watch/wearos/src/main/res/drawable/ic_ph_target.xml
+/// @platform-diff Wear OS ships the Phosphor vector drawable directly; watchOS re-draws its
+///   geometry with SwiftUI shapes instead of carrying the artwork into the bundle.
+struct RadarTargetGlyph: View {
+  var color: Color
+  var size: CGFloat
+
+  private var s: CGFloat { size / 256 }
+
+  var body: some View {
+    ZStack {
+      Circle()
+        .fill(color.opacity(0.2))
+        .frame(width: 96 * s, height: 96 * s)
+      Circle()
+        .stroke(color, lineWidth: 16 * s)
+        .frame(width: 112 * s, height: 112 * s)
+      Circle()
+        .stroke(color, lineWidth: 16 * s)
+        .frame(width: 208 * s, height: 208 * s)
+    }
+    .overlay {
+      Capsule()
+        .fill(color)
+        .frame(width: 136 * s, height: 16 * s)
+        .rotationEffect(.degrees(-45))
+        .offset(x: 53.66 * s, y: -42.35 * s)
+    }
+    .frame(width: size, height: size)
+  }
+}
 
 /// A readout number with its degree mark tucked against the last digit. The ° hangs off the
 /// number as an overlay, so it never shifts where the digits themselves land — "19°" and "20" sit
