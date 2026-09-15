@@ -293,8 +293,9 @@ struct FrameLayout: View {
 /// @parity /watch/wearos/src/main/java/app/vescape/wear/MirrorScreen.kt `EMPTY_FRAME`
 let EMPTY_FRAME = WatchFrame()
 
-/// Clear of the clock, and clear of the two gauges climbing toward it.
-private let HERO_TOP_INSET: CGFloat = 28
+/// Down at the shoulders: the km/h / % label bottom sits at the height where the speed and duty
+/// arcs reach the rim, just under the clock and weather stack.
+private let HERO_TOP_INSET: CGFloat = 45
 private let HERO_FONT_SIZE: CGFloat = 38
 
 /// A dash is set well below hero size so it reads as "nothing here" rather than as a filled bar.
