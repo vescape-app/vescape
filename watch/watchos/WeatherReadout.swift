@@ -35,7 +35,7 @@ struct WeatherReadout: View {
         WeatherGlyph(slug: forecast.icon, size: ICON_SIZE, color: iconColor)
         // Tucked °, so the temp's trailing edge is its last digit and the rain row below hangs
         // flush with it instead of clearing the mark's advance width.
-        DegreeNumber(value: "\(forecast.temperatureC)", size: FONT_SIZE, color: textColor)
+        DegreeNumber(value: "\(forecast.temperatureC)", size: FONT_SIZE, color: textColor, extraGap: 2)
       }
       if forecast.precipitationProbability > 0 {
         // All blue, glyph and number alike: rain is one reading, not an icon with a label.

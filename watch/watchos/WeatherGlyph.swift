@@ -72,6 +72,8 @@ struct DegreeNumber: View {
   /// The size the font was built at — the ° tuck scales with it.
   let size: CGFloat
   let color: Color
+  /// Extra space past the default tuck, for scales where the mark crowds the last digit.
+  var extraGap: CGFloat = 0
 
   var body: some View {
     Text(value)
@@ -84,7 +86,7 @@ struct DegreeNumber: View {
           .font(WatchTypography.mono(size: size))
           .foregroundStyle(color)
           .fixedSize()
-          .offset(x: size * Self.degreeTuck)
+          .offset(x: size * Self.degreeTuck + extraGap)
       }
   }
 
