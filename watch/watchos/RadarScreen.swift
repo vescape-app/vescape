@@ -18,6 +18,10 @@ import SwiftUI
 struct RadarScreen: View {
   let visible: Bool
   let forecast: WatchWeather?
+  /// Reported to the wrist's event ring. The radar is the one surface that fetches on its own, so
+  /// its failure is the watch's network and not the phone's link — and on the diagnostics page it
+  /// has to read that way rather than as a dead mirror.
+  var onFetchFailed: () -> Void = {}
   /// The rider's own colour when they picked one on the phone — the same dot every other page pins
   /// them under.
   var riderColor: Color = Palette.speed
@@ -57,6 +61,9 @@ struct RadarScreen: View {
       let nowMs = Int64(Date().timeIntervalSince1970 * 1000)
       guard radar.isStale(nowMs: nowMs, latitude: latitude, longitude: longitude) else { return }
       await radar.load(latitude: latitude, longitude: longitude)
+      // After the await, so a load cancelled by leaving the page never reports: `failed` is already
+      // false in that case, and a cancelled fetch is not a finding.
+      if radar.failed { onFetchFailed() }
     }
     // Steps the state rather than a captured value: the task is not re-keyed per frame, so a
     // captured index would advance to the same frame forever.

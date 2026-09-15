@@ -126,7 +126,10 @@ private fun EventLine(event: DiagnosticEvent) {
     }
 }
 
-/** "?" is the board never having said, which is not the same answer as "off". */
+/**
+ * "?" means the board has not reported a value.
+ * @parity /watch/watchos/DiagnosticsPanel.swift `lightLabel`
+ */
 private fun boardLightLabel(value: Boolean?): String = when (value) {
     true -> "on"
     false -> "off"

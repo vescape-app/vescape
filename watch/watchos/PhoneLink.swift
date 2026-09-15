@@ -18,10 +18,6 @@ import WatchConnectivity
 /// @parity /watch/wearos/src/main/java/app/vescape/wear/TelemetryState.kt
 /// @parity /watch/wearos/src/main/java/app/vescape/wear/PhoneLinkMonitor.kt
 final class PhoneLink: NSObject, ObservableObject, WCSessionDelegate {
-  /// Rolling window the received/applied rates are measured over. Long enough to survive one missed
-  /// push at the slowest cadence worth reporting, short enough to show a stall while it is happening.
-  private static let rateWindow: TimeInterval = 5
-
   /// What the wrist draws: the reduced state, never the raw frame. A view that read `frame`
   /// directly would render a reading the reducer has already declared too old to trust.
   @Published private(set) var mirror = MirrorStateReducer.reduce(frame: nil, lastFrameAtMs: nil, nowMs: 0)
@@ -33,8 +29,12 @@ final class PhoneLink: NSObject, ObservableObject, WCSessionDelegate {
   @Published private(set) var activation: WCSessionActivationState = .notActivated
   @Published private(set) var reachable = false
   @Published private(set) var companionInstalled = false
-  /// Frames that arrived but did not decode — a phone and a wrist built from different lane counts.
-  @Published private(set) var rejected = 0
+  /// Counters and the event ring the diagnostics page reads. The wrist's only field instrument:
+  /// it is written here and nowhere else, because every fact worth recording — frames, decode
+  /// failures, counterpart changes, the wake level — already passes through this object.
+  ///
+  /// @parity /watch/wearos/src/main/java/app/vescape/wear/WatchDiagnostics.kt `WatchDiagnostics`
+  @Published private(set) var diagnostics = WatchDiagnosticsLog()
   /// The rider's phone settings, as last pushed. Cold state: it is read out of the received
   /// Application Context at activation, so a wrist restart or a reconnect finds the current values
   /// already there instead of waiting for the rider to touch a switch again.
@@ -87,8 +87,8 @@ final class PhoneLink: NSObject, ObservableObject, WCSessionDelegate {
   /// Arrival timestamps inside the rolling window. `applied` diverges from `received` only once
   /// something coalesces frames; today every decoded frame is published, so equal rates are the
   /// expected reading and a gap between them is a finding.
-  private var received: [Date] = []
-  private var applied: [Date] = []
+  private var received = WatchFrameRate()
+  private var applied = WatchFrameRate()
 
   private var latestFrame: WatchFrame?
   private var lastFrameAtMs: Int64?
@@ -97,8 +97,38 @@ final class PhoneLink: NSObject, ObservableObject, WCSessionDelegate {
   /// does not pin the mirror offline.
   private var frameGapMs: Int64?
 
-  var receivedHz: Double { rate(received) }
-  var appliedHz: Double { rate(applied) }
+  var receivedHz: Double { received.hertz(nowMs: Self.nowMs()) }
+  var appliedHz: Double { applied.hertz(nowMs: Self.nowMs()) }
+
+  /// One line for the whole counterpart state, in the words the diagnostics page shows. The
+  /// failures are ordered — an unactivated session says nothing about reachability — so the first
+  /// unmet condition is the only useful one to name.
+  ///
+  /// It lives here rather than in the view because the event ring records the same string: a link
+  /// line in the log and the `link` row above it must never be able to disagree.
+  var statusLabel: String {
+    switch activation {
+    case .activated: break
+    case .inactive: return "inactive"
+    case .notActivated: return "not activated"
+    @unknown default: return "unknown"
+    }
+    if !companionInstalled { return "no phone app" }
+    return reachable ? "reachable" : "unreachable"
+  }
+
+  /// The radar page's one failure, which is the wrist's own and not the phone's. Routed through
+  /// here so the ring keeps a single writer.
+  ///
+  /// @parity /watch/wearos/src/main/java/app/vescape/wear/WatchDiagnostics.kt `recordRadarFailure`
+  @MainActor
+  func recordRadarFailure() { diagnostics.recordRadarFailure(nowMs: Self.wallClockMs()) }
+
+  /// Replay's own line, so simulator gauges are never mistaken for a ride.
+  @MainActor
+  func recordReplay(fixture: String, sampleCount: Int) {
+    diagnostics.recordReplay(fixture: fixture, sampleCount: sampleCount, nowMs: Self.wallClockMs())
+  }
 
   func activate() {
     guard WCSession.isSupported() else { return }
@@ -117,6 +147,9 @@ final class PhoneLink: NSObject, ObservableObject, WCSessionDelegate {
   /// @parity /watch/wearos/src/main/java/app/vescape/wear/MainActivity.kt `wakeHeartbeat`
   func reportWakeLevel(_ level: WatchMirrorWakeLevel) {
     wakeLevel = level
+    // Recorded before the send, and recorded even when the phone is out of reach: the question the
+    // rider is answering with this line is what the wrist decided, not what the radio managed.
+    diagnostics.recordWakeLevel(level, nowMs: Self.wallClockMs())
     sendWakeLevel()
     wakeHeartbeat?.invalidate()
     guard level != .asleep else { return }
@@ -199,18 +232,9 @@ final class PhoneLink: NSObject, ObservableObject, WCSessionDelegate {
   /// straight to `disconnected`, or worse, hold a dead stream open.
   private static func nowMs() -> Int64 { Int64(ProcessInfo.processInfo.systemUptime * 1000) }
 
-  private func rate(_ stamps: [Date]) -> Double {
-    guard stamps.count > 1, let first = stamps.first, let last = stamps.last else { return 0 }
-    let span = last.timeIntervalSince(first)
-    guard span > 0 else { return 0 }
-    return Double(stamps.count - 1) / span
-  }
-
-  private func mark(_ stamps: inout [Date], _ now: Date) {
-    stamps.append(now)
-    let cutoff = now.addingTimeInterval(-Self.rateWindow)
-    stamps.removeAll { $0 < cutoff }
-  }
+  /// Wall clock, for the event ring only. A rider reads those times out loud and matches them
+  /// against a phone log, which an uptime cannot be matched against.
+  private static func wallClockMs() -> Int64 { Int64(Date().timeIntervalSince1970 * 1000) }
 
   /// The facts `WCSession` publishes on the wrist, read in the order their failures nest: a session
   /// that has not activated says nothing about the companion, and a missing companion says nothing
@@ -227,6 +251,9 @@ final class PhoneLink: NSObject, ObservableObject, WCSessionDelegate {
     activation = session.activationState
     reachable = session.isReachable
     companionInstalled = session.isCompanionAppInstalled
+    // After the three flags and before anything else: `statusLabel` reads them, and the ring must
+    // record the state being moved to rather than the one being left.
+    diagnostics.recordLink(statusLabel, nowMs: Self.wallClockMs())
     // Cold state the system already holds for this app, including from before this launch. Read on
     // every counterpart change, not only at activation: `receivedApplicationContext` is the latest
     // value either way, so re-reading it is free and covers a context that landed while the app
@@ -249,13 +276,14 @@ final class PhoneLink: NSObject, ObservableObject, WCSessionDelegate {
   @MainActor
   func acceptReplayFrame(_ frame: WatchFrame) {
     let now = Date()
-    mark(&received, now)
-    mark(&applied, now)
     let nowMs = Self.nowMs()
+    received.record(nowMs: nowMs)
+    applied.record(nowMs: nowMs)
     if let previous = lastFrameAtMs { frameGapMs = max(nowMs - previous, 0) }
     latestFrame = frame
     lastFrameAtMs = nowMs
     lastFrameAt = now
+    diagnostics.recordFrame(nowMs: Self.wallClockMs())
     refresh()
   }
 
@@ -322,16 +350,23 @@ final class PhoneLink: NSObject, ObservableObject, WCSessionDelegate {
     // Timestamped on arrival, off the main queue, so a busy or throttled UI cannot make the received
     // rate look slower than it was. That distinction is the whole point of measuring both.
     guard let decoded = WatchFrameBuilder.decode(messageData) else {
-      DispatchQueue.main.async { self.rejected += 1 }
+      let byteCount = messageData.count
+      let lanes = messageData.first
+      DispatchQueue.main.async {
+        self.diagnostics.recordDecodeFailure(
+          byteCount: byteCount, lanes: lanes, nowMs: Self.wallClockMs()
+        )
+      }
       return
     }
     DispatchQueue.main.async {
-      self.mark(&self.received, now)
-      self.mark(&self.applied, Date())
+      self.received.record(nowMs: nowMs)
+      self.applied.record(nowMs: Self.nowMs())
       if let previous = self.lastFrameAtMs { self.frameGapMs = max(nowMs - previous, 0) }
       self.latestFrame = decoded
       self.lastFrameAtMs = nowMs
       self.lastFrameAt = now
+      self.diagnostics.recordFrame(nowMs: Self.wallClockMs())
       self.refresh()
     }
   }

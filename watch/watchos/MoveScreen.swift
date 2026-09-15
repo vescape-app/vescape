@@ -17,10 +17,8 @@ import WatchKit
 /// because none of those can keep ticking. Nothing here waits for an acknowledgement, and nothing
 /// here would be safer if it did.
 ///
-/// The press is read through `@GestureState`, which is the point rather than a convenience: SwiftUI
-/// resets it to its initial value when a gesture is cancelled — a drag the pager claims, a finger
-/// that leaves the screen, a view that goes away — so every way a press can end without an `onEnded`
-/// still ends the hold. That is a second layer under the phone's timeout, not a replacement for it.
+/// Native button press tracking lets the pager cancel a press when it recognizes a swipe.
+/// The phone's timeout covers a lost release.
 ///
 /// Only enabled on a LIVE mirror. A stale or absent frame means the phone has no fresh board
 /// telemetry, and a Move nobody can see the result of is not one to offer.
@@ -36,11 +34,15 @@ struct MoveScreen: View {
   /// must not be read as a page swipe, and must never end because the page moved under it.
   let onHoldChanged: (Bool) -> Void
 
-  /// The half under the rider's finger. Automatically cleared by SwiftUI on cancellation.
-  @GestureState private var pressed: MoveDirection?
+  /// The half whose button currently reports a press.
+  @State private var pressed: MoveDirection?
+
+  /// Losing the active phase cancels the tick task and requests a release. The phone's dead-man
+  /// still covers suspension before that task can run.
+  @Environment(\.scenePhase) private var scenePhase
 
   private var enabled: Bool { link.mirror.status == .live }
-  private var canMove: Bool { enabled && interactionEnabled }
+  private var canMove: Bool { enabled && interactionEnabled && scenePhase == .active }
 
   /// Losing a gate mid-hold ends the hold: a stream started while LIVE must not keep ticking at a
   /// phone that can no longer show what the board is doing.
@@ -73,7 +75,11 @@ struct MoveScreen: View {
       link.sendMove(0)
       WKInterfaceDevice.current().play(.stop)
     }
+    .onChange(of: canMove) { _, allowed in
+      if !allowed { pressed = nil }
+    }
     .onDisappear {
+      pressed = nil
       onHoldChanged(false)
       link.sendMove(0)
     }
@@ -100,22 +106,37 @@ struct MoveScreen: View {
   }
 
   private func half(_ direction: MoveDirection) -> some View {
-    Image(systemName: direction.symbol)
-      .font(.system(size: Self.glyphSize, weight: .semibold))
-      .foregroundStyle(enabled ? Palette.speed : Palette.dimText)
-      .frame(maxWidth: .infinity, maxHeight: .infinity)
-      // The tint and the haptic are the press feedback; a highlight under the rim gauges is not.
-      .contentShape(Rectangle())
-      .gesture(
-        DragGesture(minimumDistance: 0)
-          .updating($pressed) { _, state, _ in state = direction }
-      )
-      .allowsHitTesting(canMove)
+    Button(action: {}) {
+      Image(systemName: direction.symbol)
+        .font(.system(size: Self.glyphSize, weight: .semibold))
+        .foregroundStyle(enabled ? Palette.speed : Palette.dimText)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .contentShape(Rectangle())
+    }
+    .buttonStyle(MovePressStyle { down in
+      if down && canMove {
+        pressed = direction
+      } else if pressed == direction {
+        pressed = nil
+      }
+    })
+    .disabled(!canMove)
   }
 
   private static let glyphSize: CGFloat = 30
   private static let dividerWidth: CGFloat = 1
   private static let heldTintAlpha = 0.18
+}
+
+/// Track the native press without installing a competing drag recognizer.
+private struct MovePressStyle: ButtonStyle {
+  let onPressChanged: (Bool) -> Void
+
+  func makeBody(configuration: Configuration) -> some View {
+    configuration.label
+      .onChange(of: configuration.isPressed) { _, down in onPressChanged(down) }
+      .onDisappear { onPressChanged(false) }
+  }
 }
 
 /// Forward is the top half, backward the bottom — the same order as the phone's Move board card.

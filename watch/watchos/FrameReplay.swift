@@ -48,8 +48,8 @@ final class FrameReplayer {
     else { return }
     samples = ReplayFixtureParser.parse(text: text)
     guard !samples.isEmpty else { return }
-
     task = Task { @MainActor [samples, link] in
+      link.recordReplay(fixture: (fixture as NSString).lastPathComponent, sampleCount: samples.count)
       while !Task.isCancelled {
         var previous: Int64 = 0
         for sample in samples {

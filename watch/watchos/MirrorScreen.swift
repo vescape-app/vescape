@@ -17,7 +17,10 @@ import SwiftUI
 /// gauges, so going in and out of the Always On state never rebuilds the screen or restarts the
 /// idle clock. What ambient changes is inside ``AmbientMode``.
 ///
+/// Leaving reports an asleep wake level. Move and Lights also gate on the active scene phase.
+///
 /// @parity /watch/wearos/src/main/java/app/vescape/wear/MirrorScreen.kt `MirrorScreen`
+/// @platform-diff watchOS uses system navigation to leave the app, without Wear OS's close prompt.
 struct MirrorScreen: View {
   @ObservedObject var link: PhoneLink
   /// watchOS's single always-on signal. Wear OS gets a callback with panel capabilities; here the
@@ -37,8 +40,6 @@ struct MirrorScreen: View {
   ///
   /// @parity /watch/wearos/src/main/java/app/vescape/wear/MirrorScreen.kt `moveHeld`
   @State private var moveHeld = false
-  @GestureState private var touching = false
-  @GestureState private var dragging = false
   @State private var lastInteraction = Date()
   /// Foreground/background, which is what decides whether the Mirror is awake at all. Ambient is a
   /// second, narrower question asked only while it is.
@@ -47,6 +48,12 @@ struct MirrorScreen: View {
   private var ambient: AmbientMode { AmbientMode(active: isLuminanceReduced) }
 
   var body: some View {
+    // Pager hit regions and page sizes must share the full-screen bounds of FrameLayout.
+    // Keeping only the gauges edge-to-edge leaves dead strips and offset page boundaries.
+    mirrorBody.ignoresSafeArea()
+  }
+
+  private var mirrorBody: some View {
     // A timeline rather than a timer: in the Always On state the system decides how often this
     // re-evaluates, so a stopped stream ages into `disconnected` at whatever rate the watch is
     // willing to pay for, and the degradation is itself the measurement docs/watchos.md wants.
@@ -65,6 +72,7 @@ struct MirrorScreen: View {
         withTransaction(transaction) {
           pagePositions = values
           settledPositions = [:]
+          lastInteraction = Date()
         }
       }
       .task(id: pagePositions) {
@@ -78,20 +86,12 @@ struct MirrorScreen: View {
           verticalPagingEnabled = abs(horizontal) < 0.001
         }
       }
-      .simultaneousGesture(
-        DragGesture(minimumDistance: 0)
-          .updating($touching) { _, state, _ in state = true }
-          .updating($dragging) { value, state, _ in
-            state = hypot(value.translation.width, value.translation.height) > 6
-          }
-      )
-      .onChange(of: touching) { _, _ in lastInteraction = Date() }
       // A hold both suspends the countdown and, on release, restarts it: the 45 s is measured from
       // the last thing the rider did, and a long hold is very much something they did.
       .onChange(of: moveHeld) { _, _ in lastInteraction = Date() }
       .task(id: lastInteraction) {
         try? await Task.sleep(for: .seconds(CONTROL_IDLE_RETURN_SECONDS))
-        guard !Task.isCancelled, !touching, !moveHeld, !isLuminanceReduced, control != .gauges
+        guard !Task.isCancelled, !moveHeld, !isLuminanceReduced, control != .gauges
         else { return }
         withAnimation { control = .gauges }
       }
@@ -179,6 +179,7 @@ struct MirrorScreen: View {
         }
       }
       .scrollTargetLayout()
+      .contentShape(Rectangle())
     }
     .coordinateSpace(name: Axis.vertical)
     .scrollTargetBehavior(.paging)
@@ -187,7 +188,8 @@ struct MirrorScreen: View {
     // fixed here, not a thing to keep.
     .scrollIndicators(.hidden)
     // Ambient has already parked the axis, and a page animation there is wasted panel.
-    .scrollDisabled(isLuminanceReduced || !verticalPagingEnabled || moveHeld)
+    // Set the axis's environment directly so the nested horizontal pager can override it.
+    .environment(\.isScrollEnabled, !isLuminanceReduced && verticalPagingEnabled && !moveHeld)
     .onChange(of: vertical) { _, _ in lastInteraction = Date() }
   }
 
@@ -198,6 +200,7 @@ struct MirrorScreen: View {
       RadarScreen(
         visible: radarVisible,
         forecast: freshWeather,
+        onFetchFailed: { link.recordRadarFailure() },
         riderColor: Palette.rider(link.settings.riderColor) ?? Palette.speed
       )
     case .weather:
@@ -221,12 +224,19 @@ struct MirrorScreen: View {
           controlContent(page)
             .containerRelativeFrame([.horizontal, .vertical])
             .background {
+              Color.black
+                .contentShape(Rectangle())
+                .onTapGesture { lastInteraction = Date() }
+            }
+            .contentShape(Rectangle())
+            .background {
               pagePosition(axis: .horizontal, index: page.rawValue, origin: ControlPage.gauges.rawValue)
             }
             .id(page)
         }
       }
       .scrollTargetLayout()
+      .contentShape(Rectangle())
     }
     .coordinateSpace(name: Axis.horizontal)
     .scrollTargetBehavior(.paging)
@@ -248,13 +258,17 @@ struct MirrorScreen: View {
       if case .disconnected = link.mirror.status {
         DisconnectedLayout(link: link.link, ambient: ambient)
       } else {
-        WeatherReadout(
-          forecast: freshWeather,
-          ambient: ambient,
-          // Only tappable while this page actually owns the screen; mid-transition the target
-          // would swallow the drag that is moving the pager.
-          onTap: interactionEnabled(.gauges) ? { withAnimation { vertical = .weather } } : nil
-        )
+        ZStack {
+          // Keep this pager slot even when WeatherReadout has no forecast to render.
+          Color.clear
+          WeatherReadout(
+            forecast: freshWeather,
+            ambient: ambient,
+            // Only tappable while this page actually owns the screen; mid-transition the target
+            // would swallow the drag that is moving the pager.
+            onTap: interactionEnabled(.gauges) ? { withAnimation { vertical = .weather } } : nil
+          )
+        }
       }
     case .move:
       MoveScreen(
@@ -351,7 +365,7 @@ struct MirrorScreen: View {
 
   /// @parity /watch/wearos/src/main/java/app/vescape/wear/MirrorScreen.kt `activePage`
   private func interactionEnabled(_ page: ControlPage) -> Bool {
-    guard !isLuminanceReduced, !dragging, control == page, vertical == .gauges,
+    guard !isLuminanceReduced, control == page, vertical == .gauges,
       let horizontal = settledPositions[.horizontal],
       let verticalPosition = settledPositions[.vertical]
     else { return false }

@@ -1,17 +1,9 @@
 import SwiftUI
-import WatchConnectivity
 
-/// The lifecycle instrumentation the port is blocked on, as a page of the control axis.
+/// Frame counters, counterpart state and a bounded event log for troubleshooting from the wrist.
+/// Event times use wall clock so a rider can match them to phone logs.
 ///
-/// It stays deliberately dense and deliberately ugly: the runtime question it answers is what the
-/// first slice existed to measure, and a finished-looking panel would make a stalled mirror look
-/// healthy. Frame age is the one that answers the wrist-down question — if the app stops executing
-/// while lowered, age climbs while the numbers on the gauges freeze at a value that still looks
-/// plausible.
-///
-/// The full diagnostics page, and what Android shows on its own, arrive with the rest of the port.
-///
-/// @parity /watch/wearos/src/main/java/app/vescape/wear/DiagnosticsScreen.kt
+/// @parity /watch/wearos/src/main/java/app/vescape/wear/DiagnosticsScreen.kt `DiagnosticsScreen`
 struct DiagnosticsPanel: View {
   @ObservedObject var link: PhoneLink
   var interactionEnabled: Bool = true
@@ -20,12 +12,16 @@ struct DiagnosticsPanel: View {
     TimelineView(.periodic(from: .now, by: 1)) { context in
       ScrollView {
         VStack(alignment: .leading, spacing: 1) {
-          row("link", statusLabel)
+          row("link", link.statusLabel)
           row("age", link.lastFrameAt.map { String(format: "%.1fs", context.date.timeIntervalSince($0)) } ?? WatchGauge.dash)
           row("rx", String(format: "%.1f / %.1f Hz", link.receivedHz, link.appliedHz))
-          // The mirrored settings, until the pages that consume them exist (#487 shows the Move
-          // strength, #489/#490 the navigation arrow). Without this the only proof a setting
-          // reached the wrist would be a page that does not draw it yet.
+          row("frames", "\(link.diagnostics.framesDecoded)")
+          if link.diagnostics.decodeFailures > 0 {
+            // Repeated failures can indicate incompatible phone/watch frame layouts.
+            row("decode fails", "\(link.diagnostics.decodeFailures)", value: Palette.warning)
+          }
+          // The mirrored inputs, named here because the pages that consume them draw a *result*.
+          // "Nav arrow off" and "no route pushed" look identical on the nav page; they do not here.
           row(
             "color",
             link.settings.riderColor ?? WatchGauge.dash,
@@ -35,10 +31,24 @@ struct DiagnosticsPanel: View {
           )
           row("nav arrow", link.settings.navArrowEnabled ? "on" : "off")
           row("move", link.settings.boardMoveStrengthPercent.map { "\($0)%" } ?? WatchGauge.dash)
-          if link.rejected > 0 {
-            // Not a transient: a lane-count mismatch means the phone and the wrist were built from
-            // different commits, and every frame will keep being rejected until one is reinstalled.
-            row("rejected", "\(link.rejected)")
+          row("route", link.route.map { "\($0.points.count) pts" } ?? WatchGauge.dash)
+          row("weather", link.weather == nil ? WatchGauge.dash : (link.freshWeather() == nil ? "stale" : "fresh"))
+          // The Lights page draws its gates as dimming, which cannot be told apart from "off".
+          // These three lines are the difference, and they are how /board is verified end to end.
+          row("lights", lightLabel(link.board.lightsEnabled))
+          row("headlight", lightLabel(link.board.headlightsEnabled))
+          row("lights ctrl", link.board.lightsControllable ? "yes" : "no")
+
+          Divider().padding(.vertical, 3)
+
+          if link.diagnostics.events.isEmpty {
+            Text("no events yet")
+              .font(.system(size: 12))
+              .foregroundStyle(Palette.dimText)
+          } else {
+            ForEach(Array(link.diagnostics.events.enumerated()), id: \.offset) { _, event in
+              eventLine(event)
+            }
           }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -49,17 +59,27 @@ struct DiagnosticsPanel: View {
     }
   }
 
-  /// One line for the whole counterpart state. The failures are ordered — an unactivated session
-  /// says nothing about reachability — so the first unmet condition is the only useful one to show.
-  private var statusLabel: String {
-    switch link.activation {
-    case .activated: break
-    case .inactive: return "inactive"
-    case .notActivated: return "not activated"
-    @unknown default: return "unknown"
+  /// A dash means the board has not reported a value.
+  ///
+  /// @parity /watch/wearos/src/main/java/app/vescape/wear/DiagnosticsScreen.kt `boardLightLabel`
+  private func lightLabel(_ value: Bool?) -> String {
+    switch value {
+    case true: return "on"
+    case false: return "off"
+    case nil: return WatchGauge.dash
     }
-    if !link.companionInstalled { return "no phone app" }
-    return link.reachable ? "reachable" : "unreachable"
+  }
+
+  private func eventLine(_ event: WatchDiagnosticEvent) -> some View {
+    HStack(alignment: .firstTextBaseline, spacing: 4) {
+      Text(Self.clock.string(from: Date(timeIntervalSince1970: Double(event.atMs) / 1000)))
+        .monospacedDigit()
+        .foregroundStyle(Palette.dimText)
+      Text(event.text)
+        .foregroundStyle(event.warn ? Palette.warning : Palette.secondaryText)
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+    .font(.system(size: 11))
   }
 
   private func row(_ label: String, _ text: String, value: Color = Palette.primaryText) -> some View {
@@ -70,4 +90,13 @@ struct DiagnosticsPanel: View {
     }
     .font(.system(size: 12))
   }
+
+  /// Wall clock, seconds included: the ring is read against a phone log, and minute precision would
+  /// not separate a reconnect from the flap that caused it.
+  private static let clock: DateFormatter = {
+    let formatter = DateFormatter()
+    formatter.locale = Locale(identifier: "en_US_POSIX")
+    formatter.dateFormat = "HH:mm:ss"
+    return formatter
+  }()
 }

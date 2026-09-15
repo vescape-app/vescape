@@ -304,12 +304,50 @@ The watchOS 10 pager observes unbounded page positions for both axes. Control in
 page alignment and 100 ms without a geometry change; movement cancels that check. This is a
 geometry-based fallback, not native scroll-phase parity. The outer vertical pager locks after a
 horizontal control page settles; the horizontal pager explicitly remains enabled for returning.
-Touches reset the 45-second idle return, and a finger held down prevents the return.
+Page movement, page changes, background taps and Move hold changes reset the 45-second idle
+return. An active Move hold prevents the return. There is no root drag recognizer tracking touches.
 
 Board Move (#490) connects its hold lifecycle to both pager locks and to command release: while
 `moveHeld` is true the vertical axis is disabled, the horizontal axis loses its returning override,
 and the idle return is suspended. Cancelled drags, crown scrolling, nested diagnostics scrolling and
 long holds are still unverified on a device.
+
+### Paging regression findings (2026-09-15)
+
+On the Apple Watch SE 3 (40 mm), watchOS 26.5 simulator, background swipes appeared stuck while
+swipes starting on arrow buttons could work. Colored page probes exposed a shifted page, a strip
+of the next page and a black area that did not accept drags. `FrameLayout` ignored safe areas,
+but the pager still used the smaller safe-area bounds. Applying `.ignoresSafeArea()` to the
+whole mirror gives the pager and pinned gauges the same screen bounds. The user confirmed that
+the colored pages filled the screen and the real pages and Move controls then worked.
+
+Keep these constraints when changing this screen:
+
+- Keep paging and gauge bounds aligned; changing only the gauge drawing does not enlarge the
+  pager's touch region. Check page alignment before changing gesture arbitration.
+- Keep a full-size gauges page even without weather. A conditional `WeatherReadout` can render
+  nothing; its containing `ZStack` and `Color.clear` preserve the horizontal page slot.
+- Move uses native `ButtonStyle.configuration.isPressed` tracking. Avoid adding a competing
+  zero-distance drag recognizer to the buttons or root solely to observe touches.
+- Keep the horizontal scroll-enabled override when the outer vertical pager is locked. Both
+  axes lock during a Move hold, then unlock appropriately on release.
+
+For a regression, start with two solid colored pages and visible touch targets. Add buttons,
+nested vertical paging, scroll locks, hold tracking, geometry settling, transparent button
+labels, gauge overlay, then the real shell and Move view one at a time. Those combinations
+passed user-driven simulator checks after aligning the bounds. Earlier gesture-only changes
+did not resolve the report; this does not establish that every earlier gesture implementation
+was correct. Do not restart that guessing loop.
+
+Rebuild, reinstall and relaunch after each source change. Label each temporary stage visibly;
+one submitted screenshot still showed an earlier stage. Debug readouts must be compact and use
+`.allowsHitTesting(false)`; drag recognizers used as probes can alter the behavior being measured.
+Remove temporary pages, readouts, launch switches and command bypasses after diagnosis.
+
+The final staged simulator check covered real telemetry, Move, lights and diagnostics paging,
+background swipes and arrow hold/release. Move commands were suppressed during that check.
+This verifies UI behavior, not motor operation, physical-watch gestures or Always On behavior;
+those remain part of #491's hardware validation.
 
 The inward glow uses 16 overlapping clipped strokes per active gauge, independent of display size.
 Its intensity and fade stops match Wear OS. This reduces draw calls from the previous size-dependent
@@ -740,14 +778,13 @@ board on arrival of the release and can only roll for one dead-man afterwards.
 
 A board session ending cancels the relay outright, so a hold never carries into the next session.
 
-### The press is read as gesture state
+### The press follows native button state
 
-`@GestureState` rather than a press/release callback pair, and that is the point rather than a
-convenience: SwiftUI resets it to its initial value whenever the gesture is cancelled — the pager
-claiming the drag, the finger leaving the glass, the view going away — so every way a press can end
-without an `onEnded` still ends the hold. It is a second layer under the phone's timeout, not a
-replacement for it. Move is offered only on a LIVE mirror and only on a settled page, and losing
-either mid-hold ends the hold.
+`MovePressStyle` observes `ButtonStyle.configuration.isPressed`, allowing the native button and
+pager to arbitrate a press versus a swipe. Release clears the pressed direction; disappearance,
+loss of live telemetry, leaving the active scene phase or losing page alignment also cancels the
+hold. The cancellable repeat task sends a stop on exit. The phone's dead-man timeout remains the
+fallback for a lost release. Move is offered only on a LIVE mirror and a settled, active page.
 
 While a hold is active both pagers lock and the 45 s idle return is suspended: a hold must not be
 read as a page swipe, and the page must not move out from under a finger that is driving a motor.
@@ -784,3 +821,93 @@ pinned by deterministic fixtures against the phone's own truth, which is not the
 a board stop. The `ios/` tree on this machine has no Pods and no workspace, so the iPhone app itself
 was not compiled — the phone-side changes were compiled by the SwiftPM package `test:ios` builds.
 Hardware validation is slice 8's job and Move must not be trusted on a board until it happens.
+
+## Diagnostics and leaving (#491)
+
+The diagnostics page and lifecycle gates are implemented. #491 remains open for integrated
+validation on the rider's Apple Watch Series 6 and real Board. Simulator builds and unit tests do
+not establish locked-phone operation, wrist-down execution, battery use, or physical control safety.
+
+### Implementation
+
+`WatchDiagnosticsLog` lives in `modules/vescape-core/ios/watch/WatchDiagnostics.swift`, symlinked
+into the watch target. `PhoneLink` owns it. It keeps decoded/failed frame counts and the newest 50
+events in memory, resetting with the process. Decode failures log once per failure streak;
+a decoded frame ends the streak. Link and wake events log only when their values change.
+Radar failures and simulator replay also appear in the log. Event times use the watch's wall clock
+so they can be compared with phone logs.
+
+The page shows link state, frame age, received/applied cadence, decoded frames, decode failures,
+mirrored settings, route presence, weather freshness, and Board light state. Unknown light values
+remain distinct from off. Repeated decode failures can indicate incompatible phone/watch frame
+layouts; inspect the byte count and lane count before attributing the failure to a build mismatch.
+
+Cadence uses monotonic timestamps and a five-second window. Arrival is timestamped in the session
+callback; application is timestamped on the main queue. Old samples expire when read, so a stopped
+stream reports zero without needing another frame to arrive. These are receive/apply rates, not
+measurements of actual display rendering. Measure render cadence separately on hardware.
+
+watchOS leaves through system navigation and has no equivalent to Wear OS's back-confirmation
+prompt. `MirrorScreen` reports scene-phase changes: active uses the rider's cadence, inactive uses
+ambient, and background reports asleep. Asleep stops the wrist heartbeat; the iPhone's existing
+reachability gate determines whether frames can be sent. Asleep does not itself select ambient
+cadence in the current phone implementation.
+
+Move requires an active scene phase. Losing it cancels the tick task and requests a stop; the
+phone's 900 ms dead-man covers suspension or a lost release. Lights discards pending optimistic
+edits when the active phase is lost. These are code paths, not evidence of device timing.
+
+### Local verification, 2026-09-15
+
+- `bun run test:ios`: passed.
+- Focused `WatchDiagnosticsTests`: event ordering/cap, decode streaks, link/wake deduplication,
+  leave/return events, replay identification, cadence expiry/reconnect and delayed application.
+- `VescapeWatch` build against `watchsimulator26.5`: passed, including the symlinked diagnostics
+  source in the watch compilation.
+- Physical-watch testing: not run. The iPhone app was not rebuilt in this diagnostics handoff.
+
+### Hardware validation checklist
+
+Install the current branch on both devices. Record commit, watch OS version, case size and iPhone
+OS in a `Device validation, <date>` section, followed by observed results for each check below.
+Mark unavailable checks as not run. First confirm `frames` increases and inspect any decode failures.
+
+1. **Locked phone, stationary:** observe wrist-up telemetry for 60 seconds. Record frame age and
+   reachability. Lower the wrist for 60 seconds, then record frame age immediately on raising it.
+   Use a device trace to establish whether frames continued while lowered; a fresh frame on return
+   alone cannot prove background execution.
+2. **Moving:** repeat the locked-phone wrist-up/down checks during a ride. Record separately from
+   stationary behavior.
+3. **Reconnect:** separate watch and phone for about 90 seconds, then return. Check stale/disconnected
+   presentation, recovery without restarting, and timestamped link events.
+4. **Recovery:** force-quit/reopen the watch app, then restart the watch. Check settings, route,
+   weather and light state restore from Application Context.
+5. **Leaving:** leave for the watch face for 30 seconds, then return. Inspect asleep/active events
+   and phone-side sending/reachability. Record actual behavior rather than assuming ambient cadence.
+6. **Weather:** verify the forecast and gauge readout. Let the phone forecast expire and verify stale
+   weather disappears from rider-facing pages while diagnostics reports stale.
+7. **Radar:** check animation, leave and return. Make the radar provider unavailable while keeping
+   WatchConnectivity reachable. Check the failure hint and event while telemetry remains live.
+   Record the network arrangement used; airplane mode may also disconnect the phone.
+8. **Routes:** start, replace and clear navigation. Check replacement redraws without interpolating
+   across route origins. Reopen the watch app and confirm a cleared route stays cleared.
+9. **Settings:** change rider color, nav arrow and Move strength, both with the watch app open and
+   closed. Confirm the latest values after reopening.
+10. **Cadence:** record receive/apply Hz and separately measured render cadence for each configured
+    refresh rate, awake and wrist-down. Explain any gaps.
+11. **Runtime:** record starting/ending battery, elapsed ride time of at least an hour, always-on
+    usage and percent consumed per hour. There is no arbitrary runtime pass threshold.
+
+For Board controls, use a secured Board with the wheel off the ground, keep people clear, and keep
+the phone and power cutoff accessible. Complete Lights before testing Move.
+
+12. **Lights:** toggle each switch and check the physical lights and Board echo. Disconnect the phone
+    and check an unechoed edit reverts within about two seconds. Check stale/disconnected gates and
+    leaving the app during a pending edit.
+13. **Move:** test forward/backward holds, configured strength, gauge feedback and normal release.
+14. **Move interruption:** separately test dragging off the half, attempted page swipe, leaving via
+    the crown, and losing phone connectivity. Check both pager locking and actual wheel stop timing;
+    a moved page with an ongoing hold is a failure. Verify stale/disconnected state cannot start Move.
+
+Record failures and remaining platform differences here and track unresolved work in #491 before
+shipping. App Store preparation remains #493.

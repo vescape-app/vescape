@@ -37,10 +37,14 @@ struct LightsScreen: View {
   @State private var pendingLeds: Bool?
   @State private var pendingHeadlight: Bool?
 
+  /// Discard pending edits when the wrist leaves the active phase.
+  @Environment(\.scenePhase) private var scenePhase
+
   private var lights: WatchBoardLights { link.board }
 
   private var enabled: Bool {
     link.mirror.status == .live && lights.lightsControllable && lights.known
+      && scenePhase == .active
   }
 
   private var canTap: Bool { enabled && interactionEnabled }
