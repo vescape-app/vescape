@@ -41,6 +41,8 @@ import kotlin.math.absoluteValue
  *
  * This draws inside the gauge shell, not instead of it. The shell drops its speed and duty heroes
  * while disconnected, so the reason owns the centre of the circle rather than dodging two dashes.
+ *
+ * @parity /watch/watchos/StatusLayouts.swift `DisconnectedLayout`
  */
 @Composable
 internal fun DisconnectedLayout(ambient: AmbientMode) {

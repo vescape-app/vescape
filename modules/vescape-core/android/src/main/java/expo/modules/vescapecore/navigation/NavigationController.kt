@@ -215,6 +215,8 @@ class NavigationController(
    * Separate from [onChange] because the two have different lifetimes: [onChange] belongs to the JS
    * module and is cleared on every reload, while this one carries the route to the Wear Mirror and
    * must survive one — see `WatchRouteMirror`.
+   *
+   * @parity /modules/vescape-core/ios/navigation/NavigationController.swift `onPathChange`
    */
   var onPathChange: ((List<Pair<Double, Double>>?) -> Unit)? = null
 

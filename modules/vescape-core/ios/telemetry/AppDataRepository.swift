@@ -527,6 +527,14 @@ final class AppDataRepository {
     } else if key == "boardMoveStrengthPercent" {
       guard let percent = Self.boardMoveStrengthPercent(rawValue) else { return }
       value = percent
+    } else if key == "wearPushRateHz" {
+      guard let hz = Self.wearPushRateHz(rawValue) else { return }
+      value = hz
+    } else if key == "wearAutoLaunchOnConnect" || key == "wearNavArrowEnabled" {
+      // Strict Bool, like Android: a truthy string persisted here would reach the wrist as a
+      // setting the rider never chose.
+      guard let flag = rawValue as? Bool else { return }
+      value = flag
     } else if key == "rideSplitGapMinutes" {
       guard let minutes = Self.rideSplitGapMinutes(rawValue) else { return }
       value = minutes
@@ -594,6 +602,12 @@ final class AppDataRepository {
     "satelliteImagerySaturation": -0.35,
     "hideTelemetryMapDetails": true,
     "telemetryPollRateHz": 20,
+    "wearPushRateHz": defaultWearPushRateHz,
+    // @platform-diff Opening the Mirror when a board connects is Android-only: watchOS has no
+    // public API for an iPhone app to launch its watch companion (see docs/watchos.md). The key
+    // exists here only so getSettings() returns the full settings shape.
+    "wearAutoLaunchOnConnect": true,
+    "wearNavArrowEnabled": false,
     "boardMoveStrengthPercent": 60,
     "historyMetricGradientsEnabled": true,
     "historyMetricHotRanges": [
@@ -620,6 +634,8 @@ final class AppDataRepository {
       satelliteImagerySaturation(settings["satelliteImagerySaturation"]) ?? defaultSettings["satelliteImagerySaturation"]
     normalized["boardMoveStrengthPercent"] =
       boardMoveStrengthPercent(settings["boardMoveStrengthPercent"]) ?? defaultSettings["boardMoveStrengthPercent"]
+    normalized["wearPushRateHz"] =
+      wearPushRateHz(settings["wearPushRateHz"]) ?? defaultSettings["wearPushRateHz"]
     normalized["rideSplitGapMinutes"] =
       rideSplitGapMinutes(settings["rideSplitGapMinutes"]) ?? defaultSettings["rideSplitGapMinutes"]
     normalized["legalPolicy"] = normalizeLegalPolicy(settings["legalPolicy"]) ?? NSNull()
@@ -627,6 +643,19 @@ final class AppDataRepository {
       dismissedCommunityMessageIds(settings["dismissedCommunityMessageIds"]) ?? [String]()
     normalized["legalPolicy"] = normalizeLegalPolicy(settings["legalPolicy"]) ?? NSNull()
     return normalized
+  }
+
+  /// Android's default Watch Frame cadence, in Hz. The one number both platforms fall back to when
+  /// nothing is stored, so a wrist reads the same rate on either phone.
+  /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/AppDataRepository.kt `wearPushRateHz`
+  static let defaultWearPushRateHz = 4
+
+  /// Watch push rate, clamped to the range the settings screen offers. Out of range is clamped
+  /// rather than rejected — Android clamps too, and a stored 0 would mean an infinite interval.
+  /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/AppDataRepository.kt `validWearPushRateHz`
+  static func wearPushRateHz(_ value: Any?) -> Int? {
+    guard let number = value as? NSNumber, !(value is Bool) else { return nil }
+    return min(20, max(1, number.intValue))
   }
 
   /// Board Move strength, percent of full remote input. Floored so a stored `0` cannot mean

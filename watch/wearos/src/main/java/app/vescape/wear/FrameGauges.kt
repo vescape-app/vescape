@@ -69,6 +69,10 @@ import kotlin.math.sin
  *
  * The clock and the forecast readout at the top rim gap fade with the readouts; on the weather
  * centre they would otherwise duplicate the fuller forecast underneath.
+ *
+ * @parity /watch/watchos/FrameLayout.swift `FrameLayout`
+ * @parity /watch/watchos/RimGauge.swift
+ * @parity /modules/vescape-core/ios/watch/WatchGauge.swift
  */
 @Composable
 internal fun FrameLayout(
@@ -160,11 +164,11 @@ internal fun FrameLayout(
             NavAbsentHint(focus = focus, stackAlpha = navStackAlpha)
         }
 
-        // Temp readouts ride their own arc: curved text just inside the gauge line, centred on the
-        // arc's mid-angle. Colour carries which is which (red = motor, orange = controller).
+        // Center each label/value stack on its full gauge arc, independent of font width or fill.
+        // Colour carries which is which (red = motor, orange = controller).
         if (showReadouts) {
-            CurvedTemp(MOTOR_ARC_START + TEMP_SWEEP / 2f, temp(frame.motorTemp, ambientBlind), "MOTOR", motorColor, readoutFocus)
-            CurvedTemp(CTRL_ARC_START - TEMP_SWEEP / 2f, temp(frame.ctrlTemp, ambientBlind), "CTRL", ctrlColor, readoutFocus)
+            CurvedTemp(MOTOR_ARC_START + TEMP_SWEEP / 2, temp(frame.motorTemp, ambientBlind), "MOTOR", motorColor, readoutFocus)
+            CurvedTemp(CTRL_ARC_START - TEMP_SWEEP / 2, temp(frame.ctrlTemp, ambientBlind), "CTRL", ctrlColor, readoutFocus)
         }
 
         // ── Top: wall clock at the rim gap, forecast under it ──
@@ -211,7 +215,7 @@ internal fun FrameLayout(
         if (showReadouts) Text(
             // Same size as the curved temp values so the three secondary readouts match.
             text = if (ambientBlind) DASH else frame.battery?.let { "${format(it, 0)}%" } ?: DASH,
-            style = MaterialTheme.typography.title3.copy(fontSize = TEMP_FONT_SIZE),
+            style = WatchTypography.mono(MaterialTheme.typography.title3.copy(fontSize = TEMP_FONT_SIZE)),
             color = battColor,
             modifier = Modifier
                 .align(Alignment.BottomCenter)
@@ -230,6 +234,8 @@ internal fun FrameLayout(
  * What the nav focus page shows when the phone is not navigating: a centred, dim two-liner that
  * fades in as the readouts leave. Alpha is read inside the graphics layer so the drag never
  * recomposes.
+ *
+ * @parity /watch/watchos/NavPointer.swift `NavAbsentHint`
  */
 @Composable
 private fun NavAbsentHint(focus: () -> Float, stackAlpha: () -> Float) {
@@ -290,8 +296,16 @@ private fun CurvedTemp(anchorDeg: Float, value: String, label: String, color: Co
             radialDirection = CurvedDirection.Radial.OutsideIn,
             angularAlignment = CurvedAlignment.Angular.Center,
         ) {
-            curvedText(text = value, color = color, style = CurvedTextStyle(fontSize = TEMP_FONT_SIZE))
-            curvedText(text = label, color = SecondaryText, style = CurvedTextStyle(fontSize = TEMP_LABEL_FONT_SIZE))
+            curvedText(
+                text = value,
+                color = color,
+                style = WatchTypography.curvedMono(CurvedTextStyle(fontSize = TEMP_FONT_SIZE)),
+            )
+            curvedText(
+                text = label,
+                color = SecondaryText,
+                style = WatchTypography.curvedUi(CurvedTextStyle(fontSize = TEMP_LABEL_FONT_SIZE)),
+            )
         }
     }
 }
@@ -352,8 +366,8 @@ private fun DrawScope.drawGauge(
 @Composable
 private fun LargeGaugeValue(modifier: Modifier, value: String, unit: String, color: Color) {
     Column(modifier = modifier, horizontalAlignment = Alignment.CenterHorizontally) {
-        Text(text = value, style = MaterialTheme.typography.display1, color = color)
-        Text(text = unit, style = MaterialTheme.typography.caption3, color = SecondaryText)
+        Text(text = value, style = WatchTypography.mono(MaterialTheme.typography.display1), color = color)
+        Text(text = unit, style = WatchTypography.mono(MaterialTheme.typography.caption3), color = SecondaryText)
     }
 }
 
@@ -425,9 +439,13 @@ private val HINT_ICON_SIZE = 22.dp
 
 /** Heroes sit on a fixed rim offset; the clock/forecast stack floats above them independently. */
 private val HERO_TOP_INSET = 56.dp
+/** @parity /watch/watchos/FrameLayout.swift `HERO_FOCUS_RISE` */
 private val HERO_FOCUS_RISE = 30.dp
+/** @parity /watch/watchos/FrameLayout.swift `HERO_FOCUS_SHRINK` */
 private const val HERO_FOCUS_SHRINK = 0.12f
+/** @parity /watch/watchos/FrameLayout.swift `BATTERY_FOCUS_DROP` */
 private val BATTERY_FOCUS_DROP = 18.dp
+/** @parity /watch/watchos/FrameLayout.swift `TEMP_FOCUS_SPREAD` */
 private const val TEMP_FOCUS_SPREAD = 0.06f
 
 // Curved temp text: clears the rim line with a small gap so it reads above the arc.

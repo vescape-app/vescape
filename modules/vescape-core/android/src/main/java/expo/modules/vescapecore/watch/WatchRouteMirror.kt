@@ -13,7 +13,7 @@ import expo.modules.vescapecore.telemetry.TelemetryRepository
  * a board is connected. The per-fix half of the same picture (where the rider is on that route)
  * rides the Watch Frame lanes instead, measured from [origin].
  *
- * The Wear Mirror is Android-only, so this has no iOS peer.
+ * @parity /modules/vescape-core/ios/watch/WatchRouteMirror.swift `WatchRouteMirror`
  */
 internal object WatchRouteMirror {
     @Volatile

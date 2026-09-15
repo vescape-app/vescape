@@ -42,6 +42,8 @@ private const val DIRECTION_BACKWARD = -1
  *
  * Only enabled on a LIVE mirror. A stale or absent frame means the phone has no fresh board
  * telemetry, and a Move nobody can see the result of is not one to offer.
+ *
+ * @parity /watch/watchos/MoveScreen.swift `MoveScreen`
  */
 @Composable
 fun MoveScreen(

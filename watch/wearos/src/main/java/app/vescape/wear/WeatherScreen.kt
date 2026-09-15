@@ -38,6 +38,8 @@ import androidx.wear.compose.material.Text
  *
  * Read-only, like every wrist surface: the phone owns the forecast and there is no way to ask it for
  * a fresher one from here (ADR-0019 keeps the mirror one-way for data).
+ *
+ * @parity /watch/watchos/WeatherScreen.swift
  */
 @Composable
 fun WeatherScreen() {
@@ -77,9 +79,9 @@ fun WeatherScreen() {
                     tint = weatherColor(forecast.icon),
                     modifier = Modifier.size(HERO_ICON_SIZE),
                 )
-                Text(
-                    text = "${forecast.temperatureC}°",
-                    style = MaterialTheme.typography.display3,
+                DegreeTemp(
+                    value = forecast.temperatureC,
+                    style = WatchTypography.mono(MaterialTheme.typography.display3),
                     color = PrimaryText,
                     modifier = Modifier.padding(start = 8.dp),
                 )
@@ -102,15 +104,16 @@ fun WeatherScreen() {
                     )
                     Text(
                         text = "${forecast.precipitationProbability}% rain",
-                        style = MaterialTheme.typography.caption2,
+                        style = WatchTypography.mono(MaterialTheme.typography.caption2),
                         color = weatherColor("cloud-rain"),
                         modifier = Modifier.padding(start = 4.dp),
                     )
                 }
             }
-            Spacer(modifier = Modifier.height(FORECAST_GAP))
+            // Flexible gaps yield space to the forecast and sun time on smaller watches.
+            Spacer(modifier = Modifier.weight(1f))
             FadingRule(modifier = Modifier.fillMaxWidth().padding(horizontal = PAGE_INSET + RULE_INSET))
-            Spacer(modifier = Modifier.height(12.dp))
+            Spacer(modifier = Modifier.weight(1f))
             LazyRow(
                 modifier = Modifier.fillMaxWidth(),
                 contentPadding = PaddingValues(horizontal = STRIP_INSET),
@@ -122,7 +125,7 @@ fun WeatherScreen() {
             // the circle, and the one already behind the rider is not what they are planning around.
             val nextSunEvent = nextSunEvent(forecast.sunriseMinuteOfDay, forecast.sunsetMinuteOfDay)
             if (nextSunEvent != null) {
-                Spacer(modifier = Modifier.height(SUN_TIMES_GAP))
+                Spacer(modifier = Modifier.weight(1f))
                 SunTime(nextSunEvent.minuteOfDay, rising = nextSunEvent.rising)
             }
         }
@@ -162,7 +165,7 @@ private fun HourColumn(hour: WatchWeatherHour) {
     ) {
         Text(
             text = formatHour(hour.minuteOfDay),
-            style = MaterialTheme.typography.caption3,
+            style = WatchTypography.mono(MaterialTheme.typography.caption3),
             color = DimText,
         )
         Icon(
@@ -171,15 +174,15 @@ private fun HourColumn(hour: WatchWeatherHour) {
             tint = weatherColor(hour.icon),
             modifier = Modifier.size(HOUR_ICON_SIZE),
         )
-        Text(
-            text = "${hour.temperatureC}°",
-            style = MaterialTheme.typography.caption2,
+        DegreeTemp(
+            value = hour.temperatureC,
+            style = WatchTypography.mono(MaterialTheme.typography.caption2),
             color = SecondaryText,
         )
         if (hour.precipitationProbability > 0) {
             Text(
                 text = "${hour.precipitationProbability}%",
-                style = MaterialTheme.typography.caption3.copy(fontSize = HOUR_PRECIP_FONT_SIZE),
+                style = WatchTypography.mono(MaterialTheme.typography.caption3.copy(fontSize = HOUR_PRECIP_FONT_SIZE)),
                 color = weatherColor("cloud-rain"),
             )
         } else {
@@ -232,7 +235,7 @@ private fun SunTime(minuteOfDay: Int, rising: Boolean) {
         )
         Text(
             text = formatHour(minuteOfDay),
-            style = MaterialTheme.typography.caption3,
+            style = WatchTypography.mono(MaterialTheme.typography.caption3),
             color = SecondaryText,
             modifier = Modifier.padding(start = 2.dp),
         )
@@ -269,9 +272,7 @@ private val RADAR_HINT_ICON_SIZE = 11.dp
 private val HERO_ICON_SIZE = 26.dp
 private val CURRENT_TOP_PADDING = 34.dp
 private val LABEL_TRACKING = 1.2.sp
-private val FORECAST_GAP = 12.dp
 private val RULE_INSET = 14.dp
-private val SUN_TIMES_GAP = 8.dp
 private val HOUR_GAP = 10.dp
 private val HOUR_ICON_SIZE = 18.dp
 private val HOUR_PRECIP_FONT_SIZE = 10.sp

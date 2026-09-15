@@ -14,6 +14,7 @@ import expo.modules.vescapecore.telemetry.AppSettings
  *
  * The wrist-side peer carries the same path and key names by convention.
  * @parity /watch/wearos/src/main/java/app/vescape/wear/WatchSettings.kt
+ * @parity /modules/vescape-core/ios/watch/WatchSettings.swift
  */
 internal const val WATCH_SETTINGS_PATH = "/settings"
 
