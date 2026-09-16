@@ -224,8 +224,11 @@ let lastReplayBoardId: string | null = null
 function applyLiveState(state: LiveStateEvent, set: BleSet): void {
   const isBoardConnected = state.board.phase === 'connected'
   const hasRecentTelemetry = isBoardConnected && state.board.recentTelemetry.length > 0
-  const hasRecentLocations = state.gps.recentLocations.length > 0
-  const shouldSeedLiveState = hasRecentTelemetry || hasRecentLocations
+  const hasGpsFix =
+    state.gps.recentLocations.length > 0 ||
+    state.gps.latestApproximateFix != null ||
+    state.gps.latestFix != null
+  const shouldSeedLiveState = hasRecentTelemetry || hasGpsFix
   let live
 
   // Every live state carries the authoritative generation, and `ingestTick` drops any tick that
@@ -254,7 +257,14 @@ function applyLiveState(state: LiveStateEvent, set: BleSet): void {
   } else {
     useLiveSeriesStore.getState().clear()
     useFocusedSeriesStore.getState().clear()
-    live = liveTelemetryRuntime.clearBoardTelemetry()
+    // GPS can arrive before JS subscribes. Recover it from native even without a Board;
+    // distance-filtered map updates may not produce another event while the phone is still.
+    live = hasGpsFix
+      ? liveTelemetryRuntime.seedFromLiveState({
+          ...state,
+          board: { ...state.board, recentTelemetry: [] },
+        })
+      : liveTelemetryRuntime.clearBoardTelemetry()
   }
 
   set({
