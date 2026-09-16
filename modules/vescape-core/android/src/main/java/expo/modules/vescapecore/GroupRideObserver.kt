@@ -27,6 +27,15 @@ internal class GroupRideObserver(
     private val handler: Handler,
     private val emit: (String, Map<String, Any?>) -> Unit,
     private val online: OnlineCapability,
+    /**
+     * Fired whenever [participating] flips, including the transitions the rider never asked for — a
+     * host ending the ride, an App Status block tearing the socket down, a relay saying the ride is
+     * gone. GPS demand is resolved from participation, so a departure nobody reports is a monitor
+     * left running for a ride that no longer exists.
+     *
+     * @parity /modules/vescape-core/ios/groupride/GroupRideObserver.swift `onParticipationChanged`
+     */
+    private val onParticipationChanged: () -> Unit = {},
 ) {
     private val client = OkHttpClient.Builder()
         .pingInterval(PING_INTERVAL_SECONDS, TimeUnit.SECONDS)
@@ -36,11 +45,26 @@ internal class GroupRideObserver(
     private var serverUrl: String? = null
     private var reconnectAttempt = 0
     private var stopped = true
+        set(value) {
+            field = value
+            notifyParticipationIfChanged()
+        }
     private var riderId: String? = null
     private var riderName: String? = null
     private var riderColor: String? = null
     private var joinedRideId: String? = null
+        set(value) {
+            field = value
+            notifyParticipationIfChanged()
+        }
     private var desiredRideId: String? = null
+        set(value) {
+            field = value
+            notifyParticipationIfChanged()
+        }
+
+    /** Last `participating` value handed to the owner, so only real transitions are reported. */
+    private var lastParticipating = false
     private var lastPresence: RiderPresence? = null
     /** Last state handed to JS, replayed by [resync] so a fresh JS runtime is not stuck on `idle`. */
     private var lastConnection = "idle"
@@ -72,6 +96,21 @@ internal class GroupRideObserver(
      * board-less shutdown paths like Auto close.
      */
     val participating: Boolean get() = !stopped && (joinedRideId != null || desiredRideId != null)
+
+    /**
+     * Watches the three fields [participating] is derived from, so no mutation site has to remember
+     * to report — and so the report lands *after* the state changed, which a caller refreshing right
+     * after an enqueued `handler.post` cannot do. Edge-triggered: the fields are cleared together in
+     * several places and the owner must not see a departure per field.
+     *
+     * @parity /modules/vescape-core/ios/groupride/GroupRideObserver.swift `notifyParticipationIfChanged`
+     */
+    private fun notifyParticipationIfChanged() {
+        val current = participating
+        if (current == lastParticipating) return
+        lastParticipating = current
+        onParticipationChanged()
+    }
 
     fun start(url: String) {
         // The observer outlives the JS runtime (it runs in the foreground service), so a relaunch

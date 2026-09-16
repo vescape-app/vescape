@@ -104,12 +104,27 @@ _Avoid_: Battery Diagnostic Snapshot, BMS telemetry sample, cell voltage log, ba
 A single phone location sample used for live map position or ride recording.
 _Avoid_: Location event, GPS point
 
+**GPS Power Mode**:
+How hard the phone's GPS is currently being driven, and therefore what it costs: `off` when nothing
+justifies a fix, `map` for foreground-only delivery to a **Rider** looking at the app, `ride` for
+background delivery at full rate during a **Board Session** or a **Group Ride**. Native resolves it
+from app visibility, the Board Session, **Idle Pause**, Group Ride participation and replay; JS reads
+it and never asks for a mode. The GPS is armed for a reason, and the mode names the reason.
+_Avoid_: GPS accuracy setting, location mode, tracking level
+
+**Ride Dropout Grace**:
+The bounded window after a **Board Link** is lost during which a **Board Session** still counts as a
+ride for **GPS Power Mode**. Inside it the drop is a dropout and fixes keep flowing at `ride` strength
+so the **Ride Track** survives; past it the board is treated as powered off — the ordinary way a ride
+ends — and GPS stands down even though the Ride Recording and the reconnect loop both continue.
+_Avoid_: Reconnect timeout, GPS grace period, disconnect window
+
 **Ride Recording**:
 A single persisted capture of one **Board**'s ride, begun while that Board is connected and retaining its identity through data gaps until explicitly ended, with independent **Telemetry Samples** and an optional **Ride Track**.
 _Avoid_: Session recording, raw recording
 
 **Ride Track**:
-The durable sequence of **GPS Fixes** recorded during one **Ride Recording**, stored on its own and not attached to **Telemetry Samples**. Every fix the phone produced while the ride is recording, outside **Idle Pause** and enabled **Privacy Zones** is kept with the accuracy it was reported at, including poor ones; how good a fix must be to draw a route or derive a value is a read-side decision, never a discard-on-write one. A Ride Track survives spans where the **Board Link** dropped and no telemetry existed.
+The durable sequence of **GPS Fixes** recorded during one **Ride Recording**, stored on its own and not attached to **Telemetry Samples**. Every fix the phone produced while the ride is recording, outside **Idle Pause** and enabled **Privacy Zones** is kept with the accuracy it was reported at, including poor ones; how good a fix must be to draw a route or derive a value is a read-side decision, never a discard-on-write one. A Ride Track survives spans where the **Board Link** dropped and no telemetry existed, up to the **Ride Dropout Grace**; past that the phone stops producing fixes and the track ends where the riding did.
 _Avoid_: Route, GPS trace, location history, breadcrumb
 
 **Privacy Zone**:
@@ -434,6 +449,8 @@ _Avoid_: Position update, presence ping, location share, group telemetry
 - A **Metric Sanitizer** may create **Metric Exclusions** for values derived from **Telemetry Samples** while preserving the original samples and current live board readout.
 - A **Metric Exclusion** belongs to one **Telemetry Sample** and one metric.
 - A **GPS Fix** may be associated with live map state; GPS fixes produced during a **Ride Recording** are kept in its **Ride Track** whether or not a **Telemetry Sample** was captured at the same moment.
+- A **GPS Power Mode** is resolved by native alone and belongs to no **Board Session**: a session raises demand but does not own the monitor, and `off` is a normal resting state rather than a fault.
+- A **Ride Dropout Grace** belongs to one **Board Session** and starts at each **Board Link** loss; a board-ready ends it, and its expiry lowers **GPS Power Mode** without ending the **Ride Recording**.
 - A **Ride Track** belongs to one **Ride Recording** and is independent of its **Telemetry Samples**: either stream may have gaps the other does not.
 - A **Map Point** is placed by a signed-in **Vescape Account** on the live map and does not belong to **Ride Recording** or **Ride History**; the server owns it, and the app reads the ones near the camera without keeping a durable copy.
 - A **Map Point Reaction** belongs to one **Vescape Account** and one **Map Point**; the server derives the score from its reaction rows.

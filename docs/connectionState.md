@@ -83,20 +83,71 @@ Native has separate live runtimes:
 - GPS runtime: location listener, latest fix, recent fixes, map data
 - scan runtime: BLE scanner owned by the Expo module bridge
 
-Board connect/disconnect must not clear GPS fixes. GPS is app-level map data.
+Board connect/disconnect must not clear GPS fixes. GPS _state_ is app-level map data.
 On iOS, `GpsMonitor` owns the location manager and `LocationTracker` owns fix state, course
 derivation and the recent-fix window. `BoardSessionController` reads the tracker and wires its
-consumers. Replay teardown alone clears recorded fixes and restores the parked live monitor.
+consumers. Replay teardown alone clears recorded fixes.
+
+App-level state is not the same as an always-on radio. Whether the monitor runs, and how hard, is
+resolved from demand — see below.
+
+### GPS demand
+
+`GpsDemand.resolve` is the one place that decides the **GPS Power Mode**, on both platforms, from
+four facts:
+
+| input                    | source                                                                                                        |
+| ------------------------ | ------------------------------------------------------------------------------------------------------------- |
+| app visible              | activity/app lifecycle, pushed into the controller                                                            |
+| riding                   | a Board Session exists, Idle Pause is not holding it, and the link is up or inside the **Ride Dropout Grace** |
+| Group Ride participating | the rider's position is being broadcast                                                                       |
+| replay owns position     | a replay is feeding recorded fixes through the live path                                                      |
+
+Resolution, in order: a replay forces `off`; riding or Group Ride participation gives `ride`; a
+visible app gives `map`; otherwise `off`.
+
+The modes differ only in what they cost:
+
+- `ride` — background delivery, best accuracy, no distance filter, OS auto-pause disabled. Nothing
+  may cut a Ride Track short.
+- `map` — **foreground-only** delivery, best accuracy, a small distance filter, OS auto-pause
+  enabled. The rider is looking at the screen, which already dominates the power draw; the saving is
+  that this mode cannot outlive the app going to the background.
+- `off` — the location manager is torn down, not idled.
+
+Every input calls `refreshGpsDemand()` when it changes, so no call site has to know the whole rule.
+Two of them are easy to get wrong:
+
+- **Time** produces no event, so the dropout grace arms a one-shot timer. It belongs to the _first_
+  link loss — the reconnect entry point is re-entered on every failed attempt, and re-arming there
+  would let an endless retry loop push the cutoff out forever.
+- **Group Ride participation** mostly ends in ways the rider never asked for (the host ends the ride,
+  App Status blocks the socket, the relay reports the ride gone). The observer reports its own
+  participation edge rather than the caller refreshing after calling `join`/`leave`, which also fixes
+  Android ordering — its observer mutates behind a `handler.post`.
+
+Consequences worth naming:
+
+- Backgrounding the app with no ride and no Group Ride stops GPS entirely. On Android that also drops
+  the `LOCATION` foreground-service type, which lets an otherwise idle host stop existing.
+- Idle Pause stands GPS down while the app is backgrounded. Recording is already halted there
+  (ADR 0021), so nothing is lost but the time-to-first-fix on resume.
+- The `gps_fix_stale` watchdog runs only in `ride` mode. In `map` mode a stationary rider produces no
+  fixes by design, so watching for silence would log noise rather than a fault.
 
 ### GPS phase
 
 Native decides the phase; JS renders it and never derives one from a boolean.
 
-- `idle` — no location manager is held.
+- `idle` — no location manager is held. The normal resting state whenever demand is `off`, not a
+  fault.
 - `starting` — a manager is held but updates are not running: the iOS permission dialog is open, or
   the Android foreground service that arms the monitor is still starting.
 - `active` — location updates were actually requested and fixes can arrive.
 - `error` — the monitor refused or failed. Always carries the same string as `gps.error`.
+
+`gps.mode` sits alongside it and carries the **GPS Power Mode**. Phase says whether fixes flow; mode
+says what they cost, and therefore why they flow at all.
 
 ## JS role
 
@@ -112,7 +163,9 @@ Commands call native only:
 
 - `connect(boardId)` → `selectBoard(boardId)`
 - `disconnect()` → `stopBoard()`
-- `startGpsTracking()` → `startLocationUpdates()`
+- `refreshGpsDemand()` → `refreshLocationDemand()` — a nudge, not a command to start. JS calls it
+  once the location permission is answered, because a grant is the one demand input native cannot
+  observe for itself.
 - `startTelemetryRecording()` → `setTelemetryRecordingEnabled(true)`
 
 ## Auto-connect
@@ -186,10 +239,12 @@ its own durable identity, not a property of the Board Link.
 - A connected Board must have started it. Standalone GPS never starts one — GPS without a Board is
   map/status only, and creates no ride history.
 - It saves Board telemetry **and** a Ride Track of GPS fixes, on two separate clocks (ADR 0038).
-- **It outlives the Board Link.** An unexpected drop does not end it. GPS fixes keep landing in the
-  same recording for the whole reconnect loop, however long that takes, and telemetry rejoins the
-  same recording when the Board returns — one ride, one history entry, with an honest gap where the
-  telemetry was missing.
+- **It outlives the Board Link.** An unexpected drop does not end it, and telemetry rejoins the same
+  recording when the Board returns — one ride, one history entry, with an honest gap where the
+  telemetry was missing. GPS fixes keep landing in that recording for the **Ride Dropout Grace**;
+  past it the phone stops producing fixes, so the Ride Track ends there even though the recording and
+  the reconnect loop both continue. A board that is simply off is how a ride ends, and a track of the
+  rider walking home is not what the recording is for.
 - There is no hard timeout and no GPS-based Idle Pause. Neither elapsed disconnection time nor GPS
   inactivity ends or pauses a recording.
 - It ends only on **explicit rider Stop Recording**, **explicit Disconnect**, a fatal board error, or

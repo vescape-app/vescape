@@ -414,10 +414,15 @@ class VescapeCoreModule : Module() {
       frontendActive = true
       // User opened the app again — re-arm companion auto start immediately.
       CompanionRestartGate.clear(context.applicationContext)
+      CoreForegroundService.setAppVisible(context.applicationContext, true)
       AppStatusCoordinator.get(context).refresh()
     }
     OnActivityEntersBackground {
       frontendActive = false
+      // Drops GPS demand to `Off` unless a ride or a Group Ride is paying for it. Deliberately not
+      // mirrored in `OnDestroy`: a JS runtime teardown (dev reload, OTA) is not the rider putting
+      // the phone away, and the native session it leaves running still needs its fixes.
+      CoreForegroundService.setAppVisible(context.applicationContext, false)
     }
     OnActivityResult { _, result ->
       companionPresence.onActivityResult(result.requestCode, result.resultCode)
@@ -533,8 +538,11 @@ class VescapeCoreModule : Module() {
       AccessorySessionManager.clearGroundClearance(accessoryId, capabilityId) { promise.resolve(it) }
     }
     Function("exitApp") { CoreForegroundService.exitApp(context.applicationContext) }
-    Function("startLocationUpdates") { startLocationUpdates() }
-    Function("stopLocationUpdates") { stopLocationUpdates() }
+    // Nudge, not a command: native owns whether GPS runs (see `GpsDemand`). JS calls this once the
+    // location permission is answered, because a grant is the one demand input native cannot observe
+    // for itself.
+    // @parity /modules/vescape-core/ios/VescapeCoreModule.swift `refreshLocationDemand`
+    Function("refreshLocationDemand") { refreshLocationDemand() }
     // @parity /modules/vescape-core/ios/VescapeCoreModule.swift `startGroupRideObserve`
     Function("startGroupRideObserve") { serverUrl: String ->
       CoreForegroundService.startGroupRideObserve(context.applicationContext, serverUrl)
@@ -1553,13 +1561,15 @@ key == "wearAutoLaunchOnConnect" ||
     scanStatus = "idle"
   }
 
-  private fun startLocationUpdates() {
+  private fun refreshLocationDemand() {
     val hasFine = ContextCompat.checkSelfPermission(context, android.Manifest.permission.ACCESS_FINE_LOCATION) ==
       PackageManager.PERMISSION_GRANTED
     if (!hasFine) {
       sendEvent("onError", mapOf("message" to "Location permission not granted"))
       return
     }
+    // Ensures a host exists to arm in. The resolver still decides whether it arms: a permission grant
+    // that lands while the app is backgrounded with no ride running leaves GPS off.
     CoreForegroundService.startGpsMonitoring(context.applicationContext)
   }
 
@@ -1831,11 +1841,6 @@ key == "wearAutoLaunchOnConnect" ||
       "transport" to BoardTransport.toBridge(result.resolvedTransport),
       "candidates" to candidates,
     )
-  }
-
-  private fun stopLocationUpdates() {
-    CoreForegroundService.stopGpsMonitoring(context.applicationContext)
-    TelemetryRepository.get(context.applicationContext).flushBlocking()
   }
 
   private fun stopBoardSession(promise: Promise) {

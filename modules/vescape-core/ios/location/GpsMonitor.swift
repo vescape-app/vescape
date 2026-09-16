@@ -3,9 +3,13 @@ import Foundation
 
 /// CLLocationManager-backed GPS monitor for live map state and Ride Recording.
 ///
+/// Driven by demand, never armed open-endedly: the caller hands it a `GpsPowerMode` and the monitor
+/// makes the hardware match. `off` tears the manager down rather than leaving it idling.
+///
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/location/GpsMonitor.kt
 /// @platform-diff iOS requests When In Use authorization and relies on Expo config's
-/// `UIBackgroundModes.location` for continued ride updates.
+/// `UIBackgroundModes.location` for continued ride updates. Background delivery is asked for only in
+/// `ride` mode, so a foreground-only `map` span cannot outlive the app going to the background.
 internal final class GpsMonitor: NSObject, CLLocationManagerDelegate {
   private let onLocation: (TelemetryLocationCapture) -> Void
   /// Fired when authorization resolves after `start()` has already returned, so the session's
@@ -22,6 +26,11 @@ internal final class GpsMonitor: NSObject, CLLocationManagerDelegate {
   /// `locationManagerDidChangeAuthorization` once the rider taps Allow — so a first-run session
   /// starts producing fixes without an app or session restart.
   private var armed = false
+  /// Mode the live manager is currently configured for. `nil` while nothing is armed.
+  private var armedMode: GpsPowerMode?
+  /// Mode the caller last asked for. Survives a pending permission dialog, so the grant arms the
+  /// mode the rider's situation actually called for rather than whatever `map` default.
+  private var pendingMode: GpsPowerMode?
   private var lastError: String?
   private var legalPolicyResolutionStarted = false
   private let legalPolicyResolver = LegalPolicyResolver()
@@ -36,6 +45,10 @@ internal final class GpsMonitor: NSObject, CLLocationManagerDelegate {
   /// Injected so tests can drive the authorization transitions the phase is built on; production
   /// always gets a real `CLLocationManager`.
   private let makeLocationManager: () -> CLLocationManager
+  /// Status-only manager, retained for the spans when no live one exists. Authorization is read on
+  /// every Live State emit, and demand-driven GPS spends real time stopped, so allocating a throwaway
+  /// manager per read would be a steady cost for a value that never needs one.
+  private var statusManager: CLLocationManager?
 
   init(
     onLocation: @escaping (TelemetryLocationCapture) -> Void,
@@ -55,6 +68,9 @@ internal final class GpsMonitor: NSObject, CLLocationManagerDelegate {
   /// Narrower than `active`: true only once `startUpdatingLocation()` actually ran, so diagnostics
   /// can tell a pending permission dialog apart from flowing fixes.
   var updatesStarted: Bool { armed }
+  /// What the hardware is currently being driven at, for Live State and diagnostics.
+  /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/location/GpsMonitor.kt `mode`
+  var mode: GpsPowerMode { armedMode ?? .off }
   /// Live State phase. `active` means updates are running, not merely that a manager exists — a
   /// manager held while the permission dialog is open reports `starting`.
   var phase: GpsPhase {
@@ -75,15 +91,27 @@ internal final class GpsMonitor: NSObject, CLLocationManagerDelegate {
     authorizationManager().accuracyAuthorization == .fullAccuracy ? "full" : "reduced"
   }
 
-  /// Arms the monitor. On first run the permission dialog is asynchronous, so a `.notDetermined`
-  /// status is not a failure: the manager is kept and arming is finished by the authorization
-  /// delegate. Returns an error only for a decided refusal (denied/restricted).
-  func start() -> String? {
+  /// Make the hardware match `mode`. Idempotent and safe to call on every demand change: re-applying
+  /// the armed mode does nothing, and a changed mode reconfigures the live manager in place rather
+  /// than bouncing updates off and on.
+  ///
+  /// On first run the permission dialog is asynchronous, so a `.notDetermined` status is not a
+  /// failure: the manager is kept and arming is finished by the authorization delegate. Returns an
+  /// error only for a decided refusal (denied/restricted).
+  ///
+  /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/location/GpsMonitor.kt `apply`
+  @discardableResult
+  func apply(_ mode: GpsPowerMode) -> String? {
+    guard mode != .off else {
+      stop(reason: "demand_released")
+      return nil
+    }
+    pendingMode = mode
     let manager = self.manager ?? makeManager()
     self.manager = manager
     switch manager.authorizationStatus {
     case .authorizedWhenInUse, .authorizedAlways:
-      arm(manager)
+      arm(manager, mode: mode)
       return nil
     case .notDetermined:
       lastError = nil
@@ -100,11 +128,14 @@ internal final class GpsMonitor: NSObject, CLLocationManagerDelegate {
 
   func stop(reason: String = "stop_requested") {
     let wasArmed = armed || manager != nil
+    let stoppedMode = armedMode
     stopStaleWatchdog()
     manager?.stopUpdatingLocation()
     manager?.delegate = nil
     manager = nil
     armed = false
+    armedMode = nil
+    pendingMode = nil
     // A stopped monitor is idle, not failed. `fail()` re-sets the error right after this call, so a
     // refusal still lands on `error` — matching Android, which clears `gpsError` on every stop.
     lastError = nil
@@ -115,36 +146,86 @@ internal final class GpsMonitor: NSObject, CLLocationManagerDelegate {
     recordGpsEvent(
       "gps_updates_stopped",
       message: "Location updates stopped",
-      extra: ["reason": reason, "last_fix_age_ms": lastFixAtMs.map { nowMs() - $0 }]
+      extra: [
+        "reason": reason,
+        "mode": stoppedMode?.rawValue,
+        "last_fix_age_ms": lastFixAtMs.map { nowMs() - $0 },
+      ]
     )
   }
 
   private func makeManager() -> CLLocationManager {
     let manager = makeLocationManager()
     manager.delegate = self
-    manager.desiredAccuracy = kCLLocationAccuracyBest
-    manager.distanceFilter = kCLDistanceFilterNone
     return manager
   }
 
-  /// The live manager already carries the authorization state; only fall back to a throwaway
-  /// instance when the monitor is stopped, so status reads do not allocate a manager per call.
-  private func authorizationManager() -> CLLocationManager { manager ?? makeLocationManager() }
+  /// The live manager already carries the authorization state; only fall back to a retained
+  /// status-only instance when the monitor is stopped, so status reads never allocate.
+  private func authorizationManager() -> CLLocationManager {
+    if let manager { return manager }
+    if let statusManager { return statusManager }
+    let fallback = makeLocationManager()
+    statusManager = fallback
+    return fallback
+  }
 
   /// Idempotent: the authorization delegate also fires once right after manager creation, and
-  /// `start()` is called from several independent places (map, recording toggle, session start).
-  private func arm(_ manager: CLLocationManager) {
+  /// `apply(_:)` runs on every demand change (foreground, session phase, Idle Pause, Group Ride).
+  private func arm(_ manager: CLLocationManager, mode: GpsPowerMode) {
     lastError = nil
-    guard !armed else { return }
+    configure(manager, for: mode)
+    guard !armed else {
+      guard armedMode != mode else { return }
+      let previous = armedMode
+      armedMode = mode
+      // The manager keeps delivering across a reconfigure, so the armed span — and its fix
+      // bookkeeping — continues rather than restarting. Only the watchdog is re-judged, because it
+      // is meaningful in `ride` (fixes must flow) and not in `map` (a stationary rider gets none).
+      applyStaleWatchdog(for: mode)
+      recordGpsEvent(
+        "gps_mode_changed",
+        message: "Location updates reconfigured",
+        extra: ["mode": mode.rawValue, "previous_mode": previous?.rawValue]
+      )
+      return
+    }
     armed = true
+    armedMode = mode
     armedAtMs = nowMs()
     firstFixReported = false
     staleReported = false
-    manager.allowsBackgroundLocationUpdates = true
-    manager.pausesLocationUpdatesAutomatically = false
     manager.startUpdatingLocation()
-    recordGpsEvent("gps_updates_started", message: "Location updates started")
-    startStaleWatchdog()
+    recordGpsEvent(
+      "gps_updates_started",
+      message: "Location updates started",
+      extra: ["mode": mode.rawValue]
+    )
+    applyStaleWatchdog(for: mode)
+  }
+
+  /// The whole cost difference between the modes. `map` never asks for background delivery, so a
+  /// foreground-only span cannot survive the app being backgrounded even if a demand refresh is
+  /// somehow missed; `ride` asks for everything and disables the OS's automatic pausing, which would
+  /// otherwise silently cut a Ride Track short.
+  private func configure(_ manager: CLLocationManager, for mode: GpsPowerMode) {
+    // Accuracy is `best` in both modes: `map` is on screen, where a coarse marker reads as a bug,
+    // and the saving there comes from the distance filter and from never running in the background.
+    manager.desiredAccuracy = kCLLocationAccuracyBest
+    switch mode {
+    case .ride:
+      manager.distanceFilter = kCLDistanceFilterNone
+      manager.allowsBackgroundLocationUpdates = true
+      manager.pausesLocationUpdatesAutomatically = false
+    case .map:
+      manager.distanceFilter = GPS_MAP_MIN_DISTANCE_M
+      manager.allowsBackgroundLocationUpdates = false
+      manager.pausesLocationUpdatesAutomatically = true
+    case .off:
+      // Unreachable: `apply(_:)` stops instead of arming. Left explicit so a new mode cannot be
+      // added without deciding what the hardware should do for it.
+      break
+    }
   }
 
   private func fail() -> String? {
@@ -181,7 +262,9 @@ internal final class GpsMonitor: NSObject, CLLocationManagerDelegate {
     guard manager === self.manager else { return }
     switch manager.authorizationStatus {
     case .authorizedWhenInUse, .authorizedAlways:
-      arm(manager)
+      // The demand that opened the dialog is what gets armed; `map` is only a floor for the case
+      // where the grant somehow outlives the request that asked for it.
+      arm(manager, mode: pendingMode ?? .map)
       onAuthorizationResolved()
     case .denied, .restricted:
       _ = fail()
@@ -212,6 +295,18 @@ internal final class GpsMonitor: NSObject, CLLocationManagerDelegate {
     }
   }
 
+  /// Only `ride` mode promises a steady fix stream, so only `ride` can be meaningfully silent.
+  /// `map` mode gates delivery on `GPS_MAP_MIN_DISTANCE_M`, where a rider standing at a bus stop
+  /// legitimately produces nothing for minutes — watching it there would log noise, not a fault.
+  private func applyStaleWatchdog(for mode: GpsPowerMode) {
+    guard mode == .ride else {
+      stopStaleWatchdog()
+      staleReported = false
+      return
+    }
+    startStaleWatchdog()
+  }
+
   private func startStaleWatchdog() {
     stopStaleWatchdog()
     let timer = DispatchSource.makeTimerSource(queue: .main)
@@ -232,7 +327,7 @@ internal final class GpsMonitor: NSObject, CLLocationManagerDelegate {
   /// Armed but silent is the failure mode a rider actually notices — the map holds its last
   /// position and nothing in the log says why. Reported once per silent stretch.
   private func checkStaleFix() {
-    guard armed, !staleReported else { return }
+    guard armed, armedMode == .ride, !staleReported else { return }
     guard let since = lastFixAtMs ?? armedAtMs else { return }
     let age = nowMs() - since
     guard Double(age) >= GPS_STALE_FIX_TIMEOUT_S * 1000.0 else { return }

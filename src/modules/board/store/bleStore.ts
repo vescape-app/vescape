@@ -2,7 +2,7 @@ import { create } from 'zustand'
 import {
   scan as nativeScan,
   stopScan as nativeStopScan,
-  startLocationUpdates as nativeStartLocationUpdates,
+  refreshLocationDemand as nativeRefreshLocationDemand,
   setTelemetryRecordingEnabled as nativeSetTelemetryRecordingEnabled,
   selectBoard as nativeSelectBoard,
   stopBoard as nativeStopBoard,
@@ -87,7 +87,7 @@ interface BleActions {
   setSelectedBoard: (boardId: string | null) => void
   startTelemetryRecording: () => void
   stopTelemetryRecording: () => void
-  startGpsTracking: () => void
+  refreshGpsDemand: () => void
 }
 
 type BleStore = BleState & BleActions
@@ -224,8 +224,11 @@ let lastReplayBoardId: string | null = null
 function applyLiveState(state: LiveStateEvent, set: BleSet): void {
   const isBoardConnected = state.board.phase === 'connected'
   const hasRecentTelemetry = isBoardConnected && state.board.recentTelemetry.length > 0
-  const hasRecentLocations = state.gps.recentLocations.length > 0
-  const shouldSeedLiveState = hasRecentTelemetry || hasRecentLocations
+  const hasGpsFix =
+    state.gps.recentLocations.length > 0 ||
+    state.gps.latestApproximateFix != null ||
+    state.gps.latestFix != null
+  const shouldSeedLiveState = hasRecentTelemetry || hasGpsFix
   let live
 
   // Every live state carries the authoritative generation, and `ingestTick` drops any tick that
@@ -254,7 +257,14 @@ function applyLiveState(state: LiveStateEvent, set: BleSet): void {
   } else {
     useLiveSeriesStore.getState().clear()
     useFocusedSeriesStore.getState().clear()
-    live = liveTelemetryRuntime.clearBoardTelemetry()
+    // GPS can arrive before JS subscribes. Recover it from native even without a Board;
+    // distance-filtered map updates may not produce another event while the phone is still.
+    live = hasGpsFix
+      ? liveTelemetryRuntime.seedFromLiveState({
+          ...state,
+          board: { ...state.board, recentTelemetry: [] },
+        })
+      : liveTelemetryRuntime.clearBoardTelemetry()
   }
 
   set({
@@ -612,8 +622,8 @@ export const useBleStore = create<BleState & BleActions>((set, get) => ({
     get().syncNativeState()
   },
 
-  startGpsTracking() {
-    nativeStartLocationUpdates()
+  refreshGpsDemand() {
+    nativeRefreshLocationDemand()
     get().syncNativeState()
   },
 }))

@@ -88,3 +88,21 @@ clone, or after `bun run clear` — is treated as unknown state and triggers a p
 
 To change what counts as a durable native input, edit the input lists at the top of
 `scripts/native-sync.ts`. Never hand-edit `ios/` or `android/` to fix drift.
+
+## Pods project UUID collisions with Swift packages
+
+React Native 0.86.2 can assign an existing Pods object UUID to a Swift package dependency during
+`post_install`. With Clerk installed, `xcodebuild -list -project ios/Pods/Pods.xcodeproj` fails with
+`XCSwiftPackageProductDependency _setSavedArchiveVersion:` and reports a damaged project. The
+`react-native@0.86.2` Bun patch backports [React Native #57576](https://github.com/react/react-native/pull/57576),
+which checks existing objects before assigning package UUIDs. The upstream Ruby
+regression tests live in `scripts/test-ios-spm-uuids.rb`, run with the Ruby environment used by CocoaPods.
+
+Expo autolinking 57.0.9 also switches from sequential to random UUIDs after the Podfile hooks,
+but keeps the old generator's queued UUIDs. The `expo-modules-autolinking@57.0.9` patch clears that
+queue before Expo adds build phases. Without it, a queued ID can overwrite a configuration list
+and Xcode reports `PBXShellScriptBuildPhase` where it expects `XCConfigurationList`.
+
+Keep Clerk's `spm_dependency` intact. Removing it makes the project readable but prevents ClerkKit
+from compiling. After changing either patch, run `bun install` and `bun run native:sync ios`, then
+verify both project loading and a device build. Recheck these patches when upgrading their packages.

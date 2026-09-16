@@ -252,7 +252,9 @@ internal final class BoardSessionController: VescGattListener {
   private lazy var groupRideObserver = GroupRideObserver(
     emit: { [weak self] event, payload in self?.emit?(event, payload) },
     online: AppStatusCoordinator.shared,
-    scheduler: scheduler
+    scheduler: scheduler,
+    // Participation is a GPS demand input, and most of the ways it ends are not rider-initiated.
+    onParticipationChanged: { [weak self] in self?.refreshGpsDemand() }
   )
 
   /// Enabled Privacy Zones cached for the Group Ride presence egress gate (issue #144). Refreshed
@@ -293,10 +295,6 @@ internal final class BoardSessionController: VescGattListener {
   /// throttled while phase / percent / fault changes still refresh immediately.
   private var lastLiveTelemetryRefreshAt: Int64 = 0
   private let liveTelemetryRefreshMinMs: Int64 = 1000
-  /// True when a replay parked a live GPS monitor that was already running. The replay borrowed
-  /// position for its lifetime; its teardown hands it back.
-  /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/connection/BoardSessionController.kt `gpsSuppressedByReplay`
-  private var gpsSuppressedByReplay = false
   /// Lives in the monitor, not mirrored here: authorization can be answered after `start()` returns,
   /// so a stored copy would go stale the moment the permission dialog resolves.
   private var gpsError: String? { gpsMonitor.error }
@@ -318,10 +316,10 @@ internal final class BoardSessionController: VescGattListener {
   private var reconnecting = false
   /// Active-scan window vs idle gap (ms) while reconnecting, tuned per app run-state: aggressive
   /// in the foreground, gentle under the `location` background mode to spare battery.
-  private let rescanForegroundWindowMs = 4000
-  private let rescanForegroundIdleMs = 2000
-  private let rescanBackgroundWindowMs = 4000
-  private let rescanBackgroundIdleMs = 12000
+  /// Completed rescan cycles for the current reconnect. Drives the cadence's slow tier; reset when a
+  /// reconnect starts and when one succeeds, mirroring Android's `reconnectScheduler` attempt count.
+  /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/reconnect/ReconnectScheduler.kt `currentAttempt`
+  private var rescanAttempt = 0
 
   // MARK: Scan state
 
@@ -749,6 +747,10 @@ internal final class BoardSessionController: VescGattListener {
   /// Live State GPS phase (`idle | starting | active | error`), owned by the monitor.
   /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/connection/BoardSessionController.kt `gpsPhase`
   func gpsPhase() -> String { gpsMonitor.phase.rawValue }
+  /// What the GPS hardware is being driven at. `phase` says whether fixes flow; this says what they
+  /// cost and, by implication, why they are flowing at all.
+  /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/connection/BoardSessionController.kt `gpsMode`
+  func gpsMode() -> String { gpsMonitor.mode.rawValue }
   func gpsLatestLocation() -> [String: Any?]? { locationTracker.latestLocation?.map }
   func gpsLatestPreciseLocation() -> [String: Any?]? { locationTracker.latestPreciseLocation?.map }
   /// Where the rider is, for callers that need a position rather than a *good* position —
@@ -770,16 +772,100 @@ internal final class BoardSessionController: VescGattListener {
   func recordingPaused() -> Bool { idlePauseDetector.isPaused }
   func recordingActiveBoardId() -> String? { recordingCoordinator.activeBoardId }
 
-  /// The one place the phone's GPS is armed. A replay owns position for its whole session, so the
-  /// guard lives here rather than at the call sites: the map, the settings toggle and the session
-  /// start all ask for location updates independently, and a single live fix slipping through is
-  /// enough to make the marker jump off the recorded track.
-  func startLocationUpdates() {
-    guard replayTransport == nil else { return }
-    _ = gpsMonitor.start()
+  /// The rider has the app in front of them. Drives the `map` half of GPS demand, so a backgrounded
+  /// app with no ride in progress stops paying for fixes nobody is looking at.
+  ///
+  /// Distinct from `appIsForeground`, which asks the stricter `.active` question that decides
+  /// whether to interrupt the rider with a notification. Here `.inactive` (notification shade,
+  /// app switcher) still counts as visible: the map is on screen and about to be looked at again.
+  ///
+  /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/connection/BoardSessionController.kt `appVisible`
+  var appVisible: Bool = false {
+    didSet {
+      guard appVisible != oldValue else { return }
+      refreshGpsDemand()
+    }
+  }
+
+  /// A ride is in progress: a Board Session exists and Idle Pause is not holding it.
+  ///
+  /// Phase deliberately does not appear here beyond the session's existence. A mid-ride dropout is
+  /// still a ride — the Ride Track is what keeps the route alive across it (ADR 0038) — so the
+  /// reconnect states count, but only until `linkLostAtMs` ages past `RIDE_DROPOUT_GRACE_MS`. Past
+  /// that the board is not dropping out, it is off, and the rider has stopped riding.
+  ///
+  /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/connection/BoardSessionController.kt `riding`
+  private var riding: Bool {
+    guard config != nil, !idlePauseDetector.isPaused else { return false }
+    return GpsDemand.ridingThroughDropout(linkLostAtMs: linkLostAtMs, nowMs: nowMs())
+  }
+
+  /// When the current Board Session last lost its link, or `nil` while it is up. Feeds the ride
+  /// dropout grace; cleared on every board-ready so a reconnect that succeeds restores a full ride.
+  /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/connection/BoardSessionController.kt `linkLostAtMs`
+  private var linkLostAtMs: Int64?
+  /// Fires once when the dropout grace expires. Demand is otherwise only recomputed on an event, and
+  /// "enough time has passed" is the one input that produces none.
+  private var dropoutGraceTimer: Cancellable?
+
+  /// Mark the link down (or back up) and re-resolve demand. The grace timer is what turns the
+  /// passage of time into a demand change, so it is armed and cancelled alongside the timestamp.
+  ///
+  /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/connection/BoardSessionController.kt `setLinkLost`
+  private func setLinkLost(_ lost: Bool) {
+    guard lost else {
+      guard linkLostAtMs != nil else { return }
+      dropoutGraceTimer?.cancel()
+      dropoutGraceTimer = nil
+      linkLostAtMs = nil
+      refreshGpsDemand()
+      return
+    }
+    // Already counting. The grace belongs to the *first* loss, and every retry after it is the same
+    // dropout — `beginReconnect` is re-entered on each failed attempt. Cancelling or re-arming the
+    // timer here would let an endless retry loop push the cutoff out forever, which is precisely the
+    // case the grace exists to bound. Leave the armed timer alone.
+    guard linkLostAtMs == nil else { return }
+    linkLostAtMs = nowMs()
+    dropoutGraceTimer?.cancel()
+    dropoutGraceTimer = scheduler.postDelayed(RIDE_DROPOUT_GRACE_MS) { [weak self] in
+      self?.dropoutGraceTimer = nil
+      self?.refreshGpsDemand()
+    }
+    refreshGpsDemand()
+  }
+
+  /// The one place the phone's GPS is armed, at the one strength the current situation justifies.
+  /// Every input it reads — app visibility, Board Session, Idle Pause, Group Ride, replay — calls
+  /// back here when it changes, so no caller has to know the whole rule.
+  ///
+  /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/connection/BoardSessionController.kt `refreshGpsDemand`
+  func refreshGpsDemand() {
+    let mode = GpsDemand.resolve(
+      appVisible: appVisible,
+      riding: riding,
+      groupRideParticipating: groupRideObserver.participating,
+      replayOwnsPosition: replayTransport != nil
+    )
+    let wasActive = gpsMonitor.active
+    gpsMonitor.apply(mode)
+    // A Board Session whose link has been down past the grace cannot produce a telemetry frame, so
+    // nothing can alert. Stand the audio engine down with GPS rather than leaving a render thread
+    // and an active `.playback` session holding the process awake for the whole retry loop — the
+    // ordinary "rider powered the board off" ending, which never reaches `endSession`.
+    if config != nil, linkLostAtMs != nil, !riding { alertAudioPlayer.goIdle() }
+    // Buffered rows are flushed on the way down so a monitor that may not run again for hours does
+    // not leave the rider's last fixes sitting in memory. Off the calling thread: the most common
+    // caller is the app being backgrounded, which is the worst moment to block on SQLite. Nothing is
+    // tearing down here, so the write has time to land.
+    if wasActive, mode == .off {
+      DispatchQueue.global(qos: .utility).async { TelemetryRepository.shared.flushBlocking() }
+    }
     onStateChanged?()
   }
 
+  /// Force GPS off regardless of demand, for the two callers that are taking the whole app down with
+  /// them (`exitApp`) or freezing every DB writer for a file swap (`restoreDatabase`).
   func stopLocationUpdates() {
     gpsMonitor.stop()
     onStateChanged?()
@@ -787,8 +873,8 @@ internal final class BoardSessionController: VescGattListener {
 
   func setTelemetryRecordingEnabled(_ enabled: Bool) -> Bool {
     let ok = recordingCoordinator.setTelemetryRecordingEnabled(enabled)
-    if enabled && ok { startLocationUpdates() }
     syncResumeMarkerRecording()
+    refreshGpsDemand()
     onStateChanged?()
     return ok
   }
@@ -813,7 +899,8 @@ internal final class BoardSessionController: VescGattListener {
   }
 
   func joinGroupRide(riderId: String, riderName: String, riderColor: String?, rideId: String) {
-    startLocationUpdates()
+    // No refresh here: the observer reports its own participation edge, which is the only way the
+    // server-driven departures get seen too.
     groupRideObserver.join(
       riderId: riderId,
       riderName: riderName,
@@ -1322,17 +1409,14 @@ internal final class BoardSessionController: VescGattListener {
     // failing store site (mirrors Android clearing `warningFailuresReported`). Keeps warning-path
     // failures non-fatal and reported without per-frame spam.
     BoardWarningFailureReporter.shared.beginSession()
-    // Guarding `startLocationUpdates` is not enough: the map, the recording toggle or a prior live
-    // session may already have the GPS monitor running, and those live fixes would fight the
-    // recorded ones. A replay owns position, so park the live monitor for its lifetime and unwind
-    // it in the session teardown — session end no longer stops GPS on its own.
-    // @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/connection/BoardSessionController.kt `gpsSuppressedByReplay`
-    if replayTransport == nil {
-      _ = gpsMonitor.start()
-    } else if gpsMonitor.active {
-      gpsSuppressedByReplay = true
-      gpsMonitor.stop(reason: "replay_owns_position")
-    }
+    // A fresh session's link is up by definition; a stale timestamp from the previous one would
+    // otherwise have this session start already outside its dropout grace.
+    linkLostAtMs = nil
+    dropoutGraceTimer?.cancel()
+    dropoutGraceTimer = nil
+    // One call decides both halves: a live session raises demand to `ride`, and a replay drops it to
+    // `off` for its lifetime so live fixes cannot fight the recorded ones on the map.
+    refreshGpsDemand()
     // Fresh rule set for this session's alert engine — only the connected Board's enabled rules
     // (mirrors Android loadAlertRules on connect).
     let board: [String: Any?]?
@@ -1448,6 +1532,10 @@ internal final class BoardSessionController: VescGattListener {
     stopReconnect()
     configController.onSessionTerminated(error ?? "Board session ended", connection: fallbackConfigRWConnection())
     alertCoordinator.stopAllGeiger()
+    // No Board left to alert about: stand the audio engine and session down so they stop holding the
+    // process awake under the `audio` background mode. Reversible — the next connect re-activates in
+    // milliseconds, and mid-ride alert latency is untouched.
+    alertAudioPlayer.goIdle()
     transport.disconnect()
     replayTransport = nil
     // The shifted clock belongs to the replay that installed it; anything running between here and
@@ -1609,6 +1697,10 @@ internal final class BoardSessionController: VescGattListener {
     stopReconnect()
     configController.onSessionTerminated(message, connection: fallbackConfigRWConnection())
     alertCoordinator.stopAllGeiger()
+    // No Board left to alert about: stand the audio engine and session down so they stop holding the
+    // process awake under the `audio` background mode. Reversible — the next connect re-activates in
+    // milliseconds, and mid-ride alert latency is untouched.
+    alertAudioPlayer.goIdle()
     transport.disconnect()
     replayTransport = nil
     // The shifted clock belongs to the replay that installed it; anything running between here and
@@ -1684,6 +1776,10 @@ internal final class BoardSessionController: VescGattListener {
     reconnecting = true
     boardError = nil
     lastTelemetryAt = nil
+    rescanAttempt = 0
+    // Starts the ride dropout grace: GPS stays at `ride` strength across the drop so the Ride Track
+    // survives it, and steps down once the grace says this is an ended ride, not a dropout.
+    setLinkLost(true)
     setPhase(.reconnecting)
     transport.reconnect()
     if let session { scheduleRescanCycle(session: session) }
@@ -1694,6 +1790,7 @@ internal final class BoardSessionController: VescGattListener {
   /// rediscovery while the app is alive.
   private func scheduleRescanCycle(session: BoardSession) {
     guard reconnecting, session === self.session, session.isActive else { return }
+    rescanAttempt += 1
     setPhase(.rescanning)
     transport.startReconnectScan()
     scheduler.postDelayedForSession(
@@ -1717,6 +1814,7 @@ internal final class BoardSessionController: VescGattListener {
   private func stopReconnect() {
     guard reconnecting else { return }
     reconnecting = false
+    rescanAttempt = 0
     transport.stopReconnectScan()
   }
 
@@ -1724,12 +1822,10 @@ internal final class BoardSessionController: VescGattListener {
     UIApplication.shared.applicationState == .active
   }
 
-  private var rescanWindowMs: Int {
-    appIsForeground ? rescanForegroundWindowMs : rescanBackgroundWindowMs
-  }
+  private var rescanWindowMs: Int { ReconnectPolicy.rescanWindowMs }
 
   private var rescanIdleMs: Int {
-    appIsForeground ? rescanForegroundIdleMs : rescanBackgroundIdleMs
+    ReconnectPolicy.rescanIdleMs(attempt: rescanAttempt, appForeground: appIsForeground)
   }
 
   // MARK: - VescGattListener
@@ -1765,6 +1861,7 @@ internal final class BoardSessionController: VescGattListener {
     // the normal discover → subscribe → telemetry phases carry the reconnect to `connected`.
     if reconnecting {
       reconnecting = false
+      rescanAttempt = 0
       transport.stopReconnectScan()
     }
     recordConnectionDiagnostic("gatt_connected", operation: "connect", message: "GATT connected")
@@ -2279,6 +2376,9 @@ internal final class BoardSessionController: VescGattListener {
       syncResumeMarkerRecording()
     }
     if connectionSoundsEnabled { alertAudioPlayer.playConnect() }
+    // Telemetry is flowing again: a reconnect that landed inside the grace restores a full ride, and
+    // one that landed outside it raises demand back to `ride`.
+    setLinkLost(false)
     // The Live Activity flips to "connected" via setPhase → refreshLiveActivity below.
     setPhase(.connected)
   }
@@ -2673,27 +2773,26 @@ internal final class BoardSessionController: VescGattListener {
     )
   }
 
-  /// Board Session teardown's only business with GPS. A Board Session does not own the monitor or
-  /// the fixes: GPS is app-level map data that survives connect and disconnect
-  /// (`docs/connectionState.md`), so a live session end leaves both exactly as it found them.
+  /// Board Session teardown's only business with GPS *fixes*. Whether the monitor keeps running is
+  /// not decided here — it is `refreshGpsDemand`'s answer, and the teardown calls it once the
+  /// session state it reads has settled.
   ///
-  /// A replay is the exception. It fed recorded fixes through the live path for its lifetime, so
-  /// they are dropped here rather than leaking onto the live map, and the live monitor the replay
-  /// parked is handed back. Must run after `replayTransport` is cleared — `startLocationUpdates`
-  /// refuses to arm while a replay is installed.
+  /// A replay fed recorded fixes through the live path for its lifetime, so they are dropped here
+  /// rather than leaking onto the live map. Must run after `replayTransport` is cleared: demand
+  /// resolves to `off` while a replay is installed.
   ///
-  /// Android's peer teardown re-arms the monitor the same way but keeps its replay fixes, so the
-  /// recorded track survives there; see the `TODO(android parity)` at its re-arm site.
+  /// Android's peer teardown keeps its replay fixes, so the recorded track survives there; see the
+  /// `TODO(android parity)` at its refresh site.
   ///
   /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/connection/BoardSessionController.kt `stopCurrentBoardSession`
   private func releaseGpsFromSession(wasReplay: Bool) {
-    guard wasReplay else { return }
-    locationTracker.clearReplayLocations()
-    if gpsSuppressedByReplay {
-      gpsSuppressedByReplay = false
-      startLocationUpdates()
-    }
-    onStateChanged?()
+    if wasReplay { locationTracker.clearReplayLocations() }
+    // The grace belongs to the session that lost its link; with the session gone there is nothing
+    // left for it to keep alive.
+    linkLostAtMs = nil
+    dropoutGraceTimer?.cancel()
+    dropoutGraceTimer = nil
+    refreshGpsDemand()
   }
 
   private func onLocationUpdated(_ incoming: TelemetryLocationCapture) {
@@ -2854,12 +2953,17 @@ internal final class BoardSessionController: VescGattListener {
       recordingCoordinator.recordIdlePauseMarker(config: config)
     }
     pollingLoop.setPollIntervalMs(effectivePollIntervalMs())
+    // A pause is a stationary board with recording halted (ADR 0021): nothing is consuming fixes, so
+    // the chip stands down until the rider moves off again.
+    refreshGpsDemand()
     onStateChanged?()
   }
 
   private func resetIdlePause() {
+    let wasPaused = idlePauseDetector.isPaused
     idlePauseDetector.reset()
     pollingLoop.setPollIntervalMs(effectivePollIntervalMs())
+    if wasPaused { refreshGpsDemand() }
   }
 
   /// Send a payload, re-sending once shortly after if the transport refused it (busy GATT queue,

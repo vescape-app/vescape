@@ -50,6 +50,7 @@ function liveState(samples: TelemetryEvent[]): LiveStateEvent {
     },
     gps: {
       phase: 'active',
+      mode: 'ride',
       latestFix: null,
       recentLocations: [],
       error: null,

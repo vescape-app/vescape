@@ -13,16 +13,27 @@ final class GpsMonitorPhaseTests: XCTestCase {
     var status: CLAuthorizationStatus = .notDetermined
     private(set) var requestedAuthorization = false
     private(set) var updatesRunning = false
+    /// Distinguishes a reconfigure from a restart — the difference between keeping a warm fix and
+    /// paying for a new one.
+    private(set) var startCount = 0
     private var backgroundUpdates = false
+    private var autoPause = true
 
     override var authorizationStatus: CLAuthorizationStatus { status }
     override var allowsBackgroundLocationUpdates: Bool {
       get { backgroundUpdates }
       set { backgroundUpdates = newValue }
     }
+    override var pausesLocationUpdatesAutomatically: Bool {
+      get { autoPause }
+      set { autoPause = newValue }
+    }
 
     override func requestWhenInUseAuthorization() { requestedAuthorization = true }
-    override func startUpdatingLocation() { updatesRunning = true }
+    override func startUpdatingLocation() {
+      updatesRunning = true
+      startCount += 1
+    }
     override func stopUpdatingLocation() { updatesRunning = false }
   }
 
@@ -45,7 +56,7 @@ final class GpsMonitorPhaseTests: XCTestCase {
     let manager = FakeLocationManager()
     let monitor = makeMonitor(manager)
 
-    XCTAssertNil(monitor.start())
+    XCTAssertNil(monitor.apply(.ride))
 
     XCTAssertTrue(manager.requestedAuthorization)
     XCTAssertFalse(manager.updatesRunning)
@@ -56,7 +67,7 @@ final class GpsMonitorPhaseTests: XCTestCase {
   func testNotDeterminedThenGrantedReportsActive() {
     let manager = FakeLocationManager()
     let monitor = makeMonitor(manager)
-    _ = monitor.start()
+    monitor.apply(.ride)
 
     manager.status = .authorizedWhenInUse
     monitor.locationManagerDidChangeAuthorization(manager)
@@ -69,7 +80,7 @@ final class GpsMonitorPhaseTests: XCTestCase {
   func testNotDeterminedThenDeniedReportsError() {
     let manager = FakeLocationManager()
     let monitor = makeMonitor(manager)
-    _ = monitor.start()
+    monitor.apply(.ride)
 
     manager.status = .denied
     monitor.locationManagerDidChangeAuthorization(manager)
@@ -84,7 +95,7 @@ final class GpsMonitorPhaseTests: XCTestCase {
     let manager = FakeLocationManager()
     manager.status = .authorizedWhenInUse
     let monitor = makeMonitor(manager)
-    _ = monitor.start()
+    monitor.apply(.ride)
     XCTAssertEqual(monitor.phase, .active)
 
     monitor.stop()
@@ -93,11 +104,66 @@ final class GpsMonitorPhaseTests: XCTestCase {
     XCTAssertNil(monitor.error)
   }
 
+  func testMapModeNeverAsksForBackgroundUpdates() {
+    let manager = FakeLocationManager()
+    manager.status = .authorizedWhenInUse
+    let monitor = makeMonitor(manager)
+
+    monitor.apply(.map)
+
+    XCTAssertTrue(manager.updatesRunning)
+    XCTAssertEqual(monitor.mode, .map)
+    XCTAssertFalse(manager.allowsBackgroundLocationUpdates)
+    XCTAssertEqual(manager.distanceFilter, GPS_MAP_MIN_DISTANCE_M)
+  }
+
+  func testRideModeAsksForUninterruptedBackgroundUpdates() {
+    let manager = FakeLocationManager()
+    manager.status = .authorizedWhenInUse
+    let monitor = makeMonitor(manager)
+
+    monitor.apply(.ride)
+
+    XCTAssertEqual(monitor.mode, .ride)
+    XCTAssertTrue(manager.allowsBackgroundLocationUpdates)
+    XCTAssertFalse(manager.pausesLocationUpdatesAutomatically)
+    XCTAssertEqual(manager.distanceFilter, kCLDistanceFilterNone)
+  }
+
+  /// The mode change must reconfigure in place: bouncing updates off and on would cost a fresh
+  /// time-to-first-fix every time a rider stopped looking at their phone mid-ride.
+  func testChangingModeReconfiguresWithoutRestartingUpdates() {
+    let manager = FakeLocationManager()
+    manager.status = .authorizedWhenInUse
+    let monitor = makeMonitor(manager)
+    monitor.apply(.map)
+
+    monitor.apply(.ride)
+
+    XCTAssertTrue(manager.updatesRunning)
+    XCTAssertEqual(manager.startCount, 1)
+    XCTAssertEqual(monitor.mode, .ride)
+    XCTAssertTrue(manager.allowsBackgroundLocationUpdates)
+  }
+
+  func testOffModeStopsUpdates() {
+    let manager = FakeLocationManager()
+    manager.status = .authorizedWhenInUse
+    let monitor = makeMonitor(manager)
+    monitor.apply(.ride)
+
+    monitor.apply(.off)
+
+    XCTAssertFalse(manager.updatesRunning)
+    XCTAssertEqual(monitor.mode, .off)
+    XCTAssertEqual(monitor.phase, .idle)
+  }
+
   func testStopClearsAStandingRefusal() {
     let manager = FakeLocationManager()
     manager.status = .denied
     let monitor = makeMonitor(manager)
-    XCTAssertNotNil(monitor.start())
+    XCTAssertNotNil(monitor.apply(.ride))
     XCTAssertEqual(monitor.phase, .error)
 
     monitor.stop()
