@@ -26,12 +26,14 @@ internal final class GroupRideObserver: NSObject {
   private var webSocket: URLSessionWebSocketTask?
   private var serverUrl: String?
   private var reconnectAttempt = 0
-  private var stopped = true
+  private var stopped = true { didSet { notifyParticipationIfChanged() } }
   private var riderId: String?
   private var riderName: String?
   private var riderColor: String?
-  private var joinedRideId: String?
-  private var desiredRideId: String?
+  private var joinedRideId: String? { didSet { notifyParticipationIfChanged() } }
+  private var desiredRideId: String? { didSet { notifyParticipationIfChanged() } }
+  /// Last `participating` value handed to the owner, so only real transitions are reported.
+  private var lastParticipating = false
   private var lastPresence: RiderPresence?
   /// Last state handed to JS, replayed by `resync()` so a fresh JS runtime is not stuck on `idle`.
   private var lastConnection = "idle"
@@ -46,13 +48,22 @@ internal final class GroupRideObserver: NSObject {
   private var heartbeatWork: Cancellable?
   private var pingWork: Cancellable?
 
+  /// Fired whenever `participating` flips, including the transitions the rider never asked for — a
+  /// host ending the ride, an App Status block tearing the socket down, a relay saying the ride is
+  /// gone. GPS demand is resolved from participation, so a departure nobody reports is a monitor
+  /// left running for a ride that no longer exists.
+  /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/GroupRideObserver.kt `onParticipationChanged`
+  private let onParticipationChanged: () -> Void
+
   init(
     emit: @escaping (String, [String: Any?]) -> Void,
     online: OnlineCapability,
-    scheduler: Scheduler = MainQueueScheduler()
+    scheduler: Scheduler = MainQueueScheduler(),
+    onParticipationChanged: @escaping () -> Void = {}
   ) {
     self.emit = emit
     self.online = online
+    self.onParticipationChanged = onParticipationChanged
     self.scheduler = scheduler
   }
 
@@ -63,6 +74,17 @@ internal final class GroupRideObserver: NSObject {
   /// observes the lobby whenever it is open, but only real ride participation should block
   /// board-less shutdown paths.
   var participating: Bool { !stopped && (joinedRideId != nil || desiredRideId != nil) }
+
+  /// Watches the three fields `participating` is derived from, so no mutation site has to remember
+  /// to report. Reporting is edge-triggered: the fields are cleared together in several places and
+  /// the owner must not see a departure per field.
+  /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/GroupRideObserver.kt `notifyParticipationIfChanged`
+  private func notifyParticipationIfChanged() {
+    let current = participating
+    guard current != lastParticipating else { return }
+    lastParticipating = current
+    onParticipationChanged()
+  }
 
   func start(_ url: String) {
     // The observer outlives the JS runtime, so a relaunch re-subscribes to a socket that will emit

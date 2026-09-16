@@ -479,6 +479,10 @@ internal class BoardSessionController(private val service: CoreForegroundService
             handler = mainHandler,
             emit = ::emitEvent,
             online = AppStatusCoordinator.get(service.applicationContext),
+            // Participation is a GPS demand input, and most of the ways it ends are not
+            // rider-initiated. Reporting from inside the observer also lands after its `handler.post`
+            // has actually mutated the state, which a caller refreshing inline cannot.
+            onParticipationChanged = ::refreshGpsDemand,
         )
     }
 
@@ -526,6 +530,13 @@ internal class BoardSessionController(private val service: CoreForegroundService
      * and "enough time has passed" is the one input that produces none.
      */
     private var dropoutGraceHandle: Cancellable? = null
+
+    /**
+     * True only while [beginSession] is replacing one session with another. The teardown it runs
+     * first releases the outgoing session's GPS demand, and a host released there would take the
+     * incoming session down with it.
+     */
+    private var beginningSession = false
 
     /**
      * The rider has the app in front of them. Drives the `Map` half of GPS demand, so a backgrounded
@@ -716,6 +727,7 @@ internal class BoardSessionController(private val service: CoreForegroundService
         scheduler = scheduler,
         port = reconnectBlePort,
         listener = reconnectListener,
+        appForeground = { appVisible },
     )
 
     private var boardConfig: SessionConfig? = null
@@ -1077,10 +1089,9 @@ private var wearAutoLaunchOnConnect = true
     /** @parity /modules/vescape-core/ios/connection/BoardSessionController.swift `stopGroupRideObserve` */
     fun stopGroupRideObserve() {
         CoreForegroundService.pendingGroupRideUrl = null
+        // `stop()` reports the participation edge, which refreshes demand; `stopIfIdle` then finds
+        // nothing left holding the host.
         groupRideObserver.stop()
-        // Refreshing first can itself release the host; `stopIfIdle` then finds nothing left holding
-        // it. Going the other way would leave GPS armed for a Group Ride that is over.
-        refreshGpsDemand()
         stopIfIdle()
     }
 
@@ -1090,15 +1101,13 @@ private var wearAutoLaunchOnConnect = true
 
     fun joinGroupRide(riderId: String, riderName: String, riderColor: String?, rideId: String) {
         isStoppingService = false
-        // Joining is what makes the observer `participating`, so demand is refreshed after the fact —
-        // and the first presence push below is allowed to go out on the last known fix.
+        // No refresh here: the observer reports its own participation edge, which is both correctly
+        // ordered behind its `handler.post` and the only way server-driven departures get seen.
         groupRideObserver.join(riderId, riderName, riderColor, rideId, latestRiderPresence())
-        refreshGpsDemand()
     }
 
     fun leaveGroupRide() {
         groupRideObserver.leave()
-        refreshGpsDemand()
     }
 
     fun updateGroupRideIdentity(riderId: String, riderName: String, riderColor: String?) {
@@ -1165,7 +1174,12 @@ private var wearAutoLaunchOnConnect = true
 
     private fun beginSession(start: PendingStart) {
         isStoppingService = false
-        withNotificationRepaintSuppressed { stopCurrentBoardSession(emitDisconnected = false) }
+        beginningSession = true
+        try {
+            withNotificationRepaintSuppressed { stopCurrentBoardSession(emitDisconnected = false) }
+        } finally {
+            beginningSession = false
+        }
         refreshLiveHistoryLimit()
         boardConfig = start.boardConfig
         // Load rules only after boardConfig is assigned — the engine scopes to the connected Board's
@@ -3097,14 +3111,26 @@ private var wearAutoLaunchOnConnect = true
         val wasActive = gpsMonitor.active
         gpsMonitor.apply(mode)
         // Buffered rows are flushed on the way down so a monitor that may not run again for hours
-        // does not leave the rider's last fixes sitting in memory.
+        // does not leave the rider's last fixes sitting in memory. Off the calling thread: the most
+        // common caller is the app being backgrounded, which is the worst moment to block on SQLite.
+        // Nothing is tearing down here, so the write has time to land.
         if (wasActive && mode == GpsPowerMode.Off) {
-            TelemetryRepository.get(service.applicationContext).flushBlocking()
+            val appContext = service.applicationContext
+            CoreForegroundService.appDataScope.launch {
+                TelemetryRepository.get(appContext).flushBlocking()
+            }
         }
         emitState()
-        // The asserted foreground-service type keys off `gpsMonitor.active`, and dropping LOCATION
-        // is exactly what lets an idle host stop existing.
-        if (wasActive && !gpsMonitor.active) stopIfIdle() else reassertForeground()
+        // The asserted foreground-service type keys off `gpsMonitor.active`, so it has to be
+        // re-applied whenever that flips — including when GPS stops but an Accessory, a Group Ride
+        // or a live session keeps the host alive, where `stopIfIdle` is a no-op and the service
+        // would otherwise keep declaring LOCATION with no listener registered.
+        if (wasActive != gpsMonitor.active) reassertForeground()
+        // Dropping LOCATION is what lets an idle host stop existing — but never while `beginSession`
+        // is between tearing the old session down and building the new one. There `boardConfig` is
+        // momentarily null, so an idle check would `stopSelf()` the very host the incoming session
+        // is about to run in, and latch `isStoppingService` for its whole life.
+        if (!beginningSession && wasActive && !gpsMonitor.active) stopIfIdle()
     }
 
     /**
@@ -3114,16 +3140,21 @@ private var wearAutoLaunchOnConnect = true
      * @parity /modules/vescape-core/ios/connection/BoardSessionController.swift `setLinkLost`
      */
     private fun setLinkLost(lost: Boolean) {
-        dropoutGraceHandle?.cancel()
-        dropoutGraceHandle = null
         if (!lost) {
             if (linkLostAtMs == null) return
+            dropoutGraceHandle?.cancel()
+            dropoutGraceHandle = null
             linkLostAtMs = null
             refreshGpsDemand()
             return
         }
+        // Already counting. The grace belongs to the *first* loss, and every retry after it is the
+        // same dropout — `scheduleAutoReconnect` is re-entered on each failed attempt. Cancelling or
+        // re-arming the timer here would let an endless retry loop push the cutoff out forever,
+        // which is precisely the case the grace exists to bound. Leave the armed timer alone.
         if (linkLostAtMs != null) return
         linkLostAtMs = nowMs()
+        dropoutGraceHandle?.cancel()
         dropoutGraceHandle = scheduler.postDelayed(RIDE_DROPOUT_GRACE_MS) {
             dropoutGraceHandle = null
             refreshGpsDemand()

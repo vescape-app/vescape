@@ -27,6 +27,18 @@ class ReconnectPolicyTest {
         )
     }
 
+    /**
+     * A rider watching "Reconnecting" must not wait 30s between attempts; the slow tier is for a
+     * pocketed phone chasing a board that is off.
+     */
+    @Test
+    fun `the slow tier never applies while the rider is watching`() {
+        assertEquals(
+            ReconnectRetry(attempt = 60, delayMs = 5_000L),
+            ReconnectPolicy.nextRetry(59, appForeground = true),
+        )
+    }
+
     @Test
     fun `retries never give up`() {
         assertEquals(

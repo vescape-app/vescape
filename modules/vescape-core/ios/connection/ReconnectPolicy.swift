@@ -29,6 +29,8 @@ internal enum ReconnectPolicy {
 
   /// Gap before the next active-scan window. `attempt` counts completed cycles this reconnect.
   ///
+  /// Foreground never relaxes: the rider is looking at the phase and waiting for it to change.
+  ///
   /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/reconnect/ReconnectPolicy.kt `nextRetry`
   static func rescanIdleMs(attempt: Int, appForeground: Bool) -> Int {
     if appForeground { return foregroundIdleMs }

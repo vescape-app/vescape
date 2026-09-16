@@ -163,7 +163,16 @@ internal class GpsMonitor(
     }
 
     fun stop(reason: String = "stop_requested") {
-        val lm = locationManager ?: return
+        val lm = locationManager
+        if (lm == null) {
+            // A refusal leaves no manager but does leave an error. `apply(Off)` is routine now, so
+            // without this a denied-permission monitor would report `error` forever while iOS
+            // reports `idle` for the same state.
+            // @parity /modules/vescape-core/ios/location/GpsMonitor.swift `stop`
+            lastError = null
+            armedMode = null
+            return
+        }
         stopStaleWatchdog()
         // Reported before teardown so the provider-enabled flags describe the monitor that was
         // actually running, not the nulled-out one.

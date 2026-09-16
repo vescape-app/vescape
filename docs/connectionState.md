@@ -116,7 +116,15 @@ The modes differ only in what they cost:
 - `off` — the location manager is torn down, not idled.
 
 Every input calls `refreshGpsDemand()` when it changes, so no call site has to know the whole rule.
-Time is the one input that produces no event, so the dropout grace arms a one-shot timer.
+Two of them are easy to get wrong:
+
+- **Time** produces no event, so the dropout grace arms a one-shot timer. It belongs to the _first_
+  link loss — the reconnect entry point is re-entered on every failed attempt, and re-arming there
+  would let an endless retry loop push the cutoff out forever.
+- **Group Ride participation** mostly ends in ways the rider never asked for (the host ends the ride,
+  App Status blocks the socket, the relay reports the ride gone). The observer reports its own
+  participation edge rather than the caller refreshing after calling `join`/`leave`, which also fixes
+  Android ordering — its observer mutates behind a `handler.post`.
 
 Consequences worth naming:
 

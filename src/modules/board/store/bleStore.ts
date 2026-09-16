@@ -22,7 +22,6 @@ import {
   setFocusedSeriesMetrics as nativeSetFocusedSeriesMetrics,
   type BoardPhase,
   type GpsPhase,
-  type GpsPowerMode,
   type ScanStatus,
   type LocationEvent,
   type LiveStateEvent,
@@ -57,8 +56,6 @@ type BleStatus = BoardPhase
 interface BleState {
   status: BleStatus
   gpsStatus: GpsPhase
-  /** What native is driving the GPS at — `off` while nothing justifies a fix. */
-  gpsMode: GpsPowerMode
   scanStatus: ScanStatus
   connectionSeq: number
   nativeStateReady: boolean
@@ -263,7 +260,6 @@ function applyLiveState(state: LiveStateEvent, set: BleSet): void {
   set({
     status: state.board.phase,
     gpsStatus: state.gps.phase,
-    gpsMode: state.gps.mode,
     scanStatus: state.scan.phase,
     connectionSeq: state.board.connectionSeq,
     nativeStateReady: true,
@@ -486,7 +482,6 @@ export function releaseBmsSeriesStream(): void {
 export const useBleStore = create<BleState & BleActions>((set, get) => ({
   status: 'idle',
   gpsStatus: 'idle',
-  gpsMode: 'off',
   scanStatus: 'idle',
   connectionSeq: 0,
   nativeStateReady: false,

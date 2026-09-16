@@ -66,6 +66,28 @@ final class GpsPowerModeTests: XCTestCase {
 
   /// Powering the board off is how a ride ends; past the grace the reconnect loop is chasing a board
   /// that is not coming back.
+  /// The reconnect entry point is re-entered on every failed attempt. Each re-entry reports the
+  /// same loss, so the grace must still be measured from the first one — otherwise an endless retry
+  /// loop pushes the cutoff out forever and GPS never stands down.
+  func testTheGraceIsMeasuredFromTheFirstLossNotTheLatestRetry() {
+    let firstLoss: Int64 = 1_000
+    let laterRetry = firstLoss + RIDE_DROPOUT_GRACE_MS / 2
+
+    XCTAssertFalse(
+      GpsDemand.ridingThroughDropout(
+        linkLostAtMs: firstLoss,
+        nowMs: firstLoss + RIDE_DROPOUT_GRACE_MS
+      )
+    )
+    // Had a retry re-stamped the timestamp, this would still read as a ride.
+    XCTAssertTrue(
+      GpsDemand.ridingThroughDropout(
+        linkLostAtMs: laterRetry,
+        nowMs: firstLoss + RIDE_DROPOUT_GRACE_MS
+      )
+    )
+  }
+
   func testADropoutPastTheGraceIsAnEndedRide() {
     XCTAssertFalse(
       GpsDemand.ridingThroughDropout(linkLostAtMs: 1_000, nowMs: 1_000 + RIDE_DROPOUT_GRACE_MS)

@@ -252,7 +252,9 @@ internal final class BoardSessionController: VescGattListener {
   private lazy var groupRideObserver = GroupRideObserver(
     emit: { [weak self] event, payload in self?.emit?(event, payload) },
     online: AppStatusCoordinator.shared,
-    scheduler: scheduler
+    scheduler: scheduler,
+    // Participation is a GPS demand input, and most of the ways it ends are not rider-initiated.
+    onParticipationChanged: { [weak self] in self?.refreshGpsDemand() }
   )
 
   /// Enabled Privacy Zones cached for the Group Ride presence egress gate (issue #144). Refreshed
@@ -316,7 +318,7 @@ internal final class BoardSessionController: VescGattListener {
   /// in the foreground, gentle under the `location` background mode to spare battery.
   /// Completed rescan cycles for the current reconnect. Drives the cadence's slow tier; reset when a
   /// reconnect starts and when one succeeds, mirroring Android's `reconnectScheduler` attempt count.
-  /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/reconnect/ReconnectScheduler.kt `attempt`
+  /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/reconnect/ReconnectScheduler.kt `currentAttempt`
   private var rescanAttempt = 0
 
   // MARK: Scan state
@@ -806,24 +808,26 @@ internal final class BoardSessionController: VescGattListener {
   /// "enough time has passed" is the one input that produces none.
   private var dropoutGraceTimer: Cancellable?
 
-  /// The one place the phone's GPS is armed, at the one strength the current situation justifies.
-  /// Every input it reads — app visibility, Board Session, Idle Pause, Group Ride, replay — calls
-  /// back here when it changes, so no caller has to know the whole rule.
-  ///
-  /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/connection/BoardSessionController.kt `refreshGpsDemand`
   /// Mark the link down (or back up) and re-resolve demand. The grace timer is what turns the
   /// passage of time into a demand change, so it is armed and cancelled alongside the timestamp.
+  ///
+  /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/connection/BoardSessionController.kt `setLinkLost`
   private func setLinkLost(_ lost: Bool) {
-    dropoutGraceTimer?.cancel()
-    dropoutGraceTimer = nil
     guard lost else {
       guard linkLostAtMs != nil else { return }
+      dropoutGraceTimer?.cancel()
+      dropoutGraceTimer = nil
       linkLostAtMs = nil
       refreshGpsDemand()
       return
     }
+    // Already counting. The grace belongs to the *first* loss, and every retry after it is the same
+    // dropout — `beginReconnect` is re-entered on each failed attempt. Cancelling or re-arming the
+    // timer here would let an endless retry loop push the cutoff out forever, which is precisely the
+    // case the grace exists to bound. Leave the armed timer alone.
     guard linkLostAtMs == nil else { return }
     linkLostAtMs = nowMs()
+    dropoutGraceTimer?.cancel()
     dropoutGraceTimer = scheduler.postDelayed(RIDE_DROPOUT_GRACE_MS) { [weak self] in
       self?.dropoutGraceTimer = nil
       self?.refreshGpsDemand()
@@ -831,6 +835,11 @@ internal final class BoardSessionController: VescGattListener {
     refreshGpsDemand()
   }
 
+  /// The one place the phone's GPS is armed, at the one strength the current situation justifies.
+  /// Every input it reads — app visibility, Board Session, Idle Pause, Group Ride, replay — calls
+  /// back here when it changes, so no caller has to know the whole rule.
+  ///
+  /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/connection/BoardSessionController.kt `refreshGpsDemand`
   func refreshGpsDemand() {
     let mode = GpsDemand.resolve(
       appVisible: appVisible,
@@ -840,9 +849,18 @@ internal final class BoardSessionController: VescGattListener {
     )
     let wasActive = gpsMonitor.active
     gpsMonitor.apply(mode)
+    // A Board Session whose link has been down past the grace cannot produce a telemetry frame, so
+    // nothing can alert. Stand the audio engine down with GPS rather than leaving a render thread
+    // and an active `.playback` session holding the process awake for the whole retry loop — the
+    // ordinary "rider powered the board off" ending, which never reaches `endSession`.
+    if config != nil, linkLostAtMs != nil, !riding { alertAudioPlayer.goIdle() }
     // Buffered rows are flushed on the way down so a monitor that may not run again for hours does
-    // not leave the rider's last fixes sitting in memory.
-    if wasActive, mode == .off { TelemetryRepository.shared.flushBlocking() }
+    // not leave the rider's last fixes sitting in memory. Off the calling thread: the most common
+    // caller is the app being backgrounded, which is the worst moment to block on SQLite. Nothing is
+    // tearing down here, so the write has time to land.
+    if wasActive, mode == .off {
+      DispatchQueue.global(qos: .utility).async { TelemetryRepository.shared.flushBlocking() }
+    }
     onStateChanged?()
   }
 
@@ -874,7 +892,6 @@ internal final class BoardSessionController: VescGattListener {
   /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/connection/BoardSessionController.kt `stopGroupRideObserve`
   func stopGroupRideObserve() {
     groupRideObserver.stop()
-    refreshGpsDemand()
   }
 
   func createGroupRide(riderId: String, riderName: String, riderColor: String?, name: String?, lat: Double, lng: Double) {
@@ -882,9 +899,8 @@ internal final class BoardSessionController: VescGattListener {
   }
 
   func joinGroupRide(riderId: String, riderName: String, riderColor: String?, rideId: String) {
-    // Joining is what makes the observer `participating`, so demand is refreshed after the fact —
-    // and the first presence push below is allowed to go out on the last known fix.
-    defer { refreshGpsDemand() }
+    // No refresh here: the observer reports its own participation edge, which is the only way the
+    // server-driven departures get seen too.
     groupRideObserver.join(
       riderId: riderId,
       riderName: riderName,
@@ -896,7 +912,6 @@ internal final class BoardSessionController: VescGattListener {
 
   func leaveGroupRide() {
     groupRideObserver.leave()
-    refreshGpsDemand()
   }
 
   func updateGroupRideIdentity(riderId: String, riderName: String, riderColor: String?) {

@@ -131,6 +131,8 @@ internal final class AlertAudioPlayer {
   private var geigerLoops: [String: GeigerLoop] = [:]
   private var activeOneShotNodes: [AVAudioPlayerNode] = []
   private var started = false
+  /// A `goIdle()` waiting for in-flight sound to finish. Guarded by `geigerQueue`.
+  private var idleRequested = false
   private var ownsAudioSession = false
   /// `released` is read from any thread (bridge, main, geiger queue) so it carries its own lock
   /// rather than riding on `geigerQueue`; every other mutable field below is owned by `geigerQueue`.
@@ -242,6 +244,8 @@ internal final class AlertAudioPlayer {
   }
 
   private func startIfNeeded() {
+    // Sound is wanted again; a pending idle must not fire behind it.
+    idleRequested = false
     guard !isReleased, !started, engine.isRunning == false else { return }
     do {
       try activateSession()
@@ -272,15 +276,28 @@ internal final class AlertAudioPlayer {
   func goIdle() {
     geigerQueue.async { [weak self] in
       guard let self, !self.isReleased else { return }
-      // A geiger loop still ticking means a ride is still alerting; idling under it would cut the
-      // rider's audio off mid-session.
-      guard self.geigerLoops.isEmpty, self.activeOneShotNodes.isEmpty else { return }
-      self.synthesizer.stopSpeaking(at: .immediate)
-      if self.engine.isRunning { self.engine.stop() }
-      self.started = false
-      // intentional-suppression: audio deactivation is best effort; a refusal just leaves it active
-      try? AVAudioSession.sharedInstance().setActive(false, options: [.notifyOthersOnDeactivation])
+      self.idleRequested = true
+      self.idleIfQuietOnQueue()
     }
+  }
+
+  /// Must run on `geigerQueue`.
+  ///
+  /// Deferred rather than abandoned when sound is still playing. A teardown normally enqueues the
+  /// disconnect one-shot *before* `goIdle`, so on the common path the node is still registered here
+  /// — dropping the request there would mean the engine never idles at all. The one-shot's
+  /// completion re-runs this once the node drains.
+  private func idleIfQuietOnQueue() {
+    guard idleRequested, !isReleased else { return }
+    // A geiger loop still ticking means a ride is still alerting; idling under it would cut the
+    // rider's audio off mid-session.
+    guard geigerLoops.isEmpty, activeOneShotNodes.isEmpty else { return }
+    idleRequested = false
+    synthesizer.stopSpeaking(at: .immediate)
+    if engine.isRunning { engine.stop() }
+    started = false
+    // intentional-suppression: audio deactivation is best effort; a refusal just leaves it active
+    try? AVAudioSession.sharedInstance().setActive(false, options: [.notifyOthersOnDeactivation])
   }
 
   private func loadBuffers(using standardFormat: AVAudioFormat) {
@@ -567,9 +584,21 @@ internal final class AlertAudioPlayer {
   func speakMessage(_ text: String) {
     guard !isReleased else { return }
     // The synthesizer plays through the shared session, which an earlier `goIdle()` may have
-    // deactivated; without this the utterance is silently dropped.
-    // intentional-suppression: a refused activation degrades to silence, never a crash
-    try? activateSession()
+    // deactivated; without this the utterance is silently dropped. Cancelling a pending idle and
+    // re-activating happen on `geigerQueue` — the same queue `goIdle` runs on — so a teardown racing
+    // an alert cannot deactivate the session out from under the utterance that follows.
+    let reactivate = { [self] in
+      idleRequested = false
+      // intentional-suppression: a refused activation degrades to silence, never a crash
+      try? activateSession()
+    }
+    // `sync` onto the current serial queue would deadlock, so run inline when already on it —
+    // the same guard `release()` uses.
+    if DispatchQueue.getSpecific(key: Self.geigerQueueMarker) == ObjectIdentifier(self) {
+      reactivate()
+    } else {
+      geigerQueue.sync(execute: reactivate)
+    }
     let utterance = AVSpeechUtterance(string: text)
     utterance.voice = AVSpeechSynthesisVoice(language: "en-US")
     utterance.preUtteranceDelay = 0
@@ -657,6 +686,8 @@ internal final class AlertAudioPlayer {
       self.geigerQueue.async {
         self.activeOneShotNodes.removeAll { $0 === node }
         self.detachPlayerNode(node)
+        // A teardown may have asked to idle while this was still sounding.
+        self.idleIfQuietOnQueue()
       }
     })
     node.play()

@@ -210,7 +210,12 @@ public class VescapeCoreModule: Module {
       // Seed GPS demand's visibility input. A cold start fires no foreground notification, and a
       // background launch (CoreBluetooth state restoration, ADR 0034) must not be mistaken for a
       // rider watching the map. `.inactive` counts as visible — the app is on screen, mid-transition.
-      self.coordinator.appVisible = UIApplication.shared.applicationState != .background
+      //
+      // On main because `UIApplication.shared` is main-only and the setter it feeds resolves GPS
+      // demand, which touches `CLLocationManager`; definition blocks run on the module queue.
+      DispatchQueue.main.async {
+        self.coordinator.appVisible = UIApplication.shared.applicationState != .background
+      }
       // Accessory discovery pushes devices as the radio finds them; the module is only the pipe.
       // @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/VescapeCoreModule.kt `AccessoryDiscovery`
       AccessoryDiscovery.shared.emit = { [weak self] name, body in
@@ -413,7 +418,9 @@ public class VescapeCoreModule: Module {
     // for itself.
     // @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/VescapeCoreModule.kt `refreshLocationDemand`
     Function("refreshLocationDemand") {
-      self.coordinator.refreshGpsDemand()
+      // Same reasoning as the `OnCreate` seed: demand resolution arms `CLLocationManager`, which
+      // belongs on main alongside the rest of the coordinator's state.
+      DispatchQueue.main.async { self.coordinator.refreshGpsDemand() }
     }
 
     // MARK: App lifecycle

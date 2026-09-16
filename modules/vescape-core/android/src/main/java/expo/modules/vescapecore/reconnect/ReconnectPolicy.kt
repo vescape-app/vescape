@@ -11,7 +11,7 @@ internal const val RECONNECT_SCAN_TIMEOUT_MS = 6_000L
  * the same order as the ride dropout grace that stands GPS down, because it is the same judgement
  * about the same board.
  *
- * @parity /modules/vescape-core/ios/connection/ReconnectPolicy.swift `RECONNECT_SLOW_AFTER_ATTEMPTS`
+ * @parity /modules/vescape-core/ios/connection/ReconnectPolicy.swift `slowAfterAttempts`
  */
 internal const val RECONNECT_SLOW_AFTER_ATTEMPTS = 12
 
@@ -20,7 +20,7 @@ internal const val RECONNECT_SLOW_AFTER_ATTEMPTS = 12
  * left charging overnight reconnects when it comes back — but at a duty cycle that costs a parked
  * phone a scan every half minute instead of one every five seconds.
  *
- * @parity /modules/vescape-core/ios/connection/ReconnectPolicy.swift `RECONNECT_SLOW_BACKOFF_MS`
+ * @parity /modules/vescape-core/ios/connection/ReconnectPolicy.swift `slowIdleMs`
  */
 internal const val RECONNECT_SLOW_BACKOFF_MS = 30_000L
 internal const val BOARD_READY_TIMEOUT_BASE_MS = 4_000L
@@ -42,14 +42,19 @@ internal object ReconnectPolicy {
      * should not keep low-latency scanning for it, so the loop drops to
      * [RECONNECT_SLOW_BACKOFF_MS] and stays there.
      *
+     * The slow tier never applies while the rider is watching: they are looking at "Reconnecting"
+     * and waiting for it to change, and a 30s gap there reads as the app having given up. iOS makes
+     * the same exemption in `rescanIdleMs`.
+     *
      * @parity /modules/vescape-core/ios/connection/ReconnectPolicy.swift `rescanIdleMs`
      */
-    fun nextRetry(currentAttempt: Int): ReconnectRetry {
+    fun nextRetry(currentAttempt: Int, appForeground: Boolean = false): ReconnectRetry {
         val next = currentAttempt + 1
-        val delay = if (next > RECONNECT_SLOW_AFTER_ATTEMPTS) {
+        val fast = (RECONNECT_BACKOFF_STEP_MS * next).coerceAtMost(RECONNECT_BACKOFF_MAX_MS)
+        val delay = if (!appForeground && next > RECONNECT_SLOW_AFTER_ATTEMPTS) {
             RECONNECT_SLOW_BACKOFF_MS
         } else {
-            (RECONNECT_BACKOFF_STEP_MS * next).coerceAtMost(RECONNECT_BACKOFF_MAX_MS)
+            fast
         }
         return ReconnectRetry(attempt = next, delayMs = delay)
     }
