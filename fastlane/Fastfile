@@ -332,10 +332,17 @@ platform :ios do
     # archive and export phases can find them. expo prebuild generates manual
     # signing but leaves PROVISIONING_PROFILE_SPECIFIER empty — set it here.
     profiles = lane_context[SharedValues::MATCH_PROVISIONING_PROFILE_MAPPING]
+
+    # CI runs match read-only, so a missing profile is not created — it silently yields a nil
+    # profile_name and an unsigned target. Fail here instead of at export.
     [
       { target: "vescape",      bundle: "app.vescape" },
-      { target: "RideActivity", bundle: "app.vescape.widget" }
+      { target: "RideActivity", bundle: "app.vescape.widget" },
+      # The watchOS Mirror is embedded in the phone IPA and must be signed with its own
+      # profile; an unsigned embedded watch app fails export, not archive.
+      { target: "VescapeWatch", bundle: "app.vescape.watchkitapp" }
     ].each do |t|
+      UI.user_error!("No appstore profile for #{t[:bundle]} — run `fastlane ios bootstrap_certs`") unless profiles[t[:bundle]]
       update_code_signing_settings(
         use_automatic_signing: false,
         path:                  "ios/vescape.xcodeproj",
