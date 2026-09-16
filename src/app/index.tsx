@@ -12,7 +12,7 @@ import { theme } from '@/constants/theme'
 export default function IndexRoute() {
   const load = useBoardStore((s) => s.load)
   const boardsLoaded = useBoardStore((s) => s.hasLoaded)
-  const startGpsTracking = useBleStore((s) => s.startGpsTracking)
+  const refreshGpsDemand = useBleStore((s) => s.refreshGpsDemand)
   const { status: permStatus, request } = usePermissions()
 
   const connection = useBoardConnection()
@@ -27,11 +27,13 @@ export default function IndexRoute() {
     void request()
   }, [request])
 
+  // Native decides whether GPS actually runs (see `GpsPowerMode`); a grant is just the one input
+  // it cannot observe for itself, so the answer is re-resolved once the rider has given it.
   useEffect(() => {
     if (permStatus === 'granted') {
-      startGpsTracking()
+      refreshGpsDemand()
     }
-  }, [permStatus, startGpsTracking])
+  }, [permStatus, refreshGpsDemand])
 
   return (
     <View style={styles.container}>

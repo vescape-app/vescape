@@ -111,6 +111,15 @@ class CoreForegroundService : Service() {
         internal var pendingConfigWrite: PendingConfigWrite? = null
         internal var pendingGpsStart = false
         internal var pendingGroupRideUrl: String? = null
+
+        /**
+         * Last known activity visibility, kept at process scope because the service outlives any one
+         * activity and is often created while the app is already backgrounded (companion auto start,
+         * a boot-time reconnect). A host created then must not assume a rider is watching.
+         *
+         * @parity /modules/vescape-core/ios/connection/BoardSessionController.swift `appVisible`
+         */
+        internal var appVisible = false
         internal val appDataScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
         private val alertRulesGeneration = AtomicLong(0)
         private val alertRulesReloadMutex = Mutex()
@@ -321,6 +330,19 @@ class CoreForegroundService : Service() {
             }
             pendingConfigWrite = PendingConfigWrite(profileId, onSuccess, onError)
             service.controller.consumePendingConfigWrite()
+        }
+
+        /**
+         * Mirror the activity lifecycle into the GPS demand resolver.
+         *
+         * Never starts the service: a backgrounding app has nothing to arm, and a foregrounding one
+         * goes through `refreshLocationDemand` (which checks the location permission first) to get a
+         * host. Remembered while no service exists so a host created later starts with the right
+         * answer instead of defaulting to "not visible".
+         */
+        fun setAppVisible(@Suppress("UNUSED_PARAMETER") context: Context, visible: Boolean) {
+            appVisible = visible
+            instance?.controller?.appVisible = visible
         }
 
         fun startGpsMonitoring(context: Context) {
@@ -562,6 +584,9 @@ class CoreForegroundService : Service() {
         controller = BoardSessionController(this)
         instance = this
         controller.onCreate()
+        // After `onCreate`, because the setter resolves GPS demand and must not run against a
+        // half-built controller.
+        controller.appVisible = appVisible
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {

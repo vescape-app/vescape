@@ -928,6 +928,15 @@ export type BoardPhase = SessionStatus
  * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/location/GpsPhase.kt
  */
 export type GpsPhase = 'idle' | 'starting' | 'active' | 'error'
+/**
+ * How hard native is driving the GPS, and therefore why it is running at all. `off` means nothing
+ * currently justifies a fix; `map` is foreground-only delivery for a rider looking at the app;
+ * `ride` is background delivery at full rate for a ride or a Group Ride.
+ *
+ * @parity /modules/vescape-core/ios/location/GpsPowerMode.swift `GpsPowerMode`
+ * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/location/GpsPowerMode.kt `GpsPowerMode`
+ */
+export type GpsPowerMode = 'off' | 'map' | 'ride'
 export type ScanPhase = ScanStatus
 /**
  * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/RemoteTiltController.kt `RemoteTiltPhase`
@@ -981,6 +990,8 @@ export interface LiveStateEvent {
   }
   gps: {
     phase: GpsPhase
+    /** What the fixes cost right now — and, by implication, why they are flowing. */
+    mode: GpsPowerMode
     latestFix: LocationEvent | null
     latestApproximateFix?: LocationEvent | null
     latestPreciseFix?: LocationEvent | null
@@ -2601,8 +2612,7 @@ type VescapeCoreNativeModule = NativeEventEmitter<VescapeCoreEvents> & {
   ): Promise<GroundClearanceSaveResult>
   clearGroundClearanceCalibration(accessoryId: string, capabilityId: string): Promise<boolean>
   exitApp(): void
-  startLocationUpdates(): void
-  stopLocationUpdates(): void
+  refreshLocationDemand(): void
   startGroupRideObserve(serverUrl: string): void
   stopGroupRideObserve(): void
   createGroupRide(
@@ -2934,14 +2944,15 @@ export function getAccessories(): SavedAccessory[] {
   return native.getAccessories()
 }
 
-/** Start app-level Android location updates independently of a board session. */
-export function startLocationUpdates(): void {
-  native.startLocationUpdates()
-}
-
-/** Stop app-level Android location updates. Board sessions manage their own recording location. */
-export function stopLocationUpdates(): void {
-  native.stopLocationUpdates()
+/**
+ * Ask native to re-resolve GPS demand.
+ *
+ * Not a command to start: native owns whether the GPS runs and how hard (`GpsPowerMode`), from app
+ * visibility, the Board Session, Idle Pause, Group Ride and replay. JS calls this once the location
+ * permission has been answered, because a grant is the one input native cannot observe for itself.
+ */
+export function refreshLocationDemand(): void {
+  native.refreshLocationDemand()
 }
 
 /**

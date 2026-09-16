@@ -4,6 +4,7 @@ import expo.modules.vescapecore.connection.BoardPhase
 import expo.modules.vescapecore.service.SessionConfig
 
 import expo.modules.vescapecore.location.GpsPhase
+import expo.modules.vescapecore.location.GpsPowerMode
 import expo.modules.vescapecore.protocol.LocationSnapshot
 
 import expo.modules.vescapecore.telemetry.AppSettings
@@ -20,6 +21,7 @@ internal data class VescLiveStateSnapshot(
     val lastTelemetryAt: Long?,
     val recentTelemetry: List<Map<String, Any?>>,
     val gpsPhase: GpsPhase,
+    val gpsMode: GpsPowerMode,
     val latestLocation: LocationSnapshot?,
     val latestPreciseLocation: LocationSnapshot?,
     val recentLocations: List<Map<String, Any?>>,
@@ -80,6 +82,7 @@ internal fun buildLiveState(snapshot: VescLiveStateSnapshot): Map<String, Any?> 
         ),
         "gps" to mapOf(
             "phase" to snapshot.gpsPhase.wireValue,
+            "mode" to snapshot.gpsMode.slug,
             "latestFix" to snapshot.latestPreciseLocation?.toMap(),
             "latestApproximateFix" to snapshot.latestLocation?.toMap(),
             "latestPreciseFix" to snapshot.latestPreciseLocation?.toMap(),

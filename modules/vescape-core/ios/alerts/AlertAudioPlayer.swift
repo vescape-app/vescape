@@ -244,12 +244,42 @@ internal final class AlertAudioPlayer {
   private func startIfNeeded() {
     guard !isReleased, !started, engine.isRunning == false else { return }
     do {
-      try AVAudioSession.sharedInstance().setActive(true, options: [])
+      try activateSession()
       try engine.start()
       started = true
     } catch {
       started = false
       UnexpectedNativeError.report(operation: "alert_audio_engine_restart", category: "audio_start_failed", error: error)
+    }
+  }
+
+  /// Re-activating an already-active session is a cheap no-op, so this is safe on every play path
+  /// and is the only thing standing between an idled player and audible sound.
+  private func activateSession() throws {
+    try AVAudioSession.sharedInstance().setActive(true, options: [])
+  }
+
+  /// Stand down between Board Sessions without tearing the player down.
+  ///
+  /// A running `AVAudioEngine` holds a render thread, and an active `.playback` session is what tells
+  /// iOS the app still needs the `audio` background mode — together they keep the process awake long
+  /// after the ride that wanted them ended. Unlike `release()` this is reversible: buffers, nodes and
+  /// the loaded sound bank all survive, so the next alert costs a session activation and an engine
+  /// start rather than a rebuild, and nothing about alert latency mid-ride changes.
+  ///
+  /// @platform-diff iOS-only. Android's `AlertEngine` plays through `SoundPool`, which is idle
+  /// between plays and holds no session or render thread, so it has nothing to stand down from.
+  func goIdle() {
+    geigerQueue.async { [weak self] in
+      guard let self, !self.isReleased else { return }
+      // A geiger loop still ticking means a ride is still alerting; idling under it would cut the
+      // rider's audio off mid-session.
+      guard self.geigerLoops.isEmpty, self.activeOneShotNodes.isEmpty else { return }
+      self.synthesizer.stopSpeaking(at: .immediate)
+      if self.engine.isRunning { self.engine.stop() }
+      self.started = false
+      // intentional-suppression: audio deactivation is best effort; a refusal just leaves it active
+      try? AVAudioSession.sharedInstance().setActive(false, options: [.notifyOthersOnDeactivation])
     }
   }
 
@@ -536,6 +566,10 @@ internal final class AlertAudioPlayer {
 
   func speakMessage(_ text: String) {
     guard !isReleased else { return }
+    // The synthesizer plays through the shared session, which an earlier `goIdle()` may have
+    // deactivated; without this the utterance is silently dropped.
+    // intentional-suppression: a refused activation degrades to silence, never a crash
+    try? activateSession()
     let utterance = AVSpeechUtterance(string: text)
     utterance.voice = AVSpeechSynthesisVoice(language: "en-US")
     utterance.preUtteranceDelay = 0

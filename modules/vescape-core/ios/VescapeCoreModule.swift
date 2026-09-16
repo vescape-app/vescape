@@ -207,6 +207,10 @@ public class VescapeCoreModule: Module {
     OnStopObserving("onAccessoryReading") { self.observedEvents.remove("onAccessoryReading") }
 
     OnCreate {
+      // Seed GPS demand's visibility input. A cold start fires no foreground notification, and a
+      // background launch (CoreBluetooth state restoration, ADR 0034) must not be mistaken for a
+      // rider watching the map. `.inactive` counts as visible — the app is on screen, mid-transition.
+      self.coordinator.appVisible = UIApplication.shared.applicationState != .background
       // Accessory discovery pushes devices as the radio finds them; the module is only the pipe.
       // @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/VescapeCoreModule.kt `AccessoryDiscovery`
       AccessoryDiscovery.shared.emit = { [weak self] name, body in
@@ -266,10 +270,15 @@ public class VescapeCoreModule: Module {
 
     OnAppEntersForeground {
       self.frontendActive = true
+      self.coordinator.appVisible = true
       AppStatusCoordinator.shared.refresh()
     }
     OnAppEntersBackground {
       self.frontendActive = false
+      // Drops GPS demand to `off` unless a ride or a Group Ride is paying for it. Deliberately not
+      // mirrored in `OnDestroy`: a JS runtime teardown (dev reload, OTA) is not the rider putting
+      // the phone away, and the native session it leaves running still needs its fixes.
+      self.coordinator.appVisible = false
     }
 
     OnDestroy {
@@ -399,15 +408,12 @@ public class VescapeCoreModule: Module {
 
     // MARK: Location
 
-    Function("startLocationUpdates") {
-      self.coordinator.startLocationUpdates()
-    }
-
-    // Flush buffered telemetry after stopping GPS so no pending rows are lost on the way down.
-    // @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/VescapeCoreModule.kt `stopLocationUpdates`
-    Function("stopLocationUpdates") {
-      self.coordinator.stopLocationUpdates()
-      TelemetryRepository.shared.flushBlocking()
+    // Nudge, not a command: native owns whether GPS runs (see `GpsDemand`). JS calls this once the
+    // location permission is answered, because a grant is the one demand input native cannot observe
+    // for itself.
+    // @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/VescapeCoreModule.kt `refreshLocationDemand`
+    Function("refreshLocationDemand") {
+      self.coordinator.refreshGpsDemand()
     }
 
     // MARK: App lifecycle
@@ -1928,6 +1934,7 @@ public class VescapeCoreModule: Module {
       ] as [String: Any?],
       "gps": [
         "phase": coordinator.gpsPhase(),
+        "mode": coordinator.gpsMode(),
         "latestFix": coordinator.gpsLatestPreciseLocation(),
         "latestApproximateFix": coordinator.gpsLatestLocation(),
         "latestPreciseFix": coordinator.gpsLatestPreciseLocation(),

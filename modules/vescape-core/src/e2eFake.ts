@@ -163,6 +163,7 @@ function getLiveState(): LiveStateEvent {
     },
     gps: {
       phase: 'idle',
+      mode: 'off',
       latestFix: null,
       latestApproximateFix: null,
       latestPreciseFix: null,
