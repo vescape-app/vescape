@@ -65,6 +65,8 @@ jobs:
           restore-keys: |
             gradle-${{ runner.os }}-
       - uses: android-actions/setup-android@v3
+        with:
+          packages: ''
       - run: sdkmanager "platforms;android-36" "build-tools;36.0.0" "ndk;27.1.12297006"
       - run: bun install --frozen-lockfile
       - run: bun run copy:shared
@@ -109,6 +111,8 @@ jobs:
           restore-keys: |
             gradle-${{ runner.os }}-
       - uses: android-actions/setup-android@v3
+        with:
+          packages: ''
       - run: sdkmanager "platforms;android-36" "build-tools;36.0.0" "ndk;27.1.12297006"
       - name: Allocate artifact versions
         id: release
