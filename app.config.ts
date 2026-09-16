@@ -150,6 +150,7 @@ const config: ExpoConfig = {
     'expo-video',
     'expo-image',
     './plugins/withGradleJvmArgs',
+    './plugins/withSmokeGwpAsan',
     './plugins/withWearMirror',
     './plugins/withSentryNativeInit',
     './plugins/withAndroidSigningConfig',

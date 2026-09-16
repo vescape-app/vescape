@@ -12,6 +12,7 @@ import {
 
 import { useDeviceAuthStore } from '@/modules/profile/store/deviceAuthStore'
 import { exchangeDeviceToken } from '@/modules/profile/lib/deviceAuth'
+import { readDeviceCredential } from '@/modules/profile/lib/readDeviceCredential'
 
 let provisioning: Promise<void> | null = null
 const attemptedSessionIds = new Set<string>()
@@ -26,7 +27,12 @@ export function DeviceAuthSync() {
 
   const tryProvision = useCallback(() => {
     if (!isLoaded || !isSignedIn || !session) return
-    const state = getDeviceCredentialState().state
+    const credential = readDeviceCredential(getDeviceCredentialState)
+    if (!credential.status) {
+      setStatus('failed', credential.error)
+      return
+    }
+    const state = credential.status.state
     if (state === 'ready') {
       setStatus('ready')
       return
@@ -63,8 +69,15 @@ export function DeviceAuthSync() {
   useEffect(() => {
     if (!isSignedIn) return
     const subscription = addAppStatusListener(() => {
-      const state = getDeviceCredentialState().state
-      if (state === 'rejected') {
+      const credential = readDeviceCredential(getDeviceCredentialState)
+      if (!credential.status) {
+        setStatus('failed', credential.error)
+        return
+      }
+      const state = credential.status.state
+      if (state === 'ready') {
+        setStatus('ready')
+      } else if (state === 'rejected') {
         clearDeviceCredential()
         void signOut()
       } else if (state === 'unavailable') {
@@ -72,7 +85,7 @@ export function DeviceAuthSync() {
       }
     })
     return () => subscription.remove()
-  }, [isSignedIn, signOut, tryProvision])
+  }, [isSignedIn, signOut, tryProvision, setStatus])
 
   return null
 }

@@ -102,6 +102,14 @@ Debug Recording replayed through the real telemetry pipeline — and that is the
 cannot catch a native regression. A smoke build sets `EXPO_PUBLIC_SMOKE=1` instead: nothing between
 the recorded BLE chunks and the rendered gauge is faked.
 
+Simulator boot has two CI-specific requirements. The iOS runner ad-hoc signs the built app with a
+stable simulator application identifier and keychain group; an unsigned app throws OSStatus
+`-34018` when reading Device Tokens. No developer certificate is needed. Android smoke builds
+currently disable GWP-ASan to work around a CI crash in its unwinder during Hermes startup.
+Normal and screenshot builds retain the default GWP-ASan setting. Native sync tracks the smoke
+flag so switching modes regenerates the manifest. Remove this workaround once the runtime crash
+is resolved; a passing smoke run does not validate GWP-ASan compatibility.
+
 One thing stays faked, and only one. An emulator or a desk-bound phone has no board to advertise, so
 BLE _discovery_ falls back to `e2eFake.scan()` — `FAKE_SCAN` in `modules/vescape-core/src/index.ts`.
 That fake stands in for absent hardware; every other `E2E_ENABLED` branch stands in for absent data,

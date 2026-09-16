@@ -145,14 +145,28 @@ export async function createIosDriver(
       // `xcodebuild` rather than `expo run:ios`: Expo demands a real signing identity even for a
       // simulator build when the app declares `associated-domains` or `applesignin`
       // (`@expo/cli` simulatorCodeSigning), which a CI runner has no certificate for. A simulator
-      // build needs no signing at all, and neither entitlement does anything on one. The Release
-      // configuration still runs the bundle phase, so the app carries its own JS.
+      // build needs no certificate. Xcode handles ad-hoc signing and simulator keychain
+      // entitlements below. Release still bundles its own JS.
       const workspace = readdirSync(IOS_DIR).find((entry) => entry.endsWith('.xcworkspace'))
       if (!workspace) {
         console.error('No ios/*.xcworkspace — `native:sync ios` did not generate the project.')
         process.exit(1)
       }
       const scheme = basename(workspace, '.xcworkspace')
+
+      // Simulator Keychain needs an application identifier and access group. Xcode embeds
+      // simulated entitlements separately from the host signature; no certificate is needed.
+      mkdirSync(DERIVED_DATA, { recursive: true })
+      const entitlements = join(DERIVED_DATA, 'simulator-keychain.entitlements')
+      await Bun.write(
+        entitlements,
+        `<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0"><dict>
+<key>application-identifier</key><string>SIMULATOR.$(PRODUCT_BUNDLE_IDENTIFIER)</string>
+<key>keychain-access-groups</key><array><string>SIMULATOR.$(PRODUCT_BUNDLE_IDENTIFIER)</string></array>
+</dict></plist>`,
+      )
 
       await runOrDie(
         [
@@ -167,7 +181,11 @@ export async function createIosDriver(
           `id=${sim.udid}`,
           '-derivedDataPath',
           DERIVED_DATA,
-          'CODE_SIGNING_ALLOWED=NO',
+          'CODE_SIGNING_ALLOWED=YES',
+          'CODE_SIGN_IDENTITY=-',
+          'CODE_SIGN_STYLE=Manual',
+          'DEVELOPMENT_TEAM=',
+          `CODE_SIGN_ENTITLEMENTS=${entitlements}`,
           // A full Xcode transcript is ~100k lines and buries the one error worth reading. `-quiet`
           // keeps errors and warnings.
           '-quiet',

@@ -182,7 +182,7 @@ export async function createAndroidDriver(
 
     async buildAndInstall() {
       console.log(`› Building the Android ${mode} Release build…`)
-      await runOrDie(['bun', 'run', 'native:sync', 'android'])
+      await runOrDie(['bun', 'run', 'native:sync', 'android'], fixtureBuildEnv(mode, replay))
       // Release on both modes. The store set has to be the shipped build, and a smoke run gets a
       // self-contained APK out of it — no Metro server to start and no dev-client launcher screen
       // to tap through before the first flow step.

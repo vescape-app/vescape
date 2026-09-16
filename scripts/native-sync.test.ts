@@ -63,6 +63,23 @@ describe('podsFingerprint', () => {
 })
 
 describe('prebuildFingerprint', () => {
+  it('regenerates Android when entering and leaving smoke mode', () => {
+    const original = process.env.EXPO_PUBLIC_SMOKE
+    try {
+      delete process.env.EXPO_PUBLIC_SMOKE
+      const normal = prebuildFingerprint('android', root)
+      const ios = prebuildFingerprint('ios', root)
+      process.env.EXPO_PUBLIC_SMOKE = '1'
+      expect(prebuildFingerprint('android', root)).not.toEqual(normal)
+      expect(prebuildFingerprint('ios', root)).toEqual(ios)
+      delete process.env.EXPO_PUBLIC_SMOKE
+      expect(prebuildFingerprint('android', root)).toEqual(normal)
+    } finally {
+      if (original === undefined) delete process.env.EXPO_PUBLIC_SMOKE
+      else process.env.EXPO_PUBLIC_SMOKE = original
+    }
+  })
+
   it('changes when a config plugin is added', () => {
     const before = prebuildFingerprint('android', root)
     write('plugins/withThing.ts', 'export default {}')
