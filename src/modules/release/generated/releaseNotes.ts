@@ -2,6 +2,11 @@ import type { BundledReleaseNote } from '../lib/releaseNotes'
 
 export const bundledReleaseNotes = [
   {
+    version: '0.94.0',
+    markdown:
+      '## Fixed\n\n- Fixed an app error when saved sign-in credentials temporarily cannot be read.\n- Fixed hard-to-read disabled buttons in light mode and GPS status colors that did not update when switching themes.\n\n## Watch\n\n- Added Apple Watch support with live speed, duty cycle, battery and temperature gauges, plus your route, distance to destination, weather forecast and rain radar. You can also control board lights and hold to move the board from your wrist. Move stops when you release or the connection is lost. Open Vescape on the watch manually to get started.\n- Adjusted the Wear OS weather layout to keep the forecast and sunrise or sunset time visible on smaller screens.\n',
+  },
+  {
     version: '0.93.0',
     markdown:
       '## New\n\n- Added support for compatible Bluetooth accessories, including ground-clearance sensors for automatic tilt adjustment and brake lights with adjustable sensitivity and parked behavior.\n- Remote Tilt is now available on iOS, including tilt lock and timed return to neutral.\n- Added linking support for older Float and Refloat boards, including controllers running VESC 6.02.\n\n## Improved\n\n- Speed alerts now use a different sound from duty-cycle alerts, making them easier to tell apart while riding.\n- Ride routes continue recording through brief board disconnects without splitting the ride. Recording pauses when the board disengages and resumes when you ride again.\n- GPS now switches off in the background when neither riding nor sharing your Group Ride location needs it.\n- The board selector puts your active board first, with direct access to warnings, VESC faults and editing.\n\n## Fixed\n\n- Remote Tilt handles delayed responses more reliably, preventing older drag commands from overriding a release or cancel and keeping the return countdown steady.\n- Storage failures now show clear errors instead of appearing to save successfully. Recording stops with a visible warning if ride data cannot be saved.\n- Reconnecting no longer restarts recording after you explicitly stop it.\n',
