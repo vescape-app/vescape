@@ -80,9 +80,7 @@ struct NavAbsentHint: View {
 
   var body: some View {
     VStack(spacing: 4) {
-      Image(systemName: "mappin.and.ellipse")
-        .font(.system(size: HINT_ICON_SIZE))
-        .foregroundStyle(Palette.dimText)
+      PhosphorGlyph(.mapPin, size: HINT_ICON_SIZE, color: Palette.dimText)
       Text("No navigation")
         .font(WatchTypography.ui(size: 14))
         .foregroundStyle(Palette.secondaryText)

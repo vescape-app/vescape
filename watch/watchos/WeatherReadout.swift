@@ -40,8 +40,7 @@ struct WeatherReadout: View {
       if forecast.precipitationProbability > 0 {
         // All blue, glyph and number alike: rain is one reading, not an icon with a label.
         HStack(spacing: 1) {
-          Image(systemName: rainSymbol)
-            .font(.system(size: DROP_SIZE))
+          PhosphorGlyph(rainIcon, size: DROP_SIZE, color: rainColor)
           Text("\(forecast.precipitationProbability)%")
             .font(WatchTypography.mono(size: RAIN_FONT_SIZE))
             .monospacedDigit()

@@ -48,8 +48,7 @@ struct WeatherScreen: View {
       if forecast.precipitationProbability > 0 {
         // All blue, glyph and number alike: rain is one reading, not an icon with a label.
         HStack(spacing: 4) {
-          Image(systemName: rainSymbol)
-            .font(.system(size: 9))
+          PhosphorGlyph(rainIcon, size: 9, color: Palette.weather("cloud-rain"))
           Text("\(forecast.precipitationProbability)% rain")
             .font(WatchTypography.mono(size: 12))
             .monospacedDigit()
@@ -162,12 +161,8 @@ private struct SunTime: View {
   var body: some View {
     let tint = Palette.weather(event.rising ? "sun" : "moon")
     HStack(spacing: 2) {
-      Image(systemName: "sun.max")
-        .font(.system(size: 10))
-        .foregroundStyle(tint)
-      Image(systemName: event.rising ? "chevron.up" : "chevron.down")
-        .font(.system(size: 7, weight: .bold))
-        .foregroundStyle(tint)
+      PhosphorGlyph(.sun, size: 10, color: tint)
+      PhosphorGlyph(event.rising ? .caretUp : .caretDown, size: 7, color: tint)
       Text(watchFormatHour(event.minuteOfDay))
         .font(WatchTypography.mono(size: 10))
         .foregroundStyle(Palette.secondaryText)

@@ -532,9 +532,10 @@ telling them the watch has no network next time would be a lie.
   narrow dimension is dropped rather than clipped, the same rule Android applies near the poles.
 - **The timeline is a rim span, not an arc.** It reuses `Rim.Metrics.battery` on a path one inset
   further in, so it sits inside the battery gauge on every case size without restating the geometry.
-- **SF Symbols, not ported artwork.** Wear OS bundles Phosphor drawables because Android has no
-  system set worth the name. The slugs — and therefore which condition gets which shape — are still
-  the phone's; only the artwork is the platform's.
+- **The same ported artwork as Wear OS.** `scripts/phosphor-to-vector.ts` emits both an Android
+  VectorDrawable and SwiftUI path data from the one Phosphor asset, so a condition gets the same
+  duotone glyph on either wrist. SF Symbols would be cheaper, but the system set draws a different
+  family at a different weight, which makes a second design rather than a port.
 - **The forecast strip sits above speed at the top left**, inside the rim. Wear OS hangs it under
   its own wall clock; watchOS leaves the upper right for the system clock. The compact row is pinned
   outside the pager and uses the telemetry fade as pages move. Tapping it opens the
@@ -631,8 +632,9 @@ and the wrist draws the route at the scale the rider set on the phone.
   the zoom interpolate together as one animatable pair rather than as three independent springs. The
   course is kept unwrapped so a heading crossing north turns the short way, which is the same rule
   `shortestAngleDelta` encodes on Android.
-- **SF Symbols for the empty-nav hint.** Wear OS bundles a Phosphor map-pin drawable; the chevron and
-  the pin beside the distance are drawn by hand on both wrists, so those match stroke for stroke.
+- **The empty-nav hint draws the ported Phosphor map-pin**, the same artwork Wear OS bundles. The
+  chevron and the pin beside the distance are drawn by hand on both wrists, so those match stroke
+  for stroke too.
 
 Everything behavioural stays Android's: the same default and clamped route spans, the same rider drop
 below centre, the same line widths and opacities at rest and in focus, the same rule that the arrow
@@ -716,8 +718,8 @@ reconnecting to a phone that has never connected a board finds a stated channel 
 
 - **The split is the display's shape, not a circle.** Wear OS splits the circle its rim gauges ring.
   Here the two halves clip to `Rim.path` one step inside the rim, the same shape the route clips to.
-- **SF Symbols, not ported artwork.** `lightbulb.fill` and `headlight.low.beam.fill` stand in for the
-  Phosphor drawables Wear OS bundles.
+- **The same ported artwork as Wear OS**: the Phosphor `lightbulb` and `headlights` glyphs, from
+  the same assets the Wear drawables are emitted from.
 - **The haptic is `WKInterfaceDevice.play(.click)`.** Wear OS plays `HapticFeedbackType.LongPress`;
   watchOS has no equivalent constant, and `.click` is the discrete tap confirmation the wrist offers.
   Tagged `@platform-diff` at the call site's screen.
@@ -818,7 +820,8 @@ read as a page swipe, and the page must not move out from under a finger that is
 ### What the rectangle changed
 
 - **The split is the display's shape, not a circle**, clipped to `Rim.path` like Lights and the route.
-- **SF Symbols `chevron.up` / `chevron.down`** stand in for Wear's triangle glyphs.
+- **The same triangle glyphs as Wear** (`▲` / `▼`), drawn in the system face because a geometric
+  triangle is not in the UI font.
 - **The haptic is `WKInterfaceDevice.play(.start)` on hold and `.stop` on release.** Wear OS plays a
   single `HapticFeedbackType.LongPress` at the start; watchOS has no equivalent constant, and the
   start/stop pair is the closest the wrist offers to "this is running now". Tagged `@platform-diff`.

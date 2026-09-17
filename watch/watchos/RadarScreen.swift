@@ -186,7 +186,7 @@ private struct AnimationKey: Equatable {
 private struct RadarHeader: View {
   var body: some View {
     VStack(spacing: 1) {
-      RadarTargetGlyph(color: Palette.weather("cloud-rain"), size: 12)
+      PhosphorGlyph(.target, size: 12, color: Palette.weather("cloud-rain"))
       Text("Rain radar")
         .font(WatchTypography.ui(size: 9))
         .foregroundStyle(Palette.secondaryText)

@@ -111,7 +111,9 @@ struct MoveScreen: View {
 
   private func half(_ direction: MoveDirection) -> some View {
     Button(action: {}) {
-      Image(systemName: direction.symbol)
+      Text(direction.glyph)
+        // The system face, not Raleway: a geometric triangle is not in the UI font and would fall
+        // back at metrics nobody chose.
         .font(.system(size: Self.glyphSize, weight: .semibold))
         .foregroundStyle(enabled ? Palette.speed : Palette.dimText)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -163,10 +165,14 @@ enum MoveDirection: Equatable {
     }
   }
 
-  var symbol: String {
+  /// The solid triangle Wear OS draws, not a chevron: the Move halves are one control on both
+  /// wrists and a thin mark on one of them reads as a different button.
+  ///
+  /// @parity /watch/wearos/src/main/java/app/vescape/wear/MoveScreen.kt `MoveScreen`
+  var glyph: String {
     switch self {
-    case .forward: return "chevron.up"
-    case .backward: return "chevron.down"
+    case .forward: return "\u{25B2}"
+    case .backward: return "\u{25BC}"
     }
   }
 }

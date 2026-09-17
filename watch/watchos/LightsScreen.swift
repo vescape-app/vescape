@@ -57,13 +57,13 @@ struct LightsScreen: View {
       split
       VStack(spacing: 0) {
         half(
-          symbol: "lightbulb.fill",
+          icon: .lightbulb,
           label: "Lights",
           on: ledsOn,
           onTap: canTap ? { flip(.leds, to: !ledsOn) } : nil
         )
         half(
-          symbol: "headlight.low.beam.fill",
+          icon: .headlights,
           label: "Headlight",
           on: headlightOn,
           onTap: canTap ? { flip(.headlight, to: !headlightOn) } : nil
@@ -133,12 +133,10 @@ struct LightsScreen: View {
     return pending ? Self.pendingTintAlpha : Self.onTintAlpha
   }
 
-  private func half(symbol: String, label: String, on: Bool, onTap: (() -> Void)?) -> some View {
+  private func half(icon: PhosphorIcon, label: String, on: Bool, onTap: (() -> Void)?) -> some View {
     let tint: Color = !enabled ? Palette.dimText : (on ? Palette.lights : Palette.secondaryText)
     return VStack(spacing: 2) {
-      Image(systemName: symbol)
-        .font(.system(size: Self.glyphSize))
-        .foregroundStyle(tint)
+      PhosphorGlyph(icon, size: Self.glyphSize, color: tint)
       Text(label)
         .font(WatchTypography.ui(size: 11))
         .foregroundStyle(tint)

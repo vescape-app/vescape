@@ -142,7 +142,7 @@ fun WeatherScreen() {
 private fun RadarHint(modifier: Modifier = Modifier) {
     Column(modifier = modifier, horizontalAlignment = Alignment.CenterHorizontally) {
         Icon(
-            painter = painterResource(R.drawable.ic_caret_up),
+            painter = painterResource(R.drawable.ic_ph_caret_up),
             contentDescription = null,
             tint = DimText,
             modifier = Modifier.size(RADAR_HINT_CARET_SIZE),
@@ -228,7 +228,7 @@ private fun SunTime(minuteOfDay: Int, rising: Boolean) {
             modifier = Modifier.size(12.dp),
         )
         Icon(
-            painter = painterResource(if (rising) R.drawable.ic_caret_up else R.drawable.ic_caret_down),
+            painter = painterResource(if (rising) R.drawable.ic_ph_caret_up else R.drawable.ic_ph_caret_down),
             contentDescription = null,
             tint = tint,
             modifier = Modifier.size(8.dp),
