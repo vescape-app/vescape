@@ -156,7 +156,8 @@ struct MirrorScreen: View {
 
   /// Something that changes on every timeline beat, so the reduce runs once per beat instead of
   /// once per body evaluation.
-  private var tick: Int { Int(Date().timeIntervalSince1970 / refreshInterval) }
+  // Series 6 uses 32-bit Int; epoch-based refresh counts already exceed its range.
+  private var tick: Int64 { Int64(Date().timeIntervalSince1970 / refreshInterval) }
 
   /// Whether the radar page is allowed to fetch. It is the one surface on the wrist that spends
   /// network on its own, so this is the difference between an idle watch and a fetching one: the
