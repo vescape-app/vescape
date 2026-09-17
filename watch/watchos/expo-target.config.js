@@ -15,6 +15,9 @@ module.exports = {
   name: 'VescapeWatch',
   displayName: 'Vescape',
   bundleIdentifier: '.watchkitapp',
+  // The Apple peer of `watch/wearos/.../ic_launcher`: same sygnet on the same #111827 field, scaled
+  // to the same share of the circular mask the Wear adaptive icon targets.
+  icon: './icon.png',
   // Series 6 is the first physical test device and its installed watchOS version is not confirmed
   // (docs/watchos.md). Series 6 runs anything from watchOS 7 to 26, so the floor sits low enough
   // that the device does not have to be updated before it can be tested on. Nothing in this slice
