@@ -1,19 +1,51 @@
 package app.vescape.wear
 
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.wear.compose.material.Icon
 import androidx.wear.compose.material.MaterialTheme
 import androidx.wear.compose.material.Text
+
+/**
+ * A temperature with its degree mark tucked against the last digit. The ° hangs on the digits as an
+ * overlay, so it never shifts where the number itself lands: "21°" and "20" share one centre, and
+ * the mark is a tail, not part of the column.
+ *
+ * @parity /watch/watchos/WeatherGlyph.swift `DegreeNumber`
+ */
+@Composable
+internal fun DegreeTemp(value: Int, style: TextStyle, color: Color, modifier: Modifier = Modifier) {
+    Box(modifier = modifier, contentAlignment = Alignment.Center) {
+        Text(text = value.toString(), style = style, color = color)
+        Text(
+            text = "°",
+            style = style,
+            color = color,
+            modifier = Modifier
+                .align(Alignment.CenterEnd)
+                .offset(x = style.fontSize.value.dp * DEGREE_TUCK),
+        )
+    }
+}
+
+/** Shift that leaves a hair of space between the last digit and the mark.
+ *
+ * @parity /watch/watchos/WeatherGlyph.swift `degreeTuck`
+ */
+private const val DEGREE_TUCK = 0.45f
 
 /**
  * The forecast strip under the wall clock on the gauges page: condition glyph and temperature, with
@@ -23,6 +55,8 @@ import androidx.wear.compose.material.Text
  *
  * Renders nothing until the phone has pushed a forecast, so the layout above the gauges is unchanged
  * on a phone too old to send one. Tapping opens [WeatherScreen].
+ *
+ * @parity /watch/watchos/WeatherReadout.swift
  */
 @Composable
 internal fun WeatherReadout(muted: Boolean, onClick: (() -> Unit)?, modifier: Modifier = Modifier) {
@@ -46,9 +80,9 @@ internal fun WeatherReadout(muted: Boolean, onClick: (() -> Unit)?, modifier: Mo
                 tint = iconColor,
                 modifier = Modifier.size(READOUT_ICON_SIZE),
             )
-            Text(
-                text = "${forecast.temperatureC}°",
-                style = MaterialTheme.typography.caption2.copy(fontSize = READOUT_FONT_SIZE),
+            DegreeTemp(
+                value = forecast.temperatureC,
+                style = WatchTypography.mono(MaterialTheme.typography.caption2.copy(fontSize = READOUT_FONT_SIZE)),
                 color = textColor,
                 modifier = Modifier.padding(start = 3.dp),
             )
@@ -65,7 +99,7 @@ internal fun WeatherReadout(muted: Boolean, onClick: (() -> Unit)?, modifier: Mo
                 )
                 Text(
                     text = "${forecast.precipitationProbability}%",
-                    style = MaterialTheme.typography.caption2.copy(fontSize = RAIN_FONT_SIZE),
+                    style = WatchTypography.mono(MaterialTheme.typography.caption2.copy(fontSize = RAIN_FONT_SIZE)),
                     color = rainColor,
                     modifier = Modifier.padding(start = 1.dp),
                 )

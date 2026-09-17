@@ -13,9 +13,12 @@ import kotlin.math.roundToLong
  *
  * The wrist-side decoder ([app.vescape.wear] `WatchRouteDecoder`) carries the same path, version and
  * wire layout by convention (ADR-0018/ADR-0019).
+ *
+ * @parity /modules/vescape-core/ios/watch/WatchRoute.swift `watchRouteChannel`
  */
 internal const val WATCH_ROUTE_PATH = "/route"
 
+/** @parity /modules/vescape-core/ios/watch/WatchRoute.swift `WATCH_ROUTE_VERSION` */
 internal const val WATCH_ROUTE_VERSION = 1
 
 /**
@@ -27,9 +30,16 @@ private const val MICRO_DEGREES = 1_000_000.0
 /** Header: version byte + uint16 point count + two float64 origin coordinates. */
 private const val WATCH_ROUTE_HEADER_BYTES = 1 + 2 + 8 + 8
 
-/** Deltas are int32; a single hop beyond this is not representable and forces a new origin. */
+/**
+ * Deltas are int32; a single hop beyond this is not representable and forces a new origin.
+ *
+ * @parity /modules/vescape-core/ios/watch/WatchRoute.swift `WATCH_ROUTE_MAX_POINTS`
+ * @platform-diff watchOS caps lower (2 000): its channels share one Application Context that is
+ *   replaced as a unit, where a Data Layer item here has a path to itself.
+ */
 internal const val WATCH_ROUTE_MAX_POINTS = 8_000
 
+/** @parity /modules/vescape-core/ios/watch/WatchRoute.swift `WatchGeoPoint` */
 internal data class GeoPoint(val lat: Double, val lon: Double)
 
 /**
@@ -38,6 +48,8 @@ internal data class GeoPoint(val lat: Double, val lon: Double)
  *
  * Returns null for an empty route — "no route" is a clear, not an empty item, so the wrist never has
  * to tell a zero-length polyline from a missing one.
+ *
+ * @parity /modules/vescape-core/ios/watch/WatchRoute.swift `WatchRouteCodec`
  */
 internal object WatchRouteEncoder {
     fun encode(points: List<GeoPoint>): ByteArray? {
@@ -86,6 +98,8 @@ private const val METERS_PER_DEGREE_LON_EQUATOR = 111_320.0
  * metre over the tens of kilometres a route spans, which is all the wrist drawing needs — and it
  * keeps the rider's position inside Float32 telemetry lanes without losing precision the way raw
  * latitude/longitude would.
+ *
+ * @parity /modules/vescape-core/ios/watch/WatchRoute.swift `watchOffsetMeters`
  */
 internal fun offsetMeters(origin: GeoPoint, point: GeoPoint): Pair<Double, Double> {
     val east = (point.lon - origin.lon) * METERS_PER_DEGREE_LON_EQUATOR * cos(Math.toRadians(origin.lat))

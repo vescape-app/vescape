@@ -34,6 +34,9 @@ public final class VescapeLaunchSubscriber: ExpoAppDelegateSubscriber {
     // re-created during the launch sequence. They are not gated on a selected Board, the Board
     // auto-connect setting, or a manual Board stop — an Accessory is enrolled in its own right.
     AccessorySessionController.shared.prepareForLaunch()
+    // The wrist mirrors the phone, not the board session (ADR-0019), so the Watch Frame path comes
+    // up with the process and keeps running with no board selected.
+    BoardSessionController.shared.startWatchMirror()
     return false
   }
 }

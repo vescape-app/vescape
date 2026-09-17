@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+  <dict>
+    <!--
+      Marks this as a single-target watchOS app rather than the legacy WatchKit app + extension pair.
+      `WKCompanionAppBundleIdentifier` is not written here: the config plugin fills it from the phone
+      target's own bundle id, so the dev and production variants stay paired without a second switch.
+    -->
+    <key>UIAppFonts</key>
+    <array>
+      <string>Raleway-500.ttf</string>
+      <string>Raleway-600.ttf</string>
+      <string>JetBrainsMono-500.ttf</string>
+      <string>JetBrainsMono-600.ttf</string>
+    </array>
+    <key>WKApplication</key>
+    <true/>
+    <!--
+      Ambient (Always On) rendering. Displaying a dimmed snapshot is not the same as continuing to
+      execute — see docs/watchos.md. This key buys the former; whether frames keep arriving with the
+      wrist down is the open question this slice exists to measure, not something it asserts.
+    -->
+    <key>WKSupportsAlwaysOnDisplay</key>
+    <true/>
+  </dict>
+</plist>

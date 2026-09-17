@@ -183,6 +183,29 @@ final class NavigationController {
   /// Notified on every change, including the clear to `nil` and every `computing` transition.
   var onChange: ((Navigation?) -> Void)?
 
+  /// Notified with the rideable path of every published Navigation, `nil` when there is none to
+  /// draw — a failed Navigation is a `nil` path, not an empty one. Fired only when the path itself
+  /// changes, so a `computing` transition over an unchanged path does not re-push it.
+  ///
+  /// Separate from `onChange` because the two have different lifetimes: `onChange` belongs to the
+  /// JS module and is re-assigned on every reload, while this one carries the route to the Watch
+  /// Mirror and must survive one — see `WatchRouteMirror`.
+  ///
+  /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/navigation/NavigationController.kt `onPathChange`
+  var onPathChange: (([(latitude: Double, longitude: Double)]?) -> Void)?
+
+  /// The path the current Navigation actually draws, for a listener attaching after it was
+  /// published — a restore that ran before the Watch Mirror was wired up.
+  var currentPath: [(latitude: Double, longitude: Double)]? { lock.withLock { ridePath(state) } }
+
+  /// The path a Navigation actually draws, or `nil` when it has none — a failure has no line.
+  ///
+  /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/navigation/NavigationController.kt `ridePath`
+  private func ridePath(_ navigation: Navigation?) -> [(latitude: Double, longitude: Double)]? {
+    guard let navigation, navigation.status == .ready, !navigation.points.isEmpty else { return nil }
+    return navigation.points
+  }
+
   /// Where the rider is along the current path. Derived and never stored: recomputed by `onFix` and
   /// dropped whenever the Navigation it belongs to changes, so there is no cache to expire by hand.
   private var progress: RouteProgress?
@@ -447,6 +470,7 @@ final class NavigationController {
       // A recompute that found nothing must not take away a path the rider can still ride. Checked
       // in here rather than at the call site so the read of `state` and the write are one step.
       if keepUsablePath, navigation?.status != .ready, state?.status == .ready { return false }
+      let previousPath = ridePath(state)
       state = navigation
       // Route Progress belongs to exactly one Navigation, so it dies with the one being replaced
       // rather than describing a path that is no longer drawn. The next fix refills it.
@@ -454,6 +478,8 @@ final class NavigationController {
       progress = nil
       onChange?(navigation)
       if hadProgress { onProgressChange?(nil) }
+      let nextPath = ridePath(navigation)
+      if !samePath(previousPath, nextPath) { onPathChange?(nextPath) }
       return true
     }
     if committed { persist(request) }
@@ -473,6 +499,21 @@ final class NavigationController {
         guard let navigation else { return }
         await store.save(navigation)
       }
+    }
+  }
+
+  /// Tuple arrays are not `Equatable`, so the path comparison Android gets from `List<Pair<..>>`
+  /// equality is written out here.
+  private func samePath(
+    _ a: [(latitude: Double, longitude: Double)]?,
+    _ b: [(latitude: Double, longitude: Double)]?
+  ) -> Bool {
+    switch (a, b) {
+    case (nil, nil): return true
+    case let (a?, b?):
+      return a.count == b.count
+        && zip(a, b).allSatisfy { $0.latitude == $1.latitude && $0.longitude == $1.longitude }
+    default: return false
     }
   }
 

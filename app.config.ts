@@ -134,7 +134,18 @@ const config: ExpoConfig = {
         },
       },
     ],
-    '@bacons/apple-targets',
+    [
+      '@bacons/apple-targets',
+      {
+        // Two roots, one registration. `targets/` holds app extensions (the ride-activity widget);
+        // `watch/watchos/` holds the durable watchOS Mirror source, the Apple peer of
+        // `watch/wearos/` that `withWearMirror` injects on Android (ADR-0019). The plugin cannot be
+        // listed twice — its Xcode base-mod provider must be the last mod added, so a second
+        // registration throws — so both roots ride this one glob.
+        root: '.',
+        match: '{targets/*,watch/watchos}',
+      },
+    ],
     '@rnmapbox/maps',
     'expo-sharing',
     [

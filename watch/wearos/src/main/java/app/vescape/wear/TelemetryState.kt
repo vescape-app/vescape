@@ -10,6 +10,7 @@ const val TELEMETRY_PATH = "/telemetry"
  * Latest wrist-visible Mirror State. Frames update it on receipt; the UI also ticks the clock so a
  * stopped stream becomes disconnected without an explicit phone message.
  */
+/** @parity /watch/watchos/PhoneLink.swift */
 object TelemetryState {
     val mirrorState = mutableStateOf(MirrorStateReducer.reduce(null, null, nowMs()))
 

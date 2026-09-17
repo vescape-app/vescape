@@ -201,6 +201,8 @@ Every `Text` instance renders through the wrapper at `src/components/base/Text.t
 - Stack header titles (and any style fed to a native component that bypasses the wrapper) must set `fontFamily: theme.font('600')` explicitly — see `src/app/_layout.tsx` `headerTitleStyle` — and must not set `fontWeight`.
 - `fontVariant: ['tabular-nums']` still aligns numeric columns on Raleway.
 
+Watch companions use the same bundled families: Raleway for labels and JetBrains Mono for numeric readouts. Their native typography helpers keep watch-specific sizes; system symbols and the watchOS system clock keep the platform font. Watch targets reuse `assets/fonts/` rather than maintaining separate font files.
+
 Typography roles:
 
 | Role          | Size  | Weight | Token                         |

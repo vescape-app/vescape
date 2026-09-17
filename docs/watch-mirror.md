@@ -252,4 +252,5 @@ Adding a mirrored setting:
    the change at the next service start.
 
 The rider colour is the first of these: pick a colour on the phone and the wrist route, chevron and
-rider dot follow it. The Wear Mirror is Android-only, so none of this has an iOS peer.
+rider dot follow it. The watchOS Mirror carries the same bag on its own channel — see
+`docs/watchos.md` for how the two transports differ.

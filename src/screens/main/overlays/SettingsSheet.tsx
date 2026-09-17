@@ -1,4 +1,4 @@
-import { Platform, Pressable, StyleSheet, View } from 'react-native'
+import { Pressable, StyleSheet, View } from 'react-native'
 import Constants from 'expo-constants'
 import { router, type Href } from 'expo-router'
 import {
@@ -37,7 +37,6 @@ interface Shortcut {
   label: string
   hint: string
   route: Href
-  androidOnly?: boolean
 }
 
 /** The settings a Rider reaches for often enough to deserve a place outside Advanced. */
@@ -60,9 +59,8 @@ const SHORTCUTS: Shortcut[] = [
     icon: WatchIcon,
     accent: theme.settingsIcon.watch,
     label: 'Watch',
-    hint: 'Auto open and telemetry push rate',
+    hint: 'Push rate and what the wrist shows',
     route: routes.settingsWatch,
-    androidOnly: true,
   },
   {
     icon: HouseIcon,
@@ -133,7 +131,7 @@ export function SettingsSheet({ backup, onNavigate }: SettingsSheetProps) {
         />
       ) : null}
 
-      {SHORTCUTS.filter((s) => !s.androidOnly || Platform.OS === 'android').map((s) => (
+      {SHORTCUTS.map((s) => (
         <LinkWidget
           key={s.label}
           icon={s.icon}

@@ -158,6 +158,7 @@ class MainActivity : ComponentActivity() {
         startOngoingActivityWhenAllowed()
     }
 
+    /** @parity /watch/watchos/VescapeWatchApp.swift `VescapeWatchApp` */
     override fun onStart() {
         super.onStart()
         // Fixture replay is opt-in via `bun run wear:replay`; an ordinary emulator mirrors its

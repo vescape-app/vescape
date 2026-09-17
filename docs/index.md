@@ -13,6 +13,7 @@
 - [ios.md](./ios.md) — iOS specifics: Live Activity, background ride recording, notifications
 - [bleAndroid.md](./bleAndroid.md) — BLE connection problems & fixes (custom native module)
 - [watch-mirror.md](./watch-mirror.md) — Wear OS Mirror local install and Data Layer troubleshooting
+- [watchos.md](./watchos.md) — watchOS requirements, platform decisions, constraints, and device findings
 
 ### Board protocol & telemetry
 

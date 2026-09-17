@@ -38,6 +38,8 @@ import kotlin.math.sin
  * [focus] is the nav-focus progress (see [FrameLayout]): as the telemetry readouts leave, the
  * chevron and the distance grow into the room they free up. [stackAlpha] is the opposite pull — the
  * control and weather pages take the whole centre, so the nav stack fades out with the readouts.
+ *
+ * @parity /watch/watchos/NavPointer.swift `NavPointer`
  */
 @Composable
 internal fun NavPointer(
@@ -87,7 +89,7 @@ internal fun NavPointer(
             Text(
                 text = distanceLabel(distanceM),
                 modifier = Modifier.padding(start = PIN_GAP),
-                style = MaterialTheme.typography.caption2.copy(fontSize = DISTANCE_FONT_SIZE),
+                style = WatchTypography.mono(MaterialTheme.typography.caption2.copy(fontSize = DISTANCE_FONT_SIZE)),
                 color = color,
             )
         }
@@ -138,7 +140,11 @@ private fun DrawScope.pointOnCircle(center: Offset, radius: Float, deg: Float): 
     return Offset(center.x + (radius * cos(rad)).toFloat(), center.y + (radius * sin(rad)).toFloat())
 }
 
-/** Metres under a kilometre, one decimal above it — same split the phone's nav readout uses. */
+/**
+ * Metres under a kilometre, one decimal above it — same split the phone's nav readout uses.
+ *
+ * @parity /modules/vescape-core/ios/watch/WatchGauge.swift `distance`
+ */
 private fun distanceLabel(meters: Double): String =
     if (meters < 1000) "${meters.roundToInt()} m" else String.format("%.1f km", meters / 1000.0)
 

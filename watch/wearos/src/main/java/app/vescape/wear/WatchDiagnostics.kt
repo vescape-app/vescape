@@ -8,8 +8,10 @@ import java.util.Date
 import java.util.Locale
 
 private const val TAG = "VescMirror"
+/** @parity /modules/vescape-core/ios/watch/WatchDiagnostics.swift `maxEvents` */
 private const val MAX_EVENTS = 50
 
+/** @parity /modules/vescape-core/ios/watch/WatchDiagnostics.swift `WatchDiagnosticEvent` */
 data class DiagnosticEvent(val time: String, val text: String, val warn: Boolean)
 
 data class DiagnosticCounters(
@@ -27,6 +29,8 @@ data class DiagnosticCounters(
  * arrived" (phone-side problem) from "frames arrived but failed to decode" (build mismatch).
  * Events also go to logcat (`VescMirror`) for wired debug sessions. In-memory only — resets with
  * the process, which matches its job of explaining the incident currently on screen.
+ *
+ * @parity /modules/vescape-core/ios/watch/WatchDiagnostics.swift `WatchDiagnosticsLog`
  */
 object WatchDiagnostics {
     val counters = mutableStateOf(DiagnosticCounters())
@@ -84,7 +88,10 @@ object WatchDiagnostics {
         event(if (active) "receiver on" else "receiver off")
     }
 
-    /** Emulator replay is a dev path, so its state is worth naming: the gauges are not showing a real ride. */
+    /**
+     * Emulator replay is a dev path, so its state is worth naming.
+     * @parity /modules/vescape-core/ios/watch/WatchDiagnostics.swift `recordReplay`
+     */
     fun recordReplay(fixture: String, sampleCount: Int) {
         event("replay $fixture ($sampleCount samples)")
     }
@@ -96,6 +103,7 @@ object WatchDiagnostics {
     /**
      * Radar is the one thing the wrist fetches itself, so its failures are not the phone's and must
      * not read like a dead link.
+     * @parity /modules/vescape-core/ios/watch/WatchDiagnostics.swift `recordRadarFailure`
      */
     fun recordRadarFailure() {
         event("radar fetch failed", warn = true)

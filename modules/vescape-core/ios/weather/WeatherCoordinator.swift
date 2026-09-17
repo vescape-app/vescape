@@ -44,6 +44,13 @@ final class WeatherCoordinator {
   /// Notified on every change so the module can mirror it to JS.
   var onChange: ((Weather?) -> Void)?
 
+  /// Notified on every change for consumers that must keep working while the JS runtime is gone.
+  /// Separate from `onChange` because that slot belongs to the Expo module and is re-assigned on
+  /// every JS reload: the wrist mirror is process scoped and must not be unsubscribed by one.
+  ///
+  /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/connection/BoardSessionController.kt `onWeatherChanged`
+  var onNativeChange: ((Weather) -> Void)?
+
   private let transport: WeatherTransport
   private let nowMs: () -> Int64
   private var fetching = false
@@ -108,6 +115,7 @@ final class WeatherCoordinator {
        ) {
       current = weather
       onChange?(weather)
+      onNativeChange?(weather)
     }
     // The ride moved while this request was in flight. Re-offer the newest position through the
     // normal gate, so it refetches only if it actually left the area this forecast describes.

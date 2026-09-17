@@ -692,8 +692,9 @@ public class VescapeCoreModule: Module {
     }
 
     // @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/VescapeCoreModule.kt `setWatchRouteSpanM`
-    // @platform-diff Wear Mirror is Android-only; keep the shared TS contract callable on iOS.
-    Function("setWatchRouteSpanM") { (_: Double?) in }
+    Function("setWatchRouteSpanM") { (spanM: Double?) in
+      WatchRouteMirror.shared.viewportSpanM = spanM
+    }
 
     AsyncFunction("stopDebugReplay") { (promise: Promise) in
       self.coordinator.stopBoard()
@@ -1550,6 +1551,12 @@ public class VescapeCoreModule: Module {
         "vescFaultCollectionEnabled",
       ].contains(key) {
         self.coordinator.reloadTelemetrySettings()
+      }
+      // The Watch Mirror is process scoped, not session scoped, so its settings reload cannot ride
+      // on `reloadTelemetrySettings` — that one returns early with no Board Session.
+      // @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/VescapeCoreModule.kt `updateSetting`
+      if ["wearPushRateHz", "wearNavArrowEnabled", "riderColor", "boardMoveStrengthPercent"].contains(key) {
+        self.coordinator.reloadWatchSettings()
       }
     }
   }

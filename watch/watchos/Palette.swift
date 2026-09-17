@@ -1,0 +1,66 @@
+import SwiftUI
+
+/// Mirrors `src/constants/theme.ts` so the wrist matches the phone app, and `Palette.kt` so the two
+/// wrists match each other. Colour is load-bearing here: it is what tells a rider which curved
+/// number is the motor and which is the controller, and in ambient it is what separates a reading
+/// the watch stands behind from one it is only still showing.
+///
+/// @parity /watch/wearos/src/main/java/app/vescape/wear/Palette.kt
+/// @parity /src/constants/theme.ts
+enum Palette {
+  static let primaryText = Color(red: 0.945, green: 0.961, blue: 0.976)  // slate.textPrimary #F1F5F9
+  static let secondaryText = Color(red: 0.580, green: 0.639, blue: 0.722)  // slate.textSecondary #94A3B8
+  static let dimText = Color(red: 0.392, green: 0.455, blue: 0.545)  // slate.textMuted #64748B
+  static let guide = Color(red: 0.200, green: 0.255, blue: 0.333)  // slate.border #334155
+  static let speed = Color(red: 0.220, green: 0.741, blue: 0.973)  // sky #38BDF8
+  static let duty = Color(red: 0.078, green: 0.722, blue: 0.651)  // teal #14B8A6
+  static let motorTemp = Color(red: 0.937, green: 0.267, blue: 0.267)  // red #EF4444
+  static let ctrlTemp = Color(red: 0.976, green: 0.451, blue: 0.086)  // orange #F97316
+  static let battery = Color(red: 0.133, green: 0.773, blue: 0.369)  // green #22C55E
+  static let warning = Color(red: 0.976, green: 0.451, blue: 0.086)  // orange #F97316
+
+  /// Navigation accent, used when the rider has not picked a colour of their own.
+  ///
+  /// @parity /watch/wearos/src/main/java/app/vescape/wear/Palette.kt `NavColor`
+  static let nav = Color(red: 0.659, green: 0.333, blue: 0.969)  // purple #A855F7
+
+  /// Board lights accent — the tint that says a switch is on.
+  ///
+  /// @parity /watch/wearos/src/main/java/app/vescape/wear/Palette.kt `LightsColor`
+  static let lights = Color(red: 0.961, green: 0.620, blue: 0.043)  // amber.color #F59E0B
+
+  /// The one colour ambient invents: a dimmed near-white the always-on panel can hold cheaply.
+  static let ambientText = Color(red: 0.722, green: 0.769, blue: 0.808)  // #B8C4CE
+
+  /// The rider's chosen colour, resolved from the mirrored setting. Nil — unset, or a form this
+  /// build cannot parse — leaves the caller on the wrist's own palette.
+  ///
+  /// @parity /watch/wearos/src/main/java/app/vescape/wear/WatchSettings.kt `parseRiderColor`
+  static func rider(_ hex: String?) -> Color? {
+    parseWatchRiderColor(hex).map { Color(red: $0.red, green: $0.green, blue: $0.blue) }
+  }
+
+  /// Condition slug into its colour. The phone resolves the slug from the WMO code, so the wrist
+  /// never classifies weather — an unknown slug from a newer phone takes the neutral grey rather
+  /// than nothing.
+  ///
+  /// @parity /watch/wearos/src/main/java/app/vescape/wear/Palette.kt `weatherColor`
+  static func weather(_ slug: String) -> Color {
+    switch slug {
+    case "sun": return Color(red: 0.984, green: 0.749, blue: 0.141)  // amber.light #FBBF24
+    case "moon": return Color(red: 0.655, green: 0.545, blue: 0.980)  // violet.moon #A78BFA
+    case "cloud-sun": return Color(red: 0.961, green: 0.620, blue: 0.043)  // amber.color #F59E0B
+    case "cloud-moon": return Color(red: 0.486, green: 0.435, blue: 0.937)  // violet.color #7C6FEF
+    case "cloud-fog": return Color(red: 0.796, green: 0.835, blue: 0.882)  // slate.text #CBD5E1
+    case "cloud-rain": return Color(red: 0.376, green: 0.647, blue: 0.980)  // blue.color #60A5FA
+    case "cloud-snow": return Color(red: 0.729, green: 0.902, blue: 0.992)  // sky.snow #BAE6FD
+    case "cloud-lightning": return Color(red: 0.753, green: 0.518, blue: 0.988)  // purple.thunder #C084FC
+    default: return Color(red: 0.580, green: 0.639, blue: 0.722)  // slate.light #94A3B8
+    }
+  }
+
+  static func battery(for value: Double?) -> Color {
+    guard let value else { return secondaryText }
+    return value < WatchGauge.batteryWarningPercent ? warning : battery
+  }
+}

@@ -312,16 +312,12 @@ A user-authored spoken phrase on a single-threshold **Alert Rule** that may incl
 _Avoid_: TTS sound, voice preset, notification text
 
 **Watch Mirror**:
-The platform-neutral concept of the app on the rider's wrist that mirrors live board state and plays alert feedback. Display and playback only — it owns no durable truth, makes no alert decisions, and sends nothing back to the phone. A one-way reflection of phone truth. Has two concrete implementations: the **Wear OS Mirror** (Kotlin/Compose, Android) and the future **watchOS Mirror** (Apple Watch).
+The app on the rider's wrist that mirrors live Board state and provides rider controls. The phone owns Board state; the wrist can send rider commands and report its own awake state. Implemented by the **Wear OS Mirror** on Android; the **watchOS Mirror** is planned for Apple Watch.
 _Avoid_: Wear Mirror (bakes in Google's Wear OS brand; use for the Android impl only), watch app, companion (Companion names the CompanionDeviceManager board-presence association, not the watch)
 
 **Watch Frame**:
 The compact, throttled telemetry snapshot the phone pushes to a **Watch Mirror** to drive its display. Distinct from a **Telemetry Sample** (raw, per-packet) and from **Live State** (the full app snapshot sent to JS).
 _Avoid_: Watch payload, wear message
-
-**Watch Alert**:
-A one-shot command the phone pushes to a **Watch Mirror** when the native alert engine fires, telling it to vibrate and/or sound. Carries no threshold logic — the alert decision already happened on the phone against an **Alert Rule**.
-_Avoid_: Wear alarm, watch notification
 
 **Board Warning**:
 An app-detected abnormal Board condition worth the rider's attention — such as excessive cell-voltage spread, unstable telemetry readings, or a dangerous VESC/Refloat setting. Detected natively, keyed one-per-problem-kind per Board (re-detection updates the same warning rather than duplicating it), and carries a severity of warn or critical. Stored durably like automotive fault codes: it clears automatically when its detector re-evaluates with real data and the condition is gone, and the rider may clear it manually — but a still-true condition simply re-fires it. Detection logic is app-authored (unlike a rider-authored **Alert Rule**) and the finding is rider-facing (unlike a debug-facing **Diagnostic Event**).
@@ -522,9 +518,8 @@ _Avoid_: Position update, presence ping, location share, group telemetry
 - An **Alert Preset** is set per metric and produces zero or more **Alert Rules** for that metric; those rules are regenerated wholesale when its level changes and coexist with the rider's manual **Alert Rules**.
 - A speed **Alert Preset** resolves its km/h thresholds from **Board Top Speed**; changing **Board Top Speed** regenerates the speed preset's **Alert Rules**.
 - An **Alert Message Template** belongs to one **Alert Rule**.
-- A **Watch Mirror** receives **Watch Frames** and **Watch Alerts** from the phone and never sends data back; it is not a **Board**, a **Board Session**, or a source of **Telemetry Samples**.
+- A **Watch Mirror** receives **Watch Frames** from the phone and can send rider commands and its own awake state back; it is not a **Board**, a **Board Session**, or a source of **Telemetry Samples**.
 - A **Watch Frame** is derived from **Live State** and is only pushed while a **Board Session** is producing **Telemetry Samples**.
-- A **Watch Alert** is pushed when an **Alert Rule** fires on the phone and does not re-evaluate any threshold on the **Watch Mirror**.
 - An **App Setting** affects app behavior and is not part of a **Tune Profile** or **Board** identity.
 - A **Release Policy** may issue an **Update Warning**, impose an **Online Block**, or impose an **App Block** for affected app versions.
 - An **Update Warning** does not change local or online capability availability.

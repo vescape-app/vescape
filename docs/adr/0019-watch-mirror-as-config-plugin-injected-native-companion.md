@@ -1,5 +1,7 @@
 # Watch Mirror as a config-plugin-injected native companion
 
+Current implementation note, 2026-09-14: the alert forwarding described below is historical and is absent from the current Wear OS implementation. Wrist haptics provide feedback for Move and Lights interactions only. ADR-0033 also amends the original one-way restriction to allow rider commands and awake-state reports.
+
 The app needs a **Watch Mirror** — a wrist app that shows live board state (speed, duty, battery, temps) and plays alert feedback. A Wear OS app (and later a watchOS app) is a standalone _native companion target_, not an Expo module and not React Native: it compiles inside the generated native project and ships as its own form-factor artifact. Because `android/` and `ios/` are Expo-generated and gitignored, the companion's durable source cannot live there. We keep it as git-tracked native source under root `watch/` and inject it into the generated project with a config plugin — the same pattern as `plugins/withGradleJvmArgs.ts` — so we never eject and `prebuild` stays reproducible.
 
 ## Decision

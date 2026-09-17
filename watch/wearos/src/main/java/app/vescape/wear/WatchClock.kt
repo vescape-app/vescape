@@ -34,7 +34,7 @@ internal fun WatchClock(modifier: Modifier = Modifier, color: Color = SecondaryT
 
     Text(
         text = text,
-        style = MaterialTheme.typography.caption2,
+        style = WatchTypography.mono(MaterialTheme.typography.caption2),
         color = color,
         modifier = modifier,
     )

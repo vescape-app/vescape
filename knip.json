@@ -3,7 +3,14 @@
   "tags": ["-lintignore"],
   "ignoreBinaries": ["maestro", "adb", "awk", "swift"],
   "ignoreDependencies": ["sharp", "expo-font", "@phosphor-icons/core"],
-  "ignore": ["scripts/**/*", ".agents/**/*", ".claude/**/*", "app.config.ts", "targets/**/*"],
+  "ignore": [
+    "scripts/**/*",
+    ".agents/**/*",
+    ".claude/**/*",
+    "app.config.ts",
+    "targets/**/*",
+    "watch/watchos/**/*"
+  ],
   "ignoreExportsUsedInFile": true,
   "workspaces": {
     ".": {

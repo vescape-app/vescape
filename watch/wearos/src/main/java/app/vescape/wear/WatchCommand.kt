@@ -14,6 +14,7 @@ import java.util.concurrent.atomic.AtomicInteger
  * never state. Mirrors the phone-side peer by convention, same as the frame and settings paths.
  *
  * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/watch/WatchCommand.kt
+ * @parity /modules/vescape-core/ios/watch/WatchCommand.swift
  */
 const val COMMAND_PATH = "/command"
 
@@ -92,6 +93,10 @@ fun encodeLightsCommand(switch: LightSwitch, on: Boolean): ByteArray =
  *
  * A single thread keeps the sends ordered against each other. Failures are logged, not surfaced —
  * the next tick is already coming, and Moves that stop arriving stop the board by design.
+ *
+ * @parity /watch/watchos/PhoneLink.swift `sendMove`
+ * @platform-diff `WCSession.sendMessageData` is already non-blocking and latest-wins, so the
+ *   watchOS wrist needs no coalescing slot to keep a release from queueing behind stale holds.
  */
 class CommandSender(context: Context) {
     private val appContext = context.applicationContext

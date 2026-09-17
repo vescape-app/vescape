@@ -18,6 +18,7 @@ import java.util.Calendar
  * on every start rather than waited for.
  *
  * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/watch/WatchWeather.kt
+ * @parity /modules/vescape-core/ios/watch/WatchWeather.swift
  */
 const val WEATHER_PATH = "/weather"
 

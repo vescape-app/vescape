@@ -16,6 +16,7 @@ fun mirrorDisconnectedTimeoutMs(frameGapMs: Long?): Long =
     ((frameGapMs ?: WATCH_FRAME_INTERVAL_MS) * 3)
         .coerceIn(MIRROR_DISCONNECTED_MIN_TIMEOUT_MS, MIRROR_DISCONNECTED_MAX_TIMEOUT_MS)
 
+/** @parity /modules/vescape-core/ios/watch/MirrorState.swift `MirrorStatus` */
 enum class MirrorStatus {
     LIVE,
     STALE,
@@ -31,6 +32,7 @@ enum class MirrorStatus {
  * Watch-local view of the phone link, derived by [PhoneLinkMonitor] from `NodeClient` +
  * `CapabilityClient`. Only meaningful while no frames arrive — it names the reason for the wait.
  */
+/** @parity /modules/vescape-core/ios/watch/MirrorState.swift `MirrorPhoneLink` */
 enum class PhoneLink {
     UNKNOWN,
 
@@ -44,11 +46,13 @@ enum class PhoneLink {
     APP_REACHABLE,
 }
 
+/** @parity /modules/vescape-core/ios/watch/MirrorState.swift `MirrorState` */
 data class MirrorState(
     val status: MirrorStatus,
     val frame: WatchFrame?,
 )
 
+/** @parity /modules/vescape-core/ios/watch/MirrorState.swift `MirrorStateReducer` */
 object MirrorStateReducer {
     fun reduce(
         frame: WatchFrame?,

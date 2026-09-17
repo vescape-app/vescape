@@ -32,6 +32,8 @@ import androidx.compose.ui.unit.dp
  * One source: the real polyline the phone pushed on [ROUTE_PATH], placed by the frame's rider lanes.
  * Until those arrive — a route pushed but no fix yet — only the rider dot draws, so the wrist never
  * shows a line the rider is not actually on.
+ *
+ * @parity /watch/watchos/NavRoute.swift `NavRoute`
  */
 @Composable
 internal fun NavRoute(frame: WatchFrame, muted: Boolean, navFocus: () -> Float = { 0f }) {
@@ -69,6 +71,8 @@ internal fun NavRoute(frame: WatchFrame, muted: Boolean, navFocus: () -> Float =
  * "You are here": a ring in the route's own colour, punched out to black so whatever passes under
  * it never reads as passing through the rider. Shared with the radar page — the two are the same
  * map seen at different scales, and a rider that looked different on each would say otherwise.
+ *
+ * @parity /watch/watchos/NavRoute.swift `drawRiderDot`
  */
 internal fun DrawScope.drawRiderDot(center: Offset, color: Color) {
     drawCircle(Color.Black, radius = RIDER_DOT_R.toPx(), center = center)
@@ -138,6 +142,7 @@ private fun AnimatedRoute(
     }
 }
 
+/** @parity /watch/watchos/NavRoute.swift `shortestAngleDelta` */
 internal fun shortestAngleDelta(fromDeg: Float, toDeg: Float): Float =
     (((toDeg - fromDeg + 180f) % 360f + 360f) % 360f) - 180f
 

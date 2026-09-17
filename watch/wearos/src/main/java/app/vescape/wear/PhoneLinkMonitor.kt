@@ -28,6 +28,7 @@ private const val PHONE_LINK_SETTLED_REFRESH_MS = 60_000L
  * "phone app missing" vs "connected, waiting" instead of an anonymous spinner. Watch-local reads
  * only — the Mirror still sends nothing to the phone (ADR-0019).
  */
+/** @parity /watch/watchos/PhoneLink.swift `syncCounterpart` */
 class PhoneLinkMonitor(context: Context) {
     private val capabilityClient = Wearable.getCapabilityClient(context)
     private val nodeClient = Wearable.getNodeClient(context)
