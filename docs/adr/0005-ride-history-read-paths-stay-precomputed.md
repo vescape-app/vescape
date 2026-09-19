@@ -14,3 +14,11 @@ Ride History and profile screens are latency-sensitive. Normal reads must load p
 - Existing Ride History may keep older derived values until an explicit maintenance path exists.
 - Future recalculation of old summaries must be an intentional maintenance workflow, not part of normal reads.
 - Read paths must not mutate durable Ride History as a side effect unless that behavior is documented as maintenance.
+
+## Bucket route previews
+
+Schema 49 stores simplified GPS geometry in each minute bucket for history thumbnails. Recording
+writes may read the affected minute's original Ride Track fixes inside their transaction to replace
+its preview. This is a bounded write-side derivation, not a history-screen reconstruction. History
+reads join those precomputed segments. Existing previews are generated only by the explicit history
+rebuild operation. See [Ride History](../history.md#bucket-route-previews) for the storage contract.

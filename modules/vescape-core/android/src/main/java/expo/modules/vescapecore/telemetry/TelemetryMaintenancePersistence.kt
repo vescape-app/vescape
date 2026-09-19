@@ -77,7 +77,9 @@ internal suspend fun TelemetryDao.rebuildTelemetryBucketsImpl(
     ) }
     upsertExclusionRanges(sanitization.exclusions)
     val buckets = buildTelemetryBuckets(sanitized, locations)
-    upsertBuckets(buckets); rebuilt += buckets.size
+    upsertBuckets(buckets)
+    for (bucket in buckets) refreshBucketRoutePreview(bucket.bucketStartMs, bucket.boardId, bucket.recordingId)
+    rebuilt += buckets.size
     onProgress(index + 1, chunks)
   }
   return rebuilt

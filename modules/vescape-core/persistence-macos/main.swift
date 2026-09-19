@@ -365,8 +365,8 @@ let points = samples.map { sample in
   )
 }
 
-func require(_ condition: @autoclosure () -> Bool, _ message: String) throws {
-  if !condition() { throw Failure(description: message) }
+func require(_ condition: @autoclosure () throws -> Bool, _ message: String) throws {
+  if try !condition() { throw Failure(description: message) }
 }
 
 var queue: DatabaseQueue? = try DatabaseQueue(path: databaseURL.path)
@@ -892,6 +892,13 @@ if let exchangePath = ProcessInfo.processInfo.environment["VESCAPE_BACKUP_EXCHAN
     try require(track.first?["accuracy_cm"] as Int? == 3500, "Android archive discarded poor GPS accuracy")
     let endReason = try String.fetchOne(db, sql: "SELECT ended_reason FROM ride_recordings WHERE id='cross-recording'")
     try require(endReason == "stopped", "Android archive lost recording end intent")
+    let previewFixes = try bucketPreviewFixes()
+    for (minute, points) in Dictionary(grouping: previewFixes, by: { $0.fixAtMs / 60000 * 60000 }) {
+      let preview = try String.fetchOne(db, sql: "SELECT route_preview FROM telemetry_minute_buckets WHERE bucket_start_ms = ? AND board_id = ? AND recording_id = ?",
+        arguments: [minute, points[0].boardId, points[0].recordingId])!
+      let expected = try BucketRoutePreview.decode(BucketRoutePreview.build(points))
+      try require(try BucketRoutePreview.decode(preview) == expected, "Android preview geometry survives iOS restore")
+    }
   }
   try importedAndroid.close()
 
@@ -968,6 +975,9 @@ if let exchangePath = ProcessInfo.processInfo.environment["VESCAPE_BACKUP_EXCHAN
     try db.execute(sql: "INSERT INTO vesc_fault_capture_samples (occurrence_id,captured_at,speed,state) VALUES ('cross-fault',1000,24.68,1)")
     try insertRideRecording(db, RideRecording(id: "cross-recording", boardId: "cross-board", startedAtMs: 900, endedAtMs: 1500, endedReason: "stopped"))
     try insertRideTrackPoint(db, RideTrackPoint(recordingId: "cross-recording", boardId: "cross-board", fixAtMs: 1200, latitudeE7: 510000000, longitudeE7: 170000000, accuracyCm: 3500, gpsSpeedCentiMps: 400, bearingCentiDeg: 9000, altitudeCm: 12300))
+    let previewFixes = try bucketPreviewFixes()
+    try insertRideRecording(db, RideRecording(id: previewFixes[0].recordingId!, boardId: previewFixes[0].boardId!, startedAtMs: 0, endedAtMs: 62000, endedReason: "stopped"))
+    try RecordingPersistenceSQL.insertTrackAndBuckets(db, track: previewFixes, buckets: buildTelemetryBuckets([], locationPoints: rideTrackBucketPoints(previewFixes)))
     try db.execute(sql: "PRAGMA user_version = \(TELEMETRY_SCHEMA_VERSION)")
   }
   try iosDatabase.close()
@@ -1242,6 +1252,9 @@ try require(
   "forget removed another Accessory's calibration")
 try clearanceQueue!.close()
 try? FileManager.default.removeItem(at: clearanceURL)
+
+try runBucketRoutePreviewContract()
+try runRecordingFlushTimerContract()
 
 print("recording-contract macOS runtimeMs=\(Int(Date().timeIntervalSince(started) * 1000)) scenario=\(fixture["scenario"]!)")
 

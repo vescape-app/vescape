@@ -1,0 +1,26 @@
+{
+  "scenario": "bucket-route-preview-multiple-flushes-reopen-rollback",
+  "boardId": "preview-board",
+  "recordingId": "preview-recording",
+  "fixes": [
+    [1000, 520000000, 180000000, 500],
+    [2000, 520000000, 180005000, 500],
+    [3000, 520000000, 180010000, 500],
+    [4000, 520010000, 180010000, 500],
+    [5000, 520010000, 180000000, 500],
+    [6000, 520000000, 180000000, 500],
+    [30000, 530000000, 190000000, 5000],
+    [59000, 520020000, 180020000, 500],
+    [61000, 520020000, 180030000, 500],
+    [62000, 520030000, 180030000, 500]
+  ],
+  "expectedMinuteSegments": [
+    [
+      { "firstMs": 1000, "lastMs": 6000, "fixIndices": [0, 2, 3, 4, 5] },
+      { "firstMs": 59000, "lastMs": 59000, "fixIndices": [7] }
+    ],
+    [{ "firstMs": 61000, "lastMs": 62000, "fixIndices": [8, 9] }]
+  ],
+  "expectedRouteFixIndices": [0, 2, 3, 4, 5, 7, 8, 9],
+  "expectedBreakIndices": [5]
+}

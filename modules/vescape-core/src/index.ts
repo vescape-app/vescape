@@ -1439,9 +1439,15 @@ export interface ProfileStatsSnapshot {
   selectedMonth: ProfileStatsMonth
 }
 
+/**
+ * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/RideHistoryRepository.kt `RideRoutePoint`
+ * @parity /modules/vescape-core/ios/telemetry/RideHistoryRepository.swift `RideRoutePoint`
+ */
 export interface RideRoutePoint {
   latitude: number
   longitude: number
+  /** Start a new subpath at this point after a GPS gap. */
+  breakBefore?: boolean
 }
 
 /**

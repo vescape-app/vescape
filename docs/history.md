@@ -64,8 +64,44 @@ Standalone GPS may update live map state but should not create a Ride Recording.
 - ten complete rides from `getRideHistoryPage({ limit: 10 })`
 
 Older pages use native's opaque `nextCursorBeforeMs`. A page boundary is always before a complete
-Ride, never through an arbitrary minute bucket. Native also returns stable coarse route points for
-list thumbnails, so JS neither groups buckets nor scans all loaded buckets per row.
+Ride, never through an arbitrary minute bucket. Native concatenates the precomputed bucket route
+segments for list thumbnails, so JS neither groups buckets nor loads raw tracks per row.
+
+### Bucket route previews
+
+Favorite cards use the same simplified geometry as ride cards. Fully selected minutes read their
+stored previews; partially selected edge minutes simplify original fixes inside the exact Favorite
+range. Full minutes without a generated preview retain coarse anchors until Rebuild history. Reads are scoped to the
+Favorite's board and preserve GPS/recording gaps. An empty native route stays empty in JS.
+
+Schema 49 adds nullable `telemetry_minute_buckets.route_preview`. Each value is a JSON array of
+segments `[firstFixMs, lastFixMs, encodedPolyline]`. Coordinates use signed delta-varint polyline
+encoding at **E7** precision, not the common E5 precision. Each segment is simplified with
+Ramer–Douglas–Peucker at 5 m tolerance in a local geographic projection, keeping its first and last
+qualifying fix. A gap greater than 30 seconds between qualifying fixes starts another segment.
+`NULL` means the preview has not been generated; `[]` means it has no qualifying GPS fixes.
+
+On each recording flush, native inserts the raw fixes and replaces the affected minutes' previews
+inside the same transaction. It reads only that minute's original fixes, scoped to its Board and
+Ride Recording, through the indexed time range. It never simplifies an already simplified preview.
+This also handles late fixes and a restarted process without a second persistent cache. A failed
+preview write rolls back the entire recording batch. Telemetry-only flushes preserve the geometry.
+The full Ride Track remains unchanged.
+
+Both platforms flush at 25 buffered telemetry samples or GPS fixes. Android schedules a flush after
+5 seconds; iOS now has the same 5-second deadline for sparse batches, cancelled by threshold or
+explicit flushes. A minute bucket is updated repeatedly, rather than waiting for the minute to end.
+
+History reads decode and join the saved segments, using their endpoint times to preserve gaps across
+minute boundaries. `RideRoutePoint.breakBefore` starts a new thumbnail subpath. Thumbnail fitting
+uses longitude's latitude-dependent scale and one uniform scale for both axes, centred in its frame.
+It does not smooth corners. The 30-second gap rule shares the existing limitation around short
+Privacy Zone spans: no explicit privacy-break metadata is stored.
+
+Older buckets keep their first-coordinate fallback until the rider runs the existing **Rebuild
+history** operation in database settings. That explicit maintenance operation regenerates previews
+from retained Ride Track fixes, alongside the other summaries. Schema migration and ordinary reads
+never scan historical tracks or mutate them. Backups preserve the preview column across platforms.
 
 `historyStore.selectSession(session)` loads:
 

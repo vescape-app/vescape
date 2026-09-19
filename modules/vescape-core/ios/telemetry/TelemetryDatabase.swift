@@ -845,6 +845,10 @@ enum TelemetryDatabase {
     migrator.registerMigration("v48_accessory_sampling_rate") { db in
       try db.execute(sql: "ALTER TABLE accessory_capability_settings ADD COLUMN sampling_rate_hz REAL")
     }
+    // @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/TelemetryMigrations.kt `MIGRATION_48_49`
+    migrator.registerMigration("v49_bucket_route_preview") { db in
+      try db.execute(sql: "ALTER TABLE telemetry_minute_buckets ADD COLUMN route_preview TEXT")
+    }
 
     return migrator
   }

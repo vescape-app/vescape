@@ -24,7 +24,7 @@ struct Favorite {
   /// Board name is resolved on read from `boards`, not snapshotted, so renames propagate.
   func toMap(
     boardName: String?,
-    routePoints: [[String: Double]] = []
+    routePoints: [[String: Any]] = []
   ) -> [String: Any?] {
     [
       "id": id,

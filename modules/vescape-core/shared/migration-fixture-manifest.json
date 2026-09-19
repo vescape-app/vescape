@@ -3,13 +3,13 @@
     "baseline": { "version": 3, "source": "f51663a8^" },
     "supportedStarts": [
       3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27,
-      28, 29, 30, 31, 32, 33, 34, 35, 36, 40, 41, 42, 43, 44, 45, 46, 47, 48
+      28, 29, 30, 31, 32, 33, 34, 35, 36, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49
     ],
     "archiveSupportedStarts": [
       14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36,
-      40, 41, 42, 43, 44, 45, 46, 47, 48
+      40, 41, 42, 43, 44, 45, 46, 47, 48, 49
     ],
-    "unsupportedStarts": [1, 2, 37, 38, 39, 49],
+    "unsupportedStarts": [1, 2, 37, 38, 39, 50],
     "historicalVariants": [
       { "version": 22, "source": "10deb46c^", "shape": "tune_profiles_without_icon_or_color" }
     ],
@@ -46,7 +46,8 @@
       "v45_accessory_ground_clearance",
       "v46_accessory_brake_light",
       "v47_accessory_capability_settings",
-      "v48_accessory_sampling_rate"
+      "v48_accessory_sampling_rate",
+      "v49_bucket_route_preview"
     ],
     "historicalVariants": [
       { "migration": "v1", "source": "db6e9b9", "shape": "global_alerts_and_legacy_fault_columns" }

@@ -26,6 +26,7 @@ val extractProductionPersistence by tasks.registering {
       "expo/modules/vescapecore/telemetry/BoardSettingsPersistence.kt",
       "expo/modules/vescapecore/telemetry/AccessoryPersistence.kt",
       "expo/modules/vescapecore/telemetry/RecordingPersistence.kt",
+      "expo/modules/vescapecore/telemetry/BucketRoutePreview.kt",
       "expo/modules/vescapecore/telemetry/TelemetryRoomDatabase.kt",
       "expo/modules/vescapecore/telemetry/DatabaseUpgradeContract.kt",
       "expo/modules/vescapecore/telemetry/TelemetryMigrations.kt",

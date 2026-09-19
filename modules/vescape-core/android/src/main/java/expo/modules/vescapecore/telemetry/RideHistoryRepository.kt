@@ -4,7 +4,9 @@ private const val RIDE_BUCKET_BATCH_SIZE = 100
 private const val MAX_RIDE_PAGE_SIZE = 50
 private val RIDE_BREAK_BOUNDARIES = setOf("disconnected", "app_stop", "error")
 
-internal data class RideRoutePoint(val latitude: Double, val longitude: Double)
+// @parity /modules/vescape-core/ios/telemetry/RideHistoryRepository.swift `RideRoutePoint`
+// @parity /modules/vescape-core/src/index.ts `RideRoutePoint`
+internal data class RideRoutePoint(val latitude: Double, val longitude: Double, val breakBefore: Boolean = false)
 
 internal data class RideSessionAggregate(
   /** Owning Board (`boards.id`), blank when the buckets match no saved Board (ADR 0028). */
@@ -47,6 +49,7 @@ internal data class RideSessionAggregate(
   var minLongitude: Double?,
   var maxLongitude: Double?,
   val routePoints: MutableList<RideRoutePoint>,
+  var lastRouteAtMs: Long? = null,
 ) {
   val distanceM: Double?
     get() = when {
@@ -187,17 +190,30 @@ private fun mergeRideBucket(session: RideSessionAggregate, bucket: TelemetryMinu
   session.maxDuty = maxOf(session.maxDuty, bucket.maxDutyAbsPermille / 1000.0)
   session.batteryUsedWh += bucket.batteryUsedWhMilli / 1000.0
   session.batteryRegenWh += bucket.batteryRegenWhMilli / 1000.0
-  if (bucket.firstLatitudeE7 != null && bucket.firstLongitudeE7 != null) {
-    val latitude = bucket.firstLatitudeE7 / 1e7
-    val longitude = bucket.firstLongitudeE7 / 1e7
-    if (session.firstLatitude == null) { session.firstLatitude = latitude; session.firstLongitude = longitude }
-    session.latitudeSum += latitude; session.longitudeSum += longitude; session.coordinateCount++
-    session.minLatitude = minOf(session.minLatitude ?: latitude, latitude)
-    session.maxLatitude = maxOf(session.maxLatitude ?: latitude, latitude)
-    session.minLongitude = minOf(session.minLongitude ?: longitude, longitude)
-    session.maxLongitude = maxOf(session.maxLongitude ?: longitude, longitude)
-    session.routePoints.add(RideRoutePoint(latitude, longitude))
+  val segments = bucket.routePreview?.let(BucketRoutePreview::decode)
+  if (segments != null) {
+    for (segment in segments) {
+      for ((index, point) in segment.points.withIndex()) {
+        val split = index == 0 && session.lastRouteAtMs?.let { segment.firstAtMs - it > BucketRoutePreview.GAP_MS } == true
+        appendRideRoutePoint(session, point.latitudeE7 / 1e7, point.longitudeE7 / 1e7, split)
+      }
+      session.lastRouteAtMs = segment.lastAtMs
+    }
+  } else if (bucket.firstLatitudeE7 != null && bucket.firstLongitudeE7 != null) {
+    // Old buckets keep their coarse preview until explicit history maintenance rebuilds it.
+    appendRideRoutePoint(session, bucket.firstLatitudeE7 / 1e7, bucket.firstLongitudeE7 / 1e7, false)
+    session.lastRouteAtMs = null
   }
+}
+
+private fun appendRideRoutePoint(session: RideSessionAggregate, latitude: Double, longitude: Double, breakBefore: Boolean) {
+  if (session.firstLatitude == null) { session.firstLatitude = latitude; session.firstLongitude = longitude }
+  session.latitudeSum += latitude; session.longitudeSum += longitude; session.coordinateCount++
+  session.minLatitude = minOf(session.minLatitude ?: latitude, latitude)
+  session.maxLatitude = maxOf(session.maxLatitude ?: latitude, latitude)
+  session.minLongitude = minOf(session.minLongitude ?: longitude, longitude)
+  session.maxLongitude = maxOf(session.maxLongitude ?: longitude, longitude)
+  session.routePoints.add(RideRoutePoint(latitude, longitude, breakBefore))
 }
 
 private fun rideBoundaryForBucket(bucket: TelemetryMinuteBucketEntity, markers: List<TelemetryMarkerEntity>): String =
@@ -236,6 +252,6 @@ internal fun rideSessionMap(session: RideSessionAggregate, boardNames: Map<Strin
     "minLatitude" to session.minLatitude, "maxLatitude" to session.maxLatitude,
     "minLongitude" to session.minLongitude, "maxLongitude" to session.maxLongitude,
     "boundaryBefore" to session.boundaryBefore,
-    "routePoints" to session.routePoints.map { mapOf("latitude" to it.latitude, "longitude" to it.longitude) },
+    "routePoints" to session.routePoints.map { buildMap<String, Any> { put("latitude", it.latitude); put("longitude", it.longitude); if (it.breakBefore) put("breakBefore", true) } },
   )
 }

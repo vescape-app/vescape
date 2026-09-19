@@ -50,7 +50,7 @@ internal final class ProfileStatsRepository {
           arguments: [fromMs, toMs]
         )
       }
-      let sessions = groupRideSessions(buckets: buckets, markers: markers, gapMs: gapMs)
+      let sessions = try groupRideSessions(buckets: buckets, markers: markers, gapMs: gapMs)
         .filter { $0.avgSpeedSampleCount > 0 }
       return profileStatsSnapshot(sessions: sessions, options: options)
     }
@@ -85,8 +85,8 @@ internal func computeProfileStatsForBuckets(
   month: ProfileStatsMonth?,
   calendar: Calendar = .current,
   gapMs: Int64 = DEFAULT_RIDE_SPLIT_GAP_MS
-) -> [String: Any?] {
-  let sessions = groupRideSessions(buckets: buckets, markers: markers, gapMs: gapMs)
+) throws -> [String: Any?] {
+  let sessions = try groupRideSessions(buckets: buckets, markers: markers, gapMs: gapMs)
     .filter { $0.avgSpeedSampleCount > 0 }
   return computeProfileStatsForSessions(sessions, month: month, calendar: calendar)
 }
@@ -133,9 +133,9 @@ internal func computeProfileStatMonthsForBuckets(
   markers: [Row],
   calendar: Calendar = .current,
   gapMs: Int64 = DEFAULT_RIDE_SPLIT_GAP_MS
-) -> [ProfileStatsMonth] {
+) throws -> [ProfileStatsMonth] {
   profileMonthsForSessions(
-    groupRideSessions(buckets: buckets, markers: markers, gapMs: gapMs)
+    try groupRideSessions(buckets: buckets, markers: markers, gapMs: gapMs)
       .filter { $0.avgSpeedSampleCount > 0 },
     calendar: calendar
   )

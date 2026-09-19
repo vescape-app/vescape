@@ -9,14 +9,14 @@ final class RideHistoryGroupingTests: XCTestCase {
   private let base: Int64 = 1_714_521_600_000
 
   /// A minute with GPS fixes and no Telemetry Sample: the shape a board dropout leaves behind.
-  func testGpsOnlyMinutesExtendTheMovingWindowAndTheRide() {
+  func testGpsOnlyMinutesExtendTheMovingWindowAndTheRide() throws {
     let buckets = [
       bucket(start: base, end: base + 30_000),
       trackOnlyBucket(start: base + 5 * 60_000, end: base + 5 * 60_000 + 30_000),
       bucket(start: base + 10 * 60_000, end: base + 10 * 60_000 + 30_000),
     ]
 
-    let sessions = groupRideSessions(buckets: buckets, markers: [], gapMs: gapMs)
+    let sessions = try groupRideSessions(buckets: buckets, markers: [], gapMs: gapMs)
 
     XCTAssertEqual(sessions.count, 1)
     XCTAssertEqual(sessions.first?.movingStartAtMs, base)
@@ -28,32 +28,32 @@ final class RideHistoryGroupingTests: XCTestCase {
   }
 
   /// A recording is the entry: a dropout inside it never splits, however long it runs.
-  func testOneRecordingSpanningAnHourWithoutEitherStreamStaysOneEntry() {
+  func testOneRecordingSpanningAnHourWithoutEitherStreamStaysOneEntry() throws {
     let buckets = [
       bucket(start: base, end: base + 30_000, recordingId: "recording-1"),
       bucket(start: base + 3_600_000, end: base + 3_600_000 + 30_000, recordingId: "recording-1"),
     ]
 
-    let sessions = groupRideSessions(buckets: buckets, markers: [], gapMs: gapMs)
+    let sessions = try groupRideSessions(buckets: buckets, markers: [], gapMs: gapMs)
 
     XCTAssertEqual(sessions.count, 1)
     XCTAssertEqual(sessions.first?.endAtMs, base + 3_600_000 + 30_000)
   }
 
   /// Stop then start again inside one minute: two recordings, two entries.
-  func testSeparateRecordingsInsideOneMinuteStaySeparateEntries() {
+  func testSeparateRecordingsInsideOneMinuteStaySeparateEntries() throws {
     let buckets = [
       bucket(start: base, end: base + 10_000, recordingId: "recording-1"),
       bucket(start: base + 20_000, end: base + 30_000, recordingId: "recording-2"),
     ]
 
-    let sessions = groupRideSessions(buckets: buckets, markers: [], gapMs: gapMs)
+    let sessions = try groupRideSessions(buckets: buckets, markers: [], gapMs: gapMs)
 
     XCTAssertEqual(sessions.map { $0.recordingId }, ["recording-1", "recording-2"])
   }
 
   /// A disconnect mid-recording is informational; it does not end the recording.
-  func testABreakMarkerInsideOneRecordingDoesNotSplitIt() {
+  func testABreakMarkerInsideOneRecordingDoesNotSplitIt() throws {
     let buckets = [
       bucket(start: base, end: base + 10_000, recordingId: "recording-1"),
       bucket(start: base + 60_000, end: base + 70_000, recordingId: "recording-1"),
@@ -66,18 +66,18 @@ final class RideHistoryGroupingTests: XCTestCase {
       ])
     ]
 
-    XCTAssertEqual(groupRideSessions(buckets: buckets, markers: markers, gapMs: gapMs).count, 1)
+    XCTAssertEqual(try groupRideSessions(buckets: buckets, markers: markers, gapMs: gapMs).count, 1)
   }
 
   /// Legacy rows have no recording identity, so they still split on `rideSplitGapMinutes`.
-  func testLegacyRowsStillGroupOnTheSplitGap() {
+  func testLegacyRowsStillGroupOnTheSplitGap() throws {
     let buckets = [
       bucket(start: base, end: base + 30_000),
       bucket(start: base + 3_600_000, end: base + 3_600_000 + 30_000),
     ]
 
-    XCTAssertEqual(groupRideSessions(buckets: buckets, markers: [], gapMs: gapMs).count, 2)
-    XCTAssertEqual(groupRideSessions(buckets: buckets, markers: [], gapMs: 2 * 3_600_000).count, 1)
+    XCTAssertEqual(try groupRideSessions(buckets: buckets, markers: [], gapMs: gapMs).count, 2)
+    XCTAssertEqual(try groupRideSessions(buckets: buckets, markers: [], gapMs: 2 * 3_600_000).count, 1)
   }
 
   /// The 100th and 101st buckets share a minute. Neither recording may be skipped by the cursor.
@@ -102,7 +102,7 @@ final class RideHistoryGroupingTests: XCTestCase {
       let second = try fetchRideHistoryBucketBatch(db, beforeMs: cursor)
       XCTAssertEqual(second.buckets.count, 1)
       XCTAssertFalse(second.hasOlder)
-      let sessions = groupRideSessions(buckets: first.buckets + second.buckets, markers: [], gapMs: gapMs)
+      let sessions = try groupRideSessions(buckets: first.buckets + second.buckets, markers: [], gapMs: gapMs)
       XCTAssertEqual(sessions.count, 3)
       XCTAssertEqual(sessions.first { $0.recordingId == "newer" }?.sampleCount, 99)
       XCTAssertEqual(sessions.first { $0.recordingId == "boundary-a" }?.sampleCount, 2)

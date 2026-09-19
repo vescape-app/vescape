@@ -823,23 +823,8 @@ class TelemetryRepository private constructor(context: Context) {
     }
   }
 
-  /** Coarse native route projection for Favorite cards, independent of JS history pagination. */
-  private suspend fun favoriteRoutePoints(favorite: FavoriteEntity): List<Map<String, Double>> {
-    val fromBucketMs = favorite.startMs - (favorite.startMs % TELEMETRY_BUCKET_SIZE_MS)
-    return dao.getHistoryBuckets(
-      fromMs = fromBucketMs,
-      toMs = favorite.endMs,
-      beforeMs = favorite.endMs,
-      boardId = null,
-      limit = Int.MAX_VALUE,
-    ).asReversed()
-      .filter { it.firstSampleAtMs <= favorite.endMs && it.lastSampleAtMs >= favorite.startMs }
-      .mapNotNull { bucket ->
-        val latitude = bucket.firstLatitudeE7 ?: return@mapNotNull null
-        val longitude = bucket.firstLongitudeE7 ?: return@mapNotNull null
-        mapOf("latitude" to latitude / 1e7, "longitude" to longitude / 1e7)
-      }
-  }
+  private suspend fun favoriteRoutePoints(favorite: FavoriteEntity): List<Map<String, Any>> =
+    dao.favoriteRoutePreview(favorite.startMs, favorite.endMs, favorite.boardId)
 
   /**
    * Pin a time range as a Favorite. Identity and timestamps are minted here — the range and the
@@ -1022,6 +1007,7 @@ class TelemetryRepository private constructor(context: Context) {
     }
   }
 
+  // @parity /modules/vescape-core/ios/telemetry/RecordingFlushTimer.swift
   private fun scheduleFlushLocked() {
     if (flushScheduled) return
     flushScheduled = true

@@ -283,6 +283,9 @@ data class TelemetryMinuteBucketEntity(
   val firstMovingAtMs: Long? = null,
   @ColumnInfo(name = "last_moving_at_ms")
   val lastMovingAtMs: Long? = null,
+  /** @parity /modules/vescape-core/ios/telemetry/BucketRoutePreview.swift */
+  @ColumnInfo(name = "route_preview")
+  val routePreview: String? = null,
 )
 
 @Entity(
@@ -658,7 +661,7 @@ data class FavoriteEntity(
    */
   fun toMap(
     boardName: String?,
-    routePoints: List<Map<String, Double>> = emptyList(),
+    routePoints: List<Map<String, Any>> = emptyList(),
   ): Map<String, Any?> = mapOf(
     "id" to id,
     "boardId" to boardId,

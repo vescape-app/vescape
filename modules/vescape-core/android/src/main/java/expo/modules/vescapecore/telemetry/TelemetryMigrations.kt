@@ -1557,6 +1557,11 @@ internal object TelemetryMigrations {
       db.execSQL("ALTER TABLE accessory_capability_settings ADD COLUMN sampling_rate_hz REAL")
     }
 
+    // @parity /modules/vescape-core/ios/telemetry/TelemetryDatabase.swift `v49_bucket_route_preview`
+    internal val MIGRATION_48_49 = migration(48, 49) { db ->
+      db.execSQL("ALTER TABLE telemetry_minute_buckets ADD COLUMN route_preview TEXT")
+    }
+
     /** Every migration registered with Room, in the graph's production order. */
     val all = listOf(
       MIGRATION_3_4,
@@ -1601,6 +1606,7 @@ internal object TelemetryMigrations {
       MIGRATION_45_46,
       MIGRATION_46_47,
       MIGRATION_47_48,
+      MIGRATION_48_49,
     )
 
 }

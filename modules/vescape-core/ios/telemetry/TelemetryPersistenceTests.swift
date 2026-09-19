@@ -38,7 +38,7 @@ final class TelemetryPersistenceTests: XCTestCase {
       try upsertBucket(db, bucket)
       try upsertBucket(db, bucket)
       let rows = try Row.fetchAll(db, sql: "SELECT * FROM telemetry_minute_buckets")
-      let rides = groupRideSessions(buckets: rows, markers: [], gapMs: 1_800_000)
+      let rides = try groupRideSessions(buckets: rows, markers: [], gapMs: 1_800_000)
         .filter { $0.avgSpeedSampleCount > 0 }
       XCTAssertEqual(rides.count, 1)
       XCTAssertEqual(rides.first?.sampleCount, 2)

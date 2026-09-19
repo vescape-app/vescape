@@ -7,7 +7,7 @@ import GRDB
 /// `TelemetryDatabase.migrator`.
 ///
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/TelemetryDatabase.kt `TELEMETRY_DATABASE_VERSION`
-internal let TELEMETRY_SCHEMA_VERSION = 48
+internal let TELEMETRY_SCHEMA_VERSION = 49
 
 /// Released schema generations that have a complete production path to the current schema.
 /// 37–39 never shipped as standalone migrations: Android deliberately jumps 36→40.
