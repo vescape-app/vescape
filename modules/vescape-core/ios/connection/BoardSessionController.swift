@@ -1196,6 +1196,7 @@ internal final class BoardSessionController: VescGattListener {
     }
     boardWarningsEnabled = settings["boardWarningsEnabled"] as? Bool ?? true
     connectionSoundsEnabled = settings["connectionSoundsEnabled"] as? Bool ?? true
+    alertAudioPlayer.soundPack = settings["soundPack"] as? String == "simple" ? "simple" : "retro"
     // Disabled→enabled with an already-trusted link: link integrity won't transition again, so
     // schedule the config-safety read here.
     if !warningsWereEnabled, boardWarningsEnabled, lastEmittedLinkIntegrity == .trusted {
@@ -1219,6 +1220,10 @@ internal final class BoardSessionController: VescGattListener {
   /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/connection/BoardSessionController.kt `previewAlertSound`
   func previewAlertSound(_ soundType: String) {
     alertAudioPlayer.preview(soundType: soundType)
+  }
+
+  func playAppSound(pack: String, cue: String) {
+    alertAudioPlayer.playAppSound(pack: pack, cue: cue)
   }
 
   /// Drive a geiger preview loop without a connected board — UI slider over `rangeDepth`.
@@ -1483,6 +1488,7 @@ internal final class BoardSessionController: VescGattListener {
     wireFaultCaptures()
     boardWarningsEnabled = sessionSettings["boardWarningsEnabled"] as? Bool ?? true
     connectionSoundsEnabled = sessionSettings["connectionSoundsEnabled"] as? Bool ?? true
+    alertAudioPlayer.soundPack = sessionSettings["soundPack"] as? String == "simple" ? "simple" : "retro"
     recordingCoordinator.beginBoardSession(config: config, restoredRecordingId: restoredRecordingId)
     beginGpsSessionDiagnostics()
     // Reset per-session Board Warning breadcrumb bookkeeping (one Diagnostic Event per kind per

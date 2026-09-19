@@ -44,6 +44,7 @@ const DEFAULTS: AppSettings = {
   socEstimateWindowSeconds: 20,
   boardMoveStrengthPercent: 60,
   connectionSoundsEnabled: true,
+  soundPack: 'retro',
   companionPresenceEnabled: false,
   boardWarningsEnabled: true,
   vescFaultCollectionEnabled: true,

@@ -3575,6 +3575,7 @@ private var wearAutoLaunchOnConnect = true
         recordingCoordinator.applySettings(settings)
         socWindow.windowMs = settings.socEstimateWindowSeconds * 1000L
         connectionSoundsEnabled = settings.connectionSoundsEnabled
+        alertFeedback.soundPack = settings.soundPack
         // `VESC Fault Collection` is its own kill switch — deliberately not gated on
         // `boardWarningsEnabled`, so turning warnings off keeps fault evidence flowing.
         val coordinator = VescFaultCoordinator.get(service.applicationContext)

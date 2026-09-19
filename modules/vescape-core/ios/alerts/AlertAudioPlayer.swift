@@ -36,6 +36,12 @@ internal let alertSoundPresets: [AlertSoundPreset] = [
   .init(name: "Sustained", uri: "preset:sustained", category: alertCategoryGeiger, fileName: "alert_sustained"),
 ]
 
+/// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/alerts/AlertEngine.kt `appSoundResources`
+internal let appSoundFiles: [String: [String: String]] = [
+  "simple": ["on": "on", "off": "off", "created": "simple_gr_created", "join": "simple_gr_join", "error": "simple_error"],
+  "retro": ["on": "retro_on", "off": "retro_off", "created": "retro_new_gr", "join": "retro_gr_join", "error": "retro_error"],
+]
+
 internal func alertSoundPresetMaps() -> [[String: Any]] {
   alertSoundPresets
     .filter { $0.uri != "preset:sustained" }
@@ -128,6 +134,7 @@ internal final class AlertAudioPlayer {
   private let synthesizer = AVSpeechSynthesizer()
   private let assetsDirectory: URL?
   private var buffersByFileName: [String: AVAudioPCMBuffer] = [:]
+  var soundPack = "retro"
   private var geigerLoops: [String: GeigerLoop] = [:]
   private var activeOneShotNodes: [AVAudioPlayerNode] = []
   private var started = false
@@ -313,7 +320,7 @@ internal final class AlertAudioPlayer {
       resolve = { bundle.url(forResource: $0, withExtension: "wav") }
     }
     var buffers: [String: AVAudioPCMBuffer] = [:]
-    for fileName in alertSoundPresets.map(\.fileName) + ["on", "off"] {
+    for fileName in Set(alertSoundPresets.map(\.fileName) + appSoundFiles.values.flatMap { $0.values }) {
       guard let url = resolve(fileName), FileManager.default.fileExists(atPath: url.path) else {
         Self.log("AlertAudioPlayer: missing \(fileName).wav in bundle")
         UnexpectedNativeError.report(operation: "alert_audio_asset_missing", category: "required_asset_missing", error: CocoaError(.fileNoSuchFile))
@@ -397,11 +404,16 @@ internal final class AlertAudioPlayer {
   // MARK: - Connection sounds
 
   func playConnect() {
-    play("on")
+    playAppSound(pack: soundPack, cue: "on")
   }
 
   func playDisconnect() {
-    play("off")
+    playAppSound(pack: soundPack, cue: "off")
+  }
+
+  func playAppSound(pack: String, cue: String) {
+    guard let file = appSoundFiles[pack]?[cue] else { return }
+    play(file)
   }
 
   // MARK: - Single

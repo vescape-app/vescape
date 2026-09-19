@@ -31,7 +31,11 @@ import { BoardConfigChangeNoticeModal } from '@/modules/board/components/BoardCo
 import { startTuneSnapshotSessionSync } from '@/modules/tune/store/tuneSnapshotStore'
 import { startBoardWarningsSync } from '@/modules/board/store/boardWarningsStore'
 import { startVescFaultsSync } from '@/modules/board/store/vescFaultsStore'
-import { useGroupRideStore } from '@/modules/group-ride/store/groupRideStore'
+import {
+  setGroupRideSoundPlayer,
+  useGroupRideStore,
+} from '@/modules/group-ride/store/groupRideStore'
+import { playSelectedAppSound } from '@/modules/settings/lib/appSounds'
 import { useRiderStore } from '@/modules/group-ride/store/riderStore'
 import { ReleaseSurfaces } from '@/modules/release/components/ReleaseSurfaces'
 import { startNavigationSync } from '@/modules/map/store/mapStore'
@@ -94,6 +98,7 @@ function RootLayout() {
     if (!fixturesReady) return
     void useSettingsStore.getState().load()
     void useRiderStore.getState().load()
+    setGroupRideSoundPlayer(playSelectedAppSound)
     useGroupRideStore.getState().startObserving()
     const stopAppDataSync = startAppDataSync()
     const stopBoardWarningsSync = startBoardWarningsSync()
@@ -110,6 +115,7 @@ function RootLayout() {
     const stopAccessoryStateMirror = startAccessoryStateMirror()
     return () => {
       useGroupRideStore.getState().stopObserving()
+      setGroupRideSoundPlayer(null)
       stopAppDataSync()
       stopBoardWarningsSync()
       stopVescFaultsSync()
@@ -208,6 +214,7 @@ function RootLayout() {
               options={{ title: 'Live telemetry' }}
             />
             <Stack.Screen name={stackScreens.settingsVisuals} options={{ title: 'Appearance' }} />
+            <Stack.Screen name={stackScreens.settingsSounds} options={{ title: 'Sounds' }} />
             <Stack.Screen name={stackScreens.settingsMap} options={{ title: 'Map' }} />
             <Stack.Screen name={stackScreens.settingsWatch} options={{ title: 'Watch' }} />
             <Stack.Screen name={stackScreens.settingsHistory} options={{ title: 'History' }} />

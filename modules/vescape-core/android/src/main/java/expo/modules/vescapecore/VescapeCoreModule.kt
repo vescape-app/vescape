@@ -578,6 +578,9 @@ class VescapeCoreModule : Module() {
     Function("previewAlertSound") { soundType: String ->
       CoreForegroundService.previewAlertSound(context.applicationContext, soundType)
     }
+    Function("playAppSound") { pack: String, cue: String ->
+      CoreForegroundService.playAppSound(context.applicationContext, pack, cue)
+    }
     Function("getAlertSounds") {
       CoreForegroundService.alertSoundPresets()
     }
@@ -1411,12 +1414,14 @@ class VescapeCoreModule : Module() {
         key == "socEstimateWindowSeconds" ||
         key == "telemetryPollRateHz" ||
         key == "wearPushRateHz" ||
-key == "wearAutoLaunchOnConnect" ||
+        key == "wearAutoLaunchOnConnect" ||
         key == "wearNavArrowEnabled" ||
         // Mirrored to the wrist by WatchSettingsPusher, which runs off the applied settings.
         key == "riderColor" ||
         key == "boardWarningsEnabled" ||
-        key == "vescFaultCollectionEnabled"
+        key == "vescFaultCollectionEnabled" ||
+        key == "connectionSoundsEnabled" ||
+        key == "soundPack"
       ) {
         CoreForegroundService.reloadTelemetrySettings(context.applicationContext)
       }

@@ -21,6 +21,7 @@ import {
   EngineIcon,
   MapTrifoldIcon,
   PaletteIcon,
+  SpeakerHighIcon,
 } from 'phosphor-react-native'
 
 import { routes } from '@/navigation/routes'
@@ -101,7 +102,7 @@ export default function SettingsScreen() {
             icon={BluetoothConnectedIcon}
             iconColor={theme.settingsIcon.connection}
             label="Connection"
-            hint="Auto start, auto connect, and sounds"
+            hint="Auto start and auto connect"
             onPress={() => router.push(routes.settingsConnection)}
           />
           <SettingsRow
@@ -118,10 +119,14 @@ export default function SettingsScreen() {
             hint="Board warnings and health checks"
             onPress={() => router.push(routes.settingsDiagnostics)}
           />
+        </SettingsCard>
+
+        <SettingsSectionTitle>Appearance</SettingsSectionTitle>
+        <SettingsCard>
           <SettingsRow
             icon={PaletteIcon}
             iconColor={theme.palette.purple.color}
-            label="Appearance"
+            label="Theme"
             hint="System, light, dark, or sunrise and sunset"
             onPress={() => router.push(routes.settingsVisuals)}
           />
@@ -131,6 +136,13 @@ export default function SettingsScreen() {
             label="Map"
             hint="Map appearance and satellite imagery"
             onPress={() => router.push(routes.settingsMap)}
+          />
+          <SettingsRow
+            icon={SpeakerHighIcon}
+            iconColor={theme.palette.cyan.color}
+            label="Sounds"
+            hint="Choose and preview a sound pack"
+            onPress={() => router.push(routes.settingsSounds)}
           />
         </SettingsCard>
 

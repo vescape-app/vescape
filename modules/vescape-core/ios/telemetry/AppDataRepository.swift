@@ -609,6 +609,8 @@ final class AppDataRepository {
     "wearAutoLaunchOnConnect": true,
     "wearNavArrowEnabled": false,
     "boardMoveStrengthPercent": 60,
+    "connectionSoundsEnabled": true,
+    "soundPack": "retro",
     "historyMetricGradientsEnabled": true,
     "historyMetricHotRanges": [
       "speed": ["start": 30, "end": 40],

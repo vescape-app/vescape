@@ -512,6 +512,7 @@ data class AppSettings(
   val socEstimateWindowSeconds: Int = 20,
   val boardMoveStrengthPercent: Int = 60,
   val connectionSoundsEnabled: Boolean = true,
+  val soundPack: String = "retro",
   val telemetryPollRateHz: Int = 20,
   val wearPushRateHz: Int = 4,
   val wearAutoLaunchOnConnect: Boolean = true,

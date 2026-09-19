@@ -501,6 +501,10 @@ class CoreForegroundService : Service() {
             instance?.controller?.previewAlertSound(soundType) ?: AlertFeedback.preview(context, soundType)
         }
 
+        fun playAppSound(context: Context, pack: String, cue: String) {
+            AlertFeedback.previewAppSound(context, pack, cue)
+        }
+
         fun alertSoundPresets(): List<Map<String, Any>> = alertSoundPresetMaps()
 
         fun currentLiveState(context: Context): Map<String, Any?> {

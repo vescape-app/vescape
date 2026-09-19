@@ -369,6 +369,12 @@ internal data class AlertSoundPreset(
     )
 }
 
+/** @parity /modules/vescape-core/ios/alerts/AlertAudioPlayer.swift `appSoundFiles` */
+private val appSoundResources = mapOf(
+    "simple" to mapOf("on" to R.raw.on, "off" to R.raw.off, "created" to R.raw.simple_gr_created, "join" to R.raw.simple_gr_join, "error" to R.raw.simple_error),
+    "retro" to mapOf("on" to R.raw.retro_on, "off" to R.raw.retro_off, "created" to R.raw.retro_new_gr, "join" to R.raw.retro_gr_join, "error" to R.raw.retro_error),
+)
+
 internal class AlertFeedback(
     private val context: Context,
     private val handler: Handler,
@@ -391,8 +397,9 @@ internal class AlertFeedback(
         .build()
     private val soundIds = HashMap<Int, Int>()
     private val geigerLoops = HashMap<String, GeigerLoop>()
-    private val connectSoundId = soundPool.load(context, R.raw.on, 1)
-    private val disconnectSoundId = soundPool.load(context, R.raw.off, 1)
+    private val appSounds = appSoundResources
+    private val appSoundIds = appSounds.values.flatMap { it.values }.distinct().associateWith { soundPool.load(context, it, 1) }
+    var soundPack: String = "retro"
 
     init {
         for (preset in ALERT_SOUND_PRESETS) {
@@ -400,9 +407,14 @@ internal class AlertFeedback(
         }
     }
 
-    fun playConnect() = playRaw(connectSoundId)
+    fun playConnect() = playAppSound(soundPack, "on")
 
-    fun playDisconnect() = playRaw(disconnectSoundId)
+    fun playDisconnect() = playAppSound(soundPack, "off")
+
+    fun playAppSound(pack: String, cue: String) {
+        val resource = appSounds[pack]?.get(cue) ?: return
+        playRaw(appSoundIds[resource] ?: 0)
+    }
 
     private fun playRaw(soundId: Int) {
         if (released) return
@@ -578,6 +590,20 @@ internal class AlertFeedback(
     )
 
     companion object {
+        /** Preview without requiring a running board session. */
+        fun previewAppSound(context: Context, pack: String, cue: String) {
+            val resource = appSoundResources[pack]?.get(cue) ?: return
+            val pool = SoundPool.Builder().setMaxStreams(1).setAudioAttributes(
+                AudioAttributes.Builder().setUsage(AudioAttributes.USAGE_ALARM)
+                    .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION).build()
+            ).build()
+            pool.setOnLoadCompleteListener { soundPool, sampleId, status ->
+                if (status == 0) soundPool.play(sampleId, 1f, 1f, 1, 0, 1f)
+            }
+            pool.load(context, resource, 1)
+            Handler(contextMainLooper()).postDelayed({ pool.release() }, 5_000)
+        }
+
         fun preview(context: Context, soundType: String) {
             if (soundType.startsWith(TTS_PREFIX)) {
                 val template = soundType.removePrefix(TTS_PREFIX)
