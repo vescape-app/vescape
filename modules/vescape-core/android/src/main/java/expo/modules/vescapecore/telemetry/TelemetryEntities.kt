@@ -283,6 +283,9 @@ data class TelemetryMinuteBucketEntity(
   val firstMovingAtMs: Long? = null,
   @ColumnInfo(name = "last_moving_at_ms")
   val lastMovingAtMs: Long? = null,
+  /** @parity /modules/vescape-core/ios/telemetry/BucketRoutePreview.swift */
+  @ColumnInfo(name = "route_preview_v1")
+  val routePreviewV1: String? = null,
 )
 
 @Entity(

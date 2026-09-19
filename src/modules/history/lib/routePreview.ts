@@ -1,41 +1,55 @@
-import { Skia } from '@shopify/react-native-skia'
+import type { RideRoutePoint } from 'vescape-core'
 
-export interface RoutePoint {
-  latitude: number
-  longitude: number
-}
+export type RoutePoint = RideRoutePoint
 
-/** The route fitted into a `width`×`height` thumbnail, or null when there is nothing to draw. */
+/** SVG path for the thumbnail. Move commands preserve native GPS gaps instead of bridging them. */
 export function routePreviewPath(points: RoutePoint[], width: number, height: number, padding = 8) {
   if (points.length < 2) return null
   const project = routePreviewProjection(points, width, height, padding)
-  const first = project(points[0])
-  const builder = Skia.PathBuilder.Make().moveTo(first.x, first.y)
-  for (const point of points.slice(1)) {
-    const { x, y } = project(point)
-    builder.lineTo(x, y)
-  }
-  return builder.detach()
+  return points
+    .map((point, index) => {
+      const { x, y } = project(point)
+      return `${index === 0 || point.breakBefore ? 'M' : 'L'}${x.toFixed(3)},${y.toFixed(3)}`
+    })
+    .join(' ')
 }
 
-/** Same fit as the path, exposed so callers can place markers on the drawn route. */
+/** Fit a local geographic projection uniformly and centre it, including flat/stationary routes. */
 export function routePreviewProjection(
   points: RoutePoint[],
   width: number,
   height: number,
   padding = 8,
 ): (point: RoutePoint) => { x: number; y: number } {
-  const latitudes = points.map((point) => point.latitude)
-  const longitudes = points.map((point) => point.longitude)
-  const minLatitude = Math.min(...latitudes)
-  const maxLatitude = Math.max(...latitudes)
-  const minLongitude = Math.min(...longitudes)
-  const maxLongitude = Math.max(...longitudes)
-  const latitudeSpan = Math.max(maxLatitude - minLatitude, 0.00001)
-  const longitudeSpan = Math.max(maxLongitude - minLongitude, 0.00001)
-
+  if (points.length === 0) return () => ({ x: width / 2, y: height / 2 })
+  const origin = points[0]
+  const longitudeScale = Math.cos((origin.latitude * Math.PI) / 180)
+  // Wrap around the first fix so routes crossing the date line don't span the whole world.
+  const longitudeOffset = (longitude: number) =>
+    ((((longitude - origin.longitude + 180) % 360) + 360) % 360) - 180
+  let minX = Infinity
+  let maxX = -Infinity
+  let minY = Infinity
+  let maxY = -Infinity
+  for (const point of points) {
+    const x = longitudeOffset(point.longitude) * longitudeScale
+    const y = point.latitude - origin.latitude
+    minX = Math.min(minX, x)
+    maxX = Math.max(maxX, x)
+    minY = Math.min(minY, y)
+    maxY = Math.max(maxY, y)
+  }
+  const xSpan = maxX - minX
+  const ySpan = maxY - minY
+  const fit = Math.min(
+    xSpan > 0 ? Math.max(0, width - padding * 2) / xSpan : Infinity,
+    ySpan > 0 ? Math.max(0, height - padding * 2) / ySpan : Infinity,
+  )
+  const scale = Number.isFinite(fit) ? fit : 0
+  const centerX = (minX + maxX) / 2
+  const centerY = (minY + maxY) / 2
   return (point) => ({
-    x: padding + ((point.longitude - minLongitude) / longitudeSpan) * (width - padding * 2),
-    y: padding + ((maxLatitude - point.latitude) / latitudeSpan) * (height - padding * 2),
+    x: width / 2 + (longitudeOffset(point.longitude) * longitudeScale - centerX) * scale,
+    y: height / 2 - (point.latitude - origin.latitude - centerY) * scale,
   })
 }

@@ -113,7 +113,11 @@ struct TelemetryMaintenancePersistence {
           points[i].excludedFromMaxDuty = sanitization.samples[i].excludedFromMaxDuty
         }
         for range in sanitization.exclusions { try insertExclusion(db, range) }
-        for bucket in buildTelemetryBuckets(points, locationPoints: rideTrackBucketPoints(track, previous: previousTrackPoint, movingThresholdCentiKmh: config.movingSpeedThresholdCentiKmh)) { try upsertBucket(db, bucket); rebuilt += 1 }
+        for bucket in buildTelemetryBuckets(points, locationPoints: rideTrackBucketPoints(track, previous: previousTrackPoint, movingThresholdCentiKmh: config.movingSpeedThresholdCentiKmh)) {
+          try upsertBucket(db, bucket)
+          try refreshBucketRoutePreview(db, bucketStartMs: bucket.bucketStartMs, boardId: bucket.boardId, recordingId: bucket.recordingId)
+          rebuilt += 1
+        }
         previousTrackPoint = track.last(where: rideTrackFixIsPrecise) ?? previousTrackPoint
         onProgress(index + 1, chunks)
       }

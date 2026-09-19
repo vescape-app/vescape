@@ -61,3 +61,18 @@ Schema 48 adds nullable `sampling_rate_hz` to these same per-capability settings
 survive migration with no selected rate, using the initial 10 Hz preference. Rate changes preserve
 the enabled flag; enable/disable changes preserve the selected rate. The shared fixture also checks
 that selected rates survive close/reopen and remain isolated across accessories.
+
+### Bucket route previews and sparse recording flushes
+
+Schema 49 adds `route_preview_v1` to minute buckets. Android's `TelemetryDao.insertBatch` and iOS's
+`RecordingPersistenceSQL.insertTrackAndBuckets` replace affected minute previews inside the recording
+transaction after inserting raw GPS fixes. `refreshBucketRoutePreview` reads one original minute;
+telemetry-only merges retain its existing preview. Explicit history rebuilds also generate previews.
+
+`bucket-route-preview-contract.json` drives `BucketRoutePreviewHostTest` and
+`BucketRoutePreviewContract.swift`: multiple flushes, close/reopen, late fixes, corners/closed loops,
+accuracy filtering, within-minute gaps and cross-minute joins, telemetry-only preservation, maintenance
+backfill, and rollback when the preview update fails. Android also checks Board/recording isolation
+and gaps across minute boundaries. Both production backup directions compare decoded geometry.
+The Swift host exercises the app-used `RecordingFlushTimer` for sparse-batch deadlines, cancellation,
+and coalescing. Native app lifecycle integration remains separate from the SQLite host contracts.

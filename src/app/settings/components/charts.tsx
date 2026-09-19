@@ -27,6 +27,59 @@ import {
   type HistoryMetricKey,
 } from '@/modules/history/lib/metricColorScale'
 
+import { RouteSparkline } from '@/modules/history/components/RouteSparkline'
+import type { RoutePoint } from '@/modules/history/lib/routePreview'
+
+const PREVIEW_ROUTES: Record<string, RoutePoint[]> = {
+  corners: [
+    { latitude: 52, longitude: 18 },
+    { latitude: 52.001, longitude: 18 },
+    { latitude: 52.001, longitude: 18.0015 },
+    { latitude: 52.0005, longitude: 18.0015 },
+    { latitude: 52.0005, longitude: 18.002 },
+  ],
+  straight: [
+    { latitude: 52, longitude: 18 },
+    { latitude: 52, longitude: 18.002 },
+  ],
+  gap: [
+    { latitude: 52, longitude: 18 },
+    { latitude: 52.001, longitude: 18 },
+    { latitude: 52.001, longitude: 18.0015, breakBefore: true },
+    { latitude: 52.0005, longitude: 18.0015 },
+  ],
+  empty: [],
+}
+
+function RouteSparklineShowcase() {
+  const [route, setRoute] = useState('corners')
+  const [endpoints, setEndpoints] = useState(true)
+  return (
+    <ShowcaseCard
+      name="RouteSparkline"
+      controls={
+        <>
+          <ChipRow
+            label="route"
+            options={Object.keys(PREVIEW_ROUTES)}
+            selected={route}
+            onSelect={setRoute}
+          />
+          <ToggleRow label="endpoints" value={endpoints} onToggle={setEndpoints} />
+        </>
+      }
+    >
+      <RouteSparkline points={PREVIEW_ROUTES[route]} width={74} height={52} endpoints={endpoints} />
+      <RouteSparkline
+        points={PREVIEW_ROUTES[route]}
+        width={148}
+        height={104}
+        endpoints={endpoints}
+      />
+    </ShowcaseCard>
+  )
+}
+
 const EMPTY_SERIES: ChartSeriesData = { ts: [], vs: [] }
 
 function seededRandom(seed: number) {
@@ -408,6 +461,7 @@ export default function ChartsPage() {
         />
         <ChartStackShowcase />
         <SparklineShowcase />
+        <RouteSparklineShowcase />
         <LinearGaugeShowcase />
         <AnimatedSingleGaugeShowcase />
         <AnimatedDualGaugeShowcase />

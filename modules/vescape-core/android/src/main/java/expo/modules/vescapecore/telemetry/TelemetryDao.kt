@@ -145,8 +145,32 @@ interface TelemetryDao {
     if (buckets.isNotEmpty()) upsertBuckets(buckets)
     if (markers.isNotEmpty()) insertMarkers(markers)
     if (exclusions.isNotEmpty()) upsertExclusionRanges(exclusions)
-    if (trackPoints.isNotEmpty()) insertRideTrackPoints(trackPoints)
+    if (trackPoints.isNotEmpty()) {
+      insertRideTrackPoints(trackPoints)
+      for (point in trackPoints.distinctBy { Triple(it.fixAtMs / TELEMETRY_BUCKET_SIZE_MS, it.boardId, it.recordingId) }) {
+        refreshBucketRoutePreview(point.fixAtMs - point.fixAtMs % TELEMETRY_BUCKET_SIZE_MS,
+          point.boardId ?: UNKNOWN_TELEMETRY_BOARD_ID, point.recordingId ?: LEGACY_RIDE_RECORDING_ID)
+      }
+    }
   }
+
+  /** Only called inside recording/rebuild transactions, after the raw fixes are durable there.
+   * Re-read one indexed minute instead of retaining a second mutable cache across process restarts.
+   * @parity /modules/vescape-core/ios/telemetry/BucketRoutePreview.swift `refreshBucketRoutePreview`
+   */
+  suspend fun refreshBucketRoutePreview(bucketStartMs: Long, boardId: String, recordingId: String) {
+    val track = getBucketRouteTrack(bucketStartMs, bucketStartMs + TELEMETRY_BUCKET_SIZE_MS,
+      boardId.takeUnless { it == UNKNOWN_TELEMETRY_BOARD_ID }, recordingId.takeUnless { it == LEGACY_RIDE_RECORDING_ID })
+    updateBucketRoutePreview(bucketStartMs, boardId, recordingId, BucketRoutePreview.build(track))
+  }
+
+  @Query("""SELECT * FROM ride_track_points WHERE fix_at_ms >= :fromMs AND fix_at_ms < :toMs
+    AND board_id IS :boardId AND recording_id IS :recordingId ORDER BY fix_at_ms, id""")
+  suspend fun getBucketRouteTrack(fromMs: Long, toMs: Long, boardId: String?, recordingId: String?): List<RideTrackPointEntity>
+
+  @Query("""UPDATE telemetry_minute_buckets SET route_preview_v1 = :preview
+    WHERE bucket_start_ms = :bucketStartMs AND board_id = :boardId AND recording_id = :recordingId""")
+  suspend fun updateBucketRoutePreview(bucketStartMs: Long, boardId: String, recordingId: String, preview: String)
 
   // Ride Recording identity and Ride Track (ADR 0038). The durable contract #449 reads for history
   // composition and #450 extends across Board Session teardown.

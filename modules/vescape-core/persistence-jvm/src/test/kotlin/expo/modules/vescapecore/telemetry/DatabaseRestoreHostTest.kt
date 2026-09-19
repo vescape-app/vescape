@@ -32,6 +32,9 @@ class DatabaseRestoreHostTest {
         dao.upsertBoardConfigValues(BoardConfigValuesEntity("cross-board", "2.0", "{\"motor_current_max\":55.5}", 107))
         dao.insertRideRecording(RideRecordingEntity("cross-recording", "cross-board", 900, 1500, "stopped"))
         dao.insertRideTrackPoints(listOf(RideTrackPointEntity(recordingId = "cross-recording", boardId = "cross-board", fixAtMs = 1200, latitudeE7 = 510000000, longitudeE7 = 170000000, accuracyCm = 3500, gpsSpeedCentiMps = 400, bearingCentiDeg = 9000, altitudeCm = 12300)))
+        val previewFixes = bucketPreviewFixes()
+        dao.insertRideRecording(RideRecordingEntity(previewFixes.first().recordingId!!, previewFixes.first().boardId!!, 0, 62000, "stopped"))
+        RecordingPersistence(dao).commit(emptyList(), buildTelemetryBuckets(emptyList(), previewFixes.toBucketLocationPoints()), emptyList(), trackPoints = previewFixes)
         room.close()
         val connection = BundledSQLiteDriver().open(database.path)
         connection.execSQL("INSERT INTO telemetry_frames (captured_at_ms,elapsed_realtime_ms,board_id,flags,changed_mask_1,changed_mask_2,speed_centi_kmh) VALUES (1000,10,'cross-board',1,1,0,2468)")
@@ -57,6 +60,11 @@ class DatabaseRestoreHostTest {
         val room = open(database.path)
         val dao = room.telemetryDao()
         assertEquals("Cross Board", dao.getBoard("cross-board")?.name)
+        val previewFixes = bucketPreviewFixes()
+        for ((minute, points) in previewFixes.groupBy { it.fixAtMs / 60000 * 60000 }) {
+          val stored = dao.getBucket(minute, points.first().boardId!!, points.first().recordingId!!)!!.routePreviewV1!!
+          assertEquals(BucketRoutePreview.decode(BucketRoutePreview.build(points)), BucketRoutePreview.decode(stored))
+        }
         assertEquals("\"durable\"", dao.getBoardSettings("cross-board").single { it.key == "description" }.valueJson)
         assertEquals("Cross Tune", dao.getTuneProfile("cross-tune")?.name)
         assertEquals("Cross Favorite", dao.getFavorite("cross-favorite")?.name)

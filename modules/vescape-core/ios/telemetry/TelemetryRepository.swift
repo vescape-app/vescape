@@ -44,6 +44,7 @@ internal final class TelemetryRepository {
   internal let batteryEstimator = BatterySocEstimator()
   private var onRecordingFailure: (() -> Void)?
   private var databaseSwapInProgress = false
+  private lazy var flushTimer = RecordingFlushTimer(queue: queue)
   private lazy var recordingCommitBoundary = RecordingCommitBoundary { [weak self] error in
     RecordingStorageFailure.fail(error)
     self?.onRecordingFailure?()
@@ -240,6 +241,7 @@ internal final class TelemetryRepository {
         )
       )
       if self.pendingTrack.count >= 25 { self.flushOnQueue() }
+      else { self.flushTimer.schedule { [weak self] in self?.flushOnQueue() } }
     }
   }
 
@@ -268,6 +270,8 @@ internal final class TelemetryRepository {
       }
       if self.pendingStates.count >= 25 || self.pendingPersisted.count >= 25 {
         self.flushOnQueue()
+      } else {
+        self.flushTimer.schedule { [weak self] in self?.flushOnQueue() }
       }
     }
   }
@@ -726,6 +730,7 @@ internal final class TelemetryRepository {
   }
 
   private func flushOnQueue() {
+    flushTimer.cancel()
     guard recordingCommitBoundary.isAccepting(),
       (!pendingStates.isEmpty || !pendingPersisted.isEmpty || !pendingMarkers.isEmpty
         || !pendingTrack.isEmpty)
@@ -775,8 +780,7 @@ internal final class TelemetryRepository {
     recordingCommitBoundary.commit {
       try TelemetryDatabase.requirePool().write { db in
         for state in persisted { try insertFrame(db, state) }
-        for point in track { try insertRideTrackPoint(db, point) }
-        for bucket in buckets { try upsertBucket(db, bucket) }
+        try RecordingPersistenceSQL.insertTrackAndBuckets(db, track: track, buckets: buckets)
         for marker in markers { try insertMarker(db, marker) }
         for range in sanitization.exclusions { try insertExclusion(db, range) }
       }

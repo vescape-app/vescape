@@ -5,17 +5,17 @@ import XCTest
 final class RideHistoryPagingTests: XCTestCase {
   private let hour: Int64 = 3_600_000
 
-  func testKeepsCurrentRideWhenOlderBucketsRemain() {
+  func testKeepsCurrentRideWhenOlderBucketsRemain() throws {
     // Production fetches newest first; grouping returns oldest first.
     let buckets = [bucket(6 * hour), bucket(3 * hour), bucket(60_000), bucket(0)]
-    let grouped = groupRideSessions(buckets: buckets, markers: [], gapMs: hour / 2)
+    let grouped = try groupRideSessions(buckets: buckets, markers: [], gapMs: hour / 2)
     XCTAssertEqual(grouped.count, 3)
     let page = completeRideSessions(grouped, hasOlderBuckets: true)
     XCTAssertEqual(page.map(\.startAtMs), [3 * hour, 6 * hour])
   }
 
-  func testKeepsCurrentRideOnceAllBucketsAreLoaded() {
-    let grouped = groupRideSessions(
+  func testKeepsCurrentRideOnceAllBucketsAreLoaded() throws {
+    let grouped = try groupRideSessions(
       buckets: [bucket(60_000), bucket(0)], markers: [], gapMs: hour / 2
     )
     let page = completeRideSessions(grouped, hasOlderBuckets: false)

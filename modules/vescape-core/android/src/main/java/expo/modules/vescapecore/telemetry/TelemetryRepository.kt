@@ -1022,6 +1022,7 @@ class TelemetryRepository private constructor(context: Context) {
     }
   }
 
+  // @parity /modules/vescape-core/ios/telemetry/RecordingFlushTimer.swift
   private fun scheduleFlushLocked() {
     if (flushScheduled) return
     flushScheduled = true

@@ -55,9 +55,12 @@ internal func fetchRideHistoryBucketBatch(
   return (buckets, hasOlder)
 }
 
+/// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/RideHistoryRepository.kt `RideRoutePoint`
+/// @parity /modules/vescape-core/src/index.ts `RideRoutePoint`
 internal struct RideRoutePoint {
   let latitude: Double
   let longitude: Double
+  var breakBefore = false
 }
 
 internal struct RideSessionAggregate {
@@ -99,6 +102,7 @@ internal struct RideSessionAggregate {
   var minLongitude: Double?
   var maxLongitude: Double?
   var routePoints: [RideRoutePoint] = []
+  var lastRouteAtMs: Int64?
 
   var distanceM: Double? {
     if distanceDeltaCount > 0 { return distanceDeltaM }
@@ -150,7 +154,7 @@ internal final class RideHistoryRepository {
           sql: "SELECT * FROM telemetry_markers WHERE occurred_at_ms >= ? AND occurred_at_ms <= ? ORDER BY occurred_at_ms ASC",
           arguments: [markerFrom, markerTo]
         )
-        let grouped = groupRideSessions(buckets: buckets, markers: markers, gapMs: gapMs)
+        let grouped = try groupRideSessions(buckets: buckets, markers: markers, gapMs: gapMs)
           .filter { $0.avgSpeedSampleCount > 0 }
         complete = completeRideSessions(grouped, hasOlderBuckets: hasOlderBuckets)
       }
@@ -180,7 +184,7 @@ internal func completeRideSessions(
 
 /// Native Ride boundaries/aggregates shared by History pages and Profile stats.
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/RideHistoryRepository.kt `groupRideSessions`
-internal func groupRideSessions(buckets: [Row], markers: [Row], gapMs: Int64) -> [RideSessionAggregate] {
+internal func groupRideSessions(buckets: [Row], markers: [Row], gapMs: Int64) throws -> [RideSessionAggregate] {
   var sessions: [RideSessionAggregate] = []
   var current: RideSessionAggregate?
   var previous: Row?
@@ -206,14 +210,14 @@ internal func groupRideSessions(buckets: [Row], markers: [Row], gapMs: Int64) ->
         endAtMs: bucket["last_sample_at_ms"] as Int64
       )
     }
-    if var aggregate = current { mergeRideBucket(bucket, into: &aggregate); current = aggregate }
+    if var aggregate = current { try mergeRideBucket(bucket, into: &aggregate); current = aggregate }
     previous = bucket
   }
   if let current { sessions.append(current) }
   return sessions
 }
 
-private func mergeRideBucket(_ bucket: Row, into session: inout RideSessionAggregate) {
+private func mergeRideBucket(_ bucket: Row, into session: inout RideSessionAggregate) throws {
   let bucketStart = bucket["bucket_start_ms"] as Int64
   session.firstBucketStartMs = min(session.firstBucketStartMs, bucketStart)
   session.startAtMs = min(session.startAtMs, bucket["first_sample_at_ms"] as Int64)
@@ -242,14 +246,27 @@ private func mergeRideBucket(_ bucket: Row, into session: inout RideSessionAggre
   session.maxDuty = max(session.maxDuty, Double(bucket["max_duty_abs_permille"] as Int) / 1000.0)
   session.batteryUsedWh += Double(bucket["battery_used_wh_milli"] as Int64) / 1000.0
   session.batteryRegenWh += Double(bucket["battery_regen_wh_milli"] as Int64) / 1000.0
-  if let latE7 = bucket["first_latitude_e7"] as Int64?, let lonE7 = bucket["first_longitude_e7"] as Int64? {
-    let latitude = Double(latE7) / 1e7, longitude = Double(lonE7) / 1e7
-    if session.firstLatitude == nil { session.firstLatitude = latitude; session.firstLongitude = longitude }
-    session.latitudeSum += latitude; session.longitudeSum += longitude; session.coordinateCount += 1
-    session.minLatitude = min(session.minLatitude ?? latitude, latitude); session.maxLatitude = max(session.maxLatitude ?? latitude, latitude)
-    session.minLongitude = min(session.minLongitude ?? longitude, longitude); session.maxLongitude = max(session.maxLongitude ?? longitude, longitude)
-    session.routePoints.append(RideRoutePoint(latitude: latitude, longitude: longitude))
+  if let preview = bucket["route_preview_v1"] as String? {
+    for segment in try BucketRoutePreview.decode(preview) {
+      for (index, point) in segment.points.enumerated() {
+        let split = index == 0 && session.lastRouteAtMs.map { segment.firstAtMs - $0 > BucketRoutePreview.gapMs } == true
+        appendRideRoutePoint(&session, latitude: Double(point.latitudeE7) / 1e7, longitude: Double(point.longitudeE7) / 1e7, breakBefore: split)
+      }
+      session.lastRouteAtMs = segment.lastAtMs
+    }
+  } else if let latE7 = bucket["first_latitude_e7"] as Int64?, let lonE7 = bucket["first_longitude_e7"] as Int64? {
+    // Old buckets keep their coarse preview until explicit history maintenance rebuilds it.
+    appendRideRoutePoint(&session, latitude: Double(latE7) / 1e7, longitude: Double(lonE7) / 1e7, breakBefore: false)
+    session.lastRouteAtMs = nil
   }
+}
+
+private func appendRideRoutePoint(_ session: inout RideSessionAggregate, latitude: Double, longitude: Double, breakBefore: Bool) {
+  if session.firstLatitude == nil { session.firstLatitude = latitude; session.firstLongitude = longitude }
+  session.latitudeSum += latitude; session.longitudeSum += longitude; session.coordinateCount += 1
+  session.minLatitude = min(session.minLatitude ?? latitude, latitude); session.maxLatitude = max(session.maxLatitude ?? latitude, latitude)
+  session.minLongitude = min(session.minLongitude ?? longitude, longitude); session.maxLongitude = max(session.maxLongitude ?? longitude, longitude)
+  session.routePoints.append(RideRoutePoint(latitude: latitude, longitude: longitude, breakBefore: breakBefore))
 }
 
 private func rideBoundaryForBucket(_ bucket: Row, markers: [Row]) -> String {
@@ -286,6 +303,10 @@ internal func rideSessionMap(_ session: RideSessionAggregate, boardNames: [Strin
     "centerLongitude": session.coordinateCount > 0 ? session.longitudeSum / Double(session.coordinateCount) : nil,
     "minLatitude": session.minLatitude, "maxLatitude": session.maxLatitude, "minLongitude": session.minLongitude,
     "maxLongitude": session.maxLongitude, "boundaryBefore": session.boundaryBefore,
-    "routePoints": session.routePoints.map { ["latitude": $0.latitude, "longitude": $0.longitude] },
+    "routePoints": session.routePoints.map { point -> [String: Any] in
+      var value: [String: Any] = ["latitude": point.latitude, "longitude": point.longitude]
+      if point.breakBefore { value["breakBefore"] = true }
+      return value
+    },
   ]
 }
