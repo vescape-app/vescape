@@ -31,7 +31,7 @@ func runBucketRoutePreviewContract() throws {
   }
   try flush(Array(fixes.prefix(3)))
   try queue.read { db in
-    let preview = try String.fetchOne(db, sql: "SELECT route_preview_v1 FROM telemetry_minute_buckets")!
+    let preview = try String.fetchOne(db, sql: "SELECT route_preview FROM telemetry_minute_buckets")!
     try require(try BucketRoutePreview.decode(preview).first!.points.count == 2, "preview first batch simplifies straight stretch")
   }
   try queue.close(); queue = try DatabaseQueue(path: url.path)
@@ -41,7 +41,7 @@ func runBucketRoutePreviewContract() throws {
   let expected = fixture["expectedMinuteSegments"] as! [[[String: Any]]]
   try require(rows.count == expected.count, "preview minute count")
   for (index, bucket) in rows.enumerated() {
-    let segments = try BucketRoutePreview.decode(bucket["route_preview_v1"] as String)
+    let segments = try BucketRoutePreview.decode(bucket["route_preview"] as String)
     try require(segments.count == expected[index].count, "preview gap segments")
     for (i, segment) in segments.enumerated() {
       let value = expected[index][i]
@@ -55,16 +55,16 @@ func runBucketRoutePreviewContract() throws {
   let session = try groupRideSessions(buckets: rows, markers: [], gapMs: 1_800_000).first!
   try require(session.routePoints.count == 8, "preview joined point count")
   try require(session.routePoints.enumerated().compactMap { $0.element.breakBefore ? $0.offset : nil } == [5], "preview joins minutes without bridging gaps")
-  let previews = rows.map { $0["route_preview_v1"] as String }
+  let previews = rows.map { $0["route_preview"] as String }
   let telemetry = BucketTelemetryPoint(capturedAtMs: 3000, boardId: board, recordingId: recording, speedCentiKmh: 1500,
     batteryVoltageMv: 80000, motorCurrentMa: 1000, batteryCurrentMa: 500, dutyPermille: 100, odometerCm: nil, tempMosfetDeciC: nil, tempMotorDeciC: nil)
   try queue.write { db in try RecordingPersistenceSQL.insertTrackAndBuckets(db, track: [], buckets: buildTelemetryBuckets([telemetry])) }
-  func readPreviews() throws -> [String] { try queue.read { try String.fetchAll($0, sql: "SELECT route_preview_v1 FROM telemetry_minute_buckets ORDER BY bucket_start_ms") } }
+  func readPreviews() throws -> [String] { try queue.read { try String.fetchAll($0, sql: "SELECT route_preview FROM telemetry_minute_buckets ORDER BY bucket_start_ms") } }
   try require(try readPreviews() == previews, "telemetry-only flush preserves preview")
   _ = try TelemetryMaintenancePersistence(writer: queue).rebuild(config: MetricSanitizerConfig(), onProgress: { _, _ in })
   try require(try readPreviews() == previews, "explicit rebuild backfills original geometry")
   try queue.write { db in
-    try db.execute(sql: "CREATE TRIGGER reject_preview BEFORE UPDATE OF route_preview_v1 ON telemetry_minute_buckets BEGIN SELECT RAISE(FAIL, 'preview failure'); END")
+    try db.execute(sql: "CREATE TRIGGER reject_preview BEFORE UPDATE OF route_preview ON telemetry_minute_buckets BEGIN SELECT RAISE(FAIL, 'preview failure'); END")
   }
   let later = RideTrackPoint(recordingId: recording, boardId: board, fixAtMs: 63000, latitudeE7: 520030000,
     longitudeE7: 180030000, accuracyCm: 500, gpsSpeedCentiMps: 400, bearingCentiDeg: nil, altitudeCm: nil)

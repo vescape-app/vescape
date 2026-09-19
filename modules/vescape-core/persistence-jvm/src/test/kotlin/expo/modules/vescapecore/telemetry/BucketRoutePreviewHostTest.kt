@@ -26,7 +26,7 @@ class BucketRoutePreviewHostTest {
       RecordingPersistence(db.telemetryDao()).commit(emptyList(), buildTelemetryBuckets(emptyList(), points.toBucketLocationPoints()), emptyList(), trackPoints = points)
     }
     flush(fixes.take(3))
-    assertEquals(2, BucketRoutePreview.decode(db.telemetryDao().getBucket(0, board, recording)!!.routePreviewV1!!).single().points.size)
+    assertEquals(2, BucketRoutePreview.decode(db.telemetryDao().getBucket(0, board, recording)!!.routePreview!!).single().points.size)
     db.close(); db = open()
     // Out-of-order later batches must use every original fix, including the previously removed one.
     flush(fixes.drop(5))
@@ -34,7 +34,7 @@ class BucketRoutePreviewHostTest {
     val buckets = db.telemetryDao().getAllHistoryBucketsAsc()
     assertEquals(2, buckets.size)
     for ((index, bucket) in buckets.withIndex()) {
-      val segments = BucketRoutePreview.decode(bucket.routePreviewV1!!)
+      val segments = BucketRoutePreview.decode(bucket.routePreview!!)
       val expected = fixture.getJSONArray("expectedMinuteSegments").getJSONArray(index)
       assertEquals(expected.length(), segments.size)
       for ((i, segment) in segments.withIndex()) {
@@ -48,17 +48,17 @@ class BucketRoutePreviewHostTest {
     val session = groupRideSessions(buckets, emptyList(), 1_800_000).single()
     assertEquals(8, session.routePoints.size)
     assertEquals(listOf(5), session.routePoints.mapIndexedNotNull { i, p -> i.takeIf { p.breakBefore } })
-    val previews = buckets.map { it.routePreviewV1 }
+    val previews = buckets.map { it.routePreview }
     // Telemetry-only merges must preserve the already-written route.
     val telemetry = BucketTelemetryPoint(3000, board, recording, 1500, 80000, 1000, 500, 100, null)
     RecordingPersistence(db.telemetryDao()).commit(emptyList(), buildTelemetryBuckets(listOf(telemetry), emptyList()), emptyList())
-    assertEquals(previews, db.telemetryDao().getAllHistoryBucketsAsc().map { it.routePreviewV1 })
+    assertEquals(previews, db.telemetryDao().getAllHistoryBucketsAsc().map { it.routePreview })
     // Existing maintenance is the explicit backfill, and must produce the same geometry.
     TelemetryMaintenancePersistence(db.telemetryDao()).rebuild(MetricSanitizerConfig())
-    assertEquals(previews, db.telemetryDao().getAllHistoryBucketsAsc().map { it.routePreviewV1 })
+    assertEquals(previews, db.telemetryDao().getAllHistoryBucketsAsc().map { it.routePreview })
     db.close()
     BundledSQLiteDriver().open(path.toString()).use { sql ->
-      sql.execSQL("CREATE TRIGGER reject_preview BEFORE UPDATE OF route_preview_v1 ON telemetry_minute_buckets BEGIN SELECT RAISE(FAIL, 'preview failure'); END")
+      sql.execSQL("CREATE TRIGGER reject_preview BEFORE UPDATE OF route_preview ON telemetry_minute_buckets BEGIN SELECT RAISE(FAIL, 'preview failure'); END")
     }
     db = open()
     val later = fixes.last().copy(fixAtMs = 63000)
@@ -68,7 +68,7 @@ class BucketRoutePreviewHostTest {
     assertEquals(1, failures)
     db.close(); db = open()
     assertEquals(fixes.size.toLong(), db.telemetryDao().countRideTrackPoints())
-    assertEquals(previews, db.telemetryDao().getAllHistoryBucketsAsc().map { it.routePreviewV1 })
+    assertEquals(previews, db.telemetryDao().getAllHistoryBucketsAsc().map { it.routePreview })
     db.close(); Files.deleteIfExists(path)
   }
 
@@ -85,7 +85,7 @@ class BucketRoutePreviewHostTest {
     val points = listOf(fixes[0], fixes[0].copy(fixAtMs = 65000), fixes[1].copy(recordingId = "other"), fixes[2].copy(boardId = "other-board"), fixes[3].copy(boardId = null, recordingId = null))
     val dao = db.telemetryDao()
     RecordingPersistence(dao).commit(emptyList(), buildTelemetryBuckets(emptyList(), points.toBucketLocationPoints()), emptyList(), trackPoints = points)
-    for (bucket in dao.getAllHistoryBucketsAsc()) assertEquals(1, BucketRoutePreview.decode(bucket.routePreviewV1!!).single().points.size)
+    for (bucket in dao.getAllHistoryBucketsAsc()) assertEquals(1, BucketRoutePreview.decode(bucket.routePreview!!).single().points.size)
     val session = groupRideSessions(dao.getAllHistoryBucketsAsc().filter { it.boardId == board && it.recordingId == recording }, emptyList(), 1_800_000).single()
     assertTrue(session.routePoints.last().breakBefore)
     db.close()

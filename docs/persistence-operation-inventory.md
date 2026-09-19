@@ -64,7 +64,7 @@ that selected rates survive close/reopen and remain isolated across accessories.
 
 ### Bucket route previews and sparse recording flushes
 
-Schema 49 adds `route_preview_v1` to minute buckets. Android's `TelemetryDao.insertBatch` and iOS's
+Schema 49 adds `route_preview` to minute buckets. Android's `TelemetryDao.insertBatch` and iOS's
 `RecordingPersistenceSQL.insertTrackAndBuckets` replace affected minute previews inside the recording
 transaction after inserting raw GPS fixes. `refreshBucketRoutePreview` reads one original minute;
 telemetry-only merges retain its existing preview. Explicit history rebuilds also generate previews.

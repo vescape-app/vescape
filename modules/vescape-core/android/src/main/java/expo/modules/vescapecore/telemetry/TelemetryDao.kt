@@ -168,7 +168,7 @@ interface TelemetryDao {
     AND board_id IS :boardId AND recording_id IS :recordingId ORDER BY fix_at_ms, id""")
   suspend fun getBucketRouteTrack(fromMs: Long, toMs: Long, boardId: String?, recordingId: String?): List<RideTrackPointEntity>
 
-  @Query("""UPDATE telemetry_minute_buckets SET route_preview_v1 = :preview
+  @Query("""UPDATE telemetry_minute_buckets SET route_preview = :preview
     WHERE bucket_start_ms = :bucketStartMs AND board_id = :boardId AND recording_id = :recordingId""")
   suspend fun updateBucketRoutePreview(bucketStartMs: Long, boardId: String, recordingId: String, preview: String)
 

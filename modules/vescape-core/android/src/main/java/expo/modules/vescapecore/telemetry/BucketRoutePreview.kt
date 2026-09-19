@@ -4,7 +4,7 @@ import kotlin.math.cos
 import org.json.JSONArray
 
 /**
- * Derived thumbnail geometry. route_preview_v1 stores JSON segments [firstFixMs,lastFixMs,polyline],
+ * Derived thumbnail geometry. route_preview stores JSON segments [firstFixMs,lastFixMs,polyline],
  * with signed delta-varint polyline coordinates at E7 precision. NULL means not generated yet.
  * Always simplify original fixes, never an earlier preview. Endpoints survive every simplification.
  * @parity /modules/vescape-core/ios/telemetry/BucketRoutePreview.swift

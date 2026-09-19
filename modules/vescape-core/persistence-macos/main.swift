@@ -894,7 +894,7 @@ if let exchangePath = ProcessInfo.processInfo.environment["VESCAPE_BACKUP_EXCHAN
     try require(endReason == "stopped", "Android archive lost recording end intent")
     let previewFixes = try bucketPreviewFixes()
     for (minute, points) in Dictionary(grouping: previewFixes, by: { $0.fixAtMs / 60000 * 60000 }) {
-      let preview = try String.fetchOne(db, sql: "SELECT route_preview_v1 FROM telemetry_minute_buckets WHERE bucket_start_ms = ? AND board_id = ? AND recording_id = ?",
+      let preview = try String.fetchOne(db, sql: "SELECT route_preview FROM telemetry_minute_buckets WHERE bucket_start_ms = ? AND board_id = ? AND recording_id = ?",
         arguments: [minute, points[0].boardId, points[0].recordingId])!
       let expected = try BucketRoutePreview.decode(BucketRoutePreview.build(points))
       try require(try BucketRoutePreview.decode(preview) == expected, "Android preview geometry survives iOS restore")

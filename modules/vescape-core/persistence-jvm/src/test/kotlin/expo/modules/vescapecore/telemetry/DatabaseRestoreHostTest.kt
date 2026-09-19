@@ -62,7 +62,7 @@ class DatabaseRestoreHostTest {
         assertEquals("Cross Board", dao.getBoard("cross-board")?.name)
         val previewFixes = bucketPreviewFixes()
         for ((minute, points) in previewFixes.groupBy { it.fixAtMs / 60000 * 60000 }) {
-          val stored = dao.getBucket(minute, points.first().boardId!!, points.first().recordingId!!)!!.routePreviewV1!!
+          val stored = dao.getBucket(minute, points.first().boardId!!, points.first().recordingId!!)!!.routePreview!!
           assertEquals(BucketRoutePreview.decode(BucketRoutePreview.build(points)), BucketRoutePreview.decode(stored))
         }
         assertEquals("\"durable\"", dao.getBoardSettings("cross-board").single { it.key == "description" }.valueJson)

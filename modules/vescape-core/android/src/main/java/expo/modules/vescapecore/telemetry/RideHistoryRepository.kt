@@ -190,7 +190,7 @@ private fun mergeRideBucket(session: RideSessionAggregate, bucket: TelemetryMinu
   session.maxDuty = maxOf(session.maxDuty, bucket.maxDutyAbsPermille / 1000.0)
   session.batteryUsedWh += bucket.batteryUsedWhMilli / 1000.0
   session.batteryRegenWh += bucket.batteryRegenWhMilli / 1000.0
-  val segments = bucket.routePreviewV1?.let(BucketRoutePreview::decode)
+  val segments = bucket.routePreview?.let(BucketRoutePreview::decode)
   if (segments != null) {
     for (segment in segments) {
       for ((index, point) in segment.points.withIndex()) {

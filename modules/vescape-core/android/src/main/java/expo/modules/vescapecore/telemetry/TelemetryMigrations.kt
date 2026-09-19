@@ -1559,7 +1559,7 @@ internal object TelemetryMigrations {
 
     // @parity /modules/vescape-core/ios/telemetry/TelemetryDatabase.swift `v49_bucket_route_preview`
     internal val MIGRATION_48_49 = migration(48, 49) { db ->
-      db.execSQL("ALTER TABLE telemetry_minute_buckets ADD COLUMN route_preview_v1 TEXT")
+      db.execSQL("ALTER TABLE telemetry_minute_buckets ADD COLUMN route_preview TEXT")
     }
 
     /** Every migration registered with Room, in the graph's production order. */

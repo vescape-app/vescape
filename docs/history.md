@@ -69,7 +69,7 @@ segments for list thumbnails, so JS neither groups buckets nor loads raw tracks 
 
 ### Bucket route previews
 
-Schema 49 adds nullable `telemetry_minute_buckets.route_preview_v1`. Each value is a JSON array of
+Schema 49 adds nullable `telemetry_minute_buckets.route_preview`. Each value is a JSON array of
 segments `[firstFixMs, lastFixMs, encodedPolyline]`. Coordinates use signed delta-varint polyline
 encoding at **E7** precision, not the common E5 precision. Each segment is simplified with
 Ramer–Douglas–Peucker at 5 m tolerance in a local geographic projection, keeping its first and last

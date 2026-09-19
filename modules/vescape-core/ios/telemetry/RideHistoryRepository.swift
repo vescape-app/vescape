@@ -246,7 +246,7 @@ private func mergeRideBucket(_ bucket: Row, into session: inout RideSessionAggre
   session.maxDuty = max(session.maxDuty, Double(bucket["max_duty_abs_permille"] as Int) / 1000.0)
   session.batteryUsedWh += Double(bucket["battery_used_wh_milli"] as Int64) / 1000.0
   session.batteryRegenWh += Double(bucket["battery_regen_wh_milli"] as Int64) / 1000.0
-  if let preview = bucket["route_preview_v1"] as String? {
+  if let preview = bucket["route_preview"] as String? {
     for segment in try BucketRoutePreview.decode(preview) {
       for (index, point) in segment.points.enumerated() {
         let split = index == 0 && session.lastRouteAtMs.map { segment.firstAtMs - $0 > BucketRoutePreview.gapMs } == true

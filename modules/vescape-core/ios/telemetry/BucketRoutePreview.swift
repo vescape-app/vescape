@@ -1,7 +1,7 @@
 import Foundation
 import GRDB
 
-/// Derived thumbnail geometry. route_preview_v1 stores JSON segments [firstFixMs,lastFixMs,polyline],
+/// Derived thumbnail geometry. route_preview stores JSON segments [firstFixMs,lastFixMs,polyline],
 /// with signed delta-varint polyline coordinates at E7 precision. NULL means not generated yet.
 /// Always simplify original fixes, never an earlier preview. Endpoints survive every simplification.
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/BucketRoutePreview.kt
@@ -122,7 +122,7 @@ internal func refreshBucketRoutePreview(_ db: Database, bucketStartMs: Int64, bo
       recordingId == LEGACY_RIDE_RECORDING_ID ? nil : recordingId])
   let points = rows.map(rideTrackPoint)
   try db.execute(sql: """
-    UPDATE telemetry_minute_buckets SET route_preview_v1 = ?
+    UPDATE telemetry_minute_buckets SET route_preview = ?
     WHERE bucket_start_ms = ? AND board_id = ? AND recording_id = ?
     """, arguments: [try BucketRoutePreview.build(points), bucketStartMs, boardId, recordingId])
 }
