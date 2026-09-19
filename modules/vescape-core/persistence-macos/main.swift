@@ -689,6 +689,14 @@ try TelemetryDatabase.migrator.migrate(tuneQueue!)
 var tuneStore = TuneProfileStore(dbWriter: tuneQueue!)
 let tune = try tuneStore.createProfile(boardId: tuneAlertBoardId, name: tuneValues["name"] as! String, fields: ["kp": 1], refloatBaseVersion: tuneValues["refloatBaseVersion"] as! String)
 let tuneId = tune["id"] as! String
+let tuneCompatibilityFixture = tuneAlertFixture["compatibility"] as! [String: Any]
+let storedTuneVersions = tuneCompatibilityFixture["storedVersions"] as! [String]
+try tuneQueue!.write { db in
+  for (index, version) in storedTuneVersions.enumerated() {
+    try db.execute(sql: "INSERT INTO tune_profiles (id,board_id,refloat_base_version,name,fields_json,created_at,updated_at) VALUES (?,?,?,?,?,?,?)", arguments: ["compat-\(index)", "compat-board", version, "Retained tune", "{\"kp\":27}", index, index])
+    try db.execute(sql: "INSERT INTO tune_history_entries (profile_id,fields_json,created_at) VALUES (?,?,?)", arguments: ["compat-\(index)", "{\"kp\":26}", index])
+  }
+}
 _ = try tuneStore.saveProfile(profileId: tuneId, fields: ["kp": 2])
 var alertPersistence = AlertRulePersistence(writer: tuneQueue!)
 try alertPersistence.save(PersistedAlertRule(boardId: tuneAlertBoardId, id: alertValues["id"] as! String, controlId: alertValues["controlId"] as! String, threshold: alertValues["threshold"] as! Double, thresholdMax: nil, enabled: true, soundType: alertValues["soundType"] as! String, createdAt: 1, repeatEverySeconds: nil, beepCount: 1, source: alertValues["source"] as? String, thresholdKind: "fixed", configFieldId: nil, thresholdOffset: nil, thresholdMaxOffset: nil))
@@ -697,6 +705,21 @@ try tuneQueue!.close()
 tuneQueue = try DatabaseQueue(path: tuneURL.path)
 tuneStore = TuneProfileStore(dbWriter: tuneQueue!)
 alertPersistence = AlertRulePersistence(writer: tuneQueue!)
+for version in tuneCompatibilityFixture["requestVersions"] as! [String] {
+  let visible = try tuneStore.getTuneProfiles("compat-board", refloatBaseVersion: version)
+  try require(visible.count == int(tuneCompatibilityFixture["visibleCount"]), "patch/suffix profiles remain visible after reopen")
+  try require(Set(visible.map { $0["id"] as! String }) == Set((0...3).map { "compat-\($0)" }), "only same major/minor profiles")
+  let otherBoard = try tuneStore.getTuneProfiles("other-board", refloatBaseVersion: version)
+  try require(otherBoard.isEmpty, "compatibility retains board ownership")
+}
+let historicalTune = try tuneStore.getTuneProfile("compat-2")
+try require(historicalTune?["refloatBaseVersion"] as? String == "1.2.7-postfix", "retained key preserved")
+for index in 0...2 { try tuneStore.deleteProfile(profileId: "compat-\(index)") }
+var lastCompatibleDeleteFailed = false
+do { try tuneStore.deleteProfile(profileId: "compat-3") } catch { lastCompatibleDeleteFailed = true }
+try require(lastCompatibleDeleteFailed, "last major/minor profile protected")
+let retainedTuneHistory = try tuneStore.getProfileHistory("compat-3")
+try require(retainedTuneHistory.count == 1, "retained profile history preserved")
 let reopenedTune = try tuneStore.getTuneProfile(tuneId)
 let reopenedTuneHistory = try tuneStore.getProfileHistory(tuneId)
 try require(reopenedTune?["boardId"] as? String == tuneAlertBoardId, "Tune Profile ownership/reopen")

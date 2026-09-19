@@ -597,3 +597,25 @@ test('syncToBoard blocks native push when link is outdated', async () => {
   expect(pushProfileToBoard).not.toHaveBeenCalled()
   expect(useTuneProfileStore.getState().error).toBe('Re-link board before firmware commands.')
 })
+
+test('keeps saved tunes visible when INFO v2 adds patch and suffix on the same board', async () => {
+  const { useTuneProfileStore } = await import('@/modules/tune/store/tuneProfileStore')
+  const stored = [
+    { ...profile, id: 'legacy', refloatBaseVersion: '1.2' },
+    { ...profile, id: 'patch', refloatBaseVersion: '1.2.7-postfix' },
+    { ...profile, id: 'other-minor', refloatBaseVersion: '1.20.0' },
+    { ...profile, id: 'other-major', refloatBaseVersion: '2.2.0' },
+    { ...otherBoardProfile, refloatBaseVersion: '1.2.7' },
+  ]
+  getTuneProfiles.mockImplementation(async () => stored)
+  await useTuneProfileStore.getState().loadProfiles('board-1', '1.2')
+  expect(useTuneProfileStore.getState().profiles.map((item) => item.id)).toEqual([
+    'legacy',
+    'patch',
+  ])
+  await useTuneProfileStore.getState().loadProfiles('board-1', '1.2.99-new-postfix')
+  expect(useTuneProfileStore.getState().profiles.map((item) => item.id)).toEqual([
+    'legacy',
+    'patch',
+  ])
+})

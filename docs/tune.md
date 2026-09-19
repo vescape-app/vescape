@@ -628,7 +628,7 @@ The firmware version string is useful diagnostics, but it is not the primary dec
 expose a different schema on the same nominal firmware family, and the XML schema is the source of
 truth for field order and encoding.
 
-Tune Profiles are not migrated across normalized base Refloat package versions. A profile created
+Tune Profiles are not migrated across Refloat major/minor versions. A profile created
 under one base version is retained for that version and hidden from normal use when the board
 reports a different base version. Suffixes and fork labels stay in the exact Refloat version used
 for link integrity, but they do not split Tune Profile compatibility. If the board later returns to
@@ -648,7 +648,7 @@ Known version-sensitive field semantics:
 
 For our app, this means tune read/write support requires a trusted Board Link with known Refloat
 package version. Writes are still gated by schema validation and field presence, but profile
-visibility is gated by Refloat package version. The app does not silently convert old tune values
+visibility is gated by Refloat major/minor version; patch versions and suffixes share profiles. The app does not silently convert old tune values
 to new Refloat versions.
 
 ### Basic and Advanced Values Must Stay in Sync

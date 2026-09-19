@@ -24,3 +24,10 @@ internal class TuneAlertPersistence(private val dao: TelemetryDao) {
   suspend fun setAlertEnabled(boardId: String, id: String, enabled: Boolean) = dao.setAlertRuleEnabled(boardId, id, enabled)
   suspend fun deleteAlert(boardId: String, id: String) = dao.deleteAlertRule(boardId, id)
 }
+
+/** Tune compatibility ignores patch and suffix; Board Link identity retains both.
+ * @parity /modules/vescape-core/ios/telemetry/TuneProfileStore.swift `validRefloatBaseVersion`
+ * @parity /src/modules/tune/lib/tuneCompatibility.ts `tuneCompatibilityVersion`
+ */
+internal fun tuneCompatibilityVersion(value: String?): String? =
+  value?.let { Regex("""^(\d+\.\d+)(?:\.\d+)?(?:[-+].*)?$""").matchEntire(it)?.groupValues?.get(1) }

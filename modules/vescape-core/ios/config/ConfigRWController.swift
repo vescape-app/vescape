@@ -168,8 +168,8 @@ internal final class ConfigRWController {
       onError(RefloatConfigErrorCode.PROFILE_BOARD_MISMATCH.rawValue, "Tune profile does not belong to the connected board")
       return
     }
-    let profileRefloatBaseVersion = (profile["refloatBaseVersion"] ?? nil) as? String
-    if profileRefloatBaseVersion == nil || profileRefloatBaseVersion!.isEmpty || profileRefloatBaseVersion != connection.refloatBaseVersion {
+    let profileRefloatBaseVersion = TuneProfileStore.validRefloatBaseVersion((profile["refloatBaseVersion"] ?? nil) as? String)
+    if profileRefloatBaseVersion == nil || profileRefloatBaseVersion!.isEmpty || profileRefloatBaseVersion != TuneProfileStore.validRefloatBaseVersion(connection.refloatBaseVersion) {
       onError(RefloatConfigErrorCode.PROFILE_BOARD_MISMATCH.rawValue, "Tune profile does not match the connected board Refloat Tune Compatibility")
       return
     }

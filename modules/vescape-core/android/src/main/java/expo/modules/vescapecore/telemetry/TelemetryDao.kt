@@ -752,8 +752,13 @@ interface TelemetryDao {
 
   // Tune Profile / Tune History DAO. Transactional bodies below are mirrored in Swift.
   // @parity /modules/vescape-core/ios/telemetry/TuneProfileStore.swift
-  @Query("SELECT * FROM tune_profiles WHERE board_id = :boardId AND refloat_base_version = :refloatBaseVersion ORDER BY created_at ASC")
-  suspend fun getTuneProfilesByBoard(boardId: String, refloatBaseVersion: String): List<TuneProfileEntity>
+  @Query("SELECT * FROM tune_profiles WHERE board_id = :boardId ORDER BY created_at ASC")
+  suspend fun getStoredTuneProfilesByBoard(boardId: String): List<TuneProfileEntity>
+
+  suspend fun getTuneProfilesByBoard(boardId: String, refloatBaseVersion: String): List<TuneProfileEntity> {
+    val compatibility = tuneCompatibilityVersion(refloatBaseVersion) ?: return emptyList()
+    return getStoredTuneProfilesByBoard(boardId).filter { tuneCompatibilityVersion(it.refloatBaseVersion) == compatibility }
+  }
 
   @Query("SELECT * FROM tune_profiles WHERE id = :id LIMIT 1")
   suspend fun getTuneProfile(id: String): TuneProfileEntity?
@@ -782,8 +787,8 @@ interface TelemetryDao {
   @Insert(onConflict = OnConflictStrategy.IGNORE)
   suspend fun insertTuneProfile(profile: TuneProfileEntity): Long
 
-  @Query("SELECT COUNT(*) FROM tune_profiles WHERE board_id = :boardId AND refloat_base_version = :refloatBaseVersion")
-  suspend fun countTuneProfilesForBoard(boardId: String, refloatBaseVersion: String): Int
+  suspend fun countTuneProfilesForBoard(boardId: String, refloatBaseVersion: String): Int =
+    getTuneProfilesByBoard(boardId, refloatBaseVersion).size
 
   @Insert
   suspend fun insertTuneHistoryEntry(entry: TuneHistoryEntryEntity): Long

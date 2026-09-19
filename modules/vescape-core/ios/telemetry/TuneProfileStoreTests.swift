@@ -45,7 +45,7 @@ final class TuneProfileStoreTests: XCTestCase {
     let id = profile["id"] as! String
 
     XCTAssertEqual(profile["boardId"] as? String, "board-1")
-    XCTAssertEqual(profile["refloatBaseVersion"] as? String, "1.3.0")
+    XCTAssertEqual(profile["refloatBaseVersion"] as? String, "1.3")
     XCTAssertEqual(profile["name"] as? String, "Race")
     XCTAssertEqual(fieldsOf(profile)["speed"] as? Int, 42)
 

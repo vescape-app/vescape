@@ -11,6 +11,7 @@ import expo.modules.vescapecore.diagnostics.newOperationId
 import expo.modules.vescapecore.runtime.Cancellable
 import expo.modules.vescapecore.runtime.LinkIntegrity
 import expo.modules.vescapecore.runtime.Scheduler
+import expo.modules.vescapecore.telemetry.tuneCompatibilityVersion
 import expo.modules.vescapecore.telemetry.AppDataRepository
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
@@ -133,13 +134,13 @@ internal class ConfigRWController(
                 if (!connection.trusted()) return@post pending.linkNotTrusted()
                 val transport = connection.transport ?: return@post pending.noCanId("push")
                 val profileBoardId = profile["boardId"] as? String
-                val profileRefloatBaseVersion = profile["refloatBaseVersion"] as? String
+                val profileRefloatBaseVersion = tuneCompatibilityVersion(profile["refloatBaseVersion"] as? String)
                 val connectedBoardId = connection.config?.appBoardId
                 if (profileBoardId.isNullOrBlank() || connectedBoardId.isNullOrBlank() || profileBoardId != connectedBoardId) {
                     return@post pending.onError(RefloatConfigErrorCode.PROFILE_BOARD_MISMATCH.name, "Tune profile does not belong to the connected board")
                 }
                 val connectedRefloatBaseVersion = connection.config?.refloatBaseVersion
-                if (profileRefloatBaseVersion.isNullOrBlank() || connectedRefloatBaseVersion.isNullOrBlank() || profileRefloatBaseVersion != connectedRefloatBaseVersion) {
+                if (profileRefloatBaseVersion.isNullOrBlank() || connectedRefloatBaseVersion.isNullOrBlank() || profileRefloatBaseVersion != tuneCompatibilityVersion(connectedRefloatBaseVersion)) {
                     return@post pending.onError(RefloatConfigErrorCode.PROFILE_BOARD_MISMATCH.name, "Tune profile does not match the connected board Refloat Tune Compatibility")
                 }
                 val wasPolling = port.isPollingActive()
