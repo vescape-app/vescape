@@ -512,6 +512,9 @@ final class AppDataRepository {
     } else if key == "satelliteImagerySaturation" {
       guard let saturation = Self.satelliteImagerySaturation(rawValue) else { return }
       value = saturation
+    } else if key == "audioSource" {
+      guard let source = Self.audioSource(rawValue) else { return }
+      value = source
     } else if key == "themeMode" {
       guard let mode = Self.themeMode(rawValue) else { return }
       value = mode
@@ -609,6 +612,12 @@ final class AppDataRepository {
     "wearAutoLaunchOnConnect": true,
     "wearNavArrowEnabled": false,
     "boardMoveStrengthPercent": 60,
+    "connectionSoundsEnabled": true,
+    "soundPack": "retro",
+    // @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/TelemetryEntities.kt `AppSettings`
+    // @parity /modules/vescape-core/src/index.ts `AppSettings`
+    // @platform-diff iOS has no Android alarm/media stream selection; stored for shared settings and backups.
+    "audioSource": "alarm",
     "historyMetricGradientsEnabled": true,
     "historyMetricHotRanges": [
       "speed": ["start": 30, "end": 40],
@@ -621,11 +630,18 @@ final class AppDataRepository {
     "dismissedCommunityMessageIds": [String](),
   ]
 
+  // @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/AppDataRepository.kt `getTypedSettings`
+  static func audioSource(_ value: Any?) -> String? {
+    guard let source = value as? String, source == "alarm" || source == "media" else { return nil }
+    return source
+  }
+
   static func normalizeSettings(_ settings: [String: Any]) -> [String: Any] {
     var normalized = settings
     normalized["liveHistoryLimit"] =
       liveHistoryLimitMinutes(settings["liveHistoryLimit"]) ?? defaultSettings["liveHistoryLimit"]
     normalized["themeMode"] = themeMode(settings["themeMode"]) ?? defaultSettings["themeMode"]
+    normalized["audioSource"] = audioSource(settings["audioSource"]) ?? "alarm"
     normalized["satelliteImageryOpacity"] =
       satelliteImageryOpacity(settings["satelliteImageryOpacity"]) ?? defaultSettings["satelliteImageryOpacity"]
     normalized["satelliteMapImageryOpacity"] =

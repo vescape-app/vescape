@@ -413,6 +413,8 @@ class AppDataRepository private constructor(private val context: Context) {
       socEstimateWindowSeconds = req("socEstimateWindowSeconds", 20, ::validSocEstimateWindowSeconds),
       boardMoveStrengthPercent = req("boardMoveStrengthPercent", 60, ::validBoardMoveStrengthPercent),
       connectionSoundsEnabled = req("connectionSoundsEnabled", true) { it as? Boolean },
+      soundPack = req("soundPack", "retro") { (it as? String)?.takeIf { pack -> pack == "simple" || pack == "retro" } },
+      audioSource = req("audioSource", "alarm") { (it as? String)?.takeIf { source -> source == "alarm" || source == "media" } },
       telemetryPollRateHz = req("telemetryPollRateHz", 20, ::validTelemetryPollRateHz),
       wearPushRateHz = req("wearPushRateHz", 4, ::validWearPushRateHz),
       wearAutoLaunchOnConnect = req("wearAutoLaunchOnConnect", true) { it as? Boolean },
@@ -491,6 +493,8 @@ class AppDataRepository private constructor(private val context: Context) {
       "boardMoveStrengthPercent" ->
         validBoardMoveStrengthPercent(value) ?: return@withContext
       "connectionSoundsEnabled" -> value as? Boolean ?: return@withContext
+      "soundPack" -> (value as? String)?.takeIf { it == "simple" || it == "retro" } ?: return@withContext
+      "audioSource" -> (value as? String)?.takeIf { it == "alarm" || it == "media" } ?: return@withContext
       "telemetryPollRateHz" ->
         validTelemetryPollRateHz(value) ?: return@withContext
       "wearPushRateHz" ->
@@ -546,6 +550,8 @@ class AppDataRepository private constructor(private val context: Context) {
         "socEstimateWindowSeconds" -> d.socEstimateWindowSeconds
         "boardMoveStrengthPercent" -> d.boardMoveStrengthPercent
         "connectionSoundsEnabled" -> d.connectionSoundsEnabled
+        "soundPack" -> d.soundPack
+        "audioSource" -> d.audioSource
         "telemetryPollRateHz" -> d.telemetryPollRateHz
         "wearPushRateHz" -> d.wearPushRateHz
         "wearAutoLaunchOnConnect" -> d.wearAutoLaunchOnConnect
@@ -915,6 +921,8 @@ fun AppSettings.toMap(): Map<String, Any?> = mapOf(
   "socEstimateWindowSeconds" to socEstimateWindowSeconds,
   "boardMoveStrengthPercent" to boardMoveStrengthPercent,
   "connectionSoundsEnabled" to connectionSoundsEnabled,
+  "soundPack" to soundPack,
+  "audioSource" to audioSource,
   "telemetryPollRateHz" to telemetryPollRateHz,
   "wearPushRateHz" to wearPushRateHz,
   "wearAutoLaunchOnConnect" to wearAutoLaunchOnConnect,

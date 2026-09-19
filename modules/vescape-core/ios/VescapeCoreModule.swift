@@ -519,6 +519,9 @@ public class VescapeCoreModule: Module {
     Function("previewAlertSound") { (soundType: String) in
       self.coordinator.previewAlertSound(soundType)
     }
+    Function("playAppSound") { (pack: String, cue: String) in
+      self.coordinator.playAppSound(pack: pack, cue: cue)
+    }
 
     Function("getAlertSounds") {
       self.alertPresets
@@ -1549,6 +1552,8 @@ public class VescapeCoreModule: Module {
         "telemetryPollRateHz",
         "boardWarningsEnabled",
         "vescFaultCollectionEnabled",
+        "connectionSoundsEnabled",
+        "soundPack",
       ].contains(key) {
         self.coordinator.reloadTelemetrySettings()
       }

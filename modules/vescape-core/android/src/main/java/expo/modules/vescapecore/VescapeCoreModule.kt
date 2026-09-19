@@ -578,12 +578,16 @@ class VescapeCoreModule : Module() {
     Function("previewAlertSound") { soundType: String ->
       CoreForegroundService.previewAlertSound(context.applicationContext, soundType)
     }
+    Function("playAppSound") { pack: String, cue: String ->
+      CoreForegroundService.playAppSound(context.applicationContext, pack, cue)
+    }
     Function("getAlertSounds") {
       CoreForegroundService.alertSoundPresets()
     }
     Function("startGeigerSimulation") { soundType: String, rangeDepth: Double ->
       val feedback = previewAlertFeedback ?: AlertFeedback(context.applicationContext, mainHandler)
         .also { previewAlertFeedback = it }
+      feedback.setAudioSource(kotlinx.coroutines.runBlocking { AppDataRepository.get(context.applicationContext).getTypedSettings().audioSource })
       feedback.updateGeiger("preview", soundType, rangeDepth)
     }
     Function("stopGeigerSimulation") {
@@ -1411,12 +1415,15 @@ class VescapeCoreModule : Module() {
         key == "socEstimateWindowSeconds" ||
         key == "telemetryPollRateHz" ||
         key == "wearPushRateHz" ||
-key == "wearAutoLaunchOnConnect" ||
+        key == "wearAutoLaunchOnConnect" ||
         key == "wearNavArrowEnabled" ||
         // Mirrored to the wrist by WatchSettingsPusher, which runs off the applied settings.
         key == "riderColor" ||
         key == "boardWarningsEnabled" ||
-        key == "vescFaultCollectionEnabled"
+        key == "vescFaultCollectionEnabled" ||
+        key == "connectionSoundsEnabled" ||
+        key == "soundPack" ||
+        key == "audioSource"
       ) {
         CoreForegroundService.reloadTelemetrySettings(context.applicationContext)
       }
@@ -1430,6 +1437,7 @@ key == "wearAutoLaunchOnConnect" ||
     if (rules.any { it.controlId != controlId }) return
 
     val feedback = AlertFeedback(context.applicationContext, mainHandler)
+    feedback.setAudioSource(kotlinx.coroutines.runBlocking { AppDataRepository.get(context.applicationContext).getTypedSettings().audioSource })
     val coordinator = AlertCoordinator(feedback = { feedback }, vibrateSingles = false)
     coordinator.replaceRules(rules)
     alertTestFeedback = feedback

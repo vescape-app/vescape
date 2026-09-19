@@ -1561,6 +1561,14 @@ export interface AppSettings {
   boardMoveStrengthPercent: number
   /** Play on/off sounds on board connect and involuntary disconnect. */
   connectionSoundsEnabled: boolean
+  /** Bundled app feedback pack. Missing saved value defaults to retro. */
+  /** @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/alerts/AlertEngine.kt `appSoundResources` */
+  /** @parity /modules/vescape-core/ios/alerts/AlertAudioPlayer.swift `appSoundFiles` */
+  soundPack: 'simple' | 'retro'
+  /** Android playback volume stream. iOS retains its playback session. */
+  /** @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/TelemetryEntities.kt `AppSettings` */
+  /** @parity /modules/vescape-core/ios/telemetry/AppDataRepository.swift `defaultSettings` */
+  audioSource: 'alarm' | 'media'
   /** Android-only: use CompanionDeviceManager presence to connect associated boards when nearby. */
   companionPresenceEnabled: boolean
   /**
@@ -2651,6 +2659,7 @@ type VescapeCoreNativeModule = NativeEventEmitter<VescapeCoreEvents> & {
   requestCriticalRideNotificationPermission(): Promise<CriticalRideNotificationPermissionStatus>
   getAlertSounds(): AlertSound[]
   previewAlertSound(soundType: AlertSoundType): void
+  playAppSound(pack: 'simple' | 'retro', cue: 'on' | 'off' | 'created' | 'join' | 'error'): void
   startGeigerSimulation(soundType: string, rangeDepth: number): void
   stopGeigerSimulation(): void
   startAlertTest(rules: AlertTestRule[]): void
@@ -3118,6 +3127,14 @@ export function getAlertSounds(): AlertSound[] {
 
 export function previewAlertSound(soundType: AlertSoundType): void {
   native.previewAlertSound(soundType)
+}
+
+/** Play a bundled app cue; the pack and cue are validated by the native sound map. */
+export function playAppSound(
+  pack: 'simple' | 'retro',
+  cue: 'on' | 'off' | 'created' | 'join' | 'error',
+): void {
+  native.playAppSound(pack, cue)
 }
 
 export function startGeigerSimulation(soundType: string, rangeDepth: number): void {
