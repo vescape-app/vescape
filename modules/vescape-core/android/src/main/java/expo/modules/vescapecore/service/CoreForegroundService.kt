@@ -498,11 +498,11 @@ class CoreForegroundService : Service() {
         }
 
         fun previewAlertSound(context: Context, soundType: String) {
-            instance?.controller?.previewAlertSound(soundType) ?: AlertFeedback.preview(context, soundType)
+            instance?.controller?.previewAlertSound(soundType) ?: AlertFeedback.preview(context, soundType, kotlinx.coroutines.runBlocking { AppDataRepository.get(context).getTypedSettings().audioSource })
         }
 
         fun playAppSound(context: Context, pack: String, cue: String) {
-            AlertFeedback.previewAppSound(context, pack, cue)
+            AlertFeedback.previewAppSound(context, pack, cue, kotlinx.coroutines.runBlocking { AppDataRepository.get(context).getTypedSettings().audioSource })
         }
 
         fun alertSoundPresets(): List<Map<String, Any>> = alertSoundPresetMaps()

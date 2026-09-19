@@ -123,6 +123,7 @@ private final class GeigerLoop {
 /// instead of `SoundPool`; geiger tick scheduling uses a dedicated dispatch-backed scheduler;
 /// sustained loops schedule the buffer with a completion callback instead of SoundPool
 /// loop index. TTS uses `AVSpeechSynthesizer` instead of Android `TextToSpeech`.
+/// Android's alarm/media stream setting has no iOS equivalent; this player retains its playback session.
 internal final class AlertAudioPlayer {
   private static let audioSessionLock = NSLock()
   private static var audioSessionOwnerCount = 0

@@ -1,9 +1,16 @@
-import { Alert, Pressable, ScrollView, StyleSheet, View } from 'react-native'
+import { Alert, Platform, Pressable, ScrollView, StyleSheet, View } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
-import { CheckIcon, PlusIcon, SpeakerHighIcon, VibrateIcon } from 'phosphor-react-native'
+import {
+  CheckIcon,
+  PlusIcon,
+  SpeakerHighIcon,
+  SpeakerSimpleHighIcon,
+  VibrateIcon,
+} from 'phosphor-react-native'
 import { playAppSound } from 'vescape-core'
 
 import { Text } from '@/components/base/Text'
+import { Select } from '@/components/forms/Select'
 import { SettingsCard } from '@/components/settings/SettingsCard'
 import { SettingsRow } from '@/components/settings/SettingsRow'
 import { SettingsSectionTitle } from '@/components/settings/SettingsSectionTitle'
@@ -19,6 +26,7 @@ const PACKS = [
 
 export default function SoundsSettingsScreen() {
   const soundPack = useSettingsStore((state) => state.soundPack)
+  const audioSource = useSettingsStore((state) => state.audioSource)
   const enabled = useSettingsStore((state) => state.connectionSoundsEnabled)
   const set = useSettingsStore((state) => state.set)
 
@@ -38,6 +46,30 @@ export default function SoundsSettingsScreen() {
               />
             }
           />
+          {Platform.OS === 'android' && (
+            <SettingsRow
+              icon={SpeakerSimpleHighIcon}
+              iconColor={theme.palette.cyan.color}
+              label="Audio output"
+              right={
+                <Select
+                  options={[
+                    { label: 'Alarm', value: 'alarm' },
+                    { label: 'Media', value: 'media' },
+                  ]}
+                  value={audioSource}
+                  onChange={(source) => void set('audioSource', source)}
+                  style={styles.sourceSelect}
+                  testID="audio-output-select"
+                />
+              }
+            >
+              <Text style={styles.sourceDescription}>
+                Alarm is recommended. Make sure alarm volume isn't muted. If it causes problems,
+                choose Media, which uses media volume.
+              </Text>
+            </SettingsRow>
+          )}
         </SettingsCard>
 
         <SettingsSectionTitle>Sound packs</SettingsSectionTitle>
@@ -131,6 +163,15 @@ const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: theme.neutral.bg },
   content: { padding: 16, gap: 10, paddingBottom: 32 },
   packList: { gap: 10 },
+  sourceSelect: { width: 150 },
+  sourceDescription: {
+    color: theme.neutral.textMuted,
+    fontSize: 12,
+    fontWeight: '500',
+    marginLeft: 58,
+    marginRight: 14,
+    marginBottom: 14,
+  },
   disabledPacks: { opacity: 0.5 },
   pack: {
     borderRadius: 14,

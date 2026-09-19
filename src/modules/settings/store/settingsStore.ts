@@ -45,6 +45,7 @@ const DEFAULTS: AppSettings = {
   boardMoveStrengthPercent: 60,
   connectionSoundsEnabled: true,
   soundPack: 'retro',
+  audioSource: 'alarm',
   companionPresenceEnabled: false,
   boardWarningsEnabled: true,
   vescFaultCollectionEnabled: true,

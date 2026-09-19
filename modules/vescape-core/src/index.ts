@@ -1565,6 +1565,10 @@ export interface AppSettings {
   /** @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/alerts/AlertEngine.kt `appSoundResources` */
   /** @parity /modules/vescape-core/ios/alerts/AlertAudioPlayer.swift `appSoundFiles` */
   soundPack: 'simple' | 'retro'
+  /** Android playback volume stream. iOS retains its playback session. */
+  /** @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/TelemetryEntities.kt `AppSettings` */
+  /** @parity /modules/vescape-core/ios/telemetry/AppDataRepository.swift `defaultSettings` */
+  audioSource: 'alarm' | 'media'
   /** Android-only: use CompanionDeviceManager presence to connect associated boards when nearby. */
   companionPresenceEnabled: boolean
   /**

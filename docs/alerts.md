@@ -126,7 +126,7 @@ Templates render from current alert values when the rule fires:
 Runtime behavior:
 
 - Android native `TextToSpeech` speaks from the foreground service so messages can fire while JS is suspended.
-- TTS uses the same alarm-style audio attributes as alert presets.
+- Android presets, app cues, and TTS use the selected audio output: Alarm (default, including existing installs) or Media. Switching streams during a session recreates the SoundPool, reloads assets, and restarts active Geiger loops. iOS retains its existing playback session and hides this Android-only choice.
 - TTS is initialized lazily when rules include a `tts:` message and speech plays as soon as possible. Do not pre-generate or cache message audio.
 - Message alerts vibrate once, same as one-shot preset alerts.
 - If multiple spoken messages compete, the most urgent alert wins and may stop a less urgent spoken message.
