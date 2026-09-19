@@ -10,6 +10,7 @@ import expo.modules.vescapecore.diagnostics.DiagnosticReporter
 import expo.modules.vescapecore.service.CoreForegroundService
 
 import expo.modules.vescapecore.connection.BoardTransport
+import expo.modules.vescapecore.alerts.CustomAppSounds
 import android.content.Context
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -413,7 +414,7 @@ class AppDataRepository private constructor(private val context: Context) {
       socEstimateWindowSeconds = req("socEstimateWindowSeconds", 20, ::validSocEstimateWindowSeconds),
       boardMoveStrengthPercent = req("boardMoveStrengthPercent", 60, ::validBoardMoveStrengthPercent),
       connectionSoundsEnabled = req("connectionSoundsEnabled", true) { it as? Boolean },
-      soundPack = req("soundPack", "retro") { (it as? String)?.takeIf { pack -> pack == "simple" || pack == "retro" } },
+      soundPack = req("soundPack", if ("soundPack" in map) "simple" else "retro") { (it as? String)?.takeIf { pack -> pack == "simple" || pack == "retro" || CustomAppSounds.exists(context, pack) } },
       audioSource = req("audioSource", "alarm") { (it as? String)?.takeIf { source -> source == "alarm" || source == "media" } },
       telemetryPollRateHz = req("telemetryPollRateHz", 20, ::validTelemetryPollRateHz),
       wearPushRateHz = req("wearPushRateHz", 4, ::validWearPushRateHz),
@@ -439,7 +440,11 @@ class AppDataRepository private constructor(private val context: Context) {
     )
 
     if (badKeys.isNotEmpty()) {
-      for (key in badKeys) dao.deleteAppSetting(key)
+      for (key in badKeys) {
+        if (key == "soundPack") {
+          dao.upsertAppSetting(AppSettingEntity(key, encodeSettingJson("simple"), System.currentTimeMillis()))
+        } else dao.deleteAppSetting(key)
+      }
       DiagnosticReporter.get(context).capture(
         "app_setting_corrupt",
         mapOf("keys" to badKeys.joinToString(",")),
@@ -493,7 +498,7 @@ class AppDataRepository private constructor(private val context: Context) {
       "boardMoveStrengthPercent" ->
         validBoardMoveStrengthPercent(value) ?: return@withContext
       "connectionSoundsEnabled" -> value as? Boolean ?: return@withContext
-      "soundPack" -> (value as? String)?.takeIf { it == "simple" || it == "retro" } ?: return@withContext
+      "soundPack" -> (value as? String)?.takeIf { it == "simple" || it == "retro" || CustomAppSounds.exists(context, it) } ?: return@withContext
       "audioSource" -> (value as? String)?.takeIf { it == "alarm" || it == "media" } ?: return@withContext
       "telemetryPollRateHz" ->
         validTelemetryPollRateHz(value) ?: return@withContext

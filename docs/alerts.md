@@ -12,6 +12,18 @@ Fired alerts embedded in that packet's telemetry map → visible in recentTeleme
 
 No separate event. No JS-side audio. Native storage is the source of truth.
 
+## App sound packs
+
+The five app cues (Connect, Disconnect, Error, New Group Ride, Rider joined Group Ride) are
+separate from Alert Rule presets and Geiger sounds. A custom pack may assign any subset. Native
+playback and previews read the same app-owned `custom-app-sounds` manifest and WAV files; a cue
+without a usable file plays its Classic counterpart. Imports accept decodable WAV up to 2 MB and
+15 seconds. The document picker source is copied, so its URI is never used for later playback.
+
+Database backups include the custom pack manifest and audio files under `custom-app-sounds/`.
+Restoring an older backup without these entries clears custom packs. A restored pack drops any
+assignment whose file is absent, while a selected pack that no longer exists resolves to Classic.
+
 ## Per-board ownership
 
 Alert Rules are owned by one Board. The native alert engine loads **only the connected Board's**

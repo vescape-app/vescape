@@ -523,6 +523,19 @@ public class VescapeCoreModule: Module {
       self.coordinator.playAppSound(pack: pack, cue: cue)
     }
 
+    // @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/VescapeCoreModule.kt `customAppSoundPacks`
+    AsyncFunction("customAppSoundPacks") { CustomAppSounds.list() }
+    AsyncFunction("createAppSoundPack") { (name: String) in try CustomAppSounds.create(name) }
+    AsyncFunction("renameAppSoundPack") { (id: String, name: String) in try CustomAppSounds.rename(id, name: name) }
+    AsyncFunction("importAppSound") { (id: String, cue: String, uri: String) in try CustomAppSounds.import(id, cue: cue, uri: uri) }
+    AsyncFunction("removeAppSound") { (id: String, cue: String) in try CustomAppSounds.remove(id, cue: cue) }
+    AsyncFunction("deleteAppSoundPack") { (id: String) in
+      if (try self.appData.getSettings())["soundPack"] as? String == id {
+        try self.appData.updateSetting("soundPack", rawValue: "simple")
+        self.coordinator.reloadTelemetrySettings()
+      }
+      try CustomAppSounds.delete(id)
+    }
     Function("getAlertSounds") {
       self.alertPresets
     }

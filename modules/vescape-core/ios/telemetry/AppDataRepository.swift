@@ -512,6 +512,10 @@ final class AppDataRepository {
     } else if key == "satelliteImagerySaturation" {
       guard let saturation = Self.satelliteImagerySaturation(rawValue) else { return }
       value = saturation
+    } else if key == "soundPack" {
+      guard let pack = rawValue as? String,
+        pack == "simple" || pack == "retro" || CustomAppSounds.exists(pack) else { return }
+      value = pack
     } else if key == "audioSource" {
       guard let source = Self.audioSource(rawValue) else { return }
       value = source
@@ -642,6 +646,8 @@ final class AppDataRepository {
       liveHistoryLimitMinutes(settings["liveHistoryLimit"]) ?? defaultSettings["liveHistoryLimit"]
     normalized["themeMode"] = themeMode(settings["themeMode"]) ?? defaultSettings["themeMode"]
     normalized["audioSource"] = audioSource(settings["audioSource"]) ?? "alarm"
+    let pack = settings["soundPack"] as? String ?? "retro"
+    normalized["soundPack"] = pack == "simple" || pack == "retro" || CustomAppSounds.exists(pack) ? pack : "simple"
     normalized["satelliteImageryOpacity"] =
       satelliteImageryOpacity(settings["satelliteImageryOpacity"]) ?? defaultSettings["satelliteImageryOpacity"]
     normalized["satelliteMapImageryOpacity"] =

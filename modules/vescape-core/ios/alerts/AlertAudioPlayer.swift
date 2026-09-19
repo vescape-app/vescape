@@ -413,7 +413,20 @@ internal final class AlertAudioPlayer {
   }
 
   func playAppSound(pack: String, cue: String) {
-    guard let file = appSoundFiles[pack]?[cue] else { return }
+    if let customURL = CustomAppSounds.file(pack, cue: cue) {
+      geigerQueue.async { [weak self] in
+        guard let self else { return }
+        // intentional-suppression: an unreadable custom file falls back to the Classic cue below
+        if let audio = try? AVAudioFile(forReading: customURL),
+          let buffer = self.convertToStandard(file: audio, standardFormat: self.makeStandardFormat()) {
+          self.playBufferOnQueue(buffer, label: customURL.lastPathComponent)
+        } else if let classic = appSoundFiles["simple"]?[cue] {
+          self.playOnQueue(classic)
+        }
+      }
+      return
+    }
+    guard let file = (appSoundFiles[pack] ?? appSoundFiles["simple"])?[cue] else { return }
     play(file)
   }
 
@@ -690,8 +703,13 @@ internal final class AlertAudioPlayer {
       Self.log("AlertAudioPlayer.play: NO BUFFER for \(fileName)")
       return
     }
+    playBufferOnQueue(buffer, label: fileName)
+  }
+
+  private func playBufferOnQueue(_ buffer: AVAudioPCMBuffer, label: String) {
+    guard !isReleased else { return }
     startIfNeeded()
-    Self.log("AlertAudioPlayer.play: schedule \(fileName) engine.running=\(engine.isRunning) frames=\(buffer.frameLength)")
+    Self.log("AlertAudioPlayer.play: schedule \(label) engine.running=\(engine.isRunning) frames=\(buffer.frameLength)")
     let node = makePlayerNode(format: buffer.format)
     activeOneShotNodes.append(node)
     node.scheduleBuffer(buffer, at: nil, options: [], completionHandler: { [weak self, weak node] in

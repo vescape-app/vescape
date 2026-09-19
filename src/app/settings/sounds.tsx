@@ -1,4 +1,7 @@
-import { Alert, Platform, Pressable, ScrollView, StyleSheet, View } from 'react-native'
+import { useCallback, useState } from 'react'
+import { useFocusEffect } from 'expo-router'
+import * as DocumentPicker from 'expo-document-picker'
+import { Alert, Platform, Pressable, ScrollView, StyleSheet, TextInput, View } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import {
   CheckIcon,
@@ -7,9 +10,21 @@ import {
   SpeakerSimpleHighIcon,
   VibrateIcon,
 } from 'phosphor-react-native'
-import { playAppSound } from 'vescape-core'
+import {
+  createAppSoundPack,
+  customAppSoundPacks,
+  deleteAppSoundPack,
+  importAppSound,
+  playAppSound,
+  removeAppSound,
+  renameAppSoundPack,
+  type CustomAppSoundPack,
+} from 'vescape-core'
 
 import { Text } from '@/components/base/Text'
+import { Button } from '@/components/base/Button'
+import { IconButton } from '@/components/base/IconButton'
+import { ConfirmModal } from '@/components/modals/ConfirmModal'
 import { Select } from '@/components/forms/Select'
 import { SettingsCard } from '@/components/settings/SettingsCard'
 import { SettingsRow } from '@/components/settings/SettingsRow'
@@ -29,6 +44,53 @@ export default function SoundsSettingsScreen() {
   const audioSource = useSettingsStore((state) => state.audioSource)
   const enabled = useSettingsStore((state) => state.connectionSoundsEnabled)
   const set = useSettingsStore((state) => state.set)
+  const [customPacks, setCustomPacks] = useState<CustomAppSoundPack[]>([])
+  const [editingId, setEditingId] = useState<string | null>(null)
+  const [name, setName] = useState('')
+  const [busy, setBusy] = useState(false)
+  const [deleteId, setDeleteId] = useState<string | null>(null)
+  const [packLoadError, setPackLoadError] = useState(false)
+  useFocusEffect(
+    useCallback(() => {
+      void customAppSoundPacks()
+        .then((packs) => {
+          setCustomPacks(packs)
+          setPackLoadError(false)
+        })
+        .catch(() => setPackLoadError(true))
+    }, []),
+  )
+  const refresh = async () => setCustomPacks(await customAppSoundPacks())
+  const run = async (action: () => Promise<unknown>) => {
+    setBusy(true)
+    try {
+      await action()
+      await refresh()
+    } catch (error) {
+      Alert.alert(
+        'Sound pack',
+        error instanceof Error ? error.message : 'Could not save sound pack',
+      )
+    } finally {
+      setBusy(false)
+    }
+  }
+  const pick = (id: string, cue: (typeof APP_SOUND_CUES)[number]['id']) => {
+    void run(async () => {
+      const result = await DocumentPicker.getDocumentAsync({
+        type: ['audio/wav', 'audio/x-wav'],
+        copyToCacheDirectory: true,
+      })
+      if (result.canceled) return
+      const uri = result.assets[0]?.uri
+      if (!uri) throw new Error('No audio file selected')
+      await importAppSound(id, cue, uri)
+    })
+  }
+  const packs: { id: string; name: string; sounds?: CustomAppSoundPack['sounds'] }[] = [
+    ...PACKS,
+    ...customPacks,
+  ]
 
   return (
     <SafeAreaView style={styles.container} edges={['bottom']}>
@@ -73,11 +135,14 @@ export default function SoundsSettingsScreen() {
         </SettingsCard>
 
         <SettingsSectionTitle>Sound packs</SettingsSectionTitle>
+        {packLoadError && (
+          <Text>Sound packs could not be loaded. Try opening this screen again.</Text>
+        )}
         <View
           style={[styles.packList, !enabled && styles.disabledPacks]}
           pointerEvents={enabled ? 'auto' : 'none'}
         >
-          {PACKS.map((pack) => {
+          {packs.map((pack) => {
             const active = soundPack === pack.id
             return (
               <View key={pack.id} style={[styles.pack, active && styles.activePack]}>
@@ -135,6 +200,82 @@ export default function SoundsSettingsScreen() {
                     ))}
                   </View>
                 )}
+                {pack.sounds && (
+                  <View style={styles.editor}>
+                    {editingId === pack.id ? (
+                      <View style={styles.nameRow}>
+                        <TextInput
+                          value={name}
+                          onChangeText={setName}
+                          maxLength={60}
+                          placeholder="Pack name"
+                          placeholderTextColor={theme.neutral.textMuted}
+                          style={styles.nameInput}
+                        />
+                        <Button
+                          label="Save"
+                          size="sm"
+                          disabled={busy || !name.trim()}
+                          onPress={() =>
+                            void run(async () => {
+                              await renameAppSoundPack(pack.id, name)
+                              setEditingId(null)
+                            })
+                          }
+                        />
+                      </View>
+                    ) : (
+                      <Button
+                        label="Rename"
+                        variant="secondary"
+                        size="sm"
+                        onPress={() => {
+                          setName(pack.name)
+                          setEditingId(pack.id)
+                        }}
+                      />
+                    )}
+                    {APP_SOUND_CUES.map((cue) => (
+                      <View key={cue.id} style={styles.cueBlock}>
+                        <View style={styles.cueRow}>
+                          <Text style={styles.cueName}>{cue.label}</Text>
+                          <Text style={styles.cueStatus}>
+                            {pack.sounds?.[cue.id] ? 'Custom' : 'Classic'}
+                          </Text>
+                        </View>
+                        <View style={styles.cueRow}>
+                          <IconButton
+                            icon={SpeakerHighIcon}
+                            accessibilityLabel={`Play ${cue.label}`}
+                            onPress={() => playAppSound(pack.id, cue.id)}
+                          />
+                          <Button
+                            label={pack.sounds?.[cue.id] ? 'Replace' : 'Add'}
+                            size="sm"
+                            variant="secondary"
+                            disabled={busy}
+                            onPress={() => pick(pack.id, cue.id)}
+                          />
+                          {pack.sounds?.[cue.id] && (
+                            <Button
+                              label="Remove"
+                              size="sm"
+                              variant="secondary"
+                              disabled={busy}
+                              onPress={() => void run(() => removeAppSound(pack.id, cue.id))}
+                            />
+                          )}
+                        </View>
+                      </View>
+                    ))}
+                    <Button
+                      label="Delete pack"
+                      size="sm"
+                      variant="destructive"
+                      onPress={() => setDeleteId(pack.id)}
+                    />
+                  </View>
+                )}
               </View>
             )
           })}
@@ -143,9 +284,10 @@ export default function SoundsSettingsScreen() {
             accessibilityRole="button"
             accessibilityLabel="Add sound pack"
             accessibilityState={{ disabled: !enabled }}
-            onPress={() =>
-              Alert.alert('Custom sounds', 'Adding your own sound packs is coming later.')
-            }
+            onPress={() => {
+              setEditingId('new')
+              setName('')
+            }}
             style={({ pressed }) => [styles.addRow, pressed && styles.pressed]}
           >
             <View style={styles.addIcon}>
@@ -153,8 +295,48 @@ export default function SoundsSettingsScreen() {
             </View>
             <Text style={styles.addText}>Add sound pack</Text>
           </Pressable>
+          {editingId === 'new' && (
+            <View style={styles.editor}>
+              <TextInput
+                value={name}
+                onChangeText={setName}
+                maxLength={60}
+                placeholder="Pack name"
+                placeholderTextColor={theme.neutral.textMuted}
+                style={styles.nameInput}
+                autoFocus
+              />
+              <Button
+                label="Create pack"
+                disabled={busy || !name.trim()}
+                onPress={() =>
+                  void run(async () => {
+                    await createAppSoundPack(name)
+                    setEditingId(null)
+                  })
+                }
+              />
+            </View>
+          )}
         </View>
       </ScrollView>
+      <ConfirmModal
+        visible={deleteId !== null}
+        title="Delete sound pack"
+        message="Delete this pack and its imported sounds?"
+        confirmLabel="Delete"
+        destructive
+        onCancel={() => setDeleteId(null)}
+        onConfirm={() => {
+          const id = deleteId
+          setDeleteId(null)
+          if (id)
+            void run(async () => {
+              await deleteAppSoundPack(id)
+              if (soundPack === id) await useSettingsStore.getState().load()
+            })
+        }}
+      />
     </SafeAreaView>
   )
 }
@@ -238,5 +420,20 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   addText: { color: theme.palette.cyan.color, fontSize: 15, fontWeight: '600' },
+  editor: { padding: 14, gap: 10, borderTopWidth: 1, borderTopColor: theme.neutral.border },
+  nameRow: { flexDirection: 'row', gap: 8, alignItems: 'center' },
+  nameInput: {
+    flex: 1,
+    minHeight: 40,
+    borderWidth: 1,
+    borderColor: theme.neutral.border,
+    borderRadius: 8,
+    paddingHorizontal: 12,
+    color: theme.neutral.textPrimary,
+  },
+  cueRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  cueBlock: { gap: 6, paddingVertical: 6, borderTopWidth: 1, borderTopColor: theme.neutral.border },
+  cueName: { flex: 1, color: theme.neutral.textPrimary, fontSize: 13 },
+  cueStatus: { color: theme.neutral.textMuted, fontSize: 12 },
   pressed: { backgroundColor: interaction.pressedBg },
 })

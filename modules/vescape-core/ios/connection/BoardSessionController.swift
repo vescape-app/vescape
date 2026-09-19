@@ -1196,7 +1196,7 @@ internal final class BoardSessionController: VescGattListener {
     }
     boardWarningsEnabled = settings["boardWarningsEnabled"] as? Bool ?? true
     connectionSoundsEnabled = settings["connectionSoundsEnabled"] as? Bool ?? true
-    alertAudioPlayer.soundPack = settings["soundPack"] as? String == "simple" ? "simple" : "retro"
+    alertAudioPlayer.soundPack = settings["soundPack"] as? String ?? "retro"
     // Disabled→enabled with an already-trusted link: link integrity won't transition again, so
     // schedule the config-safety read here.
     if !warningsWereEnabled, boardWarningsEnabled, lastEmittedLinkIntegrity == .trusted {
@@ -1488,7 +1488,7 @@ internal final class BoardSessionController: VescGattListener {
     wireFaultCaptures()
     boardWarningsEnabled = sessionSettings["boardWarningsEnabled"] as? Bool ?? true
     connectionSoundsEnabled = sessionSettings["connectionSoundsEnabled"] as? Bool ?? true
-    alertAudioPlayer.soundPack = sessionSettings["soundPack"] as? String == "simple" ? "simple" : "retro"
+    alertAudioPlayer.soundPack = sessionSettings["soundPack"] as? String ?? "retro"
     recordingCoordinator.beginBoardSession(config: config, restoredRecordingId: restoredRecordingId)
     beginGpsSessionDiagnostics()
     // Reset per-session Board Warning breadcrumb bookkeeping (one Diagnostic Event per kind per

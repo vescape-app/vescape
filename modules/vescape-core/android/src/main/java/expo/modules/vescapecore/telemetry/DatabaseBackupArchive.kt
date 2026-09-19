@@ -25,7 +25,7 @@ internal object DatabaseBackupArchive {
       ),
     )
 
-  fun write(database: File, manifest: JSONObject, output: OutputStream) {
+  fun write(database: File, manifest: JSONObject, output: OutputStream, soundDirectory: File? = null) {
     ZipOutputStream(output).use { zip ->
       zip.putNextEntry(ZipEntry(BACKUP_MANIFEST_ENTRY))
       zip.write(manifest.toString().toByteArray(Charsets.UTF_8))
@@ -33,16 +33,37 @@ internal object DatabaseBackupArchive {
       zip.putNextEntry(ZipEntry(BACKUP_DATABASE_ENTRY))
       database.inputStream().use { it.copyTo(zip) }
       zip.closeEntry()
+      soundDirectory?.listFiles()?.filter { it.name == "packs.json" || Regex("[0-9a-fA-F-]{36}\\.wav").matches(it.name) }?.forEach { file ->
+        zip.putNextEntry(ZipEntry("custom-app-sounds/${file.name}"))
+        file.inputStream().use { it.copyTo(zip) }
+        zip.closeEntry()
+      }
     }
   }
 
-  fun extract(input: InputStream, restoredDatabase: File): JSONObject {
+  fun extract(input: InputStream, restoredDatabase: File, soundDirectory: File? = null): JSONObject {
     var manifest: JSONObject? = null
     ZipInputStream(input).use { zip ->
       generateSequence { zip.nextEntry }.forEach { entry ->
         when (entry.name) {
           BACKUP_MANIFEST_ENTRY -> manifest = JSONObject(zip.readBytes().toString(Charsets.UTF_8))
           BACKUP_DATABASE_ENTRY -> restoredDatabase.outputStream().use { zip.copyTo(it) }
+          else -> if (soundDirectory != null && entry.name.startsWith("custom-app-sounds/")) {
+            val name = entry.name.removePrefix("custom-app-sounds/")
+            require(name == "packs.json" || Regex("[0-9a-fA-F-]{36}\\.wav").matches(name)) { "Invalid sound file name" }
+            soundDirectory.mkdirs()
+            File(soundDirectory, name).outputStream().use { output ->
+              val buffer = ByteArray(8192)
+              var copied = 0L
+              while (true) {
+                val count = zip.read(buffer)
+                if (count < 0) break
+                copied += count
+                require(copied <= 2_000_000) { "Sound file too large" }
+                output.write(buffer, 0, count)
+              }
+            }
+          }
         }
         zip.closeEntry()
       }

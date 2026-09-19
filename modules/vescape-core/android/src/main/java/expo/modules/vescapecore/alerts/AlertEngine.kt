@@ -120,7 +120,7 @@ private fun ttsSampleAlert(soundType: String) = FiredAlert(
     firedAt = System.currentTimeMillis(),
 )
 
-private fun audioAttributes(source: String, contentType: Int): AudioAttributes = AudioAttributes.Builder()
+internal fun audioAttributes(source: String, contentType: Int): AudioAttributes = AudioAttributes.Builder()
     .setLegacyStreamType(if (source == "media") AudioManager.STREAM_MUSIC else AudioManager.STREAM_ALARM)
     .setUsage(if (source == "media") AudioAttributes.USAGE_MEDIA else AudioAttributes.USAGE_ALARM)
     .setContentType(contentType)
@@ -447,7 +447,9 @@ internal class AlertFeedback(
     fun playDisconnect() = playAppSound(soundPack, "off")
 
     fun playAppSound(pack: String, cue: String) {
-        val resource = appSounds[pack]?.get(cue) ?: return
+        if (released) return
+        if (CustomAppSounds.play(context, pack, cue, audioSource) { playAppSound("simple", cue) }) return
+        val resource = (appSounds[pack] ?: appSounds["simple"])?.get(cue) ?: return
         if (loadedSamples.size < soundIds.size + appSoundIds.size) {
             pendingPlays.add { playAppSound(pack, cue) }
             return
@@ -642,7 +644,10 @@ internal class AlertFeedback(
     companion object {
         /** Preview without requiring a running board session. */
         fun previewAppSound(context: Context, pack: String, cue: String, source: String) {
-            val resource = appSoundResources[pack]?.get(cue) ?: return
+            if (CustomAppSounds.play(context, pack, cue, source) {
+                previewAppSound(context, "simple", cue, source)
+            }) return
+            val resource = (appSoundResources[pack] ?: appSoundResources["simple"])?.get(cue) ?: return
             val pool = SoundPool.Builder().setMaxStreams(1).setAudioAttributes(
                 audioAttributes(source, AudioAttributes.CONTENT_TYPE_SONIFICATION)
             ).build()

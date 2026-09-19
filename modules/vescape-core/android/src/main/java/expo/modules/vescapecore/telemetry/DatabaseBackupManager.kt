@@ -1,6 +1,7 @@
 package expo.modules.vescapecore.telemetry
 
 import android.content.Context
+import expo.modules.vescapecore.alerts.CustomAppSounds
 import android.database.sqlite.SQLiteDatabase
 import android.net.Uri
 import org.json.JSONObject
@@ -27,7 +28,8 @@ object DatabaseBackupManager {
     TelemetryDatabase.get(appContext).openHelper.writableDatabase.execSQL("VACUUM INTO '$escapedPath'")
 
     zipExport.outputStream().use { output ->
-      DatabaseBackupArchive.write(sqliteExport, manifest(context, sqliteExport.length()), output)
+      DatabaseBackupArchive.write(sqliteExport, manifest(context, sqliteExport.length()), output,
+        File(appContext.filesDir, "custom-app-sounds"))
     }
     sqliteExport.delete()
 
@@ -46,7 +48,9 @@ object DatabaseBackupManager {
       mkdirs()
     }
     val restoredDb = File(workDir, "restored.sqlite")
-    val manifest = extractBackup(appContext, uriString, restoredDb)
+    val soundStage = File(workDir, "custom-app-sounds")
+    val manifest = extractBackup(appContext, uriString, restoredDb, soundStage)
+    CustomAppSounds.validateBackup(soundStage)
     val manifestVersion = validateDatabase(restoredDb, validateManifest(manifest))
     if (manifestVersion.platform == "ios") reconcileIosSchema(restoredDb, manifestVersion.bootstrapLegacyTune)
     if (readDatabaseVersion(restoredDb) == 0) {
@@ -63,6 +67,7 @@ object DatabaseBackupManager {
         validateDatabase(installed, manifestVersion.copy(declaredVersion = manifestVersion.roomVersion))
         TelemetryDatabase.get(appContext).openHelper.readableDatabase.query("SELECT 1").close()
       }
+      CustomAppSounds.replaceFromBackup(appContext, soundStage)
     } catch (e: Exception) {
       resetRepositoriesAndCloseDatabase()
       TelemetryDatabase.get(appContext).openHelper.readableDatabase.query("SELECT 1").close()
@@ -72,11 +77,11 @@ object DatabaseBackupManager {
     }
   }
 
-  private fun extractBackup(context: Context, uriString: String, restoredDb: File): JSONObject {
+  private fun extractBackup(context: Context, uriString: String, restoredDb: File, soundStage: File): JSONObject {
     val uri = Uri.parse(uriString)
     context.contentResolver.openInputStream(uri).use { input ->
       requireNotNull(input) { "Could not open backup file" }
-      return DatabaseBackupArchive.extract(input, restoredDb)
+      return DatabaseBackupArchive.extract(input, restoredDb, soundStage)
     }
   }
 
