@@ -224,7 +224,7 @@ A user-authored, persisted set of all Refloat tune field values stored in semant
 _Avoid_: Tune preset, config file, settings backup
 
 **Tune Compatibility**:
-The normalized base Refloat package version scope in which a Tune Profile is allowed to be used.
+The Refloat major/minor version scope in which a Tune Profile is allowed to be used. Patch versions and suffixes do not split it: `1.2`, `1.2.7`, and `1.2.7-postfix` share Tune Compatibility.
 _Avoid_: Tune migration, tune schema version, firmware conversion
 
 **Tune History Entry**:
@@ -476,8 +476,8 @@ _Avoid_: Position update, presence ping, location share, group telemetry
 - **Favorite Media** belongs to one **Favorite**, is copied into app storage, and is placed from a nearby recording-backed **GPS Fix** by capture time.
 - A **Tune Snapshot** belongs to the currently connected **Board** and is read-only.
 - A **Tune Profile** belongs to a **Board** and stores semantic field values independently of firmware schema.
-- A **Tune Profile** also belongs to one **Tune Compatibility**; profiles from other Refloat package versions are retained but not used for the current board state.
-- **Tune Compatibility** ignores Refloat suffixes or fork labels, while **Board Firmware Identity** keeps the exact reported version for link integrity.
+- A **Tune Profile** also belongs to one **Tune Compatibility**; profiles from other Refloat major/minor versions are retained but not used for the current board state.
+- **Tune Compatibility** ignores Refloat patch versions, suffixes, or fork labels, while **Board Firmware Identity** keeps the exact reported version for link integrity.
 - The first **Tune Profile** for a **Tune Compatibility** is created only after an explicit rider action.
 - Offline tune editing may use the saved **Board Link** to choose the active **Tune Compatibility**, but board tune reads and writes require trusted link integrity.
 - A **Tune History Entry** captures the previous state of a **Tune Profile** before each explicit save.

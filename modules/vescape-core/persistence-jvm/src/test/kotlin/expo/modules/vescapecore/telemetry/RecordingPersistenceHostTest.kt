@@ -280,6 +280,11 @@ class RecordingPersistenceHostTest {
     var dao = db.telemetryDao()
     var persistence = TuneAlertPersistence(dao)
     persistence.createProfile(profile)
+    val compatibility = fixture.getJSONObject("compatibility")
+    val versions = compatibility.getJSONArray("storedVersions")
+    for (index in 0 until versions.length()) {
+      persistence.createProfile(profile.copy(id = "compat-$index", boardId = "compat-board", refloatBaseVersion = versions.getString(index)))
+    }
     persistence.saveProfile(profile.id, profileValues.getString("updatedFieldsJson"), 2)
     persistence.saveAlert(AlertRuleEntity(boardId, alertValues.getString("id"), alertValues.getString("controlId"), alertValues.getDouble("threshold"), null, enabled = true, soundType = alertValues.getString("soundType"), createdAt = 1, source = alertValues.getString("source")))
     persistence.setAlertEnabled(boardId, alertValues.getString("id"), false)
@@ -287,6 +292,19 @@ class RecordingPersistenceHostTest {
 
     db = open(); dao = db.telemetryDao(); persistence = TuneAlertPersistence(dao)
     assertEquals(profileValues.getString("updatedFieldsJson"), dao.getTuneProfile(profile.id)?.fieldsJson)
+    val requests = compatibility.getJSONArray("requestVersions")
+    for (index in 0 until requests.length()) {
+      val visible = persistence.profiles("compat-board", requests.getString(index))
+      assertEquals(compatibility.getInt("visibleCount"), visible.size)
+      assertEquals((0..3).map { "compat-$it" }.toSet(), visible.map { it.id }.toSet())
+      assertEquals(0, persistence.profiles("other-board", requests.getString(index)).size)
+    }
+    assertEquals("1.2.7-postfix", persistence.profile("compat-2")?.refloatBaseVersion)
+    for (index in 0..2) dao.deleteTuneProfileSafe("compat-$index")
+    var lastDeleteFailed = false
+    try { dao.deleteTuneProfileSafe("compat-3") } catch (_: IllegalStateException) { lastDeleteFailed = true }
+    assertTrue(lastDeleteFailed)
+    assertEquals(1, persistence.history("compat-3").size)
     assertEquals(expected.getInt("historyCount"), dao.getTuneHistoryEntries(profile.id).size)
     assertEquals(alertValues.getString("id"), persistence.alertRules(boardId).single().id)
     assertEquals(expected.getBoolean("alertEnabled"), persistence.alertRules(boardId).single().enabled)

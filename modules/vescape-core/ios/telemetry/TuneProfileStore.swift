@@ -99,9 +99,9 @@ struct TuneProfileStore {
     return try writer.read { db in
       try Row.fetchAll(
         db,
-        sql: "SELECT * FROM tune_profiles WHERE board_id = ? AND refloat_base_version = ? ORDER BY created_at ASC",
-        arguments: [boardId, compatibility]
-      ).map { try Self.profileMap($0) }
+        sql: "SELECT * FROM tune_profiles WHERE board_id = ? ORDER BY created_at ASC",
+        arguments: [boardId]
+      ).filter { Self.validRefloatBaseVersion($0["refloat_base_version"] as String) == compatibility }.map { try Self.profileMap($0) }
     }
   }
 
@@ -175,11 +175,9 @@ struct TuneProfileStore {
         throw TuneProfileError.profileNotFound(profileId)
       }
       let boardId: String = row["board_id"]
-      let count = try Int.fetchOne(
-        db,
-        sql: "SELECT COUNT(*) FROM tune_profiles WHERE board_id = ? AND refloat_base_version = ?",
-        arguments: [boardId, row["refloat_base_version"] as String]
-      ) ?? 0
+      let compatibility = Self.validRefloatBaseVersion(row["refloat_base_version"] as String)
+      let count = try Row.fetchAll(db, sql: "SELECT * FROM tune_profiles WHERE board_id = ?", arguments: [boardId])
+        .filter { compatibility != nil && Self.validRefloatBaseVersion($0["refloat_base_version"] as String) == compatibility }.count
       if count <= 1 { throw TuneProfileError.cannotDeleteLast }
       try db.execute(sql: "DELETE FROM tune_history_entries WHERE profile_id = ?", arguments: [profileId])
       try db.execute(sql: "DELETE FROM tune_profiles WHERE id = ?", arguments: [profileId])
@@ -331,10 +329,12 @@ struct TuneProfileStore {
 
   private static func nowMs() -> Int64 { Int64(Date().timeIntervalSince1970 * 1000) }
 
-  private static func validRefloatBaseVersion(_ value: String?) -> String? {
-    guard let value, value.range(of: #"^\d+\.\d+(?:\.\d+)?$"#, options: .regularExpression) != nil else {
+  // @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/TuneAlertPersistence.kt `tuneCompatibilityVersion`
+  // @parity /src/modules/tune/lib/tuneCompatibility.ts `tuneCompatibilityVersion`
+  static func validRefloatBaseVersion(_ value: String?) -> String? {
+    guard let value, value.range(of: #"^\d+\.\d+(?:\.\d+)?(?:[-+].*)?$"#, options: .regularExpression) != nil else {
       return nil
     }
-    return value
+    return String(value.prefix { $0 != "-" && $0 != "+" }.split(separator: ".").prefix(2).joined(separator: "."))
   }
 }
