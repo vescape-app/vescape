@@ -111,3 +111,38 @@ internal object BucketRoutePreview {
     return points
   }
 }
+
+/** Full minutes reuse previews; only trimmed edge minutes need original fixes for exact boundaries.
+ * @parity /modules/vescape-core/ios/telemetry/BucketRoutePreview.swift `favoriteRoutePreview`
+ */
+internal suspend fun TelemetryDao.favoriteRoutePreview(startMs: Long, endMs: Long, boardId: String?): List<Map<String, Any>> {
+  val buckets = getFavoriteRouteBuckets(startMs - startMs % TELEMETRY_BUCKET_SIZE_MS, endMs, boardId ?: UNKNOWN_TELEMETRY_BOARD_ID)
+  val result = mutableListOf<Map<String, Any>>()
+  var previousEnd: Long? = null
+  var previousRecording: String? = null
+  for (bucket in buckets) {
+    val minuteEnd = bucket.bucketStartMs + TELEMETRY_BUCKET_SIZE_MS
+    val segments = if (startMs > bucket.bucketStartMs || endMs < minuteEnd - 1) {
+      val track = getBucketRouteTrack(maxOf(startMs, bucket.bucketStartMs), minOf(endMs, minuteEnd - 1) + 1,
+        boardId, bucket.recordingId.takeUnless { it == LEGACY_RIDE_RECORDING_ID })
+      BucketRoutePreview.decode(BucketRoutePreview.build(track))
+    } else if (bucket.routePreview != null) BucketRoutePreview.decode(bucket.routePreview)
+    else if (bucket.firstLatitudeE7 != null && bucket.firstLongitudeE7 != null) listOf(
+      BucketRoutePreview.Segment(bucket.firstSampleAtMs, bucket.lastSampleAtMs,
+        listOf(BucketRoutePreview.Coordinate(bucket.firstLatitudeE7.toLong(), bucket.firstLongitudeE7.toLong())))
+    ) else emptyList()
+    for ((segmentIndex, segment) in segments.withIndex()) {
+      val gap = previousEnd != null && (segmentIndex > 0 || segment.firstAtMs - previousEnd > BucketRoutePreview.GAP_MS || previousRecording != bucket.recordingId)
+      for ((index, point) in segment.points.withIndex()) {
+        result.add(buildMap {
+          put("latitude", point.latitudeE7 / 1e7)
+          put("longitude", point.longitudeE7 / 1e7)
+          if (index == 0 && gap) put("breakBefore", true)
+        })
+      }
+      previousEnd = segment.lastAtMs
+      previousRecording = bucket.recordingId
+    }
+  }
+  return result
+}

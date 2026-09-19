@@ -472,27 +472,10 @@ internal final class TelemetryRepository {
   }
 
   /// Coarse native route projection for Favorite cards, independent of JS history pagination.
-  private func favoriteRoutePoints(_ favorite: Favorite) throws -> [[String: Double]] {
+  private func favoriteRoutePoints(_ favorite: Favorite) throws -> [[String: Any]] {
     let pool = try TelemetryDatabase.requirePool()
-    let fromBucketMs = favorite.startMs - (favorite.startMs % TELEMETRY_BUCKET_SIZE_MS)
     return try pool.read { db in
-      try Row.fetchAll(
-        db,
-        sql: """
-          SELECT first_latitude_e7, first_longitude_e7
-          FROM telemetry_minute_buckets
-          WHERE bucket_start_ms >= ? AND bucket_start_ms <= ?
-            AND first_sample_at_ms <= ? AND last_sample_at_ms >= ?
-            AND first_latitude_e7 IS NOT NULL AND first_longitude_e7 IS NOT NULL
-          ORDER BY bucket_start_ms ASC
-          """,
-        arguments: [fromBucketMs, favorite.endMs, favorite.endMs, favorite.startMs]
-      ).map { row in
-        [
-          "latitude": Double(row["first_latitude_e7"] as Int64) / 1e7,
-          "longitude": Double(row["first_longitude_e7"] as Int64) / 1e7,
-        ]
-      }
+      try favoriteRoutePreview(db, startMs: favorite.startMs, endMs: favorite.endMs, boardId: favorite.boardId)
     }
   }
 

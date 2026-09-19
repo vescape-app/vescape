@@ -69,6 +69,11 @@ segments for list thumbnails, so JS neither groups buckets nor loads raw tracks 
 
 ### Bucket route previews
 
+Favorite cards use the same simplified geometry as ride cards. Fully selected minutes read their
+stored previews; partially selected edge minutes simplify original fixes inside the exact Favorite
+range. Full minutes without a generated preview retain coarse anchors until Rebuild history. Reads are scoped to the
+Favorite's board and preserve GPS/recording gaps. An empty native route stays empty in JS.
+
 Schema 49 adds nullable `telemetry_minute_buckets.route_preview`. Each value is a JSON array of
 segments `[firstFixMs, lastFixMs, encodedPolyline]`. Coordinates use signed delta-varint polyline
 encoding at **E7** precision, not the common E5 precision. Each segment is simplified with

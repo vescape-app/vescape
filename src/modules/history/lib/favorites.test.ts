@@ -119,10 +119,11 @@ test('a favorite-backed session reports the pinned range and the pinned summary'
   expect(detail.sampleCount).toBe(90)
   expect(detail.distanceM).toBe(1_180)
   expect(detail.maxSpeedKmh).toBe(32)
-  // Only the buckets overlapping the range are read, and geography is derived from them.
+  // Loaded buckets provide detail, but cannot invent geometry when native returns no fixes.
   expect(detail.blockIds).toEqual(['inside', 'tail'])
-  expect(detail.minLatitude).toBe(52)
-  expect(detail.maxLatitude).toBe(53)
+  expect(detail.routePoints).toEqual([])
+  expect(detail.minLatitude).toBeNull()
+  expect(detail.maxLatitude).toBeNull()
   expect(detail.boardId).toBe('ble-1')
 })
 

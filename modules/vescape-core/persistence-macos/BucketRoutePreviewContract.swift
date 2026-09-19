@@ -55,6 +55,30 @@ func runBucketRoutePreviewContract() throws {
   let session = try groupRideSessions(buckets: rows, markers: [], gapMs: 1_800_000).first!
   try require(session.routePoints.count == 8, "preview joined point count")
   try require(session.routePoints.enumerated().compactMap { $0.element.breakBefore ? $0.offset : nil } == [5], "preview joins minutes without bridging gaps")
+  try queue.read { db in
+    let route = try favoriteRoutePreview(db, startMs: 0, endMs: 119999, boardId: board)
+    try require(route.count == 8, "favorite retains within-minute corners")
+    try require(route.enumerated().compactMap { ($0.element["breakBefore"] as? Bool) == true ? $0.offset : nil } == [5], "favorite preserves GPS gaps")
+    let trimmed = try favoriteRoutePreview(db, startMs: 2500, endMs: 61500, boardId: board)
+    try require(trimmed.count == 6, "favorite clips partial minutes")
+    try require(trimmed.first?["longitude"] as? Double == Double(fixes[2].longitudeE7) / 1e7, "favorite excludes fixes before trim")
+    try require(trimmed.last?["longitude"] as? Double == Double(fixes[8].longitudeE7) / 1e7, "favorite excludes fixes after trim")
+    try require(try favoriteRoutePreview(db, startMs: 0, endMs: 119999, boardId: "other-board").isEmpty, "favorite board scope")
+    try require(try favoriteRoutePreview(db, startMs: 0, endMs: 119999, boardId: nil).isEmpty, "favorite unattributed scope")
+    try require(try favoriteRoutePreview(db, startMs: 10000, endMs: 20000, boardId: board).isEmpty, "favorite without fixes has no invented route")
+  }
+  try queue.write { db in
+    let sequence = [Int64(65000), 70000, 125000].enumerated().map { index, time in
+      RideTrackPoint(recordingId: index == 0 ? "z" : "a", boardId: "sequence", fixAtMs: time,
+        latitudeE7: fixes[index].latitudeE7, longitudeE7: fixes[index].longitudeE7, accuracyCm: 500,
+        gpsSpeedCentiMps: 400, bearingCentiDeg: nil, altitudeCm: nil)
+    }
+    try RecordingPersistenceSQL.insertTrackAndBuckets(db, track: sequence, buckets: buildTelemetryBuckets([], locationPoints: rideTrackBucketPoints(sequence)))
+    let route = try favoriteRoutePreview(db, startMs: 60000, endMs: 179999, boardId: "sequence")
+    try require(route.compactMap { $0["longitude"] as? Double } == sequence.map { Double($0.longitudeE7) / 1e7 }, "favorite orders recordings by capture time")
+    try db.execute(sql: "DELETE FROM telemetry_minute_buckets WHERE board_id = 'sequence'")
+    try db.execute(sql: "DELETE FROM ride_track_points WHERE board_id = 'sequence'")
+  }
   let previews = rows.map { $0["route_preview"] as String }
   let telemetry = BucketTelemetryPoint(capturedAtMs: 3000, boardId: board, recordingId: recording, speedCentiKmh: 1500,
     batteryVoltageMv: 80000, motorCurrentMa: 1000, batteryCurrentMa: 500, dutyPermille: 100, odometerCm: nil, tempMosfetDeciC: nil, tempMotorDeciC: nil)

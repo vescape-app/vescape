@@ -661,7 +661,7 @@ data class FavoriteEntity(
    */
   fun toMap(
     boardName: String?,
-    routePoints: List<Map<String, Double>> = emptyList(),
+    routePoints: List<Map<String, Any>> = emptyList(),
   ): Map<String, Any?> = mapOf(
     "id" to id,
     "boardId" to boardId,

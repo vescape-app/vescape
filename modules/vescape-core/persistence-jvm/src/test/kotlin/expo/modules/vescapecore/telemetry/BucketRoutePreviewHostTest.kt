@@ -72,6 +72,28 @@ class BucketRoutePreviewHostTest {
     db.close(); Files.deleteIfExists(path)
   }
 
+  @Test fun favoritePreviewKeepsCornersAndClipsTheSelectedRange(): Unit = runBlocking {
+    val db = Room.inMemoryDatabaseBuilder<TelemetryRoomDatabase>().setDriver(BundledSQLiteDriver()).build()
+    val dao = db.telemetryDao()
+    RecordingPersistence(dao).commit(emptyList(), buildTelemetryBuckets(emptyList(), fixes.toBucketLocationPoints()), emptyList(), trackPoints = fixes)
+    val route = dao.favoriteRoutePreview(0, 119999, board)
+    assertEquals(8, route.size)
+    assertEquals(listOf(5), route.mapIndexedNotNull { i, p -> i.takeIf { p["breakBefore"] == true } })
+    val trimmed = dao.favoriteRoutePreview(2500, 61500, board)
+    assertEquals(6, trimmed.size)
+    assertEquals(fixes[2].longitudeE7 / 1e7, trimmed.first()["longitude"])
+    assertEquals(fixes[8].longitudeE7 / 1e7, trimmed.last()["longitude"])
+    assertTrue(dao.favoriteRoutePreview(0, 119999, "other-board").isEmpty())
+    assertTrue(dao.favoriteRoutePreview(0, 119999, null).isEmpty())
+    assertTrue(dao.favoriteRoutePreview(10000, 20000, board).isEmpty())
+    val sequence = listOf(65000L, 70000L, 125000L).mapIndexed { index, time ->
+      fixes[index].copy(boardId = "sequence", recordingId = if (index == 0) "z" else "a", fixAtMs = time)
+    }
+    RecordingPersistence(dao).commit(emptyList(), buildTelemetryBuckets(emptyList(), sequence.toBucketLocationPoints()), emptyList(), trackPoints = sequence)
+    assertEquals(sequence.map { it.longitudeE7 / 1e7 }, dao.favoriteRoutePreview(60000, 179999, "sequence").map { it["longitude"] })
+    db.close()
+  }
+
   @Test fun codecPreservesNegativeE7CoordinatesAndRemovesDenseStraightPoints() {
     val points = (0 until 60).map { i -> fixes[0].copy(fixAtMs = i * 1000L,
       latitudeE7 = -520000001, longitudeE7 = -180000003 + i * 100) }

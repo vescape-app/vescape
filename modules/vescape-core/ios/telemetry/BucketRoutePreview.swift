@@ -126,3 +126,46 @@ internal func refreshBucketRoutePreview(_ db: Database, bucketStartMs: Int64, bo
     WHERE bucket_start_ms = ? AND board_id = ? AND recording_id = ?
     """, arguments: [try BucketRoutePreview.build(points), bucketStartMs, boardId, recordingId])
 }
+
+/// Full minutes reuse previews; only trimmed edge minutes need original fixes for exact boundaries.
+/// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/BucketRoutePreview.kt `favoriteRoutePreview`
+internal func favoriteRoutePreview(_ db: Database, startMs: Int64, endMs: Int64, boardId: String?) throws -> [[String: Any]] {
+  let buckets = try Row.fetchAll(db, sql: """
+    SELECT * FROM telemetry_minute_buckets
+    WHERE board_id = ? AND bucket_start_ms >= ? AND bucket_start_ms <= ?
+    ORDER BY first_sample_at_ms, bucket_start_ms, recording_id
+    """, arguments: [boardId ?? UNKNOWN_TELEMETRY_BOARD_ID, startMs - startMs % TELEMETRY_BUCKET_SIZE_MS, endMs])
+  var result: [[String: Any]] = []
+  var previousEnd: Int64?
+  var previousRecording: String?
+  for bucket in buckets {
+    let minuteStart: Int64 = bucket["bucket_start_ms"]
+    let minuteEnd = minuteStart + TELEMETRY_BUCKET_SIZE_MS
+    let recording: String = bucket["recording_id"]
+    let preview: String? = bucket["route_preview"]
+    let segments: [BucketRoutePreview.Segment]
+    if startMs > minuteStart || endMs < minuteEnd - 1 {
+      let rows = try Row.fetchAll(db, sql: """
+        SELECT * FROM ride_track_points WHERE fix_at_ms >= ? AND fix_at_ms < ?
+          AND board_id IS ? AND recording_id IS ? ORDER BY fix_at_ms, id
+        """, arguments: [max(startMs, minuteStart), min(endMs, minuteEnd - 1) + 1,
+          boardId, recording == LEGACY_RIDE_RECORDING_ID ? nil : recording])
+      segments = try BucketRoutePreview.decode(BucketRoutePreview.build(rows.map(rideTrackPoint)))
+    } else if let preview { segments = try BucketRoutePreview.decode(preview) }
+    else if let latitude: Int64 = bucket["first_latitude_e7"], let longitude: Int64 = bucket["first_longitude_e7"] {
+      segments = [BucketRoutePreview.Segment(firstAtMs: bucket["first_sample_at_ms"], lastAtMs: bucket["last_sample_at_ms"],
+        points: [BucketRoutePreview.Coordinate(latitudeE7: latitude, longitudeE7: longitude)])]
+    } else { segments = [] }
+    for (segmentIndex, segment) in segments.enumerated() {
+      let gap = previousEnd.map { segmentIndex > 0 || segment.firstAtMs - $0 > BucketRoutePreview.gapMs || previousRecording != recording } ?? false
+      for (index, point) in segment.points.enumerated() {
+        var value: [String: Any] = ["latitude": Double(point.latitudeE7) / 1e7, "longitude": Double(point.longitudeE7) / 1e7]
+        if index == 0 && gap { value["breakBefore"] = true }
+        result.append(value)
+      }
+      previousEnd = segment.lastAtMs
+      previousRecording = recording
+    }
+  }
+  return result
+}

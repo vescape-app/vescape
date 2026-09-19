@@ -341,6 +341,13 @@ interface TelemetryDao {
     limit: Int,
   ): List<TelemetryMinuteBucketEntity>
 
+  @Query("""
+    SELECT * FROM telemetry_minute_buckets
+    WHERE board_id = :boardId AND bucket_start_ms >= :fromMs AND bucket_start_ms <= :toMs
+    ORDER BY first_sample_at_ms, bucket_start_ms, recording_id
+  """)
+  suspend fun getFavoriteRouteBuckets(fromMs: Long, toMs: Long, boardId: String): List<TelemetryMinuteBucketEntity>
+
   @Query("SELECT * FROM telemetry_minute_buckets ORDER BY bucket_start_ms ASC")
   suspend fun getAllHistoryBucketsAsc(): List<TelemetryMinuteBucketEntity>
 
