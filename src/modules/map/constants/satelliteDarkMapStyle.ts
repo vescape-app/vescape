@@ -4,6 +4,7 @@ import {
   satelliteStreetLineLayers,
 } from '@/modules/map/constants/satelliteDarkLayers'
 import { theme } from '@/constants/theme'
+import type { ResolvedTheme } from '@/constants/theme'
 
 export const DEFAULT_SATELLITE_IMAGERY_OPACITY = 0.2
 export const DEFAULT_SATELLITE_MAP_IMAGERY_OPACITY = 1
@@ -14,6 +15,19 @@ const SATELLITE_MUTED_TEXT = theme.palette.mono.white
 const SATELLITE_HALO = 'hsl(0, 5%, 0%)'
 const SATELLITE_SOFT_HALO = 'hsla(0, 5%, 0%, 0.75)'
 const FULL_IMAGERY_OPACITY = 1
+
+/** Dashboard and Explore share this layer document; backdrop and roads follow app theme. */
+export function getSatelliteOverlayMapStyle(resolvedTheme: ResolvedTheme) {
+  return getSatelliteDarkMapStyle(
+    true,
+    true,
+    false,
+    true,
+    0.8,
+    resolvedTheme === 'light' ? '#e8eef5' : '#172033',
+    resolvedTheme === 'light' ? theme.palette.mono.black : theme.palette.mono.white,
+  )
+}
 
 export function getSatelliteImageryPaint(
   imageryOpacity = DEFAULT_SATELLITE_IMAGERY_OPACITY,
@@ -43,6 +57,7 @@ export function getSatelliteDarkMapStyle(
   showStreetLines = false,
   streetLineOpacity = 0.8,
   backgroundColor: string = theme.palette.slate.surfaceDeep,
+  roadColor: string = theme.palette.mono.white,
 ) {
   return JSON.stringify({
     version: 8,
@@ -61,7 +76,7 @@ export function getSatelliteDarkMapStyle(
         type: 'background',
         paint: { 'background-color': backgroundColor },
       },
-      ...satelliteStreetLineLayers(showStreetLines, streetLineOpacity),
+      ...satelliteStreetLineLayers(showStreetLines, streetLineOpacity, roadColor),
       {
         id: 'water-label',
         type: 'symbol',

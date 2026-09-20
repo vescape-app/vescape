@@ -2,7 +2,10 @@ import { useMemo } from 'react'
 
 import { IS_MAPY_CONFIGURED } from '@/config/mapy'
 import { BLANK_STYLE, MAP_STYLES, type MapStyleKey } from '@/modules/map/constants/mapStyles'
-import { getSatelliteImageryPaint } from '@/modules/map/constants/satelliteDarkMapStyle'
+import {
+  getSatelliteImageryPaint,
+  getSatelliteOverlayMapStyle,
+} from '@/modules/map/constants/satelliteDarkMapStyle'
 import { getOneDarkMapStyle } from '@/modules/map/constants/oneDarkMapStyle'
 import { resolveMapThemeTone } from '@/modules/map/lib/mapThemeTone'
 import { useThemeStore } from '@/hooks/useTheme'
@@ -82,19 +85,28 @@ export function useResolvedMapStyle({
     [satelliteTone.imageryContrast, satelliteTone.imageryOpacity, satelliteTone.imagerySaturation],
   )
   const oneDarkStyleJSON = useMemo(() => getOneDarkMapStyle(true, true, false), [])
+  const satelliteStyleJSON = useMemo(
+    () => getSatelliteOverlayMapStyle(resolvedTheme),
+    [resolvedTheme],
+  )
 
-  const styleJSON =
-    isOneDark || isSatelliteOverlay ? oneDarkStyleJSON : isMapy ? BLANK_STYLE : undefined
+  const styleJSON = isSatelliteOverlay
+    ? satelliteStyleJSON
+    : isOneDark
+      ? oneDarkStyleJSON
+      : isMapy
+        ? BLANK_STYLE
+        : undefined
   const existingLayerIds = useMemo(() => baseStyleLayerIds(styleJSON), [styleJSON])
 
-  // Signed by the style document Mapbox actually receives, not by the style key. Two keys can
-  // resolve to the same document (One Dark and the satellite overlay share it); the native map
-  // then has nothing to reload and never emits another style-loaded event, so a key-based
-  // signature would wait forever behind the loading spinner.
+  // Signed by the style document Mapbox actually receives. A theme change replaces the
+  // satellite backdrop, so it must wait for the new document before adopting its layers.
   const styleSignature = styleJSON
     ? isMapy
       ? 'json:blank'
-      : 'json:onedark'
+      : isSatelliteOverlay
+        ? `json:satellite:${resolvedTheme}`
+        : 'json:onedark'
     : String(selectedMapStyle.styleURL)
   const isStyleLoaded = loadedStyleSignature === styleSignature
 

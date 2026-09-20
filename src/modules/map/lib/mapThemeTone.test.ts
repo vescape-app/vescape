@@ -74,6 +74,23 @@ describe('resolveMapThemeTone', () => {
     expect(tone.imagerySaturation).toBeCloseTo(-0.38)
   })
 
+  test.each(['dark', 'light'] as const)(
+    '%s defaults keep Explore imagery stronger than Dashboard and respect both controls',
+    (theme) => {
+      const tone = (opacity: number) =>
+        resolveMapThemeTone({
+          theme,
+          outdoorLight: 0.5,
+          imageryOpacity: opacity,
+          imagerySaturation: -0.35,
+        }).imageryOpacity
+
+      expect(tone(1)).toBeGreaterThan(tone(0.2))
+      expect(tone(0.7)).toBeLessThan(tone(1))
+      expect(tone(0.4)).toBeGreaterThan(tone(0.2))
+    },
+  )
+
   test('keeps manual values inside Mapbox ranges', () => {
     const tone = resolveMapThemeTone({
       theme: 'dark',
