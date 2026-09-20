@@ -7,7 +7,6 @@ import {
   BluetoothConnectedIcon,
   CheckCircleIcon,
   DatabaseIcon,
-  GaugeIcon,
   HouseIcon,
   WatchIcon,
   WrenchIcon,
@@ -44,17 +43,10 @@ interface Shortcut {
 const SHORTCUTS: Shortcut[] = [
   {
     icon: BluetoothConnectedIcon,
-    accent: theme.settingsIcon.connection,
-    label: 'Connection',
-    hint: 'Auto start, auto connect, and sounds',
-    route: routes.settingsConnection,
-  },
-  {
-    icon: GaugeIcon,
-    accent: theme.settingsIcon.liveTelemetry,
-    label: 'Live telemetry',
-    hint: 'Graphs, update rate, and battery smoothing',
-    route: routes.settingsLiveTelemetry,
+    accent: theme.settingsIcon.automation,
+    label: 'Automation',
+    hint: 'Auto start, auto connect, and recording',
+    route: routes.settingsAutomation,
   },
   {
     icon: WatchIcon,

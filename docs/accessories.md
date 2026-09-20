@@ -72,9 +72,9 @@ no percentage. This preview never sends a command or bypasses the riding and con
 
 ## Discovery and enrollment
 
-- The existing Board selector is the accessory entry point, with separate Boards and Accessories sections and an Add accessory action alongside the existing Board management flow.
+- Advanced settings → Devices → Accessories lists saved accessories. Its Add accessory action opens accessory discovery. The Board selector shows a separate Accessories section only when accessories have been added.
 - Accessory rows show connection status and open the accessory's configuration screen. Accessories are not nested under individual Boards; bindings still use the currently connected Board.
-- Evolve the spike's Settings → Sensors navigation into this flow. Compose Board and accessory domains at the screen level rather than adding hardware-domain dependencies inside Board components.
+- Compose Board and accessory domains at the screen level rather than adding hardware-domain dependencies inside Board components.
 - Compatible accessories advertise a shared Vescape Accessory BLE service UUID, independent of their display names. The draft UUID is specified in [protocol v1](./accessory-protocol.md).
 - After connecting, Vescape reads a manifest containing a stable accessory ID, display name, protocol version, firmware version, and capabilities.
 - Each capability has a stable local ID and a recognized type. Ground-clearance inputs declare centimetres as their unit; brake-light outputs receive semantic states.

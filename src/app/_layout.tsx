@@ -200,8 +200,8 @@ function RootLayout() {
                 options={{ title: 'Privacy Zones' }}
               />
               <Stack.Screen
-                name={stackScreens.settingsConnection}
-                options={{ title: 'Connection' }}
+                name={stackScreens.settingsAutomation}
+                options={{ title: 'Automation' }}
               />
               <Stack.Screen
                 name={stackScreens.settingsDiagnostics}
@@ -238,6 +238,7 @@ function RootLayout() {
                 name={stackScreens.editBoardConfig}
                 options={{ title: 'Board Config' }}
               />
+              <Stack.Screen name={stackScreens.accessories} options={{ title: 'Accessories' }} />
               <Stack.Screen
                 name={stackScreens.accessoryScan}
                 options={{ title: 'Add Accessory' }}

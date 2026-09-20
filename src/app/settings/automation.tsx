@@ -33,7 +33,7 @@ const alertCompanionError = (error: unknown, fallback: string) => {
   if (message) Alert.alert('Auto start app', message)
 }
 
-export default function ConnectionSettingsScreen() {
+export default function AutomationSettingsScreen() {
   const {
     autoConnect,
     autoRecording,

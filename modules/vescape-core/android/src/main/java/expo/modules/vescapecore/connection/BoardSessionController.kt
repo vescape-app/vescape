@@ -2929,7 +2929,7 @@ private var wearAutoLaunchOnConnect = true
     }
 
     /**
-     * Auto close (Connection settings): exit the whole app after the configured delay without a
+     * Auto close (Automation settings): exit the whole app after the configured delay without a
      * board link. The countdown arms when the phase leaves Connected/Stale and only cancels once a
      * link is back, so reconnect-loop phase churn never resets it. Deliberately does NOT arm the
      * companion restart gate: the board reappearing should be able to auto start the app again.

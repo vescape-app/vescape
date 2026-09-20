@@ -1,4 +1,5 @@
 import { useSettingsStore } from '@/modules/settings/store/settingsStore'
+import { AccessoryIcon } from '@/modules/accessories/constants/accessoryIcon'
 import { useLayoutEffect } from 'react'
 import { View, StyleSheet, ScrollView, Platform } from 'react-native'
 import { Text } from '@/components/base/Text'
@@ -98,15 +99,15 @@ export default function SettingsScreen() {
           />
         </IconHero>
 
-        <SettingsSectionTitle>General</SettingsSectionTitle>
+        <SettingsSectionTitle>Connection</SettingsSectionTitle>
 
         <SettingsCard>
           <SettingsRow
             icon={BluetoothConnectedIcon}
-            iconColor={theme.settingsIcon.connection}
-            label="Connection"
+            iconColor={theme.settingsIcon.automation}
+            label="Automation"
             hint="Auto start and auto connect"
-            onPress={() => router.push(routes.settingsConnection)}
+            onPress={() => router.push(routes.settingsAutomation)}
           />
           <SettingsRow
             icon={GaugeIcon}
@@ -122,9 +123,14 @@ export default function SettingsScreen() {
             hint="Board warnings and health checks"
             onPress={() => router.push(routes.settingsDiagnostics)}
           />
+        </SettingsCard>
+
+        <SettingsSectionTitle>Preferences</SettingsSectionTitle>
+
+        <SettingsCard>
           <SettingsRow
             icon={GaugeIcon}
-            iconColor={theme.telemetry.speed}
+            iconColor={theme.palette.amber.color}
             label="Units"
             hint={unitSystem === 'metric' ? 'km/h · km · m' : 'mph · mi · ft'}
             right={
@@ -140,26 +146,23 @@ export default function SettingsScreen() {
               />
             }
           />
-        </SettingsCard>
-        <SettingsSectionTitle>Appearance</SettingsSectionTitle>
-        <SettingsCard>
           <SettingsRow
             icon={MapTrifoldIcon}
-            iconColor={theme.settingsIcon.map}
+            iconColor={theme.palette.green.color}
             label="Map"
             hint="Map appearance and satellite imagery"
             onPress={() => router.push(routes.settingsMap)}
           />
           <SettingsRow
             icon={SpeakerHighIcon}
-            iconColor={theme.palette.cyan.color}
+            iconColor={theme.palette.pink.color}
             label="Sounds"
             hint="Choose and preview a sound pack"
             onPress={() => router.push(routes.settingsSounds)}
           />
         </SettingsCard>
 
-        <SettingsSectionTitle>Watch</SettingsSectionTitle>
+        <SettingsSectionTitle>Devices</SettingsSectionTitle>
 
         <SettingsCard>
           <SettingsRow
@@ -168,6 +171,13 @@ export default function SettingsScreen() {
             label="Watch"
             hint="Push rate and what the wrist shows"
             onPress={() => router.push(routes.settingsWatch)}
+          />
+          <SettingsRow
+            icon={AccessoryIcon}
+            iconColor={theme.palette.teal.color}
+            label="Accessories"
+            hint="Manage sensors and lights"
+            onPress={() => router.push(routes.accessories)}
           />
         </SettingsCard>
 

@@ -64,7 +64,6 @@ export function AccessorySelectorSectionShowcase() {
         <AccessorySelectorSection
           accessories={accessories}
           onSelectAccessory={(id) => setLastAction(`Open accessory ${id}`)}
-          onAddAccessory={() => setLastAction('Add accessory')}
         />
       </View>
       <Text style={styles.action}>{lastAction}</Text>

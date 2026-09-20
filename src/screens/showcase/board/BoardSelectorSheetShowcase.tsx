@@ -119,11 +119,10 @@ export function BoardSelectorSheetShowcase() {
         <BoardSelectorContent
           boards={boards}
           accessories={
-            accessoriesOn ? (
+            accessoriesOn && !noAccessories ? (
               <AccessorySelectorSection
-                accessories={noAccessories ? [] : ACCESSORIES}
+                accessories={ACCESSORIES}
                 onSelectAccessory={(id) => setLastAction(`Open accessory ${id}`)}
-                onAddAccessory={() => setLastAction('Add accessory')}
               />
             ) : undefined
           }

@@ -19,10 +19,8 @@ import { accessoryNeedsSetup, useAccessoryStore } from '@/modules/accessories/st
  */
 export function BoardSelectorAccessories({
   onOpenAccessory,
-  onAddAccessory,
 }: {
   onOpenAccessory: (accessoryId: string) => void
-  onAddAccessory: () => void
 }) {
   const accessories = useAccessoryStore((s) => s.accessories)
   const sync = useAccessoryStore((s) => s.sync)
@@ -41,11 +39,5 @@ export function BoardSelectorAccessories({
     needsSetup: accessoryNeedsSetup(accessory),
   }))
 
-  return (
-    <AccessorySelectorSection
-      accessories={items}
-      onSelectAccessory={onOpenAccessory}
-      onAddAccessory={onAddAccessory}
-    />
-  )
+  return <AccessorySelectorSection accessories={items} onSelectAccessory={onOpenAccessory} />
 }

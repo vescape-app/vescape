@@ -23,7 +23,7 @@ export function ThemePicker() {
       <View ref={triggerRef} collapsable={false}>
         <SelectWidget
           icon={PaletteIcon}
-          accent={theme.settingsIcon.advanced}
+          accent={theme.palette.purple.color}
           label="Theme"
           value={selected.label}
           description={selected.hint}

@@ -19,7 +19,10 @@ import { ConnectedBoardPill } from '@/modules/board/components/ConnectedBoardPil
 import { BoardIssueDrawers } from '@/modules/board/components/BoardIssueDrawers'
 import { BoardSelectorAccessories } from '@/screens/main/overlays/BoardSelectorAccessories'
 import { AccessoryIcon } from '@/modules/accessories/constants/accessoryIcon'
-import { useConnectedAccessories } from '@/modules/accessories/store/accessoryStore'
+import {
+  useAccessoryStore,
+  useConnectedAccessories,
+} from '@/modules/accessories/store/accessoryStore'
 import { useBoardIssues } from '@/modules/board/hooks/useBoardIssues'
 import { useBleStore } from '@/modules/board/store/bleStore'
 import { isReplayBoardId } from 'vescape-core'
@@ -87,7 +90,7 @@ export function TopBar({
   // What the selector was asked for on its way out. Presenting a modal while another is still
   // dismissing is dropped, so anything opened from inside the selector waits for it to leave.
   const pendingExit = useRef<{
-    kind: 'warnings' | 'faults' | 'edit' | 'accessory' | 'add-accessory'
+    kind: 'warnings' | 'faults' | 'edit' | 'accessory'
     boardId?: string
     accessoryId?: string
   } | null>(null)
@@ -132,6 +135,19 @@ export function TopBar({
 
   // The pill's leading badge. Only a live link earns it — a saved Accessory that is merely
   // reconnecting must not read as one that is answering.
+  const hasAccessories = useAccessoryStore((s) => s.accessories.length > 0)
+  const accessoriesSection = useMemo(
+    () =>
+      hasAccessories ? (
+        <BoardSelectorAccessories
+          onOpenAccessory={(accessoryId) => {
+            pendingExit.current = { kind: 'accessory', accessoryId }
+            setSelectorOpen(false)
+          }}
+        />
+      ) : undefined,
+    [hasAccessories],
+  )
   const connectedAccessories = useConnectedAccessories()
   const accessoryBadge = useMemo(() => {
     if (connectedAccessories.length === 0) return undefined
@@ -270,18 +286,7 @@ export function TopBar({
         visible={selectorOpen}
         triggerRef={pillRef}
         boards={boards}
-        accessories={
-          <BoardSelectorAccessories
-            onOpenAccessory={(accessoryId) => {
-              pendingExit.current = { kind: 'accessory', accessoryId }
-              setSelectorOpen(false)
-            }}
-            onAddAccessory={() => {
-              pendingExit.current = { kind: 'add-accessory' }
-              setSelectorOpen(false)
-            }}
-          />
-        }
+        accessories={accessoriesSection}
         activeBoardId={activeBoardId}
         activeBoardLive={bleStatus === 'connected' || bleStatus === 'stale'}
         warnings={
@@ -319,7 +324,6 @@ export function TopBar({
           if (exit?.kind === 'accessory' && exit.accessoryId) {
             router.push({ pathname: routes.accessory, params: { accessoryId: exit.accessoryId } })
           }
-          if (exit?.kind === 'add-accessory') router.push(routes.accessoryScan)
         }}
         onSelectBoard={(id) => {
           onSelectBoard(id)
