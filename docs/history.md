@@ -223,3 +223,78 @@ belong to Board/time ranges; deleting one identified recording preserves those s
 directions, including independent GPS fixes and recording end intent. Native lifecycle tests and
 full app builds cover integration beyond the database hosts. Real-device background GPS behavior
 still requires a device smoke test.
+
+## Ride export design, not yet implemented
+
+Decisions from the 2026-09-20 design discussion:
+
+- Replace the Delete button with a three-dot menu containing **Export GPX**, **Export CSV**, and
+  **Delete**, for both Ride History entries and Favorites. The two exports are direct menu items;
+  there is no intermediate format picker.
+- Export a history entry's full stored range, scoped to its Board and recording identity where
+  available. Export a Favorite's exact saved Board/time range. Chart zoom and playback position do
+  not change the export range.
+- Keep both export items enabled without querying data availability. Empty input may produce an
+  empty export; do not add button-disable logic for missing GPS or telemetry.
+- Native generates the temporary file in batches on both platforms. JS sends the export intent
+  and opens the system share sheet. Read the complete stored range, independently of the chart
+  reader's 20,000-sample cap; do not load a whole ride into JS to serialize it.
+- CSV is for debugging. Include all stored board telemetry, including spikes and samples excluded
+  from statistics. Do not sanitize, smooth, interpolate, or replace readings. Export retained data;
+  do not claim to recover precision or fields that recording never stored.
+- Both formats reuse the existing history GPS precision rule, including its legacy behavior.
+  Fixes with reported accuracy above 20 m are excluded. The rider explicitly accepted this filter
+  for debugging CSV too.
+- Stay close to Floaty's export structure where straightforward. Keep its column names and units
+  for matching fields, omit unsupported columns, and append additional stored telemetry fields
+  such as `erpm` and `balanceCurrent`. External-app import testing belongs to the rider; exact
+  importer compatibility is not yet verified. No VESC-specific CSV contract has been established.
+
+### CSV mapping and merge
+
+Floaty's reference CSV uses Unix timestamps in milliseconds, board speed in km/h, duty cycle as a
+fraction, currents in amperes, temperatures in Celsius, distances in metres, and angles in degrees.
+Map matching stored fields into those representations, independently of display-unit preferences.
+
+| Floaty field             | Vescape source                              |
+| ------------------------ | ------------------------------------------- |
+| `timestamp`              | Stored telemetry capture time               |
+| `speed`                  | Board speed                                 |
+| `batteryVolts`           | Battery voltage                             |
+| `motorTemp`              | Motor temperature                           |
+| `controllerTemp`         | MOSFET temperature                          |
+| `lifeDistance`           | Odometer                                    |
+| `rollAngle`              | Roll                                        |
+| `pitchAngle`             | Balance pitch                               |
+| `truePitchAngle`         | Pitch                                       |
+| `state`                  | Lower state bits of the stored packed state |
+| `setpointAdjustmentType` | Upper state bits of the stored packed state |
+
+Other matching fields include `dutyCycle`, `batteryCurrent`, `motorCurrent`, `switchState`, `adc1`,
+and `adc2`; preserve their meaning when mapping the stored representation. Unsupported columns
+are omitted, not populated with fabricated values. Specifically omit `inputTilt`, `throttle`,
+`ampHours`, `wattHours`, `remainingDistance`, `batteryUtilization`, `phaseUtilization`, and
+`faultCode`. Board-owned fault occurrences are not a per-sample fault column.
+
+Also omit `tripDistance`: do not invent a trip counter by subtracting the initial odometer.
+Omit `batteryPercent`: Vescape derives it when reading history using the Board's current battery
+configuration; it is not stored telemetry.
+
+Produce one CSV row per telemetry sample. Match Floaty's GPS merge over chronological data:
+
+- Attach the latest accepted GPS fix at or before the telemetry timestamp.
+- Before the first accepted fix, use that first fix; after the final fix, keep the final fix.
+- Retain the telemetry timestamp and expose the GPS fix's own `gpsTimestamp` and `gpsSpeed`,
+  alongside its coordinates, altitude, and accuracy.
+- With no accepted GPS fixes, preserve telemetry rows with empty GPS fields.
+
+This merge repeats GPS observations; it does not interpolate coordinates or create new GPS fixes.
+
+### Reference evidence
+
+The supplied research is `~/Workspace/floaty-reverse-engineering/EXPORT.md`, based on static
+inspection of Floaty Android 3.0.0, versionCode 379. Further inspection in this discussion found
+the `session_logs` and `session_locations` column definitions near line 339650 of
+`hermes-pseudocode.js`, the packed state and pitch decoder near line 463380, and the Garmin GPX
+builder near line 1761550. Floaty's GPX is GPX 1.1 with GPS speed in a Garmin TrackPointExtension
+v2. These are reference findings, not proof of a successful import into an external app.
