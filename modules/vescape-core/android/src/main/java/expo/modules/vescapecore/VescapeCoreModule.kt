@@ -1223,6 +1223,7 @@ class VescapeCoreModule : Module() {
       RecordingStorageFailure.requireAvailable()
       try {
         AppDataRepository.get(context.applicationContext).upsertBoard(board)
+        CoreForegroundService.reloadAlertRules(context.applicationContext)
         CoreForegroundService.reloadBoardData()
         connectSavedBoardLink(board["id"] as? String)
       } catch (error: Exception) {
@@ -1238,6 +1239,16 @@ class VescapeCoreModule : Module() {
         RecordingStorageFailure.report("board_delete", "write_failed", error)
         throw error
       }
+    }
+    // @parity /modules/vescape-core/ios/VescapeCoreModule.swift `applyAlertPreset`
+    // @parity /modules/vescape-core/src/index.ts `applyAlertPreset`
+    AsyncFunction("applyAlertPreset") Coroutine { boardId: String, metric: String, action: String, level: String?, matchBoardConfig: Boolean? ->
+      RecordingStorageFailure.requireAvailable()
+      try {
+        AppDataRepository.get(context.applicationContext).applyAlertPreset(boardId, metric, action, level, matchBoardConfig)
+        CoreForegroundService.reloadAlertRules(context.applicationContext)
+      } catch (error: CancellationException) { throw error }
+      catch (error: Throwable) { RecordingStorageFailure.report("alert_preset_apply", "write_failed", error); throw error }
     }
     AsyncFunction("getAlertRules") { boardId: String ->
       RecordingStorageFailure.requireAvailable()

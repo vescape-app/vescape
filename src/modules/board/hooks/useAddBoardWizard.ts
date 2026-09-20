@@ -12,7 +12,6 @@ import {
 } from '@/modules/alerts/lib/alertPresets'
 import type { DraftAlertSetup } from '@/modules/alerts/hooks/useMetricAlerts'
 import { DEFAULT_BOARD_TOP_SPEED_KMH } from '@/modules/alerts/lib/boardAlertSettings'
-import { useAlertPresetStore } from '@/modules/alerts/store/alertPresetStore'
 import { useAlertsStore } from '@/modules/alerts/store/alertsStore'
 import { DEFAULT_BATTERY_CONFIG, deriveBatteryConfig } from '@/modules/battery/lib'
 import {
@@ -205,23 +204,19 @@ export function useAddBoardWizard(): UseAddBoardWizard {
       description: description.trim() || undefined,
       link: draftLink,
       batteryConfig,
-      // Persist the draft alert setup onto the new Board (#254), then materialize its preset rules.
+      // Native saves the Board and its generated preset rules together.
       topSpeedKmh,
       alertPreset: draftAlertPresetSelection(alertSetup),
       alertPresetsOnboarded: true,
     })
     setActiveBoard(board.id)
-    void (async () => {
-      await useAlertsStore.getState().load(board.id)
-      // Flush the rider's own rules first: they carry no board id until one exists, and metrics
-      // holding them are `custom`, so the regeneration below never touches them.
-      for (const { rules } of Object.values(alertSetup)) {
-        for (const rule of rules) {
-          await useAlertsStore.getState().upsert({ ...rule, boardId: board.id })
-        }
+    await useAlertsStore.getState().load(board.id)
+    // Custom draft rules carry no Board id until the Board exists.
+    for (const { rules } of Object.values(alertSetup)) {
+      for (const rule of rules) {
+        await useAlertsStore.getState().upsert({ ...rule, boardId: board.id })
       }
-      await useAlertPresetStore.getState().regenerateAll()
-    })()
+    }
     router.dismissAll()
   }
 

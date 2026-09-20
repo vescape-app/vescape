@@ -72,17 +72,21 @@ final class BoardSettingsPersistence {
 
   func upsertBoard(_ board: PersistedBoard, settings: [PersistedBoardSetting], deletedKeys: [String]) throws {
     try writer.write { db in
+      let existing = try PersistedBoard.fetchOne(db, key: board.id) != nil
+      let presetKeys = ["alertPreset", "matchBoardConfig"]
+      let previousSettings = try AlertPresetPersistence.settings(db, board.id)
       let tombstone = try PersistedBoard.fetchOne(db, key: board.id)?.deletedAt
       try PersistedBoard(
         id: board.id, name: board.name, bleId: board.bleId, transport: board.transport,
         createdAt: board.createdAt, deletedAt: tombstone ?? board.deletedAt
       ).save(db)
-      for key in deletedKeys {
+      for key in deletedKeys where !(existing && presetKeys.contains(key)) {
         _ = try PersistedBoardSetting
           .filter(Column("board_id") == board.id && Column("key") == key)
           .deleteAll(db)
       }
-      for setting in settings { try setting.save(db) }
+      for setting in settings where !(existing && presetKeys.contains(setting.key)) { try setting.save(db) }
+      try AlertPresetPersistence.regenerateChanged(db, boardId: board.id, before: previousSettings)
     }
   }
 

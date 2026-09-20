@@ -4,7 +4,6 @@ import { ALERT_BEEP_COUNT_DEFAULT } from 'vescape-core'
 import {
   batteryDrainAlertTestEasing,
   buildAlertTestRules,
-  buildMetricAlertRuleSnapshot,
   getAlertThresholdValues,
   highRangeAlertTestEasing,
 } from '@/modules/alerts/lib/alertTest'
@@ -138,41 +137,6 @@ test('off and blocked battery presets cannot start a test', () => {
       hasBatteryConfig: false,
     }),
   ).toEqual([])
-})
-
-test('non-preset snapshots keep only enabled custom rules', () => {
-  const rules = buildMetricAlertRuleSnapshot({
-    metric: null,
-    level: 'custom',
-    boardTopSpeedKmh: 40,
-    hasBatteryConfig: true,
-    rules: [
-      {
-        id: 'enabled',
-        controlId: 'motor-current',
-        threshold: 120,
-        thresholdMax: 180,
-        soundType: 'preset:tick',
-        enabled: true,
-        createdAt: 1,
-        repeatEverySeconds: null,
-        beepCount: ALERT_BEEP_COUNT_DEFAULT,
-      },
-      {
-        id: 'disabled',
-        controlId: 'motor-current',
-        threshold: 50,
-        thresholdMax: null,
-        soundType: 'preset:beep',
-        enabled: false,
-        createdAt: 2,
-        repeatEverySeconds: null,
-        beepCount: ALERT_BEEP_COUNT_DEFAULT,
-      },
-    ],
-  })
-
-  expect(rules.map((rule) => rule.id)).toEqual(['alert-test:custom:enabled'])
 })
 
 test('chart thresholds include range ceilings once in numeric order', () => {

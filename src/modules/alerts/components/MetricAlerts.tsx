@@ -1,10 +1,8 @@
 import { type ReactNode, useMemo, useState } from 'react'
 import { StyleSheet, View } from 'react-native'
 import type { SharedValue } from 'react-native-reanimated'
-import type { AlertTestRule } from 'vescape-core'
 
 import { Text } from '@/components/base/Text'
-import type { DualGaugeAlert } from '@/components/charts/gaugeAlert'
 import { ConfirmModal } from '@/components/modals/ConfirmModal'
 import { theme } from '@/constants/theme'
 import { deriveBatteryConfig } from '@/modules/battery/lib'
@@ -12,8 +10,6 @@ import type { DerivedBatteryConfig } from '@/modules/battery/lib/types'
 import { AlertPresetControl } from '@/modules/alerts/components/AlertPresetControl'
 import { AlertRuleList } from '@/modules/alerts/components/AlertRuleList'
 import type { MetricAlertsController } from '@/modules/alerts/hooks/useMetricAlerts'
-import { buildMetricAlertRuleSnapshot } from '@/modules/alerts/lib/alertTest'
-import { useBoardConfigBases } from '@/modules/alerts/hooks/useBoardConfigBases'
 import { useBoardStore } from '@/modules/board/store/boardStore'
 
 /** Structural mirror of the gauge hot-range span; keeps this module clear of the history module. */
@@ -30,8 +26,6 @@ interface MetricAlertsProps {
   hotRange?: MetricAlertsHotRange | null
   /** Detail-screen Alerts heading, placed directly below the gauge. */
   controlsHeader?: ReactNode
-  /** Optional precomputed snapshot shared with the screen's chart markers. */
-  ruleSnapshot?: AlertTestRule[]
 }
 
 /**
@@ -48,41 +42,10 @@ export function MetricAlerts({
   liveValue,
   hotRange,
   controlsHeader,
-  ruleSnapshot,
 }: MetricAlertsProps) {
   const [confirmingDiscard, setConfirmingDiscard] = useState(false)
-  const configBases = useBoardConfigBases()
 
   const batteryConfig = useBatteryConfig(controller?.controlId)
-  const customMarkers = useMemo<DualGaugeAlert[]>(
-    () =>
-      (controller?.rules ?? [])
-        .filter((rule) => rule.enabled)
-        .map((rule) => ({
-          id: rule.id,
-          threshold: rule.threshold,
-          thresholdMax: rule.thresholdMax,
-          repeats: rule.repeatEverySeconds != null,
-        })),
-    [controller?.rules],
-  )
-  const derivedRuleSnapshot = useMemo(
-    () =>
-      controller
-        ? buildMetricAlertRuleSnapshot({
-            metric: controller.metric,
-            level: controller.level,
-            rules: controller.rules,
-            speedUnitSystem: controller.speedUnitSystem,
-            boardTopSpeedKmh: controller.topSpeedKmh,
-            hasBatteryConfig: controller.hasBatteryConfig,
-            matchBoardConfig: controller.matchBoardConfig,
-            configBases,
-          })
-        : [],
-    [controller, configBases],
-  )
-  const visibleRuleSnapshot = ruleSnapshot ?? derivedRuleSnapshot
 
   if (!controller) return <NoBoardNotice />
 
@@ -99,20 +62,21 @@ export function MetricAlerts({
           level={level}
           onLevelChange={controller.setLevel}
           liveValue={liveValue}
-          speedUnitSystem={controller.speedUnitSystem}
           boardTopSpeedKmh={controller.topSpeedKmh}
-          hasBatteryConfig={hasBatteryConfig}
           matchBoardConfig={controller.matchBoardConfig}
           onMatchBoardConfigChange={controller.setMatchBoardConfig}
-          configBases={configBases}
-          customAlerts={customMarkers}
+          configBases={controller.configBases}
           hotRange={hotRange}
           disabled={batteryBlocked}
-          testRules={visibleRuleSnapshot}
+          ruleSnapshot={controller.ruleSnapshot}
           controlsHeader={controlsHeader}
           onCustomize={controller.customize}
           onDiscardCustom={() => setConfirmingDiscard(true)}
         />
+      ) : null}
+
+      {controller.error && !isCustom && metric ? (
+        <Text style={styles.error}>{controller.error}</Text>
       ) : null}
 
       {batteryBlocked ? (
@@ -170,6 +134,7 @@ const styles = StyleSheet.create({
   container: {
     gap: 10,
   },
+  error: { color: theme.status.error.color, fontSize: 12 },
   rules: {
     gap: 8,
   },

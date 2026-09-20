@@ -75,7 +75,7 @@ export function AlertPresetControlShowcase() {
         matchBoardConfig: { [metric]: match },
         configBases: configOff ? SHOWCASE_CONFIG_BASES_OFF : SHOWCASE_CONFIG_BASES,
         customRules:
-          level === 'custom'
+          level === 'custom' || custom
             ? PRESET_DEMO_CUSTOM_ALERTS[metric].map((rule) => ({
                 ...rule,
                 controlId: metric,
@@ -88,7 +88,7 @@ export function AlertPresetControlShowcase() {
               }))
             : [],
       }),
-    [configOff, level, match, metric, units],
+    [configOff, level, match, metric, units, custom],
   )
 
   useEffect(() => {
@@ -130,19 +130,12 @@ export function AlertPresetControlShowcase() {
         level={level}
         onLevelChange={setLevel}
         liveValue={live ? liveValue : undefined}
-        speedUnitSystem={units}
         boardTopSpeedKmh={50}
-        hasBatteryConfig
         matchBoardConfig={{ [metric]: match }}
         onMatchBoardConfigChange={setMatch}
         configBases={configOff ? SHOWCASE_CONFIG_BASES_OFF : SHOWCASE_CONFIG_BASES}
-        customAlerts={
-          custom
-            ? PRESET_DEMO_CUSTOM_ALERTS[metric].map((a) => ({ ...a, thresholdMax: null }))
-            : undefined
-        }
         disabled={disabled}
-        testRules={testRules}
+        ruleSnapshot={testRules}
         onCustomize={editable ? () => setLevel('custom') : undefined}
         onDiscardCustom={editable ? () => setLevel('normal') : undefined}
       />

@@ -11,28 +11,13 @@ import {
   resolveConfigRelativeBase,
   type BoardConfigBases,
 } from '@/modules/alerts/lib/configRelativeFields'
-import { TELEMETRY_THRESHOLDS } from '@/modules/board/constants/telemetryThresholds'
+import definitions from '@/../modules/vescape-core/shared/alert-preset-definitions.json'
 
 /**
- * Alert Presets — declarative per-metric intensity levels that expand into a set
- * of concrete Alert Rules.
- *
- * This is the pure, tested core the rest of the feature builds on: no UI, no
- * persistence, no native. A rider picks a {@link AlertPresetLevel} per metric and
- * {@link generateAlertPresetRules} deterministically maps `(metric, level, options)`
- * to {@link AlertRuleSpec}s. The store (provenance, ids, regeneration) finalizes
- * those specs — this module never persists.
- *
- * Two feedback families:
- * - **discrete** (battery, motor/controller temperature) → one single-threshold
- *   text-to-speech rule per configured point. Safer levels add more points and
- *   start earlier.
- * - **geiger** (speed, duty) → one range rule (`threshold` → `thresholdMax`) whose
- *   start drops with protection while the ceiling stays fixed.
- *
- * Values seed from the shared {@link TELEMETRY_THRESHOLDS} where sensible so the
- * presets track any future tuning of the visual warning tiers. Tune per-metric
- * counts/values here — never in native or in components.
+ * Draft previews and presentation for Alert Presets. Native owns saved preset generation and
+ * persistence; all three implementations consume the shared declarative definitions.
+ * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/AlertPresetPersistence.kt
+ * @parity /modules/vescape-core/ios/telemetry/AlertPresetPersistence.swift
  */
 
 /**
@@ -92,17 +77,20 @@ interface DiscreteMetricConfig {
 }
 
 /**
- * One generated threshold point. A bare number is a one-shot announcement; the object form adds a
- * repeat cadence for a rung that should keep nagging while the rider stays past it.
+ * One generated threshold point. A null repeat cadence is a one-shot announcement; a cadence
+ * keeps announcing while the rider stays past the point.
  */
-type DiscretePoint = number | { threshold: number; repeatEverySeconds: number }
+interface DiscretePoint {
+  threshold: number
+  repeatEverySeconds: number | null
+}
 
 function pointThreshold(point: DiscretePoint): number {
-  return typeof point === 'number' ? point : point.threshold
+  return point.threshold
 }
 
 function pointRepeatSeconds(point: DiscretePoint): number | null {
-  return typeof point === 'number' ? null : point.repeatEverySeconds
+  return point.repeatEverySeconds
 }
 
 interface GeigerMetricConfig {
@@ -116,98 +104,11 @@ interface GeigerMetricConfig {
 
 type AlertPresetMetricConfig = DiscreteMetricConfig | GeigerMetricConfig
 
-const { battery, temp, duty } = TELEMETRY_THRESHOLDS
-const batteryWarningPct = Math.round(battery.warning * 100)
-const batteryCriticalPct = Math.round(battery.critical * 100)
-
-/** Seconds between repeats on a ladder's top rung — slow enough to stay information, not alarm. */
-const TEMP_NAG_INTERVAL_SECONDS = 10
-
-/** Motor top rung: 5°C under the stock 100°C throttle point. */
-const TEMP_NAG_MOTOR: DiscretePoint = {
-  threshold: 95,
-  repeatEverySeconds: TEMP_NAG_INTERVAL_SECONDS,
-}
-
-/** Controller top rung: the stock 85°C throttle point, i.e. "the board is limiting you now". */
-const TEMP_NAG_CONTROLLER: DiscretePoint = {
-  threshold: 85,
-  repeatEverySeconds: TEMP_NAG_INTERVAL_SECONDS,
-}
-
-/**
- * The two temperatures do not share a ladder: VESC stock throttling starts at 100°C for the motor
- * but 85°C for the controller, so the same numbers mean very different things. Each ladder sits
- * under its own throttle point — the rider hears it while easing off still helps — and ends in a
- * repeating rung placed about where the board starts limiting power, the one case where nagging is
- * the correct behavior.
- *
- * Motor temperature is the less trustworthy of the two: plenty of hub motors report nothing usable,
- * and native drops non-positive readings, so this ladder never fires on those Boards.
- */
-const MOTOR_TEMP_LEVELS: Record<ActiveLevel, DiscretePoint[]> = {
-  safe: [temp.warning, 85, TEMP_NAG_MOTOR],
-  normal: [85, TEMP_NAG_MOTOR],
-  minimal: [TEMP_NAG_MOTOR],
-}
-
-const CONTROLLER_TEMP_LEVELS: Record<ActiveLevel, DiscretePoint[]> = {
-  safe: [60, 75, TEMP_NAG_CONTROLLER],
-  normal: [75, TEMP_NAG_CONTROLLER],
-  minimal: [TEMP_NAG_CONTROLLER],
-}
-
-/**
- * Declarative safe/normal/minimal definition for every preset metric. Battery points
- * are in percent (native compares battery single-threshold rules against SoC %
- * directly); temperatures in °C; duty in %; speed as a fraction of Board Top Speed.
- *
- * Key order is the rider-facing order (see {@link ALERT_PRESET_METRICS}): ride metrics
- * first, then the two temperatures, then battery.
- */
-export const ALERT_PRESET_LEVELS: Record<AlertPresetMetric, AlertPresetMetricConfig> = {
-  speed: {
-    family: 'geiger',
-    // Speed and duty ramp over almost the same part of a ride, so they must not sound alike:
-    // a rider who hears ticking has to know which one is talking without looking.
-    soundType: 'preset:gamma',
-    scaledByTopSpeed: true,
-    levels: {
-      safe: { start: 0.6, ceiling: 0.9 },
-      normal: { start: 0.72, ceiling: 0.9 },
-      minimal: { start: 0.82, ceiling: 0.9 },
-    },
-  },
-  duty: {
-    family: 'geiger',
-    soundType: 'preset:tick',
-    levels: {
-      safe: { start: 75, ceiling: duty.critical },
-      normal: { start: duty.warning, ceiling: duty.critical },
-      minimal: { start: 85, ceiling: duty.critical },
-    },
-  },
-  'motor-temp': {
-    family: 'discrete',
-    soundType: 'tts:Motor {value} {unit}',
-    levels: MOTOR_TEMP_LEVELS,
-  },
-  'controller-temp': {
-    family: 'discrete',
-    soundType: 'tts:Controller {value} {unit}',
-    levels: CONTROLLER_TEMP_LEVELS,
-  },
-  battery: {
-    family: 'discrete',
-    soundType: 'tts:Battery {percent}%',
-    requiresBatteryConfig: true,
-    levels: {
-      safe: [50, 40, batteryWarningPct, 20, 15, batteryCriticalPct, 5],
-      normal: [50, 35, 20, batteryCriticalPct, 5],
-      minimal: [20, batteryCriticalPct, 5],
-    },
-  },
-}
+/** Single shared source for native generation and unsaved wizard previews. */
+export const ALERT_PRESET_LEVELS = definitions.metrics as Record<
+  AlertPresetMetric,
+  AlertPresetMetricConfig
+>
 
 /**
  * How each metric's preset re-anchors itself when the rider asks it to match the board.
@@ -235,31 +136,9 @@ interface GeigerConfigMatch {
 
 type AlertPresetConfigMatch = DiscreteConfigMatch | GeigerConfigMatch
 
-/** Temperature ladder offsets: warn while easing off still helps, nag once the board is limiting. */
-const TEMP_MATCH_LEVELS: Record<ActiveLevel, DiscretePoint[]> = {
-  safe: [-20, -10, { threshold: 0, repeatEverySeconds: TEMP_NAG_INTERVAL_SECONDS }],
-  normal: [-10, { threshold: 0, repeatEverySeconds: TEMP_NAG_INTERVAL_SECONDS }],
-  minimal: [{ threshold: 0, repeatEverySeconds: TEMP_NAG_INTERVAL_SECONDS }],
-}
-
-export const ALERT_PRESET_CONFIG_MATCH: Partial<Record<AlertPresetMetric, AlertPresetConfigMatch>> =
-  {
-    duty: {
-      family: 'geiger',
-      fieldId: 'tiltback_duty',
-      levels: {
-        safe: { start: -15, ceiling: 0 },
-        normal: { start: -10, ceiling: 0 },
-        minimal: { start: -5, ceiling: 0 },
-      },
-    },
-    'motor-temp': { family: 'discrete', fieldId: 'l_temp_motor_start', levels: TEMP_MATCH_LEVELS },
-    'controller-temp': {
-      family: 'discrete',
-      fieldId: 'l_temp_fet_start',
-      levels: TEMP_MATCH_LEVELS,
-    },
-  }
+export const ALERT_PRESET_CONFIG_MATCH = definitions.match as Partial<
+  Record<AlertPresetMetric, AlertPresetConfigMatch>
+>
 
 /** True where the rider can ask this metric's preset to follow the board's own configuration. */
 export function supportsBoardConfigMatch(metric: AlertPresetMetric): boolean {
@@ -437,9 +316,8 @@ const ALERT_PRESET_UNIT: Record<AlertPresetMetric, string> = {
 }
 
 /**
- * Human-readable summary of a metric's active preset thresholds (e.g. `10%, 20%, 30%`
- * for discrete battery, `80–90%` for a geiger range). Built straight from
- * {@link generateAlertPresetRules} so it always mirrors the rules actually applied.
+ * Human-readable summary for an unsaved preset draft (e.g. `10%, 20%, 30%` for battery,
+ * `80–90%` for a geiger range), using the shared native preset definitions.
  * Returns `null` when the level is `off` or guarded away (no rules to describe).
  */
 export function formatAlertPresetSummary(
@@ -473,9 +351,7 @@ function joinList(parts: string[]): string {
 }
 
 /**
- * What the rider will actually hear at the selected level, in a sentence. Built from
- * {@link generateAlertPresetRules} for the same reason {@link formatAlertPresetSummary} is: the
- * only description worth showing is one that cannot drift from the rules being applied.
+ * Describe an unsaved preset draft. Saved Boards use describeAlertRules with persisted rules.
  *
  * `null` where there is nothing to describe — a metric guarded away (battery without a config,
  * speed without a Board Top Speed) is explained by the screen, not by this line.
@@ -489,7 +365,15 @@ export function describeAlertPreset(
   if (level === 'off') return 'No sound from this metric.'
   if (level === 'custom') return 'Your own rules — edit them below.'
 
-  const specs = resolvedAlertPresetRules(metric, level, options)
+  return describeAlertRules(metric, resolvedAlertPresetRules(metric, level, options), units)
+}
+
+/** Describe resolved rules supplied by a saved Board or an unsaved wizard preview. */
+export function describeAlertRules(
+  metric: AlertPresetMetric,
+  specs: readonly Pick<AlertRuleSpec, 'threshold' | 'thresholdMax' | 'repeatEverySeconds'>[],
+  units: UnitSystem = 'metric',
+): string | null {
   if (specs.length === 0) return null
   const unit = metric === 'speed' ? ` ${speedUnit(units)}` : ALERT_PRESET_UNIT[metric]
   const number = (value: number) =>
@@ -567,14 +451,6 @@ export function normalizeAlertPresetSelection(raw: unknown): AlertPresetSelectio
   const units = (raw as Record<string, unknown> | null)?.speedUnitSystem
   if (units === 'metric' || units === 'imperial') selection.speedUnitSystem = units
   return selection
-}
-
-/**
- * Deterministic rule id for the `index`-th generated rule of a metric. Stable across
- * regeneration so a metric's preset rules always occupy the same id slots.
- */
-export function presetAlertRuleId(metric: AlertPresetMetric, index: number): string {
-  return `${ALERT_PRESET_SOURCE}:${metric}:${index}`
 }
 
 /** True when a rule was generated by an Alert Preset. */

@@ -1,3 +1,8 @@
+import type { AlertTestRule } from 'vescape-core'
+import { useBoardConfigBases } from '@/modules/alerts/hooks/useBoardConfigBases'
+import { useResolvedAlertRules } from '@/modules/alerts/hooks/useResolvedAlertRules'
+import { buildAlertTestRules, toTestRule } from '@/modules/alerts/lib/alertTest'
+import type { BoardConfigBases } from '@/modules/alerts/lib/configRelativeFields'
 import { useUnitSystem } from '@/hooks/useUnitSystem'
 import type { UnitSystem } from '@/helpers/units'
 import { useMemo } from 'react'
@@ -42,7 +47,9 @@ export interface MetricAlertsController {
   level: AlertPresetLevel
   /** Rider-owned rules for this control. Preset-generated rules never appear here. */
   rules: DraftAlertRule[]
-  speedUnitSystem?: UnitSystem
+  /** One resolved snapshot for markers, descriptions, chart lines, and sound preview. */
+  ruleSnapshot: AlertTestRule[]
+  configBases: BoardConfigBases
   topSpeedKmh: number
   hasBatteryConfig: boolean
   /** Metrics this Board follows its own configuration for. */
@@ -66,6 +73,12 @@ export interface MetricAlertsController {
  */
 export function useBoardMetricAlerts(controlId: string): MetricAlertsController | null {
   const board = useBoardStore((s) => s.boards.find((b) => b.id === s.activeBoardId))
+  const resolvedRules = useResolvedAlertRules()
+  const configBases = useBoardConfigBases()
+  const ruleSnapshot = useMemo(
+    () => resolvedRules.filter((rule) => rule.controlId === controlId).map(toTestRule),
+    [resolvedRules, controlId],
+  )
   const allRules = useAlertsStore((s) => s.rules)
   const error = useAlertsStore((s) => s.error)
   const { add, update, toggle, remove } = useAlertsStore(
@@ -86,28 +99,58 @@ export function useBoardMetricAlerts(controlId: string): MetricAlertsController 
       controlId,
       level,
       rules,
-      speedUnitSystem: boardAlertPresetSelection(board).speedUnitSystem,
+      ruleSnapshot,
+      configBases,
       topSpeedKmh: boardTopSpeedKmh(board),
       hasBatteryConfig: boardHasBatteryConfig(board),
       matchBoardConfig: boardMatchBoardConfig(board),
       setMatchBoardConfig: (enabled) => {
-        if (metric) void presets().setMatchBoardConfig(metric, enabled)
+        // intentional-suppression: the Alerts store error is rendered by MetricAlerts.
+        if (metric)
+          void presets()
+            .setMatchBoardConfig(metric, enabled)
+            .catch(() => undefined)
       },
       setLevel: (next) => {
-        if (metric) void presets().setLevel(metric, next)
+        // intentional-suppression: the Alerts store error is rendered by MetricAlerts.
+        if (metric)
+          void presets()
+            .setLevel(metric, next)
+            .catch(() => undefined)
       },
       customize: () => {
-        if (metric) void presets().customize(metric)
+        // intentional-suppression: the Alerts store error is rendered by MetricAlerts.
+        if (metric)
+          void presets()
+            .customize(metric)
+            .catch(() => undefined)
       },
       discardCustom: () => {
-        if (metric) void presets().discardCustom(metric)
+        // intentional-suppression: the Alerts store error is rendered by MetricAlerts.
+        if (metric)
+          void presets()
+            .discardCustom(metric)
+            .catch(() => undefined)
       },
       addRule: (draft) => add(controlId, draft),
       updateRule: (id, draft) => update(id, draft),
       toggleRule: (id) => toggle(id),
       removeRule: (id) => remove(id),
     }
-  }, [board, metric, controlId, level, rules, error, add, update, toggle, remove])
+  }, [
+    board,
+    metric,
+    controlId,
+    level,
+    rules,
+    error,
+    add,
+    update,
+    toggle,
+    remove,
+    ruleSnapshot,
+    configBases,
+  ])
 }
 
 /** One metric's buffered alert setup inside the add-board wizard. */
@@ -145,7 +188,15 @@ export function useDraftMetricAlerts(
       controlId: metric,
       level: setup.level,
       rules: setup.rules,
-      speedUnitSystem: setup.speedUnitSystem,
+      ruleSnapshot: buildAlertTestRules({
+        metric,
+        level: setup.level,
+        customRules: setup.rules,
+        speedUnitSystem: setup.speedUnitSystem,
+        boardTopSpeedKmh: topSpeedKmh,
+        hasBatteryConfig,
+      }),
+      configBases: {},
       topSpeedKmh,
       hasBatteryConfig,
       // The wizard has no Board yet, so no config has been read to match against.

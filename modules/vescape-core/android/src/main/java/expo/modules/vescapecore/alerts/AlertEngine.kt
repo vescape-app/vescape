@@ -305,6 +305,7 @@ internal class AlertEngine(private val now: () -> Long = { System.currentTimeMil
         firedAt = now,
     )
 
+    // @parity /src/modules/alerts/lib/resolvedAlertRules.ts `resolvedAlertRules`
     private fun effectiveThresholds(rule: AlertRuleEntity): Pair<Double, Double?>? {
         if (rule.thresholdKind != "config-relative") return rule.threshold to rule.thresholdMax
         val base = resolveConfigRelativeBase(rule.configFieldId, configValues, motorConfigValues) ?: return null

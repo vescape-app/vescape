@@ -1096,7 +1096,7 @@ internal final class BoardSessionController: VescGattListener {
       ((settings["legalPolicy"] ?? nil) as? [String: Any])?["jurisdictionCode"] as? String
     let speeds = jurisdictionCode.flatMap(legalPolicyCatalog.speeds)
     let alertRules: [AlertRule]
-    do { alertRules = try appData.getEnabledAlertRules(boardId) }
+    do { try appData.repairMissingAlertPresetRelations(boardId); alertRules = try appData.getEnabledAlertRules(boardId) }
     catch { RecordingStorageFailure.reportRead(operation: "enabled_alert_rules_read", error: error); return }
     alertCoordinator.replaceRules(withLegalModeOverlay(
       alertRules,
@@ -1528,7 +1528,7 @@ internal final class BoardSessionController: VescGattListener {
       ((sessionSettings["legalPolicy"] ?? nil) as? [String: Any])?["jurisdictionCode"] as? String
     let legalSpeeds = jurisdictionCode.flatMap(legalPolicyCatalog.speeds)
     let alertRules: [AlertRule]
-    do { alertRules = try appData.getEnabledAlertRules(config.appBoardId) }
+    do { try appData.repairMissingAlertPresetRelations(config.appBoardId); alertRules = try appData.getEnabledAlertRules(config.appBoardId) }
     catch { RecordingStorageFailure.reportRead(operation: "enabled_alert_rules_read", error: error); return }
     alertCoordinator.replaceRules(withLegalModeOverlay(
       alertRules,

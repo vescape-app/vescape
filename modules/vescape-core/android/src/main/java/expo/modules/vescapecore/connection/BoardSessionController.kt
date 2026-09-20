@@ -3452,6 +3452,7 @@ private var wearAutoLaunchOnConnect = true
         }
         try {
             val repo = AppDataRepository.get(context)
+            repo.repairMissingAlertPresetRelations(boardId)
             val board = repo.getBoard(boardId)
             val enabled = ((board?.get("legalMode") as? Map<*, *>)?.get("enabled") as? Boolean) == true
             val jurisdictionCode = repo.getTypedSettings().legalPolicy?.get("jurisdictionCode")

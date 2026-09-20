@@ -14,7 +14,7 @@ import {
   normalizeAlertPresetSelection,
 } from './alertPresets'
 import { materializePresetRules } from './customAlertRules'
-import { buildMetricAlertRuleSnapshot } from './alertTest'
+import { buildAlertTestRules } from './alertTest'
 
 const config = getAlertDialConfig('speed', null)
 
@@ -107,11 +107,11 @@ test('imperial presets share whole-mph thresholds across generation, labels, and
   const [rule] = generateAlertPresetRules('speed', 'normal', options)
   expect(speedFromKmh(rule!.threshold, 'imperial')).toBeCloseTo(22)
   expect(speedFromKmh(rule!.thresholdMax!, 'imperial')).toBeCloseTo(28)
-  const [snapshot] = buildMetricAlertRuleSnapshot({
+  const [snapshot] = buildAlertTestRules({
     ...options,
     metric: 'speed',
     level: 'normal',
-    rules: [],
+    customRules: [],
     hasBatteryConfig: false,
   })
   expect(snapshot!.threshold).toBe(rule!.threshold)

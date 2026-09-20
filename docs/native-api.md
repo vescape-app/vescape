@@ -551,3 +551,12 @@ Live event has `stateName` + `avgLatency` + `firedAlerts`. History `TelemetrySam
 
 Not persisted to history and not fed into alerts. `bleStore` keeps only the latest
 snapshot (`latestBms`); UI derives min/max/spread via `summarizeBms` in `src/modules/battery/lib/bms.ts`.
+
+## Alert preset intents
+
+`applyAlertPreset(boardId, metric, intent)` switches a saved Board's alert setup. Intents are
+`{ action: 'select', level }`, `{ action: 'customize' }`, `{ action: 'discard-custom' }`, and
+`{ action: 'match-board-config', enabled }`. Selection and generated rule changes commit together
+in native storage. JS does not send generated rules or run a regeneration sequence. Board saves
+also update affected preset rules atomically when their inputs change. Successful writes publish
+`boards` and `alerts` data-change scopes and reload native alert evaluation.

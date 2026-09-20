@@ -1,7 +1,8 @@
 import { useCallback } from 'react'
 import { useUnitSystem } from '@/hooks/useUnitSystem'
 import {
-  describeAlertPreset,
+  describeAlertRules,
+  type AlertRuleSpec,
   formatAlertPresetSummary,
   type AlertPresetLevel,
   type AlertPresetMetric,
@@ -19,13 +20,12 @@ export function useAlertPresetFormat() {
     ) => formatAlertPresetSummary(metric, level, options, units),
     [units],
   )
-  const describePreset = useCallback(
+  const describeRules = useCallback(
     (
       metric: AlertPresetMetric,
-      level: AlertPresetLevel,
-      options: GenerateAlertPresetRulesOptions = {},
-    ) => describeAlertPreset(metric, level, options, units),
+      rules: readonly Pick<AlertRuleSpec, 'threshold' | 'thresholdMax' | 'repeatEverySeconds'>[],
+    ) => describeAlertRules(metric, rules, units),
     [units],
   )
-  return { formatSummary, describePreset }
+  return { formatSummary, describeRules }
 }

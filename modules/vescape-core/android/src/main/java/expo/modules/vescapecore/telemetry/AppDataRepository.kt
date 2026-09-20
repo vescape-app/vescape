@@ -25,6 +25,7 @@ import expo.modules.vescapecore.alerts.normalizedAlertRepeatSeconds
 /** Scope of an `onAppDataChanged` emit; mirrors the JS `AppDataChangedEvent['scope']` union. */
 internal enum class AppDataScope(val wire: String) {
   BOARDS("boards"),
+  ALERTS("alerts"),
   SETTINGS("settings"),
 }
 
@@ -199,6 +200,17 @@ class AppDataRepository private constructor(private val context: Context) {
     val (settings, deletedKeys) = board.toBoardSettingEntities(boardId)
     boardSettings.upsertBoard(board.toBoardEntity(), settings, deletedKeys)
     notifyDataChanged(AppDataScope.BOARDS)
+    notifyDataChanged(AppDataScope.ALERTS)
+  }
+
+  suspend fun repairMissingAlertPresetRelations(boardId: String): Unit = withContext(Dispatchers.IO) {
+    if (dao.repairMissingAlertPresetRelations(boardId)) notifyDataChanged(AppDataScope.ALERTS)
+  }
+
+  suspend fun applyAlertPreset(boardId: String, metric: String, action: String, level: String?, matchBoardConfig: Boolean?): Unit = withContext(Dispatchers.IO) {
+    dao.applyAlertPreset(boardId, metric, action, level, matchBoardConfig)
+    notifyDataChanged(AppDataScope.BOARDS)
+    notifyDataChanged(AppDataScope.ALERTS)
   }
 
   /** Tombstones the Board and hard-deletes its configuration; see [TelemetryDao.deleteBoardWithSettings]. */

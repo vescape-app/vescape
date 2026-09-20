@@ -41,7 +41,7 @@ let testSupportSources: Set<String> = [
 /// the ones production code reads back out of its own bundle. Tests read fixtures straight off the
 /// repo tree, so they need nothing here.
 let bundledResources: Set<String> = [
-  "cell-presets.json"
+  "cell-presets.json", "alert-preset-definitions.json"
 ]
 
 struct SourceTree {
@@ -127,7 +127,8 @@ let package = Package(
     .executableTarget(
       name: "RecordingPersistenceHost",
       dependencies: [grdb],
-      path: "persistence-macos"
+      path: "persistence-macos",
+      resources: [.process("alert-preset-definitions.json"), .process("cell-presets.json")]
     ),
   ]
 )

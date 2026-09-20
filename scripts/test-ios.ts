@@ -55,7 +55,6 @@ const args = [
   destination,
   '-resultBundlePath',
   resultBundle,
-  '-quiet',
 ]
 
 const decoder = new TextDecoder()
@@ -67,6 +66,7 @@ const proc = Bun.spawn(['xcodebuild', ...args], {
 
 let output = ''
 const timeout = setTimeout(() => {
+  console.error(`iOS tests exceeded the ${TEST_TIMEOUT_MS}ms timeout; terminating xcodebuild.`)
   proc.kill('SIGTERM')
 }, TEST_TIMEOUT_MS)
 
@@ -86,17 +86,6 @@ const lines = output
   .map((line) => line.trimEnd())
   .filter(Boolean)
 
-const failures = lines.filter((line) => {
-  const lower = line.toLowerCase()
-  return (
-    lower.includes('error:') ||
-    lower.includes('failed') ||
-    lower.includes('testing cancelled') ||
-    lower.includes('test suite') ||
-    lower.includes('test case')
-  )
-})
-
 if (exitCode === 0) {
   writeSourceCache(sourceFingerprint)
   const summary = [...lines]
@@ -109,6 +98,6 @@ if (exitCode === 0) {
 console.error(`iOS tests failed. Result bundle: ${resultBundle}`)
 console.error('')
 
-const useful = failures.length > 0 ? failures : lines.slice(-80)
-console.error(useful.slice(-120).join('\n'))
+writeFileSync(`${resultBundle}.log`, output)
+console.error(output)
 process.exit(exitCode || 1)

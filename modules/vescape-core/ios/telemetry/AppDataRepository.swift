@@ -14,6 +14,7 @@ import GRDB
 /// @parity /modules/vescape-core/src/index.ts `AppDataChangedEvent`
 enum AppDataScope: String {
   case boards
+  case alerts
   case settings
 }
 
@@ -82,6 +83,18 @@ final class AppDataRepository {
     return Self.composeBoard(board, settings: settings)
   }
 
+  func repairMissingAlertPresetRelations(_ boardId: String) throws {
+    guard let writer else { throw StorageUnavailable.databaseNotOpen }
+    if try AlertPresetPersistence(writer: writer).repairMissingRelations(boardId: boardId) { notifyDataChanged(.alerts) }
+  }
+
+  func applyAlertPreset(_ boardId: String, _ metric: String, _ action: String, _ level: String?, _ matchBoardConfig: Bool?) throws {
+    guard let writer else { throw StorageUnavailable.databaseNotOpen }
+    try AlertPresetPersistence(writer: writer).apply(boardId: boardId, metric: metric, action: action, level: level, matchBoardConfig: matchBoardConfig)
+    Self.onDataChanged?(AppDataScope.boards.rawValue)
+    Self.onDataChanged?(AppDataScope.alerts.rawValue)
+  }
+
   func upsertBoard(_ board: [String: Any?]) throws {
     guard let id = board["id"] as? String else { return }
     let name = board["name"] as? String ?? ""
@@ -117,6 +130,7 @@ final class AppDataRepository {
       deletedKeys: deletedKeys
     )
     notifyDataChanged(.boards)
+    notifyDataChanged(.alerts)
   }
 
   /// The Rider-facing delete: configuration goes, the Board row stays as a tombstone (ADR 0027).

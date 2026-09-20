@@ -425,7 +425,7 @@ data class AlertRuleEntity(
   val beepCount: Int = ALERT_BEEP_COUNT_DEFAULT,
   /**
    * Free-text provenance tag mirroring TS `AlertRule.source`: `manual` (or null) or `preset`.
-   * JS authors and regenerates preset rules; native only persists the string.
+   * Native owns preset generation; JS submits selection intents.
    */
   val source: String?,
 )

@@ -37,7 +37,8 @@ at least 1 mph below the ceiling. At very low top speeds, preset levels can ther
 Metric presets retain their existing tenth-km/h calculation.
 
 The Board's opaque `alertPreset` bag retains `speedUnitSystem`, the units used when selecting the
-speed preset. Previews, chart markers, customization, and regeneration use that saved choice.
+speed preset. Native saves this choice and the generated rules together. Saved-board previews and
+chart markers use the persisted rules; customization freezes those rules at their current thresholds.
 Changing display units does not recalculate firing speeds. Existing presets without this metadata
 retain their original calculation until the rider selects a speed preset again. New-board setup
 captures the unit choice in its draft and saves it with the preset.

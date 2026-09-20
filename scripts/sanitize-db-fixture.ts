@@ -8,7 +8,6 @@ import {
   ALERT_PRESET_METRICS,
   ALERT_PRESET_SOURCE,
   generateAlertPresetRules,
-  presetAlertRuleId,
   type AlertPresetLevel,
 } from '../src/modules/alerts/lib/alertPresets.ts'
 import { DEFAULT_BOARD_TOP_SPEED_KMH } from '../src/modules/alerts/lib/boardAlertSettings.ts'
@@ -187,7 +186,7 @@ function seedAlertPresets(db: Database, boardId: string): void {
         'INSERT INTO alerts (board_id, id, control_id, threshold, threshold_max, enabled, sound_type, created_at, source) VALUES (?, ?, ?, ?, ?, 1, ?, ?, ?)',
         [
           boardId,
-          presetAlertRuleId(metric, index),
+          `${ALERT_PRESET_SOURCE}:${metric}:${index}`,
           spec.controlId,
           spec.threshold,
           spec.thresholdMax,

@@ -1275,6 +1275,7 @@ public class VescapeCoreModule: Module {
       try RecordingStorageFailure.requireAvailable()
       do {
         try self.appData.upsertBoard(board)
+        self.coordinator.reloadAlertRules()
         self.coordinator.reloadBoardDataForActiveBoard()
         self.connectSavedBoardLink(boardId: board["id"] as? String)
         promise.resolve(nil)
@@ -1295,6 +1296,19 @@ public class VescapeCoreModule: Module {
       }
     }
 
+    // @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/VescapeCoreModule.kt `applyAlertPreset`
+    // @parity /modules/vescape-core/src/index.ts `applyAlertPreset`
+    AsyncFunction("applyAlertPreset") { (boardId: String, metric: String, action: String, level: String?, matchBoardConfig: Bool?, promise: Promise) in
+      try RecordingStorageFailure.requireAvailable()
+      do {
+        try self.appData.applyAlertPreset(boardId, metric, action, level, matchBoardConfig)
+        self.coordinator.reloadAlertRules()
+        promise.resolve(nil)
+      } catch {
+        RecordingStorageFailure.report(operation: "alert_preset_apply", category: "write_failed", error: error)
+        promise.reject("APP_STORAGE_WRITE_FAILED", "Could not apply Alert Preset")
+      }
+    }
     AsyncFunction("getAlertRules") { (boardId: String, promise: Promise) in
       try RecordingStorageFailure.requireAvailable()
       do { promise.resolve(try self.appData.getAlertRules(boardId)) }

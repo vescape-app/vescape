@@ -1,6 +1,6 @@
 import { useFormat } from '@/hooks/useFormat'
 import { useUnitSystem } from '@/hooks/useUnitSystem'
-import { speedFromKmh, speedUnit, type UnitSystem } from '@/helpers/units'
+import { speedFromKmh, speedUnit } from '@/helpers/units'
 import { type ReactNode, useEffect, useMemo } from 'react'
 import { Pressable, StyleSheet, View } from 'react-native'
 import {
@@ -27,7 +27,6 @@ import { SingleGauge } from '@/modules/board/components/SingleGauge'
 import { telemetry } from '@/modules/board/constants/telemetry'
 import {
   ALERT_PRESET_CONFIG_MATCH,
-  resolvedAlertPresetRules,
   supportsBoardConfigMatch,
   type AlertPresetLevel,
   type AlertPresetMetric,
@@ -41,17 +40,8 @@ import { theme, type ThemeColor } from '@/constants/theme'
 import { useResolvedAccentColors, useResolvedNeutralColors } from '@/hooks/useTheme'
 import { useAlertTest } from '@/modules/alerts/hooks/useAlertTest'
 
-/**
- * The shared preset control: an Off/Safe/Normal/Minimal level slider over an enlarged,
- * labeled gauge preview. The markers are derived straight from the pure generator
- * (`generateAlertPresetRules`), so the preview renders offline — no board, no
- * persisted rules required. When a live telemetry {@link SharedValue} is supplied
- * the needle + readout overlay the static markers.
- *
- * Presentational + controlled: it owns no store. Callers bind `level`/`onLevelChange`
- * to the Alert Preset store and pass `boardTopSpeedKmh`/`hasBatteryConfig` from
- * settings + the active board.
- */
+/** Controlled preset selection and gauge. The caller supplies one resolved rule snapshot for
+ * markers, descriptions and the sound preview; saved Boards never regenerate rules here. */
 
 interface PresetGaugeDescriptor {
   color: ThemeColor
@@ -123,7 +113,6 @@ interface PresetGaugeHotRange {
 }
 
 interface AlertPresetControlProps {
-  speedUnitSystem?: UnitSystem
   metric: AlertPresetMetric
   level: AlertPresetLevel
   onLevelChange: (level: AlertPresetLevel) => void
@@ -131,21 +120,17 @@ interface AlertPresetControlProps {
   liveValue?: SharedValue<number | null>
   /** Board Top Speed (km/h) — resolves speed thresholds and the speed gauge full-scale. */
   boardTopSpeedKmh?: number | null
-  /** Whether the active board has a valid battery config (battery markers need one). */
-  hasBatteryConfig?: boolean
   /** Metrics whose preset follows the board's own configuration. */
   matchBoardConfig?: Partial<Record<AlertPresetMetric, boolean>>
   onMatchBoardConfigChange?: (enabled: boolean) => void
   /** The board's decoded configs, for resolving what a matched preset lands on right now. */
   configBases?: BoardConfigBases
-  /** Custom (non-preset) alert markers layered onto the same gauge alongside the preset markers. */
-  customAlerts?: DualGaugeAlert[]
   /** History hot-range gradient for the gauge arc (kept in sync with the detail gauge). */
   hotRange?: PresetGaugeHotRange | null
   /** Blocks slider interaction and dims it (e.g. battery without a valid config). */
   disabled?: boolean
   /** Exact visible rules to evaluate while the synthetic needle sweeps the gauge. */
-  testRules?: AlertTestRule[]
+  ruleSnapshot: AlertTestRule[]
   /** Detail-screen Alerts heading, placed directly below the gauge. */
   controlsHeader?: ReactNode
   /** Take ownership of this level's rules. Omitted where custom rules aren't offered (the gauge
@@ -160,23 +145,20 @@ export function AlertPresetControl({
   level,
   onLevelChange,
   liveValue,
-  speedUnitSystem,
   boardTopSpeedKmh,
-  hasBatteryConfig,
   matchBoardConfig,
   onMatchBoardConfigChange,
   configBases,
-  customAlerts,
   hotRange,
   disabled,
-  testRules = [],
+  ruleSnapshot,
   controlsHeader,
   onCustomize,
   onDiscardCustom,
 }: AlertPresetControlProps) {
   const units = useUnitSystem()
   const { formatSpeedWithUnit } = useFormat()
-  const { describePreset } = useAlertPresetFormat()
+  const { describeRules } = useAlertPresetFormat()
   const gauge = useMemo(
     () =>
       metric === 'speed'
@@ -193,50 +175,18 @@ export function AlertPresetControl({
       ? boardTopSpeedKmh
       : gauge.defaultMax
 
-  const alerts = useMemo<DualGaugeAlert[]>(() => {
-    // Dormant config-relative specs are already filtered out: a preset waiting on a config the
-    // board has not supplied has no number to draw, and a placeholder would draw at zero.
-    const specs = resolvedAlertPresetRules(metric, level, {
-      speedUnitSystem,
-      boardTopSpeedKmh,
-      hasBatteryConfig,
-      matchBoardConfig,
-      configBases,
-    })
-    // Preset markers come straight from the pure generator (instant + atomic as the slider
-    // moves, no store round-trip flicker); custom markers layer on top from the caller.
-    const presetMarkers = specs.map((spec, index) => ({
-      id: `${metric}-${index}`,
-      threshold: spec.threshold,
-      thresholdMax: spec.thresholdMax,
-      repeats: spec.repeatEverySeconds != null,
-      label: gauge.formatMarker(spec.threshold),
-      labelMax: spec.thresholdMax == null ? undefined : gauge.formatMarker(spec.thresholdMax),
-    }))
-    if (!customAlerts) return presetMarkers
-    // Custom markers arrive as bare thresholds; this component owns the per-metric formatting, so
-    // label them here rather than making every caller reproduce it.
-    return [
-      ...presetMarkers,
-      ...customAlerts.map((alert) => ({
-        ...alert,
-        label: alert.label ?? gauge.formatMarker(alert.threshold),
-        labelMax:
-          alert.labelMax ??
-          (alert.thresholdMax == null ? undefined : gauge.formatMarker(alert.thresholdMax)),
+  const alerts = useMemo<DualGaugeAlert[]>(
+    () =>
+      ruleSnapshot.map((rule) => ({
+        id: rule.id,
+        threshold: rule.threshold,
+        thresholdMax: rule.thresholdMax,
+        repeats: rule.repeatEverySeconds != null,
+        label: gauge.formatMarker(rule.threshold),
+        labelMax: rule.thresholdMax == null ? undefined : gauge.formatMarker(rule.thresholdMax),
       })),
-    ]
-  }, [
-    metric,
-    level,
-    speedUnitSystem,
-    boardTopSpeedKmh,
-    hasBatteryConfig,
-    matchBoardConfig,
-    configBases,
-    gauge,
-    customAlerts,
-  ])
+    [ruleSnapshot, gauge],
+  )
 
   // A stable null placeholder so the gauge always has a SharedValue; the needle is hidden offline.
   const placeholder = useSharedValue<number | null>(null)
@@ -244,7 +194,7 @@ export function AlertPresetControl({
   const isCustom = level === 'custom'
   const editAction = isCustom ? onDiscardCustom : onCustomize
   const alertTest = useAlertTest({
-    rules: testRules,
+    rules: ruleSnapshot,
     min: gauge.min,
     max,
     alertAbove: metric !== 'battery',
@@ -253,13 +203,13 @@ export function AlertPresetControl({
   })
   const gaugeValue = alertTest.running ? alertTest.value : liveValue
   // Says what this level actually sounds like — the ramp is otherwise learned by riding it.
-  const description = describePreset(metric, level, {
-    speedUnitSystem,
-    boardTopSpeedKmh,
-    hasBatteryConfig,
-    matchBoardConfig,
-    configBases,
-  })
+  const description = isCustom
+    ? 'Your own rules — edit them below.'
+    : ruleSnapshot.length === 0
+      ? level === 'off'
+        ? 'No sound from this metric.'
+        : null
+      : describeRules(metric, ruleSnapshot)
 
   return (
     <View style={styles.container}>

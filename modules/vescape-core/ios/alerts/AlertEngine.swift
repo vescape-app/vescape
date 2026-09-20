@@ -368,6 +368,7 @@ internal final class AlertEngine {
     return coalesceByControl(sorted)
   }
 
+  // @parity /src/modules/alerts/lib/resolvedAlertRules.ts `resolvedAlertRules`
   private func effectiveThresholds(_ rule: AlertRule) -> (Double, Double?)? {
     guard rule.thresholdKind == "config-relative" else { return (rule.threshold, rule.thresholdMax) }
     guard

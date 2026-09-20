@@ -606,14 +606,14 @@ export interface Board {
    */
   topSpeedKmh?: number
   /**
-   * Durable per-metric Alert Preset level selection for this Board. JS owns behavior; native only
-   * persists this bag. Absent ⇒ all metrics Off (no preset rules until the rider touches setup).
+   * Native-owned per-metric Alert Preset selection. Initial Board creation accepts this bag;
+   * existing Boards change it through applyAlertPreset. Absent ⇒ all metrics Off.
    */
   alertPreset?: Record<string, unknown> | null
   /**
    * Per-metric opt-in: which Alert Presets follow the board's own configuration instead of fixed
-   * values. Same shape and contract as {@link alertPreset} — JS owns behavior, native persists the
-   * bag opaquely. Absent ⇒ no metric matches.
+   * values. Like alertPreset, native owns this bag; existing Boards use applyAlertPreset to
+   * change it. Absent ⇒ no metric matches.
    */
   matchBoardConfig?: Record<string, unknown> | null
   /**
@@ -726,7 +726,7 @@ export interface AlertRule {
   beepCount: number
   /**
    * Provenance tag. `manual` (or absent) = rider-authored. `preset` rules are generated + owned
-   * by JS orchestration and regenerated wholesale; native persists the string opaquely.
+   * by native preset generation. JS sends selection intents and renders the saved rules.
    */
   source?: 'manual' | 'preset'
 }
@@ -1898,7 +1898,7 @@ export interface GroupRideErrorEvent {
  * @parity /modules/vescape-core/ios/telemetry/AppDataRepository.swift `AppDataScope`
  */
 export interface AppDataChangedEvent {
-  scope: 'boards' | 'settings'
+  scope: 'boards' | 'settings' | 'alerts'
 }
 
 /**
@@ -2810,6 +2810,13 @@ type VescapeCoreNativeModule = NativeEventEmitter<VescapeCoreEvents> & {
   upsertBoard(board: BoardInput): Promise<void>
   deleteBoard(id: string): Promise<void>
   getAlertRules(boardId: string): Promise<AlertRule[]>
+  applyAlertPreset(
+    boardId: string,
+    metric: string,
+    action: AlertPresetIntent['action'],
+    level: string | null,
+    matchBoardConfig: boolean | null,
+  ): Promise<void>
   upsertAlertRule(rule: AlertRule): Promise<void>
   setAlertRuleEnabled(boardId: string, id: string, enabled: boolean): Promise<void>
   deleteAlertRule(boardId: string, id: string): Promise<void>
@@ -3867,6 +3874,30 @@ export async function upsertBoard(board: BoardInput): Promise<void> {
 
 export async function deleteBoard(id: string): Promise<void> {
   return native.deleteBoard(id)
+}
+
+/**
+ * Native owns preset selection, generation, and atomic rule replacement.
+ * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/VescapeCoreModule.kt `applyAlertPreset`
+ * @parity /modules/vescape-core/ios/VescapeCoreModule.swift `applyAlertPreset`
+ */
+export type AlertPresetIntent =
+  | { action: 'select'; level: 'off' | 'safe' | 'normal' | 'minimal' }
+  | { action: 'customize' | 'discard-custom' }
+  | { action: 'match-board-config'; enabled: boolean }
+
+export async function applyAlertPreset(
+  boardId: string,
+  metric: 'battery' | 'speed' | 'duty' | 'motor-temp' | 'controller-temp',
+  intent: AlertPresetIntent,
+): Promise<void> {
+  return native.applyAlertPreset(
+    boardId,
+    metric,
+    intent.action,
+    intent.action === 'select' ? intent.level : null,
+    intent.action === 'match-board-config' ? intent.enabled : null,
+  )
 }
 
 export async function getAlertRules(boardId: string): Promise<AlertRule[]> {

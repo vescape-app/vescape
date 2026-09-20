@@ -20,17 +20,6 @@ interface AlertTestRuleSource {
   configBases?: BoardConfigBases
 }
 
-interface MetricAlertRuleSnapshotSource {
-  metric: AlertPresetMetric | null
-  level: AlertPresetLevel
-  rules: DraftAlertRule[]
-  speedUnitSystem?: UnitSystem
-  boardTopSpeedKmh: number
-  hasBatteryConfig: boolean
-  matchBoardConfig?: Partial<Record<AlertPresetMetric, boolean>>
-  configBases?: BoardConfigBases
-}
-
 /** Cubic ease-out: reach the alert range early, then decelerate without extending the sweep. */
 export function highRangeAlertTestEasing(progress: number): number {
   'worklet'
@@ -83,34 +72,6 @@ export function buildAlertTestRules({
   return [...presetRules, ...customRules.filter((rule) => rule.enabled).map(toTestRule)]
 }
 
-/**
- * Freeze every enabled rule currently represented by one metric's UI. The same snapshot drives
- * the native sound test and the history-chart reference lines, so neither visualization can
- * drift away from the alert engine's inputs.
- */
-export function buildMetricAlertRuleSnapshot({
-  metric,
-  level,
-  rules,
-  speedUnitSystem,
-  boardTopSpeedKmh,
-  hasBatteryConfig,
-  matchBoardConfig,
-  configBases,
-}: MetricAlertRuleSnapshotSource): AlertTestRule[] {
-  if (!metric) return rules.filter((rule) => rule.enabled).map(toTestRule)
-  return buildAlertTestRules({
-    metric,
-    level,
-    customRules: rules,
-    speedUnitSystem,
-    boardTopSpeedKmh,
-    hasBatteryConfig,
-    matchBoardConfig,
-    configBases,
-  })
-}
-
 /** Deduplicate the start and optional ceiling of every visible rule for chart rendering. */
 export function getAlertThresholdValues(rules: AlertTestRule[]): number[] {
   const values = new Set<number>()
@@ -123,7 +84,7 @@ export function getAlertThresholdValues(rules: AlertTestRule[]): number[] {
   return [...values].sort((a, b) => a - b)
 }
 
-function toTestRule(rule: DraftAlertRule): AlertTestRule {
+export function toTestRule(rule: DraftAlertRule): AlertTestRule {
   return {
     id: `alert-test:custom:${rule.id}`,
     controlId: rule.controlId,

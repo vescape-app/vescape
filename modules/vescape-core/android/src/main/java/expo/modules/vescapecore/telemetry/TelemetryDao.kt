@@ -686,9 +686,21 @@ interface TelemetryDao {
 
   @Transaction
   suspend fun upsertBoardWithSettings(board: BoardEntity, settings: List<BoardSettingEntity>, deletedKeys: List<String>) {
+    val existing = getBoard(board.id) != null
+    val presetKeys = setOf("alertPreset", "matchBoardConfig")
+    val previousSettings = getBoardSettings(board.id).associate { it.key to decodeSettingJson(it.valueJson) }
     upsertBoard(board)
-    deletedKeys.forEach { deleteBoardSetting(board.id, it) }
-    settings.forEach { upsertBoardSetting(it) }
+    deletedKeys.filterNot { existing && it in presetKeys }.forEach { deleteBoardSetting(board.id, it) }
+    settings.filterNot { existing && it.key in presetKeys }.forEach { upsertBoardSetting(it) }
+    AlertPresetPersistence.regenerateChanged(this, board.id, previousSettings)
+  }
+
+  @Transaction
+  suspend fun repairMissingAlertPresetRelations(boardId: String): Boolean = AlertPresetPersistence.repairMissingRelations(this, boardId)
+
+  @Transaction
+  suspend fun applyAlertPreset(boardId: String, metric: String, action: String, level: String?, matchBoardConfig: Boolean?) {
+    AlertPresetPersistence.apply(this, boardId, metric, action, level, matchBoardConfig)
   }
 
   @Query("DELETE FROM board_settings WHERE board_id = :boardId")
