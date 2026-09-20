@@ -1,3 +1,5 @@
+import { useUnitSystem } from '@/hooks/useUnitSystem'
+import { formatSpeedKmh, speedFromKmh, speedUnit } from '@/helpers/units'
 import { type ReactNode, useEffect, useMemo } from 'react'
 import { Pressable, StyleSheet, View } from 'react-native'
 import {
@@ -169,7 +171,18 @@ export function AlertPresetControl({
   onCustomize,
   onDiscardCustom,
 }: AlertPresetControlProps) {
-  const gauge = PRESET_GAUGE[metric]
+  const units = useUnitSystem()
+  const gauge = useMemo(
+    () =>
+      metric === 'speed'
+        ? {
+            ...PRESET_GAUGE.speed,
+            unit: speedUnit(units),
+            formatMarker: (value: number) => formatSpeedKmh(value, units),
+          }
+        : PRESET_GAUGE[metric],
+    [metric, units],
+  )
   const max =
     metric === 'speed' && boardTopSpeedKmh && boardTopSpeedKmh > 0
       ? boardTopSpeedKmh
@@ -243,6 +256,7 @@ export function AlertPresetControl({
   return (
     <View style={styles.container}>
       <SingleGauge
+        displayScale={metric === 'speed' ? speedFromKmh(1, units) : 1}
         value={gaugeValue ?? placeholder}
         min={gauge.min}
         max={max}

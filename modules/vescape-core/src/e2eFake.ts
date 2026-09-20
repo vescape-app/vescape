@@ -66,6 +66,7 @@ const e2eSettings: AppSettings = {
   freeSpinMaxSpeedDeltaKmh: 3,
   freeSpinStationaryBoardCapKmh: 1,
   rideSplitGapMinutes: 30,
+  unitSystem: 'metric',
   themeMode: 'system',
   mapStyleKey: 'onedark',
   satelliteOverlayEnabled: true,

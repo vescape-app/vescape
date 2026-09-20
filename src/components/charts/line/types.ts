@@ -89,6 +89,8 @@ export interface ChartBand extends ChartTimeRange {
 }
 
 export interface ChartSeriesSpec {
+  /** Numeric labels only; samples, paths, ramps and geometry remain canonical. */
+  displayScale?: number
   key: string
   data: ChartSeriesData
   color: ThemeColor
@@ -103,6 +105,8 @@ export interface ChartSeriesSpec {
 }
 
 export interface ChartAxisSpec {
+  /** Numeric labels only; range remains canonical. */
+  displayScale?: number
   range: ChartYRange
 }
 

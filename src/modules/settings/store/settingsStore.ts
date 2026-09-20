@@ -31,6 +31,7 @@ const DEFAULTS: AppSettings = {
   freeSpinMaxSpeedDeltaKmh: 12,
   freeSpinStationaryBoardCapKmh: 15,
   rideSplitGapMinutes: DEFAULT_RIDE_SPLIT_GAP_MINUTES,
+  unitSystem: 'metric',
   themeMode: 'system',
   mapStyleKey: 'onedark',
   satelliteOverlayEnabled: true,

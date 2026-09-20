@@ -1532,6 +1532,7 @@ export interface AppSettings {
    */
   rideSplitGapMinutes: number
   /** App appearance source. `sun` resolves from local daylight at the last GPS fix. */
+  unitSystem: 'metric' | 'imperial'
   themeMode: 'system' | 'light' | 'dark' | 'sun'
   mapStyleKey: 'onedark' | 'outdoors' | 'satellite' | 'mapy'
   /** Use the custom satellite overlay style instead of the stock satellite style. */

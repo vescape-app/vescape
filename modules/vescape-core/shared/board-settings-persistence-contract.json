@@ -12,5 +12,10 @@
     "valueJson": "\"dark\"",
     "updatedValueJson": "\"sun\"",
     "malformedValueJson": "{"
+  },
+  "units": {
+    "default": "metric",
+    "selected": "imperial",
+    "invalid": ["automatic", "US", "", true, 1]
   }
 }

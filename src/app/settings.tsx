@@ -1,3 +1,4 @@
+import { useSettingsStore } from '@/modules/settings/store/settingsStore'
 import { useLayoutEffect } from 'react'
 import { View, StyleSheet, ScrollView, Platform } from 'react-native'
 import { Text } from '@/components/base/Text'
@@ -43,6 +44,8 @@ import { useResolvedNeutralColors } from '@/hooks/useTheme'
 const appVersion = Constants.expoConfig?.version ?? DASH
 
 export default function SettingsScreen() {
+  const unitSystem = useSettingsStore((state) => state.unitSystem)
+  const setSetting = useSettingsStore((state) => state.set)
   const db = useSettingsDatabaseOps()
   const navigation = useNavigation()
   const appStatus = useAppStatusStore((state) => state.status)
@@ -121,6 +124,29 @@ export default function SettingsScreen() {
           />
         </SettingsCard>
 
+        <SettingsSectionTitle>Units</SettingsSectionTitle>
+        <SettingsCard>
+          <SettingsRow
+            icon={GaugeIcon}
+            iconColor={theme.telemetry.speed}
+            label="Metric"
+            hint="km/h · kilometers · meters"
+            right={<Text>{unitSystem === 'metric' ? 'Selected' : ''}</Text>}
+            onPress={() => {
+              void setSetting('unitSystem', 'metric')
+            }}
+          />
+          <SettingsRow
+            icon={GaugeIcon}
+            iconColor={theme.telemetry.speed}
+            label="Imperial"
+            hint="mph · miles · feet"
+            right={<Text>{unitSystem === 'imperial' ? 'Selected' : ''}</Text>}
+            onPress={() => {
+              void setSetting('unitSystem', 'imperial')
+            }}
+          />
+        </SettingsCard>
         <SettingsSectionTitle>Appearance</SettingsSectionTitle>
         <SettingsCard>
           <SettingsRow

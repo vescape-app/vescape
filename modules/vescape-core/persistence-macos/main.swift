@@ -522,9 +522,21 @@ try boardPersistence.upsertBoard(
   settings: [], deletedKeys: []
 )
 try boardPersistence.saveSetting(PersistedAppSetting(key: settingValues["key"] as! String, valueJson: settingValues["updatedValueJson"] as! String, updatedAt: contractCreatedAt + 1))
+let unitFixture = boardFixture["units"] as! [String: Any]
+let metricDefault = unitFixture["default"] as! String
+try require(validUnitSystem(nil) ?? "metric" == metricDefault, "units metric default")
+for invalid in unitFixture["invalid"] as! [Any] {
+  try require(validUnitSystem(invalid) == nil, "invalid units accepted")
+}
+try boardPersistence.saveSetting(.init(key: "unitSystem", valueJson: "\"\(validUnitSystem(unitFixture["selected"])!)\"", updatedAt: contractCreatedAt))
 try boardQueue!.close()
 boardQueue = try DatabaseQueue(path: boardURL.path)
 boardPersistence = BoardSettingsPersistence(writer: boardQueue!)
+let reopenedUnits = try boardPersistence.settings(defaults: ["unitSystem": metricDefault])
+try require(reopenedUnits["unitSystem"] as? String == unitFixture["selected"] as? String, "units survive reopen")
+try boardPersistence.deleteSetting("unitSystem")
+let defaultUnits = try boardPersistence.settings(defaults: ["unitSystem": metricDefault])
+try require(defaultUnits["unitSystem"] as? String == metricDefault, "units return to metric default")
 let reopenedBoards = try boardPersistence.liveBoards()
 let reopenedBoardSettings = try boardPersistence.boardSettings(ids: [contractBoardId])
 let reopenedSettings = try boardPersistence.settings()
