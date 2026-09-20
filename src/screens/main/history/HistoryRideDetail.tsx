@@ -1,8 +1,9 @@
 import { useCallback, useMemo, useRef, useState, type RefObject } from 'react'
-import type { View } from 'react-native'
+import { StyleSheet, View } from 'react-native'
 
 import { ExportIcon, TrashIcon } from 'phosphor-react-native'
 import { Button } from '@/components/base/Button'
+import { theme } from '@/constants/theme'
 import { FadeCardModal } from '@/components/modals/FadeCardModal'
 import { InfoModal } from '@/components/modals/InfoModal'
 import { rideExportOptions } from '@/modules/history/lib/rideExport'
@@ -219,6 +220,15 @@ export function HistoryRideDetail({
             }}
           />
         ))}
+        <View
+          style={{
+            height: StyleSheet.hairlineWidth,
+            width: '40%',
+            alignSelf: 'center',
+            marginVertical: 8,
+            backgroundColor: theme.neutral.border,
+          }}
+        />
         <Button
           label="Delete"
           icon={TrashIcon}
