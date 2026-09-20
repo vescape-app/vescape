@@ -129,6 +129,8 @@ const config: ExpoConfig = {
           minSdkVersion: 30,
         },
         ios: {
+          // Required for SDK 57 apps built with Xcode 27 to launch on iOS 27.
+          enableSceneSupport: true,
           // Clerk's native iOS SDK requires 17.0. Keep app, pods, and widget aligned.
           deploymentTarget: '17.0',
         },
