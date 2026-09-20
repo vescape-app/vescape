@@ -1,7 +1,8 @@
+import { draftAlertPreview } from '@/modules/alerts/lib/draftAlertPreview'
 import type { AlertTestRule } from 'vescape-core'
 import { useBoardConfigBases } from '@/modules/alerts/hooks/useBoardConfigBases'
 import { useResolvedAlertRules } from '@/modules/alerts/hooks/useResolvedAlertRules'
-import { buildAlertTestRules, toTestRule } from '@/modules/alerts/lib/alertTest'
+import { toTestRule } from '@/modules/alerts/lib/alertTest'
 import type { BoardConfigBases } from '@/modules/alerts/lib/configRelativeFields'
 import { useUnitSystem } from '@/hooks/useUnitSystem'
 import type { UnitSystem } from '@/helpers/units'
@@ -177,6 +178,16 @@ export function useDraftMetricAlerts(
   { setup, topSpeedKmh, hasBatteryConfig, onChange }: DraftMetricAlertsSource,
 ): MetricAlertsController {
   const units = useUnitSystem()
+  const preview = useMemo(
+    () =>
+      draftAlertPreview(
+        metric,
+        setup.level,
+        { topSpeedKmh, hasBatteryConfig, speedUnitSystem: setup.speedUnitSystem },
+        setup.rules,
+      ),
+    [metric, setup.level, setup.speedUnitSystem, setup.rules, topSpeedKmh, hasBatteryConfig],
+  )
   return useMemo(() => {
     const withRules = (rules: DraftAlertRule[]) => onChange({ ...setup, rules })
     const mapRule = (id: string, change: (rule: DraftAlertRule) => DraftAlertRule) =>
@@ -184,18 +195,11 @@ export function useDraftMetricAlerts(
 
     return {
       metric,
-      error: null,
+      error: preview.error,
       controlId: metric,
       level: setup.level,
       rules: setup.rules,
-      ruleSnapshot: buildAlertTestRules({
-        metric,
-        level: setup.level,
-        customRules: setup.rules,
-        speedUnitSystem: setup.speedUnitSystem,
-        boardTopSpeedKmh: topSpeedKmh,
-        hasBatteryConfig,
-      }),
+      ruleSnapshot: preview.rules,
       configBases: {},
       topSpeedKmh,
       hasBatteryConfig,
@@ -203,16 +207,14 @@ export function useDraftMetricAlerts(
       matchBoardConfig: {},
       setMatchBoardConfig: () => {},
       setLevel: (level) => onChange({ ...setup, level, speedUnitSystem: units }),
-      customize: () =>
+      customize: () => {
+        if (preview.error) return
         onChange({
           ...setup,
           level: 'custom',
-          rules: materializePresetRules(metric, setup.level, {
-            speedUnitSystem: setup.speedUnitSystem,
-            boardTopSpeedKmh: topSpeedKmh,
-            hasBatteryConfig,
-          }),
-        }),
+          rules: materializePresetRules(preview.presetRules, setup.rules),
+        })
+      },
       discardCustom: () =>
         onChange({ level: ALERT_PRESET_FALLBACK_LEVEL, rules: [], speedUnitSystem: units }),
       addRule: async (draft) =>
@@ -230,5 +232,5 @@ export function useDraftMetricAlerts(
       toggleRule: async (id) => mapRule(id, (rule) => ({ ...rule, enabled: !rule.enabled })),
       removeRule: async (id) => withRules(setup.rules.filter((rule) => rule.id !== id)),
     }
-  }, [metric, setup, topSpeedKmh, hasBatteryConfig, onChange, units])
+  }, [metric, setup, topSpeedKmh, hasBatteryConfig, onChange, units, preview])
 }

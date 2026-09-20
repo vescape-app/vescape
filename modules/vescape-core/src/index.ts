@@ -2810,6 +2810,13 @@ type VescapeCoreNativeModule = NativeEventEmitter<VescapeCoreEvents> & {
   upsertBoard(board: BoardInput): Promise<void>
   deleteBoard(id: string): Promise<void>
   getAlertRules(boardId: string): Promise<AlertRule[]>
+  previewAlertPreset(
+    metric: AlertPresetMetric,
+    level: AlertPresetLevel,
+    topSpeedKmh: number,
+    hasBatteryConfig: boolean,
+    speedUnitSystem: 'metric' | 'imperial',
+  ): AlertTestRule[]
   applyAlertPreset(
     boardId: string,
     metric: string,
@@ -3881,14 +3888,41 @@ export async function deleteBoard(id: string): Promise<void> {
  * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/VescapeCoreModule.kt `applyAlertPreset`
  * @parity /modules/vescape-core/ios/VescapeCoreModule.swift `applyAlertPreset`
  */
+export type AlertPresetMetric = 'battery' | 'speed' | 'duty' | 'motor-temp' | 'controller-temp'
+export type AlertPresetLevel = 'off' | 'safe' | 'normal' | 'minimal' | 'custom'
+
 export type AlertPresetIntent =
-  | { action: 'select'; level: 'off' | 'safe' | 'normal' | 'minimal' }
+  | { action: 'select'; level: Exclude<AlertPresetLevel, 'custom'> }
   | { action: 'customize' | 'discard-custom' }
   | { action: 'match-board-config'; enabled: boolean }
 
+/**
+ * Calculate an unsaved wizard preset with the same native generator used when saving it.
+ * Synchronous, deterministic, and independent of the database or active Board.
+ * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/VescapeCoreModule.kt `previewAlertPreset`
+ * @parity /modules/vescape-core/ios/VescapeCoreModule.swift `previewAlertPreset`
+ */
+export function previewAlertPreset(
+  metric: AlertPresetMetric,
+  level: AlertPresetLevel,
+  options: {
+    topSpeedKmh: number
+    hasBatteryConfig: boolean
+    speedUnitSystem?: 'metric' | 'imperial'
+  },
+): AlertTestRule[] {
+  return native.previewAlertPreset(
+    metric,
+    level,
+    options.topSpeedKmh,
+    options.hasBatteryConfig,
+    options.speedUnitSystem ?? 'metric',
+  )
+}
+
 export async function applyAlertPreset(
   boardId: string,
-  metric: 'battery' | 'speed' | 'duty' | 'motor-temp' | 'controller-temp',
+  metric: AlertPresetMetric,
   intent: AlertPresetIntent,
 ): Promise<void> {
   return native.applyAlertPreset(

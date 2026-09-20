@@ -69,6 +69,7 @@ import expo.modules.vescapecore.telemetry.TELEMETRY_DATABASE_NAME
 import expo.modules.vescapecore.telemetry.TelemetryRepository
 import expo.modules.vescapecore.telemetry.TelemetryDatabase
 import expo.modules.vescapecore.telemetry.AlertRuleEntity
+import expo.modules.vescapecore.telemetry.AlertPresetPersistence
 import expo.modules.vescapecore.location.LegalPolicyResolver
 import expo.modules.vescapecore.location.LegalPolicyResolution
 import expo.modules.vescapecore.location.LegalPolicyCatalog
@@ -1238,6 +1239,21 @@ class VescapeCoreModule : Module() {
       } catch (error: Exception) {
         RecordingStorageFailure.report("board_delete", "write_failed", error)
         throw error
+      }
+    }
+    // @parity /modules/vescape-core/ios/VescapeCoreModule.swift `previewAlertPreset`
+    // @parity /modules/vescape-core/src/index.ts `previewAlertPreset`
+    Function("previewAlertPreset") { metric: String, level: String, topSpeedKmh: Double, hasBatteryConfig: Boolean, speedUnitSystem: String ->
+      AlertPresetPersistence.preview(metric, level, topSpeedKmh, hasBatteryConfig, speedUnitSystem).map { rule ->
+        mapOf(
+          "id" to rule.id,
+          "controlId" to rule.controlId,
+          "threshold" to rule.threshold,
+          "thresholdMax" to rule.thresholdMax,
+          "soundType" to rule.soundType,
+          "repeatEverySeconds" to rule.repeatEverySeconds,
+          "beepCount" to rule.beepCount,
+        )
       }
     }
     // @parity /modules/vescape-core/ios/VescapeCoreModule.swift `applyAlertPreset`

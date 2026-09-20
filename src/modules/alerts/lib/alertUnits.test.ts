@@ -7,14 +7,7 @@ import {
   getNewFormDefaults,
   renderPreviewTemplate,
 } from './alertFormDefaults'
-import {
-  describeAlertPreset,
-  formatAlertPresetSummary,
-  generateAlertPresetRules,
-  normalizeAlertPresetSelection,
-} from './alertPresets'
-import { materializePresetRules } from './customAlertRules'
-import { buildAlertTestRules } from './alertTest'
+import { describeAlertRules, formatAlertPresetSummary } from './alertPresets'
 
 const config = getAlertDialConfig('speed', null)
 
@@ -61,7 +54,13 @@ test('Board Top Speed snaps in either direction and clamps canonical physical bo
 
 test('open form retains exact range endpoints through live unit switches and unrelated edits', () => {
   const rule = {
-    ...materializePresetRules('speed', 'normal', { boardTopSpeedKmh: 40 })[0]!,
+    id: 'manual-speed',
+    controlId: 'speed',
+    enabled: true,
+    createdAt: 0,
+    soundType: 'preset:tick',
+    repeatEverySeconds: null,
+    beepCount: 1,
     threshold: 40.2336,
     thresholdMax: 50.123456789,
   }
@@ -95,54 +94,10 @@ test('speed speech previews convert all placeholders, leave literal unit names a
   )
 })
 
-test('speed preset descriptions and wizard summaries follow selected units', () => {
-  const options = { boardTopSpeedKmh: 40 }
-  expect(describeAlertPreset('speed', 'normal', options, 'imperial')).toContain('mph')
-  expect(formatAlertPresetSummary('speed', 'normal', options, 'imperial')).toContain('mph')
-  expect(formatAlertPresetSummary('speed', 'normal', options, 'metric')).toContain('km/h')
-})
-
-test('imperial presets share whole-mph thresholds across generation, labels, and customization', () => {
-  const options = { boardTopSpeedKmh: 50, speedUnitSystem: 'imperial' as const }
-  const [rule] = generateAlertPresetRules('speed', 'normal', options)
-  expect(speedFromKmh(rule!.threshold, 'imperial')).toBeCloseTo(22)
-  expect(speedFromKmh(rule!.thresholdMax!, 'imperial')).toBeCloseTo(28)
-  const [snapshot] = buildAlertTestRules({
-    ...options,
-    metric: 'speed',
-    level: 'normal',
-    customRules: [],
-    hasBatteryConfig: false,
-  })
-  expect(snapshot!.threshold).toBe(rule!.threshold)
-  expect(snapshot!.thresholdMax).toBe(rule!.thresholdMax)
-  const [custom] = materializePresetRules('speed', 'normal', options)
-  expect(custom!.threshold).toBe(rule!.threshold)
-  expect(custom!.thresholdMax).toBe(rule!.thresholdMax)
-  expect(describeAlertPreset('speed', 'normal', options, 'imperial')).toContain('22 mph')
-  expect(describeAlertPreset('speed', 'normal', options, 'imperial')).toContain('28 mph')
-  const restored = normalizeAlertPresetSelection({ speed: 'normal', speedUnitSystem: 'imperial' })
-  expect(
-    generateAlertPresetRules('speed', restored.speed, {
-      ...options,
-      speedUnitSystem: restored.speedUnitSystem,
-    }),
-  ).toEqual([rule])
-})
-
-test('low-speed imperial preset ranges remain nonempty, whole-mph, and within board top speed', () => {
-  for (const boardTopSpeedKmh of [5, 6.3, 8, 10, 50, 150]) {
-    for (const level of ['safe', 'normal', 'minimal'] as const) {
-      const [rule] = generateAlertPresetRules('speed', level, {
-        boardTopSpeedKmh,
-        speedUnitSystem: 'imperial',
-      })
-      const start = speedFromKmh(rule!.threshold, 'imperial')
-      const ceiling = speedFromKmh(rule!.thresholdMax!, 'imperial')
-      expect(start).toBeCloseTo(Math.round(start))
-      expect(ceiling).toBeCloseTo(Math.round(ceiling))
-      expect(ceiling - start).toBeGreaterThanOrEqual(1 - 1e-9)
-      expect(rule!.thresholdMax!).toBeLessThanOrEqual(boardTopSpeedKmh)
-    }
-  }
+test('native snapshot descriptions and wizard summaries follow display units', () => {
+  const rules = [{ threshold: 35.405568, thresholdMax: 45.061632, repeatEverySeconds: null }]
+  expect(describeAlertRules('speed', rules, 'imperial')).toContain('22 mph')
+  expect(describeAlertRules('speed', rules, 'imperial')).toContain('28 mph')
+  expect(formatAlertPresetSummary('speed', rules, 'imperial')).toBe('22–28 mph')
+  expect(formatAlertPresetSummary('speed', rules, 'metric')).toBe('35.4–45.1 km/h')
 })

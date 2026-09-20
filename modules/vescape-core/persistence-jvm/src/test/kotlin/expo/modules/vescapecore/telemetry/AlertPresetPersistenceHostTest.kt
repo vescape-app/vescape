@@ -23,6 +23,11 @@ class AlertPresetPersistenceHostTest {
       val settings = mutableMapOf<String, Any?>("alertPreset" to mapOf("speedUnitSystem" to case.optString("speedUnitSystem", "metric")), "topSpeedKmh" to case.optDouble("topSpeedKmh", 50.0), "matchBoardConfig" to mapOf(metric to case.optBoolean("matchBoardConfig")))
       case.optJSONObject("batteryConfig")?.let { settings["batteryConfig"] = jsonValue(it) }
       val actual = AlertPresetPersistence.generate(dao, id, metric, case.getString("level"), settings)
+      if (!case.optBoolean("matchBoardConfig")) {
+        val preview = AlertPresetPersistence.preview(metric, case.getString("level"), case.optDouble("topSpeedKmh", 50.0), AlertPresetGenerator.validBattery(settings["batteryConfig"]), case.optString("speedUnitSystem", "metric"))
+        assertEquals(actual, preview.mapIndexed { index, rule -> rule.copy(boardId = id, createdAt = actual[index].createdAt) })
+        assertTrue(dao.getAlertRules(id).isEmpty())
+      }
       val expected = case.getJSONArray("expected")
       assertEquals(id, expected.length(), actual.size)
       actual.forEachIndexed { n, rule ->
@@ -36,6 +41,27 @@ class AlertPresetPersistenceHostTest {
       }
     }
     db.close()
+  }
+
+  @Test fun previewsAreDeterministicAndImperialRangesStayWhole() {
+    for (top in listOf(5.0, 10.0, 50.0)) {
+      for (level in AlertPresetGenerator.activeLevels) {
+        val first = AlertPresetPersistence.preview("speed", level, top, false, "imperial")
+        assertEquals(first, AlertPresetPersistence.preview("speed", level, top, false, "imperial"))
+        val rule = first.single()
+        val start = rule.threshold / 1.609344
+        val end = rule.thresholdMax!! / 1.609344
+        assertEquals(kotlin.math.round(start), start, 0.00000001)
+        assertEquals(kotlin.math.round(end), end, 0.00000001)
+        assertTrue(start >= 0 && start < end)
+        assertTrue(rule.thresholdMax <= top)
+      }
+    }
+    for ((metric, level, units) in listOf(Triple("unknown", "normal", "metric"), Triple("speed", "unknown", "metric"), Triple("speed", "normal", "unknown"))) {
+      var rejected = false
+      try { AlertPresetPersistence.preview(metric, level, 50.0, false, units) } catch (_: IllegalArgumentException) { rejected = true }
+      assertTrue(rejected)
+    }
   }
 
   @Test fun presetIntentIsAtomicAndSurvivesReopen(): Unit = runBlocking {

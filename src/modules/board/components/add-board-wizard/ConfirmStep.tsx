@@ -1,3 +1,4 @@
+import { draftAlertPreview } from '@/modules/alerts/lib/draftAlertPreview'
 import { useMemo } from 'react'
 import { StyleSheet, View } from 'react-native'
 import { Text } from '@/components/base/Text'
@@ -22,19 +23,28 @@ import { formatBmsSuffix, formatBoardTransport } from '@/modules/board/lib/board
 
 export function ConfirmStep({ wizard }: { wizard: UseAddBoardWizard }) {
   const { formatSummary } = useAlertPresetFormat()
-  const alertSummaries = useMemo(() => {
-    return ALERT_PRESET_METRICS.map((metric) => {
+  const { alertSummaries, previewErrors } = useMemo(() => {
+    const errors: string[] = []
+    const summaries = ALERT_PRESET_METRICS.map((metric) => {
       const { level, rules } = wizard.alertSetup[metric]
+      const preview = draftAlertPreview(
+        metric,
+        level,
+        {
+          speedUnitSystem: wizard.alertSetup.speed.speedUnitSystem,
+          topSpeedKmh: wizard.topSpeedKmh,
+          hasBatteryConfig: wizard.hasBatteryConfig,
+        },
+        rules,
+      )
+      if (preview.error) errors.push(`${ALERT_METRIC_META[metric].name}: ${preview.error}`)
       const summary =
         level === 'custom'
           ? `${rules.length} custom ${rules.length === 1 ? 'alert' : 'alerts'}`
-          : formatSummary(metric, level, {
-              speedUnitSystem: wizard.alertSetup.speed.speedUnitSystem,
-              boardTopSpeedKmh: wizard.topSpeedKmh,
-              hasBatteryConfig: wizard.hasBatteryConfig,
-            })
+          : formatSummary(metric, preview.rules)
       return { metric, summary }
     }).filter((row): row is { metric: AlertPresetMetric; summary: string } => row.summary != null)
+    return { alertSummaries: summaries, previewErrors: errors }
   }, [wizard.alertSetup, wizard.hasBatteryConfig, wizard.topSpeedKmh, formatSummary])
 
   return (
@@ -58,7 +68,7 @@ export function ConfirmStep({ wizard }: { wizard: UseAddBoardWizard }) {
             icon={CheckCircleIcon}
             iconPosition="right"
             onPress={() => void wizard.save()}
-            disabled={!wizard.canSave}
+            disabled={!wizard.canSave || previewErrors.length > 0}
             testID="add-board-save"
           />
         </View>
@@ -103,13 +113,18 @@ export function ConfirmStep({ wizard }: { wizard: UseAddBoardWizard }) {
       </View>
 
       <Text style={styles.sectionTitle}>Alerts</Text>
+      {previewErrors.map((error) => (
+        <Text key={error} style={{ color: theme.status.error.color }}>
+          {error}
+        </Text>
+      ))}
       <View style={styles.card}>
         {alertSummaries.length === 0 ? (
           <ConfirmRow
             icon={BellRingingIcon}
             iconColor={theme.palette.amber.color}
             label="Alerts"
-            value="All off"
+            value={previewErrors.length ? 'Preview unavailable' : 'All off'}
           />
         ) : (
           alertSummaries.map(({ metric, summary }, index) => (

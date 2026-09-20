@@ -1,309 +1,23 @@
-import {
-  formatSpeedValue,
-  speedFromKmh,
-  speedToKmh,
-  speedUnit,
-  type UnitSystem,
-} from '@/helpers/units'
-import { ALERT_BEEP_COUNT_DEFAULT, type AlertRule } from 'vescape-core'
-
-import {
-  resolveConfigRelativeBase,
-  type BoardConfigBases,
-} from '@/modules/alerts/lib/configRelativeFields'
 import definitions from '@/../modules/vescape-core/shared/alert-preset-definitions.json'
+import { formatSpeedValue, speedUnit, type UnitSystem } from '@/helpers/units'
+import type { AlertRule, AlertTestRule, AlertPresetLevel, AlertPresetMetric } from 'vescape-core'
+export type { AlertPresetLevel, AlertPresetMetric } from 'vescape-core'
 
-/**
- * Draft previews and presentation for Alert Presets. Native owns saved preset generation and
- * persistence; all three implementations consume the shared declarative definitions.
- * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/AlertPresetPersistence.kt
- * @parity /modules/vescape-core/ios/telemetry/AlertPresetPersistence.swift
- */
-
-/**
- * A metric's alert setup: one of the generated intensity levels, `off`, or `custom` —
- * the rider took ownership and hand-edits the rules themselves. `custom` generates
- * nothing, exactly like `off`; the difference is who owns the metric's rules.
- */
-export type AlertPresetLevel = 'off' | 'safe' | 'normal' | 'minimal' | 'custom'
-
-export type AlertPresetMetric = 'battery' | 'speed' | 'duty' | 'motor-temp' | 'controller-temp'
-
-/** Ordered generated intensity levels (excludes `off` and `custom`), safest first. */
-export const ALERT_PRESET_ACTIVE_LEVELS = ['safe', 'normal', 'minimal'] as const
-
-/** The level a metric lands on when the rider discards their custom rules. */
+/** Native owns preset generation; JS holds selection state and formats returned rules. */
 export const ALERT_PRESET_FALLBACK_LEVEL: AlertPresetLevel = 'normal'
 
-type ActiveLevel = (typeof ALERT_PRESET_ACTIVE_LEVELS)[number]
-
-/**
- * The generative slice of an {@link import('vescape-core').AlertRule} the generator
- * emits. `id`, `createdAt`, `enabled`, and `source` are the store's to finalize.
- */
-export interface AlertRuleSpec {
-  controlId: AlertPresetMetric
-  threshold: number
-  thresholdMax: number | null
-  thresholdRule?: AlertRule['thresholdRule']
-  /**
-   * False for a config-relative spec whose field the board cannot currently anchor — the rule is
-   * still persisted (the relationship is the durable truth), but {@link threshold} is a placeholder
-   * no reader should draw. Native re-resolves every config-relative rule against live config and
-   * skips the ones that do not resolve, so an unresolved spec never fires either.
-   */
-  resolved?: boolean
-  soundType: string
-  /** Seconds between repeats while the metric stays past the threshold; `null` ⇒ announce once. */
-  repeatEverySeconds: number | null
-  beepCount: number
-}
-
-interface GeigerRange {
-  /** Range start; a fraction of Board Top Speed when `scaledByTopSpeed`, else absolute. */
-  start: number
-  /** Fixed range ceiling; same units as {@link start}. */
-  ceiling: number
-}
-
-interface DiscreteMetricConfig {
-  family: 'discrete'
-  /** Text-to-speech template stored directly in `soundType` (JS-only presentation). */
-  soundType: string
-  /** Only battery today: no rules unless the board has a valid battery config. */
-  requiresBatteryConfig?: boolean
-  /** Ordered threshold points per level; count grows and starts earlier with protection. */
-  levels: Record<ActiveLevel, DiscretePoint[]>
-}
-
-/**
- * One generated threshold point. A null repeat cadence is a one-shot announcement; a cadence
- * keeps announcing while the rider stays past the point.
- */
-interface DiscretePoint {
-  threshold: number
-  repeatEverySeconds: number | null
-}
-
-function pointThreshold(point: DiscretePoint): number {
-  return point.threshold
-}
-
-function pointRepeatSeconds(point: DiscretePoint): number | null {
-  return point.repeatEverySeconds
-}
-
-interface GeigerMetricConfig {
-  family: 'geiger'
-  /** Geiger tick preset for the range loop. */
-  soundType: string
-  /** Only speed today: {@link GeigerRange} values are fractions of Board Top Speed. */
-  scaledByTopSpeed?: boolean
-  levels: Record<ActiveLevel, GeigerRange>
-}
-
-type AlertPresetMetricConfig = DiscreteMetricConfig | GeigerMetricConfig
-
-/** Single shared source for native generation and unsaved wizard previews. */
-export const ALERT_PRESET_LEVELS = definitions.metrics as Record<
-  AlertPresetMetric,
-  AlertPresetMetricConfig
+export type AlertRulePresentation = Pick<
+  AlertTestRule,
+  'threshold' | 'thresholdMax' | 'repeatEverySeconds'
 >
 
-/**
- * How each metric's preset re-anchors itself when the rider asks it to match the board.
- *
- * The numbers here are *offsets* from the board's own configured point, in the metric's units —
- * that is the whole idea: a preset that says "start warning 10% before the board pushes back"
- * keeps meaning that after the rider retunes the board, where a copied threshold would not.
- * Shapes mirror {@link ALERT_PRESET_LEVELS} exactly, so a matched preset ramps the same way an
- * unmatched one does.
- *
- * Only metrics the board actually has an opinion about appear here; speed (a rider's own top
- * speed) and battery (a pack the controller knows nothing about) have no anchor to follow.
- */
-interface DiscreteConfigMatch {
-  family: 'discrete'
-  fieldId: string
-  levels: Record<ActiveLevel, DiscretePoint[]>
-}
+/** Shared config field names for the match-control explanation; no threshold calculation. */
+export const ALERT_PRESET_CONFIG_FIELDS = Object.fromEntries(
+  Object.entries(definitions.match).map(([metric, match]) => [metric, match.fieldId]),
+) as Partial<Record<AlertPresetMetric, string>>
 
-interface GeigerConfigMatch {
-  family: 'geiger'
-  fieldId: string
-  levels: Record<ActiveLevel, GeigerRange>
-}
-
-type AlertPresetConfigMatch = DiscreteConfigMatch | GeigerConfigMatch
-
-export const ALERT_PRESET_CONFIG_MATCH = definitions.match as Partial<
-  Record<AlertPresetMetric, AlertPresetConfigMatch>
->
-
-/** True where the rider can ask this metric's preset to follow the board's own configuration. */
 export function supportsBoardConfigMatch(metric: AlertPresetMetric): boolean {
-  return ALERT_PRESET_CONFIG_MATCH[metric] != null
-}
-
-export interface GenerateAlertPresetRulesOptions {
-  /** Units chosen when selecting the speed preset; independent of display preferences. */
-  speedUnitSystem?: UnitSystem
-  /** Board Top Speed in km/h; required to resolve speed thresholds. */
-  boardTopSpeedKmh?: number | null
-  /** Whether the active board has a valid battery config (battery presets need one). */
-  hasBatteryConfig?: boolean
-  /** Metrics whose preset should follow the board's own config instead of fixed values. */
-  matchBoardConfig?: Partial<Record<AlertPresetMetric, boolean>>
-  /** Decoded config values, for preview only; the stored relation remains durable truth. */
-  configBases?: BoardConfigBases
-}
-
-function isActiveLevel(level: AlertPresetLevel): level is ActiveLevel {
-  return (ALERT_PRESET_ACTIVE_LEVELS as readonly string[]).includes(level)
-}
-
-/** Round to one decimal place, avoiding trailing binary-float noise. */
-function roundTenth(value: number): number {
-  return Math.round(value * 10) / 10
-}
-
-/**
- * Deterministically expand a preset selection into concrete rule specs.
- *
- * `off`, `custom` — and any guard failure (battery without a valid config, speed without a
- * usable Board Top Speed) — yields `[]` rather than garbage rules. Discrete metrics
- * emit one single-threshold rule per configured point in config order; geiger
- * metrics emit a single range rule.
- */
-export function generateAlertPresetRules(
-  metric: AlertPresetMetric,
-  level: AlertPresetLevel,
-  options: GenerateAlertPresetRulesOptions = {},
-): AlertRuleSpec[] {
-  if (!isActiveLevel(level)) return []
-
-  const config = ALERT_PRESET_LEVELS[metric]
-
-  const match = options.matchBoardConfig?.[metric] ? ALERT_PRESET_CONFIG_MATCH[metric] : undefined
-  if (match) return configRelativeSpecs(metric, level, match, options.configBases ?? {})
-
-  if (config.family === 'discrete') {
-    if (config.requiresBatteryConfig && !options.hasBatteryConfig) return []
-    return config.levels[level].map((point) => ({
-      controlId: metric,
-      threshold: pointThreshold(point),
-      thresholdMax: null,
-      soundType: config.soundType,
-      repeatEverySeconds: pointRepeatSeconds(point),
-      beepCount: ALERT_BEEP_COUNT_DEFAULT,
-    }))
-  }
-
-  const range = config.levels[level]
-  let { start, ceiling } = range
-  if (config.scaledByTopSpeed) {
-    const topSpeed = options.boardTopSpeedKmh
-    if (typeof topSpeed !== 'number' || !Number.isFinite(topSpeed) || topSpeed <= 0) return []
-    // Round to 0.1 km/h, not whole km/h: at the low end of Board Top Speed
-    // (clamp floor 5) whole-km/h rounding collapses adjacent levels to identical
-    // ranges (0.72×5 and 0.82×5 both → 4) and inflates the ceiling past its
-    // configured fraction (0.9×5 → 5, i.e. 100%). Native stores thresholds as REAL.
-    start = roundTenth(start * topSpeed)
-    ceiling = roundTenth(ceiling * topSpeed)
-    if (options.speedUnitSystem === 'imperial') {
-      // Whole-mph inputs, stored canonically. Keep a nonempty range even at low top speeds.
-      const ceilingMph = Math.max(
-        1,
-        Math.min(
-          Math.floor(speedFromKmh(topSpeed, 'imperial')),
-          Math.round(speedFromKmh(ceiling, 'imperial')),
-        ),
-      )
-      const startMph = Math.max(
-        0,
-        Math.min(ceilingMph - 1, Math.round(speedFromKmh(start, 'imperial'))),
-      )
-      start = speedToKmh(startMph, 'imperial')
-      ceiling = speedToKmh(ceilingMph, 'imperial')
-    }
-  }
-
-  return [
-    {
-      controlId: metric,
-      threshold: start,
-      thresholdMax: ceiling,
-      soundType: config.soundType,
-      // A range rule's cadence follows range depth, so a repeat interval would mean nothing.
-      repeatEverySeconds: null,
-      beepCount: ALERT_BEEP_COUNT_DEFAULT,
-    },
-  ]
-}
-
-/**
- * Expand a matched preset into config-relative specs. Every spec carries its offset regardless of
- * whether the board can currently resolve it: an unresolvable anchor (config unread, or that
- * protection switched off on the board) makes the preset dormant, not fixed — see
- * {@link AlertRuleSpec.resolved}.
- */
-function configRelativeSpecs(
-  metric: AlertPresetMetric,
-  level: ActiveLevel,
-  match: AlertPresetConfigMatch,
-  bases: BoardConfigBases,
-): AlertRuleSpec[] {
-  const base = resolveConfigRelativeBase(match.fieldId, bases)
-  const resolved = base != null
-  const at = (offset: number) => (base == null ? 0 : roundTenth(base + offset))
-  const soundType = ALERT_PRESET_LEVELS[metric].soundType
-  const rule = (thresholdOffset: number, thresholdMaxOffset: number | null) =>
-    ({
-      kind: 'config-relative',
-      fieldId: match.fieldId,
-      thresholdOffset,
-      thresholdMaxOffset,
-    }) as const
-
-  if (match.family === 'geiger') {
-    const { start, ceiling } = match.levels[level]
-    return [
-      {
-        controlId: metric,
-        threshold: at(start),
-        thresholdMax: resolved ? at(ceiling) : null,
-        thresholdRule: rule(start, ceiling),
-        resolved,
-        soundType,
-        repeatEverySeconds: null,
-        beepCount: ALERT_BEEP_COUNT_DEFAULT,
-      },
-    ]
-  }
-
-  return match.levels[level].map((point) => ({
-    controlId: metric,
-    threshold: at(pointThreshold(point)),
-    thresholdMax: null,
-    thresholdRule: rule(pointThreshold(point), null),
-    resolved,
-    soundType,
-    repeatEverySeconds: pointRepeatSeconds(point),
-    beepCount: ALERT_BEEP_COUNT_DEFAULT,
-  }))
-}
-
-/**
- * The specs that describe a threshold a rider could actually see or hear right now. Dormant
- * config-relative specs are dropped: they are persisted as rules, but they have no number to show
- * until the board supplies one.
- */
-export function resolvedAlertPresetRules(
-  metric: AlertPresetMetric,
-  level: AlertPresetLevel,
-  options: GenerateAlertPresetRulesOptions = {},
-): AlertRuleSpec[] {
-  return generateAlertPresetRules(metric, level, options).filter((spec) => spec.resolved !== false)
+  return ALERT_PRESET_CONFIG_FIELDS[metric] != null
 }
 
 /** Per-metric unit suffix appended to a threshold value in a summary (JS-only presentation). */
@@ -317,16 +31,14 @@ const ALERT_PRESET_UNIT: Record<AlertPresetMetric, string> = {
 
 /**
  * Human-readable summary for an unsaved preset draft (e.g. `10%, 20%, 30%` for battery,
- * `80–90%` for a geiger range), using the shared native preset definitions.
- * Returns `null` when the level is `off` or guarded away (no rules to describe).
+ * `80–90%` for a geiger range), using the native preview snapshot.
+ * Returns `null` when the supplied snapshot has no rules to describe.
  */
 export function formatAlertPresetSummary(
   metric: AlertPresetMetric,
-  level: AlertPresetLevel,
-  options: GenerateAlertPresetRulesOptions = {},
+  specs: AlertRulePresentation[],
   units: UnitSystem = 'metric',
 ): string | null {
-  const specs = resolvedAlertPresetRules(metric, level, options)
   if (specs.length === 0) return null
   const unit = metric === 'speed' ? ` ${speedUnit(units)}` : ALERT_PRESET_UNIT[metric]
   const number = (value: number) =>
@@ -350,28 +62,10 @@ function joinList(parts: string[]): string {
   return `${parts.slice(0, -1).join(', ')} and ${parts[parts.length - 1]}`
 }
 
-/**
- * Describe an unsaved preset draft. Saved Boards use describeAlertRules with persisted rules.
- *
- * `null` where there is nothing to describe — a metric guarded away (battery without a config,
- * speed without a Board Top Speed) is explained by the screen, not by this line.
- */
-export function describeAlertPreset(
-  metric: AlertPresetMetric,
-  level: AlertPresetLevel,
-  options: GenerateAlertPresetRulesOptions = {},
-  units: UnitSystem = 'metric',
-): string | null {
-  if (level === 'off') return 'No sound from this metric.'
-  if (level === 'custom') return 'Your own rules — edit them below.'
-
-  return describeAlertRules(metric, resolvedAlertPresetRules(metric, level, options), units)
-}
-
 /** Describe resolved rules supplied by a saved Board or an unsaved wizard preview. */
 export function describeAlertRules(
   metric: AlertPresetMetric,
-  specs: readonly Pick<AlertRuleSpec, 'threshold' | 'thresholdMax' | 'repeatEverySeconds'>[],
+  specs: readonly AlertRulePresentation[],
   units: UnitSystem = 'metric',
 ): string | null {
   if (specs.length === 0) return null
@@ -403,18 +97,14 @@ export function describeAlertRules(
 export const ALERT_PRESET_SOURCE = 'preset'
 
 /** Every metric that carries a preset selection, in the stable rider-facing order. */
-export const ALERT_PRESET_METRICS = Object.keys(ALERT_PRESET_LEVELS) as AlertPresetMetric[]
+export const ALERT_PRESET_METRICS = Object.keys(definitions.metrics) as AlertPresetMetric[]
 
 /** The rider's chosen level per metric — the durable `alertPreset` settings bag. */
 export type AlertPresetSelection = Record<AlertPresetMetric, AlertPresetLevel> & {
   speedUnitSystem?: UnitSystem
 }
 
-const ALERT_PRESET_LEVEL_VALUES: AlertPresetLevel[] = [
-  'off',
-  ...ALERT_PRESET_ACTIVE_LEVELS,
-  'custom',
-]
+const ALERT_PRESET_LEVEL_VALUES: AlertPresetLevel[] = ['off', 'safe', 'normal', 'minimal', 'custom']
 
 /** Narrow a control id to the preset metric it names, or `null` when it has no presets. */
 export function asAlertPresetMetric(controlId: string | undefined): AlertPresetMetric | null {

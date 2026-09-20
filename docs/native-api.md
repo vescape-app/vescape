@@ -560,3 +560,10 @@ snapshot (`latestBms`); UI derives min/max/spread via `summarizeBms` in `src/mod
 in native storage. JS does not send generated rules or run a regeneration sequence. Board saves
 also update affected preset rules atomically when their inputs change. Successful writes publish
 `boards` and `alerts` data-change scopes and reload native alert evaluation.
+
+`previewAlertPreset(metric, level, { topSpeedKmh, hasBatteryConfig, speedUnitSystem? })` returns
+`AlertTestRule[]` synchronously for an unsaved add-board draft. It uses the same native generator
+as persistence, with explicit draft inputs and no database access, events, or alert-engine changes.
+Units default to metric; `off` and `custom` return no generated rules. The wizard has no Board
+configuration to match, so this operation only returns fixed thresholds. JS uses these snapshots
+for markers, summaries, sound previews, and copying a preset into editable draft rules.

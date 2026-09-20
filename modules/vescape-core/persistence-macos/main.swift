@@ -1,6 +1,29 @@
 import Foundation
 import GRDB
 
+// Offline database sanitization previews the same native presets as the app, without opening a DB.
+if CommandLine.arguments.dropFirst().first == "--preview-alert-presets" {
+  let args = Array(CommandLine.arguments.dropFirst(2))
+  guard args.count == 3, let topSpeed = Double(args[0]), ["true", "false"].contains(args[1]) else {
+    fatalError("Expected --preview-alert-presets <topSpeedKmh> <true|false> <output-json-path>")
+  }
+  var output: [[String: Any]] = []
+  for metric in AlertPresetPersistence.metrics {
+    let rules = try AlertPresetPersistence.preview(
+      metric: metric, level: "normal", topSpeedKmh: topSpeed,
+      hasBatteryConfig: args[1] == "true", speedUnitSystem: "metric"
+    )
+    output += rules.map { rule in
+      ["id": rule.id, "controlId": rule.controlId, "threshold": rule.threshold,
+       "thresholdMax": rule.thresholdMax as Any? ?? NSNull(), "soundType": rule.soundType,
+       "repeatEverySeconds": rule.repeatEverySeconds as Any? ?? NSNull(), "beepCount": rule.beepCount]
+    }
+  }
+  let data = try JSONSerialization.data(withJSONObject: output, options: [.sortedKeys])
+  try data.write(to: URL(fileURLWithPath: args[2]))
+  exit(0)
+}
+
 struct Failure: Error, CustomStringConvertible {
   let description: String
 }

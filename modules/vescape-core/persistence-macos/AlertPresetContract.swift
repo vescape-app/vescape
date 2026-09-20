@@ -21,6 +21,21 @@ func runAlertPresetContract() throws {
       var settings: [String: Any] = ["alertPreset": ["speedUnitSystem": item["speedUnitSystem"] ?? "metric"], "topSpeedKmh": item["topSpeedKmh"] ?? 50, "matchBoardConfig": [metric: item["matchBoardConfig"] ?? false]]
       settings["batteryConfig"] = item["batteryConfig"]
       let rules = try AlertPresetPersistence.generate(db, boardId: name, metric: metric, level: item["level"] as! String, settings: settings)
+      if item["matchBoardConfig"] as? Bool != true {
+        let preview = try AlertPresetPersistence.preview(
+          metric: metric, level: item["level"] as! String,
+          topSpeedKmh: (item["topSpeedKmh"] as? NSNumber)?.doubleValue,
+          hasBatteryConfig: AlertPresetGenerator.validBattery(item["batteryConfig"]),
+          speedUnitSystem: item["speedUnitSystem"] as? String ?? "metric"
+        )
+        try require(preview.count == rules.count, name + " preview count")
+        for (draft, saved) in zip(preview, rules) {
+          try require(draft.id == saved.id && draft.threshold == saved.threshold && draft.thresholdMax == saved.thresholdMax, name + " preview thresholds")
+          try require(draft.soundType == saved.soundType && draft.repeatEverySeconds == saved.repeatEverySeconds && draft.beepCount == saved.beepCount, name + " preview sound")
+          try require(draft.createdAt == 0 && draft.boardId == "", name + " preview deterministic metadata")
+        }
+        try require(try Int.fetchOne(db, sql: "SELECT count(*) FROM alerts") == 0, "preview must not write")
+      }
       let expected = item["expected"] as! [[String: Any]]
       try require(rules.count == expected.count, name + " count")
       for (rule, point) in zip(rules, expected) {
@@ -33,6 +48,20 @@ func runAlertPresetContract() throws {
         try require(rule.thresholdMaxOffset == (point["thresholdMaxOffset"] as? NSNumber)?.doubleValue, name + " max offset")
       }
     }
+  }
+  for top in [5.0, 10.0, 50.0] {
+    for level in AlertPresetGenerator.activeLevels {
+      let rule = try AlertPresetPersistence.preview(metric: "speed", level: level, topSpeedKmh: top, hasBatteryConfig: false, speedUnitSystem: "imperial").first!
+      let start = rule.threshold / 1.609344
+      let end = rule.thresholdMax! / 1.609344
+      try require(abs(start - start.rounded()) < 0.00000001 && abs(end - end.rounded()) < 0.00000001, "imperial preview whole mph")
+      try require(start >= 0 && start < end && rule.thresholdMax! <= top, "imperial preview valid range")
+    }
+  }
+  for (metric, level, units) in [("unknown", "normal", "metric"), ("speed", "unknown", "metric"), ("speed", "normal", "unknown")] {
+    var rejected = false
+    do { _ = try AlertPresetPersistence.preview(metric: metric, level: level, topSpeedKmh: 50, hasBatteryConfig: false, speedUnitSystem: units) } catch { rejected = true }
+    try require(rejected, "invalid preview rejected")
   }
   let board = PersistedBoard(id: "board", name: "Board", bleId: nil, transport: nil, createdAt: 1, deletedAt: nil)
   func setting(_ key: String, _ json: String) -> PersistedBoardSetting { .init(boardId: board.id, key: key, valueJson: json, updatedAt: 1) }

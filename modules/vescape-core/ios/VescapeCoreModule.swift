@@ -1296,6 +1296,27 @@ public class VescapeCoreModule: Module {
       }
     }
 
+    // @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/VescapeCoreModule.kt `previewAlertPreset`
+    // @parity /modules/vescape-core/src/index.ts `previewAlertPreset`
+    Function("previewAlertPreset") { (metric: String, level: String, topSpeedKmh: Double, hasBatteryConfig: Bool, speedUnitSystem: String) -> [[String: Any?]] in
+      try AlertPresetPersistence.preview(
+        metric: metric,
+        level: level,
+        topSpeedKmh: topSpeedKmh,
+        hasBatteryConfig: hasBatteryConfig,
+        speedUnitSystem: speedUnitSystem
+      ).map { rule in
+        [
+          "id": rule.id,
+          "controlId": rule.controlId,
+          "threshold": rule.threshold,
+          "thresholdMax": rule.thresholdMax,
+          "soundType": rule.soundType,
+          "repeatEverySeconds": rule.repeatEverySeconds,
+          "beepCount": rule.beepCount,
+        ]
+      }
+    }
     // @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/VescapeCoreModule.kt `applyAlertPreset`
     // @parity /modules/vescape-core/src/index.ts `applyAlertPreset`
     AsyncFunction("applyAlertPreset") { (boardId: String, metric: String, action: String, level: String?, matchBoardConfig: Bool?, promise: Promise) in

@@ -26,7 +26,7 @@ import type { DualGaugeAlert } from '@/components/charts/gaugeAlert'
 import { SingleGauge } from '@/modules/board/components/SingleGauge'
 import { telemetry } from '@/modules/board/constants/telemetry'
 import {
-  ALERT_PRESET_CONFIG_MATCH,
+  ALERT_PRESET_CONFIG_FIELDS,
   supportsBoardConfigMatch,
   type AlertPresetLevel,
   type AlertPresetMetric,
@@ -297,7 +297,7 @@ function BoardConfigMatchControl({
   configBases?: BoardConfigBases
   onChange?: (enabled: boolean) => void
 }) {
-  const fieldId = ALERT_PRESET_CONFIG_MATCH[metric]?.fieldId
+  const fieldId = ALERT_PRESET_CONFIG_FIELDS[metric]
   const base =
     fieldId == null
       ? { status: 'missing' as const }

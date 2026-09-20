@@ -151,8 +151,9 @@ Runtime behavior:
 
 ## Alert Presets
 
-Native generates and persists preset Alert Rules. JS sends preset intents and renders saved rules;
-only an unsaved add-board draft computes previews in JS. Fixed rules carry concrete thresholds;
+Native generates and persists preset Alert Rules. JS sends preset intents and renders saved rules.
+Unsaved add-board drafts call the synchronous native `previewAlertPreset` operation, which uses
+the same generator without reading or writing the database. Fixed rules carry concrete thresholds;
 a preset the rider opts into matching carries a durable relationship to a board config field instead. Native resolves that
 field from Last Known Board Config Values (Refloat) or Last Known Motor Config Values (MCCONF) and
 follows fresh reads/writes without rewriting the rule.
@@ -199,8 +200,9 @@ Five metrics, in two feedback families:
   ceiling stays fixed.
 
 Preset values, sound types, and config-relative offsets live in
-`modules/vescape-core/shared/alert-preset-definitions.json`. Both native generators and the JS draft
-preview consume this single definition. Edit that file to change preset values.
+`modules/vescape-core/shared/alert-preset-definitions.json`. Both native generators consume this
+single definition. Edit that file to change preset values. JS formats returned rule snapshots and
+does not implement preset generation.
 
 ### Provenance & regeneration
 
