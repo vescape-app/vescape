@@ -33,7 +33,7 @@ interface TuneDialProps {
   min: number
   max: number
   step: number
-  /** Badge precision is independent of the gesture step. */
+  /** Badge and previous-value precision, independent of the gesture step. */
   displayDecimals?: number
   unit?: string | null
   indicatorGlow?: 'left' | 'right'
@@ -104,6 +104,7 @@ export function TuneDial({
                 max={max}
                 step={step}
                 decimals={decimals}
+                displayDecimals={displayDecimals}
                 color={resolvedColor}
                 indicatorGlow={indicatorGlow}
                 previousValue={previousValue}

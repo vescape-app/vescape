@@ -1,5 +1,3 @@
-import { useMemo } from 'react'
-import { useUnitSystem } from '@/hooks/useUnitSystem'
 import { FillLayer, LineLayer, ShapeSource, SymbolLayer, VectorSource } from '@rnmapbox/maps'
 
 import { theme } from '@/constants/theme'
@@ -7,10 +5,10 @@ import { useResolvedAccentColors, useResolvedNeutralColors } from '@/hooks/useTh
 import {
   getLegalLimitCountryByCode,
   legalCountryFilterExpression,
-  legalLimitLabelShape,
   legalStatusColorExpression,
   type LegalLimitCountry,
 } from '@/modules/legal/lib/legalLimits'
+import { useLegalLimitLabelShape } from '@/modules/legal/hooks/useLegalLimitsFormat'
 
 export function LegalLimitsMapLayer({
   interactive = true,
@@ -19,8 +17,7 @@ export function LegalLimitsMapLayer({
   interactive?: boolean
   onSelectCountry: (country: LegalLimitCountry) => void
 }) {
-  const units = useUnitSystem()
-  const labelShape = useMemo(() => legalLimitLabelShape(units), [units])
+  const labelShape = useLegalLimitLabelShape()
   const neutral = useResolvedNeutralColors()
   const accents = useResolvedAccentColors()
   const statusColors = {

@@ -10,9 +10,8 @@ import {
 import { Text } from '@/components/base/Text'
 import { theme, type ThemeColor } from '@/constants/theme'
 import { DASH } from '@/helpers/format'
-import { formatDistanceMeters } from '@/helpers/units'
-import { useUnitSystem } from '@/hooks/useUnitSystem'
-import { riderStats } from '@/modules/group-ride/lib/riderStats'
+import { useFormat } from '@/hooks/useFormat'
+import { useRiderStats } from '@/modules/group-ride/hooks/useRiderStats'
 import {
   TELEMETRY_LEVEL_COLOR,
   type TelemetryLevel,
@@ -72,7 +71,6 @@ function RiderCell({
   accent: ThemeColor
   connected: boolean
 }) {
-  const units = useUnitSystem()
   const dotColor = rider.color || theme.palette.slate.textMuted
   const boardName = rider.presence?.boardName?.trim() || 'Board not connected'
   // Only claim a rider is "Live" when our own relay link is up — otherwise the roster is just
@@ -80,7 +78,7 @@ function RiderCell({
   const fresh = !rider.stale && connected
   const statusColor = fresh ? accent : theme.palette.slate.textMuted
   const status = fresh ? 'Live' : 'Stale'
-  const s = riderStats(rider.presence, units)
+  const s = useRiderStats(rider.presence)
 
   return (
     <View style={styles.riderCell}>
@@ -120,7 +118,7 @@ function RiderCell({
 }
 
 export function NearbyRideBody({ nearby }: { nearby: NearbyRide[] }) {
-  const units = useUnitSystem()
+  const { formatDistance } = useFormat()
   const nearest = nearby[0]
   const ride = nearest.ride
   const name = ride.name?.trim() || `${ride.creator.name || 'Rider'}'s ride`
@@ -133,7 +131,7 @@ export function NearbyRideBody({ nearby }: { nearby: NearbyRide[] }) {
       </Text>
       <Text style={styles.rideMeta} numberOfLines={1}>
         {ride.riderCount} {ride.riderCount === 1 ? 'rider' : 'riders'} ·{' '}
-        {formatDistanceMeters(nearest.distanceM, units)} away
+        {formatDistance(nearest.distanceM)} away
       </Text>
       {extra > 0 ? (
         <Text style={styles.rideMetaDim}>

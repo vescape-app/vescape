@@ -73,6 +73,7 @@ export function MetricAlerts({
             metric: controller.metric,
             level: controller.level,
             rules: controller.rules,
+            speedUnitSystem: controller.speedUnitSystem,
             boardTopSpeedKmh: controller.topSpeedKmh,
             hasBatteryConfig: controller.hasBatteryConfig,
             matchBoardConfig: controller.matchBoardConfig,
@@ -98,6 +99,7 @@ export function MetricAlerts({
           level={level}
           onLevelChange={controller.setLevel}
           liveValue={liveValue}
+          speedUnitSystem={controller.speedUnitSystem}
           boardTopSpeedKmh={controller.topSpeedKmh}
           hasBatteryConfig={hasBatteryConfig}
           matchBoardConfig={controller.matchBoardConfig}

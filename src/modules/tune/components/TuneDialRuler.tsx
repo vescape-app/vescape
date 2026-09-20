@@ -30,6 +30,7 @@ import {
   MAJOR_TICK_TOP,
   RULER_LABEL_BAND_TOP,
   TOP_VALUE_BAND_HEIGHT,
+  formatDisplayValue,
 } from '@/modules/tune/components/tuneDialLayout'
 import {
   tuneDialStepValue,
@@ -45,6 +46,7 @@ export function TuneDialRuler({
   max,
   step,
   decimals,
+  displayDecimals,
   color,
   indicatorGlow,
   previousValue,
@@ -57,6 +59,7 @@ export function TuneDialRuler({
   max: number
   step: number
   decimals: number
+  displayDecimals?: number
   color: ThemeColor
   indicatorGlow?: 'left' | 'right'
   previousValue?: number
@@ -80,7 +83,12 @@ export function TuneDialRuler({
   const labelFont = useSkiaFont('700', LABEL_FONT_SIZE)
   const prevLabelFont = useSkiaFont('800', LABEL_FONT_SIZE)
   const prevMarkOffset = previousValue != null ? valueToOffset(previousValue) : null
-  const previousValueLabel = previousValue != null ? formatTuneValue(previousValue) : null
+  const previousValueLabel =
+    previousValue == null
+      ? null
+      : displayDecimals == null
+        ? formatTuneValue(previousValue)
+        : formatDisplayValue(previousValue, displayDecimals)
 
   const { majorTicksPath, minorTicksPath, labels } = useMemo(() => {
     const majorPath = Skia.Path.Make()

@@ -1,4 +1,4 @@
-import { useUnitSystem } from '@/hooks/useUnitSystem'
+import { useRideFormat } from '@/modules/history/hooks/useRideFormat'
 import { Pressable, StyleSheet, View } from 'react-native'
 import type { Favorite } from 'vescape-core'
 
@@ -6,7 +6,7 @@ import { Text } from '@/components/base/Text'
 import { widgetSurface } from '@/components/widgets/widgetSurface'
 import { interaction, theme } from '@/constants/theme'
 import { RouteSparkline } from '@/modules/history/components/RouteSparkline'
-import { formatFavoriteName, formatRideListDetails } from '@/modules/history/lib/rideFormat'
+import { formatFavoriteName } from '@/modules/history/lib/rideFormat'
 import type { RoutePoint } from '@/modules/history/lib/routePreview'
 
 const CARD_WIDTH = 148
@@ -20,7 +20,7 @@ interface FavoriteRideCardProps {
 
 /** A Favorite as a browsable card: its route large enough to recognise, then name and figures. */
 export function FavoriteRideCard({ favorite, routePoints, onPress }: FavoriteRideCardProps) {
-  const units = useUnitSystem()
+  const { formatRideDetails } = useRideFormat()
   const name = formatFavoriteName(favorite.name, favorite.startMs, favorite.endMs)
 
   return (
@@ -42,7 +42,7 @@ export function FavoriteRideCard({ favorite, routePoints, onPress }: FavoriteRid
         {name}
       </Text>
       <Text style={styles.meta} numberOfLines={1}>
-        {formatRideListDetails(favorite.movingDurationMs, favorite.distanceM, null, units)}
+        {formatRideDetails(favorite.movingDurationMs, favorite.distanceM, null)}
       </Text>
     </Pressable>
   )

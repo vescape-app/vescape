@@ -1,3 +1,5 @@
+import { useUnitSystem } from '@/hooks/useUnitSystem'
+import type { UnitSystem } from '@/helpers/units'
 import { useMemo } from 'react'
 import { useShallow } from 'zustand/react/shallow'
 
@@ -40,6 +42,7 @@ export interface MetricAlertsController {
   level: AlertPresetLevel
   /** Rider-owned rules for this control. Preset-generated rules never appear here. */
   rules: DraftAlertRule[]
+  speedUnitSystem?: UnitSystem
   topSpeedKmh: number
   hasBatteryConfig: boolean
   /** Metrics this Board follows its own configuration for. */
@@ -83,6 +86,7 @@ export function useBoardMetricAlerts(controlId: string): MetricAlertsController 
       controlId,
       level,
       rules,
+      speedUnitSystem: boardAlertPresetSelection(board).speedUnitSystem,
       topSpeedKmh: boardTopSpeedKmh(board),
       hasBatteryConfig: boardHasBatteryConfig(board),
       matchBoardConfig: boardMatchBoardConfig(board),
@@ -108,6 +112,7 @@ export function useBoardMetricAlerts(controlId: string): MetricAlertsController 
 
 /** One metric's buffered alert setup inside the add-board wizard. */
 export interface DraftAlertSetup {
+  speedUnitSystem?: UnitSystem
   level: AlertPresetLevel
   rules: DraftAlertRule[]
 }
@@ -128,6 +133,7 @@ export function useDraftMetricAlerts(
   metric: AlertPresetMetric,
   { setup, topSpeedKmh, hasBatteryConfig, onChange }: DraftMetricAlertsSource,
 ): MetricAlertsController {
+  const units = useUnitSystem()
   return useMemo(() => {
     const withRules = (rules: DraftAlertRule[]) => onChange({ ...setup, rules })
     const mapRule = (id: string, change: (rule: DraftAlertRule) => DraftAlertRule) =>
@@ -139,21 +145,25 @@ export function useDraftMetricAlerts(
       controlId: metric,
       level: setup.level,
       rules: setup.rules,
+      speedUnitSystem: setup.speedUnitSystem,
       topSpeedKmh,
       hasBatteryConfig,
       // The wizard has no Board yet, so no config has been read to match against.
       matchBoardConfig: {},
       setMatchBoardConfig: () => {},
-      setLevel: (level) => onChange({ level, rules: setup.rules }),
+      setLevel: (level) => onChange({ ...setup, level, speedUnitSystem: units }),
       customize: () =>
         onChange({
+          ...setup,
           level: 'custom',
           rules: materializePresetRules(metric, setup.level, {
+            speedUnitSystem: setup.speedUnitSystem,
             boardTopSpeedKmh: topSpeedKmh,
             hasBatteryConfig,
           }),
         }),
-      discardCustom: () => onChange({ level: ALERT_PRESET_FALLBACK_LEVEL, rules: [] }),
+      discardCustom: () =>
+        onChange({ level: ALERT_PRESET_FALLBACK_LEVEL, rules: [], speedUnitSystem: units }),
       addRule: async (draft) =>
         withRules([
           ...setup.rules,
@@ -169,5 +179,5 @@ export function useDraftMetricAlerts(
       toggleRule: async (id) => mapRule(id, (rule) => ({ ...rule, enabled: !rule.enabled })),
       removeRule: async (id) => withRules(setup.rules.filter((rule) => rule.id !== id)),
     }
-  }, [metric, setup, topSpeedKmh, hasBatteryConfig, onChange])
+  }, [metric, setup, topSpeedKmh, hasBatteryConfig, onChange, units])
 }

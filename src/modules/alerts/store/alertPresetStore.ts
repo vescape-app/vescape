@@ -1,3 +1,4 @@
+import { useSettingsStore } from '@/modules/settings/store/settingsStore'
 import { create } from 'zustand'
 import { deleteAlertRule, getAlertRules, type AlertRule, type Board } from 'vescape-core'
 
@@ -74,6 +75,7 @@ export const useAlertPresetStore = create<AlertPresetState & AlertPresetActions>
     // Matched rules included: taking ownership must not silently move a threshold, so the outgoing
     // level expands under the same options regeneration used, config match and all.
     const seed = materializePresetRules(metric, boardAlertPresetSelection(board)[metric], {
+      speedUnitSystem: boardAlertPresetSelection(board).speedUnitSystem,
       boardTopSpeedKmh: boardTopSpeedKmh(board),
       hasBatteryConfig: boardHasBatteryConfig(board),
       matchBoardConfig: boardMatchBoardConfig(board),
@@ -137,6 +139,9 @@ async function persistLevel(
   level: AlertPresetLevel,
 ): Promise<void> {
   const selection = boardAlertPresetSelection(board)
+  if (metric === 'speed' && level !== 'custom' && level !== 'off') {
+    selection.speedUnitSystem = useSettingsStore.getState().unitSystem
+  }
   await useBoardStore
     .getState()
     .updateBoard({ ...board, alertPreset: { ...selection, [metric]: level } })
@@ -180,6 +185,7 @@ async function regenerateMetric(
     // is written resolved. A rule whose anchor does not resolve is not written at all — a
     // placeholder threshold would draw a marker at a value the board will never act on.
     const specs = resolvedAlertPresetRules(metric, boardAlertPresetSelection(board)[metric], {
+      speedUnitSystem: boardAlertPresetSelection(board).speedUnitSystem,
       boardTopSpeedKmh: boardTopSpeedKmh(board),
       hasBatteryConfig: boardHasBatteryConfig(board),
       matchBoardConfig: boardMatchBoardConfig(board),

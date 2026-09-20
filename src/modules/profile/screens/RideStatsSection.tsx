@@ -1,4 +1,3 @@
-import { useUnitSystem } from '@/hooks/useUnitSystem'
 import { useCallback, useMemo } from 'react'
 import { ActivityIndicator, StyleSheet, View } from 'react-native'
 import { Text } from '@/components/base/Text'
@@ -6,7 +5,7 @@ import { ChartLineUpIcon } from 'phosphor-react-native'
 
 import { Placeholder } from '@/components/base/Placeholder'
 import { ProfileStatsGrid } from '@/modules/profile/components/ProfileStatsGrid'
-import { profileStatItems } from '@/modules/profile/components/profileStatItems'
+import { useProfileStatItems } from '@/modules/profile/hooks/useProfileStatItems'
 import { useProfileStats } from '@/modules/profile/hooks/useProfileStats'
 import { formatMonthLabel, getAdjacentMonths } from '@/modules/profile/lib/profileStats'
 import { PrevNextSelector } from '@/components/controls/PrevNextSelector'
@@ -14,7 +13,6 @@ import { Select, type SelectOption } from '@/components/forms/Select'
 import { theme } from '@/constants/theme'
 
 export function RideStatsSection() {
-  const units = useUnitSystem()
   const {
     total,
     monthly,
@@ -26,8 +24,8 @@ export function RideStatsSection() {
     empty,
     selectMonth,
   } = useProfileStats()
-  const totalItems = useMemo(() => profileStatItems(total, units), [total, units])
-  const monthItems = useMemo(() => profileStatItems(monthly, units), [monthly, units])
+  const totalItems = useProfileStatItems(total)
+  const monthItems = useProfileStatItems(monthly)
   const adjacent = useMemo(() => getAdjacentMonths(months, selectedMonth), [months, selectedMonth])
 
   const monthOptions: SelectOption[] = useMemo(

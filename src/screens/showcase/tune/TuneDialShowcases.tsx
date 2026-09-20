@@ -49,7 +49,11 @@ export function TuneDialShowcase() {
     >
       <TuneDial
         value={value}
-        previousValue={config.min + (config.max - config.min) * 0.3}
+        previousValue={
+          range === 'imperial' || range === 'signedImperial'
+            ? 36 / 1.609344
+            : config.min + (config.max - config.min) * 0.3
+        }
         min={config.min}
         max={config.max}
         step={config.step}

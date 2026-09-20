@@ -1,3 +1,4 @@
+import { useUnitSystem } from '@/hooks/useUnitSystem'
 import { useEffect, useMemo, useState } from 'react'
 import {
   cancelAnimation,
@@ -53,6 +54,7 @@ const SHOWCASE_CONFIG_BASES_OFF = {
 }
 
 export function AlertPresetControlShowcase() {
+  const units = useUnitSystem()
   const [metric, setMetric] = useState<AlertPresetMetric>('speed')
   const [level, setLevel] = useState<AlertPresetLevel>('normal')
   const [live, setLive] = useState(false)
@@ -67,6 +69,7 @@ export function AlertPresetControlShowcase() {
       buildAlertTestRules({
         metric,
         level,
+        speedUnitSystem: units,
         boardTopSpeedKmh: 50,
         hasBatteryConfig: true,
         matchBoardConfig: { [metric]: match },
@@ -85,7 +88,7 @@ export function AlertPresetControlShowcase() {
               }))
             : [],
       }),
-    [configOff, level, match, metric],
+    [configOff, level, match, metric, units],
   )
 
   useEffect(() => {
@@ -127,6 +130,7 @@ export function AlertPresetControlShowcase() {
         level={level}
         onLevelChange={setLevel}
         liveValue={live ? liveValue : undefined}
+        speedUnitSystem={units}
         boardTopSpeedKmh={50}
         hasBatteryConfig
         matchBoardConfig={{ [metric]: match }}

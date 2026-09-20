@@ -1,4 +1,3 @@
-import { useUnitSystem } from '@/hooks/useUnitSystem'
 import { useMemo } from 'react'
 import { StyleSheet, View } from 'react-native'
 import { Text } from '@/components/base/Text'
@@ -14,36 +13,29 @@ import {
 
 import { Button } from '@/components/base/Button'
 import { theme, type ThemeColor } from '@/constants/theme'
-import {
-  ALERT_PRESET_METRICS,
-  formatAlertPresetSummary,
-  type AlertPresetMetric,
-} from '@/modules/alerts/lib/alertPresets'
+import { ALERT_PRESET_METRICS, type AlertPresetMetric } from '@/modules/alerts/lib/alertPresets'
+import { useAlertPresetFormat } from '@/modules/alerts/hooks/useAlertPresetFormat'
 import { WizardStepLayout } from '@/modules/board/components/add-board-wizard/WizardStepLayout'
 import { ALERT_METRIC_META } from '@/modules/board/components/add-board-wizard/alertMetricMeta'
 import type { UseAddBoardWizard } from '@/modules/board/hooks/useAddBoardWizard'
 import { formatBmsSuffix, formatBoardTransport } from '@/modules/board/lib/boardTransport'
 
 export function ConfirmStep({ wizard }: { wizard: UseAddBoardWizard }) {
-  const units = useUnitSystem()
+  const { formatSummary } = useAlertPresetFormat()
   const alertSummaries = useMemo(() => {
     return ALERT_PRESET_METRICS.map((metric) => {
       const { level, rules } = wizard.alertSetup[metric]
       const summary =
         level === 'custom'
           ? `${rules.length} custom ${rules.length === 1 ? 'alert' : 'alerts'}`
-          : formatAlertPresetSummary(
-              metric,
-              level,
-              {
-                boardTopSpeedKmh: wizard.topSpeedKmh,
-                hasBatteryConfig: wizard.hasBatteryConfig,
-              },
-              units,
-            )
+          : formatSummary(metric, level, {
+              speedUnitSystem: wizard.alertSetup.speed.speedUnitSystem,
+              boardTopSpeedKmh: wizard.topSpeedKmh,
+              hasBatteryConfig: wizard.hasBatteryConfig,
+            })
       return { metric, summary }
     }).filter((row): row is { metric: AlertPresetMetric; summary: string } => row.summary != null)
-  }, [wizard.alertSetup, wizard.hasBatteryConfig, wizard.topSpeedKmh, units])
+  }, [wizard.alertSetup, wizard.hasBatteryConfig, wizard.topSpeedKmh, formatSummary])
 
   return (
     <WizardStepLayout

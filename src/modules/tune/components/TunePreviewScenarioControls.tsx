@@ -1,3 +1,4 @@
+import { useFormat } from '@/hooks/useFormat'
 /* eslint-disable react-hooks/immutability */
 import { useCallback, useRef, useState } from 'react'
 import { StyleSheet, View } from 'react-native'
@@ -14,8 +15,6 @@ import { scheduleOnRN } from 'react-native-worklets'
 
 import { useUnitSystem } from '@/hooks/useUnitSystem'
 import {
-  formatLengthMeters,
-  formatSpeedKmh,
   lengthFromMeters,
   lengthInputToMeters,
   lengthUnit,
@@ -26,11 +25,10 @@ import {
 import {
   HILLS_PRESETS,
   MOVEMENT_RANGES,
-  hillsOptions,
-  movementOptions,
   type HillsPresetId,
   type MovementPresetId,
 } from '@/modules/tune/lib/tunePreviewPresentation'
+import { useTunePreviewFormat } from '@/modules/tune/hooks/useTunePreviewFormat'
 export type { HillsPresetId } from '@/modules/tune/lib/tunePreviewPresentation'
 import { SelectCard } from '@/components/forms/SelectCard'
 import { PitchInputControl } from '@/modules/tune/components/PitchInputControl'
@@ -77,6 +75,8 @@ export function TunePreviewScenarioControls({
   groundToBoardAngleDegrees,
 }: TunePreviewScenarioControlsProps) {
   const units = useUnitSystem()
+  const { formatSpeedWithUnit } = useFormat()
+  const { options, formatHillHeight, formatHillSpacing } = useTunePreviewFormat()
   const [movementPreset, setMovementPreset] = useState<MovementPresetId>('manual')
   const [customLowSpeedKmh, setCustomLowSpeedKmh] = useState(10)
   const [customHighSpeedKmh, setCustomHighSpeedKmh] = useState(25)
@@ -188,14 +188,14 @@ export function TunePreviewScenarioControls({
         iconColor={theme.palette.cyan.color}
         title="Balance Input"
         description="Simulates rider lean"
-        options={movementOptions(units)}
+        options={options.movement}
         value={movementPreset}
         onChange={handleMovementPresetChange}
       >
         {movementPreset === 'custom' ? (
           <>
             <Text style={styles.description}>
-              Low speed · {formatSpeedKmh(customLowSpeedKmh, units, 1)}
+              Low speed · {formatSpeedWithUnit(customLowSpeedKmh, 1)}
             </Text>
             <TuneDial
               key={`low-${units}`}
@@ -211,7 +211,7 @@ export function TunePreviewScenarioControls({
               }
             />
             <Text style={styles.description}>
-              High speed · {formatSpeedKmh(customHighSpeedKmh, units, 1)}
+              High speed · {formatSpeedWithUnit(customHighSpeedKmh, 1)}
             </Text>
             <TuneDial
               key={`high-${units}`}
@@ -250,14 +250,14 @@ export function TunePreviewScenarioControls({
         iconColor={theme.palette.green.color}
         title="Terrain"
         description="Simulates the slope"
-        options={hillsOptions(units)}
+        options={options.hills}
         value={hillsPreset}
         onChange={handlePresetChange}
       >
         {hillsPreset === 'custom' ? (
           <>
             <Text style={styles.description}>
-              Valley-to-peak height · {formatLengthMeters(hillHeightMeters, units, 1)}
+              Valley-to-peak height · {formatHillHeight(hillHeightMeters)}
             </Text>
             <TuneDial
               key={`height-${units}`}
@@ -273,8 +273,7 @@ export function TunePreviewScenarioControls({
               }
             />
             <Text style={styles.description}>
-              Peak-to-peak distance ·{' '}
-              {formatLengthMeters(hillSpacingMeters, units, units === 'imperial' ? 1 : 0)}
+              Peak-to-peak distance · {formatHillSpacing(hillSpacingMeters)}
             </Text>
             <TuneDial
               key={`spacing-${units}`}

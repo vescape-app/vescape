@@ -1,7 +1,7 @@
 import {
   lengthFromMeters,
   lengthUnit,
-  speedFromKmh,
+  formatSpeedValue,
   speedUnit,
   type UnitSystem,
 } from '@/helpers/units'
@@ -45,7 +45,7 @@ export function movementOptions(units: UnitSystem): { value: MovementPresetId; l
     { value: 'manual', label: 'Manual pitch slider' },
     ...Object.entries(MOVEMENT_RANGES).map(([value, preset]) => ({
       value: value as MovementPresetId,
-      label: `${preset.label} · ${compact(speedFromKmh(preset.lowKmh, units))}–${compact(speedFromKmh(preset.highKmh, units))} ${speedUnit(units)}`,
+      label: `${preset.label} · ${formatSpeedValue(preset.lowKmh, units, 1)}–${formatSpeedValue(preset.highKmh, units, 1)} ${speedUnit(units)}`,
     })),
     { value: 'custom', label: 'Custom range' },
   ]

@@ -1,5 +1,6 @@
+import { useFormat } from '@/hooks/useFormat'
 import { useUnitSystem } from '@/hooks/useUnitSystem'
-import { formatSpeedKmh, speedFromKmh, speedUnit } from '@/helpers/units'
+import { speedFromKmh, speedUnit, type UnitSystem } from '@/helpers/units'
 import { type ReactNode, useEffect, useMemo } from 'react'
 import { Pressable, StyleSheet, View } from 'react-native'
 import {
@@ -26,12 +27,12 @@ import { SingleGauge } from '@/modules/board/components/SingleGauge'
 import { telemetry } from '@/modules/board/constants/telemetry'
 import {
   ALERT_PRESET_CONFIG_MATCH,
-  describeAlertPreset,
   resolvedAlertPresetRules,
   supportsBoardConfigMatch,
   type AlertPresetLevel,
   type AlertPresetMetric,
 } from '@/modules/alerts/lib/alertPresets'
+import { useAlertPresetFormat } from '@/modules/alerts/hooks/useAlertPresetFormat'
 import {
   configRelativeBase,
   type BoardConfigBases,
@@ -122,6 +123,7 @@ interface PresetGaugeHotRange {
 }
 
 interface AlertPresetControlProps {
+  speedUnitSystem?: UnitSystem
   metric: AlertPresetMetric
   level: AlertPresetLevel
   onLevelChange: (level: AlertPresetLevel) => void
@@ -158,6 +160,7 @@ export function AlertPresetControl({
   level,
   onLevelChange,
   liveValue,
+  speedUnitSystem,
   boardTopSpeedKmh,
   hasBatteryConfig,
   matchBoardConfig,
@@ -172,16 +175,18 @@ export function AlertPresetControl({
   onDiscardCustom,
 }: AlertPresetControlProps) {
   const units = useUnitSystem()
+  const { formatSpeedWithUnit } = useFormat()
+  const { describePreset } = useAlertPresetFormat()
   const gauge = useMemo(
     () =>
       metric === 'speed'
         ? {
             ...PRESET_GAUGE.speed,
             unit: speedUnit(units),
-            formatMarker: (value: number) => formatSpeedKmh(value, units, 1),
+            formatMarker: (value: number) => formatSpeedWithUnit(value, 1),
           }
         : PRESET_GAUGE[metric],
-    [metric, units],
+    [metric, units, formatSpeedWithUnit],
   )
   const max =
     metric === 'speed' && boardTopSpeedKmh && boardTopSpeedKmh > 0
@@ -192,6 +197,7 @@ export function AlertPresetControl({
     // Dormant config-relative specs are already filtered out: a preset waiting on a config the
     // board has not supplied has no number to draw, and a placeholder would draw at zero.
     const specs = resolvedAlertPresetRules(metric, level, {
+      speedUnitSystem,
       boardTopSpeedKmh,
       hasBatteryConfig,
       matchBoardConfig,
@@ -223,6 +229,7 @@ export function AlertPresetControl({
   }, [
     metric,
     level,
+    speedUnitSystem,
     boardTopSpeedKmh,
     hasBatteryConfig,
     matchBoardConfig,
@@ -246,17 +253,13 @@ export function AlertPresetControl({
   })
   const gaugeValue = alertTest.running ? alertTest.value : liveValue
   // Says what this level actually sounds like — the ramp is otherwise learned by riding it.
-  const description = describeAlertPreset(
-    metric,
-    level,
-    {
-      boardTopSpeedKmh,
-      hasBatteryConfig,
-      matchBoardConfig,
-      configBases,
-    },
-    units,
-  )
+  const description = describePreset(metric, level, {
+    speedUnitSystem,
+    boardTopSpeedKmh,
+    hasBatteryConfig,
+    matchBoardConfig,
+    configBases,
+  })
 
   return (
     <View style={styles.container}>

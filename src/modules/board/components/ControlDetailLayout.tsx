@@ -99,6 +99,7 @@ function ControlDetailAlerts({
             metric: controller.metric,
             level: controller.level,
             rules: controller.rules,
+            speedUnitSystem: controller.speedUnitSystem,
             boardTopSpeedKmh: controller.topSpeedKmh,
             hasBatteryConfig: controller.hasBatteryConfig,
             matchBoardConfig: controller.matchBoardConfig,

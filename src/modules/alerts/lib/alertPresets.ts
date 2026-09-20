@@ -1,4 +1,10 @@
-import { speedFromKmh, speedUnit, type UnitSystem } from '@/helpers/units'
+import {
+  formatSpeedValue,
+  speedFromKmh,
+  speedToKmh,
+  speedUnit,
+  type UnitSystem,
+} from '@/helpers/units'
 import { ALERT_BEEP_COUNT_DEFAULT, type AlertRule } from 'vescape-core'
 
 import {
@@ -261,6 +267,8 @@ export function supportsBoardConfigMatch(metric: AlertPresetMetric): boolean {
 }
 
 export interface GenerateAlertPresetRulesOptions {
+  /** Units chosen when selecting the speed preset; independent of display preferences. */
+  speedUnitSystem?: UnitSystem
   /** Board Top Speed in km/h; required to resolve speed thresholds. */
   boardTopSpeedKmh?: number | null
   /** Whether the active board has a valid battery config (battery presets need one). */
@@ -323,6 +331,22 @@ export function generateAlertPresetRules(
     // configured fraction (0.9×5 → 5, i.e. 100%). Native stores thresholds as REAL.
     start = roundTenth(start * topSpeed)
     ceiling = roundTenth(ceiling * topSpeed)
+    if (options.speedUnitSystem === 'imperial') {
+      // Whole-mph inputs, stored canonically. Keep a nonempty range even at low top speeds.
+      const ceilingMph = Math.max(
+        1,
+        Math.min(
+          Math.floor(speedFromKmh(topSpeed, 'imperial')),
+          Math.round(speedFromKmh(ceiling, 'imperial')),
+        ),
+      )
+      const startMph = Math.max(
+        0,
+        Math.min(ceilingMph - 1, Math.round(speedFromKmh(start, 'imperial'))),
+      )
+      start = speedToKmh(startMph, 'imperial')
+      ceiling = speedToKmh(ceilingMph, 'imperial')
+    }
   }
 
   return [
@@ -428,7 +452,7 @@ export function formatAlertPresetSummary(
   if (specs.length === 0) return null
   const unit = metric === 'speed' ? ` ${speedUnit(units)}` : ALERT_PRESET_UNIT[metric]
   const number = (value: number) =>
-    metric === 'speed' ? Number(speedFromKmh(value, units).toFixed(1)) : Math.round(value)
+    metric === 'speed' ? formatSpeedValue(value, units, 1) : Math.round(value)
   return specs
     .map((spec) => {
       if (spec.thresholdMax != null) {
@@ -469,7 +493,7 @@ export function describeAlertPreset(
   if (specs.length === 0) return null
   const unit = metric === 'speed' ? ` ${speedUnit(units)}` : ALERT_PRESET_UNIT[metric]
   const number = (value: number) =>
-    metric === 'speed' ? Number(speedFromKmh(value, units).toFixed(1)) : Math.round(value)
+    metric === 'speed' ? formatSpeedValue(value, units, 1) : Math.round(value)
   const value = (threshold: number) => `${number(threshold)}${unit}`
 
   const range = specs.find((spec) => spec.thresholdMax != null)
@@ -498,7 +522,9 @@ export const ALERT_PRESET_SOURCE = 'preset'
 export const ALERT_PRESET_METRICS = Object.keys(ALERT_PRESET_LEVELS) as AlertPresetMetric[]
 
 /** The rider's chosen level per metric — the durable `alertPreset` settings bag. */
-export type AlertPresetSelection = Record<AlertPresetMetric, AlertPresetLevel>
+export type AlertPresetSelection = Record<AlertPresetMetric, AlertPresetLevel> & {
+  speedUnitSystem?: UnitSystem
+}
 
 const ALERT_PRESET_LEVEL_VALUES: AlertPresetLevel[] = [
   'off',
@@ -516,7 +542,7 @@ export function asAlertPresetMetric(controlId: string | undefined): AlertPresetM
 /** Every metric `off` — the default before a rider touches any preset. */
 export const DEFAULT_ALERT_PRESET_SELECTION: AlertPresetSelection = Object.fromEntries(
   ALERT_PRESET_METRICS.map((metric) => [metric, 'off']),
-) as AlertPresetSelection
+) as Record<AlertPresetMetric, AlertPresetLevel>
 
 /**
  * Every metric `normal` — the starting point a new Board's setup opens on. Distinct from
@@ -525,19 +551,22 @@ export const DEFAULT_ALERT_PRESET_SELECTION: AlertPresetSelection = Object.fromE
  */
 export const NEW_BOARD_ALERT_PRESET_SELECTION: AlertPresetSelection = Object.fromEntries(
   ALERT_PRESET_METRICS.map((metric) => [metric, 'normal']),
-) as AlertPresetSelection
+) as Record<AlertPresetMetric, AlertPresetLevel>
 
 /** Coerce a persisted bag back into a full, valid selection; unknown/garbage levels fall to `off`. */
 export function normalizeAlertPresetSelection(raw: unknown): AlertPresetSelection {
   const value = (raw && typeof raw === 'object' ? raw : {}) as Partial<
     Record<AlertPresetMetric, unknown>
   >
-  return Object.fromEntries(
+  const selection = Object.fromEntries(
     ALERT_PRESET_METRICS.map((metric) => {
       const level = value[metric]
       return [metric, ALERT_PRESET_LEVEL_VALUES.includes(level as AlertPresetLevel) ? level : 'off']
     }),
   ) as AlertPresetSelection
+  const units = (raw as Record<string, unknown> | null)?.speedUnitSystem
+  if (units === 'metric' || units === 'imperial') selection.speedUnitSystem = units
+  return selection
 }
 
 /**

@@ -8,9 +8,9 @@ internal enum UnitPresentation {
     unitSystem == "imperial" ? kmh * 1000 / metersPerMile : kmh
   }
   static func speedUnit(_ unitSystem: String) -> String { unitSystem == "imperial" ? "mph" : "km/h" }
-  static func formatSpeed(_ kmh: Double, _ unitSystem: String) -> String {
-    let value = String(format: "%.1f", locale: Locale(identifier: "en_US_POSIX"), speedFromKmh(kmh, unitSystem))
-    return value.hasSuffix(".0") ? String(value.dropLast(2)) : value
+  static func formatSpokenSpeed(_ kmh: Double, _ unitSystem: String) -> String {
+    let value = speedFromKmh(kmh, unitSystem).rounded(.toNearestOrAwayFromZero)
+    return String(format: "%.0f", locale: Locale(identifier: "en_US_POSIX"), value)
   }
   static func distance(_ meters: Double, unitSystem: String) -> String {
     guard meters.isFinite else { return "—" }

@@ -1,5 +1,6 @@
+import { useFormat } from '@/hooks/useFormat'
 import { useUnitSystem } from '@/hooks/useUnitSystem'
-import { formatSpeedKmh, speedFromKmh, speedInputToKmh, speedUnit } from '@/helpers/units'
+import { speedFromKmh, speedInputToKmh, speedUnit } from '@/helpers/units'
 import { stepDelta } from '@/helpers/numberStep'
 import { StyleSheet, ScrollView } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
@@ -29,6 +30,7 @@ const MAX_RIDE_SPLIT_GAP_MINUTES = 240
 
 export default function HistorySettingsScreen() {
   const units = useUnitSystem()
+  const { formatSpeedWithUnit } = useFormat()
   const {
     rideSplitGapMinutes,
     movingSpeedThresholdKmh,
@@ -87,7 +89,7 @@ export default function HistorySettingsScreen() {
           <SettingsRow
             icon={GaugeIcon}
             label="Moving speed threshold"
-            hint={`Speeds below this are ignored for avg speed.\nDefault: ${formatSpeedKmh(3, units, units === 'imperial' ? 1 : 0)}.`}
+            hint={`Speeds below this are ignored for avg speed.\nDefault: ${formatSpeedWithUnit(3, units === 'imperial' ? 1 : 0)}.`}
             right={
               <Stepper
                 value={speedFromKmh(movingSpeedThresholdKmh, units)}
@@ -114,7 +116,7 @@ export default function HistorySettingsScreen() {
           <SettingsRow
             icon={ArrowsOutLineHorizontalIcon}
             label="Free spin speed delta"
-            hint={`Max board-vs-GPS speed gap before sample is excluded as free spin. Lower will increase the number of excluded samples.\nDefault: ${formatSpeedKmh(12, units, units === 'imperial' ? 1 : 0)}.`}
+            hint={`Max board-vs-GPS speed gap before sample is excluded as free spin. Lower will increase the number of excluded samples.\nDefault: ${formatSpeedWithUnit(12, units === 'imperial' ? 1 : 0)}.`}
             right={
               <Stepper
                 value={speedFromKmh(freeSpinMaxSpeedDeltaKmh, units)}
@@ -141,7 +143,7 @@ export default function HistorySettingsScreen() {
           <SettingsRow
             icon={ProhibitIcon}
             label="Free spin stationary cap"
-            hint={`Max board speed allowed when GPS is nearly stationary. Lower will increase the number of excluded samples.\nDefault: ${formatSpeedKmh(15, units, units === 'imperial' ? 1 : 0)}.`}
+            hint={`Max board speed allowed when GPS is nearly stationary. Lower will increase the number of excluded samples.\nDefault: ${formatSpeedWithUnit(15, units === 'imperial' ? 1 : 0)}.`}
             right={
               <Stepper
                 value={speedFromKmh(freeSpinStationaryBoardCapKmh, units)}

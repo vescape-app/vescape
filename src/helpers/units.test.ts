@@ -5,6 +5,7 @@ import {
   speedFromMps,
   speedToKmh,
   speedInputToKmh,
+  formatSpeedValue,
   formatSpeedKmh,
   formatSpeedMps,
   formatDistanceMeters,
@@ -43,4 +44,13 @@ test('input conversion retains exact untouched values and physical bounds', () =
   expect(speedInputToKmh(-1, 40, 'imperial', 5, 150)).toBe(5)
   expect(speedInputToKmh(200, 40, 'imperial', 5, 150)).toBe(150)
   expect(speedInputToKmh(speedFromKmh(150, 'imperial'), 40, 'imperial', 5, 150)).toBe(150)
+})
+
+test('speed display precision rounds after conversion and suppresses trailing zeros', () => {
+  expect(formatSpeedValue(40, 'metric')).toBe('40')
+  expect(formatSpeedValue(40, 'imperial')).toBe('25')
+  expect(formatSpeedValue(40, 'imperial', 1)).toBe('24.9')
+  expect(formatSpeedValue(40.2336, 'imperial', 1)).toBe('25')
+  expect(formatSpeedValue(0, 'imperial', 1)).toBe('0')
+  expect(formatSpeedValue(-40, 'imperial', 1)).toBe('-24.9')
 })

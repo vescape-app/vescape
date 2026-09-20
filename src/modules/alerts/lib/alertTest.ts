@@ -1,3 +1,4 @@
+import type { UnitSystem } from '@/helpers/units'
 import type { AlertTestRule } from 'vescape-core'
 
 import type { DraftAlertRule } from '@/modules/alerts/lib/customAlertRules'
@@ -12,6 +13,7 @@ interface AlertTestRuleSource {
   metric: AlertPresetMetric
   level: AlertPresetLevel
   customRules: DraftAlertRule[]
+  speedUnitSystem?: UnitSystem
   boardTopSpeedKmh: number
   hasBatteryConfig: boolean
   matchBoardConfig?: Partial<Record<AlertPresetMetric, boolean>>
@@ -22,6 +24,7 @@ interface MetricAlertRuleSnapshotSource {
   metric: AlertPresetMetric | null
   level: AlertPresetLevel
   rules: DraftAlertRule[]
+  speedUnitSystem?: UnitSystem
   boardTopSpeedKmh: number
   hasBatteryConfig: boolean
   matchBoardConfig?: Partial<Record<AlertPresetMetric, boolean>>
@@ -54,6 +57,7 @@ export function buildAlertTestRules({
   metric,
   level,
   customRules,
+  speedUnitSystem,
   boardTopSpeedKmh,
   hasBatteryConfig,
   matchBoardConfig,
@@ -65,6 +69,7 @@ export function buildAlertTestRules({
 
   // Dormant config-relative rules are left out: they have no threshold to test or draw.
   const presetRules = resolvedAlertPresetRules(metric, level, {
+    speedUnitSystem,
     boardTopSpeedKmh,
     hasBatteryConfig,
     matchBoardConfig,
@@ -87,6 +92,7 @@ export function buildMetricAlertRuleSnapshot({
   metric,
   level,
   rules,
+  speedUnitSystem,
   boardTopSpeedKmh,
   hasBatteryConfig,
   matchBoardConfig,
@@ -97,6 +103,7 @@ export function buildMetricAlertRuleSnapshot({
     metric,
     level,
     customRules: rules,
+    speedUnitSystem,
     boardTopSpeedKmh,
     hasBatteryConfig,
     matchBoardConfig,

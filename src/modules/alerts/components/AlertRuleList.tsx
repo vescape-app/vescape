@@ -1,5 +1,4 @@
-import { useUnitSystem } from '@/hooks/useUnitSystem'
-import { formatSpeedKmh } from '@/helpers/units'
+import { useFormat } from '@/hooks/useFormat'
 import { useRef, useState } from 'react'
 import { StyleSheet, TouchableOpacity, View } from 'react-native'
 import {
@@ -137,10 +136,10 @@ function AlertRuleRow({
   onToggle: () => void
   onDelete: () => void
 }) {
-  const units = useUnitSystem()
+  const { formatSpeedWithUnit } = useFormat()
   const format = (value: number) =>
     rule.controlId === 'speed'
-      ? formatSpeedKmh(value, units, 1)
+      ? formatSpeedWithUnit(value, 1)
       : formatAlertValue(value, batteryConfig, unit)
   const isGeiger = rule.thresholdMax != null
   const isTts = rule.soundType.startsWith('tts:')

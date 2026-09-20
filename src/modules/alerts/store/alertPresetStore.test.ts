@@ -52,6 +52,9 @@ async function setup(overrides?: {
   const { useAlertsStore } = await import('@/modules/alerts/store/alertsStore')
   const { useBoardStore } = await import('@/modules/board/store/boardStore')
   const { useAlertPresetStore } = await import('@/modules/alerts/store/alertPresetStore')
+  const { useSettingsStore } = await import('@/modules/settings/store/settingsStore')
+
+  useSettingsStore.setState({ unitSystem: 'metric' })
 
   // Alert Rules are Board-owned (#254); bind the alerts store to the board under test.
   useAlertsStore.setState({ boardId: BOARD_ID, rules: overrides?.seedRules ?? [] })
@@ -296,4 +299,33 @@ test('failed Alert Rule read remains distinct from an empty result', async () =>
 
   await expect(useAlertsStore.getState().load(BOARD_ID)).rejects.toThrow('query failed')
   expect(useAlertsStore.getState().error).toBe('query failed')
+})
+
+test('imperial preset choice survives unit changes, unrelated selections, regeneration, and customization', async () => {
+  const { useSettingsStore } = await import('@/modules/settings/store/settingsStore')
+  const { speedFromKmh } = await import('@/helpers/units')
+  const originalUnits = useSettingsStore.getState().unitSystem
+  const { useAlertsStore, useBoardStore, useAlertPresetStore } = await setup({ topSpeedKmh: 50 })
+  try {
+    useSettingsStore.setState({ unitSystem: 'imperial' })
+    await useAlertPresetStore.getState().setLevel('speed', 'normal')
+    const initial = presetRules(useAlertsStore.getState().rules, 'speed')[0]!
+    expect(speedFromKmh(initial.threshold, 'imperial')).toBeCloseTo(22)
+    expect(speedFromKmh(initial.thresholdMax!, 'imperial')).toBeCloseTo(28)
+    expect(boardSelection(useBoardStore.getState().boards[0])).toMatchObject({
+      speedUnitSystem: 'imperial',
+    })
+    useSettingsStore.setState({ unitSystem: 'metric' })
+    await useAlertPresetStore.getState().setLevel('duty', 'safe')
+    await useAlertPresetStore.getState().regenerateSpeed()
+    const regenerated = presetRules(useAlertsStore.getState().rules, 'speed')[0]!
+    expect(regenerated.threshold).toBe(initial.threshold)
+    expect(regenerated.thresholdMax).toBe(initial.thresholdMax)
+    await useAlertPresetStore.getState().customize('speed')
+    const custom = useAlertsStore.getState().rules.find((rule) => rule.controlId === 'speed')!
+    expect(custom.threshold).toBe(initial.threshold)
+    expect(custom.thresholdMax).toBe(initial.thresholdMax)
+  } finally {
+    useSettingsStore.setState({ unitSystem: originalUnits })
+  }
 })

@@ -9,8 +9,8 @@ object UnitPresentation {
     fun speedFromKmh(kmh: Double, unitSystem: String): Double =
         if (unitSystem == "imperial") kmh * 1000.0 / METERS_PER_MILE else kmh
     fun speedUnit(unitSystem: String): String = if (unitSystem == "imperial") "mph" else "km/h"
-    fun formatSpeed(kmh: Double, unitSystem: String): String =
-        String.format(java.util.Locale.US, "%.1f", speedFromKmh(kmh, unitSystem)).removeSuffix(".0")
+    fun formatSpokenSpeed(kmh: Double, unitSystem: String): String =
+        String.format(java.util.Locale.US, "%.0f", speedFromKmh(kmh, unitSystem))
     fun distance(meters: Double, unitSystem: String): String {
         if (!meters.isFinite()) return "—"
         val imperial = unitSystem == "imperial"

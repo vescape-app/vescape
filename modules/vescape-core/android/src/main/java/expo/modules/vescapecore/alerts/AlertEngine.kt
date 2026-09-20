@@ -72,7 +72,7 @@ internal fun renderAlertMessageTemplate(
 ): String {
     // @parity /modules/vescape-core/ios/alerts/AlertEngine.swift `renderAlertMessageTemplate`
     val isBattery = alert.controlId == "battery"
-    fun format(value: Double) = if (alert.controlId == "speed") UnitPresentation.formatSpeed(value, unitSystem) else formatAlertValue(value, alert.controlId)
+    fun format(value: Double) = if (alert.controlId == "speed") UnitPresentation.formatSpokenSpeed(value, unitSystem) else formatAlertValue(value, alert.controlId)
     var text = template
     text = text.replace("{value}", format(alert.value))
     text = text.replace("{threshold}", format(alert.threshold))

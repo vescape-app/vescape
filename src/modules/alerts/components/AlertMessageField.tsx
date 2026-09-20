@@ -1,4 +1,3 @@
-import { useUnitSystem } from '@/hooks/useUnitSystem'
 import { StyleSheet, TouchableOpacity, View } from 'react-native'
 import { SpeakerHighIcon } from 'phosphor-react-native'
 import { previewAlertSound } from 'vescape-core'
@@ -9,10 +8,8 @@ import { Input } from '@/components/forms/Input'
 import { theme } from '@/constants/theme'
 import type { DerivedBatteryConfig } from '@/modules/battery/lib/types'
 import type { getAlertDialConfig } from '@/modules/alerts/lib/alertFormDefaults'
-import {
-  getMessagePlaceholders,
-  renderPreviewTemplate,
-} from '@/modules/alerts/lib/alertFormDefaults'
+import { getMessagePlaceholders } from '@/modules/alerts/lib/alertFormDefaults'
+import { useAlertMessageFormat } from '@/modules/alerts/hooks/useAlertMessageFormat'
 
 /** Spoken-message template, its placeholder chips, and a preview of what will be said. */
 export function AlertMessageField({
@@ -32,7 +29,7 @@ export function AlertMessageField({
   messageTemplate: string
   onChangeTemplate: (next: string | ((current: string) => string)) => void
 }) {
-  const units = useUnitSystem()
+  const formatMessage = useAlertMessageFormat()
   return (
     <View style={styles.messageField}>
       <Text style={styles.fieldLabel}>TEMPLATE</Text>
@@ -60,7 +57,7 @@ export function AlertMessageField({
           accessibilityLabel="Preview the spoken message"
           onPress={() =>
             previewAlertSound(
-              `tts:${renderPreviewTemplate(messageTemplate, threshold, unit, dialConfig, controlId, batteryConfig, units)}`,
+              `tts:${formatMessage(messageTemplate, threshold, unit, dialConfig, controlId, batteryConfig)}`,
             )
           }
           style={styles.previewButton}

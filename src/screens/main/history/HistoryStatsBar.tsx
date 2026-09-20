@@ -1,11 +1,4 @@
-import { useUnitSystem } from '@/hooks/useUnitSystem'
-import {
-  speedFromKmh,
-  speedUnit,
-  rideDistanceFromMeters,
-  rideDistanceUnit,
-  type UnitSystem,
-} from '@/helpers/units'
+import { useFormat } from '@/hooks/useFormat'
 import { useMemo, useState } from 'react'
 import { Pressable, StyleSheet, View } from 'react-native'
 import { Text } from '@/components/base/Text'
@@ -27,6 +20,7 @@ import type { Icon } from 'phosphor-react-native'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 
 import type { HistorySession } from '@/modules/history/store/historyStore'
+import { useRideFormat } from '@/modules/history/hooks/useRideFormat'
 import { rideDurationMs } from '@/modules/history/lib/sessions'
 import { interaction, theme, type ThemeColor } from '@/constants/theme'
 import { DASH } from '@/helpers/format'
@@ -45,10 +39,9 @@ interface StatItem {
 }
 
 export function HistoryStatsBar({ session }: HistoryStatsBarProps) {
-  const units = useUnitSystem()
   const insets = useSafeAreaInsets()
   const [expanded, setExpanded] = useState(false)
-  const stats = useMemo(() => sessionToStats(session, units), [session, units])
+  const stats = useSessionStats(session)
   const primaryStats = stats.slice(0, 5)
   const secondaryStats = stats.slice(5)
 
@@ -127,102 +120,93 @@ function CompactStat({ item }: CompactStatProps) {
   )
 }
 
-function sessionToStats(session: HistorySession, units: UnitSystem): StatItem[] {
-  return [
-    {
-      key: 'distance',
-      label: 'Distance',
-      ...formatDistance(session.distanceM, units),
-      icon: RoadHorizonIcon,
-      accent: theme.palette.sky.color,
-    },
-    {
-      key: 'rideTime',
-      label: 'Time',
-      ...formatDuration(rideDurationMs(session)),
-      icon: ClockCountdownIcon,
-      accent: theme.palette.purple.color,
-    },
-    {
-      key: 'topSpeed',
-      label: 'Top Speed',
-      value: String(Math.round(speedFromKmh(session.maxSpeedKmh, units))),
-      unit: speedUnit(units),
-      icon: GaugeIcon,
-      accent: theme.telemetry.speed,
-    },
-    {
-      key: 'avgSpeed',
-      label: 'Avg Speed',
-      value: String(Math.round(speedFromKmh(session.avgSpeedKmh, units))),
-      unit: speedUnit(units),
-      icon: RepeatIcon,
-      accent: theme.palette.sky.light,
-    },
-    {
-      key: 'maxDuty',
-      label: 'Max Duty',
-      value: formatDuty(session.maxDuty),
-      unit: '%',
-      icon: LightningIcon,
-      accent: theme.telemetry.duty,
-    },
-    {
-      key: 'mosfetTemp',
-      label: 'Ctrl Max',
-      ...formatTemp(session.maxTempMosfet),
-      icon: ThermometerHotIcon,
-      accent: theme.telemetry.controllerTemp,
-    },
-    {
-      key: 'motorTemp',
-      label: 'Motor Max',
-      ...formatTemp(session.maxTempMotor),
-      icon: ThermometerSimpleIcon,
-      accent: theme.telemetry.motorTemp,
-    },
-    {
-      key: 'batteryUsed',
-      label: 'Used',
-      ...formatWh(session.batteryUsedWh),
-      icon: BatteryMediumIcon,
-      accent: theme.status.warning.color,
-    },
-    {
-      key: 'batteryRegen',
-      label: 'Regen',
-      ...formatWh(session.batteryRegenWh),
-      icon: BatteryChargingIcon,
-      accent: theme.palette.green.color,
-    },
-    {
-      key: 'samples',
-      label: 'Points',
-      value: formatCount(session.sampleCount),
-      icon: WaveformIcon,
-      accent: theme.palette.cyan.color,
-    },
-  ]
+function useSessionStats(session: HistorySession): StatItem[] {
+  const { formatSpeed, speedUnit } = useFormat()
+  const { formatHistoryDistance } = useRideFormat()
+  return useMemo(
+    () => [
+      {
+        key: 'distance',
+        label: 'Distance',
+        ...formatHistoryDistance(session.distanceM),
+        icon: RoadHorizonIcon,
+        accent: theme.palette.sky.color,
+      },
+      {
+        key: 'rideTime',
+        label: 'Time',
+        ...formatDuration(rideDurationMs(session)),
+        icon: ClockCountdownIcon,
+        accent: theme.palette.purple.color,
+      },
+      {
+        key: 'topSpeed',
+        label: 'Top Speed',
+        value: formatSpeed(session.maxSpeedKmh),
+        unit: speedUnit,
+        icon: GaugeIcon,
+        accent: theme.telemetry.speed,
+      },
+      {
+        key: 'avgSpeed',
+        label: 'Avg Speed',
+        value: formatSpeed(session.avgSpeedKmh),
+        unit: speedUnit,
+        icon: RepeatIcon,
+        accent: theme.palette.sky.light,
+      },
+      {
+        key: 'maxDuty',
+        label: 'Max Duty',
+        value: formatDuty(session.maxDuty),
+        unit: '%',
+        icon: LightningIcon,
+        accent: theme.telemetry.duty,
+      },
+      {
+        key: 'mosfetTemp',
+        label: 'Ctrl Max',
+        ...formatTemp(session.maxTempMosfet),
+        icon: ThermometerHotIcon,
+        accent: theme.telemetry.controllerTemp,
+      },
+      {
+        key: 'motorTemp',
+        label: 'Motor Max',
+        ...formatTemp(session.maxTempMotor),
+        icon: ThermometerSimpleIcon,
+        accent: theme.telemetry.motorTemp,
+      },
+      {
+        key: 'batteryUsed',
+        label: 'Used',
+        ...formatWh(session.batteryUsedWh),
+        icon: BatteryMediumIcon,
+        accent: theme.status.warning.color,
+      },
+      {
+        key: 'batteryRegen',
+        label: 'Regen',
+        ...formatWh(session.batteryRegenWh),
+        icon: BatteryChargingIcon,
+        accent: theme.palette.green.color,
+      },
+      {
+        key: 'samples',
+        label: 'Points',
+        value: formatCount(session.sampleCount),
+        icon: WaveformIcon,
+        accent: theme.palette.cyan.color,
+      },
+    ],
+    [session, formatHistoryDistance, formatSpeed, speedUnit],
+  )
 }
 
 function formatCount(value: number): string {
   if (value < 1000) return String(value)
   if (value < 10_000) return `${(value / 1000).toFixed(1)}k`
   return `${Math.round(value / 1000)}k`
-}
-
-function formatDistance(
-  valueM: number | null,
-  units: UnitSystem,
-): Pick<StatItem, 'value' | 'unit'> {
-  if (valueM == null) return { value: DASH }
-  if (units === 'imperial')
-    return {
-      value: rideDistanceFromMeters(valueM, units).toFixed(1),
-      unit: rideDistanceUnit(units),
-    }
-  if (valueM < 1000) return { value: String(Math.round(valueM)), unit: 'm' }
-  return { value: (valueM / 1000).toFixed(1), unit: 'km' }
 }
 
 function formatDuration(valueMs: number): Pick<StatItem, 'value' | 'unit'> {

@@ -1,6 +1,6 @@
 import legalPolicies from '../../../../shared/data/legal-policies.json'
 import { theme, type ThemeColor } from '@/constants/theme'
-import { formatSpeedKmh, speedFromKmh, speedUnit, type UnitSystem } from '@/helpers/units'
+import { formatSpeedKmh, formatSpeedValue, speedUnit, type UnitSystem } from '@/helpers/units'
 import type { LegalRoadStatus } from '@/modules/legal/lib/types'
 
 export interface LegalLimitCountry {
@@ -436,7 +436,7 @@ export function legalLimitLabelShape(units: UnitSystem): GeoJSON.FeatureCollecti
         label:
           country.referenceSpeedKmh == null
             ? 'N/A'
-            : `${Number(speedFromKmh(country.referenceSpeedKmh, units).toFixed(1))}`,
+            : formatSpeedValue(country.referenceSpeedKmh, units, 1),
         subtitle: country.referenceSpeedKmh == null ? '' : speedUnit(units),
         speedLimitBasis: country.speedLimitBasis,
         status: LEGAL_ROAD_STATUS_LABELS[country.status],

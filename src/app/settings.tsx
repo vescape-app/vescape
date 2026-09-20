@@ -29,6 +29,7 @@ import { routes } from '@/navigation/routes'
 import { theme } from '@/constants/theme'
 import { DASH, formatBytes } from '@/helpers/format'
 import { IconButton } from '@/components/base/IconButton'
+import { Select } from '@/components/forms/Select'
 import { SettingsCard } from '@/components/settings/SettingsCard'
 import { SettingsRow } from '@/components/settings/SettingsRow'
 import { SettingsSectionTitle } from '@/components/settings/SettingsSectionTitle'
@@ -122,29 +123,23 @@ export default function SettingsScreen() {
             hint="Board warnings and health checks"
             onPress={() => router.push(routes.settingsDiagnostics)}
           />
-        </SettingsCard>
-
-        <SettingsSectionTitle>Units</SettingsSectionTitle>
-        <SettingsCard>
           <SettingsRow
             icon={GaugeIcon}
             iconColor={theme.telemetry.speed}
-            label="Metric"
-            hint="km/h · kilometers · meters"
-            right={<Text>{unitSystem === 'metric' ? 'Selected' : ''}</Text>}
-            onPress={() => {
-              void setSetting('unitSystem', 'metric')
-            }}
-          />
-          <SettingsRow
-            icon={GaugeIcon}
-            iconColor={theme.telemetry.speed}
-            label="Imperial"
-            hint="mph · miles · feet"
-            right={<Text>{unitSystem === 'imperial' ? 'Selected' : ''}</Text>}
-            onPress={() => {
-              void setSetting('unitSystem', 'imperial')
-            }}
+            label="Units"
+            hint={unitSystem === 'metric' ? 'km/h · km · m' : 'mph · mi · ft'}
+            right={
+              <Select
+                options={[
+                  { label: 'Metric', value: 'metric' },
+                  { label: 'Imperial', value: 'imperial' },
+                ]}
+                value={unitSystem}
+                onChange={(value) => void setSetting('unitSystem', value)}
+                style={styles.unitsSelect}
+                testID="unit-system-select"
+              />
+            }
           />
         </SettingsCard>
         <SettingsSectionTitle>Appearance</SettingsSectionTitle>
@@ -241,6 +236,7 @@ const styles = StyleSheet.create({
     padding: 16,
     gap: 8,
   },
+  unitsSelect: { width: 150 },
   headerStats: {
     flexDirection: 'row',
     gap: 20,

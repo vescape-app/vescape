@@ -93,6 +93,7 @@ export function AlertFormSheet({
           geigerDefaultSoundType,
           controlId,
           batteryConfig,
+          units,
         )
     setTab(defaults.tab)
     setThreshold(defaults.threshold)

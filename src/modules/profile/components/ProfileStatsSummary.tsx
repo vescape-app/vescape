@@ -1,4 +1,3 @@
-import { useUnitSystem } from '@/hooks/useUnitSystem'
 import { useState, type ReactNode } from 'react'
 import { StyleSheet, View } from 'react-native'
 import { ChartLineUpIcon, WarningCircleIcon } from 'phosphor-react-native'
@@ -6,7 +5,7 @@ import { ChartLineUpIcon, WarningCircleIcon } from 'phosphor-react-native'
 import { Placeholder } from '@/components/base/Placeholder'
 import { SegmentedToggle } from '@/components/controls/SegmentedToggle'
 import { useResolvedSecondaryWidgetSurface } from '@/components/widgets/widgetSurface'
-import { pickProfileStatItems } from '@/modules/profile/components/profileStatItems'
+import { useProfileStatItems } from '@/modules/profile/hooks/useProfileStatItems'
 import { ProfileStatsGrid } from '@/modules/profile/components/ProfileStatsGrid'
 import { useProfileStats } from '@/modules/profile/hooks/useProfileStats'
 import { formatMonthLabel } from '@/modules/profile/lib/profileStats'
@@ -25,11 +24,11 @@ interface ProfileStatsSummaryProps {
  * The full breakdown lives on the Profile Stats screen; this is the glance version.
  */
 export function ProfileStatsSummary({ active = true, action }: ProfileStatsSummaryProps) {
-  const units = useUnitSystem()
   const { total, monthly, selectedMonth, loading, error, empty } = useProfileStats(active)
   const surface = useResolvedSecondaryWidgetSurface()
   const [scope, setScope] = useState<Scope>('total')
   const stats = scope === 'total' ? total : monthly
+  const items = useProfileStatItems(stats, ['distance', 'rides', 'topSpeed', 'longestRide'])
 
   return (
     <View
@@ -63,14 +62,7 @@ export function ProfileStatsSummary({ active = true, action }: ProfileStatsSumma
             style={styles.empty}
           />
         ) : (
-          <ProfileStatsGrid
-            items={pickProfileStatItems(
-              stats,
-              ['distance', 'rides', 'topSpeed', 'longestRide'],
-              units,
-            )}
-            emphasis
-          />
+          <ProfileStatsGrid items={items} emphasis />
         )}
       </View>
     </View>

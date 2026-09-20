@@ -38,8 +38,15 @@ export function speedUnit(units: UnitSystem): 'km/h' | 'mph' {
   return units === 'imperial' ? 'mph' : 'km/h'
 }
 
+/** Numeric speed label; round after conversion and omit insignificant trailing zeros. */
+export function formatSpeedValue(kmh: number, units: UnitSystem, precision = 0): string {
+  'worklet'
+  return String(Number(speedFromKmh(kmh, units).toFixed(precision)))
+}
+
 export function formatSpeedKmh(kmh: number, units: UnitSystem, decimals = 0): string {
-  return `${speedFromKmh(kmh, units).toFixed(decimals)} ${speedUnit(units)}`
+  'worklet'
+  return `${formatSpeedValue(kmh, units, decimals)} ${speedUnit(units)}`
 }
 
 export function formatSpeedMps(mps: number, units: UnitSystem, decimals = 0): string {

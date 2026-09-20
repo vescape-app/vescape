@@ -207,7 +207,7 @@ internal func renderAlertMessageTemplate(
 ) -> String {
   let isBattery = alert.controlId == "battery"
   func format(_ value: Double) -> String {
-    alert.controlId == "speed" ? UnitPresentation.formatSpeed(value, unitSystem) : formatAlertValue(value, alert.controlId)
+    alert.controlId == "speed" ? UnitPresentation.formatSpokenSpeed(value, unitSystem) : formatAlertValue(value, alert.controlId)
   }
   var text = template
   text = text.replacingOccurrences(

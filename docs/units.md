@@ -20,14 +20,32 @@ Metric distance formatting keeps the existing meters-below-1-km convention. Impe
 
 Imperial alert thresholds use 1 mph steps; Board Top Speed uses 5 mph steps. The first increment or decrement snaps to the next clean step in that direction. For Board Top Speed displayed as 24.9 mph, increment selects 25 mph and decrement selects 20 mph.
 
-Converted settings can show one decimal until edited. Preserve the exact stored value when opening, closing, or switching units; never write a rounded display value back without an actual edit.
+New custom speed alerts initialize their thresholds at whole mph in imperial mode, then store the metric equivalents. Opening an existing alert preserves its saved thresholds exactly.
+
+Speed labels omit trailing `.0`. Converted settings can show one decimal until edited. Preserve the exact stored value when opening, closing, or switching units; never write a rounded display value back without an actual edit.
 
 Examples:
 
 - A saved 40 km/h appears as 24.9 mph. Switching back without editing still shows 40 km/h.
 - Choosing 25 mph stores its metric equivalent, 40.2336 km/h. Switching back displays 40.2 km/h without changing that saved value.
 
+## Speed presets
+
+Selecting a speed preset in imperial units snaps its actual range endpoints to whole mph before
+converting them to canonical km/h. The ceiling stays within Board Top Speed and the start stays
+at least 1 mph below the ceiling. At very low top speeds, preset levels can therefore share a range.
+Metric presets retain their existing tenth-km/h calculation.
+
+The Board's opaque `alertPreset` bag retains `speedUnitSystem`, the units used when selecting the
+speed preset. Previews, chart markers, customization, and regeneration use that saved choice.
+Changing display units does not recalculate firing speeds. Existing presets without this metadata
+retain their original calculation until the rider selects a speed preset again. New-board setup
+captures the unit choice in its draft and saves it with the preset.
+
 ## Spoken alerts
+
+Spoken speeds use whole numbers in both unit systems, rounding after conversion. This applies to
+native announcements and the JS message preview; alert evaluation retains exact thresholds.
 
 Convert speed placeholders such as `{value}`, `{threshold}`, and `{unit}` together. Preserve custom text verbatim, including any manually written unit names. Do not parse or rewrite free text.
 

@@ -2,7 +2,6 @@ import { describe, expect, test } from 'bun:test'
 import { DASH } from '@/helpers/format'
 import {
   formatDistance,
-  formatSpeed,
   formatDuration,
   formatEnergy,
   formatMonthLabel,
@@ -52,7 +51,5 @@ test('existing profile aggregates reformat without changing canonical values', (
   expect(formatDistance(1609.344, 'imperial')).toBe('1.0 mi')
   expect(formatDistance(null, 'imperial')).toBe(DASH)
   expect(formatDistance(0, 'imperial')).toBe('0.0 mi')
-  expect(formatSpeed(stats.speedKmh, 'imperial')).toBe('25 mph')
-  expect(formatSpeed(stats.speedKmh, 'metric')).toBe('40 km/h')
   expect(stats).toEqual({ distanceM: 80, speedKmh: 40 })
 })

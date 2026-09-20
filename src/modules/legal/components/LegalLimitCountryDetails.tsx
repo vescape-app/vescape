@@ -10,17 +10,16 @@ import {
 } from 'phosphor-react-native'
 import { StyleSheet, View } from 'react-native'
 
-import { useUnitSystem } from '@/hooks/useUnitSystem'
 import { Text } from '@/components/base/Text'
 import { useResolvedSecondaryWidgetSurface } from '@/components/widgets/widgetSurface'
 import { theme, type ThemeColor } from '@/constants/theme'
 import {
   getLegalLimitCountryDetail,
-  legalReferenceSpeedLabel,
   LEGAL_ROAD_STATUS_COLORS,
   LEGAL_ROAD_STATUS_LABELS,
   type LegalLimitCountry,
 } from '@/modules/legal/lib/legalLimits'
+import { useLegalReferenceSpeedFormat } from '@/modules/legal/hooks/useLegalLimitsFormat'
 
 import { LEGAL_LIMIT_STATUS_ICONS } from '@/modules/legal/lib/legalLimitStatusIcon'
 
@@ -40,12 +39,12 @@ interface AlertRowProps {
 }
 
 export function LegalLimitCountryDetails({ country }: LegalLimitCountryDetailsProps) {
-  const units = useUnitSystem()
+  const formatReferenceSpeed = useLegalReferenceSpeedFormat()
   const surface = useResolvedSecondaryWidgetSurface()
   const detail = getLegalLimitCountryDetail(country)
   const statusColor = LEGAL_ROAD_STATUS_COLORS[country.status]
   const StatusIcon = LEGAL_LIMIT_STATUS_ICONS[country.status]
-  const speedLabel = legalReferenceSpeedLabel(country.referenceSpeedKmh, units)
+  const speedLabel = formatReferenceSpeed(country.referenceSpeedKmh)
 
   return (
     <View style={styles.container}>

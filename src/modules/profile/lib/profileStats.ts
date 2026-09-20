@@ -1,9 +1,4 @@
-import {
-  formatDistanceMeters,
-  formatRideDistanceMeters,
-  formatSpeedKmh,
-  type UnitSystem,
-} from '@/helpers/units'
+import { formatDistanceMeters, formatRideDistanceMeters, type UnitSystem } from '@/helpers/units'
 import type { ProfileStatsMonth } from 'vescape-core'
 import { DASH } from '@/helpers/format'
 
@@ -56,10 +51,6 @@ export function formatDuration(valueMs: number): string {
   const hours = Math.floor(totalMinutes / 60)
   const minutes = totalMinutes % 60
   return minutes === 0 ? `${hours}h` : `${hours}h ${minutes}m`
-}
-
-export function formatSpeed(valueKmh: number, units: UnitSystem = 'metric'): string {
-  return formatSpeedKmh(valueKmh, units)
 }
 
 export function formatEnergy(valueWh: number | null): string {

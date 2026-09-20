@@ -1,5 +1,4 @@
-import { useUnitSystem } from '@/hooks/useUnitSystem'
-import { presentTelemetryMetric } from '@/modules/board/constants/telemetry'
+import { useFormat } from '@/hooks/useFormat'
 import type { ReactNode } from 'react'
 import { StyleSheet, View, type StyleProp, type ViewStyle } from 'react-native'
 import type { SharedValue } from 'react-native-reanimated'
@@ -55,7 +54,7 @@ export function DualGauge({
   containerStyle,
   footer,
 }: DualGaugeProps) {
-  const speed = presentTelemetryMetric(telemetry.speed, useUnitSystem())
+  const { formatSpeedWithUnit } = useFormat()
   const telemetryColors = useResolvedTelemetryColors()
   const router = useRouter()
   return (
@@ -73,7 +72,7 @@ export function DualGauge({
             <SparklineMaxBadge
               points={speedSeries ?? []}
               color={telemetryColors.speed}
-              fmt={speed.formatWithUnit}
+              fmt={(value) => formatSpeedWithUnit(Math.abs(value))}
               position="left"
             />
           </View>
