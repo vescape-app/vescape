@@ -32,11 +32,16 @@ final class WatchColdStateTests: XCTestCase {
     XCTAssertEqual(wire.writes, 0)
     wire.failWith = nil
     state.flush()
-    XCTAssertEqual(WatchSettings.decode(context: wire.context).unitSystem, "imperial")
-    let restarted = wire.coldState()
-    restarted.put(channel: watchSettingsChannel, payload: WatchSettings(unitSystem: "imperial").payload)
     XCTAssertEqual(wire.writes, 1)
     XCTAssertEqual(WatchSettings.decode(context: wire.context).unitSystem, "imperial")
+    let restarted = wire.coldState()
+    // Delivery caches are process-local. Restart republishes the latest settings once.
+    restarted.put(channel: watchSettingsChannel, payload: WatchSettings(unitSystem: "imperial").payload)
+    XCTAssertEqual(wire.writes, 2)
+    XCTAssertEqual(WatchSettings.decode(context: wire.context).unitSystem, "imperial")
+    restarted.put(channel: watchSettingsChannel, payload: WatchSettings(unitSystem: "imperial").payload)
+    restarted.flush()
+    XCTAssertEqual(wire.writes, 2)
   }
 
   func testWritingOneChannelPreservesTheOthersAndUnrelatedKeys() {
