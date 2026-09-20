@@ -790,6 +790,14 @@ public class VescapeCoreModule: Module {
       }
     }
 
+    // @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/VescapeCoreModule.kt `exportRideGpx`
+    // @parity /modules/vescape-core/src/index.ts `exportRideGpx`
+    AsyncFunction("exportRideGpx") { (options: [String: Any], promise: Promise) in
+      try RecordingStorageFailure.requireAvailable()
+      do { promise.resolve(try TelemetryRepository.shared.exportRideGpx(options)) }
+      catch { promise.reject("ERR_RIDE_EXPORT", "Could not export ride", cause: error) }
+    }
+
     AsyncFunction("getHistoryRange") { (options: [String: Any], promise: Promise) in
       try RecordingStorageFailure.requireAvailable()
       do { promise.resolve(try TelemetryRepository.shared.getRange(options)) }

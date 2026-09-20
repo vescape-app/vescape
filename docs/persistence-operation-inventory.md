@@ -76,3 +76,11 @@ backfill, and rollback when the preview update fails. Android also checks Board/
 and gaps across minute boundaries. Both production backup directions compare decoded geometry.
 The Swift host exercises the app-used `RecordingFlushTimer` for sparse-batch deadlines, cancellation,
 and coalescing. Native app lifecycle integration remains separate from the SQLite host contracts.
+
+## Ride export reads
+
+`RideExportHostTest` and `runRideExportContract` execute the production Room/GRDB GPX writers
+against `shared/ride-export-contract.json`. They cover complete keyset paging beyond the display
+cap, equal-time ordering, exact Board/recording/range scope, legacy precision, optional GPX fields,
+XML escaping and empty exports. The export reads existing Ride Track storage without changing
+its schema. Native bridge and OS sharing require app/device verification.

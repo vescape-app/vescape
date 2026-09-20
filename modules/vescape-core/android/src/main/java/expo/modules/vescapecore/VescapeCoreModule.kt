@@ -821,6 +821,14 @@ class VescapeCoreModule : Module() {
         throw CodedException("ERR_HISTORY_READ", "Could not load ride history", error)
       }
     }
+    // @parity /modules/vescape-core/ios/VescapeCoreModule.swift `exportRideGpx`
+    // @parity /modules/vescape-core/src/index.ts `exportRideGpx`
+    AsyncFunction("exportRideGpx") Coroutine { options: Map<String, Any?> ->
+      RecordingStorageFailure.requireAvailable()
+      try { TelemetryRepository.get(context.applicationContext).exportRideGpx(options) }
+      catch (error: CancellationException) { throw error }
+      catch (error: Exception) { throw CodedException("ERR_RIDE_EXPORT", "Could not export ride", error) }
+    }
     AsyncFunction("getHistoryRange") Coroutine { options: Map<String, Any?> ->
       RecordingStorageFailure.requireAvailable()
       try { TelemetryRepository.get(context.applicationContext).getRange(options) }

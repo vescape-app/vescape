@@ -234,6 +234,19 @@ interface TelemetryDao {
     recordingId: String? = null,
   ): List<RideTrackPointEntity>
 
+  // Raw keyset pages: advance using the last RAW row, even when every row is imprecise.
+  // @parity /modules/vescape-core/ios/telemetry/RideExport.swift `rideExportTrackPage`
+  @Query("""
+    SELECT * FROM ride_track_points
+    WHERE fix_at_ms >= :fromMs AND fix_at_ms <= :toMs
+      AND board_id IS :boardId
+      AND (:recordingId IS NULL OR recording_id = :recordingId)
+      AND (fix_at_ms > :afterMs OR (fix_at_ms = :afterMs AND id > :afterId))
+    ORDER BY fix_at_ms, id LIMIT :limit
+  """)
+  suspend fun getRideExportTrackPage(fromMs: Long, toMs: Long, boardId: String?, recordingId: String?,
+    afterMs: Long, afterId: Long, limit: Int): List<RideTrackPointEntity>
+
   /** Complete input for durable summaries and bucket rebuilds, without the bridge read cap. */
   // @parity /modules/vescape-core/ios/telemetry/RideTrackStore.swift `fetchRideTrackForAggregation`
   @Query(RIDE_TRACK_RANGE_QUERY)

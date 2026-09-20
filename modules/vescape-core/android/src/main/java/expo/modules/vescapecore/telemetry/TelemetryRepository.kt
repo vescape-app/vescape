@@ -96,6 +96,11 @@ class TelemetryRepository private constructor(context: Context) {
   private val appContext = context.applicationContext
   private val db = TelemetryDatabase.get(context)
   private val dao = db.telemetryDao()
+  // @parity /modules/vescape-core/ios/telemetry/TelemetryRepository.swift `exportRideGpx`
+  suspend fun exportRideGpx(options: Map<String, Any?>): Map<String, Any> = withContext(Dispatchers.IO) {
+    db.withTransaction { RideExport.gpx(dao, appContext.cacheDir, options) }
+  }
+
   private val recordingPersistence = RecordingPersistence(dao)
   private val maintenancePersistence = TelemetryMaintenancePersistence(dao)
   private val favoriteMediaStore = FavoriteMediaStore(appContext, dao)

@@ -224,7 +224,9 @@ directions, including independent GPS fixes and recording end intent. Native lif
 full app builds cover integration beyond the database hosts. Real-device background GPS behavior
 still requires a device smoke test.
 
-## Ride export design, not yet implemented
+## Ride export
+
+GPX export is implemented. CSV below remains the agreed design for #507.
 
 Decisions from the 2026-09-20 design discussion:
 
@@ -298,3 +300,31 @@ the `session_logs` and `session_locations` column definitions near line 339650 o
 `hermes-pseudocode.js`, the packed state and pitch decoder near line 463380, and the Garmin GPX
 builder near line 1761550. Floaty's GPX is GPX 1.1 with GPS speed in a Garmin TrackPointExtension
 v2. These are reference findings, not proof of a successful import into an external app.
+
+### GPX implementation
+
+Ride and Favorite detail offer Export GPX and Delete in their three-dot menu. Favorite editing
+and unpinning retain their existing behavior. Export uses the selected entry's full stored range,
+or the Favorite's exact saved range, independently of movement, chart zoom, and playback.
+
+`exportRideGpx` accepts `RideExportOptions` and returns a closed `RideExportFile`. Native reads
+raw Ride Track fixes in pages of 1,000 ordered by `(fix_at_ms, id)` inside one database snapshot.
+The cursor advances past the last raw fix, even when an entire page fails precision filtering.
+Board attribution is exact, including an unassigned Board; optional recording identity further
+restricts identified entries. Favorites and legacy entries use Board/time scope.
+
+The writer emits UTF-8 GPX 1.1, escaped track names, coordinates in degrees, optional altitude
+in metres, UTC timestamps with millisecond precision, and optional GPS speed in metres per second
+under Garmin TrackPointExtension v2. GPS-only spans need no telemetry. Empty input produces a valid
+empty track. No smoothing, movement trimming, or chart cap applies.
+
+A UUID filename under native temporary/cache storage keeps rider names out of paths. Failed writes
+remove their partial file; successful files remain available for share consumers and OS cache
+reclamation. JS waits for the menu's native dismissal before invoking system sharing on iOS.
+Generation and sharing errors appear through the existing information modal. There is no
+data-availability preflight.
+
+Room and GRDB host contracts share a 23,005-fix fixture definition covering rejected raw pages,
+equal timestamps, exact range/Board/recording scope, legacy accuracy, escaping, optional fields,
+and empty XML. JS tests cover ride versus Favorite export intent. Device share-sheet behavior
+and external-app imports remain rider-led verification, not observed compatibility guarantees.

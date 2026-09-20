@@ -1276,6 +1276,7 @@ try require(
 try clearanceQueue!.close()
 try? FileManager.default.removeItem(at: clearanceURL)
 
+try runRideExportContract()
 try runBucketRoutePreviewContract()
 try runRecordingFlushTimerContract()
 
