@@ -13,7 +13,7 @@ import {
   type ExpandableCircleMenuSize,
 } from '@/components/controls/ExpandableCircleMenu'
 import { MAP_ORIENTATION_MODES, type MapOrientationMode } from '@/modules/map/constants/mapStyles'
-import { theme } from '@/constants/theme'
+import { theme, type ThemeColor } from '@/constants/theme'
 
 const COLLAPSED_ICON_COLOR = theme.palette.mono.white
 
@@ -126,7 +126,7 @@ function NorthAwareIcon({
   )
 }
 
-function ForwardNavigationIcon({ size, color }: { size: number; color: string }) {
+function ForwardNavigationIcon({ size, color }: { size: number; color: ThemeColor }) {
   return (
     <View style={styles.forwardNavigationIcon}>
       <NavigationArrowIcon size={size} color={color} weight="fill" />

@@ -1,4 +1,4 @@
-import { theme } from '@/constants/theme'
+import { theme, type ThemeColor } from '@/constants/theme'
 
 interface TelemetryChartRange {
   min: number
@@ -8,7 +8,7 @@ interface TelemetryChartRange {
 export interface TelemetryMetricConfig {
   label: string
   unit: string
-  color: string
+  color: ThemeColor
   decimals: number
   chartRange: TelemetryChartRange
   /**

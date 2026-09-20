@@ -10,7 +10,7 @@ import Animated, {
 } from 'react-native-reanimated'
 
 import { Text } from '@/components/base/Text'
-import { theme } from '@/constants/theme'
+import { theme, type ThemeColor } from '@/constants/theme'
 import { useResolvedNeutralColors } from '@/hooks/useTheme'
 
 interface ActiveNavigationTopBarProps {
@@ -21,7 +21,7 @@ interface ActiveNavigationTopBarProps {
   targetTitle: string
   targetIcon: Icon
   distanceLabel: string
-  riderColor: string
+  riderColor: ThemeColor
   onNavigationPress: () => void
   onCancel: () => void
 }
@@ -70,11 +70,11 @@ function CompactBoardPill({
   )
 }
 
-function TargetIcon({ icon, color, size = 16 }: { icon: Icon; color: string; size?: number }) {
+function TargetIcon({ icon, color, size = 16 }: { icon: Icon; color: ThemeColor; size?: number }) {
   return createElement(icon, { size, color, weight: 'bold' })
 }
 
-function CancelButton({ color, onPress }: { color: string; onPress: () => void }) {
+function CancelButton({ color, onPress }: { color: ThemeColor; onPress: () => void }) {
   return (
     <Pressable
       accessibilityLabel="Cancel navigation"

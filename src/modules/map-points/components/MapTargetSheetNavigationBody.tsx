@@ -3,7 +3,7 @@ import type { ReactNode } from 'react'
 import { ActivityIndicator, StyleSheet, View } from 'react-native'
 
 import { Text } from '@/components/base/Text'
-import { theme } from '@/constants/theme'
+import { theme, type ThemeColor } from '@/constants/theme'
 import { fmtDistance, fmtRideDuration } from '@/helpers/format'
 import type { MapTargetSheetAction } from '@/modules/map-points/components/mapTargetSheetChrome'
 import {
@@ -47,8 +47,8 @@ export function MapTargetNavigationBody({
   profileSelector?: ReactNode
   media: readonly MapPointMediaAsset[]
   /** The Direction Point's own colour, for the header badge — the actions carry their own. */
-  targetColor: string
-  targetTextColor: string
+  targetColor: ThemeColor
+  targetTextColor: ThemeColor
   onDismiss?: () => void
   onFocusTarget?: () => void
 }) {

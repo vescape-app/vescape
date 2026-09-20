@@ -12,7 +12,7 @@ import { StyleSheet, View } from 'react-native'
 
 import { Text } from '@/components/base/Text'
 import { useResolvedSecondaryWidgetSurface } from '@/components/widgets/widgetSurface'
-import { theme } from '@/constants/theme'
+import { theme, type ThemeColor } from '@/constants/theme'
 import {
   getLegalLimitCountryDetail,
   LEGAL_ROAD_STATUS_COLORS,
@@ -33,7 +33,7 @@ interface DetailRowProps {
 }
 
 interface AlertRowProps {
-  color: string
+  color: ThemeColor
   text: string
 }
 

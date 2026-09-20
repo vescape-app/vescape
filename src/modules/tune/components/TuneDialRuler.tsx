@@ -1,3 +1,4 @@
+import type { ThemeColor } from '@/constants/theme'
 import {
   Canvas,
   DashPathEffect,
@@ -51,7 +52,7 @@ export function TuneDialRuler({
   min: number
   step: number
   decimals: number
-  color: string
+  color: ThemeColor
   indicatorGlow?: 'left' | 'right'
   previousValue?: number
   valueToOffset: (value: number) => number

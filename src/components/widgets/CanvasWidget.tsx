@@ -8,13 +8,13 @@ import {
   useResolvedSecondaryWidgetSurface,
   type WidgetSize,
 } from '@/components/widgets/widgetSurface'
-import { theme } from '@/constants/theme'
+import { theme, type ThemeColor } from '@/constants/theme'
 
 interface CanvasWidgetProps {
   icon: Icon
   title: string
   /** Accent for the icon, the active border and the status dot. */
-  accent?: string
+  accent?: ThemeColor
   /** Raise the border to `accent` and show a status dot. */
   active?: boolean
   /** Footprint in the widget grid. `square` forces an aspect-1 tile and ignores `height`. */

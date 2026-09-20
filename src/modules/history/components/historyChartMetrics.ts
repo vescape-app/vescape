@@ -1,5 +1,5 @@
 import type { AutoRangeOptions } from '@/components/charts/chartMath'
-import { theme } from '@/constants/theme'
+import { theme, type ThemeColor } from '@/constants/theme'
 import { telemetry, type TelemetryMetricConfig } from '@/modules/board/constants/telemetry'
 import type { HistoryMetricKey } from '@/modules/history/lib/metricColorScale'
 
@@ -43,7 +43,7 @@ export type OptionalChartMetric =
 export interface ChartMetricDef {
   key: HistoryMetricKey
   label: string
-  color: string
+  color: ThemeColor
   range: AutoRangeOptions
   /** Session-exclusion stat keys that grey out this chart's ranges. */
   statKeys?: string | string[]
@@ -152,7 +152,7 @@ export interface ExtraChartMetricDef {
   key: ExtraChartMetric
   label: string
   multilineLabel?: [string, string]
-  color: string
+  color: ThemeColor
   range: AutoRangeOptions
   source: ExtraChartSource
   unit?: string
@@ -255,7 +255,7 @@ export type ChartToggleMetric = 'speed' | OptionalChartMetric | ExtraChartMetric
 export interface ChartTabMetricDef {
   key: ChartToggleMetric
   label: string
-  color: string
+  color: ThemeColor
   multilineLabel?: [string, string]
   tabLabel?: string
 }

@@ -1,11 +1,11 @@
 import { Switch } from 'react-native'
 
-import { theme } from '@/constants/theme'
+import { theme, type ThemeColor } from '@/constants/theme'
 
 /** Enough of an accent to tint a switch: every palette hue and every `theme.status` token fits. */
 export interface SettingsSwitchAccent {
-  color: string
-  border: string
+  color: ThemeColor
+  border: ThemeColor
 }
 
 export interface SettingsSwitchProps {

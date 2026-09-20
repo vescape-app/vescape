@@ -4,7 +4,7 @@ import { useMemo } from 'react'
 import Animated, { withTiming } from 'react-native-reanimated'
 
 import { theme } from '@/constants/theme'
-import { useResolvedNeutralColors } from '@/hooks/useTheme'
+import { useResolvedNeutralColors, useResolvedColor } from '@/hooks/useTheme'
 import { MapTargetReticle } from '@/modules/map/components/MapTargetReticle'
 import { MapPin } from '@/modules/map/components/MapPin'
 import { MAP_DEFAULTS } from '@/modules/map/constants/mapStyles'
@@ -109,7 +109,7 @@ export function NavigationMapLayers({
   )
 
   const showDirectionPoint = directionPoint != null && activeNavigationTarget?.type !== 'mapPoint'
-  const pinColor = navigationFailed ? theme.status.warning.color : directionColor
+  const pinColor = useResolvedColor(navigationFailed ? theme.status.warning.color : directionColor)
   const pinTextColor = navigationFailed ? theme.status.warning.text : directionTextColor
   const pinIcon = navigationFailed ? WarningIcon : getNavigationTargetIcon(activeNavigationTarget)
 

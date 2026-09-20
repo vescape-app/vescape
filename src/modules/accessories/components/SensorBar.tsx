@@ -1,7 +1,7 @@
 import { StyleSheet, View } from 'react-native'
 import Animated, { useAnimatedStyle, type SharedValue } from 'react-native-reanimated'
 
-import { theme } from '@/constants/theme'
+import { theme, type ThemeColor } from '@/constants/theme'
 interface ReadingRange {
   min: number
   max: number
@@ -10,7 +10,7 @@ interface ReadingRange {
 interface SensorBarProps {
   value: SharedValue<number>
   range: ReadingRange
-  color: string
+  color: ThemeColor
 }
 
 const HEIGHT = 4

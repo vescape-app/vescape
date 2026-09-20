@@ -25,7 +25,7 @@ import { showDevControls } from '@/config/env'
 import type { Board } from '@/modules/board/store/boardStore'
 import { useBleStore } from '@/modules/board/store/bleStore'
 import { getConnectedLinkIntegrityWarning } from '@/modules/board/lib/boardLinkIntegrity'
-import { theme } from '@/constants/theme'
+import { theme, type ThemeColor } from '@/constants/theme'
 
 interface FloatingBarProps {
   bleStatus: string
@@ -60,7 +60,7 @@ interface SpinnerPill {
   kind: 'spinner'
   icon?: Icon
   text: string
-  color: string
+  color: ThemeColor
   onPress: () => void
 }
 interface ActionPill {

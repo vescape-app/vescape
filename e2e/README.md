@@ -37,6 +37,22 @@ The first example clears app state, opens the board selector, taps Add new board
 
 Because this repo currently installs an Expo development build, the flow first selects the local Metro server from the Expo dev-client launcher. The dev-client config hides the tools button, skips onboarding, and prevents the dev menu from opening at launch. Those settings are native config plugin values, so rebuild the Android app after changing them.
 
+## Component-library smoke
+
+`components.yaml` opens the base, chart, and typography previews and exercises the
+IconButton progress ring. It preserves app data and does not require E2E mode.
+Run it against a development app already connected to Metro for the current workspace:
+
+```sh
+maestro --device emulator-5554 test -e APP_ID=app.vescape.dev e2e/flows/components.yaml
+```
+
+Confirm the device appears in Metro's `http://localhost:8081/json/list` before using
+this as evidence for local changes. Run in both light and dark app appearances when
+changing adaptive colors. Visible preview assertions catch render failures even when
+the reconciler error is missing from logcat. This is a smoke check, not coverage of
+every showcase state.
+
 ## Seeded live telemetry
 
 Use the private `e2e-seed` route to put the app into a deterministic connected-board state. It

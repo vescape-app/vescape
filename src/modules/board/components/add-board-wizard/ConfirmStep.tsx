@@ -12,7 +12,7 @@ import {
 } from 'phosphor-react-native'
 
 import { Button } from '@/components/base/Button'
-import { theme } from '@/constants/theme'
+import { theme, type ThemeColor } from '@/constants/theme'
 import {
   ALERT_PRESET_METRICS,
   formatAlertPresetSummary,
@@ -132,7 +132,7 @@ export function ConfirmStep({ wizard }: { wizard: UseAddBoardWizard }) {
 
 interface ConfirmRowProps {
   icon: Icon
-  iconColor: string
+  iconColor: ThemeColor
   label: string
   value: string
 }

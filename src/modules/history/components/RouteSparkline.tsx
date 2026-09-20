@@ -2,7 +2,7 @@ import { useMemo } from 'react'
 import { StyleSheet, View, type StyleProp, type ViewStyle } from 'react-native'
 import { Canvas, Circle, Path } from '@shopify/react-native-skia'
 
-import { theme } from '@/constants/theme'
+import { theme, type ThemeColor } from '@/constants/theme'
 import { useResolvedColor } from '@/hooks/useTheme'
 import {
   routePreviewPath,
@@ -15,7 +15,7 @@ interface RouteSparklineProps {
   width: number
   height: number
   /** Line color; the ride list tints a selected row and Favorites use their own amber. */
-  color?: string
+  color?: ThemeColor
   /** Green start and red end dots. Off on small thumbnails where they only add noise. */
   endpoints?: boolean
   style?: StyleProp<ViewStyle>

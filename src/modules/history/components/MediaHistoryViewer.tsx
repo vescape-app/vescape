@@ -20,7 +20,7 @@ import { IconButton } from '@/components/base/IconButton'
 import { telemetry } from '@/modules/board/constants/telemetry'
 import { dutyPercent } from '@/helpers/format'
 import { findVideoTelemetrySample, type MediaAssetInput } from '@/modules/history/lib/mediaHistory'
-import { theme } from '@/constants/theme'
+import { theme, type ThemeColor } from '@/constants/theme'
 
 function VideoAsset({
   asset,
@@ -90,7 +90,7 @@ function VideoTelemetryStat({
   label: string
   value: string
   icon: Icon
-  accent: string
+  accent: ThemeColor
 }) {
   return (
     <View style={styles.telemetryStat}>

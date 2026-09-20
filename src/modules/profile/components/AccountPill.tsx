@@ -5,7 +5,7 @@ import { ActivityIndicator, Pressable, StyleSheet, View } from 'react-native'
 import { ArrowClockwiseIcon, CaretRightIcon, UserCircleIcon } from 'phosphor-react-native'
 
 import { Text } from '@/components/base/Text'
-import { theme } from '@/constants/theme'
+import { theme, type ThemeColor } from '@/constants/theme'
 import { useDeviceAuthStore } from '@/modules/profile/store/deviceAuthStore'
 import { routes } from '@/navigation/routes'
 
@@ -88,7 +88,7 @@ function Pill({
   onPress,
   children,
 }: {
-  tone?: string
+  tone?: ThemeColor
   onPress: () => void
   children: React.ReactNode
 }) {

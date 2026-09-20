@@ -2,13 +2,13 @@ import type { ReactNode } from 'react'
 import { StyleSheet, View, type ViewStyle } from 'react-native'
 import { Text } from '@/components/base/Text'
 import type { Icon } from 'phosphor-react-native'
-import { theme } from '@/constants/theme'
+import { theme, type ThemeColor } from '@/constants/theme'
 
 interface PlaceholderProps {
   icon: Icon
   title?: string
   description: string
-  iconColor?: string
+  iconColor?: ThemeColor
   action?: ReactNode
   /** Sized for an empty section inside a list or drawer rather than a whole empty screen. */
   compact?: boolean

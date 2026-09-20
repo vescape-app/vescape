@@ -4,7 +4,7 @@ import type { WeatherIconSlug } from 'vescape-core'
 import { Text } from '@/components/base/Text'
 
 import { WeatherIcon } from '@/modules/weather/components/WeatherIcon'
-import { theme } from '@/constants/theme'
+import { theme, type ThemeColor } from '@/constants/theme'
 
 type WeatherStatSize = 'sm' | 'md'
 
@@ -14,7 +14,7 @@ interface WeatherStatProps {
   precipProbability?: number | null
   size?: WeatherStatSize
   /** Override the weather icon tint. Defaults to muted secondary text. */
-  iconColor?: string
+  iconColor?: ThemeColor
 }
 
 const SIZES: Record<WeatherStatSize, { icon: number; temp: number; drop: number }> = {

@@ -235,7 +235,7 @@ export function useMetricRamps(): HistoryRamps {
       ramps[def.key] = toColorRamp(
         getHistoryMetricColorRange(
           def.key,
-          resolveAdaptiveColor(def.color, appearance) as string,
+          resolveAdaptiveColor(def.color, appearance),
           hotRanges,
           gradientsEnabled,
           accents.red.color,

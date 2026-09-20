@@ -17,14 +17,22 @@ import Animated, {
 } from 'react-native-reanimated'
 
 import { useColoredAction, useResolvedColor } from '@/hooks/useTheme'
-import { interaction, theme } from '@/constants/theme'
+import { interaction, theme, type ThemeColor } from '@/constants/theme'
 
 const SIZES = { sm: 38, md: 50, lg: 54 } as const
 const ICON_SIZES = { sm: 18, md: 21, lg: 22 } as const
 const RING_STROKE = 2.5
 
 /** Determinate ring hugging the button's border, filling clockwise from the top. */
-function ProgressRing({ dim, color, progress }: { dim: number; color: string; progress: number }) {
+function ProgressRing({
+  dim,
+  color,
+  progress,
+}: {
+  dim: number
+  color: ThemeColor
+  progress: number
+}) {
   // Skia needs a color string, not a native adaptive color object.
   const ringColor = useResolvedColor(color)
   const path = useMemo(() => {
@@ -64,7 +72,7 @@ export interface IconButtonTakeover {
   /** Replaces the resting icon. Omit to keep it and only recolor. */
   icon?: Icon
   /** Replaces the icon and border color. */
-  accent?: string
+  accent?: ThemeColor
   /** 0–1 determinate ring drawn around the button. Omit for indeterminate work. */
   progress?: number
 }
@@ -79,11 +87,11 @@ interface IconButtonProps {
   disabled?: boolean
   destructive?: boolean
   /** Override the icon + border colour to signal an active state. */
-  accent?: string
+  accent?: ThemeColor
   /** Override the icon colour only, leaving the border as the plain control border. */
-  iconColor?: string
+  iconColor?: ThemeColor
   /** Show a small pulsing badge dot in this colour (e.g. nearby Group Rides). */
-  dot?: string
+  dot?: ThemeColor
   loading?: boolean
   style?: StyleProp<ViewStyle>
   testID?: string

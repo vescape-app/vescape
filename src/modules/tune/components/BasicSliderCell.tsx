@@ -6,13 +6,13 @@ import { WarningIcon, type Icon } from 'phosphor-react-native'
 import type { BasicSliderItem } from '@/modules/tune/lib/sliderDefinitions'
 import { clamp, formatSliderValue } from '@/modules/tune/lib/sliderDefinitions'
 import { TuneTileFill } from '@/modules/tune/components/TuneTileFill'
-import { theme } from '@/constants/theme'
+import { theme, type ThemeColor } from '@/constants/theme'
 import { useResolvedNeutralColors } from '@/hooks/useTheme'
 
 interface BasicSliderCellProps {
   item: BasicSliderItem
   icon: Icon
-  color: string
+  color: ThemeColor
   editable: boolean
   onPress: () => void
   onResetFormula?: () => void

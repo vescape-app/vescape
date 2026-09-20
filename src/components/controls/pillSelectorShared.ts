@@ -1,12 +1,12 @@
 import { createContext, useContext, type ReactNode } from 'react'
 import { StyleSheet, type View } from 'react-native'
 
-import { theme } from '@/constants/theme'
+import { theme, type ThemeColor } from '@/constants/theme'
 
 export interface ActiveTheme {
-  bg: string
-  border: string
-  color: string
+  bg: ThemeColor
+  border: ThemeColor
+  color: ThemeColor
 }
 
 export interface PillSelectorCtx {

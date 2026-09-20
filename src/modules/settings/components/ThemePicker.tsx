@@ -8,7 +8,6 @@ import { useTriggerRef } from '@/components/overlays/measureTrigger'
 import { SelectWidget } from '@/components/widgets/SelectWidget'
 import { theme } from '@/constants/theme'
 import { THEME_OPTIONS } from '@/modules/settings/lib/themeOptions'
-import type { ThemeMode } from '@/modules/settings/lib/themeMode'
 import { useSettingsStore } from '@/modules/settings/store/settingsStore'
 
 /** Settings Drawer row: current theme as a value pill; tapping opens the four theme choices. */

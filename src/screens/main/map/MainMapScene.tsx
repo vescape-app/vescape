@@ -1,12 +1,5 @@
 import Mapbox, { Camera } from '@rnmapbox/maps'
-import {
-  Fragment,
-  useEffect,
-  useState,
-  type ComponentProps,
-  type ComponentRef,
-  type RefObject,
-} from 'react'
+import { Fragment, type ComponentProps, type ComponentRef, type RefObject } from 'react'
 import { ActivityIndicator, Animated, Pressable, StyleSheet, Text, View } from 'react-native'
 
 import { theme } from '@/constants/theme'
@@ -19,6 +12,7 @@ import { MapBaseStyleLayers } from '@/screens/main/map/MapBaseStyleLayers'
 import { SatelliteImageryLayer } from '@/screens/main/map/SatelliteImageryLayer'
 import type { MainMapHistoryProps, MainMapPointsProps } from '@/screens/main/map/MainMap'
 import type { CameraSnapshot } from '@/screens/main/map/useCameraControls'
+import type { MapStyleDocument } from '@/screens/main/map/mapStyleLifecycle'
 import type { useResolvedMapStyle } from '@/screens/main/map/useResolvedMapStyle'
 
 type LayerProps = ComponentProps<typeof MainMapLayers>
@@ -32,6 +26,8 @@ interface MainMapSceneProps {
   mapViewRef: RefObject<ComponentRef<typeof Mapbox.MapView> | null>
   cameraRef: RefObject<Camera | null>
   mapStyle: ReturnType<typeof useResolvedMapStyle>
+  appliedStyle: MapStyleDocument
+  styleReady: boolean
   rotationLocked: boolean
   onDidFinishLoadingStyle: MapViewProps['onDidFinishLoadingStyle']
   onMapLoadingError: MapViewProps['onMapLoadingError']
@@ -83,6 +79,8 @@ export function MainMapScene({
   mapViewRef,
   cameraRef,
   mapStyle,
+  appliedStyle,
+  styleReady,
   rotationLocked,
   onDidFinishLoadingStyle,
   onMapLoadingError,
@@ -126,38 +124,6 @@ export function MainMapScene({
   onFocusDirectionPoint,
   overlays,
 }: MainMapSceneProps) {
-  const [appliedStyle, setAppliedStyle] = useState(() => ({
-    signature: mapStyle.styleSignature,
-    styleURL: mapStyle.styleURL,
-    styleJSON: mapStyle.styleJSON,
-  }))
-  const [loadedAppliedStyle, setLoadedAppliedStyle] = useState<{
-    signature: string
-    retryNonce: number
-  } | null>(null)
-  const switchingStyle = appliedStyle.signature !== mapStyle.styleSignature
-
-  useEffect(() => {
-    if (!switchingStyle) return
-    // Commit without adopted layers before changing the native style document. The next frame
-    // gives Mapbox a chance to remove those layers before it replaces their backing style.
-    const frame = requestAnimationFrame(() => {
-      setLoadedAppliedStyle(null)
-      setAppliedStyle({
-        signature: mapStyle.styleSignature,
-        styleURL: mapStyle.styleURL,
-        styleJSON: mapStyle.styleJSON,
-      })
-    })
-    return () => cancelAnimationFrame(frame)
-  }, [mapStyle.styleJSON, mapStyle.styleSignature, mapStyle.styleURL, switchingStyle])
-
-  const styleReady =
-    !switchingStyle &&
-    loadedAppliedStyle?.signature === mapStyle.styleSignature &&
-    loadedAppliedStyle.retryNonce === styleRetryNonce &&
-    mapStyle.isStyleLoaded
-
   return (
     <Animated.View
       style={[styles.container, { opacity: mapOpacity }]}
@@ -180,10 +146,7 @@ export function MainMapScene({
         logoPosition={{ bottom: 8, left: 8 }}
         attributionEnabled={mapStyle.mapDetailsVisible}
         attributionPosition={{ bottom: 8, left: 92 }}
-        onDidFinishLoadingStyle={() => {
-          setLoadedAppliedStyle({ signature: appliedStyle.signature, retryNonce: styleRetryNonce })
-          onDidFinishLoadingStyle?.()
-        }}
+        onDidFinishLoadingStyle={onDidFinishLoadingStyle}
         onMapLoadingError={onMapLoadingError}
         onPress={onPress}
         onLongPress={onLongPress}
@@ -204,7 +167,7 @@ export function MainMapScene({
               <SatelliteImageryLayer paint={mapStyle.satelliteImageryPaint} />
             )}
             <MapBaseStyleLayers
-              enabled={mapStyle.canUpdateExistingStyleLayers}
+              enabled={!mapStyle.isMapy}
               existingLayerIds={mapStyle.existingLayerIds}
               styleKey={mapStyle.styleKey}
               isOneDark={mapStyle.isOneDark}
@@ -227,7 +190,7 @@ export function MainMapScene({
               isMapy={mapStyle.isMapy}
               isOneDark={mapStyle.isOneDark}
               isSatellite={mapStyle.isSatelliteOverlay}
-              showBuildings3d={mapStyle.showBuildings3d && mapStyle.canUpdateExistingStyleLayers}
+              showBuildings3d={mapStyle.showBuildings3d && !mapStyle.isMapy}
               weatherActive={weatherActive}
               legalLimitsActive={legalLimitsActive}
               liveTrailShape={liveTrailShape}

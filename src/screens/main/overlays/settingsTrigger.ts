@@ -1,5 +1,5 @@
 import { backupProgressFraction, type BackupSlot } from '@/modules/profile/lib/backupSlot'
-import { theme } from '@/constants/theme'
+import { theme, type ThemeColor } from '@/constants/theme'
 
 export interface SettingsTriggerInput {
   /** A Release Policy escalation: Update Warning or Online Block. */
@@ -15,11 +15,11 @@ export type SettingsTriggerTakeover = 'update' | 'backup' | null
 export interface SettingsTriggerState {
   takeover: SettingsTriggerTakeover
   /** Accent for the takeover; undefined while resting. */
-  accent: string | undefined
+  accent: ThemeColor | undefined
   /** 0–1 ring, only for a measurable backup drain. */
   progress: number | undefined
   /** Badge color for a state worth noticing but not worth wearing the whole button. */
-  dot: string | undefined
+  dot: ThemeColor | undefined
   accessibilityLabel: string
 }
 

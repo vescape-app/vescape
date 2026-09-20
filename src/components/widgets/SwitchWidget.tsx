@@ -6,7 +6,7 @@ import {
   useResolvedSecondaryWidgetSurface,
   type WidgetSize,
 } from '@/components/widgets/widgetSurface'
-import { theme } from '@/constants/theme'
+import { theme, type ThemeColor } from '@/constants/theme'
 import { useResolvedColor, useResolvedNeutralColors } from '@/hooks/useTheme'
 
 interface SwitchWidgetProps {
@@ -16,7 +16,7 @@ interface SwitchWidgetProps {
   icon?: Icon
   hint?: string
   /** Accent for the icon and the active track/thumb. */
-  accent?: string
+  accent?: ThemeColor
   size?: WidgetSize
   disabled?: boolean
   accessibilityLabel?: string

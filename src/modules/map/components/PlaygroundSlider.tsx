@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { PanResponder, StyleSheet, View, type GestureResponderHandlers } from 'react-native'
 
 import { Text } from '@/components/base/Text'
-import { theme } from '@/constants/theme'
+import { theme, type ThemeColor } from '@/constants/theme'
 
 interface PlaygroundSliderProps {
   label: string
@@ -10,7 +10,7 @@ interface PlaygroundSliderProps {
   min: number
   max: number
   step?: number
-  color?: string
+  color?: ThemeColor
   format?: (value: number) => string
   onChange: (value: number) => void
 }

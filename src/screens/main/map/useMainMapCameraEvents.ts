@@ -1,12 +1,5 @@
 import type { Camera } from '@rnmapbox/maps'
-import {
-  useCallback,
-  useEffect,
-  useRef,
-  type Dispatch,
-  type RefObject,
-  type SetStateAction,
-} from 'react'
+import { useCallback, type Dispatch, type RefObject, type SetStateAction } from 'react'
 
 import { distanceMeters } from '@/helpers/mapGeometry'
 import type { MapCameraControllerState } from '@/modules/map/lib/cameraController'
@@ -34,8 +27,6 @@ export function useMainMapCameraEvents({
   perspectiveEnabled,
   phoneHeadingMode,
   mediaAssetCount,
-  mapStyleKey,
-  mapStyleSignature,
   getHistoryPreviewCamera,
   getLiveFollowCamera,
   setFollowGps,
@@ -49,7 +40,6 @@ export function useMainMapCameraEvents({
   setCameraHeading,
   setCameraReady,
   setCameraZoom,
-  setLoadedStyleSignature,
 }: {
   cameraRef: RefObject<Camera | null>
   controllerStateRef: RefObject<MapCameraControllerState>
@@ -67,8 +57,6 @@ export function useMainMapCameraEvents({
   perspectiveEnabled: boolean
   phoneHeadingMode: boolean
   mediaAssetCount: number
-  mapStyleKey: string
-  mapStyleSignature: string
   getHistoryPreviewCamera: (preview: HistoryPreviewTarget) => CameraSnapshot
   getLiveFollowCamera: () => CameraSnapshot
   setFollowGps: (follow: boolean) => void
@@ -83,68 +71,55 @@ export function useMainMapCameraEvents({
   setCameraHeading: Dispatch<SetStateAction<number>>
   setCameraReady: Dispatch<SetStateAction<boolean>>
   setCameraZoom: Dispatch<SetStateAction<number>>
-  setLoadedStyleSignature: Dispatch<SetStateAction<string | null>>
 }) {
-  const styleReloadPendingRef = useRef(false)
-  const previousMapStyleKeyRef = useRef(mapStyleKey)
-
-  useEffect(() => {
-    if (previousMapStyleKeyRef.current === mapStyleKey) return
-    previousMapStyleKeyRef.current = mapStyleKey
-    styleReloadPendingRef.current = true
-  }, [mapStyleKey])
-
-  const handleMapLoaded = useCallback(() => {
-    setLoadedStyleSignature(mapStyleSignature)
-    if (styleReloadPendingRef.current) {
-      // The native map survived this style swap. Its camera and the camera engine are already in
-      // sync; restoring the snapshot from the old remount flow briefly removed follow padding.
-      styleReloadPendingRef.current = false
-      return
-    }
-    // Whatever the controller last decided still stands; a style load is not a reason to hand the
-    // camera back to live follow when the rider is looking at the weather, a route, or a ride.
-    const camera =
-      historyActive && historyPreview
-        ? getHistoryPreviewCamera(historyPreview)
-        : controllerStateRef.current.mode.kind === 'liveFollow' || currentCameraRef.current == null
-          ? getLiveFollowCamera()
-          : currentCameraRef.current
-    const initialHeading =
-      'heading' in camera && typeof camera.heading === 'number'
-        ? camera.heading
-        : historyActive
-          ? 0
-          : followHeadingDeg
-    const initialPitch = getPitchForZoom(camera.zoomLevel, perspectiveEnabled)
-    cameraRef.current?.setCamera({
-      ...camera,
-      heading: initialHeading,
-      pitch: initialPitch,
-      animationDuration: 0,
-    })
-    // Park the springs on the load camera so the first target animates from it.
-    engine.reset({
-      centerCoordinate: camera.centerCoordinate,
-      zoomLevel: camera.zoomLevel,
-      heading: initialHeading,
-      pitch: initialPitch,
-      padding: 'padding' in camera ? camera.padding : undefined,
-    })
-  }, [
-    cameraRef,
-    controllerStateRef,
-    currentCameraRef,
-    engine,
-    followHeadingDeg,
-    getHistoryPreviewCamera,
-    getLiveFollowCamera,
-    historyActive,
-    historyPreview,
-    mapStyleSignature,
-    perspectiveEnabled,
-    setLoadedStyleSignature,
-  ])
+  const handleMapLoaded = useCallback(
+    (preserveCamera: boolean) => {
+      // A style replacement keeps the native camera and engine. Only initialize a new map view.
+      if (preserveCamera) return
+      // Whatever the controller last decided still stands; a style load is not a reason to hand the
+      // camera back to live follow when the rider is looking at the weather, a route, or a ride.
+      const camera =
+        historyActive && historyPreview
+          ? getHistoryPreviewCamera(historyPreview)
+          : controllerStateRef.current.mode.kind === 'liveFollow' ||
+              currentCameraRef.current == null
+            ? getLiveFollowCamera()
+            : currentCameraRef.current
+      const initialHeading =
+        'heading' in camera && typeof camera.heading === 'number'
+          ? camera.heading
+          : historyActive
+            ? 0
+            : followHeadingDeg
+      const initialPitch = getPitchForZoom(camera.zoomLevel, perspectiveEnabled)
+      cameraRef.current?.setCamera({
+        ...camera,
+        heading: initialHeading,
+        pitch: initialPitch,
+        animationDuration: 0,
+      })
+      // Park the springs on the load camera so the first target animates from it.
+      engine.reset({
+        centerCoordinate: camera.centerCoordinate,
+        zoomLevel: camera.zoomLevel,
+        heading: initialHeading,
+        pitch: initialPitch,
+        padding: 'padding' in camera ? camera.padding : undefined,
+      })
+    },
+    [
+      cameraRef,
+      controllerStateRef,
+      currentCameraRef,
+      engine,
+      followHeadingDeg,
+      getHistoryPreviewCamera,
+      getLiveFollowCamera,
+      historyActive,
+      historyPreview,
+      perspectiveEnabled,
+    ],
+  )
 
   const handleCameraChanged = useCallback(
     (state: {

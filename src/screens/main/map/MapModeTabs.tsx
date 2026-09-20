@@ -5,7 +5,7 @@ import { StyleSheet, View } from 'react-native'
 
 import { Text } from '@/components/base/Text'
 import { PillSelector, PillSelectorItem } from '@/components/controls/PillSelector'
-import { theme } from '@/constants/theme'
+import { theme, type ThemeColor } from '@/constants/theme'
 import { useThemeStore } from '@/hooks/useTheme'
 import { WeatherIcon } from '@/modules/weather/components/WeatherIcon'
 import { weatherIconColor } from '@/modules/weather/lib/weather'
@@ -21,7 +21,7 @@ interface MapModeTabsProps {
 }
 
 /** The three map modes the rider switches between: Explore, Weather and Legal limits. */
-function makeWeatherModeIcon(weather: Weather | null, weatherColor: string): Icon {
+function makeWeatherModeIcon(weather: Weather | null, weatherColor: ThemeColor): Icon {
   return function WeatherModeIcon({ color, size, weight }) {
     const iconSize = typeof size === 'number' ? size : 18
     // PillSelectorItem passes the inactive accent as `color` when this segment is not selected;

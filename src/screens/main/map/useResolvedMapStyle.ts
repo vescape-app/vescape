@@ -28,7 +28,6 @@ export function useResolvedMapStyle({
   satelliteMapImageryOpacity,
   satelliteImagerySaturation,
   hideTelemetryMapDetails,
-  loadedStyleSignature,
 }: {
   mapStyleKey: MapStyleKey
   mode: MainViewState
@@ -37,7 +36,6 @@ export function useResolvedMapStyle({
   satelliteMapImageryOpacity: number
   satelliteImagerySaturation: number
   hideTelemetryMapDetails: boolean
-  loadedStyleSignature: string | null
 }) {
   const resolvedTheme = useThemeStore((state) => state.resolvedTheme)
   const outdoorLight = useThemeStore((state) => state.outdoorLight)
@@ -108,7 +106,6 @@ export function useResolvedMapStyle({
         ? `json:satellite:${resolvedTheme}`
         : 'json:onedark'
     : String(selectedMapStyle.styleURL)
-  const isStyleLoaded = loadedStyleSignature === styleSignature
 
   return useMemo(
     () => ({
@@ -125,15 +122,12 @@ export function useResolvedMapStyle({
       satelliteImageryPaint,
       satelliteRoadLineOpacity: satelliteTone.roadLineOpacity * (mode === 'telemetry' ? 0.6 : 1),
       styleSignature,
-      isStyleLoaded,
-      canUpdateExistingStyleLayers: isStyleLoaded && !isMapy,
     }),
     [
       isMapy,
       isOneDark,
       isSatellite,
       isSatelliteOverlay,
-      isStyleLoaded,
       mapDetailsVisible,
       mode,
       satelliteImageryPaint,

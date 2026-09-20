@@ -1,5 +1,10 @@
 package expo.modules.vescapecore.telemetry
 
+import kotlinx.coroutines.runBlocking
+import androidx.room.useReaderConnection
+import androidx.room.useWriterConnection
+import androidx.room.execSQL
+import kotlinx.coroutines.sync.withLock
 import android.content.Context
 import expo.modules.vescapecore.alerts.CustomAppSounds
 import android.database.sqlite.SQLiteDatabase
@@ -27,7 +32,7 @@ object DatabaseBackupManager {
     val soundSnapshot = File(exportDir, "sounds-${UUID.randomUUID()}")
 
     val escapedPath = sqliteExport.absolutePath.replace("'", "''")
-    TelemetryDatabase.get(appContext).openHelper.writableDatabase.execSQL("VACUUM INTO '$escapedPath'")
+    TelemetryDatabase.get(appContext).useWriterConnection { it.execSQL("VACUUM INTO '$escapedPath'") }
 
     try {
       CustomAppSounds.snapshotForBackup(appContext, soundSnapshot)
@@ -47,7 +52,10 @@ object DatabaseBackupManager {
   }
 
   /** Caller must first await the BoardSessionController-owned stop callback. */
-  internal fun restoreBackup(context: Context, uriString: String) {
+  internal suspend fun restoreBackup(context: Context, uriString: String) =
+    TelemetryDatabase.rideExportMutex.withLock { restoreBackupLocked(context, uriString) }
+
+  private fun restoreBackupLocked(context: Context, uriString: String) {
     val appContext = context.applicationContext
     val workDir = File(appContext.cacheDir, "db-restore").apply {
       deleteRecursively()
@@ -72,7 +80,7 @@ object DatabaseBackupManager {
       replaceDatabaseFiles(restoredDb, dbFile) { installed ->
         validateDatabase(installed, manifestVersion.copy(declaredVersion = manifestVersion.roomVersion))
         try {
-          TelemetryDatabase.get(appContext).openHelper.readableDatabase.query("SELECT 1").close()
+          verifyRoomDatabase(appContext)
           CustomAppSounds.replaceFromBackup(appContext, soundStage)
         } catch (error: Exception) {
           resetRepositoriesAndCloseDatabase()
@@ -81,10 +89,16 @@ object DatabaseBackupManager {
       }
     } catch (e: Exception) {
       resetRepositoriesAndCloseDatabase()
-      TelemetryDatabase.get(appContext).openHelper.readableDatabase.query("SELECT 1").close()
+      verifyRoomDatabase(appContext)
       throw e
     } finally {
       workDir.deleteRecursively()
+    }
+  }
+
+  private fun verifyRoomDatabase(context: Context) = runBlocking {
+    TelemetryDatabase.get(context).useReaderConnection { reader ->
+      reader.usePrepared("SELECT 1") { query -> check(query.step()) }
     }
   }
 

@@ -19,6 +19,7 @@ import { theme } from '@/constants/theme'
 export function FadeCardModalShowcase() {
   const [visible, setVisible] = useState(false)
   const [dismissible, setDismissible] = useState(true)
+  const [dismissedCount, setDismissedCount] = useState(0)
 
   return (
     <ShowcaseCard
@@ -31,11 +32,13 @@ export function FadeCardModalShowcase() {
       }
     >
       <Text style={styles.previewHint}>
-        The shared card shell behind ConfirmModal, InfoModal and the Release surfaces
+        The shared card shell behind ConfirmModal, InfoModal and the Release surfaces. Native
+        dismissals: {dismissedCount}
       </Text>
       <FadeCardModal
         visible={visible}
         onDismiss={dismissible ? () => setVisible(false) : undefined}
+        onDismissed={() => setDismissedCount((count) => count + 1)}
         title="Card title"
         titleIcon={InfoIcon}
         titleIconColor={theme.palette.sky.color}

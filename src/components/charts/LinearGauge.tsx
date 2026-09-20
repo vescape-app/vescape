@@ -9,7 +9,7 @@ import {
 } from 'react-native'
 import { Text } from '@/components/base/Text'
 import type { DualGaugeAlert } from '@/components/charts/gaugeAlert'
-import { interaction, theme } from '@/constants/theme'
+import { interaction, theme, type ThemeColor } from '@/constants/theme'
 import { useResolvedColor } from '@/hooks/useTheme'
 import { getLinearGaugeValueSlot } from '@/components/charts/linearGaugeLayout'
 import {
@@ -42,7 +42,7 @@ interface LinearGaugeProps {
   min?: number
   max: number
   /** Stroke + value-text color (caller-resolved, e.g. low-battery warning). */
-  color: string
+  color: ThemeColor
   unit: string
   decimals?: number
   alerts?: DualGaugeAlert[]

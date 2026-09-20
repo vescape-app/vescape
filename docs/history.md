@@ -223,3 +223,152 @@ belong to Board/time ranges; deleting one identified recording preserves those s
 directions, including independent GPS fixes and recording end intent. Native lifecycle tests and
 full app builds cover integration beyond the database hosts. Real-device background GPS behavior
 still requires a device smoke test.
+
+## Ride export
+
+GPX and CSV exports are implemented on Android and iOS.
+
+Decisions from the 2026-09-20 design discussion:
+
+- Replace the Delete button with a three-dot menu containing **Export GPX**, **Export CSV**, and
+  **Delete**, for both Ride History entries and Favorites. The two exports are direct menu items;
+  there is no intermediate format picker.
+- Export a history entry's full stored range, scoped to its Board and recording identity where
+  available. Export a Favorite's exact saved Board/time range. Chart zoom and playback position do
+  not change the export range.
+- Keep both export items enabled without querying data availability. Empty input may produce an
+  empty export; do not add button-disable logic for missing GPS or telemetry.
+- Native generates the temporary file in batches on both platforms. JS sends the export intent
+  and opens the system share sheet. Read the complete stored range, independently of the chart
+  reader's 20,000-sample cap; do not load a whole ride into JS to serialize it.
+- CSV is for debugging. Include all stored board telemetry, including spikes and samples excluded
+  from statistics. Do not sanitize, smooth, interpolate, or replace readings. Export retained data;
+  do not claim to recover precision or fields that recording never stored.
+- Both formats reuse the existing history GPS precision rule, including its legacy behavior.
+  Fixes with reported accuracy above 20 m are excluded. The rider explicitly accepted this filter
+  for debugging CSV too.
+- Stay close to Floaty's export structure where straightforward. Keep its column names and units
+  for matching fields, omit unsupported columns, and append additional stored telemetry fields
+  such as `erpm` and `balanceCurrent`. External-app import testing belongs to the rider; exact
+  importer compatibility is not yet verified. No VESC-specific CSV contract has been established.
+
+### CSV mapping and merge
+
+Floaty's reference CSV uses Unix timestamps in milliseconds, board speed in km/h, duty cycle as a
+fraction, currents in amperes, temperatures in Celsius, distances in metres, and angles in degrees.
+Map matching stored fields into those representations, independently of display-unit preferences.
+
+| Floaty field             | Vescape source                              |
+| ------------------------ | ------------------------------------------- |
+| `timestamp`              | Stored telemetry capture time               |
+| `speed`                  | Board speed                                 |
+| `batteryVolts`           | Battery voltage                             |
+| `motorTemp`              | Motor temperature                           |
+| `controllerTemp`         | MOSFET temperature                          |
+| `lifeDistance`           | Odometer                                    |
+| `rollAngle`              | Roll                                        |
+| `pitchAngle`             | Balance pitch                               |
+| `truePitchAngle`         | Pitch                                       |
+| `state`                  | Lower state bits of the stored packed state |
+| `setpointAdjustmentType` | Upper state bits of the stored packed state |
+
+Other matching fields include `dutyCycle`, `batteryCurrent`, `motorCurrent`, `switchState`, `adc1`,
+and `adc2`; preserve their meaning when mapping the stored representation. Unsupported columns
+are omitted, not populated with fabricated values. Specifically omit `inputTilt`, `throttle`,
+`ampHours`, `wattHours`, `remainingDistance`, `batteryUtilization`, `phaseUtilization`, and
+`faultCode`. Board-owned fault occurrences are not a per-sample fault column.
+
+Also omit `tripDistance`: do not invent a trip counter by subtracting the initial odometer.
+Omit `batteryPercent`: Vescape derives it when reading history using the Board's current battery
+configuration; it is not stored telemetry.
+
+Produce one CSV row per telemetry sample. Match Floaty's GPS merge over chronological data:
+
+- Attach the latest accepted GPS fix at or before the telemetry timestamp.
+- Before the first accepted fix, use that first fix; after the final fix, keep the final fix.
+- Retain the telemetry timestamp and expose the GPS fix's own `gpsTimestamp` and `gpsSpeed`,
+  alongside its coordinates, altitude, and accuracy.
+- With no accepted GPS fixes, preserve telemetry rows with empty GPS fields.
+
+This merge repeats GPS observations; it does not interpolate coordinates or create new GPS fixes.
+
+### Reference evidence
+
+The supplied research is `~/Workspace/floaty-reverse-engineering/EXPORT.md`, based on static
+inspection of Floaty Android 3.0.0, versionCode 379. Further inspection in this discussion found
+the `session_logs` and `session_locations` column definitions near line 339650 of
+`hermes-pseudocode.js`, the packed state and pitch decoder near line 463380, and the Garmin GPX
+builder near line 1761550. Floaty's GPX is GPX 1.1 with GPS speed in a Garmin TrackPointExtension
+v2. These are reference findings, not proof of a successful import into an external app.
+
+### GPX implementation
+
+Ride and Favorite detail offer Export GPX, Export CSV, and Delete in their three-dot menu. Favorite editing
+and unpinning retain their existing behavior. Export uses the selected entry's full stored range,
+or the Favorite's exact saved range, independently of movement, chart zoom, and playback.
+
+`exportRideGpx` accepts `RideExportOptions` and returns a closed `RideExportFile`. Native reads
+raw Ride Track fixes in pages of 1,000 ordered by `(fix_at_ms, id)` inside one database snapshot.
+The cursor advances past the last raw fix, even when an entire page fails precision filtering.
+Board attribution is exact, including an unassigned Board; optional recording identity further
+restricts identified entries. Favorites and legacy entries use Board/time scope.
+
+The writer emits UTF-8 GPX 1.1, escaped track names, coordinates in degrees, optional altitude
+in metres, UTC timestamps with millisecond precision, and optional GPS speed in metres per second
+under Garmin TrackPointExtension v2. GPS-only spans need no telemetry. Empty input produces a valid
+empty track. No smoothing, movement trimming, or chart cap applies.
+
+A UUID filename under native temporary/cache storage keeps rider names out of paths. Failed writes
+remove their partial file; successful files remain available for share consumers and OS cache
+reclamation. JS waits for the menu's native dismissal before invoking system sharing on iOS.
+Generation and sharing errors appear through the existing information modal. There is no
+data-availability preflight.
+
+Room and GRDB host contracts share a 23,005-fix fixture definition covering rejected raw pages,
+equal timestamps, exact range/Board/recording scope, legacy accuracy, escaping, optional fields,
+and empty XML. JS tests cover ride versus Favorite export intent. Device share-sheet behavior
+and external-app imports remain rider-led verification, not observed compatibility guarantees.
+
+### CSV implementation
+
+`exportRideCsv` shares GPX's intent, temporary-file lifecycle, snapshot, and system-share flow.
+UTF-8 CSV uses explicit headers and CRLF rows; cells containing commas, quotes, or newlines are
+quoted, with embedded quotes doubled. Missing readings stay empty. An empty telemetry range
+produces the header alone, even when the range contains GPS fixes.
+
+The stable column order is:
+
+```text
+timestamp,speed,dutyCycle,batteryVolts,batteryCurrent,motorCurrent,motorTemp,controllerTemp,lifeDistance,rollAngle,pitchAngle,truePitchAngle,state,switchState,setpointAdjustmentType,adc1,adc2,altitude,latitude,longitude,accuracy,gpsSpeed,gpsTimestamp,erpm,balanceCurrent,rawSwitchState
+```
+
+The matching Floaty columns retain their relative order. `adc1` and `adc2` are volts. GPS altitude
+and accuracy are metres, coordinates are degrees, `gpsSpeed` is metres per second, and both
+timestamps are Unix milliseconds. `erpm` is stored electrical RPM; `balanceCurrent` is amperes.
+These values do not follow display-unit preferences.
+
+`state` is the packed state's low nibble; `setpointAdjustmentType` is its high nibble.
+`switchState` uses Floaty's enum: 0 off, 1 ADC1, 2 ADC2, 3 both. The stored switch byte's low
+nibble is 0 off, 1 half, 2 full. Half chooses ADC1 when its stored voltage exceeds ADC2, otherwise
+ADC2, matching the reference decoder. Unknown low nibbles, or a half state without both ADC
+readings, yield an empty cell. Upper flag bits never become a footpad state. Appended
+`rawSwitchState` preserves the complete stored byte, including handtest and beep flags.
+
+Telemetry reads use `(captured_at_ms, id)` keyset pages of 1,000, replaying the predecessor
+keyframe before emitting the selected range. Reconstruction carries values across pages,
+honors explicit NULL changes, and resets on keyframes or recording changes. iOS applies the
+same decoder to imported Android delta rows. No statistics, exclusions, battery configuration,
+chart smoothing, or chart sample limit participates. Each retained row appears once, even
+when incomplete retained data leaves empty cells.
+
+GPS uses the same raw paged reader and precision rule as GPX. The merge retains two accepted
+fixes and one page, attaches the latest fix at or before each telemetry row, uses the first fix
+before it, and keeps the final fix afterward. Equal-time fixes resolve by row id. No accepted GPS
+leaves GPS cells empty; GPS-only stretches add no rows. Both streams stay bounded in native
+memory and only the finished file URI crosses the bridge.
+
+Shared Room/GRDB fixtures cover 23,005 telemetry samples, equal-time rows, negative spikes,
+mid-chain range starts beyond one page, optional NULL transitions, keyframe resets, state and
+switch decoding, rejected GPS pages, legacy precision, first/previous/final GPS matching,
+missing GPS, exact Board scope, empty telemetry, and escaping. External imports and device
+share sheets remain rider-led tests.

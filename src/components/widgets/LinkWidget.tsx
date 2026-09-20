@@ -6,13 +6,13 @@ import {
   type WidgetSize,
   useResolvedSecondaryWidgetSurface,
 } from '@/components/widgets/widgetSurface'
-import { theme } from '@/constants/theme'
+import { theme, type ThemeColor } from '@/constants/theme'
 
 interface LinkWidgetProps {
   icon: Icon
   label: string
   hint?: string
-  accent?: string
+  accent?: ThemeColor
   size?: WidgetSize
   disabled?: boolean
   onPress: () => void

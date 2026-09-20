@@ -19,7 +19,7 @@ import { severityStatus } from '@/modules/board/constants/boardWarnings'
 import { liveTelemetryRuntime } from '@/modules/board/lib/liveTelemetryRuntime'
 import { widgetSurface } from '@/components/widgets/widgetSurface'
 import { fmtTimeAgo } from '@/helpers/format'
-import { interaction, theme } from '@/constants/theme'
+import { interaction, theme, type ThemeColor } from '@/constants/theme'
 
 /** A way into the active board's trouble, offered only while that surface is enabled. */
 export interface BoardSelectorLink {
@@ -111,7 +111,7 @@ interface StripLink {
   key: string
   icon: Icon
   label: string
-  color: string
+  color: ThemeColor
   /** Absent for a plain action like Edit, which is never "empty". */
   count?: number
   testID?: string

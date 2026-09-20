@@ -1,7 +1,7 @@
 import { isSharedValue, useDerivedValue, type SharedValue } from 'react-native-reanimated'
 
 import { MonoValue, type MonoValueProps } from '@/components/base/MonoValue'
-import { theme } from '@/constants/theme'
+import { theme, type ThemeColor } from '@/constants/theme'
 import { useResolvedColor } from '@/hooks/useTheme'
 import { DASH } from '@/helpers/format'
 
@@ -11,7 +11,7 @@ interface TickTextProps extends Omit<MonoValueProps, 'text'> {
   decimals: number
   unit?: string
   /** Color of the placeholder shown while there is no value. */
-  emptyColor?: string
+  emptyColor?: ThemeColor
 }
 
 /**
@@ -45,7 +45,7 @@ export function TickText({
   // Skia a plain color string.
   const animatedColor = isSharedValue<string>(color) ? color : null
   const staticColor = useResolvedColor(
-    isSharedValue<string>(color) ? theme.palette.slate.textPrimary : (color as string),
+    isSharedValue<string>(color) ? theme.palette.slate.textPrimary : (color as ThemeColor),
   )
   const resolvedEmptyColor = useResolvedColor(emptyColor)
   const tickColor = useDerivedValue(() => {

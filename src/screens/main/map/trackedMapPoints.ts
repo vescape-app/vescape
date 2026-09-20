@@ -6,7 +6,7 @@ import type { MapPoint } from 'vescape-core'
 import type { DirectionPoint } from '@/modules/map/store/mapStore'
 import type { RosterRider } from '@/modules/group-ride/lib/roster'
 import type { MapSelection } from '@/modules/map/lib/mapSelection'
-import type { ResolvedAccentColors } from '@/constants/theme'
+import { accentColors, type ResolvedAccentColors } from '@/constants/theme'
 import { rosterRiderColor } from '@/modules/group-ride/lib/riderColor'
 import {
   getMapPointKindIcon,
@@ -57,8 +57,8 @@ export function buildMapPointTrackedPoint(
     id,
     type: 'mapPoint',
     coordinate: [point.longitude, point.latitude],
-    color: getMapPointKindColor(point.category, accents),
-    textColor: getMapPointKindTextColor(point.category, accents),
+    color: getMapPointKindColor(point.category, accents ?? accentColors.dark),
+    textColor: getMapPointKindTextColor(point.category, accents ?? accentColors.dark),
     icon: getMapPointKindIcon(point.category),
   }
 }

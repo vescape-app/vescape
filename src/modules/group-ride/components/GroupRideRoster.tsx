@@ -8,7 +8,7 @@ import {
 } from 'phosphor-react-native'
 
 import { Text } from '@/components/base/Text'
-import { theme } from '@/constants/theme'
+import { theme, type ThemeColor } from '@/constants/theme'
 import { DASH, fmtDistance, fmtPercent, fmtSpeedKmh, fmtTempC } from '@/helpers/format'
 import {
   batteryLevel,
@@ -25,7 +25,7 @@ export function RosterGrid({
   connected,
 }: {
   rows: RosterRider[]
-  accent: string
+  accent: ThemeColor
   connected: boolean
 }) {
   return (
@@ -117,7 +117,7 @@ function RiderCell({
   connected,
 }: {
   rider: RosterRider
-  accent: string
+  accent: ThemeColor
   connected: boolean
 }) {
   const dotColor = rider.color || theme.palette.slate.textMuted

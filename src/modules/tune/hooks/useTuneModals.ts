@@ -1,3 +1,4 @@
+import type { ThemeColor } from '@/constants/theme'
 import { useCallback, useMemo, useState } from 'react'
 import type { View } from 'react-native'
 import type { RefloatConfigField, TuneProfile, TuneProfileFieldValue } from 'vescape-core'
@@ -66,7 +67,7 @@ export function useTuneModals(
   }, [])
 
   const openFieldEditor = useCallback(
-    (field: RefloatConfigField, ref: { current: View | null }, color?: string) => {
+    (field: RefloatConfigField, ref: { current: View | null }, color?: ThemeColor) => {
       if (!activeProfile) {
         showFieldInfo(field)
         return

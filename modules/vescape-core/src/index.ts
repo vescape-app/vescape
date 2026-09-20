@@ -2729,6 +2729,8 @@ type VescapeCoreNativeModule = NativeEventEmitter<VescapeCoreEvents> & {
     boardId?: string
     limit?: number
   }): Promise<TelemetrySample[]>
+  exportRideGpx(options: RideExportOptions): Promise<RideExportFile>
+  exportRideCsv(options: RideExportOptions): Promise<RideExportFile>
   getHistoryRange(options: {
     fromMs: number
     toMs: number
@@ -3459,6 +3461,47 @@ export async function getTelemetrySamples(options: {
     return decodeBoardSamples(range)
   }
   return native.getTelemetrySamples(options)
+}
+
+/**
+ * Exact stored range. Omitted Board means unassigned Board, not all Boards.
+ * Omit recordingId for Favorites and legacy Board/time selections.
+ * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/RideExport.kt
+ * @parity /modules/vescape-core/ios/telemetry/RideExport.swift
+ */
+export interface RideExportOptions {
+  fromMs: number
+  toMs: number
+  boardId?: string
+  recordingId?: string
+  name?: string
+}
+
+/**
+ * Closed temporary file, retained for the share consumer and reclaimed by the OS cache.
+ * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/RideExport.kt
+ * @parity /modules/vescape-core/ios/telemetry/RideExport.swift
+ */
+export interface RideExportFile {
+  uri: string
+  mimeType: string
+  uti: string
+}
+
+/**
+ * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/VescapeCoreModule.kt `exportRideGpx`
+ * @parity /modules/vescape-core/ios/VescapeCoreModule.swift `exportRideGpx`
+ */
+export async function exportRideGpx(options: RideExportOptions): Promise<RideExportFile> {
+  return native.exportRideGpx(options)
+}
+
+/**
+ * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/VescapeCoreModule.kt `exportRideCsv`
+ * @parity /modules/vescape-core/ios/VescapeCoreModule.swift `exportRideCsv`
+ */
+export async function exportRideCsv(options: RideExportOptions): Promise<RideExportFile> {
+  return native.exportRideCsv(options)
 }
 
 export async function getHistoryRange(options: {

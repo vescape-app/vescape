@@ -142,7 +142,7 @@ export function HistoryOverlay({
             onTrimNameChange={() => undefined}
             onSelectTab={history.selectHistoryTab}
             onBack={history.exitHistory}
-            onRemove={() => undefined}
+            onOpenActions={() => undefined}
             onCancelTrim={() => undefined}
             onSaveTrim={() => undefined}
           />

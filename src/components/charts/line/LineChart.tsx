@@ -14,7 +14,6 @@ import { SeriesLayer } from '@/components/charts/line/SeriesLayer'
 import { toScrubTargets } from '@/components/charts/line/scrubTargets'
 import type { PreparedChart } from '@/components/charts/line/stackData'
 import type { ChartPlotBox, ChartYRange } from '@/components/charts/line/types'
-import { resolveAdaptiveColor } from '@/constants/theme'
 import type { useSkiaMonoFont } from '@/hooks/useSkiaFont'
 import { useResolvedAccentColors, useResolvedNeutralColors, useThemeStore } from '@/hooks/useTheme'
 import { textAdvanceWidth } from '../../../helpers/skiaText'
@@ -68,10 +67,7 @@ export function LineChart({ chart, width, index }: LineChartProps) {
     () => ({ x: plot.x, y: plot.y, width: plot.width, height: plot.height }),
     [plot],
   )
-  const scrubTargets = useMemo(
-    () => toScrubTargets(chart, (color) => resolveAdaptiveColor(color, appearance) as string),
-    [appearance, chart],
-  )
+  const scrubTargets = useMemo(() => toScrubTargets(chart, appearance), [appearance, chart])
   const plotTransform = useMemo(
     () => [{ translateX: plot.x }, { translateY: plot.y }],
     [plot.x, plot.y],
