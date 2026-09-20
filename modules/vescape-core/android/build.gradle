@@ -60,6 +60,7 @@ dependencies {
   implementation "io.sentry:sentry-android:8.31.0"
   ksp "androidx.room:room-compiler:2.8.4"
   testImplementation "junit:junit:4.13.2"
+  testImplementation "org.mockito:mockito-core:5.19.0"
   testImplementation "org.json:json:20231013"
   testImplementation "androidx.room:room-testing:2.8.4"
   androidTestImplementation "androidx.test:core:1.6.1"

@@ -21,6 +21,9 @@ without a usable file plays its Classic counterpart. Imports accept decodable WA
 15 seconds. The document picker source is copied, so its URI is never used for later playback.
 
 Database backups include the custom pack manifest and audio files under `custom-app-sounds/`.
+Android copies the referenced files and manifest under the pack store lock before writing the
+archive. Restore retains the previous database and pack files until both have installed; a failed
+sound install rolls both back.
 Restoring an older backup without these entries clears custom packs. A restored pack drops any
 assignment whose file is absent, while a selected pack that no longer exists resolves to Classic.
 

@@ -10,6 +10,7 @@ import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 import java.util.TimeZone
+import java.util.UUID
 
 // @parity /modules/vescape-core/ios/telemetry/DatabaseBackupManager.swift
 object DatabaseBackupManager {
@@ -23,13 +24,18 @@ object DatabaseBackupManager {
     val zipExport = File(exportDir, "vesc-db-backup-$stamp.zip")
     sqliteExport.delete()
     zipExport.delete()
+    val soundSnapshot = File(exportDir, "sounds-${UUID.randomUUID()}")
 
     val escapedPath = sqliteExport.absolutePath.replace("'", "''")
     TelemetryDatabase.get(appContext).openHelper.writableDatabase.execSQL("VACUUM INTO '$escapedPath'")
 
-    zipExport.outputStream().use { output ->
-      DatabaseBackupArchive.write(sqliteExport, manifest(context, sqliteExport.length()), output,
-        File(appContext.filesDir, "custom-app-sounds"))
+    try {
+      CustomAppSounds.snapshotForBackup(appContext, soundSnapshot)
+      zipExport.outputStream().use { output ->
+        DatabaseBackupArchive.write(sqliteExport, manifest(context, sqliteExport.length()), output, soundSnapshot)
+      }
+    } finally {
+      soundSnapshot.deleteRecursively()
     }
     sqliteExport.delete()
 
@@ -65,9 +71,14 @@ object DatabaseBackupManager {
       resetRepositoriesAndCloseDatabase()
       replaceDatabaseFiles(restoredDb, dbFile) { installed ->
         validateDatabase(installed, manifestVersion.copy(declaredVersion = manifestVersion.roomVersion))
-        TelemetryDatabase.get(appContext).openHelper.readableDatabase.query("SELECT 1").close()
+        try {
+          TelemetryDatabase.get(appContext).openHelper.readableDatabase.query("SELECT 1").close()
+          CustomAppSounds.replaceFromBackup(appContext, soundStage)
+        } catch (error: Exception) {
+          resetRepositoriesAndCloseDatabase()
+          throw error
+        }
       }
-      CustomAppSounds.replaceFromBackup(appContext, soundStage)
     } catch (e: Exception) {
       resetRepositoriesAndCloseDatabase()
       TelemetryDatabase.get(appContext).openHelper.readableDatabase.query("SELECT 1").close()

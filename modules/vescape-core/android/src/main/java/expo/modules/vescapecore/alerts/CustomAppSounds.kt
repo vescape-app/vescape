@@ -12,6 +12,27 @@ import java.util.UUID
 
 /** @parity /modules/vescape-core/ios/alerts/CustomAppSounds.swift */
 internal object CustomAppSounds {
+  private val activePlayers = HashMap<MediaPlayer, Any?>()
+  private fun finish(player: MediaPlayer, failed: Boolean, onFailure: () -> Unit) {
+    val owned = synchronized(activePlayers) { activePlayers.containsKey(player).also { activePlayers.remove(player) } }
+    if (!owned) return
+    player.setOnCompletionListener(null)
+    player.setOnErrorListener(null)
+    player.setOnPreparedListener(null)
+    player.release()
+    if (failed) onFailure()
+  }
+  fun releasePlayers(owner: Any) {
+    val players = synchronized(activePlayers) {
+      activePlayers.filterValues { it === owner }.keys.toList().also { it.forEach(activePlayers::remove) }
+    }
+    players.forEach { player ->
+      player.setOnCompletionListener(null)
+      player.setOnErrorListener(null)
+      player.setOnPreparedListener(null)
+      player.release()
+    }
+  }
   private val cues = setOf("on", "off", "error", "created", "join")
   private const val maxBytes = 2_000_000L
   private const val maxDurationMs = 15_000L
@@ -132,21 +153,43 @@ internal object CustomAppSounds {
     if (!Regex("[0-9a-fA-F-]{36}\\.wav").matches(name)) return null
     return File(directory(context), name).takeIf { it.isFile && it.length() in 1..maxBytes }
   }
-  fun play(context: Context, id: String, cue: String, source: String, onFailure: () -> Unit): Boolean {
+  /** Copy metadata and its referenced files under the same store lock. */
+  @Synchronized fun snapshotForBackup(context: Context, target: File, afterFileCopy: (String) -> Unit = {}) {
+    val source = directory(context)
+    if (!manifest(context).exists()) return
+    check(target.mkdirs()) { "Could not stage sound snapshot" }
+    val packs = JSONArray(manifest(context).readText())
+    val names = buildSet {
+      for (i in 0 until packs.length()) {
+        val sounds = packs.getJSONObject(i).getJSONObject("sounds")
+        for (cue in cues) sounds.optString(cue).takeIf { it.isNotEmpty() }?.let(::add)
+      }
+    }
+    for (name in names) {
+      require(Regex("[0-9a-fA-F-]{36}\\.wav").matches(name)) { "Invalid sound file name" }
+      val file = File(source, name)
+      require(file.isFile && file.length() in 1..maxBytes) { "Sound file missing or invalid" }
+      file.copyTo(File(target, name))
+      afterFileCopy(name)
+    }
+    manifest(context).copyTo(File(target, "packs.json"))
+  }
+  fun play(context: Context, id: String, cue: String, source: String, onFailure: () -> Unit, owner: Any? = null): Boolean {
     val sound = file(context, id, cue) ?: return false
     val player = MediaPlayer()
     return try {
+      synchronized(activePlayers) { activePlayers[player] = owner }
       player.setAudioAttributes(audioAttributes(source, AudioAttributes.CONTENT_TYPE_SONIFICATION))
       player.setDataSource(sound.absolutePath)
       player.setOnPreparedListener {
         try { it.start() }
-        catch (_: Exception) { it.release(); onFailure() }
+        catch (_: Exception) { finish(it, true, onFailure) }
       }
-      player.setOnCompletionListener { it.release() }
-      player.setOnErrorListener { p, _, _ -> p.release(); onFailure(); true }
+      player.setOnCompletionListener { finish(it, false, onFailure) }
+      player.setOnErrorListener { p, _, _ -> finish(p, true, onFailure); true }
       player.prepareAsync()
       true
-    } catch (_: Exception) { player.release(); false }
+    } catch (_: Exception) { finish(player, false, onFailure); false }
   }
   /** Validate and prune a candidate before its database is installed. */
   @Synchronized fun validateBackup(staged: File) {
@@ -169,17 +212,6 @@ internal object CustomAppSounds {
 
   /** Old backups contain no sound entries. A restore then clears packs and resets selection on read. */
   @Synchronized fun replaceFromBackup(context: Context, staged: File) {
-    val destination = File(context.filesDir, "custom-app-sounds")
-    val previous = File(context.filesDir, "custom-app-sounds-old")
-    previous.deleteRecursively()
-    if (destination.exists()) check(destination.renameTo(previous)) { "Could not stage old sound packs" }
-    try {
-      if (staged.exists()) check(staged.copyRecursively(destination, overwrite = true)) { "Could not restore sound files" }
-      previous.deleteRecursively()
-    } catch (error: Exception) {
-      destination.deleteRecursively()
-      if (previous.exists()) previous.renameTo(destination)
-      throw error
-    }
+    replaceSoundPackFiles(File(context.filesDir, "custom-app-sounds"), staged)
   }
 }

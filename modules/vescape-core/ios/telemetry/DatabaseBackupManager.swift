@@ -100,20 +100,19 @@ enum DatabaseBackupManager {
 
     TelemetryRepository.shared.beginDatabaseSwap()
     defer { TelemetryRepository.shared.endDatabaseSwap() }
-    try TelemetryDatabase.replaceDatabase(withFileAt: staged.database, schemaVersion: staged.roomVersion)
-    try CustomAppSounds.replaceFromBackup(staged.sounds)
-    if let pool = TelemetryDatabase.pool {
+    try TelemetryDatabase.replaceDatabase(withFileAt: staged.database, schemaVersion: staged.roomVersion) { pool in
       let saved = try pool.read { db in
         try String.fetchOne(db, sql: "SELECT value_json FROM app_settings WHERE key = 'soundPack'")
       }
       if let saved,
         // intentional-suppression: malformed selected-pack JSON follows normal settings validation
         let pack = try? JSONSerialization.jsonObject(with: Data(saved.utf8)) as? String,
-        pack != "simple", pack != "retro", !CustomAppSounds.exists(pack) {
+        pack != "simple", pack != "retro", !CustomAppSounds.backupContains(staged.sounds, pack) {
         try pool.write { db in
           try db.execute(sql: "UPDATE app_settings SET value_json = ? WHERE key = 'soundPack'", arguments: ["\"simple\""])
         }
       }
+      try CustomAppSounds.replaceFromBackup(staged.sounds)
     }
   }
 

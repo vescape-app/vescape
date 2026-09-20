@@ -22,7 +22,8 @@ internal func replacingDatabaseFiles<T>(
     }
     try fm.copyItem(at: source, to: target)
     let result = try install(target)
-    try fm.removeItem(at: rollbackDir)
+    // intentional-suppression: post-commit cleanup is best effort; failure must not roll back only the database
+    try? fm.removeItem(at: rollbackDir)
     return result
   } catch {
     let installError = error

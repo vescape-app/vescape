@@ -25,9 +25,9 @@ internal enum CustomAppSounds {
     // intentional-suppression: corrupt pack metadata falls back to an empty list and Classic playback
     return (try? JSONDecoder().decode([Pack].self, from: data)) ?? []
   }
-  private static func save(_ packs: [Pack]) throws {
-    try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
-    try JSONEncoder().encode(packs).write(to: manifest, options: .atomic)
+  private static func save(_ packs: [Pack], at targetDirectory: URL = directory) throws {
+    try FileManager.default.createDirectory(at: targetDirectory, withIntermediateDirectories: true)
+    try JSONEncoder().encode(packs).write(to: targetDirectory.appendingPathComponent("packs.json"), options: .atomic)
   }
   private static func validatedName(_ name: String) throws -> String {
     let clean = name.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -155,8 +155,17 @@ internal enum CustomAppSounds {
       throw error("Invalid sound pack")
     }
   }
+  static func backupContains(_ entries: [String: Data], _ id: String) -> Bool {
+    // intentional-suppression: invalid candidate metadata is rejected during backup validation; this lookup treats it as absent
+    guard let data = entries["packs.json"], let packs = try? JSONDecoder().decode([Pack].self, from: data) else { return false }
+    return packs.contains { $0.id == id }
+  }
 
-  static func replaceFromBackup(_ entries: [String: Data]) throws {
+  static func replaceFromBackup(
+    _ entries: [String: Data],
+    at targetDirectory: URL = directory,
+    writeEntry: (Data, URL) throws -> Void = { data, url in try data.write(to: url, options: .atomic) }
+  ) throws {
     lock.lock(); defer { lock.unlock() }
     let decoder = JSONDecoder()
     var packs = try entries["packs.json"].map { try decoder.decode([Pack].self, from: $0) } ?? []
@@ -166,25 +175,33 @@ internal enum CustomAppSounds {
           (entries[name]?.count ?? 0) > 0 && (entries[name]?.count ?? 0) <= maxBytes
       }
     }
-    let old = directory.deletingLastPathComponent().appendingPathComponent("custom-app-sounds-old")
-    // intentional-suppression: stale restore rollback directory is disposable
-    try? FileManager.default.removeItem(at: old)
-    if FileManager.default.fileExists(atPath: directory.path) { try FileManager.default.moveItem(at: directory, to: old) }
+    let old = targetDirectory.deletingLastPathComponent().appendingPathComponent("custom-app-sounds-old")
+    guard !FileManager.default.fileExists(atPath: old.path) else {
+      throw error("Previous sound recovery files still exist")
+    }
+    if FileManager.default.fileExists(atPath: targetDirectory.path) { try FileManager.default.moveItem(at: targetDirectory, to: old) }
     do {
-      try save(packs)
+      try save(packs, at: targetDirectory)
       for pack in packs {
         for name in pack.sounds.values {
-          if let data = entries[name] { try data.write(to: directory.appendingPathComponent(name), options: .atomic) }
+          if let data = entries[name] { try writeEntry(data, targetDirectory.appendingPathComponent(name)) }
         }
       }
       // intentional-suppression: stale restore rollback directory is disposable
     try? FileManager.default.removeItem(at: old)
     } catch {
-      // intentional-suppression: rollback cleanup is best effort; original restore error is rethrown
-      try? FileManager.default.removeItem(at: directory)
-      // intentional-suppression: rollback attempt is best effort; original restore error is rethrown
-      if FileManager.default.fileExists(atPath: old.path) { try? FileManager.default.moveItem(at: old, to: directory) }
-      throw error
+      let installError = error
+      do {
+        if FileManager.default.fileExists(atPath: targetDirectory.path) { try FileManager.default.removeItem(at: targetDirectory) }
+        if FileManager.default.fileExists(atPath: old.path) { try FileManager.default.moveItem(at: old, to: targetDirectory) }
+      } catch {
+        throw NSError(domain: "CustomAppSounds", code: 2, userInfo: [
+          NSLocalizedDescriptionKey: "Sound restore failed and rollback was incomplete; recovery files are at \(old.path)",
+          NSUnderlyingErrorKey: installError,
+          "rollbackError": String(describing: error),
+        ])
+      }
+      throw installError
     }
   }
 }

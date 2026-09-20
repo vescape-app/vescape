@@ -14,6 +14,8 @@ val extractProductionPersistence by tasks.registering {
     delete(output)
     listOf(
       "expo/modules/vescapecore/alerts/AlertDefaults.kt",
+      "expo/modules/vescapecore/alerts/SoundPackFileSwap.kt",
+      "expo/modules/vescapecore/alerts/SoundSampleQueue.kt",
       "expo/modules/vescapecore/warnings/BoardWarningSeverity.kt",
       "expo/modules/vescapecore/config/BoardConfigChangeNotice.kt",
       "expo/modules/vescapecore/config/RefloatConfigSchema.kt",

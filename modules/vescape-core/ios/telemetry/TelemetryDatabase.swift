@@ -257,13 +257,20 @@ enum TelemetryDatabase {
   /// `schemaVersion` comes from the backup manifest and only matters for a database that has never
   /// been migrated by GRDB — an Android backup. An iOS backup brings its own ledger and is migrated
   /// from wherever it left off.
-  static func replaceDatabase(withFileAt source: URL, schemaVersion: Int) throws {
+  static func replaceDatabase(withFileAt source: URL, schemaVersion: Int, afterInstall: (DatabasePool) throws -> Void = { _ in }) throws {
     guard let target = databaseURL else { throw CocoaError(.fileNoSuchFile) }
     do {
       if let reopened { try reopened.close() }
       else if case let .success(pool) = poolResult { try pool.close() }
       reopened = try replacingDatabaseFiles(source: source, target: target) { installed in
-        try openRestoredDatabase(at: installed, schemaVersion: schemaVersion)
+        let restored = try openRestoredDatabase(at: installed, schemaVersion: schemaVersion)
+        do {
+          try afterInstall(restored)
+          return restored
+        } catch {
+          try restored.close()
+          throw error
+        }
       }
     } catch {
       let restoreError = error
