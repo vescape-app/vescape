@@ -61,7 +61,7 @@ export function useTuneDialGesture({
   onValueChange,
 }: TuneDialGestureOptions) {
   const hapticStepSpacing = computeHapticStepSpacing()
-  const initialStepIndex = Math.round((value - min) / step)
+  const initialStepIndex = Math.round(valueToOffset(value) / stepPx)
 
   const translateX = useSharedValue(-valueToOffset(value))
   const dragStartX = useSharedValue(0)
@@ -343,16 +343,14 @@ export function useTuneDialGesture({
     const expectedOffset = -valueToOffset(value)
     lastEmittedValue.value = value
     displayValue.value = value
-    lastStepIndex.value = Math.round((value - min) / step)
+    lastStepIndex.value = Math.round(valueToOffset(value) / stepPx)
     if (Math.abs(translateX.value - expectedOffset) > stepPx * 0.3) {
       momentumVelocity.value = 0
       translateX.value = withSpring(expectedOffset, SNAP_SPRING)
     }
   }, [
-    min,
     interactionActive,
     momentumVelocity,
-    step,
     value,
     valueToOffset,
     translateX,

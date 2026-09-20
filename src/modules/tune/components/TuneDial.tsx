@@ -9,7 +9,10 @@ import { NativeScrollGestureContext } from '@/components/gestures/NativeScrollGe
 import { theme, type ThemeColor } from '@/constants/theme'
 import { useResolvedColor } from '@/hooks/useTheme'
 import { useSkiaFont } from '@/hooks/useSkiaFont'
-import { computeTuneDialLayout } from '@/modules/tune/components/tuneDialPhysics'
+import {
+  computeTuneDialLayout,
+  tuneDialValueToOffset,
+} from '@/modules/tune/components/tuneDialPhysics'
 import {
   BADGE_BASELINE,
   BADGE_FONT_SIZE,
@@ -56,14 +59,13 @@ export function TuneDial({
   'use no memo'
   const resolvedColor = useResolvedColor(color)
   const nativeScrollGesture = use(NativeScrollGestureContext)
-  const range = max - min
   const layout = useMemo(() => computeTuneDialLayout(min, max, step), [min, max, step])
   const decimals = step < 1 ? Math.ceil(Math.abs(Math.log10(step))) : 0
   const [canvasWidth, setCanvasWidth] = useState(0)
 
   const valueToOffset = useCallback(
-    (v: number) => ((v - min) / range) * layout.totalWidth,
-    [layout.totalWidth, min, range],
+    (v: number) => tuneDialValueToOffset(v, min, max, step, layout.totalSteps, layout.stepPx),
+    [layout.totalSteps, layout.stepPx, min, max, step],
   )
 
   const { translateX, displayValue, panGesture } = useTuneDialGesture({
@@ -99,6 +101,7 @@ export function TuneDial({
                 canvasWidth={canvasWidth}
                 translateX={translateX}
                 min={min}
+                max={max}
                 step={step}
                 decimals={decimals}
                 color={resolvedColor}

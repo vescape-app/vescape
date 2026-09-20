@@ -2,9 +2,11 @@ import { PathIcon, TimerIcon, WarningIcon } from 'phosphor-react-native'
 import type { ReactNode } from 'react'
 import { ActivityIndicator, StyleSheet, View } from 'react-native'
 
+import { useUnitSystem } from '@/hooks/useUnitSystem'
+import { formatDistanceMeters } from '@/helpers/units'
 import { Text } from '@/components/base/Text'
 import { theme, type ThemeColor } from '@/constants/theme'
-import { fmtDistance, fmtRideDuration } from '@/helpers/format'
+import { fmtRideDuration } from '@/helpers/format'
 import type { MapTargetSheetAction } from '@/modules/map-points/components/mapTargetSheetChrome'
 import {
   MapPointDetails,
@@ -95,6 +97,7 @@ function PathFacts({
   notice?: string | null
   path?: { distanceMeters: number; durationSeconds: number } | null
 }) {
+  const units = useUnitSystem()
   if (computing) {
     return (
       <View style={styles.pathFacts}>
@@ -120,7 +123,7 @@ function PathFacts({
   return (
     <View style={styles.pathFacts}>
       <PathIcon size={16} color={theme.palette.slate.textSecondary} weight="bold" />
-      <Text style={styles.pathFactText}>{fmtDistance(path.distanceMeters)}</Text>
+      <Text style={styles.pathFactText}>{formatDistanceMeters(path.distanceMeters, units)}</Text>
       {path.durationSeconds > 0 ? (
         <>
           <TimerIcon size={16} color={theme.palette.slate.textSecondary} weight="bold" />

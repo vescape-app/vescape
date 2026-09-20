@@ -31,7 +31,10 @@ import {
   RULER_LABEL_BAND_TOP,
   TOP_VALUE_BAND_HEIGHT,
 } from '@/modules/tune/components/tuneDialLayout'
-import type { computeTuneDialLayout } from '@/modules/tune/components/tuneDialPhysics'
+import {
+  tuneDialStepValue,
+  type computeTuneDialLayout,
+} from '@/modules/tune/components/tuneDialPhysics'
 import { textAdvanceWidth } from '../../../helpers/skiaText'
 
 /** The scrolling ruler: tick marks, value labels, the previous-value mark and the edge glow. */
@@ -39,6 +42,7 @@ export function TuneDialRuler({
   canvasWidth,
   translateX,
   min,
+  max,
   step,
   decimals,
   color,
@@ -50,6 +54,7 @@ export function TuneDialRuler({
   canvasWidth: number
   translateX: SharedValue<number>
   min: number
+  max: number
   step: number
   decimals: number
   color: ThemeColor
@@ -83,10 +88,10 @@ export function TuneDialRuler({
     const labelList: { key: number; text: string; x: number }[] = []
 
     for (let i = 0; i <= totalSteps; i++) {
-      const val = Number((min + i * step).toFixed(decimals))
+      const val = tuneDialStepValue(i, totalSteps, min, max, step, decimals)
       const x = i * stepPx
       const isMajor = labelEveryStep || i % majorEvery === 0
-      const isMinor = !isMajor && renderMinor && i % minorEvery === 0
+      const isMinor = !isMajor && (i === totalSteps || (renderMinor && i % minorEvery === 0))
 
       if (isMajor) {
         majorPath.moveTo(x, MAJOR_TICK_TOP)
@@ -109,6 +114,7 @@ export function TuneDialRuler({
   }, [
     totalSteps,
     min,
+    max,
     step,
     decimals,
     stepPx,

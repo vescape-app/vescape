@@ -35,7 +35,9 @@ function niceMajorValue(range: number): number {
 
 export function computeTuneDialLayout(min: number, max: number, step: number): TuneDialLayout {
   const range = max - min
-  const totalSteps = Math.round(range / step)
+  // Whole step multiples are independent of a converted, fractional minimum.
+  // Give each physical endpoint its own position instead of replacing a valid tick.
+  const totalSteps = Math.max(1, Math.ceil(max / step - 1e-9) - Math.floor(min / step + 1e-9))
 
   const majorVal = niceMajorValue(range)
   const naturalMajorEvery = Math.max(1, Math.round(majorVal / step))
@@ -152,5 +154,28 @@ export function tuneDialStepValue(
   'worklet'
   if (index <= 0) return min
   if (index >= totalSteps) return max
-  return Math.max(min, Math.min(max, Number((min + index * step).toFixed(decimals))))
+  return Math.max(
+    min,
+    Math.min(max, Number(((Math.floor(min / step + 1e-9) + index) * step).toFixed(decimals))),
+  )
+}
+
+/** Each selectable value has one full tick of travel, including fractional endpoints. */
+export function tuneDialValueToOffset(
+  value: number,
+  min: number,
+  max: number,
+  step: number,
+  totalSteps: number,
+  stepPx: number,
+): number {
+  'worklet'
+  if (value <= min || max <= min) return 0
+  if (value >= max) return totalSteps * stepPx
+  if (totalSteps === 1) return ((value - min) / (max - min)) * stepPx
+  const first = (Math.floor(min / step + 1e-9) + 1) * step
+  const last = (Math.ceil(max / step - 1e-9) - 1) * step
+  if (value < first) return ((value - min) / (first - min)) * stepPx
+  if (value > last) return (totalSteps - 1 + (value - last) / (max - last)) * stepPx
+  return (1 + (value - first) / step) * stepPx
 }

@@ -1,5 +1,3 @@
-import { formatDistanceMeters } from '@/helpers/units'
-
 /** Em dash used as placeholder when a value is unavailable. */
 export const DASH = '—'
 
@@ -25,11 +23,6 @@ function fmtVoltage(v: number): string {
 /** Format a voltage range: "60–84 V" or "3.2–4.2 V". */
 export function fmtVoltageRange(min: number, max: number): string {
   return `${fmtVoltage(min)}–${fmtVoltage(max)} V`
-}
-
-/** Format a distance in meters as "240 m" below 1 km, else "1.2 km". */
-export function fmtDistance(meters: number): string {
-  return formatDistanceMeters(meters, 'metric')
 }
 
 /** Format a temperature in °C as a whole-degree label, e.g. "64°". */
