@@ -120,10 +120,10 @@ private fun ttsSampleAlert(soundType: String) = FiredAlert(
     firedAt = System.currentTimeMillis(),
 )
 
-private fun ttsAlarmAttributes(): AudioAttributes = AudioAttributes.Builder()
-    .setLegacyStreamType(AudioManager.STREAM_ALARM)
-    .setUsage(AudioAttributes.USAGE_ALARM)
-    .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH)
+internal fun audioAttributes(source: String, contentType: Int): AudioAttributes = AudioAttributes.Builder()
+    .setLegacyStreamType(if (source == "media") AudioManager.STREAM_MUSIC else AudioManager.STREAM_ALARM)
+    .setUsage(if (source == "media") AudioAttributes.USAGE_MEDIA else AudioAttributes.USAGE_ALARM)
+    .setContentType(contentType)
     .build()
 
 internal data class FiredAlert(
@@ -369,40 +369,115 @@ internal data class AlertSoundPreset(
     )
 }
 
+/** @parity /modules/vescape-core/ios/alerts/AlertAudioPlayer.swift `appSoundFiles` */
+private val appSoundResources = mapOf(
+    "simple" to mapOf("on" to R.raw.on, "off" to R.raw.off, "created" to R.raw.simple_gr_created, "join" to R.raw.simple_gr_join, "error" to R.raw.simple_error),
+    "retro" to mapOf("on" to R.raw.retro_on, "off" to R.raw.retro_off, "created" to R.raw.retro_new_gr, "join" to R.raw.retro_gr_join, "error" to R.raw.retro_error),
+)
+
 internal class AlertFeedback(
     private val context: Context,
     private val handler: Handler,
 ) {
     // @parity /modules/vescape-core/ios/alerts/AlertAudioPlayer.swift
+    // @platform-diff Android selects alarm/media streams; iOS retains its playback session.
     private var tts: TextToSpeech? = null
     private var ttsReady = false
     private var ttsPendingText: String? = null
     private var released = false
 
-    private val soundPool = SoundPool.Builder()
-        .setMaxStreams(8)
-        .setAudioAttributes(
-            AudioAttributes.Builder()
-                .setLegacyStreamType(AudioManager.STREAM_ALARM)
-                .setUsage(AudioAttributes.USAGE_ALARM)
-                .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
-                .build()
-        )
-        .build()
+    private var audioSource = "alarm"
+    private fun newSoundPool() = SoundPool.Builder().setMaxStreams(8)
+        .setAudioAttributes(audioAttributes(audioSource, AudioAttributes.CONTENT_TYPE_SONIFICATION)).build()
+    private var soundPool = newSoundPool()
     private val soundIds = HashMap<Int, Int>()
     private val geigerLoops = HashMap<String, GeigerLoop>()
-    private val connectSoundId = soundPool.load(context, R.raw.on, 1)
-    private val disconnectSoundId = soundPool.load(context, R.raw.off, 1)
+    private val appSounds = appSoundResources
+    private val appSoundIds = HashMap<Int, Int>()
+    private val samples = SoundSampleQueue()
+    private val pendingGeiger = HashMap<String, Pair<String, Double>>()
+    var soundPack: String = "retro"
 
-    init {
-        for (preset in ALERT_SOUND_PRESETS) {
-            soundIds[preset.resId] = soundPool.load(context, preset.resId, 1)
+    fun setSoundSettings(pack: String, source: String) {
+        if (android.os.Looper.myLooper() != handler.looper) {
+            handler.post { setSoundSettings(pack, source) }
+            return
+        }
+        if (released) return
+        soundPack = pack
+        setAudioSource(source)
+    }
+
+    init { loadAssets() }
+
+    private fun loadAssets() {
+        soundIds.clear()
+        appSoundIds.clear()
+        samples.reset()
+        soundPool.setOnLoadCompleteListener { pool, sampleId, status ->
+            handler.post {
+                if (pool !== soundPool || released) return@post
+                if (status != 0) {
+                    UnexpectedNativeError.report("alert_audio_asset_load", "bundled_asset", IllegalStateException("sample $sampleId status $status"))
+                }
+                samples.complete(sampleId, status == 0)
+                val loops = pendingGeiger.toMap()
+                pendingGeiger.clear()
+                for ((id, request) in loops) updateGeiger(id, request.first, request.second)
+            }
+        }
+        for (preset in ALERT_SOUND_PRESETS) soundIds[preset.resId] = soundPool.load(context, preset.resId, 1)
+        for (resource in appSounds.values.flatMap { it.values }.distinct()) {
+            appSoundIds[resource] = soundPool.load(context, resource, 1)
         }
     }
 
-    fun playConnect() = playRaw(connectSoundId)
+    fun setAudioSource(source: String) {
+        if (android.os.Looper.myLooper() != handler.looper) {
+            handler.post { setAudioSource(source) }
+            return
+        }
+        val selected = if (source == "media") "media" else "alarm"
+        if (released || audioSource == selected) return
+        val loops = geigerLoops.mapValues { (_, loop) -> loop.soundType to loop.rangeDepth } + pendingGeiger
+        val waitingPlays = samples.takePending()
+        stopAllGeiger()
+        soundPool.release()
+        audioSource = selected
+        soundPool = newSoundPool()
+        pendingGeiger.clear()
+        pendingGeiger.putAll(loops)
+        loadAssets()
+        waitingPlays.forEach { it() }
+        tts?.stop()
+        tts?.setAudioAttributes(audioAttributes(audioSource, AudioAttributes.CONTENT_TYPE_SPEECH))
+    }
 
-    fun playDisconnect() = playRaw(disconnectSoundId)
+    fun playConnect() {
+        if (android.os.Looper.myLooper() != handler.looper) { handler.post { playConnect() }; return }
+        playAppSound(soundPack, "on")
+    }
+
+    fun playDisconnect() {
+        if (android.os.Looper.myLooper() != handler.looper) { handler.post { playDisconnect() }; return }
+        playAppSound(soundPack, "off")
+    }
+
+    fun playAppSound(pack: String, cue: String) {
+        if (android.os.Looper.myLooper() != handler.looper) {
+            handler.post { playAppSound(pack, cue) }
+            return
+        }
+        if (released) return
+        if (CustomAppSounds.play(context, pack, cue, audioSource, { playAppSound("simple", cue) }, this)) return
+        val resource = (appSounds[pack] ?: appSounds["simple"])?.get(cue) ?: return
+        val sample = appSoundIds[resource] ?: 0
+        when (samples.state(sample)) {
+            SoundSampleQueue.State.READY -> playRaw(sample)
+            SoundSampleQueue.State.PENDING -> samples.enqueue(sample) { playAppSound(pack, cue) }
+            SoundSampleQueue.State.FAILED -> Unit
+        }
+    }
 
     private fun playRaw(soundId: Int) {
         if (released) return
@@ -419,6 +494,10 @@ internal class AlertFeedback(
     }
 
     fun speakMessage(text: String) {
+        if (android.os.Looper.myLooper() != handler.looper) {
+            handler.post { speakMessage(text) }
+            return
+        }
         if (released) return
         val existing = tts
         if (existing == null) {
@@ -430,7 +509,7 @@ internal class AlertFeedback(
                     return@TextToSpeech
                 }
                 if (status == TextToSpeech.SUCCESS) {
-                    tts?.setAudioAttributes(ttsAlarmAttributes())
+                    tts?.setAudioAttributes(audioAttributes(audioSource, AudioAttributes.CONTENT_TYPE_SPEECH))
                     ttsReady = true
                     val pending = ttsPendingText
                     ttsPendingText = null
@@ -455,6 +534,10 @@ internal class AlertFeedback(
 
     /** Play one announcement: [beepCount] plays of the rule's sound, [ALERT_BEEP_SPACING_MS] apart. */
     fun playSingle(soundType: String, beepCount: Int = ALERT_BEEP_COUNT_DEFAULT) {
+        if (android.os.Looper.myLooper() != handler.looper) {
+            handler.post { playSingle(soundType, beepCount) }
+            return
+        }
         try {
             val preset = resolveAlertPreset(soundType, ALERT_CATEGORY_SINGLE)
             val beeps = normalizedAlertBeepCount(beepCount)
@@ -469,6 +552,10 @@ internal class AlertFeedback(
     }
 
     fun preview(soundType: String) {
+        if (android.os.Looper.myLooper() != handler.looper) {
+            handler.post { preview(soundType) }
+            return
+        }
         if (soundType.startsWith(TTS_PREFIX)) {
             val template = soundType.removePrefix(TTS_PREFIX)
             val text = renderAlertMessageTemplate(template, ttsSampleAlert(soundType), batteryPercent = 42.0)
@@ -484,11 +571,21 @@ internal class AlertFeedback(
     }
 
     fun updateGeiger(ruleId: String, soundType: String, rangeDepth: Double) {
+        if (android.os.Looper.myLooper() != handler.looper) {
+            handler.post { updateGeiger(ruleId, soundType, rangeDepth) }
+            return
+        }
         if (released) return
+        val tickPreset = resolveAlertPreset(soundType, ALERT_CATEGORY_GEIGER)
+        val sample = soundIds[tickPreset.resId] ?: 0
+        if (samples.state(sample) == SoundSampleQueue.State.FAILED) { stopGeiger(ruleId); return }
+        if (samples.state(sample) == SoundSampleQueue.State.PENDING) {
+            pendingGeiger[ruleId] = soundType to rangeDepth
+            return
+        }
         try {
             val depth = rangeDepth.coerceIn(0.0, 1.0)
             val existing = geigerLoops[ruleId]
-            val tickPreset = resolveAlertPreset(soundType, ALERT_CATEGORY_GEIGER)
             if (depth >= 1.0) {
                 existing?.runnable?.let { handler.removeCallbacks(it) }
                 if (existing?.sustained == true) return
@@ -509,6 +606,7 @@ internal class AlertFeedback(
             val loop = GeigerLoop(soundType, depth, sustained = false)
             val runnable = object : Runnable {
                 override fun run() {
+                    if (released || geigerLoops[ruleId] !== loop) return
                     playPreset(tickPreset)
                     handler.postDelayed(this, geigerIntervalMs(loop.rangeDepth))
                 }
@@ -523,19 +621,35 @@ internal class AlertFeedback(
     }
 
     fun stopGeiger(ruleId: String) {
+        if (android.os.Looper.myLooper() != handler.looper) {
+            handler.post { stopGeiger(ruleId) }
+            return
+        }
+        pendingGeiger.remove(ruleId)
         val loop = geigerLoops.remove(ruleId) ?: return
         loop.runnable?.let { handler.removeCallbacks(it) }
         loop.streamId?.let { soundPool.stop(it) }
     }
 
     fun stopAllGeiger() {
+        if (android.os.Looper.myLooper() != handler.looper) {
+            handler.post { stopAllGeiger() }
+            return
+        }
+        pendingGeiger.clear()
         for (ruleId in geigerLoops.keys.toList()) stopGeiger(ruleId)
     }
 
     fun release() {
+        if (android.os.Looper.myLooper() != handler.looper) {
+            handler.post { release() }
+            return
+        }
         if (released) return
         released = true
         stopAllGeiger()
+        samples.reset()
+        CustomAppSounds.releasePlayers(this)
         soundPool.release()
         tts?.stop()
         tts?.shutdown()
@@ -560,8 +674,12 @@ internal class AlertFeedback(
 
     private fun playPreset(preset: AlertSoundPreset, loop: Int = 0): Int {
         if (released) return 0
-        val soundId = soundIds[preset.resId]
-          ?.takeIf { it != 0 } ?: error("Bundled alert asset did not load")
+        val soundId = soundIds[preset.resId] ?: 0
+        if (samples.state(soundId) == SoundSampleQueue.State.FAILED) return 0
+        if (samples.state(soundId) == SoundSampleQueue.State.PENDING) {
+            samples.enqueue(soundId) { playPreset(preset, loop) }
+            return 0
+        }
         return soundPool.play(soundId, 1f, 1f, 1, loop, 1f)
           .also { check(it != 0) { "SoundPool refused playback" } }
     }
@@ -578,7 +696,23 @@ internal class AlertFeedback(
     )
 
     companion object {
-        fun preview(context: Context, soundType: String) {
+        /** Preview without requiring a running board session. */
+        fun previewAppSound(context: Context, pack: String, cue: String, source: String) {
+            if (CustomAppSounds.play(context, pack, cue, source, {
+                previewAppSound(context, "simple", cue, source)
+            })) return
+            val resource = (appSoundResources[pack] ?: appSoundResources["simple"])?.get(cue) ?: return
+            val pool = SoundPool.Builder().setMaxStreams(1).setAudioAttributes(
+                audioAttributes(source, AudioAttributes.CONTENT_TYPE_SONIFICATION)
+            ).build()
+            pool.setOnLoadCompleteListener { soundPool, sampleId, status ->
+                if (status == 0) soundPool.play(sampleId, 1f, 1f, 1, 0, 1f)
+            }
+            pool.load(context, resource, 1)
+            Handler(contextMainLooper()).postDelayed({ pool.release() }, 5_000)
+        }
+
+        fun preview(context: Context, soundType: String, source: String) {
             if (soundType.startsWith(TTS_PREFIX)) {
                 val template = soundType.removePrefix(TTS_PREFIX)
                 val text = renderAlertMessageTemplate(template, ttsSampleAlert(soundType), batteryPercent = 42.0)
@@ -588,7 +722,7 @@ internal class AlertFeedback(
                 holder[0] = TextToSpeech(context) { status ->
                     if (status == TextToSpeech.SUCCESS) {
                         val t = holder[0] ?: return@TextToSpeech
-                        t.setAudioAttributes(ttsAlarmAttributes())
+                        t.setAudioAttributes(audioAttributes(source, AudioAttributes.CONTENT_TYPE_SPEECH))
                         t.speak(text, TextToSpeech.QUEUE_FLUSH, null, "preview")
                         handler.postDelayed({ t.stop(); t.shutdown() }, 5_000)
                     }
@@ -600,11 +734,7 @@ internal class AlertFeedback(
             val pool = SoundPool.Builder()
                 .setMaxStreams(2)
                 .setAudioAttributes(
-                    AudioAttributes.Builder()
-                        .setLegacyStreamType(AudioManager.STREAM_ALARM)
-                        .setUsage(AudioAttributes.USAGE_ALARM)
-                        .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
-                        .build()
+                    audioAttributes(source, AudioAttributes.CONTENT_TYPE_SONIFICATION)
                 )
                 .build()
             try {

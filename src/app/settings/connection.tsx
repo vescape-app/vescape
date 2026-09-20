@@ -6,7 +6,6 @@ import {
   ClockCountdownIcon,
   PowerIcon,
   RecordIcon,
-  SpeakerHighIcon,
 } from 'phosphor-react-native'
 import { useShallow } from 'zustand/react/shallow'
 
@@ -41,7 +40,6 @@ export default function ConnectionSettingsScreen() {
     companionPresenceEnabled,
     companionPresenceBoards,
     companionPresenceCooldownMinutes,
-    connectionSoundsEnabled,
     autoCloseEnabled,
     autoCloseDelayMinutes,
     set,
@@ -55,7 +53,6 @@ export default function ConnectionSettingsScreen() {
       companionPresenceEnabled: s.companionPresenceEnabled,
       companionPresenceBoards: s.companionPresenceBoards,
       companionPresenceCooldownMinutes: s.companionPresenceCooldownMinutes,
-      connectionSoundsEnabled: s.connectionSoundsEnabled,
       autoCloseEnabled: s.autoCloseEnabled,
       autoCloseDelayMinutes: s.autoCloseDelayMinutes,
       set: s.set,
@@ -205,18 +202,6 @@ export default function ConnectionSettingsScreen() {
               <SettingsSwitch
                 value={autoRecording}
                 onValueChange={(v) => void set('autoRecording', v)}
-              />
-            }
-          />
-          <SettingsRow
-            icon={SpeakerHighIcon}
-            iconColor={theme.palette.cyan.color}
-            label="Connection sounds"
-            hint="Play on/off sounds on connect and dropout"
-            right={
-              <SettingsSwitch
-                value={connectionSoundsEnabled}
-                onValueChange={(v) => void set('connectionSoundsEnabled', v)}
               />
             }
           />

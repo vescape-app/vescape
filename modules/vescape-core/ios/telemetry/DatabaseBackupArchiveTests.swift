@@ -4,6 +4,21 @@ import XCTest
 @testable import VescapeCore
 
 final class DatabaseBackupArchiveTests: XCTestCase {
+  func testMalformedCustomSoundManifestRejectedBeforeSwap() {
+    XCTAssertThrowsError(try CustomAppSounds.validateBackup(["packs.json": Data("not-json".utf8)]))
+  }
+
+  func testCustomSoundEntriesRoundTripWithDatabase() throws {
+    let sound = Data([0x52, 0x49, 0x46, 0x46])
+    let archive = DatabaseBackupArchive.archive(
+      database: Data([1]), manifest: Data([2]), sounds: ["test.wav": sound]
+    )
+    let extracted = try DatabaseBackupArchive.extract(archive)
+    XCTAssertEqual(extracted.database, Data([1]))
+    XCTAssertEqual(extracted.manifest, Data([2]))
+    XCTAssertEqual(extracted.sounds["test.wav"], sound)
+  }
+
   private func archive(platform: String, database: Data, version: Int = 42) throws -> Data {
     let manifest = try JSONSerialization.data(withJSONObject: [
       "format": "vesc-db-backup",

@@ -29,6 +29,8 @@ const BASE: AppSettings = {
   socEstimateWindowSeconds: 20,
   boardMoveStrengthPercent: 60,
   connectionSoundsEnabled: true,
+  soundPack: 'retro',
+  audioSource: 'alarm',
   companionPresenceEnabled: false,
   boardWarningsEnabled: true,
   vescFaultCollectionEnabled: true,

@@ -515,6 +515,10 @@ data class AppSettings(
   val socEstimateWindowSeconds: Int = 20,
   val boardMoveStrengthPercent: Int = 60,
   val connectionSoundsEnabled: Boolean = true,
+  val soundPack: String = "retro",
+  // @parity /modules/vescape-core/ios/telemetry/AppDataRepository.swift `defaultSettings`
+  // @parity /modules/vescape-core/src/index.ts `AppSettings`
+  val audioSource: String = "alarm",
   val telemetryPollRateHz: Int = 20,
   val wearPushRateHz: Int = 4,
   val wearAutoLaunchOnConnect: Boolean = true,

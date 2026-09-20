@@ -1,12 +1,14 @@
 package expo.modules.vescapecore
 
 import expo.modules.kotlin.functions.Queues
+import expo.modules.kotlin.modules.ModuleDefinitionBuilder
 
 import expo.modules.vescapecore.diagnostics.UnexpectedNativeError
 import expo.modules.vescapecore.telemetry.FavoriteMediaCleanupException
 
 import expo.modules.vescapecore.accessory.AccessoryDiscovery
 import expo.modules.vescapecore.accessory.AccessorySessionManager
+import expo.modules.vescapecore.alerts.CustomAppSounds
 import expo.modules.vescapecore.alerts.AlertFeedback
 import expo.modules.vescapecore.alerts.normalizedAlertBeepCount
 import expo.modules.vescapecore.alerts.normalizedAlertRepeatSeconds
@@ -578,12 +580,17 @@ class VescapeCoreModule : Module() {
     Function("previewAlertSound") { soundType: String ->
       CoreForegroundService.previewAlertSound(context.applicationContext, soundType)
     }
+    Function("playAppSound") { pack: String, cue: String ->
+      CoreForegroundService.playAppSound(context.applicationContext, pack, cue)
+    }
+    registerCustomAppSounds()
     Function("getAlertSounds") {
       CoreForegroundService.alertSoundPresets()
     }
     Function("startGeigerSimulation") { soundType: String, rangeDepth: Double ->
       val feedback = previewAlertFeedback ?: AlertFeedback(context.applicationContext, mainHandler)
         .also { previewAlertFeedback = it }
+      feedback.setAudioSource(kotlinx.coroutines.runBlocking { AppDataRepository.get(context.applicationContext).getTypedSettings().audioSource })
       feedback.updateGeiger("preview", soundType, rangeDepth)
     }
     Function("stopGeigerSimulation") {
@@ -1411,15 +1418,36 @@ class VescapeCoreModule : Module() {
         key == "socEstimateWindowSeconds" ||
         key == "telemetryPollRateHz" ||
         key == "wearPushRateHz" ||
-key == "wearAutoLaunchOnConnect" ||
+        key == "wearAutoLaunchOnConnect" ||
         key == "wearNavArrowEnabled" ||
         // Mirrored to the wrist by WatchSettingsPusher, which runs off the applied settings.
         key == "riderColor" ||
         key == "boardWarningsEnabled" ||
-        key == "vescFaultCollectionEnabled"
+        key == "vescFaultCollectionEnabled" ||
+        key == "connectionSoundsEnabled" ||
+        key == "soundPack" ||
+        key == "audioSource"
       ) {
         CoreForegroundService.reloadTelemetrySettings(context.applicationContext)
       }
+    }
+  }
+
+  private fun ModuleDefinitionBuilder.registerCustomAppSounds() {
+    // @parity /modules/vescape-core/ios/VescapeCoreModule.swift `customAppSoundPacks`
+    AsyncFunction("customAppSoundPacks") { CustomAppSounds.list(context.applicationContext) }
+    AsyncFunction("createAppSoundPack") { name: String -> CustomAppSounds.create(context.applicationContext, name) }
+    AsyncFunction("renameAppSoundPack") { id: String, name: String -> CustomAppSounds.rename(context.applicationContext, id, name) }
+    AsyncFunction("importAppSound") { id: String, cue: String, uri: String -> CustomAppSounds.import(context.applicationContext, id, cue, uri) }
+    AsyncFunction("removeAppSound") { id: String, cue: String -> CustomAppSounds.remove(context.applicationContext, id, cue) }
+    AsyncFunction("deleteAppSoundPack") Coroutine { id: String ->
+      val appContext = context.applicationContext
+      val selected = AppDataRepository.get(appContext).getTypedSettings().soundPack
+      if (selected == id) {
+        AppDataRepository.get(appContext).updateSetting("soundPack", "simple")
+        CoreForegroundService.reloadTelemetrySettings(appContext)
+      }
+      CustomAppSounds.delete(appContext, id)
     }
   }
 
@@ -1430,6 +1458,7 @@ key == "wearAutoLaunchOnConnect" ||
     if (rules.any { it.controlId != controlId }) return
 
     val feedback = AlertFeedback(context.applicationContext, mainHandler)
+    feedback.setAudioSource(kotlinx.coroutines.runBlocking { AppDataRepository.get(context.applicationContext).getTypedSettings().audioSource })
     val coordinator = AlertCoordinator(feedback = { feedback }, vibrateSingles = false)
     coordinator.replaceRules(rules)
     alertTestFeedback = feedback

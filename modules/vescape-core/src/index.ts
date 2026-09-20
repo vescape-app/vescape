@@ -1567,6 +1567,16 @@ export interface AppSettings {
   boardMoveStrengthPercent: number
   /** Play on/off sounds on board connect and involuntary disconnect. */
   connectionSoundsEnabled: boolean
+  /** Selected bundled or custom app feedback pack. Missing saved value defaults to retro. */
+  /** @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/alerts/AlertEngine.kt `appSoundResources` */
+  /** @parity /modules/vescape-core/ios/alerts/AlertAudioPlayer.swift `appSoundFiles` */
+  /** @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/alerts/CustomAppSounds.kt */
+  /** @parity /modules/vescape-core/ios/alerts/CustomAppSounds.swift */
+  soundPack: string
+  /** Android playback volume stream. iOS retains its playback session. */
+  /** @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/TelemetryEntities.kt `AppSettings` */
+  /** @parity /modules/vescape-core/ios/telemetry/AppDataRepository.swift `defaultSettings` */
+  audioSource: 'alarm' | 'media'
   /** Android-only: use CompanionDeviceManager presence to connect associated boards when nearby. */
   companionPresenceEnabled: boolean
   /**
@@ -2657,6 +2667,14 @@ type VescapeCoreNativeModule = NativeEventEmitter<VescapeCoreEvents> & {
   requestCriticalRideNotificationPermission(): Promise<CriticalRideNotificationPermissionStatus>
   getAlertSounds(): AlertSound[]
   previewAlertSound(soundType: AlertSoundType): void
+  playAppSound(pack: string, cue: 'on' | 'off' | 'created' | 'join' | 'error'): void
+  customAppSoundPacks(): Promise<CustomAppSoundPack[]>
+  createAppSoundPack(name: string): Promise<CustomAppSoundPack[]>
+  renameAppSoundPack(id: string, name: string): Promise<void>
+  importAppSound(id: string, cue: AppSoundCueId, uri: string): Promise<void>
+  removeAppSound(id: string, cue: AppSoundCueId): Promise<void>
+  deleteAppSoundPack(id: string): Promise<void>
+
   startGeigerSimulation(soundType: string, rangeDepth: number): void
   stopGeigerSimulation(): void
   startAlertTest(rules: AlertTestRule[]): void
@@ -3124,6 +3142,30 @@ export function getAlertSounds(): AlertSound[] {
 
 export function previewAlertSound(soundType: AlertSoundType): void {
   native.previewAlertSound(soundType)
+}
+
+/** @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/alerts/CustomAppSounds.kt
+ * @parity /modules/vescape-core/ios/alerts/CustomAppSounds.swift */
+export type AppSoundCueId = 'on' | 'off' | 'created' | 'join' | 'error'
+export interface CustomAppSoundPack {
+  id: string
+  name: string
+  sounds: Partial<Record<AppSoundCueId, string>>
+}
+export const customAppSoundPacks = (): Promise<CustomAppSoundPack[]> => native.customAppSoundPacks()
+export const createAppSoundPack = (name: string): Promise<CustomAppSoundPack[]> =>
+  native.createAppSoundPack(name)
+export const renameAppSoundPack = (id: string, name: string): Promise<void> =>
+  native.renameAppSoundPack(id, name)
+export const importAppSound = (id: string, cue: AppSoundCueId, uri: string): Promise<void> =>
+  native.importAppSound(id, cue, uri)
+export const removeAppSound = (id: string, cue: AppSoundCueId): Promise<void> =>
+  native.removeAppSound(id, cue)
+export const deleteAppSoundPack = (id: string): Promise<void> => native.deleteAppSoundPack(id)
+
+/** Play a bundled or custom app cue; native resolves invalid assignments to Classic. */
+export function playAppSound(pack: string, cue: 'on' | 'off' | 'created' | 'join' | 'error'): void {
+  native.playAppSound(pack, cue)
 }
 
 export function startGeigerSimulation(soundType: string, rangeDepth: number): void {

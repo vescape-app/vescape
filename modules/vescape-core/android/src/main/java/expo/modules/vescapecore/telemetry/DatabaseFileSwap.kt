@@ -48,7 +48,7 @@ internal fun replaceDatabaseFiles(
     ).also { combined -> rollbackErrors.forEach(combined::addSuppressed) }
   } finally {
     if (cleanupRollback && rollbackDir.exists()) {
-      check(rollbackDir.deleteRecursively()) { "Could not clear database rollback directory" }
+      rollbackDir.deleteRecursively()
     }
   }
 }

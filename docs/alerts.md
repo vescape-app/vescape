@@ -12,6 +12,21 @@ Fired alerts embedded in that packet's telemetry map → visible in recentTeleme
 
 No separate event. No JS-side audio. Native storage is the source of truth.
 
+## App sound packs
+
+The five app cues (Connect, Disconnect, Error, New Group Ride, Rider joined Group Ride) are
+separate from Alert Rule presets and Geiger sounds. A custom pack may assign any subset. Native
+playback and previews read the same app-owned `custom-app-sounds` manifest and WAV files; a cue
+without a usable file plays its Classic counterpart. Imports accept decodable WAV up to 2 MB and
+15 seconds. The document picker source is copied, so its URI is never used for later playback.
+
+Database backups include the custom pack manifest and audio files under `custom-app-sounds/`.
+Android copies the referenced files and manifest under the pack store lock before writing the
+archive. Restore retains the previous database and pack files until both have installed; a failed
+sound install rolls both back.
+Restoring an older backup without these entries clears custom packs. A restored pack drops any
+assignment whose file is absent, while a selected pack that no longer exists resolves to Classic.
+
 ## Per-board ownership
 
 Alert Rules are owned by one Board. The native alert engine loads **only the connected Board's**
@@ -126,7 +141,7 @@ Templates render from current alert values when the rule fires:
 Runtime behavior:
 
 - Android native `TextToSpeech` speaks from the foreground service so messages can fire while JS is suspended.
-- TTS uses the same alarm-style audio attributes as alert presets.
+- Android presets, app cues, and TTS use the selected audio output: Alarm (default, including existing installs) or Media. Switching streams during a session recreates the SoundPool, reloads assets, and restarts active Geiger loops. iOS retains its existing playback session and hides this Android-only choice.
 - TTS is initialized lazily when rules include a `tts:` message and speech plays as soon as possible. Do not pre-generate or cache message audio.
 - Message alerts vibrate once, same as one-shot preset alerts.
 - If multiple spoken messages compete, the most urgent alert wins and may stop a less urgent spoken message.
