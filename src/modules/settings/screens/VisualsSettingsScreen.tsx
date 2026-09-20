@@ -36,7 +36,7 @@ export function VisualsSettingsScreen() {
             <SettingsRow
               key={option.mode}
               icon={option.Icon}
-              iconColor={option.color}
+              iconColor={option.hue.color}
               label={option.label}
               hint={option.hint}
               right={<SelectionIndicator selected={mode === option.mode} />}

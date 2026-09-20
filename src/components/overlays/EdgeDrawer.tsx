@@ -5,6 +5,8 @@ import {
   View,
   type FlatList,
   type ListRenderItem,
+  type StyleProp,
+  type ViewStyle,
 } from 'react-native'
 import { GestureDetector, GestureHandlerRootView } from 'react-native-gesture-handler'
 import Reanimated from 'react-native-reanimated'
@@ -19,6 +21,7 @@ import {
   WidgetFocusProvider,
 } from '@/components/overlays/widgetFocus'
 import { theme } from '@/constants/theme'
+import { useResolvedNeutralColors } from '@/hooks/useTheme'
 
 interface EdgeDrawerVirtualizedContent {
   data: readonly unknown[]
@@ -101,6 +104,9 @@ export function EdgeDrawer({
   })
 
   const focus = useWidgetFocusHost()
+  // JS-side resolution: baked adaptive tokens in a StyleSheet go stale inside a live Modal window
+  // after the rider changes the appearance in place — the window re-resolves only on remount.
+  const neutral = useResolvedNeutralColors()
 
   if (!mounted) return null
 
@@ -116,15 +122,22 @@ export function EdgeDrawer({
       accessibilityLabel={`Close ${title}`}
     >
       {IconComponent ? <IconComponent size={28} color={iconColor} weight="duotone" /> : null}
-      <Text style={styles.drawerTitle}>{title}</Text>
+      <Text style={[styles.drawerTitle, { color: neutral.textPrimary }]}>{title}</Text>
     </Pressable>
   ) : null
+
+  const scrimStyle: StyleProp<ViewStyle> = {
+    backgroundColor: theme.alpha(neutral.surfaceDeep, 0.85),
+  }
+  const colorStyle: StyleProp<ViewStyle> = {
+    backgroundColor: theme.alpha(neutral.textSecondary, 0.6),
+  }
 
   const listHeader = virtualizedContent ? (
     <>
       {!opensFromTop ? emptyDismissArea : null}
       <View style={[styles.listChrome, opensFromTop && { paddingTop: edgePadding }]}>
-        {!opensFromTop ? <View style={styles.grabber} /> : null}
+        {!opensFromTop ? <View style={[styles.grabber, colorStyle]} /> : null}
         {drawerTitle}
       </View>
     </>
@@ -134,7 +147,7 @@ export function EdgeDrawer({
     <>
       {virtualizedContent.footer}
       <View style={[styles.listChrome, opensFromTop ? undefined : { paddingBottom: edgePadding }]}>
-        {opensFromTop ? <View style={styles.grabber} /> : null}
+        {opensFromTop ? <View style={[styles.grabber, colorStyle]} /> : null}
       </View>
       {opensFromTop ? emptyDismissArea : null}
     </>
@@ -153,7 +166,9 @@ export function EdgeDrawer({
     >
       <GestureHandlerRootView style={styles.modalGestureRoot}>
         <View style={styles.drawer}>
-          <Reanimated.View style={[StyleSheet.absoluteFill, styles.drawerScrim, backdropStyle]}>
+          <Reanimated.View
+            style={[StyleSheet.absoluteFill, styles.drawerScrim, scrimStyle, backdropStyle]}
+          >
             <Pressable testID={backdropTestID} style={StyleSheet.absoluteFill} onPress={close} />
           </Reanimated.View>
         </View>
@@ -210,12 +225,12 @@ export function EdgeDrawer({
                         opensFromTop ? { paddingTop: edgePadding } : { paddingBottom: edgePadding },
                       ]}
                     >
-                      {!opensFromTop ? <View style={styles.grabber} /> : null}
+                      {!opensFromTop ? <View style={[styles.grabber, colorStyle]} /> : null}
                       {drawerTitle}
                       <WidgetFocusProvider host={focus}>
                         <View style={styles.drawerContent}>{children}</View>
                       </WidgetFocusProvider>
-                      {opensFromTop ? <View style={styles.grabber} /> : null}
+                      {opensFromTop ? <View style={[styles.grabber, colorStyle]} /> : null}
                     </View>
                     {opensFromTop ? emptyDismissArea : null}
                   </Reanimated.ScrollView>

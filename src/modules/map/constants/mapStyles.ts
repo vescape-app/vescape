@@ -1,5 +1,5 @@
 import Mapbox from '@rnmapbox/maps'
-import { MoonStarsIcon, MountainsIcon, PlanetIcon } from 'phosphor-react-native'
+import { MapTrifoldIcon, MountainsIcon, PlanetIcon } from 'phosphor-react-native'
 import { theme } from '@/constants/theme'
 
 export const MAP_DEFAULTS = {
@@ -36,7 +36,7 @@ export const BLANK_STYLE = JSON.stringify({
 })
 
 export const MAP_STYLES = [
-  { key: 'onedark', label: 'Streets', styleURL: null, Icon: MoonStarsIcon },
+  { key: 'onedark', label: 'Streets', styleURL: null, Icon: MapTrifoldIcon },
   {
     key: 'satellite',
     label: 'Satellite',

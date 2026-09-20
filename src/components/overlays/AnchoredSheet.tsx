@@ -22,6 +22,7 @@ import {
   type TriggerLayout,
 } from '@/components/overlays/measureTrigger'
 import { theme } from '@/constants/theme'
+import { useResolvedNeutralColors } from '@/hooks/useTheme'
 
 const OPEN_DURATION = 260
 const CLOSE_DURATION = 180
@@ -129,6 +130,9 @@ function Sheet({
   children,
 }: SheetProps) {
   const insets = useSafeAreaInsets()
+  // JS-side resolution: a Modal opens its own window whose native color-scheme resolution can lag
+  // the forced activity appearance, so adaptive tokens mislead right after an in-place theme change.
+  const neutral = useResolvedNeutralColors()
   const [triggerLayout, setTriggerLayout] = useState<TriggerLayout | null>(null)
   const [mounted, setMounted] = useState(false)
   const progress = useMemo(() => new Animated.Value(0), [])
@@ -205,6 +209,8 @@ function Sheet({
             transformOrigin: computed.transformOrigin,
             opacity: progress,
             transform: [{ scale }, { translateY }],
+            backgroundColor: theme.alpha(neutral.bg, 0.85),
+            borderColor: neutral.border,
           },
         ]}
       >
@@ -257,7 +263,7 @@ const styles = StyleSheet.create({
   },
   sheet: {
     position: 'absolute',
-    backgroundColor: theme.alpha(theme.neutral.bg, 0.85),
+    backgroundColor: theme.neutral.bg,
     borderRadius: 20,
     borderWidth: 1,
     borderColor: theme.neutral.border,
