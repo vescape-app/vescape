@@ -1,6 +1,7 @@
 name: CI
 
 on:
+  workflow_dispatch:
   push:
     branches: [main, dev]
   pull_request:
@@ -115,7 +116,7 @@ jobs:
   # CocoaPods ships, so the tests cannot run without compiling it.
   ios:
     needs: native-gate
-    if: needs.native-gate.outputs.ios == 'true'
+    if: github.event_name == 'workflow_dispatch' || needs.native-gate.outputs.ios == 'true'
     runs-on: blacksmith-6vcpu-macos-26
     steps:
       - uses: actions/checkout@v4
