@@ -10,6 +10,7 @@ import { mapStyleForTheme } from '@/modules/map/lib/mapTheme'
 import Mapbox from '@rnmapbox/maps'
 
 import type { MainViewState } from '@/screens/main/mainViewState'
+import { baseStyleLayerIds } from '@/screens/main/map/baseStyleLayerIds'
 
 /**
  * Resolves the requested map style into everything the map view and the `existing`
@@ -84,6 +85,7 @@ export function useResolvedMapStyle({
 
   const styleJSON =
     isOneDark || isSatelliteOverlay ? oneDarkStyleJSON : isMapy ? BLANK_STYLE : undefined
+  const existingLayerIds = useMemo(() => baseStyleLayerIds(styleJSON), [styleJSON])
 
   // Signed by the style document Mapbox actually receives, not by the style key. Two keys can
   // resolve to the same document (One Dark and the satellite overlay share it); the native map
@@ -107,6 +109,7 @@ export function useResolvedMapStyle({
       showBuildings3d: selectedMapStyle.key === 'outdoors' || selectedMapStyle.key === 'onedark',
       styleURL: useCustomJSON ? undefined : selectedMapStyle.styleURL,
       styleJSON,
+      existingLayerIds,
       satelliteImageryPaint,
       satelliteRoadLineOpacity: satelliteTone.roadLineOpacity * (mode === 'telemetry' ? 0.6 : 1),
       styleSignature,
@@ -125,6 +128,7 @@ export function useResolvedMapStyle({
       satelliteTone,
       selectedMapStyle,
       styleJSON,
+      existingLayerIds,
       styleSignature,
       useCustomJSON,
     ],

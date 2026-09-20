@@ -1,5 +1,12 @@
 import Mapbox, { Camera } from '@rnmapbox/maps'
-import { Fragment, type ComponentProps, type ComponentRef, type RefObject } from 'react'
+import {
+  Fragment,
+  useEffect,
+  useState,
+  type ComponentProps,
+  type ComponentRef,
+  type RefObject,
+} from 'react'
 import { ActivityIndicator, Animated, Pressable, StyleSheet, Text, View } from 'react-native'
 
 import { theme } from '@/constants/theme'
@@ -119,6 +126,38 @@ export function MainMapScene({
   onFocusDirectionPoint,
   overlays,
 }: MainMapSceneProps) {
+  const [appliedStyle, setAppliedStyle] = useState(() => ({
+    signature: mapStyle.styleSignature,
+    styleURL: mapStyle.styleURL,
+    styleJSON: mapStyle.styleJSON,
+  }))
+  const [loadedAppliedStyle, setLoadedAppliedStyle] = useState<{
+    signature: string
+    retryNonce: number
+  } | null>(null)
+  const switchingStyle = appliedStyle.signature !== mapStyle.styleSignature
+
+  useEffect(() => {
+    if (!switchingStyle) return
+    // Commit without adopted layers before changing the native style document. The next frame
+    // gives Mapbox a chance to remove those layers before it replaces their backing style.
+    const frame = requestAnimationFrame(() => {
+      setLoadedAppliedStyle(null)
+      setAppliedStyle({
+        signature: mapStyle.styleSignature,
+        styleURL: mapStyle.styleURL,
+        styleJSON: mapStyle.styleJSON,
+      })
+    })
+    return () => cancelAnimationFrame(frame)
+  }, [mapStyle.styleJSON, mapStyle.styleSignature, mapStyle.styleURL, switchingStyle])
+
+  const styleReady =
+    !switchingStyle &&
+    loadedAppliedStyle?.signature === mapStyle.styleSignature &&
+    loadedAppliedStyle.retryNonce === styleRetryNonce &&
+    mapStyle.isStyleLoaded
+
   return (
     <Animated.View
       style={[styles.container, { opacity: mapOpacity }]}
@@ -131,8 +170,8 @@ export function MainMapScene({
         key={styleRetryNonce}
         ref={mapViewRef}
         style={styles.map}
-        styleURL={mapStyle.styleURL}
-        styleJSON={mapStyle.styleJSON}
+        styleURL={appliedStyle.styleURL}
+        styleJSON={appliedStyle.styleJSON}
         pitchEnabled={false}
         rotateEnabled={!rotationLocked}
         compassEnabled={false}
@@ -141,7 +180,10 @@ export function MainMapScene({
         logoPosition={{ bottom: 8, left: 8 }}
         attributionEnabled={mapStyle.mapDetailsVisible}
         attributionPosition={{ bottom: 8, left: 92 }}
-        onDidFinishLoadingStyle={onDidFinishLoadingStyle}
+        onDidFinishLoadingStyle={() => {
+          setLoadedAppliedStyle({ signature: appliedStyle.signature, retryNonce: styleRetryNonce })
+          onDidFinishLoadingStyle?.()
+        }}
         onMapLoadingError={onMapLoadingError}
         onPress={onPress}
         onLongPress={onLongPress}
@@ -154,7 +196,7 @@ export function MainMapScene({
           maxZoomLevel={MAP_DEFAULTS.maxZoom}
           animationMode="easeTo"
         />
-        {mapStyle.isStyleLoaded && (
+        {styleReady && (
           // Native styles own their sources and layers. Mount a fresh React layer tree only after
           // the replacement document is ready; never update nodes the previous style removed.
           <Fragment key={mapStyle.styleSignature}>
@@ -163,6 +205,7 @@ export function MainMapScene({
             )}
             <MapBaseStyleLayers
               enabled={mapStyle.canUpdateExistingStyleLayers}
+              existingLayerIds={mapStyle.existingLayerIds}
               styleKey={mapStyle.styleKey}
               isOneDark={mapStyle.isOneDark}
               isSatellite={mapStyle.isSatellite}
