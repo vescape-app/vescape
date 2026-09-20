@@ -37,9 +37,8 @@ let testSupportSources: Set<String> = [
   "accessory/AccessoryFixtures.swift",
 ]
 
-/// Symlinks into `shared/`. The pod bundles all of them through `resource_bundles`; SPM only needs
-/// the ones production code reads back out of its own bundle. Tests read fixtures straight off the
-/// repo tree, so they need nothing here.
+/// CocoaPods consumes these symlinks. SwiftPM's SharedResourcesPlugin bundles their contents:
+/// the legacy SwiftPM build system otherwise copies dangling relative symlinks into the bundle.
 let bundledResources: Set<String> = [
   "cell-presets.json", "alert-preset-definitions.json"
 ]
@@ -114,9 +113,9 @@ let package = Package(
       name: "VescapeCore",
       dependencies: [grdb],
       path: "ios",
-      exclude: tree.ignored + tree.tests,
+      exclude: tree.ignored + tree.tests + bundledResources.sorted(),
       sources: tree.library,
-      resources: bundledResources.sorted().map { .process($0) }
+      plugins: ["SharedResourcesPlugin"]
     ),
     .testTarget(
       name: "VescapeCoreTests",
@@ -128,7 +127,9 @@ let package = Package(
       name: "RecordingPersistenceHost",
       dependencies: [grdb],
       path: "persistence-macos",
-      resources: [.process("alert-preset-definitions.json"), .process("cell-presets.json")]
+      exclude: bundledResources.sorted(),
+      plugins: ["SharedResourcesPlugin"]
     ),
+    .plugin(name: "SharedResourcesPlugin", capability: .buildTool()),
   ]
 )

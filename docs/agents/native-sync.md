@@ -63,6 +63,13 @@ would keep the old source list and the new test would silently never run. `scrip
 therefore reuses `podsFingerprint()` (the same sorted-path-list signal Pods drift on) and drops the
 SwiftPM manifest memo when the layout moves. Its own fingerprint lives in `.expo/test-ios/`.
 
+SwiftPM bundles the shared preset JSON through `SharedResourcesPlugin` for both the iOS test
+library and the macOS persistence host. The plugin resolves the existing iOS resource symlinks
+and copies their contents into build outputs. Declaring those symlinks as ordinary SwiftPM
+resources is unsafe: the legacy build system preserves the relative links inside the bundle,
+where their targets no longer exist. Generated JSON stays in the build directory; the canonical
+shared files and CocoaPods resource configuration remain unchanged.
+
 ## Why the scopes are platform-lopsided
 
 Android has no Pods equivalent: Gradle autolinking resolves Kotlin sources through a directory glob
