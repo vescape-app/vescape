@@ -23,6 +23,22 @@ final class WatchColdStateTests: XCTestCase {
     }
   }
 
+  func testOfflinePreferenceChangesFlushLatestUnitsOnReconnectAndSurviveRestart() {
+    let wire = Wire()
+    let state = wire.coldState()
+    wire.failWith = WatchColdStateError.sessionNotActivated
+    state.put(channel: watchSettingsChannel, payload: WatchSettings(unitSystem: "metric").payload)
+    state.put(channel: watchSettingsChannel, payload: WatchSettings(unitSystem: "imperial").payload)
+    XCTAssertEqual(wire.writes, 0)
+    wire.failWith = nil
+    state.flush()
+    XCTAssertEqual(WatchSettings.decode(context: wire.context).unitSystem, "imperial")
+    let restarted = wire.coldState()
+    restarted.put(channel: watchSettingsChannel, payload: WatchSettings(unitSystem: "imperial").payload)
+    XCTAssertEqual(wire.writes, 1)
+    XCTAssertEqual(WatchSettings.decode(context: wire.context).unitSystem, "imperial")
+  }
+
   func testWritingOneChannelPreservesTheOthersAndUnrelatedKeys() {
     let wire = Wire()
     wire.context = ["route": ["points": 3], "schemaVersion": 1]

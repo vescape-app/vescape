@@ -1,5 +1,7 @@
 package app.vescape.wear
 
+import expo.modules.vescapecore.telemetry.UnitPresentation
+
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -207,7 +209,7 @@ internal fun FrameLayout(
         ) {
             // Ambient keeps the slots, the sizes and the units, and only drains the colour, so
             // waking lights the numbers where they already were instead of rebuilding the screen.
-            LargeGaugeValue(Modifier.weight(1f), heroValue(frame.speed, ambientBlind), "km/h", speedColor)
+            LargeGaugeValue(Modifier.weight(1f), heroValue(frame.speed?.let { UnitPresentation.speedFromKmh(it, SettingsState.settings.value.unitSystem) }, ambientBlind), UnitPresentation.speedUnit(SettingsState.settings.value.unitSystem), speedColor)
             LargeGaugeValue(Modifier.weight(1f), heroValue(frame.duty, ambientBlind), "%", dutyColor)
         }
 

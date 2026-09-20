@@ -1,3 +1,4 @@
+import { speedFromKmh, speedUnit, type UnitSystem } from '@/helpers/units'
 import { ALERT_BEEP_COUNT_DEFAULT, type AlertRule } from 'vescape-core'
 
 import {
@@ -421,19 +422,22 @@ export function formatAlertPresetSummary(
   metric: AlertPresetMetric,
   level: AlertPresetLevel,
   options: GenerateAlertPresetRulesOptions = {},
+  units: UnitSystem = 'metric',
 ): string | null {
   const specs = resolvedAlertPresetRules(metric, level, options)
   if (specs.length === 0) return null
-  const unit = ALERT_PRESET_UNIT[metric]
+  const unit = metric === 'speed' ? ` ${speedUnit(units)}` : ALERT_PRESET_UNIT[metric]
+  const number = (value: number) =>
+    metric === 'speed' ? Number(speedFromKmh(value, units).toFixed(1)) : Math.round(value)
   return specs
     .map((spec) => {
       if (spec.thresholdMax != null) {
-        return `${Math.round(spec.threshold)}–${Math.round(spec.thresholdMax)}${unit}`
+        return `${number(spec.threshold)}–${number(spec.thresholdMax)}${unit}`
       }
       // A repeating rung reads as the point it starts at plus a repeat mark: it has no upper
       // bound, it just keeps going.
       const repeat = spec.repeatEverySeconds == null ? '' : '↻'
-      return `${Math.round(spec.threshold)}${unit}${repeat}`
+      return `${number(spec.threshold)}${unit}${repeat}`
     })
     .join(', ')
 }
@@ -456,14 +460,17 @@ export function describeAlertPreset(
   metric: AlertPresetMetric,
   level: AlertPresetLevel,
   options: GenerateAlertPresetRulesOptions = {},
+  units: UnitSystem = 'metric',
 ): string | null {
   if (level === 'off') return 'No sound from this metric.'
   if (level === 'custom') return 'Your own rules — edit them below.'
 
   const specs = resolvedAlertPresetRules(metric, level, options)
   if (specs.length === 0) return null
-  const unit = ALERT_PRESET_UNIT[metric]
-  const value = (threshold: number) => `${Math.round(threshold)}${unit}`
+  const unit = metric === 'speed' ? ` ${speedUnit(units)}` : ALERT_PRESET_UNIT[metric]
+  const number = (value: number) =>
+    metric === 'speed' ? Number(speedFromKmh(value, units).toFixed(1)) : Math.round(value)
+  const value = (threshold: number) => `${number(threshold)}${unit}`
 
   const range = specs.find((spec) => spec.thresholdMax != null)
   const ceiling = range?.thresholdMax

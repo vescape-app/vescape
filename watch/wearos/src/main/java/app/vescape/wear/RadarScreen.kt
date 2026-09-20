@@ -1,5 +1,7 @@
 package app.vescape.wear
 
+import expo.modules.vescapecore.telemetry.UnitPresentation
+
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -139,7 +141,7 @@ fun RadarScreen(visible: Boolean) {
             Text(
                 // Unit on the outermost ring only: the inner one reads as the same scale without
                 // repeating it next to a line 10 dp away.
-                text = if (km == rings.last().first) "$km km" else "$km",
+                text = if (SettingsState.settings.value.unitSystem == "imperial") UnitPresentation.distance(km * 1000.0, "imperial") else if (km == rings.last().first) "$km km" else "$km",
                 style = WatchTypography.mono(MaterialTheme.typography.caption3.copy(fontSize = RING_FONT_SIZE)),
                 color = DimText,
                 modifier = Modifier

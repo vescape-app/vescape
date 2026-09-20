@@ -22,6 +22,8 @@ import expo.modules.vescapecore.recording.recordingFailureState
 import expo.modules.vescapecore.liveStateWithStorageFailure
 import expo.modules.vescapecore.protocol.LocationSnapshot
 import expo.modules.vescapecore.telemetry.AccessoryPersistence
+import expo.modules.vescapecore.watch.WatchSettingsPusher
+import expo.modules.vescapecore.watch.toWatchSettings
 import expo.modules.vescapecore.telemetry.AppDataRepository
 import expo.modules.vescapecore.telemetry.DEFAULT_LIVE_HISTORY_LIMIT_MINUTES
 import expo.modules.vescapecore.telemetry.MAX_LIVE_HISTORY_LIMIT_MINUTES
@@ -457,7 +459,13 @@ class CoreForegroundService : Service() {
 
         fun reloadTelemetrySettings(context: Context) {
             appDataScope.launch {
-                instance?.controller?.loadTelemetrySettings(context.applicationContext)
+                val controller = instance?.controller
+                if (controller != null) {
+                    controller.loadTelemetrySettings(context.applicationContext)
+                } else {
+                    val settings = AppDataRepository.get(context.applicationContext).getTypedSettings()
+                    WatchSettingsPusher.get(context.applicationContext, appDataScope).push(settings.toWatchSettings())
+                }
             }
         }
 

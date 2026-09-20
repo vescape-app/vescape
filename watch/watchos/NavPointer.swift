@@ -17,6 +17,7 @@ import SwiftUI
 struct NavPointer: View {
   let bearingDeg: Double
   let distanceM: Double
+  var unitSystem: String = "metric"
   var focus: Double = 0
   var stackAlpha: Double = 1
   /// Whether the rider turned the direction arrow on. The chevron alone is opt-in (phone: Settings
@@ -52,7 +53,7 @@ struct NavPointer: View {
             )
           }
           .frame(width: PIN_BOX, height: PIN_BOX)
-          Text(WatchGauge.distance(distanceM))
+          Text(WatchGauge.distance(distanceM, unitSystem: unitSystem))
             .font(WatchTypography.mono(size: DISTANCE_FONT_SIZE))
             .foregroundStyle(color)
             .monospacedDigit()
@@ -66,7 +67,7 @@ struct NavPointer: View {
     }
     .accessibilityElement(children: .ignore)
     .accessibilityLabel("Distance remaining")
-    .accessibilityValue(WatchGauge.distance(distanceM))
+    .accessibilityValue(WatchGauge.distance(distanceM, unitSystem: unitSystem))
   }
 }
 

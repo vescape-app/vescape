@@ -1196,6 +1196,7 @@ internal final class BoardSessionController: VescGattListener {
     }
     boardWarningsEnabled = settings["boardWarningsEnabled"] as? Bool ?? true
     connectionSoundsEnabled = settings["connectionSoundsEnabled"] as? Bool ?? true
+    alertCoordinator.unitSystem = settings["unitSystem"] as? String ?? "metric"
     alertAudioPlayer.soundPack = settings["soundPack"] as? String ?? "retro"
     // Disabled→enabled with an already-trusted link: link integrity won't transition again, so
     // schedule the config-safety read here.
@@ -1219,7 +1220,10 @@ internal final class BoardSessionController: VescGattListener {
   /// `previewAlertSound`.
   /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/connection/BoardSessionController.kt `previewAlertSound`
   func previewAlertSound(_ soundType: String) {
-    alertAudioPlayer.preview(soundType: soundType)
+    do {
+      let settings = try appData.getSettings()
+      alertAudioPlayer.preview(soundType: soundType, unitSystem: settings["unitSystem"] as? String ?? "metric")
+    } catch { RecordingStorageFailure.reportRead(operation: "alert_preview_settings", error: error) }
   }
 
   func playAppSound(pack: String, cue: String) {
@@ -1488,6 +1492,7 @@ internal final class BoardSessionController: VescGattListener {
     wireFaultCaptures()
     boardWarningsEnabled = sessionSettings["boardWarningsEnabled"] as? Bool ?? true
     connectionSoundsEnabled = sessionSettings["connectionSoundsEnabled"] as? Bool ?? true
+    alertCoordinator.unitSystem = sessionSettings["unitSystem"] as? String ?? "metric"
     alertAudioPlayer.soundPack = sessionSettings["soundPack"] as? String ?? "retro"
     recordingCoordinator.beginBoardSession(config: config, restoredRecordingId: restoredRecordingId)
     beginGpsSessionDiagnostics()
@@ -2725,7 +2730,8 @@ internal final class BoardSessionController: VescGattListener {
       payload: WatchSettings(
         riderColor: (settings["riderColor"] ?? nil) as? String,
         boardMoveStrengthPercent: strengthPercent,
-        navArrowEnabled: (settings["wearNavArrowEnabled"] ?? nil) as? Bool ?? false
+        navArrowEnabled: (settings["wearNavArrowEnabled"] ?? nil) as? Bool ?? false,
+        unitSystem: (settings["unitSystem"] ?? nil) as? String == "imperial" ? "imperial" : "metric"
       ).payload
     )
   }

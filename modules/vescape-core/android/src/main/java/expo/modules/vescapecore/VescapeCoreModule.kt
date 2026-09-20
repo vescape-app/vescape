@@ -1406,6 +1406,10 @@ class VescapeCoreModule : Module() {
         RecordingStorageFailure.report("setting_save", "write_failed", error)
         throw error
       }
+      if (key == "unitSystem") {
+        val units = AppDataRepository.get(context.applicationContext).getTypedSettings().unitSystem
+        mainHandler.post { alertTestCoordinator?.unitSystem = units }
+      }
       if (key == "liveHistoryLimit") {
         CoreForegroundService.setLiveHistoryLimit(value as? Number)
       }
@@ -1417,6 +1421,7 @@ class VescapeCoreModule : Module() {
         key == "freeSpinStationaryBoardCapKmh" ||
         key == "socEstimateWindowSeconds" ||
         key == "telemetryPollRateHz" ||
+        key == "unitSystem" ||
         key == "wearPushRateHz" ||
         key == "wearAutoLaunchOnConnect" ||
         key == "wearNavArrowEnabled" ||
@@ -1460,6 +1465,7 @@ class VescapeCoreModule : Module() {
     val feedback = AlertFeedback(context.applicationContext, mainHandler)
     feedback.setAudioSource(kotlinx.coroutines.runBlocking { AppDataRepository.get(context.applicationContext).getTypedSettings().audioSource })
     val coordinator = AlertCoordinator(feedback = { feedback }, vibrateSingles = false)
+    coordinator.unitSystem = kotlinx.coroutines.runBlocking { AppDataRepository.get(context.applicationContext).getTypedSettings().unitSystem }
     coordinator.replaceRules(rules)
     alertTestFeedback = feedback
     alertTestCoordinator = coordinator

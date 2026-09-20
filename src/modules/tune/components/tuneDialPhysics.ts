@@ -139,3 +139,18 @@ export function advanceTuneDialThrow(
     velocity: velocity * decay,
   }
 }
+
+/** Preserve physical endpoints even when their converted value is between ruler steps. */
+export function tuneDialStepValue(
+  index: number,
+  totalSteps: number,
+  min: number,
+  max: number,
+  step: number,
+  decimals: number,
+): number {
+  'worklet'
+  if (index <= 0) return min
+  if (index >= totalSteps) return max
+  return Math.max(min, Math.min(max, Number((min + index * step).toFixed(decimals))))
+}

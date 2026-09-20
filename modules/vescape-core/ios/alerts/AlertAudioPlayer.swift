@@ -451,7 +451,7 @@ internal final class AlertAudioPlayer {
   // MARK: - Preview
 
   /// Play a preset once for UI preview, or speak a `tts:` template with a sample fired alert.
-  func preview(soundType: String) {
+  func preview(soundType: String, unitSystem: String = "metric") {
     guard !isReleased else { return }
     Self.log("AlertAudioPlayer.preview: \(soundType)")
     if soundType.hasPrefix(ttsPrefix) {
@@ -459,7 +459,8 @@ internal final class AlertAudioPlayer {
       let text = renderAlertMessageTemplate(
         template,
         alert: ttsSampleAlert(soundType: soundType),
-        batteryPercent: 42.0
+        batteryPercent: 42.0,
+        unitSystem: unitSystem
       )
       Self.log("AlertAudioPlayer.preview TTS text='\(text)'")
       if !text.isEmpty { speakMessage(text) }

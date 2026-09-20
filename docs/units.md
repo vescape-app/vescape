@@ -1,6 +1,6 @@
 # Rider units
 
-Status: agreed feature design, not implemented.
+Status: implemented.
 
 ## Preference and scope
 
@@ -30,6 +30,24 @@ Examples:
 ## Spoken alerts
 
 Convert speed placeholders such as `{value}`, `{threshold}`, and `{unit}` together. Preserve custom text verbatim, including any manually written unit names. Do not parse or rewrite free text.
+
+## Native and companion behavior
+
+The persisted app-wide `unitSystem` preference is `metric` or `imperial`. Missing or invalid values
+resolve to metric. Native alert speech reads the preference without JS; custom alert text remains
+verbatim while speed placeholders convert.
+
+Both watches receive `unitSystem` through their existing settings channel. Android publishes the
+latest settings at native process startup and after settings writes, including while its Board
+Session service is stopped. Wear Data Layer retains the last payload for reconnects. iOS publishes
+through process-scoped watch settings and merged Application Context, so changing units without a
+Board Session does not bypass delivery. Watches restore the retained settings on startup and use
+metric when an older phone omits the key.
+
+Speed, navigation, radar, and accessibility readouts convert on the wrist. Watch Frames, routes,
+gauge fractions, and temperature displays retain their existing units. The phone and wrist compile
+the same pure native conversion helper on each platform; shared distance fixtures cover the
+0.1-mile and 1-kilometer boundaries across Kotlin, Swift, and TypeScript.
 
 ## Implementation checks
 

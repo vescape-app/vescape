@@ -1,9 +1,18 @@
 /**
+ * Presentation conversions shared with native speech and companion displays.
+ * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/UnitPresentation.kt
+ * @parity /modules/vescape-core/ios/telemetry/UnitPresentation.swift
+ */
+/**
  * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/PersistenceDefaults.kt `validUnitSystem`
  * @parity /modules/vescape-core/ios/telemetry/PersistenceDefaults.swift `validUnitSystem`
  */
 export type UnitSystem = 'metric' | 'imperial'
 
+/**
+ * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/UnitPresentation.kt
+ * @parity /modules/vescape-core/ios/telemetry/UnitPresentation.swift
+ */
 export const METERS_PER_MILE = 1609.344
 const FEET_PER_MILE = 5280
 
@@ -83,4 +92,22 @@ export function speedInputToKmh(
   if (nextDisplay <= speedFromKmh(minKmh, units)) return minKmh
   if (nextDisplay >= speedFromKmh(maxKmh, units)) return maxKmh
   return speedToKmh(nextDisplay, units)
+}
+
+export function lengthToMeters(value: number, units: UnitSystem): number {
+  return value / lengthFromMeters(1, units)
+}
+
+/** Fixed-length counterpart to speedInputToKmh; untouched drafts and physical limits stay exact. */
+export function lengthInputToMeters(
+  nextDisplay: number,
+  currentMeters: number,
+  units: UnitSystem,
+  minMeters = -Infinity,
+  maxMeters = Infinity,
+): number {
+  if (nextDisplay === lengthFromMeters(currentMeters, units)) return currentMeters
+  if (nextDisplay <= lengthFromMeters(minMeters, units)) return minMeters
+  if (nextDisplay >= lengthFromMeters(maxMeters, units)) return maxMeters
+  return lengthToMeters(nextDisplay, units)
 }

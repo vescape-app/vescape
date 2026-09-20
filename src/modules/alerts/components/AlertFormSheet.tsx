@@ -1,3 +1,5 @@
+import { useUnitSystem } from '@/hooks/useUnitSystem'
+import { speedFromKmh, speedInputToKmh, speedUnit } from '@/helpers/units'
 import { useCallback, useMemo, useState } from 'react'
 import { StyleSheet, View } from 'react-native'
 import {
@@ -56,6 +58,9 @@ export function AlertFormSheet({
   onClose,
   onSave,
 }: AlertFormSheetProps) {
+  const units = useUnitSystem()
+  const isSpeed = controlId === 'speed'
+  const toDisplay = (value: number) => (isSpeed ? speedFromKmh(value, units) : value)
   const isEditing = editRule != null
   const dialConfig = useMemo(
     () => getAlertDialConfig(controlId, batteryConfig),
@@ -156,15 +161,23 @@ export function AlertFormSheet({
         <View style={styles.cardField}>
           <Text style={styles.fieldLabel}>THRESHOLD</Text>
           <TuneDial
-            value={threshold}
-            previousValue={editRule?.threshold ?? undefined}
-            min={dialConfig.min}
-            max={dialConfig.max}
+            key={units}
+            value={toDisplay(threshold)}
+            previousValue={editRule ? toDisplay(editRule.threshold) : undefined}
+            min={toDisplay(dialConfig.min)}
+            max={toDisplay(dialConfig.max)}
             step={dialConfig.step}
-            unit={dialConfig.unit}
+            unit={isSpeed ? speedUnit(units) : dialConfig.unit}
+            displayDecimals={isSpeed ? 1 : undefined}
             indicatorGlow={tab === 'geiger' ? 'right' : undefined}
             valueChangeMode="commit"
-            onValueChange={setThreshold}
+            onValueChange={(next) =>
+              setThreshold(
+                isSpeed
+                  ? speedInputToKmh(next, threshold, units, dialConfig.min, dialConfig.max)
+                  : next,
+              )
+            }
           />
         </View>
 
@@ -172,15 +185,25 @@ export function AlertFormSheet({
           <View style={styles.cardField}>
             <Text style={styles.fieldLabel}>THRESHOLD MAX</Text>
             <TuneDial
-              value={thresholdMax}
-              previousValue={editRule?.thresholdMax ?? undefined}
-              min={dialConfig.min}
-              max={dialConfig.max}
+              key={units}
+              value={toDisplay(thresholdMax)}
+              previousValue={
+                editRule?.thresholdMax != null ? toDisplay(editRule.thresholdMax) : undefined
+              }
+              min={toDisplay(dialConfig.min)}
+              max={toDisplay(dialConfig.max)}
               step={dialConfig.step}
-              unit={dialConfig.unit}
+              unit={isSpeed ? speedUnit(units) : dialConfig.unit}
+              displayDecimals={isSpeed ? 1 : undefined}
               indicatorGlow="left"
               valueChangeMode="commit"
-              onValueChange={setThresholdMax}
+              onValueChange={(next) =>
+                setThresholdMax(
+                  isSpeed
+                    ? speedInputToKmh(next, thresholdMax, units, dialConfig.min, dialConfig.max)
+                    : next,
+                )
+              }
             />
           </View>
         )}

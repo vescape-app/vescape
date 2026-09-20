@@ -15,6 +15,7 @@ import { scheduleOnRN } from 'react-native-worklets'
 
 import {
   DRAG_RANGE_GAIN,
+  tuneDialStepValue,
   THROW_STOP_VELOCITY,
   advanceTuneDialThrow,
   computeHapticStepSpacing,
@@ -113,8 +114,7 @@ export function useTuneDialGesture({
     (rawStepIndex: number, shouldTick = true) => {
       'worklet'
       const stepIndex = Math.max(0, Math.min(totalSteps, rawStepIndex))
-      const snappedRaw = Math.round((min + stepIndex * step - min) / step) * step + min
-      const snapped = Number(Math.max(min, Math.min(max, snappedRaw)).toFixed(decimals))
+      const snapped = tuneDialStepValue(stepIndex, totalSteps, min, max, step, decimals)
       const previousStepIndex = lastStepIndex.value
       lastStepIndex.value = stepIndex
       if (stepIndex !== 0 && stepIndex !== totalSteps) {
@@ -341,10 +341,10 @@ export function useTuneDialGesture({
     }
 
     const expectedOffset = -valueToOffset(value)
+    lastEmittedValue.value = value
+    displayValue.value = value
+    lastStepIndex.value = Math.round((value - min) / step)
     if (Math.abs(translateX.value - expectedOffset) > stepPx * 0.3) {
-      lastEmittedValue.value = value
-      displayValue.value = value
-      lastStepIndex.value = Math.round((value - min) / step)
       momentumVelocity.value = 0
       translateX.value = withSpring(expectedOffset, SNAP_SPRING)
     }

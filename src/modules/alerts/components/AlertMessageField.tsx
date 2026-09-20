@@ -1,3 +1,4 @@
+import { useUnitSystem } from '@/hooks/useUnitSystem'
 import { StyleSheet, TouchableOpacity, View } from 'react-native'
 import { SpeakerHighIcon } from 'phosphor-react-native'
 import { previewAlertSound } from 'vescape-core'
@@ -31,6 +32,7 @@ export function AlertMessageField({
   messageTemplate: string
   onChangeTemplate: (next: string | ((current: string) => string)) => void
 }) {
+  const units = useUnitSystem()
   return (
     <View style={styles.messageField}>
       <Text style={styles.fieldLabel}>TEMPLATE</Text>
@@ -58,7 +60,7 @@ export function AlertMessageField({
           accessibilityLabel="Preview the spoken message"
           onPress={() =>
             previewAlertSound(
-              `tts:${renderPreviewTemplate(messageTemplate, threshold, unit, dialConfig, controlId, batteryConfig)}`,
+              `tts:${renderPreviewTemplate(messageTemplate, threshold, unit, dialConfig, controlId, batteryConfig, units)}`,
             )
           }
           style={styles.previewButton}

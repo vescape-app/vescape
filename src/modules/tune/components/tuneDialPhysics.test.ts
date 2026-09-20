@@ -1,3 +1,4 @@
+import { tuneDialStepValue } from './tuneDialPhysics'
 import { describe, expect, test } from 'bun:test'
 
 import {
@@ -122,4 +123,11 @@ describe('TuneDial physics', () => {
     expect(resolveTuneDialThrowTargetOffset(-1300, -900, 1400)).toBe(-1400)
     expect(resolveTuneDialThrowTargetOffset(-100, 900, 1400)).toBe(0)
   })
+})
+
+test('converted physical endpoints survive integer gesture steps', () => {
+  const max = 150 / 1.609344
+  expect(tuneDialStepValue(93, 93, 0, max, 1, 0)).toBe(max)
+  expect(tuneDialStepValue(0, 93, -max, max, 1, 0)).toBe(-max)
+  expect(tuneDialStepValue(25, 93, 0, max, 1, 0)).toBe(25)
 })

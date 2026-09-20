@@ -381,7 +381,7 @@ internal class BoardSessionController(private val service: CoreForegroundService
         WatchTelemetryPusher(service.applicationContext, CoreForegroundService.appDataScope, ::recordWatchDiagnostic)
     }
     private val watchSettingsPusher by lazy {
-        WatchSettingsPusher(service.applicationContext, CoreForegroundService.appDataScope, ::recordWatchDiagnostic)
+        WatchSettingsPusher.get(service.applicationContext, CoreForegroundService.appDataScope)
     }
     private val watchWeatherPusher by lazy {
         WatchWeatherPusher(service.applicationContext, CoreForegroundService.appDataScope, ::recordWatchDiagnostic)
@@ -3575,6 +3575,7 @@ private var wearAutoLaunchOnConnect = true
         recordingCoordinator.applySettings(settings)
         socWindow.windowMs = settings.socEstimateWindowSeconds * 1000L
         connectionSoundsEnabled = settings.connectionSoundsEnabled
+        alertCoordinator.unitSystem = settings.unitSystem
         alertFeedback.setSoundSettings(settings.soundPack, settings.audioSource)
         // `VESC Fault Collection` is its own kill switch — deliberately not gated on
         // `boardWarningsEnabled`, so turning warnings off keeps fault evidence flowing.

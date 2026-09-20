@@ -15,17 +15,41 @@ import kotlinx.coroutines.sync.withLock
  * Phone -> Wear OS settings transport. Pushed whenever the applied settings change, which is every
  * settings write the service reloads for — not per tick.
  *
- * The service is the only publisher, so a settings change made while it is down lands on the watch
- * at the next service start, before the first frame.
+ * A process-scoped publisher handles both service settings and writes made with no service.
+ * The Data Layer retains the latest payload while the watch is disconnected.
  *
  * @parity /modules/vescape-core/ios/watch/WatchColdState.swift
  */
 internal class WatchSettingsPusher(
-    private val context: Context,
+    private val write: (WatchSettings) -> Unit,
     private val scope: CoroutineScope,
     private val record: (String, Map<String, Any?>) -> Unit,
 ) {
-    private val dataClient by lazy { Wearable.getDataClient(context) }
+    companion object {
+        @Volatile private var instance: WatchSettingsPusher? = null
+
+        fun get(context: Context, scope: CoroutineScope): WatchSettingsPusher =
+            instance ?: synchronized(this) {
+                val appContext = context.applicationContext
+                instance ?: WatchSettingsPusher(
+                    write = { settings ->
+                        val request = PutDataMapRequest.create(WATCH_SETTINGS_PATH).apply {
+                            dataMap.putString(WATCH_SETTING_RIDER_COLOR, settings.riderColor ?: "")
+                            dataMap.putInt(WATCH_SETTING_BOARD_MOVE_STRENGTH, settings.boardMoveStrengthPercent)
+                            dataMap.putBoolean(WATCH_SETTING_NAV_ARROW, settings.navArrowEnabled)
+                            dataMap.putString(WATCH_SETTING_UNIT_SYSTEM, settings.unitSystem)
+                        }.asPutDataRequest().setUrgent()
+                        Tasks.await(Wearable.getDataClient(appContext).putDataItem(request))
+                    },
+                    scope = scope,
+                    record = { name, properties ->
+                        Log.w(VESC_SESSION_TAG, "$name: $properties")
+                        expo.modules.vescapecore.diagnostics.DiagnosticReporter.get(appContext)
+                            .capture(name, properties + ("operation" to "watch"))
+                    },
+                ).also { instance = it }
+            }
+    }
 
     /**
      * Serializes writes. The Data Layer is last-value-wins per path, so two writes in flight can
@@ -45,16 +69,8 @@ internal class WatchSettingsPusher(
                 // A value the rider has already replaced is not worth a round trip to the watch.
                 if (settings != pushed) return@withLock
                 try {
-                    val request = PutDataMapRequest.create(WATCH_SETTINGS_PATH).apply {
-                        // Blank, not absent: an absent key would leave a cleared colour looking
-                        // like an older phone that never sent one, and the wrist could not tell.
-                        dataMap.putString(WATCH_SETTING_RIDER_COLOR, settings.riderColor ?: "")
-                        dataMap.putInt(WATCH_SETTING_BOARD_MOVE_STRENGTH, settings.boardMoveStrengthPercent)
-                        dataMap.putBoolean(WATCH_SETTING_NAV_ARROW, settings.navArrowEnabled)
-                    }.asPutDataRequest().setUrgent()
-                    Tasks.await(dataClient.putDataItem(request))
+                    write(settings)
                 } catch (error: Exception) {
-                    Log.w(VESC_SESSION_TAG, "Watch settings push failed", error)
                     record("watch_settings_push_failed", mapOf("error" to error.message))
                     if (settings == pushed) pushed = null
                 }

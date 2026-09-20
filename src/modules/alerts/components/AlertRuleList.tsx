@@ -1,3 +1,5 @@
+import { useUnitSystem } from '@/hooks/useUnitSystem'
+import { formatSpeedKmh } from '@/helpers/units'
 import { useRef, useState } from 'react'
 import { StyleSheet, TouchableOpacity, View } from 'react-native'
 import {
@@ -135,6 +137,11 @@ function AlertRuleRow({
   onToggle: () => void
   onDelete: () => void
 }) {
+  const units = useUnitSystem()
+  const format = (value: number) =>
+    rule.controlId === 'speed'
+      ? formatSpeedKmh(value, units, 1)
+      : formatAlertValue(value, batteryConfig, unit)
   const isGeiger = rule.thresholdMax != null
   const isTts = rule.soundType.startsWith('tts:')
   const TypeIcon = isGeiger ? RadioactiveIcon : isTts ? ChatTextIcon : WaveformIcon
@@ -158,8 +165,8 @@ function AlertRuleRow({
       <View style={styles.ruleContent}>
         <Text style={[styles.ruleThreshold, !rule.enabled && styles.ruleTextDisabled]}>
           {isGeiger
-            ? `${formatAlertValue(rule.threshold, batteryConfig, unit)} – ${formatAlertValue(rule.thresholdMax!, batteryConfig, unit)}`
-            : formatAlertValue(rule.threshold, batteryConfig, unit)}
+            ? `${format(rule.threshold)} – ${format(rule.thresholdMax!)}`
+            : format(rule.threshold)}
         </Text>
         {isTts && (
           <Text

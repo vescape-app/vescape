@@ -44,6 +44,7 @@ struct FrameLayout: View {
   var navColor: Color = Palette.nav
   /// Whether the rider turned the direction arrow on (phone: Settings > Watch).
   var navArrowEnabled: Bool = false
+  var unitSystem: String = "metric"
 
   /// Readouts retreat for any page; this is the one the existing layout animates against.
   private var focus: Double { max(navFocus, awayFocus) }
@@ -88,6 +89,7 @@ struct FrameLayout: View {
         NavPointer(
           bearingDeg: navLanes.bearingDeg,
           distanceM: navLanes.distanceM,
+          unitSystem: unitSystem,
           focus: navFocus,
           stackAlpha: navStackAlpha,
           arrowEnabled: navArrowEnabled,
@@ -181,7 +183,7 @@ struct FrameLayout: View {
   /// not: full-size digits side by side instead of two numbers squeezed between two arcs.
   private func heroes(blind: Bool) -> some View {
     HStack(alignment: .firstTextBaseline, spacing: 0) {
-      hero(WatchGauge.hero(frame.speed, blind: blind), unit: "km/h", color: speedColor)
+      hero(WatchGauge.hero(frame.speed.map { UnitPresentation.speedFromKmh($0, unitSystem) }, blind: blind), unit: UnitPresentation.speedUnit(unitSystem), color: speedColor)
       hero(WatchGauge.hero(frame.duty, blind: blind), unit: "%", color: dutyColor)
     }
     .padding(.top, HERO_TOP_INSET)

@@ -1,3 +1,4 @@
+import { speedFromKmh, speedUnit, type UnitSystem } from '@/helpers/units'
 import {
   ALERT_BEEP_COUNT_DEFAULT,
   getAlertSounds,
@@ -49,12 +50,17 @@ export function renderPreviewTemplate(
   dialConfig: ReturnType<typeof getAlertDialConfig>,
   controlId: string,
   batteryConfig: DerivedBatteryConfig | null,
+  units: UnitSystem = 'metric',
 ): string {
-  const formatted = dialConfig.format(threshold)
+  const formatted =
+    controlId === 'speed'
+      ? String(Number(speedFromKmh(threshold, units).toFixed(1)))
+      : dialConfig.format(threshold)
+  const displayUnit = controlId === 'speed' ? speedUnit(units) : unit
   let result = template
     .replace(/\{value\}/g, formatted)
     .replace(/\{threshold\}/g, formatted)
-    .replace(/\{unit\}/g, unit)
+    .replace(/\{unit\}/g, displayUnit)
   if (controlId === 'battery') {
     if (batteryConfig) {
       result = result.replace(/\{percent\}/g, formatted)

@@ -178,7 +178,7 @@ export function AlertPresetControl({
         ? {
             ...PRESET_GAUGE.speed,
             unit: speedUnit(units),
-            formatMarker: (value: number) => formatSpeedKmh(value, units),
+            formatMarker: (value: number) => formatSpeedKmh(value, units, 1),
           }
         : PRESET_GAUGE[metric],
     [metric, units],
@@ -246,12 +246,17 @@ export function AlertPresetControl({
   })
   const gaugeValue = alertTest.running ? alertTest.value : liveValue
   // Says what this level actually sounds like — the ramp is otherwise learned by riding it.
-  const description = describeAlertPreset(metric, level, {
-    boardTopSpeedKmh,
-    hasBatteryConfig,
-    matchBoardConfig,
-    configBases,
-  })
+  const description = describeAlertPreset(
+    metric,
+    level,
+    {
+      boardTopSpeedKmh,
+      hasBatteryConfig,
+      matchBoardConfig,
+      configBases,
+    },
+    units,
+  )
 
   return (
     <View style={styles.container}>

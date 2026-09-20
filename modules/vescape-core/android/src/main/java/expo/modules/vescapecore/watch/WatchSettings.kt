@@ -27,11 +27,15 @@ internal const val WATCH_SETTING_BOARD_MOVE_STRENGTH = "boardMoveStrengthPercent
 /** Whether the wrist draws the direction arrow over the route. Off hides the arrow, not the route. */
 internal const val WATCH_SETTING_NAV_ARROW = "navArrowEnabled"
 
+/** App-wide speed and distance preference; older phones default to metric. */
+internal const val WATCH_SETTING_UNIT_SYSTEM = "unitSystem"
+
 /** The wrist-relevant slice of [AppSettings]. Equality is what decides whether a push is needed. */
 internal data class WatchSettings(
     val riderColor: String?,
     val boardMoveStrengthPercent: Int,
     val navArrowEnabled: Boolean,
+    val unitSystem: String = "metric",
 )
 
 /**
@@ -43,4 +47,5 @@ internal fun AppSettings.toWatchSettings(): WatchSettings = WatchSettings(
     riderColor = riderColor?.trim()?.takeIf { it.isNotEmpty() },
     boardMoveStrengthPercent = boardMoveStrengthPercent,
     navArrowEnabled = wearNavArrowEnabled,
+    unitSystem = unitSystem,
 )

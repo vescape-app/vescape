@@ -663,6 +663,17 @@ class VescAlertTemplateTest {
     )
 
     @Test
+    fun speedUnitsConvertPlaceholdersAndPreserveLiteralText() {
+        val sample = alert(controlId = "speed", value = 40.2336, threshold = 40.0)
+        val template = "{value} {unit} over {threshold} {unit}; literal km/h"
+        assertEquals("25 mph over 24.9 mph; literal km/h",
+            renderAlertMessageTemplate(template, sample, null, unitSystem = "imperial"))
+        assertEquals("40.2 km/h over 40 km/h; literal km/h",
+            renderAlertMessageTemplate(template, sample, null, unitSystem = "metric"))
+        assertEquals(40.0, sample.threshold, 0.0)
+    }
+
+    @Test
     fun basicPlaceholdersRendered() {
         val result = renderAlertMessageTemplate(
             "{value} {unit} over {threshold} {unit}",

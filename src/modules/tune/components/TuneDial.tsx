@@ -30,6 +30,8 @@ interface TuneDialProps {
   min: number
   max: number
   step: number
+  /** Badge precision is independent of the gesture step. */
+  displayDecimals?: number
   unit?: string | null
   indicatorGlow?: 'left' | 'right'
   valueChangeMode?: 'live' | 'commit'
@@ -45,6 +47,7 @@ export function TuneDial({
   max,
   step,
   unit,
+  displayDecimals,
   indicatorGlow,
   valueChangeMode = 'commit',
   color = theme.telemetry.speed,
@@ -79,7 +82,9 @@ export function TuneDial({
   })
 
   const badgeFont = useSkiaFont('800', BADGE_FONT_SIZE)
-  const badgeText = useDerivedValue(() => formatDisplayValue(displayValue.value, decimals))
+  const badgeText = useDerivedValue(() =>
+    formatDisplayValue(displayValue.value, displayDecimals ?? decimals),
+  )
   const badgeX = useDerivedValue(() =>
     badgeFont ? BADGE_WIDTH - textAdvanceWidth(badgeFont, badgeText.value) : 0,
   )

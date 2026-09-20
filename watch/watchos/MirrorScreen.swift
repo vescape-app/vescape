@@ -223,7 +223,8 @@ struct MirrorScreen: View {
         visible: radarVisible,
         forecast: freshWeather,
         onFetchFailed: { link.recordRadarFailure() },
-        riderColor: Palette.rider(link.settings.riderColor) ?? Palette.speed
+        riderColor: Palette.rider(link.settings.riderColor) ?? Palette.speed,
+        unitSystem: link.settings.unitSystem
       )
     case .weather:
       WeatherScreen(forecast: freshWeather, everReceived: link.weather != nil)
@@ -329,7 +330,8 @@ struct MirrorScreen: View {
       route: link.route,
       routeGeneration: link.routeGeneration,
       navColor: Palette.rider(link.settings.riderColor) ?? Palette.nav,
-      navArrowEnabled: link.settings.navArrowEnabled
+      navArrowEnabled: link.settings.navArrowEnabled,
+      unitSystem: link.settings.unitSystem
     )
   }
 

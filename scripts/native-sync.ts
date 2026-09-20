@@ -34,7 +34,10 @@ const PREBUILD_INPUTS = [
 const IOS_PREBUILD_INPUTS = ['targets']
 
 /** Android-only prebuild inputs: `withWearMirror` copies the Wear OS Mirror into `android/wearos/`. */
-const ANDROID_PREBUILD_INPUTS = ['watch']
+const ANDROID_PREBUILD_INPUTS = [
+  'watch',
+  'modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/UnitPresentation.kt',
+]
 
 /** Per-Expo-module prebuild inputs: native registration and dependency declarations. */
 const MODULE_PREBUILD_INPUTS = ['expo-module.config.json', 'package.json']

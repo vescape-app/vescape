@@ -7,6 +7,16 @@ import org.junit.Test
 
 class WatchSettingsTest {
     @Test
+    fun `unit preference belongs to cold settings and invalidates equality`() {
+        val metric = AppSettings().toWatchSettings()
+        val imperial = AppSettings(unitSystem = "imperial").toWatchSettings()
+        assertEquals("metric", metric.unitSystem)
+        assertEquals("imperial", imperial.unitSystem)
+        org.junit.Assert.assertNotEquals(metric, imperial)
+        assertEquals(imperial, AppSettings(unitSystem = "imperial", telemetryPollRateHz = 5).toWatchSettings())
+    }
+
+    @Test
     fun `the rider colour rides to the wrist as the phone stores it`() {
         assertEquals("#38bdf8", AppSettings(riderColor = "#38bdf8").toWatchSettings().riderColor)
     }

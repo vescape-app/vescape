@@ -1,3 +1,4 @@
+import { useUnitSystem } from '@/hooks/useUnitSystem'
 import { useMemo } from 'react'
 import { StyleSheet, View } from 'react-native'
 import { Text } from '@/components/base/Text'
@@ -24,19 +25,25 @@ import type { UseAddBoardWizard } from '@/modules/board/hooks/useAddBoardWizard'
 import { formatBmsSuffix, formatBoardTransport } from '@/modules/board/lib/boardTransport'
 
 export function ConfirmStep({ wizard }: { wizard: UseAddBoardWizard }) {
+  const units = useUnitSystem()
   const alertSummaries = useMemo(() => {
     return ALERT_PRESET_METRICS.map((metric) => {
       const { level, rules } = wizard.alertSetup[metric]
       const summary =
         level === 'custom'
           ? `${rules.length} custom ${rules.length === 1 ? 'alert' : 'alerts'}`
-          : formatAlertPresetSummary(metric, level, {
-              boardTopSpeedKmh: wizard.topSpeedKmh,
-              hasBatteryConfig: wizard.hasBatteryConfig,
-            })
+          : formatAlertPresetSummary(
+              metric,
+              level,
+              {
+                boardTopSpeedKmh: wizard.topSpeedKmh,
+                hasBatteryConfig: wizard.hasBatteryConfig,
+              },
+              units,
+            )
       return { metric, summary }
     }).filter((row): row is { metric: AlertPresetMetric; summary: string } => row.summary != null)
-  }, [wizard.alertSetup, wizard.hasBatteryConfig, wizard.topSpeedKmh])
+  }, [wizard.alertSetup, wizard.hasBatteryConfig, wizard.topSpeedKmh, units])
 
   return (
     <WizardStepLayout

@@ -1555,6 +1555,7 @@ public class VescapeCoreModule: Module {
         throw error
       }
       if [
+        "unitSystem",
         "liveHistoryLimit",
         "movingSpeedThresholdKmh",
         "avgSpeedCutoffKmh",
@@ -1573,7 +1574,8 @@ public class VescapeCoreModule: Module {
       // The Watch Mirror is process scoped, not session scoped, so its settings reload cannot ride
       // on `reloadTelemetrySettings` — that one returns early with no Board Session.
       // @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/VescapeCoreModule.kt `updateSetting`
-      if ["wearPushRateHz", "wearNavArrowEnabled", "riderColor", "boardMoveStrengthPercent"].contains(key) {
+      if key == "unitSystem" { self.alertTestCoordinator?.unitSystem = (try self.appData.getSettings())["unitSystem"] as? String ?? "metric" }
+      if ["unitSystem", "wearPushRateHz", "wearNavArrowEnabled", "riderColor", "boardMoveStrengthPercent"].contains(key) {
         self.coordinator.reloadWatchSettings()
       }
     }
@@ -1587,6 +1589,8 @@ public class VescapeCoreModule: Module {
 
     let player = AlertAudioPlayer()
     let coordinator = AlertCoordinator(player: player, vibrateSingles: false)
+    do { coordinator.unitSystem = try appData.getSettings()["unitSystem"] as? String ?? "metric" }
+    catch { RecordingStorageFailure.reportRead(operation: "alert_test_settings", error: error); return }
     coordinator.replaceRules(rules)
     alertTestPlayer = player
     alertTestCoordinator = coordinator

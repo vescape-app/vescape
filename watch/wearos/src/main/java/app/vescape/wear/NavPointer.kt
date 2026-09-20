@@ -1,5 +1,7 @@
 package app.vescape.wear
 
+import expo.modules.vescapecore.telemetry.UnitPresentation
+
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -25,7 +27,6 @@ import androidx.compose.ui.unit.sp
 import androidx.wear.compose.material.MaterialTheme
 import androidx.wear.compose.material.Text
 import kotlin.math.cos
-import kotlin.math.roundToInt
 import kotlin.math.sin
 
 /**
@@ -87,7 +88,7 @@ internal fun NavPointer(
                 drawMapPin(Offset(size.width / 2f, size.height / 2f), size.minDimension * 0.74f, color)
             }
             Text(
-                text = distanceLabel(distanceM),
+                text = UnitPresentation.distance(distanceM, SettingsState.settings.value.unitSystem),
                 modifier = Modifier.padding(start = PIN_GAP),
                 style = WatchTypography.mono(MaterialTheme.typography.caption2.copy(fontSize = DISTANCE_FONT_SIZE)),
                 color = color,
@@ -139,14 +140,6 @@ private fun DrawScope.pointOnCircle(center: Offset, radius: Float, deg: Float): 
     val rad = Math.toRadians(deg.toDouble())
     return Offset(center.x + (radius * cos(rad)).toFloat(), center.y + (radius * sin(rad)).toFloat())
 }
-
-/**
- * Metres under a kilometre, one decimal above it — same split the phone's nav readout uses.
- *
- * @parity /modules/vescape-core/ios/watch/WatchGauge.swift `distance`
- */
-private fun distanceLabel(meters: Double): String =
-    if (meters < 1000) "${meters.roundToInt()} m" else String.format("%.1f km", meters / 1000.0)
 
 private val NAV_RIM_INSET = 30.dp
 // Sits in the band between the rider dot and the battery %.

@@ -7,6 +7,17 @@ import XCTest
 /// @parity /modules/vescape-core/android/src/test/java/expo/modules/vescapecore/watch/WatchSettingsTest.kt
 /// @parity /watch/wearos/src/test/java/app/vescape/wear/WatchSettingsTest.kt
 final class WatchSettingsTests: XCTestCase {
+  func testUnitPreferenceDefaultsAndRoundTripsAfterRestart() {
+    for invalid: Any in ["unknown", 1, true, NSNull()] {
+      XCTAssertEqual(WatchSettings.decode([WatchSettingsKey.unitSystem: invalid]).unitSystem, "metric")
+    }
+    XCTAssertEqual(WatchSettings.decode([:]).unitSystem, "metric")
+    let imperial = WatchSettings(unitSystem: "imperial")
+    XCTAssertEqual(WatchSettings.decode(imperial.payload), imperial)
+    XCTAssertEqual(WatchSettings.decode(context: [watchSettingsChannel: imperial.payload]), imperial)
+    XCTAssertEqual(WatchSettings.decode(WatchSettings(unitSystem: "metric").payload).unitSystem, "metric")
+  }
+
   func testMissingKeysFallBackToTheWristDefaults() {
     let decoded = WatchSettings.decode([:])
     XCTAssertNil(decoded.riderColor)
