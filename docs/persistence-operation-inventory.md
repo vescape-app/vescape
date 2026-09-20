@@ -79,8 +79,13 @@ and coalescing. Native app lifecycle integration remains separate from the SQLit
 
 ## Ride export reads
 
-`RideExportHostTest` and `runRideExportContract` execute the production Room/GRDB GPX writers
+`RideExportHostTest`, `runRideExportContract`, and `runRideCsvContract` execute the production Room/GRDB GPX and CSV writers
 against `shared/ride-export-contract.json`. They cover complete keyset paging beyond the display
 cap, equal-time ordering, exact Board/recording/range scope, legacy precision, optional GPX fields,
 XML escaping and empty exports. The export reads existing Ride Track storage without changing
 its schema. Native bridge and OS sharing require app/device verification.
+
+CSV additionally exercises `getRideExportKeyframe` and `getRideExportTelemetryPage` with 23,005
+retained frames, predecessor replay, equal timestamps, explicit NULL deltas, keyframe resets,
+packed state/switch mappings, and the independent paged GPS merge. Both platform writers use
+`shared/ride-export-contract.json`; CSV never calls display/statistics readers.

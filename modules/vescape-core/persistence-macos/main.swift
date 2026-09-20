@@ -1277,6 +1277,7 @@ try clearanceQueue!.close()
 try? FileManager.default.removeItem(at: clearanceURL)
 
 try runRideExportContract()
+try runRideCsvContract()
 try runBucketRoutePreviewContract()
 try runRecordingFlushTimerContract()
 

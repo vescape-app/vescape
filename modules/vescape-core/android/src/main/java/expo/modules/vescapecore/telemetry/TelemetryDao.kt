@@ -418,6 +418,24 @@ interface TelemetryDao {
     limit: Int,
   ): List<DiagnosticEventEntity>
 
+  // @parity /modules/vescape-core/ios/telemetry/RideExport.swift `writeCsv`
+  @Query("""
+    SELECT * FROM telemetry_frames WHERE captured_at_ms < :fromMs AND board_id IS :boardId
+      AND (:recordingId IS NULL OR recording_id = :recordingId) AND (flags & 1) != 0
+    ORDER BY captured_at_ms DESC, id DESC LIMIT 1
+  """)
+  suspend fun getRideExportKeyframe(fromMs: Long, boardId: String?, recordingId: String?): TelemetryFrameEntity?
+
+  // @parity /modules/vescape-core/ios/telemetry/RideExport.swift `writeCsv`
+  @Query("""
+    SELECT * FROM telemetry_frames WHERE captured_at_ms >= :fromMs AND captured_at_ms <= :toMs
+      AND board_id IS :boardId AND (:recordingId IS NULL OR recording_id = :recordingId)
+      AND (captured_at_ms > :afterMs OR (captured_at_ms = :afterMs AND id > :afterId))
+    ORDER BY captured_at_ms, id LIMIT :limit
+  """)
+  suspend fun getRideExportTelemetryPage(fromMs: Long, toMs: Long, boardId: String?, recordingId: String?,
+    afterMs: Long, afterId: Long, limit: Int): List<TelemetryFrameEntity>
+
   @Query(
     """
     SELECT * FROM telemetry_frames

@@ -50,6 +50,13 @@ internal final class TelemetryRepository {
     }
   }
 
+  // @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/TelemetryRepository.kt `exportRideCsv`
+  func exportRideCsv(_ options: [String: Any]) throws -> [String: Any] {
+    try TelemetryDatabase.requirePool().read { db in
+      try RideExport.csv(db, directory: FileManager.default.temporaryDirectory, options: options)
+    }
+  }
+
   private var databaseSwapInProgress = false
   private lazy var flushTimer = RecordingFlushTimer(queue: queue)
   private lazy var recordingCommitBoundary = RecordingCommitBoundary { [weak self] error in

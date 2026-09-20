@@ -6,7 +6,7 @@ import { Button } from '@/components/base/Button'
 import { FadeCardModal } from '@/components/modals/FadeCardModal'
 import { InfoModal } from '@/components/modals/InfoModal'
 import { rideExportOptions } from '@/modules/history/lib/rideExport'
-import { shareRideGpx } from '@/modules/history/lib/shareRideExport'
+import { shareRideExport } from '@/modules/history/lib/shareRideExport'
 import { ConfirmModal } from '@/components/modals/ConfirmModal'
 import {
   formatFavoriteName,
@@ -197,23 +197,28 @@ export function HistoryRideDetail({
         onDismissed={afterActionsDismissed}
         scrollable={false}
       >
-        <Button
-          label="Export GPX"
-          icon={ExportIcon}
-          variant="secondary"
-          loading={exporting}
-          onPress={() => {
-            const options = rideExportOptions(session, openFavorite)
-            dismissForAction(() => {
-              setExporting(true)
-              void shareRideGpx(options)
-                .catch((cause: unknown) =>
-                  setExportError(cause instanceof Error ? cause.message : 'Could not export ride'),
-                )
-                .finally(() => setExporting(false))
-            })
-          }}
-        />
+        {(['gpx', 'csv'] as const).map((format) => (
+          <Button
+            key={format}
+            label={`Export ${format.toUpperCase()}`}
+            icon={ExportIcon}
+            variant="secondary"
+            loading={exporting}
+            onPress={() => {
+              const options = rideExportOptions(session, openFavorite)
+              dismissForAction(() => {
+                setExporting(true)
+                void shareRideExport(options, format)
+                  .catch((cause: unknown) =>
+                    setExportError(
+                      cause instanceof Error ? cause.message : 'Could not export ride',
+                    ),
+                  )
+                  .finally(() => setExporting(false))
+              })
+            }}
+          />
+        ))}
         <Button
           label="Delete"
           icon={TrashIcon}

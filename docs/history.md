@@ -226,7 +226,7 @@ still requires a device smoke test.
 
 ## Ride export
 
-GPX export is implemented. CSV below remains the agreed design for #507.
+GPX and CSV exports are implemented on Android and iOS.
 
 Decisions from the 2026-09-20 design discussion:
 
@@ -303,7 +303,7 @@ v2. These are reference findings, not proof of a successful import into an exter
 
 ### GPX implementation
 
-Ride and Favorite detail offer Export GPX and Delete in their three-dot menu. Favorite editing
+Ride and Favorite detail offer Export GPX, Export CSV, and Delete in their three-dot menu. Favorite editing
 and unpinning retain their existing behavior. Export uses the selected entry's full stored range,
 or the Favorite's exact saved range, independently of movement, chart zoom, and playback.
 
@@ -328,3 +328,47 @@ Room and GRDB host contracts share a 23,005-fix fixture definition covering reje
 equal timestamps, exact range/Board/recording scope, legacy accuracy, escaping, optional fields,
 and empty XML. JS tests cover ride versus Favorite export intent. Device share-sheet behavior
 and external-app imports remain rider-led verification, not observed compatibility guarantees.
+
+### CSV implementation
+
+`exportRideCsv` shares GPX's intent, temporary-file lifecycle, snapshot, and system-share flow.
+UTF-8 CSV uses explicit headers and CRLF rows; cells containing commas, quotes, or newlines are
+quoted, with embedded quotes doubled. Missing readings stay empty. An empty telemetry range
+produces the header alone, even when the range contains GPS fixes.
+
+The stable column order is:
+
+```text
+timestamp,speed,dutyCycle,batteryVolts,batteryCurrent,motorCurrent,motorTemp,controllerTemp,lifeDistance,rollAngle,pitchAngle,truePitchAngle,state,switchState,setpointAdjustmentType,adc1,adc2,altitude,latitude,longitude,accuracy,gpsSpeed,gpsTimestamp,erpm,balanceCurrent,rawSwitchState
+```
+
+The matching Floaty columns retain their relative order. `adc1` and `adc2` are volts. GPS altitude
+and accuracy are metres, coordinates are degrees, `gpsSpeed` is metres per second, and both
+timestamps are Unix milliseconds. `erpm` is stored electrical RPM; `balanceCurrent` is amperes.
+These values do not follow display-unit preferences.
+
+`state` is the packed state's low nibble; `setpointAdjustmentType` is its high nibble.
+`switchState` uses Floaty's enum: 0 off, 1 ADC1, 2 ADC2, 3 both. The stored switch byte's low
+nibble is 0 off, 1 half, 2 full. Half chooses ADC1 when its stored voltage exceeds ADC2, otherwise
+ADC2, matching the reference decoder. Unknown low nibbles, or a half state without both ADC
+readings, yield an empty cell. Upper flag bits never become a footpad state. Appended
+`rawSwitchState` preserves the complete stored byte, including handtest and beep flags.
+
+Telemetry reads use `(captured_at_ms, id)` keyset pages of 1,000, replaying the predecessor
+keyframe before emitting the selected range. Reconstruction carries values across pages,
+honors explicit NULL changes, and resets on keyframes or recording changes. iOS applies the
+same decoder to imported Android delta rows. No statistics, exclusions, battery configuration,
+chart smoothing, or chart sample limit participates. Each retained row appears once, even
+when incomplete retained data leaves empty cells.
+
+GPS uses the same raw paged reader and precision rule as GPX. The merge retains two accepted
+fixes and one page, attaches the latest fix at or before each telemetry row, uses the first fix
+before it, and keeps the final fix afterward. Equal-time fixes resolve by row id. No accepted GPS
+leaves GPS cells empty; GPS-only stretches add no rows. Both streams stay bounded in native
+memory and only the finished file URI crosses the bridge.
+
+Shared Room/GRDB fixtures cover 23,005 telemetry samples, equal-time rows, negative spikes,
+mid-chain range starts beyond one page, optional NULL transitions, keyframe resets, state and
+switch decoding, rejected GPS pages, legacy precision, first/previous/final GPS matching,
+missing GPS, exact Board scope, empty telemetry, and escaping. External imports and device
+share sheets remain rider-led tests.

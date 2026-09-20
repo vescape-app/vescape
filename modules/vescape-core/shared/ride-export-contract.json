@@ -3,5 +3,16 @@
   "imprecisePrefix": 1100,
   "baseMs": 1700000000123,
   "name": "Ride <&> \"' \u0001 🚲",
-  "escapedName": "Ride &lt;&amp;&gt; &quot;&apos;  🚲"
+  "escapedName": "Ride &lt;&amp;&gt; &quot;&apos;  🚲",
+  "csv": {
+    "count": 23005,
+    "keyframeEvery": 5000,
+    "initial": [
+      1234, 84250, -12345, 3456, 789, -123, 234, -345, 4567, -6789, 167, 177, 2100, 1100, 123456,
+      321, 432
+    ],
+    "headers": "timestamp,speed,dutyCycle,batteryVolts,batteryCurrent,motorCurrent,motorTemp,controllerTemp,lifeDistance,rollAngle,pitchAngle,truePitchAngle,state,switchState,setpointAdjustmentType,adc1,adc2,altitude,latitude,longitude,accuracy,gpsSpeed,gpsTimestamp,erpm,balanceCurrent,rawSwitchState",
+    "escapeInput": ["a,b", "a\"b", "a\r\nb", null],
+    "escapeExpected": "\"a,b\",\"a\"\"b\",\"a\r\nb\",\r\n"
+  }
 }
