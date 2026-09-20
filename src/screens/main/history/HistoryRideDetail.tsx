@@ -1,6 +1,13 @@
-import { useCallback, useMemo, useState, type RefObject } from 'react'
-import type { View } from 'react-native'
+import { useCallback, useMemo, useRef, useState, type RefObject } from 'react'
+import { StyleSheet, View } from 'react-native'
 
+import { ExportIcon, TrashIcon } from 'phosphor-react-native'
+import { Button } from '@/components/base/Button'
+import { theme } from '@/constants/theme'
+import { FadeCardModal } from '@/components/modals/FadeCardModal'
+import { InfoModal } from '@/components/modals/InfoModal'
+import { rideExportOptions } from '@/modules/history/lib/rideExport'
+import { shareRideExport } from '@/modules/history/lib/shareRideExport'
 import { ConfirmModal } from '@/components/modals/ConfirmModal'
 import {
   formatFavoriteName,
@@ -43,6 +50,19 @@ export function HistoryRideDetail({
 }: HistoryRideDetailProps) {
   const [deleteVisible, setDeleteVisible] = useState(false)
   const [trimName, setTrimName] = useState('')
+  const [actionsVisible, setActionsVisible] = useState(false)
+  const [exportError, setExportError] = useState<string | null>(null)
+  const [exporting, setExporting] = useState(false)
+  const pendingAction = useRef<(() => void) | null>(null)
+  const afterActionsDismissed = () => {
+    const action = pendingAction.current
+    pendingAction.current = null
+    action?.()
+  }
+  const dismissForAction = (action: () => void) => {
+    pendingAction.current = action
+    setActionsVisible(false)
+  }
   const openFavorite = favoriteMode ? history.openFavorite : null
   const trimming = history.trimming
 
@@ -156,13 +176,12 @@ export function HistoryRideDetail({
                   setTrimName(openFavorite.name ?? '')
                   void history.beginEditFavorite()
                 },
-                onDelete: () => setDeleteVisible(true),
               }
             : undefined
         }
         onSelectTab={history.selectHistoryTab}
         onBack={history.exitHistory}
-        onRemove={onRemoveSession}
+        onOpenActions={() => setActionsVisible(true)}
         onCancelTrim={() => {
           setTrimName('')
           void history.cancelTrim()
@@ -172,6 +191,62 @@ export function HistoryRideDetail({
         }}
       />
 
+      <FadeCardModal
+        visible={actionsVisible}
+        title={openFavorite ? 'Favorite actions' : 'Ride actions'}
+        onDismiss={() => setActionsVisible(false)}
+        onDismissed={afterActionsDismissed}
+        scrollable={false}
+      >
+        {(['gpx', 'csv'] as const).map((format) => (
+          <Button
+            key={format}
+            label={`Export ${format.toUpperCase()}`}
+            icon={ExportIcon}
+            variant="secondary"
+            loading={exporting}
+            onPress={() => {
+              const options = rideExportOptions(session, openFavorite)
+              dismissForAction(() => {
+                setExporting(true)
+                void shareRideExport(options, format)
+                  .catch((cause: unknown) =>
+                    setExportError(
+                      cause instanceof Error ? cause.message : 'Could not export ride',
+                    ),
+                  )
+                  .finally(() => setExporting(false))
+              })
+            }}
+          />
+        ))}
+        <View
+          style={{
+            height: StyleSheet.hairlineWidth,
+            width: '40%',
+            alignSelf: 'center',
+            marginVertical: 8,
+            backgroundColor: theme.neutral.border,
+          }}
+        />
+        <Button
+          label="Delete"
+          icon={TrashIcon}
+          variant="destructive"
+          disabled={busy}
+          testID={openFavorite ? 'favorite-delete' : 'history-delete'}
+          onPress={() =>
+            dismissForAction(openFavorite ? () => setDeleteVisible(true) : onRemoveSession)
+          }
+        />
+      </FadeCardModal>
+      <InfoModal
+        visible={exportError != null}
+        title="Export failed"
+        message={exportError ?? ''}
+        variant="danger"
+        onDismiss={() => setExportError(null)}
+      />
       <ConfirmModal
         visible={deleteVisible}
         title="Delete Favorite"

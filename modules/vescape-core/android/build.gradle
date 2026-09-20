@@ -61,6 +61,7 @@ dependencies {
   implementation "androidx.wear:wear-remote-interactions:1.1.0"
   implementation "androidx.room:room-runtime:2.8.4"
   implementation "androidx.room:room-ktx:2.8.4"
+  implementation "androidx.sqlite:sqlite-bundled:2.6.2"
   implementation "io.sentry:sentry-android:8.31.0"
   ksp "androidx.room:room-compiler:2.8.4"
   testImplementation "junit:junit:4.13.2"

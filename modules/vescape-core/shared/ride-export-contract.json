@@ -1,0 +1,23 @@
+{
+  "count": 23005,
+  "imprecisePrefix": 1100,
+  "baseMs": 1700000000123,
+  "name": "Ride <&> \"' \u0001 🚲",
+  "escapedName": "Ride &lt;&amp;&gt; &quot;&apos;  🚲",
+  "decimalCoordinates": [
+    { "latitudeE7": 1, "longitudeE7": -1, "lat": "0.0000001", "lon": "-0.0000001" },
+    { "latitudeE7": -1000, "longitudeE7": 1000, "lat": "-0.0001000", "lon": "0.0001000" },
+    { "latitudeE7": 0, "longitudeE7": 10000000, "lat": "0.0000000", "lon": "1.0000000" }
+  ],
+  "csv": {
+    "count": 23005,
+    "keyframeEvery": 5000,
+    "initial": [
+      1234, 84250, -12345, 3456, 789, -123, 234, -345, 4567, -6789, 167, 177, 2100, 1100, 123456,
+      321, 432
+    ],
+    "headers": "timestamp,speed,dutyCycle,batteryVolts,batteryCurrent,motorCurrent,motorTemp,controllerTemp,lifeDistance,rollAngle,pitchAngle,truePitchAngle,state,switchState,setpointAdjustmentType,adc1,adc2,altitude,latitude,longitude,accuracy,gpsSpeed,gpsTimestamp,erpm,balanceCurrent,rawSwitchState",
+    "escapeInput": ["a,b", "a\"b", "a\r\nb", null],
+    "escapeExpected": "\"a,b\",\"a\"\"b\",\"a\r\nb\",\r\n"
+  }
+}

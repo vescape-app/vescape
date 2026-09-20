@@ -2,9 +2,13 @@ package expo.modules.vescapecore.telemetry
 
 import android.content.Context
 import android.database.sqlite.SQLiteDatabase
+import androidx.sqlite.driver.bundled.BundledSQLiteDriver
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import androidx.room.Room
 import androidx.room.RoomDatabase.Callback
 import androidx.room.migration.Migration
+import androidx.sqlite.execSQL
 import androidx.sqlite.SQLiteConnection
 import androidx.sqlite.db.SupportSQLiteDatabase
 import java.io.File
@@ -15,6 +19,14 @@ import java.io.IOException
 
 /** Android lifecycle and Room adapters for the portable production migration graph. */
 internal object TelemetryDatabase {
+  // Only exports and file replacement take this lock. Recording writes never do.
+  internal val rideExportMutex = Mutex()
+
+  suspend fun <T> withRideExportSnapshot(context: Context, block: suspend (TelemetryDao) -> T): T =
+    rideExportMutex.withLock {
+      RideExport.snapshot(get(context), block)
+    }
+
   @Volatile private var instance: TelemetryRoomDatabase? = null
 
   private class SupportDatabase(private val db: SupportSQLiteDatabase) : TelemetryMigrationDatabase {
@@ -104,9 +116,11 @@ internal object TelemetryDatabase {
         TelemetryRoomDatabase::class.java,
         TELEMETRY_DATABASE_NAME,
       )
+        .setDriver(BundledSQLiteDriver())
+        .setJournalMode(androidx.room.RoomDatabase.JournalMode.WRITE_AHEAD_LOGGING)
         .addMigrations(*roomMigrations.values.toTypedArray())
         .addCallback(object : Callback() {
-          override fun onOpen(db: SupportSQLiteDatabase) {
+          override fun onOpen(db: SQLiteConnection) {
             db.execSQL("PRAGMA optimize")
           }
         })

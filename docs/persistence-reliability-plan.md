@@ -19,6 +19,13 @@ the released v22 Tune Profile shape at `10deb46c^`, and lets Room validate every
 against its generated current schema. `shared/migration-fixture-manifest.json` enumerates the exact
 Room versions and GRDB identifiers; versions 37–39 are absent because production jumps 36→40.
 
+Android's live Room database also uses `sqlite-bundled` 2.6.2 with WAL. Ride exports hold a deferred
+reader transaction across keyset pages, allowing recording commits without changing the export's
+snapshot. Export and restore share a mutex so file replacement waits for the reader to close;
+recording writes never take this mutex. Backup `VACUUM INTO` uses Room's writer connection outside
+a transaction. Framework SQLite opens only legacy, staged, or closed restored files, never alongside
+the bundled engine on the live database. Startup's transactional write probe uses the same Room driver.
+
 The GRDB matrix likewise stops at every registered migration prefix, seeds the durable tables and
 columns available in that generation, then runs the real remaining migrator and checks the final
 ledger and preserved values. It separately reconstructs the original `db6e9b9` v1 shape with global
