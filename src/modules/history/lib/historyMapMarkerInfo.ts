@@ -1,3 +1,4 @@
+import { formatLengthMeters, type UnitSystem } from '@/helpers/units'
 import {
   ClockCountdownIcon,
   LinkBreakIcon,
@@ -66,7 +67,10 @@ function formatDuration(ms: number): string {
   return rest === 0 ? `${minutes}m` : `${minutes}m ${rest}s`
 }
 
-export function buildHistoryMarkerMessage(selection: SelectedHistoryMarker): string {
+export function buildHistoryMarkerMessage(
+  selection: SelectedHistoryMarker,
+  units: UnitSystem,
+): string {
   const { marker, gps } = selection
   const lines = [
     `Type: ${marker.type}`,
@@ -77,7 +81,8 @@ export function buildHistoryMarkerMessage(selection: SelectedHistoryMarker): str
     `Coordinate: ${gps.latitude.toFixed(7)}, ${gps.longitude.toFixed(7)}`,
   ]
 
-  if (gps.accuracyM != null) lines.push(`GPS accuracy: ${gps.accuracyM.toFixed(1)} m`)
+  if (gps.accuracyM != null)
+    lines.push(`GPS accuracy: ${formatLengthMeters(gps.accuracyM, units, 1)}`)
   if (marker.gapMs != null) lines.push(`Gap duration: ${formatDuration(marker.gapMs)}`)
   if (marker.message) lines.push(`Message: ${marker.message}`)
 

@@ -1,3 +1,5 @@
+import { useUnitSystem } from '@/hooks/useUnitSystem'
+import { formatSpeedKmh } from '@/helpers/units'
 import { useCallback, useEffect, useMemo, useState, type RefObject } from 'react'
 import { router } from 'expo-router'
 import {
@@ -43,6 +45,7 @@ export function HistoryDrawer({
   onOpenRide,
   onOpenFavorite,
 }: HistoryDrawerProps) {
+  const units = useUnitSystem()
   const [listMode, setListMode] = useState<ListMode>(null)
   const [ridesLoaded, setRidesLoaded] = useState(false)
   const [favoritesLoaded, setFavoritesLoaded] = useState(false)
@@ -180,8 +183,13 @@ export function HistoryDrawer({
                   endMs: session.endAtMs,
                 }
                 const details = [
-                  formatRideListDetails(window.endMs - window.startMs, session.distanceM, null),
-                  `${Math.round(session.maxSpeedKmh)} km/h`,
+                  formatRideListDetails(
+                    window.endMs - window.startMs,
+                    session.distanceM,
+                    null,
+                    units,
+                  ),
+                  formatSpeedKmh(session.maxSpeedKmh, units),
                 ].join(' · ')
                 return (
                   <HistoryRideRow

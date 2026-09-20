@@ -1,3 +1,4 @@
+import { useUnitSystem } from '@/hooks/useUnitSystem'
 import { StyleSheet, View } from 'react-native'
 
 import { Text } from '@/components/base/Text'
@@ -38,6 +39,7 @@ export function MainMapOverlays({
   onCloseLegalCountry: () => void
   onOffscreenIndicatorPress: (indicator: OffscreenMapIndicatorState) => void
 }) {
+  const units = useUnitSystem()
   return (
     <>
       <InfoModal
@@ -47,7 +49,9 @@ export function MainMapOverlays({
             ? HISTORY_MARKER_LABELS[selectedHistoryMarker.marker.type]
             : 'History marker'
         }
-        message={selectedHistoryMarker ? buildHistoryMarkerMessage(selectedHistoryMarker) : ''}
+        message={
+          selectedHistoryMarker ? buildHistoryMarkerMessage(selectedHistoryMarker, units) : ''
+        }
         dismissLabel="Close"
         onDismiss={onDismissHistoryMarker}
       />

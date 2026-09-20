@@ -53,7 +53,7 @@ function useMockAutoStart(): AutoStartCardProps {
 export default function SettingsPage() {
   const [darkMode, setDarkMode] = useState(true)
   const [notifications, setNotifications] = useState(false)
-  const [threshold, setThreshold] = useState(3)
+  const [threshold, setThreshold] = useState(1.8641135767120018)
   const [boardTopSpeed, setBoardTopSpeed] = useState(50)
   const autoStart = useMockAutoStart()
 
@@ -105,7 +105,8 @@ export default function SettingsPage() {
               right={
                 <Stepper
                   value={threshold}
-                  unit="km/h"
+                  unit="mph"
+                  formatValue={(value) => value.toFixed(1)}
                   min={0}
                   max={20}
                   onChange={(nextValue) => setThreshold(Math.min(20, Math.max(0, nextValue)))}

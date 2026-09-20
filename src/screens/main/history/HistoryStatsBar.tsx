@@ -1,3 +1,11 @@
+import { useUnitSystem } from '@/hooks/useUnitSystem'
+import {
+  speedFromKmh,
+  speedUnit,
+  rideDistanceFromMeters,
+  rideDistanceUnit,
+  type UnitSystem,
+} from '@/helpers/units'
 import { useMemo, useState } from 'react'
 import { Pressable, StyleSheet, View } from 'react-native'
 import { Text } from '@/components/base/Text'
@@ -37,9 +45,10 @@ interface StatItem {
 }
 
 export function HistoryStatsBar({ session }: HistoryStatsBarProps) {
+  const units = useUnitSystem()
   const insets = useSafeAreaInsets()
   const [expanded, setExpanded] = useState(false)
-  const stats = useMemo(() => sessionToStats(session), [session])
+  const stats = useMemo(() => sessionToStats(session, units), [session, units])
   const primaryStats = stats.slice(0, 5)
   const secondaryStats = stats.slice(5)
 
@@ -118,12 +127,12 @@ function CompactStat({ item }: CompactStatProps) {
   )
 }
 
-function sessionToStats(session: HistorySession): StatItem[] {
+function sessionToStats(session: HistorySession, units: UnitSystem): StatItem[] {
   return [
     {
       key: 'distance',
       label: 'Distance',
-      ...formatDistance(session.distanceM),
+      ...formatDistance(session.distanceM, units),
       icon: RoadHorizonIcon,
       accent: theme.palette.sky.color,
     },
@@ -137,16 +146,16 @@ function sessionToStats(session: HistorySession): StatItem[] {
     {
       key: 'topSpeed',
       label: 'Top Speed',
-      value: formatSpeed(session.maxSpeedKmh),
-      unit: 'km/h',
+      value: String(Math.round(speedFromKmh(session.maxSpeedKmh, units))),
+      unit: speedUnit(units),
       icon: GaugeIcon,
       accent: theme.telemetry.speed,
     },
     {
       key: 'avgSpeed',
       label: 'Avg Speed',
-      value: formatSpeed(session.avgSpeedKmh),
-      unit: 'km/h',
+      value: String(Math.round(speedFromKmh(session.avgSpeedKmh, units))),
+      unit: speedUnit(units),
       icon: RepeatIcon,
       accent: theme.palette.sky.light,
     },
@@ -202,8 +211,16 @@ function formatCount(value: number): string {
   return `${Math.round(value / 1000)}k`
 }
 
-function formatDistance(valueM: number | null): Pick<StatItem, 'value' | 'unit'> {
+function formatDistance(
+  valueM: number | null,
+  units: UnitSystem,
+): Pick<StatItem, 'value' | 'unit'> {
   if (valueM == null) return { value: DASH }
+  if (units === 'imperial')
+    return {
+      value: rideDistanceFromMeters(valueM, units).toFixed(1),
+      unit: rideDistanceUnit(units),
+    }
   if (valueM < 1000) return { value: String(Math.round(valueM)), unit: 'm' }
   return { value: (valueM / 1000).toFixed(1), unit: 'km' }
 }
@@ -219,10 +236,6 @@ function formatDuration(valueMs: number): Pick<StatItem, 'value' | 'unit'> {
   return minutes === 0
     ? { value: String(hours), unit: 'h' }
     : { value: String(hours), unit: `h ${minutes}m` }
-}
-
-function formatSpeed(valueKmh: number): string {
-  return String(Math.round(valueKmh))
 }
 
 function formatTemp(value: number | null): Pick<StatItem, 'value' | 'unit'> {

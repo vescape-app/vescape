@@ -1,3 +1,4 @@
+import { useUnitSystem } from '@/hooks/useUnitSystem'
 import { useCallback, useMemo } from 'react'
 import { ActivityIndicator, StyleSheet, View } from 'react-native'
 import { Text } from '@/components/base/Text'
@@ -13,6 +14,7 @@ import { Select, type SelectOption } from '@/components/forms/Select'
 import { theme } from '@/constants/theme'
 
 export function RideStatsSection() {
+  const units = useUnitSystem()
   const {
     total,
     monthly,
@@ -24,8 +26,8 @@ export function RideStatsSection() {
     empty,
     selectMonth,
   } = useProfileStats()
-  const totalItems = useMemo(() => profileStatItems(total), [total])
-  const monthItems = useMemo(() => profileStatItems(monthly), [monthly])
+  const totalItems = useMemo(() => profileStatItems(total, units), [total, units])
+  const monthItems = useMemo(() => profileStatItems(monthly, units), [monthly, units])
   const adjacent = useMemo(() => getAdjacentMonths(months, selectedMonth), [months, selectedMonth])
 
   const monthOptions: SelectOption[] = useMemo(

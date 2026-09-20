@@ -1,3 +1,4 @@
+import type { UnitSystem } from '@/helpers/units'
 import {
   BatteryChargingVerticalIcon,
   BatteryPlusVerticalIcon,
@@ -39,12 +40,12 @@ export interface ProfileStatItem {
 
 /** Every riding total as a labelled, formatted, tinted figure — one definition for every surface
  *  that shows profile stats, so a number never carries two different labels. */
-export function profileStatItems(stats: ProfileStats): ProfileStatItem[] {
+export function profileStatItems(stats: ProfileStats, units: UnitSystem): ProfileStatItem[] {
   return [
     {
       key: 'distance',
       label: 'Distance',
-      value: formatDistance(stats.distanceM),
+      value: formatDistance(stats.distanceM, units),
       icon: RoadHorizonIcon,
       accent: theme.palette.sky.color,
     },
@@ -65,21 +66,21 @@ export function profileStatItems(stats: ProfileStats): ProfileStatItem[] {
     {
       key: 'topSpeed',
       label: 'Top speed',
-      value: formatSpeed(stats.topSpeedKmh),
+      value: formatSpeed(stats.topSpeedKmh, units),
       icon: GaugeIcon,
       accent: theme.status.warning.color,
     },
     {
       key: 'avgSpeed',
       label: 'Avg speed',
-      value: formatSpeed(stats.avgSpeedKmh),
+      value: formatSpeed(stats.avgSpeedKmh, units),
       icon: RepeatIcon,
       accent: theme.palette.cyan.color,
     },
     {
       key: 'longestRide',
       label: 'Longest ride',
-      value: formatDistance(stats.longestRideM),
+      value: formatDistance(stats.longestRideM, units),
       icon: TrophyIcon,
       accent: theme.palette.yellow.color,
     },
@@ -104,7 +105,8 @@ export function profileStatItems(stats: ProfileStats): ProfileStatItem[] {
 export function pickProfileStatItems(
   stats: ProfileStats,
   keys: ProfileStatKey[],
+  units: UnitSystem,
 ): ProfileStatItem[] {
-  const items = profileStatItems(stats)
+  const items = profileStatItems(stats, units)
   return keys.flatMap((key) => items.filter((item) => item.key === key))
 }

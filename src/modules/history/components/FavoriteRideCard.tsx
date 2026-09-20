@@ -1,3 +1,4 @@
+import { useUnitSystem } from '@/hooks/useUnitSystem'
 import { Pressable, StyleSheet, View } from 'react-native'
 import type { Favorite } from 'vescape-core'
 
@@ -19,6 +20,7 @@ interface FavoriteRideCardProps {
 
 /** A Favorite as a browsable card: its route large enough to recognise, then name and figures. */
 export function FavoriteRideCard({ favorite, routePoints, onPress }: FavoriteRideCardProps) {
+  const units = useUnitSystem()
   const name = formatFavoriteName(favorite.name, favorite.startMs, favorite.endMs)
 
   return (
@@ -40,7 +42,7 @@ export function FavoriteRideCard({ favorite, routePoints, onPress }: FavoriteRid
         {name}
       </Text>
       <Text style={styles.meta} numberOfLines={1}>
-        {formatRideListDetails(favorite.movingDurationMs, favorite.distanceM, null)}
+        {formatRideListDetails(favorite.movingDurationMs, favorite.distanceM, null, units)}
       </Text>
     </Pressable>
   )

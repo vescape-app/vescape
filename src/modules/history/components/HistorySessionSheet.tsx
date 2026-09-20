@@ -1,3 +1,4 @@
+import { useUnitSystem } from '@/hooks/useUnitSystem'
 import { useCallback, useMemo, useRef, type RefObject } from 'react'
 import { ActivityIndicator, Pressable, StyleSheet, View } from 'react-native'
 import { Text } from '@/components/base/Text'
@@ -45,6 +46,7 @@ export function HistorySessionSheet({
   onSelectSession,
   onLoadMore,
 }: HistorySessionSheetProps) {
+  const units = useUnitSystem()
   const selectedRowRef = useRef<View>(null)
   useHistoryAutoRefresh(visible && !favoriteMode)
   const favoritesBySessionId = useMemo(
@@ -70,6 +72,7 @@ export function HistorySessionSheet({
         rideWindow.endMs - rideWindow.startMs,
         session.distanceM,
         favorite?.boardName ?? session.boardName,
+        units,
       )
       return (
         <HistoryRideRow
@@ -88,7 +91,7 @@ export function HistorySessionSheet({
         />
       )
     },
-    [favoritesBySessionId, onSelectSession, selectedSessionId],
+    [favoritesBySessionId, onSelectSession, selectedSessionId, units],
   )
 
   const empty = (

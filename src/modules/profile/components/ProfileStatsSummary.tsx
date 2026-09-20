@@ -1,3 +1,4 @@
+import { useUnitSystem } from '@/hooks/useUnitSystem'
 import { useState, type ReactNode } from 'react'
 import { StyleSheet, View } from 'react-native'
 import { ChartLineUpIcon, WarningCircleIcon } from 'phosphor-react-native'
@@ -24,6 +25,7 @@ interface ProfileStatsSummaryProps {
  * The full breakdown lives on the Profile Stats screen; this is the glance version.
  */
 export function ProfileStatsSummary({ active = true, action }: ProfileStatsSummaryProps) {
+  const units = useUnitSystem()
   const { total, monthly, selectedMonth, loading, error, empty } = useProfileStats(active)
   const surface = useResolvedSecondaryWidgetSurface()
   const [scope, setScope] = useState<Scope>('total')
@@ -62,7 +64,11 @@ export function ProfileStatsSummary({ active = true, action }: ProfileStatsSumma
           />
         ) : (
           <ProfileStatsGrid
-            items={pickProfileStatItems(stats, ['distance', 'rides', 'topSpeed', 'longestRide'])}
+            items={pickProfileStatItems(
+              stats,
+              ['distance', 'rides', 'topSpeed', 'longestRide'],
+              units,
+            )}
             emphasis
           />
         )}

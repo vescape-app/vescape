@@ -1,3 +1,4 @@
+import { useUnitSystem } from '@/hooks/useUnitSystem'
 import { useMemo } from 'react'
 
 import { computeAutoRangeFromValues, toExcludedRanges } from '@/components/charts/chartMath'
@@ -10,6 +11,7 @@ import { telemetry } from '@/modules/board/constants/telemetry'
 import {
   EXTRA_CHART_METRICS,
   HISTORY_CHART_DEFS,
+  historyChartPresentation,
   OPTIONAL_CHART_METRICS,
   SPEED_CHART_DEF,
   type ChartToggleMetric,
@@ -363,7 +365,9 @@ export function useHistoryChartStack({
   metricHeight = METRIC_CHART_HEIGHT,
   gpsGapBands,
 }: HistoryChartStackInput): ChartSpec[] {
+  const units = useUnitSystem()
   return useMemo(() => {
+    const speedPresentation = historyChartPresentation('speed', units)
     const speed: ChartSpec = {
       key: 'speed',
       label: SPEED_CHART_DEF.label,
@@ -373,12 +377,12 @@ export function useHistoryChartStack({
           key: 'speed',
           data: series.speed,
           color: SPEED_CHART_DEF.color,
-          unit: telemetry.speed.unit,
+          ...speedPresentation,
           decimals: telemetry.speed.decimals,
           ramp: ramps.speed,
         },
       ],
-      left: { range: ranges.speed },
+      left: { range: ranges.speed, displayScale: speedPresentation.displayScale },
       bands: [...(exclusionBands.speed ?? []), ...(gpsGapBands ?? [])],
     }
 
@@ -418,11 +422,14 @@ export function useHistoryChartStack({
                     key: def.key,
                     data: extraSeries[def.key],
                     color: def.color,
-                    unit: def.unit,
+                    ...historyChartPresentation(def.key, units),
                     decimals: def.decimals,
                   },
                 ],
-                left: { range: extraRanges[def.key] },
+                left: {
+                  range: extraRanges[def.key],
+                  displayScale: historyChartPresentation(def.key, units).displayScale,
+                },
               }) satisfies ChartSpec,
           )
         : []
@@ -441,6 +448,7 @@ export function useHistoryChartStack({
     series,
     speedHeight,
     speedOptional,
+    units,
   ])
 }
 

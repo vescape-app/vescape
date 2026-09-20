@@ -1,3 +1,10 @@
+import {
+  lengthFromMeters,
+  lengthUnit,
+  speedFromKmh,
+  speedUnit,
+  type UnitSystem,
+} from '@/helpers/units'
 import type { AutoRangeOptions } from '@/components/charts/chartMath'
 import { theme, type ThemeColor } from '@/constants/theme'
 import { telemetry, type TelemetryMetricConfig } from '@/modules/board/constants/telemetry'
@@ -318,4 +325,22 @@ export function toggleOptionalChartMetric<T extends ChartToggleMetric>(
     next.add(metric)
   }
   return next
+}
+
+/** Display metadata only: series, domains and color ramps remain canonical. */
+export function historyChartPresentation(
+  key: ChartToggleMetric,
+  units: UnitSystem,
+): {
+  unit: string | undefined
+  displayScale: number
+} {
+  if (key === 'speed') return { unit: speedUnit(units), displayScale: speedFromKmh(1, units) }
+  if (key === 'altitude' || key === 'gpsAccuracy') {
+    return { unit: lengthUnit(units), displayScale: lengthFromMeters(1, units) }
+  }
+  const definition = [...OPTIONAL_CHART_METRICS, ...EXTRA_CHART_METRICS].find(
+    (def) => def.key === key,
+  )
+  return { unit: definition?.unit, displayScale: 1 }
 }
