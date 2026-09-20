@@ -6,6 +6,8 @@ import { getSatelliteImageryPaint } from '@/modules/map/constants/satelliteDarkM
 import { getOneDarkMapStyle } from '@/modules/map/constants/oneDarkMapStyle'
 import { resolveMapThemeTone } from '@/modules/map/lib/mapThemeTone'
 import { useThemeStore } from '@/hooks/useTheme'
+import { mapStyleForTheme } from '@/modules/map/lib/mapTheme'
+import Mapbox from '@rnmapbox/maps'
 
 import type { MainViewState } from '@/screens/main/mainViewState'
 
@@ -35,7 +37,11 @@ export function useResolvedMapStyle({
 }) {
   const resolvedTheme = useThemeStore((state) => state.resolvedTheme)
   const outdoorLight = useThemeStore((state) => state.outdoorLight)
-  const requestedMapStyle = MAP_STYLES.find((style) => style.key === mapStyleKey) ?? MAP_STYLES[0]
+  const renderedStyleKey = mapStyleForTheme(mapStyleKey, resolvedTheme)
+  const requestedMapStyle =
+    renderedStyleKey === 'outdoors'
+      ? { key: 'outdoors' as const, styleURL: Mapbox.StyleURL.Outdoors }
+      : (MAP_STYLES.find((style) => style.key === renderedStyleKey) ?? MAP_STYLES[0])
   const selectedMapStyle =
     requestedMapStyle.key === 'mapy' && !IS_MAPY_CONFIGURED ? MAP_STYLES[0] : requestedMapStyle
   const isMapy = selectedMapStyle.key === 'mapy'

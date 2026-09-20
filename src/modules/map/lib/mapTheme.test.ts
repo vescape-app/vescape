@@ -1,29 +1,19 @@
 import { describe, expect, test } from 'bun:test'
 
-import { mapStyleForTheme, themeOverrideForMapStyle } from '@/modules/map/lib/mapTheme'
+import { mapStyleForTheme } from '@/modules/map/lib/mapTheme'
 
-describe('themeOverrideForMapStyle', () => {
-  test('basemap selection chooses the appearance to persist', () => {
-    expect(themeOverrideForMapStyle('onedark')).toBe('dark')
-    expect(themeOverrideForMapStyle('outdoors')).toBe('light')
-    expect(themeOverrideForMapStyle('mapy')).toBe('light')
+describe('mapStyleForTheme', () => {
+  test('shared option and saved legacy variants follow effective theme', () => {
+    for (const savedStyle of ['onedark', 'outdoors'] as const) {
+      expect(mapStyleForTheme(savedStyle, 'dark')).toBe('onedark')
+      expect(mapStyleForTheme(savedStyle, 'light')).toBe('outdoors')
+    }
   })
 
-  test('selecting satellite switches to dark instead of preserving light appearance', () => {
-    expect(themeOverrideForMapStyle('satellite')).toBe('dark')
-  })
-
-  test('configured appearance replaces a conflicting explicit basemap', () => {
-    expect(mapStyleForTheme('onedark', 'light')).toBe('outdoors')
-    expect(mapStyleForTheme('outdoors', 'dark')).toBe('onedark')
-    expect(mapStyleForTheme('onedark', 'dark')).toBe('onedark')
-    expect(mapStyleForTheme('outdoors', 'light')).toBe('outdoors')
-  })
-
-  test('configured appearance never replaces neutral imagery styles', () => {
-    expect(mapStyleForTheme('satellite', 'light')).toBe('satellite')
-    expect(mapStyleForTheme('satellite', 'dark')).toBe('satellite')
-    expect(mapStyleForTheme('mapy', 'light')).toBe('mapy')
-    expect(mapStyleForTheme('mapy', 'dark')).toBe('mapy')
+  test('satellite and Mapy survive any effective theme', () => {
+    for (const savedStyle of ['satellite', 'mapy'] as const) {
+      expect(mapStyleForTheme(savedStyle, 'dark')).toBe(savedStyle)
+      expect(mapStyleForTheme(savedStyle, 'light')).toBe(savedStyle)
+    }
   })
 })

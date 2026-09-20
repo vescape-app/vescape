@@ -46,7 +46,6 @@ import { ThemeController } from '@/modules/settings/components/ThemeController'
 import { useThemeStore } from '@/hooks/useTheme'
 import { neutralColors, theme } from '@/constants/theme'
 import { DeviceAuthSync } from '@/modules/profile/components/DeviceAuthSync'
-import { MapThemeCoordinator } from '@/screens/MapThemeCoordinator'
 import { AppStorageFailureBanner } from '@/screens/AppStorageFailureBanner'
 
 const clerkPublishableKey = requireClerkPublishableKey()
@@ -150,7 +149,6 @@ function RootLayout() {
       <DiagnosticErrorBoundary>
         <GestureHandlerRootView style={{ flex: 1 }}>
           <ThemeController />
-          <MapThemeCoordinator />
           <Stack
             screenOptions={{
               headerStyle: { backgroundColor: resolvedNeutral.bg },

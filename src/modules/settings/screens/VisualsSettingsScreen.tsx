@@ -1,59 +1,14 @@
 import { ScrollView, StyleSheet, View } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
-import {
-  CheckIcon,
-  DesktopIcon,
-  MoonStarsIcon,
-  PaletteIcon,
-  SunHorizonIcon,
-  SunIcon,
-  type Icon,
-} from 'phosphor-react-native'
+import { CheckIcon, PaletteIcon } from 'phosphor-react-native'
 
 import { IconHero } from '@/components/settings/IconHero'
 import { SettingsCard } from '@/components/settings/SettingsCard'
 import { SettingsRow } from '@/components/settings/SettingsRow'
 import { SettingsSectionTitle } from '@/components/settings/SettingsSectionTitle'
 import { theme } from '@/constants/theme'
-import type { ThemeMode } from '@/modules/settings/lib/themeMode'
+import { THEME_OPTIONS } from '@/modules/settings/lib/themeOptions'
 import { useSettingsStore } from '@/modules/settings/store/settingsStore'
-
-const THEME_OPTIONS: {
-  mode: ThemeMode
-  label: string
-  hint: string
-  Icon: Icon
-  color: string
-}[] = [
-  {
-    mode: 'system',
-    label: 'System',
-    hint: 'Follow the phone appearance setting',
-    Icon: DesktopIcon,
-    color: theme.palette.sky.color,
-  },
-  {
-    mode: 'light',
-    label: 'Light',
-    hint: 'Keep the app bright',
-    Icon: SunIcon,
-    color: theme.palette.amber.color,
-  },
-  {
-    mode: 'dark',
-    label: 'Dark',
-    hint: 'Keep the app dim',
-    Icon: MoonStarsIcon,
-    color: theme.palette.violet.color,
-  },
-  {
-    mode: 'sun',
-    label: 'Sunrise & sunset',
-    hint: 'Use daylight at the current or last known location',
-    Icon: SunHorizonIcon,
-    color: theme.palette.orange.color,
-  },
-]
 
 function SelectionIndicator({ selected }: { selected: boolean }) {
   return (

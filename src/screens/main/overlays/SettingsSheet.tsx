@@ -26,6 +26,8 @@ import { backupProgressFraction, type BackupSlot } from '@/modules/profile/lib/b
 import { selectAvailableUpdate } from '@/modules/release/lib/availableUpdate'
 import { useAppStatusStore } from '@/modules/release/store/appStatusStore'
 import { useDatabaseSize } from '@/modules/settings/hooks/useDatabaseSize'
+import { THEME_OPTIONS } from '@/modules/settings/lib/themeOptions'
+import { useSettingsStore } from '@/modules/settings/store/settingsStore'
 import { routes } from '@/navigation/routes'
 import { theme } from '@/constants/theme'
 
@@ -86,6 +88,8 @@ export function SettingsSheet({ backup, onNavigate }: SettingsSheetProps) {
   const dbSize = useDatabaseSize().bytes
   const appStatus = useAppStatusStore((s) => s.status)
   const availableUpdate = selectAvailableUpdate(appStatus)
+  const themeMode = useSettingsStore((s) => s.themeMode)
+  const themeOption = THEME_OPTIONS.find((o) => o.mode === themeMode) ?? THEME_OPTIONS[0]!
 
   const go = (route: Href) => {
     onNavigate()
@@ -141,6 +145,14 @@ export function SettingsSheet({ backup, onNavigate }: SettingsSheetProps) {
           onPress={() => go(s.route)}
         />
       ))}
+
+      <LinkWidget
+        icon={themeOption.Icon}
+        accent={themeOption.color}
+        label={`Theme: ${themeOption.label}`}
+        hint={themeOption.hint}
+        onPress={() => go(routes.settingsVisuals)}
+      />
 
       <LinkWidget
         icon={WrenchIcon}

@@ -19,7 +19,6 @@ import { useSettingsStore } from '@/modules/settings/store/settingsStore'
 import { useFavoriteMedia } from '@/modules/history/hooks/useMediaHistory'
 import type { MediaAssetInput } from '@/modules/history/lib/mediaHistory'
 import { getHistoryPreviewRoute } from '@/modules/history/lib/previewRoute'
-import { themeOverrideForMapStyle } from '@/modules/map/lib/mapTheme'
 
 interface UseMainScreenControllerArgs {
   mapRef: RefObject<MainMapHandle | null>
@@ -258,9 +257,6 @@ export function useMainScreenController({ mapRef }: UseMainScreenControllerArgs)
 
   const setMapStyleKey = useCallback(
     (key: typeof mapStyleKey) => {
-      // A basemap with an explicit appearance is the rider picking a theme, so it persists as one.
-      const override = themeOverrideForMapStyle(key)
-      if (override) void setSetting('themeMode', override)
       void setSetting('mapStyleKey', key)
     },
     [setSetting],
