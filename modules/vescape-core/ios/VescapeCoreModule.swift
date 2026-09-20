@@ -1291,6 +1291,7 @@ public class VescapeCoreModule: Module {
       try RecordingStorageFailure.requireAvailable()
       do {
         try self.appData.upsertBoard(board)
+        self.coordinator.reloadAlertRules()
         self.coordinator.reloadBoardDataForActiveBoard()
         self.connectSavedBoardLink(boardId: board["id"] as? String)
         promise.resolve(nil)
@@ -1311,6 +1312,40 @@ public class VescapeCoreModule: Module {
       }
     }
 
+    // @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/VescapeCoreModule.kt `previewAlertPreset`
+    // @parity /modules/vescape-core/src/index.ts `previewAlertPreset`
+    Function("previewAlertPreset") { (metric: String, level: String, topSpeedKmh: Double, hasBatteryConfig: Bool, speedUnitSystem: String) -> [[String: Any?]] in
+      try AlertPresetPersistence.preview(
+        metric: metric,
+        level: level,
+        topSpeedKmh: topSpeedKmh,
+        hasBatteryConfig: hasBatteryConfig,
+        speedUnitSystem: speedUnitSystem
+      ).map { rule in
+        [
+          "id": rule.id,
+          "controlId": rule.controlId,
+          "threshold": rule.threshold,
+          "thresholdMax": rule.thresholdMax,
+          "soundType": rule.soundType,
+          "repeatEverySeconds": rule.repeatEverySeconds,
+          "beepCount": rule.beepCount,
+        ]
+      }
+    }
+    // @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/VescapeCoreModule.kt `applyAlertPreset`
+    // @parity /modules/vescape-core/src/index.ts `applyAlertPreset`
+    AsyncFunction("applyAlertPreset") { (boardId: String, metric: String, action: String, level: String?, matchBoardConfig: Bool?, promise: Promise) in
+      try RecordingStorageFailure.requireAvailable()
+      do {
+        try self.appData.applyAlertPreset(boardId, metric, action, level, matchBoardConfig)
+        self.coordinator.reloadAlertRules()
+        promise.resolve(nil)
+      } catch {
+        RecordingStorageFailure.report(operation: "alert_preset_apply", category: "write_failed", error: error)
+        promise.reject("APP_STORAGE_WRITE_FAILED", "Could not apply Alert Preset")
+      }
+    }
     AsyncFunction("getAlertRules") { (boardId: String, promise: Promise) in
       try RecordingStorageFailure.requireAvailable()
       do { promise.resolve(try self.appData.getAlertRules(boardId)) }
@@ -1571,6 +1606,7 @@ public class VescapeCoreModule: Module {
         throw error
       }
       if [
+        "unitSystem",
         "liveHistoryLimit",
         "movingSpeedThresholdKmh",
         "avgSpeedCutoffKmh",
@@ -1589,7 +1625,8 @@ public class VescapeCoreModule: Module {
       // The Watch Mirror is process scoped, not session scoped, so its settings reload cannot ride
       // on `reloadTelemetrySettings` — that one returns early with no Board Session.
       // @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/VescapeCoreModule.kt `updateSetting`
-      if ["wearPushRateHz", "wearNavArrowEnabled", "riderColor", "boardMoveStrengthPercent"].contains(key) {
+      if key == "unitSystem" { self.alertTestCoordinator?.unitSystem = (try self.appData.getSettings())["unitSystem"] as? String ?? "metric" }
+      if ["unitSystem", "wearPushRateHz", "wearNavArrowEnabled", "riderColor", "boardMoveStrengthPercent"].contains(key) {
         self.coordinator.reloadWatchSettings()
       }
     }
@@ -1603,6 +1640,8 @@ public class VescapeCoreModule: Module {
 
     let player = AlertAudioPlayer()
     let coordinator = AlertCoordinator(player: player, vibrateSingles: false)
+    do { coordinator.unitSystem = try appData.getSettings()["unitSystem"] as? String ?? "metric" }
+    catch { RecordingStorageFailure.reportRead(operation: "alert_test_settings", error: error); return }
     coordinator.replaceRules(rules)
     alertTestPlayer = player
     alertTestCoordinator = coordinator

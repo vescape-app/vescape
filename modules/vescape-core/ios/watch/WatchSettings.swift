@@ -23,6 +23,7 @@ enum WatchSettingsKey {
   static let boardMoveStrengthPercent = "boardMoveStrengthPercent"
   /// Whether the wrist draws the direction arrow over the route. Off hides the arrow, not the route.
   static let navArrowEnabled = "navArrowEnabled"
+  static let unitSystem = "unitSystem"
 }
 
 /// Channel this bag occupies inside the shared Application Context (see `WatchColdState`).
@@ -39,6 +40,7 @@ struct WatchSettings: Equatable {
   var boardMoveStrengthPercent: Int?
   /// Off by default: an older phone never sends the key, and the arrow is opt-in until it works.
   var navArrowEnabled: Bool = false
+  var unitSystem: String = "metric"
 
   /// What the wrist holds before the first push lands, and what a cleared channel reads as.
   static let wristDefaults = WatchSettings()
@@ -51,6 +53,7 @@ struct WatchSettings: Equatable {
     var payload: [String: Any] = [
       WatchSettingsKey.riderColor: riderColor ?? "",
       WatchSettingsKey.navArrowEnabled: navArrowEnabled,
+      WatchSettingsKey.unitSystem: unitSystem,
     ]
     if let boardMoveStrengthPercent { payload[WatchSettingsKey.boardMoveStrengthPercent] = boardMoveStrengthPercent }
     return payload
@@ -67,7 +70,8 @@ struct WatchSettings: Equatable {
     return WatchSettings(
       riderColor: (color?.isEmpty ?? true) ? nil : color,
       boardMoveStrengthPercent: (payload[WatchSettingsKey.boardMoveStrengthPercent] as? NSNumber)?.intValue,
-      navArrowEnabled: payload[WatchSettingsKey.navArrowEnabled] as? Bool ?? wristDefaults.navArrowEnabled
+      navArrowEnabled: payload[WatchSettingsKey.navArrowEnabled] as? Bool ?? wristDefaults.navArrowEnabled,
+      unitSystem: payload[WatchSettingsKey.unitSystem] as? String == "imperial" ? "imperial" : "metric"
     )
   }
 

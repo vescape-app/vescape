@@ -30,8 +30,12 @@ import {
   MAJOR_TICK_TOP,
   RULER_LABEL_BAND_TOP,
   TOP_VALUE_BAND_HEIGHT,
+  formatDisplayValue,
 } from '@/modules/tune/components/tuneDialLayout'
-import type { computeTuneDialLayout } from '@/modules/tune/components/tuneDialPhysics'
+import {
+  tuneDialStepValue,
+  type computeTuneDialLayout,
+} from '@/modules/tune/components/tuneDialPhysics'
 import { textAdvanceWidth } from '../../../helpers/skiaText'
 
 /** The scrolling ruler: tick marks, value labels, the previous-value mark and the edge glow. */
@@ -39,8 +43,10 @@ export function TuneDialRuler({
   canvasWidth,
   translateX,
   min,
+  max,
   step,
   decimals,
+  displayDecimals,
   color,
   indicatorGlow,
   previousValue,
@@ -50,8 +56,10 @@ export function TuneDialRuler({
   canvasWidth: number
   translateX: SharedValue<number>
   min: number
+  max: number
   step: number
   decimals: number
+  displayDecimals?: number
   color: ThemeColor
   indicatorGlow?: 'left' | 'right'
   previousValue?: number
@@ -75,7 +83,12 @@ export function TuneDialRuler({
   const labelFont = useSkiaFont('700', LABEL_FONT_SIZE)
   const prevLabelFont = useSkiaFont('800', LABEL_FONT_SIZE)
   const prevMarkOffset = previousValue != null ? valueToOffset(previousValue) : null
-  const previousValueLabel = previousValue != null ? formatTuneValue(previousValue) : null
+  const previousValueLabel =
+    previousValue == null
+      ? null
+      : displayDecimals == null
+        ? formatTuneValue(previousValue)
+        : formatDisplayValue(previousValue, displayDecimals)
 
   const { majorTicksPath, minorTicksPath, labels } = useMemo(() => {
     const majorPath = Skia.Path.Make()
@@ -83,10 +96,10 @@ export function TuneDialRuler({
     const labelList: { key: number; text: string; x: number }[] = []
 
     for (let i = 0; i <= totalSteps; i++) {
-      const val = Number((min + i * step).toFixed(decimals))
+      const val = tuneDialStepValue(i, totalSteps, min, max, step, decimals)
       const x = i * stepPx
       const isMajor = labelEveryStep || i % majorEvery === 0
-      const isMinor = !isMajor && renderMinor && i % minorEvery === 0
+      const isMinor = !isMajor && (i === totalSteps || (renderMinor && i % minorEvery === 0))
 
       if (isMajor) {
         majorPath.moveTo(x, MAJOR_TICK_TOP)
@@ -109,6 +122,7 @@ export function TuneDialRuler({
   }, [
     totalSteps,
     min,
+    max,
     step,
     decimals,
     stepPx,

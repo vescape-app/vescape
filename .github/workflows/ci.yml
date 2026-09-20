@@ -1,6 +1,7 @@
 name: CI
 
 on:
+  workflow_dispatch:
   push:
     branches: [main, dev]
   pull_request:
@@ -115,7 +116,7 @@ jobs:
   # CocoaPods ships, so the tests cannot run without compiling it.
   ios:
     needs: native-gate
-    if: needs.native-gate.outputs.ios == 'true'
+    if: github.event_name == 'workflow_dispatch' || needs.native-gate.outputs.ios == 'true'
     runs-on: blacksmith-6vcpu-macos-26
     steps:
       - uses: actions/checkout@v4
@@ -134,3 +135,11 @@ jobs:
         env:
           # A cold Swift build of the whole module is far past the local default.
           IOS_TEST_TIMEOUT_MS: '1800000'
+      - name: Upload iOS test diagnostics
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ios-test-diagnostics
+          path: /tmp/vesc-ios-tests-*
+          include-hidden-files: true
+          retention-days: 7

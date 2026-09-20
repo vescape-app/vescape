@@ -25,6 +25,7 @@ import expo.modules.vescapecore.alerts.normalizedAlertRepeatSeconds
 /** Scope of an `onAppDataChanged` emit; mirrors the JS `AppDataChangedEvent['scope']` union. */
 internal enum class AppDataScope(val wire: String) {
   BOARDS("boards"),
+  ALERTS("alerts"),
   SETTINGS("settings"),
 }
 
@@ -199,6 +200,17 @@ class AppDataRepository private constructor(private val context: Context) {
     val (settings, deletedKeys) = board.toBoardSettingEntities(boardId)
     boardSettings.upsertBoard(board.toBoardEntity(), settings, deletedKeys)
     notifyDataChanged(AppDataScope.BOARDS)
+    notifyDataChanged(AppDataScope.ALERTS)
+  }
+
+  suspend fun repairMissingAlertPresetRelations(boardId: String): Unit = withContext(Dispatchers.IO) {
+    if (dao.repairMissingAlertPresetRelations(boardId)) notifyDataChanged(AppDataScope.ALERTS)
+  }
+
+  suspend fun applyAlertPreset(boardId: String, metric: String, action: String, level: String?, matchBoardConfig: Boolean?): Unit = withContext(Dispatchers.IO) {
+    dao.applyAlertPreset(boardId, metric, action, level, matchBoardConfig)
+    notifyDataChanged(AppDataScope.BOARDS)
+    notifyDataChanged(AppDataScope.ALERTS)
   }
 
   /** Tombstones the Board and hard-deletes its configuration; see [TelemetryDao.deleteBoardWithSettings]. */
@@ -401,6 +413,7 @@ class AppDataRepository private constructor(private val context: Context) {
       movingSpeedThresholdKmh = req("movingSpeedThresholdKmh", 3.0) { (it as? Number)?.toDouble() },
       freeSpinMaxSpeedDeltaKmh = req("freeSpinMaxSpeedDeltaKmh", DEFAULT_FREE_SPIN_MAX_SPEED_DELTA_KMH) { (it as? Number)?.toDouble() },
       freeSpinStationaryBoardCapKmh = req("freeSpinStationaryBoardCapKmh", DEFAULT_FREE_SPIN_STATIONARY_BOARD_CAP_KMH) { (it as? Number)?.toDouble() },
+      unitSystem = req("unitSystem", "metric", ::validUnitSystem),
       themeMode = req("themeMode", "system", ::validThemeMode),
       mapStyleKey = req("mapStyleKey", "onedark", ::validMapStyleKey),
       satelliteOverlayEnabled = req("satelliteOverlayEnabled", true) { it as? Boolean },
@@ -477,6 +490,7 @@ class AppDataRepository private constructor(private val context: Context) {
         ((value as? Number)?.toDouble() ?: return@withContext).coerceAtLeast(0.0)
       "freeSpinMaxSpeedDeltaKmh", "freeSpinStationaryBoardCapKmh" ->
         ((value as? Number)?.toDouble() ?: return@withContext).coerceAtLeast(0.0)
+      "unitSystem" -> requireNotNull(validUnitSystem(value)) { "Invalid unitSystem" }
       "themeMode" -> validThemeMode(value) ?: return@withContext
       "mapStyleKey" ->
         validMapStyleKey(value) ?: return@withContext
@@ -542,6 +556,7 @@ class AppDataRepository private constructor(private val context: Context) {
         "movingSpeedThresholdKmh" -> d.movingSpeedThresholdKmh
         "freeSpinMaxSpeedDeltaKmh" -> d.freeSpinMaxSpeedDeltaKmh
         "freeSpinStationaryBoardCapKmh" -> d.freeSpinStationaryBoardCapKmh
+        "unitSystem" -> d.unitSystem
         "themeMode" -> d.themeMode
         "mapStyleKey" -> d.mapStyleKey
         "satelliteOverlayEnabled" -> d.satelliteOverlayEnabled
@@ -913,6 +928,7 @@ fun AppSettings.toMap(): Map<String, Any?> = mapOf(
   "movingSpeedThresholdKmh" to movingSpeedThresholdKmh,
   "freeSpinMaxSpeedDeltaKmh" to freeSpinMaxSpeedDeltaKmh,
   "freeSpinStationaryBoardCapKmh" to freeSpinStationaryBoardCapKmh,
+  "unitSystem" to unitSystem,
   "themeMode" to themeMode,
   "mapStyleKey" to mapStyleKey,
   "satelliteOverlayEnabled" to satelliteOverlayEnabled,

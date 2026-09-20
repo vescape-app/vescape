@@ -1,3 +1,4 @@
+import { speedFromKmh, speedUnit, type UnitSystem } from '@/helpers/units'
 import { theme, type ThemeColor } from '@/constants/theme'
 
 interface TelemetryChartRange {
@@ -187,3 +188,18 @@ export const telemetryByControlId = Object.fromEntries(
     .filter((metric) => metric.controlId != null)
     .map((metric) => [metric.controlId, metric]),
 ) as Record<string, TelemetryMetricConfig>
+
+/** Selected-unit labels, without changing canonical ranges, samples or color thresholds. */
+export function presentTelemetryMetric(metric: TelemetryMetricConfig, units: UnitSystem) {
+  if (metric.unit !== 'km/h') return { ...metric, displayScale: 1 }
+  const displayScale = speedFromKmh(1, units)
+  const unit = speedUnit(units)
+  const format = (value: number) => metric.format(value * displayScale)
+  return {
+    ...metric,
+    unit,
+    displayScale,
+    format,
+    formatWithUnit: (value: number) => `${format(value)} ${unit}`,
+  }
+}

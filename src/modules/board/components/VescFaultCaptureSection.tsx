@@ -1,3 +1,4 @@
+import { useFormat } from '@/hooks/useFormat'
 import { ActivityIndicator, ScrollView, StyleSheet, View } from 'react-native'
 import type { VescFaultCaptureDetail } from 'vescape-core'
 
@@ -28,6 +29,7 @@ interface VescFaultCaptureSectionProps {
  * retained timestamps because the Board Session is response-paced.
  */
 export function VescFaultCaptureSection({ capture, loading }: VescFaultCaptureSectionProps) {
+  const { formatSpeed, speedUnit } = useFormat()
   if (loading) {
     return (
       <View style={styles.state}>
@@ -60,7 +62,7 @@ export function VescFaultCaptureSection({ capture, loading }: VescFaultCaptureSe
         <View>
           <View style={[styles.row, styles.headerRow]}>
             <Text style={[styles.cell, styles.headerCell, styles.offsetCell]}>t</Text>
-            <Text style={[styles.cell, styles.headerCell]}>km/h</Text>
+            <Text style={[styles.cell, styles.headerCell]}>{speedUnit}</Text>
             <Text style={[styles.cell, styles.headerCell]}>duty</Text>
             <Text style={[styles.cell, styles.headerCell]}>motor A</Text>
             <Text style={[styles.cell, styles.headerCell]}>batt A</Text>
@@ -73,7 +75,9 @@ export function VescFaultCaptureSection({ capture, loading }: VescFaultCaptureSe
                 <Text style={[styles.cell, styles.offsetCell, styles.offsetText]}>
                   {fmtCaptureOffset(captureOffsetMs(sample, capture))}
                 </Text>
-                <Text style={styles.cell}>{num(sample.speed, 1)}</Text>
+                <Text style={styles.cell}>
+                  {sample.speed == null ? '—' : formatSpeed(sample.speed, 1)}
+                </Text>
                 <Text style={styles.cell}>{num(sample.dutyCycle, 2)}</Text>
                 <Text style={styles.cell}>{num(sample.motorCurrent, 1)}</Text>
                 <Text style={styles.cell}>{num(sample.batteryCurrent, 1)}</Text>

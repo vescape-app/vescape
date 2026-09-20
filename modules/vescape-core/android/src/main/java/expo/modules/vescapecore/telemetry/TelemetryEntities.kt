@@ -425,7 +425,7 @@ data class AlertRuleEntity(
   val beepCount: Int = ALERT_BEEP_COUNT_DEFAULT,
   /**
    * Free-text provenance tag mirroring TS `AlertRule.source`: `manual` (or null) or `preset`.
-   * JS authors and regenerates preset rules; native only persists the string.
+   * Native owns preset generation; JS submits selection intents.
    */
   val source: String?,
 )
@@ -502,6 +502,7 @@ data class AppSettings(
   val freeSpinMaxSpeedDeltaKmh: Double = DEFAULT_FREE_SPIN_MAX_SPEED_DELTA_KMH,
   val freeSpinStationaryBoardCapKmh: Double = DEFAULT_FREE_SPIN_STATIONARY_BOARD_CAP_KMH,
   val rideSplitGapMinutes: Int = DEFAULT_RIDE_SPLIT_GAP_MINUTES,
+  val unitSystem: String = "metric",
   val themeMode: String = "system",
   val mapStyleKey: String = "onedark",
   val satelliteOverlayEnabled: Boolean = true,

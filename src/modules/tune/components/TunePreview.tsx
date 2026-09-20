@@ -118,7 +118,7 @@ export function TunePreview({
   const boardAngleStr = useSharedValue('0.0°')
   const targetAngleStr = useSharedValue('0.0°')
   const groundToBoardAngleStr = useSharedValue('0.0°')
-  const speedStr = useSharedValue(TUNE_PREVIEW_RESET_SPEED_KMH.toFixed(1))
+  const speedReadoutKmh = useSharedValue(TUNE_PREVIEW_RESET_SPEED_KMH)
   const currentStr = useSharedValue('0 A')
 
   useEffect(() => {
@@ -163,7 +163,7 @@ export function TunePreview({
     boardAngleStr.value = formatSignedDegrees(next.angleDegrees)
     targetAngleStr.value = formatSignedDegrees(next.targetAngleDegrees)
     groundToBoardAngleStr.value = formatSignedDegrees(groundToBoardAngle)
-    speedStr.value = next.syntheticSpeedKmh.toFixed(1)
+    speedReadoutKmh.value = next.syntheticSpeedKmh
     currentStr.value = `${current > 0 ? '+' : ''}${current.toFixed(0)} A`
   }, false)
 
@@ -249,7 +249,7 @@ export function TunePreview({
   return (
     <View style={styles.card}>
       <TunePreviewHeader
-        speedStr={speedStr}
+        speedKmh={speedReadoutKmh}
         boardAngleStr={boardAngleStr}
         targetAngleStr={targetAngleStr}
         currentStr={currentStr}

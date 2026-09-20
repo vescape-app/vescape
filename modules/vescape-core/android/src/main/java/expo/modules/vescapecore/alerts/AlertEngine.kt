@@ -1,6 +1,8 @@
 package expo.modules.vescapecore.alerts
 
 import expo.modules.vescapecore.telemetry.formatValue
+import expo.modules.vescapecore.telemetry.UnitPresentation
+import expo.modules.vescapecore.telemetry.AppDataRepository
 
 import expo.modules.vescapecore.R
 
@@ -66,13 +68,15 @@ internal fun renderAlertMessageTemplate(
     alert: FiredAlert,
     batteryPercent: Double?,
     onDiagnostic: ((String, Map<String, Any?>) -> Unit)? = null,
+    unitSystem: String = "metric",
 ): String {
     // @parity /modules/vescape-core/ios/alerts/AlertEngine.swift `renderAlertMessageTemplate`
     val isBattery = alert.controlId == "battery"
+    fun format(value: Double) = if (alert.controlId == "speed") UnitPresentation.formatSpokenSpeed(value, unitSystem) else formatAlertValue(value, alert.controlId)
     var text = template
-    text = text.replace("{value}", formatAlertValue(alert.value, alert.controlId))
-    text = text.replace("{threshold}", formatAlertValue(alert.threshold, alert.controlId))
-    text = text.replace("{unit}", alertControlUnit(alert.controlId))
+    text = text.replace("{value}", format(alert.value))
+    text = text.replace("{threshold}", format(alert.threshold))
+    text = text.replace("{unit}", if (alert.controlId == "speed") UnitPresentation.speedUnit(unitSystem) else alertControlUnit(alert.controlId))
     if (isBattery) {
         text = text.replace("{voltage}", formatAlertValue(alert.value, alert.controlId))
         if (batteryPercent != null) {
@@ -301,6 +305,7 @@ internal class AlertEngine(private val now: () -> Long = { System.currentTimeMil
         firedAt = now,
     )
 
+    // @parity /src/modules/alerts/lib/resolvedAlertRules.ts `resolvedAlertRules`
     private fun effectiveThresholds(rule: AlertRuleEntity): Pair<Double, Double?>? {
         if (rule.thresholdKind != "config-relative") return rule.threshold to rule.thresholdMax
         val base = resolveConfigRelativeBase(rule.configFieldId, configValues, motorConfigValues) ?: return null
@@ -558,7 +563,7 @@ internal class AlertFeedback(
         }
         if (soundType.startsWith(TTS_PREFIX)) {
             val template = soundType.removePrefix(TTS_PREFIX)
-            val text = renderAlertMessageTemplate(template, ttsSampleAlert(soundType), batteryPercent = 42.0)
+            val text = renderAlertMessageTemplate(template, ttsSampleAlert(soundType), batteryPercent = 42.0, unitSystem = kotlinx.coroutines.runBlocking { AppDataRepository.get(context).getTypedSettings().unitSystem })
             if (text.isNotEmpty()) speakMessage(text)
             return
         }
@@ -715,7 +720,7 @@ internal class AlertFeedback(
         fun preview(context: Context, soundType: String, source: String) {
             if (soundType.startsWith(TTS_PREFIX)) {
                 val template = soundType.removePrefix(TTS_PREFIX)
-                val text = renderAlertMessageTemplate(template, ttsSampleAlert(soundType), batteryPercent = 42.0)
+                val text = renderAlertMessageTemplate(template, ttsSampleAlert(soundType), batteryPercent = 42.0, unitSystem = kotlinx.coroutines.runBlocking { AppDataRepository.get(context).getTypedSettings().unitSystem })
                 if (text.isEmpty()) return
                 val handler = Handler(contextMainLooper())
                 val holder = arrayOfNulls<TextToSpeech>(1)

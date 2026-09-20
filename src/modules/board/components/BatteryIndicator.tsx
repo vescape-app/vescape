@@ -13,7 +13,7 @@ import { fmtTimeAgo } from '@/helpers/format'
 import { useLiveSeries } from '@/modules/board/hooks/useLiveMetric'
 import { useMinuteNow } from '@/hooks/useMinuteNow'
 import { useResolvedNeutralColors } from '@/hooks/useTheme'
-import { useAlertsStore } from '@/modules/alerts/store/alertsStore'
+import { useResolvedAlertRules } from '@/modules/alerts/hooks/useResolvedAlertRules'
 import { useBleStore } from '@/modules/board/store/bleStore'
 import { useBoardStore } from '@/modules/board/store/boardStore'
 import { routes } from '@/navigation/routes'
@@ -60,7 +60,7 @@ export function BatteryIndicator({ compact, transparent, containerStyle }: Batte
       }
     }),
   )
-  const alertRules = useAlertsStore((s) => s.rules)
+  const alertRules = useResolvedAlertRules()
 
   // Disconnected with a natively persisted reading: show it dimmed with its age.
   const stale = !connected && lastBattery != null

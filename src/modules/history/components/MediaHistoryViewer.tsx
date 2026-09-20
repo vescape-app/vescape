@@ -17,6 +17,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import type { HistoryMarker, TelemetrySample } from 'vescape-core'
 
 import { IconButton } from '@/components/base/IconButton'
+import { useFormat } from '@/hooks/useFormat'
 import { telemetry } from '@/modules/board/constants/telemetry'
 import { dutyPercent } from '@/helpers/format'
 import { findVideoTelemetrySample, type MediaAssetInput } from '@/modules/history/lib/mediaHistory'
@@ -33,6 +34,7 @@ function VideoAsset({
   markers: HistoryMarker[]
   top: number
 }) {
+  const { formatSpeedWithUnit } = useFormat()
   const [playbackSeconds, setPlaybackSeconds] = useState(0)
   const [unavailable, setUnavailable] = useState(false)
   const player = useVideoPlayer(asset.uri, (instance) => {
@@ -59,7 +61,7 @@ function VideoAsset({
         <View style={[styles.telemetryRow, { top }]}>
           <VideoTelemetryStat
             label="Speed"
-            value={telemetry.speed.formatWithUnit(sample.speedKmh)}
+            value={formatSpeedWithUnit(Math.abs(sample.speedKmh))}
             icon={GaugeIcon}
             accent={telemetry.speed.color}
           />

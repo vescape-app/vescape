@@ -2,6 +2,8 @@ import { describe, expect, test } from 'bun:test'
 
 import {
   advanceTuneDialThrow,
+  tuneDialStepValue,
+  tuneDialValueToOffset,
   computeHapticStepSpacing,
   computeTuneDialLayout,
   isTuneDialEdgeStep,
@@ -121,5 +123,60 @@ describe('TuneDial physics', () => {
     expect(resolveTuneDialThrowTargetOffset(-400, -900, 1400)).toBe(-618.75)
     expect(resolveTuneDialThrowTargetOffset(-1300, -900, 1400)).toBe(-1400)
     expect(resolveTuneDialThrowTargetOffset(-100, 900, 1400)).toBe(0)
+  })
+})
+
+describe('fractional dial endpoints', () => {
+  function values(min: number, max: number, step: number, decimals = 0) {
+    const layout = computeTuneDialLayout(min, max, step)
+    return Array.from({ length: layout.totalSteps + 1 }, (_, index) => {
+      const value = tuneDialStepValue(index, layout.totalSteps, min, max, step, decimals)
+      const offset = tuneDialValueToOffset(value, min, max, step, layout.totalSteps, layout.stepPx)
+      // Ruler positions, drag snapping, throwing and external values share this index.
+      expect(offset).toBeCloseTo(index * layout.stepPx, 8)
+      expect(Math.round(offset / layout.stepPx)).toBe(index)
+      return value
+    })
+  }
+
+  test('50 km/h endpoint leaves 31 mph selectable', () => {
+    const max = 50 / 1.609344
+    expect(values(0, max, 1)).toEqual([...Array.from({ length: 32 }, (_, i) => i), max])
+  })
+
+  test('fractional negative minimum keeps clean ticks across zero and both endpoints', () => {
+    const max = 50 / 1.609344
+    expect(values(-max, max, 1)).toEqual([
+      -max,
+      ...Array.from({ length: 63 }, (_, i) => i - 31),
+      max,
+    ])
+    expect(values(-3.2, -0.2, 1)).toEqual([-3.2, -3, -2, -1, -0.2])
+    expect(values(0.2, 3.2, 1)).toEqual([0.2, 1, 2, 3, 3.2])
+  })
+
+  test('ranges shorter than one step retain distinct endpoints', () => {
+    expect(values(1.1, 1.2, 1)).toEqual([1.1, 1.2])
+    expect(tuneDialValueToOffset(1.15, 1.1, 1.2, 1, 1, 70)).toBeCloseTo(35)
+  })
+
+  test('fractional intervals interpolate between the neighboring selectable ticks', () => {
+    const layout = computeTuneDialLayout(-3.2, 3.2, 1)
+    for (const [value, position] of [
+      [-3.1, 0.5],
+      [-2.5, 1.5],
+      [0, 4],
+      [3.1, 7.5],
+    ] as const) {
+      expect(
+        tuneDialValueToOffset(value, -3.2, 3.2, 1, layout.totalSteps, layout.stepPx),
+      ).toBeCloseTo(position * layout.stepPx)
+    }
+  })
+
+  test('aligned metric integer and decimal ranges keep their existing steps', () => {
+    expect(values(-5, 5, 1)).toEqual(Array.from({ length: 11 }, (_, i) => i - 5))
+    expect(values(0, 1, 0.1, 1)).toEqual(Array.from({ length: 11 }, (_, i) => i / 10))
+    expect(values(0.3, 0.6, 0.1, 1)).toEqual([0.3, 0.4, 0.5, 0.6])
   })
 })

@@ -12,7 +12,6 @@ import { ConfirmModal } from '@/components/modals/ConfirmModal'
 import { SettingsSectionTitle } from '@/components/settings/SettingsSectionTitle'
 import { BoardTopSpeedCard } from '@/modules/alerts/components/BoardTopSpeedCard'
 import { boardTopSpeedKmh } from '@/modules/alerts/lib/boardAlertSettings'
-import { useAlertPresetStore } from '@/modules/alerts/store/alertPresetStore'
 import { EditBoardSettings } from '@/modules/board/components/EditBoardSettings'
 import { EdgeDrawer } from '@/components/overlays/EdgeDrawer'
 import { BoardWarningsSheet } from '@/modules/board/components/BoardWarningsSheet'
@@ -123,9 +122,7 @@ export default function EditBoardScreen() {
                 <BoardTopSpeedCard
                   value={topSpeedKmh}
                   onChange={(kmh) => {
-                    void updateBoard({ ...editingBoard, topSpeedKmh: kmh }).then(() =>
-                      useAlertPresetStore.getState().regenerateSpeed(editingBoard.id),
-                    )
+                    void updateBoard({ ...editingBoard, topSpeedKmh: kmh })
                   }}
                 />
               </>

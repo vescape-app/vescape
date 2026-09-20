@@ -1,7 +1,8 @@
 import { EyeIcon, QuestionIcon } from 'phosphor-react-native'
 import { Canvas, Text as SkiaText } from '@shopify/react-native-skia'
 import { Pressable, StyleSheet, Switch, View } from 'react-native'
-import type { SharedValue } from 'react-native-reanimated'
+import { useDerivedValue, type SharedValue } from 'react-native-reanimated'
+import { useFormat } from '@/hooks/useFormat'
 import type { SkFont } from '@shopify/react-native-skia'
 
 import { Text } from '@/components/base/Text'
@@ -22,7 +23,7 @@ import {
 
 /** Title, live speed, the enable switch, and the board/target/motor legend. */
 export function TunePreviewHeader({
-  speedStr,
+  speedKmh,
   boardAngleStr,
   targetAngleStr,
   currentStr,
@@ -33,7 +34,7 @@ export function TunePreviewHeader({
   onDisable,
   description,
 }: {
-  speedStr: SharedValue<string>
+  speedKmh: SharedValue<number>
   boardAngleStr: SharedValue<string>
   targetAngleStr: SharedValue<string>
   currentStr: SharedValue<string>
@@ -44,6 +45,9 @@ export function TunePreviewHeader({
   onDisable?: () => void
   description: string
 }) {
+  'use no memo'
+  const { formatSpeed, speedUnit } = useFormat()
+  const speedStr = useDerivedValue(() => formatSpeed(speedKmh.value, 1))
   const accents = useResolvedAccentColors()
   const neutral = useResolvedNeutralColors()
   const telemetry = useResolvedTelemetryColors()
@@ -73,7 +77,7 @@ export function TunePreviewHeader({
                 />
               )}
             </Canvas>
-            <Text style={styles.speedUnit}>km/h</Text>
+            <Text style={styles.speedUnit}>{speedUnit}</Text>
           </View>
           {onDisable ? (
             <Switch

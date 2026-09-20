@@ -26,14 +26,28 @@ const val SETTING_BOARD_MOVE_STRENGTH = "boardMoveStrengthPercent"
 /** Whether to draw the direction arrow over the route. The route itself is never affected. */
 const val SETTING_NAV_ARROW = "navArrowEnabled"
 
+/** App-wide speed and distance preference; older phones default to metric. */
+const val SETTING_UNIT_SYSTEM = "unitSystem"
+
 /** Phone settings the wrist mirrors. Every field defaults to the wrist's own look. */
 data class WatchSettings(
     val riderColor: Color? = null,
+    val unitSystem: String = "metric",
     /** Off by default: an older phone never sends the key, and the arrow is opt-in until it works. */
     val navArrowEnabled: Boolean = false,
     /** Null until a phone new enough to send it has pushed; the wrist then shows no number. */
     val boardMoveStrengthPercent: Int? = null,
-)
+) {
+    companion object {
+        /** Missing or unknown preference values from older/newer phones always mean metric. */
+        fun decode(payload: Map<String, Any?>): WatchSettings = WatchSettings(
+            riderColor = parseRiderColor(payload[SETTING_RIDER_COLOR] as? String),
+            navArrowEnabled = payload[SETTING_NAV_ARROW] as? Boolean ?: false,
+            boardMoveStrengthPercent = payload[SETTING_BOARD_MOVE_STRENGTH] as? Int,
+            unitSystem = if (payload[SETTING_UNIT_SYSTEM] == "imperial") "imperial" else "metric",
+        )
+    }
+}
 
 /** Latest settings pushed from the phone. Defaults apply until the first push arrives. */
 object SettingsState {

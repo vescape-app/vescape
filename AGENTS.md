@@ -135,6 +135,17 @@ this file, the depth is there.
 
 Root `CONTEXT.md` holds the domain language and `docs/adr/` the decisions behind it.
 
+Docs contain lasting reference material: agreed product behavior, current architecture, contracts,
+operating procedures, and accepted decisions with their rationale. Clearly distinguish agreed but
+unimplemented behavior from what the app does today. `CONTEXT.md` is a glossary, not a feature spec.
+
+Keep investigation notes, code-review findings, proposed implementation plans, open questions,
+task checklists, and progress reports in the conversation or the relevant issue/PR. Do not add them
+to `docs/` just to preserve an agent's work; only create a planning or research document when the
+user explicitly requests that artifact. Existing planning files are not permission to add more.
+Before editing docs, ask: will this help a future reader understand or operate the product after
+this task is finished? Update the existing authoritative page instead of appending a task recap.
+
 ## React Native
 
 React Native UI conventions, including icon usage, live in `docs/agents/react.md`.

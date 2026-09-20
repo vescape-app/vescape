@@ -1,0 +1,251 @@
+{
+  "cases": [
+    {
+      "name": "normal-speed-metric",
+      "metric": "speed",
+      "level": "normal",
+      "topSpeedKmh": 50,
+      "expected": [
+        {
+          "threshold": 36,
+          "thresholdMax": 45
+        }
+      ]
+    },
+    {
+      "name": "normal-speed-imperial",
+      "metric": "speed",
+      "level": "normal",
+      "topSpeedKmh": 50,
+      "speedUnitSystem": "imperial",
+      "expected": [
+        {
+          "threshold": 35.405568,
+          "thresholdMax": 45.061632
+        }
+      ]
+    },
+    {
+      "name": "low-speed-imperial",
+      "metric": "speed",
+      "level": "minimal",
+      "topSpeedKmh": 5,
+      "speedUnitSystem": "imperial",
+      "expected": [
+        {
+          "threshold": 3.218688,
+          "thresholdMax": 4.828032
+        }
+      ]
+    },
+    {
+      "name": "safe-duty",
+      "metric": "duty",
+      "level": "safe",
+      "expected": [
+        {
+          "threshold": 75,
+          "thresholdMax": 90
+        }
+      ]
+    },
+    {
+      "name": "normal-motor",
+      "metric": "motor-temp",
+      "level": "normal",
+      "expected": [
+        {
+          "threshold": 85,
+          "thresholdMax": null
+        },
+        {
+          "threshold": 95,
+          "thresholdMax": null,
+          "repeatEverySeconds": 10
+        }
+      ]
+    },
+    {
+      "name": "safe-controller",
+      "metric": "controller-temp",
+      "level": "safe",
+      "expected": [
+        {
+          "threshold": 60,
+          "thresholdMax": null
+        },
+        {
+          "threshold": 75,
+          "thresholdMax": null
+        },
+        {
+          "threshold": 85,
+          "thresholdMax": null,
+          "repeatEverySeconds": 10
+        }
+      ]
+    },
+    {
+      "name": "missing-battery",
+      "metric": "battery",
+      "level": "normal",
+      "expected": []
+    },
+    {
+      "name": "invalid-battery",
+      "metric": "battery",
+      "level": "normal",
+      "batteryConfig": {
+        "mode": "preset",
+        "cellPresetId": "unknown",
+        "seriesCount": 20,
+        "parallelCount": 2
+      },
+      "expected": []
+    },
+    {
+      "name": "normal-battery",
+      "metric": "battery",
+      "level": "normal",
+      "batteryConfig": {
+        "mode": "manual",
+        "minVoltage": 60,
+        "maxVoltage": 84
+      },
+      "expected": [
+        {
+          "threshold": 50,
+          "thresholdMax": null
+        },
+        {
+          "threshold": 35,
+          "thresholdMax": null
+        },
+        {
+          "threshold": 20,
+          "thresholdMax": null
+        },
+        {
+          "threshold": 10,
+          "thresholdMax": null
+        },
+        {
+          "threshold": 5,
+          "thresholdMax": null
+        }
+      ]
+    },
+    {
+      "name": "dormant-match",
+      "metric": "duty",
+      "level": "normal",
+      "matchBoardConfig": true,
+      "expected": [
+        {
+          "threshold": 0,
+          "thresholdMax": null,
+          "fieldId": "tiltback_duty",
+          "thresholdOffset": -10,
+          "thresholdMaxOffset": 0
+        }
+      ]
+    },
+    {
+      "name": "resolved-match",
+      "metric": "duty",
+      "level": "normal",
+      "matchBoardConfig": true,
+      "refloat": {
+        "tiltback_duty": 0.9
+      },
+      "expected": [
+        {
+          "threshold": 80,
+          "thresholdMax": 90,
+          "fieldId": "tiltback_duty",
+          "thresholdOffset": -10,
+          "thresholdMaxOffset": 0
+        }
+      ]
+    },
+    {
+      "name": "disabled-match",
+      "metric": "duty",
+      "level": "normal",
+      "matchBoardConfig": true,
+      "refloat": {
+        "tiltback_duty": 1
+      },
+      "expected": [
+        {
+          "threshold": 0,
+          "thresholdMax": null,
+          "fieldId": "tiltback_duty",
+          "thresholdOffset": -10,
+          "thresholdMaxOffset": 0
+        }
+      ]
+    },
+    {
+      "name": "off-speed",
+      "metric": "speed",
+      "level": "off",
+      "expected": []
+    },
+    {
+      "name": "custom-speed",
+      "metric": "speed",
+      "level": "custom",
+      "expected": []
+    },
+    {
+      "name": "valid-cell-battery",
+      "metric": "battery",
+      "level": "minimal",
+      "batteryConfig": {
+        "mode": "preset",
+        "cellPresetId": "molicel:21700:p45b",
+        "seriesCount": 20,
+        "parallelCount": 2
+      },
+      "expected": [
+        {
+          "threshold": 20,
+          "thresholdMax": null
+        },
+        {
+          "threshold": 10,
+          "thresholdMax": null
+        },
+        {
+          "threshold": 5,
+          "thresholdMax": null
+        }
+      ]
+    },
+    {
+      "name": "negative-half-match",
+      "metric": "motor-temp",
+      "level": "normal",
+      "matchBoardConfig": true,
+      "motor": {
+        "l_temp_motor_start": 1.25
+      },
+      "expected": [
+        {
+          "threshold": -8.7,
+          "thresholdMax": null,
+          "fieldId": "l_temp_motor_start",
+          "thresholdOffset": -10
+        },
+        {
+          "threshold": 1.3,
+          "thresholdMax": null,
+          "repeatEverySeconds": 10,
+          "fieldId": "l_temp_motor_start",
+          "thresholdOffset": 0
+        }
+      ]
+    }
+  ]
+}

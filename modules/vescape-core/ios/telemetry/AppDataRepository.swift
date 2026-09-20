@@ -14,6 +14,7 @@ import GRDB
 /// @parity /modules/vescape-core/src/index.ts `AppDataChangedEvent`
 enum AppDataScope: String {
   case boards
+  case alerts
   case settings
 }
 
@@ -82,6 +83,18 @@ final class AppDataRepository {
     return Self.composeBoard(board, settings: settings)
   }
 
+  func repairMissingAlertPresetRelations(_ boardId: String) throws {
+    guard let writer else { throw StorageUnavailable.databaseNotOpen }
+    if try AlertPresetPersistence(writer: writer).repairMissingRelations(boardId: boardId) { notifyDataChanged(.alerts) }
+  }
+
+  func applyAlertPreset(_ boardId: String, _ metric: String, _ action: String, _ level: String?, _ matchBoardConfig: Bool?) throws {
+    guard let writer else { throw StorageUnavailable.databaseNotOpen }
+    try AlertPresetPersistence(writer: writer).apply(boardId: boardId, metric: metric, action: action, level: level, matchBoardConfig: matchBoardConfig)
+    Self.onDataChanged?(AppDataScope.boards.rawValue)
+    Self.onDataChanged?(AppDataScope.alerts.rawValue)
+  }
+
   func upsertBoard(_ board: [String: Any?]) throws {
     guard let id = board["id"] as? String else { return }
     let name = board["name"] as? String ?? ""
@@ -117,6 +130,7 @@ final class AppDataRepository {
       deletedKeys: deletedKeys
     )
     notifyDataChanged(.boards)
+    notifyDataChanged(.alerts)
   }
 
   /// The Rider-facing delete: configuration goes, the Board row stays as a tombstone (ADR 0027).
@@ -461,6 +475,13 @@ final class AppDataRepository {
   // MARK: - Settings
 
   func getSettings() throws -> [String: Any?] {
+    // A corrupt unit override must not prevent loading the other app settings.
+    // intentional-suppression: invalid unit JSON is deleted and reported as app_setting_invalid below.
+    if let row = try boardSettingsPersistence().setting("unitSystem"),
+      validUnitSystem(try? Self.decodeStoredString(row.valueJson)) == nil {
+      try boardSettingsPersistence().deleteSetting("unitSystem")
+      TelemetryRepository.shared.recordDiagnosticEvent(eventName: "app_setting_invalid", properties: ["key": "unitSystem"])
+    }
     var merged = try boardSettingsPersistence().settings(defaults: Self.defaultSettings)
     merged.removeValue(forKey: Self.navigationPathKey)
     merged.removeValue(forKey: Self.navigationProfileKey)
@@ -519,6 +540,14 @@ final class AppDataRepository {
     } else if key == "audioSource" {
       guard let source = Self.audioSource(rawValue) else { return }
       value = source
+    } else if key == "unitSystem" {
+      guard let units = validUnitSystem(rawValue) else { throw CocoaError(.coderInvalidValue) }
+      if units == "metric" {
+        try boardSettingsPersistence().deleteSetting(key)
+        notifyDataChanged(.settings)
+        return
+      }
+      value = units
     } else if key == "themeMode" {
       guard let mode = Self.themeMode(rawValue) else { return }
       value = mode
@@ -602,6 +631,7 @@ final class AppDataRepository {
     "rideSplitGapMinutes": DEFAULT_RIDE_SPLIT_GAP_MINUTES,
     "freeSpinMaxSpeedDeltaKmh": DEFAULT_FREE_SPIN_MAX_SPEED_DELTA_KMH,
     "freeSpinStationaryBoardCapKmh": DEFAULT_FREE_SPIN_STATIONARY_BOARD_CAP_KMH,
+    "unitSystem": "metric",
     "themeMode": "system",
     "satelliteOverlayEnabled": true,
     "satelliteImageryOpacity": 0.2,
@@ -644,6 +674,7 @@ final class AppDataRepository {
     var normalized = settings
     normalized["liveHistoryLimit"] =
       liveHistoryLimitMinutes(settings["liveHistoryLimit"]) ?? defaultSettings["liveHistoryLimit"]
+    normalized["unitSystem"] = validUnitSystem(settings["unitSystem"]) ?? "metric"
     normalized["themeMode"] = themeMode(settings["themeMode"]) ?? defaultSettings["themeMode"]
     normalized["audioSource"] = audioSource(settings["audioSource"]) ?? "alarm"
     let pack = settings["soundPack"] as? String ?? "retro"

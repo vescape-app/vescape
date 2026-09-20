@@ -16,6 +16,7 @@ const BASE: AppSettings = {
   rideSplitGapMinutes: 30,
   freeSpinMaxSpeedDeltaKmh: 12,
   freeSpinStationaryBoardCapKmh: 15,
+  unitSystem: 'metric',
   themeMode: 'system',
   mapStyleKey: 'onedark',
   satelliteOverlayEnabled: true,
@@ -54,7 +55,7 @@ const getSettings = mock(async () => settings)
 const getCompanionPresenceBoards = mock(async () => companionBoards)
 const addCompanionPresenceBoard = mock(async () => undefined)
 const removeCompanionPresenceBoard = mock(async () => undefined)
-const updateSetting = mock(async () => undefined)
+const updateSetting = mock(async (): Promise<void> => undefined)
 const setCompanionPresenceEnabled = mock(async () => undefined)
 
 mock.module('vescape-core', () => ({
@@ -227,4 +228,31 @@ test('master auto-start switch is independent from configured boards', async () 
   expect(setCompanionPresenceEnabled).toHaveBeenCalledWith(false)
   expect(useSettingsStore.getState().companionPresenceEnabled).toBe(false)
   expect(useSettingsStore.getState().companionPresenceBoards).toEqual([])
+})
+
+test('unit preference publishes only after native save and survives a reload', async () => {
+  const { useSettingsStore } = await import('@/modules/settings/store/settingsStore')
+  await useSettingsStore.getState().load()
+  expect(useSettingsStore.getState().unitSystem).toBe('metric')
+  let finish!: () => void
+  updateSetting.mockImplementationOnce(
+    () =>
+      new Promise<void>((resolve) => {
+        finish = resolve
+      }),
+  )
+  const pending = useSettingsStore.getState().set('unitSystem', 'imperial')
+  expect(useSettingsStore.getState().unitSystem).toBe('metric')
+  finish()
+  await pending
+  expect(useSettingsStore.getState().unitSystem).toBe('imperial')
+  settings = { ...BASE, unitSystem: 'imperial' }
+  useSettingsStore.setState({ unitSystem: 'metric', loaded: false })
+  await useSettingsStore.getState().load()
+  expect(useSettingsStore.getState().unitSystem).toBe('imperial')
+  updateSetting.mockRejectedValueOnce(new Error('disk failed'))
+  await expect(useSettingsStore.getState().set('unitSystem', 'metric')).rejects.toThrow(
+    'disk failed',
+  )
+  expect(useSettingsStore.getState().unitSystem).toBe('imperial')
 })

@@ -1,3 +1,5 @@
+import { UnitSystemContext } from '@/hooks/useUnitSystem'
+import type { UnitSystem } from '@/helpers/units'
 import { StyleSheet, View } from 'react-native'
 import { useMemo, useState } from 'react'
 import { useSharedValue } from 'react-native-reanimated'
@@ -120,6 +122,7 @@ export function BasicSliderCellShowcase() {
 }
 
 export function TunePreviewShowcase() {
+  const [units, setUnits] = useState<UnitSystem>('metric')
   const pitchInputDegrees = useSharedValue(0)
   const pitchInputActive = useSharedValue(false)
   const previewSpeedKmh = useSharedValue(15)
@@ -178,44 +181,52 @@ export function TunePreviewShowcase() {
   }
 
   return (
-    <ShowcaseCard
-      name="Tune Preview"
-      controls={
-        <>
-          <ChipRow
-            label="state"
-            options={['flat', 'hills', 'dense hills']}
-            selected={scenario}
-            onSelect={selectScenario}
-          />
-          <ValueRow label="pitch input" value="hold and drag" />
-        </>
-      }
-    >
-      <TunePreview
-        fields={fields}
-        pitchInputDegrees={pitchInputDegrees}
-        pitchInputActive={pitchInputActive}
-        hillsEnabled={hillsEnabled}
-        hillHeightMeters={hillHeightMeters}
-        hillSpacingMeters={hillSpacingMeters}
-        onHelp={() => {}}
-        speedKmh={previewSpeedKmh}
-        groundToBoardAngleDegrees={groundToBoardAngleDegrees}
-      />
-      <TunePreviewScenarioControls
-        hillsPreset={hillsPreset}
-        onHillsPresetChange={setHillsPreset}
-        hillHeightMeters={hillHeightMeters}
-        onHillHeightChange={setHillHeightMeters}
-        hillSpacingMeters={hillSpacingMeters}
-        onHillSpacingChange={setHillSpacingMeters}
-        pitchInputDegrees={pitchInputDegrees}
-        pitchInputActive={pitchInputActive}
-        speedKmh={previewSpeedKmh}
-        groundToBoardAngleDegrees={groundToBoardAngleDegrees}
-      />
-    </ShowcaseCard>
+    <UnitSystemContext value={units}>
+      <ShowcaseCard
+        name="Tune Preview"
+        controls={
+          <>
+            <ChipRow
+              label="state"
+              options={['flat', 'hills', 'dense hills']}
+              selected={scenario}
+              onSelect={selectScenario}
+            />
+            <ChipRow
+              label="units"
+              options={['metric', 'imperial']}
+              selected={units}
+              onSelect={(next) => setUnits(next as UnitSystem)}
+            />
+            <ValueRow label="pitch input" value="hold and drag" />
+          </>
+        }
+      >
+        <TunePreview
+          fields={fields}
+          pitchInputDegrees={pitchInputDegrees}
+          pitchInputActive={pitchInputActive}
+          hillsEnabled={hillsEnabled}
+          hillHeightMeters={hillHeightMeters}
+          hillSpacingMeters={hillSpacingMeters}
+          onHelp={() => {}}
+          speedKmh={previewSpeedKmh}
+          groundToBoardAngleDegrees={groundToBoardAngleDegrees}
+        />
+        <TunePreviewScenarioControls
+          hillsPreset={hillsPreset}
+          onHillsPresetChange={setHillsPreset}
+          hillHeightMeters={hillHeightMeters}
+          onHillHeightChange={setHillHeightMeters}
+          hillSpacingMeters={hillSpacingMeters}
+          onHillSpacingChange={setHillSpacingMeters}
+          pitchInputDegrees={pitchInputDegrees}
+          pitchInputActive={pitchInputActive}
+          speedKmh={previewSpeedKmh}
+          groundToBoardAngleDegrees={groundToBoardAngleDegrees}
+        />
+      </ShowcaseCard>
+    </UnitSystemContext>
   )
 }
 

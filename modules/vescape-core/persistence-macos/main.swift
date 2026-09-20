@@ -1,6 +1,29 @@
 import Foundation
 import GRDB
 
+// Offline database sanitization previews the same native presets as the app, without opening a DB.
+if CommandLine.arguments.dropFirst().first == "--preview-alert-presets" {
+  let args = Array(CommandLine.arguments.dropFirst(2))
+  guard args.count == 3, let topSpeed = Double(args[0]), ["true", "false"].contains(args[1]) else {
+    fatalError("Expected --preview-alert-presets <topSpeedKmh> <true|false> <output-json-path>")
+  }
+  var output: [[String: Any]] = []
+  for metric in AlertPresetPersistence.metrics {
+    let rules = try AlertPresetPersistence.preview(
+      metric: metric, level: "normal", topSpeedKmh: topSpeed,
+      hasBatteryConfig: args[1] == "true", speedUnitSystem: "metric"
+    )
+    output += rules.map { rule in
+      ["id": rule.id, "controlId": rule.controlId, "threshold": rule.threshold,
+       "thresholdMax": rule.thresholdMax as Any? ?? NSNull(), "soundType": rule.soundType,
+       "repeatEverySeconds": rule.repeatEverySeconds as Any? ?? NSNull(), "beepCount": rule.beepCount]
+    }
+  }
+  let data = try JSONSerialization.data(withJSONObject: output, options: [.sortedKeys])
+  try data.write(to: URL(fileURLWithPath: args[2]))
+  exit(0)
+}
+
 struct Failure: Error, CustomStringConvertible {
   let description: String
 }
@@ -522,9 +545,21 @@ try boardPersistence.upsertBoard(
   settings: [], deletedKeys: []
 )
 try boardPersistence.saveSetting(PersistedAppSetting(key: settingValues["key"] as! String, valueJson: settingValues["updatedValueJson"] as! String, updatedAt: contractCreatedAt + 1))
+let unitFixture = boardFixture["units"] as! [String: Any]
+let metricDefault = unitFixture["default"] as! String
+try require(validUnitSystem(nil) ?? "metric" == metricDefault, "units metric default")
+for invalid in unitFixture["invalid"] as! [Any] {
+  try require(validUnitSystem(invalid) == nil, "invalid units accepted")
+}
+try boardPersistence.saveSetting(.init(key: "unitSystem", valueJson: "\"\(validUnitSystem(unitFixture["selected"])!)\"", updatedAt: contractCreatedAt))
 try boardQueue!.close()
 boardQueue = try DatabaseQueue(path: boardURL.path)
 boardPersistence = BoardSettingsPersistence(writer: boardQueue!)
+let reopenedUnits = try boardPersistence.settings(defaults: ["unitSystem": metricDefault])
+try require(reopenedUnits["unitSystem"] as? String == unitFixture["selected"] as? String, "units survive reopen")
+try boardPersistence.deleteSetting("unitSystem")
+let defaultUnits = try boardPersistence.settings(defaults: ["unitSystem": metricDefault])
+try require(defaultUnits["unitSystem"] as? String == metricDefault, "units return to metric default")
 let reopenedBoards = try boardPersistence.liveBoards()
 let reopenedBoardSettings = try boardPersistence.boardSettings(ids: [contractBoardId])
 let reopenedSettings = try boardPersistence.settings()
@@ -1276,6 +1311,7 @@ try require(
 try clearanceQueue!.close()
 try? FileManager.default.removeItem(at: clearanceURL)
 
+try runAlertPresetContract()
 try runRideExportContract()
 try runRideCsvContract()
 try runBucketRoutePreviewContract()

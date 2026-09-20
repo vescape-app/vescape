@@ -1,3 +1,5 @@
+import { useUnitSystem } from '@/hooks/useUnitSystem'
+import { speedFromKmh, speedUnit } from '@/helpers/units'
 import { useMemo, type ReactNode } from 'react'
 import { Pressable, StyleSheet, View } from 'react-native'
 import { useDerivedValue, type SharedValue } from 'react-native-reanimated'
@@ -68,6 +70,7 @@ interface QuarterArcProps {
   max: number
   color: string
   unit: string
+  displayScale?: number
   alerts?: DualGaugeAlert[]
   hotRange?: MetricHotRange | null
 }
@@ -85,6 +88,7 @@ function QuarterArcLayer({
   hotRange,
   transform,
 }: QuarterArcLayerProps) {
+  'use no memo'
   const accents = useResolvedAccentColors()
   const isLeft = side === 'left'
   const arc = isLeft ? LEFT_ARC : RIGHT_ARC
@@ -142,12 +146,14 @@ function GaugeValueLayer({
   color,
   hotRange,
   unit,
+  displayScale = 1,
   box,
 }: Omit<QuarterArcProps, 'side' | 'max'> & { box: GaugeReadoutBox }) {
+  'use no memo'
   const accents = useResolvedAccentColors()
   const valueText = useDerivedValue(() => {
     const current = value.value
-    return current != null ? Math.round(current).toString() : DASH
+    return current != null ? Math.round(current * displayScale).toString() : DASH
   })
   const valueColor = useDerivedValue(() =>
     gaugeRampColor(value.value, color, hotRange, accents.red.color),
@@ -199,6 +205,7 @@ export function GaugePair({
   onPressSpeed,
   onPressDuty,
 }: GaugePairProps) {
+  const units = useUnitSystem()
   const telemetryColors = useResolvedTelemetryColors()
   const { size, onLayout } = useCanvasSize()
   const cellWidth = Math.max(0, (size.w - SPARKLINE_GAP) / 2)
@@ -268,7 +275,7 @@ export function GaugePair({
             value={speedValue}
             max={speedMax}
             color={telemetryColors.speed}
-            unit="km/h"
+            unit={speedUnit(units)}
             alerts={speedAlerts}
             hotRange={speedHotRange}
             transform={leftTransform}
@@ -284,9 +291,10 @@ export function GaugePair({
             transform={rightTransform}
           />
           <GaugeValueLayer
+            displayScale={speedFromKmh(1, units)}
             value={speedValue}
             color={telemetryColors.speed}
-            unit="km/h"
+            unit={speedUnit(units)}
             hotRange={speedHotRange}
             box={{ ...bowl, x: size.w * 0.05 }}
           />

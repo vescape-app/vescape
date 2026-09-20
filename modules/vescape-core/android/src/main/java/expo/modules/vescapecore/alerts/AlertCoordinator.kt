@@ -10,6 +10,7 @@ internal class AlertCoordinator(
     private val vibrateSingles: Boolean = true,
 ) {
     // @parity /modules/vescape-core/ios/alerts/AlertCoordinator.swift
+    var unitSystem: String = "metric"
     private val engine = AlertEngine()
     private var rules: List<AlertRuleEntity> = emptyList()
     private var activeGeigerRuleIds: Set<String> = emptySet()
@@ -84,7 +85,7 @@ internal class AlertCoordinator(
         val single = fired.filter { it.rangeDepth == null }
         if (single.isNotEmpty()) {
             single.firstOrNull { it.soundType.startsWith("tts:") && it.thresholdMax == null }?.let { alert ->
-                val text = renderAlertMessageTemplate(alert.soundType.removePrefix("tts:"), alert, batteryPercent, onDiagnostic)
+                val text = renderAlertMessageTemplate(alert.soundType.removePrefix("tts:"), alert, batteryPercent, onDiagnostic, unitSystem)
                 if (text.isNotEmpty()) feedback().speakMessage(text)
             }
             for (alert in single) if (!alert.soundType.startsWith("tts:")) feedback().playSingle(alert.soundType, alert.beepCount)

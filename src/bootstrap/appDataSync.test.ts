@@ -53,6 +53,7 @@ mock.module('expo-file-system', () => ({
 
 const boardLoad = mock(async () => {})
 const settingsLoad = mock(async () => {})
+const alertsLoad = mock(async (_boardId: string | null) => {})
 
 // The stores are module singletons shared across test files, so any `load` override must be undone
 // afterwards or it leaks into other suites (e.g. settingsStore.test) as a silent no-op.
@@ -65,14 +66,19 @@ beforeEach(async () => {
   appStateRemove.mockClear()
   boardLoad.mockClear()
   settingsLoad.mockClear()
+  alertsLoad.mockClear()
   const { useBoardStore } = await import('@/modules/board/store/boardStore')
   const { useSettingsStore } = await import('@/modules/settings/store/settingsStore')
+  const { useAlertsStore } = await import('@/modules/alerts/store/alertsStore')
+  const origAlertsLoad = useAlertsStore.getState().load
   const origBoardLoad = useBoardStore.getState().load
   const origSettingsLoad = useSettingsStore.getState().load
   restore = () => {
+    useAlertsStore.setState({ load: origAlertsLoad })
     useBoardStore.setState({ load: origBoardLoad })
     useSettingsStore.setState({ load: origSettingsLoad })
   }
+  useAlertsStore.setState({ load: alertsLoad })
   useBoardStore.setState({ load: boardLoad })
   useSettingsStore.setState({ load: settingsLoad })
 })
@@ -87,6 +93,23 @@ test('boards scope reloads only the board store', async () => {
 
   expect(boardLoad).toHaveBeenCalledTimes(1)
   expect(settingsLoad).not.toHaveBeenCalled()
+})
+
+test('alerts scope reloads the active Board rules', async () => {
+  const { useBoardStore } = await import('@/modules/board/store/boardStore')
+  const { startAppDataSync } = await import('@/bootstrap/appDataSync')
+  const previous = useBoardStore.getState().activeBoardId
+  useBoardStore.setState({ activeBoardId: 'alert-board' })
+  const stop = startAppDataSync()
+  try {
+    capturedCb?.({ scope: 'alerts' })
+    expect(alertsLoad).toHaveBeenCalledWith('alert-board')
+    expect(boardLoad).not.toHaveBeenCalled()
+    expect(settingsLoad).not.toHaveBeenCalled()
+  } finally {
+    stop()
+    useBoardStore.setState({ activeBoardId: previous })
+  }
 })
 
 test('settings scope reloads only the settings store', async () => {
@@ -107,6 +130,7 @@ test('returning to the foreground reloads every store (missed-push catch-up, #17
 
   expect(boardLoad).toHaveBeenCalledTimes(1)
   expect(settingsLoad).toHaveBeenCalledTimes(1)
+  expect(alertsLoad).toHaveBeenCalledTimes(1)
 })
 
 test('non-active app state transitions do not reload', async () => {

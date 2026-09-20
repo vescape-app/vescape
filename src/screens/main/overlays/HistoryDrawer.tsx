@@ -1,3 +1,5 @@
+import { useRideFormat } from '@/modules/history/hooks/useRideFormat'
+import { useFormat } from '@/hooks/useFormat'
 import { useCallback, useEffect, useMemo, useState, type RefObject } from 'react'
 import { router } from 'expo-router'
 import {
@@ -17,7 +19,7 @@ import { FavoriteRideCard } from '@/modules/history/components/FavoriteRideCard'
 import { HistoryRideRow } from '@/modules/history/components/HistoryRideRow'
 import { HistorySessionSheet } from '@/modules/history/components/HistorySessionSheet'
 import { favoriteSessionId, favoriteToSession } from '@/modules/history/lib/favorites'
-import { formatRideListDateTime, formatRideListDetails } from '@/modules/history/lib/rideFormat'
+import { formatRideListDateTime } from '@/modules/history/lib/rideFormat'
 import { isLiveRide, rideMovingWindow, type HistorySession } from '@/modules/history/lib/sessions'
 import { useHistoryAutoRefresh } from '@/modules/history/hooks/useHistoryAutoRefresh'
 import { useFavoriteStore, type Favorite } from '@/modules/history/store/favoriteStore'
@@ -43,6 +45,8 @@ export function HistoryDrawer({
   onOpenRide,
   onOpenFavorite,
 }: HistoryDrawerProps) {
+  const { formatSpeedWithUnit } = useFormat()
+  const { formatRideDetails } = useRideFormat()
   const [listMode, setListMode] = useState<ListMode>(null)
   const [ridesLoaded, setRidesLoaded] = useState(false)
   const [favoritesLoaded, setFavoritesLoaded] = useState(false)
@@ -180,8 +184,8 @@ export function HistoryDrawer({
                   endMs: session.endAtMs,
                 }
                 const details = [
-                  formatRideListDetails(window.endMs - window.startMs, session.distanceM, null),
-                  `${Math.round(session.maxSpeedKmh)} km/h`,
+                  formatRideDetails(window.endMs - window.startMs, session.distanceM, null),
+                  formatSpeedWithUnit(session.maxSpeedKmh),
                 ].join(' · ')
                 return (
                   <HistoryRideRow

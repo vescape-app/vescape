@@ -47,7 +47,7 @@ Pod::Spec.new do |s|
   # through a symlinked directory, so `fixtures/*.jsonl` silently matched nothing.
   s.resource_bundles = {
     'VescapeCoreAssets' => [
-      'cell-presets.json',
+      'cell-presets.json', 'alert-preset-definitions.json',
       'legal-policies.json',
       'alerts/*.wav',
       'fixtures/*.jsonl'

@@ -246,11 +246,15 @@ Adding a mirrored setting:
 1. Field on `WatchSettings` + key constant, both sides (`modules/vescape-core/.../watch/WatchSettings.kt`
    and `watch/wearos/.../WatchSettings.kt`, linked by `@parity`).
 2. Map it in `AppSettings.toWatchSettings()`; put it in `WatchSettingsPusher`.
-3. Read it in `MainActivity.readSettings`.
+3. Decode it in wrist `WatchSettings.decode`, called by `MainActivity.readSettings`.
 4. If the setting is written from JS, add its key to the `updateSetting` reload list in
-   `VescapeCoreModule.kt` — the pusher runs off applied settings, so without that the watch only sees
-   the change at the next service start.
+   `VescapeCoreModule.kt` — the process-scoped pusher publishes even when no service or Board Session exists.
+   Native process startup also republishes saved settings.
 
-The rider colour is the first of these: pick a colour on the phone and the wrist route, chevron and
+Rider Units travels on this channel as `unitSystem`, defaulting to metric for missing or invalid
+values. Both wrists convert speed, navigation, radar, and accessibility readouts while frame values,
+route geometry, and gauge proportions stay metric.
+
+The rider colour is another of these: pick a colour on the phone and the wrist route, chevron and
 rider dot follow it. The watchOS Mirror carries the same bag on its own channel — see
 `docs/watchos.md` for how the two transports differ.

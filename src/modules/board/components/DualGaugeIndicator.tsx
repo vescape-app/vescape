@@ -2,7 +2,7 @@ import { useMemo, type ReactNode } from 'react'
 import type { StyleProp, ViewStyle } from 'react-native'
 
 import { DualGauge } from '@/modules/board/components/DualGauge'
-import { useAlertsStore } from '@/modules/alerts/store/alertsStore'
+import { useResolvedAlertRules } from '@/modules/alerts/hooks/useResolvedAlertRules'
 import { boardTopSpeedKmh } from '@/modules/alerts/lib/boardAlertSettings'
 import { useBoardStore } from '@/modules/board/store/boardStore'
 import { useLiveSeries } from '@/modules/board/hooks/useLiveMetric'
@@ -33,7 +33,7 @@ export function DualGaugeIndicator({
   const speedSeries = useLiveSeries('speed')
   const dutySeries = useLiveSeries('duty')
   const windowMs = useLiveWindowMs()
-  const alertRules = useAlertsStore((s) => s.rules)
+  const alertRules = useResolvedAlertRules()
   const gradientsEnabled = useSettingsStore((s) => s.historyMetricGradientsEnabled)
   const hotRanges = useSettingsStore((s) => s.historyMetricHotRanges)
   const speedHotRange = getHistoryMetricHotRange('speed', hotRanges, gradientsEnabled)

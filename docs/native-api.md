@@ -551,3 +551,19 @@ Live event has `stateName` + `avgLatency` + `firedAlerts`. History `TelemetrySam
 
 Not persisted to history and not fed into alerts. `bleStore` keeps only the latest
 snapshot (`latestBms`); UI derives min/max/spread via `summarizeBms` in `src/modules/battery/lib/bms.ts`.
+
+## Alert preset intents
+
+`applyAlertPreset(boardId, metric, intent)` switches a saved Board's alert setup. Intents are
+`{ action: 'select', level }`, `{ action: 'customize' }`, `{ action: 'discard-custom' }`, and
+`{ action: 'match-board-config', enabled }`. Selection and generated rule changes commit together
+in native storage. JS does not send generated rules or run a regeneration sequence. Board saves
+also update affected preset rules atomically when their inputs change. Successful writes publish
+`boards` and `alerts` data-change scopes and reload native alert evaluation.
+
+`previewAlertPreset(metric, level, { topSpeedKmh, hasBatteryConfig, speedUnitSystem? })` returns
+`AlertTestRule[]` synchronously for an unsaved add-board draft. It uses the same native generator
+as persistence, with explicit draft inputs and no database access, events, or alert-engine changes.
+Units default to metric; `off` and `custom` return no generated rules. The wizard has no Board
+configuration to match, so this operation only returns fixed thresholds. JS uses these snapshots
+for markers, summaries, sound previews, and copying a preset into editable draft rules.

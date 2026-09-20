@@ -1,3 +1,4 @@
+import CoreFoundation
 import Foundation
 
 /// The board config fields an Alert Rule can anchor itself to, and what each one means.
@@ -43,7 +44,7 @@ func resolveConfigRelativeBase(
 ) -> Double? {
   guard let fieldId, let field = configRelativeFields[fieldId] else { return nil }
   let source = field.source == .refloat ? refloat : motor
-  guard let number = source[fieldId] as? NSNumber else { return nil }
+  guard let number = source[fieldId] as? NSNumber, CFGetTypeID(number) != CFBooleanGetTypeID() else { return nil }
   let raw = number.doubleValue
   guard raw.isFinite, raw > 0 else { return nil }
   if let disabled = field.disabledAtOrAbove, raw >= disabled { return nil }

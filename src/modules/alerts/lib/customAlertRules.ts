@@ -1,13 +1,7 @@
-import type { AlertRule } from 'vescape-core'
+import type { AlertRule, AlertTestRule } from 'vescape-core'
 
 import { generateId } from '@/helpers/id'
-import {
-  isPresetAlertRule,
-  resolvedAlertPresetRules,
-  type AlertPresetLevel,
-  type AlertPresetMetric,
-  type GenerateAlertPresetRulesOptions,
-} from '@/modules/alerts/lib/alertPresets'
+import { isPresetAlertRule, type AlertPresetLevel } from '@/modules/alerts/lib/alertPresets'
 
 /**
  * Custom (rider-owned) Alert Rules — the `custom` half of {@link AlertPresetLevel}.
@@ -19,37 +13,26 @@ import {
  */
 export type DraftAlertRule = Omit<AlertRule, 'boardId'>
 
-/**
- * Take ownership of a level: expand it exactly as the preset generator would, then hand the
- * result to the rider as ordinary rules.
- *
- * Behaviourally a no-op at the moment it runs — same thresholds, same sounds — so switching a
- * metric to `custom` never changes what the board says out loud. Ids are fresh and `source` is
- * absent by construction: reusing the deterministic `preset:<metric>:<i>` ids would let the next
- * regeneration overwrite or delete rules the rider now owns.
- *
- * A matched preset is frozen at what it resolves to right now — that is what taking ownership
- * means: the rule stops following the board.
- */
+/** Keep authored rules intact and append editable copies of the native preset preview. */
 export function materializePresetRules(
-  metric: AlertPresetMetric,
-  level: AlertPresetLevel,
-  options: GenerateAlertPresetRulesOptions = {},
+  snapshot: readonly AlertTestRule[],
+  authoredRules: readonly DraftAlertRule[],
 ): DraftAlertRule[] {
   const createdAt = Date.now()
-  // Resolved only: a dormant matched rule has no threshold to hand over, and freezing its
-  // placeholder would give the rider a fixed rule at a value the board never acts on.
-  return resolvedAlertPresetRules(metric, level, options).map((spec) => ({
-    id: generateId(),
-    controlId: spec.controlId,
-    threshold: spec.threshold,
-    thresholdMax: spec.thresholdMax,
-    enabled: true,
-    soundType: spec.soundType,
-    repeatEverySeconds: spec.repeatEverySeconds,
-    beepCount: spec.beepCount,
-    createdAt,
-  }))
+  return [
+    ...authoredRules,
+    ...snapshot.map((spec) => ({
+      id: generateId(),
+      controlId: spec.controlId,
+      threshold: spec.threshold,
+      thresholdMax: spec.thresholdMax,
+      enabled: true,
+      soundType: spec.soundType,
+      repeatEverySeconds: spec.repeatEverySeconds,
+      beepCount: spec.beepCount,
+      createdAt,
+    })),
+  ]
 }
 
 /** A Board's rider-owned rules for one control, newest last. Preset-generated rules are excluded. */

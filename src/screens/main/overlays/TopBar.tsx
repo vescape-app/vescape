@@ -33,7 +33,8 @@ import { settingsTriggerState } from '@/screens/main/overlays/settingsTrigger'
 import { useAppStatusStore } from '@/modules/release/store/appStatusStore'
 import { useBackupSlot } from '@/modules/profile/hooks/useBackupSlot'
 import type { MapSelection } from '@/modules/map/lib/mapSelection'
-import { DASH, fmtDistance } from '@/helpers/format'
+import { DASH } from '@/helpers/format'
+import { useFormat } from '@/hooks/useFormat'
 import { useMapStore } from '@/modules/map/store/mapStore'
 import { useRiderStore } from '@/modules/group-ride/store/riderStore'
 import { ActiveNavigationTopBar } from '@/screens/main/overlays/ActiveNavigationTopBar'
@@ -72,6 +73,7 @@ export function TopBar({
   onNavigationPress,
   onCancelNavigation,
 }: TopBarProps) {
+  const { formatDistance } = useFormat()
   const insets = useSafeAreaInsets()
   const { width } = useWindowDimensions()
   const boardPillMaxWidth = width - 116
@@ -126,7 +128,7 @@ export function TopBar({
   // the river; the dash while native has no Route Progress is the honest answer, not a reason to
   // fall back to one.
   const navigationDistance =
-    routeProgress && activeNavigationTarget ? fmtDistance(routeProgress.remainingMeters) : DASH
+    routeProgress && activeNavigationTarget ? formatDistance(routeProgress.remainingMeters) : DASH
 
   // The pill's leading badge. Only a live link earns it — a saved Accessory that is merely
   // reconnecting must not read as one that is answering.

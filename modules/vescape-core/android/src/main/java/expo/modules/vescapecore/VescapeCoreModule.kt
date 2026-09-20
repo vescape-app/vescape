@@ -69,6 +69,7 @@ import expo.modules.vescapecore.telemetry.TELEMETRY_DATABASE_NAME
 import expo.modules.vescapecore.telemetry.TelemetryRepository
 import expo.modules.vescapecore.telemetry.TelemetryDatabase
 import expo.modules.vescapecore.telemetry.AlertRuleEntity
+import expo.modules.vescapecore.telemetry.AlertPresetPersistence
 import expo.modules.vescapecore.location.LegalPolicyResolver
 import expo.modules.vescapecore.location.LegalPolicyResolution
 import expo.modules.vescapecore.location.LegalPolicyCatalog
@@ -1239,6 +1240,7 @@ class VescapeCoreModule : Module() {
       RecordingStorageFailure.requireAvailable()
       try {
         AppDataRepository.get(context.applicationContext).upsertBoard(board)
+        CoreForegroundService.reloadAlertRules(context.applicationContext)
         CoreForegroundService.reloadBoardData()
         connectSavedBoardLink(board["id"] as? String)
       } catch (error: Exception) {
@@ -1254,6 +1256,31 @@ class VescapeCoreModule : Module() {
         RecordingStorageFailure.report("board_delete", "write_failed", error)
         throw error
       }
+    }
+    // @parity /modules/vescape-core/ios/VescapeCoreModule.swift `previewAlertPreset`
+    // @parity /modules/vescape-core/src/index.ts `previewAlertPreset`
+    Function("previewAlertPreset") { metric: String, level: String, topSpeedKmh: Double, hasBatteryConfig: Boolean, speedUnitSystem: String ->
+      AlertPresetPersistence.preview(metric, level, topSpeedKmh, hasBatteryConfig, speedUnitSystem).map { rule ->
+        mapOf(
+          "id" to rule.id,
+          "controlId" to rule.controlId,
+          "threshold" to rule.threshold,
+          "thresholdMax" to rule.thresholdMax,
+          "soundType" to rule.soundType,
+          "repeatEverySeconds" to rule.repeatEverySeconds,
+          "beepCount" to rule.beepCount,
+        )
+      }
+    }
+    // @parity /modules/vescape-core/ios/VescapeCoreModule.swift `applyAlertPreset`
+    // @parity /modules/vescape-core/src/index.ts `applyAlertPreset`
+    AsyncFunction("applyAlertPreset") Coroutine { boardId: String, metric: String, action: String, level: String?, matchBoardConfig: Boolean? ->
+      RecordingStorageFailure.requireAvailable()
+      try {
+        AppDataRepository.get(context.applicationContext).applyAlertPreset(boardId, metric, action, level, matchBoardConfig)
+        CoreForegroundService.reloadAlertRules(context.applicationContext)
+      } catch (error: CancellationException) { throw error }
+      catch (error: Throwable) { RecordingStorageFailure.report("alert_preset_apply", "write_failed", error); throw error }
     }
     AsyncFunction("getAlertRules") { boardId: String ->
       RecordingStorageFailure.requireAvailable()
@@ -1422,6 +1449,10 @@ class VescapeCoreModule : Module() {
         RecordingStorageFailure.report("setting_save", "write_failed", error)
         throw error
       }
+      if (key == "unitSystem") {
+        val units = AppDataRepository.get(context.applicationContext).getTypedSettings().unitSystem
+        mainHandler.post { alertTestCoordinator?.unitSystem = units }
+      }
       if (key == "liveHistoryLimit") {
         CoreForegroundService.setLiveHistoryLimit(value as? Number)
       }
@@ -1433,6 +1464,7 @@ class VescapeCoreModule : Module() {
         key == "freeSpinStationaryBoardCapKmh" ||
         key == "socEstimateWindowSeconds" ||
         key == "telemetryPollRateHz" ||
+        key == "unitSystem" ||
         key == "wearPushRateHz" ||
         key == "wearAutoLaunchOnConnect" ||
         key == "wearNavArrowEnabled" ||
@@ -1476,6 +1508,7 @@ class VescapeCoreModule : Module() {
     val feedback = AlertFeedback(context.applicationContext, mainHandler)
     feedback.setAudioSource(kotlinx.coroutines.runBlocking { AppDataRepository.get(context.applicationContext).getTypedSettings().audioSource })
     val coordinator = AlertCoordinator(feedback = { feedback }, vibrateSingles = false)
+    coordinator.unitSystem = kotlinx.coroutines.runBlocking { AppDataRepository.get(context.applicationContext).getTypedSettings().unitSystem }
     coordinator.replaceRules(rules)
     alertTestFeedback = feedback
     alertTestCoordinator = coordinator

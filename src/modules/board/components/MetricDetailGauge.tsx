@@ -6,14 +6,14 @@ import { SpeakerHighIcon, StopIcon } from 'phosphor-react-native'
 import { Button } from '@/components/base/Button'
 import type { DualGaugeAlert } from '@/components/charts/gaugeAlert'
 import { useAlertTest } from '@/modules/alerts/hooks/useAlertTest'
-import { buildMetricAlertRuleSnapshot } from '@/modules/alerts/lib/alertTest'
+import { toTestRule } from '@/modules/alerts/lib/alertTest'
 import { SingleGauge } from '@/modules/board/components/SingleGauge'
 import type { TelemetryMetricConfig } from '@/modules/board/constants/telemetry'
 import {
   getHistoryMetricHotRange,
   getHistoryMetricKeyForControlId,
 } from '@/modules/history/lib/metricColorScale'
-import { useAlertsStore } from '@/modules/alerts/store/alertsStore'
+import { useResolvedAlertRules } from '@/modules/alerts/hooks/useResolvedAlertRules'
 import { useSettingsStore } from '@/modules/settings/store/settingsStore'
 
 interface MetricDetailGaugeProps {
@@ -29,7 +29,7 @@ export function MetricDetailGauge({
   min = metric.chartRange.min,
   max = metric.chartRange.max,
 }: MetricDetailGaugeProps) {
-  const alertRules = useAlertsStore((s) => s.rules)
+  const alertRules = useResolvedAlertRules()
   const gradientsEnabled = useSettingsStore((s) => s.historyMetricGradientsEnabled)
   const hotRanges = useSettingsStore((s) => s.historyMetricHotRanges)
   const hotMetric = getHistoryMetricKeyForControlId(metric.controlId)
@@ -52,14 +52,7 @@ export function MetricDetailGauge({
     [alertRules, metric.controlId],
   )
   const testRules = useMemo(
-    () =>
-      buildMetricAlertRuleSnapshot({
-        metric: null,
-        level: 'custom',
-        rules: alertRules.filter((rule) => rule.controlId === metric.controlId),
-        boardTopSpeedKmh: 0,
-        hasBatteryConfig: true,
-      }),
+    () => alertRules.filter((rule) => rule.controlId === metric.controlId).map(toTestRule),
     [alertRules, metric.controlId],
   )
   const alertTest = useAlertTest({

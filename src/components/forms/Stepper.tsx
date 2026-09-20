@@ -7,6 +7,8 @@ import { useResolvedControlColors } from '@/hooks/useTheme'
 
 interface StepperProps {
   value: number
+  /** Presentation only; stepping and bounds keep the full numeric precision. */
+  formatValue?: (value: number) => string
   unit?: string
   min?: number
   max?: number
@@ -19,6 +21,7 @@ interface StepperProps {
 
 export function Stepper({
   value,
+  formatValue,
   unit,
   min,
   max,
@@ -53,7 +56,7 @@ export function Stepper({
         <MinusIcon size={14} color={control.icon} weight="bold" />
       </Pressable>
       <View style={[styles.valueWrap, fullWidth && styles.fullWidthValueWrap]}>
-        <Text style={styles.stepperValue}>{value}</Text>
+        <Text style={styles.stepperValue}>{formatValue ? formatValue(value) : value}</Text>
         {unit ? <Text style={styles.stepperUnit}>{unit}</Text> : null}
       </View>
       <Pressable

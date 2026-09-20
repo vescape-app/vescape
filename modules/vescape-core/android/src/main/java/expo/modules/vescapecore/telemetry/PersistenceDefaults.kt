@@ -21,3 +21,10 @@ val DEFAULT_HISTORY_METRIC_HOT_RANGES: Map<String, Map<String, Double>> = mapOf(
   "motorCurrent" to mapOf("start" to 35.0, "end" to 55.0),
   "batteryCurrent" to mapOf("start" to 25.0, "end" to 45.0),
 )
+
+/**
+ * @parity /modules/vescape-core/ios/telemetry/PersistenceDefaults.swift `validUnitSystem`
+ * @parity /src/helpers/units.ts `UnitSystem`
+ */
+internal fun validUnitSystem(value: Any?): String? =
+  (value as? String)?.takeIf { it == "metric" || it == "imperial" }

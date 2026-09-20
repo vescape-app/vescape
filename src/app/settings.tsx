@@ -1,3 +1,4 @@
+import { useSettingsStore } from '@/modules/settings/store/settingsStore'
 import { useLayoutEffect } from 'react'
 import { View, StyleSheet, ScrollView, Platform } from 'react-native'
 import { Text } from '@/components/base/Text'
@@ -27,6 +28,7 @@ import { routes } from '@/navigation/routes'
 import { theme } from '@/constants/theme'
 import { DASH, formatBytes } from '@/helpers/format'
 import { IconButton } from '@/components/base/IconButton'
+import { Select } from '@/components/forms/Select'
 import { SettingsCard } from '@/components/settings/SettingsCard'
 import { SettingsRow } from '@/components/settings/SettingsRow'
 import { SettingsSectionTitle } from '@/components/settings/SettingsSectionTitle'
@@ -42,6 +44,8 @@ import { useResolvedNeutralColors } from '@/hooks/useTheme'
 const appVersion = Constants.expoConfig?.version ?? DASH
 
 export default function SettingsScreen() {
+  const unitSystem = useSettingsStore((state) => state.unitSystem)
+  const setSetting = useSettingsStore((state) => state.set)
   const db = useSettingsDatabaseOps()
   const navigation = useNavigation()
   const appStatus = useAppStatusStore((state) => state.status)
@@ -118,8 +122,25 @@ export default function SettingsScreen() {
             hint="Board warnings and health checks"
             onPress={() => router.push(routes.settingsDiagnostics)}
           />
+          <SettingsRow
+            icon={GaugeIcon}
+            iconColor={theme.telemetry.speed}
+            label="Units"
+            hint={unitSystem === 'metric' ? 'km/h · km · m' : 'mph · mi · ft'}
+            right={
+              <Select
+                options={[
+                  { label: 'Metric', value: 'metric' },
+                  { label: 'Imperial', value: 'imperial' },
+                ]}
+                value={unitSystem}
+                onChange={(value) => void setSetting('unitSystem', value)}
+                style={styles.unitsSelect}
+                testID="unit-system-select"
+              />
+            }
+          />
         </SettingsCard>
-
         <SettingsSectionTitle>Appearance</SettingsSectionTitle>
         <SettingsCard>
           <SettingsRow
@@ -207,6 +228,7 @@ const styles = StyleSheet.create({
     padding: 16,
     gap: 8,
   },
+  unitsSelect: { width: 150 },
   headerStats: {
     flexDirection: 'row',
     gap: 20,

@@ -62,19 +62,10 @@ enum WatchGauge {
     return String(format: "%.0f%@", value.rounded(.toNearestOrAwayFromZero), suffix)
   }
 
-  /// Remaining distance to the Direction Point: metres under a kilometre, one decimal above it —
-  /// the same split the phone's nav readout uses.
-  ///
-  /// Both roundings are away from zero for the reason `whole` documents: Java rounds halves up and
-  /// C rounds them to even, so 1 250 m would read `1.3 km` on one wrist and `1.2 km` on the other.
-  ///
-  /// @parity /watch/wearos/src/main/java/app/vescape/wear/NavPointer.kt `distanceLabel`
-  static func distance(_ meters: Double) -> String {
-    guard meters.isFinite else { return dash }
-    if meters < 1000 {
-      return String(format: "%.0f m", meters.rounded(.toNearestOrAwayFromZero))
-    }
-    return String(format: "%.1f km", (meters / 100).rounded(.toNearestOrAwayFromZero) / 10)
+  /// Remaining distance follows the phone preference; geometry remains metric.
+  /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/UnitPresentation.kt `distance`
+  static func distance(_ meters: Double, unitSystem: String = "metric") -> String {
+    UnitPresentation.distance(meters, unitSystem: unitSystem)
   }
 }
 

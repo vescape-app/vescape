@@ -14,6 +14,9 @@ val extractProductionPersistence by tasks.registering {
     delete(output)
     listOf(
       "expo/modules/vescapecore/alerts/AlertDefaults.kt",
+      "expo/modules/vescapecore/alerts/ConfigRelativeFields.kt",
+      "expo/modules/vescapecore/telemetry/AlertPresetPersistence.kt",
+      "expo/modules/vescapecore/telemetry/AlertPresetGenerator.kt",
       "expo/modules/vescapecore/alerts/SoundPackFileSwap.kt",
       "expo/modules/vescapecore/alerts/SoundSampleQueue.kt",
       "expo/modules/vescapecore/warnings/BoardWarningSeverity.kt",
@@ -71,3 +74,5 @@ tasks.withType<Test>().configureEach {
   outputs.upToDateWhen { false }
   outputs.cacheIf { false }
 }
+
+sourceSets.main { resources { srcDirs("../shared", "../../../shared/data"); include("alert-preset-definitions.json", "cell-presets.json") } }

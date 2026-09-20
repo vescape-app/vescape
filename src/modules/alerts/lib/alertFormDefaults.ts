@@ -1,4 +1,11 @@
 import {
+  formatSpeedValue,
+  speedFromKmh,
+  speedToKmh,
+  speedUnit,
+  type UnitSystem,
+} from '@/helpers/units'
+import {
   ALERT_BEEP_COUNT_DEFAULT,
   getAlertSounds,
   type AlertSound,
@@ -49,12 +56,15 @@ export function renderPreviewTemplate(
   dialConfig: ReturnType<typeof getAlertDialConfig>,
   controlId: string,
   batteryConfig: DerivedBatteryConfig | null,
+  units: UnitSystem = 'metric',
 ): string {
-  const formatted = dialConfig.format(threshold)
+  const formatted =
+    controlId === 'speed' ? formatSpeedValue(threshold, units) : dialConfig.format(threshold)
+  const displayUnit = controlId === 'speed' ? speedUnit(units) : unit
   let result = template
     .replace(/\{value\}/g, formatted)
     .replace(/\{threshold\}/g, formatted)
-    .replace(/\{unit\}/g, unit)
+    .replace(/\{unit\}/g, displayUnit)
   if (controlId === 'battery') {
     if (batteryConfig) {
       result = result.replace(/\{percent\}/g, formatted)
@@ -113,12 +123,24 @@ export function getNewFormDefaults(
   geigerSoundType: AlertSoundType,
   controlId: string,
   batteryConfig: DerivedBatteryConfig | null,
+  units: UnitSystem = 'metric',
 ) {
-  const snap = (v: number) =>
-    Math.min(
+  const snap = (v: number) => {
+    if (controlId === 'speed' && units === 'imperial') {
+      const mph = Math.min(
+        Math.floor(speedFromKmh(dialConfig.max, units)),
+        Math.max(
+          Math.ceil(speedFromKmh(dialConfig.min, units)),
+          Math.round(speedFromKmh(v, units)),
+        ),
+      )
+      return speedToKmh(mph, units)
+    }
+    return Math.min(
       dialConfig.max,
       Math.max(dialConfig.min, Math.round(v / dialConfig.step) * dialConfig.step),
     )
+  }
   const high = snap(dialConfig.min + (dialConfig.max - dialConfig.min) * 0.75)
 
   const preset = DEFAULT_ALERT_SEEDS[controlId]

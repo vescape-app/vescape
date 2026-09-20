@@ -202,19 +202,23 @@ internal func renderAlertMessageTemplate(
   _ template: String,
   alert: FiredAlert,
   batteryPercent: Double?,
-  onDiagnostic: DiagnosticSink? = nil
+  onDiagnostic: DiagnosticSink? = nil,
+  unitSystem: String = "metric"
 ) -> String {
   let isBattery = alert.controlId == "battery"
+  func format(_ value: Double) -> String {
+    alert.controlId == "speed" ? UnitPresentation.formatSpokenSpeed(value, unitSystem) : formatAlertValue(value, alert.controlId)
+  }
   var text = template
   text = text.replacingOccurrences(
     of: "{value}",
-    with: formatAlertValue(alert.value, alert.controlId)
+    with: format(alert.value)
   )
   text = text.replacingOccurrences(
     of: "{threshold}",
-    with: formatAlertValue(alert.threshold, alert.controlId)
+    with: format(alert.threshold)
   )
-  text = text.replacingOccurrences(of: "{unit}", with: alertControlUnit(alert.controlId))
+  text = text.replacingOccurrences(of: "{unit}", with: alert.controlId == "speed" ? UnitPresentation.speedUnit(unitSystem) : alertControlUnit(alert.controlId))
   if isBattery {
     text = text.replacingOccurrences(
       of: "{voltage}",
@@ -364,6 +368,7 @@ internal final class AlertEngine {
     return coalesceByControl(sorted)
   }
 
+  // @parity /src/modules/alerts/lib/resolvedAlertRules.ts `resolvedAlertRules`
   private func effectiveThresholds(_ rule: AlertRule) -> (Double, Double?)? {
     guard rule.thresholdKind == "config-relative" else { return (rule.threshold, rule.thresholdMax) }
     guard

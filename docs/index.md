@@ -26,6 +26,7 @@
 
 ### Features
 
+- [units.md](./units.md) — metric/imperial speed and distance preferences, conversion, editing, alerts, and watches
 - [accessories.md](./accessories.md) — in-progress accessory design: ground-clearance tilt sensor and brake light
 - [accessory-protocol.md](./accessory-protocol.md) — JSON/BLE protocol v1: discovery implemented against shared fixtures; commands, readings, and failure handling still draft
 - [history.md](./history.md) — ride history persistence, grouping, markers, and map rendering

@@ -25,6 +25,7 @@ struct RadarScreen: View {
   /// The rider's own colour when they picked one on the phone — the same dot every other page pins
   /// them under.
   var riderColor: Color = Palette.speed
+  var unitSystem: String = "metric"
   @StateObject private var radar = RadarStore()
   @State private var index = 0
 
@@ -136,7 +137,7 @@ struct RadarScreen: View {
         // Out to the right of the rider: the header owns the top, and a horizontal radius keeps the
         // labels off the imagery the rider is reading ahead of them.
         ForEach(rings, id: \.0) { km, fraction in
-          Text(km == rings.last?.0 ? "\(km) km" : "\(km)")
+          Text(unitSystem == "imperial" ? WatchGauge.distance(Double(km) * 1000, unitSystem: unitSystem) : (km == rings.last?.0 ? "\(km) km" : "\(km)"))
             .font(WatchTypography.mono(size: 8))
             .foregroundStyle(Palette.dimText)
             .position(x: centre.x + side / 2 * fraction - RING_LABEL_INSET, y: centre.y)

@@ -109,9 +109,8 @@ export const useBoardStore = create<BoardState & BoardActions>((set, get) => ({
 
   async updateBoard(board) {
     await upsertBoard(board)
-    set((state) => ({
-      boards: state.boards.map((b) => (b.id === board.id ? board : b)),
-    }))
+    const boards = await getBoards()
+    set((state) => ({ boards: mergeBoards(state.boards, boards) }))
   },
 
   async setWarningDismissed(boardId, kind, dismissed) {

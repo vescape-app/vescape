@@ -7,10 +7,9 @@ import { basename, join } from 'path'
 import {
   ALERT_PRESET_METRICS,
   ALERT_PRESET_SOURCE,
-  generateAlertPresetRules,
-  presetAlertRuleId,
   type AlertPresetLevel,
 } from '../src/modules/alerts/lib/alertPresets.ts'
+import type { AlertTestRule } from 'vescape-core'
 import { DEFAULT_BOARD_TOP_SPEED_KMH } from '../src/modules/alerts/lib/boardAlertSettings.ts'
 
 /**
@@ -158,11 +157,12 @@ const TIMESTAMP_COLUMNS: Record<string, string[]> = {
 
 /**
  * Gives the kept board the `normal` Alert Preset on every metric, the way the Alerts setup screen
- * would: the same generator the app uses (`alertPresetStore.regenerateMetric`), the same rule ids
- * and `source`, plus the `alertPreset` selection and onboarding flag so the setup UI agrees with
- * the rules. A real backup can have no alerts at all, which leaves the alerts panel blank.
+ * would. The Swift host runs the production native generator, so this script has no preset
+ * calculation of its own. Selection and onboarding settings keep the setup UI aligned with
+ * those rules. This tooling requires Swift on macOS. A real backup can have no alerts at all,
+ * which leaves the alerts panel blank.
  */
-function seedAlertPresets(db: Database, boardId: string): void {
+async function seedAlertPresets(db: Database, boardId: string, work: string): Promise<void> {
   const setting = (key: string): unknown => {
     const row = db
       .query<{ value_json: string }, [string, string]>(
@@ -173,31 +173,40 @@ function seedAlertPresets(db: Database, boardId: string): void {
   }
 
   const topSpeed = setting('topSpeedKmh')
-  const options = {
-    boardTopSpeedKmh: typeof topSpeed === 'number' ? topSpeed : DEFAULT_BOARD_TOP_SPEED_KMH,
-    hasBatteryConfig: setting('batteryConfig') != null,
-  }
+  const topSpeedKmh = typeof topSpeed === 'number' ? topSpeed : DEFAULT_BOARD_TOP_SPEED_KMH
+  const hasBatteryConfig = setting('batteryConfig') != null
+  const previewPath = join(work, 'alert-presets.json')
+  const packagePath = join(ROOT, 'modules', 'vescape-core')
+  await $`swift run --package-path ${packagePath} RecordingPersistenceHost --preview-alert-presets ${topSpeedKmh} ${hasBatteryConfig} ${previewPath}`
+  const rules: AlertTestRule[] = await Bun.file(previewPath).json()
   const now = Date.now()
 
+  // Older screenshot backups predate repeat cadence and beep count columns.
+  const alertColumns = new Set(
+    db
+      .query<{ name: string }, []>('PRAGMA table_info(alerts)')
+      .all()
+      .map((column) => column.name),
+  )
   db.exec('DELETE FROM alerts WHERE board_id = ?', [boardId])
-  let count = 0
-  for (const metric of ALERT_PRESET_METRICS) {
-    generateAlertPresetRules(metric, FIXTURE_ALERT_PRESET_LEVEL, options).forEach((spec, index) => {
-      db.exec(
-        'INSERT INTO alerts (board_id, id, control_id, threshold, threshold_max, enabled, sound_type, created_at, source) VALUES (?, ?, ?, ?, ?, 1, ?, ?, ?)',
-        [
-          boardId,
-          presetAlertRuleId(metric, index),
-          spec.controlId,
-          spec.threshold,
-          spec.thresholdMax,
-          spec.soundType,
-          now,
-          ALERT_PRESET_SOURCE,
-        ],
-      )
-      count += 1
-    })
+  for (const rule of rules) {
+    const values = Object.entries({
+      board_id: boardId,
+      id: rule.id,
+      control_id: rule.controlId,
+      threshold: rule.threshold,
+      threshold_max: rule.thresholdMax,
+      enabled: 1,
+      sound_type: rule.soundType,
+      created_at: now,
+      source: ALERT_PRESET_SOURCE,
+      repeat_every_seconds: rule.repeatEverySeconds,
+      beep_count: rule.beepCount,
+    }).filter(([column]) => alertColumns.has(column))
+    db.exec(
+      `INSERT INTO alerts (${values.map(([column]) => column).join(', ')}) VALUES (${values.map(() => '?').join(', ')})`,
+      values.map(([, value]) => value),
+    )
   }
 
   const selection = Object.fromEntries(
@@ -205,6 +214,7 @@ function seedAlertPresets(db: Database, boardId: string): void {
   )
   for (const [key, value] of [
     ['alertPreset', selection],
+    ['matchBoardConfig', {}],
     ['alertPresetsOnboarded', true],
   ] as const) {
     db.exec(
@@ -214,10 +224,12 @@ function seedAlertPresets(db: Database, boardId: string): void {
     )
   }
 
-  console.log(`  alerts seeded: ${count} (${FIXTURE_ALERT_PRESET_LEVEL} preset, every metric)`)
+  console.log(
+    `  alerts seeded: ${rules.length} (${FIXTURE_ALERT_PRESET_LEVEL} preset, every metric)`,
+  )
 }
 
-function sanitize(dbPath: string, rides: number): void {
+async function sanitize(dbPath: string, rides: number, work: string): Promise<void> {
   const db = new Database(dbPath)
   db.exec('PRAGMA foreign_keys = OFF')
 
@@ -254,7 +266,7 @@ function sanitize(dbPath: string, rides: number): void {
   db.exec('DELETE FROM boards WHERE id <> ?', [boardId])
   db.exec('UPDATE boards SET name = ?, ble_id = ?', [FIXTURE_BOARD_NAME, FIXTURE_DEVICE_ID])
 
-  seedAlertPresets(db, boardId)
+  await seedAlertPresets(db, boardId, work)
 
   // Tunes follow the surviving board so the tune panel is not empty.
   const tuneIds = db
@@ -340,7 +352,7 @@ try {
   if (!manifest) throw new Error('Source is missing manifest.json (not a vesc-db-backup zip?)')
 
   console.log(`Sanitizing ${basename(args.source)} → ${basename(args.out)}`)
-  sanitize(dbPath, args.rides)
+  await sanitize(dbPath, args.rides, work)
 
   manifest.createdAt = Date.now()
   manifest.dbSizeBytes = statSync(dbPath).size

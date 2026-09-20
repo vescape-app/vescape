@@ -1,3 +1,9 @@
+import {
+  lengthInputToMeters,
+  lengthFromMeters,
+  speedInputToKmh,
+  speedFromKmh,
+} from '@/helpers/units'
 import { describe, expect, test } from 'bun:test'
 
 import {
@@ -967,5 +973,83 @@ describe('Tune Preview longitudinal response', () => {
       erpm: speedKmhToReferenceErpm(15),
       measuredAccelerationErpmPerTick: 0,
     })
+  })
+})
+
+describe('Rider Units preserve Tune Preview physics', () => {
+  test('repeated presentation switches retain canonical signed scenario and terrain progression', () => {
+    const parameters = readyParameters()
+    for (const initialSpeed of [-10, 0, 25]) {
+      const initial = createTunePreviewState(initialSpeed)
+      const input = {
+        pitchInputDegrees: 0,
+        pitchInputActive: false,
+        speedKmh: initialSpeed,
+        hillsEnabled: true,
+        hillHeightMeters: 0.5,
+        hillSpacingMeters: 5,
+      }
+      const switched = { ...input }
+      for (let i = 0; i < 100; i++) {
+        for (const units of ['imperial', 'metric'] as const) {
+          switched.speedKmh = speedInputToKmh(
+            speedFromKmh(switched.speedKmh, units),
+            switched.speedKmh,
+            units,
+            -30,
+            50,
+          )
+          switched.hillHeightMeters = lengthInputToMeters(
+            lengthFromMeters(switched.hillHeightMeters, units),
+            switched.hillHeightMeters,
+            units,
+            0,
+            50,
+          )
+          switched.hillSpacingMeters = lengthInputToMeters(
+            lengthFromMeters(switched.hillSpacingMeters, units),
+            switched.hillSpacingMeters,
+            units,
+            2,
+            1000,
+          )
+        }
+      }
+      expect(switched).toEqual(input)
+      expect(stepTunePreview(initial, parameters, switched, 1 / 60)).toEqual(
+        stepTunePreview(initial, parameters, input, 1 / 60),
+      )
+    }
+  })
+
+  test('equivalent imperial edits produce the same signed speed and physical terrain', () => {
+    const parameters = readyParameters()
+    const imperialSpeed = speedInputToKmh(-10, 0, 'imperial', -30, 50)
+    const imperialHeight = lengthInputToMeters(5, 0, 'imperial', 0, 50)
+    const imperialSpacing = lengthInputToMeters(100, 2, 'imperial', 2, 1000)
+    const simulate = (speedKmh: number, hillHeightMeters: number, hillSpacingMeters: number) => {
+      let state = createTunePreviewState(speedKmh)
+      for (let i = 0; i < 60; i++)
+        state = stepTunePreview(
+          state,
+          parameters,
+          {
+            pitchInputDegrees: 0,
+            pitchInputActive: false,
+            speedKmh,
+            hillsEnabled: true,
+            hillHeightMeters,
+            hillSpacingMeters,
+          },
+          1 / 60,
+        )
+      return state
+    }
+    const metric = simulate(-16.09344, 1.524, 30.48)
+    const imperial = simulate(imperialSpeed, imperialHeight, imperialSpacing)
+    expect(imperial.syntheticSpeedKmh).toBeCloseTo(metric.syntheticSpeedKmh, 10)
+    expect(imperial.groundTravelMeters).toBeCloseTo(metric.groundTravelMeters, 10)
+    expect(imperial.terrainSlope).toBeCloseTo(metric.terrainSlope, 10)
+    expect(imperial.angleDegrees).toBeCloseTo(metric.angleDegrees, 10)
   })
 })

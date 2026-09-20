@@ -28,6 +28,10 @@ android {
   }
 
   sourceSets.test.resources.srcDir "../shared"
+  sourceSets.main.resources {
+    srcDirs "../shared", "../../../shared/data"
+    include "alert-preset-definitions.json", "cell-presets.json"
+  }
 
   buildTypes {
     release {

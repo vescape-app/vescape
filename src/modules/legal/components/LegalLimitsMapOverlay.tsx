@@ -14,6 +14,7 @@ import {
   LEGAL_ROAD_STATUS_LEGEND,
   type LegalLimitCountry,
 } from '@/modules/legal/lib/legalLimits'
+import { useLegalReferenceSpeedFormat } from '@/modules/legal/hooks/useLegalLimitsFormat'
 
 const LIST_PANEL_HEIGHT = 280
 const OVERLAY_GAP = 8
@@ -29,6 +30,7 @@ interface LegalLimitsMapOverlayProps {
 
 /** Legal limits mode: the road status legend, the country list and the per-country sheet. */
 export function LegalLimitsMapOverlay({ visible, top, onExit }: LegalLimitsMapOverlayProps) {
+  const formatReferenceSpeed = useLegalReferenceSpeedFormat()
   const insets = useSafeAreaInsets()
   const [listOpen, setListOpen] = useState(false)
   const [selectedCountry, setSelectedCountry] = useState<LegalLimitCountry | null>(null)
@@ -119,7 +121,7 @@ export function LegalLimitsMapOverlay({ visible, top, onExit }: LegalLimitsMapOv
                   {LEGAL_ROAD_STATUS_LABELS[country.status]}
                 </Text>
                 <Text style={styles.legalCountrySpeed}>
-                  {country.referenceSpeedKmh == null ? 'N/A' : `${country.referenceSpeedKmh} km/h`}
+                  {formatReferenceSpeed(country.referenceSpeedKmh)}
                 </Text>
               </Pressable>
             ))}
@@ -246,7 +248,7 @@ const styles = StyleSheet.create({
     fontWeight: '700',
   },
   legalCountrySpeed: {
-    width: 56,
+    minWidth: 64,
     color: theme.neutral.textPrimary,
     fontSize: 12,
     fontWeight: '900',

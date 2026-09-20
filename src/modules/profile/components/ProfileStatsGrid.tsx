@@ -2,7 +2,7 @@ import { StyleSheet, View } from 'react-native'
 
 import { Text } from '@/components/base/Text'
 import { theme } from '@/constants/theme'
-import type { ProfileStatItem } from '@/modules/profile/components/profileStatItems'
+import type { ProfileStatItem } from '@/modules/profile/hooks/useProfileStatItems'
 
 interface ProfileStatsGridProps {
   items: ProfileStatItem[]

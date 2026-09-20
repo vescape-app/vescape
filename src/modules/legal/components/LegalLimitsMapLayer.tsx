@@ -5,12 +5,10 @@ import { useResolvedAccentColors, useResolvedNeutralColors } from '@/hooks/useTh
 import {
   getLegalLimitCountryByCode,
   legalCountryFilterExpression,
-  legalLimitLabelShape,
   legalStatusColorExpression,
   type LegalLimitCountry,
 } from '@/modules/legal/lib/legalLimits'
-
-const LEGAL_LIMIT_LABEL_SHAPE = legalLimitLabelShape()
+import { useLegalLimitLabelShape } from '@/modules/legal/hooks/useLegalLimitsFormat'
 
 export function LegalLimitsMapLayer({
   interactive = true,
@@ -19,6 +17,7 @@ export function LegalLimitsMapLayer({
   interactive?: boolean
   onSelectCountry: (country: LegalLimitCountry) => void
 }) {
+  const labelShape = useLegalLimitLabelShape()
   const neutral = useResolvedNeutralColors()
   const accents = useResolvedAccentColors()
   const statusColors = {
@@ -74,7 +73,7 @@ export function LegalLimitsMapLayer({
       </VectorSource>
       <ShapeSource
         id="legal-speed-labels"
-        shape={LEGAL_LIMIT_LABEL_SHAPE}
+        shape={labelShape}
         hitbox={{ width: 44, height: 44 }}
         onPress={interactive ? handleLabelPress : undefined}
       >
