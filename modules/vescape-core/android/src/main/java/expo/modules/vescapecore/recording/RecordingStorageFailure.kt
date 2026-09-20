@@ -1,5 +1,9 @@
 package expo.modules.vescapecore.recording
 
+import kotlinx.coroutines.runBlocking
+import androidx.room.useWriterConnection
+import androidx.room.immediateTransaction
+import androidx.room.execSQL
 import android.content.Context
 import android.os.Handler
 import android.os.Looper
@@ -98,15 +102,14 @@ internal object RecordingStorageFailure {
     fun initialize(context: Context) {
       appContext = context.applicationContext
       startupCheck(context) {
-        val sqlite = TelemetryDatabase.get(context.applicationContext).openHelper.writableDatabase
-        sqlite.beginTransaction()
-        try {
-            sqlite.execSQL("CREATE TABLE storage_startup_probe (value INTEGER NOT NULL)")
-            sqlite.execSQL("INSERT INTO storage_startup_probe (value) VALUES (1)")
-            sqlite.execSQL("DROP TABLE storage_startup_probe")
-            sqlite.setTransactionSuccessful()
-        } finally {
-            sqlite.endTransaction()
+        runBlocking {
+          TelemetryDatabase.get(context.applicationContext).useWriterConnection { sqlite ->
+            sqlite.immediateTransaction {
+              sqlite.execSQL("CREATE TABLE storage_startup_probe (value INTEGER NOT NULL)")
+              sqlite.execSQL("INSERT INTO storage_startup_probe (value) VALUES (1)")
+              sqlite.execSQL("DROP TABLE storage_startup_probe")
+            }
+          }
         }
       }
     }
@@ -205,6 +208,16 @@ internal object RecordingStorageFailure {
         is SQLiteDatabaseCorruptException,
         is SQLiteDiskIOException,
         is SQLiteReadOnlyDatabaseException -> RecordingStorageFailureKind.StorageUnavailable
+        is android.database.SQLException -> {
+            // sqlite-bundled 2.6.2 exposes result codes through this stable exception prefix.
+            val code = Regex("^Error code: (\\d+)(?:,|$)").find(error.message.orEmpty())
+                ?.groupValues?.get(1)?.toIntOrNull()?.and(0xff)
+            when (code) {
+                13 -> RecordingStorageFailureKind.FullDisk
+                8, 10, 11, 14, 26 -> RecordingStorageFailureKind.StorageUnavailable
+                else -> error.cause?.let(::classify) ?: RecordingStorageFailureKind.WriteFailed
+            }
+        }
         else -> error.cause?.let(::classify) ?: RecordingStorageFailureKind.WriteFailed
     }
 }

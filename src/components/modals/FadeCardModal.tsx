@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, type ReactNode } from 'react'
 import {
   Animated,
   Modal,
+  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -45,6 +46,8 @@ interface FadeCardModalProps {
   children: ReactNode
   /** The card finished fading out and is gone. Not called for a fade-out cut short by a reopen. */
   onExited?: () => void
+  /** Native presentation is gone; safe to open an OS share sheet or another modal. */
+  onDismissed?: () => void
 }
 
 /**
@@ -71,6 +74,7 @@ export function FadeCardModal({
   cardStyle,
   children,
   onExited,
+  onDismissed,
 }: FadeCardModalProps) {
   const [opacity] = useState(() => new Animated.Value(0))
   const [scale] = useState(() => new Animated.Value(0.92))
@@ -107,7 +111,13 @@ export function FadeCardModal({
     }
   }, [visible, mounted, opacity, scale])
 
-  if (!mounted) return null
+  const wasMounted = useRef(false)
+  useEffect(() => {
+    if (wasMounted.current && !mounted && Platform.OS !== 'ios') onDismissed?.()
+    wasMounted.current = mounted
+  }, [mounted, onDismissed])
+
+  // Keep the React Modal mounted while hidden so iOS can deliver its native onDismiss event.
 
   const dismiss = onDismiss && !dismissDisabled ? onDismiss : undefined
   const header =
@@ -135,7 +145,8 @@ export function FadeCardModal({
 
   return (
     <Modal
-      visible
+      visible={mounted}
+      onDismiss={onDismissed}
       transparent
       animationType="none"
       // No `onDismiss` means the card is non-dismissible: swallow Android back instead of exiting.
