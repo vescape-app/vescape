@@ -4,6 +4,11 @@
   "baseMs": 1700000000123,
   "name": "Ride <&> \"' \u0001 🚲",
   "escapedName": "Ride &lt;&amp;&gt; &quot;&apos;  🚲",
+  "decimalCoordinates": [
+    { "latitudeE7": 1, "longitudeE7": -1, "lat": "0.0000001", "lon": "-0.0000001" },
+    { "latitudeE7": -1000, "longitudeE7": 1000, "lat": "-0.0001000", "lon": "0.0001000" },
+    { "latitudeE7": 0, "longitudeE7": 10000000, "lat": "0.0000000", "lon": "1.0000000" }
+  ],
   "csv": {
     "count": 23005,
     "keyframeEvery": 5000,

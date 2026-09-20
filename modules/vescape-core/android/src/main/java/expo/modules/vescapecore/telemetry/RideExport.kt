@@ -1,5 +1,7 @@
 package expo.modules.vescapecore.telemetry
 
+import androidx.room.useReaderConnection
+import androidx.room.deferredTransaction
 import java.io.File
 import java.io.Writer
 import java.time.Instant
@@ -14,6 +16,10 @@ import java.util.UUID
  * @parity /modules/vescape-core/src/index.ts `RideExportFile`
  */
 internal object RideExport {
+  // Driver-backed export Room instance: one WAL read snapshot across all generated DAO calls.
+  suspend fun <T> snapshot(db: TelemetryRoomDatabase, block: suspend (TelemetryDao) -> T): T =
+    db.useReaderConnection { reader -> reader.deferredTransaction { block(db.telemetryDao()) } }
+
   const val BATCH_SIZE = 1000
   private val time = DateTimeFormatter.ofPattern("uuuu-MM-dd'T'HH:mm:ss.SSS'Z'", Locale.ROOT).withZone(ZoneOffset.UTC)
 
@@ -51,7 +57,7 @@ internal object RideExport {
       if (rows.isEmpty()) break
       for (p in rows) {
         if (!p.isPrecise()) continue
-        writer.write("<trkpt lat=\"${p.latitudeE7 / 10_000_000.0}\" lon=\"${p.longitudeE7 / 10_000_000.0}\">")
+        writer.write("<trkpt lat=\"${coordinate(p.latitudeE7)}\" lon=\"${coordinate(p.longitudeE7)}\">")
         p.altitudeCm?.let { writer.write("<ele>${it / 100.0}</ele>") }
         writer.write("<time>${time.format(Instant.ofEpochMilli(p.fixAtMs))}</time>")
         p.gpsSpeedCentiMps?.let { writer.write("<extensions><gpxtpx:TrackPointExtension><gpxtpx:speed>${it / 100.0}</gpxtpx:speed></gpxtpx:TrackPointExtension></extensions>") }
@@ -139,6 +145,11 @@ internal object RideExport {
       }
       return null
     }
+  }
+
+  private fun coordinate(e7: Int): String {
+    val magnitude = kotlin.math.abs(e7.toLong())
+    return "${if (e7 < 0) "-" else ""}${magnitude / 10_000_000}.${(magnitude % 10_000_000).toString().padStart(7, '0')}"
   }
 
   private fun xml(value: String): String = buildString {

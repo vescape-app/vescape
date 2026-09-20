@@ -21,7 +21,7 @@ import org.junit.runner.RunWith
  */
 @RunWith(AndroidJUnit4::class)
 class RideReadQueriesTest {
-  private lateinit var database: TelemetryDatabase
+  private lateinit var database: TelemetryRoomDatabase
   private lateinit var dao: TelemetryDao
   private val displayLimit = 20_000
   private val base = 1_714_521_600_000L
@@ -29,7 +29,7 @@ class RideReadQueriesTest {
   @Before
   fun setUp() {
     val context = ApplicationProvider.getApplicationContext<Context>()
-    database = Room.inMemoryDatabaseBuilder(context, TelemetryDatabase::class.java)
+    database = Room.inMemoryDatabaseBuilder(context, TelemetryRoomDatabase::class.java)
       .allowMainThreadQueries().build()
     dao = database.telemetryDao()
   }

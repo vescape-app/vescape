@@ -40,7 +40,7 @@ func runRideExportContract() throws {
   try require(occurrences(xml, "<trkpt ") == expected.count, "export exceeds display cap after imprecise page")
   var remaining = xml[...]
   for i in expected {
-    let coordinate = "lat=\"\(Double(521234567 + i) / 10_000_000.0)\""
+    let coordinate = "lat=\"\(String(format: "%.7f", locale: Locale(identifier: "en_US_POSIX"), Double(521234567 + i) / 10_000_000.0))\""
     try require(remaining.range(of: coordinate) != nil, "point lost/reordered \(i)")
     let range = remaining.range(of: coordinate)!
     remaining = remaining[range.upperBound...]
@@ -54,6 +54,18 @@ func runRideExportContract() throws {
   try require(occurrences(export(recording: nil), "<trkpt ") == expected.count + 2, "legacy missing accuracy and Favorite recording range")
   try require(occurrences(export(board: nil), "<trkpt ") == 1, "null Board scope")
   try require(!export(board: "empty").contains("<trkpt "), "empty range exports valid XML")
+  let coordinates = fixture["decimalCoordinates"] as! [[String: Any]]
+  try queue.write { db in
+    for c in coordinates {
+      try insertRideTrackPoint(db, RideTrackPoint(recordingId: "ride", boardId: "decimal", fixAtMs: base,
+        latitudeE7: (c["latitudeE7"] as! NSNumber).int64Value, longitudeE7: (c["longitudeE7"] as! NSNumber).int64Value,
+        accuracyCm: 100, gpsSpeedCentiMps: nil, bearingCentiDeg: nil, altitudeCm: nil))
+    }
+  }
+  let decimal = try export(board: "decimal", start: base, end: base)
+  for c in coordinates {
+    try require(decimal.contains("<trkpt lat=\"\(c["lat"]!)\" lon=\"\(c["lon"]!)\">"), "GPX decimal coordinate syntax near zero")
+  }
   try queue.close()
 }
 

@@ -82,7 +82,11 @@ and coalescing. Native app lifecycle integration remains separate from the SQLit
 `RideExportHostTest`, `runRideExportContract`, and `runRideCsvContract` execute the production Room/GRDB GPX and CSV writers
 against `shared/ride-export-contract.json`. They cover complete keyset paging beyond the display
 cap, equal-time ordering, exact Board/recording/range scope, legacy precision, optional GPX fields,
-XML escaping and empty exports. The export reads existing Ride Track storage without changing
+XML escaping, fixed-decimal coordinates near zero, and empty exports. Android additionally
+commits a concurrent recording write while export holds its first-page snapshot, then verifies
+later export pages exclude that write. `RideExportSnapshotTest` repeats that contract through
+Android's production database owner, checks the startup probe and backup/restore adapters, and
+classifies actual bundled-driver storage errors. The export reads existing Ride Track storage without changing
 its schema. Native bridge and OS sharing require app/device verification.
 
 CSV additionally exercises `getRideExportKeyframe` and `getRideExportTelemetryPage` with 23,005

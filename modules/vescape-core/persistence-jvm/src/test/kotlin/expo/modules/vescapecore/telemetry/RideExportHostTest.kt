@@ -3,6 +3,12 @@ package expo.modules.vescapecore.telemetry
 import androidx.room.Room
 import androidx.sqlite.driver.bundled.BundledSQLiteDriver
 import java.nio.file.Files
+import java.io.StringWriter
+import java.util.Locale
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.TimeUnit
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
 import java.io.File
 import java.net.URI
 import javax.xml.parsers.DocumentBuilderFactory
@@ -12,6 +18,45 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class RideExportHostTest {
+  @Test fun exportSnapshotAllowsRecordingCommitAndKeepsLaterPagesStable(): Unit = runBlocking {
+    val dir = Files.createTempDirectory("ride-export-snapshot").toFile()
+    val path = File(dir, "test.db").path
+    val db = Room.databaseBuilder<TelemetryRoomDatabase>(path).setDriver(BundledSQLiteDriver()).build()
+    val reader = db
+    try {
+      val dao = db.telemetryDao()
+      fun point(i: Int) = RideTrackPointEntity(recordingId = "ride", boardId = "board", fixAtMs = i.toLong(),
+        latitudeE7 = i, longitudeE7 = -i, accuracyCm = 100,
+        gpsSpeedCentiMps = null, bearingCentiDeg = null, altitudeCm = null)
+      val count = RideExport.BATCH_SIZE * 2 + 1
+      dao.insertRideTrackPoints((0 until count).map(::point))
+      val snapshotReading = CountDownLatch(1)
+      val committed = CountDownLatch(1)
+      val recording = async(Dispatchers.IO) {
+        check(snapshotReading.await(10, TimeUnit.SECONDS)) { "Export never started reading" }
+        try { dao.insertRideTrackPoints(listOf(point(count))) } finally { committed.countDown() }
+      }
+      var paused = false
+      val writer = object : StringWriter() {
+        override fun write(text: String) {
+          if (!paused && text.startsWith("<trkpt ")) {
+            paused = true
+            snapshotReading.countDown()
+            check(committed.await(10, TimeUnit.SECONDS)) { "Export snapshot blocked recording commit" }
+          }
+          super.write(text)
+        }
+      }
+      RideExport.snapshot(reader) { RideExport.writeGpx(it, writer, 0, count.toLong(), "board", "ride", "Snapshot") }
+      recording.await()
+      assertEquals(count, "<trkpt ".toRegex().findAll(writer.toString()).count())
+      // A fresh snapshot sees the committed write that the held snapshot excluded from later pages.
+      val fresh = StringWriter()
+      RideExport.snapshot(reader) { RideExport.writeGpx(it, fresh, 0, count.toLong(), "board", "ride", "Fresh") }
+      assertEquals(count + 1, "<trkpt ".toRegex().findAll(fresh.toString()).count())
+    } finally { db.close(); dir.deleteRecursively() }
+  }
+
   @Test fun completeCsvDeltaChainAndGpsMerge(): Unit = runBlocking {
     val root = JSONObject(File("../shared/ride-export-contract.json").readText())
     val fixture = root.getJSONObject("csv")
@@ -129,7 +174,7 @@ class RideExportHostTest {
       assertEquals(expected.size, "<trkpt ".toRegex().findAll(xml).count())
       var previous = -1
       for (i in expected) {
-        val offset = xml.indexOf("lat=\"${(521234567 + i) / 10_000_000.0}\"")
+        val offset = xml.indexOf("lat=\"${String.format(Locale.ROOT, "%.7f", (521234567 + i) / 10_000_000.0)}\"")
         assertTrue("point $i lost or reordered", offset > previous); previous = offset
       }
       assertTrue(xml.contains("<name>${fixture.getString("escapedName")}</name>"))
@@ -145,6 +190,20 @@ class RideExportHostTest {
       assertEquals(expected.size + 2, "<trkpt ".toRegex().findAll(export(recording = null)).count())
       assertEquals(1, "<trkpt ".toRegex().findAll(export(board = null)).count())
       assertFalse(export(board = "empty").contains("<trkpt "))
+      val coordinates = fixture.getJSONArray("decimalCoordinates")
+      dao.insertRideTrackPoints((0 until coordinates.length()).map { i ->
+        val c = coordinates.getJSONObject(i)
+        point(i).copy(boardId = "decimal", accuracyCm = 100, latitudeE7 = c.getInt("latitudeE7"), longitudeE7 = c.getInt("longitudeE7"))
+      })
+      val previousLocale = Locale.getDefault()
+      try {
+        Locale.setDefault(Locale.GERMANY)
+        val decimal = export(board = "decimal", start = base, end = base + 10)
+        for (i in 0 until coordinates.length()) {
+          val c = coordinates.getJSONObject(i)
+          assertTrue(decimal.contains("<trkpt lat=\"${c.getString("lat")}\" lon=\"${c.getString("lon")}\">"))
+        }
+      } finally { Locale.setDefault(previousLocale) }
     } finally { db.close(); dir.deleteRecursively() }
   }
 }

@@ -81,7 +81,7 @@ internal enum RideExport {
       for row in rows {
         let p = rideTrackPoint(row)
         guard rideTrackFixIsPrecise(p) else { continue }
-        batch += "<trkpt lat=\"\(Double(p.latitudeE7) / 10_000_000.0)\" lon=\"\(Double(p.longitudeE7) / 10_000_000.0)\">"
+        batch += "<trkpt lat=\"\(coordinate(p.latitudeE7))\" lon=\"\(coordinate(p.longitudeE7))\">"
         if let altitude = p.altitudeCm { batch += "<ele>\(Double(altitude) / 100.0)</ele>" }
         batch += "<time>\(time.string(from: Date(timeIntervalSince1970: Double(p.fixAtMs) / 1000.0)))</time>"
         if let speed = p.gpsSpeedCentiMps {
@@ -196,6 +196,12 @@ internal enum RideExport {
       }
       return nil
     }
+  }
+
+  private static func coordinate(_ e7: Int64) -> String {
+    let magnitude = abs(e7)
+    let fraction = String(magnitude % 10_000_000)
+    return "\(e7 < 0 ? "-" : "")\(magnitude / 10_000_000).\(String(repeating: "0", count: 7 - fraction.count))\(fraction)"
   }
 
   private static func xml(_ value: String) -> String {
