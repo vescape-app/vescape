@@ -3,12 +3,14 @@ import { useEffect, useState } from 'react'
 import { Pressable, ScrollView, StyleSheet, View } from 'react-native'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 
+import { useUnitSystem } from '@/hooks/useUnitSystem'
 import { IconButton } from '@/components/base/IconButton'
 import { Text } from '@/components/base/Text'
 import { theme } from '@/constants/theme'
 import { LegalLimitCountrySheet } from '@/modules/legal/components/LegalLimitCountrySheet'
 import {
   LEGAL_LIMIT_COUNTRIES,
+  legalReferenceSpeedLabel,
   LEGAL_ROAD_STATUS_COLORS,
   LEGAL_ROAD_STATUS_LABELS,
   LEGAL_ROAD_STATUS_LEGEND,
@@ -29,6 +31,7 @@ interface LegalLimitsMapOverlayProps {
 
 /** Legal limits mode: the road status legend, the country list and the per-country sheet. */
 export function LegalLimitsMapOverlay({ visible, top, onExit }: LegalLimitsMapOverlayProps) {
+  const units = useUnitSystem()
   const insets = useSafeAreaInsets()
   const [listOpen, setListOpen] = useState(false)
   const [selectedCountry, setSelectedCountry] = useState<LegalLimitCountry | null>(null)
@@ -119,7 +122,7 @@ export function LegalLimitsMapOverlay({ visible, top, onExit }: LegalLimitsMapOv
                   {LEGAL_ROAD_STATUS_LABELS[country.status]}
                 </Text>
                 <Text style={styles.legalCountrySpeed}>
-                  {country.referenceSpeedKmh == null ? 'N/A' : `${country.referenceSpeedKmh} km/h`}
+                  {legalReferenceSpeedLabel(country.referenceSpeedKmh, units)}
                 </Text>
               </Pressable>
             ))}
@@ -246,7 +249,7 @@ const styles = StyleSheet.create({
     fontWeight: '700',
   },
   legalCountrySpeed: {
-    width: 56,
+    minWidth: 64,
     color: theme.neutral.textPrimary,
     fontSize: 12,
     fontWeight: '900',

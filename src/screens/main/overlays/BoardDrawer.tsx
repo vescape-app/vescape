@@ -15,6 +15,8 @@ import {
 import { SelectWidget } from '@/components/widgets/SelectWidget'
 import { useResolvedSecondaryWidgetSurface } from '@/components/widgets/widgetSurface'
 import { canRunFirmwareCommand } from '@/modules/board/lib/boardLinkIntegrity'
+import { useUnitSystem } from '@/hooks/useUnitSystem'
+import { legalReferenceSpeedLabel } from '@/modules/legal/lib/legalLimits'
 import { legalPolicyFromReference } from '@/modules/legal/lib/legalMode'
 import { routes } from '@/navigation/routes'
 import { theme } from '@/constants/theme'
@@ -34,6 +36,7 @@ interface TuneDrawerProps {
 }
 
 export function BoardDrawer({ onNavigate, onOpenLegalLimits }: TuneDrawerProps) {
+  const units = useUnitSystem()
   const [tuneSelectOpen, setTuneSelectOpen] = useState(false)
   const [legalWarningOpen, setLegalWarningOpen] = useState(false)
   // The message outlives `visible` on purpose: `FadeCardModal` keeps rendering its children through
@@ -120,7 +123,7 @@ export function BoardDrawer({ onNavigate, onOpenLegalLimits }: TuneDrawerProps) 
         ? (activeProfileForBoard?.name ?? (profileLoading ? 'Loading...' : 'No profile'))
         : 'Loading...'
   const legalModeDescription = legalPolicy
-    ? `${legalPolicy.name} · max ${legalPolicy.referenceSpeedKmh ?? 'N/A'} km/h`
+    ? `${legalPolicy.name} · max ${legalReferenceSpeedLabel(legalPolicy.referenceSpeedKmh, units)}`
     : 'Jurisdiction unresolved'
   const SelectIcon = activeProfileForBoard
     ? tuneProfileIconComponent(activeProfileForBoard.icon)

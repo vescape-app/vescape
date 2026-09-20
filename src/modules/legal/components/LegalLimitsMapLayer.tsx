@@ -1,3 +1,5 @@
+import { useMemo } from 'react'
+import { useUnitSystem } from '@/hooks/useUnitSystem'
 import { FillLayer, LineLayer, ShapeSource, SymbolLayer, VectorSource } from '@rnmapbox/maps'
 
 import { theme } from '@/constants/theme'
@@ -10,8 +12,6 @@ import {
   type LegalLimitCountry,
 } from '@/modules/legal/lib/legalLimits'
 
-const LEGAL_LIMIT_LABEL_SHAPE = legalLimitLabelShape()
-
 export function LegalLimitsMapLayer({
   interactive = true,
   onSelectCountry,
@@ -19,6 +19,8 @@ export function LegalLimitsMapLayer({
   interactive?: boolean
   onSelectCountry: (country: LegalLimitCountry) => void
 }) {
+  const units = useUnitSystem()
+  const labelShape = useMemo(() => legalLimitLabelShape(units), [units])
   const neutral = useResolvedNeutralColors()
   const accents = useResolvedAccentColors()
   const statusColors = {
@@ -74,7 +76,7 @@ export function LegalLimitsMapLayer({
       </VectorSource>
       <ShapeSource
         id="legal-speed-labels"
-        shape={LEGAL_LIMIT_LABEL_SHAPE}
+        shape={labelShape}
         hitbox={{ width: 44, height: 44 }}
         onPress={interactive ? handleLabelPress : undefined}
       >

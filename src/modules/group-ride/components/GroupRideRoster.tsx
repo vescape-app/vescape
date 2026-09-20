@@ -9,11 +9,12 @@ import {
 
 import { Text } from '@/components/base/Text'
 import { theme, type ThemeColor } from '@/constants/theme'
-import { DASH, fmtDistance, fmtPercent, fmtSpeedKmh, fmtTempC } from '@/helpers/format'
+import { DASH } from '@/helpers/format'
+import { formatDistanceMeters } from '@/helpers/units'
+import { useUnitSystem } from '@/hooks/useUnitSystem'
+import { riderStats } from '@/modules/group-ride/lib/riderStats'
 import {
-  batteryLevel,
   TELEMETRY_LEVEL_COLOR,
-  tempLevel,
   type TelemetryLevel,
 } from '@/modules/board/constants/telemetryThresholds'
 import type { NearbyRide } from '@/modules/group-ride/lib/nearby'
@@ -35,55 +36,6 @@ export function RosterGrid({
       ))}
     </View>
   )
-}
-
-interface RiderStat {
-  value?: string
-  level: TelemetryLevel
-}
-
-interface RiderStats {
-  speed: RiderStat
-  soc: RiderStat
-  motor: RiderStat
-  ctrl: RiderStat
-  phone: RiderStat
-}
-
-const NORMAL_STAT: RiderStat = { level: 'normal' }
-
-/** Per-Rider telemetry values for the roster stat grid, each carrying its alert level. */
-export function riderStats(p: RosterRider['presence']): RiderStats {
-  if (!p)
-    return {
-      speed: NORMAL_STAT,
-      soc: NORMAL_STAT,
-      motor: NORMAL_STAT,
-      ctrl: NORMAL_STAT,
-      phone: NORMAL_STAT,
-    }
-  return {
-    speed: {
-      value: p.speed != null ? fmtSpeedKmh(p.speed) : undefined,
-      level: 'normal',
-    },
-    soc: {
-      value: p.soc != null ? fmtPercent(p.soc) : undefined,
-      level: batteryLevel(p.soc),
-    },
-    motor: {
-      value: p.motorTemp != null ? `M ${fmtTempC(p.motorTemp)}` : undefined,
-      level: tempLevel(p.motorTemp),
-    },
-    ctrl: {
-      value: p.ctrlTemp != null ? `C ${fmtTempC(p.ctrlTemp)}` : undefined,
-      level: tempLevel(p.ctrlTemp),
-    },
-    phone: {
-      value: p.phoneBattery != null ? fmtPercent(p.phoneBattery) : undefined,
-      level: 'normal',
-    },
-  }
 }
 
 /** One fixed column of the stat grid: its icon is always shown; a missing value reads as a dash.
@@ -120,6 +72,7 @@ function RiderCell({
   accent: ThemeColor
   connected: boolean
 }) {
+  const units = useUnitSystem()
   const dotColor = rider.color || theme.palette.slate.textMuted
   const boardName = rider.presence?.boardName?.trim() || 'Board not connected'
   // Only claim a rider is "Live" when our own relay link is up — otherwise the roster is just
@@ -127,7 +80,7 @@ function RiderCell({
   const fresh = !rider.stale && connected
   const statusColor = fresh ? accent : theme.palette.slate.textMuted
   const status = fresh ? 'Live' : 'Stale'
-  const s = riderStats(rider.presence)
+  const s = riderStats(rider.presence, units)
 
   return (
     <View style={styles.riderCell}>
@@ -167,6 +120,7 @@ function RiderCell({
 }
 
 export function NearbyRideBody({ nearby }: { nearby: NearbyRide[] }) {
+  const units = useUnitSystem()
   const nearest = nearby[0]
   const ride = nearest.ride
   const name = ride.name?.trim() || `${ride.creator.name || 'Rider'}'s ride`
@@ -179,7 +133,7 @@ export function NearbyRideBody({ nearby }: { nearby: NearbyRide[] }) {
       </Text>
       <Text style={styles.rideMeta} numberOfLines={1}>
         {ride.riderCount} {ride.riderCount === 1 ? 'rider' : 'riders'} ·{' '}
-        {fmtDistance(nearest.distanceM)} away
+        {formatDistanceMeters(nearest.distanceM, units)} away
       </Text>
       {extra > 0 ? (
         <Text style={styles.rideMetaDim}>
