@@ -17,7 +17,7 @@ import { TickText } from '@/components/base/TickText'
 import { telemetry } from '@/modules/board/constants/telemetry'
 import { useLiveMetric, liveSelectors } from '@/modules/board/hooks/useLiveMetric'
 import { useLiveWindowMs } from '@/modules/settings/store/settingsStore'
-import { theme } from '@/constants/theme'
+import { theme, type ThemeColor } from '@/constants/theme'
 import { liveTelemetryRuntime } from '@/modules/board/lib/liveTelemetryRuntime'
 
 const ATTITUDE_FONT_SIZE = 11
@@ -31,7 +31,7 @@ interface AttitudeViewProps {
   title: string
   value: SharedValue<number | null>
   unit: string
-  accentColor: string
+  accentColor: ThemeColor
   children: ReactNode
 }
 
@@ -62,7 +62,7 @@ interface LiveMetricReadoutProps {
   value: SharedValue<number | null>
   decimals: number
   unit: string
-  color: string
+  color: ThemeColor
 }
 
 function LiveMetricReadout({ label, value, decimals, unit, color }: LiveMetricReadoutProps) {

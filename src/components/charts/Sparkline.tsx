@@ -10,13 +10,13 @@ import {
   type SparklinePoint,
   type SparklineRange,
 } from '@/components/charts/SparklineLayer'
-import { theme } from '@/constants/theme'
+import { theme, type ThemeColor } from '@/constants/theme'
 
 export type { SparklinePoint }
 
 interface SparklineProps {
   points: SparklinePoint[]
-  color: string
+  color: ThemeColor
   height?: number
   showMaxBadge?: boolean
   fmtMax?: (value: number) => string
@@ -27,7 +27,7 @@ interface SparklineProps {
 
 interface SparklineMaxBadgeProps {
   points: SparklinePoint[]
-  color: string
+  color: ThemeColor
   fmt: (value: number) => string
   position?: 'left' | 'right'
 }

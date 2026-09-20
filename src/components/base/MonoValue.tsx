@@ -8,7 +8,7 @@ import {
 } from 'react-native-reanimated'
 import { Canvas, Text as SkiaText } from '@shopify/react-native-skia'
 
-import { theme, type MonoWeight } from '@/constants/theme'
+import { theme, type MonoWeight, type ThemeColor } from '@/constants/theme'
 import { useSkiaMonoFont } from '@/hooks/useSkiaFont'
 import { textAdvanceWidth } from '../../helpers/skiaText'
 import { useResolvedColor } from '@/hooks/useTheme'
@@ -24,7 +24,7 @@ export interface MonoTextProps {
   size: number
   weight?: MonoWeight
   /** Static color, or a shared value for colors that ramp with the value. */
-  color?: string | DerivedValue<string>
+  color?: ThemeColor | DerivedValue<string>
   align?: MonoValueAlign
   /** Left edge of the layout box, in canvas coordinates. */
   x?: number
@@ -67,7 +67,7 @@ export function MonoText({
   // Adaptive tokens are native color objects, not strings, so the split is on "is it a shared
   // value" — a `typeof === 'string'` test sends them to Skia raw, which crashes on paint.
   const staticColor = useResolvedColor(
-    isSharedValue<string>(color) ? theme.palette.slate.textPrimary : (color as string),
+    isSharedValue<string>(color) ? theme.palette.slate.textPrimary : (color as ThemeColor),
   )
   const rendererColor = isSharedValue<string>(color) ? color : staticColor
 

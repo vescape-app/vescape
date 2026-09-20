@@ -3,12 +3,12 @@ import { Pressable, StyleSheet, View } from 'react-native'
 import { Text } from '@/components/base/Text'
 import { CaretRightIcon } from 'phosphor-react-native'
 import type { Icon, IconWeight } from 'phosphor-react-native'
-import { theme } from '@/constants/theme'
+import { theme, type ThemeColor } from '@/constants/theme'
 import { useResolvedNeutralColors } from '@/hooks/useTheme'
 
 export interface SettingsRowProps {
   icon: Icon
-  iconColor?: string
+  iconColor?: ThemeColor
   iconWeight?: IconWeight
   label: string
   hint?: string

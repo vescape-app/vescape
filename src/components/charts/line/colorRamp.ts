@@ -18,7 +18,7 @@ export interface RampGradient {
  * Stops are emitted top-down, since a higher value sits at a smaller y.
  */
 export function resolveRampGradient(
-  ramp: ChartColorRamp,
+  ramp: ChartColorRamp<string>,
   range: ChartYRange,
   height: number,
 ): RampGradient | null {

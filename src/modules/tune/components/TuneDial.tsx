@@ -6,7 +6,7 @@ import { Canvas, Text as SkiaText } from '@shopify/react-native-skia'
 
 import { Text } from '@/components/base/Text'
 import { NativeScrollGestureContext } from '@/components/gestures/NativeScrollGestureContext'
-import { theme } from '@/constants/theme'
+import { theme, type ThemeColor } from '@/constants/theme'
 import { useResolvedColor } from '@/hooks/useTheme'
 import { useSkiaFont } from '@/hooks/useSkiaFont'
 import { computeTuneDialLayout } from '@/modules/tune/components/tuneDialPhysics'
@@ -33,7 +33,7 @@ interface TuneDialProps {
   unit?: string | null
   indicatorGlow?: 'left' | 'right'
   valueChangeMode?: 'live' | 'commit'
-  color?: string
+  color?: ThemeColor
   onValueChange: (value: number) => void
 }
 

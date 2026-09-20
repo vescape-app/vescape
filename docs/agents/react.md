@@ -12,6 +12,10 @@ Use `theme.neutral` for the white/read-only canvas, separators, and neutral copy
 
 The adaptive neutral, control, accent, and telemetry tokens are native color objects at runtime. Mapbox, Skia, Reanimated worklets, and string-valued state/options cannot consume them. Use the corresponding hooks from `src/hooks/useTheme.ts`: `useResolvedNeutralColors()`, `useResolvedControlColors()`, `useResolvedAccentColors()`, and `useResolvedTelemetryColors()`. Pass only their plain string values into the renderer or data structure.
 
+Type native-facing color props as `ThemeColor`; keep renderer inputs and persisted colors typed as `string`. Resolve individual tokens with `useResolvedColor`, or `resolveAdaptiveColor(color, appearance)` outside React. Resolve before building color-based grouping keys, too. Casting a token to `string` bypasses this boundary without converting its runtime value.
+
+`theme.native.test.ts` exercises native-shaped Android/iOS colors in isolated processes, since the normal test preload uses strings. Its type assertions also prevent adaptive tokens from becoming string-compatible again. The Phosphor patch widens its native SVG color props to React Native's `ColorValue`; renderer props must retain their string-only contract. For Android rendering coverage, use the component-library smoke flow documented in `e2e/README.md`.
+
 Filled actions use the resolved hue's `solid` background and `onSolid` content pair. Do not infer the foreground from `color`, `text`, or a fixed black/white value; the pair is contrast-checked separately for each appearance.
 
 ```tsx

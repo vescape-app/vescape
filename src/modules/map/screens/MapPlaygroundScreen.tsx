@@ -1,3 +1,4 @@
+import { useResolvedAccentColors } from '@/hooks/useTheme'
 import Mapbox, { type Camera as CameraRef } from '@rnmapbox/maps'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { ScrollView, StyleSheet, View } from 'react-native'
@@ -61,6 +62,7 @@ const INITIAL_CAMERA: EngineCamera = {
  * vs target traces are plotted.
  */
 export function MapPlaygroundScreen() {
+  const accents = useResolvedAccentColors()
   const cameraRef = useRef<CameraRef>(null)
   const engineRef = useRef<CameraEngine | null>(null)
   const cameraStateRef = useRef<EngineCamera>(INITIAL_CAMERA)
@@ -248,8 +250,8 @@ export function MapPlaygroundScreen() {
             <Mapbox.FillLayer
               id="playground-fix-fill"
               style={{
-                fillColor: theme.palette.violet.color,
-                fillOutlineColor: theme.palette.violet.light,
+                fillColor: accents.violet.color,
+                fillOutlineColor: accents.violet.light,
               }}
             />
           </Mapbox.ShapeSource>

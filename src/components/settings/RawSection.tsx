@@ -3,11 +3,11 @@ import { Pressable, Share, StyleSheet, View } from 'react-native'
 import { Text } from '@/components/base/Text'
 import { ExportIcon } from 'phosphor-react-native'
 
-import { theme } from '@/constants/theme'
+import { theme, type ThemeColor } from '@/constants/theme'
 import { tokenizeJson, type JsonTokenType } from '@/helpers/jsonHighlight'
 import { useResolvedNeutralColors } from '@/hooks/useTheme'
 
-const TOKEN_COLORS: Record<JsonTokenType, string> = {
+const TOKEN_COLORS: Record<JsonTokenType, ThemeColor> = {
   key: theme.palette.sky.light,
   string: theme.palette.green.light,
   number: theme.palette.amber.light,

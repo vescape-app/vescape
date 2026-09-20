@@ -4,13 +4,13 @@ import { Text } from '@/components/base/Text'
 import { ArrowLeftIcon, ArrowRightIcon, type Icon } from 'phosphor-react-native'
 
 import { Button } from '@/components/base/Button'
-import { theme } from '@/constants/theme'
+import { theme, type ThemeColor } from '@/constants/theme'
 
 interface WizardStepLayoutProps {
   title: string
   description?: ReactNode
   icon: Icon
-  color: string
+  color: ThemeColor
   headerRight?: ReactNode
   footer?: ReactNode
   children: ReactNode

@@ -8,7 +8,7 @@ import {
   type Icon,
 } from 'phosphor-react-native'
 
-import { theme } from '@/constants/theme'
+import { theme, type ThemeColor } from '@/constants/theme'
 import type { HistoryGpsSample, HistoryMarker } from '@/modules/history/store/historyStore'
 
 export interface SelectedHistoryMarker {
@@ -36,7 +36,7 @@ export const HISTORY_MARKER_ICONS: Record<HistoryMarker['type'], Icon> = {
   gap: ClockCountdownIcon,
 }
 
-export const HISTORY_MARKER_COLORS: Record<HistoryMarker['type'], string> = {
+export const HISTORY_MARKER_COLORS: Record<HistoryMarker['type'], ThemeColor> = {
   app_stop: theme.palette.yellow.color,
   auto_pause: theme.status.warning.color,
   connected: theme.palette.green.color,

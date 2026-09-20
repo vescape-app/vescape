@@ -43,12 +43,12 @@ interface AdaptiveColorMetadata {
   light: string
 }
 
-declare const adaptiveColorBrand: unique symbol
-type AdaptiveColor = string & { readonly [adaptiveColorBrand]: true }
+/** Native-compatible theme token. Resolve it before passing it to a string-only renderer. */
+export type ThemeColor = ReactNative.ColorValue
 
 const adaptiveColorMetadata = new WeakMap<object, AdaptiveColorMetadata>()
 
-function adaptiveColor(resource: string, dark: string, light: string): AdaptiveColor {
+function adaptiveColor(resource: string, dark: string, light: string): ThemeColor {
   const metadata: AdaptiveColorMetadata = { resource, dark, light }
   let color: unknown
 
@@ -57,21 +57,24 @@ function adaptiveColor(resource: string, dark: string, light: string): AdaptiveC
   } else if (ReactNativeModule.Platform?.OS === 'android') {
     color = ReactNativeModule.PlatformColor(`@color/vescape_${resource}`)
   } else {
-    return dark as AdaptiveColor
+    return dark
   }
 
   adaptiveColorMetadata.set(color as object, metadata)
-  return color as AdaptiveColor
+  return color as ReactNative.OpaqueColorValue
 }
 
 /** Resolve an adaptive native color to a renderer-safe string for the current appearance. */
-export function resolveAdaptiveColor(color: unknown, appearance: 'light' | 'dark'): unknown {
-  if (typeof color !== 'object' || color === null) return color
+export function resolveAdaptiveColor(color: ThemeColor, appearance: ResolvedTheme): string {
+  if (typeof color === 'string') return color
   const metadata = adaptiveColorMetadata.get(color)
-  return metadata ? metadata[appearance] : color
+  if (!metadata) throw new Error('Cannot resolve an unregistered native theme color')
+  return metadata[appearance]
 }
 
-function alpha(color: string, level: AlphaLevel): string {
+function alpha(color: string, level: AlphaLevel): string
+function alpha(color: ThemeColor, level: AlphaLevel): ThemeColor
+function alpha(color: ThemeColor, level: AlphaLevel): ThemeColor {
   const colorValue = color as unknown
   const adaptive =
     typeof colorValue === 'object' && colorValue !== null
@@ -84,6 +87,9 @@ function alpha(color: string, level: AlphaLevel): string {
       alpha(adaptive.light, level),
     )
   }
+
+  if (typeof color !== 'string')
+    throw new Error('Cannot apply alpha to an unregistered native theme color')
 
   if (color.startsWith('#')) {
     const hex = color.slice(1)
@@ -122,14 +128,14 @@ export function blend(base: string, over: string, level: number): string {
   return `rgb(${mix(br, or)},${mix(bg, og)},${mix(bb, ob)})`
 }
 
-interface Hue {
-  color: string
+interface Hue<Color = string> {
+  color: Color
   /** Alternate shade within the same hue — aliases `light`. */
-  alt: string
-  light: string
-  text: string
-  bg: string
-  border: string
+  alt: Color
+  light: Color
+  text: Color
+  bg: Color
+  border: Color
 }
 
 export type AccentHue = Hue & {
@@ -193,7 +199,7 @@ export type ResolvedAccentColors = (typeof accentColors)[ResolvedTheme]
 
 type AccentName = keyof (typeof accentColors)['dark']
 
-function adaptiveHue(name: AccentName): Hue {
+function adaptiveHue(name: AccentName): Hue<ThemeColor> {
   const dark = accentColors.dark[name]
   const light = accentColors.light[name]
   const resourceName = name === 'groupRide' ? 'group_ride' : name
@@ -422,7 +428,7 @@ export const telemetryColors = {
 export type ResolvedTelemetryColors = (typeof telemetryColors)[ResolvedTheme]
 export type TelemetryColorName = keyof ResolvedTelemetryColors
 
-function adaptiveTelemetry(name: TelemetryColorName): AdaptiveColor {
+function adaptiveTelemetry(name: TelemetryColorName): ThemeColor {
   const resourceName = name.replace(/[A-Z]/g, (letter) => `_${letter.toLowerCase()}`)
   return adaptiveColor(
     `telemetry_${resourceName}`,

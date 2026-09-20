@@ -5,7 +5,7 @@ import type {
   ChartSpec,
   ChartYRange,
 } from '@/components/charts/line/types'
-import { theme } from '@/constants/theme'
+import { theme, type ThemeColor } from '@/constants/theme'
 import type { TelemetryMetricConfig } from '@/modules/board/constants/telemetry'
 import type { LiveMetricPoint } from '@/modules/board/hooks/useLiveMetric'
 
@@ -31,7 +31,7 @@ export function toChartSeries(
   return { ts, vs }
 }
 
-function exclusionColor(reason: string): string {
+function exclusionColor(reason: string): ThemeColor {
   return reason === 'free_spin' ? theme.palette.yellow.color : theme.palette.slate.textSecondary
 }
 
@@ -67,7 +67,7 @@ export interface LiveChartInput {
     key: string
     data: ChartSeriesData
     range: ChartYRange
-    color: string
+    color: ThemeColor
     unit?: string
     decimals?: number
   }

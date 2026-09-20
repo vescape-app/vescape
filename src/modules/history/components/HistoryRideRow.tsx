@@ -2,7 +2,7 @@ import { forwardRef } from 'react'
 import { Pressable, StyleSheet, View } from 'react-native'
 import { CaretRightIcon } from 'phosphor-react-native'
 
-import { interaction, theme } from '@/constants/theme'
+import { interaction, theme, type ThemeColor } from '@/constants/theme'
 import { HistoryRideLabel } from '@/modules/history/components/HistoryRideLabel'
 import { RouteSparkline } from '@/modules/history/components/RouteSparkline'
 import type { RoutePoint } from '@/modules/history/lib/routePreview'
@@ -17,7 +17,7 @@ interface HistoryRideRowProps {
   routePoints: RoutePoint[]
   selected?: boolean
   /** Route line color; Favorites ride under their own accent. */
-  accent?: string
+  accent?: ThemeColor
   onPress: () => void
   testID?: string
 }

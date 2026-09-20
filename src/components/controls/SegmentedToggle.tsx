@@ -1,7 +1,7 @@
 import { Pressable, StyleSheet, View, type StyleProp, type ViewStyle } from 'react-native'
 
 import { Text } from '@/components/base/Text'
-import { interaction, theme } from '@/constants/theme'
+import { interaction, theme, type ThemeColor } from '@/constants/theme'
 
 export interface SegmentedOption<T extends string> {
   value: T
@@ -13,7 +13,7 @@ interface SegmentedToggleProps<T extends string> {
   value: T
   onChange: (value: T) => void
   /** Tint of the selected segment. */
-  accent?: string
+  accent?: ThemeColor
   /** Surface the toggle sits on. Controls default to navy; secondary cards use adaptive neutrals. */
   variant?: 'control' | 'secondary'
   style?: StyleProp<ViewStyle>

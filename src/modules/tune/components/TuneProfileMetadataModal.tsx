@@ -40,7 +40,7 @@ import {
   type TuneProfileColorId,
   type TuneProfileIconId,
 } from '@/modules/tune/lib/profileMetadata'
-import { theme } from '@/constants/theme'
+import { theme, type ThemeColor } from '@/constants/theme'
 
 export interface TuneProfileMetadataValue {
   name: string
@@ -67,10 +67,10 @@ interface TuneProfileMetadataModalContentProps extends Omit<
 }
 
 interface PaletteTheme {
-  bg: string
-  border: string
-  color: string
-  text: string
+  bg: ThemeColor
+  border: ThemeColor
+  color: ThemeColor
+  text: ThemeColor
 }
 
 const ICONS: Record<TuneProfileIconId, Icon> = {
@@ -152,7 +152,7 @@ export function TuneProfileIcon({
 }: {
   icon: string | null | undefined
   size: number
-  color: string
+  color: ThemeColor
   weight?: 'thin' | 'light' | 'regular' | 'bold' | 'fill' | 'duotone'
 }) {
   const IconComponent = ICONS[tuneProfileIconId(icon)]

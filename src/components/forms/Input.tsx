@@ -21,7 +21,7 @@ export const Input = forwardRef<TextInput, InputProps>(function Input(
 ) {
   const control = useResolvedControlColors()
   const resolvedPlaceholderTextColor = useResolvedColor(
-    (placeholderTextColor ?? theme.control.textMuted) as string,
+    placeholderTextColor ?? theme.control.textMuted,
   )
 
   return (

@@ -1,3 +1,4 @@
+import type { ThemeColor } from '@/constants/theme'
 /**
  * Chart data crosses to the UI thread on every pinch frame, so a series is two parallel
  * number arrays rather than an array of objects: `Date` cannot be copied into a worklet,
@@ -41,10 +42,10 @@ export interface ChartCamera {
   key: string | null
 }
 
-export interface ChartColorStop {
+export interface ChartColorStop<Color = ThemeColor> {
   /** In the metric's own units, on the axis the series is drawn against. */
   value: number
-  color: string
+  color: Color
 }
 
 /**
@@ -57,9 +58,9 @@ export interface ChartColorStop {
  * points individually would mean rebuilding a gradient stop per sample on every frame, which is
  * what made the old chart's speed gradient the expensive series to draw.
  */
-export interface ChartColorRamp {
+export interface ChartColorRamp<Color = ThemeColor> {
   /** Any order; sorted on use. A single stop is just a solid colour. */
-  stops: ChartColorStop[]
+  stops: ChartColorStop<Color>[]
   /** `bands` holds each colour flat up to the next stop; `smooth` blends between them. */
   mode?: 'smooth' | 'bands'
 }
@@ -80,7 +81,7 @@ export interface ChartTimeRange {
  * drawn as one path, so a ride with hundreds of excluded stretches still costs a handful of nodes.
  */
 export interface ChartBand extends ChartTimeRange {
-  color: string
+  color: ThemeColor
   /** Which hairline to sit on, counting up from the floor. Keeps two kinds from overlapping. */
   row?: number
   /** `floor` is the hairline; `plot` washes the full height of the plot behind the line. */
@@ -90,7 +91,7 @@ export interface ChartBand extends ChartTimeRange {
 export interface ChartSeriesSpec {
   key: string
   data: ChartSeriesData
-  color: string
+  color: ThemeColor
   axis?: 'left' | 'right'
   /** Colour by value instead of a flat `color` — see {@link ChartColorRamp}. */
   ramp?: ChartColorRamp

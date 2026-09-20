@@ -21,7 +21,7 @@ import {
   measureTrigger,
   type TriggerLayout,
 } from '@/components/overlays/measureTrigger'
-import { theme } from '@/constants/theme'
+import { theme, type ThemeColor } from '@/constants/theme'
 
 const OPEN_DURATION = 260
 const CLOSE_DURATION = 180
@@ -105,7 +105,7 @@ interface SheetProps {
   title?: string
   /** Optional glyph shown left of a centred title. */
   icon?: Icon
-  iconColor?: string
+  iconColor?: ThemeColor
   contentContainerStyle?: StyleProp<ViewStyle>
   children: React.ReactNode
 }

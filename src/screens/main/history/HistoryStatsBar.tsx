@@ -20,7 +20,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context'
 
 import type { HistorySession } from '@/modules/history/store/historyStore'
 import { rideDurationMs } from '@/modules/history/lib/sessions'
-import { interaction, theme } from '@/constants/theme'
+import { interaction, theme, type ThemeColor } from '@/constants/theme'
 import { DASH } from '@/helpers/format'
 
 interface HistoryStatsBarProps {
@@ -33,7 +33,7 @@ interface StatItem {
   value: string
   unit?: string
   icon: Icon
-  accent: string
+  accent: ThemeColor
 }
 
 export function HistoryStatsBar({ session }: HistoryStatsBarProps) {

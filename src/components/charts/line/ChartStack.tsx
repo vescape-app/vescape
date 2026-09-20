@@ -39,6 +39,7 @@ import { toChartMs, toRealMs, type ChartTimeline } from '@/components/charts/lin
 import type { ChartBand, ChartSpec, ChartTimeRange } from '@/components/charts/line/types'
 import { useRenderRateWarning } from '@/hooks/useRenderRateWarning'
 import { useSkiaFont, useSkiaMonoFont } from '@/hooks/useSkiaFont'
+import { useThemeStore } from '@/hooks/useTheme'
 import { textAdvanceWidth } from '../../../helpers/skiaText'
 
 export type { ChartSpec } from '@/components/charts/line/types'
@@ -198,13 +199,14 @@ export function ChartStack({
   const scrubGlyphWidth = scrubFont ? textAdvanceWidth(scrubFont, '0') : 0
   // Every chart draws at the same origin in its own canvas, so the readout is laid out against
   // one plot box per chart height and never against a position in the stack.
+  const appearance = useThemeStore((state) => state.resolvedTheme)
   const scrubCharts = useMemo(
     () =>
       prepared.charts.map((chart) => ({
-        targets: toScrubTargets(chart),
+        targets: toScrubTargets(chart, appearance),
         plot: { x: AXIS_WIDTH, y: LABEL_HEIGHT, width: plotWidth, height: chart.height },
       })),
-    [plotWidth, prepared],
+    [appearance, plotWidth, prepared],
   )
   const readout = useScrubReadout({
     charts: scrubCharts,

@@ -1,3 +1,4 @@
+import type { ThemeColor } from '@/constants/theme'
 import { Pressable, StyleSheet, View } from 'react-native'
 import { Text } from '@/components/base/Text'
 import { MarkerView, PointAnnotation } from '@rnmapbox/maps'
@@ -7,9 +8,9 @@ import { useResolvedColor, useResolvedNeutralColors } from '@/hooks/useTheme'
 interface MapPinProps {
   id: string
   coordinate: [number, number]
-  color: string
+  color: ThemeColor
   icon?: Icon
-  iconColor?: string
+  iconColor?: ThemeColor
   selected?: boolean
   navigationActive?: boolean
   expandSelected?: boolean

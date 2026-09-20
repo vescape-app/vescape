@@ -18,7 +18,7 @@ import {
   WidgetFocusOverlay,
   WidgetFocusProvider,
 } from '@/components/overlays/widgetFocus'
-import { theme } from '@/constants/theme'
+import { theme, type ThemeColor } from '@/constants/theme'
 
 interface EdgeDrawerVirtualizedContent {
   data: readonly unknown[]
@@ -41,7 +41,7 @@ interface EdgeDrawerProps {
   title?: string
   /** Optional glyph shown left of a centred title. */
   icon?: Icon
-  iconColor?: string
+  iconColor?: ThemeColor
   /** Scroll newly expanded content into view when the drawer grows. */
   autoScrollOnContentExpand?: boolean
   /** Bring one child into the initially visible drawer area after opening. */

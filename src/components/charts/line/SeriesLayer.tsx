@@ -24,7 +24,7 @@ import type {
   ChartPlotBox,
   ChartYRange,
 } from '@/components/charts/line/types'
-import { resolveAdaptiveColor } from '@/constants/theme'
+import { resolveAdaptiveColor, type ThemeColor } from '@/constants/theme'
 import { useResolvedColor, useResolvedNeutralColors, useThemeStore } from '@/hooks/useTheme'
 
 const LINE_WIDTH = 2
@@ -37,7 +37,7 @@ const OFFSCREEN = -1_000
 export interface SeriesLayerProps {
   paths: SeriesPaths
   yRange: ChartYRange
-  color: string
+  color: ThemeColor
   /** Colour by value. Overrides `color` where the two would disagree. */
   ramp?: ChartColorRamp
   /** Mark the last sample — the live head, or where a finished ride ended. */
@@ -85,7 +85,7 @@ export function SeriesLayer({
               ...ramp,
               stops: ramp.stops.map((stop) => ({
                 ...stop,
-                color: resolveAdaptiveColor(stop.color, appearance) as string,
+                color: resolveAdaptiveColor(stop.color, appearance),
               })),
             },
             yRange,

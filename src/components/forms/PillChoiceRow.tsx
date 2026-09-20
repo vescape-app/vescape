@@ -4,7 +4,7 @@ import Animated, { useAnimatedStyle, useSharedValue, withTiming } from 'react-na
 import type { Icon } from 'phosphor-react-native'
 
 import { Text } from '@/components/base/Text'
-import { theme } from '@/constants/theme'
+import { theme, type ThemeColor } from '@/constants/theme'
 import { useResolvedNeutralColors } from '@/hooks/useTheme'
 
 const CHOICE_ANIMATION = { duration: 180 } as const
@@ -16,9 +16,9 @@ interface PillChoiceOption<T> {
 }
 
 interface PillChoiceAccent {
-  bg: string
-  border: string
-  color: string
+  bg: ThemeColor
+  border: ThemeColor
+  color: ThemeColor
 }
 
 interface PillChoiceRowProps<T extends string | number | null> {

@@ -1,10 +1,10 @@
 import { Canvas, Circle, RoundedRect } from '@shopify/react-native-skia'
 import { useMemo } from 'react'
-import { isSharedValue, useDerivedValue, type DerivedValue } from 'react-native-reanimated'
+import { useDerivedValue, type DerivedValue } from 'react-native-reanimated'
 
 import { MonoText, TEXT_LINE_RATIO } from '@/components/base/MonoValue'
-import { accentColors, resolveAdaptiveColor, theme } from '@/constants/theme'
-import { useResolvedAccentColors, useThemeStore } from '@/hooks/useTheme'
+import { accentColors, theme, type ThemeColor } from '@/constants/theme'
+import { useResolvedAccentColors } from '@/hooks/useTheme'
 import type { BmsCellGroup, BmsSummary } from '@/modules/battery/lib'
 
 interface GroupColors {
@@ -43,7 +43,7 @@ const STAT_VALUE_HEIGHT = Math.ceil(STAT_VALUE_FONT_SIZE * TEXT_LINE_RATIO)
 export interface BmsStatValue {
   text: DerivedValue<string>
   /** A derived colour tracks the value it labels (already resolved for the active appearance). */
-  color: string | DerivedValue<string>
+  color: ThemeColor | DerivedValue<string>
 }
 
 /**
@@ -51,7 +51,6 @@ export interface BmsStatValue {
  * which is a native surface apiece for numbers that only tick with BMS frames.
  */
 export function BmsStatValues({ values, width }: { values: BmsStatValue[]; width: number }) {
-  const appearance = useThemeStore((state) => state.resolvedTheme)
   const slot = (width - (values.length - 1) * COL_GAP) / values.length
   return (
     <Canvas style={{ width, height: STAT_VALUE_HEIGHT }} pointerEvents="none">
@@ -61,11 +60,7 @@ export function BmsStatValues({ values, width }: { values: BmsStatValue[]; width
           text={value.text}
           size={STAT_VALUE_FONT_SIZE}
           weight="800"
-          color={
-            isSharedValue<string>(value.color)
-              ? value.color
-              : (resolveAdaptiveColor(value.color, appearance) as string)
-          }
+          color={value.color}
           align="center"
           x={index * (slot + COL_GAP)}
           y={0}

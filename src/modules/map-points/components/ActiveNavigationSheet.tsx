@@ -13,7 +13,7 @@ import Animated, {
 import { scheduleOnRN } from 'react-native-worklets'
 
 import { Text } from '@/components/base/Text'
-import { theme } from '@/constants/theme'
+import { theme, type ThemeColor } from '@/constants/theme'
 import { DASH, fmtDistance, fmtRideDuration } from '@/helpers/format'
 import { useResolvedNeutralColors } from '@/hooks/useTheme'
 import { mapSheetStyles } from '@/modules/map-points/components/mapSheetStyles'
@@ -51,11 +51,11 @@ export function ActiveNavigationSheet({
   bottom: number
   remainingDistanceMeters: number | null
   durationSeconds: number
-  targetColor: string
-  targetTextColor: string
-  accentColor: string
-  cancelColor: string
-  cancelBackgroundColor: string
+  targetColor: ThemeColor
+  targetTextColor: ThemeColor
+  accentColor: ThemeColor
+  cancelColor: ThemeColor
+  cancelBackgroundColor: ThemeColor
   onOpen: () => void
   onCancel: () => void
 }) {

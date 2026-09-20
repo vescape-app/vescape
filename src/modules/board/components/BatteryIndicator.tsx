@@ -7,7 +7,7 @@ import { LinearGauge } from '@/components/charts/LinearGauge'
 import type { DualGaugeAlert } from '@/components/charts/gaugeAlert'
 import { telemetry } from '@/modules/board/constants/telemetry'
 import { TELEMETRY_THRESHOLDS } from '@/modules/board/constants/telemetryThresholds'
-import { theme } from '@/constants/theme'
+import { theme, type ThemeColor } from '@/constants/theme'
 import { deriveBatteryConfig, isBmsCharging, summarizeBms } from '@/modules/battery/lib'
 import { fmtTimeAgo } from '@/helpers/format'
 import { useLiveSeries } from '@/modules/board/hooks/useLiveMetric'
@@ -27,7 +27,7 @@ interface BatteryIndicatorProps {
 /** Warning shade when low on charge, else the battery metric color. Mirrors the gauge fill.
  *  Threshold sourced from the shared telemetry thresholds (battery.warning is a
  *  0-1 fraction; battery percent is 0-100). */
-function pickColor(percent: number | null): string {
+function pickColor(percent: number | null): ThemeColor {
   if (percent != null && percent < TELEMETRY_THRESHOLDS.battery.warning * 100) {
     return theme.status.warning.color
   }

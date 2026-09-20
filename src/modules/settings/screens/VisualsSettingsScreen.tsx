@@ -14,7 +14,7 @@ import { IconHero } from '@/components/settings/IconHero'
 import { SettingsCard } from '@/components/settings/SettingsCard'
 import { SettingsRow } from '@/components/settings/SettingsRow'
 import { SettingsSectionTitle } from '@/components/settings/SettingsSectionTitle'
-import { theme } from '@/constants/theme'
+import { theme, type ThemeColor } from '@/constants/theme'
 import type { ThemeMode } from '@/modules/settings/lib/themeMode'
 import { useSettingsStore } from '@/modules/settings/store/settingsStore'
 
@@ -23,7 +23,7 @@ const THEME_OPTIONS: {
   label: string
   hint: string
   Icon: Icon
-  color: string
+  color: ThemeColor
 }[] = [
   {
     mode: 'system',

@@ -5,7 +5,7 @@ import { Canvas, Group, Path } from '@shopify/react-native-skia'
 
 import { Text } from '@/components/base/Text'
 import type { DualGaugeAlert } from '@/components/charts/gaugeAlert'
-import { theme, type AlphaLevel } from '@/constants/theme'
+import { theme, type AlphaLevel, type ThemeColor } from '@/constants/theme'
 import { useSkiaFont } from '@/hooks/useSkiaFont'
 import {
   useResolvedAccentColors,
@@ -36,7 +36,7 @@ interface SingleGaugeProps {
   value: SharedValue<number | null>
   min?: number
   max: number
-  color: string
+  color: ThemeColor
   unit: string
   decimals?: number
   label?: string

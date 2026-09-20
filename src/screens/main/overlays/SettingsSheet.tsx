@@ -27,13 +27,13 @@ import { selectAvailableUpdate } from '@/modules/release/lib/availableUpdate'
 import { useAppStatusStore } from '@/modules/release/store/appStatusStore'
 import { useDatabaseSize } from '@/modules/settings/hooks/useDatabaseSize'
 import { routes } from '@/navigation/routes'
-import { theme } from '@/constants/theme'
+import { theme, type ThemeColor } from '@/constants/theme'
 
 const appVersion = Constants.expoConfig?.version ?? DASH
 
 interface Shortcut {
   icon: Icon
-  accent: string
+  accent: ThemeColor
   label: string
   hint: string
   route: Href
@@ -211,10 +211,10 @@ function BackupCell({ backup, onSignIn }: { backup: BackupSlot; onSignIn: () => 
 
 interface StripCellProps {
   icon: Icon
-  accent: string
+  accent: ThemeColor
   value: string
   label?: string
-  valueColor?: string
+  valueColor?: ThemeColor
   /** 0–1. Draws a bar under the value; the bar alone says the work is running. */
   progress?: number
   dim?: boolean

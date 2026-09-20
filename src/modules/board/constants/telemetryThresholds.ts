@@ -1,4 +1,4 @@
-import { theme } from '@/constants/theme'
+import { theme, type ThemeColor } from '@/constants/theme'
 
 /**
  * Telemetry warning thresholds shared across the app — single source of truth
@@ -46,7 +46,7 @@ export const TELEMETRY_THRESHOLDS = {
 export type TelemetryLevel = 'normal' | 'warning' | 'critical'
 
 /** Color for a telemetry level — palette-sourced, single source of truth. */
-export const TELEMETRY_LEVEL_COLOR: Record<TelemetryLevel, string> = {
+export const TELEMETRY_LEVEL_COLOR: Record<TelemetryLevel, ThemeColor> = {
   normal: theme.palette.slate.textSecondary,
   warning: theme.status.warning.color,
   critical: theme.status.error.color,

@@ -8,7 +8,7 @@ import { isDisplayableFieldValue } from '@/modules/tune/lib/fieldValues'
 import { formatProfileValue } from '@/modules/tune/lib/sliderDefinitions'
 import { formatTuneValue } from '@/modules/tune/lib/fields'
 import { TuneTileFill } from '@/modules/tune/components/TuneTileFill'
-import { theme } from '@/constants/theme'
+import { theme, type ThemeColor } from '@/constants/theme'
 import { useResolvedNeutralColors } from '@/hooks/useTheme'
 
 interface TuneConfigCellProps {
@@ -18,7 +18,7 @@ interface TuneConfigCellProps {
   profileValue: TuneProfileFieldValue | undefined
   dirty: boolean
   boardChanged: boolean
-  color: string
+  color: ThemeColor
   onPress: () => void
   onRevert: () => void
   onAcceptBoard: () => void

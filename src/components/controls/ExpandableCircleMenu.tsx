@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react'
 import { Pressable, StyleSheet, View } from 'react-native'
 import Animated, { useAnimatedStyle, withTiming } from 'react-native-reanimated'
-import { theme } from '@/constants/theme'
+import { theme, type ThemeColor } from '@/constants/theme'
 import {
   useResolvedColor,
   useResolvedControlColors,
@@ -18,8 +18,8 @@ interface ExpandableCircleMenuOption<Key extends string> {
 interface ExpandableCircleMenuProps<Key extends string> {
   activeKey: Key
   activeIcon: ReactNode
-  activeColor: string
-  activeBackground: string
+  activeColor: ThemeColor
+  activeBackground: ThemeColor
   collapsedAccessibilityLabel: string
   expanded: boolean
   variant?: 'control' | 'lightTabs'

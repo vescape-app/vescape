@@ -9,7 +9,7 @@ import Animated, {
 } from 'react-native-reanimated'
 import { Text } from '@/components/base/Text'
 
-import { interaction, theme } from '@/constants/theme'
+import { interaction, theme, type ThemeColor } from '@/constants/theme'
 import { useResolvedColor } from '@/hooks/useTheme'
 
 interface FloatingBarFrameProps {
@@ -21,10 +21,10 @@ export interface FloatingStatusPillAction {
   kind: 'action'
   icon: Icon
   text: string
-  bg: string
-  border: string
-  textColor: string
-  buttonBg: string
+  bg: ThemeColor
+  border: ThemeColor
+  textColor: ThemeColor
+  buttonBg: ThemeColor
   onPress: () => void
   testID?: string
 }
@@ -33,7 +33,7 @@ export interface FloatingStatusPillSpinner {
   kind: 'spinner'
   icon?: Icon
   text: string
-  color: string
+  color: ThemeColor
   onPress: () => void
   testID?: string
   cancelTestID?: string

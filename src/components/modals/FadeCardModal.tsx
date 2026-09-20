@@ -12,7 +12,7 @@ import {
 import { XIcon, type Icon } from 'phosphor-react-native'
 
 import { Text } from '@/components/base/Text'
-import { theme } from '@/constants/theme'
+import { theme, type ThemeColor } from '@/constants/theme'
 
 const FADE_DURATION = 120
 
@@ -30,10 +30,10 @@ interface FadeCardModalProps {
   dismissDisabled?: boolean
   title?: string
   titleIcon?: Icon
-  titleIconColor?: string
+  titleIconColor?: ThemeColor
   titleIconWeight?: 'bold' | 'fill'
   /** Overrides the default primary-text title colour (a type accent, say). */
-  titleColor?: string
+  titleColor?: ThemeColor
   /** Close button in the header. Ignored when the card is non-dismissible. */
   showClose?: boolean
   /** Action row under the body. */

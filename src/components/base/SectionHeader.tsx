@@ -3,13 +3,13 @@ import type { ReactNode } from 'react'
 import { StyleSheet, View } from 'react-native'
 
 import { Text } from '@/components/base/Text'
-import { theme } from '@/constants/theme'
+import { theme, type ThemeColor } from '@/constants/theme'
 
 interface SectionHeaderProps {
   icon: Icon
   title: string
   /** Tint of the icon; sections are told apart by it. */
-  color?: string
+  color?: ThemeColor
   /** One line under the title saying what the section is for. */
   description?: string
   /** Action belonging to the section, pinned to the right of the title row. */

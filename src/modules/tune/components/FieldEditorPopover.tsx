@@ -7,7 +7,7 @@ import { Button } from '@/components/base/Button'
 import { Input } from '@/components/forms/Input'
 import { EdgeDrawer } from '@/components/overlays/EdgeDrawer'
 import { TuneDial } from '@/modules/tune/components/TuneDial'
-import { theme } from '@/constants/theme'
+import { theme, type ThemeColor } from '@/constants/theme'
 import { snapValue } from '@/modules/tune/lib/sliderDefinitions'
 import type { LinkedFieldPreview } from '@/modules/tune/lib/sliderDefinitions'
 import { formatTuneValue } from '@/modules/tune/lib/fields'
@@ -24,7 +24,7 @@ export interface FieldEditorTarget {
   unit: string | null
   help: string
   icon?: Icon
-  color?: string
+  color?: ThemeColor
   linkedFields?: LinkedFieldPreview[]
 }
 

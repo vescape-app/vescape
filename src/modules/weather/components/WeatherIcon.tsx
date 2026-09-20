@@ -12,7 +12,7 @@ import {
 } from 'phosphor-react-native'
 import type { WeatherIconSlug } from 'vescape-core'
 
-import { theme } from '@/constants/theme'
+import { theme, type ThemeColor } from '@/constants/theme'
 
 const ICON_MAP: Record<WeatherIconSlug, Icon> = {
   sun: SunIcon,
@@ -29,7 +29,7 @@ const ICON_MAP: Record<WeatherIconSlug, Icon> = {
 interface WeatherIconProps {
   icon: WeatherIconSlug
   size?: number
-  color?: string
+  color?: ThemeColor
   weight?: 'thin' | 'light' | 'regular' | 'bold' | 'fill' | 'duotone'
 }
 

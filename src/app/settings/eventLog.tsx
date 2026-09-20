@@ -15,7 +15,7 @@ import { clearDiagnosticEvents, getDiagnosticEvents, type LocalDiagnosticEvent }
 import { ConfirmModal } from '@/components/modals/ConfirmModal'
 import { IconButton } from '@/components/base/IconButton'
 import { IconHero } from '@/components/settings/IconHero'
-import { theme } from '@/constants/theme'
+import { theme, type ThemeColor } from '@/constants/theme'
 
 const PAGE_SIZE = 50
 
@@ -81,7 +81,7 @@ const BAD_EVENTS = new Set([
   'watch_mirror_launch_failed',
 ])
 
-function getEventColor(eventName: string): string {
+function getEventColor(eventName: string): ThemeColor {
   if (GOOD_EVENTS.has(eventName)) return theme.palette.green.color
   if (INFO_EVENTS.has(eventName)) return theme.status.info.color
   if (WARNING_EVENTS.has(eventName)) return theme.palette.yellow.color

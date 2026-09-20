@@ -1,6 +1,6 @@
 import { Circle, Path, Skia } from '@shopify/react-native-skia'
 
-import { theme } from '@/constants/theme'
+import { theme, type ThemeColor } from '@/constants/theme'
 import { useResolvedColor, useResolvedNeutralColors } from '@/hooks/useTheme'
 
 export interface SparklinePoint {
@@ -123,7 +123,7 @@ export function buildSparklinePaths({
 
 interface SparklineLayerProps {
   paths: SparklinePaths
-  color: string
+  color: ThemeColor
   showMax?: boolean
 }
 

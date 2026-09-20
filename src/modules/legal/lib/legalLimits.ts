@@ -1,5 +1,5 @@
 import legalPolicies from '../../../../shared/data/legal-policies.json'
-import { theme } from '@/constants/theme'
+import { theme, type ThemeColor } from '@/constants/theme'
 import type { LegalRoadStatus } from '@/modules/legal/lib/types'
 
 export interface LegalLimitCountry {
@@ -374,7 +374,7 @@ export const LEGAL_ROAD_STATUS_LABELS: Record<LegalRoadStatus, string> = {
   unknown: 'Unknown',
 }
 
-export const LEGAL_ROAD_STATUS_COLORS: Record<LegalRoadStatus, string> = {
+export const LEGAL_ROAD_STATUS_COLORS: Record<LegalRoadStatus, ThemeColor> = {
   likelyLegal: theme.palette.green.color,
   restricted: theme.palette.amber.color,
   notRoadLegal: theme.palette.red.color,
@@ -403,9 +403,7 @@ export function getLegalLimitCountryDetail(
   return LEGAL_LIMIT_COUNTRY_DETAILS[country.code] ?? null
 }
 
-export function legalStatusColorExpression(
-  colors: Record<LegalRoadStatus, string> = LEGAL_ROAD_STATUS_COLORS,
-) {
+export function legalStatusColorExpression(colors: Record<LegalRoadStatus, string>) {
   const expression: unknown[] = ['match', ['get', 'iso_3166_1_alpha_3']]
   for (const country of LEGAL_LIMIT_COUNTRIES) {
     expression.push(country.alpha3, colors[country.status])

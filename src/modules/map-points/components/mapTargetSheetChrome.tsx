@@ -5,7 +5,7 @@ import Animated, { Keyframe } from 'react-native-reanimated'
 import type { MapPoint } from 'vescape-core'
 
 import { Text } from '@/components/base/Text'
-import { theme } from '@/constants/theme'
+import { theme, type ThemeColor } from '@/constants/theme'
 import { useResolvedNeutralColors } from '@/hooks/useTheme'
 import { MapPointMediaPreview } from '@/modules/map-points/components/MapPointMediaPreview'
 import { mapSheetStyles } from '@/modules/map-points/components/mapSheetStyles'
@@ -25,10 +25,10 @@ import type { MapSelection } from '@/modules/map/lib/mapSelection'
 export interface MapTargetSheetAction {
   label: string
   accessibilityLabel: string
-  color: string
-  textColor: string
-  borderColor: string
-  bgColor: string
+  color: ThemeColor
+  textColor: ThemeColor
+  borderColor: ThemeColor
+  bgColor: ThemeColor
   Icon: Icon
   onPress: () => void
 }
@@ -52,8 +52,8 @@ export function MapTargetSheetFrame({
   target: MapSelection
   bottom: number
   header: ReactNode
-  fallbackColor?: string
-  fallbackTextColor?: string
+  fallbackColor?: ThemeColor
+  fallbackTextColor?: ThemeColor
   onDismiss?: () => void
   onFocusTarget?: () => void
   animateEntrance?: boolean
@@ -118,8 +118,8 @@ export function MapTargetIdentityIcon({
   fallbackTextColor = theme.neutral.textPrimary,
 }: {
   target: MapSelection
-  fallbackColor?: string
-  fallbackTextColor?: string
+  fallbackColor?: ThemeColor
+  fallbackTextColor?: ThemeColor
 }) {
   const neutral = useResolvedNeutralColors()
   const isMapPoint = target.type === 'mapPoint'

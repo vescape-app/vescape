@@ -34,7 +34,7 @@ import {
   configRelativeBase,
   type BoardConfigBases,
 } from '@/modules/alerts/lib/configRelativeFields'
-import { theme } from '@/constants/theme'
+import { theme, type ThemeColor } from '@/constants/theme'
 import { useResolvedAccentColors, useResolvedNeutralColors } from '@/hooks/useTheme'
 import { useAlertTest } from '@/modules/alerts/hooks/useAlertTest'
 
@@ -51,7 +51,7 @@ import { useAlertTest } from '@/modules/alerts/hooks/useAlertTest'
  */
 
 interface PresetGaugeDescriptor {
-  color: string
+  color: ThemeColor
   /** Readout unit shown under the live value. */
   unit: string
   decimals: number
@@ -383,8 +383,8 @@ function CustomLabel() {
 
 interface LevelTone {
   bg: string
-  border: string
-  color: string
+  border: ThemeColor
+  color: ThemeColor
 }
 
 const LEVEL_OPTIONS: { id: AlertPresetLevel; label: string }[] = [

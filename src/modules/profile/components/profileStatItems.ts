@@ -17,7 +17,7 @@ import {
   formatEnergy,
   formatSpeed,
 } from '@/modules/profile/lib/profileStats'
-import { theme } from '@/constants/theme'
+import { theme, type ThemeColor } from '@/constants/theme'
 
 export type ProfileStatKey =
   | 'distance'
@@ -34,7 +34,7 @@ export interface ProfileStatItem {
   label: string
   value: string
   icon: Icon
-  accent: string
+  accent: ThemeColor
 }
 
 /** Every riding total as a labelled, formatted, tinted figure — one definition for every surface

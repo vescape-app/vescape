@@ -9,7 +9,7 @@ import {
 import { useTriggerRef } from '@/components/forms/Dropdown'
 import { TuneDial } from '@/modules/tune/components/TuneDial'
 import { widgetSurface, type WidgetSize } from '@/components/widgets/widgetSurface'
-import { theme } from '@/constants/theme'
+import { theme, type ThemeColor } from '@/constants/theme'
 import { formatTuneValue } from '@/modules/tune/lib/fields'
 
 interface DialWidgetProps {
@@ -21,7 +21,7 @@ interface DialWidgetProps {
   unit?: string | null
   previousValue?: number
   /** Accent for the label. */
-  accent?: string
+  accent?: ThemeColor
   size?: WidgetSize
   /** Help text shown in the square tile's editor modal. */
   help?: string

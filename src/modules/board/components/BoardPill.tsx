@@ -12,7 +12,7 @@ import type { BoardWarningSeverity } from 'vescape-core'
 import { Text } from '@/components/base/Text'
 import { ReplayBadge } from '@/modules/board/components/ReplayBadge'
 import { severityStatus } from '@/modules/board/constants/boardWarnings'
-import { theme } from '@/constants/theme'
+import { theme, type ThemeColor } from '@/constants/theme'
 
 interface PillAction {
   onPress: () => void
@@ -169,7 +169,7 @@ function BoardPillButton({
   anchorRef?: RefObject<View | null>
   label: string
   testID: string
-  color?: string
+  color?: ThemeColor
   /** Which edge the separator sits on, so a leading button is cut off from the name, not the air. */
   dividerSide?: 'before' | 'after'
 }) {

@@ -3,7 +3,7 @@ import { Text } from '@/components/base/Text'
 import type { Icon } from 'phosphor-react-native'
 import type { ReactNode } from 'react'
 
-import { theme } from '@/constants/theme'
+import { theme, type ThemeColor } from '@/constants/theme'
 
 interface IconHeroProps {
   icon?: Icon
@@ -12,7 +12,7 @@ interface IconHeroProps {
   description?: string
   children?: ReactNode
   iconSize?: number
-  iconColor?: string
+  iconColor?: ThemeColor
   iconWeight?: 'thin' | 'light' | 'regular' | 'bold' | 'fill' | 'duotone'
 }
 

@@ -9,7 +9,7 @@ import {
 import { Text } from '@/components/base/Text'
 import { useColoredAction, useColoredActionForeground } from '@/hooks/useTheme'
 
-import { interaction, theme } from '@/constants/theme'
+import { interaction, theme, type ThemeColor } from '@/constants/theme'
 
 interface ButtonProps {
   label: string
@@ -17,7 +17,7 @@ interface ButtonProps {
   testID?: string
   accessibilityLabel?: string
   /** Overrides the variant's accent for field-specific actions. */
-  accent?: string
+  accent?: ThemeColor
   variant?:
     | 'primary'
     | 'accent'

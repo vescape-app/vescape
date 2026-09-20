@@ -2,7 +2,7 @@ import { useCallback, useRef, useState } from 'react'
 import { Pressable, ScrollView, StyleSheet, Text, View, type ViewStyle } from 'react-native'
 import { CaretDownIcon, CheckIcon, type Icon as PhosphorIcon } from 'phosphor-react-native'
 
-import { interaction, theme } from '@/constants/theme'
+import { interaction, theme, type ThemeColor } from '@/constants/theme'
 import { Dropdown } from '@/components/forms/Dropdown'
 import type { SelectOption } from '@/components/forms/Select'
 import { useResolvedSecondaryWidgetSurface } from '@/components/widgets/widgetSurface'
@@ -11,7 +11,7 @@ const MAX_DROPDOWN_HEIGHT = 280
 
 interface SelectCardProps<T extends string = string> {
   icon: PhosphorIcon
-  iconColor: string
+  iconColor: ThemeColor
   title: string
   description?: string
   options: SelectOption<T>[]
