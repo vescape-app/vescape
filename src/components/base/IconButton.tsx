@@ -16,7 +16,7 @@ import Animated, {
   withTiming,
 } from 'react-native-reanimated'
 
-import { useColoredAction } from '@/hooks/useTheme'
+import { useColoredAction, useResolvedColor } from '@/hooks/useTheme'
 import { interaction, theme } from '@/constants/theme'
 
 const SIZES = { sm: 38, md: 50, lg: 54 } as const
@@ -25,6 +25,8 @@ const RING_STROKE = 2.5
 
 /** Determinate ring hugging the button's border, filling clockwise from the top. */
 function ProgressRing({ dim, color, progress }: { dim: number; color: string; progress: number }) {
+  // Skia needs a color string, not a native adaptive color object.
+  const ringColor = useResolvedColor(color)
   const path = useMemo(() => {
     const inset = RING_STROKE / 2
     const p = Skia.Path.Make()
@@ -35,13 +37,18 @@ function ProgressRing({ dim, color, progress }: { dim: number; color: string; pr
 
   return (
     <Canvas pointerEvents="none" style={[styles.ring, { width: dim, height: dim }]}>
-      <Path path={path} style="stroke" strokeWidth={RING_STROKE} color={theme.alpha(color, 0.3)} />
+      <Path
+        path={path}
+        style="stroke"
+        strokeWidth={RING_STROKE}
+        color={theme.alpha(ringColor, 0.3)}
+      />
       <Path
         path={path}
         style="stroke"
         strokeWidth={RING_STROKE}
         strokeCap="round"
-        color={color}
+        color={ringColor}
         end={end}
       />
     </Canvas>
