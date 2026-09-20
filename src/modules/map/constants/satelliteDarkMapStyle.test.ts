@@ -32,7 +32,7 @@ describe('satellite dark map style', () => {
       rasterContrast: 0,
     })
     expect(getSatelliteImageryPaint(0, 2)).toEqual({
-      rasterOpacity: 0.1,
+      rasterOpacity: 0,
       rasterSaturation: 1,
       rasterContrast: -0.25,
     })

@@ -34,7 +34,7 @@ export function getSatelliteImageryPaint(
   imagerySaturation = DEFAULT_SATELLITE_IMAGERY_SATURATION,
   imageryContrast?: number,
 ) {
-  const clampedImageryOpacity = Math.max(0.1, Math.min(1, imageryOpacity))
+  const clampedImageryOpacity = Math.max(0, Math.min(1, imageryOpacity))
   const clampedImagerySaturation = Math.max(-1, Math.min(1, imagerySaturation))
   const toneSatelliteImage = clampedImageryOpacity < FULL_IMAGERY_OPACITY
   return {
