@@ -70,7 +70,7 @@ export default function MapSettingsScreen() {
             icon={ImageSquareIcon}
             iconColor={theme.palette.sky.color}
             label="Satellite overlay"
-            hint="Use the toned satellite image with One Dark labels"
+            hint="Use toned satellite imagery with roads and labels"
             right={
               <SettingsSwitch
                 value={satelliteOverlayEnabled}

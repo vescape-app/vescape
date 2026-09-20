@@ -12,6 +12,7 @@ import { MapBaseStyleLayers } from '@/screens/main/map/MapBaseStyleLayers'
 import { SatelliteImageryLayer } from '@/screens/main/map/SatelliteImageryLayer'
 import type { MainMapHistoryProps, MainMapPointsProps } from '@/screens/main/map/MainMap'
 import type { CameraSnapshot } from '@/screens/main/map/useCameraControls'
+import type { MapStyleDocument } from '@/screens/main/map/mapStyleLifecycle'
 import type { useResolvedMapStyle } from '@/screens/main/map/useResolvedMapStyle'
 
 type LayerProps = ComponentProps<typeof MainMapLayers>
@@ -25,6 +26,8 @@ interface MainMapSceneProps {
   mapViewRef: RefObject<ComponentRef<typeof Mapbox.MapView> | null>
   cameraRef: RefObject<Camera | null>
   mapStyle: ReturnType<typeof useResolvedMapStyle>
+  appliedStyle: MapStyleDocument
+  styleReady: boolean
   rotationLocked: boolean
   onDidFinishLoadingStyle: MapViewProps['onDidFinishLoadingStyle']
   onMapLoadingError: MapViewProps['onMapLoadingError']
@@ -76,6 +79,8 @@ export function MainMapScene({
   mapViewRef,
   cameraRef,
   mapStyle,
+  appliedStyle,
+  styleReady,
   rotationLocked,
   onDidFinishLoadingStyle,
   onMapLoadingError,
@@ -131,8 +136,8 @@ export function MainMapScene({
         key={styleRetryNonce}
         ref={mapViewRef}
         style={styles.map}
-        styleURL={mapStyle.styleURL}
-        styleJSON={mapStyle.styleJSON}
+        styleURL={appliedStyle.styleURL}
+        styleJSON={appliedStyle.styleJSON}
         pitchEnabled={false}
         rotateEnabled={!rotationLocked}
         compassEnabled={false}
@@ -154,7 +159,7 @@ export function MainMapScene({
           maxZoomLevel={MAP_DEFAULTS.maxZoom}
           animationMode="easeTo"
         />
-        {mapStyle.isStyleLoaded && (
+        {styleReady && (
           // Native styles own their sources and layers. Mount a fresh React layer tree only after
           // the replacement document is ready; never update nodes the previous style removed.
           <Fragment key={mapStyle.styleSignature}>
@@ -162,7 +167,8 @@ export function MainMapScene({
               <SatelliteImageryLayer paint={mapStyle.satelliteImageryPaint} />
             )}
             <MapBaseStyleLayers
-              enabled={mapStyle.canUpdateExistingStyleLayers}
+              enabled={!mapStyle.isMapy}
+              existingLayerIds={mapStyle.existingLayerIds}
               styleKey={mapStyle.styleKey}
               isOneDark={mapStyle.isOneDark}
               isSatellite={mapStyle.isSatellite}
@@ -184,7 +190,7 @@ export function MainMapScene({
               isMapy={mapStyle.isMapy}
               isOneDark={mapStyle.isOneDark}
               isSatellite={mapStyle.isSatelliteOverlay}
-              showBuildings3d={mapStyle.showBuildings3d && mapStyle.canUpdateExistingStyleLayers}
+              showBuildings3d={mapStyle.showBuildings3d && !mapStyle.isMapy}
               weatherActive={weatherActive}
               legalLimitsActive={legalLimitsActive}
               liveTrailShape={liveTrailShape}

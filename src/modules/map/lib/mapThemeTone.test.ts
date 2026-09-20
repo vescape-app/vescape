@@ -62,7 +62,7 @@ describe('resolveMapThemeTone', () => {
     expect(night).toEqual(day)
   })
 
-  test('light theme keeps low-opacity telemetry satellite imagery legible', () => {
+  test('light theme preserves low-opacity satellite control', () => {
     const tone = resolveMapThemeTone({
       theme: 'light',
       outdoorLight: 0,
@@ -70,9 +70,42 @@ describe('resolveMapThemeTone', () => {
       imagerySaturation: -0.35,
     })
 
-    expect(tone.imageryOpacity).toBeCloseTo(0.448)
+    expect(tone.imageryOpacity).toBeCloseTo(0.192)
     expect(tone.imagerySaturation).toBeCloseTo(-0.38)
   })
+
+  test.each(['dark', 'light'] as const)(
+    '%s theme changes raster opacity at every low-end control step',
+    (theme) => {
+      const opacity = (value: number) =>
+        resolveMapThemeTone({
+          theme,
+          outdoorLight: 0,
+          imageryOpacity: value,
+          imagerySaturation: 0,
+        }).imageryOpacity
+
+      expect(opacity(0.1)).toBeLessThan(opacity(0.15))
+      expect(opacity(0.15)).toBeLessThan(opacity(0.2))
+    },
+  )
+
+  test.each(['dark', 'light'] as const)(
+    '%s defaults keep Explore imagery stronger than Dashboard and respect both controls',
+    (theme) => {
+      const tone = (opacity: number) =>
+        resolveMapThemeTone({
+          theme,
+          outdoorLight: 0.5,
+          imageryOpacity: opacity,
+          imagerySaturation: -0.35,
+        }).imageryOpacity
+
+      expect(tone(1)).toBeGreaterThan(tone(0.2))
+      expect(tone(0.7)).toBeLessThan(tone(1))
+      expect(tone(0.4)).toBeGreaterThan(tone(0.2))
+    },
+  )
 
   test('keeps manual values inside Mapbox ranges', () => {
     const tone = resolveMapThemeTone({
