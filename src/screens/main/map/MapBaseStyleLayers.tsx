@@ -22,6 +22,7 @@ const LAYER_TRANSITION = { duration: 260, delay: 0 } as const
  */
 export const MapBaseStyleLayers = memo(function MapBaseStyleLayers({
   enabled,
+  existingLayerIds,
   styleKey,
   isOneDark,
   isSatellite,
@@ -30,6 +31,7 @@ export const MapBaseStyleLayers = memo(function MapBaseStyleLayers({
   satelliteRoadLineOpacity,
 }: {
   enabled: boolean
+  existingLayerIds: ReadonlySet<string>
   styleKey: MapStyleKey
   isOneDark: boolean
   isSatellite: boolean
@@ -43,19 +45,26 @@ export const MapBaseStyleLayers = memo(function MapBaseStyleLayers({
   if (isSatelliteOverlay) {
     return (
       <>
-        {SATELLITE_ROAD_LINE_LAYER_IDS.map((id) => (
-          <Mapbox.LineLayer
-            key={id}
-            id={id}
-            existing
-            style={{
-              lineOpacity: satelliteRoadLineOpacity,
-              lineOpacityTransition: LAYER_TRANSITION,
-            }}
-          />
-        ))}
-        <SymbolLayer id="poi-label" existing style={{ visibility }} />
-        <SymbolLayer id="transit-label" existing style={{ visibility }} />
+        {SATELLITE_ROAD_LINE_LAYER_IDS.map(
+          (id) =>
+            existingLayerIds.has(id) && (
+              <Mapbox.LineLayer
+                key={id}
+                id={id}
+                existing
+                style={{
+                  lineOpacity: satelliteRoadLineOpacity,
+                  lineOpacityTransition: LAYER_TRANSITION,
+                }}
+              />
+            ),
+        )}
+        {existingLayerIds.has('poi-label') && (
+          <SymbolLayer id="poi-label" existing style={{ visibility }} />
+        )}
+        {existingLayerIds.has('transit-label') && (
+          <SymbolLayer id="transit-label" existing style={{ visibility }} />
+        )}
       </>
     )
   }
@@ -63,26 +72,30 @@ export const MapBaseStyleLayers = memo(function MapBaseStyleLayers({
   if (isOneDark) {
     return (
       <>
-        <SymbolLayer
-          id="poi-label"
-          existing
-          style={{
-            visibility,
-            iconColor: '#8ba4bf',
-            iconHaloWidth: 0,
-            iconOpacity: 0.76,
-          }}
-        />
-        <SymbolLayer
-          id="transit-label"
-          existing
-          style={{
-            visibility,
-            iconColor: '#8ba4bf',
-            iconHaloWidth: 0,
-            iconOpacity: 0.76,
-          }}
-        />
+        {existingLayerIds.has('poi-label') && (
+          <SymbolLayer
+            id="poi-label"
+            existing
+            style={{
+              visibility,
+              iconColor: '#8ba4bf',
+              iconHaloWidth: 0,
+              iconOpacity: 0.76,
+            }}
+          />
+        )}
+        {existingLayerIds.has('transit-label') && (
+          <SymbolLayer
+            id="transit-label"
+            existing
+            style={{
+              visibility,
+              iconColor: '#8ba4bf',
+              iconHaloWidth: 0,
+              iconOpacity: 0.76,
+            }}
+          />
+        )}
       </>
     )
   }
@@ -90,8 +103,12 @@ export const MapBaseStyleLayers = memo(function MapBaseStyleLayers({
   if (styleKey === 'outdoors' || isSatellite) {
     return (
       <>
-        <SymbolLayer id="poi-label" existing style={{ visibility }} />
-        <SymbolLayer id="transit-label" existing style={{ visibility }} />
+        {existingLayerIds.has('poi-label') && (
+          <SymbolLayer id="poi-label" existing style={{ visibility }} />
+        )}
+        {existingLayerIds.has('transit-label') && (
+          <SymbolLayer id="transit-label" existing style={{ visibility }} />
+        )}
       </>
     )
   }

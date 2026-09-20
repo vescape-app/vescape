@@ -170,7 +170,6 @@ export const MainMap = memo(
     const hiddenMapPointCategories = mapPointProps.hiddenCategories
 
     const [cameraReady, setCameraReady] = useState(false)
-    const [loadedStyleSignature, setLoadedStyleSignature] = useState<string | null>(null)
     const {
       selectedHistoryMarker,
       selectedLegalCountry,
@@ -236,7 +235,7 @@ export const MainMap = memo(
       [historyActive, historyPanelHeight, mapLayout],
     )
 
-    const mapStyle = useResolvedMapStyle({ ...styleProps, mode, loadedStyleSignature })
+    const mapStyle = useResolvedMapStyle({ ...styleProps, mode })
 
     const settingsLoaded = useSettingsStore((s) => s.loaded)
     const lastGpsLatitude = useSettingsStore((s) => s.lastGpsLatitude)
@@ -408,8 +407,6 @@ export const MainMap = memo(
       perspectiveEnabled,
       phoneHeadingMode,
       mediaAssetCount: history.mediaAssets.length,
-      mapStyleKey: styleProps.mapStyleKey,
-      mapStyleSignature: mapStyle.styleSignature,
       getHistoryPreviewCamera,
       getLiveFollowCamera,
       setFollowGps,
@@ -423,10 +420,11 @@ export const MainMap = memo(
       setCameraHeading,
       setCameraReady,
       setCameraZoom,
-      setLoadedStyleSignature,
     })
 
     const {
+      appliedStyle,
+      styleReady,
       mapStyleLoading,
       mapLoadFailed,
       handleStyleLoaded,
@@ -434,9 +432,7 @@ export const MainMap = memo(
       retryStyleLoad,
       styleRetryNonce,
     } = useMapStyleLoadGuard({
-      mapStyleKey: styleProps.mapStyleKey,
-      styleSignature: mapStyle.styleSignature,
-      loadedStyleSignature,
+      document: mapStyle,
       onStyleLoaded: handleMapLoaded,
     })
 
@@ -490,6 +486,8 @@ export const MainMap = memo(
           mapViewRef={mapViewRef}
           cameraRef={cameraRef}
           mapStyle={mapStyle}
+          appliedStyle={appliedStyle}
+          styleReady={styleReady}
           rotationLocked={rotationLocked}
           onDidFinishLoadingStyle={handleStyleLoaded}
           onMapLoadingError={handleStyleLoadError}

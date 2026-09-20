@@ -26,6 +26,7 @@ import { backupProgressFraction, type BackupSlot } from '@/modules/profile/lib/b
 import { selectAvailableUpdate } from '@/modules/release/lib/availableUpdate'
 import { useAppStatusStore } from '@/modules/release/store/appStatusStore'
 import { useDatabaseSize } from '@/modules/settings/hooks/useDatabaseSize'
+import { ThemePicker } from '@/modules/settings/components/ThemePicker'
 import { routes } from '@/navigation/routes'
 import { theme, type ThemeColor } from '@/constants/theme'
 
@@ -141,6 +142,8 @@ export function SettingsSheet({ backup, onNavigate }: SettingsSheetProps) {
           onPress={() => go(s.route)}
         />
       ))}
+
+      <ThemePicker />
 
       <LinkWidget
         icon={WrenchIcon}

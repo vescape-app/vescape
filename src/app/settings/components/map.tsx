@@ -19,6 +19,8 @@ import {
 } from '@/modules/map/constants/satelliteDarkMapStyle'
 import { ONE_DARK_MAP_STYLE } from '@/modules/map/constants/oneDarkMapStyle'
 import { theme } from '@/constants/theme'
+import { useThemeStore } from '@/hooks/useTheme'
+import { mapStyleForTheme } from '@/modules/map/lib/mapTheme'
 import type { HistoryMetricKey } from '@/modules/history/lib/metricColorScale'
 import {
   FIXTURE_ACCURACY_FIX,
@@ -57,6 +59,7 @@ const HISTORY_METRIC_OPTIONS: { key: HistoryMetricKey; label: string }[] = [
 
 export default function MapComponentsShowcase() {
   const [styleKey, setStyleKey] = useState<MapStyleKey>('onedark')
+  const resolvedTheme = useThemeStore((state) => state.resolvedTheme)
   const [styleExpanded, setStyleExpanded] = useState(false)
   const [weatherActive, setWeatherActive] = useState(false)
   const [legalLimitsActive, setLegalLimitsActive] = useState(false)
@@ -77,18 +80,25 @@ export default function MapComponentsShowcase() {
     })
   }, [])
 
+  const renderedStyleKey = mapStyleForTheme(styleKey, resolvedTheme)
   const selectedStyle = MAP_STYLES.find((s) => s.key === styleKey) ?? MAP_STYLES[0]
-  const isMapy = selectedStyle.key === 'mapy'
-  const isOneDark = selectedStyle.key === 'onedark'
-  const isSatellite = selectedStyle.key === 'satellite'
+  const isMapy = renderedStyleKey === 'mapy'
+  const isOneDark = renderedStyleKey === 'onedark'
+  const isSatellite = renderedStyleKey === 'satellite'
   const useCustomJSON = isMapy || isOneDark || isSatellite
-  const showBuildings3d = selectedStyle.key === 'outdoors' || selectedStyle.key === 'onedark'
+  const showBuildings3d = renderedStyleKey === 'outdoors' || isOneDark
 
   return (
     <View style={styles.container}>
       <MapView
         style={StyleSheet.absoluteFill}
-        styleURL={useCustomJSON ? undefined : selectedStyle.styleURL}
+        styleURL={
+          useCustomJSON
+            ? undefined
+            : renderedStyleKey === 'outdoors'
+              ? Mapbox.StyleURL.Outdoors
+              : (selectedStyle.styleURL ?? undefined)
+        }
         styleJSON={
           isOneDark
             ? ONE_DARK_MAP_STYLE

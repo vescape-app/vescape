@@ -19,7 +19,7 @@ The app has adaptive light and dark appearances. The durable `themeMode` setting
 - `dark` — always dark.
 - `sun` — light between local sunrise and sunset, dark otherwise, using the current or last known GPS location. It falls back to the system appearance when no location is available.
 
-Selecting One Dark or Satellite persists dark `themeMode`; selecting Outdoors or Mapy.cz persists light `themeMode`. The configured appearance also keeps explicit day/night basemaps paired in the other direction: light uses Outdoors and dark uses One Dark. Satellite and Mapy.cz remain unchanged when appearance is changed separately. This also resolves a persisted One Dark/Outdoors mismatch on the next app start.
+App theme and map style are independent preferences. Selecting a map never changes `themeMode`. The Streets option renders One Dark in dark appearance and Outdoors in light appearance, including System and Sunrise & sunset transitions. Existing saved `onedark` and `outdoors` selections both represent Streets; theme changes do not rewrite the saved map choice. Satellite and Mapy.cz remain selected across appearance changes.
 
 Neutral UI colors come from `theme.neutral`, while accent UI colors come from `theme.palette.<hue>`. Both are backed by iOS dynamic colors and Android day/night resources, so values captured by `StyleSheet.create` still update when the active appearance changes. `theme.palette.slate` remains a raw dark swatch for fixed dark map styles; do not use it for app surfaces or text.
 
@@ -33,7 +33,7 @@ Non-React-Native renderers and worklets use the plain-string palettes from `useR
 
 Android native `Switch` color props also receive resolved string colors. Its native color converter does not reliably resolve the adaptive resource-path value used by the rest of the React Native style system.
 
-Selecting Satellite switches the app to dark appearance for its subdued nighttime treatment. It does not inherit the previously selected light appearance.
+Satellite follows the effective app appearance with a navy backdrop in dark mode and a light backdrop in light mode. Home and Explore retain independent imagery-opacity preferences.
 
 | Role           | Token                         |
 | -------------- | ----------------------------- |

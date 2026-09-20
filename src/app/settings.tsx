@@ -20,7 +20,6 @@ import {
   WatchIcon,
   EngineIcon,
   MapTrifoldIcon,
-  PaletteIcon,
   SpeakerHighIcon,
 } from 'phosphor-react-native'
 
@@ -123,13 +122,6 @@ export default function SettingsScreen() {
 
         <SettingsSectionTitle>Appearance</SettingsSectionTitle>
         <SettingsCard>
-          <SettingsRow
-            icon={PaletteIcon}
-            iconColor={theme.palette.purple.color}
-            label="Theme"
-            hint="System, light, dark, or sunrise and sunset"
-            onPress={() => router.push(routes.settingsVisuals)}
-          />
           <SettingsRow
             icon={MapTrifoldIcon}
             iconColor={theme.settingsIcon.map}
