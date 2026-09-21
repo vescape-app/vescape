@@ -12,14 +12,14 @@ import type { BoardWarningSeverity } from 'vescape-core'
 import { Text } from '@/components/base/Text'
 import { EdgeDrawer } from '@/components/overlays/EdgeDrawer'
 import { Placeholder } from '@/components/base/Placeholder'
-import { SectionHeader } from '@/components/base/SectionHeader'
 import { TickText } from '@/components/base/TickText'
 import type { Board } from '@/modules/board/store/boardStore'
 import { severityStatus } from '@/modules/board/constants/boardWarnings'
 import { liveTelemetryRuntime } from '@/modules/board/lib/liveTelemetryRuntime'
-import { widgetSurface } from '@/components/widgets/widgetSurface'
+import { useResolvedSecondaryWidgetSurface } from '@/components/widgets/widgetSurface'
 import { fmtTimeAgo } from '@/helpers/format'
 import { interaction, theme, type ThemeColor } from '@/constants/theme'
+import { useResolvedColor } from '@/hooks/useTheme'
 
 /** A way into the active board's trouble, offered only while that surface is enabled. */
 export interface BoardSelectorLink {
@@ -80,14 +80,15 @@ function StaleMeta({ board }: { board: Board }) {
 
 /** The active board's link state. A pull rate exists only while the board is actually connected. */
 function ActiveMeta({ board, live }: { board: Board; live: boolean }) {
+  const liveColor = useResolvedColor(theme.status.success.color)
   return (
     <View style={styles.metaLine}>
       <View
         style={[
           styles.dot,
           {
-            borderColor: live ? theme.status.success.color : theme.neutral.textDim,
-            backgroundColor: live ? theme.status.success.color : 'transparent',
+            borderColor: live ? liveColor : theme.neutral.textDim,
+            backgroundColor: live ? liveColor : 'transparent',
           },
         ]}
       />
@@ -98,7 +99,7 @@ function ActiveMeta({ board, live }: { board: Board; live: boolean }) {
           unit=" Hz"
           size={PULL_RATE_FONT_SIZE}
           width={PULL_RATE_WIDTH}
-          color={theme.status.success.color}
+          color={liveColor}
         />
       ) : (
         <StaleMeta board={board} />
@@ -128,7 +129,7 @@ function LinksStrip({ links }: { links: StripLink[] }) {
     <View style={styles.strip}>
       {links.map(
         ({ key, icon: LinkIcon, label, color: activeColor, count, testID, onPress }, i) => {
-          const color = count === 0 ? theme.neutral.textDim : activeColor
+          const color = count === 0 ? theme.neutral.textMuted : activeColor
           return (
             <View key={key} style={styles.stripCell}>
               {i > 0 && <View style={styles.stripDivider} />}
@@ -184,22 +185,14 @@ export function BoardSelectorContent({
   onAddBoard,
   onEditBoard,
 }: BoardSelectorContentProps) {
+  const cardSurface = useResolvedSecondaryWidgetSurface()
   const active = boards.find((b) => b.id === activeBoardId)
   const others = boards.filter((b) => b.id !== active?.id)
 
   return (
     <>
-      {/* The drawer used to name both domains in one title, which said nothing about where either
-          one started. Each section wears its own name instead — the Accessories one comes with the
-          node, since Boards must not learn what an Accessory is. */}
-      <SectionHeader
-        icon={LightningIcon}
-        title="Boards"
-        color={theme.palette.sky.color}
-        align="center"
-      />
       {active && (
-        <View style={styles.activeBlock}>
+        <View style={[styles.activeBlock, cardSurface]}>
           <View style={[styles.row, styles.activeRow]}>
             <BoardIcon active />
             <View style={styles.rowInfo}>
@@ -259,7 +252,7 @@ export function BoardSelectorContent({
         {others.map((board) => (
           <Pressable
             key={board.id}
-            style={({ pressed }) => [styles.row, styles.listRow, pressed && styles.rowPressed]}
+            style={({ pressed }) => [cardSurface, styles.row, pressed && styles.rowPressed]}
             onPress={() => onSelectBoard(board.id)}
             accessibilityRole="button"
             accessibilityLabel={`Select ${board.name}`}
@@ -321,6 +314,9 @@ export function BoardSelectorSheet({
       visible={visible}
       triggerRef={triggerRef}
       edge="top"
+      title="Boards"
+      icon={LightningIcon}
+      iconColor={theme.palette.sky.color}
       backdropTestID="board-selector-backdrop"
       onClose={onClose}
     >
@@ -332,6 +328,7 @@ export function BoardSelectorSheet({
 const styles = StyleSheet.create({
   frame: {
     width: '100%',
+    gap: 6,
   },
   sectionDivider: {
     height: StyleSheet.hairlineWidth * 2,
@@ -340,10 +337,8 @@ const styles = StyleSheet.create({
     marginTop: 8,
     marginBottom: 10,
   },
-  // The active board is a card, not a list row — it takes the drawer's full width and the same
-  // surface every other widget in there wears.
+  // The active board uses the same appearance-aware surface as the settings drawer's cards.
   activeBlock: {
-    ...widgetSurface,
     marginBottom: 4,
     overflow: 'hidden',
   },
@@ -360,9 +355,6 @@ const styles = StyleSheet.create({
     paddingVertical: 14,
     paddingHorizontal: 14,
     gap: 12,
-  },
-  listRow: {
-    borderRadius: 10,
   },
   rowPressed: {
     backgroundColor: interaction.pressedBg,
@@ -419,11 +411,10 @@ const styles = StyleSheet.create({
     fontSize: 11,
     lineHeight: 14,
   },
-
   strip: {
     flexDirection: 'row',
     borderTopWidth: 1,
-    borderTopColor: theme.alpha(theme.neutral.border, 0.6),
+    borderTopColor: theme.neutral.border,
   },
   stripCell: {
     flex: 1,
@@ -431,7 +422,7 @@ const styles = StyleSheet.create({
   },
   stripDivider: {
     width: StyleSheet.hairlineWidth * 2,
-    backgroundColor: theme.alpha(theme.neutral.border, 0.6),
+    backgroundColor: theme.neutral.border,
   },
   segment: {
     flex: 1,
