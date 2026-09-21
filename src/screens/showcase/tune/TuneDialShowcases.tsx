@@ -6,6 +6,10 @@ import { ShowcaseCard } from '@/components/dev/ShowcaseCard'
 import { ChipRow, ValueRow } from '@/components/dev/ShowcaseControls'
 
 const RANGE_CONFIGS = {
+  atrThreshold: { min: 0, max: 5, step: 0.5 },
+  angleI: { min: 0, max: 0.5, step: 0.001 },
+  atrBoost: { min: -100, max: 100, step: 1 },
+  turnBoost: { min: 0, max: 10000, step: 5 },
   tune: { min: -5, max: 5, step: 1 },
   small: { min: 0, max: 10, step: 0.5 },
   medium: { min: 0, max: 100, step: 1 },
@@ -25,6 +29,10 @@ export function TuneDialShowcase() {
     const key = r as RangeKey
     const c = RANGE_CONFIGS[key]
     setRange(key)
+    if (key === 'angleI' || key === 'atrBoost' || key === 'turnBoost') {
+      setValue({ angleI: 0.026, atrBoost: 40, turnBoost: 200 }[key])
+      return
+    }
     setValue((prev) =>
       key === 'imperial' || key === 'signedImperial'
         ? 24.854847689493358
@@ -40,7 +48,7 @@ export function TuneDialShowcase() {
           <ValueRow label="value" value={value} />
           <ChipRow
             label="range"
-            options={['tune', 'small', 'medium', 'large', 'imperial', 'signedImperial']}
+            options={Object.keys(RANGE_CONFIGS)}
             selected={range}
             onSelect={handleRangeChange}
           />

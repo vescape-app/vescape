@@ -112,6 +112,26 @@ Display values are rounded after conversion to the underlying field value.
 | Brake tilt     |   `0..5` |  `1` | Writes brake tiltback strength directly.          |
 | ATR intensity  |  `0..15` |  `1` | Writes uphill and downhill ATR strength together. |
 
+Individual field editors keep raw values in profiles and convert only for display. ATR Speed Boost
+uses a usual raw range of `-1..1` and displays `-100..100%` in one-percent steps.
+The Turn Speed Boost ruler spans `0..10000%` in steps of five. The Angle I ruler spans
+`0..0.5` in `0.001` steps, including values
+produced by Aggressiveness. Editor precision does not depend on whether the current value
+happens to be an integer. ATR Threshold Angle Up and Down both use `0..5°` with fixed
+`0.5°` steps.
+
+Tune field editors open in ruler mode. The keyboard button switches to manual input, and the
+ruler button switches back without snapping the value. Only moving the ruler snaps to its step.
+Manual input validates the field's display precision, accepts a decimal comma or point,
+and disables Apply for invalid input. Values outside the ruler's usual range show a warning
+but remain unchanged and can be applied. Percentages are entered in display
+units and converted back to raw values on Apply. Cancel leaves the profile unchanged.
+
+Opening an editor and applying without changing anything preserves the saved values. Basic
+controls show the actual linked values until the dial changes; changing the dial explicitly
+applies its formula. Editing only a linked field preserves the other fields, including unequal
+ATR uphill/downhill strengths.
+
 ## Basic Slider Formulas
 
 ### Aggressiveness

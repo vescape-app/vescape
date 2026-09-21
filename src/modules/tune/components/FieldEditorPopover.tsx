@@ -1,8 +1,17 @@
 import { useMemo, useState } from 'react'
-import { Pressable, StyleSheet, View } from 'react-native'
+import { Keyboard, Pressable, StyleSheet, View } from 'react-native'
 import { Text } from '@/components/base/Text'
-import { CaretDownIcon, CheckIcon, FadersIcon, type Icon } from 'phosphor-react-native'
+import {
+  CaretDownIcon,
+  CheckIcon,
+  FadersIcon,
+  KeyboardIcon,
+  RulerIcon,
+  type Icon,
+} from 'phosphor-react-native'
 
+import { IconButton } from '@/components/base/IconButton'
+import { parseManualTuneValue } from '@/modules/tune/lib/manualTuneValue'
 import { Button } from '@/components/base/Button'
 import { Input } from '@/components/forms/Input'
 import { EdgeDrawer } from '@/components/overlays/EdgeDrawer'
@@ -21,6 +30,7 @@ export interface FieldEditorTarget {
   min: number
   max: number
   step: number
+  manualDecimals?: number
   unit: string | null
   help: string
   icon?: Icon
@@ -55,11 +65,43 @@ interface FieldEditorPopoverInnerProps {
 
 function FieldEditorPopoverInner({ target, onCancel, onApply }: FieldEditorPopoverInnerProps) {
   const [draftValue, setDraftValue] = useState(target.value)
+  const [mode, setMode] = useState<'ruler' | 'manual'>('ruler')
+  const [manualText, setManualText] = useState(String(target.value))
+  const manual = parseManualTuneValue(manualText, target.manualDecimals ?? 3)
+  const manualError = mode === 'manual' ? manual.error : null
+  const outsideRange = draftValue < target.min || draftValue > target.max
+  const changeManualText = (text: string) => {
+    setManualText(text)
+    const parsed = parseManualTuneValue(text, target.manualDecimals ?? 3)
+    if (parsed.error === null) setDraftValue(parsed.value)
+  }
+  const toggleMode = () => {
+    if (mode === 'manual') {
+      if (manual.error) return
+      Keyboard.dismiss()
+      setMode('ruler')
+    } else {
+      setManualText(String(draftValue))
+      setMode('manual')
+    }
+  }
   const [detailsExpanded, setDetailsExpanded] = useState(false)
   const [linkedExpanded, setLinkedExpanded] = useState(false)
   const [editedLinkedFields, setEditedLinkedFields] = useState<Record<string, true>>({})
   const linkedFields = useMemo(() => target.linkedFields ?? [], [target.linkedFields])
   const [linkedDrafts, setLinkedDrafts] = useState<Record<string, string>>({})
+  const computedLinkedValues = useMemo(
+    () =>
+      Object.fromEntries(
+        linkedFields.map((field) => [
+          field.id,
+          draftValue === target.value
+            ? (field.currentValue ?? field.computeValue(draftValue))
+            : field.computeValue(draftValue),
+        ]),
+      ) as Record<string, number>,
+    [draftValue, target.value, linkedFields],
+  )
   const linkedInputValues = useMemo(
     () =>
       Object.fromEntries(
@@ -67,21 +109,19 @@ function FieldEditorPopoverInner({ target, onCancel, onApply }: FieldEditorPopov
           field.id,
           editedLinkedFields[field.id]
             ? (linkedDrafts[field.id] ?? '')
-            : formatTuneValue(field.computeValue(draftValue)),
+            : formatTuneValue(computedLinkedValues[field.id]),
         ]),
       ) as Record<string, string>,
-    [draftValue, editedLinkedFields, linkedDrafts, linkedFields],
-  )
-  const computedLinkedValues = useMemo(
-    () =>
-      Object.fromEntries(
-        linkedFields.map((field) => [field.id, field.computeValue(draftValue)]),
-      ) as Record<string, number>,
-    [draftValue, linkedFields],
+    [editedLinkedFields, linkedDrafts, linkedFields, computedLinkedValues],
   )
 
   const applyEditor = () => {
-    const snappedValue = snapValue(draftValue, target.min, target.max, target.step)
+    if (manualError) return
+    Keyboard.dismiss()
+    if (draftValue === target.value && Object.keys(editedLinkedFields).length === 0) {
+      onCancel()
+      return
+    }
     const linkedValues = Object.fromEntries(
       linkedFields.flatMap((field) => {
         if (!editedLinkedFields[field.id]) return []
@@ -92,7 +132,7 @@ function FieldEditorPopoverInner({ target, onCancel, onApply }: FieldEditorPopov
         return [[field.id, value]]
       }),
     )
-    onApply(snappedValue, Object.keys(linkedValues).length > 0 ? linkedValues : undefined)
+    onApply(draftValue, Object.keys(linkedValues).length > 0 ? linkedValues : undefined)
   }
 
   return (
@@ -109,16 +149,64 @@ function FieldEditorPopoverInner({ target, onCancel, onApply }: FieldEditorPopov
       <View style={styles.content}>
         {target.description ? <Text style={styles.description}>{target.description}</Text> : null}
         <View style={styles.panel}>
-          <TuneDial
-            value={draftValue}
-            previousValue={target.value}
-            min={target.min}
-            max={target.max}
-            step={target.step}
-            unit={target.unit}
-            color={target.color}
-            onValueChange={setDraftValue}
-          />
+          <View style={styles.detailsHeader}>
+            <Text style={styles.panelTitle}>{mode === 'ruler' ? 'Ruler' : 'Manual input'}</Text>
+            <IconButton
+              icon={mode === 'ruler' ? KeyboardIcon : RulerIcon}
+              accessibilityLabel={mode === 'ruler' ? 'Enter value manually' : 'Use ruler'}
+              testID="tune-editor-mode"
+              onPress={toggleMode}
+              disabled={Boolean(manualError)}
+            />
+          </View>
+          {mode === 'manual' ? (
+            <View style={styles.manualContent}>
+              <View style={styles.manualRow}>
+                <Input
+                  testID="tune-manual-value"
+                  accessibilityLabel="Tune value"
+                  value={manualText}
+                  onChangeText={changeManualText}
+                  selectTextOnFocus
+                  keyboardType="numeric"
+                  returnKeyType="done"
+                  onSubmitEditing={() => Keyboard.dismiss()}
+                  style={styles.manualInput}
+                />
+                {target.unit ? <Text style={styles.dataValue}>{target.unit}</Text> : null}
+              </View>
+              <Text style={styles.help}>
+                Range: {target.min} to {target.max}
+                {target.unit ? ` ${target.unit}` : ''}
+              </Text>
+              {manualError ? (
+                <Text accessibilityLiveRegion="polite" style={styles.manualError}>
+                  {manualError}
+                </Text>
+              ) : null}
+            </View>
+          ) : (
+            <TuneDial
+              value={draftValue}
+              previousValue={target.value}
+              min={target.min}
+              max={target.max}
+              step={target.step}
+              unit={target.unit}
+              color={target.color}
+              displayDecimals={Math.max(
+                target.manualDecimals ?? 3,
+                String(draftValue).split('.')[1]?.length ?? 0,
+              )}
+              onValueChange={setDraftValue}
+            />
+          )}
+          {!manualError && outsideRange ? (
+            <Text accessibilityLiveRegion="polite" style={styles.rangeWarning}>
+              Outside the usual range ({target.min} to {target.max}
+              {target.unit ? ` ${target.unit}` : ''}). Check this value before applying.
+            </Text>
+          ) : null}
           <View style={styles.dialBounds}>
             <Text style={styles.dialBoundText}>{formatTuneValue(target.min)}</Text>
             <Text style={styles.dialBoundText}>{formatTuneValue(target.max)}</Text>
@@ -251,6 +339,8 @@ function FieldEditorPopoverInner({ target, onCancel, onApply }: FieldEditorPopov
             accent={target.color}
             style={styles.actionButton}
             onPress={applyEditor}
+            disabled={Boolean(manualError)}
+            testID="tune-editor-apply"
           />
         </View>
       </View>
@@ -259,6 +349,11 @@ function FieldEditorPopoverInner({ target, onCancel, onApply }: FieldEditorPopov
 }
 
 const styles = StyleSheet.create({
+  manualContent: { gap: 10, minHeight: 105 },
+  manualRow: { flexDirection: 'row', alignItems: 'center', gap: 12 },
+  manualInput: { flex: 1, fontSize: 28, textAlign: 'center', fontVariant: ['tabular-nums'] },
+  rangeWarning: { color: theme.status.warning.text, fontSize: 13 },
+  manualError: { color: theme.status.error.text, fontSize: 13 },
   content: {
     gap: 12,
   },

@@ -12,6 +12,7 @@ import {
 } from '@/screens/showcase/tune/TuneDialShowcases'
 import {
   BasicSliderCellShowcase,
+  ManualTuneEditorShowcase,
   TuneProfileMetadataModalShowcase,
   TunePreviewShowcase,
   UnsupportedTunePreviewShowcase,
@@ -25,6 +26,7 @@ export default function TunePage() {
           icon={ToolboxIcon}
           description="TuneDial, BasicSliderCell, Tune Preview, Movement Board Test, TuneSyncBar, TuneGroupGrid."
         />
+        <ManualTuneEditorShowcase />
         <TuneDialShowcase />
         <CompactTuneDialShowcase />
         <AlertPercentageTuneDialShowcase />

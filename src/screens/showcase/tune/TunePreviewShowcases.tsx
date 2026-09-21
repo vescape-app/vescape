@@ -307,3 +307,41 @@ const styles = StyleSheet.create({
     fontWeight: '800',
   },
 })
+
+export function ManualTuneEditorShowcase() {
+  const triggerRef = useTriggerRef()
+  const [value, setValue] = useState(2.5)
+  const [open, setOpen] = useState(false)
+  return (
+    <>
+      <ShowcaseCard name="Tune editor modes" controls={<Text>Applied value: {value}</Text>}>
+        <View ref={triggerRef} collapsable={false}>
+          <OpenButton label="Edit threshold" onPress={() => setOpen(true)} />
+        </View>
+      </ShowcaseCard>
+      <FieldEditorPopover
+        target={
+          open
+            ? {
+                triggerRef,
+                label: 'Threshold Angle Up',
+                fieldId: 'atr_threshold_up',
+                value,
+                min: 0,
+                max: 5,
+                step: 0.5,
+                manualDecimals: 1,
+                unit: 'deg',
+                help: 'Manual entry accepts tenths of a degree; the ruler moves in half-degree steps.',
+              }
+            : null
+        }
+        onCancel={() => setOpen(false)}
+        onApply={(next) => {
+          setValue(next)
+          setOpen(false)
+        }}
+      />
+    </>
+  )
+}
