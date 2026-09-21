@@ -45,7 +45,8 @@ switch (Bun.argv[2]) {
       checkBranch(remoteRef)
       const remoteCommitExists =
         Bun.spawnSync(['git', 'cat-file', '-e', `${remoteSha}^{commit}`]).exitCode === 0
-      const range = remoteCommitExists ? [`^${remoteSha}`] : ['--not', '--remotes']
+      // Promotion between branches must not re-check already published history.
+      const range = [...(remoteCommitExists ? [`^${remoteSha}`] : []), '--not', '--remotes']
       const commits = git('rev-list', localSha, ...range)
         .split('\n')
         .filter(Boolean)
