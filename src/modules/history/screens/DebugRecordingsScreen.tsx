@@ -1,10 +1,11 @@
 import { useState } from 'react'
-import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Switch, View } from 'react-native'
+import { ActivityIndicator, Pressable, ScrollView, StyleSheet, View } from 'react-native'
 import { Text } from '@/components/base/Text'
 import { PackageIcon, RecordIcon, TrashIcon } from 'phosphor-react-native'
 import { router } from 'expo-router'
 
 import { Button } from '@/components/base/Button'
+import { Switch } from '@/components/controls/Switch'
 import { ConfirmModal } from '@/components/modals/ConfirmModal'
 import { IconHero } from '@/components/settings/IconHero'
 import { SettingsCard } from '@/components/settings/SettingsCard'
@@ -64,17 +65,7 @@ export function DebugRecordingsScreen() {
             iconColor={theme.status.warning.color}
             label="Record future sessions"
             hint="Applies to every new board session until disabled"
-            right={
-              <Switch
-                value={debug.enabled}
-                onValueChange={debug.setEnabled}
-                trackColor={{
-                  false: theme.neutral.border,
-                  true: theme.status.warning.border,
-                }}
-                thumbColor={debug.enabled ? theme.status.warning.color : theme.neutral.textMuted}
-              />
-            }
+            right={<Switch value={debug.enabled} onValueChange={debug.setEnabled} />}
           />
         </SettingsCard>
 

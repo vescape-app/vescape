@@ -12,7 +12,7 @@ import { useShallow } from 'zustand/react/shallow'
 import { theme } from '@/constants/theme'
 import { SettingsCard } from '@/components/settings/SettingsCard'
 import { SettingsRow } from '@/components/settings/SettingsRow'
-import { SettingsSwitch } from '@/components/settings/SettingsSwitch'
+import { Switch } from '@/components/controls/Switch'
 import { Stepper } from '@/components/forms/Stepper'
 import { IconHero } from '@/components/settings/IconHero'
 import { SettingsSectionTitle } from '@/components/settings/SettingsSectionTitle'
@@ -185,7 +185,7 @@ export default function AutomationSettingsScreen() {
                 : 'Connect to your board when the app opens'
             }
             right={
-              <SettingsSwitch
+              <Switch
                 value={autoConnect}
                 disabled={companionPresenceEnabled}
                 onValueChange={(v) => void set('autoConnect', v)}
@@ -199,10 +199,7 @@ export default function AutomationSettingsScreen() {
             label="Auto recording"
             hint="Start recording when board connects"
             right={
-              <SettingsSwitch
-                value={autoRecording}
-                onValueChange={(v) => void set('autoRecording', v)}
-              />
+              <Switch value={autoRecording} onValueChange={(v) => void set('autoRecording', v)} />
             }
           />
         </SettingsCard>
@@ -217,7 +214,7 @@ export default function AutomationSettingsScreen() {
                 label="Auto close app"
                 hint="Close the app when the board stays disconnected"
                 right={
-                  <SettingsSwitch
+                  <Switch
                     value={autoCloseEnabled}
                     onValueChange={(v) => void set('autoCloseEnabled', v)}
                   />

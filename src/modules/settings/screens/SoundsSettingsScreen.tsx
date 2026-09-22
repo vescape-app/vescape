@@ -34,7 +34,7 @@ import { Select } from '@/components/forms/Select'
 import { SettingsCard } from '@/components/settings/SettingsCard'
 import { SettingsRow } from '@/components/settings/SettingsRow'
 import { SettingsSectionTitle } from '@/components/settings/SettingsSectionTitle'
-import { SettingsSwitch } from '@/components/settings/SettingsSwitch'
+import { Switch } from '@/components/controls/Switch'
 import { interaction, theme } from '@/constants/theme'
 import { APP_SOUND_CUES } from '@/modules/settings/lib/appSounds'
 import { useSettingsStore } from '@/modules/settings/store/settingsStore'
@@ -150,7 +150,7 @@ export default function SoundsSettingsScreen() {
             iconColor={theme.palette.cyan.color}
             label="App sounds"
             right={
-              <SettingsSwitch
+              <Switch
                 value={enabled}
                 onValueChange={(value) => void set('connectionSoundsEnabled', value)}
               />

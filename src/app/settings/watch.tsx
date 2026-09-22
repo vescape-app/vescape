@@ -6,7 +6,7 @@ import { useShallow } from 'zustand/react/shallow'
 import { theme } from '@/constants/theme'
 import { SettingsCard } from '@/components/settings/SettingsCard'
 import { SettingsRow } from '@/components/settings/SettingsRow'
-import { SettingsSwitch } from '@/components/settings/SettingsSwitch'
+import { Switch } from '@/components/controls/Switch'
 import { Stepper } from '@/components/forms/Stepper'
 import { IconHero } from '@/components/settings/IconHero'
 import { useSettingsStore } from '@/modules/settings/store/settingsStore'
@@ -47,7 +47,7 @@ export default function WatchSettingsScreen() {
                 : 'Apple Watch only. Open the Vescape app on the watch yourself'
             }
             right={
-              <SettingsSwitch
+              <Switch
                 value={AUTO_LAUNCH_SUPPORTED && wearAutoLaunchOnConnect}
                 disabled={!AUTO_LAUNCH_SUPPORTED}
                 onValueChange={(v) => void set('wearAutoLaunchOnConnect', v)}
@@ -81,7 +81,7 @@ export default function WatchSettingsScreen() {
             label="Navigation arrow"
             hint="Draw the direction chevron over the route. Route and distance show either way"
             right={
-              <SettingsSwitch
+              <Switch
                 value={wearNavArrowEnabled}
                 onValueChange={(v) => void set('wearNavArrowEnabled', v)}
               />

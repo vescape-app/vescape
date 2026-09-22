@@ -1,4 +1,5 @@
-import { StyleSheet, Switch, View } from 'react-native'
+import { StyleSheet, View } from 'react-native'
+import { Switch } from '@/components/controls/Switch'
 import { Text } from '@/components/base/Text'
 import type { Icon } from 'phosphor-react-native'
 
@@ -7,7 +8,6 @@ import {
   type WidgetSize,
 } from '@/components/widgets/widgetSurface'
 import { theme, type ThemeColor } from '@/constants/theme'
-import { useResolvedColor, useResolvedNeutralColors } from '@/hooks/useTheme'
 
 interface SwitchWidgetProps {
   label: string
@@ -15,14 +15,14 @@ interface SwitchWidgetProps {
   onValueChange: (value: boolean) => void
   icon?: Icon
   hint?: string
-  /** Accent for the icon and the active track/thumb. */
+  /** Accent for the icon and the switch's on state. */
   accent?: ThemeColor
   size?: WidgetSize
   disabled?: boolean
   accessibilityLabel?: string
 }
 
-/** A labelled native switch on a widget surface — toggles a single boolean. */
+/** A labelled switch on a widget surface — toggles a single boolean. */
 export function SwitchWidget({
   label,
   value,
@@ -35,18 +35,14 @@ export function SwitchWidget({
   accessibilityLabel,
 }: SwitchWidgetProps) {
   const square = size === 'square'
-  const neutral = useResolvedNeutralColors()
   const surface = useResolvedSecondaryWidgetSurface()
-  const resolvedAccent = useResolvedColor(accent)
 
   const control = (
     <Switch
       value={value}
       onValueChange={onValueChange}
-      disabled={disabled}
-      trackColor={{ false: neutral.border, true: theme.alpha(resolvedAccent, 0.6) }}
-      thumbColor={value ? resolvedAccent : neutral.textMuted}
-      ios_backgroundColor={neutral.border}
+      {...(disabled ? { disabled } : {})}
+      accent={accent}
       accessibilityLabel={accessibilityLabel ?? label}
     />
   )

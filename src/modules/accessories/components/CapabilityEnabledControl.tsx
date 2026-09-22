@@ -5,9 +5,9 @@ import { setAccessoryCapabilityEnabled, type AccessoryCapability } from 'vescape
 import { Text } from '@/components/base/Text'
 import { SettingsCard } from '@/components/settings/SettingsCard'
 import { SettingsRow } from '@/components/settings/SettingsRow'
-import { SettingsSwitch, type SettingsSwitchAccent } from '@/components/settings/SettingsSwitch'
+import { Switch } from '@/components/controls/Switch'
 import { capabilityPresentation } from '../constants/accessoryCapabilities'
-import { theme } from '@/constants/theme'
+import { theme, type ThemeColor } from '@/constants/theme'
 
 /** The one switch that decides whether a capability runs at all — always the top of its screen. */
 export function CapabilityEnabledControl({
@@ -18,7 +18,7 @@ export function CapabilityEnabledControl({
   accessoryId: string
   capability: AccessoryCapability
   /** Tint of the row, so a light's screen reads in its own colour. */
-  accent?: SettingsSwitchAccent
+  accent?: ThemeColor
 }) {
   const [saving, setSaving] = useState(false)
   const [failed, setFailed] = useState(false)
@@ -40,7 +40,8 @@ export function CapabilityEnabledControl({
       accent={accent}
       label={`Use ${title.toLowerCase()}`}
       enabled={capability.enabled !== false}
-      disabled={saving || !capability.supported}
+      pending={saving}
+      disabled={!capability.supported}
       failed={failed}
       onChange={(enabled) => {
         void change(enabled)
@@ -55,14 +56,17 @@ export function CapabilityEnabledSetting({
   label,
   enabled,
   disabled,
+  pending,
   failed,
   onChange,
 }: {
   icon: Icon
-  accent?: SettingsSwitchAccent
+  accent?: ThemeColor
   label: string
   enabled: boolean
   disabled?: boolean
+  /** The write is in flight — the switch spins instead of pretending it already landed. */
+  pending?: boolean
   failed?: boolean
   onChange: (enabled: boolean) => void
 }) {
@@ -71,14 +75,14 @@ export function CapabilityEnabledSetting({
       <SettingsCard>
         <SettingsRow
           icon={icon}
-          {...(accent ? { iconColor: accent.color } : {})}
+          {...(accent ? { iconColor: accent } : {})}
           label={label}
           right={
-            <SettingsSwitch
+            <Switch
               value={enabled}
               onValueChange={onChange}
-              {...(accent ? { accent } : {})}
               {...(disabled ? { disabled } : {})}
+              {...(pending ? { pending } : {})}
               accessibilityLabel={label}
             />
           }

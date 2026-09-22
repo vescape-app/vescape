@@ -16,7 +16,7 @@ import {
 } from '@/modules/history/lib/metricColorScale'
 import { SettingsCard } from '@/components/settings/SettingsCard'
 import { SettingsRow } from '@/components/settings/SettingsRow'
-import { SettingsSwitch } from '@/components/settings/SettingsSwitch'
+import { Switch } from '@/components/controls/Switch'
 import { Stepper } from '@/components/forms/Stepper'
 import { IconHero } from '@/components/settings/IconHero'
 
@@ -69,13 +69,13 @@ export default function GraphsSettingsScreen() {
         <SettingsCard>
           <SettingsRow
             icon={GaugeIcon}
+            iconColor={theme.status.warning.color}
             label="Graph hot gradients"
             hint="Color live, history, and map graphs by metric value"
             right={
-              <SettingsSwitch
+              <Switch
                 value={historyMetricGradientsEnabled}
                 onValueChange={(v) => void set('historyMetricGradientsEnabled', v)}
-                accent={theme.status.warning}
               />
             }
           />

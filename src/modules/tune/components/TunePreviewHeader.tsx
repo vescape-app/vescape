@@ -1,17 +1,14 @@
 import { EyeIcon, QuestionIcon } from 'phosphor-react-native'
 import { Canvas, Text as SkiaText } from '@shopify/react-native-skia'
-import { Pressable, StyleSheet, Switch, View } from 'react-native'
+import { Pressable, StyleSheet, View } from 'react-native'
 import { useDerivedValue, type SharedValue } from 'react-native-reanimated'
 import { useFormat } from '@/hooks/useFormat'
 import type { SkFont } from '@shopify/react-native-skia'
 
+import { Switch } from '@/components/controls/Switch'
 import { Text } from '@/components/base/Text'
 import { theme } from '@/constants/theme'
-import {
-  useResolvedAccentColors,
-  useResolvedNeutralColors,
-  useResolvedTelemetryColors,
-} from '@/hooks/useTheme'
+import { useResolvedAccentColors, useResolvedTelemetryColors } from '@/hooks/useTheme'
 import {
   LEGEND_VALUE_WIDTH,
   READOUT_BASELINE,
@@ -49,7 +46,6 @@ export function TunePreviewHeader({
   const { formatSpeed, speedUnit } = useFormat()
   const speedStr = useDerivedValue(() => formatSpeed(speedKmh.value, 1))
   const accents = useResolvedAccentColors()
-  const neutral = useResolvedNeutralColors()
   const telemetry = useResolvedTelemetryColors()
   return (
     <View style={styles.header}>
@@ -85,11 +81,7 @@ export function TunePreviewHeader({
               onValueChange={(enabled) => {
                 if (!enabled) onDisable()
               }}
-              trackColor={{
-                false: neutral.border,
-                true: theme.alpha(accents.purple.color, 0.6),
-              }}
-              thumbColor={accents.purple.color}
+              accent={theme.palette.purple.color}
               accessibilityLabel="Disable Tune Preview"
             />
           ) : null}

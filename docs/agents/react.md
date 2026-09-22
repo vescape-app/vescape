@@ -83,6 +83,31 @@ import { ArrowLeftIcon, TrashIcon } from 'phosphor-react-native'
 - `style` accepts layout-level `ViewStyle` (position, margin, bottom/top/left/right)
 - The default surface uses `theme.control.background`, `theme.control.border`, and `theme.control.icon`; destructive state changes the accent without abandoning the navy interaction language.
 
+## Switches
+
+Use **`Switch`** (`@/components/controls/Switch`) for every boolean toggle. React Native's `Switch` is
+not used anywhere in the app — it cannot show that the board has not answered yet, and its platform
+sizes disagree.
+
+```tsx
+import { Switch } from '@/components/controls/Switch'
+
+<Switch value={enabled} onValueChange={setEnabled} />
+<Switch value={lights} onValueChange={setLights} accent={theme.palette.amber.color} />
+<Switch value={capability.enabled} onValueChange={save} pending={saving} />
+```
+
+- `value` is `boolean | null`. `null` rests the thumb in the centre — the control does not know yet,
+  so it refuses to claim a side.
+- `pending` centres the thumb and spins it there until the owner answers. Prefer it over `disabled`
+  for a write in flight: `disabled` says "you may not", `pending` says "wait".
+- `accent` takes any `ThemeColor` and tints the on state. Inside a `SettingsRow` with an `iconColor`
+  the switch inherits it, so a tinted row states its colour once; without either it falls back to
+  `theme.palette.sky.color`. `SwitchAccentProvider` lends the same accent anywhere else.
+- A disabled switch drops its accent and dashes its outline instead of dimming its on colour.
+- Tap and drag both toggle it. Inside a row that is itself pressable, wrap the switch in a
+  `<View pointerEvents="none">` so the row owns the tap and the switch only mirrors state.
+
 ## Buttons
 
 Use **`Button`** (`@/components/Button`) for all tappable button actions. Do not build ad-hoc `Pressable` + `Text` combinations for buttons.

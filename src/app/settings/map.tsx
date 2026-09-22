@@ -12,7 +12,7 @@ import { useShallow } from 'zustand/react/shallow'
 import { IconHero } from '@/components/settings/IconHero'
 import { SettingsCard } from '@/components/settings/SettingsCard'
 import { SettingsRow } from '@/components/settings/SettingsRow'
-import { SettingsSwitch } from '@/components/settings/SettingsSwitch'
+import { Switch } from '@/components/controls/Switch'
 import { SettingsSectionTitle } from '@/components/settings/SettingsSectionTitle'
 import { Stepper } from '@/components/forms/Stepper'
 import { theme } from '@/constants/theme'
@@ -56,7 +56,7 @@ export default function MapSettingsScreen() {
             label="Hide telemetry map details"
             hint="Hide POI names and icons on the home map; Explore still shows full detail"
             right={
-              <SettingsSwitch
+              <Switch
                 value={hideTelemetryMapDetails}
                 onValueChange={(enabled) => void set('hideTelemetryMapDetails', enabled)}
               />
@@ -72,7 +72,7 @@ export default function MapSettingsScreen() {
             label="Satellite overlay"
             hint="Use toned satellite imagery with roads and labels"
             right={
-              <SettingsSwitch
+              <Switch
                 value={satelliteOverlayEnabled}
                 onValueChange={(enabled) => void set('satelliteOverlayEnabled', enabled)}
               />

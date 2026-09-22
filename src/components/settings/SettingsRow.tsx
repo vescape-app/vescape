@@ -3,6 +3,7 @@ import { Pressable, StyleSheet, View } from 'react-native'
 import { Text } from '@/components/base/Text'
 import { CaretRightIcon } from 'phosphor-react-native'
 import type { Icon, IconWeight } from 'phosphor-react-native'
+import { SwitchAccentProvider } from '@/components/controls/Switch'
 import { theme, type ThemeColor } from '@/constants/theme'
 import { useResolvedNeutralColors } from '@/hooks/useTheme'
 
@@ -40,7 +41,12 @@ export function SettingsRow({
         <Text style={styles.label}>{label}</Text>
         {hint ? <Text style={styles.hint}>{hint}</Text> : null}
       </View>
-      {right}
+      {/* A tinted row states its colour once, in the icon; the control on the edge inherits it. */}
+      {right && iconColor ? (
+        <SwitchAccentProvider accent={iconColor}>{right}</SwitchAccentProvider>
+      ) : (
+        right
+      )}
       {showChevron ? <CaretRightIcon size={18} color={neutral.textMuted} weight="bold" /> : null}
     </View>
   )

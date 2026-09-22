@@ -12,7 +12,7 @@ import {
 
 import { SettingsCard } from '@/components/settings/SettingsCard'
 import { SettingsRow } from '@/components/settings/SettingsRow'
-import { SettingsSwitch } from '@/components/settings/SettingsSwitch'
+import { Switch } from '@/components/controls/Switch'
 import { SettingsSectionTitle } from '@/components/settings/SettingsSectionTitle'
 import { Stepper } from '@/components/forms/Stepper'
 import { ShowcaseCard } from '@/components/dev/ShowcaseCard'
@@ -92,7 +92,7 @@ export default function SettingsPage() {
               iconWeight="fill"
               label="Dark mode"
               hint="Use dark theme throughout the app"
-              right={<SettingsSwitch value={darkMode} onValueChange={setDarkMode} />}
+              right={<Switch value={darkMode} onValueChange={setDarkMode} />}
             />
           </SettingsCard>
 
@@ -119,9 +119,10 @@ export default function SettingsPage() {
           <SettingsCard>
             <SettingsRow
               icon={BellIcon}
+              iconColor={theme.palette.amber.color}
               label="Push notifications"
-              hint="Receive alerts about your board"
-              right={<SettingsSwitch value={notifications} onValueChange={setNotifications} />}
+              hint="Tinted row — the switch inherits the icon colour"
+              right={<Switch value={notifications} onValueChange={setNotifications} />}
             />
             <SettingsRow
               icon={WifiHighIcon}

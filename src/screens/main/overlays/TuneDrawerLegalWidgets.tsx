@@ -1,9 +1,9 @@
-import { Pressable, StyleSheet, Switch, View } from 'react-native'
+import { Pressable, StyleSheet, View } from 'react-native'
 import { SirenIcon, SpeedometerIcon, WarningCircleIcon } from 'phosphor-react-native'
 
+import { Switch } from '@/components/controls/Switch'
 import { Text } from '@/components/base/Text'
 import { theme } from '@/constants/theme'
-import { useResolvedColor, useResolvedNeutralColors } from '@/hooks/useTheme'
 
 interface LegalModeWidgetProps {
   value: boolean
@@ -20,9 +20,6 @@ export function LegalModeWidget({
   onValueChange,
   onWarningPress,
 }: LegalModeWidgetProps) {
-  const neutral = useResolvedNeutralColors()
-  const errorColor = useResolvedColor(theme.status.error.color)
-
   return (
     <Pressable
       style={({ pressed }) => [
@@ -61,17 +58,10 @@ export function LegalModeWidget({
           {description}
         </Text>
       </View>
-      <Switch
-        value={value}
-        onValueChange={onValueChange}
-        trackColor={{
-          false: neutral.border,
-          true: theme.alpha(errorColor, 0.6),
-        }}
-        thumbColor={value ? errorColor : neutral.textMuted}
-        ios_backgroundColor={neutral.border}
-        accessibilityLabel="Legal Mode"
-      />
+      {/* The whole widget is the control; the switch mirrors it rather than competing for the tap. */}
+      <View pointerEvents="none">
+        <Switch value={value} onValueChange={onValueChange} accent={theme.status.error.color} />
+      </View>
     </Pressable>
   )
 }

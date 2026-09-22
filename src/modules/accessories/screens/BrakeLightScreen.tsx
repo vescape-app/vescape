@@ -126,7 +126,7 @@ export function BrakeLightScreen({
             <CapabilityEnabledControl
               accessoryId={accessoryId}
               capability={capability}
-              accent={theme.palette.red}
+              accent={theme.palette.red.color}
             />
 
             <SettingsSectionTitle>Light states</SettingsSectionTitle>

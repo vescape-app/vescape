@@ -1,15 +1,16 @@
 import { type ReactNode, useState } from 'react'
-import { Pressable, ScrollView, StyleSheet, Switch, useWindowDimensions, View } from 'react-native'
+import { Pressable, ScrollView, StyleSheet, useWindowDimensions, View } from 'react-native'
 import { Canvas, LinearGradient, Rect, vec } from '@shopify/react-native-skia'
 import { EyeIcon, QuestionIcon } from 'phosphor-react-native'
 import { useSharedValue } from 'react-native-reanimated'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import type { TuneProfileFieldValue } from 'vescape-core'
 
+import { Switch } from '@/components/controls/Switch'
 import { Text } from '@/components/base/Text'
 import { InfoModal } from '@/components/modals/InfoModal'
 import { theme } from '@/constants/theme'
-import { useResolvedAccentColors, useResolvedNeutralColors } from '@/hooks/useTheme'
+import { useResolvedNeutralColors } from '@/hooks/useTheme'
 import { TunePreview, TUNE_PREVIEW_DESCRIPTION } from '@/modules/tune/components/TunePreview'
 import {
   TunePreviewScenarioControls,
@@ -26,7 +27,6 @@ interface TunePreviewSectionProps {
 }
 
 export function TunePreviewSection({ fields, active, visible, children }: TunePreviewSectionProps) {
-  const accents = useResolvedAccentColors()
   const neutral = useResolvedNeutralColors()
   const insets = useSafeAreaInsets()
   const { width } = useWindowDimensions()
@@ -82,11 +82,7 @@ export function TunePreviewSection({ fields, active, visible, children }: TunePr
                 <Switch
                   value={previewEnabled}
                   onValueChange={setPreviewEnabled}
-                  trackColor={{
-                    false: neutral.border,
-                    true: theme.alpha(accents.purple.color, 0.6),
-                  }}
-                  thumbColor={previewEnabled ? accents.purple.color : neutral.textMuted}
+                  accent={theme.palette.purple.color}
                   accessibilityLabel="Enable Tune Preview"
                 />
               </View>

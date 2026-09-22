@@ -1,11 +1,11 @@
-import { Pressable, StyleSheet, Switch, View } from 'react-native'
+import { Pressable, StyleSheet, View } from 'react-native'
 import { HeadlightsIcon, LightbulbIcon, type Icon } from 'phosphor-react-native'
 
+import { Switch } from '@/components/controls/Switch'
 import { Text } from '@/components/base/Text'
 import { useResolvedSecondaryWidgetSurface } from '@/components/widgets/widgetSurface'
 import { useBoardLights } from '@/modules/board/hooks/useBoardLights'
 import { theme } from '@/constants/theme'
-import { useResolvedColor, useResolvedNeutralColors } from '@/hooks/useTheme'
 
 interface LightsCellProps {
   icon: Icon
@@ -23,8 +23,6 @@ function LightsCell({
   disabled,
   onValueChange,
 }: LightsCellProps) {
-  const neutral = useResolvedNeutralColors()
-  const accent = useResolvedColor(theme.light.accent)
   const on = value ?? false
   const off = disabled || value == null
 
@@ -45,15 +43,15 @@ function LightsCell({
       <Text style={styles.label} numberOfLines={1}>
         {label}
       </Text>
-      <Switch
-        value={on}
-        onValueChange={onValueChange}
-        disabled={off}
-        trackColor={{ false: neutral.border, true: theme.alpha(accent, 0.6) }}
-        thumbColor={on ? accent : neutral.textMuted}
-        ios_backgroundColor={neutral.border}
-        accessibilityLabel={label}
-      />
+      {/* The whole cell is the control; the switch mirrors it rather than competing for the tap. */}
+      <View pointerEvents="none">
+        <Switch
+          value={value}
+          onValueChange={onValueChange}
+          disabled={off}
+          accent={theme.light.accent}
+        />
+      </View>
     </Pressable>
   )
 }

@@ -12,6 +12,7 @@ import {
   SegmentedToggleShowcase,
 } from '@/screens/showcase/controls/ButtonShowcases'
 import { ExpandableCircleMenuShowcase } from '@/screens/showcase/controls/ExpandableCircleMenuShowcase'
+import { SwitchShowcase } from '@/screens/showcase/controls/SwitchShowcase'
 import { ZonePillsShowcase } from '@/screens/showcase/controls/ZonePillsShowcase'
 import { IconHero } from '@/components/settings/IconHero'
 import { theme } from '@/constants/theme'
@@ -22,8 +23,9 @@ export default function ControlsPage() {
       <ScrollView contentContainerStyle={styles.content}>
         <IconHero
           icon={SwatchesIcon}
-          description="CircleButton, ExpandableCircleMenu, FloatingBar, PrevNextSelector, PillSelector, AlertPresetControl."
+          description="Switch, CircleButton, ExpandableCircleMenu, FloatingBar, PrevNextSelector, PillSelector, AlertPresetControl."
         />
+        <SwitchShowcase />
         <AlertPresetControlShowcase />
         <CircleButtonShowcase />
         <NavigationTopBarShowcase />
