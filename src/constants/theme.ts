@@ -522,7 +522,7 @@ export const settingsIcon = {
   update: status.upgrade.color,
   database: status.warning.color,
   link: palette.purple.color,
-  automation: palette.purple.color,
+  automation: palette.sky.color,
   liveTelemetry: telemetry.speed,
   diagnostics: status.warning.color,
   map: palette.sky.color,

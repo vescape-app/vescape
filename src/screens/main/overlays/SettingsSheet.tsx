@@ -8,6 +8,7 @@ import {
   CheckCircleIcon,
   DatabaseIcon,
   HouseIcon,
+  SpeakerHighIcon,
   WatchIcon,
   WrenchIcon,
   type Icon,
@@ -61,6 +62,13 @@ const SHORTCUTS: Shortcut[] = [
     label: 'Privacy zones',
     hint: 'Skip recording near saved places',
     route: routes.settingsPrivacyZones,
+  },
+  {
+    icon: SpeakerHighIcon,
+    accent: theme.settingsIcon.sounds,
+    label: 'Sounds',
+    hint: 'Choose and preview a sound pack',
+    route: routes.settingsSounds,
   },
 ]
 
