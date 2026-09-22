@@ -526,6 +526,7 @@ export const settingsIcon = {
   liveTelemetry: telemetry.speed,
   diagnostics: status.warning.color,
   map: palette.sky.color,
+  sounds: palette.pink.color,
   watch: palette.amber.color,
   privacyZones: palette.green.color,
   filters: palette.purple.color,

@@ -155,7 +155,7 @@ export default function SettingsScreen() {
           />
           <SettingsRow
             icon={SpeakerHighIcon}
-            iconColor={theme.palette.pink.color}
+            iconColor={theme.settingsIcon.sounds}
             label="Sounds"
             hint="Choose and preview a sound pack"
             onPress={() => router.push(routes.settingsSounds)}

@@ -147,7 +147,7 @@ export default function SoundsSettingsScreen() {
         <SettingsCard>
           <SettingsRow
             icon={VibrateIcon}
-            iconColor={theme.palette.cyan.color}
+            iconColor={theme.settingsIcon.sounds}
             label="App sounds"
             right={
               <Switch
@@ -159,7 +159,7 @@ export default function SoundsSettingsScreen() {
           {Platform.OS === 'android' && (
             <SettingsRow
               icon={SpeakerSimpleHighIcon}
-              iconColor={theme.palette.cyan.color}
+              iconColor={theme.settingsIcon.sounds}
               label="Audio output"
               right={
                 <Select
@@ -210,7 +210,7 @@ export default function SoundsSettingsScreen() {
                   <View style={styles.packIcon}>
                     <SpeakerHighIcon
                       size={19}
-                      color={active ? theme.palette.cyan.color : theme.neutral.textMuted}
+                      color={active ? theme.settingsIcon.sounds : theme.neutral.textMuted}
                       weight="duotone"
                     />
                   </View>
@@ -260,7 +260,7 @@ export default function SoundsSettingsScreen() {
                   ) : (
                     <View style={[styles.selection, active && styles.selectionSelected]}>
                       {active && (
-                        <CheckIcon size={17} color={theme.palette.cyan.color} weight="bold" />
+                        <CheckIcon size={17} color={theme.settingsIcon.sounds} weight="bold" />
                       )}
                     </View>
                   )}
@@ -286,7 +286,7 @@ export default function SoundsSettingsScreen() {
                           >
                             <SpeakerHighIcon
                               size={18}
-                              color={theme.palette.cyan.color}
+                              color={theme.settingsIcon.sounds}
                               weight="duotone"
                             />
                             <Text style={styles.previewLabel}>{cue.label}</Text>
@@ -349,7 +349,7 @@ export default function SoundsSettingsScreen() {
             style={({ pressed }) => [styles.addRow, pressed && styles.pressed]}
           >
             <View style={styles.addIcon}>
-              <PlusIcon size={19} color={theme.palette.cyan.color} weight="bold" />
+              <PlusIcon size={19} color={theme.settingsIcon.sounds} weight="bold" />
             </View>
             <Text style={styles.addText}>Add sound pack</Text>
           </Pressable>
@@ -397,7 +397,7 @@ const styles = StyleSheet.create({
     backgroundColor: theme.neutral.surfaceDeep,
     overflow: 'hidden',
   },
-  activePack: { borderColor: theme.palette.cyan.color },
+  activePack: { borderColor: theme.settingsIcon.sounds },
   packHeader: {
     minHeight: 68,
     paddingHorizontal: 16,
@@ -429,7 +429,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  selectionSelected: { borderColor: theme.palette.cyan.color },
+  selectionSelected: { borderColor: theme.settingsIcon.sounds },
   packName: { flex: 1, fontSize: 16, color: theme.neutral.textSecondary, fontWeight: '600' },
   activePackName: { color: theme.neutral.textPrimary, fontWeight: '700' },
   nameInput: {
@@ -470,7 +470,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  addText: { color: theme.palette.cyan.color, fontSize: 15, fontWeight: '600' },
+  addText: { color: theme.settingsIcon.sounds, fontSize: 15, fontWeight: '600' },
   editor: { padding: 14, gap: 10, borderTopWidth: 1, borderTopColor: theme.neutral.border },
   cueRow: {
     flexDirection: 'row',
