@@ -1,4 +1,3 @@
-import { useSettingsStore } from '@/modules/settings/store/settingsStore'
 import { useState } from 'react'
 import { router } from 'expo-router'
 import { useShallow } from 'zustand/react/shallow'
@@ -36,10 +35,9 @@ const DEFAULT_DRAFT_ALERT_SETUP = Object.fromEntries(
 
 /** The durable `alertPreset` bag a draft setup persists as — its levels, without the draft rules. */
 export function draftAlertPresetSelection(setup: DraftAlertSetupBag): AlertPresetSelection {
-  return {
-    ...Object.fromEntries(ALERT_PRESET_METRICS.map((metric) => [metric, setup[metric].level])),
-    speedUnitSystem: setup.speed.speedUnitSystem,
-  } as AlertPresetSelection
+  return Object.fromEntries(
+    ALERT_PRESET_METRICS.map((metric) => [metric, setup[metric].level]),
+  ) as AlertPresetSelection
 }
 
 /** Canonical step order. `presets` is the per-board Alert Preset setup step. */
@@ -123,13 +121,7 @@ export function useAddBoardWizard(): UseAddBoardWizard {
   const [manualMinVoltage, setManualMinVoltage] = useState('60')
   const [manualMaxVoltage, setManualMaxVoltage] = useState('84')
   const [topSpeedKmh, setTopSpeedKmh] = useState(DEFAULT_BOARD_TOP_SPEED_KMH)
-  const [alertSetup, setAlertSetup] = useState<DraftAlertSetupBag>(() => ({
-    ...DEFAULT_DRAFT_ALERT_SETUP,
-    speed: {
-      ...DEFAULT_DRAFT_ALERT_SETUP.speed,
-      speedUnitSystem: useSettingsStore.getState().unitSystem,
-    },
-  }))
+  const [alertSetup, setAlertSetup] = useState<DraftAlertSetupBag>(DEFAULT_DRAFT_ALERT_SETUP)
 
   const setMetricAlertSetup = (metric: AlertPresetMetric, setup: DraftAlertSetup) =>
     setAlertSetup((prev) => ({ ...prev, [metric]: setup }))

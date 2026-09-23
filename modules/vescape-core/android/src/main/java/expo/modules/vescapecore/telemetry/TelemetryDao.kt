@@ -7,6 +7,7 @@ import androidx.room.Query
 import androidx.room.Transaction
 import androidx.room.Update
 import androidx.room.Upsert
+import org.json.JSONObject
 
 private const val RIDE_TRACK_RANGE_QUERY = """
   SELECT * FROM ride_track_points
@@ -781,6 +782,17 @@ interface TelemetryDao {
 
   @Insert(onConflict = OnConflictStrategy.REPLACE)
   suspend fun upsertAppSetting(setting: AppSettingEntity)
+
+  /** @parity /modules/vescape-core/ios/telemetry/BoardSettingsPersistence.swift `updateUnitSystem` */
+  @Transaction
+  suspend fun updateUnitSystem(units: String) {
+    require(units in setOf("metric", "imperial")) { "Invalid unit system" }
+    val previous = getAppSetting("unitSystem")?.let { decodeSettingJson(it.valueJson) } ?: "metric"
+    upsertAppSetting(AppSettingEntity("unitSystem", JSONObject.quote(units), System.currentTimeMillis()))
+    if (previous != units) {
+      getBoards().forEach { AlertPresetPersistence.regenerate(this, it.id, "speed") }
+    }
+  }
 
   @Query("DELETE FROM app_settings WHERE key = :key")
   suspend fun deleteAppSetting(key: String)

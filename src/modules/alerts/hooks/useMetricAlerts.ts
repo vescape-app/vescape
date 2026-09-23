@@ -5,7 +5,6 @@ import { useResolvedAlertRules } from '@/modules/alerts/hooks/useResolvedAlertRu
 import { toTestRule } from '@/modules/alerts/lib/alertTest'
 import type { BoardConfigBases } from '@/modules/alerts/lib/configRelativeFields'
 import { useUnitSystem } from '@/hooks/useUnitSystem'
-import type { UnitSystem } from '@/helpers/units'
 import { useMemo } from 'react'
 import { useShallow } from 'zustand/react/shallow'
 
@@ -156,7 +155,6 @@ export function useBoardMetricAlerts(controlId: string): MetricAlertsController 
 
 /** One metric's buffered alert setup inside the add-board wizard. */
 export interface DraftAlertSetup {
-  speedUnitSystem?: UnitSystem
   level: AlertPresetLevel
   rules: DraftAlertRule[]
 }
@@ -183,10 +181,10 @@ export function useDraftMetricAlerts(
       draftAlertPreview(
         metric,
         setup.level,
-        { topSpeedKmh, hasBatteryConfig, speedUnitSystem: setup.speedUnitSystem },
+        { topSpeedKmh, hasBatteryConfig, speedUnitSystem: units },
         setup.rules,
       ),
-    [metric, setup.level, setup.speedUnitSystem, setup.rules, topSpeedKmh, hasBatteryConfig],
+    [metric, setup.level, units, setup.rules, topSpeedKmh, hasBatteryConfig],
   )
   return useMemo(() => {
     const withRules = (rules: DraftAlertRule[]) => onChange({ ...setup, rules })
@@ -206,7 +204,7 @@ export function useDraftMetricAlerts(
       // The wizard has no Board yet, so no config has been read to match against.
       matchBoardConfig: {},
       setMatchBoardConfig: () => {},
-      setLevel: (level) => onChange({ ...setup, level, speedUnitSystem: units }),
+      setLevel: (level) => onChange({ ...setup, level }),
       customize: () => {
         if (preview.error) return
         onChange({
@@ -215,8 +213,7 @@ export function useDraftMetricAlerts(
           rules: materializePresetRules(preview.presetRules, setup.rules),
         })
       },
-      discardCustom: () =>
-        onChange({ level: ALERT_PRESET_FALLBACK_LEVEL, rules: [], speedUnitSystem: units }),
+      discardCustom: () => onChange({ level: ALERT_PRESET_FALLBACK_LEVEL, rules: [] }),
       addRule: async (draft) =>
         withRules([
           ...setup.rules,
@@ -232,5 +229,5 @@ export function useDraftMetricAlerts(
       toggleRule: async (id) => mapRule(id, (rule) => ({ ...rule, enabled: !rule.enabled })),
       removeRule: async (id) => withRules(setup.rules.filter((rule) => rule.id !== id)),
     }
-  }, [metric, setup, topSpeedKmh, hasBatteryConfig, onChange, units, preview])
+  }, [metric, setup, topSpeedKmh, hasBatteryConfig, onChange, preview])
 }

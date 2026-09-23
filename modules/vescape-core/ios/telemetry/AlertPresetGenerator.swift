@@ -154,12 +154,10 @@ final class AlertPresetGenerator {
 
   private static func speedRange(_ point: PresetPoint, input: PresetInput) -> PresetPoint {
     let top = input.topSpeedKmh.isFinite && input.topSpeedKmh > 0 ? input.topSpeedKmh : 50
-    let start = roundTenth(point.threshold * top)
-    let ceiling = roundTenth(point.thresholdMax! * top)
-    if input.speedUnitSystem == "metric" { return PresetPoint(threshold: start, thresholdMax: ceiling) }
-    let endMph = max(1, min(floor(top / kmhPerMph), floor(ceiling / kmhPerMph + 0.5)))
-    let startMph = max(0, min(endMph - 1, floor(start / kmhPerMph + 0.5)))
-    return PresetPoint(threshold: startMph * kmhPerMph, thresholdMax: endMph * kmhPerMph)
+    let unitScale = input.speedUnitSystem == "imperial" ? kmhPerMph : 1.0
+    let ceiling = max(1, min(floor(top / unitScale), floor(point.thresholdMax! * top / unitScale + 0.5)))
+    let start = max(0, min(ceiling - 1, floor(point.threshold * top / unitScale + 0.5)))
+    return PresetPoint(threshold: start * unitScale, thresholdMax: ceiling * unitScale)
   }
 
   private static func roundTenth(_ value: Double) -> Double { floor(value * 10 + 0.5) / 10 }

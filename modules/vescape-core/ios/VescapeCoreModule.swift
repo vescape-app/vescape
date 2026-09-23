@@ -1622,6 +1622,7 @@ public class VescapeCoreModule: Module {
       ].contains(key) {
         self.coordinator.reloadTelemetrySettings()
       }
+      if key == "unitSystem" { self.coordinator.reloadAlertRules() }
       // The Watch Mirror is process scoped, not session scoped, so its settings reload cannot ride
       // on `reloadTelemetrySettings` — that one returns early with no Board Session.
       // @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/VescapeCoreModule.kt `updateSetting`
@@ -2064,6 +2065,7 @@ public class VescapeCoreModule: Module {
   /// firehose gate — these are low-rate config writes JS must not miss (Android emits regardless).
   /// `sendEvent` must run on the main thread, so hop over from any background write closure.
   /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/AppDataRepository.kt `notifyDataChanged`
+  /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/VescapeCoreModule.kt `definition`
   private func sendAppDataChanged(_ scope: String) {
     DispatchQueue.main.async { self.sendEvent("onAppDataChanged", ["scope": scope]) }
   }

@@ -20,7 +20,8 @@ class AlertPresetPersistenceHostTest {
       val metric = case.getString("metric")
       case.optJSONObject("refloat")?.let { dao.upsertBoardConfigValues(BoardConfigValuesEntity(id, "test", it.toString(), 1)) }
       case.optJSONObject("motor")?.let { dao.upsertMotorConfigValues(MotorConfigValuesEntity(id, 1, "test", it.toString(), 1)) }
-      val settings = mutableMapOf<String, Any?>("alertPreset" to mapOf("speedUnitSystem" to case.optString("speedUnitSystem", "metric")), "topSpeedKmh" to case.optDouble("topSpeedKmh", 50.0), "matchBoardConfig" to mapOf(metric to case.optBoolean("matchBoardConfig")))
+      dao.upsertAppSetting(AppSettingEntity("unitSystem", JSONObject.quote(case.optString("speedUnitSystem", "metric")), 1))
+      val settings = mutableMapOf<String, Any?>( "topSpeedKmh" to case.optDouble("topSpeedKmh", 50.0), "matchBoardConfig" to mapOf(metric to case.optBoolean("matchBoardConfig")))
       case.optJSONObject("batteryConfig")?.let { settings["batteryConfig"] = jsonValue(it) }
       val actual = AlertPresetPersistence.generate(dao, id, metric, case.getString("level"), settings)
       if (!case.optBoolean("matchBoardConfig")) {
@@ -62,6 +63,53 @@ class AlertPresetPersistenceHostTest {
       try { AlertPresetPersistence.preview(metric, level, 50.0, false, units) } catch (_: IllegalArgumentException) { rejected = true }
       assertTrue(rejected)
     }
+  }
+
+  @Test fun unitSwitchRegeneratesPresetsOnlyAndRollsBack(): Unit = runBlocking {
+    val fixture = JSONObject(java.io.File("../shared/alert-preset-contract.json").readText()).getJSONObject("unitSwitch")
+    val path = Files.createTempFile("preset-units", ".db"); Files.delete(path)
+    fun open() = Room.databaseBuilder<TelemetryRoomDatabase>(path.toString()).setDriver(BundledSQLiteDriver()).build()
+    var db = open(); var dao = db.telemetryDao()
+    for (id in listOf("first", "second", "custom")) {
+      dao.upsertBoardWithSettings(BoardEntity(id, id, null, 1), listOf(
+        BoardSettingEntity(id, "alertPreset", "{\"speed\":\"normal\",\"duty\":\"normal\",\"speedUnitSystem\":\"imperial\"}", 1),
+        BoardSettingEntity(id, "topSpeedKmh", fixture.getDouble("topSpeedKmh").toString(), 1),
+      ), emptyList())
+    }
+    dao.applyAlertPreset("custom", "speed", "customize", null, null)
+    val frozen = dao.getAlertRules("custom")
+    val duty = dao.getAlertRules("first").single { it.controlId == "duty" }
+    val custom = fixture.getJSONArray("custom")
+    val manual = duty.copy(id = "manual", controlId = "speed", source = null, threshold = custom.getDouble(0), thresholdMax = custom.getDouble(1))
+    dao.upsertAlertRule(manual)
+    for (units in listOf("imperial", "metric", "imperial")) {
+      dao.updateUnitSystem(units)
+      val expected = fixture.getJSONArray(units)
+      for (id in listOf("first", "second")) {
+        val rule = dao.getAlertRules(id).single { it.controlId == "speed" && it.source == "preset" }
+        assertEquals(expected.getDouble(0), rule.threshold, 0.0000001)
+        assertEquals(expected.getDouble(1), rule.thresholdMax!!, 0.0000001)
+      }
+      assertEquals(frozen, dao.getAlertRules("custom"))
+      assertEquals(manual, dao.getAlertRules("first").single { it.id == "manual" })
+      assertEquals(duty, dao.getAlertRules("first").single { it.id == duty.id })
+    }
+    val saved = dao.getAlertRules("first")
+    dao.updateUnitSystem("imperial")
+    assertEquals(saved, dao.getAlertRules("first"))
+    db.close()
+    val connection = BundledSQLiteDriver().open(path.toString())
+    connection.execSQL("CREATE TRIGGER fail_unit_switch BEFORE INSERT ON alerts WHEN NEW.source = 'preset' AND NEW.board_id = 'second' BEGIN SELECT RAISE(ABORT, 'test unit switch'); END")
+    connection.close()
+    db = open(); dao = db.telemetryDao()
+    assertEquals(saved, dao.getAlertRules("first"))
+    var failed = false
+    try { dao.updateUnitSystem("metric") } catch (_: Exception) { failed = true }
+    assertTrue(failed)
+    assertEquals("imperial", decodeSettingJson(dao.getAppSetting("unitSystem")!!.valueJson))
+    assertEquals(saved, dao.getAlertRules("first"))
+    assertEquals(frozen, dao.getAlertRules("custom"))
+    db.close(); Files.deleteIfExists(path)
   }
 
   @Test fun presetIntentIsAtomicAndSurvivesReopen(): Unit = runBlocking {

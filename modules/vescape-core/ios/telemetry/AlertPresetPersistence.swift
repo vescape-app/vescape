@@ -71,7 +71,7 @@ final class AlertPresetPersistence {
     case "speed":
       let oldTop = (before["topSpeedKmh"] as? NSNumber)?.doubleValue
       let newTop = (after["topSpeedKmh"] as? NSNumber)?.doubleValue
-      return oldTop != newTop || previous["speedUnitSystem"] as? String != next["speedUnitSystem"] as? String
+      return oldTop != newTop
     case "battery":
       return !NSDictionary(dictionary: object(before["batteryConfig"])).isEqual(to: object(after["batteryConfig"]))
     default: return false
@@ -119,11 +119,6 @@ final class AlertPresetPersistence {
         try Self.save(db, boardId, "matchBoardConfig", match)
       default: throw InvalidPreset.invalidIntent
       }
-      if metric == "speed", ["select", "discard-custom"].contains(action), !["off", "custom"].contains(selection[metric] as? String ?? "") {
-        let raw = try PersistedAppSetting.fetchOne(db, key: "unitSystem")
-        let unit = try raw.map { try Self.decode($0.valueJson) } as? String
-        selection["speedUnitSystem"] = unit == "imperial" ? "imperial" : "metric"
-      }
       try Self.save(db, boardId, "alertPreset", selection)
       try Self.regenerate(db, boardId: boardId, metric: metric)
       for rule in customized { try rule.save(db) }
@@ -166,13 +161,14 @@ final class AlertPresetPersistence {
     level: String,
     settings: [String: Any]
   ) throws -> [PersistedAlertRule] {
-    let selection = object(settings["alertPreset"])
+    let rawUnits = try PersistedAppSetting.fetchOne(db, key: "unitSystem")
+    let units = try rawUnits.map { try decode($0.valueJson) } as? String
     let matched = object(settings["matchBoardConfig"])[metric] as? Bool == true
     let field = matched ? try AlertPresetGenerator.matchField(metric) : nil
     let input = PresetInput(
       topSpeedKmh: (settings["topSpeedKmh"] as? NSNumber)?.doubleValue ?? 50,
       hasBatteryConfig: try AlertPresetGenerator.validBattery(settings["batteryConfig"]),
-      speedUnitSystem: selection["speedUnitSystem"] as? String == "imperial" ? "imperial" : "metric",
+      speedUnitSystem: validUnitSystem(units) ?? "metric",
       matchBoardConfig: matched,
       configBase: try field.flatMap { try resolveBase(db, boardId, $0) }
     )

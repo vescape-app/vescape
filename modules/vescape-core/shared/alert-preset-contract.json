@@ -246,6 +246,24 @@
           "thresholdOffset": 0
         }
       ]
+    },
+    {
+      "name": "normal-speed-fractional-metric",
+      "metric": "speed",
+      "level": "normal",
+      "topSpeedKmh": 55,
+      "expected": [
+        {
+          "threshold": 40,
+          "thresholdMax": 50
+        }
+      ]
     }
-  ]
+  ],
+  "unitSwitch": {
+    "topSpeedKmh": 50,
+    "metric": [36, 45],
+    "imperial": [35.405568, 45.061632],
+    "custom": [36.123, 45.987]
+  }
 }

@@ -120,6 +120,22 @@ final class BoardSettingsPersistence {
     return merged
   }
 
+  /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/TelemetryDao.kt `updateUnitSystem`
+  func updateUnitSystem(_ units: String) throws {
+    precondition(["metric", "imperial"].contains(units))
+    try writer.write { db in
+      let previous = try PersistedAppSetting.fetchOne(db, key: "unitSystem")
+      let oldUnits = try previous.map { try JSONSerialization.jsonObject(with: Data($0.valueJson.utf8), options: [.fragmentsAllowed]) as? String } ?? "metric"
+      let json = String(decoding: try JSONSerialization.data(withJSONObject: units, options: [.fragmentsAllowed]), as: UTF8.self)
+      try PersistedAppSetting(key: "unitSystem", valueJson: json, updatedAt: Int64(Date().timeIntervalSince1970 * 1000)).save(db)
+      if oldUnits != units {
+        for board in try PersistedBoard.filter(Column("deleted_at") == nil).fetchAll(db) {
+          try AlertPresetPersistence.regenerate(db, boardId: board.id, metric: "speed")
+        }
+      }
+    }
+  }
+
   func saveSetting(_ setting: PersistedAppSetting) throws {
     try writer.write { db in try setting.save(db) }
   }

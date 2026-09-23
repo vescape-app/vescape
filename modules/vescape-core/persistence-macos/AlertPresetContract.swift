@@ -2,6 +2,7 @@ import Foundation
 import GRDB
 
 func runAlertPresetContract() throws {
+  try runAlertPresetUnitSwitchContract()
   let fixture = try JSONSerialization.jsonObject(with: Data(contentsOf: URL(fileURLWithPath: "shared/alert-preset-contract.json"))) as! [String: Any]
   let url = FileManager.default.temporaryDirectory.appendingPathComponent("alert-presets-\(UUID()).db")
   defer { try? FileManager.default.removeItem(at: url) }
@@ -18,7 +19,9 @@ func runAlertPresetContract() throws {
         let json = String(decoding: try JSONSerialization.data(withJSONObject: motor), as: UTF8.self)
         try db.execute(sql: "INSERT INTO motor_config_values VALUES (?, 1, 'test', ?, 1)", arguments: [name, json])
       }
-      var settings: [String: Any] = ["alertPreset": ["speedUnitSystem": item["speedUnitSystem"] ?? "metric"], "topSpeedKmh": item["topSpeedKmh"] ?? 50, "matchBoardConfig": [metric: item["matchBoardConfig"] ?? false]]
+      let unitsJson = String(decoding: try JSONSerialization.data(withJSONObject: item["speedUnitSystem"] ?? "metric", options: [.fragmentsAllowed]), as: UTF8.self)
+      try PersistedAppSetting(key: "unitSystem", valueJson: unitsJson, updatedAt: 1).save(db)
+      var settings: [String: Any] = [ "topSpeedKmh": item["topSpeedKmh"] ?? 50, "matchBoardConfig": [metric: item["matchBoardConfig"] ?? false]]
       settings["batteryConfig"] = item["batteryConfig"]
       let rules = try AlertPresetPersistence.generate(db, boardId: name, metric: metric, level: item["level"] as! String, settings: settings)
       if item["matchBoardConfig"] as? Bool != true {
@@ -72,7 +75,7 @@ func runAlertPresetContract() throws {
   try BoardSettingsPersistence(writer: queue).upsertBoard(board, settings: [setting("alertPreset", "{\"speed\":\"normal\",\"duty\":\"normal\"}"), setting("topSpeedKmh", "50")], deletedKeys: [])
   let duty = try rules().first { $0.controlId == "duty" }!
   try queue.write { db in
-    try db.execute(sql: "INSERT INTO app_settings VALUES ('unitSystem', '\"imperial\"', 1)")
+    try db.execute(sql: "INSERT OR REPLACE INTO app_settings VALUES ('unitSystem', '\"imperial\"', 1)")
     try db.execute(sql: "INSERT INTO alerts (board_id,id,control_id,threshold,threshold_max,enabled,sound_type,created_at,beep_count,threshold_kind) VALUES ('board','manual','speed',12,NULL,1,'preset:tick',1,3,'fixed')")
   }
   try apply("speed", "select", "safe")
@@ -120,4 +123,60 @@ func runAlertPresetContract() throws {
   try require(try rules().allSatisfy { $0.controlId != "duty" }, "dormant relation not frozen")
   try queue.close()
   print("PASS alert-preset-close-reopen-rollback")
+}
+
+func runAlertPresetUnitSwitchContract() throws {
+  let fixture = try JSONSerialization.jsonObject(with: Data(contentsOf: URL(fileURLWithPath: "shared/alert-preset-contract.json"))) as! [String: Any]
+  let switchCase = fixture["unitSwitch"] as! [String: Any]
+  let url = FileManager.default.temporaryDirectory.appendingPathComponent("preset-units-\(UUID()).db")
+  defer { try? FileManager.default.removeItem(at: url) }
+  var queue = try DatabaseQueue(path: url.path)
+  try TelemetryDatabase.migrator.migrate(queue)
+  for id in ["first", "second", "custom"] {
+    let board = PersistedBoard(id: id, name: id, bleId: nil, transport: nil, createdAt: 1, deletedAt: nil)
+    try BoardSettingsPersistence(writer: queue).upsertBoard(board, settings: [
+      .init(boardId: id, key: "alertPreset", valueJson: "{\"speed\":\"normal\",\"duty\":\"normal\",\"speedUnitSystem\":\"imperial\"}", updatedAt: 1),
+      .init(boardId: id, key: "topSpeedKmh", valueJson: String((switchCase["topSpeedKmh"] as! NSNumber).doubleValue), updatedAt: 1),
+    ], deletedKeys: [])
+  }
+  try AlertPresetPersistence(writer: queue).apply(boardId: "custom", metric: "speed", action: "customize", level: nil, matchBoardConfig: nil)
+  func rules(_ id: String) throws -> [PersistedAlertRule] { try AlertRulePersistence(writer: queue).rules(boardId: id) }
+  func snapshot(_ id: String) throws -> Data {
+    let encoder = JSONEncoder(); encoder.outputFormatting = .sortedKeys
+    return try encoder.encode(rules(id))
+  }
+  let frozen = try snapshot("custom")
+  let duty = try rules("first").first { $0.controlId == "duty" }!
+  let custom = switchCase["custom"] as! [Double]
+  try queue.write { db in
+    try db.execute(sql: "INSERT INTO alerts (board_id,id,control_id,threshold,threshold_max,enabled,sound_type,created_at,beep_count,threshold_kind) VALUES ('first','manual','speed',?,?,1,'preset:tick',1,3,'fixed')", arguments: [custom[0], custom[1]])
+  }
+  for units in ["imperial", "metric", "imperial"] {
+    try BoardSettingsPersistence(writer: queue).updateUnitSystem(units)
+    let expected = switchCase[units] as! [Double]
+    for id in ["first", "second"] {
+      let rule = try rules(id).first { $0.controlId == "speed" && $0.source == "preset" }!
+      try require(abs(rule.threshold - expected[0]) < 0.0000001 && abs(rule.thresholdMax! - expected[1]) < 0.0000001, "unit switch regenerates every board")
+    }
+    try require(try snapshot("custom") == frozen, "custom board stays exact")
+    let manual = try rules("first").first { $0.id == "manual" }!
+    try require(manual.threshold == custom[0] && manual.thresholdMax == custom[1], "manual range stays exact")
+    try require(try rules("first").first { $0.id == duty.id }!.threshold == duty.threshold, "other metrics unchanged")
+  }
+  let saved = try snapshot("first")
+  try BoardSettingsPersistence(writer: queue).updateUnitSystem("imperial")
+  try require(try snapshot("first") == saved, "same units preserve rules")
+  try queue.close()
+  queue = try DatabaseQueue(path: url.path)
+  try require(try snapshot("first") == saved, "unit switch survives reopen")
+  try queue.write { db in
+    try db.execute(sql: "CREATE TRIGGER fail_unit_switch BEFORE INSERT ON alerts WHEN NEW.source = 'preset' AND NEW.board_id = 'second' BEGIN SELECT RAISE(ABORT, 'test unit switch'); END")
+  }
+  var failed = false
+  do { try BoardSettingsPersistence(writer: queue).updateUnitSystem("metric") } catch { failed = true }
+  try require(failed, "unit switch failure injected")
+  let units = try BoardSettingsPersistence(writer: queue).setting("unitSystem")!
+  try require(units.valueJson == "\"imperial\"", "unit switch rolls back preference")
+  try require(try snapshot("first") == saved, "unit switch rolls back regenerated rules")
+  try require(try snapshot("custom") == frozen, "unit switch failure preserves custom")
 }

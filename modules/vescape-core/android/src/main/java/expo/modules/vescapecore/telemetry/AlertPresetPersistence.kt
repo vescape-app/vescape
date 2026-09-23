@@ -57,7 +57,7 @@ internal object AlertPresetPersistence {
       "speed" -> {
         val oldTop = (before["topSpeedKmh"] as? Number)?.toDouble()
         val newTop = (after["topSpeedKmh"] as? Number)?.toDouble()
-        oldTop != newTop || previous.optString("speedUnitSystem") != next.optString("speedUnitSystem")
+        oldTop != newTop
       }
       "battery" -> before["batteryConfig"] != after["batteryConfig"]
       else -> false
@@ -113,10 +113,6 @@ internal object AlertPresetPersistence {
       }
       else -> error("Unknown alert preset action")
     }
-    if (metric == "speed" && action in setOf("select", "discard-custom") && selection.optString(metric) !in setOf("off", "custom")) {
-      val units = dao.getAppSetting("unitSystem")?.let { decodeSettingJson(it.valueJson) }
-      selection.put("speedUnitSystem", if (units == "imperial") "imperial" else "metric")
-    }
     dao.upsertBoardSetting(BoardSettingEntity(boardId, "alertPreset", selection.toString(), now))
     regenerate(dao, boardId, metric)
     customized.forEach { dao.upsertAlertRule(it) }
@@ -158,13 +154,13 @@ internal object AlertPresetPersistence {
     level: String,
     settings: Map<String, Any?>,
   ): List<AlertRuleEntity> {
-    val selection = json(settings["alertPreset"])
+    val units = dao.getAppSetting("unitSystem")?.let { decodeSettingJson(it.valueJson) }
     val matched = json(settings["matchBoardConfig"]).optBoolean(metric)
     val field = AlertPresetGenerator.matchField(metric).takeIf { matched }
     val input = PresetInput(
       topSpeedKmh = (settings["topSpeedKmh"] as? Number)?.toDouble() ?: 50.0,
       hasBatteryConfig = AlertPresetGenerator.validBattery(settings["batteryConfig"]),
-      speedUnitSystem = if (selection.optString("speedUnitSystem") == "imperial") "imperial" else "metric",
+      speedUnitSystem = validUnitSystem(units) ?: "metric",
       matchBoardConfig = matched,
       configBase = field?.let { resolveBase(dao, boardId, it) },
     )

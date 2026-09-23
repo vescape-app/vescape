@@ -591,7 +591,10 @@ class AppDataRepository private constructor(private val context: Context) {
         else -> null
       }
     }
-    if (coerced == default) {
+    if (normalizedKey == "unitSystem") {
+      dao.updateUnitSystem(coerced as String)
+      notifyDataChanged(AppDataScope.ALERTS)
+    } else if (coerced == default) {
       dao.deleteAppSetting(normalizedKey)
     } else {
       dao.upsertAppSetting(

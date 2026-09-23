@@ -153,7 +153,11 @@ class VescapeCoreModule : Module() {
     Name("VescapeCore")
 
     CoreForegroundService.emitEvent = { name, body ->
-      if (name == "onLiveState" && shouldEmitToFrontend("onLiveState")) {
+      // Durable-data invalidation must bypass the live-telemetry subscription gate.
+      // @parity /modules/vescape-core/ios/VescapeCoreModule.swift `sendAppDataChanged`
+      if (name == "onAppDataChanged") {
+        mainHandler.post { sendEvent(name, body) }
+      } else if (name == "onLiveState" && shouldEmitToFrontend("onLiveState")) {
         mainHandler.post {
           if (shouldEmitToFrontend("onLiveState")) sendEvent("onLiveState", liveStateWithScan(body))
         }
@@ -1450,6 +1454,7 @@ class VescapeCoreModule : Module() {
         throw error
       }
       if (key == "unitSystem") {
+        CoreForegroundService.reloadAlertRules(context.applicationContext)
         val units = AppDataRepository.get(context.applicationContext).getTypedSettings().unitSystem
         mainHandler.post { alertTestCoordinator?.unitSystem = units }
       }

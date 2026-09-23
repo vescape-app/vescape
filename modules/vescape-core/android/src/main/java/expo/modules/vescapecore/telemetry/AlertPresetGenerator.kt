@@ -157,12 +157,10 @@ internal object AlertPresetGenerator {
 
   private fun speedRange(point: PresetPoint, input: PresetInput): PresetPoint {
     val top = input.topSpeedKmh.takeIf { it.isFinite() && it > 0 } ?: 50.0
-    val start = roundTenth(point.threshold * top)
-    val ceiling = roundTenth(checkNotNull(point.thresholdMax) * top)
-    if (input.speedUnitSystem == "metric") return PresetPoint(start, ceiling)
-    val endMph = maxOf(1.0, minOf(floor(top / KMH_PER_MPH), floor(ceiling / KMH_PER_MPH + 0.5)))
-    val startMph = maxOf(0.0, minOf(endMph - 1, floor(start / KMH_PER_MPH + 0.5)))
-    return PresetPoint(startMph * KMH_PER_MPH, endMph * KMH_PER_MPH)
+    val unitScale = if (input.speedUnitSystem == "imperial") KMH_PER_MPH else 1.0
+    val ceiling = maxOf(1.0, minOf(floor(top / unitScale), floor(checkNotNull(point.thresholdMax) * top / unitScale + 0.5)))
+    val start = maxOf(0.0, minOf(ceiling - 1, floor(point.threshold * top / unitScale + 0.5)))
+    return PresetPoint(start * unitScale, ceiling * unitScale)
   }
 
   private fun roundTenth(value: Double) = floor(value * 10 + 0.5) / 10

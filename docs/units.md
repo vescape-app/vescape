@@ -12,7 +12,7 @@ Legal map labels, country-list values, and country-detail speed readouts also us
 
 ## Conversion
 
-Keep existing metric storage, telemetry contracts, and calculations. Convert at presentation and input boundaries. A unit switch changes neither recorded measurements nor the physical meaning of a saved threshold. Existing history uses the currently selected display units.
+Keep existing metric storage, telemetry contracts, and calculations. Convert at presentation and input boundaries. A unit switch preserves recorded measurements and custom alert thresholds. Speed presets are regenerated with whole-number thresholds in the newly selected units. Existing history uses the currently selected display units.
 
 Metric distance formatting keeps the existing meters-below-1-km convention. Imperial short-distance labels use feet below 0.1 mile, then miles. Ride totals use miles in imperial mode. Imperial speed uses mph.
 
@@ -22,7 +22,7 @@ Imperial alert thresholds use 1 mph steps; Board Top Speed uses 5 mph steps. The
 
 New custom speed alerts initialize their thresholds at whole mph in imperial mode, then store the metric equivalents. Opening an existing alert preserves its saved thresholds exactly.
 
-Speed labels omit trailing `.0`. Converted settings can show one decimal until edited. Preserve the exact stored value when opening, closing, or switching units; never write a rounded display value back without an actual edit.
+Speed labels omit trailing `.0`. Converted custom alerts and Board Top Speed can show one decimal until edited. Preserve their exact stored values when opening, closing, or switching units; never write a rounded display value back without an actual edit.
 
 Examples:
 
@@ -31,17 +31,21 @@ Examples:
 
 ## Speed presets
 
-Selecting a speed preset in imperial units snaps its actual range endpoints to whole mph before
-converting them to canonical km/h. The ceiling stays within Board Top Speed and the start stays
-at least 1 mph below the ceiling. At very low top speeds, preset levels can therefore share a range.
-Metric presets retain their existing tenth-km/h calculation.
+Speed presets use whole-number range endpoints in the current app units, then store canonical
+km/h equivalents. The ceiling stays within Board Top Speed and the start stays at least one
+selected speed unit below the ceiling for supported Board Top Speeds. At low top speeds, preset
+levels can share a range. The same calculation serves native persistence and unsaved wizard previews.
 
-The Board's opaque `alertPreset` bag retains `speedUnitSystem`, the units used when selecting the
-speed preset. Native saves this choice and the generated rules together. Saved-board previews and
-chart markers use the persisted rules; customization freezes those rules at their current thresholds.
-Changing display units does not recalculate firing speeds. Existing presets without this metadata
-retain their original calculation until the rider selects a speed preset again. New-board setup
-captures the unit choice in its draft and saves it with the preset.
+Changing display units regenerates speed preset rules for every live Board in the same transaction
+as the preference change. This changes actual firing speeds: Normal at a Board Top Speed of
+50 km/h uses 36–45 km/h in metric and exactly 22–28 mph in imperial. Regeneration starts from
+Board Top Speed and the preset definition, so repeated switches do not accumulate rounding drift.
+Selecting a preset or changing Board Top Speed uses the current app units too.
+
+The Board's `alertPreset` bag stores only the selected levels. Legacy `speedUnitSystem` metadata
+is ignored. Saved-board previews and chart markers use persisted rules. Customization freezes
+those rules at their current thresholds; neither custom nor manual alert thresholds are rounded
+when units change. Their converted labels can show one decimal.
 
 ## Spoken alerts
 
@@ -70,7 +74,7 @@ the same pure native conversion helper on each platform; shared distance fixture
 
 ## Implementation checks
 
-- Switching units repeatedly leaves saved measurements and thresholds unchanged.
+- Switching units repeatedly preserves measurements and custom thresholds; preset rules regenerate without cumulative drift.
 - Editing an imperial threshold stores the corresponding metric value and fires at the same physical speed on Android and iOS.
 - Phone and companion displays use the same preference; native spoken alerts honor it while JS is suspended.
 - Converted values, chart scales, and unit labels agree.

@@ -514,6 +514,14 @@ final class AppDataRepository {
       key != "legalPolicy", key != "legalMode",
       key != Self.navigationPathKey, key != Self.navigationProfileKey
     else { return }
+    if key == "unitSystem" {
+      let units = rawValue == nil || rawValue is NSNull ? "metric" : validUnitSystem(rawValue)
+      guard let units else { throw CocoaError(.coderInvalidValue) }
+      try boardSettingsPersistence().updateUnitSystem(units)
+      notifyDataChanged(.alerts)
+      notifyDataChanged(.settings)
+      return
+    }
     let updatedAt = nowMs()
     guard let rawValue, !(rawValue is NSNull) else {
       try boardSettingsPersistence().deleteSetting(key)
@@ -540,14 +548,6 @@ final class AppDataRepository {
     } else if key == "audioSource" {
       guard let source = Self.audioSource(rawValue) else { return }
       value = source
-    } else if key == "unitSystem" {
-      guard let units = validUnitSystem(rawValue) else { throw CocoaError(.coderInvalidValue) }
-      if units == "metric" {
-        try boardSettingsPersistence().deleteSetting(key)
-        notifyDataChanged(.settings)
-        return
-      }
-      value = units
     } else if key == "themeMode" {
       guard let mode = Self.themeMode(rawValue) else { return }
       value = mode
