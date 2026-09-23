@@ -2,6 +2,11 @@ import type { BundledReleaseNote } from '../lib/releaseNotes'
 
 export const bundledReleaseNotes = [
   {
+    version: '0.95.2',
+    markdown:
+      "## New\n\n- Added a Molicel P42A cell preset for configuring your board's battery.\n",
+  },
+  {
     version: '0.95.1',
     markdown:
       '## Improved\n\n- Board light switches now show when their state is unknown, and accessory switches show a spinner while saving changes.\n- Open Sounds directly from the settings drawer to choose and preview a sound pack.\n\n## Fixed\n\n- Speed alert presets now recalculate to whole-number thresholds when you switch between km/h and mph, with active alerts updating immediately. Custom alert thresholds stay unchanged.\n',
