@@ -16,19 +16,11 @@ import Animated, {
   withTiming,
 } from 'react-native-reanimated'
 
-import { neutralColors, theme, type ThemeColor } from '@/constants/theme'
 import {
-  useColoredAction,
-  useColoredActionForeground,
-  useResolvedControlColors,
-  useThemeStore,
-} from '@/hooks/useTheme'
-
-/**
- * The switch always draws on a dark surface — the card itself on dark, the navy control base on
- * light — so its greys are the dark-theme neutrals in both appearances.
- */
-const INK = neutralColors.dark
+  CONTROL_INK as INK,
+  useColoredControlSurface,
+} from '@/components/controls/coloredControlSurface'
+import { theme, type ThemeColor } from '@/constants/theme'
 
 const WIDTH = 58
 const HEIGHT = 26
@@ -87,15 +79,13 @@ export function Switch({
   testID,
 }: SwitchProps) {
   const inheritedAccent = useContext(SwitchAccentContext)
-  const resolvedAccent = accent ?? inheritedAccent ?? theme.palette.sky.color
-  // Same two-layer surface as a colored action: on light the track is a navy control with the
-  // accent washed over it when on; on dark the accent alone tints the card beneath.
-  const onNavy = useThemeStore((state) => state.resolvedTheme) === 'light'
-  const control = useResolvedControlColors()
-  const tint = useColoredActionForeground(resolvedAccent)
-  const tintSoft = theme.alpha(tint, 0.6)
-  const trackOn = useColoredAction(resolvedAccent)
-  const trackOff = onNavy ? control.background : theme.alpha(tint, 0)
+  const {
+    onNavy,
+    tint,
+    tintSoft,
+    selected: trackOn,
+    unselected: trackOff,
+  } = useColoredControlSurface(accent ?? inheritedAccent ?? theme.palette.sky.color)
 
   const target = pending || value == null ? 0.5 : value ? 1 : 0
   const progress = useSharedValue(target)

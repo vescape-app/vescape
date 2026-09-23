@@ -4,7 +4,6 @@ import { Text } from '@/components/base/Text'
 import {
   BatteryChargingIcon,
   BluetoothIcon,
-  CheckIcon,
   CpuIcon,
   HandshakeIcon,
   type Icon,
@@ -18,6 +17,7 @@ import {
 } from 'phosphor-react-native'
 import type { BoardCandidate, BoardProbeProgressEvent, BoardProbeStep } from 'vescape-core'
 
+import { RadioIndicator } from '@/components/controls/RadioIndicator'
 import { IconHero } from '@/components/settings/IconHero'
 import { StepTimeline, type StepState, type TimelineStep } from '@/components/base/StepTimeline'
 import type { BoardLinkPhase } from '@/modules/board/hooks/useBoardLink'
@@ -418,11 +418,7 @@ function TransportPicker({
             onPress={() => picker.onSelect(candidate)}
             testID={`${picker.testIDPrefix}-option-${candidate.transport}`}
           >
-            <View style={[styles.radio, isSelected && styles.radioOn]}>
-              {isSelected ? (
-                <CheckIcon size={14} color={theme.palette.sky.color} weight="bold" />
-              ) : null}
-            </View>
+            <RadioIndicator selected={isSelected} />
             <View style={styles.pickerText}>
               <Text style={styles.pickerLabel}>
                 {formatCandidateTransport(candidate.transport)}
@@ -479,18 +475,6 @@ const styles = StyleSheet.create({
   pickerRowDivider: {
     borderTopWidth: 1,
     borderTopColor: theme.neutral.border,
-  },
-  radio: {
-    width: 22,
-    height: 22,
-    borderRadius: 11,
-    borderWidth: 1.5,
-    borderColor: theme.neutral.border,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  radioOn: {
-    borderColor: theme.palette.sky.color,
   },
   pickerText: {
     flex: 1,

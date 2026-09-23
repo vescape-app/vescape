@@ -5,7 +5,6 @@ import { Alert, Platform, Pressable, ScrollView, StyleSheet, TextInput, View } f
 import type { ScrollView as ScrollViewType } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import {
-  CheckIcon,
   PencilSimpleIcon,
   PaperclipIcon,
   PlusIcon,
@@ -34,6 +33,7 @@ import { Select } from '@/components/forms/Select'
 import { SettingsCard } from '@/components/settings/SettingsCard'
 import { SettingsRow } from '@/components/settings/SettingsRow'
 import { SettingsSectionTitle } from '@/components/settings/SettingsSectionTitle'
+import { RadioIndicator } from '@/components/controls/RadioIndicator'
 import { Switch } from '@/components/controls/Switch'
 import { interaction, theme } from '@/constants/theme'
 import { APP_SOUND_CUES } from '@/modules/settings/lib/appSounds'
@@ -258,11 +258,11 @@ export default function SoundsSettingsScreen() {
                       onPress={() => commitName(pack.id, pack.name)}
                     />
                   ) : (
-                    <View style={[styles.selection, active && styles.selectionSelected]}>
-                      {active && (
-                        <CheckIcon size={17} color={theme.settingsIcon.sounds} weight="bold" />
-                      )}
-                    </View>
+                    <RadioIndicator
+                      selected={active}
+                      accent={theme.settingsIcon.sounds}
+                      size="lg"
+                    />
                   )}
                 </Pressable>
                 {active && !custom && (
@@ -420,16 +420,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  selection: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    borderWidth: 1.5,
-    borderColor: theme.neutral.border,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  selectionSelected: { borderColor: theme.settingsIcon.sounds },
   packName: { flex: 1, fontSize: 16, color: theme.neutral.textSecondary, fontWeight: '600' },
   activePackName: { color: theme.neutral.textPrimary, fontWeight: '700' },
   nameInput: {

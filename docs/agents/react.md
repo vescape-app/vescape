@@ -111,6 +111,10 @@ import { Switch } from '@/components/controls/Switch'
 - Tap and drag both toggle it. Inside a row that is itself pressable, wrap the switch in a
   `<View pointerEvents="none">` so the row owns the tap and the switch only mirrors state.
 
+For one-of-several choices, put **`RadioIndicator`** (`@/components/controls/RadioIndicator`) on
+the row that owns the press. It uses the same colored surface as `Switch`, from
+`useColoredControlSurface`.
+
 ## Buttons
 
 Use **`Button`** (`@/components/Button`) for all tappable button actions. Do not build ad-hoc `Pressable` + `Text` combinations for buttons.
