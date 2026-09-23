@@ -2,6 +2,11 @@ import type { BundledReleaseNote } from '../lib/releaseNotes'
 
 export const bundledReleaseNotes = [
   {
+    version: '0.95.1',
+    markdown:
+      '## Improved\n\n- Board light switches now show when their state is unknown, and accessory switches show a spinner while saving changes.\n- Open Sounds directly from the settings drawer to choose and preview a sound pack.\n\n## Fixed\n\n- Speed alert presets now recalculate to whole-number thresholds when you switch between km/h and mph, with active alerts updating immediately. Custom alert thresholds stay unchanged.\n',
+  },
+  {
     version: '0.95.0',
     markdown:
       "## New\n\n- Choose Alarm or Media audio output on Android for alerts, spoken warnings, and app sounds.\n- Switch to imperial units for mph, miles, and feet across live readings, ride history, navigation, and spoken speed alerts. Saved alert thresholds keep the same physical meaning.\n- Export rides and Favorites as GPX routes or CSV telemetry files.\n- Choose Retro or Classic app sounds, or build custom packs from WAV files for connection, error, and Group Ride cues. Custom packs are included in backups.\n\n## Improved\n\n- Tune editing now supports precise manual entry alongside the ruler, with warnings for values outside the usual range.\n- Changing map style now preserves your app appearance preference.\n- Ride and Favorite thumbnails show more route detail, preserve proportions, and leave gaps where GPS data is missing.\n\n## Fixed\n\n- Board-matched alert presets recover missing rules once configuration becomes available. Alert markers and previews now reflect the saved thresholds used during rides.\n- Applying an unchanged tune value no longer rounds it or overwrites custom linked settings. ATR Speed Boost now displays and edits the correct percentage.\n- Tune profiles remain available after Refloat patch updates within the same major and minor version.\n- Fixed app launch on iOS 27.\n\n## Watch\n\n- Apple Watch and Wear OS follow the phone's unit preference for speed, navigation distance, and radar distance labels.\n",
