@@ -29,7 +29,7 @@ import {
  *
  * iOS: sentry-cocoa has no manifest equivalent — it only starts from code — so `SentrySDK.start`
  * is injected as the first statement of `application(_:didFinishLaunchingWithOptions:)`, ahead of
- * `startReactNative` and therefore ahead of every native module and the bundle. `#if !DEBUG`
+ * the React Native factory setup and its handoff to ExpoAppSceneDelegate. `#if !DEBUG`
  * compiles it out of debug builds, mirroring the Android manifest placeholder.
  *
  * On both platforms the later JS `Sentry.init()` re-initializes the native SDK with the JS

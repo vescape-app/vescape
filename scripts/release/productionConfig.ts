@@ -54,7 +54,16 @@ export const sentryManifestInitProblems = (mergedManifest: string): SentryNative
 export const sentryAppDelegateInitProblems = (appDelegate: string): SentryNativeInitProblem[] => {
   const problems: SentryNativeInitProblem[] = []
   const start = appDelegate.indexOf('SentrySDK.start')
-  const reactNative = appDelegate.indexOf('startReactNative')
+  const directBoot = appDelegate.indexOf('startReactNative')
+  // Expo 57 boots from ExpoAppSceneDelegate using the factory supplied by AppDelegate.
+  // Require Sentry before that handoff; an arbitrary factory assignment is not sufficient.
+  const sceneFactory = /class\s+AppDelegate\s*:[^{]*\bExpoReactNativeFactoryProvider\b/.test(
+    appDelegate,
+  )
+    ? (/\breactNativeFactory\s*=\s*factory\b/.exec(appDelegate)?.index ?? -1)
+    : -1
+  const reactNative = directBoot >= 0 ? directBoot : sceneFactory
+  const bootMarker = directBoot >= 0 ? 'startReactNative' : 'reactNativeFactory assignment'
 
   if (start < 0) {
     problems.push('SentrySDK.start is missing')
@@ -64,7 +73,7 @@ export const sentryAppDelegateInitProblems = (appDelegate: string): SentryNative
   if (reactNative < 0) {
     problems.push('startReactNative is missing — cannot verify Sentry starts first')
   } else if (start >= 0 && start > reactNative) {
-    problems.push('SentrySDK.start runs after startReactNative')
+    problems.push(`SentrySDK.start runs after ${bootMarker}`)
   }
   if (!/options\.dsn = "https:\/\/[^"]+"/.test(appDelegate)) problems.push('options.dsn is missing')
   if (!appDelegate.includes('options.environment = "production"')) {

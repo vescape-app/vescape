@@ -78,6 +78,38 @@ describe('sentryManifestInitProblems', () => {
 })
 
 describe('sentryAppDelegateInitProblems', () => {
+  const sceneDelegate = (afterFactory = false) => `
+class AppDelegate: ExpoAppDelegate, ExpoReactNativeFactoryProvider {
+  public override func application(
+    _ application: UIApplication,
+    didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]? = nil
+  ) -> Bool {
+    ${appDelegate({ afterReactNative: afterFactory }).replace(
+      'factory.startReactNative(withModuleName: "main", in: window)',
+      'reactNativeFactory = factory',
+    )}
+    return super.application(application, didFinishLaunchingWithOptions: launchOptions)
+  }
+}`
+
+  it('accepts Sentry before the Expo scene factory is handed off', () => {
+    expect(sentryAppDelegateInitProblems(sceneDelegate())).toEqual([])
+  })
+
+  it('rejects Sentry after the Expo scene factory is handed off', () => {
+    expect(sentryAppDelegateInitProblems(sceneDelegate(true))).toEqual([
+      'SentrySDK.start runs after reactNativeFactory assignment',
+    ])
+  })
+
+  it('does not treat an unrelated factory assignment as a scene startup contract', () => {
+    expect(
+      sentryAppDelegateInitProblems(
+        sceneDelegate().replace(', ExpoReactNativeFactoryProvider', ''),
+      ),
+    ).toEqual(['startReactNative is missing — cannot verify Sentry starts first'])
+  })
+
   it('accepts an AppDelegate that starts Sentry before React Native', () => {
     expect(sentryAppDelegateInitProblems(appDelegate())).toEqual([])
   })
