@@ -1,9 +1,10 @@
 import { useCallback, useRef, useState } from 'react'
-import { Pressable, ScrollView, StyleSheet, Text, View, type ViewStyle } from 'react-native'
-import { CaretDownIcon, CheckIcon, type Icon as PhosphorIcon } from 'phosphor-react-native'
+import { Pressable, StyleSheet, Text, View, type ViewStyle } from 'react-native'
+import { CaretDownIcon, type Icon as PhosphorIcon } from 'phosphor-react-native'
 
 import { interaction, theme, type ThemeColor } from '@/constants/theme'
 import { Dropdown } from '@/components/forms/Dropdown'
+import { DropdownOptionList } from '@/components/forms/DropdownOptionList'
 import type { SelectOption } from '@/components/forms/Select'
 import { useResolvedSecondaryWidgetSurface } from '@/components/widgets/widgetSurface'
 
@@ -83,30 +84,7 @@ export function SelectCard<T extends string = string>({
         onClose={() => setOpen(false)}
         maxHeight={MAX_DROPDOWN_HEIGHT}
       >
-        <ScrollView bounces={false} showsVerticalScrollIndicator={false}>
-          {options.map((option, index) => {
-            const selected = option.value === value
-            return (
-              <Pressable
-                key={option.value}
-                style={({ pressed }) => [
-                  styles.option,
-                  index < options.length - 1 && styles.optionBorder,
-                  selected && styles.optionSelected,
-                  pressed && styles.optionPressed,
-                ]}
-                onPress={() => handleSelect(option.value)}
-              >
-                <Text style={[styles.optionText, selected && styles.optionTextSelected]}>
-                  {option.label}
-                </Text>
-                {selected ? (
-                  <CheckIcon size={14} color={theme.palette.sky.color} weight="bold" />
-                ) : null}
-              </Pressable>
-            )
-          })}
-        </ScrollView>
+        <DropdownOptionList options={options} value={value} onSelect={handleSelect} />
       </Dropdown>
     </View>
   )
@@ -141,26 +119,4 @@ const styles = StyleSheet.create({
     paddingRight: 5,
   },
   placeholderText: { color: theme.neutral.textMuted },
-  option: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: 14,
-    paddingVertical: 12,
-  },
-  optionBorder: {
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: theme.control.divider,
-  },
-  optionSelected: { backgroundColor: theme.palette.sky.bg },
-  optionPressed: { backgroundColor: interaction.pressedBg },
-  optionText: {
-    color: theme.control.text,
-    fontSize: 14,
-    fontWeight: '500',
-  },
-  optionTextSelected: {
-    color: theme.palette.sky.color,
-    fontWeight: '600',
-  },
 })
