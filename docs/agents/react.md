@@ -105,6 +105,9 @@ import { Switch } from '@/components/controls/Switch'
   the switch inherits it, so a tinted row states its colour once; without either it falls back to
   `theme.palette.sky.color`. `SwitchAccentProvider` lends the same accent anywhere else.
 - A disabled switch drops its accent and dashes its outline instead of dimming its on colour.
+- The track follows the colored-action surface: on light it is a navy control base with the accent
+  washed over it when on, and the accent keeps its dark-theme tone; on dark the accent alone tints
+  the card beneath.
 - Tap and drag both toggle it. Inside a row that is itself pressable, wrap the switch in a
   `<View pointerEvents="none">` so the row owns the tap and the switch only mirrors state.
 

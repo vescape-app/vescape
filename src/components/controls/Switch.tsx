@@ -16,8 +16,19 @@ import Animated, {
   withTiming,
 } from 'react-native-reanimated'
 
-import { theme, type ThemeColor } from '@/constants/theme'
-import { useResolvedColor, useResolvedNeutralColors } from '@/hooks/useTheme'
+import { neutralColors, theme, type ThemeColor } from '@/constants/theme'
+import {
+  useColoredAction,
+  useColoredActionForeground,
+  useResolvedControlColors,
+  useThemeStore,
+} from '@/hooks/useTheme'
+
+/**
+ * The switch always draws on a dark surface — the card itself on dark, the navy control base on
+ * light — so its greys are the dark-theme neutrals in both appearances.
+ */
+const INK = neutralColors.dark
 
 const WIDTH = 58
 const HEIGHT = 26
@@ -76,11 +87,15 @@ export function Switch({
   testID,
 }: SwitchProps) {
   const inheritedAccent = useContext(SwitchAccentContext)
-  const neutral = useResolvedNeutralColors()
-  const tint = useResolvedColor(accent ?? inheritedAccent ?? theme.palette.sky.color)
+  const resolvedAccent = accent ?? inheritedAccent ?? theme.palette.sky.color
+  // Same two-layer surface as a colored action: on light the track is a navy control with the
+  // accent washed over it when on; on dark the accent alone tints the card beneath.
+  const onNavy = useThemeStore((state) => state.resolvedTheme) === 'light'
+  const control = useResolvedControlColors()
+  const tint = useColoredActionForeground(resolvedAccent)
   const tintSoft = theme.alpha(tint, 0.6)
-  const tintWash = theme.alpha(tint, 0.12)
-  const tintClear = theme.alpha(tint, 0)
+  const trackOn = useColoredAction(resolvedAccent)
+  const trackOff = onNavy ? control.background : theme.alpha(tint, 0)
 
   const target = pending || value == null ? 0.5 : value ? 1 : 0
   const progress = useSharedValue(target)
@@ -161,13 +176,9 @@ export function Switch({
     borderColor: interpolateColor(
       progress.value,
       [0, 0.5, 1],
-      [neutral.border, neutral.textMuted, tintSoft],
+      [INK.border, INK.textMuted, tintSoft],
     ),
-    backgroundColor: interpolateColor(
-      progress.value,
-      [0, 0.5, 1],
-      [tintClear, tintClear, tintWash],
-    ),
+    backgroundColor: interpolateColor(progress.value, [0, 0.5, 1], [trackOff, trackOff, trackOn]),
   }))
 
   const thumbStyle = useAnimatedStyle(() => ({
@@ -175,7 +186,7 @@ export function Switch({
     borderColor: interpolateColor(
       progress.value,
       [0, 0.5, 1],
-      [neutral.textMuted, neutral.textSecondary, tint],
+      [INK.textMuted, INK.textSecondary, tint],
     ),
   }))
 
@@ -183,7 +194,7 @@ export function Switch({
     backgroundColor: interpolateColor(
       progress.value,
       [0, 0.5, 1],
-      [neutral.textMuted, neutral.textSecondary, tint],
+      [INK.textMuted, INK.textSecondary, tint],
     ),
     opacity: interpolate(Math.abs(progress.value - 0.5), [0, 0.25], [0, 1]),
   }))
@@ -195,7 +206,7 @@ export function Switch({
 
   const offCaptionStyle = useAnimatedStyle(() => ({
     opacity: interpolate(progress.value, [0, 0.3], [1, 0], 'clamp'),
-    color: neutral.textMuted,
+    color: INK.textMuted,
   }))
 
   const spinnerStyle = useAnimatedStyle(() => ({
@@ -206,7 +217,7 @@ export function Switch({
   return (
     <GestureDetector gesture={gesture}>
       <View
-        style={[styles.hitbox, disabled && styles.disabled]}
+        style={[styles.hitbox, disabled && (onNavy ? styles.disabledOnNavy : styles.disabled)]}
         accessibilityRole="switch"
         accessibilityState={{ checked: value === true, disabled: Boolean(disabled) }}
         {...(accessibilityLabel ? { accessibilityLabel } : {})}
@@ -239,6 +250,10 @@ const styles = StyleSheet.create({
   },
   disabled: {
     opacity: 0.45,
+  },
+  // A navy pill on a white card stays heavy at the dark-theme fade, so light fades it further.
+  disabledOnNavy: {
+    opacity: 0.25,
   },
   track: {
     width: WIDTH,
