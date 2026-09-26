@@ -247,8 +247,9 @@ Adding a mirrored setting:
    and `watch/wearos/.../WatchSettings.kt`, linked by `@parity`).
 2. Map it in `AppSettings.toWatchSettings()`; put it in `WatchSettingsPusher`.
 3. Decode it in wrist `WatchSettings.decode`, called by `MainActivity.readSettings`.
-4. If the setting is written from JS, add its key to the `updateSetting` reload list in
-   `VescapeCoreModule.kt` — the process-scoped pusher publishes even when no service or Board Session exists.
+4. Add its app settings key to `WATCH_SOURCE_SETTING_KEYS` (iOS: `watchSourceSettingKeys`). A JS
+   write to any key in that set reloads native settings and republishes to the wrist, even when no
+   service or Board Session exists; `WatchSettingsTest` fails when a mirrored field has no key there.
    Native process startup also republishes saved settings.
 
 Rider Units travels on this channel as `unitSystem`, defaulting to metric for missing or invalid

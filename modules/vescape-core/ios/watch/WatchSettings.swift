@@ -40,6 +40,21 @@ let watchSettingsChannel = "settings"
 /// old to send a key leaves the wrist on the Android default rather than on a zero.
 ///
 /// @parity /watch/wearos/src/main/java/app/vescape/wear/WatchSettings.kt `WatchSettings`
+/// Every app settings key the wrist depends on: the ones the settings push mirrors (Board Move's wrist
+/// relay also reads `boardMoveStrengthPercent`), plus the push cadence. A JS write to any of them
+/// must reload the watch settings, or the wrist and the relay keep the old value until the app
+/// restarts.
+///
+/// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/watch/WatchSettings.kt `WATCH_SOURCE_SETTING_KEYS`
+let watchSourceSettingKeys: Set<String> = [
+  "riderColor",
+  "boardMoveStrengthPercent",
+  "wearNavArrowEnabled",
+  "unitSystem",
+  "wearTiltRatePercent",
+  "wearPushRateHz",
+]
+
 struct WatchSettings: Equatable {
   /// `#RRGGBB` / `#AARRGGBB` as the phone's rider palette stores it; nil when the rider has none.
   var riderColor: String?

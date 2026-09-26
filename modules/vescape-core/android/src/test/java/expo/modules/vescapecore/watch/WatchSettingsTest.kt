@@ -6,6 +6,27 @@ import org.junit.Assert.assertNull
 import org.junit.Test
 
 class WatchSettingsTest {
+    /**
+     * Regression: `boardMoveStrengthPercent` was missing from the reload list, so a strength change
+     * never reached the watch. Every mirrored field needs its key in the list, and vice versa.
+     */
+    @Test
+    fun `every mirrored setting has its key in the reload list`() {
+        val changedByKey = mapOf(
+            "riderColor" to AppSettings(riderColor = "#ff0000"),
+            "boardMoveStrengthPercent" to AppSettings(boardMoveStrengthPercent = 30),
+            "wearNavArrowEnabled" to AppSettings(wearNavArrowEnabled = true),
+            "unitSystem" to AppSettings(unitSystem = "imperial"),
+            "wearTiltRatePercent" to AppSettings(wearTiltRatePercent = 40),
+        )
+        val mirroredFields = WatchSettings::class.java.declaredFields.count { !java.lang.reflect.Modifier.isStatic(it.modifiers) }
+        assertEquals(mirroredFields, changedByKey.size)
+        assertEquals(WATCH_SOURCE_SETTING_KEYS - "wearPushRateHz", changedByKey.keys)
+        for (changed in changedByKey.values) {
+            org.junit.Assert.assertNotEquals(AppSettings().toWatchSettings(), changed.toWatchSettings())
+        }
+    }
+
     @Test
     fun `unit preference belongs to cold settings and invalidates equality`() {
         val metric = AppSettings().toWatchSettings()

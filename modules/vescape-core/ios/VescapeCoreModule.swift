@@ -1627,7 +1627,7 @@ public class VescapeCoreModule: Module {
       // on `reloadTelemetrySettings` — that one returns early with no Board Session.
       // @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/VescapeCoreModule.kt `updateSetting`
       if key == "unitSystem" { self.alertTestCoordinator?.unitSystem = (try self.appData.getSettings())["unitSystem"] as? String ?? "metric" }
-      if ["unitSystem", "wearPushRateHz", "wearNavArrowEnabled", "wearTiltRatePercent", "riderColor", "boardMoveStrengthPercent"].contains(key) {
+      if watchSourceSettingKeys.contains(key) {
         self.coordinator.reloadWatchSettings()
       }
     }

@@ -35,6 +35,7 @@ import expo.modules.vescapecore.connection.buildSessionConfig
 
 import expo.modules.vescapecore.navigation.NavigationController
 import expo.modules.vescapecore.navigation.NavigationProfile
+import expo.modules.vescapecore.watch.WATCH_SOURCE_SETTING_KEYS
 import expo.modules.vescapecore.watch.WatchRouteMirror
 import expo.modules.vescapecore.faults.VescFaultCaptureCoordinator
 import expo.modules.vescapecore.faults.VescFaultCoordinator
@@ -1469,13 +1470,9 @@ class VescapeCoreModule : Module() {
         key == "freeSpinStationaryBoardCapKmh" ||
         key == "socEstimateWindowSeconds" ||
         key == "telemetryPollRateHz" ||
-        key == "unitSystem" ||
-        key == "wearPushRateHz" ||
         key == "wearAutoLaunchOnConnect" ||
-        key == "wearNavArrowEnabled" ||
-        key == "wearTiltRatePercent" ||
         // Mirrored to the wrist by WatchSettingsPusher, which runs off the applied settings.
-        key == "riderColor" ||
+        key in WATCH_SOURCE_SETTING_KEYS ||
         key == "boardWarningsEnabled" ||
         key == "vescFaultCollectionEnabled" ||
         key == "connectionSoundsEnabled" ||
