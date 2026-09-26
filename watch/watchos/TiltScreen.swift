@@ -298,16 +298,16 @@ struct TiltScreen: View {
   ///
   /// @parity /watch/wearos/src/main/java/app/vescape/wear/TiltScreen.kt `tiltCaption`
   private var caption: String {
-    if armed { return "Tap again to reset" }
-    if !live { return "Board not connected" }
-    if nativeValue == nil { return "Update phone app" }
+    if armed { return "Tap again\nto reset" }
+    if !live { return "Board not\nconnected" }
+    if nativeValue == nil { return "Update\nphone app" }
     switch control {
     case .sensor: return "Sensor"
     case .move: return "Board moving"
-    case .blocked: return "Link not trusted"
+    case .blocked: return "Link not\ntrusted"
     case .free, .manual: break
     }
-    return tilted ? "Double-tap to reset" : "Drag up or down"
+    return tilted ? "Double-tap\nto reset" : "Drag up\nor down"
   }
 
   private func notchOf(_ percent: Double) -> Int { Int((percent / HAPTIC_NOTCH_PERCENT).rounded(.down)) }

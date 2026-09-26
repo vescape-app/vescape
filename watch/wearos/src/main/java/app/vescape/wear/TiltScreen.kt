@@ -354,14 +354,14 @@ private fun tiltCaption(
     armed: Boolean,
     tilted: Boolean,
 ): String = when {
-    armed -> "Tap again to reset"
-    !live -> "Board not connected"
-    !phoneKnowsTilt -> "Update phone app"
+    armed -> "Tap again\nto reset"
+    !live -> "Board not\nconnected"
+    !phoneKnowsTilt -> "Update\nphone app"
     control == WatchTiltControl.SENSOR -> "Sensor"
     control == WatchTiltControl.MOVE -> "Board moving"
-    control == WatchTiltControl.BLOCKED -> "Link not trusted"
-    tilted -> "Double-tap to reset"
-    else -> "Drag up or down"
+    control == WatchTiltControl.BLOCKED -> "Link not\ntrusted"
+    tilted -> "Double-tap\nto reset"
+    else -> "Drag up\nor down"
 }
 
 private fun notchOf(percent: Float): Int = floor(percent / HAPTIC_NOTCH_PERCENT).toInt()
