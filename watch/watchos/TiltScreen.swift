@@ -68,22 +68,27 @@ struct TiltScreen: View {
   var body: some View {
     ZStack {
       stick
-      VStack(spacing: 0) {
-        Text("TILT")
-          .font(WatchTypography.ui(size: 9))
-          .foregroundStyle(Palette.dimText)
-        Text(WatchTiltStick.format(shownPercent))
-          .font(WatchTypography.mono(size: READOUT_FONT_SIZE, weight: .semibold))
-          .monospacedDigit()
-          .foregroundStyle(accent)
-        Spacer(minLength: 0)
+      // The track owns the full height, so the readout flanks it: number left, hint right.
+      HStack(spacing: TRACK_GAP) {
+        VStack(alignment: .trailing, spacing: 0) {
+          Text("TILT")
+            .font(WatchTypography.ui(size: 9))
+            .foregroundStyle(Palette.dimText)
+          Text(WatchTiltStick.format(shownPercent))
+            .font(WatchTypography.mono(size: READOUT_FONT_SIZE, weight: .semibold))
+            .monospacedDigit()
+            .lineLimit(1)
+            .minimumScaleFactor(0.7)
+            .foregroundStyle(accent)
+        }
+        .frame(maxWidth: .infinity, alignment: .trailing)
         Text(caption)
           .font(WatchTypography.ui(size: 11))
           .foregroundStyle(armed ? Palette.armed : canDrive ? Palette.secondaryText : Palette.dimText)
-          .multilineTextAlignment(.center)
+          .multilineTextAlignment(.leading)
+          .frame(maxWidth: .infinity, alignment: .leading)
       }
-      .padding(.top, READOUT_TOP_INSET)
-      .padding(.bottom, CAPTION_BOTTOM_INSET)
+      .padding(.horizontal, SIDE_INSET)
       .allowsHitTesting(false)
     }
     .contentShape(Rectangle())
@@ -234,17 +239,19 @@ struct TiltScreen: View {
     let fraction = min(max(deflection / STICK_FULL, -1), 1)
     return ZStack {
       Canvas { context, size in
-        let center = CGPoint(x: size.width / 2, y: size.height / 2 + TRACK_CENTER_DROP)
+        let center = CGPoint(x: size.width / 2, y: size.height / 2)
+        // Nearly the whole height, stopping short of the rim gauges.
+        let half = size.height / 2 - Rim.innerInset - TRACK_END_INSET
         let stroke = StrokeStyle(lineWidth: TRACK_STROKE, lineCap: .round)
         var track = Path()
-        track.move(to: CGPoint(x: center.x, y: center.y - TRACK_HALF_LENGTH))
-        track.addLine(to: CGPoint(x: center.x, y: center.y + TRACK_HALF_LENGTH))
+        track.move(to: CGPoint(x: center.x, y: center.y - half))
+        track.addLine(to: CGPoint(x: center.x, y: center.y + half))
         // Neutral notch across the track: where a still thumb sits.
         track.move(to: CGPoint(x: center.x - NOTCH_HALF_WIDTH, y: center.y))
         track.addLine(to: CGPoint(x: center.x + NOTCH_HALF_WIDTH, y: center.y))
         context.stroke(track, with: .color(Palette.guide), style: stroke)
 
-        let knob = CGPoint(x: center.x, y: center.y - fraction * TRACK_HALF_LENGTH)
+        let knob = CGPoint(x: center.x, y: center.y - fraction * half)
         let knobRect = CGRect(
           x: knob.x - KNOB_RADIUS, y: knob.y - KNOB_RADIUS,
           width: KNOB_RADIUS * 2, height: KNOB_RADIUS * 2
@@ -360,11 +367,11 @@ private let TOUCH_SLOP: CGFloat = 8
 /// Stick integration step: the display's frame rate, as `withFrameMillis` paces it on Wear OS.
 private let FRAME_MS = 16
 
-private let READOUT_TOP_INSET: CGFloat = 26
-private let CAPTION_BOTTOM_INSET: CGFloat = 28
-private let READOUT_FONT_SIZE: CGFloat = 30
-private let TRACK_CENTER_DROP: CGFloat = 14
-private let TRACK_HALF_LENGTH: CGFloat = 36
+private let SIDE_INSET: CGFloat = 12
+/// Clear width around the track: the knob plus breathing room on each side.
+private let TRACK_GAP: CGFloat = 36
+private let TRACK_END_INSET: CGFloat = 14
+private let READOUT_FONT_SIZE: CGFloat = 24
 private let TRACK_STROKE: CGFloat = 2
 private let NOTCH_HALF_WIDTH: CGFloat = 6
 private let KNOB_RADIUS: CGFloat = 9

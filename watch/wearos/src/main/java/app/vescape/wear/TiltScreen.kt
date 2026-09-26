@@ -10,8 +10,12 @@ import androidx.compose.foundation.gestures.awaitVerticalTouchSlopOrCancellation
 import androidx.compose.foundation.gestures.verticalDrag
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -232,33 +236,42 @@ fun TiltScreen(
             enabled = canDrive,
             resetFraction = { resetRing.value },
         )
-        Column(
-            modifier = Modifier.align(Alignment.TopCenter).padding(top = READOUT_TOP_INSET),
-            horizontalAlignment = Alignment.CenterHorizontally,
+        // The track owns the full height, so the readout flanks it: number left, hint right, both
+        // on the widest row of the round screen.
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(horizontal = SIDE_INSET),
+            verticalAlignment = Alignment.CenterVertically,
         ) {
+            Column(
+                modifier = Modifier.weight(1f),
+                horizontalAlignment = Alignment.End,
+            ) {
+                Text(
+                    text = "TILT",
+                    style = MaterialTheme.typography.caption3,
+                    color = DimText,
+                )
+                Text(
+                    text = formatTilt(shownPercent),
+                    style = WatchTypography.mono(MaterialTheme.typography.title1),
+                    color = accent,
+                    maxLines = 1,
+                )
+            }
+            Spacer(modifier = Modifier.width(TRACK_GAP))
             Text(
-                text = "TILT",
-                style = MaterialTheme.typography.caption3,
-                color = DimText,
-            )
-            Text(
-                text = formatTilt(shownPercent),
-                style = WatchTypography.mono(MaterialTheme.typography.display2),
-                color = accent,
+                text = tiltCaption(
+                    live = live,
+                    control = control,
+                    armed = armed,
+                    tilted = shownPercent.roundToInt() != 0,
+                ),
+                style = MaterialTheme.typography.caption2,
+                color = if (armed) ArmedColor else if (canDrive) SecondaryText else DimText,
+                textAlign = TextAlign.Start,
+                modifier = Modifier.weight(1f),
             )
         }
-        Text(
-            text = tiltCaption(
-                live = live,
-                control = control,
-                armed = armed,
-                tilted = shownPercent.roundToInt() != 0,
-            ),
-            style = MaterialTheme.typography.caption2,
-            color = if (armed) ArmedColor else if (canDrive) SecondaryText else DimText,
-            textAlign = TextAlign.Center,
-            modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = CAPTION_BOTTOM_INSET),
-        )
     }
 }
 
@@ -276,8 +289,9 @@ private fun TiltStickCanvas(
 ) {
     val accent = if (enabled) TiltColor else DimText
     Canvas(modifier = Modifier.fillMaxSize()) {
-        val center = Offset(size.width / 2f, size.height / 2f + TRACK_CENTER_DROP.toPx())
-        val half = TRACK_HALF_LENGTH.toPx()
+        val center = Offset(size.width / 2f, size.height / 2f)
+        // Nearly the whole height, stopping short of the rim gauges.
+        val half = minOf(size.width, size.height) / 2f - GAUGE_INNER_INSET.toPx() - TRACK_END_INSET.toPx()
         val stroke = TRACK_STROKE.toPx()
 
         drawLine(GuideColor, Offset(center.x, center.y - half), Offset(center.x, center.y + half), stroke, StrokeCap.Round)
@@ -346,10 +360,10 @@ private const val TAP_MAX_MS = 400L
 /** One haptic tick per this many percent of tilt. */
 private const val HAPTIC_NOTCH_PERCENT = 5f
 
-private val READOUT_TOP_INSET = 30.dp
-private val CAPTION_BOTTOM_INSET = 30.dp
-private val TRACK_CENTER_DROP = 14.dp
-private val TRACK_HALF_LENGTH = 36.dp
+private val SIDE_INSET = 22.dp
+/** Clear width around the track: the knob plus breathing room on each side. */
+private val TRACK_GAP = 36.dp
+private val TRACK_END_INSET = 14.dp
 private val TRACK_STROKE = 2.dp
 private val NOTCH_HALF_WIDTH = 6.dp
 private val KNOB_RADIUS = 9.dp
