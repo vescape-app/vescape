@@ -311,6 +311,16 @@ class CoreForegroundService : Service() {
             instance?.controller?.watchLights(switch, on)
         }
 
+        /** Wrist Remote Tilt lock. Dropped when no session is running — nothing to tilt. */
+        fun watchTiltLock(value: Int) {
+            instance?.controller?.watchTiltLock(value)
+        }
+
+        /** Wrist Remote Tilt reset. Dropped when no session is running — nothing is commanded. */
+        fun watchTiltCancel() {
+            instance?.controller?.watchTiltCancel()
+        }
+
         /** Wrist wake level. Dropped when no service is running — nothing is pushing frames anyway. */
         internal fun watchMirrorWakeLevel(level: WatchMirrorWakeLevel) {
             instance?.controller?.watchMirrorWakeLevel(level)

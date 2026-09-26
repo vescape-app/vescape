@@ -19,6 +19,14 @@ class WatchSettingsTest {
     }
 
     @Test
+    fun `tilt rate defaults until a phone sends it and is held to a sane range`() {
+        assertEquals(DEFAULT_TILT_RATE_PERCENT, WatchSettings.decode(emptyMap()).tiltRatePercent)
+        assertEquals(20, WatchSettings.decode(mapOf(SETTING_TILT_RATE to 20)).tiltRatePercent)
+        assertEquals(100, WatchSettings.decode(mapOf(SETTING_TILT_RATE to 5000)).tiltRatePercent)
+        assertEquals(DEFAULT_TILT_RATE_PERCENT, WatchSettings.decode(mapOf(SETTING_TILT_RATE to "fast")).tiltRatePercent)
+    }
+
+    @Test
     fun `a phone rider colour becomes an opaque wrist colour`() {
         assertEquals(Color(0xFF38BDF8), parseRiderColor("#38bdf8"))
         // Written without the hash, or with padding, by an older or future phone build.

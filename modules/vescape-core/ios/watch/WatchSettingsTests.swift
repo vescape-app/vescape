@@ -25,6 +25,14 @@ final class WatchSettingsTests: XCTestCase {
     XCTAssertFalse(decoded.navArrowEnabled)
   }
 
+  func testTiltRateDefaultsUntilAPhoneSendsItAndIsHeldToASaneRange() {
+    XCTAssertEqual(WatchSettings.decode([:]).tiltRatePercent, watchDefaultTiltRatePercent)
+    XCTAssertEqual(WatchSettings.decode([WatchSettingsKey.tiltRatePercent: 20]).tiltRatePercent, 20)
+    XCTAssertEqual(WatchSettings.decode([WatchSettingsKey.tiltRatePercent: 5000]).tiltRatePercent, 100)
+    XCTAssertEqual(WatchSettings.decode([WatchSettingsKey.tiltRatePercent: "fast"]).tiltRatePercent, watchDefaultTiltRatePercent)
+    XCTAssertEqual(WatchSettings.decode(WatchSettings(tiltRatePercent: 35).payload).tiltRatePercent, 35)
+  }
+
   func testAbsentChannelIsTheWristDefaults() {
     XCTAssertEqual(WatchSettings.decode(context: ["route": ["points": 3]]), .wristDefaults)
   }
@@ -66,6 +74,19 @@ final class WatchSettingsTests: XCTestCase {
 ///
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/watch/WatchCommand.kt `WatchCommandDecoder`
 final class WatchCommandTests: XCTestCase {
+  /// The exact bytes Android writes and reads: an absolute unsigned value, clamped to the wire range.
+  func testTiltLockIsTheAbsoluteUnsignedValueAndCancelCarriesNone() {
+    XCTAssertEqual(Array(WatchCommandCodec.encode(.tiltLock(128))), [4, 128])
+    XCTAssertEqual(Array(WatchCommandCodec.encode(.tiltLock(255))), [4, 0xFF])
+    XCTAssertEqual(Array(WatchCommandCodec.encode(.tiltLock(400))), [4, 0xFF])
+    XCTAssertEqual(Array(WatchCommandCodec.encode(.tiltLock(-3))), [4, 0])
+    XCTAssertEqual(Array(WatchCommandCodec.encode(.tiltCancel)), [5, 0])
+    XCTAssertEqual(WatchCommandCodec.decode(Data([4, 0])), .tiltLock(0))
+    XCTAssertEqual(WatchCommandCodec.decode(Data([4, 0xFF])), .tiltLock(255))
+    XCTAssertEqual(WatchCommandCodec.decode(Data([5, 0])), .tiltCancel)
+    XCTAssertNil(WatchCommandCodec.decode(Data([4])))
+  }
+
   func testRoundTripsEveryWakeLevel() {
     for level in [WatchMirrorWakeLevel.asleep, .active, .ambient] {
       XCTAssertEqual(WatchCommandCodec.decode(WatchCommandCodec.encode(.mirrorAwake(level))), .mirrorAwake(level))

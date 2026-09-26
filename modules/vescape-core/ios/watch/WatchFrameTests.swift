@@ -26,7 +26,8 @@ final class WatchFrameTests: XCTestCase {
   func testByteLayoutMatchesTheDeclaredLaneOrder() {
     let frame = WatchFrame(
       speed: 1, duty: 2, battery: 3, motorTemp: 4, ctrlTemp: 5, stale: true,
-      navBearing: 6, navDistanceM: 7, riderEastM: 8, riderNorthM: 9, courseDeg: 10, routeSpanM: 11
+      navBearing: 6, navDistanceM: 7, riderEastM: 8, riderNorthM: 9, courseDeg: 10, routeSpanM: 11,
+      remoteTilt: 12, tiltControl: .blocked
     )
     let data = WatchFrameBuilder.encode(frame)
 
@@ -34,9 +35,47 @@ final class WatchFrameTests: XCTestCase {
     XCTAssertEqual(Int(data[0]), WATCH_FRAME_FIELD_COUNT)
     // Only the stale bit: the legacy "waiting" bit is never set by this phone side.
     XCTAssertEqual(Int(data[1]), WATCH_FRAME_FLAG_STALE)
-    for index in 0..<WATCH_FRAME_FIELD_COUNT {
+    for index in 0..<12 {
       XCTAssertEqual(lane(data, index), Float(index + 1), "lane \(index)")
     }
+    // The control lane carries Android's wire code, not a value this test picked.
+    XCTAssertEqual(lane(data, 12), 4)
+  }
+
+  func testRemoteTiltAndWhoMayDriveItRoundTripAndTiltIsNilWithoutABoard() throws {
+    let tilted = try XCTUnwrap(roundTrip(
+      WatchFrame(speed: 1, duty: 2, battery: 3, motorTemp: 4, ctrlTemp: 5, remoteTilt: 200, tiltControl: .sensor)
+    ))
+    XCTAssertEqual(tilted.remoteTilt, 200)
+    XCTAssertEqual(tilted.tiltControl, .sensor)
+
+    let boardless = try XCTUnwrap(roundTrip(WatchFrame(stale: true)))
+    XCTAssertNil(boardless.remoteTilt)
+    XCTAssertEqual(boardless.tiltControl, .free)
+  }
+
+  func testSnapshotTiltReachesTheFrame() {
+    let frame = WatchFrameBuilder.build(
+      snapshot: WatchSnapshot(speed: 3, remoteTilt: 160, tiltControl: .manual),
+      stale: false
+    )
+    XCTAssertEqual(frame.remoteTilt, 160)
+    XCTAssertEqual(frame.tiltControl, .manual)
+  }
+
+  /// A newer phone's reason is still a reason: read-only is the only safe reading of it. An absent
+  /// lane is the one case that reads as a free stick.
+  func testAnUnknownTiltControlCodeKeepsTheStickReadOnly() {
+    XCTAssertEqual(WatchTiltControl(wire: 9), .blocked)
+    XCTAssertFalse(WatchTiltControl(wire: 9).drivable)
+    XCTAssertEqual(WatchTiltControl(wire: nil), .free)
+    XCTAssertEqual(WatchTiltControl(wire: 1), .manual)
+    XCTAssertEqual(WatchTiltControl.allCases.filter(\.drivable), [.free, .manual])
+  }
+
+  /// Wire codes are Android's, pinned rather than described.
+  func testTiltControlWireCodesMatchAndroid() {
+    XCTAssertEqual(WatchTiltControl.allCases.map(\.rawValue), [0, 1, 2, 3, 4])
   }
 
   func testBuildsFromSnapshotWithAbsSpeedAndDutyScaledToPercent() throws {

@@ -1473,6 +1473,7 @@ class VescapeCoreModule : Module() {
         key == "wearPushRateHz" ||
         key == "wearAutoLaunchOnConnect" ||
         key == "wearNavArrowEnabled" ||
+        key == "wearTiltRatePercent" ||
         // Mirrored to the wrist by WatchSettingsPusher, which runs off the applied settings.
         key == "riderColor" ||
         key == "boardWarningsEnabled" ||

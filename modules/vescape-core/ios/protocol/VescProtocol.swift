@@ -34,6 +34,7 @@ internal let REFLOAT_LIGHTS_CONTROL = 20
 internal let REFLOAT_LIGHTS_CONTROL_LEGACY = 202
 // @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/protocol/VescProtocol.kt `REMOTE_TILT_CENTER`
 // @parity /src/modules/board/lib/remoteTiltPresentation.ts `TILT_CENTER`
+// @parity /modules/vescape-core/ios/watch/WatchTiltStick.swift `center`
 internal let REMOTE_TILT_CENTER = 128
 
 /// The one and only terminal command Vescape sends. VESC's `faults` command prints the controller's

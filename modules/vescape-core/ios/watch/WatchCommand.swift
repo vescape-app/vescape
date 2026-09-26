@@ -20,6 +20,9 @@ enum WatchCommandKind {
   static let mirrorAwake: UInt8 = 2
   /// Board lights (#489).
   static let lights: UInt8 = 3
+  /// Wrist Remote Tilt: an absolute lock, and the reset that eases it back to neutral.
+  static let tiltLock: UInt8 = 4
+  static let tiltCancel: UInt8 = 5
 }
 
 /// How long the phone keeps pushing frames at the rider's cadence after the last wrist wake tick.
@@ -100,6 +103,15 @@ enum WatchCommand: Equatable {
   /// phone composes the other value from its own board truth, so a wrist holding a slightly stale
   /// board push cannot revert a switch the phone flipped a moment earlier.
   case lights(WatchLightsSwitch, Bool)
+
+  /// Lock Remote Tilt at this value (0..255, 128 neutral) until the next lock or a cancel.
+  /// Absolute, never a delta: a lost tick costs one step of a stick drag, never a drifted angle. No
+  /// dead-man, unlike ``move(_:)`` — a lock is a setpoint the rider chose to leave, not motor
+  /// output, and it stays whatever happens to the wrist.
+  case tiltLock(Int)
+
+  /// Ease tilt back to neutral — the same cancel the phone pad sends.
+  case tiltCancel
 }
 
 /// Pure bytes <-> command. The encoder is the wrist's, the decoder the phone's; they live together
@@ -115,6 +127,10 @@ enum WatchCommandCodec {
     case .lights(let `switch`, let on):
       // bit0 = the target on/off state, bit1 = which switch.
       return Data([WatchCommandKind.lights, (`switch`.rawValue << 1) | (on ? 1 : 0)])
+    case .tiltLock(let value):
+      return Data([WatchCommandKind.tiltLock, UInt8(min(max(value, 0), 255))])
+    case .tiltCancel:
+      return Data([WatchCommandKind.tiltCancel, 0])
     }
   }
 
@@ -136,6 +152,11 @@ enum WatchCommandCodec {
       // than read as a switch it is not — the same lenience the unknown-kind branch gives.
       guard value & ~0x3 == 0, let `switch` = WatchLightsSwitch(rawValue: (value >> 1) & 0x1) else { return nil }
       return .lights(`switch`, value & 0x1 == 1)
+    case WatchCommandKind.tiltLock:
+      // The whole unsigned byte is the Remote Tilt range, so there is no value to reject.
+      return .tiltLock(Int(value))
+    case WatchCommandKind.tiltCancel:
+      return .tiltCancel
     default:
       return nil
     }

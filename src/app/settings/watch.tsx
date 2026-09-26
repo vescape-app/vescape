@@ -1,6 +1,11 @@
 import { Platform, StyleSheet, ScrollView } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
-import { ClockCountdownIcon, NavigationArrowIcon, WatchIcon } from 'phosphor-react-native'
+import {
+  AngleIcon,
+  ClockCountdownIcon,
+  NavigationArrowIcon,
+  WatchIcon,
+} from 'phosphor-react-native'
 import { useShallow } from 'zustand/react/shallow'
 
 import { theme } from '@/constants/theme'
@@ -22,15 +27,21 @@ import { useSettingsStore } from '@/modules/settings/store/settingsStore'
  */
 const AUTO_LAUNCH_SUPPORTED = Platform.OS === 'android'
 
+/** Stick speed doubles per step: fine enough at the low end, fast enough at the top. */
+const TILT_RATE_MIN = 5
+const TILT_RATE_MAX = 40
+
 export default function WatchSettingsScreen() {
-  const { wearAutoLaunchOnConnect, wearPushRateHz, wearNavArrowEnabled, set } = useSettingsStore(
-    useShallow((s) => ({
-      wearAutoLaunchOnConnect: s.wearAutoLaunchOnConnect,
-      wearPushRateHz: s.wearPushRateHz,
-      wearNavArrowEnabled: s.wearNavArrowEnabled,
-      set: s.set,
-    })),
-  )
+  const { wearAutoLaunchOnConnect, wearPushRateHz, wearNavArrowEnabled, wearTiltRatePercent, set } =
+    useSettingsStore(
+      useShallow((s) => ({
+        wearAutoLaunchOnConnect: s.wearAutoLaunchOnConnect,
+        wearPushRateHz: s.wearPushRateHz,
+        wearNavArrowEnabled: s.wearNavArrowEnabled,
+        wearTiltRatePercent: s.wearTiltRatePercent,
+        set: s.set,
+      })),
+    )
 
   return (
     <SafeAreaView style={styles.container} edges={['bottom']}>
@@ -84,6 +95,27 @@ export default function WatchSettingsScreen() {
               <Switch
                 value={wearNavArrowEnabled}
                 onValueChange={(v) => void set('wearNavArrowEnabled', v)}
+              />
+            }
+          />
+          <SettingsRow
+            icon={AngleIcon}
+            iconColor={theme.palette.green.color}
+            label="Tilt speed"
+            hint="How fast the watch Tilt stick changes tilt when pushed all the way"
+            right={
+              <Stepper
+                value={wearTiltRatePercent}
+                unit="%/s"
+                min={TILT_RATE_MIN}
+                max={TILT_RATE_MAX}
+                step={(value, direction) => (direction > 0 ? value : value / 2)}
+                onChange={(nextValue) => {
+                  const clampedValue = Math.min(TILT_RATE_MAX, Math.max(TILT_RATE_MIN, nextValue))
+                  if (clampedValue !== wearTiltRatePercent) {
+                    void set('wearTiltRatePercent', clampedValue)
+                  }
+                }}
               />
             }
           />

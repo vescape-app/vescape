@@ -524,6 +524,7 @@ data class AppSettings(
   val wearPushRateHz: Int = 4,
   val wearAutoLaunchOnConnect: Boolean = true,
   val wearNavArrowEnabled: Boolean = false,
+  val wearTiltRatePercent: Int = 10,
   val companionPresenceEnabled: Boolean = false,
   val boardWarningsEnabled: Boolean = true,
   /** `VESC Fault Collection` master switch — independent of [boardWarningsEnabled] (#430). */

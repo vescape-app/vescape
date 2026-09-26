@@ -29,6 +29,12 @@ const val SETTING_NAV_ARROW = "navArrowEnabled"
 /** App-wide speed and distance preference; older phones default to metric. */
 const val SETTING_UNIT_SYSTEM = "unitSystem"
 
+/** Tilt stick speed at full deflection, percent of full tilt per second. */
+const val SETTING_TILT_RATE = "tiltRatePercent"
+
+/** Stick speed until a phone new enough to send [SETTING_TILT_RATE] has pushed. */
+const val DEFAULT_TILT_RATE_PERCENT = 10
+
 /** Phone settings the wrist mirrors. Every field defaults to the wrist's own look. */
 data class WatchSettings(
     val riderColor: Color? = null,
@@ -37,6 +43,7 @@ data class WatchSettings(
     val navArrowEnabled: Boolean = false,
     /** Null until a phone new enough to send it has pushed; the wrist then shows no number. */
     val boardMoveStrengthPercent: Int? = null,
+    val tiltRatePercent: Int = DEFAULT_TILT_RATE_PERCENT,
 ) {
     companion object {
         /** Missing or unknown preference values from older/newer phones always mean metric. */
@@ -45,6 +52,7 @@ data class WatchSettings(
             navArrowEnabled = payload[SETTING_NAV_ARROW] as? Boolean ?: false,
             boardMoveStrengthPercent = payload[SETTING_BOARD_MOVE_STRENGTH] as? Int,
             unitSystem = if (payload[SETTING_UNIT_SYSTEM] == "imperial") "imperial" else "metric",
+            tiltRatePercent = (payload[SETTING_TILT_RATE] as? Int)?.coerceIn(1, 100) ?: DEFAULT_TILT_RATE_PERCENT,
         )
     }
 }

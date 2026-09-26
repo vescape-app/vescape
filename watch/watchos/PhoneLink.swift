@@ -169,13 +169,7 @@ final class PhoneLink: NSObject, ObservableObject, WCSessionDelegate {
   ///
   /// @parity /watch/wearos/src/main/java/app/vescape/wear/WatchCommand.kt `sendLights`
   func sendLights(_ `switch`: WatchLightsSwitch, on: Bool) {
-    let session = WCSession.default
-    guard session.activationState == .activated, session.isReachable else { return }
-    session.sendMessageData(
-      WatchCommandCodec.encode(.lights(`switch`, on)),
-      replyHandler: nil,
-      errorHandler: nil
-    )
+    send(.lights(`switch`, on))
   }
 
   /// Re-state the direction the rider is holding, or `0` for the release. Direction only: the
@@ -196,23 +190,47 @@ final class PhoneLink: NSObject, ObservableObject, WCSessionDelegate {
   /// @platform-diff `WCSession.sendMessageData` is already latest-wins and non-blocking, so the
   ///   wrist needs no coalescing queue of its own.
   func sendMove(_ direction: Int) {
-    let session = WCSession.default
-    guard session.activationState == .activated, session.isReachable else { return }
-    session.sendMessageData(
-      WatchCommandCodec.encode(.move(direction)),
-      replyHandler: nil,
-      errorHandler: nil
-    )
+    send(.move(direction))
   }
 
+  /// Lock Remote Tilt at `value` (0..255, 128 neutral) until the next lock or a cancel. A stick drag
+  /// produces a lock every tick; on a degraded link only the newest angle is worth sending, which
+  /// `sendMessageData` already gives — it drops rather than queues, the same property ``sendMove(_:)``
+  /// rests on.
+  ///
+  /// @parity /watch/wearos/src/main/java/app/vescape/wear/WatchCommand.kt `sendTiltLock`
+  /// @platform-diff Android shares one latest-wins slot between lock and cancel so a reset overtakes
+  ///   stale locks queued in front of its blocking send; `sendMessageData` queues nothing, so there
+  ///   is nothing for a cancel to be behind.
+  func sendTiltLock(_ value: Int) {
+    if let replayTiltEcho { return replayTiltEcho(min(max(value, 0), 255)) }
+    send(.tiltLock(value))
+  }
+
+  /// Ease tilt back to neutral — the phone pad's cancel.
+  ///
+  /// @parity /watch/wearos/src/main/java/app/vescape/wear/WatchCommand.kt `sendTiltCancel`
+  func sendTiltCancel() {
+    if let replayTiltEcho { return replayTiltEcho(nil) }
+    send(.tiltCancel)
+  }
+
+  /// Simulator fixture replay only (``FrameReplayer``): there is no phone to hold a lock, so tilt
+  /// commands go to the replayer, which echoes them back in its frames. Nil everywhere else.
+  ///
+  /// @parity /watch/wearos/src/main/java/app/vescape/wear/WatchCommand.kt `replayTiltEcho`
+  var replayTiltEcho: ((Int?) -> Void)?
+
   private func sendWakeLevel() {
+    send(.mirrorAwake(wakeLevel))
+  }
+
+  /// Every wrist command's one way out: fire-and-forget, and dropped rather than deferred while the
+  /// phone is out of reach (see ``sendMove(_:)`` for why nothing here may ever queue).
+  private func send(_ command: WatchCommand) {
     let session = WCSession.default
     guard session.activationState == .activated, session.isReachable else { return }
-    session.sendMessageData(
-      WatchCommandCodec.encode(.mirrorAwake(wakeLevel)),
-      replyHandler: nil,
-      errorHandler: nil
-    )
+    session.sendMessageData(WatchCommandCodec.encode(command), replyHandler: nil, errorHandler: nil)
   }
 
   /// Ages a stopped stream into `disconnected` without an explicit phone message. The UI drives

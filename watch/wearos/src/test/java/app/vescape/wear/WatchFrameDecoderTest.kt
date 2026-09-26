@@ -55,6 +55,34 @@ class WatchFrameDecoderTest {
     }
 
     @Test
+    fun `reads remote tilt and who may drive it`() {
+        val frame = WatchFrameDecoder.decode(
+            encode(12.0, 20f, 80f, 33f, 5f, 42f, 1350f, 10f, 20f, 90f, 725f, 160f, 1f),
+        )!!
+
+        assertEquals(160, frame.remoteTilt)
+        assertEquals(WatchTiltControl.MANUAL, frame.tiltControl)
+    }
+
+    @Test
+    fun `an older phone without tilt lanes reads as no tilt and a free stick`() {
+        val frame = WatchFrameDecoder.decode(encode(12.0, 20f, 80f, 33f, 5f))!!
+
+        assertNull(frame.remoteTilt)
+        assertEquals(WatchTiltControl.FREE, frame.tiltControl)
+    }
+
+    /** A newer phone's reason is still a reason: read-only is the only safe reading of it. */
+    @Test
+    fun `an unknown tilt control code keeps the stick read-only`() {
+        val frame = WatchFrameDecoder.decode(
+            encode(12.0, 20f, 80f, 33f, 5f, 42f, 1350f, 10f, 20f, 90f, 725f, 128f, 9f),
+        )!!
+
+        assertEquals(false, frame.tiltControl.drivable)
+    }
+
+    @Test
     fun `a frame with fewer lanes than the required core is rejected`() {
         assertNull(WatchFrameDecoder.decode(encode(12.0, 20f, 80f, 33f)))
     }

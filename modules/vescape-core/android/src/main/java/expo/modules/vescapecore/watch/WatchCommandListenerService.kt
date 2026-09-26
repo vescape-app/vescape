@@ -20,6 +20,8 @@ class WatchCommandListenerService : WearableListenerService() {
             is WatchCommand.Move -> CoreForegroundService.watchMove(command.direction)
             is WatchCommand.MirrorAwake -> CoreForegroundService.watchMirrorWakeLevel(command.level)
             is WatchCommand.Lights -> CoreForegroundService.watchLights(command.switch, command.on)
+            is WatchCommand.TiltLock -> CoreForegroundService.watchTiltLock(command.value)
+            WatchCommand.TiltCancel -> CoreForegroundService.watchTiltCancel()
             null -> Unit
         }
     }

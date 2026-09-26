@@ -166,6 +166,17 @@ class FrameReplayer(private val context: Context) {
     private var loopStartedAt = 0L
     private var running = false
 
+    /** The tilt a replayed phone would be commanding: the last lock the wrist sent, or neutral. */
+    private var tilt = TILT_CENTER
+
+    /**
+     * Stand in for the phone's Remote Tilt so the Tilt page can be felt on an emulator: a lock is
+     * echoed into every following frame, a cancel ([value] null) returns to neutral at once.
+     */
+    fun echoTilt(value: Int?) {
+        tilt = value ?: TILT_CENTER
+    }
+
     fun start(fixture: String) {
         if (running) return
         samples = load(fixture)
@@ -196,7 +207,13 @@ class FrameReplayer(private val context: Context) {
                 if (!running) return@postDelayed
                 val now = SystemClock.elapsedRealtime()
                 WatchDiagnostics.recordFrame()
-                TelemetryState.acceptFrame(sample.frame, now)
+                TelemetryState.acceptFrame(
+                    sample.frame.copy(
+                        remoteTilt = tilt,
+                        tiltControl = if (tilt == TILT_CENTER) WatchTiltControl.FREE else WatchTiltControl.MANUAL,
+                    ),
+                    now,
+                )
                 index++
                 if (index >= samples.size) restartLoop() else scheduleNext()
             },

@@ -25,6 +25,31 @@ The Board component showcase uses a simulated receiver, including optional 450ms
 and a counter of received drag commands. It never controls a connected Board. Regression tests cover
 ownership, stale completions, countdown continuity, and command ordering under delayed responses.
 
+## Wrist stick
+
+The Watch Mirror's Tilt page (the first control page, before Board Move) drives the same manual
+slot as the pad. It is a rate stick: vertical deflection from wherever the thumb lands sets how fast
+the tilt changes (8 dp deadzone, quadratic up to the rider's `wearTiltRatePercent` per second at
+60 dp), and releasing leaves the value in place.
+
+- Every change is an absolute `TILT_LOCK` wrist command (`[4, value]`), at most every 100 ms plus
+  one on release, relayed into `lockRemoteTilt`. Absolute values mean a lost tick costs a step of
+  resolution, never a drifted angle. Lock and cancel share one latest-wins slot on the wrist, so a
+  reset overtakes stale locks.
+- **No dead-man, unlike Board Move (ADR-0033).** A lock is a setpoint the rider chose to leave, not
+  motor output: it stays when the wrist sleeps, leaves the page or drops out of range, and ends only
+  on a cancel, a Board Move, or the Board Session ending.
+- Double tap resets with `TILT_CANCEL` (`[5, 0]`) into the ungated cancel, eased as above. The first
+  tap only arms the reset for 700 ms, so a stray touch cannot drop a tilt being ridden on.
+- The Watch Frame carries the commanded value and a `tiltControl` code (free, manual, sensor, move,
+  blocked). The readout shows the phone's value, so a pad change shows on the wrist and seeds the
+  next drag; the stick is read-only whenever the arbiter or link trust would refuse a manual command.
+- A non-neutral tilt also shows beside the clock on the gauges page, and the Move page warns that
+  starting a Move clears it.
+
+Fixture replay on an emulator echoes the wrist's locks into its frames, so the stick can be felt
+without a phone; a replayed cancel snaps to neutral rather than easing.
+
 ## Command ownership
 
 Refloat has one temporary remote input, and three things in this app want it: the rider's pad, Board

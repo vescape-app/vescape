@@ -20,6 +20,8 @@ internal const val WATCH_COMMAND_PATH = "/command"
 internal const val WATCH_COMMAND_KIND_MOVE = 1
 internal const val WATCH_COMMAND_KIND_MIRROR_AWAKE = 2
 internal const val WATCH_COMMAND_KIND_LIGHTS = 3
+internal const val WATCH_COMMAND_KIND_TILT_LOCK = 4
+internal const val WATCH_COMMAND_KIND_TILT_CANCEL = 5
 
 /**
  * How long the phone keeps pushing frames after the last wrist wake-level tick. The Mirror re-sends
@@ -96,6 +98,16 @@ internal sealed interface WatchCommand {
      * stale `/board` push cannot revert a switch the phone flipped a moment earlier.
      */
     data class Lights(val switch: WatchLightsSwitch, val on: Boolean) : WatchCommand
+
+    /**
+     * Lock Remote Tilt at [value] (0..255, 128 neutral). Absolute, so a lost tick costs one step
+     * of a stick drag, never a drifted angle. No dead-man: a lock is a setpoint the rider chose to
+     * leave, not motor output, and it stays until a cancel whatever happens to the wrist.
+     */
+    data class TiltLock(val value: Int) : WatchCommand
+
+    /** Ease tilt back to neutral — the same cancel the phone pad sends. */
+    data object TiltCancel : WatchCommand
 }
 
 /** Pure bytes -> [WatchCommand] decoder. Returns null for a short buffer or an unknown kind. */
@@ -115,6 +127,8 @@ internal object WatchCommandDecoder {
                     ?.takeIf { value and 0x3.inv() == 0 }
                     ?.let { WatchCommand.Lights(it, value and 0x1 == 1) }
             }
+            WATCH_COMMAND_KIND_TILT_LOCK -> WatchCommand.TiltLock(bytes[1].toInt() and 0xff)
+            WATCH_COMMAND_KIND_TILT_CANCEL -> WatchCommand.TiltCancel
             else -> null
         }
     }

@@ -717,6 +717,30 @@ internal final class BoardSessionController: VescGattListener {
     record: { [weak self] name, props in self?.recordWatchDiagnostic(name, props) }
   )
 
+  /// Whether the last wrist tilt lock was refused, so a refused drag records once, not per tick.
+  private var watchTiltRefused = false
+
+  /// A wrist Remote Tilt lock: the same `lockRemoteTilt` the phone pad's lock makes, so the arbiter
+  /// refuses it for the same reasons. No dead-man, unlike `watchMoveRelay` — a lock is a setpoint
+  /// that outlives the wrist on purpose, and a stick drag arrives as a stream of absolute locks.
+  /// Called on the controller's scheduler.
+  ///
+  /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/connection/BoardSessionController.kt `watchTiltLock`
+  private func watchTiltLock(_ value: Int) {
+    let refused = !lockRemoteTilt(value: value)
+    guard refused != watchTiltRefused else { return }
+    watchTiltRefused = refused
+    recordWatchDiagnostic(refused ? "watch_tilt_refused" : "watch_tilt_locked", ["value": value])
+  }
+
+  /// A wrist tilt reset: the pad's ungated cancel, eased back to neutral.
+  ///
+  /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/connection/BoardSessionController.kt `watchTiltCancel`
+  private func watchTiltCancel() {
+    watchTiltRefused = false
+    recordWatchDiagnostic("watch_tilt_cancel", ["accepted": stopRemoteTilt()])
+  }
+
   /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/connection/BoardSessionController.kt `lightsGeneration`
   private func lightsGeneration() -> BoardLightsGeneration {
     BoardLightsGeneration.forBaseVersion(config?.refloatBaseVersion)
@@ -2619,6 +2643,8 @@ internal final class BoardSessionController: VescGattListener {
       // Same hop, and here it is also what starts the dead-man on the phone's own clock: the tick
       // is only "received" once this thread has it.
       case .move(let direction): scheduler.post { self.watchMoveRelay.accept(direction) }
+      case .tiltLock(let value): scheduler.post { self.watchTiltLock(value) }
+      case .tiltCancel: scheduler.post { self.watchTiltCancel() }
       }
     }
     watchPusher.start()
@@ -2731,7 +2757,9 @@ internal final class BoardSessionController: VescGattListener {
         riderColor: (settings["riderColor"] ?? nil) as? String,
         boardMoveStrengthPercent: strengthPercent,
         navArrowEnabled: (settings["wearNavArrowEnabled"] ?? nil) as? Bool ?? false,
-        unitSystem: (settings["unitSystem"] ?? nil) as? String == "imperial" ? "imperial" : "metric"
+        unitSystem: (settings["unitSystem"] ?? nil) as? String == "imperial" ? "imperial" : "metric",
+        tiltRatePercent: AppDataRepository.wearTiltRatePercent(settings["wearTiltRatePercent"] ?? nil)
+          ?? watchDefaultTiltRatePercent
       ).payload
     )
   }
@@ -2773,8 +2801,22 @@ internal final class BoardSessionController: VescGattListener {
       // Absolute course, the rotation the wrist applies to its north-up world. Null while the fix
       // carries no usable heading, which leaves the wrist drawing the route north-up.
       courseDeg: offset != nil ? rider?.courseDeg : nil,
-      routeSpanM: WatchRouteMirror.shared.viewportSpanM
+      routeSpanM: WatchRouteMirror.shared.viewportSpanM,
+      remoteTilt: current != nil ? remoteTiltController.currentValue : nil,
+      tiltControl: watchTiltControl()
     )
+  }
+
+  /// Who may drive Remote Tilt, in the order the arbiter refuses a manual command: a bound sensor
+  /// first, then a Board Move, then link trust.
+  ///
+  /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/connection/BoardSessionController.kt `watchTiltControl`
+  private func watchTiltControl() -> WatchTiltControl {
+    let owner = remoteInput.owner
+    if owner == .sensor || AccessorySessionController.shared.groundClearanceBound() { return .sensor }
+    if owner == .move { return .move }
+    if !firmwareCommandsTrusted() { return .blocked }
+    return owner == .manual ? .manual : .free
   }
 
   private func recordWatchDiagnostic(_ name: String, _ props: [String: Any?]) {

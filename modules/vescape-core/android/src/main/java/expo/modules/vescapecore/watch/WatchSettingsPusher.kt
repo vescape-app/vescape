@@ -38,6 +38,7 @@ internal class WatchSettingsPusher(
                             dataMap.putInt(WATCH_SETTING_BOARD_MOVE_STRENGTH, settings.boardMoveStrengthPercent)
                             dataMap.putBoolean(WATCH_SETTING_NAV_ARROW, settings.navArrowEnabled)
                             dataMap.putString(WATCH_SETTING_UNIT_SYSTEM, settings.unitSystem)
+                            dataMap.putInt(WATCH_SETTING_TILT_RATE, settings.tiltRatePercent)
                         }.asPutDataRequest().setUrgent()
                         Tasks.await(Wearable.getDataClient(appContext).putDataItem(request))
                     },

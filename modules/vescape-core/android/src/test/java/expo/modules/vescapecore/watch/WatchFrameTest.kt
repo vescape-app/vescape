@@ -34,6 +34,8 @@ class WatchFrameTest {
             riderNorthM = lane(),
             courseDeg = lane(),
             routeSpanM = lane(),
+            remoteTilt = lane()?.toInt(),
+            tiltControl = lane()!!.let { wire -> WatchTiltControl.entries.first { it.wire.toDouble() == wire } },
         )
     }
 
@@ -103,6 +105,19 @@ class WatchFrameTest {
         )!!
 
         assertEquals(725.0, frame.routeSpanM!!, 1e-3)
+    }
+
+    @Test
+    fun `remote tilt and who may drive it round-trip, and tilt is null without a board`() {
+        val tilted = roundTrip(
+            WatchFrame(1.0, 2.0, 3.0, 4.0, 5.0, stale = false, remoteTilt = 200, tiltControl = WatchTiltControl.SENSOR),
+        )!!
+        assertEquals(200, tilted.remoteTilt)
+        assertEquals(WatchTiltControl.SENSOR, tilted.tiltControl)
+
+        val boardless = roundTrip(WatchFrame(null, null, null, null, null, stale = true))!!
+        assertNull(boardless.remoteTilt)
+        assertEquals(WatchTiltControl.FREE, boardless.tiltControl)
     }
 
     @Test

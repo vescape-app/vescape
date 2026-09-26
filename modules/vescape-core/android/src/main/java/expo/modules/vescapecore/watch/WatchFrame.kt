@@ -7,7 +7,11 @@ import kotlin.math.abs
 /**
  * Number of Float32 lanes in a Watch Frame, in this fixed order:
  *   0 speed, 1 duty, 2 battery, 3 motorTemp, 4 ctrlTemp, 5 navBearing, 6 navDistance,
- *   7 riderEast, 8 riderNorth, 9 course, 10 routeSpan.
+ *   7 riderEast, 8 riderNorth, 9 course, 10 routeSpan, 11 remoteTilt, 12 tiltControl.
+ *
+ * Lanes 11-12 are Remote Tilt: the commanded value (0..255, 128 neutral) and who may drive it
+ * ([WatchTiltControl.wire]). The wrist's Tilt page starts every stick drag from this value, so a tilt
+ * set or cleared on the phone pad is where the next wrist drag picks up.
  *
  * Lanes 7-9 place the rider against the route pushed on [WATCH_ROUTE_PATH]: metres east/north of
  * that route's origin (see `offsetMeters`) plus the current course, degrees clockwise from north.
@@ -17,7 +21,7 @@ import kotlin.math.abs
  * order by convention (ADR-0018). Adding or reordering a lane means editing both sides in the same
  * order, or the decode silently misreads. Keep the two lists adjacent in review.
  */
-internal const val WATCH_FRAME_FIELD_COUNT = 11
+internal const val WATCH_FRAME_FIELD_COUNT = 13
 
 /** Header (1 byte field-count + 1 byte flags) + Float32 lanes, little-endian. */
 internal const val WATCH_FRAME_BYTES = 2 + WATCH_FRAME_FIELD_COUNT * 4
@@ -28,6 +32,33 @@ internal const val WATCH_FRAME_BYTES = 2 + WATCH_FRAME_FIELD_COUNT * 4
  * this side never sets it. The wrist still decodes it for older phone builds.
  */
 internal const val WATCH_FRAME_FLAG_STALE = 1
+
+/**
+ * Who may drive Remote Tilt right now, as the wrist needs it: whether a stick drag would be accepted,
+ * and what to call the value when it would not. Derived phone-side from the same arbiter and link
+ * trust the phone pad obeys, so the wrist duplicates no policy.
+ *
+ * Wire values ride a Float32 lane — append, never renumber.
+ *
+ * @parity /watch/wearos/src/main/java/app/vescape/wear/WatchFrame.kt `WatchTiltControl`
+ * @parity /modules/vescape-core/ios/watch/WatchFrame.swift `WatchTiltControl`
+ */
+internal enum class WatchTiltControl(val wire: Int) {
+    /** Nothing commanded; a drag starts one. */
+    FREE(0),
+
+    /** A rider tilt (pad or wrist) is streaming; a drag adjusts it. */
+    MANUAL(1),
+
+    /** A ground-clearance Accessory is bound; manual tilt is refused. */
+    SENSOR(2),
+
+    /** Board Move holds the slot; manual tilt is refused. */
+    MOVE(3),
+
+    /** The link is not trusted for firmware commands; manual tilt is refused. */
+    BLOCKED(4),
+}
 
 /** The decoded Watch Frame model. Nullable numeric lanes ride as `NaN` over the wire (ADR-0018). */
 internal data class WatchFrame(
@@ -53,6 +84,9 @@ internal data class WatchFrame(
     val courseDeg: Double? = null,
     /** Horizontal metres visible on the phone map; wrist route uses the same world span. */
     val routeSpanM: Double? = null,
+    /** Commanded Remote Tilt, 0..255 with 128 neutral. Null without a board. */
+    val remoteTilt: Int? = null,
+    val tiltControl: WatchTiltControl = WatchTiltControl.FREE,
 )
 
 /** The latest cold-path values the watch tick reads to build a frame. `stale` is decided at tick time. */
@@ -71,6 +105,8 @@ internal data class WatchSnapshot(
     val riderNorthM: Double? = null,
     val courseDeg: Double? = null,
     val routeSpanM: Double? = null,
+    val remoteTilt: Int? = null,
+    val tiltControl: WatchTiltControl = WatchTiltControl.FREE,
 )
 
 /**
@@ -92,6 +128,8 @@ internal object WatchFrameBuilder {
         riderNorthM = snapshot.riderNorthM,
         courseDeg = snapshot.courseDeg,
         routeSpanM = snapshot.routeSpanM,
+        remoteTilt = snapshot.remoteTilt,
+        tiltControl = snapshot.tiltControl,
     )
 
     fun encode(frame: WatchFrame): ByteArray =
@@ -113,6 +151,8 @@ internal object WatchFrameBuilder {
             putFloat(frame.riderNorthM.toLaneFloat())
             putFloat(frame.courseDeg.toLaneFloat())
             putFloat(frame.routeSpanM.toLaneFloat())
+            putFloat(frame.remoteTilt?.toDouble().toLaneFloat())
+            putFloat(frame.tiltControl.wire.toFloat())
         }.array()
 
     private fun Double?.toLaneFloat(): Float = this?.toFloat() ?: Float.NaN

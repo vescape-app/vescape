@@ -8,6 +8,7 @@ import java.util.concurrent.Executors
 import java.util.concurrent.RejectedExecutionException
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicInteger
+import java.util.concurrent.atomic.AtomicReference
 
 /**
  * Wrist -> phone command channel (ADR-0033). The only thing the Mirror sends back: rider intent,
@@ -21,6 +22,8 @@ const val COMMAND_PATH = "/command"
 private const val COMMAND_KIND_MOVE: Byte = 1
 private const val COMMAND_KIND_MIRROR_AWAKE: Byte = 2
 private const val COMMAND_KIND_LIGHTS: Byte = 3
+private const val COMMAND_KIND_TILT_LOCK: Byte = 4
+private const val COMMAND_KIND_TILT_CANCEL: Byte = 5
 
 /**
  * How often the Mirror re-states its wake level while it is on screen. The phone stops pushing
@@ -83,6 +86,16 @@ fun encodeLightsCommand(switch: LightSwitch, on: Boolean): ByteArray =
     byteArrayOf(COMMAND_KIND_LIGHTS, ((switch.selector shl 1) or if (on) 1 else 0).toByte())
 
 /**
+ * `[kind, value]`: lock Remote Tilt at [value] (0..255, 128 neutral) until the next lock or a cancel.
+ * Absolute, never a delta — a dropped tick then costs one step of resolution, not a drifted angle.
+ */
+fun encodeTiltLockCommand(value: Int): ByteArray =
+    byteArrayOf(COMMAND_KIND_TILT_LOCK, value.coerceIn(0, 255).toByte())
+
+/** `[kind, 0]`: ease whatever tilt is commanded back to neutral — the phone pad's cancel. */
+fun encodeTiltCancelCommand(): ByteArray = byteArrayOf(COMMAND_KIND_TILT_CANCEL, 0)
+
+/**
  * Fire-and-forget send of the rider's *current* intent to every connected node, off the UI thread.
  *
  * Latest-wins, not a queue. Each send blocks on the Data Layer, so on a degraded link ticks would
@@ -107,6 +120,9 @@ class CommandSender(context: Context) {
     /** The direction still to be sent, and whether a worker is already on its way to read it. */
     private val pending = AtomicInteger(0)
     private val scheduled = AtomicBoolean(false)
+
+    /** The newest tilt command still to be sent: a lock or a cancel, whichever came last. */
+    private val pendingTilt = AtomicReference<ByteArray?>(null)
 
     fun sendMove(direction: Int) {
         pending.set(direction.coerceIn(-1, 1))
@@ -162,6 +178,42 @@ class CommandSender(context: Context) {
         } catch (rejected: RejectedExecutionException) {
             // The wrist app is going away; the board keeps whatever the last accepted write set.
             Log.w("VescapeWear", "Lights command dropped after shutdown", rejected)
+        }
+    }
+
+    /**
+     * Lock Remote Tilt at [value]. Latest-wins like [sendMove], in a slot of its own: a stick drag
+     * produces a lock every tick, and on a degraded link only the newest angle is worth sending.
+     */
+    fun sendTiltLock(value: Int) {
+        replayTiltEcho?.let { echo -> return echo(value.coerceIn(0, 255)) }
+        sendTilt(encodeTiltLockCommand(value))
+    }
+
+    /**
+     * Ease tilt back to neutral. Shares the lock slot on purpose, so a reset overtakes every stale
+     * lock still waiting on the wrist — the same reason a Move release overtakes stale holds.
+     */
+    fun sendTiltCancel() {
+        replayTiltEcho?.let { echo -> return echo(null) }
+        sendTilt(encodeTiltCancelCommand())
+    }
+
+    /**
+     * Emulator fixture replay only ([DevGate]): there is no phone to hold a lock, so tilt commands
+     * go to the replayer, which echoes them back in its frames. Null everywhere else.
+     */
+    var replayTiltEcho: ((Int?) -> Unit)? = null
+
+    private fun sendTilt(payload: ByteArray) {
+        // A queued task already on its way reads the slot when it runs, so it needs no second task.
+        if (pendingTilt.getAndSet(payload) != null) return
+        try {
+            sends.execute { pendingTilt.getAndSet(null)?.let(::sendPayload) }
+        } catch (rejected: RejectedExecutionException) {
+            // The wrist app is going away; the phone keeps whatever tilt the last accepted lock set.
+            pendingTilt.set(null)
+            Log.w("VescapeWear", "Tilt command dropped after shutdown", rejected)
         }
     }
 

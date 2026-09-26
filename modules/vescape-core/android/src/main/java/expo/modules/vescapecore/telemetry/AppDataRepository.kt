@@ -115,6 +115,12 @@ internal fun validTopSpeedKmh(value: Any?): Double? =
     ?.coerceIn(5.0, 150.0)
 
 /** Watch push rate in Hz; 1 Hz floor, 20 Hz ceiling (the 50 ms the wrist link can still keep up with). */
+/** Wrist Tilt stick speed at full deflection, percent of full tilt per second. */
+internal fun validWearTiltRatePercent(value: Any?): Int? =
+  (value as? Number)
+    ?.toInt()
+    ?.coerceIn(1, 100)
+
 internal fun validWearPushRateHz(value: Any?): Int? =
   (value as? Number)
     ?.toInt()
@@ -433,6 +439,7 @@ class AppDataRepository private constructor(private val context: Context) {
       wearPushRateHz = req("wearPushRateHz", 4, ::validWearPushRateHz),
       wearAutoLaunchOnConnect = req("wearAutoLaunchOnConnect", true) { it as? Boolean },
       wearNavArrowEnabled = req("wearNavArrowEnabled", false) { it as? Boolean },
+      wearTiltRatePercent = req("wearTiltRatePercent", 10, ::validWearTiltRatePercent),
       companionPresenceEnabled = req("companionPresenceEnabled", false) { it as? Boolean },
       boardWarningsEnabled = req("boardWarningsEnabled", true) { it as? Boolean },
       vescFaultCollectionEnabled = req("vescFaultCollectionEnabled", true) { it as? Boolean },
@@ -520,6 +527,8 @@ class AppDataRepository private constructor(private val context: Context) {
         validWearPushRateHz(value) ?: return@withContext
       "wearAutoLaunchOnConnect" -> value as? Boolean ?: return@withContext
       "wearNavArrowEnabled" -> value as? Boolean ?: return@withContext
+      "wearTiltRatePercent" ->
+        validWearTiltRatePercent(value) ?: return@withContext
       "companionPresenceEnabled" -> value as? Boolean ?: return@withContext
       "boardWarningsEnabled" -> value as? Boolean ?: return@withContext
       "vescFaultCollectionEnabled" -> value as? Boolean ?: return@withContext
@@ -576,6 +585,7 @@ class AppDataRepository private constructor(private val context: Context) {
         "wearPushRateHz" -> d.wearPushRateHz
         "wearAutoLaunchOnConnect" -> d.wearAutoLaunchOnConnect
         "wearNavArrowEnabled" -> d.wearNavArrowEnabled
+        "wearTiltRatePercent" -> d.wearTiltRatePercent
         "companionPresenceEnabled" -> d.companionPresenceEnabled
         "boardWarningsEnabled" -> d.boardWarningsEnabled
         "vescFaultCollectionEnabled" -> d.vescFaultCollectionEnabled
@@ -951,6 +961,7 @@ fun AppSettings.toMap(): Map<String, Any?> = mapOf(
   "wearPushRateHz" to wearPushRateHz,
   "wearAutoLaunchOnConnect" to wearAutoLaunchOnConnect,
   "wearNavArrowEnabled" to wearNavArrowEnabled,
+  "wearTiltRatePercent" to wearTiltRatePercent,
   "companionPresenceEnabled" to companionPresenceEnabled,
   "boardWarningsEnabled" to boardWarningsEnabled,
   "vescFaultCollectionEnabled" to vescFaultCollectionEnabled,

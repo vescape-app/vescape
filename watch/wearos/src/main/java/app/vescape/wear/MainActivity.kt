@@ -155,6 +155,7 @@ class MainActivity : ComponentActivity() {
         // Fixture replay is opt-in via `bun run wear:replay`; an ordinary emulator mirrors its
         // paired phone exactly like physical Wear OS hardware.
         if (replayEnabled) {
+            commandSender.replayTiltEcho = frameReplayer::echoTilt
             frameReplayer.start(replayFixture())
             return
         }

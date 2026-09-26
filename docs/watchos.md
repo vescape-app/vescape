@@ -252,7 +252,7 @@ until its transition has settled.
 ### Navigation
 
 `.verticalPage` gives the crown and the swipe on one axis, in Android's order — radar, weather,
-gauges, navigation. The control axis nests inside the gauges page — gauges, Move, Lights,
+gauges, navigation. The control axis nests inside the gauges page — gauges, Tilt, Move, Lights,
 diagnostics — and shows no page dots, because they land on the battery gauge and Android has none
 either. The pages those slices fill arrived with later slices (#486–#491); the axes are the point.
 

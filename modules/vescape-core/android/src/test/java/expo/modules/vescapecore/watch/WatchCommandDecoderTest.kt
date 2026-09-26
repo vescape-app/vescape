@@ -45,6 +45,14 @@ class WatchCommandDecoderTest {
         )
     }
 
+    @Test
+    fun `a tilt lock decodes the whole unsigned range, and cancel carries no value`() {
+        assertEquals(WatchCommand.TiltLock(0), WatchCommandDecoder.decode(byteArrayOf(4, 0)))
+        assertEquals(WatchCommand.TiltLock(128), WatchCommandDecoder.decode(byteArrayOf(4, 128.toByte())))
+        assertEquals(WatchCommand.TiltLock(255), WatchCommandDecoder.decode(byteArrayOf(4, -1)))
+        assertEquals(WatchCommand.TiltCancel, WatchCommandDecoder.decode(byteArrayOf(5, 0)))
+    }
+
     /** A wrist newer than the phone must read as "unknown", never as a neighbouring level. */
     @Test
     fun `an unknown kind or wake level is dropped rather than guessed`() {

@@ -29,6 +29,16 @@ enum Palette {
   /// @parity /watch/wearos/src/main/java/app/vescape/wear/Palette.kt `LightsColor`
   static let lights = Color(red: 0.961, green: 0.620, blue: 0.043)  // amber.color #F59E0B
 
+  /// Remote Tilt accent: the Tilt page's value and stick, and the gauges badge.
+  ///
+  /// @parity /watch/wearos/src/main/java/app/vescape/wear/Palette.kt `TiltColor`
+  static let tilt = Color(red: 0.024, green: 0.714, blue: 0.831)  // cyan.color #06B6D4
+
+  /// A reset one tap away, and a Move that would clear a locked tilt.
+  ///
+  /// @parity /watch/wearos/src/main/java/app/vescape/wear/Palette.kt `ArmedColor`
+  static let armed = Color(red: 0.961, green: 0.620, blue: 0.043)  // amber.color #F59E0B
+
   /// The one colour ambient invents: a dimmed near-white the always-on panel can hold cheaply.
   static let ambientText = Color(red: 0.722, green: 0.769, blue: 0.808)  // #B8C4CE
 

@@ -2,14 +2,18 @@ import Foundation
 
 /// Number of Float32 lanes in a Watch Frame, in this fixed order:
 ///   0 speed, 1 duty, 2 battery, 3 motorTemp, 4 ctrlTemp, 5 navBearing, 6 navDistance,
-///   7 riderEast, 8 riderNorth, 9 course, 10 routeSpan.
+///   7 riderEast, 8 riderNorth, 9 course, 10 routeSpan, 11 remoteTilt, 12 tiltControl.
+///
+/// Lanes 11-12 are Remote Tilt: the commanded value (0..255, 128 neutral) and who may drive it
+/// (``WatchTiltControl``). The wrist's Tilt page starts every stick drag from this value, so a tilt
+/// set or cleared on the phone pad is where the next wrist drag picks up.
 ///
 /// Lanes 5-10 are navigation and route placement, filled from Route Progress and the origin of the
 /// route the wrist actually holds (`WatchRouteMirror`). They ride as `NaN` whenever there is no
 /// Navigation, which is exactly how the wrist hides its nav overlay.
 ///
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/watch/WatchFrame.kt
-let WATCH_FRAME_FIELD_COUNT = 11
+let WATCH_FRAME_FIELD_COUNT = 13
 
 /// Header (1 byte field-count + 1 byte flags) + Float32 lanes, little-endian.
 let WATCH_FRAME_BYTES = 2 + WATCH_FRAME_FIELD_COUNT * 4
@@ -22,6 +26,40 @@ let WATCH_FRAME_BYTES = 2 + WATCH_FRAME_FIELD_COUNT * 4
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/watch/WatchFrame.kt `WATCH_FRAME_FLAG_STALE`
 let WATCH_FRAME_FLAG_STALE = 1
 let WATCH_FRAME_FLAG_WAITING = 2
+
+/// Who may drive Remote Tilt right now, as the wrist needs it: whether a stick drag would be
+/// accepted, and what to call the value when it would not. Derived phone-side from the same arbiter
+/// and link trust the phone pad obeys, so the wrist duplicates no policy.
+///
+/// Wire values ride a Float32 lane — append, never renumber.
+///
+/// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/watch/WatchFrame.kt `WatchTiltControl`
+/// @parity /watch/wearos/src/main/java/app/vescape/wear/WatchFrame.kt `WatchTiltControl`
+enum WatchTiltControl: Int, CaseIterable {
+  /// Nothing commanded; a drag starts one.
+  case free = 0
+  /// A rider tilt (pad or wrist) is streaming; a drag adjusts it.
+  case manual = 1
+  /// A ground-clearance Accessory is bound; manual tilt is refused.
+  case sensor = 2
+  /// Board Move holds the slot; manual tilt is refused.
+  case move = 3
+  /// The link is not trusted for firmware commands; manual tilt is refused.
+  case blocked = 4
+
+  /// Only these take a stick drag; the rest name why the Tilt page is read-only.
+  var drivable: Bool { self == .free || self == .manual }
+
+  /// A missing lane is no tilt and a free stick. An unknown code is a phone newer than this wrist:
+  /// read-only is the only safe reading of it.
+  init(wire: Double?) {
+    guard let wire else {
+      self = .free
+      return
+    }
+    self = Self.allCases.first { Double($0.rawValue) == wire } ?? .blocked
+  }
+}
 
 /// The decoded Watch Frame model. Nullable numeric lanes ride as `NaN` over the wire (ADR-0018).
 ///
@@ -55,6 +93,9 @@ struct WatchFrame: Equatable {
   var courseDeg: Double?
   /// Horizontal metres visible on the phone map; wrist route uses the same world span.
   var routeSpanM: Double?
+  /// Commanded Remote Tilt, 0..255 with 128 neutral. Nil without a board.
+  var remoteTilt: Int?
+  var tiltControl: WatchTiltControl
 
   init(
     speed: Double? = nil,
@@ -69,7 +110,9 @@ struct WatchFrame: Equatable {
     riderEastM: Double? = nil,
     riderNorthM: Double? = nil,
     courseDeg: Double? = nil,
-    routeSpanM: Double? = nil
+    routeSpanM: Double? = nil,
+    remoteTilt: Int? = nil,
+    tiltControl: WatchTiltControl = .free
   ) {
     self.speed = speed
     self.duty = duty
@@ -84,6 +127,8 @@ struct WatchFrame: Equatable {
     self.riderNorthM = riderNorthM
     self.courseDeg = courseDeg
     self.routeSpanM = routeSpanM
+    self.remoteTilt = remoteTilt
+    self.tiltControl = tiltControl
   }
 }
 
@@ -103,6 +148,8 @@ struct WatchSnapshot {
   var riderNorthM: Double?
   var courseDeg: Double?
   var routeSpanM: Double?
+  var remoteTilt: Int?
+  var tiltControl: WatchTiltControl
 
   init(
     speed: Double? = nil,
@@ -116,7 +163,9 @@ struct WatchSnapshot {
     riderEastM: Double? = nil,
     riderNorthM: Double? = nil,
     courseDeg: Double? = nil,
-    routeSpanM: Double? = nil
+    routeSpanM: Double? = nil,
+    remoteTilt: Int? = nil,
+    tiltControl: WatchTiltControl = .free
   ) {
     self.speed = speed
     self.dutyCycle = dutyCycle
@@ -130,6 +179,8 @@ struct WatchSnapshot {
     self.riderNorthM = riderNorthM
     self.courseDeg = courseDeg
     self.routeSpanM = routeSpanM
+    self.remoteTilt = remoteTilt
+    self.tiltControl = tiltControl
   }
 }
 
@@ -152,7 +203,9 @@ enum WatchFrameBuilder {
       riderEastM: snapshot.riderEastM,
       riderNorthM: snapshot.riderNorthM,
       courseDeg: snapshot.courseDeg,
-      routeSpanM: snapshot.routeSpanM
+      routeSpanM: snapshot.routeSpanM,
+      remoteTilt: snapshot.remoteTilt,
+      tiltControl: snapshot.tiltControl
     )
   }
 
@@ -205,5 +258,22 @@ enum WatchFrameBuilder {
     \.riderNorthM,
     \.courseDeg,
     \.routeSpanM,
+    \.remoteTiltLane,
+    \.tiltControlLane,
   ]
+}
+
+/// The two Remote Tilt lanes as the Float32 lanes they ride on, so they walk the same `laneOrder`
+/// as every other lane rather than being encoded beside it.
+private extension WatchFrame {
+  var remoteTiltLane: Double? {
+    get { remoteTilt.map(Double.init) }
+    // Clamped, not trusted: a non-finite lane from a corrupt frame must not trap the conversion.
+    set { remoteTilt = newValue.flatMap { $0.isFinite ? Int(min(max($0, 0), 255)) : nil } }
+  }
+
+  var tiltControlLane: Double? {
+    get { Double(tiltControl.rawValue) }
+    set { tiltControl = WatchTiltControl(wire: newValue) }
+  }
 }

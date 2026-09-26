@@ -57,7 +57,7 @@ internal fun MirrorScreen(
     val state by TelemetryState.mirrorState
     var showClosePrompt by remember { mutableStateOf(false) }
     // A hold must not be interpreted as a page swipe, and must never end because the page moved.
-    var moveHeld by remember { mutableStateOf(false) }
+    var controlHeld by remember { mutableStateOf(false) }
     // One pager owns the whole vertical axis: weather above the gauges, nav focus below. Two
     // stacked vertical pagers used to compete for the same drag — the inner one claimed the
     // pointer, forwarded the leftover delta to the outer one but kept the velocity, so the outer
@@ -104,8 +104,8 @@ internal fun MirrorScreen(
             }
             else -> {
                 val dismissState = rememberSwipeToDismissBoxState()
-                // Page 0 = gauges centre (empty), 1 = Board Move, 2 = board Lights,
-                // 3 = diagnostics. Dismiss stays on the left edge; interior horizontal swipes page.
+                // Page 0 = gauges centre (empty), 1 = Remote Tilt, 2 = Board Move, 3 = board Lights,
+                // 4 = diagnostics. Dismiss stays on the left edge; interior horizontal swipes page.
                 val controlPagerState = rememberPagerState(pageCount = { CONTROL_PAGE_COUNT })
                 var dismissEnabled by remember { mutableStateOf(true) }
                 // Idle clock for the auto-return.
@@ -165,9 +165,9 @@ internal fun MirrorScreen(
                 // the gauges. The vertical axis is never moved: weather and the nav-focus map are
                 // places a rider parks on deliberately. Re-keying on lastTouchMs restarts the
                 // window; a held Move suspends it outright.
-                LaunchedEffect(lastTouchMs, moveHeld, isAmbient) {
+                LaunchedEffect(lastTouchMs, controlHeld, isAmbient) {
                     // Ambient has already parked the pager, and an animation there is wasted panel.
-                    if (moveHeld || isAmbient) return@LaunchedEffect
+                    if (controlHeld || isAmbient) return@LaunchedEffect
                     delay(CONTROL_IDLE_RETURN_MS)
                     if (controlPagerState.currentPage != CONTROL_PAGE_GAUGES) {
                         controlPagerState.animateScrollToPage(CONTROL_PAGE_GAUGES)
@@ -203,7 +203,7 @@ internal fun MirrorScreen(
                                 // The vertical axis belongs to the gauges alone: weather above,
                                 // nav focus below. From a control page it would open a blank map
                                 // over a page the rider is working on, so it is only live there.
-                                userScrollEnabled = !isAmbient && !moveHeld && activePage == CONTROL_PAGE_GAUGES,
+                                userScrollEnabled = !isAmbient && !controlHeld && activePage == CONTROL_PAGE_GAUGES,
                                 // A page swap on the wrist is a flick, not a drag: the default
                                 // half-screen threshold means a rider has to pull the weather page
                                 // most of the way down or watch it spring back.
@@ -224,7 +224,7 @@ internal fun MirrorScreen(
                                     VERTICAL_PAGE_NAV -> Unit
                                     else -> HorizontalPager(
                                         state = controlPagerState,
-                                        userScrollEnabled = !isAmbient && !moveHeld,
+                                        userScrollEnabled = !isAmbient && !controlHeld,
                                         modifier = Modifier
                                             .fillMaxSize()
                                             .then(
@@ -243,6 +243,11 @@ internal fun MirrorScreen(
                                                 // Page 0 is empty: it is the gauges themselves,
                                                 // pinned at the root behind this transparent pager.
                                                 CONTROL_PAGE_GAUGES -> Unit
+                                                CONTROL_PAGE_TILT -> TiltScreen(
+                                                    sender = sender,
+                                                    interactionEnabled = !isAmbient && activePage == CONTROL_PAGE_TILT,
+                                                    onHoldChanged = { controlHeld = it },
+                                                )
                                                 CONTROL_PAGE_MOVE -> MoveScreen(
                                                     sender = sender,
                                                     // Ambient parks the pager, but the park is a
@@ -250,7 +255,7 @@ internal fun MirrorScreen(
                                                     // stop the moment the wrist goes always-on, not
                                                     // once the page has finished travelling.
                                                     interactionEnabled = !isAmbient && activePage == CONTROL_PAGE_MOVE,
-                                                    onHoldChanged = { moveHeld = it },
+                                                    onHoldChanged = { controlHeld = it },
                                                 )
                                                 CONTROL_PAGE_LIGHTS -> LightsScreen(
                                                     sender = sender,
@@ -309,12 +314,13 @@ private const val VERTICAL_PAGE_GAUGES = 2
 private const val VERTICAL_PAGE_NAV = 3
 private const val VERTICAL_PAGE_COUNT = 4
 
-/** Gauges centre, Board Move, board Lights, diagnostics. */
+/** Gauges centre, Remote Tilt, Board Move, board Lights, diagnostics. */
 private const val CONTROL_PAGE_GAUGES = 0
-private const val CONTROL_PAGE_MOVE = 1
-private const val CONTROL_PAGE_LIGHTS = 2
-private const val CONTROL_PAGE_DIAGNOSTICS = 3
-private const val CONTROL_PAGE_COUNT = 4
+private const val CONTROL_PAGE_TILT = 1
+private const val CONTROL_PAGE_MOVE = 2
+private const val CONTROL_PAGE_LIGHTS = 3
+private const val CONTROL_PAGE_DIAGNOSTICS = 4
+private const val CONTROL_PAGE_COUNT = 5
 
 @Composable
 private fun MirrorContent(

@@ -42,6 +42,7 @@ const BASE: AppSettings = {
   wearPushRateHz: 4,
   wearAutoLaunchOnConnect: true,
   wearNavArrowEnabled: false,
+  wearTiltRatePercent: 10,
   riderId: null,
   riderName: null,
   riderColor: null,

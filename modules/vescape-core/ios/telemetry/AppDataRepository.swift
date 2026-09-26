@@ -566,6 +566,9 @@ final class AppDataRepository {
     } else if key == "wearPushRateHz" {
       guard let hz = Self.wearPushRateHz(rawValue) else { return }
       value = hz
+    } else if key == "wearTiltRatePercent" {
+      guard let percent = Self.wearTiltRatePercent(rawValue) else { return }
+      value = percent
     } else if key == "wearAutoLaunchOnConnect" || key == "wearNavArrowEnabled" {
       // Strict Bool, like Android: a truthy string persisted here would reach the wrist as a
       // setting the rider never chose.
@@ -645,6 +648,7 @@ final class AppDataRepository {
     // exists here only so getSettings() returns the full settings shape.
     "wearAutoLaunchOnConnect": true,
     "wearNavArrowEnabled": false,
+    "wearTiltRatePercent": 10,
     "boardMoveStrengthPercent": 60,
     "connectionSoundsEnabled": true,
     "soundPack": "retro",
@@ -689,6 +693,8 @@ final class AppDataRepository {
       boardMoveStrengthPercent(settings["boardMoveStrengthPercent"]) ?? defaultSettings["boardMoveStrengthPercent"]
     normalized["wearPushRateHz"] =
       wearPushRateHz(settings["wearPushRateHz"]) ?? defaultSettings["wearPushRateHz"]
+    normalized["wearTiltRatePercent"] =
+      wearTiltRatePercent(settings["wearTiltRatePercent"]) ?? defaultSettings["wearTiltRatePercent"]
     normalized["rideSplitGapMinutes"] =
       rideSplitGapMinutes(settings["rideSplitGapMinutes"]) ?? defaultSettings["rideSplitGapMinutes"]
     normalized["legalPolicy"] = normalizeLegalPolicy(settings["legalPolicy"]) ?? NSNull()
@@ -709,6 +715,14 @@ final class AppDataRepository {
   static func wearPushRateHz(_ value: Any?) -> Int? {
     guard let number = value as? NSNumber, !(value is Bool) else { return nil }
     return min(20, max(1, number.intValue))
+  }
+
+  /// Wrist Tilt stick speed at full deflection, percent of full tilt per second. Clamped like
+  /// Android: a stored 0 would be a stick that never moves.
+  /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/AppDataRepository.kt `validWearTiltRatePercent`
+  static func wearTiltRatePercent(_ value: Any?) -> Int? {
+    guard let number = value as? NSNumber, !(value is Bool) else { return nil }
+    return min(100, max(1, number.intValue))
   }
 
   /// Board Move strength, percent of full remote input. Floored so a stored `0` cannot mean

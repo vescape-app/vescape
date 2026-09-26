@@ -20,6 +20,7 @@ struct VescapeWatchApp: App {
           if let fixture = FrameReplayer.requestedFixture {
             guard replayer == nil else { return }
             let replayer = FrameReplayer(link: link)
+            link.replayTiltEcho = { [weak replayer] value in replayer?.echoTilt(value) }
             replayer.start(fixture: fixture)
             self.replayer = replayer
           } else {

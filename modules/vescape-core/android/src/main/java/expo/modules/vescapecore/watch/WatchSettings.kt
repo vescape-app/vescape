@@ -30,12 +30,16 @@ internal const val WATCH_SETTING_NAV_ARROW = "navArrowEnabled"
 /** App-wide speed and distance preference; older phones default to metric. */
 internal const val WATCH_SETTING_UNIT_SYSTEM = "unitSystem"
 
+/** Tilt stick speed at full deflection, percent of full tilt per second. Applied on the wrist. */
+internal const val WATCH_SETTING_TILT_RATE = "tiltRatePercent"
+
 /** The wrist-relevant slice of [AppSettings]. Equality is what decides whether a push is needed. */
 internal data class WatchSettings(
     val riderColor: String?,
     val boardMoveStrengthPercent: Int,
     val navArrowEnabled: Boolean,
     val unitSystem: String = "metric",
+    val tiltRatePercent: Int = 10,
 )
 
 /**
@@ -48,4 +52,5 @@ internal fun AppSettings.toWatchSettings(): WatchSettings = WatchSettings(
     boardMoveStrengthPercent = boardMoveStrengthPercent,
     navArrowEnabled = wearNavArrowEnabled,
     unitSystem = unitSystem,
+    tiltRatePercent = wearTiltRatePercent,
 )

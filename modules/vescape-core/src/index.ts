@@ -1647,6 +1647,14 @@ export interface AppSettings {
    */
   wearNavArrowEnabled: boolean
   /**
+   * Wrist Tilt stick speed at full deflection, percent of full tilt per second (1–100). Pushed to the
+   * wrist, which integrates the stick into a Remote Tilt lock.
+   *
+   * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/watch/WatchSettings.kt
+   * @parity /modules/vescape-core/ios/watch/WatchSettings.swift
+   */
+  wearTiltRatePercent: number
+  /**
    * Persistent device-scoped anonymous Group Ride Rider id. Generated once on
    * first use and stored locally; sent to the relay server as the Rider's
    * identity. See ADR-0020.

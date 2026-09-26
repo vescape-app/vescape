@@ -19,9 +19,20 @@ final class FrameReplayer {
   private let link: PhoneLink
   private var samples: [ReplaySample] = []
   private var task: Task<Void, Never>?
+  /// The tilt a replayed phone would be commanding: the last lock the wrist sent, or neutral. Read
+  /// and written on the main actor only — the replay loop and the wrist's sends both run there.
+  private var tilt = WatchTiltStick.center
 
   init(link: PhoneLink) {
     self.link = link
+  }
+
+  /// Stand in for the phone's Remote Tilt so the Tilt page can be felt in the simulator: a lock is
+  /// echoed into every following frame, a cancel (`value` nil) returns to neutral at once.
+  ///
+  /// @parity /watch/wearos/src/main/java/app/vescape/wear/FrameReplay.kt `echoTilt`
+  func echoTilt(_ value: Int?) {
+    tilt = value ?? WatchTiltStick.center
   }
 
   /// The gate every dev mode passes through. A dev mode is explicit and never inferred: a normal
@@ -48,7 +59,7 @@ final class FrameReplayer {
     else { return }
     samples = ReplayFixtureParser.parse(text: text)
     guard !samples.isEmpty else { return }
-    task = Task { @MainActor [samples, link] in
+    task = Task { @MainActor [samples, link, weak self] in
       link.recordReplay(fixture: (fixture as NSString).lastPathComponent, sampleCount: samples.count)
       // Same companion asset as Wear OS, beside either ride or sweep telemetry.
       // @parity /watch/wearos/src/main/java/app/vescape/wear/FrameReplay.kt `loadScene`
@@ -80,7 +91,12 @@ final class FrameReplayer {
           try? await Task.sleep(for: .milliseconds(max(sample.atMs - previous, 0)))
           guard !Task.isCancelled else { return }
           previous = sample.atMs
-          link.acceptReplayFrame(sample.frame)
+          var frame = sample.frame
+          if let tilt = self?.tilt {
+            frame.remoteTilt = tilt
+            frame.tiltControl = tilt == WatchTiltStick.center ? .free : .manual
+          }
+          link.acceptReplayFrame(frame)
         }
       }
     }

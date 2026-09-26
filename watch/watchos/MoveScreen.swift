@@ -55,7 +55,12 @@ struct MoveScreen: View {
         half(.forward)
         half(.backward)
       }
-      CenterLabel(enabled: enabled, strengthPercent: link.settings.boardMoveStrengthPercent)
+      CenterLabel(
+        enabled: enabled,
+        strengthPercent: link.settings.boardMoveStrengthPercent,
+        // Starting a Move drops a locked tilt to neutral, and it does not come back afterwards.
+        clearsTilt: link.mirror.frame?.tiltControl == .manual
+      )
     }
     // The tick loop *is* the hold. It restarts whenever the direction changes and is cancelled the
     // instant it clears, which is what sends the release.
@@ -183,13 +188,21 @@ enum MoveDirection: Equatable {
 private struct CenterLabel: View {
   let enabled: Bool
   let strengthPercent: Int?
+  let clearsTilt: Bool
 
   var body: some View {
-    Text(text)
-      .font(WatchTypography.ui(size: 11))
-      .foregroundStyle(enabled ? Palette.secondaryText : Palette.dimText)
-      .multilineTextAlignment(.center)
-      .allowsHitTesting(false)
+    VStack(spacing: 0) {
+      Text(text)
+        .font(WatchTypography.ui(size: 11))
+        .foregroundStyle(enabled ? Palette.secondaryText : Palette.dimText)
+      if enabled && clearsTilt {
+        Text("Clears tilt")
+          .font(WatchTypography.ui(size: 9))
+          .foregroundStyle(Palette.armed)
+      }
+    }
+    .multilineTextAlignment(.center)
+    .allowsHitTesting(false)
   }
 
   private var text: String {

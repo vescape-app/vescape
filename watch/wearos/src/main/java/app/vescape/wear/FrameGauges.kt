@@ -39,6 +39,7 @@ import androidx.wear.compose.material.MaterialTheme
 import androidx.wear.compose.material.Text
 import androidx.wear.compose.material.curvedText
 import kotlin.math.cos
+import kotlin.math.roundToInt
 import kotlin.math.sin
 
 /**
@@ -185,7 +186,10 @@ internal fun FrameLayout(
         ) {
             // Both survive ambient unchanged: the mirror hides the system clock, and a forecast is
             // the slowest-moving thing on the screen.
-            WatchClock(color = ambient.readout(if (muted) DimText else SecondaryText))
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                WatchClock(color = ambient.readout(if (muted) DimText else SecondaryText))
+                TiltBadge(frame.remoteTilt, color = ambient.readout(if (muted) DimText else TiltColor))
+            }
             WeatherReadout(muted = muted || ambient.active, onClick = onWeatherClick)
         }
 
@@ -230,6 +234,21 @@ internal fun FrameLayout(
                 },
         )
     }
+}
+
+/**
+ * A locked Remote Tilt, beside the clock. A lock outlives the Tilt page on purpose, so the gauges
+ * are where a rider needs reminding that the board is still being tilted. Nothing at neutral.
+ */
+@Composable
+private fun TiltBadge(value: Int?, color: Color) {
+    val percent = value?.let(::tiltPercent) ?: return
+    if (percent.roundToInt() == 0) return
+    Text(
+        text = "  \u2220${formatTilt(percent)}",
+        style = WatchTypography.mono(MaterialTheme.typography.caption2),
+        color = color,
+    )
 }
 
 /**
