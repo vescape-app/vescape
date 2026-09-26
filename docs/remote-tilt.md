@@ -34,8 +34,9 @@ the tilt changes (8 dp deadzone, quadratic up to the rider's `wearTiltRatePercen
 
 - Every change is an absolute `TILT_LOCK` wrist command (`[4, value]`), at most every 100 ms plus
   one on release, relayed into `lockRemoteTilt`. Absolute values mean a lost tick costs a step of
-  resolution, never a drifted angle. Lock and cancel share one latest-wins slot on the wrist, so a
-  reset overtakes stale locks.
+  resolution, never a drifted angle. A reset never lands before an earlier lock: Wear OS coalesces
+  lock and cancel into one latest-wins slot, and watchOS relies on WatchConnectivity's in-order
+  delivery.
 - **No dead-man, unlike Board Move (ADR-0033).** A lock is a setpoint the rider chose to leave, not
   motor output: it stays when the wrist sleeps, leaves the page or drops out of range, and ends only
   on a cancel, a Board Move, or the Board Session ending.
@@ -44,7 +45,7 @@ the tilt changes (8 dp deadzone, quadratic up to the rider's `wearTiltRatePercen
 - The Watch Frame carries the commanded value and a `tiltControl` code (free, manual, sensor, move,
   blocked). The readout shows the phone's value, so a pad change shows on the wrist and seeds the
   next drag; the stick is read-only whenever the arbiter or link trust would refuse a manual command.
-- A non-neutral tilt also shows beside the clock on the gauges page, and the Move page warns that
+- A non-neutral tilt also shows on the gauges page, on the navigation distance's line, and the Move page warns that
   starting a Move clears it.
 
 Fixture replay on an emulator echoes the wrist's locks into its frames, so the stick can be felt

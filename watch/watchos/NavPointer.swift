@@ -24,6 +24,9 @@ struct NavPointer: View {
   /// > Watch); everything else nav draws — route, rider dot, pin, distance — ignores the switch.
   var arrowEnabled: Bool
   var color: Color
+  /// Commanded Remote Tilt, badged after the distance on the same line.
+  var remoteTilt: Int?
+  var tiltColor: Color = Palette.tilt
 
   var body: some View {
     ZStack {
@@ -57,6 +60,8 @@ struct NavPointer: View {
             .font(WatchTypography.mono(size: DISTANCE_FONT_SIZE))
             .foregroundStyle(color)
             .monospacedDigit()
+          TiltBadge(value: remoteTilt, color: tiltColor)
+            .padding(.leading, TILT_BADGE_GAP)
         }
         .padding(.bottom, NAV_READOUT_BOTTOM_INSET)
       }
@@ -168,7 +173,7 @@ private func pointOnCircle(centre: CGPoint, radius: CGFloat, degrees: Double) ->
 /// @parity /watch/wearos/src/main/java/app/vescape/wear/NavPointer.kt `NAV_RIM_INSET`
 private let NAV_RIM_INSET: CGFloat = 22
 /// Sits in the band between the rider dot and the battery readout.
-private let NAV_READOUT_BOTTOM_INSET: CGFloat = 32
+let NAV_READOUT_BOTTOM_INSET: CGFloat = 32
 private let CHEVRON_FOCUS_GROWTH = 0.18
 private let READOUT_FOCUS_DROP: CGFloat = 6
 private let READOUT_FOCUS_GROWTH = 0.25
@@ -179,3 +184,26 @@ private let PIN_GAP: CGFloat = 3
 private let DISTANCE_FONT_SIZE: CGFloat = 12
 private let HINT_ICON_SIZE: CGFloat = 22
 private let HINT_FONT_SIZE: CGFloat = 11
+
+/// A locked Remote Tilt, on the navigation distance's line. A lock outlives the Tilt page on purpose,
+/// so the gauges are where a rider needs reminding that the board is still being tilted. Nothing at
+/// neutral.
+///
+/// @parity /watch/wearos/src/main/java/app/vescape/wear/FrameGauges.kt `TiltBadge`
+struct TiltBadge: View {
+  let value: Int?
+  let color: Color
+
+  var body: some View {
+    if let value, WatchTiltStick.rounded(WatchTiltStick.percent(value: value)) != 0 {
+      Text("\u{2220}\(WatchTiltStick.format(WatchTiltStick.percent(value: value)))")
+        .font(WatchTypography.mono(size: DISTANCE_FONT_SIZE))
+        .monospacedDigit()
+        .foregroundStyle(color)
+        .fixedSize()
+        .accessibilityLabel("Remote tilt")
+    }
+  }
+}
+
+private let TILT_BADGE_GAP: CGFloat = 8

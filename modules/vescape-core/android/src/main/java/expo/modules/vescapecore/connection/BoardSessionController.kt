@@ -2367,18 +2367,17 @@ private var wearAutoLaunchOnConnect = true
     }
 
     /**
-     * Who may drive Remote Tilt, in the order the arbiter refuses a manual command: a bound sensor
-     * first, then a Board Move, then link trust.
+     * Who may drive Remote Tilt: the arbiter's own refusal first, then the link trust
+     * [lockRemoteTilt] adds on top of it.
      *
      * @parity /modules/vescape-core/ios/connection/BoardSessionController.swift `watchTiltControl`
      */
-    private fun watchTiltControl(): WatchTiltControl {
-        val owner = remoteInput.owner
-        return when {
-            owner == RemoteInputOwner.SENSOR || AccessorySessionManager.groundClearanceBound() -> WatchTiltControl.SENSOR
-            owner == RemoteInputOwner.MOVE -> WatchTiltControl.MOVE
+    private fun watchTiltControl(): WatchTiltControl = when (remoteInput.manualBlocker) {
+        RemoteInputOwner.SENSOR -> WatchTiltControl.SENSOR
+        RemoteInputOwner.MOVE -> WatchTiltControl.MOVE
+        else -> when {
             !firmwareCommandsTrusted() -> WatchTiltControl.BLOCKED
-            owner == RemoteInputOwner.MANUAL -> WatchTiltControl.MANUAL
+            remoteInput.owner == RemoteInputOwner.MANUAL -> WatchTiltControl.MANUAL
             else -> WatchTiltControl.FREE
         }
     }

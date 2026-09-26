@@ -9,7 +9,7 @@ import java.nio.ByteOrder
  *   7 riderEast, 8 riderNorth, 9 course, 10 routeSpan, 11 remoteTilt, 12 tiltControl.
  *
  * Lanes 11-12 are Remote Tilt: the phone's commanded value (0..255, 128 neutral) and who may drive
- * it ([WatchTiltControl]). An older phone sends neither, which reads as no tilt and a free stick.
+ * it ([WatchTiltControl]). An older phone sends neither; the Tilt page then asks for a phone update.
  *
  * Lanes 7-9 place the rider on the route pushed over [ROUTE_PATH]: metres east/north of that route's
  * origin plus the course, degrees clockwise from north.
@@ -111,7 +111,7 @@ object WatchFrameDecoder {
             riderNorthM = lanes[8].orNull(),
             courseDeg = lanes[9].orNull(),
             routeSpanM = lanes[10].orNull(),
-            remoteTilt = lanes[11].orNull()?.toInt(),
+            remoteTilt = lanes[11].orNull()?.toInt()?.coerceIn(0, 255),
             tiltControl = WatchTiltControl.fromWire(lanes[12].orNull()),
         )
     }

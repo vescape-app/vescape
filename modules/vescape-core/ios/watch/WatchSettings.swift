@@ -81,8 +81,8 @@ struct WatchSettings: Equatable {
       boardMoveStrengthPercent: (payload[WatchSettingsKey.boardMoveStrengthPercent] as? NSNumber)?.intValue,
       navArrowEnabled: payload[WatchSettingsKey.navArrowEnabled] as? Bool ?? wristDefaults.navArrowEnabled,
       unitSystem: payload[WatchSettingsKey.unitSystem] as? String == "imperial" ? "imperial" : "metric",
-      // Held to a sane range on read too: the wrist integrates this every frame, and a rate from a
-      // newer or broken phone must not spin the stick past what the settings screen offers.
+      // Held to the range the phone repositories accept (1–100) on read too: the wrist integrates
+      // this every frame, and a rate from a newer or broken phone must not spin the stick.
       tiltRatePercent: (payload[WatchSettingsKey.tiltRatePercent] as? NSNumber)
         .map { min(100, max(1, $0.intValue)) } ?? watchDefaultTiltRatePercent
     )

@@ -103,6 +103,7 @@ internal fun FrameLayout(
     val motorColor = laneColor(ambient, frame.motorTemp, muted, MotorTempColor)
     val ctrlColor = laneColor(ambient, frame.ctrlTemp, muted, CtrlTempColor)
     val offset = ambient.burnInOffset()
+    val tiltColor = ambient.readout(if (muted) DimText else TiltColor)
 
     // Readouts leave for any focus mode; the nav stack survives nav focus alone.
     val readoutFocus = { maxOf(focus(), controlFocus(), weatherFocus()) }
@@ -160,8 +161,19 @@ internal fun FrameLayout(
                 muted = muted || ambient.active,
                 focus = focus,
                 stackAlpha = navStackAlpha,
+                trailing = { TiltBadge(frame.remoteTilt, tiltColor, Modifier.padding(start = TILT_BADGE_GAP)) },
             )
         } else {
+            // No navigation: the badge keeps the distance's slot to itself.
+            TiltBadge(
+                frame.remoteTilt,
+                tiltColor,
+                Modifier
+                    .align(Alignment.BottomCenter)
+                    .offset(offset.x, offset.y)
+                    .padding(bottom = NAV_READOUT_BOTTOM_PAD)
+                    .graphicsLayer { alpha = fadeOut(readoutFocus()) },
+            )
             // Nav focus with nothing to show would be a blank circle. Say why, but only once the
             // drag is nearly done, so it never flickers under the departing readouts.
             NavAbsentHint(focus = focus, stackAlpha = navStackAlpha)
@@ -186,10 +198,7 @@ internal fun FrameLayout(
         ) {
             // Both survive ambient unchanged: the mirror hides the system clock, and a forecast is
             // the slowest-moving thing on the screen.
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                WatchClock(color = ambient.readout(if (muted) DimText else SecondaryText))
-                TiltBadge(frame.remoteTilt, color = ambient.readout(if (muted) DimText else TiltColor))
-            }
+            WatchClock(color = ambient.readout(if (muted) DimText else SecondaryText))
             WeatherReadout(muted = muted || ambient.active, onClick = onWeatherClick)
         }
 
@@ -237,19 +246,23 @@ internal fun FrameLayout(
 }
 
 /**
- * A locked Remote Tilt, beside the clock. A lock outlives the Tilt page on purpose, so the gauges
- * are where a rider needs reminding that the board is still being tilted. Nothing at neutral.
+ * A locked Remote Tilt, on the navigation distance's line. A lock outlives the Tilt page on purpose,
+ * so the gauges are where a rider needs reminding that the board is still being tilted. Nothing at
+ * neutral.
  */
 @Composable
-private fun TiltBadge(value: Int?, color: Color) {
+private fun TiltBadge(value: Int?, color: Color, modifier: Modifier = Modifier) {
     val percent = value?.let(::tiltPercent) ?: return
     if (percent.roundToInt() == 0) return
     Text(
-        text = "  \u2220${formatTilt(percent)}",
-        style = WatchTypography.mono(MaterialTheme.typography.caption2),
+        text = "\u2220${formatTilt(percent)}",
+        style = WatchTypography.mono(MaterialTheme.typography.caption2.copy(fontSize = NAV_READOUT_FONT_SIZE)),
         color = color,
+        modifier = modifier,
     )
 }
+
+private val TILT_BADGE_GAP = 10.dp
 
 /**
  * What the nav focus page shows when the phone is not navigating: a centred, dim two-liner that

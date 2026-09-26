@@ -71,17 +71,11 @@ struct MirrorScreen: View {
           EmptyView()
         } else {
           HStack(spacing: 0) {
-            HStack(spacing: TILT_BADGE_GAP) {
-              WeatherReadout(
-                forecast: freshWeather,
-                ambient: ambient,
-                onTap: interactionEnabled(.gauges) ? { withAnimation { vertical = .weather } } : nil
-              )
-              TiltBadge(
-                value: link.mirror.frame?.remoteTilt,
-                color: ambient.readout(link.mirror.status == .stale ? Palette.dimText : Palette.tilt)
-              )
-            }
+            WeatherReadout(
+              forecast: freshWeather,
+              ambient: ambient,
+              onTap: interactionEnabled(.gauges) ? { withAnimation { vertical = .weather } } : nil
+            )
             .frame(maxWidth: .infinity)
             Color.clear
               .frame(maxWidth: .infinity)
@@ -432,30 +426,6 @@ enum ControlPage: Int, CaseIterable, Identifiable {
 ///
 /// @parity /watch/wearos/src/main/java/app/vescape/wear/MirrorScreen.kt `CONTROL_IDLE_RETURN_MS`
 private let CONTROL_IDLE_RETURN_SECONDS: TimeInterval = 45
-
-/// A locked Remote Tilt on the gauges page. A lock outlives the Tilt page on purpose, so the gauges
-/// are where a rider needs reminding that the board is still being tilted. Nothing at neutral.
-///
-/// @parity /watch/wearos/src/main/java/app/vescape/wear/FrameGauges.kt `TiltBadge`
-/// @platform-diff Wear OS sets it beside its own wall clock. watchOS owns the upper right for the
-///   system clock, so the badge rides beside the weather strip at the upper left instead.
-private struct TiltBadge: View {
-  let value: Int?
-  let color: Color
-
-  var body: some View {
-    if let value, WatchTiltStick.rounded(WatchTiltStick.percent(value: value)) != 0 {
-      Text("\u{2220}\(WatchTiltStick.format(WatchTiltStick.percent(value: value)))")
-        .font(WatchTypography.mono(size: 10))
-        .monospacedDigit()
-        .foregroundStyle(color)
-        .fixedSize()
-        .accessibilityLabel("Remote tilt")
-    }
-  }
-}
-
-private let TILT_BADGE_GAP: CGFloat = 4
 
 /// Each page on an axis reports the same displacement, including when the gauges are offscreen.
 private struct PagePositionKey: PreferenceKey {

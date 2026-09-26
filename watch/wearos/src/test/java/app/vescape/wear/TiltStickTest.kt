@@ -21,9 +21,15 @@ class TiltStickTest {
 
     @Test
     fun `integration follows elapsed time and stops at full tilt`() {
-        assertEquals(1.5f, integrateTilt(0f, 10f, 150L), 1e-4f)
-        assertEquals(100f, integrateTilt(99f, 40f, 1_000L), 0f)
-        assertEquals(-100f, integrateTilt(-99f, -40f, 1_000L), 0f)
+        assertEquals(0.5f, integrateTilt(0f, 10f, 50L), 1e-4f)
+        assertEquals(100f, integrateTilt(99.5f, 40f, 50L), 0f)
+        assertEquals(-100f, integrateTilt(-99.5f, -40f, 50L), 0f)
+    }
+
+    @Test
+    fun `a stalled frame clock cannot jump the tilt`() {
+        assertEquals(2f, integrateTilt(0f, 40f, 5_000L), 1e-4f)
+        assertEquals(10f, integrateTilt(10f, 40f, -16L), 0f)
     }
 
     @Test

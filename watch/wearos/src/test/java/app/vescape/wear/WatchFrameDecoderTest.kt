@@ -65,7 +65,7 @@ class WatchFrameDecoderTest {
     }
 
     @Test
-    fun `an older phone without tilt lanes reads as no tilt and a free stick`() {
+    fun `an older phone without tilt lanes reads as no tilt`() {
         val frame = WatchFrameDecoder.decode(encode(12.0, 20f, 80f, 33f, 5f))!!
 
         assertNull(frame.remoteTilt)

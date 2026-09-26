@@ -45,9 +45,15 @@ enum WatchTiltStick {
   }
 
   /// Advance `percent` by `ratePercentPerSecond` over `elapsedMs`, held inside full tilt either way.
+  ///
+  /// One step never covers more than `maxStepMs`: a clock that stalls under a held thumb must not
+  /// turn into one full-range jump sent as an absolute lock.
   static func integrate(percent: Double, ratePercentPerSecond: Double, elapsedMs: Int64) -> Double {
-    min(max(percent + ratePercentPerSecond * Double(elapsedMs) / 1000, -100), 100)
+    let step = min(max(elapsedMs, 0), maxStepMs)
+    return min(max(percent + ratePercentPerSecond * Double(step) / 1000, -100), 100)
   }
+
+  private static let maxStepMs: Int64 = 50
 
   /// Nearest whole number, halves rounded up — Kotlin's `roundToInt`, so both wrists put a
   /// half-percent tilt on the same side of a notch and send the same byte for it.

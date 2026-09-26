@@ -132,14 +132,23 @@ internal class RemoteInputArbiter(
     fun manualRelease(value: Int, durationMs: Long): Boolean =
         claimManual { tilt.release(value, durationMs) }
 
-    private inline fun claimManual(start: () -> Boolean): Boolean {
-        // Asked before ownership, because a bound binding that is not currently driving leaves the
-        // slot unowned and would otherwise let a manual command in.
-        if (sensorBound()) return false
-        when (owner) {
-            RemoteInputOwner.SENSOR, RemoteInputOwner.MOVE -> return false
-            RemoteInputOwner.NONE, RemoteInputOwner.MANUAL -> Unit
+    /**
+     * Who would refuse a manual command right now, or null when the rider may drive. The one place
+     * that rule lives: [claimManual] enforces it and the wrist's Tilt page renders it.
+     *
+     * @parity /modules/vescape-core/ios/RemoteInputArbiter.swift `manualBlocker`
+     */
+    val manualBlocker: RemoteInputOwner?
+        get() = when {
+            // Asked before ownership, because a bound binding that is not currently driving leaves
+            // the slot unowned and would otherwise let a manual command in.
+            sensorBound() -> RemoteInputOwner.SENSOR
+            owner == RemoteInputOwner.SENSOR || owner == RemoteInputOwner.MOVE -> owner
+            else -> null
         }
+
+    private inline fun claimManual(start: () -> Boolean): Boolean {
+        if (manualBlocker != null) return false
         val started = start()
         if (started) tiltOwner = RemoteInputOwner.MANUAL
         return started

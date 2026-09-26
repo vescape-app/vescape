@@ -194,14 +194,13 @@ final class PhoneLink: NSObject, ObservableObject, WCSessionDelegate {
   }
 
   /// Lock Remote Tilt at `value` (0..255, 128 neutral) until the next lock or a cancel. A stick drag
-  /// produces a lock every tick; on a degraded link only the newest angle is worth sending, which
-  /// `sendMessageData` already gives — it drops rather than queues, the same property ``sendMove(_:)``
-  /// rests on.
+  /// sends at most one lock per 100 ms, so while the phone is reachable the few that
+  /// `sendMessageData` has in flight are delivered in order and a cancel lands after all of them.
   ///
   /// @parity /watch/wearos/src/main/java/app/vescape/wear/WatchCommand.kt `sendTiltLock`
-  /// @platform-diff Android shares one latest-wins slot between lock and cancel so a reset overtakes
-  ///   stale locks queued in front of its blocking send; `sendMessageData` queues nothing, so there
-  ///   is nothing for a cancel to be behind.
+  /// @platform-diff Android coalesces lock and cancel into one latest-wins slot because its Data
+  ///   Layer send blocks and a backlog would build behind it; WatchConnectivity delivers in order
+  ///   without blocking the caller, so the wrist keeps no slot and relies on that ordering.
   func sendTiltLock(_ value: Int) {
     if let replayTiltEcho { return replayTiltEcho(min(max(value, 0), 255)) }
     send(.tiltLock(value))

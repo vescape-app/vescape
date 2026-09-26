@@ -21,9 +21,12 @@ final class WatchTiltStickTests: XCTestCase {
   }
 
   func testIntegrationFollowsElapsedTimeAndStopsAtFullTilt() {
-    XCTAssertEqual(WatchTiltStick.integrate(percent: 0, ratePercentPerSecond: 10, elapsedMs: 150), 1.5, accuracy: 1e-9)
-    XCTAssertEqual(WatchTiltStick.integrate(percent: 99, ratePercentPerSecond: 40, elapsedMs: 1_000), 100)
-    XCTAssertEqual(WatchTiltStick.integrate(percent: -99, ratePercentPerSecond: -40, elapsedMs: 1_000), -100)
+    XCTAssertEqual(WatchTiltStick.integrate(percent: 0, ratePercentPerSecond: 10, elapsedMs: 50), 0.5, accuracy: 1e-9)
+    XCTAssertEqual(WatchTiltStick.integrate(percent: 99.5, ratePercentPerSecond: 40, elapsedMs: 50), 100)
+    XCTAssertEqual(WatchTiltStick.integrate(percent: -99.5, ratePercentPerSecond: -40, elapsedMs: 50), -100)
+    // A stalled clock cannot jump the tilt.
+    XCTAssertEqual(WatchTiltStick.integrate(percent: 0, ratePercentPerSecond: 40, elapsedMs: 5_000), 2, accuracy: 1e-9)
+    XCTAssertEqual(WatchTiltStick.integrate(percent: 10, ratePercentPerSecond: 40, elapsedMs: -16), 10)
   }
 
   func testPercentMapsOntoThePhonePadsWireScaleAroundNeutral() {

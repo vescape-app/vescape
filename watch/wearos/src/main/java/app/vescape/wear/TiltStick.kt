@@ -36,9 +36,16 @@ fun stickRatePercentPerSecond(deflectionPx: Float, deadzonePx: Float, fullPx: Fl
     return sign(deflectionPx) * ratePercent * fraction * fraction
 }
 
-/** Advance [percent] by [ratePercentPerSecond] over [elapsedMs], held inside full tilt either way. */
+/**
+ * Advance [percent] by [ratePercentPerSecond] over [elapsedMs], held inside full tilt either way.
+ *
+ * One step never covers more than [MAX_STEP_MS]: a frame clock that stalls under a held thumb (a GC
+ * pause, a paused activity) must not turn into one full-range jump sent as an absolute lock.
+ */
 fun integrateTilt(percent: Float, ratePercentPerSecond: Float, elapsedMs: Long): Float =
-    (percent + ratePercentPerSecond * elapsedMs / 1000f).coerceIn(-100f, 100f)
+    (percent + ratePercentPerSecond * elapsedMs.coerceIn(0L, MAX_STEP_MS) / 1000f).coerceIn(-100f, 100f)
+
+private const val MAX_STEP_MS = 50L
 
 /** Signed whole percent as the Tilt page and the gauges badge print it: `+12%`, `0%`, `-4%`. */
 fun formatTilt(percent: Float): String {

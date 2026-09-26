@@ -2807,16 +2807,18 @@ internal final class BoardSessionController: VescGattListener {
     )
   }
 
-  /// Who may drive Remote Tilt, in the order the arbiter refuses a manual command: a bound sensor
-  /// first, then a Board Move, then link trust.
+  /// Who may drive Remote Tilt: the arbiter's own refusal first, then the link trust
+  /// `lockRemoteTilt` adds on top of it.
   ///
   /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/connection/BoardSessionController.kt `watchTiltControl`
   private func watchTiltControl() -> WatchTiltControl {
-    let owner = remoteInput.owner
-    if owner == .sensor || AccessorySessionController.shared.groundClearanceBound() { return .sensor }
-    if owner == .move { return .move }
-    if !firmwareCommandsTrusted() { return .blocked }
-    return owner == .manual ? .manual : .free
+    switch remoteInput.manualBlocker {
+    case .sensor: return .sensor
+    case .move: return .move
+    default:
+      if !firmwareCommandsTrusted() { return .blocked }
+      return remoteInput.owner == .manual ? .manual : .free
+    }
   }
 
   private func recordWatchDiagnostic(_ name: String, _ props: [String: Any?]) {

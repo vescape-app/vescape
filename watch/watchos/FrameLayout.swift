@@ -53,6 +53,7 @@ struct FrameLayout: View {
   ///
   /// @parity /watch/wearos/src/main/java/app/vescape/wear/FrameGauges.kt `navStackAlpha`
   private var navStackAlpha: Double { fadeOut(awayFocus) }
+  private var tiltColor: Color { (muted || ambient.active) ? Palette.dimText : Palette.tilt }
 
   /// Nav is all-or-nothing: the phone sends bearing and distance together or not at all, so one
   /// without the other is a frame this build should not draw half of.
@@ -93,12 +94,21 @@ struct FrameLayout: View {
           focus: navFocus,
           stackAlpha: navStackAlpha,
           arrowEnabled: navArrowEnabled,
-          color: (muted || ambient.active) ? Palette.dimText : navColor
+          color: (muted || ambient.active) ? Palette.dimText : navColor,
+          remoteTilt: frame.remoteTilt,
+          tiltColor: tiltColor
         )
       } else {
         // Nav focus with nothing to show would be a blank rectangle. Say why, but only once the
         // drag is nearly done, so it never flickers under the departing readouts.
         NavAbsentHint(focus: navFocus, stackAlpha: navStackAlpha)
+        // No navigation: the tilt badge keeps the distance's slot to itself.
+        VStack(spacing: 0) {
+          Spacer(minLength: 0)
+          TiltBadge(value: frame.remoteTilt, color: tiltColor)
+            .padding(.bottom, NAV_READOUT_BOTTOM_INSET)
+        }
+        .opacity(navStackAlpha * (1 - navFocus))
       }
 
       if showReadouts {

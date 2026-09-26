@@ -114,13 +114,13 @@ internal fun validTopSpeedKmh(value: Any?): Double? =
     ?.takeIf { it.isFinite() }
     ?.coerceIn(5.0, 150.0)
 
-/** Watch push rate in Hz; 1 Hz floor, 20 Hz ceiling (the 50 ms the wrist link can still keep up with). */
 /** Wrist Tilt stick speed at full deflection, percent of full tilt per second. */
 internal fun validWearTiltRatePercent(value: Any?): Int? =
   (value as? Number)
     ?.toInt()
     ?.coerceIn(1, 100)
 
+/** Watch push rate in Hz; 1 Hz floor, 20 Hz ceiling (the 50 ms the wrist link can still keep up with). */
 internal fun validWearPushRateHz(value: Any?): Int? =
   (value as? Number)
     ?.toInt()

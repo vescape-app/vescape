@@ -8,6 +8,7 @@ import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.awaitVerticalTouchSlopOrCancellation
 import androidx.compose.foundation.gestures.verticalDrag
+import androidx.compose.foundation.gestures.waitForUpOrCancellation
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -81,8 +82,13 @@ fun TiltScreen(
     val frame = state.frame
     val live = state.status == MirrorStatus.LIVE
     val control = frame?.tiltControl ?: WatchTiltControl.FREE
-    val canDrive = live && control.drivable && interactionEnabled
     val nativeValue = frame?.remoteTilt
+    // A phone without the tilt lanes drops tilt commands too, so its frames drive nothing.
+    val canDrive = live && nativeValue != null && control.drivable && interactionEnabled
+    // Reset is the rider's way out and stays ungated like the phone's cancel: a stale frame or an
+    // untrusted link still takes it. Only a bound sensor, which re-takes the slot, makes it moot.
+    val canReset = interactionEnabled && nativeValue != null && control != WatchTiltControl.SENSOR
+    val driveGate by rememberUpdatedState(canDrive)
     val nativePercent = nativeValue?.let(::tiltPercent) ?: 0f
 
     var dragging by remember { mutableStateOf(false) }
@@ -105,8 +111,10 @@ fun TiltScreen(
         onHoldChanged(dragging)
         if (!dragging) return@LaunchedEffect
         armedAtMs = null
+        // Seed from what the readout shows: right after a release or a reset the phone's value still
+        // trails the wrist's, and starting from it would step the board back to where it was.
+        if (sentValue == null) target = nativePercent
         sentValue = null
-        target = nativePercent
         var moved = false
         var lastSentMs = 0L
         var notch = notchOf(target)
@@ -138,7 +146,9 @@ fun TiltScreen(
             }
         } finally {
             val value = tiltValue(target)
-            if (moved && value != sentValue) {
+            // A drag cut short because the page stopped being drivable says nothing the phone
+            // should act on; only a thumb lifting on a live, drivable page sends its last value.
+            if (moved && driveGate && value != sentValue) {
                 sender.sendTiltLock(value)
                 sentValue = value
             }
@@ -167,7 +177,7 @@ fun TiltScreen(
         armedAtMs = null
     }
 
-    LaunchedEffect(canDrive) { if (!canDrive) armedAtMs = null }
+    LaunchedEffect(canReset) { if (!canReset) armedAtMs = null }
 
     DisposableEffect(Unit) {
         onDispose { onHoldChanged(false) }
@@ -177,7 +187,10 @@ fun TiltScreen(
         val armedAt = armedAtMs
         if (armedAt != null && nowMs - armedAt <= RESET_WINDOW_MS) {
             armedAtMs = null
-            sentValue = null
+            // Show neutral at once and hold it until the phone's ease reports back, so a drag started
+            // mid-ease seeds from neutral, not from the tilt that was just reset.
+            target = 0f
+            sentValue = TILT_CENTER
             sender.sendTiltCancel()
             haptics.performHapticFeedback(HapticFeedbackType.LongPress)
         } else if (shownPercent.roundToInt() != 0) {
@@ -188,8 +201,8 @@ fun TiltScreen(
     }
 
     val accent = when {
-        !canDrive -> DimText
         armed -> ArmedColor
+        !canDrive -> DimText
         shownPercent.roundToInt() != 0 -> TiltColor
         else -> PrimaryText
     }
@@ -197,10 +210,16 @@ fun TiltScreen(
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .pointerInput(canDrive) {
-                if (!canDrive) return@pointerInput
+            .pointerInput(canDrive, canReset) {
+                if (!canDrive && !canReset) return@pointerInput
                 awaitEachGesture {
                     val down = awaitFirstDown(requireUnconsumed = false)
+                    if (!canDrive) {
+                        // Read-only stick: taps still reach the reset, drags belong to the pager.
+                        val up = waitForUpOrCancellation()
+                        if (up != null && up.uptimeMillis - down.uptimeMillis <= TAP_MAX_MS) onTap(up.uptimeMillis)
+                        return@awaitEachGesture
+                    }
                     // Only a drag that goes vertical first is the stick's; one that goes sideways is
                     // left unconsumed for the control pager, and one that never moves is a tap.
                     val drag = awaitVerticalTouchSlopOrCancellation(down.id) { change, _ -> change.consume() }
@@ -262,6 +281,7 @@ fun TiltScreen(
             Text(
                 text = tiltCaption(
                     live = live,
+                    phoneKnowsTilt = nativeValue != null,
                     control = control,
                     armed = armed,
                     tilted = shownPercent.roundToInt() != 0,
@@ -327,12 +347,19 @@ private fun TiltStickCanvas(
 }
 
 /** Why the stick is dead, or what the next touch does. */
-private fun tiltCaption(live: Boolean, control: WatchTiltControl, armed: Boolean, tilted: Boolean): String = when {
+private fun tiltCaption(
+    live: Boolean,
+    phoneKnowsTilt: Boolean,
+    control: WatchTiltControl,
+    armed: Boolean,
+    tilted: Boolean,
+): String = when {
+    armed -> "Tap again to reset"
     !live -> "Board not connected"
+    !phoneKnowsTilt -> "Update phone app"
     control == WatchTiltControl.SENSOR -> "Sensor"
     control == WatchTiltControl.MOVE -> "Board moving"
     control == WatchTiltControl.BLOCKED -> "Link not trusted"
-    armed -> "Tap again to reset"
     tilted -> "Double-tap to reset"
     else -> "Drag up or down"
 }

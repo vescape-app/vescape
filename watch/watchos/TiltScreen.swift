@@ -49,19 +49,24 @@ struct TiltScreen: View {
   private var frame: WatchFrame? { link.mirror.frame }
   private var live: Bool { link.mirror.status == .live }
   private var control: WatchTiltControl { frame?.tiltControl ?? .free }
-  private var canDrive: Bool {
-    live && control.drivable && interactionEnabled && scenePhase == .active
-  }
-
   private var nativeValue: Int? { frame?.remoteTilt }
+  /// A phone without the tilt lanes drops tilt commands too, so its frames drive nothing.
+  private var canDrive: Bool {
+    live && nativeValue != nil && control.drivable && interactionEnabled && scenePhase == .active
+  }
+  /// Reset is the rider's way out and stays ungated like the phone's cancel: a stale frame or an
+  /// untrusted link still takes it. Only a bound sensor, which re-takes the slot, makes it moot.
+  private var canReset: Bool {
+    nativeValue != nil && control != .sensor && interactionEnabled && scenePhase == .active
+  }
   private var nativePercent: Double { nativeValue.map { WatchTiltStick.percent(value: $0) } ?? 0 }
   private var shownPercent: Double { dragging || sentValue != nil ? target : nativePercent }
   private var tilted: Bool { WatchTiltStick.rounded(shownPercent) != 0 }
   private var armed: Bool { armedAt != nil }
 
   private var accent: Color {
-    if !canDrive { return Palette.dimText }
     if armed { return Palette.armed }
+    if !canDrive { return Palette.dimText }
     return tilted ? Palette.tilt : Palette.primaryText
   }
 
@@ -94,7 +99,7 @@ struct TiltScreen: View {
     .contentShape(Rectangle())
     // Simultaneous, so the control pager keeps its own swipe: a drag that goes sideways first is
     // classified as the pager's and ignored here, one that goes vertical first is the stick's.
-    .simultaneousGesture(stickGesture, including: canDrive ? .all : .subviews)
+    .simultaneousGesture(stickGesture, including: canDrive || canReset ? .all : .subviews)
     .onChange(of: touch) { _, next in
       let steering = canDrive && next?.kind == .stick
       deflection = steering ? next?.deflection ?? 0 : 0
@@ -126,9 +131,11 @@ struct TiltScreen: View {
     }
     .onChange(of: canDrive) { _, allowed in
       guard !allowed else { return }
-      armedAt = nil
       dragging = false
       deflection = 0
+    }
+    .onChange(of: canReset) { _, allowed in
+      if !allowed { armedAt = nil }
     }
     .onDisappear {
       dragging = false
@@ -159,7 +166,7 @@ struct TiltScreen: View {
       }
       .onEnded { value in
         defer { press = nil }
-        guard canDrive, let press, !press.moved,
+        guard canReset, let press, !press.moved,
           value.time.timeIntervalSince(press.startedAt) <= TAP_MAX_SECONDS
         else { return }
         onTap(at: value.time)
@@ -169,7 +176,10 @@ struct TiltScreen: View {
   private func onTap(at time: Date) {
     if let armedAt, time.timeIntervalSince(armedAt) * 1000 <= Double(RESET_WINDOW_MS) {
       self.armedAt = nil
-      sentValue = nil
+      // Show neutral at once and hold it until the phone's ease reports back, so a drag started
+      // mid-ease seeds from neutral, not from the tilt that was just reset.
+      target = 0
+      sentValue = WatchTiltStick.center
       link.sendTiltCancel()
       WKInterfaceDevice.current().play(.success)
     } else if tilted {
@@ -183,8 +193,10 @@ struct TiltScreen: View {
   @MainActor
   private func steer() async {
     armedAt = nil
+    // Seed from what the readout shows: right after a release or a reset the phone's value still
+    // trails the wrist's, and starting from it would step the board back to where it was.
+    if sentValue == nil { target = nativePercent }
     sentValue = nil
-    target = nativePercent
     var moved = false
     var lastSent: ContinuousClock.Instant?
     var notch = notchOf(target)
@@ -224,7 +236,9 @@ struct TiltScreen: View {
       }
     }
     let value = WatchTiltStick.value(percent: target)
-    if moved && value != sentValue {
+    // A drag cut short because the page stopped being drivable says nothing the phone should act
+    // on; only a thumb lifting on a live, drivable page sends its last value.
+    if moved && canDrive && value != sentValue {
       link.sendTiltLock(value)
       sentValue = value
     }
@@ -284,14 +298,15 @@ struct TiltScreen: View {
   ///
   /// @parity /watch/wearos/src/main/java/app/vescape/wear/TiltScreen.kt `tiltCaption`
   private var caption: String {
+    if armed { return "Tap again to reset" }
     if !live { return "Board not connected" }
+    if nativeValue == nil { return "Update phone app" }
     switch control {
     case .sensor: return "Sensor"
     case .move: return "Board moving"
     case .blocked: return "Link not trusted"
     case .free, .manual: break
     }
-    if armed { return "Tap again to reset" }
     return tilted ? "Double-tap to reset" : "Drag up or down"
   }
 

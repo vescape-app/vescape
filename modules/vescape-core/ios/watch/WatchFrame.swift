@@ -50,7 +50,8 @@ enum WatchTiltControl: Int, CaseIterable {
   /// Only these take a stick drag; the rest name why the Tilt page is read-only.
   var drivable: Bool { self == .free || self == .manual }
 
-  /// A missing lane is no tilt and a free stick. An unknown code is a phone newer than this wrist:
+  /// A missing lane decodes as free; with the tilt lane missing too, the Tilt page asks for a phone
+  /// update rather than offering a stick. An unknown code is a phone newer than this wrist:
   /// read-only is the only safe reading of it.
   init(wire: Double?) {
     guard let wire else {
