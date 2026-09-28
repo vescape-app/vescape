@@ -4,7 +4,7 @@ import {
   deriveGpsStatusBadge,
   GPS_STALE_FIX_TIMEOUT_MS,
   type GpsStatusBadge,
-} from '@/modules/board/lib/gpsStatusBadge'
+} from '@/modules/location/lib/gpsStatusBadge'
 
 import type { LocationEvent } from 'vescape-core'
 

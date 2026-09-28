@@ -4,8 +4,8 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import Animated, { useAnimatedStyle, type SharedValue } from 'react-native-reanimated'
 
 import { DualGaugeIndicator } from '@/modules/board/components/DualGaugeIndicator'
-import { GpsStatusPill } from '@/modules/board/components/GpsStatusPill'
-import { useGpsStatusBadge } from '@/modules/board/hooks/useGpsStatusBadge'
+import { GpsStatusPill } from '@/modules/location/components/GpsStatusPill'
+import { useGpsStatusBadge } from '@/modules/location/hooks/useGpsStatusBadge'
 import { routes } from '@/navigation/routes'
 
 interface LiveHudProps {

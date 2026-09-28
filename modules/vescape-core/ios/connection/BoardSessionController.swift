@@ -423,6 +423,9 @@ internal final class BoardSessionController: VescGattListener {
     // its callbacks keep feeding real frames into the replay session. A live→live connect needs
     // no such step — `gatt.connect` clears its own previous peripheral.
     if replay != nil { gatt.disconnect() }
+    // A replay starts a separate location timeline; live fixes must not seed its trail/course.
+    // @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/connection/BoardSessionController.kt `beginSession`
+    if replay != nil { locationTracker.clearReplayLocations() }
     replayTransport = replay
     // A replay owns the session's notion of time for its lifetime. Installed here, with the
     // transport, so it cannot be undone by the teardown of the session being replaced.
@@ -3115,9 +3118,6 @@ internal final class BoardSessionController: VescGattListener {
   /// A replay fed recorded fixes through the live path for its lifetime, so they are dropped here
   /// rather than leaking onto the live map. Must run after `replayTransport` is cleared: demand
   /// resolves to `off` while a replay is installed.
-  ///
-  /// Android's peer teardown keeps its replay fixes, so the recorded track survives there; see the
-  /// `TODO(android parity)` at its refresh site.
   ///
   /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/connection/BoardSessionController.kt `stopCurrentBoardSession`
   private func releaseGpsFromSession(wasReplay: Bool) {

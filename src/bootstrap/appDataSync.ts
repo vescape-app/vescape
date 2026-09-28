@@ -38,8 +38,8 @@ function reloadAll(): void {
  * - **Pull:** a foreground catch-up. `onAppDataChanged` is fire-and-forget, so any emit made while
  *   JS was backgrounded (or torn down while the native foreground service kept persisting) is lost
  *   — leaving JS showing e.g. a stale `lastBattery` age after a ride (#174). Re-reading native truth
- *   on `AppState -> active` picks those missed writes up, mirroring how `useBleAppLifecycle`
- *   re-syncs BLE state on foreground.
+ *   on `AppState -> active` picks those missed writes up, mirroring how `startLiveStateSync`
+ *   re-syncs live state on foreground.
  */
 export function startAppDataSync(): () => void {
   const sub = addAppDataChangedListener((event) => RELOADERS[event.scope]?.())

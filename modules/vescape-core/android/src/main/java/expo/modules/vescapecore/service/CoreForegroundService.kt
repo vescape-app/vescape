@@ -535,7 +535,7 @@ class CoreForegroundService : Service() {
         /** State payload for a broad DB outage; deliberately performs no persistence read. */
         fun storageUnavailableLiveState(): Map<String, Any?> =
             liveStateWithStorageFailure(
-                instance?.controller?.liveStateMapWithoutStorage(includeRecent = true) ?: idleState(null),
+                instance?.controller?.liveStateMapWithoutStorage() ?: idleState(null),
                 RecordingStorageFailure.value() ?: RecordingStorageFailureKind.StorageUnavailable,
             )
 

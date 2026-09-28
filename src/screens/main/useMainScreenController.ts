@@ -1,3 +1,4 @@
+import { useLocationStore } from '@/modules/location/store/locationStore'
 import { useCallback, useEffect, useMemo, useRef, useState, type RefObject } from 'react'
 import { BackHandler, ToastAndroid } from 'react-native'
 import { useFocusEffect } from 'expo-router'
@@ -62,8 +63,8 @@ export function useMainScreenController({ mapRef }: UseMainScreenControllerArgs)
       setActiveHistoryMapMetric: s.setActiveHistoryMapMetric,
     })),
   )
-  const liveLocations = useBleStore((s) => s.liveLocationHistory)
-  const latestApproximateLocation = useBleStore((s) => s.latestApproximateLocation)
+  const liveLocations = useLocationStore((s) => s.liveLocationHistory)
+  const latestApproximateLocation = useLocationStore((s) => s.latestApproximateLocation)
   const mapStyleKey = useSettingsStore((s) => s.mapStyleKey)
   const satelliteOverlayEnabled = useSettingsStore((s) => s.satelliteOverlayEnabled)
   const satelliteImageryOpacity = useSettingsStore((s) => s.satelliteImageryOpacity)

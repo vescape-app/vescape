@@ -1,6 +1,6 @@
 import Foundation
 
-/// App-level fix state. Session teardown leaves it intact; only replay teardown clears it.
+/// App-level fix state. Live sessions leave it intact; replay entry and teardown clear it.
 /// All calls use the GPS callback's serial execution context.
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/location/LocationTracker.kt
 internal final class LocationTracker {
@@ -68,8 +68,8 @@ internal final class LocationTracker {
     }
   }
 
-  /// Clear replay-derived fixes and course without resetting the app-lifetime persistence throttle.
-  /// Android currently retains replay fixes; its session teardown tracks that difference.
+  /// Clear fixes and course when entering or leaving replay, retaining the persistence throttle.
+  /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/location/LocationTracker.kt `clearReplayLocations`
   func clearReplayLocations() {
     latestLocation = nil
     latestPreciseLocation = nil

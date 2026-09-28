@@ -621,7 +621,7 @@ public class VescapeCoreModule: Module {
     // MARK: Board session
 
     Function("getLiveState") {
-      self.liveState()
+      self.liveState(includeRecent: true)
     }
 
     // @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/VescapeCoreModule.kt `getGroundClearanceTilt`
@@ -1998,7 +1998,10 @@ public class VescapeCoreModule: Module {
   }
 
   /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/LiveStateMapper.kt `buildLiveState`
-  private func liveState() -> [String: Any?] {
+  /// Status events carry latest fixes only; getLiveState includes the retained windows.
+  /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/connection/BoardSessionController.kt `liveStateMap`
+  /// @parity /modules/vescape-core/src/index.ts `LiveStateEvent`
+  private func liveState(includeRecent: Bool = false) -> [String: Any?] {
     RecordingStorageFailure.initialize()
     let settings: [String: Any?]
     do { settings = try appData.getSettings() }
@@ -2015,7 +2018,7 @@ public class VescapeCoreModule: Module {
         "name": coordinator.boardName,
         "connectionSeq": coordinator.connectionSeq,
         "lastTelemetryAt": coordinator.lastTelemetryAt,
-        "recentTelemetry": coordinator.recentTelemetry(),
+        "recentTelemetry": includeRecent ? coordinator.recentTelemetry() : [],
         "error": coordinator.boardError,
         "autoConnect": settings["autoConnect"] as? Bool ?? true,
         "linkIntegrity": coordinator.linkIntegrity.rawValue,
@@ -2027,7 +2030,7 @@ public class VescapeCoreModule: Module {
         "latestFix": coordinator.gpsLatestPreciseLocation(),
         "latestApproximateFix": coordinator.gpsLatestLocation(),
         "latestPreciseFix": coordinator.gpsLatestPreciseLocation(),
-        "recentLocations": coordinator.gpsRecentLocations(),
+        "recentLocations": includeRecent ? coordinator.gpsRecentLocations() : [],
         "error": coordinator.gpsLastError(),
       ] as [String: Any?],
       "scan": [

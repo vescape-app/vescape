@@ -1182,6 +1182,9 @@ private var wearAutoLaunchOnConnect = true
             beginningSession = false
         }
         refreshLiveHistoryLimit()
+        // A replay starts a separate location timeline; live fixes must not seed its trail/course.
+        // @parity /modules/vescape-core/ios/connection/BoardSessionController.swift `connect`
+        if (start.boardConfig.replayRecordingName != null) locationTracker.clearReplayLocations()
         boardConfig = start.boardConfig
         // Load rules only after boardConfig is assigned — the engine scopes to the connected Board's
         // rules (#254), so reading before assignment would install the wrong Board's (or no) rules.
@@ -2843,6 +2846,7 @@ private var wearAutoLaunchOnConnect = true
         flushTelemetryDiagnostics("stop")
         configController.onSessionTerminated("Board session stopped during Refloat config op")
         val stoppedConfig = boardConfig
+        val wasReplay = replayTransport != null || stoppedConfig?.replayRecordingName != null
         reconnectScheduler.cancelAndReset()
         cancelBoardReadyTimeout()
         stopPolling()
@@ -2896,10 +2900,8 @@ private var wearAutoLaunchOnConnect = true
         // The session is gone, so the grace it owned goes with it, and demand is re-resolved without
         // it: a replay hands position back to the live monitor here, and a live session that was the
         // only reason GPS was running lets it stand down.
-        // TODO(android parity): the replay's recorded fixes are left in `locationTracker`, so the
-        // live map inherits the recorded track until the next fix. iOS drops them here — see
-        // `releaseGpsFromSession` in the peer.
         // @parity /modules/vescape-core/ios/connection/BoardSessionController.swift `releaseGpsFromSession`
+        if (wasReplay) locationTracker.clearReplayLocations()
         clearDropoutGrace()
         // Idle repaint (title + Connect action) rides on the phase transition, like every other
         // phase change — see [refreshNotification].
@@ -3443,6 +3445,10 @@ private var wearAutoLaunchOnConnect = true
         mainHandler.post { latestRiderPresence()?.let(groupRideObserver::pushPresence) }
     }
 
+    /**
+     * Status events carry latest fixes only; getLiveState includes the retained windows.
+     * @parity /modules/vescape-core/ios/VescapeCoreModule.swift `liveState`
+     */
     fun liveStateMap(includeRecent: Boolean = false): Map<String, Any?> {
         val settings = kotlinx.coroutines.runBlocking {
             AppDataRepository.get(service.applicationContext).getTypedSettings()

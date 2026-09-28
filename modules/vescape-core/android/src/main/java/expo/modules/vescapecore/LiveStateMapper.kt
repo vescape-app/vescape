@@ -59,6 +59,10 @@ internal fun remoteTiltWire(
     }
 }
 
+/**
+ * @parity /modules/vescape-core/ios/VescapeCoreModule.swift `liveState`
+ * @parity /modules/vescape-core/src/index.ts `LiveStateEvent`
+ */
 internal fun buildLiveState(snapshot: VescLiveStateSnapshot): Map<String, Any?> =
     mapOf(
         "board" to mapOf(

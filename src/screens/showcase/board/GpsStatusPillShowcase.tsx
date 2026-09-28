@@ -5,8 +5,11 @@ import type { GpsPhase, LocationEvent } from 'vescape-core'
 import { Text } from '@/components/base/Text'
 import { ShowcaseCard } from '@/components/dev/ShowcaseCard'
 import { ChipRow, ToggleRow } from '@/components/dev/ShowcaseControls'
-import { GpsStatusPill } from '@/modules/board/components/GpsStatusPill'
-import { deriveGpsStatusBadge, GPS_STALE_FIX_TIMEOUT_MS } from '@/modules/board/lib/gpsStatusBadge'
+import { GpsStatusPill } from '@/modules/location/components/GpsStatusPill'
+import {
+  deriveGpsStatusBadge,
+  GPS_STALE_FIX_TIMEOUT_MS,
+} from '@/modules/location/lib/gpsStatusBadge'
 import { theme } from '@/constants/theme'
 
 const NOW = 1_700_000_000_000

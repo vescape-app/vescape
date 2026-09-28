@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 
-import { deriveGpsStatusBadge, type GpsStatusBadge } from '@/modules/board/lib/gpsStatusBadge'
-import { useBleStore } from '@/modules/board/store/bleStore'
+import { deriveGpsStatusBadge, type GpsStatusBadge } from '@/modules/location/lib/gpsStatusBadge'
+import { useLocationStore } from '@/modules/location/store/locationStore'
 
 /**
  * Fast enough that "GPS signal lost" appears close to the 30 s window it describes, slow enough to
@@ -14,9 +14,9 @@ const AGE_TICK_MS = 5_000
  * the age of the latest fix has to be recomputed here, and only while one exists to go stale.
  */
 export function useGpsStatusBadge(enabled = true): GpsStatusBadge | null {
-  const phase = useBleStore((s) => s.gpsStatus)
+  const phase = useLocationStore((s) => s.gpsStatus)
   // Freshness beats precision for "is GPS delivering": the approximate fix is always the newest one.
-  const latestFix = useBleStore((s) => s.latestApproximateLocation)
+  const latestFix = useLocationStore((s) => s.latestApproximateLocation)
   const [nowMs, setNowMs] = useState(() => Date.now())
 
   const ticking = enabled && phase === 'active' && latestFix !== null

@@ -2,9 +2,8 @@ import { useEffect } from 'react'
 import { StyleSheet, View } from 'react-native'
 
 import { useBoardStore } from '@/modules/board/store/boardStore'
-import { useBleStore } from '@/modules/board/store/bleStore'
+import { refreshGpsDemand } from '@/bootstrap/liveStateSync'
 import { usePermissions } from '@/modules/settings/hooks/usePermissions'
-import { useBleAppLifecycle } from '@/modules/board/hooks/useBleAppLifecycle'
 import { useBoardConnection } from '@/modules/board/hooks/useBoardConnection'
 import { MainScreen } from '@/screens/main/MainScreen'
 import { theme } from '@/constants/theme'
@@ -12,12 +11,9 @@ import { theme } from '@/constants/theme'
 export default function IndexRoute() {
   const load = useBoardStore((s) => s.load)
   const boardsLoaded = useBoardStore((s) => s.hasLoaded)
-  const refreshGpsDemand = useBleStore((s) => s.refreshGpsDemand)
   const { status: permStatus, request } = usePermissions()
 
   const connection = useBoardConnection()
-
-  useBleAppLifecycle()
 
   useEffect(() => {
     void load()
@@ -33,7 +29,7 @@ export default function IndexRoute() {
     if (permStatus === 'granted') {
       refreshGpsDemand()
     }
-  }, [permStatus, refreshGpsDemand])
+  }, [permStatus])
 
   return (
     <View style={styles.container}>

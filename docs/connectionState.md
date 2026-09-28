@@ -27,7 +27,13 @@ it does not rewrite persisted versions or change Tune Compatibility keys.
 
 ## Shape
 
-Native emits `onLiveState` and exposes `getLiveState()`:
+Native emits `onLiveState` and exposes `getLiveState()`. Both platforms use the same history
+contract: `getLiveState()` includes the retained `recentTelemetry` and `recentLocations` windows;
+`onLiveState` status events carry empty history arrays, including storage-failure events. The arrays
+in an event mean history was omitted, not cleared. JS merges the latest GPS fixes from events and
+replaces its history only from an explicit snapshot. Replay teardown still clears replay fixes.
+
+The shared shape is:
 
 ```ts
 type LiveState = {
@@ -151,13 +157,21 @@ says what they cost, and therefore why they flow at all.
 
 ## JS role
 
-`src/modules/board/store/bleStore.ts` mirrors native state:
+`src/bootstrap/liveStateSync.ts` owns the combined native status and location subscriptions at
+app root, independently of the active screen. Startup, foreground entry, and retention-setting
+changes restore both mirrors from one `getLiveState()` snapshot.
 
-- `syncNativeState()` reads `getLiveState()`
-- `onLiveState` replaces lifecycle status
-- `onTelemetry` appends telemetry only when `connectionSeq` matches
-- `onLocation` appends GPS fixes
-- foreground restore hydrates recent telemetry from native `getLiveState()`
+- `bleStore` and `liveTelemetryRuntime` mirror board, scan, recording, and board telemetry state.
+  Board connection changes reset only board presentation; scalar ticks remain on SharedValues.
+- `src/modules/location/store/locationStore.ts` owns the JS GPS status, latest fix, and precise
+  trail. `onLocation` publishes on a separate one-second cadence. Approximate fixes update the
+  position marker without entering the precise trail.
+- Full snapshots replace each domain's retained history, including an empty native window.
+  Status events merge latest GPS fixes and never interpret omitted history as a clear command.
+- Entering, leaving, or switching debug replay resets both mirrors before applying native state,
+  so replay coordinates cannot join the real trail.
+- Board connect/disconnect and GPS permission refresh do not own the location subscription.
+  Background collection and GPS power decisions stay native on both platforms.
 
 Commands call native only:
 

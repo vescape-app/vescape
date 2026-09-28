@@ -972,6 +972,12 @@ export interface RemoteTiltState {
   decay?: RemoteTiltDecay
 }
 
+/**
+ * Both platforms include recentTelemetry/recentLocations only in getLiveState() snapshots.
+ * onLiveState status events carry empty history arrays; they do not clear retained JS history.
+ * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/LiveStateMapper.kt `buildLiveState`
+ * @parity /modules/vescape-core/ios/VescapeCoreModule.swift `liveState`
+ */
 export interface LiveStateEvent {
   board: {
     phase: BoardPhase

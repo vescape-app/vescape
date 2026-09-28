@@ -105,6 +105,17 @@ internal class LocationTracker(
         }
     }
 
+    /**
+     * Clear fixes and course when entering or leaving replay, retaining the persistence throttle.
+     * @parity /modules/vescape-core/ios/location/LocationTracker.swift `clearReplayLocations`
+     */
+    fun clearReplayLocations() {
+        latestLocation = null
+        latestPreciseLocation = null
+        courseDeriver.reset()
+        recentLocations.clear()
+    }
+
     // @parity /modules/vescape-core/ios/location/LastGpsLocationPersistence.swift `onLocationUpdated`
     private fun persistLastGpsLocation(location: LocationSnapshot) {
         val now = System.currentTimeMillis()

@@ -4,7 +4,7 @@ import { Pressable, StyleSheet, View, type StyleProp, type ViewStyle } from 'rea
 import { Text } from '@/components/base/Text'
 import { theme } from '@/constants/theme'
 import { useResolvedNeutralColors } from '@/hooks/useTheme'
-import type { GpsStatusBadge } from '@/modules/board/lib/gpsStatusBadge'
+import type { GpsStatusBadge } from '@/modules/location/lib/gpsStatusBadge'
 
 /**
  * Why the position on screen cannot be trusted, in the fewest possible pixels. It only ever renders

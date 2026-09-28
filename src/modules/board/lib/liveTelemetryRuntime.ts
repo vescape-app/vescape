@@ -1,20 +1,8 @@
 import { makeMutable, type SharedValue } from 'react-native-reanimated'
 import { scheduleOnUI } from 'react-native-worklets'
-import type { LiveStateEvent, LocationEvent, TelemetryEvent } from 'vescape-core'
+import type { LiveStateEvent, TelemetryEvent } from 'vescape-core'
 
-import {
-  appendLocationSample,
-  appendTelemetrySample,
-  clearLiveMetricBuffer,
-  clearLiveTelemetryBuffer,
-  createLiveMetricBuffer,
-  getLatestApproximateGps,
-  getLatestTelemetry,
-  summarizeLiveStatus,
-  type LiveStatusSummary,
-} from '@/modules/board/lib/liveMetricHistory'
 import { finite, absolute } from '@/helpers/finite'
-import { getLiveWindowMs } from '@/modules/settings/store/settingsStore'
 
 interface LiveTelemetryValues {
   speedKmh: SharedValue<number | null>
@@ -35,7 +23,7 @@ interface LiveTelemetryValues {
   pullRateHz: SharedValue<number | null>
 }
 
-/** Plain scalar bundle shipped to the UI thread in one hop, instead of 13 separate SharedValue writes. */
+/** Plain scalar bundle shipped to the UI thread in one hop, instead of separate SharedValue writes. */
 type TickScalars = Record<keyof LiveTelemetryValues, number | null>
 
 const EMPTY_TICK: TickScalars = {
@@ -57,33 +45,13 @@ const EMPTY_TICK: TickScalars = {
   pullRateHz: null,
 }
 
-interface LiveTelemetrySnapshot {
-  liveLocationHistory: LocationEvent[]
-  latestApproximateLocation: LocationEvent | null
-  liveStatus: LiveStatusSummary
-}
-
 export interface LiveTelemetryRuntime {
   values: LiveTelemetryValues
   syncConnectionSeq: (connectionSeq: number) => void
-  seedFromLiveState: (state: LiveStateEvent) => LiveTelemetrySnapshot
-  /** Hot path: per-frame scalar tick. Updates live SharedValues only — no buffer, no snapshot. */
+  seedFromBoardState: (state: LiveStateEvent['board']) => void
+  /** Per-frame presentation values; native owns telemetry history and series. */
   ingestTick: (tick: TelemetryEvent) => void
-  /** Cold path: batched full samples into the history buffer. Returns last accepted lastPacketAt, or null. */
-  ingestHistoryBatch: (samples: TelemetryEvent[]) => number | null
-  ingestLocation: (location: LocationEvent) => void
-  /** Clears board-derived readouts while retaining phone GPS live state. */
-  clearBoardTelemetry: () => LiveTelemetrySnapshot
-  reset: () => LiveTelemetrySnapshot
-  getSnapshot: () => LiveTelemetrySnapshot
-  consumePendingSnapshot: () => LiveTelemetrySnapshot | null
-  getVersion: () => number
-  getTelemetry: () => TelemetryEvent[]
-  getLocations: () => LocationEvent[]
-}
-
-interface LiveTelemetryRuntimeOptions {
-  windowMs: () => number
+  reset: () => void
 }
 
 function dutyPercent(value: number | null | undefined): number | null {
@@ -134,14 +102,11 @@ function tickScalars(telemetry: TelemetryEvent): TickScalars {
   }
 }
 
-export function createLiveTelemetryRuntime({
-  windowMs,
-}: LiveTelemetryRuntimeOptions): LiveTelemetryRuntime {
-  const buffer = createLiveMetricBuffer()
+export function createLiveTelemetryRuntime(): LiveTelemetryRuntime {
   const values = createValues()
 
-  // One UI-thread worklet assigns all 13 SharedValues. Only the scalar bundle crosses the
-  // JS→UI boundary (a single serialization per frame) instead of 13 separate `.value=` hops
+  // One UI-thread worklet assigns all SharedValues. Only the scalar bundle crosses the
+  // JS→UI boundary (a single serialization per frame) instead of separate `.value=` hops
   // on the JS thread, which were the dominant live-telemetry cost (createSerializable + GC).
   function applyTick(next: TickScalars): void {
     'worklet'
@@ -168,79 +133,21 @@ export function createLiveTelemetryRuntime({
   }
 
   let connectionSeq = 0
-  let pendingSnapshot = false
-  let version = 0
-  let snapshot: LiveTelemetrySnapshot = {
-    liveLocationHistory: [],
-    latestApproximateLocation: null,
-    liveStatus: summarizeLiveStatus(buffer),
-  }
-
-  function publishSnapshot(): LiveTelemetrySnapshot {
-    version += 1
-    snapshot = {
-      liveLocationHistory: [...buffer.locations],
-      latestApproximateLocation: getLatestApproximateGps(buffer),
-      liveStatus: summarizeLiveStatus(buffer),
-    }
-    return snapshot
-  }
-
-  function appendTelemetryAndLocation(telemetry: TelemetryEvent): void {
-    appendTelemetrySample(buffer, telemetry, windowMs())
-    if (telemetry.location) {
-      appendLocationSample(buffer, telemetry.location, windowMs())
-    }
-  }
-
-  function markPending(): void {
-    pendingSnapshot = true
-  }
-
-  function consumePendingSnapshot(): LiveTelemetrySnapshot | null {
-    if (!pendingSnapshot) return null
-    pendingSnapshot = false
-    return publishSnapshot()
-  }
 
   return {
     values,
-
-    getVersion() {
-      return version
-    },
-
-    getTelemetry() {
-      return buffer.telemetry
-    },
-
-    getLocations() {
-      return buffer.locations
-    },
 
     syncConnectionSeq(nextConnectionSeq) {
       connectionSeq = nextConnectionSeq
     },
 
-    seedFromLiveState(state) {
-      connectionSeq = state.board.connectionSeq
-      clearLiveMetricBuffer(buffer)
-
-      for (const telemetry of state.board.recentTelemetry) {
-        appendTelemetryAndLocation(telemetry)
+    seedFromBoardState(state) {
+      connectionSeq = state.connectionSeq
+      let latest: TelemetryEvent | null = null
+      for (const telemetry of state.recentTelemetry) {
+        if (latest === null || telemetry.lastPacketAt > latest.lastPacketAt) latest = telemetry
       }
-      const approximateFix = state.gps.latestApproximateFix ?? state.gps.latestFix
-      if (approximateFix) {
-        appendLocationSample(buffer, approximateFix, windowMs())
-      }
-      for (const location of state.gps.recentLocations) {
-        appendLocationSample(buffer, location, windowMs())
-      }
-
-      const latestTelemetry = getLatestTelemetry(buffer)
-      pushTick(latestTelemetry ? tickScalars(latestTelemetry) : EMPTY_TICK)
-
-      return publishSnapshot()
+      pushTick(latest ? tickScalars(latest) : EMPTY_TICK)
     },
 
     ingestTick(tick) {
@@ -248,43 +155,10 @@ export function createLiveTelemetryRuntime({
       pushTick(tickScalars(tick))
     },
 
-    ingestHistoryBatch(samples) {
-      let lastAccepted: number | null = null
-      for (const sample of samples) {
-        if (sample.generation != null && sample.generation !== connectionSeq) continue
-        appendTelemetryAndLocation(sample)
-        lastAccepted = sample.lastPacketAt
-      }
-      if (lastAccepted == null) return null
-      markPending()
-      return lastAccepted
-    },
-
-    ingestLocation(location) {
-      appendLocationSample(buffer, location, windowMs())
-      markPending()
-    },
-
-    clearBoardTelemetry() {
-      clearLiveTelemetryBuffer(buffer)
-      pushTick(EMPTY_TICK)
-      pendingSnapshot = false
-      return publishSnapshot()
-    },
-
     reset() {
-      clearLiveMetricBuffer(buffer)
       pushTick(EMPTY_TICK)
-      pendingSnapshot = false
-      return publishSnapshot()
     },
-
-    getSnapshot() {
-      return snapshot
-    },
-
-    consumePendingSnapshot,
   }
 }
 
-export const liveTelemetryRuntime = createLiveTelemetryRuntime({ windowMs: getLiveWindowMs })
+export const liveTelemetryRuntime = createLiveTelemetryRuntime()

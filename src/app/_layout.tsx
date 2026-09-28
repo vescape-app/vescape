@@ -22,6 +22,7 @@ import { initSentry } from '@/config/sentry'
 import { stackScreens } from '@/navigation/routes'
 import { startAccessoryStateMirror } from '@/modules/accessories/store/accessoryStore'
 import { startAlertsBoardSync } from '@/bootstrap/alertsBoardSync'
+import { startLiveStateSync } from '@/bootstrap/liveStateSync'
 import { startAppDataSync } from '@/bootstrap/appDataSync'
 import { useSessionFixtures } from '@/bootstrap/sessionFixtures'
 import { startBoardConfigValuesSync } from '@/modules/board/store/boardConfigValuesStore'
@@ -100,6 +101,7 @@ function RootLayout() {
     void useRiderStore.getState().load()
     setGroupRideSoundPlayer(playSelectedAppSound)
     useGroupRideStore.getState().startObserving()
+    const stopLiveStateSync = startLiveStateSync()
     const stopAppDataSync = startAppDataSync()
     const stopBoardWarningsSync = startBoardWarningsSync()
     const stopVescFaultsSync = startVescFaultsSync()
@@ -115,6 +117,7 @@ function RootLayout() {
     return () => {
       useGroupRideStore.getState().stopObserving()
       setGroupRideSoundPlayer(null)
+      stopLiveStateSync()
       stopAppDataSync()
       stopBoardWarningsSync()
       stopVescFaultsSync()
