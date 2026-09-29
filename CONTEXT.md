@@ -319,6 +319,10 @@ _Avoid_: Wear Mirror (bakes in Google's Wear OS brand; use for the Android impl 
 The compact, throttled telemetry snapshot the phone pushes to a **Watch Mirror** to drive its display. Distinct from a **Telemetry Sample** (raw, per-packet) and from **Live State** (the full app snapshot sent to JS).
 _Avoid_: Watch payload, wear message
 
+**Group Ride Frame**:
+The compact snapshot of a joined **Group Ride** the phone pushes to a **Watch Mirror**: the Rider's own course and, for every other **Rider**, where they are relative to the Rider plus the few facts worth a glance. Independent of the **Watch Frame**, so it flows with or without a **Board Session**.
+_Avoid_: Group watch payload, roster push, rider feed
+
 **Board Warning**:
 An app-detected abnormal Board condition worth the rider's attention — such as excessive cell-voltage spread, unstable telemetry readings, or a dangerous VESC/Refloat setting. Detected natively, keyed one-per-problem-kind per Board (re-detection updates the same warning rather than duplicating it), and carries a severity of warn or critical. Stored durably like automotive fault codes: it clears automatically when its detector re-evaluates with real data and the condition is gone, and the rider may clear it manually — but a still-true condition simply re-fires it. Detection logic is app-authored (unlike a rider-authored **Alert Rule**) and the finding is rider-facing (unlike a debug-facing **Diagnostic Event**).
 _Avoid_: Board alert (collides with Alert Rule), fault (reserved for VESC firmware fault codes), board issue, health event
@@ -408,7 +412,7 @@ An optional online identity that never gates the app's local, offline-first capa
 _Avoid_: Rider profile, User, Profile
 
 **Rider Presence**:
-A **Rider's** live shared snapshot within a **Group Ride**: location and heading from the phone **GPS Fix**, plus optional speed and **Battery SoC Estimate** when a **Board Session** is live. Ephemeral and server-relayed, never persisted on phone or server, suppressed while the Rider is inside a **Privacy Zone**. A Rider with no recent Rider Presence goes stale, then drops from the Group Ride.
+A **Rider's** live shared snapshot within a **Group Ride**: location and heading from the phone **GPS Fix**, the phone's own battery, their **Direction Point** when set, plus optional speed, **Battery SoC Estimate**, motor and controller temperatures and Board name when a **Board Session** is live. Ephemeral and server-relayed, never persisted on phone or server, suppressed while the Rider is inside a **Privacy Zone**. A Rider with no recent Rider Presence goes stale, then drops from the Group Ride.
 _Avoid_: Position update, presence ping, location share, group telemetry
 
 ## Relationships
@@ -523,7 +527,9 @@ _Avoid_: Position update, presence ping, location share, group telemetry
 - A speed **Alert Preset** resolves its km/h thresholds from **Board Top Speed**; changing **Board Top Speed** regenerates the speed preset's **Alert Rules**.
 - An **Alert Message Template** belongs to one **Alert Rule**.
 - A **Watch Mirror** receives **Watch Frames** from the phone and can send rider commands and its own awake state back; it is not a **Board**, a **Board Session**, or a source of **Telemetry Samples**.
-- A **Watch Frame** is derived from **Live State** and is only pushed while a **Board Session** is producing **Telemetry Samples**.
+- A **Watch Frame** is derived from **Live State** and is pushed whenever the phone feeds an awake **Watch Mirror**, with or without a **Board Session**; without one its Board readings are empty (ADR 0039).
+- A **Group Ride Frame** is derived from the joined **Group Ride**'s **Rider Presences** and is only pushed while the Rider is joined and the **Watch Mirror** is awake.
+- A **Watch Mirror** shows the **Group Ride** its Rider has joined whether or not a **Board Session** is live. Without Board telemetry its gauges show no reading rather than a "Board not connected" notice; a missing phone link is still said.
 - An **App Setting** affects app behavior and is not part of a **Tune Profile** or **Board** identity.
 - A **Release Policy** may issue an **Update Warning**, impose an **Online Block**, or impose an **App Block** for affected app versions.
 - An **Update Warning** does not change local or online capability availability.
@@ -535,7 +541,7 @@ _Avoid_: Position update, presence ping, location share, group telemetry
 - A **Group Ride** contains zero or more **Riders** and exists only while at least one **Rider** is present; it owns no durable truth and is never written to **Ride History**.
 - A **Rider** may be in at most one **Group Ride** at a time and is identified independently of any **Board**.
 - A **Vescape Account** is independent of a **Rider** and may enable optional online services such as backup, sync, or paid entitlements, but is not required to use local Boards, Ride Recording, Ride History, or tuning.
-- A **Rider Presence** belongs to one **Rider** in one **Group Ride**, derives location from a **GPS Fix** and optional speed/**Battery SoC Estimate** from a live **Board Session**, and is not produced while the Rider is inside a **Privacy Zone**.
+- A **Rider Presence** belongs to one **Rider** in one **Group Ride**, derives location from a **GPS Fix** and optional speed, **Battery SoC Estimate** and temperatures from a live **Board Session**, and is not produced while the Rider is inside a **Privacy Zone**.
 - A **Group Ride** requires only a phone **GPS Fix** to join; a **Board Session** is optional and only enriches a **Rider Presence**, never gates it.
 
 ## Example Dialogue
