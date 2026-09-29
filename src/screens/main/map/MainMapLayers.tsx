@@ -8,6 +8,7 @@ import { PrivacyZonesMapLayer } from '@/modules/history/components/PrivacyZonesM
 import { LegalLimitsMapLayer } from '@/modules/legal/components/LegalLimitsMapLayer'
 import { MapPin } from '@/modules/map/components/MapPin'
 import { MAP_DEFAULTS } from '@/modules/map/constants/mapStyles'
+import { useSettingsStore } from '@/modules/settings/store/settingsStore'
 import { getMapPointKindIcon } from '@/modules/map-points/constants/mapPointIcons'
 import { RadarRangeRings } from '@/modules/weather/components/RadarRangeRings'
 import { RainViewerOverlay } from '@/modules/weather/components/RainViewerOverlay'
@@ -20,6 +21,9 @@ import {
   DESTINATION_POINT_TEXT_COLOR,
 } from '@/screens/main/map/offscreenMapIndicators'
 import type { MainMapLayersProps } from '@/screens/main/map/mainMapLayerTypes'
+
+// Ride History Markers are diagnostic detail; the history route stays clean unless they are opted in.
+const NO_MARKERS: MainMapLayersProps['rideMarkers'] = []
 
 export { HistoryMapLayers }
 
@@ -99,6 +103,7 @@ export function MainMapLayers(props: MainMapLayersProps) {
     onSelectLegalCountry,
   } = props
   const riderColor = useRiderStore((state) => state.riderColor)
+  const showHistoryMapMarkers = useSettingsStore((state) => state.showHistoryMapMarkers)
 
   return (
     <>
@@ -113,7 +118,7 @@ export function MainMapLayers(props: MainMapLayersProps) {
           rideRoute={props.rideRoute}
           rideTelemetrySamples={props.rideTelemetrySamples}
           activeHistoryMapMetric={props.activeHistoryMapMetric}
-          rideMarkers={props.rideMarkers}
+          rideMarkers={showHistoryMapMarkers ? props.rideMarkers : NO_MARKERS}
           rideGpsSamples={props.rideGpsSamples}
           mediaAssets={props.mediaAssets}
           favoriteRanges={props.favoriteRanges}

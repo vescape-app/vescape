@@ -1551,6 +1551,8 @@ export interface AppSettings {
   satelliteImagerySaturation: number
   /** Hide POI names and icons on the telemetry/home map. Explore keeps map details visible. */
   hideTelemetryMapDetails: boolean
+  /** Draw Ride History Markers (pauses, connection changes, errors, gaps) on the history route. */
+  showHistoryMapMarkers: boolean
   mapOrientationMode: 'northUp' | 'gpsHeading' | 'phoneHeading' | 'freeRotate'
   historyMetricGradientsEnabled: boolean
   historyMetricHotRanges: Partial<

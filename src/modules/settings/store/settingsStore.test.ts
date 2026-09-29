@@ -24,6 +24,7 @@ const BASE: AppSettings = {
   satelliteMapImageryOpacity: 1,
   satelliteImagerySaturation: -0.35,
   hideTelemetryMapDetails: true,
+  showHistoryMapMarkers: false,
   mapOrientationMode: 'northUp',
   historyMetricGradientsEnabled: true,
   historyMetricHotRanges: { battery: { start: 0, end: 1 } },

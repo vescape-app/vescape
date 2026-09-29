@@ -642,6 +642,7 @@ final class AppDataRepository {
     "satelliteMapImageryOpacity": 1.0,
     "satelliteImagerySaturation": -0.35,
     "hideTelemetryMapDetails": true,
+    "showHistoryMapMarkers": false,
     "telemetryPollRateHz": 20,
     "wearPushRateHz": defaultWearPushRateHz,
     // @platform-diff Opening the Mirror when a board connects is Android-only: watchOS has no

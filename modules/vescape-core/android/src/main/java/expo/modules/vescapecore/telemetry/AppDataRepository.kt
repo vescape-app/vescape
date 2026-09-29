@@ -427,6 +427,7 @@ class AppDataRepository private constructor(private val context: Context) {
       satelliteMapImageryOpacity = req("satelliteMapImageryOpacity", 1.0, ::validSatelliteImageryOpacity),
       satelliteImagerySaturation = req("satelliteImagerySaturation", -0.35, ::validSatelliteImagerySaturation),
       hideTelemetryMapDetails = req("hideTelemetryMapDetails", true) { it as? Boolean },
+      showHistoryMapMarkers = req("showHistoryMapMarkers", false) { it as? Boolean },
       mapOrientationMode = req("mapOrientationMode", "northUp", ::validMapOrientationMode),
       historyMetricGradientsEnabled = req("historyMetricGradientsEnabled", true) { it as? Boolean },
       historyMetricHotRanges = req("historyMetricHotRanges", DEFAULT_HISTORY_METRIC_HOT_RANGES, ::validHistoryMetricHotRanges),
@@ -510,6 +511,7 @@ class AppDataRepository private constructor(private val context: Context) {
       "satelliteImagerySaturation" ->
         validSatelliteImagerySaturation(value) ?: return@withContext
       "hideTelemetryMapDetails" -> value as? Boolean ?: return@withContext
+      "showHistoryMapMarkers" -> value as? Boolean ?: return@withContext
       "mapOrientationMode" ->
         validMapOrientationMode(value) ?: return@withContext
       "historyMetricGradientsEnabled" -> value as? Boolean ?: return@withContext
@@ -575,6 +577,7 @@ class AppDataRepository private constructor(private val context: Context) {
         "satelliteMapImageryOpacity" -> d.satelliteMapImageryOpacity
         "satelliteImagerySaturation" -> d.satelliteImagerySaturation
         "hideTelemetryMapDetails" -> d.hideTelemetryMapDetails
+        "showHistoryMapMarkers" -> d.showHistoryMapMarkers
         "mapOrientationMode" -> d.mapOrientationMode
         "historyMetricGradientsEnabled" -> d.historyMetricGradientsEnabled
         "historyMetricHotRanges" -> d.historyMetricHotRanges
@@ -952,6 +955,7 @@ fun AppSettings.toMap(): Map<String, Any?> = mapOf(
   "satelliteMapImageryOpacity" to satelliteMapImageryOpacity,
   "satelliteImagerySaturation" to satelliteImagerySaturation,
   "hideTelemetryMapDetails" to hideTelemetryMapDetails,
+  "showHistoryMapMarkers" to showHistoryMapMarkers,
   "mapOrientationMode" to mapOrientationMode,
   "historyMetricGradientsEnabled" to historyMetricGradientsEnabled,
   "historyMetricHotRanges" to historyMetricHotRanges,
