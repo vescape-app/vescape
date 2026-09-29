@@ -7,6 +7,8 @@ import SwiftUI
 /// @parity /watch/wearos/src/main/java/app/vescape/wear/GroupRideLayer.kt `GroupRideLayer`
 struct GroupRideLayer: View {
   let group: WatchGroupRide
+  let mapView: WatchMapView
+  let mapMoving: Bool
   let drawOwnRing: Bool
   let ownColor: Color
   /// Nav-focus progress: the dots grow and the labels fade in as the nav page takes the screen.
@@ -14,10 +16,9 @@ struct GroupRideLayer: View {
   var unitSystem: String = "metric"
 
   var body: some View {
-    StalePulse(group: group) { context, size, staleOpacity in
-      let map = WatchMapProjection(size: size, spanM: group.spanM, courseDeg: group.courseDeg)
+    GroupRideCanvas(group: group, mapView: mapView, mapMoving: mapMoving) { context, map, staleOpacity in
       if drawOwnRing { context.drawRiderDot(at: map.rider, color: ownColor) }
-      let marks = map.marks(for: group.riders, sizes: groupRideMarkSizes(size: size, focus: focus))
+      let marks = map.marks(for: group.riders, sizes: groupRideMarkSizes(size: map.size, focus: focus))
       for mark in marks where mark.kind == .dot {
         let opacity = mark.rider.stale ? staleOpacity : 1
         context.fill(circle(mark.point, mark.size + GROUP_OUTLINE), with: .color(GROUP_OUTLINE_COLOR.opacity(opacity)))
@@ -40,14 +41,15 @@ struct GroupRideLayer: View {
 /// @parity /watch/wearos/src/main/java/app/vescape/wear/GroupRideLayer.kt `GroupRideEdgeLayer`
 struct GroupRideEdgeLayer: View {
   let group: WatchGroupRide
+  let mapView: WatchMapView
+  let mapMoving: Bool
   /// Nav-focus progress: the labels fade in as the nav page takes the screen.
   var focus: Double = 0
   var unitSystem: String = "metric"
 
   var body: some View {
-    StalePulse(group: group) { context, size, staleOpacity in
-      let map = WatchMapProjection(size: size, spanM: group.spanM, courseDeg: group.courseDeg)
-      let marks = map.marks(for: group.riders, sizes: groupRideMarkSizes(size: size, focus: focus))
+    GroupRideCanvas(group: group, mapView: mapView, mapMoving: mapMoving) { context, map, staleOpacity in
+      let marks = map.marks(for: group.riders, sizes: groupRideMarkSizes(size: map.size, focus: focus))
       for mark in marks where mark.kind == .triangle {
         let opacity = mark.rider.stale ? staleOpacity : 1
         let path = triangle(mark)
@@ -194,19 +196,27 @@ func groupRideMarkSizes(size: CGSize, focus: Double) -> WatchGroupRideMarkSizes 
   )
 }
 
-/// A canvas handed a stale Rider's opacity. Its timeline runs only while `group` has a stale Rider;
-/// the caller draws nothing in ambient, so ambient never animates. Both layers take their phase from
-/// the same clock, so a stale dot and a stale triangle pulse together.
+/// A canvas handed the map as the route is drawn this frame, and a stale Rider's opacity. Its
+/// timeline runs only while `group` has a stale Rider or the map is easing; the caller draws nothing
+/// in ambient, so ambient never animates. Both layers take their phase from the same clock, so a
+/// stale dot and a stale triangle pulse together.
 ///
 /// @parity /watch/wearos/src/main/java/app/vescape/wear/GroupRideLayer.kt `rememberStalePulse`
-private struct StalePulse: View {
+private struct GroupRideCanvas: View {
   let group: WatchGroupRide
-  let draw: (inout GraphicsContext, CGSize, Double) -> Void
+  let mapView: WatchMapView
+  let mapMoving: Bool
+  let draw: (inout GraphicsContext, WatchMapProjection, Double) -> Void
 
   var body: some View {
-    TimelineView(.animation(paused: !group.riders.contains(where: \.stale))) { timeline in
+    let pulsing = group.riders.contains(where: \.stale)
+    TimelineView(.animation(paused: !pulsing && !mapMoving)) { timeline in
       let opacity = staleOpacity(at: timeline.date)
-      Canvas { context, size in draw(&context, size, opacity) }
+      let at = mapMoving ? timeline.date : .distantFuture
+      Canvas { context, size in
+        let map = WatchMapProjection(size: size, spanM: mapView.spanM(at: at), courseDeg: mapView.courseDeg(at: at))
+        draw(&context, map, opacity)
+      }
     }
     .allowsHitTesting(false)
   }

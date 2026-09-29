@@ -48,6 +48,11 @@ struct FrameLayout: View {
   var navArrowEnabled: Bool = false
   var unitSystem: String = "metric"
 
+  /// One eased zoom and course for every map layer, so the Group Ride marks sit where the route is
+  /// drawn mid-zoom and mid-turn. `mapMoving` holds while it eases, and runs the layers' timelines.
+  @State private var mapView = WatchMapView(spanM: WatchMapProjection.clampedSpanM(nil), courseDeg: nil)
+  @State private var mapMoving = false
+
   /// Readouts retreat for any page; this is the one the existing layout animates against.
   private var focus: Double { max(navFocus, awayFocus) }
 
@@ -64,6 +69,19 @@ struct FrameLayout: View {
     return (bearing, distance)
   }
 
+  /// What the map eases towards: Navigation's lanes, else the Group Ride's own. The Group Ride's
+  /// course already holds across a stop; a nil frame course holds too.
+  private var mapTarget: MapTarget {
+    if navLanes == nil, let groupRide {
+      return MapTarget(spanM: WatchMapProjection.clampedSpanM(groupRide.spanM), courseDeg: groupRide.courseDeg)
+    }
+    return MapTarget(spanM: WatchMapProjection.clampedSpanM(frame.routeSpanM), courseDeg: frame.courseDeg)
+  }
+
+  /// Nothing draws the map in ambient or with neither Navigation nor a Group Ride, so it lands
+  /// there instead of easing.
+  private var mapAnimates: Bool { !ambient.active && (navLanes != nil || groupRide != nil) }
+
   var body: some View {
     // A stale frame in ambient is the one case with nothing to say: the readings it would keep are
     // exactly the ones that have stopped arriving, so ambient empties every lane instead.
@@ -78,6 +96,8 @@ struct FrameLayout: View {
           route: route,
           generation: routeGeneration,
           frame: frame,
+          mapView: mapView,
+          mapMoving: mapMoving,
           focus: navFocus,
           color: muted ? Palette.dimText : navColor
         )
@@ -88,6 +108,8 @@ struct FrameLayout: View {
       if let groupRide, !ambient.active {
         GroupRideLayer(
           group: groupRide,
+          mapView: mapView,
+          mapMoving: mapMoving,
           drawOwnRing: navLanes == nil,
           ownColor: muted ? Palette.dimText : navColor,
           focus: navFocus,
@@ -155,11 +177,30 @@ struct FrameLayout: View {
 
       // Group Ride edge triangles: over the rim gauges. Hidden in ambient.
       if let groupRide, !ambient.active {
-        GroupRideEdgeLayer(group: groupRide, focus: navFocus, unitSystem: unitSystem)
+        GroupRideEdgeLayer(
+          group: groupRide, mapView: mapView, mapMoving: mapMoving, focus: navFocus, unitSystem: unitSystem
+        )
           .opacity(navStackAlpha)
       }
     }
     .ignoresSafeArea()
+    .onAppear { retargetMap(animate: false) }
+    .onChange(of: mapTarget) { retargetMap(animate: mapAnimates) }
+    // Stops the layers' timelines once the map has landed, so a still map never redraws.
+    .task(id: mapView.settlesAt) {
+      let remaining = mapView.settlesAt.timeIntervalSinceNow
+      if remaining > 0 {
+        try? await Task.sleep(for: .seconds(remaining))
+        if Task.isCancelled { return }
+      }
+      mapMoving = false
+    }
+  }
+
+  private func retargetMap(animate: Bool) {
+    let now = Date()
+    mapView.retarget(spanM: mapTarget.spanM, courseDeg: mapTarget.courseDeg, at: now, animate: animate)
+    mapMoving = mapView.settlesAt > now
   }
 
   // MARK: - Rim
@@ -348,3 +389,9 @@ private let HERO_FOCUS_SHRINK = 0.12
 private let BATTERY_FOCUS_DROP: CGFloat = 18
 /// @parity /watch/wearos/src/main/java/app/vescape/wear/FrameGauges.kt `TEMP_FOCUS_SPREAD`
 private let TEMP_FOCUS_SPREAD = 0.06
+
+/// What ``FrameLayout``'s map eases towards.
+private struct MapTarget: Equatable {
+  let spanM: Double
+  let courseDeg: Double?
+}

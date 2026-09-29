@@ -1,9 +1,7 @@
 package app.vescape.wear
 
 import androidx.compose.animation.core.Animatable
-import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.LinearEasing
-import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.layout.fillMaxSize
@@ -12,7 +10,6 @@ import androidx.compose.ui.graphics.drawscope.clipPath
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
@@ -36,26 +33,18 @@ import androidx.compose.ui.unit.dp
  * @parity /watch/watchos/NavRoute.swift `NavRoute`
  */
 @Composable
-internal fun NavRoute(frame: WatchFrame, muted: Boolean, navFocus: () -> Float = { 0f }) {
+internal fun NavRoute(frame: WatchFrame, mapView: WatchMapView, muted: Boolean, navFocus: () -> Float = { 0f }) {
     val color = if (muted) DimText else navColor()
     val route = RouteState.route.value
     val east = frame.riderEastM
     val north = frame.riderNorthM
-    val targetRouteSpanM = WatchMapProjection.clampRouteSpanM(frame.routeSpanM)
-    val routeSpanM by animateFloatAsState(
-        targetValue = targetRouteSpanM,
-        animationSpec = tween(durationMillis = ROUTE_ZOOM_EASE_MS, easing = FastOutSlowInEasing),
-        label = "routeZoom",
-    )
 
     if (route != null && east != null && north != null) {
         AnimatedRoute(
             route = route,
             targetEastM = east.toFloat(),
             targetNorthM = north.toFloat(),
-            // Null holds the last course (a stop, an approximate fix), like the Group Ride dots.
-            targetCourseDeg = frame.courseDeg?.toFloat(),
-            routeSpanM = routeSpanM,
+            mapView = mapView,
             color = color,
             navFocus = navFocus,
         )
@@ -89,27 +78,19 @@ private fun AnimatedRoute(
     route: WatchRoute,
     targetEastM: Float,
     targetNorthM: Float,
-    targetCourseDeg: Float?,
-    routeSpanM: Float,
+    mapView: WatchMapView,
     color: Color,
     navFocus: () -> Float,
 ) {
     // Offsets are metres from *this* route's origin. A new route moves the origin, so the old
     // animators would glide the rider across a jump that never happened: key them to the route.
+    // Zoom and course are the map's, not the route's: [mapView] eases them for every map layer.
     val eastM = remember(route) { Animatable(targetEastM) }
     val northM = remember(route) { Animatable(targetNorthM) }
-    val courseDeg = remember(route) { Animatable(targetCourseDeg ?: 0f) }
     val motionSpec = tween<Float>(durationMillis = ROUTE_MOTION_EASE_MS, easing = LinearEasing)
 
     LaunchedEffect(targetEastM) { eastM.animateTo(targetEastM, motionSpec) }
     LaunchedEffect(targetNorthM) { northM.animateTo(targetNorthM, motionSpec) }
-    LaunchedEffect(targetCourseDeg) {
-        if (targetCourseDeg == null) return@LaunchedEffect
-        courseDeg.animateTo(
-            courseDeg.value + shortestAngleDelta(courseDeg.value, targetCourseDeg),
-            motionSpec,
-        )
-    }
 
     // A route runs for kilometres and Compose does not clip by default, so without this the line
     // reaches past the frame and draws over whatever page sits next to it. On a round watch the
@@ -122,7 +103,7 @@ private fun AnimatedRoute(
         // gauge fills, but on the map it is the whole page and has to survive sunlight.
         val focus = navFocus().coerceIn(0f, 1f)
         val center = WatchMapProjection.riderPoint(size.width, size.height, WatchMapProjection.RIDER_DROP.toPx())
-        val scale = WatchMapProjection.pixelsPerMetre(size.width, size.height, WatchMapProjection.ROUTE_EDGE_INSET.toPx(), routeSpanM)
+        val scale = WatchMapProjection.pixelsPerMetre(size.width, size.height, WatchMapProjection.ROUTE_EDGE_INSET.toPx(), mapView.spanM)
         val path = routePath(route, Offset(eastM.value, northM.value), center, scale)
         val faceCenter = Offset(size.width / 2f, size.height / 2f)
         // One pixel inside the gauge circle's guide line, so the route stops just short of it.
@@ -136,16 +117,12 @@ private fun AnimatedRoute(
         }
         clipPath(faceClip) {
             // Heading-up, taking the shortest turn across the 0°/360° boundary.
-            rotate(degrees = -courseDeg.value, pivot = center) {
+            rotate(degrees = -mapView.courseDeg, pivot = center) {
                 drawRoute(path, color, focus)
             }
         }
     }
 }
-
-/** @parity /watch/watchos/NavRoute.swift `shortestAngleDelta` */
-internal fun shortestAngleDelta(fromDeg: Float, toDeg: Float): Float =
-    (((toDeg - fromDeg + 180f) % 360f + 360f) % 360f) - 180f
 
 /** Route points (metres east/north of the route origin) into screen pixels around the rider. */
 private fun routePath(route: WatchRoute, rider: Offset, center: Offset, scale: Float): Path =
@@ -173,7 +150,6 @@ private fun polyline(points: List<Offset>): Path = Path().apply {
 
 private fun routeStroke(width: Float) = Stroke(width = width, cap = StrokeCap.Round, join = StrokeJoin.Round)
 
-private const val ROUTE_ZOOM_EASE_MS = 350
 private const val ROUTE_MOTION_EASE_MS = 300
 
 /** Half the widest gauge guide stroke: the route clip stops at the inner side of that line. */

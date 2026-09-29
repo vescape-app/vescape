@@ -635,10 +635,13 @@ and the wrist draws the route at the scale the rider set on the phone.
   because a round panel's drawing bounds are square and the line would otherwise run to the bezel.
   Here the clip is the display's own rounded rectangle one step inside the rim gauges, so the route
   uses the corners the rectangle has.
-- **Motion is a shape's `animatableData`, not four `Animatable`s.** The rider offset, the course and
-  the zoom interpolate together as one animatable pair rather than as three independent springs. The
-  course is kept unwrapped so a heading crossing north turns the short way, which is the same rule
-  `shortestAngleDelta` encodes on Android.
+- **The rider offset is a shape's `animatableData`; the zoom and course are the map's.** The offset
+  interpolates as one animatable pair. The zoom and course live in `WatchMapView`, which
+  `FrameLayout` retargets and the route and Group Ride layers sample on `TimelineView`s, because a
+  `Canvas` cannot read a shape's `animatableData` and the Group Ride marks must project with the
+  exact zoom and course the route is drawn with. Those timelines run only while the map eases (or a
+  stale Rider pulses). The course is kept unwrapped so a heading crossing north turns the short way,
+  the same `shortestAngleDelta` rule Android uses, and the zoom uses Android's fast-out-slow-in curve.
 - **The empty-nav hint draws the ported Phosphor map-pin**, the same artwork Wear OS bundles. The
   chevron and the pin beside the distance are drawn by hand on both wrists, so those match stroke
   for stroke too.

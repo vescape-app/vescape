@@ -118,18 +118,29 @@ internal fun FrameLayout(
     val navDistance = frame.navDistanceM
     val hasNav = navBearing != null && navDistance != null
 
+    // One eased zoom and course for every map layer, so the Group Ride marks sit where the route is
+    // drawn mid-zoom and mid-turn. Navigation's lanes drive it; without Navigation, the Group Ride's.
+    // Nothing draws the map in ambient or with neither, so it snaps there instead of animating.
+    val group = GroupRideState.group.value
+    val mapFollowsGroup = !hasNav && group != null
+    val mapView = rememberWatchMapView(
+        targetSpanM = WatchMapProjection.clampRouteSpanM(if (mapFollowsGroup) group?.spanM else frame.routeSpanM),
+        targetCourseDeg = (if (mapFollowsGroup) group?.courseDeg else frame.courseDeg)?.toFloat(),
+        animate = !ambient.active && (hasNav || group != null),
+    )
+
     Box(modifier = Modifier.fillMaxSize()) {
         // Bottom layer: route ahead + rider dot, under every gauge and readout. Ambient skips it:
         // the lanes animate their zoom, and a moving map is the most expensive thing on the panel.
         if (hasNav && !ambient.active) {
             Box(modifier = Modifier.fillMaxSize().graphicsLayer { alpha = navStackAlpha() }) {
-                NavRoute(frame = frame, muted = muted, navFocus = focus)
+                NavRoute(frame = frame, mapView = mapView, muted = muted, navFocus = focus)
             }
         }
 
         // Group Ride dots: over the route, under every gauge and number. Hidden in ambient.
         if (!ambient.active) {
-            GroupRideLayer(muted = muted, drawOwnRing = !hasNav, navFocus = focus, alpha = navStackAlpha)
+            GroupRideLayer(mapView = mapView, muted = muted, drawOwnRing = !hasNav, navFocus = focus, alpha = navStackAlpha)
         }
 
         // Rim gauges on one shared screen-centred circle.
@@ -256,7 +267,7 @@ internal fun FrameLayout(
 
         // Group Ride edge triangles: last, so they sit over the rim arcs. Hidden in ambient.
         if (!ambient.active) {
-            GroupRideEdgeLayer(navFocus = focus, alpha = navStackAlpha)
+            GroupRideEdgeLayer(mapView = mapView, navFocus = focus, alpha = navStackAlpha)
         }
     }
 }

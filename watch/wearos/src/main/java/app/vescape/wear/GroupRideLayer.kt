@@ -39,6 +39,7 @@ import expo.modules.vescapecore.watch.GroupRideFrameRider
  */
 @Composable
 internal fun GroupRideLayer(
+    mapView: WatchMapView,
     muted: Boolean,
     drawOwnRing: Boolean,
     navFocus: () -> Float,
@@ -49,7 +50,7 @@ internal fun GroupRideLayer(
     val stalePulse = rememberStalePulse(group)
     val labels = rememberGroupRideLabels()
     Canvas(modifier = Modifier.fillMaxSize().graphicsLayer { this.alpha = alpha() }) {
-        val map = watchMapProjection(group)
+        val map = watchMapProjection(mapView)
         if (drawOwnRing) drawRiderDot(map.rider, ownColor)
         val staleAlpha = stalePulse()
         val focus = navFocus().coerceIn(0f, 1f)
@@ -75,7 +76,7 @@ internal fun GroupRideLayer(
  * @parity /watch/watchos/GroupRideLayer.swift `GroupRideEdgeLayer`
  */
 @Composable
-internal fun GroupRideEdgeLayer(navFocus: () -> Float, alpha: () -> Float) {
+internal fun GroupRideEdgeLayer(mapView: WatchMapView, navFocus: () -> Float, alpha: () -> Float) {
     val group = GroupRideState.group.value ?: return
     val stalePulse = rememberStalePulse(group)
     val labels = rememberGroupRideLabels()
@@ -83,7 +84,7 @@ internal fun GroupRideEdgeLayer(navFocus: () -> Float, alpha: () -> Float) {
         val staleAlpha = stalePulse()
         val focus = navFocus().coerceIn(0f, 1f)
         val outline = GROUP_OUTLINE.toPx()
-        val map = watchMapProjection(group)
+        val map = watchMapProjection(mapView)
         val marks = map.marks(group.riders, groupRideMarkSizes(focus))
         for (mark in marks) {
             if (mark.kind != WatchGroupRideMarkKind.Triangle) continue
@@ -180,15 +181,18 @@ internal fun DrawScope.drawThermometer(color: Color, origin: Offset, box: Size) 
     drawRect(color, Offset(cx - stemWidth / 2f, mercuryTop), Size(stemWidth, stemBottom - mercuryTop))
 }
 
-/** The Group Ride's heading-up map on this canvas: the nav route's own projection. */
-internal fun DrawScope.watchMapProjection(group: WatchGroupRide) =
+/**
+ * The Group Ride's heading-up map on this canvas: the nav route's own projection, at the zoom and
+ * course the route is drawn with this frame. Read in the draw scope, so an easing only repaints.
+ */
+internal fun DrawScope.watchMapProjection(mapView: WatchMapView) =
     WatchMapProjection(
         size.width,
         size.height,
         WatchMapProjection.RIDER_DROP.toPx(),
         WatchMapProjection.ROUTE_EDGE_INSET.toPx(),
-        group.spanM,
-        group.courseDeg,
+        mapView.spanM.toDouble(),
+        mapView.courseDeg.toDouble(),
     )
 
 /**
@@ -228,7 +232,7 @@ private fun DrawScope.drawEdgeTriangle(mark: WatchGroupRideMark, outline: Float,
  * has a stale Rider; the caller is not composed in ambient, so ambient never animates. Both layers
  * take their phase from the same frame time, so a stale dot and a stale triangle pulse together.
  *
- * @parity /watch/watchos/GroupRideLayer.swift `StalePulse`
+ * @parity /watch/watchos/GroupRideLayer.swift `GroupRideCanvas`
  */
 @Composable
 private fun rememberStalePulse(group: WatchGroupRide): () -> Float {

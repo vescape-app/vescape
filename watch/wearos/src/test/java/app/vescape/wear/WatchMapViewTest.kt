@@ -3,7 +3,8 @@ package app.vescape.wear
 import org.junit.Assert.assertEquals
 import org.junit.Test
 
-class NavRouteTest {
+/** @parity /modules/vescape-core/ios/watch/WatchMapViewTests.swift */
+class WatchMapViewTest {
     @Test
     fun `course crosses north using shortest turn`() {
         assertEquals(1f, shortestAngleDelta(359f, 0f), 0.001f)
