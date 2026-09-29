@@ -259,7 +259,7 @@ either. The pages those slices fill arrived with later slices (#486–#491); the
 The Group Ride page follows navigation while the Rider is joined. Its list takes the crown only
 while it is the settled page and has more than five Riders; there a swipe pages back up, and once
 the page is left the crown pages the vertical axis again. Wear OS's pager has no crown binding, so
-its list always owns it.
+its list takes the crown whenever the page has settled.
 
 ### Where the wrist logic lives
 

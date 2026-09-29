@@ -85,6 +85,16 @@ internal fun MirrorScreen(
     // nowhere else, so this is the difference between an idle wrist and a fetching one.
     val onGauges = verticalPagerState.currentPage == VERTICAL_PAGE_GAUGES
     val radarVisible = !isAmbient && verticalPagerState.currentPage == VERTICAL_PAGE_RADAR
+    // The Group Ride list takes the crown only once its page has settled: focusing it mid-fling
+    // would bring it into view and drag the pager along.
+    val groupPageSettled by remember(verticalPagerState, isAmbient) {
+        derivedStateOf {
+            !isAmbient &&
+                verticalPagerState.currentPage == VERTICAL_PAGE_GROUP &&
+                !verticalPagerState.isScrollInProgress &&
+                verticalPagerState.currentPageOffsetFraction == 0f
+        }
+    }
 
     // Mutually exclusive by `enabled`: back closes the innermost thing that is open, and only the
     // gauges themselves treat back as "leave the mirror".
@@ -240,7 +250,7 @@ internal fun MirrorScreen(
                                     // swap — a pager clips its pages, so content inside would
                                     // slide away instead of pinning.
                                     VERTICAL_PAGE_NAV -> Unit
-                                    VERTICAL_PAGE_GROUP -> GroupRidePage()
+                                    VERTICAL_PAGE_GROUP -> GroupRidePage(crownActive = groupPageSettled)
                                     else -> HorizontalPager(
                                         state = controlPagerState,
                                         userScrollEnabled = !isAmbient && !controlHeld,

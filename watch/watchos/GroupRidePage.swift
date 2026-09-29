@@ -11,8 +11,9 @@ import SwiftUI
 /// gauges, so this is never drawn there.
 ///
 /// @parity /watch/wearos/src/main/java/app/vescape/wear/GroupRidePage.kt `GroupRidePage`
-/// @platform-diff Wear OS has no crown binding on its pager, so its list always owns the crown. Row
-///   width is clamped to the display less the rim inset rather than a round face's chord.
+/// @platform-diff Wear OS has no crown binding on its pager, so its settled list owns the crown even
+///   when it fits. Row width is clamped to the display less the rim inset rather than a round
+///   face's chord.
 struct GroupRidePage: View {
   let group: WatchGroupRide
   /// This page is the settled vertical page: the crown may leave the pager for the list.

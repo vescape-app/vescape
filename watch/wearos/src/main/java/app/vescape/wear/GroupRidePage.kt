@@ -47,16 +47,16 @@ import kotlin.math.sqrt
  * the Rider's course, distance, and one status slot ([groupRideStatus]). Alone, it says so.
  *
  * Up to [GROUP_PAGE_ROWS] rows, centred on the face. Past that, the crown steps the window a row at
- * a time; the vertical swipe stays the pager's. The nav map and readout are hidden under this page
+ * a time — only once this page has settled ([crownActive]); the vertical swipe stays the pager's. The nav map and readout are hidden under this page
  * by the caller. Ambient parks the pager on the gauges, so this is never drawn there.
  *
  * @parity /watch/watchos/GroupRidePage.swift `GroupRidePage`
- * @platform-diff The pager here does not take the crown, so the list owns it outright; watchOS pages
- *   with the crown and hands it to the list only while this page is settled. Rows are clamped to the
+ * @platform-diff The pager here does not take the crown, so the settled list owns it even when it
+ *   fits; watchOS pages with the crown and hands it over only when the list scrolls. Rows are clamped to the
  *   round face's chord here, to the display less the rim inset on watchOS.
  */
 @Composable
-internal fun GroupRidePage() {
+internal fun GroupRidePage(crownActive: Boolean) {
     val group = GroupRideState.group.value ?: return
     val rows = group.roster()
     val unitSystem = SettingsState.settings.value.unitSystem
@@ -67,7 +67,7 @@ internal fun GroupRidePage() {
     val start = first.coerceIn(0, maxFirst)
     val stepPx = with(LocalDensity.current) { GROUP_ROW_H.toPx() }
     val focusRequester = remember { FocusRequester() }
-    LaunchedEffect(Unit) { focusRequester.requestFocus() }
+    LaunchedEffect(crownActive) { if (crownActive) focusRequester.requestFocus() }
 
     BoxWithConstraints(
         modifier = Modifier
@@ -83,7 +83,7 @@ internal fun GroupRidePage() {
                 true
             }
             .focusRequester(focusRequester)
-            .focusable(),
+            .focusable(enabled = crownActive),
     ) {
         val visible = rows.subList(start, minOf(rows.size, start + GROUP_PAGE_ROWS))
         val limit = minOf(maxWidth, maxHeight) / 2 * GROUP_PAGE_SAFE_RADIUS
