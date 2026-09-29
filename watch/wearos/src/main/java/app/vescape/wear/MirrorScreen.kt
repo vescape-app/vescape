@@ -319,12 +319,6 @@ internal fun MirrorScreen(
                                     null
                                 },
                             )
-                            // Group Ride edge triangles: over the rim arcs. Hidden in ambient.
-                            if (!isAmbient) {
-                                GroupRideEdgeLayer(navFocus = navFocus, alpha = {
-                                    fadeOut(maxOf(controlFocus(), weatherFocus(), groupFocus()))
-                                })
-                            }
                         }
                     }
                 }
@@ -351,7 +345,7 @@ private const val VERTICAL_PAGE_GAUGES = 2
 private const val VERTICAL_PAGE_NAV = 3
 private const val VERTICAL_PAGE_GROUP = 4
 private const val VERTICAL_PAGE_COUNT = 4
-private const val VERTICAL_PAGE_COUNT_JOINED = 5
+private const val VERTICAL_PAGE_COUNT_JOINED = VERTICAL_PAGE_GROUP + 1
 
 /** Gauges centre, Remote Tilt, Board Move, board Lights, diagnostics. */
 private const val CONTROL_PAGE_GAUGES = 0
@@ -373,42 +367,32 @@ private fun MirrorContent(
 ) {
     val link by TelemetryState.phoneLink
     val notice = MirrorStateReducer.linkNotice(state.status, link)
-    when (state.status) {
-        // The gauge shell is the app, so a stalled stream keeps its arcs and reads the reason inside
-        // them. Dropping to a bare notice threw the layout away exactly when the rider was already
-        // lost, and it hid that the clock, forecast and battery arc still had something to say.
-        MirrorStatus.DISCONNECTED -> if (notice == null) {
-            // Nothing the wrist could fix: the shell reads as it does for a board-less frame.
-            FrameLayout(EMPTY_FRAME, false, focus, controlFocus, weatherFocus, groupFocus, onWeatherClick, ambient)
-        } else {
-            FrameLayout(
-                EMPTY_FRAME,
-                false,
-                focus,
-                controlFocus,
-                weatherFocus,
-                groupFocus,
-                onWeatherClick,
-                ambient,
-                showReadouts = false,
-            )
-            // A readout like any other: it leaves with them rather than bleeding under whatever page
-            // took the centre.
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .graphicsLayer { alpha = fadeOut(maxOf(focus(), controlFocus(), weatherFocus())) },
-                contentAlignment = Alignment.Center,
-            ) {
-                DisconnectedLayout(notice, ambient)
-            }
+    // The gauge shell is the app, so a stalled stream keeps its arcs and reads the reason inside
+    // them. Dropping to a bare notice threw the layout away exactly when the rider was already
+    // lost, and it hid that the clock, forecast and battery arc still had something to say. With no
+    // notice a disconnected shell reads as it does for a board-less frame: nothing the wrist could fix.
+    FrameLayout(
+        frame = state.frame ?: EMPTY_FRAME,
+        muted = state.status == MirrorStatus.STALE,
+        focus = focus,
+        controlFocus = controlFocus,
+        weatherFocus = weatherFocus,
+        groupFocus = groupFocus,
+        onWeatherClick = onWeatherClick,
+        ambient = ambient,
+        showReadouts = notice == null,
+    )
+    if (notice != null) {
+        // A readout like any other: it leaves with them rather than bleeding under whatever page
+        // took the centre.
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .graphicsLayer { alpha = fadeOut(maxOf(focus(), controlFocus(), weatherFocus())) },
+            contentAlignment = Alignment.Center,
+        ) {
+            DisconnectedLayout(notice, ambient)
         }
-        MirrorStatus.WAITING ->
-            FrameLayout(state.frame!!, false, focus, controlFocus, weatherFocus, groupFocus, onWeatherClick, ambient)
-        MirrorStatus.STALE ->
-            FrameLayout(state.frame!!, true, focus, controlFocus, weatherFocus, groupFocus, onWeatherClick, ambient)
-        MirrorStatus.LIVE ->
-            FrameLayout(state.frame!!, false, focus, controlFocus, weatherFocus, groupFocus, onWeatherClick, ambient)
     }
 }
 

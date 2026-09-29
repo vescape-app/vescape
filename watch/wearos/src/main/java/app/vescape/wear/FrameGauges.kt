@@ -111,6 +111,7 @@ internal fun FrameLayout(
     // Readouts leave for any focus mode; the nav stack survives nav focus alone.
     val readoutFocus = { maxOf(focus(), controlFocus(), weatherFocus()) }
     // The Group Ride page below nav focus hides the map, route, readout and Group Ride marks too.
+    // @parity /watch/watchos/MirrorScreen.swift `awayFocus`
     val navStackAlpha = { fadeOut(maxOf(controlFocus(), weatherFocus(), groupFocus())) }
 
     val navBearing = frame.navBearing
@@ -252,6 +253,11 @@ internal fun FrameLayout(
                     translationY = f * BATTERY_FOCUS_DROP.toPx()
                 },
         )
+
+        // Group Ride edge triangles: last, so they sit over the rim arcs. Hidden in ambient.
+        if (!ambient.active) {
+            GroupRideEdgeLayer(navFocus = focus, alpha = navStackAlpha)
+        }
     }
 }
 

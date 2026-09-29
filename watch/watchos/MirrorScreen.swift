@@ -411,7 +411,7 @@ struct MirrorScreen: View {
   /// Any other page taking over — the control axis, weather, radar, and the Group Ride page below
   /// navigation. Those want the whole centre, so the nav stack leaves with the readouts.
   ///
-  /// @parity /watch/wearos/src/main/java/app/vescape/wear/MirrorScreen.kt `groupFocus`
+  /// @parity /watch/wearos/src/main/java/app/vescape/wear/FrameGauges.kt `navStackAlpha`
   private var awayFocus: Double {
     guard !isLuminanceReduced else { return 0 }
     let groupFocus = verticalPosition - Double(VerticalPage.nav.rawValue - VerticalPage.gauges.rawValue)
