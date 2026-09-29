@@ -186,6 +186,8 @@ struct FrameLayout: View {
     .ignoresSafeArea()
     .onAppear { retargetMap(animate: false) }
     .onChange(of: mapTarget) { retargetMap(animate: mapAnimates) }
+    // Ambient (or losing both map sources) lands a map mid-ease, as Wear's relaunched effect does.
+    .onChange(of: mapAnimates) { if !mapAnimates { retargetMap(animate: false) } }
     // Stops the layers' timelines once the map has landed, so a still map never redraws.
     .task(id: mapView.settlesAt) {
       let remaining = mapView.settlesAt.timeIntervalSinceNow

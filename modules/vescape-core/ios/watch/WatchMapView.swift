@@ -67,7 +67,12 @@ private struct Ease: Equatable {
     return from + (to - from) * curve(t)
   }
 
+  /// Zero `duration` lands at once, also mid-ease towards the same target.
   mutating func retarget(_ target: Double, at now: Date, duration: TimeInterval, curve: (Double) -> Double) {
+    if duration <= 0 {
+      self = Ease(settledAt: target)
+      return
+    }
     guard target != to else { return }
     from = value(at: now, curve: curve)
     to = target

@@ -54,6 +54,17 @@ final class WatchMapViewTests: XCTestCase {
     XCTAssertLessThanOrEqual(map.settlesAt, start)
   }
 
+  func testASnapMidEaseTowardsTheSameTargetLandsAtOnce() {
+    var map = WatchMapView(spanM: 600, courseDeg: 0)
+    map.retarget(spanM: 1_000, courseDeg: 90, at: start, animate: true)
+    let midway = at(WatchMapView.turnEase / 2)
+    map.retarget(spanM: 1_000, courseDeg: 90, at: midway, animate: false)
+
+    XCTAssertEqual(map.spanM(at: midway), 1_000)
+    XCTAssertEqual(map.courseDeg(at: midway), 90, accuracy: 0.001)
+    XCTAssertLessThanOrEqual(map.settlesAt, midway)
+  }
+
   func testShortestAngleDeltaHandlesUnwrappedCourses() {
     XCTAssertEqual(shortestAngleDelta(from: 359, to: 0), 1, accuracy: 0.001)
     XCTAssertEqual(shortestAngleDelta(from: 0, to: 359), -1, accuracy: 0.001)
