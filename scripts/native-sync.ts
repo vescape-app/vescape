@@ -37,6 +37,8 @@ const IOS_PREBUILD_INPUTS = ['targets']
 const ANDROID_PREBUILD_INPUTS = [
   'watch',
   'modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/UnitPresentation.kt',
+  'modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/TelemetryLevel.kt',
+  'modules/vescape-core/android/src/main/java/expo/modules/vescapecore/watch/GroupRideFrame.kt',
 ]
 
 /** Per-Expo-module prebuild inputs: native registration and dependency declarations. */

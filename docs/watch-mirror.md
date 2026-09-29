@@ -238,13 +238,22 @@ for cold state — hence the Data Layer for the other two, where the last value 
 across a disconnect and is read again on every watch app start.
 
 `/group-ride` carries the Group Ride Frame (ADR-0039): the Rider's course, the phone map's span, and
-each other Rider's id, name, colour, stale flag and east/north offset from the Rider's latest GPS
-Fix. The phone pushes it only while the Rider is joined and the wrist reports `ACTIVE` — never in
+each other Rider's id, name, colour, stale flag, east/north offset from the Rider's latest GPS Fix,
+battery % (none without a Board Session), battery level and heat level. The phone derives both
+levels (normal, warning, critical) from the app's telemetry thresholds in
+`telemetry/TelemetryLevel.kt` / `.swift`, the native mirror of `telemetryThresholds.ts`: battery
+warns below 30% and is critical below 10%; heat is the worse of motor and controller temperature,
+warning above 70 °C and critical above 80 °C. The wrist never classifies. It rings a flagged live
+dot orange or red, and in nav focus labels every live Rider's mark with their distance ("680m"),
+followed by a thermometer when they run hot, else their battery % when it is low. Labels slide up
+off the nav distance readout, and the gauges carry no Group Ride text. The phone pushes it only while the Rider is joined and the wrist reports `ACTIVE` — never in
 ambient, and never to a wrist too old to report its wake level. The wrist drops the group after
 3.5 s without a frame. The codec is one file, `watch/GroupRideFrame.kt`, compiled by the phone and
-copied into the Wear module by `withWearMirror`; watchOS gets the same bytes under the
+copied into the Wear module by `withWearMirror` along with `telemetry/TelemetryLevel.kt`; watchOS gets the same bytes under the
 `groupRide` key of a `sendMessage`. Rider records are length-prefixed, so a new field is appended
-without a version bump; the version byte moves only for a change older wrists must not read.
+without a version bump; the version byte moves only for a change older wrists must not read. The
+battery and level bytes were appended this way: an older wrist skips them, and a record from an
+older phone decodes as no battery and normal levels.
 
 `/settings` is a `DataMap` rather than a packed frame because settings accrete one at a time: an
 unknown key is ignored by an older watch, and a key an older phone never sends leaves the watch on

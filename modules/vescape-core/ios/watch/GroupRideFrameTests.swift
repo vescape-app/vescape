@@ -107,6 +107,30 @@ final class GroupRideFrameTests: XCTestCase {
     XCTAssertEqual(frame.riders.map(\.colorArgb), [0xFF22_C55E, 0xFFF5_9E0B])
   }
 
+  func testBatteryPercentAndLevelsComeFromTheRidersPresence() {
+    var low = rider("low")
+    low.soc = 0.084
+    low.motorTempC = 72
+    low.ctrlTempC = 40
+    var hot = rider("hot", at: WatchGeoPoint(latitude: 52.002, longitude: 21.0))
+    hot.soc = 0.5
+    hot.motorTempC = 30
+    hot.ctrlTempC = 81
+    let walking = rider("walking", at: WatchGeoPoint(latitude: 52.003, longitude: 21.0))
+
+    let riders = build([low, hot, walking]).riders
+
+    XCTAssertEqual(riders.map(\.id), ["low", "hot", "walking"])
+    XCTAssertEqual(riders[0].batteryPercent, 8)
+    XCTAssertEqual(riders[0].batteryLevel, .critical)
+    XCTAssertEqual(riders[0].heatLevel, .warning)
+    XCTAssertEqual(riders[1].batteryPercent, 50)
+    XCTAssertEqual(riders[1].batteryLevel, .normal)
+    XCTAssertEqual(riders[1].heatLevel, .critical)
+    XCTAssertNil(riders[2].batteryPercent)
+    XCTAssertEqual(riders[2].flagLevel, .normal)
+  }
+
   // MARK: - Codec
 
   func testAFrameSurvivesTheRoundTrip() {
@@ -115,7 +139,11 @@ final class GroupRideFrameTests: XCTestCase {
       spanM: 750,
       riders: [
         GroupRideFrameRider(id: "a-1", name: "Ola", colorArgb: 0xFF38_BDF8, eastM: 12.5, northM: -40.25, stale: false),
-        GroupRideFrameRider(id: "b-2", name: "Żaneta", colorArgb: 0xFFF4_72B6, eastM: -300, northM: 800, stale: true),
+        GroupRideFrameRider(
+          id: "b-2", name: "Żaneta", colorArgb: 0xFFF4_72B6, eastM: -300, northM: 800, stale: true,
+          batteryPercent: 0, batteryLevel: .critical, heatLevel: .warning
+        ),
+        GroupRideFrameRider(id: "c-3", name: "Kuba", colorArgb: 0, eastM: 1, northM: 2, stale: false, batteryPercent: 100),
       ]
     )
 
@@ -164,6 +192,63 @@ final class GroupRideFrameTests: XCTestCase {
     }
 
     XCTAssertEqual(GroupRideFrameCodec.decode(Data(out))?.riders, [rider, second])
+  }
+
+  /// `bytes` with the last `drop` bytes of every rider record cut, as an older encoder wrote them.
+  private func withRecordsCut(_ bytes: Data, riders: Int, drop: Int) -> Data {
+    let base = [UInt8](bytes)
+    let header = 1 + 4 + 4 + 1
+    var out = Array(base[0..<header])
+    var at = header
+    for _ in 0..<riders {
+      let length = Int(base[at])
+      out.append(UInt8(length - drop))
+      out.append(contentsOf: base[(at + 1)...(at + length - drop)])
+      at += 1 + length
+    }
+    return Data(out)
+  }
+
+  func testARecordFromAPhoneBeforeBatteryAndHeatDecodesAsNoBatteryAndNormalLevels() {
+    let rider = GroupRideFrameRider(
+      id: "a", name: "Ola", colorArgb: 0, eastM: 5, northM: 6, stale: false,
+      batteryPercent: 12, batteryLevel: .warning, heatLevel: .critical
+    )
+    let bytes = GroupRideFrameCodec.encode(GroupRideFrame(courseDeg: 10, spanM: 600, riders: [rider]))
+
+    let decoded = GroupRideFrameCodec.decode(withRecordsCut(bytes, riders: 1, drop: 3))
+
+    var expected = rider
+    expected.batteryPercent = nil
+    expected.batteryLevel = .normal
+    expected.heatLevel = .normal
+    XCTAssertEqual(decoded?.riders, [expected])
+  }
+
+  func testAWristFromBeforeBatteryAndHeatReadsTheRecordsItKnowsAndSkipsTheRest() {
+    let riders = [
+      GroupRideFrameRider(id: "a", name: "Ola", colorArgb: 0, eastM: 5, northM: 6, stale: true, batteryPercent: 9, batteryLevel: .critical),
+      GroupRideFrameRider(id: "b", name: "Kuba", colorArgb: 0, eastM: -7, northM: 8, stale: false, heatLevel: .warning),
+    ]
+    let bytes = [UInt8](GroupRideFrameCodec.encode(GroupRideFrame(courseDeg: 10, spanM: 600, riders: riders)))
+    // The first release's decoder: fixed fields up to flags, then a jump to the record's end.
+    var at = 1 + 4 + 4
+    let count = Int(bytes[at])
+    at += 1
+    var read: [(id: String, stale: Bool)] = []
+    for _ in 0..<count {
+      let end = at + 1 + Int(bytes[at])
+      let idLength = Int(bytes[at + 1])
+      let id = String(decoding: bytes[(at + 2)..<(at + 2 + idLength)], as: UTF8.self)
+      let nameAt = at + 2 + idLength
+      let flagsAt = nameAt + 1 + Int(bytes[nameAt]) + 4 + 4 + 4
+      read.append((id, bytes[flagsAt] & 1 != 0))
+      at = end
+    }
+
+    XCTAssertEqual(read.map(\.id), ["a", "b"])
+    XCTAssertEqual(read.map(\.stale), [true, false])
+    XCTAssertEqual(at, bytes.count)
   }
 
   func testATruncatedPayloadDecodesToNothing() {

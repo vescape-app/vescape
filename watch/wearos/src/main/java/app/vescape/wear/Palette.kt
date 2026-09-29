@@ -17,6 +17,7 @@ internal val MotorTempColor = Color(0xFFEF4444) // red.color (motorTemp)
 internal val CtrlTempColor = Color(0xFFF97316) // orange.color (controllerTemp)
 internal val BatteryColor = Color(0xFF22C55E) // green.color
 internal val WarningColor = Color(0xFFF97316) // orange.color
+internal val CriticalColor = Color(0xFFEF4444) // red.color (status.error)
 internal val NavColor = Color(0xFFA855F7) // purple.color (navigation)
 internal val LightsColor = Color(0xFFF59E0B) // amber.color (theme.light.accent, board lights)
 internal val TiltColor = Color(0xFF06B6D4) // cyan.color (Remote Tilt)

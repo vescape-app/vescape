@@ -18,6 +18,9 @@ import Foundation
 ///   u32 colorArgb
 ///   f32 eastM, f32 northM   offset from the Rider's latest GPS Fix
 ///   u8  flags            bit 0 = stale
+///   u8  batteryPercent   0-100 Battery SoC Estimate; 0xFF = none (no Board Session, or unknown)
+///   u8  batteryLevel     TelemetryLevel raw value: 0 normal, 1 warning, 2 critical
+///   u8  heatLevel        TelemetryLevel raw value, the worse of motor and controller temperature
 ///   ...                  later fields are appended here; a decoder skips what it does not know
 /// ```
 ///
@@ -53,9 +56,18 @@ struct GroupRideFrameRider: Equatable {
   var northM: Double
   /// No presence from this Rider for a while; still in the Group Ride.
   var stale: Bool
+  /// Battery SoC Estimate, 0-100. Nil: no Board Session, or a phone too old to send it.
+  var batteryPercent: Int? = nil
+  /// Level of the Battery SoC Estimate, from the phone's telemetry thresholds.
+  var batteryLevel: TelemetryLevel = .normal
+  /// The worse of the Rider's motor and controller temperature levels.
+  var heatLevel: TelemetryLevel = .normal
 
   /// Straight-line metres from the Rider.
   var distanceM: Double { (eastM * eastM + northM * northM).squareRoot() }
+
+  /// The worse of `batteryLevel` and `heatLevel`: what a flag on this Rider says.
+  var flagLevel: TelemetryLevel { max(batteryLevel, heatLevel) }
 }
 
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/watch/GroupRideFrame.kt `GroupRideFrame`
@@ -73,8 +85,9 @@ enum GroupRideFrameCodec {
   private static let maxIdBytes = 64
   private static let maxNameBytes = 32
   private static let flagStale: UInt8 = 1
-  /// Fixed part of a rider record after the two strings: colour, east, north, flags.
-  private static let riderFixedBytes = 4 + 4 + 4 + 1
+  private static let noBattery: UInt8 = 0xFF
+  /// Fixed part of a rider record after the two strings: colour, east, north, flags, battery, levels.
+  private static let riderFixedBytes = 4 + 4 + 4 + 1 + 1 + 1 + 1
 
   static func encode(_ frame: GroupRideFrame) -> Data {
     let riders = frame.riders.prefix(GROUP_RIDE_FRAME_MAX_RIDERS)
@@ -95,6 +108,9 @@ enum GroupRideFrameCodec {
       appendFloat(&data, Float(rider.eastM))
       appendFloat(&data, Float(rider.northM))
       data.append(rider.stale ? flagStale : 0)
+      data.append(rider.batteryPercent.map { UInt8(min(max($0, 0), 100)) } ?? noBattery)
+      data.append(rider.batteryLevel.rawValue)
+      data.append(rider.heatLevel.rawValue)
     }
     return data
   }
@@ -116,12 +132,19 @@ enum GroupRideFrameCodec {
             let flags = reader.byte(),
             reader.offset <= end, east.isFinite, north.isFinite
       else { return nil }
+      // Appended after the first release: an older phone's record ends before them.
+      let battery = reader.offset < end ? reader.byte() ?? noBattery : noBattery
+      let batteryLevel = reader.offset < end ? reader.byte() ?? 0 : 0
+      let heatLevel = reader.offset < end ? reader.byte() ?? 0 : 0
       // Fields a newer phone appended: not ours to read.
       reader.offset = end
       riders.append(
         GroupRideFrameRider(
           id: id, name: name, colorArgb: color, eastM: Double(east), northM: Double(north),
-          stale: flags & flagStale != 0
+          stale: flags & flagStale != 0,
+          batteryPercent: battery <= 100 ? Int(battery) : nil,
+          batteryLevel: TelemetryLevel(wire: batteryLevel),
+          heatLevel: TelemetryLevel(wire: heatLevel)
         )
       )
     }

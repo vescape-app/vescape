@@ -520,7 +520,10 @@ internal final class GroupRideObserver: NSObject {
       color: view["color"] as? String,
       position: lat.flatMap { lat in lng.map { WatchGeoPoint(latitude: lat, longitude: $0) } },
       stale: view["stale"] as? Bool ?? false,
-      lastSeenMs: view["lastSeen"] as? Int64 ?? 0
+      lastSeenMs: view["lastSeen"] as? Int64 ?? 0,
+      soc: presence?["soc"] as? Double,
+      motorTempC: presence?["motorTemp"] as? Double,
+      ctrlTempC: presence?["ctrlTemp"] as? Double
     )
   }
 

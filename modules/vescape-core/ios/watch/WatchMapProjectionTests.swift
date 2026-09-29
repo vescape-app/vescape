@@ -170,4 +170,58 @@ final class WatchMapProjectionTests: XCTestCase {
     )
     XCTAssertEqual(marks.map(\.rider.northM), [2_000, 200, 50])
   }
+
+  // MARK: - Nav-focus labels
+
+  private let labelSize = CGSize(width: 30, height: 10)
+
+  private func label(_ mark: WatchGroupRideMark, focus: Double = 1) -> CGPoint {
+    map().labelOrigin(for: mark, labelSize: labelSize, gap: 3, ring: 4, navFocus: focus)
+  }
+
+  func testADotsLabelSitsBesideItOnTheSideAwayFromTheRider() {
+    let right = map().mark(for: rider(eastM: 50, northM: 100), sizes: sizes)
+    XCTAssertEqual(label(right).x, right.point.x + 3 + 3, accuracy: 0.01)
+    XCTAssertEqual(label(right).y, right.point.y - 5, accuracy: 0.01)
+
+    let left = map().mark(for: rider(eastM: -50, northM: 100), sizes: sizes)
+    XCTAssertEqual(label(left).x, left.point.x - 3 - 3 - 30, accuracy: 0.01)
+  }
+
+  func testAFlaggedDotsLabelClearsItsRingAStaleOnesHasNoRingToClear() {
+    var hot = rider(eastM: 50, northM: 100)
+    hot.heatLevel = .warning
+    let mark = map().mark(for: hot, sizes: sizes)
+    XCTAssertEqual(label(mark).x, mark.point.x + 3 + 4 + 3, accuracy: 0.01)
+
+    hot.stale = true
+    let lost = map().mark(for: hot, sizes: sizes)
+    XCTAssertEqual(label(lost).x, lost.point.x + 3 + 3, accuracy: 0.01)
+  }
+
+  func testATrianglesLabelSitsInwardOfItsApex() {
+    // Straight ahead: triangle on the top edge, apex down; the label box centres below it.
+    let far = map().mark(for: rider(eastM: 0, northM: 1_000), sizes: sizes)
+    let at = label(far)
+    XCTAssertEqual(at.x, 200 - 15, accuracy: 0.01)
+    XCTAssertEqual(at.y, far.point.y + far.size + 3, accuracy: 0.01)
+  }
+
+  func testALabelThatWouldSitOnTheNavReadoutSlidesUpUntilClear() {
+    // At full focus the readout's top is 82% down the display.
+    let readoutTop = size.height * 0.82
+    func cleared(_ x: CGFloat, _ y: CGFloat) -> CGFloat {
+      clearOfNavReadout(origin: CGPoint(x: x, y: y), labelSize: labelSize, navFocus: 1, displaySize: size)
+    }
+    XCTAssertEqual(cleared(180, 340), readoutTop - 10, accuracy: 0.01)
+    // Beside it, or already above it: untouched.
+    XCTAssertEqual(cleared(300, 340), 340)
+    XCTAssertEqual(cleared(180, 300), 300)
+  }
+
+  func testDistanceLabelsDropTheSpaceBeforeTheUnit() {
+    XCTAssertEqual(groupRideDistanceLabel(680, unitSystem: "metric"), "680m")
+    XCTAssertEqual(groupRideDistanceLabel(2_100, unitSystem: "metric"), "2.1km")
+    XCTAssertEqual(groupRideDistanceLabel(2_100, unitSystem: "imperial"), "1.3mi")
+  }
 }

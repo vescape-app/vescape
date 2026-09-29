@@ -2,7 +2,9 @@ package expo.modules.vescapecore.watch
 
 import expo.modules.vescapecore.runtime.Cancellable
 import expo.modules.vescapecore.runtime.Scheduler
+import expo.modules.vescapecore.telemetry.TelemetryThresholds
 import kotlin.math.hypot
+import kotlin.math.roundToInt
 
 /** About once a second: Rider Presence itself moves no faster (ADR-0039). */
 internal const val GROUP_RIDE_FRAME_INTERVAL_MS = 1_000L
@@ -56,6 +58,10 @@ internal data class GroupRideRosterRider(
     val stale: Boolean,
     /** Relay wall-clock time of the Rider's last presence, epoch ms. */
     val lastSeenMs: Long,
+    /** Battery SoC Estimate as a 0-1 fraction; null without a Board Session. */
+    val soc: Double? = null,
+    val motorTempC: Double? = null,
+    val ctrlTempC: Double? = null,
 )
 
 /**
@@ -125,6 +131,9 @@ internal object GroupRideFrameBuilder {
                     eastM = east,
                     northM = north,
                     stale = entry.stale,
+                    batteryPercent = entry.rider.soc?.takeIf { it.isFinite() }?.let { (it.coerceIn(0.0, 1.0) * 100).roundToInt() },
+                    batteryLevel = TelemetryThresholds.batteryLevel(entry.rider.soc),
+                    heatLevel = TelemetryThresholds.heatLevel(entry.rider.motorTempC, entry.rider.ctrlTempC),
                 )
             }
             .sortedBy { it.distanceM }

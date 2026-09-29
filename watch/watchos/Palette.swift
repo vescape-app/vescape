@@ -18,6 +18,7 @@ enum Palette {
   static let ctrlTemp = Color(red: 0.976, green: 0.451, blue: 0.086)  // orange #F97316
   static let battery = Color(red: 0.133, green: 0.773, blue: 0.369)  // green #22C55E
   static let warning = Color(red: 0.976, green: 0.451, blue: 0.086)  // orange #F97316
+  static let critical = Color(red: 0.937, green: 0.267, blue: 0.267)  // red #EF4444 (status.error)
 
   /// Navigation accent, used when the rider has not picked a colour of their own.
   ///

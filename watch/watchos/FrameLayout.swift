@@ -90,7 +90,8 @@ struct FrameLayout: View {
           group: groupRide,
           drawOwnRing: navLanes == nil,
           ownColor: muted ? Palette.dimText : navColor,
-          focus: navFocus
+          focus: navFocus,
+          unitSystem: unitSystem
         )
         .opacity(navStackAlpha)
       }
@@ -154,7 +155,7 @@ struct FrameLayout: View {
 
       // Group Ride edge triangles: over the rim gauges. Hidden in ambient.
       if let groupRide, !ambient.active {
-        GroupRideEdgeLayer(group: groupRide)
+        GroupRideEdgeLayer(group: groupRide, focus: navFocus, unitSystem: unitSystem)
           .opacity(navStackAlpha)
       }
     }

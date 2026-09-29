@@ -1,5 +1,6 @@
 package app.vescape.wear
 
+import expo.modules.vescapecore.telemetry.TelemetryLevel
 import expo.modules.vescapecore.watch.GroupRideFrameRider
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -144,5 +145,56 @@ class GroupRidePlacementTest {
     fun `marks come farthest first so a close rider draws on top`() {
         val marks = map().marks(listOf(rider(0.0, 50.0), rider(0.0, 2_000.0), rider(0.0, 200.0)), sizes)
         assertEquals(listOf(2_000.0, 200.0, 50.0), marks.map { it.rider.northM })
+    }
+
+    // Nav-focus labels
+
+    private fun label(mark: GroupRideMark, width: Float = 30f, height: Float = 10f, focus: Float = 1f) =
+        map().labelTopLeft(mark, width, height, gapPx = 3f, ringPx = 4f, navFocus = focus, faceWidth = face, faceHeight = face)
+
+    @Test
+    fun `a dot's label sits beside it, on the side away from the rider`() {
+        val right = map().mark(rider(50.0, 100.0), sizes)
+        assertEquals(right.x + 3f + 3f, label(right).x, 0.01f)
+        assertEquals(right.y - 5f, label(right).y, 0.01f)
+
+        val left = map().mark(rider(-50.0, 100.0), sizes)
+        assertEquals(left.x - 3f - 3f - 30f, label(left).x, 0.01f)
+    }
+
+    @Test
+    fun `a flagged dot's label clears its ring, a stale one's has no ring to clear`() {
+        val hot = rider(50.0, 100.0).copy(heatLevel = TelemetryLevel.WARNING)
+        val mark = map().mark(hot, sizes)
+        assertEquals(mark.x + 3f + 4f + 3f, label(mark).x, 0.01f)
+
+        val lost = map().mark(hot.copy(stale = true), sizes)
+        assertEquals(lost.x + 3f + 3f, label(lost).x, 0.01f)
+    }
+
+    @Test
+    fun `a triangle's label sits inward of its apex`() {
+        // Straight ahead: triangle on the top edge, apex down; the label box centres below it.
+        val far = map().mark(rider(0.0, 1_000.0), sizes)
+        val at = label(far)
+        assertEquals(200f - 15f, at.x, 0.01f)
+        assertEquals(far.y + far.sizePx + 3f, at.y, 0.01f)
+    }
+
+    @Test
+    fun `a label that would sit on the nav readout slides up until clear`() {
+        // At full focus the readout's top is 82% down the face.
+        val readoutTop = face * 0.82f
+        assertEquals(readoutTop - 10f, clearOfNavReadout(180f, 340f, 30f, 10f, 1f, face, face), 0.01f)
+        // Beside it, or already above it: untouched.
+        assertEquals(340f, clearOfNavReadout(300f, 340f, 30f, 10f, 1f, face, face), 0f)
+        assertEquals(300f, clearOfNavReadout(180f, 300f, 30f, 10f, 1f, face, face), 0f)
+    }
+
+    @Test
+    fun `distance labels drop the space before the unit`() {
+        assertEquals("680m", groupRideDistanceLabel(680.0, "metric"))
+        assertEquals("2.1km", groupRideDistanceLabel(2_100.0, "metric"))
+        assertEquals("1.3mi", groupRideDistanceLabel(2_100.0, "imperial"))
     }
 }

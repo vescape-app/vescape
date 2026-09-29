@@ -306,7 +306,7 @@ internal fun MirrorScreen(
                             )
                             // Group Ride edge triangles: over the rim arcs. Hidden in ambient.
                             if (!isAmbient) {
-                                GroupRideEdgeLayer(alpha = {
+                                GroupRideEdgeLayer(navFocus = navFocus, alpha = {
                                     // PROTOTYPE — the Group Ride list page hides the map under it.
                                     fadeOut(maxOf(controlFocus(), weatherFocus(), GroupRidePrototype.pageFocus()))
                                 })

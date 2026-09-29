@@ -100,6 +100,42 @@ struct WatchMapProjection {
     riders.sorted { $0.distanceM > $1.distanceM }.map { mark(for: $0, sizes: sizes) }
   }
 
+  /// Top-left of a `labelSize` label for `mark`: beside a dot on the side away from the Rider, `gap`
+  /// clear of it and of its flag ring when it wears one (`ring` further out); inward of a triangle's
+  /// apex by `gap`. Then `clearOfNavReadout`.
+  ///
+  /// @parity /watch/wearos/src/main/java/app/vescape/wear/GroupRide.kt `labelTopLeft`
+  func labelOrigin(
+    for mark: WatchGroupRideMark, labelSize: CGSize, gap: CGFloat, ring: CGFloat, navFocus: Double
+  ) -> CGPoint {
+    let width = labelSize.width
+    let height = labelSize.height
+    let origin: CGPoint
+    switch mark.kind {
+    case .dot:
+      let ringed = !mark.rider.stale && mark.rider.flagLevel != .normal
+      let reach = mark.size + (ringed ? ring : 0) + gap
+      let x = mark.point.x >= rider.x ? mark.point.x + reach : mark.point.x - reach - width
+      origin = CGPoint(x: x, y: mark.point.y - height / 2)
+    case .triangle:
+      // Inward along the edge normal, far enough that the box's own half-extent clears the apex.
+      let inward = CGVector(dx: -mark.direction.dx, dy: -mark.direction.dy)
+      let extent = min(
+        abs(inward.dx) > 1e-3 ? width / 2 / abs(inward.dx) : .greatestFiniteMagnitude,
+        abs(inward.dy) > 1e-3 ? height / 2 / abs(inward.dy) : .greatestFiniteMagnitude
+      )
+      let reach = mark.size + gap + extent
+      origin = CGPoint(
+        x: mark.point.x + inward.dx * reach - width / 2,
+        y: mark.point.y + inward.dy * reach - height / 2
+      )
+    }
+    return CGPoint(
+      x: origin.x,
+      y: clearOfNavReadout(origin: origin, labelSize: labelSize, navFocus: navFocus, displaySize: size)
+    )
+  }
+
   /// Points along unit `direction` from the Rider to where the ray leaves `rect` with corners
   /// rounded by `cornerRadius`, and the outward normal there. Straight edges first, then the corner
   /// arc: a ray leaving the box inside a corner square leaves the shape through that corner's circle.
@@ -181,6 +217,33 @@ func edgeTriangleLength(distanceM: Double, boundaryM: Double, min minLength: CGF
   let t = log(Swift.max(distanceM, near) / near) / log(GROUP_FAR_M / near)
   return minLength + (maxLength - minLength) * CGFloat(Swift.min(Swift.max(1 - t, 0), 1))
 }
+
+/// A Rider's compact distance: "680m", "2.1km" in the Rider's units. The wrist's own distance
+/// formatting without the space, so the label stays short beside its mark.
+///
+/// @parity /watch/wearos/src/main/java/app/vescape/wear/GroupRide.kt `groupRideDistanceLabel`
+func groupRideDistanceLabel(_ distanceM: Double, unitSystem: String) -> String {
+  UnitPresentation.distance(distanceM, unitSystem: unitSystem).replacingOccurrences(of: " ", with: "")
+}
+
+/// The label's top, slid up until the box clears the nav distance readout. The readout drops and
+/// grows with `navFocus`; at full focus it spans about x 29–71% and y 82–94% of the display.
+///
+/// @parity /watch/wearos/src/main/java/app/vescape/wear/GroupRide.kt `clearOfNavReadout`
+func clearOfNavReadout(origin: CGPoint, labelSize: CGSize, navFocus: Double, displaySize: CGSize) -> CGFloat {
+  let keepOut = NAV_READOUT_KEEP_OUT
+  let readoutTop = displaySize.height * (keepOut.top + keepOut.focusDrop * navFocus)
+  let overlapsX = origin.x < displaySize.width * keepOut.right
+    && origin.x + labelSize.width > displaySize.width * keepOut.left
+  let overlapsY = origin.y + labelSize.height > readoutTop && origin.y < displaySize.height * keepOut.bottom
+  return overlapsX && overlapsY ? readoutTop - labelSize.height : origin.y
+}
+
+/// The nav distance readout at full nav focus, as shares of the display: x 29–71%, y 82–94%. Its
+/// top sits `focusDrop` higher before focus, where the readout is smaller and higher.
+///
+/// @parity /watch/wearos/src/main/java/app/vescape/wear/GroupRide.kt `NAV_READOUT_LEFT`
+let NAV_READOUT_KEEP_OUT = (left: 0.29, right: 0.71, top: 0.745, focusDrop: 0.075, bottom: 0.94)
 
 /// Beyond this the triangle stops shrinking.
 ///

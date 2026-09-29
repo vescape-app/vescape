@@ -47,8 +47,12 @@ const withWearMirror: ConfigPlugin = (config) =>
       rmSync(dest, { recursive: true, force: true })
       cpSync(source, dest, { recursive: true })
       // The native phone and wrist compile the same pure sources: units conversion, and the Group
-      // Ride Frame codec, so its encoder and decoder cannot drift.
-      for (const shared of ['telemetry/UnitPresentation.kt', 'watch/GroupRideFrame.kt']) {
+      // Ride Frame codec with the telemetry levels it carries, so encoder and decoder cannot drift.
+      for (const shared of [
+        'telemetry/UnitPresentation.kt',
+        'telemetry/TelemetryLevel.kt',
+        'watch/GroupRideFrame.kt',
+      ]) {
         cpSync(
           path.join(
             projectRoot,

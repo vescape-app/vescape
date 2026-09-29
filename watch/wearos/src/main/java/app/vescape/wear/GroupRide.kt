@@ -10,16 +10,27 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.withFrameMillis
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.StrokeJoin
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.drawscope.translate
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.text.TextMeasurer
+import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.drawText
+import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import expo.modules.vescapecore.telemetry.TelemetryLevel
+import expo.modules.vescapecore.telemetry.UnitPresentation
 import expo.modules.vescapecore.watch.GroupRideFrame
 import expo.modules.vescapecore.watch.GroupRideFrameRider
+import kotlin.math.abs
 import kotlin.math.atan2
 import kotlin.math.cos
 import kotlin.math.hypot
@@ -245,8 +256,9 @@ internal fun relativeBearingDeg(eastM: Double, northM: Double, courseDeg: Double
 
 /**
  * Every other Rider who fits on the nav map, as a dot in their colour, over the route and under the
- * gauges. Without Navigation there is no route to carry the Rider's own ring, so this draws it at
- * the same spot. Riders beyond the map are [GroupRideEdgeLayer]'s.
+ * gauges. A flagged Rider's dot wears a thin orange or red ring. Without Navigation there is no
+ * route to carry the Rider's own ring, so this draws it at the same spot. In nav focus each live dot
+ * gets its distance label. Riders beyond the map are [GroupRideEdgeLayer]'s.
  *
  * Read in the draw scope: frames and nav-focus drags repaint without recomposing. The caller skips
  * this in ambient, where the group is hidden.
@@ -261,38 +273,213 @@ internal fun GroupRideLayer(
     val group = GroupRideState.group.value ?: return
     val ownColor = if (muted) DimText else navColor()
     val stalePulse = rememberStalePulse(group)
+    val labels = rememberGroupRideLabels()
     Canvas(modifier = Modifier.fillMaxSize().graphicsLayer { this.alpha = alpha() }) {
         val map = headingUpMap(group)
         if (drawOwnRing) drawRiderDot(Offset(map.riderX, map.riderY), ownColor)
         val staleAlpha = stalePulse()
+        val focus = navFocus().coerceIn(0f, 1f)
         val outline = GROUP_OUTLINE.toPx()
-        for (mark in map.marks(group.riders, groupRideMarkSizes(navFocus()))) {
-            if (mark.kind != GroupRideMarkKind.Dot) continue
+        val ringGap = GROUP_RING_GAP.toPx()
+        val ringWidth = GROUP_RING_WIDTH.toPx()
+        val dots = map.marks(group.riders, groupRideMarkSizes(focus)).filter { it.kind == GroupRideMarkKind.Dot }
+        for (mark in dots) {
             val center = Offset(mark.x, mark.y)
             val markAlpha = if (mark.rider.stale) staleAlpha else 1f
+            flagColor(mark.rider)?.let { color ->
+                val radius = mark.sizePx + ringGap
+                drawCircle(GROUP_OUTLINE_COLOR, radius = radius, center = center, style = Stroke(ringWidth + outline * 2f))
+                drawCircle(color, radius = radius, center = center, style = Stroke(ringWidth))
+            }
             drawCircle(GROUP_OUTLINE_COLOR, radius = mark.sizePx + outline, center = center, alpha = markAlpha)
             drawCircle(Color(mark.rider.colorArgb), radius = mark.sizePx, center = center, alpha = markAlpha)
         }
+        // Labels over every dot, so a neighbour's dot never cuts one.
+        for (mark in dots) labels.draw(this, map, mark, focus)
     }
 }
 
 /**
  * Every Rider beyond the nav map, as a triangle in their colour on the face edge, apex inward. Drawn
- * over the rim arcs, so the caller layers it above the gauges. Skipped in ambient like the dots.
+ * over the rim arcs, so the caller layers it above the gauges. A triangle is always the Rider's own
+ * colour; a flag shows only in its nav-focus label. Skipped in ambient like the dots.
  */
 @Composable
-internal fun GroupRideEdgeLayer(alpha: () -> Float) {
+internal fun GroupRideEdgeLayer(navFocus: () -> Float, alpha: () -> Float) {
     val group = GroupRideState.group.value ?: return
     val stalePulse = rememberStalePulse(group)
+    val labels = rememberGroupRideLabels()
     Canvas(modifier = Modifier.fillMaxSize().graphicsLayer { this.alpha = alpha() }) {
         val staleAlpha = stalePulse()
+        val focus = navFocus().coerceIn(0f, 1f)
         val outline = GROUP_OUTLINE.toPx()
-        for (mark in headingUpMap(group).marks(group.riders, groupRideMarkSizes(navFocus = 0f))) {
-            if (mark.kind != GroupRideMarkKind.Triangle) continue
+        val map = headingUpMap(group)
+        val triangles = map.marks(group.riders, groupRideMarkSizes(focus)).filter { it.kind == GroupRideMarkKind.Triangle }
+        for (mark in triangles) {
             val color = Color(mark.rider.colorArgb).copy(alpha = if (mark.rider.stale) staleAlpha else 1f)
             drawEdgeTriangle(mark, outline, color)
         }
+        for (mark in triangles) labels.draw(this, map, mark, focus)
     }
+}
+
+/**
+ * A live Rider's flag colour: orange for a warning, red for critical, the worse of battery and heat.
+ * Null for a Rider with nothing to flag, and for a stale one — their readings are as old as their
+ * place.
+ *
+ * @parity /watch/watchos/GroupRideLayer.swift `flagColor`
+ */
+private fun flagColor(rider: GroupRideFrameRider): Color? =
+    if (rider.stale) null else levelColor(rider.flagLevel)
+
+private fun levelColor(level: TelemetryLevel): Color? = when (level) {
+    TelemetryLevel.NORMAL -> null
+    TelemetryLevel.WARNING -> WarningColor
+    TelemetryLevel.CRITICAL -> CriticalColor
+}
+
+/**
+ * A Rider's compact distance: "680m", "2.1km" in the Rider's units. The wrist's own distance
+ * formatting without the space, so the label stays short beside its mark.
+ *
+ * @parity /modules/vescape-core/ios/watch/WatchMapProjection.swift `groupRideDistanceLabel`
+ */
+internal fun groupRideDistanceLabel(distanceM: Double, unitSystem: String): String =
+    UnitPresentation.distance(distanceM, unitSystem).replace(" ", "")
+
+/**
+ * Top-left of a [width] × [height] label for [mark]: beside a dot on the side away from the Rider,
+ * [gapPx] clear of it and of its flag ring when it wears one ([ringPx] further out); inward of a
+ * triangle's apex by [gapPx]. Then [clearOfNavReadout].
+ *
+ * @parity /modules/vescape-core/ios/watch/WatchMapProjection.swift `groupRideLabelOrigin`
+ */
+internal fun HeadingUpMap.labelTopLeft(
+    mark: GroupRideMark,
+    width: Float,
+    height: Float,
+    gapPx: Float,
+    ringPx: Float,
+    navFocus: Float,
+    faceWidth: Float,
+    faceHeight: Float,
+): Offset {
+    val (left, top) = when (mark.kind) {
+        GroupRideMarkKind.Dot -> {
+            val reach = mark.sizePx + (if (flagColor(mark.rider) != null) ringPx else 0f) + gapPx
+            val left = if (mark.x >= riderX) mark.x + reach else mark.x - reach - width
+            left to mark.y - height / 2f
+        }
+        GroupRideMarkKind.Triangle -> {
+            // Inward along the edge normal, far enough that the box's own half-extent clears the apex.
+            val inX = -mark.outX
+            val inY = -mark.outY
+            val extent = minOf(
+                if (abs(inX) > 1e-3f) width / 2f / abs(inX) else Float.MAX_VALUE,
+                if (abs(inY) > 1e-3f) height / 2f / abs(inY) else Float.MAX_VALUE,
+            )
+            val reach = mark.sizePx + gapPx + extent
+            (mark.x + inX * reach - width / 2f) to (mark.y + inY * reach - height / 2f)
+        }
+    }
+    return Offset(left, clearOfNavReadout(left, top, width, height, navFocus, faceWidth, faceHeight))
+}
+
+/**
+ * [top] for a label box, slid up until it clears the nav distance readout. The readout drops and
+ * grows with [navFocus]; at full focus it spans about x 29–71% and y 82–94% of the face.
+ *
+ * @parity /modules/vescape-core/ios/watch/WatchMapProjection.swift `clearOfNavReadout`
+ */
+internal fun clearOfNavReadout(
+    left: Float,
+    top: Float,
+    width: Float,
+    height: Float,
+    navFocus: Float,
+    faceWidth: Float,
+    faceHeight: Float,
+): Float {
+    val readoutTop = faceHeight * (NAV_READOUT_TOP + NAV_READOUT_FOCUS_DROP * navFocus)
+    val overlapsX = left < faceWidth * NAV_READOUT_RIGHT && left + width > faceWidth * NAV_READOUT_LEFT
+    val overlapsY = top + height > readoutTop && top < faceHeight * NAV_READOUT_BOTTOM
+    return if (overlapsX && overlapsY) readoutTop - height else top
+}
+
+/**
+ * Nav-focus distance labels, measured and drawn in the draw scope. Grey distance, then a flag: a
+ * thermometer when the Rider runs hot, else their battery % when it is low, each in its level's
+ * colour. Stale Riders get none; their distance is as old as their place.
+ *
+ * @parity /watch/watchos/GroupRideLayer.swift `drawGroupRideLabel`
+ */
+private class GroupRideLabels(private val measurer: TextMeasurer) {
+    fun draw(scope: DrawScope, map: HeadingUpMap, mark: GroupRideMark, focus: Float) = with(scope) {
+        if (focus <= LABEL_MIN_FOCUS || mark.rider.stale) return@with
+        val rider = mark.rider
+        val style = WatchTypography.mono(TextStyle(fontSize = GROUP_LABEL_FONT))
+        val unitSystem = SettingsState.settings.value.unitSystem
+        val distance = measurer.measure(groupRideDistanceLabel(rider.distanceM, unitSystem), style)
+        val heatColor = levelColor(rider.heatLevel)
+        val batteryColor = levelColor(rider.batteryLevel).takeIf { heatColor == null && rider.batteryPercent != null }
+        val battery = batteryColor?.let { measurer.measure("${rider.batteryPercent}%", style) }
+        val height = distance.size.height.toFloat()
+        val gap = GROUP_LABEL_FLAG_GAP.toPx()
+        val flagWidth = when {
+            heatColor != null -> gap + height * THERMOMETER_ASPECT
+            battery != null -> gap + battery.size.width
+            else -> 0f
+        }
+        val width = distance.size.width + flagWidth
+        val at = map.labelTopLeft(
+            mark,
+            width,
+            height,
+            gapPx = GROUP_LABEL_GAP.toPx(),
+            ringPx = (GROUP_RING_GAP + GROUP_RING_WIDTH).toPx(),
+            navFocus = focus,
+            faceWidth = size.width,
+            faceHeight = size.height,
+        )
+        drawText(distance, color = SecondaryText, topLeft = at, alpha = focus)
+        val flagX = at.x + distance.size.width + gap
+        if (heatColor != null) {
+            drawThermometer(heatColor.copy(alpha = focus), Offset(flagX, at.y + height * 0.1f), Size(height * THERMOMETER_ASPECT, height * 0.8f))
+        } else if (battery != null) {
+            drawText(battery, color = batteryColor, topLeft = Offset(flagX, at.y), alpha = focus)
+        }
+    }
+}
+
+@Composable
+private fun rememberGroupRideLabels(): GroupRideLabels {
+    val measurer = rememberTextMeasurer(cacheSize = GROUP_LABEL_CACHE)
+    return remember(measurer) { GroupRideLabels(measurer) }
+}
+
+/**
+ * Thermometer in [box] at [origin]: stroked stem, filled bulb, a short mercury line up the stem.
+ *
+ * @parity /watch/watchos/GroupRideLayer.swift `drawThermometer`
+ */
+private fun DrawScope.drawThermometer(color: Color, origin: Offset, box: Size) = translate(origin.x, origin.y) {
+    val stroke = THERMOMETER_STROKE.toPx()
+    val cx = box.width / 2f
+    val stemWidth = box.width * 0.28f
+    val bulbRadius = box.width * 0.24f
+    val bulb = Offset(cx, box.height - bulbRadius - stroke / 2f)
+    val stemTop = stroke / 2f
+    val stemBottom = bulb.y - bulbRadius * 0.6f
+    drawRoundRect(
+        color,
+        Offset(cx - stemWidth / 2f, stemTop),
+        Size(stemWidth, stemBottom - stemTop),
+        CornerRadius(stemWidth / 2f),
+        style = Stroke(stroke),
+    )
+    drawCircle(color, radius = bulbRadius, center = bulb)
+    drawLine(color, bulb, Offset(cx, stemTop + (stemBottom - stemTop) * 0.35f), strokeWidth = stemWidth * 0.45f)
 }
 
 /** The Group Ride's heading-up map on this canvas: the nav route's own projection. */
@@ -363,6 +550,33 @@ private val GROUP_TRIANGLE_MAX = 12.dp
 /** Triangle base width as a share of its length. */
 private const val GROUP_TRIANGLE_BASE = 0.9f
 private val GROUP_OUTLINE = 0.75.dp
+/** A flagged dot's ring: this far outside the dot, this thick. */
+private val GROUP_RING_GAP = 2.5.dp
+private val GROUP_RING_WIDTH = 1.5.dp
+private val GROUP_LABEL_FONT = 9.sp
+/** Label clear of its dot, ring or triangle apex. */
+private val GROUP_LABEL_GAP = 3.dp
+/** Between the distance and its flag. */
+private val GROUP_LABEL_FLAG_GAP = 3.dp
+/** Labels are not drawn at all until nav focus is under way. */
+private const val LABEL_MIN_FOCUS = 0.01f
+/** Up to 32 Riders, two strings each, at the frame rate a nav-focus drag runs. */
+private const val GROUP_LABEL_CACHE = 64
+/** Thermometer width as a share of the label's line height. */
+private const val THERMOMETER_ASPECT = 0.5f
+private val THERMOMETER_STROKE = 1.3.dp
+
+/**
+ * The nav distance readout at full nav focus, as shares of the face: x 29–71%, y 82–94%. Its top
+ * rides up by [NAV_READOUT_FOCUS_DROP] before focus, where it sits smaller and higher.
+ *
+ * @parity /modules/vescape-core/ios/watch/WatchMapProjection.swift `NAV_READOUT_KEEP_OUT`
+ */
+private const val NAV_READOUT_LEFT = 0.29f
+private const val NAV_READOUT_RIGHT = 0.71f
+private const val NAV_READOUT_TOP = 0.745f
+private const val NAV_READOUT_FOCUS_DROP = 0.075f
+private const val NAV_READOUT_BOTTOM = 0.94f
 private val GROUP_OUTLINE_COLOR = Color(0xE6000000)
 /** A Rider the phone has not heard from for a while: last known place, faded and pulsing. */
 private const val GROUP_STALE_MAX_ALPHA = 0.7f

@@ -47,6 +47,10 @@ struct GroupRideRosterRider: Equatable {
   var stale: Bool
   /// Relay wall-clock time of the Rider's last presence, epoch ms.
   var lastSeenMs: Int64
+  /// Battery SoC Estimate as a 0-1 fraction; nil without a Board Session.
+  var soc: Double? = nil
+  var motorTempC: Double? = nil
+  var ctrlTempC: Double? = nil
 }
 
 /// The joined Group Ride as native holds it: who the Rider is and everyone in the ride.
@@ -114,7 +118,10 @@ enum GroupRideFrameBuilder {
           ?? GROUP_RIDE_FALLBACK_COLORS[(first + index) % GROUP_RIDE_FALLBACK_COLORS.count],
         eastM: offset.east,
         northM: offset.north,
-        stale: entry.stale
+        stale: entry.stale,
+        batteryPercent: entry.rider.soc.flatMap { $0.isFinite ? Int((min(max($0, 0), 1) * 100).rounded()) : nil },
+        batteryLevel: TelemetryThresholds.batteryLevel(entry.rider.soc),
+        heatLevel: TelemetryThresholds.heatLevel(motorTempC: entry.rider.motorTempC, ctrlTempC: entry.rider.ctrlTempC)
       )
     }
     return Array(placed.sorted { $0.distanceM < $1.distanceM }.prefix(GROUP_RIDE_FRAME_MAX_RIDERS))

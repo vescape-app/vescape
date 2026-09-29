@@ -1,5 +1,6 @@
 package expo.modules.vescapecore.watch
 
+import expo.modules.vescapecore.telemetry.TelemetryLevel
 import java.nio.BufferUnderflowException
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
@@ -27,6 +28,9 @@ import kotlin.math.hypot
  *   u32 colorArgb
  *   f32 eastM, f32 northM   offset from the Rider's latest GPS Fix
  *   u8  flags            bit 0 = stale
+ *   u8  batteryPercent   0-100 Battery SoC Estimate; 0xFF = none (no Board Session, or unknown)
+ *   u8  batteryLevel     TelemetryLevel.wire: 0 normal, 1 warning, 2 critical
+ *   u8  heatLevel        TelemetryLevel.wire, the worse of motor and controller temperature
  *   ...                  later fields are appended here; a decoder skips what it does not know
  * ```
  *
@@ -53,9 +57,18 @@ internal data class GroupRideFrameRider(
     val northM: Double,
     /** No presence from this Rider for a while; still in the Group Ride. */
     val stale: Boolean,
+    /** Battery SoC Estimate, 0-100. Null: no Board Session, or a phone too old to send it. */
+    val batteryPercent: Int? = null,
+    /** Level of the Battery SoC Estimate, from the phone's telemetry thresholds. */
+    val batteryLevel: TelemetryLevel = TelemetryLevel.NORMAL,
+    /** The worse of the Rider's motor and controller temperature levels. */
+    val heatLevel: TelemetryLevel = TelemetryLevel.NORMAL,
 ) {
     /** Straight-line metres from the Rider. */
     val distanceM: Double get() = hypot(eastM, northM)
+
+    /** The worse of [batteryLevel] and [heatLevel]: what a flag on this Rider says. */
+    val flagLevel: TelemetryLevel get() = maxOf(batteryLevel, heatLevel)
 }
 
 /** @parity /modules/vescape-core/ios/watch/GroupRideFrame.swift `GroupRideFrame` */
@@ -72,9 +85,10 @@ internal data class GroupRideFrame(
 private const val MAX_ID_BYTES = 64
 private const val MAX_NAME_BYTES = 32
 private const val FLAG_STALE = 1
+private const val NO_BATTERY = 0xFF
 
-/** Fixed part of a rider record after the two strings: colour, east, north, flags. */
-private const val RIDER_FIXED_BYTES = 4 + 4 + 4 + 1
+/** Fixed part of a rider record after the two strings: colour, east, north, flags, battery, levels. */
+private const val RIDER_FIXED_BYTES = 4 + 4 + 4 + 1 + 1 + 1 + 1
 
 /** Most Riders one frame carries; the builder keeps the nearest. */
 internal const val GROUP_RIDE_FRAME_MAX_RIDERS = 32
@@ -101,6 +115,9 @@ internal object GroupRideFrameCodec {
                 putFloat(rider.eastM.toFloat())
                 putFloat(rider.northM.toFloat())
                 put((if (rider.stale) FLAG_STALE else 0).toByte())
+                put((rider.batteryPercent?.coerceIn(0, 100) ?: NO_BATTERY).toByte())
+                put(rider.batteryLevel.wire.toByte())
+                put(rider.heatLevel.wire.toByte())
             }
         }.array()
     }
@@ -125,9 +142,23 @@ internal object GroupRideFrameCodec {
                 val north = buffer.float.toDouble()
                 val flags = buffer.get().toInt()
                 if (buffer.position() > end || !east.isFinite() || !north.isFinite()) return null
+                // Appended after the first release: an older phone's record ends before them.
+                val battery = if (buffer.position() < end) buffer.get().toInt() and 0xFF else NO_BATTERY
+                val batteryLevel = if (buffer.position() < end) buffer.get().toInt() and 0xFF else 0
+                val heatLevel = if (buffer.position() < end) buffer.get().toInt() and 0xFF else 0
                 // Fields a newer phone appended: not ours to read.
                 buffer.position(end)
-                GroupRideFrameRider(id, name, color, east, north, stale = flags and FLAG_STALE != 0)
+                GroupRideFrameRider(
+                    id,
+                    name,
+                    color,
+                    east,
+                    north,
+                    stale = flags and FLAG_STALE != 0,
+                    batteryPercent = battery.takeIf { it <= 100 },
+                    batteryLevel = TelemetryLevel.fromWire(batteryLevel),
+                    heatLevel = TelemetryLevel.fromWire(heatLevel),
+                )
             }
             GroupRideFrame(course, span, riders)
         } catch (_: BufferUnderflowException) {

@@ -583,6 +583,9 @@ internal class GroupRideObserver(
             position = if (lat != null && lng != null && !lat.isNaN() && !lng.isNaN()) GeoPoint(lat, lng) else null,
             stale = view["stale"] as? Boolean ?: false,
             lastSeenMs = view["lastSeen"] as? Long ?: 0L,
+            soc = presence?.get("soc") as? Double,
+            motorTempC = presence?.get("motorTemp") as? Double,
+            ctrlTempC = presence?.get("ctrlTemp") as? Double,
         )
     }
 
