@@ -47,6 +47,7 @@ internal object ReconnectPolicy {
      * the same exemption in `rescanIdleMs`.
      *
      * @parity /modules/vescape-core/ios/connection/ReconnectPolicy.swift `rescanIdleMs`
+     * @parity /modules/vescape-core/ios/connection/ReconnectPolicy.swift `failureRetryDelayMs`
      */
     fun nextRetry(currentAttempt: Int, appForeground: Boolean = false): ReconnectRetry {
         val next = currentAttempt + 1

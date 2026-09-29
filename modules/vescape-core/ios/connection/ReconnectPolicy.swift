@@ -9,6 +9,14 @@ import Foundation
 ///
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/reconnect/ReconnectPolicy.kt
 internal enum ReconnectPolicy {
+  /// Failed GATT attempts use Android's retry cadence, independently of supplemental scans.
+  /// `attempt` is one-based and resets only when a new session starts or telemetry returns.
+  /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/reconnect/ReconnectPolicy.kt `nextRetry`
+  static func failureRetryDelayMs(attempt: Int, appForeground: Bool) -> Int {
+    if !appForeground && attempt > slowAfterAttempts { return slowIdleMs }
+    return min(attempt * 500, 5000)
+  }
+
   /// Active-scan window. Identical in both tiers: a window too short to hear an advertising board is
   /// not a cheaper scan, it is a wasted one.
   static let rescanWindowMs = 4000

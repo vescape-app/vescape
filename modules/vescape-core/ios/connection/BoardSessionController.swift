@@ -138,7 +138,9 @@ internal final class BoardSessionController: VescGattListener {
   /// session-facing link traffic goes through `transport`; scan stays on `gatt` (not session-bound).
   /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/connection/BoardSessionController.kt `transport`
   private var replayTransport: ReplayTransport?
-  private var transport: SessionTransport { replayTransport ?? gatt }
+  /// Injectable radio boundary for session recovery tests; production uses the CoreBluetooth client.
+  private let suppliedTransport: SessionTransport?
+  private var transport: SessionTransport { replayTransport ?? suppliedTransport ?? gatt }
   /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/connection/BoardSessionController.kt `remoteTiltController`
   private lazy var remoteTiltController = RemoteTiltController(
     transport: { [weak self] in
@@ -184,6 +186,8 @@ internal final class BoardSessionController: VescGattListener {
   /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/connection/BoardSessionController.kt `sessionClock`
   private var sessionClock: SessionClock = SystemSessionClock.shared
   private let connectTimeoutSeconds = 20.0
+  private let gattHandshakeDeadline = GattHandshakeDeadline()
+  private var connectTimeout: Cancellable?
   /// Board-ready watchdog: max time in `waitingForTelemetry` (GATT subscribed) before the board is
   /// presumed silent and we self-heal via reconnect. Mirrors Android `armBoardReadyTimeout`.
   /// @platform-diff Android scales this per reconnect attempt (base 4s → 15s cap via
@@ -342,6 +346,9 @@ internal final class BoardSessionController: VescGattListener {
   /// reconnect starts and when one succeeds, mirroring Android's `reconnectScheduler` attempt count.
   /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/reconnect/ReconnectScheduler.kt `currentAttempt`
   private var rescanAttempt = 0
+  /// Consecutive GATT failures without telemetry; scans and successful handshakes do not reset it.
+  private var failureRetryAttempt = 0
+  private var failureRetry: Cancellable?
 
   // MARK: Scan state
 
@@ -383,9 +390,14 @@ internal final class BoardSessionController: VescGattListener {
   private var latestBatteryVoltage: Double?
   private var lastBatteryPersistedAt: Int64 = 0
 
-  init(appData: AppDataRepository = .shared, scheduler: Scheduler = MainQueueScheduler()) {
+  init(
+    appData: AppDataRepository = .shared,
+    scheduler: Scheduler = MainQueueScheduler(),
+    transport: SessionTransport? = nil
+  ) {
     self.appData = appData
     self.scheduler = scheduler
+    self.suppliedTransport = transport
   }
 
   // MARK: - Scan API
@@ -430,15 +442,15 @@ internal final class BoardSessionController: VescGattListener {
     // A replay owns the session's notion of time for its lifetime. Installed here, with the
     // transport, so it cannot be undone by the teardown of the session being replaced.
     sessionClock = replay?.clock ?? SystemSessionClock.shared
-    gatt.recorder = { [weak self] in self?.recordingCoordinator.currentRecorder() }
+    (transport as? VescGattClient)?.recorder = { [weak self] in self?.recordingCoordinator.currentRecorder() }
     batteryEstimator.ensureLoaded()
     liveSeries.emit = { [weak self] name, body in self?.emit?(name, body) }
     liveSeries.generation = { [weak self] in self?.connectionSeq ?? 0 }
     liveSeries.speed = { [weak self] in self?.sessionClock.speed ?? 1.0 }
     liveSeries.setWindowMinutes(config.liveHistoryLimitMinutes)
     beginSession(config: config, onSuccess: onSuccess, onError: onError)
-    transport.connect(peripheralId: config.bleId)
     armConnectTimeout()
+    transport.connect(peripheralId: config.bleId)
   }
 
   /// Start a dev-mode replay session (ADR 0024): a Debug Recording played through the real session
@@ -1415,6 +1427,7 @@ internal final class BoardSessionController: VescGattListener {
     let restoredId = restoredPeripheralIds.first {
       $0.caseInsensitiveCompare(config.bleId) == .orderedSame
     }
+    armConnectTimeout()
     if let restoredId, gatt.adoptRestored(peripheralId: restoredId) {
       recordConnectionDiagnostic(
         "session_restored",
@@ -1433,7 +1446,6 @@ internal final class BoardSessionController: VescGattListener {
       )
       transport.connect(peripheralId: config.bleId)
     }
-    armConnectTimeout()
     clearPendingResume()
   }
 
@@ -1456,6 +1468,8 @@ internal final class BoardSessionController: VescGattListener {
     onSuccess: @escaping () -> Void,
     onError: @escaping (String, String) -> Void
   ) {
+    gattHandshakeDeadline.reset()
+    failureRetryAttempt = 0
     faultLogReader?.cancel()
     faultLogReader = nil
     session?.invalidate()
@@ -1694,11 +1708,15 @@ internal final class BoardSessionController: VescGattListener {
     pendingOnError = nil
   }
 
-  private func armConnectTimeout() {
+  /// Replace the initial connect deadline with a fresh handshake deadline on every GATT connection.
+  /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/connection/BoardSessionController.kt `armConnectPhaseTimeout`
+  private func armConnectTimeout(timeoutSeconds: Double? = nil) {
+    connectTimeout?.cancel()
     guard let token = session else { return }
-    scheduler.postDelayedForSession(
+    let timeoutSeconds = timeoutSeconds ?? connectTimeoutSeconds
+    connectTimeout = scheduler.postDelayedForSession(
       token,
-      delayMs: Int64(connectTimeoutSeconds * 1000),
+      delayMs: Int64(timeoutSeconds * 1000),
       isCurrent: { [weak self] in $0 === self?.session }
     ) { [weak self] _ in
       guard let self else { return }
@@ -1710,14 +1728,15 @@ internal final class BoardSessionController: VescGattListener {
           message: "BLE connect phase timed out",
           extra: [
             "connect_phase": stuckPhase.rawValue,
-            "timeout_ms": Int(self.connectTimeoutSeconds * 1000),
+            "timeout_ms": Int(timeoutSeconds * 1000),
           ]
         )
-        // The board never became ready — most often it is simply powered off. Rather than
-        // surfacing "connection failed", hand off to the persistent reconnect loop so we keep
-        // retrying until it appears. Mirrors Android, whose connect-phase timeout routes through
-        // `failStart` → `scheduleAutoReconnect` (session `autoReconnect` is always on).
-        self.beginReconnect()
+        // Reset the stalled attempt and keep retrying. Mirrors Android's connect-phase timeout
+        // routing through `failStart` -> `scheduleAutoReconnect` with a fresh GATT connection.
+        if stuckPhase == .discovering || stuckPhase == .subscribing {
+          self.gattHandshakeDeadline.timedOut()
+        }
+        self.beginReconnect(restartTransport: true)
       }
     }
   }
@@ -1725,7 +1744,7 @@ internal final class BoardSessionController: VescGattListener {
   /// Board-ready watchdog: armed when telemetry polling starts (entering `waitingForTelemetry`).
   /// If the board stays subscribed but never streams a telemetry frame, presume it silent and
   /// self-heal via `beginReconnect` instead of hanging on a spinner forever. Mirrors Android
-  /// `armBoardReadyTimeout` (`BoardSessionController.kt`). Like `armConnectTimeout`, it needs no
+  /// `armBoardReadyTimeout` (`BoardSessionController.kt`). It needs no
   /// explicit cancel handle: the session-token guard is invalidated on endSession/fail/reconnect,
   /// and `markBoardReady` flips the phase off `waitingForTelemetry` so the fire guard falls through.
   /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/connection/BoardSessionController.kt `armBoardReadyTimeout`
@@ -1743,7 +1762,7 @@ internal final class BoardSessionController: VescGattListener {
         message: "Board telemetry unavailable before ready timeout",
         extra: ["timeout_ms": Int(self.boardReadyTimeoutSeconds * 1000)]
       )
-      self.beginReconnect()
+      self.beginReconnect(restartTransport: true)
     }
   }
 
@@ -1792,7 +1811,7 @@ internal final class BoardSessionController: VescGattListener {
         "last_telemetry_timestamp": lastTelemetryAt,
       ]
     )
-    beginReconnect()
+    beginReconnect(restartTransport: true)
   }
 
   private func setPhase(_ phase: BoardPhase) {
@@ -1852,12 +1871,14 @@ internal final class BoardSessionController: VescGattListener {
   /// (`connectionSeq`) is intentionally *not* bumped — the logical session survives the drop, so
   /// the live series keeps flowing once telemetry resumes (Android parity).
   /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/connection/BoardSessionController.kt `scheduleAutoReconnect`
-  private func beginReconnect() {
-    guard config != nil else { return }
+  private func beginReconnect(restartTransport: Bool = false, retryDelayMs: Int = 0) {
+    guard let config else { return }
     // Replay links are not recoverable: watchdogs (board-ready, stale) stay no-ops and playback
     // simply resumes when recorded frames arrive. The recording's end is handled as a terminal
     // disconnect in `onGattDisconnected`, mirroring Android's `autoReconnect = false` replay config.
     guard transport.supportsReconnect else { return }
+    failureRetry?.cancel()
+    failureRetry = nil
     // Settle a still-pending initial connect before dropping into the retry loop, mirroring Android
     // `failStart`, which calls `start.onError(...)` even as it schedules the reconnect: the JS
     // `connect()` promise resolves (its catch just re-syncs state) while native keeps retrying in
@@ -1875,7 +1896,10 @@ internal final class BoardSessionController: VescGattListener {
     // The session survives the drop, so the Live Activity is *not* ended — setPhase(.reconnecting)
     // below refreshes it to the reconnect state, mirroring Android mutating the persistent chip.
     session?.invalidate()
+    connectTimeout?.cancel()
+    connectTimeout = nil
     stopPolling()
+    configController.onSessionTerminated("Board connection lost", connection: fallbackConfigRWConnection())
     // Release the connected-Board pause gate. While connected the Board decides Idle Pause and it
     // halts *both* streams, GPS included — so a board that went stationary and then dropped would
     // leave that gate stuck closed for the whole reconnect, silently discarding the rider's fixes.
@@ -1913,7 +1937,30 @@ internal final class BoardSessionController: VescGattListener {
     // survives it, and steps down once the grace says this is an ended ride, not a dropout.
     setLinkLost(true)
     setPhase(.reconnecting)
-    transport.reconnect()
+    if retryDelayMs > 0, let session {
+      // Stop the failed link now. A separate counter keeps repeated discovery/subscription failures
+      // from resetting the backoff every time CoreBluetooth reconnects to an advertising board.
+      transport.disconnect()
+      failureRetry = scheduler.postDelayedForSession(
+        session,
+        delayMs: Int64(retryDelayMs),
+        isCurrent: { [weak self] in $0 === self?.session }
+      ) { [weak self] session in
+        guard let self else { return }
+        self.failureRetry = nil
+        self.transport.connect(peripheralId: config.bleId)
+        self.scheduleRescanCycle(session: session)
+      }
+      return
+    }
+    if restartTransport {
+      // A timeout or GATT failure can leave the radio connected. `connect` clears the old GATT link
+      // before connecting again, like Android's timeout recovery; persistent reconnect alone
+      // would keep the stalled discovery/subscription alive.
+      transport.connect(peripheralId: config.bleId)
+    } else {
+      transport.reconnect()
+    }
     if let session { scheduleRescanCycle(session: session) }
   }
 
@@ -1944,6 +1991,8 @@ internal final class BoardSessionController: VescGattListener {
   }
 
   private func stopReconnect() {
+    failureRetry?.cancel()
+    failureRetry = nil
     guard reconnecting else { return }
     reconnecting = false
     rescanAttempt = 0
@@ -1991,13 +2040,10 @@ internal final class BoardSessionController: VescGattListener {
     guard session != nil else { return }
     // Link re-established: the persistent connect landed, so drop the supplemental rescan and let
     // the normal discover → subscribe → telemetry phases carry the reconnect to `connected`.
-    if reconnecting {
-      reconnecting = false
-      rescanAttempt = 0
-      transport.stopReconnectScan()
-    }
+    stopReconnect()
     recordConnectionDiagnostic("gatt_connected", operation: "connect", message: "GATT connected")
     setPhase(.discovering)
+    armConnectTimeout(timeoutSeconds: Double(gattHandshakeDeadline.timeoutMs) / 1000)
   }
 
   func onGattSubscribing() {
@@ -2007,6 +2053,8 @@ internal final class BoardSessionController: VescGattListener {
 
   func onGattReady() {
     guard let session else { return }
+    connectTimeout?.cancel()
+    connectTimeout = nil
     boardError = nil
     recordConnectionDiagnostic("gatt_ready", operation: "connect", message: "GATT ready")
     setPhase(.waitingForTelemetry)
@@ -2016,7 +2064,25 @@ internal final class BoardSessionController: VescGattListener {
 
   func onGattFailure(code: String, message: String) {
     guard session != nil else { return }
-    fail(code: code, message: message)
+    // A saved Board Link already passed probing. Runtime GATT errors follow the same retry path
+    // as Android's failPendingConnect -> failStart; they must not end the rider's session.
+    // Invalid input and replay failures cannot be repaired by reconnecting.
+    guard transport.supportsReconnect, code != "INVALID_DEVICE" else {
+      fail(code: code, message: message)
+      return
+    }
+    guard failureRetry == nil else { return }
+    recordConnectionDiagnostic(
+      "ble_connect_failed",
+      operation: "connect",
+      message: message,
+      extra: ["error_code": code]
+    )
+    failureRetryAttempt = min(failureRetryAttempt + 1, ReconnectPolicy.slowAfterAttempts + 1)
+    beginReconnect(
+      restartTransport: true,
+      retryDelayMs: ReconnectPolicy.failureRetryDelayMs(attempt: failureRetryAttempt, appForeground: appIsForeground)
+    )
   }
 
   func onGattDisconnected(intentional: Bool, message: String) {
@@ -2502,6 +2568,8 @@ internal final class BoardSessionController: VescGattListener {
 
   private func markBoardReady() {
     guard phase == .waitingForTelemetry else { return }
+    gattHandshakeDeadline.reset()
+    failureRetryAttempt = 0
     boardError = nil
     recordConnectionDiagnostic("board_ready", operation: "connect", message: "Board telemetry received")
     if let config {
