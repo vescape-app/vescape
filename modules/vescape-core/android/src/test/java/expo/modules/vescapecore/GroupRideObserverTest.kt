@@ -21,6 +21,7 @@ class GroupRideObserverTest {
 
     @Test
     fun `a presence missing a coordinate leaves the rider unplaced, not at 0,0`() {
+        assertNull(GroupRideObserver.presenceMap(JSONObject().put("lat", 52.0).put("soc", 80.0)))
         assertNull(rider(JSONObject().put("lat", 52.0))?.position)
         assertNull(rider(JSONObject().put("lng", 21.0))?.position)
         assertNotNull(rider(JSONObject().put("lng", 21.0)))

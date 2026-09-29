@@ -590,15 +590,18 @@ internal class GroupRideObserver(
         private val RECONNECT_DELAYS_MS = longArrayOf(1_000, 2_000, 5_000, 10_000, 30_000)
 
         /**
-         * A missing coordinate reads as NaN (`optDouble`), so the Rider is not placed.
+         * Null without both finite coordinates, so neither the phone map nor the watch places the
+         * Rider (not at 0,0, not at NaN).
          *
          * @parity /modules/vescape-core/ios/groupride/GroupRideObserver.swift `presenceMap`
          */
         internal fun presenceMap(obj: JSONObject?): Map<String, Any?>? {
             obj ?: return null
+            val lat = obj.optDouble("lat").takeIf { it.isFinite() } ?: return null
+            val lng = obj.optDouble("lng").takeIf { it.isFinite() } ?: return null
             return mapOf(
-                "lat" to obj.optDouble("lat"),
-                "lng" to obj.optDouble("lng"),
+                "lat" to lat,
+                "lng" to lng,
                 "heading" to obj.optionalDouble("heading"),
                 "speed" to obj.optionalDouble("speed"),
                 "soc" to obj.optionalDouble("soc"),
@@ -613,8 +616,8 @@ internal class GroupRideObserver(
         }
 
         /**
-         * A [riderView] map as the typed entry native keeps; null when it carries no id. A presence
-         * without both coordinates leaves the Rider unplaced.
+         * A [riderView] map as the typed entry native keeps; null when it carries no id. No presence
+         * leaves the Rider unplaced.
          *
          * @parity /modules/vescape-core/ios/groupride/GroupRideObserver.swift `rosterRider`
          */
@@ -627,7 +630,7 @@ internal class GroupRideObserver(
                 id = id,
                 name = view["name"] as? String ?: "",
                 color = view["color"] as? String,
-                position = if (lat != null && lng != null && !lat.isNaN() && !lng.isNaN()) GeoPoint(lat, lng) else null,
+                position = if (lat != null && lng != null) GeoPoint(lat, lng) else null,
                 stale = view["stale"] as? Boolean ?: false,
                 lastSeenMs = view["lastSeen"] as? Long ?: 0L,
                 soc = presence?.get("soc") as? Double,

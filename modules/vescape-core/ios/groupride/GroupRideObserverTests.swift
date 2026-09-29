@@ -15,6 +15,7 @@ final class GroupRideObserverTests: XCTestCase {
   }
 
   func testAPresenceMissingACoordinateLeavesTheRiderUnplacedNotAtZeroZero() {
+    XCTAssertNil(GroupRideObserver.presenceMap(["lat": 52.0, "soc": 80.0]))
     XCTAssertNil(rider(presence: ["lat": 52.0])?.position)
     XCTAssertNil(rider(presence: ["lng": 21.0])?.position)
     XCTAssertNotNil(rider(presence: ["lng": 21.0]))

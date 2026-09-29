@@ -490,14 +490,18 @@ internal final class GroupRideObserver: NSObject {
     }
   }
 
-  /// A missing coordinate reads as NaN, as Android's `optDouble` does, so the Rider is not placed.
+  /// Nil without both finite coordinates, so neither the phone map nor the watch places the Rider
+  /// (not at 0,0, not at NaN).
   ///
   /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/GroupRideObserver.kt `presenceMap`
   static func presenceMap(_ obj: [String: Any]?) -> [String: Any?]? {
-    guard let obj else { return nil }
+    guard let obj,
+      let lat = obj.double("lat"), lat.isFinite,
+      let lng = obj.double("lng"), lng.isFinite
+    else { return nil }
     return [
-      "lat": obj.double("lat") ?? .nan,
-      "lng": obj.double("lng") ?? .nan,
+      "lat": lat,
+      "lng": lng,
       "heading": obj.double("heading"),
       "speed": obj.double("speed"),
       "soc": obj.double("soc"),
@@ -511,15 +515,15 @@ internal final class GroupRideObserver: NSObject {
     ]
   }
 
-  /// A `riderView` map as the typed entry native keeps; nil when it carries no id. A presence
-  /// without both coordinates leaves the Rider unplaced.
+  /// A `riderView` map as the typed entry native keeps; nil when it carries no id. No presence
+  /// leaves the Rider unplaced.
   ///
   /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/GroupRideObserver.kt `rosterRider`
   static func rosterRider(_ view: [String: Any?]) -> GroupRideRosterRider? {
     guard let id = view["id"] as? String else { return nil }
     let presence = view["presence"] as? [String: Any?]
-    let lat = (presence?["lat"] as? Double).flatMap { $0.isNaN ? nil : $0 }
-    let lng = (presence?["lng"] as? Double).flatMap { $0.isNaN ? nil : $0 }
+    let lat = presence?["lat"] as? Double
+    let lng = presence?["lng"] as? Double
     return GroupRideRosterRider(
       id: id,
       name: view["name"] as? String ?? "",
