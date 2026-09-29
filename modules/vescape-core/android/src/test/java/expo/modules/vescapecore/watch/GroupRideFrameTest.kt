@@ -143,7 +143,8 @@ class GroupRideFrameTest {
         assertEquals(TelemetryLevel.NORMAL, hot.batteryLevel)
         assertEquals(TelemetryLevel.CRITICAL, hot.heatLevel)
         assertNull(walking.batteryPercent)
-        assertEquals(TelemetryLevel.NORMAL, walking.flagLevel)
+        assertEquals(TelemetryLevel.NORMAL, walking.batteryLevel)
+        assertEquals(TelemetryLevel.NORMAL, walking.heatLevel)
     }
 
     // Codec

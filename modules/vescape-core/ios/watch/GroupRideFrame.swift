@@ -65,9 +65,6 @@ struct GroupRideFrameRider: Equatable {
 
   /// Straight-line metres from the Rider.
   var distanceM: Double { (eastM * eastM + northM * northM).squareRoot() }
-
-  /// The worse of `batteryLevel` and `heatLevel`: what a flag on this Rider says.
-  var flagLevel: TelemetryLevel { max(batteryLevel, heatLevel) }
 }
 
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/watch/GroupRideFrame.kt `GroupRideFrame`

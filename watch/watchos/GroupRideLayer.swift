@@ -1,9 +1,8 @@
 import SwiftUI
 
 /// Every other Rider who fits on the nav map, as a dot in their colour, over the route and under the
-/// gauges. A flagged Rider's dot wears a thin orange or red ring. Without Navigation there is no
-/// route to carry the Rider's own ring, so this draws it at the same spot. In nav focus each live dot
-/// gets its distance label. Riders beyond the map are `GroupRideEdgeLayer`'s.
+/// gauges. Without Navigation there is no route to carry the Rider's own ring, so this draws it at
+/// the same spot. In nav focus each live dot gets its distance label, which carries any flag. Riders beyond the map are `GroupRideEdgeLayer`'s.
 ///
 /// @parity /watch/wearos/src/main/java/app/vescape/wear/GroupRide.kt `GroupRideLayer`
 struct GroupRideLayer: View {
@@ -21,11 +20,6 @@ struct GroupRideLayer: View {
       let marks = map.marks(for: group.riders, sizes: groupRideMarkSizes(size: size, focus: focus))
       for mark in marks where mark.kind == .dot {
         let opacity = mark.rider.stale ? staleOpacity : 1
-        if let ring = flagColor(mark.rider) {
-          let ringPath = circle(mark.point, mark.size + GROUP_RING_GAP)
-          context.stroke(ringPath, with: .color(GROUP_OUTLINE_COLOR), lineWidth: GROUP_RING_WIDTH + GROUP_OUTLINE * 2)
-          context.stroke(ringPath, with: .color(ring), lineWidth: GROUP_RING_WIDTH)
-        }
         context.fill(circle(mark.point, mark.size + GROUP_OUTLINE), with: .color(GROUP_OUTLINE_COLOR.opacity(opacity)))
         context.fill(circle(mark.point, mark.size), with: .color(Color(argb: mark.rider.colorArgb).opacity(opacity)))
       }
@@ -80,15 +74,6 @@ struct GroupRideEdgeLayer: View {
   }
 }
 
-/// A live Rider's flag colour: orange for a warning, red for critical, the worse of battery and heat.
-/// Nil for a Rider with nothing to flag, and for a stale one — their readings are as old as their
-/// place.
-///
-/// @parity /watch/wearos/src/main/java/app/vescape/wear/GroupRide.kt `flagColor`
-private func flagColor(_ rider: GroupRideFrameRider) -> Color? {
-  rider.stale ? nil : levelColor(rider.flagLevel)
-}
-
 func levelColor(_ level: TelemetryLevel) -> Color? {
   switch level {
   case .normal: return nil
@@ -120,7 +105,7 @@ private extension GraphicsContext {
     guard focus > GROUP_LABEL_MIN_FOCUS else { return }
     let labels = marks.map { $0.rider.stale ? nil : measureLabel($0.rider, unitSystem: unitSystem) }
     let placed = map.placeLabels(
-      marks: marks, labels: labels.map { $0?.size }, gap: GROUP_LABEL_GAP, ring: GROUP_RING_GAP + GROUP_RING_WIDTH, navFocus: focus
+      marks: marks, labels: labels.map { $0?.size }, gap: GROUP_LABEL_GAP, navFocus: focus
     )
     var context = self
     context.opacity = focus
@@ -263,11 +248,8 @@ private let GROUP_TRIANGLE_MAX: CGFloat = 12
 /// Triangle base width as a share of its length.
 private let GROUP_TRIANGLE_BASE: CGFloat = 0.9
 private let GROUP_OUTLINE: CGFloat = 0.75
-/// A flagged dot's ring: this far outside the dot, this thick.
-private let GROUP_RING_GAP: CGFloat = 2.5
-private let GROUP_RING_WIDTH: CGFloat = 1.5
 private let GROUP_LABEL_FONT_SIZE: CGFloat = 9
-/// Label clear of its dot, ring or triangle apex.
+/// Label clear of its dot or triangle apex.
 private let GROUP_LABEL_GAP: CGFloat = 3
 /// Between the distance and its flag.
 private let GROUP_LABEL_FLAG_GAP: CGFloat = 3

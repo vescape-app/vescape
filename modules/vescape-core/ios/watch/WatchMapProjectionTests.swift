@@ -178,7 +178,7 @@ final class WatchMapProjectionTests: XCTestCase {
   /// Places one `labelSize` label per mark and returns their origins.
   private func labels(_ marks: [WatchGroupRideMark], labelSize: CGSize? = nil, focus: Double = 1) -> [CGPoint?] {
     map().placeLabels(
-      marks: marks, labels: marks.map { _ in labelSize ?? self.labelSize }, gap: 3, ring: 4, navFocus: focus
+      marks: marks, labels: marks.map { _ in labelSize ?? self.labelSize }, gap: 3, navFocus: focus
     )
   }
 
@@ -209,17 +209,6 @@ final class WatchMapProjectionTests: XCTestCase {
     XCTAssertEqual(nearEdge.point.x, 350, accuracy: 0.01)
     XCTAssertEqual(label(nearEdge, labelSize: CGSize(width: 60, height: 10)).x, nearEdge.point.x - 3 - 3 - 60, accuracy: 0.01)
     XCTAssertEqual(label(nearEdge).x, nearEdge.point.x + 3 + 3, accuracy: 0.01)
-  }
-
-  func testAFlaggedDotsLabelClearsItsRingAStaleOnesHasNoRingToClear() {
-    var hot = rider(eastM: 50, northM: 100)
-    hot.heatLevel = .warning
-    let mark = map().mark(for: hot, sizes: sizes)
-    XCTAssertEqual(label(mark).x, mark.point.x + 3 + 4 + 3, accuracy: 0.01)
-
-    hot.stale = true
-    let lost = map().mark(for: hot, sizes: sizes)
-    XCTAssertEqual(label(lost).x, lost.point.x + 3 + 3, accuracy: 0.01)
   }
 
   func testATrianglesLabelSitsInwardOfItsApex() {
@@ -278,7 +267,7 @@ final class WatchMapProjectionTests: XCTestCase {
     lost.stale = true
     let stale = map().mark(for: lost, sizes: sizes)
     let live = map().mark(for: riderAt("live", eastM: 40, northM: 100), sizes: sizes)
-    let placed = map().placeLabels(marks: [stale, live], labels: [nil, labelSize], gap: 3, ring: 4, navFocus: 1)
+    let placed = map().placeLabels(marks: [stale, live], labels: [nil, labelSize], gap: 3, navFocus: 1)
     XCTAssertNil(placed[0])
     XCTAssertFalse(CGRect(origin: placed[1]!, size: labelSize).intersects(dotBounds(stale)))
   }

@@ -66,9 +66,6 @@ internal data class GroupRideFrameRider(
 ) {
     /** Straight-line metres from the Rider. */
     val distanceM: Double get() = hypot(eastM, northM)
-
-    /** The worse of [batteryLevel] and [heatLevel]: what a flag on this Rider says. */
-    val flagLevel: TelemetryLevel get() = maxOf(batteryLevel, heatLevel)
 }
 
 /** @parity /modules/vescape-core/ios/watch/GroupRideFrame.swift `GroupRideFrame` */

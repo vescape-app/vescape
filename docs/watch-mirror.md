@@ -246,8 +246,8 @@ battery % (none without a Board Session), battery level and heat level. The phon
 levels (normal, warning, critical) from the app's telemetry thresholds in
 `telemetry/TelemetryLevel.kt` / `.swift`, the native mirror of `telemetryThresholds.ts`: battery
 warns below 30% and is critical below 10%; heat is the worse of motor and controller temperature,
-warning above 70 °C and critical above 80 °C. The wrist never classifies. It rings a flagged live
-dot orange or red, and in nav focus labels every live Rider's mark with their distance ("680m"),
+warning above 70 °C and critical above 80 °C. The wrist never classifies. In nav focus it labels
+every live Rider's mark with their distance ("680m"),
 followed by a thermometer when they run hot, else their battery % when it is low. Labels are
 placed nearest Rider first and never overlap the nav distance readout, each other or another Rider's
 mark: a crowded label flips to the dot's other side or moves up to one label height (along the edge

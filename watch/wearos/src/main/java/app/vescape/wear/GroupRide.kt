@@ -327,9 +327,8 @@ internal fun relativeBearingDeg(eastM: Double, northM: Double, courseDeg: Double
 
 /**
  * Every other Rider who fits on the nav map, as a dot in their colour, over the route and under the
- * gauges. A flagged Rider's dot wears a thin orange or red ring. Without Navigation there is no
- * route to carry the Rider's own ring, so this draws it at the same spot. In nav focus each live dot
- * gets its distance label. Riders beyond the map are [GroupRideEdgeLayer]'s.
+ * gauges. Without Navigation there is no route to carry the Rider's own ring, so this draws it at
+ * the same spot. In nav focus each live dot gets its distance label, which carries any flag. Riders beyond the map are [GroupRideEdgeLayer]'s.
  *
  * Read in the draw scope: frames and nav-focus drags repaint without recomposing. The caller skips
  * this in ambient, where the group is hidden.
@@ -351,18 +350,11 @@ internal fun GroupRideLayer(
         val staleAlpha = stalePulse()
         val focus = navFocus().coerceIn(0f, 1f)
         val outline = GROUP_OUTLINE.toPx()
-        val ringGap = GROUP_RING_GAP.toPx()
-        val ringWidth = GROUP_RING_WIDTH.toPx()
         val marks = map.marks(group.riders, groupRideMarkSizes(focus))
         for (mark in marks) {
             if (mark.kind != GroupRideMarkKind.Dot) continue
             val center = Offset(mark.x, mark.y)
             val markAlpha = if (mark.rider.stale) staleAlpha else 1f
-            flagColor(mark.rider)?.let { color ->
-                val radius = mark.sizePx + ringGap
-                drawCircle(GROUP_OUTLINE_COLOR, radius = radius, center = center, style = Stroke(ringWidth + outline * 2f))
-                drawCircle(color, radius = radius, center = center, style = Stroke(ringWidth))
-            }
             drawCircle(GROUP_OUTLINE_COLOR, radius = mark.sizePx + outline, center = center, alpha = markAlpha)
             drawCircle(Color(mark.rider.colorArgb), radius = mark.sizePx, center = center, alpha = markAlpha)
         }
@@ -395,16 +387,6 @@ internal fun GroupRideEdgeLayer(navFocus: () -> Float, alpha: () -> Float) {
         labels.draw(this, map, marks, GroupRideMarkKind.Triangle, focus)
     }
 }
-
-/**
- * A live Rider's flag colour: orange for a warning, red for critical, the worse of battery and heat.
- * Null for a Rider with nothing to flag, and for a stale one — their readings are as old as their
- * place.
- *
- * @parity /watch/watchos/GroupRideLayer.swift `flagColor`
- */
-private fun flagColor(rider: GroupRideFrameRider): Color? =
-    if (rider.stale) null else levelColor(rider.flagLevel)
 
 internal fun levelColor(level: TelemetryLevel): Color? = when (level) {
     TelemetryLevel.NORMAL -> null
@@ -439,20 +421,19 @@ internal fun HeadingUpMap.placeLabels(
     marks: List<GroupRideMark>,
     labels: List<Size?>,
     gapPx: Float,
-    ringPx: Float,
     navFocus: Float,
     faceWidth: Float,
     faceHeight: Float,
 ): List<Offset?> {
     // [gapPx] clear of the readout too, so a label never reads as part of it.
     val readout = navReadoutBounds(navFocus, faceWidth, faceHeight).inflate(gapPx)
-    val obstacles = marks.map { it.bounds(ringPx) }
+    val obstacles = marks.map { it.bounds() }
     val placed = arrayOfNulls<Rect>(marks.size)
     val order = marks.indices.filter { labels[it] != null }
         .sortedWith(compareBy({ marks[it].rider.distanceM }, { marks[it].rider.id }))
     for (i in order) {
         val size = labels[i] ?: continue
-        placed[i] = labelSpots(marks[i], size, gapPx, ringPx, readout)
+        placed[i] = labelSpots(marks[i], size, gapPx, readout)
             .map { Rect(it, size) }
             .firstOrNull { box ->
                 !box.overlaps(readout) &&
@@ -468,7 +449,6 @@ private fun HeadingUpMap.labelSpots(
     mark: GroupRideMark,
     size: Size,
     gapPx: Float,
-    ringPx: Float,
     readout: Rect,
 ): Sequence<Offset> = sequence {
     val (width, height) = size
@@ -476,7 +456,7 @@ private fun HeadingUpMap.labelSpots(
     val nudge: Offset
     when (mark.kind) {
         GroupRideMarkKind.Dot -> {
-            val reach = mark.sizePx + (if (flagColor(mark.rider) != null) ringPx else 0f) + gapPx
+            val reach = mark.sizePx + gapPx
             val top = mark.y - height / 2f
             val right = Offset(mark.x + reach, top)
             val left = Offset(mark.x - reach - width, top)
@@ -510,13 +490,13 @@ private fun HeadingUpMap.labelSpots(
 }
 
 /**
- * A mark's footprint for [placeLabels]: a dot with its flag ring ([ringPx] outside it), or a box
- * around a triangle, centred between base and apex and wide enough for the base at any angle.
+ * A mark's footprint for [placeLabels]: a dot's circle, or a box around a triangle, centred between
+ * base and apex and wide enough for the base at any angle.
  *
  * @parity /modules/vescape-core/ios/watch/WatchMapProjection.swift `bounds`
  */
-private fun GroupRideMark.bounds(ringPx: Float): Rect = when (kind) {
-    GroupRideMarkKind.Dot -> Rect(Offset(x, y), sizePx + if (flagColor(rider) != null) ringPx else 0f)
+private fun GroupRideMark.bounds(): Rect = when (kind) {
+    GroupRideMarkKind.Dot -> Rect(Offset(x, y), sizePx)
     // Centred between base and apex; wide enough for the base at any angle on the rim.
     GroupRideMarkKind.Triangle -> Rect(Offset(x - outX * sizePx / 2f, y - outY * sizePx / 2f), sizePx * TRIANGLE_FOOTPRINT)
 }
@@ -575,7 +555,6 @@ private class GroupRideLabels(private val measurer: TextMeasurer) {
             marks,
             labels.map { it?.size },
             gapPx = GROUP_LABEL_GAP.toPx(),
-            ringPx = (GROUP_RING_GAP + GROUP_RING_WIDTH).toPx(),
             navFocus = focus,
             faceWidth = size.width,
             faceHeight = size.height,
@@ -716,11 +695,8 @@ private val GROUP_TRIANGLE_MAX = 12.dp
 /** Triangle base width as a share of its length. */
 private const val GROUP_TRIANGLE_BASE = 0.9f
 private val GROUP_OUTLINE = 0.75.dp
-/** A flagged dot's ring: this far outside the dot, this thick. */
-private val GROUP_RING_GAP = 2.5.dp
-private val GROUP_RING_WIDTH = 1.5.dp
 private val GROUP_LABEL_FONT = 9.sp
-/** Label clear of its dot, ring or triangle apex. */
+/** Label clear of its dot or triangle apex. */
 private val GROUP_LABEL_GAP = 3.dp
 /** Between the distance and its flag. */
 private val GROUP_LABEL_FLAG_GAP = 3.dp

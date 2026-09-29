@@ -113,11 +113,11 @@ struct WatchMapProjection {
   /// @parity /watch/wearos/src/main/java/app/vescape/wear/GroupRide.kt `placeLabels`
   /// @platform-diff "On the display" is its rectangle here; Wear OS uses its round face's circle.
   func placeLabels(
-    marks: [WatchGroupRideMark], labels: [CGSize?], gap: CGFloat, ring: CGFloat, navFocus: Double
+    marks: [WatchGroupRideMark], labels: [CGSize?], gap: CGFloat, navFocus: Double
   ) -> [CGPoint?] {
     // `gap` clear of the readout too, so a label never reads as part of it.
     let readout = navReadoutBounds(navFocus: navFocus, displaySize: size).insetBy(dx: -gap, dy: -gap)
-    let obstacles = marks.map { $0.bounds(ring: ring) }
+    let obstacles = marks.map(\.bounds)
     var placed = [CGRect?](repeating: nil, count: marks.count)
     let order = marks.indices.filter { labels[$0] != nil }.sorted {
       let a = marks[$0].rider, b = marks[$1].rider
@@ -125,7 +125,7 @@ struct WatchMapProjection {
     }
     for i in order {
       guard let labelSize = labels[i] else { continue }
-      let box = labelSpots(for: marks[i], labelSize: labelSize, gap: gap, ring: ring, readout: readout)
+      let box = labelSpots(for: marks[i], labelSize: labelSize, gap: gap, readout: readout)
         .lazy
         .map { CGRect(origin: $0, size: labelSize) }
         .first { box in
@@ -140,7 +140,7 @@ struct WatchMapProjection {
 
   /// `placeLabels`'s candidate top-lefts for one label, most natural first.
   private func labelSpots(
-    for mark: WatchGroupRideMark, labelSize: CGSize, gap: CGFloat, ring: CGFloat, readout: CGRect
+    for mark: WatchGroupRideMark, labelSize: CGSize, gap: CGFloat, readout: CGRect
   ) -> [CGPoint] {
     let width = labelSize.width
     let height = labelSize.height
@@ -148,7 +148,7 @@ struct WatchMapProjection {
     let nudge: CGVector
     switch mark.kind {
     case .dot:
-      let reach = mark.size + (mark.flagged ? ring : 0) + gap
+      let reach = mark.size + gap
       let top = mark.point.y - height / 2
       let right = CGPoint(x: mark.point.x + reach, y: top)
       let left = CGPoint(x: mark.point.x - reach - width, y: top)
@@ -242,18 +242,14 @@ struct WatchGroupRideMark: Equatable {
   let direction: CGVector
   let size: CGFloat
 
-  /// A live Rider with a battery or heat flag: an in-range dot wears its ring.
-  var flagged: Bool { !rider.stale && rider.flagLevel != .normal }
-
-  /// The mark's footprint for `placeLabels`: a dot with its flag ring (`ring` outside it), or a box
-  /// around a triangle, centred between base and apex and wide enough for the base at any angle.
+  /// The mark's footprint for `placeLabels`: a dot's circle, or a box around a triangle, centred
+  /// between base and apex and wide enough for the base at any angle.
   ///
   /// @parity /watch/wearos/src/main/java/app/vescape/wear/GroupRide.kt `bounds`
-  func bounds(ring: CGFloat) -> CGRect {
+  var bounds: CGRect {
     switch kind {
     case .dot:
-      let radius = size + (flagged ? ring : 0)
-      return CGRect(x: point.x - radius, y: point.y - radius, width: radius * 2, height: radius * 2)
+      return CGRect(x: point.x - size, y: point.y - size, width: size * 2, height: size * 2)
     case .triangle:
       let centre = CGPoint(x: point.x - direction.dx * size / 2, y: point.y - direction.dy * size / 2)
       let half = size * TRIANGLE_FOOTPRINT

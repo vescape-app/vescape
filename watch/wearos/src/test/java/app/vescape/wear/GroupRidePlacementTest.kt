@@ -3,7 +3,6 @@ package app.vescape.wear
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.geometry.Size
-import expo.modules.vescapecore.telemetry.TelemetryLevel
 import expo.modules.vescapecore.watch.GroupRideFrameRider
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -155,7 +154,7 @@ class GroupRidePlacementTest {
 
     /** Places one label per mark ([width] × [height] each) and returns their top-lefts. */
     private fun labels(vararg marks: GroupRideMark, width: Float = 30f, height: Float = 10f, focus: Float = 1f) =
-        map().placeLabels(marks.toList(), marks.map { Size(width, height) }, gapPx = 3f, ringPx = 4f, navFocus = focus, faceWidth = face, faceHeight = face)
+        map().placeLabels(marks.toList(), marks.map { Size(width, height) }, gapPx = 3f, navFocus = focus, faceWidth = face, faceHeight = face)
 
     private fun label(mark: GroupRideMark, width: Float = 30f, height: Float = 10f, focus: Float = 1f) =
         labels(mark, width = width, height = height, focus = focus).single()!!
@@ -180,16 +179,6 @@ class GroupRidePlacementTest {
         assertEquals(350f, nearRim.x, 0.01f)
         assertEquals(nearRim.x - 3f - 3f - 60f, label(nearRim, width = 60f).x, 0.01f)
         assertEquals(nearRim.x + 3f + 3f, label(nearRim, width = 30f).x, 0.01f)
-    }
-
-    @Test
-    fun `a flagged dot's label clears its ring, a stale one's has no ring to clear`() {
-        val hot = rider(50.0, 100.0).copy(heatLevel = TelemetryLevel.WARNING)
-        val mark = map().mark(hot, sizes)
-        assertEquals(mark.x + 3f + 4f + 3f, label(mark).x, 0.01f)
-
-        val lost = map().mark(hot.copy(stale = true), sizes)
-        assertEquals(lost.x + 3f + 3f, label(lost).x, 0.01f)
     }
 
     @Test
@@ -254,7 +243,7 @@ class GroupRidePlacementTest {
         val stale = map().mark(riderAt("lost", 60.0, 100.0).copy(stale = true), sizes)
         val live = map().mark(riderAt("live", 40.0, 100.0), sizes)
         val placed = map().placeLabels(
-            listOf(stale, live), listOf(null, Size(30f, 10f)), gapPx = 3f, ringPx = 4f, navFocus = 1f, faceWidth = face, faceHeight = face,
+            listOf(stale, live), listOf(null, Size(30f, 10f)), gapPx = 3f, navFocus = 1f, faceWidth = face, faceHeight = face,
         )
         assertNull(placed[0])
         assertFalse(Rect(placed[1]!!, Size(30f, 10f)).overlaps(Rect(Offset(stale.x, stale.y), stale.sizePx)))

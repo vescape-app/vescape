@@ -128,7 +128,8 @@ final class GroupRideFrameTests: XCTestCase {
     XCTAssertEqual(riders[1].batteryLevel, .normal)
     XCTAssertEqual(riders[1].heatLevel, .critical)
     XCTAssertNil(riders[2].batteryPercent)
-    XCTAssertEqual(riders[2].flagLevel, .normal)
+    XCTAssertEqual(riders[2].batteryLevel, .normal)
+    XCTAssertEqual(riders[2].heatLevel, .normal)
   }
 
   // MARK: - Codec
