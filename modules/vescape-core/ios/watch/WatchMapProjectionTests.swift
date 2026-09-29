@@ -264,4 +264,50 @@ final class WatchMapProjectionTests: XCTestCase {
     XCTAssertNil(placed[0])
     XCTAssertFalse(CGRect(origin: placed[1]!, size: labelSize).intersects(dotBounds(stale)))
   }
+
+  func testANudgedLabelNeverLandsOnItsOwnTriangleOrAnyOtherMark() {
+    // Pairs of far Riders a few degrees apart all round the rim: the farther one's label is crowded
+    // off its natural spot and nudged along the edge, back towards its own triangle.
+    let boxSize = CGSize(width: 40, height: 12)
+    for bearing in stride(from: 0, to: 360, by: 5) {
+      for apart in [4, 8, 12] {
+        for distanceM in [700.0, 1_500.0] {
+          let riders = [bearing, bearing + apart].enumerated().map { i, deg in
+            let rad = Double(deg) * .pi / 180
+            let d = distanceM + Double(i) * 200
+            return riderAt("r\(i)", eastM: d * sin(rad), northM: d * cos(rad))
+          }
+          let marks = map().marks(for: riders, sizes: sizes)
+          let placed = map().placeLabels(marks: marks, labels: marks.map { _ in boxSize }, gap: 3, navFocus: 1)
+          for (i, at) in placed.enumerated() {
+            guard let at else { continue }
+            let box = CGRect(origin: at, size: boxSize)
+            let corners = [
+              CGPoint(x: box.minX, y: box.minY), CGPoint(x: box.maxX, y: box.minY),
+              CGPoint(x: box.maxX, y: box.maxY), CGPoint(x: box.minX, y: box.maxY),
+            ]
+            for mark in marks {
+              let hit = mark.kind == .triangle
+                ? polygonsOverlap(mark.triangleCorners, corners)
+                : box.intersects(dotBounds(mark))
+              XCTAssertFalse(hit, "label \(i) on \(mark.rider.id) at \(bearing)° +\(apart)° \(distanceM) m")
+            }
+          }
+        }
+      }
+    }
+  }
+
+  /// Convex polygons overlap unless an edge normal of either separates them.
+  private func polygonsOverlap(_ a: [CGPoint], _ b: [CGPoint]) -> Bool {
+    [a, b].allSatisfy { poly in
+      poly.indices.allSatisfy { i in
+        let p = poly[i], q = poly[(i + 1) % poly.count]
+        let axis = CGVector(dx: p.y - q.y, dy: q.x - p.x)
+        let pa = a.map { $0.x * axis.dx + $0.y * axis.dy }
+        let pb = b.map { $0.x * axis.dx + $0.y * axis.dy }
+        return pa.max()! > pb.min()! + 1e-3 && pb.max()! > pa.min()! + 1e-3
+      }
+    }
+  }
 }

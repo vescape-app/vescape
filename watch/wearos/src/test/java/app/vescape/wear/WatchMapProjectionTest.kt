@@ -246,4 +246,44 @@ class WatchMapProjectionTest {
         assertNull(placed[0])
         assertFalse(Rect(placed[1]!!, Size(30f, 10f)).overlaps(Rect(Offset(stale.x, stale.y), stale.sizePx)))
     }
+
+    @Test
+    fun `a nudged label never lands on its own triangle or any other mark`() {
+        // Pairs of far Riders a few degrees apart all round the rim: the farther one's label is
+        // crowded off its natural spot and nudged along the edge, back towards its own triangle.
+        for (bearing in 0 until 360 step 5) for (apart in listOf(4, 8, 12)) for (distanceM in listOf(700.0, 1_500.0)) {
+            val riders = listOf(bearing, bearing + apart).mapIndexed { i, deg ->
+                val rad = Math.toRadians(deg.toDouble())
+                val d = distanceM + i * 200.0
+                riderAt("r$i", d * kotlin.math.sin(rad), d * kotlin.math.cos(rad))
+            }
+            val marks = map().marks(riders, sizes)
+            val size = Size(40f, 12f)
+            val placed = map().placeLabels(marks, marks.map { size }, gapPx = 3f, navFocus = 1f)
+            for ((i, at) in placed.withIndex()) {
+                val box = Rect(at ?: continue, size)
+                for (mark in marks) {
+                    val hit = if (mark.kind == WatchGroupRideMarkKind.Triangle) {
+                        polygonsOverlap(mark.triangleCorners(), listOf(box.topLeft, box.topRight, box.bottomRight, box.bottomLeft))
+                    } else {
+                        box.overlaps(Rect(Offset(mark.x, mark.y), mark.sizePx))
+                    }
+                    assertFalse("label $i on ${mark.rider.id} at $bearing° +$apart° $distanceM m", hit)
+                }
+            }
+        }
+    }
+
+    /** Convex polygons overlap unless an edge normal of either separates them. */
+    private fun polygonsOverlap(a: List<Offset>, b: List<Offset>): Boolean =
+        listOf(a, b).all { poly ->
+            poly.indices.all { i ->
+                val p = poly[i]
+                val q = poly[(i + 1) % poly.size]
+                val axis = Offset(p.y - q.y, q.x - p.x)
+                val pa = a.map { it.x * axis.x + it.y * axis.y }
+                val pb = b.map { it.x * axis.x + it.y * axis.y }
+                pa.max() > pb.min() + 1e-3f && pb.max() > pa.min() + 1e-3f
+            }
+        }
 }

@@ -67,12 +67,8 @@ struct GroupRideEdgeLayer: View {
   ///
   /// @parity /watch/wearos/src/main/java/app/vescape/wear/GroupRideLayer.kt `drawEdgeTriangle`
   private func triangle(_ mark: WatchGroupRideMark) -> Path {
-    let out = mark.direction
-    let side = CGVector(dx: -out.dy * mark.size * GROUP_TRIANGLE_BASE / 2, dy: out.dx * mark.size * GROUP_TRIANGLE_BASE / 2)
     var path = Path()
-    path.move(to: CGPoint(x: mark.point.x + side.dx, y: mark.point.y + side.dy))
-    path.addLine(to: CGPoint(x: mark.point.x - side.dx, y: mark.point.y - side.dy))
-    path.addLine(to: CGPoint(x: mark.point.x - out.dx * mark.size, y: mark.point.y - out.dy * mark.size))
+    path.addLines(mark.triangleCorners)
     path.closeSubpath()
     return path
   }
@@ -246,8 +242,6 @@ private let GROUP_FOCUS_DOT_RADIUS: CGFloat = 4.5
 private let GROUP_EDGE_INSET: CGFloat = 1
 private let GROUP_TRIANGLE_MIN: CGFloat = 7
 private let GROUP_TRIANGLE_MAX: CGFloat = 12
-/// Triangle base width as a share of its length.
-private let GROUP_TRIANGLE_BASE: CGFloat = 0.9
 private let GROUP_OUTLINE: CGFloat = 0.75
 private let GROUP_LABEL_FONT_SIZE: CGFloat = 9
 /// Label clear of its dot or triangle apex.

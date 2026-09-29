@@ -240,7 +240,8 @@ internal fun relativeBearingDeg(eastM: Double, northM: Double, courseDeg: Double
  * face), or inward of a triangle's apex; each of those slid up off the nav readout; then nudged by
  * [LABEL_NUDGE_STEPS] label heights — up or down beside a dot, either way along the edge beside a
  * triangle. The first spot [gapPx] clear of the nav readout and clear of every label already placed
- * and every other mark wins. None clear, and the label is dropped (null): its mark stays, and the
+ * and every mark wins — its own too, since a nudge along the edge can slide a label back onto its
+ * own triangle. None clear, and the label is dropped (null): its mark stays, and the
  * Group Ride page has the details. A label never sits more than one label height from its natural
  * spot.
  *
@@ -255,7 +256,6 @@ internal fun WatchMapProjection.placeLabels(
 ): List<Offset?> {
     // [gapPx] clear of the readout too, so a label never reads as part of it.
     val readout = navReadoutBounds(navFocus, width, height).inflate(gapPx)
-    val obstacles = marks.map { it.bounds() }
     val placed = arrayOfNulls<Rect>(marks.size)
     val order = marks.indices.filter { labels[it] != null }
         .sortedWith(compareBy({ marks[it].rider.distanceM }, { marks[it].rider.id }))
@@ -266,7 +266,7 @@ internal fun WatchMapProjection.placeLabels(
             .firstOrNull { box ->
                 !box.overlaps(readout) &&
                     placed.none { it != null && it.overlaps(box) } &&
-                    obstacles.indices.none { it != i && obstacles[it].overlaps(box) }
+                    marks.none { it.overlaps(box) }
             }
     }
     return placed.map { it?.topLeft }
@@ -319,15 +319,51 @@ private fun WatchMapProjection.labelSpots(
 }
 
 /**
- * A mark's footprint for [placeLabels]: a dot's circle, or a box around a triangle, centred between
- * base and apex and wide enough for the base at any angle.
+ * Whether [box] covers any of this mark, for [placeLabels]: a dot's bounding square, or a triangle's
+ * own shape. A box around a triangle would either miss its base corners on a diagonal rim or reach
+ * past its apex onto the label's natural spot.
  *
- * @parity /modules/vescape-core/ios/watch/WatchMapProjection.swift `bounds`
+ * @parity /modules/vescape-core/ios/watch/WatchMapProjection.swift `overlaps`
  */
-private fun WatchGroupRideMark.bounds(): Rect = when (kind) {
-    WatchGroupRideMarkKind.Dot -> Rect(Offset(x, y), sizePx)
-    // Centred between base and apex; wide enough for the base at any angle on the rim.
-    WatchGroupRideMarkKind.Triangle -> Rect(Offset(x - outX * sizePx / 2f, y - outY * sizePx / 2f), sizePx * TRIANGLE_FOOTPRINT)
+private fun WatchGroupRideMark.overlaps(box: Rect): Boolean = when (kind) {
+    WatchGroupRideMarkKind.Dot -> Rect(Offset(x, y), sizePx).overlaps(box)
+    WatchGroupRideMarkKind.Triangle -> triangleOverlaps(triangleCorners(), box)
+}
+
+/**
+ * A triangle mark's corners: the two base ends on the edge, then the apex [WatchGroupRideMark.sizePx]
+ * inward. Base width is [GROUP_TRIANGLE_BASE] of the length.
+ *
+ * @parity /modules/vescape-core/ios/watch/WatchMapProjection.swift `triangleCorners`
+ */
+internal fun WatchGroupRideMark.triangleCorners(): List<Offset> {
+    val sideX = -outY * sizePx * GROUP_TRIANGLE_BASE / 2f
+    val sideY = outX * sizePx * GROUP_TRIANGLE_BASE / 2f
+    return listOf(
+        Offset(x + sideX, y + sideY),
+        Offset(x - sideX, y - sideY),
+        Offset(x - outX * sizePx, y - outY * sizePx),
+    )
+}
+
+/**
+ * Separating-axis test: [triangle] and [box] overlap unless the box's axes or one of the triangle's
+ * edge normals separates them. Touching is not overlapping.
+ *
+ * @parity /modules/vescape-core/ios/watch/WatchMapProjection.swift `triangleOverlaps`
+ */
+private fun triangleOverlaps(triangle: List<Offset>, box: Rect): Boolean {
+    val corners = listOf(box.topLeft, box.topRight, box.bottomRight, box.bottomLeft)
+    val axes = listOf(Offset(1f, 0f), Offset(0f, 1f)) + triangle.indices.map { i ->
+        val a = triangle[i]
+        val b = triangle[(i + 1) % triangle.size]
+        Offset(a.y - b.y, b.x - a.x)
+    }
+    return axes.all { axis ->
+        val t = triangle.map { it.x * axis.x + it.y * axis.y }
+        val c = corners.map { it.x * axis.x + it.y * axis.y }
+        t.max() > c.min() && c.max() > t.min()
+    }
 }
 
 /** Whether a label box lies wholly inside the round face. */
@@ -357,11 +393,11 @@ internal fun navReadoutBounds(navFocus: Float, faceWidth: Float, faceHeight: Flo
  */
 private val LABEL_NUDGE_STEPS = floatArrayOf(0.5f, 1f)
 /**
- * A triangle's footprint half-size as a share of its length.
+ * A triangle mark's base width as a share of its length.
  *
- * @parity /modules/vescape-core/ios/watch/WatchMapProjection.swift `TRIANGLE_FOOTPRINT`
+ * @parity /modules/vescape-core/ios/watch/WatchMapProjection.swift `GROUP_TRIANGLE_BASE`
  */
-private const val TRIANGLE_FOOTPRINT = 0.6f
+internal const val GROUP_TRIANGLE_BASE = 0.9f
 
 /**
  * The nav distance readout at full nav focus, as shares of the face: x 29–71%, y 82–94%. Its top

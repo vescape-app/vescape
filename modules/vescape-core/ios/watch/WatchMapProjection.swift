@@ -122,7 +122,8 @@ struct WatchMapProjection {
   /// on the display), or inward of a triangle's apex; each of those slid up off the nav readout; then
   /// nudged by `LABEL_NUDGE_STEPS` label heights — up or down beside a dot, either way along the edge
   /// beside a triangle. The first spot `gap` clear of the nav readout and clear of every label
-  /// already placed and every other mark wins. None clear, and the label is dropped (nil): its mark stays, and the
+  /// already placed and every mark wins — its own too, since a nudge along the edge can slide a label
+  /// back onto its own triangle. None clear, and the label is dropped (nil): its mark stays, and the
   /// Group Ride page has the details. A label never sits more than one label height from its
   /// natural spot.
   ///
@@ -133,7 +134,6 @@ struct WatchMapProjection {
   ) -> [CGPoint?] {
     // `gap` clear of the readout too, so a label never reads as part of it.
     let readout = navReadoutBounds(navFocus: navFocus, displaySize: size).insetBy(dx: -gap, dy: -gap)
-    let obstacles = marks.map(\.bounds)
     var placed = [CGRect?](repeating: nil, count: marks.count)
     let order = marks.indices.filter { labels[$0] != nil }.sorted {
       let a = marks[$0].rider, b = marks[$1].rider
@@ -147,7 +147,7 @@ struct WatchMapProjection {
         .first { box in
           !box.intersects(readout)
             && !placed.contains { $0?.intersects(box) ?? false }
-            && !obstacles.indices.contains { $0 != i && obstacles[$0].intersects(box) }
+            && !marks.contains { $0.overlaps(box) }
         }
       placed[i] = box
     }
@@ -259,19 +259,52 @@ struct WatchGroupRideMark: Equatable {
   let direction: CGVector
   let size: CGFloat
 
-  /// The mark's footprint for `placeLabels`: a dot's circle, or a box around a triangle, centred
-  /// between base and apex and wide enough for the base at any angle.
+  /// Whether `box` covers any of this mark, for `placeLabels`: a dot's bounding square, or a
+  /// triangle's own shape. A box around a triangle would either miss its base corners on a diagonal
+  /// rim or reach past its apex onto the label's natural spot.
   ///
-  /// @parity /watch/wearos/src/main/java/app/vescape/wear/WatchMapProjection.kt `bounds`
-  var bounds: CGRect {
+  /// @parity /watch/wearos/src/main/java/app/vescape/wear/WatchMapProjection.kt `overlaps`
+  func overlaps(_ box: CGRect) -> Bool {
     switch kind {
     case .dot:
-      return CGRect(x: point.x - size, y: point.y - size, width: size * 2, height: size * 2)
+      return CGRect(x: point.x - size, y: point.y - size, width: size * 2, height: size * 2).intersects(box)
     case .triangle:
-      let centre = CGPoint(x: point.x - direction.dx * size / 2, y: point.y - direction.dy * size / 2)
-      let half = size * TRIANGLE_FOOTPRINT
-      return CGRect(x: centre.x - half, y: centre.y - half, width: half * 2, height: half * 2)
+      return triangleOverlaps(triangleCorners, box)
     }
+  }
+
+  /// A triangle mark's corners: the two base ends on the edge, then the apex `size` inward. Base
+  /// width is `GROUP_TRIANGLE_BASE` of the length.
+  ///
+  /// @parity /watch/wearos/src/main/java/app/vescape/wear/WatchMapProjection.kt `triangleCorners`
+  var triangleCorners: [CGPoint] {
+    let side = CGVector(
+      dx: -direction.dy * size * GROUP_TRIANGLE_BASE / 2, dy: direction.dx * size * GROUP_TRIANGLE_BASE / 2)
+    return [
+      CGPoint(x: point.x + side.dx, y: point.y + side.dy),
+      CGPoint(x: point.x - side.dx, y: point.y - side.dy),
+      CGPoint(x: point.x - direction.dx * size, y: point.y - direction.dy * size),
+    ]
+  }
+}
+
+/// Separating-axis test: `triangle` and `box` overlap unless the box's axes or one of the triangle's
+/// edge normals separates them. Touching is not overlapping.
+///
+/// @parity /watch/wearos/src/main/java/app/vescape/wear/WatchMapProjection.kt `triangleOverlaps`
+private func triangleOverlaps(_ triangle: [CGPoint], _ box: CGRect) -> Bool {
+  let corners = [
+    CGPoint(x: box.minX, y: box.minY), CGPoint(x: box.maxX, y: box.minY),
+    CGPoint(x: box.maxX, y: box.maxY), CGPoint(x: box.minX, y: box.maxY),
+  ]
+  let edgeNormals = triangle.indices.map { i -> CGVector in
+    let a = triangle[i], b = triangle[(i + 1) % triangle.count]
+    return CGVector(dx: a.y - b.y, dy: b.x - a.x)
+  }
+  return ([CGVector(dx: 1, dy: 0), CGVector(dx: 0, dy: 1)] + edgeNormals).allSatisfy { axis in
+    let t = triangle.map { $0.x * axis.dx + $0.y * axis.dy }
+    let c = corners.map { $0.x * axis.dx + $0.y * axis.dy }
+    return t.max()! > c.min()! && c.max()! > t.min()!
   }
 }
 
@@ -320,10 +353,10 @@ func navReadoutBounds(navFocus: Double, displaySize: CGSize) -> CGRect {
 /// @parity /watch/wearos/src/main/java/app/vescape/wear/WatchMapProjection.kt `LABEL_NUDGE_STEPS`
 private let LABEL_NUDGE_STEPS: [CGFloat] = [0.5, 1]
 
-/// A triangle's footprint half-size as a share of its length.
+/// A triangle mark's base width as a share of its length.
 ///
-/// @parity /watch/wearos/src/main/java/app/vescape/wear/WatchMapProjection.kt `TRIANGLE_FOOTPRINT`
-private let TRIANGLE_FOOTPRINT: CGFloat = 0.6
+/// @parity /watch/wearos/src/main/java/app/vescape/wear/WatchMapProjection.kt `GROUP_TRIANGLE_BASE`
+let GROUP_TRIANGLE_BASE: CGFloat = 0.9
 
 /// The nav distance readout at full nav focus, as shares of the display: x 25–75%, y 82–94%. Its
 /// top sits `focusDrop` higher before focus, where the readout is smaller and higher.

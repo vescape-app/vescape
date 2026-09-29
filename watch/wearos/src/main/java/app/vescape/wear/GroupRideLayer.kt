@@ -214,13 +214,11 @@ internal fun DrawScope.groupRideMarkSizes(navFocus: Float) = WatchGroupRideMarkS
  * @parity /watch/watchos/GroupRideLayer.swift `triangle`
  */
 private fun DrawScope.drawEdgeTriangle(mark: WatchGroupRideMark, outline: Float, color: Color) {
-    val length = mark.sizePx
-    val sideX = -mark.outY * length * GROUP_TRIANGLE_BASE / 2f
-    val sideY = mark.outX * length * GROUP_TRIANGLE_BASE / 2f
+    val (a, b, apex) = mark.triangleCorners()
     val path = Path().apply {
-        moveTo(mark.x + sideX, mark.y + sideY)
-        lineTo(mark.x - sideX, mark.y - sideY)
-        lineTo(mark.x - mark.outX * length, mark.y - mark.outY * length)
+        moveTo(a.x, a.y)
+        lineTo(b.x, b.y)
+        lineTo(apex.x, apex.y)
         close()
     }
     drawPath(path, GROUP_OUTLINE_COLOR.copy(alpha = GROUP_OUTLINE_COLOR.alpha * color.alpha), style = Stroke(width = outline * 2f, join = StrokeJoin.Round))
@@ -274,8 +272,6 @@ private val GROUP_FOCUS_DOT_R = 4.5.dp
 private val GROUP_EDGE_INSET = 1.dp
 private val GROUP_TRIANGLE_MIN = 7.dp
 private val GROUP_TRIANGLE_MAX = 12.dp
-/** Triangle base width as a share of its length. */
-private const val GROUP_TRIANGLE_BASE = 0.9f
 private val GROUP_OUTLINE = 0.75.dp
 private val GROUP_LABEL_FONT = 9.sp
 /** Label clear of its dot or triangle apex. */
