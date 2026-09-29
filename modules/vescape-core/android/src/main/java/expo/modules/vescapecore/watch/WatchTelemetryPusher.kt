@@ -52,7 +52,11 @@ internal class WatchTelemetryPusher(
 
     fun pushFrame(frame: ByteArray) = send(WATCH_TELEMETRY_PATH, frame)
 
-    /** A Group Ride Frame on its own path (ADR-0039), sharing this pusher's node cache. */
+    /**
+     * A Group Ride Frame on its own path (ADR-0039), sharing this pusher's node cache.
+     *
+     * @parity /modules/vescape-core/ios/watch/WatchTelemetryPusher.swift `pushGroupRideFrame`
+     */
     fun pushGroupRideFrame(frame: ByteArray) = send(WATCH_GROUP_RIDE_PATH, frame)
 
     private fun send(path: String, frame: ByteArray) {

@@ -244,7 +244,7 @@ across a disconnect and is read again on every watch app start.
 each other Rider's id, name, colour, stale flag, east/north offset from the Rider's latest GPS Fix,
 battery % (none without a Board Session), battery level and heat level. The phone derives both
 levels (normal, warning, critical) from the app's telemetry thresholds in
-`telemetry/TelemetryLevel.kt` / `.swift`, the native mirror of `telemetryThresholds.ts`: battery
+`telemetry/TelemetryThresholds.kt` / `.swift`, the native mirror of `telemetryThresholds.ts`: battery
 warns below 30% and is critical below 10%; heat is the worse of motor and controller temperature,
 warning above 70 °C and critical above 80 °C. The wrist never classifies. In nav focus it labels
 every live Rider's mark with their distance ("680m"),
@@ -255,7 +255,8 @@ for a triangle), and one with no clear spot is dropped — the list page has it.
 Group Ride text. The phone pushes it only while the Rider is joined and the wrist reports `ACTIVE` — never in
 ambient, and never to a wrist too old to report its wake level. The wrist drops the group after
 3.5 s without a frame. The codec is one file, `watch/GroupRideFrame.kt`, compiled by the phone and
-copied into the Wear module by `withWearMirror` along with `telemetry/TelemetryLevel.kt`; watchOS gets the same bytes under the
+copied into the Wear module by `withWearMirror` along with the `TelemetryLevel` wire enum it carries (`telemetry/TelemetryLevel.kt`; watchOS symlinks
+the Swift peer); the thresholds stay phone-only. watchOS gets the same bytes under the
 `groupRide` key of a `sendMessage`. Rider records are length-prefixed, so a new field is appended
 without a version bump; the version byte moves only for a change older wrists must not read. The
 battery and level bytes were appended this way: an older wrist skips them, and a record from an

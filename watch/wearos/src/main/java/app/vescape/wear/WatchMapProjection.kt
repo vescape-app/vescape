@@ -65,6 +65,7 @@ internal class WatchMapProjection(
          * Fallback metres of route across the watch face until the phone publishes its camera span.
          *
          * @parity /modules/vescape-core/ios/watch/WatchMapProjection.swift `defaultSpanM`
+         * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/watch/GroupRideFrameBuilder.kt `GROUP_RIDE_DEFAULT_SPAN_M`
          */
         private const val DEFAULT_ROUTE_SPAN_M = 600.0
         private const val MIN_ROUTE_SPAN_M = 150f

@@ -45,7 +45,11 @@ internal const val WATCH_GROUP_RIDE_PATH = "/group-ride"
 /** @parity /modules/vescape-core/ios/watch/GroupRideFrame.swift `WATCH_GROUP_RIDE_VERSION` */
 internal const val WATCH_GROUP_RIDE_VERSION = 1
 
-/** One other Rider, placed relative to the Rider wearing the watch. */
+/**
+ * One other Rider, placed relative to the Rider wearing the watch.
+ *
+ * @parity /modules/vescape-core/ios/watch/GroupRideFrame.swift `GroupRideFrameRider`
+ */
 internal data class GroupRideFrameRider(
     val id: String,
     val name: String,
@@ -87,7 +91,11 @@ private const val NO_BATTERY = 0xFF
 /** Fixed part of a rider record after the two strings: colour, east, north, flags, battery, levels. */
 private const val RIDER_FIXED_BYTES = 4 + 4 + 4 + 1 + 1 + 1 + 1
 
-/** Most Riders one frame carries; the builder keeps the nearest. */
+/**
+ * Most Riders one frame carries; the builder keeps the nearest.
+ *
+ * @parity /modules/vescape-core/ios/watch/GroupRideFrame.swift `GROUP_RIDE_FRAME_MAX_RIDERS`
+ */
 internal const val GROUP_RIDE_FRAME_MAX_RIDERS = 32
 
 /** @parity /modules/vescape-core/ios/watch/GroupRideFrame.swift `GroupRideFrameCodec` */

@@ -21,6 +21,7 @@ struct WatchMapProjection {
   /// Fallback metres across the display until the phone publishes its camera span.
   ///
   /// @parity /watch/wearos/src/main/java/app/vescape/wear/WatchMapProjection.kt `DEFAULT_ROUTE_SPAN_M`
+  /// @parity /modules/vescape-core/ios/watch/GroupRideFrameBuilder.swift `GROUP_RIDE_DEFAULT_SPAN_M`
   static let defaultSpanM = 600.0
   static let minSpanM = 150.0
   static let maxSpanM = 2_000.0

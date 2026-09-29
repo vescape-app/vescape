@@ -13,8 +13,8 @@ import { theme, type ThemeColor } from '@/constants/theme'
  * per-metric alert seed values (see {@link DEFAULT_ALERT_SEEDS}). Native mirrors the battery and
  * temperature tiers for other Riders on the Watch Mirror.
  *
- * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/TelemetryLevel.kt `TelemetryThresholds`
- * @parity /modules/vescape-core/ios/telemetry/TelemetryLevel.swift `TelemetryThresholds`
+ * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/TelemetryThresholds.kt `TelemetryThresholds`
+ * @parity /modules/vescape-core/ios/telemetry/TelemetryThresholds.swift `TelemetryThresholds`
  */
 export const TELEMETRY_THRESHOLDS = {
   /** Battery SoC as a 0-1 fraction. */
@@ -84,8 +84,8 @@ function tierLevel(
 /**
  * Battery SoC level (soc is a 0-1 fraction, null/undefined → normal).
  *
- * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/TelemetryLevel.kt `batteryLevel`
- * @parity /modules/vescape-core/ios/telemetry/TelemetryLevel.swift `batteryLevel`
+ * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/TelemetryThresholds.kt `batteryLevel`
+ * @parity /modules/vescape-core/ios/telemetry/TelemetryThresholds.swift `batteryLevel`
  */
 export function batteryLevel(soc: number | null | undefined): TelemetryLevel {
   return tierLevel(soc, TELEMETRY_THRESHOLDS.battery, 'low')
@@ -94,8 +94,8 @@ export function batteryLevel(soc: number | null | undefined): TelemetryLevel {
 /**
  * Temperature level in °C (null/undefined → normal).
  *
- * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/TelemetryLevel.kt `tempLevel`
- * @parity /modules/vescape-core/ios/telemetry/TelemetryLevel.swift `tempLevel`
+ * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/TelemetryThresholds.kt `tempLevel`
+ * @parity /modules/vescape-core/ios/telemetry/TelemetryThresholds.swift `tempLevel`
  */
 export function tempLevel(tempC: number | null | undefined): TelemetryLevel {
   return tierLevel(tempC, TELEMETRY_THRESHOLDS.temp, 'high')
