@@ -2,7 +2,7 @@ import XCTest
 @testable import VescapeCore
 
 /// The wrist's Group Ride: the course it holds, the page's rows (order, names, bearings, the one
-/// status slot) and the distance label.
+/// status slot), the nav-focus label flag and the distance label.
 ///
 /// @parity /watch/wearos/src/test/java/app/vescape/wear/WatchGroupRideTest.kt
 final class WatchGroupRideTests: XCTestCase {
@@ -79,6 +79,18 @@ final class WatchGroupRideTests: XCTestCase {
   func testNoBoardIsADashAndAHotRiderWithoutOneStillShowsTheThermometer() {
     XCTAssertEqual(groupRideStatus(rider("a", batteryPercent: nil)), .noBoard)
     XCTAssertEqual(groupRideStatus(rider("b", batteryPercent: nil, heatLevel: .critical)), .hot(.critical))
+  }
+
+  func testALabelFlagsHeatElseABatteryAboveNormalNeverAStaleRider() {
+    XCTAssertEqual(
+      groupRideLabelFlag(rider("a", batteryPercent: 5, batteryLevel: .critical, heatLevel: .warning)), .hot(.warning)
+    )
+    XCTAssertEqual(
+      groupRideLabelFlag(rider("b", batteryPercent: 12, batteryLevel: .critical)), .battery(percent: 12, level: .critical)
+    )
+    XCTAssertNil(groupRideLabelFlag(rider("c", batteryPercent: 80)))
+    XCTAssertNil(groupRideLabelFlag(rider("d", batteryPercent: nil)))
+    XCTAssertNil(groupRideLabelFlag(rider("e", stale: true, heatLevel: .critical)))
   }
 
   func testTheWristKeepsTheLastCourseWhileFramesCarryNone() {

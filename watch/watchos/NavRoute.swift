@@ -32,10 +32,7 @@ struct NavRoute: View {
 
   var body: some View {
     GeometryReader { geometry in
-      let centre = CGPoint(
-        x: geometry.size.width / 2,
-        y: geometry.size.height / 2 + WatchMapProjection.riderDrop
-      )
+      let centre = WatchMapProjection.riderPoint(in: geometry.size)
       ZStack {
         if let route, let east = frame.riderEastM, let north = frame.riderNorthM {
           RouteShape(
@@ -123,8 +120,8 @@ private struct RouteShape: Shape {
   func path(in rect: CGRect) -> Path {
     guard route.points.count > 1, spanM > 0 else { return Path() }
     // Rider sits below the centre so more of the display is "ahead" than behind.
-    let centre = CGPoint(x: rect.midX, y: rect.midY + WatchMapProjection.riderDrop)
-    let scale = (min(rect.width, rect.height) - WatchMapProjection.edgeInset) / spanM
+    let centre = WatchMapProjection.riderPoint(in: rect.size)
+    let scale = WatchMapProjection.pointsPerMetre(size: rect.size, spanM: spanM)
 
     var path = Path()
     for (index, point) in route.points.enumerated() {

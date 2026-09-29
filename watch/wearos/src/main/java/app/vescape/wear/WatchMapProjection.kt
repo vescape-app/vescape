@@ -39,8 +39,8 @@ internal data class WatchMapPlacement(
  *   rounded-rectangle display for the edge and its rectangle for range.
  */
 internal class WatchMapProjection(
-    width: Float,
-    height: Float,
+    val width: Float,
+    val height: Float,
     riderDropPx: Float,
     edgeInsetPx: Float,
     spanM: Double?,
@@ -79,15 +79,30 @@ internal class WatchMapProjection(
          */
         fun clampRouteSpanM(spanM: Double?): Float =
             (spanM ?: DEFAULT_ROUTE_SPAN_M).toFloat().coerceIn(MIN_ROUTE_SPAN_M, MAX_ROUTE_SPAN_M)
+
+        /**
+         * Where the Rider sits on a [width]×[height] face: [riderDropPx] below its centre.
+         *
+         * @parity /modules/vescape-core/ios/watch/WatchMapProjection.swift `riderPoint`
+         */
+        fun riderPoint(width: Float, height: Float, riderDropPx: Float) = Offset(width / 2f, height / 2f + riderDropPx)
+
+        /**
+         * Pixels per metre when [spanM] (already clamped) metres fit the face's shorter side less
+         * [edgeInsetPx].
+         *
+         * @parity /modules/vescape-core/ios/watch/WatchMapProjection.swift `pointsPerMetre`
+         */
+        fun pixelsPerMetre(width: Float, height: Float, edgeInsetPx: Float, spanM: Float) =
+            (minOf(width, height) - edgeInsetPx) / spanM
     }
 
     val centerX = width / 2f
     val centerY = height / 2f
-    val riderX = centerX
-    val riderY = centerY + riderDropPx
+    val rider = riderPoint(width, height, riderDropPx)
     val faceRadius = minOf(width, height) / 2f
     /** Pixels per metre. */
-    val scale = (minOf(width, height) - edgeInsetPx) / clampRouteSpanM(spanM)
+    val scale = pixelsPerMetre(width, height, edgeInsetPx, clampRouteSpanM(spanM))
 
     /** Place a point [eastM]/[northM] metres from the Rider. In range = within the face less [marginPx]. */
     fun place(eastM: Double, northM: Double, marginPx: Float): WatchMapPlacement {
@@ -95,8 +110,8 @@ internal class WatchMapProjection(
         val dirX = sin(rad).toFloat()
         val dirY = -cos(rad).toFloat()
         val reach = (hypot(eastM, northM) * scale).toFloat()
-        val x = riderX + dirX * reach
-        val y = riderY + dirY * reach
+        val x = rider.x + dirX * reach
+        val y = rider.y + dirY * reach
         return WatchMapPlacement(x, y, dirX, dirY, inRange = hypot(x - centerX, y - centerY) <= faceRadius - marginPx)
     }
 
@@ -105,8 +120,8 @@ internal class WatchMapProjection(
      * [radius] about the face centre. The Rider sits inside it, so this is the positive root.
      */
     fun rayToCircle(dirX: Float, dirY: Float, radius: Float): Float {
-        val fromX = riderX - centerX
-        val fromY = riderY - centerY
+        val fromX = rider.x - centerX
+        val fromY = rider.y - centerY
         val b = fromX * dirX + fromY * dirY
         val c = fromX * fromX + fromY * fromY - radius * radius
         return -b + sqrt((b * b - c).coerceAtLeast(0f))
@@ -116,8 +131,8 @@ internal class WatchMapProjection(
     fun edgePoint(dirX: Float, dirY: Float, insetPx: Float): WatchEdgePoint {
         val radius = faceRadius - insetPx
         val reach = rayToCircle(dirX, dirY, radius)
-        val x = riderX + dirX * reach
-        val y = riderY + dirY * reach
+        val x = rider.x + dirX * reach
+        val y = rider.y + dirY * reach
         return WatchEdgePoint(x, y, outX = (x - centerX) / radius, outY = (y - centerY) / radius)
     }
 
@@ -236,11 +251,9 @@ internal fun WatchMapProjection.placeLabels(
     labels: List<Size?>,
     gapPx: Float,
     navFocus: Float,
-    faceWidth: Float,
-    faceHeight: Float,
 ): List<Offset?> {
     // [gapPx] clear of the readout too, so a label never reads as part of it.
-    val readout = navReadoutBounds(navFocus, faceWidth, faceHeight).inflate(gapPx)
+    val readout = navReadoutBounds(navFocus, width, height).inflate(gapPx)
     val obstacles = marks.map { it.bounds() }
     val placed = arrayOfNulls<Rect>(marks.size)
     val order = marks.indices.filter { labels[it] != null }
@@ -274,7 +287,7 @@ private fun WatchMapProjection.labelSpots(
             val top = mark.y - height / 2f
             val right = Offset(mark.x + reach, top)
             val left = Offset(mark.x - reach - width, top)
-            bases = (if (mark.x >= riderX) listOf(right, left) else listOf(left, right))
+            bases = (if (mark.x >= rider.x) listOf(right, left) else listOf(left, right))
                 .filter { onFace(Rect(it, size)) }
             nudge = Offset(0f, -1f)
         }
@@ -298,7 +311,8 @@ private fun WatchMapProjection.labelSpots(
             yield(Offset(base.x, readout.top - height))
         }
     }
-    for (base in bases) for (step in LABEL_NUDGE_STEPS) for (sign in NUDGE_SIGNS) {
+    // Up first beside a dot (the readout is below); either way along the edge beside a triangle.
+    for (base in bases) for (step in LABEL_NUDGE_STEPS) for (sign in floatArrayOf(1f, -1f)) {
         yield(base + nudge * (step * height * sign))
     }
 }
@@ -341,8 +355,6 @@ internal fun navReadoutBounds(navFocus: Float, faceWidth: Float, faceHeight: Flo
  * @parity /modules/vescape-core/ios/watch/WatchMapProjection.swift `LABEL_NUDGE_STEPS`
  */
 private val LABEL_NUDGE_STEPS = floatArrayOf(0.5f, 1f)
-/** Up first beside a dot (the readout is below); either way along the edge beside a triangle. */
-private val NUDGE_SIGNS = floatArrayOf(1f, -1f)
 /**
  * A triangle's footprint half-size as a share of its length.
  *

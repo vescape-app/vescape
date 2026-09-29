@@ -50,7 +50,7 @@ internal fun GroupRideLayer(
     val labels = rememberGroupRideLabels()
     Canvas(modifier = Modifier.fillMaxSize().graphicsLayer { this.alpha = alpha() }) {
         val map = watchMapProjection(group)
-        if (drawOwnRing) drawRiderDot(Offset(map.riderX, map.riderY), ownColor)
+        if (drawOwnRing) drawRiderDot(map.rider, ownColor)
         val staleAlpha = stalePulse()
         val focus = navFocus().coerceIn(0f, 1f)
         val outline = GROUP_OUTLINE.toPx()
@@ -109,14 +109,7 @@ private class GroupRideLabels(private val measurer: TextMeasurer) {
     fun draw(scope: DrawScope, map: WatchMapProjection, marks: List<WatchGroupRideMark>, kind: WatchGroupRideMarkKind, focus: Float) = with(scope) {
         if (focus <= LABEL_MIN_FOCUS) return@with
         val labels = marks.map { if (it.rider.stale) null else measure(it.rider) }
-        val placed = map.placeLabels(
-            marks,
-            labels.map { it?.size },
-            gapPx = GROUP_LABEL_GAP.toPx(),
-            navFocus = focus,
-            faceWidth = size.width,
-            faceHeight = size.height,
-        )
+        val placed = map.placeLabels(marks, labels.map { it?.size }, gapPx = GROUP_LABEL_GAP.toPx(), navFocus = focus)
         val gap = GROUP_LABEL_FLAG_GAP.toPx()
         for (i in marks.indices) {
             val label = labels[i] ?: continue
@@ -138,9 +131,11 @@ private class GroupRideLabels(private val measurer: TextMeasurer) {
         val style = WatchTypography.mono(TextStyle(fontSize = GROUP_LABEL_FONT))
         val unitSystem = SettingsState.settings.value.unitSystem
         val distance = measurer.measure(groupRideDistanceLabel(rider.distanceM, unitSystem), style)
-        val heatColor = telemetryLevelColor(rider.heatLevel)
-        val batteryColor = telemetryLevelColor(rider.batteryLevel).takeIf { heatColor == null && rider.batteryPercent != null }
-        val battery = batteryColor?.let { measurer.measure("${rider.batteryPercent}%", style.copy(color = it)) }
+        val flag = groupRideLabelFlag(rider)
+        val heatColor = (flag as? WatchGroupRideStatus.Hot)?.let { telemetryLevelColor(it.level) }
+        val battery = (flag as? WatchGroupRideStatus.Battery)?.let { low ->
+            telemetryLevelColor(low.level)?.let { measurer.measure("${low.percent}%", style.copy(color = it)) }
+        }
         val height = distance.size.height.toFloat()
         val gap = GROUP_LABEL_FLAG_GAP.toPx()
         val flagWidth = when {

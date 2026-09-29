@@ -1,14 +1,16 @@
 package app.vescape.wear
 
 import expo.modules.vescapecore.telemetry.TelemetryLevel
+import expo.modules.vescapecore.watch.GroupRideFrame
 import expo.modules.vescapecore.watch.GroupRideFrameRider
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
- * The wrist's Group Ride: the page's rows (order, names, bearings, the one status slot) and the
- * distance label.
+ * The wrist's Group Ride: the course it holds, the page's rows (order, names, bearings, the one
+ * status slot), the nav-focus label flag and the distance label.
  *
  * @parity /modules/vescape-core/ios/watch/WatchGroupRideTests.swift
  */
@@ -91,6 +93,29 @@ class WatchGroupRideTest {
             WatchGroupRideStatus.Hot(TelemetryLevel.CRITICAL),
             groupRideStatus(rider("b", batteryPercent = null, heatLevel = TelemetryLevel.CRITICAL)),
         )
+    }
+
+    @Test
+    fun `a label flags heat, else a battery above normal, never a stale rider`() {
+        assertEquals(
+            WatchGroupRideStatus.Hot(TelemetryLevel.WARNING),
+            groupRideLabelFlag(rider("a", heatLevel = TelemetryLevel.WARNING, batteryPercent = 5, batteryLevel = TelemetryLevel.CRITICAL)),
+        )
+        assertEquals(
+            WatchGroupRideStatus.Battery(12, TelemetryLevel.CRITICAL),
+            groupRideLabelFlag(rider("b", batteryPercent = 12, batteryLevel = TelemetryLevel.CRITICAL)),
+        )
+        assertNull(groupRideLabelFlag(rider("c", batteryPercent = 80)))
+        assertNull(groupRideLabelFlag(rider("d", batteryPercent = null)))
+        assertNull(groupRideLabelFlag(rider("e", stale = true, heatLevel = TelemetryLevel.CRITICAL)))
+    }
+
+    @Test
+    fun `the wrist keeps the last course while frames carry none`() {
+        val moving = WatchGroupRide.accepting(GroupRideFrame(courseDeg = 120.0, spanM = 600.0, riders = emptyList()), previous = null)
+        val stopped = WatchGroupRide.accepting(GroupRideFrame(courseDeg = null, spanM = 600.0, riders = emptyList()), previous = moving)
+
+        assertEquals(120.0, stopped.courseDeg, 0.0)
     }
 
     @Test

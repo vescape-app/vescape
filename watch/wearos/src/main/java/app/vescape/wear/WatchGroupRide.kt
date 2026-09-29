@@ -19,6 +19,19 @@ internal data class WatchGroupRide(
     val spanM: Double,
     val riders: List<GroupRideFrameRider>,
 ) {
+    companion object {
+        /**
+         * The next state for an arriving frame, keeping [previous]'s course when the frame has none.
+         *
+         * @parity /modules/vescape-core/ios/watch/WatchGroupRide.swift `accepting`
+         */
+        fun accepting(frame: GroupRideFrame, previous: WatchGroupRide?) = WatchGroupRide(
+            courseDeg = frame.courseDeg ?: previous?.courseDeg ?: 0.0,
+            spanM = frame.spanM,
+            riders = frame.riders,
+        )
+    }
+
     /** Where [rider] is relative to the Rider's travel direction: 0 ahead, 90 right, 180 behind. */
     fun bearingDeg(rider: GroupRideFrameRider): Double =
         relativeBearingDeg(rider.eastM, rider.northM, courseDeg)
@@ -86,6 +99,19 @@ internal fun groupRideStatus(rider: GroupRideFrameRider): WatchGroupRideStatus {
     }
 }
 
+/**
+ * A nav-focus label's flag: the [groupRideStatus] slot when it warns — [WatchGroupRideStatus.Hot],
+ * or [WatchGroupRideStatus.Battery] at a level above normal — else null. A stale Rider has none.
+ *
+ * @parity /modules/vescape-core/ios/watch/WatchGroupRide.swift `groupRideLabelFlag`
+ */
+internal fun groupRideLabelFlag(rider: GroupRideFrameRider): WatchGroupRideStatus? =
+    when (val status = groupRideStatus(rider)) {
+        is WatchGroupRideStatus.Hot -> status
+        is WatchGroupRideStatus.Battery -> status.takeIf { it.level != TelemetryLevel.NORMAL }
+        else -> null
+    }
+
 /** First [count] Unicode scalars, so a cut never splits a surrogate pair. */
 private fun String.takeCodePoints(count: Int): String =
     substring(0, offsetByCodePoints(0, minOf(count, codePointCount(0, length))))
@@ -95,7 +121,7 @@ private fun String.takeCodePoints(count: Int): String =
  *
  * @parity /modules/vescape-core/ios/watch/WatchGroupRide.swift `GROUP_ROW_NAME_CHARS`
  */
-internal const val GROUP_ROW_NAME_CHARS = 5
+private const val GROUP_ROW_NAME_CHARS = 5
 
 /**
  * Wrist-side Group Ride state. A frame lands here from [MainActivity]; [refresh] drops the group once
@@ -109,11 +135,7 @@ internal object GroupRideState {
     private var lastFrameAtMs: Long? = null
 
     fun accept(frame: GroupRideFrame, nowMs: Long = SystemClock.elapsedRealtime()) {
-        group.value = WatchGroupRide(
-            courseDeg = frame.courseDeg ?: group.value?.courseDeg ?: 0.0,
-            spanM = frame.spanM,
-            riders = frame.riders,
-        )
+        group.value = WatchGroupRide.accepting(frame, group.value)
         lastFrameAtMs = nowMs
     }
 
@@ -130,7 +152,7 @@ internal object GroupRideState {
 /**
  * Three missed 1 Hz frames and the group is gone from the wrist.
  *
- * @parity /modules/vescape-core/ios/watch/WatchGroupRide.swift `GROUP_RIDE_TIMEOUT_MS`
+ * @parity /modules/vescape-core/ios/watch/WatchGroupRide.swift `timeoutMs`
  */
 private const val GROUP_RIDE_TIMEOUT_MS = 3_500L
 

@@ -10,7 +10,14 @@ struct WatchGroupRide: Equatable {
   var spanM: Double
   var riders: [GroupRideFrameRider]
 
+  /// Three missed 1 Hz frames and the group is gone from the wrist.
+  ///
+  /// @parity /watch/wearos/src/main/java/app/vescape/wear/WatchGroupRide.kt `GROUP_RIDE_TIMEOUT_MS`
+  static let timeoutMs: Int64 = 3_500
+
   /// The next state for an arriving frame, keeping `previous`'s course when the frame has none.
+  ///
+  /// @parity /watch/wearos/src/main/java/app/vescape/wear/WatchGroupRide.kt `accepting`
   static func accepting(_ frame: GroupRideFrame, previous: WatchGroupRide?) -> WatchGroupRide {
     WatchGroupRide(
       courseDeg: frame.courseDeg ?? previous?.courseDeg ?? 0,
@@ -76,15 +83,23 @@ func groupRideStatus(_ rider: GroupRideFrameRider) -> WatchGroupRideStatus {
   return .battery(percent: percent, level: rider.batteryLevel)
 }
 
+/// A nav-focus label's flag: the `groupRideStatus` slot when it warns — `.hot`, or `.battery` at a
+/// level above normal — else nil. A stale Rider has none.
+///
+/// @parity /watch/wearos/src/main/java/app/vescape/wear/WatchGroupRide.kt `groupRideLabelFlag`
+func groupRideLabelFlag(_ rider: GroupRideFrameRider) -> WatchGroupRideStatus? {
+  let status = groupRideStatus(rider)
+  switch status {
+  case .hot: return status
+  case .battery(_, let level) where level != .normal: return status
+  default: return nil
+  }
+}
+
 /// A Group Ride page name is cut to this many characters.
 ///
 /// @parity /watch/wearos/src/main/java/app/vescape/wear/WatchGroupRide.kt `GROUP_ROW_NAME_CHARS`
-let GROUP_ROW_NAME_CHARS = 5
-
-/// Three missed 1 Hz frames and the group is gone from the wrist.
-///
-/// @parity /watch/wearos/src/main/java/app/vescape/wear/WatchGroupRide.kt `GROUP_RIDE_TIMEOUT_MS`
-let GROUP_RIDE_TIMEOUT_MS: Int64 = 3_500
+private let GROUP_ROW_NAME_CHARS = 5
 
 /// A Rider's compact distance: "680m", "2.1km" in the Rider's units. The wrist's own distance
 /// formatting without the space, so the label stays short beside its mark.

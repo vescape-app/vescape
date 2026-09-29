@@ -63,7 +63,7 @@ internal fun NavRoute(frame: WatchFrame, muted: Boolean, navFocus: () -> Float =
 
     Canvas(modifier = Modifier.fillMaxSize()) {
         // Rider sits below the screen centre so more of the frame is "ahead" than behind.
-        drawRiderDot(Offset(size.width / 2f, size.height / 2f + WatchMapProjection.RIDER_DROP.toPx()), color)
+        drawRiderDot(WatchMapProjection.riderPoint(size.width, size.height, WatchMapProjection.RIDER_DROP.toPx()), color)
     }
 }
 
@@ -121,8 +121,8 @@ private fun AnimatedRoute(
         // recomposing anything. Only there — a wider line under the readouts would fight the
         // gauge fills, but on the map it is the whole page and has to survive sunlight.
         val focus = navFocus().coerceIn(0f, 1f)
-        val center = Offset(size.width / 2f, size.height / 2f + WatchMapProjection.RIDER_DROP.toPx())
-        val scale = (size.minDimension - WatchMapProjection.ROUTE_EDGE_INSET.toPx()) / routeSpanM
+        val center = WatchMapProjection.riderPoint(size.width, size.height, WatchMapProjection.RIDER_DROP.toPx())
+        val scale = WatchMapProjection.pixelsPerMetre(size.width, size.height, WatchMapProjection.ROUTE_EDGE_INSET.toPx(), routeSpanM)
         val path = routePath(route, Offset(eastM.value, northM.value), center, scale)
         val faceCenter = Offset(size.width / 2f, size.height / 2f)
         // One pixel inside the gauge circle's guide line, so the route stops just short of it.

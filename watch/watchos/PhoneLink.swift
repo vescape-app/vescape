@@ -246,7 +246,7 @@ final class PhoneLink: NSObject, ObservableObject, WCSessionDelegate {
   /// @parity /watch/wearos/src/main/java/app/vescape/wear/WatchGroupRide.kt `refresh`
   func refresh() {
     // Leaving the ride, losing the phone and ambient all look the same from here: the frames stop.
-    if let at = lastGroupRideAtMs, Self.nowMs() - at > GROUP_RIDE_TIMEOUT_MS {
+    if let at = lastGroupRideAtMs, Self.nowMs() - at > WatchGroupRide.timeoutMs {
       groupRide = nil
       lastGroupRideAtMs = nil
     }

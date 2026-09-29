@@ -32,6 +32,21 @@ struct WatchMapProjection {
     min(maxSpanM, max(minSpanM, spanM ?? defaultSpanM))
   }
 
+  /// Where the Rider sits on a display of `size`: `riderDrop` below its centre.
+  ///
+  /// @parity /watch/wearos/src/main/java/app/vescape/wear/WatchMapProjection.kt `riderPoint`
+  static func riderPoint(in size: CGSize) -> CGPoint {
+    CGPoint(x: size.width / 2, y: size.height / 2 + riderDrop)
+  }
+
+  /// Points per metre when `spanM` (already clamped) metres fit the display's shorter side less
+  /// `edgeInset`.
+  ///
+  /// @parity /watch/wearos/src/main/java/app/vescape/wear/WatchMapProjection.kt `pixelsPerMetre`
+  static func pointsPerMetre(size: CGSize, spanM: Double) -> Double {
+    (min(size.width, size.height) - edgeInset) / spanM
+  }
+
   let size: CGSize
   let courseDeg: Double
   private let scale: Double
@@ -39,11 +54,11 @@ struct WatchMapProjection {
   init(size: CGSize, spanM: Double?, courseDeg: Double) {
     self.size = size
     self.courseDeg = courseDeg
-    scale = (min(size.width, size.height) - Self.edgeInset) / Self.clampedSpanM(spanM)
+    scale = Self.pointsPerMetre(size: size, spanM: Self.clampedSpanM(spanM))
   }
 
   var centre: CGPoint { CGPoint(x: size.width / 2, y: size.height / 2) }
-  var rider: CGPoint { CGPoint(x: centre.x, y: centre.y + Self.riderDrop) }
+  var rider: CGPoint { Self.riderPoint(in: size) }
   /// Place a point `eastM`/`northM` metres from the Rider. In range = inside the display inset by
   /// `margin` on every side.
   ///
@@ -178,6 +193,7 @@ struct WatchMapProjection {
     }
     for base in bases {
       for step in LABEL_NUDGE_STEPS {
+        // Up first beside a dot (the readout is below); either way along the edge beside a triangle.
         for sign in [1.0, -1.0] as [CGFloat] {
           spots.append(CGPoint(x: base.x + nudge.dx * step * height * sign, y: base.y + nudge.dy * step * height * sign))
         }
@@ -301,7 +317,7 @@ func navReadoutBounds(navFocus: Double, displaySize: CGSize) -> CGRect {
 /// A crowded label's nudges, in label heights; the last is the farthest a label strays from its mark.
 ///
 /// @parity /watch/wearos/src/main/java/app/vescape/wear/WatchMapProjection.kt `LABEL_NUDGE_STEPS`
-let LABEL_NUDGE_STEPS: [CGFloat] = [0.5, 1]
+private let LABEL_NUDGE_STEPS: [CGFloat] = [0.5, 1]
 
 /// A triangle's footprint half-size as a share of its length.
 ///
@@ -314,12 +330,12 @@ private let TRIANGLE_FOOTPRINT: CGFloat = 0.6
 /// @parity /watch/wearos/src/main/java/app/vescape/wear/WatchMapProjection.kt `NAV_READOUT_LEFT`
 /// @platform-diff The readout takes more of the narrow 40 mm display ("2.5 km" alone spans 29–72%),
 ///   so the keep-out is wider here than Wear OS's 29–71%.
-let NAV_READOUT_KEEP_OUT = (left: 0.25, right: 0.75, top: 0.745, focusDrop: 0.075, bottom: 0.94)
+private let NAV_READOUT_KEEP_OUT = (left: 0.25, right: 0.75, top: 0.745, focusDrop: 0.075, bottom: 0.94)
 
 /// Beyond this the triangle stops shrinking.
 ///
 /// @parity /watch/wearos/src/main/java/app/vescape/wear/WatchMapProjection.kt `GROUP_FAR_M`
-let GROUP_FAR_M = 3_000.0
+private let GROUP_FAR_M = 3_000.0
 
 /// One point placed on the heading-up map. `direction` is the unit ray from the Rider towards it in
 /// screen space.

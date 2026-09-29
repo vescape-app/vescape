@@ -126,10 +126,15 @@ private extension GraphicsContext {
       Text(groupRideDistanceLabel(rider.distanceM, unitSystem: unitSystem)).font(font).foregroundColor(Palette.secondaryText)
     )
     let distanceSize = distance.measure(in: unbounded)
-    let heatColor = Palette.level(rider.heatLevel)
+    var heatColor: Color?
     var battery: GraphicsContext.ResolvedText?
-    if heatColor == nil, let percent = rider.batteryPercent, let color = Palette.level(rider.batteryLevel) {
-      battery = resolve(Text("\(percent)%").font(font).foregroundColor(color))
+    switch groupRideLabelFlag(rider) {
+    case .hot(let level):
+      heatColor = Palette.level(level)
+    case .battery(let percent, let level):
+      if let color = Palette.level(level) { battery = resolve(Text("\(percent)%").font(font).foregroundColor(color)) }
+    default:
+      break
     }
     let height = distanceSize.height
     let flagWidth: CGFloat

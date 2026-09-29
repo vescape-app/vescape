@@ -154,7 +154,7 @@ class WatchMapProjectionTest {
 
     /** Places one label per mark ([width] × [height] each) and returns their top-lefts. */
     private fun labels(vararg marks: WatchGroupRideMark, width: Float = 30f, height: Float = 10f, focus: Float = 1f) =
-        map().placeLabels(marks.toList(), marks.map { Size(width, height) }, gapPx = 3f, navFocus = focus, faceWidth = face, faceHeight = face)
+        map().placeLabels(marks.toList(), marks.map { Size(width, height) }, gapPx = 3f, navFocus = focus)
 
     private fun label(mark: WatchGroupRideMark, width: Float = 30f, height: Float = 10f, focus: Float = 1f) =
         labels(mark, width = width, height = height, focus = focus).single()!!
@@ -242,9 +242,7 @@ class WatchMapProjectionTest {
     fun `a stale rider gets no label but still keeps others' labels off its dot`() {
         val stale = map().mark(riderAt("lost", 60.0, 100.0).copy(stale = true), sizes)
         val live = map().mark(riderAt("live", 40.0, 100.0), sizes)
-        val placed = map().placeLabels(
-            listOf(stale, live), listOf(null, Size(30f, 10f)), gapPx = 3f, navFocus = 1f, faceWidth = face, faceHeight = face,
-        )
+        val placed = map().placeLabels(listOf(stale, live), listOf(null, Size(30f, 10f)), gapPx = 3f, navFocus = 1f)
         assertNull(placed[0])
         assertFalse(Rect(placed[1]!!, Size(30f, 10f)).overlaps(Rect(Offset(stale.x, stale.y), stale.sizePx)))
     }
