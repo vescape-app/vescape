@@ -1,7 +1,7 @@
 import Foundation
 
-/// Shared with Wear OS; forecast times are anchored once when replay starts.
-/// @parity /watch/wearos/src/main/java/app/vescape/wear/FrameReplay.kt `ReplaySceneParser.parseWeather`
+/// Parsers for the non-frame fixtures, shared with Wear OS.
+/// @parity /watch/wearos/src/main/java/app/vescape/wear/FrameReplay.kt `ReplaySceneParser`
 enum ReplaySceneParser {
   /// @parity /watch/wearos/src/main/java/app/vescape/wear/FrameReplay.kt `ReplaySceneParser.parseRoute`
   static func parseRoute(json: String) -> WatchRoute? {
@@ -23,6 +23,8 @@ enum ReplaySceneParser {
     }
   }
 
+  /// Forecast times are anchored once when replay starts.
+  /// @parity /watch/wearos/src/main/java/app/vescape/wear/FrameReplay.kt `ReplaySceneParser.parseWeather`
   static func parseWeather(json: String, nowMs: Int64, minuteOfDay: Int) -> WatchWeather? {
     // intentional-suppression: malformed replay fixtures return nil; the replay driver logs the failure.
     guard let fixture = try? JSONDecoder().decode(WeatherFixture.self, from: Data(json.utf8)) else {
@@ -48,7 +50,7 @@ enum ReplaySceneParser {
   /// Group Ride fixture (`watch-group-ride.json`). Levels are named ("warning", "critical") and a
   /// missing one reads as normal; the phone classifies, so the fixture states them.
   ///
-  /// @parity /watch/wearos/src/main/java/app/vescape/wear/FrameReplay.kt `parseReplayGroupRide`
+  /// @parity /watch/wearos/src/main/java/app/vescape/wear/FrameReplay.kt `ReplaySceneParser.parseGroupRide`
   static func parseGroupRide(json: String) -> ReplayGroupRide? {
     // intentional-suppression: malformed replay fixtures return nil; the replay driver logs the failure.
     guard let fixture = try? JSONDecoder().decode(GroupRideFixture.self, from: Data(json.utf8)),

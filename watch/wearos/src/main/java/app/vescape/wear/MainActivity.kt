@@ -171,7 +171,7 @@ class MainActivity : ComponentActivity() {
         // paired phone exactly like physical Wear OS hardware.
         if (replayEnabled) {
             commandSender.replayTiltEcho = frameReplayer::echoTilt
-            frameReplayer.start(replayFixture(), group = intent?.getBooleanExtra("group", false) == true)
+            frameReplayer.start(replayFixture(), group = replayGroup())
             return
         }
         publishWakeLevel()
@@ -214,11 +214,17 @@ class MainActivity : ComponentActivity() {
      * Which fixture the emulator replays. Defaults to the recorded ride; the lane sweep is reachable
      * without a rebuild:
      * `adb shell am start -S -n <pkg>/app.vescape.wear.MainActivity --es replay sweep`
-     * (`-S` because a running instance keeps its original intent). `--ez group true` also replays a
-     * joined Group Ride.
+     * (`-S` because a running instance keeps its original intent).
+     * @parity /watch/watchos/FrameReplay.swift `FrameReplayer.requestedFixture`
      */
     private fun replayFixture(): String =
         if (intent?.getStringExtra("replay") == "sweep") REPLAY_FIXTURE_SWEEP else REPLAY_FIXTURE_RIDE
+
+    /**
+     * `--ez group true` beside `--es replay`: also replay a joined Group Ride.
+     * @parity /watch/watchos/FrameReplay.swift `FrameReplayer.requestedGroup`
+     */
+    private fun replayGroup(): Boolean = intent?.getBooleanExtra("group", false) == true
 
     /**
      * Emulator-only: render as if the watch were in ambient, without asking the emulator to actually

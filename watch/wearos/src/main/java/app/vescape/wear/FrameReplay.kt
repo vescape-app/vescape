@@ -91,6 +91,7 @@ object ReplayFixtureParser {
  * exercises the same state the real Data Layer paths feed — [WatchRouteDecoder] and the weather
  * message listener are the only other way into these two objects.
  */
+/** @parity /modules/vescape-core/ios/watch/WatchReplay.swift `ReplaySceneParser` */
 object ReplaySceneParser {
     /** Route points as metres east/north of the origin, the frame the rider lanes are relative to. */
     // @parity /modules/vescape-core/ios/watch/WatchReplay.swift `ReplaySceneParser.parseRoute`
@@ -142,6 +143,46 @@ object ReplaySceneParser {
     } catch (e: Exception) {
         null
     }
+
+    /**
+     * Parser for [REPLAY_FIXTURE_GROUP_RIDE]. Levels are named ("warning", "critical") and missing ones
+     * read as normal; the phone classifies, so the fixture states them rather than deriving them.
+     *
+     * @parity /modules/vescape-core/ios/watch/WatchReplay.swift `ReplaySceneParser.parseGroupRide`
+     */
+    internal fun parseGroupRide(json: String): ReplayGroupRide? = try {
+        val root = JSONObject(json)
+        val riders = root.getJSONArray("riders")
+        ReplayGroupRide(
+            courseDeg = root.optDouble("courseDeg").takeIf { !it.isNaN() },
+            spanM = root.getDouble("spanM"),
+            riders = (0 until riders.length()).map { index ->
+                val rider = riders.getJSONObject(index)
+                val swing = rider.optJSONObject("swing")
+                ReplayGroupRider(
+                    rider = GroupRideFrameRider(
+                        id = rider.getString("id"),
+                        name = rider.getString("name"),
+                        colorArgb = (0xFF000000 or rider.getString("color").removePrefix("#").toLong(16)).toInt(),
+                        eastM = rider.getDouble("east"),
+                        northM = rider.getDouble("north"),
+                        stale = rider.optBoolean("stale", false),
+                        batteryPercent = if (rider.has("battery")) rider.getInt("battery") else null,
+                        batteryLevel = replayLevel(rider.optString("batteryLevel")),
+                        heatLevel = replayLevel(rider.optString("heatLevel")),
+                    ),
+                    swingEastM = swing?.optDouble("east", 0.0) ?: 0.0,
+                    swingNorthM = swing?.optDouble("north", 0.0) ?: 0.0,
+                    swingPeriodMs = ((swing?.optDouble("periodS", 0.0) ?: 0.0) * 1000).toLong(),
+                )
+            },
+        ).takeIf { it.riders.isNotEmpty() }
+    } catch (e: Exception) {
+        null
+    }
+
+    private fun replayLevel(name: String): TelemetryLevel =
+        TelemetryLevel.entries.firstOrNull { it.name.equals(name, ignoreCase = true) } ?: TelemetryLevel.NORMAL
 }
 
 /**
@@ -151,11 +192,11 @@ object ReplaySceneParser {
  * @parity /modules/vescape-core/ios/watch/WatchReplay.swift `ReplayGroupRide`
  */
 internal data class ReplayGroupRide(val courseDeg: Double?, val spanM: Double, val riders: List<ReplayGroupRider>) {
-    /** The frame the phone would push [elapsedMs] into replay; [courseDeg] is the ride's own when known. */
-    fun frameAt(elapsedMs: Long, courseDeg: Double?): GroupRideFrame = GroupRideFrame(
+    /** The frame the phone would push [atMs] into replay; [courseDeg] is the ride's own when known. */
+    fun frame(atMs: Long, courseDeg: Double?): GroupRideFrame = GroupRideFrame(
         courseDeg = courseDeg ?: this.courseDeg,
         spanM = spanM,
-        riders = riders.map { it.at(elapsedMs) },
+        riders = riders.map { it.at(atMs) },
     )
 }
 
@@ -172,46 +213,6 @@ internal data class ReplayGroupRider(
         return rider.copy(eastM = rider.eastM + swingEastM * wave, northM = rider.northM + swingNorthM * wave)
     }
 }
-
-/**
- * Parser for [REPLAY_FIXTURE_GROUP_RIDE]. Levels are named ("warning", "critical") and missing ones
- * read as normal; the phone classifies, so the fixture states them rather than deriving them.
- *
- * @parity /modules/vescape-core/ios/watch/WatchReplay.swift `ReplaySceneParser.parseGroupRide`
- */
-internal fun parseReplayGroupRide(json: String): ReplayGroupRide? = try {
-    val root = JSONObject(json)
-    val riders = root.getJSONArray("riders")
-    ReplayGroupRide(
-        courseDeg = root.optDouble("courseDeg").takeIf { !it.isNaN() },
-        spanM = root.getDouble("spanM"),
-        riders = (0 until riders.length()).map { index ->
-            val rider = riders.getJSONObject(index)
-            val swing = rider.optJSONObject("swing")
-            ReplayGroupRider(
-                rider = GroupRideFrameRider(
-                    id = rider.getString("id"),
-                    name = rider.getString("name"),
-                    colorArgb = (0xFF000000 or rider.getString("color").removePrefix("#").toLong(16)).toInt(),
-                    eastM = rider.getDouble("east"),
-                    northM = rider.getDouble("north"),
-                    stale = rider.optBoolean("stale", false),
-                    batteryPercent = if (rider.has("battery")) rider.getInt("battery") else null,
-                    batteryLevel = replayLevel(rider.optString("batteryLevel")),
-                    heatLevel = replayLevel(rider.optString("heatLevel")),
-                ),
-                swingEastM = swing?.optDouble("east", 0.0) ?: 0.0,
-                swingNorthM = swing?.optDouble("north", 0.0) ?: 0.0,
-                swingPeriodMs = ((swing?.optDouble("periodS", 0.0) ?: 0.0) * 1000).toLong(),
-            )
-        },
-    ).takeIf { it.riders.isNotEmpty() }
-} catch (e: Exception) {
-    null
-}
-
-private fun replayLevel(name: String): TelemetryLevel =
-    TelemetryLevel.entries.firstOrNull { it.name.equals(name, ignoreCase = true) } ?: TelemetryLevel.NORMAL
 
 /**
  * The gate every emulator-only dev mode passes through: fixture replay, and the forced ambient
@@ -262,6 +263,7 @@ class FrameReplayer(private val context: Context) {
     /**
      * Stand in for the phone's Remote Tilt so the Tilt page can be felt on an emulator: a lock is
      * echoed into every following frame, a cancel ([value] null) returns to neutral at once.
+     * @parity /watch/watchos/FrameReplay.swift `FrameReplayer.echoTilt`
      */
     fun echoTilt(value: Int?) {
         tilt = value ?: TILT_CENTER
@@ -274,7 +276,7 @@ class FrameReplayer(private val context: Context) {
         if (samples.isEmpty()) return
         WatchDiagnostics.recordReplay(fixture, samples.size)
         loadScene()
-        groupRide = if (group) readAsset(REPLAY_FIXTURE_GROUP_RIDE)?.let(::parseReplayGroupRide) else null
+        groupRide = if (group) readAsset(REPLAY_FIXTURE_GROUP_RIDE)?.let(ReplaySceneParser::parseGroupRide) else null
         running = true
         startedAt = SystemClock.elapsedRealtime()
         restartLoop()
@@ -284,13 +286,13 @@ class FrameReplayer(private val context: Context) {
     /**
      * One Group Ride Frame into [GroupRideState], the path a decoded phone frame takes, then the next
      * a second later.
-     * @parity /watch/watchos/FrameReplay.swift `FrameReplayer.start`
+     * @parity /watch/watchos/FrameReplay.swift `FrameReplayer.startGroupRide`
      */
     private fun pushGroupRide() {
         val group = groupRide ?: return
         if (!running) return
         val now = SystemClock.elapsedRealtime()
-        GroupRideState.accept(group.frameAt(now - startedAt, courseDeg), now)
+        GroupRideState.accept(group.frame(atMs = now - startedAt, courseDeg = courseDeg), now)
         handler.postDelayed(::pushGroupRide, REPLAY_GROUP_RIDE_INTERVAL_MS)
     }
 
