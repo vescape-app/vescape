@@ -350,10 +350,12 @@ internal fun groupRideDistanceLabel(distanceM: Double, unitSystem: String): Stri
 
 /**
  * Top-left of a [width] × [height] label for [mark]: beside a dot on the side away from the Rider,
- * [gapPx] clear of it and of its flag ring when it wears one ([ringPx] further out); inward of a
- * triangle's apex by [gapPx]. Then [clearOfNavReadout].
+ * or the other side when that would run off the face, [gapPx] clear of it and of its flag ring when
+ * it wears one ([ringPx] further out); inward of a triangle's apex by [gapPx]. Then
+ * [clearOfNavReadout].
  *
- * @parity /modules/vescape-core/ios/watch/WatchMapProjection.swift `groupRideLabelOrigin`
+ * @parity /modules/vescape-core/ios/watch/WatchMapProjection.swift `labelOrigin`
+ * @platform-diff "Off the face" is the round face's circle here; watchOS uses its display's width.
  */
 internal fun HeadingUpMap.labelTopLeft(
     mark: GroupRideMark,
@@ -368,8 +370,11 @@ internal fun HeadingUpMap.labelTopLeft(
     val (left, top) = when (mark.kind) {
         GroupRideMarkKind.Dot -> {
             val reach = mark.sizePx + (if (flagColor(mark.rider) != null) ringPx else 0f) + gapPx
-            val left = if (mark.x >= riderX) mark.x + reach else mark.x - reach - width
-            left to mark.y - height / 2f
+            val top = mark.y - height / 2f
+            val right = mark.x + reach
+            val left = mark.x - reach - width
+            val (away, toward) = if (mark.x >= riderX) right to left else left to right
+            (if (onFace(away, top, width, height)) away else toward) to top
         }
         GroupRideMarkKind.Triangle -> {
             // Inward along the edge normal, far enough that the box's own half-extent clears the apex.
@@ -384,6 +389,13 @@ internal fun HeadingUpMap.labelTopLeft(
         }
     }
     return Offset(left, clearOfNavReadout(left, top, width, height, navFocus, faceWidth, faceHeight))
+}
+
+/** Whether a label box lies wholly inside the round face. */
+private fun HeadingUpMap.onFace(left: Float, top: Float, width: Float, height: Float): Boolean {
+    val farX = maxOf(abs(left - centerX), abs(left + width - centerX))
+    val farY = maxOf(abs(top - centerY), abs(top + height - centerY))
+    return hypot(farX, farY) <= faceRadius
 }
 
 /**

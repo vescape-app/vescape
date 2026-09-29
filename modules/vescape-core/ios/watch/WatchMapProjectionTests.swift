@@ -188,6 +188,15 @@ final class WatchMapProjectionTests: XCTestCase {
     XCTAssertEqual(label(left).x, left.point.x - 3 - 3 - 30, accuracy: 0.01)
   }
 
+  func testADotsLabelThatWouldRunOffTheDisplayTakesTheRidersSide() {
+    // 150 pt right of the centre, level with it: a 60 pt label outward would leave the display.
+    let nearEdge = map().mark(for: rider(eastM: Double(150 / scale), northM: Double(drop / scale)), sizes: sizes)
+    XCTAssertEqual(nearEdge.point.x, 350, accuracy: 0.01)
+    let wide = map().labelOrigin(for: nearEdge, labelSize: CGSize(width: 60, height: 10), gap: 3, ring: 4, navFocus: 1)
+    XCTAssertEqual(wide.x, nearEdge.point.x - 3 - 3 - 60, accuracy: 0.01)
+    XCTAssertEqual(label(nearEdge).x, nearEdge.point.x + 3 + 3, accuracy: 0.01)
+  }
+
   func testAFlaggedDotsLabelClearsItsRingAStaleOnesHasNoRingToClear() {
     var hot = rider(eastM: 50, northM: 100)
     hot.heatLevel = .warning

@@ -163,6 +163,15 @@ class GroupRidePlacementTest {
     }
 
     @Test
+    fun `a dot's label that would run off the face takes the rider's side`() {
+        // 150 px right of the centre, level with it: a 60 px label outward would leave the face.
+        val nearRim = map().mark(rider(150.0 / scale, 30.0 / scale), sizes)
+        assertEquals(350f, nearRim.x, 0.01f)
+        assertEquals(nearRim.x - 3f - 3f - 60f, label(nearRim, width = 60f).x, 0.01f)
+        assertEquals(nearRim.x + 3f + 3f, label(nearRim, width = 30f).x, 0.01f)
+    }
+
+    @Test
     fun `a flagged dot's label clears its ring, a stale one's has no ring to clear`() {
         val hot = rider(50.0, 100.0).copy(heatLevel = TelemetryLevel.WARNING)
         val mark = map().mark(hot, sizes)

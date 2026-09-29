@@ -100,11 +100,12 @@ struct WatchMapProjection {
     riders.sorted { $0.distanceM > $1.distanceM }.map { mark(for: $0, sizes: sizes) }
   }
 
-  /// Top-left of a `labelSize` label for `mark`: beside a dot on the side away from the Rider, `gap`
-  /// clear of it and of its flag ring when it wears one (`ring` further out); inward of a triangle's
-  /// apex by `gap`. Then `clearOfNavReadout`.
+  /// Top-left of a `labelSize` label for `mark`: beside a dot on the side away from the Rider, or the
+  /// other side when that would run off the display, `gap` clear of it and of its flag ring when it
+  /// wears one (`ring` further out); inward of a triangle's apex by `gap`. Then `clearOfNavReadout`.
   ///
   /// @parity /watch/wearos/src/main/java/app/vescape/wear/GroupRide.kt `labelTopLeft`
+  /// @platform-diff "Off the display" is its width here; Wear OS uses its round face's circle.
   func labelOrigin(
     for mark: WatchGroupRideMark, labelSize: CGSize, gap: CGFloat, ring: CGFloat, navFocus: Double
   ) -> CGPoint {
@@ -115,7 +116,10 @@ struct WatchMapProjection {
     case .dot:
       let ringed = !mark.rider.stale && mark.rider.flagLevel != .normal
       let reach = mark.size + (ringed ? ring : 0) + gap
-      let x = mark.point.x >= rider.x ? mark.point.x + reach : mark.point.x - reach - width
+      let right = mark.point.x + reach
+      let left = mark.point.x - reach - width
+      let (away, toward) = mark.point.x >= rider.x ? (right, left) : (left, right)
+      let x = away >= 0 && away + width <= size.width ? away : toward
       origin = CGPoint(x: x, y: mark.point.y - height / 2)
     case .triangle:
       // Inward along the edge normal, far enough that the box's own half-extent clears the apex.
