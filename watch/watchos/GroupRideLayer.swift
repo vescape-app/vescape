@@ -4,7 +4,7 @@ import SwiftUI
 /// gauges. Without Navigation there is no route to carry the Rider's own ring, so this draws it at
 /// the same spot. In nav focus each live dot gets its distance label, which carries any flag. Riders beyond the map are `GroupRideEdgeLayer`'s.
 ///
-/// @parity /watch/wearos/src/main/java/app/vescape/wear/GroupRide.kt `GroupRideLayer`
+/// @parity /watch/wearos/src/main/java/app/vescape/wear/GroupRideLayer.kt `GroupRideLayer`
 struct GroupRideLayer: View {
   let group: WatchGroupRide
   let drawOwnRing: Bool
@@ -37,7 +37,7 @@ struct GroupRideLayer: View {
 /// Drawn over the rim gauges, so the caller layers it above them. A triangle is always the Rider's
 /// own colour; a flag shows only in its nav-focus label. Hidden in ambient like the dots.
 ///
-/// @parity /watch/wearos/src/main/java/app/vescape/wear/GroupRide.kt `GroupRideEdgeLayer`
+/// @parity /watch/wearos/src/main/java/app/vescape/wear/GroupRideLayer.kt `GroupRideEdgeLayer`
 struct GroupRideEdgeLayer: View {
   let group: WatchGroupRide
   /// Nav-focus progress: the labels fade in as the nav page takes the screen.
@@ -62,6 +62,8 @@ struct GroupRideEdgeLayer: View {
   }
 
   /// Base centred on the edge, apex inward, thin dark outline under the fill so it reads over the rim.
+  ///
+  /// @parity /watch/wearos/src/main/java/app/vescape/wear/GroupRideLayer.kt `drawEdgeTriangle`
   private func triangle(_ mark: WatchGroupRideMark) -> Path {
     let out = mark.direction
     let side = CGVector(dx: -out.dy * mark.size * GROUP_TRIANGLE_BASE / 2, dy: out.dx * mark.size * GROUP_TRIANGLE_BASE / 2)
@@ -71,14 +73,6 @@ struct GroupRideEdgeLayer: View {
     path.addLine(to: CGPoint(x: mark.point.x - out.dx * mark.size, y: mark.point.y - out.dy * mark.size))
     path.closeSubpath()
     return path
-  }
-}
-
-func levelColor(_ level: TelemetryLevel) -> Color? {
-  switch level {
-  case .normal: return nil
-  case .warning: return Palette.warning
-  case .critical: return Palette.critical
   }
 }
 
@@ -98,7 +92,7 @@ private extension GraphicsContext {
   /// mark (`placeLabels`) and each draws its own kind's, so a dot's label and a triangle's never
   /// collide.
   ///
-  /// @parity /watch/wearos/src/main/java/app/vescape/wear/GroupRide.kt `GroupRideLabels`
+  /// @parity /watch/wearos/src/main/java/app/vescape/wear/GroupRideLayer.kt `GroupRideLabels`
   func drawGroupRideLabels(
     marks: [WatchGroupRideMark], kind: WatchGroupRideMarkKind, map: WatchMapProjection, focus: Double, unitSystem: String
   ) {
@@ -132,9 +126,9 @@ private extension GraphicsContext {
       Text(groupRideDistanceLabel(rider.distanceM, unitSystem: unitSystem)).font(font).foregroundColor(Palette.secondaryText)
     )
     let distanceSize = distance.measure(in: unbounded)
-    let heatColor = levelColor(rider.heatLevel)
+    let heatColor = Palette.level(rider.heatLevel)
     var battery: GraphicsContext.ResolvedText?
-    if heatColor == nil, let percent = rider.batteryPercent, let color = levelColor(rider.batteryLevel) {
+    if heatColor == nil, let percent = rider.batteryPercent, let color = Palette.level(rider.batteryLevel) {
       battery = resolve(Text("\(percent)%").font(font).foregroundColor(color))
     }
     let height = distanceSize.height
@@ -158,7 +152,7 @@ extension GraphicsContext {
   /// its lower part filled. The bulb against the narrow stem is what reads as a thermometer
   /// at label size rather than a pill.
   ///
-  /// @parity /watch/wearos/src/main/java/app/vescape/wear/GroupRide.kt `drawThermometer`
+  /// @parity /watch/wearos/src/main/java/app/vescape/wear/GroupRideLayer.kt `drawThermometer`
   func drawThermometer(in box: CGRect, color: Color) {
     let line = THERMOMETER_STROKE
     let cx = box.midX
@@ -182,6 +176,8 @@ extension GraphicsContext {
 }
 
 /// Mark sizes on a display of `size`; dots grow towards the nav page, where the map is the page.
+///
+/// @parity /watch/wearos/src/main/java/app/vescape/wear/GroupRideLayer.kt `groupRideMarkSizes`
 func groupRideMarkSizes(size: CGSize, focus: Double) -> WatchGroupRideMarkSizes {
   WatchGroupRideMarkSizes(
     inRangeMargin: GROUP_IN_RANGE_MARGIN,
@@ -196,6 +192,8 @@ func groupRideMarkSizes(size: CGSize, focus: Double) -> WatchGroupRideMarkSizes 
 /// A canvas handed a stale Rider's opacity. Its timeline runs only while `group` has a stale Rider;
 /// the caller draws nothing in ambient, so ambient never animates. Both layers take their phase from
 /// the same clock, so a stale dot and a stale triangle pulse together.
+///
+/// @parity /watch/wearos/src/main/java/app/vescape/wear/GroupRideLayer.kt `rememberStalePulse`
 private struct StalePulse: View {
   let group: WatchGroupRide
   let draw: (inout GraphicsContext, CGSize, Double) -> Void
@@ -212,7 +210,7 @@ private struct StalePulse: View {
 /// Opacity `GROUP_STALE_MAX_OPACITY` → `GROUP_STALE_MIN_OPACITY` and back, `GROUP_STALE_PULSE_SECONDS`
 /// each way.
 ///
-/// @parity /watch/wearos/src/main/java/app/vescape/wear/GroupRide.kt `staleAlpha`
+/// @parity /watch/wearos/src/main/java/app/vescape/wear/GroupRideLayer.kt `staleAlpha`
 private func staleOpacity(at date: Date) -> Double {
   let phase = date.timeIntervalSinceReferenceDate.truncatingRemainder(dividingBy: GROUP_STALE_PULSE_SECONDS * 2)
     / GROUP_STALE_PULSE_SECONDS
@@ -220,28 +218,16 @@ private func staleOpacity(at date: Date) -> Double {
   return GROUP_STALE_MAX_OPACITY + (GROUP_STALE_MIN_OPACITY - GROUP_STALE_MAX_OPACITY) * t
 }
 
-extension Color {
-  init(argb: UInt32) {
-    self.init(
-      .sRGB,
-      red: Double((argb >> 16) & 0xFF) / 255,
-      green: Double((argb >> 8) & 0xFF) / 255,
-      blue: Double(argb & 0xFF) / 255,
-      opacity: Double((argb >> 24) & 0xFF) / 255
-    )
-  }
-}
-
 /// Dots stay this far inside the display edge, clear of the rim gauges.
 ///
-/// @parity /watch/wearos/src/main/java/app/vescape/wear/GroupRide.kt `GROUP_IN_RANGE_MARGIN`
+/// @parity /watch/wearos/src/main/java/app/vescape/wear/GroupRideLayer.kt `GROUP_IN_RANGE_MARGIN`
 private let GROUP_IN_RANGE_MARGIN: CGFloat = 38
 private let GROUP_DOT_RADIUS: CGFloat = 3
 /// On the nav page, where the map is the page.
 private let GROUP_FOCUS_DOT_RADIUS: CGFloat = 4.5
 /// Triangle bases sit in the outermost points, over the rim gauges.
 ///
-/// @parity /watch/wearos/src/main/java/app/vescape/wear/GroupRide.kt `GROUP_EDGE_INSET`
+/// @parity /watch/wearos/src/main/java/app/vescape/wear/GroupRideLayer.kt `GROUP_EDGE_INSET`
 private let GROUP_EDGE_INSET: CGFloat = 1
 private let GROUP_TRIANGLE_MIN: CGFloat = 7
 private let GROUP_TRIANGLE_MAX: CGFloat = 12

@@ -123,8 +123,8 @@ internal fun GroupRidePage(crownActive: Boolean) {
 }
 
 @Composable
-private fun GroupRideRowView(row: GroupRideRow, unitSystem: String, width: Dp) {
-    val stale = row.status == GroupRideStatus.Lost
+private fun GroupRideRowView(row: WatchGroupRideRow, unitSystem: String, width: Dp) {
+    val stale = row.status == WatchGroupRideStatus.Stale
     Row(
         modifier = Modifier
             .width(width)
@@ -160,27 +160,32 @@ private fun GroupRideRowView(row: GroupRideRow, unitSystem: String, width: Dp) {
     }
 }
 
+/** @parity /watch/watchos/GroupRidePage.swift `statusSlot` */
 @Composable
-private fun StatusSlot(status: GroupRideStatus) {
+private fun StatusSlot(status: WatchGroupRideStatus) {
     val style = WatchTypography.mono(MaterialTheme.typography.caption2.copy(fontSize = GROUP_VALUE_FONT))
     when (status) {
-        GroupRideStatus.Lost -> Text(text = "lost", style = style, color = DimText)
-        GroupRideStatus.NoBoard -> Text(text = DASH, style = style, color = DimText)
-        is GroupRideStatus.Hot -> {
-            val color = levelColor(status.level) ?: SecondaryText
+        WatchGroupRideStatus.Stale -> Text(text = "lost", style = style, color = DimText)
+        WatchGroupRideStatus.NoBoard -> Text(text = DASH, style = style, color = DimText)
+        is WatchGroupRideStatus.Hot -> {
+            val color = telemetryLevelColor(status.level) ?: SecondaryText
             Canvas(modifier = Modifier.size(GROUP_THERMOMETER_W, GROUP_THERMOMETER_H)) {
                 drawThermometer(color, Offset.Zero, Size(size.width, size.height))
             }
         }
-        is GroupRideStatus.Battery -> Text(
+        is WatchGroupRideStatus.Battery -> Text(
             text = "${status.percent}%",
             style = style,
-            color = levelColor(status.level) ?: SecondaryText,
+            color = telemetryLevelColor(status.level) ?: SecondaryText,
         )
     }
 }
 
-/** Filled arrow pointing up (straight ahead) before rotation, centred in the canvas. */
+/**
+ * Filled arrow pointing up (straight ahead) before rotation, centred in the canvas.
+ *
+ * @parity /watch/watchos/GroupRidePage.swift `BearingArrow`
+ */
 private fun DrawScope.drawBearingArrow(color: Color) {
     val c = Offset(size.width / 2f, size.height / 2f)
     val h = size.minDimension * 0.42f

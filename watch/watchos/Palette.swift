@@ -74,4 +74,28 @@ enum Palette {
     guard let value else { return secondaryText }
     return value < WatchGauge.batteryWarningPercent ? warning : battery
   }
+
+  /// A level the phone classified, as its colour; normal has none, so the caller keeps its own.
+  ///
+  /// @parity /watch/wearos/src/main/java/app/vescape/wear/Palette.kt `telemetryLevelColor`
+  static func level(_ level: TelemetryLevel) -> Color? {
+    switch level {
+    case .normal: return nil
+    case .warning: return warning
+    case .critical: return critical
+    }
+  }
+}
+
+extension Color {
+  /// A packed 0xAARRGGBB colour, the form Group Ride Frames carry Rider colours in.
+  init(argb: UInt32) {
+    self.init(
+      .sRGB,
+      red: Double((argb >> 16) & 0xFF) / 255,
+      green: Double((argb >> 8) & 0xFF) / 255,
+      blue: Double(argb & 0xFF) / 255,
+      opacity: Double((argb >> 24) & 0xFF) / 255
+    )
+  }
 }

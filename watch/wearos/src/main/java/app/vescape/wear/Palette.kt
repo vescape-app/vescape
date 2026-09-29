@@ -2,6 +2,7 @@ package app.vescape.wear
 
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.graphics.Color
+import expo.modules.vescapecore.telemetry.TelemetryLevel
 
 internal const val DASH = "—"
 
@@ -30,6 +31,17 @@ internal val ArmedColor = Color(0xFFF59E0B) // amber.color (a reset one tap away
 @Composable
 internal fun navColor(): Color = SettingsState.settings.value.riderColor ?: NavColor
 internal val AmbientText = Color(0xFFB8C4CE)
+
+/**
+ * A level the phone classified, as its colour; normal has none, so the caller keeps its own.
+ *
+ * @parity /watch/watchos/Palette.swift `level`
+ */
+internal fun telemetryLevelColor(level: TelemetryLevel): Color? = when (level) {
+    TelemetryLevel.NORMAL -> null
+    TelemetryLevel.WARNING -> WarningColor
+    TelemetryLevel.CRITICAL -> CriticalColor
+}
 
 /**
  * Condition tints, keyed by the icon slug the phone resolves. Mirrors `theme.weather`; the phone

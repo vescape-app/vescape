@@ -45,6 +45,12 @@ class MainActivity : ComponentActivity() {
         if (isGranted) ongoingActivityController.start()
     }
 
+    /**
+     * Telemetry and Group Ride Frames share this listener; watchOS takes the Group Ride branch in its
+     * own message handler.
+     *
+     * @parity /watch/watchos/PhoneLink.swift `session(_:didReceiveMessage:)`
+     */
     private val listener = MessageClient.OnMessageReceivedListener { event ->
         if (event.path == WATCH_GROUP_RIDE_PATH) {
             // A frame this build cannot read (another wire version) is dropped; the group then

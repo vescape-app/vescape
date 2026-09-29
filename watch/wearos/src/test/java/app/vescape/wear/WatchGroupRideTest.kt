@@ -7,11 +7,12 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
- * The Group Ride page's rows: order, names, bearings and the one status slot.
+ * The wrist's Group Ride: the page's rows (order, names, bearings, the one status slot) and the
+ * distance label.
  *
- * @parity /modules/vescape-core/ios/watch/WatchMapProjectionTests.swift `WatchGroupRideRosterTests`
+ * @parity /modules/vescape-core/ios/watch/WatchGroupRideTests.swift
  */
-class GroupRideRosterTest {
+class WatchGroupRideTest {
     private fun rider(
         id: String,
         northM: Double = 100.0,
@@ -66,29 +67,36 @@ class GroupRideRosterTest {
     fun `stale reads lost whatever the readings say`() {
         val status = groupRideStatus(rider("a", stale = true, heatLevel = TelemetryLevel.CRITICAL, batteryLevel = TelemetryLevel.CRITICAL))
 
-        assertEquals(GroupRideStatus.Lost, status)
+        assertEquals(WatchGroupRideStatus.Stale, status)
     }
 
     @Test
     fun `hot outranks a low battery`() {
         val status = groupRideStatus(rider("a", heatLevel = TelemetryLevel.WARNING, batteryPercent = 5, batteryLevel = TelemetryLevel.CRITICAL))
 
-        assertEquals(GroupRideStatus.Hot(TelemetryLevel.WARNING), status)
+        assertEquals(WatchGroupRideStatus.Hot(TelemetryLevel.WARNING), status)
     }
 
     @Test
     fun `battery carries its level`() {
         val status = groupRideStatus(rider("a", batteryPercent = 25, batteryLevel = TelemetryLevel.WARNING))
 
-        assertEquals(GroupRideStatus.Battery(25, TelemetryLevel.WARNING), status)
+        assertEquals(WatchGroupRideStatus.Battery(25, TelemetryLevel.WARNING), status)
     }
 
     @Test
     fun `no board is a dash, and a hot rider without one still shows the thermometer`() {
-        assertEquals(GroupRideStatus.NoBoard, groupRideStatus(rider("a", batteryPercent = null)))
+        assertEquals(WatchGroupRideStatus.NoBoard, groupRideStatus(rider("a", batteryPercent = null)))
         assertEquals(
-            GroupRideStatus.Hot(TelemetryLevel.CRITICAL),
+            WatchGroupRideStatus.Hot(TelemetryLevel.CRITICAL),
             groupRideStatus(rider("b", batteryPercent = null, heatLevel = TelemetryLevel.CRITICAL)),
         )
+    }
+
+    @Test
+    fun `distance labels drop the space before the unit`() {
+        assertEquals("680m", groupRideDistanceLabel(680.0, "metric"))
+        assertEquals("2.1km", groupRideDistanceLabel(2_100.0, "metric"))
+        assertEquals("1.3mi", groupRideDistanceLabel(2_100.0, "imperial"))
     }
 }

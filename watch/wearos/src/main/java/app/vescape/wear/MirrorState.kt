@@ -97,7 +97,11 @@ object MirrorStateReducer {
         )
     }
 
-    /** The notice for [status] given the watch-local [link]; null means the shell says nothing. */
+    /**
+     * The notice for [status] given the watch-local [link]; null means the shell says nothing.
+     *
+     * @parity /modules/vescape-core/ios/watch/MirrorState.swift `linkNotice`
+     */
     fun linkNotice(status: MirrorStatus, link: PhoneLink): LinkNotice? {
         if (status != MirrorStatus.DISCONNECTED) return null
         return when (link) {

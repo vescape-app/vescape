@@ -4,7 +4,7 @@ import XCTest
 
 /// Heading-up placement of Group Ride marks on a 400 pt face, 600 m across (the route's own fit).
 ///
-/// @parity /watch/wearos/src/test/java/app/vescape/wear/GroupRidePlacementTest.kt
+/// @parity /watch/wearos/src/test/java/app/vescape/wear/WatchMapProjectionTest.kt
 final class WatchMapProjectionTests: XCTestCase {
   private let size = CGSize(width: 400, height: 400)
   private let margin: CGFloat = 40
@@ -76,13 +76,6 @@ final class WatchMapProjectionTests: XCTestCase {
     XCTAssertEqual(relativeBearingDeg(eastM: 0, northM: 10, courseDeg: 0), 0, accuracy: 1e-9)
     XCTAssertEqual(relativeBearingDeg(eastM: 0, northM: 10, courseDeg: 90), 270, accuracy: 1e-9)
     XCTAssertEqual(relativeBearingDeg(eastM: -10, northM: 0, courseDeg: 90), 180, accuracy: 1e-9)
-  }
-
-  func testTheWristKeepsTheLastCourseWhileFramesCarryNone() {
-    let moving = WatchGroupRide.accepting(GroupRideFrame(courseDeg: 120, spanM: 600, riders: []), previous: nil)
-    let stopped = WatchGroupRide.accepting(GroupRideFrame(courseDeg: nil, spanM: 600, riders: []), previous: moving)
-
-    XCTAssertEqual(stopped.courseDeg, 120)
   }
 
   private let sizes = WatchGroupRideMarkSizes(
@@ -270,91 +263,5 @@ final class WatchMapProjectionTests: XCTestCase {
     let placed = map().placeLabels(marks: [stale, live], labels: [nil, labelSize], gap: 3, navFocus: 1)
     XCTAssertNil(placed[0])
     XCTAssertFalse(CGRect(origin: placed[1]!, size: labelSize).intersects(dotBounds(stale)))
-  }
-
-  func testDistanceLabelsDropTheSpaceBeforeTheUnit() {
-    XCTAssertEqual(groupRideDistanceLabel(680, unitSystem: "metric"), "680m")
-    XCTAssertEqual(groupRideDistanceLabel(2_100, unitSystem: "metric"), "2.1km")
-    XCTAssertEqual(groupRideDistanceLabel(2_100, unitSystem: "imperial"), "1.3mi")
-  }
-}
-
-/// The Group Ride page's rows: order, names, bearings and the one status slot.
-///
-/// @parity /watch/wearos/src/test/java/app/vescape/wear/GroupRideRosterTest.kt
-final class WatchGroupRideRosterTests: XCTestCase {
-  private func rider(
-    _ id: String,
-    northM: Double = 100,
-    eastM: Double = 0,
-    name: String? = nil,
-    stale: Bool = false,
-    batteryPercent: Int? = 60,
-    batteryLevel: TelemetryLevel = .normal,
-    heatLevel: TelemetryLevel = .normal
-  ) -> GroupRideFrameRider {
-    GroupRideFrameRider(
-      id: id, name: name ?? id, colorArgb: 0, eastM: eastM, northM: northM, stale: stale,
-      batteryPercent: batteryPercent, batteryLevel: batteryLevel, heatLevel: heatLevel
-    )
-  }
-
-  private func group(_ riders: GroupRideFrameRider..., courseDeg: Double = 0) -> WatchGroupRide {
-    WatchGroupRide(courseDeg: courseDeg, spanM: 600, riders: riders)
-  }
-
-  func testRowsRunNearestFirstTiesById() {
-    let rows = group(
-      rider("far", northM: 900),
-      rider("b", northM: 50),
-      rider("a", northM: 0, eastM: 50),
-      rider("near", northM: 10)
-    ).roster()
-
-    XCTAssertEqual(rows.map(\.rider.id), ["near", "a", "b", "far"])
-  }
-
-  func testAloneIsAnEmptyRoster() {
-    XCTAssertTrue(group().roster().isEmpty)
-  }
-
-  func testBearingIsRelativeToTheCourse() {
-    // Riding east; the other Rider is due north, so on the left.
-    let row = group(rider("a", northM: 100), courseDeg: 90).roster()[0]
-
-    XCTAssertEqual(row.bearingDeg, 270, accuracy: 1e-9)
-  }
-
-  func testNamesAreCutToFiveCharactersWithoutSplittingAScalar() {
-    let rows = group(
-      rider("a", northM: 1, name: "Maksymilian"),
-      rider("b", northM: 2, name: "🛹🛹🛹🛹🛹🛹"),
-      rider("c", northM: 3, name: "Ola")
-    ).roster()
-
-    XCTAssertEqual(rows.map(\.name), ["Maksy", "🛹🛹🛹🛹🛹", "Ola"])
-  }
-
-  func testStaleReadsLostWhateverTheReadingsSay() {
-    let status = groupRideStatus(rider("a", stale: true, batteryLevel: .critical, heatLevel: .critical))
-
-    XCTAssertEqual(status, .lost)
-  }
-
-  func testHotOutranksALowBattery() {
-    let status = groupRideStatus(rider("a", batteryPercent: 5, batteryLevel: .critical, heatLevel: .warning))
-
-    XCTAssertEqual(status, .hot(.warning))
-  }
-
-  func testBatteryCarriesItsLevel() {
-    let status = groupRideStatus(rider("a", batteryPercent: 25, batteryLevel: .warning))
-
-    XCTAssertEqual(status, .battery(percent: 25, level: .warning))
-  }
-
-  func testNoBoardIsADashAndAHotRiderWithoutOneStillShowsTheThermometer() {
-    XCTAssertEqual(groupRideStatus(rider("a", batteryPercent: nil)), .noBoard)
-    XCTAssertEqual(groupRideStatus(rider("b", batteryPercent: nil, heatLevel: .critical)), .hot(.critical))
   }
 }

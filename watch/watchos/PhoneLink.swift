@@ -83,7 +83,7 @@ final class PhoneLink: NSObject, ObservableObject, WCSessionDelegate {
   /// The joined Group Ride, as last pushed; nil when the Rider is in none or the frames stopped.
   /// Hot state like the Watch Frame, so it ages out in `refresh()` instead of surviving a restart.
   ///
-  /// @parity /watch/wearos/src/main/java/app/vescape/wear/GroupRide.kt `GroupRideState`
+  /// @parity /watch/wearos/src/main/java/app/vescape/wear/WatchGroupRide.kt `GroupRideState`
   @Published private(set) var groupRide: WatchGroupRide?
   private var lastGroupRideAtMs: Int64?
 
@@ -243,6 +243,7 @@ final class PhoneLink: NSObject, ObservableObject, WCSessionDelegate {
   /// this off its own timeline, so the tick slows down in the Always On state with everything else.
   ///
   /// @parity /watch/wearos/src/main/java/app/vescape/wear/TelemetryState.kt `refresh`
+  /// @parity /watch/wearos/src/main/java/app/vescape/wear/WatchGroupRide.kt `refresh`
   func refresh() {
     // Leaving the ride, losing the phone and ambient all look the same from here: the frames stop.
     if let at = lastGroupRideAtMs, Self.nowMs() - at > GROUP_RIDE_TIMEOUT_MS {

@@ -15,7 +15,7 @@ import org.junit.Test
  *
  * @parity /modules/vescape-core/ios/watch/WatchMapProjectionTests.swift
  */
-class GroupRidePlacementTest {
+class WatchMapProjectionTest {
     private val face = 400f
     private val drop = 30f
     private val inset = 20f
@@ -24,7 +24,7 @@ class GroupRidePlacementTest {
     private val scale = (face - inset) / 600f
 
     private fun map(courseDeg: Double = 0.0, spanM: Double? = 600.0) =
-        HeadingUpMap(face, face, drop, inset, spanM, courseDeg)
+        WatchMapProjection(face, face, drop, inset, spanM, courseDeg)
 
     @Test
     fun `a rider ahead on the course sits straight above the rider`() {
@@ -77,7 +77,7 @@ class GroupRidePlacementTest {
         assertEquals(180.0, relativeBearingDeg(-10.0, 0.0, 90.0), 1e-9)
     }
 
-    private val sizes = GroupRideMarkSizes(
+    private val sizes = WatchGroupRideMarkSizes(
         inRangeMarginPx = margin,
         edgeInsetPx = 1f,
         dotRadiusPx = 3f,
@@ -91,11 +91,11 @@ class GroupRidePlacementTest {
     @Test
     fun `a rider on the map is a dot, one beyond it a triangle on the face edge`() {
         val dot = map().mark(rider(0.0, 100.0), sizes)
-        assertEquals(GroupRideMarkKind.Dot, dot.kind)
+        assertEquals(WatchGroupRideMarkKind.Dot, dot.kind)
         assertEquals(3f, dot.sizePx, 0f)
 
         val far = map().mark(rider(0.0, 1_000.0), sizes)
-        assertEquals(GroupRideMarkKind.Triangle, far.kind)
+        assertEquals(WatchGroupRideMarkKind.Triangle, far.kind)
         // Straight ahead: the top of the face, one inset pixel in, apex pointing down.
         assertEquals(200f, far.x, 0.01f)
         assertEquals(1f, far.y, 0.01f)
@@ -140,8 +140,8 @@ class GroupRidePlacementTest {
     @Test
     fun `zooming the phone map out brings a far rider onto the map`() {
         val r = rider(0.0, 400.0)
-        assertEquals(GroupRideMarkKind.Triangle, map(spanM = 600.0).mark(r, sizes).kind)
-        assertEquals(GroupRideMarkKind.Dot, map(spanM = 1_200.0).mark(r, sizes).kind)
+        assertEquals(WatchGroupRideMarkKind.Triangle, map(spanM = 600.0).mark(r, sizes).kind)
+        assertEquals(WatchGroupRideMarkKind.Dot, map(spanM = 1_200.0).mark(r, sizes).kind)
     }
 
     @Test
@@ -153,10 +153,10 @@ class GroupRidePlacementTest {
     // Nav-focus labels
 
     /** Places one label per mark ([width] × [height] each) and returns their top-lefts. */
-    private fun labels(vararg marks: GroupRideMark, width: Float = 30f, height: Float = 10f, focus: Float = 1f) =
+    private fun labels(vararg marks: WatchGroupRideMark, width: Float = 30f, height: Float = 10f, focus: Float = 1f) =
         map().placeLabels(marks.toList(), marks.map { Size(width, height) }, gapPx = 3f, navFocus = focus, faceWidth = face, faceHeight = face)
 
-    private fun label(mark: GroupRideMark, width: Float = 30f, height: Float = 10f, focus: Float = 1f) =
+    private fun label(mark: WatchGroupRideMark, width: Float = 30f, height: Float = 10f, focus: Float = 1f) =
         labels(mark, width = width, height = height, focus = focus).single()!!
 
     private fun riderAt(id: String, eastM: Double, northM: Double) =
@@ -206,7 +206,7 @@ class GroupRidePlacementTest {
         // Straight behind: the triangle sits under the readout; clearing it would move the label
         // far above its apex.
         val behind = map().mark(rider(0.0, -2_000.0), sizes)
-        assertEquals(GroupRideMarkKind.Triangle, behind.kind)
+        assertEquals(WatchGroupRideMarkKind.Triangle, behind.kind)
         assertNull(labels(behind, height = 20f).single())
     }
 
@@ -247,12 +247,5 @@ class GroupRidePlacementTest {
         )
         assertNull(placed[0])
         assertFalse(Rect(placed[1]!!, Size(30f, 10f)).overlaps(Rect(Offset(stale.x, stale.y), stale.sizePx)))
-    }
-
-    @Test
-    fun `distance labels drop the space before the unit`() {
-        assertEquals("680m", groupRideDistanceLabel(680.0, "metric"))
-        assertEquals("2.1km", groupRideDistanceLabel(2_100.0, "metric"))
-        assertEquals("1.3mi", groupRideDistanceLabel(2_100.0, "imperial"))
     }
 }

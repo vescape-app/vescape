@@ -8,26 +8,26 @@ import Foundation
 ///
 /// Shared with the wrist (`watch/watchos/` symlinks this file) so the placement math is tested here.
 ///
-/// @parity /watch/wearos/src/main/java/app/vescape/wear/GroupRide.kt `HeadingUpMap`
+/// @parity /watch/wearos/src/main/java/app/vescape/wear/WatchMapProjection.kt `WatchMapProjection`
 struct WatchMapProjection {
   /// The Rider sits this far below the centre, so more of the map is ahead than behind.
   ///
-  /// @parity /watch/wearos/src/main/java/app/vescape/wear/NavRoute.kt `RIDER_DROP`
+  /// @parity /watch/wearos/src/main/java/app/vescape/wear/WatchMapProjection.kt `RIDER_DROP`
   static let riderDrop: CGFloat = 34
   /// Display margin the map's span is fitted inside.
   ///
-  /// @parity /watch/wearos/src/main/java/app/vescape/wear/NavRoute.kt `ROUTE_EDGE_INSET`
+  /// @parity /watch/wearos/src/main/java/app/vescape/wear/WatchMapProjection.kt `ROUTE_EDGE_INSET`
   static let edgeInset: CGFloat = 24
   /// Fallback metres across the display until the phone publishes its camera span.
   ///
-  /// @parity /watch/wearos/src/main/java/app/vescape/wear/NavRoute.kt `DEFAULT_ROUTE_SPAN_M`
+  /// @parity /watch/wearos/src/main/java/app/vescape/wear/WatchMapProjection.kt `DEFAULT_ROUTE_SPAN_M`
   static let defaultSpanM = 600.0
   static let minSpanM = 150.0
   static let maxSpanM = 2_000.0
 
   /// The phone map's span, clamped to what a wrist can draw, or the fallback.
   ///
-  /// @parity /watch/wearos/src/main/java/app/vescape/wear/NavRoute.kt `clampRouteSpanM`
+  /// @parity /watch/wearos/src/main/java/app/vescape/wear/WatchMapProjection.kt `clampRouteSpanM`
   static func clampedSpanM(_ spanM: Double?) -> Double {
     min(maxSpanM, max(minSpanM, spanM ?? defaultSpanM))
   }
@@ -110,7 +110,7 @@ struct WatchMapProjection {
   /// Group Ride page has the details. A label never sits more than one label height from its
   /// natural spot.
   ///
-  /// @parity /watch/wearos/src/main/java/app/vescape/wear/GroupRide.kt `placeLabels`
+  /// @parity /watch/wearos/src/main/java/app/vescape/wear/WatchMapProjection.kt `placeLabels`
   /// @platform-diff "On the display" is its rectangle here; Wear OS uses its round face's circle.
   func placeLabels(
     marks: [WatchGroupRideMark], labels: [CGSize?], gap: CGFloat, navFocus: Double
@@ -218,13 +218,13 @@ struct WatchMapProjection {
 
 /// A point on the display edge; `outward` is the unit outward normal there.
 ///
-/// @parity /watch/wearos/src/main/java/app/vescape/wear/GroupRide.kt `EdgePoint`
+/// @parity /watch/wearos/src/main/java/app/vescape/wear/WatchMapProjection.kt `WatchEdgePoint`
 struct WatchEdgePoint: Equatable {
   let point: CGPoint
   let outward: CGVector
 }
 
-/// @parity /watch/wearos/src/main/java/app/vescape/wear/GroupRide.kt `GroupRideMarkKind`
+/// @parity /watch/wearos/src/main/java/app/vescape/wear/WatchMapProjection.kt `WatchGroupRideMarkKind`
 enum WatchGroupRideMarkKind: Equatable {
   case dot
   case triangle
@@ -234,7 +234,7 @@ enum WatchGroupRideMarkKind: Equatable {
 /// the ray from the Rider. A triangle's base centre is `point` on the display edge, `direction` the
 /// outward normal, `size` its length: the apex sits at point − direction × size.
 ///
-/// @parity /watch/wearos/src/main/java/app/vescape/wear/GroupRide.kt `GroupRideMark`
+/// @parity /watch/wearos/src/main/java/app/vescape/wear/WatchMapProjection.kt `WatchGroupRideMark`
 struct WatchGroupRideMark: Equatable {
   let rider: GroupRideFrameRider
   let kind: WatchGroupRideMarkKind
@@ -245,7 +245,7 @@ struct WatchGroupRideMark: Equatable {
   /// The mark's footprint for `placeLabels`: a dot's circle, or a box around a triangle, centred
   /// between base and apex and wide enough for the base at any angle.
   ///
-  /// @parity /watch/wearos/src/main/java/app/vescape/wear/GroupRide.kt `bounds`
+  /// @parity /watch/wearos/src/main/java/app/vescape/wear/WatchMapProjection.kt `bounds`
   var bounds: CGRect {
     switch kind {
     case .dot:
@@ -260,7 +260,7 @@ struct WatchGroupRideMark: Equatable {
 
 /// The point measures `WatchMapProjection.mark` needs.
 ///
-/// @parity /watch/wearos/src/main/java/app/vescape/wear/GroupRide.kt `GroupRideMarkSizes`
+/// @parity /watch/wearos/src/main/java/app/vescape/wear/WatchMapProjection.kt `WatchGroupRideMarkSizes`
 struct WatchGroupRideMarkSizes {
   /// Dots stay this far inside the display edge, clear of the rim gauges.
   var inRangeMargin: CGFloat
@@ -276,25 +276,17 @@ struct WatchGroupRideMarkSizes {
 /// A far Rider's triangle length: `max` right at the in-range `boundaryM` on their ray, `min` at
 /// `GROUP_FAR_M` or beyond, log-scaled between.
 ///
-/// @parity /watch/wearos/src/main/java/app/vescape/wear/GroupRide.kt `edgeTriangleLength`
+/// @parity /watch/wearos/src/main/java/app/vescape/wear/WatchMapProjection.kt `edgeTriangleLength`
 func edgeTriangleLength(distanceM: Double, boundaryM: Double, min minLength: CGFloat, max maxLength: CGFloat) -> CGFloat {
   let near = Swift.min(Swift.max(boundaryM, 1), GROUP_FAR_M - 1)
   let t = log(Swift.max(distanceM, near) / near) / log(GROUP_FAR_M / near)
   return minLength + (maxLength - minLength) * CGFloat(Swift.min(Swift.max(1 - t, 0), 1))
 }
 
-/// A Rider's compact distance: "680m", "2.1km" in the Rider's units. The wrist's own distance
-/// formatting without the space, so the label stays short beside its mark.
-///
-/// @parity /watch/wearos/src/main/java/app/vescape/wear/GroupRide.kt `groupRideDistanceLabel`
-func groupRideDistanceLabel(_ distanceM: Double, unitSystem: String) -> String {
-  UnitPresentation.distance(distanceM, unitSystem: unitSystem).replacingOccurrences(of: " ", with: "")
-}
-
 /// The nav distance readout's keep-out box. It drops and grows with `navFocus`; at full focus it
 /// spans about x 25–75% and y 82–94% of the display.
 ///
-/// @parity /watch/wearos/src/main/java/app/vescape/wear/GroupRide.kt `navReadoutBounds`
+/// @parity /watch/wearos/src/main/java/app/vescape/wear/WatchMapProjection.kt `navReadoutBounds`
 func navReadoutBounds(navFocus: Double, displaySize: CGSize) -> CGRect {
   let keepOut = NAV_READOUT_KEEP_OUT
   let top = displaySize.height * (keepOut.top + keepOut.focusDrop * navFocus)
@@ -308,31 +300,31 @@ func navReadoutBounds(navFocus: Double, displaySize: CGSize) -> CGRect {
 
 /// A crowded label's nudges, in label heights; the last is the farthest a label strays from its mark.
 ///
-/// @parity /watch/wearos/src/main/java/app/vescape/wear/GroupRide.kt `LABEL_NUDGE_STEPS`
+/// @parity /watch/wearos/src/main/java/app/vescape/wear/WatchMapProjection.kt `LABEL_NUDGE_STEPS`
 let LABEL_NUDGE_STEPS: [CGFloat] = [0.5, 1]
 
 /// A triangle's footprint half-size as a share of its length.
 ///
-/// @parity /watch/wearos/src/main/java/app/vescape/wear/GroupRide.kt `TRIANGLE_FOOTPRINT`
+/// @parity /watch/wearos/src/main/java/app/vescape/wear/WatchMapProjection.kt `TRIANGLE_FOOTPRINT`
 private let TRIANGLE_FOOTPRINT: CGFloat = 0.6
 
 /// The nav distance readout at full nav focus, as shares of the display: x 25–75%, y 82–94%. Its
 /// top sits `focusDrop` higher before focus, where the readout is smaller and higher.
 ///
-/// @parity /watch/wearos/src/main/java/app/vescape/wear/GroupRide.kt `NAV_READOUT_LEFT`
+/// @parity /watch/wearos/src/main/java/app/vescape/wear/WatchMapProjection.kt `NAV_READOUT_LEFT`
 /// @platform-diff The readout takes more of the narrow 40 mm display ("2.5 km" alone spans 29–72%),
 ///   so the keep-out is wider here than Wear OS's 29–71%.
 let NAV_READOUT_KEEP_OUT = (left: 0.25, right: 0.75, top: 0.745, focusDrop: 0.075, bottom: 0.94)
 
 /// Beyond this the triangle stops shrinking.
 ///
-/// @parity /watch/wearos/src/main/java/app/vescape/wear/GroupRide.kt `GROUP_FAR_M`
+/// @parity /watch/wearos/src/main/java/app/vescape/wear/WatchMapProjection.kt `GROUP_FAR_M`
 let GROUP_FAR_M = 3_000.0
 
 /// One point placed on the heading-up map. `direction` is the unit ray from the Rider towards it in
 /// screen space.
 ///
-/// @parity /watch/wearos/src/main/java/app/vescape/wear/GroupRide.kt `MapPlacement`
+/// @parity /watch/wearos/src/main/java/app/vescape/wear/WatchMapProjection.kt `WatchMapPlacement`
 struct WatchMapPlacement: Equatable {
   let point: CGPoint
   let direction: CGVector
@@ -343,94 +335,8 @@ struct WatchMapPlacement: Equatable {
 /// Bearing of an east/north offset relative to `courseDeg`, degrees clockwise in 0..<360: 0
 /// straight ahead, 90 right, 180 behind.
 ///
-/// @parity /watch/wearos/src/main/java/app/vescape/wear/GroupRide.kt `relativeBearingDeg`
+/// @parity /watch/wearos/src/main/java/app/vescape/wear/WatchMapProjection.kt `relativeBearingDeg`
 func relativeBearingDeg(eastM: Double, northM: Double, courseDeg: Double) -> Double {
   let absolute = atan2(eastM, northM) * 180 / .pi
   return ((absolute - courseDeg).truncatingRemainder(dividingBy: 360) + 360).truncatingRemainder(dividingBy: 360)
 }
-
-/// The joined Group Ride as the wrist knows it: the latest Group Ride Frame, with the Rider's course
-/// held across frames that carry none, so a stopped Rider keeps the last heading-up direction.
-///
-/// @parity /watch/wearos/src/main/java/app/vescape/wear/GroupRide.kt `WatchGroupRide`
-struct WatchGroupRide: Equatable {
-  /// The Rider's course, degrees clockwise from north; 0 (north-up) until one has ever arrived.
-  var courseDeg: Double
-  var spanM: Double
-  var riders: [GroupRideFrameRider]
-
-  /// The next state for an arriving frame, keeping `previous`'s course when the frame has none.
-  static func accepting(_ frame: GroupRideFrame, previous: WatchGroupRide?) -> WatchGroupRide {
-    WatchGroupRide(
-      courseDeg: frame.courseDeg ?? previous?.courseDeg ?? 0,
-      spanM: frame.spanM,
-      riders: frame.riders
-    )
-  }
-
-  /// Where `rider` is relative to the Rider's travel direction: 0 ahead, 90 right, 180 behind.
-  func bearingDeg(of rider: GroupRideFrameRider) -> Double {
-    relativeBearingDeg(eastM: rider.eastM, northM: rider.northM, courseDeg: courseDeg)
-  }
-
-  /// The Group Ride page's rows: every other Rider, nearest first, ties by id so rows never swap.
-  ///
-  /// @parity /watch/wearos/src/main/java/app/vescape/wear/GroupRide.kt `roster`
-  func roster() -> [WatchGroupRideRow] {
-    riders
-      .sorted { $0.distanceM != $1.distanceM ? $0.distanceM < $1.distanceM : $0.id < $1.id }
-      .map { rider in
-        WatchGroupRideRow(
-          rider: rider,
-          name: String(String.UnicodeScalarView(rider.name.unicodeScalars.prefix(GROUP_ROW_NAME_CHARS))),
-          bearingDeg: bearingDeg(of: rider),
-          status: groupRideStatus(rider)
-        )
-      }
-  }
-}
-
-/// One Group Ride page row. `name` is cut to `GROUP_ROW_NAME_CHARS` Unicode scalars.
-///
-/// @parity /watch/wearos/src/main/java/app/vescape/wear/GroupRide.kt `GroupRideRow`
-struct WatchGroupRideRow: Equatable {
-  let rider: GroupRideFrameRider
-  let name: String
-  let bearingDeg: Double
-  let status: WatchGroupRideStatus
-}
-
-/// A row's one status slot.
-///
-/// @parity /watch/wearos/src/main/java/app/vescape/wear/GroupRide.kt `GroupRideStatus`
-enum WatchGroupRideStatus: Equatable {
-  /// Stale: the Rider's readings are as old as their place, so none is shown.
-  case lost
-  /// Running hot, at the heat level: a thermometer.
-  case hot(TelemetryLevel)
-  /// Battery SoC Estimate, coloured by its level.
-  case battery(percent: Int, level: TelemetryLevel)
-  /// No Board Session: a dash.
-  case noBoard
-}
-
-/// The status slot, first match wins: lost when stale, thermometer when hot, dash without a Board,
-/// else battery %. The phone classified the levels; nothing is thresholded here.
-///
-/// @parity /watch/wearos/src/main/java/app/vescape/wear/GroupRide.kt `groupRideStatus`
-func groupRideStatus(_ rider: GroupRideFrameRider) -> WatchGroupRideStatus {
-  if rider.stale { return .lost }
-  if rider.heatLevel != .normal { return .hot(rider.heatLevel) }
-  guard let percent = rider.batteryPercent else { return .noBoard }
-  return .battery(percent: percent, level: rider.batteryLevel)
-}
-
-/// A Group Ride page name is cut to this many characters.
-///
-/// @parity /watch/wearos/src/main/java/app/vescape/wear/GroupRide.kt `GROUP_ROW_NAME_CHARS`
-let GROUP_ROW_NAME_CHARS = 5
-
-/// Three missed 1 Hz frames and the group is gone from the wrist.
-///
-/// @parity /watch/wearos/src/main/java/app/vescape/wear/GroupRide.kt `GROUP_RIDE_TIMEOUT_MS`
-let GROUP_RIDE_TIMEOUT_MS: Int64 = 3_500

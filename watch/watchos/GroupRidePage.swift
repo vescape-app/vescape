@@ -102,30 +102,33 @@ private struct GroupRideRowView: View {
       statusSlot
         .frame(width: GROUP_STATUS_WIDTH, alignment: .trailing)
     }
-    .opacity(row.status == .lost ? GROUP_STALE_ROW_OPACITY : 1)
+    .opacity(row.status == .stale ? GROUP_STALE_ROW_OPACITY : 1)
   }
 
+  /// @parity /watch/wearos/src/main/java/app/vescape/wear/GroupRidePage.kt `StatusSlot`
   @ViewBuilder
   private var statusSlot: some View {
     let font = WatchTypography.mono(size: GROUP_VALUE_FONT_SIZE)
     switch row.status {
-    case .lost:
+    case .stale:
       Text("lost").font(font).foregroundStyle(Palette.dimText)
     case .noBoard:
       Text(WatchGauge.dash).font(font).foregroundStyle(Palette.dimText)
     case let .hot(level):
-      let color = levelColor(level) ?? Palette.secondaryText
+      let color = Palette.level(level) ?? Palette.secondaryText
       Canvas { context, size in
         context.drawThermometer(in: CGRect(origin: .zero, size: size), color: color)
       }
       .frame(width: GROUP_THERMOMETER_WIDTH, height: GROUP_THERMOMETER_HEIGHT)
     case let .battery(percent, level):
-      Text("\(percent)%").font(font).foregroundStyle(levelColor(level) ?? Palette.secondaryText)
+      Text("\(percent)%").font(font).foregroundStyle(Palette.level(level) ?? Palette.secondaryText)
     }
   }
 }
 
 /// Filled arrow pointing up (straight ahead) before rotation, centred in its box.
+///
+/// @parity /watch/wearos/src/main/java/app/vescape/wear/GroupRidePage.kt `drawBearingArrow`
 private struct BearingArrow: Shape {
   func path(in rect: CGRect) -> Path {
     let c = CGPoint(x: rect.midX, y: rect.midY)

@@ -41,7 +41,7 @@ internal fun NavRoute(frame: WatchFrame, muted: Boolean, navFocus: () -> Float =
     val route = RouteState.route.value
     val east = frame.riderEastM
     val north = frame.riderNorthM
-    val targetRouteSpanM = clampRouteSpanM(frame.routeSpanM)
+    val targetRouteSpanM = WatchMapProjection.clampRouteSpanM(frame.routeSpanM)
     val routeSpanM by animateFloatAsState(
         targetValue = targetRouteSpanM,
         animationSpec = tween(durationMillis = ROUTE_ZOOM_EASE_MS, easing = FastOutSlowInEasing),
@@ -63,7 +63,7 @@ internal fun NavRoute(frame: WatchFrame, muted: Boolean, navFocus: () -> Float =
 
     Canvas(modifier = Modifier.fillMaxSize()) {
         // Rider sits below the screen centre so more of the frame is "ahead" than behind.
-        drawRiderDot(Offset(size.width / 2f, size.height / 2f + RIDER_DROP.toPx()), color)
+        drawRiderDot(Offset(size.width / 2f, size.height / 2f + WatchMapProjection.RIDER_DROP.toPx()), color)
     }
 }
 
@@ -121,8 +121,8 @@ private fun AnimatedRoute(
         // recomposing anything. Only there — a wider line under the readouts would fight the
         // gauge fills, but on the map it is the whole page and has to survive sunlight.
         val focus = navFocus().coerceIn(0f, 1f)
-        val center = Offset(size.width / 2f, size.height / 2f + RIDER_DROP.toPx())
-        val scale = (size.minDimension - ROUTE_EDGE_INSET.toPx()) / routeSpanM
+        val center = Offset(size.width / 2f, size.height / 2f + WatchMapProjection.RIDER_DROP.toPx())
+        val scale = (size.minDimension - WatchMapProjection.ROUTE_EDGE_INSET.toPx()) / routeSpanM
         val path = routePath(route, Offset(eastM.value, northM.value), center, scale)
         val faceCenter = Offset(size.width / 2f, size.height / 2f)
         // One pixel inside the gauge circle's guide line, so the route stops just short of it.
@@ -142,16 +142,6 @@ private fun AnimatedRoute(
         }
     }
 }
-
-/**
- * Metres of world across the watch face for a phone map span: the phone's own, clamped to what a
- * wrist can draw, or the fallback until the phone has published one. Every heading-up map layer
- * (route, Group Ride) takes its zoom from here.
- *
- * @parity /modules/vescape-core/ios/watch/WatchMapProjection.swift `clampedSpanM`
- */
-internal fun clampRouteSpanM(spanM: Double?): Float =
-    (spanM ?: DEFAULT_ROUTE_SPAN_M).toFloat().coerceIn(MIN_ROUTE_SPAN_M, MAX_ROUTE_SPAN_M)
 
 /** @parity /watch/watchos/NavRoute.swift `shortestAngleDelta` */
 internal fun shortestAngleDelta(fromDeg: Float, toDeg: Float): Float =
@@ -183,19 +173,9 @@ private fun polyline(points: List<Offset>): Path = Path().apply {
 
 private fun routeStroke(width: Float) = Stroke(width = width, cap = StrokeCap.Round, join = StrokeJoin.Round)
 
-/** Fallback metres of route across the watch face until the phone publishes its camera span. */
-private const val DEFAULT_ROUTE_SPAN_M = 600.0
-private const val MIN_ROUTE_SPAN_M = 150f
-private const val MAX_ROUTE_SPAN_M = 2_000f
 private const val ROUTE_ZOOM_EASE_MS = 350
 private const val ROUTE_MOTION_EASE_MS = 300
 
-/**
- * Face margin the map's span is fitted inside. Shared by every heading-up map layer.
- *
- * @parity /modules/vescape-core/ios/watch/WatchMapProjection.swift `edgeInset`
- */
-internal val ROUTE_EDGE_INSET = 24.dp
 /** Half the widest gauge guide stroke: the route clip stops at the inner side of that line. */
 private val GUIDE_HALF_WIDTH = 1.dp
 private val ROUTE_W = 2.dp
@@ -207,9 +187,3 @@ private const val ROUTE_FOCUS_ALPHA = 0.85f
 private val RIDER_DOT_R = 4.dp
 /** Same weight as the route line, so the rider reads as part of it rather than an added marker. */
 private val RIDER_RING_W = ROUTE_W
-/**
- * The Rider sits this far below the face centre, so more of the map is ahead than behind.
- *
- * @parity /modules/vescape-core/ios/watch/WatchMapProjection.swift `riderDrop`
- */
-internal val RIDER_DROP = 34.dp
