@@ -307,9 +307,8 @@ export const controlColors = {
 } as const
 
 /**
- * @parity /modules/vescape-core/android/src/main/res/values/colors.xml
- * @parity /modules/vescape-core/android/src/main/res/values-night/colors.xml
- * @platform-diff iOS resolves these same JS values through DynamicColorIOS; Android needs resources.
+ * iOS resolves these values through DynamicColorIOS; Android needs resources, which
+ * `scripts/generate-android-theme.ts` generates from them.
  */
 export const neutral = {
   bg: adaptiveColor('neutral_bg', neutralColors.dark.bg, neutralColors.light.bg),

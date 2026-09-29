@@ -15,7 +15,7 @@ import { SettingsRow } from '@/components/settings/SettingsRow'
 import { IconHero } from '@/components/settings/IconHero'
 import { theme } from '@/constants/theme'
 
-// @parity /src/components/dev/DevBadge.tsx `DEV_PAGE_SHORTCUTS`
+// @parity /src/modules/diagnostics/components/DevBadge.tsx `DEV_PAGE_SHORTCUTS`
 const DEV_PAGE_SHORTCUTS = [
   {
     label: 'Components library',

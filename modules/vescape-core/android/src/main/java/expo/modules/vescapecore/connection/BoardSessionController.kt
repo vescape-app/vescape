@@ -766,7 +766,7 @@ internal class BoardSessionController(private val service: CoreForegroundService
      * foreground service, and must not spam diagnostics per frame — so each site reports at most once
      * per session. Touched from the BMS hot path (main scheduler) and the app-data IO scope, so kept
      * thread-safe. Reset in [beginSession].
-     * @parity /modules/vescape-core/ios/warnings/BoardWarningStore.swift `BoardWarningFailureReporter`
+     * @parity /modules/vescape-core/ios/warnings/BoardWarningFailureReporter.swift `BoardWarningFailureReporter`
      */
     private val warningFailuresReported = java.util.Collections.synchronizedSet(HashSet<String>())
     /**
@@ -1970,7 +1970,7 @@ private var wearAutoLaunchOnConnect = true
      * Refloat cache there is no scope key to match on up front — the board's MCCONF signature is not
      * known until it answers — so the latest row is restored optimistically and replaced when the
      * session's own read lands under whatever signature the board reports.
-     * @parity /modules/vescape-core/ios/connection/BoardSessionController.swift `restoreMotorConfigValues`
+     * @parity /modules/vescape-core/ios/connection/BoardSessionController.swift `beginSession`
      */
     private fun restoreMotorConfigValues(config: SessionConfig) {
         val boardId = config.appBoardId ?: return

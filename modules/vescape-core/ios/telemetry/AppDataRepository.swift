@@ -769,7 +769,7 @@ final class AppDataRepository {
   static let defaultTopSpeedKmh: Double = 50
 
   /// Board Top Speed in km/h; the speed gauge full-scale. Clamped to a sane 5–150 km/h band.
-  /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/AppDataRepository.kt `normalizeTopSpeedKmh`
+  /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/AppDataRepository.kt `validTopSpeedKmh`
   static func topSpeedKmh(_ value: Any?) -> Double? {
     guard let topSpeed = doubleValue(value), topSpeed.isFinite else { return nil }
     return min(150, max(5, topSpeed))

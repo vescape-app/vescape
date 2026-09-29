@@ -199,6 +199,8 @@ internal final class LiveSeriesEmitter {
   }
 
   /// Center-screen metrics streamed continuously on `onLiveSeries` (strip + gauge + battery).
+  /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/TelemetryPipeline.kt `LIVE_SERIES_METRICS`
+  /// @parity /src/modules/board/hooks/useLiveMetric.ts `liveSelectors`
   private static let centerMetrics: [Metric] = [
     Metric(key: "motorTemp") { num($0, "tempMotor").flatMap { $0 > 0 ? $0 : nil } },
     Metric(key: "controllerTemp") { num($0, "tempMosfet") },

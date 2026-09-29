@@ -320,7 +320,7 @@ class AppDataRepository private constructor(private val context: Context) {
    * The Board's most recently captured Motor Config Values, whatever signature they were read
    * under. Restored as `lastKnown`; the caller drops them if the live board turns out to answer
    * with a different signature.
-   * @parity /modules/vescape-core/ios/config/MotorConfigStore.swift `latest`
+   * @parity /modules/vescape-core/ios/config/MotorConfigStore.swift `loadLatest`
    */
   internal suspend fun getLatestMotorConfigValues(boardId: String): MotorConfigValues? =
     withContext(Dispatchers.IO) {
@@ -797,7 +797,7 @@ class AppDataRepository private constructor(private val context: Context) {
    * The personal direction target. Not a Map Point: it is never shared, and Group Ride presence
    * reads it natively while JS is gone.
    *
-   * @parity /modules/vescape-core/ios/telemetry/AppDataRepository.swift `directionPoint`
+   * @parity /modules/vescape-core/ios/telemetry/AppDataRepository.swift `getDirectionPoint`
    */
   suspend fun getDirectionPoint(): Pair<Double, Double>? = withContext(Dispatchers.IO) {
     val settings = getTypedSettings()
