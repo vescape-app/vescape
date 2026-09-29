@@ -100,27 +100,62 @@ struct WatchMapProjection {
     riders.sorted { $0.distanceM > $1.distanceM }.map { mark(for: $0, sizes: sizes) }
   }
 
-  /// Top-left of a `labelSize` label for `mark`: beside a dot on the side away from the Rider, or the
-  /// other side when that would run off the display, `gap` clear of it and of its flag ring when it
-  /// wears one (`ring` further out); inward of a triangle's apex by `gap`. Then `clearOfNavReadout`.
+  /// Every nav-focus label's top-left, aligned with `marks`: `labels` holds each mark's label size,
+  /// or nil for a mark without one. Nearest Rider first, so the closest keep their natural spot.
+  /// Each label tries, in order: beside a dot on the side away from the Rider, then toward it (both
+  /// on the display), or inward of a triangle's apex; each of those slid up off the nav readout; then
+  /// nudged by `LABEL_NUDGE_STEPS` label heights — up or down beside a dot, either way along the edge
+  /// beside a triangle. The first spot `gap` clear of the nav readout and clear of every label
+  /// already placed and every other mark wins. None clear, and the label is dropped (nil): its mark stays, and the
+  /// Group Ride page has the details. A label never sits more than one label height from its
+  /// natural spot.
   ///
-  /// @parity /watch/wearos/src/main/java/app/vescape/wear/GroupRide.kt `labelTopLeft`
-  /// @platform-diff "Off the display" is its width here; Wear OS uses its round face's circle.
-  func labelOrigin(
-    for mark: WatchGroupRideMark, labelSize: CGSize, gap: CGFloat, ring: CGFloat, navFocus: Double
-  ) -> CGPoint {
+  /// @parity /watch/wearos/src/main/java/app/vescape/wear/GroupRide.kt `placeLabels`
+  /// @platform-diff "On the display" is its rectangle here; Wear OS uses its round face's circle.
+  func placeLabels(
+    marks: [WatchGroupRideMark], labels: [CGSize?], gap: CGFloat, ring: CGFloat, navFocus: Double
+  ) -> [CGPoint?] {
+    // `gap` clear of the readout too, so a label never reads as part of it.
+    let readout = navReadoutBounds(navFocus: navFocus, displaySize: size).insetBy(dx: -gap, dy: -gap)
+    let obstacles = marks.map { $0.bounds(ring: ring) }
+    var placed = [CGRect?](repeating: nil, count: marks.count)
+    let order = marks.indices.filter { labels[$0] != nil }.sorted {
+      let a = marks[$0].rider, b = marks[$1].rider
+      return a.distanceM != b.distanceM ? a.distanceM < b.distanceM : a.id < b.id
+    }
+    for i in order {
+      guard let labelSize = labels[i] else { continue }
+      let box = labelSpots(for: marks[i], labelSize: labelSize, gap: gap, ring: ring, readout: readout)
+        .lazy
+        .map { CGRect(origin: $0, size: labelSize) }
+        .first { box in
+          !box.intersects(readout)
+            && !placed.contains { $0?.intersects(box) ?? false }
+            && !obstacles.indices.contains { $0 != i && obstacles[$0].intersects(box) }
+        }
+      placed[i] = box
+    }
+    return placed.map { $0?.origin }
+  }
+
+  /// `placeLabels`'s candidate top-lefts for one label, most natural first.
+  private func labelSpots(
+    for mark: WatchGroupRideMark, labelSize: CGSize, gap: CGFloat, ring: CGFloat, readout: CGRect
+  ) -> [CGPoint] {
     let width = labelSize.width
     let height = labelSize.height
-    let origin: CGPoint
+    let bases: [CGPoint]
+    let nudge: CGVector
     switch mark.kind {
     case .dot:
-      let ringed = !mark.rider.stale && mark.rider.flagLevel != .normal
-      let reach = mark.size + (ringed ? ring : 0) + gap
-      let right = mark.point.x + reach
-      let left = mark.point.x - reach - width
-      let (away, toward) = mark.point.x >= rider.x ? (right, left) : (left, right)
-      let x = away >= 0 && away + width <= size.width ? away : toward
-      origin = CGPoint(x: x, y: mark.point.y - height / 2)
+      let reach = mark.size + (mark.flagged ? ring : 0) + gap
+      let top = mark.point.y - height / 2
+      let right = CGPoint(x: mark.point.x + reach, y: top)
+      let left = CGPoint(x: mark.point.x - reach - width, y: top)
+      let display = CGRect(origin: .zero, size: size)
+      bases = (mark.point.x >= rider.x ? [right, left] : [left, right])
+        .filter { display.contains(CGRect(origin: $0, size: labelSize)) }
+      nudge = CGVector(dx: 0, dy: -1)
     case .triangle:
       // Inward along the edge normal, far enough that the box's own half-extent clears the apex.
       let inward = CGVector(dx: -mark.direction.dx, dy: -mark.direction.dy)
@@ -129,15 +164,26 @@ struct WatchMapProjection {
         abs(inward.dy) > 1e-3 ? height / 2 / abs(inward.dy) : .greatestFiniteMagnitude
       )
       let reach = mark.size + gap + extent
-      origin = CGPoint(
-        x: mark.point.x + inward.dx * reach - width / 2,
-        y: mark.point.y + inward.dy * reach - height / 2
-      )
+      bases = [CGPoint(x: mark.point.x + inward.dx * reach - width / 2, y: mark.point.y + inward.dy * reach - height / 2)]
+      nudge = CGVector(dx: -mark.direction.dy, dy: mark.direction.dx)
     }
-    return CGPoint(
-      x: origin.x,
-      y: clearOfNavReadout(origin: origin, labelSize: labelSize, navFocus: navFocus, displaySize: size)
-    )
+    var spots: [CGPoint] = []
+    for base in bases {
+      spots.append(base)
+      // Up until clear of the readout, but no further than a nudge would go.
+      if CGRect(origin: base, size: labelSize).intersects(readout),
+         base.y + height - readout.minY <= height * LABEL_NUDGE_STEPS.last! {
+        spots.append(CGPoint(x: base.x, y: readout.minY - height))
+      }
+    }
+    for base in bases {
+      for step in LABEL_NUDGE_STEPS {
+        for sign in [1.0, -1.0] as [CGFloat] {
+          spots.append(CGPoint(x: base.x + nudge.dx * step * height * sign, y: base.y + nudge.dy * step * height * sign))
+        }
+      }
+    }
+    return spots
   }
 
   /// Points along unit `direction` from the Rider to where the ray leaves `rect` with corners
@@ -195,6 +241,25 @@ struct WatchGroupRideMark: Equatable {
   let point: CGPoint
   let direction: CGVector
   let size: CGFloat
+
+  /// A live Rider with a battery or heat flag: an in-range dot wears its ring.
+  var flagged: Bool { !rider.stale && rider.flagLevel != .normal }
+
+  /// The mark's footprint for `placeLabels`: a dot with its flag ring (`ring` outside it), or a box
+  /// around a triangle, centred between base and apex and wide enough for the base at any angle.
+  ///
+  /// @parity /watch/wearos/src/main/java/app/vescape/wear/GroupRide.kt `bounds`
+  func bounds(ring: CGFloat) -> CGRect {
+    switch kind {
+    case .dot:
+      let radius = size + (flagged ? ring : 0)
+      return CGRect(x: point.x - radius, y: point.y - radius, width: radius * 2, height: radius * 2)
+    case .triangle:
+      let centre = CGPoint(x: point.x - direction.dx * size / 2, y: point.y - direction.dy * size / 2)
+      let half = size * TRIANGLE_FOOTPRINT
+      return CGRect(x: centre.x - half, y: centre.y - half, width: half * 2, height: half * 2)
+    }
+  }
 }
 
 /// The point measures `WatchMapProjection.mark` needs.
@@ -230,24 +295,38 @@ func groupRideDistanceLabel(_ distanceM: Double, unitSystem: String) -> String {
   UnitPresentation.distance(distanceM, unitSystem: unitSystem).replacingOccurrences(of: " ", with: "")
 }
 
-/// The label's top, slid up until the box clears the nav distance readout. The readout drops and
-/// grows with `navFocus`; at full focus it spans about x 29–71% and y 82–94% of the display.
+/// The nav distance readout's keep-out box. It drops and grows with `navFocus`; at full focus it
+/// spans about x 25–75% and y 82–94% of the display.
 ///
-/// @parity /watch/wearos/src/main/java/app/vescape/wear/GroupRide.kt `clearOfNavReadout`
-func clearOfNavReadout(origin: CGPoint, labelSize: CGSize, navFocus: Double, displaySize: CGSize) -> CGFloat {
+/// @parity /watch/wearos/src/main/java/app/vescape/wear/GroupRide.kt `navReadoutBounds`
+func navReadoutBounds(navFocus: Double, displaySize: CGSize) -> CGRect {
   let keepOut = NAV_READOUT_KEEP_OUT
-  let readoutTop = displaySize.height * (keepOut.top + keepOut.focusDrop * navFocus)
-  let overlapsX = origin.x < displaySize.width * keepOut.right
-    && origin.x + labelSize.width > displaySize.width * keepOut.left
-  let overlapsY = origin.y + labelSize.height > readoutTop && origin.y < displaySize.height * keepOut.bottom
-  return overlapsX && overlapsY ? readoutTop - labelSize.height : origin.y
+  let top = displaySize.height * (keepOut.top + keepOut.focusDrop * navFocus)
+  return CGRect(
+    x: displaySize.width * keepOut.left,
+    y: top,
+    width: displaySize.width * (keepOut.right - keepOut.left),
+    height: displaySize.height * keepOut.bottom - top
+  )
 }
 
-/// The nav distance readout at full nav focus, as shares of the display: x 29–71%, y 82–94%. Its
+/// A crowded label's nudges, in label heights; the last is the farthest a label strays from its mark.
+///
+/// @parity /watch/wearos/src/main/java/app/vescape/wear/GroupRide.kt `LABEL_NUDGE_STEPS`
+let LABEL_NUDGE_STEPS: [CGFloat] = [0.5, 1]
+
+/// A triangle's footprint half-size as a share of its length.
+///
+/// @parity /watch/wearos/src/main/java/app/vescape/wear/GroupRide.kt `TRIANGLE_FOOTPRINT`
+private let TRIANGLE_FOOTPRINT: CGFloat = 0.6
+
+/// The nav distance readout at full nav focus, as shares of the display: x 25–75%, y 82–94%. Its
 /// top sits `focusDrop` higher before focus, where the readout is smaller and higher.
 ///
 /// @parity /watch/wearos/src/main/java/app/vescape/wear/GroupRide.kt `NAV_READOUT_LEFT`
-let NAV_READOUT_KEEP_OUT = (left: 0.29, right: 0.71, top: 0.745, focusDrop: 0.075, bottom: 0.94)
+/// @platform-diff The readout takes more of the narrow 40 mm display ("2.5 km" alone spans 29–72%),
+///   so the keep-out is wider here than Wear OS's 29–71%.
+let NAV_READOUT_KEEP_OUT = (left: 0.25, right: 0.75, top: 0.745, focusDrop: 0.075, bottom: 0.94)
 
 /// Beyond this the triangle stops shrinking.
 ///

@@ -175,8 +175,23 @@ final class WatchMapProjectionTests: XCTestCase {
 
   private let labelSize = CGSize(width: 30, height: 10)
 
-  private func label(_ mark: WatchGroupRideMark, focus: Double = 1) -> CGPoint {
-    map().labelOrigin(for: mark, labelSize: labelSize, gap: 3, ring: 4, navFocus: focus)
+  /// Places one `labelSize` label per mark and returns their origins.
+  private func labels(_ marks: [WatchGroupRideMark], labelSize: CGSize? = nil, focus: Double = 1) -> [CGPoint?] {
+    map().placeLabels(
+      marks: marks, labels: marks.map { _ in labelSize ?? self.labelSize }, gap: 3, ring: 4, navFocus: focus
+    )
+  }
+
+  private func label(_ mark: WatchGroupRideMark, labelSize: CGSize? = nil) -> CGPoint {
+    labels([mark], labelSize: labelSize)[0]!
+  }
+
+  private func riderAt(_ id: String, eastM: Double, northM: Double) -> GroupRideFrameRider {
+    GroupRideFrameRider(id: id, name: id, colorArgb: 0xFF00FF00, eastM: eastM, northM: northM, stale: false)
+  }
+
+  private func dotBounds(_ mark: WatchGroupRideMark) -> CGRect {
+    CGRect(x: mark.point.x - mark.size, y: mark.point.y - mark.size, width: mark.size * 2, height: mark.size * 2)
   }
 
   func testADotsLabelSitsBesideItOnTheSideAwayFromTheRider() {
@@ -192,8 +207,7 @@ final class WatchMapProjectionTests: XCTestCase {
     // 150 pt right of the centre, level with it: a 60 pt label outward would leave the display.
     let nearEdge = map().mark(for: rider(eastM: Double(150 / scale), northM: Double(drop / scale)), sizes: sizes)
     XCTAssertEqual(nearEdge.point.x, 350, accuracy: 0.01)
-    let wide = map().labelOrigin(for: nearEdge, labelSize: CGSize(width: 60, height: 10), gap: 3, ring: 4, navFocus: 1)
-    XCTAssertEqual(wide.x, nearEdge.point.x - 3 - 3 - 60, accuracy: 0.01)
+    XCTAssertEqual(label(nearEdge, labelSize: CGSize(width: 60, height: 10)).x, nearEdge.point.x - 3 - 3 - 60, accuracy: 0.01)
     XCTAssertEqual(label(nearEdge).x, nearEdge.point.x + 3 + 3, accuracy: 0.01)
   }
 
@@ -216,16 +230,57 @@ final class WatchMapProjectionTests: XCTestCase {
     XCTAssertEqual(at.y, far.point.y + far.size + 3, accuracy: 0.01)
   }
 
-  func testALabelThatWouldSitOnTheNavReadoutSlidesUpUntilClear() {
-    // At full focus the readout's top is 82% down the display.
-    let readoutTop = size.height * 0.82
-    func cleared(_ x: CGFloat, _ y: CGFloat) -> CGFloat {
-      clearOfNavReadout(origin: CGPoint(x: x, y: y), labelSize: labelSize, navFocus: 1, displaySize: size)
-    }
-    XCTAssertEqual(cleared(180, 340), readoutTop - 10, accuracy: 0.01)
-    // Beside it, or already above it: untouched.
-    XCTAssertEqual(cleared(300, 340), 340)
-    XCTAssertEqual(cleared(180, 300), 300)
+  func testALabelJustOntoTheNavReadoutSlidesUpClearOfIt() {
+    // At full focus the readout spans y 328–376. A dot level with the readout's top, left of the
+    // Rider: its label (y 323–333) slides up to end the 3 pt gap above it.
+    let onReadout = map().mark(for: rider(eastM: Double(-10 / scale), northM: Double((drop - 128) / scale)), sizes: sizes)
+    XCTAssertEqual(onReadout.point.y, 328, accuracy: 0.01)
+    let at = label(onReadout)
+    XCTAssertEqual(at.y, 328 - 3 - 10, accuracy: 0.01)
+    XCTAssertFalse(CGRect(origin: at, size: labelSize).intersects(navReadoutBounds(navFocus: 1, displaySize: size)))
+  }
+
+  func testATrianglesLabelDeepInTheNavReadoutIsDroppedNotDraggedOffItsMark() {
+    // Straight behind: the triangle sits under the readout; clearing it would move the label far
+    // above its apex.
+    let behind = map().mark(for: rider(eastM: 0, northM: -2_000), sizes: sizes)
+    XCTAssertEqual(behind.kind, .triangle)
+    XCTAssertNil(labels([behind], labelSize: CGSize(width: 30, height: 20))[0])
+  }
+
+  func testTwoCloseRidersGetLabelsThatOverlapNeitherEachOtherNorTheOthersDot() {
+    // 8 pt apart on the same side of the Rider: the second label would sit on the first.
+    let near = map().mark(for: riderAt("near", eastM: 60, northM: 100), sizes: sizes)
+    let next = map().mark(for: riderAt("next", eastM: 60, northM: 100 + Double(8 / scale)), sizes: sizes)
+    let placed = labels([near, next])
+    let boxA = CGRect(origin: placed[0]!, size: labelSize)
+    let boxB = CGRect(origin: placed[1]!, size: labelSize)
+    XCTAssertFalse(boxA.intersects(boxB))
+    // The nearer Rider keeps the natural spot; the other is moved, not dropped.
+    XCTAssertEqual(boxA.minY, near.point.y - 5, accuracy: 0.01)
+    XCTAssertFalse(boxA.intersects(dotBounds(next)))
+    XCTAssertFalse(boxB.intersects(dotBounds(near)))
+  }
+
+  func testALabelWithNoClearSpotIsDroppedRatherThanOverlap() {
+    // Seven Riders on one spot: both sides and every nudge fill up before the last.
+    let marks = (0..<7).map { map().mark(for: riderAt("r\($0)", eastM: 60, northM: 100), sizes: sizes) }
+    let placed = labels(marks)
+    XCTAssertEqual(placed[0]!.y, marks[0].point.y - 5, accuracy: 0.01)
+    XCTAssertNil(placed.last!)
+    let boxes = placed.compactMap { $0 }.map { CGRect(origin: $0, size: labelSize) }
+    XCTAssertGreaterThanOrEqual(boxes.count, 2)
+    for i in boxes.indices { for j in boxes.indices where i != j { XCTAssertFalse(boxes[i].intersects(boxes[j])) } }
+  }
+
+  func testAStaleRiderGetsNoLabelButStillKeepsOthersLabelsOffItsDot() {
+    var lost = riderAt("lost", eastM: 60, northM: 100)
+    lost.stale = true
+    let stale = map().mark(for: lost, sizes: sizes)
+    let live = map().mark(for: riderAt("live", eastM: 40, northM: 100), sizes: sizes)
+    let placed = map().placeLabels(marks: [stale, live], labels: [nil, labelSize], gap: 3, ring: 4, navFocus: 1)
+    XCTAssertNil(placed[0])
+    XCTAssertFalse(CGRect(origin: placed[1]!, size: labelSize).intersects(dotBounds(stale)))
   }
 
   func testDistanceLabelsDropTheSpaceBeforeTheUnit() {

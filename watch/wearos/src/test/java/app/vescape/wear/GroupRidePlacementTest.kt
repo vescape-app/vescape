@@ -1,9 +1,13 @@
 package app.vescape.wear
 
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Rect
+import androidx.compose.ui.geometry.Size
 import expo.modules.vescapecore.telemetry.TelemetryLevel
 import expo.modules.vescapecore.watch.GroupRideFrameRider
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -149,8 +153,15 @@ class GroupRidePlacementTest {
 
     // Nav-focus labels
 
+    /** Places one label per mark ([width] × [height] each) and returns their top-lefts. */
+    private fun labels(vararg marks: GroupRideMark, width: Float = 30f, height: Float = 10f, focus: Float = 1f) =
+        map().placeLabels(marks.toList(), marks.map { Size(width, height) }, gapPx = 3f, ringPx = 4f, navFocus = focus, faceWidth = face, faceHeight = face)
+
     private fun label(mark: GroupRideMark, width: Float = 30f, height: Float = 10f, focus: Float = 1f) =
-        map().labelTopLeft(mark, width, height, gapPx = 3f, ringPx = 4f, navFocus = focus, faceWidth = face, faceHeight = face)
+        labels(mark, width = width, height = height, focus = focus).single()!!
+
+    private fun riderAt(id: String, eastM: Double, northM: Double) =
+        GroupRideFrameRider(id, id, 0xFF00FF00.toInt(), eastM, northM, stale = false)
 
     @Test
     fun `a dot's label sits beside it, on the side away from the rider`() {
@@ -191,13 +202,62 @@ class GroupRidePlacementTest {
     }
 
     @Test
-    fun `a label that would sit on the nav readout slides up until clear`() {
-        // At full focus the readout's top is 82% down the face.
-        val readoutTop = face * 0.82f
-        assertEquals(readoutTop - 10f, clearOfNavReadout(180f, 340f, 30f, 10f, 1f, face, face), 0.01f)
-        // Beside it, or already above it: untouched.
-        assertEquals(340f, clearOfNavReadout(300f, 340f, 30f, 10f, 1f, face, face), 0f)
-        assertEquals(300f, clearOfNavReadout(180f, 300f, 30f, 10f, 1f, face, face), 0f)
+    fun `a label just onto the nav readout slides up clear of it`() {
+        // At full focus the readout spans y 328–376. A dot level with the readout's top, left of the
+        // Rider: its label (y 323–333) slides up to end the 3 px gap above it.
+        val onReadout = map().mark(rider(-10.0 / scale, (drop - 128.0) / scale), sizes)
+        assertEquals(328f, onReadout.y, 0.01f)
+        val at = label(onReadout)
+        assertEquals(328f - 3f - 10f, at.y, 0.01f)
+        assertFalse(Rect(at, Size(30f, 10f)).overlaps(navReadoutBounds(1f, face, face)))
+    }
+
+    @Test
+    fun `a triangle's label deep in the nav readout is dropped, not dragged off its mark`() {
+        // Straight behind: the triangle sits under the readout; clearing it would move the label
+        // far above its apex.
+        val behind = map().mark(rider(0.0, -2_000.0), sizes)
+        assertEquals(GroupRideMarkKind.Triangle, behind.kind)
+        assertNull(labels(behind, height = 20f).single())
+    }
+
+    @Test
+    fun `two close riders get labels that overlap neither each other nor the other's dot`() {
+        // 8 px apart on the same side of the Rider: the second label would sit on the first.
+        val near = map().mark(riderAt("near", 60.0, 100.0), sizes)
+        val next = map().mark(riderAt("next", 60.0, 100.0 + 8.0 / scale), sizes)
+        val (a, b) = labels(near, next)
+        val boxA = Rect(a!!, Size(30f, 10f))
+        val boxB = Rect(b!!, Size(30f, 10f))
+        assertFalse(boxA.overlaps(boxB))
+        // The nearer Rider keeps the natural spot; the other is nudged, not dropped.
+        assertEquals(near.y - 5f, a.y, 0.01f)
+        for ((box, other) in listOf(boxA to next, boxB to near)) {
+            assertFalse(box.overlaps(Rect(Offset(other.x, other.y), other.sizePx)))
+        }
+    }
+
+    @Test
+    fun `a label with no clear spot is dropped rather than overlap`() {
+        // Seven Riders on one spot: both sides and every nudge fill up before the last.
+        val marks = (0 until 7).map { map().mark(riderAt("r$it", 60.0, 100.0), sizes) }
+        val placed = labels(*marks.toTypedArray())
+        assertEquals(marks[0].y - 5f, placed[0]!!.y, 0.01f)
+        assertNull(placed.last())
+        val boxes = placed.filterNotNull().map { Rect(it, Size(30f, 10f)) }
+        assertTrue(boxes.size >= 2)
+        for (i in boxes.indices) for (j in boxes.indices) if (i != j) assertFalse(boxes[i].overlaps(boxes[j]))
+    }
+
+    @Test
+    fun `a stale rider gets no label but still keeps others' labels off its dot`() {
+        val stale = map().mark(riderAt("lost", 60.0, 100.0).copy(stale = true), sizes)
+        val live = map().mark(riderAt("live", 40.0, 100.0), sizes)
+        val placed = map().placeLabels(
+            listOf(stale, live), listOf(null, Size(30f, 10f)), gapPx = 3f, ringPx = 4f, navFocus = 1f, faceWidth = face, faceHeight = face,
+        )
+        assertNull(placed[0])
+        assertFalse(Rect(placed[1]!!, Size(30f, 10f)).overlaps(Rect(Offset(stale.x, stale.y), stale.sizePx)))
     }
 
     @Test

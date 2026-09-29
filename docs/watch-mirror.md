@@ -248,8 +248,11 @@ levels (normal, warning, critical) from the app's telemetry thresholds in
 warns below 30% and is critical below 10%; heat is the worse of motor and controller temperature,
 warning above 70 °C and critical above 80 °C. The wrist never classifies. It rings a flagged live
 dot orange or red, and in nav focus labels every live Rider's mark with their distance ("680m"),
-followed by a thermometer when they run hot, else their battery % when it is low. Labels slide up
-off the nav distance readout, and the gauges carry no Group Ride text. The phone pushes it only while the Rider is joined and the wrist reports `ACTIVE` — never in
+followed by a thermometer when they run hot, else their battery % when it is low. Labels are
+placed nearest Rider first and never overlap the nav distance readout, each other or another Rider's
+mark: a crowded label flips to the dot's other side or moves up to one label height (along the edge
+for a triangle), and one with no clear spot is dropped — the list page has it. The gauges carry no
+Group Ride text. The phone pushes it only while the Rider is joined and the wrist reports `ACTIVE` — never in
 ambient, and never to a wrist too old to report its wake level. The wrist drops the group after
 3.5 s without a frame. The codec is one file, `watch/GroupRideFrame.kt`, compiled by the phone and
 copied into the Wear module by `withWearMirror` along with `telemetry/TelemetryLevel.kt`; watchOS gets the same bytes under the

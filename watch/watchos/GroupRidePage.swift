@@ -13,7 +13,7 @@ import SwiftUI
 /// @parity /watch/wearos/src/main/java/app/vescape/wear/GroupRidePage.kt `GroupRidePage`
 /// @platform-diff Wear OS has no crown binding on its pager, so its settled list owns the crown even
 ///   when it fits. Row width is clamped to the display less the rim inset rather than a round
-///   face's chord.
+///   face's chord. Only watchOS shrinks an over-wide name or distance; Compose here cannot.
 struct GroupRidePage: View {
   let group: WatchGroupRide
   /// This page is the settled vertical page: the crown may leave the pager for the list.
@@ -83,7 +83,9 @@ private struct GroupRideRowView: View {
         .font(WatchTypography.ui(size: GROUP_NAME_FONT_SIZE))
         .foregroundStyle(Palette.primaryText)
         .lineLimit(1)
-        .padding(.leading, 4)
+        // A five-character name fits the 40 mm row at full size; only the widest glyphs shrink.
+        .minimumScaleFactor(GROUP_NAME_MIN_SCALE)
+        .padding(.leading, 3)
         .padding(.trailing, 2)
         .frame(maxWidth: .infinity, alignment: .leading)
       BearingArrow()
@@ -94,8 +96,9 @@ private struct GroupRideRowView: View {
         .font(WatchTypography.mono(size: GROUP_VALUE_FONT_SIZE))
         .foregroundStyle(Palette.primaryText)
         .lineLimit(1)
+        .minimumScaleFactor(GROUP_NAME_MIN_SCALE)
         .frame(width: GROUP_DISTANCE_WIDTH, alignment: .trailing)
-      Spacer().frame(width: 3)
+      Spacer().frame(width: GROUP_VALUE_GAP)
       statusSlot
         .frame(width: GROUP_STATUS_WIDTH, alignment: .trailing)
     }
@@ -143,6 +146,10 @@ private struct BearingArrow: Shape {
 /// @parity /watch/wearos/src/main/java/app/vescape/wear/GroupRidePage.kt `GROUP_PAGE_ROWS`
 private let GROUP_PAGE_ROWS = 5
 private let GROUP_ROW_HEIGHT: CGFloat = 22
+/// On the 40 mm display the row is 138 pt (the display less the rim inset): 93 pt of fixed columns
+/// leaves 45 pt, a five-character name ("Tomek" is 42.5 pt) at full size.
+///
+/// @parity /watch/wearos/src/main/java/app/vescape/wear/GroupRidePage.kt `GROUP_ROW_W`
 private let GROUP_ROW_WIDTH: CGFloat = 150
 private let GROUP_TITLE_HEIGHT: CGFloat = 14
 private let GROUP_TITLE_GAP: CGFloat = 4
@@ -151,9 +158,14 @@ private let GROUP_NAME_FONT_SIZE: CGFloat = 13
 private let GROUP_VALUE_FONT_SIZE: CGFloat = 11
 private let GROUP_ROW_DOT: CGFloat = 6
 private let GROUP_ARROW_BOX: CGFloat = 10
-private let GROUP_DISTANCE_WIDTH: CGFloat = 48
-private let GROUP_STATUS_WIDTH: CGFloat = 30
-private let GROUP_THERMOMETER_WIDTH: CGFloat = 6
-private let GROUP_THERMOMETER_HEIGHT: CGFloat = 12
+/// Six mono characters ("12.3km") at the value size; "100%" or "lost" in the status slot.
+private let GROUP_DISTANCE_WIDTH: CGFloat = 40
+private let GROUP_STATUS_WIDTH: CGFloat = 27
+/// Between the distance and the status slot, so "49m" and "lost" never run together.
+private let GROUP_VALUE_GAP: CGFloat = 5
+private let GROUP_THERMOMETER_WIDTH: CGFloat = 7
+private let GROUP_THERMOMETER_HEIGHT: CGFloat = 15
+/// The widest five-character names and seven-character distances shrink this far rather than cut.
+private let GROUP_NAME_MIN_SCALE: CGFloat = 0.7
 /// A lost Rider's row: there, but plainly not current.
 private let GROUP_STALE_ROW_OPACITY = 0.4

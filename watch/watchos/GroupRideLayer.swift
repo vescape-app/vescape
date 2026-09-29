@@ -18,9 +18,8 @@ struct GroupRideLayer: View {
     StalePulse(group: group) { context, size, staleOpacity in
       let map = WatchMapProjection(size: size, spanM: group.spanM, courseDeg: group.courseDeg)
       if drawOwnRing { context.drawRiderDot(at: map.rider, color: ownColor) }
-      let dots = map.marks(for: group.riders, sizes: groupRideMarkSizes(size: size, focus: focus))
-        .filter { $0.kind == .dot }
-      for mark in dots {
+      let marks = map.marks(for: group.riders, sizes: groupRideMarkSizes(size: size, focus: focus))
+      for mark in marks where mark.kind == .dot {
         let opacity = mark.rider.stale ? staleOpacity : 1
         if let ring = flagColor(mark.rider) {
           let ringPath = circle(mark.point, mark.size + GROUP_RING_GAP)
@@ -31,7 +30,7 @@ struct GroupRideLayer: View {
         context.fill(circle(mark.point, mark.size), with: .color(Color(argb: mark.rider.colorArgb).opacity(opacity)))
       }
       // Labels over every dot, so a neighbour's dot never cuts one.
-      for mark in dots { context.drawGroupRideLabel(for: mark, map: map, focus: focus, unitSystem: unitSystem) }
+      context.drawGroupRideLabels(marks: marks, kind: .dot, map: map, focus: focus, unitSystem: unitSystem)
     }
   }
 
@@ -54,9 +53,8 @@ struct GroupRideEdgeLayer: View {
   var body: some View {
     StalePulse(group: group) { context, size, staleOpacity in
       let map = WatchMapProjection(size: size, spanM: group.spanM, courseDeg: group.courseDeg)
-      let triangles = map.marks(for: group.riders, sizes: groupRideMarkSizes(size: size, focus: focus))
-        .filter { $0.kind == .triangle }
-      for mark in triangles {
+      let marks = map.marks(for: group.riders, sizes: groupRideMarkSizes(size: size, focus: focus))
+      for mark in marks where mark.kind == .triangle {
         let opacity = mark.rider.stale ? staleOpacity : 1
         let path = triangle(mark)
         context.stroke(
@@ -65,7 +63,7 @@ struct GroupRideEdgeLayer: View {
         )
         context.fill(path, with: .color(Color(argb: mark.rider.colorArgb).opacity(opacity)))
       }
-      for mark in triangles { context.drawGroupRideLabel(for: mark, map: map, focus: focus, unitSystem: unitSystem) }
+      context.drawGroupRideLabels(marks: marks, kind: .triangle, map: map, focus: focus, unitSystem: unitSystem)
     }
   }
 
@@ -99,15 +97,50 @@ func levelColor(_ level: TelemetryLevel) -> Color? {
   }
 }
 
+/// One measured nav-focus label.
+private struct GroupRideLabel {
+  let distance: GraphicsContext.ResolvedText
+  let distanceWidth: CGFloat
+  let heatColor: Color?
+  let battery: GraphicsContext.ResolvedText?
+  let size: CGSize
+}
+
 private extension GraphicsContext {
-  /// A mark's nav-focus label: grey distance, then a flag — a thermometer when the Rider runs hot,
-  /// else their battery % when it is low, each in its level's colour. Stale Riders get none; their
-  /// distance is as old as their place.
+  /// Nav-focus labels on `kind`'s marks: grey distance, then a flag — a thermometer when the Rider
+  /// runs hot, else their battery % when it is low, each in its level's colour. Stale Riders get
+  /// none; their distance is as old as their place. Both layers place every label against every
+  /// mark (`placeLabels`) and each draws its own kind's, so a dot's label and a triangle's never
+  /// collide.
   ///
   /// @parity /watch/wearos/src/main/java/app/vescape/wear/GroupRide.kt `GroupRideLabels`
-  func drawGroupRideLabel(for mark: WatchGroupRideMark, map: WatchMapProjection, focus: Double, unitSystem: String) {
-    guard focus > GROUP_LABEL_MIN_FOCUS, !mark.rider.stale else { return }
-    let rider = mark.rider
+  func drawGroupRideLabels(
+    marks: [WatchGroupRideMark], kind: WatchGroupRideMarkKind, map: WatchMapProjection, focus: Double, unitSystem: String
+  ) {
+    guard focus > GROUP_LABEL_MIN_FOCUS else { return }
+    let labels = marks.map { $0.rider.stale ? nil : measureLabel($0.rider, unitSystem: unitSystem) }
+    let placed = map.placeLabels(
+      marks: marks, labels: labels.map { $0?.size }, gap: GROUP_LABEL_GAP, ring: GROUP_RING_GAP + GROUP_RING_WIDTH, navFocus: focus
+    )
+    var context = self
+    context.opacity = focus
+    for (i, mark) in marks.enumerated() where mark.kind == kind {
+      guard let label = labels[i], let origin = placed[i] else { continue }
+      let height = label.size.height
+      context.draw(label.distance, at: origin, anchor: .topLeading)
+      let flagX = origin.x + label.distanceWidth + GROUP_LABEL_FLAG_GAP
+      if let heatColor = label.heatColor {
+        let box = CGSize(width: height * THERMOMETER_ASPECT, height: height * THERMOMETER_HEIGHT)
+        context.drawThermometer(
+          in: CGRect(origin: CGPoint(x: flagX, y: origin.y + (height - box.height) / 2), size: box), color: heatColor
+        )
+      } else if let battery = label.battery {
+        context.draw(battery, at: CGPoint(x: flagX, y: origin.y), anchor: .topLeading)
+      }
+    }
+  }
+
+  func measureLabel(_ rider: GroupRideFrameRider, unitSystem: String) -> GroupRideLabel {
     let font = WatchTypography.mono(size: GROUP_LABEL_FONT_SIZE)
     let unbounded = CGSize(width: CGFloat.greatestFiniteMagnitude, height: .greatestFiniteMagnitude)
     let distance = resolve(
@@ -128,40 +161,27 @@ private extension GraphicsContext {
     } else {
       flagWidth = 0
     }
-    let origin = map.labelOrigin(
-      for: mark,
-      labelSize: CGSize(width: distanceSize.width + flagWidth, height: height),
-      gap: GROUP_LABEL_GAP,
-      ring: GROUP_RING_GAP + GROUP_RING_WIDTH,
-      navFocus: focus
+    return GroupRideLabel(
+      distance: distance, distanceWidth: distanceSize.width, heatColor: heatColor, battery: battery,
+      size: CGSize(width: distanceSize.width + flagWidth, height: height)
     )
-    var context = self
-    context.opacity = focus
-    context.draw(distance, at: origin, anchor: .topLeading)
-    let flagX = origin.x + distanceSize.width + GROUP_LABEL_FLAG_GAP
-    if let heatColor {
-      context.drawThermometer(
-        in: CGRect(x: flagX, y: origin.y + height * 0.1, width: height * THERMOMETER_ASPECT, height: height * 0.8),
-        color: heatColor
-      )
-    } else if let battery {
-      context.draw(battery, at: CGPoint(x: flagX, y: origin.y), anchor: .topLeading)
-    }
   }
 }
 
 extension GraphicsContext {
-  /// Thermometer in `box`: stroked stem, filled bulb, a short mercury line up the stem.
+  /// Thermometer in `box`: a round bulb the full box width, under an outlined stem half as wide,
+  /// its lower part filled. The bulb against the narrow stem is what reads as a thermometer
+  /// at label size rather than a pill.
   ///
   /// @parity /watch/wearos/src/main/java/app/vescape/wear/GroupRide.kt `drawThermometer`
   func drawThermometer(in box: CGRect, color: Color) {
     let line = THERMOMETER_STROKE
     let cx = box.midX
-    let stemWidth = box.width * 0.28
-    let bulbRadius = box.width * 0.24
-    let bulb = CGPoint(x: cx, y: box.maxY - bulbRadius - line / 2)
+    let bulbRadius = box.width / 2
+    let bulb = CGPoint(x: cx, y: box.maxY - bulbRadius)
+    let stemWidth = box.width * THERMOMETER_STEM
     let stemTop = box.minY + line / 2
-    let stemBottom = bulb.y - bulbRadius * 0.6
+    let stemBottom = bulb.y
     let stem = Path(
       roundedRect: CGRect(x: cx - stemWidth / 2, y: stemTop, width: stemWidth, height: stemBottom - stemTop),
       cornerRadius: stemWidth / 2
@@ -171,10 +191,8 @@ extension GraphicsContext {
       Path(ellipseIn: CGRect(x: bulb.x - bulbRadius, y: bulb.y - bulbRadius, width: bulbRadius * 2, height: bulbRadius * 2)),
       with: .color(color)
     )
-    var mercury = Path()
-    mercury.move(to: bulb)
-    mercury.addLine(to: CGPoint(x: cx, y: stemTop + (stemBottom - stemTop) * 0.35))
-    stroke(mercury, with: .color(color), lineWidth: stemWidth * 0.45)
+    let mercuryTop = stemBottom - (stemBottom - stemTop) * THERMOMETER_FILL
+    fill(Path(CGRect(x: cx - stemWidth / 2, y: mercuryTop, width: stemWidth, height: stemBottom - mercuryTop)), with: .color(color))
   }
 }
 
@@ -255,9 +273,13 @@ private let GROUP_LABEL_GAP: CGFloat = 3
 private let GROUP_LABEL_FLAG_GAP: CGFloat = 3
 /// Labels are not drawn at all until nav focus is under way.
 private let GROUP_LABEL_MIN_FOCUS = 0.01
-/// Thermometer width as a share of the label's line height.
-private let THERMOMETER_ASPECT: CGFloat = 0.5
-private let THERMOMETER_STROKE: CGFloat = 1.3
+/// A label's thermometer box as shares of its line height.
+private let THERMOMETER_ASPECT: CGFloat = 0.45
+private let THERMOMETER_HEIGHT: CGFloat = 1
+/// Stem width as a share of the bulb's; mercury as a share of the stem's height.
+private let THERMOMETER_STEM: CGFloat = 0.5
+private let THERMOMETER_FILL: CGFloat = 0.5
+private let THERMOMETER_STROKE: CGFloat = 0.8
 private let GROUP_OUTLINE_COLOR = Color.black.opacity(0.9)
 /// A Rider the phone has not heard from for a while: last known place, faded and pulsing.
 private let GROUP_STALE_MAX_OPACITY = 0.7

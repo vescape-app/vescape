@@ -35,6 +35,7 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.coerceIn
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.wear.compose.material.MaterialTheme
@@ -115,7 +116,7 @@ internal fun GroupRidePage(crownActive: Boolean) {
                 // Fixed width, narrowed to the safe circle's chord at the row's centre line.
                 val mid = (rowsTop + GROUP_ROW_H * i + GROUP_ROW_H / 2).value
                 val half = sqrt((limit.value * limit.value - mid * mid).coerceAtLeast(0f))
-                GroupRideRowView(row, unitSystem, minOf(GROUP_ROW_W, (half * 2).dp))
+                GroupRideRowView(row, unitSystem, (half * 2).dp.coerceIn(GROUP_ROW_MIN_W, GROUP_ROW_W))
             }
         }
     }
@@ -139,7 +140,7 @@ private fun GroupRideRowView(row: GroupRideRow, unitSystem: String, width: Dp) {
             color = PrimaryText,
             maxLines = 1,
             overflow = TextOverflow.Clip,
-            modifier = Modifier.padding(start = 4.dp, end = 2.dp).weight(1f),
+            modifier = Modifier.padding(start = 3.dp, end = 2.dp).weight(1f),
         )
         Canvas(modifier = Modifier.size(GROUP_ARROW_BOX)) {
             rotate(row.bearingDeg.toFloat()) { drawBearingArrow(SecondaryText) }
@@ -152,7 +153,7 @@ private fun GroupRideRowView(row: GroupRideRow, unitSystem: String, width: Dp) {
             maxLines = 1,
             modifier = Modifier.width(GROUP_DISTANCE_W),
         )
-        Spacer(modifier = Modifier.width(3.dp))
+        Spacer(modifier = Modifier.width(GROUP_VALUE_GAP))
         Box(modifier = Modifier.width(GROUP_STATUS_W), contentAlignment = Alignment.CenterEnd) {
             StatusSlot(row.status)
         }
@@ -204,7 +205,15 @@ private const val GROUP_PAGE_ROWS = 5
 /** Each row's width is clamped to the chord of this share of the face radius at its centre line. */
 private const val GROUP_PAGE_SAFE_RADIUS = 0.8f
 private val GROUP_ROW_H = 22.dp
+/**
+ * A row is 150 dp, narrowed to the safe chord but never below [GROUP_ROW_MIN_W]: 93 dp of fixed
+ * columns plus 45 dp, a five-character name ("Tomek" is 42.5 dp) unclipped. On a small face the
+ * widened outer rows reach just past the safe circle, still inside the face.
+ *
+ * @parity /watch/watchos/GroupRidePage.swift `GROUP_ROW_WIDTH`
+ */
 private val GROUP_ROW_W = 150.dp
+private val GROUP_ROW_MIN_W = 138.dp
 private val GROUP_TITLE_H = 14.dp
 private val GROUP_TITLE_GAP = 4.dp
 private val GROUP_TITLE_FONT = 11.sp
@@ -212,9 +221,12 @@ private val GROUP_NAME_FONT = 13.sp
 private val GROUP_VALUE_FONT = 11.sp
 private val GROUP_ROW_DOT = 6.dp
 private val GROUP_ARROW_BOX = 10.dp
-private val GROUP_DISTANCE_W = 48.dp
-private val GROUP_STATUS_W = 30.dp
-private val GROUP_THERMOMETER_W = 6.dp
-private val GROUP_THERMOMETER_H = 12.dp
+/** Six mono characters ("12.3km") at the value size; "100%" or "lost" in the status slot. */
+private val GROUP_DISTANCE_W = 40.dp
+private val GROUP_STATUS_W = 27.dp
+/** Between the distance and the status slot, so "49m" and "lost" never run together. */
+private val GROUP_VALUE_GAP = 5.dp
+private val GROUP_THERMOMETER_W = 7.dp
+private val GROUP_THERMOMETER_H = 15.dp
 /** A lost Rider's row: there, but plainly not current. */
 private const val GROUP_STALE_ROW_ALPHA = 0.4f
