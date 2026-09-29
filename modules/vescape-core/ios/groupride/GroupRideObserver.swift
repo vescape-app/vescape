@@ -475,7 +475,7 @@ internal final class GroupRideObserver: NSObject {
       "id": id,
       "name": obj["name"] as? String ?? "",
       "color": (obj["color"] as? String).flatMap { $0.isEmpty ? nil : $0 },
-      "presence": presenceMap(obj["presence"] as? [String: Any]),
+      "presence": Self.presenceMap(obj["presence"] as? [String: Any]),
       "trail": trailList(obj["trail"] as? [Any]),
       "stale": obj["stale"] as? Bool ?? false,
       "lastSeen": (obj["lastSeen"] as? NSNumber)?.int64Value ?? 0,
@@ -490,11 +490,14 @@ internal final class GroupRideObserver: NSObject {
     }
   }
 
-  private func presenceMap(_ obj: [String: Any]?) -> [String: Any?]? {
+  /// A missing coordinate reads as NaN, as Android's `optDouble` does, so the Rider is not placed.
+  ///
+  /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/GroupRideObserver.kt `presenceMap`
+  static func presenceMap(_ obj: [String: Any]?) -> [String: Any?]? {
     guard let obj else { return nil }
     return [
-      "lat": obj.double("lat") ?? 0,
-      "lng": obj.double("lng") ?? 0,
+      "lat": obj.double("lat") ?? .nan,
+      "lng": obj.double("lng") ?? .nan,
       "heading": obj.double("heading"),
       "speed": obj.double("speed"),
       "soc": obj.double("soc"),
@@ -508,12 +511,15 @@ internal final class GroupRideObserver: NSObject {
     ]
   }
 
-  /// A `riderView` map as the typed entry native keeps; nil when it carries no id.
-  private static func rosterRider(_ view: [String: Any?]) -> GroupRideRosterRider? {
+  /// A `riderView` map as the typed entry native keeps; nil when it carries no id. A presence
+  /// without both coordinates leaves the Rider unplaced.
+  ///
+  /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/GroupRideObserver.kt `rosterRider`
+  static func rosterRider(_ view: [String: Any?]) -> GroupRideRosterRider? {
     guard let id = view["id"] as? String else { return nil }
     let presence = view["presence"] as? [String: Any?]
-    let lat = presence?["lat"] as? Double
-    let lng = presence?["lng"] as? Double
+    let lat = (presence?["lat"] as? Double).flatMap { $0.isNaN ? nil : $0 }
+    let lng = (presence?["lng"] as? Double).flatMap { $0.isNaN ? nil : $0 }
     return GroupRideRosterRider(
       id: id,
       name: view["name"] as? String ?? "",

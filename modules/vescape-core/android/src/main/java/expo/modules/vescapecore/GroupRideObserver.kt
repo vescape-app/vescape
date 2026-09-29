@@ -552,43 +552,6 @@ internal class GroupRideObserver(
         return points
     }
 
-    private fun presenceMap(obj: JSONObject?): Map<String, Any?>? {
-        obj ?: return null
-        return mapOf(
-            "lat" to obj.optDouble("lat"),
-            "lng" to obj.optDouble("lng"),
-            "heading" to obj.optionalDouble("heading"),
-            "speed" to obj.optionalDouble("speed"),
-            "soc" to obj.optionalDouble("soc"),
-            "motorTemp" to obj.optionalDouble("motorTemp"),
-            "ctrlTemp" to obj.optionalDouble("ctrlTemp"),
-            "phoneBattery" to obj.optionalDouble("phoneBattery"),
-            "boardName" to obj.optString("boardName").takeIf { it.isNotEmpty() },
-            "target" to obj.optJSONObject("target")?.let {
-                mapOf("lat" to it.optDouble("lat"), "lng" to it.optDouble("lng"))
-            },
-        )
-    }
-
-    /** A [riderView] map as the typed entry native keeps; null when it carries no id. */
-    private fun rosterRider(view: Map<String, Any?>): GroupRideRosterRider? {
-        val id = view["id"] as? String ?: return null
-        val presence = view["presence"] as? Map<*, *>
-        val lat = presence?.get("lat") as? Double
-        val lng = presence?.get("lng") as? Double
-        return GroupRideRosterRider(
-            id = id,
-            name = view["name"] as? String ?: "",
-            color = view["color"] as? String,
-            position = if (lat != null && lng != null && !lat.isNaN() && !lng.isNaN()) GeoPoint(lat, lng) else null,
-            stale = view["stale"] as? Boolean ?: false,
-            lastSeenMs = view["lastSeen"] as? Long ?: 0L,
-            soc = presence?.get("soc") as? Double,
-            motorTempC = presence?.get("motorTemp") as? Double,
-            ctrlTempC = presence?.get("ctrlTemp") as? Double,
-        )
-    }
-
     private fun rememberRide(ride: Map<String, Any?>) {
         (ride["id"] as? String)?.let { knownRides[it] = ride }
     }
@@ -625,6 +588,53 @@ internal class GroupRideObserver(
         private const val HEARTBEAT_INTERVAL_MS = 3_000L
         private const val NO_SUCH_RIDE_PREFIX = "no such ride:"
         private val RECONNECT_DELAYS_MS = longArrayOf(1_000, 2_000, 5_000, 10_000, 30_000)
+
+        /**
+         * A missing coordinate reads as NaN (`optDouble`), so the Rider is not placed.
+         *
+         * @parity /modules/vescape-core/ios/groupride/GroupRideObserver.swift `presenceMap`
+         */
+        internal fun presenceMap(obj: JSONObject?): Map<String, Any?>? {
+            obj ?: return null
+            return mapOf(
+                "lat" to obj.optDouble("lat"),
+                "lng" to obj.optDouble("lng"),
+                "heading" to obj.optionalDouble("heading"),
+                "speed" to obj.optionalDouble("speed"),
+                "soc" to obj.optionalDouble("soc"),
+                "motorTemp" to obj.optionalDouble("motorTemp"),
+                "ctrlTemp" to obj.optionalDouble("ctrlTemp"),
+                "phoneBattery" to obj.optionalDouble("phoneBattery"),
+                "boardName" to obj.optString("boardName").takeIf { it.isNotEmpty() },
+                "target" to obj.optJSONObject("target")?.let {
+                    mapOf("lat" to it.optDouble("lat"), "lng" to it.optDouble("lng"))
+                },
+            )
+        }
+
+        /**
+         * A [riderView] map as the typed entry native keeps; null when it carries no id. A presence
+         * without both coordinates leaves the Rider unplaced.
+         *
+         * @parity /modules/vescape-core/ios/groupride/GroupRideObserver.swift `rosterRider`
+         */
+        internal fun rosterRider(view: Map<String, Any?>): GroupRideRosterRider? {
+            val id = view["id"] as? String ?: return null
+            val presence = view["presence"] as? Map<*, *>
+            val lat = presence?.get("lat") as? Double
+            val lng = presence?.get("lng") as? Double
+            return GroupRideRosterRider(
+                id = id,
+                name = view["name"] as? String ?: "",
+                color = view["color"] as? String,
+                position = if (lat != null && lng != null && !lat.isNaN() && !lng.isNaN()) GeoPoint(lat, lng) else null,
+                stale = view["stale"] as? Boolean ?: false,
+                lastSeenMs = view["lastSeen"] as? Long ?: 0L,
+                soc = presence?.get("soc") as? Double,
+                motorTempC = presence?.get("motorTemp") as? Double,
+                ctrlTempC = presence?.get("ctrlTemp") as? Double,
+            )
+        }
     }
 }
 
