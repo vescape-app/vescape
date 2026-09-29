@@ -86,6 +86,7 @@ internal data class MapPlacement(
  * on it.
  *
  * @parity /modules/vescape-core/ios/watch/WatchMapProjection.swift `WatchMapProjection`
+ * @platform-diff In range is the round face's circle here; watchOS uses its rectangular display.
  */
 internal class HeadingUpMap(
     width: Float,

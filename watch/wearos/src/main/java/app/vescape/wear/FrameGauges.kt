@@ -182,7 +182,8 @@ internal fun FrameLayout(
             )
             // Nav focus with nothing to show would be a blank circle. Say why, but only once the
             // drag is nearly done, so it never flickers under the departing readouts.
-            NavAbsentHint(focus = focus, stackAlpha = navStackAlpha)
+            // A joined Group Ride is something to show on the map page: no "no navigation" over it.
+            if (GroupRideState.group.value == null) NavAbsentHint(focus = focus, stackAlpha = navStackAlpha)
         }
 
         // Center each label/value stack on its full gauge arc, independent of font width or fill.

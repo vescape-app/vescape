@@ -35,6 +35,18 @@ final class WatchMapProjectionTests: XCTestCase {
     XCTAssertTrue(placed.inRange)
   }
 
+  func testTheRectangularDisplaysCornersAreInRange() {
+    // 45° ahead-right, 150 pt out from the centre on each axis: past a 160 pt circle, inside the
+    // display inset by 40 pt.
+    let reach = Double(hypot(150, 150 + drop) / scale)
+    let bearing = atan2(150, 150 + drop)
+    let placed = map().place(eastM: reach * sin(bearing), northM: reach * cos(bearing), margin: margin)
+
+    XCTAssertEqual(placed.point.x, 350, accuracy: 0.01)
+    XCTAssertEqual(placed.point.y, 50, accuracy: 0.01)
+    XCTAssertTrue(placed.inRange)
+  }
+
   func testRangeIsMeasuredFromTheFaceCentreNotFromTheDroppedRider() {
     let aheadLimitM = Double((160 + drop) / scale)
     XCTAssertTrue(map().place(eastM: 0, northM: aheadLimitM - 1, margin: margin).inRange)

@@ -20,9 +20,10 @@ let GROUP_RIDE_STALE_AFTER_MS: Int64 = 5_000
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/watch/GroupRideFrameBuilder.kt `GROUP_RIDE_DROP_AFTER_MS`
 let GROUP_RIDE_DROP_AFTER_MS: Int64 = 30_000
 
-/// Fallback tints for a Rider who has not picked a colour, by roster position.
+/// Fallback tints for a Rider who has not picked a colour, by their index in the phone roster.
 ///
 /// @parity /src/modules/group-ride/lib/riderColor.ts `riderFallbackColors`
+/// @parity /src/modules/group-ride/lib/roster.ts `riderRoster`
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/watch/GroupRideFrameBuilder.kt `GROUP_RIDE_FALLBACK_COLORS`
 private let GROUP_RIDE_FALLBACK_COLORS: [UInt32] = [
   0xFF06_B6D4, // cyan
@@ -68,31 +69,55 @@ enum GroupRideFrameBuilder {
     spanM: Double?,
     nowMs: Int64
   ) -> GroupRideFrame {
-    var riders: [GroupRideFrameRider] = []
-    if let own {
-      let others = roster.riders.filter { $0.id != roster.ownRiderId }
-      for (index, rider) in others.enumerated() {
-        guard let position = rider.position else { continue }
-        let silentMs = nowMs - rider.lastSeenMs
-        if silentMs >= GROUP_RIDE_DROP_AFTER_MS { continue }
-        let offset = watchOffsetMeters(origin: own, point: position)
-        riders.append(
-          GroupRideFrameRider(
-            id: rider.id,
-            name: rider.name,
-            colorArgb: parseRiderColor(rider.color)
-              ?? GROUP_RIDE_FALLBACK_COLORS[index % GROUP_RIDE_FALLBACK_COLORS.count],
-            eastM: offset.east,
-            northM: offset.north,
-            stale: rider.stale || silentMs >= GROUP_RIDE_STALE_AFTER_MS
-          )
-        )
-      }
-      riders.sort { $0.distanceM < $1.distanceM }
-      riders = Array(riders.prefix(GROUP_RIDE_FRAME_MAX_RIDERS))
-    }
+    let riders = own.map { place(roster: roster, own: $0, nowMs: nowMs) } ?? []
     let span = spanM.flatMap { $0.isFinite && $0 > 0 ? $0 : nil } ?? GROUP_RIDE_DEFAULT_SPAN_M
     return GroupRideFrame(courseDeg: courseDeg, spanM: span, riders: riders)
+  }
+
+  private struct Entry {
+    let rider: GroupRideRosterRider
+    let offset: (east: Double, north: Double)?
+    let stale: Bool
+    var distanceM: Double? { offset.map { ($0.east * $0.east + $0.north * $0.north).squareRoot() } }
+  }
+
+  private static func place(roster: GroupRideRoster, own: WatchGeoPoint, nowMs: Int64) -> [GroupRideFrameRider] {
+    let fresh = roster.riders.filter { nowMs - $0.lastSeenMs < GROUP_RIDE_DROP_AFTER_MS }
+    let entries = fresh
+      .filter { $0.id != roster.ownRiderId }
+      .map { rider in
+        Entry(
+          rider: rider,
+          offset: rider.position.map { watchOffsetMeters(origin: own, point: $0) },
+          stale: rider.stale || nowMs - rider.lastSeenMs >= GROUP_RIDE_STALE_AFTER_MS
+        )
+      }
+      // The phone map's roster order, which is what its fallback tints are indexed by: fresh before
+      // stale, nearest first, the unplaced last by name.
+      .sorted { a, b in
+        if a.stale != b.stale { return !a.stale }
+        switch (a.distanceM, b.distanceM) {
+        case let (x?, y?) where x != y: return x < y
+        case (nil, _?): return false
+        case (_?, nil): return true
+        default: return a.rider.name < b.rider.name
+        }
+      }
+    // The phone roster pins the Rider's own entry first, so everyone else's index starts after it.
+    let first = fresh.contains { $0.id == roster.ownRiderId } ? 1 : 0
+    let placed: [GroupRideFrameRider] = entries.enumerated().compactMap { index, entry in
+      guard let offset = entry.offset else { return nil }
+      return GroupRideFrameRider(
+        id: entry.rider.id,
+        name: entry.rider.name,
+        colorArgb: parseRiderColor(entry.rider.color)
+          ?? GROUP_RIDE_FALLBACK_COLORS[(first + index) % GROUP_RIDE_FALLBACK_COLORS.count],
+        eastM: offset.east,
+        northM: offset.north,
+        stale: entry.stale
+      )
+    }
+    return Array(placed.sorted { $0.distanceM < $1.distanceM }.prefix(GROUP_RIDE_FRAME_MAX_RIDERS))
   }
 
   /// `#RRGGBB` -> opaque ARGB; anything else is no colour.

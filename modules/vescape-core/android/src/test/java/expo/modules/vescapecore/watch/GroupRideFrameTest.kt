@@ -106,6 +106,24 @@ class GroupRideFrameTest {
         assertEquals(0xFF22C55E.toInt(), frame.riders[1].colorArgb)
     }
 
+    @Test
+    fun `fallback colours follow the phone roster order - own rider first, then nearest`() {
+        val frame = GroupRideFrameBuilder.build(
+            GroupRideRoster(
+                "me",
+                listOf(
+                    rider("me", color = null),
+                    rider("far", position = GeoPoint(52.002, 21.0), color = null),
+                    rider("near", position = GeoPoint(52.001, 21.0), color = null),
+                ),
+            ),
+            me, courseDeg = null, spanM = null, nowMs = nowMs,
+        )
+
+        // Index 0 is the Rider's own entry; near is 1 (green), far is 2 (amber).
+        assertEquals(listOf(0xFF22C55E.toInt(), 0xFFF59E0B.toInt()), frame.riders.map { it.colorArgb })
+    }
+
     // Codec
 
     @Test

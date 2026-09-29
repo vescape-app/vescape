@@ -46,7 +46,7 @@ private extension Color {
   }
 }
 
-/// Dots stay this far inside the display's shorter half, clear of the rim gauges.
+/// Dots stay this far inside the display edge, clear of the rim gauges.
 ///
 /// @parity /watch/wearos/src/main/java/app/vescape/wear/GroupRide.kt `GROUP_IN_RANGE_MARGIN`
 private let GROUP_IN_RANGE_MARGIN: CGFloat = 38

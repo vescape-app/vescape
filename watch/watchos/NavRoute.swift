@@ -68,7 +68,9 @@ struct NavRoute: View {
         }
         Canvas { context, _ in context.drawRiderDot(at: centre, color: color) }
       }
-      .onChange(of: frame.courseDeg ?? 0) { _, next in
+      // Nil holds the last course (a stop, an approximate fix), like the Group Ride dots.
+      .onChange(of: frame.courseDeg) { _, next in
+        guard let next else { return }
         unwrappedCourse += shortestAngleDelta(from: unwrappedCourse, to: next)
       }
       .onAppear { unwrappedCourse = frame.courseDeg ?? 0 }

@@ -114,7 +114,10 @@ struct FrameLayout: View {
       } else {
         // Nav focus with nothing to show would be a blank rectangle. Say why, but only once the
         // drag is nearly done, so it never flickers under the departing readouts.
-        NavAbsentHint(focus: navFocus, stackAlpha: navStackAlpha)
+        // A joined Group Ride is something to show on the map page: no "no navigation" over it.
+        if groupRide == nil {
+          NavAbsentHint(focus: navFocus, stackAlpha: navStackAlpha)
+        }
         // No navigation: the tilt badge keeps the distance's slot to itself.
         VStack(spacing: 0) {
           Spacer(minLength: 0)

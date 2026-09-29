@@ -93,6 +93,20 @@ final class GroupRideFrameTests: XCTestCase {
     XCTAssertEqual(frame.riders[1].colorArgb, 0xFF22_C55E)
   }
 
+  func testFallbackColoursFollowThePhoneRosterOrderOwnRiderFirstThenNearest() {
+    let frame = GroupRideFrameBuilder.build(
+      roster: GroupRideRoster(ownRiderId: "me", riders: [
+        rider("me", color: nil),
+        rider("far", at: WatchGeoPoint(latitude: 52.002, longitude: 21.0), color: nil),
+        rider("near", at: WatchGeoPoint(latitude: 52.001, longitude: 21.0), color: nil),
+      ]),
+      own: me, courseDeg: nil, spanM: nil, nowMs: nowMs
+    )
+
+    // Index 0 is the Rider's own entry; near is 1 (green), far is 2 (amber).
+    XCTAssertEqual(frame.riders.map(\.colorArgb), [0xFF22_C55E, 0xFFF5_9E0B])
+  }
+
   // MARK: - Codec
 
   func testAFrameSurvivesTheRoundTrip() {

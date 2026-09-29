@@ -44,17 +44,19 @@ struct WatchMapProjection {
 
   var centre: CGPoint { CGPoint(x: size.width / 2, y: size.height / 2) }
   var rider: CGPoint { CGPoint(x: centre.x, y: centre.y + Self.riderDrop) }
-  /// Half the shorter side: the circle "in range" is measured against, on a round or square face.
-  var faceRadius: CGFloat { min(size.width, size.height) / 2 }
-
-  /// Place a point `eastM`/`northM` metres from the Rider. In range = inside `faceRadius - margin`.
+  /// Place a point `eastM`/`northM` metres from the Rider. In range = inside the display inset by
+  /// `margin` on every side.
+  ///
+  /// @platform-diff Wear OS measures range against the round face's circle. The Apple Watch display
+  ///   is a rectangle and the route already runs into its corners, so a Rider there is in range too.
   func place(eastM: Double, northM: Double, margin: CGFloat) -> WatchMapPlacement {
     let rad = relativeBearingDeg(eastM: eastM, northM: northM, courseDeg: courseDeg) * .pi / 180
     let direction = CGVector(dx: sin(rad), dy: -cos(rad))
     let reach = (eastM * eastM + northM * northM).squareRoot() * scale
     let point = CGPoint(x: rider.x + direction.dx * reach, y: rider.y + direction.dy * reach)
-    let fromCentre = hypot(point.x - centre.x, point.y - centre.y)
-    return WatchMapPlacement(point: point, direction: direction, inRange: fromCentre <= faceRadius - margin)
+    let inRange = abs(point.x - centre.x) <= size.width / 2 - margin
+      && abs(point.y - centre.y) <= size.height / 2 - margin
+    return WatchMapPlacement(point: point, direction: direction, inRange: inRange)
   }
 }
 

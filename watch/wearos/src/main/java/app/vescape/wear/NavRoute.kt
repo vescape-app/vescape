@@ -53,7 +53,8 @@ internal fun NavRoute(frame: WatchFrame, muted: Boolean, navFocus: () -> Float =
             route = route,
             targetEastM = east.toFloat(),
             targetNorthM = north.toFloat(),
-            targetCourseDeg = (frame.courseDeg ?: 0.0).toFloat(),
+            // Null holds the last course (a stop, an approximate fix), like the Group Ride dots.
+            targetCourseDeg = frame.courseDeg?.toFloat(),
             routeSpanM = routeSpanM,
             color = color,
             navFocus = navFocus,
@@ -88,7 +89,7 @@ private fun AnimatedRoute(
     route: WatchRoute,
     targetEastM: Float,
     targetNorthM: Float,
-    targetCourseDeg: Float,
+    targetCourseDeg: Float?,
     routeSpanM: Float,
     color: Color,
     navFocus: () -> Float,
@@ -97,12 +98,13 @@ private fun AnimatedRoute(
     // animators would glide the rider across a jump that never happened: key them to the route.
     val eastM = remember(route) { Animatable(targetEastM) }
     val northM = remember(route) { Animatable(targetNorthM) }
-    val courseDeg = remember(route) { Animatable(targetCourseDeg) }
+    val courseDeg = remember(route) { Animatable(targetCourseDeg ?: 0f) }
     val motionSpec = tween<Float>(durationMillis = ROUTE_MOTION_EASE_MS, easing = LinearEasing)
 
     LaunchedEffect(targetEastM) { eastM.animateTo(targetEastM, motionSpec) }
     LaunchedEffect(targetNorthM) { northM.animateTo(targetNorthM, motionSpec) }
     LaunchedEffect(targetCourseDeg) {
+        if (targetCourseDeg == null) return@LaunchedEffect
         courseDeg.animateTo(
             courseDeg.value + shortestAngleDelta(courseDeg.value, targetCourseDeg),
             motionSpec,
