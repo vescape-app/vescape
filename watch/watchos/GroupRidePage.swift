@@ -6,14 +6,16 @@ import SwiftUI
 ///
 /// Up to `GROUP_PAGE_ROWS` rows, centred. Past that the Digital Crown steps the window a row at a
 /// time — but only while this page is the settled page (`crownActive`), so the crown pages the
-/// vertical axis everywhere else and the two never compete for it. Swipes keep paging from here. The
+/// vertical axis everywhere else and the two never compete for it. Each step slides the rows by one,
+/// and a position bar on the right shows where the window sits in the list. Swipes keep paging from here. The
 /// nav map and readout are hidden under this page by the caller; ambient parks the axis on the
 /// gauges, so this is never drawn there.
 ///
 /// @parity /watch/wearos/src/main/java/app/vescape/wear/GroupRidePage.kt `GroupRidePage`
 /// @platform-diff Wear OS has no crown binding on its pager, so its settled list owns the crown even
 ///   when it fits. Row width is clamped to the display less the rim inset rather than a round
-///   face's chord. Only watchOS shrinks an over-wide name or distance; Compose here cannot.
+///   face's chord. Only watchOS shrinks an over-wide name or distance; Compose here cannot. The
+///   position indicator is a straight bar beside the flat right edge, Wear OS's a curved arc.
 struct GroupRidePage: View {
   let group: WatchGroupRide
   /// This page is the settled vertical page: the crown may leave the pager for the list.
@@ -50,7 +52,16 @@ struct GroupRidePage: View {
             .frame(width: width, height: GROUP_ROW_HEIGHT)
         }
       }
+      // One row's travel: the rows keep their identity, so the list reads as scrolled.
+      .animation(.easeOut(duration: GROUP_STEP_SECONDS), value: first)
       .frame(maxWidth: .infinity, maxHeight: .infinity)
+      .overlay(alignment: .trailing) {
+        if scrolls {
+          GroupWindowIndicator(first: first, maxFirst: maxFirst, total: rows.count)
+            .padding(.trailing, GROUP_INDICATOR_INSET)
+            .offset(y: GROUP_INDICATOR_DROP)
+        }
+      }
     }
     .focusable(crownActive && scrolls)
     .focused($crownFocused)
@@ -67,6 +78,31 @@ struct GroupRidePage: View {
     // Take the crown on arrival and hand it back on the way out, so the pager keeps it everywhere
     // else — including the swipe back up from here.
     .onChange(of: crownActive && scrolls, initial: true) { _, owns in crownFocused = owns }
+  }
+}
+
+/// Where the crown window sits in the list: a thumb the visible share of the track long, sliding from
+/// top (nearest Riders) to bottom.
+///
+/// @parity /watch/wearos/src/main/java/app/vescape/wear/GroupRidePage.kt `GroupWindowIndicatorState`
+/// @platform-diff Drawn here; Wear OS drives its library `PositionIndicator` with the same window.
+private struct GroupWindowIndicator: View {
+  let first: Int
+  let maxFirst: Int
+  let total: Int
+
+  var body: some View {
+    let thumb = GROUP_INDICATOR_LENGTH * CGFloat(GROUP_PAGE_ROWS) / CGFloat(max(total, GROUP_PAGE_ROWS))
+    let travel = (GROUP_INDICATOR_LENGTH - thumb) * CGFloat(first) / CGFloat(max(maxFirst, 1))
+    ZStack(alignment: .top) {
+      Capsule().fill(Palette.guide)
+      Capsule()
+        .fill(Palette.secondaryText)
+        .frame(height: thumb)
+        .offset(y: travel)
+        .animation(.easeOut(duration: GROUP_STEP_SECONDS), value: first)
+    }
+    .frame(width: GROUP_INDICATOR_WIDTH, height: GROUP_INDICATOR_LENGTH)
   }
 }
 
@@ -148,6 +184,22 @@ private struct BearingArrow: Shape {
 ///
 /// @parity /watch/wearos/src/main/java/app/vescape/wear/GroupRidePage.kt `GROUP_PAGE_ROWS`
 private let GROUP_PAGE_ROWS = 5
+
+/// The position bar: 40 pt tall, 3 pt wide, centred between the rim gauges' 4 pt line and the rows,
+/// which stop at `Rim.innerInset`. It hangs just below the right edge's midpoint, beside the bare
+/// stretch of rim between duty's origin and the controller temperature: clear of the duty head
+/// tick, which reaches in past the bar while duty is near 0 %.
+///
+/// @parity /watch/wearos/src/main/java/app/vescape/wear/GroupRidePage.kt `GROUP_INDICATOR_LENGTH`
+private let GROUP_INDICATOR_LENGTH: CGFloat = 40
+private let GROUP_INDICATOR_WIDTH: CGFloat = 3
+private let GROUP_INDICATOR_INSET: CGFloat = (Rim.innerInset + RimStyle.strong.valueWidth - GROUP_INDICATOR_WIDTH) / 2
+private let GROUP_INDICATOR_DROP: CGFloat = GROUP_INDICATOR_LENGTH / 2 + 6
+
+/// How long one crown step slides the rows.
+///
+/// @parity /watch/wearos/src/main/java/app/vescape/wear/GroupRidePage.kt `GROUP_STEP_MS`
+private let GROUP_STEP_SECONDS = 0.15
 private let GROUP_ROW_HEIGHT: CGFloat = 22
 /// On the 40 mm display the row is 138 pt (the display less the rim inset): 93 pt of fixed columns
 /// leaves 45 pt, a five-character name ("Tomek" is 42.5 pt) at full size.

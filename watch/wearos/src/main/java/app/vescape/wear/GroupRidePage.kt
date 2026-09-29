@@ -1,5 +1,12 @@
 package app.vescape.wear
 
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
+import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.focusable
 import androidx.compose.foundation.layout.Box
@@ -18,6 +25,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -39,6 +47,9 @@ import androidx.compose.ui.unit.coerceIn
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.wear.compose.material.MaterialTheme
+import androidx.wear.compose.material.PositionIndicator
+import androidx.wear.compose.material.PositionIndicatorState
+import androidx.wear.compose.material.PositionIndicatorVisibility
 import androidx.wear.compose.material.Text
 import kotlin.math.sqrt
 
@@ -48,8 +59,10 @@ import kotlin.math.sqrt
  * the Rider's course, distance, and one status slot ([groupRideStatus]). Alone, it says so.
  *
  * Up to [GROUP_PAGE_ROWS] rows, centred on the face. Past that, the crown steps the window a row at
- * a time — only once this page has settled ([crownActive]); the vertical swipe stays the pager's. The nav map and readout are hidden under this page
- * by the caller. Ambient parks the pager on the gauges, so this is never drawn there.
+ * a time — only once this page has settled ([crownActive]); the vertical swipe stays the pager's.
+ * Each step slides the rows by one, and a position arc on the right shows where the window sits in
+ * the list. The nav map and readout are hidden under this page by the caller. Ambient parks the
+ * pager on the gauges, so this is never drawn there.
  *
  * @parity /watch/watchos/GroupRidePage.swift `GroupRidePage`
  * @platform-diff The pager here does not take the crown, so the settled list owns it even when it
@@ -68,6 +81,8 @@ internal fun GroupRidePage(crownActive: Boolean) {
     val start = first.coerceIn(0, maxFirst)
     val stepPx = with(LocalDensity.current) { GROUP_ROW_H.toPx() }
     val focusRequester = remember { FocusRequester() }
+    val window by rememberUpdatedState(start to rows.size)
+    val indicator = remember { GroupWindowIndicatorState { window } }
     LaunchedEffect(crownActive) { if (crownActive) focusRequester.requestFocus() }
 
     BoxWithConstraints(
@@ -86,9 +101,8 @@ internal fun GroupRidePage(crownActive: Boolean) {
             .focusRequester(focusRequester)
             .focusable(enabled = crownActive),
     ) {
-        val visible = rows.subList(start, minOf(rows.size, start + GROUP_PAGE_ROWS))
         val limit = minOf(maxWidth, maxHeight) / 2 * GROUP_PAGE_SAFE_RADIUS
-        val bodyH = if (rows.isEmpty()) GROUP_ROW_H else GROUP_ROW_H * visible.size
+        val bodyH = if (rows.isEmpty()) GROUP_ROW_H else GROUP_ROW_H * minOf(rows.size, GROUP_PAGE_ROWS)
         val blockH = GROUP_TITLE_H + GROUP_TITLE_GAP + bodyH
         val rowsTop = -blockH / 2 + GROUP_TITLE_H + GROUP_TITLE_GAP
 
@@ -112,14 +126,61 @@ internal fun GroupRidePage(crownActive: Boolean) {
                     )
                 }
             }
-            visible.forEachIndexed { i, row ->
-                // Fixed width, narrowed to the safe circle's chord at the row's centre line.
-                val mid = (rowsTop + GROUP_ROW_H * i + GROUP_ROW_H / 2).value
-                val half = sqrt((limit.value * limit.value - mid * mid).coerceAtLeast(0f))
-                GroupRideRowView(row, unitSystem, (half * 2).dp.coerceIn(GROUP_ROW_MIN_W, GROUP_ROW_W))
+            AnimatedContent(
+                targetState = start,
+                transitionSpec = {
+                    // One row's travel: the list reads as scrolled rather than swapped.
+                    val down = if (targetState > initialState) 1 else -1
+                    val slideIn = slideInVertically(tween(GROUP_STEP_MS)) { down * it / GROUP_PAGE_ROWS }
+                    val slideOut = slideOutVertically(tween(GROUP_STEP_MS)) { -down * it / GROUP_PAGE_ROWS }
+                    (slideIn + fadeIn(tween(GROUP_STEP_MS))) togetherWith (slideOut + fadeOut(tween(GROUP_STEP_MS)))
+                },
+                label = "group-rows",
+            ) { windowStart ->
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    rows.subList(windowStart, minOf(rows.size, windowStart + GROUP_PAGE_ROWS)).forEachIndexed { i, row ->
+                        // Fixed width, narrowed to the safe circle's chord at the row's centre line.
+                        val mid = (rowsTop + GROUP_ROW_H * i + GROUP_ROW_H / 2).value
+                        val half = sqrt((limit.value * limit.value - mid * mid).coerceAtLeast(0f))
+                        GroupRideRowView(row, unitSystem, (half * 2).dp.coerceIn(GROUP_ROW_MIN_W, GROUP_ROW_W))
+                    }
+                }
+            }
+        }
+        if (maxFirst > 0) {
+            // The library centres the arc on 3 o'clock; turn it down about the face centre into the
+            // controller temperature's stretch of rim, clear of the duty head tick parked there near 0 %.
+            Box(modifier = Modifier.fillMaxSize().graphicsLayer { rotationZ = GROUP_INDICATOR_TURN_DEG }) {
+                PositionIndicator(
+                    state = indicator,
+                    indicatorHeight = GROUP_INDICATOR_LENGTH,
+                    indicatorWidth = GROUP_INDICATOR_WIDTH,
+                    paddingHorizontal = GAUGE_INNER_INSET,
+                    background = GuideColor,
+                    color = SecondaryText,
+                )
             }
         }
     }
+}
+
+/**
+ * The crown window as a [PositionIndicator] reads it: where the first row sits among the scrollable
+ * starts, and how much of the list shows. [window] is the first row and the list's length.
+ *
+ * @parity /watch/watchos/GroupRidePage.swift `GroupWindowIndicator`
+ */
+private class GroupWindowIndicatorState(private val window: () -> Pair<Int, Int>) : PositionIndicatorState {
+    override val positionFraction: Float
+        get() {
+            val (first, total) = window()
+            return first.toFloat() / (total - GROUP_PAGE_ROWS).coerceAtLeast(1)
+        }
+
+    override fun sizeFraction(scrollableContainerSizePx: Float): Float =
+        GROUP_PAGE_ROWS.toFloat() / window().second.coerceAtLeast(GROUP_PAGE_ROWS)
+
+    override fun visibility(scrollableContainerSizePx: Float) = PositionIndicatorVisibility.Show
 }
 
 @Composable
@@ -206,6 +267,26 @@ private fun DrawScope.drawBearingArrow(color: Color) {
  * @parity /watch/watchos/GroupRidePage.swift `GROUP_PAGE_ROWS`
  */
 private const val GROUP_PAGE_ROWS = 5
+
+/**
+ * The position arc: 40 dp along the rim, 3 dp thick, its outer edge on [GAUGE_INNER_INSET] — inside
+ * the rim arcs, and well clear of the rows, which the safe circle holds to about 75 dp from the
+ * centre. Turned [GROUP_INDICATOR_TURN_DEG] below 3 o'clock, it spans about 6–30°: inside the
+ * controller temperature arc (4–36°), which draws no head tick, and below the duty head tick, which
+ * reaches in past the arc while duty is near 0 %.
+ *
+ * @parity /watch/watchos/GroupRidePage.swift `GROUP_INDICATOR_LENGTH`
+ */
+private val GROUP_INDICATOR_LENGTH = 40.dp
+private val GROUP_INDICATOR_WIDTH = 3.dp
+private const val GROUP_INDICATOR_TURN_DEG = 18f
+
+/**
+ * How long one crown step slides the rows.
+ *
+ * @parity /watch/watchos/GroupRidePage.swift `GROUP_STEP_SECONDS`
+ */
+private const val GROUP_STEP_MS = 150
 
 /** Each row's width is clamped to the chord of this share of the face radius at its centre line. */
 private const val GROUP_PAGE_SAFE_RADIUS = 0.8f
