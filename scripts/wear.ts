@@ -308,13 +308,13 @@ async function pairEmulator(requestedPhone: string | null) {
 }
 
 /**
- * Restarts the Mirror on the chosen lane fixture. `-S` because a running activity keeps the intent
+ * Restarts the Mirror on the chosen lane fixture, joined to the fixture Group Ride with `--group`. `-S` because a running activity keeps the intent
  * it was started with, so without it the extra is delivered but never read.
  */
-async function startReplay(fixture: string, requested: string | null) {
+async function startReplay(fixture: string, group: boolean, requested: string | null) {
   const serial = (await findWatch(requested)).serial
   const packageName = applicationId()
-  console.log(`\nwear: replaying ${fixture} on ${serial}`)
+  console.log(`\nwear: replaying ${fixture}${group ? ' in a Group Ride' : ''} on ${serial}`)
   run([
     'adb',
     '-s',
@@ -328,6 +328,9 @@ async function startReplay(fixture: string, requested: string | null) {
     '--es',
     'replay',
     fixture,
+    '--ez',
+    'group',
+    String(group),
   ])
 }
 
@@ -358,11 +361,13 @@ if (command === 'emulator') {
 }
 
 if (command === 'replay') {
+  const groupFlag = args.indexOf('--group')
+  if (groupFlag !== -1) args.splice(groupFlag, 1)
   const fixture = args[1] ?? 'ride'
   if (!REPLAY_FIXTURES.includes(fixture as (typeof REPLAY_FIXTURES)[number])) {
     fail(`unknown fixture ${fixture} — expected ${REPLAY_FIXTURES.join(' | ')}`)
   }
-  await startReplay(fixture, requested)
+  await startReplay(fixture, groupFlag !== -1, requested)
   process.exit(0)
 }
 

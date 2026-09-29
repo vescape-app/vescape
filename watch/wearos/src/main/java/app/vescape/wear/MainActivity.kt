@@ -165,7 +165,7 @@ class MainActivity : ComponentActivity() {
         // paired phone exactly like physical Wear OS hardware.
         if (replayEnabled) {
             commandSender.replayTiltEcho = frameReplayer::echoTilt
-            frameReplayer.start(replayFixture())
+            frameReplayer.start(replayFixture(), group = intent?.getBooleanExtra("group", false) == true)
             return
         }
         publishWakeLevel()
@@ -208,7 +208,8 @@ class MainActivity : ComponentActivity() {
      * Which fixture the emulator replays. Defaults to the recorded ride; the lane sweep is reachable
      * without a rebuild:
      * `adb shell am start -S -n <pkg>/app.vescape.wear.MainActivity --es replay sweep`
-     * (`-S` because a running instance keeps its original intent).
+     * (`-S` because a running instance keeps its original intent). `--ez group true` also replays a
+     * joined Group Ride.
      */
     private fun replayFixture(): String =
         if (intent?.getStringExtra("replay") == "sweep") REPLAY_FIXTURE_SWEEP else REPLAY_FIXTURE_RIDE

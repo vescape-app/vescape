@@ -45,6 +45,68 @@ enum ReplaySceneParser {
     )
   }
 
+  /// Group Ride fixture (`watch-group-ride.json`). Levels are named ("warning", "critical") and a
+  /// missing one reads as normal; the phone classifies, so the fixture states them.
+  ///
+  /// @parity /watch/wearos/src/main/java/app/vescape/wear/FrameReplay.kt `parseReplayGroupRide`
+  static func parseGroupRide(json: String) -> ReplayGroupRide? {
+    // intentional-suppression: malformed replay fixtures return nil; the replay driver logs the failure.
+    guard let fixture = try? JSONDecoder().decode(GroupRideFixture.self, from: Data(json.utf8)),
+      !fixture.riders.isEmpty
+    else { return nil }
+    var riders: [ReplayGroupRider] = []
+    for rider in fixture.riders {
+      guard let color = UInt32(rider.color.replacingOccurrences(of: "#", with: ""), radix: 16) else {
+        return nil
+      }
+      riders.append(ReplayGroupRider(
+        rider: GroupRideFrameRider(
+          id: rider.id, name: rider.name, colorArgb: 0xFF00_0000 | color,
+          eastM: rider.east, northM: rider.north, stale: rider.stale ?? false,
+          batteryPercent: rider.battery,
+          batteryLevel: replayLevel(rider.batteryLevel), heatLevel: replayLevel(rider.heatLevel)
+        ),
+        swingEastM: rider.swing?.east ?? 0,
+        swingNorthM: rider.swing?.north ?? 0,
+        swingPeriodMs: Int64((rider.swing?.periodS ?? 0) * 1000)
+      ))
+    }
+    return ReplayGroupRide(courseDeg: fixture.courseDeg, spanM: fixture.spanM, riders: riders)
+  }
+
+  private static func replayLevel(_ name: String?) -> TelemetryLevel {
+    switch name?.lowercased() {
+    case "warning": return .warning
+    case "critical": return .critical
+    default: return .normal
+    }
+  }
+
+  private struct GroupRideFixture: Decodable {
+    let courseDeg: Double?
+    let spanM: Double
+    let riders: [Rider]
+
+    struct Rider: Decodable {
+      let id: String
+      let name: String
+      let color: String
+      let east: Double
+      let north: Double
+      let stale: Bool?
+      let battery: Int?
+      let batteryLevel: String?
+      let heatLevel: String?
+      let swing: Swing?
+    }
+
+    struct Swing: Decodable {
+      let east: Double?
+      let north: Double?
+      let periodS: Double?
+    }
+  }
+
   private struct WeatherFixture: Decodable {
     let temperatureC: Int
     let icon: String
@@ -61,6 +123,41 @@ enum ReplaySceneParser {
       let icon: String
       let precipitationProbability: Int
     }
+  }
+}
+
+/// The Group Ride fixture: each Rider sits at a base east/north offset and may swing sinusoidally
+/// around it, so distances, bearings and the in-range boundary move like a real ride.
+///
+/// @parity /watch/wearos/src/main/java/app/vescape/wear/FrameReplay.kt `ReplayGroupRide`
+struct ReplayGroupRide: Equatable {
+  let courseDeg: Double?
+  let spanM: Double
+  let riders: [ReplayGroupRider]
+
+  /// The frame the phone would push `elapsedMs` into replay; `courseDeg` is the ride's own when known.
+  func frame(atMs elapsedMs: Int64, courseDeg: Double?) -> GroupRideFrame {
+    GroupRideFrame(
+      courseDeg: courseDeg ?? self.courseDeg, spanM: spanM,
+      riders: riders.map { $0.at(elapsedMs) }
+    )
+  }
+}
+
+/// @parity /watch/wearos/src/main/java/app/vescape/wear/FrameReplay.kt `ReplayGroupRider`
+struct ReplayGroupRider: Equatable {
+  let rider: GroupRideFrameRider
+  let swingEastM: Double
+  let swingNorthM: Double
+  let swingPeriodMs: Int64
+
+  func at(_ elapsedMs: Int64) -> GroupRideFrameRider {
+    guard swingPeriodMs > 0 else { return rider }
+    let wave = sin(2 * Double.pi * Double(elapsedMs) / Double(swingPeriodMs))
+    var moved = rider
+    moved.eastM += swingEastM * wave
+    moved.northM += swingNorthM * wave
+    return moved
   }
 }
 

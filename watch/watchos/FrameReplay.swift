@@ -22,6 +22,10 @@ final class FrameReplayer {
   /// The tilt a replayed phone would be commanding: the last lock the wrist sent, or neutral. Read
   /// and written on the main actor only — the replay loop and the wrist's sends both run there.
   private var tilt = WatchTiltStick.center
+  /// The replayed Rider's latest course, which the phone also puts in its Group Ride Frame.
+  private var courseDeg: Double?
+  /// Feeds the Group Ride fixture at the phone's 1 Hz, when replay was asked to join one.
+  private var groupTask: Task<Void, Never>?
 
   init(link: PhoneLink) {
     self.link = link
@@ -50,9 +54,21 @@ final class FrameReplayer {
 #endif
   }
 
+  /// `--group` beside `--replay`: also play `watch-group-ride.json`, as if the Rider had joined a
+  /// Group Ride. Simulator only, like the fixture itself.
+  ///
+  /// @parity /watch/wearos/src/main/java/app/vescape/wear/MainActivity.kt `replayFixture`
+  static var requestedGroup: Bool {
+#if targetEnvironment(simulator)
+    return ProcessInfo.processInfo.arguments.contains("--group")
+#else
+    return false
+#endif
+  }
+
   /// Plays a fixture at its recorded pace, looping forever so the wrist keeps moving while the
-  /// visuals are being worked on.
-  func start(fixture: String) {
+  /// visuals are being worked on. `group` also feeds the Group Ride fixture about once a second.
+  func start(fixture: String, group: Bool) {
     guard task == nil else { return }
     guard
       let text = try? String(contentsOfFile: fixture, encoding: .utf8)
@@ -85,6 +101,23 @@ final class FrameReplayer {
       } else {
         print("[replay] missing weather fixture: \(weatherURL.path)")
       }
+      if group {
+        let groupURL = sceneURL.appendingPathComponent("watch-group-ride.json")
+        if let json = try? String(contentsOf: groupURL, encoding: .utf8),
+          let groupRide = ReplaySceneParser.parseGroupRide(json: json)
+        {
+          self?.groupTask = Task { @MainActor [link, weak self] in
+            let started = Date()
+            while !Task.isCancelled {
+              let elapsedMs = Int64(Date().timeIntervalSince(started) * 1000)
+              link.acceptReplayGroupRide(groupRide.frame(atMs: elapsedMs, courseDeg: self?.courseDeg))
+              try? await Task.sleep(for: .seconds(1))
+            }
+          }
+        } else {
+          print("[replay] missing or invalid group ride fixture: \(groupURL.path)")
+        }
+      }
       while !Task.isCancelled {
         var previous: Int64 = 0
         for sample in samples {
@@ -92,6 +125,7 @@ final class FrameReplayer {
           guard !Task.isCancelled else { return }
           previous = sample.atMs
           var frame = sample.frame
+          if let course = frame.courseDeg { self?.courseDeg = course }
           if let tilt = self?.tilt {
             frame.remoteTilt = tilt
             frame.tiltControl = tilt == WatchTiltStick.center ? .free : .manual
@@ -105,5 +139,7 @@ final class FrameReplayer {
   func stop() {
     task?.cancel()
     task = nil
+    groupTask?.cancel()
+    groupTask = nil
   }
 }

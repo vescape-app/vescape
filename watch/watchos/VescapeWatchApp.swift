@@ -21,7 +21,7 @@ struct VescapeWatchApp: App {
             guard replayer == nil else { return }
             let replayer = FrameReplayer(link: link)
             link.replayTiltEcho = { [weak replayer] value in replayer?.echoTilt(value) }
-            replayer.start(fixture: fixture)
+            replayer.start(fixture: fixture, group: FrameReplayer.requestedGroup)
             self.replayer = replayer
           } else {
             link.activate()

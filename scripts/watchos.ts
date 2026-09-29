@@ -83,5 +83,6 @@ if (command === 'replay') {
     build.PRODUCT_BUNDLE_IDENTIFIER,
     '--replay',
     join(ROOT, 'watch/wearos/src/main/assets/watch-ride.jsonl'),
+    ...(Bun.argv.includes('--group') ? ['--group'] : []),
   ])
 }

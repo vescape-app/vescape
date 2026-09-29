@@ -215,7 +215,10 @@ adb -s <serial> shell am start -S -n app.vescape.dev/app.vescape.wear.MainActivi
 ```
 
 `-S` because a running activity keeps the intent it was started with. `--es replay sweep` walks every
-lane's full range instead of replaying the ride. Add `--ez lowBit true` or `--ez burnIn true` to
+lane's full range instead of replaying the ride. `bun run wear:replay ride --group` (`--ez group true`)
+also joins the replay to a Group Ride: `watch-group-ride.json` is fed into `GroupRideState` at 1 Hz, a
+cast covering in-range dots, far triangles, stale, battery and heat levels, no Board, and more than
+five rows. Without `--group` the not-joined layout replays. Add `--ez lowBit true` or `--ez burnIn true` to
 render for those panels. Screenshot with `adb -s <serial> exec-out screencap -p > shot.png`.
 
 The emulator renders ambient at full brightness with normal colour, so it answers layout questions

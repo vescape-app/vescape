@@ -330,6 +330,13 @@ final class PhoneLink: NSObject, ObservableObject, WCSessionDelegate {
     }
   }
 
+  /// Replay's Group Ride Frames, landing exactly where a decoded phone frame does.
+  /// @parity /watch/wearos/src/main/java/app/vescape/wear/FrameReplay.kt `pushGroupRide`
+  @MainActor
+  func acceptReplayGroupRide(_ frame: GroupRideFrame) {
+    acceptGroupRide(frame, nowMs: Self.nowMs())
+  }
+
   /// Same forecast decoder as the phone context, without replacing unrelated channels.
   /// @parity /watch/wearos/src/main/java/app/vescape/wear/FrameReplay.kt `loadScene`
   @MainActor
@@ -399,10 +406,12 @@ final class PhoneLink: NSObject, ObservableObject, WCSessionDelegate {
           let frame = GroupRideFrameCodec.decode(data)
     else { return }
     let nowMs = Self.nowMs()
-    DispatchQueue.main.async {
-      self.groupRide = WatchGroupRide.accepting(frame, previous: self.groupRide)
-      self.lastGroupRideAtMs = nowMs
-    }
+    DispatchQueue.main.async { self.acceptGroupRide(frame, nowMs: nowMs) }
+  }
+
+  private func acceptGroupRide(_ frame: GroupRideFrame, nowMs: Int64) {
+    groupRide = WatchGroupRide.accepting(frame, previous: groupRide)
+    lastGroupRideAtMs = nowMs
   }
 
   func session(_ session: WCSession, didReceiveMessageData messageData: Data) {
