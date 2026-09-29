@@ -69,6 +69,8 @@ import kotlin.math.sin
  * - [focus] — nav focus (up-drag over the gauges): readouts leave, the nav stack stays and grows.
  * - [controlFocus] — the horizontal control pager (Move, diagnostics): readouts and nav stack leave.
  * - [weatherFocus] — the forecast page above: readouts and nav stack leave.
+ * - [groupFocus] — the Group Ride page below nav focus: the nav stack leaves too; readouts are
+ *   already gone with [focus].
  *
  * The clock and the forecast readout at the top rim gap fade with the readouts; on the weather
  * centre they would otherwise duplicate the fuller forecast underneath.
@@ -84,6 +86,7 @@ internal fun FrameLayout(
     focus: () -> Float = { 0f },
     controlFocus: () -> Float = { 0f },
     weatherFocus: () -> Float = { 0f },
+    groupFocus: () -> Float = { 0f },
     onWeatherClick: (() -> Unit)? = null,
     ambient: AmbientMode = AmbientOff,
     showReadouts: Boolean = true,
@@ -107,8 +110,8 @@ internal fun FrameLayout(
 
     // Readouts leave for any focus mode; the nav stack survives nav focus alone.
     val readoutFocus = { maxOf(focus(), controlFocus(), weatherFocus()) }
-    // PROTOTYPE — the Group Ride list page hides the map under it.
-    val navStackAlpha = { fadeOut(maxOf(controlFocus(), weatherFocus(), GroupRidePrototype.pageFocus())) }
+    // The Group Ride page below nav focus hides the map, route, readout and Group Ride marks too.
+    val navStackAlpha = { fadeOut(maxOf(controlFocus(), weatherFocus(), groupFocus())) }
 
     val navBearing = frame.navBearing
     val navDistance = frame.navDistanceM

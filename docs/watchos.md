@@ -256,6 +256,11 @@ gauges, navigation. The control axis nests inside the gauges page — gauges, Ti
 diagnostics — and shows no page dots, because they land on the battery gauge and Android has none
 either. The pages those slices fill arrived with later slices (#486–#491); the axes are the point.
 
+The Group Ride page follows navigation while the Rider is joined. Its list takes the crown only
+while it is the settled page and has more than five Riders; there a swipe pages back up, and once
+the page is left the crown pages the vertical axis again. Wear OS's pager has no crown binding, so
+its list always owns it.
+
 ### Where the wrist logic lives
 
 The parts with a right answer — the reducer, the gauge fractions, the readout strings, the fixture

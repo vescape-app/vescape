@@ -91,7 +91,7 @@ private func flagColor(_ rider: GroupRideFrameRider) -> Color? {
   rider.stale ? nil : levelColor(rider.flagLevel)
 }
 
-private func levelColor(_ level: TelemetryLevel) -> Color? {
+func levelColor(_ level: TelemetryLevel) -> Color? {
   switch level {
   case .normal: return nil
   case .warning: return Palette.warning
@@ -148,7 +148,9 @@ private extension GraphicsContext {
       context.draw(battery, at: CGPoint(x: flagX, y: origin.y), anchor: .topLeading)
     }
   }
+}
 
+extension GraphicsContext {
   /// Thermometer in `box`: stroked stem, filled bulb, a short mercury line up the stem.
   ///
   /// @parity /watch/wearos/src/main/java/app/vescape/wear/GroupRide.kt `drawThermometer`
@@ -215,7 +217,7 @@ private func staleOpacity(at date: Date) -> Double {
   return GROUP_STALE_MAX_OPACITY + (GROUP_STALE_MIN_OPACITY - GROUP_STALE_MAX_OPACITY) * t
 }
 
-private extension Color {
+extension Color {
   init(argb: UInt32) {
     self.init(
       .sRGB,

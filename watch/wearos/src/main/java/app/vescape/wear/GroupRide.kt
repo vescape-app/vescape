@@ -53,7 +53,76 @@ internal data class WatchGroupRide(
     /** Where [rider] is relative to the Rider's travel direction: 0 ahead, 90 right, 180 behind. */
     fun bearingDeg(rider: GroupRideFrameRider): Double =
         relativeBearingDeg(rider.eastM, rider.northM, courseDeg)
+
+    /** The Group Ride page's rows: every other Rider, nearest first, ties by id so rows never swap. */
+    fun roster(): List<GroupRideRow> =
+        riders.sortedWith(compareBy({ it.distanceM }, { it.id })).map { rider ->
+            GroupRideRow(
+                rider = rider,
+                name = rider.name.takeCodePoints(GROUP_ROW_NAME_CHARS),
+                bearingDeg = bearingDeg(rider),
+                status = groupRideStatus(rider),
+            )
+        }
 }
+
+/**
+ * One Group Ride page row. [name] is cut to [GROUP_ROW_NAME_CHARS] characters.
+ *
+ * @parity /modules/vescape-core/ios/watch/WatchMapProjection.swift `WatchGroupRideRow`
+ */
+internal data class GroupRideRow(
+    val rider: GroupRideFrameRider,
+    val name: String,
+    val bearingDeg: Double,
+    val status: GroupRideStatus,
+)
+
+/**
+ * A row's one status slot.
+ *
+ * @parity /modules/vescape-core/ios/watch/WatchMapProjection.swift `WatchGroupRideStatus`
+ */
+internal sealed interface GroupRideStatus {
+    /** Stale: the Rider's readings are as old as their place, so none is shown. */
+    data object Lost : GroupRideStatus
+
+    /** Running hot, at the heat level: a thermometer. */
+    data class Hot(val level: TelemetryLevel) : GroupRideStatus
+
+    /** Battery SoC Estimate, coloured by its level. */
+    data class Battery(val percent: Int, val level: TelemetryLevel) : GroupRideStatus
+
+    /** No Board Session: a dash. */
+    data object NoBoard : GroupRideStatus
+}
+
+/**
+ * The status slot, first match wins: lost when stale, thermometer when hot, dash without a Board,
+ * else battery %. The phone classified the levels; nothing is thresholded here.
+ *
+ * @parity /modules/vescape-core/ios/watch/WatchMapProjection.swift `groupRideStatus`
+ */
+internal fun groupRideStatus(rider: GroupRideFrameRider): GroupRideStatus {
+    val battery = rider.batteryPercent
+    return when {
+        rider.stale -> GroupRideStatus.Lost
+        rider.heatLevel != TelemetryLevel.NORMAL -> GroupRideStatus.Hot(rider.heatLevel)
+        battery == null -> GroupRideStatus.NoBoard
+        else -> GroupRideStatus.Battery(battery, rider.batteryLevel)
+    }
+}
+
+/** First [count] Unicode scalars, so a cut never splits a surrogate pair. */
+private fun String.takeCodePoints(count: Int): String =
+    substring(0, offsetByCodePoints(0, minOf(count, codePointCount(0, length))))
+
+/**
+ * A Group Ride page name is cut to this many characters.
+ *
+ * @parity /modules/vescape-core/ios/watch/WatchMapProjection.swift `GROUP_ROW_NAME_CHARS`
+ */
+internal const val GROUP_ROW_NAME_CHARS = 5
 
 /**
  * Wrist-side Group Ride state. A frame lands here from [MainActivity]; [refresh] drops the group once
@@ -333,7 +402,7 @@ internal fun GroupRideEdgeLayer(navFocus: () -> Float, alpha: () -> Float) {
 private fun flagColor(rider: GroupRideFrameRider): Color? =
     if (rider.stale) null else levelColor(rider.flagLevel)
 
-private fun levelColor(level: TelemetryLevel): Color? = when (level) {
+internal fun levelColor(level: TelemetryLevel): Color? = when (level) {
     TelemetryLevel.NORMAL -> null
     TelemetryLevel.WARNING -> WarningColor
     TelemetryLevel.CRITICAL -> CriticalColor
@@ -475,7 +544,7 @@ private fun rememberGroupRideLabels(): GroupRideLabels {
  *
  * @parity /watch/watchos/GroupRideLayer.swift `drawThermometer`
  */
-private fun DrawScope.drawThermometer(color: Color, origin: Offset, box: Size) = translate(origin.x, origin.y) {
+internal fun DrawScope.drawThermometer(color: Color, origin: Offset, box: Size) = translate(origin.x, origin.y) {
     val stroke = THERMOMETER_STROKE.toPx()
     val cx = box.width / 2f
     val stemWidth = box.width * 0.28f

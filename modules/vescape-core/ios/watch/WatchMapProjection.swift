@@ -297,7 +297,63 @@ struct WatchGroupRide: Equatable {
   func bearingDeg(of rider: GroupRideFrameRider) -> Double {
     relativeBearingDeg(eastM: rider.eastM, northM: rider.northM, courseDeg: courseDeg)
   }
+
+  /// The Group Ride page's rows: every other Rider, nearest first, ties by id so rows never swap.
+  ///
+  /// @parity /watch/wearos/src/main/java/app/vescape/wear/GroupRide.kt `roster`
+  func roster() -> [WatchGroupRideRow] {
+    riders
+      .sorted { $0.distanceM != $1.distanceM ? $0.distanceM < $1.distanceM : $0.id < $1.id }
+      .map { rider in
+        WatchGroupRideRow(
+          rider: rider,
+          name: String(String.UnicodeScalarView(rider.name.unicodeScalars.prefix(GROUP_ROW_NAME_CHARS))),
+          bearingDeg: bearingDeg(of: rider),
+          status: groupRideStatus(rider)
+        )
+      }
+  }
 }
+
+/// One Group Ride page row. `name` is cut to `GROUP_ROW_NAME_CHARS` Unicode scalars.
+///
+/// @parity /watch/wearos/src/main/java/app/vescape/wear/GroupRide.kt `GroupRideRow`
+struct WatchGroupRideRow: Equatable {
+  let rider: GroupRideFrameRider
+  let name: String
+  let bearingDeg: Double
+  let status: WatchGroupRideStatus
+}
+
+/// A row's one status slot.
+///
+/// @parity /watch/wearos/src/main/java/app/vescape/wear/GroupRide.kt `GroupRideStatus`
+enum WatchGroupRideStatus: Equatable {
+  /// Stale: the Rider's readings are as old as their place, so none is shown.
+  case lost
+  /// Running hot, at the heat level: a thermometer.
+  case hot(TelemetryLevel)
+  /// Battery SoC Estimate, coloured by its level.
+  case battery(percent: Int, level: TelemetryLevel)
+  /// No Board Session: a dash.
+  case noBoard
+}
+
+/// The status slot, first match wins: lost when stale, thermometer when hot, dash without a Board,
+/// else battery %. The phone classified the levels; nothing is thresholded here.
+///
+/// @parity /watch/wearos/src/main/java/app/vescape/wear/GroupRide.kt `groupRideStatus`
+func groupRideStatus(_ rider: GroupRideFrameRider) -> WatchGroupRideStatus {
+  if rider.stale { return .lost }
+  if rider.heatLevel != .normal { return .hot(rider.heatLevel) }
+  guard let percent = rider.batteryPercent else { return .noBoard }
+  return .battery(percent: percent, level: rider.batteryLevel)
+}
+
+/// A Group Ride page name is cut to this many characters.
+///
+/// @parity /watch/wearos/src/main/java/app/vescape/wear/GroupRide.kt `GROUP_ROW_NAME_CHARS`
+let GROUP_ROW_NAME_CHARS = 5
 
 /// Three missed 1 Hz frames and the group is gone from the wrist.
 ///

@@ -62,15 +62,24 @@ internal fun MirrorScreen(
     // stacked vertical pagers used to compete for the same drag — the inner one claimed the
     // pointer, forwarded the leftover delta to the outer one but kept the velocity, so the outer
     // could only settle by dragging past half the screen and a normal flick sprang back.
-    val verticalPagerState = rememberPagerState(initialPage = VERTICAL_PAGE_GAUGES, pageCount = { VERTICAL_PAGE_COUNT + 1 }) // PROTOTYPE — + Group Ride page
-    // Fractional position on the axis, from radar at 0 up to nav focus at the end. Both focus
-    // progresses are read off it, so a drag fades exactly as far as it has travelled.
+    // The Group Ride page exists only while joined. It is the last page, so adding or dropping it
+    // never renumbers the pages above it. Derived: a frame lands every second, and only joining or
+    // leaving may touch the pager.
+    val joined by remember { derivedStateOf { GroupRideState.group.value != null } }
+    val verticalPagerState = rememberPagerState(
+        initialPage = VERTICAL_PAGE_GAUGES,
+        pageCount = { if (joined) VERTICAL_PAGE_COUNT_JOINED else VERTICAL_PAGE_COUNT },
+    )
+    // Fractional position on the axis, from radar at 0 down to the last page. Every focus
+    // progress is read off it, so a drag fades exactly as far as it has travelled.
     val verticalPosition = {
         verticalPagerState.currentPage + verticalPagerState.currentPageOffsetFraction
     }
     // Nav focus is a page of its own so the drag is a real gesture, but nothing new is drawn there:
     // the gauges pin themselves in place (see [navFocus]) and shed their readouts on the way.
     val navFocus = { (verticalPosition() - VERTICAL_PAGE_GAUGES).coerceIn(0f, 1f) }
+    // The Group Ride page taking over from nav focus: the map and nav readout leave for it.
+    val groupFocus = { (verticalPosition() - VERTICAL_PAGE_NAV).coerceIn(0f, 1f) }
     val scope = rememberCoroutineScope()
     // Which page owns the vertical axis right now. The radar page fetches while it is on screen and
     // nowhere else, so this is the difference between an idle wrist and a fetching one.
@@ -88,6 +97,14 @@ internal fun MirrorScreen(
     }
     BackHandler(enabled = !showClosePrompt && onGauges) {
         showClosePrompt = true
+    }
+
+    // Leaving the ride on the Group Ride page lands on nav focus, one page up, rather than wherever
+    // the pager's own clamp would settle.
+    LaunchedEffect(joined) {
+        if (!joined && verticalPagerState.currentPage > VERTICAL_PAGE_NAV) {
+            verticalPagerState.scrollToPage(VERTICAL_PAGE_NAV)
+        }
     }
 
     LaunchedEffect(isAmbient) {
@@ -118,18 +135,6 @@ internal fun MirrorScreen(
                         .coerceIn(0f, 1f)
                 }
                 val weatherFocus = { (VERTICAL_PAGE_GAUGES - verticalPosition()).coerceIn(0f, 1f) }
-                // PROTOTYPE — Group Ride scope.
-                GroupRidePrototype.Tick()
-                GroupRidePrototype.pageFocus = { (verticalPosition() - VERTICAL_PAGE_NAV).coerceIn(0f, 1f) }
-                val groupScope = GroupRideProtoScope(
-                    riders = GroupRidePrototype.riders,
-                    navFocus = { navFocus().coerceAtMost(1f) },
-                    otherFocus = {
-                        maxOf(controlFocus(), weatherFocus(), (verticalPosition() - VERTICAL_PAGE_NAV).coerceIn(0f, 1f))
-                    },
-                    ambient = ambient,
-                )
-                GroupRidePrototype.scope = groupScope
                 // The wrist goes always-on wherever the rider left it. Ambient only ever draws the
                 // gauges, so park both axes there first — without this the arcs would be pinned
                 // over a control page the rider can no longer swipe away.
@@ -235,8 +240,7 @@ internal fun MirrorScreen(
                                     // swap — a pager clips its pages, so content inside would
                                     // slide away instead of pinning.
                                     VERTICAL_PAGE_NAV -> Unit
-                                    // PROTOTYPE — Group Ride page below nav focus.
-                                    VERTICAL_PAGE_COUNT -> GroupRidePrototypeUi.Page(groupScope)
+                                    VERTICAL_PAGE_GROUP -> GroupRidePage()
                                     else -> HorizontalPager(
                                         state = controlPagerState,
                                         userScrollEnabled = !isAmbient && !controlHeld,
@@ -294,6 +298,7 @@ internal fun MirrorScreen(
                                 focus = navFocus,
                                 controlFocus = controlFocus,
                                 weatherFocus = weatherFocus,
+                                groupFocus = groupFocus,
                                 onWeatherClick = if (weatherTappable) {
                                     {
                                         scope.launch {
@@ -307,8 +312,7 @@ internal fun MirrorScreen(
                             // Group Ride edge triangles: over the rim arcs. Hidden in ambient.
                             if (!isAmbient) {
                                 GroupRideEdgeLayer(navFocus = navFocus, alpha = {
-                                    // PROTOTYPE — the Group Ride list page hides the map under it.
-                                    fadeOut(maxOf(controlFocus(), weatherFocus(), GroupRidePrototype.pageFocus()))
+                                    fadeOut(maxOf(controlFocus(), weatherFocus(), groupFocus()))
                                 })
                             }
                         }
@@ -326,15 +330,18 @@ private const val PAGE_SNAP_THRESHOLD = 0.25f
 private const val CONTROL_IDLE_RETURN_MS = 45_000L
 
 /**
- * Radar and weather above the gauges, nav focus below: one pager owns the whole vertical axis.
- * Radar sits above the forecast because it is the same subject one step further out — the rider
- * swipes up from the numbers, to the hours, to the sky itself.
+ * Radar and weather above the gauges, nav focus below, and the Group Ride page below that while
+ * joined: one pager owns the whole vertical axis. Radar sits above the forecast because it is the
+ * same subject one step further out — the rider swipes up from the numbers, to the hours, to the sky
+ * itself.
  */
 private const val VERTICAL_PAGE_RADAR = 0
 private const val VERTICAL_PAGE_WEATHER = 1
 private const val VERTICAL_PAGE_GAUGES = 2
 private const val VERTICAL_PAGE_NAV = 3
+private const val VERTICAL_PAGE_GROUP = 4
 private const val VERTICAL_PAGE_COUNT = 4
+private const val VERTICAL_PAGE_COUNT_JOINED = 5
 
 /** Gauges centre, Remote Tilt, Board Move, board Lights, diagnostics. */
 private const val CONTROL_PAGE_GAUGES = 0
@@ -351,6 +358,7 @@ private fun MirrorContent(
     focus: () -> Float = { 0f },
     controlFocus: () -> Float = { 0f },
     weatherFocus: () -> Float = { 0f },
+    groupFocus: () -> Float = { 0f },
     onWeatherClick: (() -> Unit)? = null,
 ) {
     val link by TelemetryState.phoneLink
@@ -361,7 +369,7 @@ private fun MirrorContent(
         // lost, and it hid that the clock, forecast and battery arc still had something to say.
         MirrorStatus.DISCONNECTED -> if (notice == null) {
             // Nothing the wrist could fix: the shell reads as it does for a board-less frame.
-            FrameLayout(EMPTY_FRAME, false, focus, controlFocus, weatherFocus, onWeatherClick, ambient)
+            FrameLayout(EMPTY_FRAME, false, focus, controlFocus, weatherFocus, groupFocus, onWeatherClick, ambient)
         } else {
             FrameLayout(
                 EMPTY_FRAME,
@@ -369,6 +377,7 @@ private fun MirrorContent(
                 focus,
                 controlFocus,
                 weatherFocus,
+                groupFocus,
                 onWeatherClick,
                 ambient,
                 showReadouts = false,
@@ -385,11 +394,11 @@ private fun MirrorContent(
             }
         }
         MirrorStatus.WAITING ->
-            FrameLayout(state.frame!!, false, focus, controlFocus, weatherFocus, onWeatherClick, ambient)
+            FrameLayout(state.frame!!, false, focus, controlFocus, weatherFocus, groupFocus, onWeatherClick, ambient)
         MirrorStatus.STALE ->
-            FrameLayout(state.frame!!, true, focus, controlFocus, weatherFocus, onWeatherClick, ambient)
+            FrameLayout(state.frame!!, true, focus, controlFocus, weatherFocus, groupFocus, onWeatherClick, ambient)
         MirrorStatus.LIVE ->
-            FrameLayout(state.frame!!, false, focus, controlFocus, weatherFocus, onWeatherClick, ambient)
+            FrameLayout(state.frame!!, false, focus, controlFocus, weatherFocus, groupFocus, onWeatherClick, ambient)
     }
 }
 

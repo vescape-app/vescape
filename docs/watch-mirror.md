@@ -255,6 +255,15 @@ without a version bump; the version byte moves only for a change older wrists mu
 battery and level bytes were appended this way: an older wrist skips them, and a record from an
 older phone decodes as no battery and normal levels.
 
+While the wrist holds a Group Ride, the vertical axis gains a last page one swipe below nav focus:
+the Group Ride page. Title "Group · N", then every other Rider nearest first — colour dot, name cut
+to five characters, an arrow to their bearing off the Rider's course, distance, and one status slot:
+"lost" when stale, else a thermometer in the heat level's colour when hot, else "—" without a Board,
+else battery % (orange or red at its level). Alone it reads "Waiting for riders". Five rows fit;
+past that the crown steps the list a row at a time. The map, route, nav readout and Group Ride marks
+fade out as the page arrives. The group dropping while the page is shown lands the rider on nav
+focus. Not joined, the axis is exactly radar, weather, gauges, nav focus.
+
 `/settings` is a `DataMap` rather than a packed frame because settings accrete one at a time: an
 unknown key is ignored by an older watch, and a key an older phone never sends leaves the watch on
 its own default. That is what makes it the place to put the next mirrored setting, and why it needs
