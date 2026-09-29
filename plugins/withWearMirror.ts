@@ -46,14 +46,18 @@ const withWearMirror: ConfigPlugin = (config) =>
       const dest = path.join(androidRoot, 'wearos')
       rmSync(dest, { recursive: true, force: true })
       cpSync(source, dest, { recursive: true })
-      // The native phone and wrist compile the same pure units conversion source.
-      cpSync(
-        path.join(
-          projectRoot,
-          'modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/UnitPresentation.kt',
-        ),
-        path.join(dest, 'src/main/java/app/vescape/wear/UnitPresentation.kt'),
-      )
+      // The native phone and wrist compile the same pure sources: units conversion, and the Group
+      // Ride Frame codec, so its encoder and decoder cannot drift.
+      for (const shared of ['telemetry/UnitPresentation.kt', 'watch/GroupRideFrame.kt']) {
+        cpSync(
+          path.join(
+            projectRoot,
+            'modules/vescape-core/android/src/main/java/expo/modules/vescapecore',
+            shared,
+          ),
+          path.join(dest, 'src/main/java/app/vescape/wear', path.basename(shared)),
+        )
+      }
 
       // Android resource names cannot contain capitals or hyphens. Copy the shared app faces
       // under resource-safe names rather than maintaining a second set in the watch source.

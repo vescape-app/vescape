@@ -3,6 +3,9 @@ package expo.modules.vescapecore
 import android.os.Handler
 import android.util.Log
 import expo.modules.vescapecore.appstatus.OnlineCapability
+import expo.modules.vescapecore.watch.GeoPoint
+import expo.modules.vescapecore.watch.GroupRideRoster
+import expo.modules.vescapecore.watch.GroupRideRosterRider
 import okhttp3.OkHttpClient
 import okhttp3.Response
 import okhttp3.WebSocket
@@ -73,6 +76,8 @@ internal class GroupRideObserver(
     private val knownRides = LinkedHashMap<String, Map<String, Any?>>()
     private var lastRosterRideId: String? = null
     private var lastRoster: List<Map<String, Any?>> = emptyList()
+    /** [lastRoster] typed for native readers; kept in step by [emitRoster]. */
+    private var lastRosterRiders: List<GroupRideRosterRider> = emptyList()
     /** Remover for the App Status listener; non-null only while observing. */
     private var onlineUnsub: (() -> Unit)? = null
     private val reconnectRunnable = Runnable { connect() }
@@ -96,6 +101,20 @@ internal class GroupRideObserver(
      * board-less shutdown paths like Auto close.
      */
     val participating: Boolean get() = !stopped && (joinedRideId != null || desiredRideId != null)
+
+    /**
+     * The joined Group Ride for the Watch Mirror, or null while the Rider is not in one. A roster
+     * that has not arrived yet (or belongs to another ride) reads as empty: joined, nobody placed.
+     * Main thread, like every other read and write of this observer's state.
+     *
+     * @parity /modules/vescape-core/ios/groupride/GroupRideObserver.swift `joinedRoster`
+     */
+    val joinedRoster: GroupRideRoster?
+        get() {
+            val rideId = joinedRideId
+            if (stopped || rideId == null) return null
+            return GroupRideRoster(riderId, if (lastRosterRideId == rideId) lastRosterRiders else emptyList())
+        }
 
     /**
      * Watches the three fields [participating] is derived from, so no mutation site has to remember
@@ -143,6 +162,7 @@ internal class GroupRideObserver(
         knownRides.clear()
         lastRosterRideId = null
         lastRoster = emptyList()
+        lastRosterRiders = emptyList()
         stopHeartbeat()
         emitConnection("idle")
     }
@@ -550,6 +570,22 @@ internal class GroupRideObserver(
         )
     }
 
+    /** A [riderView] map as the typed entry native keeps; null when it carries no id. */
+    private fun rosterRider(view: Map<String, Any?>): GroupRideRosterRider? {
+        val id = view["id"] as? String ?: return null
+        val presence = view["presence"] as? Map<*, *>
+        val lat = presence?.get("lat") as? Double
+        val lng = presence?.get("lng") as? Double
+        return GroupRideRosterRider(
+            id = id,
+            name = view["name"] as? String ?: "",
+            color = view["color"] as? String,
+            position = if (lat != null && lng != null && !lat.isNaN() && !lng.isNaN()) GeoPoint(lat, lng) else null,
+            stale = view["stale"] as? Boolean ?: false,
+            lastSeenMs = view["lastSeen"] as? Long ?: 0L,
+        )
+    }
+
     private fun rememberRide(ride: Map<String, Any?>) {
         (ride["id"] as? String)?.let { knownRides[it] = ride }
     }
@@ -557,6 +593,7 @@ internal class GroupRideObserver(
     private fun emitRoster(rideId: String?, riders: List<Map<String, Any?>>) {
         lastRosterRideId = rideId
         lastRoster = riders
+        lastRosterRiders = riders.mapNotNull(::rosterRider)
         emit("onGroupRideRoster", mapOf("rideId" to rideId, "riders" to riders))
     }
 

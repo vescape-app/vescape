@@ -226,15 +226,25 @@ Always-on screen, then `adb shell input keyevent 26`.
 
 Three channels, split by how often the data changes:
 
-| Path         | Transport            | Cadence             | Payload                                       |
-| ------------ | -------------------- | ------------------- | --------------------------------------------- |
-| `/telemetry` | `MessageClient`      | every watch tick    | Watch Frame: packed Float32 lanes, positional |
-| `/route`     | Data Layer item      | per route change    | encoded polyline, versioned binary            |
-| `/settings`  | Data Layer `DataMap` | per settings change | rider settings, key-value                     |
+| Path          | Transport            | Cadence             | Payload                                       |
+| ------------- | -------------------- | ------------------- | --------------------------------------------- |
+| `/telemetry`  | `MessageClient`      | every watch tick    | Watch Frame: packed Float32 lanes, positional |
+| `/group-ride` | `MessageClient`      | 1 Hz while joined   | Group Ride Frame: versioned binary            |
+| `/route`      | Data Layer item      | per route change    | encoded polyline, versioned binary            |
+| `/settings`   | Data Layer `DataMap` | per settings change | rider settings, key-value                     |
 
 `MessageClient` drops undelivered sends, which is right for a frame that is stale in 250 ms and wrong
 for cold state — hence the Data Layer for the other two, where the last value stays on the watch
 across a disconnect and is read again on every watch app start.
+
+`/group-ride` carries the Group Ride Frame (ADR-0039): the Rider's course, the phone map's span, and
+each other Rider's id, name, colour, stale flag and east/north offset from the Rider's latest GPS
+Fix. The phone pushes it only while the Rider is joined and the wrist reports `ACTIVE` — never in
+ambient, and never to a wrist too old to report its wake level. The wrist drops the group after
+3.5 s without a frame. The codec is one file, `watch/GroupRideFrame.kt`, compiled by the phone and
+copied into the Wear module by `withWearMirror`; watchOS gets the same bytes under the
+`groupRide` key of a `sendMessage`. Rider records are length-prefixed, so a new field is appended
+without a version bump; the version byte moves only for a change older wrists must not read.
 
 `/settings` is a `DataMap` rather than a packed frame because settings accrete one at a time: an
 unknown key is ignored by an older watch, and a key an older phone never sends leaves the watch on

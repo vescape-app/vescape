@@ -41,8 +41,7 @@ internal fun NavRoute(frame: WatchFrame, muted: Boolean, navFocus: () -> Float =
     val route = RouteState.route.value
     val east = frame.riderEastM
     val north = frame.riderNorthM
-    val targetRouteSpanM = (frame.routeSpanM ?: DEFAULT_ROUTE_SPAN_M).toFloat()
-        .coerceIn(MIN_ROUTE_SPAN_M, MAX_ROUTE_SPAN_M)
+    val targetRouteSpanM = clampRouteSpanM(frame.routeSpanM)
     val routeSpanM by animateFloatAsState(
         targetValue = targetRouteSpanM,
         animationSpec = tween(durationMillis = ROUTE_ZOOM_EASE_MS, easing = FastOutSlowInEasing),
@@ -142,6 +141,16 @@ private fun AnimatedRoute(
     }
 }
 
+/**
+ * Metres of world across the watch face for a phone map span: the phone's own, clamped to what a
+ * wrist can draw, or the fallback until the phone has published one. Every heading-up map layer
+ * (route, Group Ride) takes its zoom from here.
+ *
+ * @parity /modules/vescape-core/ios/watch/WatchMapProjection.swift `clampedSpanM`
+ */
+internal fun clampRouteSpanM(spanM: Double?): Float =
+    (spanM ?: DEFAULT_ROUTE_SPAN_M).toFloat().coerceIn(MIN_ROUTE_SPAN_M, MAX_ROUTE_SPAN_M)
+
 /** @parity /watch/watchos/NavRoute.swift `shortestAngleDelta` */
 internal fun shortestAngleDelta(fromDeg: Float, toDeg: Float): Float =
     (((toDeg - fromDeg + 180f) % 360f + 360f) % 360f) - 180f
@@ -179,7 +188,12 @@ private const val MAX_ROUTE_SPAN_M = 2_000f
 private const val ROUTE_ZOOM_EASE_MS = 350
 private const val ROUTE_MOTION_EASE_MS = 300
 
-private val ROUTE_EDGE_INSET = 24.dp
+/**
+ * Face margin the map's span is fitted inside. Shared by every heading-up map layer.
+ *
+ * @parity /modules/vescape-core/ios/watch/WatchMapProjection.swift `edgeInset`
+ */
+internal val ROUTE_EDGE_INSET = 24.dp
 /** Half the widest gauge guide stroke: the route clip stops at the inner side of that line. */
 private val GUIDE_HALF_WIDTH = 1.dp
 private val ROUTE_W = 2.dp
@@ -191,4 +205,9 @@ private const val ROUTE_FOCUS_ALPHA = 0.85f
 private val RIDER_DOT_R = 4.dp
 /** Same weight as the route line, so the rider reads as part of it rather than an added marker. */
 private val RIDER_RING_W = ROUTE_W
-private val RIDER_DROP = 34.dp
+/**
+ * The Rider sits this far below the face centre, so more of the map is ahead than behind.
+ *
+ * @parity /modules/vescape-core/ios/watch/WatchMapProjection.swift `riderDrop`
+ */
+internal val RIDER_DROP = 34.dp

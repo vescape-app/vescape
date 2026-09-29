@@ -34,7 +34,7 @@ struct NavRoute: View {
     GeometryReader { geometry in
       let centre = CGPoint(
         x: geometry.size.width / 2,
-        y: geometry.size.height / 2 + RIDER_DROP
+        y: geometry.size.height / 2 + WatchMapProjection.riderDrop
       )
       ZStack {
         if let route, let east = frame.riderEastM, let north = frame.riderNorthM {
@@ -75,9 +75,7 @@ struct NavRoute: View {
     }
   }
 
-  private var clampedSpan: Double {
-    min(MAX_ROUTE_SPAN_M, max(MIN_ROUTE_SPAN_M, frame.routeSpanM ?? DEFAULT_ROUTE_SPAN_M))
-  }
+  private var clampedSpan: Double { WatchMapProjection.clampedSpanM(frame.routeSpanM) }
 }
 
 /// "You are here": a ring in the route's own colour, punched out to black so whatever passes under
@@ -123,8 +121,8 @@ private struct RouteShape: Shape {
   func path(in rect: CGRect) -> Path {
     guard route.points.count > 1, spanM > 0 else { return Path() }
     // Rider sits below the centre so more of the display is "ahead" than behind.
-    let centre = CGPoint(x: rect.midX, y: rect.midY + RIDER_DROP)
-    let scale = (min(rect.width, rect.height) - ROUTE_EDGE_INSET) / spanM
+    let centre = CGPoint(x: rect.midX, y: rect.midY + WatchMapProjection.riderDrop)
+    let scale = (min(rect.width, rect.height) - WatchMapProjection.edgeInset) / spanM
 
     var path = Path()
     for (index, point) in route.points.enumerated() {
@@ -151,20 +149,12 @@ func shortestAngleDelta(from: Double, to: Double) -> Double {
   (((to - from + 180).truncatingRemainder(dividingBy: 360) + 360).truncatingRemainder(dividingBy: 360)) - 180
 }
 
-/// Fallback metres of route across the display until the phone publishes its camera span.
-///
-/// @parity /watch/wearos/src/main/java/app/vescape/wear/NavRoute.kt `DEFAULT_ROUTE_SPAN_M`
-private let DEFAULT_ROUTE_SPAN_M = 600.0
-private let MIN_ROUTE_SPAN_M = 150.0
-private let MAX_ROUTE_SPAN_M = 2_000.0
 private let ROUTE_ZOOM_EASE = 0.35
 private let ROUTE_MOTION_EASE = 0.3
 
-private let ROUTE_EDGE_INSET: CGFloat = 24
 private let ROUTE_WIDTH: CGFloat = 2
 /// Width and opacity on the nav page, where the line is the page and has to read in daylight.
 private let ROUTE_FOCUS_WIDTH: CGFloat = 3.5
 private let ROUTE_ALPHA = 0.55
 private let ROUTE_FOCUS_ALPHA = 0.85
 private let RIDER_DOT_RADIUS: CGFloat = 4
-private let RIDER_DROP: CGFloat = 34

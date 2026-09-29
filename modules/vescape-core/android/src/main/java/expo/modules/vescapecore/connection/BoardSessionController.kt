@@ -88,6 +88,9 @@ import expo.modules.vescapecore.watch.WatchLightsSwitch
 import expo.modules.vescapecore.watch.WatchMirrorLauncher
 import expo.modules.vescapecore.watch.WATCH_MIRROR_AWAKE_TIMEOUT_MS
 import expo.modules.vescapecore.watch.WatchMirrorPresence
+import expo.modules.vescapecore.watch.GroupRideFrame
+import expo.modules.vescapecore.watch.GroupRideFrameBuilder
+import expo.modules.vescapecore.watch.GroupRideFrameTick
 import expo.modules.vescapecore.watch.WatchMirrorWakeLevel
 import expo.modules.vescapecore.watch.WatchMoveRelay
 import expo.modules.vescapecore.watch.WatchRouteMirror
@@ -425,6 +428,16 @@ internal class BoardSessionController(private val service: CoreForegroundService
             canPush = ::canPushWatchFrame,
             push = watchPusher::pushFrame,
             intervalMs = WATCH_FRAME_INTERVAL_MS,
+        )
+    }
+    /** @parity /modules/vescape-core/ios/connection/BoardSessionController.swift `groupRideTick` */
+    private val groupRideTick by lazy {
+        GroupRideFrameTick(
+            scheduler = scheduler,
+            canPushWatchFrame = ::canPushWatchFrame,
+            wakeLevel = { watchMirrorWakeLevel() },
+            frame = ::groupRideFrame,
+            push = watchPusher::pushGroupRideFrame,
         )
     }
     private val locationTracker by lazy {
@@ -837,6 +850,7 @@ private var wearAutoLaunchOnConnect = true
         // this service owns GPS/navigation even when no board is selected or connected.
         watchMirrorPresence.start()
         watchTick.start()
+        groupRideTick.start()
         weatherUnsubscribe = weatherCoordinator.addChangeListener(::onWeatherChanged)
         // The forecast survives a service restart, so replay what is already known rather than
         // leaving the wrist blank until the rider moves a kilometre.
@@ -1008,6 +1022,7 @@ private var wearAutoLaunchOnConnect = true
         weatherUnsubscribe?.invoke()
         weatherUnsubscribe = null
         watchTick.stop()
+        groupRideTick.stop()
         watchMirrorPresence.stop()
         watchMoveRelay.cancel()
         autoCloseHandle?.cancel()
@@ -2366,6 +2381,25 @@ private var wearAutoLaunchOnConnect = true
             routeSpanM = WatchRouteMirror.viewportSpanM,
             remoteTilt = if (current != null) remoteTiltController.currentValue else null,
             tiltControl = watchTiltControl(),
+        )
+    }
+
+    /**
+     * The joined Group Ride as the wrist draws it, or null while the Rider is not in one. Measured
+     * from the Rider's latest GPS Fix, never from Board telemetry, so it needs no Board Session.
+     *
+     * @parity /modules/vescape-core/ios/connection/BoardSessionController.swift `groupRideFrame`
+     */
+    private fun groupRideFrame(): GroupRideFrame? {
+        val roster = groupRideObserver.joinedRoster ?: return null
+        val rider = locationTracker.riderPosition
+        return GroupRideFrameBuilder.build(
+            roster = roster,
+            own = rider?.let { GeoPoint(it.latitude, it.longitude) },
+            // The course survives a stop on the phone, so heading-up holds the last direction.
+            courseDeg = rider?.courseDeg,
+            spanM = WatchRouteMirror.viewportSpanM,
+            nowMs = System.currentTimeMillis(),
         )
     }
 

@@ -94,6 +94,21 @@ final class WatchTelemetryPusher: NSObject, WCSessionDelegate {
     )
   }
 
+  /// A Group Ride Frame (ADR-0039). Its own message key rather than `sendMessageData`, which the
+  /// Watch Frame owns; same reachability gate and the same failure streak reporting.
+  ///
+  /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/watch/WatchTelemetryPusher.kt `pushGroupRideFrame`
+  func pushGroupRideFrame(_ frame: Data) {
+    guard let session, canPush else { return }
+    session.sendMessage(
+      [watchGroupRideMessageKey: frame],
+      replyHandler: nil,
+      errorHandler: { [weak self] error in
+        self?.reportIssue("watch_frame_send_failed", ["path": watchGroupRideMessageKey, "error": error.localizedDescription])
+      }
+    )
+  }
+
   // MARK: - WCSessionDelegate
 
   func session(

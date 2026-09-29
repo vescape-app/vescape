@@ -94,6 +94,7 @@ internal fun MirrorScreen(
         while (true) {
             delay(if (isAmbient) AMBIENT_REFRESH_INTERVAL_MS else WATCH_FRAME_INTERVAL_MS)
             TelemetryState.refresh()
+            GroupRideState.refresh()
         }
     }
 

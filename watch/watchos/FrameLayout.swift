@@ -40,6 +40,8 @@ struct FrameLayout: View {
   /// rider cleared — the frame then renders exactly as it did before there was one.
   var route: WatchRoute?
   var routeGeneration: Int = 0
+  /// The joined Group Ride; nil draws no group. Hidden in ambient.
+  var groupRide: WatchGroupRide?
   /// The rider's own colour, so route, chevron and rider dot match the phone map.
   var navColor: Color = Palette.nav
   /// Whether the rider turned the direction arrow on (phone: Settings > Watch).
@@ -78,6 +80,17 @@ struct FrameLayout: View {
           frame: frame,
           focus: navFocus,
           color: muted ? Palette.dimText : navColor
+        )
+        .opacity(navStackAlpha)
+      }
+
+      // Group Ride dots: over the route, under every gauge and number. Hidden in ambient.
+      if let groupRide, !ambient.active {
+        GroupRideLayer(
+          group: groupRide,
+          drawOwnRing: navLanes == nil,
+          ownColor: muted ? Palette.dimText : navColor,
+          focus: navFocus
         )
         .opacity(navStackAlpha)
       }

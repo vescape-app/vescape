@@ -123,8 +123,10 @@ internal fun FrameLayout(
             }
         }
 
-        // PROTOTYPE — Group Ride map dots: over the route, under every gauge and number.
-        GroupRidePrototype.scope?.let { GroupRidePrototypeUi.Underlay(it) }
+        // Group Ride dots: over the route, under every gauge and number. Hidden in ambient.
+        if (!ambient.active) {
+            GroupRideLayer(muted = muted, drawOwnRing = !hasNav, navFocus = focus, alpha = navStackAlpha)
+        }
 
         // Rim gauges on one shared screen-centred circle.
         Canvas(modifier = Modifier.fillMaxSize()) {

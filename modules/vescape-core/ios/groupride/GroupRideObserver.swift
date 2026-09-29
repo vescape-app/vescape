@@ -42,6 +42,8 @@ internal final class GroupRideObserver: NSObject {
   private var knownRides: [(id: String, ride: [String: Any?])] = []
   private var lastRosterRideId: String?
   private var lastRoster: [[String: Any?]] = []
+  /// `lastRoster` typed for native readers; kept in step by `emitRoster`.
+  private var lastRosterRiders: [GroupRideRosterRider] = []
   /// Remover for the App Status listener; non-nil only while observing.
   private var onlineUnsub: (() -> Void)?
   private var reconnectWork: Cancellable?
@@ -74,6 +76,16 @@ internal final class GroupRideObserver: NSObject {
   /// observes the lobby whenever it is open, but only real ride participation should block
   /// board-less shutdown paths.
   var participating: Bool { !stopped && (joinedRideId != nil || desiredRideId != nil) }
+
+  /// The joined Group Ride for the Watch Mirror, or nil while the Rider is not in one. A roster that
+  /// has not arrived yet (or belongs to another ride) reads as empty: joined, nobody placed. Read on
+  /// the controller's scheduler, like every other access to this observer's state.
+  ///
+  /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/GroupRideObserver.kt `joinedRoster`
+  var joinedRoster: GroupRideRoster? {
+    guard !stopped, let rideId = joinedRideId else { return nil }
+    return GroupRideRoster(ownRiderId: riderId, riders: lastRosterRideId == rideId ? lastRosterRiders : [])
+  }
 
   /// Watches the three fields `participating` is derived from, so no mutation site has to remember
   /// to report. Reporting is edge-triggered: the fields are cleared together in several places and
@@ -117,6 +129,7 @@ internal final class GroupRideObserver: NSObject {
     knownRides = []
     lastRosterRideId = nil
     lastRoster = []
+    lastRosterRiders = []
     stopHeartbeat()
     stopPing()
     emitConnection("idle")
@@ -495,6 +508,22 @@ internal final class GroupRideObserver: NSObject {
     ]
   }
 
+  /// A `riderView` map as the typed entry native keeps; nil when it carries no id.
+  private static func rosterRider(_ view: [String: Any?]) -> GroupRideRosterRider? {
+    guard let id = view["id"] as? String else { return nil }
+    let presence = view["presence"] as? [String: Any?]
+    let lat = presence?["lat"] as? Double
+    let lng = presence?["lng"] as? Double
+    return GroupRideRosterRider(
+      id: id,
+      name: view["name"] as? String ?? "",
+      color: view["color"] as? String,
+      position: lat.flatMap { lat in lng.map { WatchGeoPoint(latitude: lat, longitude: $0) } },
+      stale: view["stale"] as? Bool ?? false,
+      lastSeenMs: view["lastSeen"] as? Int64 ?? 0
+    )
+  }
+
   private func rememberRide(_ ride: [String: Any?]) {
     guard let id = ride["id"] as? String else { return }
     if let index = knownRides.firstIndex(where: { $0.id == id }) {
@@ -507,6 +536,7 @@ internal final class GroupRideObserver: NSObject {
   private func emitRoster(_ rideId: String?, _ riders: [[String: Any?]]) {
     lastRosterRideId = rideId
     lastRoster = riders
+    lastRosterRiders = riders.compactMap(Self.rosterRider)
     emit("onGroupRideRoster", ["rideId": rideId, "riders": riders])
   }
 

@@ -18,6 +18,8 @@ import com.google.android.gms.wearable.DataItem
 import com.google.android.gms.wearable.DataMapItem
 import com.google.android.gms.wearable.MessageClient
 import com.google.android.gms.wearable.Wearable
+import expo.modules.vescapecore.watch.GroupRideFrameCodec
+import expo.modules.vescapecore.watch.WATCH_GROUP_RIDE_PATH
 
 /**
  * Wear OS Mirror entry point. Renders the live [WatchFrame] pushed from the phone over
@@ -44,6 +46,13 @@ class MainActivity : ComponentActivity() {
     }
 
     private val listener = MessageClient.OnMessageReceivedListener { event ->
+        if (event.path == WATCH_GROUP_RIDE_PATH) {
+            // A frame this build cannot read (another wire version) is dropped; the group then
+            // times out rather than drawing something misread.
+            val group = GroupRideFrameCodec.decode(event.data) ?: return@OnMessageReceivedListener
+            runOnUiThread { GroupRideState.accept(group) }
+            return@OnMessageReceivedListener
+        }
         if (event.path != TELEMETRY_PATH) {
             runOnUiThread { WatchDiagnostics.recordUnknownPath(event.path) }
             return@OnMessageReceivedListener
