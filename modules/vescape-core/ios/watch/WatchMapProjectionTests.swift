@@ -2,7 +2,7 @@ import CoreGraphics
 import XCTest
 @testable import VescapeCore
 
-/// Heading-up placement of Group Ride dots on a 400 pt face, 600 m across (the route's own fit).
+/// Heading-up placement of Group Ride marks on a 400 pt face, 600 m across (the route's own fit).
 ///
 /// @parity /watch/wearos/src/test/java/app/vescape/wear/GroupRidePlacementTest.kt
 final class WatchMapProjectionTests: XCTestCase {
@@ -83,5 +83,91 @@ final class WatchMapProjectionTests: XCTestCase {
     let stopped = WatchGroupRide.accepting(GroupRideFrame(courseDeg: nil, spanM: 600, riders: []), previous: moving)
 
     XCTAssertEqual(stopped.courseDeg, 120)
+  }
+
+  private let sizes = WatchGroupRideMarkSizes(
+    inRangeMargin: 40, edgeInset: 1, edgeCornerRadius: 0, dotRadius: 3, triangleMin: 7, triangleMax: 12
+  )
+
+  private func rider(eastM: Double, northM: Double, stale: Bool = false) -> GroupRideFrameRider {
+    GroupRideFrameRider(id: "id", name: "R", colorArgb: 0xFF00FF00, eastM: eastM, northM: northM, stale: stale)
+  }
+
+  func testARiderOnTheMapIsADotAndOneBeyondItATriangleOnTheEdge() {
+    let dot = map().mark(for: rider(eastM: 0, northM: 100), sizes: sizes)
+    XCTAssertEqual(dot.kind, .dot)
+    XCTAssertEqual(dot.size, 3)
+
+    let far = map().mark(for: rider(eastM: 0, northM: 1_000), sizes: sizes)
+    XCTAssertEqual(far.kind, .triangle)
+    // Straight ahead: the top edge, one inset point in, apex pointing down.
+    XCTAssertEqual(far.point.x, 200, accuracy: 0.01)
+    XCTAssertEqual(far.point.y, 1, accuracy: 0.01)
+    XCTAssertEqual(far.direction.dx, 0, accuracy: 1e-6)
+    XCTAssertEqual(far.direction.dy, -1, accuracy: 1e-6)
+  }
+
+  func testTheEdgePointIsOnTheRayFromTheRiderNotFromTheCentre() {
+    // Ahead-right at 45° from the Rider, who sits `drop` below the centre: the ray reaches the right
+    // edge (x = 399) at y = 200 + drop - 199, not the corner a centre ray would hit.
+    let far = map().mark(for: rider(eastM: 5_000, northM: 5_000), sizes: sizes)
+
+    XCTAssertEqual(far.kind, .triangle)
+    XCTAssertEqual(far.point.x, 399, accuracy: 0.01)
+    XCTAssertEqual(far.point.y, 200 + drop - 199, accuracy: 0.01)
+    XCTAssertEqual(far.direction.dx, 1, accuracy: 1e-6)
+    XCTAssertEqual(far.direction.dy, 0, accuracy: 1e-6)
+  }
+
+  func testTheTriangleSitsOnTheRoundedRectangleCorner() {
+    let radius: CGFloat = 80
+    let rounded = WatchGroupRideMarkSizes(
+      inRangeMargin: 40, edgeInset: 1, edgeCornerRadius: radius, dotRadius: 3, triangleMin: 7, triangleMax: 12
+    )
+    // Towards the top-right corner from the Rider.
+    let far = map().mark(for: rider(eastM: 5_000, northM: 5_000 * Double(200 + drop) / 200), sizes: rounded)
+    let corner = CGPoint(x: 399 - radius, y: 1 + radius)
+
+    XCTAssertEqual(hypot(far.point.x - corner.x, far.point.y - corner.y), radius, accuracy: 0.01)
+    // Square to the arc: outward points away from the corner's centre.
+    XCTAssertEqual(far.direction.dx, (far.point.x - corner.x) / radius, accuracy: 1e-6)
+    XCTAssertEqual(far.direction.dy, (far.point.y - corner.y) / radius, accuracy: 1e-6)
+    // On the ray from the Rider.
+    let ray = CGVector(dx: far.point.x - 200, dy: far.point.y - (200 + drop))
+    XCTAssertEqual(ray.dx, -ray.dy * 200 / (200 + drop), accuracy: 0.01)
+    // Inside the square corner a sharp rectangle would have put it on.
+    XCTAssertLessThan(far.point.x, 399)
+    XCTAssertGreaterThan(far.point.y, 1)
+  }
+
+  func testACloserFarRiderGetsABiggerTriangleLogScaledOutTo3Km() {
+    // Ahead the map ends (160 + drop) / scale metres out.
+    let boundaryM = Double((160 + drop) / scale)
+    let justOut = map().mark(for: rider(eastM: 0, northM: boundaryM + 1), sizes: sizes).size
+    let mid = map().mark(for: rider(eastM: 0, northM: 1_000), sizes: sizes).size
+
+    XCTAssertEqual(justOut, 12, accuracy: 0.05)
+    XCTAssertEqual(mid, 7 + 5 * CGFloat(1 - log(1_000 / boundaryM) / log(3_000 / boundaryM)), accuracy: 0.01)
+    XCTAssertEqual(map().mark(for: rider(eastM: 0, northM: 3_000), sizes: sizes).size, 7)
+    XCTAssertEqual(map().mark(for: rider(eastM: 0, northM: 20_000), sizes: sizes).size, 7)
+  }
+
+  func testAStaleFarRiderKeepsTheSmallestTriangle() {
+    let boundaryM = Double((160 + drop) / scale)
+    XCTAssertEqual(map().mark(for: rider(eastM: 0, northM: boundaryM + 1, stale: true), sizes: sizes).size, 7)
+  }
+
+  func testZoomingThePhoneMapOutBringsAFarRiderOntoTheMap() {
+    let other = rider(eastM: 0, northM: 400)
+    XCTAssertEqual(map(spanM: 600).mark(for: other, sizes: sizes).kind, .triangle)
+    XCTAssertEqual(map(spanM: 1_200).mark(for: other, sizes: sizes).kind, .dot)
+  }
+
+  func testMarksComeFarthestFirstSoACloseRiderDrawsOnTop() {
+    let marks = map().marks(
+      for: [rider(eastM: 0, northM: 50), rider(eastM: 0, northM: 2_000), rider(eastM: 0, northM: 200)],
+      sizes: sizes
+    )
+    XCTAssertEqual(marks.map(\.rider.northM), [2_000, 200, 50])
   }
 }

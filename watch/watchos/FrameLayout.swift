@@ -151,6 +151,12 @@ struct FrameLayout: View {
         .offset(y: BATTERY_FOCUS_DROP * focus)
         .opacity(fadeOut(focus))
       }
+
+      // Group Ride edge triangles: over the rim gauges. Hidden in ambient.
+      if let groupRide, !ambient.active {
+        GroupRideEdgeLayer(group: groupRide)
+          .opacity(navStackAlpha)
+      }
     }
     .ignoresSafeArea()
   }

@@ -3,7 +3,7 @@ import Foundation
 
 /// The nav route's heading-up projection, in points: the Rider sits `riderDrop` below the display
 /// centre, their course points up, and the clamped span of metres fits the display's shorter side
-/// minus `edgeInset`. The route line and the Group Ride dots share it, so a Rider on the route is
+/// minus `edgeInset`. The route line and the Group Ride marks share it, so a Rider on the route is
 /// drawn on it.
 ///
 /// Shared with the wrist (`watch/watchos/` symlinks this file) so the placement math is tested here.
@@ -58,10 +58,137 @@ struct WatchMapProjection {
       && abs(point.y - centre.y) <= size.height / 2 - margin
     return WatchMapPlacement(point: point, direction: direction, inRange: inRange)
   }
+
+  /// Where the ray from the Rider (not the display centre) along unit `direction` leaves the
+  /// display, `inset` inside its edge, whose corners are rounded by `cornerRadius`.
+  ///
+  /// @platform-diff Wear OS meets its round face's circle. The Apple Watch display is a rounded
+  ///   rectangle, so the triangle lands on it and stands square to the straight edge or corner arc.
+  func edgePoint(direction: CGVector, inset: CGFloat, cornerRadius: CGFloat) -> WatchEdgePoint {
+    let bounds = CGRect(origin: .zero, size: size).insetBy(dx: inset, dy: inset)
+    let exit = rayExit(direction: direction, rect: bounds, cornerRadius: cornerRadius)
+    let point = CGPoint(x: rider.x + direction.dx * exit.distance, y: rider.y + direction.dy * exit.distance)
+    return WatchEdgePoint(point: point, outward: exit.normal)
+  }
+
+  /// `rider`'s mark: a dot on the map while in range, else a triangle on the display edge along the
+  /// ray from the Rider, longer the closer they are. A stale Rider's triangle is the shortest.
+  func mark(for rider: GroupRideFrameRider, sizes: WatchGroupRideMarkSizes) -> WatchGroupRideMark {
+    let placed = place(eastM: rider.eastM, northM: rider.northM, margin: sizes.inRangeMargin)
+    if placed.inRange {
+      return WatchGroupRideMark(
+        rider: rider, kind: .dot, point: placed.point, direction: placed.direction, size: sizes.dotRadius
+      )
+    }
+    let edge = edgePoint(direction: placed.direction, inset: sizes.edgeInset, cornerRadius: sizes.edgeCornerRadius)
+    let length: CGFloat
+    if rider.stale {
+      length = sizes.triangleMin
+    } else {
+      // In range is the display's rectangle less the margin, square-cornered.
+      let inRange = CGRect(origin: .zero, size: size).insetBy(dx: sizes.inRangeMargin, dy: sizes.inRangeMargin)
+      let boundaryM = Double(rayExit(direction: placed.direction, rect: inRange, cornerRadius: 0).distance) / scale
+      length = edgeTriangleLength(
+        distanceM: rider.distanceM, boundaryM: boundaryM, min: sizes.triangleMin, max: sizes.triangleMax
+      )
+    }
+    return WatchGroupRideMark(rider: rider, kind: .triangle, point: edge.point, direction: edge.outward, size: length)
+  }
+
+  /// Every Rider's mark, farthest first, so a close Rider lands on top at a similar bearing.
+  func marks(for riders: [GroupRideFrameRider], sizes: WatchGroupRideMarkSizes) -> [WatchGroupRideMark] {
+    riders.sorted { $0.distanceM > $1.distanceM }.map { mark(for: $0, sizes: sizes) }
+  }
+
+  /// Points along unit `direction` from the Rider to where the ray leaves `rect` with corners
+  /// rounded by `cornerRadius`, and the outward normal there. Straight edges first, then the corner
+  /// arc: a ray leaving the box inside a corner square leaves the shape through that corner's circle.
+  private func rayExit(direction: CGVector, rect: CGRect, cornerRadius: CGFloat) -> (distance: CGFloat, normal: CGVector) {
+    let from = rider
+    let tx = direction.dx > 0 ? (rect.maxX - from.x) / direction.dx
+      : direction.dx < 0 ? (rect.minX - from.x) / direction.dx : .greatestFiniteMagnitude
+    let ty = direction.dy > 0 ? (rect.maxY - from.y) / direction.dy
+      : direction.dy < 0 ? (rect.minY - from.y) / direction.dy : .greatestFiniteMagnitude
+    let distance = min(tx, ty)
+    let straight = tx < ty
+      ? CGVector(dx: direction.dx > 0 ? 1 : -1, dy: 0)
+      : CGVector(dx: 0, dy: direction.dy > 0 ? 1 : -1)
+    let hit = CGPoint(x: from.x + direction.dx * distance, y: from.y + direction.dy * distance)
+    let radius = min(cornerRadius, rect.width / 2, rect.height / 2)
+    guard radius > 0 else { return (distance, straight) }
+    let corner = CGPoint(
+      x: min(max(hit.x, rect.minX + radius), rect.maxX - radius),
+      y: min(max(hit.y, rect.minY + radius), rect.maxY - radius)
+    )
+    guard corner.x != hit.x, corner.y != hit.y else { return (distance, straight) }
+    let offset = CGVector(dx: from.x - corner.x, dy: from.y - corner.y)
+    let half = offset.dx * direction.dx + offset.dy * direction.dy
+    let outside = offset.dx * offset.dx + offset.dy * offset.dy - radius * radius
+    let arc = -half + max(half * half - outside, 0).squareRoot()
+    let onArc = CGPoint(x: from.x + direction.dx * arc, y: from.y + direction.dy * arc)
+    return (arc, CGVector(dx: (onArc.x - corner.x) / radius, dy: (onArc.y - corner.y) / radius))
+  }
 }
 
+/// A point on the display edge; `outward` is the unit outward normal there.
+///
+/// @parity /watch/wearos/src/main/java/app/vescape/wear/GroupRide.kt `EdgePoint`
+struct WatchEdgePoint: Equatable {
+  let point: CGPoint
+  let outward: CGVector
+}
+
+/// @parity /watch/wearos/src/main/java/app/vescape/wear/GroupRide.kt `GroupRideMarkKind`
+enum WatchGroupRideMarkKind: Equatable {
+  case dot
+  case triangle
+}
+
+/// Where and how one Rider is drawn. A dot centres on `point` with radius `size`, and `direction` is
+/// the ray from the Rider. A triangle's base centre is `point` on the display edge, `direction` the
+/// outward normal, `size` its length: the apex sits at point − direction × size.
+///
+/// @parity /watch/wearos/src/main/java/app/vescape/wear/GroupRide.kt `GroupRideMark`
+struct WatchGroupRideMark: Equatable {
+  let rider: GroupRideFrameRider
+  let kind: WatchGroupRideMarkKind
+  let point: CGPoint
+  let direction: CGVector
+  let size: CGFloat
+}
+
+/// The point measures `WatchMapProjection.mark` needs.
+///
+/// @parity /watch/wearos/src/main/java/app/vescape/wear/GroupRide.kt `GroupRideMarkSizes`
+struct WatchGroupRideMarkSizes {
+  /// Dots stay this far inside the display edge, clear of the rim gauges.
+  var inRangeMargin: CGFloat
+  /// Triangle bases sit this far inside the display edge.
+  var edgeInset: CGFloat
+  /// The display's corner rounding at `edgeInset`.
+  var edgeCornerRadius: CGFloat
+  var dotRadius: CGFloat
+  var triangleMin: CGFloat
+  var triangleMax: CGFloat
+}
+
+/// A far Rider's triangle length: `max` right at the in-range `boundaryM` on their ray, `min` at
+/// `GROUP_FAR_M` or beyond, log-scaled between.
+///
+/// @parity /watch/wearos/src/main/java/app/vescape/wear/GroupRide.kt `edgeTriangleLength`
+func edgeTriangleLength(distanceM: Double, boundaryM: Double, min minLength: CGFloat, max maxLength: CGFloat) -> CGFloat {
+  let near = Swift.min(Swift.max(boundaryM, 1), GROUP_FAR_M - 1)
+  let t = log(Swift.max(distanceM, near) / near) / log(GROUP_FAR_M / near)
+  return minLength + (maxLength - minLength) * CGFloat(Swift.min(Swift.max(1 - t, 0), 1))
+}
+
+/// Beyond this the triangle stops shrinking.
+///
+/// @parity /watch/wearos/src/main/java/app/vescape/wear/GroupRide.kt `GROUP_FAR_M`
+let GROUP_FAR_M = 3_000.0
+
 /// One point placed on the heading-up map. `direction` is the unit ray from the Rider towards it in
-/// screen space, so a caller drawing something on the display edge (#527) has the ray already.
+/// screen space.
 ///
 /// @parity /watch/wearos/src/main/java/app/vescape/wear/GroupRide.kt `MapPlacement`
 struct WatchMapPlacement: Equatable {

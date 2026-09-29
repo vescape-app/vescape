@@ -304,8 +304,13 @@ internal fun MirrorScreen(
                                     null
                                 },
                             )
-                            // PROTOTYPE — Group Ride edge triangles.
-                            GroupRidePrototypeUi.Overlay(groupScope)
+                            // Group Ride edge triangles: over the rim arcs. Hidden in ambient.
+                            if (!isAmbient) {
+                                GroupRideEdgeLayer(alpha = {
+                                    // PROTOTYPE — the Group Ride list page hides the map under it.
+                                    fadeOut(maxOf(controlFocus(), weatherFocus(), GroupRidePrototype.pageFocus()))
+                                })
+                            }
                         }
                     }
                 }

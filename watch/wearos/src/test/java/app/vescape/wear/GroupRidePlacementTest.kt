@@ -1,11 +1,16 @@
 package app.vescape.wear
 
+import expo.modules.vescapecore.watch.GroupRideFrameRider
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
-/** Heading-up placement of Group Ride dots on a 400 px face, 600 m across (the route's own fit). */
+/**
+ * Heading-up placement of Group Ride marks on a 400 px face, 600 m across (the route's own fit).
+ *
+ * @parity /modules/vescape-core/ios/watch/WatchMapProjectionTests.swift
+ */
 class GroupRidePlacementTest {
     private val face = 400f
     private val drop = 30f
@@ -66,5 +71,78 @@ class GroupRidePlacementTest {
         assertEquals(0.0, relativeBearingDeg(0.0, 10.0, 0.0), 1e-9)
         assertEquals(270.0, relativeBearingDeg(0.0, 10.0, 90.0), 1e-9)
         assertEquals(180.0, relativeBearingDeg(-10.0, 0.0, 90.0), 1e-9)
+    }
+
+    private val sizes = GroupRideMarkSizes(
+        inRangeMarginPx = margin,
+        edgeInsetPx = 1f,
+        dotRadiusPx = 3f,
+        triangleMinPx = 7f,
+        triangleMaxPx = 12f,
+    )
+
+    private fun rider(eastM: Double, northM: Double, stale: Boolean = false) =
+        GroupRideFrameRider("id", "R", 0xFF00FF00.toInt(), eastM, northM, stale = stale)
+
+    @Test
+    fun `a rider on the map is a dot, one beyond it a triangle on the face edge`() {
+        val dot = map().mark(rider(0.0, 100.0), sizes)
+        assertEquals(GroupRideMarkKind.Dot, dot.kind)
+        assertEquals(3f, dot.sizePx, 0f)
+
+        val far = map().mark(rider(0.0, 1_000.0), sizes)
+        assertEquals(GroupRideMarkKind.Triangle, far.kind)
+        // Straight ahead: the top of the face, one inset pixel in, apex pointing down.
+        assertEquals(200f, far.x, 0.01f)
+        assertEquals(1f, far.y, 0.01f)
+        assertEquals(0f, far.outX, 1e-4f)
+        assertEquals(-1f, far.outY, 1e-4f)
+    }
+
+    @Test
+    fun `the edge point is on the ray from the rider, not from the face centre`() {
+        // Due right of the Rider, who sits 30 px below the centre: the ray stays level at y = 230.
+        val far = map().mark(rider(5_000.0, 0.0), sizes)
+        val edgeR = 199f
+
+        assertEquals(200f + kotlin.math.sqrt(edgeR * edgeR - drop * drop), far.x, 0.01f)
+        assertEquals(200f + drop, far.y, 0.01f)
+        // The triangle stands square to the rim: outward is from the face centre.
+        assertEquals((far.x - 200f) / edgeR, far.outX, 1e-4f)
+        assertEquals(drop / edgeR, far.outY, 1e-4f)
+    }
+
+    @Test
+    fun `a closer far rider gets a bigger triangle, log-scaled out to 3 km`() {
+        // Ahead the map ends (160 + drop) / scale metres out.
+        val boundaryM = ((160f + drop) / scale).toDouble()
+        val justOut = map().mark(rider(0.0, boundaryM + 1.0), sizes).sizePx
+        val mid = map().mark(rider(0.0, 1_000.0), sizes).sizePx
+        val far = map().mark(rider(0.0, 3_000.0), sizes).sizePx
+
+        assertEquals(12f, justOut, 0.05f)
+        assertTrue(mid in 7.5f..11.5f)
+        assertEquals(7f, far, 0f)
+        assertEquals(7f, map().mark(rider(0.0, 20_000.0), sizes).sizePx, 0f)
+        assertEquals(7f + 5f * (1f - (kotlin.math.ln(1_000.0 / boundaryM) / kotlin.math.ln(3_000.0 / boundaryM)).toFloat()), mid, 0.01f)
+    }
+
+    @Test
+    fun `a stale far rider keeps the smallest triangle`() {
+        val boundaryM = ((160f + drop) / scale).toDouble()
+        assertEquals(7f, map().mark(rider(0.0, boundaryM + 1.0, stale = true), sizes).sizePx, 0f)
+    }
+
+    @Test
+    fun `zooming the phone map out brings a far rider onto the map`() {
+        val r = rider(0.0, 400.0)
+        assertEquals(GroupRideMarkKind.Triangle, map(spanM = 600.0).mark(r, sizes).kind)
+        assertEquals(GroupRideMarkKind.Dot, map(spanM = 1_200.0).mark(r, sizes).kind)
+    }
+
+    @Test
+    fun `marks come farthest first so a close rider draws on top`() {
+        val marks = map().marks(listOf(rider(0.0, 50.0), rider(0.0, 2_000.0), rider(0.0, 200.0)), sizes)
+        assertEquals(listOf(2_000.0, 200.0, 50.0), marks.map { it.rider.northM })
     }
 }
