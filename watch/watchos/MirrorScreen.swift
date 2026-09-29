@@ -67,7 +67,7 @@ struct MirrorScreen: View {
           .allowsHitTesting(false)
       }
       .overlay(alignment: .topLeading) {
-        if case .disconnected = link.mirror.status {
+        if linkNotice != nil {
           EmptyView()
         } else {
           HStack(spacing: 0) {
@@ -278,8 +278,8 @@ struct MirrorScreen: View {
     case .gauges:
       // Empty on purpose: this page *is* the gauges, pinned at the root behind this transparent
       // axis. Only the reason a stalled stream has stopped gets to use the centre.
-      if case .disconnected = link.mirror.status {
-        DisconnectedLayout(link: link.link, ambient: ambient)
+      if let linkNotice {
+        DisconnectedLayout(notice: linkNotice, ambient: ambient)
       } else {
         // Keep the pager slot; weather and telemetry are pinned above it.
         Color.clear
@@ -321,12 +321,18 @@ struct MirrorScreen: View {
   private var frame: some View {
     switch link.mirror.status {
     case .disconnected:
-      layout(EMPTY_FRAME, muted: false, showReadouts: false)
+      // Nothing the wrist could fix: the shell reads as it does for a board-less frame.
+      layout(EMPTY_FRAME, muted: false, showReadouts: linkNotice == nil)
     case .waiting, .live:
       layout(link.mirror.frame ?? EMPTY_FRAME, muted: false)
     case .stale:
       layout(link.mirror.frame ?? EMPTY_FRAME, muted: true)
     }
+  }
+
+  /// The phone-link problem to name while no frames arrive; nil when there is none worth saying.
+  private var linkNotice: MirrorLinkNotice? {
+    MirrorStateReducer.linkNotice(status: link.mirror.status, link: link.link)
   }
 
   private func layout(_ frame: WatchFrame, muted: Bool, showReadouts: Bool = true) -> FrameLayout {

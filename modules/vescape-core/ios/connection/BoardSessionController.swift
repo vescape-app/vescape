@@ -293,7 +293,12 @@ internal final class BoardSessionController: VescGattListener {
   private lazy var watchTick = WatchTick(
     scheduler: scheduler,
     snapshot: { [weak self] in self?.watchSnapshot() ?? WatchSnapshot() },
-    isStale: { [weak self] in self?.isTelemetryStale() ?? true },
+    // No telemetry is no Board, not a frozen one: a board-less frame (Navigation, Group Ride) is
+    // fresh, or the wrist would dim the route and nav distance as if they had stopped (ADR-0039).
+    isStale: { [weak self] in
+      guard let self else { return true }
+      return self.latestTelemetry != nil && self.isTelemetryStale()
+    },
     canPush: { [weak self] in self?.watchPusher.canPush ?? false },
     push: { [weak self] frame in self?.watchPusher.pushFrame(frame) },
     intervalMs: WATCH_FRAME_INTERVAL_MS

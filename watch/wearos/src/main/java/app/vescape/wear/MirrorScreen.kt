@@ -347,11 +347,16 @@ private fun MirrorContent(
     weatherFocus: () -> Float = { 0f },
     onWeatherClick: (() -> Unit)? = null,
 ) {
+    val link by TelemetryState.phoneLink
+    val notice = MirrorStateReducer.linkNotice(state.status, link)
     when (state.status) {
         // The gauge shell is the app, so a stalled stream keeps its arcs and reads the reason inside
         // them. Dropping to a bare notice threw the layout away exactly when the rider was already
         // lost, and it hid that the clock, forecast and battery arc still had something to say.
-        MirrorStatus.DISCONNECTED -> {
+        MirrorStatus.DISCONNECTED -> if (notice == null) {
+            // Nothing the wrist could fix: the shell reads as it does for a board-less frame.
+            FrameLayout(EMPTY_FRAME, false, focus, controlFocus, weatherFocus, onWeatherClick, ambient)
+        } else {
             FrameLayout(
                 EMPTY_FRAME,
                 false,
@@ -370,7 +375,7 @@ private fun MirrorContent(
                     .graphicsLayer { alpha = fadeOut(maxOf(focus(), controlFocus(), weatherFocus())) },
                 contentAlignment = Alignment.Center,
             ) {
-                DisconnectedLayout(ambient)
+                DisconnectedLayout(notice, ambient)
             }
         }
         MirrorStatus.WAITING ->

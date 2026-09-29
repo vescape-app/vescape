@@ -1,18 +1,19 @@
 import SwiftUI
 
-/// No fresh frames: name the reason from the watch-local link view, so a dead Bluetooth link, a
-/// missing phone app and an idle one are distinguishable at a glance.
+/// No fresh frames and a phone-link problem the wrist cannot fix itself (`MirrorLinkNotice`): name
+/// it, so a dead Bluetooth link, a missing phone app and a link still being probed are
+/// distinguishable at a glance. A reachable phone app that is not pushing gets no notice at all
+/// (ADR-0039).
 ///
 /// Each title names the thing that is missing rather than the state of the chain, in the rider's
-/// words and not the enum's: the failure is always one broken step in watch → phone → board, and
-/// the last of those is not about the phone at all.
+/// words and not the enum's.
 ///
 /// This draws inside the rim gauges, not instead of them. The shell drops its speed and duty heroes
 /// while disconnected, so the reason owns the centre of the screen rather than dodging two dashes.
 ///
 /// @parity /watch/wearos/src/main/java/app/vescape/wear/StatusLayouts.kt `DisconnectedLayout`
 struct DisconnectedLayout: View {
-  let link: MirrorPhoneLink
+  let notice: MirrorLinkNotice
   let ambient: AmbientMode
 
   var body: some View {
@@ -34,8 +35,8 @@ struct DisconnectedLayout: View {
   }
 
   private var message: (String, String) {
-    switch link {
-    case .unknown:
+    switch notice {
+    case .connecting:
       return ("Connecting…", "")
     // The title already says it. "Check Bluetooth" was the only fix a rider could try, and they try
     // it without being told.
@@ -43,10 +44,8 @@ struct DisconnectedLayout: View {
       return ("Phone not connected", "")
     // The companion reads as absent when the app is missing *or* too old, so the caption has to
     // cover both; naming only one of them sends half the riders down the wrong path.
-    case .phoneOnly:
+    case .appMissing:
       return ("Phone app missing", "Install or update Vescape")
-    case .appReachable:
-      return ("Board not connected", "Connect it on your phone")
     }
   }
 }
