@@ -62,7 +62,7 @@ internal fun MirrorScreen(
     // stacked vertical pagers used to compete for the same drag — the inner one claimed the
     // pointer, forwarded the leftover delta to the outer one but kept the velocity, so the outer
     // could only settle by dragging past half the screen and a normal flick sprang back.
-    val verticalPagerState = rememberPagerState(initialPage = VERTICAL_PAGE_GAUGES, pageCount = { VERTICAL_PAGE_COUNT })
+    val verticalPagerState = rememberPagerState(initialPage = VERTICAL_PAGE_GAUGES, pageCount = { VERTICAL_PAGE_COUNT + 1 }) // PROTOTYPE — + Group Ride page
     // Fractional position on the axis, from radar at 0 up to nav focus at the end. Both focus
     // progresses are read off it, so a drag fades exactly as far as it has travelled.
     val verticalPosition = {
@@ -117,6 +117,18 @@ internal fun MirrorScreen(
                         .coerceIn(0f, 1f)
                 }
                 val weatherFocus = { (VERTICAL_PAGE_GAUGES - verticalPosition()).coerceIn(0f, 1f) }
+                // PROTOTYPE — Group Ride scope.
+                GroupRidePrototype.Tick()
+                GroupRidePrototype.pageFocus = { (verticalPosition() - VERTICAL_PAGE_NAV).coerceIn(0f, 1f) }
+                val groupScope = GroupRideProtoScope(
+                    riders = GroupRidePrototype.riders,
+                    navFocus = { navFocus().coerceAtMost(1f) },
+                    otherFocus = {
+                        maxOf(controlFocus(), weatherFocus(), (verticalPosition() - VERTICAL_PAGE_NAV).coerceIn(0f, 1f))
+                    },
+                    ambient = ambient,
+                )
+                GroupRidePrototype.scope = groupScope
                 // The wrist goes always-on wherever the rider left it. Ambient only ever draws the
                 // gauges, so park both axes there first — without this the arcs would be pinned
                 // over a control page the rider can no longer swipe away.
@@ -222,6 +234,8 @@ internal fun MirrorScreen(
                                     // swap — a pager clips its pages, so content inside would
                                     // slide away instead of pinning.
                                     VERTICAL_PAGE_NAV -> Unit
+                                    // PROTOTYPE — Group Ride page below nav focus.
+                                    VERTICAL_PAGE_COUNT -> GroupRidePrototypeUi.Page(groupScope)
                                     else -> HorizontalPager(
                                         state = controlPagerState,
                                         userScrollEnabled = !isAmbient && !controlHeld,
@@ -289,6 +303,8 @@ internal fun MirrorScreen(
                                     null
                                 },
                             )
+                            // PROTOTYPE — Group Ride edge triangles.
+                            GroupRidePrototypeUi.Overlay(groupScope)
                         }
                     }
                 }

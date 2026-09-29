@@ -107,7 +107,8 @@ internal fun FrameLayout(
 
     // Readouts leave for any focus mode; the nav stack survives nav focus alone.
     val readoutFocus = { maxOf(focus(), controlFocus(), weatherFocus()) }
-    val navStackAlpha = { fadeOut(maxOf(controlFocus(), weatherFocus())) }
+    // PROTOTYPE — the Group Ride list page hides the map under it.
+    val navStackAlpha = { fadeOut(maxOf(controlFocus(), weatherFocus(), GroupRidePrototype.pageFocus())) }
 
     val navBearing = frame.navBearing
     val navDistance = frame.navDistanceM
@@ -121,6 +122,9 @@ internal fun FrameLayout(
                 NavRoute(frame = frame, muted = muted, navFocus = focus)
             }
         }
+
+        // PROTOTYPE — Group Ride map dots: over the route, under every gauge and number.
+        GroupRidePrototype.scope?.let { GroupRidePrototypeUi.Underlay(it) }
 
         // Rim gauges on one shared screen-centred circle.
         Canvas(modifier = Modifier.fillMaxSize()) {
