@@ -350,6 +350,15 @@ Board Move (#490) connects its hold lifecycle to both pager locks and to command
 and the idle return is suspended. Cancelled drags, crown scrolling, nested diagnostics scrolling and
 long holds are still unverified on a device.
 
+The Tilt page is the one control page with its own drag recognizer, and on watchOS any drag gesture
+there takes the touch from the paging scroll view, sideways ones too; `.gesture` or dropping the
+gesture mid-touch does not hand it back. So a sideways drag on a drivable Tilt page offsets the
+control pager's content by the finger's travel and, on release, animates to the next page or back —
+the same half-page-or-fling rule the native pager uses. The gesture's mask stays on for a touch in
+flight, because a moving page stops being settled and changing the mask cancels the gesture. A
+cancelled touch is detected through `@GestureState` and settles the pager and the stick lock the same
+way a release does.
+
 ### Paging regression findings (2026-09-15)
 
 On the Apple Watch SE 3 (40 mm), watchOS 26.5 simulator, background swipes appeared stuck while

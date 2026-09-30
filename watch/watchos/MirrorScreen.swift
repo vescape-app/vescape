@@ -40,6 +40,9 @@ struct MirrorScreen: View {
   ///
   /// @parity /watch/wearos/src/main/java/app/vescape/wear/MirrorScreen.kt `controlHeld`
   @State private var controlHeld = false
+  /// A sideways drag the Tilt stick took from the control pager, points the pages follow the finger
+  /// by. Zero whenever no such drag is in flight.
+  @State private var controlDrag: CGFloat = 0
   @State private var lastInteraction = Date()
   /// Foreground/background, which is what decides whether the Mirror is awake at all. Ambient is a
   /// second, narrower question asked only while it is.
@@ -126,6 +129,7 @@ struct MirrorScreen: View {
       guard reduced else { return }
       vertical = .gauges
       control = .gauges
+      controlDrag = 0
       verticalPagingEnabled = true
     }
     .onChange(of: scenePhase) { _, _ in reportWakeLevel() }
@@ -282,6 +286,9 @@ struct MirrorScreen: View {
         }
       }
       .scrollTargetLayout()
+      // The Tilt page's sideways drag, drawn the way the pager would: every page moves together, and
+      // the page positions measured below follow it, so fades and gates behave as on a native drag.
+      .offset(x: controlDrag)
       .contentShape(Rectangle())
     }
     .coordinateSpace(name: Axis.horizontal)
@@ -312,9 +319,18 @@ struct MirrorScreen: View {
         link: link,
         interactionEnabled: interactionEnabled(.tilt),
         onHoldChanged: { controlHeld = $0 },
-        onPageSwipe: { step in
-          guard let next = ControlPage(rawValue: ControlPage.tilt.rawValue + step) else { return }
-          withAnimation { control = next }
+        onPageDrag: { offset in
+          var transaction = Transaction()
+          transaction.disablesAnimations = true
+          withTransaction(transaction) { controlDrag = offset }
+        },
+        onPageRelease: { step in
+          // Nothing offset: the page is leaving with no sideways drag in flight.
+          guard controlDrag != 0 else { return }
+          withAnimation {
+            controlDrag = 0
+            if let next = ControlPage(rawValue: ControlPage.tilt.rawValue + step) { control = next }
+          }
         }
       )
     case .move:

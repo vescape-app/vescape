@@ -45,6 +45,11 @@ the tilt changes (8 dp deadzone, quadratic up to the rider's `wearTiltRatePercen
 - The Watch Frame carries the commanded value and a `tiltControl` code (free, manual, sensor, move,
   blocked). The readout shows the phone's value, so a pad change shows on the wrist and seeds the
   next drag; the stick is read-only whenever the arbiter or link trust would refuse a manual command.
+- The first move past touch slop decides whose drag it is: vertical steers, sideways pages the
+  control pager like any other page. Wear OS leaves a sideways drag to its pager. On watchOS the
+  stick's drag gesture takes the whole touch from the paging scroll view, so the page offsets the
+  pager with the finger itself and snaps on release (past half a page, counting a fling) or on a
+  cancelled touch. A cancelled vertical drag ends the steering and releases the pager lock.
 - A non-neutral tilt also shows on the gauges page, on the navigation distance's line, and the Move page warns that
   starting a Move clears it.
 
