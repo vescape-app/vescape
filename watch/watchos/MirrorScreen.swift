@@ -250,8 +250,9 @@ struct MirrorScreen: View {
       if let groupRide = link.groupRide {
         GroupRidePage(
           group: groupRide,
-          crownActive: groupPageSettled,
-          unitSystem: link.settings.unitSystem
+          settled: groupPageSettled,
+          unitSystem: link.settings.unitSystem,
+          onPageBack: { withAnimation { vertical = .nav } }
         )
       } else {
         Color.clear
@@ -418,7 +419,7 @@ struct MirrorScreen: View {
     return min(1, max(max(0, -verticalPosition), abs(horizontalPosition), groupFocus))
   }
 
-  /// The Group Ride page is the settled vertical page, so its list may take the crown.
+  /// The Group Ride page is the settled vertical page, so its list may take the crown and the drag.
   private var groupPageSettled: Bool {
     guard !isLuminanceReduced, vertical == .group, let position = settledPositions[.vertical] else { return false }
     return abs(position - Double(VerticalPage.group.rawValue - VerticalPage.gauges.rawValue)) < 0.001

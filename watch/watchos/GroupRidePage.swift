@@ -4,34 +4,47 @@ import SwiftUI
 /// other Rider nearest first, one row each — colour dot, name, an arrow to where they are relative
 /// to the Rider's course, distance, and one status slot (`groupRideStatus`). Alone, it says so.
 ///
-/// Up to `GROUP_PAGE_ROWS` rows, centred. Past that the Digital Crown steps the window a row at a
-/// time — but only while this page is the settled page (`crownActive`), so the crown pages the
-/// vertical axis everywhere else and the two never compete for it. Each step slides the rows by one,
-/// and a position bar on the right shows where the window sits in the list. Swipes keep paging from here. The
-/// nav map and readout are hidden under this page by the caller; ambient parks the axis on the
-/// gauges, so this is never drawn there.
+/// Up to `GROUP_PAGE_ROWS` rows, centred. Past that the list scrolls under a fixed five-row window,
+/// clipped to it: a vertical drag moves it with the finger and flings, settling on a whole row, and
+/// the Digital Crown steps it a row at a time. Both only while this page is the settled page
+/// (`settled`), so the crown pages the vertical axis everywhere else and the two never compete for
+/// it. A drag that begins at the list's top and pulls down pages back to navigation (`onPageBack`);
+/// while the list fits, the pager keeps every swipe. A position bar on the right shows where the
+/// window sits in the list. The nav map and readout are hidden under this page by the caller;
+/// ambient parks the axis on the gauges, so this is never drawn there.
 ///
 /// @parity /watch/wearos/src/main/java/app/vescape/wear/GroupRidePage.kt `GroupRidePage`
 /// @platform-diff Wear OS has no crown binding on its pager, so its settled list owns the crown even
 ///   when it fits. Row width is clamped to the display less the rim inset rather than a round
 ///   face's chord. Only watchOS shrinks an over-wide name or distance; Compose here cannot. The
-///   position indicator is a straight bar beside the flat right edge, Wear OS's a curved arc.
+///   position indicator is a straight bar beside the flat right edge, Wear OS's a curved arc. A
+///   SwiftUI drag on the list takes the touch from the paging scroll view outright, so a pull down
+///   from the top rubber-bands the list and pages back on release; Compose's nested scroll hands the
+///   same pull to its pager as it happens.
 struct GroupRidePage: View {
   let group: WatchGroupRide
-  /// This page is the settled vertical page: the crown may leave the pager for the list.
-  let crownActive: Bool
+  /// This page is the settled vertical page: the list may take the crown and the drag.
+  let settled: Bool
   var unitSystem: String = "metric"
+  /// A pull down from the list's top: page the vertical axis back to navigation.
+  var onPageBack: () -> Void = {}
 
+  /// The crown's row, and where a drag settles.
   @State private var crown = 0.0
+  /// The list's live travel in points: 0 shows the nearest Riders.
+  @State private var travel: CGFloat = 0
+  /// `travel` when the drag in flight began; nil between drags.
+  @State private var dragBase: CGFloat?
   @FocusState private var crownFocused: Bool
 
   var body: some View {
     let rows = group.roster()
     let maxFirst = max(rows.count - GROUP_PAGE_ROWS, 0)
-    // A Rider leaving can shorten the list under the window.
-    let first = min(max(Int(crown.rounded()), 0), maxFirst)
-    let visible = rows[first..<min(rows.count, first + GROUP_PAGE_ROWS)]
+    let maxTravel = CGFloat(maxFirst) * GROUP_ROW_HEIGHT
+    // A Rider leaving can shorten the list under the window; a drag may pull past either end.
+    let shown = dragBase == nil ? min(max(travel, 0), maxTravel) : travel
     let scrolls = maxFirst > 0
+    let bodyHeight = GROUP_ROW_HEIGHT * CGFloat(max(min(rows.count, GROUP_PAGE_ROWS), 1))
 
     GeometryReader { geometry in
       let width = min(GROUP_ROW_WIDTH, geometry.size.width - 2 * Rim.innerInset)
@@ -46,24 +59,32 @@ struct GroupRidePage: View {
             .font(WatchTypography.ui(size: GROUP_NAME_FONT_SIZE))
             .foregroundStyle(Palette.dimText)
             .frame(height: GROUP_ROW_HEIGHT)
-        }
-        ForEach(visible, id: \.rider.id) { row in
-          GroupRideRowView(row: row, unitSystem: unitSystem)
-            .frame(width: width, height: GROUP_ROW_HEIGHT)
+        } else {
+          VStack(spacing: 0) {
+            ForEach(rows, id: \.rider.id) { row in
+              GroupRideRowView(row: row, unitSystem: unitSystem)
+                .frame(width: width, height: GROUP_ROW_HEIGHT)
+            }
+          }
+          .offset(y: -shown)
+          // The five-row window: a row half-way out is cut at the block, never drawn past it.
+          .frame(height: bodyHeight, alignment: .top)
+          .clipped()
         }
       }
-      // One row's travel: the rows keep their identity, so the list reads as scrolled.
-      .animation(.easeOut(duration: GROUP_STEP_SECONDS), value: first)
       .frame(maxWidth: .infinity, maxHeight: .infinity)
       .overlay(alignment: .trailing) {
         if scrolls {
-          GroupWindowIndicator(first: first, maxFirst: maxFirst, total: rows.count)
+          GroupWindowIndicator(first: min(max(shown / GROUP_ROW_HEIGHT, 0), CGFloat(maxFirst)), maxFirst: maxFirst, total: rows.count)
             .padding(.trailing, GROUP_INDICATOR_INSET)
             .offset(y: GROUP_INDICATOR_DROP)
         }
       }
     }
-    .focusable(crownActive && scrolls)
+    .contentShape(Rectangle())
+    // Only while the list scrolls on the settled page: otherwise the pager swipes natively.
+    .gesture(listDrag(maxFirst: maxFirst, maxTravel: maxTravel), including: settled && scrolls ? .all : .subviews)
+    .focusable(settled && scrolls)
     .focused($crownFocused)
     .digitalCrownRotation(
       $crown,
@@ -75,32 +96,65 @@ struct GroupRidePage: View {
       isContinuous: false,
       isHapticFeedbackEnabled: true
     )
+    // One row's travel per crown step, sliding. A drag has already put the list where it settles.
+    .onChange(of: crown) { _, row in
+      let target = CGFloat(row.rounded()) * GROUP_ROW_HEIGHT
+      guard dragBase == nil, abs(target - travel) > 0.5 else { return }
+      withAnimation(.easeOut(duration: GROUP_STEP_SECONDS)) { travel = target }
+    }
     // Take the crown on arrival and hand it back on the way out, so the pager keeps it everywhere
     // else — including the swipe back up from here.
-    .onChange(of: crownActive && scrolls, initial: true) { _, owns in crownFocused = owns }
+    .onChange(of: settled && scrolls, initial: true) { _, owns in crownFocused = owns }
+  }
+
+  /// Tracks the finger, rubber-banding past either end, then settles on the row nearest where the
+  /// fling would have stopped. A pull down that began at the top pages back instead.
+  private func listDrag(maxFirst: Int, maxTravel: CGFloat) -> some Gesture {
+    DragGesture()
+      .onChanged { value in
+        let base = dragBase ?? min(max(travel, 0), maxTravel)
+        if dragBase == nil { dragBase = base }
+        let raw = base - value.translation.height
+        travel = raw < 0 ? raw * GROUP_OVERSCROLL : raw > maxTravel ? maxTravel + (raw - maxTravel) * GROUP_OVERSCROLL : raw
+      }
+      .onEnded { value in
+        let base = dragBase ?? travel
+        dragBase = nil
+        let pull = value.translation.height
+        if base < 0.5, pull >= GROUP_PAGE_BACK_PULL, pull > abs(value.translation.width) {
+          withAnimation(.easeOut(duration: GROUP_STEP_SECONDS)) { travel = 0 }
+          onPageBack()
+          return
+        }
+        let projected = (base - value.predictedEndTranslation.height) / GROUP_ROW_HEIGHT
+        let row = min(max(Int(projected.rounded()), 0), maxFirst)
+        withAnimation(.spring(response: GROUP_SETTLE_SECONDS, dampingFraction: 1)) {
+          travel = CGFloat(row) * GROUP_ROW_HEIGHT
+        }
+        crown = Double(row)
+      }
   }
 }
 
-/// Where the crown window sits in the list: a thumb the visible share of the track long, sliding from
-/// top (nearest Riders) to bottom.
+/// Where the list window sits: a thumb the visible share of the track long, sliding from top
+/// (nearest Riders) to bottom. `first` is the top row, fractional mid-drag.
 ///
 /// @parity /watch/wearos/src/main/java/app/vescape/wear/GroupRidePage.kt `GroupWindowIndicatorState`
 /// @platform-diff Drawn here; Wear OS drives its library `PositionIndicator` with the same window.
 private struct GroupWindowIndicator: View {
-  let first: Int
+  let first: CGFloat
   let maxFirst: Int
   let total: Int
 
   var body: some View {
     let thumb = GROUP_INDICATOR_LENGTH * CGFloat(GROUP_PAGE_ROWS) / CGFloat(max(total, GROUP_PAGE_ROWS))
-    let travel = (GROUP_INDICATOR_LENGTH - thumb) * CGFloat(first) / CGFloat(max(maxFirst, 1))
+    let travel = (GROUP_INDICATOR_LENGTH - thumb) * first / CGFloat(max(maxFirst, 1))
     ZStack(alignment: .top) {
       Capsule().fill(Palette.guide)
       Capsule()
         .fill(Palette.secondaryText)
         .frame(height: thumb)
         .offset(y: travel)
-        .animation(.easeOut(duration: GROUP_STEP_SECONDS), value: first)
     }
     .frame(width: GROUP_INDICATOR_WIDTH, height: GROUP_INDICATOR_LENGTH)
   }
@@ -180,7 +234,7 @@ private struct BearingArrow: Shape {
   }
 }
 
-/// Rows on screen before the crown scrolls the list.
+/// Rows on screen before the list scrolls.
 ///
 /// @parity /watch/wearos/src/main/java/app/vescape/wear/GroupRidePage.kt `GROUP_PAGE_ROWS`
 private let GROUP_PAGE_ROWS = 5
@@ -200,6 +254,12 @@ private let GROUP_INDICATOR_DROP: CGFloat = GROUP_INDICATOR_LENGTH / 2 + 6
 ///
 /// @parity /watch/wearos/src/main/java/app/vescape/wear/GroupRidePage.kt `GROUP_STEP_MS`
 private let GROUP_STEP_SECONDS = 0.15
+/// How long a released drag takes to spring onto its row.
+private let GROUP_SETTLE_SECONDS = 0.3
+/// Share of the finger's travel the list follows past either end.
+private let GROUP_OVERSCROLL: CGFloat = 0.35
+/// How far a pull down from the list's top must travel to page back to navigation.
+private let GROUP_PAGE_BACK_PULL: CGFloat = 24
 private let GROUP_ROW_HEIGHT: CGFloat = 22
 /// On the 40 mm display the row is 138 pt (the display less the rim inset): 93 pt of fixed columns
 /// leaves 45 pt, a five-character name ("Tomek" is 42.5 pt) at full size.

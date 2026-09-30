@@ -270,7 +270,10 @@ the Group Ride page. Title "Group · N", then every other Rider nearest first �
 to five characters, an arrow to their bearing off the Rider's course, distance, and one status slot:
 "lost" when stale, else a thermometer in the heat level's colour when hot, else "—" without a Board,
 else battery % (orange or red at its level). Alone it reads "Waiting for riders". Five rows fit;
-past that the crown steps the list a row at a time, sliding the rows, and a position indicator on the
+past that the list scrolls under a fixed five-row window: a vertical drag moves it with the finger
+and flings, settling on a whole row, and the crown steps it a row at a time, sliding the rows. A pull
+down that begins at the list's top pages back to nav focus; a flick back up the list stops at its
+top. While the list fits, every swipe stays the pager's. A position indicator on the
 right shows where the window sits: a thin arc just below 3 o'clock on Wear OS, a short bar just
 below the right edge's midpoint on watchOS, both clear of the duty head tick. The map, route, nav readout and Group Ride marks
 fade out as the page arrives. The group dropping while the page is shown lands the rider on nav

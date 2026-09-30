@@ -86,7 +86,8 @@ internal fun MirrorScreen(
     val onGauges = verticalPagerState.currentPage == VERTICAL_PAGE_GAUGES
     val radarVisible = !isAmbient && verticalPagerState.currentPage == VERTICAL_PAGE_RADAR
     // The Group Ride list takes the crown only once its page has settled: focusing it mid-fling
-    // would bring it into view and drag the pager along.
+    // would bring it into view and drag the pager along. Its drag needs no gate: it nests under the
+    // pager's, which takes the drag first while a page is mid-way.
     val groupPageSettled by remember(verticalPagerState, isAmbient) {
         derivedStateOf {
             !isAmbient &&
@@ -250,7 +251,7 @@ internal fun MirrorScreen(
                                     // swap — a pager clips its pages, so content inside would
                                     // slide away instead of pinning.
                                     VERTICAL_PAGE_NAV -> Unit
-                                    VERTICAL_PAGE_GROUP -> GroupRidePage(crownActive = groupPageSettled)
+                                    VERTICAL_PAGE_GROUP -> GroupRidePage(settled = groupPageSettled)
                                     else -> HorizontalPager(
                                         state = controlPagerState,
                                         userScrollEnabled = !isAmbient && !controlHeld,
