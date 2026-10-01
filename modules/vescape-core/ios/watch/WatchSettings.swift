@@ -91,7 +91,7 @@ struct WatchSettings: Equatable {
   /// Read the bag leniently. A missing key is the wrist default, never a zero — `getInt`-style
   /// coercion of an absent strength would read as 0 %, which is a number the rider never chose.
   ///
-  /// @parity /watch/wearos/src/main/java/app/vescape/wear/MainActivity.kt `readSettings`
+  /// @parity /watch/wearos/src/main/java/app/vescape/wear/WatchSettings.kt `decode`
   static func decode(_ payload: [String: Any]?) -> WatchSettings {
     guard let payload else { return wristDefaults }
     let color = (payload[WatchSettingsKey.riderColor] as? String)?

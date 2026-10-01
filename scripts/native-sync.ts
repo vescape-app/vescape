@@ -1,6 +1,7 @@
 import { createHash } from 'crypto'
 import { existsSync, mkdirSync, readdirSync, readFileSync, statSync, writeFileSync } from 'fs'
 import { join, relative } from 'path'
+import { wearSharedSources } from '../plugins/wearSharedSources.ts'
 import { copyShared, sharedOutput, sharedSources, sharedTargets } from './copy-shared.ts'
 
 const ROOT = join(import.meta.dir, '..')
@@ -34,12 +35,7 @@ const PREBUILD_INPUTS = [
 const IOS_PREBUILD_INPUTS = ['targets']
 
 /** Android-only prebuild inputs: `withWearMirror` copies the Wear OS Mirror into `android/wearos/`. */
-const ANDROID_PREBUILD_INPUTS = [
-  'watch',
-  'modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/UnitPresentation.kt',
-  'modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/TelemetryLevel.kt',
-  'modules/vescape-core/android/src/main/java/expo/modules/vescapecore/watch/GroupRideFrame.kt',
-]
+const ANDROID_PREBUILD_INPUTS = ['watch', ...wearSharedSources]
 
 /** Per-Expo-module prebuild inputs: native registration and dependency declarations. */
 const MODULE_PREBUILD_INPUTS = ['expo-module.config.json', 'package.json']

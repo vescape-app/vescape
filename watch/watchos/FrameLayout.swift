@@ -50,125 +50,20 @@ struct FrameLayout: View {
   var telemetryTrailEnabled: Bool = true
   var unitSystem: String = "metric"
 
-  /// One eased zoom and course for every map layer, so the Group Ride marks sit where the route is
-  /// drawn mid-zoom and mid-turn. `mapMoving` holds while it eases, and runs the layers' timelines.
-  @State private var mapView = WatchMapView(spanM: WatchMapProjection.clampedSpanM(nil), courseDeg: nil)
-  @State private var mapMoving = false
-
-  /// Readouts retreat for any page; this is the one the existing layout animates against.
+  /// Readouts retreat for any page.
   private var focus: Double { max(navFocus, awayFocus) }
 
-  /// The opposite pull on the nav stack: it survives nav focus and leaves for everything else.
-  ///
-  /// @parity /watch/wearos/src/main/java/app/vescape/wear/FrameGauges.kt `navStackAlpha`
-  private var navStackAlpha: Double { fadeOut(awayFocus) }
-  private var tiltColor: Color { (muted || ambient.active) ? Palette.dimText : Palette.tilt }
-
-  /// Nav is all-or-nothing: the phone sends bearing and distance together or not at all, so one
-  /// without the other is a frame this build should not draw half of.
-  private var navLanes: (bearingDeg: Double, distanceM: Double)? {
-    guard routeStatus?.canDraw(receivedRouteId: route?.routeId) != false else { return nil }
-    guard let bearing = frame.navBearing, let distance = frame.navDistanceM else { return nil }
-    return (bearing, distance)
-  }
-
-  private var routeNotice: WatchRouteNotice? {
-    routeStatus?.notice(
-      receivedRouteId: route?.routeId,
-      hasPosition: frame.navBearing != nil && frame.navDistanceM != nil && frame.riderEastM != nil && frame.riderNorthM != nil
-    )
-  }
-
-  /// What the map eases towards: Navigation's lanes, else the Group Ride's own. The Group Ride's
-  /// course already holds across a stop; a nil frame course holds too.
-  private var mapTarget: MapTarget {
-    if navLanes == nil, let groupRide {
-      return MapTarget(spanM: WatchMapProjection.clampedSpanM(groupRide.spanM), courseDeg: groupRide.courseDeg, position: frame.mapPosition)
-    }
-    return MapTarget(spanM: WatchMapProjection.clampedSpanM(frame.routeSpanM), courseDeg: frame.courseDeg, position: frame.mapPosition)
-  }
-
-  /// The Rider and trail remain without Navigation or a Group Ride. Ambient skips the moving map.
-  private var mapAnimates: Bool { !ambient.active }
-
   var body: some View {
-    // A stale frame in ambient is the one case with nothing to say: the readings it would keep are
-    // exactly the ones that have stopped arriving, so ambient empties every lane instead.
     let blind = ambient.active && muted
-
-    ZStack {
-      // Bottom layer: the route ahead and the rider on it, under every gauge and readout. Ambient
-      // skips it — the lanes animate their zoom, and a moving map is the most expensive thing the
-      // always-on panel could be asked to draw.
-      if navLanes != nil, !ambient.active {
-        NavRoute(
-          route: route,
-          frame: frame,
-          mapView: mapView,
-          mapMoving: mapMoving,
-          focus: navFocus,
-          color: muted ? Palette.dimText : navColor
-        )
-        .opacity(navStackAlpha)
-      }
-
-      if !ambient.active {
-        RiderTrail(points: frame.trail, mapView: mapView, mapMoving: mapMoving, color: muted ? Palette.dimText : trailColor)
-          .opacity(navStackAlpha * (telemetryTrailEnabled ? 1 : min(1, max(0, navFocus))))
-      }
-
-      // Group Ride dots: over the paths, under every gauge and number. Hidden in ambient.
-      if let groupRide, !ambient.active {
-        GroupRideLayer(
-          group: groupRide,
-          mapView: mapView,
-          mapMoving: mapMoving,
-          focus: navFocus,
-          unitSystem: unitSystem
-        )
-        .opacity(navStackAlpha)
-      }
-
-      if !ambient.active {
-        RiderPosition(color: muted ? Palette.dimText : navColor).opacity(navStackAlpha)
-      }
-
+    WatchMapScene(
+      frame: frame, muted: muted, ambient: ambient,
+      navFocus: navFocus, awayFocus: awayFocus,
+      route: route, routeStatus: routeStatus, groupRide: groupRide,
+      navColor: navColor, trailColor: trailColor, navArrowEnabled: navArrowEnabled,
+      telemetryTrailEnabled: telemetryTrailEnabled, unitSystem: unitSystem
+    ) {
       gauges(blind: blind)
-
-      // Navigation, only while the phone is sending it. No destination means no nav lanes, and the
-      // frame renders exactly as it would without this slice.
-      if let routeNotice {
-        if !ambient.active {
-          RouteLoadingNotice(notice: routeNotice, color: navColor).opacity(navStackAlpha)
-        }
-      } else if let navLanes {
-        NavPointer(
-          bearingDeg: navLanes.bearingDeg,
-          distanceM: navLanes.distanceM,
-          unitSystem: unitSystem,
-          focus: navFocus,
-          stackAlpha: navStackAlpha,
-          arrowEnabled: navArrowEnabled,
-          color: (muted || ambient.active) ? Palette.dimText : navColor,
-          remoteTilt: frame.remoteTilt,
-          tiltColor: tiltColor
-        )
-      } else {
-        // Nav focus with nothing to show would be a blank rectangle. Say why, but only once the
-        // drag is nearly done, so it never flickers under the departing readouts.
-        // A joined Group Ride is something to show on the map page: no "no navigation" over it.
-        if groupRide == nil, frame.trail.isEmpty {
-          NavAbsentHint(focus: navFocus, stackAlpha: navStackAlpha)
-        }
-        // No navigation: the tilt badge keeps the distance's slot to itself.
-        VStack(spacing: 0) {
-          Spacer(minLength: 0)
-          TiltBadge(value: frame.remoteTilt, color: tiltColor)
-            .padding(.bottom, NAV_READOUT_BOTTOM_INSET)
-        }
-        .opacity(navStackAlpha * (1 - navFocus))
-      }
-
+    } readouts: {
       if showReadouts {
         VStack(spacing: 0) {
           heroes(blind: blind)
@@ -193,35 +88,8 @@ struct FrameLayout: View {
         .offset(y: BATTERY_FOCUS_DROP * focus)
         .opacity(fadeOut(focus))
       }
-
-      // Group Ride edge triangles: over the rim gauges. Hidden in ambient.
-      if let groupRide, !ambient.active {
-        GroupRideEdgeLayer(
-          group: groupRide, mapView: mapView, mapMoving: mapMoving, focus: navFocus, unitSystem: unitSystem
-        )
-          .opacity(navStackAlpha)
-      }
     }
     .ignoresSafeArea()
-    .onAppear { retargetMap(animate: false) }
-    .onChange(of: mapTarget) { retargetMap(animate: mapAnimates) }
-    // Ambient (or losing both map sources) lands a map mid-ease, as Wear's relaunched effect does.
-    .onChange(of: mapAnimates) { if !mapAnimates { retargetMap(animate: false) } }
-    // Stops the layers' timelines once the map has landed, so a still map never redraws.
-    .task(id: mapView.settlesAt) {
-      let remaining = mapView.settlesAt.timeIntervalSinceNow
-      if remaining > 0 {
-        try? await Task.sleep(for: .seconds(remaining))
-        if Task.isCancelled { return }
-      }
-      mapMoving = false
-    }
-  }
-
-  private func retargetMap(animate: Bool) {
-    let now = Date()
-    mapView.retarget(spanM: mapTarget.spanM, courseDeg: mapTarget.courseDeg, at: now, animate: animate, position: mapTarget.position)
-    mapMoving = mapView.settlesAt > now
   }
 
   // MARK: - Rim
@@ -410,10 +278,3 @@ private let HERO_FOCUS_SHRINK = 0.12
 private let BATTERY_FOCUS_DROP: CGFloat = 18
 /// @parity /watch/wearos/src/main/java/app/vescape/wear/FrameGauges.kt `TEMP_FOCUS_SPREAD`
 private let TEMP_FOCUS_SPREAD = 0.06
-
-/// What ``FrameLayout``'s map eases towards.
-private struct MapTarget: Equatable {
-  let spanM: Double
-  let courseDeg: Double?
-  let position: WatchMapPosition?
-}

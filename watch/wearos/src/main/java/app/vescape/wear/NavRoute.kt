@@ -27,9 +27,8 @@ import androidx.compose.ui.unit.dp
  * @parity /watch/watchos/NavRoute.swift `NavRoute`
  */
 @Composable
-internal fun NavRoute(frame: WatchFrame, mapView: WatchMapView, muted: Boolean, navFocus: () -> Float = { 0f }) {
+internal fun NavRoute(frame: WatchFrame, route: WatchRoute?, mapView: WatchMapView, muted: Boolean, navFocus: () -> Float = { 0f }) {
     val color = if (muted) DimText else navColor()
-    val route = RouteState.route.value
     val east = frame.riderEastM
     val north = frame.riderNorthM
 

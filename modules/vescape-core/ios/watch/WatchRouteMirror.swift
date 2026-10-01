@@ -75,6 +75,12 @@ final class WatchRouteMirror {
     publish(controller.currentPath)
   }
 
+  /// Release only the mirror-owned subscription; route identity and committed origin survive.
+  func detach(from controller: NavigationController) {
+    controller.onPathChange = nil
+    lock.withLock { push = nil }
+  }
+
   /// A cold-state channel landed on the wrist. The route channel is the one that moves an origin.
   func channelDelivered(_ channel: String) {
     guard channel == watchRouteChannel else { return }

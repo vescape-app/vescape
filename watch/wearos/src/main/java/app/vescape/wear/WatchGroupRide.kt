@@ -1,6 +1,5 @@
 package app.vescape.wear
 
-import android.os.SystemClock
 import androidx.compose.runtime.mutableStateOf
 import expo.modules.vescapecore.telemetry.TelemetryLevel
 import expo.modules.vescapecore.telemetry.UnitPresentation
@@ -124,29 +123,13 @@ private fun String.takeCodePoints(count: Int): String =
 private const val GROUP_ROW_NAME_CHARS = 5
 
 /**
- * Wrist-side Group Ride state. A frame lands here from [MainActivity]; [refresh] drops the group once
- * frames stop, which is also how leaving the ride, the phone losing the wrist and ambient all clear
- * it — the phone simply stops sending.
+ * Group Ride subscription for the UI. [WatchMirrorIntake] owns replacement and expiry; the shared
+ * telemetry refresh tick publishes it alongside the other channels.
  *
  * @parity /watch/watchos/PhoneLink.swift `groupRide`
  */
 internal object GroupRideState {
     val group = mutableStateOf<WatchGroupRide?>(null)
-    private var lastFrameAtMs: Long? = null
-
-    fun accept(frame: GroupRideFrame, nowMs: Long = SystemClock.elapsedRealtime()) {
-        group.value = WatchGroupRide.accepting(frame, group.value)
-        lastFrameAtMs = nowMs
-    }
-
-    /** @parity /watch/watchos/PhoneLink.swift `refresh` */
-    fun refresh(nowMs: Long = SystemClock.elapsedRealtime()) {
-        val at = lastFrameAtMs ?: return
-        if (nowMs - at > GROUP_RIDE_TIMEOUT_MS) {
-            group.value = null
-            lastFrameAtMs = null
-        }
-    }
 }
 
 /**
@@ -154,7 +137,7 @@ internal object GroupRideState {
  *
  * @parity /modules/vescape-core/ios/watch/WatchGroupRide.swift `timeoutMs`
  */
-private const val GROUP_RIDE_TIMEOUT_MS = 3_500L
+internal const val GROUP_RIDE_TIMEOUT_MS = 3_500L
 
 /**
  * A Rider's compact distance: "680m", "2.1km" in the Rider's units. The wrist's own distance

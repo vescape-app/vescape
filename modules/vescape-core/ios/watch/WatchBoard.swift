@@ -68,7 +68,7 @@ struct WatchBoardLights: Equatable {
   /// Decode a pushed payload. An absent channel and an unreadable one both read as unknown, because
   /// the rider cannot act on the difference and neither may be drawn as off.
   ///
-  /// @parity /watch/wearos/src/main/java/app/vescape/wear/WatchBoard.kt `decodeBoardLights`
+  /// @parity /watch/wearos/src/main/java/app/vescape/wear/WatchBoard.kt `decodeBoardLightsPayload`
   static func decode(_ payload: [String: Any]?) -> WatchBoardLights {
     guard let payload else { return WatchBoardLights() }
     return WatchBoardLights(

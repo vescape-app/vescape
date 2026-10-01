@@ -28,22 +28,31 @@ internal class GroupRideFrameTick(
     private val push: (ByteArray) -> Unit,
 ) {
     private var handle: Cancellable? = null
+    private var running = false
+    private var generation = 0L
 
     fun start() {
-        if (handle == null) schedule()
+        if (running) return
+        running = true
+        generation++
+        schedule()
     }
 
     fun stop() {
+        running = false
+        generation++
         handle?.cancel()
         handle = null
     }
 
     private fun schedule() {
+        val currentGeneration = generation
         handle = scheduler.postDelayed(GROUP_RIDE_FRAME_INTERVAL_MS) {
+            if (!running || generation != currentGeneration) return@postDelayed
             if (wakeLevel() == WatchMirrorWakeLevel.ACTIVE && canPushWatchFrame()) {
                 frame()?.let { push(GroupRideFrameCodec.encode(it)) }
             }
-            schedule()
+            if (running && generation == currentGeneration) schedule()
         }
     }
 }

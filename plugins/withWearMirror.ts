@@ -1,6 +1,7 @@
 import { withDangerousMod, type ConfigPlugin } from 'expo/config-plugins'
 import { cpSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import path from 'node:path'
+import { copyWearSharedSources } from './wearSharedSources.ts'
 
 /**
  * Injects the git-tracked Wear OS Mirror (`watch/wearos/`) into the Expo-generated `android/`
@@ -46,24 +47,7 @@ const withWearMirror: ConfigPlugin = (config) =>
       const dest = path.join(androidRoot, 'wearos')
       rmSync(dest, { recursive: true, force: true })
       cpSync(source, dest, { recursive: true })
-      // The native phone and wrist compile the same pure sources: units conversion, and the Group
-      // Ride Frame codec with the telemetry levels it carries, so encoder and decoder cannot drift.
-      for (const shared of [
-        'telemetry/UnitPresentation.kt',
-        'telemetry/TelemetryLevel.kt',
-        'watch/GroupRideFrame.kt',
-        'watch/WatchTrail.kt',
-        'watch/WatchRouteStatus.kt',
-      ]) {
-        cpSync(
-          path.join(
-            projectRoot,
-            'modules/vescape-core/android/src/main/java/expo/modules/vescapecore',
-            shared,
-          ),
-          path.join(dest, 'src/main/java/app/vescape/wear', path.basename(shared)),
-        )
-      }
+      copyWearSharedSources(projectRoot, dest)
 
       // Android resource names cannot contain capitals or hyphens. Copy the shared app faces
       // under resource-safe names rather than maintaining a second set in the watch source.

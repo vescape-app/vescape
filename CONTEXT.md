@@ -312,12 +312,16 @@ A user-authored spoken phrase on a single-threshold **Alert Rule** that may incl
 _Avoid_: TTS sound, voice preset, notification text
 
 **Watch Mirror**:
-The app on the rider's wrist that mirrors live Board state and provides rider controls. The phone owns Board state; the wrist can send rider commands and report its own awake state. Implemented by the **Wear OS Mirror** on Android; the **watchOS Mirror** is planned for Apple Watch.
+The app on the rider's wrist that mirrors phone-owned live state and provides rider controls. Navigation and Group Ride can remain live without a Board Session. The wrist sends rider commands and reports its own awake state. Implemented by the **Wear OS Mirror** on Android and the **watchOS Mirror** on Apple Watch.
 _Avoid_: Wear Mirror (bakes in Google's Wear OS brand; use for the Android impl only), watch app, companion (Companion names the CompanionDeviceManager board-presence association, not the watch)
 
 **Watch Frame**:
 The compact, throttled telemetry snapshot the phone pushes to a **Watch Mirror** to drive its display. Distinct from a **Telemetry Sample** (raw, per-packet) and from **Live State** (the full app snapshot sent to JS).
 _Avoid_: Watch payload, wear message
+
+**Watch Map**:
+The **Watch Mirror** presentation of the Rider's position, recent ridden trail, Navigation and nearby **Group Ride** Riders. It shares one camera across its layers and can remain visible without a **Board Session** or Navigation. The phone supplies its data; it owns no separate recording or location history.
+_Avoid_: Navigation overlay (the map also works without Navigation), watch recording
 
 **Group Ride Frame**:
 The compact snapshot of a joined **Group Ride** the phone pushes to a **Watch Mirror**: the Rider's own course and, for every other **Rider**, where they are relative to the Rider plus the few facts worth a glance. Independent of the **Watch Frame**, so it flows with or without a **Board Session**.

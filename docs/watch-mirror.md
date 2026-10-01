@@ -1,7 +1,36 @@
 # Watch Mirror
 
-The Watch Mirror is a Wear OS companion app under `watch/wearos/`. The phone app owns the Board
-Session and pushes Watch Frames from native code; the watch only renders received frames.
+The Watch Mirror has native wrist implementations under `watch/wearos/` and `watch/watchos/`.
+The phone owns Board state, Navigation and location history. The wrist renders received state,
+sends rider commands and reports its wake level.
+
+## Ownership
+
+Three modules separate phone coordination, incoming wrist state and map presentation:
+
+- `WatchMirrorCoordinator` in `modules/vescape-core` owns the Watch Frame and Group Ride Frame
+  ticks, wake/cadence policy and source subscriptions. Android scopes it to the core service;
+  iOS scopes it to the process. `BoardSessionController` supplies Board snapshots and retains
+  the existing command actions and safety checks. Ending a Board Session does not end Navigation
+  or Group Ride delivery.
+- `WatchMirrorIntake` on the wrist decodes and applies streamed frames and retained state. It
+  owns receipt times, freshness and replacement/clearing rules. Live transport and fixture replay
+  enter through the same intake; the UI adapters publish its individual channels. Transport,
+  diagnostics and rider commands stay outside this state module.
+- `WatchMapScene` owns the Watch Map's camera target, shared motion, route-loading notices,
+  layer ordering and visibility settings. The gauge layout supplies its gauge/readout content
+  without deciding how map layers behave. Paths remain below gauges and offscreen Rider marks
+  remain above them. `WatchMapSceneState` holds the decisions that can be tested without drawing.
+
+Tests exercise coordination with a controlled clock and transport, intake with encoded message
+sequences, and map decisions with combinations of Navigation, Group Ride, ambient and settings.
+Replay passes fixture data through the phone encoders and the production wrist decoders before
+rendering. It checks application behavior; physical radio delivery and wrist-down runtime still
+require hardware verification.
+
+Wear's shared native sources are listed once in `plugins/wearSharedSources.ts`. The config plugin
+copies them into their package directories and native-sync fingerprints that same list, so changing
+an encoder regenerates the copied watch source. watchOS reuses Swift sources through symlinks.
 
 ## Google Play Release
 

@@ -39,11 +39,11 @@ import expo.modules.vescapecore.watch.GroupRideFrameRider
  */
 @Composable
 internal fun GroupRideLayer(
+    group: WatchGroupRide,
     mapView: WatchMapView,
     navFocus: () -> Float,
     alpha: () -> Float,
 ) {
-    val group = GroupRideState.group.value ?: return
     val stalePulse = rememberStalePulse(group)
     val labels = rememberGroupRideLabels()
     Canvas(modifier = Modifier.fillMaxSize().graphicsLayer { this.alpha = alpha() }) {
@@ -72,8 +72,7 @@ internal fun GroupRideLayer(
  * @parity /watch/watchos/GroupRideLayer.swift `GroupRideEdgeLayer`
  */
 @Composable
-internal fun GroupRideEdgeLayer(mapView: WatchMapView, navFocus: () -> Float, alpha: () -> Float) {
-    val group = GroupRideState.group.value ?: return
+internal fun GroupRideEdgeLayer(group: WatchGroupRide, mapView: WatchMapView, navFocus: () -> Float, alpha: () -> Float) {
     val stalePulse = rememberStalePulse(group)
     val labels = rememberGroupRideLabels()
     Canvas(modifier = Modifier.fillMaxSize().graphicsLayer { this.alpha = alpha() }) {

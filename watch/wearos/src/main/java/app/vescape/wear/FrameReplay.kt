@@ -8,6 +8,8 @@ import android.os.Looper
 import android.os.SystemClock
 import expo.modules.vescapecore.telemetry.TelemetryLevel
 import expo.modules.vescapecore.watch.WatchRouteStatus
+import expo.modules.vescapecore.watch.WatchRouteStatusCodec
+import expo.modules.vescapecore.watch.GroupRideFrameCodec
 import expo.modules.vescapecore.watch.WatchRoutePhase
 import expo.modules.vescapecore.watch.GroupRideFrame
 import expo.modules.vescapecore.watch.GroupRideFrameRider
@@ -335,8 +337,10 @@ class FrameReplayer(private val context: Context) {
         if (samples.isEmpty()) return
         WatchDiagnostics.recordReplay(fixture, samples.size)
         loadScene()
-        RouteState.status.value = if (routeLoading) WatchRouteStatus(WatchRoutePhase.READY, 1) else null
-        if (routeLoading) RouteState.accept(null)
+        MirrorIntakeState.apply {
+            acceptRouteStatus(if (routeLoading) WatchRouteStatusCodec.encode(WatchRouteStatus(WatchRoutePhase.READY, 1)) else null)
+            if (routeLoading) acceptRoute(null)
+        }
         groupRide = if (group) readAsset(REPLAY_FIXTURE_GROUP_RIDE)?.let(ReplaySceneParser::parseGroupRide) else null
         running = true
         startedAt = SystemClock.elapsedRealtime()
@@ -353,7 +357,7 @@ class FrameReplayer(private val context: Context) {
         val group = groupRide ?: return
         if (!running) return
         val now = SystemClock.elapsedRealtime()
-        GroupRideState.accept(group.frame(atMs = now - startedAt, courseDeg = courseDeg), now)
+        MirrorIntakeState.apply { acceptGroupRide(GroupRideFrameCodec.encode(group.frame(atMs = now - startedAt, courseDeg = courseDeg)), now) }
         handler.postDelayed(::pushGroupRide, REPLAY_GROUP_RIDE_INTERVAL_MS)
     }
 
@@ -376,14 +380,13 @@ class FrameReplayer(private val context: Context) {
             {
                 if (!running) return@postDelayed
                 val now = SystemClock.elapsedRealtime()
-                WatchDiagnostics.recordFrame()
                 sample.frame.courseDeg?.let { courseDeg = it }
-                TelemetryState.acceptFrame(
-                    sample.frame.copy(
+                MirrorIntakeState.acceptTelemetry(
+                    WatchMirrorReplayAdapter.telemetry(sample.frame.copy(
                         remoteTilt = tilt,
                         tiltControl = if (tilt == TILT_CENTER) WatchTiltControl.FREE else WatchTiltControl.MANUAL,
-                    ),
-                    now,
+                    )),
+                    now, now,
                 )
                 index++
                 if (index >= samples.size) restartLoop() else scheduleNext()
@@ -399,11 +402,11 @@ class FrameReplayer(private val context: Context) {
      * @parity /watch/watchos/PhoneLink.swift `acceptReplayRoute`
      */
     private fun loadScene() {
-        readAsset(REPLAY_FIXTURE_ROUTE)?.let { RouteState.accept(ReplaySceneParser.parseRoute(it)) }
+        val route = readAsset(REPLAY_FIXTURE_ROUTE)?.let(ReplaySceneParser::parseRoute)
+        MirrorIntakeState.apply { acceptRoute(WatchMirrorReplayAdapter.route(route)) }
         readAsset(REPLAY_FIXTURE_WEATHER)?.let {
-            WeatherState.accept(
-                ReplaySceneParser.parseWeather(it, System.currentTimeMillis(), minuteOfDayNow()),
-            )
+            val weather = ReplaySceneParser.parseWeather(it, System.currentTimeMillis(), minuteOfDayNow())
+            MirrorIntakeState.apply { acceptWeather(WatchMirrorReplayAdapter.weather(weather)) }
         }
     }
 

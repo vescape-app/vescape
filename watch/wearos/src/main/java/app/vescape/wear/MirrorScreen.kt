@@ -122,7 +122,6 @@ internal fun MirrorScreen(
         while (true) {
             delay(if (isAmbient) AMBIENT_REFRESH_INTERVAL_MS else WATCH_FRAME_INTERVAL_MS)
             TelemetryState.refresh()
-            GroupRideState.refresh()
         }
     }
 
@@ -413,6 +412,6 @@ private val EMPTY_FRAME = WatchFrame(
  * saving a single radio wake. One minute — the system's own ambient callback rate — left battery and
  * temperatures up to a minute behind data the watch already had in memory.
  *
- * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/connection/BoardSessionController.kt `WATCH_FRAME_AMBIENT_INTERVAL_MS`
+ * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/watch/WatchMirrorCoordinator.kt `WATCH_FRAME_AMBIENT_INTERVAL_MS`
  */
 private const val AMBIENT_REFRESH_INTERVAL_MS = 10_000L

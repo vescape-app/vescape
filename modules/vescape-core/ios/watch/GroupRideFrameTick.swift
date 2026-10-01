@@ -18,6 +18,8 @@ final class GroupRideFrameTick {
   private let wakeLevel: () -> WatchMirrorWakeLevel
   private let frame: () -> GroupRideFrame?
   private let push: (Data) -> Void
+  private var running = false
+  private var generation = 0
   private var handle: Cancellable?
 
   init(
@@ -35,21 +37,27 @@ final class GroupRideFrameTick {
   }
 
   func start() {
-    if handle == nil { schedule() }
+    guard !running else { return }
+    running = true
+    generation += 1
+    schedule()
   }
 
   func stop() {
+    running = false
+    generation += 1
     handle?.cancel()
     handle = nil
   }
 
   private func schedule() {
+    let currentGeneration = generation
     handle = scheduler.postDelayed(GROUP_RIDE_FRAME_INTERVAL_MS) { [weak self] in
-      guard let self else { return }
+      guard let self, running, generation == currentGeneration else { return }
       if self.wakeLevel() == .active, self.canPushWatchFrame(), let frame = self.frame() {
         self.push(GroupRideFrameCodec.encode(frame))
       }
-      self.schedule()
+      if running, generation == currentGeneration { schedule() }
     }
   }
 }

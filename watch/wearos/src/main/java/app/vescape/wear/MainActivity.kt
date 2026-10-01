@@ -18,10 +18,8 @@ import com.google.android.gms.wearable.DataItem
 import com.google.android.gms.wearable.DataMapItem
 import com.google.android.gms.wearable.MessageClient
 import com.google.android.gms.wearable.Wearable
-import expo.modules.vescapecore.watch.GroupRideFrameCodec
 import expo.modules.vescapecore.watch.WATCH_GROUP_RIDE_PATH
 import expo.modules.vescapecore.watch.WATCH_ROUTE_STATUS_PATH
-import expo.modules.vescapecore.watch.WatchRouteStatusCodec
 
 /**
  * Wear OS Mirror entry point. Renders the live [WatchFrame] pushed from the phone over
@@ -54,106 +52,47 @@ class MainActivity : ComponentActivity() {
      * @parity /watch/watchos/PhoneLink.swift `session(_:didReceiveMessage:)`
      */
     private val listener = MessageClient.OnMessageReceivedListener { event ->
-        if (event.path == WATCH_ROUTE_STATUS_PATH) {
-            val status = WatchRouteStatusCodec.decode(event.data) ?: return@OnMessageReceivedListener
-            runOnUiThread { RouteState.status.value = status }
-            return@OnMessageReceivedListener
-        }
-        if (event.path == WATCH_GROUP_RIDE_PATH) {
-            // A frame this build cannot read (another wire version) is dropped; the group then
-            // times out rather than drawing something misread.
-            val group = GroupRideFrameCodec.decode(event.data) ?: return@OnMessageReceivedListener
-            runOnUiThread { GroupRideState.accept(group) }
-            return@OnMessageReceivedListener
-        }
-        if (event.path != TELEMETRY_PATH) {
-            runOnUiThread { WatchDiagnostics.recordUnknownPath(event.path) }
-            return@OnMessageReceivedListener
-        }
-        val frame = WatchFrameDecoder.decode(event.data)
+        // Capture arrival before dispatch: a busy UI must not make old frames appear fresh.
+        val receivedAtMs = SystemClock.elapsedRealtime()
+        val bytes = event.data
         runOnUiThread {
-            if (frame != null) {
-                WatchDiagnostics.recordFrame()
-                TelemetryState.acceptFrame(frame, SystemClock.elapsedRealtime())
-            } else {
-                WatchDiagnostics.recordDecodeFailure(event.data)
+            when (event.path) {
+                TELEMETRY_PATH -> MirrorIntakeState.acceptTelemetry(bytes, receivedAtMs, SystemClock.elapsedRealtime())
+                WATCH_GROUP_RIDE_PATH -> MirrorIntakeState.apply { acceptGroupRide(bytes, receivedAtMs) }
+                WATCH_ROUTE_STATUS_PATH -> MirrorIntakeState.apply { acceptRouteStatus(bytes) }
+                else -> WatchDiagnostics.recordUnknownPath(event.path)
             }
         }
     }
 
-    /**
-     * Cold phone state arriving on the Data Layer: the route polyline (pushed once per route
-     * change, deleted when the route ends — deletion is what hides the drawn line) and the rider's
-     * settings (pushed once per settings change), and the board's lights (pushed on every echo,
-     * config seed and session teardown).
-     */
+    /** Incremental cold updates retain other channels; deletion resets just this channel. */
     private val dataListener = DataClient.OnDataChangedListener { events ->
-        for (event in events) {
-            val deleted = event.type == DataEvent.TYPE_DELETED
-            when (event.dataItem.uri.path) {
-                ROUTE_PATH -> {
-                    val route = if (deleted) null else WatchRouteDecoder.decode(event.dataItem.data ?: ByteArray(0))
-                    runOnUiThread { RouteState.accept(route) }
-                }
-                SETTINGS_PATH -> {
-                    val settings = if (deleted) WatchSettings() else readSettings(event.dataItem)
-                    runOnUiThread { SettingsState.accept(settings) }
-                }
-                WEATHER_PATH -> {
-                    val weather = if (deleted) null else readWeather(event.dataItem)
-                    runOnUiThread { WeatherState.accept(weather) }
-                }
-                BOARD_PATH -> {
-                    // Deletion is the phone saying nothing, which decodes to unknown, never off.
-                    val lights = decodeBoardLights(if (deleted) null else dataMapOf(event.dataItem))
-                    runOnUiThread { BoardState.accept(lights) }
+        try {
+            for (event in events) {
+                val item = event.dataItem
+                val path = item.uri.path
+                val deleted = event.type == DataEvent.TYPE_DELETED
+                val bytes = if (!deleted && path == ROUTE_PATH) item.data else null
+                val payload = if (!deleted && path in setOf(SETTINGS_PATH, WEATHER_PATH, BOARD_PATH)) dataMapOf(item) else null
+                runOnUiThread {
+                    MirrorIntakeState.apply {
+                        when (path) {
+                            ROUTE_PATH -> acceptRoute(bytes)
+                            SETTINGS_PATH -> acceptSettings(payload)
+                            WEATHER_PATH -> acceptWeather(payload)
+                            BOARD_PATH -> acceptBoard(payload)
+                        }
+                    }
                 }
             }
+        } finally {
+            events.release()
         }
-        events.release()
     }
 
-    private fun dataMapOf(item: DataItem) = DataMapItem.fromDataItem(item).dataMap
-
-    private fun readSettings(item: DataItem): WatchSettings {
+    private fun dataMapOf(item: DataItem): Map<String, Any?> {
         val dataMap = DataMapItem.fromDataItem(item).dataMap
-        return WatchSettings.decode(dataMap.keySet().associateWith { dataMap.get<Any>(it) })
-    }
-
-    /**
-     * The forecast, or null when the phone sent a payload this build cannot use. Hours ride as
-     * parallel arrays, so a truncated set is read to the shortest one rather than trusted blindly.
-     */
-    private fun readWeather(item: DataItem): WatchWeather? {
-        val dataMap = DataMapItem.fromDataItem(item).dataMap
-        if (!dataMap.containsKey(WEATHER_TEMP_C)) return null
-        val minutes = dataMap.getIntegerArrayList(WEATHER_HOUR_MINUTES) ?: emptyList<Int>()
-        val temps = dataMap.getIntegerArrayList(WEATHER_HOUR_TEMPS) ?: emptyList<Int>()
-        val icons = dataMap.getStringArray(WEATHER_HOUR_ICONS) ?: emptyArray()
-        val precips = dataMap.getIntegerArrayList(WEATHER_HOUR_PRECIPS) ?: emptyList<Int>()
-        val hourCount = minOf(minutes.size, temps.size, icons.size, precips.size)
-        return WatchWeather(
-            temperatureC = dataMap.getInt(WEATHER_TEMP_C),
-            icon = dataMap.getString(WEATHER_ICON).orEmpty(),
-            label = dataMap.getString(WEATHER_LABEL).orEmpty(),
-            precipitationProbability = dataMap.getInt(WEATHER_PRECIP),
-            hourly = (0 until hourCount).map { index ->
-                WatchWeatherHour(
-                    minuteOfDay = minutes[index],
-                    temperatureC = temps[index],
-                    icon = icons[index],
-                    precipitationProbability = precips[index],
-                )
-            },
-            // An older phone never sends the sun keys; `getInt` would read that absence as midnight.
-            sunriseMinuteOfDay = if (dataMap.containsKey(WEATHER_SUNRISE)) dataMap.getInt(WEATHER_SUNRISE) else null,
-            sunsetMinuteOfDay = if (dataMap.containsKey(WEATHER_SUNSET)) dataMap.getInt(WEATHER_SUNSET) else null,
-            // Absent from a phone that predates the radar page; `getDouble` would read that as
-            // the Gulf of Guinea rather than "unknown".
-            latitude = if (dataMap.containsKey(WEATHER_LATITUDE)) dataMap.getDouble(WEATHER_LATITUDE) else null,
-            longitude = if (dataMap.containsKey(WEATHER_LONGITUDE)) dataMap.getDouble(WEATHER_LONGITUDE) else null,
-            fetchedAtMs = dataMap.getLong(WEATHER_FETCHED_AT),
-        )
+        return dataMap.keySet().associateWith { dataMap.get<Any>(it) }
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -177,9 +116,9 @@ class MainActivity : ComponentActivity() {
         // Fixture replay is opt-in via `bun run wear:replay`; an ordinary emulator mirrors its
         // paired phone exactly like physical Wear OS hardware.
         if (replayEnabled) {
-            SettingsState.accept(WatchSettings.decode(mapOf(
-                SETTING_TELEMETRY_TRAIL to (intent?.getBooleanExtra("telemetryTrail", true) != false),
-            )))
+            MirrorIntakeState.apply {
+                acceptSettings(mapOf(SETTING_TELEMETRY_TRAIL to (intent?.getBooleanExtra("telemetryTrail", true) != false)))
+            }
             commandSender.replayTiltEcho = frameReplayer::echoTilt
             frameReplayer.start(
                 replayFixture(), group = replayGroup(),
@@ -194,15 +133,15 @@ class MainActivity : ComponentActivity() {
         dataClient.addListener(dataListener)
         // A listener only sees changes, so pick up whatever synced while we were stopped.
         dataClient.dataItems.addOnSuccessListener { items ->
-            val route = items.firstOrNull { it.uri.path == ROUTE_PATH }
-            RouteState.accept(route?.data?.let(WatchRouteDecoder::decode))
-            val settings = items.firstOrNull { it.uri.path == SETTINGS_PATH }
-            SettingsState.accept(settings?.let(::readSettings) ?: WatchSettings())
-            val weather = items.firstOrNull { it.uri.path == WEATHER_PATH }
-            WeatherState.accept(weather?.let(::readWeather))
-            val board = items.firstOrNull { it.uri.path == BOARD_PATH }
-            BoardState.accept(decodeBoardLights(board?.let(::dataMapOf)))
-            items.release()
+            try {
+                val route = items.firstOrNull { it.uri.path == ROUTE_PATH }?.data
+                val settings = items.firstOrNull { it.uri.path == SETTINGS_PATH }?.let(::dataMapOf)
+                val weather = items.firstOrNull { it.uri.path == WEATHER_PATH }?.let(::dataMapOf)
+                val board = items.firstOrNull { it.uri.path == BOARD_PATH }?.let(::dataMapOf)
+                MirrorIntakeState.apply { restoreColdState(route, settings, weather, board) }
+            } finally {
+                items.release()
+            }
         }
         phoneLinkMonitor.start()
         WatchDiagnostics.recordReceiver(active = true)
