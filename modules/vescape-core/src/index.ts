@@ -1655,6 +1655,13 @@ export interface AppSettings {
    */
   wearNavArrowEnabled: boolean
   /**
+   * Show the ridden trail behind watch telemetry gauges. Enabled by default; the map page
+   * always shows the trail. Mirrored as cold settings to both watch platforms.
+   * @parity /modules/vescape-core/ios/watch/WatchSettings.swift
+   * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/watch/WatchSettings.kt
+   */
+  wearTelemetryTrailEnabled: boolean
+  /**
    * Wrist Tilt stick speed at full deflection, percent of full tilt per second (1–100). Pushed to the
    * wrist, which integrates the stick into a Remote Tilt lock.
    *

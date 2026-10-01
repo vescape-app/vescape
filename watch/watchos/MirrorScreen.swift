@@ -387,6 +387,7 @@ struct MirrorScreen: View {
       navColor: Palette.rider(link.settings.riderColor) ?? Palette.nav,
       trailColor: Palette.rider(link.settings.riderColor) ?? Palette.trail,
       navArrowEnabled: link.settings.navArrowEnabled,
+      telemetryTrailEnabled: link.settings.telemetryTrailEnabled,
       unitSystem: link.settings.unitSystem
     )
   }

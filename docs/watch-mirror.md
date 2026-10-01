@@ -228,7 +228,11 @@ Always-on screen, then `adb shell input keyevent 26`.
 ## Rider position and recent trail
 
 The active gauge and map pages always show the Rider's position ring, including without Navigation
-or a Group Ride. The recent ridden trail uses the same native precise GPS history as the phone's
+or a Group Ride. Settings → Watch → **Trail on telemetry screen** is enabled by default. Turning it
+off hides the trail behind the telemetry gauges; the map page still shows it, and the position ring
+stays visible. The preference persists on the phone and syncs to both watch platforms.
+
+The recent ridden trail uses the same native precise GPS history as the phone's
 live map. Its 3-point stroke fades from transparent at the oldest end to 60% opacity at the
 newest end, measured along the full retained path. The lower peak than the phone's 85% distinguishes
 the trail from the planned route. It uses the Rider's colour or the phone dark-map
@@ -251,6 +255,9 @@ unsigned point count, Float64 Rider latitude/longitude, then Float32 east/north 
 little-endian. Two NaNs mean no GPS anchor. Older wrists ignore the trailer;
 new wrists show no trail for absent, unknown, malformed, or non-finite trail data and keep decoding
 telemetry. This adds at most 980 bytes per frame and stores nothing on the watch.
+
+Both replay commands accept `--no-telemetry-trail` to verify the disabled telemetry setting while
+the map page retains its trail.
 
 Emulator replay derives the trail from earlier fixture positions. Simulated GPS continues beyond
 the destination, so ending Navigation does not erase the trail. Add `--ez navigation false` to the

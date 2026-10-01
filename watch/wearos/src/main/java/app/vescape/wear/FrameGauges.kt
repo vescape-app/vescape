@@ -123,6 +123,7 @@ internal fun FrameLayout(
     // The Rider and recent trail remain without either. Ambient skips the moving map.
     val group = GroupRideState.group.value
     val mapFollowsGroup = !hasNav && group != null
+    val telemetryTrailEnabled = SettingsState.settings.value.telemetryTrailEnabled
     val mapView = rememberWatchMapView(
         targetSpanM = WatchMapProjection.clampRouteSpanM(if (mapFollowsGroup) group?.spanM else frame.routeSpanM),
         targetCourseDeg = (if (mapFollowsGroup) group?.courseDeg else frame.courseDeg)?.toFloat(),
@@ -135,7 +136,12 @@ internal fun FrameLayout(
         if (!ambient.active) {
             Box(modifier = Modifier.fillMaxSize().graphicsLayer { alpha = navStackAlpha() }) {
                 if (hasNav) NavRoute(frame = frame, mapView = mapView, muted = muted, navFocus = focus)
-                RiderTrail(frame.trail, mapView, if (muted) DimText else trailColor())
+                // Follow pager progress in the layer, so swiping reveals the trail without recomposition.
+                Box(Modifier.fillMaxSize().graphicsLayer {
+                    alpha = if (telemetryTrailEnabled) 1f else focus().coerceIn(0f, 1f)
+                }) {
+                    RiderTrail(frame.trail, mapView, if (muted) DimText else trailColor())
+                }
             }
         }
 

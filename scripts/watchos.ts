@@ -83,6 +83,8 @@ if (command === 'replay') {
     build.PRODUCT_BUNDLE_IDENTIFIER,
     '--replay',
     join(ROOT, 'watch/wearos/src/main/assets/watch-ride.jsonl'),
-    ...['--group', '--wander', '--no-navigation'].filter((flag) => Bun.argv.includes(flag)),
+    ...['--group', '--wander', '--no-navigation', '--no-telemetry-trail'].filter((flag) =>
+      Bun.argv.includes(flag),
+    ),
   ])
 }

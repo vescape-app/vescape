@@ -26,6 +26,9 @@ const val SETTING_BOARD_MOVE_STRENGTH = "boardMoveStrengthPercent"
 /** Whether to draw the direction arrow over the route. The route itself is never affected. */
 const val SETTING_NAV_ARROW = "navArrowEnabled"
 
+/** Show the trail behind telemetry gauges. The map page always retains its trail. */
+const val SETTING_TELEMETRY_TRAIL = "telemetryTrailEnabled"
+
 /** App-wide speed and distance preference; older phones default to metric. */
 const val SETTING_UNIT_SYSTEM = "unitSystem"
 
@@ -44,12 +47,14 @@ data class WatchSettings(
     /** Null until a phone new enough to send it has pushed; the wrist then shows no number. */
     val boardMoveStrengthPercent: Int? = null,
     val tiltRatePercent: Int = DEFAULT_TILT_RATE_PERCENT,
+    val telemetryTrailEnabled: Boolean = true,
 ) {
     companion object {
         /** Missing or unknown preference values from older/newer phones always mean metric. */
         fun decode(payload: Map<String, Any?>): WatchSettings = WatchSettings(
             riderColor = parseRiderColor(payload[SETTING_RIDER_COLOR] as? String),
             navArrowEnabled = payload[SETTING_NAV_ARROW] as? Boolean ?: false,
+            telemetryTrailEnabled = payload[SETTING_TELEMETRY_TRAIL] as? Boolean ?: true,
             boardMoveStrengthPercent = payload[SETTING_BOARD_MOVE_STRENGTH] as? Int,
             unitSystem = if (payload[SETTING_UNIT_SYSTEM] == "imperial") "imperial" else "metric",
             tiltRatePercent = (payload[SETTING_TILT_RATE] as? Int)?.coerceIn(1, 100) ?: DEFAULT_TILT_RATE_PERCENT,

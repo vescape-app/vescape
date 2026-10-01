@@ -58,6 +58,7 @@ const DEFAULTS: AppSettings = {
   wearPushRateHz: 4,
   wearAutoLaunchOnConnect: true,
   wearNavArrowEnabled: false,
+  wearTelemetryTrailEnabled: true,
   wearTiltRatePercent: 20,
   riderId: null,
   riderName: null,

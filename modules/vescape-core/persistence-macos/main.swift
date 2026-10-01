@@ -552,9 +552,18 @@ for invalid in unitFixture["invalid"] as! [Any] {
   try require(validUnitSystem(invalid) == nil, "invalid units accepted")
 }
 try boardPersistence.saveSetting(.init(key: "unitSystem", valueJson: "\"\(validUnitSystem(unitFixture["selected"])!)\"", updatedAt: contractCreatedAt))
+let trailFixture = boardFixture["telemetryTrail"] as! [String: Any]
+let trailKey = trailFixture["key"] as! String
+let trailDefault = trailFixture["default"] as! Bool
+try boardPersistence.saveSetting(.init(key: trailKey, valueJson: String(trailFixture["selected"] as! Bool), updatedAt: contractCreatedAt))
 try boardQueue!.close()
 boardQueue = try DatabaseQueue(path: boardURL.path)
 boardPersistence = BoardSettingsPersistence(writer: boardQueue!)
+let reopenedTrail = try boardPersistence.settings(defaults: [trailKey: trailDefault])
+try require(reopenedTrail[trailKey] as? Bool == trailFixture["selected"] as? Bool, "watch trail false survives reopen")
+try boardPersistence.deleteSetting(trailKey)
+let defaultTrail = try boardPersistence.settings(defaults: [trailKey: trailDefault])
+try require(defaultTrail[trailKey] as? Bool == trailDefault, "watch trail returns to enabled default")
 let reopenedUnits = try boardPersistence.settings(defaults: ["unitSystem": metricDefault])
 try require(reopenedUnits["unitSystem"] as? String == unitFixture["selected"] as? String, "units survive reopen")
 try boardPersistence.deleteSetting("unitSystem")

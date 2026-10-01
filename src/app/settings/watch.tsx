@@ -4,6 +4,7 @@ import {
   AngleIcon,
   ClockCountdownIcon,
   NavigationArrowIcon,
+  PathIcon,
   WatchIcon,
 } from 'phosphor-react-native'
 import { useShallow } from 'zustand/react/shallow'
@@ -32,16 +33,23 @@ const TILT_RATE_MIN = 5
 const TILT_RATE_MAX = 40
 
 export default function WatchSettingsScreen() {
-  const { wearAutoLaunchOnConnect, wearPushRateHz, wearNavArrowEnabled, wearTiltRatePercent, set } =
-    useSettingsStore(
-      useShallow((s) => ({
-        wearAutoLaunchOnConnect: s.wearAutoLaunchOnConnect,
-        wearPushRateHz: s.wearPushRateHz,
-        wearNavArrowEnabled: s.wearNavArrowEnabled,
-        wearTiltRatePercent: s.wearTiltRatePercent,
-        set: s.set,
-      })),
-    )
+  const {
+    wearAutoLaunchOnConnect,
+    wearPushRateHz,
+    wearNavArrowEnabled,
+    wearTelemetryTrailEnabled,
+    wearTiltRatePercent,
+    set,
+  } = useSettingsStore(
+    useShallow((s) => ({
+      wearAutoLaunchOnConnect: s.wearAutoLaunchOnConnect,
+      wearPushRateHz: s.wearPushRateHz,
+      wearNavArrowEnabled: s.wearNavArrowEnabled,
+      wearTelemetryTrailEnabled: s.wearTelemetryTrailEnabled,
+      wearTiltRatePercent: s.wearTiltRatePercent,
+      set: s.set,
+    })),
+  )
 
   return (
     <SafeAreaView style={styles.container} edges={['bottom']}>
@@ -95,6 +103,18 @@ export default function WatchSettingsScreen() {
               <Switch
                 value={wearNavArrowEnabled}
                 onValueChange={(v) => void set('wearNavArrowEnabled', v)}
+              />
+            }
+          />
+          <SettingsRow
+            icon={PathIcon}
+            iconColor={theme.palette.violet.color}
+            label="Trail on telemetry screen"
+            hint="Show where you have ridden behind the watch gauges. Always visible on the map screen"
+            right={
+              <Switch
+                value={wearTelemetryTrailEnabled}
+                onValueChange={(v) => void set('wearTelemetryTrailEnabled', v)}
               />
             }
           />

@@ -23,6 +23,8 @@ enum WatchSettingsKey {
   static let boardMoveStrengthPercent = "boardMoveStrengthPercent"
   /// Whether the wrist draws the direction arrow over the route. Off hides the arrow, not the route.
   static let navArrowEnabled = "navArrowEnabled"
+  /// Show the trail behind telemetry gauges. The map page always retains its trail.
+  static let telemetryTrailEnabled = "telemetryTrailEnabled"
   static let unitSystem = "unitSystem"
   /// Tilt stick speed at full deflection, percent of full tilt per second. Applied on the wrist.
   static let tiltRatePercent = "tiltRatePercent"
@@ -50,6 +52,7 @@ let watchSourceSettingKeys: Set<String> = [
   "riderColor",
   "boardMoveStrengthPercent",
   "wearNavArrowEnabled",
+  "wearTelemetryTrailEnabled",
   "unitSystem",
   "wearTiltRatePercent",
   "wearPushRateHz",
@@ -62,6 +65,7 @@ struct WatchSettings: Equatable {
   var boardMoveStrengthPercent: Int?
   /// Off by default: an older phone never sends the key, and the arrow is opt-in until it works.
   var navArrowEnabled: Bool = false
+  var telemetryTrailEnabled: Bool = true
   var unitSystem: String = "metric"
   var tiltRatePercent: Int = watchDefaultTiltRatePercent
 
@@ -76,6 +80,7 @@ struct WatchSettings: Equatable {
     var payload: [String: Any] = [
       WatchSettingsKey.riderColor: riderColor ?? "",
       WatchSettingsKey.navArrowEnabled: navArrowEnabled,
+      WatchSettingsKey.telemetryTrailEnabled: telemetryTrailEnabled,
       WatchSettingsKey.unitSystem: unitSystem,
       WatchSettingsKey.tiltRatePercent: tiltRatePercent,
     ]
@@ -95,6 +100,7 @@ struct WatchSettings: Equatable {
       riderColor: (color?.isEmpty ?? true) ? nil : color,
       boardMoveStrengthPercent: (payload[WatchSettingsKey.boardMoveStrengthPercent] as? NSNumber)?.intValue,
       navArrowEnabled: payload[WatchSettingsKey.navArrowEnabled] as? Bool ?? wristDefaults.navArrowEnabled,
+      telemetryTrailEnabled: payload[WatchSettingsKey.telemetryTrailEnabled] as? Bool ?? wristDefaults.telemetryTrailEnabled,
       unitSystem: payload[WatchSettingsKey.unitSystem] as? String == "imperial" ? "imperial" : "metric",
       // Held to the range the phone repositories accept (1–100) on read too: the wrist integrates
       // this every frame, and a rate from a newer or broken phone must not spin the stick.

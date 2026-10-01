@@ -316,6 +316,7 @@ async function startReplay(
   group: boolean,
   wander: boolean,
   navigation: boolean,
+  telemetryTrail: boolean,
   requested: string | null,
 ) {
   const serial = (await findWatch(requested)).serial
@@ -343,6 +344,9 @@ async function startReplay(
     '--ez',
     'navigation',
     String(navigation),
+    '--ez',
+    'telemetryTrail',
+    String(telemetryTrail),
   ])
 }
 
@@ -379,6 +383,8 @@ if (command === 'replay') {
   if (wanderFlag !== -1) args.splice(wanderFlag, 1)
   const noNavigationFlag = args.indexOf('--no-navigation')
   if (noNavigationFlag !== -1) args.splice(noNavigationFlag, 1)
+  const noTelemetryTrailFlag = args.indexOf('--no-telemetry-trail')
+  if (noTelemetryTrailFlag !== -1) args.splice(noTelemetryTrailFlag, 1)
   const fixture = args[1] ?? 'ride'
   if (!REPLAY_FIXTURES.includes(fixture as (typeof REPLAY_FIXTURES)[number])) {
     fail(`unknown fixture ${fixture} — expected ${REPLAY_FIXTURES.join(' | ')}`)
@@ -388,6 +394,7 @@ if (command === 'replay') {
     groupFlag !== -1,
     wanderFlag !== -1,
     noNavigationFlag === -1,
+    noTelemetryTrailFlag === -1,
     requested,
   )
   process.exit(0)

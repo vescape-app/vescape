@@ -27,6 +27,9 @@ internal const val WATCH_SETTING_BOARD_MOVE_STRENGTH = "boardMoveStrengthPercent
 /** Whether the wrist draws the direction arrow over the route. Off hides the arrow, not the route. */
 internal const val WATCH_SETTING_NAV_ARROW = "navArrowEnabled"
 
+/** Show the trail behind telemetry gauges. The map page always retains its trail. */
+internal const val WATCH_SETTING_TELEMETRY_TRAIL = "telemetryTrailEnabled"
+
 /** App-wide speed and distance preference; older phones default to metric. */
 internal const val WATCH_SETTING_UNIT_SYSTEM = "unitSystem"
 
@@ -45,6 +48,7 @@ internal val WATCH_SOURCE_SETTING_KEYS = setOf(
     "riderColor",
     "boardMoveStrengthPercent",
     "wearNavArrowEnabled",
+    "wearTelemetryTrailEnabled",
     "unitSystem",
     "wearTiltRatePercent",
     "wearPushRateHz",
@@ -57,6 +61,7 @@ internal data class WatchSettings(
     val navArrowEnabled: Boolean,
     val unitSystem: String = "metric",
     val tiltRatePercent: Int = 20,
+    val telemetryTrailEnabled: Boolean = true,
 )
 
 /**
@@ -69,6 +74,7 @@ internal fun AppSettings.toWatchSettings(): WatchSettings = WatchSettings(
     riderColor = riderColor?.trim()?.takeIf { it.isNotEmpty() },
     boardMoveStrengthPercent = boardMoveStrengthPercent,
     navArrowEnabled = wearNavArrowEnabled,
+    telemetryTrailEnabled = wearTelemetryTrailEnabled,
     unitSystem = unitSystem,
     tiltRatePercent = wearTiltRatePercent,
 )

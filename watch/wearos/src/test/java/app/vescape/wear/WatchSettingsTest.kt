@@ -6,6 +6,15 @@ import org.junit.Assert.assertNull
 import org.junit.Test
 
 class WatchSettingsTest {
+    @Test fun `telemetry trail is enabled for older phones and false survives settings reload`() {
+        assertEquals(true, WatchSettings.decode(emptyMap()).telemetryTrailEnabled)
+        assertEquals(true, WatchSettings.decode(mapOf(SETTING_TELEMETRY_TRAIL to "false")).telemetryTrailEnabled)
+        val payload = mapOf<String, Any?>(SETTING_TELEMETRY_TRAIL to false)
+        assertEquals(false, WatchSettings.decode(payload).telemetryTrailEnabled)
+        assertEquals(WatchSettings.decode(payload), WatchSettings.decode(payload.toMap()))
+        assertEquals(true, WatchSettings.decode(payload + (SETTING_TELEMETRY_TRAIL to true)).telemetryTrailEnabled)
+    }
+
     @Test
     fun `settings updates and restart restore the phone preference with lenient defaults`() {
         for (invalid in listOf(null, "unknown", 1, true)) {

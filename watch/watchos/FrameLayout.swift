@@ -46,6 +46,7 @@ struct FrameLayout: View {
   var trailColor: Color = Palette.trail
   /// Whether the rider turned the direction arrow on (phone: Settings > Watch).
   var navArrowEnabled: Bool = false
+  var telemetryTrailEnabled: Bool = true
   var unitSystem: String = "metric"
 
   /// One eased zoom and course for every map layer, so the Group Ride marks sit where the route is
@@ -104,7 +105,7 @@ struct FrameLayout: View {
 
       if !ambient.active {
         RiderTrail(points: frame.trail, mapView: mapView, mapMoving: mapMoving, color: muted ? Palette.dimText : trailColor)
-          .opacity(navStackAlpha)
+          .opacity(navStackAlpha * (telemetryTrailEnabled ? 1 : min(1, max(0, navFocus))))
       }
 
       // Group Ride dots: over the paths, under every gauge and number. Hidden in ambient.

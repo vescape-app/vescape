@@ -339,6 +339,13 @@ final class PhoneLink: NSObject, ObservableObject, WCSessionDelegate {
     weather = WatchWeather.decode(forecast.payload)
   }
 
+  /// Simulator settings use the same payload decoder as phone delivery.
+  /// @parity /watch/wearos/src/main/java/app/vescape/wear/MainActivity.kt `onStart`
+  @MainActor
+  func acceptReplaySettings(_ payload: [String: Any]) {
+    settings = WatchSettings.decode(payload)
+  }
+
   /// One context, several channels. Only the channels this build knows are read; the rest are the
   /// phone's business, and a channel this build has never heard of must not look like a change.
   ///

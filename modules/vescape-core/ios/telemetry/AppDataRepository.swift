@@ -569,7 +569,7 @@ final class AppDataRepository {
     } else if key == "wearTiltRatePercent" {
       guard let percent = Self.wearTiltRatePercent(rawValue) else { return }
       value = percent
-    } else if key == "wearAutoLaunchOnConnect" || key == "wearNavArrowEnabled" || key == "groupRidePublicEnabled" {
+    } else if key == "wearAutoLaunchOnConnect" || key == "wearNavArrowEnabled" || key == "wearTelemetryTrailEnabled" || key == "groupRidePublicEnabled" {
       // Strict Bool, like Android: a truthy string persisted here would reach the wrist as a
       // setting the rider never chose.
       guard let flag = rawValue as? Bool else { return }
@@ -650,6 +650,7 @@ final class AppDataRepository {
     // exists here only so getSettings() returns the full settings shape.
     "wearAutoLaunchOnConnect": true,
     "wearNavArrowEnabled": false,
+    "wearTelemetryTrailEnabled": true,
     "wearTiltRatePercent": 20,
     "boardMoveStrengthPercent": 60,
     "connectionSoundsEnabled": true,

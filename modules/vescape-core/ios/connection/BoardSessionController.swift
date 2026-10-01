@@ -2775,6 +2775,7 @@ internal final class BoardSessionController: VescGattListener {
         riderColor: (settings["riderColor"] ?? nil) as? String,
         boardMoveStrengthPercent: strengthPercent,
         navArrowEnabled: (settings["wearNavArrowEnabled"] ?? nil) as? Bool ?? false,
+        telemetryTrailEnabled: (settings["wearTelemetryTrailEnabled"] ?? nil) as? Bool ?? true,
         unitSystem: (settings["unitSystem"] ?? nil) as? String == "imperial" ? "imperial" : "metric",
         tiltRatePercent: AppDataRepository.wearTiltRatePercent(settings["wearTiltRatePercent"] ?? nil)
           ?? watchDefaultTiltRatePercent

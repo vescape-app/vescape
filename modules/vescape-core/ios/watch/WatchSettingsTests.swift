@@ -7,6 +7,17 @@ import XCTest
 /// @parity /modules/vescape-core/android/src/test/java/expo/modules/vescapecore/watch/WatchSettingsTest.kt
 /// @parity /watch/wearos/src/test/java/app/vescape/wear/WatchSettingsTest.kt
 final class WatchSettingsTests: XCTestCase {
+  func testTelemetryTrailIsEnabledForOlderPhonesAndFalseSurvivesSettingsReload() {
+    XCTAssertEqual(AppDataRepository.defaultSettings["wearTelemetryTrailEnabled"] as? Bool, true)
+    XCTAssertTrue(watchSourceSettingKeys.contains("wearTelemetryTrailEnabled"))
+    XCTAssertTrue(WatchSettings.decode([:]).telemetryTrailEnabled)
+    XCTAssertTrue(WatchSettings.decode([WatchSettingsKey.telemetryTrailEnabled: "false"]).telemetryTrailEnabled)
+    let disabled = WatchSettings(telemetryTrailEnabled: false)
+    XCTAssertEqual(WatchSettings.decode(disabled.payload), disabled)
+    XCTAssertEqual(WatchSettings.decode(context: [watchSettingsChannel: disabled.payload]), disabled)
+    XCTAssertTrue(WatchSettings.decode(WatchSettings().payload).telemetryTrailEnabled)
+  }
+
   func testUnitPreferenceDefaultsAndRoundTripsAfterRestart() {
     for invalid: Any in ["unknown", 1, true, NSNull()] {
       XCTAssertEqual(WatchSettings.decode([WatchSettingsKey.unitSystem: invalid]).unitSystem, "metric")

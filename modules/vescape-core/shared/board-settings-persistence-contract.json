@@ -17,5 +17,10 @@
     "default": "metric",
     "selected": "imperial",
     "invalid": ["automatic", "US", "", true, 1]
+  },
+  "telemetryTrail": {
+    "key": "wearTelemetryTrailEnabled",
+    "default": true,
+    "selected": false
   }
 }
