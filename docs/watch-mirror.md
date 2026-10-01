@@ -229,8 +229,10 @@ Always-on screen, then `adb shell input keyevent 26`.
 
 The active gauge and map pages always show the Rider's position ring, including without Navigation
 or a Group Ride. The recent ridden trail uses the same native precise GPS history as the phone's
-live map and fades toward the oldest fix in the Rider's colour. It shares the route/group map's
-heading and zoom. The ring sits above paths and other Riders. Ambient continues to skip the map.
+live map and fades by travelled distance in the Rider's colour, reaching transparent within a
+quarter of the current map span so the fade stays visible on the wrist. It shares the route/group
+map's heading and zoom. A dark outline beneath the trail covers an overlapping planned route,
+including where the trail has faded out. The ring sits above paths and other Riders. Ambient continues to skip the map.
 
 The phone sends a complete trail snapshot with each Watch Frame, capped at 120 evenly sampled
 points with both endpoints retained. Points are metres east/north of the current Rider, independent
@@ -245,7 +247,18 @@ telemetry. This adds at most 964 bytes per frame and stores nothing on the watch
 
 Emulator replay derives the trail from earlier fixture positions. Add `--ez navigation false` to the
 Wear launch intent to verify the standalone or group-only map; watchOS replay accepts
-`--no-navigation`. These switches remain inside the existing emulator/simulator replay gates.
+`--no-navigation`. Both replay commands accept `--wander` for smooth seeded detours up to 35 m on
+each axis, rejoining the recorded path every two minutes. The simulated position, heading, and
+trail move together while the planned route stays fixed. Replays use the same seed on both watch
+platforms for repeatable screenshots. For example:
+
+```bash
+bun run wear:replay ride --wander --group --device emulator-5554
+bun run wear:replay ride --wander --no-navigation --device emulator-5554
+bun run watchos:replay --wander --group
+```
+
+These switches remain inside the existing emulator/simulator replay gates.
 
 ## Phone → Watch Channels
 

@@ -171,7 +171,11 @@ class MainActivity : ComponentActivity() {
         // paired phone exactly like physical Wear OS hardware.
         if (replayEnabled) {
             commandSender.replayTiltEcho = frameReplayer::echoTilt
-            frameReplayer.start(replayFixture(), group = replayGroup(), navigation = intent?.getBooleanExtra("navigation", true) != false)
+            frameReplayer.start(
+                replayFixture(), group = replayGroup(),
+                navigation = intent?.getBooleanExtra("navigation", true) != false,
+                wander = intent?.getBooleanExtra("wander", false) == true,
+            )
             return
         }
         publishWakeLevel()

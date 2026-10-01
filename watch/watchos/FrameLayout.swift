@@ -90,10 +90,6 @@ struct FrameLayout: View {
       // Bottom layer: the route ahead and the rider on it, under every gauge and readout. Ambient
       // skips it — the lanes animate their zoom, and a moving map is the most expensive thing the
       // always-on panel could be asked to draw.
-      if !ambient.active {
-        RiderTrail(points: frame.trail, mapView: mapView, mapMoving: mapMoving, color: muted ? Palette.dimText : navColor)
-          .opacity(navStackAlpha)
-      }
       if navLanes != nil, !ambient.active {
         NavRoute(
           route: route,
@@ -107,7 +103,12 @@ struct FrameLayout: View {
         .opacity(navStackAlpha)
       }
 
-      // Group Ride dots: over the route, under every gauge and number. Hidden in ambient.
+      if !ambient.active {
+        RiderTrail(points: frame.trail, mapView: mapView, mapMoving: mapMoving, color: muted ? Palette.dimText : navColor)
+          .opacity(navStackAlpha)
+      }
+
+      // Group Ride dots: over the paths, under every gauge and number. Hidden in ambient.
       if let groupRide, !ambient.active {
         GroupRideLayer(
           group: groupRide,

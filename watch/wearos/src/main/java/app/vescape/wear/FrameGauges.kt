@@ -133,8 +133,8 @@ internal fun FrameLayout(
         // Paths under every gauge and readout. Ambient skips the moving map.
         if (!ambient.active) {
             Box(modifier = Modifier.fillMaxSize().graphicsLayer { alpha = navStackAlpha() }) {
-                RiderTrail(frame.trail, mapView, if (muted) DimText else navColor())
                 if (hasNav) NavRoute(frame = frame, mapView = mapView, muted = muted, navFocus = focus)
+                RiderTrail(frame.trail, mapView, if (muted) DimText else navColor())
             }
         }
 

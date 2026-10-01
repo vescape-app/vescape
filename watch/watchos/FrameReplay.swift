@@ -74,7 +74,7 @@ final class FrameReplayer {
     guard
       let text = try? String(contentsOfFile: fixture, encoding: .utf8)
     else { return }
-    samples = ReplayFixtureParser.parse(text: text)
+    samples = ReplayFixtureParser.parse(text: text, wander: ProcessInfo.processInfo.arguments.contains("--wander"))
     guard !samples.isEmpty else { return }
     task = Task { @MainActor [samples, link, weak self] in
       link.recordReplay(fixture: (fixture as NSString).lastPathComponent, sampleCount: samples.count)

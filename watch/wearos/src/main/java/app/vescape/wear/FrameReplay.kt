@@ -12,6 +12,8 @@ import expo.modules.vescapecore.watch.GroupRideFrameRider
 import org.json.JSONObject
 import expo.modules.vescapecore.watch.WatchTrailPoint
 import expo.modules.vescapecore.watch.WatchTrailCodec
+import kotlin.math.atan2
+import kotlin.math.hypot
 import kotlin.math.PI
 import kotlin.math.sin
 
@@ -56,8 +58,9 @@ data class ReplaySample(val atMs: Long, val frame: WatchFrame)
  */
 /** @parity /modules/vescape-core/ios/watch/WatchReplay.swift `ReplayFixtureParser` */
 object ReplayFixtureParser {
-    fun parse(lines: Sequence<String>): List<ReplaySample> {
-        val samples = lines.mapNotNull(::parseLine).toList()
+    fun parse(lines: Sequence<String>, wander: Boolean = false): List<ReplaySample> {
+        val recorded = lines.mapNotNull(::parseLine).toList()
+        val samples = if (wander) withDetours(recorded) else recorded
         return samples.mapIndexed { index, sample ->
             val east = sample.frame.riderEastM
             val north = sample.frame.riderNorthM
@@ -69,6 +72,37 @@ object ReplayFixtureParser {
                 WatchTrailPoint(x - east, y - north)
             }
             sample.copy(frame = sample.frame.copy(trail = trail))
+        }
+    }
+
+    /** Smooth, seeded world-space detours. Rejoin every two minutes; never mutate the planned route.
+     * @parity /modules/vescape-core/ios/watch/WatchReplay.swift `ReplayFixtureParser.withDetours`
+     */
+    private fun withDetours(samples: List<ReplaySample>): List<ReplaySample> {
+        fun target(node: Long, axis: Long): Double {
+            if (node % 4 == 0L) return 0.0
+            var seed = ((node * 2 + axis) * 1664525 + 1013904223) and 0xffffffffL
+            seed = ((seed xor (seed shr 16)) * 1664525 + 1013904223) and 0xffffffffL
+            return (seed.toDouble() / 4294967295.0 * 2 - 1) * 35
+        }
+        var previous: WatchFrame? = null
+        return samples.map { sample ->
+            val east = sample.frame.riderEastM ?: return@map sample
+            val north = sample.frame.riderNorthM ?: return@map sample
+            val node = sample.atMs / 30_000
+            val t = (sample.atMs % 30_000).toDouble() / 30_000
+            val eased = t * t * (3 - 2 * t)
+            fun offset(axis: Long) = target(node, axis) + (target(node + 1, axis) - target(node, axis)) * eased
+            val x = east + offset(0)
+            val y = north + offset(1)
+            val dx = previous?.riderEastM?.let { x - it }
+            val dy = previous?.riderNorthM?.let { y - it }
+            val course = if (dx != null && dy != null && hypot(dx, dy) > 0.1) {
+                (Math.toDegrees(atan2(dx, dy)) + 360) % 360
+            } else sample.frame.courseDeg
+            val frame = sample.frame.copy(riderEastM = x, riderNorthM = y, courseDeg = course)
+            previous = frame
+            sample.copy(frame = frame)
         }
     }
 
@@ -286,9 +320,9 @@ class FrameReplayer(private val context: Context) {
     }
 
     /** [group]: also play the Group Ride fixture, as if the Rider had joined one. */
-    fun start(fixture: String, group: Boolean, navigation: Boolean = true) {
+    fun start(fixture: String, group: Boolean, navigation: Boolean = true, wander: Boolean = false) {
         if (running) return
-        samples = load(fixture).map { sample ->
+        samples = load(fixture, wander).map { sample ->
             if (navigation) sample else sample.copy(frame = sample.frame.copy(
                 navBearing = null, navDistanceM = null, riderEastM = null, riderNorthM = null,
             ))
@@ -373,8 +407,8 @@ class FrameReplayer(private val context: Context) {
         null
     }
 
-    private fun load(fixture: String): List<ReplaySample> = try {
-        context.assets.open(fixture).bufferedReader().useLines(ReplayFixtureParser::parse)
+    private fun load(fixture: String, wander: Boolean): List<ReplaySample> = try {
+        context.assets.open(fixture).bufferedReader().useLines { ReplayFixtureParser.parse(it, wander) }
     } catch (e: Exception) {
         WatchDiagnostics.recordReplayError(fixture, e)
         emptyList()

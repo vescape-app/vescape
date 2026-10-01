@@ -186,8 +186,9 @@ struct ReplaySample: Equatable {
 ///
 /// @parity /watch/wearos/src/main/java/app/vescape/wear/FrameReplay.kt `ReplayFixtureParser`
 enum ReplayFixtureParser {
-  static func parse<S: Sequence>(_ lines: S) -> [ReplaySample] where S.Element == String {
-    let samples = lines.compactMap(parseLine)
+  static func parse<S: Sequence>(_ lines: S, wander: Bool = false) -> [ReplaySample] where S.Element == String {
+    let recorded = lines.compactMap(parseLine)
+    let samples = wander ? withDetours(recorded) : recorded
     return samples.enumerated().map { index, sample in
       var frame = sample.frame
       if let east = frame.riderEastM, let north = frame.riderNorthM {
@@ -202,8 +203,37 @@ enum ReplayFixtureParser {
     }
   }
 
-  static func parse(text: String) -> [ReplaySample] {
-    parse(text.split(separator: "\n", omittingEmptySubsequences: false).map(String.init))
+  static func parse(text: String, wander: Bool = false) -> [ReplaySample] {
+    parse(text.split(separator: "\n", omittingEmptySubsequences: false).map(String.init), wander: wander)
+  }
+
+  /// Smooth, seeded world-space detours. Rejoin every two minutes; never mutate the planned route.
+  /// @parity /watch/wearos/src/main/java/app/vescape/wear/FrameReplay.kt `ReplayFixtureParser.withDetours`
+  private static func withDetours(_ samples: [ReplaySample]) -> [ReplaySample] {
+    func target(_ node: Int64, _ axis: Int64) -> Double {
+      if node % 4 == 0 { return 0 }
+      var seed = ((node * 2 + axis) * 1664525 + 1013904223) & 0xffffffff
+      seed = ((seed ^ (seed >> 16)) * 1664525 + 1013904223) & 0xffffffff
+      return (Double(seed) / 4294967295.0 * 2 - 1) * 35
+    }
+    var previous: WatchFrame?
+    return samples.map { sample in
+      guard let east = sample.frame.riderEastM, let north = sample.frame.riderNorthM else { return sample }
+      let node = sample.atMs / 30_000
+      let t = Double(sample.atMs % 30_000) / 30_000
+      let eased = t * t * (3 - 2 * t)
+      func offset(_ axis: Int64) -> Double { target(node, axis) + (target(node + 1, axis) - target(node, axis)) * eased }
+      var frame = sample.frame
+      let x = east + offset(0)
+      let y = north + offset(1)
+      if let px = previous?.riderEastM, let py = previous?.riderNorthM, hypot(x - px, y - py) > 0.1 {
+        frame.courseDeg = (atan2(x - px, y - py) * 180 / .pi + 360).truncatingRemainder(dividingBy: 360)
+      }
+      frame.riderEastM = x
+      frame.riderNorthM = y
+      previous = frame
+      return ReplaySample(atMs: sample.atMs, frame: frame)
+    }
   }
 
   private static func parseLine(_ line: String) -> ReplaySample? {
