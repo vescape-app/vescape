@@ -115,4 +115,23 @@ final class WatchMapViewTests: XCTestCase {
     XCTAssertEqual(map.motion.offset(at: at(0.15)).northM, 5, accuracy: 0.0001)
   }
 
+  func testASampledUTurnNeverErasesRetainedHistoryDuringCameraMotion() {
+    let trail = [-100.0, -50, -2, 0].map { WatchTrailPoint(eastM: $0, northM: 0) }
+    for east in [-1.0, -0.5, -0.01, 0] {
+      let rendered = movingTrail(trail, offset: WatchTrailPoint(eastM: east, northM: 0))
+      XCTAssertEqual(rendered.count, trail.count)
+      guard rendered.count == trail.count else { continue }
+      for i in 0..<trail.count - 1 {
+        XCTAssertEqual(rendered[i].eastM, trail[i].eastM + east, accuracy: 0.0001)
+      }
+      XCTAssertEqual(rendered.last, WatchTrailPoint(eastM: 0, northM: 0))
+    }
+  }
+
+  func testOnlyThePendingDistanceAtTheTrailTipIsTrimmed() {
+    let trail = [-100.0, -10, -2, -1, 0].map { WatchTrailPoint(eastM: $0, northM: 0) }
+    let rendered = movingTrail(trail, offset: WatchTrailPoint(eastM: 3, northM: 0))
+    XCTAssertEqual(rendered.map(\.eastM), [-97, -7, 0])
+  }
+
 }

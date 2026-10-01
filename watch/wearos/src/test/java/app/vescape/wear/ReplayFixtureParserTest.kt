@@ -4,6 +4,7 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import java.io.File
 
 class ReplayFixtureParserTest {
     @Test
@@ -86,4 +87,18 @@ class ReplayFixtureParserTest {
         assertEquals(1, samples.size)
         assertEquals(1000L, samples[0].atMs)
     }
+    @Test fun `ride fixture keeps moving and showing its trail after navigation ends`() {
+        val fixture = generateSequence(File(requireNotNull(System.getProperty("user.dir")))) { it.parentFile }
+            .map { File(it, "watch/wearos/src/main/assets/watch-ride.jsonl") }.first { it.exists() }
+        for (wander in listOf(false, true)) {
+            val samples = fixture.useLines { ReplayFixtureParser.parse(it, wander = wander) }
+            val arrival = samples.indexOfFirst { it.frame.navBearing == null }
+            assertTrue(arrival > 0)
+            val after = samples.drop(arrival)
+            assertTrue(after.isNotEmpty())
+            assertTrue(after.all { it.frame.mapPosition != null && it.frame.trail.size > 1 })
+            assertTrue(after.first().frame.mapPosition != after.last().frame.mapPosition)
+        }
+    }
+
 }

@@ -24,6 +24,20 @@ final class WatchGaugeTests: XCTestCase {
     return ReplayFixtureParser.parse(text: text)
   }
 
+
+  func testRideFixtureKeepsMovingAndShowingItsTrailAfterNavigationEnds() throws {
+    let text = try String(contentsOf: Self.fixtures.appendingPathComponent("watch-ride.jsonl"), encoding: .utf8)
+    for wander in [false, true] {
+      let samples = ReplayFixtureParser.parse(text: text, wander: wander)
+      let arrival = try XCTUnwrap(samples.firstIndex { $0.frame.navBearing == nil })
+      XCTAssertGreaterThan(arrival, 0)
+      let after = samples.dropFirst(arrival)
+      XCTAssertFalse(after.isEmpty)
+      XCTAssertTrue(after.allSatisfy { $0.frame.mapPosition != nil && $0.frame.trail.count > 1 })
+      XCTAssertNotEqual(after.first?.frame.mapPosition, after.last?.frame.mapPosition)
+    }
+  }
+
   func testSeededDetoursMoveSmoothlyOffRouteThenRejoinAndTrailFollowsActualPositions() throws {
     let lines = (0...240).map { i in
       "{\"t\":\(i * 500),\"speed\":21.6,\"riderEast\":0,\"riderNorth\":\(i * 3),\"course\":0,\"navBearing\":0,\"navDistance\":2000}"

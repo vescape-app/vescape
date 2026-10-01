@@ -50,4 +50,22 @@ class WatchMapViewTest {
         assertEquals(0.0, cleared.offsetAt(1100).northM, 0.0001)
         assertEquals(0.0, cleared.retarget(position(1000.0), 1200, true).offsetAt(1200).northM, 0.0001)
     }
+    @Test fun `a sampled U turn never erases retained history during camera motion`() {
+        val trail = listOf(-100.0, -50.0, -2.0, 0.0).map { WatchTrailPoint(it, 0.0) }
+        for (east in listOf(-1.0, -0.5, -0.01, 0.0)) {
+            val rendered = movingTrail(trail, WatchTrailPoint(east, 0.0))
+            assertEquals(trail.size, rendered.size)
+            for (i in 0 until trail.lastIndex) {
+                assertEquals(trail[i].eastM + east, rendered[i].eastM, 0.0001)
+            }
+            assertEquals(WatchTrailPoint(0.0, 0.0), rendered.last())
+        }
+    }
+
+    @Test fun `only the pending distance at the trail tip is trimmed`() {
+        val trail = listOf(-100.0, -10.0, -2.0, -1.0, 0.0).map { WatchTrailPoint(it, 0.0) }
+        val rendered = movingTrail(trail, WatchTrailPoint(3.0, 0.0))
+        assertEquals(listOf(-97.0, -7.0, 0.0), rendered.map { it.eastM })
+    }
+
 }

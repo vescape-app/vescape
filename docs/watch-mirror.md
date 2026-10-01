@@ -252,7 +252,8 @@ little-endian. Two NaNs mean no GPS anchor. Older wrists ignore the trailer;
 new wrists show no trail for absent, unknown, malformed, or non-finite trail data and keep decoding
 telemetry. This adds at most 980 bytes per frame and stores nothing on the watch.
 
-Emulator replay derives the trail from earlier fixture positions. Add `--ez navigation false` to the
+Emulator replay derives the trail from earlier fixture positions. Simulated GPS continues beyond
+the destination, so ending Navigation does not erase the trail. Add `--ez navigation false` to the
 Wear launch intent to verify the standalone or group-only map; watchOS replay accepts
 `--no-navigation`. Both replay commands accept `--wander` for smooth seeded detours up to 35 m on
 each axis, rejoining the recorded path every two minutes. The simulated position, heading, and

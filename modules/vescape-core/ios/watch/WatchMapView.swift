@@ -138,15 +138,20 @@ struct WatchMapMotion: Equatable {
 }
 
 /// Grow the newest segment from the pinned rider while history moves with the camera.
-/// Drop the untravelled suffix in front of the eased rider, then join the tip to the ring.
+/// Trim at most the pending camera distance from the newest suffix, then pin the tip to the ring.
+/// Direction alone cannot identify new points: older history may be ahead after a U-turn.
 /// @parity /watch/wearos/src/main/java/app/vescape/wear/WatchMapView.kt `movingTrail`
 func movingTrail(_ points: [WatchTrailPoint], offset: WatchTrailPoint) -> [WatchTrailPoint] {
-  var shifted = points.map { WatchTrailPoint(eastM: $0.eastM + offset.eastM, northM: $0.northM + offset.northM) }
+  let shifted = points.map { WatchTrailPoint(eastM: $0.eastM + offset.eastM, northM: $0.northM + offset.northM) }
   guard let tip = points.last, hypot(tip.eastM, tip.northM) <= 0.01 else { return shifted }
-  shifted.removeLast()
-  while let last = shifted.last, last.eastM * offset.eastM + last.northM * offset.northM > 0 {
-    shifted.removeLast()
+  var end = points.count - 1
+  var remaining = hypot(offset.eastM, offset.northM)
+  // Always retain the oldest point. A short/sampled history must not vanish during motion.
+  while end > 1 {
+    let segment = hypot(points[end].eastM - points[end - 1].eastM, points[end].northM - points[end - 1].northM)
+    if segment > remaining { break }
+    remaining -= segment
+    end -= 1
   }
-  shifted.append(WatchTrailPoint(eastM: 0, northM: 0))
-  return shifted
+  return Array(shifted.prefix(end)) + [WatchTrailPoint(eastM: 0, northM: 0)]
 }

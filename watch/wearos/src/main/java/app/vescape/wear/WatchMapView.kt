@@ -124,16 +124,25 @@ internal data class WatchMapMotion(
 }
 
 /** Grow the newest segment from the pinned rider while history moves with the camera.
- * Drop the untravelled suffix in front of the eased rider, then join the tip to the ring.
+ * Trim at most the pending camera distance from the newest suffix, then pin the tip to the ring.
+ * Direction alone cannot identify new points: older history may be ahead after a U-turn.
  * @parity /modules/vescape-core/ios/watch/WatchMapView.swift `movingTrail`
  */
 internal fun movingTrail(points: List<WatchTrailPoint>, offset: WatchTrailPoint): List<WatchTrailPoint> {
     val shifted = points.map { WatchTrailPoint(it.eastM + offset.eastM, it.northM + offset.northM) }
     val tip = points.lastOrNull() ?: return shifted
     if (kotlin.math.hypot(tip.eastM, tip.northM) > 0.01) return shifted
-    val tail = shifted.dropLast(1).toMutableList()
-    while (tail.isNotEmpty() && tail.last().eastM * offset.eastM + tail.last().northM * offset.northM > 0) {
-        tail.removeAt(tail.lastIndex)
+    var end = points.lastIndex
+    var remaining = kotlin.math.hypot(offset.eastM, offset.northM)
+    // Always retain the oldest point. A short/sampled history must not vanish during motion.
+    while (end > 1) {
+        val segment = kotlin.math.hypot(
+            points[end].eastM - points[end - 1].eastM,
+            points[end].northM - points[end - 1].northM,
+        )
+        if (segment > remaining) break
+        remaining -= segment
+        end--
     }
-    return tail + WatchTrailPoint(0.0, 0.0)
+    return shifted.take(end) + WatchTrailPoint(0.0, 0.0)
 }
