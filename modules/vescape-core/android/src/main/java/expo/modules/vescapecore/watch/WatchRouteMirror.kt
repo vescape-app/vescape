@@ -22,6 +22,9 @@ internal object WatchRouteMirror {
     /** Origin of the route currently on the watch; the frame's rider lanes are offsets from it. */
     val origin: GeoPoint? get() = pusher?.origin
 
+    val desiredRouteId: Long get() = pusher?.desiredRouteId ?: 0
+    val failed: Boolean get() = pusher?.failed ?: false
+
     /** Settled phone-map horizontal viewport span, carried on the next live Watch Frame. */
     @Volatile
     var viewportSpanM: Double? = null

@@ -83,6 +83,19 @@ final class WatchTelemetryPusher: NSObject, WCSessionDelegate {
     set { coldState.onDelivered = newValue }
   }
 
+  var onColdStateFailed: ((String) -> Void)? {
+    get { coldState.onFailed }
+    set { coldState.onFailed = newValue }
+  }
+
+  /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/watch/WatchTelemetryPusher.kt `pushRouteStatus`
+  func pushRouteStatus(_ status: WatchRouteStatus) {
+    guard let session, canPush else { return }
+    session.sendMessage([watchRouteStatusMessageKey: WatchRouteStatusCodec.encode(status)], replyHandler: nil) { [weak self] error in
+      self?.reportIssue("watch_frame_send_failed", ["path": watchRouteStatusMessageKey, "error": error.localizedDescription])
+    }
+  }
+
   func pushFrame(_ frame: Data) {
     guard let session, canPush else { return }
     session.sendMessageData(

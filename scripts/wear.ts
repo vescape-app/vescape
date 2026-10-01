@@ -318,6 +318,7 @@ async function startReplay(
   navigation: boolean,
   telemetryTrail: boolean,
   requested: string | null,
+  routeLoading: boolean,
 ) {
   const serial = (await findWatch(requested)).serial
   const packageName = applicationId()
@@ -347,6 +348,9 @@ async function startReplay(
     '--ez',
     'telemetryTrail',
     String(telemetryTrail),
+    '--ez',
+    'route-loading',
+    String(routeLoading),
   ])
 }
 
@@ -377,6 +381,8 @@ if (command === 'emulator') {
 }
 
 if (command === 'replay') {
+  const routeLoadingFlag = args.indexOf('--route-loading')
+  if (routeLoadingFlag !== -1) args.splice(routeLoadingFlag, 1)
   const groupFlag = args.indexOf('--group')
   if (groupFlag !== -1) args.splice(groupFlag, 1)
   const wanderFlag = args.indexOf('--wander')
@@ -396,6 +402,7 @@ if (command === 'replay') {
     noNavigationFlag === -1,
     noTelemetryTrailFlag === -1,
     requested,
+    routeLoadingFlag !== -1,
   )
   process.exit(0)
 }

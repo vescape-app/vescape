@@ -588,6 +588,20 @@ not by an app build.
 The route the rider is following now reaches the wrist, and the Wear OS route, pointer and distance
 are on the rectangle.
 
+### Route startup feedback
+
+Route Progress is recalculated from the latest GPS Fix as soon as a path is published, so selecting
+a route while stationary does not wait for movement. A separate `route-status` live message carries
+creation/failure state and the expected polyline fingerprint. The watch displays **Creating route…**,
+then **Receiving route…** until its decoded route matches, or **Waiting for GPS…** when placement is
+missing. The gauges remain visible. Clearing navigation dismisses the loader; losing the live frame
+stream clears transient status. Ambient mode suppresses the spinner.
+
+Status is sent on route actions and repeated alongside live Watch Frames. Its separate message key
+preserves the telemetry wire format used by older watch apps. The fingerprint is a nonzero uint32
+FNV-1a over the encoded route bytes, shared with Wear OS. Preview the receiving state with
+`bun run watchos:replay --route-loading`.
+
 ### The clear is a value, not a missing key
 
 Android publishes the polyline on its own `/route` Data Layer path and clears it by **deleting** the
@@ -612,13 +626,15 @@ rejects an oversized payload with `WCErrorCodePayloadTooLarge` and Apple publish
 cap is a margin rather than a number tuned against a measured one. Above it the route is strided
 down with its endpoints kept, exactly as Android does.
 
-### The origin moves only once the route has landed
+### Origin commit and wrist receipt
 
 The wrist picture has two halves: the polyline on the cold channel, and where the rider is on it, in
 the Watch Frame's `riderEast`/`riderNorth` lanes as metres from the route's origin. An origin
 pointing at a route the wrist does not hold puts the rider off the line, and unlike a one-frame skew
 that state lasts until the next route change. So `WatchColdState` reports the channel it actually
-wrote — including on the activation retry — and the mirror promotes its origin only then. With no
+queued, including on the activation retry, and the mirror promotes its origin only then.
+This is transport acceptance, not proof of receipt: the watch keeps its loader until the decoded
+polyline matches the fingerprint in the live route status. With no
 route the origin is nil and the nav lanes ride as `NaN`, which is the "no Navigation" case the wrist
 already drew before there was a route to draw.
 

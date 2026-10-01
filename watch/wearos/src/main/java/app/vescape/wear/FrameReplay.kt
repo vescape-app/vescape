@@ -7,6 +7,8 @@ import android.os.Handler
 import android.os.Looper
 import android.os.SystemClock
 import expo.modules.vescapecore.telemetry.TelemetryLevel
+import expo.modules.vescapecore.watch.WatchRouteStatus
+import expo.modules.vescapecore.watch.WatchRoutePhase
 import expo.modules.vescapecore.watch.GroupRideFrame
 import expo.modules.vescapecore.watch.GroupRideFrameRider
 import org.json.JSONObject
@@ -323,7 +325,7 @@ class FrameReplayer(private val context: Context) {
     }
 
     /** [group]: also play the Group Ride fixture, as if the Rider had joined one. */
-    fun start(fixture: String, group: Boolean, navigation: Boolean = true, wander: Boolean = false) {
+    fun start(fixture: String, group: Boolean, navigation: Boolean = true, wander: Boolean = false, routeLoading: Boolean = false) {
         if (running) return
         samples = load(fixture, wander).map { sample ->
             if (navigation) sample else sample.copy(frame = sample.frame.copy(
@@ -333,6 +335,8 @@ class FrameReplayer(private val context: Context) {
         if (samples.isEmpty()) return
         WatchDiagnostics.recordReplay(fixture, samples.size)
         loadScene()
+        RouteState.status.value = if (routeLoading) WatchRouteStatus(WatchRoutePhase.READY, 1) else null
+        if (routeLoading) RouteState.accept(null)
         groupRide = if (group) readAsset(REPLAY_FIXTURE_GROUP_RIDE)?.let(ReplaySceneParser::parseGroupRide) else null
         running = true
         startedAt = SystemClock.elapsedRealtime()

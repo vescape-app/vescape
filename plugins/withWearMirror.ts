@@ -53,6 +53,7 @@ const withWearMirror: ConfigPlugin = (config) =>
         'telemetry/TelemetryLevel.kt',
         'watch/GroupRideFrame.kt',
         'watch/WatchTrail.kt',
+        'watch/WatchRouteStatus.kt',
       ]) {
         cpSync(
           path.join(
