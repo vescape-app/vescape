@@ -98,6 +98,7 @@ struct WatchFrame: Equatable {
   var remoteTilt: Int?
   var tiltControl: WatchTiltControl
   var trail: [WatchTrailPoint]
+  var mapPosition: WatchMapPosition?
 
   init(
     speed: Double? = nil,
@@ -115,7 +116,8 @@ struct WatchFrame: Equatable {
     routeSpanM: Double? = nil,
     remoteTilt: Int? = nil,
     tiltControl: WatchTiltControl = .free,
-    trail: [WatchTrailPoint] = []
+    trail: [WatchTrailPoint] = [],
+    mapPosition: WatchMapPosition? = nil
   ) {
     self.speed = speed
     self.duty = duty
@@ -133,6 +135,7 @@ struct WatchFrame: Equatable {
     self.remoteTilt = remoteTilt
     self.tiltControl = tiltControl
     self.trail = trail
+    self.mapPosition = mapPosition
   }
 }
 
@@ -155,6 +158,7 @@ struct WatchSnapshot {
   var remoteTilt: Int?
   var tiltControl: WatchTiltControl
   var trail: [WatchTrailPoint]
+  var mapPosition: WatchMapPosition?
 
   init(
     speed: Double? = nil,
@@ -171,7 +175,8 @@ struct WatchSnapshot {
     routeSpanM: Double? = nil,
     remoteTilt: Int? = nil,
     tiltControl: WatchTiltControl = .free,
-    trail: [WatchTrailPoint] = []
+    trail: [WatchTrailPoint] = [],
+    mapPosition: WatchMapPosition? = nil
   ) {
     self.speed = speed
     self.dutyCycle = dutyCycle
@@ -188,6 +193,7 @@ struct WatchSnapshot {
     self.remoteTilt = remoteTilt
     self.tiltControl = tiltControl
     self.trail = trail
+    self.mapPosition = mapPosition
   }
 }
 
@@ -213,7 +219,8 @@ enum WatchFrameBuilder {
       routeSpanM: snapshot.routeSpanM,
       remoteTilt: snapshot.remoteTilt,
       tiltControl: snapshot.tiltControl,
-      trail: snapshot.trail
+      trail: snapshot.trail,
+      mapPosition: snapshot.mapPosition
     )
   }
 
@@ -227,7 +234,7 @@ enum WatchFrameBuilder {
       let value = Float(frame[keyPath: lane] ?? .nan)
       withUnsafeBytes(of: value.bitPattern.littleEndian) { data.append(contentsOf: $0) }
     }
-    data.append(WatchTrailCodec.encode(frame.trail))
+    data.append(WatchTrailCodec.encode(frame.trail, position: frame.mapPosition))
     return data
   }
 
@@ -250,7 +257,9 @@ enum WatchFrameBuilder {
       let value = Float(bitPattern: raw)
       frame[keyPath: lane] = value.isNaN ? nil : Double(value)
     }
-    frame.trail = WatchTrailCodec.decode(data, offset: WATCH_FRAME_BYTES)
+    let trail = WatchTrailCodec.decode(data, offset: WATCH_FRAME_BYTES)
+    frame.trail = trail.points
+    frame.mapPosition = trail.position
     return frame
   }
 

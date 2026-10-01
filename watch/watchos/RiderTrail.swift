@@ -1,6 +1,7 @@
 import SwiftUI
 
-/// Phone-owned recent path: the phone map's 3 pt stroke, transparent-to-85% full-path gradient.
+/// Phone-owned recent path: the phone map's 3 pt stroke, transparent-to-60% full-path gradient.
+/// @platform-diff Watch trail peaks at 60% opacity to distinguish it from the route; phone uses 85%.
 /// @parity /src/screens/main/map/LiveMapLayers.tsx
 /// @parity /src/modules/map/constants/mapStyles.ts
 /// @parity /watch/wearos/src/main/java/app/vescape/wear/RiderTrail.kt `RiderTrail`
@@ -16,8 +17,9 @@ struct RiderTrail: View {
       Canvas { context, size in
         let map = WatchMapProjection(size: size, spanM: mapView.spanM(at: at), courseDeg: mapView.courseDeg(at: at))
         context.clip(to: Rim.path(in: size, inset: Rim.inset))
+        let points = movingTrail(points, offset: mapView.motion.offset(at: at))
         guard points.count > 1 else { return }
-        // Match the phone map's line-progress gradient across the entire retained trail.
+        // Use the phone map's full-path gradient, with a fainter watch default to separate it from the route.
         var distanceFromTip = Array(repeating: 0.0, count: points.count)
         for i in stride(from: points.count - 2, through: 0, by: -1) {
           distanceFromTip[i] = distanceFromTip[i + 1] + hypot(
@@ -25,7 +27,7 @@ struct RiderTrail: View {
           )
         }
         let fadeM = max(1e-6, distanceFromTip[0])
-        func alpha(_ i: Int) -> Double { 0.85 * min(1, max(0, 1 - distanceFromTip[i] / fadeM)) }
+        func alpha(_ i: Int) -> Double { 0.60 * min(1, max(0, 1 - distanceFromTip[i] / fadeM)) }
         let projected = points.map { map.place(eastM: $0.eastM, northM: $0.northM, margin: 0).point }
         // Replace overlapping cap pixels within an isolated trail layer. Its alpha is then
         // composited onto the map once, preserving both the fade and the planned route underneath.

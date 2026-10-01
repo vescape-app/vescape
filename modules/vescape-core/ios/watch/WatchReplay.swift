@@ -192,6 +192,8 @@ enum ReplayFixtureParser {
     return samples.enumerated().map { index, sample in
       var frame = sample.frame
       if let east = frame.riderEastM, let north = frame.riderNorthM {
+        // Fixture offsets use a synthetic equatorial anchor, independent of navigation lanes.
+        frame.mapPosition = WatchMapPosition(latitude: north / 110_574, longitude: east / 111_320)
         let count = min(index + 1, WatchTrailCodec.maxPoints)
         frame.trail = (0..<count).compactMap { i in
           let point = samples[count == 1 ? 0 : i * index / (count - 1)].frame

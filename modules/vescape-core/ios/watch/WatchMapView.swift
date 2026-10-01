@@ -1,8 +1,8 @@
 import Foundation
 
-/// The heading-up map's zoom and course as the wrist currently draws them, eased towards the latest
-/// target. The route and the Group Ride marks all project with these numbers at the same instant, so
-/// a Rider on the route stays on it mid-zoom and mid-turn.
+/// The heading-up map's position, zoom and course as the wrist currently draws them, eased towards the latest
+/// target. Route and trail share position motion; Group Ride shares zoom and course.
+/// Both paths sample one camera translation at each instant.
 ///
 /// A value, read at a date: the wrist's map layers each sample it on their own `TimelineView`, which
 /// only runs while `settlesAt` is ahead. Shared with the wrist (`watch/watchos/` symlinks this file)
@@ -17,6 +17,7 @@ struct WatchMapView: Equatable {
   /// @parity /watch/wearos/src/main/java/app/vescape/wear/WatchMapView.kt `MAP_TURN_EASE_MS`
   static let turnEase: TimeInterval = 0.3
 
+  private(set) var motion = WatchMapMotion()
   private var span: Ease
   /// Unwrapped, so a heading crossing north turns the short way; `relativeBearingDeg` wraps it.
   private var course: Ease
@@ -31,14 +32,15 @@ struct WatchMapView: Equatable {
   func spanM(at date: Date) -> Double { span.value(at: date, curve: fastOutSlowIn) }
   /// Unwrapped course at `date`.
   func courseDeg(at date: Date) -> Double { course.value(at: date) { $0 } }
-  /// Once past this, both have landed and nothing needs to redraw.
-  var settlesAt: Date { max(span.end, course.end) }
+  /// Once past this, all movement has landed and nothing needs to redraw.
+  var settlesAt: Date { max(span.end, course.end, motion.endsAt) }
 
   /// Ease from wherever the map is at `now` towards `spanM` (already clamped) and `courseDeg`. A nil
   /// course holds the last one (a stop, an approximate fix). Without `animate` it lands at once.
   ///
   /// @parity /watch/wearos/src/main/java/app/vescape/wear/WatchMapView.kt `rememberWatchMapView`
-  mutating func retarget(spanM: Double, courseDeg: Double?, at now: Date, animate: Bool) {
+  mutating func retarget(spanM: Double, courseDeg: Double?, at now: Date, animate: Bool, position: WatchMapPosition? = nil) {
+    motion = motion.retarget(position, at: now, animate: animate)
     span.retarget(spanM, at: now, duration: animate ? Self.zoomEase : 0, curve: fastOutSlowIn)
     if let courseDeg {
       let from = course.value(at: now) { $0 }
@@ -106,4 +108,45 @@ func fastOutSlowIn(_ t: Double) -> Double {
 /// @parity /watch/wearos/src/main/java/app/vescape/wear/WatchMapView.kt `shortestAngleDelta`
 func shortestAngleDelta(from: Double, to: Double) -> Double {
   (((to - from + 180).truncatingRemainder(dividingBy: 360) + 360).truncatingRemainder(dividingBy: 360)) - 180
+}
+
+/// Remaining camera translation relative to the latest GPS fix. One clock for both paths.
+/// The absolute anchor survives rerouting, history trimming and skipped frames.
+/// @parity /watch/wearos/src/main/java/app/vescape/wear/WatchMapView.kt `WatchMapMotion`
+struct WatchMapMotion: Equatable {
+  var position: WatchMapPosition?
+  private var from = WatchTrailPoint(eastM: 0, northM: 0)
+  private var startsAt = Date.distantPast
+  private(set) var endsAt = Date.distantPast
+
+  func offset(at date: Date) -> WatchTrailPoint {
+    let remaining = endsAt > startsAt ? min(1, max(0, endsAt.timeIntervalSince(date) / endsAt.timeIntervalSince(startsAt))) : 0
+    return WatchTrailPoint(eastM: from.eastM * remaining, northM: from.northM * remaining)
+  }
+
+  func retarget(_ target: WatchMapPosition?, at now: Date, animate: Bool) -> WatchMapMotion {
+    guard animate, let target, let position else { return WatchMapMotion(position: target) }
+    guard target != position else { return self }
+    let movement = target.offset(from: position)
+    let remaining = offset(at: now)
+    var next = WatchMapMotion(position: target)
+    next.from = WatchTrailPoint(eastM: remaining.eastM + movement.eastM, northM: remaining.northM + movement.northM)
+    next.startsAt = now
+    next.endsAt = now.addingTimeInterval(0.3)
+    return next
+  }
+}
+
+/// Grow the newest segment from the pinned rider while history moves with the camera.
+/// Drop the untravelled suffix in front of the eased rider, then join the tip to the ring.
+/// @parity /watch/wearos/src/main/java/app/vescape/wear/WatchMapView.kt `movingTrail`
+func movingTrail(_ points: [WatchTrailPoint], offset: WatchTrailPoint) -> [WatchTrailPoint] {
+  var shifted = points.map { WatchTrailPoint(eastM: $0.eastM + offset.eastM, northM: $0.northM + offset.northM) }
+  guard let tip = points.last, hypot(tip.eastM, tip.northM) <= 0.01 else { return shifted }
+  shifted.removeLast()
+  while let last = shifted.last, last.eastM * offset.eastM + last.northM * offset.northM > 0 {
+    shifted.removeLast()
+  }
+  shifted.append(WatchTrailPoint(eastM: 0, northM: 0))
+  return shifted
 }

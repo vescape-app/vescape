@@ -2823,7 +2823,8 @@ internal final class BoardSessionController: VescGattListener {
       trail: watchTrail(
         rider: rider.map { WatchGeoPoint(latitude: $0.latitude, longitude: $0.longitude) },
         history: locationTracker.recentLocations
-      )
+      ),
+      mapPosition: rider.map { WatchMapPosition(latitude: $0.latitude, longitude: $0.longitude) }
     )
   }
 

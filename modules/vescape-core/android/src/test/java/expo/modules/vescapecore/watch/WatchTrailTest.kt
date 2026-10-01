@@ -20,23 +20,25 @@ class WatchTrailTest {
 
     @Test fun `wire contract and malformed extensions`() {
         val points = listOf(WatchTrailPoint(1.0, -2.0))
-        val expected = byteArrayOf(84, 82, 1, 1, 0, 0, -128, 63, 0, 0, 0, -64)
-        assertArrayEquals(expected, WatchTrailCodec.encode(points))
-        assertEquals(points, WatchTrailCodec.decode(expected, 0))
-        assertEquals(points, WatchTrailCodec.decode(byteArrayOf(0, 0) + expected, 2))
-        assertTrue(WatchTrailCodec.decode(expected.copyOf(11), 0).isEmpty())
-        assertTrue(WatchTrailCodec.decode(expected.clone().apply { this[2] = 2 }, 0).isEmpty())
-        assertTrue(WatchTrailCodec.decode(expected.clone().apply { this[3] = 121 }, 0).isEmpty())
-        assertTrue(WatchTrailCodec.decode(WatchTrailCodec.encode(listOf(WatchTrailPoint(Double.NaN, 0.0))), 0).isEmpty())
+        val expected = byteArrayOf(84, 82, 2, 1, 0, 0, 0, 0, 0, 0, -16, 63, 0, 0, 0, 0, 0, 0, 0, 64, 0, 0, -128, 63, 0, 0, 0, -64)
+        assertArrayEquals(expected, WatchTrailCodec.encode(points, WatchMapPosition(1.0, 2.0)))
+        assertEquals(points, WatchTrailCodec.decode(expected, 0).points)
+        assertEquals(WatchMapPosition(1.0, 2.0), WatchTrailCodec.decode(expected, 0).position)
+        assertEquals(points, WatchTrailCodec.decode(byteArrayOf(0, 0) + expected, 2).points)
+        assertTrue(WatchTrailCodec.decode(expected.copyOf(27), 0).points.isEmpty())
+        assertTrue(WatchTrailCodec.decode(expected.clone().apply { this[2] = 99 }, 0).points.isEmpty())
+        assertTrue(WatchTrailCodec.decode(expected.clone().apply { this[3] = 121 }, 0).points.isEmpty())
+        assertTrue(WatchTrailCodec.decode(WatchTrailCodec.encode(listOf(WatchTrailPoint(Double.NaN, 0.0))), 0).points.isEmpty())
     }
 
     @Test fun `full phone frame carries authoritative trail and explicit clear`() {
         val trail = listOf(WatchTrailPoint(-10.0, -20.0), WatchTrailPoint(0.0, 0.0))
-        val snapshot = WatchSnapshot(null, null, false, null, null, null, trail = trail)
+        val snapshot = WatchSnapshot(null, null, false, null, null, null, trail = trail, mapPosition = WatchMapPosition(52.0, 21.0))
         val frame = WatchFrameBuilder.build(snapshot, stale = false)
         val bytes = WatchFrameBuilder.encode(frame)
         assertEquals(13, bytes[0].toInt())
-        assertEquals(trail, WatchTrailCodec.decode(bytes, WATCH_FRAME_BYTES))
-        assertTrue(WatchTrailCodec.decode(WatchFrameBuilder.encode(frame.copy(trail = emptyList())), WATCH_FRAME_BYTES).isEmpty())
+        assertEquals(snapshot.mapPosition, WatchTrailCodec.decode(bytes, WATCH_FRAME_BYTES).position)
+        assertEquals(trail, WatchTrailCodec.decode(bytes, WATCH_FRAME_BYTES).points)
+        assertTrue(WatchTrailCodec.decode(WatchFrameBuilder.encode(frame.copy(trail = emptyList())), WATCH_FRAME_BYTES).points.isEmpty())
     }
 }

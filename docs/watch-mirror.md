@@ -229,11 +229,15 @@ Always-on screen, then `adb shell input keyevent 26`.
 
 The active gauge and map pages always show the Rider's position ring, including without Navigation
 or a Group Ride. The recent ridden trail uses the same native precise GPS history as the phone's
-live map. Like the phone, its 3-point stroke fades from transparent at the oldest end to 85% at the
-newest end, measured along the full retained path. It uses the Rider's colour or the phone dark-map
+live map. Its 3-point stroke fades from transparent at the oldest end to 60% opacity at the
+newest end, measured along the full retained path. The lower peak than the phone's 85% distinguishes
+the trail from the planned route. It uses the Rider's colour or the phone dark-map
 violet by default. There is no watch-only distance cutoff or shortened fade. At a close zoom the
 old, transparent end may be offscreen, just as on the phone. It shares the route/group map's heading
-and zoom. Overlapping stroke joins composite once, avoiding bright dotted joins. The ring sits above
+and zoom. Route and trail also share one 300 ms position animation, driven by an absolute GPS
+anchor in the same frame. It works without Navigation and survives route-origin changes and
+history trimming. The trail tip stays pinned to the Rider while the newest segment grows.
+Overlapping stroke joins composite once, avoiding bright dotted joins. The ring sits above
 paths and other Riders. Ambient continues to skip the map.
 
 The phone sends a complete trail snapshot with each Watch Frame, capped at 120 evenly sampled
@@ -242,10 +246,11 @@ of the route origin. Route changes cannot move or reset the trail, and a reconne
 history rather than starting a watch-local recording. Empty history clears the trail. Approximate
 fixes can move the Rider but do not enter the precise history or extend its line.
 
-The fixed 13-lane telemetry header is unchanged. A trailer follows it: ASCII `TR`, version `1`,
-unsigned point count, then little-endian Float32 east/north pairs. Older wrists ignore the trailer;
+The fixed 13-lane telemetry header is unchanged. A trailer follows it: ASCII `TR`, version `2`,
+unsigned point count, Float64 Rider latitude/longitude, then Float32 east/north pairs, all
+little-endian. Two NaNs mean no GPS anchor. Older wrists ignore the trailer;
 new wrists show no trail for absent, unknown, malformed, or non-finite trail data and keep decoding
-telemetry. This adds at most 964 bytes per frame and stores nothing on the watch.
+telemetry. This adds at most 980 bytes per frame and stores nothing on the watch.
 
 Emulator replay derives the trail from earlier fixture positions. Add `--ez navigation false` to the
 Wear launch intent to verify the standalone or group-only map; watchOS replay accepts

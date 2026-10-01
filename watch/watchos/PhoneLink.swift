@@ -75,11 +75,6 @@ final class PhoneLink: NSObject, ObservableObject, WCSessionDelegate {
   /// @parity /watch/wearos/src/main/java/app/vescape/wear/WatchBoard.kt `BoardState`
   @Published private(set) var board = WatchBoardLights()
 
-  /// Bumped on every route change. The wrist's route animators are measured from the route's own
-  /// origin, so a replacement route moves the frame underneath them; this is what tells the view to
-  /// restart from the new numbers rather than glide across a jump that never happened.
-  @Published private(set) var routeGeneration = 0
-
   /// The joined Group Ride, as last pushed; nil when the Rider is in none or the frames stopped.
   /// Hot state like the Watch Frame, so it ages out in `refresh()` instead of surviving a restart.
   ///
@@ -327,7 +322,6 @@ final class PhoneLink: NSObject, ObservableObject, WCSessionDelegate {
   private func acceptRoute(_ path: WatchRoute?) {
     if path != route {
       route = path
-      routeGeneration += 1
     }
   }
 

@@ -8,10 +8,17 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.Stable
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.withFrameNanos
+import android.os.SystemClock
+import expo.modules.vescapecore.watch.WatchMapPosition
+import expo.modules.vescapecore.watch.WatchTrailPoint
 
 /**
- * The heading-up map's zoom and course as the wrist currently draws them, eased towards the latest
- * target. The route and the Group Ride marks all project with these numbers, so a Rider on the route
+ * The heading-up map's position, zoom and course as the wrist currently draws them, eased towards the latest
+ * target. Route and trail share position motion; Group Ride shares zoom and course, so a Rider on the route
  * stays on it mid-zoom and mid-turn. Read [spanM] and [courseDeg] in a draw scope: an easing then
  * repaints the map layers without recomposing anything.
  *
@@ -21,6 +28,19 @@ import androidx.compose.runtime.remember
  */
 @Stable
 internal class WatchMapView(spanM: Float, courseDeg: Float) {
+    var motion by mutableStateOf(WatchMapMotion())
+        private set
+    var motionTimeMs by mutableStateOf(0L)
+    val positionOffset: WatchTrailPoint get() = motion.offsetAt(motionTimeMs)
+
+    // Retarget in the same composition as the new geometry, before either layer can draw it.
+    fun moveTo(position: WatchMapPosition?, nowMs: Long, animate: Boolean) {
+        if (position != motion.position || !animate) {
+            motion = motion.retarget(position, nowMs, animate)
+            motionTimeMs = nowMs
+        }
+    }
+
     private val span = Animatable(spanM)
     private val course = Animatable(courseDeg)
 
@@ -48,8 +68,14 @@ internal class WatchMapView(spanM: Float, courseDeg: Float) {
  * @parity /modules/vescape-core/ios/watch/WatchMapView.swift `retarget`
  */
 @Composable
-internal fun rememberWatchMapView(targetSpanM: Float, targetCourseDeg: Float?, animate: Boolean): WatchMapView {
+internal fun rememberWatchMapView(targetSpanM: Float, targetCourseDeg: Float?, animate: Boolean, position: WatchMapPosition? = null): WatchMapView {
     val view = remember { WatchMapView(targetSpanM, targetCourseDeg ?: 0f) }
+    view.moveTo(position, SystemClock.uptimeMillis(), animate)
+    LaunchedEffect(view.motion) {
+        while (view.motionTimeMs < view.motion.endsAtMs) {
+            withFrameNanos { view.motionTimeMs = SystemClock.uptimeMillis() }
+        }
+    }
     LaunchedEffect(targetSpanM, animate) { view.zoomTo(targetSpanM, animate) }
     LaunchedEffect(targetCourseDeg, animate) { targetCourseDeg?.let { view.turnTo(it, animate) } }
     return view
@@ -68,3 +94,46 @@ private const val MAP_ZOOM_EASE_MS = 350
 
 /** @parity /modules/vescape-core/ios/watch/WatchMapView.swift `turnEase` */
 private const val MAP_TURN_EASE_MS = 300
+
+/** Remaining camera translation relative to the latest GPS fix. One clock for both paths.
+ * The anchor is absolute: rerouting, history trimming and skipped frames cannot change its origin.
+ * @parity /modules/vescape-core/ios/watch/WatchMapView.swift `WatchMapMotion`
+ */
+internal data class WatchMapMotion(
+    val position: WatchMapPosition? = null,
+    private val from: WatchTrailPoint = WatchTrailPoint(0.0, 0.0),
+    private val startsAtMs: Long = 0,
+    val endsAtMs: Long = 0,
+) {
+    fun offsetAt(nowMs: Long): WatchTrailPoint {
+        val remaining = if (endsAtMs <= startsAtMs) 0.0 else
+            ((endsAtMs - nowMs).toDouble() / (endsAtMs - startsAtMs)).coerceIn(0.0, 1.0)
+        return WatchTrailPoint(from.eastM * remaining, from.northM * remaining)
+    }
+
+    fun retarget(target: WatchMapPosition?, nowMs: Long, animate: Boolean): WatchMapMotion {
+        if (!animate || target == null || position == null) return WatchMapMotion(position = target)
+        if (target == position) return this
+        val movement = target.offsetFrom(position)
+        val remaining = offsetAt(nowMs)
+        return WatchMapMotion(target,
+            WatchTrailPoint(remaining.eastM + movement.eastM, remaining.northM + movement.northM),
+            nowMs, nowMs + 300,
+        )
+    }
+}
+
+/** Grow the newest segment from the pinned rider while history moves with the camera.
+ * Drop the untravelled suffix in front of the eased rider, then join the tip to the ring.
+ * @parity /modules/vescape-core/ios/watch/WatchMapView.swift `movingTrail`
+ */
+internal fun movingTrail(points: List<WatchTrailPoint>, offset: WatchTrailPoint): List<WatchTrailPoint> {
+    val shifted = points.map { WatchTrailPoint(it.eastM + offset.eastM, it.northM + offset.northM) }
+    val tip = points.lastOrNull() ?: return shifted
+    if (kotlin.math.hypot(tip.eastM, tip.northM) > 0.01) return shifted
+    val tail = shifted.dropLast(1).toMutableList()
+    while (tail.isNotEmpty() && tail.last().eastM * offset.eastM + tail.last().northM * offset.northM > 0) {
+        tail.removeAt(tail.lastIndex)
+    }
+    return tail + WatchTrailPoint(0.0, 0.0)
+}

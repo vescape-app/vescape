@@ -19,25 +19,27 @@ final class WatchTrailTests: XCTestCase {
 
   func testWireContractAndMalformedExtensions() {
     let points = [WatchTrailPoint(eastM: 1, northM: -2)]
-    let expected = Data([84, 82, 1, 1, 0, 0, 128, 63, 0, 0, 0, 192])
-    XCTAssertEqual(WatchTrailCodec.encode(points), expected)
-    XCTAssertEqual(WatchTrailCodec.decode(expected, offset: 0), points)
-    XCTAssertEqual(WatchTrailCodec.decode(Data([0, 0]) + expected, offset: 2), points)
-    XCTAssertTrue(WatchTrailCodec.decode(expected.dropLast(), offset: 0).isEmpty)
+    let expected = Data([84, 82, 2, 1, 0, 0, 0, 0, 0, 0, 240, 63, 0, 0, 0, 0, 0, 0, 0, 64, 0, 0, 128, 63, 0, 0, 0, 192])
+    XCTAssertEqual(WatchTrailCodec.encode(points, position: WatchMapPosition(latitude: 1, longitude: 2)), expected)
+    XCTAssertEqual(WatchTrailCodec.decode(expected, offset: 0).points, points)
+    XCTAssertEqual(WatchTrailCodec.decode(expected, offset: 0).position, WatchMapPosition(latitude: 1, longitude: 2))
+    XCTAssertEqual(WatchTrailCodec.decode(Data([0, 0]) + expected, offset: 2).points, points)
+    XCTAssertTrue(WatchTrailCodec.decode(expected.dropLast(), offset: 0).points.isEmpty)
     var unknown = expected
-    unknown[2] = 2
-    XCTAssertTrue(WatchTrailCodec.decode(unknown, offset: 0).isEmpty)
+    unknown[2] = 99
+    XCTAssertTrue(WatchTrailCodec.decode(unknown, offset: 0).points.isEmpty)
     unknown = expected
     unknown[3] = 121
-    XCTAssertTrue(WatchTrailCodec.decode(unknown, offset: 0).isEmpty)
-    XCTAssertTrue(WatchTrailCodec.decode(WatchTrailCodec.encode([WatchTrailPoint(eastM: .nan, northM: 0)]), offset: 0).isEmpty)
+    XCTAssertTrue(WatchTrailCodec.decode(unknown, offset: 0).points.isEmpty)
+    XCTAssertTrue(WatchTrailCodec.decode(WatchTrailCodec.encode([WatchTrailPoint(eastM: .nan, northM: 0)]), offset: 0).points.isEmpty)
   }
 
   func testFullFrameCarriesTrailAndOldFramesClearIt() throws {
     let trail = [WatchTrailPoint(eastM: -10, northM: -20), WatchTrailPoint(eastM: 0, northM: 0)]
-    let frame = WatchFrameBuilder.build(snapshot: WatchSnapshot(trail: trail), stale: false)
+    let frame = WatchFrameBuilder.build(snapshot: WatchSnapshot(trail: trail, mapPosition: WatchMapPosition(latitude: 52, longitude: 21)), stale: false)
     let data = WatchFrameBuilder.encode(frame)
     XCTAssertEqual(try XCTUnwrap(WatchFrameBuilder.decode(data)).trail, trail)
+    XCTAssertEqual(try XCTUnwrap(WatchFrameBuilder.decode(data)).mapPosition, frame.mapPosition)
     XCTAssertTrue(try XCTUnwrap(WatchFrameBuilder.decode(data.prefix(WATCH_FRAME_BYTES))).trail.isEmpty)
     XCTAssertTrue(try XCTUnwrap(WatchFrameBuilder.decode(data.dropLast())).trail.isEmpty)
     XCTAssertTrue(try XCTUnwrap(WatchFrameBuilder.decode(WatchFrameBuilder.encode(WatchFrame()))).trail.isEmpty)

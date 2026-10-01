@@ -39,7 +39,6 @@ struct FrameLayout: View {
   /// The route the phone pushed, drawn under everything else. Nil is no Navigation, or a route the
   /// rider cleared — the frame then renders exactly as it did before there was one.
   var route: WatchRoute?
-  var routeGeneration: Int = 0
   /// The joined Group Ride; nil draws no group. Hidden in ambient.
   var groupRide: WatchGroupRide?
   /// The rider's own colour, so route, chevron and rider dot match the phone map.
@@ -74,9 +73,9 @@ struct FrameLayout: View {
   /// course already holds across a stop; a nil frame course holds too.
   private var mapTarget: MapTarget {
     if navLanes == nil, let groupRide {
-      return MapTarget(spanM: WatchMapProjection.clampedSpanM(groupRide.spanM), courseDeg: groupRide.courseDeg)
+      return MapTarget(spanM: WatchMapProjection.clampedSpanM(groupRide.spanM), courseDeg: groupRide.courseDeg, position: frame.mapPosition)
     }
-    return MapTarget(spanM: WatchMapProjection.clampedSpanM(frame.routeSpanM), courseDeg: frame.courseDeg)
+    return MapTarget(spanM: WatchMapProjection.clampedSpanM(frame.routeSpanM), courseDeg: frame.courseDeg, position: frame.mapPosition)
   }
 
   /// The Rider and trail remain without Navigation or a Group Ride. Ambient skips the moving map.
@@ -94,7 +93,6 @@ struct FrameLayout: View {
       if navLanes != nil, !ambient.active {
         NavRoute(
           route: route,
-          generation: routeGeneration,
           frame: frame,
           mapView: mapView,
           mapMoving: mapMoving,
@@ -208,7 +206,7 @@ struct FrameLayout: View {
 
   private func retargetMap(animate: Bool) {
     let now = Date()
-    mapView.retarget(spanM: mapTarget.spanM, courseDeg: mapTarget.courseDeg, at: now, animate: animate)
+    mapView.retarget(spanM: mapTarget.spanM, courseDeg: mapTarget.courseDeg, at: now, animate: animate, position: mapTarget.position)
     mapMoving = mapView.settlesAt > now
   }
 
@@ -403,4 +401,5 @@ private let TEMP_FOCUS_SPREAD = 0.06
 private struct MapTarget: Equatable {
   let spanM: Double
   let courseDeg: Double?
+  let position: WatchMapPosition?
 }

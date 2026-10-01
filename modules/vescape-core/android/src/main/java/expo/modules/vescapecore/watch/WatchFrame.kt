@@ -88,6 +88,7 @@ internal data class WatchFrame(
     val remoteTilt: Int? = null,
     val tiltControl: WatchTiltControl = WatchTiltControl.FREE,
     val trail: List<WatchTrailPoint> = emptyList(),
+    val mapPosition: WatchMapPosition? = null,
 )
 
 /** The latest cold-path values the watch tick reads to build a frame. `stale` is decided at tick time. */
@@ -109,6 +110,7 @@ internal data class WatchSnapshot(
     val remoteTilt: Int? = null,
     val tiltControl: WatchTiltControl = WatchTiltControl.FREE,
     val trail: List<WatchTrailPoint> = emptyList(),
+    val mapPosition: WatchMapPosition? = null,
 )
 
 /**
@@ -133,6 +135,7 @@ internal object WatchFrameBuilder {
         remoteTilt = snapshot.remoteTilt,
         tiltControl = snapshot.tiltControl,
         trail = snapshot.trail,
+        mapPosition = snapshot.mapPosition,
     )
 
     fun encode(frame: WatchFrame): ByteArray =
@@ -156,7 +159,7 @@ internal object WatchFrameBuilder {
             putFloat(frame.routeSpanM.toLaneFloat())
             putFloat(frame.remoteTilt?.toDouble().toLaneFloat())
             putFloat(frame.tiltControl.wire.toFloat())
-        }.array() + WatchTrailCodec.encode(frame.trail)
+        }.array() + WatchTrailCodec.encode(frame.trail, frame.mapPosition)
 
     private fun Double?.toLaneFloat(): Float = this?.toFloat() ?: Float.NaN
 }

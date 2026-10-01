@@ -71,4 +71,48 @@ final class WatchMapViewTests: XCTestCase {
     XCTAssertEqual(shortestAngleDelta(from: 719, to: 1), 2, accuracy: 0.001)
     XCTAssertEqual(shortestAngleDelta(from: -170, to: 170), -20, accuracy: 0.001)
   }
+  private func position(_ north: Double) -> WatchMapPosition {
+    WatchMapPosition(latitude: north / 110_574, longitude: 0)
+  }
+
+  func testRouteAndTrailStayAlignedThroughoutAFixAndTipStaysPinned() {
+    let motion = WatchMapMotion().retarget(position(0), at: at(-1), animate: true)
+      .retarget(position(10), at: start, animate: true)
+    let trail = [WatchTrailPoint(eastM: 0, northM: -30), WatchTrailPoint(eastM: 0, northM: -10), WatchTrailPoint(eastM: 0, northM: 0)]
+    for time in [0.0, 0.075, 0.15, 0.225, 0.3] {
+      let offset = motion.offset(at: at(time))
+      let rendered = movingTrail(trail, offset: offset)
+      XCTAssertEqual(-20 - (10 - offset.northM), rendered.first!.northM, accuracy: 0.0001)
+      XCTAssertEqual(rendered.last, WatchTrailPoint(eastM: 0, northM: 0))
+      XCTAssertTrue(rendered.allSatisfy { $0.northM <= 0 })
+    }
+    XCTAssertEqual(motion.offset(at: at(0.15)).northM, 5, accuracy: 0.0001)
+  }
+
+  func testNewFixMidAnimationPreservesCameraAndRepeatedTicksDoNotRestart() {
+    let first = WatchMapMotion().retarget(position(0), at: at(-1), animate: true)
+      .retarget(position(10), at: start, animate: true)
+    let next = first.retarget(position(20), at: at(0.15), animate: true)
+    XCTAssertEqual(next.offset(at: at(0.15)).northM, 15, accuracy: 0.0001)
+    XCTAssertEqual(next, next.retarget(position(20), at: at(0.2), animate: true))
+    XCTAssertEqual(next.offset(at: at(0.45)).northM, 0, accuracy: 0.0001)
+    XCTAssertEqual(next.retarget(position(20), at: at(0.2), animate: false).offset(at: at(0.2)).northM, 0)
+  }
+
+  func testMissingFixResetsMotionAndFreshFixNeverFliesFromPreviousRide() {
+    let moving = WatchMapMotion().retarget(position(0), at: at(-1), animate: true)
+      .retarget(position(10), at: start, animate: true)
+    let cleared = moving.retarget(nil, at: at(0.1), animate: true)
+    XCTAssertEqual(cleared.offset(at: at(0.1)).northM, 0)
+    XCTAssertEqual(cleared.retarget(position(1000), at: at(0.2), animate: true).offset(at: at(0.2)).northM, 0)
+  }
+
+  func testPositionAloneKeepsSharedMapClockRunningWithoutNavigation() {
+    var map = WatchMapView(spanM: 600, courseDeg: nil)
+    map.retarget(spanM: 600, courseDeg: nil, at: at(-1), animate: true, position: position(0))
+    map.retarget(spanM: 600, courseDeg: nil, at: start, animate: true, position: position(10))
+    XCTAssertEqual(map.settlesAt, at(0.3))
+    XCTAssertEqual(map.motion.offset(at: at(0.15)).northM, 5, accuracy: 0.0001)
+  }
+
 }

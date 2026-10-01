@@ -1,16 +1,11 @@
 package app.vescape.wear
 
-import androidx.compose.animation.core.Animatable
-import androidx.compose.animation.core.LinearEasing
-import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.drawscope.clipPath
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
@@ -39,10 +34,10 @@ internal fun NavRoute(frame: WatchFrame, mapView: WatchMapView, muted: Boolean, 
     val north = frame.riderNorthM
 
     if (route != null && east != null && north != null) {
-        AnimatedRoute(
+        RouteLayer(
             route = route,
-            targetEastM = east.toFloat(),
-            targetNorthM = north.toFloat(),
+            riderEastM = east.toFloat(),
+            riderNorthM = north.toFloat(),
             mapView = mapView,
             color = color,
             navFocus = navFocus,
@@ -68,24 +63,14 @@ internal fun DrawScope.drawRiderDot(center: Offset, color: Color) {
 }
 
 @Composable
-private fun AnimatedRoute(
+private fun RouteLayer(
     route: WatchRoute,
-    targetEastM: Float,
-    targetNorthM: Float,
+    riderEastM: Float,
+    riderNorthM: Float,
     mapView: WatchMapView,
     color: Color,
     navFocus: () -> Float,
 ) {
-    // Offsets are metres from *this* route's origin. A new route moves the origin, so the old
-    // animators would glide the rider across a jump that never happened: key them to the route.
-    // Zoom and course are the map's, not the route's: [mapView] eases them for every map layer.
-    val eastM = remember(route) { Animatable(targetEastM) }
-    val northM = remember(route) { Animatable(targetNorthM) }
-    val motionSpec = tween<Float>(durationMillis = ROUTE_MOTION_EASE_MS, easing = LinearEasing)
-
-    LaunchedEffect(targetEastM) { eastM.animateTo(targetEastM, motionSpec) }
-    LaunchedEffect(targetNorthM) { northM.animateTo(targetNorthM, motionSpec) }
-
     // A route runs for kilometres and Compose does not clip by default, so without this the line
     // reaches past the frame and draws over whatever page sits next to it. On a round watch the
     // bounds are still square, so it stops inside the gauge ring instead: the line belongs under the
@@ -98,7 +83,8 @@ private fun AnimatedRoute(
         val focus = navFocus().coerceIn(0f, 1f)
         val center = WatchMapProjection.riderPoint(size.width, size.height, WatchMapProjection.RIDER_DROP.toPx())
         val scale = WatchMapProjection.pixelsPerMetre(size.width, size.height, WatchMapProjection.ROUTE_EDGE_INSET.toPx(), mapView.spanM)
-        val path = routePath(route, Offset(eastM.value, northM.value), center, scale)
+        val offset = mapView.positionOffset
+        val path = routePath(route, Offset(riderEastM - offset.eastM.toFloat(), riderNorthM - offset.northM.toFloat()), center, scale)
         clipPath(mapFaceClip(isRound)) {
             // Heading-up, taking the shortest turn across the 0°/360° boundary.
             rotate(degrees = -mapView.courseDeg, pivot = center) {
@@ -133,8 +119,6 @@ private fun polyline(points: List<Offset>): Path = Path().apply {
 }
 
 private fun routeStroke(width: Float) = Stroke(width = width, cap = StrokeCap.Round, join = StrokeJoin.Round)
-
-private const val ROUTE_MOTION_EASE_MS = 300
 
 /** Half the widest gauge guide stroke: the route clip stops at the inner side of that line. */
 private val GUIDE_HALF_WIDTH = 1.dp

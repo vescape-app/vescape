@@ -71,7 +71,10 @@ object ReplayFixtureParser {
                 val y = point.riderNorthM ?: return@mapNotNull null
                 WatchTrailPoint(x - east, y - north)
             }
-            sample.copy(frame = sample.frame.copy(trail = trail))
+            // Fixture offsets use a synthetic equatorial anchor, independent of navigation lanes.
+            val position = if (east == null || north == null) null else
+                expo.modules.vescapecore.watch.WatchMapPosition(north / 110_574.0, east / 111_320.0)
+            sample.copy(frame = sample.frame.copy(trail = trail, mapPosition = position))
         }
     }
 

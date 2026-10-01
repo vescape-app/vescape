@@ -127,6 +127,7 @@ internal fun FrameLayout(
         targetSpanM = WatchMapProjection.clampRouteSpanM(if (mapFollowsGroup) group?.spanM else frame.routeSpanM),
         targetCourseDeg = (if (mapFollowsGroup) group?.courseDeg else frame.courseDeg)?.toFloat(),
         animate = !ambient.active,
+        position = frame.mapPosition,
     )
 
     Box(modifier = Modifier.fillMaxSize()) {
