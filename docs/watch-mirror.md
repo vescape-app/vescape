@@ -229,10 +229,12 @@ Always-on screen, then `adb shell input keyevent 26`.
 
 The active gauge and map pages always show the Rider's position ring, including without Navigation
 or a Group Ride. The recent ridden trail uses the same native precise GPS history as the phone's
-live map and fades by travelled distance in the Rider's colour, reaching transparent within a
-quarter of the current map span so the fade stays visible on the wrist. It shares the route/group
-map's heading and zoom. A dark outline beneath the trail covers an overlapping planned route,
-including where the trail has faded out. The ring sits above paths and other Riders. Ambient continues to skip the map.
+live map. Like the phone, its 3-point stroke fades from transparent at the oldest end to 85% at the
+newest end, measured along the full retained path. It uses the Rider's colour or the phone dark-map
+violet by default. There is no watch-only distance cutoff or shortened fade. At a close zoom the
+old, transparent end may be offscreen, just as on the phone. It shares the route/group map's heading
+and zoom. Overlapping stroke joins composite once, avoiding bright dotted joins. The ring sits above
+paths and other Riders. Ambient continues to skip the map.
 
 The phone sends a complete trail snapshot with each Watch Frame, capped at 120 evenly sampled
 points with both endpoints retained. Points are metres east/north of the current Rider, independent

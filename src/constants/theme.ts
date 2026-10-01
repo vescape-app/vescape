@@ -170,6 +170,8 @@ export const accentColors = {
     yellow: hue('#facc15', '#fde047', '#fde047', '#422006', '#854d0e', '#a16207', '#ffffff'),
     purple: hue('#a855f7', '#a78bfa', '#d8b4fe', '#1e1338', '#7e22ce', '#7e22ce', '#ffffff'),
     fuchsia: hue('#c084fc', '#e879f9', '#f0abfc', '#4a0444', '#a21caf', '#a21caf', '#ffffff'),
+    // @parity /watch/wearos/src/main/java/app/vescape/wear/Palette.kt `TrailColor`
+    // @parity /watch/watchos/Palette.swift `trail`
     violet: hue('#7c6fef', '#8b5cf6', '#a78bfa', '#2e1065', '#5b21b6', '#5b21b6', '#ffffff'),
     teal: hue('#14b8a6', '#2dd4bf', '#99f6e4', '#042f2e', '#0f766e', '#0f766e', '#ffffff'),
     groupRide: hue('#10c69a', '#5eead4', '#7af0d6', '#04302a', '#0c8f74', '#0f766e', '#ffffff'),

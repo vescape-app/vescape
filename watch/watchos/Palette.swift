@@ -20,6 +20,11 @@ enum Palette {
   static let warning = Color(red: 0.976, green: 0.451, blue: 0.086)  // orange #F97316
   static let critical = Color(red: 0.937, green: 0.267, blue: 0.267)  // red #EF4444 (status.error)
 
+  /// Phone live-trail violet, used until the Rider chooses a colour.
+  /// @parity /watch/wearos/src/main/java/app/vescape/wear/Palette.kt `TrailColor`
+  /// @parity /src/constants/theme.ts `accentColors.dark.violet`
+  static let trail = Color(red: 124.0 / 255, green: 111.0 / 255, blue: 239.0 / 255)
+
   /// Navigation accent, used when the rider has not picked a colour of their own.
   ///
   /// @parity /watch/wearos/src/main/java/app/vescape/wear/Palette.kt `NavColor`

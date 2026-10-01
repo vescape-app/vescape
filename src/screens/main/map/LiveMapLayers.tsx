@@ -93,6 +93,8 @@ export function LiveMapLayers({
               lineWidth: MAP_DEFAULTS.trailWidth,
               lineCap: 'round',
               lineJoin: 'round',
+              // @parity /watch/wearos/src/main/java/app/vescape/wear/RiderTrail.kt
+              // @parity /watch/watchos/RiderTrail.swift
               lineGradient: [
                 'interpolate',
                 ['linear'],

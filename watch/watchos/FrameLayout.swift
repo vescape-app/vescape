@@ -44,6 +44,7 @@ struct FrameLayout: View {
   var groupRide: WatchGroupRide?
   /// The rider's own colour, so route, chevron and rider dot match the phone map.
   var navColor: Color = Palette.nav
+  var trailColor: Color = Palette.trail
   /// Whether the rider turned the direction arrow on (phone: Settings > Watch).
   var navArrowEnabled: Bool = false
   var unitSystem: String = "metric"
@@ -104,7 +105,7 @@ struct FrameLayout: View {
       }
 
       if !ambient.active {
-        RiderTrail(points: frame.trail, mapView: mapView, mapMoving: mapMoving, color: muted ? Palette.dimText : navColor)
+        RiderTrail(points: frame.trail, mapView: mapView, mapMoving: mapMoving, color: muted ? Palette.dimText : trailColor)
           .opacity(navStackAlpha)
       }
 

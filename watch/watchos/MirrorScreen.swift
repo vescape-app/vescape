@@ -386,6 +386,7 @@ struct MirrorScreen: View {
       routeGeneration: link.routeGeneration,
       groupRide: link.groupRide,
       navColor: Palette.rider(link.settings.riderColor) ?? Palette.nav,
+      trailColor: Palette.rider(link.settings.riderColor) ?? Palette.trail,
       navArrowEnabled: link.settings.navArrowEnabled,
       unitSystem: link.settings.unitSystem
     )

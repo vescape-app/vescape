@@ -134,7 +134,7 @@ internal fun FrameLayout(
         if (!ambient.active) {
             Box(modifier = Modifier.fillMaxSize().graphicsLayer { alpha = navStackAlpha() }) {
                 if (hasNav) NavRoute(frame = frame, mapView = mapView, muted = muted, navFocus = focus)
-                RiderTrail(frame.trail, mapView, if (muted) DimText else navColor())
+                RiderTrail(frame.trail, mapView, if (muted) DimText else trailColor())
             }
         }
 
