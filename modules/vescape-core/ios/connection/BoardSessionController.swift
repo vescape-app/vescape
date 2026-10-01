@@ -128,11 +128,8 @@ internal final class BoardSessionController: VescGattListener {
   /// The one central carrying a CoreBluetooth restore identifier (ADR 0034), so a jetsam kill
   /// mid-ride is recoverable: the board's next notification relaunches the app and iOS replays this
   /// central's state into `onGattRestored`.
-  private lazy var gatt = VescGattClient(
-    listener: self,
-    restoreIdentifier: VescGattClient.sessionRestoreIdentifier,
-    scheduler: scheduler
-  )
+  private let makeGatt: (VescGattListener, Scheduler) -> VescGattClient
+  private lazy var gatt = makeGatt(self, scheduler)
   /// Transport seam (ADR 0024): a replay session swaps in a `ReplayTransport` for its lifetime;
   /// everything else drives the real GATT client. Set on connect, cleared on session end. All
   /// session-facing link traffic goes through `transport`; scan stays on `gatt` (not session-bound).
@@ -396,9 +393,16 @@ internal final class BoardSessionController: VescGattListener {
   private var latestBatteryVoltage: Double?
   private var lastBatteryPersistedAt: Int64 = 0
 
-  init(appData: AppDataRepository = .shared, scheduler: Scheduler = MainQueueScheduler()) {
+  init(
+    appData: AppDataRepository = .shared,
+    scheduler: Scheduler = MainQueueScheduler(),
+    makeGatt: @escaping (VescGattListener, Scheduler) -> VescGattClient = {
+      VescGattClient(listener: $0, restoreIdentifier: VescGattClient.sessionRestoreIdentifier, scheduler: $1)
+    }
+  ) {
     self.appData = appData
     self.scheduler = scheduler
+    self.makeGatt = makeGatt
   }
 
   // MARK: - Scan API
@@ -536,9 +540,17 @@ internal final class BoardSessionController: VescGattListener {
 
   @discardableResult
   func stopBoard() -> Bool {
-    guard session != nil else { return false }
+    guard session != nil || pendingResume != nil || SessionResumeStore.shared.pending != nil else { return false }
+    // Cancelling restoration also replaces its expiry cleanup: no resumed coordinator will close
+    // the recording the previous process left open.
+    if session == nil { TelemetryRepository.shared.closeAbandonedRideRecordings() }
     endSession(phase: .idle, error: nil)
     return true
+  }
+
+  /// Stop also owns a session still being restored, before a connected identity is published.
+  fileprivate var manualStopBoardId: String? {
+    config?.appBoardId ?? pendingResume?.appBoardId ?? SessionResumeStore.shared.pending?.appBoardId
   }
 
   /// Read Refloat config from the connected Board and seed the first Tune Profile. Mirrors Android
@@ -1370,6 +1382,7 @@ internal final class BoardSessionController: VescGattListener {
         NSLog("[VescAutoConnect] aborted on main queue: session adopted between launch and connect")
         return
       }
+      guard !ManualBoardStop.isAutoStartSuppressed(boardId: boardId) else { return }
       guard let config = BoardConnectConfig.resolve(boardId: boardId, appData: self.appData) else {
         NSLog("[VescAutoConnect] no connect config for board %@ (unlinked?)", boardId)
         return
@@ -2899,6 +2912,11 @@ internal final class BoardSessionController: VescGattListener {
     liveActivity.end()
   }
 
+  @MainActor
+  func waitForLiveActivityDismissal() async {
+    await liveActivity.waitForDismissal()
+  }
+
   private func endLiveActivity() {
     liveActivity.end()
     liveBatteryPercent = nil
@@ -3434,17 +3452,17 @@ internal final class BoardSessionController: VescGattListener {
 @MainActor
 enum BoardSessionCommands {
   @discardableResult
-  static func stopRide() -> Bool {
-    let controller = BoardSessionController.shared
+  static func stopRide(controller: BoardSessionController = .shared) async -> Bool {
     let accepted = ManualBoardStop(
       defaults: .standard,
-      activeBoardId: { controller.connectedBoardId },
+      activeBoardId: { controller.manualStopBoardId },
       stop: { controller.stopBoard() }
     ).perform()
     // A stop no session accepted means the surface is a ghost from a killed process (ADR 0034).
     // The session stays a no-op, but the Live Activity must still die — otherwise Stop on a ghost
     // does nothing and the activity is unkillable from the widget.
     if !accepted { controller.endOrphanLiveActivity() }
+    await controller.waitForLiveActivityDismissal()
     return accepted
   }
 }

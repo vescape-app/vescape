@@ -96,7 +96,7 @@ internal final class VescGattClient: NSObject, SessionTransport {
 
   /// Deferred until the central reports `.poweredOn`.
   private var pendingDiscoveryScan = false
-  private var pendingConnectId: UUID?
+  private(set) var pendingConnectId: UUID?
   /// A persistent reconnect queued while the central was not yet `.poweredOn`.
   private var pendingReconnect = false
   /// Target of the active connect session, retained across reconnects so a board that never
@@ -332,6 +332,8 @@ internal final class VescGattClient: NSObject, SessionTransport {
   // MARK: - Teardown
 
   private func clear(markIntentional: Bool) {
+    // A connect deferred until Bluetooth powers on belongs to the cancelled attempt too.
+    pendingConnectId = nil
     connectTargetId = nil
     reconnectTargetScan = false
     pendingReconnect = false

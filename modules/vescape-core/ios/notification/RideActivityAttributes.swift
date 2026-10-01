@@ -48,9 +48,7 @@ struct StopRideIntent: LiveActivityIntent {
 
   func perform() async throws -> some IntentResult {
     #if canImport(ExpoModulesCore)
-      await MainActor.run {
-        BoardSessionCommands.stopRide()
-      }
+      await BoardSessionCommands.stopRide()
     #endif
     return .result()
   }
