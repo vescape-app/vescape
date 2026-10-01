@@ -592,9 +592,9 @@ are on the rectangle.
 
 Route Progress is recalculated from the latest GPS Fix as soon as a path is published, so selecting
 a route while stationary does not wait for movement. A separate `route-status` live message carries
-creation/failure state and the expected polyline fingerprint. The watch displays **Creating route…**,
-then **Receiving route…** until its decoded route matches, or **Waiting for GPS…** when placement is
-missing. The gauges remain visible. Clearing navigation dismisses the loader; losing the live frame
+creation/failure state and the expected polyline fingerprint. The watch displays an animated ring around the rider position
+while creating or receiving the route, or when GPS placement is missing. Loading has no visible
+text; a failed request still shows **Route unavailable**. The gauges remain visible. Clearing navigation dismisses the loader; losing the live frame
 stream clears transient status. Ambient mode suppresses the spinner.
 
 Status is sent on route actions and repeated alongside live Watch Frames. Its separate message key

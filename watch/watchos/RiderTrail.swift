@@ -54,10 +54,42 @@ struct RiderTrail: View {
 /// @parity /watch/wearos/src/main/java/app/vescape/wear/RiderTrail.kt `RiderPosition`
 struct RiderPosition: View {
   let color: Color
+  let loading: Bool
   var body: some View {
-    Canvas { context, size in
-      context.drawRiderDot(at: WatchMapProjection.riderPoint(in: size), color: color)
+    ZStack {
+      Canvas { context, size in
+        context.drawRiderDot(at: WatchMapProjection.riderPoint(in: size), color: color)
+      }
+      if loading {
+        RiderLoadingHalo(color: color)
+          .frame(width: 24, height: 24)
+          .offset(y: WatchMapProjection.riderDrop)
+      }
     }
     .allowsHitTesting(false)
+  }
+}
+
+/// A separate, small drawing surface keeps the loading animation out of the map and gauges.
+/// @parity /watch/wearos/src/main/java/app/vescape/wear/RiderTrail.kt `RiderLoadingHalo`
+private struct RiderLoadingHalo: View {
+  let color: Color
+  @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+  var body: some View {
+    TimelineView(.animation(minimumInterval: 1.0 / 30, paused: reduceMotion)) { timeline in
+      Canvas { context, size in
+        let bounds = CGRect(origin: .zero, size: size).insetBy(dx: 1, dy: 1)
+        let stroke = StrokeStyle(lineWidth: 1.5, lineCap: .round)
+        context.stroke(Path(ellipseIn: bounds), with: .color(color.opacity(0.18)), style: stroke)
+        let angle = reduceMotion ? -90 : timeline.date.timeIntervalSinceReferenceDate.truncatingRemainder(dividingBy: 1.2) / 1.2 * 360 - 90
+        var arc = Path()
+        arc.addArc(center: CGPoint(x: size.width / 2, y: size.height / 2), radius: bounds.width / 2,
+          startAngle: .degrees(angle), endAngle: .degrees(angle + 100), clockwise: false)
+        context.stroke(arc, with: .color(color), style: stroke)
+      }
+    }
+    .accessibilityElement(children: .ignore)
+    .accessibilityLabel("Loading route")
   }
 }

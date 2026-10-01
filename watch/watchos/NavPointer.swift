@@ -208,25 +208,10 @@ struct TiltBadge: View {
 
 private let TILT_BADGE_GAP: CGFloat = 8
 
-/// A route action answers in the centre immediately, without covering the riding gauges.
-/// @parity /watch/wearos/src/main/java/app/vescape/wear/WatchMapScene.kt `RouteLoadingNotice`
-struct RouteLoadingNotice: View {
-  let notice: WatchRouteNotice
-  let color: Color
-
-  private var label: String {
-    switch notice {
-    case .computing: return "Creating route…"
-    case .receiving: return "Receiving route…"
-    case .location: return "Waiting for GPS…"
-    case .failed: return "Route unavailable"
-    }
-  }
-
+/// Loading lives around the rider; only an actionable failure needs visible text.
+/// @parity /watch/wearos/src/main/java/app/vescape/wear/WatchMapScene.kt `RouteFailureNotice`
+struct RouteFailureNotice: View {
   var body: some View {
-    VStack(spacing: 6) {
-      if notice != .failed { ProgressView().tint(color).frame(width: 20, height: 20) }
-      Text(label).font(WatchTypography.ui(size: 12)).foregroundStyle(Palette.primaryText)
-    }
+    Text("Route unavailable").font(WatchTypography.ui(size: 12)).foregroundStyle(Palette.primaryText)
   }
 }

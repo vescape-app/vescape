@@ -321,8 +321,8 @@ for cold state — hence the Data Layer for the other two, where the last value 
 across a disconnect and is read again on every watch app start.
 
 Route actions immediately publish `/route-status`; live watch ticks repeat it after a dropped
-message or reconnect. The wrist shows **Creating route…** while Directions runs, **Receiving
-route…** until it decodes the expected polyline, and **Waiting for GPS…** if placement is missing.
+message or reconnect. The wrist shows an animated ring around the rider position while Directions runs, until it
+decodes the expected polyline, or while GPS placement is missing. Loading has no visible text.
 A failed request or rejected route write shows **Route unavailable**. Clearing navigation ends the
 loader even if an older request is still running. Gauges remain visible; ambient suppresses the
 spinner. A disconnected telemetry stream clears the transient status.

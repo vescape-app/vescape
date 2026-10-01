@@ -5,13 +5,14 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.derivedStateOf
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -20,7 +21,6 @@ import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.wear.compose.material.CircularProgressIndicator
 import androidx.wear.compose.material.Icon
 import androidx.wear.compose.material.MaterialTheme
 import androidx.wear.compose.material.Text
@@ -49,6 +49,9 @@ internal fun WatchMapScene(
     val settings = SettingsState.settings.value
     val scene = WatchMapSceneState(frame, route?.routeId, RouteState.status.value, group, ambient.active, settings.telemetryTrailEnabled)
     val navStackAlpha = { fadeOut(awayFocus()) }
+    val loading by remember(scene.notice, awayFocus) {
+        derivedStateOf { scene.notice != null && scene.notice != WatchRouteNotice.FAILED && navStackAlpha() > 0f }
+    }
     val navigation = scene.navigation
     val tiltColor = ambient.readout(if (muted) DimText else TiltColor)
     val offset = ambient.burnInOffset()
@@ -68,14 +71,14 @@ internal fun WatchMapScene(
             }
             if (group != null) GroupRideLayer(group = group, mapView = mapView, navFocus = focus, alpha = navStackAlpha)
             Box(Modifier.fillMaxSize().graphicsLayer { alpha = navStackAlpha() }) {
-                RiderPosition(if (muted) DimText else navColor())
+                RiderPosition(if (muted) DimText else navColor(), loading = loading)
             }
         }
         gauges()
         // Navigation, only while the phone is sending it: chevron on the rim + distance above the
         // battery %. No destination means no nav lanes, and the frame renders exactly as before.
         if (scene.notice != null) {
-            if (!ambient.active) RouteLoadingNotice(scene.notice, navStackAlpha)
+            if (!ambient.active && scene.notice == WatchRouteNotice.FAILED) RouteFailureNotice(navStackAlpha)
         } else if (navigation != null) {
             NavPointer(
                 bearingDeg = navigation.bearingDeg,
@@ -167,32 +170,16 @@ private fun NavAbsentHint(focus: () -> Float, stackAlpha: () -> Float) {
     }
 }
 
-/** A route action answers in the centre immediately, without covering the riding gauges.
- * @parity /watch/watchos/NavPointer.swift `RouteLoadingNotice`
+/** Loading lives around the rider; only an actionable failure needs visible text.
+ * @parity /watch/watchos/NavPointer.swift `RouteFailureNotice`
  */
 @Composable
-private fun RouteLoadingNotice(notice: WatchRouteNotice, stackAlpha: () -> Float) {
-    val label = when (notice) {
-        WatchRouteNotice.COMPUTING -> "Creating route…"
-        WatchRouteNotice.RECEIVING -> "Receiving route…"
-        WatchRouteNotice.LOCATION -> "Waiting for GPS…"
-        WatchRouteNotice.FAILED -> "Route unavailable"
-    }
-    Column(
+private fun RouteFailureNotice(stackAlpha: () -> Float) {
+    Box(
         modifier = Modifier.fillMaxSize().graphicsLayer { alpha = stackAlpha() },
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.Center,
+        contentAlignment = Alignment.Center,
     ) {
-        if (notice != WatchRouteNotice.FAILED) {
-            CircularProgressIndicator(
-                modifier = Modifier.size(20.dp),
-                indicatorColor = navColor(),
-                trackColor = DimText,
-                strokeWidth = 2.dp,
-            )
-            Spacer(Modifier.height(6.dp))
-        }
-        Text(label, color = PrimaryText, style = MaterialTheme.typography.caption2)
+        Text("Route unavailable", color = PrimaryText, style = MaterialTheme.typography.caption2)
     }
 }
 

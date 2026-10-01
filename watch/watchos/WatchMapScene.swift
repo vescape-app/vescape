@@ -65,15 +65,17 @@ struct WatchMapScene<Gauges: View, Readouts: View>: View {
       }
 
       if scene.drawMap {
-        RiderPosition(color: muted ? Palette.dimText : navColor).opacity(navStackAlpha)
+        RiderPosition(color: muted ? Palette.dimText : navColor,
+          loading: scene.notice != nil && scene.notice != .failed && navStackAlpha > 0)
+          .opacity(navStackAlpha)
       }
 
       gauges()
       // Navigation, only while the phone is sending it. No destination means no nav lanes, and the
       // frame renders exactly as it would without this slice.
       if let routeNotice = scene.notice {
-        if !ambient.active {
-          RouteLoadingNotice(notice: routeNotice, color: navColor).opacity(navStackAlpha)
+        if !ambient.active, routeNotice == .failed {
+          RouteFailureNotice().opacity(navStackAlpha)
         }
       } else if let navigation = scene.navigation {
         NavPointer(

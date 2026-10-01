@@ -1,20 +1,36 @@
 package app.vescape.wear
 
 import androidx.compose.foundation.Canvas
+import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.tween
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.offset
+import androidx.compose.foundation.layout.size
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.Paint
 import androidx.compose.ui.graphics.BlendMode
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.clipPath
 import androidx.compose.ui.graphics.drawscope.rotate
 import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.semantics.ProgressBarRangeInfo
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.progressBarRangeInfo
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import expo.modules.vescapecore.watch.WatchTrailPoint
 import kotlin.math.hypot
@@ -70,8 +86,41 @@ internal fun RiderTrail(points: List<WatchTrailPoint>, mapView: WatchMapView, co
  * @parity /watch/watchos/RiderTrail.swift `RiderPosition`
  */
 @Composable
-internal fun RiderPosition(color: Color) {
-    Canvas(Modifier.fillMaxSize()) {
-        drawRiderDot(WatchMapProjection.riderPoint(size.width, size.height, WatchMapProjection.RIDER_DROP.toPx()), color)
+internal fun RiderPosition(color: Color, loading: Boolean) {
+    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+        Canvas(Modifier.fillMaxSize()) {
+            drawRiderDot(WatchMapProjection.riderPoint(size.width, size.height, WatchMapProjection.RIDER_DROP.toPx()), color)
+        }
+        if (loading) RiderLoadingHalo(color)
+    }
+}
+
+/** A separate, small drawing surface keeps the loading animation out of the map and gauges.
+ * @parity /watch/watchos/RiderTrail.swift `RiderLoadingHalo`
+ */
+@Composable
+private fun RiderLoadingHalo(color: Color) {
+    val rotation = rememberInfiniteTransition(label = "route loading").animateFloat(
+        initialValue = 0f,
+        targetValue = 360f,
+        animationSpec = infiniteRepeatable(tween(1200, easing = LinearEasing)),
+        label = "loading ring rotation",
+    )
+    Canvas(
+        Modifier.offset(y = WatchMapProjection.RIDER_DROP).size(24.dp)
+            .graphicsLayer { rotationZ = rotation.value }
+            .semantics {
+                contentDescription = "Loading route"
+                progressBarRangeInfo = ProgressBarRangeInfo.Indeterminate
+            },
+    ) {
+        val inset = 1.dp.toPx()
+        val diameter = size.width - 2 * inset
+        val stroke = Stroke(width = 1.5.dp.toPx(), cap = StrokeCap.Round)
+        drawCircle(color.copy(alpha = 0.18f), radius = diameter / 2, style = stroke)
+        drawArc(
+            color, startAngle = -90f, sweepAngle = 100f, useCenter = false,
+            topLeft = Offset(inset, inset), size = Size(diameter, diameter), style = stroke,
+        )
     }
 }
