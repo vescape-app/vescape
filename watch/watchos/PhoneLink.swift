@@ -64,6 +64,7 @@ final class PhoneLink: NSObject, ObservableObject, WCSessionDelegate {
   ///
   /// @parity /watch/wearos/src/main/java/app/vescape/wear/WatchRoute.kt `RouteState`
   @Published private(set) var route: WatchRoute?
+  @Published private(set) var routeStatus: WatchRouteStatus?
 
   /// The board's two light switches, as last pushed. Cold state on the same merged context, so a
   /// wrist restart or a reconnect finds the current switches already there rather than a dead Lights
@@ -256,6 +257,7 @@ final class PhoneLink: NSObject, ObservableObject, WCSessionDelegate {
       nowMs: Self.nowMs(),
       timeoutMs: MirrorStateReducer.disconnectedTimeoutMs(frameGapMs: frameGapMs)
     )
+    if mirror.status == .disconnected { routeStatus = nil }
   }
 
   /// The watch's own monotonic clock. A wall clock would let a phone time-sync jump the mirror
@@ -316,6 +318,10 @@ final class PhoneLink: NSObject, ObservableObject, WCSessionDelegate {
     diagnostics.recordFrame(nowMs: Self.wallClockMs())
     refresh()
   }
+
+  /// Simulator-only replay uses the same loading state as live messages.
+  @MainActor
+  func acceptReplayRouteStatus(_ status: WatchRouteStatus?) { routeStatus = status }
 
   /// Replay uses the same route replacement and animation reset as phone updates.
   /// @parity /watch/wearos/src/main/java/app/vescape/wear/FrameReplay.kt `loadScene`
@@ -403,6 +409,11 @@ final class PhoneLink: NSObject, ObservableObject, WCSessionDelegate {
   ///
   /// @parity /watch/wearos/src/main/java/app/vescape/wear/MainActivity.kt `listener`
   func session(_ session: WCSession, didReceiveMessage message: [String: Any]) {
+    if let data = message[watchRouteStatusMessageKey] as? Data,
+       let status = WatchRouteStatusCodec.decode(data) {
+      DispatchQueue.main.async { self.routeStatus = status }
+      return
+    }
     guard let data = message[watchGroupRideMessageKey] as? Data,
           let frame = GroupRideFrameCodec.decode(data)
     else { return }

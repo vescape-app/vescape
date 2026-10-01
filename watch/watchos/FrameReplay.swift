@@ -69,7 +69,7 @@ final class FrameReplayer {
 
   /// Plays a fixture at its recorded pace, looping forever so the wrist keeps moving while the
   /// visuals are being worked on. `group` also feeds the Group Ride fixture about once a second.
-  func start(fixture: String, group: Bool) {
+  func start(fixture: String, group: Bool, routeLoading: Bool = false) {
     guard task == nil else { return }
     guard
       let text = try? String(contentsOfFile: fixture, encoding: .utf8)
@@ -89,6 +89,8 @@ final class FrameReplayer {
       } else {
         print("[replay] missing route fixture: \(routeURL.path)")
       }
+      link.acceptReplayRouteStatus(routeLoading ? WatchRouteStatus(phase: .ready, routeId: 1) : nil)
+      if routeLoading { link.acceptReplayRoute(nil) }
       let weatherURL = sceneURL.appendingPathComponent("watch-weather.json")
       if let json = try? String(contentsOf: weatherURL, encoding: .utf8) {
         let nowMs = Int64(Date().timeIntervalSince1970 * 1000)

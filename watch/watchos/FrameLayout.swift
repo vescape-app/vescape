@@ -39,6 +39,7 @@ struct FrameLayout: View {
   /// The route the phone pushed, drawn under everything else. Nil is no Navigation, or a route the
   /// rider cleared — the frame then renders exactly as it did before there was one.
   var route: WatchRoute?
+  var routeStatus: WatchRouteStatus?
   var routeGeneration: Int = 0
   /// The joined Group Ride; nil draws no group. Hidden in ambient.
   var groupRide: WatchGroupRide?
@@ -65,8 +66,16 @@ struct FrameLayout: View {
   /// Nav is all-or-nothing: the phone sends bearing and distance together or not at all, so one
   /// without the other is a frame this build should not draw half of.
   private var navLanes: (bearingDeg: Double, distanceM: Double)? {
+    guard routeStatus?.canDraw(receivedRouteId: route?.routeId) != false else { return nil }
     guard let bearing = frame.navBearing, let distance = frame.navDistanceM else { return nil }
     return (bearing, distance)
+  }
+
+  private var routeNotice: WatchRouteNotice? {
+    routeStatus?.notice(
+      receivedRouteId: route?.routeId,
+      hasPosition: frame.navBearing != nil && frame.navDistanceM != nil && frame.riderEastM != nil && frame.riderNorthM != nil
+    )
   }
 
   /// What the map eases towards: Navigation's lanes, else the Group Ride's own. The Group Ride's
@@ -122,7 +131,11 @@ struct FrameLayout: View {
 
       // Navigation, only while the phone is sending it. No destination means no nav lanes, and the
       // frame renders exactly as it would without this slice.
-      if let navLanes {
+      if let routeNotice {
+        if !ambient.active {
+          RouteLoadingNotice(notice: routeNotice, color: navColor).opacity(navStackAlpha)
+        }
+      } else if let navLanes {
         NavPointer(
           bearingDeg: navLanes.bearingDeg,
           distanceM: navLanes.distanceM,

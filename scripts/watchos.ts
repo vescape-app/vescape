@@ -84,5 +84,6 @@ if (command === 'replay') {
     '--replay',
     join(ROOT, 'watch/wearos/src/main/assets/watch-ride.jsonl'),
     ...(Bun.argv.includes('--group') ? ['--group'] : []),
+    ...(Bun.argv.includes('--route-loading') ? ['--route-loading'] : []),
   ])
 }

@@ -59,6 +59,9 @@ internal class WatchTelemetryPusher(
      */
     fun pushGroupRideFrame(frame: ByteArray) = send(WATCH_GROUP_RIDE_PATH, frame)
 
+    /** @parity /modules/vescape-core/ios/watch/WatchTelemetryPusher.swift `pushRouteStatus` */
+    fun pushRouteStatus(status: WatchRouteStatus) = send(WATCH_ROUTE_STATUS_PATH, WatchRouteStatusCodec.encode(status))
+
     private fun send(path: String, frame: ByteArray) {
         val targets = nodeIds
         // On the timestamp, never on emptiness: "no nodes" is a valid cached answer, and re-asking

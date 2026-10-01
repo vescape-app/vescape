@@ -45,6 +45,7 @@ object TelemetryState {
             nowMs,
             mirrorDisconnectedTimeoutMs(frameGapMs),
         )
+        if (mirrorState.value.status == MirrorStatus.DISCONNECTED) RouteState.status.value = null
     }
 
     private fun nowMs(): Long = SystemClock.elapsedRealtime()

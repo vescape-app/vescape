@@ -227,18 +227,35 @@ Always-on screen, then `adb shell input keyevent 26`.
 
 ## Phone → Watch Channels
 
-Three channels, split by how often the data changes:
+Channels are split by how often the data changes:
 
-| Path          | Transport            | Cadence             | Payload                                       |
-| ------------- | -------------------- | ------------------- | --------------------------------------------- |
-| `/telemetry`  | `MessageClient`      | every watch tick    | Watch Frame: packed Float32 lanes, positional |
-| `/group-ride` | `MessageClient`      | 1 Hz while joined   | Group Ride Frame: versioned binary            |
-| `/route`      | Data Layer item      | per route change    | encoded polyline, versioned binary            |
-| `/settings`   | Data Layer `DataMap` | per settings change | rider settings, key-value                     |
+| Path            | Transport            | Cadence                       | Payload                                       |
+| --------------- | -------------------- | ----------------------------- | --------------------------------------------- |
+| `/telemetry`    | `MessageClient`      | every watch tick              | Watch Frame: packed Float32 lanes, positional |
+| `/group-ride`   | `MessageClient`      | 1 Hz while joined             | Group Ride Frame: versioned binary            |
+| `/route-status` | `MessageClient`      | route actions and watch ticks | phase and route fingerprint                   |
+| `/route`        | Data Layer item      | per route change              | encoded polyline, versioned binary            |
+| `/settings`     | Data Layer `DataMap` | per settings change           | rider settings, key-value                     |
 
 `MessageClient` drops undelivered sends, which is right for a frame that is stale in 250 ms and wrong
 for cold state — hence the Data Layer for the other two, where the last value stays on the watch
 across a disconnect and is read again on every watch app start.
+
+Route actions immediately publish `/route-status`; live watch ticks repeat it after a dropped
+message or reconnect. The wrist shows **Creating route…** while Directions runs, **Receiving
+route…** until it decodes the expected polyline, and **Waiting for GPS…** if placement is missing.
+A failed request or rejected route write shows **Route unavailable**. Clearing navigation ends the
+loader even if an older request is still running. Gauges remain visible; ambient suppresses the
+spinner. A disconnected telemetry stream clears the transient status.
+
+The route fingerprint is a nonzero uint32 FNV-1a of the encoded `/route` bytes, including the origin.
+A cached previous route cannot satisfy a newer route's loader. A successful Data Layer write only
+queues synchronization; the wrist checks its own decoded polyline before replacing the loader with
+the map. Route Progress is recalculated from the latest phone GPS Fix when a path is published,
+so a stationary rider does not need another location update to see navigation.
+
+Preview the receiving state with `bun run wear:replay ride --route-loading`. This is an emulator
+fixture using the live rendering state, not a measurement of Bluetooth transfer latency.
 
 `/group-ride` carries the Group Ride Frame (ADR-0039): the Rider's course, the phone map's span, and
 each other Rider's id, name, colour, stale flag, east/north offset from the Rider's latest GPS Fix,

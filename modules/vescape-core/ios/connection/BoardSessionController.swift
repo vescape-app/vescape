@@ -300,7 +300,10 @@ internal final class BoardSessionController: VescGattListener {
       return self.latestTelemetry != nil && self.isTelemetryStale()
     },
     canPush: { [weak self] in self?.watchPusher.canPush ?? false },
-    push: { [weak self] frame in self?.watchPusher.pushFrame(frame) },
+    push: { [weak self] frame in
+      self?.watchPusher.pushFrame(frame)
+      self?.pushWatchRouteStatus()
+    },
     intervalMs: WATCH_FRAME_INTERVAL_MS
   )
   /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/connection/BoardSessionController.kt `groupRideTick`
@@ -2684,6 +2687,10 @@ internal final class BoardSessionController: VescGattListener {
     // a phone with no Navigation is the explicit clear — the one thing that stops a reconnecting
     // wrist from restoring a route the rider already cleared.
     watchPusher.onColdStateDelivered = { WatchRouteMirror.shared.channelDelivered($0) }
+    watchPusher.onColdStateFailed = { WatchRouteMirror.shared.channelFailed($0) }
+    NavigationController.shared.onWatchChange = { [weak self] in
+      self?.scheduler.post { self?.pushWatchRouteStatus() }
+    }
     WatchRouteMirror.shared.attach(to: NavigationController.shared) { [weak self] payload in
       self?.watchPusher.pushColdState(channel: watchRouteChannel, payload: payload)
     }
@@ -2780,6 +2787,20 @@ internal final class BoardSessionController: VescGattListener {
           ?? watchDefaultTiltRatePercent
       ).payload
     )
+  }
+
+  /// Immediate on intent changes, then repeated with live frames to recover a dropped message.
+  /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/connection/BoardSessionController.kt `pushWatchRouteStatus`
+  private func pushWatchRouteStatus() {
+    guard watchPusher.canPush else { return }
+    let navigation = NavigationController.shared
+    let current = navigation.current
+    let phase: WatchRoutePhase
+    if navigation.computing { phase = .computing }
+    else if current == nil { phase = .idle }
+    else if current?.status != .ready || WatchRouteMirror.shared.failed { phase = .failed }
+    else { phase = .ready }
+    watchPusher.pushRouteStatus(WatchRouteStatus(phase: phase, routeId: WatchRouteMirror.shared.desiredRouteId))
   }
 
   /// Latest cold-path snapshot: board lanes are empty without telemetry; navigation stays live.

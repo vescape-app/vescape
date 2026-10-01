@@ -20,6 +20,8 @@ import com.google.android.gms.wearable.MessageClient
 import com.google.android.gms.wearable.Wearable
 import expo.modules.vescapecore.watch.GroupRideFrameCodec
 import expo.modules.vescapecore.watch.WATCH_GROUP_RIDE_PATH
+import expo.modules.vescapecore.watch.WATCH_ROUTE_STATUS_PATH
+import expo.modules.vescapecore.watch.WatchRouteStatusCodec
 
 /**
  * Wear OS Mirror entry point. Renders the live [WatchFrame] pushed from the phone over
@@ -52,6 +54,11 @@ class MainActivity : ComponentActivity() {
      * @parity /watch/watchos/PhoneLink.swift `session(_:didReceiveMessage:)`
      */
     private val listener = MessageClient.OnMessageReceivedListener { event ->
+        if (event.path == WATCH_ROUTE_STATUS_PATH) {
+            val status = WatchRouteStatusCodec.decode(event.data) ?: return@OnMessageReceivedListener
+            runOnUiThread { RouteState.status.value = status }
+            return@OnMessageReceivedListener
+        }
         if (event.path == WATCH_GROUP_RIDE_PATH) {
             // A frame this build cannot read (another wire version) is dropped; the group then
             // times out rather than drawing something misread.
@@ -171,7 +178,7 @@ class MainActivity : ComponentActivity() {
         // paired phone exactly like physical Wear OS hardware.
         if (replayEnabled) {
             commandSender.replayTiltEcho = frameReplayer::echoTilt
-            frameReplayer.start(replayFixture(), group = replayGroup())
+            frameReplayer.start(replayFixture(), group = replayGroup(), routeLoading = intent?.getBooleanExtra("route-loading", false) == true)
             return
         }
         publishWakeLevel()

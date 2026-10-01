@@ -1,11 +1,16 @@
 package app.vescape.wear
 
+import expo.modules.vescapecore.watch.WatchRouteNotice
+import androidx.wear.compose.material.CircularProgressIndicator
+
 import expo.modules.vescapecore.telemetry.UnitPresentation
 
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -116,7 +121,11 @@ internal fun FrameLayout(
 
     val navBearing = frame.navBearing
     val navDistance = frame.navDistanceM
-    val hasNav = navBearing != null && navDistance != null
+    val routeStatus = RouteState.status.value
+    val routeId = RouteState.route.value?.routeId
+    val hasPosition = navBearing != null && navDistance != null && frame.riderEastM != null && frame.riderNorthM != null
+    val routeNotice = routeStatus?.notice(routeId, hasPosition)
+    val hasNav = navBearing != null && navDistance != null && (routeStatus?.canDraw(routeId) != false)
 
     // One eased zoom and course for every map layer, so the Group Ride marks sit where the route is
     // drawn mid-zoom and mid-turn. Navigation's lanes drive it; without Navigation, the Group Ride's.
@@ -175,7 +184,9 @@ internal fun FrameLayout(
 
         // Navigation, only while the phone is sending it: chevron on the rim + distance above the
         // battery %. No destination means no nav lanes, and the frame renders exactly as before.
-        if (hasNav) {
+        if (routeNotice != null) {
+            if (!ambient.active) RouteLoadingNotice(routeNotice, navStackAlpha)
+        } else if (hasNav) {
             NavPointer(
                 bearingDeg = navBearing!!,
                 distanceM = navDistance!!,
@@ -525,3 +536,32 @@ private data class GaugeStyle(
 
 private val StrongGaugeStyle = GaugeStyle(2.dp, 4.dp, 0.18f)
 private val SoftGaugeStyle = GaugeStyle(1.dp, 2.dp, 0.10f)
+
+/** A route action answers in the centre immediately, without covering the riding gauges.
+ * @parity /watch/watchos/NavPointer.swift `RouteLoadingNotice`
+ */
+@Composable
+private fun RouteLoadingNotice(notice: WatchRouteNotice, stackAlpha: () -> Float) {
+    val label = when (notice) {
+        WatchRouteNotice.COMPUTING -> "Creating route…"
+        WatchRouteNotice.RECEIVING -> "Receiving route…"
+        WatchRouteNotice.LOCATION -> "Waiting for GPS…"
+        WatchRouteNotice.FAILED -> "Route unavailable"
+    }
+    Column(
+        modifier = Modifier.fillMaxSize().graphicsLayer { alpha = stackAlpha() },
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.Center,
+    ) {
+        if (notice != WatchRouteNotice.FAILED) {
+            CircularProgressIndicator(
+                modifier = Modifier.size(20.dp),
+                indicatorColor = navColor(),
+                trackColor = DimText,
+                strokeWidth = 2.dp,
+            )
+            Spacer(Modifier.height(6.dp))
+        }
+        Text(label, color = PrimaryText, style = MaterialTheme.typography.caption2)
+    }
+}

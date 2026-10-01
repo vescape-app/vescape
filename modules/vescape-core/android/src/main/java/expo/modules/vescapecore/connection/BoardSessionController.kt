@@ -94,6 +94,9 @@ import expo.modules.vescapecore.watch.GroupRideFrameTick
 import expo.modules.vescapecore.watch.WatchMirrorWakeLevel
 import expo.modules.vescapecore.watch.WatchMoveRelay
 import expo.modules.vescapecore.watch.WatchRouteMirror
+import expo.modules.vescapecore.watch.WatchRouteStatus
+import expo.modules.vescapecore.watch.WatchRoutePhase
+import expo.modules.vescapecore.navigation.NavigationStatus
 import expo.modules.vescapecore.watch.WatchSettingsPusher
 import expo.modules.vescapecore.watch.WatchSnapshot
 import expo.modules.vescapecore.watch.WatchTelemetryPusher
@@ -426,7 +429,10 @@ internal class BoardSessionController(private val service: CoreForegroundService
             snapshot = ::watchSnapshot,
             isStale = { telemetry != null && isTelemetryStale() },
             canPush = ::canPushWatchFrame,
-            push = watchPusher::pushFrame,
+            push = { frame ->
+                watchPusher.pushFrame(frame)
+                pushWatchRouteStatus()
+            },
             intervalMs = WATCH_FRAME_INTERVAL_MS,
         )
     }
@@ -848,6 +854,9 @@ private var wearAutoLaunchOnConnect = true
         refreshSelectedBoardName()
         // The wrist mirrors the phone, not the board session. Keep presence + frames alive while
         // this service owns GPS/navigation even when no board is selected or connected.
+        NavigationController.get(service.applicationContext).onWatchChange = {
+            scheduler.post { pushWatchRouteStatus() }
+        }
         watchMirrorPresence.start()
         watchTick.start()
         groupRideTick.start()
@@ -1021,6 +1030,7 @@ private var wearAutoLaunchOnConnect = true
     fun onServiceDestroy() {
         weatherUnsubscribe?.invoke()
         weatherUnsubscribe = null
+        NavigationController.get(service.applicationContext).onWatchChange = null
         watchTick.stop()
         groupRideTick.stop()
         watchMirrorPresence.stop()
@@ -2345,6 +2355,22 @@ private var wearAutoLaunchOnConnect = true
         idlePauseDetector.reset()
         telemetryPipeline.cancelStaleWatchdog()
         liveSeriesEmitter.stop()
+    }
+
+    /** Immediate on intent changes, then repeated with live frames to recover a dropped message.
+     * @parity /modules/vescape-core/ios/connection/BoardSessionController.swift `pushWatchRouteStatus`
+     */
+    private fun pushWatchRouteStatus() {
+        if (!canPushWatchFrame()) return
+        val navigation = NavigationController.get(service.applicationContext)
+        val current = navigation.current
+        val phase = when {
+            navigation.computing -> WatchRoutePhase.COMPUTING
+            current == null -> WatchRoutePhase.IDLE
+            current.status != NavigationStatus.READY || WatchRouteMirror.failed -> WatchRoutePhase.FAILED
+            else -> WatchRoutePhase.READY
+        }
+        watchPusher.pushRouteStatus(WatchRouteStatus(phase, WatchRouteMirror.desiredRouteId))
     }
 
     /** Latest cold-path snapshot: board lanes are empty without telemetry; navigation stays live. */
