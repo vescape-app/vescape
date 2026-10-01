@@ -32,7 +32,6 @@ struct NavRoute: View {
 
   var body: some View {
     GeometryReader { geometry in
-      let centre = WatchMapProjection.riderPoint(in: geometry.size)
       ZStack {
         if let route, let east = frame.riderEastM, let north = frame.riderNorthM {
           TimelineView(.animation(paused: !mapMoving)) { timeline in
@@ -64,7 +63,6 @@ struct NavRoute: View {
           // a new view identity, which starts them from the new route's own numbers.
           .id(generation)
         }
-        Canvas { context, _ in context.drawRiderDot(at: centre, color: color) }
       }
     }
   }

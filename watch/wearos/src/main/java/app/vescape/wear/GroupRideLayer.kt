@@ -29,8 +29,8 @@ import expo.modules.vescapecore.watch.GroupRideFrameRider
 
 /**
  * Every other Rider who fits on the nav map, as a dot in their colour, over the route and under the
- * gauges. Without Navigation there is no route to carry the Rider's own ring, so this draws it at
- * the same spot. In nav focus each live dot gets its distance label, which carries any flag. Riders beyond the map are [GroupRideEdgeLayer]'s.
+ * gauges. The Rider's own ring is a separate layer above these marks. In nav focus each live dot
+ * gets its distance label, which carries any flag. Riders beyond the map are [GroupRideEdgeLayer]'s.
  *
  * Read in the draw scope: frames and nav-focus drags repaint without recomposing. The caller skips
  * this in ambient, where the group is hidden.
@@ -40,18 +40,14 @@ import expo.modules.vescapecore.watch.GroupRideFrameRider
 @Composable
 internal fun GroupRideLayer(
     mapView: WatchMapView,
-    muted: Boolean,
-    drawOwnRing: Boolean,
     navFocus: () -> Float,
     alpha: () -> Float,
 ) {
     val group = GroupRideState.group.value ?: return
-    val ownColor = if (muted) DimText else navColor()
     val stalePulse = rememberStalePulse(group)
     val labels = rememberGroupRideLabels()
     Canvas(modifier = Modifier.fillMaxSize().graphicsLayer { this.alpha = alpha() }) {
         val map = watchMapProjection(mapView)
-        if (drawOwnRing) drawRiderDot(map.rider, ownColor)
         val staleAlpha = stalePulse()
         val focus = navFocus().coerceIn(0f, 1f)
         val outline = GROUP_OUTLINE.toPx()

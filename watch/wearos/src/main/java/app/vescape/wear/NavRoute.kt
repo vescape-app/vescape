@@ -27,8 +27,7 @@ import androidx.compose.ui.unit.dp
  * Sits at the bottom of the frame's layer stack so gauges, readouts and the nav chevron draw over it.
  *
  * One source: the real polyline the phone pushed on [ROUTE_PATH], placed by the frame's rider lanes.
- * Until those arrive — a route pushed but no fix yet — only the rider dot draws, so the wrist never
- * shows a line the rider is not actually on.
+ * Until those arrive, no route line draws. The independent RiderPosition layer keeps the ring visible.
  *
  * @parity /watch/watchos/NavRoute.swift `NavRoute`
  */
@@ -48,11 +47,6 @@ internal fun NavRoute(frame: WatchFrame, mapView: WatchMapView, muted: Boolean, 
             color = color,
             navFocus = navFocus,
         )
-    }
-
-    Canvas(modifier = Modifier.fillMaxSize()) {
-        // Rider sits below the screen centre so more of the frame is "ahead" than behind.
-        drawRiderDot(WatchMapProjection.riderPoint(size.width, size.height, WatchMapProjection.RIDER_DROP.toPx()), color)
     }
 }
 
@@ -105,17 +99,7 @@ private fun AnimatedRoute(
         val center = WatchMapProjection.riderPoint(size.width, size.height, WatchMapProjection.RIDER_DROP.toPx())
         val scale = WatchMapProjection.pixelsPerMetre(size.width, size.height, WatchMapProjection.ROUTE_EDGE_INSET.toPx(), mapView.spanM)
         val path = routePath(route, Offset(eastM.value, northM.value), center, scale)
-        val faceCenter = Offset(size.width / 2f, size.height / 2f)
-        // One pixel inside the gauge circle's guide line, so the route stops just short of it.
-        val faceRadius = size.minDimension / 2f - GAUGE_RIM_INSET.toPx() - GUIDE_HALF_WIDTH.toPx() - 1f
-        val faceClip = Path().apply {
-            if (isRound) {
-                addOval(Rect(faceCenter, faceRadius))
-            } else {
-                addRect(Rect(Offset.Zero, size))
-            }
-        }
-        clipPath(faceClip) {
+        clipPath(mapFaceClip(isRound)) {
             // Heading-up, taking the shortest turn across the 0°/360° boundary.
             rotate(degrees = -mapView.courseDeg, pivot = center) {
                 drawRoute(path, color, focus)
@@ -163,3 +147,18 @@ private const val ROUTE_FOCUS_ALPHA = 0.85f
 private val RIDER_DOT_R = 4.dp
 /** Same weight as the route line, so the rider reads as part of it rather than an added marker. */
 private val RIDER_RING_W = ROUTE_W
+
+/** The map stays inside the rim gauges. Shared by route and ridden trail. */
+internal fun DrawScope.mapFaceClip(isRound: Boolean): Path {
+    val faceCenter = Offset(size.width / 2f, size.height / 2f)
+    // One pixel inside the gauge circle's guide line, so the route stops just short of it.
+    val faceRadius = size.minDimension / 2f - GAUGE_RIM_INSET.toPx() - GUIDE_HALF_WIDTH.toPx() - 1f
+    val faceClip = Path().apply {
+        if (isRound) {
+            addOval(Rect(faceCenter, faceRadius))
+        } else {
+            addRect(Rect(Offset.Zero, size))
+        }
+    }
+    return faceClip
+}

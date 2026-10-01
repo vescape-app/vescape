@@ -2787,9 +2787,7 @@ internal final class BoardSessionController: VescGattListener {
   /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/connection/BoardSessionController.kt `watchSnapshot`
   private func watchSnapshot() -> WatchSnapshot {
     let current = latestTelemetry
-    // Nav lanes are all-or-nothing: without Route Progress there is nothing to navigate by, and
-    // sending a rider position or a course alone would only place a dot on a route the wrist is not
-    // drawing. All five null is what hides the wrist overlay.
+    // Navigation lanes require Route Progress; course and trail stay live independently.
     let progress = NavigationController.shared.currentProgress
     let rider = locationTracker.riderPosition
     // Measured from the origin of the route the wrist actually holds, not from the current
@@ -2818,10 +2816,14 @@ internal final class BoardSessionController: VescGattListener {
       riderNorthM: offset?.north,
       // Absolute course, the rotation the wrist applies to its north-up world. Null while the fix
       // carries no usable heading, which leaves the wrist drawing the route north-up.
-      courseDeg: offset != nil ? rider?.courseDeg : nil,
+      courseDeg: rider?.courseDeg,
       routeSpanM: WatchRouteMirror.shared.viewportSpanM,
       remoteTilt: current != nil ? remoteTiltController.currentValue : nil,
-      tiltControl: watchTiltControl()
+      tiltControl: watchTiltControl(),
+      trail: watchTrail(
+        rider: rider.map { WatchGeoPoint(latitude: $0.latitude, longitude: $0.longitude) },
+        history: locationTracker.recentLocations
+      )
     )
   }
 

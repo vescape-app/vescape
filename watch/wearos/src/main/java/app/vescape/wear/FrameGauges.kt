@@ -120,27 +120,30 @@ internal fun FrameLayout(
 
     // One eased zoom and course for every map layer, so the Group Ride marks sit where the route is
     // drawn mid-zoom and mid-turn. Navigation's lanes drive it; without Navigation, the Group Ride's.
-    // Nothing draws the map in ambient or with neither, so it snaps there instead of animating.
+    // The Rider and recent trail remain without either. Ambient skips the moving map.
     val group = GroupRideState.group.value
     val mapFollowsGroup = !hasNav && group != null
     val mapView = rememberWatchMapView(
         targetSpanM = WatchMapProjection.clampRouteSpanM(if (mapFollowsGroup) group?.spanM else frame.routeSpanM),
         targetCourseDeg = (if (mapFollowsGroup) group?.courseDeg else frame.courseDeg)?.toFloat(),
-        animate = !ambient.active && (hasNav || group != null),
+        animate = !ambient.active,
     )
 
     Box(modifier = Modifier.fillMaxSize()) {
-        // Bottom layer: route ahead + rider dot, under every gauge and readout. Ambient skips it:
-        // the lanes animate their zoom, and a moving map is the most expensive thing on the panel.
-        if (hasNav && !ambient.active) {
+        // Paths under every gauge and readout. Ambient skips the moving map.
+        if (!ambient.active) {
             Box(modifier = Modifier.fillMaxSize().graphicsLayer { alpha = navStackAlpha() }) {
-                NavRoute(frame = frame, mapView = mapView, muted = muted, navFocus = focus)
+                RiderTrail(frame.trail, mapView, if (muted) DimText else navColor())
+                if (hasNav) NavRoute(frame = frame, mapView = mapView, muted = muted, navFocus = focus)
             }
         }
 
         // Group Ride dots: over the route, under every gauge and number. Hidden in ambient.
         if (!ambient.active) {
-            GroupRideLayer(mapView = mapView, muted = muted, drawOwnRing = !hasNav, navFocus = focus, alpha = navStackAlpha)
+            GroupRideLayer(mapView = mapView, navFocus = focus, alpha = navStackAlpha)
+            Box(modifier = Modifier.fillMaxSize().graphicsLayer { alpha = navStackAlpha() }) {
+                RiderPosition(if (muted) DimText else navColor())
+            }
         }
 
         // Rim gauges on one shared screen-centred circle.
@@ -198,7 +201,7 @@ internal fun FrameLayout(
             // Nav focus with nothing to show would be a blank circle. Say why, but only once the
             // drag is nearly done, so it never flickers under the departing readouts.
             // A joined Group Ride is something to show on the map page: no "no navigation" over it.
-            if (GroupRideState.group.value == null) NavAbsentHint(focus = focus, stackAlpha = navStackAlpha)
+            if (GroupRideState.group.value == null && frame.trail.isEmpty()) NavAbsentHint(focus = focus, stackAlpha = navStackAlpha)
         }
 
         // Center each label/value stack on its full gauge arc, independent of font width or fill.

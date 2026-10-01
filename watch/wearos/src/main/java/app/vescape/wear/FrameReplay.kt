@@ -10,6 +10,8 @@ import expo.modules.vescapecore.telemetry.TelemetryLevel
 import expo.modules.vescapecore.watch.GroupRideFrame
 import expo.modules.vescapecore.watch.GroupRideFrameRider
 import org.json.JSONObject
+import expo.modules.vescapecore.watch.WatchTrailPoint
+import expo.modules.vescapecore.watch.WatchTrailCodec
 import kotlin.math.PI
 import kotlin.math.sin
 
@@ -54,7 +56,21 @@ data class ReplaySample(val atMs: Long, val frame: WatchFrame)
  */
 /** @parity /modules/vescape-core/ios/watch/WatchReplay.swift `ReplayFixtureParser` */
 object ReplayFixtureParser {
-    fun parse(lines: Sequence<String>): List<ReplaySample> = lines.mapNotNull(::parseLine).toList()
+    fun parse(lines: Sequence<String>): List<ReplaySample> {
+        val samples = lines.mapNotNull(::parseLine).toList()
+        return samples.mapIndexed { index, sample ->
+            val east = sample.frame.riderEastM
+            val north = sample.frame.riderNorthM
+            val count = minOf(index + 1, WatchTrailCodec.MAX_POINTS)
+            val trail = if (east == null || north == null) emptyList() else (0 until count).mapNotNull { i ->
+                val point = samples[if (count == 1) 0 else i * index / (count - 1)].frame
+                val x = point.riderEastM ?: return@mapNotNull null
+                val y = point.riderNorthM ?: return@mapNotNull null
+                WatchTrailPoint(x - east, y - north)
+            }
+            sample.copy(frame = sample.frame.copy(trail = trail))
+        }
+    }
 
     private fun parseLine(line: String): ReplaySample? {
         if (line.isBlank()) return null
@@ -270,9 +286,13 @@ class FrameReplayer(private val context: Context) {
     }
 
     /** [group]: also play the Group Ride fixture, as if the Rider had joined one. */
-    fun start(fixture: String, group: Boolean) {
+    fun start(fixture: String, group: Boolean, navigation: Boolean = true) {
         if (running) return
-        samples = load(fixture)
+        samples = load(fixture).map { sample ->
+            if (navigation) sample else sample.copy(frame = sample.frame.copy(
+                navBearing = null, navDistanceM = null, riderEastM = null, riderNorthM = null,
+            ))
+        }
         if (samples.isEmpty()) return
         WatchDiagnostics.recordReplay(fixture, samples.size)
         loadScene()

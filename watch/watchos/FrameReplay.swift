@@ -115,6 +115,12 @@ final class FrameReplayer {
             frame.remoteTilt = tilt
             frame.tiltControl = tilt == WatchTiltStick.center ? .free : .manual
           }
+          if ProcessInfo.processInfo.arguments.contains("--no-navigation") {
+            frame.navBearing = nil
+            frame.navDistanceM = nil
+            frame.riderEastM = nil
+            frame.riderNorthM = nil
+          }
           link.acceptReplayFrame(frame)
         }
       }

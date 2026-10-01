@@ -187,7 +187,19 @@ struct ReplaySample: Equatable {
 /// @parity /watch/wearos/src/main/java/app/vescape/wear/FrameReplay.kt `ReplayFixtureParser`
 enum ReplayFixtureParser {
   static func parse<S: Sequence>(_ lines: S) -> [ReplaySample] where S.Element == String {
-    lines.compactMap(parseLine)
+    let samples = lines.compactMap(parseLine)
+    return samples.enumerated().map { index, sample in
+      var frame = sample.frame
+      if let east = frame.riderEastM, let north = frame.riderNorthM {
+        let count = min(index + 1, WatchTrailCodec.maxPoints)
+        frame.trail = (0..<count).compactMap { i in
+          let point = samples[count == 1 ? 0 : i * index / (count - 1)].frame
+          guard let x = point.riderEastM, let y = point.riderNorthM else { return nil }
+          return WatchTrailPoint(eastM: x - east, northM: y - north)
+        }
+      }
+      return ReplaySample(atMs: sample.atMs, frame: frame)
+    }
   }
 
   static func parse(text: String) -> [ReplaySample] {

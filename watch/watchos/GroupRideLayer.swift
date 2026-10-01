@@ -1,23 +1,20 @@
 import SwiftUI
 
 /// Every other Rider who fits on the nav map, as a dot in their colour, over the route and under the
-/// gauges. Without Navigation there is no route to carry the Rider's own ring, so this draws it at
-/// the same spot. In nav focus each live dot gets its distance label, which carries any flag. Riders beyond the map are `GroupRideEdgeLayer`'s.
+/// gauges. The Rider's own ring is a separate layer above these marks. In nav focus each live dot
+/// gets its distance label, which carries any flag. Riders beyond the map are `GroupRideEdgeLayer`'s.
 ///
 /// @parity /watch/wearos/src/main/java/app/vescape/wear/GroupRideLayer.kt `GroupRideLayer`
 struct GroupRideLayer: View {
   let group: WatchGroupRide
   let mapView: WatchMapView
   let mapMoving: Bool
-  let drawOwnRing: Bool
-  let ownColor: Color
   /// Nav-focus progress: the dots grow and the labels fade in as the nav page takes the screen.
   var focus: Double = 0
   var unitSystem: String = "metric"
 
   var body: some View {
     GroupRideCanvas(group: group, mapView: mapView, mapMoving: mapMoving) { context, map, staleOpacity in
-      if drawOwnRing { context.drawRiderDot(at: map.rider, color: ownColor) }
       let marks = map.marks(for: group.riders, sizes: groupRideMarkSizes(size: map.size, focus: focus))
       for mark in marks where mark.kind == .dot {
         let opacity = mark.rider.stale ? staleOpacity : 1

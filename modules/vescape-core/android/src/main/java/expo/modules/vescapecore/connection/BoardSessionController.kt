@@ -2350,9 +2350,7 @@ private var wearAutoLaunchOnConnect = true
     /** Latest cold-path snapshot: board lanes are empty without telemetry; navigation stays live. */
     private fun watchSnapshot(): WatchSnapshot {
         val current = telemetry
-        // Nav lanes are all-or-nothing: without Route Progress there is nothing to navigate by, and
-        // sending a rider position or a course alone would only place a dot on a route the wrist is
-        // not drawing. All five null is what hides the wrist overlay.
+        // Navigation lanes require Route Progress; course and trail stay live independently.
         val progress = NavigationController.get(service.applicationContext).currentProgress
         val origin = WatchRouteMirror.origin
         val rider = locationTracker.riderPosition
@@ -2377,10 +2375,14 @@ private var wearAutoLaunchOnConnect = true
             riderNorthM = offset?.second,
             // Absolute course, the rotation the wrist applies to its north-up world. Null while the
             // fix carries no usable heading, which leaves the wrist drawing the route north-up.
-            courseDeg = if (offset != null) rider?.courseDeg else null,
+            courseDeg = rider?.courseDeg,
             routeSpanM = WatchRouteMirror.viewportSpanM,
             remoteTilt = if (current != null) remoteTiltController.currentValue else null,
             tiltControl = watchTiltControl(),
+            trail = expo.modules.vescapecore.watch.watchTrail(
+                rider?.let { GeoPoint(it.latitude, it.longitude) },
+                locationTracker.recentLocations(),
+            ),
         )
     }
 

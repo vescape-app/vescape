@@ -93,6 +93,21 @@ class WatchFrameDecoderTest {
         assertNull(WatchFrameDecoder.decode(full.copyOf(full.size - 4)))
     }
 
+    @Test
+    fun `trail extension renders without nav and corrupt or old frames keep gauges`() {
+        val core = encode(12.0, 20f, 80f, 33f, 5f, Float.NaN, Float.NaN, Float.NaN, Float.NaN, 90f, 600f, 128f, 0f)
+        val points = listOf(expo.modules.vescapecore.watch.WatchTrailPoint(-20.0, -30.0), expo.modules.vescapecore.watch.WatchTrailPoint(0.0, 0.0))
+        val payload = core + expo.modules.vescapecore.watch.WatchTrailCodec.encode(points)
+        val decoded = WatchFrameDecoder.decode(payload)!!
+        assertEquals(points, decoded.trail)
+        assertNull(decoded.navBearing)
+        for (bytes in listOf(core, payload.copyOf(payload.size - 1))) {
+            val frame = WatchFrameDecoder.decode(bytes)!!
+            assertEquals(12.0, frame.speed!!, 0.001)
+            assertEquals(emptyList<expo.modules.vescapecore.watch.WatchTrailPoint>(), frame.trail)
+        }
+    }
+
     /** Encodes lane 0 (speed) plus [lanes], mirroring the phone-side writer. */
     private fun encode(speed: Double, vararg lanes: Float): ByteArray {
         val count = 1 + lanes.size

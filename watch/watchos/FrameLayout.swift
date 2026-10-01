@@ -78,9 +78,8 @@ struct FrameLayout: View {
     return MapTarget(spanM: WatchMapProjection.clampedSpanM(frame.routeSpanM), courseDeg: frame.courseDeg)
   }
 
-  /// Nothing draws the map in ambient or with neither Navigation nor a Group Ride, so it lands
-  /// there instead of easing.
-  private var mapAnimates: Bool { !ambient.active && (navLanes != nil || groupRide != nil) }
+  /// The Rider and trail remain without Navigation or a Group Ride. Ambient skips the moving map.
+  private var mapAnimates: Bool { !ambient.active }
 
   var body: some View {
     // A stale frame in ambient is the one case with nothing to say: the readings it would keep are
@@ -91,6 +90,10 @@ struct FrameLayout: View {
       // Bottom layer: the route ahead and the rider on it, under every gauge and readout. Ambient
       // skips it — the lanes animate their zoom, and a moving map is the most expensive thing the
       // always-on panel could be asked to draw.
+      if !ambient.active {
+        RiderTrail(points: frame.trail, mapView: mapView, mapMoving: mapMoving, color: muted ? Palette.dimText : navColor)
+          .opacity(navStackAlpha)
+      }
       if navLanes != nil, !ambient.active {
         NavRoute(
           route: route,
@@ -110,12 +113,14 @@ struct FrameLayout: View {
           group: groupRide,
           mapView: mapView,
           mapMoving: mapMoving,
-          drawOwnRing: navLanes == nil,
-          ownColor: muted ? Palette.dimText : navColor,
           focus: navFocus,
           unitSystem: unitSystem
         )
         .opacity(navStackAlpha)
+      }
+
+      if !ambient.active {
+        RiderPosition(color: muted ? Palette.dimText : navColor).opacity(navStackAlpha)
       }
 
       gauges(blind: blind)
@@ -138,7 +143,7 @@ struct FrameLayout: View {
         // Nav focus with nothing to show would be a blank rectangle. Say why, but only once the
         // drag is nearly done, so it never flickers under the departing readouts.
         // A joined Group Ride is something to show on the map page: no "no navigation" over it.
-        if groupRide == nil {
+        if groupRide == nil, frame.trail.isEmpty {
           NavAbsentHint(focus: navFocus, stackAlpha: navStackAlpha)
         }
         // No navigation: the tilt badge keeps the distance's slot to itself.

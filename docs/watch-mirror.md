@@ -225,6 +225,28 @@ The emulator renders ambient at full brightness with normal colour, so it answer
 only. Readability belongs to a physical watch, entered the real way: enable Settings → Display →
 Always-on screen, then `adb shell input keyevent 26`.
 
+## Rider position and recent trail
+
+The active gauge and map pages always show the Rider's position ring, including without Navigation
+or a Group Ride. The recent ridden trail uses the same native precise GPS history as the phone's
+live map and fades toward the oldest fix in the Rider's colour. It shares the route/group map's
+heading and zoom. The ring sits above paths and other Riders. Ambient continues to skip the map.
+
+The phone sends a complete trail snapshot with each Watch Frame, capped at 120 evenly sampled
+points with both endpoints retained. Points are metres east/north of the current Rider, independent
+of the route origin. Route changes cannot move or reset the trail, and a reconnect receives current
+history rather than starting a watch-local recording. Empty history clears the trail. Approximate
+fixes can move the Rider but do not enter the precise history or extend its line.
+
+The fixed 13-lane telemetry header is unchanged. A trailer follows it: ASCII `TR`, version `1`,
+unsigned point count, then little-endian Float32 east/north pairs. Older wrists ignore the trailer;
+new wrists show no trail for absent, unknown, malformed, or non-finite trail data and keep decoding
+telemetry. This adds at most 964 bytes per frame and stores nothing on the watch.
+
+Emulator replay derives the trail from earlier fixture positions. Add `--ez navigation false` to the
+Wear launch intent to verify the standalone or group-only map; watchOS replay accepts
+`--no-navigation`. These switches remain inside the existing emulator/simulator replay gates.
+
 ## Phone → Watch Channels
 
 Three channels, split by how often the data changes:
