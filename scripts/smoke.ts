@@ -145,12 +145,10 @@ async function launchAndroidApp(deviceId: string): Promise<void> {
     'am',
     'start',
     '-W',
-    '-a',
-    'android.intent.action.MAIN',
-    '-c',
-    'android.intent.category.LAUNCHER',
-    '-p',
-    applicationId,
+    // Expo generates MainActivity in the configured application package. Target it explicitly:
+    // its launcher filter does not have DEFAULT, so am start cannot resolve an implicit intent.
+    '-n',
+    `${applicationId}/.MainActivity`,
   ]
   const process = Bun.spawn(command, {
     stdout: 'pipe',
