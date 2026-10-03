@@ -5,9 +5,7 @@
 # native total/month queries both completed and rendered their result grids.
 appId: ${APP_ID}
 ---
-- tapOn:
-    id: history-button
-    waitToSettleTimeoutMs: 1000
+- runFlow: ../fixture/_history.yaml
 - extendedWaitUntil:
     visible:
       id: history-stats-details

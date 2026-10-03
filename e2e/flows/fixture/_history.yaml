@@ -1,0 +1,14 @@
+# Open History from the live dashboard. A tap can be swallowed while telemetry is rendering.
+# Retry only this navigation and require the drawer before continuing to either history flow.
+appId: ${APP_ID}
+---
+- retry:
+    maxRetries: 3
+    commands:
+      - tapOn:
+          id: history-button
+          waitToSettleTimeoutMs: 1000
+      - extendedWaitUntil:
+          visible:
+            id: history-drawer
+          timeout: 15000
