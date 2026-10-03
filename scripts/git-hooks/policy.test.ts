@@ -8,6 +8,12 @@ const policy = join(import.meta.dir, 'policy.ts')
 // Run the Git fixture outside the app test runtime and its native-module mocks.
 async function promotion(newTrailer: boolean) {
   const cwd = mkdtempSync(join(tmpdir(), 'vescape-push-policy-'))
+  const hookEnv = {
+    ...process.env,
+    GIT_DIR: join(cwd, 'foreign.git'),
+    GIT_WORK_TREE: join(cwd, 'foreign-worktree'),
+    GIT_INDEX_FILE: join(cwd, 'foreign-index'),
+  }
   try {
     const result = Bun.spawn(
       [
@@ -21,6 +27,7 @@ async function promotion(newTrailer: boolean) {
             return result.stdout.toString().trim();
           }
           git('init', '-b', 'dev');
+          assert.equal(git('rev-parse', '--show-toplevel'), process.cwd());
           git('config', 'user.name', 'Test');
           git('config', 'user.email', 'test@example.com');
           git('config', 'core.hooksPath', '/dev/null');
@@ -45,7 +52,14 @@ async function promotion(newTrailer: boolean) {
           assert.equal(result.stderr.toString(), ${JSON.stringify(newTrailer ? 'Blocked commit: remove the Co-Authored-By trailer.\n' : '')});
         `,
       ],
-      { cwd, stdout: 'inherit', stderr: 'inherit' },
+      {
+        cwd,
+        // Commit hooks export GIT_DIR and related variables. A fixture must use its own repo,
+        // otherwise `git init` and `git config` can modify the checkout that invoked the hook.
+        env: Object.fromEntries(Object.entries(hookEnv).filter(([key]) => !key.startsWith('GIT_'))),
+        stdout: 'inherit',
+        stderr: 'inherit',
+      },
     )
     expect(await result.exited).toBe(0)
   } finally {
