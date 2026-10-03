@@ -210,6 +210,7 @@ jobs:
           sudo udevadm control --reload-rules
           sudo udevadm trigger --name-match=kvm
       - name: Run isolated flow
+        timeout-minutes: 15
         uses: reactivecircus/android-emulator-runner@v2
         env:
           SMOKE_FLOW: ${{ matrix.flow }}
@@ -229,9 +230,12 @@ jobs:
             -no-window -no-snapshot -no-boot-anim -gpu swiftshader_indirect
             -noaudio -camera-back none
           disable-animations: false
-          script: bun run smoke --app .expo/smoke/app.apk --device emulator-5554 --flow "$SMOKE_FLOW"
+          script: |
+            adb -s emulator-5554 shell wm size
+            adb -s emulator-5554 shell wm density
+            bun run smoke --app .expo/smoke/app.apk --device emulator-5554 --flow "$SMOKE_FLOW"
       - name: Upload Maestro debug output
-        if: failure()
+        if: failure() || cancelled()
         uses: actions/upload-artifact@v4
         with:
           name: maestro-debug-android-${{ matrix.flow }}
@@ -269,13 +273,14 @@ jobs:
           curl -Ls https://get.maestro.mobile.dev | bash
           echo "$HOME/.maestro/bin" >> "$GITHUB_PATH"
       - name: Run isolated flow
+        timeout-minutes: 15
         env:
           SMOKE_FLOW: ${{ matrix.flow }}
         run: >-
           bun run smoke --platform ios --app .expo/smoke/vescape.app
           --device 'iPhone 17' --flow "$SMOKE_FLOW"
       - name: Upload Maestro debug output
-        if: failure()
+        if: failure() || cancelled()
         uses: actions/upload-artifact@v4
         with:
           name: maestro-debug-ios-${{ matrix.flow }}
