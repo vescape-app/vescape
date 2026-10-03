@@ -136,34 +136,32 @@ jobs:
       - name: Prepare an available iOS test simulator
         timeout-minutes: 7
         run: |
-          python3 - <<'PY'
-          import json
-          import os
-          import subprocess
+          bun run - <<'JS'
+          import { appendFileSync } from 'node:fs'
 
-          inventory = json.loads(subprocess.check_output(
-              ['xcrun', 'simctl', 'list', 'devices', 'available', '--json'], timeout=60
-          ))
-          selected = next((
-              device
-              for runtime, devices in inventory['devices'].items()
-              if '.iOS-' in runtime
-              for device in devices
-              if device['name'] == 'iPhone 17' and device.get('isAvailable', False)
-          ), None)
-          if selected is None:
-              print(json.dumps(inventory, indent=2), flush=True)
-              subprocess.run(['xcrun', 'simctl', 'list', 'runtimes'], timeout=30, check=True)
-              raise SystemExit('No available iPhone 17 simulator on this runner.')
-
-          udid = selected['udid']
-          print(f'Preparing iPhone 17 ({udid})', flush=True)
-          if selected['state'] != 'Booted':
-              subprocess.run(['xcrun', 'simctl', 'boot', udid], timeout=180, check=True)
-          subprocess.run(['xcrun', 'simctl', 'bootstatus', udid, '-b'], timeout=180, check=True)
-          with open(os.environ['GITHUB_ENV'], 'a') as env:
-              env.write(f'IOS_TEST_DESTINATION=platform=iOS Simulator,id={udid}\n')
-          PY
+          function simctl(args, timeout, capture = false) {
+            const result = Bun.spawnSync(['xcrun', 'simctl', ...args], {
+              stdout: capture ? 'pipe' : 'inherit', stderr: 'inherit', timeout,
+            })
+            if (!result.success) throw new Error(`simctl ${args.join(' ')} failed`)
+            return capture ? result.stdout.toString() : ''
+          }
+          const inventory = JSON.parse(simctl(['list', 'devices', 'available', '--json'], 60_000, true))
+          const selected = Object.entries(inventory.devices)
+            .filter(([runtime]) => runtime.includes('.iOS-'))
+            .flatMap(([, devices]) => devices)
+            .find((device) => device.name === 'iPhone 17' && device.isAvailable)
+          if (!selected) {
+            console.error(JSON.stringify(inventory, null, 2))
+            simctl(['list', 'runtimes'], 30_000)
+            throw new Error('No available iPhone 17 simulator on this runner.')
+          }
+          console.log(`Preparing iPhone 17 (${selected.udid})`)
+          if (selected.state !== 'Booted') simctl(['boot', selected.udid], 180_000)
+          simctl(['bootstatus', selected.udid, '-b'], 180_000)
+          appendFileSync(process.env.GITHUB_ENV,
+            `IOS_TEST_DESTINATION=platform=iOS Simulator,id=${selected.udid}\n`)
+          JS
       - run: bun run test:ios
         env:
           # A cold Swift build of the whole module is far past the local default.
