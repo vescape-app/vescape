@@ -256,6 +256,16 @@ gauges, navigation. The control axis nests inside the gauges page — gauges, Ti
 diagnostics — and shows no page dots, because they land on the battery gauge and Android has none
 either. The pages those slices fill arrived with later slices (#486–#491); the axes are the point.
 
+The Group Ride page follows navigation while the Rider is joined. Its list takes the crown and the
+vertical drag only while it is the settled page and has more than five Riders; once the page is left
+the crown pages the vertical axis again. Wear OS's pager has no crown binding, so its list takes the
+crown whenever the page has settled.
+
+The list's drag is a SwiftUI `DragGesture` on the page, which takes the touch from the paging scroll
+view outright — same-axis nested scroll views have no hand-off here. The list rubber-bands past
+either end; a pull down of at least 24 pt that began at the top pages back to navigation on release.
+Wear OS hands the same pull to its pager as it happens, through Compose nested scroll.
+
 ### Where the wrist logic lives
 
 The parts with a right answer — the reducer, the gauge fractions, the readout strings, the fixture
@@ -273,6 +283,8 @@ the wrist. `WatchGauge` rounds away from zero explicitly, and a test pins it.
 `bun run watchos:build` builds the watch simulator target. `bun run watchos:replay` rebuilds,
 installs and relaunches ride replay on the single booted watch simulator. With multiple watches
 booted, select one using `WATCHOS_UDID=<uuid> bun run watchos:replay`. A booted iPhone is ignored.
+`bun run watchos:replay --group` also passes `--group`, feeding `watch-group-ride.json` (beside the
+JSONL) into `PhoneLink.groupRide` at 1 Hz, the same fixture Group Ride as `wear:replay ride --group`.
 These commands use the selected Xcode's watch simulator SDK and discover the generated project,
 app path and bundle identifier. Generate `ios/` first with `bun run native:sync ios` if missing.
 
@@ -337,6 +349,15 @@ Board Move (#490) connects its hold lifecycle to both pager locks and to command
 `moveHeld` is true the vertical axis is disabled, the horizontal axis loses its returning override,
 and the idle return is suspended. Cancelled drags, crown scrolling, nested diagnostics scrolling and
 long holds are still unverified on a device.
+
+The Tilt page is the one control page with its own drag recognizer, and on watchOS any drag gesture
+there takes the touch from the paging scroll view, sideways ones too; `.gesture` or dropping the
+gesture mid-touch does not hand it back. So a sideways drag on a drivable Tilt page offsets the
+control pager's content by the finger's travel and, on release, animates to the next page or back —
+the same half-page-or-fling rule the native pager uses. The gesture's mask stays on for a touch in
+flight, because a moving page stops being settled and changing the mask cancels the gesture. A
+cancelled touch is detected through `@GestureState` and settles the pager and the stick lock the same
+way a release does.
 
 ### Paging regression findings (2026-09-15)
 
@@ -418,8 +439,8 @@ across two Gradle modules, which is why it has two `WatchSettings.kt`.
 
 ### Cadence
 
-`wearPushRateHz` (1–20, default 4) is re-read by `BoardSessionController.reloadWatchSettings()` and
-re-arms the live tick; `WatchTick.setIntervalMs` already cancels and reschedules, so a lowered
+`wearPushRateHz` (1–20, default 4) is applied by `WatchMirrorCoordinator` when App Settings change and
+re-arms the live tick; `WatchTick.setIntervalMs` cancels and reschedules, so a lowered
 interval takes effect immediately rather than after the current, longer delay.
 
 This deliberately does **not** ride on `reloadTelemetrySettings`, which returns early with no Board
@@ -567,6 +588,20 @@ not by an app build.
 The route the rider is following now reaches the wrist, and the Wear OS route, pointer and distance
 are on the rectangle.
 
+### Route startup feedback
+
+Route Progress is recalculated from the latest GPS Fix as soon as a path is published, so selecting
+a route while stationary does not wait for movement. A separate `route-status` live message carries
+creation/failure state and the expected polyline fingerprint. The watch displays an animated ring around the rider position
+while creating or receiving the route, or when GPS placement is missing. Loading has no visible
+text; a failed request still shows **Route unavailable**. The gauges remain visible. Clearing navigation dismisses the loader; losing the live frame
+stream clears transient status. Ambient mode suppresses the spinner.
+
+Status is sent on route actions and repeated alongside live Watch Frames. Its separate message key
+preserves the telemetry wire format used by older watch apps. The fingerprint is a nonzero uint32
+FNV-1a over the encoded route bytes, shared with Wear OS. Preview the receiving state with
+`bun run watchos:replay --route-loading`.
+
 ### The clear is a value, not a missing key
 
 Android publishes the polyline on its own `/route` Data Layer path and clears it by **deleting** the
@@ -591,13 +626,15 @@ rejects an oversized payload with `WCErrorCodePayloadTooLarge` and Apple publish
 cap is a margin rather than a number tuned against a measured one. Above it the route is strided
 down with its endpoints kept, exactly as Android does.
 
-### The origin moves only once the route has landed
+### Origin commit and wrist receipt
 
 The wrist picture has two halves: the polyline on the cold channel, and where the rider is on it, in
 the Watch Frame's `riderEast`/`riderNorth` lanes as metres from the route's origin. An origin
 pointing at a route the wrist does not hold puts the rider off the line, and unlike a one-frame skew
 that state lasts until the next route change. So `WatchColdState` reports the channel it actually
-wrote — including on the activation retry — and the mirror promotes its origin only then. With no
+queued, including on the activation retry, and the mirror promotes its origin only then.
+This is transport acceptance, not proof of receipt: the watch keeps its loader until the decoded
+polyline matches the fingerprint in the live route status. With no
 route the origin is nil and the nav lanes ride as `NaN`, which is the "no Navigation" case the wrist
 already drew before there was a route to draw.
 
@@ -628,10 +665,11 @@ and the wrist draws the route at the scale the rider set on the phone.
   because a round panel's drawing bounds are square and the line would otherwise run to the bezel.
   Here the clip is the display's own rounded rectangle one step inside the rim gauges, so the route
   uses the corners the rectangle has.
-- **Motion is a shape's `animatableData`, not four `Animatable`s.** The rider offset, the course and
-  the zoom interpolate together as one animatable pair rather than as three independent springs. The
-  course is kept unwrapped so a heading crossing north turns the short way, which is the same rule
-  `shortestAngleDelta` encodes on Android.
+- **The map layers share motion.** `WatchMapScene` retargets `WatchMapView` using one absolute GPS
+  anchor, heading and zoom. Route and trail share position animation; Group Ride marks use the
+  same heading and zoom. Layers sample that state on `TimelineView`s. Those timelines run only while the map eases (or a
+  stale Rider pulses). The course is kept unwrapped so a heading crossing north turns the short way,
+  the same `shortestAngleDelta` rule Android uses, and the zoom uses Android's fast-out-slow-in curve.
 - **The empty-nav hint draws the ported Phosphor map-pin**, the same artwork Wear OS bundles. The
   chevron and the pin beside the distance are drawn by hand on both wrists, so those match stroke
   for stroke too.

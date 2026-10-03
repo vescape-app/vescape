@@ -14,12 +14,12 @@ import {
   CAPTURE_LOCATION,
   FIXTURE_ZIP,
   runOrDie,
-  fixtureBuildEnv,
   warnMissingFixture,
   type CaptureDriver,
   type FixtureRunMode,
 } from './captureDriver.ts'
 import { listAdbDevices, pickDevice } from './devices.ts'
+import { buildAndroidFixture } from './fixtureBuild.ts'
 
 const OUT_DIR = 'screenshots/android'
 
@@ -173,6 +173,8 @@ export async function createAndroidDriver(
 ): Promise<CaptureDriver> {
   const device = await resolveDevice(requestedDevice, mode)
   const adb = (...rest: string[]) => capture(['adb', '-s', device.serial, ...rest])
+  const installArtifact = (path: string) =>
+    runOrDie(['adb', '-s', device.serial, 'install', '-r', path])
 
   return {
     platform: 'android',
@@ -181,32 +183,12 @@ export async function createAndroidDriver(
     deviceLabel: `${device.name} (${device.serial})`,
 
     async buildAndInstall() {
-      console.log(`› Building the Android ${mode} Release build…`)
-      await runOrDie(['bun', 'run', 'native:sync', 'android'], fixtureBuildEnv(mode, replay))
-      // Release on both modes. The store set has to be the shipped build, and a smoke run gets a
-      // self-contained APK out of it — no Metro server to start and no dev-client launcher screen
-      // to tap through before the first flow step.
-      // `--device` takes Expo's device name, not the adb serial.
-      //
-      // `--no-bundler` is what makes this command *return*. Without it Expo installs the APK, opens
-      // the dev-client URL and then stays attached streaming logs — on a terminal that reads as a
-      // build that finished, but on CI the step simply hangs until the job times out. A release
-      // build embeds its bundle, so there is nothing for a bundler to serve either way (the repo's
-      // own `android:release` script passes it for the same reason).
-      await runOrDie(
-        [
-          'bunx',
-          'expo',
-          'run:android',
-          '--variant',
-          'release',
-          '--no-bundler',
-          '--device',
-          device.expoName,
-        ],
-        fixtureBuildEnv(mode, replay),
-      )
+      const architecture = (await adb('shell', 'getprop', 'ro.product.cpu.abi')).trim()
+      const app = await buildAndroidFixture(mode, replay, architecture)
+      await installArtifact(app)
     },
+
+    installArtifact,
 
     async requireInstalled() {
       const out = await adb('shell', 'pm', 'list', 'packages', applicationId)
@@ -284,12 +266,6 @@ export async function createAndroidDriver(
       // away here; a PIN, pattern or biometric one cannot be dismissed from adb, and should not be.
       await adb('shell', 'input', 'keyevent', 'KEYCODE_WAKEUP')
       await adb('shell', 'wm', 'dismiss-keyguard')
-
-      // A system ANR dialog owns the top window, and Maestro only ever sees the top window — so a
-      // launcher that stalls on a slow CI emulator makes every element in our app read as absent.
-      // Suppressing the dialogs costs nothing: an app that really hangs still fails its assertion,
-      // and the debug screenshot still shows what was underneath.
-      await adb('shell', 'settings', 'put', 'global', 'hide_error_dialogs', '1')
 
       const window = await adb('shell', 'dumpsys', 'window')
       if (!/mDreamingLockscreen=true/.test(window)) return

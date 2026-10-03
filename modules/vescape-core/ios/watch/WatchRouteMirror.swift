@@ -37,6 +37,15 @@ final class WatchRouteMirror {
 
   private var push: (([String: Any]) -> Void)?
   private var spanM: Double?
+  private var routeId: UInt32 = 0
+  private var transferFailed = false
+  var desiredRouteId: UInt32 { lock.withLock { routeId } }
+  var failed: Bool { lock.withLock { transferFailed } }
+
+  func channelFailed(_ channel: String) {
+    guard channel == watchRouteChannel else { return }
+    lock.withLock { transferFailed = true }
+  }
 
   var origin: WatchGeoPoint? { lock.withLock { committedOrigin } }
 
@@ -66,20 +75,32 @@ final class WatchRouteMirror {
     publish(controller.currentPath)
   }
 
+  /// Release only the mirror-owned subscription; route identity and committed origin survive.
+  func detach(from controller: NavigationController) {
+    controller.onPathChange = nil
+    lock.withLock { push = nil }
+  }
+
   /// A cold-state channel landed on the wrist. The route channel is the one that moves an origin.
   func channelDelivered(_ channel: String) {
     guard channel == watchRouteChannel else { return }
-    lock.withLock { committedOrigin = desiredOrigin }
+    lock.withLock {
+      committedOrigin = desiredOrigin
+      transferFailed = false
+    }
   }
 
   private func publish(_ path: [(latitude: Double, longitude: Double)]?) {
     let points = (path ?? []).map { WatchGeoPoint(latitude: $0.latitude, longitude: $0.longitude) }
+    let payload = WatchRouteCodec.payload(points: points)
     let push: (([String: Any]) -> Void)? = lock.withLock {
+      routeId = (payload[WatchRouteKey.points] as? Data).map(WatchRouteStatusCodec.routeId) ?? 0
+      transferFailed = false
       // The clear carries a nil origin, so a route that goes away takes the rider lanes with it
       // rather than leaving them measured against a polyline nothing is drawing.
       desiredOrigin = WatchRouteCodec.origin(points: points)
       return self.push
     }
-    push?(WatchRouteCodec.payload(points: points))
+    push?(payload)
   }
 }

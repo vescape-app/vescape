@@ -79,7 +79,7 @@ struct NavPointer: View {
 /// What the nav page shows when the phone is not navigating: a centred, dim two-liner that fades in
 /// as the readouts leave, so nav focus with nothing to show is never a blank screen.
 ///
-/// @parity /watch/wearos/src/main/java/app/vescape/wear/FrameGauges.kt `NavAbsentHint`
+/// @parity /watch/wearos/src/main/java/app/vescape/wear/WatchMapScene.kt `NavAbsentHint`
 struct NavAbsentHint: View {
   var focus: Double = 0
   var stackAlpha: Double = 1
@@ -103,10 +103,10 @@ struct NavAbsentHint: View {
 
 /// The mirror of ``fadeOut``: a page's own content arrives only after the readouts have gone.
 ///
-/// @parity /watch/wearos/src/main/java/app/vescape/wear/FrameGauges.kt `fadeIn`
+/// @parity /watch/wearos/src/main/java/app/vescape/wear/WatchMapScene.kt `fadeIn`
 func fadeIn(_ focus: Double) -> Double { min(max((focus - FADE_IN_START) / (1 - FADE_IN_START), 0), 1) }
 
-/// @parity /watch/wearos/src/main/java/app/vescape/wear/FrameGauges.kt `HINT_FADE_ONSET`
+/// @parity /watch/wearos/src/main/java/app/vescape/wear/WatchMapScene.kt `HINT_FADE_ONSET`
 private let FADE_IN_START = 0.6
 
 extension GraphicsContext {
@@ -189,7 +189,7 @@ private let HINT_FONT_SIZE: CGFloat = 11
 /// so the gauges are where a rider needs reminding that the board is still being tilted. Nothing at
 /// neutral.
 ///
-/// @parity /watch/wearos/src/main/java/app/vescape/wear/FrameGauges.kt `TiltBadge`
+/// @parity /watch/wearos/src/main/java/app/vescape/wear/WatchMapScene.kt `TiltBadge`
 struct TiltBadge: View {
   let value: Int?
   let color: Color
@@ -207,3 +207,11 @@ struct TiltBadge: View {
 }
 
 private let TILT_BADGE_GAP: CGFloat = 8
+
+/// Loading lives around the rider; only an actionable failure needs visible text.
+/// @parity /watch/wearos/src/main/java/app/vescape/wear/WatchMapScene.kt `RouteFailureNotice`
+struct RouteFailureNotice: View {
+  var body: some View {
+    Text("Route unavailable").font(WatchTypography.ui(size: 12)).foregroundStyle(Palette.primaryText)
+  }
+}

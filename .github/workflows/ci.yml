@@ -7,6 +7,11 @@ on:
   pull_request:
     types: [opened, synchronize, reopened]
 
+# Replace obsolete PR checks, while keeping a verdict for every dev/main commit.
+concurrency:
+  group: ci-${{ github.event_name }}-${{ github.event.pull_request.number || github.sha }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 jobs:
   persistence-contracts:
     uses: ./.github/workflows/persistence-contracts.yml
@@ -18,7 +23,7 @@ jobs:
   # archive exchange span both implementations.
   native-gate:
     name: Native gate
-    runs-on: blacksmith-4vcpu-ubuntu-2404
+    runs-on: ubuntu-24.04
     outputs:
       android: ${{ steps.filter.outputs.android }}
       ios: ${{ steps.filter.outputs.ios }}
@@ -51,7 +56,7 @@ jobs:
               - 'scripts/native-sync.ts'
 
   check:
-    runs-on: blacksmith-4vcpu-ubuntu-2404
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -62,18 +67,17 @@ jobs:
           bun-version: latest
       - run: bun install
       - run: bun run copy:shared
-      - parallel:
-          - run: bun run ts
-          - run: bun run lint
-          - run: bun run format:check
-          - run: bun run knip
-          - run: bun run test:bun
-          - run: bun run release-notes:check
+      - run: bun run ts
+      - run: bun run lint
+      - run: bun run format:check
+      - run: bun run knip
+      - run: bun run test:bun
+      - run: bun run release-notes:check
 
   android:
     needs: native-gate
     if: needs.native-gate.outputs.android == 'true'
-    runs-on: blacksmith-4vcpu-ubuntu-2404
+    runs-on: ubuntu-24.04
     env:
       GRADLE_OPTS: -Dorg.gradle.caching=true -Dorg.gradle.daemon=false
     steps:
@@ -88,7 +92,7 @@ jobs:
         with:
           distribution: temurin
           java-version: '17'
-      - uses: useblacksmith/cache@v5
+      - uses: actions/cache@v5
         with:
           path: |
             ~/.gradle/caches
@@ -99,11 +103,9 @@ jobs:
       - uses: android-actions/setup-android@v3
         with:
           packages: ''
-      - parallel:
-          # The SDK download is independent of everything JS, so it overlaps with install.
-          - name: Install Android SDK components
-            run: sdkmanager "platforms;android-36" "build-tools;36.0.0"
-          - run: bun install
+      - name: Install Android SDK components
+        run: sdkmanager "platforms;android-36" "build-tools;36.0.0"
+      - run: bun install
       - run: bun run copy:shared
       - run: bun x expo prebuild --platform android --no-install
       - run: bun run test:android
@@ -117,13 +119,13 @@ jobs:
   ios:
     needs: native-gate
     if: github.event_name == 'workflow_dispatch' || needs.native-gate.outputs.ios == 'true'
-    runs-on: blacksmith-6vcpu-macos-26
+    runs-on: macos-26
     steps:
       - uses: actions/checkout@v4
       - uses: oven-sh/setup-bun@v2
         with:
           bun-version: latest
-      - uses: useblacksmith/cache@v5
+      - uses: actions/cache@v5
         with:
           path: |
             ~/Library/Caches/org.swift.swiftpm
@@ -131,6 +133,35 @@ jobs:
           key: spm-${{ runner.os }}-${{ hashFiles('modules/vescape-core/Package.swift') }}
           restore-keys: |
             spm-${{ runner.os }}-
+      - name: Prepare an available iOS test simulator
+        timeout-minutes: 7
+        run: |
+          bun run - <<'JS'
+          import { appendFileSync } from 'node:fs'
+
+          function simctl(args, timeout, capture = false) {
+            const result = Bun.spawnSync(['xcrun', 'simctl', ...args], {
+              stdout: capture ? 'pipe' : 'inherit', stderr: 'inherit', timeout,
+            })
+            if (!result.success) throw new Error(`simctl ${args.join(' ')} failed`)
+            return capture ? result.stdout.toString() : ''
+          }
+          const inventory = JSON.parse(simctl(['list', 'devices', 'available', '--json'], 60_000, true))
+          const selected = Object.entries(inventory.devices)
+            .filter(([runtime]) => runtime.includes('.iOS-'))
+            .flatMap(([, devices]) => devices)
+            .find((device) => device.name === 'iPhone 17' && device.isAvailable)
+          if (!selected) {
+            console.error(JSON.stringify(inventory, null, 2))
+            simctl(['list', 'runtimes'], 30_000)
+            throw new Error('No available iPhone 17 simulator on this runner.')
+          }
+          console.log(`Preparing iPhone 17 (${selected.udid})`)
+          if (selected.state !== 'Booted') simctl(['boot', selected.udid], 180_000)
+          simctl(['bootstatus', selected.udid, '-b'], 180_000)
+          appendFileSync(process.env.GITHUB_ENV,
+            `IOS_TEST_DESTINATION=platform=iOS Simulator,id=${selected.udid}\n`)
+          JS
       - run: bun run test:ios
         env:
           # A cold Swift build of the whole module is far past the local default.

@@ -101,15 +101,38 @@ the first step of that: it boots from fixtures and a replay instead of `e2eFake`
 ## Smoke
 
 `bun run smoke` walks the screens a rider actually opens — live telemetry and persisted alerts,
-map modes, Ride History, Profile stats, and the add-board wizard — and asserts on them. Android
-only, like the E2E suite.
+map modes, Ride History, Profile stats, and the add-board wizard — and asserts on them on Android
+and iOS.
 
 ```sh
 bun run smoke                      # picks a device, builds, runs every flow
 bun run smoke --no-build           # reuse the smoke build already installed
 bun run smoke --flow 03-history    # one flow against the installed build
 bun run smoke --device <serial>    # skip the picker
+bun run smoke --platform ios       # use an iOS simulator
+bun run smoke --build-only --output .expo/smoke/app.apk
+bun run smoke --app .expo/smoke/app.apk --flow 03-history
 ```
+
+CI builds one Release artifact per platform without booting a device. Each platform's five flows
+then run in parallel jobs, each installing that artifact and starting a fresh fixture session.
+The iOS app travels in a tar archive to preserve its bundle permissions and symlinks. Gradle's build
+cache and iOS CocoaPods dependencies are separate from app artifacts. iOS compiles once per run;
+Xcode compiled output is not transferred between fresh checkouts because it did not reduce build
+time and added cache transfer overhead.
+
+The workflow discovers public flow files through `bun run scripts/smoke.ts --list-flows`, so a new
+flow automatically joins both platform matrices. Manual dispatch can select one flow and/or one
+platform. Failed jobs retain their own Maestro diagnostics; one failure does not cancel siblings.
+Each job runs boot and its selected flow in one Maestro session, so iOS starts XCTest only once.
+Android smoke launches the prepared app through `adb am start -W` with a 60-second timeout, then
+Maestro checks readiness. This avoids its [unbounded Android launch/permission calls](https://github.com/mobile-dev-inc/Maestro/issues/3658);
+fixture reset and permission grants still happen before launch.
+Boot handles the known Pixel Launcher ANR dialog on hosted Android images between bounded
+telemetry waits. It does not dismiss Vescape's own ANR or weaken the telemetry assertion.
+Android keeps the Pixel 6 layout in dp at a lower render resolution for the software GPU.
+Smoke flows use known exit controls and bounded settling waits, then assert the destination;
+continuously animated telemetry does not need to become visually idle before every tap.
 
 It shares its boot with the screenshot capture below — Release build, restored fixture database,
 Debug Recording replayed through the real telemetry pipeline — and that is the whole point.
@@ -136,12 +159,14 @@ ride, and a full pass can run longer than that — Maestro spends most of its ti
 view hierarchy to settle. Flows 01-04 finish inside the window; `05-add-board` is written to work
 whether the session is still up or has already ended on its own.
 
-Flow order is load-bearing. `05-add-board` runs last because saving a board hands it to the
+In a local full pass, flow order is load-bearing. `05-add-board` runs last because saving a board hands it to the
 connection manager, which goes at the real BLE stack, finds nothing, and takes the replay session
 down with it. That flow therefore asserts the wizard and the durable write, not a connection: a
 replay runs under a synthetic `replay:` board id (ADR 0024) and cannot stand in for a chosen board's
 session. Binding a replay to a given board id is native work; until then the board-connect path
 stays covered by the E2E suite's `connect-board`.
+CI's isolated flow jobs each restore their own fixtures, so add-board cannot interrupt another
+flow's replay.
 
 Waits are on things the app renders, never on `waitForAnimationToEnd`. A live telemetry screen never
 stops animating, so that command spends its whole timeout every time. `e2e/flows/fixture/_boot.yaml`

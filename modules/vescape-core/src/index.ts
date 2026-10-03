@@ -772,7 +772,7 @@ export interface PrivacyZone {
  *
  * @parity /modules/vescape-core/ios/mappoints/MapPointApi.swift
  * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/mappoints/MapPointApi.kt
- * @parity /Users/kacper/Workspace/vescape-server/src/mapPoints/protocol.ts `MapPointCategorySchema`
+ * Mirrors vescape-server `src/mapPoints/protocol.ts` `MapPointCategorySchema`.
  */
 export type MapPointCategory =
   | 'drop'
@@ -1435,7 +1435,7 @@ export interface ProfileStatsMonth {
 }
 
 /**
- * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/ProfileStatsRepository.kt `getProfileStatsSnapshot`
+ * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/ProfileStatsRepositoryAndroid.kt `getProfileStatsSnapshot`
  * @parity /modules/vescape-core/ios/telemetry/ProfileStatsRepository.swift `getProfileStatsSnapshot`
  */
 export interface ProfileStatsSnapshot {
@@ -1499,7 +1499,7 @@ export interface RideHistorySession {
 }
 
 /**
- * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/RideHistoryRepository.kt `getPage`
+ * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/RideHistoryRepositoryAndroid.kt `getPage`
  * @parity /modules/vescape-core/ios/telemetry/RideHistoryRepository.swift `getPage`
  */
 export interface RideHistoryPage {
@@ -1551,6 +1551,8 @@ export interface AppSettings {
   satelliteImagerySaturation: number
   /** Hide POI names and icons on the telemetry/home map. Explore keeps map details visible. */
   hideTelemetryMapDetails: boolean
+  /** Draw Ride History Markers (pauses, connection changes, errors, gaps) on the history route. */
+  showHistoryMapMarkers: boolean
   mapOrientationMode: 'northUp' | 'gpsHeading' | 'phoneHeading' | 'freeRotate'
   historyMetricGradientsEnabled: boolean
   historyMetricHotRanges: Partial<
@@ -1652,6 +1654,13 @@ export interface AppSettings {
    * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/watch/WatchSettings.kt
    */
   wearNavArrowEnabled: boolean
+  /**
+   * Show the ridden trail behind watch telemetry gauges. Enabled by default; the map page
+   * always shows the trail. Mirrored as cold settings to both watch platforms.
+   * @parity /modules/vescape-core/ios/watch/WatchSettings.swift
+   * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/watch/WatchSettings.kt
+   */
+  wearTelemetryTrailEnabled: boolean
   /**
    * Wrist Tilt stick speed at full deflection, percent of full tilt per second (1–100). Pushed to the
    * wrist, which integrates the stick into a Remote Tilt lock.
@@ -2239,7 +2248,10 @@ export interface MotorConfigValuesEvent {
   values: MotorConfigValues | null
 }
 
-/** @parity native BoardConfigChangeNotice peers. */
+/**
+ * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/config/BoardConfigChangeNotice.kt `BoardConfigChangeDiff`
+ * @parity /modules/vescape-core/ios/config/BoardConfigStore.swift `BoardConfigChangeDiff`
+ */
 export interface BoardConfigChangeDiff {
   fieldId: string
   label: string

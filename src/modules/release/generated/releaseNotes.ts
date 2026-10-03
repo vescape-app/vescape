@@ -2,6 +2,16 @@ import type { BundledReleaseNote } from '../lib/releaseNotes'
 
 export const bundledReleaseNotes = [
   {
+    version: '0.98.0',
+    markdown:
+      '## Watch\n\n- Group Ride comes to Apple Watch and Wear OS, with indicators for other riders\' low board batteries and high motor or controller temperatures. See riders on the map, locate those beyond its edge, and browse a list showing their direction and distance. Works without a connected board.\n- When no board is connected, gauges show empty readings without a "Board not connected" notice. Apple Watch navigation also stays fully visible instead of dimming as though updates had stopped.\n- On Apple Watch, swiping sideways from Remote Tilt now follows your finger and settles onto the next page or back into place.\n',
+  },
+  {
+    version: '0.97.3',
+    markdown:
+      '## Improved\n\n- Ride history maps now hide pause, connection, error, and gap markers by default. Turn on "Ride markers on map" in Settings → Diagnostics to show them.\n\n## Fixed\n\n- Fixed the live map trail disappearing when connecting, switching, or disconnecting a board, and after returning to the app. Your phone\'s location continues updating independently of the board connection.\n',
+  },
+  {
     version: '0.97.2',
     markdown:
       "## Improved\n\n- Group Ride now remembers your Auto setting between app sessions. When enabled, it joins the nearest public group ride or starts one once your board is connected and your location is available. Leaving a ride turns Auto off so you won't automatically rejoin.\n",

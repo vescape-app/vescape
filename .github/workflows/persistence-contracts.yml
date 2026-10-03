@@ -14,7 +14,7 @@ permissions:
 jobs:
   persistence-contracts:
     name: Room and GRDB storage contracts
-    runs-on: blacksmith-6vcpu-macos-26
+    runs-on: macos-26
     env:
       GRADLE_OPTS: -Dorg.gradle.caching=true -Dorg.gradle.daemon=false
     steps:
@@ -34,7 +34,7 @@ jobs:
       - uses: oven-sh/setup-bun@v2
         with:
           bun-version: latest
-      - uses: useblacksmith/cache@v5
+      - uses: actions/cache@v5
         with:
           path: |
             ~/.gradle/caches

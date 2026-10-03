@@ -46,6 +46,20 @@ enum class PhoneLink {
     APP_REACHABLE,
 }
 
+/**
+ * What the gauge shell says while no frames arrive: only the phone-link problems the wrist cannot fix
+ * itself. A reachable phone app that is not pushing has nothing to say — no Board is not a fault,
+ * the rider may be on foot in a Group Ride or navigating (ADR-0039) — so it gets no notice and the
+ * shell reads exactly as it does for a board-less frame.
+ *
+ * @parity /modules/vescape-core/ios/watch/MirrorState.swift `MirrorLinkNotice`
+ */
+enum class LinkNotice {
+    CONNECTING,
+    NO_PHONE,
+    APP_MISSING,
+}
+
 /** @parity /modules/vescape-core/ios/watch/MirrorState.swift `MirrorState` */
 data class MirrorState(
     val status: MirrorStatus,
@@ -81,5 +95,20 @@ object MirrorStateReducer {
             status = if (frame.stale) MirrorStatus.STALE else MirrorStatus.LIVE,
             frame = frame,
         )
+    }
+
+    /**
+     * The notice for [status] given the watch-local [link]; null means the shell says nothing.
+     *
+     * @parity /modules/vescape-core/ios/watch/MirrorState.swift `linkNotice`
+     */
+    fun linkNotice(status: MirrorStatus, link: PhoneLink): LinkNotice? {
+        if (status != MirrorStatus.DISCONNECTED) return null
+        return when (link) {
+            PhoneLink.UNKNOWN -> LinkNotice.CONNECTING
+            PhoneLink.NO_PHONE -> LinkNotice.NO_PHONE
+            PhoneLink.PHONE_ONLY -> LinkNotice.APP_MISSING
+            PhoneLink.APP_REACHABLE -> null
+        }
     }
 }

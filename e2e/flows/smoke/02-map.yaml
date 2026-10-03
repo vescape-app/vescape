@@ -15,24 +15,33 @@ appId: ${APP_ID}
 
 - tapOn:
     id: map-mode-weather
+    waitToSettleTimeoutMs: 1000
 - extendedWaitUntil:
     visible:
       id: weather-exit
     timeout: 30000
-- tapOn:
-    id: weather-exit
+- runFlow:
+    file: ../fixture/_home.yaml
+    env:
+      HOME_EXIT_ID: weather-exit
 
 - runFlow: ../fixture/_map-mode.yaml
 - tapOn:
     id: map-mode-legal-limits
+    waitToSettleTimeoutMs: 1000
 - extendedWaitUntil:
     visible:
       id: legal-limits-exit
     timeout: 30000
 - assertVisible: 'Show legal limits list'
-- tapOn: 'Show legal limits list'
+- tapOn:
+    text: 'Show legal limits list'
+    waitToSettleTimeoutMs: 1000
 - extendedWaitUntil:
     visible: 'Austria legal limits'
     timeout: 15000
 
-- runFlow: ../fixture/_home.yaml
+- runFlow:
+    file: ../fixture/_home.yaml
+    env:
+      HOME_EXIT_ID: legal-limits-exit

@@ -17,8 +17,8 @@ import { join } from 'path'
  * stale stretches, so gauge extremes are reachable without hunting for them in a real ride.
  *
  * The recording carries no GPS, so navigation is synthetic too: a route polyline
- * (`watch-route.json`) plus per-sample rider lanes walking it, ending in a stretch with no nav at
- * all, so both the navigating and the plain telemetry frame are reachable on an emulator. The
+ * (`watch-route.json`) plus per-sample rider lanes walking it. GPS movement continues after the
+ * destination clears, so both navigation and a standalone map are reachable on an emulator. The
  * forecast (`watch-weather.json`) is synthetic for the same reason — between them the emulator shows
  * every wrist surface without a phone.
  */
@@ -62,7 +62,7 @@ type LaneSample = {
   /** Nav lanes. Omitted entirely on samples with no destination, which is how the watch hides nav. */
   navBearing?: number
   navDistance?: number
-  /** Rider lanes, metres east/north of the route origin, plus course and visible route span. */
+  /** Simulated GPS in metres from the route origin, retained independently of Navigation. */
   riderEast?: number
   riderNorth?: number
   course?: number
@@ -306,9 +306,9 @@ function bearing(from: RoutePoint, to: RoutePoint): number {
   return ((Math.atan2(to.east - from.east, to.north - from.north) * 180) / Math.PI + 360) % 360
 }
 
-/** The point [alongM] metres into the route, with the course of the leg it sits on. */
+/** Walk the route, then continue along the final leg after passing the destination. */
 function walkRoute(alongM: number): { point: RoutePoint; courseDeg: number } {
-  let remaining = Math.min(Math.max(alongM, 0), ROUTE_LENGTH_M)
+  let remaining = Math.max(alongM, 0)
   for (let index = 0; index < ROUTE_LEGS.length; index++) {
     const leg = ROUTE_LEGS[index]
     if (remaining > leg && index < ROUTE_LEGS.length - 1) {
@@ -332,19 +332,22 @@ function walkRoute(alongM: number): { point: RoutePoint; courseDeg: number } {
 /**
  * Synthetic nav + rider lanes for [progress] through a fixture (0 = start, 1 = end): the rider walks
  * the route towards its far end, so the chevron, the distance and the drawn line all agree instead
- * of each telling its own story. Past arrival the lanes are omitted — that is the no-destination
- * case, and the watch drops the whole nav overlay.
+ * of each telling its own story. Past arrival only destination lanes disappear; GPS movement
+ * continues so the position ring and ridden trail remain on the standalone map.
  */
-function navLanes(progress: number): Partial<LaneSample> {
+function mapLanes(progress: number): Partial<LaneSample> {
   const ARRIVAL_AT = 0.85
-  if (progress >= ARRIVAL_AT) return {}
   const alongM = (progress / ARRIVAL_AT) * ROUTE_LENGTH_M
   const { point, courseDeg } = walkRoute(alongM)
   const destination = ROUTE[ROUTE.length - 1]
   return {
-    // Bearing is relative to travel direction: straight ahead is up on the wrist.
-    navBearing: round((bearing(point, destination) - courseDeg + 360) % 360),
-    navDistance: round(Math.max(15, ROUTE_LENGTH_M - alongM)),
+    ...(progress < ARRIVAL_AT
+      ? {
+          // Bearing is relative to travel direction: straight ahead is up on the wrist.
+          navBearing: round((bearing(point, destination) - courseDeg + 360) % 360),
+          navDistance: round(Math.max(15, ROUTE_LENGTH_M - alongM)),
+        }
+      : {}),
     riderEast: round(point.east),
     riderNorth: round(point.north),
     course: round(courseDeg),
@@ -395,7 +398,7 @@ function buildRide(): LaneSample[] {
       battery: round(estimateSoc(telemetry.batteryVoltage, telemetry.batteryCurrent, seriesCount)),
       motorTemp: telemetry.tempMotor === null ? null : round(telemetry.tempMotor),
       ctrlTemp: telemetry.tempMosfet === null ? null : round(telemetry.tempMosfet),
-      ...navLanes(progress),
+      ...mapLanes(progress),
     })
   }
   console.log(
@@ -422,7 +425,7 @@ function buildSweep(): LaneSample[] {
       battery: round(100 - p * 100),
       motorTemp: round(20 + p * 90),
       ctrlTemp: round(20 + p * 80),
-      ...navLanes(p * 0.5),
+      ...mapLanes(p * 0.5),
     })
   }
   for (let step = rampSteps; step >= 0; step--) {
@@ -433,7 +436,7 @@ function buildSweep(): LaneSample[] {
       battery: round(100 - p * 100),
       motorTemp: round(20 + p * 90),
       ctrlTemp: round(20 + p * 80),
-      ...navLanes(1 - p * 0.5),
+      ...mapLanes(1 - p * 0.5),
     })
   }
   for (let step = 0; step < 10; step++) {

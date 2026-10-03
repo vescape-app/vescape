@@ -10,7 +10,11 @@ import { theme, type ThemeColor } from '@/constants/theme'
  * components. Add new metrics here when they need an alert level.
  *
  * Consumers today: roster stat visibility, the live battery gauge hint, and the
- * per-metric alert seed values (see {@link DEFAULT_ALERT_SEEDS}).
+ * per-metric alert seed values (see {@link DEFAULT_ALERT_SEEDS}). Native mirrors the battery and
+ * temperature tiers for other Riders on the Watch Mirror.
+ *
+ * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/TelemetryThresholds.kt `TelemetryThresholds`
+ * @parity /modules/vescape-core/ios/telemetry/TelemetryThresholds.swift `TelemetryThresholds`
  */
 export const TELEMETRY_THRESHOLDS = {
   /** Battery SoC as a 0-1 fraction. */
@@ -43,6 +47,10 @@ export const TELEMETRY_THRESHOLDS = {
   },
 } as const
 
+/**
+ * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/TelemetryLevel.kt `TelemetryLevel`
+ * @parity /modules/vescape-core/ios/telemetry/TelemetryLevel.swift `TelemetryLevel`
+ */
 export type TelemetryLevel = 'normal' | 'warning' | 'critical'
 
 /** Color for a telemetry level — palette-sourced, single source of truth. */
@@ -73,12 +81,22 @@ function tierLevel(
   return 'normal'
 }
 
-/** Battery SoC level (soc is a 0-1 fraction, null/undefined → normal). */
+/**
+ * Battery SoC level (soc is a 0-1 fraction, null/undefined → normal).
+ *
+ * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/TelemetryThresholds.kt `batteryLevel`
+ * @parity /modules/vescape-core/ios/telemetry/TelemetryThresholds.swift `batteryLevel`
+ */
 export function batteryLevel(soc: number | null | undefined): TelemetryLevel {
   return tierLevel(soc, TELEMETRY_THRESHOLDS.battery, 'low')
 }
 
-/** Temperature level in °C (null/undefined → normal). */
+/**
+ * Temperature level in °C (null/undefined → normal).
+ *
+ * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/TelemetryThresholds.kt `tempLevel`
+ * @parity /modules/vescape-core/ios/telemetry/TelemetryThresholds.swift `tempLevel`
+ */
 export function tempLevel(tempC: number | null | undefined): TelemetryLevel {
   return tierLevel(tempC, TELEMETRY_THRESHOLDS.temp, 'high')
 }

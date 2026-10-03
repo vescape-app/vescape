@@ -1,5 +1,8 @@
 package app.vescape.wear
 
+import expo.modules.vescapecore.watch.WatchMapPosition
+import expo.modules.vescapecore.watch.WatchTrailPoint
+import expo.modules.vescapecore.watch.WatchTrailCodec
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
 
@@ -81,6 +84,8 @@ data class WatchFrame(
     /** Phone-commanded Remote Tilt, 0..255 with 128 neutral. Null without a board or on older phones. */
     val remoteTilt: Int? = null,
     val tiltControl: WatchTiltControl = WatchTiltControl.FREE,
+    val trail: List<WatchTrailPoint> = emptyList(),
+    val mapPosition: WatchMapPosition? = null,
 )
 
 /** Pure bytes -> [WatchFrame] decoder. Returns null on a short buffer or too few lanes. */
@@ -97,6 +102,7 @@ object WatchFrameDecoder {
             val value = buf.float
             if (index < lanes.size) lanes[index] = value.toDouble()
         }
+        val trail = WatchTrailCodec.decode(bytes, WATCH_FRAME_HEADER_BYTES + laneCount * 4)
         return WatchFrame(
             speed = lanes[0].orNull(),
             duty = lanes[1].orNull(),
@@ -113,6 +119,8 @@ object WatchFrameDecoder {
             routeSpanM = lanes[10].orNull(),
             remoteTilt = lanes[11].orNull()?.toInt()?.coerceIn(0, 255),
             tiltControl = WatchTiltControl.fromWire(lanes[12].orNull()),
+            trail = trail.points,
+            mapPosition = trail.position,
         )
     }
 

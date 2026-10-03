@@ -64,6 +64,7 @@ final class PhoneLink: NSObject, ObservableObject, WCSessionDelegate {
   ///
   /// @parity /watch/wearos/src/main/java/app/vescape/wear/WatchRoute.kt `RouteState`
   @Published private(set) var route: WatchRoute?
+  @Published private(set) var routeStatus: WatchRouteStatus?
 
   /// The board's two light switches, as last pushed. Cold state on the same merged context, so a
   /// wrist restart or a reconnect finds the current switches already there rather than a dead Lights
@@ -75,10 +76,11 @@ final class PhoneLink: NSObject, ObservableObject, WCSessionDelegate {
   /// @parity /watch/wearos/src/main/java/app/vescape/wear/WatchBoard.kt `BoardState`
   @Published private(set) var board = WatchBoardLights()
 
-  /// Bumped on every route change. The wrist's route animators are measured from the route's own
-  /// origin, so a replacement route moves the frame underneath them; this is what tells the view to
-  /// restart from the new numbers rather than glide across a jump that never happened.
-  @Published private(set) var routeGeneration = 0
+  /// The joined Group Ride, as last pushed; nil when the Rider is in none or the frames stopped.
+  /// Hot state like the Watch Frame, so it ages out in `refresh()` instead of surviving a restart.
+  ///
+  /// @parity /watch/wearos/src/main/java/app/vescape/wear/WatchGroupRide.kt `GroupRideState`
+  @Published private(set) var groupRide: WatchGroupRide?
 
   /// Latest wake level reported to the phone, and the heartbeat that keeps re-asserting it.
   private var wakeLevel: WatchMirrorWakeLevel = .asleep
@@ -90,12 +92,7 @@ final class PhoneLink: NSObject, ObservableObject, WCSessionDelegate {
   private var received = WatchFrameRate()
   private var applied = WatchFrameRate()
 
-  private var latestFrame: WatchFrame?
-  private var lastFrameAtMs: Int64?
-  /// Gap between the two most recent frames: the phone's push cadence, as actually observed. The
-  /// disconnect window is measured off it rather than assumed, so a rider-chosen slower cadence
-  /// does not pin the mirror offline.
-  private var frameGapMs: Int64?
+  private var intake = WatchMirrorIntake()
 
   var receivedHz: Double { received.hertz(nowMs: Self.nowMs()) }
   var appliedHz: Double { applied.hertz(nowMs: Self.nowMs()) }
@@ -236,13 +233,22 @@ final class PhoneLink: NSObject, ObservableObject, WCSessionDelegate {
   /// this off its own timeline, so the tick slows down in the Always On state with everything else.
   ///
   /// @parity /watch/wearos/src/main/java/app/vescape/wear/TelemetryState.kt `refresh`
+  /// @parity /watch/wearos/src/main/java/app/vescape/wear/WatchMirrorIntake.kt `refresh`
   func refresh() {
-    mirror = MirrorStateReducer.reduce(
-      frame: latestFrame,
-      lastFrameAtMs: lastFrameAtMs,
-      nowMs: Self.nowMs(),
-      timeoutMs: MirrorStateReducer.disconnectedTimeoutMs(frameGapMs: frameGapMs)
-    )
+    intake.refresh(nowMs: Self.nowMs())
+    publishIntake()
+  }
+
+  /// Views keep their individual subscriptions; all channel mutation lives in the intake.
+  private func publishIntake() {
+    if mirror != intake.mirror { mirror = intake.mirror }
+    if route != intake.route { route = intake.route }
+    if routeStatus != intake.routeStatus { routeStatus = intake.routeStatus }
+    if settings != intake.settings { settings = intake.settings }
+    // Weather equality deliberately ignores the refreshed-at stamp, but expiry cannot.
+    if weather != intake.weather || weather?.fetchedAtMs != intake.weather?.fetchedAtMs { weather = intake.weather }
+    if board != intake.board { board = intake.board }
+    if groupRide != intake.groupRide { groupRide = intake.groupRide }
   }
 
   /// The watch's own monotonic clock. A wall clock would let a phone time-sync jump the mirror
@@ -285,61 +291,64 @@ final class PhoneLink: NSObject, ObservableObject, WCSessionDelegate {
     }()
   }
 
-  /// Replay's way in, taking exactly the path a decoded phone frame takes. Anything narrower would
-  /// be replaying against a different code path than the one that ships, which is the one bug a
-  /// visual harness must not have.
-  ///
-  /// @parity /watch/wearos/src/main/java/app/vescape/wear/FrameReplay.kt `FrameReplayer`
+  /// Simulator inputs encode with the phone's codec before entering the live application path.
+  /// @parity /watch/wearos/src/main/java/app/vescape/wear/WatchMirrorReplayAdapter.kt
   @MainActor
   func acceptReplayFrame(_ frame: WatchFrame) {
-    let now = Date()
-    let nowMs = Self.nowMs()
-    received.record(nowMs: nowMs)
-    applied.record(nowMs: nowMs)
-    if let previous = lastFrameAtMs { frameGapMs = max(nowMs - previous, 0) }
-    latestFrame = frame
-    lastFrameAtMs = nowMs
-    lastFrameAt = now
-    diagnostics.recordFrame(nowMs: Self.wallClockMs())
-    refresh()
+    acceptTelemetry(WatchMirrorReplayAdapter.telemetry(frame), receivedAtMs: Self.nowMs(), receivedAt: Date())
   }
 
-  /// Replay uses the same route replacement and animation reset as phone updates.
-  /// @parity /watch/wearos/src/main/java/app/vescape/wear/FrameReplay.kt `loadScene`
+  @MainActor
+  func acceptReplayRouteStatus(_ status: WatchRouteStatus?) {
+    intake.acceptRouteStatus(status.map(WatchRouteStatusCodec.encode))
+    publishIntake()
+  }
+
   @MainActor
   func acceptReplayRoute(_ path: WatchRoute?) {
-    acceptRoute(path)
+    intake.acceptRoute(WatchMirrorReplayAdapter.route(path))
+    publishIntake()
   }
 
-  private func acceptRoute(_ path: WatchRoute?) {
-    if path != route {
-      route = path
-      routeGeneration += 1
-    }
+  @MainActor
+  func acceptReplayGroupRide(_ frame: GroupRideFrame) {
+    acceptGroupRide(GroupRideFrameCodec.encode(frame), receivedAtMs: Self.nowMs())
   }
 
-  /// Same forecast decoder as the phone context, without replacing unrelated channels.
-  /// @parity /watch/wearos/src/main/java/app/vescape/wear/FrameReplay.kt `loadScene`
   @MainActor
   func acceptReplayWeather(_ forecast: WatchWeather) {
-    weather = WatchWeather.decode(forecast.payload)
+    intake.acceptWeather(forecast.payload)
+    publishIntake()
   }
 
-  /// One context, several channels. Only the channels this build knows are read; the rest are the
-  /// phone's business, and a channel this build has never heard of must not look like a change.
-  ///
-  /// @parity /watch/wearos/src/main/java/app/vescape/wear/MainActivity.kt `dataListener`
+  @MainActor
+  func acceptReplaySettings(_ payload: [String: Any]) {
+    intake.acceptSettings(payload)
+    publishIntake()
+  }
+
   private func acceptColdState(_ context: [String: Any]) {
-    let next = WatchSettings.decode(context: context)
-    if next != settings { settings = next }
-    let forecast = WatchWeather.decode(context: context)
-    // Equality ignores `fetchedAtMs`, so a re-push of the same numbers must still land: the wrist
-    // ages a forecast off that stamp, and keeping the old one would retire weather the phone is
-    // still refreshing. Only an absent channel leaves the wrist with nothing.
-    if forecast != weather || forecast?.fetchedAtMs != weather?.fetchedAtMs { weather = forecast }
-    let lights = WatchBoardLights.decode(context: context)
-    if lights != board { board = lights }
-    acceptRoute(WatchRoute.decode(context: context))
+    intake.restoreColdState(context)
+    publishIntake()
+  }
+
+  private func acceptGroupRide(_ bytes: Data, receivedAtMs: Int64) {
+    intake.acceptGroupRide(bytes, receivedAtMs: receivedAtMs)
+    publishIntake()
+  }
+
+  /// Both paths preserve arrival versus application timing. Queued delivery cannot renew freshness.
+  private func acceptTelemetry(_ bytes: Data, receivedAtMs: Int64, receivedAt: Date) {
+    let appliedAtMs = Self.nowMs()
+    guard intake.acceptTelemetry(bytes, receivedAtMs: receivedAtMs, appliedAtMs: appliedAtMs) else {
+      diagnostics.recordDecodeFailure(byteCount: bytes.count, lanes: bytes.first, nowMs: Self.wallClockMs())
+      return
+    }
+    received.record(nowMs: receivedAtMs)
+    applied.record(nowMs: appliedAtMs)
+    lastFrameAt = receivedAt
+    diagnostics.recordFrame(nowMs: Self.wallClockMs())
+    publishIntake()
   }
 
   /// The pushed forecast while it is still worth believing, else nil.
@@ -378,30 +387,28 @@ final class PhoneLink: NSObject, ObservableObject, WCSessionDelegate {
     DispatchQueue.main.async { self.syncCounterpart(session) }
   }
 
-  func session(_ session: WCSession, didReceiveMessageData messageData: Data) {
-    let now = Date()
-    let nowMs = Self.nowMs()
-    // Timestamped on arrival, off the main queue, so a busy or throttled UI cannot make the received
-    // rate look slower than it was. That distinction is the whole point of measuring both.
-    guard let decoded = WatchFrameBuilder.decode(messageData) else {
-      let byteCount = messageData.count
-      let lanes = messageData.first
+  /// Group Ride Frames (ADR-0039), on their own message key. A frame this build cannot read (another
+  /// wire version) is dropped; the group then times out rather than drawing something misread.
+  ///
+  /// @parity /watch/wearos/src/main/java/app/vescape/wear/MainActivity.kt `listener`
+  func session(_ session: WCSession, didReceiveMessage message: [String: Any]) {
+    let receivedAtMs = Self.nowMs()
+    if let bytes = message[watchRouteStatusMessageKey] as? Data {
       DispatchQueue.main.async {
-        self.diagnostics.recordDecodeFailure(
-          byteCount: byteCount, lanes: lanes, nowMs: Self.wallClockMs()
-        )
+        self.intake.acceptRouteStatus(bytes)
+        self.publishIntake()
       }
       return
     }
+    guard let bytes = message[watchGroupRideMessageKey] as? Data else { return }
+    DispatchQueue.main.async { self.acceptGroupRide(bytes, receivedAtMs: receivedAtMs) }
+  }
+
+  func session(_ session: WCSession, didReceiveMessageData messageData: Data) {
+    let receivedAt = Date()
+    let receivedAtMs = Self.nowMs()
     DispatchQueue.main.async {
-      self.received.record(nowMs: nowMs)
-      self.applied.record(nowMs: Self.nowMs())
-      if let previous = self.lastFrameAtMs { self.frameGapMs = max(nowMs - previous, 0) }
-      self.latestFrame = decoded
-      self.lastFrameAtMs = nowMs
-      self.lastFrameAt = now
-      self.diagnostics.recordFrame(nowMs: Self.wallClockMs())
-      self.refresh()
+      self.acceptTelemetry(messageData, receivedAtMs: receivedAtMs, receivedAt: receivedAt)
     }
   }
 }

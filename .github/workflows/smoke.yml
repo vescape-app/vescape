@@ -1,13 +1,7 @@
-# Smoke run on a hosted emulator.
-#
-# Post-merge signal on `dev`, not a PR gate. The run takes ~13 minutes and drives a live UI over a
-# software-rendered emulator, so it is the kind of check that earns a gate slot by proving it does
-# not flake — until then a red `dev` run is a page, not a block.
+# Build each platform once, then run each flow with an isolated fixture session.
 name: Smoke
 
 on:
-  # Only what can change what the app does on screen. Docs, release notes and the Wear module cannot
-  # move these flows, and a smoke run they cannot fail is 13 minutes of noise.
   push:
     branches: [dev]
     paths:
@@ -29,205 +23,268 @@ on:
         description: Single flow to run (e.g. 03-history). Empty runs all of them.
         required: false
         type: string
+      platform:
+        description: Platform to verify
+        type: choice
+        default: both
+        options: [both, android, ios]
 
-# Queue rather than supersede: this is a post-merge signal, and the question it has to answer is
-# which merge broke the flows. Cancelling in favour of the tip would leave exactly the commits that
-# need a verdict without one, and the attribution has to be redone by hand.
+# Finish the active run and keep the latest pending run. Jobs within a run execute in parallel.
 concurrency:
   group: smoke-${{ github.ref }}
   cancel-in-progress: false
 
 jobs:
-  smoke:
-    name: Fixture session smoke run (Android)
-    # Blacksmith x64 Linux runner: nested virtualisation is supported, so the emulator gets KVM.
-    # 8 vCPU / 32 GB is sized for the release Gradle build (the long pole) sharing the box with an
-    # emulator that wants ~4 GB to itself; the 160 GB disk also fits the SDK + NDK + Gradle caches.
-    runs-on: blacksmith-8vcpu-ubuntu-2404
-    timeout-minutes: 60
+  plan:
+    runs-on: ubuntu-24.04
+    outputs:
+      flows: ${{ steps.flows.outputs.flows }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+      - run: bun install --frozen-lockfile
+      - id: flows
+        env:
+          SMOKE_FLOW: ${{ inputs.flow }}
+        run: |
+          args=(--list-flows)
+          if [ -n "$SMOKE_FLOW" ]; then args+=(--flow "$SMOKE_FLOW"); fi
+          flows=$(bun run scripts/smoke.ts "${args[@]}")
+          echo "flows=$flows" >> "$GITHUB_OUTPUT"
 
-    # `fixtureBuildEnv` spreads the ambient environment into the build, so everything the app needs
-    # baked in is set once here and reaches both `expo prebuild` and Gradle. No keystore: without
-    # `VESCAPE_UPLOAD_STORE_FILE` the release variant falls back to debug signing
-    # (`plugins/withAndroidSigningConfig.ts`), which is all an emulator run needs.
+  build-android:
+    name: Build Android smoke APK
+    needs: plan
+    if: inputs.platform != 'ios'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
     env:
       EXPO_PUBLIC_SERVER_URL: https://api.vescape.app
       EXPO_PUBLIC_MAPBOX_ACCESS_TOKEN: ${{ secrets.EXPO_PUBLIC_MAPBOX_ACCESS_TOKEN }}
       EXPO_PUBLIC_GOOGLE_MAPS_API_KEY: ${{ secrets.EXPO_PUBLIC_GOOGLE_MAPS_API_KEY }}
       EXPO_PUBLIC_MAPY_API_KEY: ${{ secrets.EXPO_PUBLIC_MAPY_API_KEY }}
       EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY: ${{ secrets.EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY }}
-      # The release variant runs Sentry's sourcemap upload task, which fails without an org. This
-      # build is thrown away with the emulator, so it has no release to publish — the fix is to skip
-      # the upload rather than to hand CI a Sentry token for an artifact nobody will ever symbolicate.
       SENTRY_DISABLE_AUTO_UPLOAD: 'true'
-      # The emulator is x86_64, so the other three ABIs are compiled and then thrown away. Each one
-      # is a full CMake build of the app plus every native module, and together they dominate the
-      # run. `android/` is prebuild-generated, so the override has to arrive as a project property
-      # from the environment rather than as an edit to `android/gradle.properties`.
       ORG_GRADLE_PROJECT_reactNativeArchitectures: x86_64
-      GRADLE_OPTS: -Dorg.gradle.caching=true
-
+      GRADLE_OPTS: -Dorg.gradle.caching=true -Dorg.gradle.daemon=false
     steps:
       - uses: actions/checkout@v4
-
-      # Expo reads `app.config.ts` through `require(esm)` + `module.stripTypeScriptTypes`, neither of
-      # which exists on the Node 20 the runner image ships. Pinned everywhere else in CI for the
-      # same reason.
       - uses: actions/setup-node@v4
         with:
           node-version: '24'
-
       - uses: oven-sh/setup-bun@v2
         with:
           bun-version: latest
-
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: '17'
-
-      # Split restore/save rather than the combined action: the whole point of this workflow is to
-      # fail on a bad build, and the combined action skips its save step when the job fails — which
-      # would leave every run cold for exactly as long as the flows are red.
-      - uses: useblacksmith/cache/restore@v5
+      - uses: actions/cache/restore@v5
         id: gradle-cache
         with:
           path: |
             ~/.gradle/caches
             ~/.gradle/wrapper
-          key: gradle-smoke-${{ runner.os }}-${{ hashFiles('bun.lock', 'app.config.ts') }}
+          key: gradle-smoke-${{ runner.os }}-${{ hashFiles('bun.lock', 'app.config.ts') }}-${{ github.sha }}
           restore-keys: |
+            gradle-smoke-${{ runner.os }}-${{ hashFiles('bun.lock', 'app.config.ts') }}-
             gradle-smoke-${{ runner.os }}-
-
       - uses: android-actions/setup-android@v3
         with:
           packages: ''
-
-      # The SDK download, the JS install and the Maestro install share nothing, so they overlap.
-      - parallel:
-          - name: Install Android SDK components
-            run: sdkmanager "platforms;android-36" "build-tools;36.0.0" "ndk;27.1.12297006"
-          - name: Install dependencies
-            run: bun install
-          - name: Install Maestro
-            run: |
-              curl -Ls https://get.maestro.mobile.dev | bash
-              echo "$HOME/.maestro/bin" >> "$GITHUB_PATH"
-
-      # The emulator is unusably slow without nested virtualisation, and the runner does not grant
-      # access to /dev/kvm by default. Kept while the Blacksmith move is unproven — drop it once a
-      # run shows /dev/kvm is already world-writable there.
-      - name: Enable KVM
-        run: |
-          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' \
-            | sudo tee /etc/udev/rules.d/99-kvm4all.rules
-          sudo udevadm control --reload-rules
-          sudo udevadm trigger --name-match=kvm
-
-      # `scripts/smoke.ts` owns everything device-side — the Release build, install, fixture push,
-      # permission grants, location pin, flow order. The workflow only supplies a booted emulator,
-      # so the CI run and a local one cannot drift apart.
-      - name: Run smoke flows
-        uses: reactivecircus/android-emulator-runner@v2
+      - name: Install Android SDK components
+        run: sdkmanager "platforms;android-36" "build-tools;36.0.0" "ndk;27.1.12297006"
+      - run: bun install --frozen-lockfile
+      - name: Build without an emulator
+        run: bun run smoke --build-only --output .expo/smoke/app.apk
+      - uses: actions/upload-artifact@v4
         with:
-          api-level: 34
-          target: google_apis
-          arch: x86_64
-          profile: pixel_6
-          # No GPU on a hosted runner. Mapbox has to render through software GL, which is the part
-          # of this run least likely to survive the move off a real device.
-          emulator-options: >-
-            -no-window -no-snapshot -no-boot-anim -gpu swiftshader_indirect
-            -noaudio -camera-back none
-          disable-animations: false
-          script: bun run smoke --device emulator-5554 ${{ inputs.flow && format('--flow {0}', inputs.flow) || '' }}
-
+          name: smoke-android-app
+          path: .expo/smoke/app.apk
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 1
       - name: Save Gradle cache
         if: always() && steps.gradle-cache.outputs.cache-hit != 'true'
-        uses: useblacksmith/cache/save@v5
+        uses: actions/cache/save@v5
         with:
           path: |
             ~/.gradle/caches
             ~/.gradle/wrapper
           key: ${{ steps.gradle-cache.outputs.cache-primary-key }}
 
-      # Maestro writes a screenshot and a view hierarchy dump per failed step, which is the only way
-      # to tell a real regression from a slow-runner race without reproducing it locally.
-      - name: Upload Maestro debug output
-        if: failure()
-        uses: actions/upload-artifact@v4
-        with:
-          name: maestro-debug
-          path: ~/.maestro/tests/
-          if-no-files-found: warn
-
-  # The iOS half of the same run: same `scripts/smoke.ts`, same flow files, a Release simulator
-  # build instead of a Release APK. It is also the only place the app itself is built for iOS —
-  # `bun run test:ios` compiles the module tree, not the Pods, the config plugins or the extensions.
-  smoke-ios:
-    name: Fixture session smoke run (iOS)
-    runs-on: blacksmith-6vcpu-macos-26
+  build-ios:
+    name: Build iOS smoke app
+    needs: plan
+    if: inputs.platform != 'android'
+    runs-on: macos-26
     timeout-minutes: 60
-
     env:
       EXPO_PUBLIC_SERVER_URL: https://api.vescape.app
       EXPO_PUBLIC_MAPBOX_ACCESS_TOKEN: ${{ secrets.EXPO_PUBLIC_MAPBOX_ACCESS_TOKEN }}
       EXPO_PUBLIC_GOOGLE_MAPS_API_KEY: ${{ secrets.EXPO_PUBLIC_GOOGLE_MAPS_API_KEY }}
       EXPO_PUBLIC_MAPY_API_KEY: ${{ secrets.EXPO_PUBLIC_MAPY_API_KEY }}
       EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY: ${{ secrets.EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY }}
-      # Same reason as the Android job: this build is thrown away with the simulator, so there is no
-      # release for the symbols to belong to.
       SENTRY_DISABLE_AUTO_UPLOAD: 'true'
-
     steps:
       - uses: actions/checkout@v4
-
       - uses: actions/setup-node@v4
         with:
           node-version: '24'
-
       - uses: oven-sh/setup-bun@v2
         with:
           bun-version: latest
-
-      - uses: useblacksmith/cache/restore@v5
+      - id: xcode
+        run: echo "version=$(xcodebuild -version | shasum -a 256 | cut -d ' ' -f 1)" >> "$GITHUB_OUTPUT"
+      - uses: actions/cache/restore@v5
         id: pods-cache
         with:
           path: |
             ~/Library/Caches/CocoaPods
             ~/.cocoapods/repos
-          key: pods-smoke-${{ runner.os }}-${{ hashFiles('bun.lock', 'app.config.ts') }}
+            ios/Pods
+          key: ios-smoke-pods-${{ runner.arch }}-${{ steps.xcode.outputs.version }}-${{ hashFiles('bun.lock', 'app.config.ts', 'plugins/**') }}-${{ github.sha }}
           restore-keys: |
-            pods-smoke-${{ runner.os }}-
-
-      - parallel:
-          - name: Install dependencies
-            run: bun install
-          - name: Install Maestro
-            run: |
-              curl -Ls https://get.maestro.mobile.dev | bash
-              echo "$HOME/.maestro/bin" >> "$GITHUB_PATH"
-
-      # `scripts/smoke.ts` owns the simulator boot, the Release build, the fixture staging and the
-      # flow order, exactly as it does locally — the workflow only names the device.
-      - name: Run smoke flows
-        run: >-
-          bun run smoke --platform ios --device 'iPhone 17'
-          ${{ inputs.flow && format('--flow {0}', inputs.flow) || '' }}
-
+            ios-smoke-pods-${{ runner.arch }}-${{ steps.xcode.outputs.version }}-${{ hashFiles('bun.lock', 'app.config.ts', 'plugins/**') }}-
+      - run: bun install --frozen-lockfile
+      - name: Build without a simulator
+        run: bun run smoke --platform ios --build-only --output .expo/smoke/vescape.app
+      # A tar archive preserves the executable permissions and symlinks inside the app bundle.
+      - name: Package simulator app
+        run: tar -czf "$RUNNER_TEMP/smoke-ios.tar.gz" -C .expo/smoke vescape.app
+      - uses: actions/upload-artifact@v4
+        with:
+          name: smoke-ios-app
+          path: ${{ runner.temp }}/smoke-ios.tar.gz
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 1
       - name: Save CocoaPods cache
         if: always() && steps.pods-cache.outputs.cache-hit != 'true'
-        uses: useblacksmith/cache/save@v5
+        uses: actions/cache/save@v5
         with:
           path: |
             ~/Library/Caches/CocoaPods
             ~/.cocoapods/repos
+            ios/Pods
           key: ${{ steps.pods-cache.outputs.cache-primary-key }}
 
+  smoke-android:
+    name: Android / ${{ matrix.flow }}
+    needs: [plan, build-android]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        flow: ${{ fromJSON(needs.plan.outputs.flows) }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - run: bun install --frozen-lockfile
+      - uses: actions/download-artifact@v4
+        with:
+          name: smoke-android-app
+          path: .expo/smoke
+      - name: Install Maestro
+        run: |
+          curl -Ls https://get.maestro.mobile.dev | bash
+          echo "$HOME/.maestro/bin" >> "$GITHUB_PATH"
+      - name: Enable KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' \
+            | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+      - name: Run isolated flow
+        timeout-minutes: 15
+        uses: reactivecircus/android-emulator-runner@v2
+        env:
+          SMOKE_FLOW: ${{ matrix.flow }}
+        with:
+          api-level: 34
+          target: google_apis
+          arch: x86_64
+          profile: pixel_6
+          # Keep the Pixel 6 layout in dp while reducing software-rendered pixels by 56%.
+          pre-emulator-launch-script: >-
+            sed -i
+            -e 's/^hw.lcd.width=.*/hw.lcd.width=720/'
+            -e 's/^hw.lcd.height=.*/hw.lcd.height=1600/'
+            -e 's/^hw.lcd.density=.*/hw.lcd.density=280/'
+            "$HOME/.android/avd/test.avd/config.ini"
+          emulator-options: >-
+            -no-window -no-snapshot -no-boot-anim -gpu swiftshader_indirect
+            -noaudio -camera-back none
+          disable-animations: false
+          script: |
+            adb -s emulator-5554 shell wm size
+            adb -s emulator-5554 shell wm density
+            bun run smoke --app .expo/smoke/app.apk --device emulator-5554 --flow "$SMOKE_FLOW"
       - name: Upload Maestro debug output
-        if: failure()
+        if: failure() || cancelled()
         uses: actions/upload-artifact@v4
         with:
-          name: maestro-debug-ios
+          name: maestro-debug-android-${{ matrix.flow }}
           path: ~/.maestro/tests/
           if-no-files-found: warn
+          retention-days: 3
+
+  smoke-ios:
+    name: iOS / ${{ matrix.flow }}
+    needs: [plan, build-ios]
+    runs-on: macos-26
+    timeout-minutes: 25
+    strategy:
+      fail-fast: false
+      matrix:
+        flow: ${{ fromJSON(needs.plan.outputs.flows) }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - run: bun install --frozen-lockfile
+      - uses: actions/download-artifact@v4
+        with:
+          name: smoke-ios-app
+          path: .expo/smoke
+      - name: Unpack simulator app
+        run: tar -xzf .expo/smoke/smoke-ios.tar.gz -C .expo/smoke
+      - name: Install Maestro
+        run: |
+          curl -Ls https://get.maestro.mobile.dev | bash
+          echo "$HOME/.maestro/bin" >> "$GITHUB_PATH"
+      - name: Run isolated flow
+        # Include fresh simulator startup and Maestro's XCTest shutdown, not just assertions.
+        timeout-minutes: 20
+        env:
+          SMOKE_FLOW: ${{ matrix.flow }}
+          # A fresh hosted simulator can take over two minutes to start XCTest.
+          MAESTRO_DRIVER_STARTUP_TIMEOUT: '300000'
+        run: >-
+          bun run smoke --platform ios --app .expo/smoke/vescape.app
+          --device 'iPhone 17' --flow "$SMOKE_FLOW"
+      - name: Upload Maestro debug output
+        if: failure() || cancelled()
+        uses: actions/upload-artifact@v4
+        with:
+          name: maestro-debug-ios-${{ matrix.flow }}
+          path: ~/.maestro/tests/
+          if-no-files-found: warn
+          retention-days: 3

@@ -740,8 +740,8 @@ public class VescapeCoreModule: Module {
     }
 
     AsyncFunction("stopBoard") { (promise: Promise) in
-      DispatchQueue.main.async {
-        BoardSessionCommands.stopRide()
+      Task { @MainActor in
+        await BoardSessionCommands.stopRide()
         promise.resolve(nil)
       }
     }

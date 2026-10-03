@@ -24,6 +24,44 @@ final class WatchGaugeTests: XCTestCase {
     return ReplayFixtureParser.parse(text: text)
   }
 
+
+  func testRideFixtureKeepsMovingAndShowingItsTrailAfterNavigationEnds() throws {
+    let text = try String(contentsOf: Self.fixtures.appendingPathComponent("watch-ride.jsonl"), encoding: .utf8)
+    for wander in [false, true] {
+      let samples = ReplayFixtureParser.parse(text: text, wander: wander)
+      let arrival = try XCTUnwrap(samples.firstIndex { $0.frame.navBearing == nil })
+      XCTAssertGreaterThan(arrival, 0)
+      let after = samples.dropFirst(arrival)
+      XCTAssertFalse(after.isEmpty)
+      XCTAssertTrue(after.allSatisfy { $0.frame.mapPosition != nil && $0.frame.trail.count > 1 })
+      XCTAssertNotEqual(after.first?.frame.mapPosition, after.last?.frame.mapPosition)
+    }
+  }
+
+  func testSeededDetoursMoveSmoothlyOffRouteThenRejoinAndTrailFollowsActualPositions() throws {
+    let lines = (0...240).map { i in
+      "{\"t\":\(i * 500),\"speed\":21.6,\"riderEast\":0,\"riderNorth\":\(i * 3),\"course\":0,\"navBearing\":0,\"navDistance\":2000}"
+    }
+    let straight = ReplayFixtureParser.parse(lines)
+    let detour = ReplayFixtureParser.parse(lines, wander: true)
+    XCTAssertEqual(detour.map(\.frame), ReplayFixtureParser.parse(lines, wander: true).map(\.frame))
+    XCTAssertEqual(straight.first?.frame, detour.first?.frame)
+    XCTAssertEqual(detour.last?.frame.riderEastM, 0)
+    XCTAssertEqual(detour.last?.frame.riderNorthM, 720)
+    XCTAssertTrue(detour.contains { abs($0.frame.riderEastM!) > 15 })
+    XCTAssertTrue(detour.contains { abs($0.frame.courseDeg!) > 5 })
+    for i in 1..<detour.count {
+      let frame = detour[i].frame
+      let previous = detour[i - 1].frame
+      XCTAssertLessThan(hypot(frame.riderEastM! - previous.riderEastM!, frame.riderNorthM! - previous.riderNorthM!), 5)
+      XCTAssertEqual(frame.navBearing, straight[i].frame.navBearing)
+      XCTAssertEqual(frame.trail.first!.eastM, -frame.riderEastM!, accuracy: 0.0001)
+      XCTAssertEqual(frame.trail.first!.northM, -frame.riderNorthM!, accuracy: 0.0001)
+      XCTAssertEqual(frame.trail.last!.eastM, 0)
+      XCTAssertEqual(frame.trail.last!.northM, 0)
+    }
+  }
+
   func testReplayRouteMatchesSharedRiderCoordinates() throws {
     let json = try String(
       contentsOf: Self.fixtures.appendingPathComponent("watch-route.json"), encoding: .utf8

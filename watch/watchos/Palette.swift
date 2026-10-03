@@ -18,6 +18,12 @@ enum Palette {
   static let ctrlTemp = Color(red: 0.976, green: 0.451, blue: 0.086)  // orange #F97316
   static let battery = Color(red: 0.133, green: 0.773, blue: 0.369)  // green #22C55E
   static let warning = Color(red: 0.976, green: 0.451, blue: 0.086)  // orange #F97316
+  static let critical = Color(red: 0.937, green: 0.267, blue: 0.267)  // red #EF4444 (status.error)
+
+  /// Phone live-trail violet, used until the Rider chooses a colour.
+  /// @parity /watch/wearos/src/main/java/app/vescape/wear/Palette.kt `TrailColor`
+  /// @parity /src/constants/theme.ts `accentColors.dark.violet`
+  static let trail = Color(red: 124.0 / 255, green: 111.0 / 255, blue: 239.0 / 255)
 
   /// Navigation accent, used when the rider has not picked a colour of their own.
   ///
@@ -72,5 +78,29 @@ enum Palette {
   static func battery(for value: Double?) -> Color {
     guard let value else { return secondaryText }
     return value < WatchGauge.batteryWarningPercent ? warning : battery
+  }
+
+  /// A level the phone classified, as its colour; normal has none, so the caller keeps its own.
+  ///
+  /// @parity /watch/wearos/src/main/java/app/vescape/wear/Palette.kt `telemetryLevelColor`
+  static func level(_ level: TelemetryLevel) -> Color? {
+    switch level {
+    case .normal: return nil
+    case .warning: return warning
+    case .critical: return critical
+    }
+  }
+}
+
+extension Color {
+  /// A packed 0xAARRGGBB colour, the form Group Ride Frames carry Rider colours in.
+  init(argb: UInt32) {
+    self.init(
+      .sRGB,
+      red: Double((argb >> 16) & 0xFF) / 255,
+      green: Double((argb >> 8) & 0xFF) / 255,
+      blue: Double(argb & 0xFF) / 255,
+      opacity: Double((argb >> 24) & 0xFF) / 255
+    )
   }
 }

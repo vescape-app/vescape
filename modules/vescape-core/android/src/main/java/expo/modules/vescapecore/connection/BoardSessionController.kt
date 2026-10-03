@@ -82,22 +82,16 @@ import expo.modules.vescapecore.protocol.VescPacketReassembler
 import expo.modules.vescapecore.navigation.NavigationController
 import expo.modules.vescapecore.watch.GeoPoint
 import expo.modules.vescapecore.watch.WatchBoard
-import expo.modules.vescapecore.watch.WatchBoardPusher
+import expo.modules.vescapecore.watch.androidWatchMirror
 import expo.modules.vescapecore.watch.WatchLightsRelay
 import expo.modules.vescapecore.watch.WatchLightsSwitch
-import expo.modules.vescapecore.watch.WatchMirrorLauncher
-import expo.modules.vescapecore.watch.WATCH_MIRROR_AWAKE_TIMEOUT_MS
-import expo.modules.vescapecore.watch.WatchMirrorPresence
+import expo.modules.vescapecore.watch.GroupRideFrame
+import expo.modules.vescapecore.watch.GroupRideFrameBuilder
 import expo.modules.vescapecore.watch.WatchMirrorWakeLevel
 import expo.modules.vescapecore.watch.WatchMoveRelay
 import expo.modules.vescapecore.watch.WatchRouteMirror
-import expo.modules.vescapecore.watch.WatchSettingsPusher
 import expo.modules.vescapecore.watch.WatchSnapshot
-import expo.modules.vescapecore.watch.WatchTelemetryPusher
-import expo.modules.vescapecore.watch.WatchTick
 import expo.modules.vescapecore.watch.WatchTiltControl
-import expo.modules.vescapecore.watch.WatchWeatherPusher
-import expo.modules.vescapecore.watch.toWatchWeather
 import expo.modules.vescapecore.weather.Weather
 import expo.modules.vescapecore.weather.WeatherCoordinator
 import expo.modules.vescapecore.watch.offsetMeters
@@ -184,10 +178,6 @@ private const val NOTIFICATION_ID = 1001
 private const val HISTORY_FLUSH_INTERVAL_MS = 300L
 private const val LIVE_SERIES_INTERVAL_MS = 1_000L
 private const val LIVE_SERIES_BUCKETS = 64
-private const val WATCH_FRAME_INTERVAL_MS = 250L
-
-/** Push cadence while the Mirror sits in ambient/AOD, where the wrist itself redraws about once a minute. */
-private const val WATCH_FRAME_AMBIENT_INTERVAL_MS = 5_000L
 private const val NOTIFICATION_TELEMETRY_INTERVAL_MS = 10_000L
 /** Sentinel active fault code meaning "state not yet established this Board Session". */
 private const val FAULT_CODE_UNKNOWN = -1
@@ -378,25 +368,14 @@ internal class BoardSessionController(private val service: CoreForegroundService
             speed = { sessionClock.speed },
         )
     }
-    private val watchPusher by lazy {
-        WatchTelemetryPusher(service.applicationContext, CoreForegroundService.appDataScope, ::recordWatchDiagnostic)
-    }
-    private val watchSettingsPusher by lazy {
-        WatchSettingsPusher.get(service.applicationContext, CoreForegroundService.appDataScope)
-    }
-    private val watchWeatherPusher by lazy {
-        WatchWeatherPusher(service.applicationContext, CoreForegroundService.appDataScope, ::recordWatchDiagnostic)
-    }
-    private val watchBoardPusher by lazy {
-        WatchBoardPusher(service.applicationContext, CoreForegroundService.appDataScope, ::recordWatchDiagnostic)
+    private val watchMirror by lazy {
+        androidWatchMirror(
+            service.applicationContext, CoreForegroundService.appDataScope, scheduler,
+            ::watchSnapshot, { telemetry != null && isTelemetryStale() }, ::groupRideFrame, ::recordWatchDiagnostic,
+        )
     }
     private val weatherCoordinator = WeatherCoordinator.get()
-
-    /** Removes this controller's weather subscription; a restarted service must not stack them. */
     private var weatherUnsubscribe: (() -> Unit)? = null
-    private val watchMirrorPresence by lazy {
-        WatchMirrorPresence(service.applicationContext, CoreForegroundService.appDataScope, ::recordWatchDiagnostic)
-    }
     private val watchMoveRelay by lazy {
         WatchMoveRelay(
             scheduler = scheduler,
@@ -412,19 +391,6 @@ internal class BoardSessionController(private val service: CoreForegroundService
             currentLights = { boardLights },
             setLights = ::setBoardLights,
             record = ::recordWatchDiagnostic,
-        )
-    }
-    private val watchMirrorLauncher by lazy {
-        WatchMirrorLauncher(service.applicationContext, CoreForegroundService.appDataScope, ::recordWatchDiagnostic)
-    }
-    private val watchTick by lazy {
-        WatchTick(
-            scheduler = scheduler,
-            snapshot = ::watchSnapshot,
-            isStale = { telemetry != null && isTelemetryStale() },
-            canPush = ::canPushWatchFrame,
-            push = watchPusher::pushFrame,
-            intervalMs = WATCH_FRAME_INTERVAL_MS,
         )
     }
     private val locationTracker by lazy {
@@ -753,7 +719,7 @@ internal class BoardSessionController(private val service: CoreForegroundService
      * foreground service, and must not spam diagnostics per frame — so each site reports at most once
      * per session. Touched from the BMS hot path (main scheduler) and the app-data IO scope, so kept
      * thread-safe. Reset in [beginSession].
-     * @parity /modules/vescape-core/ios/warnings/BoardWarningStore.swift `BoardWarningFailureReporter`
+     * @parity /modules/vescape-core/ios/warnings/BoardWarningFailureReporter.swift `BoardWarningFailureReporter`
      */
     private val warningFailuresReported = java.util.Collections.synchronizedSet(HashSet<String>())
     /**
@@ -799,8 +765,6 @@ internal class BoardSessionController(private val service: CoreForegroundService
     private var connectionSoundsEnabled = true
     @Volatile
     private var lastAppliedSettings = AppSettings()
-private var wearAutoLaunchOnConnect = true
-    private var watchLaunchFiredSessionId = 0L
     /**
      * Board Move strength the wrist inherits: the wrist sends a direction, the phone owns the scale.
      * Written from the settings load (`appDataScope`), read on the session scheduler by the relay.
@@ -835,8 +799,7 @@ private var wearAutoLaunchOnConnect = true
         refreshSelectedBoardName()
         // The wrist mirrors the phone, not the board session. Keep presence + frames alive while
         // this service owns GPS/navigation even when no board is selected or connected.
-        watchMirrorPresence.start()
-        watchTick.start()
+        watchMirror.start()
         weatherUnsubscribe = weatherCoordinator.addChangeListener(::onWeatherChanged)
         // The forecast survives a service restart, so replay what is already known rather than
         // leaving the wrist blank until the rider moves a kilometre.
@@ -1007,8 +970,7 @@ private var wearAutoLaunchOnConnect = true
     fun onServiceDestroy() {
         weatherUnsubscribe?.invoke()
         weatherUnsubscribe = null
-        watchTick.stop()
-        watchMirrorPresence.stop()
+        watchMirror.stop()
         watchMoveRelay.cancel()
         autoCloseHandle?.cancel()
         autoCloseHandle = null
@@ -1956,7 +1918,7 @@ private var wearAutoLaunchOnConnect = true
      * Refloat cache there is no scope key to match on up front — the board's MCCONF signature is not
      * known until it answers — so the latest row is restored optimistically and replaced when the
      * session's own read lands under whatever signature the board reports.
-     * @parity /modules/vescape-core/ios/connection/BoardSessionController.swift `restoreMotorConfigValues`
+     * @parity /modules/vescape-core/ios/connection/BoardSessionController.swift `beginSession`
      */
     private fun restoreMotorConfigValues(config: SessionConfig) {
         val boardId = config.appBoardId ?: return
@@ -2336,9 +2298,7 @@ private var wearAutoLaunchOnConnect = true
     /** Latest cold-path snapshot: board lanes are empty without telemetry; navigation stays live. */
     private fun watchSnapshot(): WatchSnapshot {
         val current = telemetry
-        // Nav lanes are all-or-nothing: without Route Progress there is nothing to navigate by, and
-        // sending a rider position or a course alone would only place a dot on a route the wrist is
-        // not drawing. All five null is what hides the wrist overlay.
+        // Navigation lanes require Route Progress; course and trail stay live independently.
         val progress = NavigationController.get(service.applicationContext).currentProgress
         val origin = WatchRouteMirror.origin
         val rider = locationTracker.riderPosition
@@ -2363,10 +2323,34 @@ private var wearAutoLaunchOnConnect = true
             riderNorthM = offset?.second,
             // Absolute course, the rotation the wrist applies to its north-up world. Null while the
             // fix carries no usable heading, which leaves the wrist drawing the route north-up.
-            courseDeg = if (offset != null) rider?.courseDeg else null,
+            courseDeg = rider?.courseDeg,
             routeSpanM = WatchRouteMirror.viewportSpanM,
             remoteTilt = if (current != null) remoteTiltController.currentValue else null,
             tiltControl = watchTiltControl(),
+            mapPosition = rider?.let { expo.modules.vescapecore.watch.WatchMapPosition(it.latitude, it.longitude) },
+            trail = expo.modules.vescapecore.watch.watchTrail(
+                rider?.let { GeoPoint(it.latitude, it.longitude) },
+                locationTracker.recentLocations(),
+            ),
+        )
+    }
+
+    /**
+     * The joined Group Ride as the wrist draws it, or null while the Rider is not in one. Measured
+     * from the Rider's latest GPS Fix, never from Board telemetry, so it needs no Board Session.
+     *
+     * @parity /modules/vescape-core/ios/connection/BoardSessionController.swift `groupRideFrame`
+     */
+    private fun groupRideFrame(): GroupRideFrame? {
+        val roster = groupRideObserver.joinedRoster ?: return null
+        val rider = locationTracker.riderPosition
+        return GroupRideFrameBuilder.build(
+            roster = roster,
+            own = rider?.let { GeoPoint(it.latitude, it.longitude) },
+            // The course survives a stop on the phone, so heading-up holds the last direction.
+            courseDeg = rider?.courseDeg,
+            spanM = WatchRouteMirror.viewportSpanM,
+            nowMs = System.currentTimeMillis(),
         )
     }
 
@@ -2467,23 +2451,11 @@ private var wearAutoLaunchOnConnect = true
         )
         boardConfig?.let { recordingCoordinator.markBoardReady(it) }
         if (connectionSoundsEnabled) alertFeedback.playConnect()
-        maybeLaunchWatchMirror()
+        watchMirror.boardConnected(currentSessionId)
         // Telemetry is flowing again: a reconnect that landed inside the grace restores a full ride,
         // and one that landed outside it raises demand back to `Ride`.
         setLinkLost(false)
         transitionBoardPhase(BoardPhase.Connected)
-    }
-
-    /**
-     * Fresh connects only: at most once per BoardSession, so mid-ride auto-reconnects and
-     * Stale -> Connected recoveries (same session id) never re-wake the watch.
-     */
-    private fun maybeLaunchWatchMirror() {
-        if (!wearAutoLaunchOnConnect || !watchMirrorPresence.present) return
-        val sessionId = currentSessionId
-        if (sessionId == watchLaunchFiredSessionId) return
-        watchLaunchFiredSessionId = sessionId
-        watchMirrorLauncher.launch()
     }
 
     /** @parity /modules/vescape-core/ios/connection/BoardSessionController.swift `onTelemetryStaleFired` */
@@ -2621,7 +2593,7 @@ private var wearAutoLaunchOnConnect = true
      * phone silently refuses. The pusher deduplicates, so the extra calls cost nothing on the wire.
      */
     private fun pushWatchBoard() {
-        watchBoardPusher.push(
+        watchMirror.pushBoard(
             WatchBoard(
                 lightsEnabled = boardLights?.enabled,
                 headlightsEnabled = boardLights?.headlightsEnabled,
@@ -2741,63 +2713,9 @@ private var wearAutoLaunchOnConnect = true
         recordWatchDiagnostic("watch_tilt_cancel", mapOf("accepted" to stopRemoteTilt()))
     }
 
-    /**
-     * Latest wrist wake level and when it landed. The Mirror re-sends on a heartbeat, so a level
-     * older than [WATCH_MIRROR_AWAKE_TIMEOUT_MS] means the wrist app is gone (killed, out of range,
-     * or its `onStop` message was lost) and is read as ASLEEP.
-     */
-    @Volatile
-    private var watchWakeLevel: WatchMirrorWakeLevel = WatchMirrorWakeLevel.ASLEEP
-
-    @Volatile
-    private var watchWakeLevelAtMs: Long = 0L
-
-    /** The rider's `wearPushRateHz` as an interval, held so ambient can hand the cadence back to it. */
-    @Volatile
-    private var configuredWatchIntervalMs: Long = WATCH_FRAME_INTERVAL_MS
-
-    /**
-     * A wrist build older than the wake protocol never reports a level, so gating it on one would
-     * blank its Mirror for good (phone and watch update on separate Play tracks). Such a wrist is
-     * pushed to unconditionally, exactly as before — the gate only applies where it can be answered.
-     */
-    private fun canPushWatchFrame(): Boolean {
-        if (!watchMirrorPresence.present) return false
-        if (!watchMirrorPresence.reportsWakeLevel) return true
-        return watchMirrorWakeLevel() != WatchMirrorWakeLevel.ASLEEP
-    }
-
-    private fun watchMirrorWakeLevel(): WatchMirrorWakeLevel =
-        if (SystemClock.elapsedRealtime() - watchWakeLevelAtMs > WATCH_MIRROR_AWAKE_TIMEOUT_MS) {
-            WatchMirrorWakeLevel.ASLEEP
-        } else {
-            watchWakeLevel
-        }
-
-    /** Wrist wake-level tick (see [WatchMirrorWakeLevel]): gates the push and picks its cadence. */
     internal fun watchMirrorWakeLevel(level: WatchMirrorWakeLevel) {
-        val changed = level != watchWakeLevel
-        watchWakeLevel = level
-        watchWakeLevelAtMs = SystemClock.elapsedRealtime()
-        if (!changed) return
-        recordWatchDiagnostic("watch_mirror_wake_level", mapOf("level" to level.name))
-        applyWatchInterval()
-    }
-
-    /**
-     * Single owner of the push cadence. Two inputs set it — the rider's `wearPushRateHz` and
-     * the wrist's wake level — so both must resolve here: applying either one directly lets a
-     * settings reload silently drop the ambient rate back to the live one, where the level-change
-     * early-return then leaves it for the rest of the ambient stretch.
-     */
-    private fun applyWatchInterval() {
-        watchTick.setIntervalMs(
-            if (watchMirrorWakeLevel() == WatchMirrorWakeLevel.AMBIENT) {
-                WATCH_FRAME_AMBIENT_INTERVAL_MS
-            } else {
-                configuredWatchIntervalMs
-            },
-        )
+        // WearableListenerService callbacks arrive off the controller's scheduler.
+        scheduler.post { watchMirror.acceptWakeLevel(level) }
     }
 
     // Deliberately ungated: a stop must reach the board even if the link lost trust mid-hold,
@@ -3360,15 +3278,13 @@ private var wearAutoLaunchOnConnect = true
     }
 
     /**
-     * A new forecast: mirror it to JS and to the wrist. Runs on the main thread.
+     * A new forecast: mirror it to JS on the main thread. WatchMirrorCoordinator owns the wrist subscription.
      *
      * @parity /modules/vescape-core/ios/VescapeCoreModule.swift `sendWeather`
-     * @platform-diff The wrist push is Android-only — Wear OS has no iOS peer (ADR-0019).
      */
     private fun onWeatherChanged(weather: Weather?) {
         if (weather == null) return
         emitEvent("onWeather", mapOf("weather" to weather.toMap()))
-        watchWeatherPusher.push(weather.toWatchWeather())
     }
 
     /** @parity /modules/vescape-core/ios/connection/BoardSessionController.swift `latestRiderPresence` */
@@ -3667,10 +3583,13 @@ private var wearAutoLaunchOnConnect = true
         }
         configuredPollIntervalMs = pollIntervalMsForHz(settings.telemetryPollRateHz)
         pollingLoop.setPollIntervalMs(effectivePollIntervalMs())
-        configuredWatchIntervalMs = pollIntervalMsForHz(settings.wearPushRateHz)
-        applyWatchInterval()
-        watchSettingsPusher.push(settings.toWatchSettings())
-        wearAutoLaunchOnConnect = settings.wearAutoLaunchOnConnect
+        scheduler.post {
+            watchMirror.applySettings(
+                settings.toWatchSettings(),
+                pollIntervalMsForHz(settings.wearPushRateHz),
+                settings.wearAutoLaunchOnConnect,
+            )
+        }
         boardMoveStrengthPercent = settings.boardMoveStrengthPercent
         autoCloseEnabled = settings.autoCloseEnabled
         autoCloseDelayMinutes = settings.autoCloseDelayMinutes

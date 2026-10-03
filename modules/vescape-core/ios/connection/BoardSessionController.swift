@@ -6,16 +6,6 @@ import UserNotifications
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/connection/BoardSessionController.kt `FAULT_CODE_UNKNOWN`
 private let faultCodeUnknown = -1
 private let manualFaultLogMaxSpeedKmh = 1.0
-/// Watch Frame cadence before the rider's `wearPushRateHz` is read. Matches Android's active-mode
-/// default (4 Hz).
-/// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/connection/BoardSessionController.kt `WATCH_FRAME_INTERVAL_MS`
-private let WATCH_FRAME_INTERVAL_MS: Int64 = 250
-
-/// Cadence while the wrist is in the Always On state. The Mirror redraws rarely there, so the rate
-/// the rider chose buys nothing and costs both batteries a radio wake per frame.
-/// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/connection/BoardSessionController.kt `WATCH_FRAME_AMBIENT_INTERVAL_MS`
-private let WATCH_FRAME_AMBIENT_INTERVAL_MS: Int64 = 5_000
-
 /// Everything a runtime connect needs, resolved from the stored Board Link before the session
 /// starts. The transport is already known (ADR 0015 / #108) — connect never discovers it.
 internal struct BoardConnectConfig {
@@ -128,11 +118,8 @@ internal final class BoardSessionController: VescGattListener {
   /// The one central carrying a CoreBluetooth restore identifier (ADR 0034), so a jetsam kill
   /// mid-ride is recoverable: the board's next notification relaunches the app and iOS replays this
   /// central's state into `onGattRestored`.
-  private lazy var gatt = VescGattClient(
-    listener: self,
-    restoreIdentifier: VescGattClient.sessionRestoreIdentifier,
-    scheduler: scheduler
-  )
+  private let makeGatt: (VescGattListener, Scheduler) -> VescGattClient
+  private lazy var gatt = makeGatt(self, scheduler)
   /// Transport seam (ADR 0024): a replay session swaps in a `ReplayTransport` for its lifetime;
   /// everything else drives the real GATT client. Set on connect, cleared on session end. All
   /// session-facing link traffic goes through `transport`; scan stays on `gatt` (not session-bound).
@@ -289,18 +276,16 @@ internal final class BoardSessionController: VescGattListener {
   /// Persistent Board Session status surface (Live Activity) — the iOS peer of Android's foreground
   /// notification. Native-driven so it survives screen-off and a dead JS runtime.
   private lazy var liveActivity = RideLiveActivityController()
-  /// Phone -> wrist Watch Frame path (ADR-0019). Owned here, beside the telemetry truth, so the
-  /// wrist keeps updating while JS is backgrounded mid-ride.
-  private lazy var watchPusher = WatchTelemetryPusher(record: { [weak self] name, props in
-    self?.recordWatchDiagnostic(name, props)
-  })
-  private lazy var watchTick = WatchTick(
+  private lazy var watchMirror = iosWatchMirror(
     scheduler: scheduler,
     snapshot: { [weak self] in self?.watchSnapshot() ?? WatchSnapshot() },
-    isStale: { [weak self] in self?.isTelemetryStale() ?? true },
-    canPush: { [weak self] in self?.watchPusher.canPush ?? false },
-    push: { [weak self] frame in self?.watchPusher.pushFrame(frame) },
-    intervalMs: WATCH_FRAME_INTERVAL_MS
+    isStale: { [weak self] in
+      guard let self else { return true }
+      return latestTelemetry != nil && isTelemetryStale()
+    },
+    groupFrame: { [weak self] in self?.groupRideFrame() },
+    command: { [weak self] in self?.acceptWatchCommand($0) },
+    record: { [weak self] in self?.recordWatchDiagnostic($0, $1) }
   )
   /// Critical local notifications are a narrow interruptive path only. Permission is explicit and
   /// never requested from the telemetry/connect path.
@@ -393,11 +378,15 @@ internal final class BoardSessionController: VescGattListener {
   init(
     appData: AppDataRepository = .shared,
     scheduler: Scheduler = MainQueueScheduler(),
-    transport: SessionTransport? = nil
+    transport: SessionTransport? = nil,
+    makeGatt: @escaping (VescGattListener, Scheduler) -> VescGattClient = {
+      VescGattClient(listener: $0, restoreIdentifier: VescGattClient.sessionRestoreIdentifier, scheduler: $1)
+    }
   ) {
     self.appData = appData
     self.scheduler = scheduler
     self.suppliedTransport = transport
+    self.makeGatt = makeGatt
   }
 
   // MARK: - Scan API
@@ -535,9 +524,17 @@ internal final class BoardSessionController: VescGattListener {
 
   @discardableResult
   func stopBoard() -> Bool {
-    guard session != nil else { return false }
+    guard session != nil || pendingResume != nil || SessionResumeStore.shared.pending != nil else { return false }
+    // Cancelling restoration also replaces its expiry cleanup: no resumed coordinator will close
+    // the recording the previous process left open.
+    if session == nil { TelemetryRepository.shared.closeAbandonedRideRecordings() }
     endSession(phase: .idle, error: nil)
     return true
+  }
+
+  /// Stop also owns a session still being restored, before a connected identity is published.
+  fileprivate var manualStopBoardId: String? {
+    config?.appBoardId ?? pendingResume?.appBoardId ?? SessionResumeStore.shared.pending?.appBoardId
   }
 
   /// Read Refloat config from the connected Board and seed the first Tune Profile. Mirrors Android
@@ -688,13 +685,12 @@ internal final class BoardSessionController: VescGattListener {
   ///
   /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/connection/BoardSessionController.kt `pushWatchBoard`
   private func pushWatchBoard() {
-    watchPusher.pushColdState(
-      channel: watchBoardChannel,
-      payload: WatchBoardLights(
+    watchMirror.pushBoard(
+      WatchBoardLights(
         lightsEnabled: boardLights?.enabled,
         headlightsEnabled: boardLights?.headlightsEnabled,
         lightsControllable: firmwareCommandsTrusted() && config != nil
-      ).payload
+      )
     )
   }
 
@@ -1369,6 +1365,7 @@ internal final class BoardSessionController: VescGattListener {
         NSLog("[VescAutoConnect] aborted on main queue: session adopted between launch and connect")
         return
       }
+      guard !ManualBoardStop.isAutoStartSuppressed(boardId: boardId) else { return }
       guard let config = BoardConnectConfig.resolve(boardId: boardId, appData: self.appData) else {
         NSLog("[VescAutoConnect] no connect config for board %@ (unlinked?)", boardId)
         return
@@ -1510,6 +1507,7 @@ internal final class BoardSessionController: VescGattListener {
     if let restored = boardConfigValues { syncBoardLightsFromConfig(restored) }
     // No scope key to match on: the board's MCCONF signature is unknown until it answers, so the
     // latest row is restored optimistically and replaced when this session's own read lands.
+    // @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/connection/BoardSessionController.kt `restoreMotorConfigValues`
     do { motorConfigValues = try MotorConfigStore.shared.loadLatest(boardId: config.appBoardId) }
     catch { RecordingStorageFailure.reportRead(operation: "motor_config_restore", error: error); motorConfigValues = nil }
     alertCoordinator.updateBoardConfigValues(boardConfigValues?.values ?? [:])
@@ -2692,147 +2690,29 @@ internal final class BoardSessionController: VescGattListener {
     DiagnosticsRecorder.shared.record(eventName: eventName, properties: props)
   }
 
-  // MARK: - Watch Mirror (phone -> wrist Watch Frames)
+  // MARK: - Watch Mirror inputs and board command boundary
 
-  /// Start the wrist mirror for the lifetime of the process. Called from `VescapeLaunchSubscriber`,
-  /// not from session start: the wrist mirrors the phone, not the board session, so frames keep
-  /// flowing while no board is selected or connected (empty board lanes, `stale` set).
-  ///
-  /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/connection/BoardSessionController.kt `onCreate`
-  /// @platform-diff Android starts this from `CoreForegroundService.onCreate` and stops it in
-  /// `onServiceDestroy`. iOS has no service to bound it by — the process is the scope — so there is
-  /// a start and no stop.
+  /// Called once by VescapeLaunchSubscriber, independent of Board Session lifetime.
   func startWatchMirror() {
-    watchPusher.onCommand = { [weak self] command in
-      guard let self else { return }
-      switch command {
-      case .mirrorAwake(let level): scheduler.post { self.watchMirrorWakeLevel(level) }
-      // Onto the controller's own thread before anything reads board truth or writes to the board:
-      // `WCSession` delivers on its own queue, and the relay composes the pair it writes from state
-      // only this thread may touch.
-      case .lights(let `switch`, let on): scheduler.post { self.watchLightsRelay.accept(`switch`, on: on) }
-      // Same hop, and here it is also what starts the dead-man on the phone's own clock: the tick
-      // is only "received" once this thread has it.
-      case .move(let direction): scheduler.post { self.watchMoveRelay.accept(direction) }
-      case .tiltLock(let value): scheduler.post { self.watchTiltLock(value) }
-      case .tiltCancel: scheduler.post { self.watchTiltCancel() }
-      }
-    }
-    watchPusher.start()
+    watchMirror.start()
     reloadWatchSettings()
-    // The opening board push, before any board session exists: unknown switches and no write
-    // offered. Without it a wrist that reconnects to a phone that has never connected a board finds
-    // no board channel at all, which it would have to read as unknown anyway — stating it is how the
-    // channel stops being ambiguous.
     pushWatchBoard()
-    // Native, not through the module's `onChange`: that slot is re-assigned on every JS reload, and
-    // the wrist forecast must survive one. A forecast already in hand at launch is pushed straight
-    // away — the coordinator keeps it for the life of the process, so waiting for the next refresh
-    // would leave a reconnecting wrist blank for up to ten minutes.
-    WeatherCoordinator.shared.onNativeChange = { [weak self] weather in
-      self?.scheduler.post { self?.pushWatchWeather(weather) }
+  }
+
+  /// Mirror coordination already hops WCSession commands onto this controller's scheduler.
+  /// Board safety, command truth, and dead-man ownership stay in the existing relays.
+  private func acceptWatchCommand(_ command: WatchCommand) {
+    switch command {
+    case .mirrorAwake: break // consumed by WatchMirrorCoordinator
+    case .lights(let switchValue, let on): watchLightsRelay.accept(switchValue, on: on)
+    case .move(let direction): watchMoveRelay.accept(direction)
+    case .tiltLock(let value): watchTiltLock(value)
+    case .tiltCancel: watchTiltCancel()
     }
-    if let known = WeatherCoordinator.shared.current { pushWatchWeather(known) }
-    // Native for the same reason: the module's `onChange` slot dies with every JS reload, and the
-    // route on the wrist must not. `attach` pushes whatever the controller already holds, which on
-    // a phone with no Navigation is the explicit clear — the one thing that stops a reconnecting
-    // wrist from restoring a route the rider already cleared.
-    watchPusher.onColdStateDelivered = { WatchRouteMirror.shared.channelDelivered($0) }
-    WatchRouteMirror.shared.attach(to: NavigationController.shared) { [weak self] payload in
-      self?.watchPusher.pushColdState(channel: watchRouteChannel, payload: payload)
-    }
-    watchTick.start()
   }
 
-  /// Last forecast handed to the cold-state channel. Compared with `WatchWeather`'s own equality,
-  /// which deliberately ignores `fetchedAtMs`: refetching the same numbers ten minutes later is not
-  /// something the wrist should redraw for.
-  private var pushedWatchWeather: WatchWeather?
-
-  /// A new forecast, mirrored to the wrist.
-  ///
-  /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/connection/BoardSessionController.kt `onWeatherChanged`
-  private func pushWatchWeather(_ weather: Weather) {
-    let next = weather.watchWeather
-    if let pushedWatchWeather, pushedWatchWeather == next { return }
-    pushedWatchWeather = next
-    watchPusher.pushColdState(channel: watchWeatherChannel, payload: next.payload)
-  }
-
-  /// Latest wrist wake level and when it landed. The Mirror re-sends on a heartbeat, so a level
-  /// older than `watchMirrorAwakeTimeoutMs` means the wrist app is gone (backgrounded, out of
-  /// range, or its stop message was lost) and is read as asleep.
-  /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/connection/BoardSessionController.kt `watchWakeLevel`
-  private var watchWakeLevel: WatchMirrorWakeLevel = .asleep
-  private var watchWakeLevelAtMs: Int64 = 0
-  /// The rider's `wearPushRateHz` as an interval, held so ambient can hand the cadence back to it.
-  private var configuredWatchIntervalMs: Int64 = WATCH_FRAME_INTERVAL_MS
-
-  private func effectiveWatchWakeLevel() -> WatchMirrorWakeLevel {
-    elapsedMs() - watchWakeLevelAtMs > watchMirrorAwakeTimeoutMs ? .asleep : watchWakeLevel
-  }
-
-  /// Wrist wake-level tick: picks the push cadence.
-  ///
-  /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/connection/BoardSessionController.kt `watchMirrorWakeLevel`
-  /// @platform-diff Android *gates* the push on this too, because its Data Layer will happily
-  ///   deliver 4 Hz into a stopped activity. `WCSession.isReachable` is already false unless the
-  ///   watch app is running and in touch, so `canPush` covers the gate and the wake level is only
-  ///   spent on the cadence. There is also no capability probe: the watch app is embedded in the
-  ///   phone app's bundle, so a wrist build older than this protocol cannot exist.
-  private func watchMirrorWakeLevel(_ level: WatchMirrorWakeLevel) {
-    let changed = level != watchWakeLevel
-    watchWakeLevel = level
-    watchWakeLevelAtMs = elapsedMs()
-    if !changed { return }
-    recordWatchDiagnostic("watch_mirror_wake_level", ["level": String(describing: level)])
-    applyWatchInterval()
-  }
-
-  /// Single owner of the push cadence. Two inputs set it — the rider's `wearPushRateHz` and the
-  /// wrist's wake level — so both must resolve here: applying either one directly lets a settings
-  /// reload silently drop the ambient rate back to the live one, where the level-change early
-  /// return then leaves it for the rest of the ambient stretch.
-  ///
-  /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/connection/BoardSessionController.kt `applyWatchInterval`
-  private func applyWatchInterval() {
-    watchTick.setIntervalMs(
-      effectiveWatchWakeLevel() == .ambient ? WATCH_FRAME_AMBIENT_INTERVAL_MS : configuredWatchIntervalMs
-    )
-  }
-
-  /// Re-read the settings the wrist depends on and apply them live: the push cadence on this side,
-  /// the mirrored bag on the wrist's.
-  ///
-  /// Separate from `reloadTelemetrySettings` on purpose. That one is Board Session scoped and
-  /// returns early with no session; the Watch Mirror is process scoped (see `startWatchMirror`), so
-  /// a rider changing the push rate with no board connected must still reach the tick.
-  ///
-  /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/connection/BoardSessionController.kt `loadTelemetrySettings`
   func reloadWatchSettings() {
-    let settings: [String: Any?]
-    do { settings = try appData.getSettings() }
-    catch {
-      RecordingStorageFailure.reportRead(operation: "watch_settings_read", error: error)
-      return
-    }
-    let hz = AppDataRepository.wearPushRateHz(settings["wearPushRateHz"] ?? nil)
-      ?? AppDataRepository.defaultWearPushRateHz
-    configuredWatchIntervalMs = Int64(1000 / hz)
-    applyWatchInterval()
-    let strengthPercent = AppDataRepository.boardMoveStrengthPercent(settings["boardMoveStrengthPercent"] ?? nil)
-    if let strengthPercent { boardMoveStrengthPercent = strengthPercent }
-    watchPusher.pushColdState(
-      channel: watchSettingsChannel,
-      payload: WatchSettings(
-        riderColor: (settings["riderColor"] ?? nil) as? String,
-        boardMoveStrengthPercent: strengthPercent,
-        navArrowEnabled: (settings["wearNavArrowEnabled"] ?? nil) as? Bool ?? false,
-        unitSystem: (settings["unitSystem"] ?? nil) as? String == "imperial" ? "imperial" : "metric",
-        tiltRatePercent: AppDataRepository.wearTiltRatePercent(settings["wearTiltRatePercent"] ?? nil)
-          ?? watchDefaultTiltRatePercent
-      ).payload
-    )
+    if let strength = watchMirror.reloadSettings(from: appData) { boardMoveStrengthPercent = strength }
   }
 
   /// Latest cold-path snapshot: board lanes are empty without telemetry; navigation stays live.
@@ -2840,9 +2720,7 @@ internal final class BoardSessionController: VescGattListener {
   /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/connection/BoardSessionController.kt `watchSnapshot`
   private func watchSnapshot() -> WatchSnapshot {
     let current = latestTelemetry
-    // Nav lanes are all-or-nothing: without Route Progress there is nothing to navigate by, and
-    // sending a rider position or a course alone would only place a dot on a route the wrist is not
-    // drawing. All five null is what hides the wrist overlay.
+    // Navigation lanes require Route Progress; course and trail stay live independently.
     let progress = NavigationController.shared.currentProgress
     let rider = locationTracker.riderPosition
     // Measured from the origin of the route the wrist actually holds, not from the current
@@ -2871,10 +2749,32 @@ internal final class BoardSessionController: VescGattListener {
       riderNorthM: offset?.north,
       // Absolute course, the rotation the wrist applies to its north-up world. Null while the fix
       // carries no usable heading, which leaves the wrist drawing the route north-up.
-      courseDeg: offset != nil ? rider?.courseDeg : nil,
+      courseDeg: rider?.courseDeg,
       routeSpanM: WatchRouteMirror.shared.viewportSpanM,
       remoteTilt: current != nil ? remoteTiltController.currentValue : nil,
-      tiltControl: watchTiltControl()
+      tiltControl: watchTiltControl(),
+      trail: watchTrail(
+        rider: rider.map { WatchGeoPoint(latitude: $0.latitude, longitude: $0.longitude) },
+        history: locationTracker.recentLocations
+      ),
+      mapPosition: rider.map { WatchMapPosition(latitude: $0.latitude, longitude: $0.longitude) }
+    )
+  }
+
+  /// The joined Group Ride as the wrist draws it, or nil while the Rider is not in one. Measured from
+  /// the Rider's latest GPS Fix, never from Board telemetry, so it needs no Board Session.
+  ///
+  /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/connection/BoardSessionController.kt `groupRideFrame`
+  private func groupRideFrame() -> GroupRideFrame? {
+    guard let roster = groupRideObserver.joinedRoster else { return nil }
+    let rider = locationTracker.riderPosition
+    return GroupRideFrameBuilder.build(
+      roster: roster,
+      own: rider.map { WatchGeoPoint(latitude: $0.latitude, longitude: $0.longitude) },
+      // The course survives a stop on the phone, so heading-up holds the last direction.
+      courseDeg: rider?.courseDeg,
+      spanM: WatchRouteMirror.shared.viewportSpanM,
+      nowMs: Int64(Date().timeIntervalSince1970 * 1000)
     )
   }
 
@@ -2933,6 +2833,11 @@ internal final class BoardSessionController: VescGattListener {
   func endOrphanLiveActivity() {
     guard !liveActivityIsClaimed else { return }
     liveActivity.end()
+  }
+
+  @MainActor
+  func waitForLiveActivityDismissal() async {
+    await liveActivity.waitForDismissal()
   }
 
   private func endLiveActivity() {
@@ -3470,17 +3375,17 @@ internal final class BoardSessionController: VescGattListener {
 @MainActor
 enum BoardSessionCommands {
   @discardableResult
-  static func stopRide() -> Bool {
-    let controller = BoardSessionController.shared
+  static func stopRide(controller: BoardSessionController = .shared) async -> Bool {
     let accepted = ManualBoardStop(
       defaults: .standard,
-      activeBoardId: { controller.connectedBoardId },
+      activeBoardId: { controller.manualStopBoardId },
       stop: { controller.stopBoard() }
     ).perform()
     // A stop no session accepted means the surface is a ghost from a killed process (ADR 0034).
     // The session stays a no-op, but the Live Activity must still die — otherwise Stop on a ghost
     // does nothing and the activity is unkillable from the widget.
     if !accepted { controller.endOrphanLiveActivity() }
+    await controller.waitForLiveActivityDismissal()
     return accepted
   }
 }

@@ -16,6 +16,7 @@ class WatchSettingsTest {
             "riderColor" to AppSettings(riderColor = "#ff0000"),
             "boardMoveStrengthPercent" to AppSettings(boardMoveStrengthPercent = 30),
             "wearNavArrowEnabled" to AppSettings(wearNavArrowEnabled = true),
+            "wearTelemetryTrailEnabled" to AppSettings(wearTelemetryTrailEnabled = false),
             "unitSystem" to AppSettings(unitSystem = "imperial"),
             "wearTiltRatePercent" to AppSettings(wearTiltRatePercent = 40),
         )

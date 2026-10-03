@@ -320,7 +320,7 @@ class AppDataRepository private constructor(private val context: Context) {
    * The Board's most recently captured Motor Config Values, whatever signature they were read
    * under. Restored as `lastKnown`; the caller drops them if the live board turns out to answer
    * with a different signature.
-   * @parity /modules/vescape-core/ios/config/MotorConfigStore.swift `latest`
+   * @parity /modules/vescape-core/ios/config/MotorConfigStore.swift `loadLatest`
    */
   internal suspend fun getLatestMotorConfigValues(boardId: String): MotorConfigValues? =
     withContext(Dispatchers.IO) {
@@ -427,6 +427,7 @@ class AppDataRepository private constructor(private val context: Context) {
       satelliteMapImageryOpacity = req("satelliteMapImageryOpacity", 1.0, ::validSatelliteImageryOpacity),
       satelliteImagerySaturation = req("satelliteImagerySaturation", -0.35, ::validSatelliteImagerySaturation),
       hideTelemetryMapDetails = req("hideTelemetryMapDetails", true) { it as? Boolean },
+      showHistoryMapMarkers = req("showHistoryMapMarkers", false) { it as? Boolean },
       mapOrientationMode = req("mapOrientationMode", "northUp", ::validMapOrientationMode),
       historyMetricGradientsEnabled = req("historyMetricGradientsEnabled", true) { it as? Boolean },
       historyMetricHotRanges = req("historyMetricHotRanges", DEFAULT_HISTORY_METRIC_HOT_RANGES, ::validHistoryMetricHotRanges),
@@ -439,6 +440,7 @@ class AppDataRepository private constructor(private val context: Context) {
       wearPushRateHz = req("wearPushRateHz", 4, ::validWearPushRateHz),
       wearAutoLaunchOnConnect = req("wearAutoLaunchOnConnect", true) { it as? Boolean },
       wearNavArrowEnabled = req("wearNavArrowEnabled", false) { it as? Boolean },
+      wearTelemetryTrailEnabled = req("wearTelemetryTrailEnabled", true) { it as? Boolean },
       groupRidePublicEnabled = req("groupRidePublicEnabled", false) { it as? Boolean },
       wearTiltRatePercent = req("wearTiltRatePercent", 20, ::validWearTiltRatePercent),
       companionPresenceEnabled = req("companionPresenceEnabled", false) { it as? Boolean },
@@ -510,6 +512,7 @@ class AppDataRepository private constructor(private val context: Context) {
       "satelliteImagerySaturation" ->
         validSatelliteImagerySaturation(value) ?: return@withContext
       "hideTelemetryMapDetails" -> value as? Boolean ?: return@withContext
+      "showHistoryMapMarkers" -> value as? Boolean ?: return@withContext
       "mapOrientationMode" ->
         validMapOrientationMode(value) ?: return@withContext
       "historyMetricGradientsEnabled" -> value as? Boolean ?: return@withContext
@@ -528,6 +531,7 @@ class AppDataRepository private constructor(private val context: Context) {
         validWearPushRateHz(value) ?: return@withContext
       "wearAutoLaunchOnConnect" -> value as? Boolean ?: return@withContext
       "wearNavArrowEnabled" -> value as? Boolean ?: return@withContext
+      "wearTelemetryTrailEnabled" -> value as? Boolean ?: return@withContext
       "groupRidePublicEnabled" -> value as? Boolean ?: return@withContext
       "wearTiltRatePercent" ->
         validWearTiltRatePercent(value) ?: return@withContext
@@ -575,6 +579,7 @@ class AppDataRepository private constructor(private val context: Context) {
         "satelliteMapImageryOpacity" -> d.satelliteMapImageryOpacity
         "satelliteImagerySaturation" -> d.satelliteImagerySaturation
         "hideTelemetryMapDetails" -> d.hideTelemetryMapDetails
+        "showHistoryMapMarkers" -> d.showHistoryMapMarkers
         "mapOrientationMode" -> d.mapOrientationMode
         "historyMetricGradientsEnabled" -> d.historyMetricGradientsEnabled
         "historyMetricHotRanges" -> d.historyMetricHotRanges
@@ -587,6 +592,7 @@ class AppDataRepository private constructor(private val context: Context) {
         "wearPushRateHz" -> d.wearPushRateHz
         "wearAutoLaunchOnConnect" -> d.wearAutoLaunchOnConnect
         "wearNavArrowEnabled" -> d.wearNavArrowEnabled
+        "wearTelemetryTrailEnabled" -> d.wearTelemetryTrailEnabled
         "groupRidePublicEnabled" -> d.groupRidePublicEnabled
         "wearTiltRatePercent" -> d.wearTiltRatePercent
         "companionPresenceEnabled" -> d.companionPresenceEnabled
@@ -794,7 +800,7 @@ class AppDataRepository private constructor(private val context: Context) {
    * The personal direction target. Not a Map Point: it is never shared, and Group Ride presence
    * reads it natively while JS is gone.
    *
-   * @parity /modules/vescape-core/ios/telemetry/AppDataRepository.swift `directionPoint`
+   * @parity /modules/vescape-core/ios/telemetry/AppDataRepository.swift `getDirectionPoint`
    */
   suspend fun getDirectionPoint(): Pair<Double, Double>? = withContext(Dispatchers.IO) {
     val settings = getTypedSettings()
@@ -952,6 +958,7 @@ fun AppSettings.toMap(): Map<String, Any?> = mapOf(
   "satelliteMapImageryOpacity" to satelliteMapImageryOpacity,
   "satelliteImagerySaturation" to satelliteImagerySaturation,
   "hideTelemetryMapDetails" to hideTelemetryMapDetails,
+  "showHistoryMapMarkers" to showHistoryMapMarkers,
   "mapOrientationMode" to mapOrientationMode,
   "historyMetricGradientsEnabled" to historyMetricGradientsEnabled,
   "historyMetricHotRanges" to historyMetricHotRanges,
@@ -964,6 +971,7 @@ fun AppSettings.toMap(): Map<String, Any?> = mapOf(
   "wearPushRateHz" to wearPushRateHz,
   "wearAutoLaunchOnConnect" to wearAutoLaunchOnConnect,
   "wearNavArrowEnabled" to wearNavArrowEnabled,
+  "wearTelemetryTrailEnabled" to wearTelemetryTrailEnabled,
   "groupRidePublicEnabled" to groupRidePublicEnabled,
   "wearTiltRatePercent" to wearTiltRatePercent,
   "companionPresenceEnabled" to companionPresenceEnabled,

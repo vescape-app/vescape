@@ -42,6 +42,8 @@ export interface CaptureDriver {
   readonly deviceLabel: string
   /** Builds the Release `EXPO_PUBLIC_SCREENSHOTS=1` app and installs it on the resolved device. */
   buildAndInstall(): Promise<void>
+  /** Installs the exact build artifact produced by a separate CI build job. */
+  installArtifact(path: string): Promise<void>
   /** Fails the run when `--no-build` was passed and nothing is installed to reuse. */
   requireInstalled(): Promise<void>
   /** Clears app data and stages the fixture zip where the app's bootstrap reads it. */
@@ -90,11 +92,13 @@ export class CommandFailed extends Error {
 export async function runOrDie(
   cmd: string[],
   env?: Record<string, string | undefined>,
+  timeoutMs?: number,
 ): Promise<void> {
   const proc = Bun.spawn(cmd, {
     cwd: ROOT,
     stdout: 'inherit',
     stderr: 'inherit',
+    ...(timeoutMs ? { timeout: timeoutMs, killSignal: 'SIGKILL' } : {}),
     ...(env ? { env } : {}),
   })
   const code = (await proc.exited) ?? 1

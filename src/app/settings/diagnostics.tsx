@@ -4,6 +4,7 @@ import { router } from 'expo-router'
 import {
   EngineIcon,
   ListIcon,
+  MapPinIcon,
   NavigationArrowIcon,
   WarningDiamondIcon,
 } from 'phosphor-react-native'
@@ -19,6 +20,7 @@ import { useSettingsStore } from '@/modules/settings/store/settingsStore'
 export default function DiagnosticsSettingsScreen() {
   const boardWarningsEnabled = useSettingsStore((s) => s.boardWarningsEnabled)
   const vescFaultCollectionEnabled = useSettingsStore((s) => s.vescFaultCollectionEnabled)
+  const showHistoryMapMarkers = useSettingsStore((s) => s.showHistoryMapMarkers)
   const set = useSettingsStore((s) => s.set)
 
   return (
@@ -51,6 +53,18 @@ export default function DiagnosticsSettingsScreen() {
               <Switch
                 value={vescFaultCollectionEnabled}
                 onValueChange={(v) => void set('vescFaultCollectionEnabled', v)}
+              />
+            }
+          />
+          <SettingsRow
+            icon={MapPinIcon}
+            iconColor={theme.palette.yellow.color}
+            label="Ride markers on map"
+            hint="Show pause, connection, error, and gap markers on history routes"
+            right={
+              <Switch
+                value={showHistoryMapMarkers}
+                onValueChange={(v) => void set('showHistoryMapMarkers', v)}
               />
             }
           />

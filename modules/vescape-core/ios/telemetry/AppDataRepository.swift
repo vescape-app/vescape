@@ -569,7 +569,7 @@ final class AppDataRepository {
     } else if key == "wearTiltRatePercent" {
       guard let percent = Self.wearTiltRatePercent(rawValue) else { return }
       value = percent
-    } else if key == "wearAutoLaunchOnConnect" || key == "wearNavArrowEnabled" || key == "groupRidePublicEnabled" {
+    } else if key == "wearAutoLaunchOnConnect" || key == "wearNavArrowEnabled" || key == "wearTelemetryTrailEnabled" || key == "groupRidePublicEnabled" {
       // Strict Bool, like Android: a truthy string persisted here would reach the wrist as a
       // setting the rider never chose.
       guard let flag = rawValue as? Bool else { return }
@@ -642,6 +642,7 @@ final class AppDataRepository {
     "satelliteMapImageryOpacity": 1.0,
     "satelliteImagerySaturation": -0.35,
     "hideTelemetryMapDetails": true,
+    "showHistoryMapMarkers": false,
     "telemetryPollRateHz": 20,
     "wearPushRateHz": defaultWearPushRateHz,
     // @platform-diff Opening the Mirror when a board connects is Android-only: watchOS has no
@@ -649,6 +650,7 @@ final class AppDataRepository {
     // exists here only so getSettings() returns the full settings shape.
     "wearAutoLaunchOnConnect": true,
     "wearNavArrowEnabled": false,
+    "wearTelemetryTrailEnabled": true,
     "wearTiltRatePercent": 20,
     "boardMoveStrengthPercent": 60,
     "connectionSoundsEnabled": true,
@@ -768,7 +770,7 @@ final class AppDataRepository {
   static let defaultTopSpeedKmh: Double = 50
 
   /// Board Top Speed in km/h; the speed gauge full-scale. Clamped to a sane 5–150 km/h band.
-  /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/AppDataRepository.kt `normalizeTopSpeedKmh`
+  /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/AppDataRepository.kt `validTopSpeedKmh`
   static func topSpeedKmh(_ value: Any?) -> Double? {
     guard let topSpeed = doubleValue(value), topSpeed.isFinite else { return nil }
     return min(150, max(5, topSpeed))

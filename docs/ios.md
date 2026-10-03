@@ -70,8 +70,10 @@ symlink; this is verified to compile on device.
 - The button uses `StopRideIntent`, a `LiveActivityIntent`. iOS launches the app process without
   opening the app UI, then routes to the same native manual-stop command used by the JS bridge.
 - The command reaches `BoardSessionController.shared`; no JavaScript runtime or Expo module
-  instance is required. Its active Board id gate makes duplicate invocations no-ops, and the first
-  invocation tears down BLE, recording, GPS, alerts, and the Live Activity through `endSession`.
+  instance is required. Stop applies while connecting, searching, reconnecting, or awaiting
+  restoration as well as while connected. It cancels deferred BLE work and restoration, suppresses
+  launch auto-connect for that Board, and tears down recording, GPS, alerts, and the Live Activity.
+  Duplicate invocations are harmless. The intent waits for Live Activity dismissal before returning.
 - The intent requires authentication. When the phone is locked, iOS asks the rider to authenticate
   before executing it; Vescape does not implement a custom unlock flow.
 - There is no Connect or Exit action. A manual stop ends the Live Activity, and iOS apps cannot

@@ -5,7 +5,10 @@ import kotlin.math.max
 import org.json.JSONArray
 import org.json.JSONObject
 
-/** @parity /modules/vescape-core/ios/config/BoardConfigChangeNotice.swift */
+/**
+ * @parity /modules/vescape-core/ios/config/BoardConfigStore.swift `BoardConfigChangeDiff`
+ * @parity /modules/vescape-core/src/index.ts `BoardConfigChangeDiff`
+ */
 internal data class BoardConfigChangeDiff(val fieldId: String, val label: String, val unit: String?, val oldValue: Any?, val newValue: Any?) {
   fun toMap() = mapOf("fieldId" to fieldId, "label" to label, "unit" to unit, "oldValue" to oldValue, "newValue" to newValue)
   fun toJson() = JSONObject().put("fieldId", fieldId).put("label", label).put("unit", unit).put("oldValue", oldValue).put("newValue", newValue)
@@ -32,7 +35,7 @@ internal data class BoardConfigChangeNotice(val boardId: String, val detectedAtM
      * Fold new diffs into an undismissed notice rather than replacing it: a Refloat change and a motor
      * config change found in the same session are one piece of news to the rider. A field that diffs
      * twice keeps the newer comparison, in its original position.
-     * @parity /modules/vescape-core/ios/config/BoardConfigChangeNotice.swift `mergeDiffs`
+     * @parity /modules/vescape-core/ios/config/BoardConfigStore.swift `mergeDiffs`
      */
     fun mergeDiffs(previous: List<BoardConfigChangeDiff>, incoming: List<BoardConfigChangeDiff>): List<BoardConfigChangeDiff> {
       val byId = LinkedHashMap<String, BoardConfigChangeDiff>()

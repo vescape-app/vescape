@@ -29,7 +29,8 @@ private fun Map<String, Any?>.excluded(key: String): Boolean =
  * Detail-only metrics live in [FOCUSED_ONLY_SERIES_METRICS] and are not streamed
  * globally — a `/control` detail screen pulls them via [focusedSeries] on focus.
  *
- * @parity /modules/vescape-core/src/index.ts `liveSelectors`
+ * @parity /modules/vescape-core/ios/telemetry/LiveSeriesEmitter.swift `centerMetrics`
+ * @parity /src/modules/board/hooks/useLiveMetric.ts `liveSelectors`
  */
 internal val LIVE_SERIES_METRICS = listOf(
     LiveSeriesMetric("motorTemp") { row -> row.num("tempMotor")?.takeIf { it > 0 } },

@@ -36,6 +36,7 @@ export function LiveMapLayers({
   const trailGradientStart = riderColor
     ? theme.alpha(riderColor, 0)
     : theme.alpha(accents.violet.color, 0)
+  // @platform-diff Watch trail peaks at 60% opacity to separate it from the planned route.
   const trailGradientEnd = riderColor
     ? theme.alpha(riderColor, 0.85)
     : theme.alpha(accents.violet.color, 0.85)
@@ -93,6 +94,8 @@ export function LiveMapLayers({
               lineWidth: MAP_DEFAULTS.trailWidth,
               lineCap: 'round',
               lineJoin: 'round',
+              // @parity /watch/wearos/src/main/java/app/vescape/wear/RiderTrail.kt
+              // @parity /watch/watchos/RiderTrail.swift
               lineGradient: [
                 'interpolate',
                 ['linear'],

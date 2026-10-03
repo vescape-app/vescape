@@ -3,8 +3,8 @@ import type { VescFaultOccurrence } from 'vescape-core'
 /**
  * Refloat fault-code names, mirroring the native fault-code table. The numeric code is the canonical
  * value — this map is a display convenience only, so an unknown future code must still render.
- * @parity /modules/vescape-core/ios/protocol/VescProtocol.swift `refloatFaultName`
- * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/protocol/VescTelemetryModels.kt `refloatFaultName`
+ * @parity /modules/vescape-core/ios/protocol/VescProtocol.swift `stateName`
+ * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/protocol/VescTelemetryModels.kt `stateName`
  */
 const FAULT_TITLES: Record<number, string> = {
   0: 'No fault',

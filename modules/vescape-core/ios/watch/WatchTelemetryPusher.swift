@@ -83,6 +83,19 @@ final class WatchTelemetryPusher: NSObject, WCSessionDelegate {
     set { coldState.onDelivered = newValue }
   }
 
+  var onColdStateFailed: ((String) -> Void)? {
+    get { coldState.onFailed }
+    set { coldState.onFailed = newValue }
+  }
+
+  /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/watch/WatchTelemetryPusher.kt `pushRouteStatus`
+  func pushRouteStatus(_ status: WatchRouteStatus) {
+    guard let session, canPush else { return }
+    session.sendMessage([watchRouteStatusMessageKey: WatchRouteStatusCodec.encode(status)], replyHandler: nil) { [weak self] error in
+      self?.reportIssue("watch_frame_send_failed", ["path": watchRouteStatusMessageKey, "error": error.localizedDescription])
+    }
+  }
+
   func pushFrame(_ frame: Data) {
     guard let session, canPush else { return }
     session.sendMessageData(
@@ -90,6 +103,21 @@ final class WatchTelemetryPusher: NSObject, WCSessionDelegate {
       replyHandler: nil,
       errorHandler: { [weak self] error in
         self?.reportIssue("watch_frame_send_failed", ["error": error.localizedDescription])
+      }
+    )
+  }
+
+  /// A Group Ride Frame (ADR-0039). Its own message key rather than `sendMessageData`, which the
+  /// Watch Frame owns; same reachability gate and the same failure streak reporting.
+  ///
+  /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/watch/WatchTelemetryPusher.kt `pushGroupRideFrame`
+  func pushGroupRideFrame(_ frame: Data) {
+    guard let session, canPush else { return }
+    session.sendMessage(
+      [watchGroupRideMessageKey: frame],
+      replyHandler: nil,
+      errorHandler: { [weak self] error in
+        self?.reportIssue("watch_frame_send_failed", ["path": watchGroupRideMessageKey, "error": error.localizedDescription])
       }
     )
   }

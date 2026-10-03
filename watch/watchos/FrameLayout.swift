@@ -39,78 +39,31 @@ struct FrameLayout: View {
   /// The route the phone pushed, drawn under everything else. Nil is no Navigation, or a route the
   /// rider cleared — the frame then renders exactly as it did before there was one.
   var route: WatchRoute?
-  var routeGeneration: Int = 0
+  var routeStatus: WatchRouteStatus?
+  /// The joined Group Ride; nil draws no group. Hidden in ambient.
+  var groupRide: WatchGroupRide?
   /// The rider's own colour, so route, chevron and rider dot match the phone map.
   var navColor: Color = Palette.nav
+  var trailColor: Color = Palette.trail
   /// Whether the rider turned the direction arrow on (phone: Settings > Watch).
   var navArrowEnabled: Bool = false
+  var telemetryTrailEnabled: Bool = true
   var unitSystem: String = "metric"
 
-  /// Readouts retreat for any page; this is the one the existing layout animates against.
+  /// Readouts retreat for any page.
   private var focus: Double { max(navFocus, awayFocus) }
 
-  /// The opposite pull on the nav stack: it survives nav focus and leaves for everything else.
-  ///
-  /// @parity /watch/wearos/src/main/java/app/vescape/wear/FrameGauges.kt `navStackAlpha`
-  private var navStackAlpha: Double { fadeOut(awayFocus) }
-  private var tiltColor: Color { (muted || ambient.active) ? Palette.dimText : Palette.tilt }
-
-  /// Nav is all-or-nothing: the phone sends bearing and distance together or not at all, so one
-  /// without the other is a frame this build should not draw half of.
-  private var navLanes: (bearingDeg: Double, distanceM: Double)? {
-    guard let bearing = frame.navBearing, let distance = frame.navDistanceM else { return nil }
-    return (bearing, distance)
-  }
-
   var body: some View {
-    // A stale frame in ambient is the one case with nothing to say: the readings it would keep are
-    // exactly the ones that have stopped arriving, so ambient empties every lane instead.
     let blind = ambient.active && muted
-
-    ZStack {
-      // Bottom layer: the route ahead and the rider on it, under every gauge and readout. Ambient
-      // skips it — the lanes animate their zoom, and a moving map is the most expensive thing the
-      // always-on panel could be asked to draw.
-      if navLanes != nil, !ambient.active {
-        NavRoute(
-          route: route,
-          generation: routeGeneration,
-          frame: frame,
-          focus: navFocus,
-          color: muted ? Palette.dimText : navColor
-        )
-        .opacity(navStackAlpha)
-      }
-
+    WatchMapScene(
+      frame: frame, muted: muted, ambient: ambient,
+      navFocus: navFocus, awayFocus: awayFocus,
+      route: route, routeStatus: routeStatus, groupRide: groupRide,
+      navColor: navColor, trailColor: trailColor, navArrowEnabled: navArrowEnabled,
+      telemetryTrailEnabled: telemetryTrailEnabled, unitSystem: unitSystem
+    ) {
       gauges(blind: blind)
-
-      // Navigation, only while the phone is sending it. No destination means no nav lanes, and the
-      // frame renders exactly as it would without this slice.
-      if let navLanes {
-        NavPointer(
-          bearingDeg: navLanes.bearingDeg,
-          distanceM: navLanes.distanceM,
-          unitSystem: unitSystem,
-          focus: navFocus,
-          stackAlpha: navStackAlpha,
-          arrowEnabled: navArrowEnabled,
-          color: (muted || ambient.active) ? Palette.dimText : navColor,
-          remoteTilt: frame.remoteTilt,
-          tiltColor: tiltColor
-        )
-      } else {
-        // Nav focus with nothing to show would be a blank rectangle. Say why, but only once the
-        // drag is nearly done, so it never flickers under the departing readouts.
-        NavAbsentHint(focus: navFocus, stackAlpha: navStackAlpha)
-        // No navigation: the tilt badge keeps the distance's slot to itself.
-        VStack(spacing: 0) {
-          Spacer(minLength: 0)
-          TiltBadge(value: frame.remoteTilt, color: tiltColor)
-            .padding(.bottom, NAV_READOUT_BOTTOM_INSET)
-        }
-        .opacity(navStackAlpha * (1 - navFocus))
-      }
-
+    } readouts: {
       if showReadouts {
         VStack(spacing: 0) {
           heroes(blind: blind)

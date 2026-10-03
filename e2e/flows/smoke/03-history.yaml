@@ -6,19 +6,7 @@
 # than specific distances, because the fixture is regenerated from real backups and its numbers move.
 appId: ${APP_ID}
 ---
-# Retried, like the map reveal: the history button sits on the main screen while the replay pushes
-# telemetry through the JS thread, and a tap that lands in a busy frame can be swallowed before the
-# drawer opens — the run then waits out its timeout on a screen that never changed. A failed attempt
-# leaves the screen where it started, so tapping again is safe.
-- retry:
-    maxRetries: 3
-    commands:
-      - tapOn:
-          id: history-button
-      - extendedWaitUntil:
-          visible:
-            id: history-drawer
-          timeout: 15000
+- runFlow: ../fixture/_history.yaml
 
 # History opens on the overview drawer. Open its newest restored ride, then wait on the metric tabs
 # rather than the map: the row only appears once the ride's samples are loaded.
@@ -28,6 +16,7 @@ appId: ${APP_ID}
     timeout: 30000
 - tapOn:
     id: history-latest-ride
+    waitToSettleTimeoutMs: 1000
 - extendedWaitUntil:
     visible:
       id: history-metric-tab-duty
@@ -42,6 +31,7 @@ appId: ${APP_ID}
 # derive them fails here and nowhere earlier.
 - tapOn:
     id: history-stats-bar
+    waitToSettleTimeoutMs: 1000
 - assertVisible:
     id: history-stat-avgSpeed
 - assertVisible:
@@ -56,18 +46,21 @@ appId: ${APP_ID}
 # thing a flow can assert — and it only mounts for a metric whose trace derived.
 - tapOn:
     id: history-metric-tab-duty
+    waitToSettleTimeoutMs: 1000
 - extendedWaitUntil:
     visible:
       id: chart-row-duty
     timeout: 10000
 - tapOn:
     id: history-metric-tab-tempMotor
+    waitToSettleTimeoutMs: 1000
 - extendedWaitUntil:
     visible:
       id: chart-row-tempMotor
     timeout: 10000
 - tapOn:
     id: history-metric-tab-tempController
+    waitToSettleTimeoutMs: 1000
 - extendedWaitUntil:
     visible:
       id: chart-row-tempController
@@ -77,6 +70,7 @@ appId: ${APP_ID}
 # detail screen does.
 - tapOn:
     id: history-ride-list-button
+    waitToSettleTimeoutMs: 1000
 - extendedWaitUntil:
     visible:
       id: history-session-sheet
@@ -103,4 +97,7 @@ appId: ${APP_ID}
       id: history-back
     timeout: 15000
 
-- runFlow: ../fixture/_home.yaml
+- runFlow:
+    file: ../fixture/_home.yaml
+    env:
+      HOME_EXIT_ID: history-back

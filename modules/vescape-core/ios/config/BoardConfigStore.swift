@@ -13,7 +13,8 @@ struct ConfigNoticeRecord: Codable, FetchableRecord, PersistableRecord {
   enum CodingKeys: String, CodingKey { case boardId = "board_id"; case detectedAt = "detected_at"; case diffsJson = "diffs_json" }
 }
 
-/// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/config/BoardConfigChangeNotice.kt
+/// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/config/BoardConfigChangeNotice.kt `BoardConfigChangeDiff`
+/// @parity /modules/vescape-core/src/index.ts `BoardConfigChangeDiff`
 struct BoardConfigChangeDiff: Codable {
   let fieldId: String; let label: String; let unit: String?
   let oldValue: ConfigNoticeValue?; let newValue: ConfigNoticeValue?

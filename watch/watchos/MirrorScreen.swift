@@ -40,6 +40,9 @@ struct MirrorScreen: View {
   ///
   /// @parity /watch/wearos/src/main/java/app/vescape/wear/MirrorScreen.kt `controlHeld`
   @State private var controlHeld = false
+  /// A sideways drag the Tilt stick took from the control pager, points the pages follow the finger
+  /// by. Zero whenever no such drag is in flight.
+  @State private var controlDrag: CGFloat = 0
   @State private var lastInteraction = Date()
   /// Foreground/background, which is what decides whether the Mirror is awake at all. Ambient is a
   /// second, narrower question asked only while it is.
@@ -67,7 +70,7 @@ struct MirrorScreen: View {
           .allowsHitTesting(false)
       }
       .overlay(alignment: .topLeading) {
-        if case .disconnected = link.mirror.status {
+        if linkNotice != nil {
           EmptyView()
         } else {
           HStack(spacing: 0) {
@@ -126,6 +129,7 @@ struct MirrorScreen: View {
       guard reduced else { return }
       vertical = .gauges
       control = .gauges
+      controlDrag = 0
       verticalPagingEnabled = true
     }
     .onChange(of: scenePhase) { _, _ in reportWakeLevel() }
@@ -190,7 +194,7 @@ struct MirrorScreen: View {
   private var pages: some View {
     ScrollView(.vertical) {
       LazyVStack(spacing: 0) {
-        ForEach(VerticalPage.allCases) { page in
+        ForEach(verticalPages) { page in
           verticalContent(page)
             // Each page is exactly one screen, which is what makes paging land on page boundaries.
             .containerRelativeFrame([.horizontal, .vertical])
@@ -213,6 +217,18 @@ struct MirrorScreen: View {
     // Set the axis's environment directly so the nested horizontal pager can override it.
     .environment(\.isScrollEnabled, !isLuminanceReduced && verticalPagingEnabled && !controlHeld)
     .onChange(of: vertical) { _, _ in lastInteraction = Date() }
+    // Leaving the ride on the Group Ride page lands on navigation, one page up.
+    .onChange(of: link.groupRide == nil) { _, left in
+      if left, vertical == .group { vertical = .nav }
+    }
+  }
+
+  /// The Group Ride page exists only while joined. It is the last page, so adding or dropping it
+  /// never renumbers the pages above it.
+  ///
+  /// @parity /watch/wearos/src/main/java/app/vescape/wear/MirrorScreen.kt `VERTICAL_PAGE_COUNT_JOINED`
+  private var verticalPages: [VerticalPage] {
+    link.groupRide == nil ? VerticalPage.allCases.filter { $0 != .group } : VerticalPage.allCases
   }
 
   @ViewBuilder
@@ -234,6 +250,17 @@ struct MirrorScreen: View {
       // Empty on purpose, like the gauges control page: this page *is* the route and the nav stack,
       // which the pinned frame already draws. It grows into the centre as the readouts leave.
       Color.clear
+    case .group:
+      if let groupRide = link.groupRide {
+        GroupRidePage(
+          group: groupRide,
+          settled: groupPageSettled,
+          unitSystem: link.settings.unitSystem,
+          onPageBack: { withAnimation { vertical = .nav } }
+        )
+      } else {
+        Color.clear
+      }
     }
   }
 
@@ -259,6 +286,9 @@ struct MirrorScreen: View {
         }
       }
       .scrollTargetLayout()
+      // The Tilt page's sideways drag, drawn the way the pager would: every page moves together, and
+      // the page positions measured below follow it, so fades and gates behave as on a native drag.
+      .offset(x: controlDrag)
       .contentShape(Rectangle())
     }
     .coordinateSpace(name: Axis.horizontal)
@@ -278,8 +308,8 @@ struct MirrorScreen: View {
     case .gauges:
       // Empty on purpose: this page *is* the gauges, pinned at the root behind this transparent
       // axis. Only the reason a stalled stream has stopped gets to use the centre.
-      if case .disconnected = link.mirror.status {
-        DisconnectedLayout(link: link.link, ambient: ambient)
+      if let linkNotice {
+        DisconnectedLayout(notice: linkNotice, ambient: ambient)
       } else {
         // Keep the pager slot; weather and telemetry are pinned above it.
         Color.clear
@@ -289,9 +319,18 @@ struct MirrorScreen: View {
         link: link,
         interactionEnabled: interactionEnabled(.tilt),
         onHoldChanged: { controlHeld = $0 },
-        onPageSwipe: { step in
-          guard let next = ControlPage(rawValue: ControlPage.tilt.rawValue + step) else { return }
-          withAnimation { control = next }
+        onPageDrag: { offset in
+          var transaction = Transaction()
+          transaction.disablesAnimations = true
+          withTransaction(transaction) { controlDrag = offset }
+        },
+        onPageRelease: { step in
+          // Nothing offset: the page is leaving with no sideways drag in flight.
+          guard controlDrag != 0 else { return }
+          withAnimation {
+            controlDrag = 0
+            if let next = ControlPage(rawValue: ControlPage.tilt.rawValue + step) { control = next }
+          }
         }
       )
     case .move:
@@ -321,12 +360,18 @@ struct MirrorScreen: View {
   private var frame: some View {
     switch link.mirror.status {
     case .disconnected:
-      layout(EMPTY_FRAME, muted: false, showReadouts: false)
+      // Nothing the wrist could fix: the shell reads as it does for a board-less frame.
+      layout(EMPTY_FRAME, muted: false, showReadouts: linkNotice == nil)
     case .waiting, .live:
       layout(link.mirror.frame ?? EMPTY_FRAME, muted: false)
     case .stale:
       layout(link.mirror.frame ?? EMPTY_FRAME, muted: true)
     }
+  }
+
+  /// The phone-link problem to name while no frames arrive; nil when there is none worth saying.
+  private var linkNotice: MirrorLinkNotice? {
+    MirrorStateReducer.linkNotice(status: link.mirror.status, link: link.link)
   }
 
   private func layout(_ frame: WatchFrame, muted: Bool, showReadouts: Bool = true) -> FrameLayout {
@@ -338,9 +383,12 @@ struct MirrorScreen: View {
       navFocus: navFocus,
       awayFocus: awayFocus,
       route: link.route,
-      routeGeneration: link.routeGeneration,
+      routeStatus: link.routeStatus,
+      groupRide: link.groupRide,
       navColor: Palette.rider(link.settings.riderColor) ?? Palette.nav,
+      trailColor: Palette.rider(link.settings.riderColor) ?? Palette.trail,
       navArrowEnabled: link.settings.navArrowEnabled,
+      telemetryTrailEnabled: link.settings.telemetryTrailEnabled,
       unitSystem: link.settings.unitSystem
     )
   }
@@ -379,11 +427,20 @@ struct MirrorScreen: View {
     return min(1, max(0, verticalPosition))
   }
 
-  /// Any other page taking over — the control axis, weather, radar. Those want the whole centre, so
-  /// the nav stack leaves with the readouts.
+  /// Any other page taking over — the control axis, weather, radar, and the Group Ride page below
+  /// navigation. Those want the whole centre, so the nav stack leaves with the readouts.
+  ///
+  /// @parity /watch/wearos/src/main/java/app/vescape/wear/WatchMapScene.kt `navStackAlpha`
   private var awayFocus: Double {
     guard !isLuminanceReduced else { return 0 }
-    return min(1, max(max(0, -verticalPosition), abs(horizontalPosition)))
+    let groupFocus = verticalPosition - Double(VerticalPage.nav.rawValue - VerticalPage.gauges.rawValue)
+    return min(1, max(max(0, -verticalPosition), abs(horizontalPosition), groupFocus))
+  }
+
+  /// The Group Ride page is the settled vertical page, so its list may take the crown and the drag.
+  private var groupPageSettled: Bool {
+    guard !isLuminanceReduced, vertical == .group, let position = settledPositions[.vertical] else { return false }
+    return abs(position - Double(VerticalPage.group.rawValue - VerticalPage.gauges.rawValue)) < 0.001
   }
 
   // MARK: - Transition gating
@@ -399,9 +456,9 @@ struct MirrorScreen: View {
 
 }
 
-/// Radar and weather above the gauges, navigation focus below. Radar sits above the forecast
-/// because it is the same subject one step further out — the rider swipes up from the numbers, to
-/// the hours, to the sky itself.
+/// Radar and weather above the gauges, navigation focus below, and the Group Ride page below that
+/// while joined. Radar sits above the forecast because it is the same subject one step further out —
+/// the rider swipes up from the numbers, to the hours, to the sky itself.
 ///
 /// @parity /watch/wearos/src/main/java/app/vescape/wear/MirrorScreen.kt `VERTICAL_PAGE_RADAR`
 enum VerticalPage: Int, CaseIterable, Identifiable {
@@ -409,6 +466,7 @@ enum VerticalPage: Int, CaseIterable, Identifiable {
   case weather
   case gauges
   case nav
+  case group
 
   var id: Int { rawValue }
 }

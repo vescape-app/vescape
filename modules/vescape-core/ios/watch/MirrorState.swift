@@ -32,6 +32,18 @@ enum MirrorPhoneLink {
   case appReachable
 }
 
+/// What the gauge shell says while no frames arrive: only the phone-link problems the wrist cannot
+/// fix itself. A reachable phone app that is not pushing has nothing to say — no Board is not a
+/// fault, the rider may be on foot in a Group Ride or navigating (ADR-0039) — so it gets no notice
+/// and the shell reads exactly as it does for a board-less frame.
+///
+/// @parity /watch/wearos/src/main/java/app/vescape/wear/MirrorState.kt `LinkNotice`
+enum MirrorLinkNotice {
+  case connecting
+  case noPhone
+  case appMissing
+}
+
 /// @parity /watch/wearos/src/main/java/app/vescape/wear/MirrorState.kt `MirrorState`
 struct MirrorState: Equatable {
   let status: MirrorStatus
@@ -91,5 +103,18 @@ enum MirrorStateReducer {
     }
 
     return MirrorState(status: frame.stale ? .stale : .live, frame: frame)
+  }
+
+  /// The notice for `status` given the watch-local `link`; nil means the shell says nothing.
+  ///
+  /// @parity /watch/wearos/src/main/java/app/vescape/wear/MirrorState.kt `linkNotice`
+  static func linkNotice(status: MirrorStatus, link: MirrorPhoneLink) -> MirrorLinkNotice? {
+    guard case .disconnected = status else { return nil }
+    switch link {
+    case .unknown: return .connecting
+    case .noPhone: return .noPhone
+    case .phoneOnly: return .appMissing
+    case .appReachable: return nil
+    }
   }
 }

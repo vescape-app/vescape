@@ -73,6 +73,35 @@ final class MirrorStateTests: XCTestCase {
     XCTAssertNil(state.frame)
   }
 
+  func testAReachablePhoneAppThatIsNotPushingGetsNoNotice() {
+    let disconnected = MirrorStateReducer.reduce(frame: nil, lastFrameAtMs: nil, nowMs: 0)
+
+    // No Board is not a fault (ADR-0039): the shell stays empty and says nothing.
+    XCTAssertNil(MirrorStateReducer.linkNotice(status: disconnected.status, link: .appReachable))
+  }
+
+  func testPhoneLinkProblemsAreStillNamedWhileNoFramesArrive() {
+    let disconnected = MirrorStateReducer.reduce(frame: nil, lastFrameAtMs: nil, nowMs: 0).status
+
+    XCTAssertEqual(MirrorStateReducer.linkNotice(status: disconnected, link: .unknown), .connecting)
+    XCTAssertEqual(MirrorStateReducer.linkNotice(status: disconnected, link: .noPhone), .noPhone)
+    XCTAssertEqual(MirrorStateReducer.linkNotice(status: disconnected, link: .phoneOnly), .appMissing)
+  }
+
+  func testABoardlessNavigationFrameIsLiveWithItsNavLanesAndNoNotice() {
+    let navOnly = WatchFrame(navBearing: 42, navDistanceM: 1_250)
+
+    let state = MirrorStateReducer.reduce(frame: navOnly, lastFrameAtMs: 1_000, nowMs: 1_000)
+
+    XCTAssertEqual(state.status, .live)
+    XCTAssertEqual(state.frame?.navDistanceM, 1_250)
+    XCTAssertNil(state.frame?.speed)
+    // The link view is irrelevant once frames flow, whatever it last said.
+    for link in [MirrorPhoneLink.unknown, .noPhone, .phoneOnly, .appReachable] {
+      XCTAssertNil(MirrorStateReducer.linkNotice(status: state.status, link: link))
+    }
+  }
+
   /// The waiting bit is never set by this phone side, but it is part of the wire format. A decoder
   /// that dropped it would hand the reducer a `live` frame full of empty lanes.
   func testTheWaitingFlagSurvivesTheWire() throws {

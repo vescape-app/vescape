@@ -8,9 +8,9 @@ import Foundation
 /// (``WatchTiltControl``). The wrist's Tilt page starts every stick drag from this value, so a tilt
 /// set or cleared on the phone pad is where the next wrist drag picks up.
 ///
-/// Lanes 5-10 are navigation and route placement, filled from Route Progress and the origin of the
-/// route the wrist actually holds (`WatchRouteMirror`). They ride as `NaN` whenever there is no
-/// Navigation, which is exactly how the wrist hides its nav overlay.
+/// Lanes 5-8 are navigation and route placement from Route Progress and WatchRouteMirror.
+/// Course and map span remain available without Navigation. A versioned WatchTrailCodec snapshot
+/// follows the fixed lanes, so existing wrists can still decode telemetry unchanged.
 ///
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/watch/WatchFrame.kt
 let WATCH_FRAME_FIELD_COUNT = 13
@@ -97,6 +97,8 @@ struct WatchFrame: Equatable {
   /// Commanded Remote Tilt, 0..255 with 128 neutral. Nil without a board.
   var remoteTilt: Int?
   var tiltControl: WatchTiltControl
+  var trail: [WatchTrailPoint]
+  var mapPosition: WatchMapPosition?
 
   init(
     speed: Double? = nil,
@@ -113,7 +115,9 @@ struct WatchFrame: Equatable {
     courseDeg: Double? = nil,
     routeSpanM: Double? = nil,
     remoteTilt: Int? = nil,
-    tiltControl: WatchTiltControl = .free
+    tiltControl: WatchTiltControl = .free,
+    trail: [WatchTrailPoint] = [],
+    mapPosition: WatchMapPosition? = nil
   ) {
     self.speed = speed
     self.duty = duty
@@ -130,6 +134,8 @@ struct WatchFrame: Equatable {
     self.routeSpanM = routeSpanM
     self.remoteTilt = remoteTilt
     self.tiltControl = tiltControl
+    self.trail = trail
+    self.mapPosition = mapPosition
   }
 }
 
@@ -151,6 +157,8 @@ struct WatchSnapshot {
   var routeSpanM: Double?
   var remoteTilt: Int?
   var tiltControl: WatchTiltControl
+  var trail: [WatchTrailPoint]
+  var mapPosition: WatchMapPosition?
 
   init(
     speed: Double? = nil,
@@ -166,7 +174,9 @@ struct WatchSnapshot {
     courseDeg: Double? = nil,
     routeSpanM: Double? = nil,
     remoteTilt: Int? = nil,
-    tiltControl: WatchTiltControl = .free
+    tiltControl: WatchTiltControl = .free,
+    trail: [WatchTrailPoint] = [],
+    mapPosition: WatchMapPosition? = nil
   ) {
     self.speed = speed
     self.dutyCycle = dutyCycle
@@ -182,6 +192,8 @@ struct WatchSnapshot {
     self.routeSpanM = routeSpanM
     self.remoteTilt = remoteTilt
     self.tiltControl = tiltControl
+    self.trail = trail
+    self.mapPosition = mapPosition
   }
 }
 
@@ -206,7 +218,9 @@ enum WatchFrameBuilder {
       courseDeg: snapshot.courseDeg,
       routeSpanM: snapshot.routeSpanM,
       remoteTilt: snapshot.remoteTilt,
-      tiltControl: snapshot.tiltControl
+      tiltControl: snapshot.tiltControl,
+      trail: snapshot.trail,
+      mapPosition: snapshot.mapPosition
     )
   }
 
@@ -220,6 +234,7 @@ enum WatchFrameBuilder {
       let value = Float(frame[keyPath: lane] ?? .nan)
       withUnsafeBytes(of: value.bitPattern.littleEndian) { data.append(contentsOf: $0) }
     }
+    data.append(WatchTrailCodec.encode(frame.trail, position: frame.mapPosition))
     return data
   }
 
@@ -242,6 +257,9 @@ enum WatchFrameBuilder {
       let value = Float(bitPattern: raw)
       frame[keyPath: lane] = value.isNaN ? nil : Double(value)
     }
+    let trail = WatchTrailCodec.decode(data, offset: WATCH_FRAME_BYTES)
+    frame.trail = trail.points
+    frame.mapPosition = trail.position
     return frame
   }
 
