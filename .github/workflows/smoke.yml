@@ -40,10 +40,8 @@ concurrency:
 jobs:
   smoke:
     name: Fixture session smoke run (Android)
-    # Blacksmith x64 Linux runner: nested virtualisation is supported, so the emulator gets KVM.
-    # 8 vCPU / 32 GB is sized for the release Gradle build (the long pole) sharing the box with an
-    # emulator that wants ~4 GB to itself; the 160 GB disk also fits the SDK + NDK + Gradle caches.
-    runs-on: blacksmith-8vcpu-ubuntu-2404
+    # Standard GitHub x64 Linux runner; the KVM step below enables emulator acceleration.
+    runs-on: ubuntu-24.04
     timeout-minutes: 60
 
     # `fixtureBuildEnv` spreads the ambient environment into the build, so everything the app needs
@@ -89,7 +87,7 @@ jobs:
       # Split restore/save rather than the combined action: the whole point of this workflow is to
       # fail on a bad build, and the combined action skips its save step when the job fails — which
       # would leave every run cold for exactly as long as the flows are red.
-      - uses: useblacksmith/cache/restore@v5
+      - uses: actions/cache/restore@v5
         id: gradle-cache
         with:
           path: |
@@ -103,20 +101,16 @@ jobs:
         with:
           packages: ''
 
-      # The SDK download, the JS install and the Maestro install share nothing, so they overlap.
-      - parallel:
-          - name: Install Android SDK components
-            run: sdkmanager "platforms;android-36" "build-tools;36.0.0" "ndk;27.1.12297006"
-          - name: Install dependencies
-            run: bun install
-          - name: Install Maestro
-            run: |
-              curl -Ls https://get.maestro.mobile.dev | bash
-              echo "$HOME/.maestro/bin" >> "$GITHUB_PATH"
+      - name: Install Android SDK components
+        run: sdkmanager "platforms;android-36" "build-tools;36.0.0" "ndk;27.1.12297006"
+      - name: Install dependencies
+        run: bun install
+      - name: Install Maestro
+        run: |
+          curl -Ls https://get.maestro.mobile.dev | bash
+          echo "$HOME/.maestro/bin" >> "$GITHUB_PATH"
 
-      # The emulator is unusably slow without nested virtualisation, and the runner does not grant
-      # access to /dev/kvm by default. Kept while the Blacksmith move is unproven — drop it once a
-      # run shows /dev/kvm is already world-writable there.
+      # Grant the runner user access to KVM for the hardware-accelerated emulator.
       - name: Enable KVM
         run: |
           echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' \
@@ -144,7 +138,7 @@ jobs:
 
       - name: Save Gradle cache
         if: always() && steps.gradle-cache.outputs.cache-hit != 'true'
-        uses: useblacksmith/cache/save@v5
+        uses: actions/cache/save@v5
         with:
           path: |
             ~/.gradle/caches
@@ -166,7 +160,7 @@ jobs:
   # `bun run test:ios` compiles the module tree, not the Pods, the config plugins or the extensions.
   smoke-ios:
     name: Fixture session smoke run (iOS)
-    runs-on: blacksmith-6vcpu-macos-26
+    runs-on: macos-26
     timeout-minutes: 60
 
     env:
@@ -190,7 +184,7 @@ jobs:
         with:
           bun-version: latest
 
-      - uses: useblacksmith/cache/restore@v5
+      - uses: actions/cache/restore@v5
         id: pods-cache
         with:
           path: |
@@ -200,13 +194,12 @@ jobs:
           restore-keys: |
             pods-smoke-${{ runner.os }}-
 
-      - parallel:
-          - name: Install dependencies
-            run: bun install
-          - name: Install Maestro
-            run: |
-              curl -Ls https://get.maestro.mobile.dev | bash
-              echo "$HOME/.maestro/bin" >> "$GITHUB_PATH"
+      - name: Install dependencies
+        run: bun install
+      - name: Install Maestro
+        run: |
+          curl -Ls https://get.maestro.mobile.dev | bash
+          echo "$HOME/.maestro/bin" >> "$GITHUB_PATH"
 
       # `scripts/smoke.ts` owns the simulator boot, the Release build, the fixture staging and the
       # flow order, exactly as it does locally — the workflow only names the device.
@@ -217,7 +210,7 @@ jobs:
 
       - name: Save CocoaPods cache
         if: always() && steps.pods-cache.outputs.cache-hit != 'true'
-        uses: useblacksmith/cache/save@v5
+        uses: actions/cache/save@v5
         with:
           path: |
             ~/Library/Caches/CocoaPods

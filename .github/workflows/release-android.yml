@@ -33,7 +33,7 @@ jobs:
 
   gates:
     name: Release gates
-    runs-on: blacksmith-4vcpu-ubuntu-2404
+    runs-on: ubuntu-24.04
     env:
       GRADLE_OPTS: -Dorg.gradle.caching=true -Dorg.gradle.daemon=false
     steps:
@@ -56,7 +56,7 @@ jobs:
         with:
           distribution: temurin
           java-version: '17'
-      - uses: useblacksmith/cache@v5
+      - uses: actions/cache@v5
         with:
           path: |
             ~/.gradle/caches
@@ -76,7 +76,7 @@ jobs:
   build:
     name: Build signed artifacts once
     needs: [gates, persistence-contracts]
-    runs-on: blacksmith-8vcpu-ubuntu-2404
+    runs-on: ubuntu-24.04
     env:
       GRADLE_OPTS: -Dorg.gradle.caching=true -Dorg.gradle.daemon=false
     outputs:
@@ -102,7 +102,7 @@ jobs:
         with:
           distribution: temurin
           java-version: '17'
-      - uses: useblacksmith/cache@v5
+      - uses: actions/cache@v5
         with:
           path: |
             ~/.gradle/caches
@@ -215,7 +215,7 @@ jobs:
   upload_phone:
     name: Upload phone internal
     needs: build
-    runs-on: blacksmith-2vcpu-ubuntu-2404
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
         with:
@@ -257,7 +257,7 @@ jobs:
     # so parallel uploads delete each other's edit.
     needs: [build, upload_phone]
     if: always() && needs.build.result == 'success'
-    runs-on: blacksmith-2vcpu-ubuntu-2404
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
         with:
@@ -297,7 +297,7 @@ jobs:
     name: Publish release manifest
     if: always() && needs.build.result == 'success'
     needs: [build, upload_phone, upload_wear]
-    runs-on: blacksmith-2vcpu-ubuntu-2404
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/download-artifact@v4
         with:
