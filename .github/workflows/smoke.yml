@@ -142,16 +142,15 @@ jobs:
       - id: xcode
         run: echo "version=$(xcodebuild -version | shasum -a 256 | cut -d ' ' -f 1)" >> "$GITHUB_OUTPUT"
       - uses: actions/cache/restore@v5
-        id: build-cache
+        id: pods-cache
         with:
           path: |
             ~/Library/Caches/CocoaPods
             ~/.cocoapods/repos
             ios/Pods
-            .expo/capture-ios-build
-          key: ios-smoke-${{ runner.arch }}-${{ steps.xcode.outputs.version }}-${{ hashFiles('bun.lock', 'app.config.ts', 'plugins/**') }}-${{ github.sha }}
+          key: ios-smoke-pods-${{ runner.arch }}-${{ steps.xcode.outputs.version }}-${{ hashFiles('bun.lock', 'app.config.ts', 'plugins/**') }}-${{ github.sha }}
           restore-keys: |
-            ios-smoke-${{ runner.arch }}-${{ steps.xcode.outputs.version }}-${{ hashFiles('bun.lock', 'app.config.ts', 'plugins/**') }}-
+            ios-smoke-pods-${{ runner.arch }}-${{ steps.xcode.outputs.version }}-${{ hashFiles('bun.lock', 'app.config.ts', 'plugins/**') }}-
       - run: bun install --frozen-lockfile
       - name: Build without a simulator
         run: bun run smoke --platform ios --build-only --output .expo/smoke/vescape.app
@@ -165,16 +164,15 @@ jobs:
           if-no-files-found: error
           compression-level: 0
           retention-days: 1
-      - name: Save iOS build cache
-        if: always() && steps.build-cache.outputs.cache-hit != 'true'
+      - name: Save CocoaPods cache
+        if: always() && steps.pods-cache.outputs.cache-hit != 'true'
         uses: actions/cache/save@v5
         with:
           path: |
             ~/Library/Caches/CocoaPods
             ~/.cocoapods/repos
             ios/Pods
-            .expo/capture-ios-build
-          key: ${{ steps.build-cache.outputs.cache-primary-key }}
+          key: ${{ steps.pods-cache.outputs.cache-primary-key }}
 
   smoke-android:
     name: Android / ${{ matrix.flow }}

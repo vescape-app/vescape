@@ -116,9 +116,10 @@ bun run smoke --app .expo/smoke/app.apk --flow 03-history
 
 CI builds one Release artifact per platform without booting a device. Each platform's five flows
 then run in parallel jobs, each installing that artifact and starting a fresh fixture session.
-The iOS app travels in a tar archive to preserve its bundle permissions and symlinks. Build caches
-are separate from app artifacts; iOS compiled output is scoped to the runner architecture, Xcode,
-and dependency/config inputs. A cold build still has to compile the app once.
+The iOS app travels in a tar archive to preserve its bundle permissions and symlinks. Gradle's build
+cache and iOS CocoaPods dependencies are separate from app artifacts. iOS compiles once per run;
+Xcode compiled output is not transferred between fresh checkouts because it did not reduce build
+time and added cache transfer overhead.
 
 The workflow discovers public flow files through `bun run scripts/smoke.ts --list-flows`, so a new
 flow automatically joins both platform matrices. Manual dispatch can select one flow and/or one
