@@ -133,6 +133,37 @@ jobs:
           key: spm-${{ runner.os }}-${{ hashFiles('modules/vescape-core/Package.swift') }}
           restore-keys: |
             spm-${{ runner.os }}-
+      - name: Prepare an available iOS test simulator
+        timeout-minutes: 7
+        run: |
+          python3 - <<'PY'
+          import json
+          import os
+          import subprocess
+
+          inventory = json.loads(subprocess.check_output(
+              ['xcrun', 'simctl', 'list', 'devices', 'available', '--json'], timeout=60
+          ))
+          selected = next((
+              device
+              for runtime, devices in inventory['devices'].items()
+              if '.iOS-' in runtime
+              for device in devices
+              if device['name'] == 'iPhone 17' and device.get('isAvailable', False)
+          ), None)
+          if selected is None:
+              print(json.dumps(inventory, indent=2), flush=True)
+              subprocess.run(['xcrun', 'simctl', 'list', 'runtimes'], timeout=30, check=True)
+              raise SystemExit('No available iPhone 17 simulator on this runner.')
+
+          udid = selected['udid']
+          print(f'Preparing iPhone 17 ({udid})', flush=True)
+          if selected['state'] != 'Booted':
+              subprocess.run(['xcrun', 'simctl', 'boot', udid], timeout=180, check=True)
+          subprocess.run(['xcrun', 'simctl', 'bootstatus', udid, '-b'], timeout=180, check=True)
+          with open(os.environ['GITHUB_ENV'], 'a') as env:
+              env.write(f'IOS_TEST_DESTINATION=platform=iOS Simulator,id={udid}\n')
+          PY
       - run: bun run test:ios
         env:
           # A cold Swift build of the whole module is far past the local default.
