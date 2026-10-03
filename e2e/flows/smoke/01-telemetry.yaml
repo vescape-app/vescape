@@ -36,6 +36,7 @@ appId: ${APP_ID}
 # unit or a missing field shows up as text rather than as a needle.
 - tapOn:
     id: gauge-speed
+    waitToSettleTimeoutMs: 1000
 - extendedWaitUntil:
     visible: 'Speed'
     timeout: 15000
@@ -45,23 +46,36 @@ appId: ${APP_ID}
 # loaded again rather than merely remaining in component state.
 - tapOn:
     id: alert-level-speed-off
+    waitToSettleTimeoutMs: 1000
 - assertVisible: 'Off, selected'
-- runFlow: ../fixture/_home.yaml
+- runFlow:
+    file: ../fixture/_home.yaml
+    env:
+      HOME_EXIT_ID: header-back
 
 - tapOn:
     id: gauge-speed
+    waitToSettleTimeoutMs: 1000
 - extendedWaitUntil:
     visible: 'Off, selected'
     timeout: 15000
 # Restore the fixture's normal preset so later flows and screenshots keep their canonical setup.
 - tapOn:
     id: alert-level-speed-normal
+    waitToSettleTimeoutMs: 1000
 - assertVisible: 'Normal, selected'
-- runFlow: ../fixture/_home.yaml
+- runFlow:
+    file: ../fixture/_home.yaml
+    env:
+      HOME_EXIT_ID: header-back
 
 - tapOn:
     id: battery-bar
+    waitToSettleTimeoutMs: 1000
 - extendedWaitUntil:
     visible: 'Battery'
     timeout: 15000
-- runFlow: ../fixture/_home.yaml
+- runFlow:
+    file: ../fixture/_home.yaml
+    env:
+      HOME_EXIT_ID: header-back

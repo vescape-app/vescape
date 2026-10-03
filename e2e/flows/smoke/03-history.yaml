@@ -15,6 +15,7 @@ appId: ${APP_ID}
     commands:
       - tapOn:
           id: history-button
+          waitToSettleTimeoutMs: 1000
       - extendedWaitUntil:
           visible:
             id: history-drawer
@@ -28,6 +29,7 @@ appId: ${APP_ID}
     timeout: 30000
 - tapOn:
     id: history-latest-ride
+    waitToSettleTimeoutMs: 1000
 - extendedWaitUntil:
     visible:
       id: history-metric-tab-duty
@@ -42,6 +44,7 @@ appId: ${APP_ID}
 # derive them fails here and nowhere earlier.
 - tapOn:
     id: history-stats-bar
+    waitToSettleTimeoutMs: 1000
 - assertVisible:
     id: history-stat-avgSpeed
 - assertVisible:
@@ -56,18 +59,21 @@ appId: ${APP_ID}
 # thing a flow can assert — and it only mounts for a metric whose trace derived.
 - tapOn:
     id: history-metric-tab-duty
+    waitToSettleTimeoutMs: 1000
 - extendedWaitUntil:
     visible:
       id: chart-row-duty
     timeout: 10000
 - tapOn:
     id: history-metric-tab-tempMotor
+    waitToSettleTimeoutMs: 1000
 - extendedWaitUntil:
     visible:
       id: chart-row-tempMotor
     timeout: 10000
 - tapOn:
     id: history-metric-tab-tempController
+    waitToSettleTimeoutMs: 1000
 - extendedWaitUntil:
     visible:
       id: chart-row-tempController
@@ -77,6 +83,7 @@ appId: ${APP_ID}
 # detail screen does.
 - tapOn:
     id: history-ride-list-button
+    waitToSettleTimeoutMs: 1000
 - extendedWaitUntil:
     visible:
       id: history-session-sheet
@@ -103,4 +110,7 @@ appId: ${APP_ID}
       id: history-back
     timeout: 15000
 
-- runFlow: ../fixture/_home.yaml
+- runFlow:
+    file: ../fixture/_home.yaml
+    env:
+      HOME_EXIT_ID: history-back

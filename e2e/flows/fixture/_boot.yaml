@@ -13,9 +13,13 @@ appId: ${APP_ID}
 # iOS 26 shows the location prompt on first launch even after `simctl privacy grant`, and a system
 # alert owns the whole hierarchy: every assertion below it fails with the app running fine
 # underneath. Optional, so Android — where the runner grants permissions outright — skips it.
-- tapOn:
-    text: 'Allow While Using App'
-    optional: true
+- runFlow:
+    when:
+      platform: iOS
+    commands:
+      - tapOn:
+          text: 'Allow While Using App'
+          optional: true
 # A fresh hosted Android image can stall Pixel Launcher during app installation. Its system
 # dialog owns the accessibility tree even when Vescape is running underneath. Check between
 # bounded waits because the dialog can appear after launch. Never dismiss Vescape's own ANR.

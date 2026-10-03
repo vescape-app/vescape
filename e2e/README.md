@@ -125,6 +125,9 @@ flow automatically joins both platform matrices. Manual dispatch can select one 
 platform. Failed jobs retain their own Maestro diagnostics; one failure does not cancel siblings.
 Boot handles the known Pixel Launcher ANR dialog on hosted Android images between bounded
 telemetry waits. It does not dismiss Vescape's own ANR or weaken the telemetry assertion.
+Android keeps the Pixel 6 layout in dp at a lower render resolution for the software GPU.
+Smoke flows use known exit controls and bounded settling waits, then assert the destination;
+continuously animated telemetry does not need to become visually idle before every tap.
 
 It shares its boot with the screenshot capture below — Release build, restored fixture database,
 Debug Recording replayed through the real telemetry pipeline — and that is the whole point.

@@ -218,6 +218,13 @@ jobs:
           target: google_apis
           arch: x86_64
           profile: pixel_6
+          # Keep the Pixel 6 layout in dp while reducing software-rendered pixels by 56%.
+          pre-emulator-launch-script: >-
+            sed -i
+            -e 's/^hw.lcd.width=.*/hw.lcd.width=720/'
+            -e 's/^hw.lcd.height=.*/hw.lcd.height=1600/'
+            -e 's/^hw.lcd.density=.*/hw.lcd.density=280/'
+            "$HOME/.android/avd/test.avd/config.ini"
           emulator-options: >-
             -no-window -no-snapshot -no-boot-anim -gpu swiftshader_indirect
             -noaudio -camera-back none

@@ -313,7 +313,8 @@ function syncPlatform(platform: Platform) {
     if (action === 'shared') {
       copyShared()
     } else if (action === 'prebuild') {
-      run(['bunx', 'expo', 'prebuild', '--platform', platform])
+      // The plan owns CocoaPods below; Expo's automatic install would run it twice.
+      run(['bunx', 'expo', 'prebuild', '--platform', platform, '--no-install'])
     } else {
       // CocoaPods reads paths as ASCII-8BIT and crashes on `unicode_normalize` unless the locale is
       // UTF-8, which non-interactive shells often lack; Expo's own CLI pins LANG for the same reason.

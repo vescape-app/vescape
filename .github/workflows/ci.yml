@@ -7,6 +7,11 @@ on:
   pull_request:
     types: [opened, synchronize, reopened]
 
+# Replace obsolete PR checks, while keeping a verdict for every dev/main commit.
+concurrency:
+  group: ci-${{ github.event_name }}-${{ github.event.pull_request.number || github.sha }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 jobs:
   persistence-contracts:
     uses: ./.github/workflows/persistence-contracts.yml

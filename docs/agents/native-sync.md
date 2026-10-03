@@ -38,7 +38,7 @@ deleted copy re-runs `copyShared()`. Steps run in order, so this lands before an
 `plugins/`, `patches/`, every `modules/*/expo-module.config.json` and `modules/*/package.json`, plus
 `targets/` on iOS (`@bacons/apple-targets` copies those into the Xcode project) and `watch/` on
 Android (`withWearMirror` copies the Wear OS Mirror into `android/wearos/`). Any change here means
-the generated native project is stale, so the script runs `expo prebuild --platform <p>`.
+the generated native project is stale, so the script runs `expo prebuild --platform <p> --no-install`.
 
 Because `watch/` is a prebuild input, editing the Wear Mirror is enough: the next `bun run android`
 or `bun run wear:*` re-runs prebuild, and the plugin re-copies the source. Nothing hand-copies
@@ -50,9 +50,8 @@ path list** under each `modules/*/ios/`. CocoaPods compiles whatever the podspec
 Editing an already-compiled file needs no refresh, which is why this scope hashes paths, not
 contents — normal Swift work never pays for a `pod install`.
 
-On iOS the two scopes chain: a prebuild regenerates the Podfile, and `expo prebuild` does not
-reliably install from it, so every iOS sync ends with `pod install`. It is a fast no-op when Pods
-already match.
+On iOS the two scopes chain: a prebuild regenerates the Podfile, then the sync plan runs
+`pod install` once. Passing `--no-install` to Expo prevents a duplicate CocoaPods install.
 
 ## The same drift hits the Swift test target
 
