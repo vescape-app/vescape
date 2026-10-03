@@ -53,20 +53,16 @@ async function listSimulators(): Promise<Simulator[]> {
 }
 
 async function bootSimulator(sim: Simulator): Promise<Simulator> {
-  if (sim.state === 'Booted') return sim
-  console.log(`› Booting ${sim.name}…`)
-  await simctl('boot', sim.udid)
+  if (sim.state !== 'Booted') {
+    console.log(`› Booting ${sim.name}…`)
+    await runOrDie(['xcrun', 'simctl', 'boot', sim.udid], undefined, 180_000)
+  }
+  // Booted only means the process started. Wait for SpringBoard and first-boot setup before
+  // installing the app or starting XCTest; this returns immediately for a ready local simulator.
+  await runOrDie(['xcrun', 'simctl', 'bootstatus', sim.udid, '-b'], undefined, 180_000)
   // Maestro drives the simulator through its UI, so the Simulator app has to be on screen.
   await capture(['open', '-a', 'Simulator'])
-
-  const deadline = Date.now() + 180_000
-  while (Date.now() < deadline) {
-    const current = (await listSimulators()).find((device) => device.udid === sim.udid)
-    if (current?.state === 'Booted') return current
-    await Bun.sleep(2000)
-  }
-  console.error(`${sim.name} did not finish booting within 180s.`)
-  process.exit(1)
+  return { ...sim, state: 'Booted' }
 }
 
 /** Cache key for the last capture simulator picked; see lib/lastDevice. */

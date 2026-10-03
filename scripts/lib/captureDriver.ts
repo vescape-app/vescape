@@ -92,11 +92,13 @@ export class CommandFailed extends Error {
 export async function runOrDie(
   cmd: string[],
   env?: Record<string, string | undefined>,
+  timeoutMs?: number,
 ): Promise<void> {
   const proc = Bun.spawn(cmd, {
     cwd: ROOT,
     stdout: 'inherit',
     stderr: 'inherit',
+    ...(timeoutMs ? { timeout: timeoutMs, killSignal: 'SIGKILL' } : {}),
     ...(env ? { env } : {}),
   })
   const code = (await proc.exited) ?? 1

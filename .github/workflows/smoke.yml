@@ -276,6 +276,8 @@ jobs:
         timeout-minutes: 15
         env:
           SMOKE_FLOW: ${{ matrix.flow }}
+          # A fresh hosted simulator can take over two minutes to start XCTest.
+          MAESTRO_DRIVER_STARTUP_TIMEOUT: '300000'
         run: >-
           bun run smoke --platform ios --app .expo/smoke/vescape.app
           --device 'iPhone 17' --flow "$SMOKE_FLOW"

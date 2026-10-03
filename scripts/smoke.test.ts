@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, expect, test } from 'bun:test'
 import {
   chmodSync,
+  existsSync,
   mkdirSync,
   mkdtempSync,
   readFileSync,
@@ -11,7 +12,7 @@ import {
   writeFileSync,
 } from 'fs'
 import { tmpdir } from 'os'
-import { basename, join } from 'path'
+import { basename, dirname, join, resolve } from 'path'
 
 import type { CaptureDriver } from './lib/captureDriver.ts'
 import { main, readArgs, selectFlows } from './smoke.ts'
@@ -61,9 +62,10 @@ test('iOS artifact export preserves executable bits and relative bundle symlinks
   expect(readlinkSync(join(output, 'linked-binary'))).toBe('binary')
 })
 
-test('each artifact flow installs once and starts a fresh fixture session without compiling', async () => {
-  for (const flow of selectFlows(null)) {
+test('artifact flows use one Maestro session after installing and restoring fixtures', async () => {
+  for (const flow of [...selectFlows(null), null]) {
     const calls: string[] = []
+    let wrapper = ''
     const app = join(root, 'app.apk')
     const driver: CaptureDriver = {
       platform: 'android',
@@ -87,15 +89,23 @@ test('each artifact flow installs once and starts a fresh fixture session withou
       },
       setChrome: unexpected,
     }
-    await main(readArgs(['--app', app, '--flow', flow]), {
+    await main(readArgs(['--app', app, ...(flow ? ['--flow', flow] : [])]), {
       buildApp: unexpected,
       createDriver: async () => driver,
       runFlow: async (path, selected) => {
         expect(selected).toBe(driver)
-        calls.push(basename(path))
+        wrapper = path
+        calls.push('maestro')
+        const steps = JSON.parse(readFileSync(path, 'utf8').split('\n---\n')[1]) as {
+          runFlow: string
+        }[]
+        const paths = steps.map((step) => resolve(dirname(path), step.runFlow))
+        expect(paths.every(existsSync)).toBe(true)
+        expect(paths.map((path) => basename(path))).toEqual(['_boot.yaml', ...selectFlows(flow)])
       },
     })
-    expect(calls).toEqual(['install', 'awake', 'fixtures', 'location', '_boot.yaml', flow])
+    expect(calls).toEqual(['install', 'awake', 'fixtures', 'location', 'maestro'])
+    expect(existsSync(wrapper)).toBe(false)
   }
 })
 

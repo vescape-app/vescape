@@ -123,6 +123,7 @@ and dependency/config inputs. A cold build still has to compile the app once.
 The workflow discovers public flow files through `bun run scripts/smoke.ts --list-flows`, so a new
 flow automatically joins both platform matrices. Manual dispatch can select one flow and/or one
 platform. Failed jobs retain their own Maestro diagnostics; one failure does not cancel siblings.
+Each job runs boot and its selected flow in one Maestro session, so iOS starts XCTest only once.
 Boot handles the known Pixel Launcher ANR dialog on hosted Android images between bounded
 telemetry waits. It does not dismiss Vescape's own ANR or weaken the telemetry assertion.
 Android keeps the Pixel 6 layout in dp at a lower render resolution for the software GPU.

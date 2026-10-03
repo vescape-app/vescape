@@ -20,8 +20,9 @@
  * Both platforms run the same flow files through the same `CaptureDriver` the screenshot run uses:
  * a flow that needs platform-specific steps belongs in a sub-flow, not in a second flow set.
  */
-import { cpSync, mkdirSync, readdirSync } from 'fs'
-import { basename, dirname, join, resolve } from 'path'
+import { cpSync, mkdirSync, mkdtempSync, readdirSync, rmSync } from 'fs'
+import { tmpdir } from 'os'
+import { basename, dirname, join, relative, resolve } from 'path'
 
 import { applicationId } from '../src/config/appVariant.ts'
 import { createAndroidDriver } from './lib/androidCapture.ts'
@@ -178,8 +179,25 @@ export async function main(args: Args, deps: SmokeDependencies = dependencies): 
   await driver.stageFixtures()
   await driver.pinLocation()
 
-  await deps.runFlow(BOOT_FLOW, driver)
-  for (const flow of flows) await deps.runFlow(join(FLOWS_DIR, flow), driver)
+  // A separate Maestro process starts the iOS XCTest driver again. Keep boot and all selected
+  // flows in one session, retaining their order and failing before later flows when boot fails.
+  const sessionDir = mkdtempSync(join(tmpdir(), 'vescape-smoke-'))
+  const sessionFlow = join(sessionDir, 'smoke.yaml')
+  try {
+    const paths = [BOOT_FLOW, ...flows.map((flow) => join(FLOWS_DIR, flow))]
+    await Bun.write(
+      sessionFlow,
+      [
+        `appId: ${JSON.stringify(applicationId)}`,
+        '---',
+        JSON.stringify(paths.map((path) => ({ runFlow: relative(sessionDir, path) }))),
+        '',
+      ].join('\n'),
+    )
+    await deps.runFlow(sessionFlow, driver)
+  } finally {
+    rmSync(sessionDir, { recursive: true, force: true })
+  }
 
   console.log('\nSmoke passed.')
 }
