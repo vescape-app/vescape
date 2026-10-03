@@ -123,6 +123,8 @@ and dependency/config inputs. A cold build still has to compile the app once.
 The workflow discovers public flow files through `bun run scripts/smoke.ts --list-flows`, so a new
 flow automatically joins both platform matrices. Manual dispatch can select one flow and/or one
 platform. Failed jobs retain their own Maestro diagnostics; one failure does not cancel siblings.
+Boot handles the known Pixel Launcher ANR dialog on hosted Android images between bounded
+telemetry waits. It does not dismiss Vescape's own ANR or weaken the telemetry assertion.
 
 It shares its boot with the screenshot capture below — Release build, restored fixture database,
 Debug Recording replayed through the real telemetry pipeline — and that is the whole point.

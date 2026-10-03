@@ -16,7 +16,19 @@ appId: ${APP_ID}
 - tapOn:
     text: 'Allow While Using App'
     optional: true
-- extendedWaitUntil:
-    visible:
-      id: battery-bar
-    timeout: 60000
+# A fresh hosted Android image can stall Pixel Launcher during app installation. Its system
+# dialog owns the accessibility tree even when Vescape is running underneath. Check between
+# bounded waits because the dialog can appear after launch. Never dismiss Vescape's own ANR.
+- retry:
+    maxRetries: 2
+    commands:
+      - runFlow:
+          when:
+            visible: "Pixel Launcher isn't responding"
+          commands:
+            - tapOn:
+                id: android:id/aerr_close
+      - extendedWaitUntil:
+          visible:
+            id: battery-bar
+          timeout: 20000
