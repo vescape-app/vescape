@@ -7,7 +7,7 @@
  *
  * @parity /scripts/lib/androidCapture.ts
  */
-import { existsSync, mkdirSync, readdirSync, rmSync } from 'fs'
+import { existsSync, mkdirSync, rmSync } from 'fs'
 import { basename, join } from 'path'
 
 import { applicationId } from '../../src/config/appVariant.ts'
@@ -15,19 +15,15 @@ import {
   capture,
   CAPTURE_LOCATION,
   FIXTURE_ZIP,
-  ROOT,
   runOrDie,
-  fixtureBuildEnv,
   warnMissingFixture,
   type CaptureDriver,
   type FixtureRunMode,
 } from './captureDriver.ts'
 import { pickDevice } from './devices.ts'
+import { buildIosFixture } from './fixtureBuild.ts'
 
 const OUT_DIR = 'screenshots/ios'
-const IOS_DIR = join(ROOT, 'ios')
-/** Kept out of `ios/`, which `expo prebuild` rewrites on every `native:sync`. */
-const DERIVED_DATA = join(ROOT, '.expo', 'capture-ios-build')
 
 /**
  * The 6.9" size App Store Connect requires (1320x2868). Apple downscales it to the smaller phone
@@ -131,6 +127,10 @@ export async function createIosDriver(
   mode: FixtureRunMode = 'screenshots',
 ): Promise<CaptureDriver> {
   const sim = await resolveSimulator(requestedDevice)
+  const installArtifact = async (path: string) => {
+    console.log(`› Installing ${basename(path)} on ${sim.name}`)
+    await runOrDie(['xcrun', 'simctl', 'install', sim.udid, path])
+  }
 
   return {
     platform: 'ios',
@@ -139,75 +139,10 @@ export async function createIosDriver(
     deviceLabel: `${sim.name} (${sim.udid})`,
 
     async buildAndInstall() {
-      console.log(`\u203a Building the iOS ${mode} Release build\u2026`)
-      await runOrDie(['bun', 'run', 'native:sync', 'ios'])
-
-      // `xcodebuild` rather than `expo run:ios`: Expo demands a real signing identity even for a
-      // simulator build when the app declares `associated-domains` or `applesignin`
-      // (`@expo/cli` simulatorCodeSigning), which a CI runner has no certificate for. A simulator
-      // build needs no certificate. Xcode handles ad-hoc signing and simulator keychain
-      // entitlements below. Release still bundles its own JS.
-      const workspace = readdirSync(IOS_DIR).find((entry) => entry.endsWith('.xcworkspace'))
-      if (!workspace) {
-        console.error('No ios/*.xcworkspace — `native:sync ios` did not generate the project.')
-        process.exit(1)
-      }
-      const scheme = basename(workspace, '.xcworkspace')
-
-      // Simulator Keychain needs an application identifier and access group. Xcode embeds
-      // simulated entitlements separately from the host signature; no certificate is needed.
-      mkdirSync(DERIVED_DATA, { recursive: true })
-      const entitlements = join(DERIVED_DATA, 'simulator-keychain.entitlements')
-      await Bun.write(
-        entitlements,
-        `<?xml version="1.0" encoding="UTF-8"?>
-<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-<plist version="1.0"><dict>
-<key>application-identifier</key><string>SIMULATOR.$(PRODUCT_BUNDLE_IDENTIFIER)</string>
-<key>keychain-access-groups</key><array><string>SIMULATOR.$(PRODUCT_BUNDLE_IDENTIFIER)</string></array>
-</dict></plist>`,
-      )
-
-      await runOrDie(
-        [
-          'xcodebuild',
-          '-workspace',
-          join(IOS_DIR, workspace),
-          '-scheme',
-          scheme,
-          '-configuration',
-          'Release',
-          '-destination',
-          `id=${sim.udid}`,
-          '-derivedDataPath',
-          DERIVED_DATA,
-          'CODE_SIGNING_ALLOWED=YES',
-          'CODE_SIGN_IDENTITY=-',
-          'CODE_SIGN_STYLE=Manual',
-          'DEVELOPMENT_TEAM=',
-          `CODE_SIGN_ENTITLEMENTS=${entitlements}`,
-          // A full Xcode transcript is ~100k lines and buries the one error worth reading. `-quiet`
-          // keeps errors and warnings.
-          '-quiet',
-          'build',
-        ],
-        fixtureBuildEnv(mode, replay),
-      )
-
-      const app = join(
-        DERIVED_DATA,
-        'Build',
-        'Products',
-        'Release-iphonesimulator',
-        `${scheme}.app`,
-      )
-      if (!existsSync(app)) {
-        console.error(`xcodebuild reported success but ${app} is missing.`)
-        process.exit(1)
-      }
-      console.log(`\u203a Installing ${scheme}.app on ${sim.name}`)
-      await runOrDie(['xcrun', 'simctl', 'install', sim.udid, app])
+      await installArtifact(await buildIosFixture(mode, replay))
     },
+
+    installArtifact,
 
     async requireInstalled() {
       if ((await containerDir(sim.udid)) == null) {
