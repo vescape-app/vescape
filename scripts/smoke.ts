@@ -133,10 +133,44 @@ async function runFlow(path: string, driver: CaptureDriver): Promise<void> {
   ])
 }
 
+async function launchAndroidApp(deviceId: string): Promise<void> {
+  // Maestro's Android launch/permission ADB calls can block indefinitely (Maestro #3658).
+  // stageFixtures already clears the app and grants its permissions. Bound only the launch here.
+  console.log('› Launching the prepared Android app…')
+  const command = [
+    'adb',
+    '-s',
+    deviceId,
+    'shell',
+    'am',
+    'start',
+    '-W',
+    '-a',
+    'android.intent.action.MAIN',
+    '-c',
+    'android.intent.category.LAUNCHER',
+    '-p',
+    applicationId,
+  ]
+  const process = Bun.spawn(command, {
+    stdout: 'pipe',
+    stderr: 'inherit',
+    timeout: 60_000,
+    killSignal: 'SIGKILL',
+  })
+  const output = await new Response(process.stdout).text()
+  const code = await process.exited
+  console.log(output.trim())
+  if (code !== 0) throw new CommandFailed(code, command)
+  if (!/^Status: ok\s*$/m.test(output))
+    throw new Error('Android activity did not start successfully.')
+}
+
 interface SmokeDependencies {
   buildApp: (args: Args) => Promise<string>
   createDriver: (args: Args) => Promise<CaptureDriver>
   runFlow: typeof runFlow
+  launchAndroidApp: typeof launchAndroidApp
 }
 
 const dependencies: SmokeDependencies = {
@@ -149,6 +183,7 @@ const dependencies: SmokeDependencies = {
       ? createIosDriver(args.device, args.replay, 'smoke')
       : createAndroidDriver(args.device, args.replay, 'smoke'),
   runFlow,
+  launchAndroidApp,
 }
 
 export async function main(args: Args, deps: SmokeDependencies = dependencies): Promise<void> {
@@ -178,6 +213,7 @@ export async function main(args: Args, deps: SmokeDependencies = dependencies): 
   await driver.requireAwakeDisplay()
   await driver.stageFixtures()
   await driver.pinLocation()
+  if (args.platform === 'android') await deps.launchAndroidApp(driver.deviceId)
 
   // A separate Maestro process starts the iOS XCTest driver again. Keep boot and all selected
   // flows in one session, retaining their order and failing before later flows when boot fails.
@@ -189,6 +225,7 @@ export async function main(args: Args, deps: SmokeDependencies = dependencies): 
       sessionFlow,
       [
         `appId: ${JSON.stringify(applicationId)}`,
+        ...(args.platform === 'android' ? ['env:', '  APP_ALREADY_LAUNCHED: "true"'] : []),
         '---',
         JSON.stringify(paths.map((path) => ({ runFlow: relative(sessionDir, path) }))),
         '',

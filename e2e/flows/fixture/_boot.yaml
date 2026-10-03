@@ -8,7 +8,13 @@
 # replay also assert its badge; the battery bar alone can remain visible after replay ends.
 appId: ${APP_ID}
 ---
-- launchApp
+# Android smoke launches through bounded adb after fixture preparation. Other callers still launch
+# here. Avoid Maestro's unbounded Android permission/launch ADB calls (Maestro issue #3658).
+- runFlow:
+    when:
+      true: ${typeof APP_ALREADY_LAUNCHED === 'undefined' || APP_ALREADY_LAUNCHED !== 'true'}
+    commands:
+      - launchApp
 # A fresh hosted Android image can stall Pixel Launcher during app installation. Its system
 # dialog owns the accessibility tree even when Vescape is running underneath. Check between
 # bounded waits because the dialog can appear after launch. Never dismiss Vescape's own ANR.

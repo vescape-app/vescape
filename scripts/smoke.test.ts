@@ -42,6 +42,7 @@ test('build-only exports an APK without resolving or booting a device', async ()
     },
     createDriver: unexpected,
     runFlow: unexpected,
+    launchAndroidApp: unexpected,
   })
   expect(readFileSync(output, 'utf8')).toBe('release APK')
 })
@@ -57,55 +58,78 @@ test('iOS artifact export preserves executable bits and relative bundle symlinks
     buildApp: async () => artifact,
     createDriver: unexpected,
     runFlow: unexpected,
+    launchAndroidApp: unexpected,
   })
   expect(statSync(join(output, 'binary')).mode & 0o777).toBe(0o755)
   expect(readlinkSync(join(output, 'linked-binary'))).toBe('binary')
 })
 
 test('artifact flows use one Maestro session after installing and restoring fixtures', async () => {
-  for (const flow of [...selectFlows(null), null]) {
-    const calls: string[] = []
-    let wrapper = ''
-    const app = join(root, 'app.apk')
-    const driver: CaptureDriver = {
-      platform: 'android',
-      outDir: '',
-      deviceId: 'emulator-test',
-      deviceLabel: 'test',
-      buildAndInstall: unexpected,
-      requireInstalled: unexpected,
-      installArtifact: async (path) => {
-        expect(path).toBe(app)
-        calls.push('install')
-      },
-      requireAwakeDisplay: async () => {
-        calls.push('awake')
-      },
-      stageFixtures: async () => {
-        calls.push('fixtures')
-      },
-      pinLocation: async () => {
-        calls.push('location')
-      },
-      setChrome: unexpected,
+  for (const platform of ['android', 'ios'] as const) {
+    for (const flow of [...selectFlows(null), null]) {
+      const calls: string[] = []
+      let wrapper = ''
+      const app = join(root, 'app.apk')
+      const driver: CaptureDriver = {
+        platform,
+        outDir: '',
+        deviceId: 'emulator-test',
+        deviceLabel: 'test',
+        buildAndInstall: unexpected,
+        requireInstalled: unexpected,
+        installArtifact: async (path) => {
+          expect(path).toBe(app)
+          calls.push('install')
+        },
+        requireAwakeDisplay: async () => {
+          calls.push('awake')
+        },
+        stageFixtures: async () => {
+          calls.push('fixtures')
+        },
+        pinLocation: async () => {
+          calls.push('location')
+        },
+        setChrome: unexpected,
+      }
+      await main(
+        readArgs(['--platform', platform, '--app', app, ...(flow ? ['--flow', flow] : [])]),
+        {
+          buildApp: unexpected,
+          createDriver: async () => driver,
+          launchAndroidApp: async (deviceId) => {
+            expect(platform).toBe('android')
+            expect(deviceId).toBe(driver.deviceId)
+            calls.push('launch')
+          },
+          runFlow: async (path, selected) => {
+            expect(selected).toBe(driver)
+            wrapper = path
+            calls.push('maestro')
+            const content = readFileSync(path, 'utf8')
+            expect(content.includes('APP_ALREADY_LAUNCHED:')).toBe(platform === 'android')
+            const steps = JSON.parse(content.split('\n---\n')[1]) as {
+              runFlow: string
+            }[]
+            const paths = steps.map((step) => resolve(dirname(path), step.runFlow))
+            expect(paths.every(existsSync)).toBe(true)
+            expect(paths.map((path) => basename(path))).toEqual([
+              '_boot.yaml',
+              ...selectFlows(flow),
+            ])
+          },
+        },
+      )
+      expect(calls).toEqual([
+        'install',
+        'awake',
+        'fixtures',
+        'location',
+        ...(platform === 'android' ? ['launch'] : []),
+        'maestro',
+      ])
+      expect(existsSync(wrapper)).toBe(false)
     }
-    await main(readArgs(['--app', app, ...(flow ? ['--flow', flow] : [])]), {
-      buildApp: unexpected,
-      createDriver: async () => driver,
-      runFlow: async (path, selected) => {
-        expect(selected).toBe(driver)
-        wrapper = path
-        calls.push('maestro')
-        const steps = JSON.parse(readFileSync(path, 'utf8').split('\n---\n')[1]) as {
-          runFlow: string
-        }[]
-        const paths = steps.map((step) => resolve(dirname(path), step.runFlow))
-        expect(paths.every(existsSync)).toBe(true)
-        expect(paths.map((path) => basename(path))).toEqual(['_boot.yaml', ...selectFlows(flow)])
-      },
-    })
-    expect(calls).toEqual(['install', 'awake', 'fixtures', 'location', 'maestro'])
-    expect(existsSync(wrapper)).toBe(false)
   }
 })
 
@@ -115,6 +139,7 @@ test('unknown selected flows fail before building or acquiring a device', async 
       buildApp: unexpected,
       createDriver: unexpected,
       runFlow: unexpected,
+      launchAndroidApp: unexpected,
     }),
   ).rejects.toThrow('No smoke flow named')
 })
