@@ -4,9 +4,8 @@
 # and fixtures pushed by the runner. The app's own bootstrap restores the backup zip and starts the
 # replay session before it mounts, so this wait covers a database restore plus a replay handshake.
 #
-# Waiting on `battery-bar` rather than a blind settle: it is the first thing on screen that can only
-# be there once the live session is delivering, which is the state both runs need and neither can
-# assert by watching animations stop.
+# Wait for the restored dashboard instead of animations settling. Flows that need an active
+# replay also assert its badge; the battery bar alone can remain visible after replay ends.
 appId: ${APP_ID}
 ---
 - launchApp
@@ -32,10 +31,14 @@ appId: ${APP_ID}
                       waitToSettleTimeoutMs: 1000
       - runFlow:
           when:
-            visible: "Pixel Launcher isn't responding"
+            platform: Android
           commands:
-            - tapOn:
-                id: android:id/aerr_close
+            - runFlow:
+                when:
+                  visible: "Pixel Launcher isn't responding"
+                commands:
+                  - tapOn:
+                      id: android:id/aerr_close
       - extendedWaitUntil:
           visible:
             id: battery-bar

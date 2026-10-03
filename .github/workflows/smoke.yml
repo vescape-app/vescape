@@ -29,7 +29,7 @@ on:
         default: both
         options: [both, android, ios]
 
-# Keep a verdict for each dev merge. Jobs within a run execute in parallel.
+# Finish the active run and keep the latest pending run. Jobs within a run execute in parallel.
 concurrency:
   group: smoke-${{ github.ref }}
   cancel-in-progress: false
@@ -247,7 +247,7 @@ jobs:
     name: iOS / ${{ matrix.flow }}
     needs: [plan, build-ios]
     runs-on: macos-26
-    timeout-minutes: 20
+    timeout-minutes: 25
     strategy:
       fail-fast: false
       matrix:
@@ -273,7 +273,8 @@ jobs:
           curl -Ls https://get.maestro.mobile.dev | bash
           echo "$HOME/.maestro/bin" >> "$GITHUB_PATH"
       - name: Run isolated flow
-        timeout-minutes: 15
+        # Include fresh simulator startup and Maestro's XCTest shutdown, not just assertions.
+        timeout-minutes: 20
         env:
           SMOKE_FLOW: ${{ matrix.flow }}
           # A fresh hosted simulator can take over two minutes to start XCTest.
