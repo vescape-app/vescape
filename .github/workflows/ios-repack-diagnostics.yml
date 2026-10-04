@@ -1,6 +1,9 @@
 name: iOS repack diagnostics
 
 on:
+  push:
+    branches: [ci-ios-repack]
+    paths: ['.github/workflows/ios-repack-diagnostics.yml']
   workflow_dispatch:
 
 permissions:
