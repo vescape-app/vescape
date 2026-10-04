@@ -40,7 +40,7 @@ const FLOWS_DIR = join(ROOT, 'e2e', 'flows', 'smoke')
 const BOOT_FLOW = join(ROOT, 'e2e', 'flows', 'fixture', '_boot.yaml')
 
 /** Same city ride the capture run replays, started afresh for each CI flow. */
-const DEFAULT_REPLAY = 'replay-thor301.jsonl'
+export const DEFAULT_REPLAY = 'replay-thor301.jsonl'
 
 export interface Args {
   platform: CapturePlatform

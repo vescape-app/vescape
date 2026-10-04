@@ -140,9 +140,25 @@ jobs:
         with:
           bun-version: latest
       - id: xcode
-        run: echo "version=$(xcodebuild -version | shasum -a 256 | cut -d ' ' -f 1)" >> "$GITHUB_OUTPUT"
+        run: |
+          echo "version=$({ xcodebuild -version; xcrun --sdk iphonesimulator --show-sdk-version; } | shasum -a 256 | cut -d ' ' -f 1)" >> "$GITHUB_OUTPUT"
+      - run: bun install --frozen-lockfile
+      - name: Fingerprint native smoke inputs
+        id: native-fingerprint
+        # If fingerprinting cannot establish compatibility, use a full build without caching it.
+        continue-on-error: true
+        run: bun run scripts/ios-smoke-repack.ts fingerprint
+      - name: Restore matching native app
+        id: native-app
+        if: steps.native-fingerprint.outputs.hash != ''
+        uses: actions/cache/restore@v5
+        with:
+          path: .expo/smoke/ios-native-base
+          # Exact matches only. A different native fingerprint must compile again.
+          key: ios-smoke-native-v1-${{ runner.arch }}-${{ steps.xcode.outputs.version }}-${{ steps.native-fingerprint.outputs.hash }}
       - uses: actions/cache/restore@v5
         id: pods-cache
+        if: steps.native-app.outputs.cache-hit != 'true'
         with:
           path: |
             ~/Library/Caches/CocoaPods
@@ -151,9 +167,25 @@ jobs:
           key: ios-smoke-pods-${{ runner.arch }}-${{ steps.xcode.outputs.version }}-${{ hashFiles('bun.lock', 'app.config.ts', 'plugins/**') }}-${{ github.sha }}
           restore-keys: |
             ios-smoke-pods-${{ runner.arch }}-${{ steps.xcode.outputs.version }}-${{ hashFiles('bun.lock', 'app.config.ts', 'plugins/**') }}-
-      - run: bun install --frozen-lockfile
       - name: Build without a simulator
+        if: steps.native-app.outputs.cache-hit != 'true'
         run: bun run smoke --platform ios --build-only --output .expo/smoke/vescape.app
+      - name: Repack current JavaScript and assets
+        if: steps.native-app.outputs.cache-hit == 'true'
+        env:
+          NATIVE_FINGERPRINT: ${{ steps.native-fingerprint.outputs.hash }}
+        run: bun run scripts/ios-smoke-repack.ts repack "$NATIVE_FINGERPRINT"
+      - name: Record native app provenance
+        if: steps.native-app.outputs.cache-hit != 'true' && steps.native-fingerprint.outputs.hash != ''
+        env:
+          NATIVE_FINGERPRINT: ${{ steps.native-fingerprint.outputs.hash }}
+        run: bun run scripts/ios-smoke-repack.ts record "$NATIVE_FINGERPRINT"
+      - name: Cache native app
+        if: steps.native-app.outputs.cache-hit != 'true' && steps.native-fingerprint.outputs.hash != ''
+        uses: actions/cache/save@v5
+        with:
+          path: .expo/smoke/ios-native-base
+          key: ${{ steps.native-app.outputs.cache-primary-key }}
       # A tar archive preserves the executable permissions and symlinks inside the app bundle.
       - name: Package simulator app
         run: tar -czf "$RUNNER_TEMP/smoke-ios.tar.gz" -C .expo/smoke vescape.app
@@ -165,7 +197,7 @@ jobs:
           compression-level: 0
           retention-days: 1
       - name: Save CocoaPods cache
-        if: always() && steps.pods-cache.outputs.cache-hit != 'true'
+        if: success() && steps.native-app.outputs.cache-hit != 'true' && steps.pods-cache.outputs.cache-hit != 'true'
         uses: actions/cache/save@v5
         with:
           path: |

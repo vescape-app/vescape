@@ -117,9 +117,13 @@ bun run smoke --app .expo/smoke/app.apk --flow 03-history
 CI builds one Release artifact per platform without booting a device. Each platform's five flows
 then run in parallel jobs, each installing that artifact and starting a fresh fixture session.
 The iOS app travels in a tar archive to preserve its bundle permissions and symlinks. Gradle's build
-cache and iOS CocoaPods dependencies are separate from app artifacts. iOS compiles once per run;
-Xcode compiled output is not transferred between fresh checkouts because it did not reduce build
-time and added cache transfer overhead.
+cache and iOS CocoaPods dependencies are separate from app artifacts. iOS caches the compiled
+simulator app by native fingerprint, runner architecture, Xcode, and simulator SDK. Matching runs
+use Expo repack to refresh JavaScript and assets, preserve bundle links, and ad-hoc sign the app
+with its original simulator entitlements. Native sources, dependencies, plugins, shared resources,
+build recipes, or native environment changes require a full build. Fingerprint failures also use
+a full build without saving an app cache. Cache restores require an exact match; Xcode compiled
+output is not transferred between fresh checkouts.
 
 The workflow discovers public flow files through `bun run scripts/smoke.ts --list-flows`, so a new
 flow automatically joins both platform matrices. Manual dispatch can select one flow and/or one

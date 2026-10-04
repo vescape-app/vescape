@@ -104,6 +104,9 @@
     "zustand": "5.0.15"
   },
   "devDependencies": {
+    "@expo/fingerprint": "0.20.13",
+    "@expo/repack-app": "0.10.4",
+    "@expo/spawn-async": "1.8.0",
     "@phosphor-icons/core": "^2.1.1",
     "@types/markdown-it": "^14.2.0",
     "@types/node": "^26.6.2",
