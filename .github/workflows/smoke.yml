@@ -156,9 +156,20 @@ jobs:
           path: .expo/smoke/ios-native-base
           # Exact matches only. A different native fingerprint must compile again.
           key: ios-smoke-native-v1-${{ runner.arch }}-${{ steps.xcode.outputs.version }}-${{ steps.native-fingerprint.outputs.hash }}
+      - name: Repack current JavaScript and assets
+        id: repack
+        if: steps.native-app.outputs.cache-hit == 'true'
+        # A cache or repack failure must still allow a verified full build.
+        continue-on-error: true
+        env:
+          NATIVE_FINGERPRINT: ${{ steps.native-fingerprint.outputs.hash }}
+        run: bun run scripts/ios-smoke-repack.ts repack "$NATIVE_FINGERPRINT"
+      - name: Report repack fallback
+        if: steps.repack.outcome == 'failure'
+        run: echo '::warning::iOS repack failed; rebuilding from source. The existing native cache entry will not be replaced.'
       - uses: actions/cache/restore@v5
         id: pods-cache
-        if: steps.native-app.outputs.cache-hit != 'true'
+        if: steps.native-app.outputs.cache-hit != 'true' || steps.repack.outcome == 'failure'
         with:
           path: |
             ~/Library/Caches/CocoaPods
@@ -168,13 +179,11 @@ jobs:
           restore-keys: |
             ios-smoke-pods-${{ runner.arch }}-${{ steps.xcode.outputs.version }}-${{ hashFiles('bun.lock', 'app.config.ts', 'plugins/**') }}-
       - name: Build without a simulator
-        if: steps.native-app.outputs.cache-hit != 'true'
-        run: bun run smoke --platform ios --build-only --output .expo/smoke/vescape.app
-      - name: Repack current JavaScript and assets
-        if: steps.native-app.outputs.cache-hit == 'true'
-        env:
-          NATIVE_FINGERPRINT: ${{ steps.native-fingerprint.outputs.hash }}
-        run: bun run scripts/ios-smoke-repack.ts repack "$NATIVE_FINGERPRINT"
+        if: steps.native-app.outputs.cache-hit != 'true' || steps.repack.outcome == 'failure'
+        run: |
+          # Never merge a full build into a partially repacked bundle.
+          rm -rf .expo/smoke/vescape.app
+          bun run smoke --platform ios --build-only --output .expo/smoke/vescape.app
       - name: Record native app provenance
         if: steps.native-app.outputs.cache-hit != 'true' && steps.native-fingerprint.outputs.hash != ''
         env:
@@ -197,7 +206,7 @@ jobs:
           compression-level: 0
           retention-days: 1
       - name: Save CocoaPods cache
-        if: success() && steps.native-app.outputs.cache-hit != 'true' && steps.pods-cache.outputs.cache-hit != 'true'
+        if: success() && (steps.native-app.outputs.cache-hit != 'true' || steps.repack.outcome == 'failure') && steps.pods-cache.outputs.cache-hit != 'true'
         uses: actions/cache/save@v5
         with:
           path: |

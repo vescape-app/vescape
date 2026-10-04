@@ -125,6 +125,11 @@ build recipes, or native environment changes require a full build. Fingerprint f
 a full build without saving an app cache. Cache restores require an exact match; Xcode compiled
 output is not transferred between fresh checkouts.
 
+If repacking fails, CI warns and falls back to a full build, including CocoaPods restoration.
+The full build must succeed before any app is uploaded. An existing native cache entry is immutable
+and is not overwritten on fallback; repeated failures require deleting that entry in GitHub Actions.
+A JavaScript export error may therefore fail twice, once during repack and again in the full build.
+
 The workflow discovers public flow files through `bun run scripts/smoke.ts --list-flows`, so a new
 flow automatically joins both platform matrices. Manual dispatch can select one flow and/or one
 platform. Failed jobs retain their own Maestro diagnostics; one failure does not cancel siblings.
