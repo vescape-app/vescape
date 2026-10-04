@@ -12,7 +12,7 @@ permissions:
 
 jobs:
   compare:
-    name: Telemetry / ${{ matrix.kind }}
+    name: Four cold launches / ${{ matrix.kind }}
     runs-on: macos-26
     timeout-minutes: 25
     strategy:
@@ -44,13 +44,30 @@ jobs:
         run: |
           curl -Ls https://get.maestro.mobile.dev | bash
           echo "$HOME/.maestro/bin" >> "$GITHUB_PATH"
-      - name: Run telemetry flow
+      - name: Probe repeated cold process launches
         timeout-minutes: 20
         env:
           MAESTRO_DRIVER_STARTUP_TIMEOUT: '300000'
-        run: >-
-          bun run smoke --platform ios --app .expo/smoke/vescape.app
-          --device 'iPhone 17' --flow 01-telemetry
+          PROBE_KIND: ${{ matrix.kind }}
+        run: bun run scripts/ios-launch-diagnostics.ts .expo/smoke/vescape.app
+      - name: Reject native crash reports
+        if: always()
+        shell: bash
+        run: |
+          mkdir -p .expo/ios-launch-diagnostics
+          find "$HOME/Library/Logs/DiagnosticReports" \
+            "$HOME/Library/Developer/CoreSimulator/Devices" \
+            -type f \( -iname 'vescape*.ips' -o -iname 'vescape*.crash' \) \
+            -print > .expo/ios-launch-diagnostics/crash-reports.txt 2>/dev/null || true
+          if [ -s .expo/ios-launch-diagnostics/crash-reports.txt ]; then
+            cat .expo/ios-launch-diagnostics/crash-reports.txt
+            mkdir -p .expo/ios-launch-diagnostics/crash-reports
+            while IFS= read -r report; do
+              cp "$report" .expo/ios-launch-diagnostics/crash-reports/
+            done < .expo/ios-launch-diagnostics/crash-reports.txt
+            echo 'Vescape crashed during the startup probe.'
+            exit 1
+          fi
       - name: Retain native crash reports and Maestro evidence
         if: always()
         uses: actions/upload-artifact@v4
@@ -58,7 +75,9 @@ jobs:
           name: ios-repack-diagnostics-${{ matrix.kind }}
           path: |
             ~/.maestro/tests/
+            .expo/ios-launch-diagnostics/
             ~/Library/Logs/DiagnosticReports/vescape*
             ~/Library/Developer/CoreSimulator/Devices/*/data/Library/Logs/CrashReporter/vescape*
           if-no-files-found: warn
+          include-hidden-files: true
           retention-days: 3
