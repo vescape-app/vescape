@@ -42,3 +42,5 @@ export function fixtureUri(name: string): string {
   const base = fixtureDir
   return base.startsWith('file://') ? `${base}/${name}` : `file://${base}/${name}`
 }
+
+console.info('ios-repack-validation-543')
