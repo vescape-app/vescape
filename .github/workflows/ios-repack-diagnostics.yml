@@ -1,0 +1,61 @@
+name: iOS repack diagnostics
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  compare:
+    name: Telemetry / ${{ matrix.kind }}
+    runs-on: macos-26
+    timeout-minutes: 25
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - kind: compiled
+            run: '37194927073'
+          - kind: repacked
+            run: '37198675431'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - run: bun install --frozen-lockfile
+      - name: Download existing app artifact
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SOURCE_RUN: ${{ matrix.run }}
+        run: |
+          gh run download "$SOURCE_RUN" --repo "$GITHUB_REPOSITORY" -n smoke-ios-app -D .expo/smoke
+          tar -xzf .expo/smoke/smoke-ios.tar.gz -C .expo/smoke
+      - name: Install Maestro
+        run: |
+          curl -Ls https://get.maestro.mobile.dev | bash
+          echo "$HOME/.maestro/bin" >> "$GITHUB_PATH"
+      - name: Run telemetry flow
+        timeout-minutes: 20
+        env:
+          MAESTRO_DRIVER_STARTUP_TIMEOUT: '300000'
+        run: >-
+          bun run smoke --platform ios --app .expo/smoke/vescape.app
+          --device 'iPhone 17' --flow 01-telemetry
+      - name: Retain native crash reports and Maestro evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ios-repack-diagnostics-${{ matrix.kind }}
+          path: |
+            ~/.maestro/tests/
+            ~/Library/Logs/DiagnosticReports/vescape*
+            ~/Library/Developer/CoreSimulator/Devices/*/data/Library/Logs/CrashReporter/vescape*
+          if-no-files-found: warn
+          retention-days: 3
