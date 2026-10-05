@@ -14,9 +14,13 @@ enum WatchGauge {
   /// silently changes its range is worse than one that saturates.
   static let speedMax = 50.0
 
-  /// Temperature arc range, °C. Below the floor the arc is empty, not negative.
-  static let tempMin = 10.0
-  static let tempMax = 80.0
+  /// Temperature arc range, °C. Below the floor the arc is empty, not negative. The floor sits above
+  /// ambient so a cold board reads as empty, and the ceiling clears the alert presets (up to 95 °C)
+  /// so their marks spread along the arc instead of piling up at its end.
+  ///
+  /// @parity /src/modules/board/constants/telemetry.ts `RIM_TEMP_RANGE`
+  static let tempMin = 20.0
+  static let tempMax = 100.0
 
   /// Below this the battery reading takes the warning colour, and keeps it into ambient.
   static let batteryWarningPercent = 20.0

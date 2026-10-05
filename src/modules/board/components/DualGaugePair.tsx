@@ -6,8 +6,6 @@ import { useDerivedValue, type SharedValue } from 'react-native-reanimated'
 import { Canvas, Group, Path } from '@shopify/react-native-skia'
 
 import type { DualGaugeAlert } from '@/components/charts/gaugeAlert'
-import type { SparklinePoint } from '@/components/charts/Sparkline'
-import { buildSparklinePaths, SparklineLayer } from '@/components/charts/SparklineLayer'
 import { useCanvasSize } from '@/hooks/useCanvasSize'
 import { DASH } from '@/helpers/format'
 import { interaction, theme, type AlphaLevel } from '@/constants/theme'
@@ -54,9 +52,7 @@ const VB_CROP_RIGHT_X = RIGHT_ARC.cx - CROP_PAD
 // The touch row is clipped to that so it matches what the rider actually sees.
 const ARC_BOTTOM_RATIO = (LEFT_ARC.cy - CROP_TOP) / VB_CROP_H
 
-const SPARKLINE_HEIGHT = 28
-const SPARKLINE_TOP = 12
-const SPARKLINE_GAP = 32
+const ARC_GAP = 32
 
 const GLOW_STOPS = [0, 0.6, 0.95, 1]
 const GLOW_OPACITIES: AlphaLevel[] = [0, 0, 0.12, 0.3]
@@ -180,9 +176,6 @@ interface GaugePairProps {
   dutyAlerts: DualGaugeAlert[]
   speedHotRange: MetricHotRange | null
   dutyHotRange: MetricHotRange | null
-  speedSeries: SparklinePoint[]
-  dutySeries: SparklinePoint[]
-  windowMs?: number
   /** Rendered against the bottom of the arcs, inside the space the gauge box leaves below them. */
   footer?: ReactNode
   onPressSpeed: () => void
@@ -198,9 +191,6 @@ export function GaugePair({
   dutyAlerts,
   speedHotRange,
   dutyHotRange,
-  speedSeries,
-  dutySeries,
-  windowMs,
   footer,
   onPressSpeed,
   onPressDuty,
@@ -208,40 +198,17 @@ export function GaugePair({
   const units = useUnitSystem()
   const telemetryColors = useResolvedTelemetryColors()
   const { size, onLayout } = useCanvasSize()
-  const cellWidth = Math.max(0, (size.w - SPARKLINE_GAP) / 2)
+  const cellWidth = Math.max(0, (size.w - ARC_GAP) / 2)
   const scale = cellWidth / VB_CROP_W
   const gaugeHeight = cellWidth * (VB_CROP_H / VB_CROP_W)
-  const sparklinePaths = useMemo(
-    () => [
-      buildSparklinePaths({
-        points: speedSeries,
-        width: cellWidth,
-        height: SPARKLINE_HEIGHT,
-        range: { min: 0, max: speedMax },
-        windowMs,
-      }),
-      buildSparklinePaths({
-        points: dutySeries,
-        width: cellWidth,
-        height: SPARKLINE_HEIGHT,
-        range: { min: 0, max: dutyMax },
-        windowMs,
-      }),
-    ],
-    [cellWidth, dutyMax, dutySeries, speedMax, speedSeries, windowMs],
-  )
   const leftTransform = useMemo(
-    () => [
-      { translateX: -VB_CROP_LEFT_X * scale },
-      { translateY: SPARKLINE_HEIGHT + SPARKLINE_TOP - CROP_TOP * scale },
-      { scale },
-    ],
+    () => [{ translateX: -VB_CROP_LEFT_X * scale }, { translateY: -CROP_TOP * scale }, { scale }],
     [scale],
   )
   const rightTransform = useMemo(
     () => [
-      { translateX: cellWidth + SPARKLINE_GAP - VB_CROP_RIGHT_X * scale },
-      { translateY: SPARKLINE_HEIGHT + SPARKLINE_TOP - CROP_TOP * scale },
+      { translateX: cellWidth + ARC_GAP - VB_CROP_RIGHT_X * scale },
+      { translateY: -CROP_TOP * scale },
       { scale },
     ],
     [cellWidth, scale],
@@ -251,25 +218,19 @@ export function GaugePair({
   // Where the drawn gauges actually end. The box is a fixed aspect ratio and the arcs stop at
   // their centre line, so everything below this — the touch row's floor, the footer slot — has to
   // be placed against this line rather than against the box.
-  const arcBottom = SPARKLINE_TOP + SPARKLINE_HEIGHT + gaugeHeight * ARC_BOTTOM_RATIO
-  const bowlTop = SPARKLINE_HEIGHT + SPARKLINE_TOP + gaugeHeight * 0.1
+  const arcBottom = gaugeHeight * ARC_BOTTOM_RATIO
+  const bowlTop = gaugeHeight * 0.1
   const bowl = {
     y: bowlTop,
     width: size.w * 0.4,
-    height: size.h - bowlTop - gaugeHeight * 0.05,
+    height: gaugeHeight * 0.95 - bowlTop,
   }
   return (
-    <View style={styles.gaugePair} onLayout={onLayout}>
+    // Height follows the measured width: the arcs' box is a fixed aspect per cell, but the gap
+    // between the cells is not, so no single aspect ratio fits every screen.
+    <View style={[styles.gaugePair, { height: gaugeHeight }]} onLayout={onLayout}>
       {scale > 0 ? (
         <Canvas style={styles.svg}>
-          <Group transform={[{ translateY: SPARKLINE_TOP }]}>
-            <SparklineLayer paths={sparklinePaths[0]} color={telemetryColors.speed} showMax />
-          </Group>
-          <Group
-            transform={[{ translateX: cellWidth + SPARKLINE_GAP }, { translateY: SPARKLINE_TOP }]}
-          >
-            <SparklineLayer paths={sparklinePaths[1]} color={telemetryColors.duty} showMax />
-          </Group>
           <QuarterArcLayer
             side="left"
             value={speedValue}
@@ -331,8 +292,15 @@ export function GaugePair({
 }
 
 const styles = StyleSheet.create({
-  gaugePair: { width: '100%', aspectRatio: 1.4, position: 'relative' },
-  gaugeTouchRow: { position: 'absolute', top: 0, left: 0, right: 0, flexDirection: 'row', gap: 32 },
+  gaugePair: { width: '100%', position: 'relative' },
+  gaugeTouchRow: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    flexDirection: 'row',
+    gap: ARC_GAP,
+  },
   footer: { position: 'absolute', left: 0, right: 0, alignItems: 'center' },
   halfPressable: {
     flex: 1,

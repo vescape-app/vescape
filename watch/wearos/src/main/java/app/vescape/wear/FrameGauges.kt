@@ -346,8 +346,9 @@ internal val GAUGE_INNER_INSET = 14.dp
 
 private const val SPEED_MAX = 50.0
 
-private const val TEMP_MIN = 10.0
-private const val TEMP_MAX = 80.0
+/** @parity /src/modules/board/constants/telemetry.ts `RIM_TEMP_RANGE` */
+private const val TEMP_MIN = 20.0
+private const val TEMP_MAX = 100.0
 private const val TEMP_SWEEP = 32f
 private const val MOTOR_ARC_START = 144f
 private const val CTRL_ARC_START = 36f

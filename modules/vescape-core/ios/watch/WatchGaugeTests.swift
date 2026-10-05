@@ -135,7 +135,7 @@ final class WatchGaugeTests: XCTestCase {
     // A temperature below the arc floor is an empty arc, never a negative one.
     XCTAssertEqual(WatchGauge.tempFraction(-40), 0)
     XCTAssertEqual(WatchGauge.tempFraction(WatchGauge.tempMax + 10), 1)
-    XCTAssertEqual(WatchGauge.tempFraction(45), 0.5, accuracy: 0.0001)
+    XCTAssertEqual(WatchGauge.tempFraction(60), 0.5, accuracy: 0.0001)
   }
 
   /// An unreported lane parks its arc at the floor. It must not be confused with a real reading of

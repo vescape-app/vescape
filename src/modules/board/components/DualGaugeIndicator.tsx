@@ -5,8 +5,7 @@ import { DualGauge } from '@/modules/board/components/DualGauge'
 import { useResolvedAlertRules } from '@/modules/alerts/hooks/useResolvedAlertRules'
 import { boardTopSpeedKmh } from '@/modules/alerts/lib/boardAlertSettings'
 import { useBoardStore } from '@/modules/board/store/boardStore'
-import { useLiveSeries } from '@/modules/board/hooks/useLiveMetric'
-import { useLiveWindowMs, useSettingsStore } from '@/modules/settings/store/settingsStore'
+import { useSettingsStore } from '@/modules/settings/store/settingsStore'
 import { liveTelemetryRuntime } from '@/modules/board/lib/liveTelemetryRuntime'
 import { getHistoryMetricHotRange } from '@/modules/history/lib/metricColorScale'
 
@@ -30,9 +29,6 @@ export function DualGaugeIndicator({
   // a 30 km/h board's alert markers sit in a different place on each screen.
   const activeBoard = useBoardStore((s) => s.boards.find((b) => b.id === s.activeBoardId))
   const speedMax = boardTopSpeedKmh(activeBoard)
-  const speedSeries = useLiveSeries('speed')
-  const dutySeries = useLiveSeries('duty')
-  const windowMs = useLiveWindowMs()
   const alertRules = useResolvedAlertRules()
   const gradientsEnabled = useSettingsStore((s) => s.historyMetricGradientsEnabled)
   const hotRanges = useSettingsStore((s) => s.historyMetricHotRanges)
@@ -69,9 +65,6 @@ export function DualGaugeIndicator({
     <DualGauge
       speedValue={liveTelemetryRuntime.values.speedKmh}
       dutyValue={liveTelemetryRuntime.values.dutyPercent}
-      speedSeries={speedSeries}
-      dutySeries={dutySeries}
-      windowMs={windowMs}
       speedMax={speedMax}
       dutyMax={DUTY_MAX}
       speedHotRange={speedHotRange}

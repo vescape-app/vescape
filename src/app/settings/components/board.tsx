@@ -1,6 +1,7 @@
 import { ScrollView, StyleSheet, View } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { useEffect, useState } from 'react'
+import { useSharedValue } from 'react-native-reanimated'
 import {
   CloudCheckIcon,
   DownloadSimpleIcon,
@@ -18,17 +19,15 @@ import { BoardConfigSection } from '@/modules/board/components/BoardConfigSectio
 import { BoardWarningRow } from '@/modules/board/components/BoardWarningRow'
 import { VescFaultRow } from '@/modules/board/components/VescFaultRow'
 import { VescFaultCaptureSection } from '@/modules/board/components/VescFaultCaptureSection'
-import { TelemetryCell } from '@/modules/board/components/TelemetryCell'
-import type { SparklinePoint } from '@/components/charts/Sparkline'
-import { MOTOR_TEMP_CONFIG_ROWS } from '@/modules/board/constants/motorConfigRows'
+import { RimTempArc } from '@/modules/board/components/RimTempArc'
 import { telemetry } from '@/modules/board/constants/telemetry'
+import { MOTOR_TEMP_CONFIG_ROWS } from '@/modules/board/constants/motorConfigRows'
 import { ChipRow, ToggleRow } from '@/components/dev/ShowcaseControls'
 import { RemoteTiltPadShowcase } from '@/screens/showcase/board/RemoteTiltPadShowcase'
 import { BoardPillShowcase } from '@/screens/showcase/board/BoardPillShowcase'
 import { BoardSelectorSheetShowcase } from '@/screens/showcase/board/BoardSelectorSheetShowcase'
 import { FootpadIndicatorShowcase } from '@/screens/showcase/board/FootpadIndicatorShowcase'
 import { GpsStatusPillShowcase } from '@/screens/showcase/board/GpsStatusPillShowcase'
-import { useSharedValue } from 'react-native-reanimated'
 import { theme } from '@/constants/theme'
 
 function DeviceRowShowcase() {
@@ -271,46 +270,42 @@ function VescFaultCaptureSectionShowcase() {
   )
 }
 
-const DEMO_SERIES: SparklinePoint[] = Array.from({ length: 40 }, (_, i) => ({
-  ts: Date.now() - (40 - i) * 1000,
-  value: 34 + Math.sin(i / 4) * 8,
-}))
-
-function TelemetryCellShowcase() {
-  const [live, setLive] = useState(false)
+function RimTempArcShowcase() {
+  const [temp, setTemp] = useState('45')
   const motorTemp = useSharedValue<number | null>(null)
-  const motorCurrent = useSharedValue<number | null>(null)
-  const battCurrent = useSharedValue<number | null>(null)
+  const controllerTemp = useSharedValue<number | null>(null)
 
   useEffect(() => {
-    motorTemp.value = live ? 42.3 : null
-    motorCurrent.value = live ? 21.4 : null
-    battCurrent.value = live ? 12.8 : null
-  }, [live, motorTemp, motorCurrent, battCurrent])
+    motorTemp.value = temp === 'none' ? null : Number(temp)
+    controllerTemp.value = temp === 'none' ? null : Number(temp) * 0.6
+  }, [controllerTemp, motorTemp, temp])
 
   return (
     <ShowcaseCard
-      name="TelemetryCell"
-      controls={<ToggleRow label="board connected" value={live} onToggle={setLive} />}
+      name="RimTempArc"
+      controls={
+        <ChipRow
+          label="motor temp"
+          options={['none', '5', '30', '45', '65', '90']}
+          selected={temp}
+          onSelect={setTemp}
+        />
+      }
     >
-      <View style={styles.telemetryRow}>
-        <TelemetryCell
+      <View style={styles.rimArcRow}>
+        <RimTempArc
+          side="left"
           label="Motor"
           metric={telemetry.motorTemp}
           value={motorTemp}
-          series={live ? DEMO_SERIES : []}
+          radius={72}
         />
-        <TelemetryCell
-          label="Motor"
-          metric={telemetry.motorCurrent}
-          value={motorCurrent}
-          series={live ? DEMO_SERIES : []}
-        />
-        <TelemetryCell
-          label="Batt"
-          metric={telemetry.battCurrent}
-          value={battCurrent}
-          series={live ? DEMO_SERIES : []}
+        <RimTempArc
+          side="right"
+          label="Ctrl"
+          metric={telemetry.controllerTemp}
+          value={controllerTemp}
+          radius={72}
         />
       </View>
     </ShowcaseCard>
@@ -368,8 +363,8 @@ export default function BoardComponentsPage() {
         <BoardWarningRowShowcase />
         <VescFaultRowShowcase />
         <VescFaultCaptureSectionShowcase />
-        <TelemetryCellShowcase />
         <FootpadIndicatorShowcase />
+        <RimTempArcShowcase />
         <BoardConfigSectionShowcase />
       </ScrollView>
     </SafeAreaView>
@@ -377,9 +372,9 @@ export default function BoardComponentsPage() {
 }
 
 const styles = StyleSheet.create({
+  rimArcRow: { flexDirection: 'row', justifyContent: 'space-between', alignSelf: 'stretch' },
   container: { flex: 1, backgroundColor: theme.neutral.bg },
   content: { padding: 12, gap: 12, paddingBottom: 40 },
-  telemetryRow: { flexDirection: 'row', gap: 8, alignSelf: 'stretch' },
   timelineContentDemo: {
     backgroundColor: theme.neutral.surface,
     borderRadius: 10,

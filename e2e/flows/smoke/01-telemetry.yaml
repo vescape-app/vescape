@@ -20,10 +20,6 @@ appId: ${APP_ID}
 - assertVisible:
     id: telemetry-controller-temp-cell
 - assertVisible:
-    id: telemetry-motor-current-cell
-- assertVisible:
-    id: telemetry-battery-current-cell
-- assertVisible:
     id: battery-bar
 
 # Deliberately no assertion on a live number here. The gauge is drawn in Skia and the strip's values

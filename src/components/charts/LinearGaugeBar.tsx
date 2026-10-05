@@ -17,10 +17,9 @@ import { useResolvedAccentColors } from '@/hooks/useTheme'
 const TRACK_COLOR = theme.palette.slate.border
 export const LINE_THICK = 2
 // Sizes mirror the gauge, expressed against the line thickness (gauge STROKE):
-// alert tick 0.35× wide / 2× long, marker 1.5× wide. Marker length tracks bar height.
+// alert tick 0.35× wide / 2× long. The particle band tracks bar height.
 const TICK_W = LINE_THICK * 0.35
 const TICK_LEN = LINE_THICK * 2
-const MARKER_W = LINE_THICK * 1.5
 export const MARKER_RATIO = 0.5
 // Band tint fades in over the first stretch past the threshold so the edge reads as a soft entry
 // rather than a wall, then holds flat: nothing about the rule escalates further along the scale.
@@ -43,7 +42,7 @@ const PARTICLE_COUNT_MIN = 6
 const PARTICLE_COUNT_MAX = 48
 const PARTICLE_R = 0.7
 const PARTICLE_FADE_IN_PX = 14
-// Short fade so particles visibly slam into the head marker instead of dissolving early.
+// Short fade so particles visibly slam into the fill head instead of dissolving early.
 const PARTICLE_FADE_OUT_PX = 3
 
 interface ParticleSpec {
@@ -88,7 +87,7 @@ function makeParticleSpecs(count: number): ParticleSpec[] {
 interface ChargeParticleProps {
   clock: SharedValue<number>
   spec: ParticleSpec
-  /** X of the head marker — where particles get absorbed. */
+  /** X of the fill head — where particles get absorbed. */
   headX: number
   lineY: number
   markerLen: number
@@ -106,7 +105,7 @@ function ChargeParticle({ clock, spec, headX, lineY, markerLen, color }: ChargeP
     const amp = spec.waveAmpFrac * markerLen
     return base - amp * Math.sin((clock.value / 1000) * spec.waveFreq + spec.wavePhase)
   })
-  // Fade in from the left edge, snuff out into the head marker.
+  // Fade in from the left edge, snuff out into the fill head.
   const opacity = useDerivedValue(() => {
     const x = cx.value
     const fade = Math.min(x / PARTICLE_FADE_IN_PX, (headX - x) / PARTICLE_FADE_OUT_PX, 1)
@@ -255,21 +254,10 @@ export function GaugeBar({
         ))
       })}
 
-      {/* Charging particles streaming into the head marker. Mounted only while
+      {/* Charging particles streaming into the fill head. Mounted only while
           charging so the animation clock doesn't run otherwise. */}
       {charging && fillW > PARTICLE_FADE_IN_PX + PARTICLE_FADE_OUT_PX ? (
         <ChargeParticles headX={fillW} lineY={lineY} markerLen={markerLen} color={color} />
-      ) : null}
-
-      {/* Head marker at the current value — crosses the line, gauge marker proportions */}
-      {fraction > 0 && fraction < 1 ? (
-        <Rect
-          x={fillW - MARKER_W / 2}
-          y={lineY - markerLen}
-          width={MARKER_W}
-          height={markerLen + LINE_THICK}
-          color={color}
-        />
       ) : null}
     </Canvas>
   )

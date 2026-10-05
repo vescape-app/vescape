@@ -251,9 +251,6 @@ function AnimatedDualGaugeShowcase() {
   const speed = useSharedValue<number | null>(0)
   const duty = useSharedValue<number | null>(0)
 
-  const speedSeries = useMemo(() => generateSparklineData(60, 28, 6, 11), [])
-  const dutySeries = useMemo(() => generateSparklineData(60, 55, 14, 23), [])
-
   useEffect(() => {
     speed.value = withRepeat(
       withTiming(50, { duration: 2600, easing: Easing.inOut(Easing.quad) }),
@@ -275,8 +272,6 @@ function AnimatedDualGaugeShowcase() {
       <DualGauge
         speedValue={speed}
         dutyValue={duty}
-        speedSeries={speedSeries}
-        dutySeries={dutySeries}
         compact={compact}
         speedAlerts={[{ id: 'speed-warn', threshold: 42, thresholdMax: null }]}
         dutyAlerts={[{ id: 'duty-warn', threshold: 80, thresholdMax: 95 }]}
