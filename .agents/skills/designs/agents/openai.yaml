@@ -1,0 +1,4 @@
+interface:
+  display_name: 'Vescape designs'
+  short_description: 'Create and verify editable Penpot app designs'
+  default_prompt: "Use $designs to update Vescape's Penpot screens and verify their fidelity to the app."
