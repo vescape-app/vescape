@@ -338,10 +338,27 @@ function LiveMetricRowShowcase() {
 
   const series =
     kind === 'single'
-      ? [{ metric: telemetry.motorCurrent, value: first, points: demoSeries(spanMs, 20, 15) }]
+      ? [
+          {
+            title: 'Motor current',
+            metric: telemetry.motorCurrent,
+            value: first,
+            points: demoSeries(spanMs, 20, 15),
+          },
+        ]
       : [
-          { metric: telemetry.pitch, value: first, points: demoSeries(spanMs, 1, 4) },
-          { metric: telemetry.roll, value: second, points: demoSeries(spanMs, -1, 3, 1.5) },
+          {
+            title: 'Pitch',
+            metric: telemetry.pitch,
+            value: first,
+            points: demoSeries(spanMs, 1, 4),
+          },
+          {
+            title: 'Roll',
+            metric: telemetry.roll,
+            value: second,
+            points: demoSeries(spanMs, -1, 3, 1.5),
+          },
         ]
   const lines = series.map((line) => ({
     ...line,
@@ -369,8 +386,8 @@ function LiveMetricRowShowcase() {
       }
     >
       <LiveMetricRow
-        title={kind === 'single' ? 'Motor current' : 'Pitch · roll'}
         lines={lines}
+        peaks={kind === 'single' ? 'range' : undefined}
         windowMs={ROW_WINDOW_MS}
         onPress={() => {}}
       />

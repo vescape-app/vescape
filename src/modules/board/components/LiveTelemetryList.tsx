@@ -24,74 +24,115 @@ import { useLiveWindowMs, useSettingsStore } from '@/modules/settings/store/sett
 import { routes } from '@/navigation/routes'
 
 interface ListRow {
-  title: string
-  /** `onLiveSeries` key, the metric it draws as and its live reading. */
-  lines: { key: string; metric: TelemetryMetricConfig; value: SharedValue<number | null> }[]
+  /** Caption, `onLiveSeries` key, the metric it draws as and its live reading, per line. */
+  lines: {
+    title: string
+    key: string
+    metric: TelemetryMetricConfig
+    value: SharedValue<number | null>
+  }[]
   route: Href
   testID: string
+  /** Which extremes the row marks; see `LiveMetricRow`. */
+  peaks?: 'max' | 'range'
 }
 
 const live = liveTelemetryRuntime.values
 
 const ROWS: ListRow[] = [
   {
-    title: 'Speed',
-    lines: [{ key: 'speed', metric: telemetry.speed, value: live.speedKmh }],
+    lines: [{ title: 'Speed', key: 'speed', metric: telemetry.speed, value: live.speedKmh }],
     route: routes.controlSpeed,
     testID: 'telemetry-list-speed',
+    peaks: 'max',
   },
   {
-    title: 'Duty cycle',
-    lines: [{ key: 'duty', metric: telemetry.duty, value: live.dutyPercent }],
+    lines: [{ title: 'Duty cycle', key: 'duty', metric: telemetry.duty, value: live.dutyPercent }],
     route: routes.controlDuty,
     testID: 'telemetry-list-duty',
+    peaks: 'max',
   },
   {
-    title: 'Motor temp',
-    lines: [{ key: 'motorTemp', metric: telemetry.motorTemp, value: live.motorTemp }],
+    lines: [
+      { title: 'Motor temp', key: 'motorTemp', metric: telemetry.motorTemp, value: live.motorTemp },
+    ],
     route: routes.controlMotorTemp,
     testID: 'telemetry-list-motor-temp',
+    peaks: 'max',
   },
   {
-    title: 'Controller temp',
     lines: [
-      { key: 'controllerTemp', metric: telemetry.controllerTemp, value: live.controllerTemp },
+      {
+        title: 'Controller temp',
+        key: 'controllerTemp',
+        metric: telemetry.controllerTemp,
+        value: live.controllerTemp,
+      },
     ],
     route: routes.controlControllerTemp,
     testID: 'telemetry-list-controller-temp',
+    peaks: 'max',
   },
   {
-    title: 'Motor current',
-    lines: [{ key: 'motorCurrent', metric: telemetry.motorCurrent, value: live.motorCurrent }],
+    lines: [
+      {
+        title: 'Motor current',
+        key: 'motorCurrent',
+        metric: telemetry.motorCurrent,
+        value: live.motorCurrent,
+      },
+    ],
     route: routes.controlMotorCurrent,
     testID: 'telemetry-list-motor-current',
+    peaks: 'range',
   },
   {
-    title: 'Battery current',
-    lines: [{ key: 'batteryCurrent', metric: telemetry.battCurrent, value: live.batteryCurrent }],
+    lines: [
+      {
+        title: 'Battery current',
+        key: 'batteryCurrent',
+        metric: telemetry.battCurrent,
+        value: live.batteryCurrent,
+      },
+    ],
     route: routes.controlBatteryCurrent,
     testID: 'telemetry-list-battery-current',
+    peaks: 'range',
   },
   {
-    title: 'Battery',
-    lines: [{ key: 'batteryVoltage', metric: telemetry.battVoltage, value: live.batteryVoltage }],
+    lines: [
+      {
+        title: 'Battery',
+        key: 'batteryVoltage',
+        metric: telemetry.battVoltage,
+        value: live.batteryVoltage,
+      },
+    ],
     route: routes.controlBattery,
     testID: 'telemetry-list-battery',
   },
   {
-    title: 'Footpad',
     lines: [
-      { key: 'footpadAdc1', metric: telemetry.footpadAdc1, value: live.adc1 },
-      { key: 'footpadAdc2', metric: telemetry.footpadAdc2, value: live.adc2 },
+      {
+        title: 'Footpad ADC 1',
+        key: 'footpadAdc1',
+        metric: telemetry.footpadAdc1,
+        value: live.adc1,
+      },
+      {
+        title: 'Footpad ADC 2',
+        key: 'footpadAdc2',
+        metric: telemetry.footpadAdc2,
+        value: live.adc2,
+      },
     ],
     route: routes.controlFootpad,
     testID: 'telemetry-list-footpad',
   },
   {
-    title: 'Pitch · roll',
     lines: [
-      { key: 'pitch', metric: telemetry.pitch, value: live.pitch },
-      { key: 'roll', metric: telemetry.roll, value: live.roll },
+      { title: 'Pitch', key: 'pitch', metric: telemetry.pitch, value: live.pitch },
+      { title: 'Roll', key: 'roll', metric: telemetry.roll, value: live.roll },
     ],
     route: routes.controlImu,
     testID: 'telemetry-list-imu',
@@ -151,13 +192,14 @@ export function LiveTelemetryList({ headerStart }: LiveTelemetryListProps) {
       {ROWS.map((row, rowIndex) => (
         <LiveMetricRow
           key={row.testID}
-          title={row.title}
-          lines={presented[rowIndex].map(({ key, metric, value }) => ({
+          lines={presented[rowIndex].map(({ title, key, metric, value }) => ({
+            title,
             metric,
             value,
             points: series[key],
           }))}
           windowMs={windowMs}
+          peaks={row.peaks}
           onPress={() => router.push(row.route)}
           testID={row.testID}
         />
