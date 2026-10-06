@@ -1,14 +1,6 @@
-import * as Haptics from 'expo-haptics'
 import { useFocusEffect } from 'expo-router'
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import {
-  BackHandler,
-  Platform,
-  Pressable,
-  StyleSheet,
-  useWindowDimensions,
-  View,
-} from 'react-native'
+import { BackHandler, Pressable, StyleSheet, useWindowDimensions, View } from 'react-native'
 import { Gesture, GestureDetector, type GestureType } from 'react-native-gesture-handler'
 import Animated, {
   Extrapolation,
@@ -30,13 +22,10 @@ import { theme } from '@/constants/theme'
 import { LiveTelemetryList } from '@/modules/board/components/LiveTelemetryList'
 import { shareExportFile } from '@/modules/history/lib/shareRideExport'
 
-/** Upward drag that commits the open; short of it the strip springs back. */
-const OPEN_DISTANCE = 96
-/** How far the sheet follows the finger before the open commits: it lags, so the drag stretches. */
-const OPEN_RUBBER = 0.55
-/** Downward drag, or a flick, that closes the open panel. */
-const CLOSE_DISTANCE = 64
-const CLOSE_VELOCITY = 500
+/** Drag, or a flick, past which a released drag settles the other way; short of it, it springs
+ * back. */
+const SETTLE_DISTANCE = 64
+const SETTLE_VELOCITY = 500
 /** Share of the open at which the strip and the floating controls are fully gone. */
 const FADE_END = 0.2
 /** Vertical drift of the strip and the floating controls as they fade, toward the panel. */
@@ -62,33 +51,31 @@ export interface TelemetryPanelState {
   open: () => void
 }
 
-function haptic() {
-  if (Platform.OS === 'ios') {
-    void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium)
-  } else if (Platform.OS === 'android') {
-    void Haptics.performAndroidHapticsAsync(Haptics.AndroidHaptics.Confirm)
-  }
+/**
+ * Whether a released drag carries on to the far side. `travel` and `velocity` point that way. The
+ * last movement decides over the distance: flicked back, a drag returns however far it went.
+ */
+function settlesAcross(travel: number, velocity: number) {
+  'worklet'
+  if (velocity > SETTLE_VELOCITY) return true
+  if (velocity < -SETTLE_VELOCITY) return false
+  return travel > SETTLE_DISTANCE
 }
 
 /**
- * The telemetry panel's open state and the drag that opens it. The strip pulls up like a rubber
- * band: the sheet follows the finger at a lag and, once the drag passes `OPEN_DISTANCE`, springs
- * the rest of the way. Released short of it, everything springs back.
+ * The telemetry panel's open state and the drag that opens it. The sheet follows the finger up
+ * from the strip and, released, springs open or back as `settlesAcross` decides.
  */
 // Reanimated shared values are mutable handles by design.
 /* eslint-disable react-hooks/immutability */
 export function useTelemetryPanel(enabled: boolean): TelemetryPanelState {
   const progress = useSharedValue(0)
-  const sheetHeight = useSharedValue(1)
+  // Until the list first lays out, the screen height stands in for the sheet's.
+  const sheetHeight = useSharedValue(useWindowDimensions().height)
   const started = useSharedValue(false)
-  const committed = useSharedValue(false)
   const [open, setOpen] = useState(false)
   const [mounted, setMounted] = useState(false)
 
-  const commitOpen = useCallback(() => {
-    haptic()
-    setOpen(true)
-  }, [])
   const settleClosed = useCallback(() => {
     setOpen(false)
     setMounted(false)
@@ -104,8 +91,8 @@ export function useTelemetryPanel(enabled: boolean): TelemetryPanelState {
   const openPanel = useCallback(() => {
     setMounted(true)
     progress.value = withSpring(1, SPRING)
-    commitOpen()
-  }, [commitOpen, progress])
+    setOpen(true)
+  }, [progress])
 
   const openGesture = useMemo(
     () =>
@@ -118,27 +105,23 @@ export function useTelemetryPanel(enabled: boolean): TelemetryPanelState {
         .failOffsetX([-24, 24])
         .onStart(() => {
           started.value = true
-          committed.value = false
           scheduleOnRN(setMounted, true)
         })
         .onUpdate((event) => {
-          if (committed.value) return
-          const travel = Math.max(0, -event.translationY)
-          if (travel >= OPEN_DISTANCE) {
-            committed.value = true
-            progress.value = withSpring(1, SPRING)
-            scheduleOnRN(commitOpen)
-            return
-          }
-          progress.value = (travel * OPEN_RUBBER) / sheetHeight.value
+          progress.value = Math.min(1, Math.max(0, -event.translationY) / sheetHeight.value)
         })
-        .onFinalize(() => {
+        .onFinalize((event, success) => {
           // A tap on the strip's buttons, or a drag that failed, never moved anything.
           if (!started.value) return
           started.value = false
-          if (!committed.value) close()
+          if (success && settlesAcross(-event.translationY, -event.velocityY)) {
+            progress.value = withSpring(1, SPRING)
+            scheduleOnRN(setOpen, true)
+          } else {
+            close()
+          }
         }),
-    [close, commitOpen, committed, enabled, open, progress, sheetHeight, started],
+    [close, enabled, open, progress, sheetHeight, started],
   )
 
   // Hardware back closes the panel before it leaves the screen — only while home is in front, or
@@ -205,6 +188,8 @@ export function TelemetryPanel({ panel }: TelemetryPanelProps) {
     }, []),
   )
 
+  const listShown = panel.mounted && focused
+
   const onScroll = useAnimatedScrollHandler((event) => {
     scrollY.value = event.contentOffset.y
   })
@@ -224,14 +209,13 @@ export function TelemetryPanel({ panel }: TelemetryPanelProps) {
         })
         .onUpdate((event) => {
           if (!dragging.value) return
-          progress.value = 1 - Math.max(0, event.translationY) / sheetHeight.value
+          progress.value = 1 - Math.min(1, Math.max(0, event.translationY) / sheetHeight.value)
         })
         // Finalize, not end: a cancelled drag must settle too, or the list stays half-pulled.
         .onFinalize((event, success) => {
           if (!dragging.value) return
           dragging.value = false
-          const pulled = event.translationY > CLOSE_DISTANCE || event.velocityY > CLOSE_VELOCITY
-          if (success && pulled) {
+          if (success && settlesAcross(event.translationY, event.velocityY)) {
             close()
           } else {
             progress.value = withSpring(1, SPRING)
@@ -261,13 +245,16 @@ export function TelemetryPanel({ panel }: TelemetryPanelProps) {
         </Animated.View>
         <Animated.View
           style={[styles.content, { maxHeight: windowHeight - insets.top }, contentStyle]}
+          // Only the list's height counts. Measured without it, the bare grabber would make the
+          // first pixels of a drag read as fully open; the last open's height stands in until the
+          // list lays out.
           onLayout={(event) => {
-            sheetHeight.value = Math.max(1, event.nativeEvent.layout.height)
+            if (listShown) sheetHeight.value = Math.max(1, event.nativeEvent.layout.height)
           }}
           testID="telemetry-panel"
         >
           <View style={styles.grabber} />
-          {panel.mounted && focused ? (
+          {listShown ? (
             <GestureDetector gesture={nativeScroll}>
               <Animated.ScrollView
                 onScroll={onScroll}
