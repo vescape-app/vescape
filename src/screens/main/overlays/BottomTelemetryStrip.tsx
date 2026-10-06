@@ -14,6 +14,7 @@ import { useRenderRateWarning } from '@/hooks/useRenderRateWarning'
 import { useBleStore } from '@/modules/board/store/bleStore'
 import { liveTelemetryRuntime } from '@/modules/board/lib/liveTelemetryRuntime'
 import { useFootpadThreshold, usePosiSensor } from '@/modules/board/store/boardConfigValuesStore'
+import { BoardAttitudeIndicator } from '@/modules/board/components/BoardAttitudeIndicator'
 import { FootpadIndicator } from '@/modules/board/components/FootpadIndicator'
 import { useTelemetryPanelFadeStyle } from '@/screens/main/overlays/TelemetryPanel'
 
@@ -75,10 +76,6 @@ export function BottomTelemetryStrip({
     transform: [{ translateY: revealProgress ? 74 * revealProgress.value : 0 }],
   }))
   const panelFadeStyle = useTelemetryPanelFadeStyle(panelProgress)
-  const imuLineStyle = useAnimatedStyle(() => {
-    const p = tick.pitch.value ?? 0
-    return { transform: [{ rotate: `${imuConnected ? p : 0}deg` }] }
-  })
 
   const footpad1Threshold = useFootpadThreshold(0)
   const footpad2Threshold = useFootpadThreshold(1)
@@ -114,27 +111,15 @@ export function BottomTelemetryStrip({
                 hitSlop={SIDE_ICON_HIT_SLOP}
                 android_ripple={interaction.rippleBorderless}
                 onPress={() => router.push(routes.controlImu)}
+                accessibilityRole="button"
+                accessibilityLabel="Board pitch and roll"
+                testID="telemetry-attitude-cell"
               >
-                <View
-                  style={[
-                    styles.imuMarker,
-                    {
-                      borderColor: imuConnected
-                        ? theme.palette.purple.color
-                        : theme.neutral.textMuted,
-                    },
-                  ]}
-                />
-                <Animated.View
-                  style={[
-                    styles.imuLine,
-                    {
-                      backgroundColor: imuConnected
-                        ? theme.palette.purple.color
-                        : theme.neutral.textMuted,
-                    },
-                    imuLineStyle,
-                  ]}
+                <BoardAttitudeIndicator
+                  pitch={tick.pitch}
+                  roll={tick.roll}
+                  connected={imuConnected}
+                  testID="telemetry-attitude-indicator"
                 />
               </Pressable>
               {/* Grip for the telemetry panel: the whole strip pulls up into it. */}
@@ -218,20 +203,5 @@ const styles = StyleSheet.create({
   },
   cellPressed: {
     opacity: interaction.pressedOpacity,
-  },
-  imuLine: {
-    width: 32,
-    height: 1,
-    borderRadius: 1,
-    backgroundColor: theme.palette.purple.color,
-  },
-  imuMarker: {
-    position: 'absolute',
-    width: 14,
-    height: 14,
-    borderRadius: 999,
-    borderWidth: 1,
-    borderColor: theme.palette.purple.color,
-    backgroundColor: 'transparent',
   },
 })

@@ -27,6 +27,7 @@ import { ChipRow, ToggleRow } from '@/components/dev/ShowcaseControls'
 import { RemoteTiltPadShowcase } from '@/screens/showcase/board/RemoteTiltPadShowcase'
 import { BoardPillShowcase } from '@/screens/showcase/board/BoardPillShowcase'
 import { BoardSelectorSheetShowcase } from '@/screens/showcase/board/BoardSelectorSheetShowcase'
+import { BoardAttitudeIndicatorShowcase } from '@/screens/showcase/board/BoardAttitudeIndicatorShowcase'
 import { FootpadIndicatorShowcase } from '@/screens/showcase/board/FootpadIndicatorShowcase'
 import { GpsStatusPillShowcase } from '@/screens/showcase/board/GpsStatusPillShowcase'
 import { theme } from '@/constants/theme'
@@ -419,6 +420,7 @@ export default function BoardComponentsPage() {
           icon={LightningIcon}
           description="Board pill states, warning and fault rows, telemetry captures, and connection components."
         />
+        <BoardAttitudeIndicatorShowcase />
         <RemoteTiltPadShowcase />
         <BoardPillShowcase />
         <BoardSelectorSheetShowcase />
