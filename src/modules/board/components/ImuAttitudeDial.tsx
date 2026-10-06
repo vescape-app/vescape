@@ -53,9 +53,20 @@ function buildMarker() {
   return path
 }
 
+/** An open chevron just inside the ticks at 3 o'clock, pointing out at the ring: the setpoint sits
+ * on the inside so it never hides the pitch mark outside. */
+function buildSetpoint() {
+  const path = Skia.Path.Make()
+  path.moveTo(RADIUS - 20, -6)
+  path.lineTo(RADIUS - 13, 0)
+  path.lineTo(RADIUS - 20, 6)
+  return path
+}
+
 const TICKS = buildTicks()
 const RING = buildRing()
 const MARKER = buildMarker()
+const SETPOINT = buildSetpoint()
 
 /** The marker's rotation onto `axis` for a reading, clamped to the scale. */
 function markerRotation(value: number | null, axis: number, sign: 1 | -1) {
@@ -74,8 +85,8 @@ interface ImuAttitudeDialProps {
 /**
  * Pitch, roll and the balance setpoint read off one ring around the live 3D board. Pitch marks the
  * side arcs, where the nose and tail point; roll marks the bottom arc; the balance setpoint is a
- * hollow mark on the nose arc, so the gap between it and the pitch mark is how far off balance the
- * board sits. Each corner value takes its mark's colour, which is also its chart's.
+ * chevron inside the ring at both ends, so the gap between it and the pitch mark is how far off
+ * balance the board sits. Each corner value takes its mark's colour, which is also its chart's.
  */
 export function ImuAttitudeDial({ pitch, roll, balancePitch, connected }: ImuAttitudeDialProps) {
   'use no memo'
@@ -89,7 +100,8 @@ export function ImuAttitudeDial({ pitch, roll, balancePitch, connected }: ImuAtt
   })
   const nose = useDerivedValue(() => markerRotation(pitch.value, NOSE, 1))
   const tail = useDerivedValue(() => markerRotation(pitch.value, TAIL, 1))
-  const setpoint = useDerivedValue(() => markerRotation(balancePitch.value, NOSE, 1))
+  const setpointNose = useDerivedValue(() => markerRotation(balancePitch.value, NOSE, 1))
+  const setpointTail = useDerivedValue(() => markerRotation(balancePitch.value, TAIL, 1))
   const rollMark = useDerivedValue(() => markerRotation(roll.value, BOTTOM, -1))
   const center = DIAL / 2
 
@@ -109,10 +121,18 @@ export function ImuAttitudeDial({ pitch, roll, balancePitch, connected }: ImuAtt
           <Group transform={rollMark}>
             <Path path={MARKER} color={colors.roll} />
           </Group>
-          {/* Over the pitch mark, so the setpoint stays readable where the two meet. */}
-          <Group transform={setpoint}>
-            <Path path={MARKER} style="stroke" strokeWidth={1.5} color={colors.balancePitch} />
-          </Group>
+          {[setpointNose, setpointTail].map((transform, index) => (
+            <Group key={index} transform={transform}>
+              <Path
+                path={SETPOINT}
+                style="stroke"
+                strokeWidth={1.5}
+                strokeCap="round"
+                strokeJoin="round"
+                color={colors.balancePitch}
+              />
+            </Group>
+          ))}
         </Group>
       </Canvas>
       <View style={styles.board} pointerEvents="none">

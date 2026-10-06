@@ -403,10 +403,11 @@ export const telemetryColors = {
     footpad1: neutralColors.dark.textSecondary,
     footpad2: neutralColors.dark.textMuted,
     // Pitch, roll and balance are read side by side on the IMU dial, with the pink off-balance
-    // reading: spread from violet to fuchsia so each mark finds its number.
-    pitch: accentColors.dark.violet.color,
+    // reading: unrelated hues, so each mark finds its number. Balance is the setpoint the others
+    // are read against, so it takes the neutral.
+    pitch: accentColors.dark.cyan.color,
     roll: accentColors.dark.purple.color,
-    balancePitch: accentColors.dark.fuchsia.light,
+    balancePitch: neutralColors.dark.textSecondary,
     altitude: accentColors.dark.amber.color,
     gpsAccuracy: accentColors.dark.green.light,
   },
@@ -420,9 +421,9 @@ export const telemetryColors = {
     battVoltage: accentColors.light.green.color,
     footpad1: neutralColors.light.textSecondary,
     footpad2: neutralColors.light.textMuted,
-    pitch: accentColors.light.violet.color,
-    roll: accentColors.light.purple.light,
-    balancePitch: accentColors.light.fuchsia.color,
+    pitch: accentColors.light.cyan.color,
+    roll: accentColors.light.purple.color,
+    balancePitch: neutralColors.light.textSecondary,
     altitude: accentColors.light.amber.color,
     gpsAccuracy: accentColors.light.green.color,
   },
