@@ -1,16 +1,11 @@
-import { ONE_DARK_BASE_LAYERS } from '@/modules/map/constants/oneDarkBaseLayers'
+import { ONE_DARK_BASE_LAYERS, ONE_DARK_SOURCES } from '@/modules/map/constants/oneDarkBaseLayers'
 import { ONE_DARK_OVERLAY_LAYERS } from '@/modules/map/constants/oneDarkOverlayLayers'
 
 export const ONE_DARK_MAP_STYLE = JSON.stringify({
   version: 8,
   name: 'One Dark',
   sprite: 'mapbox://sprites/mapbox/streets-v12',
-  sources: {
-    composite: {
-      url: 'mapbox://mapbox.mapbox-streets-v8',
-      type: 'vector',
-    },
-  },
+  sources: ONE_DARK_SOURCES,
   glyphs: 'mapbox://fonts/mapbox/{fontstack}/{range}.pbf',
   layers: [...ONE_DARK_BASE_LAYERS, ...ONE_DARK_OVERLAY_LAYERS],
 })

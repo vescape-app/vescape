@@ -33,6 +33,7 @@ import expo.modules.vescapecore.connection.TransportDetection
 import expo.modules.vescapecore.connection.PendingLinkConnect
 import expo.modules.vescapecore.connection.buildSessionConfig
 
+import expo.modules.vescapecore.maptiles.MapTiles
 import expo.modules.vescapecore.navigation.NavigationController
 import expo.modules.vescapecore.navigation.NavigationProfile
 import expo.modules.vescapecore.watch.WATCH_SOURCE_SETTING_KEYS
@@ -577,6 +578,10 @@ class VescapeCoreModule : Module() {
       CoreForegroundService.playAppSound(context.applicationContext, pack, cue)
     }
     registerCustomAppSounds()
+    // @parity /modules/vescape-core/ios/VescapeCoreModule.swift `mapTile`
+    AsyncFunction("mapTile") Coroutine { z: Int, x: Int, y: Int ->
+      MapTiles.get(context.applicationContext).tile(z, x, y)?.let { Uri.fromFile(it).toString() }
+    }
     Function("getAlertSounds") {
       CoreForegroundService.alertSoundPresets()
     }

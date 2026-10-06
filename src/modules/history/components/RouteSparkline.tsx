@@ -1,9 +1,11 @@
 import { useMemo } from 'react'
 import { StyleSheet, View, type StyleProp, type ViewStyle } from 'react-native'
 import { Canvas, Circle, Path } from '@shopify/react-native-skia'
+import { Image } from 'expo-image'
 
 import { theme, type ThemeColor } from '@/constants/theme'
 import { useResolvedColor } from '@/hooks/useTheme'
+import { useRoutePreviewTiles } from '@/modules/history/hooks/useRoutePreviewTiles'
 import {
   routePreviewPath,
   routePreviewProjection,
@@ -18,12 +20,15 @@ interface RouteSparklineProps {
   color?: ThemeColor
   /** Green start and red end dots. Off on small thumbnails where they only add noise. */
   endpoints?: boolean
+  /** Dark street map behind the route once its tiles are on disk; the plain route until then. */
+  map?: boolean
   style?: StyleProp<ViewStyle>
 }
 
 /**
  * A ride's route drawn as a thumbnail. One component so a route reads the same everywhere it is
- * previewed — the ride list, the History drawer, a Favorite card.
+ * previewed — the ride list, the History drawer, a Favorite card. Route and map share one Web
+ * Mercator frame, so the line sits on the streets it was ridden on.
  */
 export function RouteSparkline({
   points,
@@ -31,8 +36,10 @@ export function RouteSparkline({
   height,
   color = theme.palette.purple.color,
   endpoints = false,
+  map = true,
   style,
 }: RouteSparklineProps) {
+  const tiles = useRoutePreviewTiles(points, width, height, map)
   const resolvedColor = useResolvedColor(color)
   const startColor = useResolvedColor(theme.palette.green.color)
   const endColor = useResolvedColor(theme.status.error.color)
@@ -44,7 +51,17 @@ export function RouteSparkline({
   }, [endpoints, height, points, width])
 
   return (
-    <View style={[styles.container, { width, height }, style]}>
+    <View style={[styles.container, tiles && styles.mapped, { width, height }, style]}>
+      {tiles?.map((tile) => (
+        <Image
+          key={`${tile.z}/${tile.x}/${tile.y}/${tile.left}`}
+          source={{ uri: tile.uri }}
+          style={[
+            styles.tile,
+            { left: tile.left, top: tile.top, width: tile.size, height: tile.size },
+          ]}
+        />
+      ))}
       {path ? (
         <Canvas style={{ width, height }}>
           <Path
@@ -73,6 +90,13 @@ const styles = StyleSheet.create({
   container: {
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  mapped: {
+    borderRadius: 8,
+    overflow: 'hidden',
+  },
+  tile: {
+    position: 'absolute',
   },
   emptyLine: {
     width: 28,

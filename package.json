@@ -36,6 +36,7 @@
     "format:check": "oxfmt --check . '!.agents/skills/**'",
     "clear": "bun run scripts/clear.ts",
     "copy:shared": "bun run scripts/copy-shared.ts",
+    "map:publish-thumbnail-style": "bun run scripts/publish-map-thumbnail-style.ts",
     "skills-check": "bun run scripts/skills-check.ts",
     "ss": "bun run scripts/screenshot.ts",
     "e2e": "bun run scripts/e2e.ts",

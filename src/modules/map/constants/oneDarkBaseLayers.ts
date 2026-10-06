@@ -1,3 +1,11 @@
+/** Vector source every One Dark layer reads; the in-app style and the hosted thumbnail style share it. */
+export const ONE_DARK_SOURCES = {
+  composite: {
+    url: 'mapbox://mapbox.mapbox-streets-v8',
+    type: 'vector',
+  },
+}
+
 /** One Dark ground layers: terrain, water, roads, rail and buildings — everything under labels. */
 export const ONE_DARK_BASE_LAYERS = [
   {

@@ -63,6 +63,7 @@ const PREVIEW_ROUTES: Record<string, RoutePoint[]> = {
 function RouteSparklineShowcase() {
   const [route, setRoute] = useState('corners')
   const [endpoints, setEndpoints] = useState(true)
+  const [map, setMap] = useState(true)
   return (
     <ShowcaseCard
       name="RouteSparkline"
@@ -75,15 +76,23 @@ function RouteSparklineShowcase() {
             onSelect={setRoute}
           />
           <ToggleRow label="endpoints" value={endpoints} onToggle={setEndpoints} />
+          <ToggleRow label="map" value={map} onToggle={setMap} />
         </>
       }
     >
-      <RouteSparkline points={PREVIEW_ROUTES[route]} width={74} height={52} endpoints={endpoints} />
+      <RouteSparkline
+        points={PREVIEW_ROUTES[route]}
+        width={74}
+        height={52}
+        endpoints={endpoints}
+        map={map}
+      />
       <RouteSparkline
         points={PREVIEW_ROUTES[route]}
         width={148}
         height={104}
         endpoints={endpoints}
+        map={map}
       />
     </ShowcaseCard>
   )

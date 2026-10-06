@@ -542,6 +542,10 @@ public class VescapeCoreModule: Module {
       }
       try CustomAppSounds.delete(id)
     }
+    // @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/VescapeCoreModule.kt `mapTile`
+    AsyncFunction("mapTile") { (z: Int, x: Int, y: Int) async -> String? in
+      await MapTiles.shared.tile(z: z, x: x, y: y)?.absoluteString
+    }
     Function("getAlertSounds") {
       self.alertPresets
     }

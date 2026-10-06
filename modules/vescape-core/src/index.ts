@@ -2708,6 +2708,7 @@ type VescapeCoreNativeModule = NativeEventEmitter<VescapeCoreEvents> & {
   getAlertSounds(): AlertSound[]
   previewAlertSound(soundType: AlertSoundType): void
   playAppSound(pack: string, cue: 'on' | 'off' | 'created' | 'join' | 'error'): void
+  mapTile(z: number, x: number, y: number): Promise<string | null>
   customAppSoundPacks(): Promise<CustomAppSoundPack[]>
   createAppSoundPack(name: string): Promise<CustomAppSoundPack[]>
   renameAppSoundPack(id: string, name: string): Promise<void>
@@ -3221,6 +3222,13 @@ export interface CustomAppSoundPack {
   sounds: Partial<Record<AppSoundCueId, string>>
 }
 export const customAppSoundPacks = (): Promise<CustomAppSoundPack[]> => native.customAppSoundPacks()
+
+/**
+ * File URI of one 512 px Web Mercator tile (z/x/y) of the hosted thumbnail map style, cached on disk
+ * with no expiry. Null for an invalid tile or a failed download; the next call retries.
+ */
+export const mapTile = (z: number, x: number, y: number): Promise<string | null> =>
+  native.mapTile(z, x, y)
 export const createAppSoundPack = (name: string): Promise<CustomAppSoundPack[]> =>
   native.createAppSoundPack(name)
 export const renameAppSoundPack = (id: string, name: string): Promise<void> =>
