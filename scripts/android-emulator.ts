@@ -66,12 +66,33 @@ if (!existsSync(binary)) {
 }
 
 /**
- * Whether the AVD is already booted. Read from the emulator's own lock rather than `adb devices`,
- * because an emulator that is still booting shows up as `offline` there — and starting a second
- * instance of the same AVD only gets rejected by the lock, detached and silently.
+ * Check the lock's owner, not just the file: crashes can leave stale locks behind. A live owner
+ * also covers emulators still booting, before they become available through adb. Let the emulator
+ * reclaim stale locks itself rather than deleting a lock that another launch might have acquired.
  */
-const isRunning = (name: string) =>
-  existsSync(join(avdHome, `${name}.avd`, 'hardware-qemu.ini.lock'))
+function isRunning(name: string): boolean {
+  let owner: string
+  try {
+    owner = readFileSync(join(avdHome, `${name}.avd`, 'hardware-qemu.ini.lock'), 'utf8')
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === 'ENOENT') return false
+    throw error
+  }
+
+  // The emulator writes an ASCII PID with a trailing NUL. Reject invalid PIDs so signal 0
+  // cannot accidentally query our own process group or all processes.
+  const pid = Number(owner.replace(/\0$/, '').trim())
+  if (!Number.isSafeInteger(pid) || pid <= 0) return false
+  try {
+    process.kill(pid, 0)
+    return true
+  } catch (error) {
+    const code = (error as NodeJS.ErrnoException).code
+    if (code === 'ESRCH') return false
+    if (code === 'EPERM') return true
+    throw error
+  }
+}
 
 const avd = await pickDevice({
   title: 'Android AVD',
