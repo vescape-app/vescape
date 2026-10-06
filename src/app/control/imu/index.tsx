@@ -8,6 +8,7 @@ import Animated, {
 } from 'react-native-reanimated'
 
 import { computeAutoRangeFromValues } from '@/components/charts/chartMath'
+import { BoardAttitudeIndicator } from '@/modules/board/components/BoardAttitudeIndicator'
 import { ControlDetailLayout } from '@/modules/board/components/ControlDetailLayout'
 import { BoardConfigSection } from '@/modules/board/components/BoardConfigSection'
 import { IMU_CONFIG_ROWS } from '@/modules/board/constants/boardConfigRows'
@@ -19,6 +20,7 @@ import { useLiveMetric, liveSelectors } from '@/modules/board/hooks/useLiveMetri
 import { useLiveWindowMs } from '@/modules/settings/store/settingsStore'
 import { theme, type ThemeColor } from '@/constants/theme'
 import { liveTelemetryRuntime } from '@/modules/board/lib/liveTelemetryRuntime'
+import { useBleStore } from '@/modules/board/store/bleStore'
 
 const ATTITUDE_FONT_SIZE = 11
 const LIVE_FONT_SIZE = 24
@@ -153,6 +155,7 @@ export default function ImuScreen() {
   const balancePitch = useLiveMetric(liveSelectors.balancePitch)
   const windowMs = useLiveWindowMs()
   const hot = liveTelemetryRuntime.values
+  const connected = useBleStore((s) => s.status === 'connected')
 
   // Pitch, roll and balance in one stack: they are read against each other, and one gesture over
   // the column puts the same moment under the finger on all three.
@@ -173,7 +176,21 @@ export default function ImuScreen() {
   }, [balancePitch, pitch, roll, windowMs])
 
   return (
-    <ControlDetailLayout title="IMU">
+    <ControlDetailLayout
+      title="IMU"
+      gauge={
+        // The same pictogram as the telemetry strip, big enough to read the tilt at a glance.
+        <View style={styles.attitudeWrap}>
+          <BoardAttitudeIndicator
+            pitch={hot.pitch}
+            roll={hot.roll}
+            connected={connected}
+            size={132}
+            testID="imu-detail-attitude"
+          />
+        </View>
+      }
+    >
       <View style={styles.liveRow}>
         <LiveMetricReadout
           label={pitchCfg.label}
@@ -207,6 +224,10 @@ export default function ImuScreen() {
 }
 
 const styles = StyleSheet.create({
+  // The square canvas already leaves air above and below the flat pictogram.
+  attitudeWrap: {
+    alignItems: 'center',
+  },
   liveRow: {
     flexDirection: 'row',
     gap: 18,
