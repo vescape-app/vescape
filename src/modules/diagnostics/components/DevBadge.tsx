@@ -7,11 +7,13 @@ import {
   CameraRotateIcon,
   EyeSlashIcon,
   ListBulletsIcon,
+  PlayIcon,
   RecordIcon,
   SwatchesIcon,
   ToolboxIcon,
   type Icon,
 } from 'phosphor-react-native'
+import { startDebugReplay } from 'vescape-core'
 
 import { Text } from '@/components/base/Text'
 import { isDevelopmentApp } from '@/config/appVariant'
@@ -21,6 +23,8 @@ import { useBleStore } from '@/modules/board/store/bleStore'
 import { routes } from '@/navigation/routes'
 
 const DEV_BADGE_HIDE_MS = 60_000
+/** Bundled ride the menu replays in one tap, the same one the smoke and screenshot runs use. */
+const QUICK_REPLAY = 'replay-thor301.jsonl'
 
 // @parity /src/app/settings/dev.tsx `DEV_PAGE_SHORTCUTS`
 const DEV_PAGE_SHORTCUTS = [
@@ -125,6 +129,17 @@ export function DevBadge() {
             onPress={() => {
               setExpanded(false)
               router.push(routes.settingsDiagnosticEvents)
+            }}
+          />
+          <MenuAction
+            icon={PlayIcon}
+            label="Replay Thor301"
+            onPress={() => {
+              setExpanded(false)
+              if (router.canDismiss()) router.dismissAll()
+              startDebugReplay(QUICK_REPLAY).catch((error: unknown) =>
+                console.warn('[dev] replay failed', error),
+              )
             }}
           />
           <MenuAction
