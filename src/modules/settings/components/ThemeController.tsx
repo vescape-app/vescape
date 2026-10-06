@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useState, type ReactNode } from 'react'
 import { Appearance, useColorScheme } from 'react-native'
 
 import {
@@ -11,8 +11,15 @@ import { useThemeStore } from '@/hooks/useTheme'
 
 const THEME_CLOCK_INTERVAL_MS = 60_000
 
-export function ThemeController() {
+/**
+ * Applies the rider's theme, and only then mounts the app. Static styles resolve adaptive colours
+ * when their views are created, so a screen mounted before the scheme is set (a cold deep link)
+ * keeps the system appearance, not the rider's.
+ */
+export function ThemeController({ children }: { children: ReactNode }) {
   const systemTheme = useColorScheme()
+  const settingsRead = useSettingsStore((state) => state.loaded || state.loadError != null)
+  const [applied, setApplied] = useState(false)
   const mode = useSettingsStore((state) => state.themeMode)
   const latitude = useSettingsStore((state) => state.lastGpsLatitude)
   const longitude = useSettingsStore((state) => state.lastGpsLongitude)
@@ -44,9 +51,13 @@ export function ThemeController() {
     mode === 'system' || (mode === 'sun' && !isUsableThemeCoordinate(coordinate))
 
   useEffect(() => {
+    if (!settingsRead) return
     setResolution(resolvedTheme, outdoorLight)
     Appearance.setColorScheme(followsSystem ? 'unspecified' : resolvedTheme)
-  }, [followsSystem, outdoorLight, resolvedTheme, setResolution])
+    // The app mounts only once the native scheme is set, which happens here and not in render.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setApplied(true)
+  }, [followsSystem, outdoorLight, resolvedTheme, setResolution, settingsRead])
 
-  return null
+  return applied ? children : null
 }
