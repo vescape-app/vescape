@@ -84,7 +84,7 @@ class MapTiles internal constructor(
      * path, so a different style never reads another style's tiles.
      * @parity /modules/vescape-core/ios/maptiles/MapTiles.swift `style`
      */
-    const val STYLE = "mapbox/dark-v11"
+    const val STYLE = "kacperkozak/cmux9d4th002j01s4fm7tc4mt"
 
     /** @parity /modules/vescape-core/ios/maptiles/MapTiles.swift `maxZoom` */
     const val MAX_ZOOM = 22

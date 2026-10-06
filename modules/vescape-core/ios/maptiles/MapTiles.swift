@@ -14,7 +14,7 @@ actor MapTiles {
   /// `owner/styleId` of the hosted style (`bun run map:publish-thumbnail-style`). Part of the cache
   /// path, so a different style never reads another style's tiles.
   /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/maptiles/MapTiles.kt `STYLE`
-  static let style = "mapbox/dark-v11"
+  static let style = "kacperkozak/cmux9d4th002j01s4fm7tc4mt"
 
   /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/maptiles/MapTiles.kt `MAX_ZOOM`
   static let maxZoom = 22
