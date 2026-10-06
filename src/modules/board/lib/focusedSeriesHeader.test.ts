@@ -1,6 +1,10 @@
 import { expect, test } from 'bun:test'
 
-import { formatFocusedSeriesDetail, formatFocusedSeriesSpan } from './focusedSeriesHeader'
+import {
+  formatFocusedSeriesDetail,
+  formatFocusedSeriesSpan,
+  formatLiveTelemetryDetail,
+} from './focusedSeriesHeader'
 
 test('reports the covered window in minutes', () => {
   expect(formatFocusedSeriesSpan(600_000, 5)).toBe('Last 10 min')
@@ -24,4 +28,16 @@ test('drops the rate until it can be measured', () => {
 
 test('says so while there is nothing to draw', () => {
   expect(formatFocusedSeriesDetail(0, 0)).toBe('Waiting for data')
+})
+
+test('panel shows how far a filling window reaches', () => {
+  expect(formatLiveTelemetryDetail(31_000, 5, 19)).toBe('31 s of 5 min · ~19 Hz')
+})
+
+test('panel reads as the configured length once the window is full', () => {
+  expect(formatLiveTelemetryDetail(299_400, 5, 19)).toBe('Last 5 min · ~19 Hz')
+})
+
+test('panel waits until a rate is measured', () => {
+  expect(formatLiveTelemetryDetail(31_000, 5, null)).toBe('Waiting for data')
 })

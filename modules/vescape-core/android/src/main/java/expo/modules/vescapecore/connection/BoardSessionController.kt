@@ -2098,6 +2098,9 @@ internal class BoardSessionController(private val service: CoreForegroundService
         liveSeriesEmitter.setLiveMetrics(metrics.toSet())
     }
 
+    /** Every frame in the live telemetry window, oldest first. */
+    fun recentTelemetry(): List<Map<String, Any?>> = telemetryPipeline.recentSnapshot()
+
     private fun emitBmsSeries(mode: String, frames: List<BmsSeriesFrame>) {
         val cellCount = bmsSeriesRing.cellCount()
         emitEvent(

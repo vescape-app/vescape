@@ -2763,6 +2763,7 @@ type VescapeCoreNativeModule = NativeEventEmitter<VescapeCoreEvents> & {
   }): Promise<TelemetrySample[]>
   exportRideGpx(options: RideExportOptions): Promise<RideExportFile>
   exportRideCsv(options: RideExportOptions): Promise<RideExportFile>
+  exportLiveTelemetryCsv(): Promise<RideExportFile>
   getHistoryRange(options: {
     fromMs: number
     toMs: number
@@ -3559,6 +3560,16 @@ export async function exportRideGpx(options: RideExportOptions): Promise<RideExp
  */
 export async function exportRideCsv(options: RideExportOptions): Promise<RideExportFile> {
   return native.exportRideCsv(options)
+}
+
+/**
+ * Live telemetry, every frame at full rate, as a CSV in the ride export's columns. Rejects when the
+ * window is empty.
+ * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/VescapeCoreModule.kt `exportLiveTelemetryCsv`
+ * @parity /modules/vescape-core/ios/VescapeCoreModule.swift `exportLiveTelemetryCsv`
+ */
+export async function exportLiveTelemetryCsv(): Promise<RideExportFile> {
+  return native.exportLiveTelemetryCsv()
 }
 
 export async function getHistoryRange(options: {

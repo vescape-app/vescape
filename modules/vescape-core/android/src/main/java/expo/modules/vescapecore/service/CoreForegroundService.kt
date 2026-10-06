@@ -466,6 +466,8 @@ class CoreForegroundService : Service() {
             instance?.controller?.setLiveSeriesMetrics(metrics)
         }
 
+        fun recentTelemetry(): List<Map<String, Any?>> = instance?.controller?.recentTelemetry().orEmpty()
+
         fun setLiveHistoryLimit(limit: Number?) {
             val minutes = (limit?.toInt() ?: DEFAULT_LIVE_HISTORY_LIMIT_MINUTES)
                 .coerceIn(MIN_LIVE_HISTORY_LIMIT_MINUTES, MAX_LIVE_HISTORY_LIMIT_MINUTES)

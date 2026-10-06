@@ -32,23 +32,40 @@ internal enum RideExport {
   private static func file(_ db: Database, directory: URL, options: [String: Any], csv: Bool) throws -> [String: Any] {
     guard let from = options["fromMs"] as? NSNumber, let to = options["toMs"] as? NSNumber,
       from.int64Value <= to.int64Value else { throw NSError(domain: "RideExport", code: 1, userInfo: [NSLocalizedDescriptionKey: "Invalid export range"]) }
-    let file = directory.appendingPathComponent("vescape-ride-\(UUID().uuidString).\(csv ? "csv" : "gpx")")
+    return try write(directory: directory, prefix: "vescape-ride", csv: csv) { write in
+      if csv {
+        try writeCsv(db, fromMs: from.int64Value, toMs: to.int64Value,
+          boardId: options["boardId"] as? String, recordingId: options["recordingId"] as? String, write: write)
+      } else {
+        try writeGpx(db, fromMs: from.int64Value, toMs: to.int64Value,
+          boardId: options["boardId"] as? String, recordingId: options["recordingId"] as? String,
+          name: options["name"] as? String ?? "Vescape ride", write: write)
+      }
+    }
+  }
+
+  /// Live telemetry, every frame at full rate, in the ride CSV's columns. Live frames carry no GPS
+  /// fix, so the location columns stay empty.
+  /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/RideExport.kt `liveCsv`
+  static func liveCsv(_ rows: [[String: Any?]], directory: URL) throws -> [String: Any] {
+    guard !rows.isEmpty else {
+      throw NSError(domain: "RideExport", code: 3, userInfo: [NSLocalizedDescriptionKey: "No live telemetry to export"])
+    }
+    return try write(directory: directory, prefix: "vescape-live", csv: true) { write in
+      try writeLiveCsv(rows, write: write)
+    }
+  }
+
+  private static func write(directory: URL, prefix: String, csv: Bool,
+    body: (_ write: (String) throws -> Void) throws -> Void) throws -> [String: Any] {
+    let file = directory.appendingPathComponent("\(prefix)-\(UUID().uuidString).\(csv ? "csv" : "gpx")")
     do {
       guard FileManager.default.createFile(atPath: file.path, contents: nil) else {
         throw NSError(domain: "RideExport", code: 2, userInfo: [NSLocalizedDescriptionKey: "Could not create export file"])
       }
       let handle = try FileHandle(forWritingTo: file)
       do {
-        if csv {
-          try writeCsv(db, fromMs: from.int64Value, toMs: to.int64Value,
-            boardId: options["boardId"] as? String, recordingId: options["recordingId"] as? String) {
-              try handle.write(contentsOf: Data($0.utf8))
-            }
-        } else {
-          try writeGpx(db, fromMs: from.int64Value, toMs: to.int64Value,
-            boardId: options["boardId"] as? String, recordingId: options["recordingId"] as? String,
-            name: options["name"] as? String ?? "Vescape ride") { try handle.write(contentsOf: Data($0.utf8)) }
-        }
+        try body { try handle.write(contentsOf: Data($0.utf8)) }
         try handle.close()
       } catch {
         // intentional-suppression: preserve the write failure; closing again is best-effort cleanup.
@@ -148,20 +165,11 @@ internal enum RideExport {
         while let next = nextGps, next.fixAtMs <= timestamp { currentGps = next; nextGps = try gps.next() }
         func scaled(_ i: Int, _ divisor: Double) -> Double? { values[i].map { Double($0) / divisor } }
         let packedState = values[10]
-        let switchState: Int? = values[11].flatMap { packed in
-          switch packed & 15 {
-          case 0: return 0
-          case 2: return 3
-          case 1:
-            guard let adc1 = values[12], let adc2 = values[13] else { return nil }
-            return adc1 > adc2 ? 1 : 2
-          default: return nil
-          }
-        }
         let p = currentGps
         let cells: [Any?] = [timestamp, scaled(0, 100), scaled(4, 1000), scaled(1, 1000),
           scaled(3, 1000), scaled(2, 1000), scaled(16, 10), scaled(15, 10), scaled(14, 100),
-          scaled(6, 100), scaled(7, 100), scaled(5, 100), packedState.map { $0 & 15 }, switchState,
+          scaled(6, 100), scaled(7, 100), scaled(5, 100), packedState.map { $0 & 15 },
+          footpadSwitch(values[11].map { Int($0) }, scaled(12, 1000), scaled(13, 1000)),
           packedState.map { ($0 >> 4) & 15 }, scaled(12, 1000), scaled(13, 1000), p?.altitudeCm.map { Double($0) / 100 },
           p.map { Double($0.latitudeE7) / 10_000_000 }, p.map { Double($0.longitudeE7) / 10_000_000 },
           p?.accuracyCm.map { Double($0) / 100 }, p?.gpsSpeedCentiMps.map { Double($0) / 100 },
@@ -170,6 +178,34 @@ internal enum RideExport {
       }
       try write(batch)
       afterMs = last["captured_at_ms"]; afterId = last["id"]
+    }
+  }
+
+  private static func writeLiveCsv(_ rows: [[String: Any?]], write: (String) throws -> Void) throws {
+    var batch = csvLine(csvHeaders)
+    for row in rows {
+      func num(_ key: String) -> Double? { (row[key] ?? nil) as? Double }
+      func int(_ key: String) -> Int? { (row[key] ?? nil) as? Int }
+      let packedState = int("state"), rawSwitch = int("switchState")
+      batch += csvLine([row["lastPacketAt"] ?? nil, num("speed"), num("dutyCycle"), num("batteryVoltage"),
+        num("batteryCurrent"), num("motorCurrent"), num("tempMotor"), num("tempMosfet"), num("odometer"),
+        num("roll"), num("balancePitch"), num("pitch"), packedState.map { $0 & 15 },
+        footpadSwitch(rawSwitch, num("adc1"), num("adc2")), packedState.map { ($0 >> 4) & 15 }, num("adc1"),
+        num("adc2"), nil, nil, nil, nil, nil, nil, row["erpm"] ?? nil, num("balanceCurrent"), rawSwitch])
+      if batch.utf8.count > 64_000 { try write(batch); batch = "" }
+    }
+    try write(batch)
+  }
+
+  /// Float Control's switch column from Refloat's raw state: one pad down reads as the side that is.
+  private static func footpadSwitch(_ raw: Int?, _ adc1: Double?, _ adc2: Double?) -> Int? {
+    switch raw.map({ $0 & 15 }) {
+    case 0: return 0
+    case 2: return 3
+    case 1:
+      guard let adc1, let adc2 else { return nil }
+      return adc1 > adc2 ? 1 : 2
+    default: return nil
     }
   }
 

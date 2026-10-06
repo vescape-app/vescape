@@ -1,6 +1,6 @@
 import { StyleSheet, ScrollView } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
-import { ClockCountdownIcon, GaugeIcon, WaveformIcon } from 'phosphor-react-native'
+import { ClockCountdownIcon, GaugeIcon } from 'phosphor-react-native'
 import { useShallow } from 'zustand/react/shallow'
 
 import { theme } from '@/constants/theme'
@@ -11,11 +11,10 @@ import { IconHero } from '@/components/settings/IconHero'
 import { useSettingsStore } from '@/modules/settings/store/settingsStore'
 
 export default function LiveTelemetrySettingsScreen() {
-  const { liveHistoryLimit, telemetryPollRateHz, socEstimateWindowSeconds, set } = useSettingsStore(
+  const { liveHistoryLimit, telemetryPollRateHz, set } = useSettingsStore(
     useShallow((s) => ({
       liveHistoryLimit: s.liveHistoryLimit,
       telemetryPollRateHz: s.telemetryPollRateHz,
-      socEstimateWindowSeconds: s.socEstimateWindowSeconds,
       set: s.set,
     })),
   )
@@ -25,17 +24,20 @@ export default function LiveTelemetrySettingsScreen() {
       <ScrollView contentContainerStyle={styles.content}>
         <IconHero
           icon={GaugeIcon}
-          description="Control live graph history, telemetry request rate, and battery display smoothing."
+          description="How much full-rate board data the live charts keep, and how often it is requested."
         />
         <SettingsCard>
           <SettingsRow
             icon={ClockCountdownIcon}
             iconColor={theme.palette.sky.color}
-            label="Live history limit"
-            hint="Minutes of telemetry visible in live graphs"
+            label="Live telemetry length"
+            hint={
+              'Minutes of full-rate board data the live charts keep; older data rolls off.\nLonger can slow the app down. Recommended: 5–15 min.'
+            }
             right={
               <Stepper
                 value={liveHistoryLimit}
+                unit="min"
                 min={1}
                 max={50}
                 onChange={(nextValue) => {
@@ -63,27 +65,6 @@ export default function LiveTelemetrySettingsScreen() {
                   const clampedValue = Math.min(100, Math.max(0, nextValue))
                   if (clampedValue !== telemetryPollRateHz) {
                     void set('telemetryPollRateHz', clampedValue)
-                  }
-                }}
-              />
-            }
-          />
-          <SettingsRow
-            icon={WaveformIcon}
-            iconColor={theme.palette.purple.color}
-            label="Battery smoothing"
-            hint="Median window steadies battery % for display and alerts. 0 = off"
-            right={
-              <Stepper
-                value={socEstimateWindowSeconds}
-                unit="s"
-                min={0}
-                max={120}
-                step={5}
-                onChange={(nextValue) => {
-                  const clampedValue = Math.min(120, Math.max(0, nextValue))
-                  if (clampedValue !== socEstimateWindowSeconds) {
-                    void set('socEstimateWindowSeconds', clampedValue)
                   }
                 }}
               />

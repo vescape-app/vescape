@@ -812,6 +812,17 @@ public class VescapeCoreModule: Module {
       catch { promise.reject("ERR_RIDE_EXPORT", "Could not export ride", cause: error) }
     }
 
+    // @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/VescapeCoreModule.kt `exportLiveTelemetryCsv`
+    // @parity /modules/vescape-core/src/index.ts `exportLiveTelemetryCsv`
+    AsyncFunction("exportLiveTelemetryCsv") { (promise: Promise) in
+      do {
+        promise.resolve(try RideExport.liveCsv(self.coordinator.recentTelemetry(),
+          directory: FileManager.default.temporaryDirectory))
+      } catch {
+        promise.reject("ERR_LIVE_EXPORT", "Could not export live telemetry", cause: error)
+      }
+    }
+
     AsyncFunction("getHistoryRange") { (options: [String: Any], promise: Promise) in
       try RecordingStorageFailure.requireAvailable()
       do { promise.resolve(try TelemetryRepository.shared.getRange(options)) }

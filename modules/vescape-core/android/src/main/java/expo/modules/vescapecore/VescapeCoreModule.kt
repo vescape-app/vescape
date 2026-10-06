@@ -65,6 +65,7 @@ import expo.modules.vescapecore.mappoints.MapPointApi
 import expo.modules.vescapecore.telemetry.AppDataRepository
 import expo.modules.vescapecore.telemetry.DatabaseBackupManager
 import expo.modules.vescapecore.telemetry.ProfileStatsRepository
+import expo.modules.vescapecore.telemetry.RideExport
 import expo.modules.vescapecore.telemetry.RideHistoryRepository
 import expo.modules.vescapecore.telemetry.TELEMETRY_DATABASE_NAME
 import expo.modules.vescapecore.telemetry.TelemetryRepository
@@ -81,6 +82,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.withContext
 import java.util.concurrent.ConcurrentHashMap
 
 private const val TAG = "VescapeCore"
@@ -827,6 +829,17 @@ class VescapeCoreModule : Module() {
       try { TelemetryRepository.get(context.applicationContext).exportRideCsv(options) }
       catch (error: CancellationException) { throw error }
       catch (error: Exception) { throw CodedException("ERR_RIDE_EXPORT", "Could not export ride", error) }
+    }
+    // @parity /modules/vescape-core/ios/VescapeCoreModule.swift `exportLiveTelemetryCsv`
+    // @parity /modules/vescape-core/src/index.ts `exportLiveTelemetryCsv`
+    AsyncFunction("exportLiveTelemetryCsv") Coroutine { ->
+      try {
+        withContext(Dispatchers.IO) {
+          RideExport.liveCsv(CoreForegroundService.recentTelemetry(), context.applicationContext.cacheDir)
+        }
+      }
+      catch (error: CancellationException) { throw error }
+      catch (error: Exception) { throw CodedException("ERR_LIVE_EXPORT", "Could not export live telemetry", error) }
     }
     AsyncFunction("getHistoryRange") Coroutine { options: Map<String, Any?> ->
       RecordingStorageFailure.requireAvailable()

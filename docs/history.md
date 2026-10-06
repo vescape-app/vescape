@@ -372,3 +372,11 @@ mid-chain range starts beyond one page, optional NULL transitions, keyframe rese
 switch decoding, rejected GPS pages, legacy precision, first/previous/final GPS matching,
 missing GPS, exact Board scope, empty telemetry, and escaping. External imports and device
 share sheets remain rider-led tests.
+
+### Live telemetry CSV
+
+The telemetry panel's **Export CSV** writes the live telemetry window instead of stored history:
+every frame native holds in memory for the configured live telemetry length, at the full packet
+rate, oldest first. `exportLiveTelemetryCsv` takes no options and returns the same closed
+`RideExportFile`. The file uses the ride CSV's columns and decoders; live frames carry no GPS fix,
+so the location columns stay empty. An empty window rejects instead of producing a header-only file.

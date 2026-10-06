@@ -20,10 +20,15 @@ import Animated, {
   type SharedValue,
 } from 'react-native-reanimated'
 import { scheduleOnRN } from 'react-native-worklets'
+import { ExportIcon } from 'phosphor-react-native'
+import { exportLiveTelemetryCsv } from 'vescape-core'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 
+import { IconButton } from '@/components/base/IconButton'
+import { InfoModal } from '@/components/modals/InfoModal'
 import { theme } from '@/constants/theme'
 import { LiveTelemetryList } from '@/modules/board/components/LiveTelemetryList'
+import { shareExportFile } from '@/modules/history/lib/shareRideExport'
 
 /** Upward drag that commits the open; short of it the strip springs back. */
 const OPEN_DISTANCE = 96
@@ -267,7 +272,7 @@ export function TelemetryPanel({ panel }: TelemetryPanelProps) {
                 onContentSizeChange={(_w, h) => setContentH(h)}
                 contentContainerStyle={{ paddingBottom: insets.bottom }}
               >
-                <LiveTelemetryList />
+                <LiveTelemetryList headerStart={<LiveTelemetryExport />} />
               </Animated.ScrollView>
             </GestureDetector>
           ) : null}
@@ -277,6 +282,38 @@ export function TelemetryPanel({ panel }: TelemetryPanelProps) {
   )
 }
 /* eslint-enable react-hooks/immutability */
+
+/** Shares the live window, every frame at full rate, as a CSV. */
+function LiveTelemetryExport() {
+  const [exporting, setExporting] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  return (
+    <>
+      <IconButton
+        icon={ExportIcon}
+        loading={exporting}
+        accessibilityLabel="Export live telemetry CSV"
+        testID="telemetry-panel-export"
+        onPress={() => {
+          setExporting(true)
+          void exportLiveTelemetryCsv()
+            .then((file) => shareExportFile(file, 'Export CSV'))
+            .catch((cause: unknown) =>
+              setError(cause instanceof Error ? cause.message : 'Could not export live telemetry'),
+            )
+            .finally(() => setExporting(false))
+        }}
+      />
+      <InfoModal
+        visible={error != null}
+        title="Export failed"
+        message={error ?? ''}
+        variant="danger"
+        onDismiss={() => setError(null)}
+      />
+    </>
+  )
+}
 
 const styles = StyleSheet.create({
   // Above every other layer of the face (the map buttons sit at 41), so all of it dims under the

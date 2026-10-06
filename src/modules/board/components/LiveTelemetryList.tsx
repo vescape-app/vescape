@@ -1,11 +1,12 @@
 import { StyleSheet, View } from 'react-native'
 import { router, type Href } from 'expo-router'
 
-import { useMemo, useState } from 'react'
+import { useMemo, useState, type ReactNode } from 'react'
 import { useAnimatedReaction, type SharedValue } from 'react-native-reanimated'
 import { scheduleOnRN } from 'react-native-worklets'
-import { PulseIcon } from 'phosphor-react-native'
+import { GearSixIcon, PulseIcon } from 'phosphor-react-native'
 
+import { IconButton } from '@/components/base/IconButton'
 import { SectionHeader } from '@/components/base/SectionHeader'
 import { theme } from '@/constants/theme'
 
@@ -18,7 +19,7 @@ import {
 } from '@/modules/board/constants/telemetry'
 import { liveTelemetryRuntime } from '@/modules/board/lib/liveTelemetryRuntime'
 import { useLiveSeriesGroup, useLiveSeriesMetrics } from '@/modules/board/hooks/useLiveMetric'
-import { formatFocusedSeriesSpan } from '@/modules/board/lib/focusedSeriesHeader'
+import { formatLiveTelemetryDetail } from '@/modules/board/lib/focusedSeriesHeader'
 import { useLiveWindowMs, useSettingsStore } from '@/modules/settings/store/settingsStore'
 import { routes } from '@/navigation/routes'
 
@@ -103,7 +104,12 @@ const SERIES_KEYS = ROWS.flatMap((row) => row.lines.map((line) => line.key))
  * Every live metric over the recent window, one row each, opening its detail screen. Native
  * streams the series only while the list is mounted.
  */
-export function LiveTelemetryList() {
+interface LiveTelemetryListProps {
+  /** Action in the header's top-left corner, opposite the settings link. */
+  headerStart?: ReactNode
+}
+
+export function LiveTelemetryList({ headerStart }: LiveTelemetryListProps) {
   useLiveSeriesMetrics(SERIES_KEYS)
   const series = useLiveSeriesGroup(SERIES_KEYS)
   const windowMs = useLiveWindowMs()
@@ -129,9 +135,17 @@ export function LiveTelemetryList() {
         <SectionHeader
           icon={PulseIcon}
           color={theme.palette.blue.color}
-          title={formatFocusedSeriesSpan(spanMs, configuredMinutes)}
-          description={rateHz == null ? 'Waiting for data' : `Live data at ~${rateHz} Hz`}
+          title="Live telemetry"
+          description={formatLiveTelemetryDetail(spanMs, configuredMinutes, rateHz)}
           align="center"
+        />
+        {headerStart ? <View style={styles.headerStart}>{headerStart}</View> : null}
+        <IconButton
+          icon={GearSixIcon}
+          onPress={() => router.push(routes.settingsLiveTelemetry)}
+          style={styles.settings}
+          accessibilityLabel="Live telemetry settings"
+          testID="telemetry-list-settings"
         />
       </View>
       {ROWS.map((row, rowIndex) => (
@@ -174,5 +188,15 @@ const styles = StyleSheet.create({
   header: {
     paddingHorizontal: 16,
     paddingBottom: 8,
+  },
+  headerStart: {
+    position: 'absolute',
+    top: 0,
+    left: 16,
+  },
+  settings: {
+    position: 'absolute',
+    top: 0,
+    right: 16,
   },
 })
