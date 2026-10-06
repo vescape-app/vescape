@@ -562,6 +562,9 @@ class VescapeCoreModule : Module() {
     Function("setFocusedSeriesMetrics") { metrics: List<String> ->
       CoreForegroundService.setFocusedSeriesMetrics(metrics)
     }
+    Function("setLiveSeriesMetrics") { metrics: List<String> ->
+      CoreForegroundService.setLiveSeriesMetrics(metrics)
+    }
     Function("reloadAlertRules") {
       CoreForegroundService.reloadAlertRules(context.applicationContext)
     }

@@ -2431,6 +2431,13 @@ internal final class BoardSessionController: VescGattListener {
     liveSeries.setFocusedMetrics(metrics)
   }
 
+  /// Telemetry panel intent from JS: the metrics `onLiveSeries` carries beyond the always-on set
+  /// (empty while the panel is closed). Emits an immediate snapshot.
+  /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/connection/BoardSessionController.kt `setLiveSeriesMetrics`
+  func setLiveSeriesMetrics(_ metrics: [String]) {
+    liveSeries.setLiveMetrics(metrics)
+  }
+
   private func bmsSeriesWindowMs() -> Int64 {
     Int64(max(1, config?.liveHistoryLimitMinutes ?? 5)) * 60_000
   }

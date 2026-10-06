@@ -1,6 +1,7 @@
 import { Pressable, StyleSheet, View, useWindowDimensions } from 'react-native'
 import { router } from 'expo-router'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
+import { GestureDetector, type GestureType } from 'react-native-gesture-handler'
 import Animated, { useAnimatedStyle, type SharedValue } from 'react-native-reanimated'
 
 import { BAR_H, BAR_H_COMPACT } from '@/components/charts/LinearGaugeBar'
@@ -14,6 +15,7 @@ import { useBleStore } from '@/modules/board/store/bleStore'
 import { liveTelemetryRuntime } from '@/modules/board/lib/liveTelemetryRuntime'
 import { useFootpadThreshold, usePosiSensor } from '@/modules/board/store/boardConfigValuesStore'
 import { FootpadIndicator } from '@/modules/board/components/FootpadIndicator'
+import { useTelemetryPanelFadeStyle } from '@/screens/main/overlays/TelemetryPanel'
 
 /** Temperature arc radius: the arcs run the strip's height down to the battery line. */
 const ARC_RADIUS = 72
@@ -48,9 +50,19 @@ export function useAboveStripBottom(): number {
 
 interface BottomTelemetryStripProps {
   revealProgress?: SharedValue<number>
+  /** The telemetry panel this strip opens into: pulled up, the strip fades into it. */
+  panelProgress: SharedValue<number>
+  panelActive: boolean
+  /** Upward drag anywhere on the strip that opens the panel. */
+  openGesture: GestureType
 }
 
-export function BottomTelemetryStrip({ revealProgress }: BottomTelemetryStripProps) {
+export function BottomTelemetryStrip({
+  revealProgress,
+  panelProgress,
+  panelActive,
+  openGesture,
+}: BottomTelemetryStripProps) {
   useRenderRateWarning('BottomTelemetryStrip')
   const insets = useSafeAreaInsets()
   const { height } = useWindowDimensions()
@@ -62,6 +74,7 @@ export function BottomTelemetryStrip({ revealProgress }: BottomTelemetryStripPro
   const revealStyle = useAnimatedStyle(() => ({
     transform: [{ translateY: revealProgress ? 74 * revealProgress.value : 0 }],
   }))
+  const panelFadeStyle = useTelemetryPanelFadeStyle(panelProgress)
   const imuLineStyle = useAnimatedStyle(() => {
     const p = tick.pitch.value ?? 0
     return { transform: [{ rotate: `${imuConnected ? p : 0}deg` }] }
@@ -76,79 +89,85 @@ export function BottomTelemetryStrip({ revealProgress }: BottomTelemetryStripPro
 
   return (
     <Animated.View
-      style={[styles.wrap, { paddingBottom: stripBottomSpacing(insets.bottom, height) }]}
-      pointerEvents="box-none"
+      style={[
+        styles.wrap,
+        { paddingBottom: stripBottomSpacing(insets.bottom, height) },
+        panelFadeStyle,
+      ]}
+      pointerEvents={panelActive ? 'none' : 'box-none'}
     >
-      <Animated.View style={[styles.rim, revealStyle]}>
-        <RimTempArc
-          side="left"
-          label="Motor"
-          metric={telemetry.motorTemp}
-          value={tick.motorTemp}
-          radius={radius}
-          onPress={() => router.push(routes.controlMotorTemp)}
-          testID="telemetry-motor-temp-cell"
-        />
-        <View style={styles.center}>
-          <View style={[styles.upperRow, { height: radius - barHeight }]}>
-            <Pressable
-              style={({ pressed }) => [styles.sideIcon, pressed && styles.cellPressed]}
-              hitSlop={SIDE_ICON_HIT_SLOP}
-              android_ripple={interaction.rippleBorderless}
-              onPress={() => router.push(routes.controlImu)}
-            >
-              <View
-                style={[
-                  styles.imuMarker,
-                  {
-                    borderColor: imuConnected
-                      ? theme.palette.purple.color
-                      : theme.neutral.textMuted,
-                  },
-                ]}
-              />
-              <Animated.View
-                style={[
-                  styles.imuLine,
-                  {
-                    backgroundColor: imuConnected
-                      ? theme.palette.purple.color
-                      : theme.neutral.textMuted,
-                  },
-                  imuLineStyle,
-                ]}
-              />
-            </Pressable>
-            {/* Grip for the drawer that will pull the strip open; static until that lands. */}
-            <View style={styles.handle} />
-            <Pressable
-              style={({ pressed }) => [styles.sideIcon, pressed && styles.cellPressed]}
-              hitSlop={SIDE_ICON_HIT_SLOP}
-              android_ripple={interaction.rippleBorderless}
-              onPress={() => router.push(routes.controlFootpad)}
-            >
-              <FootpadIndicator
-                adc1={tick.adc1}
-                adc2={tick.adc2}
-                posi={posiSensor}
-                threshold1={footpad1Threshold}
-                threshold2={footpad2Threshold}
-                testID="telemetry-footpad-indicator"
-              />
-            </Pressable>
+      <GestureDetector gesture={openGesture}>
+        <Animated.View style={[styles.rim, revealStyle]}>
+          <RimTempArc
+            side="left"
+            label="Motor"
+            metric={telemetry.motorTemp}
+            value={tick.motorTemp}
+            radius={radius}
+            onPress={() => router.push(routes.controlMotorTemp)}
+            testID="telemetry-motor-temp-cell"
+          />
+          <View style={styles.center}>
+            <View style={[styles.upperRow, { height: radius - barHeight }]}>
+              <Pressable
+                style={({ pressed }) => [styles.sideIcon, pressed && styles.cellPressed]}
+                hitSlop={SIDE_ICON_HIT_SLOP}
+                android_ripple={interaction.rippleBorderless}
+                onPress={() => router.push(routes.controlImu)}
+              >
+                <View
+                  style={[
+                    styles.imuMarker,
+                    {
+                      borderColor: imuConnected
+                        ? theme.palette.purple.color
+                        : theme.neutral.textMuted,
+                    },
+                  ]}
+                />
+                <Animated.View
+                  style={[
+                    styles.imuLine,
+                    {
+                      backgroundColor: imuConnected
+                        ? theme.palette.purple.color
+                        : theme.neutral.textMuted,
+                    },
+                    imuLineStyle,
+                  ]}
+                />
+              </Pressable>
+              {/* Grip for the telemetry panel: the whole strip pulls up into it. */}
+              <View style={styles.handle} />
+              <Pressable
+                style={({ pressed }) => [styles.sideIcon, pressed && styles.cellPressed]}
+                hitSlop={SIDE_ICON_HIT_SLOP}
+                android_ripple={interaction.rippleBorderless}
+                onPress={() => router.push(routes.controlFootpad)}
+              >
+                <FootpadIndicator
+                  adc1={tick.adc1}
+                  adc2={tick.adc2}
+                  posi={posiSensor}
+                  threshold1={footpad1Threshold}
+                  threshold2={footpad2Threshold}
+                  testID="telemetry-footpad-indicator"
+                />
+              </Pressable>
+            </View>
+            <BatteryIndicator transparent compact={compact} containerStyle={styles.battery} />
           </View>
-          <BatteryIndicator transparent compact={compact} containerStyle={styles.battery} />
-        </View>
-        <RimTempArc
-          side="right"
-          label="Ctrl"
-          metric={telemetry.controllerTemp}
-          value={tick.controllerTemp}
-          radius={radius}
-          onPress={() => router.push(routes.controlControllerTemp)}
-          testID="telemetry-controller-temp-cell"
-        />
-      </Animated.View>
+          <RimTempArc
+            side="right"
+            label="Ctrl"
+            metric={telemetry.controllerTemp}
+            value={tick.controllerTemp}
+            radius={radius}
+            onPress={() => router.push(routes.controlControllerTemp)}
+            testID="telemetry-controller-temp-cell"
+          />
+        </Animated.View>
+      </GestureDetector>
     </Animated.View>
   )
 }

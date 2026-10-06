@@ -38,6 +38,8 @@ internal final class LiveSeriesEmitter {
   /// Metric keys the mounted `/control` detail charts are focused on (JS intent); empty = none.
   /// Mutated and read on the main queue alongside the tick.
   private var focusedMetrics: Set<String> = []
+  /// Metrics added to the always-on center set while JS shows them (the telemetry panel). Main queue.
+  private var extraLiveMetrics: [Metric] = []
   private let scheduler: Scheduler
 
   init(scheduler: Scheduler = MainQueueScheduler()) {
@@ -130,7 +132,7 @@ internal final class LiveSeriesEmitter {
     let samples = recentSnapshot()
     guard !samples.isEmpty else { return }
     var metrics: [String: Any?] = [:]
-    for metric in Self.centerMetrics {
+    for metric in Self.centerMetrics + extraLiveMetrics {
       let series = LiveSeriesDownsampler.downsampleMinMax(
         samples,
         bucketCount: Self.buckets,
@@ -142,6 +144,20 @@ internal final class LiveSeriesEmitter {
     }
     guard !metrics.isEmpty else { return }
     emit?("onLiveSeries", ["metrics": metrics, "generation": generation()])
+  }
+
+  /// Set the metrics streamed on `onLiveSeries` beyond the always-on `centerMetrics` (empty to drop
+  /// back to those); emits immediately so the new rows fill without waiting a tick.
+  /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/LiveSeriesEmitter.kt `setLiveMetrics`
+  func setLiveMetrics(_ metrics: [String]) {
+    DispatchQueue.main.async { [weak self] in
+      guard let self else { return }
+      let keys = Set(metrics)
+      self.extraLiveMetrics = Self.allMetrics.filter { metric in
+        keys.contains(metric.key) && !Self.centerMetrics.contains { $0.key == metric.key }
+      }
+      if self.active { self.emitSeries() }
+    }
   }
 
   /// Set which metrics the high-res focused stream covers (empty to stop it); emits immediately.
@@ -206,7 +222,7 @@ internal final class LiveSeriesEmitter {
     Metric(key: "batteryPercent") { num($0, "batteryPercent") },
   ]
 
-  /// Detail-chart-only metrics (not on the center screen); served only via `onFocusedSeries` on focus.
+  /// Metrics streamed only on request: focused by a detail chart, or added by the telemetry panel.
   private static let focusedOnlyMetrics: [Metric] = [
     Metric(key: "motorTemp") { num($0, "tempMotor").flatMap { $0 > 0 ? $0 : nil } },
     Metric(key: "controllerTemp") { num($0, "tempMosfet") },

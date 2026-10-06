@@ -2089,6 +2089,15 @@ internal class BoardSessionController(private val service: CoreForegroundService
         liveSeriesEmitter.setFocusedMetrics(metrics.toSet())
     }
 
+    /**
+     * Telemetry panel intent from JS: the metrics `onLiveSeries` carries beyond the always-on set
+     * (empty while the panel is closed). Emits an immediate snapshot.
+     * @parity /modules/vescape-core/ios/connection/BoardSessionController.swift `setLiveSeriesMetrics`
+     */
+    fun setLiveSeriesMetrics(metrics: List<String>) {
+        liveSeriesEmitter.setLiveMetrics(metrics.toSet())
+    }
+
     private fun emitBmsSeries(mode: String, frames: List<BmsSeriesFrame>) {
         val cellCount = bmsSeriesRing.cellCount()
         emitEvent(

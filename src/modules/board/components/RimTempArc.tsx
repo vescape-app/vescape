@@ -1,6 +1,5 @@
-import { useMemo } from 'react'
 import { Pressable, StyleSheet, View } from 'react-native'
-import { Canvas, Group, Path, Text as SkiaText } from '@shopify/react-native-skia'
+import { Canvas, Group, Path } from '@shopify/react-native-skia'
 import {
   useAnimatedReaction,
   useDerivedValue,
@@ -9,11 +8,10 @@ import {
 } from 'react-native-reanimated'
 
 import { Text } from '@/components/base/Text'
-import { MonoText } from '@/components/base/MonoValue'
+import { MonoReadout, MonoText } from '@/components/base/MonoValue'
 import { GAUGE_FOOTER_TEXT } from '@/components/charts/LinearGauge'
 import { interaction, theme, type AlphaLevel } from '@/constants/theme'
 import { DASH } from '@/helpers/format'
-import { useSkiaMonoFont } from '@/hooks/useSkiaFont'
 import {
   useResolvedAccentColors,
   useResolvedColor,
@@ -52,7 +50,6 @@ const GLOW_OPACITIES: AlphaLevel[] = [0, 0, 0.12, 0.3]
 const VALUE_SIZE = 16
 /** Small unit after the value, the way the battery readout sets its `%`. */
 const UNIT_SIZE = 9
-const UNIT_GAP = 1
 /** Readout centre as a share of the radius, measured from the arc's open (inner) side. */
 const VALUE_X = 0.27
 const VALUE_Y = 0.28
@@ -129,14 +126,6 @@ export function RimTempArc({
   const valueCenterX = isLeft ? radius * (1 - VALUE_X) : radius * VALUE_X
   const valueEnd = valueCenterX + VALUE_END_OFFSET
   const valueTop = radius * VALUE_Y - VALUE_SIZE / 2
-  const valueFont = useSkiaMonoFont('800', VALUE_SIZE)
-  const unitFont = useSkiaMonoFont('500', UNIT_SIZE)
-  // Shares the value's baseline, matching how MonoText centres its glyphs in the box.
-  const unitBaseline = useMemo(() => {
-    if (!valueFont) return 0
-    const { ascent, descent } = valueFont.getMetrics()
-    return valueTop + VALUE_SIZE / 2 - (ascent + descent) / 2
-  }, [valueFont, valueTop])
 
   return (
     <Pressable
@@ -169,26 +158,16 @@ export function RimTempArc({
               <AlertMarker key={alert.id} arc={arc} alert={alert} min={min} max={max} />
             ))}
           </Group>
-          <MonoText
+          <MonoReadout
             text={valueText}
+            unit={unitText}
             size={VALUE_SIZE}
-            weight="800"
+            unitSize={UNIT_SIZE}
             color={arcColor}
-            align="right"
-            x={valueEnd - VALUE_BOX_W}
+            end={valueEnd}
             y={valueTop}
             width={VALUE_BOX_W}
-            height={VALUE_SIZE}
           />
-          {unitFont ? (
-            <SkiaText
-              x={valueEnd + UNIT_GAP}
-              y={unitBaseline}
-              text={unitText}
-              font={unitFont}
-              color={arcColor}
-            />
-          ) : null}
           <MonoText
             text={emptyText}
             size={VALUE_SIZE}

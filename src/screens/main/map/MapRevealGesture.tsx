@@ -19,6 +19,8 @@ interface MapRevealGestureProps {
   onFinish: (revealed: boolean) => void
   /** Off outside telemetry: the whole area then lets touches through to the map. */
   enabled: boolean
+  /** Holds the drag but keeps the face touchable, e.g. while the telemetry panel is open. */
+  paused?: boolean
 }
 
 interface MapRevealGestureViewProps extends MapRevealGestureProps {
@@ -47,6 +49,7 @@ function createMapRevealGesture({
   onRevealCancel,
   onFinish,
   enabled,
+  paused = false,
 }: MapRevealGestureProps) {
   let completed = false
   let pinching = false
@@ -87,7 +90,7 @@ function createMapRevealGesture({
   }
 
   const pan = Gesture.Pan()
-    .enabled(enabled)
+    .enabled(enabled && !paused)
     .runOnJS(true)
     .maxPointers(1)
     .minDistance(4)
@@ -147,7 +150,7 @@ function createMapRevealGesture({
     })
 
   const pinch = Gesture.Pinch()
-    .enabled(enabled)
+    .enabled(enabled && !paused)
     .runOnJS(true)
     .onBegin(() => {
       pinching = true
@@ -199,6 +202,7 @@ export function MapRevealGesture({
   onRevealCancel,
   onFinish,
   enabled,
+  paused,
   children,
 }: MapRevealGestureViewProps) {
   'use no memo'
@@ -232,9 +236,11 @@ export function MapRevealGesture({
         onRevealCancel: handleRevealCancel,
         onFinish: handleFinish,
         enabled,
+        paused,
       }),
     [
       enabled,
+      paused,
       dragOpacity,
       handleFinish,
       handlePan,

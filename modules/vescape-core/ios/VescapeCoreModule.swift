@@ -501,6 +501,11 @@ public class VescapeCoreModule: Module {
       self.coordinator.setFocusedSeriesMetrics(metrics)
     }
 
+    // @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/VescapeCoreModule.kt `setLiveSeriesMetrics`
+    Function("setLiveSeriesMetrics") { (metrics: [String]) in
+      self.coordinator.setLiveSeriesMetrics(metrics)
+    }
+
     AsyncFunction("getCriticalRideNotificationPermissionStatus") { (promise: Promise) in
       UNUserNotificationCenter.current().getNotificationSettings { settings in
         promise.resolve(Self.notificationPermissionStatus(settings.authorizationStatus))

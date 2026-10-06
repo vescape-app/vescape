@@ -26,8 +26,9 @@ private fun Map<String, Any?>.excluded(key: String): Boolean =
  * *before* min/max bucketing so native decimation matches what JS would compute, and
  * the UI renders the values verbatim.
  *
- * Detail-only metrics live in [FOCUSED_ONLY_SERIES_METRICS] and are not streamed
- * globally — a `/control` detail screen pulls them via [focusedSeries] on focus.
+ * The rest live in [FOCUSED_ONLY_SERIES_METRICS]: a `/control` detail screen pulls one via
+ * [focusedSeries] on focus, and the telemetry panel adds them to `onLiveSeries` while open
+ * (`LiveSeriesEmitter.setLiveMetrics`).
  *
  * @parity /modules/vescape-core/ios/telemetry/LiveSeriesEmitter.swift `centerMetrics`
  * @parity /src/modules/board/hooks/useLiveMetric.ts `liveSelectors`
@@ -37,7 +38,7 @@ internal val LIVE_SERIES_METRICS = listOf(
     LiveSeriesMetric("batteryPercent") { row -> row.num("batteryPercent") },
 )
 
-/** Detail-chart-only metrics (not on the center screen). Served only via [focusedSeries]. */
+/** Metrics streamed only on request: focused by a detail chart, or added by the telemetry panel. */
 internal val FOCUSED_ONLY_SERIES_METRICS = listOf(
     LiveSeriesMetric("motorTemp") { row -> row.num("tempMotor")?.takeIf { it > 0 } },
     LiveSeriesMetric("controllerTemp") { row -> row.num("tempMosfet") },

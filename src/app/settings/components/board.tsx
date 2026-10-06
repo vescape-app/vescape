@@ -19,8 +19,9 @@ import { BoardConfigSection } from '@/modules/board/components/BoardConfigSectio
 import { BoardWarningRow } from '@/modules/board/components/BoardWarningRow'
 import { VescFaultRow } from '@/modules/board/components/VescFaultRow'
 import { VescFaultCaptureSection } from '@/modules/board/components/VescFaultCaptureSection'
+import { LiveMetricRow } from '@/modules/board/components/LiveMetricRow'
 import { RimTempArc } from '@/modules/board/components/RimTempArc'
-import { telemetry } from '@/modules/board/constants/telemetry'
+import { presentTelemetryMetric, telemetry } from '@/modules/board/constants/telemetry'
 import { MOTOR_TEMP_CONFIG_ROWS } from '@/modules/board/constants/motorConfigRows'
 import { ChipRow, ToggleRow } from '@/components/dev/ShowcaseControls'
 import { RemoteTiltPadShowcase } from '@/screens/showcase/board/RemoteTiltPadShowcase'
@@ -316,6 +317,66 @@ function RimTempArcShowcase() {
   )
 }
 
+const ROW_WINDOW_MS = 5 * 60_000
+
+/** A wavy series ending now, sampled every 5 s over `spanMs`. */
+function demoSeries(spanMs: number, base: number, swing: number, phase = 0) {
+  const now = Date.now()
+  return Array.from({ length: Math.floor(spanMs / 5000) }, (_, i) => ({
+    ts: now - spanMs + i * 5000,
+    value: base + swing * Math.sin(i / 4 + phase),
+  }))
+}
+
+function LiveMetricRowShowcase() {
+  const [kind, setKind] = useState('single')
+  const [history, setHistory] = useState('full')
+  const spanMs = history === 'full' ? ROW_WINDOW_MS : history === 'short' ? 40_000 : 0
+  const first = useSharedValue<number | null>(null)
+  const second = useSharedValue<number | null>(null)
+
+  const series =
+    kind === 'single'
+      ? [{ metric: telemetry.motorCurrent, value: first, points: demoSeries(spanMs, 20, 15) }]
+      : [
+          { metric: telemetry.pitch, value: first, points: demoSeries(spanMs, 1, 4) },
+          { metric: telemetry.roll, value: second, points: demoSeries(spanMs, -1, 3, 1.5) },
+        ]
+  const lines = series.map((line) => ({
+    ...line,
+    metric: presentTelemetryMetric(line.metric, 'metric'),
+  }))
+
+  useEffect(() => {
+    first.value = series[0].points.at(-1)?.value ?? null
+    second.value = series[1]?.points.at(-1)?.value ?? null
+  })
+
+  return (
+    <ShowcaseCard
+      name="LiveMetricRow"
+      controls={
+        <>
+          <ChipRow label="lines" options={['single', 'pair']} selected={kind} onSelect={setKind} />
+          <ChipRow
+            label="history"
+            options={['full', 'short', 'none']}
+            selected={history}
+            onSelect={setHistory}
+          />
+        </>
+      }
+    >
+      <LiveMetricRow
+        title={kind === 'single' ? 'Motor current' : 'Pitch · roll'}
+        lines={lines}
+        windowMs={ROW_WINDOW_MS}
+        onPress={() => {}}
+      />
+    </ShowcaseCard>
+  )
+}
+
 const CONFIG_SECTION_VALUES = {
   freshness: 'fresh',
   values: { l_temp_motor_start: 80, l_temp_motor_end: 90 },
@@ -369,6 +430,7 @@ export default function BoardComponentsPage() {
         <VescFaultCaptureSectionShowcase />
         <FootpadIndicatorShowcase />
         <RimTempArcShowcase />
+        <LiveMetricRowShowcase />
         <BoardConfigSectionShowcase />
       </ScrollView>
     </SafeAreaView>

@@ -89,6 +89,73 @@ export function MonoText({
   return <SkiaText x={textX} y={baseline} text={text} font={font} color={rendererColor} />
 }
 
+export interface MonoReadoutProps {
+  /** The number, right-aligned so it ends at `end`. */
+  text: DerivedValue<string>
+  /** Set smaller after the number on its baseline; empty to leave it out. */
+  unit: DerivedValue<string>
+  size: number
+  unitSize: number
+  weight?: MonoWeight
+  color?: ThemeColor | DerivedValue<string>
+  /** Where the number ends and the unit starts, in canvas coordinates. */
+  end: number
+  /** Top edge of the number's line box. */
+  y: number
+  /** Room the number right-aligns in, left of `end`. */
+  width: number
+}
+
+const UNIT_GAP = 1
+
+/**
+ * A live number with its unit: the number right-aligned up to `end`, the unit small after it on
+ * the same baseline, the way the battery bar sets its `%`.
+ */
+export function MonoReadout({
+  text,
+  unit,
+  size,
+  unitSize,
+  weight = '800',
+  color = theme.palette.slate.textPrimary,
+  end,
+  y,
+  width,
+}: MonoReadoutProps) {
+  const valueFont = useSkiaMonoFont(weight, size)
+  const unitFont = useSkiaMonoFont('500', unitSize)
+  const staticColor = useResolvedColor(
+    isSharedValue<string>(color) ? theme.palette.slate.textPrimary : (color as ThemeColor),
+  )
+  const unitColor = isSharedValue<string>(color) ? color : staticColor
+  // The value's own baseline, as MonoText centres its glyphs in the line box.
+  const baseline = useMemo(() => {
+    if (!valueFont) return 0
+    const { ascent, descent } = valueFont.getMetrics()
+    return y + size / 2 - (ascent + descent) / 2
+  }, [size, valueFont, y])
+
+  return (
+    <>
+      <MonoText
+        text={text}
+        size={size}
+        weight={weight}
+        color={color}
+        align="right"
+        x={end - width}
+        y={y}
+        width={width}
+        height={size}
+      />
+      {unitFont ? (
+        <SkiaText x={end + UNIT_GAP} y={baseline} text={unit} font={unitFont} color={unitColor} />
+      ) : null}
+    </>
+  )
+}
+
 export interface MonoValueProps extends Omit<MonoTextProps, 'x' | 'y' | 'width' | 'height'> {
   /** Fixed canvas width. Omit to stretch and measure the box on layout. */
   width?: number

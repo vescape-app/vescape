@@ -2693,6 +2693,7 @@ type VescapeCoreNativeModule = NativeEventEmitter<VescapeCoreEvents> & {
   setTelemetryRecordingEnabled(enabled: boolean): void
   setBmsSeriesFocused(focused: boolean): void
   setFocusedSeriesMetrics(metrics: string[]): void
+  setLiveSeriesMetrics(metrics: string[]): void
   reloadAlertRules(): void
   getCriticalRideNotificationPermissionStatus(): Promise<CriticalRideNotificationPermissionStatus>
   requestCriticalRideNotificationPermission(): Promise<CriticalRideNotificationPermissionStatus>
@@ -3148,6 +3149,14 @@ export function setBmsSeriesFocused(focused: boolean): void {
 /** Set the metric keys the high-res `onFocusedSeries` stream covers (empty array to stop it). */
 export function setFocusedSeriesMetrics(metrics: string[]): void {
   native.setFocusedSeriesMetrics(metrics)
+}
+
+/**
+ * Set the metric keys `onLiveSeries` carries beyond the always-on battery set (empty array to drop
+ * back to it). The telemetry panel holds these while it is open.
+ */
+export function setLiveSeriesMetrics(metrics: string[]): void {
+  native.setLiveSeriesMetrics(metrics)
 }
 
 /** Tell the Android foreground service to re-read alert rules from native storage. */

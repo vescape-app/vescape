@@ -21,6 +21,7 @@ import type { MainViewState } from '@/screens/main/mainViewState'
 import { MapPointStatusBanner } from '@/modules/map-points/components/MapPointStatusBanner'
 import { useAboveStripBottom } from '@/screens/main/overlays/BottomTelemetryStrip'
 import { TelemetryOverlay } from '@/screens/main/overlays/TelemetryOverlay'
+import { useTelemetryPanel } from '@/screens/main/overlays/TelemetryPanel'
 
 const TELEMETRY_FADE_TIMING = { duration: 260 } as const
 
@@ -97,6 +98,7 @@ export function MainOverlays({
   // Owned here because the telemetry drag fades the map vignette as well as the telemetry face.
   const revealProgress = useSharedValue(0)
   const dragOpacity = useSharedValue(0)
+  const telemetryPanel = useTelemetryPanel(mode === 'telemetry')
 
   // Coming back to telemetry undoes whatever the reveal drag left behind.
   useLayoutEffect(() => {
@@ -125,6 +127,7 @@ export function MainOverlays({
         mapRef={mapRef}
         revealProgress={revealProgress}
         dragOpacity={dragOpacity}
+        telemetryPanel={telemetryPanel}
         boards={board.boards}
         activeBoardId={board.activeBoardId}
         activeBoard={board.activeBoard}
