@@ -2622,7 +2622,13 @@ internal final class BoardSessionController: VescGattListener {
       tick["firedAlerts"] = firedAlerts
     }
     updateLiveBattery(percent: batteryEstimate, voltage: telemetry.batteryVoltage, now: telemetry.lastPacketAt)
-    emit?("onLiveTick", tick)
+    // Decimated ~1Hz series for sparklines + battery gauge (native downsamples the live window); the
+    // window's peaks ride on the tick for the gauges.
+    let peaks = liveSeries.add(tick)
+    var liveTick = tick
+    liveTick["speedPeak"] = peaks.speed
+    liveTick["dutyPeak"] = peaks.duty
+    emit?("onLiveTick", liveTick)
 
     if let capture = telemetryCapture(telemetry) {
       updateIdlePause(capture)
@@ -2637,9 +2643,6 @@ internal final class BoardSessionController: VescGattListener {
         recordingCoordinator.recordTelemetry(capture)
       }
     }
-
-    // Decimated ~1Hz series for sparklines + battery gauge (native downsamples the live window).
-    liveSeries.add(tick)
 
     // Cold path: full samples batched a few times a second for history + charts. Fired alerts ride
     // the buffered sample so `onTelemetryHistory` carries them too.

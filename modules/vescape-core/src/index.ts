@@ -869,6 +869,14 @@ export interface TelemetryEvent {
   pullRateHz: number | null
   lastPacketAt: number
   firedAlerts?: FiredAlert[]
+  /**
+   * Highest speed (km/h, unsigned) and duty (%, unsigned) across the live window, as the live
+   * charts plot them. Only on `onLiveTick`.
+   * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/TelemetryPipeline.kt `ProcessedTelemetry`
+   * @parity /modules/vescape-core/ios/telemetry/LiveSeriesEmitter.swift `LivePeaks`
+   */
+  speedPeak?: number | null
+  dutyPeak?: number | null
 }
 
 /** Smart-BMS snapshot decoded from a VESC `COMM_BMS_GET_VALUES` reply. */

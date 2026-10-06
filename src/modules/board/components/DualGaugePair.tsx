@@ -3,10 +3,12 @@ import { speedFromKmh, speedUnit } from '@/helpers/units'
 import { useMemo, type ReactNode } from 'react'
 import { Pressable, StyleSheet, View } from 'react-native'
 import { useDerivedValue, type SharedValue } from 'react-native-reanimated'
-import { Canvas, Group, Path } from '@shopify/react-native-skia'
+import { Canvas, Group, Path, Text as SkiaText } from '@shopify/react-native-skia'
 
 import type { DualGaugeAlert } from '@/components/charts/gaugeAlert'
 import { useCanvasSize } from '@/hooks/useCanvasSize'
+import { useSkiaMonoFont } from '@/hooks/useSkiaFont'
+import { textAdvanceWidth } from '@/helpers/skiaText'
 import { DASH } from '@/helpers/format'
 import { interaction, theme, type AlphaLevel } from '@/constants/theme'
 import { useResolvedAccentColors, useResolvedTelemetryColors } from '@/hooks/useTheme'
@@ -14,7 +16,9 @@ import type { MetricHotRange } from '@/modules/history/lib/metricColorScale'
 import {
   arcPath,
   clamp01,
+  polar,
   radialTickPath,
+  segmentPath,
   STROKE,
   svgPath,
   wedgePath,
@@ -54,6 +58,16 @@ const ARC_BOTTOM_RATIO = (LEFT_ARC.cy - CROP_TOP) / VB_CROP_H
 
 const ARC_GAP = 32
 
+// Peak marker, in arc units: a faint tick across the stroke with the value just outside the arc.
+const PEAK_TICK_INSET = 3.5
+const PEAK_TICK_OUTSET = 2
+const PEAK_LABEL_SIZE = 6
+const PEAK_LABEL_GAP = 1
+/** Level line from the tick's outer end to the value, so the value reads as level with it. */
+const PEAK_LEADER_LENGTH = 2.5
+/** Low peaks are of no interest, and lower on the arc the label would run off the screen. */
+const PEAK_MIN_FRACTION = 0.4
+
 const GLOW_STOPS = [0, 0.6, 0.95, 1]
 const GLOW_OPACITIES: AlphaLevel[] = [0, 0, 0.12, 0.3]
 
@@ -69,6 +83,8 @@ interface QuarterArcProps {
   displayScale?: number
   alerts?: DualGaugeAlert[]
   hotRange?: MetricHotRange | null
+  /** Highest value across the live window, marked on the arc. */
+  peak?: SharedValue<number | null>
 }
 
 interface QuarterArcLayerProps extends QuarterArcProps {
@@ -82,6 +98,8 @@ function QuarterArcLayer({
   color,
   alerts = [],
   hotRange,
+  peak,
+  displayScale,
   transform,
 }: QuarterArcLayerProps) {
   'use no memo'
@@ -131,9 +149,99 @@ function QuarterArcLayer({
         <AlertMarker key={alert.id} arc={arc} alert={alert} max={max} />
       ))}
 
+      {peak ? (
+        <PeakMarker
+          arc={arc}
+          side={side}
+          peak={peak}
+          max={max}
+          color={color}
+          displayScale={displayScale}
+        />
+      ) : null}
+
       {/* Position marker */}
       <Path path={markerPath} color={arcColor} style="stroke" strokeWidth={1.5} strokeCap="butt" />
     </Group>
+  )
+}
+
+/**
+ * Where the live window topped out: a tick across the arc, then a short level line out to the value
+ * on the gauge's outer side — left of the speed arc, right of the duty arc — clear of the top bar.
+ * Hidden while the peak is low on the arc.
+ */
+function PeakMarker({
+  arc,
+  side,
+  peak,
+  max,
+  color,
+  displayScale = 1,
+}: {
+  arc: Arc
+  side: 'left' | 'right'
+  peak: SharedValue<number | null>
+  max: number
+  color: string
+  displayScale?: number
+}) {
+  'use no memo'
+  const font = useSkiaMonoFont('600', PEAK_LABEL_SIZE)
+  const fraction = useDerivedValue(() => clamp01((peak.value ?? 0) / max))
+  const opacity = useDerivedValue(() =>
+    peak.value != null && fraction.value >= PEAK_MIN_FRACTION ? 1 : 0,
+  )
+  const tick = useDerivedValue(() =>
+    radialTickPath(arc, fraction.value, PEAK_TICK_INSET, PEAK_TICK_OUTSET),
+  )
+  const text = useDerivedValue(() =>
+    peak.value == null ? '' : Math.round(peak.value * displayScale).toString(),
+  )
+  const anchor = useDerivedValue(() => polar(arc, arc.r + PEAK_TICK_OUTSET, fraction.value))
+  const leaderEnd = useDerivedValue(() =>
+    side === 'left' ? anchor.value.x - PEAK_LEADER_LENGTH : anchor.value.x + PEAK_LEADER_LENGTH,
+  )
+  const leader = useDerivedValue(() =>
+    segmentPath(anchor.value.x, anchor.value.y, leaderEnd.value, anchor.value.y),
+  )
+  const labelX = useDerivedValue(() => {
+    const width = font ? textAdvanceWidth(font, text.value) : 0
+    return side === 'left'
+      ? leaderEnd.value - PEAK_LABEL_GAP - width
+      : leaderEnd.value + PEAK_LABEL_GAP
+  })
+  const labelY = useDerivedValue(() => anchor.value.y + PEAK_LABEL_SIZE * 0.36)
+
+  return (
+    <>
+      <Path
+        path={tick}
+        color={theme.alpha(color, 0.7)}
+        style="stroke"
+        strokeWidth={0.6}
+        strokeCap="round"
+        opacity={opacity}
+      />
+      <Path
+        path={leader}
+        color={theme.alpha(color, 0.7)}
+        style="stroke"
+        strokeWidth={0.6}
+        strokeCap="round"
+        opacity={opacity}
+      />
+      {font ? (
+        <SkiaText
+          x={labelX}
+          y={labelY}
+          text={text}
+          font={font}
+          color={theme.alpha(color, 0.8)}
+          opacity={opacity}
+        />
+      ) : null}
+    </>
   )
 }
 
@@ -170,6 +278,8 @@ function GaugeValueLayer({
 interface GaugePairProps {
   speedValue: SharedValue<number | null>
   dutyValue: SharedValue<number | null>
+  speedPeak?: SharedValue<number | null>
+  dutyPeak?: SharedValue<number | null>
   speedMax: number
   dutyMax: number
   speedAlerts: DualGaugeAlert[]
@@ -185,6 +295,8 @@ interface GaugePairProps {
 export function GaugePair({
   speedValue,
   dutyValue,
+  speedPeak,
+  dutyPeak,
   speedMax,
   dutyMax,
   speedAlerts,
@@ -239,6 +351,8 @@ export function GaugePair({
             unit={speedUnit(units)}
             alerts={speedAlerts}
             hotRange={speedHotRange}
+            peak={speedPeak}
+            displayScale={speedFromKmh(1, units)}
             transform={leftTransform}
           />
           <QuarterArcLayer
@@ -249,6 +363,7 @@ export function GaugePair({
             unit="%"
             alerts={dutyAlerts}
             hotRange={dutyHotRange}
+            peak={dutyPeak}
             transform={rightTransform}
           />
           <GaugeValueLayer

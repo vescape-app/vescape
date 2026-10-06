@@ -43,6 +43,8 @@ export function DualGaugeIndicator({
     <DualGauge
       speedValue={liveTelemetryRuntime.values.speedKmh}
       dutyValue={liveTelemetryRuntime.values.dutyPercent}
+      speedPeak={liveTelemetryRuntime.values.speedPeakKmh}
+      dutyPeak={liveTelemetryRuntime.values.dutyPeakPercent}
       speedMax={speedMax}
       dutyMax={DUTY_MAX}
       speedHotRange={speedHotRange}

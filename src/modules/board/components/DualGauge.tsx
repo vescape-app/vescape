@@ -15,6 +15,9 @@ import { GaugePair } from '@/modules/board/components/DualGaugePair'
 interface DualGaugeProps {
   speedValue: SharedValue<number | null>
   dutyValue: SharedValue<number | null>
+  /** Highest speed / duty across the live window, marked on each arc. */
+  speedPeak?: SharedValue<number | null>
+  dutyPeak?: SharedValue<number | null>
   speedMax?: number
   dutyMax?: number
   speedHotRange?: MetricHotRange | null
@@ -33,6 +36,8 @@ interface DualGaugeProps {
 export function DualGauge({
   speedValue,
   dutyValue,
+  speedPeak,
+  dutyPeak,
   speedMax = 50,
   dutyMax = 100,
   speedHotRange = getHistoryMetricHotRange('speed'),
@@ -58,6 +63,8 @@ export function DualGauge({
         <GaugePair
           speedValue={speedValue}
           dutyValue={dutyValue}
+          speedPeak={speedPeak}
+          dutyPeak={dutyPeak}
           speedMax={speedMax}
           dutyMax={dutyMax}
           speedAlerts={speedAlerts}

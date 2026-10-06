@@ -9,6 +9,13 @@ import Foundation
 /// @platform-diff iOS decimates a plain in-memory tick buffer instead of Android's `TelemetryPipeline`,
 /// and has no metric-sanitizer exclusions yet (speed/duty are emitted unconditionally). The event
 /// shape, cadence, bucket count, and window semantics match.
+/// Highest speed (km/h) and duty (%) across the live window, as the live charts plot them.
+/// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/TelemetryPipeline.kt `ProcessedTelemetry`
+internal struct LivePeaks {
+  let speed: Double?
+  let duty: Double?
+}
+
 internal final class LiveSeriesEmitter {
   private static let intervalMs = 1_000
   private static let buckets = 64
@@ -32,6 +39,9 @@ internal final class LiveSeriesEmitter {
   /// `recentSnapshot()` from the JS thread on `getLiveState`. All access holds `samplesLock`.
   private let samplesLock = NSLock()
   private var samples: [[String: Any?]] = []
+  /// Guarded by `samplesLock` with the window they track.
+  private let speedPeak = LiveWindowPeak(select: LiveSeriesEmitter.metric("speed").select)
+  private let dutyPeak = LiveWindowPeak(select: LiveSeriesEmitter.metric("duty").select)
   private var active = false
   private var primed = false
   private var tickSeq = 0
@@ -76,21 +86,28 @@ internal final class LiveSeriesEmitter {
     tickSeq &+= 1
     samplesLock.lock()
     samples.removeAll(keepingCapacity: true)
+    speedPeak.reset()
+    dutyPeak.reset()
     samplesLock.unlock()
   }
 
   /// Append a decoded tick (the same map emitted on `onLiveTick`, carrying `lastPacketAt` plus the
   /// metric fields). Emits immediately on the first sample of a session so gauges light up without
   /// waiting a full tick interval.
-  func add(_ sample: [String: Any?]) {
+  @discardableResult
+  func add(_ sample: [String: Any?]) -> LivePeaks {
     samplesLock.lock()
     samples.append(sample)
+    speedPeak.add(sample)
+    dutyPeak.add(sample)
     prune()
+    let peaks = LivePeaks(speed: speedPeak.value(samples), duty: dutyPeak.value(samples))
     samplesLock.unlock()
     if active && !primed {
       primed = true
       emitSeries()
     }
+    return peaks
   }
 
   /// Caller must hold `samplesLock`.
@@ -98,6 +115,10 @@ internal final class LiveSeriesEmitter {
     guard let newest = timestamp(samples.last) else { return }
     let oldest = newest - windowMs
     if let firstKeep = samples.firstIndex(where: { (timestamp($0) ?? 0) >= oldest }), firstKeep > 0 {
+      for dropped in samples[..<firstKeep] {
+        speedPeak.evict(dropped)
+        dutyPeak.evict(dropped)
+      }
       samples.removeFirst(firstKeep)
     }
   }
@@ -239,6 +260,10 @@ internal final class LiveSeriesEmitter {
 
   /// Every metric a `/control` detail chart can focus (center + detail-only).
   private static let allMetrics: [Metric] = centerMetrics + focusedOnlyMetrics
+
+  private static func metric(_ key: String) -> Metric {
+    allMetrics.first { $0.key == key }!
+  }
 
   private static func num(_ map: [String: Any?], _ key: String) -> Double? {
     guard let raw = map[key] ?? nil else { return nil }

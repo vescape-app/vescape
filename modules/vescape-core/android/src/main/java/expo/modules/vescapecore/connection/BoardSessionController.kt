@@ -45,6 +45,7 @@ import expo.modules.vescapecore.location.isPreciseGpsFix
 import expo.modules.vescapecore.GroupRideObserver
 import expo.modules.vescapecore.appstatus.AppStatusCoordinator
 import expo.modules.vescapecore.telemetry.LiveSeriesEmitter
+import expo.modules.vescapecore.telemetry.ProcessedTelemetry
 import expo.modules.vescapecore.protocol.LocationSnapshot
 import expo.modules.vescapecore.protocol.toCapture
 import expo.modules.vescapecore.location.LocationTracker
@@ -1576,7 +1577,7 @@ internal class BoardSessionController(private val service: CoreForegroundService
             } else eventMap
                 refreshNotification(telemetry = parsed, batteryPercent = batteryEstimate)
                 // Hot path: tiny scalar tick every frame drives the live gauges (SharedValues, no React render).
-                emitEvent("onLiveTick", buildLiveTick(parsed, batteryEstimate, currentSessionId, firedAlerts))
+                emitEvent("onLiveTick", buildLiveTick(parsed, processed, batteryEstimate, currentSessionId, firedAlerts))
                 // Cold path: full samples buffered and flushed in batches for history/charts.
                 liveSeriesEmitter.enqueueHistorySample(historySample)
                 // First sample of the session also drives the first sparkline frame immediately.
@@ -2388,6 +2389,7 @@ internal class BoardSessionController(private val service: CoreForegroundService
 
     private fun buildLiveTick(
         parsed: RefloatTelemetry,
+        processed: ProcessedTelemetry,
         batteryPercent: Double?,
         generation: Long,
         firedAlerts: List<Map<String, Any?>>,
@@ -2395,6 +2397,8 @@ internal class BoardSessionController(private val service: CoreForegroundService
         val tick = parsed.toMap().toMutableMap()
         tick.remove("location")
         tick["batteryPercent"] = batteryPercent
+        tick["speedPeak"] = processed.speedPeak
+        tick["dutyPeak"] = processed.dutyPeak
         tick["generation"] = generation
         tick["remoteTilt"] = remoteTiltState()
         if (firedAlerts.isNotEmpty()) tick["firedAlerts"] = firedAlerts

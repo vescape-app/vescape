@@ -3,7 +3,14 @@ import { speedFromKmh, speedUnit, type UnitSystem } from '@/helpers/units'
 import { Pressable, ScrollView, StyleSheet, View } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { Easing, useSharedValue, withRepeat, withTiming } from 'react-native-reanimated'
+import {
+  Easing,
+  useAnimatedReaction,
+  useSharedValue,
+  withRepeat,
+  withTiming,
+  type SharedValue,
+} from 'react-native-reanimated'
 
 import { ChartLineUpIcon } from 'phosphor-react-native'
 import { LinearGauge } from '@/components/charts/LinearGauge'
@@ -246,19 +253,47 @@ function AnimatedSingleGaugeShowcase() {
   )
 }
 
+const SHOWCASE_SPEED_MAX = 50
+const SHOWCASE_DUTY_MAX = 100
+/** `ride` follows the ramp like a real window peak; the rest pin it at a share of full scale. */
+const PEAK_MODES = ['ride', 'off', '20%', '39%', '40%', '70%', '100%', '120%']
+
+/** Peak for the showcase ramp: the sweep's running max, or pinned at a share of full scale. */
+function useShowcasePeak(value: SharedValue<number | null>, max: number, mode: string) {
+  const peak = useSharedValue<number | null>(null)
+  useEffect(() => {
+    peak.value = mode === 'ride' || mode === 'off' ? null : (parseFloat(mode) / 100) * max
+  }, [max, mode, peak])
+  useAnimatedReaction(
+    () => value.value,
+    (v) => {
+      if (mode !== 'ride' || v == null) return
+      // Each sweep starts fresh, as if the old peak had rolled out of the live window.
+      if (v < max * 0.02) peak.value = null
+      else if (peak.value == null || v > peak.value) peak.value = v
+    },
+    [mode, max],
+  )
+  return peak
+}
+
 function AnimatedDualGaugeShowcase() {
   const [compact, setCompact] = useState(false)
+  const [peakMode, setPeakMode] = useState('ride')
   const speed = useSharedValue<number | null>(0)
   const duty = useSharedValue<number | null>(0)
+  const speedPeak = useShowcasePeak(speed, SHOWCASE_SPEED_MAX, peakMode)
+  const dutyPeak = useShowcasePeak(duty, SHOWCASE_DUTY_MAX, peakMode)
+  const peaks = peakMode !== 'off'
 
   useEffect(() => {
     speed.value = withRepeat(
-      withTiming(50, { duration: 2600, easing: Easing.inOut(Easing.quad) }),
+      withTiming(SHOWCASE_SPEED_MAX, { duration: 2600, easing: Easing.inOut(Easing.quad) }),
       -1,
       true,
     )
     duty.value = withRepeat(
-      withTiming(100, { duration: 1700, easing: Easing.inOut(Easing.quad) }),
+      withTiming(SHOWCASE_DUTY_MAX, { duration: 1700, easing: Easing.inOut(Easing.quad) }),
       -1,
       true,
     )
@@ -267,11 +302,20 @@ function AnimatedDualGaugeShowcase() {
   return (
     <ShowcaseCard
       name="DualGauge / animated ramp"
-      controls={<ToggleRow label="compact" value={compact} onToggle={setCompact} />}
+      controls={
+        <>
+          <ToggleRow label="compact" value={compact} onToggle={setCompact} />
+          <ChipRow label="peak" options={PEAK_MODES} selected={peakMode} onSelect={setPeakMode} />
+        </>
+      }
     >
       <DualGauge
         speedValue={speed}
         dutyValue={duty}
+        speedPeak={peaks ? speedPeak : undefined}
+        dutyPeak={peaks ? dutyPeak : undefined}
+        speedMax={SHOWCASE_SPEED_MAX}
+        dutyMax={SHOWCASE_DUTY_MAX}
         compact={compact}
         speedAlerts={[{ id: 'speed-warn', threshold: 42, thresholdMax: null }]}
         dutyAlerts={[{ id: 'duty-warn', threshold: 80, thresholdMax: 95 }]}

@@ -89,6 +89,9 @@ internal data class ProcessedTelemetry(
     val eventMap: MutableMap<String, Any?>,
     val capture: TelemetryCapture,
     val metricExclusionUpdates: List<Map<String, Any?>>,
+    /** Highest speed (km/h) and duty (%) across the live window, as the live charts plot them. */
+    val speedPeak: Double?,
+    val dutyPeak: Double?,
 )
 
 internal class TelemetryPipeline(
@@ -106,6 +109,9 @@ internal class TelemetryPipeline(
     )
 
     private val recentTelemetry = ArrayDeque<MutableMap<String, Any?>>()
+    // Guarded by recentLock with the window they track.
+    private val speedPeak = LiveWindowPeak(ALL_SERIES_METRICS.first { it.key == "speed" }.select)
+    private val dutyPeak = LiveWindowPeak(ALL_SERIES_METRICS.first { it.key == "duty" }.select)
     private val liveTelemetryPoints = ArrayDeque<LivePoint>()
     // recentTelemetry is appended on the BLE callback thread and read (snapshot/decimated)
     // on the main thread, so every structural access goes through this lock.
@@ -124,7 +130,7 @@ internal class TelemetryPipeline(
 
     fun beginSession(session: BoardSession, config: SessionConfig) {
         cancelStaleWatchdog()
-        synchronized(recentLock) { recentTelemetry.clear() }
+        clearRecentTelemetry()
         synchronized(liveLock) { liveTelemetryPoints.clear() }
         lastTelemetryAt = 0L
         this.session = session
@@ -136,7 +142,7 @@ internal class TelemetryPipeline(
 
     fun endSession() {
         cancelStaleWatchdog()
-        synchronized(recentLock) { recentTelemetry.clear() }
+        clearRecentTelemetry()
         synchronized(liveLock) { liveTelemetryPoints.clear() }
         lastTelemetryAt = 0L
         session = null
@@ -155,7 +161,7 @@ internal class TelemetryPipeline(
      */
     fun clearLiveTelemetry() {
         cancelStaleWatchdog()
-        synchronized(recentLock) { recentTelemetry.clear() }
+        clearRecentTelemetry()
         synchronized(liveLock) { liveTelemetryPoints.clear() }
         lastTelemetryAt = 0L
     }
@@ -314,12 +320,26 @@ internal class TelemetryPipeline(
             pruneLiveTelemetryPoints(parsed.lastPacketAt)
             sanitizeLivePoints()
         }
-        synchronized(recentLock) {
+        val peaks = synchronized(recentLock) {
+            // Re-labelled samples can move the peak either way.
+            if (updates.isNotEmpty()) {
+                speedPeak.invalidate()
+                dutyPeak.invalidate()
+            }
             recentTelemetry.addLast(baseEventMap)
+            speedPeak.add(baseEventMap)
+            dutyPeak.add(baseEventMap)
             pruneRecentTelemetry(parsed.lastPacketAt)
+            speedPeak.value(recentTelemetry) to dutyPeak.value(recentTelemetry)
         }
 
-        return ProcessedTelemetry(baseEventMap, capture, updates)
+        return ProcessedTelemetry(baseEventMap, capture, updates, peaks.first, peaks.second)
+    }
+
+    private fun clearRecentTelemetry() = synchronized(recentLock) {
+        recentTelemetry.clear()
+        speedPeak.reset()
+        dutyPeak.reset()
     }
 
     private fun pruneLiveTelemetryPoints(now: Long) {
@@ -336,7 +356,9 @@ internal class TelemetryPipeline(
         while (recentTelemetry.isNotEmpty()) {
             val ts = (recentTelemetry.first()["lastPacketAt"] as? Number)?.toLong() ?: break
             if (ts >= oldest) break
-            recentTelemetry.removeFirst()
+            val dropped = recentTelemetry.removeFirst()
+            speedPeak.evict(dropped)
+            dutyPeak.evict(dropped)
         }
     }
 
