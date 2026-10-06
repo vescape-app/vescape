@@ -41,6 +41,12 @@ export function useResolvedSecondaryWidgetSurface() {
   }
 }
 
+/** The secondary surface while pressed, resolved for the same reason as the surface itself. */
+export function useResolvedSecondaryWidgetPressed() {
+  const neutral = useResolvedNeutralColors()
+  return { backgroundColor: neutral.surface }
+}
+
 /** Flat canvas for read-only widgets; actions inside it provide their own interaction surface. */
 export const presentationWidgetSurface = {
   backgroundColor: theme.alpha(theme.palette.mono.black, 0),

@@ -24,7 +24,10 @@ export interface SparklinePathOptions {
 
 export interface SparklinePaths {
   linePath: ReturnType<typeof Skia.Path.Make> | null
+  /** Flat stand-in when there is no line to draw: no samples, one, or no spread. */
   baselinePath: ReturnType<typeof Skia.Path.Make> | null
+  /** Flat stub across the window before the first sample. */
+  leadInPath: ReturnType<typeof Skia.Path.Make> | null
   maxPos: { x: number; y: number } | null
   minPos: { x: number; y: number } | null
 }
@@ -54,6 +57,7 @@ function singlePointPaths(
   return {
     linePath: null,
     baselinePath: makeBaseline(0, width, y),
+    leadInPath: null,
     maxPos: { x: width, y },
     minPos: { x: width, y },
   }
@@ -89,7 +93,13 @@ export function buildSparklinePaths({
   minSpan = 0,
   windowMs,
 }: SparklinePathOptions): SparklinePaths {
-  const empty: SparklinePaths = { linePath: null, baselinePath: null, maxPos: null, minPos: null }
+  const empty: SparklinePaths = {
+    linePath: null,
+    baselinePath: null,
+    leadInPath: null,
+    maxPos: null,
+    minPos: null,
+  }
   if (width < 1) return empty
   if (points.length === 1) return singlePointPaths(points[0], width, height, range, minSpan)
   if (points.length < 2) return { ...empty, baselinePath: makeBaseline(0, width, height / 2) }
@@ -124,7 +134,8 @@ export function buildSparklinePaths({
   }
   return {
     linePath: builder.detach(),
-    baselinePath: first.x > 0 ? makeBaseline(0, first.x, first.y) : null,
+    baselinePath: null,
+    leadInPath: first.x > 0 ? makeBaseline(0, first.x, first.y) : null,
     maxPos: project(points[maxIndex]),
     minPos: project(points[minIndex]),
   }
@@ -135,8 +146,8 @@ interface SparklineLayerProps {
   color: ThemeColor
   showMax?: boolean
   showMin?: boolean
-  /** The flat stub across the window before the first sample. */
-  showBaseline?: boolean
+  /** Draw `leadInPath`; off where an empty stretch reads better than a flat line. */
+  showLeadIn?: boolean
 }
 
 /** Draw-only layer. Parent owns Canvas, so many lines share one GPU surface. */
@@ -145,15 +156,16 @@ export function SparklineLayer({
   color,
   showMax = false,
   showMin = false,
-  showBaseline = true,
+  showLeadIn = true,
 }: SparklineLayerProps) {
   const neutral = useResolvedNeutralColors()
   const resolvedColor = useResolvedColor(color)
+  const flatPath = paths.baselinePath ?? (showLeadIn ? paths.leadInPath : null)
   return (
     <>
-      {showBaseline && paths.baselinePath ? (
+      {flatPath ? (
         <Path
-          path={paths.baselinePath}
+          path={flatPath}
           color={theme.palette.slate.border}
           style="stroke"
           strokeWidth={1}

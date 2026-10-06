@@ -124,7 +124,7 @@ export function RimTempArc({
   const emptyText = useDerivedValue<string>(() => (shown.value == null ? DASH : ''))
 
   const valueCenterX = isLeft ? radius * (1 - VALUE_X) : radius * VALUE_X
-  const valueEnd = valueCenterX + VALUE_END_OFFSET
+  const valueX = valueCenterX + VALUE_END_OFFSET - VALUE_BOX_W
   const valueTop = radius * VALUE_Y - VALUE_SIZE / 2
 
   return (
@@ -164,7 +164,7 @@ export function RimTempArc({
             size={VALUE_SIZE}
             unitSize={UNIT_SIZE}
             color={arcColor}
-            x={valueEnd - VALUE_BOX_W}
+            x={valueX}
             y={valueTop}
             width={VALUE_BOX_W}
           />

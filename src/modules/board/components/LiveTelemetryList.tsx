@@ -11,7 +11,7 @@ import { SectionHeader } from '@/components/base/SectionHeader'
 import { theme } from '@/constants/theme'
 
 import { useUnitSystem } from '@/hooks/useUnitSystem'
-import { LiveMetricRow } from '@/modules/board/components/LiveMetricRow'
+import { LiveMetricCard } from '@/modules/board/components/LiveMetricCard'
 import {
   presentTelemetryMetric,
   telemetry,
@@ -23,53 +23,37 @@ import { formatLiveTelemetryDetail } from '@/modules/board/lib/focusedSeriesHead
 import { useLiveWindowMs, useSettingsStore } from '@/modules/settings/store/settingsStore'
 import { routes } from '@/navigation/routes'
 
-interface ListRow {
-  /** Caption, `onLiveSeries` key, the metric it draws as, its live reading and the detail screen
-   * it opens, per line. */
+interface ListCard {
+  /** Caption, `onLiveSeries` key, the metric it draws as and its live reading, per line, and the
+   * line's own detail screen where the lines do not share the card's. */
   lines: {
     title: string
     key: string
     metric: TelemetryMetricConfig
     value: SharedValue<number | null>
-    route: Href
+    route?: Href
   }[]
+  /** The detail screen the whole card opens, unless its lines name their own. */
+  route?: Href
   testID: string
-  /** Which extremes the row marks; see `LiveMetricRow`. */
+  /** Which extremes the card marks; see `LiveMetricCard`. */
   peaks?: 'max' | 'range'
-  /** The readings a rider watches most, drawn bigger. */
-  large?: boolean
 }
 
 const live = liveTelemetryRuntime.values
 
-const ROWS: ListRow[] = [
+const CARDS: ListCard[] = [
   {
-    lines: [
-      {
-        title: 'Speed',
-        key: 'speed',
-        metric: telemetry.speed,
-        value: live.speedKmh,
-        route: routes.controlSpeed,
-      },
-    ],
+    lines: [{ title: 'Speed', key: 'speed', metric: telemetry.speed, value: live.speedKmh }],
+    route: routes.controlSpeed,
     testID: 'telemetry-list-speed',
     peaks: 'max',
-    large: true,
   },
   {
-    lines: [
-      {
-        title: 'Duty cycle',
-        key: 'duty',
-        metric: telemetry.duty,
-        value: live.dutyPercent,
-        route: routes.controlDuty,
-      },
-    ],
+    lines: [{ title: 'Duty cycle', key: 'duty', metric: telemetry.duty, value: live.dutyPercent }],
+    route: routes.controlDuty,
     testID: 'telemetry-list-duty',
     peaks: 'max',
-    large: true,
   },
   {
     lines: [
@@ -98,9 +82,9 @@ const ROWS: ListRow[] = [
         key: 'motorCurrent',
         metric: telemetry.motorCurrent,
         value: live.motorCurrent,
-        route: routes.controlMotorCurrent,
       },
     ],
+    route: routes.controlMotorCurrent,
     testID: 'telemetry-list-motor-current',
     peaks: 'range',
   },
@@ -111,9 +95,9 @@ const ROWS: ListRow[] = [
         key: 'batteryCurrent',
         metric: telemetry.battCurrent,
         value: live.batteryCurrent,
-        route: routes.controlBatteryCurrent,
       },
     ],
+    route: routes.controlBatteryCurrent,
     testID: 'telemetry-list-battery-current',
     peaks: 'range',
   },
@@ -124,9 +108,9 @@ const ROWS: ListRow[] = [
         key: 'batteryVoltage',
         metric: telemetry.battVoltage,
         value: live.batteryVoltage,
-        route: routes.controlBattery,
       },
     ],
+    route: routes.controlBattery,
     testID: 'telemetry-list-battery',
   },
   {
@@ -136,43 +120,31 @@ const ROWS: ListRow[] = [
         key: 'footpadAdc1',
         metric: telemetry.footpadAdc1,
         value: live.adc1,
-        route: routes.controlFootpad,
       },
       {
         title: 'Footpad ADC 2',
         key: 'footpadAdc2',
         metric: telemetry.footpadAdc2,
         value: live.adc2,
-        route: routes.controlFootpad,
       },
     ],
+    route: routes.controlFootpad,
     testID: 'telemetry-list-footpad',
   },
   {
     lines: [
-      {
-        title: 'Pitch',
-        key: 'pitch',
-        metric: telemetry.pitch,
-        value: live.pitch,
-        route: routes.controlImu,
-      },
-      {
-        title: 'Roll',
-        key: 'roll',
-        metric: telemetry.roll,
-        value: live.roll,
-        route: routes.controlImu,
-      },
+      { title: 'Pitch', key: 'pitch', metric: telemetry.pitch, value: live.pitch },
+      { title: 'Roll', key: 'roll', metric: telemetry.roll, value: live.roll },
     ],
+    route: routes.controlImu,
     testID: 'telemetry-list-imu',
   },
 ]
 
-const SERIES_KEYS = ROWS.flatMap((row) => row.lines.map((line) => line.key))
+const SERIES_KEYS = CARDS.flatMap((card) => card.lines.map((line) => line.key))
 
 /**
- * Every live metric over the recent window, one row each, opening its detail screen. Native
+ * Every live metric over the recent window, one card each, opening its detail screen. Native
  * streams the series only while the list is mounted.
  */
 interface LiveTelemetryListProps {
@@ -194,8 +166,8 @@ export function LiveTelemetryList({ headerStart }: LiveTelemetryListProps) {
   }
   const presented = useMemo(
     () =>
-      ROWS.map((row) =>
-        row.lines.map((line) => ({ ...line, metric: presentTelemetryMetric(line.metric, units) })),
+      CARDS.map((card) =>
+        card.lines.map((line) => ({ ...line, metric: presentTelemetryMetric(line.metric, units) })),
       ),
     [units],
   )
@@ -219,21 +191,21 @@ export function LiveTelemetryList({ headerStart }: LiveTelemetryListProps) {
           testID="telemetry-list-settings"
         />
       </View>
-      <View style={styles.rows}>
-        {ROWS.map((row, rowIndex) => (
-          <LiveMetricRow
-            key={row.testID}
-            lines={presented[rowIndex].map(({ title, key, metric, value, route }) => ({
+      <View style={styles.cards}>
+        {CARDS.map((card, cardIndex) => (
+          <LiveMetricCard
+            key={card.testID}
+            lines={presented[cardIndex].map(({ title, key, metric, value, route }) => ({
               title,
               metric,
               value,
               points: series[key],
-              onPress: () => router.push(route),
+              onPress: route ? () => router.push(route) : undefined,
             }))}
             windowMs={windowMs}
-            peaks={row.peaks}
-            large={row.large}
-            testID={row.testID}
+            peaks={card.peaks}
+            onPress={() => card.route && router.push(card.route)}
+            testID={card.testID}
           />
         ))}
       </View>
@@ -264,7 +236,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingBottom: 16,
   },
-  rows: {
+  cards: {
     paddingHorizontal: 12,
     gap: 8,
   },

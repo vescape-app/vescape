@@ -104,7 +104,8 @@ export interface MonoReadoutProps {
   x: number
   /** Top edge of the number's line box. */
   y: number
-  /** Room the number aligns in. */
+  /** Room the number aligns in. Right-aligned, the unit starts past it; left-aligned, the unit
+   * follows the digits and can run past it. */
   width: number
 }
 

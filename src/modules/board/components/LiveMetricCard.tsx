@@ -6,7 +6,10 @@ import { CaretRightIcon } from 'phosphor-react-native'
 
 import { MonoReadout } from '@/components/base/MonoValue'
 import { Text } from '@/components/base/Text'
-import { useResolvedSecondaryWidgetSurface } from '@/components/widgets/widgetSurface'
+import {
+  useResolvedSecondaryWidgetPressed,
+  useResolvedSecondaryWidgetSurface,
+} from '@/components/widgets/widgetSurface'
 import {
   buildSparklinePaths,
   SparklineLayer,
@@ -20,16 +23,15 @@ import type { presentTelemetryMetric } from '@/modules/board/constants/telemetry
 const SPARKLINE_GAP = 8
 /** Between the two halves of a pair. */
 const PAIR_GAP = 16
-/** Value size, unit size, the column the value and unit take before the sparkline starts, and the
- * height of the line they share. */
-const READOUT = {
-  large: { size: 28, unitSize: 12, column: 108, height: 38 },
-  single: { size: 20, unitSize: 10, column: 84, height: 30 },
-  pair: { size: 14, unitSize: 9, column: 60, height: 30 },
-} as const
+/** One reading size on every card, so a glance finds each value the same. */
+const VALUE_SIZE = 28
+const UNIT_SIZE = 12
+const LINE_HEIGHT = 38
+/** Room the value and its unit take before the sparkline starts: a whole card, or half of one. */
+const READOUT_COLUMN = { single: 108, pair: 96 } as const
 
 export interface LiveMetricLine {
-  /** Caption over this line's half of the row. */
+  /** Caption over this line's half of the card. */
   title: string
   /** The metric as presented in the rider's units. */
   metric: ReturnType<typeof presentTelemetryMetric>
@@ -37,11 +39,12 @@ export interface LiveMetricLine {
   value: SharedValue<number | null>
   /** Decimated recent series, oldest first. */
   points: SparklinePoint[]
-  /** Opens this line's detail; a pair's halves are tapped apart. */
-  onPress: () => void
+  /** Opens this line's own detail, splitting a pair into two press targets. Without it the card's
+   * `onPress` takes the whole card. */
+  onPress?: () => void
 }
 
-interface LiveMetricRowProps {
+interface LiveMetricCardProps {
   /** One metric, or a pair (temperatures, footpad sensors, pitch and roll) set side by side, each
    * with its own value and sparkline. */
   lines: LiveMetricLine[]
@@ -51,8 +54,9 @@ interface LiveMetricRowProps {
    * readings like currents both ends. Only where they mean something — the rider's limits — not
    * a pack voltage or a tilt. */
   peaks?: 'max' | 'range'
-  /** A bigger reading, for the metrics a rider watches most. Single lines only. */
-  large?: boolean
+  /** Opens the card's detail, for lines that share one. */
+  onPress?: () => void
+  /** On the card; split halves take it suffixed with their index. */
   testID?: string
 }
 
@@ -61,12 +65,13 @@ interface LiveMetricRowProps {
  * as a sparkline, all drawn in one canvas. A pair splits the card in two rather than overlaying two
  * lines, which on noisy signals read as one tangle.
  */
-export function LiveMetricRow({ lines, windowMs, peaks, large, testID }: LiveMetricRowProps) {
+export function LiveMetricCard({ lines, windowMs, peaks, onPress, testID }: LiveMetricCardProps) {
   const surface = useResolvedSecondaryWidgetSurface()
+  const pressedSurface = useResolvedSecondaryWidgetPressed()
   const [width, setWidth] = useState(0)
-  const readout = lines.length > 1 ? READOUT.pair : large ? READOUT.large : READOUT.single
+  const column = lines.length > 1 ? READOUT_COLUMN.pair : READOUT_COLUMN.single
   const segmentW = (width - PAIR_GAP * (lines.length - 1)) / lines.length
-  const sparklineW = Math.max(0, segmentW - readout.column - SPARKLINE_GAP)
+  const sparklineW = Math.max(0, segmentW - column - SPARKLINE_GAP)
   const extremes = useMemo(
     () => lines.map((line) => (peaks ? lineExtremes(line) : null)),
     [lines, peaks],
@@ -77,29 +82,61 @@ export function LiveMetricRow({ lines, windowMs, peaks, large, testID }: LiveMet
         buildSparklinePaths({
           points: line.points,
           width: sparklineW,
-          height: readout.height,
+          height: LINE_HEIGHT,
           minSpan: line.metric.minSpan,
           windowMs,
         }),
       ),
-    [lines, readout.height, sparklineW, windowMs],
+    [lines, sparklineW, windowMs],
   )
+
+  const describe = (index: number) => {
+    const ext = extremes[index]
+    if (ext == null) return undefined
+    return peaks === 'range' ? `min ${ext.min}, max ${ext.max}` : `max ${ext.max}`
+  }
+  const targets = lines.every((line) => line.onPress)
+    ? lines.map((line, index) => ({
+        label: line.title,
+        hint: describe(index),
+        onPress: line.onPress,
+      }))
+    : [
+        {
+          label: lines.map((line) => line.title).join(', '),
+          hint:
+            lines
+              .map((_, index) => describe(index))
+              .filter(Boolean)
+              .join('; ') || undefined,
+          onPress,
+        },
+      ]
 
   return (
     <View style={[surface, styles.card]} testID={testID}>
-      {/* Behind the drawing, one press target per line, so the press highlight shows through. */}
+      {/* Behind the drawing, so the press highlight shows through: one target for the card, or one
+       * per line when each opens its own detail. The drawing is hidden from accessibility; the
+       * targets carry its captions and peaks. */}
       <View style={styles.targets}>
-        {lines.map((line) => (
+        {targets.map((target, index) => (
           <Pressable
-            key={line.metric.label}
-            style={({ pressed }) => [styles.target, pressed && styles.pressed]}
-            onPress={line.onPress}
+            key={target.label}
+            style={({ pressed }) => [styles.target, pressed && pressedSurface]}
+            onPress={target.onPress}
             accessibilityRole="button"
-            accessibilityLabel={line.title}
+            accessibilityLabel={target.label}
+            accessibilityHint={target.hint}
+            testID={targets.length > 1 && testID ? `${testID}-${index}` : undefined}
           />
         ))}
       </View>
-      <View style={styles.row} pointerEvents="none">
+      <View
+        style={styles.content}
+        pointerEvents="none"
+        importantForAccessibility="no-hide-descendants"
+        accessibilityElementsHidden
+      >
         <View style={styles.body}>
           {/* Split like the canvas below: each caption and peak sits over its own sparkline. */}
           <View style={styles.titleRow}>
@@ -128,24 +165,21 @@ export function LiveMetricRow({ lines, windowMs, peaks, large, testID }: LiveMet
               </View>
             ))}
           </View>
-          <View
-            style={[styles.line, { height: readout.height }]}
-            onLayout={(e) => setWidth(e.nativeEvent.layout.width)}
-          >
+          <View style={styles.line} onLayout={(e) => setWidth(e.nativeEvent.layout.width)}>
             {width > 0 ? (
               <Canvas style={styles.canvas}>
                 {lines.map((line, index) => {
                   const x = index * (segmentW + PAIR_GAP)
                   return (
                     <Group key={line.metric.label}>
-                      <LineReadout line={line} x={x} readout={readout} />
-                      <Group transform={[{ translateX: x + readout.column + SPARKLINE_GAP }]}>
+                      <LineReadout line={line} x={x} width={column} />
+                      <Group transform={[{ translateX: x + column + SPARKLINE_GAP }]}>
                         <SparklineLayer
                           paths={paths[index]}
                           color={line.metric.color}
                           showMax={peaks != null}
                           showMin={peaks === 'range'}
-                          showBaseline={false}
+                          showLeadIn={false}
                         />
                       </Group>
                     </Group>
@@ -179,10 +213,10 @@ function lineExtremes({ points, metric }: LiveMetricLine): { min: string; max: s
 interface LineReadoutProps {
   line: LiveMetricLine
   x: number
-  readout: (typeof READOUT)[keyof typeof READOUT]
+  width: number
 }
 
-function LineReadout({ line, x, readout }: LineReadoutProps) {
+function LineReadout({ line, x, width }: LineReadoutProps) {
   const { value, metric } = line
   const { decimals, displayScale, unit } = metric
   // Runs every tick, but an unchanged string stops there: the unit and the glyphs only redraw when
@@ -196,13 +230,13 @@ function LineReadout({ line, x, readout }: LineReadoutProps) {
     <MonoReadout
       text={text}
       unit={unitText}
-      size={readout.size}
-      unitSize={readout.unitSize}
+      size={VALUE_SIZE}
+      unitSize={UNIT_SIZE}
       color={metric.color}
       align="left"
       x={x}
-      y={(readout.height - readout.size) / 2}
-      width={readout.column}
+      y={(LINE_HEIGHT - VALUE_SIZE) / 2}
+      width={width}
     />
   )
 }
@@ -218,15 +252,12 @@ const styles = StyleSheet.create({
   target: {
     flex: 1,
   },
-  row: {
+  content: {
     flexDirection: 'row',
     alignItems: 'center',
     paddingVertical: 10,
     paddingLeft: 14,
     paddingRight: 10,
-  },
-  pressed: {
-    backgroundColor: theme.neutral.surface,
   },
   body: {
     flex: 1,
@@ -260,6 +291,7 @@ const styles = StyleSheet.create({
     textTransform: 'uppercase',
   },
   line: {
+    height: LINE_HEIGHT,
     marginTop: 4,
   },
   canvas: {

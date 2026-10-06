@@ -70,8 +70,9 @@ function settlesAcross(travel: number, velocity: number) {
 /* eslint-disable react-hooks/immutability */
 export function useTelemetryPanel(enabled: boolean): TelemetryPanelState {
   const progress = useSharedValue(0)
+  const { height: windowHeight } = useWindowDimensions()
   // Until the list first lays out, the screen height stands in for the sheet's.
-  const sheetHeight = useSharedValue(useWindowDimensions().height)
+  const sheetHeight = useSharedValue(windowHeight)
   const started = useSharedValue(false)
   const [open, setOpen] = useState(false)
   const [mounted, setMounted] = useState(false)

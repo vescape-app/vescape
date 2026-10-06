@@ -19,7 +19,7 @@ import { BoardConfigSection } from '@/modules/board/components/BoardConfigSectio
 import { BoardWarningRow } from '@/modules/board/components/BoardWarningRow'
 import { VescFaultRow } from '@/modules/board/components/VescFaultRow'
 import { VescFaultCaptureSection } from '@/modules/board/components/VescFaultCaptureSection'
-import { LiveMetricRow } from '@/modules/board/components/LiveMetricRow'
+import { LiveMetricCard } from '@/modules/board/components/LiveMetricCard'
 import { RimTempArc } from '@/modules/board/components/RimTempArc'
 import { presentTelemetryMetric, telemetry } from '@/modules/board/constants/telemetry'
 import { MOTOR_TEMP_CONFIG_ROWS } from '@/modules/board/constants/motorConfigRows'
@@ -329,15 +329,17 @@ function demoSeries(spanMs: number, base: number, swing: number, phase = 0) {
   }))
 }
 
-function LiveMetricRowShowcase() {
+function LiveMetricCardShowcase() {
   const [kind, setKind] = useState('single')
   const [history, setHistory] = useState('full')
   const spanMs = history === 'full' ? ROW_WINDOW_MS : history === 'short' ? 40_000 : 0
   const first = useSharedValue<number | null>(null)
   const second = useSharedValue<number | null>(null)
 
+  // Split: each half opens its own detail, the way the temperatures card does.
+  const split = kind === 'split'
   const series =
-    kind !== 'pair'
+    kind === 'single'
       ? [
           {
             title: 'Motor current',
@@ -346,24 +348,39 @@ function LiveMetricRowShowcase() {
             points: demoSeries(spanMs, 20, 15),
           },
         ]
-      : [
-          {
-            title: 'Pitch',
-            metric: telemetry.pitch,
-            value: first,
-            points: demoSeries(spanMs, 1, 4),
-          },
-          {
-            title: 'Roll',
-            metric: telemetry.roll,
-            value: second,
-            points: demoSeries(spanMs, -1, 3, 1.5),
-          },
-        ]
+      : split
+        ? [
+            {
+              title: 'Motor temp',
+              metric: telemetry.motorTemp,
+              value: first,
+              points: demoSeries(spanMs, 62, 6),
+            },
+            {
+              title: 'Ctrl temp',
+              metric: telemetry.controllerTemp,
+              value: second,
+              points: demoSeries(spanMs, 38, 3, 1.5),
+            },
+          ]
+        : [
+            {
+              title: 'Pitch',
+              metric: telemetry.pitch,
+              value: first,
+              points: demoSeries(spanMs, 1, 4),
+            },
+            {
+              title: 'Roll',
+              metric: telemetry.roll,
+              value: second,
+              points: demoSeries(spanMs, -1, 3, 1.5),
+            },
+          ]
   const lines = series.map((line) => ({
     ...line,
     metric: presentTelemetryMetric(line.metric, 'metric'),
-    onPress: () => {},
+    onPress: split ? () => {} : undefined,
   }))
 
   useEffect(() => {
@@ -373,12 +390,12 @@ function LiveMetricRowShowcase() {
 
   return (
     <ShowcaseCard
-      name="LiveMetricRow"
+      name="LiveMetricCard"
       controls={
         <>
           <ChipRow
             label="lines"
-            options={['single', 'large', 'pair']}
+            options={['single', 'pair', 'split']}
             selected={kind}
             onSelect={setKind}
           />
@@ -391,11 +408,11 @@ function LiveMetricRowShowcase() {
         </>
       }
     >
-      <LiveMetricRow
+      <LiveMetricCard
         lines={lines}
-        peaks={kind === 'pair' ? undefined : 'range'}
+        peaks={kind === 'single' ? 'range' : split ? 'max' : undefined}
         windowMs={ROW_WINDOW_MS}
-        large={kind === 'large'}
+        onPress={() => {}}
       />
     </ShowcaseCard>
   )
@@ -455,7 +472,7 @@ export default function BoardComponentsPage() {
         <VescFaultCaptureSectionShowcase />
         <FootpadIndicatorShowcase />
         <RimTempArcShowcase />
-        <LiveMetricRowShowcase />
+        <LiveMetricCardShowcase />
         <BoardConfigSectionShowcase />
       </ScrollView>
     </SafeAreaView>
