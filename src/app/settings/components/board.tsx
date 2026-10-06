@@ -337,7 +337,7 @@ function LiveMetricRowShowcase() {
   const second = useSharedValue<number | null>(null)
 
   const series =
-    kind === 'single'
+    kind !== 'pair'
       ? [
           {
             title: 'Motor current',
@@ -363,6 +363,7 @@ function LiveMetricRowShowcase() {
   const lines = series.map((line) => ({
     ...line,
     metric: presentTelemetryMetric(line.metric, 'metric'),
+    onPress: () => {},
   }))
 
   useEffect(() => {
@@ -375,7 +376,12 @@ function LiveMetricRowShowcase() {
       name="LiveMetricRow"
       controls={
         <>
-          <ChipRow label="lines" options={['single', 'pair']} selected={kind} onSelect={setKind} />
+          <ChipRow
+            label="lines"
+            options={['single', 'large', 'pair']}
+            selected={kind}
+            onSelect={setKind}
+          />
           <ChipRow
             label="history"
             options={['full', 'short', 'none']}
@@ -387,9 +393,9 @@ function LiveMetricRowShowcase() {
     >
       <LiveMetricRow
         lines={lines}
-        peaks={kind === 'single' ? 'range' : undefined}
+        peaks={kind === 'pair' ? undefined : 'range'}
         windowMs={ROW_WINDOW_MS}
-        onPress={() => {}}
+        large={kind === 'large'}
       />
     </ShowcaseCard>
   )

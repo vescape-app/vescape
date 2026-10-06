@@ -16,15 +16,16 @@ import { theme } from '@/constants/theme'
 import { DASH } from '@/helpers/format'
 import type { presentTelemetryMetric } from '@/modules/board/constants/telemetry'
 
-const LINE_HEIGHT = 30
 /** Between a value and its sparkline. */
 const SPARKLINE_GAP = 8
 /** Between the two halves of a pair. */
 const PAIR_GAP = 16
-/** Value size, unit size and the column the value and unit take, before the sparkline starts. */
+/** Value size, unit size, the column the value and unit take before the sparkline starts, and the
+ * height of the line they share. */
 const READOUT = {
-  single: { size: 20, unitSize: 10, column: 84 },
-  pair: { size: 14, unitSize: 9, column: 60 },
+  large: { size: 28, unitSize: 12, column: 108, height: 38 },
+  single: { size: 20, unitSize: 10, column: 84, height: 30 },
+  pair: { size: 14, unitSize: 9, column: 60, height: 30 },
 } as const
 
 export interface LiveMetricLine {
@@ -36,11 +37,13 @@ export interface LiveMetricLine {
   value: SharedValue<number | null>
   /** Decimated recent series, oldest first. */
   points: SparklinePoint[]
+  /** Opens this line's detail; a pair's halves are tapped apart. */
+  onPress: () => void
 }
 
 interface LiveMetricRowProps {
-  /** One metric, or a pair (footpad sensors, pitch and roll) set side by side, each with its own
-   * value and sparkline. */
+  /** One metric, or a pair (temperatures, footpad sensors, pitch and roll) set side by side, each
+   * with its own value and sparkline. */
   lines: LiveMetricLine[]
   /** Span the sparkline covers, so a short history starts partway in instead of stretching. */
   windowMs: number
@@ -48,20 +51,20 @@ interface LiveMetricRowProps {
    * readings like currents both ends. Only where they mean something — the rider's limits — not
    * a pack voltage or a tilt. */
   peaks?: 'max' | 'range'
-
-  onPress?: () => void
+  /** A bigger reading, for the metrics a rider watches most. Single lines only. */
+  large?: boolean
   testID?: string
 }
 
 /**
  * One live metric as a tappable card: its title, the live reading under it and the recent window
- * as a sparkline, all drawn in one canvas. A pair splits the row in two rather than overlaying two lines, which on
- * noisy signals read as one tangle.
+ * as a sparkline, all drawn in one canvas. A pair splits the card in two rather than overlaying two
+ * lines, which on noisy signals read as one tangle.
  */
-export function LiveMetricRow({ lines, windowMs, peaks, onPress, testID }: LiveMetricRowProps) {
+export function LiveMetricRow({ lines, windowMs, peaks, large, testID }: LiveMetricRowProps) {
   const surface = useResolvedSecondaryWidgetSurface()
   const [width, setWidth] = useState(0)
-  const readout = lines.length > 1 ? READOUT.pair : READOUT.single
+  const readout = lines.length > 1 ? READOUT.pair : large ? READOUT.large : READOUT.single
   const segmentW = (width - PAIR_GAP * (lines.length - 1)) / lines.length
   const sparklineW = Math.max(0, segmentW - readout.column - SPARKLINE_GAP)
   const extremes = useMemo(
@@ -74,74 +77,87 @@ export function LiveMetricRow({ lines, windowMs, peaks, onPress, testID }: LiveM
         buildSparklinePaths({
           points: line.points,
           width: sparklineW,
-          height: LINE_HEIGHT,
+          height: readout.height,
           minSpan: line.metric.minSpan,
           windowMs,
         }),
       ),
-    [lines, sparklineW, windowMs],
+    [lines, readout.height, sparklineW, windowMs],
   )
 
   return (
-    <Pressable
-      style={({ pressed }) => [surface, styles.row, pressed && styles.pressed]}
-      onPress={onPress}
-      testID={testID}
-    >
-      <View style={styles.body}>
-        {/* Split like the canvas below: each caption and peak sits over its own sparkline. */}
-        <View style={styles.titleRow}>
-          {lines.map((line, index) => (
-            <View key={line.metric.label} style={styles.titleSegment}>
-              <Text style={styles.title} numberOfLines={1}>
-                {line.title}
-              </Text>
-              {extremes[index] == null ? null : (
-                <Text style={styles.peakLabel} numberOfLines={1}>
-                  {peaks === 'range' ? (
-                    <>
-                      min{' '}
-                      <Text style={[styles.peak, { color: line.metric.color }]}>
-                        {extremes[index].min}
-                      </Text>
-                      {'  '}
-                    </>
-                  ) : null}
-                  max{' '}
-                  <Text style={[styles.peak, { color: line.metric.color }]}>
-                    {extremes[index].max}
-                  </Text>
-                </Text>
-              )}
-            </View>
-          ))}
-        </View>
-        <View style={styles.line} onLayout={(e) => setWidth(e.nativeEvent.layout.width)}>
-          {width > 0 ? (
-            <Canvas style={styles.canvas}>
-              {lines.map((line, index) => {
-                const x = index * (segmentW + PAIR_GAP)
-                return (
-                  <Group key={line.metric.label}>
-                    <LineReadout line={line} x={x} readout={readout} />
-                    <Group transform={[{ translateX: x + readout.column + SPARKLINE_GAP }]}>
-                      <SparklineLayer
-                        paths={paths[index]}
-                        color={line.metric.color}
-                        showMax={peaks != null}
-                        showMin={peaks === 'range'}
-                        showBaseline={false}
-                      />
-                    </Group>
-                  </Group>
-                )
-              })}
-            </Canvas>
-          ) : null}
-        </View>
+    <View style={[surface, styles.card]} testID={testID}>
+      {/* Behind the drawing, one press target per line, so the press highlight shows through. */}
+      <View style={styles.targets}>
+        {lines.map((line) => (
+          <Pressable
+            key={line.metric.label}
+            style={({ pressed }) => [styles.target, pressed && styles.pressed]}
+            onPress={line.onPress}
+            accessibilityRole="button"
+            accessibilityLabel={line.title}
+          />
+        ))}
       </View>
-      <CaretRightIcon size={14} color={theme.neutral.textMuted} style={styles.caret} />
-    </Pressable>
+      <View style={styles.row} pointerEvents="none">
+        <View style={styles.body}>
+          {/* Split like the canvas below: each caption and peak sits over its own sparkline. */}
+          <View style={styles.titleRow}>
+            {lines.map((line, index) => (
+              <View key={line.metric.label} style={styles.titleSegment}>
+                <Text style={styles.title} numberOfLines={1}>
+                  {line.title}
+                </Text>
+                {extremes[index] == null ? null : (
+                  <Text style={styles.peakLabel} numberOfLines={1}>
+                    {peaks === 'range' ? (
+                      <>
+                        min{' '}
+                        <Text style={[styles.peak, { color: line.metric.color }]}>
+                          {extremes[index].min}
+                        </Text>
+                        {'  '}
+                      </>
+                    ) : null}
+                    max{' '}
+                    <Text style={[styles.peak, { color: line.metric.color }]}>
+                      {extremes[index].max}
+                    </Text>
+                  </Text>
+                )}
+              </View>
+            ))}
+          </View>
+          <View
+            style={[styles.line, { height: readout.height }]}
+            onLayout={(e) => setWidth(e.nativeEvent.layout.width)}
+          >
+            {width > 0 ? (
+              <Canvas style={styles.canvas}>
+                {lines.map((line, index) => {
+                  const x = index * (segmentW + PAIR_GAP)
+                  return (
+                    <Group key={line.metric.label}>
+                      <LineReadout line={line} x={x} readout={readout} />
+                      <Group transform={[{ translateX: x + readout.column + SPARKLINE_GAP }]}>
+                        <SparklineLayer
+                          paths={paths[index]}
+                          color={line.metric.color}
+                          showMax={peaks != null}
+                          showMin={peaks === 'range'}
+                          showBaseline={false}
+                        />
+                      </Group>
+                    </Group>
+                  )
+                })}
+              </Canvas>
+            ) : null}
+          </View>
+        </View>
+        <CaretRightIcon size={14} color={theme.neutral.textMuted} style={styles.caret} />
+      </View>
+    </View>
   )
 }
 
@@ -185,13 +201,23 @@ function LineReadout({ line, x, readout }: LineReadoutProps) {
       color={metric.color}
       align="left"
       x={x}
-      y={(LINE_HEIGHT - readout.size) / 2}
+      y={(readout.height - readout.size) / 2}
       width={readout.column}
     />
   )
 }
 
 const styles = StyleSheet.create({
+  card: {
+    overflow: 'hidden',
+  },
+  targets: {
+    ...StyleSheet.absoluteFill,
+    flexDirection: 'row',
+  },
+  target: {
+    flex: 1,
+  },
   row: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -226,6 +252,7 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
   title: {
+    flexShrink: 1,
     color: theme.neutral.textMuted,
     fontSize: 10,
     fontFamily: 'monospace',
@@ -233,7 +260,6 @@ const styles = StyleSheet.create({
     textTransform: 'uppercase',
   },
   line: {
-    height: LINE_HEIGHT,
     marginTop: 4,
   },
   canvas: {
