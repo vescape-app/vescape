@@ -90,7 +90,7 @@ export function MonoText({
 }
 
 export interface MonoReadoutProps {
-  /** The number, right-aligned so it ends at `end`. */
+  /** The number, aligned in its box. */
   text: DerivedValue<string>
   /** Set smaller after the number on its baseline; empty to leave it out. */
   unit: DerivedValue<string>
@@ -98,19 +98,21 @@ export interface MonoReadoutProps {
   unitSize: number
   weight?: MonoWeight
   color?: ThemeColor | DerivedValue<string>
-  /** Where the number ends and the unit starts, in canvas coordinates. */
-  end: number
+  /** Right keeps the unit still as the digits change; left keeps the number's start still. */
+  align?: 'left' | 'right'
+  /** Left edge of the number's box, in canvas coordinates. */
+  x: number
   /** Top edge of the number's line box. */
   y: number
-  /** Room the number right-aligns in, left of `end`. */
+  /** Room the number aligns in. */
   width: number
 }
 
 const UNIT_GAP = 1
 
 /**
- * A live number with its unit: the number right-aligned up to `end`, the unit small after it on
- * the same baseline, the way the battery bar sets its `%`.
+ * A live number with its unit small after it on the same baseline, the way the battery bar sets
+ * its `%`.
  */
 export function MonoReadout({
   text,
@@ -119,7 +121,8 @@ export function MonoReadout({
   unitSize,
   weight = '800',
   color = theme.palette.slate.textPrimary,
-  end,
+  align = 'right',
+  x,
   y,
   width,
 }: MonoReadoutProps) {
@@ -135,6 +138,11 @@ export function MonoReadout({
     const { ascent, descent } = valueFont.getMetrics()
     return y + size / 2 - (ascent + descent) / 2
   }, [size, valueFont, y])
+  const unitX = useDerivedValue(() =>
+    align === 'right' || !valueFont
+      ? x + width + UNIT_GAP
+      : x + textAdvanceWidth(valueFont, text.value) + UNIT_GAP,
+  )
 
   return (
     <>
@@ -143,14 +151,14 @@ export function MonoReadout({
         size={size}
         weight={weight}
         color={color}
-        align="right"
-        x={end - width}
+        align={align}
+        x={x}
         y={y}
         width={width}
         height={size}
       />
       {unitFont ? (
-        <SkiaText x={end + UNIT_GAP} y={baseline} text={unit} font={unitFont} color={unitColor} />
+        <SkiaText x={unitX} y={baseline} text={unit} font={unitFont} color={unitColor} />
       ) : null}
     </>
   )

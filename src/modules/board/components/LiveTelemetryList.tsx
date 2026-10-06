@@ -189,21 +189,23 @@ export function LiveTelemetryList({ headerStart }: LiveTelemetryListProps) {
           testID="telemetry-list-settings"
         />
       </View>
-      {ROWS.map((row, rowIndex) => (
-        <LiveMetricRow
-          key={row.testID}
-          lines={presented[rowIndex].map(({ title, key, metric, value }) => ({
-            title,
-            metric,
-            value,
-            points: series[key],
-          }))}
-          windowMs={windowMs}
-          peaks={row.peaks}
-          onPress={() => router.push(row.route)}
-          testID={row.testID}
-        />
-      ))}
+      <View style={styles.rows}>
+        {ROWS.map((row, rowIndex) => (
+          <LiveMetricRow
+            key={row.testID}
+            lines={presented[rowIndex].map(({ title, key, metric, value }) => ({
+              title,
+              metric,
+              value,
+              points: series[key],
+            }))}
+            windowMs={windowMs}
+            peaks={row.peaks}
+            onPress={() => router.push(row.route)}
+            testID={row.testID}
+          />
+        ))}
+      </View>
     </View>
   )
 }
@@ -230,6 +232,10 @@ const styles = StyleSheet.create({
   header: {
     paddingHorizontal: 16,
     paddingBottom: 8,
+  },
+  rows: {
+    paddingHorizontal: 12,
+    gap: 8,
   },
   headerStart: {
     position: 'absolute',

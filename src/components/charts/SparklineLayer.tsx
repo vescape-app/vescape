@@ -135,6 +135,8 @@ interface SparklineLayerProps {
   color: ThemeColor
   showMax?: boolean
   showMin?: boolean
+  /** The flat stub across the window before the first sample. */
+  showBaseline?: boolean
 }
 
 /** Draw-only layer. Parent owns Canvas, so many lines share one GPU surface. */
@@ -143,12 +145,13 @@ export function SparklineLayer({
   color,
   showMax = false,
   showMin = false,
+  showBaseline = true,
 }: SparklineLayerProps) {
   const neutral = useResolvedNeutralColors()
   const resolvedColor = useResolvedColor(color)
   return (
     <>
-      {paths.baselinePath ? (
+      {showBaseline && paths.baselinePath ? (
         <Path
           path={paths.baselinePath}
           color={theme.palette.slate.border}

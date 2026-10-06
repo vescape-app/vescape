@@ -164,7 +164,7 @@ export function RimTempArc({
             size={VALUE_SIZE}
             unitSize={UNIT_SIZE}
             color={arcColor}
-            end={valueEnd}
+            x={valueEnd - VALUE_BOX_W}
             y={valueTop}
             width={VALUE_BOX_W}
           />

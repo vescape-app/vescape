@@ -6,12 +6,13 @@ import { CaretRightIcon } from 'phosphor-react-native'
 
 import { MonoReadout } from '@/components/base/MonoValue'
 import { Text } from '@/components/base/Text'
+import { useResolvedSecondaryWidgetSurface } from '@/components/widgets/widgetSurface'
 import {
   buildSparklinePaths,
   SparklineLayer,
   type SparklinePoint,
 } from '@/components/charts/SparklineLayer'
-import { interaction, theme } from '@/constants/theme'
+import { theme } from '@/constants/theme'
 import { DASH } from '@/helpers/format'
 import type { presentTelemetryMetric } from '@/modules/board/constants/telemetry'
 
@@ -20,10 +21,10 @@ const LINE_HEIGHT = 30
 const SPARKLINE_GAP = 8
 /** Between the two halves of a pair. */
 const PAIR_GAP = 16
-/** Value box, unit and the column they take, before the sparkline starts. */
+/** Value size, unit size and the column the value and unit take, before the sparkline starts. */
 const READOUT = {
-  single: { size: 18, unitSize: 10, width: 60, column: 128 },
-  pair: { size: 13, unitSize: 9, width: 42, column: 58 },
+  single: { size: 20, unitSize: 10, column: 84 },
+  pair: { size: 14, unitSize: 9, column: 60 },
 } as const
 
 export interface LiveMetricLine {
@@ -53,11 +54,12 @@ interface LiveMetricRowProps {
 }
 
 /**
- * One live metric as a list row: its title, the live reading and the recent window as a sparkline,
- * all drawn in one canvas. A pair splits the row in two rather than overlaying two lines, which on
+ * One live metric as a tappable card: its title, the live reading under it and the recent window
+ * as a sparkline, all drawn in one canvas. A pair splits the row in two rather than overlaying two lines, which on
  * noisy signals read as one tangle.
  */
 export function LiveMetricRow({ lines, windowMs, peaks, onPress, testID }: LiveMetricRowProps) {
+  const surface = useResolvedSecondaryWidgetSurface()
   const [width, setWidth] = useState(0)
   const readout = lines.length > 1 ? READOUT.pair : READOUT.single
   const segmentW = (width - PAIR_GAP * (lines.length - 1)) / lines.length
@@ -82,8 +84,7 @@ export function LiveMetricRow({ lines, windowMs, peaks, onPress, testID }: LiveM
 
   return (
     <Pressable
-      style={({ pressed }) => [styles.row, pressed && styles.pressed]}
-      android_ripple={interaction.ripple}
+      style={({ pressed }) => [surface, styles.row, pressed && styles.pressed]}
       onPress={onPress}
       testID={testID}
     >
@@ -122,13 +123,14 @@ export function LiveMetricRow({ lines, windowMs, peaks, onPress, testID }: LiveM
                 const x = index * (segmentW + PAIR_GAP)
                 return (
                   <Group key={line.metric.label}>
-                    <LineReadout line={line} end={x + readout.width} readout={readout} />
+                    <LineReadout line={line} x={x} readout={readout} />
                     <Group transform={[{ translateX: x + readout.column + SPARKLINE_GAP }]}>
                       <SparklineLayer
                         paths={paths[index]}
                         color={line.metric.color}
                         showMax={peaks != null}
                         showMin={peaks === 'range'}
+                        showBaseline={false}
                       />
                     </Group>
                   </Group>
@@ -160,11 +162,11 @@ function lineExtremes({ points, metric }: LiveMetricLine): { min: string; max: s
 
 interface LineReadoutProps {
   line: LiveMetricLine
-  end: number
+  x: number
   readout: (typeof READOUT)[keyof typeof READOUT]
 }
 
-function LineReadout({ line, end, readout }: LineReadoutProps) {
+function LineReadout({ line, x, readout }: LineReadoutProps) {
   const { value, metric } = line
   const { decimals, displayScale, unit } = metric
   // Runs every tick, but an unchanged string stops there: the unit and the glyphs only redraw when
@@ -181,9 +183,10 @@ function LineReadout({ line, end, readout }: LineReadoutProps) {
       size={readout.size}
       unitSize={readout.unitSize}
       color={metric.color}
-      end={end}
+      align="left"
+      x={x}
       y={(LINE_HEIGHT - readout.size) / 2}
-      width={readout.width}
+      width={readout.column}
     />
   )
 }
@@ -192,13 +195,12 @@ const styles = StyleSheet.create({
   row: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingVertical: 8,
-    paddingHorizontal: 16,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: theme.neutral.textDim,
+    paddingVertical: 10,
+    paddingLeft: 14,
+    paddingRight: 10,
   },
   pressed: {
-    opacity: interaction.pressedOpacity,
+    backgroundColor: theme.neutral.surface,
   },
   body: {
     flex: 1,
@@ -232,7 +234,7 @@ const styles = StyleSheet.create({
   },
   line: {
     height: LINE_HEIGHT,
-    marginTop: 2,
+    marginTop: 4,
   },
   canvas: {
     width: '100%',
