@@ -28,6 +28,7 @@ import { RemoteTiltPadShowcase } from '@/screens/showcase/board/RemoteTiltPadSho
 import { BoardPillShowcase } from '@/screens/showcase/board/BoardPillShowcase'
 import { BoardSelectorSheetShowcase } from '@/screens/showcase/board/BoardSelectorSheetShowcase'
 import { BoardAttitudeIndicatorShowcase } from '@/screens/showcase/board/BoardAttitudeIndicatorShowcase'
+import { ImuAttitudeDialShowcase } from '@/screens/showcase/board/ImuAttitudeDialShowcase'
 import { FootpadIndicatorShowcase } from '@/screens/showcase/board/FootpadIndicatorShowcase'
 import { GpsStatusPillShowcase } from '@/screens/showcase/board/GpsStatusPillShowcase'
 import { theme } from '@/constants/theme'
@@ -461,6 +462,7 @@ export default function BoardComponentsPage() {
           description="Board pill states, warning and fault rows, telemetry captures, and connection components."
         />
         <BoardAttitudeIndicatorShowcase />
+        <ImuAttitudeDialShowcase />
         <RemoteTiltPadShowcase />
         <BoardPillShowcase />
         <BoardSelectorSheetShowcase />
