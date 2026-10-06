@@ -97,11 +97,15 @@ export function RimTempArc({
   const arcColor = useDerivedValue(() =>
     gaugeRampColor(value.value, color, hotRange, accents.red.color),
   )
+  // With no reading the unit drops out and the dash centres on its own, so it lines up with the
+  // other empty readouts instead of hanging left of a lone "°C".
+  const hasValue = useDerivedValue(() => value.value != null && Number.isFinite(value.value))
   const valueText = useDerivedValue(() => {
     const v = value.value
-    return v == null || !Number.isFinite(v) ? DASH : Math.round(v).toString()
+    return v != null && Number.isFinite(v) ? Math.round(v).toString() : ''
   })
-  const valueColor = useDerivedValue(() => (value.value == null ? neutral.textDim : arcColor.value))
+  const unitText = useDerivedValue<string>(() => (hasValue.value ? '°C' : ''))
+  const emptyText = useDerivedValue<string>(() => (hasValue.value ? '' : DASH))
 
   const valueCenterX = isLeft ? radius * (1 - VALUE_X) : radius * VALUE_X
   const valueEnd = valueCenterX + VALUE_END_OFFSET
@@ -150,7 +154,7 @@ export function RimTempArc({
             text={valueText}
             size={VALUE_SIZE}
             weight="800"
-            color={valueColor}
+            color={arcColor}
             align="right"
             x={valueEnd - VALUE_BOX_W}
             y={valueTop}
@@ -161,11 +165,22 @@ export function RimTempArc({
             <SkiaText
               x={valueEnd + UNIT_GAP}
               y={unitBaseline}
-              text="°C"
+              text={unitText}
               font={unitFont}
-              color={valueColor}
+              color={arcColor}
             />
           ) : null}
+          <MonoText
+            text={emptyText}
+            size={VALUE_SIZE}
+            weight="800"
+            color={neutral.textDim}
+            align="center"
+            x={valueCenterX - VALUE_BOX_W / 2}
+            y={valueTop}
+            width={VALUE_BOX_W}
+            height={VALUE_SIZE}
+          />
         </Canvas>
       </View>
       {/* Footer line, level with the battery's voltage, set against the battery side. */}
