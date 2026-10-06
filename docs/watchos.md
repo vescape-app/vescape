@@ -319,6 +319,32 @@ xcrun simctl launch <watch-udid> app.vescape.dev.watchkitapp \
 Build with `-target VescapeWatch`, not `-scheme`: `-sdk watchsimulator` applies to every target in a
 scheme, and the Live Activity widget is iOS-only, so the scheme build fails on `ActivityKit`.
 
+### Simulator ride end to end
+
+`bun run watchos:ride` is the watchOS peer of `wear:ride` (see "Ride end to end" in
+`docs/watch-mirror.md`). It needs one booted, connected phone + watch pair (`xcrun simctl list
+pairs` shows `(active, connected)`; pair as above), the phone dev build installed with
+`bun run ios`, and Metro running. With more than one such pair, select the watch with
+`WATCHOS_UDID=<uuid>`.
+
+It builds and installs the watch app and launches it in its normal mirror mode, without `--replay`.
+It then relaunches the phone app on Metro (`--initialUrl`, which the dev launcher reads without a
+prompt) and at once opens
+`<bundle-id>://dev/watch-ride?replay=replay-thor301.jsonl&lat=51.13185&lon=16.98653` on the phone.
+A link that arrives while the bundle loads is held by the dev launcher and handed over as the initial
+URL. The phone starts the thor301 replay and, after the first replayed fix, sets the Direction Point;
+native runs Directions and pushes the route through the Application Context.
+
+The link uses the bundle-id scheme, not `vescape://`: a simulator with the store build installed
+beside the dev build would send `vescape://` to either app. If the simulator asks "Open in “vescape
+dev”?", tap Open. `simctl openurl` asks whenever the app is not already in front, and nothing in
+`simctl` can answer it.
+
+Unlike `wear:ride`, the command cannot confirm the ride started: an iOS dev build's `console.log`
+does not reach the simulator log. Check the phone (a Direction Point banner with a distance, and the replayed board
+connected) and the wrist with `xcrun simctl io <udid> screenshot shot.png`. The route arrives a
+few seconds after the phone has loaded.
+
 ### Verified on the simulator, 2026-09-15
 
 Apple Watch SE 3 40 mm and 44 mm, replaying `watch-ride.jsonl` and `watch-sweep.jsonl`:

@@ -3,6 +3,7 @@ import { tmpdir } from 'os'
 import { dirname, join } from 'path'
 import { sdkRoot } from './lib/androidSdk.ts'
 import { listAdbDevices, pickDevice, type AdbDevice } from './lib/devices.ts'
+import { devClientUrl, watchRideUrl } from './lib/devLinks.ts'
 
 const ROOT = join(import.meta.dir, '..')
 /**
@@ -31,7 +32,7 @@ const DEBUG_APK = join(
 const PHONE_KEYSTORE = join(ROOT, 'android', 'app', 'debug.keystore')
 const SIGNED_APK = join(tmpdir(), 'wearos-debug-phone-cert-signed.apk')
 
-const COMMANDS = ['build', 'test', 'install', 'emulator', 'replay', 'pair'] as const
+const COMMANDS = ['build', 'test', 'install', 'emulator', 'replay', 'pair', 'ride'] as const
 type Command = (typeof COMMANDS)[number]
 
 /** Wear AVD booted by `emulator`. Overridable so the AVD name is not baked into the repo. */
@@ -305,6 +306,107 @@ async function pairEmulator(requestedPhone: string | null) {
   console.log(
     `wear: verify with \`adb -s ${watch.serial} shell dumpsys activity service WearableService | grep NodeInfo\``,
   )
+  return { watch, phone }
+}
+
+/** How long a cold dev build gets to load its bundle from Metro. */
+const JS_START_TIMEOUT_MS = 120_000
+/**
+ * A link that lands before Expo Router subscribes to it is dropped, and a booting app gives no
+ * signal for that moment, so the ride link is resent until the phone answers.
+ */
+const RIDE_ATTEMPTS = 4
+const RIDE_ATTEMPT_TIMEOUT_MS = 20_000
+
+/** Polls the phone's JS log for a matching line; `null` once the timeout passes. */
+function waitForPhoneLog(serial: string, patterns: RegExp[], timeoutMs: number) {
+  const deadline = Date.now() + timeoutMs
+  while (Date.now() < deadline) {
+    const log = capture(['adb', '-s', serial, 'logcat', '-d', '-s', 'ReactNativeJS:*'])
+    const line = log
+      .split('\n')
+      .filter((it) => it.includes(' ReactNativeJS: '))
+      .find((it) => patterns.some((pattern) => pattern.test(it)))
+    if (line) return line
+    Bun.sleepSync(1000)
+  }
+  return null
+}
+
+/**
+ * Takes a booted phone emulator and Wear emulator to a running watch ride: pairing repaired, the
+ * watch app installed in its normal mirror mode, then the dev-only ride link on the phone — thor301
+ * replay plus normal Navigation, whose route native pushes to the wrist like on any ride.
+ */
+async function startRide(requestedPhone: string | null) {
+  const { watch, phone } = await pairEmulator(requestedPhone)
+  const packageName = applicationId()
+  const installed = capture([
+    'adb',
+    '-s',
+    phone.serial,
+    'shell',
+    'pm',
+    'list',
+    'packages',
+  ]).includes(`package:${packageName}`)
+  if (!installed) fail(`${packageName} missing on ${phone.name} — run \`bun run android\` once`)
+
+  syncNative()
+  gradle(':wearos:assembleDebug')
+  signWithPhoneCert()
+  install(watch.serial, packageName)
+  launch(watch.serial, packageName)
+  smokeCheck(watch.serial)
+
+  // The link needs the dev build running on Metro. The process alone proves nothing — the Data Layer
+  // wakes it for the watch with no JS loaded, and a cold launch parks on the dev launcher — so the
+  // bundle is always (re)loaded first. The reverse dies with an adb server restart, like the forward.
+  run(['adb', '-s', phone.serial, 'reverse', 'tcp:8081', 'tcp:8081'])
+  run(['adb', '-s', phone.serial, 'logcat', '-c'])
+  run([
+    'adb',
+    '-s',
+    phone.serial,
+    'shell',
+    'am',
+    'start',
+    '-a',
+    'android.intent.action.VIEW',
+    '-d',
+    devClientUrl('vescape'),
+    packageName,
+  ])
+  if (!waitForPhoneLog(phone.serial, [/./], JS_START_TIMEOUT_MS)) {
+    fail(`${packageName} never started its JS — is Metro running (\`bun run start\`)?`)
+  }
+  let outcome: string | null = null
+  for (let attempt = 0; attempt < RIDE_ATTEMPTS && !outcome; attempt++) {
+    run([
+      'adb',
+      '-s',
+      phone.serial,
+      'shell',
+      'am',
+      'start',
+      '-a',
+      'android.intent.action.VIEW',
+      '-d',
+      `'${watchRideUrl('vescape')}'`,
+      packageName,
+    ])
+    outcome = waitForPhoneLog(
+      phone.serial,
+      [/\[watch-ride\] .* running/, /\[watch-ride\] failed/],
+      RIDE_ATTEMPT_TIMEOUT_MS,
+    )
+  }
+  if (!outcome) fail('the phone never reported the ride — is this a dev build on Metro?')
+  if (outcome.includes('failed')) fail(outcome)
+  console.log(`\nwear: ${outcome.trim()}`)
+  console.log(
+    `wear: route goes to the wrist once Directions answers — \`adb -s ${watch.serial} exec-out screencap -p > watch.png\``,
+  )
 }
 
 /**
@@ -372,6 +474,11 @@ if (!command || !COMMANDS.includes(command)) {
 
 if (command === 'pair') {
   await pairEmulator(requested)
+  process.exit(0)
+}
+
+if (command === 'ride') {
+  await startRide(requested)
   process.exit(0)
 }
 

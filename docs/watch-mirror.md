@@ -254,6 +254,43 @@ The emulator renders ambient at full brightness with normal colour, so it answer
 only. Readability belongs to a physical watch, entered the real way: enable Settings → Display →
 Always-on screen, then `adb shell input keyevent 26`.
 
+### Ride end to end
+
+`bun run wear:ride` takes a booted phone emulator and Wear emulator to a real watch ride: the
+`replay-thor301.jsonl` Debug Recording replaying on the phone, and **normal** Navigation, so the
+route reaches the wrist on the same path a rider's does. Use it to check Watch Mirror map work
+without a board, a phone or a watch.
+
+Before the first run: boot both emulators (`bun run wear:emulator` for the watch), install the phone
+dev build with `bun run android`, keep Metro running, and pair the two once in the companion (menu >
+Pair with emulator; see `wear:pair`). `--device <serial|model>` picks the phone.
+
+The command then:
+
+1. Repairs the pairing forward, as `wear:pair` does. Re-running the ride after an adb server restart
+   is enough; nothing else needs repairing.
+2. Builds, signs, installs and launches the watch app in its normal mirror mode — no fixture replay
+   on the wrist.
+3. Reloads the phone app from Metro, then sends the dev-only link
+   `vescape://dev/watch-ride?replay=replay-thor301.jsonl&lat=51.13185&lon=16.98653`.
+4. The phone starts the replay, waits for the first replayed fix, and only then sets the Direction
+   Point (the recording's last fix). The replay owns position once it starts (ADR 0024); a Direction
+   Point set earlier would be planned from the emulator's default location. Native runs the Mapbox
+   Directions request and pushes `/route` to the wrist. No path is injected.
+
+It succeeds once the phone logs `[watch-ride] … running`, which the command prints. A link that lands
+before the app is listening is dropped, so it is resent a few times. The route arrives when Directions
+answers, a second or two later. Check it with `adb -s <watch> exec-out screencap -p > watch.png`.
+
+The ride loops around a pond that Directions never plans, so the replay leaves the route in places. The
+same run therefore also checks off-route behavior: Route Progress, rerouting and what the wrist draws
+off the route. The recording lasts about 13 minutes and then ends like a disconnect; running the
+command again restarts it. The Direction Point stays set until it is cleared on the phone.
+
+The link is handled by `src/app/dev/watch-ride.tsx` and only in a development (`__DEV__`) JS bundle.
+A release build opens the main screen and does nothing else, which is the same rule `DevGate` applies
+on the wrist.
+
 ## Rider position and recent trail
 
 The active gauge and map pages always show the Rider's position ring, including without Navigation
