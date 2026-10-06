@@ -1,8 +1,13 @@
 import { StyleSheet, View } from 'react-native'
 import { router, type Href } from 'expo-router'
 
-import { useMemo } from 'react'
-import type { SharedValue } from 'react-native-reanimated'
+import { useMemo, useState } from 'react'
+import { useAnimatedReaction, type SharedValue } from 'react-native-reanimated'
+import { scheduleOnRN } from 'react-native-worklets'
+import { PulseIcon } from 'phosphor-react-native'
+
+import { SectionHeader } from '@/components/base/SectionHeader'
+import { theme } from '@/constants/theme'
 
 import { useUnitSystem } from '@/hooks/useUnitSystem'
 import { LiveMetricRow } from '@/modules/board/components/LiveMetricRow'
@@ -13,7 +18,8 @@ import {
 } from '@/modules/board/constants/telemetry'
 import { liveTelemetryRuntime } from '@/modules/board/lib/liveTelemetryRuntime'
 import { useLiveSeriesGroup, useLiveSeriesMetrics } from '@/modules/board/hooks/useLiveMetric'
-import { useLiveWindowMs } from '@/modules/settings/store/settingsStore'
+import { formatFocusedSeriesSpan } from '@/modules/board/lib/focusedSeriesHeader'
+import { useLiveWindowMs, useSettingsStore } from '@/modules/settings/store/settingsStore'
 import { routes } from '@/navigation/routes'
 
 interface ListRow {
@@ -102,6 +108,13 @@ export function LiveTelemetryList() {
   const series = useLiveSeriesGroup(SERIES_KEYS)
   const windowMs = useLiveWindowMs()
   const units = useUnitSystem()
+  const configuredMinutes = useSettingsStore((s) => s.liveHistoryLimit)
+  const rateHz = useRoundedPacketRate()
+  // How far back the charts actually reach, which is short of the window early in a session.
+  let spanMs = 0
+  for (const points of Object.values(series)) {
+    if (points.length > 1) spanMs = Math.max(spanMs, points[points.length - 1].ts - points[0].ts)
+  }
   const presented = useMemo(
     () =>
       ROWS.map((row) =>
@@ -112,6 +125,15 @@ export function LiveTelemetryList() {
 
   return (
     <View style={styles.list}>
+      <View style={styles.header}>
+        <SectionHeader
+          icon={PulseIcon}
+          color={theme.palette.blue.color}
+          title={formatFocusedSeriesSpan(spanMs, configuredMinutes)}
+          description={rateHz == null ? 'Waiting for data' : `Live data at ~${rateHz} Hz`}
+          align="center"
+        />
+      </View>
       {ROWS.map((row, rowIndex) => (
         <LiveMetricRow
           key={row.testID}
@@ -130,8 +152,27 @@ export function LiveTelemetryList() {
   )
 }
 
+/** The board's packet rate, re-rendering only when its whole-Hz reading changes. */
+function useRoundedPacketRate(): number | null {
+  const [rate, setRate] = useState<number | null>(null)
+  useAnimatedReaction(
+    () => {
+      const v = live.pullRateHz.value
+      return v == null || v <= 0 ? null : Math.round(v)
+    },
+    (next, previous) => {
+      if (next !== previous) scheduleOnRN(setRate, next)
+    },
+  )
+  return rate
+}
+
 const styles = StyleSheet.create({
   list: {
     width: '100%',
+  },
+  header: {
+    paddingHorizontal: 16,
+    paddingBottom: 8,
   },
 })

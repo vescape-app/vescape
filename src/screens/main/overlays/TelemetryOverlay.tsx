@@ -104,7 +104,6 @@ export function TelemetryOverlay({
   const [revealGestureActive, setRevealGestureActive] = useState(false)
   const [tuneDrawerOpen, setTuneDrawerOpen] = useState(false)
   const [historyDrawerOpen, setHistoryDrawerOpen] = useState(false)
-  const [hudBottom, setHudBottom] = useState(0)
   const historyButtonRef = useRef<View>(null)
   const revealCommittedRef = useRef(false)
   const tuneButtonRef = useRef<View>(null)
@@ -206,7 +205,7 @@ export function TelemetryOverlay({
           pointerEvents={interactive ? 'box-none' : 'none'}
           style={[styles.telemetryInterface, interfaceFadeStyle]}
         >
-          <LiveHud revealProgress={revealProgress} onBottomChange={setHudBottom} />
+          <LiveHud revealProgress={revealProgress} />
           <TopBar
             boards={boards}
             activeBoardId={activeBoardId}
@@ -297,7 +296,7 @@ export function TelemetryOverlay({
         />
       </Animated.View>
 
-      <TelemetryPanel panel={telemetryPanel} top={hudBottom} />
+      <TelemetryPanel panel={telemetryPanel} />
 
       <View pointerEvents={interactive ? 'box-none' : 'none'} style={styles.offscreenIndicators}>
         {mode === 'telemetry'

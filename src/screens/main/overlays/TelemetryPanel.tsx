@@ -1,7 +1,14 @@
 import * as Haptics from 'expo-haptics'
 import { useFocusEffect } from 'expo-router'
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { BackHandler, Platform, Pressable, StyleSheet, View } from 'react-native'
+import {
+  BackHandler,
+  Platform,
+  Pressable,
+  StyleSheet,
+  useWindowDimensions,
+  View,
+} from 'react-native'
 import { Gesture, GestureDetector, type GestureType } from 'react-native-gesture-handler'
 import Animated, {
   Extrapolation,
@@ -155,8 +162,6 @@ export function useTelemetryPanelFadeStyle(progress: SharedValue<number>) {
 
 interface TelemetryPanelProps {
   panel: TelemetryPanelState
-  /** Where the list starts: under the speed and duty gauges. */
-  top: number
 }
 
 /**
@@ -165,14 +170,15 @@ interface TelemetryPanelProps {
  */
 // Reanimated shared values are mutable handles by design.
 /* eslint-disable react-hooks/immutability */
-export function TelemetryPanel({ panel, top }: TelemetryPanelProps) {
+export function TelemetryPanel({ panel }: TelemetryPanelProps) {
   const insets = useSafeAreaInsets()
+  const { height: windowHeight } = useWindowDimensions()
   const { progress, sheetHeight, close } = panel
   const scrollY = useSharedValue(0)
   const dragging = useSharedValue(false)
   const nativeScroll = useMemo(() => Gesture.Native(), [])
-  // Scrolls only when the rows overflow (small screens); otherwise a scroll of a few spare pixels
-  // fights the pull that closes the panel.
+  // The list sits on the bottom edge as tall as its rows, up to the full screen. It scrolls only
+  // when even that is too short; otherwise a scroll of a few spare pixels fights the closing pull.
   const [viewportH, setViewportH] = useState(0)
   const [contentH, setContentH] = useState(0)
   const scrollable = contentH > viewportH + 1
@@ -241,7 +247,7 @@ export function TelemetryPanel({ panel, top }: TelemetryPanelProps) {
           />
         </Animated.View>
         <Animated.View
-          style={[styles.content, { top }, contentStyle]}
+          style={[styles.content, { maxHeight: windowHeight - insets.top }, contentStyle]}
           onLayout={(event) => {
             sheetHeight.value = Math.max(1, event.nativeEvent.layout.height)
           }}
@@ -253,6 +259,7 @@ export function TelemetryPanel({ panel, top }: TelemetryPanelProps) {
               <Animated.ScrollView
                 onScroll={onScroll}
                 scrollEventThrottle={16}
+                style={styles.scroll}
                 scrollEnabled={scrollable}
                 bounces={false}
                 overScrollMode="never"
@@ -288,6 +295,10 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     bottom: 0,
+  },
+  scroll: {
+    flexGrow: 0,
+    flexShrink: 1,
   },
   grabber: {
     alignSelf: 'center',

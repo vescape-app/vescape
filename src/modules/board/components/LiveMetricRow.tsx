@@ -16,12 +16,14 @@ import { DASH } from '@/helpers/format'
 import type { presentTelemetryMetric } from '@/modules/board/constants/telemetry'
 
 const LINE_HEIGHT = 30
-const VALUE_COLUMN_W = 128
-const SPARKLINE_GAP = 12
-/** Value box and unit per line: one line takes the column, a pair splits it. */
+/** Between a value and its sparkline. */
+const SPARKLINE_GAP = 8
+/** Between the two halves of a pair. */
+const PAIR_GAP = 16
+/** Value box, unit and the column they take, before the sparkline starts. */
 const READOUT = {
-  single: { size: 18, unitSize: 10, width: 60, stride: VALUE_COLUMN_W },
-  pair: { size: 13, unitSize: 9, width: 42, stride: VALUE_COLUMN_W / 2 },
+  single: { size: 18, unitSize: 10, width: 60, column: 128 },
+  pair: { size: 13, unitSize: 9, width: 42, column: 58 },
 } as const
 
 export interface LiveMetricLine {
@@ -35,7 +37,8 @@ export interface LiveMetricLine {
 
 interface LiveMetricRowProps {
   title: string
-  /** One metric, or a pair drawn on a shared scale (footpad sensors, pitch and roll). */
+  /** One metric, or a pair (footpad sensors, pitch and roll) set side by side, each with its own
+   * value and sparkline. */
   lines: LiveMetricLine[]
   /** Span the sparkline covers, so a short history starts partway in instead of stretching. */
   windowMs: number
@@ -45,15 +48,14 @@ interface LiveMetricRowProps {
 
 /**
  * One live metric as a list row: its title, the live reading and the recent window as a sparkline,
- * all drawn in one canvas.
+ * all drawn in one canvas. A pair splits the row in two rather than overlaying two lines, which on
+ * noisy signals read as one tangle.
  */
 export function LiveMetricRow({ title, lines, windowMs, onPress, testID }: LiveMetricRowProps) {
   const [width, setWidth] = useState(0)
   const readout = lines.length > 1 ? READOUT.pair : READOUT.single
-  const sparklineW = Math.max(0, width - VALUE_COLUMN_W - SPARKLINE_GAP)
-  // A pair shares the first metric's full scale so the two lines can be compared; a single line
-  // fits its own data like any sparkline.
-  const shared = lines.length > 1 ? lines[0].metric.chartRange : undefined
+  const segmentW = (width - PAIR_GAP * (lines.length - 1)) / lines.length
+  const sparklineW = Math.max(0, segmentW - readout.column - SPARKLINE_GAP)
   const paths = useMemo(
     () =>
       lines.map((line) =>
@@ -61,12 +63,11 @@ export function LiveMetricRow({ title, lines, windowMs, onPress, testID }: LiveM
           points: line.points,
           width: sparklineW,
           height: LINE_HEIGHT,
-          range: shared,
           minSpan: line.metric.minSpan,
           windowMs,
         }),
       ),
-    [lines, shared, sparklineW, windowMs],
+    [lines, sparklineW, windowMs],
   )
 
   return (
@@ -83,23 +84,17 @@ export function LiveMetricRow({ title, lines, windowMs, onPress, testID }: LiveM
         <View style={styles.line} onLayout={(e) => setWidth(e.nativeEvent.layout.width)}>
           {width > 0 ? (
             <Canvas style={styles.canvas}>
-              {lines.map((line, index) => (
-                <LineReadout
-                  key={line.metric.label}
-                  line={line}
-                  end={index * readout.stride + readout.width}
-                  readout={readout}
-                />
-              ))}
-              <Group transform={[{ translateX: VALUE_COLUMN_W + SPARKLINE_GAP }]}>
-                {paths.map((linePaths, index) => (
-                  <SparklineLayer
-                    key={lines[index].metric.label}
-                    paths={linePaths}
-                    color={lines[index].metric.color}
-                  />
-                ))}
-              </Group>
+              {lines.map((line, index) => {
+                const x = index * (segmentW + PAIR_GAP)
+                return (
+                  <Group key={line.metric.label}>
+                    <LineReadout line={line} end={x + readout.width} readout={readout} />
+                    <Group transform={[{ translateX: x + readout.column + SPARKLINE_GAP }]}>
+                      <SparklineLayer paths={paths[index]} color={line.metric.color} />
+                    </Group>
+                  </Group>
+                )
+              })}
             </Canvas>
           ) : null}
         </View>

@@ -10,11 +10,9 @@ import { routes } from '@/navigation/routes'
 
 interface LiveHudProps {
   revealProgress?: SharedValue<number>
-  /** Where the gauges end, for what sits under them. */
-  onBottomChange?: (bottom: number) => void
 }
 
-export function LiveHud({ revealProgress, onBottomChange }: LiveHudProps) {
+export function LiveHud({ revealProgress }: LiveHudProps) {
   const insets = useSafeAreaInsets()
   // Hangs under the gauges: it qualifies the speed and distance they are showing.
   const gpsBadge = useGpsStatusBadge()
@@ -26,10 +24,6 @@ export function LiveHud({ revealProgress, onBottomChange }: LiveHudProps) {
     <Animated.View
       style={[styles.wrap, { paddingTop: Math.max(insets.top + 46, 64) }]}
       pointerEvents="box-none"
-      onLayout={(event) => {
-        const { y, height } = event.nativeEvent.layout
-        onBottomChange?.(y + height)
-      }}
     >
       <Animated.View style={revealStyle}>
         <DualGaugeIndicator
