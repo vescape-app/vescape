@@ -15,19 +15,11 @@
  * The flow files are shared: `OUT_DIR` is the only thing that differs between the two runs, so the
  * panel list, their order and their filenames stay identical and the sets can be compared side by
  * side. Everything platform-specific lives behind `CaptureDriver` (`scripts/lib/captureDriver.ts`).
- *
- * The hero panel is captured last, on purpose. `TelemetryPipeline.liveSeries` buckets the sparkline
- * over `liveHistoryLimit` minutes of *receipt* timestamps, so filling it takes that much session
- * time. Replay warmup provides the opening stretch up front — session time runs faster than real
- * time, so the samples are stamped across the window they actually span instead of being squeezed
- * into the seconds it took to deliver them — and the run only waits out whatever is left beyond
- * that. The replay recording must be at least as long as the whole run.
  */
 import { mkdirSync, readdirSync } from 'fs'
 import { basename, join } from 'path'
 
 import { applicationId } from '../src/config/appVariant.ts'
-import { REPLAY_WARMUP_MS, REPLAY_WARMUP_WALL_MS } from '../src/config/replayWarmup.ts'
 import { createAndroidDriver } from './lib/androidCapture.ts'
 import {
   CommandFailed,
@@ -47,8 +39,6 @@ const PLATFORMS: CapturePlatform[] = ['android', 'ios']
 
 /** 13-minute city ride: long enough to outlast a whole capture run at 1x. */
 const DEFAULT_REPLAY = 'replay-thor301.jsonl'
-/** `AppSettings.liveHistoryLimit` default — the sparkline window the hero panel has to fill. */
-const DEFAULT_SPARKLINE_MINUTES = 5
 
 interface Args {
   /** `null` until the picker runs — `--platform` skips it. */
@@ -56,9 +46,7 @@ interface Args {
   panel: number | null
   device: string | null
   replay: string
-  sparklineMinutes: number
   noBuild: boolean
-  noWait: boolean
 }
 
 function parsePlatform(value: string): CapturePlatform[] {
@@ -73,9 +61,7 @@ function parseArgs(argv: string[]): Args {
     panel: null,
     device: null,
     replay: DEFAULT_REPLAY,
-    sparklineMinutes: DEFAULT_SPARKLINE_MINUTES,
     noBuild: false,
-    noWait: false,
   }
   for (let i = 0; i < argv.length; i += 1) {
     const arg = argv[i]
@@ -89,9 +75,7 @@ function parseArgs(argv: string[]): Args {
     else if (arg === '--panel') args.panel = Number(next())
     else if (arg === '--device') args.device = next()
     else if (arg === '--replay') args.replay = next()
-    else if (arg === '--sparkline-minutes') args.sparklineMinutes = Number(next())
     else if (arg === '--no-build') args.noBuild = true
-    else if (arg === '--no-wait') args.noWait = true
     else throw new Error(`Unknown argument: ${arg}`)
   }
   if (args.panel != null && !Number.isInteger(args.panel))
@@ -106,7 +90,7 @@ function parseArgs(argv: string[]): Args {
 
 /**
  * Platform first, device second — the two runs are sequential and a whole Android pass (build, 8
- * panels, the sparkline wait) sits in front of the iOS one, so "both" has to be a deliberate choice
+ * panels) sits in front of the iOS one, so "both" has to be a deliberate choice
  * rather than what you get for pressing Enter on a device list.
  */
 async function resolvePlatforms(args: Args): Promise<CapturePlatform[]> {
@@ -185,28 +169,8 @@ async function capturePlatform(driver: CaptureDriver, args: Args): Promise<void>
   await driver.setChrome(true)
 
   try {
-    const selected = selectPanels(args.panel)
-    // The hero shot needs a full sparkline window, so it always goes last; everything else is shot
-    // while the replay is still filling it.
-    const hero = selected.filter((file) => file.startsWith('01-'))
-    const rest = selected.filter((file) => !file.startsWith('01-'))
-
-    const bootedAt = Date.now()
     await runFlow(BOOT_FLOW, driver)
-    for (const file of rest) await runFlow(file, driver)
-
-    if (hero.length > 0 && !args.noWait) {
-      // The warmup hands over its window already filled, but delivering it costs real seconds of
-      // its own — the run has to wait out the rest of the window *plus* that.
-      const toFillMs =
-        Math.max(0, args.sparklineMinutes * 60_000 - REPLAY_WARMUP_MS) + REPLAY_WARMUP_WALL_MS
-      const remainingMs = toFillMs - (Date.now() - bootedAt)
-      if (remainingMs > 0) {
-        console.log(`› Waiting ${Math.ceil(remainingMs / 1000)}s for the sparkline window to fill…`)
-        await Bun.sleep(remainingMs)
-      }
-    }
-    for (const file of hero) await runFlow(file, driver)
+    for (const file of selectPanels(args.panel)) await runFlow(file, driver)
   } finally {
     await driver.setChrome(false)
   }
@@ -225,8 +189,8 @@ async function main(args: Args): Promise<void> {
   // picker would otherwise appear ten minutes in, behind a finished iOS capture.
   const drivers: CaptureDriver[] = []
   for (const platform of platforms) drivers.push(await createDriver(platform, args))
-  // Sequentially: both runs drive Maestro and a 1x replay, and the sparkline wait is wall clock, so
-  // there is nothing to gain from interleaving them and a lot of device contention to lose.
+  // Sequentially: both runs drive Maestro and a 1x replay, so there is nothing to gain from
+  // interleaving them and a lot of device contention to lose.
   for (const driver of drivers) await capturePlatform(driver, args)
 }
 

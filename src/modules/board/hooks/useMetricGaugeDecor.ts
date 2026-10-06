@@ -1,7 +1,7 @@
 import { useMemo } from 'react'
 
-import type { DualGaugeAlert } from '@/components/charts/gaugeAlert'
 import { useResolvedAlertRules } from '@/modules/alerts/hooks/useResolvedAlertRules'
+import { gaugeAlertsFor } from '@/modules/alerts/lib/gaugeAlerts'
 import type { TelemetryMetricConfig } from '@/modules/board/constants/telemetry'
 import {
   getHistoryMetricHotRange,
@@ -19,20 +19,10 @@ export function useMetricGaugeDecor(metric: TelemetryMetricConfig) {
     ? getHistoryMetricHotRange(hotMetric, hotRanges, gradientsEnabled)
     : null
 
-  const alerts = useMemo<DualGaugeAlert[]>(
-    () =>
-      metric.controlId == null
-        ? []
-        : alertRules
-            .filter((rule) => rule.enabled && rule.controlId === metric.controlId)
-            .map((rule) => ({
-              id: rule.id,
-              threshold: rule.threshold,
-              thresholdMax: rule.thresholdMax,
-              repeats: rule.repeatEverySeconds != null,
-            })),
+  const alerts = useMemo(
+    () => (metric.controlId == null ? [] : gaugeAlertsFor(alertRules, metric.controlId)),
     [alertRules, metric.controlId],
   )
 
-  return { alerts, hotRange, alertRules }
+  return { alerts, hotRange }
 }

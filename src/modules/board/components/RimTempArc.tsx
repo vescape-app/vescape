@@ -1,10 +1,16 @@
 import { useMemo } from 'react'
 import { Pressable, StyleSheet, View } from 'react-native'
 import { Canvas, Group, Path, Text as SkiaText } from '@shopify/react-native-skia'
-import { useDerivedValue, type SharedValue } from 'react-native-reanimated'
+import {
+  useAnimatedReaction,
+  useDerivedValue,
+  useSharedValue,
+  type SharedValue,
+} from 'react-native-reanimated'
 
 import { Text } from '@/components/base/Text'
 import { MonoText } from '@/components/base/MonoValue'
+import { GAUGE_FOOTER_TEXT } from '@/components/charts/LinearGauge'
 import { interaction, theme, type AlphaLevel } from '@/constants/theme'
 import { DASH } from '@/helpers/format'
 import { useSkiaMonoFont } from '@/hooks/useSkiaFont'
@@ -91,21 +97,34 @@ export function RimTempArc({
   const neutral = useResolvedNeutralColors()
   const scale = radius / UNIT
 
-  const fraction = useDerivedValue(() => normalizeFraction(value.value ?? min, min, max))
-  const valuePath = useDerivedValue(() => svgPath(arcPath(arc, fraction.value)))
-  const wedge = useDerivedValue(() => svgPath(wedgePath(arc, fraction.value)))
+  // Telemetry ticks ~31 Hz but a temperature drifts a fraction of a degree a second. Only a change
+  // at display resolution reaches the drawing, so the canvas sits idle between them.
+  const step = 10 ** -metric.decimals
+  const shown = useSharedValue<number | null>(null)
+  useAnimatedReaction(
+    () => {
+      const v = value.value
+      return v != null && Number.isFinite(v) ? Math.round(v / step) * step : null
+    },
+    (next) => {
+      shown.value = next
+    },
+  )
+
+  const valuePath = useDerivedValue(() =>
+    svgPath(arcPath(arc, normalizeFraction(shown.value ?? min, min, max))),
+  )
+  const wedge = useDerivedValue(() =>
+    svgPath(wedgePath(arc, normalizeFraction(shown.value ?? min, min, max))),
+  )
   const arcColor = useDerivedValue(() =>
-    gaugeRampColor(value.value, color, hotRange, accents.red.color),
+    gaugeRampColor(shown.value, color, hotRange, accents.red.color),
   )
   // With no reading the unit drops out and the dash centres on its own, so it lines up with the
-  // other empty readouts instead of hanging left of a lone "°C".
-  const hasValue = useDerivedValue(() => value.value != null && Number.isFinite(value.value))
-  const valueText = useDerivedValue(() => {
-    const v = value.value
-    return v != null && Number.isFinite(v) ? Math.round(v).toString() : ''
-  })
-  const unitText = useDerivedValue<string>(() => (hasValue.value ? '°C' : ''))
-  const emptyText = useDerivedValue<string>(() => (hasValue.value ? '' : DASH))
+  // other empty readouts instead of hanging left of a lone unit.
+  const valueText = useDerivedValue(() => shown.value?.toFixed(metric.decimals) ?? '')
+  const unitText = useDerivedValue(() => (shown.value == null ? '' : metric.unit))
+  const emptyText = useDerivedValue<string>(() => (shown.value == null ? DASH : ''))
 
   const valueCenterX = isLeft ? radius * (1 - VALUE_X) : radius * VALUE_X
   const valueEnd = valueCenterX + VALUE_END_OFFSET
@@ -195,13 +214,10 @@ const styles = StyleSheet.create({
   pressed: {
     opacity: interaction.pressedOpacity,
   },
-  // Matches the battery's aux footer (LinearGauge `auxText`), offset to the same line under the bar.
+  // The battery's footer style, offset to the same line under the bar.
   label: {
+    ...GAUGE_FOOTER_TEXT,
     marginTop: FOOTER_GAP,
-    color: theme.palette.slate.textMuted,
-    fontSize: 10,
-    fontFamily: 'monospace',
-    fontWeight: '600',
     textTransform: 'uppercase',
   },
 })

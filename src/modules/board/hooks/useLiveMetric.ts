@@ -63,7 +63,7 @@ function flatToPoints(flat: number[]): LiveMetricPoint[] {
 }
 
 /**
- * Center-screen sparkline series: decimated natively (min/max per bucket) and pushed ~1Hz
+ * Center-screen series (the battery bar): decimated natively (min/max per bucket) and pushed ~1Hz
  * on `onLiveSeries`. `metricKey` matches the native `LIVE_SERIES_METRICS` set. No raw samples
  * cross the bridge and no per-render projection runs.
  */

@@ -21,7 +21,7 @@ private fun Map<String, Any?>.excluded(key: String): Boolean =
 
 /**
  * Center-screen live metrics streamed continuously as the decimated `onLiveSeries`
- * firehose (strip + dual gauge + battery sparklines). Kept in sync with `liveSelectors`
+ * firehose (the battery bar). Kept in sync with `liveSelectors`
  * on the JS side, keyed by the same names: any abs/scale/exclusion is applied here
  * *before* min/max bucketing so native decimation matches what JS would compute, and
  * the UI renders the values verbatim.
@@ -33,22 +33,22 @@ private fun Map<String, Any?>.excluded(key: String): Boolean =
  * @parity /src/modules/board/hooks/useLiveMetric.ts `liveSelectors`
  */
 internal val LIVE_SERIES_METRICS = listOf(
+    LiveSeriesMetric("batteryVoltage") { row -> row.num("batteryVoltage") },
+    LiveSeriesMetric("batteryPercent") { row -> row.num("batteryPercent") },
+)
+
+/** Detail-chart-only metrics (not on the center screen). Served only via [focusedSeries]. */
+internal val FOCUSED_ONLY_SERIES_METRICS = listOf(
     LiveSeriesMetric("motorTemp") { row -> row.num("tempMotor")?.takeIf { it > 0 } },
     LiveSeriesMetric("controllerTemp") { row -> row.num("tempMosfet") },
     LiveSeriesMetric("motorCurrent") { row -> row.num("motorCurrent") },
     LiveSeriesMetric("batteryCurrent") { row -> row.num("batteryCurrent") },
-    LiveSeriesMetric("batteryVoltage") { row -> row.num("batteryVoltage") },
-    LiveSeriesMetric("batteryPercent") { row -> row.num("batteryPercent") },
     LiveSeriesMetric("speed") { row ->
         if (row.excluded("max_speed")) null else row.num("speed")?.let { kotlin.math.abs(it) }
     },
     LiveSeriesMetric("duty") { row ->
         if (row.excluded("max_duty")) null else row.num("dutyCycle")?.let { kotlin.math.abs(it) * 100 }
     },
-)
-
-/** Detail-chart-only metrics (no center sparkline). Served only via [focusedSeries]. */
-internal val FOCUSED_ONLY_SERIES_METRICS = listOf(
     LiveSeriesMetric("pitch") { row -> row.num("pitch") },
     LiveSeriesMetric("roll") { row -> row.num("roll") },
     LiveSeriesMetric("balancePitch") { row -> row.num("balancePitch") },

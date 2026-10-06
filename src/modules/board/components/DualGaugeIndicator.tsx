@@ -3,6 +3,7 @@ import type { StyleProp, ViewStyle } from 'react-native'
 
 import { DualGauge } from '@/modules/board/components/DualGauge'
 import { useResolvedAlertRules } from '@/modules/alerts/hooks/useResolvedAlertRules'
+import { gaugeAlertsFor } from '@/modules/alerts/lib/gaugeAlerts'
 import { boardTopSpeedKmh } from '@/modules/alerts/lib/boardAlertSettings'
 import { useBoardStore } from '@/modules/board/store/boardStore'
 import { useSettingsStore } from '@/modules/settings/store/settingsStore'
@@ -35,31 +36,8 @@ export function DualGaugeIndicator({
   const speedHotRange = getHistoryMetricHotRange('speed', hotRanges, gradientsEnabled)
   const dutyHotRange = getHistoryMetricHotRange('duty', hotRanges, gradientsEnabled)
 
-  const speedAlerts = useMemo(
-    () =>
-      alertRules
-        .filter((rule) => rule.enabled && rule.controlId === 'speed')
-        .map((rule) => ({
-          id: rule.id,
-          threshold: rule.threshold,
-          thresholdMax: rule.thresholdMax,
-          repeats: rule.repeatEverySeconds != null,
-        })),
-    [alertRules],
-  )
-
-  const dutyAlerts = useMemo(
-    () =>
-      alertRules
-        .filter((rule) => rule.enabled && rule.controlId === 'duty')
-        .map((rule) => ({
-          id: rule.id,
-          threshold: rule.threshold,
-          thresholdMax: rule.thresholdMax,
-          repeats: rule.repeatEverySeconds != null,
-        })),
-    [alertRules],
-  )
+  const speedAlerts = useMemo(() => gaugeAlertsFor(alertRules, 'speed'), [alertRules])
+  const dutyAlerts = useMemo(() => gaugeAlertsFor(alertRules, 'duty'), [alertRules])
 
   return (
     <DualGauge

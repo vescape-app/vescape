@@ -272,6 +272,7 @@ function VescFaultCaptureSectionShowcase() {
 
 function RimTempArcShowcase() {
   const [temp, setTemp] = useState('45')
+  const [radius, setRadius] = useState('72')
   const motorTemp = useSharedValue<number | null>(null)
   const controllerTemp = useSharedValue<number | null>(null)
 
@@ -284,12 +285,15 @@ function RimTempArcShowcase() {
     <ShowcaseCard
       name="RimTempArc"
       controls={
-        <ChipRow
-          label="motor temp"
-          options={['none', '5', '30', '45', '65', '90']}
-          selected={temp}
-          onSelect={setTemp}
-        />
+        <>
+          <ChipRow
+            label="motor temp"
+            options={['none', '5', '30', '45', '65', '90']}
+            selected={temp}
+            onSelect={setTemp}
+          />
+          <ChipRow label="radius" options={['72', '60']} selected={radius} onSelect={setRadius} />
+        </>
       }
     >
       <View style={styles.rimArcRow}>
@@ -298,14 +302,14 @@ function RimTempArcShowcase() {
           label="Motor"
           metric={telemetry.motorTemp}
           value={motorTemp}
-          radius={72}
+          radius={Number(radius)}
         />
         <RimTempArc
           side="right"
           label="Ctrl"
           metric={telemetry.controllerTemp}
           value={controllerTemp}
-          radius={72}
+          radius={Number(radius)}
         />
       </View>
     </ShowcaseCard>

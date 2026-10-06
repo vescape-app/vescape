@@ -198,22 +198,22 @@ internal final class LiveSeriesEmitter {
     let select: ([String: Any?]) -> Double?
   }
 
-  /// Center-screen metrics streamed continuously on `onLiveSeries` (strip + gauge + battery).
+  /// Center-screen metrics streamed continuously on `onLiveSeries` (the battery bar).
   /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/TelemetryPipeline.kt `LIVE_SERIES_METRICS`
   /// @parity /src/modules/board/hooks/useLiveMetric.ts `liveSelectors`
   private static let centerMetrics: [Metric] = [
+    Metric(key: "batteryVoltage") { num($0, "batteryVoltage") },
+    Metric(key: "batteryPercent") { num($0, "batteryPercent") },
+  ]
+
+  /// Detail-chart-only metrics (not on the center screen); served only via `onFocusedSeries` on focus.
+  private static let focusedOnlyMetrics: [Metric] = [
     Metric(key: "motorTemp") { num($0, "tempMotor").flatMap { $0 > 0 ? $0 : nil } },
     Metric(key: "controllerTemp") { num($0, "tempMosfet") },
     Metric(key: "motorCurrent") { num($0, "motorCurrent") },
     Metric(key: "batteryCurrent") { num($0, "batteryCurrent") },
-    Metric(key: "batteryVoltage") { num($0, "batteryVoltage") },
-    Metric(key: "batteryPercent") { num($0, "batteryPercent") },
     Metric(key: "speed") { num($0, "speed").map { abs($0) } },
     Metric(key: "duty") { num($0, "dutyCycle").map { abs($0) * 100 } },
-  ]
-
-  /// Detail-chart-only metrics (no center sparkline); served only via `onFocusedSeries` on focus.
-  private static let focusedOnlyMetrics: [Metric] = [
     Metric(key: "pitch") { num($0, "pitch") },
     Metric(key: "roll") { num($0, "roll") },
     Metric(key: "balancePitch") { num($0, "balancePitch") },

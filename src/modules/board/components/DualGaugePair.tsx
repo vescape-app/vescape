@@ -226,9 +226,9 @@ export function GaugePair({
     height: gaugeHeight * 0.95 - bowlTop,
   }
   return (
-    // Height follows the measured width: the arcs' box is a fixed aspect per cell, but the gap
-    // between the cells is not, so no single aspect ratio fits every screen.
-    <View style={[styles.gaugePair, { height: gaugeHeight }]} onLayout={onLayout}>
+    // The touch cells size the box: each holds the arcs' fixed aspect and the gap between them is
+    // fixed, so no single aspect ratio fits every screen, but the cells lay it out in one pass.
+    <View style={styles.gaugePair} onLayout={onLayout}>
       {scale > 0 ? (
         <Canvas style={styles.svg}>
           <QuarterArcLayer
@@ -268,19 +268,23 @@ export function GaugePair({
           />
         </Canvas>
       ) : null}
-      <View style={[styles.gaugeTouchRow, { height: arcBottom }]}>
-        <Pressable
-          style={styles.halfPressable}
-          testID="gauge-speed"
-          onPress={onPressSpeed}
-          android_ripple={interaction.ripple}
-        />
-        <Pressable
-          style={styles.halfPressable}
-          testID="gauge-duty"
-          onPress={onPressDuty}
-          android_ripple={interaction.ripple}
-        />
+      <View style={styles.gaugeTouchRow}>
+        <View style={styles.cell}>
+          <Pressable
+            style={styles.halfPressable}
+            testID="gauge-speed"
+            onPress={onPressSpeed}
+            android_ripple={interaction.ripple}
+          />
+        </View>
+        <View style={styles.cell}>
+          <Pressable
+            style={styles.halfPressable}
+            testID="gauge-duty"
+            onPress={onPressDuty}
+            android_ripple={interaction.ripple}
+          />
+        </View>
       </View>
       {footer ? (
         <View pointerEvents="box-none" style={[styles.footer, { top: arcBottom }]}>
@@ -294,20 +298,24 @@ export function GaugePair({
 const styles = StyleSheet.create({
   gaugePair: { width: '100%', position: 'relative' },
   gaugeTouchRow: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
     flexDirection: 'row',
     gap: ARC_GAP,
   },
   footer: { position: 'absolute', left: 0, right: 0, alignItems: 'center' },
-  halfPressable: {
+  cell: {
     flex: 1,
+    aspectRatio: VB_CROP_W / VB_CROP_H,
+  },
+  // Touch stops where the arcs do, leaving the footer's strip below to the footer.
+  halfPressable: {
+    height: `${ARC_BOTTOM_RATIO * 100}%`,
     overflow: 'visible',
   },
   svg: {
-    width: '100%',
-    height: '100%',
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
   },
 })

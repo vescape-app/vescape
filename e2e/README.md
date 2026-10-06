@@ -208,7 +208,7 @@ bun run screenshots --platform ios  # skip the platform picker
 
 The bare command asks for the platform first (Android / iOS / Both), then the device. "Both" is a
 deliberate choice rather than the default: the runs are sequential, so a whole Android pass — build,
-eight panels, the sparkline wait — happens before iOS starts.
+eight panels — happens before iOS starts.
 
 One flow set drives both platforms. The runner passes `OUT_DIR` to Maestro
 (`screenshots/android` or `screenshots/ios`), so the panel list, order and filenames are identical
@@ -277,13 +277,9 @@ distinguish one from an ordinary dev install and capturing against the wrong bui
 that goes nowhere. Pass `--no-build` to reuse what is installed once you have a screenshot build on
 the device.
 
-Other flags: `--replay <name>` (default `replay-thor301`), `--no-wait` (skip the sparkline wait),
-`--platform android|ios|both` (default `both`).
+Other flags: `--replay <name>` (default `replay-thor301`), `--platform android|ios|both` (default `both`).
 
-The hero panel is captured last. `TelemetryPipeline.liveSeries` buckets the sparkline over
-`liveHistoryLimit` minutes of receipt timestamps, so filling it takes that much session time. Replay
-warmup covers the first six minutes up front: it plays at 30× against a clock shifted that far into
-the past, which fills the window instead of compressing the samples into a fraction of it (ADR
-0024). The window is wider than the sparkline's own, so the run waits out nothing beyond the twelve
-seconds the warmup itself costs. The replay recording must be at least as long as the whole run —
-warmup included, since it spends recording too.
+Replay warmup covers the first six minutes up front: it plays at 30× against a clock shifted that
+far into the past, which fills the live window instead of compressing the samples into a fraction of
+it (ADR 0024). The replay recording must be at least as long as the whole run, warmup included,
+since it spends recording too.

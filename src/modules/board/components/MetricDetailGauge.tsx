@@ -5,6 +5,7 @@ import { SpeakerHighIcon, StopIcon } from 'phosphor-react-native'
 
 import { Button } from '@/components/base/Button'
 import { useAlertTest } from '@/modules/alerts/hooks/useAlertTest'
+import { useResolvedAlertRules } from '@/modules/alerts/hooks/useResolvedAlertRules'
 import { toTestRule } from '@/modules/alerts/lib/alertTest'
 import { SingleGauge } from '@/modules/board/components/SingleGauge'
 import type { TelemetryMetricConfig } from '@/modules/board/constants/telemetry'
@@ -23,7 +24,8 @@ export function MetricDetailGauge({
   min = metric.chartRange.min,
   max = metric.chartRange.max,
 }: MetricDetailGaugeProps) {
-  const { alerts, hotRange, alertRules } = useMetricGaugeDecor(metric)
+  const { alerts, hotRange } = useMetricGaugeDecor(metric)
+  const alertRules = useResolvedAlertRules()
   const testRules = useMemo(
     () => alertRules.filter((rule) => rule.controlId === metric.controlId).map(toTestRule),
     [alertRules, metric.controlId],

@@ -28,6 +28,8 @@ export const STRIP_CONTENT_HEIGHT =
 export const STRIP_CONTENT_HEIGHT_COMPACT =
   STRIP_TOP_PADDING + ARC_RADIUS_COMPACT + AUX_HEIGHT + STRIP_BOTTOM_PADDING
 const SMALL_SCREEN_HEIGHT = 700
+/** The icon row is only the bar's height off the arcs; slop brings the target back to glove size. */
+const SIDE_ICON_HIT_SLOP = { top: 12, bottom: 12 }
 
 export function isSmallScreen(height: number): boolean {
   return height < SMALL_SCREEN_HEIGHT
@@ -91,6 +93,7 @@ export function BottomTelemetryStrip({ revealProgress }: BottomTelemetryStripPro
           <View style={[styles.upperRow, { height: radius - barHeight }]}>
             <Pressable
               style={({ pressed }) => [styles.sideIcon, pressed && styles.cellPressed]}
+              hitSlop={SIDE_ICON_HIT_SLOP}
               android_ripple={interaction.rippleBorderless}
               onPress={() => router.push(routes.controlImu)}
             >
@@ -116,9 +119,11 @@ export function BottomTelemetryStrip({ revealProgress }: BottomTelemetryStripPro
                 ]}
               />
             </Pressable>
+            {/* Grip for the drawer that will pull the strip open; static until that lands. */}
             <View style={styles.handle} />
             <Pressable
               style={({ pressed }) => [styles.sideIcon, pressed && styles.cellPressed]}
+              hitSlop={SIDE_ICON_HIT_SLOP}
               android_ripple={interaction.rippleBorderless}
               onPress={() => router.push(routes.controlFootpad)}
             >

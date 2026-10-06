@@ -16,7 +16,7 @@ import {
   BAR_H,
   BAR_H_COMPACT,
   LINE_THICK,
-  MARKER_RATIO,
+  BAND_RATIO,
   VALUE_GAP,
   GaugeBar,
   fractionOf,
@@ -87,7 +87,7 @@ export function LinearGauge({
   // Below 20% there's no room on the left, so it flips to the right of the head.
   const headX = width * fraction
   const valueSlot = getLinearGaugeValueSlot({ width, headX, compact, gap: VALUE_GAP })
-  const valueSlotTop = height - LINE_THICK - height * MARKER_RATIO
+  const valueSlotTop = height - LINE_THICK - height * BAND_RATIO
 
   const content = (
     <>
@@ -147,6 +147,14 @@ export function LinearGauge({
   )
 }
 
+/** The footer line under a gauge, shared by gauges set on the same line. */
+export const GAUGE_FOOTER_TEXT = {
+  color: theme.palette.slate.textMuted,
+  fontSize: 10,
+  fontFamily: 'monospace',
+  fontWeight: '600',
+} as const
+
 const styles = StyleSheet.create({
   wrap: {
     backgroundColor: theme.palette.slate.surface,
@@ -200,12 +208,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     marginTop: -4,
   },
-  auxText: {
-    color: theme.palette.slate.textMuted,
-    fontSize: 10,
-    fontFamily: 'monospace',
-    fontWeight: '600',
-  },
+  auxText: GAUGE_FOOTER_TEXT,
   hintCenter: {
     position: 'absolute',
     left: 0,
