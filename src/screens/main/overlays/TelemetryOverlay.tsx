@@ -293,6 +293,7 @@ export function TelemetryOverlay({
           panelProgress={telemetryPanel.progress}
           panelActive={telemetryPanel.active}
           openGesture={telemetryPanel.openGesture}
+          onOpenPanel={telemetryPanel.open}
         />
       </Animated.View>
 

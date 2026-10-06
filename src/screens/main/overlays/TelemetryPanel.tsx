@@ -58,6 +58,8 @@ export interface TelemetryPanelState {
   openGesture: GestureType
   /** Springs the panel shut. A worklet, so a gesture can call it without a JS round trip. */
   close: () => void
+  /** Springs the panel open, for a tap on the strip's handle. */
+  open: () => void
 }
 
 function haptic() {
@@ -98,6 +100,12 @@ export function useTelemetryPanel(enabled: boolean): TelemetryPanelState {
       if (finished) scheduleOnRN(settleClosed)
     })
   }, [progress, settleClosed])
+
+  const openPanel = useCallback(() => {
+    setMounted(true)
+    progress.value = withSpring(1, SPRING)
+    commitOpen()
+  }, [commitOpen, progress])
 
   const openGesture = useMemo(
     () =>
@@ -153,7 +161,7 @@ export function useTelemetryPanel(enabled: boolean): TelemetryPanelState {
     settleClosed()
   }, [enabled, progress, settleClosed])
 
-  return { progress, sheetHeight, active: open, mounted, openGesture, close }
+  return { progress, sheetHeight, active: open, mounted, openGesture, close, open: openPanel }
 }
 /* eslint-enable react-hooks/immutability */
 

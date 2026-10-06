@@ -56,6 +56,8 @@ interface BottomTelemetryStripProps {
   panelActive: boolean
   /** Upward drag anywhere on the strip that opens the panel. */
   openGesture: GestureType
+  /** Tap on the handle, for riders who would not think to drag. */
+  onOpenPanel: () => void
 }
 
 export function BottomTelemetryStrip({
@@ -63,6 +65,7 @@ export function BottomTelemetryStrip({
   panelProgress,
   panelActive,
   openGesture,
+  onOpenPanel,
 }: BottomTelemetryStripProps) {
   useRenderRateWarning('BottomTelemetryStrip')
   const insets = useSafeAreaInsets()
@@ -122,8 +125,17 @@ export function BottomTelemetryStrip({
                   testID="telemetry-attitude-indicator"
                 />
               </Pressable>
-              {/* Grip for the telemetry panel: the whole strip pulls up into it. */}
-              <View style={styles.handle} />
+              {/* Grip for the telemetry panel: the whole strip pulls up into it, or a tap opens it. */}
+              <Pressable
+                style={({ pressed }) => [styles.handleHit, pressed && styles.cellPressed]}
+                hitSlop={SIDE_ICON_HIT_SLOP}
+                onPress={onOpenPanel}
+                accessibilityRole="button"
+                accessibilityLabel="Open live telemetry"
+                testID="telemetry-panel-handle"
+              >
+                <View style={styles.handle} />
+              </Pressable>
               <Pressable
                 style={({ pressed }) => [styles.sideIcon, pressed && styles.cellPressed]}
                 hitSlop={SIDE_ICON_HIT_SLOP}
@@ -188,6 +200,13 @@ const styles = StyleSheet.create({
     paddingHorizontal: 0,
     marginHorizontal: 0,
     marginBottom: 0,
+  },
+  // Wider than the bar so a thumb finds it; the side icons keep their own width either side.
+  handleHit: {
+    flex: 1,
+    alignSelf: 'stretch',
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   handle: {
     width: 40,
