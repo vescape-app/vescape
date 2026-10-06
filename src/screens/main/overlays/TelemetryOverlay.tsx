@@ -1,5 +1,5 @@
 import * as Haptics from 'expo-haptics'
-import { ClockCounterClockwiseIcon, SirenIcon, SlidersHorizontalIcon } from 'phosphor-react-native'
+import { SirenIcon } from 'phosphor-react-native'
 import { useCallback, useEffect, useRef, useState, type RefObject } from 'react'
 import { Platform, StyleSheet, View } from 'react-native'
 import Animated, {
@@ -10,7 +10,6 @@ import Animated, {
 } from 'react-native-reanimated'
 
 import { IconButton } from '@/components/base/IconButton'
-import { EdgeDrawer } from '@/components/overlays/EdgeDrawer'
 import { theme } from '@/constants/theme'
 import { FloatingBar } from '@/modules/board/components/FloatingBar'
 import type { Board } from '@/modules/board/store/boardStore'
@@ -33,8 +32,8 @@ import {
   type TelemetryPanelState,
 } from '@/screens/main/overlays/TelemetryPanel'
 import { TopBar } from '@/screens/main/overlays/TopBar'
-import { BoardDrawer } from '@/screens/main/overlays/BoardDrawer'
-import { HistoryDrawer } from '@/screens/main/overlays/HistoryDrawer'
+import { BoardDrawer, useBoardDrawerTab } from '@/screens/main/overlays/BoardDrawer'
+import { HistoryDrawer, useHistoryDrawerTab } from '@/screens/main/overlays/HistoryDrawer'
 import type { MapSelection } from '@/modules/map/lib/mapSelection'
 
 const RECORD_BUTTON_HEIGHT = 48
@@ -102,11 +101,13 @@ export function TelemetryOverlay({
   onCancelNavigation,
 }: TelemetryOverlayProps) {
   const [revealGestureActive, setRevealGestureActive] = useState(false)
-  const [tuneDrawerOpen, setTuneDrawerOpen] = useState(false)
+  const [boardDrawerOpen, setBoardDrawerOpen] = useState(false)
   const [historyDrawerOpen, setHistoryDrawerOpen] = useState(false)
+  const boardTab = useBoardDrawerTab()
+  const historyTab = useHistoryDrawerTab()
   const historyButtonRef = useRef<View>(null)
   const revealCommittedRef = useRef(false)
-  const tuneButtonRef = useRef<View>(null)
+  const boardButtonRef = useRef<View>(null)
   // Derived, not effect-driven: the fade follows `mode` from the first evaluation on, so a Fast
   // Refresh that re-renders without re-running effects can never leave the face stuck invisible.
   const telemetryReturnOpacity = useDerivedValue(() =>
@@ -238,7 +239,7 @@ export function TelemetryOverlay({
               style={[styles.historyButton, { bottom: buttonBottom }]}
             >
               <IconButton
-                icon={ClockCounterClockwiseIcon}
+                icon={historyTab.icon}
                 size="lg"
                 onPress={() => setHistoryDrawerOpen(true)}
                 testID="history-button"
@@ -247,37 +248,32 @@ export function TelemetryOverlay({
             <HistoryDrawer
               visible={historyDrawerOpen}
               triggerRef={historyButtonRef}
+              tab={historyTab.tab}
+              onTabChange={historyTab.setTab}
               onClose={() => setHistoryDrawerOpen(false)}
               onOpenRide={onOpenHistoryRide}
               onOpenFavorite={onOpenHistoryFavorite}
             />
             <View
-              ref={tuneButtonRef}
+              ref={boardButtonRef}
               collapsable={false}
               style={[styles.tuneButton, { bottom: buttonBottom }]}
             >
               <IconButton
-                icon={legalModeActive ? SirenIcon : SlidersHorizontalIcon}
+                icon={legalModeActive ? SirenIcon : boardTab.icon}
                 size="lg"
                 accent={legalModeActive ? theme.status.error.color : undefined}
-                onPress={() => setTuneDrawerOpen(true)}
+                onPress={() => setBoardDrawerOpen(true)}
               />
             </View>
-            <EdgeDrawer
-              visible={tuneDrawerOpen}
-              triggerRef={tuneButtonRef}
-              title="Board"
-              icon={SlidersHorizontalIcon}
-              onClose={() => setTuneDrawerOpen(false)}
-            >
-              <BoardDrawer
-                onNavigate={() => setTuneDrawerOpen(false)}
-                onOpenLegalLimits={() => {
-                  setTuneDrawerOpen(false)
-                  onEnterLegalLimits()
-                }}
-              />
-            </EdgeDrawer>
+            <BoardDrawer
+              visible={boardDrawerOpen}
+              triggerRef={boardButtonRef}
+              tab={boardTab.tab}
+              onTabChange={boardTab.setTab}
+              onClose={() => setBoardDrawerOpen(false)}
+              onOpenLegalLimits={onEnterLegalLimits}
+            />
           </Animated.View>
         </Animated.View>
       </MapRevealGesture>

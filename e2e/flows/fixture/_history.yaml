@@ -1,5 +1,6 @@
 # Open History from the live dashboard. A tap can be swallowed while telemetry is rendering.
-# Retry only this navigation and require the drawer before continuing to either history flow.
+# Retry only this navigation and require the drawer before continuing to either history flow. The
+# drawer reopens on the last tab used, so it is put back on Rides for callers that expect the list.
 appId: ${APP_ID}
 ---
 - retry:
@@ -12,3 +13,5 @@ appId: ${APP_ID}
           visible:
             id: history-drawer
           timeout: 15000
+- tapOn:
+    id: history-drawer-tab-rides

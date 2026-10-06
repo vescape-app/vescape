@@ -66,6 +66,9 @@ const DEFAULTS: AppSettings = {
   groupRidePublicEnabled: false,
   legalPolicy: null,
   dismissedCommunityMessageIds: [],
+  boardDrawerTab: null,
+  historyDrawerTab: null,
+  socialDrawerTab: null,
 }
 
 interface SettingsState extends AppSettings {

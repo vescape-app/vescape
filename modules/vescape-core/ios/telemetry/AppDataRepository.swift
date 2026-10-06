@@ -669,6 +669,9 @@ final class AppDataRepository {
       "batteryCurrent": ["start": 25, "end": 45],
     ],
     "dismissedCommunityMessageIds": [String](),
+    "boardDrawerTab": NSNull(),
+    "historyDrawerTab": NSNull(),
+    "socialDrawerTab": NSNull(),
   ]
 
   // @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/AppDataRepository.kt `getTypedSettings`

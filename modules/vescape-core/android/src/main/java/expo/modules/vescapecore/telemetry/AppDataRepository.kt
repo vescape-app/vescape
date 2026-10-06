@@ -460,6 +460,9 @@ class AppDataRepository private constructor(private val context: Context) {
       legalPolicy = opt("legalPolicy", ::normalizeLegalPolicy),
       dismissedCommunityMessageIds =
         req("dismissedCommunityMessageIds", emptyList(), ::validDismissedCommunityMessageIds),
+      boardDrawerTab = opt("boardDrawerTab") { it as? String },
+      historyDrawerTab = opt("historyDrawerTab") { it as? String },
+      socialDrawerTab = opt("socialDrawerTab") { it as? String },
     )
 
     if (badKeys.isNotEmpty()) {
@@ -545,7 +548,8 @@ class AppDataRepository private constructor(private val context: Context) {
         validAutoCloseDelayMinutes(value) ?: return@withContext
       "rideSplitGapMinutes" ->
         validRideSplitGapMinutes(value) ?: return@withContext
-      "riderId", "riderName", "riderColor" -> value as? String
+      "riderId", "riderName", "riderColor",
+      "boardDrawerTab", "historyDrawerTab", "socialDrawerTab" -> value as? String
       // Legal Policy is native-owned. JS can request refresh through the dedicated intent.
       "legalPolicy" -> return@withContext
       "dismissedCommunityMessageIds" ->
@@ -607,6 +611,9 @@ class AppDataRepository private constructor(private val context: Context) {
         "riderColor" -> d.riderColor
         "legalPolicy" -> d.legalPolicy
         "dismissedCommunityMessageIds" -> d.dismissedCommunityMessageIds
+        "boardDrawerTab" -> d.boardDrawerTab
+        "historyDrawerTab" -> d.historyDrawerTab
+        "socialDrawerTab" -> d.socialDrawerTab
         else -> null
       }
     }
@@ -986,6 +993,9 @@ fun AppSettings.toMap(): Map<String, Any?> = mapOf(
   "riderColor" to riderColor,
   "legalPolicy" to legalPolicy,
   "dismissedCommunityMessageIds" to dismissedCommunityMessageIds,
+  "boardDrawerTab" to boardDrawerTab,
+  "historyDrawerTab" to historyDrawerTab,
+  "socialDrawerTab" to socialDrawerTab,
 )
 
 private fun normalizeLegalPolicy(raw: Any): Map<String, String>? {

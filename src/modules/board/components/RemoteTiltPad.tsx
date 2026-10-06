@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { use, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { type LayoutChangeEvent, StyleSheet, View } from 'react-native'
 import { Canvas } from '@shopify/react-native-skia'
 import { MonoText } from '@/components/base/MonoValue'
@@ -15,6 +15,7 @@ import Animated, {
 import { scheduleOnRN } from 'react-native-worklets'
 import { Text } from '@/components/base/Text'
 import { Button } from '@/components/base/Button'
+import { NativeScrollGestureContext } from '@/components/gestures/NativeScrollGestureContext'
 import { theme } from '@/constants/theme'
 import {
   createTiltPresentationOwner,
@@ -77,6 +78,8 @@ export function RemoteTiltPad({
   onCancel,
 }: RemoteTiltPadProps) {
   const owner = useMemo(createTiltPresentationOwner, [])
+  // Inside a drawer the pad's drag must win over the drawer scroll, which is also its dismissal.
+  const nativeScrollGesture = use(NativeScrollGestureContext)
   const alive = useRef(true)
   const [error, setError] = useState<string | null>(null)
   const [active, setActive] = useState(false)
@@ -216,53 +219,53 @@ export function RemoteTiltPad({
     scheduleOnRN(hold, value)
   })
 
-  const gesture = useMemo(
-    () =>
-      Gesture.Pan()
-        .enabled(!disabled && !readOnly)
-        .minDistance(0)
-        .onStart((event) => {
-          tracking.value = true
-          progress.value = 0
-          fingerX.value = Math.min(width.value, Math.max(0, event.x))
-          fingerY.value = Math.min(PAD_HEIGHT, Math.max(0, event.y))
-          lastSentValue.value = -1
-          lastSentAt.value = 0
-          scheduleOnRN(begin)
-        })
-        .onUpdate((event) => {
-          fingerX.value = Math.min(width.value, Math.max(0, event.x))
-          fingerY.value = Math.min(PAD_HEIGHT, Math.max(0, event.y))
-        })
-        .onFinalize((_event, success) => {
-          if (!tracking.value || width.value <= 0) return
-          const value = Math.round((fingerX.value / width.value) * TILT_MAX)
-          const locked = fingerY.value <= LOCK_BAND
-          const durationMs = Math.round(
-            MAX_DECAY_MS * ((PAD_HEIGHT - fingerY.value) / (PAD_HEIGHT - LOCK_BAND)) ** 2,
-          )
-          tracking.value = false
-          fromY.value = fingerY.value
-          presentation.value = { value, durationMs, phase: 'pending' }
-          progress.value = 0
-          scheduleOnRN(finish, value, durationMs, locked, !success)
-        }),
-    [
-      begin,
-      disabled,
-      readOnly,
-      fingerX,
-      fingerY,
-      finish,
-      fromY,
-      lastSentAt,
-      lastSentValue,
-      presentation,
-      progress,
-      tracking,
-      width,
-    ],
-  )
+  const gesture = useMemo(() => {
+    const pan = Gesture.Pan()
+      .enabled(!disabled && !readOnly)
+      .minDistance(0)
+      .onStart((event) => {
+        tracking.value = true
+        progress.value = 0
+        fingerX.value = Math.min(width.value, Math.max(0, event.x))
+        fingerY.value = Math.min(PAD_HEIGHT, Math.max(0, event.y))
+        lastSentValue.value = -1
+        lastSentAt.value = 0
+        scheduleOnRN(begin)
+      })
+      .onUpdate((event) => {
+        fingerX.value = Math.min(width.value, Math.max(0, event.x))
+        fingerY.value = Math.min(PAD_HEIGHT, Math.max(0, event.y))
+      })
+      .onFinalize((_event, success) => {
+        if (!tracking.value || width.value <= 0) return
+        const value = Math.round((fingerX.value / width.value) * TILT_MAX)
+        const locked = fingerY.value <= LOCK_BAND
+        const durationMs = Math.round(
+          MAX_DECAY_MS * ((PAD_HEIGHT - fingerY.value) / (PAD_HEIGHT - LOCK_BAND)) ** 2,
+        )
+        tracking.value = false
+        fromY.value = fingerY.value
+        presentation.value = { value, durationMs, phase: 'pending' }
+        progress.value = 0
+        scheduleOnRN(finish, value, durationMs, locked, !success)
+      })
+    return nativeScrollGesture ? pan.blocksExternalGesture(nativeScrollGesture) : pan
+  }, [
+    begin,
+    disabled,
+    readOnly,
+    fingerX,
+    fingerY,
+    finish,
+    fromY,
+    lastSentAt,
+    lastSentValue,
+    nativeScrollGesture,
+    presentation,
+    progress,
+    tracking,
+    width,
+  ])
 
   const thumbStyle = useAnimatedStyle(() => {
     const sample = sampleTiltPresentation(presentation.value, progress.value)

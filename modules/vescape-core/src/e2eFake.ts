@@ -101,6 +101,9 @@ const e2eSettings: AppSettings = {
   groupRidePublicEnabled: false,
   legalPolicy: null,
   dismissedCommunityMessageIds: [],
+  boardDrawerTab: null,
+  historyDrawerTab: null,
+  socialDrawerTab: null,
 }
 
 function emitDevice(event: DeviceFoundEvent): void {

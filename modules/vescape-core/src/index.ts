@@ -1698,6 +1698,13 @@ export interface AppSettings {
    * only the IDs — never the server messages themselves. Absent/empty means nothing acknowledged.
    */
   dismissedCommunityMessageIds: string[]
+  /**
+   * Last tab the rider opened in each tabbed corner drawer, so the drawer and its trigger reopen on
+   * it. Opaque to native; JS falls back to the drawer's main tab when null or no longer a tab.
+   */
+  boardDrawerTab: string | null
+  historyDrawerTab: string | null
+  socialDrawerTab: string | null
 }
 
 export interface CompanionPresenceBoard {

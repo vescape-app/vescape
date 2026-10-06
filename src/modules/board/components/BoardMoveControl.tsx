@@ -1,9 +1,8 @@
-import { ArrowsDownUpIcon, CaretDownIcon, CaretUpIcon } from 'phosphor-react-native'
+import { CaretDownIcon, CaretUpIcon } from 'phosphor-react-native'
 import { Pressable, StyleSheet, View } from 'react-native'
 
 import { Text } from '@/components/base/Text'
 import { Stepper } from '@/components/forms/Stepper'
-import { ExpandingWidget } from '@/components/widgets/ExpandingWidget'
 import { theme } from '@/constants/theme'
 import {
   BOARD_MOVE_STRENGTH_MAX_PERCENT,
@@ -13,23 +12,10 @@ import {
 } from '@/modules/board/hooks/useBoardMoveControl'
 
 /**
- * Board Move: hold a direction to roll the board while it is disengaged. The focused panel also
- * exposes the move strength, because how much push is enough depends on the board's own remote limits.
+ * Board Move: hold a direction to roll the board while it is disengaged. The move strength sits
+ * beside it, because how much push is enough depends on the board's own remote limits.
  */
 export function BoardMoveControl() {
-  return (
-    <ExpandingWidget
-      icon={ArrowsDownUpIcon}
-      title="Move"
-      description="Hold to roll the board while you are off it."
-      accent={theme.palette.cyan.color}
-      body={BoardMoveBody}
-      surface={false}
-    />
-  )
-}
-
-function BoardMoveBody() {
   const {
     canCommand,
     blockedMessage,

@@ -1,4 +1,3 @@
-import { useRideFormat } from '@/modules/history/hooks/useRideFormat'
 import { useCallback, useMemo, useRef, type RefObject } from 'react'
 import { ActivityIndicator, Pressable, StyleSheet, View } from 'react-native'
 import { Text } from '@/components/base/Text'
@@ -8,10 +7,8 @@ import type { Favorite } from 'vescape-core'
 import { Placeholder } from '@/components/base/Placeholder'
 import { EdgeDrawer } from '@/components/overlays/EdgeDrawer'
 import { interaction, theme } from '@/constants/theme'
-import { HistoryRideRow } from '@/modules/history/components/HistoryRideRow'
+import { HistorySessionRow } from '@/modules/history/components/HistorySessionRow'
 import { favoriteSessionId } from '@/modules/history/lib/favorites'
-import { formatFavoriteName, formatRideListDateTime } from '@/modules/history/lib/rideFormat'
-import { isLiveRide, rideMovingWindow } from '@/modules/history/lib/sessions'
 import { useHistoryAutoRefresh } from '@/modules/history/hooks/useHistoryAutoRefresh'
 import type { HistorySession } from '@/modules/history/store/historyStore'
 
@@ -42,7 +39,6 @@ export function HistorySessionSheet({
   onSelectSession,
   onLoadMore,
 }: HistorySessionSheetProps) {
-  const { formatRideDetails } = useRideFormat()
   const selectedRowRef = useRef<View>(null)
   useHistoryAutoRefresh(visible && !favoriteMode)
   const favoritesBySessionId = useMemo(
@@ -54,39 +50,18 @@ export function HistorySessionSheet({
     ({ item }: { item: unknown }) => {
       const session = item as HistorySession
       const selected = session.id === selectedSessionId
-      const favorite = favoritesBySessionId.get(session.id)
-      const rideWindow = rideMovingWindow(session) ?? {
-        startMs: session.startAtMs,
-        endMs: session.endAtMs,
-      }
-      const dateTime = formatRideListDateTime(
-        rideWindow.startMs,
-        rideWindow.endMs,
-        !favorite && isLiveRide(session, Date.now()),
-      )
-      const details = formatRideDetails(
-        rideWindow.endMs - rideWindow.startMs,
-        session.distanceM,
-        favorite?.boardName ?? session.boardName,
-      )
       return (
-        <HistoryRideRow
+        <HistorySessionRow
           ref={selected ? selectedRowRef : undefined}
           testID={`history-session-row-${session.id}`}
-          title={
-            favorite
-              ? formatFavoriteName(favorite.name, favorite.startMs, favorite.endMs)
-              : dateTime
-          }
-          subtitle={favorite ? dateTime : details}
-          details={favorite ? details : undefined}
-          routePoints={session.routePoints}
+          session={session}
+          favorite={favoritesBySessionId.get(session.id)}
           selected={selected}
           onPress={() => onSelectSession(session)}
         />
       )
     },
-    [favoritesBySessionId, onSelectSession, selectedSessionId, formatRideDetails],
+    [favoritesBySessionId, onSelectSession, selectedSessionId],
   )
 
   const empty = (

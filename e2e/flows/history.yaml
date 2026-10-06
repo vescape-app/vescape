@@ -9,10 +9,14 @@ appId: ${APP_ID}
 - tapOn:
     id: history-button
 - extendedWaitUntil:
-    visible: History
+    visible:
+      id: history-drawer
     timeout: 15000
+# The drawer reopens on the last tab used; the ride list is on Rides.
+- tapOn:
+    id: history-drawer-tab-rides
 
-# The drawer opens on riding totals and the ride list; the newest ride has to be opened for its stats.
+# The newest ride has to be opened for its stats.
 - tapOn:
     id: history-latest-ride
 

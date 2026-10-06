@@ -9,6 +9,7 @@ import {
   EdgeDrawerLongContentShowcase,
   EdgeDrawerPositionShowcase,
   EdgeDrawerVirtualizedShowcase,
+  TabbedEdgeDrawerShowcase,
   FloatingSheetShowcase,
 } from '@/screens/showcase/modals/DrawerShowcases'
 import {
@@ -30,7 +31,7 @@ export default function ModalsPage() {
       <ScrollView contentContainerStyle={styles.content}>
         <IconHero
           icon={SquaresFourIcon}
-          description="FadeCardModal, ConfirmModal, InfoModal, VersionNoticeModal, CommunityMessageModal, AppBlockScreen, TextPromptModal, EdgeDrawer, FloatingSheet."
+          description="FadeCardModal, ConfirmModal, InfoModal, VersionNoticeModal, CommunityMessageModal, AppBlockScreen, TextPromptModal, EdgeDrawer, TabbedEdgeDrawer, FloatingSheet."
         />
         <FadeCardModalShowcase />
         <ConfirmModalShowcase />
@@ -58,6 +59,7 @@ export default function ModalsPage() {
         <EdgeDrawerLongContentShowcase />
         <EdgeDrawerVirtualizedShowcase />
         <EdgeDrawerInitialFocusShowcase />
+        <TabbedEdgeDrawerShowcase />
         <FloatingSheetShowcase />
       </ScrollView>
     </SafeAreaView>

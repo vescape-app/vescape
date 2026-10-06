@@ -6,6 +6,8 @@
 appId: ${APP_ID}
 ---
 - runFlow: ../fixture/_history.yaml
+- tapOn:
+    id: history-drawer-tab-stats
 - extendedWaitUntil:
     visible:
       id: history-stats-details

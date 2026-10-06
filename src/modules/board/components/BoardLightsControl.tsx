@@ -95,19 +95,13 @@ const styles = StyleSheet.create({
   group: {
     width: '100%',
     overflow: 'hidden',
-    flexDirection: 'row',
-    alignItems: 'stretch',
-    minHeight: 66,
   },
   divider: {
-    width: 1,
-    alignSelf: 'stretch',
+    height: 1,
     backgroundColor: theme.neutral.border,
   },
   cell: {
-    flex: 1,
-    flexBasis: 0,
-    minWidth: 0,
+    minHeight: 66,
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,

@@ -2,10 +2,11 @@ import { StyleSheet, View } from 'react-native'
 import { Text } from '@/components/base/Text'
 import { useEffect, useRef, useState } from 'react'
 
-import { UsersThreeIcon } from 'phosphor-react-native'
+import { ChartBarIcon, StarIcon, UsersThreeIcon } from 'phosphor-react-native'
 import { Button } from '@/components/base/Button'
 import { FloatingSheet } from '@/components/overlays/AnchoredSheet'
 import { EdgeDrawer } from '@/components/overlays/EdgeDrawer'
+import { TabbedEdgeDrawer, type DrawerTab } from '@/components/overlays/TabbedEdgeDrawer'
 import { useTriggerRef } from '@/components/overlays/measureTrigger'
 import { ShowcaseCard } from '@/components/dev/ShowcaseCard'
 import { OpenButton } from '@/components/dev/ShowcaseControls'
@@ -56,6 +57,58 @@ export function EdgeDrawerPositionShowcase({
           <Text style={styles.tileText}>Release early to test spring-back.</Text>
         </View>
       </EdgeDrawer>
+    </ShowcaseCard>
+  )
+}
+
+type PreviewTab = 'people' | 'stats' | 'starred'
+
+const PREVIEW_TABS: readonly DrawerTab<PreviewTab>[] = [
+  { id: 'people', label: 'People', icon: UsersThreeIcon, color: theme.palette.groupRide.color },
+  { id: 'stats', label: 'Stats', icon: ChartBarIcon, color: theme.palette.sky.color },
+  { id: 'starred', label: 'Starred', icon: StarIcon, color: theme.palette.amber.color },
+]
+
+export function TabbedEdgeDrawerShowcase() {
+  const triggerRef = useTriggerRef()
+  const [visible, setVisible] = useState(false)
+  const [side, setSide] = useState<'left' | 'right'>('left')
+  const [tab, setTab] = useState<PreviewTab>('people')
+  const open = (railSide: 'left' | 'right') => {
+    setSide(railSide)
+    setVisible(true)
+  }
+
+  return (
+    <ShowcaseCard
+      name="TabbedEdgeDrawer"
+      controls={
+        <View ref={triggerRef} collapsable={false} style={styles.trigger}>
+          <OpenButton label="Open, rail left" onPress={() => open('left')} />
+          <OpenButton label="Open, rail right" onPress={() => open('right')} />
+        </View>
+      }
+    >
+      <Text style={styles.previewHint}>
+        One full view per tab. The tab pill grows out of the trigger; tabs keep their order.
+      </Text>
+      <TabbedEdgeDrawer
+        visible={visible}
+        triggerRef={triggerRef}
+        side={side}
+        tabs={PREVIEW_TABS}
+        activeTab={tab}
+        onTabChange={setTab}
+        onClose={() => setVisible(false)}
+      >
+        {Array.from({ length: tab === 'stats' ? 12 : 2 }, (_, index) => (
+          <View key={index} style={styles.tile}>
+            <Text style={styles.tileText}>
+              {PREVIEW_TABS.find((item) => item.id === tab)?.label} row {index + 1}
+            </Text>
+          </View>
+        ))}
+      </TabbedEdgeDrawer>
     </ShowcaseCard>
   )
 }

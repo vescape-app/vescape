@@ -24,16 +24,8 @@ import { useRiderStore } from '@/modules/group-ride/store/riderStore'
 import { theme } from '@/constants/theme'
 import { NearbyRideBody, RosterGrid } from '@/modules/group-ride/components/GroupRideRoster'
 
-export function SocialSheet() {
-  return (
-    <View testID="social-sheet" style={styles.list}>
-      <RiderNameWidget />
-      <GroupRideWidget />
-    </View>
-  )
-}
-
-function RiderNameWidget() {
+/** The rider's own name and marker color, as other riders see them. */
+export function RiderNameWidget() {
   const riderName = useRiderStore((s) => s.riderName)
   const setName = useRiderStore((s) => s.setName)
   const riderColor = useRiderStore((s) => s.riderColor)
@@ -48,7 +40,7 @@ function RiderNameWidget() {
         placeholder="Add a display name"
         maxLength={32}
         onCommit={(value) => {
-          // intentional-suppression: Rider store error is rendered by Social Sheet
+          // intentional-suppression: Rider store error is rendered by the Social drawer
           void setName(value).catch(() => undefined) // The store exposes this failure below.
         }}
         accessibilityLabel="Rider display name"
@@ -73,7 +65,7 @@ function RiderNameWidget() {
               value={riderColor}
               colors={riderColorOptions}
               onChange={(color) => {
-                // intentional-suppression: Rider store error is rendered by Social Sheet
+                // intentional-suppression: Rider store error is rendered by the Social drawer
                 void setColor(color).catch(() => undefined) // The store exposes this failure below.
               }}
             />
@@ -85,7 +77,8 @@ function RiderNameWidget() {
   )
 }
 
-function GroupRideWidget() {
+/** Group Ride: the live roster when riding together, otherwise the nearby rides to join or start. */
+export function GroupRideWidget() {
   useRenderRateWarning('GroupRideWidget')
   const activeRideId = useGroupRideStore((s) => s.activeRideId)
   const rides = useGroupRideStore((s) => s.rides)
@@ -290,9 +283,6 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 10,
-  },
-  list: {
-    gap: 12,
   },
   riderIdentity: {
     gap: 6,

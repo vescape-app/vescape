@@ -178,6 +178,8 @@ Inside cards, separate rows with a thin `theme.neutral.border` line indented pas
 
 **Corner sheets (EdgeDrawer) in light theme use a translucent white body** — free-floating fields on that surface read as unfinished. Group a sheet's interactive content in the same card boxes used on the settings screens (`SettingsCard`), with the sheet's mode switch (e.g. tab pills) and primary action sitting outside the card.
 
+**Corner drawers are tabbed.** Board (bottom-right), History (bottom-left) and Social (top-left) open a `TabbedEdgeDrawer`: the round trigger grows into a pill of tabs, anchored on the trigger and running away from the drawer's edge, in a fixed order (tabs never move; the open one is marked by a circle the trigger's size). One full view per tab sits beside the pill, aligned to the same end — never a drawer or expanding panel inside the drawer. The header names the open tab. The drawer reopens on the last tab used (persisted per drawer), and its corner button wears that tab's icon unless a status takeover outranks it (active Group Ride, Legal Mode). Settings (top-right) stays a single view.
+
 ## Info Headers
 
 For screen headers showing metadata (version, OS, DB size), use centered text without card wrappers:

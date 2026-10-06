@@ -46,6 +46,11 @@ export interface EdgeDrawerDismissalOptions {
   triggerRef: React.RefObject<View | null>
   initialFocusRef?: React.RefObject<View | null>
   autoScrollOnContentExpand: boolean
+  /**
+   * A bottom drawer rests at the end of its content instead of partway in, so its last row stays
+   * level with whatever it is aligned to. It also settles back there after an aborted dismissal.
+   */
+  openAtEnd?: boolean
   onClose: () => void
   onReachContentEnd?: () => void
 }
@@ -63,6 +68,7 @@ export function useEdgeDrawerDismissal({
   triggerRef,
   initialFocusRef,
   autoScrollOnContentExpand,
+  openAtEnd = false,
   onClose,
   onReachContentEnd,
 }: EdgeDrawerDismissalOptions) {
@@ -244,7 +250,9 @@ export function useEdgeDrawerDismissal({
       animatedDismissRange.value = range
       if (!positionedRef.current) {
         positionedRef.current = true
-        const initialOpenOffset = Math.min(range, height * DRAWER_INITIAL_OPEN_FRACTION)
+        const initialOpenOffset = openAtEnd
+          ? range
+          : Math.min(range, height * DRAWER_INITIAL_OPEN_FRACTION)
         const initialOffset = opensFromTop ? 0 : initialOpenOffset
         scrollOffsetRef.current = initialOffset
         scrollOffset.value = initialOffset
@@ -309,6 +317,7 @@ export function useEdgeDrawerDismissal({
       dismissArmed,
       height,
       initialFocusRef,
+      openAtEnd,
       opensFromTop,
       scrollOffset,
       scrollToOffset,
@@ -317,8 +326,11 @@ export function useEdgeDrawerDismissal({
 
   /** Settle a half-faded drawer back to the offset where it is fully opaque again. */
   const restoreFullyVisible = useCallback(() => {
-    scrollToOffset(edgeDrawerRestoreOffset(dismissRangeRef.current, height, opensFromTop), true)
-  }, [height, opensFromTop, scrollToOffset])
+    const range = dismissRangeRef.current
+    const offset =
+      openAtEnd && !opensFromTop ? range : edgeDrawerRestoreOffset(range, height, opensFromTop)
+    scrollToOffset(offset, true)
+  }, [height, openAtEnd, opensFromTop, scrollToOffset])
 
   const scrollToOpenEdge = useCallback(() => {
     scrollToOffset(opensFromTop ? 0 : dismissRangeRef.current + height, true)

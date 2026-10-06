@@ -1,26 +1,10 @@
 import { StyleSheet } from 'react-native'
 import { Text } from '@/components/base/Text'
-import { JoystickIcon } from 'phosphor-react-native'
 
 import { RemoteTiltPad } from '@/modules/board/components/RemoteTiltPad'
-import { ExpandingWidget } from '@/components/widgets/ExpandingWidget'
 import { theme } from '@/constants/theme'
 import { useRemoteTiltControl } from '@/modules/board/hooks/useRemoteTiltControl'
 import type { GroundClearanceRelease } from 'vescape-core'
-
-/** Remote tilt controller row; the pad itself opens as a focused panel. */
-export function RemoteTiltControl() {
-  return (
-    <ExpandingWidget
-      icon={JoystickIcon}
-      title="Tilt"
-      description="Adjust board tilt from your phone in real time."
-      accent={theme.palette.sky.color}
-      body={RemoteTiltBody}
-      surface={false}
-    />
-  )
-}
 
 /**
  * Why the ground-clearance binding is not commanding, in the rider's words.
@@ -45,7 +29,8 @@ const RELEASE_REASONS: Record<GroundClearanceRelease, string> = {
   'manual-tilt': 'Finishing your tilt before the sensor takes over.',
 }
 
-function RemoteTiltBody() {
+/** Remote tilt pad with the reason it is not commanding, shown in full as its own view. */
+export function RemoteTiltControl() {
   const {
     canCommand,
     boardConnected,

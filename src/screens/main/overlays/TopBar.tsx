@@ -5,7 +5,6 @@ import {
   BroadcastIcon,
   ArrowsClockwiseIcon,
   GearSixIcon,
-  UsersThreeIcon,
 } from 'phosphor-react-native'
 import { router } from 'expo-router'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
@@ -13,7 +12,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { BoardSelectorSheet } from '@/modules/board/components/BoardSelectorSheet'
 import { EdgeDrawer } from '@/components/overlays/EdgeDrawer'
 import { IconButton } from '@/components/base/IconButton'
-import { SocialSheet } from '@/modules/group-ride/components/SocialSheet'
+import { SocialDrawer, useSocialDrawerTab } from '@/screens/main/overlays/SocialDrawer'
 import { SettingsSheet } from '@/screens/main/overlays/SettingsSheet'
 import { ConnectedBoardPill } from '@/modules/board/components/ConnectedBoardPill'
 import { BoardIssueDrawers } from '@/modules/board/components/BoardIssueDrawers'
@@ -95,6 +94,7 @@ export function TopBar({
     accessoryId?: string
   } | null>(null)
   const [socialOpen, setSocialOpen] = useState(false)
+  const socialTab = useSocialDrawerTab()
   const settingsRef = useRef<View>(null)
   const [settingsOpen, setSettingsOpen] = useState(false)
   const riderColor = useRiderStore((s) => s.riderColor) ?? theme.palette.green.color
@@ -171,7 +171,7 @@ export function TopBar({
       <View style={styles.row}>
         <View ref={socialRef} collapsable={false} style={styles.iconLeft}>
           <IconButton
-            icon={rideActive ? BroadcastIcon : UsersThreeIcon}
+            icon={rideActive ? BroadcastIcon : socialTab.icon}
             onPress={() => setSocialOpen(true)}
             accessibilityLabel="Social"
             testID="social-drawer-trigger"
@@ -260,17 +260,13 @@ export function TopBar({
         />
       ) : null}
 
-      <EdgeDrawer
+      <SocialDrawer
         visible={socialOpen}
         triggerRef={socialRef}
-        edge="top"
-        title="Social"
-        icon={UsersThreeIcon}
-        backdropTestID="social-drawer-backdrop"
+        tab={socialTab.tab}
+        onTabChange={socialTab.setTab}
         onClose={() => setSocialOpen(false)}
-      >
-        <SocialSheet />
-      </EdgeDrawer>
+      />
 
       <EdgeDrawer
         visible={settingsOpen}

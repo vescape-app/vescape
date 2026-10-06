@@ -1,53 +1,65 @@
-import { useRideFormat } from '@/modules/history/hooks/useRideFormat'
-import { useFormat } from '@/hooks/useFormat'
 import { useCallback, useEffect, useMemo, useState, type RefObject } from 'react'
 import { router } from 'expo-router'
 import {
   CaretRightIcon,
+  ChartBarIcon,
   ClockCounterClockwiseIcon,
   StarIcon,
   WarningCircleIcon,
 } from 'phosphor-react-native'
-import { ActivityIndicator, ScrollView, StyleSheet, View } from 'react-native'
+import { ActivityIndicator, StyleSheet, View } from 'react-native'
 
 import { Button } from '@/components/base/Button'
 import { Placeholder } from '@/components/base/Placeholder'
-import { SectionHeader } from '@/components/base/SectionHeader'
-import { EdgeDrawer } from '@/components/overlays/EdgeDrawer'
+import { TabbedEdgeDrawer, type DrawerTab } from '@/components/overlays/TabbedEdgeDrawer'
 import { theme } from '@/constants/theme'
-import { FavoriteRideCard } from '@/modules/history/components/FavoriteRideCard'
-import { HistoryRideRow } from '@/modules/history/components/HistoryRideRow'
-import { HistorySessionSheet } from '@/modules/history/components/HistorySessionSheet'
-import { favoriteSessionId, favoriteToSession } from '@/modules/history/lib/favorites'
-import { formatRideListDateTime } from '@/modules/history/lib/rideFormat'
-import { isLiveRide, rideMovingWindow, type HistorySession } from '@/modules/history/lib/sessions'
+import { HistorySessionRow } from '@/modules/history/components/HistorySessionRow'
+import { favoriteToSession } from '@/modules/history/lib/favorites'
+import type { HistorySession } from '@/modules/history/lib/sessions'
 import { useHistoryAutoRefresh } from '@/modules/history/hooks/useHistoryAutoRefresh'
 import { useFavoriteStore, type Favorite } from '@/modules/history/store/favoriteStore'
 import { useHistoryStore } from '@/modules/history/store/historyStore'
 import { ProfileStatsSummary } from '@/modules/profile/components/ProfileStatsSummary'
 import { routes } from '@/navigation/routes'
+import { useDrawerTab } from '@/screens/main/overlays/useDrawerTab'
 
-type ListMode = 'rides' | 'favorites' | null
+type HistoryTab = 'stats' | 'rides' | 'favorites'
+
+const HISTORY_TABS: readonly DrawerTab<HistoryTab>[] = [
+  { id: 'stats', label: 'Stats', icon: ChartBarIcon, color: theme.palette.sky.color },
+  {
+    id: 'rides',
+    label: 'Rides',
+    icon: ClockCounterClockwiseIcon,
+    color: theme.palette.purple.color,
+  },
+  { id: 'favorites', label: 'Favorites', icon: StarIcon, color: theme.palette.amber.color },
+]
+
+export function useHistoryDrawerTab() {
+  return useDrawerTab('historyDrawerTab', HISTORY_TABS, 'rides')
+}
 
 interface HistoryDrawerProps {
   visible: boolean
   triggerRef: RefObject<View | null>
+  tab: HistoryTab
+  onTabChange: (tab: HistoryTab) => void
   onClose: () => void
   onOpenRide: (session: HistorySession) => void
   onOpenFavorite: (favoriteId: string, session: HistorySession) => void
 }
 
-/** Riding overview opened from the main History button. */
+/** Riding overview opened from the main History button: totals, every ride, every Favorite. */
 export function HistoryDrawer({
   visible,
   triggerRef,
+  tab,
+  onTabChange,
   onClose,
   onOpenRide,
   onOpenFavorite,
 }: HistoryDrawerProps) {
-  const { formatSpeedWithUnit } = useFormat()
-  const { formatRideDetails } = useRideFormat()
-  const [listMode, setListMode] = useState<ListMode>(null)
   const [ridesLoaded, setRidesLoaded] = useState(false)
   const [favoritesLoaded, setFavoritesLoaded] = useState(false)
   const blocks = useHistoryStore((state) => state.blocks)
@@ -88,7 +100,6 @@ export function HistoryDrawer({
 
   const openRide = useCallback(
     (session: HistorySession) => {
-      setListMode(null)
       onClose()
       onOpenRide(session)
     },
@@ -96,20 +107,11 @@ export function HistoryDrawer({
   )
 
   const openFavorite = useCallback(
-    (favorite: Favorite) => {
-      setListMode(null)
+    (favorite: Favorite, session: HistorySession) => {
       onClose()
-      onOpenFavorite(favorite.id, favoriteToSession(favorite, blocks))
+      onOpenFavorite(favorite.id, session)
     },
-    [blocks, onClose, onOpenFavorite],
-  )
-
-  const showList = useCallback(
-    (mode: Exclude<ListMode, null>) => {
-      setListMode(mode)
-      onClose()
-    },
-    [onClose],
+    [onClose, onOpenFavorite],
   )
 
   const openStats = useCallback(() => {
@@ -117,176 +119,113 @@ export function HistoryDrawer({
     router.push(routes.profileStats)
   }, [onClose])
 
+  const loadMore = useCallback(() => {
+    if (!hasMore || historyLoading) return
+    void useHistoryStore.getState().loadMore()
+  }, [hasMore, historyLoading])
+
   return (
-    <>
-      <EdgeDrawer
-        visible={visible}
-        triggerRef={triggerRef}
-        title="History"
-        icon={ClockCounterClockwiseIcon}
-        iconColor={theme.palette.purple.color}
-        onClose={onClose}
-        backdropTestID="history-drawer-backdrop"
-      >
-        <View style={styles.content} testID="history-drawer">
-          <ProfileStatsSummary
-            active={visible}
-            action={
-              <Button
-                label="Details"
-                testID="history-stats-details"
-                icon={CaretRightIcon}
-                iconPosition="right"
-                size="sm"
-                variant="secondary"
-                onPress={openStats}
-              />
-            }
+    <TabbedEdgeDrawer
+      visible={visible}
+      triggerRef={triggerRef}
+      side="left"
+      tabs={HISTORY_TABS}
+      activeTab={tab}
+      onTabChange={onTabChange}
+      onClose={onClose}
+      onReachContentEnd={tab === 'rides' ? loadMore : undefined}
+      backdropTestID="history-drawer-backdrop"
+      testID="history-drawer"
+    >
+      {tab === 'stats' ? (
+        <ProfileStatsSummary
+          active={visible}
+          action={
+            <Button
+              label="Details"
+              testID="history-stats-details"
+              icon={CaretRightIcon}
+              iconPosition="right"
+              size="sm"
+              variant="secondary"
+              onPress={openStats}
+            />
+          }
+        />
+      ) : tab === 'rides' ? (
+        sessions.length === 0 && (!ridesLoaded || historyLoading) ? (
+          <RideListSkeleton />
+        ) : sessions.length === 0 && historyError ? (
+          <Placeholder
+            icon={WarningCircleIcon}
+            title="Could not load rides"
+            description="Restart the app to try again"
+            style={styles.placeholder}
           />
-
-          <SectionHeader
+        ) : sessions.length === 0 ? (
+          <Placeholder
             icon={ClockCounterClockwiseIcon}
-            color={theme.palette.purple.color}
-            title="Last rides"
-            right={
+            title="No rides yet"
+            description="Record a ride and it shows up here"
+            style={styles.placeholder}
+          />
+        ) : (
+          <View style={styles.list}>
+            {sessions.map((session, index) => (
+              <HistorySessionRow
+                key={session.id}
+                testID={index === 0 ? 'history-latest-ride' : undefined}
+                session={session}
+                onPress={() => openRide(session)}
+              />
+            ))}
+            {hasMore ? (
               <Button
-                label="All rides"
-                icon={CaretRightIcon}
-                iconPosition="right"
+                label="Load older rides"
                 size="sm"
                 variant="secondary"
-                disabled={!ridesLoaded || historyLoading || sessions.length === 0}
-                onPress={() => showList('rides')}
+                loading={historyLoading}
+                onPress={loadMore}
               />
-            }
-          />
-          {!ridesLoaded || historyLoading ? (
-            <RideListSkeleton />
-          ) : sessions.length === 0 && historyError ? (
-            <Placeholder
-              icon={WarningCircleIcon}
-              title="Could not load rides"
-              description="Restart the app to try again"
-              style={styles.placeholder}
+            ) : null}
+          </View>
+        )
+      ) : favorites.length === 0 && (!favoritesLoaded || favoritesLoading) ? (
+        <ActivityIndicator size="small" color={theme.palette.amber.color} style={styles.loading} />
+      ) : favorites.length === 0 && favoritesError ? (
+        <Placeholder
+          icon={WarningCircleIcon}
+          title="Could not load favorites"
+          description="Try loading favorites again"
+          action={<Button label="Retry" size="sm" variant="secondary" onPress={loadFavorites} />}
+          style={styles.placeholder}
+        />
+      ) : favorites.length === 0 ? (
+        <Placeholder
+          icon={StarIcon}
+          title="No favorites yet"
+          description="Star a stretch of a ride in History to keep it here"
+          style={styles.placeholder}
+        />
+      ) : (
+        <View style={styles.list}>
+          {favorites.map((favorite, index) => (
+            <HistorySessionRow
+              key={favorite.id}
+              session={favoriteSessions[index]}
+              favorite={favorite}
+              onPress={() => openFavorite(favorite, favoriteSessions[index])}
             />
-          ) : sessions.length === 0 ? (
-            <Placeholder
-              icon={ClockCounterClockwiseIcon}
-              title="No rides yet"
-              description="Record a ride and it shows up here"
-              style={styles.placeholder}
-            />
-          ) : (
-            <View style={styles.rideList}>
-              {sessions.slice(0, 3).map((session, index) => {
-                const window = rideMovingWindow(session) ?? {
-                  startMs: session.startAtMs,
-                  endMs: session.endAtMs,
-                }
-                const details = [
-                  formatRideDetails(window.endMs - window.startMs, session.distanceM, null),
-                  formatSpeedWithUnit(session.maxSpeedKmh),
-                ].join(' · ')
-                return (
-                  <HistoryRideRow
-                    key={session.id}
-                    testID={index === 0 ? 'history-latest-ride' : undefined}
-                    title={formatRideListDateTime(
-                      window.startMs,
-                      window.endMs,
-                      isLiveRide(session, Date.now()),
-                    )}
-                    subtitle={details}
-                    routePoints={session.routePoints}
-                    onPress={() => openRide(session)}
-                  />
-                )
-              })}
-            </View>
-          )}
-
-          <SectionHeader
-            icon={StarIcon}
-            color={theme.palette.amber.color}
-            title={`Favorites${favorites.length ? ` · ${favorites.length}` : ''}`}
-            right={
-              <Button
-                label="See all"
-                icon={CaretRightIcon}
-                iconPosition="right"
-                size="sm"
-                variant="secondary"
-                disabled={!favoritesLoaded || favoritesLoading || favorites.length === 0}
-                onPress={() => showList('favorites')}
-              />
-            }
-          />
-          {favorites.length === 0 && (!favoritesLoaded || favoritesLoading) ? (
-            <ActivityIndicator
-              size="small"
-              color={theme.palette.amber.color}
-              style={styles.loading}
-            />
-          ) : favorites.length === 0 && favoritesError ? (
-            <Placeholder
-              icon={WarningCircleIcon}
-              title="Could not load favorites"
-              description="Try loading favorites again"
-              action={
-                <Button label="Retry" size="sm" variant="secondary" onPress={loadFavorites} />
-              }
-              style={styles.placeholder}
-            />
-          ) : favorites.length === 0 ? (
-            <Placeholder
-              icon={StarIcon}
-              title="No favorites yet"
-              description="Star a stretch of a ride in History to keep it here"
-              style={styles.placeholder}
-            />
-          ) : (
-            <ScrollView
-              horizontal
-              showsHorizontalScrollIndicator={false}
-              contentContainerStyle={styles.favoriteList}
-            >
-              {favorites.slice(0, 8).map((favorite, index) => (
-                <FavoriteRideCard
-                  key={favorite.id}
-                  favorite={favorite}
-                  routePoints={favoriteSessions[index]?.routePoints ?? []}
-                  onPress={() => openFavorite(favorite)}
-                />
-              ))}
-            </ScrollView>
-          )}
+          ))}
         </View>
-      </EdgeDrawer>
-
-      <HistorySessionSheet
-        visible={listMode !== null}
-        triggerRef={triggerRef}
-        favoriteMode={listMode === 'favorites'}
-        sessions={listMode === 'favorites' ? favoriteSessions : sessions}
-        favorites={favorites}
-        selectedSessionId={null}
-        hasMore={listMode === 'rides' && hasMore}
-        loadingMore={historyLoading}
-        onClose={() => setListMode(null)}
-        onSelectSession={(session) => {
-          const favorite = favorites.find((item) => favoriteSessionId(item.id) === session.id)
-          if (favorite) openFavorite(favorite)
-          else openRide(session)
-        }}
-        onLoadMore={() => void useHistoryStore.getState().loadMore()}
-      />
-    </>
+      )}
+    </TabbedEdgeDrawer>
   )
 }
 
 function RideListSkeleton() {
   return (
-    <View style={styles.rideList} accessibilityLabel="Loading recent rides">
+    <View style={styles.list} accessibilityLabel="Loading recent rides">
       {[0, 1, 2].map((index) => (
         <View key={index} style={styles.rideSkeleton} />
       ))}
@@ -295,11 +234,7 @@ function RideListSkeleton() {
 }
 
 const styles = StyleSheet.create({
-  content: {
-    padding: 12,
-    gap: 12,
-  },
-  rideList: {
+  list: {
     gap: 8,
   },
   rideSkeleton: {
@@ -310,12 +245,8 @@ const styles = StyleSheet.create({
     backgroundColor: theme.palette.slate.surfaceDeep,
     opacity: 0.55,
   },
-  favoriteList: {
-    gap: 10,
-    paddingRight: 12,
-  },
   placeholder: {
-    minHeight: 170,
+    minHeight: 220,
     paddingVertical: 24,
   },
   loading: {

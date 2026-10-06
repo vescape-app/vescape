@@ -540,6 +540,9 @@ data class AppSettings(
   val groupRidePublicEnabled: Boolean = false,
   val legalPolicy: Map<String, String>? = null,
   val dismissedCommunityMessageIds: List<String> = emptyList(),
+  val boardDrawerTab: String? = null,
+  val historyDrawerTab: String? = null,
+  val socialDrawerTab: String? = null,
 )
 
 @Entity(

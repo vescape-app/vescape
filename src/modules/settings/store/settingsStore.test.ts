@@ -51,6 +51,9 @@ const BASE: AppSettings = {
   groupRidePublicEnabled: false,
   legalPolicy: null,
   dismissedCommunityMessageIds: [],
+  boardDrawerTab: null,
+  historyDrawerTab: null,
+  socialDrawerTab: null,
 }
 
 let settings: AppSettings = BASE
