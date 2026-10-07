@@ -46,6 +46,12 @@ private final class IOSWatchMirrorSources: WatchMirrorSources {
     else { phase = .ready }
     return WatchRouteStatus(phase: phase, routeId: WatchRouteMirror.shared.desiredRouteId)
   }
+  func mapRoute() -> WatchMapRouteProgress? {
+    guard let route = WatchRouteMirror.shared.mapRoute, let progress = NavigationController.shared.currentProgress else {
+      return nil
+    }
+    return WatchMapRouteProgress(route: route, remainingM: progress.remainingMeters)
+  }
   func subscribe(
     routeChanged: @escaping () -> Void,
     weatherChanged: @escaping (WatchWeather) -> Void,

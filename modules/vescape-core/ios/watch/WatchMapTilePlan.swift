@@ -12,12 +12,66 @@ struct WatchMapRider: Equatable {
   let speedMps: Double?
   /// Phone map span; nil while the phone map is unmounted, which the wrist draws at the default.
   let spanM: Double?
+  /// Where the rider is on the Navigation route; nil without one.
+  var route: WatchMapRouteProgress? = nil
 }
 
-/// A tile on the wanted list and the plan step that last needed it.
+/// A Navigation path as the tile plan walks it: `points` in ridden order and the great-circle metres
+/// along it to each, measured as Route Progress measures them. Compared by identity: a new path is a
+/// new route.
+///
+/// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/watch/WatchMapTilePlan.kt `WatchMapRoute`
+final class WatchMapRoute: Equatable {
+  let points: [WatchMapPosition]
+  private let alongM: [Double]
+
+  init(points: [WatchMapPosition]) {
+    self.points = points
+    var along = [Double](repeating: 0, count: points.count)
+    for index in points.indices.dropFirst() {
+      let from = points[index - 1], to = points[index]
+      along[index] = along[index - 1] + GeoMath.distanceMeters(from.latitude, from.longitude, to.latitude, to.longitude)
+    }
+    alongM = along
+  }
+
+  var lengthM: Double { alongM.last ?? 0 }
+
+  /// The segment holding the point `remainingM` before the end, and that point, interpolated the way
+  /// Route Progress projects it. Nil for a path with fewer than two points.
+  func point(before remainingM: Double) -> (segment: Int, position: WatchMapPosition)? {
+    guard points.count >= 2 else { return nil }
+    let target = min(max(lengthM - remainingM, 0), lengthM)
+    // Last vertex at or before the target, then past any zero-length segments ending on it.
+    var low = 0, high = points.count - 1
+    while low < high {
+      let mid = (low + high + 1) / 2
+      if alongM[mid] <= target { low = mid } else { high = mid - 1 }
+    }
+    let segment = min(low, points.count - 2)
+    let length = alongM[segment + 1] - alongM[segment]
+    let fraction = length == 0 ? 0 : min(max((target - alongM[segment]) / length, 0), 1)
+    let from = points[segment], to = points[segment + 1]
+    return (segment, WatchMapPosition(
+      latitude: from.latitude + (to.latitude - from.latitude) * fraction,
+      longitude: from.longitude + (to.longitude - from.longitude) * fraction))
+  }
+
+  static func == (lhs: WatchMapRoute, rhs: WatchMapRoute) -> Bool { lhs === rhs }
+}
+
+/// The rider on `route`: `remainingM` along the path to its end, from Route Progress.
+struct WatchMapRouteProgress: Equatable {
+  let route: WatchMapRoute
+  let remainingM: Double
+}
+
+/// A tile on the wanted list and the plan step that last needed it. A `route` tile is wanted only for
+/// the route ahead, so it leaves as soon as the route stops wanting it (passed, rerouted, cleared).
 struct WatchMapTileNeed: Equatable {
   let tile: WatchMapTile
   let neededAt: Int64
+  var route = false
 }
 
 enum WatchMapTilePlan {
@@ -27,6 +81,11 @@ enum WatchMapTilePlan {
   static let lookaheadS = 30.0
   /// Ring radius in spans, around that centre.
   static let ringSpans = 1.0
+  /// Route corridor half-width in spans: every tile within this of the path ahead, which is the face
+  /// around the rider wherever they are on it.
+  static let routeCorridorSpans = 0.5
+  /// The path ahead is sampled at most this many tiles apart, well under the corridor radius.
+  private static let routeSampleTiles = 0.25
   /// A course change larger than this re-plans the ring even inside the same tile.
   static let replanTurnDeg = 45.0
 
@@ -44,39 +103,92 @@ enum WatchMapTilePlan {
     let centreX = riderX + aheadM * sin(course) / tileM
     let centreY = riderY - aheadM * cos(course) / tileM
     let radius = spanM * ringSpans / tileM
-    var ring: [(tile: WatchMapTile, distance: Double)] = []
-    let rows = max(0, Int(floor(centreY - radius)))...min(n - 1, Int(floor(centreY + radius)))
+    return tiles(within: radius, of: (centreX, centreY), zoom: zoom) { column, row in
+      hypot(Double(column) + 0.5 - riderX, Double(row) + 0.5 - riderY)
+    }
+  }
+
+  /// Tiles at `zoom` within `routeCorridorSpans` spans of the route ahead of the rider, from their
+  /// Route Progress to the end, nearest along the path first, at most `limit`. Empty without a route.
+  /// The path is walked in tile space, so the antimeridian is crossed the short way round.
+  static func routeTiles(_ rider: WatchMapRider, zoom: Int, limit: Int = tileCap) -> [WatchMapTile] {
+    guard let progress = rider.route, let anchor = progress.route.point(before: progress.remainingM) else { return [] }
+    let (segment, start) = anchor
+    let points = progress.route.points
+    let n = 1 << zoom
+    let radius = WatchMapProjection.clampedSpanM(rider.spanM) * routeCorridorSpans
+      / tileMetres(latitude: start.latitude, zoom: zoom)
+    var found: [WatchMapTile] = []
+    var seen = Set<WatchMapTile>()
+    func visit(_ x: Double, _ y: Double) {
+      for tile in tiles(within: radius, of: (x, y), zoom: zoom, rank: { hypot(Double($0) + 0.5 - x, Double($1) + 0.5 - y) }) {
+        guard found.count < limit else { return }
+        if seen.insert(tile).inserted { found.append(tile) }
+      }
+    }
+    var (x, y) = tileCoordinates(start, n: n)
+    visit(x, y)
+    for index in (segment + 1)..<points.count {
+      guard found.count < limit else { break }
+      let (nextX, nextY) = tileCoordinates(points[index], n: n)
+      let size = Double(n)
+      let raw = (nextX - x).truncatingRemainder(dividingBy: size)
+      let dx = (raw + size + size / 2).truncatingRemainder(dividingBy: size) - size / 2
+      let dy = nextY - y
+      let samples = Int(ceil(hypot(dx, dy) / routeSampleTiles))
+      if samples > 0 {
+        for sample in 1...samples { visit(x + dx * Double(sample) / Double(samples), y + dy * Double(sample) / Double(samples)) }
+      }
+      x += dx
+      y = nextY
+    }
+    return found
+  }
+
+  /// Tiles at `zoom` whose square comes within `radius` tiles of `centre`, ordered by `rank` of their
+  /// unwrapped column and row. Columns wrap across the antimeridian; rows stop at the poles.
+  private static func tiles(
+    within radius: Double, of centre: (x: Double, y: Double), zoom: Int, rank: (Int, Int) -> Double
+  ) -> [WatchMapTile] {
+    let n = 1 << zoom
+    var found: [(tile: WatchMapTile, rank: Double)] = []
+    let rows = max(0, Int(floor(centre.y - radius)))...min(n - 1, Int(floor(centre.y + radius)))
     for row in rows {
-      for column in Int(floor(centreX - radius))...Int(floor(centreX + radius)) {
-        let nearestX = min(max(centreX, Double(column)), Double(column) + 1)
-        let nearestY = min(max(centreY, Double(row)), Double(row) + 1)
-        guard hypot(nearestX - centreX, nearestY - centreY) <= radius else { continue }
-        let tile = WatchMapTile(z: zoom, x: ((column % n) + n) % n, y: row)
-        ring.append((tile, hypot(Double(column) + 0.5 - riderX, Double(row) + 0.5 - riderY)))
+      for column in Int(floor(centre.x - radius))...Int(floor(centre.x + radius)) {
+        let nearestX = min(max(centre.x, Double(column)), Double(column) + 1)
+        let nearestY = min(max(centre.y, Double(row)), Double(row) + 1)
+        guard hypot(nearestX - centre.x, nearestY - centre.y) <= radius else { continue }
+        found.append((WatchMapTile(z: zoom, x: ((column % n) + n) % n, y: row), rank(column, row)))
       }
     }
     var seen = Set<WatchMapTile>()
-    return ring
-      .sorted { $0.distance != $1.distance ? $0.distance < $1.distance : $0.tile.key < $1.tile.key }
+    return found
+      .sorted { $0.rank != $1.rank ? $0.rank < $1.rank : $0.tile.key < $1.tile.key }
       .map(\.tile)
       .filter { seen.insert($0).inserted }
   }
 
-  /// The wanted list after a plan step: `needed` first in its own order, then tiles held from earlier
-  /// steps at the same zoom levels, most recently needed first and ahead of the rider before behind,
-  /// then tiles of `previousZoom`, the level the last zoom change left, in the same order. All cut at
-  /// `cap`. Keeping the previous level lets the wrist draw it until the new one arrives; it leaves
-  /// with the next zoom change or the cap.
+  /// The wanted list after a plan step: `needed` first in its own order, then the `route` tiles it
+  /// does not already hold, then tiles held from earlier steps at the same zoom levels, most recently
+  /// needed first and ahead of the rider before behind, then tiles of `previousZoom`, the level the
+  /// last zoom change left, in the same order. All cut at `cap`. Keeping the previous level lets the
+  /// wrist draw it until the new one arrives; it leaves with the next zoom change or the cap. Route
+  /// tiles from an earlier step that `route` no longer lists leave at once.
   ///
-  /// `needed` is the seam for more tile sources (route ahead): pass them in priority order.
+  /// `needed` is the seam for more tile sources: pass them in priority order.
   static func retain(
     needed: [WatchMapTile], held: [WatchMapTileNeed], rider: WatchMapRider, step: Int64, cap: Int = tileCap,
-    previousZoom: Int? = nil
+    previousZoom: Int? = nil, route: [WatchMapTile] = []
   ) -> [WatchMapTileNeed] {
     let neededSet = Set(needed)
+    var routeSet = Set<WatchMapTile>()
+    let routeOnly = route.filter { !neededSet.contains($0) && routeSet.insert($0).inserted }
     let zooms = Set(needed.map(\.z))
     let older = held
-      .filter { (zooms.contains($0.tile.z) || $0.tile.z == previousZoom) && !neededSet.contains($0.tile) }
+      .filter {
+        !$0.route && (zooms.contains($0.tile.z) || $0.tile.z == previousZoom) && !neededSet.contains($0.tile)
+          && !routeSet.contains($0.tile)
+      }
       .sorted { a, b in
         let currentA = zooms.contains(a.tile.z), currentB = zooms.contains(b.tile.z)
         if currentA != currentB { return currentA }
@@ -87,6 +199,7 @@ enum WatchMapTilePlan {
       }
     var seen = Set<WatchMapTile>()
     let fresh = needed.filter { seen.insert($0).inserted }.map { WatchMapTileNeed(tile: $0, neededAt: step) }
+      + routeOnly.map { WatchMapTileNeed(tile: $0, neededAt: step, route: true) }
     return Array((fresh + older).prefix(cap))
   }
 
@@ -137,8 +250,9 @@ enum WatchMapTilePlan {
   }
 }
 
-/// The stateful half: re-plans only when the rider enters a new tile, the zoom changes, or the
-/// course turns by more than `replanTurnDeg`. Everything it decides is in `WatchMapTilePlan`.
+/// The stateful half: re-plans only when the rider enters a new tile, the zoom changes, the course
+/// turns by more than `replanTurnDeg`, or the route or the tile of their progress along it changes.
+/// Everything it decides is in `WatchMapTilePlan`.
 ///
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/watch/WatchMapTilePlan.kt `WatchMapTilePlanner`
 final class WatchMapTilePlanner {
@@ -147,6 +261,8 @@ final class WatchMapTilePlanner {
   private var previousZoom: Int?
   private var riderTile: WatchMapTile?
   private var plannedCourseDeg: Double?
+  /// The route last planned and the tile its progress point was on; identity compares the route.
+  private var plannedRoute: (route: WatchMapRoute, tile: WatchMapTile)?
   private var step: Int64 = 0
   private(set) var wanted: [WatchMapTileNeed] = []
 
@@ -160,15 +276,22 @@ final class WatchMapTilePlanner {
     if let course = rider.courseDeg {
       turned = plannedCourseDeg.map { abs(shortestAngleDelta(from: $0, to: course)) > WatchMapTilePlan.replanTurnDeg } ?? true
     }
-    guard nextZoom != zoom || tile != riderTile || turned else { return false }
+    let route = rider.route.flatMap { progress in
+      progress.route.point(before: progress.remainingM).map {
+        (route: progress.route, tile: WatchMapTilePlan.tile(at: $0.position, zoom: nextZoom))
+      }
+    }
+    let routeMoved = route?.route !== plannedRoute?.route || route?.tile != plannedRoute?.tile
+    guard nextZoom != zoom || tile != riderTile || turned || routeMoved else { return false }
     if let zoom, nextZoom != zoom { previousZoom = zoom }
     zoom = nextZoom
     riderTile = tile
+    plannedRoute = route
     if let course = rider.courseDeg { plannedCourseDeg = course }
     step += 1
     wanted = WatchMapTilePlan.retain(
       needed: WatchMapTilePlan.needed(rider, zoom: nextZoom), held: wanted, rider: rider, step: step, cap: cap,
-      previousZoom: previousZoom)
+      previousZoom: previousZoom, route: WatchMapTilePlan.routeTiles(rider, zoom: nextZoom, limit: cap))
     return true
   }
 }

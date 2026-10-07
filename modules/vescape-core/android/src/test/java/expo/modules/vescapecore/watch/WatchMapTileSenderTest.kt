@@ -45,6 +45,25 @@ class WatchMapTileSenderTest {
         assertEquals(WATCH_MAP_TILE_MAX_SENDS_IN_FLIGHT + 1, transport.sends.size)
     }
 
+    @Test fun `ring tiles go out before route tiles`() {
+        val route = WatchMapRoute((0..30).map { WatchMapPosition(51.13185, 16.98653 + it * 0.01) })
+        val onRoute = rider.copy(route = WatchMapRouteProgress(route, route.lengthM))
+        val ring = watchMapTileNeeded(onRoute, 15)
+        val transport = Transport()
+        val sender = sender(transport)
+        tick(sender, onRoute)
+        tick(sender, onRoute)
+        // Complete every send as it starts; the order they started in is the order they were wanted.
+        while (transport.sends.any { !it.second.isCompleted }) {
+            transport.sends.filter { !it.second.isCompleted }.forEach { it.second.complete(true) }
+            scheduler.runPending()
+        }
+        val sent = transport.sends.map { it.first }
+        assertEquals(ring, sent.take(ring.size))
+        assertTrue(sent.size > ring.size)
+        assertEquals(sent.size, sent.toSet().size)
+    }
+
     @Test fun `nothing new starts while the wrist sleeps`() {
         val transport = Transport()
         val sender = sender(transport)

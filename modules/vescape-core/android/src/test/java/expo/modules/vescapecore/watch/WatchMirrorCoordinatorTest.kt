@@ -39,6 +39,7 @@ class WatchMirrorCoordinatorTest {
         var changed: () -> Unit = {}
         var phase = WatchRoutePhase.READY
         override fun routeStatus() = WatchRouteStatus(phase, 1)
+        override fun mapRoute(): WatchMapRouteProgress? = null
         override fun subscribe(routeChanged: () -> Unit, weatherChanged: (WatchWeather) -> Unit): () -> Unit {
             subscribed++
             changed = routeChanged

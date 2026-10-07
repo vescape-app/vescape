@@ -27,6 +27,8 @@ internal interface WatchMirrorTransport {
 /** Native navigation/weather sources outlive Board Sessions; cancel only these mirror subscriptions. */
 internal interface WatchMirrorSources {
     fun routeStatus(): WatchRouteStatus
+    /** The rider on the published Navigation route, for street-map tiles ahead; null without one. */
+    fun mapRoute(): WatchMapRouteProgress?
     fun subscribe(routeChanged: () -> Unit, weatherChanged: (WatchWeather) -> Unit): () -> Unit
 }
 
@@ -129,7 +131,7 @@ internal class WatchMirrorCoordinator(
         val position = snapshot.mapPosition
         mapTiles(
             if (!streetMapEnabled || position == null || effectiveWakeLevel() != WatchMirrorWakeLevel.ACTIVE) null
-            else WatchMapRider(position, snapshot.courseDeg, snapshot.riderSpeedMps, snapshot.routeSpanM),
+            else WatchMapRider(position, snapshot.courseDeg, snapshot.riderSpeedMps, snapshot.routeSpanM, sources.mapRoute()),
         )
     }
 

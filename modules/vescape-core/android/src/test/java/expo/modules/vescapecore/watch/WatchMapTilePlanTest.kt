@@ -14,7 +14,8 @@ class WatchMapTilePlanTest {
         courseDeg: Double? = null,
         speedMps: Double? = null,
         spanM: Double? = null,
-    ) = WatchMapRider(position, courseDeg, speedMps, spanM)
+        route: WatchMapRouteProgress? = null,
+    ) = WatchMapRider(position, courseDeg, speedMps, spanM, route)
 
     @Test fun `zoom follows span and latitude with the wrist clamp`() {
         // 600 m on 480 px is 1.25 m/px; z15 tiles are about 1.5 m/px there, a 1.2x upscale.
@@ -163,6 +164,60 @@ class WatchMapTilePlanTest {
         val before = moved.wanted.map { it.tile }.toSet()
         assertTrue(moved.update(rider(position = WatchMapPosition(wroclaw.latitude, wroclaw.longitude + 0.02))))
         assertTrue(moved.wanted.map { it.tile }.containsAll(before))
+    }
+
+    /** A straight path east from Wroclaw, about 21 km, and the rider [doneM] along it. */
+    private fun eastRoute(doneM: Double): Pair<WatchMapRider, WatchMapRoute> {
+        val route = WatchMapRoute((0..30).map { WatchMapPosition(wroclaw.latitude, wroclaw.longitude + it * 0.01) })
+        val at = route.pointBefore(route.lengthM - doneM)!!.second
+        return rider(position = at, courseDeg = 90.0, route = WatchMapRouteProgress(route, route.lengthM - doneM)) to route
+    }
+
+    @Test fun `route tiles run ahead of the rider's progress, nearest along the path first`() {
+        val (onRoute, _) = eastRoute(5_000.0)
+        val tiles = watchMapRouteTiles(onRoute, 15)
+        val here = watchMapTileRing(rider(position = onRoute.position), 15).first()
+        assertEquals(here, tiles.first())
+        // Ahead only: nothing west of the corridor around the progress point.
+        assertTrue(tiles.all { it.x >= here.x - 1 })
+        // Walked in order: columns never step back by more than the corridor.
+        tiles.zipWithNext().forEach { (a, b) -> assertTrue(b.x >= a.x - 1) }
+        // The corridor covers the path itself to its end.
+        val end = watchMapTileRing(rider(position = WatchMapPosition(wroclaw.latitude, wroclaw.longitude + 0.3)), 15).first()
+        assertTrue(end in tiles)
+        assertTrue((here.x..end.x).all { WatchMapTile(15, it, here.y) in tiles })
+        assertEquals(tiles.size, tiles.toSet().size)
+        assertEquals(10, watchMapRouteTiles(onRoute, 15, limit = 10).size)
+        assertTrue(watchMapRouteTiles(rider(), 15).isEmpty())
+    }
+
+    @Test fun `route tiles follow the ring and share its cap`() {
+        val (onRoute, _) = eastRoute(5_000.0)
+        val planner = WatchMapTilePlanner(cap = 40)
+        planner.update(onRoute)
+        val ring = watchMapTileNeeded(onRoute, 15)
+        val wanted = planner.wanted
+        assertEquals(40, wanted.size)
+        // The ring goes first, untouched by the route; route tiles fill the rest, not the ring.
+        assertEquals(ring, wanted.take(ring.size).map { it.tile })
+        assertTrue(wanted.take(ring.size).none { it.route })
+        assertTrue(wanted.drop(ring.size).all { it.route && it.tile !in ring })
+        assertEquals(watchMapRouteTiles(onRoute, 15).filter { it !in ring }.take(40 - ring.size), wanted.drop(ring.size).map { it.tile })
+    }
+
+    @Test fun `route tiles re-plan with progress and leave with the route`() {
+        val (start, route) = eastRoute(5_000.0)
+        val planner = WatchMapTilePlanner()
+        assertTrue(planner.update(start))
+        // Same rider tile, same progress tile: nothing to do.
+        assertFalse(planner.update(start.copy(route = WatchMapRouteProgress(route, route.lengthM - 5_010.0))))
+        // A new route object with the same path is a reroute.
+        assertTrue(planner.update(start.copy(route = WatchMapRouteProgress(WatchMapRoute(route.points), route.lengthM - 5_000.0))))
+        val routeTiles = planner.wanted.filter { it.route }.map { it.tile }
+        assertTrue(routeTiles.isNotEmpty())
+        // Clearing Navigation takes every route-only tile off the list at once.
+        assertTrue(planner.update(start.copy(route = null)))
+        assertTrue(planner.wanted.none { it.route || it.tile in routeTiles })
     }
 
     @Test fun `tile corners and paths`() {

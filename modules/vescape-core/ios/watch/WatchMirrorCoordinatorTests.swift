@@ -31,6 +31,7 @@ final class WatchMirrorCoordinatorTests: XCTestCase {
     var changed: () -> Void = {}
     var phase: WatchRoutePhase = .ready
     func routeStatus() -> WatchRouteStatus { WatchRouteStatus(phase: phase, routeId: 1) }
+    func mapRoute() -> WatchMapRouteProgress? { nil }
     func subscribe(
       routeChanged: @escaping () -> Void,
       weatherChanged: @escaping (WatchWeather) -> Void,

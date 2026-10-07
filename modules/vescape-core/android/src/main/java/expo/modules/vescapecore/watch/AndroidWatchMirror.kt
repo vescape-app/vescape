@@ -64,6 +64,10 @@ internal fun androidWatchMirror(
                 }
                 return WatchRouteStatus(phase, WatchRouteMirror.desiredRouteId)
             }
+            override fun mapRoute(): WatchMapRouteProgress? {
+                val route = WatchRouteMirror.mapRoute ?: return null
+                return navigation.currentProgress?.let { WatchMapRouteProgress(route, it.remainingMeters) }
+            }
             override fun subscribe(routeChanged: () -> Unit, weatherChanged: (WatchWeather) -> Unit): () -> Unit {
                 navigation.onWatchChange = routeChanged
                 val unsubscribe = weather.addChangeListener { it?.let { value -> weatherChanged(value.toWatchWeather()) } }

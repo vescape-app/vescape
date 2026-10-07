@@ -6,9 +6,21 @@ final class WatchMapTilePlanTests: XCTestCase {
   private let wroclaw = WatchMapPosition(latitude: 51.13185, longitude: 16.98653)
 
   private func rider(
-    _ position: WatchMapPosition? = nil, courseDeg: Double? = nil, speedMps: Double? = nil, spanM: Double? = nil
+    _ position: WatchMapPosition? = nil, courseDeg: Double? = nil, speedMps: Double? = nil, spanM: Double? = nil,
+    route: WatchMapRouteProgress? = nil
   ) -> WatchMapRider {
-    WatchMapRider(position: position ?? wroclaw, courseDeg: courseDeg, speedMps: speedMps, spanM: spanM)
+    WatchMapRider(position: position ?? wroclaw, courseDeg: courseDeg, speedMps: speedMps, spanM: spanM, route: route)
+  }
+
+  /// A straight path east from Wroclaw, about 21 km, and the rider `doneM` along it.
+  private func eastRoute(_ doneM: Double) -> (rider: WatchMapRider, route: WatchMapRoute) {
+    let route = WatchMapRoute(points: (0...30).map {
+      WatchMapPosition(latitude: wroclaw.latitude, longitude: wroclaw.longitude + Double($0) * 0.01)
+    })
+    let at = route.point(before: route.lengthM - doneM)!.position
+    return (
+      rider(at, courseDeg: 90, route: WatchMapRouteProgress(route: route, remainingM: route.lengthM - doneM)), route
+    )
   }
 
   private func zoom(_ spanM: Double?, _ latitude: Double? = nil, current: Int? = nil) -> Int {
@@ -171,6 +183,64 @@ final class WatchMapTilePlanTests: XCTestCase {
     let before = Set(moved.wanted.map(\.tile))
     XCTAssertTrue(moved.update(rider(WatchMapPosition(latitude: wroclaw.latitude, longitude: wroclaw.longitude + 0.02))))
     XCTAssertTrue(before.isSubset(of: Set(moved.wanted.map(\.tile))))
+  }
+
+  func testRouteTilesRunAheadOfTheRidersProgressNearestAlongThePathFirst() {
+    let onRoute = eastRoute(5_000).rider
+    let tiles = WatchMapTilePlan.routeTiles(onRoute, zoom: 15)
+    let here = WatchMapTilePlan.ring(rider(onRoute.position), zoom: 15).first!
+    XCTAssertEqual(tiles.first, here)
+    // Ahead only: nothing west of the corridor around the progress point.
+    XCTAssertTrue(tiles.allSatisfy { $0.x >= here.x - 1 })
+    // Walked in order: columns never step back by more than the corridor.
+    for (a, b) in zip(tiles, tiles.dropFirst()) { XCTAssertGreaterThanOrEqual(b.x, a.x - 1) }
+    // The corridor covers the path itself to its end.
+    let end = WatchMapTilePlan.ring(
+      rider(WatchMapPosition(latitude: wroclaw.latitude, longitude: wroclaw.longitude + 0.3)), zoom: 15
+    ).first!
+    XCTAssertTrue(tiles.contains(end))
+    XCTAssertTrue((here.x...end.x).allSatisfy { tiles.contains(WatchMapTile(z: 15, x: $0, y: here.y)) })
+    XCTAssertEqual(tiles.count, Set(tiles).count)
+    XCTAssertEqual(WatchMapTilePlan.routeTiles(onRoute, zoom: 15, limit: 10).count, 10)
+    XCTAssertTrue(WatchMapTilePlan.routeTiles(rider(), zoom: 15).isEmpty)
+  }
+
+  func testRouteTilesFollowTheRingAndShareItsCap() {
+    let onRoute = eastRoute(5_000).rider
+    let planner = WatchMapTilePlanner(cap: 40)
+    _ = planner.update(onRoute)
+    let ring = WatchMapTilePlan.needed(onRoute, zoom: 15)
+    let wanted = planner.wanted
+    XCTAssertEqual(wanted.count, 40)
+    // The ring goes first, untouched by the route; route tiles fill the rest, not the ring.
+    XCTAssertEqual(wanted.prefix(ring.count).map(\.tile), ring)
+    XCTAssertTrue(wanted.prefix(ring.count).allSatisfy { !$0.route })
+    XCTAssertTrue(wanted.dropFirst(ring.count).allSatisfy { $0.route && !ring.contains($0.tile) })
+    XCTAssertEqual(
+      wanted.dropFirst(ring.count).map(\.tile),
+      Array(WatchMapTilePlan.routeTiles(onRoute, zoom: 15).filter { !ring.contains($0) }.prefix(40 - ring.count)))
+  }
+
+  func testRouteTilesReplanWithProgressAndLeaveWithTheRoute() {
+    let (start, route) = eastRoute(5_000)
+    let planner = WatchMapTilePlanner()
+    XCTAssertTrue(planner.update(start))
+    func moved(_ route: WatchMapRoute, doneM: Double, _ rider: WatchMapRider) -> WatchMapRider {
+      WatchMapRider(
+        position: rider.position, courseDeg: rider.courseDeg, speedMps: rider.speedMps, spanM: rider.spanM,
+        route: WatchMapRouteProgress(route: route, remainingM: route.lengthM - doneM))
+    }
+    // Same rider tile, same progress tile: nothing to do.
+    XCTAssertFalse(planner.update(moved(route, doneM: 5_010, start)))
+    // A new route object with the same path is a reroute.
+    XCTAssertTrue(planner.update(moved(WatchMapRoute(points: route.points), doneM: 5_000, start)))
+    let routeTiles = planner.wanted.filter(\.route).map(\.tile)
+    XCTAssertFalse(routeTiles.isEmpty)
+    // Clearing Navigation takes every route-only tile off the list at once.
+    var cleared = start
+    cleared.route = nil
+    XCTAssertTrue(planner.update(cleared))
+    XCTAssertTrue(planner.wanted.allSatisfy { !$0.route && !routeTiles.contains($0.tile) })
   }
 
   func testTileCornersAndKeys() {

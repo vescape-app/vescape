@@ -23,6 +23,8 @@ protocol WatchMirrorTransport: AnyObject {
 
 protocol WatchMirrorSources: AnyObject {
   func routeStatus() -> WatchRouteStatus
+  /// The rider on the published Navigation route, for street-map tiles ahead; nil without one.
+  func mapRoute() -> WatchMapRouteProgress?
   func subscribe(
     routeChanged: @escaping () -> Void,
     weatherChanged: @escaping (WatchWeather) -> Void,
@@ -181,7 +183,8 @@ final class WatchMirrorCoordinator {
   private func updateMapTiles(_ snapshot: WatchSnapshot) {
     guard streetMapEnabled, let position = snapshot.mapPosition, effectiveWakeLevel == .active else { return mapTiles(nil) }
     mapTiles(WatchMapRider(
-      position: position, courseDeg: snapshot.courseDeg, speedMps: snapshot.riderSpeedMps, spanM: snapshot.routeSpanM))
+      position: position, courseDeg: snapshot.courseDeg, speedMps: snapshot.riderSpeedMps, spanM: snapshot.routeSpanM,
+      route: sources.mapRoute()))
   }
 
   func acceptWakeLevel(_ level: WatchMirrorWakeLevel) {

@@ -25,6 +25,16 @@ internal object WatchRouteMirror {
     val desiredRouteId: Long get() = pusher?.desiredRouteId ?: 0
     val failed: Boolean get() = pusher?.failed ?: false
 
+    /**
+     * The route the phone last published, as the street-map plan walks it; null without one. Not
+     * waiting for the wrist to hold it: tiles ahead are useful before the polyline lands.
+     *
+     * @parity /modules/vescape-core/ios/watch/WatchRouteMirror.swift `mapRoute`
+     */
+    @Volatile
+    var mapRoute: WatchMapRoute? = null
+        private set
+
     /** Settled phone-map horizontal viewport span, carried on the next live Watch Frame. */
     @Volatile
     var viewportSpanM: Double? = null
@@ -45,6 +55,7 @@ internal object WatchRouteMirror {
             },
         ).also { pusher = it }
         controller.onPathChange = { points ->
+            mapRoute = points?.takeIf { it.size >= 2 }?.let { path -> WatchMapRoute(path.map { (latitude, longitude) -> WatchMapPosition(latitude, longitude) }) }
             if (points == null) {
                 active.clearRoute()
             } else {

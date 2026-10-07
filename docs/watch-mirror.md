@@ -371,8 +371,17 @@ tiles, which cover the face on their own scaled up) goes first. Tiles from earli
 zooms stay on the list, then the level the last zoom change left, all within one cap of 200 tiles;
 past that the least recently needed go first, behind the rider before ahead. The left level goes
 with the next zoom change.
-`WatchMapTilePlanner` re-plans only on a new rider tile, a new zoom, or a turn over 45°. Extra tile
-sources join through `retainWatchMapTiles(needed = …)` in priority order.
+With a Navigation route, the tiles along it ahead of the rider follow the rings: from their Route
+Progress point to the end, at the zoom, every tile within half a span of the path (the face around
+the rider anywhere on it), nearest along the path first (`watchMapRouteTiles` /
+`WatchMapTilePlan.routeTiles`). They go before the earlier steps' tiles and the left level and share
+the same cap, so the whole route ahead goes out at navigation start, while the phone usually still
+has signal, and survives a dead zone. A route tile leaves as soon as the route stops listing it:
+passed without entering the ring, rerouted or cleared (`WatchMapRouteProgress` from
+`WatchRouteMirror.mapRoute` and Route Progress).
+`WatchMapTilePlanner` re-plans only on a new rider tile, a new zoom, a turn over 45°, a new route, or
+progress entering a new tile. Extra tile sources join through `retainWatchMapTiles(needed = …)` in
+priority order.
 
 Zooming in, the old level becomes the one-out level; zooming out, the new level was the one-out
 level and the old one stays as the left level. Either way the wrist already holds tiles that cover
