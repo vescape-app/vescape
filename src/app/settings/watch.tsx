@@ -155,7 +155,7 @@ export default function WatchSettingsScreen() {
           />
           <SettingsRow
             icon={SignpostIcon}
-            iconColor={theme.palette.green.color}
+            iconColor={theme.palette.blue.color}
             label="Route line on telemetry screen"
             hint="Show the navigation route behind the watch gauges. Always visible on the map screen"
             right={
@@ -202,7 +202,7 @@ export default function WatchSettingsScreen() {
           ) : null}
           <SettingsRow
             icon={NavigationArrowIcon}
-            iconColor={theme.palette.green.color}
+            iconColor={theme.palette.blue.color}
             label="Navigation arrow"
             hint="Draw the direction chevron over the route. Distance shows either way"
             right={
