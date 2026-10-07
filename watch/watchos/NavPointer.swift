@@ -76,39 +76,6 @@ struct NavPointer: View {
   }
 }
 
-/// What the nav page shows when the phone is not navigating: a centred, dim two-liner that fades in
-/// as the readouts leave, so nav focus with nothing to show is never a blank screen.
-///
-/// @parity /watch/wearos/src/main/java/app/vescape/wear/WatchMapScene.kt `NavAbsentHint`
-struct NavAbsentHint: View {
-  var focus: Double = 0
-  var stackAlpha: Double = 1
-
-  var body: some View {
-    VStack(spacing: 4) {
-      PhosphorGlyph(.mapPin, size: HINT_ICON_SIZE, color: Palette.dimText)
-      Text("No navigation")
-        .font(WatchTypography.ui(size: 14))
-        .foregroundStyle(Palette.secondaryText)
-      Text("Set a destination on your phone")
-        .font(WatchTypography.ui(size: HINT_FONT_SIZE))
-        .foregroundStyle(Palette.dimText)
-        .multilineTextAlignment(.center)
-    }
-    .padding(.horizontal, 24)
-    // Only once the drag is nearly done, so it never flickers under the departing readouts.
-    .opacity(fadeIn(focus) * stackAlpha)
-  }
-}
-
-/// The mirror of ``fadeOut``: a page's own content arrives only after the readouts have gone.
-///
-/// @parity /watch/wearos/src/main/java/app/vescape/wear/WatchMapScene.kt `fadeIn`
-func fadeIn(_ focus: Double) -> Double { min(max((focus - FADE_IN_START) / (1 - FADE_IN_START), 0), 1) }
-
-/// @parity /watch/wearos/src/main/java/app/vescape/wear/WatchMapScene.kt `HINT_FADE_ONSET`
-private let FADE_IN_START = 0.6
-
 extension GraphicsContext {
   /// Wide hollow chevron over a translucent fill. Points up before rotation, centred on `at`.
   ///
@@ -182,8 +149,6 @@ private let CHEVRON_HEIGHT: CGFloat = 22
 private let PIN_BOX: CGFloat = 11
 private let PIN_GAP: CGFloat = 3
 private let DISTANCE_FONT_SIZE: CGFloat = 12
-private let HINT_ICON_SIZE: CGFloat = 22
-private let HINT_FONT_SIZE: CGFloat = 11
 
 /// A locked Remote Tilt, on the navigation distance's line. A lock outlives the Tilt page on purpose,
 /// so the gauges are where a rider needs reminding that the board is still being tilted. Nothing at

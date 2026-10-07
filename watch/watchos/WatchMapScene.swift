@@ -16,6 +16,7 @@ struct WatchMapScene<Gauges: View, Readouts: View>: View {
   let trailColor: Color
   let navArrowEnabled: Bool
   let telemetryTrailEnabled: Bool
+  let telemetryGroupEnabled: Bool
   let streetMapEnabled: Bool
   let mapGaugesPercent: Int
   let unitSystem: String
@@ -27,7 +28,7 @@ struct WatchMapScene<Gauges: View, Readouts: View>: View {
 
   private var scene: WatchMapSceneState {
     WatchMapSceneState(frame: frame, routeId: route?.routeId, routeStatus: routeStatus, group: groupRide,
-      ambient: ambient.active, telemetryTrailEnabled: telemetryTrailEnabled,
+      ambient: ambient.active, telemetryTrailEnabled: telemetryTrailEnabled, telemetryGroupEnabled: telemetryGroupEnabled,
       streetMapEnabled: streetMapEnabled, mapGaugesPercent: mapGaugesPercent)
   }
   private var navStackAlpha: Double { fadeOut(awayFocus) }
@@ -70,13 +71,13 @@ struct WatchMapScene<Gauges: View, Readouts: View>: View {
           focus: navFocus,
           unitSystem: unitSystem
         )
-        .opacity(navStackAlpha)
+        .opacity(navStackAlpha * scene.groupAlpha(navFocus: navFocus))
       }
 
       if scene.drawMap {
         RiderPosition(color: muted ? Palette.dimText : navColor,
           loading: scene.notice != nil && scene.notice != .failed && navStackAlpha > 0)
-          .opacity(navStackAlpha)
+          .opacity(navStackAlpha * scene.riderAlpha(navFocus: navFocus))
       }
 
       gauges()
@@ -99,12 +100,6 @@ struct WatchMapScene<Gauges: View, Readouts: View>: View {
           tiltColor: tiltColor
         )
       } else {
-        // Nav focus with nothing to show would be a blank rectangle. Say why, but only once the
-        // drag is nearly done, so it never flickers under the departing readouts.
-        // A joined Group Ride is something to show on the map page: no "no navigation" over it.
-        if scene.showAbsentHint {
-          NavAbsentHint(focus: navFocus, stackAlpha: navStackAlpha)
-        }
         // No navigation: the tilt badge keeps the distance's slot to itself.
         VStack(spacing: 0) {
           Spacer(minLength: 0)
@@ -120,7 +115,7 @@ struct WatchMapScene<Gauges: View, Readouts: View>: View {
         GroupRideEdgeLayer(
           group: groupRide, mapView: mapView, mapMoving: mapMoving, focus: navFocus, unitSystem: unitSystem
         )
-          .opacity(navStackAlpha)
+          .opacity(navStackAlpha * scene.groupAlpha(navFocus: navFocus))
       }
     }
     .onAppear { retargetMap(animate: false) }

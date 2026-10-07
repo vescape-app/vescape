@@ -30,6 +30,9 @@ const val SETTING_NAV_ARROW = "navArrowEnabled"
 /** Show the trail behind telemetry gauges. The map page always retains its trail. */
 const val SETTING_TELEMETRY_TRAIL = "telemetryTrailEnabled"
 
+/** Whether the telemetry screen draws Group Ride marks. Off: they fade in on the map page only. */
+const val SETTING_TELEMETRY_GROUP = "telemetryGroupEnabled"
+
 /** Whether to draw the street map. Off hides it; tiles already on the wrist stay for when it is back on. */
 const val SETTING_STREET_MAP = "streetMapEnabled"
 
@@ -55,6 +58,7 @@ data class WatchSettings(
     val boardMoveStrengthPercent: Int? = null,
     val tiltRatePercent: Int = DEFAULT_TILT_RATE_PERCENT,
     val telemetryTrailEnabled: Boolean = true,
+    val telemetryGroupEnabled: Boolean = true,
     val streetMapEnabled: Boolean = true,
     val mapGaugesPercent: Int = WatchMapGauges.DEFAULT_PERCENT,
 ) {
@@ -64,6 +68,7 @@ data class WatchSettings(
             riderColor = parseRiderColor(payload[SETTING_RIDER_COLOR] as? String),
             navArrowEnabled = payload[SETTING_NAV_ARROW] as? Boolean ?: false,
             telemetryTrailEnabled = payload[SETTING_TELEMETRY_TRAIL] as? Boolean ?: true,
+            telemetryGroupEnabled = payload[SETTING_TELEMETRY_GROUP] as? Boolean ?: true,
             streetMapEnabled = payload[SETTING_STREET_MAP] as? Boolean ?: true,
             mapGaugesPercent = WatchMapGauges.percent(payload[SETTING_MAP_GAUGES]) ?: WatchMapGauges.DEFAULT_PERCENT,
             boardMoveStrengthPercent = payload[SETTING_BOARD_MOVE_STRENGTH] as? Int,

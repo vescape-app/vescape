@@ -700,15 +700,14 @@ and the wrist draws the route at the scale the rider set on the phone.
   same heading and zoom. Layers sample that state on `TimelineView`s. Those timelines run only while the map eases (or a
   stale Rider pulses). The course is kept unwrapped so a heading crossing north turns the short way,
   the same `shortestAngleDelta` rule Android uses, and the zoom uses Android's fast-out-slow-in curve.
-- **The empty-nav hint draws the ported Phosphor map-pin**, the same artwork Wear OS bundles. The
-  chevron and the pin beside the distance are drawn by hand on both wrists, so those match stroke
-  for stroke too.
+- **The chevron and the pin beside the distance are drawn by hand** on both wrists, so they match
+  stroke for stroke.
 
 Everything behavioural stays Android's: the same default and clamped route spans, the same rider drop
 below centre, the same line widths and opacities at rest and in focus, the same rule that the arrow
 setting hides the chevron and nothing else, the same nav-focus behaviour where the readouts leave and
-the nav stack grows, and the same "No navigation / Set a destination on your phone" when the phone is
-not navigating. Ambient skips the route layer for Android's reason: a moving map is the most
+the nav stack grows, and the same map page without Navigation: rider ring, trail and street map, no
+placeholder text. Ambient skips the route layer for Android's reason: a moving map is the most
 expensive thing an always-on panel could be asked to draw.
 
 ### Verified, 2026-09-15

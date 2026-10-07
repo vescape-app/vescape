@@ -16,13 +16,13 @@ import kotlin.math.sinh
  */
 /**
  * The rider's **Map behind gauges** setting: street map opacity behind the telemetry gauges, as an
- * integer percent from fixed steps. Phone persistence and the wrist decode both snap through
+ * integer percent from fixed steps; 0 is Off, the street map only on the map page. Phone persistence and the wrist decode both snap through
  * [percent], so a value from a newer or broken phone falls back to the default.
  *
  * @parity /modules/vescape-core/ios/watch/WatchMapTile.swift `WatchMapGauges`
  */
 object WatchMapGauges {
-    val STEPS = listOf(30, 45, 60, 75, 90)
+    val STEPS = listOf(0, 30, 45, 60, 75, 90)
     const val DEFAULT_PERCENT = 60
 
     /** One of [STEPS], else null. */

@@ -18,9 +18,9 @@ class WatchMapSceneStateTest {
     private val group = WatchGroupRide(180.0, 1200.0, emptyList())
     private val ready = WatchRouteStatus(WatchRoutePhase.READY, 7)
     private fun scene(frame: WatchFrame = this.frame, status: WatchRouteStatus? = ready,
-        group: WatchGroupRide? = this.group, ambient: Boolean = false, trail: Boolean = true, streetMap: Boolean = true,
-        mapGauges: Int = 60) =
-        WatchMapSceneState(frame, 7, status, group, ambient, trail, streetMap, mapGauges)
+        group: WatchGroupRide? = this.group, ambient: Boolean = false, trail: Boolean = true, groupOnTelemetry: Boolean = true,
+        streetMap: Boolean = true, mapGauges: Int = 60) =
+        WatchMapSceneState(frame, 7, status, group, ambient, trail, groupOnTelemetry, streetMap, mapGauges)
 
     @Test fun `navigation ending falls through group and standalone without losing rider history`() {
         val navigation = scene()
@@ -33,12 +33,10 @@ class WatchMapSceneStateTest {
         assertEquals(180f, groupMap.target.courseDeg)
         assertNull(groupMap.navigation)
         assertEquals(position, groupMap.target.position)
-        assertFalse(groupMap.showAbsentHint)
         val standalone = scene(ended, WatchRouteStatus(WatchRoutePhase.IDLE), group = null)
         assertEquals(800f, standalone.target.spanM, 0f)
         assertEquals(position, standalone.target.position)
         assertTrue(standalone.drawMap)
-        assertFalse(standalone.showAbsentHint)
     }
 
     @Test fun `route replacement and missing fix show notice while group retains camera`() {
@@ -46,7 +44,6 @@ class WatchMapSceneStateTest {
         assertEquals(WatchRouteNotice.RECEIVING, receiving.notice)
         assertNull(receiving.navigation)
         assertEquals(1200f, receiving.target.spanM, 0f)
-        assertFalse(receiving.showAbsentHint)
         val waiting = scene(frame.copy(navBearing = null, navDistanceM = null, riderEastM = null, riderNorthM = null))
         assertEquals(WatchRouteNotice.LOCATION, waiting.notice)
         assertNull(waiting.navigation)
@@ -71,8 +68,6 @@ class WatchMapSceneStateTest {
             assertEquals(0f, ambient.trailAlpha(1f), 0f)
             assertNotNull(ambient.navigation) // Ambient retains the destination pointer, without map motion.
         }
-        val empty = frame.copy(navBearing = null, navDistanceM = null, trail = emptyList())
-        assertTrue(scene(empty, WatchRouteStatus(WatchRoutePhase.IDLE), group = null).showAbsentHint)
     }
 
     @Test fun `street map dims behind the gauges and leaves in ambient`() {
@@ -89,6 +84,41 @@ class WatchMapSceneStateTest {
         assertEquals(0.65f, scene(mapGauges = 30).mapAlpha(0.5f), 1e-6f)
         assertEquals(1f, scene(mapGauges = 30).mapAlpha(1f), 0f)
         assertEquals(0f, scene(mapGauges = 90, ambient = true).mapAlpha(0f), 0f)
+    }
+
+    /** Issue #536: Group Ride marks leave the telemetry screen only; the map page fades them in. */
+    @Test fun `group setting affects telemetry only and ambient hides it`() {
+        val off = scene(groupOnTelemetry = false)
+        assertEquals(0f, off.groupAlpha(0f), 0f)
+        assertEquals(0.4f, off.groupAlpha(0.4f), 0f)
+        assertEquals(1f, off.groupAlpha(1f), 0f)
+        assertEquals(1f, off.trailAlpha(0f), 0f)
+        assertEquals(1f, scene().groupAlpha(0f), 0f)
+        assertEquals(0f, scene(ambient = true).groupAlpha(1f), 0f)
+    }
+
+    /** Issue #557 + #536: the Off step hides the street map behind the gauges only. */
+    @Test fun `map behind gauges off fades the street map in on the map page`() {
+        val off = scene(mapGauges = 0)
+        assertTrue(off.drawStreetMap)
+        assertEquals(0f, off.mapAlpha(0f), 0f)
+        assertEquals(0.5f, off.mapAlpha(0.5f), 1e-6f)
+        assertEquals(1f, off.mapAlpha(1f), 0f)
+    }
+
+    /** Issue #536: the rider circle leaves the telemetry screen only once every layer there is off. */
+    @Test fun `rider circle leaves the gauges only when every telemetry layer is off`() {
+        assertEquals(1f, scene().riderAlpha(0f), 0f)
+        assertEquals(1f, scene(trail = false, groupOnTelemetry = false).riderAlpha(0f), 0f)
+        assertEquals(1f, scene(trail = false, mapGauges = 0).riderAlpha(0f), 0f)
+        assertEquals(1f, scene(groupOnTelemetry = false, mapGauges = 0).riderAlpha(0f), 0f)
+        for (clean in listOf(scene(trail = false, groupOnTelemetry = false, mapGauges = 0),
+            scene(trail = false, groupOnTelemetry = false, streetMap = false))) {
+            assertEquals(0f, clean.riderAlpha(0f), 0f)
+            assertEquals(0.4f, clean.riderAlpha(0.4f), 0f)
+            assertEquals(1f, clean.riderAlpha(1f), 0f)
+        }
+        assertEquals(0f, scene(ambient = true).riderAlpha(1f), 0f)
     }
 
     @Test fun `street map setting off hides only the street map`() {

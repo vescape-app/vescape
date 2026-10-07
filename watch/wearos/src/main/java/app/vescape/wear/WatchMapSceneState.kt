@@ -16,6 +16,7 @@ internal class WatchMapSceneState(
     group: WatchGroupRide?,
     ambient: Boolean,
     private val telemetryTrailEnabled: Boolean,
+    private val telemetryGroupEnabled: Boolean,
     streetMapEnabled: Boolean,
     /** The rider's Map behind gauges percent, already snapped by [WatchMapGauges.percent]. */
     mapGaugesPercent: Int,
@@ -27,20 +28,32 @@ internal class WatchMapSceneState(
     val drawMap = !ambient
     /** The rider can turn the street map off; the route, trail and marks stay. */
     val drawStreetMap = drawMap && streetMapEnabled
-    val showAbsentHint = !hasNavigation && notice == null && group == null && frame.trail.isEmpty()
     val target = WatchMapTarget(
         spanM = WatchMapSpan.clamp(if (!hasNavigation && group != null) group.spanM else frame.routeSpanM),
         courseDeg = (if (!hasNavigation && group != null) group.courseDeg else frame.courseDeg)?.toFloat(),
         position = frame.mapPosition,
     )
 
-    fun trailAlpha(navFocus: Float): Float = when {
-        !drawMap -> 0f
-        telemetryTrailEnabled -> 1f
-        else -> navFocus.coerceIn(0f, 1f)
-    }
+    fun trailAlpha(navFocus: Float): Float = layerAlpha(telemetryTrailEnabled, navFocus)
+
+    /** Group Ride dots and edge triangles: full on the telemetry screen, else they fade in with nav focus. */
+    fun groupAlpha(navFocus: Float): Float = layerAlpha(telemetryGroupEnabled, navFocus)
 
     private val mapGaugesAlpha = mapGaugesPercent / 100f
+
+    /**
+     * The rider circle stays on the telemetry screen while any map layer there has something around
+     * it. With trail, Group Ride and map behind gauges all off, the gauges are clean and the circle
+     * fades in with nav focus. The map page always shows it.
+     */
+    fun riderAlpha(navFocus: Float): Float =
+        layerAlpha(telemetryTrailEnabled || telemetryGroupEnabled || (drawStreetMap && mapGaugesAlpha > 0f), navFocus)
+
+    private fun layerAlpha(onTelemetry: Boolean, navFocus: Float): Float = when {
+        !drawMap -> 0f
+        onTelemetry -> 1f
+        else -> navFocus.coerceIn(0f, 1f)
+    }
 
     /** Street map: the rider's Map behind gauges opacity behind the gauges, full on the map page, absent in ambient or when off. */
     fun mapAlpha(navFocus: Float): Float =

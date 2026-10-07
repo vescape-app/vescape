@@ -526,6 +526,7 @@ data class AppSettings(
   val wearAutoLaunchOnConnect: Boolean = true,
   val wearNavArrowEnabled: Boolean = false,
   val wearTelemetryTrailEnabled: Boolean = true,
+  val wearTelemetryGroupEnabled: Boolean = true,
   val wearStreetMapEnabled: Boolean = true,
   val wearMapGaugesPercent: Int = 60,
   val wearTiltRatePercent: Int = 20,

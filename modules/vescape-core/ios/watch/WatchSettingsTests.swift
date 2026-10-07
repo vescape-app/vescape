@@ -26,17 +26,27 @@ final class WatchSettingsTests: XCTestCase {
     XCTAssertEqual(WatchSettings.decode(context: [watchSettingsChannel: disabled.payload]), disabled)
   }
 
+  func testTelemetryGroupIsEnabledForOlderPhonesAndFalseSurvivesSettingsReload() {
+    XCTAssertEqual(AppDataRepository.defaultSettings["wearTelemetryGroupEnabled"] as? Bool, true)
+    XCTAssertTrue(watchSourceSettingKeys.contains("wearTelemetryGroupEnabled"))
+    XCTAssertTrue(WatchSettings.decode([:]).telemetryGroupEnabled)
+    XCTAssertTrue(WatchSettings.decode([WatchSettingsKey.telemetryGroupEnabled: "false"]).telemetryGroupEnabled)
+    let disabled = WatchSettings(telemetryGroupEnabled: false)
+    XCTAssertEqual(WatchSettings.decode(context: [watchSettingsChannel: disabled.payload]), disabled)
+  }
+
   /// Issue #557: an older phone, or a value off the steps, reads as the 60 % default on the wrist
   /// and in phone persistence; a chosen step survives a settings reload.
   func testMapBehindGaugesKeepsItsStepAndFallsBackToTheDefault() {
     XCTAssertEqual(AppDataRepository.defaultSettings["wearMapGaugesPercent"] as? Int, 60)
     XCTAssertTrue(watchSourceSettingKeys.contains("wearMapGaugesPercent"))
     XCTAssertEqual(WatchSettings.decode([:]).mapGaugesPercent, 60)
-    for invalid: Any in [50, 0, 100, -30, 75.5, "90", true, NSNull()] {
+    for invalid: Any in [50, 15, 100, -30, 75.5, "90", true, NSNull()] {
       XCTAssertEqual(WatchSettings.decode([WatchSettingsKey.mapGaugesPercent: invalid]).mapGaugesPercent, 60)
       XCTAssertNil(WatchMapGauges.percent(invalid))
     }
     XCTAssertEqual(WatchMapGauges.percent(45.0), 45)
+    XCTAssertEqual(WatchMapGauges.percent(0), 0)
     let chosen = WatchSettings(mapGaugesPercent: 30)
     XCTAssertEqual(WatchSettings.decode(context: [watchSettingsChannel: chosen.payload]), chosen)
   }

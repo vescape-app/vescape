@@ -59,6 +59,7 @@ const DEFAULTS: AppSettings = {
   wearAutoLaunchOnConnect: true,
   wearNavArrowEnabled: false,
   wearTelemetryTrailEnabled: true,
+  wearTelemetryGroupEnabled: true,
   wearStreetMapEnabled: true,
   wearMapGaugesPercent: 60,
   wearTiltRatePercent: 20,

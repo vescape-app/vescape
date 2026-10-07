@@ -227,12 +227,12 @@ enum WatchMapTileTransfer {
 }
 
 /// The rider's **Map behind gauges** setting: street map opacity behind the telemetry gauges, as an
-/// integer percent from fixed steps. Phone persistence and the wrist decode both snap through
+/// integer percent from fixed steps; 0 is Off, the street map only on the map page. Phone persistence and the wrist decode both snap through
 /// ``percent(_:)``, so a value from a newer or broken phone falls back to the default.
 ///
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/watch/WatchMapTile.kt `WatchMapGauges`
 enum WatchMapGauges {
-  static let steps = [30, 45, 60, 75, 90]
+  static let steps = [0, 30, 45, 60, 75, 90]
   static let defaultPercent = 60
 
   /// One of ``steps``, else nil.

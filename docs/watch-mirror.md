@@ -305,10 +305,16 @@ on the wrist.
 
 ## Rider position and recent trail
 
-The active gauge and map pages always show the Rider's position ring, including without Navigation
-or a Group Ride. Settings → Watch → **Trail on telemetry screen** is enabled by default. Turning it
-off hides the trail behind the telemetry gauges; the map page still shows it, and the position ring
-stays visible. The preference persists on the phone and syncs to both watch platforms.
+The map page always shows the Rider's position ring, including without Navigation or a Group Ride.
+Settings → Watch → **Trail on telemetry screen** is enabled by default. Turning it off hides the
+trail behind the telemetry gauges; the map page still shows it. The preference persists on the phone
+and syncs to both watch platforms.
+
+The telemetry screen keeps the ring while any of its map layers is on: trail, Group Ride (**Group
+Ride on telemetry screen**) or the street map (**Map behind gauges** above Off, with **Street map**
+on). With all three off the gauges are clean and the ring fades in with nav focus like the trail
+(`riderAlpha` in `WatchMapSceneState`, both wrists). The map page never shows a placeholder: with
+nothing else to draw it still has the ring, and usually the trail and street map.
 
 The recent ridden trail uses the same native precise GPS history as the phone's
 live map. Its 3-point stroke fades from transparent at the oldest end to 60% opacity at the
@@ -424,7 +430,9 @@ the wrist skips `MapTileLayer` (`drawStreetMap`). Route, trail and Group Ride ma
 back on resends only tiles the wrist does not already hold.
 
 Settings → Watch → **Map behind gauges**, shown only while Street map is on: the street map's
-opacity behind the gauges, 30 / 45 / 60 / 75 / 90 %, default 60 %. It is stored and sent as an
+opacity behind the gauges, Off / 30 / 45 / 60 / 75 / 90 %, default 60 %. Off (0 %) hides the street
+map on the telemetry screen only; it fades in with nav focus to 100 % on the map page, and tiles keep
+flowing. It is stored and sent as an
 integer percent (`wearMapGaugesPercent`, `mapGaugesPercent` on the settings channel);
 `WatchMapGauges.percent` (`WatchMapTile.kt` / `.swift`) snaps anything off those steps to the
 default in phone persistence and on both wrists. The map page stays at 100 %, and the setting does
@@ -478,7 +486,10 @@ followed by a thermometer when they run hot, else their battery % when it is low
 placed nearest Rider first and never overlap the nav distance readout, each other or another Rider's
 mark: a crowded label flips to the dot's other side or moves up to one label height (along the edge
 for a triangle), and one with no clear spot is dropped — the list page has it. The gauges carry no
-Group Ride text. The phone pushes it only while the Rider is joined and the wrist reports `ACTIVE` — never in
+Group Ride text. Settings → Watch → **Group Ride on telemetry screen**, on by default, travels to
+both wrists as `telemetryGroupEnabled`. Off, the telemetry screen draws no dots or edge triangles;
+they fade in with nav focus on the map page (`groupAlpha`, like the trail's `trailAlpha`), and the
+Group Ride page is unchanged. The phone keeps pushing the Group Ride Frame either way. The phone pushes it only while the Rider is joined and the wrist reports `ACTIVE` — never in
 ambient, and never to a wrist too old to report its wake level. The wrist drops the group after
 3.5 s without a frame. The codec is one file, `watch/GroupRideFrame.kt`, compiled by the phone and
 copied into the Wear module by `withWearMirror` along with the `TelemetryLevel` wire enum it carries (`telemetry/TelemetryLevel.kt`; watchOS symlinks
@@ -517,6 +528,13 @@ Adding a mirrored setting:
    write to any key in that set reloads native settings and republishes to the wrist, even when no
    service or Board Session exists; `WatchSettingsTest` fails when a mirrored field has no key there.
    Native process startup also republishes saved settings.
+5. Persist the app key on the phone: `AppSettings` (`TelemetryEntities.kt`) and `AppDataRepository`
+   on both platforms (read, write validation, default). On iOS also read it in the settings reload in
+   `IOSWatchMirror.swift`, and decode it in Swift `WatchSettings`.
+6. JS: the `AppSettings` field in `modules/vescape-core/src/index.ts` with `@parity`, the settings
+   store defaults and their test fixture, the e2e fake, and the row in `src/app/settings/watch.tsx`.
+7. Wrist drawing: watchOS passes it `MirrorScreen` → `FrameLayout` → `WatchMapScene`; Wear OS reads
+   `SettingsState`. A rule about what the map draws belongs in `WatchMapSceneState`, tested on both.
 
 Rider Units travels on this channel as `unitSystem`, defaulting to metric for missing or invalid
 values. Both wrists convert speed, navigation, radar, and accessibility readouts while frame values,

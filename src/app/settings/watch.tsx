@@ -7,6 +7,7 @@ import {
   NavigationArrowIcon,
   PathIcon,
   StackIcon,
+  UsersIcon,
   WatchIcon,
 } from 'phosphor-react-native'
 import { useShallow } from 'zustand/react/shallow'
@@ -31,13 +32,20 @@ import { useSettingsStore } from '@/modules/settings/store/settingsStore'
 const AUTO_LAUNCH_SUPPORTED = Platform.OS === 'android'
 
 /**
- * Map behind gauges steps, integer percent. Native snaps anything else to the 60 % default.
+ * Map behind gauges steps, integer percent: Off (0), then 30 to 90 in 15s. Native snaps anything
+ * else to the 60 % default.
  * @parity /modules/vescape-core/ios/watch/WatchMapTile.swift `WatchMapGauges`
  * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/watch/WatchMapTile.kt `WatchMapGauges`
  */
+const MAP_GAUGES_OFF = 0
 const MAP_GAUGES_MIN = 30
 const MAP_GAUGES_MAX = 90
 const MAP_GAUGES_STEP = 15
+
+function mapGaugesStep(value: number, direction: 1 | -1): number {
+  const edge = direction > 0 ? MAP_GAUGES_OFF : MAP_GAUGES_MIN
+  return value === edge ? MAP_GAUGES_MIN : MAP_GAUGES_STEP
+}
 
 /** Stick speed doubles per step: fine enough at the low end, fast enough at the top. */
 const TILT_RATE_MIN = 5
@@ -49,6 +57,7 @@ export default function WatchSettingsScreen() {
     wearPushRateHz,
     wearNavArrowEnabled,
     wearTelemetryTrailEnabled,
+    wearTelemetryGroupEnabled,
     wearStreetMapEnabled,
     wearMapGaugesPercent,
     wearTiltRatePercent,
@@ -59,6 +68,7 @@ export default function WatchSettingsScreen() {
       wearPushRateHz: s.wearPushRateHz,
       wearNavArrowEnabled: s.wearNavArrowEnabled,
       wearTelemetryTrailEnabled: s.wearTelemetryTrailEnabled,
+      wearTelemetryGroupEnabled: s.wearTelemetryGroupEnabled,
       wearStreetMapEnabled: s.wearStreetMapEnabled,
       wearMapGaugesPercent: s.wearMapGaugesPercent,
       wearTiltRatePercent: s.wearTiltRatePercent,
@@ -134,6 +144,18 @@ export default function WatchSettingsScreen() {
             }
           />
           <SettingsRow
+            icon={UsersIcon}
+            iconColor={theme.palette.violet.color}
+            label="Group Ride on telemetry screen"
+            hint="Show your Group Ride behind the watch gauges. Always visible on the map screen"
+            right={
+              <Switch
+                value={wearTelemetryGroupEnabled}
+                onValueChange={(v) => void set('wearTelemetryGroupEnabled', v)}
+              />
+            }
+          />
+          <SettingsRow
             icon={MapTrifoldIcon}
             iconColor={theme.palette.violet.color}
             label="Street map"
@@ -150,14 +172,15 @@ export default function WatchSettingsScreen() {
               icon={StackIcon}
               iconColor={theme.palette.violet.color}
               label="Map behind gauges"
-              hint="How strongly streets show behind the watch gauges. The map screen always shows them fully"
+              hint="How strongly streets show behind the watch gauges. Off hides them there. The map screen always shows them fully"
               right={
                 <Stepper
                   value={wearMapGaugesPercent}
-                  unit="%"
-                  min={MAP_GAUGES_MIN}
+                  formatValue={(value) => (value === MAP_GAUGES_OFF ? 'Off' : String(value))}
+                  unit={wearMapGaugesPercent === MAP_GAUGES_OFF ? undefined : '%'}
+                  min={MAP_GAUGES_OFF}
                   max={MAP_GAUGES_MAX}
-                  step={MAP_GAUGES_STEP}
+                  step={mapGaugesStep}
                   onChange={(nextValue) => void set('wearMapGaugesPercent', nextValue)}
                 />
               }

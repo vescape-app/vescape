@@ -1670,6 +1670,14 @@ export interface AppSettings {
    */
   wearTelemetryTrailEnabled: boolean
   /**
+   * Show Group Ride dots and edge triangles on the watch telemetry screen. Enabled by default; off,
+   * they fade in on the map page only, and the Group Ride page is unchanged. The phone keeps sending
+   * the Group Ride frame either way. Mirrored as cold settings to both watch platforms.
+   * @parity /modules/vescape-core/ios/watch/WatchSettings.swift
+   * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/watch/WatchSettings.kt
+   */
+  wearTelemetryGroupEnabled: boolean
+  /**
    * Draw the street map on the watch. Enabled by default. Off: the phone sends no map tiles and
    * both wrists hide the map; tiles already on the wrist stay. Mirrored as cold settings.
    * @parity /modules/vescape-core/ios/watch/WatchSettings.swift
@@ -1677,8 +1685,8 @@ export interface AppSettings {
    */
   wearStreetMapEnabled: boolean
   /**
-   * Street map opacity behind the watch gauges, integer percent: one of 30, 45, 60, 75, 90 (default
-   * 60). The map page always draws it at 100 %. Native snaps any other value to 60. Mirrored as cold
+   * Street map opacity behind the watch gauges, integer percent: one of 0 (Off), 30, 45, 60, 75, 90
+   * (default 60). The map page always draws it at 100 %. Native snaps any other value to 60. Mirrored as cold
    * settings.
    * @parity /modules/vescape-core/ios/watch/WatchMapTile.swift `WatchMapGauges`
    * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/watch/WatchMapTile.kt `WatchMapGauges`

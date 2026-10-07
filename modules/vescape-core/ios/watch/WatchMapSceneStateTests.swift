@@ -12,8 +12,8 @@ final class WatchMapSceneStateTests: XCTestCase {
   }
   private let group = WatchGroupRide(courseDeg: 180, spanM: 1200, riders: [])
   private let ready = WatchRouteStatus(phase: .ready, routeId: 7)
-  private func scene(_ frame: WatchFrame, status: WatchRouteStatus?, group: WatchGroupRide?, ambient: Bool = false, trail: Bool = true, streetMap: Bool = true, mapGauges: Int = 60) -> WatchMapSceneState {
-    WatchMapSceneState(frame: frame, routeId: 7, routeStatus: status, group: group, ambient: ambient, telemetryTrailEnabled: trail, streetMapEnabled: streetMap, mapGaugesPercent: mapGauges)
+  private func scene(_ frame: WatchFrame, status: WatchRouteStatus?, group: WatchGroupRide?, ambient: Bool = false, trail: Bool = true, groupOnTelemetry: Bool = true, streetMap: Bool = true, mapGauges: Int = 60) -> WatchMapSceneState {
+    WatchMapSceneState(frame: frame, routeId: 7, routeStatus: status, group: group, ambient: ambient, telemetryTrailEnabled: trail, telemetryGroupEnabled: groupOnTelemetry, streetMapEnabled: streetMap, mapGaugesPercent: mapGauges)
   }
 
   func testNavigationEndingFallsThroughGroupAndStandaloneWithoutLosingRiderHistory() {
@@ -29,12 +29,10 @@ final class WatchMapSceneStateTests: XCTestCase {
     XCTAssertEqual(groupMap.target.courseDeg, 180)
     XCTAssertNil(groupMap.navigation)
     XCTAssertEqual(groupMap.target.position, position)
-    XCTAssertFalse(groupMap.showAbsentHint)
     let standalone = scene(ended, status: WatchRouteStatus(phase: .idle), group: nil)
     XCTAssertEqual(standalone.target.spanM, 800)
     XCTAssertEqual(standalone.target.position, position)
     XCTAssertTrue(standalone.drawMap)
-    XCTAssertFalse(standalone.showAbsentHint)
   }
 
   func testRouteReplacementAndMissingFixShowNoticeWhileGroupRetainsCamera() {
@@ -42,7 +40,6 @@ final class WatchMapSceneStateTests: XCTestCase {
     XCTAssertEqual(receiving.notice, .receiving)
     XCTAssertNil(receiving.navigation)
     XCTAssertEqual(receiving.target.spanM, 1200)
-    XCTAssertFalse(receiving.showAbsentHint)
     var noFix = frame
     noFix.navBearing = nil
     noFix.navDistanceM = nil
@@ -72,11 +69,6 @@ final class WatchMapSceneStateTests: XCTestCase {
       XCTAssertEqual(ambient.trailAlpha(navFocus: 1), 0)
       XCTAssertNotNil(ambient.navigation) // Ambient retains the destination pointer, without map motion.
     }
-    var empty = frame
-    empty.navBearing = nil
-    empty.navDistanceM = nil
-    empty.trail = []
-    XCTAssertTrue(scene(empty, status: WatchRouteStatus(phase: .idle), group: nil).showAbsentHint)
   }
 
   func testStreetMapDimsBehindTheGaugesAndLeavesInAmbient() {
@@ -93,6 +85,43 @@ final class WatchMapSceneStateTests: XCTestCase {
     XCTAssertEqual(scene(frame, status: ready, group: nil, mapGauges: 30).mapAlpha(navFocus: 0.5), 0.65, accuracy: 1e-9)
     XCTAssertEqual(scene(frame, status: ready, group: nil, mapGauges: 30).mapAlpha(navFocus: 1), 1)
     XCTAssertEqual(scene(frame, status: ready, group: nil, ambient: true, mapGauges: 90).mapAlpha(navFocus: 0), 0)
+  }
+
+  /// Issue #536: Group Ride marks leave the telemetry screen only; the map page fades them in.
+  func testGroupSettingAffectsTelemetryOnlyAndAmbientHidesIt() {
+    let off = scene(frame, status: ready, group: group, groupOnTelemetry: false)
+    XCTAssertEqual(off.groupAlpha(navFocus: 0), 0)
+    XCTAssertEqual(off.groupAlpha(navFocus: 0.4), 0.4)
+    XCTAssertEqual(off.groupAlpha(navFocus: 1), 1)
+    XCTAssertEqual(off.trailAlpha(navFocus: 0), 1)
+    XCTAssertEqual(scene(frame, status: ready, group: group).groupAlpha(navFocus: 0), 1)
+    XCTAssertEqual(scene(frame, status: ready, group: group, ambient: true).groupAlpha(navFocus: 1), 0)
+  }
+
+  /// Issue #557 + #536: the Off step hides the street map behind the gauges only.
+  func testMapBehindGaugesOffFadesTheStreetMapInOnTheMapPage() {
+    let off = scene(frame, status: ready, group: nil, mapGauges: 0)
+    XCTAssertTrue(off.drawStreetMap)
+    XCTAssertEqual(off.mapAlpha(navFocus: 0), 0)
+    XCTAssertEqual(off.mapAlpha(navFocus: 0.5), 0.5, accuracy: 1e-9)
+    XCTAssertEqual(off.mapAlpha(navFocus: 1), 1)
+  }
+
+  /// Issue #536: the rider circle leaves the telemetry screen only once every layer there is off.
+  func testRiderCircleLeavesTheGaugesOnlyWhenEveryTelemetryLayerIsOff() {
+    XCTAssertEqual(scene(frame, status: ready, group: group).riderAlpha(navFocus: 0), 1)
+    XCTAssertEqual(scene(frame, status: ready, group: group, trail: false, groupOnTelemetry: false).riderAlpha(navFocus: 0), 1)
+    XCTAssertEqual(scene(frame, status: ready, group: group, trail: false, mapGauges: 0).riderAlpha(navFocus: 0), 1)
+    XCTAssertEqual(scene(frame, status: ready, group: group, groupOnTelemetry: false, mapGauges: 0).riderAlpha(navFocus: 0), 1)
+    for clean in [
+      scene(frame, status: ready, group: group, trail: false, groupOnTelemetry: false, mapGauges: 0),
+      scene(frame, status: ready, group: group, trail: false, groupOnTelemetry: false, streetMap: false),
+    ] {
+      XCTAssertEqual(clean.riderAlpha(navFocus: 0), 0)
+      XCTAssertEqual(clean.riderAlpha(navFocus: 0.4), 0.4)
+      XCTAssertEqual(clean.riderAlpha(navFocus: 1), 1)
+    }
+    XCTAssertEqual(scene(frame, status: ready, group: group, ambient: true).riderAlpha(navFocus: 1), 0)
   }
 
   func testStreetMapSettingOffHidesOnlyTheStreetMap() {

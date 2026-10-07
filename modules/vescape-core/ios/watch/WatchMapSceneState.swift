@@ -10,12 +10,12 @@ struct WatchMapSceneState {
   let drawMap: Bool
   /// The rider can turn the street map off; the route, trail and marks stay.
   let drawStreetMap: Bool
-  let showAbsentHint: Bool
   let target: WatchMapTarget
   private let telemetryTrailEnabled: Bool
+  private let telemetryGroupEnabled: Bool
   private let mapGaugesAlpha: Double
 
-  init(frame: WatchFrame, routeId: UInt32?, routeStatus: WatchRouteStatus?, group: WatchGroupRide?, ambient: Bool, telemetryTrailEnabled: Bool, streetMapEnabled: Bool, mapGaugesPercent: Int) {
+  init(frame: WatchFrame, routeId: UInt32?, routeStatus: WatchRouteStatus?, group: WatchGroupRide?, ambient: Bool, telemetryTrailEnabled: Bool, telemetryGroupEnabled: Bool, streetMapEnabled: Bool, mapGaugesPercent: Int) {
     let hasNavigation = frame.navBearing != nil && frame.navDistanceM != nil && routeStatus?.canDraw(receivedRouteId: routeId) != false
     if hasNavigation, let bearing = frame.navBearing, let distance = frame.navDistanceM {
       navigation = WatchMapNavigation(bearingDeg: bearing, distanceM: distance)
@@ -25,8 +25,8 @@ struct WatchMapSceneState {
     notice = routeStatus?.notice(receivedRouteId: routeId, hasPosition: frame.navBearing != nil && frame.navDistanceM != nil && frame.riderEastM != nil && frame.riderNorthM != nil)
     drawMap = !ambient
     drawStreetMap = drawMap && streetMapEnabled
-    showAbsentHint = !hasNavigation && notice == nil && group == nil && frame.trail.isEmpty
     self.telemetryTrailEnabled = telemetryTrailEnabled
+    self.telemetryGroupEnabled = telemetryGroupEnabled
     // The rider's Map behind gauges percent, already snapped by `WatchMapGauges.percent`.
     mapGaugesAlpha = Double(mapGaugesPercent) / 100
     target = WatchMapTarget(
@@ -36,9 +36,21 @@ struct WatchMapSceneState {
     )
   }
 
-  func trailAlpha(navFocus: Double) -> Double {
+  func trailAlpha(navFocus: Double) -> Double { layerAlpha(onTelemetry: telemetryTrailEnabled, navFocus: navFocus) }
+
+  /// Group Ride dots and edge triangles: full on the telemetry screen, else they fade in with nav focus.
+  func groupAlpha(navFocus: Double) -> Double { layerAlpha(onTelemetry: telemetryGroupEnabled, navFocus: navFocus) }
+
+  /// The rider circle stays on the telemetry screen while any map layer there has something around
+  /// it. With trail, Group Ride and map behind gauges all off, the gauges are clean and the circle
+  /// fades in with nav focus. The map page always shows it.
+  func riderAlpha(navFocus: Double) -> Double {
+    layerAlpha(onTelemetry: telemetryTrailEnabled || telemetryGroupEnabled || (drawStreetMap && mapGaugesAlpha > 0), navFocus: navFocus)
+  }
+
+  private func layerAlpha(onTelemetry: Bool, navFocus: Double) -> Double {
     guard drawMap else { return 0 }
-    return telemetryTrailEnabled ? 1 : min(1, max(0, navFocus))
+    return onTelemetry ? 1 : min(1, max(0, navFocus))
   }
 
   /// Street map: the rider's Map behind gauges opacity behind the gauges, full on the map page,

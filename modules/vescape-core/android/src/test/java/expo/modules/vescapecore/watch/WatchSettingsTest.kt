@@ -17,6 +17,7 @@ class WatchSettingsTest {
             "boardMoveStrengthPercent" to AppSettings(boardMoveStrengthPercent = 30),
             "wearNavArrowEnabled" to AppSettings(wearNavArrowEnabled = true),
             "wearTelemetryTrailEnabled" to AppSettings(wearTelemetryTrailEnabled = false),
+            "wearTelemetryGroupEnabled" to AppSettings(wearTelemetryGroupEnabled = false),
             "wearStreetMapEnabled" to AppSettings(wearStreetMapEnabled = false),
             "wearMapGaugesPercent" to AppSettings(wearMapGaugesPercent = 90),
             "unitSystem" to AppSettings(unitSystem = "imperial"),
@@ -35,7 +36,8 @@ class WatchSettingsTest {
     fun `map behind gauges accepts whole steps from the bridge only`() {
         assertEquals(45, WatchMapGauges.percent(45.0))
         assertEquals(90, WatchMapGauges.percent(90))
-        for (invalid in listOf(45.5, 50, 0, 100, "60", true, null)) assertNull(WatchMapGauges.percent(invalid))
+        assertEquals(0, WatchMapGauges.percent(0.0))
+        for (invalid in listOf(45.5, 50, 15, -30, 100, "60", true, null)) assertNull(WatchMapGauges.percent(invalid))
     }
 
     @Test
