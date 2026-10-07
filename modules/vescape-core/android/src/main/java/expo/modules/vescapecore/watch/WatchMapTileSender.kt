@@ -56,6 +56,8 @@ internal class WatchMapTileSender(
     private val inFlight = mutableSetOf<WatchMapTile>()
     /** Tiles with a queued drop, by count: a send before the drop drains would be deleted by it. */
     private val dropping = mutableMapOf<WatchMapTile, Int>()
+    /** Drops that reached the wrist while [load] ran; its answer may predate them. */
+    private val droppedDuringLoad = mutableSetOf<WatchMapTile>()
     private val failedAtMs = mutableMapOf<WatchMapTile, Long>()
 
     /**
@@ -90,6 +92,7 @@ internal class WatchMapTileSender(
     private fun load() {
         if (loading) return
         loading = true
+        droppedDuringLoad.clear()
         val requested = generation
         scope.launch {
             // intentional-suppression: a failed lookup leaves delivered unknown and is retried next tick
@@ -98,7 +101,8 @@ internal class WatchMapTileSender(
                 if (requested != generation) return@post
                 loading = false
                 if (tiles != null) {
-                    delivered = tiles.toMutableSet()
+                    // A tile whose drop is queued or landed meanwhile is gone however the query saw it.
+                    delivered = (tiles - dropping.keys - droppedDuringLoad).toMutableSet()
                     // Tiles left from an older plan or session leave with the next hold.
                     holdPending = true
                 }
@@ -123,6 +127,8 @@ internal class WatchMapTileSender(
 
     private fun dropped(tiles: Set<WatchMapTile>) {
         for (tile in tiles) dropping.computeIfPresent(tile) { _, count -> (count - 1).takeIf { it > 0 } }
+        delivered?.removeAll(tiles)
+        if (loading) droppedDuringLoad += tiles
         pump()
     }
 

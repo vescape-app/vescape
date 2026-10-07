@@ -129,4 +129,30 @@ class WatchMapTileSenderTest {
         scheduler.runPending()
         assertTrue(transport.sends.any { it.first in z16 })
     }
+
+    @Test fun `a wake reload does not count a tile whose drop is still queued as delivered`() {
+        val zoomedIn = rider.copy(spanM = 300.0)
+        val z16 = watchMapTileRing(zoomedIn, 16).toSet()
+        val transport = Transport(held = z16)
+        val sender = sender(transport)
+        tick(sender, zoomedIn)
+        tick(sender, zoomedIn)
+        tick(sender, rider.copy(spanM = 1_400.0))
+        completeSends(transport)
+        val gate = CompletableDeferred<Unit>()
+        transport.holdGate = gate
+        tick(sender, rider)
+        assertTrue(transport.holds.last().second.containsAll(z16))
+        completeSends(transport)
+        // Asleep and awake again before the drop lands: the reload still finds z16 on the wrist.
+        tick(sender, null)
+        tick(sender, zoomedIn)
+        tick(sender, zoomedIn)
+        completeSends(transport)
+        assertTrue(transport.sends.none { it.first in z16 })
+        gate.complete(Unit)
+        scheduler.runPending()
+        completeSends(transport)
+        assertTrue(transport.sends.map { it.first }.containsAll(z16))
+    }
 }
