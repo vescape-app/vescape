@@ -89,7 +89,7 @@ export default function WatchSettingsScreen() {
         <SettingsCard>
           <SettingsRow
             icon={WatchIcon}
-            iconColor={theme.palette.amber.color}
+            iconColor={theme.settingsIcon.watch}
             label="Open on connect"
             hint={
               AUTO_LAUNCH_SUPPORTED
@@ -106,7 +106,7 @@ export default function WatchSettingsScreen() {
           />
           <SettingsRow
             icon={ClockCountdownIcon}
-            iconColor={theme.palette.cyan.color}
+            iconColor={theme.settingsIcon.watch}
             label="Push rate"
             hint="Frames per second sent to the wrist. Higher = faster updates (stress test)"
             right={
@@ -131,7 +131,7 @@ export default function WatchSettingsScreen() {
         <SettingsCard>
           <SettingsRow
             icon={PathIcon}
-            iconColor={theme.palette.orange.color}
+            iconColor={theme.palette.violet.color}
             label="Trail on telemetry screen"
             hint="Show where you have ridden behind the watch gauges. Always visible on the map screen"
             right={
@@ -143,7 +143,7 @@ export default function WatchSettingsScreen() {
           />
           <SettingsRow
             icon={UsersIcon}
-            iconColor={theme.palette.pink.color}
+            iconColor={theme.palette.groupRide.color}
             label="Group Ride on telemetry screen"
             hint="Show your Group Ride behind the watch gauges. Always visible on the map screen"
             right={
@@ -155,7 +155,7 @@ export default function WatchSettingsScreen() {
           />
           <SettingsRow
             icon={SignpostIcon}
-            iconColor={theme.palette.blue.color}
+            iconColor={theme.palette.green.color}
             label="Route line on telemetry screen"
             hint="Show the navigation route behind the watch gauges. Always visible on the map screen"
             right={
@@ -171,7 +171,7 @@ export default function WatchSettingsScreen() {
         <SettingsCard>
           <SettingsRow
             icon={MapTrifoldIcon}
-            iconColor={theme.palette.green.color}
+            iconColor={theme.settingsIcon.map}
             label="Street map"
             hint="Draw streets under the route on the watch. Off stops sending map tiles to the watch"
             right={
@@ -184,7 +184,7 @@ export default function WatchSettingsScreen() {
           {wearStreetMapEnabled ? (
             <SettingsRow
               icon={StackIcon}
-              iconColor={theme.palette.sky.color}
+              iconColor={theme.settingsIcon.map}
               label="Map behind gauges"
               hint="How strongly streets show behind the watch gauges. Off hides them there. The map screen always shows them fully"
               right={
@@ -202,7 +202,7 @@ export default function WatchSettingsScreen() {
           ) : null}
           <SettingsRow
             icon={NavigationArrowIcon}
-            iconColor={theme.palette.violet.color}
+            iconColor={theme.palette.green.color}
             label="Navigation arrow"
             hint="Draw the direction chevron over the route. Distance shows either way"
             right={
@@ -218,7 +218,7 @@ export default function WatchSettingsScreen() {
         <SettingsCard>
           <SettingsRow
             icon={AngleIcon}
-            iconColor={theme.palette.purple.color}
+            iconColor={theme.palette.sky.color}
             label="Tilt speed"
             hint="How fast the watch Tilt stick changes tilt when pushed all the way"
             right={
