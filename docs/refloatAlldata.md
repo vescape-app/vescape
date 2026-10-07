@@ -63,6 +63,11 @@ Board-owned VESC Fault coordinator; it does not emit a zero-valued telemetry fra
 one in Ride History. The next normal `ALLDATA` response observes a clear. See
 [ADR 0037](./adr/0037-vesc-faults-are-board-owned-evidence.md).
 
+`mc_fault_code` is the VESC controller fault enum from vedderb/bldc `datatypes.h` (2 = under
+voltage, 4 = absolute over current, 9 = MCU undervoltage, …), not the Refloat state table below
+and not a BMS fault code. The app's names and explanations live in
+`src/modules/board/lib/vescFaults.ts`.
+
 ## float32_auto encoding
 
 VESC custom 4-byte float (not IEEE 754). Decoding:

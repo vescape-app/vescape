@@ -7,7 +7,7 @@ import { Text } from '@/components/base/Text'
 import { IconButton } from '@/components/base/IconButton'
 import { VescFaultCaptureSection } from '@/modules/board/components/VescFaultCaptureSection'
 import { useVescFaultCapture } from '@/modules/board/hooks/useVescFaultCapture'
-import { faultTitle } from '@/modules/board/lib/vescFaults'
+import { faultInfo } from '@/modules/board/lib/vescFaults'
 import { fmtTimeAgo } from '@/helpers/format'
 import { theme } from '@/constants/theme'
 
@@ -29,7 +29,7 @@ export function VescFaultRow({ fault, onSetDismissed }: VescFaultRowProps) {
   const [expanded, setExpanded] = useState(false)
   const dismissed = fault.dismissed
   const active = fault.clearedAtMs == null
-  const title = faultTitle(fault.code)
+  const { title, description } = faultInfo(fault.code)
   const { capture, loading, error } = useVescFaultCapture(fault.id, expanded)
 
   return (
@@ -70,6 +70,8 @@ export function VescFaultRow({ fault, onSetDismissed }: VescFaultRowProps) {
           accessibilityLabel={`${dismissed ? 'Restore' : 'Dismiss'} ${title}`}
         />
       </View>
+
+      <Text style={styles.description}>{description}</Text>
 
       <Text style={styles.detected}>
         {`Occurred ${fmtTimeAgo(fault.occurredAtMs)}`}
@@ -138,6 +140,11 @@ const styles = StyleSheet.create({
     fontWeight: '800',
     textTransform: 'uppercase',
     letterSpacing: 0.4,
+  },
+  description: {
+    color: theme.neutral.textSecondary,
+    fontSize: 13,
+    lineHeight: 18,
   },
   detected: {
     color: theme.neutral.textMuted,

@@ -725,7 +725,6 @@ internal func parseBmsValues(_ payload: [UInt8], packetAt: Int64) -> BmsTelemetr
 /// Refloat/Float package board state → wire label.
 ///
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/protocol/VescTelemetryModels.kt `stateName`
-/// @parity /src/modules/board/lib/vescFaults.ts `FAULT_TITLES`
 internal func stateName(_ state: Int) -> String {
   switch state & 0x0f {
   case 0: return "STARTUP"

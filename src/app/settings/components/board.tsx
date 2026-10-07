@@ -167,18 +167,26 @@ function BoardWarningRowShowcase() {
 function VescFaultRowShowcase() {
   const [now] = useState(() => Date.now())
   const [dismissedIds, setDismissedIds] = useState<string[]>([])
-  // The two live-fault shapes: a still-active known code and a cleared unknown code.
+  // The live-fault shapes: an active known code, a cleared known code and a cleared unknown code.
   const faults = [
     {
       id: 'active',
       boardId: 'demo',
-      code: 9,
+      code: 2,
       occurredAtMs: now - 45 * 1000,
       lastObservedAtMs: now - 1000,
       clearedAtMs: null,
     },
     {
       id: 'cleared',
+      boardId: 'demo',
+      code: 4,
+      occurredAtMs: now - 26 * 60 * 60 * 1000,
+      lastObservedAtMs: now - 26 * 60 * 60 * 1000 + 2000,
+      clearedAtMs: now - 26 * 60 * 60 * 1000 + 2000,
+    },
+    {
+      id: 'unknown',
       boardId: 'demo',
       code: 247,
       occurredAtMs: now - 3 * 60 * 60 * 1000,

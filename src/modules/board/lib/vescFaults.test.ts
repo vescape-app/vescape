@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'bun:test'
 import type { VescFaultOccurrence } from 'vescape-core'
 
-import { faultTitle, indicatorFaults } from '@/modules/board/lib/vescFaults'
+import { faultInfo, indicatorFaults } from '@/modules/board/lib/vescFaults'
 
 function fault(over: Partial<VescFaultOccurrence>): VescFaultOccurrence {
   return {
@@ -16,13 +16,24 @@ function fault(over: Partial<VescFaultOccurrence>): VescFaultOccurrence {
   }
 }
 
-describe('faultTitle', () => {
-  it('names known Refloat codes', () => {
-    expect(faultTitle(9)).toBe('Both footpad zones off')
+describe('faultInfo', () => {
+  it('names controller faults by mc_fault_code, not Refloat riding states', () => {
+    expect([2, 4, 6, 7, 8, 9, 10].map((code) => faultInfo(code).title)).toEqual([
+      'Under voltage',
+      'Absolute over current',
+      'Motor overtemperature',
+      'Gate driver overvoltage',
+      'Gate driver undervoltage',
+      'MCU undervoltage',
+      'Watchdog reset',
+    ])
   })
 
-  it('falls back to the raw code for firmware this build does not know', () => {
-    expect(faultTitle(247)).toBe('Fault code 247')
+  it('keeps the number and admits it for codes this build does not know', () => {
+    expect(faultInfo(247)).toEqual({
+      title: 'Fault code 247',
+      description: 'The controller reported a fault this app does not yet recognize.',
+    })
   })
 })
 
