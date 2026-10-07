@@ -376,8 +376,9 @@ With a Navigation route, the tiles along it ahead of the rider follow the rings:
 Progress point to the end, at the zoom, every tile within half a span of the path (the face around
 the rider anywhere on it), nearest along the path first (`watchMapRouteTiles` /
 `WatchMapTilePlan.routeTiles`). They go before the earlier steps' tiles and the left level and share
-the same cap, so the whole route ahead goes out at navigation start, while the phone usually still
-has signal, and survives a dead zone. A route tile leaves as soon as the route stops listing it:
+the same cap. They go out only while the tile gate holds (wrist awake, see **Sending**), so a route
+tile reaches the wrist before the rider does as long as the watch was awake with phone signal
+earlier on the route; nothing is sent while the wrist is dimmed or asleep. A route tile leaves as soon as the route stops listing it:
 passed without entering the ring, rerouted or cleared (`WatchMapRouteProgress` from
 `WatchRouteMirror.mapRoute` and Route Progress).
 `WatchMapTilePlanner` re-plans only on a new rider tile, a new zoom, a turn over 45°, a new route, or
