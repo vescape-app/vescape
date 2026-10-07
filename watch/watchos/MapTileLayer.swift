@@ -3,7 +3,9 @@ import SwiftUI
 
 /// Street-map tiles on the wrist. The phone sends each tile with `transferFile`; each receipt is
 /// moved to its own file, `Application Support/map-tiles/<style>/<z>/<x>/<y>-<receipt>.jpg`, and kept
-/// until the phone's `mapTiles` list stops naming the tile. A file is only ever deleted by the URL it
+/// until the phone's `mapTiles` list stops naming the tile. A receipt that list already dropped (it
+/// was in flight when the plan moved on) is deleted on arrival; one sent under a list not yet here
+/// waits for it (`WatchMapTileList.supersedes`). A file is only ever deleted by the URL it
 /// was held under, so a drop cannot delete a resend of the same tile that landed after it. Tiles
 /// decode on demand off the main thread into a small cache (`WatchMapTileCache`).
 ///
@@ -44,7 +46,7 @@ final class MapTileStore: ObservableObject {
   }
 
   /// Keep a received file. Called on the delegate queue; the move must finish before it returns.
-  func receive(_ file: URL, style: String, tile: WatchMapTile) {
+  func receive(_ file: URL, style: String, tile: WatchMapTile, generation: Int64) {
     let target = Self.file(root, style: style, tile: tile)
     do {
       try FileManager.default.createDirectory(at: target.deletingLastPathComponent(), withIntermediateDirectories: true)
@@ -53,6 +55,10 @@ final class MapTileStore: ObservableObject {
       return
     }
     DispatchQueue.main.async {
+      if self.list?.supersedes(style: style, tile: tile, generation: generation) == true {
+        self.delete([target])
+        return
+      }
       let replaced = self.held.updateValue(target, forKey: tile)
       self.forget(tile)
       if let replaced { self.delete([replaced]) }

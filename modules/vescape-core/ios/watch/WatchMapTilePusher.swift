@@ -22,6 +22,12 @@ final class WatchMapTilePusher: WatchMapTileTransport, @unchecked Sendable {
   private let putList: ([String: Any]) -> Void
   private var record: Set<WatchMapTile> = []
   private var pending: [WatchMapTile: CheckedContinuation<Bool, Never>] = [:]
+  /// The last list put. A tile goes out only while it names the tile, tagged with its generation, so
+  /// the wrist can tell a receipt a newer list dropped from one whose list has not arrived yet.
+  private var list = WatchMapTileList(style: MapTiles.style, tiles: [])
+  /// Tiles with a transfer outstanding that a list since their send left out. The wrist drops those
+  /// files, so landing does not make them delivered.
+  private var superseded = Set<WatchMapTile>()
   var onWatchReset: (() -> Void)?
 
   /// `session` is the activated session or nil; `putList` publishes the `mapTiles` channel.
@@ -54,13 +60,18 @@ final class WatchMapTilePusher: WatchMapTileTransport, @unchecked Sendable {
   }
 
   func hold(wanted: [WatchMapTile], dropped: Set<WatchMapTile>) {
-    putList(WatchMapTileList(style: MapTiles.style, tiles: wanted).payload)
-    guard !dropped.isEmpty else { return }
-    // A dropped tile is delivered, or still queued by an earlier process; no send waits on it.
+    let generation = max(list.generation + 1, Int64(Date().timeIntervalSince1970 * 1000))
+    list = WatchMapTileList(style: MapTiles.style, tiles: wanted, generation: generation)
+    putList(list.payload)
+    let listed = Set(wanted)
+    superseded.formUnion(pending.keys.filter { !listed.contains($0) })
     for transfer in session()?.outstandingFileTransfers ?? [] {
-      guard let sent = WatchMapTileTransfer.decode(transfer.file.metadata), dropped.contains(sent.tile) else { continue }
-      transfer.cancel()
+      guard let sent = WatchMapTileTransfer.decode(transfer.file.metadata), !listed.contains(sent.tile) else { continue }
+      superseded.insert(sent.tile)
+      // A dropped tile is delivered, or still queued by an earlier process; no send waits on it.
+      if dropped.contains(sent.tile) { transfer.cancel() }
     }
+    guard !dropped.isEmpty else { return }
     record.subtract(dropped)
     saveRecord()
   }
@@ -68,13 +79,18 @@ final class WatchMapTilePusher: WatchMapTileTransport, @unchecked Sendable {
   func send(_ tile: WatchMapTile, jpeg: URL) async -> Bool {
     await withCheckedContinuation { continuation in
       DispatchQueue.main.async { [self] in
-        guard let session = session(), session.isWatchAppInstalled else {
+        // A plan that moved on since the sender chose it fails the send, to be retried if wanted again.
+        guard let session = session(), session.isWatchAppInstalled, list.tiles.contains(tile) else {
           continuation.resume(returning: false)
           return
         }
         pending.removeValue(forKey: tile)?.resume(returning: false)
+        // A flag left by a cancelled transfer that never finished would fail this fresh one.
+        let outstanding = session.outstandingFileTransfers.compactMap { WatchMapTileTransfer.decode($0.file.metadata)?.tile }
+        if !outstanding.contains(tile) { superseded.remove(tile) }
         pending[tile] = continuation
-        session.transferFile(jpeg, metadata: WatchMapTileTransfer.metadata(style: MapTiles.style, tile: tile))
+        session.transferFile(
+          jpeg, metadata: WatchMapTileTransfer.metadata(style: MapTiles.style, tile: tile, generation: list.generation))
       }
     }
   }
@@ -103,11 +119,12 @@ final class WatchMapTilePusher: WatchMapTileTransport, @unchecked Sendable {
   func finished(_ transfer: WCSessionFileTransfer, error: Error?) {
     guard let sent = WatchMapTileTransfer.decode(transfer.file.metadata) else { return }
     DispatchQueue.main.async { [self] in
-      if error == nil, sent.style == MapTiles.style {
+      let landed = error == nil && superseded.remove(sent.tile) == nil
+      if landed, sent.style == MapTiles.style {
         record.insert(sent.tile)
         saveRecord()
       }
-      pending.removeValue(forKey: sent.tile)?.resume(returning: error == nil)
+      pending.removeValue(forKey: sent.tile)?.resume(returning: landed)
     }
   }
 

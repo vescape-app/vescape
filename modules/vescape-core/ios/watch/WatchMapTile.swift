@@ -201,28 +201,40 @@ let watchMapTilesChannel = "mapTiles"
 struct WatchMapTileList: Equatable {
   let style: String
   let tiles: [WatchMapTile]
+  /// Orders lists against the files sent under them; see ``supersedes(style:tile:generation:)``.
+  /// The phone's wall-clock ms, raised to stay increasing, so it keeps rising across a phone relaunch.
+  var generation: Int64 = 0
 
-  var payload: [String: Any] { ["style": style, "tiles": tiles.map(\.key)] }
+  var payload: [String: Any] { ["style": style, "tiles": tiles.map(\.key), "generation": generation] }
 
   /// Nil for an absent or unreadable channel; unreadable keys are skipped.
   static func decode(_ payload: [String: Any]?) -> WatchMapTileList? {
     guard let payload, let style = payload["style"] as? String, let keys = payload["tiles"] as? [String] else { return nil }
-    return WatchMapTileList(style: style, tiles: keys.compactMap(WatchMapTile.init(key:)))
+    return WatchMapTileList(
+      style: style, tiles: keys.compactMap(WatchMapTile.init(key:)),
+      generation: (payload["generation"] as? NSNumber)?.int64Value ?? 0)
+  }
+
+  /// True when a file sent under list `generation` was planned away by this list. The phone only sends
+  /// a tile its current list names, so a list at least as new that leaves it out dropped it; a file
+  /// from a newer list than this one waits for that list instead.
+  func supersedes(style: String, tile: WatchMapTile, generation: Int64) -> Bool {
+    generation <= self.generation && (style != self.style || !tiles.contains(tile))
   }
 }
 
-/// `transferFile` metadata: the style and tile a received file is.
+/// `transferFile` metadata: the style and tile a received file is, and the list it was sent under.
 enum WatchMapTileTransfer {
-  static func metadata(style: String, tile: WatchMapTile) -> [String: Any] {
-    ["style": style, "z": tile.z, "x": tile.x, "y": tile.y]
+  static func metadata(style: String, tile: WatchMapTile, generation: Int64) -> [String: Any] {
+    ["style": style, "z": tile.z, "x": tile.x, "y": tile.y, "generation": generation]
   }
 
-  static func decode(_ metadata: [String: Any]?) -> (style: String, tile: WatchMapTile)? {
+  static func decode(_ metadata: [String: Any]?) -> (style: String, tile: WatchMapTile, generation: Int64)? {
     guard let metadata, let style = metadata["style"] as? String,
       let z = metadata["z"] as? Int, let x = metadata["x"] as? Int, let y = metadata["y"] as? Int
     else { return nil }
     let tile = WatchMapTile(z: z, x: x, y: y)
-    return tile.isValid ? (style, tile) : nil
+    return tile.isValid ? (style, tile, (metadata["generation"] as? NSNumber)?.int64Value ?? 0) : nil
   }
 }
 

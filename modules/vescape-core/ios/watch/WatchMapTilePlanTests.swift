@@ -294,8 +294,22 @@ final class WatchMapTilePlanTests: XCTestCase {
     XCTAssertEqual(WatchMapTile(key: "15/17930/10979"), WatchMapTile(z: 15, x: 17930, y: 10979))
     XCTAssertNil(WatchMapTile(key: "1/2/0"))
     XCTAssertNil(WatchMapTile(key: "15/x/1"))
-    let list = WatchMapTileList(style: "a/b", tiles: [tile])
+    let list = WatchMapTileList(style: "a/b", tiles: [tile], generation: 7)
     XCTAssertEqual(WatchMapTileList.decode(list.payload), list)
-    XCTAssertEqual(WatchMapTileTransfer.decode(WatchMapTileTransfer.metadata(style: "a/b", tile: tile))?.tile, tile)
+    let sent = WatchMapTileTransfer.decode(WatchMapTileTransfer.metadata(style: "a/b", tile: tile, generation: 7))
+    XCTAssertEqual(sent?.tile, tile)
+    XCTAssertEqual(sent?.generation, 7)
+  }
+
+  /// A receipt the latest list already planned away is not kept; one sent under a list the wrist has
+  /// not seen yet waits for that list.
+  func testAListSupersedesOnlyFilesSentNoLaterThanIt() {
+    let kept = WatchMapTile(z: 15, x: 1, y: 2), gone = WatchMapTile(z: 15, x: 1, y: 3)
+    let list = WatchMapTileList(style: "a/b", tiles: [kept], generation: 7)
+    XCTAssertTrue(list.supersedes(style: "a/b", tile: gone, generation: 6))
+    XCTAssertTrue(list.supersedes(style: "a/b", tile: gone, generation: 7))
+    XCTAssertFalse(list.supersedes(style: "a/b", tile: gone, generation: 8))
+    XCTAssertFalse(list.supersedes(style: "a/b", tile: kept, generation: 6))
+    XCTAssertTrue(list.supersedes(style: "c/d", tile: kept, generation: 6))
   }
 }

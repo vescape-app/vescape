@@ -407,12 +407,16 @@ the face, so a phone zoom never blanks the watch map.
 (ride thumbnails use the same files) and go out unchanged, nearest first, at most 4 in flight. A
 failed download or send waits 30 s. On every wake the sender re-reads what the wrist holds. On Wear
 OS a tile whose drop (item delete) is still queued is not sent again until the delete has run, so the
-delete cannot remove the new copy.
+delete cannot remove the new copy. On watchOS each list carries a generation (phone wall-clock ms,
+kept increasing) and each tile file the generation of the list it went out under; the phone only
+sends a tile its current list names. The wrist deletes a received file at once when its latest list
+is at least that generation and leaves the tile out, and keeps it otherwise until that list arrives.
+A transfer whose tile a later list left out does not count as delivered when it lands.
 
 |                      | Wear OS                                                                                 | watchOS                                                                                                                                       |
 | -------------------- | --------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------- |
-| Tile bytes           | one Data Layer item per tile, `/map-tile/<style>/<z>/<x>/<y>`, JPEG as an Asset, urgent | `transferFile` with `{style, z, x, y}` metadata                                                                                               |
-| What the wrist keeps | the set of those items; the phone deletes an item to drop a tile                        | `mapTiles` list (`{style, tiles}`) in the Application Context, merged by `WatchColdState`                                                     |
+| Tile bytes           | one Data Layer item per tile, `/map-tile/<style>/<z>/<x>/<y>`, JPEG as an Asset, urgent | `transferFile` with `{style, z, x, y, generation}` metadata                                                                                   |
+| What the wrist keeps | the set of those items; the phone deletes an item to drop a tile                        | `mapTiles` list (`{style, tiles, generation}`) in the Application Context, merged by `WatchColdState`                                         |
 | What is delivered    | `getDataItems` under `/map-tile`; items of another style are deleted                    | finished transfers recorded in `WCSession.watchDirectoryURL`, wiped with a reinstall or unpair, plus transfers an earlier process left queued |
 
 **Wrist**: `MapTileLayer` picks its own level from the eased span with the same `watchMapTileZoom`

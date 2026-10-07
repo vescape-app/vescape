@@ -330,7 +330,7 @@ final class PhoneLink: NSObject, ObservableObject, WCSessionDelegate {
         print("[replay] missing map tile fixture: \(tile.key)")
         continue
       }
-      MapTileStore.shared.receive(copy, style: list.style, tile: tile)
+      MapTileStore.shared.receive(copy, style: list.style, tile: tile, generation: list.generation)
     }
   }
 
@@ -432,7 +432,7 @@ final class PhoneLink: NSObject, ObservableObject, WCSessionDelegate {
   /// received file as soon as this returns. Unrecognised files are left to that deletion.
   func session(_ session: WCSession, didReceive file: WCSessionFile) {
     guard let sent = WatchMapTileTransfer.decode(file.metadata) else { return }
-    MapTileStore.shared.receive(file.fileURL, style: sent.style, tile: sent.tile)
+    MapTileStore.shared.receive(file.fileURL, style: sent.style, tile: sent.tile, generation: sent.generation)
   }
 
   func session(_ session: WCSession, didReceiveMessageData messageData: Data) {
