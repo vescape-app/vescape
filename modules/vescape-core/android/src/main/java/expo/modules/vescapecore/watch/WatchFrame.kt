@@ -111,6 +111,8 @@ internal data class WatchSnapshot(
     val tiltControl: WatchTiltControl = WatchTiltControl.FREE,
     val trail: List<WatchTrailPoint> = emptyList(),
     val mapPosition: WatchMapPosition? = null,
+    /** GPS ground speed, for the street-map lookahead. Phone-side only; not on the wire. */
+    val riderSpeedMps: Double? = null,
 )
 
 /**

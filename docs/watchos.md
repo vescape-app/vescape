@@ -1004,3 +1004,29 @@ the phone and power cutoff accessible. Complete Lights before testing Move.
 
 Record failures and remaining platform differences here and track unresolved work in #491 before
 shipping. App Store preparation remains #493.
+
+## Street map (#551)
+
+The shared behaviour is in "Street map" in `docs/watch-mirror.md`. watchOS-specific parts:
+
+- Tiles ride `transferFile`. `PhoneLink` moves each received file into
+  `Application Support/map-tiles/<style>/<z>/<x>/<y>.jpg` on the delegate queue, because the system
+  deletes it once the callback returns. `MapTileStore` deletes every file not on the latest
+  `mapTiles` list and every other style's directory.
+- The `mapTiles` list is one more channel on the merged Application Context; `WatchColdState` stays
+  its only writer. An absent or unreadable list leaves the wrist's files alone.
+- The phone records finished transfers in `WCSession.watchDirectoryURL`. That directory goes with a
+  reinstall or an unpair, and `sessionWatchStateDidChange` makes the sender read the record again,
+  so a fresh watch app gets every tile again.
+
+### Verified on the simulator, 2026-10-07
+
+iPhone 17 + Apple Watch SE 3 40 mm, `bun run watchos:ride`: the phone plans, fetches and issues
+`transferFile` for each tile and writes the record. The tile list reaches the wrist through the
+Application Context, and the wrist then deletes files not on it. Tiles copied into the wrist's
+container are drawn under the trail, dimmed behind the gauges and at full opacity on the map page.
+
+**Not verified.** The simulator's `wcd` never delivers the file payload to the watch: the phone
+reports each transfer finished without an error (`failed to find transfer` in the phone `wcd` log)
+and the watch receives none. File delivery, a reinstall on hardware, and the frame cost of the layer
+need a physical Apple Watch.

@@ -46,6 +46,8 @@ internal class WatchMirrorCoordinator(
     private val sources: WatchMirrorSources,
     private val record: (String, Map<String, Any?>) -> Unit,
     private val onNavigatingChanged: () -> Unit = {},
+    /** Street-map tile planning and sending ([WatchMapTileSender]); null pauses it. */
+    private val mapTiles: (WatchMapRider?) -> Unit = {},
 ) {
     private var running = false
     private var generation = 0L
@@ -62,7 +64,8 @@ internal class WatchMirrorCoordinator(
      */
     var navigating = false
         private set
-    private val tick = WatchTick(scheduler, snapshot, isStale, ::canPushAndTrackNavigation, { frame ->
+    // The tile plan reads the snapshot the frame is built from, so it costs no second read.
+    private val tick = WatchTick(scheduler, { snapshot().also(::updateMapTiles) }, isStale, ::canPushAndTrackNavigation, { frame ->
         transport.pushFrame(frame)
         pushRouteStatus()
     }, configuredIntervalMs)
@@ -89,6 +92,7 @@ internal class WatchMirrorCoordinator(
         unsubscribe = null
         tick.stop()
         groupTick.stop()
+        mapTiles(null)
         transport.stop()
         wakeLevel = WatchMirrorWakeLevel.ASLEEP
         // A stopped mirror demands nothing; no edge, the caller is tearing the stream down.
@@ -110,7 +114,20 @@ internal class WatchMirrorCoordinator(
             navigating = next
             onNavigatingChanged()
         }
+        if (!canPush) mapTiles(null)
         return canPush
+    }
+
+    /**
+     * The one gate on street-map tiles: only to a wrist that is awake and not in ambient, which is
+     * the only time it draws a map, and only with a GPS fix to plan around.
+     */
+    private fun updateMapTiles(snapshot: WatchSnapshot) {
+        val position = snapshot.mapPosition
+        mapTiles(
+            if (position == null || effectiveWakeLevel() != WatchMirrorWakeLevel.ACTIVE) null
+            else WatchMapRider(position, snapshot.courseDeg, snapshot.riderSpeedMps, snapshot.routeSpanM),
+        )
     }
 
     fun acceptWakeLevel(level: WatchMirrorWakeLevel) {

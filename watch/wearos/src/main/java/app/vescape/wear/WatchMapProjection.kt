@@ -5,6 +5,7 @@ import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.unit.dp
 import expo.modules.vescapecore.watch.GroupRideFrameRider
+import expo.modules.vescapecore.watch.WatchMapSpan
 import kotlin.math.abs
 import kotlin.math.atan2
 import kotlin.math.cos
@@ -30,7 +31,7 @@ internal data class WatchMapPlacement(
 
 /**
  * The nav route's heading-up projection, in pixels: the Rider sits [RIDER_DROP] below the face
- * centre, their course points up, and [clampRouteSpanM] metres span the face minus
+ * centre, their course points up, and [WatchMapSpan.clamp] metres span the face minus
  * [ROUTE_EDGE_INSET]. A Group Ride dot and the route line share this so a Rider on the route is drawn
  * on it.
  *
@@ -62,26 +63,6 @@ internal class WatchMapProjection(
         val ROUTE_EDGE_INSET = 24.dp
 
         /**
-         * Fallback metres of route across the watch face until the phone publishes its camera span.
-         *
-         * @parity /modules/vescape-core/ios/watch/WatchMapProjection.swift `defaultSpanM`
-         * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/watch/GroupRideFrameBuilder.kt `GROUP_RIDE_DEFAULT_SPAN_M`
-         */
-        private const val DEFAULT_ROUTE_SPAN_M = 600.0
-        private const val MIN_ROUTE_SPAN_M = 150f
-        private const val MAX_ROUTE_SPAN_M = 2_000f
-
-        /**
-         * Metres of world across the watch face for a phone map span: the phone's own, clamped to
-         * what a wrist can draw, or the fallback until the phone has published one. Every heading-up
-         * map layer (route, Group Ride) takes its zoom from here.
-         *
-         * @parity /modules/vescape-core/ios/watch/WatchMapProjection.swift `clampedSpanM`
-         */
-        fun clampRouteSpanM(spanM: Double?): Float =
-            (spanM ?: DEFAULT_ROUTE_SPAN_M).toFloat().coerceIn(MIN_ROUTE_SPAN_M, MAX_ROUTE_SPAN_M)
-
-        /**
          * Where the Rider sits on a [width]×[height] face: [riderDropPx] below its centre.
          *
          * @parity /modules/vescape-core/ios/watch/WatchMapProjection.swift `riderPoint`
@@ -103,7 +84,7 @@ internal class WatchMapProjection(
     val rider = riderPoint(width, height, riderDropPx)
     val faceRadius = minOf(width, height) / 2f
     /** Pixels per metre. */
-    val scale = pixelsPerMetre(width, height, edgeInsetPx, clampRouteSpanM(spanM))
+    val scale = pixelsPerMetre(width, height, edgeInsetPx, WatchMapSpan.clamp(spanM))
 
     /** Place a point [eastM]/[northM] metres from the Rider. In range = within the face less [marginPx]. */
     fun place(eastM: Double, northM: Double, marginPx: Float): WatchMapPlacement {

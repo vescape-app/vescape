@@ -2,6 +2,7 @@ package expo.modules.vescapecore.watch
 
 import android.content.Context
 import android.os.SystemClock
+import expo.modules.vescapecore.maptiles.MapTiles
 import expo.modules.vescapecore.navigation.NavigationController
 import expo.modules.vescapecore.navigation.NavigationStatus
 import expo.modules.vescapecore.runtime.Scheduler
@@ -32,6 +33,11 @@ internal fun androidWatchMirror(
     val weatherPusher = WatchWeatherPusher(context, scope, record)
     val boardPusher = WatchBoardPusher(context, scope, record)
     val launcher = WatchMirrorLauncher(context, scope, record)
+    val mapTiles = WatchMapTileSender(
+        scheduler, scope, SystemClock::elapsedRealtime,
+        fetch = { tile -> MapTiles.get(context).tile(tile.z, tile.x, tile.y) },
+        transport = WatchMapTilePusher(context),
+    )
     return WatchMirrorCoordinator(
         scheduler, SystemClock::elapsedRealtime, snapshot, isStale, groupFrame,
         transport = object : WatchMirrorTransport {
@@ -70,5 +76,6 @@ internal fun androidWatchMirror(
         },
         record = record,
         onNavigatingChanged = onNavigatingChanged,
+        mapTiles = mapTiles::update,
     )
 }

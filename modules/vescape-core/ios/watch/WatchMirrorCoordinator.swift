@@ -44,6 +44,8 @@ final class WatchMirrorCoordinator {
   private let command: (WatchCommand) -> Void
   private let record: (String, [String: Any?]) -> Void
   private let onNavigatingChanged: () -> Void
+  /// Street-map tile planning and sending (`WatchMapTileSender`); nil pauses it.
+  private let mapTiles: (WatchMapRider?) -> Void
   private var running = false
   private var generation = 0
   private var unsubscribe: (() -> Void)?
@@ -54,8 +56,16 @@ final class WatchMirrorCoordinator {
   /// around a live rider position, so this is a GPS demand input: without it a pocketed phone with no
   /// Board and no Group Ride stops GPS and the wrist route freezes or never appears (#550).
   private(set) var navigating = false
+  // The tile plan reads the snapshot the frame is built from, so it costs no second read.
   private lazy var tick = WatchTick(
-    scheduler: scheduler, snapshot: snapshot, isStale: isStale,
+    scheduler: scheduler,
+    snapshot: { [weak self] in
+      guard let self else { return WatchSnapshot() }
+      let snapshot = snapshot()
+      updateMapTiles(snapshot)
+      return snapshot
+    },
+    isStale: isStale,
     canPush: { [weak self] in self?.canPushAndTrackNavigation() == true },
     push: { [weak self] frame in
       self?.transport.pushFrame(frame)
@@ -76,7 +86,8 @@ final class WatchMirrorCoordinator {
     groupFrame: @escaping () -> GroupRideFrame?, transport: WatchMirrorTransport,
     sources: WatchMirrorSources, command: @escaping (WatchCommand) -> Void,
     record: @escaping (String, [String: Any?]) -> Void,
-    onNavigatingChanged: @escaping () -> Void = {}
+    onNavigatingChanged: @escaping () -> Void = {},
+    mapTiles: @escaping (WatchMapRider?) -> Void = { _ in }
   ) {
     self.scheduler = scheduler
     self.nowMs = nowMs
@@ -88,6 +99,7 @@ final class WatchMirrorCoordinator {
     self.command = command
     self.record = record
     self.onNavigatingChanged = onNavigatingChanged
+    self.mapTiles = mapTiles
   }
 
   func start() {
@@ -133,6 +145,7 @@ final class WatchMirrorCoordinator {
     unsubscribe = nil
     tick.stop()
     groupTick.stop()
+    mapTiles(nil)
     transport.stop()
     wakeLevel = .asleep
     // A stopped mirror demands nothing; no edge, the caller is tearing the stream down.
@@ -156,7 +169,16 @@ final class WatchMirrorCoordinator {
       navigating = next
       onNavigatingChanged()
     }
+    if !canPush { mapTiles(nil) }
     return canPush
+  }
+
+  /// The one gate on street-map tiles: only to a wrist that is awake and not in ambient, which is
+  /// the only time it draws a map, and only with a GPS fix to plan around.
+  private func updateMapTiles(_ snapshot: WatchSnapshot) {
+    guard let position = snapshot.mapPosition, effectiveWakeLevel == .active else { return mapTiles(nil) }
+    mapTiles(WatchMapRider(
+      position: position, courseDeg: snapshot.courseDeg, speedMps: snapshot.riderSpeedMps, spanM: snapshot.routeSpanM))
   }
 
   func acceptWakeLevel(_ level: WatchMirrorWakeLevel) {

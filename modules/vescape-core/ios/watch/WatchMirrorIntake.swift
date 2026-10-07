@@ -11,6 +11,9 @@ struct WatchMirrorIntake {
   private(set) var weather: WatchWeather?
   private(set) var board = WatchBoardLights()
   private(set) var groupRide: WatchGroupRide?
+  /// The street-map tiles the phone wants kept; nil until a list arrives.
+  /// @platform-diff Wear OS has no list: its held tiles are its `/map-tile` Data Layer items.
+  private(set) var mapTiles: WatchMapTileList?
   private(set) var lastFrameAtMs: Int64?
   private var latestFrame: WatchFrame?
   /// Newest last, at most `MirrorStateReducer.cadenceWindowGaps` long.
@@ -56,6 +59,9 @@ struct WatchMirrorIntake {
     acceptSettings(context[watchSettingsChannel] as? [String: Any])
     acceptWeather(context[watchWeatherChannel] as? [String: Any])
     acceptBoard(context[watchBoardChannel] as? [String: Any])
+    // An absent or unreadable list keeps the tiles: deleting them on a payload this build cannot
+    // read would cost the rider the map until the phone re-plans.
+    if let list = WatchMapTileList.decode(context[watchMapTilesChannel] as? [String: Any]) { mapTiles = list }
   }
 
   mutating func refresh(nowMs: Int64) {

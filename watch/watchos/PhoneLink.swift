@@ -249,7 +249,14 @@ final class PhoneLink: NSObject, ObservableObject, WCSessionDelegate {
     if weather != intake.weather || weather?.fetchedAtMs != intake.weather?.fetchedAtMs { weather = intake.weather }
     if board != intake.board { board = intake.board }
     if groupRide != intake.groupRide { groupRide = intake.groupRide }
+    if let list = intake.mapTiles, list != retainedMapTiles {
+      retainedMapTiles = list
+      MapTileStore.shared.retain(list)
+    }
   }
+
+  /// The street-map list last applied to `MapTileStore`.
+  private var retainedMapTiles: WatchMapTileList?
 
   /// The watch's own monotonic clock. A wall clock would let a phone time-sync jump the mirror
   /// straight to `disconnected`, or worse, hold a dead stream open.
@@ -402,6 +409,13 @@ final class PhoneLink: NSObject, ObservableObject, WCSessionDelegate {
     }
     guard let bytes = message[watchGroupRideMessageKey] as? Data else { return }
     DispatchQueue.main.async { self.acceptGroupRide(bytes, receivedAtMs: receivedAtMs) }
+  }
+
+  /// A street-map tile (#551). Moved into place here, on the delegate queue: the system deletes the
+  /// received file as soon as this returns. Unrecognised files are left to that deletion.
+  func session(_ session: WCSession, didReceive file: WCSessionFile) {
+    guard let sent = WatchMapTileTransfer.decode(file.metadata) else { return }
+    MapTileStore.shared.receive(file.fileURL, style: sent.style, tile: sent.tile)
   }
 
   func session(_ session: WCSession, didReceiveMessageData messageData: Data) {

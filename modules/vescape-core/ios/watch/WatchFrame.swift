@@ -159,6 +159,8 @@ struct WatchSnapshot {
   var tiltControl: WatchTiltControl
   var trail: [WatchTrailPoint]
   var mapPosition: WatchMapPosition?
+  /// GPS ground speed, for the street-map lookahead. Phone-side only; not on the wire.
+  var riderSpeedMps: Double?
 
   init(
     speed: Double? = nil,
@@ -176,7 +178,8 @@ struct WatchSnapshot {
     remoteTilt: Int? = nil,
     tiltControl: WatchTiltControl = .free,
     trail: [WatchTrailPoint] = [],
-    mapPosition: WatchMapPosition? = nil
+    mapPosition: WatchMapPosition? = nil,
+    riderSpeedMps: Double? = nil
   ) {
     self.speed = speed
     self.dutyCycle = dutyCycle
@@ -194,6 +197,7 @@ struct WatchSnapshot {
     self.tiltControl = tiltControl
     self.trail = trail
     self.mapPosition = mapPosition
+    self.riderSpeedMps = riderSpeedMps
   }
 }
 

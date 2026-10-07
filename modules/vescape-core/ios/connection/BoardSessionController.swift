@@ -2769,7 +2769,8 @@ internal final class BoardSessionController: VescGattListener {
         rider: rider.map { WatchGeoPoint(latitude: $0.latitude, longitude: $0.longitude) },
         history: locationTracker.recentLocations
       ),
-      mapPosition: rider.map { WatchMapPosition(latitude: $0.latitude, longitude: $0.longitude) }
+      mapPosition: rider.map { WatchMapPosition(latitude: $0.latitude, longitude: $0.longitude) },
+      riderSpeedMps: rider?.speedMps
     )
   }
 

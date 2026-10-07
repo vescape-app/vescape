@@ -40,6 +40,16 @@ final class WatchTelemetryPusher: NSObject, WCSessionDelegate {
     record: { [weak self] name, props in self?.record(name, props) }
   )
 
+  /// Street-map tiles share this session and the merged cold state (`WatchColdState` stays the
+  /// only Application Context writer).
+  private(set) lazy var mapTiles = WatchMapTilePusher(
+    session: { [weak self] in
+      guard let session = self?.session, session.activationState == .activated else { return nil }
+      return session
+    },
+    putList: { [weak self] in self?.pushColdState(channel: watchMapTilesChannel, payload: $0) }
+  )
+
   init(record: @escaping (String, [String: Any?]) -> Void) {
     self.record = record
     super.init()
@@ -153,6 +163,10 @@ final class WatchTelemetryPusher: NSObject, WCSessionDelegate {
     onCommand?(command)
   }
 
+  func session(_ session: WCSession, didFinish fileTransfer: WCSessionFileTransfer, error: Error?) {
+    mapTiles.finished(fileTransfer, error: error)
+  }
+
   func sessionReachabilityDidChange(_ session: WCSession) {
     guard self.session != nil else { return }
     let reachable = session.isReachable
@@ -171,6 +185,7 @@ final class WatchTelemetryPusher: NSObject, WCSessionDelegate {
       "watch_state_changed",
       ["paired": session.isPaired, "app_installed": session.isWatchAppInstalled]
     )
+    mapTiles.watchStateChanged()
   }
 
   /// Required on iOS: the system tears the session down when the rider switches paired watches, and

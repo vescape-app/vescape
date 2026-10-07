@@ -48,12 +48,18 @@ final class WatchMirrorCoordinatorTests: XCTestCase {
     var board = true
     var commands = 0
     var navigatingChanges = 0
+    var mapPosition: WatchMapPosition? = WatchMapPosition(latitude: 51.1, longitude: 17)
+    var mapTiles: [WatchMapRider?] = []
     lazy var coordinator = WatchMirrorCoordinator(
       scheduler: scheduler, nowMs: { self.scheduler.currentTimeMs },
-      snapshot: { WatchSnapshot(speed: self.board ? 25 : nil, navBearing: 90, navDistanceM: 100) },
+      snapshot: {
+        WatchSnapshot(speed: self.board ? 25 : nil, navBearing: 90, navDistanceM: 100, routeSpanM: 800,
+          mapPosition: self.mapPosition, riderSpeedMps: 5)
+      },
       isStale: { false }, groupFrame: { GroupRideFrame(courseDeg: 0, spanM: 600, riders: []) },
       transport: transport, sources: sources, command: { _ in self.commands += 1 }, record: { _, _ in },
-      onNavigatingChanged: { self.navigatingChanges += 1 }
+      onNavigatingChanged: { self.navigatingChanges += 1 },
+      mapTiles: { self.mapTiles.append($0) }
     )
     func active() { coordinator.start(); coordinator.acceptWakeLevel(.active) }
   }
@@ -185,5 +191,31 @@ final class WatchMirrorCoordinatorTests: XCTestCase {
     XCTAssertFalse(h.coordinator.navigating)
     h.scheduler.advance(1000)
     XCTAssertEqual(h.navigatingChanges, 4)
+  }
+
+  /// Issue #551: tiles only reach an awake wrist that draws a map, around a GPS fix.
+  func testStreetMapTilesFollowAnActiveWristOnly() {
+    let h = Harness()
+    h.transport.requiresWakeReport = false // iOS: frames flow without a wake report, tiles do not.
+    h.coordinator.start()
+    h.scheduler.advance(1000)
+    XCTAssertFalse(h.mapTiles.isEmpty)
+    XCTAssertTrue(h.mapTiles.allSatisfy { $0 == nil })
+    h.coordinator.acceptWakeLevel(.active)
+    h.mapTiles = []
+    h.scheduler.advance(250)
+    XCTAssertEqual(h.mapTiles, [WatchMapRider(position: WatchMapPosition(latitude: 51.1, longitude: 17), courseDeg: nil, speedMps: 5, spanM: 800)])
+    h.coordinator.acceptWakeLevel(.ambient)
+    h.mapTiles = []
+    h.scheduler.advance(WATCH_FRAME_AMBIENT_INTERVAL_MS)
+    XCTAssertEqual(h.mapTiles, [nil])
+    h.coordinator.acceptWakeLevel(.active)
+    h.mapPosition = nil
+    h.mapTiles = []
+    h.scheduler.advance(250)
+    XCTAssertEqual(h.mapTiles, [nil]) // No fix to plan around.
+    h.mapTiles = []
+    h.coordinator.stop()
+    XCTAssertEqual(h.mapTiles, [nil])
   }
 }

@@ -7,6 +7,7 @@ import Foundation
 private final class IOSWatchMirrorTransport: WatchMirrorTransport {
   private let pusher: WatchTelemetryPusher
   private var pushedWeather: WatchWeather?
+  var mapTiles: WatchMapTileTransport { pusher.mapTiles }
   init(record: @escaping (String, [String: Any?]) -> Void) { pusher = WatchTelemetryPusher(record: record) }
   var reachable: Bool { pusher.canPush }
   var requiresWakeReport: Bool { false }
@@ -69,11 +70,19 @@ func iosWatchMirror(
   record: @escaping (String, [String: Any?]) -> Void,
   onNavigatingChanged: @escaping () -> Void
 ) -> WatchMirrorCoordinator {
-  WatchMirrorCoordinator(
-    scheduler: scheduler, nowMs: { Int64(ProcessInfo.processInfo.systemUptime * 1000) },
+  let nowMs = { Int64(ProcessInfo.processInfo.systemUptime * 1000) }
+  let transport = IOSWatchMirrorTransport(record: record)
+  let mapTiles = WatchMapTileSender(
+    scheduler: scheduler, nowMs: nowMs,
+    fetch: { await MapTiles.shared.tile(z: $0.z, x: $0.x, y: $0.y) },
+    transport: transport.mapTiles
+  )
+  return WatchMirrorCoordinator(
+    scheduler: scheduler, nowMs: nowMs,
     snapshot: snapshot, isStale: isStale, groupFrame: groupFrame,
-    transport: IOSWatchMirrorTransport(record: record), sources: IOSWatchMirrorSources(),
-    command: command, record: record, onNavigatingChanged: onNavigatingChanged
+    transport: transport, sources: IOSWatchMirrorSources(),
+    command: command, record: record, onNavigatingChanged: onNavigatingChanged,
+    mapTiles: { mapTiles.update($0) }
   )
 }
 

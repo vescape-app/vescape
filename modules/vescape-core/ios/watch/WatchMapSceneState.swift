@@ -34,6 +34,15 @@ struct WatchMapSceneState {
     guard drawMap else { return 0 }
     return telemetryTrailEnabled ? 1 : min(1, max(0, navFocus))
   }
+
+  /// @parity /watch/wearos/src/main/java/app/vescape/wear/WatchMapSceneState.kt `MAP_GAUGES_ALPHA`
+  static let mapGaugesAlpha = 0.35
+
+  /// Street map: dimmed behind the gauges, full on the map page, absent in ambient.
+  func mapAlpha(navFocus: Double) -> Double {
+    guard drawMap else { return 0 }
+    return Self.mapGaugesAlpha + (1 - Self.mapGaugesAlpha) * min(1, max(0, navFocus))
+  }
 }
 
 struct WatchMapTarget: Equatable {

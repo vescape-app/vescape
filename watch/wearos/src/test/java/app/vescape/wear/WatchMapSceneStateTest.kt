@@ -73,4 +73,11 @@ class WatchMapSceneStateTest {
         val empty = frame.copy(navBearing = null, navDistanceM = null, trail = emptyList())
         assertTrue(scene(empty, WatchRouteStatus(WatchRoutePhase.IDLE), group = null).showAbsentHint)
     }
+
+    @Test fun `street map dims behind the gauges and leaves in ambient`() {
+        assertEquals(MAP_GAUGES_ALPHA, scene().mapAlpha(0f), 0f)
+        assertEquals(1f, scene().mapAlpha(1f), 0f)
+        assertEquals(1f, scene(trail = false).mapAlpha(2f), 0f)
+        assertEquals(0f, scene(ambient = true).mapAlpha(1f), 0f)
+    }
 }

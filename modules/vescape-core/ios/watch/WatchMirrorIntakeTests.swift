@@ -142,4 +142,17 @@ final class WatchMirrorIntakeTests: XCTestCase {
     intake.acceptRoute(Data([99]))
     XCTAssertNil(intake.route)
   }
+
+  /// Issue #551: the phone's tile list survives a context without one, so tiles are not dropped by
+  /// a payload this build cannot read.
+  func testMapTileListIsReplacedOnlyByAReadableList() {
+    var intake = WatchMirrorIntake()
+    let list = WatchMapTileList(style: "a/b", tiles: [WatchMapTile(z: 15, x: 1, y: 2)])
+    intake.restoreColdState([watchMapTilesChannel: list.payload])
+    XCTAssertEqual(intake.mapTiles, list)
+    intake.restoreColdState([:])
+    XCTAssertEqual(intake.mapTiles, list)
+    intake.restoreColdState([watchMapTilesChannel: ["style": "a/b", "tiles": [String]()]])
+    XCTAssertEqual(intake.mapTiles?.tiles, [])
+  }
 }

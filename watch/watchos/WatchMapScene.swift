@@ -32,6 +32,12 @@ struct WatchMapScene<Gauges: View, Readouts: View>: View {
 
   var body: some View {
     ZStack {
+      // Layer order: street map, route, trail, Group Ride marks, gauges.
+      if scene.drawMap {
+        MapTileLayer(mapView: mapView, mapMoving: mapMoving)
+          .opacity(navStackAlpha * scene.mapAlpha(navFocus: navFocus))
+      }
+
       // Bottom layer: the route ahead and the rider on it, under every gauge and readout. Ambient
       // skips it — the lanes animate their zoom, and a moving map is the most expensive thing the
       // always-on panel could be asked to draw.

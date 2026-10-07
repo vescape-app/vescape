@@ -2342,6 +2342,7 @@ internal class BoardSessionController(private val service: CoreForegroundService
             remoteTilt = if (current != null) remoteTiltController.currentValue else null,
             tiltControl = watchTiltControl(),
             mapPosition = rider?.let { expo.modules.vescapecore.watch.WatchMapPosition(it.latitude, it.longitude) },
+            riderSpeedMps = rider?.speedMps,
             trail = expo.modules.vescapecore.watch.watchTrail(
                 rider?.let { GeoPoint(it.latitude, it.longitude) },
                 locationTracker.recentLocations(),

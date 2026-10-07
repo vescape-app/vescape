@@ -344,6 +344,42 @@ bun run watchos:replay --wander --group
 
 These switches remain inside the existing emulator/simulator replay gates.
 
+## Street map
+
+A dark raster street map sits under the trail and route whenever the wrist is awake and the phone
+has a GPS fix, with or without Navigation or a Group Ride. The phone owns every decision; the wrist
+never reports what it holds (ADR-0019, ADR-0033).
+
+**Zoom** (`watchMapTileZoom` / `WatchMapTilePlan.zoom`): the span the wrist draws (`routeSpanM`
+clamped by `WatchMapSpan` / `WatchMapProjection.clampedSpanM`, 600 m while the phone map is
+unmounted) on a 480 px reference face, at the lowest zoom whose 512 px tile is drawn at most 1.3×
+its size. A held level survives until the span moves 1.15× past its boundary. In Wrocław 600 m is
+z15.
+
+**Wanted tiles** (`WatchMapTilePlan.kt` / `.swift`, pure and tested on both platforms): a ring of
+one span around a centre ahead of the rider along their course, by the larger of half a span or
+30 s at GPS speed, nearest the rider first. Tiles from earlier steps at the same zoom stay on the
+list up to 200 tiles; past that the least recently needed go first, behind the rider before ahead.
+`WatchMapTilePlanner` re-plans only on a new rider tile, a new zoom, or a turn over 45°. Extra tile
+sources join through `retainWatchMapTiles(needed = …)` in priority order.
+
+**Sending** (`WatchMapTileSender`): only while the coordinator's tile gate holds (the wrist reports
+`ACTIVE`, not ambient or asleep, and there is a fix). Tiles come from the shared `MapTiles` cache
+(ride thumbnails use the same files) and go out unchanged, nearest first, at most 4 in flight. A
+failed download or send waits 30 s. On every wake the sender re-reads what the wrist holds.
+
+|                      | Wear OS                                                                                 | watchOS                                                                                                                                   |
+| -------------------- | --------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------- |
+| Tile bytes           | one Data Layer item per tile, `/map-tile/<style>/<z>/<x>/<y>`, JPEG as an Asset, urgent | `transferFile` with `{style, z, x, y}` metadata                                                                                           |
+| What the wrist keeps | the set of those items; the phone deletes an item to drop a tile                        | `mapTiles` list (`{style, tiles}`) in the Application Context, merged by `WatchColdState`                                                 |
+| What is delivered    | `getDataItems` under `/map-tile`; items of another style are deleted                    | finished transfers recorded in `WCSession.watchDirectoryURL`, wiped with a reinstall or unpair; transfers for dropped tiles are cancelled |
+
+**Wrist**: `MapTileLayer` places each tile's corners with `WatchMapPosition` as metres from the
+rider and draws it as one image with the trail's span, course and position motion. Layers, bottom
+up: background, street map, route and trail, Group Ride marks, gauges. The map follows nav focus
+from 35% behind the gauges to 100% on the map page (`mapAlpha`), and ambient draws none. At most 12
+tiles are decoded at once, off the main thread (RGB_565 on Wear OS).
+
 ## Phone → Watch Channels
 
 Channels are split by how often the data changes:
@@ -355,6 +391,7 @@ Channels are split by how often the data changes:
 | `/route-status` | `MessageClient`      | route actions and watch ticks | phase and route fingerprint                   |
 | `/route`        | Data Layer item      | per route change              | encoded polyline, versioned binary            |
 | `/settings`     | Data Layer `DataMap` | per settings change           | rider settings, key-value                     |
+| `/map-tile/…`   | Data Layer item      | per planned street-map tile   | 512 px JPEG as an Asset, one item per tile    |
 
 `MessageClient` drops undelivered sends, which is right for a frame that is stale in 250 ms and wrong
 for cold state — hence the Data Layer for the other two, where the last value stays on the watch

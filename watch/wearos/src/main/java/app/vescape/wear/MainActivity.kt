@@ -15,9 +15,13 @@ import androidx.wear.ambient.AmbientLifecycleObserver
 import com.google.android.gms.wearable.DataClient
 import com.google.android.gms.wearable.DataEvent
 import com.google.android.gms.wearable.DataItem
+import com.google.android.gms.wearable.DataItemAsset
 import com.google.android.gms.wearable.DataMapItem
 import com.google.android.gms.wearable.MessageClient
 import com.google.android.gms.wearable.Wearable
+import com.google.android.gms.tasks.Tasks
+import expo.modules.vescapecore.watch.WATCH_MAP_TILE_ASSET
+import expo.modules.vescapecore.watch.WatchMapTile
 import expo.modules.vescapecore.watch.WATCH_GROUP_RIDE_PATH
 import expo.modules.vescapecore.watch.WATCH_ROUTE_STATUS_PATH
 
@@ -72,6 +76,12 @@ class MainActivity : ComponentActivity() {
                 val item = event.dataItem
                 val path = item.uri.path
                 val deleted = event.type == DataEvent.TYPE_DELETED
+                val mapTile = path?.let(WatchMapTile::fromPath)?.second
+                if (mapTile != null) {
+                    val load = if (deleted) null else mapTileLoader(item)
+                    runOnUiThread { if (load == null) MapTileState.remove(mapTile) else MapTileState.put(mapTile, load) }
+                    continue
+                }
                 val bytes = if (!deleted && path == ROUTE_PATH) item.data else null
                 val payload = if (!deleted && path in setOf(SETTINGS_PATH, WEATHER_PATH, BOARD_PATH)) dataMapOf(item) else null
                 runOnUiThread {
@@ -88,6 +98,15 @@ class MainActivity : ComponentActivity() {
         } finally {
             events.release()
         }
+    }
+
+    /**
+     * Reads a street-map tile's JPEG from its Asset, on the caller's (background) thread. The asset
+     * is frozen because the event buffer it came from is released.
+     */
+    private fun mapTileLoader(item: DataItem): (() -> ByteArray?)? {
+        val asset: DataItemAsset = item.assets[WATCH_MAP_TILE_ASSET]?.freeze() ?: return null
+        return { Tasks.await(dataClient.getFdForAsset(asset)).inputStream.use { it.readBytes() } }
     }
 
     private fun dataMapOf(item: DataItem): Map<String, Any?> {
@@ -139,6 +158,12 @@ class MainActivity : ComponentActivity() {
                 val weather = items.firstOrNull { it.uri.path == WEATHER_PATH }?.let(::dataMapOf)
                 val board = items.firstOrNull { it.uri.path == BOARD_PATH }?.let(::dataMapOf)
                 MirrorIntakeState.apply { restoreColdState(route, settings, weather, board) }
+                MapTileState.replace(
+                    items.mapNotNull { item ->
+                        val tile = item.uri.path?.let(WatchMapTile::fromPath)?.second ?: return@mapNotNull null
+                        mapTileLoader(item)?.let { tile to it }
+                    }.toMap(),
+                )
             } finally {
                 items.release()
             }

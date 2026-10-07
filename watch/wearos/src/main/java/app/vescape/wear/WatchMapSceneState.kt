@@ -1,6 +1,7 @@
 package app.vescape.wear
 
 import expo.modules.vescapecore.watch.WatchMapPosition
+import expo.modules.vescapecore.watch.WatchMapSpan
 import expo.modules.vescapecore.watch.WatchRouteStatus
 
 /** A coherent map decision for one frame, independent of Compose and its animation clock.
@@ -22,7 +23,7 @@ internal class WatchMapSceneState(
     val drawMap = !ambient
     val showAbsentHint = !hasNavigation && notice == null && group == null && frame.trail.isEmpty()
     val target = WatchMapTarget(
-        spanM = WatchMapProjection.clampRouteSpanM(if (!hasNavigation && group != null) group.spanM else frame.routeSpanM),
+        spanM = WatchMapSpan.clamp(if (!hasNavigation && group != null) group.spanM else frame.routeSpanM),
         courseDeg = (if (!hasNavigation && group != null) group.courseDeg else frame.courseDeg)?.toFloat(),
         position = frame.mapPosition,
     )
@@ -32,7 +33,14 @@ internal class WatchMapSceneState(
         telemetryTrailEnabled -> 1f
         else -> navFocus.coerceIn(0f, 1f)
     }
+
+    /** Street map: dimmed behind the gauges, full on the map page, absent in ambient. */
+    fun mapAlpha(navFocus: Float): Float =
+        if (!drawMap) 0f else MAP_GAUGES_ALPHA + (1f - MAP_GAUGES_ALPHA) * navFocus.coerceIn(0f, 1f)
 }
+
+/** @parity /modules/vescape-core/ios/watch/WatchMapSceneState.swift `mapGaugesAlpha` */
+internal const val MAP_GAUGES_ALPHA = 0.35f
 
 internal data class WatchMapTarget(val spanM: Float, val courseDeg: Float?, val position: WatchMapPosition?)
 

@@ -63,6 +63,10 @@ internal fun WatchMapScene(
     )
     Box(Modifier.fillMaxSize()) {
         if (scene.drawMap) {
+            // Layer order: street map, trail and route, Group Ride marks, gauges.
+            Box(Modifier.fillMaxSize().graphicsLayer { alpha = navStackAlpha() * scene.mapAlpha(focus()) }) {
+                MapTileLayer(mapView)
+            }
             Box(Modifier.fillMaxSize().graphicsLayer { alpha = navStackAlpha() }) {
                 if (scene.hasNavigation) NavRoute(frame, route, mapView, muted, focus)
                 Box(Modifier.fillMaxSize().graphicsLayer { alpha = scene.trailAlpha(focus()) }) {

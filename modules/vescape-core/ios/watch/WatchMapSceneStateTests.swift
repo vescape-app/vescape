@@ -78,4 +78,11 @@ final class WatchMapSceneStateTests: XCTestCase {
     empty.trail = []
     XCTAssertTrue(scene(empty, status: WatchRouteStatus(phase: .idle), group: nil).showAbsentHint)
   }
+
+  func testStreetMapDimsBehindTheGaugesAndLeavesInAmbient() {
+    XCTAssertEqual(scene(frame, status: ready, group: nil).mapAlpha(navFocus: 0), WatchMapSceneState.mapGaugesAlpha)
+    XCTAssertEqual(scene(frame, status: ready, group: nil).mapAlpha(navFocus: 1), 1)
+    XCTAssertEqual(scene(frame, status: ready, group: nil, trail: false).mapAlpha(navFocus: 2), 1)
+    XCTAssertEqual(scene(frame, status: ready, group: nil, ambient: true).mapAlpha(navFocus: 1), 0)
+  }
 }

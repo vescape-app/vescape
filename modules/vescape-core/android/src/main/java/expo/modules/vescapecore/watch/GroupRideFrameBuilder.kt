@@ -8,7 +8,7 @@ import kotlin.math.roundToInt
  * Map span the wrist uses until the phone map has published its own. Same fallback as the route.
  *
  * @parity /modules/vescape-core/ios/watch/GroupRideFrameBuilder.swift `GROUP_RIDE_DEFAULT_SPAN_M`
- * @parity /watch/wearos/src/main/java/app/vescape/wear/WatchMapProjection.kt `DEFAULT_ROUTE_SPAN_M`
+ * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/watch/WatchMapTile.kt `WatchMapSpan`
  */
 internal const val GROUP_RIDE_DEFAULT_SPAN_M = 600.0
 

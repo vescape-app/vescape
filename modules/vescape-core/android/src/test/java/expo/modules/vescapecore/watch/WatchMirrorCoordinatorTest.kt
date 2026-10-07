@@ -51,11 +51,13 @@ class WatchMirrorCoordinatorTest {
         val sources = Sources()
         var board = true
         var navigatingChanges = 0
+        var mapPosition: WatchMapPosition? = WatchMapPosition(51.1, 17.0)
+        val mapTiles = mutableListOf<WatchMapRider?>()
         val coordinator = WatchMirrorCoordinator(
             scheduler, { scheduler.currentTimeMs },
-            { WatchSnapshot(speed = if (board) 25.0 else null, dutyCycle = null, dutyExcluded = true, batterySoc = null, motorTemp = null, ctrlTemp = null, navBearing = 90.0, navDistanceM = 100.0) },
+            { WatchSnapshot(speed = if (board) 25.0 else null, dutyCycle = null, dutyExcluded = true, batterySoc = null, motorTemp = null, ctrlTemp = null, navBearing = 90.0, navDistanceM = 100.0, mapPosition = mapPosition, riderSpeedMps = 5.0, routeSpanM = 800.0) },
             { false }, { GroupRideFrame(0.0, 600.0, emptyList()) }, transport, sources, { _, _ -> },
-            { navigatingChanges++ },
+            { navigatingChanges++ }, { mapTiles += it },
         )
         fun active() { coordinator.start(); coordinator.acceptWakeLevel(WatchMirrorWakeLevel.ACTIVE) }
     }
@@ -198,5 +200,29 @@ class WatchMirrorCoordinatorTest {
         assertFalse(h.coordinator.navigating)
         h.scheduler.advance(1000)
         assertEquals(4, h.navigatingChanges)
+    }
+
+    /** Issue #551: tiles only reach an awake wrist that draws a map, around a GPS fix. */
+    @Test fun `street map tiles follow an active wrist only`() {
+        val h = Harness()
+        h.coordinator.start()
+        h.scheduler.advance(1000)
+        assertTrue(h.mapTiles.isNotEmpty() && h.mapTiles.all { it == null }) // Asleep.
+        h.coordinator.acceptWakeLevel(WatchMirrorWakeLevel.ACTIVE)
+        h.mapTiles.clear()
+        h.scheduler.advance(250)
+        assertEquals(WatchMapRider(WatchMapPosition(51.1, 17.0), null, 5.0, 800.0), h.mapTiles.single())
+        h.coordinator.acceptWakeLevel(WatchMirrorWakeLevel.AMBIENT)
+        h.mapTiles.clear()
+        h.scheduler.advance(WATCH_FRAME_AMBIENT_INTERVAL_MS)
+        assertEquals(listOf<WatchMapRider?>(null), h.mapTiles)
+        h.coordinator.acceptWakeLevel(WatchMirrorWakeLevel.ACTIVE)
+        h.mapPosition = null
+        h.mapTiles.clear()
+        h.scheduler.advance(250)
+        assertEquals(listOf<WatchMapRider?>(null), h.mapTiles) // No fix to plan around.
+        h.mapTiles.clear()
+        h.coordinator.stop()
+        assertEquals(listOf<WatchMapRider?>(null), h.mapTiles)
     }
 }

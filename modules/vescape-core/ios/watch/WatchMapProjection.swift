@@ -20,7 +20,7 @@ struct WatchMapProjection {
   static let edgeInset: CGFloat = 24
   /// Fallback metres across the display until the phone publishes its camera span.
   ///
-  /// @parity /watch/wearos/src/main/java/app/vescape/wear/WatchMapProjection.kt `DEFAULT_ROUTE_SPAN_M`
+  /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/watch/WatchMapTile.kt `WatchMapSpan`
   /// @parity /modules/vescape-core/ios/watch/GroupRideFrameBuilder.swift `GROUP_RIDE_DEFAULT_SPAN_M`
   static let defaultSpanM = 600.0
   static let minSpanM = 150.0
@@ -28,7 +28,7 @@ struct WatchMapProjection {
 
   /// The phone map's span, clamped to what a wrist can draw, or the fallback.
   ///
-  /// @parity /watch/wearos/src/main/java/app/vescape/wear/WatchMapProjection.kt `clampRouteSpanM`
+  /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/watch/WatchMapTile.kt `WatchMapSpan`
   static func clampedSpanM(_ spanM: Double?) -> Double {
     min(maxSpanM, max(minSpanM, spanM ?? defaultSpanM))
   }
