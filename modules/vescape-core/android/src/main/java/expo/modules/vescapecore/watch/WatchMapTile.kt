@@ -14,6 +14,24 @@ import kotlin.math.sinh
  *
  * @parity /modules/vescape-core/ios/watch/WatchMapProjection.swift `clampedSpanM`
  */
+/**
+ * The rider's **Map behind gauges** setting: street map opacity behind the telemetry gauges, as an
+ * integer percent from fixed steps. Phone persistence and the wrist decode both snap through
+ * [percent], so a value from a newer or broken phone falls back to the default.
+ *
+ * @parity /modules/vescape-core/ios/watch/WatchMapTile.swift `WatchMapGauges`
+ */
+object WatchMapGauges {
+    val STEPS = listOf(30, 45, 60, 75, 90)
+    const val DEFAULT_PERCENT = 60
+
+    /** One of [STEPS], else null. */
+    fun percent(value: Any?): Int? {
+        val number = value as? Number ?: return null
+        return number.toInt().takeIf { it in STEPS && it.toDouble() == number.toDouble() }
+    }
+}
+
 object WatchMapSpan {
     /**
      * Fallback until the phone publishes its camera span.

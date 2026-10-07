@@ -13,8 +13,9 @@ struct WatchMapSceneState {
   let showAbsentHint: Bool
   let target: WatchMapTarget
   private let telemetryTrailEnabled: Bool
+  private let mapGaugesAlpha: Double
 
-  init(frame: WatchFrame, routeId: UInt32?, routeStatus: WatchRouteStatus?, group: WatchGroupRide?, ambient: Bool, telemetryTrailEnabled: Bool, streetMapEnabled: Bool) {
+  init(frame: WatchFrame, routeId: UInt32?, routeStatus: WatchRouteStatus?, group: WatchGroupRide?, ambient: Bool, telemetryTrailEnabled: Bool, streetMapEnabled: Bool, mapGaugesPercent: Int) {
     let hasNavigation = frame.navBearing != nil && frame.navDistanceM != nil && routeStatus?.canDraw(receivedRouteId: routeId) != false
     if hasNavigation, let bearing = frame.navBearing, let distance = frame.navDistanceM {
       navigation = WatchMapNavigation(bearingDeg: bearing, distanceM: distance)
@@ -26,6 +27,8 @@ struct WatchMapSceneState {
     drawStreetMap = drawMap && streetMapEnabled
     showAbsentHint = !hasNavigation && notice == nil && group == nil && frame.trail.isEmpty
     self.telemetryTrailEnabled = telemetryTrailEnabled
+    // The rider's Map behind gauges percent, already snapped by `WatchMapGauges.percent`.
+    mapGaugesAlpha = Double(mapGaugesPercent) / 100
     target = WatchMapTarget(
       spanM: WatchMapProjection.clampedSpanM(!hasNavigation ? group?.spanM ?? frame.routeSpanM : frame.routeSpanM),
       courseDeg: !hasNavigation ? group?.courseDeg ?? frame.courseDeg : frame.courseDeg,
@@ -38,13 +41,11 @@ struct WatchMapSceneState {
     return telemetryTrailEnabled ? 1 : min(1, max(0, navFocus))
   }
 
-  /// @parity /watch/wearos/src/main/java/app/vescape/wear/WatchMapSceneState.kt `MAP_GAUGES_ALPHA`
-  static let mapGaugesAlpha = 0.6
-
-  /// Street map: dimmed behind the gauges, full on the map page, absent in ambient or when off.
+  /// Street map: the rider's Map behind gauges opacity behind the gauges, full on the map page,
+  /// absent in ambient or when off.
   func mapAlpha(navFocus: Double) -> Double {
     guard drawStreetMap else { return 0 }
-    return Self.mapGaugesAlpha + (1 - Self.mapGaugesAlpha) * min(1, max(0, navFocus))
+    return mapGaugesAlpha + (1 - mapGaugesAlpha) * min(1, max(0, navFocus))
   }
 }
 

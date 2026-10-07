@@ -18,8 +18,9 @@ class WatchMapSceneStateTest {
     private val group = WatchGroupRide(180.0, 1200.0, emptyList())
     private val ready = WatchRouteStatus(WatchRoutePhase.READY, 7)
     private fun scene(frame: WatchFrame = this.frame, status: WatchRouteStatus? = ready,
-        group: WatchGroupRide? = this.group, ambient: Boolean = false, trail: Boolean = true, streetMap: Boolean = true) =
-        WatchMapSceneState(frame, 7, status, group, ambient, trail, streetMap)
+        group: WatchGroupRide? = this.group, ambient: Boolean = false, trail: Boolean = true, streetMap: Boolean = true,
+        mapGauges: Int = 60) =
+        WatchMapSceneState(frame, 7, status, group, ambient, trail, streetMap, mapGauges)
 
     @Test fun `navigation ending falls through group and standalone without losing rider history`() {
         val navigation = scene()
@@ -75,10 +76,19 @@ class WatchMapSceneStateTest {
     }
 
     @Test fun `street map dims behind the gauges and leaves in ambient`() {
-        assertEquals(MAP_GAUGES_ALPHA, scene().mapAlpha(0f), 0f)
+        assertEquals(0.6f, scene().mapAlpha(0f), 1e-6f)
         assertEquals(1f, scene().mapAlpha(1f), 0f)
         assertEquals(1f, scene(trail = false).mapAlpha(2f), 0f)
         assertEquals(0f, scene(ambient = true).mapAlpha(1f), 0f)
+    }
+
+    /** Issue #557: Map behind gauges sets the gauge page opacity; the map page stays full. */
+    @Test fun `map behind gauges sets the gauge page opacity only`() {
+        assertEquals(0.3f, scene(mapGauges = 30).mapAlpha(0f), 1e-6f)
+        assertEquals(0.9f, scene(mapGauges = 90).mapAlpha(0f), 1e-6f)
+        assertEquals(0.65f, scene(mapGauges = 30).mapAlpha(0.5f), 1e-6f)
+        assertEquals(1f, scene(mapGauges = 30).mapAlpha(1f), 0f)
+        assertEquals(0f, scene(mapGauges = 90, ambient = true).mapAlpha(0f), 0f)
     }
 
     @Test fun `street map setting off hides only the street map`() {

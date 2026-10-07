@@ -47,7 +47,7 @@ internal fun WatchMapScene(
     val group = GroupRideState.group.value
     val route = RouteState.route.value
     val settings = SettingsState.settings.value
-    val scene = WatchMapSceneState(frame, route?.routeId, RouteState.status.value, group, ambient.active, settings.telemetryTrailEnabled, settings.streetMapEnabled)
+    val scene = WatchMapSceneState(frame, route?.routeId, RouteState.status.value, group, ambient.active, settings.telemetryTrailEnabled, settings.streetMapEnabled, settings.mapGaugesPercent)
     val navStackAlpha = { fadeOut(awayFocus()) }
     val loading by remember(scene.notice, awayFocus) {
         derivedStateOf { scene.notice != null && scene.notice != WatchRouteNotice.FAILED && navStackAlpha() > 0f }

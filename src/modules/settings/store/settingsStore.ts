@@ -60,6 +60,7 @@ const DEFAULTS: AppSettings = {
   wearNavArrowEnabled: false,
   wearTelemetryTrailEnabled: true,
   wearStreetMapEnabled: true,
+  wearMapGaugesPercent: 60,
   wearTiltRatePercent: 20,
   riderId: null,
   riderName: null,

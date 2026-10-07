@@ -411,7 +411,8 @@ cell's best held level is decoded (its own tile, else the one-out tile, else the
 fallback is drawn only if it is already decoded. It places each tile's corners with `WatchMapPosition` as metres from the
 rider and draws it as one image with the trail's span, course and position motion. Layers, bottom
 up: background, street map, route and trail, Group Ride marks, gauges. The map follows nav focus
-from 60% behind the gauges to 100% on the map page (`mapAlpha`), and ambient draws none. At most 12
+from the rider's **Map behind gauges** opacity behind the gauges to 100% on the map page
+(`mapAlpha`), and ambient draws none. At most 12
 cells are drawn. Tiles decode off the main thread (RGB_565 on Wear OS) into a cache of 12 that
 never evicts what the last frame drew or waits on, so a decode cannot evict itself when the face
 already pins 12 tiles after a zoom-out. A tile that fails to read or decode is retried after 10 s.
@@ -421,6 +422,13 @@ already pins 12 tiles after a zoom-out. A tile that fails to read or decode is r
 does: sending pauses, no tile is dropped (no Data Layer item deleted, no shrunk `mapTiles` list), and
 the wrist skips `MapTileLayer` (`drawStreetMap`). Route, trail and Group Ride marks stay. Turning it
 back on resends only tiles the wrist does not already hold.
+
+Settings → Watch → **Map behind gauges**, shown only while Street map is on: the street map's
+opacity behind the gauges, 30 / 45 / 60 / 75 / 90 %, default 60 %. It is stored and sent as an
+integer percent (`wearMapGaugesPercent`, `mapGaugesPercent` on the settings channel);
+`WatchMapGauges.percent` (`WatchMapTile.kt` / `.swift`) snaps anything off those steps to the
+default in phone persistence and on both wrists. The map page stays at 100 %, and the setting does
+not change which tiles are sent.
 
 ## Phone → Watch Channels
 

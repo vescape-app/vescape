@@ -6,6 +6,7 @@ import {
   MapTrifoldIcon,
   NavigationArrowIcon,
   PathIcon,
+  StackIcon,
   WatchIcon,
 } from 'phosphor-react-native'
 import { useShallow } from 'zustand/react/shallow'
@@ -29,6 +30,15 @@ import { useSettingsStore } from '@/modules/settings/store/settingsStore'
  */
 const AUTO_LAUNCH_SUPPORTED = Platform.OS === 'android'
 
+/**
+ * Map behind gauges steps, integer percent. Native snaps anything else to the 60 % default.
+ * @parity /modules/vescape-core/ios/watch/WatchMapTile.swift `WatchMapGauges`
+ * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/watch/WatchMapTile.kt `WatchMapGauges`
+ */
+const MAP_GAUGES_MIN = 30
+const MAP_GAUGES_MAX = 90
+const MAP_GAUGES_STEP = 15
+
 /** Stick speed doubles per step: fine enough at the low end, fast enough at the top. */
 const TILT_RATE_MIN = 5
 const TILT_RATE_MAX = 40
@@ -40,6 +50,7 @@ export default function WatchSettingsScreen() {
     wearNavArrowEnabled,
     wearTelemetryTrailEnabled,
     wearStreetMapEnabled,
+    wearMapGaugesPercent,
     wearTiltRatePercent,
     set,
   } = useSettingsStore(
@@ -49,6 +60,7 @@ export default function WatchSettingsScreen() {
       wearNavArrowEnabled: s.wearNavArrowEnabled,
       wearTelemetryTrailEnabled: s.wearTelemetryTrailEnabled,
       wearStreetMapEnabled: s.wearStreetMapEnabled,
+      wearMapGaugesPercent: s.wearMapGaugesPercent,
       wearTiltRatePercent: s.wearTiltRatePercent,
       set: s.set,
     })),
@@ -133,6 +145,24 @@ export default function WatchSettingsScreen() {
               />
             }
           />
+          {wearStreetMapEnabled ? (
+            <SettingsRow
+              icon={StackIcon}
+              iconColor={theme.palette.violet.color}
+              label="Map behind gauges"
+              hint="How strongly streets show behind the watch gauges. The map screen always shows them fully"
+              right={
+                <Stepper
+                  value={wearMapGaugesPercent}
+                  unit="%"
+                  min={MAP_GAUGES_MIN}
+                  max={MAP_GAUGES_MAX}
+                  step={MAP_GAUGES_STEP}
+                  onChange={(nextValue) => void set('wearMapGaugesPercent', nextValue)}
+                />
+              }
+            />
+          ) : null}
           <SettingsRow
             icon={AngleIcon}
             iconColor={theme.palette.green.color}

@@ -1,5 +1,6 @@
 package app.vescape.wear
 
+import expo.modules.vescapecore.watch.WatchMapGauges
 import expo.modules.vescapecore.watch.WatchMapPosition
 import expo.modules.vescapecore.watch.WatchMapSpan
 import expo.modules.vescapecore.watch.WatchRouteStatus
@@ -16,6 +17,8 @@ internal class WatchMapSceneState(
     ambient: Boolean,
     private val telemetryTrailEnabled: Boolean,
     streetMapEnabled: Boolean,
+    /** The rider's Map behind gauges percent, already snapped by [WatchMapGauges.percent]. */
+    mapGaugesPercent: Int,
 ) {
     val navigation = if (frame.navBearing != null && frame.navDistanceM != null && routeStatus?.canDraw(routeId) != false)
         WatchMapNavigation(frame.navBearing, frame.navDistanceM) else null
@@ -37,13 +40,12 @@ internal class WatchMapSceneState(
         else -> navFocus.coerceIn(0f, 1f)
     }
 
-    /** Street map: dimmed behind the gauges, full on the map page, absent in ambient or when off. */
-    fun mapAlpha(navFocus: Float): Float =
-        if (!drawStreetMap) 0f else MAP_GAUGES_ALPHA + (1f - MAP_GAUGES_ALPHA) * navFocus.coerceIn(0f, 1f)
-}
+    private val mapGaugesAlpha = mapGaugesPercent / 100f
 
-/** @parity /modules/vescape-core/ios/watch/WatchMapSceneState.swift `mapGaugesAlpha` */
-internal const val MAP_GAUGES_ALPHA = 0.6f
+    /** Street map: the rider's Map behind gauges opacity behind the gauges, full on the map page, absent in ambient or when off. */
+    fun mapAlpha(navFocus: Float): Float =
+        if (!drawStreetMap) 0f else mapGaugesAlpha + (1f - mapGaugesAlpha) * navFocus.coerceIn(0f, 1f)
+}
 
 internal data class WatchMapTarget(val spanM: Float, val courseDeg: Float?, val position: WatchMapPosition?)
 

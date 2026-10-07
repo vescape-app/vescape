@@ -11,6 +11,7 @@ import expo.modules.vescapecore.service.CoreForegroundService
 
 import expo.modules.vescapecore.connection.BoardTransport
 import expo.modules.vescapecore.alerts.CustomAppSounds
+import expo.modules.vescapecore.watch.WatchMapGauges
 import android.content.Context
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -442,6 +443,7 @@ class AppDataRepository private constructor(private val context: Context) {
       wearNavArrowEnabled = req("wearNavArrowEnabled", false) { it as? Boolean },
       wearTelemetryTrailEnabled = req("wearTelemetryTrailEnabled", true) { it as? Boolean },
       wearStreetMapEnabled = req("wearStreetMapEnabled", true) { it as? Boolean },
+      wearMapGaugesPercent = req("wearMapGaugesPercent", WatchMapGauges.DEFAULT_PERCENT, WatchMapGauges::percent),
       groupRidePublicEnabled = req("groupRidePublicEnabled", false) { it as? Boolean },
       wearTiltRatePercent = req("wearTiltRatePercent", 20, ::validWearTiltRatePercent),
       companionPresenceEnabled = req("companionPresenceEnabled", false) { it as? Boolean },
@@ -534,6 +536,7 @@ class AppDataRepository private constructor(private val context: Context) {
       "wearNavArrowEnabled" -> value as? Boolean ?: return@withContext
       "wearTelemetryTrailEnabled" -> value as? Boolean ?: return@withContext
       "wearStreetMapEnabled" -> value as? Boolean ?: return@withContext
+      "wearMapGaugesPercent" -> WatchMapGauges.percent(value) ?: return@withContext
       "groupRidePublicEnabled" -> value as? Boolean ?: return@withContext
       "wearTiltRatePercent" ->
         validWearTiltRatePercent(value) ?: return@withContext
@@ -596,6 +599,7 @@ class AppDataRepository private constructor(private val context: Context) {
         "wearNavArrowEnabled" -> d.wearNavArrowEnabled
         "wearTelemetryTrailEnabled" -> d.wearTelemetryTrailEnabled
         "wearStreetMapEnabled" -> d.wearStreetMapEnabled
+        "wearMapGaugesPercent" -> d.wearMapGaugesPercent
         "groupRidePublicEnabled" -> d.groupRidePublicEnabled
         "wearTiltRatePercent" -> d.wearTiltRatePercent
         "companionPresenceEnabled" -> d.companionPresenceEnabled
@@ -976,6 +980,7 @@ fun AppSettings.toMap(): Map<String, Any?> = mapOf(
   "wearNavArrowEnabled" to wearNavArrowEnabled,
   "wearTelemetryTrailEnabled" to wearTelemetryTrailEnabled,
   "wearStreetMapEnabled" to wearStreetMapEnabled,
+  "wearMapGaugesPercent" to wearMapGaugesPercent,
   "groupRidePublicEnabled" to groupRidePublicEnabled,
   "wearTiltRatePercent" to wearTiltRatePercent,
   "companionPresenceEnabled" to companionPresenceEnabled,

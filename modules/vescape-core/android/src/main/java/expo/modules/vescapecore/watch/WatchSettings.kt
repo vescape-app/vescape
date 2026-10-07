@@ -33,6 +33,9 @@ internal const val WATCH_SETTING_TELEMETRY_TRAIL = "telemetryTrailEnabled"
 /** Whether the wrist draws the street map. Off: the phone sends no tiles; tiles already on the wrist stay. */
 internal const val WATCH_SETTING_STREET_MAP = "streetMapEnabled"
 
+/** Street map opacity behind the gauges, integer percent from [WatchMapGauges.STEPS]. */
+internal const val WATCH_SETTING_MAP_GAUGES = "mapGaugesPercent"
+
 /** App-wide speed and distance preference; older phones default to metric. */
 internal const val WATCH_SETTING_UNIT_SYSTEM = "unitSystem"
 
@@ -53,6 +56,7 @@ internal val WATCH_SOURCE_SETTING_KEYS = setOf(
     "wearNavArrowEnabled",
     "wearTelemetryTrailEnabled",
     "wearStreetMapEnabled",
+    "wearMapGaugesPercent",
     "unitSystem",
     "wearTiltRatePercent",
     "wearPushRateHz",
@@ -67,6 +71,7 @@ internal data class WatchSettings(
     val tiltRatePercent: Int = 20,
     val telemetryTrailEnabled: Boolean = true,
     val streetMapEnabled: Boolean = true,
+    val mapGaugesPercent: Int = WatchMapGauges.DEFAULT_PERCENT,
 )
 
 /**
@@ -81,6 +86,7 @@ internal fun AppSettings.toWatchSettings(): WatchSettings = WatchSettings(
     navArrowEnabled = wearNavArrowEnabled,
     telemetryTrailEnabled = wearTelemetryTrailEnabled,
     streetMapEnabled = wearStreetMapEnabled,
+    mapGaugesPercent = wearMapGaugesPercent,
     unitSystem = unitSystem,
     tiltRatePercent = wearTiltRatePercent,
 )

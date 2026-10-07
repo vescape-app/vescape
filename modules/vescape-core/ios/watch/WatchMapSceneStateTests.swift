@@ -12,8 +12,8 @@ final class WatchMapSceneStateTests: XCTestCase {
   }
   private let group = WatchGroupRide(courseDeg: 180, spanM: 1200, riders: [])
   private let ready = WatchRouteStatus(phase: .ready, routeId: 7)
-  private func scene(_ frame: WatchFrame, status: WatchRouteStatus?, group: WatchGroupRide?, ambient: Bool = false, trail: Bool = true, streetMap: Bool = true) -> WatchMapSceneState {
-    WatchMapSceneState(frame: frame, routeId: 7, routeStatus: status, group: group, ambient: ambient, telemetryTrailEnabled: trail, streetMapEnabled: streetMap)
+  private func scene(_ frame: WatchFrame, status: WatchRouteStatus?, group: WatchGroupRide?, ambient: Bool = false, trail: Bool = true, streetMap: Bool = true, mapGauges: Int = 60) -> WatchMapSceneState {
+    WatchMapSceneState(frame: frame, routeId: 7, routeStatus: status, group: group, ambient: ambient, telemetryTrailEnabled: trail, streetMapEnabled: streetMap, mapGaugesPercent: mapGauges)
   }
 
   func testNavigationEndingFallsThroughGroupAndStandaloneWithoutLosingRiderHistory() {
@@ -80,10 +80,19 @@ final class WatchMapSceneStateTests: XCTestCase {
   }
 
   func testStreetMapDimsBehindTheGaugesAndLeavesInAmbient() {
-    XCTAssertEqual(scene(frame, status: ready, group: nil).mapAlpha(navFocus: 0), WatchMapSceneState.mapGaugesAlpha)
+    XCTAssertEqual(scene(frame, status: ready, group: nil).mapAlpha(navFocus: 0), 0.6, accuracy: 1e-9)
     XCTAssertEqual(scene(frame, status: ready, group: nil).mapAlpha(navFocus: 1), 1)
     XCTAssertEqual(scene(frame, status: ready, group: nil, trail: false).mapAlpha(navFocus: 2), 1)
     XCTAssertEqual(scene(frame, status: ready, group: nil, ambient: true).mapAlpha(navFocus: 1), 0)
+  }
+
+  /// Issue #557: Map behind gauges sets the gauge page opacity; the map page stays full.
+  func testMapBehindGaugesSetsTheGaugePageOpacityOnly() {
+    XCTAssertEqual(scene(frame, status: ready, group: nil, mapGauges: 30).mapAlpha(navFocus: 0), 0.3, accuracy: 1e-9)
+    XCTAssertEqual(scene(frame, status: ready, group: nil, mapGauges: 90).mapAlpha(navFocus: 0), 0.9, accuracy: 1e-9)
+    XCTAssertEqual(scene(frame, status: ready, group: nil, mapGauges: 30).mapAlpha(navFocus: 0.5), 0.65, accuracy: 1e-9)
+    XCTAssertEqual(scene(frame, status: ready, group: nil, mapGauges: 30).mapAlpha(navFocus: 1), 1)
+    XCTAssertEqual(scene(frame, status: ready, group: nil, ambient: true, mapGauges: 90).mapAlpha(navFocus: 0), 0)
   }
 
   func testStreetMapSettingOffHidesOnlyTheStreetMap() {

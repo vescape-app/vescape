@@ -20,6 +20,15 @@ class WatchSettingsTest {
         assertEquals(false, WatchSettings.decode(mapOf(SETTING_STREET_MAP to false)).streetMapEnabled)
     }
 
+    /** Issue #557: an older phone, or a value off the steps, reads as the 60 % default. */
+    @Test fun `map behind gauges keeps its step and falls back to the default`() {
+        assertEquals(60, WatchSettings.decode(emptyMap()).mapGaugesPercent)
+        assertEquals(30, WatchSettings.decode(mapOf(SETTING_MAP_GAUGES to 30)).mapGaugesPercent)
+        for (invalid in listOf(50, 0, 100, -30, "90", true, null)) {
+            assertEquals(60, WatchSettings.decode(mapOf(SETTING_MAP_GAUGES to invalid)).mapGaugesPercent)
+        }
+    }
+
     @Test
     fun `settings updates and restart restore the phone preference with lenient defaults`() {
         for (invalid in listOf(null, "unknown", 1, true)) {

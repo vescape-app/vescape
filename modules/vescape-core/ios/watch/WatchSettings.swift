@@ -27,6 +27,8 @@ enum WatchSettingsKey {
   static let telemetryTrailEnabled = "telemetryTrailEnabled"
   /// Whether the wrist draws the street map. Off: the phone sends no tiles; tiles already on the wrist stay.
   static let streetMapEnabled = "streetMapEnabled"
+  /// Street map opacity behind the gauges, integer percent from ``WatchMapGauges/steps``.
+  static let mapGaugesPercent = "mapGaugesPercent"
   static let unitSystem = "unitSystem"
   /// Tilt stick speed at full deflection, percent of full tilt per second. Applied on the wrist.
   static let tiltRatePercent = "tiltRatePercent"
@@ -56,6 +58,7 @@ let watchSourceSettingKeys: Set<String> = [
   "wearNavArrowEnabled",
   "wearTelemetryTrailEnabled",
   "wearStreetMapEnabled",
+  "wearMapGaugesPercent",
   "unitSystem",
   "wearTiltRatePercent",
   "wearPushRateHz",
@@ -70,6 +73,7 @@ struct WatchSettings: Equatable {
   var navArrowEnabled: Bool = false
   var telemetryTrailEnabled: Bool = true
   var streetMapEnabled: Bool = true
+  var mapGaugesPercent: Int = WatchMapGauges.defaultPercent
   var unitSystem: String = "metric"
   var tiltRatePercent: Int = watchDefaultTiltRatePercent
 
@@ -86,6 +90,7 @@ struct WatchSettings: Equatable {
       WatchSettingsKey.navArrowEnabled: navArrowEnabled,
       WatchSettingsKey.telemetryTrailEnabled: telemetryTrailEnabled,
       WatchSettingsKey.streetMapEnabled: streetMapEnabled,
+      WatchSettingsKey.mapGaugesPercent: mapGaugesPercent,
       WatchSettingsKey.unitSystem: unitSystem,
       WatchSettingsKey.tiltRatePercent: tiltRatePercent,
     ]
@@ -107,6 +112,7 @@ struct WatchSettings: Equatable {
       navArrowEnabled: payload[WatchSettingsKey.navArrowEnabled] as? Bool ?? wristDefaults.navArrowEnabled,
       telemetryTrailEnabled: payload[WatchSettingsKey.telemetryTrailEnabled] as? Bool ?? wristDefaults.telemetryTrailEnabled,
       streetMapEnabled: payload[WatchSettingsKey.streetMapEnabled] as? Bool ?? wristDefaults.streetMapEnabled,
+      mapGaugesPercent: WatchMapGauges.percent(payload[WatchSettingsKey.mapGaugesPercent]) ?? wristDefaults.mapGaugesPercent,
       unitSystem: payload[WatchSettingsKey.unitSystem] as? String == "imperial" ? "imperial" : "metric",
       // Held to the range the phone repositories accept (1–100) on read too: the wrist integrates
       // this every frame, and a rate from a newer or broken phone must not spin the stick.

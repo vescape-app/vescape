@@ -2,6 +2,7 @@ package app.vescape.wear
 
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.graphics.Color
+import expo.modules.vescapecore.watch.WatchMapGauges
 
 /**
  * Data Layer path the phone publishes rider settings on. Must match the phone-side
@@ -32,6 +33,9 @@ const val SETTING_TELEMETRY_TRAIL = "telemetryTrailEnabled"
 /** Whether to draw the street map. Off hides it; tiles already on the wrist stay for when it is back on. */
 const val SETTING_STREET_MAP = "streetMapEnabled"
 
+/** Street map opacity behind the gauges, integer percent; anything off [WatchMapGauges.STEPS] is the default. */
+const val SETTING_MAP_GAUGES = "mapGaugesPercent"
+
 /** App-wide speed and distance preference; older phones default to metric. */
 const val SETTING_UNIT_SYSTEM = "unitSystem"
 
@@ -52,6 +56,7 @@ data class WatchSettings(
     val tiltRatePercent: Int = DEFAULT_TILT_RATE_PERCENT,
     val telemetryTrailEnabled: Boolean = true,
     val streetMapEnabled: Boolean = true,
+    val mapGaugesPercent: Int = WatchMapGauges.DEFAULT_PERCENT,
 ) {
     companion object {
         /** Missing or unknown preference values from older/newer phones always mean metric. */
@@ -60,6 +65,7 @@ data class WatchSettings(
             navArrowEnabled = payload[SETTING_NAV_ARROW] as? Boolean ?: false,
             telemetryTrailEnabled = payload[SETTING_TELEMETRY_TRAIL] as? Boolean ?: true,
             streetMapEnabled = payload[SETTING_STREET_MAP] as? Boolean ?: true,
+            mapGaugesPercent = WatchMapGauges.percent(payload[SETTING_MAP_GAUGES]) ?: WatchMapGauges.DEFAULT_PERCENT,
             boardMoveStrengthPercent = payload[SETTING_BOARD_MOVE_STRENGTH] as? Int,
             unitSystem = if (payload[SETTING_UNIT_SYSTEM] == "imperial") "imperial" else "metric",
             tiltRatePercent = (payload[SETTING_TILT_RATE] as? Int)?.coerceIn(1, 100) ?: DEFAULT_TILT_RATE_PERCENT,

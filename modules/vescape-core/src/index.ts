@@ -1677,6 +1677,14 @@ export interface AppSettings {
    */
   wearStreetMapEnabled: boolean
   /**
+   * Street map opacity behind the watch gauges, integer percent: one of 30, 45, 60, 75, 90 (default
+   * 60). The map page always draws it at 100 %. Native snaps any other value to 60. Mirrored as cold
+   * settings.
+   * @parity /modules/vescape-core/ios/watch/WatchMapTile.swift `WatchMapGauges`
+   * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/watch/WatchMapTile.kt `WatchMapGauges`
+   */
+  wearMapGaugesPercent: number
+  /**
    * Wrist Tilt stick speed at full deflection, percent of full tilt per second (1–100). Pushed to the
    * wrist, which integrates the stick into a Remote Tilt lock.
    *

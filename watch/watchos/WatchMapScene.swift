@@ -17,6 +17,7 @@ struct WatchMapScene<Gauges: View, Readouts: View>: View {
   let navArrowEnabled: Bool
   let telemetryTrailEnabled: Bool
   let streetMapEnabled: Bool
+  let mapGaugesPercent: Int
   let unitSystem: String
   @ViewBuilder var gauges: () -> Gauges
   @ViewBuilder var readouts: () -> Readouts
@@ -27,7 +28,7 @@ struct WatchMapScene<Gauges: View, Readouts: View>: View {
   private var scene: WatchMapSceneState {
     WatchMapSceneState(frame: frame, routeId: route?.routeId, routeStatus: routeStatus, group: groupRide,
       ambient: ambient.active, telemetryTrailEnabled: telemetryTrailEnabled,
-      streetMapEnabled: streetMapEnabled)
+      streetMapEnabled: streetMapEnabled, mapGaugesPercent: mapGaugesPercent)
   }
   private var navStackAlpha: Double { fadeOut(awayFocus) }
   private var tiltColor: Color { (muted || ambient.active) ? Palette.dimText : Palette.tilt }
