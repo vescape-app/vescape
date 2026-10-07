@@ -42,7 +42,7 @@ internal let RIDE_DROPOUT_GRACE_MS: Int64 = 120_000
 
 /// The one place the app decides whether the phone's GPS should be running, and how hard.
 ///
-/// Deliberately pure and total: every caller passes the same four facts and gets the same answer on
+/// Deliberately pure and total: every caller passes the same five facts and gets the same answer on
 /// both platforms, so "why is GPS on?" is answerable without reading the controller.
 ///
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/location/GpsPowerMode.kt `GpsDemand`
@@ -54,16 +54,20 @@ internal enum GpsDemand {
   ///     keeping the chip warm through a 30s+ stop buys nothing but drain.
   ///   - groupRideParticipating: the rider's position is being broadcast to a Group Ride, which must
   ///     keep working with the phone in a pocket and no Board connected.
+  ///   - watchNavigating: a Watch Mirror is taking frames while Navigation has a drawable route. The
+  ///     wrist draws that route around the rider's live position, so it must keep moving from a
+  ///     pocket too (ADR-0039).
   ///   - replayOwnsPosition: a replay is feeding recorded fixes through the live path; a real fix
   ///     slipping in would fight them (`docs/connectionState.md`).
   static func resolve(
     appVisible: Bool,
     riding: Bool,
     groupRideParticipating: Bool,
+    watchNavigating: Bool,
     replayOwnsPosition: Bool
   ) -> GpsPowerMode {
     if replayOwnsPosition { return .off }
-    if riding || groupRideParticipating { return .ride }
+    if riding || groupRideParticipating || watchNavigating { return .ride }
     if appVisible { return .map }
     return .off
   }

@@ -3,6 +3,7 @@ package expo.modules.vescapecore.watch
 import expo.modules.vescapecore.runtime.TestScheduler
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Assert.assertEquals
 import org.junit.Test
@@ -36,7 +37,8 @@ class WatchMirrorCoordinatorTest {
         var subscribed = 0
         var cancelled = 0
         var changed: () -> Unit = {}
-        override fun routeStatus() = WatchRouteStatus(WatchRoutePhase.READY, 1)
+        var phase = WatchRoutePhase.READY
+        override fun routeStatus() = WatchRouteStatus(phase, 1)
         override fun subscribe(routeChanged: () -> Unit, weatherChanged: (WatchWeather) -> Unit): () -> Unit {
             subscribed++
             changed = routeChanged
@@ -48,10 +50,12 @@ class WatchMirrorCoordinatorTest {
         val transport = Transport()
         val sources = Sources()
         var board = true
+        var navigatingChanges = 0
         val coordinator = WatchMirrorCoordinator(
             scheduler, { scheduler.currentTimeMs },
             { WatchSnapshot(speed = if (board) 25.0 else null, dutyCycle = null, dutyExcluded = true, batterySoc = null, motorTemp = null, ctrlTemp = null, navBearing = 90.0, navDistanceM = 100.0) },
             { false }, { GroupRideFrame(0.0, 600.0, emptyList()) }, transport, sources, { _, _ -> },
+            { navigatingChanges++ },
         )
         fun active() { coordinator.start(); coordinator.acceptWakeLevel(WatchMirrorWakeLevel.ACTIVE) }
     }
@@ -172,5 +176,27 @@ class WatchMirrorCoordinatorTest {
         h.transport.reachable = true
         h.coordinator.boardConnected(2)
         assertEquals(2, h.transport.launches)
+    }
+
+    /** Issue #550: the wrist route needs live fixes, so its demand must follow route and wrist edges. */
+    @Test fun `navigating follows a drawable route on a receiving wrist`() {
+        val h = Harness()
+        h.coordinator.start()
+        h.scheduler.advance(1000)
+        assertFalse(h.coordinator.navigating) // Asleep wrist: nothing to keep GPS on for.
+        h.coordinator.acceptWakeLevel(WatchMirrorWakeLevel.ACTIVE)
+        h.scheduler.advance(250)
+        assertTrue(h.coordinator.navigating)
+        h.sources.phase = WatchRoutePhase.COMPUTING
+        h.scheduler.advance(250)
+        assertFalse(h.coordinator.navigating)
+        h.sources.phase = WatchRoutePhase.READY
+        h.scheduler.advance(250)
+        assertTrue(h.coordinator.navigating)
+        h.transport.reachable = false
+        h.scheduler.advance(250)
+        assertFalse(h.coordinator.navigating)
+        h.scheduler.advance(1000)
+        assertEquals(4, h.navigatingChanges)
     }
 }

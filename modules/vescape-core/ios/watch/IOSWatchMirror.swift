@@ -66,13 +66,14 @@ func iosWatchMirror(
   scheduler: Scheduler, snapshot: @escaping () -> WatchSnapshot,
   isStale: @escaping () -> Bool, groupFrame: @escaping () -> GroupRideFrame?,
   command: @escaping (WatchCommand) -> Void,
-  record: @escaping (String, [String: Any?]) -> Void
+  record: @escaping (String, [String: Any?]) -> Void,
+  onNavigatingChanged: @escaping () -> Void
 ) -> WatchMirrorCoordinator {
   WatchMirrorCoordinator(
     scheduler: scheduler, nowMs: { Int64(ProcessInfo.processInfo.systemUptime * 1000) },
     snapshot: snapshot, isStale: isStale, groupFrame: groupFrame,
     transport: IOSWatchMirrorTransport(record: record), sources: IOSWatchMirrorSources(),
-    command: command, record: record
+    command: command, record: record, onNavigatingChanged: onNavigatingChanged
   )
 }
 

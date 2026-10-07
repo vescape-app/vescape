@@ -285,7 +285,8 @@ internal final class BoardSessionController: VescGattListener {
     },
     groupFrame: { [weak self] in self?.groupRideFrame() },
     command: { [weak self] in self?.acceptWatchCommand($0) },
-    record: { [weak self] in self?.recordWatchDiagnostic($0, $1) }
+    record: { [weak self] in self?.recordWatchDiagnostic($0, $1) },
+    onNavigatingChanged: { [weak self] in self?.refreshGpsDemand() }
   )
   /// Critical local notifications are a narrow interruptive path only. Permission is explicit and
   /// never requested from the telemetry/connect path.
@@ -967,6 +968,7 @@ internal final class BoardSessionController: VescGattListener {
       appVisible: appVisible,
       riding: riding,
       groupRideParticipating: groupRideObserver.participating,
+      watchNavigating: watchMirror.navigating,
       replayOwnsPosition: replayTransport != nil
     )
     let wasActive = gpsMonitor.active

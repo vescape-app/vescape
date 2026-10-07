@@ -100,17 +100,18 @@ resolved from demand — see below.
 ### GPS demand
 
 `GpsDemand.resolve` is the one place that decides the **GPS Power Mode**, on both platforms, from
-four facts:
+five facts:
 
 | input                    | source                                                                                                        |
 | ------------------------ | ------------------------------------------------------------------------------------------------------------- |
 | app visible              | activity/app lifecycle, pushed into the controller                                                            |
 | riding                   | a Board Session exists, Idle Pause is not holding it, and the link is up or inside the **Ride Dropout Grace** |
 | Group Ride participating | the rider's position is being broadcast                                                                       |
+| watch navigating         | a Watch Mirror is taking frames while Navigation has a drawable route (`WatchMirrorCoordinator.navigating`)   |
 | replay owns position     | a replay is feeding recorded fixes through the live path                                                      |
 
-Resolution, in order: a replay forces `off`; riding or Group Ride participation gives `ride`; a
-visible app gives `map`; otherwise `off`.
+Resolution, in order: a replay forces `off`; riding, Group Ride participation or watch navigating
+gives `ride`; a visible app gives `map`; otherwise `off`.
 
 The modes differ only in what they cost:
 
@@ -134,8 +135,13 @@ Two of them are easy to get wrong:
 
 Consequences worth naming:
 
-- Backgrounding the app with no ride and no Group Ride stops GPS entirely. On Android that also drops
-  the `LOCATION` foreground-service type, which lets an otherwise idle host stop existing.
+- The wrist draws its route around the rider's live position, so Navigation on a Watch Mirror keeps
+  fixes flowing from a pocket without a Board or a Group Ride. The input follows the wrist's own
+  push gate: an asleep or unreachable Watch Mirror, or a route that is computing, failed or cleared,
+  stops paying for fixes. The coordinator re-evaluates it on every watch tick and refreshes demand
+  on an edge.
+- Backgrounding the app with no ride, no Group Ride and no wrist Navigation stops GPS entirely. On
+  Android that also drops the `LOCATION` foreground-service type, which lets an otherwise idle host stop existing.
 - Idle Pause stands GPS down while the app is backgrounded. Recording is already halted there
   (ADR 0021), so nothing is lost but the time-to-first-fix on resume.
 - The `gps_fix_stale` watchdog runs only in `ride` mode. In `map` mode a stationary rider produces no

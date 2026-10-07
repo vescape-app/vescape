@@ -13,6 +13,9 @@ Three modules separate phone coordination, incoming wrist state and map presenta
   iOS scopes it to the process. `BoardSessionController` supplies Board snapshots and retains
   the existing command actions and safety checks. Ending a Board Session does not end Navigation
   or Group Ride delivery.
+  While the wrist takes frames and Navigation has a drawable route, the coordinator reports
+  `navigating`, a GPS demand input (`docs/connectionState.md`): the wrist route is drawn around the
+  Rider's live position, so it keeps fixes flowing from a pocket without a Board or Group Ride.
 - `WatchMirrorIntake` on the wrist decodes and applies streamed frames and retained state. It
   owns receipt times, freshness and replacement/clearing rules. Live transport and fixture replay
   enter through the same intake; the UI adapters publish its individual channels. Transport,

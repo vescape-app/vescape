@@ -45,6 +45,7 @@ internal class WatchMirrorCoordinator(
     private val transport: WatchMirrorTransport,
     private val sources: WatchMirrorSources,
     private val record: (String, Map<String, Any?>) -> Unit,
+    private val onNavigatingChanged: () -> Unit = {},
 ) {
     private var running = false
     private var generation = 0L
@@ -54,7 +55,14 @@ internal class WatchMirrorCoordinator(
     private var configuredIntervalMs = WATCH_FRAME_INTERVAL_MS
     private var autoLaunch = true
     private var launchedSessionId = 0L
-    private val tick = WatchTick(scheduler, snapshot, isStale, ::canPush, { frame ->
+    /**
+     * The wrist is taking frames while Navigation has a drawable route. Its route can only be drawn
+     * around a live rider position, so this is a GPS demand input: without it a pocketed phone with
+     * no Board and no Group Ride stops GPS and the wrist route freezes or never appears (#550).
+     */
+    var navigating = false
+        private set
+    private val tick = WatchTick(scheduler, snapshot, isStale, ::canPushAndTrackNavigation, { frame ->
         transport.pushFrame(frame)
         pushRouteStatus()
     }, configuredIntervalMs)
@@ -83,6 +91,8 @@ internal class WatchMirrorCoordinator(
         groupTick.stop()
         transport.stop()
         wakeLevel = WatchMirrorWakeLevel.ASLEEP
+        // A stopped mirror demands nothing; no edge, the caller is tearing the stream down.
+        navigating = false
         applyInterval()
     }
 
@@ -91,6 +101,17 @@ internal class WatchMirrorCoordinator(
 
     private fun canPush(): Boolean = running && transport.reachable &&
         (!transport.requiresWakeReport || effectiveWakeLevel() != WatchMirrorWakeLevel.ASLEEP)
+
+    /** Evaluated every tick, which also runs while nothing is pushed, so presence and wake edges land. */
+    private fun canPushAndTrackNavigation(): Boolean {
+        val canPush = canPush()
+        val next = canPush && sources.routeStatus().phase == WatchRoutePhase.READY
+        if (next != navigating) {
+            navigating = next
+            onNavigatingChanged()
+        }
+        return canPush
+    }
 
     fun acceptWakeLevel(level: WatchMirrorWakeLevel) {
         val changed = level != wakeLevel

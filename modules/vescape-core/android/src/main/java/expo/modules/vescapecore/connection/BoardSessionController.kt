@@ -373,6 +373,7 @@ internal class BoardSessionController(private val service: CoreForegroundService
         androidWatchMirror(
             service.applicationContext, CoreForegroundService.appDataScope, scheduler,
             ::watchSnapshot, { telemetry != null && isTelemetryStale() }, ::groupRideFrame, ::recordWatchDiagnostic,
+            ::refreshGpsDemand,
         )
     }
     private val weatherCoordinator = WeatherCoordinator.get()
@@ -3091,6 +3092,7 @@ internal class BoardSessionController(private val service: CoreForegroundService
             appVisible = appVisible,
             riding = riding,
             groupRideParticipating = groupRideObserver.participating,
+            watchNavigating = watchMirror.navigating,
             replayOwnsPosition = replayTransport != null || boardConfig?.replayRecordingName != null,
         )
         val wasActive = gpsMonitor.active

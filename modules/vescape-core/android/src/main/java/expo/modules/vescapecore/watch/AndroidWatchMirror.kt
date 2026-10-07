@@ -22,6 +22,7 @@ internal fun androidWatchMirror(
     isStale: () -> Boolean,
     groupFrame: () -> GroupRideFrame?,
     record: (String, Map<String, Any?>) -> Unit,
+    onNavigatingChanged: () -> Unit,
 ): WatchMirrorCoordinator {
     val navigation = NavigationController.get(context)
     val weather = WeatherCoordinator.get()
@@ -68,5 +69,6 @@ internal fun androidWatchMirror(
             }
         },
         record = record,
+        onNavigatingChanged = onNavigatingChanged,
     )
 }

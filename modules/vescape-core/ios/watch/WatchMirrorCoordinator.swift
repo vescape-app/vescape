@@ -43,15 +43,20 @@ final class WatchMirrorCoordinator {
   private let sources: WatchMirrorSources
   private let command: (WatchCommand) -> Void
   private let record: (String, [String: Any?]) -> Void
+  private let onNavigatingChanged: () -> Void
   private var running = false
   private var generation = 0
   private var unsubscribe: (() -> Void)?
   private var wakeLevel: WatchMirrorWakeLevel = .asleep
   private var wakeAtMs: Int64 = 0
   private var configuredIntervalMs: Int64 = WATCH_FRAME_INTERVAL_MS
+  /// The wrist is taking frames while Navigation has a drawable route. Its route can only be drawn
+  /// around a live rider position, so this is a GPS demand input: without it a pocketed phone with no
+  /// Board and no Group Ride stops GPS and the wrist route freezes or never appears (#550).
+  private(set) var navigating = false
   private lazy var tick = WatchTick(
     scheduler: scheduler, snapshot: snapshot, isStale: isStale,
-    canPush: { [weak self] in self?.canPush == true },
+    canPush: { [weak self] in self?.canPushAndTrackNavigation() == true },
     push: { [weak self] frame in
       self?.transport.pushFrame(frame)
       self?.pushRouteStatus()
@@ -70,7 +75,8 @@ final class WatchMirrorCoordinator {
     snapshot: @escaping () -> WatchSnapshot, isStale: @escaping () -> Bool,
     groupFrame: @escaping () -> GroupRideFrame?, transport: WatchMirrorTransport,
     sources: WatchMirrorSources, command: @escaping (WatchCommand) -> Void,
-    record: @escaping (String, [String: Any?]) -> Void
+    record: @escaping (String, [String: Any?]) -> Void,
+    onNavigatingChanged: @escaping () -> Void = {}
   ) {
     self.scheduler = scheduler
     self.nowMs = nowMs
@@ -81,6 +87,7 @@ final class WatchMirrorCoordinator {
     self.sources = sources
     self.command = command
     self.record = record
+    self.onNavigatingChanged = onNavigatingChanged
   }
 
   func start() {
@@ -128,6 +135,8 @@ final class WatchMirrorCoordinator {
     groupTick.stop()
     transport.stop()
     wakeLevel = .asleep
+    // A stopped mirror demands nothing; no edge, the caller is tearing the stream down.
+    navigating = false
     applyInterval()
   }
 
@@ -137,6 +146,17 @@ final class WatchMirrorCoordinator {
 
   private var canPush: Bool {
     running && transport.reachable && (!transport.requiresWakeReport || effectiveWakeLevel != .asleep)
+  }
+
+  /// Evaluated every tick, which also runs while nothing is pushed, so reachability edges land.
+  private func canPushAndTrackNavigation() -> Bool {
+    let canPush = canPush
+    let next = canPush && sources.routeStatus().phase == .ready
+    if next != navigating {
+      navigating = next
+      onNavigatingChanged()
+    }
+    return canPush
   }
 
   func acceptWakeLevel(_ level: WatchMirrorWakeLevel) {

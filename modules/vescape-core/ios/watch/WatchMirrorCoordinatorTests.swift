@@ -29,7 +29,8 @@ final class WatchMirrorCoordinatorTests: XCTestCase {
     var subscribed = 0
     var cancelled = 0
     var changed: () -> Void = {}
-    func routeStatus() -> WatchRouteStatus { WatchRouteStatus(phase: .ready, routeId: 1) }
+    var phase: WatchRoutePhase = .ready
+    func routeStatus() -> WatchRouteStatus { WatchRouteStatus(phase: phase, routeId: 1) }
     func subscribe(
       routeChanged: @escaping () -> Void,
       weatherChanged: @escaping (WatchWeather) -> Void,
@@ -46,11 +47,13 @@ final class WatchMirrorCoordinatorTests: XCTestCase {
     let sources = Sources()
     var board = true
     var commands = 0
+    var navigatingChanges = 0
     lazy var coordinator = WatchMirrorCoordinator(
       scheduler: scheduler, nowMs: { self.scheduler.currentTimeMs },
       snapshot: { WatchSnapshot(speed: self.board ? 25 : nil, navBearing: 90, navDistanceM: 100) },
       isStale: { false }, groupFrame: { GroupRideFrame(courseDeg: 0, spanM: 600, riders: []) },
-      transport: transport, sources: sources, command: { _ in self.commands += 1 }, record: { _, _ in }
+      transport: transport, sources: sources, command: { _ in self.commands += 1 }, record: { _, _ in },
+      onNavigatingChanged: { self.navigatingChanges += 1 }
     )
     func active() { coordinator.start(); coordinator.acceptWakeLevel(.active) }
   }
@@ -160,5 +163,27 @@ final class WatchMirrorCoordinatorTests: XCTestCase {
     h.scheduler.advance(0)
     XCTAssertEqual(h.transport.statuses, 1)
     XCTAssertEqual(h.commands, 1)
+  }
+
+  /// Issue #550: the wrist route needs live fixes, so its demand must follow route and wrist edges.
+  func testNavigatingFollowsADrawableRouteOnAReceivingWrist() {
+    let h = Harness()
+    h.coordinator.start()
+    h.scheduler.advance(1000)
+    XCTAssertFalse(h.coordinator.navigating) // Asleep wrist: nothing to keep GPS on for.
+    h.coordinator.acceptWakeLevel(.active)
+    h.scheduler.advance(250)
+    XCTAssertTrue(h.coordinator.navigating)
+    h.sources.phase = .computing
+    h.scheduler.advance(250)
+    XCTAssertFalse(h.coordinator.navigating)
+    h.sources.phase = .ready
+    h.scheduler.advance(250)
+    XCTAssertTrue(h.coordinator.navigating)
+    h.transport.reachable = false
+    h.scheduler.advance(250)
+    XCTAssertFalse(h.coordinator.navigating)
+    h.scheduler.advance(1000)
+    XCTAssertEqual(h.navigatingChanges, 4)
   }
 }
