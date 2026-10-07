@@ -1,4 +1,4 @@
-import { Pressable, StyleSheet, View, useWindowDimensions } from 'react-native'
+import { Platform, Pressable, StyleSheet, View, useWindowDimensions } from 'react-native'
 import { router } from 'expo-router'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { GestureDetector, type GestureType } from 'react-native-gesture-handler'
@@ -33,13 +33,16 @@ export const STRIP_CONTENT_HEIGHT_COMPACT =
 const SMALL_SCREEN_HEIGHT = 700
 /** The icon row is only the bar's height off the arcs; slop brings the target back to glove size. */
 const SIDE_ICON_HIT_SLOP = { top: 12, bottom: 12 }
+/** Share of the bottom inset kept under the strip. iOS reserves 34pt for its home indicator against
+ * Android's 24dp gesture bar, so a smaller share lands both labels just over the indicator. */
+const INSET_SHARE = Platform.OS === 'ios' ? 0.35 : 0.5
 
 export function isSmallScreen(height: number): boolean {
   return height < SMALL_SCREEN_HEIGHT
 }
 
 export function stripBottomSpacing(insetBottom: number, screenHeight: number): number {
-  return Math.max(insetBottom * 0.5, isSmallScreen(screenHeight) ? 4 : 8)
+  return Math.max(insetBottom * INSET_SHARE, isSmallScreen(screenHeight) ? 4 : 8)
 }
 
 export function useAboveStripBottom(): number {
