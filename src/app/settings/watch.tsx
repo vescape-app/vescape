@@ -6,6 +6,7 @@ import {
   MapTrifoldIcon,
   NavigationArrowIcon,
   PathIcon,
+  SignpostIcon,
   StackIcon,
   UsersIcon,
   WatchIcon,
@@ -15,6 +16,7 @@ import { useShallow } from 'zustand/react/shallow'
 import { theme } from '@/constants/theme'
 import { SettingsCard } from '@/components/settings/SettingsCard'
 import { SettingsRow } from '@/components/settings/SettingsRow'
+import { SettingsSectionTitle } from '@/components/settings/SettingsSectionTitle'
 import { Switch } from '@/components/controls/Switch'
 import { Stepper } from '@/components/forms/Stepper'
 import { IconHero } from '@/components/settings/IconHero'
@@ -82,6 +84,8 @@ export default function WatchSettingsScreen() {
     <SafeAreaView style={styles.container} edges={['bottom']}>
       <ScrollView contentContainerStyle={styles.content}>
         <IconHero icon={WatchIcon} description="Live telemetry on your watch while you ride." />
+
+        <SettingsSectionTitle>Connection</SettingsSectionTitle>
         <SettingsCard>
           <SettingsRow
             icon={WatchIcon}
@@ -121,21 +125,13 @@ export default function WatchSettingsScreen() {
               />
             }
           />
-          <SettingsRow
-            icon={NavigationArrowIcon}
-            iconColor={theme.palette.violet.color}
-            label="Navigation arrow"
-            hint="Draw the direction chevron over the route. Route and distance show either way"
-            right={
-              <Switch
-                value={wearNavArrowEnabled}
-                onValueChange={(v) => void set('wearNavArrowEnabled', v)}
-              />
-            }
-          />
+        </SettingsCard>
+
+        <SettingsSectionTitle>Telemetry screen</SettingsSectionTitle>
+        <SettingsCard>
           <SettingsRow
             icon={PathIcon}
-            iconColor={theme.palette.violet.color}
+            iconColor={theme.palette.orange.color}
             label="Trail on telemetry screen"
             hint="Show where you have ridden behind the watch gauges. Always visible on the map screen"
             right={
@@ -147,7 +143,7 @@ export default function WatchSettingsScreen() {
           />
           <SettingsRow
             icon={UsersIcon}
-            iconColor={theme.palette.violet.color}
+            iconColor={theme.palette.pink.color}
             label="Group Ride on telemetry screen"
             hint="Show your Group Ride behind the watch gauges. Always visible on the map screen"
             right={
@@ -158,8 +154,8 @@ export default function WatchSettingsScreen() {
             }
           />
           <SettingsRow
-            icon={PathIcon}
-            iconColor={theme.palette.violet.color}
+            icon={SignpostIcon}
+            iconColor={theme.palette.blue.color}
             label="Route line on telemetry screen"
             hint="Show the navigation route behind the watch gauges. Always visible on the map screen"
             right={
@@ -169,9 +165,13 @@ export default function WatchSettingsScreen() {
               />
             }
           />
+        </SettingsCard>
+
+        <SettingsSectionTitle>Map</SettingsSectionTitle>
+        <SettingsCard>
           <SettingsRow
             icon={MapTrifoldIcon}
-            iconColor={theme.palette.violet.color}
+            iconColor={theme.palette.green.color}
             label="Street map"
             hint="Draw streets under the route on the watch. Off stops sending map tiles to the watch"
             right={
@@ -184,7 +184,7 @@ export default function WatchSettingsScreen() {
           {wearStreetMapEnabled ? (
             <SettingsRow
               icon={StackIcon}
-              iconColor={theme.palette.violet.color}
+              iconColor={theme.palette.sky.color}
               label="Map behind gauges"
               hint="How strongly streets show behind the watch gauges. Off hides them there. The map screen always shows them fully"
               right={
@@ -201,8 +201,24 @@ export default function WatchSettingsScreen() {
             />
           ) : null}
           <SettingsRow
+            icon={NavigationArrowIcon}
+            iconColor={theme.palette.violet.color}
+            label="Navigation arrow"
+            hint="Draw the direction chevron over the route. Distance shows either way"
+            right={
+              <Switch
+                value={wearNavArrowEnabled}
+                onValueChange={(v) => void set('wearNavArrowEnabled', v)}
+              />
+            }
+          />
+        </SettingsCard>
+
+        <SettingsSectionTitle>Controls</SettingsSectionTitle>
+        <SettingsCard>
+          <SettingsRow
             icon={AngleIcon}
-            iconColor={theme.palette.green.color}
+            iconColor={theme.palette.purple.color}
             label="Tilt speed"
             hint="How fast the watch Tilt stick changes tilt when pushed all the way"
             right={
