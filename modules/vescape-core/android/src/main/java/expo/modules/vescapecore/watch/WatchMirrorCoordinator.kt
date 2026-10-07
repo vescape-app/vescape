@@ -56,6 +56,8 @@ internal class WatchMirrorCoordinator(
     private var wakeAtMs = 0L
     private var configuredIntervalMs = WATCH_FRAME_INTERVAL_MS
     private var autoLaunch = true
+    /** The rider's Street map setting (#554). Off pauses tile sending; tiles already on the wrist stay. */
+    private var streetMapEnabled = true
     private var launchedSessionId = 0L
     /**
      * The wrist is taking frames while Navigation has a drawable route. Its route can only be drawn
@@ -119,13 +121,14 @@ internal class WatchMirrorCoordinator(
     }
 
     /**
-     * The one gate on street-map tiles: only to a wrist that is awake and not in ambient, which is
-     * the only time it draws a map, and only with a GPS fix to plan around.
+     * The one gate on street-map tiles: only while the rider has the street map on, only to a wrist
+     * that is awake and not in ambient, which is the only time it draws a map, and only with a GPS
+     * fix to plan around.
      */
     private fun updateMapTiles(snapshot: WatchSnapshot) {
         val position = snapshot.mapPosition
         mapTiles(
-            if (position == null || effectiveWakeLevel() != WatchMirrorWakeLevel.ACTIVE) null
+            if (!streetMapEnabled || position == null || effectiveWakeLevel() != WatchMirrorWakeLevel.ACTIVE) null
             else WatchMapRider(position, snapshot.courseDeg, snapshot.riderSpeedMps, snapshot.routeSpanM),
         )
     }
@@ -142,6 +145,7 @@ internal class WatchMirrorCoordinator(
     fun applySettings(settings: WatchSettings, intervalMs: Long, autoLaunch: Boolean) {
         configuredIntervalMs = intervalMs
         this.autoLaunch = autoLaunch
+        streetMapEnabled = settings.streetMapEnabled
         applyInterval()
         transport.pushSettings(settings)
     }

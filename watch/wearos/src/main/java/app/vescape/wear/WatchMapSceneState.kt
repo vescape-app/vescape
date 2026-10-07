@@ -15,12 +15,15 @@ internal class WatchMapSceneState(
     group: WatchGroupRide?,
     ambient: Boolean,
     private val telemetryTrailEnabled: Boolean,
+    streetMapEnabled: Boolean,
 ) {
     val navigation = if (frame.navBearing != null && frame.navDistanceM != null && routeStatus?.canDraw(routeId) != false)
         WatchMapNavigation(frame.navBearing, frame.navDistanceM) else null
     val hasNavigation: Boolean get() = navigation != null
     val notice = routeStatus?.notice(routeId, frame.navBearing != null && frame.navDistanceM != null && frame.riderEastM != null && frame.riderNorthM != null)
     val drawMap = !ambient
+    /** The rider can turn the street map off; the route, trail and marks stay. */
+    val drawStreetMap = drawMap && streetMapEnabled
     val showAbsentHint = !hasNavigation && notice == null && group == null && frame.trail.isEmpty()
     val target = WatchMapTarget(
         spanM = WatchMapSpan.clamp(if (!hasNavigation && group != null) group.spanM else frame.routeSpanM),
@@ -34,9 +37,9 @@ internal class WatchMapSceneState(
         else -> navFocus.coerceIn(0f, 1f)
     }
 
-    /** Street map: dimmed behind the gauges, full on the map page, absent in ambient. */
+    /** Street map: dimmed behind the gauges, full on the map page, absent in ambient or when off. */
     fun mapAlpha(navFocus: Float): Float =
-        if (!drawMap) 0f else MAP_GAUGES_ALPHA + (1f - MAP_GAUGES_ALPHA) * navFocus.coerceIn(0f, 1f)
+        if (!drawStreetMap) 0f else MAP_GAUGES_ALPHA + (1f - MAP_GAUGES_ALPHA) * navFocus.coerceIn(0f, 1f)
 }
 
 /** @parity /modules/vescape-core/ios/watch/WatchMapSceneState.swift `mapGaugesAlpha` */

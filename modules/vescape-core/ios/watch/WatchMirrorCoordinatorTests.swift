@@ -218,4 +218,21 @@ final class WatchMirrorCoordinatorTests: XCTestCase {
     h.coordinator.stop()
     XCTAssertEqual(h.mapTiles, [nil])
   }
+
+  /// Issue #554: the Street map setting pauses tiles to an active wrist and resumes them.
+  func testStreetMapSettingOffPausesTilesAndOnResumesThem() {
+    let h = Harness()
+    h.coordinator.start()
+    h.coordinator.acceptWakeLevel(.active)
+    h.coordinator.applySettings(WatchSettings(streetMapEnabled: false), intervalMs: 250)
+    h.mapTiles = []
+    h.scheduler.advance(1000)
+    XCTAssertFalse(h.mapTiles.isEmpty)
+    XCTAssertTrue(h.mapTiles.allSatisfy { $0 == nil })
+    XCTAssertFalse(h.transport.frames.isEmpty) // Only the map pauses; frames keep flowing.
+    h.coordinator.applySettings(WatchSettings(streetMapEnabled: true), intervalMs: 250)
+    h.mapTiles = []
+    h.scheduler.advance(250)
+    XCTAssertEqual(h.mapTiles, [WatchMapRider(position: WatchMapPosition(latitude: 51.1, longitude: 17), courseDeg: nil, speedMps: 5, spanM: 800)])
+  }
 }

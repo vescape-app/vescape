@@ -29,6 +29,9 @@ const val SETTING_NAV_ARROW = "navArrowEnabled"
 /** Show the trail behind telemetry gauges. The map page always retains its trail. */
 const val SETTING_TELEMETRY_TRAIL = "telemetryTrailEnabled"
 
+/** Whether to draw the street map. Off hides it; tiles already on the wrist stay for when it is back on. */
+const val SETTING_STREET_MAP = "streetMapEnabled"
+
 /** App-wide speed and distance preference; older phones default to metric. */
 const val SETTING_UNIT_SYSTEM = "unitSystem"
 
@@ -48,6 +51,7 @@ data class WatchSettings(
     val boardMoveStrengthPercent: Int? = null,
     val tiltRatePercent: Int = DEFAULT_TILT_RATE_PERCENT,
     val telemetryTrailEnabled: Boolean = true,
+    val streetMapEnabled: Boolean = true,
 ) {
     companion object {
         /** Missing or unknown preference values from older/newer phones always mean metric. */
@@ -55,6 +59,7 @@ data class WatchSettings(
             riderColor = parseRiderColor(payload[SETTING_RIDER_COLOR] as? String),
             navArrowEnabled = payload[SETTING_NAV_ARROW] as? Boolean ?: false,
             telemetryTrailEnabled = payload[SETTING_TELEMETRY_TRAIL] as? Boolean ?: true,
+            streetMapEnabled = payload[SETTING_STREET_MAP] as? Boolean ?: true,
             boardMoveStrengthPercent = payload[SETTING_BOARD_MOVE_STRENGTH] as? Int,
             unitSystem = if (payload[SETTING_UNIT_SYSTEM] == "imperial") "imperial" else "metric",
             tiltRatePercent = (payload[SETTING_TILT_RATE] as? Int)?.coerceIn(1, 100) ?: DEFAULT_TILT_RATE_PERCENT,

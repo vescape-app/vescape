@@ -44,6 +44,7 @@ const BASE: AppSettings = {
   wearAutoLaunchOnConnect: true,
   wearNavArrowEnabled: false,
   wearTelemetryTrailEnabled: true,
+  wearStreetMapEnabled: true,
   wearTiltRatePercent: 20,
   riderId: null,
   riderName: null,

@@ -15,6 +15,11 @@ class WatchSettingsTest {
         assertEquals(true, WatchSettings.decode(payload + (SETTING_TELEMETRY_TRAIL to true)).telemetryTrailEnabled)
     }
 
+    @Test fun `street map is enabled for older phones and false survives settings reload`() {
+        assertEquals(true, WatchSettings.decode(emptyMap()).streetMapEnabled)
+        assertEquals(false, WatchSettings.decode(mapOf(SETTING_STREET_MAP to false)).streetMapEnabled)
+    }
+
     @Test
     fun `settings updates and restart restore the phone preference with lenient defaults`() {
         for (invalid in listOf(null, "unknown", 1, true)) {

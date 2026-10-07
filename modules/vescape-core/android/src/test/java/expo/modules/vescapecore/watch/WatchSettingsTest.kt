@@ -17,6 +17,7 @@ class WatchSettingsTest {
             "boardMoveStrengthPercent" to AppSettings(boardMoveStrengthPercent = 30),
             "wearNavArrowEnabled" to AppSettings(wearNavArrowEnabled = true),
             "wearTelemetryTrailEnabled" to AppSettings(wearTelemetryTrailEnabled = false),
+            "wearStreetMapEnabled" to AppSettings(wearStreetMapEnabled = false),
             "unitSystem" to AppSettings(unitSystem = "imperial"),
             "wearTiltRatePercent" to AppSettings(wearTiltRatePercent = 40),
         )

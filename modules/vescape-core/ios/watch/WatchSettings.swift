@@ -25,6 +25,8 @@ enum WatchSettingsKey {
   static let navArrowEnabled = "navArrowEnabled"
   /// Show the trail behind telemetry gauges. The map page always retains its trail.
   static let telemetryTrailEnabled = "telemetryTrailEnabled"
+  /// Whether the wrist draws the street map. Off: the phone sends no tiles; tiles already on the wrist stay.
+  static let streetMapEnabled = "streetMapEnabled"
   static let unitSystem = "unitSystem"
   /// Tilt stick speed at full deflection, percent of full tilt per second. Applied on the wrist.
   static let tiltRatePercent = "tiltRatePercent"
@@ -53,6 +55,7 @@ let watchSourceSettingKeys: Set<String> = [
   "boardMoveStrengthPercent",
   "wearNavArrowEnabled",
   "wearTelemetryTrailEnabled",
+  "wearStreetMapEnabled",
   "unitSystem",
   "wearTiltRatePercent",
   "wearPushRateHz",
@@ -66,6 +69,7 @@ struct WatchSettings: Equatable {
   /// Off by default: an older phone never sends the key, and the arrow is opt-in until it works.
   var navArrowEnabled: Bool = false
   var telemetryTrailEnabled: Bool = true
+  var streetMapEnabled: Bool = true
   var unitSystem: String = "metric"
   var tiltRatePercent: Int = watchDefaultTiltRatePercent
 
@@ -81,6 +85,7 @@ struct WatchSettings: Equatable {
       WatchSettingsKey.riderColor: riderColor ?? "",
       WatchSettingsKey.navArrowEnabled: navArrowEnabled,
       WatchSettingsKey.telemetryTrailEnabled: telemetryTrailEnabled,
+      WatchSettingsKey.streetMapEnabled: streetMapEnabled,
       WatchSettingsKey.unitSystem: unitSystem,
       WatchSettingsKey.tiltRatePercent: tiltRatePercent,
     ]
@@ -101,6 +106,7 @@ struct WatchSettings: Equatable {
       boardMoveStrengthPercent: (payload[WatchSettingsKey.boardMoveStrengthPercent] as? NSNumber)?.intValue,
       navArrowEnabled: payload[WatchSettingsKey.navArrowEnabled] as? Bool ?? wristDefaults.navArrowEnabled,
       telemetryTrailEnabled: payload[WatchSettingsKey.telemetryTrailEnabled] as? Bool ?? wristDefaults.telemetryTrailEnabled,
+      streetMapEnabled: payload[WatchSettingsKey.streetMapEnabled] as? Bool ?? wristDefaults.streetMapEnabled,
       unitSystem: payload[WatchSettingsKey.unitSystem] as? String == "imperial" ? "imperial" : "metric",
       // Held to the range the phone repositories accept (1–100) on read too: the wrist integrates
       // this every frame, and a rate from a newer or broken phone must not spin the stick.

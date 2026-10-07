@@ -16,6 +16,7 @@ struct WatchMapScene<Gauges: View, Readouts: View>: View {
   let trailColor: Color
   let navArrowEnabled: Bool
   let telemetryTrailEnabled: Bool
+  let streetMapEnabled: Bool
   let unitSystem: String
   @ViewBuilder var gauges: () -> Gauges
   @ViewBuilder var readouts: () -> Readouts
@@ -25,7 +26,8 @@ struct WatchMapScene<Gauges: View, Readouts: View>: View {
 
   private var scene: WatchMapSceneState {
     WatchMapSceneState(frame: frame, routeId: route?.routeId, routeStatus: routeStatus, group: groupRide,
-      ambient: ambient.active, telemetryTrailEnabled: telemetryTrailEnabled)
+      ambient: ambient.active, telemetryTrailEnabled: telemetryTrailEnabled,
+      streetMapEnabled: streetMapEnabled)
   }
   private var navStackAlpha: Double { fadeOut(awayFocus) }
   private var tiltColor: Color { (muted || ambient.active) ? Palette.dimText : Palette.tilt }
@@ -33,7 +35,7 @@ struct WatchMapScene<Gauges: View, Readouts: View>: View {
   var body: some View {
     ZStack {
       // Layer order: street map, route, trail, Group Ride marks, gauges.
-      if scene.drawMap {
+      if scene.drawStreetMap {
         MapTileLayer(mapView: mapView, mapMoving: mapMoving)
           .opacity(navStackAlpha * scene.mapAlpha(navFocus: navFocus))
       }

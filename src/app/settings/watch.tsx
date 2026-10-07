@@ -3,6 +3,7 @@ import { SafeAreaView } from 'react-native-safe-area-context'
 import {
   AngleIcon,
   ClockCountdownIcon,
+  MapTrifoldIcon,
   NavigationArrowIcon,
   PathIcon,
   WatchIcon,
@@ -38,6 +39,7 @@ export default function WatchSettingsScreen() {
     wearPushRateHz,
     wearNavArrowEnabled,
     wearTelemetryTrailEnabled,
+    wearStreetMapEnabled,
     wearTiltRatePercent,
     set,
   } = useSettingsStore(
@@ -46,6 +48,7 @@ export default function WatchSettingsScreen() {
       wearPushRateHz: s.wearPushRateHz,
       wearNavArrowEnabled: s.wearNavArrowEnabled,
       wearTelemetryTrailEnabled: s.wearTelemetryTrailEnabled,
+      wearStreetMapEnabled: s.wearStreetMapEnabled,
       wearTiltRatePercent: s.wearTiltRatePercent,
       set: s.set,
     })),
@@ -115,6 +118,18 @@ export default function WatchSettingsScreen() {
               <Switch
                 value={wearTelemetryTrailEnabled}
                 onValueChange={(v) => void set('wearTelemetryTrailEnabled', v)}
+              />
+            }
+          />
+          <SettingsRow
+            icon={MapTrifoldIcon}
+            iconColor={theme.palette.violet.color}
+            label="Street map"
+            hint="Draw streets under the route on the watch. Off stops sending map tiles to the watch"
+            right={
+              <Switch
+                value={wearStreetMapEnabled}
+                onValueChange={(v) => void set('wearStreetMapEnabled', v)}
               />
             }
           />

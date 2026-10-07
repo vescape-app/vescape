@@ -104,6 +104,7 @@ extension WatchMirrorCoordinator {
       boardMoveStrengthPercent: strength,
       navArrowEnabled: (settings["wearNavArrowEnabled"] ?? nil) as? Bool ?? false,
       telemetryTrailEnabled: (settings["wearTelemetryTrailEnabled"] ?? nil) as? Bool ?? true,
+      streetMapEnabled: (settings["wearStreetMapEnabled"] ?? nil) as? Bool ?? true,
       unitSystem: (settings["unitSystem"] ?? nil) as? String == "imperial" ? "imperial" : "metric",
       tiltRatePercent: AppDataRepository.wearTiltRatePercent(settings["wearTiltRatePercent"] ?? nil) ?? watchDefaultTiltRatePercent
     ), intervalMs: Int64(1000 / hz))

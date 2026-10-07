@@ -18,6 +18,14 @@ final class WatchSettingsTests: XCTestCase {
     XCTAssertTrue(WatchSettings.decode(WatchSettings().payload).telemetryTrailEnabled)
   }
 
+  func testStreetMapIsEnabledForOlderPhonesAndFalseSurvivesSettingsReload() {
+    XCTAssertEqual(AppDataRepository.defaultSettings["wearStreetMapEnabled"] as? Bool, true)
+    XCTAssertTrue(watchSourceSettingKeys.contains("wearStreetMapEnabled"))
+    XCTAssertTrue(WatchSettings.decode([:]).streetMapEnabled)
+    let disabled = WatchSettings(streetMapEnabled: false)
+    XCTAssertEqual(WatchSettings.decode(context: [watchSettingsChannel: disabled.payload]), disabled)
+  }
+
   func testUnitPreferenceDefaultsAndRoundTripsAfterRestart() {
     for invalid: Any in ["unknown", 1, true, NSNull()] {
       XCTAssertEqual(WatchSettings.decode([WatchSettingsKey.unitSystem: invalid]).unitSystem, "metric")

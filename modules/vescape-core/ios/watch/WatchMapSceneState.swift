@@ -8,11 +8,13 @@ struct WatchMapSceneState {
   var hasNavigation: Bool { navigation != nil }
   let notice: WatchRouteNotice?
   let drawMap: Bool
+  /// The rider can turn the street map off; the route, trail and marks stay.
+  let drawStreetMap: Bool
   let showAbsentHint: Bool
   let target: WatchMapTarget
   private let telemetryTrailEnabled: Bool
 
-  init(frame: WatchFrame, routeId: UInt32?, routeStatus: WatchRouteStatus?, group: WatchGroupRide?, ambient: Bool, telemetryTrailEnabled: Bool) {
+  init(frame: WatchFrame, routeId: UInt32?, routeStatus: WatchRouteStatus?, group: WatchGroupRide?, ambient: Bool, telemetryTrailEnabled: Bool, streetMapEnabled: Bool) {
     let hasNavigation = frame.navBearing != nil && frame.navDistanceM != nil && routeStatus?.canDraw(receivedRouteId: routeId) != false
     if hasNavigation, let bearing = frame.navBearing, let distance = frame.navDistanceM {
       navigation = WatchMapNavigation(bearingDeg: bearing, distanceM: distance)
@@ -21,6 +23,7 @@ struct WatchMapSceneState {
     }
     notice = routeStatus?.notice(receivedRouteId: routeId, hasPosition: frame.navBearing != nil && frame.navDistanceM != nil && frame.riderEastM != nil && frame.riderNorthM != nil)
     drawMap = !ambient
+    drawStreetMap = drawMap && streetMapEnabled
     showAbsentHint = !hasNavigation && notice == nil && group == nil && frame.trail.isEmpty
     self.telemetryTrailEnabled = telemetryTrailEnabled
     target = WatchMapTarget(
@@ -38,9 +41,9 @@ struct WatchMapSceneState {
   /// @parity /watch/wearos/src/main/java/app/vescape/wear/WatchMapSceneState.kt `MAP_GAUGES_ALPHA`
   static let mapGaugesAlpha = 0.35
 
-  /// Street map: dimmed behind the gauges, full on the map page, absent in ambient.
+  /// Street map: dimmed behind the gauges, full on the map page, absent in ambient or when off.
   func mapAlpha(navFocus: Double) -> Double {
-    guard drawMap else { return 0 }
+    guard drawStreetMap else { return 0 }
     return Self.mapGaugesAlpha + (1 - Self.mapGaugesAlpha) * min(1, max(0, navFocus))
   }
 }

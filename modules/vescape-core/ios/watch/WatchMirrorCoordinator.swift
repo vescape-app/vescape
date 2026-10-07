@@ -52,6 +52,8 @@ final class WatchMirrorCoordinator {
   private var wakeLevel: WatchMirrorWakeLevel = .asleep
   private var wakeAtMs: Int64 = 0
   private var configuredIntervalMs: Int64 = WATCH_FRAME_INTERVAL_MS
+  /// The rider's Street map setting (#554). Off pauses tile sending; tiles already on the wrist stay.
+  private var streetMapEnabled = true
   /// The wrist is taking frames while Navigation has a drawable route. Its route can only be drawn
   /// around a live rider position, so this is a GPS demand input: without it a pocketed phone with no
   /// Board and no Group Ride stops GPS and the wrist route freezes or never appears (#550).
@@ -173,10 +175,11 @@ final class WatchMirrorCoordinator {
     return canPush
   }
 
-  /// The one gate on street-map tiles: only to a wrist that is awake and not in ambient, which is
-  /// the only time it draws a map, and only with a GPS fix to plan around.
+  /// The one gate on street-map tiles: only while the rider has the street map on, only to a wrist
+  /// that is awake and not in ambient, which is the only time it draws a map, and only with a GPS
+  /// fix to plan around.
   private func updateMapTiles(_ snapshot: WatchSnapshot) {
-    guard let position = snapshot.mapPosition, effectiveWakeLevel == .active else { return mapTiles(nil) }
+    guard streetMapEnabled, let position = snapshot.mapPosition, effectiveWakeLevel == .active else { return mapTiles(nil) }
     mapTiles(WatchMapRider(
       position: position, courseDeg: snapshot.courseDeg, speedMps: snapshot.riderSpeedMps, spanM: snapshot.routeSpanM))
   }
@@ -191,6 +194,7 @@ final class WatchMirrorCoordinator {
 
   func applySettings(_ settings: WatchSettings, intervalMs: Int64) {
     configuredIntervalMs = intervalMs
+    streetMapEnabled = settings.streetMapEnabled
     applyInterval()
     transport.pushSettings(settings)
   }

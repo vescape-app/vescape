@@ -12,8 +12,8 @@ final class WatchMapSceneStateTests: XCTestCase {
   }
   private let group = WatchGroupRide(courseDeg: 180, spanM: 1200, riders: [])
   private let ready = WatchRouteStatus(phase: .ready, routeId: 7)
-  private func scene(_ frame: WatchFrame, status: WatchRouteStatus?, group: WatchGroupRide?, ambient: Bool = false, trail: Bool = true) -> WatchMapSceneState {
-    WatchMapSceneState(frame: frame, routeId: 7, routeStatus: status, group: group, ambient: ambient, telemetryTrailEnabled: trail)
+  private func scene(_ frame: WatchFrame, status: WatchRouteStatus?, group: WatchGroupRide?, ambient: Bool = false, trail: Bool = true, streetMap: Bool = true) -> WatchMapSceneState {
+    WatchMapSceneState(frame: frame, routeId: 7, routeStatus: status, group: group, ambient: ambient, telemetryTrailEnabled: trail, streetMapEnabled: streetMap)
   }
 
   func testNavigationEndingFallsThroughGroupAndStandaloneWithoutLosingRiderHistory() {
@@ -84,5 +84,14 @@ final class WatchMapSceneStateTests: XCTestCase {
     XCTAssertEqual(scene(frame, status: ready, group: nil).mapAlpha(navFocus: 1), 1)
     XCTAssertEqual(scene(frame, status: ready, group: nil, trail: false).mapAlpha(navFocus: 2), 1)
     XCTAssertEqual(scene(frame, status: ready, group: nil, ambient: true).mapAlpha(navFocus: 1), 0)
+  }
+
+  func testStreetMapSettingOffHidesOnlyTheStreetMap() {
+    let off = scene(frame, status: ready, group: nil, streetMap: false)
+    XCTAssertFalse(off.drawStreetMap)
+    XCTAssertEqual(off.mapAlpha(navFocus: 1), 0)
+    XCTAssertTrue(off.drawMap) // Route, trail and Group Ride marks keep drawing.
+    XCTAssertEqual(off.trailAlpha(navFocus: 0), 1)
+    XCTAssertTrue(scene(frame, status: ready, group: nil).drawStreetMap)
   }
 }

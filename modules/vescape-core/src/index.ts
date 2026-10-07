@@ -1670,6 +1670,13 @@ export interface AppSettings {
    */
   wearTelemetryTrailEnabled: boolean
   /**
+   * Draw the street map on the watch. Enabled by default. Off: the phone sends no map tiles and
+   * both wrists hide the map; tiles already on the wrist stay. Mirrored as cold settings.
+   * @parity /modules/vescape-core/ios/watch/WatchSettings.swift
+   * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/watch/WatchSettings.kt
+   */
+  wearStreetMapEnabled: boolean
+  /**
    * Wrist Tilt stick speed at full deflection, percent of full tilt per second (1–100). Pushed to the
    * wrist, which integrates the stick into a Remote Tilt lock.
    *

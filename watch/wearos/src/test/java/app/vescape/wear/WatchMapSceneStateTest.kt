@@ -18,8 +18,8 @@ class WatchMapSceneStateTest {
     private val group = WatchGroupRide(180.0, 1200.0, emptyList())
     private val ready = WatchRouteStatus(WatchRoutePhase.READY, 7)
     private fun scene(frame: WatchFrame = this.frame, status: WatchRouteStatus? = ready,
-        group: WatchGroupRide? = this.group, ambient: Boolean = false, trail: Boolean = true) =
-        WatchMapSceneState(frame, 7, status, group, ambient, trail)
+        group: WatchGroupRide? = this.group, ambient: Boolean = false, trail: Boolean = true, streetMap: Boolean = true) =
+        WatchMapSceneState(frame, 7, status, group, ambient, trail, streetMap)
 
     @Test fun `navigation ending falls through group and standalone without losing rider history`() {
         val navigation = scene()
@@ -79,5 +79,14 @@ class WatchMapSceneStateTest {
         assertEquals(1f, scene().mapAlpha(1f), 0f)
         assertEquals(1f, scene(trail = false).mapAlpha(2f), 0f)
         assertEquals(0f, scene(ambient = true).mapAlpha(1f), 0f)
+    }
+
+    @Test fun `street map setting off hides only the street map`() {
+        val off = scene(streetMap = false)
+        assertFalse(off.drawStreetMap)
+        assertEquals(0f, off.mapAlpha(1f), 0f)
+        assertTrue(off.drawMap) // Route, trail and Group Ride marks keep drawing.
+        assertEquals(1f, off.trailAlpha(0f), 0f)
+        assertTrue(scene().drawStreetMap)
     }
 }

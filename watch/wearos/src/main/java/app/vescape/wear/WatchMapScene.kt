@@ -47,7 +47,7 @@ internal fun WatchMapScene(
     val group = GroupRideState.group.value
     val route = RouteState.route.value
     val settings = SettingsState.settings.value
-    val scene = WatchMapSceneState(frame, route?.routeId, RouteState.status.value, group, ambient.active, settings.telemetryTrailEnabled)
+    val scene = WatchMapSceneState(frame, route?.routeId, RouteState.status.value, group, ambient.active, settings.telemetryTrailEnabled, settings.streetMapEnabled)
     val navStackAlpha = { fadeOut(awayFocus()) }
     val loading by remember(scene.notice, awayFocus) {
         derivedStateOf { scene.notice != null && scene.notice != WatchRouteNotice.FAILED && navStackAlpha() > 0f }
@@ -64,8 +64,10 @@ internal fun WatchMapScene(
     Box(Modifier.fillMaxSize()) {
         if (scene.drawMap) {
             // Layer order: street map, trail and route, Group Ride marks, gauges.
-            Box(Modifier.fillMaxSize().graphicsLayer { alpha = navStackAlpha() * scene.mapAlpha(focus()) }) {
-                MapTileLayer(mapView)
+            if (scene.drawStreetMap) {
+                Box(Modifier.fillMaxSize().graphicsLayer { alpha = navStackAlpha() * scene.mapAlpha(focus()) }) {
+                    MapTileLayer(mapView)
+                }
             }
             Box(Modifier.fillMaxSize().graphicsLayer { alpha = navStackAlpha() }) {
                 if (scene.hasNavigation) NavRoute(frame, route, mapView, muted, focus)

@@ -363,8 +363,8 @@ list up to 200 tiles; past that the least recently needed go first, behind the r
 `WatchMapTilePlanner` re-plans only on a new rider tile, a new zoom, or a turn over 45°. Extra tile
 sources join through `retainWatchMapTiles(needed = …)` in priority order.
 
-**Sending** (`WatchMapTileSender`): only while the coordinator's tile gate holds (the wrist reports
-`ACTIVE`, not ambient or asleep, and there is a fix). Tiles come from the shared `MapTiles` cache
+**Sending** (`WatchMapTileSender`): only while the coordinator's tile gate holds (the rider has
+**Street map** on, the wrist reports `ACTIVE`, not ambient or asleep, and there is a fix). Tiles come from the shared `MapTiles` cache
 (ride thumbnails use the same files) and go out unchanged, nearest first, at most 4 in flight. A
 failed download or send waits 30 s. On every wake the sender re-reads what the wrist holds.
 
@@ -379,6 +379,12 @@ rider and draws it as one image with the trail's span, course and position motio
 up: background, street map, route and trail, Group Ride marks, gauges. The map follows nav focus
 from 35% behind the gauges to 100% on the map page (`mapAlpha`), and ambient draws none. At most 12
 tiles are decoded at once, off the main thread (RGB_565 on Wear OS).
+
+**Setting**: Settings → Watch → **Street map**, on by default, travels to both wrists as
+`streetMapEnabled` on the settings channel. Off, the tile gate closes the same way a sleeping wrist
+does: sending pauses, no tile is dropped (no Data Layer item deleted, no shrunk `mapTiles` list), and
+the wrist skips `MapTileLayer` (`drawStreetMap`). Route, trail and Group Ride marks stay. Turning it
+back on resends only tiles the wrist does not already hold.
 
 ## Phone → Watch Channels
 

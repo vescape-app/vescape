@@ -48,6 +48,8 @@ struct FrameLayout: View {
   /// Whether the rider turned the direction arrow on (phone: Settings > Watch).
   var navArrowEnabled: Bool = false
   var telemetryTrailEnabled: Bool = true
+  /// Whether the rider has the street map on (phone: Settings > Watch).
+  var streetMapEnabled: Bool = true
   var unitSystem: String = "metric"
 
   /// Readouts retreat for any page.
@@ -60,7 +62,7 @@ struct FrameLayout: View {
       navFocus: navFocus, awayFocus: awayFocus,
       route: route, routeStatus: routeStatus, groupRide: groupRide,
       navColor: navColor, trailColor: trailColor, navArrowEnabled: navArrowEnabled,
-      telemetryTrailEnabled: telemetryTrailEnabled, unitSystem: unitSystem
+      telemetryTrailEnabled: telemetryTrailEnabled, streetMapEnabled: streetMapEnabled, unitSystem: unitSystem
     ) {
       gauges(blind: blind)
     } readouts: {
