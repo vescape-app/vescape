@@ -1,13 +1,11 @@
 import ImageIO
 import SwiftUI
 
-/// Cells drawn at once, and decoded tiles kept in memory beyond what the last frame drew. A display
-/// shows at most about nine cells at the wrist's spans.
-private let decodedTiles = 12
-
-/// Street-map tiles on the wrist. The phone sends each tile with `transferFile`; the file is moved
-/// into `Application Support/map-tiles/<style>/<z>/<x>/<y>.jpg` and kept until the phone's `mapTiles`
-/// list stops naming it. Tiles decode on demand off the main thread into a small cache.
+/// Street-map tiles on the wrist. The phone sends each tile with `transferFile`; each receipt is
+/// moved to its own file, `Application Support/map-tiles/<style>/<z>/<x>/<y>-<receipt>.jpg`, and kept
+/// until the phone's `mapTiles` list stops naming the tile. A file is only ever deleted by the URL it
+/// was held under, so a drop cannot delete a resend of the same tile that landed after it. Tiles
+/// decode on demand off the main thread into a small cache (`WatchMapTileCache`).
 ///
 /// Main-thread state, except `receive`, which runs on the WatchConnectivity delegate queue because
 /// the received file is deleted as soon as that callback returns.
@@ -17,15 +15,17 @@ private let decodedTiles = 12
 ///   the drop. Here the files are the wrist's own and the list decides which ones stay.
 final class MapTileStore: ObservableObject {
   static let shared = MapTileStore()
+  /// A tile that failed to read or decode waits this long before it is tried again.
+  private static let decodeRetry: TimeInterval = 10
 
   @Published private(set) var held: [WatchMapTile: URL] = [:]
   /// Bumped when a decode lands, so the layer redraws.
   @Published private(set) var decodedVersion = 0
-  private var decoded: [WatchMapTile: CGImage] = [:]
-  private var recent: [WatchMapTile] = []
+  private var decoded = WatchMapTileCache<CGImage>()
   private var decoding = Set<WatchMapTile>()
-  /// What the last frame drew: never evicted, so a level stays on screen while the next decodes.
-  private var drawn = Set<WatchMapTile>()
+  private var failedAt: [WatchMapTile: Date] = [:]
+  /// The phone's last list, applied again once the launch scan has merged.
+  private var list: WatchMapTileList?
   /// The level the display draws at, held with the phone planner's hysteresis.
   var zoom: Int?
   private let io = DispatchQueue(label: "app.vescape.watch.map-tiles", qos: .utility)
@@ -35,7 +35,11 @@ final class MapTileStore: ObservableObject {
   private init() {
     io.async { [root] in
       let found = Self.scan(root)
-      DispatchQueue.main.async { self.held.merge(found) { current, _ in current } }
+      DispatchQueue.main.async {
+        self.held.merge(found) { current, _ in current }
+        // A list applied before the scan merged saw none of these files.
+        if let list = self.list { self.retain(list) }
+      }
     }
   }
 
@@ -44,20 +48,20 @@ final class MapTileStore: ObservableObject {
     let target = Self.file(root, style: style, tile: tile)
     do {
       try FileManager.default.createDirectory(at: target.deletingLastPathComponent(), withIntermediateDirectories: true)
-      // intentional-suppression: absent on first receipt; a resend replaces the old copy.
-      try? FileManager.default.removeItem(at: target)
       try FileManager.default.moveItem(at: file, to: target)
     } catch {
       return
     }
     DispatchQueue.main.async {
-      self.held[tile] = target
+      let replaced = self.held.updateValue(target, forKey: tile)
       self.forget(tile)
+      if let replaced { self.delete([replaced]) }
     }
   }
 
   /// The phone's latest list: tiles not on it, and every other style, leave the wrist.
   func retain(_ list: WatchMapTileList) {
+    self.list = list
     let keep = Set(list.tiles)
     let style = Self.styleName(list.style)
     let dropped = held.filter { !keep.contains($0.key) || $0.value.pathComponents.dropLast(3).last != style }
@@ -65,11 +69,8 @@ final class MapTileStore: ObservableObject {
       held[tile] = nil
       forget(tile)
     }
+    delete(Array(dropped.values))
     io.async { [root] in
-      for url in dropped.values {
-        // intentional-suppression: already gone is the goal.
-        try? FileManager.default.removeItem(at: url)
-      }
       // Another style's directory would never be listed again.
       let styles = (try? FileManager.default.contentsOfDirectory(at: root, includingPropertiesForKeys: nil)) ?? []
       for directory in styles where directory.lastPathComponent != style {
@@ -78,48 +79,53 @@ final class MapTileStore: ObservableObject {
     }
   }
 
-  /// Marks what a frame drew, so eviction keeps it.
-  func drew(_ tiles: [WatchMapTile]) { drawn = Set(tiles) }
-
-  /// Least recently used first, skipping anything on screen; the cache may run over while a zoom settles.
-  private func evict() {
-    var index = 0
-    while recent.count > decodedTiles, index < recent.count {
-      if drawn.contains(recent[index]) {
-        index += 1
-      } else {
-        decoded[recent.remove(at: index)] = nil
-      }
+  /// Lays out a frame and starts decoding what it waits on. Safe to call while drawing.
+  func frame(_ cells: [WatchMapTile]) -> WatchMapTileFrame {
+    let frame = decoded.frame(cells: cells, held: Set(held.keys))
+    let now = Date()
+    for tile in frame.missing {
+      if let failed = failedAt[tile], now.timeIntervalSince(failed) < Self.decodeRetry { continue }
+      decode(tile)
     }
+    return frame
   }
 
-  /// The decoded tile, or nil while it decodes. Safe to call while drawing.
-  func image(_ tile: WatchMapTile) -> CGImage? {
-    if let image = decoded[tile] {
-      recent.removeAll { $0 == tile }
-      recent.append(tile)
-      return image
-    }
-    guard let url = held[tile], decoding.insert(tile).inserted else { return nil }
+  func image(_ tile: WatchMapTile) -> CGImage? { decoded.image(tile) }
+
+  private func decode(_ tile: WatchMapTile) {
+    guard let url = held[tile], decoding.insert(tile).inserted else { return }
     io.async {
       let options = [kCGImageSourceShouldCacheImmediately: true] as CFDictionary
       let image = CGImageSourceCreateWithURL(url as CFURL, nil).flatMap { CGImageSourceCreateImageAtIndex($0, 0, options) }
       DispatchQueue.main.async {
         self.decoding.remove(tile)
-        guard let image, self.held[tile] == url else { return }
-        self.decoded[tile] = image
-        self.recent.removeAll { $0 == tile }
-        self.recent.append(tile)
-        self.evict()
+        // A resend replaced the file mid-decode: redraw to read the new one.
+        guard self.held[tile] == url else {
+          self.decodedVersion += 1
+          return
+        }
+        guard let image else {
+          self.failedAt[tile] = Date()
+          return
+        }
+        self.decoded.put(tile, image)
         self.decodedVersion += 1
       }
     }
-    return nil
   }
 
   private func forget(_ tile: WatchMapTile) {
-    decoded[tile] = nil
-    recent.removeAll { $0 == tile }
+    decoded.remove(tile)
+    failedAt[tile] = nil
+  }
+
+  /// On `io`, after any decode already reading them.
+  private func delete(_ urls: [URL]) {
+    guard !urls.isEmpty else { return }
+    io.async {
+      // intentional-suppression: already gone is the goal.
+      for url in urls { try? FileManager.default.removeItem(at: url) }
+    }
   }
 
   private static func styleName(_ style: String) -> String { style.replacingOccurrences(of: "/", with: "_") }
@@ -128,17 +134,27 @@ final class MapTileStore: ObservableObject {
     root.appendingPathComponent(styleName(style), isDirectory: true)
   }
 
+  /// A fresh file per receipt, so no two receipts of a tile share a path.
   private static func file(_ root: URL, style: String, tile: WatchMapTile) -> URL {
-    styleDirectory(root, style).appendingPathComponent("\(tile.key).jpg")
+    styleDirectory(root, style).appendingPathComponent("\(tile.key)-\(UUID().uuidString).jpg")
   }
 
-  /// Files kept from an earlier launch: `<style>/<z>/<x>/<y>.jpg`.
+  /// Files kept from an earlier launch: `<style>/<z>/<x>/<y>-<receipt>.jpg`. A second file for a
+  /// tile (a resend whose old copy was never deleted) is removed.
   private static func scan(_ root: URL) -> [WatchMapTile: URL] {
     guard let walk = FileManager.default.enumerator(at: root, includingPropertiesForKeys: nil) else { return [:] }
     var found: [WatchMapTile: URL] = [:]
     for case let url as URL in walk where url.pathExtension == "jpg" {
       let parts = url.deletingPathExtension().pathComponents.suffix(3)
-      if let tile = WatchMapTile(key: parts.joined(separator: "/")) { found[tile] = url }
+      guard let y = parts.last?.split(separator: "-", maxSplits: 1).first,
+        let tile = WatchMapTile(key: (parts.dropLast() + [String(y)]).joined(separator: "/"))
+      else { continue }
+      if found[tile] == nil {
+        found[tile] = url
+      } else {
+        // intentional-suppression: a duplicate left behind is retried on the next launch.
+        try? FileManager.default.removeItem(at: url)
+      }
     }
     return found
   }
@@ -146,7 +162,7 @@ final class MapTileStore: ObservableObject {
 
 /// The dark street map under the trail and route, at the level `WatchMapTile.zoom` picks for the
 /// eased span. Each cell shows its own tile, else the matching quarter of the one-zoom-out tile, else
-/// the one-zoom-in tiles a zoom-out left (`WatchMapTile.drawList`), so a zoom change never blanks the
+/// the one-zoom-in tiles a zoom-out left (`WatchMapTileCache.frame`), so a zoom change never blanks the
 /// display. Each tile's corners are placed as local metres
 /// from the rider's absolute position, then drawn with the same span, course and position motion as
 /// the trail, so the streets stay under the line through a zoom or a turn. Within 2 km the tile is
@@ -176,20 +192,14 @@ struct MapTileLayer: View {
             .compactMap { PlacedTile($0, anchor: anchor, offset: offset) }
             .filter { $0.distanceM <= reachM }
             .sorted { $0.distanceM < $1.distanceM }
-            .prefix(decodedTiles)
+            .prefix(watchMapDecodedTiles)
             .map(\.tile)
-          var images: [WatchMapTile: CGImage] = [:]
-          let visible = WatchMapTile.drawList(cells: cells) { tile in
-            guard let image = store.image(tile) else { return false }
-            images[tile] = image
-            return true
-          }
-          store.drew(visible)
+          let frame = store.frame(cells)
           context.clip(to: Rim.path(in: size, inset: Rim.inset))
           context.translateBy(x: rider.x, y: rider.y)
           context.rotate(by: .degrees(-mapView.courseDeg(at: at)))
-          for tile in visible {
-            guard let image = images[tile], let placed = PlacedTile(tile, anchor: anchor, offset: offset) else { continue }
+          for tile in frame.draw {
+            guard let image = store.image(tile), let placed = PlacedTile(tile, anchor: anchor, offset: offset) else { continue }
             // Half a point of overlap hides the seam filtering leaves between neighbours.
             let rect = CGRect(
               x: placed.westM * scale - 0.5, y: -placed.northM * scale - 0.5,

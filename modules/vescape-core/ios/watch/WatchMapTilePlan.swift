@@ -52,9 +52,11 @@ final class WatchMapRoute: Equatable {
     let length = alongM[segment + 1] - alongM[segment]
     let fraction = length == 0 ? 0 : min(max((target - alongM[segment]) / length, 0), 1)
     let from = points[segment], to = points[segment + 1]
+    // The short way round, so a segment across the antimeridian stays on it.
+    let longitudeDelta = (to.longitude - from.longitude + 540).truncatingRemainder(dividingBy: 360) - 180
     return (segment, WatchMapPosition(
       latitude: from.latitude + (to.latitude - from.latitude) * fraction,
-      longitude: from.longitude + (to.longitude - from.longitude) * fraction))
+      longitude: (from.longitude + longitudeDelta * fraction + 540).truncatingRemainder(dividingBy: 360) - 180))
   }
 
   static func == (lhs: WatchMapRoute, rhs: WatchMapRoute) -> Bool { lhs === rhs }

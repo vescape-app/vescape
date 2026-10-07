@@ -35,8 +35,11 @@ internal class WatchMirrorIntake {
 
     fun acceptTelemetry(bytes: ByteArray, receivedAtMs: Long, appliedAtMs: Long): Boolean {
         val frame = WatchFrameDecoder.decode(bytes) ?: return false
-        lastFrameAtMs?.let {
-            recentGapsMs.addLast((receivedAtMs - it).coerceAtLeast(0))
+        val gapMs = lastFrameAtMs?.let { (receivedAtMs - it).coerceAtLeast(0) }
+        // A gap past the longest window was an outage, not a cadence: kept, it would hold the window
+        // at its cap for the frames after the reconnect.
+        if (gapMs != null && gapMs <= MIRROR_DISCONNECTED_MAX_TIMEOUT_MS) {
+            recentGapsMs.addLast(gapMs)
             if (recentGapsMs.size > MIRROR_CADENCE_WINDOW_GAPS) recentGapsMs.removeFirst()
         }
         latestFrame = frame

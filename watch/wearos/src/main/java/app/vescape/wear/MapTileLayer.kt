@@ -1,6 +1,7 @@
 package app.vescape.wear
 
 import android.graphics.BitmapFactory
+import android.os.SystemClock
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
@@ -16,9 +17,11 @@ import androidx.compose.ui.graphics.drawscope.scale
 import androidx.compose.ui.graphics.drawscope.translate
 import androidx.compose.ui.platform.LocalConfiguration
 import expo.modules.vescapecore.watch.WatchMapPosition
+import expo.modules.vescapecore.watch.WATCH_MAP_DECODED_TILES
 import expo.modules.vescapecore.watch.WatchMapTile
+import expo.modules.vescapecore.watch.WatchMapTileCache
+import expo.modules.vescapecore.watch.WatchMapTileFrame
 import expo.modules.vescapecore.watch.watchMapTileCells
-import expo.modules.vescapecore.watch.watchMapTileDrawList
 import expo.modules.vescapecore.watch.watchMapTileZoom
 import kotlin.math.hypot
 import kotlinx.coroutines.CoroutineScope
@@ -27,17 +30,14 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
-/**
- * Cells drawn at once, and decoded tiles kept in memory beyond what the last frame drew. A face shows
- * at most about nine cells at the wrist's spans.
- */
-private const val DECODED_TILES = 12
+/** A tile that failed to read or decode waits this long before it is tried again. */
+private const val DECODE_RETRY_MS = 10_000L
 
 /**
- * Street-map tiles held on the wrist and a small decoded cache. The phone decides what is held
- * (one Data Layer item per tile); this only mirrors that set and decodes on demand, off the main
- * thread, as RGB_565 — the map is drawn dimmed under the gauges, and half the memory of ARGB matters
- * more than gradient fidelity. Main-thread state.
+ * Street-map tiles held on the wrist and a small decoded cache ([WatchMapTileCache]). The phone
+ * decides what is held (one Data Layer item per tile); this only mirrors that set and decodes on
+ * demand, off the main thread, as RGB_565 — the map is drawn dimmed under the gauges, and half the
+ * memory of ARGB matters more than gradient fidelity. Main-thread state.
  *
  * Each held tile carries how to read its JPEG, so a source other than the Data Layer can seed it.
  *
@@ -47,51 +47,55 @@ internal object MapTileState {
     val held = mutableStateOf<Map<WatchMapTile, () -> ByteArray?>>(emptyMap())
     /** Bumped when a decode lands, so the layer redraws without recomposing. */
     val decodedVersion = mutableIntStateOf(0)
-    private val decoded = LinkedHashMap<WatchMapTile, ImageBitmap>(DECODED_TILES, 0.75f, true)
+    private val decoded = WatchMapTileCache<ImageBitmap>()
     private val decoding = HashSet<WatchMapTile>()
-    /** What the last frame drew: never evicted, so a level stays on screen while the next decodes. */
-    private var drawn: Set<WatchMapTile> = emptySet()
+    private val failedAtMs = HashMap<WatchMapTile, Long>()
     /** The level the face draws at, held with the phone planner's hysteresis. */
     var zoom: Int? = null
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
 
     fun put(tile: WatchMapTile, load: () -> ByteArray?) {
         held.value += tile to load
-        decoded.remove(tile)
+        forget(tile)
     }
 
     fun remove(tile: WatchMapTile) {
         held.value -= tile
-        decoded.remove(tile)
+        forget(tile)
     }
 
     /** A complete set on start: what synced while the app was stopped. */
     fun replace(tiles: Map<WatchMapTile, () -> ByteArray?>) {
         held.value = tiles
-        decoded.keys.retainAll(tiles.keys)
+        decoded.retain(tiles.keys)
+        failedAtMs.clear()
     }
 
-    /** Marks what a frame drew, so eviction keeps it. */
-    fun drew(tiles: Collection<WatchMapTile>) {
-        drawn = tiles.toSet()
+    private fun forget(tile: WatchMapTile) {
+        decoded.remove(tile)
+        failedAtMs.remove(tile)
     }
 
-    /** Least recently used first, skipping anything on screen; the cache may run over while a zoom settles. */
-    private fun evict() {
-        val iterator = decoded.keys.iterator()
-        while (decoded.size > DECODED_TILES && iterator.hasNext()) {
-            if (iterator.next() !in drawn) iterator.remove()
+    /** Lays out a frame and starts decoding what it waits on. Safe to call from a draw scope. */
+    fun frame(cells: List<WatchMapTile>): WatchMapTileFrame {
+        val frame = decoded.frame(cells, held.value.keys)
+        val now = SystemClock.elapsedRealtime()
+        for (tile in frame.missing) {
+            val failedAt = failedAtMs[tile]
+            if (failedAt != null && now - failedAt < DECODE_RETRY_MS) continue
+            decode(tile)
         }
+        return frame
     }
 
-    /** The decoded tile, or null while it decodes. Safe to call from a draw scope. */
-    fun image(tile: WatchMapTile): ImageBitmap? {
-        decoded[tile]?.let { return it }
-        val load = held.value[tile] ?: return null
-        if (!decoding.add(tile)) return null
+    fun image(tile: WatchMapTile): ImageBitmap? = decoded[tile]
+
+    private fun decode(tile: WatchMapTile) {
+        val load = held.value[tile] ?: return
+        if (!decoding.add(tile)) return
         scope.launch {
             val image = withContext(Dispatchers.IO) {
-                // intentional-suppression: an unreadable asset draws as background and is retried on the next draw
+                // intentional-suppression: an unreadable asset draws as background and is retried after DECODE_RETRY_MS
                 runCatching {
                     load()?.let { bytes ->
                         val options = BitmapFactory.Options().apply { inPreferredConfig = android.graphics.Bitmap.Config.RGB_565 }
@@ -100,20 +104,25 @@ internal object MapTileState {
                 }.getOrNull()
             }
             decoding.remove(tile)
-            if (image != null && held.value.containsKey(tile)) {
-                decoded[tile] = image
-                evict()
+            // A resend replaced the loader mid-decode: these are the old bytes. Redraw to read the new.
+            if (held.value[tile] !== load) {
                 decodedVersion.intValue++
+                return@launch
             }
+            if (image == null) {
+                failedAtMs[tile] = SystemClock.elapsedRealtime()
+                return@launch
+            }
+            decoded.put(tile, image)
+            decodedVersion.intValue++
         }
-        return null
     }
 }
 
 /**
  * The dark street map under the trail and route, at the level [watchMapTileZoom] picks for the eased
  * span. Each cell shows its own tile, else the matching quarter of the one-zoom-out tile, else the
- * one-zoom-in tiles a zoom-out left ([watchMapTileDrawList]), so a zoom change never blanks the face.
+ * one-zoom-in tiles a zoom-out left ([WatchMapTileCache.frame]), so a zoom change never blanks the face.
  * Each tile's corners are placed as local metres from the rider's absolute position, then drawn with
  * the same span, course and position motion as the trail, so the streets stay under the line through
  * a zoom or a turn. Within 2 km the tile is flat enough to draw as one transformed image.
@@ -139,17 +148,13 @@ internal fun MapTileLayer(mapView: WatchMapView) {
             .mapNotNull { placeTile(it, anchor, offset.eastM, offset.northM) }
             .filter { it.distanceM <= reachM }
             .sortedBy { it.distanceM }
-            .take(DECODED_TILES)
+            .take(WATCH_MAP_DECODED_TILES)
             .map { it.tile }
-        val images = HashMap<WatchMapTile, ImageBitmap>()
-        val visible = watchMapTileDrawList(cells) { tile ->
-            MapTileState.image(tile)?.also { images[tile] = it } != null
-        }
-        MapTileState.drew(visible)
+        val frame = MapTileState.frame(cells)
         clipPath(mapFaceClip(isRound)) {
             rotate(-mapView.courseDeg, center) {
-                for (tile in visible) {
-                    val image = images.getValue(tile)
+                for (tile in frame.draw) {
+                    val image = MapTileState.image(tile) ?: continue
                     val placed = placeTile(tile, anchor, offset.eastM, offset.northM) ?: continue
                     val left = center.x + placed.westM.toFloat() * scale
                     val top = center.y - placed.northM.toFloat() * scale

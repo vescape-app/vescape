@@ -133,14 +133,37 @@ class WatchMapTilePlanTest {
         val empty = WatchMapTile(16, 104, 200)
         val parent = WatchMapTile(15, 50, 100)
         val finer = zoomedOut.children.take(2)
-        val ready = setOf(own, parent) + finer
-        val asked = mutableListOf<WatchMapTile>()
-        val drawn = watchMapTileDrawList(listOf(own, quarter, zoomedOut, empty)) { asked += it; it in ready }
+        val cache = WatchMapTileCache<String>()
+        (listOf(own, parent) + finer).forEach { cache.put(it, it.key) }
+        val frame = cache.frame(listOf(own, quarter, zoomedOut, empty), held = setOf(own, quarter, parent, zoomedOut) + finer)
         // One-out tiles go under, so the cell with its own tile covers that quarter of the parent.
-        assertEquals(listOf(parent, own) + finer, drawn)
-        // A cell with its own tile never asks for a fallback; the parent is asked once, for `quarter`.
-        assertEquals(1, asked.count { it == parent })
-        assertTrue(watchMapTileDrawList(listOf(empty)) { false }.isEmpty())
+        assertEquals(listOf(parent, own) + finer, frame.draw)
+        // Each cell waits on its own tile only; fallbacks are drawn when decoded, never decoded for it.
+        assertEquals(listOf(quarter, zoomedOut), frame.missing)
+        assertTrue(cache.frame(listOf(empty), emptySet()).draw.isEmpty())
+    }
+
+    @Test fun `a cell without its own tile waits on the one-out tile, else on the held tiles one in`() {
+        val cell = WatchMapTile(16, 100, 200)
+        val cache = WatchMapTileCache<String>()
+        assertEquals(listOf(cell.parent), cache.frame(listOf(cell), held = setOf(cell.parent!!) + cell.children).missing)
+        assertEquals(cell.children.take(3), cache.frame(listOf(cell), held = cell.children.take(3).toSet()).missing)
+    }
+
+    @Test fun `a decode is kept when the face already pins a full cache`() {
+        // Zoomed out: 12 old-level tiles fill three new cells as one-in fallbacks.
+        val cells = (0 until 3).map { WatchMapTile(15, 50 + it, 100) }
+        val finer = cells.flatMap { it.children }
+        val cache = WatchMapTileCache<String>()
+        finer.forEach { cache.put(it, it.key) }
+        val held = (cells + finer).toSet()
+        assertEquals(cells, cache.frame(cells, held).missing)
+        cache.put(cells[0], cells[0].key)
+        // Neither the new tile nor anything on screen is evicted, so the next frame does not decode it again.
+        val next = cache.frame(cells, held)
+        assertEquals(cells.drop(1), next.missing)
+        assertEquals(listOf(cells[0]) + finer.drop(4), next.draw)
+        assertTrue((cells.take(1) + finer).all { cache[it] != null })
     }
 
     @Test fun `cells come from held tiles at the level, one out and one in`() {
@@ -164,6 +187,11 @@ class WatchMapTilePlanTest {
         val before = moved.wanted.map { it.tile }.toSet()
         assertTrue(moved.update(rider(position = WatchMapPosition(wroclaw.latitude, wroclaw.longitude + 0.02))))
         assertTrue(moved.wanted.map { it.tile }.containsAll(before))
+    }
+
+    @Test fun `the route anchor crosses the antimeridian the short way`() {
+        val route = WatchMapRoute(listOf(WatchMapPosition(0.0, 179.9), WatchMapPosition(0.0, -179.9)))
+        assertEquals(-179.95, route.pointBefore(route.lengthM / 4)!!.second.longitude, 1e-6)
     }
 
     /** A straight path east from Wroclaw, about 21 km, and the rider [doneM] along it. */

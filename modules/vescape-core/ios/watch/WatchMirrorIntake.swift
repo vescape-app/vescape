@@ -23,7 +23,9 @@ struct WatchMirrorIntake {
   @discardableResult
   mutating func acceptTelemetry(_ bytes: Data, receivedAtMs: Int64, appliedAtMs: Int64) -> Bool {
     guard let frame = WatchFrameBuilder.decode(bytes) else { return false }
-    if let previous = lastFrameAtMs {
+    // A gap past the longest window was an outage, not a cadence: kept, it would hold the window at
+    // its cap for the frames after the reconnect.
+    if let previous = lastFrameAtMs, receivedAtMs - previous <= MirrorStateReducer.maxTimeoutMs {
       recentGapsMs.append(max(receivedAtMs - previous, 0))
       if recentGapsMs.count > MirrorStateReducer.cadenceWindowGaps { recentGapsMs.removeFirst() }
     }

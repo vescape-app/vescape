@@ -139,24 +139,73 @@ internal fun watchMapTileCells(held: Collection<WatchMapTile>, zoom: Int): Set<W
 }
 
 /**
- * What the wrist draws over [cells] (tiles at its zoom across the face, nearest first), bottom-up.
- * Per cell: its own tile when [ready]; else the one-zoom-out tile, whose matching quarter shows
- * through, scaled up; else the ready tiles one zoom in, the level a zoom-out just left; else nothing,
- * so the background shows. One-out tiles come first so a neighbour's own tile covers the rest of them.
- * [ready] is asked in that order, so it may start decoding what it is asked about.
+ * Cells the wrist draws at once, and decoded tiles it keeps beyond what the current frame wants.
+ * A face shows at most about nine cells at the wrist's spans.
  *
- * @parity /modules/vescape-core/ios/watch/WatchMapTile.swift `drawList`
+ * @parity /modules/vescape-core/ios/watch/WatchMapTile.swift `watchMapDecodedTiles`
  */
-internal fun watchMapTileDrawList(cells: List<WatchMapTile>, ready: (WatchMapTile) -> Boolean): List<WatchMapTile> {
-    val drawn = LinkedHashSet<WatchMapTile>()
-    for (cell in cells) {
-        when {
-            ready(cell) -> drawn += cell
-            cell.parent?.let(ready) == true -> drawn += cell.parent!!
-            else -> drawn += cell.children.filter(ready)
+internal const val WATCH_MAP_DECODED_TILES = 12
+
+/** One wrist frame: what it draws, bottom-up, and the tiles it waits on that are not decoded yet. */
+internal class WatchMapTileFrame(val draw: List<WatchMapTile>, val missing: List<WatchMapTile>)
+
+/**
+ * The wrist's decoded street-map tiles: least recently used goes first, but never a tile the last
+ * [frame] drew or waits on, so a decode cannot evict what the face is about to draw and a level stays
+ * on screen while the next decodes. The cache runs over [WATCH_MAP_DECODED_TILES] while a zoom
+ * settles. Platform image type, decoding and threading stay with each wrist.
+ *
+ * @parity /modules/vescape-core/ios/watch/WatchMapTile.swift `WatchMapTileCache`
+ */
+internal class WatchMapTileCache<Image : Any> {
+    private val decoded = LinkedHashMap<WatchMapTile, Image>(WATCH_MAP_DECODED_TILES, 0.75f, true)
+    private var pinned: Set<WatchMapTile> = emptySet()
+
+    operator fun get(tile: WatchMapTile): Image? = decoded[tile]
+
+    fun put(tile: WatchMapTile, image: Image) {
+        decoded[tile] = image
+        val iterator = decoded.keys.iterator()
+        while (decoded.size > WATCH_MAP_DECODED_TILES && iterator.hasNext()) {
+            if (iterator.next() !in pinned) iterator.remove()
         }
     }
-    return drawn.sortedBy { it.z }
+
+    fun remove(tile: WatchMapTile) {
+        decoded.remove(tile)
+    }
+
+    fun retain(tiles: Set<WatchMapTile>) {
+        decoded.keys.retainAll(tiles)
+    }
+
+    /**
+     * Lays out a frame over [cells] (tiles at the wrist's zoom across the face, nearest first) from
+     * the [held] tiles, and pins it. Per cell it draws its own tile when decoded; else the one-zoom-out
+     * tile, whose matching quarter shows through, scaled up; else the decoded tiles one zoom in, the
+     * level a zoom-out just left; else nothing, so the background shows. One-out tiles come first so a
+     * neighbour's own tile covers the rest of them. Only the best held level of each cell is waited
+     * on (own, else one out, else one in); a fallback is drawn only if it is already decoded.
+     */
+    fun frame(cells: List<WatchMapTile>, held: Set<WatchMapTile>): WatchMapTileFrame {
+        val draw = LinkedHashSet<WatchMapTile>()
+        val wanted = LinkedHashSet<WatchMapTile>()
+        for (cell in cells) {
+            val parent = cell.parent
+            when {
+                cell in held -> wanted += cell
+                parent != null && parent in held -> wanted += parent
+                else -> wanted += cell.children.filter { it in held }
+            }
+            when {
+                cell in decoded -> draw += cell
+                parent != null && parent in decoded -> draw += parent
+                else -> draw += cell.children.filter { it in decoded }
+            }
+        }
+        pinned = draw + wanted
+        return WatchMapTileFrame(draw.sortedBy { it.z }, wanted.filter { it !in decoded })
+    }
 }
 
 /**

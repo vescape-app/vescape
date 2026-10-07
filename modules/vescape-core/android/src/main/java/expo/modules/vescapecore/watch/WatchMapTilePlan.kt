@@ -59,9 +59,11 @@ internal class WatchMapRoute(val points: List<WatchMapPosition>) {
         val length = alongM[segment + 1] - alongM[segment]
         val fraction = if (length == 0.0) 0.0 else ((target - alongM[segment]) / length).coerceIn(0.0, 1.0)
         val (from, to) = points[segment] to points[segment + 1]
+        // The short way round, so a segment across the antimeridian stays on it.
+        val longitudeDelta = ((to.longitude - from.longitude + 540) % 360) - 180
         return segment to WatchMapPosition(
             from.latitude + (to.latitude - from.latitude) * fraction,
-            from.longitude + (to.longitude - from.longitude) * fraction,
+            ((from.longitude + longitudeDelta * fraction + 540) % 360) - 180,
         )
     }
 }

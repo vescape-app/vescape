@@ -69,6 +69,22 @@ class WatchMirrorIntakeTest {
      * burst) dropped to the floor and blinked the mirror offline in every pause between bursts.
      */
     @Test
+    fun `an outage does not widen the window after the reconnect`() {
+        val intake = WatchMirrorIntake()
+        var at = 1_000L
+        repeat(MIRROR_CADENCE_WINDOW_GAPS) {
+            at += 250
+            intake.frame(at = at)
+        }
+        at += 60_000
+        intake.frame(at = at)
+        intake.frame(at = at + 250)
+        // The next drop is caught at the cadence's window, not the 30 s cap.
+        intake.refresh(at + 250 + 751)
+        assertEquals(MirrorStatus.DISCONNECTED, intake.mirror.status)
+    }
+
+    @Test
     fun `burst delivery stays live between bursts and the window shrinks back once the cadence steadies`() {
         val intake = WatchMirrorIntake()
         for (burstAt in 1_000L..3_000L step 1_000L) repeat(3) { intake.frame(at = burstAt) }

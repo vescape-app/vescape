@@ -147,14 +147,42 @@ final class WatchMapTilePlanTests: XCTestCase {
     let empty = WatchMapTile(z: 16, x: 104, y: 200)
     let parent = WatchMapTile(z: 15, x: 50, y: 100)
     let finer = Array(zoomedOut.children.prefix(2))
-    let ready = Set([own, parent] + finer)
-    var asked: [WatchMapTile] = []
-    let drawn = WatchMapTile.drawList(cells: [own, quarter, zoomedOut, empty]) { asked.append($0); return ready.contains($0) }
+    var cache = WatchMapTileCache<String>()
+    for tile in [own, parent] + finer { cache.put(tile, tile.key) }
+    let frame = cache.frame(cells: [own, quarter, zoomedOut, empty], held: Set([own, quarter, parent, zoomedOut] + finer))
     // One-out tiles go under, so the cell with its own tile covers that quarter of the parent.
-    XCTAssertEqual(drawn, [parent, own] + finer)
-    // A cell with its own tile never asks for a fallback; the parent is asked once, for `quarter`.
-    XCTAssertEqual(asked.filter { $0 == parent }.count, 1)
-    XCTAssertTrue(WatchMapTile.drawList(cells: [empty]) { _ in false }.isEmpty)
+    XCTAssertEqual(frame.draw, [parent, own] + finer)
+    // Each cell waits on its own tile only; fallbacks are drawn when decoded, never decoded for it.
+    XCTAssertEqual(frame.missing, [quarter, zoomedOut])
+    XCTAssertTrue(cache.frame(cells: [empty], held: []).draw.isEmpty)
+  }
+
+  func testACellWithoutItsOwnTileWaitsOnTheOneOutTileElseOnTheHeldTilesOneIn() {
+    let cell = WatchMapTile(z: 16, x: 100, y: 200)
+    var cache = WatchMapTileCache<String>()
+    XCTAssertEqual(cache.frame(cells: [cell], held: Set([cell.parent!] + cell.children)).missing, [cell.parent!])
+    XCTAssertEqual(cache.frame(cells: [cell], held: Set(cell.children.prefix(3))).missing, Array(cell.children.prefix(3)))
+  }
+
+  func testADecodeIsKeptWhenTheDisplayAlreadyPinsAFullCache() {
+    // Zoomed out: 12 old-level tiles fill three new cells as one-in fallbacks.
+    let cells = (0..<3).map { WatchMapTile(z: 15, x: 50 + $0, y: 100) }
+    let finer = cells.flatMap(\.children)
+    var cache = WatchMapTileCache<String>()
+    for tile in finer { cache.put(tile, tile.key) }
+    let held = Set(cells + finer)
+    XCTAssertEqual(cache.frame(cells: cells, held: held).missing, cells)
+    cache.put(cells[0], cells[0].key)
+    // Neither the new tile nor anything on screen is evicted, so the next frame does not decode it again.
+    let next = cache.frame(cells: cells, held: held)
+    XCTAssertEqual(next.missing, Array(cells.dropFirst()))
+    XCTAssertEqual(next.draw, [cells[0]] + finer.dropFirst(4))
+    XCTAssertTrue(([cells[0]] + finer).allSatisfy { cache.image($0) != nil })
+  }
+
+  func testTheRouteAnchorCrossesTheAntimeridianTheShortWay() {
+    let route = WatchMapRoute(points: [WatchMapPosition(latitude: 0, longitude: 179.9), WatchMapPosition(latitude: 0, longitude: -179.9)])
+    XCTAssertEqual(route.point(before: route.lengthM / 4)!.position.longitude, -179.95, accuracy: 1e-6)
   }
 
   func testCellsComeFromHeldTilesAtTheLevelOneOutAndOneIn() {

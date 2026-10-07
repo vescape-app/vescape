@@ -24,6 +24,10 @@ import expo.modules.vescapecore.watch.WATCH_MAP_TILE_ASSET
 import expo.modules.vescapecore.watch.WatchMapTile
 import expo.modules.vescapecore.watch.WATCH_GROUP_RIDE_PATH
 import expo.modules.vescapecore.watch.WATCH_ROUTE_STATUS_PATH
+import java.util.concurrent.TimeUnit
+
+/** A street-map tile Asset read that takes longer has stalled. */
+private const val MAP_TILE_READ_TIMEOUT_S = 10L
 
 /**
  * Wear OS Mirror entry point. Renders the live [WatchFrame] pushed from the phone over
@@ -102,11 +106,12 @@ class MainActivity : ComponentActivity() {
 
     /**
      * Reads a street-map tile's JPEG from its Asset, on the caller's (background) thread. The asset
-     * is frozen because the event buffer it came from is released.
+     * is frozen because the event buffer it came from is released. A read that never resolves times
+     * out, so it fails and is retried like an unreadable one instead of holding an IO thread.
      */
     private fun mapTileLoader(item: DataItem): (() -> ByteArray?)? {
         val asset: DataItemAsset = item.assets[WATCH_MAP_TILE_ASSET]?.freeze() ?: return null
-        return { Tasks.await(dataClient.getFdForAsset(asset)).inputStream.use { it.readBytes() } }
+        return { Tasks.await(dataClient.getFdForAsset(asset), MAP_TILE_READ_TIMEOUT_S, TimeUnit.SECONDS).inputStream.use { it.readBytes() } }
     }
 
     private fun dataMapOf(item: DataItem): Map<String, Any?> {

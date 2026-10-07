@@ -98,29 +98,95 @@ extension WatchMapTile {
     }
     return cells
   }
+}
 
-  /// What the wrist draws over `cells` (tiles at its zoom across the display, nearest first),
-  /// bottom-up. Per cell: its own tile when `ready`; else the one-zoom-out tile, whose matching
-  /// quarter shows through, scaled up; else the ready tiles one zoom in, the level a zoom-out just
-  /// left; else nothing, so the background shows. One-out tiles come first so a neighbour's own tile
-  /// covers the rest of them. `ready` is asked in that order, so it may start decoding what it is
-  /// asked about.
-  ///
-  /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/watch/WatchMapTile.kt `watchMapTileDrawList`
-  static func drawList(cells: [WatchMapTile], ready: (WatchMapTile) -> Bool) -> [WatchMapTile] {
-    var drawn: [WatchMapTile] = []
-    var seen = Set<WatchMapTile>()
-    func add(_ tile: WatchMapTile) { if seen.insert(tile).inserted { drawn.append(tile) } }
-    for cell in cells {
-      if ready(cell) {
-        add(cell)
-      } else if let parent = cell.parent, ready(parent) {
-        add(parent)
+/// Cells the wrist draws at once, and decoded tiles it keeps beyond what the current frame wants.
+/// A display shows at most about nine cells at the wrist's spans.
+///
+/// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/watch/WatchMapTile.kt `WATCH_MAP_DECODED_TILES`
+let watchMapDecodedTiles = 12
+
+/// One wrist frame: what it draws, bottom-up, and the tiles it waits on that are not decoded yet.
+struct WatchMapTileFrame {
+  let draw: [WatchMapTile]
+  let missing: [WatchMapTile]
+}
+
+/// The wrist's decoded street-map tiles: least recently used goes first, but never a tile the last
+/// `frame` drew or waits on, so a decode cannot evict what the display is about to draw and a level
+/// stays on screen while the next decodes. The cache runs over `watchMapDecodedTiles` while a zoom settles.
+/// Platform image type, decoding and threading stay with each wrist.
+///
+/// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/watch/WatchMapTile.kt `WatchMapTileCache`
+struct WatchMapTileCache<Image> {
+  private var decoded: [WatchMapTile: Image] = [:]
+  /// Least recently used first.
+  private var recent: [WatchMapTile] = []
+  private var pinned = Set<WatchMapTile>()
+
+  mutating func image(_ tile: WatchMapTile) -> Image? {
+    guard let image = decoded[tile] else { return nil }
+    touch(tile)
+    return image
+  }
+
+  mutating func put(_ tile: WatchMapTile, _ image: Image) {
+    decoded[tile] = image
+    touch(tile)
+    var index = 0
+    while recent.count > watchMapDecodedTiles, index < recent.count {
+      if pinned.contains(recent[index]) {
+        index += 1
       } else {
-        cell.children.filter(ready).forEach(add)
+        decoded[recent.remove(at: index)] = nil
       }
     }
-    return drawn.enumerated().sorted { ($0.element.z, $0.offset) < ($1.element.z, $1.offset) }.map(\.element)
+  }
+
+  mutating func remove(_ tile: WatchMapTile) {
+    decoded[tile] = nil
+    recent.removeAll { $0 == tile }
+  }
+
+  /// Lays out a frame over `cells` (tiles at the wrist's zoom across the display, nearest first) from
+  /// the `held` tiles, and pins it. Per cell it draws its own tile when decoded; else the one-zoom-out
+  /// tile, whose matching quarter shows through, scaled up; else the decoded tiles one zoom in, the
+  /// level a zoom-out just left; else nothing, so the background shows. One-out tiles come first so
+  /// a neighbour's own tile covers the rest of them. Only the best held level of each cell is waited
+  /// on (own, else one out, else one in); a fallback is drawn only if it is already decoded.
+  mutating func frame(cells: [WatchMapTile], held: Set<WatchMapTile>) -> WatchMapTileFrame {
+    var draw: [WatchMapTile] = []
+    var wanted: [WatchMapTile] = []
+    var seen = Set<WatchMapTile>()
+    var waited = Set<WatchMapTile>()
+    func add(_ tile: WatchMapTile) { if seen.insert(tile).inserted { draw.append(tile) } }
+    func want(_ tile: WatchMapTile) { if waited.insert(tile).inserted { wanted.append(tile) } }
+    for cell in cells {
+      let parent = cell.parent
+      if held.contains(cell) {
+        want(cell)
+      } else if let parent, held.contains(parent) {
+        want(parent)
+      } else {
+        cell.children.filter(held.contains).forEach(want)
+      }
+      if decoded[cell] != nil {
+        add(cell)
+      } else if let parent, decoded[parent] != nil {
+        add(parent)
+      } else {
+        cell.children.filter { decoded[$0] != nil }.forEach(add)
+      }
+    }
+    pinned = seen.union(waited)
+    return WatchMapTileFrame(
+      draw: draw.enumerated().sorted { ($0.element.z, $0.offset) < ($1.element.z, $1.offset) }.map(\.element),
+      missing: wanted.filter { decoded[$0] == nil })
+  }
+
+  private mutating func touch(_ tile: WatchMapTile) {
+    recent.removeAll { $0 == tile }
+    recent.append(tile)
   }
 }
 
