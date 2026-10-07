@@ -75,7 +75,16 @@ enum MirrorStateReducer {
   static let minTimeoutMs: Int64 = 750
   static let maxTimeoutMs: Int64 = 30_000
 
+  /// How many recent arrival gaps the cadence is read from. The window is sized by the longest of
+  /// them, never the last: transports deliver in bursts (the watchOS simulator hands over each
+  /// second's frames at once), so the last gap inside a burst is ~0 and would shrink the window to
+  /// the floor, flipping the mirror to `disconnected` in every pause between bursts.
+  ///
+  /// @parity /watch/wearos/src/main/java/app/vescape/wear/MirrorState.kt `MIRROR_CADENCE_WINDOW_GAPS`
+  static let cadenceWindowGaps = 8
+
   /// @parity /watch/wearos/src/main/java/app/vescape/wear/MirrorState.kt `mirrorDisconnectedTimeoutMs`
+  /// `frameGapMs` is the longest recent arrival gap (see `cadenceWindowGaps`).
   static func disconnectedTimeoutMs(frameGapMs: Int64?) -> Int64 {
     min(max((frameGapMs ?? frameIntervalMs) * 3, minTimeoutMs), maxTimeoutMs)
   }

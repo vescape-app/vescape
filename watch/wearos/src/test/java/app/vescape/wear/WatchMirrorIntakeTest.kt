@@ -63,6 +63,28 @@ class WatchMirrorIntakeTest {
         assertEquals(MirrorStatus.LIVE, intake.mirror.status)
     }
 
+    /**
+     * Regression: transports deliver frames in bursts. A window sized by the last gap (~0 inside a
+     * burst) dropped to the floor and blinked the mirror offline in every pause between bursts.
+     */
+    @Test
+    fun `burst delivery stays live between bursts and the window shrinks back once the cadence steadies`() {
+        val intake = WatchMirrorIntake()
+        for (burstAt in 1_000L..3_000L step 1_000L) repeat(3) { intake.frame(at = burstAt) }
+        intake.refresh(3_900)
+        assertEquals(MirrorStatus.LIVE, intake.mirror.status)
+        intake.refresh(6_001)
+        assertEquals(MirrorStatus.DISCONNECTED, intake.mirror.status)
+
+        var at = 6_000L
+        repeat(MIRROR_CADENCE_WINDOW_GAPS + 1) {
+            at += 250
+            intake.frame(at = at)
+        }
+        intake.refresh(at + 751)
+        assertEquals(MirrorStatus.DISCONNECTED, intake.mirror.status)
+    }
+
     @Test
     fun `disconnect clears hot status and group while cold channels survive for reconnect`() {
         val intake = WatchMirrorIntake()

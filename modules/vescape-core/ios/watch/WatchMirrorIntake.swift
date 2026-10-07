@@ -13,13 +13,17 @@ struct WatchMirrorIntake {
   private(set) var groupRide: WatchGroupRide?
   private(set) var lastFrameAtMs: Int64?
   private var latestFrame: WatchFrame?
-  private var frameGapMs: Int64?
+  /// Newest last, at most `MirrorStateReducer.cadenceWindowGaps` long.
+  private var recentGapsMs: [Int64] = []
   private var lastGroupRideAtMs: Int64?
 
   @discardableResult
   mutating func acceptTelemetry(_ bytes: Data, receivedAtMs: Int64, appliedAtMs: Int64) -> Bool {
     guard let frame = WatchFrameBuilder.decode(bytes) else { return false }
-    if let previous = lastFrameAtMs { frameGapMs = max(receivedAtMs - previous, 0) }
+    if let previous = lastFrameAtMs {
+      recentGapsMs.append(max(receivedAtMs - previous, 0))
+      if recentGapsMs.count > MirrorStateReducer.cadenceWindowGaps { recentGapsMs.removeFirst() }
+    }
     latestFrame = frame
     lastFrameAtMs = receivedAtMs
     refresh(nowMs: appliedAtMs)
@@ -57,7 +61,7 @@ struct WatchMirrorIntake {
   mutating func refresh(nowMs: Int64) {
     mirror = MirrorStateReducer.reduce(
       frame: latestFrame, lastFrameAtMs: lastFrameAtMs, nowMs: nowMs,
-      timeoutMs: MirrorStateReducer.disconnectedTimeoutMs(frameGapMs: frameGapMs)
+      timeoutMs: MirrorStateReducer.disconnectedTimeoutMs(frameGapMs: recentGapsMs.max())
     )
     if mirror.status == .disconnected { routeStatus = nil }
     if let at = lastGroupRideAtMs, nowMs - at > WatchGroupRide.timeoutMs {

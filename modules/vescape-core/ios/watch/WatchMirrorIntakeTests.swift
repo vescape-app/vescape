@@ -60,6 +60,28 @@ final class WatchMirrorIntakeTests: XCTestCase {
     XCTAssertEqual(intake.mirror.status, .live)
   }
 
+  /// Regression: the watchOS simulator delivers each second's frames as one burst. A window sized
+  /// by the last gap (~0 inside a burst) dropped to the floor and blinked the mirror offline in every
+  /// pause between bursts.
+  func testBurstDeliveryStaysLiveBetweenBurstsAndTheWindowShrinksBackOnceTheCadenceSteadies() {
+    var intake = WatchMirrorIntake()
+    for burstAtMs in stride(from: Int64(1_000), through: 3_000, by: 1_000) {
+      for _ in 0..<3 { intake.acceptTelemetry(WatchMirrorReplayAdapter.telemetry(frame), receivedAtMs: burstAtMs, appliedAtMs: burstAtMs) }
+    }
+    intake.refresh(nowMs: 3_900)
+    XCTAssertEqual(intake.mirror.status, .live)
+    intake.refresh(nowMs: 6_001)
+    XCTAssertEqual(intake.mirror.status, .disconnected)
+
+    var atMs: Int64 = 6_000
+    for _ in 0...MirrorStateReducer.cadenceWindowGaps {
+      atMs += 250
+      intake.acceptTelemetry(WatchMirrorReplayAdapter.telemetry(frame), receivedAtMs: atMs, appliedAtMs: atMs)
+    }
+    intake.refresh(nowMs: atMs + 751)
+    XCTAssertEqual(intake.mirror.status, .disconnected)
+  }
+
   func testDisconnectClearsHotStatusAndGroupButPreservesColdChannels() {
     var intake = WatchMirrorIntake()
     intake.acceptRoute(WatchMirrorReplayAdapter.route(route))

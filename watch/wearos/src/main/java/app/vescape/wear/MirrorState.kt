@@ -12,6 +12,16 @@ const val WATCH_FRAME_INTERVAL_MS = 250L
 const val MIRROR_DISCONNECTED_MIN_TIMEOUT_MS = 750L
 const val MIRROR_DISCONNECTED_MAX_TIMEOUT_MS = 30_000L
 
+/**
+ * How many recent arrival gaps the cadence is read from. The window is sized by the longest of them,
+ * never the last: transports deliver in bursts, so the last gap inside a burst is ~0 and would shrink
+ * the window to the floor, flipping the mirror to DISCONNECTED in every pause between bursts.
+ *
+ * @parity /modules/vescape-core/ios/watch/MirrorState.swift `cadenceWindowGaps`
+ */
+const val MIRROR_CADENCE_WINDOW_GAPS = 8
+
+/** [frameGapMs] is the longest recent arrival gap (see [MIRROR_CADENCE_WINDOW_GAPS]). */
 fun mirrorDisconnectedTimeoutMs(frameGapMs: Long?): Long =
     ((frameGapMs ?: WATCH_FRAME_INTERVAL_MS) * 3)
         .coerceIn(MIRROR_DISCONNECTED_MIN_TIMEOUT_MS, MIRROR_DISCONNECTED_MAX_TIMEOUT_MS)
