@@ -93,14 +93,15 @@ enum WatchMapTilePlan {
 
   private static let tilePixels = 512.0
 
-  /// Tiles at `zoom` within `ringSpans` spans of a centre ahead of the rider along their course,
-  /// nearest the rider first. Columns wrap across the antimeridian; rows stop at the poles.
-  static func ring(_ rider: WatchMapRider, zoom: Int) -> [WatchMapTile] {
+  /// Tiles at `zoom` within `ringSpans` spans of a centre ahead of the rider along their course, or
+  /// of the rider themselves without `lookahead`, nearest the rider first. Columns wrap across the
+  /// antimeridian; rows stop at the poles.
+  static func ring(_ rider: WatchMapRider, zoom: Int, lookahead: Bool = true) -> [WatchMapTile] {
     let n = 1 << zoom
     let (riderX, riderY) = tileCoordinates(rider.position, n: n)
     let tileM = tileMetres(latitude: rider.position.latitude, zoom: zoom)
     let spanM = WatchMapProjection.clampedSpanM(rider.spanM)
-    let aheadM = rider.courseDeg == nil ? 0 : max(spanM / 2, (rider.speedMps ?? 0) * lookaheadS)
+    let aheadM = !lookahead || rider.courseDeg == nil ? 0 : max(spanM / 2, (rider.speedMps ?? 0) * lookaheadS)
     let course = (rider.courseDeg ?? 0) * .pi / 180
     let centreX = riderX + aheadM * sin(course) / tileM
     let centreY = riderY - aheadM * cos(course) / tileM
@@ -205,10 +206,15 @@ enum WatchMapTilePlan {
     return Array((fresh + older).prefix(cap))
   }
 
-  /// Tiles one plan step needs at `zoom`: the ring one zoom out first, about four tiles that cover
-  /// the display on their own once scaled up, then the ring at `zoom` itself.
+  /// Tiles one plan step needs at `zoom`: the display around the rider first, then the ring ahead,
+  /// so speed never pushes the current view out of the plan. Each as the ring one zoom out first,
+  /// about four tiles that cover the display on their own once scaled up, then the ring at `zoom`.
   static func needed(_ rider: WatchMapRider, zoom: Int) -> [WatchMapTile] {
-    (zoom > 0 ? ring(rider, zoom: zoom - 1) : []) + ring(rider, zoom: zoom)
+    func levels(_ lookahead: Bool) -> [WatchMapTile] {
+      (zoom > 0 ? ring(rider, zoom: zoom - 1, lookahead: lookahead) : []) + ring(rider, zoom: zoom, lookahead: lookahead)
+    }
+    var seen = Set<WatchMapTile>()
+    return (levels(false) + levels(true)).filter { seen.insert($0).inserted }
   }
 
   /// The rider's tile at `zoom`.

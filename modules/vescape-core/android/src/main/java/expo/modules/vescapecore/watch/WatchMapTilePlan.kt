@@ -102,14 +102,15 @@ private const val TILE_PIXELS = 512.0
 
 /**
  * Tiles at [zoom] within [WATCH_MAP_RING_SPANS] spans of a centre ahead of the rider along their
- * course, nearest the rider first. Columns wrap across the antimeridian; rows stop at the poles.
+ * course, or of the rider themselves without [lookahead], nearest the rider first. Columns wrap
+ * across the antimeridian; rows stop at the poles.
  */
-internal fun watchMapTileRing(rider: WatchMapRider, zoom: Int): List<WatchMapTile> {
+internal fun watchMapTileRing(rider: WatchMapRider, zoom: Int, lookahead: Boolean = true): List<WatchMapTile> {
     val n = 1 shl zoom
     val (riderX, riderY) = tileCoordinates(rider.position, n)
     val tileM = tileMetres(rider.position.latitude, zoom)
     val spanM = WatchMapSpan.clamp(rider.spanM).toDouble()
-    val aheadM = if (rider.courseDeg == null) 0.0 else max(spanM / 2, (rider.speedMps ?: 0.0) * WATCH_MAP_LOOKAHEAD_S)
+    val aheadM = if (!lookahead || rider.courseDeg == null) 0.0 else max(spanM / 2, (rider.speedMps ?: 0.0) * WATCH_MAP_LOOKAHEAD_S)
     val course = Math.toRadians(rider.courseDeg ?: 0.0)
     val centreX = riderX + aheadM * sin(course) / tileM
     val centreY = riderY - aheadM * cos(course) / tileM
@@ -209,11 +210,15 @@ internal fun retainWatchMapTiles(
 }
 
 /**
- * Tiles one plan step needs at [zoom]: the ring one zoom out first, about four tiles that cover the
- * face on their own once scaled up, then the ring at [zoom] itself.
+ * Tiles one plan step needs at [zoom]: the face around the rider first, then the ring ahead, so speed
+ * never pushes the current view out of the plan. Each as the ring one zoom out first, about four
+ * tiles that cover the face on their own once scaled up, then the ring at [zoom] itself.
  */
-internal fun watchMapTileNeeded(rider: WatchMapRider, zoom: Int): List<WatchMapTile> =
-    (if (zoom > 0) watchMapTileRing(rider, zoom - 1) else emptyList()) + watchMapTileRing(rider, zoom)
+internal fun watchMapTileNeeded(rider: WatchMapRider, zoom: Int): List<WatchMapTile> {
+    fun levels(lookahead: Boolean) =
+        (if (zoom > 0) watchMapTileRing(rider, zoom - 1, lookahead) else emptyList()) + watchMapTileRing(rider, zoom, lookahead)
+    return (levels(lookahead = false) + levels(lookahead = true)).distinct()
+}
 
 /**
  * The stateful half: re-plans only when the rider enters a new tile, the zoom changes, the course

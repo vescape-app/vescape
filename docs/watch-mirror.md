@@ -376,10 +376,12 @@ unmounted) on a 480 px reference face, at the lowest zoom whose 512 px tile is d
 its size. A held level survives until the span moves 1.15× past its boundary. In Wrocław 600 m is
 z15.
 
-**Wanted tiles** (`WatchMapTilePlan.kt` / `.swift`, pure and tested on both platforms): a ring of
-one span around a centre ahead of the rider along their course, by the larger of half a span or
-30 s at GPS speed, nearest the rider first, at the zoom and one zoom out. The one-out ring (about 4
-tiles, which cover the face on their own scaled up) goes first. Tiles from earlier steps at those
+**Wanted tiles** (`WatchMapTilePlan.kt` / `.swift`, pure and tested on both platforms): first a
+ring of one span around the rider, the face they are looking at, then a ring of one span around a
+centre ahead of the rider along their course, by the larger of half a span or 30 s at GPS speed.
+Each ring is nearest the rider first, at the zoom and one zoom out, and the one-out ring (about 4
+tiles, which cover the face on their own scaled up) goes first. At speed the ahead ring can clear
+the rider's own tiles; the ring around the rider keeps them planned first. Tiles from earlier steps at those
 zooms stay on the list, then the level the last zoom change left, all within one cap of 200 tiles;
 past that the least recently needed go first, behind the rider before ahead. The left level goes
 with the next zoom change.

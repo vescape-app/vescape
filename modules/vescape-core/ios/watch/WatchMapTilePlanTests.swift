@@ -112,9 +112,23 @@ final class WatchMapTilePlanTests: XCTestCase {
     let needed = WatchMapTilePlan.needed(rider(courseDeg: 0), zoom: 15)
     let out = Array(needed.prefix { $0.z == 14 })
     XCTAssertTrue((1...9).contains(out.count))
-    XCTAssertEqual(Array(needed.dropFirst(out.count)), WatchMapTilePlan.ring(rider(courseDeg: 0), zoom: 15))
+    let face = WatchMapTilePlan.ring(rider(courseDeg: 0), zoom: 15, lookahead: false)
+    XCTAssertEqual(Array(needed.dropFirst(out.count).prefix(face.count)), face)
+    XCTAssertEqual(needed.count, Set(needed).count)
     // Every tile at the planned level is a quarter of a planned one-out tile.
-    XCTAssertTrue(needed.filter { $0.z == 15 }.allSatisfy { $0.parent.map(out.contains) == true })
+    let outAll = Set(needed.filter { $0.z == 14 })
+    XCTAssertTrue(needed.filter { $0.z == 15 }.allSatisfy { $0.parent.map(outAll.contains) == true })
+  }
+
+  func testSpeedNeverPushesTheDisplayAroundTheRiderOutOfThePlan() {
+    let fast = rider(courseDeg: 90, speedMps: 15, spanM: 150)
+    let level = zoom(150)
+    let here = WatchMapTilePlan.ring(rider(spanM: 150), zoom: level)[0]
+    // 30 s at 15 m/s centres the ring 450 m ahead, three spans: it misses the rider's tile.
+    XCTAssertFalse(WatchMapTilePlan.ring(fast, zoom: level).contains(here))
+    let needed = WatchMapTilePlan.needed(fast, zoom: level)
+    XCTAssertEqual(needed.first, here.parent)
+    XCTAssertEqual(needed.first { $0.z == level }, here)
   }
 
   func testAZoomChangeKeepsALevelOnTheWristThatCoversTheDisplay() {

@@ -98,9 +98,23 @@ class WatchMapTilePlanTest {
         val needed = watchMapTileNeeded(rider(courseDeg = 0.0), 15)
         val out = needed.takeWhile { it.z == 14 }
         assertTrue(out.size in 1..9)
-        assertEquals(needed.drop(out.size), watchMapTileRing(rider(courseDeg = 0.0), 15))
+        val face = watchMapTileRing(rider(courseDeg = 0.0), 15, lookahead = false)
+        assertEquals(face, needed.drop(out.size).take(face.size))
+        assertEquals(needed.size, needed.toSet().size)
         // Every tile at the planned level is a quarter of a planned one-out tile.
-        assertTrue(needed.filter { it.z == 15 }.all { it.parent in out })
+        val outAll = needed.filter { it.z == 14 }.toSet()
+        assertTrue(needed.filter { it.z == 15 }.all { it.parent in outAll })
+    }
+
+    @Test fun `speed never pushes the face around the rider out of the plan`() {
+        val fast = rider(courseDeg = 90.0, speedMps = 15.0, spanM = 150.0)
+        val zoom = watchMapTileZoom(150.0, wroclaw.latitude, null)
+        val here = watchMapTileRing(rider(spanM = 150.0), zoom).first()
+        // 30 s at 15 m/s centres the ring 450 m ahead, three spans: it misses the rider's tile.
+        assertFalse(here in watchMapTileRing(fast, zoom))
+        val needed = watchMapTileNeeded(fast, zoom)
+        assertEquals(here.parent, needed.first())
+        assertEquals(here, needed.first { it.z == zoom })
     }
 
     @Test fun `a zoom change keeps a level on the wrist that covers the face`() {
