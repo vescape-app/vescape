@@ -240,6 +240,14 @@ the visuals can be worked on without a board, a phone, or a ride:
 bun run wear:replay
 ```
 
+Replay draws the street map with no phone, network or token. The synthetic route starts at the
+`replay-thor301.jsonl` recording's first GPS fix (`origin` in `watch-route.json`), and the fixtures
+ship 17 z16 tiles of the published dark style (about 400 KB, `watch-map-tiles/`, listed in
+`watch-map-tiles.json`): every tile within 300 m of a replayed rider position. z16 is what
+`watchMapTileZoom` picks for the fixtures' 400 m span at that latitude. Tiles enter `MapTileState`
+like phone tile items. `bun run wear:fixtures` downloads only missing tiles, with
+`EXPO_PUBLIC_MAPBOX_ACCESS_TOKEN` from `.env.local`, and deletes tiles no longer listed.
+
 Forced ambient renders the always-on layout without power-cycling the screen between screenshots:
 
 ```bash

@@ -302,6 +302,10 @@ Restart replay after three hours to refresh it. Replay skips live phone listener
 so an empty phone context cannot erase the fixture. Wear OS already supported this companion asset;
 watchOS now uses the same data and timing rules.
 
+The street map replays offline too: `watch-map-tiles.json` lists the fixture tiles and
+`watch-map-tiles/<z>/<x>/<y>.jpg` holds them. Each is copied into `MapTileStore` through `receive`,
+the path a finished phone transfer takes, so the store never deletes the repo's files.
+
 The forecast is synthetic; radar uses real network imagery at the fixture coordinates. Open weather
 to check temperature, hourly scrolling and sun times, then radar to check loading and animation.
 No rain at that location can mean little visible radar color. A fetch failure is recorded in

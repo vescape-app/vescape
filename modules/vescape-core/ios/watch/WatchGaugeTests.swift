@@ -25,10 +25,16 @@ final class WatchGaugeTests: XCTestCase {
   }
 
 
+  private func fixtureOrigin() throws -> WatchMapPosition {
+    let json = try String(contentsOf: Self.fixtures.appendingPathComponent("watch-route.json"), encoding: .utf8)
+    return try XCTUnwrap(ReplaySceneParser.parseOrigin(json: json))
+  }
+
   func testRideFixtureKeepsMovingAndShowingItsTrailAfterNavigationEnds() throws {
     let text = try String(contentsOf: Self.fixtures.appendingPathComponent("watch-ride.jsonl"), encoding: .utf8)
+    let origin = try fixtureOrigin()
     for wander in [false, true] {
-      let samples = ReplayFixtureParser.parse(text: text, wander: wander)
+      let samples = ReplayFixtureParser.parse(text: text, wander: wander, origin: origin)
       let arrival = try XCTUnwrap(samples.firstIndex { $0.frame.navBearing == nil })
       XCTAssertGreaterThan(arrival, 0)
       let after = samples.dropFirst(arrival)
@@ -219,5 +225,26 @@ final class WatchGaugeTests: XCTestCase {
 
     XCTAssertEqual(samples.count, 1)
     XCTAssertEqual(samples[0].atMs, 1_000)
+  }
+
+  func testShippedStreetMapTilesSitUnderEveryReplayedRiderPosition() throws {
+    let json = try String(contentsOf: Self.fixtures.appendingPathComponent("watch-map-tiles.json"), encoding: .utf8)
+    let tiles = try XCTUnwrap(ReplaySceneParser.parseMapTiles(json: json)).tiles
+    XCTAssertFalse(tiles.isEmpty)
+    for tile in tiles {
+      XCTAssertTrue(FileManager.default.fileExists(atPath: Self.fixtures.appendingPathComponent("watch-map-tiles/\(tile.key).jpg").path))
+    }
+    let origin = try fixtureOrigin()
+    for fixture in ["watch-ride.jsonl", "watch-sweep.jsonl"] {
+      let text = try String(contentsOf: Self.fixtures.appendingPathComponent(fixture), encoding: .utf8)
+      let positions = ReplayFixtureParser.parse(text: text, wander: true, origin: origin).compactMap(\.frame.mapPosition)
+      XCTAssertFalse(positions.isEmpty)
+      for position in positions {
+        XCTAssertTrue(tiles.contains { tile in
+          position.latitude <= tile.northWest.latitude && position.latitude > tile.southEast.latitude
+            && position.longitude >= tile.northWest.longitude && position.longitude < tile.southEast.longitude
+        }, "\(fixture): no tile under \(position)")
+      }
+    }
   }
 }

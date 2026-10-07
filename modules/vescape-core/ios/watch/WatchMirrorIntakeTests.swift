@@ -4,6 +4,7 @@ import XCTest
 /// @parity /watch/wearos/src/test/java/app/vescape/wear/WatchMirrorIntakeTest.kt
 final class WatchMirrorIntakeTests: XCTestCase {
   private let route = WatchRoute(points: [WatchRoutePoint(eastM: 0, northM: 0), WatchRoutePoint(eastM: 123, northM: -456)])
+  private let origin = WatchMapPosition(latitude: 51.13, longitude: 16.99)
   private let frame = WatchFrame(
     speed: 21, duty: 40, battery: 80, motorTemp: 30, ctrlTemp: 25,
     navBearing: 30, navDistanceM: 150, riderEastM: 12, riderNorthM: 20, courseDeg: 90,
@@ -13,7 +14,7 @@ final class WatchMirrorIntakeTests: XCTestCase {
 
   func testNavigationClearKeepsIndependentGPSAndTrailUntilTheirOwnReplacement() throws {
     var intake = WatchMirrorIntake()
-    let bytes = try XCTUnwrap(WatchMirrorReplayAdapter.route(route))
+    let bytes = try XCTUnwrap(WatchMirrorReplayAdapter.route(route, origin: origin))
     intake.restoreColdState([
       watchRouteChannel: [WatchRouteKey.version: WATCH_ROUTE_VERSION, WatchRouteKey.points: bytes],
       watchSettingsChannel: [WatchSettingsKey.telemetryTrailEnabled: false],
@@ -84,7 +85,7 @@ final class WatchMirrorIntakeTests: XCTestCase {
 
   func testDisconnectClearsHotStatusAndGroupButPreservesColdChannels() {
     var intake = WatchMirrorIntake()
-    intake.acceptRoute(WatchMirrorReplayAdapter.route(route))
+    intake.acceptRoute(WatchMirrorReplayAdapter.route(route, origin: origin))
     intake.acceptSettings([WatchSettingsKey.unitSystem: "imperial"])
     intake.acceptTelemetry(WatchMirrorReplayAdapter.telemetry(frame), receivedAtMs: 1_000, appliedAtMs: 1_000)
     intake.acceptRouteStatus(WatchRouteStatusCodec.encode(WatchRouteStatus(phase: .computing)))
@@ -106,7 +107,7 @@ final class WatchMirrorIntakeTests: XCTestCase {
 
   func testIncrementalDeletionAndEmptyReconnectSnapshotHaveDifferentScopes() throws {
     var intake = WatchMirrorIntake()
-    let bytes = try XCTUnwrap(WatchMirrorReplayAdapter.route(route))
+    let bytes = try XCTUnwrap(WatchMirrorReplayAdapter.route(route, origin: origin))
     let weather: [String: Any] = ["temperatureC": 17, "icon": "clear", "fetchedAtMs": Int64(1_000)]
     intake.restoreColdState([
       watchRouteChannel: [WatchRouteKey.version: WATCH_ROUTE_VERSION, WatchRouteKey.points: bytes],
@@ -132,13 +133,13 @@ final class WatchMirrorIntakeTests: XCTestCase {
 
   func testReplayRoutePreservesGeometryAndUsesTheWireFingerprint() throws {
     var intake = WatchMirrorIntake()
-    let bytes = try XCTUnwrap(WatchMirrorReplayAdapter.route(route))
+    let bytes = try XCTUnwrap(WatchMirrorReplayAdapter.route(route, origin: origin))
     intake.acceptRoute(bytes)
     let decoded = try XCTUnwrap(intake.route)
     XCTAssertEqual(decoded.routeId, WatchRouteStatusCodec.routeId(bytes))
     XCTAssertEqual(decoded.points[1].eastM, 123, accuracy: 0.12)
     XCTAssertEqual(decoded.points[1].northM, -456, accuracy: 0.12)
-    XCTAssertNil(WatchMirrorReplayAdapter.route(WatchRoute(points: [WatchRoutePoint(eastM: 1, northM: 2)])))
+    XCTAssertNil(WatchMirrorReplayAdapter.route(WatchRoute(points: [WatchRoutePoint(eastM: 1, northM: 2)]), origin: origin))
     intake.acceptRoute(Data([99]))
     XCTAssertNil(intake.route)
   }

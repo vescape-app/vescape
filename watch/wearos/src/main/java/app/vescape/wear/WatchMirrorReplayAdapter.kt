@@ -1,10 +1,12 @@
 package app.vescape.wear
 
 import expo.modules.vescapecore.watch.GeoPoint
+import expo.modules.vescapecore.watch.WatchMapPosition
 import expo.modules.vescapecore.watch.WatchFrameBuilder
 import expo.modules.vescapecore.watch.WatchRouteEncoder
 import expo.modules.vescapecore.watch.WatchTiltControl as PhoneTiltControl
 import expo.modules.vescapecore.watch.WatchFrame as PhoneFrame
+import kotlin.math.cos
 
 /** Fixtures stand in for phone wire delivery, never write view stores directly.
  * @parity /modules/vescape-core/ios/watch/WatchMirrorReplayAdapter.swift
@@ -25,12 +27,18 @@ internal object WatchMirrorReplayAdapter {
         return bytes
     }
 
-    /** Fixtures start at (0, 0); reject other origins rather than silently shifting the rider. */
-    fun route(route: WatchRoute?): ByteArray? {
+    /** Fixture metres east/north of the route [origin] as a position: the inverse of `offsetFrom`. */
+    fun position(origin: WatchMapPosition, eastM: Double, northM: Double): WatchMapPosition = WatchMapPosition(
+        latitude = origin.latitude + northM / 110_574.0,
+        longitude = origin.longitude + eastM / (111_320.0 * cos(Math.toRadians(origin.latitude))),
+    )
+
+    /** Fixtures start at (0, 0) on [origin]; reject other starts rather than silently shifting the rider. */
+    fun route(route: WatchRoute?, origin: WatchMapPosition): ByteArray? {
         val first = route?.points?.firstOrNull() ?: return null
         if (first.eastM != 0f || first.northM != 0f) return null
         return WatchRouteEncoder.encode(route.points.map { point ->
-            GeoPoint(lat = point.northM / 110_574.0, lon = point.eastM / 111_320.0)
+            position(origin, point.eastM.toDouble(), point.northM.toDouble()).let { GeoPoint(lat = it.latitude, lon = it.longitude) }
         })
     }
 

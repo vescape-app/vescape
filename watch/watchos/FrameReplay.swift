@@ -74,26 +74,37 @@ final class FrameReplayer {
     guard
       let text = try? String(contentsOfFile: fixture, encoding: .utf8)
     else { return }
-    samples = ReplayFixtureParser.parse(text: text, wander: ProcessInfo.processInfo.arguments.contains("--wander"))
+    // Same companion assets as Wear OS, beside either ride or sweep telemetry.
+    // @parity /watch/wearos/src/main/java/app/vescape/wear/FrameReplay.kt `loadScene`
+    let sceneURL = URL(fileURLWithPath: fixture).deletingLastPathComponent()
+    let routeURL = sceneURL.appendingPathComponent("watch-route.json")
+    let routeJSON = try? String(contentsOf: routeURL, encoding: .utf8)
+    let origin = routeJSON.flatMap { ReplaySceneParser.parseOrigin(json: $0) }
+    samples = ReplayFixtureParser.parse(
+      text: text, wander: ProcessInfo.processInfo.arguments.contains("--wander"), origin: origin)
     guard !samples.isEmpty else { return }
     task = Task { @MainActor [samples, link, weak self] in
       link.acceptReplaySettings([
         WatchSettingsKey.telemetryTrailEnabled: !ProcessInfo.processInfo.arguments.contains("--no-telemetry-trail"),
       ])
       link.recordReplay(fixture: (fixture as NSString).lastPathComponent, sampleCount: samples.count)
-      // Same companion asset as Wear OS, beside either ride or sweep telemetry.
-      // @parity /watch/wearos/src/main/java/app/vescape/wear/FrameReplay.kt `loadScene`
-      let sceneURL = URL(fileURLWithPath: fixture).deletingLastPathComponent()
-      let routeURL = sceneURL.appendingPathComponent("watch-route.json")
-      if let json = try? String(contentsOf: routeURL, encoding: .utf8) {
-        let route = ReplaySceneParser.parseRoute(json: json)
-        link.acceptReplayRoute(route)
-        if route == nil { print("[replay] invalid route fixture: \(routeURL.path)") }
+      if let routeJSON {
+        let route = ReplaySceneParser.parseRoute(json: routeJSON)
+        link.acceptReplayRoute(route, origin: origin)
+        if route == nil || origin == nil { print("[replay] invalid route fixture: \(routeURL.path)") }
       } else {
         print("[replay] missing route fixture: \(routeURL.path)")
       }
       link.acceptReplayRouteStatus(routeLoading ? WatchRouteStatus(phase: .ready, routeId: 1) : nil)
-      if routeLoading { link.acceptReplayRoute(nil) }
+      if routeLoading { link.acceptReplayRoute(nil, origin: origin) }
+      let mapTilesURL = sceneURL.appendingPathComponent("watch-map-tiles.json")
+      if let json = try? String(contentsOf: mapTilesURL, encoding: .utf8),
+        let tiles = ReplaySceneParser.parseMapTiles(json: json)
+      {
+        link.acceptReplayMapTiles(tiles, directory: sceneURL.appendingPathComponent("watch-map-tiles"))
+      } else {
+        print("[replay] missing or invalid map tile fixture: \(mapTilesURL.path)")
+      }
       let weatherURL = sceneURL.appendingPathComponent("watch-weather.json")
       if let json = try? String(contentsOf: weatherURL, encoding: .utf8) {
         let nowMs = Int64(Date().timeIntervalSince1970 * 1000)

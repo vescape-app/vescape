@@ -87,11 +87,15 @@ class ReplayFixtureParserTest {
         assertEquals(1, samples.size)
         assertEquals(1000L, samples[0].atMs)
     }
+    private fun asset(name: String): File = generateSequence(File(requireNotNull(System.getProperty("user.dir")))) { it.parentFile }
+        .map { File(it, "watch/wearos/src/main/assets/$name") }.first { it.exists() }
+
+    private val origin = ReplaySceneParser.parseOrigin(asset("watch-route.json").readText())
+
     @Test fun `ride fixture keeps moving and showing its trail after navigation ends`() {
-        val fixture = generateSequence(File(requireNotNull(System.getProperty("user.dir")))) { it.parentFile }
-            .map { File(it, "watch/wearos/src/main/assets/watch-ride.jsonl") }.first { it.exists() }
+        val fixture = asset("watch-ride.jsonl")
         for (wander in listOf(false, true)) {
-            val samples = fixture.useLines { ReplayFixtureParser.parse(it, wander = wander) }
+            val samples = fixture.useLines { ReplayFixtureParser.parse(it, wander = wander, origin = origin) }
             val arrival = samples.indexOfFirst { it.frame.navBearing == null }
             assertTrue(arrival > 0)
             val after = samples.drop(arrival)
@@ -101,4 +105,20 @@ class ReplayFixtureParserTest {
         }
     }
 
+    @Test fun `shipped street-map tiles sit under every replayed rider position`() {
+        val tiles = ReplaySceneParser.parseMapTiles(asset("watch-map-tiles.json").readText())
+        assertTrue(tiles.isNotEmpty())
+        for (tile in tiles) assertTrue(asset("watch-map-tiles/${tile.key}.jpg").length() > 0)
+        for (fixture in listOf("watch-ride.jsonl", "watch-sweep.jsonl")) {
+            val positions = asset(fixture).useLines { ReplayFixtureParser.parse(it, wander = true, origin = origin) }
+                .mapNotNull { it.frame.mapPosition }
+            assertTrue(positions.isNotEmpty())
+            for (position in positions) {
+                assertTrue("$fixture: no tile under $position", tiles.any { tile ->
+                    position.latitude <= tile.northWest.latitude && position.latitude > tile.southEast.latitude &&
+                        position.longitude >= tile.northWest.longitude && position.longitude < tile.southEast.longitude
+                })
+            }
+        }
+    }
 }

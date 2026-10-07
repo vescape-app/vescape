@@ -14,8 +14,32 @@ enum ReplaySceneParser {
     })
   }
 
+  /// The route's geographic origin: where its metres, and the rider lanes', sit on the map.
+  /// @parity /watch/wearos/src/main/java/app/vescape/wear/FrameReplay.kt `ReplaySceneParser.parseOrigin`
+  static func parseOrigin(json: String) -> WatchMapPosition? {
+    // intentional-suppression: a fixture without an origin replays with no map position.
+    guard let fixture = try? JSONDecoder().decode(RouteFixture.self, from: Data(json.utf8)),
+      let origin = fixture.origin
+    else { return nil }
+    return WatchMapPosition(latitude: origin.latitude, longitude: origin.longitude)
+  }
+
+  /// The street-map tiles shipped beside the fixtures, in the shape the phone's list takes.
+  /// @parity /watch/wearos/src/main/java/app/vescape/wear/FrameReplay.kt `ReplaySceneParser.parseMapTiles`
+  static func parseMapTiles(json: String) -> WatchMapTileList? {
+    // intentional-suppression: malformed replay fixtures return nil; the replay driver logs the failure.
+    let payload = try? JSONSerialization.jsonObject(with: Data(json.utf8)) as? [String: Any]
+    return WatchMapTileList.decode(payload)
+  }
+
   private struct RouteFixture: Decodable {
+    let origin: Origin?
     let points: [Point]
+
+    struct Origin: Decodable {
+      let latitude: Double
+      let longitude: Double
+    }
 
     struct Point: Decodable {
       let east: Double
@@ -186,14 +210,16 @@ struct ReplaySample: Equatable {
 ///
 /// @parity /watch/wearos/src/main/java/app/vescape/wear/FrameReplay.kt `ReplayFixtureParser`
 enum ReplayFixtureParser {
-  static func parse<S: Sequence>(_ lines: S, wander: Bool = false) -> [ReplaySample] where S.Element == String {
+  /// `origin`: where the fixture's metres sit on the globe (`watch-route.json`); nil leaves no map position.
+  static func parse<S: Sequence>(
+    _ lines: S, wander: Bool = false, origin: WatchMapPosition? = nil
+  ) -> [ReplaySample] where S.Element == String {
     let recorded = lines.compactMap(parseLine)
     let samples = wander ? withDetours(recorded) : recorded
     return samples.enumerated().map { index, sample in
       var frame = sample.frame
       if let east = frame.riderEastM, let north = frame.riderNorthM {
-        // Fixture offsets use a synthetic equatorial anchor, independent of navigation lanes.
-        frame.mapPosition = WatchMapPosition(latitude: north / 110_574, longitude: east / 111_320)
+        frame.mapPosition = origin.map { WatchMirrorReplayAdapter.position(origin: $0, eastM: east, northM: north) }
         let count = min(index + 1, WatchTrailCodec.maxPoints)
         frame.trail = (0..<count).compactMap { i in
           let point = samples[count == 1 ? 0 : i * index / (count - 1)].frame
@@ -205,8 +231,8 @@ enum ReplayFixtureParser {
     }
   }
 
-  static func parse(text: String, wander: Bool = false) -> [ReplaySample] {
-    parse(text.split(separator: "\n", omittingEmptySubsequences: false).map(String.init), wander: wander)
+  static func parse(text: String, wander: Bool = false, origin: WatchMapPosition? = nil) -> [ReplaySample] {
+    parse(text.split(separator: "\n", omittingEmptySubsequences: false).map(String.init), wander: wander, origin: origin)
   }
 
   /// Smooth, seeded world-space detours. Rejoin every two minutes; never mutate the planned route.

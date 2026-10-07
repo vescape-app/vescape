@@ -1,4 +1,4 @@
-import { mkdirSync, readFileSync, writeFileSync } from 'fs'
+import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'fs'
 import { join } from 'path'
 
 /**
@@ -16,16 +16,34 @@ import { join } from 'path'
  * `watch-sweep.jsonl` is synthetic: every lane walked through its full range, including null and
  * stale stretches, so gauge extremes are reachable without hunting for them in a real ride.
  *
- * The recording carries no GPS, so navigation is synthetic too: a route polyline
- * (`watch-route.json`) plus per-sample rider lanes walking it. GPS movement continues after the
+ * Navigation is synthetic: a route polyline (`watch-route.json`) plus per-sample rider lanes walking
+ * it, with a geographic origin at the recording's first GPS fix. GPS movement continues after the
  * destination clears, so both navigation and a standalone map are reachable on an emulator. The
- * forecast (`watch-weather.json`) is synthetic for the same reason — between them the emulator shows
- * every wrist surface without a phone.
+ * forecast (`watch-weather.json`) is synthetic too. The street map under it is a handful of real
+ * dark-style tiles along the walked route (`watch-map-tiles/`), so between them the emulator shows
+ * every wrist surface without a phone or a network.
+ *
+ * Tiles download only when missing, with `EXPO_PUBLIC_MAPBOX_ACCESS_TOKEN` (Bun reads `.env.local`);
+ * the committed fixtures are the JPEGs alone.
  */
 
 const ROOT = join(import.meta.dir, '..')
 const SOURCE = join(ROOT, 'shared', 'fixtures', 'replay-thor301.jsonl')
 const OUT_DIR = join(ROOT, 'watch', 'wearos', 'src', 'main', 'assets')
+const MAP_TILE_DIR = join(OUT_DIR, 'watch-map-tiles')
+
+/** The hosted dark street-map style, as `MapTiles.STYLE` fetches it. */
+const MAP_STYLE = 'kacperkozak/cmux9d4th002j01s4fm7tc4mt'
+
+/**
+ * The level the phone planner (`watchMapTileZoom`) picks for the replayed span: 400 m on a 480 px
+ * face at Wrocław's latitude is 0.83 m/px, and z16 is the lowest level whose 512 px tile is drawn at
+ * most 1.3x its size there (z15 would be 2.6x).
+ */
+const MAP_TILE_ZOOM = 16
+
+/** Tiles within this many metres of any replayed rider position: the face diagonal at the span. */
+const MAP_TILE_REACH_M = 300
 
 /** Watch tick cadence (`wearPushRateHz` default), so a replayed lane stream is paced like a real push. */
 const SAMPLE_INTERVAL_MS = 500
@@ -71,6 +89,8 @@ type LaneSample = {
 
 /** A synthetic route point in the wrist's drawing frame: metres east/north of the route origin. */
 type RoutePoint = { east: number; north: number }
+
+type GeoPoint = { latitude: number; longitude: number }
 
 function crc16(data: Uint8Array): number {
   let crc = 0
@@ -186,20 +206,48 @@ function serialize(samples: LaneSample[]): string {
   return samples.map((sample) => JSON.stringify(sample)).join('\n') + '\n'
 }
 
+type CaptureRecord = {
+  t?: number
+  kind?: string
+  direction?: string
+  base64?: string
+  latitude?: number
+  longitude?: number
+}
+
+function readCapture(): CaptureRecord[] {
+  const records: CaptureRecord[] = []
+  let malformedLines = 0
+  for (const line of readFileSync(SOURCE, 'utf8').split('\n')) {
+    if (!line) continue
+    try {
+      records.push(JSON.parse(line))
+    } catch {
+      malformedLines += 1
+    }
+  }
+  if (malformedLines > 0) console.warn(`Skipped ${malformedLines} malformed capture lines.`)
+  return records
+}
+
+const CAPTURE = readCapture()
+
+/** Where the synthetic route starts: the recording's first GPS fix, rounded to the wire's microdegrees. */
+function routeOrigin(): GeoPoint {
+  const fix = CAPTURE.find((record) => record.kind === 'location')
+  if (fix?.latitude === undefined || fix.longitude === undefined) {
+    throw new Error('the recording has no GPS fix to anchor the route')
+  }
+  return { latitude: round(fix.latitude, 6), longitude: round(fix.longitude, 6) }
+}
+
+const ORIGIN = routeOrigin()
+
 /** Decodes the recorded ride into one telemetry sample per parsed ALLDATA packet. */
 function decodeRide(): { t: number; telemetry: Telemetry }[] {
   const reassembler = new PacketReassembler()
   const decoded: { t: number; telemetry: Telemetry }[] = []
-  let malformedLines = 0
-  for (const line of readFileSync(SOURCE, 'utf8').split('\n')) {
-    if (!line) continue
-    let record: { t?: number; kind?: string; direction?: string; base64?: string }
-    try {
-      record = JSON.parse(line)
-    } catch {
-      malformedLines += 1
-      continue
-    }
+  for (const record of CAPTURE) {
     if (record.kind !== 'ble-chunk' || record.direction !== 'rx' || !record.base64) continue
     const chunk = Uint8Array.from(Buffer.from(record.base64, 'base64'))
     for (const packet of reassembler.feed(chunk)) {
@@ -207,7 +255,6 @@ function decodeRide(): { t: number; telemetry: Telemetry }[] {
       if (telemetry) decoded.push({ t: record.t ?? 0, telemetry })
     }
   }
-  if (malformedLines > 0) console.warn(`Skipped ${malformedLines} malformed capture lines.`)
   return decoded
 }
 
@@ -368,6 +415,8 @@ function buildWeather() {
     precipitationProbability: 15,
     sunriseMinuteOfDay: 5 * 60 + 12,
     sunsetMinuteOfDay: 20 * 60 + 48,
+    latitude: 52.2297,
+    longitude: 21.0122,
     hourly: Array.from({ length: 12 }, (_, hour) => ({
       temperatureC: 17 + Math.round(6 * Math.sin((hour / 12) * Math.PI)),
       icon: icons[hour % icons.length],
@@ -449,9 +498,86 @@ function buildSweep(): LaneSample[] {
   return samples
 }
 
+/** Web Mercator tile coordinates of [point] at [zoom], fractional. */
+function tileCoordinates(point: GeoPoint, zoom: number): { x: number; y: number } {
+  const n = 2 ** zoom
+  const lat = (point.latitude * Math.PI) / 180
+  return {
+    x: ((point.longitude + 180) / 360) * n,
+    y: ((1 - Math.asinh(Math.tan(lat)) / Math.PI) / 2) * n,
+  }
+}
+
+/** Metres east/north of [ORIGIN] as a position: the inverse the wrist applies (`offsetFrom`). */
+function geoAt(east: number, north: number): GeoPoint {
+  return {
+    latitude: ORIGIN.latitude + north / 110_574,
+    longitude: ORIGIN.longitude + east / (111_320 * Math.cos((ORIGIN.latitude * Math.PI) / 180)),
+  }
+}
+
+/** Every [MAP_TILE_ZOOM] tile reaching within [MAP_TILE_REACH_M] of a replayed rider position. */
+function mapTileKeys(fixtures: LaneSample[][]): string[] {
+  const tileM = (40_075_016.7 * Math.cos((ORIGIN.latitude * Math.PI) / 180)) / 2 ** MAP_TILE_ZOOM
+  const reach = MAP_TILE_REACH_M / tileM
+  const keys = new Set<string>()
+  for (const sample of fixtures.flat()) {
+    if (sample.riderEast === undefined || sample.riderNorth === undefined) continue
+    const { x, y } = tileCoordinates(geoAt(sample.riderEast, sample.riderNorth), MAP_TILE_ZOOM)
+    for (let row = Math.floor(y - reach); row <= Math.floor(y + reach); row++) {
+      for (let column = Math.floor(x - reach); column <= Math.floor(x + reach); column++) {
+        const nearestX = Math.min(Math.max(x, column), column + 1)
+        const nearestY = Math.min(Math.max(y, row), row + 1)
+        if (Math.hypot(nearestX - x, nearestY - y) <= reach)
+          keys.add(`${MAP_TILE_ZOOM}/${column}/${row}`)
+      }
+    }
+  }
+  return [...keys].sort()
+}
+
+/**
+ * Downloads missing tiles from the Static Tiles API, the URL `MapTiles` uses, and drops tiles no
+ * longer on the list. The token is read here only and never written anywhere.
+ */
+async function syncMapTiles(keys: string[]): Promise<void> {
+  const token = process.env.EXPO_PUBLIC_MAPBOX_ACCESS_TOKEN
+  const wanted = new Set(keys)
+  let downloaded = 0
+  for (const key of keys) {
+    const file = join(MAP_TILE_DIR, `${key}.jpg`)
+    if (existsSync(file)) continue
+    if (!token) throw new Error(`map tile ${key} is missing; set EXPO_PUBLIC_MAPBOX_ACCESS_TOKEN`)
+    const url = `https://api.mapbox.com/styles/v1/${MAP_STYLE}/tiles/512/${key}.jpeg?access_token=${token}`
+    const response = await fetch(url)
+    if (!response.ok) throw new Error(`map tile ${key}: HTTP ${response.status}`)
+    mkdirSync(join(file, '..'), { recursive: true })
+    writeFileSync(file, Buffer.from(await response.arrayBuffer()))
+    downloaded++
+  }
+  let bytes = 0
+  for (const entry of readdirSync(MAP_TILE_DIR, { recursive: true, withFileTypes: true })) {
+    if (!entry.isFile()) continue
+    const file = join(entry.parentPath, entry.name)
+    const key = file.slice(MAP_TILE_DIR.length + 1).replace(/\.jpg$/, '')
+    if (wanted.has(key)) bytes += readFileSync(file).length
+    else rmSync(file)
+  }
+  writeFileSync(
+    join(OUT_DIR, 'watch-map-tiles.json'),
+    JSON.stringify({ style: MAP_STYLE, tiles: keys }),
+  )
+  console.log(
+    `watch-map-tiles: ${keys.length} z${MAP_TILE_ZOOM} tiles, ${Math.round(bytes / 1024)} KB, ${downloaded} downloaded`,
+  )
+}
+
 mkdirSync(OUT_DIR, { recursive: true })
-writeFileSync(join(OUT_DIR, 'watch-ride.jsonl'), serialize(buildRide()))
-writeFileSync(join(OUT_DIR, 'watch-sweep.jsonl'), serialize(buildSweep()))
-writeFileSync(join(OUT_DIR, 'watch-route.json'), JSON.stringify({ points: ROUTE }))
+const ride = buildRide()
+const sweep = buildSweep()
+writeFileSync(join(OUT_DIR, 'watch-ride.jsonl'), serialize(ride))
+writeFileSync(join(OUT_DIR, 'watch-sweep.jsonl'), serialize(sweep))
+writeFileSync(join(OUT_DIR, 'watch-route.json'), JSON.stringify({ origin: ORIGIN, points: ROUTE }))
 writeFileSync(join(OUT_DIR, 'watch-weather.json'), JSON.stringify(buildWeather()))
+await syncMapTiles(mapTileKeys([ride, sweep]))
 console.log(`wrote fixtures to ${OUT_DIR}`)

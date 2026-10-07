@@ -1,4 +1,5 @@
 {
+  "origin": { "latitude": 51.131103, "longitude": 16.990079 },
   "points": [
     { "east": 0, "north": 0 },
     { "east": 0, "north": 25 },

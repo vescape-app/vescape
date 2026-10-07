@@ -13,6 +13,8 @@ import expo.modules.vescapecore.watch.GroupRideFrameCodec
 import expo.modules.vescapecore.watch.WatchRoutePhase
 import expo.modules.vescapecore.watch.GroupRideFrame
 import expo.modules.vescapecore.watch.GroupRideFrameRider
+import expo.modules.vescapecore.watch.WatchMapPosition
+import expo.modules.vescapecore.watch.WatchMapTile
 import org.json.JSONObject
 import expo.modules.vescapecore.watch.WatchTrailPoint
 import expo.modules.vescapecore.watch.WatchTrailCodec
@@ -44,6 +46,13 @@ private const val REPLAY_FIXTURE_ROUTE = "watch-route.json"
 private const val REPLAY_FIXTURE_WEATHER = "watch-weather.json"
 
 /**
+ * Dark street-map tiles along the replayed route: the list (`{style, tiles}`) and one JPEG per tile
+ * under [REPLAY_MAP_TILE_DIR] as `<z>/<x>/<y>.jpg`. They stand in for the phone's tile items.
+ */
+private const val REPLAY_FIXTURE_MAP_TILES = "watch-map-tiles.json"
+private const val REPLAY_MAP_TILE_DIR = "watch-map-tiles"
+
+/**
  * The Group Ride the replayed Rider is in: a cast of other Riders covering every mark and status the
  * wrist draws. Opt-in (`bun run wear:replay ride --group`), so the not-joined layout replays too.
  */
@@ -62,7 +71,8 @@ data class ReplaySample(val atMs: Long, val frame: WatchFrame)
  */
 /** @parity /modules/vescape-core/ios/watch/WatchReplay.swift `ReplayFixtureParser` */
 object ReplayFixtureParser {
-    fun parse(lines: Sequence<String>, wander: Boolean = false): List<ReplaySample> {
+    /** [origin]: where the fixture's metres sit on the globe (`watch-route.json`); null leaves no map position. */
+    fun parse(lines: Sequence<String>, wander: Boolean = false, origin: WatchMapPosition? = null): List<ReplaySample> {
         val recorded = lines.mapNotNull(::parseLine).toList()
         val samples = if (wander) withDetours(recorded) else recorded
         return samples.mapIndexed { index, sample ->
@@ -75,9 +85,8 @@ object ReplayFixtureParser {
                 val y = point.riderNorthM ?: return@mapNotNull null
                 WatchTrailPoint(x - east, y - north)
             }
-            // Fixture offsets use a synthetic equatorial anchor, independent of navigation lanes.
-            val position = if (east == null || north == null) null else
-                expo.modules.vescapecore.watch.WatchMapPosition(north / 110_574.0, east / 111_320.0)
+            val position = if (origin == null || east == null || north == null) null else
+                WatchMirrorReplayAdapter.position(origin, east, north)
             sample.copy(frame = sample.frame.copy(trail = trail, mapPosition = position))
         }
     }
@@ -165,6 +174,24 @@ object ReplaySceneParser {
         ).takeIf { it.points.isNotEmpty() }
     } catch (e: Exception) {
         null
+    }
+
+    /** The route's geographic origin: where its metres, and the rider lanes', sit on the map. */
+    // @parity /modules/vescape-core/ios/watch/WatchReplay.swift `ReplaySceneParser.parseOrigin`
+    fun parseOrigin(json: String): WatchMapPosition? = try {
+        val origin = JSONObject(json).getJSONObject("origin")
+        WatchMapPosition(origin.getDouble("latitude"), origin.getDouble("longitude"))
+    } catch (e: Exception) {
+        null
+    }
+
+    /** The street-map tiles shipped beside the fixtures. Their style only matters to watchOS's store. */
+    // @parity /modules/vescape-core/ios/watch/WatchReplay.swift `ReplaySceneParser.parseMapTiles`
+    fun parseMapTiles(json: String): List<WatchMapTile> = try {
+        val tiles = JSONObject(json).getJSONArray("tiles")
+        (0 until tiles.length()).mapNotNull { WatchMapTile.parse(tiles.getString(it)) }
+    } catch (e: Exception) {
+        emptyList()
     }
 
     /**
@@ -329,14 +356,16 @@ class FrameReplayer(private val context: Context) {
     /** [group]: also play the Group Ride fixture, as if the Rider had joined one. */
     fun start(fixture: String, group: Boolean, navigation: Boolean = true, wander: Boolean = false, routeLoading: Boolean = false) {
         if (running) return
-        samples = load(fixture, wander).map { sample ->
+        val routeJson = readAsset(REPLAY_FIXTURE_ROUTE)
+        val origin = routeJson?.let(ReplaySceneParser::parseOrigin)
+        samples = load(fixture, wander, origin).map { sample ->
             if (navigation) sample else sample.copy(frame = sample.frame.copy(
                 navBearing = null, navDistanceM = null, riderEastM = null, riderNorthM = null,
             ))
         }
         if (samples.isEmpty()) return
         WatchDiagnostics.recordReplay(fixture, samples.size)
-        loadScene()
+        loadScene(routeJson, origin)
         MirrorIntakeState.apply {
             acceptRouteStatus(if (routeLoading) WatchRouteStatusCodec.encode(WatchRouteStatus(WatchRoutePhase.READY, 1)) else null)
             if (routeLoading) acceptRoute(null)
@@ -396,14 +425,18 @@ class FrameReplayer(private val context: Context) {
     }
 
     /**
-     * Route + forecast, the surroundings every lane fixture rides through.
+     * Route, street map and forecast, the surroundings every lane fixture rides through. The tiles
+     * enter [MapTileState] as the phone's tile items do, read from assets instead of the Data Layer.
      * @parity /watch/watchos/FrameReplay.swift `FrameReplayer.start`
      * @parity /watch/watchos/PhoneLink.swift `acceptReplayWeather`
      * @parity /watch/watchos/PhoneLink.swift `acceptReplayRoute`
      */
-    private fun loadScene() {
-        val route = readAsset(REPLAY_FIXTURE_ROUTE)?.let(ReplaySceneParser::parseRoute)
-        MirrorIntakeState.apply { acceptRoute(WatchMirrorReplayAdapter.route(route)) }
+    private fun loadScene(routeJson: String?, origin: WatchMapPosition?) {
+        val route = routeJson?.let(ReplaySceneParser::parseRoute)
+        MirrorIntakeState.apply { acceptRoute(origin?.let { WatchMirrorReplayAdapter.route(route, it) }) }
+        readAsset(REPLAY_FIXTURE_MAP_TILES)?.let(ReplaySceneParser::parseMapTiles)?.forEach { tile ->
+            MapTileState.put(tile) { context.assets.open("$REPLAY_MAP_TILE_DIR/${tile.key}.jpg").use { it.readBytes() } }
+        }
         readAsset(REPLAY_FIXTURE_WEATHER)?.let {
             val weather = ReplaySceneParser.parseWeather(it, System.currentTimeMillis(), minuteOfDayNow())
             MirrorIntakeState.apply { acceptWeather(WatchMirrorReplayAdapter.weather(weather)) }
@@ -417,8 +450,8 @@ class FrameReplayer(private val context: Context) {
         null
     }
 
-    private fun load(fixture: String, wander: Boolean): List<ReplaySample> = try {
-        context.assets.open(fixture).bufferedReader().useLines { ReplayFixtureParser.parse(it, wander) }
+    private fun load(fixture: String, wander: Boolean, origin: WatchMapPosition?): List<ReplaySample> = try {
+        context.assets.open(fixture).bufferedReader().useLines { ReplayFixtureParser.parse(it, wander, origin) }
     } catch (e: Exception) {
         WatchDiagnostics.recordReplayError(fixture, e)
         emptyList()

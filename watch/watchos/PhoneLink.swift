@@ -312,9 +312,26 @@ final class PhoneLink: NSObject, ObservableObject, WCSessionDelegate {
   }
 
   @MainActor
-  func acceptReplayRoute(_ path: WatchRoute?) {
-    intake.acceptRoute(WatchMirrorReplayAdapter.route(path))
+  func acceptReplayRoute(_ path: WatchRoute?, origin: WatchMapPosition?) {
+    intake.acceptRoute(origin.flatMap { WatchMirrorReplayAdapter.route(path, origin: $0) })
     publishIntake()
+  }
+
+  /// Fixture tiles enter the store the way a finished transfer does. Each is a copy moved in, so the
+  /// store never owns, or deletes, the repo's files.
+  /// @parity /watch/wearos/src/main/java/app/vescape/wear/FrameReplay.kt `FrameReplayer.loadScene`
+  @MainActor
+  func acceptReplayMapTiles(_ list: WatchMapTileList, directory: URL) {
+    for tile in list.tiles {
+      let copy = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+      do {
+        try FileManager.default.copyItem(at: directory.appendingPathComponent("\(tile.key).jpg"), to: copy)
+      } catch {
+        print("[replay] missing map tile fixture: \(tile.key)")
+        continue
+      }
+      MapTileStore.shared.receive(copy, style: list.style, tile: tile)
+    }
   }
 
   @MainActor
