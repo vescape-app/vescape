@@ -1,6 +1,6 @@
 /**
  * Android Virtual Devices as the SDK's `emulator` binary sees them, for every CLI that boots one
- * (`android:emulator`, `wear:emulator`, `wear:up`).
+ * (`android:emulator`, `wear:emulator`, `android:up`).
  */
 import { existsSync, readFileSync } from 'fs'
 import { homedir } from 'os'

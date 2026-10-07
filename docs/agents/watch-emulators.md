@@ -1,13 +1,13 @@
 # Phone And Watch Emulators
 
-`bun run wear:up` takes the machine to a phone emulator and a Wear emulator that are paired and
+`bun run android:up` takes the machine to a phone emulator and a Wear emulator that are paired and
 mirroring. It exits 0 only once the wrist logs a received frame. Otherwise it exits 1 and the last
 line names the failed step: `wear: <step> failed: <reason>`.
 
 ```bash
 bun run start            # Metro, in its own terminal
-bun run wear:up          # boot, pair, install, prove frames
-bun run wear:ride        # wear:up, then the thor301 replay and Navigation
+bun run android:up       # boot, pair, install, prove frames
+bun run wear:ride        # android:up, then the thor301 replay and Navigation
 ```
 
 `--device <AVD>` picks the phone AVD and `WEAR_AVD=<AVD>` the watch AVD. Without them a running AVD
@@ -47,7 +47,7 @@ Two failures are handled without a message:
 - **Stuck Play services.** After either emulator restarts, WearableService on the watch can keep
   logging `/telemetry` inbound while the app never receives it. `first frame` runs
   `adb -s <serial> shell am force-stop com.google.android.gms` on both emulators and checks again.
-- **adb server restart.** It drops the pairing forward and the Metro reverse. Re-running `wear:up`
+- **adb server restart.** It drops the pairing forward and the Metro reverse. Re-running `android:up`
   restores both; the pairing itself is kept.
 
 ## Checking the wrist

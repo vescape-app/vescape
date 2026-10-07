@@ -135,7 +135,7 @@ Phone + watch emulators: boot both AVDs, pair them, install both apps and wait f
 the wrist (needs Metro running; see [docs/agents/watch-emulators.md](docs/agents/watch-emulators.md)):
 
 ```bash
-bun run wear:up
+bun run android:up
 ```
 
 Run tests (JS via Bun + native Kotlin and Swift unit tests):

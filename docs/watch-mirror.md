@@ -202,7 +202,7 @@ If the watch says `DISCONNECTED`, distinguish the cause:
 - Emulators only: the watch's `dumpsys activity service WearableService` logs `/telemetry` inbound but
   the wrist never logs `first frame received` (typical after a phone emulator restart). Restart Play
   services on both: `adb -s <serial> shell am force-stop com.google.android.gms`, for each emulator.
-  `bun run wear:up` does this on its own when no frame arrives.
+  `bun run android:up` does this on its own when no frame arrives.
 
 The watch switches to `DISCONNECTED` when no Watch Frame arrives for about three watch ticks.
 
@@ -233,7 +233,7 @@ only ages what is on screen.
 
 ## Dev Modes On The Emulator
 
-`bun run wear:up` boots the phone and Wear emulators, pairs them, installs both apps and waits until
+`bun run android:up` boots the phone and Wear emulators, pairs them, installs both apps and waits until
 the wrist logs a received frame, restarting Play services if the Data Layer is stuck. Steps, failure
 messages and wrist checks are in `docs/agents/watch-emulators.md`.
 
@@ -284,7 +284,7 @@ Keep Metro running. `--device <AVD>` picks the phone AVD.
 
 The command then:
 
-1. Runs `wear:up`: both emulators booted and paired, the phone dev build on Metro, the watch app in
+1. Runs `android:up`: both emulators booted and paired, the phone dev build on Metro, the watch app in
    its normal mirror mode (no fixture replay on the wrist), and frames proven on the wrist.
 2. Sends the dev-only link
    `vescape://dev/watch-ride?replay=replay-thor301.jsonl&lat=51.13185&lon=16.98653`.
