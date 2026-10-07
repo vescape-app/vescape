@@ -190,7 +190,9 @@ final class WatchTelemetryPusher: NSObject, WCSessionDelegate {
 
   /// Required on iOS: the system tears the session down when the rider switches paired watches, and
   /// expects it reactivated against the new one.
-  func sessionDidBecomeInactive(_ session: WCSession) {}
+  func sessionDidBecomeInactive(_ session: WCSession) {
+    mapTiles.watchStateChanged()
+  }
 
   func sessionDidDeactivate(_ session: WCSession) {
     guard self.session != nil else { return }

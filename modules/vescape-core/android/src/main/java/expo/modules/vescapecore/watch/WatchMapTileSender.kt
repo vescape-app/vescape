@@ -54,6 +54,8 @@ internal class WatchMapTileSender(
     private var loading = false
     private var holdPending = false
     private val inFlight = mutableSetOf<WatchMapTile>()
+    /** Tiles with a queued drop, by count: a send before the drop drains would be deleted by it. */
+    private val dropping = mutableMapOf<WatchMapTile, Int>()
     private val failedAtMs = mutableMapOf<WatchMapTile, Long>()
 
     /**
@@ -107,10 +109,21 @@ internal class WatchMapTileSender(
     private fun publishHold(wanted: List<WatchMapTile>, dropped: Set<WatchMapTile>) {
         if (!holdsDraining) {
             holdsDraining = true
-            // intentional-suppression: a failed drop leaves an extra tile on the wrist until the next plan
-            scope.launch { for ((w, d) in holds) runCatching { transport.hold(w, d) } }
+            scope.launch {
+                for ((w, d) in holds) {
+                    // intentional-suppression: a failed drop leaves an extra tile on the wrist until the next plan
+                    runCatching { transport.hold(w, d) }
+                    scheduler.post { dropped(d) }
+                }
+            }
         }
+        for (tile in dropped) dropping.merge(tile, 1, Int::plus)
         holds.trySend(wanted to dropped)
+    }
+
+    private fun dropped(tiles: Set<WatchMapTile>) {
+        for (tile in tiles) dropping.computeIfPresent(tile) { _, count -> (count - 1).takeIf { it > 0 } }
+        pump()
     }
 
     private fun pump() {
@@ -120,7 +133,7 @@ internal class WatchMapTileSender(
         for (need in planner.wanted) {
             if (inFlight.size >= WATCH_MAP_TILE_MAX_SENDS_IN_FLIGHT) return
             val tile = need.tile
-            if (tile in held || tile in inFlight) continue
+            if (tile in held || tile in inFlight || tile in dropping) continue
             val failedAt = failedAtMs[tile]
             if (failedAt != null && now - failedAt < WATCH_MAP_TILE_RETRY_MS) continue
             inFlight += tile

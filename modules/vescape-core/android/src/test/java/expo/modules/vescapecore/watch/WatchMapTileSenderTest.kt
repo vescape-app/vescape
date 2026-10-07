@@ -14,8 +14,13 @@ class WatchMapTileSenderTest {
     private class Transport(var held: Set<WatchMapTile> = emptySet()) : WatchMapTileTransport {
         val sends = mutableListOf<Pair<WatchMapTile, CompletableDeferred<Boolean>>>()
         val holds = mutableListOf<Pair<List<WatchMapTile>, Set<WatchMapTile>>>()
+        /** While set and open, a hold has not reached the wrist yet. */
+        var holdGate: CompletableDeferred<Unit>? = null
         override suspend fun delivered() = held
-        override suspend fun hold(wanted: List<WatchMapTile>, dropped: Set<WatchMapTile>) { holds += wanted to dropped }
+        override suspend fun hold(wanted: List<WatchMapTile>, dropped: Set<WatchMapTile>) {
+            holds += wanted to dropped
+            holdGate?.await()
+        }
         override suspend fun send(tile: WatchMapTile, jpeg: File): Boolean =
             CompletableDeferred<Boolean>().also { sends += tile to it }.await()
     }
@@ -45,6 +50,13 @@ class WatchMapTileSenderTest {
         assertEquals(WATCH_MAP_TILE_MAX_SENDS_IN_FLIGHT + 1, transport.sends.size)
     }
 
+    private fun completeSends(transport: Transport) {
+        while (transport.sends.any { !it.second.isCompleted }) {
+            transport.sends.filter { !it.second.isCompleted }.forEach { it.second.complete(true) }
+            scheduler.runPending()
+        }
+    }
+
     @Test fun `ring tiles go out before route tiles`() {
         val route = WatchMapRoute((0..30).map { WatchMapPosition(51.13185, 16.98653 + it * 0.01) })
         val onRoute = rider.copy(route = WatchMapRouteProgress(route, route.lengthM))
@@ -54,10 +66,7 @@ class WatchMapTileSenderTest {
         tick(sender, onRoute)
         tick(sender, onRoute)
         // Complete every send as it starts; the order they started in is the order they were wanted.
-        while (transport.sends.any { !it.second.isCompleted }) {
-            transport.sends.filter { !it.second.isCompleted }.forEach { it.second.complete(true) }
-            scheduler.runPending()
-        }
+        completeSends(transport)
         val sent = transport.sends.map { it.first }
         assertEquals(ring, sent.take(ring.size))
         assertTrue(sent.size > ring.size)
@@ -94,5 +103,30 @@ class WatchMapTileSenderTest {
         tick(sender, rider.copy(spanM = 1_400.0))
         assertEquals(z15, transport.holds.last().second)
         assertTrue(transport.holds.last().first.none { it.z == 15 })
+    }
+
+    @Test fun `a tile wanted again before its drop reaches the wrist is sent after the drop`() {
+        val zoomedIn = rider.copy(spanM = 300.0)
+        val z16 = watchMapTileRing(zoomedIn, 16).toSet()
+        val transport = Transport(held = z16)
+        val sender = sender(transport)
+        tick(sender, zoomedIn)
+        tick(sender, zoomedIn)
+        // Out to z14, z16 stays as the level just left; back in to z15 it leaves.
+        tick(sender, rider.copy(spanM = 1_400.0))
+        completeSends(transport)
+        val gate = CompletableDeferred<Unit>()
+        transport.holdGate = gate
+        tick(sender, rider)
+        assertTrue(transport.holds.last().second.containsAll(z16))
+        completeSends(transport)
+        // Wanted again while that drop is still queued.
+        tick(sender, zoomedIn)
+        completeSends(transport)
+        assertTrue(transport.sends.none { it.first in z16 })
+        // Sent before the drop drained, the drop would delete it while the phone counts it delivered.
+        gate.complete(Unit)
+        scheduler.runPending()
+        assertTrue(transport.sends.any { it.first in z16 })
     }
 }

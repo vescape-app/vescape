@@ -38,16 +38,28 @@ final class WatchMapTilePusher: WatchMapTileTransport, @unchecked Sendable {
       .flatMap { try? JSONSerialization.jsonObject(with: $0) as? [String: Any] }
       .flatMap(WatchMapTileList.decode)
     record = list?.style == MapTiles.style ? Set(list?.tiles ?? []) : []
-    return record
+    failLostSends()
+    // Transfers an earlier process queued still land, and `finished` records them; counting them
+    // keeps them from going out twice. Another style's would never be wanted.
+    var queued = Set<WatchMapTile>()
+    for transfer in session.outstandingFileTransfers {
+      guard let sent = WatchMapTileTransfer.decode(transfer.file.metadata) else { continue }
+      if sent.style != MapTiles.style {
+        transfer.cancel()
+      } else if pending[sent.tile] == nil {
+        queued.insert(sent.tile)
+      }
+    }
+    return record.union(queued)
   }
 
   func hold(wanted: [WatchMapTile], dropped: Set<WatchMapTile>) {
     putList(WatchMapTileList(style: MapTiles.style, tiles: wanted).payload)
     guard !dropped.isEmpty else { return }
+    // A dropped tile is delivered, or still queued by an earlier process; no send waits on it.
     for transfer in session()?.outstandingFileTransfers ?? [] {
       guard let sent = WatchMapTileTransfer.decode(transfer.file.metadata), dropped.contains(sent.tile) else { continue }
       transfer.cancel()
-      pending.removeValue(forKey: sent.tile)?.resume(returning: false)
     }
     record.subtract(dropped)
     saveRecord()
@@ -67,10 +79,23 @@ final class WatchMapTilePusher: WatchMapTileTransport, @unchecked Sendable {
     }
   }
 
-  /// `WCSessionDelegate.sessionWatchStateDidChange`, on any queue. A reinstall or a re-pair wipes the
-  /// watch directory and the record with it; the sender must read it again rather than trust its copy.
+  /// `WCSessionDelegate.sessionWatchStateDidChange` and `sessionDidBecomeInactive`, on any queue. A
+  /// reinstall, a re-pair or a switch to another watch wipes the watch directory and the record with
+  /// it; the sender must read it again rather than trust its copy.
   func watchStateChanged() {
-    DispatchQueue.main.async { [self] in onWatchReset?() }
+    DispatchQueue.main.async { [self] in
+      failLostSends()
+      onWatchReset?()
+    }
+  }
+
+  /// The system drops outstanding transfers on a reinstall, an unpair or a watch switch without a
+  /// `didFinish`. Their sends fail here instead of holding an in-flight slot for good.
+  private func failLostSends() {
+    let carried = Set((session()?.outstandingFileTransfers ?? []).compactMap { WatchMapTileTransfer.decode($0.file.metadata)?.tile })
+    for tile in Array(pending.keys) where !carried.contains(tile) {
+      pending.removeValue(forKey: tile)?.resume(returning: false)
+    }
   }
 
   /// `WCSessionDelegate.session(_:didFinish:error:)`, forwarded on any queue. Also lands transfers

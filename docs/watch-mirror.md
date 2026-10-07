@@ -290,7 +290,8 @@ The command then:
    Directions request and pushes `/route` to the wrist. No path is injected.
 
 It succeeds once the phone logs `[watch-ride] … running`, which the command prints. A link that lands
-before the app is listening is dropped, so it is resent a few times. The route arrives when Directions
+before the app is listening is dropped, so it is resent until the phone logs `[watch-ride] … received`,
+and never after: a second link would restart the replay. The route arrives when Directions
 answers, a second or two later. Check it with `adb -s <watch> exec-out screencap -p > watch.png`.
 
 The ride loops around a pond that Directions never plans, so the replay leaves the route in places. The
@@ -390,25 +391,29 @@ the face, so a phone zoom never blanks the watch map.
 **Sending** (`WatchMapTileSender`): only while the coordinator's tile gate holds (the rider has
 **Street map** on, the wrist reports `ACTIVE`, not ambient or asleep, and there is a fix). Tiles come from the shared `MapTiles` cache
 (ride thumbnails use the same files) and go out unchanged, nearest first, at most 4 in flight. A
-failed download or send waits 30 s. On every wake the sender re-reads what the wrist holds.
+failed download or send waits 30 s. On every wake the sender re-reads what the wrist holds. On Wear
+OS a tile whose drop (item delete) is still queued is not sent again until the delete has run, so the
+delete cannot remove the new copy.
 
-|                      | Wear OS                                                                                 | watchOS                                                                                                                                   |
-| -------------------- | --------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------- |
-| Tile bytes           | one Data Layer item per tile, `/map-tile/<style>/<z>/<x>/<y>`, JPEG as an Asset, urgent | `transferFile` with `{style, z, x, y}` metadata                                                                                           |
-| What the wrist keeps | the set of those items; the phone deletes an item to drop a tile                        | `mapTiles` list (`{style, tiles}`) in the Application Context, merged by `WatchColdState`                                                 |
-| What is delivered    | `getDataItems` under `/map-tile`; items of another style are deleted                    | finished transfers recorded in `WCSession.watchDirectoryURL`, wiped with a reinstall or unpair; transfers for dropped tiles are cancelled |
+|                      | Wear OS                                                                                 | watchOS                                                                                                                                       |
+| -------------------- | --------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------- |
+| Tile bytes           | one Data Layer item per tile, `/map-tile/<style>/<z>/<x>/<y>`, JPEG as an Asset, urgent | `transferFile` with `{style, z, x, y}` metadata                                                                                               |
+| What the wrist keeps | the set of those items; the phone deletes an item to drop a tile                        | `mapTiles` list (`{style, tiles}`) in the Application Context, merged by `WatchColdState`                                                     |
+| What is delivered    | `getDataItems` under `/map-tile`; items of another style are deleted                    | finished transfers recorded in `WCSession.watchDirectoryURL`, wiped with a reinstall or unpair, plus transfers an earlier process left queued |
 
 **Wrist**: `MapTileLayer` picks its own level from the eased span with the same `watchMapTileZoom`
 / `WatchMapTile.zoom` and hysteresis. For each cell of that level over the face it draws the cell's
 tile, else the matching quarter of the one-zoom-out tile scaled up, else the one-zoom-in tiles a
-zoom-out left, else the background (`watchMapTileDrawList` / `WatchMapTile.drawList`, tested on both
-platforms). A tile counts once it is decoded, so the old level stays on screen while the new one
-decodes, and nothing the last frame drew is evicted. It places each tile's corners with `WatchMapPosition` as metres from the
+zoom-out left, else the background (`WatchMapTileCache.frame`, tested on both platforms). A tile
+counts once it is decoded, so the old level stays on screen while the new one decodes. Only each
+cell's best held level is decoded (its own tile, else the one-out tile, else the one-in tiles); a
+fallback is drawn only if it is already decoded. It places each tile's corners with `WatchMapPosition` as metres from the
 rider and draws it as one image with the trail's span, course and position motion. Layers, bottom
 up: background, street map, route and trail, Group Ride marks, gauges. The map follows nav focus
 from 60% behind the gauges to 100% on the map page (`mapAlpha`), and ambient draws none. At most 12
 cells are drawn. Tiles decode off the main thread (RGB_565 on Wear OS) into a cache of 12 that
-never evicts what the last frame drew.
+never evicts what the last frame drew or waits on, so a decode cannot evict itself when the face
+already pins 12 tiles after a zoom-out. A tile that fails to read or decode is retried after 10 s.
 
 **Setting**: Settings → Watch → **Street map**, on by default, travels to both wrists as
 `streetMapEnabled` on the settings channel. Off, the tile gate closes the same way a sleeping wrist

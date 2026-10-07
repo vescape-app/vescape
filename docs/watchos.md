@@ -1014,14 +1014,20 @@ shipping. App Store preparation remains #493.
 The shared behaviour is in "Street map" in `docs/watch-mirror.md`. watchOS-specific parts:
 
 - Tiles ride `transferFile`. `PhoneLink` moves each received file into
-  `Application Support/map-tiles/<style>/<z>/<x>/<y>.jpg` on the delegate queue, because the system
-  deletes it once the callback returns. `MapTileStore` deletes every file not on the latest
-  `mapTiles` list and every other style's directory.
+  `Application Support/map-tiles/<style>/<z>/<x>/<y>-<receipt>.jpg` on the delegate queue, because
+  the system deletes it once the callback returns. Each receipt gets its own file and a drop deletes
+  only the file it held, so a resend landing just after a drop survives it. `MapTileStore` deletes
+  every file not on the latest `mapTiles` list and every other style's directory, and applies the
+  list again once the launch scan of kept files has merged.
 - The `mapTiles` list is one more channel on the merged Application Context; `WatchColdState` stays
   its only writer. An absent or unreadable list leaves the wrist's files alone.
 - The phone records finished transfers in `WCSession.watchDirectoryURL`. That directory goes with a
   reinstall or an unpair, and `sessionWatchStateDidChange` makes the sender read the record again,
-  so a fresh watch app gets every tile again.
+  so a fresh watch app gets every tile again. The system drops outstanding transfers on a reinstall,
+  an unpair or a watch switch (`sessionDidBecomeInactive`) without a `didFinish`; their sends fail
+  then, and on every wake, so they cannot hold the four in-flight slots for good.
+- A transfer an earlier phone process left queued counts as delivered (it still lands and is
+  recorded) and is cancelled if its tile is dropped; one of another style is cancelled.
 
 ### Verified on the simulator, 2026-10-07
 

@@ -37,19 +37,23 @@ internal class WatchMapTilePusher(context: Context) : WatchMapTileTransport {
         } finally {
             items.release()
         }
-        // Another style's tiles would never be planned again; they only cost the wrist storage.
-        foreign.forEach { Tasks.await(dataClient.deleteDataItems(it, DataClient.FILTER_LITERAL)) }
+        // Another style's tiles would never be planned again; they only cost the wrist storage. A
+        // failed cleanup is retried with the next lookup and never holds up sending.
+        foreign.forEach(::delete)
         return tiles
     }
 
     override suspend fun hold(wanted: List<WatchMapTile>, dropped: Set<WatchMapTile>) {
         for (tile in dropped) {
-            val uri = Uri.Builder().scheme(PutDataRequest.WEAR_URI_SCHEME).path(tile.path(MapTiles.STYLE)).build()
-            try {
-                Tasks.await(dataClient.deleteDataItems(uri, DataClient.FILTER_LITERAL))
-            } catch (e: Exception) {
-                Log.w(VESC_SESSION_TAG, "Watch map tile drop failed", e)
-            }
+            delete(Uri.Builder().scheme(PutDataRequest.WEAR_URI_SCHEME).path(tile.path(MapTiles.STYLE)).build())
+        }
+    }
+
+    private fun delete(uri: Uri) {
+        try {
+            Tasks.await(dataClient.deleteDataItems(uri, DataClient.FILTER_LITERAL))
+        } catch (e: Exception) {
+            Log.w(VESC_SESSION_TAG, "Watch map tile drop failed", e)
         }
     }
 
