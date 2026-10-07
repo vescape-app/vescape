@@ -43,7 +43,7 @@ internal class WatchMapSceneState(
 }
 
 /** @parity /modules/vescape-core/ios/watch/WatchMapSceneState.swift `mapGaugesAlpha` */
-internal const val MAP_GAUGES_ALPHA = 0.35f
+internal const val MAP_GAUGES_ALPHA = 0.6f
 
 internal data class WatchMapTarget(val spanM: Float, val courseDeg: Float?, val position: WatchMapPosition?)
 

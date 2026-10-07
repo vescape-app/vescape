@@ -406,7 +406,7 @@ platforms). A tile counts once it is decoded, so the old level stays on screen w
 decodes, and nothing the last frame drew is evicted. It places each tile's corners with `WatchMapPosition` as metres from the
 rider and draws it as one image with the trail's span, course and position motion. Layers, bottom
 up: background, street map, route and trail, Group Ride marks, gauges. The map follows nav focus
-from 35% behind the gauges to 100% on the map page (`mapAlpha`), and ambient draws none. At most 12
+from 60% behind the gauges to 100% on the map page (`mapAlpha`), and ambient draws none. At most 12
 cells are drawn. Tiles decode off the main thread (RGB_565 on Wear OS) into a cache of 12 that
 never evicts what the last frame drew.
 

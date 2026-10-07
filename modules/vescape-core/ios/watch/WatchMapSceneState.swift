@@ -39,7 +39,7 @@ struct WatchMapSceneState {
   }
 
   /// @parity /watch/wearos/src/main/java/app/vescape/wear/WatchMapSceneState.kt `MAP_GAUGES_ALPHA`
-  static let mapGaugesAlpha = 0.35
+  static let mapGaugesAlpha = 0.6
 
   /// Street map: dimmed behind the gauges, full on the map page, absent in ambient or when off.
   func mapAlpha(navFocus: Double) -> Double {
