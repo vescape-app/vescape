@@ -82,6 +82,71 @@ class WatchMapTilePlanTest {
         assertEquals(WATCH_MAP_TILE_CAP, retainWatchMapTiles(needed, many, north, step = 2).size)
     }
 
+    @Test fun `the level a zoom change left stays behind the current levels, within the cap`() {
+        val north = rider(courseDeg = 0.0)
+        val here = watchMapTileRing(north, 15).first()
+        val sameZoom = WatchMapTileNeed(WatchMapTile(15, here.x, here.y - 3), 1)
+        val previous = WatchMapTileNeed(WatchMapTile(16, here.x * 2, here.y * 2), 2)
+        val older = WatchMapTileNeed(WatchMapTile(17, here.x * 4, here.y * 4), 2)
+        val kept = retainWatchMapTiles(listOf(here), listOf(previous, older, sameZoom), north, step = 3, previousZoom = 16)
+        assertEquals(listOf(here, sameZoom.tile, previous.tile), kept.map { it.tile })
+        assertEquals(listOf(here, sameZoom.tile), retainWatchMapTiles(listOf(here), listOf(previous, sameZoom), north, step = 3, cap = 2, previousZoom = 16).map { it.tile })
+    }
+
+    @Test fun `each step also wants the tiles one zoom out, first`() {
+        val needed = watchMapTileNeeded(rider(courseDeg = 0.0), 15)
+        val out = needed.takeWhile { it.z == 14 }
+        assertTrue(out.size in 1..9)
+        assertEquals(needed.drop(out.size), watchMapTileRing(rider(courseDeg = 0.0), 15))
+        // Every tile at the planned level is a quarter of a planned one-out tile.
+        assertTrue(needed.filter { it.z == 15 }.all { it.parent in out })
+    }
+
+    @Test fun `a zoom change keeps a level on the wrist that covers the face`() {
+        val planner = WatchMapTilePlanner()
+        planner.update(rider(spanM = 600.0))
+        val z15 = planner.wanted.map { it.tile }.filter { it.z == 15 }
+        // Zoom in: the old level is now the one-out level, still wanted.
+        planner.update(rider(spanM = 300.0))
+        var wanted = planner.wanted.map { it.tile }
+        assertTrue(wanted.containsAll(z15))
+        assertTrue(wanted.any { it.z == 16 })
+        assertTrue(wanted.none { it.z == 14 })
+        // Zoom back out: the z16 tiles stay as the previous level, behind z15 and z14.
+        val z16 = wanted.filter { it.z == 16 }
+        planner.update(rider(spanM = 800.0))
+        wanted = planner.wanted.map { it.tile }
+        assertTrue(wanted.containsAll(z16))
+        assertTrue(wanted.any { it.z == 14 })
+        assertTrue(wanted.indexOfFirst { it.z == 16 } > wanted.indexOfLast { it.z != 16 })
+        // Two levels out: z16 is no longer the level just left.
+        planner.update(rider(spanM = 1_400.0))
+        assertTrue(planner.wanted.none { it.tile.z == 16 })
+        assertTrue(planner.wanted.size <= WATCH_MAP_TILE_CAP)
+    }
+
+    @Test fun `the wrist fills each cell with its tile, else the one-out quarter, else the level a zoom-out left`() {
+        val own = WatchMapTile(16, 100, 200)
+        val quarter = WatchMapTile(16, 101, 200)
+        val zoomedOut = WatchMapTile(16, 102, 200)
+        val empty = WatchMapTile(16, 104, 200)
+        val parent = WatchMapTile(15, 50, 100)
+        val finer = zoomedOut.children.take(2)
+        val ready = setOf(own, parent) + finer
+        val asked = mutableListOf<WatchMapTile>()
+        val drawn = watchMapTileDrawList(listOf(own, quarter, zoomedOut, empty)) { asked += it; it in ready }
+        // One-out tiles go under, so the cell with its own tile covers that quarter of the parent.
+        assertEquals(listOf(parent, own) + finer, drawn)
+        // A cell with its own tile never asks for a fallback; the parent is asked once, for `quarter`.
+        assertEquals(1, asked.count { it == parent })
+        assertTrue(watchMapTileDrawList(listOf(empty)) { false }.isEmpty())
+    }
+
+    @Test fun `cells come from held tiles at the level, one out and one in`() {
+        val cells = watchMapTileCells(listOf(WatchMapTile(15, 50, 100), WatchMapTile(16, 300, 300), WatchMapTile(17, 20, 20), WatchMapTile(18, 1, 1)), 16)
+        assertEquals(WatchMapTile(15, 50, 100).children.toSet() + WatchMapTile(16, 300, 300) + WatchMapTile(16, 10, 10), cells)
+    }
+
     @Test fun `the planner re-plans on a new tile, a new zoom or a sharp turn only`() {
         val planner = WatchMapTilePlanner()
         assertTrue(planner.update(rider(courseDeg = 0.0)))
@@ -90,7 +155,7 @@ class WatchMapTilePlanTest {
         assertTrue(planner.update(rider(courseDeg = 90.0)))
         assertFalse(planner.update(rider(courseDeg = 90.0, position = WatchMapPosition(wroclaw.latitude, wroclaw.longitude + 0.00001))))
         assertTrue(planner.update(rider(courseDeg = 90.0, spanM = 300.0)))
-        assertTrue(planner.wanted.all { it.tile.z == 16 })
+        assertEquals(setOf(15, 16), planner.wanted.map { it.tile.z }.toSet())
         assertTrue(first.isNotEmpty())
         // Moving a tile east keeps what was needed before, behind the fresh ring.
         val moved = WatchMapTilePlanner()

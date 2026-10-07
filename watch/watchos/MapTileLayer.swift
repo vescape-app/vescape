@@ -1,7 +1,8 @@
 import ImageIO
 import SwiftUI
 
-/// Decoded tiles kept in memory. A display shows at most about nine at the wrist's spans.
+/// Cells drawn at once, and decoded tiles kept in memory beyond what the last frame drew. A display
+/// shows at most about nine cells at the wrist's spans.
 private let decodedTiles = 12
 
 /// Street-map tiles on the wrist. The phone sends each tile with `transferFile`; the file is moved
@@ -23,6 +24,10 @@ final class MapTileStore: ObservableObject {
   private var decoded: [WatchMapTile: CGImage] = [:]
   private var recent: [WatchMapTile] = []
   private var decoding = Set<WatchMapTile>()
+  /// What the last frame drew: never evicted, so a level stays on screen while the next decodes.
+  private var drawn = Set<WatchMapTile>()
+  /// The level the display draws at, held with the phone planner's hysteresis.
+  var zoom: Int?
   private let io = DispatchQueue(label: "app.vescape.watch.map-tiles", qos: .utility)
   private let root: URL = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
     .appendingPathComponent("map-tiles", isDirectory: true)
@@ -73,9 +78,28 @@ final class MapTileStore: ObservableObject {
     }
   }
 
+  /// Marks what a frame drew, so eviction keeps it.
+  func drew(_ tiles: [WatchMapTile]) { drawn = Set(tiles) }
+
+  /// Least recently used first, skipping anything on screen; the cache may run over while a zoom settles.
+  private func evict() {
+    var index = 0
+    while recent.count > decodedTiles, index < recent.count {
+      if drawn.contains(recent[index]) {
+        index += 1
+      } else {
+        decoded[recent.remove(at: index)] = nil
+      }
+    }
+  }
+
   /// The decoded tile, or nil while it decodes. Safe to call while drawing.
   func image(_ tile: WatchMapTile) -> CGImage? {
-    if let image = decoded[tile] { return image }
+    if let image = decoded[tile] {
+      recent.removeAll { $0 == tile }
+      recent.append(tile)
+      return image
+    }
     guard let url = held[tile], decoding.insert(tile).inserted else { return nil }
     io.async {
       let options = [kCGImageSourceShouldCacheImmediately: true] as CFDictionary
@@ -86,7 +110,7 @@ final class MapTileStore: ObservableObject {
         self.decoded[tile] = image
         self.recent.removeAll { $0 == tile }
         self.recent.append(tile)
-        while self.recent.count > decodedTiles { self.decoded[self.recent.removeFirst()] = nil }
+        self.evict()
         self.decodedVersion += 1
       }
     }
@@ -120,7 +144,10 @@ final class MapTileStore: ObservableObject {
   }
 }
 
-/// The dark street map under the trail and route. Each tile's corners are placed as local metres
+/// The dark street map under the trail and route, at the level `WatchMapTile.zoom` picks for the
+/// eased span. Each cell shows its own tile, else the matching quarter of the one-zoom-out tile, else
+/// the one-zoom-in tiles a zoom-out left (`WatchMapTile.drawList`), so a zoom change never blanks the
+/// display. Each tile's corners are placed as local metres
 /// from the rider's absolute position, then drawn with the same span, course and position motion as
 /// the trail, so the streets stay under the line through a zoom or a turn. Within 2 km the tile is
 /// flat enough to draw as one transformed image.
@@ -143,17 +170,26 @@ struct MapTileLayer: View {
           let scale = WatchMapProjection.pointsPerMetre(size: size, spanM: mapView.spanM(at: at))
           // Anything further from the rider than the display diagonal is off screen at any course.
           let reachM = hypot(size.width, size.height) / scale
-          let visible = store.held.keys
+          let zoom = WatchMapTile.zoom(spanM: mapView.spanM(at: at), latitude: anchor.latitude, current: store.zoom)
+          store.zoom = zoom
+          let cells = WatchMapTile.cells(held: store.held.keys, zoom: zoom)
             .compactMap { PlacedTile($0, anchor: anchor, offset: offset) }
             .filter { $0.distanceM <= reachM }
             .sorted { $0.distanceM < $1.distanceM }
             .prefix(decodedTiles)
-            .sorted { $0.tile.z < $1.tile.z }
+            .map(\.tile)
+          var images: [WatchMapTile: CGImage] = [:]
+          let visible = WatchMapTile.drawList(cells: cells) { tile in
+            guard let image = store.image(tile) else { return false }
+            images[tile] = image
+            return true
+          }
+          store.drew(visible)
           context.clip(to: Rim.path(in: size, inset: Rim.inset))
           context.translateBy(x: rider.x, y: rider.y)
           context.rotate(by: .degrees(-mapView.courseDeg(at: at)))
-          for placed in visible {
-            guard let image = store.image(placed.tile) else { continue }
+          for tile in visible {
+            guard let image = images[tile], let placed = PlacedTile(tile, anchor: anchor, offset: offset) else { continue }
             // Half a point of overlap hides the seam filtering leaves between neighbours.
             let rect = CGRect(
               x: placed.westM * scale - 0.5, y: -placed.northM * scale - 0.5,

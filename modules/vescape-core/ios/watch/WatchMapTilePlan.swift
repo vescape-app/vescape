@@ -21,12 +21,6 @@ struct WatchMapTileNeed: Equatable {
 }
 
 enum WatchMapTilePlan {
-  /// Watch width the zoom is chosen for. Close to the largest Wear and Apple Watch panels.
-  static let referenceWidthPx = 480.0
-  /// A tile may be drawn at most this much larger than its pixels before the next level is used.
-  static let maxUpscale = 1.3
-  /// A held level survives until the span moves this factor past its boundary, either way.
-  static let zoomHysteresis = 1.15
   /// Most tiles the wrist holds. Least recently needed tiles behind the rider leave first.
   static let tileCap = 200
   /// The ring is centred this far ahead at the current speed, or half a span if that is further.
@@ -36,25 +30,7 @@ enum WatchMapTilePlan {
   /// A course change larger than this re-plans the ring even inside the same tile.
   static let replanTurnDeg = 45.0
 
-  /// Metres per pixel of a 512 px tile at zoom 0 on the equator.
-  private static let zoom0MetresPerPixel = 78_271.517
   private static let tilePixels = 512.0
-  private static let maxMercatorLatitude = 85.051_128
-
-  /// The lowest zoom whose tile is drawn at most `maxUpscale` times its size on a `referenceWidthPx`
-  /// face showing `spanM` (clamped exactly as the wrist clamps it). `current` is kept while it stays
-  /// inside the hysteresis band, so a span near a boundary does not flip levels.
-  static func zoom(spanM: Double?, latitude: Double, current: Int?) -> Int {
-    let metresPerPixel = WatchMapProjection.clampedSpanM(spanM) / referenceWidthPx
-    let groundPerPixel = zoom0MetresPerPixel * cos(clampedLatitude(latitude) * .pi / 180)
-    func lowest(_ upscale: Double) -> Int {
-      min(MapTiles.maxZoom, max(0, Int(ceil(log2(groundPerPixel / (upscale * metresPerPixel))))))
-    }
-    if let current, (lowest(maxUpscale * zoomHysteresis)...lowest(maxUpscale / zoomHysteresis)).contains(current) {
-      return current
-    }
-    return lowest(maxUpscale)
-  }
 
   /// Tiles at `zoom` within `ringSpans` spans of a centre ahead of the rider along their course,
   /// nearest the rider first. Columns wrap across the antimeridian; rows stop at the poles.
@@ -86,19 +62,24 @@ enum WatchMapTilePlan {
       .filter { seen.insert($0).inserted }
   }
 
-  /// The wanted list after a plan step: `needed` first in its own order (nearest first), then tiles
-  /// held from earlier steps at the same zoom levels, most recently needed first and ahead of the
-  /// rider before behind, cut at `cap`.
+  /// The wanted list after a plan step: `needed` first in its own order, then tiles held from earlier
+  /// steps at the same zoom levels, most recently needed first and ahead of the rider before behind,
+  /// then tiles of `previousZoom`, the level the last zoom change left, in the same order. All cut at
+  /// `cap`. Keeping the previous level lets the wrist draw it until the new one arrives; it leaves
+  /// with the next zoom change or the cap.
   ///
-  /// `needed` is the seam for more tile sources (route ahead, one zoom out): pass them in priority order.
+  /// `needed` is the seam for more tile sources (route ahead): pass them in priority order.
   static func retain(
-    needed: [WatchMapTile], held: [WatchMapTileNeed], rider: WatchMapRider, step: Int64, cap: Int = tileCap
+    needed: [WatchMapTile], held: [WatchMapTileNeed], rider: WatchMapRider, step: Int64, cap: Int = tileCap,
+    previousZoom: Int? = nil
   ) -> [WatchMapTileNeed] {
     let neededSet = Set(needed)
     let zooms = Set(needed.map(\.z))
     let older = held
-      .filter { zooms.contains($0.tile.z) && !neededSet.contains($0.tile) }
+      .filter { (zooms.contains($0.tile.z) || $0.tile.z == previousZoom) && !neededSet.contains($0.tile) }
       .sorted { a, b in
+        let currentA = zooms.contains(a.tile.z), currentB = zooms.contains(b.tile.z)
+        if currentA != currentB { return currentA }
         if a.neededAt != b.neededAt { return a.neededAt > b.neededAt }
         let behindA = isBehind(a.tile, rider), behindB = isBehind(b.tile, rider)
         if behindA != behindB { return !behindA }
@@ -109,6 +90,12 @@ enum WatchMapTilePlan {
     return Array((fresh + older).prefix(cap))
   }
 
+  /// Tiles one plan step needs at `zoom`: the ring one zoom out first, about four tiles that cover
+  /// the display on their own once scaled up, then the ring at `zoom` itself.
+  static func needed(_ rider: WatchMapRider, zoom: Int) -> [WatchMapTile] {
+    (zoom > 0 ? ring(rider, zoom: zoom - 1) : []) + ring(rider, zoom: zoom)
+  }
+
   /// The rider's tile at `zoom`.
   static func tile(at position: WatchMapPosition, zoom: Int) -> WatchMapTile {
     let (x, y) = tileCoordinates(position, n: 1 << zoom)
@@ -117,19 +104,15 @@ enum WatchMapTilePlan {
 
   /// Fractional Web Mercator tile coordinates of `position` on an `n`×`n` grid.
   private static func tileCoordinates(_ position: WatchMapPosition, n: Int) -> (Double, Double) {
-    let latitude = clampedLatitude(position.latitude) * .pi / 180
+    let latitude = WatchMapTile.clampedLatitude(position.latitude) * .pi / 180
     let x = (position.longitude + 180) / 360 * Double(n)
     let y = (1 - log(tan(latitude) + 1 / cos(latitude)) / .pi) / 2 * Double(n)
     let limit = Double(n) - 1e-9
     return (min(max(x, 0), limit), min(max(y, 0), limit))
   }
 
-  private static func clampedLatitude(_ latitude: Double) -> Double {
-    min(maxMercatorLatitude, max(-maxMercatorLatitude, latitude))
-  }
-
   private static func tileMetres(latitude: Double, zoom: Int) -> Double {
-    tilePixels * zoom0MetresPerPixel * cos(clampedLatitude(latitude) * .pi / 180) / Double(1 << zoom)
+    tilePixels * WatchMapTile.zoom0MetresPerPixel * cos(WatchMapTile.clampedLatitude(latitude) * .pi / 180) / Double(1 << zoom)
   }
 
   /// Tile centre minus rider, in tiles, with columns wrapped to the short way round.
@@ -161,6 +144,7 @@ enum WatchMapTilePlan {
 final class WatchMapTilePlanner {
   private let cap: Int
   private var zoom: Int?
+  private var previousZoom: Int?
   private var riderTile: WatchMapTile?
   private var plannedCourseDeg: Double?
   private var step: Int64 = 0
@@ -170,19 +154,21 @@ final class WatchMapTilePlanner {
 
   /// True when `wanted` changed.
   func update(_ rider: WatchMapRider) -> Bool {
-    let nextZoom = WatchMapTilePlan.zoom(spanM: rider.spanM, latitude: rider.position.latitude, current: zoom)
+    let nextZoom = WatchMapTile.zoom(spanM: rider.spanM, latitude: rider.position.latitude, current: zoom)
     let tile = WatchMapTilePlan.tile(at: rider.position, zoom: nextZoom)
     var turned = false
     if let course = rider.courseDeg {
       turned = plannedCourseDeg.map { abs(shortestAngleDelta(from: $0, to: course)) > WatchMapTilePlan.replanTurnDeg } ?? true
     }
     guard nextZoom != zoom || tile != riderTile || turned else { return false }
+    if let zoom, nextZoom != zoom { previousZoom = zoom }
     zoom = nextZoom
     riderTile = tile
     if let course = rider.courseDeg { plannedCourseDeg = course }
     step += 1
     wanted = WatchMapTilePlan.retain(
-      needed: WatchMapTilePlan.ring(rider, zoom: nextZoom), held: wanted, rider: rider, step: step, cap: cap)
+      needed: WatchMapTilePlan.needed(rider, zoom: nextZoom), held: wanted, rider: rider, step: step, cap: cap,
+      previousZoom: previousZoom)
     return true
   }
 }

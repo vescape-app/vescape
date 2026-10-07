@@ -2,6 +2,9 @@ package expo.modules.vescapecore.watch
 
 import kotlin.math.PI
 import kotlin.math.atan
+import kotlin.math.ceil
+import kotlin.math.cos
+import kotlin.math.log2
 import kotlin.math.sinh
 
 /**
@@ -45,6 +48,13 @@ data class WatchMapTile(val z: Int, val x: Int, val y: Int) {
     /** The tile's bottom-right corner. Its longitude is 180 for the last column, never -180. */
     val southEast: WatchMapPosition get() = corner(x + 1, y + 1)
 
+    /** The tile one zoom out that this one is a quarter of; null at zoom 0. */
+    val parent: WatchMapTile? get() = if (z == 0) null else WatchMapTile(z - 1, x shr 1, y shr 1)
+
+    /** The four tiles one zoom in that make up this one. */
+    val children: List<WatchMapTile>
+        get() = listOf(0 to 0, 1 to 0, 0 to 1, 1 to 1).map { (dx, dy) -> WatchMapTile(z + 1, 2 * x + dx, 2 * y + dy) }
+
     private fun corner(tx: Int, ty: Int): WatchMapPosition {
         val n = (1 shl z).toDouble()
         return WatchMapPosition(
@@ -75,6 +85,78 @@ data class WatchMapTile(val z: Int, val x: Int, val y: Int) {
             return split.dropLast(3).joinToString("/") to tile
         }
     }
+}
+
+/** Watch width the zoom is chosen for. Close to the largest Wear and Apple Watch panels. */
+internal const val WATCH_MAP_REFERENCE_WIDTH_PX = 480.0
+
+/** A tile may be drawn at most this much larger than its pixels before the next level is used. */
+internal const val WATCH_MAP_MAX_UPSCALE = 1.3
+
+/** A held level survives until the span moves this factor past its boundary, either way. */
+internal const val WATCH_MAP_ZOOM_HYSTERESIS = 1.15
+
+/** Metres per pixel of a 512 px tile at zoom 0 on the equator. */
+internal const val WATCH_MAP_ZOOM0_METRES_PER_PIXEL = 78_271.517
+internal const val WATCH_MAP_MAX_MERCATOR_LATITUDE = 85.051_128
+
+/**
+ * The lowest zoom whose tile is drawn at most [WATCH_MAP_MAX_UPSCALE] times its size on a
+ * [WATCH_MAP_REFERENCE_WIDTH_PX] face showing [spanM] (clamped exactly as the wrist clamps it).
+ * [current] is kept while it stays inside the hysteresis band, so a span near a boundary does not
+ * flip levels. The phone plans tiles at this level and the wrist draws at it; the span clamp keeps it
+ * well under the style's maximum zoom.
+ *
+ * @parity /modules/vescape-core/ios/watch/WatchMapTile.swift `zoom`
+ */
+internal fun watchMapTileZoom(spanM: Double?, latitude: Double, current: Int?): Int {
+    val metresPerPixel = WatchMapSpan.clamp(spanM) / WATCH_MAP_REFERENCE_WIDTH_PX
+    val groundPerPixel = WATCH_MAP_ZOOM0_METRES_PER_PIXEL *
+        cos(Math.toRadians(latitude.coerceIn(-WATCH_MAP_MAX_MERCATOR_LATITUDE, WATCH_MAP_MAX_MERCATOR_LATITUDE)))
+    fun lowest(upscale: Double) = ceil(log2(groundPerPixel / (upscale * metresPerPixel))).toInt().coerceAtLeast(0)
+    if (current != null && current in lowest(WATCH_MAP_MAX_UPSCALE * WATCH_MAP_ZOOM_HYSTERESIS)..lowest(WATCH_MAP_MAX_UPSCALE / WATCH_MAP_ZOOM_HYSTERESIS)) {
+        return current
+    }
+    return lowest(WATCH_MAP_MAX_UPSCALE)
+}
+
+/**
+ * The cells the wrist can fill at [zoom]: every tile at that level that a held tile at [zoom], one
+ * zoom out or one zoom in covers. Cells nothing covers stay background, so they are never listed.
+ *
+ * @parity /modules/vescape-core/ios/watch/WatchMapTile.swift `cells`
+ */
+internal fun watchMapTileCells(held: Collection<WatchMapTile>, zoom: Int): Set<WatchMapTile> {
+    val cells = HashSet<WatchMapTile>()
+    for (tile in held) {
+        when (tile.z) {
+            zoom -> cells += tile
+            zoom - 1 -> cells += tile.children
+            zoom + 1 -> tile.parent?.let { cells += it }
+        }
+    }
+    return cells
+}
+
+/**
+ * What the wrist draws over [cells] (tiles at its zoom across the face, nearest first), bottom-up.
+ * Per cell: its own tile when [ready]; else the one-zoom-out tile, whose matching quarter shows
+ * through, scaled up; else the ready tiles one zoom in, the level a zoom-out just left; else nothing,
+ * so the background shows. One-out tiles come first so a neighbour's own tile covers the rest of them.
+ * [ready] is asked in that order, so it may start decoding what it is asked about.
+ *
+ * @parity /modules/vescape-core/ios/watch/WatchMapTile.swift `drawList`
+ */
+internal fun watchMapTileDrawList(cells: List<WatchMapTile>, ready: (WatchMapTile) -> Boolean): List<WatchMapTile> {
+    val drawn = LinkedHashSet<WatchMapTile>()
+    for (cell in cells) {
+        when {
+            ready(cell) -> drawn += cell
+            cell.parent?.let(ready) == true -> drawn += cell.parent!!
+            else -> drawn += cell.children.filter(ready)
+        }
+    }
+    return drawn.sortedBy { it.z }
 }
 
 /**

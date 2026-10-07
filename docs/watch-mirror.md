@@ -358,7 +358,7 @@ A dark raster street map sits under the trail and route whenever the wrist is aw
 has a GPS fix, with or without Navigation or a Group Ride. The phone owns every decision; the wrist
 never reports what it holds (ADR-0019, ADR-0033).
 
-**Zoom** (`watchMapTileZoom` / `WatchMapTilePlan.zoom`): the span the wrist draws (`routeSpanM`
+**Zoom** (`watchMapTileZoom` / `WatchMapTile.zoom`, shared with both wrists): the span the wrist draws (`routeSpanM`
 clamped by `WatchMapSpan` / `WatchMapProjection.clampedSpanM`, 600 m while the phone map is
 unmounted) on a 480 px reference face, at the lowest zoom whose 512 px tile is drawn at most 1.3×
 its size. A held level survives until the span moves 1.15× past its boundary. In Wrocław 600 m is
@@ -366,10 +366,17 @@ z15.
 
 **Wanted tiles** (`WatchMapTilePlan.kt` / `.swift`, pure and tested on both platforms): a ring of
 one span around a centre ahead of the rider along their course, by the larger of half a span or
-30 s at GPS speed, nearest the rider first. Tiles from earlier steps at the same zoom stay on the
-list up to 200 tiles; past that the least recently needed go first, behind the rider before ahead.
+30 s at GPS speed, nearest the rider first, at the zoom and one zoom out. The one-out ring (about 4
+tiles, which cover the face on their own scaled up) goes first. Tiles from earlier steps at those
+zooms stay on the list, then the level the last zoom change left, all within one cap of 200 tiles;
+past that the least recently needed go first, behind the rider before ahead. The left level goes
+with the next zoom change.
 `WatchMapTilePlanner` re-plans only on a new rider tile, a new zoom, or a turn over 45°. Extra tile
 sources join through `retainWatchMapTiles(needed = …)` in priority order.
+
+Zooming in, the old level becomes the one-out level; zooming out, the new level was the one-out
+level and the old one stays as the left level. Either way the wrist already holds tiles that cover
+the face, so a phone zoom never blanks the watch map.
 
 **Sending** (`WatchMapTileSender`): only while the coordinator's tile gate holds (the rider has
 **Street map** on, the wrist reports `ACTIVE`, not ambient or asleep, and there is a fix). Tiles come from the shared `MapTiles` cache
@@ -382,11 +389,17 @@ failed download or send waits 30 s. On every wake the sender re-reads what the w
 | What the wrist keeps | the set of those items; the phone deletes an item to drop a tile                        | `mapTiles` list (`{style, tiles}`) in the Application Context, merged by `WatchColdState`                                                 |
 | What is delivered    | `getDataItems` under `/map-tile`; items of another style are deleted                    | finished transfers recorded in `WCSession.watchDirectoryURL`, wiped with a reinstall or unpair; transfers for dropped tiles are cancelled |
 
-**Wrist**: `MapTileLayer` places each tile's corners with `WatchMapPosition` as metres from the
+**Wrist**: `MapTileLayer` picks its own level from the eased span with the same `watchMapTileZoom`
+/ `WatchMapTile.zoom` and hysteresis. For each cell of that level over the face it draws the cell's
+tile, else the matching quarter of the one-zoom-out tile scaled up, else the one-zoom-in tiles a
+zoom-out left, else the background (`watchMapTileDrawList` / `WatchMapTile.drawList`, tested on both
+platforms). A tile counts once it is decoded, so the old level stays on screen while the new one
+decodes, and nothing the last frame drew is evicted. It places each tile's corners with `WatchMapPosition` as metres from the
 rider and draws it as one image with the trail's span, course and position motion. Layers, bottom
 up: background, street map, route and trail, Group Ride marks, gauges. The map follows nav focus
 from 35% behind the gauges to 100% on the map page (`mapAlpha`), and ambient draws none. At most 12
-tiles are decoded at once, off the main thread (RGB_565 on Wear OS).
+cells are drawn. Tiles decode off the main thread (RGB_565 on Wear OS) into a cache of 12 that
+never evicts what the last frame drew.
 
 **Setting**: Settings → Watch → **Street map**, on by default, travels to both wrists as
 `streetMapEnabled` on the settings channel. Off, the tile gate closes the same way a sleeping wrist

@@ -1,14 +1,11 @@
 package expo.modules.vescapecore.watch
 
-import expo.modules.vescapecore.maptiles.MapTiles
 import kotlin.math.PI
 import kotlin.math.abs
-import kotlin.math.ceil
 import kotlin.math.cos
 import kotlin.math.floor
 import kotlin.math.hypot
 import kotlin.math.ln
-import kotlin.math.log2
 import kotlin.math.max
 import kotlin.math.sin
 import kotlin.math.tan
@@ -32,15 +29,6 @@ internal data class WatchMapRider(
 /** A tile on the wanted list and the plan step that last needed it. */
 internal data class WatchMapTileNeed(val tile: WatchMapTile, val neededAt: Long)
 
-/** Watch width the zoom is chosen for. Close to the largest Wear and Apple Watch panels. */
-internal const val WATCH_MAP_REFERENCE_WIDTH_PX = 480.0
-
-/** A tile may be drawn at most this much larger than its pixels before the next level is used. */
-internal const val WATCH_MAP_MAX_UPSCALE = 1.3
-
-/** A held level survives until the span moves this factor past its boundary, either way. */
-internal const val WATCH_MAP_ZOOM_HYSTERESIS = 1.15
-
 /** Most tiles the wrist holds. Least recently needed tiles behind the rider leave first. */
 internal const val WATCH_MAP_TILE_CAP = 200
 
@@ -53,27 +41,7 @@ internal const val WATCH_MAP_RING_SPANS = 1.0
 /** A course change larger than this re-plans the ring even inside the same tile. */
 internal const val WATCH_MAP_REPLAN_TURN_DEG = 45.0
 
-/** Metres per pixel of a 512 px tile at zoom 0 on the equator. */
-private const val ZOOM0_METRES_PER_PIXEL = 78_271.517
 private const val TILE_PIXELS = 512.0
-private const val MAX_MERCATOR_LATITUDE = 85.051_128
-
-/**
- * The lowest zoom whose tile is drawn at most [WATCH_MAP_MAX_UPSCALE] times its size on a
- * [WATCH_MAP_REFERENCE_WIDTH_PX] face showing [spanM] (clamped exactly as the wrist clamps it).
- * [current] is kept while it stays inside the hysteresis band, so a span near a boundary does not
- * flip levels.
- */
-internal fun watchMapTileZoom(spanM: Double?, latitude: Double, current: Int?): Int {
-    val metresPerPixel = WatchMapSpan.clamp(spanM) / WATCH_MAP_REFERENCE_WIDTH_PX
-    val groundPerPixel = ZOOM0_METRES_PER_PIXEL * cos(Math.toRadians(latitude.coerceIn(-MAX_MERCATOR_LATITUDE, MAX_MERCATOR_LATITUDE)))
-    fun lowest(upscale: Double) =
-        ceil(log2(groundPerPixel / (upscale * metresPerPixel))).toInt().coerceIn(0, MapTiles.MAX_ZOOM)
-    if (current != null && current in lowest(WATCH_MAP_MAX_UPSCALE * WATCH_MAP_ZOOM_HYSTERESIS)..lowest(WATCH_MAP_MAX_UPSCALE / WATCH_MAP_ZOOM_HYSTERESIS)) {
-        return current
-    }
-    return lowest(WATCH_MAP_MAX_UPSCALE)
-}
 
 /**
  * Tiles at [zoom] within [WATCH_MAP_RING_SPANS] spans of a centre ahead of the rider along their
@@ -103,11 +71,13 @@ internal fun watchMapTileRing(rider: WatchMapRider, zoom: Int): List<WatchMapTil
 }
 
 /**
- * The wanted list after a plan step: [needed] first in its own order (nearest first), then tiles
- * held from earlier steps at the same zoom levels, most recently needed first and ahead of the
- * rider before behind, cut at [cap].
+ * The wanted list after a plan step: [needed] first in its own order, then tiles held from earlier
+ * steps at the same zoom levels, most recently needed first and ahead of the rider before behind,
+ * then tiles of [previousZoom], the level the last zoom change left, in the same order. All cut at
+ * [cap]. Keeping the previous level lets the wrist draw it until the new one arrives; it leaves with
+ * the next zoom change or the cap.
  *
- * [needed] is the seam for more tile sources (route ahead, one zoom out): pass them in priority order.
+ * [needed] is the seam for more tile sources (route ahead): pass them in priority order.
  */
 internal fun retainWatchMapTiles(
     needed: List<WatchMapTile>,
@@ -115,18 +85,26 @@ internal fun retainWatchMapTiles(
     rider: WatchMapRider,
     step: Long,
     cap: Int = WATCH_MAP_TILE_CAP,
+    previousZoom: Int? = null,
 ): List<WatchMapTileNeed> {
     val neededSet = needed.toSet()
     val zooms = neededSet.mapTo(HashSet()) { it.z }
+    val order = compareBy<WatchMapTileNeed> { if (it.tile.z in zooms) 0 else 1 }
+        .thenByDescending { it.neededAt }
+        .thenBy { isBehind(it.tile, rider) }
+        .thenBy { riderDistance(it.tile, rider) }
     val older = held
-        .filter { it.tile.z in zooms && it.tile !in neededSet }
-        .sortedWith(
-            compareByDescending<WatchMapTileNeed> { it.neededAt }
-                .thenBy { isBehind(it.tile, rider) }
-                .thenBy { riderDistance(it.tile, rider) },
-        )
+        .filter { (it.tile.z in zooms || it.tile.z == previousZoom) && it.tile !in neededSet }
+        .sortedWith(order)
     return (needed.distinct().map { WatchMapTileNeed(it, step) } + older).take(cap)
 }
+
+/**
+ * Tiles one plan step needs at [zoom]: the ring one zoom out first, about four tiles that cover the
+ * face on their own once scaled up, then the ring at [zoom] itself.
+ */
+internal fun watchMapTileNeeded(rider: WatchMapRider, zoom: Int): List<WatchMapTile> =
+    (if (zoom > 0) watchMapTileRing(rider, zoom - 1) else emptyList()) + watchMapTileRing(rider, zoom)
 
 /**
  * The stateful half: re-plans only when the rider enters a new tile, the zoom changes, or the course
@@ -134,6 +112,7 @@ internal fun retainWatchMapTiles(
  */
 internal class WatchMapTilePlanner(private val cap: Int = WATCH_MAP_TILE_CAP) {
     private var zoom: Int? = null
+    private var previousZoom: Int? = null
     private var riderTile: WatchMapTile? = null
     private var plannedCourseDeg: Double? = null
     private var step = 0L
@@ -150,25 +129,26 @@ internal class WatchMapTilePlanner(private val cap: Int = WATCH_MAP_TILE_CAP) {
         val turned = course != null &&
             (plannedCourseDeg?.let { abs(shortestTurnDeg(it, course)) > WATCH_MAP_REPLAN_TURN_DEG } ?: true)
         if (nextZoom == zoom && tile == riderTile && !turned) return false
+        if (zoom != null && nextZoom != zoom) previousZoom = zoom
         zoom = nextZoom
         riderTile = tile
         if (course != null) plannedCourseDeg = course
         step++
-        wanted = retainWatchMapTiles(watchMapTileRing(rider, nextZoom), wanted, rider, step, cap)
+        wanted = retainWatchMapTiles(watchMapTileNeeded(rider, nextZoom), wanted, rider, step, cap, previousZoom)
         return true
     }
 }
 
 /** Fractional Web Mercator tile coordinates of [position] on an [n]×[n] grid. */
 private fun tileCoordinates(position: WatchMapPosition, n: Int): Pair<Double, Double> {
-    val latitude = Math.toRadians(position.latitude.coerceIn(-MAX_MERCATOR_LATITUDE, MAX_MERCATOR_LATITUDE))
+    val latitude = Math.toRadians(position.latitude.coerceIn(-WATCH_MAP_MAX_MERCATOR_LATITUDE, WATCH_MAP_MAX_MERCATOR_LATITUDE))
     val x = (position.longitude + 180.0) / 360.0 * n
     val y = (1 - ln(tan(latitude) + 1 / cos(latitude)) / PI) / 2 * n
     return x.coerceIn(0.0, n.toDouble().minus(1e-9)) to y.coerceIn(0.0, n.toDouble().minus(1e-9))
 }
 
 private fun tileMetres(latitude: Double, zoom: Int): Double =
-    TILE_PIXELS * ZOOM0_METRES_PER_PIXEL * cos(Math.toRadians(latitude.coerceIn(-MAX_MERCATOR_LATITUDE, MAX_MERCATOR_LATITUDE))) / (1 shl zoom)
+    TILE_PIXELS * WATCH_MAP_ZOOM0_METRES_PER_PIXEL * cos(Math.toRadians(latitude.coerceIn(-WATCH_MAP_MAX_MERCATOR_LATITUDE, WATCH_MAP_MAX_MERCATOR_LATITUDE))) / (1 shl zoom)
 
 /** Tile centre minus rider, in tiles, with columns wrapped to the short way round. */
 private fun riderDelta(tile: WatchMapTile, rider: WatchMapRider): Pair<Double, Double> {

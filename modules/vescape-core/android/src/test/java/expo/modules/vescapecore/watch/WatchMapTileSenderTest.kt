@@ -34,7 +34,7 @@ class WatchMapTileSenderTest {
     }
 
     @Test fun `sends nearest first, four at a time, and only what the wrist lacks`() {
-        val ring = watchMapTileRing(rider, 15)
+        val ring = watchMapTileNeeded(rider, 15)
         val transport = Transport(held = setOf(ring[1]))
         val sender = sender(transport)
         tick(sender, rider) // Reads what the wrist holds.
@@ -68,9 +68,12 @@ class WatchMapTileSenderTest {
         tick(sender, rider)
         // Left over from an earlier session.
         assertEquals(setOf(WatchMapTile(15, 0, 0)), transport.holds.single().second)
-        // A zoom change replaces the level, so every z15 tile leaves.
+        // Zooming in keeps z15 as the one-out level.
         tick(sender, rider.copy(spanM = 300.0))
+        assertEquals(emptySet<WatchMapTile>(), transport.holds.last().second)
+        // Two levels out, z15 is neither planned nor the level just left, so every z15 tile leaves.
+        tick(sender, rider.copy(spanM = 1_400.0))
         assertEquals(z15, transport.holds.last().second)
-        assertTrue(transport.holds.last().first.all { it.z == 16 })
+        assertTrue(transport.holds.last().first.none { it.z == 15 })
     }
 }

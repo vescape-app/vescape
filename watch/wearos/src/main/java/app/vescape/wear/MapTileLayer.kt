@@ -17,6 +17,9 @@ import androidx.compose.ui.graphics.drawscope.translate
 import androidx.compose.ui.platform.LocalConfiguration
 import expo.modules.vescapecore.watch.WatchMapPosition
 import expo.modules.vescapecore.watch.WatchMapTile
+import expo.modules.vescapecore.watch.watchMapTileCells
+import expo.modules.vescapecore.watch.watchMapTileDrawList
+import expo.modules.vescapecore.watch.watchMapTileZoom
 import kotlin.math.hypot
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -24,7 +27,10 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
-/** Decoded tiles kept in memory. A face shows at most about nine at the wrist's spans. */
+/**
+ * Cells drawn at once, and decoded tiles kept in memory beyond what the last frame drew. A face shows
+ * at most about nine cells at the wrist's spans.
+ */
 private const val DECODED_TILES = 12
 
 /**
@@ -43,6 +49,10 @@ internal object MapTileState {
     val decodedVersion = mutableIntStateOf(0)
     private val decoded = LinkedHashMap<WatchMapTile, ImageBitmap>(DECODED_TILES, 0.75f, true)
     private val decoding = HashSet<WatchMapTile>()
+    /** What the last frame drew: never evicted, so a level stays on screen while the next decodes. */
+    private var drawn: Set<WatchMapTile> = emptySet()
+    /** The level the face draws at, held with the phone planner's hysteresis. */
+    var zoom: Int? = null
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
 
     fun put(tile: WatchMapTile, load: () -> ByteArray?) {
@@ -59,6 +69,19 @@ internal object MapTileState {
     fun replace(tiles: Map<WatchMapTile, () -> ByteArray?>) {
         held.value = tiles
         decoded.keys.retainAll(tiles.keys)
+    }
+
+    /** Marks what a frame drew, so eviction keeps it. */
+    fun drew(tiles: Collection<WatchMapTile>) {
+        drawn = tiles.toSet()
+    }
+
+    /** Least recently used first, skipping anything on screen; the cache may run over while a zoom settles. */
+    private fun evict() {
+        val iterator = decoded.keys.iterator()
+        while (decoded.size > DECODED_TILES && iterator.hasNext()) {
+            if (iterator.next() !in drawn) iterator.remove()
+        }
     }
 
     /** The decoded tile, or null while it decodes. Safe to call from a draw scope. */
@@ -79,7 +102,7 @@ internal object MapTileState {
             decoding.remove(tile)
             if (image != null && held.value.containsKey(tile)) {
                 decoded[tile] = image
-                while (decoded.size > DECODED_TILES) decoded.remove(decoded.keys.first())
+                evict()
                 decodedVersion.intValue++
             }
         }
@@ -88,10 +111,12 @@ internal object MapTileState {
 }
 
 /**
- * The dark street map under the trail and route. Each tile's corners are placed as local metres from
- * the rider's absolute position, then drawn with the same span, course and position motion as the
- * trail, so the streets stay under the line through a zoom or a turn. Within 2 km the tile is flat
- * enough to draw as one transformed image.
+ * The dark street map under the trail and route, at the level [watchMapTileZoom] picks for the eased
+ * span. Each cell shows its own tile, else the matching quarter of the one-zoom-out tile, else the
+ * one-zoom-in tiles a zoom-out left ([watchMapTileDrawList]), so a zoom change never blanks the face.
+ * Each tile's corners are placed as local metres from the rider's absolute position, then drawn with
+ * the same span, course and position motion as the trail, so the streets stay under the line through
+ * a zoom or a turn. Within 2 km the tile is flat enough to draw as one transformed image.
  *
  * @parity /watch/watchos/MapTileLayer.swift `MapTileLayer`
  */
@@ -108,16 +133,24 @@ internal fun MapTileLayer(mapView: WatchMapView) {
         val scale = WatchMapProjection.pixelsPerMetre(size.width, size.height, WatchMapProjection.ROUTE_EDGE_INSET.toPx(), mapView.spanM)
         // Anything further from the rider than the face diagonal is off screen at any course.
         val reachM = hypot(size.width, size.height) / scale
-        val visible = held.keys
+        val zoom = watchMapTileZoom(mapView.spanM.toDouble(), anchor.latitude, MapTileState.zoom)
+        MapTileState.zoom = zoom
+        val cells = watchMapTileCells(held.keys, zoom)
             .mapNotNull { placeTile(it, anchor, offset.eastM, offset.northM) }
             .filter { it.distanceM <= reachM }
             .sortedBy { it.distanceM }
             .take(DECODED_TILES)
-            .sortedBy { it.tile.z }
+            .map { it.tile }
+        val images = HashMap<WatchMapTile, ImageBitmap>()
+        val visible = watchMapTileDrawList(cells) { tile ->
+            MapTileState.image(tile)?.also { images[tile] = it } != null
+        }
+        MapTileState.drew(visible)
         clipPath(mapFaceClip(isRound)) {
             rotate(-mapView.courseDeg, center) {
-                for (placed in visible) {
-                    val image = MapTileState.image(placed.tile) ?: continue
+                for (tile in visible) {
+                    val image = images.getValue(tile)
+                    val placed = placeTile(tile, anchor, offset.eastM, offset.northM) ?: continue
                     val left = center.x + placed.westM.toFloat() * scale
                     val top = center.y - placed.northM.toFloat() * scale
                     val width = (placed.eastM - placed.westM).toFloat() * scale

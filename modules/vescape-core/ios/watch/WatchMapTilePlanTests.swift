@@ -12,7 +12,7 @@ final class WatchMapTilePlanTests: XCTestCase {
   }
 
   private func zoom(_ spanM: Double?, _ latitude: Double? = nil, current: Int? = nil) -> Int {
-    WatchMapTilePlan.zoom(spanM: spanM, latitude: latitude ?? wroclaw.latitude, current: current)
+    WatchMapTile.zoom(spanM: spanM, latitude: latitude ?? wroclaw.latitude, current: current)
   }
 
   func testZoomFollowsSpanAndLatitudeWithTheWristClamp() {
@@ -82,6 +82,79 @@ final class WatchMapTilePlanTests: XCTestCase {
     XCTAssertEqual(WatchMapTilePlan.retain(needed: [here], held: many, rider: north, step: 2).count, WatchMapTilePlan.tileCap)
   }
 
+  func testTheLevelAZoomChangeLeftStaysBehindTheCurrentLevelsWithinTheCap() {
+    let north = rider(courseDeg: 0)
+    let here = WatchMapTilePlan.ring(north, zoom: 15)[0]
+    let sameZoom = WatchMapTileNeed(tile: WatchMapTile(z: 15, x: here.x, y: here.y - 3), neededAt: 1)
+    let previous = WatchMapTileNeed(tile: WatchMapTile(z: 16, x: here.x * 2, y: here.y * 2), neededAt: 2)
+    let older = WatchMapTileNeed(tile: WatchMapTile(z: 17, x: here.x * 4, y: here.y * 4), neededAt: 2)
+    let kept = WatchMapTilePlan.retain(
+      needed: [here], held: [previous, older, sameZoom], rider: north, step: 3, previousZoom: 16)
+    XCTAssertEqual(kept.map(\.tile), [here, sameZoom.tile, previous.tile])
+    let capped = WatchMapTilePlan.retain(
+      needed: [here], held: [previous, sameZoom], rider: north, step: 3, cap: 2, previousZoom: 16)
+    XCTAssertEqual(capped.map(\.tile), [here, sameZoom.tile])
+  }
+
+  func testEachStepAlsoWantsTheTilesOneZoomOutFirst() {
+    let needed = WatchMapTilePlan.needed(rider(courseDeg: 0), zoom: 15)
+    let out = Array(needed.prefix { $0.z == 14 })
+    XCTAssertTrue((1...9).contains(out.count))
+    XCTAssertEqual(Array(needed.dropFirst(out.count)), WatchMapTilePlan.ring(rider(courseDeg: 0), zoom: 15))
+    // Every tile at the planned level is a quarter of a planned one-out tile.
+    XCTAssertTrue(needed.filter { $0.z == 15 }.allSatisfy { $0.parent.map(out.contains) == true })
+  }
+
+  func testAZoomChangeKeepsALevelOnTheWristThatCoversTheDisplay() {
+    let planner = WatchMapTilePlanner()
+    _ = planner.update(rider(spanM: 600))
+    let z15 = Set(planner.wanted.map(\.tile).filter { $0.z == 15 })
+    // Zoom in: the old level is now the one-out level, still wanted.
+    _ = planner.update(rider(spanM: 300))
+    var wanted = planner.wanted.map(\.tile)
+    XCTAssertTrue(z15.isSubset(of: Set(wanted)))
+    XCTAssertTrue(wanted.contains { $0.z == 16 })
+    XCTAssertFalse(wanted.contains { $0.z == 14 })
+    // Zoom back out: the z16 tiles stay as the previous level, behind z15 and z14.
+    let z16 = Set(wanted.filter { $0.z == 16 })
+    _ = planner.update(rider(spanM: 800))
+    wanted = planner.wanted.map(\.tile)
+    XCTAssertTrue(z16.isSubset(of: Set(wanted)))
+    XCTAssertTrue(wanted.contains { $0.z == 14 })
+    XCTAssertGreaterThan(wanted.firstIndex { $0.z == 16 }!, wanted.lastIndex { $0.z != 16 }!)
+    // Two levels out: z16 is no longer the level just left.
+    _ = planner.update(rider(spanM: 1_400))
+    XCTAssertFalse(planner.wanted.contains { $0.tile.z == 16 })
+    XCTAssertLessThanOrEqual(planner.wanted.count, WatchMapTilePlan.tileCap)
+  }
+
+  func testTheWristFillsEachCellWithItsTileElseTheOneOutQuarterElseTheLevelAZoomOutLeft() {
+    let own = WatchMapTile(z: 16, x: 100, y: 200)
+    let quarter = WatchMapTile(z: 16, x: 101, y: 200)
+    let zoomedOut = WatchMapTile(z: 16, x: 102, y: 200)
+    let empty = WatchMapTile(z: 16, x: 104, y: 200)
+    let parent = WatchMapTile(z: 15, x: 50, y: 100)
+    let finer = Array(zoomedOut.children.prefix(2))
+    let ready = Set([own, parent] + finer)
+    var asked: [WatchMapTile] = []
+    let drawn = WatchMapTile.drawList(cells: [own, quarter, zoomedOut, empty]) { asked.append($0); return ready.contains($0) }
+    // One-out tiles go under, so the cell with its own tile covers that quarter of the parent.
+    XCTAssertEqual(drawn, [parent, own] + finer)
+    // A cell with its own tile never asks for a fallback; the parent is asked once, for `quarter`.
+    XCTAssertEqual(asked.filter { $0 == parent }.count, 1)
+    XCTAssertTrue(WatchMapTile.drawList(cells: [empty]) { _ in false }.isEmpty)
+  }
+
+  func testCellsComeFromHeldTilesAtTheLevelOneOutAndOneIn() {
+    let held = [
+      WatchMapTile(z: 15, x: 50, y: 100), WatchMapTile(z: 16, x: 300, y: 300),
+      WatchMapTile(z: 17, x: 20, y: 20), WatchMapTile(z: 18, x: 1, y: 1),
+    ]
+    let expected = Set(WatchMapTile(z: 15, x: 50, y: 100).children)
+      .union([WatchMapTile(z: 16, x: 300, y: 300), WatchMapTile(z: 16, x: 10, y: 10)])
+    XCTAssertEqual(WatchMapTile.cells(held: held, zoom: 16), expected)
+  }
+
   func testThePlannerReplansOnANewTileANewZoomOrASharpTurnOnly() {
     let planner = WatchMapTilePlanner()
     XCTAssertTrue(planner.update(rider(courseDeg: 0)))
@@ -91,7 +164,7 @@ final class WatchMapTilePlanTests: XCTestCase {
     let nudged = WatchMapPosition(latitude: wroclaw.latitude, longitude: wroclaw.longitude + 0.00001)
     XCTAssertFalse(planner.update(rider(nudged, courseDeg: 90)))
     XCTAssertTrue(planner.update(rider(courseDeg: 90, spanM: 300)))
-    XCTAssertTrue(planner.wanted.allSatisfy { $0.tile.z == 16 })
+    XCTAssertEqual(Set(planner.wanted.map(\.tile.z)), [15, 16])
     // Moving a tile east keeps what was needed before, behind the fresh ring.
     let moved = WatchMapTilePlanner()
     _ = moved.update(rider())
