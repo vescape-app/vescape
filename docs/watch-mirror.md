@@ -411,7 +411,9 @@ delete cannot remove the new copy. On watchOS each list carries a generation (ph
 kept increasing) and each tile file the generation of the list it went out under; the phone only
 sends a tile its current list names. The wrist deletes a received file at once when its latest list
 is at least that generation and leaves the tile out, and keeps it otherwise until that list arrives.
-A transfer whose tile a later list left out does not count as delivered when it lands.
+A transfer whose tile a later list left out does not count as delivered when it lands. A transfer
+an earlier phone process left queued counts as delivered until it fails; then the tile waits out the
+30 s retry like a failed send.
 
 |                      | Wear OS                                                                                 | watchOS                                                                                                                                       |
 | -------------------- | --------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------- |

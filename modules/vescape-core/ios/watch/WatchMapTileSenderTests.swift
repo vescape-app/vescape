@@ -31,6 +31,7 @@ final class WatchMapTileSenderTests: XCTestCase {
     var held: Set<WatchMapTile>
     var holds: [(wanted: [WatchMapTile], dropped: Set<WatchMapTile>)] = []
     var onWatchReset: (() -> Void)?
+    var onLost: ((WatchMapTile) -> Void)?
 
     init(held: Set<WatchMapTile> = []) { self.held = held }
 
@@ -190,5 +191,20 @@ final class WatchMapTileSenderTests: XCTestCase {
     transport.finishAll(true)
     await settle { transport.sends.count > 2 * first.count }
     XCTAssertTrue(Set(transport.sends.dropFirst(2 * first.count)).isSubset(of: Set(first)))
+  }
+
+  func testAFailedTransferAnEarlierProcessQueuedIsSentAgainAfterTheRetryWait() async {
+    let ring = WatchMapTilePlan.needed(rider, zoom: 15)
+    // Counted delivered: still queued by an earlier process.
+    let transport = Transport(held: [ring[0]])
+    let sender = sender(transport)
+    tick(sender, rider)
+    await settle { transport.inFlight == WatchMapTileSender.maxSendsInFlight }
+    transport.onLost?(ring[0])
+    await finishEverySend(transport)
+    XCTAssertFalse(transport.sends.contains(ring[0]))
+    nowMs += WatchMapTileSender.retryMs
+    tick(sender, rider)
+    await settle { transport.sends.contains(ring[0]) }
   }
 }

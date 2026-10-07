@@ -29,6 +29,7 @@ final class WatchMapTilePusher: WatchMapTileTransport, @unchecked Sendable {
   /// files, so landing does not make them delivered.
   private var superseded = Set<WatchMapTile>()
   var onWatchReset: (() -> Void)?
+  var onLost: ((WatchMapTile) -> Void)?
 
   /// `session` is the activated session or nil; `putList` publishes the `mapTiles` channel.
   init(session: @escaping () -> WCSession?, putList: @escaping ([String: Any]) -> Void) {
@@ -124,7 +125,12 @@ final class WatchMapTilePusher: WatchMapTileTransport, @unchecked Sendable {
         record.insert(sent.tile)
         saveRecord()
       }
-      pending.removeValue(forKey: sent.tile)?.resume(returning: landed)
+      if let continuation = pending.removeValue(forKey: sent.tile) {
+        continuation.resume(returning: landed)
+      } else if !landed {
+        // Queued by an earlier process and counted delivered by `delivered()`.
+        onLost?(sent.tile)
+      }
     }
   }
 

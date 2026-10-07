@@ -14,6 +14,9 @@ protocol WatchMapTileTransport: AnyObject {
   func send(_ tile: WatchMapTile, jpeg: URL) async -> Bool
   /// Called when what the wrist holds may have been wiped (a reinstall or re-pair).
   var onWatchReset: (() -> Void)? { get set }
+  /// Called when a transfer an earlier process left queued, which `delivered()` counted, fails: the
+  /// tile is not on the wrist after all.
+  var onLost: ((WatchMapTile) -> Void)? { get set }
 }
 
 /// Phone-owned street map for the wrist (#551): plans the wanted tiles with `WatchMapTilePlanner`,
@@ -24,7 +27,9 @@ protocol WatchMapTileTransport: AnyObject {
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/watch/WatchMapTileSender.kt `WatchMapTileSender`
 /// @platform-diff `delivered()` is a synchronous read of the transfer record here; Android's is a
 ///   Data Layer query, so it loads asynchronously. A reinstalled watch app loses its files and the
-///   record here, so `onWatchReset` re-reads it; Data Layer items outlive a Wear reinstall.
+///   record here, so `onWatchReset` re-reads it; Data Layer items outlive a Wear reinstall. A
+///   transfer queued by an earlier process counts as delivered until `onLost` says it failed; a Data
+///   Layer put is done when `send` returns.
 final class WatchMapTileSender {
   /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/watch/WatchMapTileSender.kt `WATCH_MAP_TILE_MAX_SENDS_IN_FLIGHT`
   static let maxSendsInFlight = 4
@@ -53,6 +58,9 @@ final class WatchMapTileSender {
     self.transport = transport
     transport.onWatchReset = { [weak self] in
       self?.scheduler.post { [weak self] in self?.delivered = nil }
+    }
+    transport.onLost = { [weak self] tile in
+      self?.scheduler.post { [weak self] in self?.lost(tile) }
     }
   }
 
@@ -103,6 +111,13 @@ final class WatchMapTileSender {
         self?.scheduler.post { [weak self] in self?.landed(tile, sent: sent) }
       }
     }
+  }
+
+  /// A tile counted delivered that never arrived goes out again after the usual retry wait.
+  private func lost(_ tile: WatchMapTile) {
+    guard delivered?.remove(tile) != nil else { return }
+    failedAtMs[tile] = nowMs()
+    pump()
   }
 
   private func landed(_ tile: WatchMapTile, sent: Bool) {
