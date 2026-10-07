@@ -21,9 +21,9 @@ import {
 import { MonoText } from '@/components/base/MonoValue'
 import { theme } from '@/constants/theme'
 import { useResolvedColor } from '@/hooks/useTheme'
+import { HUD_IDLE_GLYPH_COLOR } from '@/modules/board/constants/telemetry'
 import { FOOTPAD_FALLBACK_THRESHOLD_V } from '@/modules/board/store/boardConfigValuesStore'
 
-const TRACK_COLOR = theme.alpha(theme.palette.slate.textDim, 0.4)
 /** Disabled zone (`fault_adc = 0`): the rail is still drawn so the pad keeps its shape, but muted. */
 const DISABLED_COLOR = theme.alpha(theme.palette.slate.textDim, 0.12)
 
@@ -202,7 +202,7 @@ function FootpadZone({ path, stroke, drive, fillColor }: FootpadZoneProps) {
         strokeWidth={stroke}
         strokeCap="round"
         strokeJoin="round"
-        color={drive.disabled ? DISABLED_COLOR : TRACK_COLOR}
+        color={drive.disabled ? DISABLED_COLOR : HUD_IDLE_GLYPH_COLOR}
       />
       {/* Trimming is geometry per frame, which the canvas rules normally forbid — but the fill runs
           along a curve that turns a corner, so no transform or linear clip can express it, and it

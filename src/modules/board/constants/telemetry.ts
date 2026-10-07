@@ -196,6 +196,9 @@ export const RIM_TEMP_RANGE = { min: 20, max: 100 } as const
 /** Screen-edge gap shared by the HUD arcs, so the speed/duty arcs line up over the rim temp arcs. */
 export const HUD_ARC_EDGE_INSET = 12
 
+/** Strip glyph at rest — an unpressed footpad rail, a board with no IMU link. */
+export const HUD_IDLE_GLYPH_COLOR = theme.alpha(theme.palette.slate.textDim, 0.4)
+
 export const telemetryByControlId = Object.fromEntries(
   Object.values(telemetry)
     .filter((metric) => metric.controlId != null)

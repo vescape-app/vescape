@@ -4,6 +4,7 @@ import { useDerivedValue, type SharedValue } from 'react-native-reanimated'
 
 import { theme } from '@/constants/theme'
 import { useResolvedColor } from '@/hooks/useTheme'
+import { HUD_IDLE_GLYPH_COLOR } from '@/modules/board/constants/telemetry'
 import {
   ATTITUDE_EXTENT,
   boardAttitudePose,
@@ -112,7 +113,7 @@ export function BoardAttitudeIndicator({
   testID,
 }: BoardAttitudeIndicatorProps) {
   'use no memo'
-  const color = useResolvedColor(connected ? theme.palette.purple.color : theme.neutral.textMuted)
+  const color = useResolvedColor(connected ? theme.palette.purple.color : HUD_IDLE_GLYPH_COLOR)
   const paths = useMemo(() => buildPaths(), [])
   const scale = size / ATTITUDE_EXTENT
   const stroke = 1 / scale
