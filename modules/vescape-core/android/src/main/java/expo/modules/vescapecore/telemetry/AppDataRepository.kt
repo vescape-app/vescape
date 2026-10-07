@@ -443,6 +443,7 @@ class AppDataRepository private constructor(private val context: Context) {
       wearNavArrowEnabled = req("wearNavArrowEnabled", false) { it as? Boolean },
       wearTelemetryTrailEnabled = req("wearTelemetryTrailEnabled", true) { it as? Boolean },
       wearTelemetryGroupEnabled = req("wearTelemetryGroupEnabled", true) { it as? Boolean },
+      wearTelemetryRouteEnabled = req("wearTelemetryRouteEnabled", true) { it as? Boolean },
       wearStreetMapEnabled = req("wearStreetMapEnabled", true) { it as? Boolean },
       wearMapGaugesPercent = req("wearMapGaugesPercent", WatchMapGauges.DEFAULT_PERCENT, WatchMapGauges::percent),
       groupRidePublicEnabled = req("groupRidePublicEnabled", false) { it as? Boolean },
@@ -537,6 +538,7 @@ class AppDataRepository private constructor(private val context: Context) {
       "wearNavArrowEnabled" -> value as? Boolean ?: return@withContext
       "wearTelemetryTrailEnabled" -> value as? Boolean ?: return@withContext
       "wearTelemetryGroupEnabled" -> value as? Boolean ?: return@withContext
+      "wearTelemetryRouteEnabled" -> value as? Boolean ?: return@withContext
       "wearStreetMapEnabled" -> value as? Boolean ?: return@withContext
       "wearMapGaugesPercent" -> WatchMapGauges.percent(value) ?: return@withContext
       "groupRidePublicEnabled" -> value as? Boolean ?: return@withContext
@@ -601,6 +603,7 @@ class AppDataRepository private constructor(private val context: Context) {
         "wearNavArrowEnabled" -> d.wearNavArrowEnabled
         "wearTelemetryTrailEnabled" -> d.wearTelemetryTrailEnabled
         "wearTelemetryGroupEnabled" -> d.wearTelemetryGroupEnabled
+        "wearTelemetryRouteEnabled" -> d.wearTelemetryRouteEnabled
         "wearStreetMapEnabled" -> d.wearStreetMapEnabled
         "wearMapGaugesPercent" -> d.wearMapGaugesPercent
         "groupRidePublicEnabled" -> d.groupRidePublicEnabled
@@ -983,6 +986,7 @@ fun AppSettings.toMap(): Map<String, Any?> = mapOf(
   "wearNavArrowEnabled" to wearNavArrowEnabled,
   "wearTelemetryTrailEnabled" to wearTelemetryTrailEnabled,
   "wearTelemetryGroupEnabled" to wearTelemetryGroupEnabled,
+  "wearTelemetryRouteEnabled" to wearTelemetryRouteEnabled,
   "wearStreetMapEnabled" to wearStreetMapEnabled,
   "wearMapGaugesPercent" to wearMapGaugesPercent,
   "groupRidePublicEnabled" to groupRidePublicEnabled,

@@ -50,6 +50,8 @@ struct FrameLayout: View {
   var telemetryTrailEnabled: Bool = true
   /// Whether the rider has Group Ride on the telemetry screen (phone: Settings > Watch).
   var telemetryGroupEnabled: Bool = true
+  /// Whether the rider has the route line on the telemetry screen (phone: Settings > Watch).
+  var telemetryRouteEnabled: Bool = true
   /// Whether the rider has the street map on (phone: Settings > Watch).
   var streetMapEnabled: Bool = true
   /// Street map opacity behind the gauges (phone: Settings > Watch > Map behind gauges).
@@ -67,7 +69,7 @@ struct FrameLayout: View {
       route: route, routeStatus: routeStatus, groupRide: groupRide,
       navColor: navColor, trailColor: trailColor, navArrowEnabled: navArrowEnabled,
       telemetryTrailEnabled: telemetryTrailEnabled, telemetryGroupEnabled: telemetryGroupEnabled,
-      streetMapEnabled: streetMapEnabled,
+      telemetryRouteEnabled: telemetryRouteEnabled, streetMapEnabled: streetMapEnabled,
       mapGaugesPercent: mapGaugesPercent, unitSystem: unitSystem
     ) {
       gauges(blind: blind)

@@ -35,6 +35,15 @@ final class WatchSettingsTests: XCTestCase {
     XCTAssertEqual(WatchSettings.decode(context: [watchSettingsChannel: disabled.payload]), disabled)
   }
 
+  func testTelemetryRouteIsEnabledForOlderPhonesAndFalseSurvivesSettingsReload() {
+    XCTAssertEqual(AppDataRepository.defaultSettings["wearTelemetryRouteEnabled"] as? Bool, true)
+    XCTAssertTrue(watchSourceSettingKeys.contains("wearTelemetryRouteEnabled"))
+    XCTAssertTrue(WatchSettings.decode([:]).telemetryRouteEnabled)
+    XCTAssertTrue(WatchSettings.decode([WatchSettingsKey.telemetryRouteEnabled: "false"]).telemetryRouteEnabled)
+    let disabled = WatchSettings(telemetryRouteEnabled: false)
+    XCTAssertEqual(WatchSettings.decode(context: [watchSettingsChannel: disabled.payload]), disabled)
+  }
+
   /// Issue #557: an older phone, or a value off the steps, reads as the 60 % default on the wrist
   /// and in phone persistence; a chosen step survives a settings reload.
   func testMapBehindGaugesKeepsItsStepAndFallsBackToTheDefault() {

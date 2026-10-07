@@ -111,6 +111,7 @@ extension WatchMirrorCoordinator {
       navArrowEnabled: (settings["wearNavArrowEnabled"] ?? nil) as? Bool ?? false,
       telemetryTrailEnabled: (settings["wearTelemetryTrailEnabled"] ?? nil) as? Bool ?? true,
       telemetryGroupEnabled: (settings["wearTelemetryGroupEnabled"] ?? nil) as? Bool ?? true,
+      telemetryRouteEnabled: (settings["wearTelemetryRouteEnabled"] ?? nil) as? Bool ?? true,
       streetMapEnabled: (settings["wearStreetMapEnabled"] ?? nil) as? Bool ?? true,
       mapGaugesPercent: WatchMapGauges.percent(settings["wearMapGaugesPercent"] ?? nil) ?? WatchMapGauges.defaultPercent,
       unitSystem: (settings["unitSystem"] ?? nil) as? String == "imperial" ? "imperial" : "metric",

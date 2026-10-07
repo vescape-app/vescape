@@ -45,6 +45,7 @@ const BASE: AppSettings = {
   wearNavArrowEnabled: false,
   wearTelemetryTrailEnabled: true,
   wearTelemetryGroupEnabled: true,
+  wearTelemetryRouteEnabled: true,
   wearStreetMapEnabled: true,
   wearMapGaugesPercent: 60,
   wearTiltRatePercent: 20,

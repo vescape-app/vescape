@@ -27,6 +27,8 @@ enum WatchSettingsKey {
   static let telemetryTrailEnabled = "telemetryTrailEnabled"
   /// Whether the telemetry screen draws Group Ride marks. Off: they fade in on the map page only.
   static let telemetryGroupEnabled = "telemetryGroupEnabled"
+  /// Whether the telemetry screen draws the Navigation route line. Off: it fades in on the map page only.
+  static let telemetryRouteEnabled = "telemetryRouteEnabled"
   /// Whether the wrist draws the street map. Off: the phone sends no tiles; tiles already on the wrist stay.
   static let streetMapEnabled = "streetMapEnabled"
   /// Street map opacity behind the gauges, integer percent from ``WatchMapGauges/steps``.
@@ -60,6 +62,7 @@ let watchSourceSettingKeys: Set<String> = [
   "wearNavArrowEnabled",
   "wearTelemetryTrailEnabled",
   "wearTelemetryGroupEnabled",
+  "wearTelemetryRouteEnabled",
   "wearStreetMapEnabled",
   "wearMapGaugesPercent",
   "unitSystem",
@@ -76,6 +79,7 @@ struct WatchSettings: Equatable {
   var navArrowEnabled: Bool = false
   var telemetryTrailEnabled: Bool = true
   var telemetryGroupEnabled: Bool = true
+  var telemetryRouteEnabled: Bool = true
   var streetMapEnabled: Bool = true
   var mapGaugesPercent: Int = WatchMapGauges.defaultPercent
   var unitSystem: String = "metric"
@@ -94,6 +98,7 @@ struct WatchSettings: Equatable {
       WatchSettingsKey.navArrowEnabled: navArrowEnabled,
       WatchSettingsKey.telemetryTrailEnabled: telemetryTrailEnabled,
       WatchSettingsKey.telemetryGroupEnabled: telemetryGroupEnabled,
+      WatchSettingsKey.telemetryRouteEnabled: telemetryRouteEnabled,
       WatchSettingsKey.streetMapEnabled: streetMapEnabled,
       WatchSettingsKey.mapGaugesPercent: mapGaugesPercent,
       WatchSettingsKey.unitSystem: unitSystem,
@@ -117,6 +122,7 @@ struct WatchSettings: Equatable {
       navArrowEnabled: payload[WatchSettingsKey.navArrowEnabled] as? Bool ?? wristDefaults.navArrowEnabled,
       telemetryTrailEnabled: payload[WatchSettingsKey.telemetryTrailEnabled] as? Bool ?? wristDefaults.telemetryTrailEnabled,
       telemetryGroupEnabled: payload[WatchSettingsKey.telemetryGroupEnabled] as? Bool ?? wristDefaults.telemetryGroupEnabled,
+      telemetryRouteEnabled: payload[WatchSettingsKey.telemetryRouteEnabled] as? Bool ?? wristDefaults.telemetryRouteEnabled,
       streetMapEnabled: payload[WatchSettingsKey.streetMapEnabled] as? Bool ?? wristDefaults.streetMapEnabled,
       mapGaugesPercent: WatchMapGauges.percent(payload[WatchSettingsKey.mapGaugesPercent]) ?? wristDefaults.mapGaugesPercent,
       unitSystem: payload[WatchSettingsKey.unitSystem] as? String == "imperial" ? "imperial" : "metric",

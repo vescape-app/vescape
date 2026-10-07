@@ -19,8 +19,8 @@ class WatchMapSceneStateTest {
     private val ready = WatchRouteStatus(WatchRoutePhase.READY, 7)
     private fun scene(frame: WatchFrame = this.frame, status: WatchRouteStatus? = ready,
         group: WatchGroupRide? = this.group, ambient: Boolean = false, trail: Boolean = true, groupOnTelemetry: Boolean = true,
-        streetMap: Boolean = true, mapGauges: Int = 60) =
-        WatchMapSceneState(frame, 7, status, group, ambient, trail, groupOnTelemetry, streetMap, mapGauges)
+        routeOnTelemetry: Boolean = true, streetMap: Boolean = true, mapGauges: Int = 60) =
+        WatchMapSceneState(frame, 7, status, group, ambient, trail, groupOnTelemetry, routeOnTelemetry, streetMap, mapGauges)
 
     @Test fun `navigation ending falls through group and standalone without losing rider history`() {
         val navigation = scene()
@@ -97,6 +97,18 @@ class WatchMapSceneStateTest {
         assertEquals(0f, scene(ambient = true).groupAlpha(1f), 0f)
     }
 
+    /** Issue #558: the route line leaves the telemetry screen only; the map page fades it in. */
+    @Test fun `route setting affects telemetry only and ambient hides it`() {
+        val off = scene(routeOnTelemetry = false)
+        assertEquals(0f, off.routeAlpha(0f), 0f)
+        assertEquals(0.4f, off.routeAlpha(0.4f), 0f)
+        assertEquals(1f, off.routeAlpha(1f), 0f)
+        assertNotNull(off.navigation)
+        assertEquals(1f, off.trailAlpha(0f), 0f)
+        assertEquals(1f, scene().routeAlpha(0f), 0f)
+        assertEquals(0f, scene(ambient = true).routeAlpha(1f), 0f)
+    }
+
     /** Issue #557 + #536: the Off step hides the street map behind the gauges only. */
     @Test fun `map behind gauges off fades the street map in on the map page`() {
         val off = scene(mapGauges = 0)
@@ -106,14 +118,15 @@ class WatchMapSceneStateTest {
         assertEquals(1f, off.mapAlpha(1f), 0f)
     }
 
-    /** Issue #536: the rider circle leaves the telemetry screen only once every layer there is off. */
+    /** Issues #536 + #558: the rider circle leaves the telemetry screen only once every layer there is off. */
     @Test fun `rider circle leaves the gauges only when every telemetry layer is off`() {
         assertEquals(1f, scene().riderAlpha(0f), 0f)
-        assertEquals(1f, scene(trail = false, groupOnTelemetry = false).riderAlpha(0f), 0f)
-        assertEquals(1f, scene(trail = false, mapGauges = 0).riderAlpha(0f), 0f)
-        assertEquals(1f, scene(groupOnTelemetry = false, mapGauges = 0).riderAlpha(0f), 0f)
-        for (clean in listOf(scene(trail = false, groupOnTelemetry = false, mapGauges = 0),
-            scene(trail = false, groupOnTelemetry = false, streetMap = false))) {
+        assertEquals(1f, scene(trail = false, groupOnTelemetry = false, routeOnTelemetry = false).riderAlpha(0f), 0f)
+        assertEquals(1f, scene(trail = false, groupOnTelemetry = false, mapGauges = 0).riderAlpha(0f), 0f)
+        assertEquals(1f, scene(trail = false, routeOnTelemetry = false, mapGauges = 0).riderAlpha(0f), 0f)
+        assertEquals(1f, scene(groupOnTelemetry = false, routeOnTelemetry = false, mapGauges = 0).riderAlpha(0f), 0f)
+        for (clean in listOf(scene(trail = false, groupOnTelemetry = false, routeOnTelemetry = false, mapGauges = 0),
+            scene(trail = false, groupOnTelemetry = false, routeOnTelemetry = false, streetMap = false))) {
             assertEquals(0f, clean.riderAlpha(0f), 0f)
             assertEquals(0.4f, clean.riderAlpha(0.4f), 0f)
             assertEquals(1f, clean.riderAlpha(1f), 0f)

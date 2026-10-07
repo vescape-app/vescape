@@ -26,6 +26,12 @@ class WatchSettingsTest {
         assertEquals(false, WatchSettings.decode(mapOf(SETTING_TELEMETRY_GROUP to false)).telemetryGroupEnabled)
     }
 
+    @Test fun `telemetry route is enabled for older phones and false survives settings reload`() {
+        assertEquals(true, WatchSettings.decode(emptyMap()).telemetryRouteEnabled)
+        assertEquals(true, WatchSettings.decode(mapOf(SETTING_TELEMETRY_ROUTE to "false")).telemetryRouteEnabled)
+        assertEquals(false, WatchSettings.decode(mapOf(SETTING_TELEMETRY_ROUTE to false)).telemetryRouteEnabled)
+    }
+
     /** Issue #557: an older phone, or a value off the steps, reads as the 60 % default. */
     @Test fun `map behind gauges keeps its step and falls back to the default`() {
         assertEquals(60, WatchSettings.decode(emptyMap()).mapGaugesPercent)

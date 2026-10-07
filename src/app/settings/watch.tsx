@@ -58,6 +58,7 @@ export default function WatchSettingsScreen() {
     wearNavArrowEnabled,
     wearTelemetryTrailEnabled,
     wearTelemetryGroupEnabled,
+    wearTelemetryRouteEnabled,
     wearStreetMapEnabled,
     wearMapGaugesPercent,
     wearTiltRatePercent,
@@ -69,6 +70,7 @@ export default function WatchSettingsScreen() {
       wearNavArrowEnabled: s.wearNavArrowEnabled,
       wearTelemetryTrailEnabled: s.wearTelemetryTrailEnabled,
       wearTelemetryGroupEnabled: s.wearTelemetryGroupEnabled,
+      wearTelemetryRouteEnabled: s.wearTelemetryRouteEnabled,
       wearStreetMapEnabled: s.wearStreetMapEnabled,
       wearMapGaugesPercent: s.wearMapGaugesPercent,
       wearTiltRatePercent: s.wearTiltRatePercent,
@@ -152,6 +154,18 @@ export default function WatchSettingsScreen() {
               <Switch
                 value={wearTelemetryGroupEnabled}
                 onValueChange={(v) => void set('wearTelemetryGroupEnabled', v)}
+              />
+            }
+          />
+          <SettingsRow
+            icon={PathIcon}
+            iconColor={theme.palette.violet.color}
+            label="Route line on telemetry screen"
+            hint="Show the navigation route behind the watch gauges. Always visible on the map screen"
+            right={
+              <Switch
+                value={wearTelemetryRouteEnabled}
+                onValueChange={(v) => void set('wearTelemetryRouteEnabled', v)}
               />
             }
           />

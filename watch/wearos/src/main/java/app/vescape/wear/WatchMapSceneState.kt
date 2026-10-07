@@ -17,6 +17,7 @@ internal class WatchMapSceneState(
     ambient: Boolean,
     private val telemetryTrailEnabled: Boolean,
     private val telemetryGroupEnabled: Boolean,
+    private val telemetryRouteEnabled: Boolean,
     streetMapEnabled: Boolean,
     /** The rider's Map behind gauges percent, already snapped by [WatchMapGauges.percent]. */
     mapGaugesPercent: Int,
@@ -39,15 +40,18 @@ internal class WatchMapSceneState(
     /** Group Ride dots and edge triangles: full on the telemetry screen, else they fade in with nav focus. */
     fun groupAlpha(navFocus: Float): Float = layerAlpha(telemetryGroupEnabled, navFocus)
 
+    /** Navigation route line: full on the telemetry screen, else it fades in with nav focus. The chevron and distance stay. */
+    fun routeAlpha(navFocus: Float): Float = layerAlpha(telemetryRouteEnabled, navFocus)
+
     private val mapGaugesAlpha = mapGaugesPercent / 100f
 
     /**
      * The rider circle stays on the telemetry screen while any map layer there has something around
-     * it. With trail, Group Ride and map behind gauges all off, the gauges are clean and the circle
+     * it. With trail, Group Ride, route line and map behind gauges all off, the gauges are clean and the circle
      * fades in with nav focus. The map page always shows it.
      */
     fun riderAlpha(navFocus: Float): Float =
-        layerAlpha(telemetryTrailEnabled || telemetryGroupEnabled || (drawStreetMap && mapGaugesAlpha > 0f), navFocus)
+        layerAlpha(telemetryTrailEnabled || telemetryGroupEnabled || telemetryRouteEnabled || (drawStreetMap && mapGaugesAlpha > 0f), navFocus)
 
     private fun layerAlpha(onTelemetry: Boolean, navFocus: Float): Float = when {
         !drawMap -> 0f

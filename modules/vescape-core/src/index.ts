@@ -1678,6 +1678,14 @@ export interface AppSettings {
    */
   wearTelemetryGroupEnabled: boolean
   /**
+   * Draw the Navigation route line on the watch telemetry screen. Enabled by default; off, it fades in
+   * on the map page only. The nav chevron and distance readout stay, and the phone keeps sending the
+   * route either way. Mirrored as cold settings to both watch platforms.
+   * @parity /modules/vescape-core/ios/watch/WatchSettings.swift
+   * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/watch/WatchSettings.kt
+   */
+  wearTelemetryRouteEnabled: boolean
+  /**
    * Draw the street map on the watch. Enabled by default. Off: the phone sends no map tiles and
    * both wrists hide the map; tiles already on the wrist stay. Mirrored as cold settings.
    * @parity /modules/vescape-core/ios/watch/WatchSettings.swift

@@ -390,6 +390,7 @@ struct MirrorScreen: View {
       navArrowEnabled: link.settings.navArrowEnabled,
       telemetryTrailEnabled: link.settings.telemetryTrailEnabled,
       telemetryGroupEnabled: link.settings.telemetryGroupEnabled,
+      telemetryRouteEnabled: link.settings.telemetryRouteEnabled,
       streetMapEnabled: link.settings.streetMapEnabled,
       mapGaugesPercent: link.settings.mapGaugesPercent,
       unitSystem: link.settings.unitSystem

@@ -18,6 +18,7 @@ class WatchSettingsTest {
             "wearNavArrowEnabled" to AppSettings(wearNavArrowEnabled = true),
             "wearTelemetryTrailEnabled" to AppSettings(wearTelemetryTrailEnabled = false),
             "wearTelemetryGroupEnabled" to AppSettings(wearTelemetryGroupEnabled = false),
+            "wearTelemetryRouteEnabled" to AppSettings(wearTelemetryRouteEnabled = false),
             "wearStreetMapEnabled" to AppSettings(wearStreetMapEnabled = false),
             "wearMapGaugesPercent" to AppSettings(wearMapGaugesPercent = 90),
             "unitSystem" to AppSettings(unitSystem = "imperial"),

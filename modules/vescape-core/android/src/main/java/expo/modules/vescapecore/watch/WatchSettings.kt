@@ -33,6 +33,9 @@ internal const val WATCH_SETTING_TELEMETRY_TRAIL = "telemetryTrailEnabled"
 /** Whether the telemetry screen draws Group Ride marks. Off: they fade in on the map page only. */
 internal const val WATCH_SETTING_TELEMETRY_GROUP = "telemetryGroupEnabled"
 
+/** Whether the telemetry screen draws the Navigation route line. Off: it fades in on the map page only. */
+internal const val WATCH_SETTING_TELEMETRY_ROUTE = "telemetryRouteEnabled"
+
 /** Whether the wrist draws the street map. Off: the phone sends no tiles; tiles already on the wrist stay. */
 internal const val WATCH_SETTING_STREET_MAP = "streetMapEnabled"
 
@@ -59,6 +62,7 @@ internal val WATCH_SOURCE_SETTING_KEYS = setOf(
     "wearNavArrowEnabled",
     "wearTelemetryTrailEnabled",
     "wearTelemetryGroupEnabled",
+    "wearTelemetryRouteEnabled",
     "wearStreetMapEnabled",
     "wearMapGaugesPercent",
     "unitSystem",
@@ -75,6 +79,7 @@ internal data class WatchSettings(
     val tiltRatePercent: Int = 20,
     val telemetryTrailEnabled: Boolean = true,
     val telemetryGroupEnabled: Boolean = true,
+    val telemetryRouteEnabled: Boolean = true,
     val streetMapEnabled: Boolean = true,
     val mapGaugesPercent: Int = WatchMapGauges.DEFAULT_PERCENT,
 )
@@ -91,6 +96,7 @@ internal fun AppSettings.toWatchSettings(): WatchSettings = WatchSettings(
     navArrowEnabled = wearNavArrowEnabled,
     telemetryTrailEnabled = wearTelemetryTrailEnabled,
     telemetryGroupEnabled = wearTelemetryGroupEnabled,
+    telemetryRouteEnabled = wearTelemetryRouteEnabled,
     streetMapEnabled = wearStreetMapEnabled,
     mapGaugesPercent = wearMapGaugesPercent,
     unitSystem = unitSystem,

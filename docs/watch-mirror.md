@@ -311,8 +311,9 @@ trail behind the telemetry gauges; the map page still shows it. The preference p
 and syncs to both watch platforms.
 
 The telemetry screen keeps the ring while any of its map layers is on: trail, Group Ride (**Group
-Ride on telemetry screen**) or the street map (**Map behind gauges** above Off, with **Street map**
-on). With all three off the gauges are clean and the ring fades in with nav focus like the trail
+Ride on telemetry screen**), the Navigation route line (**Route line on telemetry screen**) or the
+street map (**Map behind gauges** above Off, with **Street map** on). With all four off the gauges are
+clean and the ring fades in with nav focus like the trail
 (`riderAlpha` in `WatchMapSceneState`, both wrists). The map page never shows a placeholder: with
 nothing else to draw it still has the ring, and usually the trail and street map.
 
@@ -467,6 +468,11 @@ A cached previous route cannot satisfy a newer route's loader. A successful Data
 queues synchronization; the wrist checks its own decoded polyline before replacing the loader with
 the map. Route Progress is recalculated from the latest phone GPS Fix when a path is published,
 so a stationary rider does not need another location update to see navigation.
+
+Settings → Watch → **Route line on telemetry screen**, on by default, travels to both wrists as
+`telemetryRouteEnabled`. Off, the telemetry screen draws no route line; it fades in with nav focus on
+the map page (`routeAlpha`, like the trail's `trailAlpha`). The nav chevron and distance readout stay,
+since they are gauges rather than a map layer, and the phone keeps pushing `/route` either way.
 
 Preview the receiving state with `bun run wear:replay ride --route-loading`. This is an emulator
 fixture using the live rendering state, not a measurement of Bluetooth transfer latency.
