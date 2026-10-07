@@ -107,8 +107,8 @@ export default function WatchSettingsScreen() {
           <SettingsRow
             icon={ClockCountdownIcon}
             iconColor={theme.settingsIcon.watch}
-            label="Push rate"
-            hint="Frames per second sent to the wrist. Higher = faster updates (stress test)"
+            label="Update rate"
+            hint="How often the watch gets new readings while its screen is on. Higher is smoother but uses more phone and watch battery"
             right={
               <Stepper
                 value={wearPushRateHz}
