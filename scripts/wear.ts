@@ -355,18 +355,23 @@ const COMPANION_PACKAGE = 'com.google.android.apps.wear.companion'
 /** Long enough to click through the companion's first-run "Pair with emulator". */
 const PAIR_TIMEOUT_MS = 180_000
 
-/** The watch's Data Layer reports a live link to its phone. */
-function isLinked(watch: AdbDevice) {
+/** Play services' Data Layer state on one emulator: nodes, links, sync table, data items. */
+function wearableDump(serial: string) {
   return capture([
     'adb',
     '-s',
-    watch.serial,
+    serial,
     'shell',
     'dumpsys',
     'activity',
     'service',
     'WearableService',
-  ]).includes('IsConnected=true')
+  ])
+}
+
+/** The watch's Data Layer reports a live link to its phone. */
+function isLinked(watch: AdbDevice) {
+  return wearableDump(watch.serial).includes('IsConnected=true')
 }
 
 /**
@@ -412,6 +417,81 @@ async function pairEmulator(watch: AdbDevice, phone: AdbDevice) {
   }
   console.log(`wear: ${watch.name} linked to ${phone.name}`)
 }
+
+/** The node id Play services runs this device's Data Layer as. */
+function localNode(dump: string) {
+  return dump.match(/localNode: NodeInternal\{id='([0-9a-f]+)'/)?.[1] ?? null
+}
+
+/**
+ * The newest Data Layer sequence number this device holds from [node], read off the `06-DataSync`
+ * table (`nodeId  from  seqId  lastActivity`).
+ */
+function syncedSeq(dump: string, node: string) {
+  const table = dump.split('06-DataSync')[1] ?? ''
+  const row = table.match(new RegExp(`^\\s*${node}\\s+\\S+\\s+(\\d+)`, 'm'))
+  return row ? Number(row[1]) : null
+}
+
+/** The watch's Play services database: data items and the per-node sync high-water marks. */
+const WATCH_NODE_DB = '/data/data/com.google.android.gms/databases/node.db'
+
+/**
+ * The watch only takes a phone data item numbered above the newest one it already holds from that
+ * phone. When the phone's Play services restarts its numbering lower — seen after an emulator
+ * restore — the watch silently drops every route, settings, weather and map-tile write from then
+ * on, while messages (frames, route status) still flow. The wrist then waits on a route it never
+ * receives (#560). Forgetting the phone's items and high-water mark on the watch makes the phone
+ * resync everything. Needs a root adb shell, which the Wear emulator images allow.
+ */
+async function ensureDataSync(watch: AdbDevice, phone: AdbDevice) {
+  const phoneDump = wearableDump(phone.serial)
+  const node = localNode(phoneDump)
+  const phoneSeq = node ? syncedSeq(phoneDump, node) : null
+  const watchSeq = node ? syncedSeq(wearableDump(watch.serial), node) : null
+  if (node === null || phoneSeq === null || watchSeq === null) {
+    fail(`could not read the Data Layer sync table on ${phone.name} or ${watch.name}`)
+  }
+  if (watchSeq <= phoneSeq) {
+    console.log(
+      `wear: ${watch.name} takes ${phone.name}'s data items (seq ${watchSeq} <= ${phoneSeq})`,
+    )
+    return
+  }
+
+  console.log(
+    `wear: ${watch.name} holds ${phone.name}'s items up to seq ${watchSeq}, the phone is at ${phoneSeq} — resetting the watch's copy`,
+  )
+  if (capture(['adb', '-s', watch.serial, 'shell', 'getprop', 'ro.debuggable']) !== '1') {
+    fail(`${watch.name} has no root adb shell; wipe its data in the device manager and pair again`)
+  }
+  run(['adb', '-s', watch.serial, 'root'])
+  run(['adb', '-s', watch.serial, 'wait-for-device'])
+  const sql = [
+    `delete from assetrefs where dataitems_id in (select _id from dataitems where sourceNode='${node}')`,
+    `delete from dataitems where sourceNode='${node}'`,
+    `update nodeinfo set seqId=0 where node='${node}'`,
+  ].join('; ')
+  // One shell, so Play services has no time to come back with the stale items cached in between.
+  run([
+    'adb',
+    '-s',
+    watch.serial,
+    'shell',
+    `am force-stop ${PLAY_SERVICES}; sqlite3 ${WATCH_NODE_DB} "${sql}"; am force-stop ${PLAY_SERVICES}`,
+  ])
+  run(['adb', '-s', phone.serial, 'shell', 'am', 'force-stop', PLAY_SERVICES])
+  const synced = await waitFor(DATA_RESYNC_TIMEOUT_MS, () => {
+    const seq = syncedSeq(wearableDump(watch.serial), node)
+    const current = syncedSeq(wearableDump(phone.serial), node)
+    return seq !== null && current !== null && seq > 0 && seq <= current ? seq : null
+  })
+  if (synced === null) fail(`${watch.name} did not resync ${phone.name}'s data items`)
+  console.log(`wear: ${watch.name} resynced ${phone.name}'s data items (seq ${synced})`)
+}
+
+/** After both Play services restart, the link comes back and the phone resends its items. */
+const DATA_RESYNC_TIMEOUT_MS = 90_000
 
 /** How long a cold dev build gets to load its bundle from Metro. */
 const JS_START_TIMEOUT_MS = 120_000
@@ -530,6 +610,9 @@ async function up(requestedPhone: string | null) {
 
   begin('pair')
   await pairEmulator(watch, phone)
+
+  begin('data sync')
+  await ensureDataSync(watch, phone)
 
   begin('native sync')
   syncNative()

@@ -2553,11 +2553,15 @@ export interface RouteProgress {
   /** The point on the path nearest to the rider. */
   latitude: number
   longitude: number
-  /** Metres left to the Direction Point measured along the path, not as the crow flies. */
+  /**
+   * Metres left to the Direction Point measured along the path, not as the crow flies. Projected
+   * onto the path's end, it is the straight line from the rider to that end.
+   */
   remainingMeters: number
   /**
-   * Absolute degrees clockwise from north, aimed a short way further along the path. Absolute, not
-   * relative to where the rider is pointing — rotate it yourself if a view needs it rider-up.
+   * Absolute degrees clockwise from north, aimed a short way further along the path, or at the
+   * path's end once the rider is projected onto it. Absolute, not relative to where the rider is
+   * pointing — rotate it yourself if a view needs it rider-up.
    */
   bearingDeg: number
 }

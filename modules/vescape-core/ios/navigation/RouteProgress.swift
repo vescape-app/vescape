@@ -21,10 +21,11 @@ struct RouteProgress: Equatable {
   let longitude: Double
   /// Metres left to the Direction Point measured **along** the path from the projection: the rest
   /// of the projected segment plus every segment after it. Not the straight line — a target 679 m
-  /// away across a river is the 2 km the rider actually has to ride.
+  /// away across a river is the 2 km the rider actually has to ride. Projected onto the path's end,
+  /// with nothing left along it, it is the straight line from the rider to that end.
   let remainingMeters: Double
   /// Absolute degrees clockwise from north, from the projection to an aim point a short way further
-  /// along the path. Absolute on purpose: the wrist rotates a north-up world by the GPS course, so
+  /// along the path, or from the rider to the path's end once projected onto it. Absolute on purpose: the wrist rotates a north-up world by the GPS course, so
   /// one convention keeps the two rotations from disagreeing.
   let bearingDeg: Double
 
@@ -130,6 +131,24 @@ struct RouteProgress: Equatable {
         fromLatitude = next.latitude
         fromLongitude = next.longitude
       }
+    }
+
+    // Projected onto the end of the path, the rider is past the Direction Point or beside it, and
+    // no path is left to measure along. What is left is the straight line back to the end, and the
+    // arrow points there: a rider who rode past the pin must not read 0 ft while it is hundreds of
+    // metres behind them (#560).
+    let pastEndMeters = remainingMeters <= degenerateAimMeters
+      ? GeoMath.distanceMeters(riderLatitude, riderLongitude, target.latitude, target.longitude)
+      : 0
+    if pastEndMeters > degenerateAimMeters {
+      return RouteProgress(
+        latitude: latitude,
+        longitude: longitude,
+        remainingMeters: pastEndMeters,
+        bearingDeg: GeoMath.travelBearingDeg(
+          riderLatitude, riderLongitude, target.latitude, target.longitude
+        )
+      )
     }
 
     // A rider standing on the end of the path leaves the aim point on top of the projection, and a
