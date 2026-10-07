@@ -131,6 +131,13 @@ bun run wear:test
 bun run wear
 ```
 
+Phone + watch emulators: boot both AVDs, pair them, install both apps and wait for live frames on
+the wrist (needs Metro running; see [docs/agents/watch-emulators.md](docs/agents/watch-emulators.md)):
+
+```bash
+bun run wear:up
+```
+
 Run tests (JS via Bun + native Kotlin and Swift unit tests):
 
 ```bash

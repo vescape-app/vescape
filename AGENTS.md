@@ -154,6 +154,7 @@ Visual design language (colors, layout, typography) lives in `docs/design.md`.
 Clerk production authentication setup and Android email-link debugging live in `docs/agents/clerk-auth.md`.
 Mapbox dependency patches and their native camera semantics live in `docs/agents/mapbox-patches.md`.
 Generated native state (`ios/`, `android/`, Pods) is kept in sync by `bun run ios` / `bun run android`; see `docs/agents/native-sync.md`.
+Phone + Wear emulators, paired and mirroring, come from `bun run wear:up`; failures and wrist checks are in `docs/agents/watch-emulators.md`.
 
 When adding or changing a reusable UI component (or a new visual variant/state of one), add or update its preview in the component showcase under `src/app/settings/components/` so every component stays browsable with live controls.
 

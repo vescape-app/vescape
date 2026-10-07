@@ -202,6 +202,7 @@ If the watch says `DISCONNECTED`, distinguish the cause:
 - Emulators only: the watch's `dumpsys activity service WearableService` logs `/telemetry` inbound but
   the wrist never logs `first frame received` (typical after a phone emulator restart). Restart Play
   services on both: `adb -s <serial> shell am force-stop com.google.android.gms`, for each emulator.
+  `bun run wear:up` does this on its own when no frame arrives.
 
 The watch switches to `DISCONNECTED` when no Watch Frame arrives for about three watch ticks.
 
@@ -232,7 +233,11 @@ only ages what is on screen.
 
 ## Dev Modes On The Emulator
 
-Both are gated by `DevGate` — a debuggable build on an emulator, never a real watch or a release
+`bun run wear:up` boots the phone and Wear emulators, pairs them, installs both apps and waits until
+the wrist logs a received frame, restarting Play services if the Data Layer is stuck. Steps, failure
+messages and wrist checks are in `docs/agents/watch-emulators.md`.
+
+The two dev modes below are gated by `DevGate` — a debuggable build on an emulator, never a real watch or a release
 build — and both are entered explicitly, so an ordinary emulator launch still mirrors its paired
 phone like hardware.
 
@@ -270,24 +275,20 @@ Always-on screen, then `adb shell input keyevent 26`.
 
 ### Ride end to end
 
-`bun run wear:ride` takes a booted phone emulator and Wear emulator to a real watch ride: the
+`bun run wear:ride` takes the phone and Wear emulators to a real watch ride: the
 `replay-thor301.jsonl` Debug Recording replaying on the phone, and **normal** Navigation, so the
 route reaches the wrist on the same path a rider's does. Use it to check Watch Mirror map work
 without a board, a phone or a watch.
 
-Before the first run: boot both emulators (`bun run wear:emulator` for the watch), install the phone
-dev build with `bun run android`, keep Metro running, and pair the two once in the companion (menu >
-Pair with emulator; see `wear:pair`). `--device <serial|model>` picks the phone.
+Keep Metro running. `--device <AVD>` picks the phone AVD.
 
 The command then:
 
-1. Repairs the pairing forward, as `wear:pair` does. Re-running the ride after an adb server restart
-   is enough; nothing else needs repairing.
-2. Builds, signs, installs and launches the watch app in its normal mirror mode — no fixture replay
-   on the wrist.
-3. Reloads the phone app from Metro, then sends the dev-only link
+1. Runs `wear:up`: both emulators booted and paired, the phone dev build on Metro, the watch app in
+   its normal mirror mode (no fixture replay on the wrist), and frames proven on the wrist.
+2. Sends the dev-only link
    `vescape://dev/watch-ride?replay=replay-thor301.jsonl&lat=51.13185&lon=16.98653`.
-4. The phone starts the replay, waits for the first replayed fix, and only then sets the Direction
+3. The phone starts the replay, waits for the first replayed fix, and only then sets the Direction
    Point (the recording's last fix). The replay owns position once it starts (ADR 0024); a Direction
    Point set earlier would be planned from the emulator's default location. Native runs the Mapbox
    Directions request and pushes `/route` to the wrist. No path is injected.

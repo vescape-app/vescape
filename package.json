@@ -30,6 +30,7 @@
     "icons:port": "bun run scripts/phosphor-to-vector.ts",
     "wear:emulator": "bun run scripts/wear.ts emulator",
     "wear:pair": "bun run scripts/wear.ts pair",
+    "wear:up": "bun run scripts/wear.ts up",
     "wear:replay": "bun run scripts/wear.ts replay",
     "wear:ride": "bun run scripts/wear.ts ride",
     "relay:reverse": "bun run scripts/relay-reverse.ts",

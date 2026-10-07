@@ -10,14 +10,8 @@
  *   bun run android:emulator                       # pick, or take the only phone AVD
  *   bun run android:emulator --device Medium_Phone # skip the picker
  */
-import { existsSync, readFileSync } from 'fs'
-import { homedir } from 'os'
-import { join } from 'path'
-import { sdkRoot } from './lib/androidSdk.ts'
+import { avdHome, bootAvd, isAvdRunning, listAvds, PHONE_AVD_KEY } from './lib/avds.ts'
 import { pickDevice } from './lib/devices.ts'
-
-/** Cache key for the last AVD booted; separate from `android-device`, which spans real phones too. */
-const LAST_AVD_KEY = 'android-avd'
 
 const args = process.argv.slice(2)
 const deviceFlag = args.findIndex((arg) => arg === '--device' || arg === '-d')
@@ -27,90 +21,21 @@ if (deviceFlag !== -1 && !requested) {
   process.exit(1)
 }
 
-const avdHome = process.env.ANDROID_AVD_HOME ?? join(homedir(), '.android', 'avd')
-
-interface Avd {
-  name: string
-  /** `avd.ini.displayname` when the AVD has one, otherwise the directory name. */
-  label: string
-  isWatch: boolean
-}
-
-/**
- * AVDs as the `emulator` binary sees them, annotated from each one's `config.ini`: the binary lists
- * names only, and a name says nothing about whether the image is a watch.
- */
-function listAvds(binary: string): Avd[] {
-  const listed = Bun.spawnSync([binary, '-list-avds'], { env: process.env })
-  const names = new TextDecoder()
-    .decode(listed.stdout)
-    .split('\n')
-    .map((line) => line.trim())
-    .filter(Boolean)
-
-  return names.map((name) => {
-    const config = join(avdHome, `${name}.avd`, 'config.ini')
-    const ini = existsSync(config) ? readFileSync(config, 'utf8') : ''
-    return {
-      name,
-      label: /^avd\.ini\.displayname=(.+)$/m.exec(ini)?.[1].trim() || name,
-      isWatch: /^tag\.id=.*wear/m.test(ini),
-    }
-  })
-}
-
-const binary = join(sdkRoot(), 'emulator', 'emulator')
-if (!existsSync(binary)) {
-  console.error(`\nno emulator installed at ${binary}`)
-  process.exit(1)
-}
-
-/**
- * Check the lock's owner, not just the file: crashes can leave stale locks behind. A live owner
- * also covers emulators still booting, before they become available through adb. Let the emulator
- * reclaim stale locks itself rather than deleting a lock that another launch might have acquired.
- */
-function isRunning(name: string): boolean {
-  let owner: string
-  try {
-    owner = readFileSync(join(avdHome, `${name}.avd`, 'hardware-qemu.ini.lock'), 'utf8')
-  } catch (error) {
-    if ((error as NodeJS.ErrnoException).code === 'ENOENT') return false
-    throw error
-  }
-
-  // The emulator writes an ASCII PID with a trailing NUL. Reject invalid PIDs so signal 0
-  // cannot accidentally query our own process group or all processes.
-  const pid = Number(owner.replace(/\0$/, '').trim())
-  if (!Number.isSafeInteger(pid) || pid <= 0) return false
-  try {
-    process.kill(pid, 0)
-    return true
-  } catch (error) {
-    const code = (error as NodeJS.ErrnoException).code
-    if (code === 'ESRCH') return false
-    if (code === 'EPERM') return true
-    throw error
-  }
-}
-
 const avd = await pickDevice({
   title: 'Android AVD',
-  items: listAvds(binary).filter((it) => !it.isWatch),
+  items: listAvds().filter((it) => !it.isWatch),
   id: (it) => it.name,
   label: (it) => it.label,
-  hint: (it) => (isRunning(it.name) ? 'running' : it.name),
+  hint: (it) => (isAvdRunning(it.name) ? 'running' : it.name),
   requested,
-  cacheKey: LAST_AVD_KEY,
-  emptyMessage: `No phone AVD found under ${avdHome}. Create one in Android Studio's device manager.`,
+  cacheKey: PHONE_AVD_KEY,
+  emptyMessage: `No phone AVD found under ${avdHome()}. Create one in Android Studio's device manager.`,
 })
 
-if (isRunning(avd.name)) {
+if (isAvdRunning(avd.name)) {
   console.log(`android:emulator: ${avd.name} is already running`)
   process.exit(0)
 }
 
-// Detached, so the shell that started it is free again — the emulator outlives this process.
-console.log(`\n> emulator -avd ${avd.name}\n`)
-Bun.spawn([binary, '-avd', avd.name], { stdio: ['ignore', 'ignore', 'ignore'] }).unref()
+bootAvd(avd.name)
 console.log(`android:emulator: booting ${avd.name}`)
