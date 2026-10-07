@@ -199,6 +199,9 @@ If the watch says `DISCONNECTED`, distinguish the cause:
 - No `Watch mirror presence initial: true` on phone: the phone is not pushing frames.
 - `Mismatched certificate` on watch: frames are pushed but rejected before app delivery.
 - No board telemetry on phone: no Board Session, so there is no Watch Frame source.
+- Emulators only: the watch's `dumpsys activity service WearableService` logs `/telemetry` inbound but
+  the wrist never logs `first frame received` (typical after a phone emulator restart). Restart Play
+  services on both: `adb -s <serial> shell am force-stop com.google.android.gms`, for each emulator.
 
 The watch switches to `DISCONNECTED` when no Watch Frame arrives for about three watch ticks.
 
