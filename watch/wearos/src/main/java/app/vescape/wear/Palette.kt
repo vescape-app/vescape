@@ -24,7 +24,10 @@ internal val CriticalColor = Color(0xFFEF4444) // red.color (status.error)
  * @parity /src/constants/theme.ts `accentColors.dark.violet`
  */
 internal val TrailColor = Color(0xFF7C6FEF)
-internal val NavColor = Color(0xFFA855F7) // purple.color (navigation)
+/** Navigation route purple, used until the Rider chooses a colour.
+ * @parity /src/screens/main/map/NavigationMapLayers.tsx `NAVIGATION_ROUTE_COLOR`
+ */
+internal val NavColor = Color(0xFFA855F7) // purple.color (theme.map.user)
 internal val LightsColor = Color(0xFFF59E0B) // amber.color (theme.light.accent, board lights)
 internal val TiltColor = Color(0xFF06B6D4) // cyan.color (Remote Tilt)
 internal val ArmedColor = Color(0xFFF59E0B) // amber.color (a reset one tap away)

@@ -15,7 +15,7 @@ import { RainViewerOverlay } from '@/modules/weather/components/RainViewerOverla
 import { HistoryMapLayers } from '@/screens/main/map/HistoryMapLayers'
 import { LiveMapLayers } from '@/screens/main/map/LiveMapLayers'
 import { MapPointLayers } from '@/screens/main/map/MapPointLayers'
-import { NavigationMapLayers } from '@/screens/main/map/NavigationMapLayers'
+import { NAVIGATION_ROUTE_COLOR, NavigationMapLayers } from '@/screens/main/map/NavigationMapLayers'
 import {
   DESTINATION_POINT_COLOR,
   DESTINATION_POINT_TEXT_COLOR,
@@ -140,6 +140,7 @@ export function MainMapLayers(props: MainMapLayersProps) {
             selectedNavigationTarget={props.selectedNavigationTarget}
             directionColor={riderColor ?? DESTINATION_POINT_COLOR}
             directionTextColor={riderColor ?? DESTINATION_POINT_TEXT_COLOR}
+            routeColor={riderColor ?? NAVIGATION_ROUTE_COLOR}
             onFocusDirectionPoint={props.onFocusDirectionPoint}
           />
           <LiveMapLayers

@@ -28,6 +28,7 @@ enum Palette {
   /// Navigation accent, used when the rider has not picked a colour of their own.
   ///
   /// @parity /watch/wearos/src/main/java/app/vescape/wear/Palette.kt `NavColor`
+  /// @parity /src/screens/main/map/NavigationMapLayers.tsx `NAVIGATION_ROUTE_COLOR`
   static let nav = Color(red: 0.659, green: 0.333, blue: 0.969)  // purple #A855F7
 
   /// Board lights accent — the tint that says a switch is on.
