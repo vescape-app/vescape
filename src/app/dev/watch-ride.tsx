@@ -12,14 +12,9 @@ import { useMapStore } from '@/modules/map/store/mapStore'
 const REPLAY_FIX_RADIUS_M = 5_000
 const FIRST_FIX_TIMEOUT_MS = 60_000
 
-/**
- * Starts the replay, then sets the Direction Point once the first replayed fix lands. Directions
- * plans from the rider's current position, so a target set earlier would be planned from the
- * emulator's default location.
- */
-async function startWatchRide(replay: string, latitude: number, longitude: number) {
-  const target = { latitude, longitude }
-  const firstFix = new Promise<void>((resolve, reject) => {
+/** Resolves on the first fix of the replayed ride; the replay keeps emitting, so none is missed. */
+function firstReplayedFix(target: { latitude: number; longitude: number }) {
+  return new Promise<void>((resolve, reject) => {
     const timeout = setTimeout(() => {
       subscription.remove()
       reject(new Error(`no replayed fix within ${FIRST_FIX_TIMEOUT_MS} ms`))
@@ -31,8 +26,16 @@ async function startWatchRide(replay: string, latitude: number, longitude: numbe
       resolve()
     })
   })
+}
+
+/**
+ * Starts the replay, then sets the Direction Point once the first replayed fix lands. Directions
+ * plans from the rider's current position, so a target set earlier would be planned from the
+ * emulator's default location.
+ */
+async function startWatchRide(replay: string, latitude: number, longitude: number) {
   await startDebugReplay(replay)
-  await firstFix
+  await firstReplayedFix({ latitude, longitude })
   // The store, not the native call alone, so the phone shows the same Navigation a rider's tap makes.
   await useMapStore.getState().setDirectionPoint(latitude, longitude)
   console.log(`[watch-ride] ${replay} running, Direction Point ${latitude}, ${longitude}`)
@@ -50,6 +53,8 @@ export default function WatchRideLink() {
     const latitude = Number(lat)
     const longitude = Number(lon)
     if (__DEV__ && replay && Number.isFinite(latitude) && Number.isFinite(longitude)) {
+      // The ride script stops resending the link on this line; starting can take a minute more.
+      console.log(`[watch-ride] ${replay} received`)
       startWatchRide(replay, latitude, longitude).catch((error: unknown) =>
         console.warn('[watch-ride] failed', error),
       )

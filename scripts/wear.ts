@@ -313,10 +313,12 @@ async function pairEmulator(requestedPhone: string | null) {
 const JS_START_TIMEOUT_MS = 120_000
 /**
  * A link that lands before Expo Router subscribes to it is dropped, and a booting app gives no
- * signal for that moment, so the ride link is resent until the phone answers.
+ * signal for that moment, so the ride link is resent until the phone logs that it received it.
  */
 const RIDE_ATTEMPTS = 4
 const RIDE_ATTEMPT_TIMEOUT_MS = 20_000
+/** From the link landing to a running ride: the route's first replayed fix (60 s), then Directions. */
+const RIDE_START_TIMEOUT_MS = 90_000
 
 /** Polls the phone's JS log for a matching line; `null` once the timeout passes. */
 function waitForPhoneLog(serial: string, patterns: RegExp[], timeoutMs: number) {
@@ -380,8 +382,8 @@ async function startRide(requestedPhone: string | null) {
   if (!waitForPhoneLog(phone.serial, [/./], JS_START_TIMEOUT_MS)) {
     fail(`${packageName} never started its JS — is Metro running (\`bun run start\`)?`)
   }
-  let outcome: string | null = null
-  for (let attempt = 0; attempt < RIDE_ATTEMPTS && !outcome; attempt++) {
+  let received: string | null = null
+  for (let attempt = 0; attempt < RIDE_ATTEMPTS && !received; attempt++) {
     run([
       'adb',
       '-s',
@@ -395,13 +397,19 @@ async function startRide(requestedPhone: string | null) {
       `'${watchRideUrl('vescape')}'`,
       packageName,
     ])
-    outcome = waitForPhoneLog(
+    received = waitForPhoneLog(
       phone.serial,
-      [/\[watch-ride\] .* running/, /\[watch-ride\] failed/],
+      [/\[watch-ride\] .* received/],
       RIDE_ATTEMPT_TIMEOUT_MS,
     )
   }
-  if (!outcome) fail('the phone never reported the ride — is this a dev build on Metro?')
+  if (!received) fail('the phone never received the ride link — is this a dev build on Metro?')
+  const outcome = waitForPhoneLog(
+    phone.serial,
+    [/\[watch-ride\] .* running/, /\[watch-ride\] failed/],
+    RIDE_START_TIMEOUT_MS,
+  )
+  if (!outcome) fail('the phone received the ride link but never reported it running')
   if (outcome.includes('failed')) fail(outcome)
   console.log(`\nwear: ${outcome.trim()}`)
   console.log(

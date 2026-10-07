@@ -536,6 +536,8 @@ function mapTileKeys(fixtures: LaneSample[][]): string[] {
   return [...keys].sort()
 }
 
+const MAP_TILE_FETCH_TIMEOUT_MS = 30_000
+
 /**
  * Downloads missing tiles from the Static Tiles API, the URL `MapTiles` uses, and drops tiles no
  * longer on the list. The token is read here only and never written anywhere.
@@ -549,10 +551,17 @@ async function syncMapTiles(keys: string[]): Promise<void> {
     if (existsSync(file)) continue
     if (!token) throw new Error(`map tile ${key} is missing; set EXPO_PUBLIC_MAPBOX_ACCESS_TOKEN`)
     const url = `https://api.mapbox.com/styles/v1/${MAP_STYLE}/tiles/512/${key}.jpeg?access_token=${token}`
-    const response = await fetch(url)
+    // A network error carries the request URL, and with it the token: only its name goes out.
+    const hideUrl = (error: unknown): never => {
+      throw new Error(`map tile ${key}: ${error instanceof Error ? error.name : 'fetch failed'}`)
+    }
+    const response = await fetch(url, {
+      signal: AbortSignal.timeout(MAP_TILE_FETCH_TIMEOUT_MS),
+    }).catch(hideUrl)
     if (!response.ok) throw new Error(`map tile ${key}: HTTP ${response.status}`)
+    const body = await response.arrayBuffer().catch(hideUrl)
     mkdirSync(join(file, '..'), { recursive: true })
-    writeFileSync(file, Buffer.from(await response.arrayBuffer()))
+    writeFileSync(file, Buffer.from(body))
     downloaded++
   }
   let bytes = 0
