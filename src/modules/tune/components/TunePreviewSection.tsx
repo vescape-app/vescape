@@ -72,7 +72,7 @@ export function TunePreviewSection({ fields, active, visible, children }: TunePr
                       accessibilityLabel="About Tune Preview"
                       onPress={() => setPreviewHelpVisible(true)}
                     >
-                      <QuestionIcon size={14} color={theme.palette.slate.textMuted} weight="bold" />
+                      <QuestionIcon size={14} color={theme.neutral.textMuted} weight="bold" />
                     </Pressable>
                   </View>
                   <Text style={styles.previewToggleDescription}>{TUNE_PREVIEW_DESCRIPTION}</Text>

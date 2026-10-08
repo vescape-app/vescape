@@ -19,7 +19,7 @@ import { liveTelemetryRuntime } from '@/modules/board/lib/liveTelemetryRuntime'
 import { useResolvedSecondaryWidgetSurface } from '@/components/widgets/widgetSurface'
 import { fmtTimeAgo } from '@/helpers/format'
 import { interaction, theme, type ThemeColor } from '@/constants/theme'
-import { useResolvedColor } from '@/hooks/useTheme'
+import { useResolvedColor, useResolvedNeutralColors } from '@/hooks/useTheme'
 
 /** A way into the active board's trouble, offered only while that surface is enabled. */
 export interface BoardSelectorLink {
@@ -159,8 +159,15 @@ function LinksStrip({ links }: { links: StripLink[] }) {
 }
 
 function BoardIcon({ active }: { active: boolean }) {
+  const neutral = useResolvedNeutralColors()
   return (
-    <View style={[styles.boardIcon, active && styles.boardIconActive]}>
+    <View
+      style={[
+        styles.boardIcon,
+        { borderColor: theme.alpha(neutral.border, 0.6) },
+        active && styles.boardIconActive,
+      ]}
+    >
       <LightningIcon
         size={16}
         color={active ? theme.palette.sky.color : theme.neutral.textMuted}
@@ -185,6 +192,7 @@ export function BoardSelectorContent({
   onAddBoard,
   onEditBoard,
 }: BoardSelectorContentProps) {
+  const neutral = useResolvedNeutralColors()
   const cardSurface = useResolvedSecondaryWidgetSurface()
   const active = boards.find((b) => b.id === activeBoardId)
   const others = boards.filter((b) => b.id !== active?.id)
@@ -286,7 +294,7 @@ export function BoardSelectorContent({
           accessibilityRole="button"
           accessibilityLabel="Add new board"
         >
-          <View style={styles.addIcon}>
+          <View style={[styles.addIcon, { borderColor: theme.alpha(neutral.border, 0.6) }]}>
             <PlusIcon size={16} color={theme.palette.sky.color} weight="bold" />
           </View>
           <Text style={styles.addText}>Add new board</Text>
@@ -295,7 +303,9 @@ export function BoardSelectorContent({
 
       {accessories ? (
         <>
-          <View style={styles.sectionDivider} />
+          <View
+            style={[styles.sectionDivider, { backgroundColor: theme.alpha(neutral.border, 0.6) }]}
+          />
           {accessories}
         </>
       ) : null}
@@ -333,7 +343,6 @@ const styles = StyleSheet.create({
   sectionDivider: {
     height: StyleSheet.hairlineWidth * 2,
     alignSelf: 'stretch',
-    backgroundColor: theme.alpha(theme.neutral.border, 0.6),
     marginTop: 8,
     marginBottom: 10,
   },
@@ -368,7 +377,6 @@ const styles = StyleSheet.create({
     height: 32,
     borderRadius: 8,
     borderWidth: 1,
-    borderColor: theme.alpha(theme.neutral.border, 0.6),
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -468,7 +476,6 @@ const styles = StyleSheet.create({
     height: 32,
     borderRadius: 8,
     borderWidth: 1,
-    borderColor: theme.alpha(theme.neutral.border, 0.6),
     alignItems: 'center',
     justifyContent: 'center',
   },

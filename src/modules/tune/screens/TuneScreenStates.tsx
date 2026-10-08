@@ -112,7 +112,7 @@ const styles = StyleSheet.create({
     padding: 24,
   },
   stateText: {
-    color: theme.palette.slate.textSecondary,
+    color: theme.neutral.textSecondary,
     fontSize: 15,
   },
   errorText: {

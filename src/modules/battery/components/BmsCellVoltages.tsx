@@ -206,7 +206,7 @@ function statColor(tone: 'min' | 'max' | 'neutral'): ThemeColor {
     ? theme.status.warning.text
     : tone === 'max'
       ? theme.palette.yellow.text
-      : theme.palette.slate.textPrimary
+      : theme.neutral.textPrimary
 }
 
 /**
@@ -356,7 +356,7 @@ const styles = StyleSheet.create({
   statLabel: {
     flex: 1,
     textAlign: 'center',
-    color: theme.palette.slate.textMuted,
+    color: theme.neutral.textMuted,
     fontSize: 9,
     fontWeight: '700',
     letterSpacing: 0.5,

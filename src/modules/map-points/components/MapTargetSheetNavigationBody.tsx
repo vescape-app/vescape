@@ -100,7 +100,7 @@ function PathFacts({
   if (computing) {
     return (
       <View style={styles.pathFacts}>
-        <ActivityIndicator size="small" color={theme.palette.slate.textSecondary} />
+        <ActivityIndicator size="small" color={theme.neutral.textSecondary} />
         <Text style={styles.pathFactText}>Finding a path…</Text>
       </View>
     )
@@ -121,11 +121,11 @@ function PathFacts({
 
   return (
     <View style={styles.pathFacts}>
-      <PathIcon size={16} color={theme.palette.slate.textSecondary} weight="bold" />
+      <PathIcon size={16} color={theme.neutral.textSecondary} weight="bold" />
       <Text style={styles.pathFactText}>{formatDistance(path.distanceMeters)}</Text>
       {path.durationSeconds > 0 ? (
         <>
-          <TimerIcon size={16} color={theme.palette.slate.textSecondary} weight="bold" />
+          <TimerIcon size={16} color={theme.neutral.textSecondary} weight="bold" />
           <Text style={styles.pathFactText}>{fmtRideDuration(path.durationSeconds)}</Text>
         </>
       ) : null}
@@ -153,7 +153,7 @@ const styles = StyleSheet.create({
     height: 22,
   },
   pathFactText: {
-    color: theme.palette.slate.textSecondary,
+    color: theme.neutral.textSecondary,
     fontSize: 12,
     fontWeight: '700',
   },

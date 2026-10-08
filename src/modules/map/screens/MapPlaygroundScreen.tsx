@@ -369,14 +369,14 @@ export function MapPlaygroundScreen() {
 }
 
 const styles = StyleSheet.create({
-  screen: { flex: 1, backgroundColor: theme.palette.slate.bg },
+  screen: { flex: 1, backgroundColor: theme.neutral.bg },
   mapPane: { flex: 1, overflow: 'hidden' },
   map: { flex: 1 },
   panel: {
     flex: 1,
     borderTopWidth: 1,
-    borderTopColor: theme.palette.slate.border,
-    backgroundColor: theme.palette.slate.surface,
+    borderTopColor: theme.neutral.border,
+    backgroundColor: theme.neutral.surface,
   },
   panelContent: { padding: 12, gap: 8, paddingBottom: 32 },
   section: {

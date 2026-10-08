@@ -106,7 +106,7 @@ export function ImuAttitudeDial({ pitch, roll, balancePitch, connected }: ImuAtt
   'use no memo'
   const colors = useResolvedTelemetryColors()
   const offColor = useResolvedColor(theme.palette.pink.color)
-  const ringColor = useResolvedColor(theme.alpha(theme.palette.slate.textDim, 0.4))
+  const ringColor = useResolvedColor(theme.alpha(theme.neutral.textDim, 0.4))
   const offBalance = useDerivedValue(() => {
     const p = pitch.value
     const b = balancePitch.value
@@ -258,7 +258,7 @@ const styles = StyleSheet.create({
   bottomLeft: { bottom: 0, left: 0 },
   bottomRight: { bottom: 0, right: 0 },
   label: {
-    color: theme.palette.slate.textMuted,
+    color: theme.neutral.textMuted,
     fontSize: 11,
     fontWeight: '700',
     letterSpacing: 0.7,

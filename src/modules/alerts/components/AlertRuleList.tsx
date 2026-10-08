@@ -246,7 +246,7 @@ const styles = StyleSheet.create({
     marginTop: 1,
   },
   ruleDetail: {
-    color: theme.palette.slate.textDim,
+    color: theme.neutral.textDim,
     fontSize: 11,
     fontWeight: '500',
     marginTop: 1,

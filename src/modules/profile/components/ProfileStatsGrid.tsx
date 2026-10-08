@@ -43,7 +43,7 @@ const styles = StyleSheet.create({
     paddingVertical: 6,
   },
   value: {
-    color: theme.palette.slate.textPrimary,
+    color: theme.neutral.textPrimary,
     fontSize: 18,
     fontWeight: '700',
     marginTop: 4,
@@ -53,7 +53,7 @@ const styles = StyleSheet.create({
     marginTop: 2,
   },
   label: {
-    color: theme.palette.slate.textMuted,
+    color: theme.neutral.textMuted,
     fontSize: 11,
     fontWeight: '600',
   },

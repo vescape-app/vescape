@@ -37,6 +37,7 @@ import {
 } from '@/modules/history/lib/metricColorScale'
 
 import { RouteSparkline } from '@/modules/history/components/RouteSparkline'
+import { RidePreviewCard } from '@/modules/history/components/RidePreviewCard'
 import type { RoutePoint } from '@/modules/history/lib/routePreview'
 
 const PREVIEW_ROUTES: Record<string, RoutePoint[]> = {
@@ -63,7 +64,7 @@ const PREVIEW_ROUTES: Record<string, RoutePoint[]> = {
 function RouteSparklineShowcase() {
   const [route, setRoute] = useState('corners')
   const [endpoints, setEndpoints] = useState(true)
-  const [map, setMap] = useState(true)
+  const [map, setMap] = useState(false)
   return (
     <ShowcaseCard
       name="RouteSparkline"
@@ -94,6 +95,42 @@ function RouteSparklineShowcase() {
         endpoints={endpoints}
         map={map}
       />
+    </ShowcaseCard>
+  )
+}
+
+function RidePreviewCardShowcase() {
+  const [route, setRoute] = useState('corners')
+  return (
+    <ShowcaseCard
+      name="RidePreviewCard"
+      controls={
+        <ChipRow
+          label="route"
+          options={Object.keys(PREVIEW_ROUTES)}
+          selected={route}
+          onSelect={setRoute}
+        />
+      }
+    >
+      <View style={styles.rideCards}>
+        <RidePreviewCard
+          title="15:29 – 15:30 · 11 Sep 2026"
+          subtitle="1 min · 0.80 km · 23 km/h"
+          routePoints={PREVIEW_ROUTES[route]}
+          color={theme.palette.purple.color}
+          map={false}
+          onPress={() => undefined}
+        />
+        <RidePreviewCard
+          title="Evening ride"
+          subtitle="12 min · 3.45 km"
+          routePoints={PREVIEW_ROUTES[route]}
+          color={theme.palette.amber.color}
+          map={false}
+          onPress={() => undefined}
+        />
+      </View>
     </ShowcaseCard>
   )
 }
@@ -516,6 +553,7 @@ export default function ChartsPage() {
           <ChartStackShowcase />
           <SparklineShowcase />
           <RouteSparklineShowcase />
+          <RidePreviewCardShowcase />
           <LinearGaugeShowcase />
           <ChipRow
             label="units"
@@ -541,4 +579,5 @@ const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: theme.neutral.bg },
   content: { padding: 12, gap: 12, paddingBottom: 40 },
   chartExample: { marginBottom: 10 },
+  rideCards: { flexDirection: 'row', flexWrap: 'wrap', gap: 10 },
 })

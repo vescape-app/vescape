@@ -75,7 +75,7 @@ function ExpandableCircleMenuPreview({
         icon: (
           <ArrowUpIcon
             size={optionIconSize}
-            color={active === 'north' ? theme.palette.green.text : theme.palette.slate.textDim}
+            color={active === 'north' ? theme.palette.green.text : theme.neutral.textDim}
             weight="bold"
           />
         ),
@@ -86,7 +86,7 @@ function ExpandableCircleMenuPreview({
         icon: (
           <NavigationArrowIcon
             size={optionIconSize}
-            color={active === 'gps' ? theme.palette.green.text : theme.palette.slate.textDim}
+            color={active === 'gps' ? theme.palette.green.text : theme.neutral.textDim}
             weight="fill"
           />
         ),
@@ -97,7 +97,7 @@ function ExpandableCircleMenuPreview({
         icon: (
           <ArrowsClockwiseIcon
             size={optionIconSize}
-            color={active === 'free' ? theme.palette.green.text : theme.palette.slate.textDim}
+            color={active === 'free' ? theme.palette.green.text : theme.neutral.textDim}
             weight="bold"
           />
         ),
@@ -141,7 +141,7 @@ const styles = StyleSheet.create({
   },
   variantLabel: {
     alignSelf: 'stretch',
-    color: theme.palette.slate.textSecondary,
+    color: theme.neutral.textSecondary,
     fontFamily: 'monospace',
     fontSize: 11,
     fontWeight: '700',

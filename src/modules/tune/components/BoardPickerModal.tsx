@@ -19,7 +19,7 @@ export function BoardPickerModal({ visible, boards, onSelect, onDismiss }: Board
           <View style={styles.promptHeader}>
             <Text style={styles.promptTitle}>Copy to board</Text>
             <Pressable style={styles.promptCloseBtn} onPress={onDismiss}>
-              <XIcon size={14} color={theme.palette.slate.text} weight="bold" />
+              <XIcon size={14} color={theme.neutral.textPrimary} weight="bold" />
             </Pressable>
           </View>
           {boards.length === 0 ? (

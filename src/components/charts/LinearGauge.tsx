@@ -149,7 +149,7 @@ export function LinearGauge({
 
 /** The footer line under a gauge, shared by gauges set on the same line. */
 export const GAUGE_FOOTER_TEXT = {
-  color: theme.palette.slate.textMuted,
+  color: theme.neutral.textMuted,
   fontSize: 10,
   fontFamily: 'monospace',
   fontWeight: '600',
@@ -157,7 +157,7 @@ export const GAUGE_FOOTER_TEXT = {
 
 const styles = StyleSheet.create({
   wrap: {
-    backgroundColor: theme.palette.slate.surface,
+    backgroundColor: theme.neutral.surface,
     borderRadius: 12,
     paddingVertical: 10,
     paddingHorizontal: 14,
@@ -216,7 +216,7 @@ const styles = StyleSheet.create({
     top: 0,
     bottom: LINE_THICK,
     textAlignVertical: 'center',
-    color: theme.palette.slate.textMuted,
+    color: theme.neutral.textMuted,
     fontSize: 10,
     fontWeight: '600',
     textAlign: 'center',

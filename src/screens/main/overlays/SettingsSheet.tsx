@@ -29,6 +29,7 @@ import { useDatabaseSize } from '@/modules/settings/hooks/useDatabaseSize'
 import { ThemePicker } from '@/modules/settings/components/ThemePicker'
 import { routes } from '@/navigation/routes'
 import { theme, type ThemeColor } from '@/constants/theme'
+import { useResolvedNeutralColors } from '@/hooks/useTheme'
 
 const appVersion = Constants.expoConfig?.version ?? DASH
 
@@ -83,6 +84,7 @@ interface SettingsSheetProps {
  * update, storage), the settings worth one tap, and one door to everything else.
  */
 export function SettingsSheet({ backup, onNavigate }: SettingsSheetProps) {
+  const neutral = useResolvedNeutralColors()
   const secondarySurface = useResolvedSecondaryWidgetSurface()
   const dbSize = useDatabaseSize().bytes
   const appStatus = useAppStatusStore((s) => s.status)
@@ -102,7 +104,7 @@ export function SettingsSheet({ backup, onNavigate }: SettingsSheetProps) {
 
       <View style={[styles.strip, secondarySurface]}>
         <BackupCell backup={backup} onSignIn={() => go(routes.signIn)} />
-        <View style={styles.stripDivider} />
+        <View style={[styles.stripDivider, { backgroundColor: neutral.border }]} />
         <StripCell
           icon={availableUpdate ? ArrowFatLinesUpIcon : CheckCircleIcon}
           accent={availableUpdate ? theme.settingsIcon.update : theme.status.success.color}
@@ -111,7 +113,7 @@ export function SettingsSheet({ backup, onNavigate }: SettingsSheetProps) {
           onPress={() => go(routes.settingsReleaseNotes)}
           accessibilityLabel="Release notes"
         />
-        <View style={styles.stripDivider} />
+        <View style={[styles.stripDivider, { backgroundColor: neutral.border }]} />
         <StripCell
           icon={DatabaseIcon}
           accent={theme.settingsIcon.database}
@@ -164,7 +166,7 @@ function BackupCell({ backup, onSignIn }: { backup: BackupSlot; onSignIn: () => 
     return (
       <StripCell
         icon={ArrowsClockwiseIcon}
-        accent={theme.palette.slate.textMuted}
+        accent={theme.neutral.textMuted}
         value="Sync"
         label="No account"
         dim
@@ -178,7 +180,7 @@ function BackupCell({ backup, onSignIn }: { backup: BackupSlot; onSignIn: () => 
     return (
       <StripCell
         icon={ArrowsClockwiseIcon}
-        accent={theme.palette.slate.textMuted}
+        accent={theme.neutral.textMuted}
         value="Sync"
         label="Unavailable"
         dim
@@ -297,7 +299,6 @@ const styles = StyleSheet.create({
   },
   stripDivider: {
     width: StyleSheet.hairlineWidth * 2,
-    backgroundColor: theme.alpha(theme.neutral.border, 0.6),
   },
   stripValue: {
     color: theme.neutral.textPrimary,

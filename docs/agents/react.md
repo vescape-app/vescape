@@ -10,6 +10,12 @@ Every color must come from the `theme` object in `src/constants/theme.ts`. Never
 
 Use `theme.neutral` for the white/read-only canvas, separators, and neutral copy. Use `theme.control` for interactive surfaces and their foregrounds. Use `theme.palette.<hue>` for adaptive accent text, icons, borders, and small tinted states rendered by React Native. Metric visuals use `theme.telemetry`. Raw `theme.palette.slate` values are fixed dark swatches for map JSON and other non-adaptive assets.
 
+When adding or changing a color, choose its role first: neutral content, navy control, accent, telemetry, or fixed map/chart visual. `theme.palette.slate` is never a shortcut for a dark-looking UI border or surface. Check the edited component in both appearances, including a light → dark switch while it stays mounted.
+
+For a separator, border, or surface that changes with the rider's theme, read the resolved palette inside the component and apply the color in render. A `StyleSheet.create` entry is created once; an iOS native dynamic color captured there can retain the previous forced appearance after a switch. In particular, compute `theme.alpha(neutral.border, 0.6)` from `useResolvedNeutralColors()` during render, rather than storing `theme.alpha(theme.neutral.border, 0.6)` in a static style. Keep geometry in `StyleSheet.create`.
+
+Run `bun run theme:colors:check` as soon as a color edit is in place. It catches new fixed-dark swatches and the known static divider pattern. Run `bun run ts` when changing the boundary between native color objects and string-only renderers. The checker covers these patterns; visual verification covers contrast and mounted transitions.
+
 The adaptive neutral, control, accent, and telemetry tokens are native color objects at runtime. Mapbox, Skia, Reanimated worklets, and string-valued state/options cannot consume them. Use the corresponding hooks from `src/hooks/useTheme.ts`: `useResolvedNeutralColors()`, `useResolvedControlColors()`, `useResolvedAccentColors()`, and `useResolvedTelemetryColors()`. Pass only their plain string values into the renderer or data structure.
 
 Type native-facing color props as `ThemeColor`; keep renderer inputs and persisted colors typed as `string`. Resolve individual tokens with `useResolvedColor`, or `resolveAdaptiveColor(color, appearance)` outside React. Resolve before building color-based grouping keys, too. Casting a token to `string` bypasses this boundary without converting its runtime value.

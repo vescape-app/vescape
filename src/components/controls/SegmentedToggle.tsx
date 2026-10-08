@@ -74,8 +74,8 @@ const styles = StyleSheet.create({
   track: {
     flexDirection: 'row',
     alignSelf: 'flex-start',
-    backgroundColor: theme.alpha(theme.palette.mono.black, 0.3),
-    borderColor: theme.palette.slate.border,
+    backgroundColor: theme.control.background,
+    borderColor: theme.control.border,
     borderWidth: 1,
     borderRadius: 999,
     padding: 3,
@@ -90,12 +90,12 @@ const styles = StyleSheet.create({
     backgroundColor: interaction.pressedBg,
   },
   label: {
-    color: theme.palette.slate.textMuted,
+    color: theme.control.textMuted,
     fontSize: 12,
     fontWeight: '700',
   },
   labelSelected: {
-    color: theme.palette.slate.textPrimary,
+    color: theme.control.text,
   },
   secondaryTrack: {
     backgroundColor: theme.neutral.bg,
