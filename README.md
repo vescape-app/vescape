@@ -99,8 +99,8 @@ CONTEXT.md                   Shared domain language
 
 ## Development
 
-Use the exact Bun version pinned in `package.json` under `packageManager`. Installation and
-Git hooks reject other versions; CI reads the same pin. To install the pinned version on
+Use the Bun version pinned in `package.json` under `packageManager` or a newer stable version.
+Installation and Git hooks reject older versions; CI uses the exact pin. To install that version on
 macOS or Linux:
 
 ```bash
