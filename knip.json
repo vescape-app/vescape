@@ -14,7 +14,7 @@
   "ignoreExportsUsedInFile": true,
   "workspaces": {
     ".": {
-      "entry": ["plugins/**/*"]
+      "entry": ["plugins/**/*", "e2e/flows/**/*.js"]
     },
     "modules/*": {}
   }

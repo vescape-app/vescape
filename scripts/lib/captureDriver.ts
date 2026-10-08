@@ -17,7 +17,7 @@ export type CapturePlatform = 'android' | 'ios'
  * recording; they differ in what they do with the session and therefore in how much of the device
  * they are entitled to pin down.
  */
-export type FixtureRunMode = 'screenshots' | 'smoke'
+export type FixtureRunMode = 'screenshots' | 'smoke' | 'preview'
 
 export const ROOT = join(import.meta.dir, '..', '..')
 export const FIXTURE_ZIP = join(ROOT, 'shared', 'fixtures', 'screenshot-db.zip')
@@ -93,6 +93,7 @@ export async function runOrDie(
   cmd: string[],
   env?: Record<string, string | undefined>,
   timeoutMs?: number,
+  signal?: AbortSignal,
 ): Promise<void> {
   const proc = Bun.spawn(cmd, {
     cwd: ROOT,
@@ -100,6 +101,7 @@ export async function runOrDie(
     stderr: 'inherit',
     ...(timeoutMs ? { timeout: timeoutMs, killSignal: 'SIGKILL' } : {}),
     ...(env ? { env } : {}),
+    ...(signal ? { signal } : {}),
   })
   const code = (await proc.exited) ?? 1
   if (code !== 0) throw new CommandFailed(code, cmd)
@@ -130,7 +132,9 @@ export function fixtureBuildEnv(
   delete env.EXPO_PUBLIC_E2E
   delete env.EXPO_PUBLIC_SCREENSHOTS
   delete env.EXPO_PUBLIC_SMOKE
+  delete env.EXPO_PUBLIC_PREVIEW
   if (mode === 'screenshots') env.EXPO_PUBLIC_SCREENSHOTS = '1'
+  else if (mode === 'preview') env.EXPO_PUBLIC_PREVIEW = '1'
   else env.EXPO_PUBLIC_SMOKE = '1'
   return env
 }

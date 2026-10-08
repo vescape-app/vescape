@@ -6,6 +6,7 @@ import Animated, { useAnimatedStyle, type SharedValue } from 'react-native-reani
 import { DualGaugeIndicator } from '@/modules/board/components/DualGaugeIndicator'
 import { GpsStatusPill } from '@/modules/location/components/GpsStatusPill'
 import { useGpsStatusBadge } from '@/modules/location/hooks/useGpsStatusBadge'
+import { showDevControls } from '@/config/env'
 import { routes } from '@/navigation/routes'
 
 interface LiveHudProps {
@@ -15,7 +16,7 @@ interface LiveHudProps {
 export function LiveHud({ revealProgress }: LiveHudProps) {
   const insets = useSafeAreaInsets()
   // Hangs under the gauges: it qualifies the speed and distance they are showing.
-  const gpsBadge = useGpsStatusBadge()
+  const gpsBadge = useGpsStatusBadge(showDevControls)
   const revealStyle = useAnimatedStyle(() => ({
     transform: [{ translateY: revealProgress ? -52 * revealProgress.value : 0 }],
   }))

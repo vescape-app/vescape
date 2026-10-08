@@ -1,0 +1,24 @@
+# Reuse screenshot fixture boot; fast-forward finishes before the recorder starts.
+appId: ${APP_ID}
+---
+- runFlow: ../fixture/_boot.yaml
+- runScript:
+    file: _recorder.js
+    env:
+      ACTION: dwell
+      MS: ${WARMUP_WAIT_MS}
+# Android's emulator takes longer to drain the replay event backlog and load map tiles.
+- runFlow:
+    when:
+      platform: Android
+    commands:
+      - repeat:
+          times: 3
+          commands:
+            - runScript:
+                file: _recorder.js
+                env:
+                  ACTION: dwell
+                  MS: 30000
+- assertVisible:
+    id: floating-bar-record
