@@ -45,8 +45,6 @@ jobs:
         with:
           node-version: '24'
       - uses: oven-sh/setup-bun@v2
-        with:
-          bun-version: latest
       - run: bun install --frozen-lockfile
       - id: flows
         env:
@@ -78,8 +76,6 @@ jobs:
         with:
           node-version: '24'
       - uses: oven-sh/setup-bun@v2
-        with:
-          bun-version: latest
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
@@ -137,8 +133,6 @@ jobs:
         with:
           node-version: '24'
       - uses: oven-sh/setup-bun@v2
-        with:
-          bun-version: latest
       - id: xcode
         run: |
           echo "version=$({ xcodebuild -version; xcrun --sdk iphonesimulator --show-sdk-version; } | shasum -a 256 | cut -d ' ' -f 1)" >> "$GITHUB_OUTPUT"
@@ -227,8 +221,6 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: oven-sh/setup-bun@v2
-        with:
-          bun-version: latest
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
@@ -294,8 +286,6 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: oven-sh/setup-bun@v2
-        with:
-          bun-version: latest
       - uses: actions/setup-java@v4
         with:
           distribution: temurin

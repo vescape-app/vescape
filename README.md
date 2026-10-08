@@ -99,6 +99,15 @@ CONTEXT.md                   Shared domain language
 
 ## Development
 
+Use the exact Bun version pinned in `package.json` under `packageManager`. Installation and
+Git hooks reject other versions; CI reads the same pin. To install the pinned version on
+macOS or Linux:
+
+```bash
+expected_bun=$(bun -p 'require("./package.json").packageManager.slice(4)')
+curl -fsSL https://bun.com/install | bash -s "bun-v$expected_bun"
+```
+
 Install dependencies:
 
 ```bash

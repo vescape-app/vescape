@@ -44,8 +44,6 @@ jobs:
         with:
           node-version: '24'
       - uses: oven-sh/setup-bun@v2
-        with:
-          bun-version: latest
       - run: bun install --frozen-lockfile
       - run: bun run copy:shared
       - name: Generate iOS project
@@ -90,8 +88,6 @@ jobs:
         with:
           node-version: '24'
       - uses: oven-sh/setup-bun@v2
-        with:
-          bun-version: latest
       - name: Allocate artifact version
         id: release
         run: |

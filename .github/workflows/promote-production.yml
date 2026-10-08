@@ -179,8 +179,6 @@ jobs:
       # .github/workflows/record-released-version.yml.
       - uses: oven-sh/setup-bun@v2
         if: ${{ inputs.operation == 'promote' && steps.phone.outcome == 'success' && steps.wear.outcome == 'success' }}
-        with:
-          bun-version: latest
       - name: Tell the server Android now serves this version
         if: ${{ inputs.operation == 'promote' && steps.phone.outcome == 'success' && steps.wear.outcome == 'success' }}
         continue-on-error: true

@@ -50,8 +50,6 @@ jobs:
         with:
           node-version: '24'
       - uses: oven-sh/setup-bun@v2
-        with:
-          bun-version: latest
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
@@ -96,8 +94,6 @@ jobs:
         with:
           node-version: '24'
       - uses: oven-sh/setup-bun@v2
-        with:
-          bun-version: latest
       - uses: actions/setup-java@v4
         with:
           distribution: temurin

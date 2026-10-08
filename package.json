@@ -9,6 +9,7 @@
   ],
   "main": "expo-router/entry",
   "scripts": {
+    "preinstall": "bun run scripts/check-bun.ts",
     "start": "expo start",
     "postinstall": "bun run release-notes:build && bun run theme:android && bun run copy:shared",
     "prebuild": "expo prebuild",
@@ -125,6 +126,7 @@
     "sharp": "^0.35.4",
     "typescript": "^6"
   },
+  "packageManager": "bun@1.4.2",
   "expo": {
     "install": {
       "exclude": [

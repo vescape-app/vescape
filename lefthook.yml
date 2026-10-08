@@ -10,6 +10,8 @@ post-merge:
 pre-commit:
   parallel: true
   commands:
+    bun-version:
+      run: bun run scripts/check-bun.ts
     format:
       glob: '*.{ts,tsx,json,md,yml,yaml}'
       run: bunx oxfmt {staged_files}
@@ -41,6 +43,8 @@ commit-msg:
 
 pre-push:
   commands:
+    bun-version:
+      run: bun run scripts/check-bun.ts
     commit-policy:
       run: bun run scripts/git-hooks/policy.ts pre-push
       use_stdin: true
