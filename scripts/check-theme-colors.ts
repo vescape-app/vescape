@@ -24,6 +24,18 @@ const fixedDarkUses: Record<string, number> = {
   'src/screens/main/map/RouteZoomFocus.tsx': 3,
 }
 
+// Mapbox's authored One Dark paint values and the satellite backdrop are deliberately
+// fixed. They are map-style data, not UI surfaces that follow the app appearance.
+const fixedMapStyleFiles = new Set([
+  'src/modules/map/constants/oneDarkBaseLayers.ts',
+  'src/modules/map/constants/oneDarkOverlayLayers.ts',
+  'src/modules/map/constants/satelliteDarkLayers.ts',
+  'src/modules/map/constants/satelliteDarkMapStyle.ts',
+])
+
+const rawColorPattern =
+  /^(?:#[\da-f]{3,4}|#[\da-f]{6}|#[\da-f]{8}|(?:rgb|rgba|hsl|hsla)\([^)]*\))$/i
+
 function sourceFiles(directory: string): string[] {
   return readdirSync(directory, { withFileTypes: true }).flatMap((entry) => {
     const path = join(directory, entry.name)
@@ -57,6 +69,15 @@ export function checkThemeColors(source: string, filename: string): string[] {
 
   function visit(node: ts.Node) {
     if (isThemePath(node, 'theme.palette.slate')) fixedDarkCount++
+
+    if (
+      (ts.isStringLiteral(node) || ts.isNoSubstitutionTemplateLiteral(node)) &&
+      rawColorPattern.test(node.text.trim()) &&
+      filename !== 'src/constants/theme.ts' &&
+      !fixedMapStyleFiles.has(filename)
+    ) {
+      report(node, 'define colors in theme.ts or use a reviewed fixed map-style token')
+    }
 
     // Native DynamicColorIOS / PlatformColor values in a static style can keep the
     // previous appearance after a forced in-app switch. This exact divider pattern
