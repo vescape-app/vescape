@@ -72,6 +72,7 @@ async function main() {
   // Expo config and autolinking load process.env in addition to the child-process environment.
   delete process.env.EXPO_PUBLIC_E2E
   delete process.env.EXPO_PUBLIC_SCREENSHOTS
+  delete process.env.EXPO_PUBLIC_PREVIEW
   Object.assign(process.env, env)
 
   if (command === 'fingerprint') {

@@ -283,3 +283,59 @@ Replay warmup covers the first six minutes up front: it plays at 30× against a 
 far into the past, which fills the live window instead of compressing the samples into a fraction of
 it (ADR 0024). The replay recording must be at least as long as the whole run, warmup included,
 since it spends recording too.
+
+## App preview videos
+
+`bun run preview` records a Release fixture build with the platform recorder, then exports H.264
+MP4 footage for a landing page or promo. It reuses screenshot device preparation and the sanitized
+history database. `EXPO_PUBLIC_PREVIEW=1` selects dark appearance and fast-forwards the first eight
+minutes off-camera through the same native replay warmup used by screenshots. The map opens on the
+later western stretch with an established trail and filled charts, then plays recorded BLE/GPS at 1×.
+Normal rider controls, including REC, remain visible.
+
+```sh
+bun run preview --platform ios --device 'iPhone 17 Pro Max'
+bun run preview --platform android --device Medium_Phone
+bun run preview --platform ios --scene ride --no-build
+```
+
+The default `tour` scene holds the live ride for 30 seconds, then visits history and two ride details
+with readable pauses. `--scene ride` captures a minute of the moving dashboard for a landing-page
+hero. `--scene store` captures a shorter tour for the App Store. `--platform both` runs iOS
+then Android; omit the platform to pick. `--replay <name>` changes the recording baked into the
+build. `--no-build` requires a preview build from the current workspace, not a screenshot, smoke,
+development or production app.
+
+Two standalone scenes cover landing-page feature sections:
+
+```sh
+bun run preview --platform ios --scene history --no-build
+bun run preview --platform ios --scene board-alerts --no-build
+```
+
+`history` browses the ride overview and detail, toggles duty cycle and motor temperature, pinches the
+charts, scrubs telemetry, opens full-screen graphs, and saves a named Favorite. `board-alerts`
+changes speed and duty alert presets, expands the live telemetry strip, scrolls through its metrics,
+and opens the live IMU dial and charts. These scenes use `bunx agent-device@0.21.23` for native input,
+including real two-finger pinch gestures that Maestro cannot express. Platform recording and fixture
+preparation are shared with the other scenes. Device automation startup remains outside the footage,
+and the owned automation session closes after each take.
+
+The runner sets native device appearance to dark before launch and restores it after the take.
+
+For `tour`, `ride`, and `store`, Maestro starts/stops recording through a temporary host-local
+callback after app setup. XCTest
+startup and fixture restore stay outside the footage. Android also settles the emulator replay
+backlog and map tiles before recording. Dwell callbacks keep screens readable without
+waiting for continuously changing telemetry to become idle. Android enables touch indicators and
+restores the prior setting on exit. Both platforms retain normal animation speed.
+
+Outputs live under gitignored `previews/<platform>/<scene>/` with unique names. iOS retains the raw
+MOV. The `store` scene additionally exports the full take at 886×1920, 30 fps, H.264 and checks
+the 15–30 second App Store range, keeping footage for editing if the take is outside it. It never truncates or
+accelerates the narrative to make it fit. Both platforms export a smaller silent 720-pixel-wide web MP4 with fast-start metadata.
+Android retains its original full-resolution MP4. The iOS App Store export has a silent stereo AAC
+track; the raw MOV has no audio. The Android recorder has a 180-second cap; Play promo delivery requires a
+YouTube URL rather than uploading this file. Music, titles, cuts and publishing are separate work.
+
+Requires `maestro`, `ffmpeg` and `ffprobe`, plus `adb` for Android or Xcode's `simctl` for iOS.

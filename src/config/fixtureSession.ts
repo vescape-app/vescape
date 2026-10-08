@@ -5,9 +5,8 @@ import { applicationId } from '@/config/appVariant'
 
 /**
  * Fixture staging for a run that boots from canned data instead of a board: which recording to
- * replay, which database backup to restore, and where the runner put it. Two harnesses share it —
- * the store screenshot capture and the smoke run — and neither is named here. The flags that turn
- * those modes on live in `@/config/env`; this file is the plumbing, not the switch.
+ * replay, which database backup to restore, and where the runner put it. Screenshot, preview and
+ * smoke harnesses share this fixture plumbing. The flags that turn those modes on live in `@/config/env`; this file is the plumbing, not the switch.
  *
  * It imports `react-native`, so anything a Node runner also needs belongs in
  * `@/config/replayWarmup` instead.

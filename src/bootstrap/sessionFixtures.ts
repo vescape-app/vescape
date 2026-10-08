@@ -1,9 +1,9 @@
 import { useEffect, useState } from 'react'
 import { restoreDatabase, startDebugReplay, updateSetting } from 'vescape-core'
 
-import { fixtureSession } from '@/config/env'
+import { fixtureSession, previewMode } from '@/config/env'
 import { fixtureDatabaseFile, fixtureReplayName, fixtureUri } from '@/config/fixtureSession'
-import { REPLAY_WARMUP_MS, REPLAY_WARMUP_SPEED } from '@/config/replayWarmup'
+import { PREVIEW_WARMUP_MS, REPLAY_WARMUP_MS, REPLAY_WARMUP_SPEED } from '@/config/replayWarmup'
 
 async function applyFixtures(): Promise<void> {
   if (fixtureDatabaseFile) {
@@ -18,8 +18,13 @@ async function applyFixtures(): Promise<void> {
     // not to the restore — a replay-only build (no fixture zip) records one just the same. It must
     // still come after any restore, because the restore swaps the database settings live in.
     await updateSetting('autoRecording', false)
+    if (previewMode) {
+      await updateSetting('companionPresenceEnabled', false)
+      await updateSetting('autoConnect', false)
+      await updateSetting('themeMode', 'dark')
+    }
     await startDebugReplay(fixtureReplayName, {
-      warmupMs: REPLAY_WARMUP_MS,
+      warmupMs: previewMode ? PREVIEW_WARMUP_MS : REPLAY_WARMUP_MS,
       warmupSpeed: REPLAY_WARMUP_SPEED,
     })
   }

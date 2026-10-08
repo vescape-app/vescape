@@ -44,6 +44,7 @@
     "ss": "bun run scripts/screenshot.ts",
     "e2e": "bun run scripts/e2e.ts",
     "screenshots": "bun run scripts/screenshots.ts",
+    "preview": "bun run scripts/preview.ts",
     "smoke": "bun run scripts/smoke.ts",
     "perf": "bun run scripts/perf-telemetry.ts",
     "test": "bun run theme:android && bun run copy:shared && bun run test:bun && bun run test:android && bun run test:ios",

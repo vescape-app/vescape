@@ -15,3 +15,6 @@
 
 export const REPLAY_WARMUP_MS = 6 * 60_000
 export const REPLAY_WARMUP_SPEED = 30
+
+/** Promo footage opens on the later western stretch, with five minutes of live trail. */
+export const PREVIEW_WARMUP_MS = 8 * 60_000
