@@ -13,6 +13,7 @@ import {
   type CaptureDriver,
   type CapturePlatform,
 } from './lib/captureDriver.ts'
+import { filmFeaturePreview } from './lib/featurePreview.ts'
 import { createIosDriver } from './lib/iosCapture.ts'
 import { PreviewRecording, exportPreview } from './lib/previewRecording.ts'
 import { select } from './lib/select.ts'
@@ -38,7 +39,8 @@ for (let i = 2; i < Bun.argv.length; i++) {
   else if (arg === '--no-build') noBuild = true
   else if (arg === '--scene') {
     scene = value()
-    if (!['tour', 'ride', 'store'].includes(scene)) throw new Error('Expected tour, ride or store')
+    if (!['tour', 'ride', 'store', 'history', 'board-alerts'].includes(scene))
+      throw new Error('Expected tour, ride, store, history or board-alerts')
   } else throw new Error(`Unknown argument: ${arg}`)
 }
 if (device && (!platform || platform === 'both'))
@@ -65,6 +67,14 @@ async function film(driver: CaptureDriver): Promise<void> {
     driver.platform === 'android'
       ? (await capture(adb('shell', 'settings', 'get', 'system', 'show_touches'))).trim()
       : null
+  const appearanceCommand = (...args: string[]) =>
+    driver.platform === 'ios'
+      ? ['xcrun', 'simctl', 'ui', driver.deviceId, 'appearance', ...args]
+      : adb('shell', 'cmd', 'uimode', 'night', ...args)
+  const appearance = (await capture(appearanceCommand())).trim()
+  const oldAppearance =
+    driver.platform === 'ios' ? appearance : /^Night mode: (\w+)$/.exec(appearance)?.[1]
+  if (!oldAppearance) throw new Error(`Could not read device appearance: ${appearance}`)
   const recording = new PreviewRecording(driver, outDir)
   let failure: unknown = null
   // Maestro's JS HTTP client runs on the host. Start only after its driver, launch and fixture
@@ -97,29 +107,35 @@ async function film(driver: CaptureDriver): Promise<void> {
   process.on('SIGINT', cancel)
   process.on('SIGTERM', cancel)
   try {
+    // Native adaptive surfaces and the keyboard must also be dark throughout the take.
+    await runOrDie(appearanceCommand(driver.platform === 'ios' ? 'dark' : 'yes'))
     await driver.setChrome(true)
     if (oldTouches != null)
       await runOrDie(adb('shell', 'settings', 'put', 'system', 'show_touches', '1'))
-    await runOrDie(
-      [
-        'maestro',
-        '--device',
-        driver.deviceId,
-        'test',
-        '-e',
-        `APP_ID=${applicationId}`,
-        '-e',
-        `RECORDER_URL=http://127.0.0.1:${server.port}`,
-        '-e',
-        `RECORDER_TOKEN=${token}`,
-        '-e',
-        `WARMUP_WAIT_MS=${Math.ceil(PREVIEW_WARMUP_MS / REPLAY_WARMUP_SPEED) + 2000}`,
-        join(ROOT, 'e2e', 'flows', 'preview', `${scene}.yaml`),
-      ],
-      undefined,
-      360_000,
-      cancellation.signal,
-    )
+    if (scene === 'history' || scene === 'board-alerts') {
+      await filmFeaturePreview(driver, scene, recording, cancellation.signal)
+    } else {
+      await runOrDie(
+        [
+          'maestro',
+          '--device',
+          driver.deviceId,
+          'test',
+          '-e',
+          `APP_ID=${applicationId}`,
+          '-e',
+          `RECORDER_URL=http://127.0.0.1:${server.port}`,
+          '-e',
+          `RECORDER_TOKEN=${token}`,
+          '-e',
+          `WARMUP_WAIT_MS=${Math.ceil(PREVIEW_WARMUP_MS / REPLAY_WARMUP_SPEED) + 2000}`,
+          join(ROOT, 'e2e', 'flows', 'preview', `${scene}.yaml`),
+        ],
+        undefined,
+        360_000,
+        cancellation.signal,
+      )
+    }
     if (failure) throw failure
   } finally {
     try {
@@ -142,8 +158,12 @@ async function film(driver: CaptureDriver): Promise<void> {
               ),
             )
         } finally {
-          process.off('SIGINT', cancel)
-          process.off('SIGTERM', cancel)
+          try {
+            await runOrDie(appearanceCommand(oldAppearance))
+          } finally {
+            process.off('SIGINT', cancel)
+            process.off('SIGTERM', cancel)
+          }
         }
       }
     }

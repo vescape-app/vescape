@@ -306,7 +306,25 @@ then Android; omit the platform to pick. `--replay <name>` changes the recording
 build. `--no-build` requires a preview build from the current workspace, not a screenshot, smoke,
 development or production app.
 
-Maestro starts/stops recording through a temporary host-local callback after app setup. XCTest
+Two standalone scenes cover landing-page feature sections:
+
+```sh
+bun run preview --platform ios --scene history --no-build
+bun run preview --platform ios --scene board-alerts --no-build
+```
+
+`history` browses the ride overview and detail, toggles duty cycle and motor temperature, pinches the
+charts, scrubs telemetry, opens full-screen graphs, and saves a named Favorite. `board-alerts`
+changes speed and duty alert presets, expands the live telemetry strip, scrolls through its metrics,
+and opens the live IMU dial and charts. These scenes use `bunx agent-device@0.21.23` for native input,
+including real two-finger pinch gestures that Maestro cannot express. Platform recording and fixture
+preparation are shared with the other scenes. Device automation startup remains outside the footage,
+and the owned automation session closes after each take.
+
+The runner sets native device appearance to dark before launch and restores it after the take.
+
+For `tour`, `ride`, and `store`, Maestro starts/stops recording through a temporary host-local
+callback after app setup. XCTest
 startup and fixture restore stay outside the footage. Android also settles the emulator replay
 backlog and map tiles before recording. Dwell callbacks keep screens readable without
 waiting for continuously changing telemetry to become idle. Android enables touch indicators and
