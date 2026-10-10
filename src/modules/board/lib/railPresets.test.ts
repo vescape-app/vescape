@@ -8,6 +8,15 @@ function project(matrix: AttitudeMatrix, x: number, y: number) {
 }
 
 describe('IMU rail silhouettes', () => {
+  test('asymmetric rails face right in picker and IMU preview', () => {
+    const tail = railPreset('tail')
+    expect(tail.points[0]).toEqual([29, 27])
+    expect(tail.points[tail.points.length - 1]).toEqual([179, 31])
+    expect(tail.path).toStartWith('M29 27')
+    const face = railSideFace('tail')
+    expect(face[0]![1]).toBeGreaterThan(face[tail.points.length - 1]![1])
+  })
+
   test('each picker preset produces its own closed side face', () => {
     const outlines = RAILS.map(({ id, points }) => {
       const face = railSideFace(id)

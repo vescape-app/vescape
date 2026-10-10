@@ -58,10 +58,11 @@ const PRESETS = [
 
 export type RailId = (typeof PRESETS)[number]['id']
 
-export const RAILS = PRESETS.map((preset) => ({
-  ...preset,
-  path: buildRailPath(preset.points as readonly RailPoint[], []),
-}))
+/** The generator profiles face left. Mirror them around its 208 px canvas for right-facing boards. */
+export const RAILS = PRESETS.map((preset) => {
+  const points = [...preset.points].reverse().map(([x, y]): RailPoint => [208 - x, y])
+  return { ...preset, points, path: buildRailPath(points, []) }
+})
 
 export function railPreset(id?: string) {
   return RAILS.find((preset) => preset.id === id) ?? RAILS[0]!
