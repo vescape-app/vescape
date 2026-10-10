@@ -28,7 +28,7 @@ export function ProfileStatsSummary({ active = true, action }: ProfileStatsSumma
   const surface = useResolvedSecondaryWidgetSurface()
   const [scope, setScope] = useState<Scope>('total')
   const stats = scope === 'total' ? total : monthly
-  const items = useProfileStatItems(stats, ['distance', 'rides', 'topSpeed', 'longestRide'])
+  const items = useProfileStatItems(stats, ['topSpeed', 'distance', 'longestRide', 'rides'])
 
   return (
     <View
@@ -62,7 +62,7 @@ export function ProfileStatsSummary({ active = true, action }: ProfileStatsSumma
             style={styles.empty}
           />
         ) : (
-          <ProfileStatsGrid items={items} emphasis />
+          <ProfileStatsGrid items={items} emphasis columns={4} />
         )}
       </View>
     </View>
@@ -84,7 +84,7 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
   },
   body: {
-    minHeight: 134,
+    minHeight: 72,
     justifyContent: 'center',
   },
 })

@@ -9,6 +9,7 @@ interface HistoryRideLabelProps {
   details?: string
   compact?: boolean
   tone?: 'default' | 'control'
+  fill?: boolean
 }
 
 /** Shared ride identity hierarchy for the history selector and its session list. */
@@ -18,9 +19,12 @@ export function HistoryRideLabel({
   details,
   compact = false,
   tone = 'default',
+  fill = true,
 }: HistoryRideLabelProps) {
   return (
-    <View style={[styles.content, compact && styles.contentCompact]}>
+    <View
+      style={[styles.content, !fill && styles.contentIntrinsic, compact && styles.contentCompact]}
+    >
       <Text
         style={[
           styles.title,
@@ -58,6 +62,9 @@ const styles = StyleSheet.create({
   },
   contentCompact: {
     gap: 1,
+  },
+  contentIntrinsic: {
+    flex: 0,
   },
   title: {
     color: theme.neutral.textPrimary,

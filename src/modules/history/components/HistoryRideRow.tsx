@@ -7,8 +7,8 @@ import { HistoryRideLabel } from '@/modules/history/components/HistoryRideLabel'
 import { RouteSparkline } from '@/modules/history/components/RouteSparkline'
 import type { RoutePoint } from '@/modules/history/lib/routePreview'
 
-const PREVIEW_WIDTH = 74
-const PREVIEW_HEIGHT = 52
+const PREVIEW_WIDTH = 86
+const ROW_HEIGHT = 88
 
 interface HistoryRideRowProps {
   title: string
@@ -42,15 +42,18 @@ export const HistoryRideRow = forwardRef<View, HistoryRideRowProps>(function His
       ]}
       onPress={onPress}
     >
-      <RouteSparkline
-        points={routePoints}
-        width={PREVIEW_WIDTH}
-        height={PREVIEW_HEIGHT}
-        color={accent ?? (selected ? theme.palette.sky.color : theme.palette.purple.color)}
-        endpoints
-      />
+      <View style={styles.preview}>
+        <RouteSparkline
+          points={routePoints}
+          width={PREVIEW_WIDTH}
+          height={ROW_HEIGHT - 2}
+          color={accent ?? (selected ? theme.palette.sky.color : theme.palette.purple.color)}
+          endpoints
+          style={styles.previewImage}
+        />
+      </View>
       <View style={styles.main}>
-        <HistoryRideLabel title={title} subtitle={subtitle} details={details} />
+        <HistoryRideLabel title={title} subtitle={subtitle} details={details} fill={false} />
       </View>
       <CaretRightIcon size={16} color={theme.neutral.textDim} weight="bold" />
     </Pressable>
@@ -59,15 +62,16 @@ export const HistoryRideRow = forwardRef<View, HistoryRideRowProps>(function His
 
 const styles = StyleSheet.create({
   row: {
+    height: ROW_HEIGHT,
     borderRadius: 12,
     borderWidth: 1,
     borderColor: theme.neutral.border,
     backgroundColor: theme.neutral.surfaceDeep,
-    paddingVertical: 10,
-    paddingHorizontal: 12,
+    paddingRight: 12,
     flexDirection: 'row',
     alignItems: 'center',
     gap: 10,
+    overflow: 'hidden',
   },
   rowSelected: {
     borderColor: theme.palette.sky.color,
@@ -78,5 +82,15 @@ const styles = StyleSheet.create({
   main: {
     flex: 1,
     minWidth: 0,
+    justifyContent: 'center',
+  },
+  preview: {
+    width: PREVIEW_WIDTH,
+    height: ROW_HEIGHT - 2,
+    backgroundColor: theme.control.background,
+    overflow: 'hidden',
+  },
+  previewImage: {
+    borderRadius: 0,
   },
 })

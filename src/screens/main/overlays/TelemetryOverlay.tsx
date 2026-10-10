@@ -62,7 +62,6 @@ interface TelemetryOverlayProps {
   onEnterMapFocus: () => void
   /** Undoes an accidental reveal when the drag turns out to be a pinch. */
   onCancelMapFocus: () => void
-  onEnterWeather: () => void
   onEnterLegalLimits: () => void
   onOpenHistoryRide: (session: HistorySession) => void
   onOpenHistoryFavorite: (favoriteId: string, session: HistorySession) => void
@@ -93,7 +92,6 @@ export function TelemetryOverlay({
   onRetryConnect,
   onEnterMapFocus,
   onCancelMapFocus,
-  onEnterWeather,
   onEnterLegalLimits,
   onOpenHistoryRide,
   onOpenHistoryFavorite,
@@ -215,7 +213,6 @@ export function TelemetryOverlay({
             onAddBoard={onAddBoard}
             onDisconnect={onStopScan}
             onConnect={onRetryConnect}
-            onWeatherPress={onEnterWeather}
             activeNavigationTarget={activeNavigationTarget}
             onNavigationPress={onEnterMapFocus}
             onCancelNavigation={onCancelNavigation}
