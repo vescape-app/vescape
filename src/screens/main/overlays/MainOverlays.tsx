@@ -9,6 +9,7 @@ import type { MapOrientationMode, MapStyleKey } from '@/modules/map/constants/ma
 import type { MapSelection } from '@/modules/map/lib/mapSelection'
 import type { DirectionPoint } from '@/modules/map/store/mapStore'
 import { WeatherMapOverlay } from '@/modules/weather/components/WeatherMapOverlay'
+import { useWeatherStore } from '@/modules/weather/store/weatherStore'
 import { HistoryOverlay, type MainHistoryOverlayProps } from '@/screens/main/history/HistoryOverlay'
 import type { MainMapHandle } from '@/screens/main/map/MainMap'
 import { MapControls } from '@/screens/main/map/MapControls'
@@ -19,8 +20,8 @@ import type { OffscreenMapIndicatorState } from '@/screens/main/map/offscreenMap
 import { useMainScreenStore, type MapSelector } from '@/screens/main/mainScreenStore'
 import type { MainViewState } from '@/screens/main/mainViewState'
 import { MapPointStatusBanner } from '@/modules/map-points/components/MapPointStatusBanner'
-import { useAboveStripBottom } from '@/screens/main/overlays/BottomTelemetryStrip'
 import { TelemetryOverlay } from '@/screens/main/overlays/TelemetryOverlay'
+import { WeatherSidePill } from '@/screens/main/overlays/WeatherSidePill'
 import { useTelemetryPanel } from '@/screens/main/overlays/TelemetryPanel'
 
 const TELEMETRY_FADE_TIMING = { duration: 260 } as const
@@ -91,6 +92,7 @@ export function MainOverlays({
   history,
 }: MainOverlaysProps) {
   const insets = useSafeAreaInsets()
+  const weather = useWeatherStore((s) => s.weather)
   // In the store rather than in state: the map camera frames the route into the space this panel
   // leaves, and it lives in a different tree.
   const panelHeight = useMainScreenStore((s) => s.historyPanelHeight)
@@ -107,7 +109,7 @@ export function MainOverlays({
     dragOpacity.value = withTiming(0, TELEMETRY_FADE_TIMING)
   }, [dragOpacity, mode, revealProgress])
 
-  const aboveStripBottom = useAboveStripBottom()
+  const mapControlsBottom = Math.max(insets.bottom, 12) + 12
   const mapModeTabsTop = Math.max(insets.top, 8)
   const belowMapModeTabsTop = mapModeTabsTop + 48
   const mapTargetBottom = Math.max(insets.bottom, 16) + 16
@@ -139,7 +141,6 @@ export function MainOverlays({
         onRetryConnect={board.onRetryConnect}
         onEnterMapFocus={map.enterMapFocus}
         onCancelMapFocus={map.cancelMapFocus}
-        onEnterWeather={map.enterWeather}
         onEnterLegalLimits={map.enterLegalLimits}
         onOpenHistoryRide={history.selectRide}
         onOpenHistoryFavorite={history.selectFavoriteRide}
@@ -147,6 +148,16 @@ export function MainOverlays({
         activeNavigationTarget={map.activeNavigationTarget}
         onCancelNavigation={map.onCancelNavigation}
       />
+
+      {weather && (mode === 'telemetry' || mode === 'map') ? (
+        <WeatherSidePill
+          icon={weather.icon}
+          temperature={weather.temperatureC}
+          precipProbability={weather.precipitationProbability}
+          verticalOffset={insets.top / 2}
+          onPress={map.enterWeather}
+        />
+      ) : null}
 
       {isMapMode ? (
         <MapModeTabs
@@ -165,7 +176,7 @@ export function MainOverlays({
         mapRef={mapRef}
         mapInteractionHandlerRef={mapInteractionHandlerRef}
         top={mapModeTabsTop}
-        bottom={aboveStripBottom - 112}
+        bottom={mapControlsBottom}
         sheetBottom={mapTargetBottom}
         searchProximity={map.weatherLocation}
         directionPoint={map.directionPoint}

@@ -19,7 +19,7 @@ import { FavoriteRideCard } from '@/modules/history/components/FavoriteRideCard'
 import { RidePreviewCard } from '@/modules/history/components/RidePreviewCard'
 import { HistorySessionSheet } from '@/modules/history/components/HistorySessionSheet'
 import { favoriteSessionId, favoriteToSession } from '@/modules/history/lib/favorites'
-import { formatRideListDateTime } from '@/modules/history/lib/rideFormat'
+import { formatRideDate, formatRideTime } from '@/modules/history/lib/rideFormat'
 import { isLiveRide, rideMovingWindow, type HistorySession } from '@/modules/history/lib/sessions'
 import { useHistoryAutoRefresh } from '@/modules/history/hooks/useHistoryAutoRefresh'
 import { useFavoriteStore, type Favorite } from '@/modules/history/store/favoriteStore'
@@ -179,6 +179,7 @@ export function HistoryDrawer({
           ) : (
             <ScrollView
               horizontal
+              style={styles.cardScroll}
               showsHorizontalScrollIndicator={false}
               contentContainerStyle={styles.cardList}
             >
@@ -195,11 +196,12 @@ export function HistoryDrawer({
                   <RidePreviewCard
                     key={session.id}
                     testID={index === 0 ? 'history-latest-ride' : undefined}
-                    title={formatRideListDateTime(
+                    title={formatRideTime(
                       window.startMs,
                       window.endMs,
                       isLiveRide(session, Date.now()),
                     )}
+                    date={formatRideDate(window.startMs, window.endMs)}
                     subtitle={details}
                     routePoints={session.routePoints}
                     color={theme.palette.purple.color}
@@ -252,6 +254,7 @@ export function HistoryDrawer({
           ) : (
             <ScrollView
               horizontal
+              style={styles.cardScroll}
               showsHorizontalScrollIndicator={false}
               contentContainerStyle={styles.cardList}
             >
@@ -315,7 +318,10 @@ const styles = StyleSheet.create({
   },
   cardList: {
     gap: 10,
-    paddingRight: 12,
+    paddingHorizontal: 24,
+  },
+  cardScroll: {
+    marginHorizontal: -24,
   },
   placeholder: {
     minHeight: 170,

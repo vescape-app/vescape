@@ -1,4 +1,3 @@
-import { DropIcon } from 'phosphor-react-native'
 import { Pressable, StyleSheet, View } from 'react-native'
 import { Canvas, Circle, Path, Skia, useClock } from '@shopify/react-native-skia'
 import { useDerivedValue, type SharedValue } from 'react-native-reanimated'
@@ -124,7 +123,6 @@ export function WeatherSidePill({
         <Text style={styles.temperature}>{temperature}°</Text>
         {precipProbability != null && precipProbability > 0 ? (
           <View style={styles.precipitation}>
-            <DropIcon size={9} color={theme.palette.sky.color} weight="duotone" />
             <Text style={styles.precipitationText}>{precipProbability}%</Text>
           </View>
         ) : null}
@@ -136,6 +134,7 @@ export function WeatherSidePill({
 const styles = StyleSheet.create({
   pill: {
     position: 'absolute',
+    zIndex: 43,
     top: '50%',
     right: 12,
     width: PILL_WIDTH,

@@ -38,6 +38,7 @@ import {
 
 import { RouteSparkline } from '@/modules/history/components/RouteSparkline'
 import { RidePreviewCard } from '@/modules/history/components/RidePreviewCard'
+import { HistoryRideRowShowcase } from '@/screens/showcase/history/HistoryRideRowShowcase'
 import type { RoutePoint } from '@/modules/history/lib/routePreview'
 
 const PREVIEW_ROUTES: Record<string, RoutePoint[]> = {
@@ -115,7 +116,8 @@ function RidePreviewCardShowcase() {
     >
       <View style={styles.rideCards}>
         <RidePreviewCard
-          title="15:29 – 15:30 · 11 Sep 2026"
+          title="15:29 – 15:30"
+          date="11 Sep 2026"
           subtitle="1 min · 0.80 km · 23 km/h"
           routePoints={PREVIEW_ROUTES[route]}
           color={theme.palette.purple.color}
@@ -124,6 +126,7 @@ function RidePreviewCardShowcase() {
         />
         <RidePreviewCard
           title="Evening ride"
+          date="10 Oct 2026"
           subtitle="12 min · 3.45 km"
           routePoints={PREVIEW_ROUTES[route]}
           color={theme.palette.amber.color}
@@ -554,6 +557,7 @@ export default function ChartsPage() {
           <SparklineShowcase />
           <RouteSparklineShowcase />
           <RidePreviewCardShowcase />
+          <HistoryRideRowShowcase />
           <LinearGaugeShowcase />
           <ChipRow
             label="units"
