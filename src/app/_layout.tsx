@@ -235,6 +235,10 @@ function RootLayout() {
                   name={stackScreens.devMapPlayground}
                   options={{ title: 'Camera playground' }}
                 />
+                <Stack.Screen
+                  name={stackScreens.devRailGeneratorPrototype}
+                  options={{ title: 'Rail generator prototype' }}
+                />
                 <Stack.Screen name={stackScreens.historyCharts} options={{ headerShown: false }} />
                 <Stack.Screen
                   name={stackScreens.controlBatteryRaw}

@@ -3,6 +3,7 @@ import { SafeAreaView } from 'react-native-safe-area-context'
 import { router } from 'expo-router'
 import {
   CameraRotateIcon,
+  PathIcon,
   CodeIcon,
   RecordIcon,
   SwatchesIcon,
@@ -37,6 +38,13 @@ const DEV_PAGE_SHORTCUTS = [
     route: routes.devMapPlayground,
     icon: CameraRotateIcon,
     iconColor: theme.palette.violet.color,
+  },
+  {
+    label: 'Rail generator prototype',
+    hint: 'Build and copy rail profile point presets',
+    route: routes.devRailGeneratorPrototype,
+    icon: PathIcon,
+    iconColor: theme.palette.cyan.color,
   },
   {
     label: 'Other',
