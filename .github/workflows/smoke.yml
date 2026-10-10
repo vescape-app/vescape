@@ -232,7 +232,7 @@ jobs:
           path: .expo/smoke
       - name: Install Maestro
         run: |
-          curl -Ls https://get.maestro.mobile.dev | bash
+          PATH="$HOME/.maestro/bin:$PATH" bun run maestro:setup
           echo "$HOME/.maestro/bin" >> "$GITHUB_PATH"
       - name: Enable KVM
         run: |
@@ -299,7 +299,7 @@ jobs:
         run: tar -xzf .expo/smoke/smoke-ios.tar.gz -C .expo/smoke
       - name: Install Maestro
         run: |
-          curl -Ls https://get.maestro.mobile.dev | bash
+          PATH="$HOME/.maestro/bin:$PATH" bun run maestro:setup
           echo "$HOME/.maestro/bin" >> "$GITHUB_PATH"
       - name: Run isolated flow
         # Include fresh simulator startup and Maestro's XCTest shutdown, not just assertions.

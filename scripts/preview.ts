@@ -5,6 +5,7 @@ import { join } from 'path'
 import { PREVIEW_WARMUP_MS, REPLAY_WARMUP_SPEED } from '../src/config/replayWarmup.ts'
 
 import { applicationId } from '../src/config/appVariant.ts'
+import { maestroCommand } from './lib/maestro.ts'
 import { createAndroidDriver } from './lib/androidCapture.ts'
 import {
   capture,
@@ -116,8 +117,7 @@ async function film(driver: CaptureDriver): Promise<void> {
       await filmFeaturePreview(driver, scene, recording, cancellation.signal)
     } else {
       await runOrDie(
-        [
-          'maestro',
+        await maestroCommand(
           '--device',
           driver.deviceId,
           'test',
@@ -130,7 +130,7 @@ async function film(driver: CaptureDriver): Promise<void> {
           '-e',
           `WARMUP_WAIT_MS=${Math.ceil(PREVIEW_WARMUP_MS / REPLAY_WARMUP_SPEED) + 2000}`,
           join(ROOT, 'e2e', 'flows', 'preview', `${scene}.yaml`),
-        ],
+        ),
         undefined,
         360_000,
         cancellation.signal,

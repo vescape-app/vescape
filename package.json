@@ -44,6 +44,7 @@
     "map:publish-thumbnail-style": "bun run scripts/publish-map-thumbnail-style.ts",
     "skills-check": "bun run scripts/skills-check.ts",
     "ss": "bun run scripts/screenshot.ts",
+    "maestro:setup": "bun run scripts/setup-maestro.ts",
     "e2e": "bun run scripts/e2e.ts",
     "screenshots": "bun run scripts/screenshots.ts",
     "preview": "bun run scripts/preview.ts",

@@ -2,9 +2,13 @@
 
 Maestro flows exercise the installed app like a user: tap, type, assert visible UI.
 
+Maestro is pinned in `.maestro-version`. CI installs that version, and repository runners reject
+a missing or different version before invoking Maestro. Run `bun run maestro:setup` after changing
+the pin or when the version check asks for it.
+
 ## Local Android
 
-1. Install Maestro CLI: https://docs.maestro.dev/getting-started/installing-maestro
+1. Install the pinned Maestro CLI: `bun run maestro:setup`
 2. Start an emulator.
 3. Build/install the app in E2E mode:
 

@@ -1,6 +1,7 @@
 import { readdirSync } from 'fs'
 import { basename, join } from 'path'
 import { applicationId } from '../src/config/appVariant.ts'
+import { maestroCommand } from './lib/maestro.ts'
 import { select, SelectCancelled } from './lib/select.ts'
 
 const ROOT = join(import.meta.dir, '..')
@@ -61,7 +62,14 @@ function flowPath(flow: string): string {
 
 async function runFlow(flow: string): Promise<void> {
   const proc = Bun.spawn(
-    ['maestro', 'test', '-e', `APP_ID=${applicationId}`, '-e', `E2E_FLOW=${flow}`, flowPath(flow)],
+    await maestroCommand(
+      'test',
+      '-e',
+      `APP_ID=${applicationId}`,
+      '-e',
+      `E2E_FLOW=${flow}`,
+      flowPath(flow),
+    ),
     {
       cwd: ROOT,
       stdout: 'inherit',

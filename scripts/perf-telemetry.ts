@@ -22,6 +22,7 @@
 import { join } from 'path'
 import { mkdirSync, writeFileSync, readFileSync } from 'fs'
 import { applicationId } from '../src/config/appVariant.ts'
+import { maestroCommand } from './lib/maestro.ts'
 
 const ROOT = join(import.meta.dir, '..')
 const PKG = applicationId
@@ -194,7 +195,7 @@ async function getClkTck(device: string): Promise<number> {
 
 async function runSetup(): Promise<void> {
   console.log('› Setup: connecting board via Maestro (_perf-home.yaml)…')
-  const proc = Bun.spawn(['maestro', 'test', '-e', `APP_ID=${applicationId}`, PERF_FLOW], {
+  const proc = Bun.spawn(await maestroCommand('test', '-e', `APP_ID=${applicationId}`, PERF_FLOW), {
     cwd: ROOT,
     stdout: 'inherit',
     stderr: 'inherit',
