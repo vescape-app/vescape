@@ -25,7 +25,7 @@ export function ChartGestureHint({ compact = false }: { compact?: boolean }) {
     <View style={[styles.row, compact && styles.rowCompact]}>
       {HINTS.map(({ icon: HintIcon, label }) => (
         <View key={label} style={styles.hint}>
-          <HintIcon size={compact ? 9 : 12} color={theme.palette.slate.textMuted} weight="bold" />
+          <HintIcon size={compact ? 9 : 12} color={theme.neutral.textMuted} weight="bold" />
           <Text style={[styles.label, compact && styles.labelCompact]}>{label}</Text>
         </View>
       ))}
@@ -52,7 +52,7 @@ const styles = StyleSheet.create({
     gap: 4,
   },
   label: {
-    color: theme.palette.slate.textMuted,
+    color: theme.neutral.textMuted,
     fontSize: 11,
     letterSpacing: 0.3,
   },

@@ -16,6 +16,7 @@
     "native:sync": "bun run scripts/native-sync.ts",
     "theme:android": "bun run scripts/generate-android-theme.ts",
     "theme:android:check": "bun run scripts/generate-android-theme.ts --check",
+    "theme:colors:check": "bun run scripts/check-theme-colors.ts",
     "android": "bun run scripts/android.ts",
     "android:emulator": "bun run scripts/android-emulator.ts",
     "android:up": "bun run scripts/wear.ts up",
@@ -62,8 +63,8 @@
     "release-notes:author": "bun run scripts/release-notes/author.ts",
     "release-notes:build": "bun run scripts/release-notes/generate.ts",
     "release-notes:check": "bun run scripts/release-notes/generate.ts --check",
-    "check": "bun run release-notes:check && bun run theme:android:check && bun run ts && bun run lint && bun run format:check && bun run knip && bun run test",
-    "check:ci": "bun run release-notes:check && bun run theme:android:check && bun run ts && bun run lint && bun run format:check && bun run knip && bun run test:ci",
+    "check": "bun run release-notes:check && bun run theme:android:check && bun run theme:colors:check && bun run ts && bun run lint && bun run format:check && bun run knip && bun run test",
+    "check:ci": "bun run release-notes:check && bun run theme:android:check && bun run theme:colors:check && bun run ts && bun run lint && bun run format:check && bun run knip && bun run test:ci",
     "knip": "knip"
   },
   "dependencies": {

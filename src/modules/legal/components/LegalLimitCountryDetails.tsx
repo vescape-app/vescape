@@ -225,7 +225,7 @@ const styles = StyleSheet.create({
     borderRadius: 15,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: theme.alpha(theme.palette.slate.light, 0.12),
+    backgroundColor: theme.alpha(theme.neutral.textSecondary, 0.12),
   },
   detailText: {
     flex: 1,

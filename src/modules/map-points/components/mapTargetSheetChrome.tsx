@@ -389,7 +389,7 @@ const styles = StyleSheet.create({
     borderRadius: 22,
     borderCurve: 'continuous',
     borderWidth: 1,
-    borderColor: theme.alpha(theme.palette.slate.light, 0.3),
+    borderColor: theme.alpha(theme.neutral.textSecondary, 0.3),
     backgroundColor: theme.alpha(theme.neutral.surfaceDeep, 0.85),
   },
   voteCount: {

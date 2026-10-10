@@ -98,7 +98,7 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
     backgroundColor: theme.alpha(theme.neutral.surfaceDeep, 0.85),
     borderWidth: 1,
-    borderColor: theme.alpha(theme.palette.slate.light, 0.3),
+    borderColor: theme.alpha(theme.neutral.textSecondary, 0.3),
   },
   mapFilterMenuAttached: {
     borderBottomLeftRadius: 5,
@@ -118,7 +118,7 @@ const styles = StyleSheet.create({
     right: 0,
     bottom: 0,
     height: 1,
-    backgroundColor: theme.alpha(theme.palette.slate.light, 0.3),
+    backgroundColor: theme.alpha(theme.neutral.textSecondary, 0.3),
   },
   mapFilterRowHidden: {
     opacity: 0.38,
@@ -130,7 +130,7 @@ const styles = StyleSheet.create({
   },
   mapFilterButtonAttached: {
     backgroundColor: theme.alpha(theme.neutral.surfaceDeep, 0.85),
-    borderColor: theme.alpha(theme.palette.slate.light, 0.3),
+    borderColor: theme.alpha(theme.neutral.textSecondary, 0.3),
     borderTopLeftRadius: 5,
     borderTopRightRadius: 5,
     borderBottomLeftRadius: 27,

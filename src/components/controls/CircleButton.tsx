@@ -30,7 +30,6 @@ interface CircleButtonProps {
 }
 
 const toneTokens = {
-  slate: theme.palette.slate,
   sky: theme.palette.sky,
   green: theme.palette.green,
   amber: theme.palette.amber,

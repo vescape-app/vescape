@@ -26,8 +26,8 @@ export function TickText({
   value,
   decimals,
   unit,
-  emptyColor = theme.palette.slate.textDim,
-  color = theme.palette.slate.textPrimary,
+  emptyColor = theme.neutral.textDim,
+  color = theme.neutral.textPrimary,
   ...monoProps
 }: TickTextProps) {
   const emptyText = unit?.trim() || DASH
@@ -45,7 +45,7 @@ export function TickText({
   // Skia a plain color string.
   const animatedColor = isSharedValue<string>(color) ? color : null
   const staticColor = useResolvedColor(
-    isSharedValue<string>(color) ? theme.palette.slate.textPrimary : (color as ThemeColor),
+    isSharedValue<string>(color) ? theme.neutral.textPrimary : (color as ThemeColor),
   )
   const resolvedEmptyColor = useResolvedColor(emptyColor)
   const tickColor = useDerivedValue(() => {

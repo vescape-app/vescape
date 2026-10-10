@@ -128,31 +128,38 @@ jobs:
           restore-keys: |
             spm-${{ runner.os }}-
       - name: Prepare an available iOS test simulator
-        timeout-minutes: 7
+        timeout-minutes: 15
         run: |
           bun run - <<'JS'
           import { appendFileSync } from 'node:fs'
 
-          function simctl(args, timeout, capture = false) {
-            const result = Bun.spawnSync(['xcrun', 'simctl', ...args], {
-              stdout: capture ? 'pipe' : 'inherit', stderr: 'inherit', timeout,
-            })
-            if (!result.success) throw new Error(`simctl ${args.join(' ')} failed`)
-            return capture ? result.stdout.toString() : ''
+          function simctl(args, timeout, capture = false, attempts = 1) {
+            for (let attempt = 1; attempt <= attempts; attempt++) {
+              const result = Bun.spawnSync(['xcrun', 'simctl', ...args], {
+                stdout: capture ? 'pipe' : 'inherit', stderr: 'pipe', timeout,
+              })
+              if (result.success) return capture ? result.stdout.toString() : ''
+              console.error(`simctl ${args.join(' ')} attempt ${attempt}/${attempts} failed after ${timeout}ms; exit=${result.exitCode}, signal=${result.signalCode}`)
+              const stderr = result.stderr.toString().trim()
+              if (stderr) console.error(stderr)
+            }
+            throw new Error(`simctl ${args.join(' ')} failed`)
           }
-          const inventory = JSON.parse(simctl(['list', 'devices', 'available', '--json'], 60_000, true))
+          // A hosted macOS runner can still be starting CoreSimulator when this step begins.
+          const inventory = JSON.parse(simctl(['list', 'devices', 'available', '--json'], 120_000, true, 2))
           const selected = Object.entries(inventory.devices)
             .filter(([runtime]) => runtime.includes('.iOS-'))
             .flatMap(([, devices]) => devices)
             .find((device) => device.name === 'iPhone 17' && device.isAvailable)
           if (!selected) {
             console.error(JSON.stringify(inventory, null, 2))
-            simctl(['list', 'runtimes'], 30_000)
+            simctl(['list', 'runtimes'], 60_000)
             throw new Error('No available iPhone 17 simulator on this runner.')
           }
           console.log(`Preparing iPhone 17 (${selected.udid})`)
-          if (selected.state !== 'Booted') simctl(['boot', selected.udid], 180_000)
-          simctl(['bootstatus', selected.udid, '-b'], 180_000)
+          if (selected.state !== 'Booted') simctl(['boot', selected.udid], 300_000)
+          // First boot on a fresh image can spend several minutes migrating system apps.
+          simctl(['bootstatus', selected.udid, '-b'], 600_000)
           appendFileSync(process.env.GITHUB_ENV,
             `IOS_TEST_DESTINATION=platform=iOS Simulator,id=${selected.udid}\n`)
           JS

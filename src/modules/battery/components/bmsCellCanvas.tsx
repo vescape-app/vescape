@@ -167,7 +167,7 @@ function CellRowLayer({
         text={indexText}
         size={INDEX_FONT_SIZE}
         weight="600"
-        color={theme.palette.slate.textDim}
+        color={theme.neutral.textDim}
         align="right"
         x={0}
         y={top}

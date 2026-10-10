@@ -70,7 +70,7 @@ export function MapOrientationSelector({
       activeKey={activeMode}
       activeIcon={activeIcon}
       activeColor={theme.palette.green.color}
-      activeBackground={theme.palette.slate.surfaceDeep}
+      activeBackground={theme.control.background}
       collapsedAccessibilityLabel={`Navigation: ${activeMode === 'northUp' ? 'North up' : activeMode === 'gpsHeading' ? 'GPS heading' : activeMode === 'phoneHeading' ? 'Compass' : 'Free rotate'}`}
       expanded={expanded}
       variant="lightTabs"

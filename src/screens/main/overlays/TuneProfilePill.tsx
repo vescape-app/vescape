@@ -107,10 +107,10 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
   },
   profilePillPressed: {
-    backgroundColor: theme.palette.slate.surface,
+    backgroundColor: theme.neutral.surface,
   },
   profilePillText: {
-    color: theme.palette.slate.textMuted,
+    color: theme.neutral.textMuted,
     fontSize: 12,
     fontWeight: '700',
   },

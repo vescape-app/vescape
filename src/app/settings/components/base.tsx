@@ -269,7 +269,7 @@ function PlaceholderShowcase() {
   const [compact, setCompact] = useState(false)
   const [colorKey, setColorKey] = useState<'muted' | 'sky' | 'error'>('muted')
   const color = {
-    muted: theme.palette.slate.textMuted,
+    muted: theme.neutral.textMuted,
     sky: theme.palette.sky.color,
     error: theme.status.error.color,
   }[colorKey]
@@ -392,7 +392,7 @@ function TickTextShowcase() {
           size={12}
           weight={weight}
           align={align}
-          color={theme.palette.slate.textMuted}
+          color={theme.neutral.textMuted}
           style={styles.tickValue}
         />
       </View>

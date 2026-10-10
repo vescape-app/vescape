@@ -5,6 +5,7 @@ import { AccessoryIcon } from '@/modules/accessories/constants/accessoryIcon'
 import { accessoryStatusCopy } from '@/modules/accessories/lib/accessoryStatus'
 import type { AccessoryLinkPhase } from 'vescape-core'
 import { interaction, theme } from '@/constants/theme'
+import { useResolvedNeutralColors } from '@/hooks/useTheme'
 
 const TONE = {
   success: theme.status.success.color,
@@ -31,6 +32,7 @@ export interface AccessoryRowProps {
  * serves the selector, the showcase, and whatever screen lists Accessories next.
  */
 export function AccessoryRow({ name, detail, phase, needsSetup, onPress }: AccessoryRowProps) {
+  const neutral = useResolvedNeutralColors()
   const copy = accessoryStatusCopy(phase)
   const label = needsSetup ? 'Setup required' : copy.label
   const tone = needsSetup ? TONE.caution : TONE[copy.tone]
@@ -49,7 +51,13 @@ export function AccessoryRow({ name, detail, phase, needsSetup, onPress }: Acces
     >
       {/* One glyph in every state — an Accessory does not become a different thing because its
           link dropped or its setup went stale. The tile's outline carries the state instead. */}
-      <View style={[styles.icon, (live || warn) && { borderColor: theme.alpha(tone, 0.3) }]}>
+      <View
+        style={[
+          styles.icon,
+          { borderColor: theme.alpha(neutral.border, 0.6) },
+          (live || warn) && { borderColor: theme.alpha(tone, 0.3) },
+        ]}
+      >
         <AccessoryIcon
           size={16}
           color={live || warn ? tone : theme.neutral.textMuted}
@@ -105,7 +113,6 @@ const styles = StyleSheet.create({
     height: 32,
     borderRadius: 8,
     borderWidth: 1,
-    borderColor: theme.alpha(theme.neutral.border, 0.6),
     alignItems: 'center',
     justifyContent: 'center',
   },

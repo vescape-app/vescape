@@ -56,7 +56,7 @@ export function TunePreviewHeader({
             <View style={styles.titleRow}>
               <Text style={styles.title}>Tune Preview</Text>
               <Pressable hitSlop={8} onPress={onHelp}>
-                <QuestionIcon size={14} color={theme.palette.slate.textMuted} weight="bold" />
+                <QuestionIcon size={14} color={theme.neutral.textMuted} weight="bold" />
               </Pressable>
             </View>
             <Text style={styles.subtitle}>{description}</Text>
@@ -155,14 +155,14 @@ const styles = StyleSheet.create({
   },
   titleRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
   title: {
-    color: theme.palette.slate.textMuted,
+    color: theme.neutral.textMuted,
     fontSize: 12,
     fontWeight: '700',
     textTransform: 'uppercase',
     letterSpacing: 0.5,
   },
   subtitle: {
-    color: theme.palette.slate.textMuted,
+    color: theme.neutral.textMuted,
     fontSize: 10,
     fontWeight: '600',
   },
@@ -175,7 +175,7 @@ const styles = StyleSheet.create({
     height: SPEED_HEIGHT,
   },
   speedUnit: {
-    color: theme.palette.slate.textMuted,
+    color: theme.neutral.textMuted,
     fontSize: 8,
     fontWeight: '700',
   },

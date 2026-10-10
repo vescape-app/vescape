@@ -274,7 +274,7 @@ export function TunePreview({
                 DECK_CENTER_Y,
               )}
               p2={vec(centerX - DECK_HALF_LENGTH - ZERO_MARKER_GAP, DECK_CENTER_Y)}
-              color={theme.palette.slate.textMuted}
+              color={neutral.textMuted}
               strokeWidth={1.5}
               strokeCap="round"
             />
@@ -284,7 +284,7 @@ export function TunePreview({
                 centerX + DECK_HALF_LENGTH + ZERO_MARKER_GAP + ZERO_MARKER_LENGTH,
                 DECK_CENTER_Y,
               )}
-              color={theme.palette.slate.textMuted}
+              color={neutral.textMuted}
               strokeWidth={1.5}
               strokeCap="round"
             />
@@ -330,12 +330,7 @@ export function TunePreview({
               color={neutral.textSecondary}
               strokeWidth={1}
             />
-            <Path
-              path={ticksPath}
-              style="stroke"
-              color={theme.palette.slate.textMuted}
-              strokeWidth={1}
-            />
+            <Path path={ticksPath} style="stroke" color={neutral.textMuted} strokeWidth={1} />
             <Circle
               cx={centerX}
               cy={GROUND_Y - WHEEL_RADIUS}
@@ -345,17 +340,12 @@ export function TunePreview({
               strokeWidth={1}
             />
             {hillsEnabled ? (
-              <Path
-                path={terrainPath}
-                style="stroke"
-                color={theme.palette.slate.textMuted}
-                strokeWidth={1}
-              />
+              <Path path={terrainPath} style="stroke" color={neutral.textMuted} strokeWidth={1} />
             ) : (
               <Line
                 p1={vec(0, GROUND_Y)}
                 p2={vec(canvasWidth, GROUND_Y)}
-                color={theme.palette.slate.textMuted}
+                color={neutral.textMuted}
                 strokeWidth={1}
               />
             )}
@@ -365,7 +355,7 @@ export function TunePreview({
                 y={GROUND_TO_BOARD_BASELINE_Y}
                 text={groundToBoardAngleStr}
                 font={readoutBoldFont}
-                color={theme.palette.slate.textPrimary}
+                color={neutral.textPrimary}
               />
             )}
           </Canvas>
@@ -380,6 +370,6 @@ const styles = StyleSheet.create({
   canvasWrap: { position: 'relative', height: CANVAS_HEIGHT },
   canvas: { width: '100%', height: CANVAS_HEIGHT },
   unsupported: { height: CANVAS_HEIGHT, alignItems: 'center', justifyContent: 'center', gap: 5 },
-  unsupportedTitle: { color: theme.palette.slate.textPrimary, fontSize: 13, fontWeight: '800' },
-  unsupportedText: { color: theme.palette.slate.textMuted, fontSize: 11 },
+  unsupportedTitle: { color: theme.neutral.textPrimary, fontSize: 13, fontWeight: '800' },
+  unsupportedText: { color: theme.neutral.textMuted, fontSize: 11 },
 })

@@ -37,12 +37,12 @@ export function BoardConfigChangeNoticeModal() {
   )
 }
 const styles = StyleSheet.create({
-  intro: { color: theme.palette.slate.textSecondary, marginBottom: 12 },
+  intro: { color: theme.neutral.textSecondary, marginBottom: 12 },
   row: {
     paddingVertical: 9,
     borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: theme.palette.slate.border,
+    borderBottomColor: theme.neutral.border,
   },
-  label: { color: theme.palette.slate.textPrimary, fontWeight: '700' },
-  change: { color: theme.palette.slate.textSecondary, marginTop: 3 },
+  label: { color: theme.neutral.textPrimary, fontWeight: '700' },
+  change: { color: theme.neutral.textSecondary, marginTop: 3 },
 })

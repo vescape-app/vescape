@@ -77,22 +77,22 @@ export function PitchInputControl({ angleDegrees, active }: PitchInputControlPro
 const styles = StyleSheet.create({
   container: { gap: 5 },
   labels: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-  edgeLabel: { color: theme.palette.slate.textMuted, fontSize: 10, fontWeight: '700' },
+  edgeLabel: { color: theme.neutral.textMuted, fontSize: 10, fontWeight: '700' },
   hint: {
     flex: 1,
-    color: theme.palette.slate.textMuted,
+    color: theme.neutral.textMuted,
     fontSize: 9,
     fontWeight: '600',
     textAlign: 'center',
   },
   trackTouch: { height: 30, justifyContent: 'center' },
-  track: { height: 3, borderRadius: 2, backgroundColor: theme.palette.slate.border },
+  track: { height: 3, borderRadius: 2, backgroundColor: theme.neutral.border },
   centerMark: {
     position: 'absolute',
     left: '50%',
     width: 1,
     height: 10,
-    backgroundColor: theme.palette.slate.textMuted,
+    backgroundColor: theme.neutral.textMuted,
   },
   thumb: {
     position: 'absolute',
@@ -102,6 +102,6 @@ const styles = StyleSheet.create({
     borderRadius: THUMB_SIZE / 2,
     backgroundColor: theme.palette.sky.color,
     borderWidth: 2,
-    borderColor: theme.palette.slate.textPrimary,
+    borderColor: theme.neutral.textPrimary,
   },
 })

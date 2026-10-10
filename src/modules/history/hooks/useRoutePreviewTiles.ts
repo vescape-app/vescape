@@ -35,7 +35,14 @@ const tileKey = (tile: RoutePreviewTile) => `${tile.z}/${tile.x}/${tile.y}`
 async function requestTile(tile: RoutePreviewTile) {
   const key = tileKey(tile)
   if (resolvedUris.has(key)) return
-  const uri = await mapTile(tile.z, tile.x, tile.y)
+  // The route line remains usable when native tiles are unavailable (offline or in an older dev
+  // build). A later mount retries; do not turn a missing thumbnail into an unhandled rejection.
+  let uri: string | null
+  try {
+    uri = await mapTile(tile.z, tile.x, tile.y)
+  } catch {
+    return
+  }
   if (!uri || resolvedUris.has(key)) return
   resolvedUris.set(key, uri)
   version++
