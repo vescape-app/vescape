@@ -11,6 +11,7 @@ import Animated, {
   useAnimatedStyle,
   useSharedValue,
   withRepeat,
+  withSequence,
   withSpring,
   withTiming,
 } from 'react-native-reanimated'
@@ -71,19 +72,31 @@ function RailOutline({
       pitch.value = 0
       yaw.value = 0
       pitch.value = withRepeat(
-        withTiming(360, { duration: 12000, easing: Easing.linear }),
+        withSequence(
+          withTiming(6, { duration: 2000, easing: Easing.inOut(Easing.sin) }),
+          withTiming(-6, { duration: 4000, easing: Easing.inOut(Easing.sin) }),
+          withTiming(0, { duration: 2000, easing: Easing.inOut(Easing.sin) }),
+        ),
         -1,
         false,
       )
       roll.value = withRepeat(
-        withTiming(55, { duration: 5000, easing: Easing.inOut(Easing.sin) }),
+        withSequence(
+          withTiming(12, { duration: 2600, easing: Easing.inOut(Easing.sin) }),
+          withTiming(-12, { duration: 5200, easing: Easing.inOut(Easing.sin) }),
+          withTiming(0, { duration: 2600, easing: Easing.inOut(Easing.sin) }),
+        ),
         -1,
-        true,
+        false,
       )
       yaw.value = withRepeat(
-        withTiming(-38, { duration: 6500, easing: Easing.inOut(Easing.sin) }),
+        withSequence(
+          withTiming(-10, { duration: 3100, easing: Easing.inOut(Easing.sin) }),
+          withTiming(10, { duration: 6200, easing: Easing.inOut(Easing.sin) }),
+          withTiming(0, { duration: 3100, easing: Easing.inOut(Easing.sin) }),
+        ),
         -1,
-        true,
+        false,
       )
     } else {
       cancelAnimation(roll)
