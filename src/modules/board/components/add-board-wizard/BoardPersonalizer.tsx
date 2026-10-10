@@ -57,37 +57,60 @@ function RailOutline({
   muted?: boolean
 }) {
   const pitch = useSharedValue<number | null>(0)
-  const roll = useSharedValue<number | null>(28)
+  const roll = useSharedValue<number | null>(0)
+  const yaw = useSharedValue(0)
+  const yawStyle = useAnimatedStyle(() => ({
+    transform: [{ perspective: 480 }, { rotateY: `${yaw.value}deg` }],
+  }))
   useEffect(() => {
     if (!muted) {
-      roll.value = 28
+      cancelAnimation(roll)
+      cancelAnimation(pitch)
+      cancelAnimation(yaw)
+      roll.value = 0
       pitch.value = 0
+      yaw.value = 0
       pitch.value = withRepeat(
-        withTiming(360, { duration: 9000, easing: Easing.linear }),
+        withTiming(360, { duration: 12000, easing: Easing.linear }),
         -1,
         false,
+      )
+      roll.value = withRepeat(
+        withTiming(55, { duration: 5000, easing: Easing.inOut(Easing.sin) }),
+        -1,
+        true,
+      )
+      yaw.value = withRepeat(
+        withTiming(-38, { duration: 6500, easing: Easing.inOut(Easing.sin) }),
+        -1,
+        true,
       )
     } else {
       cancelAnimation(roll)
       cancelAnimation(pitch)
-      roll.value = 28
+      cancelAnimation(yaw)
+      roll.value = 0
       pitch.value = 0
+      yaw.value = 0
     }
     return () => {
       cancelAnimation(roll)
       cancelAnimation(pitch)
+      cancelAnimation(yaw)
     }
-  }, [muted, pitch, roll])
+  }, [muted, pitch, roll, yaw])
   return (
-    <BoardAttitudeIndicator
-      pitch={pitch}
-      roll={roll}
-      connected
-      muted={muted}
-      railId={railId}
-      railColorId={railColorId}
-      size={112}
-    />
+    <Animated.View style={yawStyle}>
+      <BoardAttitudeIndicator
+        pitch={pitch}
+        roll={roll}
+        connected
+        muted={muted}
+        railId={railId}
+        railColorId={railColorId}
+        size={112}
+      />
+    </Animated.View>
   )
 }
 
