@@ -99,20 +99,18 @@ export function WeatherSidePill({
   icon,
   temperature,
   precipProbability,
-  verticalOffset,
   onPress,
 }: {
   icon: WeatherIconSlug
   temperature: number
   precipProbability: number | null
-  verticalOffset: number
   onPress?: () => void
 }) {
   return (
     <Pressable
       accessibilityLabel={`Weather, ${temperature} degrees`}
       onPress={onPress}
-      style={[styles.pill, { transform: [{ translateY: verticalOffset }] }]}
+      style={styles.pill}
     >
       {icon === 'cloud-rain' && precipProbability != null && precipProbability > 0 ? (
         <RainWaterFill probability={precipProbability} />

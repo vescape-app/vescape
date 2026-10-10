@@ -154,7 +154,6 @@ export function MainOverlays({
           icon={weather.icon}
           temperature={weather.temperatureC}
           precipProbability={weather.precipitationProbability}
-          verticalOffset={insets.top / 2}
           onPress={map.enterWeather}
         />
       ) : null}
