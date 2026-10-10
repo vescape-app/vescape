@@ -16,6 +16,7 @@ on:
       - 'app.config.ts'
       - 'package.json'
       - 'bun.lock'
+      - '.maestro-version'
       - '.github/workflows/smoke.yml'
   workflow_dispatch:
     inputs:
