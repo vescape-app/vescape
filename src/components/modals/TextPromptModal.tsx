@@ -4,6 +4,7 @@ import { Text } from '@/components/base/Text'
 import { CheckIcon } from 'phosphor-react-native'
 import { theme } from '@/constants/theme'
 import { Input } from '@/components/forms/Input'
+import { useResolvedAccentColors } from '@/hooks/useTheme'
 
 interface TextPromptModalContentProps {
   title: string
@@ -14,6 +15,8 @@ interface TextPromptModalContentProps {
   allowEmpty?: boolean
   onConfirm: (value: string) => void
   onDismiss: () => void
+  loading?: boolean
+  error?: string | null
 }
 
 function TextPromptModalContent({
@@ -24,10 +27,13 @@ function TextPromptModalContent({
   allowEmpty,
   onConfirm,
   onDismiss,
+  loading = false,
+  error,
 }: TextPromptModalContentProps) {
+  const accents = useResolvedAccentColors()
   const [text, setText] = useState(initialValue)
   return (
-    <Pressable style={styles.modalBackdrop} onPress={onDismiss}>
+    <Pressable style={styles.modalBackdrop} onPress={loading ? undefined : onDismiss}>
       <Pressable style={styles.promptModal} onPress={(e) => e.stopPropagation()}>
         <Text style={styles.promptTitle}>{title}</Text>
         <Input
@@ -35,20 +41,25 @@ function TextPromptModalContent({
           value={text}
           onChangeText={setText}
           placeholder={placeholder}
-          placeholderTextColor={theme.palette.slate.textDim}
+          placeholderTextColor={theme.neutral.textDim}
           autoFocus
           selectTextOnFocus
+          editable={!loading}
         />
+        {error ? <Text style={styles.error}>{error}</Text> : null}
         <View style={styles.promptActions}>
-          <Pressable style={styles.promptCancelBtn} onPress={onDismiss}>
+          <Pressable style={styles.promptCancelBtn} onPress={onDismiss} disabled={loading}>
             <Text style={styles.promptCancelText}>Cancel</Text>
           </Pressable>
           <Pressable
-            style={styles.promptConfirmBtn}
+            style={[styles.promptConfirmBtn, { backgroundColor: accents.sky.solid }]}
             onPress={() => (allowEmpty || text.trim()) && onConfirm(text.trim())}
+            disabled={loading}
           >
-            <CheckIcon size={15} color={theme.palette.slate.surfaceDeep} weight="bold" />
-            <Text style={styles.promptConfirmText}>{confirmLabel}</Text>
+            <CheckIcon size={15} color={accents.sky.onSolid} weight="bold" />
+            <Text style={[styles.promptConfirmText, { color: accents.sky.onSolid }]}>
+              {confirmLabel}
+            </Text>
           </Pressable>
         </View>
       </Pressable>
@@ -65,6 +76,8 @@ interface TextPromptModalProps {
   allowEmpty?: boolean
   onConfirm: (value: string) => void
   onDismiss: () => void
+  loading?: boolean
+  error?: string | null
 }
 
 export function TextPromptModal({
@@ -76,9 +89,16 @@ export function TextPromptModal({
   allowEmpty,
   onConfirm,
   onDismiss,
+  loading,
+  error,
 }: TextPromptModalProps) {
   return (
-    <Modal visible={visible} transparent animationType="fade" onRequestClose={onDismiss}>
+    <Modal
+      visible={visible}
+      transparent
+      animationType="fade"
+      onRequestClose={loading ? undefined : onDismiss}
+    >
       {visible ? (
         <TextPromptModalContent
           title={title}
@@ -88,6 +108,8 @@ export function TextPromptModal({
           allowEmpty={allowEmpty}
           onConfirm={onConfirm}
           onDismiss={onDismiss}
+          loading={loading}
+          error={error}
         />
       ) : null}
     </Modal>
@@ -104,18 +126,19 @@ const styles = StyleSheet.create({
   },
   promptModal: {
     width: '100%',
-    backgroundColor: theme.palette.slate.surface,
+    backgroundColor: theme.neutral.surface,
     borderRadius: 12,
     borderWidth: 1,
-    borderColor: theme.palette.slate.border,
+    borderColor: theme.neutral.border,
     padding: 16,
     gap: 14,
   },
   promptTitle: {
-    color: theme.palette.slate.textPrimary,
+    color: theme.neutral.textPrimary,
     fontSize: 16,
     fontWeight: '900',
   },
+  error: { color: theme.status.error.text, fontSize: 12 },
   promptInput: {
     fontSize: 16,
     fontWeight: '700',
@@ -130,12 +153,12 @@ const styles = StyleSheet.create({
     paddingHorizontal: 14,
     borderRadius: 8,
     borderWidth: 1,
-    borderColor: theme.palette.slate.border,
+    borderColor: theme.neutral.border,
     alignItems: 'center',
     justifyContent: 'center',
   },
   promptCancelText: {
-    color: theme.palette.slate.textSecondary,
+    color: theme.neutral.textSecondary,
     fontSize: 13,
     fontWeight: '800',
   },
@@ -143,14 +166,12 @@ const styles = StyleSheet.create({
     minHeight: 40,
     paddingHorizontal: 16,
     borderRadius: 8,
-    backgroundColor: theme.palette.sky.color,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
     gap: 6,
   },
   promptConfirmText: {
-    color: theme.palette.slate.surfaceDeep,
     fontSize: 13,
     fontWeight: '900',
   },

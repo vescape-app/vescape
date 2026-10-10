@@ -1,6 +1,9 @@
 import { readdirSync, rmSync } from 'fs'
 import { join } from 'path'
 import { tmpdir } from 'os'
+import { applicationId } from '../src/config/appVariant.ts'
+import { listAdbDevices } from './lib/devices.ts'
+import { devClientUrl } from './lib/devLinks.ts'
 
 const ROOT = join(import.meta.dir, '..')
 
@@ -35,6 +38,11 @@ function run(command: string[]) {
   }
 }
 
+function capture(command: string[]): string {
+  const result = Bun.spawnSync(command, { cwd: ROOT, env: process.env })
+  return result.exitCode === 0 ? new TextDecoder().decode(result.stdout).trim() : ''
+}
+
 console.log('Clearing project caches...')
 for (const path of projectCaches) {
   remove(join(ROOT, path))
@@ -52,3 +60,39 @@ for (const name of readdirSync(tmpdir())) {
 
 run(['./android/gradlew', '-p', 'android', '--stop'])
 run(['./android/gradlew', '-p', 'android', 'clean'])
+
+console.log('\nRepairing Android development tunnels...')
+run(['bun', 'run', 'relay:reverse'])
+
+if (
+  capture(['curl', '-fsS', '--max-time', '1', 'http://127.0.0.1:8081/status']) ===
+  'packager-status:running'
+) {
+  for (const device of listAdbDevices().filter((candidate) => !candidate.isWatch)) {
+    const installed = capture([
+      'adb',
+      '-s',
+      device.serial,
+      'shell',
+      'pm',
+      'list',
+      'packages',
+      applicationId,
+    ]).includes(`package:${applicationId}`)
+    if (!installed) continue
+
+    run([
+      'adb',
+      '-s',
+      device.serial,
+      'shell',
+      'am',
+      'start',
+      '-a',
+      'android.intent.action.VIEW',
+      '-d',
+      devClientUrl('vescape'),
+      applicationId,
+    ])
+  }
+}

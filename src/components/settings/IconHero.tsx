@@ -3,16 +3,16 @@ import { Text } from '@/components/base/Text'
 import type { Icon } from 'phosphor-react-native'
 import type { ReactNode } from 'react'
 
-import { theme } from '@/constants/theme'
+import { theme, type ThemeColor } from '@/constants/theme'
 
-type IconHeroProps = {
+interface IconHeroProps {
   icon?: Icon
   media?: ReactNode
   title?: string
   description?: string
   children?: ReactNode
   iconSize?: number
-  iconColor?: string
+  iconColor?: ThemeColor
   iconWeight?: 'thin' | 'light' | 'regular' | 'bold' | 'fill' | 'duotone'
 }
 
@@ -23,7 +23,7 @@ export function IconHero({
   description,
   children,
   iconSize = 64,
-  iconColor = theme.palette.slate.textMuted,
+  iconColor = theme.neutral.textMuted,
   iconWeight = 'thin',
 }: IconHeroProps) {
   return (
@@ -49,13 +49,13 @@ const styles = StyleSheet.create({
   },
 
   title: {
-    color: theme.palette.slate.textPrimary,
+    color: theme.neutral.textPrimary,
     fontSize: 28,
     fontWeight: '700',
     textAlign: 'center',
   },
   description: {
-    color: theme.palette.slate.textMuted,
+    color: theme.neutral.textMuted,
     fontSize: 14,
     fontWeight: '500',
     textAlign: 'center',

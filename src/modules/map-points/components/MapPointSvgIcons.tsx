@@ -9,11 +9,7 @@ function iconSize(size: string | number | undefined) {
   return typeof size === 'number' ? size : Number(size) || 24
 }
 
-export const BonkMapPointIcon: Icon = ({
-  color = theme.palette.slate.textSecondary,
-  size,
-  style,
-}) => {
+export const BonkMapPointIcon: Icon = ({ color = theme.neutral.textSecondary, size, style }) => {
   const dim = iconSize(size)
   return (
     <Svg width={dim} height={dim} viewBox="0 0 102 100" fill="none" style={style}>
@@ -26,7 +22,7 @@ export const BonkMapPointIcon: Icon = ({
       />
       <Path
         d="M42.8958 79.6807C37.4886 81.3018 34.2443 76.4386 31 72.1158C31 68.3333 35.8665 64.0107 37.4886 60.7686C39.1108 57.5265 49.9251 54.8247 53.7101 51.5826C57.4951 48.3405 67.7687 59.6878 73.7166 59.6878C79.6645 59.6878 79.1238 66.172 80.7459 72.1158C82.3681 78.0597 75.8795 79.6807 71.013 79.6807C66.1466 79.6807 48.3029 78.0597 42.8958 79.6807Z"
-        fill={theme.palette.slate.surfaceDeep}
+        fill={theme.neutral.surfaceDeep}
         stroke={color}
         strokeWidth={STROKE_WIDTH}
         strokeLinecap="round"
@@ -36,11 +32,7 @@ export const BonkMapPointIcon: Icon = ({
   )
 }
 
-export const DropMapPointIcon: Icon = ({
-  color = theme.palette.slate.textSecondary,
-  size,
-  style,
-}) => {
+export const DropMapPointIcon: Icon = ({ color = theme.neutral.textSecondary, size, style }) => {
   const dim = iconSize(size)
   return (
     <Svg width={dim} height={dim} viewBox="0 0 102 100" fill="none" style={style}>
@@ -55,11 +47,7 @@ export const DropMapPointIcon: Icon = ({
   )
 }
 
-export const SlideMapPointIcon: Icon = ({
-  color = theme.palette.slate.textSecondary,
-  size,
-  style,
-}) => {
+export const SlideMapPointIcon: Icon = ({ color = theme.neutral.textSecondary, size, style }) => {
   const dim = iconSize(size)
   return (
     <Svg width={dim} height={dim} viewBox="0 0 102 100" fill="none" style={style}>

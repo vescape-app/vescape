@@ -6,6 +6,7 @@ import {
   nearestBearingTarget,
   normalizeBearing,
   retargetSpring,
+  shortestArcDelta,
   snapSpring,
   springSettled,
   stepSpring,
@@ -140,6 +141,24 @@ const ZOOM_EPSILON = 1e-4
 const ANGLE_EPSILON_DEG = 1e-3
 const PADDING_EPSILON_PX = 0.1
 
+/**
+ * Below these a frame would redraw the map identically, so the write is skipped.
+ *
+ * Every camera write is expensive far out of proportion to its size: the native setter fires
+ * `onCameraChanged` synchronously, which builds an event payload for JS and commits a Core
+ * Animation transform for the compass ornament. In compass mode the heading spring is retargeted
+ * from a 60 Hz sensor and never settles, so those writes run for the whole ride — enough to
+ * exhaust the scene-update watchdog. Dropping the sub-pixel ones costs nothing visually and
+ * removes whole frames rather than making each one cheaper.
+ *
+ * Thresholds are one step under what a pixel can show: ~11 cm of centre, and a rotation that moves
+ * a point at the edge of a phone-width viewport by well under a pixel.
+ */
+const EMIT_CENTER_EPSILON_DEG = 1e-6
+const EMIT_ZOOM_EPSILON = 1e-4
+const EMIT_ANGLE_EPSILON_DEG = 0.02
+const EMIT_PADDING_EPSILON_PX = 0.25
+
 const PADDING_KEYS = ['paddingTop', 'paddingRight', 'paddingBottom', 'paddingLeft'] as const
 
 export interface DriveOptions {
@@ -231,6 +250,8 @@ export function createCameraEngine(config: CameraEngineConfig): CameraEngine {
   let destroyed = false
   /** When the engine last wrote the camera; echoes of that write follow it. */
   let lastEmitMs = Number.NEGATIVE_INFINITY
+  /** The camera of the last write, to measure whether the next one would show. */
+  let lastEmittedCamera: EngineCamera | null = null
   /**
    * A target the app asked for is in flight. The map is not authoritative until
    * it lands: a fling started before the target keeps reporting its own
@@ -274,12 +295,44 @@ export function createCameraEngine(config: CameraEngineConfig): CameraEngine {
     springSettled(s.pitch, ANGLE_EPSILON_DEG, ANGLE_EPSILON_DEG) &&
     s.padding.every((p) => springSettled(p, PADDING_EPSILON_PX, PADDING_EPSILON_PX))
 
-  const emit = (s: EngineSprings) => {
+  /**
+   * True when this frame would land the map somewhere a rider could tell apart from the last one
+   * the engine wrote.
+   */
+  const worthWriting = (camera: EngineCamera) => {
+    const previous = lastEmittedCamera
+    if (!previous) return true
+    return (
+      Math.abs(camera.centerCoordinate[0] - previous.centerCoordinate[0]) >=
+        EMIT_CENTER_EPSILON_DEG ||
+      Math.abs(camera.centerCoordinate[1] - previous.centerCoordinate[1]) >=
+        EMIT_CENTER_EPSILON_DEG ||
+      Math.abs(camera.zoomLevel - previous.zoomLevel) >= EMIT_ZOOM_EPSILON ||
+      Math.abs(shortestArcDelta(camera.heading - previous.heading)) >= EMIT_ANGLE_EPSILON_DEG ||
+      Math.abs(camera.pitch - previous.pitch) >= EMIT_ANGLE_EPSILON_DEG ||
+      PADDING_KEYS.some(
+        (key) =>
+          Math.abs((camera.padding?.[key] ?? 0) - (previous.padding?.[key] ?? 0)) >=
+          EMIT_PADDING_EPSILON_PX,
+      )
+    )
+  }
+
+  /**
+   * `force` writes even an invisible change. The landing frame uses it so the map rests exactly on
+   * target, and the post-landing hold uses it because those writes exist to overwrite a native
+   * fling animator that is still moving the camera underneath — skipping one hands the frame back
+   * to the fling.
+   */
+  const emit = (s: EngineSprings, options?: { force?: boolean }) => {
+    const camera = toCamera(s)
+    if (!options?.force && !worthWriting(camera)) return
     emitting = true
     try {
-      config.applyFrame(toCamera(s))
+      config.applyFrame(camera)
     } finally {
       emitting = false
+      lastEmittedCamera = camera
       lastEmitMs = now()
     }
   }
@@ -338,7 +391,7 @@ export function createCameraEngine(config: CameraEngineConfig): CameraEngine {
         pitch: snapSpring(s.pitch, s.pitch.target),
         padding: s.padding.map((p) => snapSpring(p, p.target)) as EngineSprings['padding'],
       }
-      emit(springs)
+      emit(springs, { force: true })
       // Landing is not arriving: a fling animator the map started before this
       // target is still writing the camera, and it outlives the springs. Keep
       // the loop open for the hold window so every one of those writes is
@@ -403,6 +456,9 @@ export function createCameraEngine(config: CameraEngineConfig): CameraEngine {
         createSpring(padding?.[key] ?? 0),
       ) as EngineSprings['padding'],
     }
+    // The map is already parked here, so the next frame is measured against it rather than being
+    // written unconditionally for want of anything to compare to.
+    lastEmittedCamera = toCamera(springs)
   }
 
   const snap = (target: CameraEngineTarget) => {

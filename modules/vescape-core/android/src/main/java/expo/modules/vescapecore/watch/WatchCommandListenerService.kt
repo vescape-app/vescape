@@ -10,13 +10,18 @@ import expo.modules.vescapecore.service.CoreForegroundService
  * Move from the wrist exists for.
  *
  * The service can wake a cold process, which is harmless: with no live Board Session there is
- * nothing to move and the command is dropped by [CoreForegroundService.watchMove].
+ * nothing to move and no lights to state, so the command is dropped by
+ * [CoreForegroundService.watchMove] / [CoreForegroundService.watchLights].
  */
 class WatchCommandListenerService : WearableListenerService() {
     override fun onMessageReceived(event: MessageEvent) {
         if (event.path != WATCH_COMMAND_PATH) return
         when (val command = WatchCommandDecoder.decode(event.data)) {
             is WatchCommand.Move -> CoreForegroundService.watchMove(command.direction)
+            is WatchCommand.MirrorAwake -> CoreForegroundService.watchMirrorWakeLevel(command.level)
+            is WatchCommand.Lights -> CoreForegroundService.watchLights(command.switch, command.on)
+            is WatchCommand.TiltLock -> CoreForegroundService.watchTiltLock(command.value)
+            WatchCommand.TiltCancel -> CoreForegroundService.watchTiltCancel()
             null -> Unit
         }
     }

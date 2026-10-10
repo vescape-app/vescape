@@ -11,11 +11,10 @@ import android.util.Log
 /** Wall-clock tail after the last recorded chunk before the replay disconnects the session. */
 private const val REPLAY_END_TAIL_MS = 250L
 
-/** One scheduled playback event — board chunk, GPS fix or compass reading — by recorded time. */
+/** One scheduled playback event — board chunk or GPS fix — by recorded time. */
 private sealed class ReplayEvent(val t: Long) {
     class Chunk(val chunk: ReplayChunk) : ReplayEvent(chunk.t)
     class Fix(val fix: ReplayLocation) : ReplayEvent(fix.t)
-    class Heading(val heading: ReplayHeading) : ReplayEvent(heading.t)
 }
 
 /**
@@ -40,7 +39,6 @@ internal class ReplayTransport(
     private val listener: VescGattListener,
     private val dispatchListener: ((() -> Unit) -> Unit),
     private val onLocation: (ReplayLocation) -> Unit,
-    private val onHeading: (ReplayHeading) -> Unit,
     /** The session clock this playback drives; installed by the controller for the session. */
     val clock: ReplayClock,
 ) : SessionTransport {
@@ -56,8 +54,7 @@ internal class ReplayTransport(
                 val jsonl = ReplayRecordings.read(context, recordingName)
                 val chunks = ReplayChunkDecoder.rxChunks(jsonl).map { ReplayEvent.Chunk(it) }
                 val fixes = ReplayChunkDecoder.locations(jsonl).map { ReplayEvent.Fix(it) }
-                val headings = ReplayChunkDecoder.headings(jsonl).map { ReplayEvent.Heading(it) }
-                (chunks + fixes + headings).sortedBy(ReplayEvent::t)
+                (chunks + fixes).sortedBy(ReplayEvent::t)
             } catch (e: Exception) {
                 Log.w(VESC_SESSION_TAG, "replay load failed: ${e.message}")
                 // A stop during background load must not surface as a session failure.
@@ -98,7 +95,6 @@ internal class ReplayTransport(
             when (event) {
                 is ReplayEvent.Chunk -> dispatchListener { listener.onGattFrameChunk(event.chunk.bytes) }
                 is ReplayEvent.Fix -> onLocation(event.fix)
-                is ReplayEvent.Heading -> onHeading(event.heading)
             }
             scheduleNext(events, index + 1)
         }

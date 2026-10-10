@@ -13,22 +13,33 @@ export function isPointOutsideVisibleMapArea(
   return point.x < 0 || point.x > layout.width || point.y < top || point.y > bottom
 }
 
+/** Earth's equatorial radius, the sphere every coordinate offset here is measured on. */
+const EARTH_RADIUS_M = 6_378_137
+
+/** Offset a coordinate by [distanceM] along [headingDeg] (0 = north, clockwise). */
+export function offsetCoordinate(
+  [longitude, latitude]: [number, number],
+  headingDeg: number,
+  distanceM: number,
+): [number, number] {
+  const headingRad = (headingDeg * Math.PI) / 180
+  const latRad = (latitude * Math.PI) / 180
+  const dLat = ((distanceM * Math.cos(headingRad)) / EARTH_RADIUS_M) * (180 / Math.PI)
+  const dLon =
+    ((distanceM * Math.sin(headingRad)) / (EARTH_RADIUS_M * Math.cos(latRad))) * (180 / Math.PI)
+  return [longitude + dLon, latitude + dLat]
+}
+
+const CIRCLE_SEGMENTS = 64
+
 export function makeCircleFeature(
   longitude: number,
   latitude: number,
   radiusM: number,
 ): GeoJSON.Feature<GeoJSON.Polygon> {
-  const earthRadiusM = 6_378_137
-  const latRad = (latitude * Math.PI) / 180
   const coordinates: [number, number][] = []
-  for (let i = 0; i <= 64; i += 1) {
-    const bearing = (i / 64) * Math.PI * 2
-    const latOffset = (radiusM / earthRadiusM) * Math.cos(bearing)
-    const lonOffset = (radiusM / (earthRadiusM * Math.cos(latRad))) * Math.sin(bearing)
-    coordinates.push([
-      longitude + (lonOffset * 180) / Math.PI,
-      latitude + (latOffset * 180) / Math.PI,
-    ])
+  for (let i = 0; i <= CIRCLE_SEGMENTS; i += 1) {
+    coordinates.push(offsetCoordinate([longitude, latitude], (i / CIRCLE_SEGMENTS) * 360, radiusM))
   }
   return {
     type: 'Feature',

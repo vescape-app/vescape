@@ -14,12 +14,12 @@ import {
   CAPTURE_LOCATION,
   FIXTURE_ZIP,
   runOrDie,
-  fixtureBuildEnv,
   warnMissingFixture,
   type CaptureDriver,
   type FixtureRunMode,
 } from './captureDriver.ts'
-import { select, type SelectOption } from './select.ts'
+import { listAdbDevices, pickDevice } from './devices.ts'
+import { buildAndroidFixture } from './fixtureBuild.ts'
 
 const OUT_DIR = 'screenshots/android'
 
@@ -50,6 +50,8 @@ function emulatorBin(): string {
 interface Device {
   serial: string
   name: string
+  /** What `expo run:android --device` matches; see AdbDevice.expoName. */
+  expoName: string
 }
 
 async function attachedSerials(): Promise<string[]> {
@@ -61,27 +63,11 @@ async function attachedSerials(): Promise<string[]> {
     .map((line) => line.split('\t')[0].trim())
 }
 
-/** The AVD behind a running emulator serial, which is also the name Expo knows it by. */
-async function runningAvdName(serial: string): Promise<string | null> {
-  if (!serial.startsWith('emulator-')) return null
-  const out = await capture(['adb', '-s', serial, 'emu', 'avd', 'name'])
-  return out.split('\n')[0].trim() || null
-}
-
-async function attachedDevices(): Promise<Device[]> {
-  const out = await capture(['adb', 'devices', '-l'])
-  const lines = out
-    .split('\n')
-    .slice(1)
-    .filter((line) => line.includes(' device ') || line.includes('\tdevice'))
-
-  return Promise.all(
-    lines.map(async (line) => {
-      const serial = line.split(/\s+/)[0].trim()
-      const name = (await runningAvdName(serial)) ?? /model:(\S+)/.exec(line)?.[1] ?? serial
-      return { serial, name }
-    }),
-  )
+/** Phones only: the store set and the smoke flows are phone UI, and a watch cannot run either. */
+function attachedPhones(): Device[] {
+  return listAdbDevices()
+    .filter((device) => !device.isWatch)
+    .map(({ serial, name, expoName }) => ({ serial, name, expoName }))
 }
 
 async function listAvds(): Promise<string[]> {
@@ -118,7 +104,7 @@ async function bootAvd(name: string): Promise<Device> {
       const booted = (
         await capture(['adb', '-s', serial, 'shell', 'getprop', 'sys.boot_completed'])
       ).trim()
-      if (booted === '1') return { serial, name }
+      if (booted === '1') return { serial, name, expoName: name }
     }
     await Bun.sleep(2000)
   }
@@ -133,46 +119,39 @@ function shortSerial(serial: string): string {
 
 type DeviceChoice = { kind: 'attached'; device: Device } | { kind: 'avd'; name: string }
 
-async function chooseDevice(attached: Device[]): Promise<DeviceChoice> {
-  const options: SelectOption<DeviceChoice>[] = attached.map((device) => ({
-    label: device.name,
-    value: { kind: 'attached', device },
-    hint: shortSerial(device.serial),
-  }))
+/** Cache key for the last capture device picked; see lib/lastDevice. */
+const LAST_DEVICE_KEY = 'capture-android'
+
+async function chooseDevice(attached: Device[], requested: string | null): Promise<DeviceChoice> {
+  const options: DeviceChoice[] = attached.map((device) => ({ kind: 'attached', device }))
 
   // An AVD that is already up is listed once, as the running device — offering to "boot" it again
   // would be the same device under a second name.
   const running = new Set(attached.map((device) => device.name))
   for (const name of await listAvds()) {
     if (running.has(name)) continue
-    options.push({
-      label: `boot ${name}`,
-      value: { kind: 'avd', name },
-      hint: avdResolution(name) ?? 'AVD',
-    })
+    options.push({ kind: 'avd', name })
   }
 
-  if (options.length === 0) {
-    console.error('No device attached and no AVD available.')
-    process.exit(1)
-  }
-  if (options.length === 1) return options[0].value
-  return select('Android capture device', options)
+  return pickDevice({
+    title: 'Android capture device',
+    items: options,
+    id: (choice) => (choice.kind === 'avd' ? choice.name : choice.device.name),
+    label: (choice) => (choice.kind === 'avd' ? `boot ${choice.name}` : choice.device.name),
+    aliases: (choice) =>
+      choice.kind === 'avd' ? [] : [choice.device.serial, choice.device.expoName],
+    hint: (choice) =>
+      choice.kind === 'avd'
+        ? (avdResolution(choice.name) ?? 'AVD')
+        : shortSerial(choice.device.serial),
+    requested,
+    cacheKey: LAST_DEVICE_KEY,
+    emptyMessage: 'No phone attached and no AVD available.',
+  })
 }
 
 async function resolveDevice(requested: string | null, mode: FixtureRunMode): Promise<Device> {
-  const attached = await attachedDevices()
-
-  if (requested) {
-    const match = attached.find((d) => d.serial === requested || d.name === requested)
-    if (!match) {
-      console.error(`No attached device matches "${requested}".`)
-      process.exit(1)
-    }
-    return match
-  }
-
-  const choice = await chooseDevice(attached)
+  const choice = await chooseDevice(attachedPhones(), requested)
   const device = choice.kind === 'avd' ? await bootAvd(choice.name) : choice.device
   // Only the store set has to come off one screen size; a smoke run asserts on text, not pixels.
   if (mode === 'screenshots') await warnOnResolution(device.serial)
@@ -194,6 +173,8 @@ export async function createAndroidDriver(
 ): Promise<CaptureDriver> {
   const device = await resolveDevice(requestedDevice, mode)
   const adb = (...rest: string[]) => capture(['adb', '-s', device.serial, ...rest])
+  const installArtifact = (path: string) =>
+    runOrDie(['adb', '-s', device.serial, 'install', '-r', path])
 
   return {
     platform: 'android',
@@ -202,32 +183,12 @@ export async function createAndroidDriver(
     deviceLabel: `${device.name} (${device.serial})`,
 
     async buildAndInstall() {
-      console.log(`› Building the Android ${mode} Release build…`)
-      await runOrDie(['bun', 'run', 'native:sync', 'android'])
-      // Release on both modes. The store set has to be the shipped build, and a smoke run gets a
-      // self-contained APK out of it — no Metro server to start and no dev-client launcher screen
-      // to tap through before the first flow step.
-      // `--device` takes Expo's device name, not the adb serial.
-      //
-      // `--no-bundler` is what makes this command *return*. Without it Expo installs the APK, opens
-      // the dev-client URL and then stays attached streaming logs — on a terminal that reads as a
-      // build that finished, but on CI the step simply hangs until the job times out. A release
-      // build embeds its bundle, so there is nothing for a bundler to serve either way (the repo's
-      // own `android:release` script passes it for the same reason).
-      await runOrDie(
-        [
-          'bunx',
-          'expo',
-          'run:android',
-          '--variant',
-          'release',
-          '--no-bundler',
-          '--device',
-          device.name,
-        ],
-        fixtureBuildEnv(mode, replay),
-      )
+      const architecture = (await adb('shell', 'getprop', 'ro.product.cpu.abi')).trim()
+      const app = await buildAndroidFixture(mode, replay, architecture)
+      await installArtifact(app)
     },
+
+    installArtifact,
 
     async requireInstalled() {
       const out = await adb('shell', 'pm', 'list', 'packages', applicationId)

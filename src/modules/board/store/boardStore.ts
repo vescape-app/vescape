@@ -26,6 +26,7 @@ interface BoardState {
 interface BoardActions {
   load: () => Promise<void>
   addBoard: (data: {
+    id?: string
     name: string
     description?: string
     personalization?: Board['personalization']
@@ -34,7 +35,7 @@ interface BoardActions {
     topSpeedKmh?: number
     alertPreset?: Record<string, unknown> | null
     alertPresetsOnboarded?: boolean
-  }) => Board
+  }) => Promise<Board>
   updateBoard: (board: Board) => Promise<void>
   /** Dismiss (acknowledge) or restore a Board Warning kind; persisted on the board record. */
   setWarningDismissed: (boardId: string, kind: string, dismissed: boolean) => Promise<void>
@@ -70,14 +71,14 @@ export const useBoardStore = create<BoardState & BoardActions>((set, get) => ({
     if (mergedBoards !== prevBoards) patch.boards = mergedBoards
     if (nextActiveBoardId !== activeBoardId) patch.activeBoardId = nextActiveBoardId
     if (!hasLoaded) patch.hasLoaded = true
-    if (Object.keys(patch).length > 0) set(patch)
-
     if (nextActiveBoardId !== settings.selectedBoardId) {
       nativeSetSelectedBoard(nextActiveBoardId)
     }
+    if (Object.keys(patch).length > 0) set(patch)
   },
 
-  addBoard({
+  async addBoard({
+    id,
     name,
     description,
     personalization,
@@ -88,11 +89,12 @@ export const useBoardStore = create<BoardState & BoardActions>((set, get) => ({
     alertPresetsOnboarded,
   }) {
     const board: Board = {
-      id: generateId(),
+      id: id ?? generateId(),
       name,
       description: description ?? null,
       personalization,
       createdAt: Date.now(),
+      deletedAt: null,
       batteryConfig: batteryConfig ?? DEFAULT_BATTERY_CONFIG,
       topSpeedKmh,
       alertPreset: alertPreset ?? null,
@@ -100,19 +102,18 @@ export const useBoardStore = create<BoardState & BoardActions>((set, get) => ({
       legalMode: { enabled: false },
       link: link ?? null,
     }
+    await upsertBoard(board)
     set((state) => ({
       boards: [...state.boards, board],
       activeBoardId: state.activeBoardId ?? board.id,
     }))
-    void upsertBoard(board)
     return board
   },
 
   async updateBoard(board) {
-    set((state) => ({
-      boards: state.boards.map((b) => (b.id === board.id ? board : b)),
-    }))
     await upsertBoard(board)
+    const boards = await getBoards()
+    set((state) => ({ boards: mergeBoards(state.boards, boards) }))
   },
 
   async setWarningDismissed(boardId, kind, dismissed) {
@@ -133,6 +134,7 @@ export const useBoardStore = create<BoardState & BoardActions>((set, get) => ({
   },
 
   async removeBoard(id) {
+    await nativeDeleteBoard(id)
     set((state) => {
       const remaining = state.boards.filter((b) => b.id !== id)
       return {
@@ -141,12 +143,11 @@ export const useBoardStore = create<BoardState & BoardActions>((set, get) => ({
           state.activeBoardId === id ? (remaining[0]?.id ?? null) : state.activeBoardId,
       }
     })
-    await nativeDeleteBoard(id)
   },
 
   setActiveBoard(id) {
-    set({ activeBoardId: id })
     nativeSetSelectedBoard(id)
+    set({ activeBoardId: id })
   },
 }))
 

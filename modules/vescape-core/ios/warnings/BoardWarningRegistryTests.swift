@@ -40,14 +40,14 @@ final class BoardWarningRegistryTests: XCTestCase {
     return registry
   }
 
-  func testUpsertPreservesFirstDetectedAtAndUpdatesRest() {
+  func testUpsertPreservesFirstDetectedAtAndUpdatesRest() throws {
     let registry = makeRegistry()
     clock = 1_000
     registry.reportFinding(boardId: "board-a", kind: "cell-spread", severity: .warn, payloadJson: "{\"peak\":0.1}")
     clock = 5_000
     registry.reportFinding(boardId: "board-a", kind: "cell-spread", severity: .critical, payloadJson: "{\"peak\":0.3}")
 
-    let warnings = registry.warningsForBoard("board-a")
+    let warnings = try registry.warningsForBoard("board-a")
     XCTAssertEqual(warnings.count, 1)
     let warning = warnings[0]
     XCTAssertEqual(warning.firstDetectedAtMs, 1_000)
@@ -56,61 +56,61 @@ final class BoardWarningRegistryTests: XCTestCase {
     XCTAssertEqual(warning.payloadJson, "{\"peak\":0.3}")
   }
 
-  func testCleanEvaluationWithDataClearsWarning() {
+  func testCleanEvaluationWithDataClearsWarning() throws {
     let registry = makeRegistry()
     registry.reportFinding(boardId: "board-a", kind: "cell-spread", severity: .warn, payloadJson: "{}")
     registry.reportCleanEvaluation(boardId: "board-a", kind: "cell-spread")
 
-    XCTAssertTrue(registry.warningsForBoard("board-a").isEmpty)
+    XCTAssertTrue(try registry.warningsForBoard("board-a").isEmpty)
   }
 
-  func testCleanEvaluationWithoutRowLeavesStoreUntouchedAndDoesNotEmit() {
+  func testCleanEvaluationWithoutRowLeavesStoreUntouchedAndDoesNotEmit() throws {
     let registry = makeRegistry()
     emits.removeAll()
     registry.reportCleanEvaluation(boardId: "board-a", kind: "cell-spread")
 
-    XCTAssertTrue(registry.warningsForBoard("board-a").isEmpty)
+    XCTAssertTrue(try registry.warningsForBoard("board-a").isEmpty)
     XCTAssertTrue(emits.isEmpty)
   }
 
-  func testManualClearDeletesAndReDetectionReFires() {
+  func testManualClearDeletesAndReDetectionReFires() throws {
     let registry = makeRegistry()
     registry.reportFinding(boardId: "board-a", kind: "footpad-disabled", severity: .critical, payloadJson: "{}")
-    registry.clearWarning(boardId: "board-a", kind: "footpad-disabled")
-    XCTAssertTrue(registry.warningsForBoard("board-a").isEmpty)
+    try registry.clearWarning(boardId: "board-a", kind: "footpad-disabled")
+    XCTAssertTrue(try registry.warningsForBoard("board-a").isEmpty)
 
     registry.reportFinding(boardId: "board-a", kind: "footpad-disabled", severity: .critical, payloadJson: "{}")
-    XCTAssertEqual(registry.warningsForBoard("board-a").count, 1)
+    XCTAssertEqual(try registry.warningsForBoard("board-a").count, 1)
   }
 
-  func testManualClearInvokesOnManualClearEvenWithoutRow() {
+  func testManualClearInvokesOnManualClearEvenWithoutRow() throws {
     let registry = makeRegistry()
     var clears: [(String, String?)] = []
     registry.onManualClear = { boardId, kind in clears.append((boardId, kind)) }
 
     registry.reportFinding(boardId: "board-a", kind: "cell-spread", severity: .warn, payloadJson: "{}")
-    registry.clearWarning(boardId: "board-a", kind: "cell-spread")
+    try registry.clearWarning(boardId: "board-a", kind: "cell-spread")
     // No row (e.g. lost to a swallowed write) still re-arms the detector.
-    registry.clearWarning(boardId: "board-a", kind: "battery-config-mismatch")
-    registry.clearAllWarnings(boardId: "board-a")
+    try registry.clearWarning(boardId: "board-a", kind: "battery-config-mismatch")
+    try registry.clearAllWarnings(boardId: "board-a")
 
     XCTAssertEqual(clears.map(\.0), ["board-a", "board-a", "board-a"])
     XCTAssertEqual(clears.map(\.1), ["cell-spread", "battery-config-mismatch", nil])
   }
 
-  func testClearAllRemovesEveryWarningForBoardOnly() {
+  func testClearAllRemovesEveryWarningForBoardOnly() throws {
     let registry = makeRegistry()
     registry.reportFinding(boardId: "board-a", kind: "cell-spread", severity: .warn, payloadJson: "{}")
     registry.reportFinding(boardId: "board-a", kind: "footpad-disabled", severity: .critical, payloadJson: "{}")
     registry.reportFinding(boardId: "board-b", kind: "cell-spread", severity: .warn, payloadJson: "{}")
 
-    registry.clearAllWarnings(boardId: "board-a")
+    try registry.clearAllWarnings(boardId: "board-a")
 
-    XCTAssertTrue(registry.warningsForBoard("board-a").isEmpty)
-    XCTAssertEqual(registry.warningsForBoard("board-b").count, 1)
+    XCTAssertTrue(try registry.warningsForBoard("board-a").isEmpty)
+    XCTAssertEqual(try registry.warningsForBoard("board-b").count, 1)
   }
 
-  func testOneBreadcrumbPerKindPerSession() {
+  func testOneBreadcrumbPerKindPerSession() throws {
     let registry = makeRegistry()
     registry.beginSession("board-a")
     registry.reportFinding(boardId: "board-a", kind: "cell-spread", severity: .warn, payloadJson: "{}")
@@ -126,7 +126,7 @@ final class BoardWarningRegistryTests: XCTestCase {
     XCTAssertEqual(breadcrumbs.count, 2)
   }
 
-  func testEmitSnapshotEmitsEveryBoardWithWarnings() {
+  func testEmitSnapshotEmitsEveryBoardWithWarnings() throws {
     let registry = makeRegistry()
     registry.reportFinding(boardId: "board-a", kind: "cell-spread", severity: .warn, payloadJson: "{}")
     registry.reportFinding(boardId: "board-b", kind: "footpad-disabled", severity: .critical, payloadJson: "{}")

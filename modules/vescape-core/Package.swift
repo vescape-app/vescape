@@ -24,6 +24,8 @@ let iosRoot = URL(fileURLWithPath: #filePath)
 /// depends on those files. Everything else in the tree is compiled and testable here.
 let expoOwnedSources: Set<String> = [
   "VescapeCoreModule.swift",
+  // `ExpoAppDelegateSubscriber`, the launch hook for CoreBluetooth state restoration.
+  "connection/VescapeLaunchSubscriber.swift",
   // `NativeArrayBuffer` for the columnar Ride History payload.
   "telemetry/TelemetryRangePayload.swift",
 ]
@@ -31,14 +33,14 @@ let expoOwnedSources: Set<String> = [
 /// Test-only helpers that are not themselves `XCTestCase` files, so the `*Tests.swift` rule misses
 /// them. They use `@testable import VescapeCore` and belong in the test target.
 let testSupportSources: Set<String> = [
-  "replay/ConfigReplayHarness.swift"
+  "replay/ConfigReplayHarness.swift",
+  "accessory/AccessoryFixtures.swift",
 ]
 
-/// Symlinks into `shared/`. The pod bundles all of them through `resource_bundles`; SPM only needs
-/// the ones production code reads back out of its own bundle. Tests read fixtures straight off the
-/// repo tree, so they need nothing here.
+/// CocoaPods consumes these symlinks. SwiftPM's SharedResourcesPlugin bundles their contents:
+/// the legacy SwiftPM build system otherwise copies dangling relative symlinks into the bundle.
 let bundledResources: Set<String> = [
-  "cell-presets.json"
+  "cell-presets.json", "alert-preset-definitions.json"
 ]
 
 struct SourceTree {
@@ -94,9 +96,10 @@ let grdb = Target.Dependency.product(name: "GRDB", package: "GRDB.swift")
 let package = Package(
   name: "VescapeCore",
   // iOS only, matching `VescapeCore.podspec`: the tree uses UIKit, ActivityKit and CoreBluetooth.
-  platforms: [.iOS(.v17)],
+  platforms: [.iOS(.v17), .macOS(.v13)],
   products: [
-    .library(name: "VescapeCore", targets: ["VescapeCore"])
+    .library(name: "VescapeCore", targets: ["VescapeCore"]),
+    .executable(name: "RecordingPersistenceHost", targets: ["RecordingPersistenceHost"])
   ],
   dependencies: [
     // The app ships 6.24.1 (`VescapeCore.podspec`) because that is the last GRDB published to
@@ -110,9 +113,9 @@ let package = Package(
       name: "VescapeCore",
       dependencies: [grdb],
       path: "ios",
-      exclude: tree.ignored + tree.tests,
+      exclude: tree.ignored + tree.tests + bundledResources.sorted(),
       sources: tree.library,
-      resources: bundledResources.sorted().map { .process($0) }
+      plugins: ["SharedResourcesPlugin"]
     ),
     .testTarget(
       name: "VescapeCoreTests",
@@ -120,5 +123,13 @@ let package = Package(
       path: "ios",
       sources: tree.tests
     ),
+    .executableTarget(
+      name: "RecordingPersistenceHost",
+      dependencies: [grdb],
+      path: "persistence-macos",
+      exclude: bundledResources.sorted(),
+      plugins: ["SharedResourcesPlugin"]
+    ),
+    .plugin(name: "SharedResourcesPlugin", capability: .buildTool()),
   ]
 )

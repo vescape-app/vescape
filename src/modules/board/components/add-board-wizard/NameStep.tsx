@@ -14,7 +14,7 @@ export function NameStep({ wizard }: { wizard: UseAddBoardWizard }) {
     <WizardStepLayout
       title="Personalize your board"
       icon={TextTIcon}
-      color={theme.palette.yellow.color}
+      color={theme.palette.orange.color}
       revealBottomOnKeyboard
       footer={
         <WizardNavActions
@@ -27,8 +27,11 @@ export function NameStep({ wizard }: { wizard: UseAddBoardWizard }) {
     >
       <BoardInfoForm
         name={wizard.name}
+        description={wizard.description}
         onChangeName={wizard.setName}
+        onChangeDescription={wizard.setDescription}
         nameTestID="add-board-name-input"
+        descriptionTestID="add-board-description-input"
       />
       <BoardPersonalizer
         railId={wizard.railId}

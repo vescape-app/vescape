@@ -1,5 +1,7 @@
 package expo.modules.vescapecore.runtime
 
+// @parity /modules/vescape-core/ios/runtime/Scheduler.swift `postDelayedForSession`
+
 fun Scheduler.postDelayedForSession(
     session: BoardSession,
     delayMs: Long,

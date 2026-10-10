@@ -1,7 +1,6 @@
 package expo.modules.vescapecore.config
 
 import expo.modules.vescapecore.connection.BoardTransport
-import expo.modules.vescapecore.warnings.ConfigSafetyValues
 
 internal const val CONFIG_CHUNK_LENGTH = 384
 internal const val CONFIG_SCHEMA_TIMEOUT_MS = 10_000L
@@ -36,6 +35,7 @@ internal object ConfigRWFsm {
             wasPolling = event.wasPolling,
             appBoardId = event.appBoardId,
             fwVersion = event.fwVersion,
+            refloatBaseVersion = event.refloatBaseVersion,
         )
         val newState = ConfigRWState.ReadCollectingXml(
             ctx = ctx,
@@ -66,7 +66,25 @@ internal object ConfigRWFsm {
             profileFields = event.profileFields,
             appBoardId = event.appBoardId,
             fwVersion = event.fwVersion,
+            refloatBaseVersion = event.refloatBaseVersion,
+            // The trusted Board Link already observed this; the skip path never asks the board, and
+            // the read path's get-info response overwrites it with the same value.
+            refloatVersion = event.refloatVersion,
         )
+        // A board takes one connection at a time, so while this session holds the link the config can
+        // only have changed through our own writes — the session's fresh bytes are still the board's
+        // bytes and back the write directly. Provisional values carry no write base by construction,
+        // so a cache-restored session falls through to the read (ADR 0035).
+        val writeBase = event.writeBase
+        if (writeBase != null) {
+            return sendWrite(
+                ctx = ctx,
+                schema = writeBase.schema,
+                rawConfig = writeBase.rawConfig,
+                packageSignature = writeBase.packageSignature,
+                failPhase = ConfigWritePhaseTag.SENDING_WRITE,
+            )
+        }
         val newState = ConfigRWState.WriteCollectingXml(
             ctx = ctx,
             xmlBytes = ByteArray(0),
@@ -106,7 +124,8 @@ internal object ConfigRWFsm {
     private fun onXml(
         state: ConfigRWState,
         event: ConfigRWEvent.XmlPayloadReceived,
-    ): Pair<ConfigRWState, List<ConfigRWEffect>> = when (state) {
+    ): Pair<ConfigRWState, List<ConfigRWEffect>> {
+      return when (state) {
         is ConfigRWState.ReadCollectingXml -> {
             when (val parsed = RefloatConfigProtocol.parseCustomConfigXmlResponse(event.payload)) {
                 is RefloatConfigProtocolResult.Failure -> readFailure(
@@ -117,6 +136,8 @@ internal object ConfigRWFsm {
                 )
                 is RefloatConfigProtocolResult.Success -> {
                     val chunk = parsed.value
+                    // A delayed reply to a retried request must not append the same bytes twice.
+                    if (chunk.offset != state.nextOffset) return state to emptyList()
                     val merged = ByteArray(state.xmlBytes.size + chunk.chunk.size)
                     state.xmlBytes.copyInto(merged)
                     chunk.chunk.copyInto(merged, state.xmlBytes.size)
@@ -199,6 +220,8 @@ internal object ConfigRWFsm {
         else -> state to emptyList()
     }
 
+    }
+
     private fun onConfigBytes(
         state: ConfigRWState,
         event: ConfigRWEvent.ConfigBytesPayloadReceived,
@@ -214,7 +237,7 @@ internal object ConfigRWFsm {
                 is RefloatConfigProtocolResult.Success -> decodeAndCompleteRead(
                     state.ctx,
                     state.xmlBytes,
-                    parsed.value.config,
+                    parsed.value,
                     event.capturedAtMs,
                 )
             }
@@ -248,7 +271,7 @@ internal object ConfigRWFsm {
                 )
                 is RefloatConfigProtocolResult.Success -> verifyAndCompleteWrite(
                     state,
-                    parsed.value.config,
+                    parsed.value,
                     event.capturedAtMs,
                 )
             }
@@ -292,7 +315,12 @@ internal object ConfigRWFsm {
     ): Pair<ConfigRWState, List<ConfigRWEffect>> {
         val message = "Timed out reading Refloat config"
         return when (state) {
-            is ConfigRWState.ReadCollectingXml -> readFailure(state.ctx, event.code, message, rawConfig = null)
+            is ConfigRWState.ReadCollectingXml -> if (!state.retried) {
+                state.copy(retried = true) to listOf(
+                    ConfigRWEffect.ScheduleTimeout(RefloatConfigErrorCode.CONFIG_SCHEMA_TIMEOUT, CONFIG_SCHEMA_TIMEOUT_MS),
+                    ConfigRWEffect.SendFrame(buildXmlRequest(state.ctx.transport, state.expectedXmlLength, state.nextOffset)),
+                )
+            } else readFailure(state.ctx, event.code, "$message at XML offset ${state.nextOffset}", rawConfig = null)
             is ConfigRWState.ReadAwaitingConfig -> readFailure(state.ctx, event.code, message, rawConfig = null)
             is ConfigRWState.WriteCollectingXml -> writeFailure(
                 state.ctx, event.code, message,
@@ -375,12 +403,25 @@ internal object ConfigRWFsm {
     }
 
     /**
-     * Decode the config-safety fields for the Board Warning config detectors. Best-effort: any failure
-     * yields null so a decode hiccup never breaks the read/write completion the rider actually asked for.
+     * Decode the whole schema into the session's Board Config Values, retaining the bytes, package
+     * signature, and schema as the write base. Best-effort: any failure yields null so a decode hiccup
+     * never breaks the read/write completion the rider actually asked for.
      */
-    private fun decodeSafety(schema: RefloatConfigSchema, rawConfig: ByteArray): ConfigSafetyValues? =
+    private fun decodeBoardConfig(
+        schema: RefloatConfigSchema,
+        configBytes: RefloatConfigBytes,
+        boardId: String?,
+        refloatBaseVersion: String?,
+        capturedAtMs: Long,
+    ): BoardConfigValues? =
         try {
-            RefloatConfigDecoder.decodeSafetyValues(schema, rawConfig)
+            RefloatConfigDecoder.decodeBoardConfigValues(
+                schema = schema,
+                configBytes = configBytes,
+                boardId = boardId,
+                refloatBaseVersion = refloatBaseVersion,
+                capturedAt = capturedAtMs,
+            )
         } catch (e: Exception) {
             null
         }
@@ -388,59 +429,66 @@ internal object ConfigRWFsm {
     private fun decodeAndCompleteRead(
         ctx: ReadContext,
         xmlBytes: ByteArray,
-        rawConfig: ByteArray,
+        configBytes: RefloatConfigBytes,
         capturedAtMs: Long,
-    ): Pair<ConfigRWState, List<ConfigRWEffect>> = try {
-        val schema = RefloatConfigSchemaParser.parse(xmlBytes)
-        val snapshot = RefloatConfigDecoder.decode(
-            schema = schema,
-            rawConfig = rawConfig,
-            boardId = ctx.appBoardId,
-            canId = ctx.canId,
-            capturedAt = capturedAtMs,
-            fwVersion = ctx.fwVersion,
-            refloatVersion = ctx.refloatVersion,
-        )
-        ConfigRWState.Idle to listOf(
-            ConfigRWEffect.CancelTimeout,
-            ConfigRWEffect.EmitReadComplete(snapshot, ctx.wasPolling, decodeSafety(schema, rawConfig)),
-        )
-    } catch (e: RefloatConfigSchemaException) {
-        ConfigRWState.Idle to listOf(
-            ConfigRWEffect.CancelTimeout,
-            ConfigRWEffect.DumpDebugBytes(xmlBytes, rawConfig),
-            ConfigRWEffect.EmitReadFailure(
-                code = RefloatConfigErrorCode.UNSUPPORTED_SCHEMA,
-                message = e.message ?: "Unsupported Refloat config schema",
-                opId = ctx.opId,
-                resumePolling = ctx.wasPolling,
+    ): Pair<ConfigRWState, List<ConfigRWEffect>> {
+        val rawConfig = configBytes.config
+        return try {
+            val schema = RefloatConfigSchemaParser.parse(xmlBytes)
+            val snapshot = RefloatConfigDecoder.decode(
+                schema = schema,
                 rawConfig = rawConfig,
-            ),
-        )
-    } catch (e: RefloatConfigDecodeException) {
-        ConfigRWState.Idle to listOf(
-            ConfigRWEffect.CancelTimeout,
-            ConfigRWEffect.DumpDebugBytes(xmlBytes, rawConfig),
-            ConfigRWEffect.EmitReadFailure(
-                code = RefloatConfigErrorCode.CONFIG_DECODE_FAILED,
-                message = e.message ?: "Failed to decode Refloat config",
-                opId = ctx.opId,
-                resumePolling = ctx.wasPolling,
-                rawConfig = rawConfig,
-            ),
-        )
-    } catch (e: Exception) {
-        ConfigRWState.Idle to listOf(
-            ConfigRWEffect.CancelTimeout,
-            ConfigRWEffect.DumpDebugBytes(xmlBytes, rawConfig),
-            ConfigRWEffect.EmitReadFailure(
-                code = RefloatConfigErrorCode.CONFIG_DECODE_FAILED,
-                message = e.message ?: "Failed to read Refloat config",
-                opId = ctx.opId,
-                resumePolling = ctx.wasPolling,
-                rawConfig = rawConfig,
-            ),
-        )
+                boardId = ctx.appBoardId,
+                canId = ctx.canId,
+                capturedAt = capturedAtMs,
+                fwVersion = ctx.fwVersion,
+                refloatVersion = ctx.refloatVersion,
+            )
+            ConfigRWState.Idle to listOf(
+                ConfigRWEffect.CancelTimeout,
+                ConfigRWEffect.EmitReadComplete(
+                    snapshot,
+                    ctx.wasPolling,
+                    decodeBoardConfig(schema, configBytes, ctx.appBoardId, ctx.refloatBaseVersion, capturedAtMs),
+                ),
+            )
+        } catch (e: RefloatConfigSchemaException) {
+            ConfigRWState.Idle to listOf(
+                ConfigRWEffect.CancelTimeout,
+                ConfigRWEffect.DumpDebugBytes(xmlBytes, rawConfig),
+                ConfigRWEffect.EmitReadFailure(
+                    code = RefloatConfigErrorCode.UNSUPPORTED_SCHEMA,
+                    message = e.message ?: "Unsupported Refloat config schema",
+                    opId = ctx.opId,
+                    resumePolling = ctx.wasPolling,
+                    rawConfig = rawConfig,
+                ),
+            )
+        } catch (e: RefloatConfigDecodeException) {
+            ConfigRWState.Idle to listOf(
+                ConfigRWEffect.CancelTimeout,
+                ConfigRWEffect.DumpDebugBytes(xmlBytes, rawConfig),
+                ConfigRWEffect.EmitReadFailure(
+                    code = RefloatConfigErrorCode.CONFIG_DECODE_FAILED,
+                    message = e.message ?: "Failed to decode Refloat config",
+                    opId = ctx.opId,
+                    resumePolling = ctx.wasPolling,
+                    rawConfig = rawConfig,
+                ),
+            )
+        } catch (e: Exception) {
+            ConfigRWState.Idle to listOf(
+                ConfigRWEffect.CancelTimeout,
+                ConfigRWEffect.DumpDebugBytes(xmlBytes, rawConfig),
+                ConfigRWEffect.EmitReadFailure(
+                    code = RefloatConfigErrorCode.CONFIG_DECODE_FAILED,
+                    message = e.message ?: "Failed to read Refloat config",
+                    opId = ctx.opId,
+                    resumePolling = ctx.wasPolling,
+                    rawConfig = rawConfig,
+                ),
+            )
+        }
     }
 
     private fun encodeAndSendWrite(
@@ -451,26 +499,12 @@ internal object ConfigRWFsm {
         val rawConfig = configBytes.config
         return try {
             val schema = RefloatConfigSchemaParser.parse(xmlBytes)
-            val patched = RefloatConfigEncoder.encode(schema, rawConfig, ctx.profileFields)
-            ConfigRWState.WriteAwaitingSetAck(
+            sendWrite(
                 ctx = ctx,
                 schema = schema,
-                originalConfig = rawConfig,
-                patchedConfig = patched,
-            ) to listOf(
-                ConfigRWEffect.CancelTimeout,
-                ConfigRWEffect.ScheduleTimeout(
-                    RefloatConfigErrorCode.CONFIG_WRITE_TIMEOUT,
-                    CONFIG_WRITE_TIMEOUT_MS,
-                ),
-                ConfigRWEffect.SendFrame(
-                    RefloatConfigProtocol.buildSetCustomConfig(
-                        ctx.transport,
-                        0,
-                        configBytes.packageSignature,
-                        patched,
-                    ),
-                ),
+                rawConfig = rawConfig,
+                packageSignature = configBytes.packageSignature,
+                failPhase = ConfigWritePhaseTag.READING_CONFIG,
             )
         } catch (e: RefloatConfigSchemaException) {
             writeFailure(
@@ -478,26 +512,62 @@ internal object ConfigRWFsm {
                 e.message ?: "Unsupported schema",
                 phase = ConfigWritePhaseTag.READING_CONFIG, rawConfig = rawConfig,
             )
-        } catch (e: RefloatConfigEncodeException) {
-            writeFailure(
-                ctx, RefloatConfigErrorCode.CONFIG_ENCODE_FAILED,
-                e.message ?: "Encode failed",
-                phase = ConfigWritePhaseTag.READING_CONFIG, rawConfig = rawConfig,
-            )
-        } catch (e: Exception) {
-            writeFailure(
-                ctx, RefloatConfigErrorCode.CONFIG_WRITE_FAILED,
-                e.message ?: "Write failed",
-                phase = ConfigWritePhaseTag.READING_CONFIG, rawConfig = rawConfig,
-            )
         }
+    }
+
+    /**
+     * Patch the write base bytes with the profile fields and send `COMM_SET_CUSTOM_CONFIG`. The base
+     * is either the bytes just read or the session's retained fresh bytes; either way the whole blob
+     * is patched in place, so fields outside the curated tune groups survive untouched.
+     */
+    private fun sendWrite(
+        ctx: WriteContext,
+        schema: RefloatConfigSchema,
+        rawConfig: ByteArray,
+        packageSignature: Long,
+        failPhase: ConfigWritePhaseTag,
+    ): Pair<ConfigRWState, List<ConfigRWEffect>> = try {
+        val patched = RefloatConfigEncoder.encode(schema, rawConfig, ctx.profileFields)
+        ConfigRWState.WriteAwaitingSetAck(
+            ctx = ctx,
+            schema = schema,
+            originalConfig = rawConfig,
+            patchedConfig = patched,
+        ) to listOf(
+            ConfigRWEffect.CancelTimeout,
+            ConfigRWEffect.ScheduleTimeout(
+                RefloatConfigErrorCode.CONFIG_WRITE_TIMEOUT,
+                CONFIG_WRITE_TIMEOUT_MS,
+            ),
+            ConfigRWEffect.SendFrame(
+                RefloatConfigProtocol.buildSetCustomConfig(
+                    ctx.transport,
+                    0,
+                    packageSignature,
+                    patched,
+                ),
+            ),
+        )
+    } catch (e: RefloatConfigEncodeException) {
+        writeFailure(
+            ctx, RefloatConfigErrorCode.CONFIG_ENCODE_FAILED,
+            e.message ?: "Encode failed",
+            phase = failPhase, rawConfig = rawConfig,
+        )
+    } catch (e: Exception) {
+        writeFailure(
+            ctx, RefloatConfigErrorCode.CONFIG_WRITE_FAILED,
+            e.message ?: "Write failed",
+            phase = failPhase, rawConfig = rawConfig,
+        )
     }
 
     private fun verifyAndCompleteWrite(
         state: ConfigRWState.WriteVerifying,
-        rawConfigFromBoard: ByteArray,
+        configFromBoard: RefloatConfigBytes,
         capturedAtMs: Long,
     ): Pair<ConfigRWState, List<ConfigRWEffect>> {
+        val rawConfigFromBoard = configFromBoard.config
         when (val verification = RefloatConfigWriteVerifier.verifyExactBytes(
             state.patchedConfig, rawConfigFromBoard,
         )) {
@@ -522,7 +592,17 @@ internal object ConfigRWFsm {
             )
             ConfigRWState.Idle to listOf(
                 ConfigRWEffect.CancelTimeout,
-                ConfigRWEffect.EmitWriteComplete(snapshot, state.ctx.wasPolling, decodeSafety(state.schema, rawConfigFromBoard)),
+                ConfigRWEffect.EmitWriteComplete(
+                    snapshot,
+                    state.ctx.wasPolling,
+                    decodeBoardConfig(
+                        state.schema,
+                        configFromBoard,
+                        state.ctx.appBoardId,
+                        state.ctx.refloatBaseVersion,
+                        capturedAtMs,
+                    ),
+                ),
             )
         } catch (e: RefloatConfigDecodeException) {
             writeFailure(

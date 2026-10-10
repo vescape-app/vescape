@@ -1,21 +1,26 @@
 import Mapbox, { Camera, MapView } from '@rnmapbox/maps'
 import { SlidersHorizontalIcon } from 'phosphor-react-native'
-import { useCallback, useRef, useState, type ElementRef } from 'react'
+import { useCallback, useRef, useState, type ComponentRef } from 'react'
 import { StyleSheet, View } from 'react-native'
 import { Text } from '@/components/base/Text'
 import type { MapPoint, NavigationProfile } from 'vescape-core'
 
 import { IconButton } from '@/components/base/IconButton'
-import { EdgeDrawer } from '@/components/overlays/AnchoredSheet'
+import { EdgeDrawer } from '@/components/overlays/EdgeDrawer'
 import { useTriggerRef } from '@/components/overlays/measureTrigger'
 import { ChipRow, ToggleRow, ValueRow } from '@/components/dev/ShowcaseControls'
 import { MapStyleSwitch } from '@/modules/map/components/MapStyleSwitch'
 import { NavigationProfileSelector } from '@/modules/map/components/NavigationProfileSelector'
 import { MAPBOX_ACCESS_TOKEN } from '@/config/mapy'
 import { BLANK_STYLE, MAP_STYLES, type MapStyleKey } from '@/modules/map/constants/mapStyles'
-import { getSatelliteDarkMapStyle } from '@/modules/map/constants/satelliteDarkMapStyle'
+import {
+  getSatelliteDarkMapStyle,
+  getSatelliteImageryPaint,
+} from '@/modules/map/constants/satelliteDarkMapStyle'
 import { ONE_DARK_MAP_STYLE } from '@/modules/map/constants/oneDarkMapStyle'
 import { theme } from '@/constants/theme'
+import { useThemeStore } from '@/hooks/useTheme'
+import { mapStyleForTheme } from '@/modules/map/lib/mapTheme'
 import type { HistoryMetricKey } from '@/modules/history/lib/metricColorScale'
 import {
   FIXTURE_ACCURACY_FIX,
@@ -37,6 +42,8 @@ import {
   FIXTURE_RIDERS,
 } from '@/screens/showcase/mapShowcaseFixtures'
 import { MainMapLayers, HistoryMapLayers } from '@/screens/main/map/MainMapLayers'
+import { SatelliteImageryLayer } from '@/screens/main/map/SatelliteImageryLayer'
+import { DASH } from '@/helpers/format'
 
 Mapbox.setAccessToken(MAPBOX_ACCESS_TOKEN)
 
@@ -52,6 +59,7 @@ const HISTORY_METRIC_OPTIONS: { key: HistoryMetricKey; label: string }[] = [
 
 export default function MapComponentsShowcase() {
   const [styleKey, setStyleKey] = useState<MapStyleKey>('onedark')
+  const resolvedTheme = useThemeStore((state) => state.resolvedTheme)
   const [styleExpanded, setStyleExpanded] = useState(false)
   const [weatherActive, setWeatherActive] = useState(false)
   const [legalLimitsActive, setLegalLimitsActive] = useState(false)
@@ -61,7 +69,7 @@ export default function MapComponentsShowcase() {
   const [lastEvent, setLastEvent] = useState<string | null>(null)
   const [sheetVisible, setSheetVisible] = useState(false)
   const [navigationProfile, setNavigationProfile] = useState<NavigationProfile>('walking')
-  const cameraRef = useRef<ElementRef<typeof Camera>>(null)
+  const cameraRef = useRef<ComponentRef<typeof Camera>>(null)
   const moreTriggerRef = useTriggerRef()
 
   const handleMapLoaded = useCallback(() => {
@@ -72,18 +80,25 @@ export default function MapComponentsShowcase() {
     })
   }, [])
 
+  const renderedStyleKey = mapStyleForTheme(styleKey, resolvedTheme)
   const selectedStyle = MAP_STYLES.find((s) => s.key === styleKey) ?? MAP_STYLES[0]
-  const isMapy = selectedStyle.key === 'mapy'
-  const isOneDark = selectedStyle.key === 'onedark'
-  const isSatellite = selectedStyle.key === 'satellite'
+  const isMapy = renderedStyleKey === 'mapy'
+  const isOneDark = renderedStyleKey === 'onedark'
+  const isSatellite = renderedStyleKey === 'satellite'
   const useCustomJSON = isMapy || isOneDark || isSatellite
-  const showBuildings3d = selectedStyle.key === 'outdoors' || selectedStyle.key === 'onedark'
+  const showBuildings3d = renderedStyleKey === 'outdoors' || isOneDark
 
   return (
     <View style={styles.container}>
       <MapView
         style={StyleSheet.absoluteFill}
-        styleURL={useCustomJSON ? undefined : selectedStyle.styleURL}
+        styleURL={
+          useCustomJSON
+            ? undefined
+            : renderedStyleKey === 'outdoors'
+              ? Mapbox.StyleURL.Outdoors
+              : (selectedStyle.styleURL ?? undefined)
+        }
         styleJSON={
           isOneDark
             ? ONE_DARK_MAP_STYLE
@@ -109,6 +124,7 @@ export default function MapComponentsShowcase() {
           }}
           animationMode="none"
         />
+        {isSatellite && <SatelliteImageryLayer paint={getSatelliteImageryPaint()} />}
         {/* historyActive=false renders buildings/raster/weather + live pins/GPS puck/riders */}
         <MainMapLayers
           historyActive={false}
@@ -226,7 +242,7 @@ export default function MapComponentsShowcase() {
             if (match) setActiveHistoryMapMetric(match.key)
           }}
         />
-        <ValueRow label="Last interaction" value={lastEvent ?? '—'} />
+        <ValueRow label="Last interaction" value={lastEvent ?? DASH} />
         <Text style={styles.hint}>
           Tap a pin to expand its label + delete button. Buildings 3D follows the style (Outdoors,
           One Dark).
@@ -237,7 +253,7 @@ export default function MapComponentsShowcase() {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: theme.palette.slate.bg },
+  container: { flex: 1, backgroundColor: theme.neutral.bg },
   topRight: {
     position: 'absolute',
     top: 12,
@@ -246,10 +262,10 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   floatingButton: {
-    backgroundColor: theme.alpha(theme.palette.slate.surfaceDeep, 0.85),
+    backgroundColor: theme.alpha(theme.neutral.surfaceDeep, 0.85),
   },
   hint: {
-    color: theme.palette.slate.textMuted,
+    color: theme.neutral.textMuted,
     fontSize: 12,
     lineHeight: 17,
   },

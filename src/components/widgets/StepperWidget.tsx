@@ -4,18 +4,14 @@ import { CaretDownIcon, CaretUpIcon, type Icon } from 'phosphor-react-native'
 
 import { IconButton } from '@/components/base/IconButton'
 import { widgetSurface, type WidgetSize } from '@/components/widgets/widgetSurface'
-import { theme } from '@/constants/theme'
+import { theme, type ThemeColor } from '@/constants/theme'
 
 interface StepperWidgetProps {
   icon?: Icon
   label: string
-  previousIcon?: Icon
-  nextIcon?: Icon
-  accent?: string
+  accent?: ThemeColor
   size?: Extract<WidgetSize, 'half' | 'full'>
   disabled?: boolean
-  previousAccessibilityLabel?: string
-  nextAccessibilityLabel?: string
   onPrevious: () => void
   onNext: () => void
 }
@@ -24,13 +20,9 @@ interface StepperWidgetProps {
 export function StepperWidget({
   icon: IconComponent,
   label,
-  previousIcon = CaretDownIcon,
-  nextIcon = CaretUpIcon,
-  accent = theme.palette.slate.textSecondary,
+  accent = theme.control.textMuted,
   size = 'full',
   disabled,
-  previousAccessibilityLabel = `${label} back`,
-  nextAccessibilityLabel = `${label} forward`,
   onPrevious,
   onNext,
 }: StepperWidgetProps) {
@@ -42,16 +34,16 @@ export function StepperWidget({
       </Text>
       <View style={styles.actions}>
         <IconButton
-          icon={previousIcon}
+          icon={CaretDownIcon}
           disabled={disabled}
           onPress={onPrevious}
-          accessibilityLabel={previousAccessibilityLabel}
+          accessibilityLabel={`${label} back`}
         />
         <IconButton
-          icon={nextIcon}
+          icon={CaretUpIcon}
           disabled={disabled}
           onPress={onNext}
-          accessibilityLabel={nextAccessibilityLabel}
+          accessibilityLabel={`${label} forward`}
         />
       </View>
     </View>
@@ -75,7 +67,7 @@ const styles = StyleSheet.create({
   label: {
     flex: 1,
     minWidth: 0,
-    color: theme.palette.slate.textPrimary,
+    color: theme.control.text,
     fontSize: 15,
     fontWeight: '700',
   },

@@ -22,7 +22,8 @@ interface MainScreenState {
   historySheetVisible: boolean
   mapSelector: MapSelector
   perspectiveEnabled: boolean
-  seekTimeMs: number | null
+  /** Measured height of the History panel; the map fits the route into what is left above it. */
+  historyPanelHeight: number
   trimRange: TrimRange | null
   activeHistoryMapMetric: HistoryMetricKey
 }
@@ -43,7 +44,7 @@ interface MainScreenActions {
   setMapSelector: (selector: MapSelector) => void
   dismissMapSelector: () => void
   setPerspectiveEnabled: (enabled: boolean) => void
-  setSeekTimeMs: (timeMs: number | null) => void
+  setHistoryPanelHeight: (height: number) => void
   /** Enter trim mode seeded with a default range (the ride's full Moving Window). */
   beginTrim: (range: TrimRange) => void
   /** Live-update the trimmed span while a handle is dragged. */
@@ -60,7 +61,7 @@ const initialState: MainScreenState = {
   historySheetVisible: false,
   mapSelector: null,
   perspectiveEnabled: true,
-  seekTimeMs: null,
+  historyPanelHeight: 0,
   trimRange: null,
   activeHistoryMapMetric: 'speed',
 }
@@ -77,7 +78,6 @@ export const useMainScreenStore = create<MainScreenState & MainScreenActions>((s
       mode: 'telemetry',
       historySheetVisible: false,
       mapSelector: null,
-      seekTimeMs: null,
       trimRange: null,
       openFavoriteId: null,
     })
@@ -113,7 +113,7 @@ export const useMainScreenStore = create<MainScreenState & MainScreenActions>((s
   },
 
   openFavorite(id) {
-    set({ openFavoriteId: id, historySheetVisible: false, seekTimeMs: null, trimRange: null })
+    set({ openFavoriteId: id, historySheetVisible: false, trimRange: null })
   },
 
   closeFavorite() {
@@ -136,13 +136,12 @@ export const useMainScreenStore = create<MainScreenState & MainScreenActions>((s
     set({ perspectiveEnabled: enabled })
   },
 
-  setSeekTimeMs(timeMs) {
-    set((state) => (state.seekTimeMs === timeMs ? state : { seekTimeMs: timeMs }))
+  setHistoryPanelHeight(height) {
+    set((state) => (state.historyPanelHeight === height ? state : { historyPanelHeight: height }))
   },
 
   beginTrim(range) {
-    // The scrub head and a trim selection are mutually exclusive interactions on the chart.
-    set({ trimRange: range, seekTimeMs: null })
+    set({ trimRange: range })
   },
 
   setTrimRange(range) {

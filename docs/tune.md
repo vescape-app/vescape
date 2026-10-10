@@ -112,6 +112,26 @@ Display values are rounded after conversion to the underlying field value.
 | Brake tilt     |   `0..5` |  `1` | Writes brake tiltback strength directly.          |
 | ATR intensity  |  `0..15` |  `1` | Writes uphill and downhill ATR strength together. |
 
+Individual field editors keep raw values in profiles and convert only for display. ATR Speed Boost
+uses a usual raw range of `-1..1` and displays `-100..100%` in one-percent steps.
+The Turn Speed Boost ruler spans `0..10000%` in steps of five. The Angle I ruler spans
+`0..0.5` in `0.001` steps, including values
+produced by Aggressiveness. Editor precision does not depend on whether the current value
+happens to be an integer. ATR Threshold Angle Up and Down both use `0..5°` with fixed
+`0.5°` steps.
+
+Tune field editors open in ruler mode. The keyboard button switches to manual input, and the
+ruler button switches back without snapping the value. Only moving the ruler snaps to its step.
+Manual input validates the field's display precision, accepts a decimal comma or point,
+and disables Apply for invalid input. Values outside the ruler's usual range show a warning
+but remain unchanged and can be applied. Percentages are entered in display
+units and converted back to raw values on Apply. Cancel leaves the profile unchanged.
+
+Opening an editor and applying without changing anything preserves the saved values. Basic
+controls show the actual linked values until the dial changes; changing the dial explicitly
+applies its formula. Editing only a linked field preserves the other fields, including unequal
+ATR uphill/downhill strengths.
+
 ## Basic Slider Formulas
 
 ### Aggressiveness
@@ -475,14 +495,14 @@ draft/apply/save semantics if both paths are ever supported.
 The custom app data channel is not limited to tune sliders. It is a small
 Refloat-specific runtime API. Confirmed categories:
 
-| Category                 | Commands                                                                         | Can Change On The Fly                                                                                                                                                                                           |
-| ------------------------ | -------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Runtime data reads       | `GET_INFO`, `GET_RTDATA`, `GET_ALL_DATA`, `PRINT_INFO`, `LIGHT_INFO`, `LCM_INFO` | Nothing persisted; reads package version, board state, angles, input tilt, throttle, speed/duty, and light/controller metadata.                                                                                 |
-| Tune editing             | `SET_TUNE`, `SET_DEFAULT_TUNE`, `TUNE_OTHER`, `BOOSTER`                          | Live tune state and helper/advanced tune values. These affect behavior immediately but should be considered temporary until saved.                                                                              |
-| Tune persistence actions | `SAVE_TUNE`, `RESTORE_TUNE`                                                      | Save current runtime tune state or restore saved tune state. These are actions, not field writes.                                                                                                               |
-| Movement / tilt input    | `MOVE`, `LOCK`, `FLYWHEEL`                                                       | Live movement, Remote Tilt input, lock state, and flywheel-related action. Treat as immediate control input.                                                                                                    |
-| Lighting                 | `LIGHT_CTRL`                                                                     | Headlight and status brightness. The observed control payload uses `headlightBrightness` and `statusBrightness`; headlight is scaled to roughly half before sending and status brightness has a minimum of `5`. |
-| Sound / tones            | `TONE`                                                                           | Tone support/version, horn, play, and stop actions. Tone handler install is a separate script/LISP flow; playback control then uses the `TONE` runtime channel.                                                 |
+| Category                 | Commands                                                                         | Can Change On The Fly                                                                                                                                                                                                                                                                                                                                           |
+| ------------------------ | -------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Runtime data reads       | `GET_INFO`, `GET_RTDATA`, `GET_ALL_DATA`, `PRINT_INFO`, `LIGHT_INFO`, `LCM_INFO` | Nothing persisted; reads package version, board state, angles, input tilt, throttle, speed/duty, and light/controller metadata.                                                                                                                                                                                                                                 |
+| Tune editing             | `SET_TUNE`, `SET_DEFAULT_TUNE`, `TUNE_OTHER`, `BOOSTER`                          | Live tune state and helper/advanced tune values. These affect behavior immediately but should be considered temporary until saved.                                                                                                                                                                                                                              |
+| Tune persistence actions | `SAVE_TUNE`, `RESTORE_TUNE`                                                      | Save current runtime tune state or restore saved tune state. These are actions, not field writes.                                                                                                                                                                                                                                                               |
+| Movement / tilt input    | `MOVE`, `LOCK`, `FLYWHEEL`                                                       | Live movement, Remote Tilt input, lock state, and flywheel-related action. Treat as immediate control input.                                                                                                                                                                                                                                                    |
+| Lighting                 | `LIGHTS_CONTROL` (20, or 202 before Refloat 1.2), `LCM_LIGHT_CTRL` (26)          | Two channels: `LIGHTS_CONTROL` switches Refloat's own lights and headlights (mask + value bits), while `LCM_LIGHT_CTRL` writes brightness levels to an external light module. `LIGHTS_CONTROL` was renumbered and its mask widened in Refloat 1.2.0, and pre-1.2 it writes config rather than a runtime override. See [refloatAlldata.md](./refloatAlldata.md). |
+| Sound / tones            | `TONE`                                                                           | Tone support/version, horn, play, and stop actions. Tone handler install is a separate script/LISP flow; playback control then uses the `TONE` runtime channel.                                                                                                                                                                                                 |
 
 The practical split is:
 
@@ -563,9 +583,11 @@ There are two observed Refloat protocol generations:
 - Refloat 1.0–1.2 uses `RC_MOVE` (`7`). Payload:
   `[direction, current, time, current + time]` after the package id and command.
   `direction = 1` moves one way and `0` flips current negative. `current` is
-  tenths of amps and is clamped by firmware; `time` is in firmware steps of
-  roughly one second (`time * 100` loop steps). A stop-ish command is
-  `[1, 0, 1, 1]`.
+  tenths of amps and is clamped by firmware; `time` is `time * 100` control-loop
+  steps, and that loop ticks at ~832 Hz, so one unit is only ~120 ms — not the
+  second it reads like. Firmware also zeroes its move current and ramps back to
+  the target on every request, so a re-send costs a short dip. A stop-ish command
+  is `[1, 0, 1, 1]`.
 - Refloat 1.3+ uses `REMOTE` (`15`). Payload is one signed byte after the
   package id and command. The firmware maps `-127..127` to `-1..1` remote input
   (`-128` is ignored). It then derives move speed from configured
@@ -626,7 +648,7 @@ The firmware version string is useful diagnostics, but it is not the primary dec
 expose a different schema on the same nominal firmware family, and the XML schema is the source of
 truth for field order and encoding.
 
-Tune Profiles are not migrated across normalized base Refloat package versions. A profile created
+Tune Profiles are not migrated across Refloat major/minor versions. A profile created
 under one base version is retained for that version and hidden from normal use when the board
 reports a different base version. Suffixes and fork labels stay in the exact Refloat version used
 for link integrity, but they do not split Tune Profile compatibility. If the board later returns to
@@ -635,18 +657,18 @@ trusted base version, the rider explicitly creates one from the current board co
 
 Known version-sensitive field semantics:
 
-| Area                      | Affected fields                        | Compatibility note                                                                                                                                                                                      |
-| ------------------------- | -------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| High/low voltage pushback | `tiltback_hv`, `tiltback_lv`           | Refloat 1.2 with VESC firmware `6.05+` supports per-cell voltage values. Older `6.02` setups use total pack voltage, e.g. `4.3V * cell_count` for high voltage and `3.0V * cell_count` for low voltage. |
-| I term limit              | `ki_limit`                             | Older firmware exposed this concept as `Deadzone`; the modern value is scaled up 10x. A previous `Deadzone = 3` corresponds to `ki_limit = 30A`.                                                        |
-| ATR strength              | `atr_strength_up`, `atr_strength_down` | Older `5.3 ATR` values are scaled 10x smaller. A previous ATR strength of `0.10` corresponds to modern `1.0`.                                                                                           |
-| BMS temperature alert     | BMS temperature threshold fields       | Some BMS-related options require VESC firmware `6.06+` and sufficiently recent BMS firmware.                                                                                                            |
-| Parking brake             | `parking_brake_mode`                   | Firmware `6.05+` applies parking brake by shorting motor phases; older behavior may differ.                                                                                                             |
-| Audible feedback          | haptic/audible feedback fields         | Some generated tones rely on `foc_play_tone` behavior from firmware `6.05`; other modes use current modulation instead.                                                                                 |
+| Area                      | Affected fields                        | Compatibility note                                                                                                                                                                                                                                  |
+| ------------------------- | -------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| High/low voltage pushback | `tiltback_hv`, `tiltback_lv`           | Refloat 1.2 with VESC firmware `6.05+` supports per-cell values below `10 V` while retaining total pack values. Older `6.02` setups use only total pack voltage, e.g. `4.3V * cell_count` for high voltage and `3.0V * cell_count` for low voltage. |
+| I term limit              | `ki_limit`                             | Older firmware exposed this concept as `Deadzone`; the modern value is scaled up 10x. A previous `Deadzone = 3` corresponds to `ki_limit = 30A`.                                                                                                    |
+| ATR strength              | `atr_strength_up`, `atr_strength_down` | Older `5.3 ATR` values are scaled 10x smaller. A previous ATR strength of `0.10` corresponds to modern `1.0`.                                                                                                                                       |
+| BMS temperature alert     | BMS temperature threshold fields       | Some BMS-related options require VESC firmware `6.06+` and sufficiently recent BMS firmware.                                                                                                                                                        |
+| Parking brake             | `parking_brake_mode`                   | Firmware `6.05+` applies parking brake by shorting motor phases; older behavior may differ.                                                                                                                                                         |
+| Audible feedback          | haptic/audible feedback fields         | Some generated tones rely on `foc_play_tone` behavior from firmware `6.05`; other modes use current modulation instead.                                                                                                                             |
 
 For our app, this means tune read/write support requires a trusted Board Link with known Refloat
 package version. Writes are still gated by schema validation and field presence, but profile
-visibility is gated by Refloat package version. The app does not silently convert old tune values
+visibility is gated by Refloat major/minor version; patch versions and suffixes share profiles. The app does not silently convert old tune values
 to new Refloat versions.
 
 ### Basic and Advanced Values Must Stay in Sync

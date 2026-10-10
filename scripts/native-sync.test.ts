@@ -1,7 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
-import { mkdirSync, mkdtempSync, rmSync, unlinkSync, writeFileSync } from 'fs'
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, unlinkSync, writeFileSync } from 'fs'
 import { tmpdir } from 'os'
 import { join } from 'path'
+import { copyWearSharedSources, wearSharedSources } from '../plugins/wearSharedSources.ts'
 import { copyShared } from './copy-shared.ts'
 import {
   missingSharedOutputs,
@@ -63,6 +64,44 @@ describe('podsFingerprint', () => {
 })
 
 describe('prebuildFingerprint', () => {
+  it('refreshes shared watch codecs without overwriting wrist types with the same filename', () => {
+    for (const source of wearSharedSources) write(source, 'phone encoder')
+    const wristFrame = 'android/wearos/src/main/java/app/vescape/wear/WatchFrame.kt'
+    write(wristFrame, 'wrist decoder')
+    const before = prebuildFingerprint('android', root)
+    const iosBefore = prebuildFingerprint('ios', root)
+    const phoneFrame = wearSharedSources.find((source) => source.endsWith('/WatchFrame.kt'))!
+    write(phoneFrame, 'updated phone encoder')
+
+    expect(prebuildFingerprint('android', root)).not.toEqual(before)
+    expect(prebuildFingerprint('ios', root)).toEqual(iosBefore)
+    copyWearSharedSources(root, join(root, 'android/wearos'))
+    expect(readFileSync(join(root, wristFrame), 'utf8')).toBe('wrist decoder')
+    expect(
+      readFileSync(
+        join(root, 'android/wearos/src/main/java/expo/modules/vescapecore/watch/WatchFrame.kt'),
+        'utf8',
+      ),
+    ).toBe('updated phone encoder')
+  })
+
+  it('regenerates Android when entering and leaving smoke mode', () => {
+    const original = process.env.EXPO_PUBLIC_SMOKE
+    try {
+      delete process.env.EXPO_PUBLIC_SMOKE
+      const normal = prebuildFingerprint('android', root)
+      const ios = prebuildFingerprint('ios', root)
+      process.env.EXPO_PUBLIC_SMOKE = '1'
+      expect(prebuildFingerprint('android', root)).not.toEqual(normal)
+      expect(prebuildFingerprint('ios', root)).toEqual(ios)
+      delete process.env.EXPO_PUBLIC_SMOKE
+      expect(prebuildFingerprint('android', root)).toEqual(normal)
+    } finally {
+      if (original === undefined) delete process.env.EXPO_PUBLIC_SMOKE
+      else process.env.EXPO_PUBLIC_SMOKE = original
+    }
+  })
+
   it('changes when a config plugin is added', () => {
     const before = prebuildFingerprint('android', root)
     write('plugins/withThing.ts', 'export default {}')

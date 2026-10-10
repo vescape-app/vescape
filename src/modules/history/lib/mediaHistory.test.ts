@@ -15,8 +15,8 @@ function gps(id: number, capturedAtMs: number, latitude = 52, longitude = 21): H
   return {
     id,
     capturedAtMs,
-    deviceId: 'board',
-    deviceName: 'Board',
+    boardId: 'board',
+    boardName: 'Board',
     latitude,
     longitude,
     speedMps: null,
@@ -24,7 +24,7 @@ function gps(id: number, capturedAtMs: number, latitude = 52, longitude = 21): H
     accuracyM: null,
     altitudeM: null,
     timestamp: capturedAtMs,
-    precise: true,
+    recordingId: null,
     distanceFromPreviousM: null,
   }
 }
@@ -44,14 +44,75 @@ function marker(occurredAtMs: number, type: HistoryMarker['type']): HistoryMarke
     id: occurredAtMs,
     occurredAtMs,
     type,
-    deviceId: null,
-    deviceName: null,
+    boardId: null,
     message: null,
     gapMs: null,
   }
 }
 
 describe('matchMediaHistoryAssets', () => {
+  test.each(['disconnected', 'gap', 'error'] as const)(
+    'matches continuous Ride Track across a telemetry %s marker',
+    (type) => {
+      const result = matchMediaHistoryAssets({
+        assets: [asset('photo', 6_000)],
+        gpsSamples: [
+          { ...gps(1, 1_000), recordingId: 'ride-1' },
+          { ...gps(2, 9_000), recordingId: 'ride-1' },
+        ],
+        markers: [marker(5_000, type)],
+        startAtMs: 1_000,
+        endAtMs: 9_000,
+      })
+      expect(result.map((item) => item.id)).toEqual(['photo'])
+    },
+  )
+
+  test('legacy GPS still respects BLE disconnect markers', () => {
+    expect(
+      matchMediaHistoryAssets({
+        assets: [asset('photo', 6_000)],
+        gpsSamples: [gps(1, 1_000), gps(2, 9_000)],
+        markers: [marker(5_000, 'disconnected')],
+        startAtMs: 1_000,
+        endAtMs: 9_000,
+      }),
+    ).toEqual([])
+  })
+
+  test.each(['ride-2', null])(
+    'rejects a recording boundary to %s without a marker',
+    (recordingId) => {
+      expect(
+        matchMediaHistoryAssets({
+          assets: [asset('between', 6_000)],
+          gpsSamples: [
+            { ...gps(1, 1_000), recordingId: 'ride-1' },
+            { ...gps(2, 9_000), recordingId },
+          ],
+          markers: [],
+          startAtMs: 1_000,
+          endAtMs: 9_000,
+        }),
+      ).toEqual([])
+    },
+  )
+
+  test('same recording still rejects a real gap in precise GPS fixes', () => {
+    expect(
+      matchMediaHistoryAssets({
+        assets: [asset('in-gap', 20_000), asset('outside-ride', 50_000)],
+        gpsSamples: [
+          { ...gps(1, 1_000), recordingId: 'ride-1' },
+          { ...gps(2, 40_000), recordingId: 'ride-1' },
+        ],
+        markers: [],
+        startAtMs: 1_000,
+        endAtMs: 40_000,
+      }),
+    ).toEqual([])
+  })
+
   test('matches inclusive ride boundary and nearest recording-backed GPS', () => {
     const result = matchMediaHistoryAssets({
       assets: [asset('start', 1_000), asset('middle', 5_000), asset('end', 9_000)],
@@ -117,6 +178,7 @@ test('video telemetry rejects stale or gap-crossing samples', () => {
   const samples = [makeSample({ capturedAtMs: 1_000 }), makeSample({ capturedAtMs: 9_000 })]
   expect(findVideoTelemetrySample(samples, [], 1_000, 0)?.capturedAtMs).toBe(1_000)
   expect(findVideoTelemetrySample(samples, [marker(5_000, 'gap')], 1_000, 5)).toBeNull()
+  expect(findVideoTelemetrySample(samples, [marker(5_000, 'disconnected')], 1_000, 5)).toBeNull()
   expect(findVideoTelemetrySample(samples, [], 1_000, 20)).toBeNull()
   expect(
     findVideoTelemetrySample(

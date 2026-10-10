@@ -3,13 +3,18 @@ package expo.modules.vescapecore.watch
 import expo.modules.vescapecore.service.VESC_SESSION_TAG
 
 import android.content.Context
+import android.os.SystemClock
 import android.util.Log
 import com.google.android.gms.tasks.Tasks
 import com.google.android.gms.wearable.Wearable
+import java.util.concurrent.atomic.AtomicBoolean
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
 
 private const val WATCH_TELEMETRY_PATH = "/telemetry"
+
+/** How long a connected-node lookup is trusted before the next frame triggers a refresh. */
+private const val NODE_CACHE_TTL_MS = 30_000L
 
 /**
  * Phone -> Wear OS Mirror transport (ADR-0019). Fire-and-forget
@@ -32,28 +37,77 @@ internal class WatchTelemetryPusher(
     @Volatile
     private var activeIssue: String? = null
 
-    fun pushFrame(frame: ByteArray) {
+    /**
+     * Cached target node ids. Looking these up is a blocking Play-services IPC, and at frame cadence
+     * that costs more than the send it precedes — so it is refreshed on a slow TTL and invalidated
+     * whenever a send fails, which is the event that actually means the node set moved.
+     */
+    @Volatile
+    private var nodeIds: List<String> = emptyList()
+
+    @Volatile
+    private var nodeIdsAtMs: Long = 0L
+
+    private val refreshing = AtomicBoolean(false)
+
+    fun pushFrame(frame: ByteArray) = send(WATCH_TELEMETRY_PATH, frame)
+
+    /**
+     * A Group Ride Frame on its own path (ADR-0039), sharing this pusher's node cache.
+     *
+     * @parity /modules/vescape-core/ios/watch/WatchTelemetryPusher.swift `pushGroupRideFrame`
+     */
+    fun pushGroupRideFrame(frame: ByteArray) = send(WATCH_GROUP_RIDE_PATH, frame)
+
+    /** @parity /modules/vescape-core/ios/watch/WatchTelemetryPusher.swift `pushRouteStatus` */
+    fun pushRouteStatus(status: WatchRouteStatus) = send(WATCH_ROUTE_STATUS_PATH, WatchRouteStatusCodec.encode(status))
+
+    private fun send(path: String, frame: ByteArray) {
+        val targets = nodeIds
+        // On the timestamp, never on emptiness: "no nodes" is a valid cached answer, and re-asking
+        // for it every frame would restore the very 4 Hz blocking lookup the cache exists to remove.
+        if (nodeIdsAtMs == 0L || SystemClock.elapsedRealtime() - nodeIdsAtMs > NODE_CACHE_TTL_MS) {
+            refreshNodes()
+        }
+        // A frame is worthless once stale; the next tick ships against the refreshed cache.
+        if (targets.isEmpty()) return
+        for (nodeId in targets) {
+            messageClient.sendMessage(nodeId, path, frame)
+                .addOnSuccessListener { reportRecovered() }
+                .addOnFailureListener { error ->
+                    invalidateNodes()
+                    reportIssue(
+                        "watch_frame_send_failed",
+                        mapOf("node" to nodeId, "path" to path, "error" to error.message),
+                    )
+                }
+        }
+    }
+
+    private fun refreshNodes() {
+        if (!refreshing.compareAndSet(false, true)) return
         scope.launch {
-            val nodes = runCatching { Tasks.await(nodeClient.connectedNodes) }.getOrNull()
-            if (nodes == null) {
-                reportIssue("watch_nodes_lookup_failed")
-                return@launch
-            }
-            if (nodes.isEmpty()) {
-                reportIssue("watch_frame_no_nodes")
-                return@launch
-            }
-            for (node in nodes) {
-                messageClient.sendMessage(node.id, WATCH_TELEMETRY_PATH, frame)
-                    .addOnSuccessListener { reportRecovered() }
-                    .addOnFailureListener { error ->
-                        reportIssue(
-                            "watch_frame_send_failed",
-                            mapOf("node" to node.id, "error" to error.message),
-                        )
-                    }
+            try {
+                // intentional-suppression: missing nodes are reported by the null branch
+                val nodes = runCatching { Tasks.await(nodeClient.connectedNodes) }.getOrNull()
+                when {
+                    nodes == null -> reportIssue("watch_nodes_lookup_failed")
+                    nodes.isEmpty() -> reportIssue("watch_frame_no_nodes")
+                }
+                if (nodes != null) {
+                    nodeIds = nodes.map { it.id }
+                }
+                // Back off failed IPC probes too. Keep the last trusted nodes, but do not turn every
+                // 2 Hz telemetry frame into another blocking Play-services query.
+                nodeIdsAtMs = SystemClock.elapsedRealtime()
+            } finally {
+                refreshing.set(false)
             }
         }
+    }
+
+    private fun invalidateNodes() {
+        nodeIdsAtMs = 0L
     }
 
     private fun reportIssue(name: String, properties: Map<String, Any?> = emptyMap()) {

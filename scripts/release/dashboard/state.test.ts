@@ -1,12 +1,6 @@
 import { describe, expect, test } from 'bun:test'
 import type { ProductionManifest } from '../contracts'
-import {
-  pendingCount,
-  productionRow,
-  relativeAge,
-  truncationAlerts,
-  unreleasedPrereleases,
-} from './state'
+import { productionRow, relativeAge, truncationAlerts } from './state'
 
 const productionManifest = (
   overrides: Partial<ProductionManifest['phone']> = {},
@@ -17,14 +11,12 @@ const productionManifest = (
   sourceSha: 'a'.repeat(40),
   marketingVersion: '1.7.1',
   operation: 'promote',
-  requestedRolloutPercentage: 25,
   phone: {
     versionCode: 1388,
     sourceTrack: 'beta',
     targetTrack: 'production',
     status: 'promoted',
-    playStatus: 'inProgress',
-    rolloutPercentage: 25,
+    playStatus: 'completed',
     ...overrides,
   },
   wear: {
@@ -32,53 +24,22 @@ const productionManifest = (
     sourceTrack: 'wear:beta',
     targetTrack: 'wear:production',
     status: 'promoted',
-    playStatus: 'inProgress',
-    rolloutPercentage: 25,
+    playStatus: 'completed',
   },
   githubRelease: 'released',
 })
 
-describe('pendingCount', () => {
-  test('counts every run when the downstream track consumed nothing', () => {
-    expect(
-      pendingCount(
-        [
-          { runId: 3, createdAt: null },
-          { runId: 2, createdAt: null },
-        ],
-        null,
-      ),
-    ).toBe(2)
-  })
-
-  test('counts only runs newer than the consumed one', () => {
-    const runs = [
-      { runId: 5, createdAt: null },
-      { runId: 4, createdAt: null },
-      { runId: 3, createdAt: null },
-    ]
-    expect(pendingCount(runs, 3)).toBe(2)
-    expect(pendingCount(runs, 5)).toBe(0)
-  })
-})
-
 describe('productionRow', () => {
-  test('carries the recorded rollout percentage', () => {
-    expect(productionRow(productionManifest(), 11).rolloutPercentage).toBe(25)
-  })
+  test('carries the exact artifact pair a status refresh must target', () => {
+    const row = productionRow(productionManifest(), 11)
 
-  test('reads halted from the artifact status', () => {
-    expect(productionRow(productionManifest({ status: 'halted' }), 11).halted).toBe(true)
-  })
-
-  test('reads halted from live Play status even when the operation succeeded', () => {
-    expect(productionRow(productionManifest({ playStatus: 'halted' }), 11).halted).toBe(true)
-  })
-})
-
-describe('unreleasedPrereleases', () => {
-  test('drops the tag that already reached production', () => {
-    expect(unreleasedPrereleases(['v1.8.0', 'v1.7.1'], '1.7.1')).toEqual(['v1.8.0'])
+    expect(row).toMatchObject({
+      marketingVersion: '1.7.1',
+      phone: 1388,
+      wear: 1389,
+      detail: 'promoted',
+      openPromotionRunId: 9,
+    })
   })
 })
 
@@ -111,7 +72,7 @@ describe('truncationAlerts', () => {
         ['Production', true],
       ]),
     ).toEqual([
-      'Production history is all failures within the scan window; state shown may be incomplete',
+      'Production history scan found no readable successful release within the scan window; state shown may be incomplete',
     ])
   })
 })

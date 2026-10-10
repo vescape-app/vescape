@@ -4,13 +4,14 @@ import { Text } from '@/components/base/Text'
 import { useRouter } from 'expo-router'
 import { ArrowCounterClockwiseIcon } from 'phosphor-react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
-import { type TuneHistoryEntry, type TuneProfileFieldValue } from 'vescape-core'
+import type { TuneHistoryEntry, TuneProfileFieldValue } from 'vescape-core'
 
 import { ConfirmModal } from '@/components/modals/ConfirmModal'
 import { Button } from '@/components/base/Button'
 import { APP_TUNE_FIELD_BY_ID, formatTuneValue } from '@/modules/tune/lib/fields'
 import { useTuneProfileStore } from '@/modules/tune/store/tuneProfileStore'
 import { theme } from '@/constants/theme'
+import { DASH } from '@/helpers/format'
 
 interface HistoryFieldDiff {
   fieldId: string
@@ -44,9 +45,9 @@ function diffHistoryEntries(
       fieldId: key,
       label,
       oldValue:
-        ov != null && ov !== '' ? String(typeof ov === 'number' ? formatTuneValue(ov) : ov) : '–',
+        ov != null && ov !== '' ? String(typeof ov === 'number' ? formatTuneValue(ov) : ov) : DASH,
       newValue:
-        nv != null && nv !== '' ? String(typeof nv === 'number' ? formatTuneValue(nv) : nv) : '–',
+        nv != null && nv !== '' ? String(typeof nv === 'number' ? formatTuneValue(nv) : nv) : DASH,
     })
   }
   return diffs
@@ -58,13 +59,17 @@ export default function TuneHistoryScreen() {
   const loadHistory = useTuneProfileStore((s) => s.loadHistory)
   const rollbackToHistory = useTuneProfileStore((s) => s.rollbackToHistory)
   const currentFields = useTuneProfileStore((s) => s.activeProfile?.fields)
+  const error = useTuneProfileStore((s) => s.error)
 
   const [entries, setEntries] = useState<TuneHistoryEntry[]>([])
   const [rollbackConfirmEntryId, setRollbackConfirmEntryId] = useState<number | null>(null)
 
   useEffect(() => {
     if (!activeProfile) return
-    void loadHistory(activeProfile.id).then(setEntries)
+    // intentional-suppression: Tune store error is rendered by the active screen or modal
+    void loadHistory(activeProfile.id)
+      .then(setEntries)
+      .catch(() => undefined) // Store error renders in Tune.
   }, [activeProfile, loadHistory])
 
   const handleRestore = useCallback((entryId: number) => {
@@ -73,6 +78,7 @@ export default function TuneHistoryScreen() {
 
   return (
     <SafeAreaView style={styles.container} edges={['bottom']}>
+      {error ? <Text style={styles.error}>{error}</Text> : null}
       {entries.length === 0 ? (
         <Text style={styles.empty}>No history entries yet.</Text>
       ) : (
@@ -124,7 +130,10 @@ export default function TuneHistoryScreen() {
         confirmLabel="Restore"
         onConfirm={() => {
           if (rollbackConfirmEntryId != null) {
-            void rollbackToHistory(rollbackConfirmEntryId).then(() => router.back())
+            // intentional-suppression: Tune store error is rendered by the active screen or modal
+            void rollbackToHistory(rollbackConfirmEntryId)
+              .then(() => router.back())
+              .catch(() => undefined) // Keep this screen open; the store owns the visible error.
           }
           setRollbackConfirmEntryId(null)
         }}
@@ -137,10 +146,15 @@ export default function TuneHistoryScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: theme.palette.slate.bg,
+    backgroundColor: theme.neutral.bg,
+  },
+  error: {
+    color: theme.status.error.text,
+    fontSize: 12,
+    padding: 16,
   },
   empty: {
-    color: theme.palette.slate.textMuted,
+    color: theme.neutral.textMuted,
     fontSize: 13,
     textAlign: 'center',
     paddingVertical: 24,
@@ -154,7 +168,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingVertical: 10,
     borderBottomWidth: 1,
-    borderBottomColor: theme.palette.slate.surface,
+    borderBottomColor: theme.neutral.surface,
     gap: 10,
   },
   entryInfo: {
@@ -162,12 +176,12 @@ const styles = StyleSheet.create({
     gap: 2,
   },
   entryDate: {
-    color: theme.palette.slate.textPrimary,
+    color: theme.neutral.textPrimary,
     fontSize: 13,
     fontWeight: '700',
   },
   entryDetail: {
-    color: theme.palette.slate.textMuted,
+    color: theme.neutral.textMuted,
     fontSize: 11,
     fontWeight: '700',
   },
@@ -176,7 +190,7 @@ const styles = StyleSheet.create({
     marginTop: 2,
   },
   diffLine: {
-    color: theme.palette.slate.textSecondary,
+    color: theme.neutral.textSecondary,
     fontSize: 11,
     fontWeight: '600',
   },

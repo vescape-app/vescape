@@ -4,8 +4,34 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import java.io.File
 
 class ReplayFixtureParserTest {
+    @Test
+    fun `seeded detours move smoothly off route then rejoin and trail follows actual positions`() {
+        val lines = (0..240).map { i ->
+            """{"t":${i * 500},"speed":21.6,"riderEast":0,"riderNorth":${i * 3},"course":0,"navBearing":0,"navDistance":2000}"""
+        }
+        val straight = ReplayFixtureParser.parse(lines.asSequence())
+        val detour = ReplayFixtureParser.parse(lines.asSequence(), wander = true)
+        assertEquals(detour, ReplayFixtureParser.parse(lines.asSequence(), wander = true))
+        assertEquals(straight.first(), detour.first())
+        assertEquals(0.0, detour.last().frame.riderEastM!!, 0.0001)
+        assertEquals(720.0, detour.last().frame.riderNorthM!!, 0.0001)
+        assertTrue(detour.any { kotlin.math.abs(it.frame.riderEastM!!) > 15 })
+        assertTrue(detour.any { kotlin.math.abs(it.frame.courseDeg!!) > 5 })
+        for (i in 1 until detour.size) {
+            val frame = detour[i].frame
+            val previous = detour[i - 1].frame
+            assertTrue(kotlin.math.hypot(frame.riderEastM!! - previous.riderEastM!!, frame.riderNorthM!! - previous.riderNorthM!!) < 5)
+            assertEquals(straight[i].frame.navBearing, frame.navBearing)
+            assertEquals(-frame.riderEastM, frame.trail.first().eastM, 0.0001)
+            assertEquals(-frame.riderNorthM, frame.trail.first().northM, 0.0001)
+            assertEquals(0.0, frame.trail.last().eastM, 0.0001)
+            assertEquals(0.0, frame.trail.last().northM, 0.0001)
+        }
+    }
+
     @Test
     fun `reads lanes and recorded time`() {
         val samples = ReplayFixtureParser.parse(
@@ -60,5 +86,39 @@ class ReplayFixtureParserTest {
 
         assertEquals(1, samples.size)
         assertEquals(1000L, samples[0].atMs)
+    }
+    private fun asset(name: String): File = generateSequence(File(requireNotNull(System.getProperty("user.dir")))) { it.parentFile }
+        .map { File(it, "watch/wearos/src/main/assets/$name") }.first { it.exists() }
+
+    private val origin = ReplaySceneParser.parseOrigin(asset("watch-route.json").readText())
+
+    @Test fun `ride fixture keeps moving and showing its trail after navigation ends`() {
+        val fixture = asset("watch-ride.jsonl")
+        for (wander in listOf(false, true)) {
+            val samples = fixture.useLines { ReplayFixtureParser.parse(it, wander = wander, origin = origin) }
+            val arrival = samples.indexOfFirst { it.frame.navBearing == null }
+            assertTrue(arrival > 0)
+            val after = samples.drop(arrival)
+            assertTrue(after.isNotEmpty())
+            assertTrue(after.all { it.frame.mapPosition != null && it.frame.trail.size > 1 })
+            assertTrue(after.first().frame.mapPosition != after.last().frame.mapPosition)
+        }
+    }
+
+    @Test fun `shipped street-map tiles sit under every replayed rider position`() {
+        val tiles = ReplaySceneParser.parseMapTiles(asset("watch-map-tiles.json").readText())
+        assertTrue(tiles.isNotEmpty())
+        for (tile in tiles) assertTrue(asset("watch-map-tiles/${tile.key}.jpg").length() > 0)
+        for (fixture in listOf("watch-ride.jsonl", "watch-sweep.jsonl")) {
+            val positions = asset(fixture).useLines { ReplayFixtureParser.parse(it, wander = true, origin = origin) }
+                .mapNotNull { it.frame.mapPosition }
+            assertTrue(positions.isNotEmpty())
+            for (position in positions) {
+                assertTrue("$fixture: no tile under $position", tiles.any { tile ->
+                    position.latitude <= tile.northWest.latitude && position.latitude > tile.southEast.latitude &&
+                        position.longitude >= tile.northWest.longitude && position.longitude < tile.southEast.longitude
+                })
+            }
+        }
     }
 }

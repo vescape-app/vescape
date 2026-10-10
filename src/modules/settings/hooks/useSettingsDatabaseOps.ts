@@ -12,6 +12,7 @@ import {
 
 import { formatBytes } from '@/helpers/format'
 import { useDatabaseSize } from '@/modules/settings/hooks/useDatabaseSize'
+import { errorMessage } from '@/helpers/error'
 
 type OpState = 'idle' | 'running' | 'done' | 'error'
 
@@ -26,7 +27,7 @@ async function reloadRuntime() {
 }
 
 export function useSettingsDatabaseOps() {
-  const { bytes: dbSize, refresh: refreshDatabaseSize } = useDatabaseSize()
+  const { bytes: dbSize, error: dbSizeError, refresh: refreshDatabaseSize } = useDatabaseSize()
   const [rebuildState, setRebuildState] = useState<OpState>('idle')
   const [rebuildResult, setRebuildResult] = useState<string | null>(null)
   const [backupState, setBackupState] = useState<OpState>('idle')
@@ -34,6 +35,7 @@ export function useSettingsDatabaseOps() {
   const [restoreState, setRestoreState] = useState<OpState>('idle')
   const [restoreResult, setRestoreResult] = useState<string | null>(null)
   const [restoreConfirmVisible, setRestoreConfirmVisible] = useState(false)
+  const [pendingRestore, setPendingRestore] = useState<{ uri: string; name: string } | null>(null)
   const [rebuildProgress, setRebuildProgress] = useState<{
     current: number
     total: number
@@ -55,9 +57,9 @@ export function useSettingsDatabaseOps() {
       setRebuildState('done')
       setRebuildResult(null)
       setRebuildProgress(null)
-    } catch (e: any) {
+    } catch (e) {
       setRebuildState('error')
-      setRebuildResult(e?.message ?? 'Unknown error')
+      setRebuildResult(errorMessage(e, 'Unknown error'))
       setRebuildProgress(null)
     }
   }, [])
@@ -75,41 +77,61 @@ export function useSettingsDatabaseOps() {
       setBackupState('done')
       setBackupResult(`${backup.name} (${formatBytes(backup.sizeBytes)})`)
       refreshDatabaseSize()
-    } catch (e: any) {
+    } catch (e) {
       setBackupState('error')
-      setBackupResult(e?.message ?? 'Backup failed')
+      setBackupResult(errorMessage(e, 'Backup failed'))
     }
   }, [refreshDatabaseSize])
 
+  // Pick first, confirm second. iOS will not present the document picker while the confirm card's
+  // modal view controller is on screen or mid-dismissal: the picker never appears and
+  // `getDocumentAsync` never settles, stranding the row on "Restoring...". Nothing is presented
+  // over a modal this way, so there is no dismissal to race.
   const handleRestoreDatabase = useCallback(async () => {
-    setRestoreConfirmVisible(false)
-    setRestoreState('running')
     setRestoreResult(null)
     try {
       const result = await DocumentPicker.getDocumentAsync({
         type: ['application/zip', 'application/x-zip-compressed'],
         copyToCacheDirectory: true,
       })
-      if (result.canceled) {
-        setRestoreState('idle')
-        return
-      }
-      const uri = result.assets[0]?.uri
-      if (!uri) throw new Error('No backup file selected')
-      await restoreDatabase(uri)
-      setRestoreState('done')
-      setRestoreResult('Database restored')
-      await reloadRuntime()
-    } catch (e: any) {
+      if (result.canceled) return
+      const asset = result.assets[0]
+      if (!asset?.uri) throw new Error('No backup file selected')
+      setPendingRestore({ uri: asset.uri, name: asset.name ?? 'backup.zip' })
+      setRestoreConfirmVisible(true)
+    } catch (e) {
       setRestoreState('error')
-      setRestoreResult(e?.message ?? 'Restore failed')
+      setRestoreResult(errorMessage(e, 'Restore failed'))
     }
   }, [])
+
+  const cancelRestore = useCallback(() => {
+    setRestoreConfirmVisible(false)
+    setPendingRestore(null)
+  }, [])
+
+  const handleConfirmRestore = useCallback(async () => {
+    if (!pendingRestore) return
+    setRestoreConfirmVisible(false)
+    setRestoreState('running')
+    setRestoreResult(null)
+    try {
+      await restoreDatabase(pendingRestore.uri)
+      setRestoreState('done')
+      setRestoreResult('Database restored')
+      setPendingRestore(null)
+      await reloadRuntime()
+    } catch (e) {
+      setRestoreState('error')
+      setRestoreResult(errorMessage(e, 'Restore failed'))
+      setPendingRestore(null)
+    }
+  }, [pendingRestore])
 
   const rebuildHint =
     rebuildState === 'error' && rebuildResult
       ? rebuildResult
-      : 'Refresh historical data with newest algorithms and settings'
+      : 'Refresh historical summaries and route previews with current settings'
   const rebuildProgressValue =
     rebuildProgress && rebuildProgress.total > 0
       ? Math.min(1, rebuildProgress.current / rebuildProgress.total)
@@ -132,6 +154,7 @@ export function useSettingsDatabaseOps() {
 
   return {
     dbSize,
+    dbSizeError,
     rebuildState,
     rebuildHint,
     rebuildProgressValue,
@@ -141,9 +164,11 @@ export function useSettingsDatabaseOps() {
     restoreState,
     restoreHint,
     restoreConfirmVisible,
-    setRestoreConfirmVisible,
+    pendingRestoreName: pendingRestore?.name ?? null,
+    cancelRestore,
     handleRebuildBuckets,
     handleBackupDatabase,
     handleRestoreDatabase,
+    handleConfirmRestore,
   }
 }

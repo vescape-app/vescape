@@ -56,12 +56,12 @@ const styles = StyleSheet.create({
     borderRadius: 12,
   },
   hour: {
-    color: theme.palette.slate.textSecondary,
+    color: theme.neutral.textSecondary,
     fontSize: 11,
     fontWeight: '600',
   },
   temp: {
-    color: theme.palette.slate.textPrimary,
+    color: theme.neutral.textPrimary,
     fontSize: 13,
     fontWeight: '600',
   },

@@ -1,6 +1,6 @@
 # Auto close exits the app after a sustained board-less delay
 
-Auto start (companion presence) means the app often wakes in the background when the board appears — and then stays alive forever after the board is switched off, holding a foreground service, the notification, and battery. Riders who never open the app manually end up with a permanently running app. Android-only, opt-in (Connection settings → Shutdown), delay 1–480 min in the UI (native validator accepts up to 1440).
+Auto start (companion presence) means the app often wakes in the background when the board appears — and then stays alive forever after the board is switched off, holding a foreground service, the notification, and battery. Riders who never open the app manually end up with a permanently running app. Android-only, opt-in (Automation settings → Shutdown), delay 1–480 min in the UI (native validator accepts up to 1440).
 
 ## Decision
 

@@ -1,14 +1,26 @@
-import { ScrollView, StyleSheet } from 'react-native'
+import { UnitSystemContext, useUnitSystem } from '@/hooks/useUnitSystem'
+import { speedFromKmh, speedUnit, type UnitSystem } from '@/helpers/units'
+import { Pressable, ScrollView, StyleSheet, View } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { Easing, useSharedValue, withRepeat, withTiming } from 'react-native-reanimated'
+import {
+  Easing,
+  useAnimatedReaction,
+  useSharedValue,
+  withRepeat,
+  withTiming,
+  type SharedValue,
+} from 'react-native-reanimated'
 
 import { ChartLineUpIcon } from 'phosphor-react-native'
-import { Text } from '@/components/base/Text'
 import { LinearGauge } from '@/components/charts/LinearGauge'
 import { IconHero } from '@/components/settings/IconHero'
-import { TelemetryLineChart } from '@/components/charts/TelemetryLineChart'
-import { computeAutoRange, type TelemetryChartPoint } from '@/components/charts/chartMath'
+import { ChartGestureHint } from '@/components/charts/ChartGestureHint'
+import { ChartLoadingOverlay } from '@/components/charts/ChartLoadingOverlay'
+import { ChartStackShowcase } from '@/components/charts/line/ChartStackShowcase'
+import { ChartStack } from '@/components/charts/line/ChartStack'
+import { computeAutoRangeFromValues } from '@/components/charts/chartMath'
+import type { ChartSeriesData } from '@/components/charts/line/types'
 import { SingleGauge } from '@/modules/board/components/SingleGauge'
 import { DualGauge } from '@/modules/board/components/DualGauge'
 import { Sparkline, type SparklinePoint } from '@/components/charts/Sparkline'
@@ -17,13 +29,116 @@ import { summarizeBms, summarizeBmsWindow } from '@/modules/battery/lib'
 import { ShowcaseCard } from '@/components/dev/ShowcaseCard'
 import { ChipRow, ToggleRow } from '@/components/dev/ShowcaseControls'
 import { theme } from '@/constants/theme'
+import { useResolvedNeutralColors } from '@/hooks/useTheme'
 import { telemetry } from '@/modules/board/constants/telemetry'
 import {
   getHistoryMetricHotRange,
-  getHistoryMetricColorRange,
-  getMetricRampColor,
   type HistoryMetricKey,
 } from '@/modules/history/lib/metricColorScale'
+
+import { RouteSparkline } from '@/modules/history/components/RouteSparkline'
+import { RidePreviewCard } from '@/modules/history/components/RidePreviewCard'
+import { HistoryRideRowShowcase } from '@/screens/showcase/history/HistoryRideRowShowcase'
+import type { RoutePoint } from '@/modules/history/lib/routePreview'
+
+const PREVIEW_ROUTES: Record<string, RoutePoint[]> = {
+  corners: [
+    { latitude: 52, longitude: 18 },
+    { latitude: 52.001, longitude: 18 },
+    { latitude: 52.001, longitude: 18.0015 },
+    { latitude: 52.0005, longitude: 18.0015 },
+    { latitude: 52.0005, longitude: 18.002 },
+  ],
+  straight: [
+    { latitude: 52, longitude: 18 },
+    { latitude: 52, longitude: 18.002 },
+  ],
+  gap: [
+    { latitude: 52, longitude: 18 },
+    { latitude: 52.001, longitude: 18 },
+    { latitude: 52.001, longitude: 18.0015, breakBefore: true },
+    { latitude: 52.0005, longitude: 18.0015 },
+  ],
+  empty: [],
+}
+
+function RouteSparklineShowcase() {
+  const [route, setRoute] = useState('corners')
+  const [endpoints, setEndpoints] = useState(true)
+  const [map, setMap] = useState(false)
+  return (
+    <ShowcaseCard
+      name="RouteSparkline"
+      controls={
+        <>
+          <ChipRow
+            label="route"
+            options={Object.keys(PREVIEW_ROUTES)}
+            selected={route}
+            onSelect={setRoute}
+          />
+          <ToggleRow label="endpoints" value={endpoints} onToggle={setEndpoints} />
+          <ToggleRow label="map" value={map} onToggle={setMap} />
+        </>
+      }
+    >
+      <RouteSparkline
+        points={PREVIEW_ROUTES[route]}
+        width={74}
+        height={52}
+        endpoints={endpoints}
+        map={map}
+      />
+      <RouteSparkline
+        points={PREVIEW_ROUTES[route]}
+        width={148}
+        height={104}
+        endpoints={endpoints}
+        map={map}
+      />
+    </ShowcaseCard>
+  )
+}
+
+function RidePreviewCardShowcase() {
+  const [route, setRoute] = useState('corners')
+  return (
+    <ShowcaseCard
+      name="RidePreviewCard"
+      controls={
+        <ChipRow
+          label="route"
+          options={Object.keys(PREVIEW_ROUTES)}
+          selected={route}
+          onSelect={setRoute}
+        />
+      }
+    >
+      <View style={styles.rideCards}>
+        <RidePreviewCard
+          title="15:29 – 15:30"
+          date="11 Sep 2026"
+          subtitle="1 min · 0.80 km · 23 km/h"
+          routePoints={PREVIEW_ROUTES[route]}
+          color={theme.palette.purple.color}
+          map={false}
+          onPress={() => undefined}
+        />
+        <RidePreviewCard
+          title="Evening ride"
+          date="10 Oct 2026"
+          subtitle="12 min · 3.45 km"
+          routePoints={PREVIEW_ROUTES[route]}
+          color={theme.palette.amber.color}
+          map={false}
+          onPress={() => undefined}
+        />
+      </View>
+    </ShowcaseCard>
+  )
+}
+
+const EMPTY_SERIES: ChartSeriesData = { ts: [], vs: [] }
 
 function seededRandom(seed: number) {
   let state = seed
@@ -51,81 +166,73 @@ function generateSparklineData(
   return points
 }
 
-function generateChartData({
+function generateChartSeries({
   count,
   base,
   variance,
   seed,
-  drift = 0,
   spikeEvery = 0,
 }: {
   count: number
   base: number
   variance: number
   seed: number
-  drift?: number
   spikeEvery?: number
-}): TelemetryChartPoint[] {
+}): ChartSeriesData {
   const now = Date.now()
   const random = seededRandom(seed)
-  const points: TelemetryChartPoint[] = []
+  const ts: number[] = []
+  const vs: number[] = []
   let value = base
   for (let i = 0; i < count; i += 1) {
-    value += (random() - 0.5) * variance + drift
+    value += (random() - 0.5) * variance
     if (spikeEvery > 0 && i % spikeEvery === 0) value += variance * (1.8 + random())
-    points.push({
-      date: new Date(now - (count - i) * 1000),
-      value: Math.max(0, value),
-    })
+    ts.push(now - (count - i) * 1000)
+    vs.push(Math.max(0, value))
   }
-  return points
+  return { ts, vs }
 }
 
 function SparklineShowcase() {
-  const [showMax, setShowMax] = useState(true)
-  const [maxPosition, setMaxPosition] = useState<'left' | 'right'>('right')
-  const [color, setColor] = useState(telemetry.speed.color)
-  const points = useMemo(() => generateSparklineData(120, 42, 2, 11), [])
+  const colors = {
+    speed: telemetry.speed.color,
+    duty: telemetry.duty.color,
+    controller: telemetry.controllerTemp.color,
+    yellow: theme.palette.yellow.color,
+  } as const
+  const [colorKey, setColorKey] = useState<keyof typeof colors>('speed')
+  const [noSamples, setNoSamples] = useState(false)
+  const generated = useMemo(() => generateSparklineData(120, 42, 2, 11), [])
+  // Empty series is the disconnected case: the max badge hides itself, the row keeps its height.
+  const points = noSamples ? [] : generated
 
   return (
     <ShowcaseCard
       name="Sparkline"
       controls={
         <>
-          <ToggleRow label="showMaxBadge" value={showMax} onToggle={setShowMax} />
-          <ChipRow
-            label="maxPosition"
-            options={['left', 'right']}
-            selected={maxPosition}
-            onSelect={(v) => setMaxPosition(v as 'left' | 'right')}
-          />
+          <ToggleRow label="no samples" value={noSamples} onToggle={setNoSamples} />
           <ChipRow
             label="color"
-            options={[
-              telemetry.speed.color,
-              telemetry.duty.color,
-              telemetry.controllerTemp.color,
-              theme.palette.yellow.color,
-            ]}
-            selected={color}
-            onSelect={setColor}
+            options={Object.keys(colors)}
+            selected={colorKey}
+            onSelect={(value) => setColorKey(value as keyof typeof colors)}
           />
         </>
       }
     >
       <Sparkline
         points={points}
-        color={color}
+        color={colors[colorKey]}
         height={32}
         fmtMax={(v) => `${v.toFixed(1)} V`}
-        showMaxBadge={showMax}
-        maxPosition={maxPosition}
       />
     </ShowcaseCard>
   )
 }
 
 function AnimatedSingleGaugeShowcase() {
+  const units = useUnitSystem()
   const [metricKey, setMetricKey] = useState<'speed' | 'duty' | 'motorTemp' | 'controllerTemp'>(
     'speed',
   )
@@ -169,11 +276,12 @@ function AnimatedSingleGaugeShowcase() {
       }
     >
       <SingleGauge
+        displayScale={metricKey === 'speed' ? speedFromKmh(1, units) : 1}
         value={value}
         min={metric.chartRange.min}
         max={metric.chartRange.max}
         color={metric.color}
-        unit={metric.unit}
+        unit={metricKey === 'speed' ? speedUnit(units) : metric.unit}
         decimals={metric.decimals}
         label={metric.label.toUpperCase()}
         hotRange={hotRange}
@@ -194,22 +302,47 @@ function AnimatedSingleGaugeShowcase() {
   )
 }
 
+const SHOWCASE_SPEED_MAX = 50
+const SHOWCASE_DUTY_MAX = 100
+/** `ride` follows the ramp like a real window peak; the rest pin it at a share of full scale. */
+const PEAK_MODES = ['ride', 'off', '20%', '39%', '40%', '70%', '100%', '120%']
+
+/** Peak for the showcase ramp: the sweep's running max, or pinned at a share of full scale. */
+function useShowcasePeak(value: SharedValue<number | null>, max: number, mode: string) {
+  const peak = useSharedValue<number | null>(null)
+  useEffect(() => {
+    peak.value = mode === 'ride' || mode === 'off' ? null : (parseFloat(mode) / 100) * max
+  }, [max, mode, peak])
+  useAnimatedReaction(
+    () => value.value,
+    (v) => {
+      if (mode !== 'ride' || v == null) return
+      // Each sweep starts fresh, as if the old peak had rolled out of the live window.
+      if (v < max * 0.02) peak.value = null
+      else if (peak.value == null || v > peak.value) peak.value = v
+    },
+    [mode, max],
+  )
+  return peak
+}
+
 function AnimatedDualGaugeShowcase() {
   const [compact, setCompact] = useState(false)
+  const [peakMode, setPeakMode] = useState('ride')
   const speed = useSharedValue<number | null>(0)
   const duty = useSharedValue<number | null>(0)
-
-  const speedSeries = useMemo(() => generateSparklineData(60, 28, 6, 11), [])
-  const dutySeries = useMemo(() => generateSparklineData(60, 55, 14, 23), [])
+  const speedPeak = useShowcasePeak(speed, SHOWCASE_SPEED_MAX, peakMode)
+  const dutyPeak = useShowcasePeak(duty, SHOWCASE_DUTY_MAX, peakMode)
+  const peaks = peakMode !== 'off'
 
   useEffect(() => {
     speed.value = withRepeat(
-      withTiming(50, { duration: 2600, easing: Easing.inOut(Easing.quad) }),
+      withTiming(SHOWCASE_SPEED_MAX, { duration: 2600, easing: Easing.inOut(Easing.quad) }),
       -1,
       true,
     )
     duty.value = withRepeat(
-      withTiming(100, { duration: 1700, easing: Easing.inOut(Easing.quad) }),
+      withTiming(SHOWCASE_DUTY_MAX, { duration: 1700, easing: Easing.inOut(Easing.quad) }),
       -1,
       true,
     )
@@ -218,13 +351,20 @@ function AnimatedDualGaugeShowcase() {
   return (
     <ShowcaseCard
       name="DualGauge / animated ramp"
-      controls={<ToggleRow label="compact" value={compact} onToggle={setCompact} />}
+      controls={
+        <>
+          <ToggleRow label="compact" value={compact} onToggle={setCompact} />
+          <ChipRow label="peak" options={PEAK_MODES} selected={peakMode} onSelect={setPeakMode} />
+        </>
+      }
     >
       <DualGauge
         speedValue={speed}
         dutyValue={duty}
-        speedSeries={speedSeries}
-        dutySeries={dutySeries}
+        speedPeak={peaks ? speedPeak : undefined}
+        dutyPeak={peaks ? dutyPeak : undefined}
+        speedMax={SHOWCASE_SPEED_MAX}
+        dutyMax={SHOWCASE_DUTY_MAX}
         compact={compact}
         speedAlerts={[{ id: 'speed-warn', threshold: 42, thresholdMax: null }]}
         dutyAlerts={[{ id: 'duty-warn', threshold: 80, thresholdMax: 95 }]}
@@ -234,6 +374,7 @@ function AnimatedDualGaugeShowcase() {
 }
 
 function LinearGaugeShowcase() {
+  const neutral = useResolvedNeutralColors()
   const [empty, setEmpty] = useState(false)
   const [charging, setCharging] = useState(false)
   const [percent, setPercent] = useState('82')
@@ -268,7 +409,7 @@ function LinearGaugeShowcase() {
       <LinearGauge
         value={empty ? null : value}
         max={100}
-        color={stale ? theme.palette.slate.textSecondary : telemetry.battVoltage.color}
+        color={stale ? neutral.textSecondary : telemetry.battVoltage.color}
         unit="%"
         aux={empty ? undefined : mode === 'stale old' ? `${voltageText} · 2h ago` : voltageText}
         charging={charging}
@@ -285,130 +426,48 @@ function LinearGaugeShowcase() {
   )
 }
 
-function RandomLineChartsShowcase() {
+/** The overlay a detail chart wears until its focused series lands. */
+function ChartLoadingOverlayShowcase() {
+  const [loading, setLoading] = useState(true)
+  const data = useMemo(
+    () => generateChartSeries({ count: 120, base: 24, variance: 6, seed: 7 }),
+    [],
+  )
   const charts = useMemo(
     () => [
       {
         key: 'speed',
-        metricKey: 'speed' as HistoryMetricKey,
-        label: 'Speed / noisy ride',
-        metric: telemetry.speed,
-        points: generateChartData({
-          count: 160,
-          base: 18,
-          variance: 5,
-          seed: 21,
-          spikeEvery: 29,
-        }),
-      },
-      {
-        key: 'duty',
-        metricKey: 'duty' as HistoryMetricKey,
-        label: 'Duty / punchy acceleration',
-        metric: telemetry.duty,
-        points: generateChartData({
-          count: 160,
-          base: 40,
-          variance: 8,
-          seed: 37,
-          spikeEvery: 17,
-        }),
-      },
-      {
-        key: 'controller',
-        metricKey: 'tempController' as HistoryMetricKey,
-        label: 'Controller temp / slow climb',
-        metric: telemetry.controllerTemp,
-        points: generateChartData({
-          count: 160,
-          base: 32,
-          variance: 1.8,
-          seed: 53,
-          drift: 0.16,
-        }),
+        label: 'Tap to toggle the overlay',
+        height: 70,
+        left: {
+          range: computeAutoRangeFromValues(data.vs, {
+            includeZero: true,
+            minSpan: 10,
+            paddingRatio: 0.1,
+          }),
+        },
+        series: [
+          {
+            key: 'speed',
+            data: loading ? EMPTY_SERIES : data,
+            color: telemetry.speed.color,
+            unit: telemetry.speed.unit,
+            decimals: telemetry.speed.decimals,
+          },
+        ],
       },
     ],
-    [],
+    [data, loading],
   )
 
   return (
-    <ShowcaseCard name="TelemetryLineChart / random samples">
-      {charts.map((chart) => {
-        const range = computeAutoRange(chart.points, {
-          includeZero: chart.key !== 'controller',
-          minSpan: chart.metric.minSpan ?? 10,
-          paddingRatio: 0.1,
-          baseline: chart.key === 'controller' ? chart.metric.chartRange : undefined,
-        })
-        const colorRange = getHistoryMetricColorRange(chart.metricKey, chart.metric.color)
-        const currentPoint = chart.points.at(-1) ?? null
-        return (
-          <TelemetryLineChart
-            key={chart.key}
-            label={chart.label}
-            value={currentPoint ? chart.metric.formatWithUnit(currentPoint.value) : '-'}
-            points={chart.points}
-            currentPoint={currentPoint}
-            color={chart.metric.color}
-            range={range}
-            height={70}
-            formatValue={chart.metric.formatWithUnit}
-            getPointColor={
-              colorRange ? (value) => getMetricRampColor(value, colorRange) : undefined
-            }
-            alertThresholds={chart.key === 'duty' ? [75, 90] : undefined}
-            containerStyle={styles.chartExample}
-          />
-        )
-      })}
-    </ShowcaseCard>
-  )
-}
-
-function TrimChartShowcase() {
-  const points = useMemo(
-    () => generateChartData({ count: 160, base: 18, variance: 5, seed: 21, spikeEvery: 29 }),
-    [],
-  )
-  const domainStartMs = points[0]?.date.getTime() ?? 0
-  const domainEndMs = points.at(-1)?.date.getTime() ?? 0
-  const span = domainEndMs - domainStartMs
-  const seed = useMemo(
-    () => ({ startMs: domainStartMs + span * 0.15, endMs: domainStartMs + span * 0.85 }),
-    [domainStartMs, span],
-  )
-  const [range, setRange] = useState(seed)
-  const currentPoint = points.at(-1) ?? null
-  const chartRange = computeAutoRange(points, { includeZero: true, minSpan: 10, paddingRatio: 0.1 })
-  const selectedSeconds = Math.round((range.endMs - range.startMs) / 1000)
-
-  return (
-    <ShowcaseCard name="TelemetryLineChart / trim range">
-      <TelemetryLineChart
-        label="Trim / drag either amber half"
-        value={currentPoint ? telemetry.speed.formatWithUnit(currentPoint.value) : '-'}
-        points={points}
-        currentPoint={currentPoint}
-        color={telemetry.speed.color}
-        range={chartRange}
-        height={70}
-        formatValue={telemetry.speed.formatWithUnit}
-        containerStyle={styles.chartExample}
-        trim={{
-          startMs: seed.startMs,
-          endMs: seed.endMs,
-          onChange: (startMs, endMs) => setRange({ startMs, endMs }),
-          onCommit: (startMs, endMs) => setRange({ startMs, endMs }),
-        }}
-        timeRangeHighlights={[
-          {
-            startMs: domainStartMs + span * 0.3,
-            endMs: domainStartMs + span * 0.55,
-            color: theme.alpha(theme.status.favorite.color, 0.12),
-          },
-        ]}
-      />
-      <Text style={styles.trimReadout}>Selected span: {selectedSeconds}s</Text>
+    <ShowcaseCard name="ChartLoadingOverlay">
+      <Pressable onPress={() => setLoading((on) => !on)}>
+        <View>
+          <ChartStack charts={charts} containerStyle={styles.chartExample} />
+          {loading ? <ChartLoadingOverlay /> : null}
+        </View>
+      </Pressable>
     </ShowcaseCard>
   )
 }
@@ -485,33 +544,44 @@ function BmsCellVoltagesShowcase() {
 }
 
 export default function ChartsPage() {
+  const [units, setUnits] = useState<UnitSystem>('metric')
   return (
-    <SafeAreaView style={styles.container} edges={['bottom']}>
-      <ScrollView contentContainerStyle={styles.content}>
-        <IconHero
-          icon={ChartLineUpIcon}
-          description="Sparkline, LinearGauge, SingleGauge, DualGauge, TelemetryLineChart, BmsCellVoltages."
-        />
-        <SparklineShowcase />
-        <LinearGaugeShowcase />
-        <AnimatedSingleGaugeShowcase />
-        <AnimatedDualGaugeShowcase />
-        <RandomLineChartsShowcase />
-        <TrimChartShowcase />
-        <BmsCellVoltagesShowcase />
-      </ScrollView>
-    </SafeAreaView>
+    <UnitSystemContext value={units}>
+      <SafeAreaView style={styles.container} edges={['bottom']}>
+        <ScrollView contentContainerStyle={styles.content}>
+          <IconHero
+            icon={ChartLineUpIcon}
+            description="ChartStack, Sparkline, LinearGauge, SingleGauge, DualGauge, ChartLoadingOverlay, ChartGestureHint, BmsCellVoltages."
+          />
+          <ChartStackShowcase />
+          <SparklineShowcase />
+          <RouteSparklineShowcase />
+          <RidePreviewCardShowcase />
+          <HistoryRideRowShowcase />
+          <LinearGaugeShowcase />
+          <ChipRow
+            label="units"
+            options={['metric', 'imperial']}
+            selected={units}
+            onSelect={(value) => setUnits(value as UnitSystem)}
+          />
+          <AnimatedSingleGaugeShowcase />
+          <AnimatedDualGaugeShowcase />
+          <ChartLoadingOverlayShowcase />
+          <ShowcaseCard name="ChartGestureHint">
+            <ChartGestureHint />
+            <ChartGestureHint compact />
+          </ShowcaseCard>
+          <BmsCellVoltagesShowcase />
+        </ScrollView>
+      </SafeAreaView>
+    </UnitSystemContext>
   )
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: theme.palette.slate.bg },
+  container: { flex: 1, backgroundColor: theme.neutral.bg },
   content: { padding: 12, gap: 12, paddingBottom: 40 },
   chartExample: { marginBottom: 10 },
-  trimReadout: {
-    color: theme.palette.slate.textSecondary,
-    fontSize: 12,
-    fontWeight: '700',
-    textAlign: 'center',
-  },
+  rideCards: { flexDirection: 'row', flexWrap: 'wrap', gap: 10 },
 })

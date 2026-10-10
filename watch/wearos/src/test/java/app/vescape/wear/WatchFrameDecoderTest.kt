@@ -55,6 +55,34 @@ class WatchFrameDecoderTest {
     }
 
     @Test
+    fun `reads remote tilt and who may drive it`() {
+        val frame = WatchFrameDecoder.decode(
+            encode(12.0, 20f, 80f, 33f, 5f, 42f, 1350f, 10f, 20f, 90f, 725f, 160f, 1f),
+        )!!
+
+        assertEquals(160, frame.remoteTilt)
+        assertEquals(WatchTiltControl.MANUAL, frame.tiltControl)
+    }
+
+    @Test
+    fun `an older phone without tilt lanes reads as no tilt`() {
+        val frame = WatchFrameDecoder.decode(encode(12.0, 20f, 80f, 33f, 5f))!!
+
+        assertNull(frame.remoteTilt)
+        assertEquals(WatchTiltControl.FREE, frame.tiltControl)
+    }
+
+    /** A newer phone's reason is still a reason: read-only is the only safe reading of it. */
+    @Test
+    fun `an unknown tilt control code keeps the stick read-only`() {
+        val frame = WatchFrameDecoder.decode(
+            encode(12.0, 20f, 80f, 33f, 5f, 42f, 1350f, 10f, 20f, 90f, 725f, 128f, 9f),
+        )!!
+
+        assertEquals(false, frame.tiltControl.drivable)
+    }
+
+    @Test
     fun `a frame with fewer lanes than the required core is rejected`() {
         assertNull(WatchFrameDecoder.decode(encode(12.0, 20f, 80f, 33f)))
     }
@@ -63,6 +91,21 @@ class WatchFrameDecoderTest {
     fun `a truncated buffer is rejected rather than misread`() {
         val full = encode(12.0, 20f, 80f, 33f, 5f)
         assertNull(WatchFrameDecoder.decode(full.copyOf(full.size - 4)))
+    }
+
+    @Test
+    fun `trail extension renders without nav and corrupt or old frames keep gauges`() {
+        val core = encode(12.0, 20f, 80f, 33f, 5f, Float.NaN, Float.NaN, Float.NaN, Float.NaN, 90f, 600f, 128f, 0f)
+        val points = listOf(expo.modules.vescapecore.watch.WatchTrailPoint(-20.0, -30.0), expo.modules.vescapecore.watch.WatchTrailPoint(0.0, 0.0))
+        val payload = core + expo.modules.vescapecore.watch.WatchTrailCodec.encode(points)
+        val decoded = WatchFrameDecoder.decode(payload)!!
+        assertEquals(points, decoded.trail)
+        assertNull(decoded.navBearing)
+        for (bytes in listOf(core, payload.copyOf(payload.size - 1))) {
+            val frame = WatchFrameDecoder.decode(bytes)!!
+            assertEquals(12.0, frame.speed!!, 0.001)
+            assertEquals(emptyList<expo.modules.vescapecore.watch.WatchTrailPoint>(), frame.trail)
+        }
     }
 
     /** Encodes lane 0 (speed) plus [lanes], mirroring the phone-side writer. */

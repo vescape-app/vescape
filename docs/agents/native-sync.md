@@ -10,7 +10,7 @@ so there is nothing extra to remember:
 
 ```bash
 bun run ios       # native:sync ios && expo run:ios --device
-bun run android   # native:sync android && expo run:android --device
+bun run android   # device picker (phones only) -> native:sync android && expo run:android
 bun run native:sync ios   # sync only, no app run
 ```
 
@@ -38,7 +38,7 @@ deleted copy re-runs `copyShared()`. Steps run in order, so this lands before an
 `plugins/`, `patches/`, every `modules/*/expo-module.config.json` and `modules/*/package.json`, plus
 `targets/` on iOS (`@bacons/apple-targets` copies those into the Xcode project) and `watch/` on
 Android (`withWearMirror` copies the Wear OS Mirror into `android/wearos/`). Any change here means
-the generated native project is stale, so the script runs `expo prebuild --platform <p>`.
+the generated native project is stale, so the script runs `expo prebuild --platform <p> --no-install`.
 
 Because `watch/` is a prebuild input, editing the Wear Mirror is enough: the next `bun run android`
 or `bun run wear:*` re-runs prebuild, and the plugin re-copies the source. Nothing hand-copies
@@ -50,9 +50,8 @@ path list** under each `modules/*/ios/`. CocoaPods compiles whatever the podspec
 Editing an already-compiled file needs no refresh, which is why this scope hashes paths, not
 contents — normal Swift work never pays for a `pod install`.
 
-On iOS the two scopes chain: a prebuild regenerates the Podfile, and `expo prebuild` does not
-reliably install from it, so every iOS sync ends with `pod install`. It is a fast no-op when Pods
-already match.
+On iOS the two scopes chain: a prebuild regenerates the Podfile, then the sync plan runs
+`pod install` once. Passing `--no-install` to Expo prevents a duplicate CocoaPods install.
 
 ## The same drift hits the Swift test target
 
@@ -62,6 +61,13 @@ files, so a new test needs no manifest edit. SwiftPM memoizes the evaluated mani
 would keep the old source list and the new test would silently never run. `scripts/test-ios.ts`
 therefore reuses `podsFingerprint()` (the same sorted-path-list signal Pods drift on) and drops the
 SwiftPM manifest memo when the layout moves. Its own fingerprint lives in `.expo/test-ios/`.
+
+SwiftPM bundles the shared preset JSON through `SharedResourcesPlugin` for both the iOS test
+library and the macOS persistence host. The plugin resolves the existing iOS resource symlinks
+and copies their contents into build outputs. Declaring those symlinks as ordinary SwiftPM
+resources is unsafe: the legacy build system preserves the relative links inside the bundle,
+where their targets no longer exist. Generated JSON stays in the build directory; the canonical
+shared files and CocoaPods resource configuration remain unchanged.
 
 ## Why the scopes are platform-lopsided
 
@@ -88,3 +94,21 @@ clone, or after `bun run clear` — is treated as unknown state and triggers a p
 
 To change what counts as a durable native input, edit the input lists at the top of
 `scripts/native-sync.ts`. Never hand-edit `ios/` or `android/` to fix drift.
+
+## Pods project UUID collisions with Swift packages
+
+React Native 0.86.3 can assign an existing Pods object UUID to a Swift package dependency during
+`post_install`. With Clerk installed, `xcodebuild -list -project ios/Pods/Pods.xcodeproj` fails with
+`XCSwiftPackageProductDependency _setSavedArchiveVersion:` and reports a damaged project. The
+`react-native@0.86.3` Bun patch backports [React Native #57576](https://github.com/react/react-native/pull/57576),
+which checks existing objects before assigning package UUIDs. The upstream Ruby
+regression tests live in `scripts/test-ios-spm-uuids.rb`, run with the Ruby environment used by CocoaPods.
+
+Expo autolinking 57.0.13 also switches from sequential to random UUIDs after the Podfile hooks,
+but keeps the old generator's queued UUIDs. The `expo-modules-autolinking@57.0.13` patch clears that
+queue before Expo adds build phases. Without it, a queued ID can overwrite a configuration list
+and Xcode reports `PBXShellScriptBuildPhase` where it expects `XCConfigurationList`.
+
+Keep Clerk's `spm_dependency` intact. Removing it makes the project readable but prevents ClerkKit
+from compiling. After changing either patch, run `bun install` and `bun run native:sync ios`, then
+verify both project loading and a device build. Recheck these patches when upgrading their packages.

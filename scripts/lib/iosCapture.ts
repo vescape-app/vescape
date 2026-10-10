@@ -16,11 +16,12 @@ import {
   CAPTURE_LOCATION,
   FIXTURE_ZIP,
   runOrDie,
-  fixtureBuildEnv,
   warnMissingFixture,
   type CaptureDriver,
+  type FixtureRunMode,
 } from './captureDriver.ts'
-import { select, type SelectOption } from './select.ts'
+import { pickDevice } from './devices.ts'
+import { buildIosFixture } from './fixtureBuild.ts'
 
 const OUT_DIR = 'screenshots/ios'
 
@@ -52,34 +53,39 @@ async function listSimulators(): Promise<Simulator[]> {
 }
 
 async function bootSimulator(sim: Simulator): Promise<Simulator> {
-  if (sim.state === 'Booted') return sim
-  console.log(`› Booting ${sim.name}…`)
-  await simctl('boot', sim.udid)
+  if (sim.state !== 'Booted') {
+    console.log(`› Booting ${sim.name}…`)
+    await runOrDie(['xcrun', 'simctl', 'boot', sim.udid], undefined, 180_000)
+  }
+  // Booted only means the process started. Wait for SpringBoard and first-boot setup before
+  // installing the app or starting XCTest; this returns immediately for a ready local simulator.
+  await runOrDie(['xcrun', 'simctl', 'bootstatus', sim.udid, '-b'], undefined, 300_000)
   // Maestro drives the simulator through its UI, so the Simulator app has to be on screen.
   await capture(['open', '-a', 'Simulator'])
-
-  const deadline = Date.now() + 180_000
-  while (Date.now() < deadline) {
-    const current = (await listSimulators()).find((device) => device.udid === sim.udid)
-    if (current?.state === 'Booted') return current
-    await Bun.sleep(2000)
-  }
-  console.error(`${sim.name} did not finish booting within 180s.`)
-  process.exit(1)
+  return { ...sim, state: 'Booted' }
 }
+
+/** Cache key for the last capture simulator picked; see lib/lastDevice. */
+const LAST_SIMULATOR_KEY = 'capture-ios'
 
 async function chooseSimulator(simulators: Simulator[]): Promise<Simulator> {
   const booted = simulators.filter((sim) => sim.state === 'Booted')
-  const preferred = simulators.find((sim) => sim.name === PREFERRED_DEVICE)
   if (booted.length === 1) return booted[0]
+  const preferred = simulators.find((sim) => sim.name === PREFERRED_DEVICE)
   if (booted.length === 0 && preferred) return preferred
 
-  const options: SelectOption<Simulator>[] = simulators.map((sim) => ({
-    label: sim.name,
-    value: sim,
-    hint: sim.state === 'Booted' ? 'booted' : sim.name === PREFERRED_DEVICE ? 'store size' : 'boot',
-  }))
-  return select('iOS capture simulator', options)
+  return pickDevice({
+    title: 'iOS capture simulator',
+    items: simulators,
+    id: (sim) => sim.udid,
+    label: (sim) => sim.name,
+    aliases: (sim) => [sim.name],
+    hint: (sim) =>
+      sim.state === 'Booted' ? 'booted' : sim.name === PREFERRED_DEVICE ? 'store size' : 'boot',
+    requested: null,
+    cacheKey: LAST_SIMULATOR_KEY,
+    emptyMessage: 'No available iOS simulator. Install one from Xcode.',
+  })
 }
 
 async function resolveSimulator(requested: string | null): Promise<Simulator> {
@@ -114,8 +120,13 @@ async function containerDir(udid: string): Promise<string | null> {
 export async function createIosDriver(
   requestedDevice: string | null,
   replay: string,
+  mode: FixtureRunMode = 'screenshots',
 ): Promise<CaptureDriver> {
   const sim = await resolveSimulator(requestedDevice)
+  const installArtifact = async (path: string) => {
+    console.log(`› Installing ${basename(path)} on ${sim.name}`)
+    await runOrDie(['xcrun', 'simctl', 'install', sim.udid, path])
+  }
 
   return {
     platform: 'ios',
@@ -124,15 +135,10 @@ export async function createIosDriver(
     deviceLabel: `${sim.name} (${sim.udid})`,
 
     async buildAndInstall() {
-      console.log('› Building the iOS screenshot Release build…')
-      await runOrDie(['bun', 'run', 'native:sync', 'ios'])
-      // A Release build with the flags baked in: no Metro, no dev-client launcher, so the app the
-      // flows drive is the app the store gets.
-      await runOrDie(
-        ['bunx', 'expo', 'run:ios', '--configuration', 'Release', '--device', sim.udid],
-        fixtureBuildEnv('screenshots', replay),
-      )
+      await installArtifact(await buildIosFixture(mode, replay))
     },
+
+    installArtifact,
 
     async requireInstalled() {
       if ((await containerDir(sim.udid)) == null) {

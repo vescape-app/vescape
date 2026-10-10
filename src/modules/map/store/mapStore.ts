@@ -28,6 +28,8 @@ interface MapState {
    * is not `ready` is a computed answer of "no path", not an absence.
    */
   navigation: Navigation | null
+  /** The path the rider accepted with Ride it. Kept outside component state across UI remounts. */
+  acceptedNavigationComputedAtMs: number | null
   /**
    * Whether native is computing a path right now, mirrored like the path itself. Nothing on this
    * side sets it from a tap: a rider's request is only "in flight" once native says so, which is
@@ -52,6 +54,8 @@ interface MapActions {
   replaceRouteProgress(progress: RouteProgress | null): void
   recomputeNavigation(): Promise<void>
   setNavigationProfile(profile: NavigationProfile): Promise<void>
+  acceptNavigation(): void
+  editNavigation(): void
 }
 
 const DIRECTION_POINT_WRITE_FAILED = 'Could not save the direction point.'
@@ -63,7 +67,7 @@ export const useMapStore = create<MapState & MapActions>((set, get) => {
    */
   async function moveDirectionPoint(next: DirectionPoint | null) {
     const previous = get().directionPoint
-    set({ directionPoint: next, error: null })
+    set({ directionPoint: next, acceptedNavigationComputedAtMs: null, error: null })
     try {
       await persistDirectionPoint(next?.latitude ?? null, next?.longitude ?? null)
     } catch {
@@ -74,6 +78,7 @@ export const useMapStore = create<MapState & MapActions>((set, get) => {
   return {
     directionPoint: null,
     navigation: null,
+    acceptedNavigationComputedAtMs: null,
     navigationComputing: false,
     routeProgress: null,
     error: null,
@@ -99,7 +104,14 @@ export const useMapStore = create<MapState & MapActions>((set, get) => {
     },
 
     replaceNavigation(navigation, computing) {
-      set({ navigation, navigationComputing: computing })
+      set((state) => ({
+        navigation,
+        navigationComputing: computing,
+        acceptedNavigationComputedAtMs:
+          state.acceptedNavigationComputedAtMs === navigation?.computedAtMs
+            ? state.acceptedNavigationComputedAtMs
+            : null,
+      }))
     },
 
     replaceRouteProgress(progress) {
@@ -122,6 +134,14 @@ export const useMapStore = create<MapState & MapActions>((set, get) => {
      */
     async setNavigationProfile(profile) {
       await persistNavigationProfile(profile)
+    },
+
+    acceptNavigation() {
+      set({ acceptedNavigationComputedAtMs: get().navigation?.computedAtMs ?? null })
+    },
+
+    editNavigation() {
+      set({ acceptedNavigationComputedAtMs: null })
     },
   }
 })

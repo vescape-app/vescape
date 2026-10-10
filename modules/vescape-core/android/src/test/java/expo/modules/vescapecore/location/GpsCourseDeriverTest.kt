@@ -94,4 +94,21 @@ class GpsCourseDeriverTest {
 
     assertNull(course)
   }
+
+  @Test
+  fun `replay reset drops retained course and previous coordinates`() {
+    val deriver = GpsCourseDeriver()
+    deriver.derive(52.0, 21.0, speedMps = 5.0, bearingDeg = 91.0, timestamp = 1_000)
+
+    deriver.reset()
+
+    // This fix is still inside retention and far enough away to derive a course from the replay.
+    // Neither path may carry the replay's position or course into the new location timeline.
+    val live = deriver.derive(52.0001, 21.0, speedMps = 5.0, bearingDeg = null, timestamp = 2_000)
+    assertNull(live)
+    val next = deriver.derive(52.0002, 21.0, speedMps = 5.0, bearingDeg = null, timestamp = 3_000)
+    assertEquals(0.0, checkNotNull(next).bearingDeg, 0.5)
+    assertEquals(3_000L, next.sourceTimestamp)
+  }
+
 }

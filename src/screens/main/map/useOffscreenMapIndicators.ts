@@ -1,5 +1,5 @@
 import type Mapbox from '@rnmapbox/maps'
-import { useCallback, useEffect, useRef, useState, type ElementRef, type RefObject } from 'react'
+import { useCallback, useEffect, useRef, useState, type ComponentRef, type RefObject } from 'react'
 
 import {
   applyOffscreenIndicatorDrafts,
@@ -12,6 +12,7 @@ import {
   type TrackedMapPoint,
 } from '@/screens/main/map/offscreenMapIndicators'
 import type { CameraSnapshot } from '@/screens/main/map/useCameraControls'
+import { reportUnexpectedError } from '@/config/sentry'
 
 const OFFSCREEN_INDICATOR_VISIBILITY_CHECK_MS = 200
 
@@ -29,7 +30,7 @@ export function useOffscreenMapIndicators({
   trackedPoints,
   enabled,
 }: {
-  mapViewRef: RefObject<ElementRef<typeof Mapbox.MapView> | null>
+  mapViewRef: RefObject<ComponentRef<typeof Mapbox.MapView> | null>
   currentCameraRef: RefObject<CameraSnapshot | null>
   mapLayout: MapLayout
   trackedPoints: TrackedMapPoint[]
@@ -60,7 +61,6 @@ export function useOffscreenMapIndicators({
   }, [publish])
 
   const update = useCallback(() => {
-    const camera = currentCameraRef.current
     const mapView = mapViewRef.current
     if (
       mapView == null ||
@@ -85,6 +85,10 @@ export function useOffscreenMapIndicators({
     )
       .then((projectedPoints) => {
         if (projectionRequestRef.current !== requestId) return
+        // Read the camera after the native projection resolves: a snapshot taken before the await
+        // is a frame or more old, and re-projecting against it drags the indicators back to a
+        // heading the map has already left.
+        const camera = currentCameraRef.current
         const next = projectedPoints.flatMap((trackedPoint) => {
           const [x, y] = trackedPoint.point
           if (typeof x !== 'number' || typeof y !== 'number') return []
@@ -106,8 +110,9 @@ export function useOffscreenMapIndicators({
         })
         applyDrafts(next)
       })
-      .catch(() => {
+      .catch((error: unknown) => {
         if (projectionRequestRef.current !== requestId) return
+        reportUnexpectedError(error, 'map_indicator_projection')
         clear()
       })
   }, [applyDrafts, clear, currentCameraRef, enabled, mapLayout, mapViewRef, trackedPoints])

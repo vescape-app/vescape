@@ -7,9 +7,7 @@ final class BoardMoveControllerTests: XCTestCase {
   private var transport: BoardTransport? = .direct
   private var canMove = true
   private var generation: BoardMoveGeneration = .remote
-  /// Pending repeat blocks, newest last. Mirrors Android's `TestScheduler` closely enough for a
-  /// fixed-interval loop: one tick is one block.
-  private var pending: [(work: DispatchWorkItem, block: () -> Void)] = []
+  private var scheduler = TestScheduler()
 
   override func setUp() {
     super.setUp()
@@ -17,7 +15,7 @@ final class BoardMoveControllerTests: XCTestCase {
     transport = .direct
     canMove = true
     generation = .remote
-    pending = []
+    scheduler = TestScheduler()
   }
 
   private func makeController() -> BoardMoveController {
@@ -25,23 +23,16 @@ final class BoardMoveControllerTests: XCTestCase {
       transport: { self.transport },
       canMove: { self.canMove },
       generation: { self.generation },
-      send: { payload in
+      send: { payload, _ in
         self.sent.append(payload)
         return true
       },
-      schedule: { _, block in
-        let work = DispatchWorkItem(block: block)
-        self.pending.append((work, block))
-        return work
-      }
+      scheduler: scheduler
     )
   }
 
-  /// Run the outstanding repeat block if it was not cancelled.
   private func tick() {
-    guard let next = pending.popLast() else { return }
-    guard !next.work.isCancelled else { return }
-    next.block()
+    scheduler.advance(generation == .remote ? 100 : 700)
   }
 
   private func move(_ input: Int) -> [UInt8] {
@@ -67,6 +58,31 @@ final class BoardMoveControllerTests: XCTestCase {
     let afterStop = sent.count
     tick()
     XCTAssertEqual(afterStop, sent.count)
+  }
+
+  func testRcMoveRepeatsSlowlyEnoughForFirmwareToRampTheCurrent() {
+    generation = .rcMove
+    let controller = makeController()
+
+    XCTAssertTrue(controller.hold(25))
+    XCTAssertEqual(1, scheduler.pendingCount)
+
+    // The 1.3+ cadence would restart the firmware's current ramp ten times a second, so the motor
+    // pulses instead of moving. Every repeat of an RC_MOVE hold keeps the slower spacing.
+    tick()
+    XCTAssertEqual(700, scheduler.currentTimeMs)
+    XCTAssertEqual(1, scheduler.pendingCount)
+    XCTAssertEqual(move(25), sent.last)
+  }
+
+  func testRemoteGenerationKeepsTheFastRefresh() {
+    let controller = makeController()
+
+    controller.hold(25)
+    scheduler.advance(99)
+    XCTAssertEqual(1, sent.count)
+    scheduler.advance(1)
+    XCTAssertEqual(2, sent.count)
   }
 
   func testReversingMidHoldSwapsTheStreamWithoutAnExtraWrite() {

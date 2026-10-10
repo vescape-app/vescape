@@ -37,6 +37,22 @@ The first example clears app state, opens the board selector, taps Add new board
 
 Because this repo currently installs an Expo development build, the flow first selects the local Metro server from the Expo dev-client launcher. The dev-client config hides the tools button, skips onboarding, and prevents the dev menu from opening at launch. Those settings are native config plugin values, so rebuild the Android app after changing them.
 
+## Component-library smoke
+
+`components.yaml` opens the base, chart, and typography previews and exercises the
+IconButton progress ring. It preserves app data and does not require E2E mode.
+Run it against a development app already connected to Metro for the current workspace:
+
+```sh
+maestro --device emulator-5554 test -e APP_ID=app.vescape.dev e2e/flows/components.yaml
+```
+
+Confirm the device appears in Metro's `http://localhost:8081/json/list` before using
+this as evidence for local changes. Run in both light and dark app appearances when
+changing adaptive colors. Visible preview assertions catch render failures even when
+the reconciler error is missing from logcat. This is a smoke check, not coverage of
+every showcase state.
+
 ## Seeded live telemetry
 
 Use the private `e2e-seed` route to put the app into a deterministic connected-board state. It
@@ -84,15 +100,48 @@ the first step of that: it boots from fixtures and a replay instead of `e2eFake`
 
 ## Smoke
 
-`bun run smoke` walks the screens a rider actually opens — live telemetry, map modes, Ride History,
-the add-board wizard — and asserts on them. Android only, like the E2E suite.
+`bun run smoke` walks the screens a rider actually opens — live telemetry and persisted alerts,
+map modes, Ride History, Profile stats, and the add-board wizard — and asserts on them on Android
+and iOS.
 
 ```sh
 bun run smoke                      # picks a device, builds, runs every flow
 bun run smoke --no-build           # reuse the smoke build already installed
 bun run smoke --flow 03-history    # one flow against the installed build
 bun run smoke --device <serial>    # skip the picker
+bun run smoke --platform ios       # use an iOS simulator
+bun run smoke --build-only --output .expo/smoke/app.apk
+bun run smoke --app .expo/smoke/app.apk --flow 03-history
 ```
+
+CI builds one Release artifact per platform without booting a device. Each platform's five flows
+then run in parallel jobs, each installing that artifact and starting a fresh fixture session.
+The iOS app travels in a tar archive to preserve its bundle permissions and symlinks. Gradle's build
+cache and iOS CocoaPods dependencies are separate from app artifacts. iOS caches the compiled
+simulator app by native fingerprint, runner architecture, Xcode, and simulator SDK. Matching runs
+use Expo repack to refresh JavaScript and assets, preserve bundle links, and ad-hoc sign the app
+with its original simulator entitlements. Native sources, dependencies, plugins, shared resources,
+build recipes, or native environment changes require a full build. Fingerprint failures also use
+a full build without saving an app cache. Cache restores require an exact match; Xcode compiled
+output is not transferred between fresh checkouts.
+
+If repacking fails, CI warns and falls back to a full build, including CocoaPods restoration.
+The full build must succeed before any app is uploaded. An existing native cache entry is immutable
+and is not overwritten on fallback; repeated failures require deleting that entry in GitHub Actions.
+A JavaScript export error may therefore fail twice, once during repack and again in the full build.
+
+The workflow discovers public flow files through `bun run scripts/smoke.ts --list-flows`, so a new
+flow automatically joins both platform matrices. Manual dispatch can select one flow and/or one
+platform. Failed jobs retain their own Maestro diagnostics; one failure does not cancel siblings.
+Each job runs boot and its selected flow in one Maestro session, so iOS starts XCTest only once.
+Android smoke launches the prepared app through `adb am start -W` with a 60-second timeout, then
+Maestro checks readiness. This avoids its [unbounded Android launch/permission calls](https://github.com/mobile-dev-inc/Maestro/issues/3658);
+fixture reset and permission grants still happen before launch.
+Boot handles the known Pixel Launcher ANR dialog on hosted Android images between bounded
+telemetry waits. It does not dismiss Vescape's own ANR or weaken the telemetry assertion.
+Android keeps the Pixel 6 layout in dp at a lower render resolution for the software GPU.
+Smoke flows use known exit controls and bounded settling waits, then assert the destination;
+continuously animated telemetry does not need to become visually idle before every tap.
 
 It shares its boot with the screenshot capture below — Release build, restored fixture database,
 Debug Recording replayed through the real telemetry pipeline — and that is the whole point.
@@ -101,6 +150,14 @@ Debug Recording replayed through the real telemetry pipeline — and that is the
 cannot catch a native regression. A smoke build sets `EXPO_PUBLIC_SMOKE=1` instead: nothing between
 the recorded BLE chunks and the rendered gauge is faked.
 
+Simulator boot has two CI-specific requirements. The iOS runner ad-hoc signs the built app with a
+stable simulator application identifier and keychain group; an unsigned app throws OSStatus
+`-34018` when reading Device Tokens. No developer certificate is needed. Android smoke builds
+currently disable GWP-ASan to work around a CI crash in its unwinder during Hermes startup.
+Normal and screenshot builds retain the default GWP-ASan setting. Native sync tracks the smoke
+flag so switching modes regenerates the manifest. Remove this workaround once the runtime crash
+is resolved; a passing smoke run does not validate GWP-ASan compatibility.
+
 One thing stays faked, and only one. An emulator or a desk-bound phone has no board to advertise, so
 BLE _discovery_ falls back to `e2eFake.scan()` — `FAKE_SCAN` in `modules/vescape-core/src/index.ts`.
 That fake stands in for absent hardware; every other `E2E_ENABLED` branch stands in for absent data,
@@ -108,15 +165,17 @@ which fixtures and replay now supply.
 
 The replay recording has to outlast the flows that need it. `replay-thor301.jsonl` is a 13-minute
 ride, and a full pass can run longer than that — Maestro spends most of its time waiting for a live
-view hierarchy to settle. Flows 01-03 finish inside the window; `04-add-board` is written to work
+view hierarchy to settle. Flows 01-04 finish inside the window; `05-add-board` is written to work
 whether the session is still up or has already ended on its own.
 
-Flow order is load-bearing. `04-add-board` runs last because saving a board hands it to the
+In a local full pass, flow order is load-bearing. `05-add-board` runs last because saving a board hands it to the
 connection manager, which goes at the real BLE stack, finds nothing, and takes the replay session
 down with it. That flow therefore asserts the wizard and the durable write, not a connection: a
 replay runs under a synthetic `replay:` board id (ADR 0024) and cannot stand in for a chosen board's
 session. Binding a replay to a given board id is native work; until then the board-connect path
 stays covered by the E2E suite's `connect-board`.
+CI's isolated flow jobs each restore their own fixtures, so add-board cannot interrupt another
+flow's replay.
 
 Waits are on things the app renders, never on `waitForAnimationToEnd`. A live telemetry screen never
 stops animating, so that command spends its whole timeout every time. `e2e/flows/fixture/_boot.yaml`
@@ -149,7 +208,7 @@ bun run screenshots --platform ios  # skip the platform picker
 
 The bare command asks for the platform first (Android / iOS / Both), then the device. "Both" is a
 deliberate choice rather than the default: the runs are sequential, so a whole Android pass — build,
-eight panels, the sparkline wait — happens before iOS starts.
+eight panels — happens before iOS starts.
 
 One flow set drives both platforms. The runner passes `OUT_DIR` to Maestro
 (`screenshots/android` or `screenshots/ios`), so the panel list, order and filenames are identical
@@ -218,13 +277,65 @@ distinguish one from an ordinary dev install and capturing against the wrong bui
 that goes nowhere. Pass `--no-build` to reuse what is installed once you have a screenshot build on
 the device.
 
-Other flags: `--replay <name>` (default `replay-thor301`), `--no-wait` (skip the sparkline wait),
-`--platform android|ios|both` (default `both`).
+Other flags: `--replay <name>` (default `replay-thor301`), `--platform android|ios|both` (default `both`).
 
-The hero panel is captured last. `TelemetryPipeline.liveSeries` buckets the sparkline over
-`liveHistoryLimit` minutes of receipt timestamps, so filling it takes that much session time. Replay
-warmup covers the first six minutes up front: it plays at 30× against a clock shifted that far into
-the past, which fills the window instead of compressing the samples into a fraction of it (ADR
-0024). The window is wider than the sparkline's own, so the run waits out nothing beyond the twelve
-seconds the warmup itself costs. The replay recording must be at least as long as the whole run —
-warmup included, since it spends recording too.
+Replay warmup covers the first six minutes up front: it plays at 30× against a clock shifted that
+far into the past, which fills the live window instead of compressing the samples into a fraction of
+it (ADR 0024). The replay recording must be at least as long as the whole run, warmup included,
+since it spends recording too.
+
+## App preview videos
+
+`bun run preview` records a Release fixture build with the platform recorder, then exports H.264
+MP4 footage for a landing page or promo. It reuses screenshot device preparation and the sanitized
+history database. `EXPO_PUBLIC_PREVIEW=1` selects dark appearance and fast-forwards the first eight
+minutes off-camera through the same native replay warmup used by screenshots. The map opens on the
+later western stretch with an established trail and filled charts, then plays recorded BLE/GPS at 1×.
+Normal rider controls, including REC, remain visible.
+
+```sh
+bun run preview --platform ios --device 'iPhone 17 Pro Max'
+bun run preview --platform android --device Medium_Phone
+bun run preview --platform ios --scene ride --no-build
+```
+
+The default `tour` scene holds the live ride for 30 seconds, then visits history and two ride details
+with readable pauses. `--scene ride` captures a minute of the moving dashboard for a landing-page
+hero. `--scene store` captures a shorter tour for the App Store. `--platform both` runs iOS
+then Android; omit the platform to pick. `--replay <name>` changes the recording baked into the
+build. `--no-build` requires a preview build from the current workspace, not a screenshot, smoke,
+development or production app.
+
+Two standalone scenes cover landing-page feature sections:
+
+```sh
+bun run preview --platform ios --scene history --no-build
+bun run preview --platform ios --scene board-alerts --no-build
+```
+
+`history` browses the ride overview and detail, toggles duty cycle and motor temperature, pinches the
+charts, scrubs telemetry, opens full-screen graphs, and saves a named Favorite. `board-alerts`
+changes speed and duty alert presets, expands the live telemetry strip, scrolls through its metrics,
+and opens the live IMU dial and charts. These scenes use `bunx agent-device@0.21.23` for native input,
+including real two-finger pinch gestures that Maestro cannot express. Platform recording and fixture
+preparation are shared with the other scenes. Device automation startup remains outside the footage,
+and the owned automation session closes after each take.
+
+The runner sets native device appearance to dark before launch and restores it after the take.
+
+For `tour`, `ride`, and `store`, Maestro starts/stops recording through a temporary host-local
+callback after app setup. XCTest
+startup and fixture restore stay outside the footage. Android also settles the emulator replay
+backlog and map tiles before recording. Dwell callbacks keep screens readable without
+waiting for continuously changing telemetry to become idle. Android enables touch indicators and
+restores the prior setting on exit. Both platforms retain normal animation speed.
+
+Outputs live under gitignored `previews/<platform>/<scene>/` with unique names. iOS retains the raw
+MOV. The `store` scene additionally exports the full take at 886×1920, 30 fps, H.264 and checks
+the 15–30 second App Store range, keeping footage for editing if the take is outside it. It never truncates or
+accelerates the narrative to make it fit. Both platforms export a smaller silent 720-pixel-wide web MP4 with fast-start metadata.
+Android retains its original full-resolution MP4. The iOS App Store export has a silent stereo AAC
+track; the raw MOV has no audio. The Android recorder has a 180-second cap; Play promo delivery requires a
+YouTube URL rather than uploading this file. Music, titles, cuts and publishing are separate work.
+
+Requires `maestro`, `ffmpeg` and `ffprobe`, plus `adb` for Android or Xcode's `simctl` for iOS.

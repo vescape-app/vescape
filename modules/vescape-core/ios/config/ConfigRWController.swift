@@ -40,6 +40,7 @@ private struct ConfigReadContext {
   let appBoardId: String?
   let fwVersion: String?
   var refloatVersion: String?
+  var xmlRetried = false
 }
 
 private struct ConfigWriteContext {
@@ -59,14 +60,30 @@ private struct ConfigWriteContext {
 ///
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/config/ConfigRWController.kt
 internal final class ConfigRWController {
+  private let scheduler: Scheduler
   private var state: ConfigRWState = .idle
-  private var readCallbacks: PendingConfigRead?
+  /// Every consumer waiting on the current read. A read started in the background (post-trust config
+  /// acquisition) is joined by a later caller instead of rejecting it with `CONFIG_REQUEST_IN_FLIGHT`
+  /// — one board read serves them all.
+  private var readCallbacks: [PendingConfigRead] = []
   private var writeCallbacks: PendingConfigWrite?
   private var timeoutGeneration: Int64 = 0
+
+  init(scheduler: Scheduler = MainQueueScheduler()) {
+    self.scheduler = scheduler
+  }
 
   var isInFlight: Bool {
     if case .idle = state { return false }
     return true
+  }
+
+  /// Whether the in-flight operation is a read (joinable) rather than a write (not).
+  private var isReadInFlight: Bool {
+    switch state {
+    case .readCollectingXml, .readAwaitingConfig: return true
+    default: return false
+    }
   }
 
   func consumeRead(
@@ -75,7 +92,12 @@ internal final class ConfigRWController {
     onError: @escaping (String, String) -> Void
   ) {
     if isInFlight {
-      onError(RefloatConfigErrorCode.CONFIG_REQUEST_IN_FLIGHT.rawValue, "Config operation already in flight")
+      guard isReadInFlight else {
+        onError(RefloatConfigErrorCode.CONFIG_REQUEST_IN_FLIGHT.rawValue, "Config operation already in flight")
+        return
+      }
+      // Join the read already on the wire; it completes for every waiter at once.
+      readCallbacks.append(PendingConfigRead(onSuccess: onSuccess, onError: onError))
       return
     }
     guard connection.phase == .connected, connection.appBoardId != nil else {
@@ -94,7 +116,7 @@ internal final class ConfigRWController {
     }
     let wasPolling = connection.isPollingActive()
     connection.stopPolling()
-    readCallbacks = PendingConfigRead(onSuccess: onSuccess, onError: onError)
+    readCallbacks = [PendingConfigRead(onSuccess: onSuccess, onError: onError)]
     let ctx = ConfigReadContext(
       opId: UUID().uuidString.lowercased(),
       canId: connection.transport.canId,
@@ -131,7 +153,13 @@ internal final class ConfigRWController {
       )
       return
     }
-    guard let profile = connection.loadProfile(profileId) else {
+    let loadedProfile: [String: Any?]?
+    do { loadedProfile = try connection.loadProfile(profileId) }
+    catch {
+      onError(RefloatConfigErrorCode.CONFIG_READ_FAILED.rawValue, "Tune profile could not be loaded")
+      return
+    }
+    guard let profile = loadedProfile else {
       onError(RefloatConfigErrorCode.PROFILE_NOT_FOUND.rawValue, "Tune profile not found: \(profileId)")
       return
     }
@@ -140,8 +168,8 @@ internal final class ConfigRWController {
       onError(RefloatConfigErrorCode.PROFILE_BOARD_MISMATCH.rawValue, "Tune profile does not belong to the connected board")
       return
     }
-    let profileRefloatBaseVersion = (profile["refloatBaseVersion"] ?? nil) as? String
-    if profileRefloatBaseVersion == nil || profileRefloatBaseVersion!.isEmpty || profileRefloatBaseVersion != connection.refloatBaseVersion {
+    let profileRefloatBaseVersion = TuneProfileStore.validRefloatBaseVersion((profile["refloatBaseVersion"] ?? nil) as? String)
+    if profileRefloatBaseVersion == nil || profileRefloatBaseVersion!.isEmpty || profileRefloatBaseVersion != TuneProfileStore.validRefloatBaseVersion(connection.refloatBaseVersion) {
       onError(RefloatConfigErrorCode.PROFILE_BOARD_MISMATCH.rawValue, "Tune profile does not match the connected board Refloat Tune Compatibility")
       return
     }
@@ -157,8 +185,16 @@ internal final class ConfigRWController {
       profileFields: fields,
       appBoardId: connectedBoardId,
       fwVersion: connection.fwVersion,
-      refloatVersion: nil
+      refloatVersion: connection.refloatVersion
     )
+    // A board takes one connection at a time, so while this session holds the link the config can
+    // only have changed through our own writes — the session's `fresh` bytes are still the board's
+    // bytes and back the write directly. `lastKnown` values carry no write base by construction,
+    // so a cache-restored session falls through to the read (ADR 0035).
+    if let writeBase = connection.boardConfigValues?.writeBase {
+      sendWrite(ctx, writeBase.schema, writeBase.rawConfig, writeBase.packageSignature, .sendingWrite, connection)
+      return
+    }
     state = .writeCollectingXml(ctx, [], nil)
     scheduleTimeout(.CONFIG_SCHEMA_TIMEOUT, CONFIG_SCHEMA_TIMEOUT_MS, connection)
     guard send(connection, RefloatConfigProtocol.buildGetInfo(transport: ctx.transport)) else { return }
@@ -225,11 +261,14 @@ internal final class ConfigRWController {
 
   private func applyXml(_ payload: [UInt8], _ connection: ConfigRWConnection) {
     switch state {
-    case .readCollectingXml(let ctx, let xmlBytes, _):
+    case .readCollectingXml(var ctx, let xmlBytes, _):
       switch RefloatConfigProtocol.parseCustomConfigXmlResponse(payload) {
       case .failure(let message):
         fail(code: .UNEXPECTED_CONFIG_RESPONSE, message: message, rawConfig: nil, connection: connection)
       case .success(let chunk):
+        // A delayed reply to a retried request must not append the same bytes twice.
+        guard chunk.offset == xmlBytes.count else { return }
+        ctx.xmlRetried = false
         let merged = xmlBytes + chunk.chunk
         let nextOffset = chunk.offset + chunk.chunk.count
         if nextOffset >= chunk.totalLength {
@@ -275,7 +314,7 @@ internal final class ConfigRWController {
       case .failure(let message):
         fail(code: .UNEXPECTED_CONFIG_RESPONSE, message: message, rawConfig: nil, connection: connection)
       case .success(let configBytes):
-        decodeAndCompleteRead(ctx, xmlBytes, configBytes.config, connection)
+        decodeAndCompleteRead(ctx, xmlBytes, configBytes, connection)
       }
     case .writeAwaitingConfig(let ctx, let xmlBytes):
       switch RefloatConfigProtocol.parseCustomConfigResponse(payload) {
@@ -289,7 +328,7 @@ internal final class ConfigRWController {
       case .failure(let message):
         failWrite(code: .UNEXPECTED_CONFIG_RESPONSE, message: message, phase: .verifying, rawConfig: original, connection: connection)
       case .success(let configBytes):
-        verifyAndCompleteWrite(ctx, schema, original, patched, configBytes.config, connection)
+        verifyAndCompleteWrite(ctx, schema, original, patched, configBytes, connection)
       }
     default:
       break
@@ -312,27 +351,27 @@ internal final class ConfigRWController {
   private func decodeAndCompleteRead(
     _ ctx: ConfigReadContext,
     _ xmlBytes: [UInt8],
-    _ configBytes: [UInt8],
+    _ configBytes: RefloatConfigBytes,
     _ connection: ConfigRWConnection
   ) {
     do {
       let schema = try RefloatConfigSchemaParser.parse(xmlBytes)
       let snapshot = try RefloatConfigDecoder.decode(
         schema: schema,
-        rawConfig: configBytes,
+        rawConfig: configBytes.config,
         boardId: ctx.appBoardId,
         canId: ctx.canId,
         capturedAt: nowMs(),
         fwVersion: ctx.fwVersion,
         refloatVersion: ctx.refloatVersion
       )
-      complete(snapshot, RefloatConfigDecoder.decodeSafetyValues(schema: schema, rawConfig: configBytes), connection)
+      complete(snapshot, boardConfigValues(schema, configBytes, ctx.appBoardId, connection), connection)
     } catch let error as RefloatConfigSchemaException {
-      fail(code: .UNSUPPORTED_SCHEMA, message: error.message, rawConfig: configBytes, connection: connection)
+      fail(code: .UNSUPPORTED_SCHEMA, message: error.message, rawConfig: configBytes.config, connection: connection)
     } catch let error as RefloatConfigDecodeException {
-      fail(code: .CONFIG_DECODE_FAILED, message: error.message, rawConfig: configBytes, connection: connection)
+      fail(code: .CONFIG_DECODE_FAILED, message: error.message, rawConfig: configBytes.config, connection: connection)
     } catch {
-      fail(code: .CONFIG_DECODE_FAILED, message: error.localizedDescription, rawConfig: configBytes, connection: connection)
+      fail(code: .CONFIG_DECODE_FAILED, message: error.localizedDescription, rawConfig: configBytes.config, connection: connection)
     }
   }
 
@@ -345,6 +384,26 @@ internal final class ConfigRWController {
     let rawConfig = configBytes.config
     do {
       let schema = try RefloatConfigSchemaParser.parse(xmlBytes)
+      sendWrite(ctx, schema, rawConfig, configBytes.packageSignature, .readingConfig, connection)
+    } catch let error as RefloatConfigSchemaException {
+      failWrite(code: .UNSUPPORTED_SCHEMA, message: error.message, phase: .readingConfig, rawConfig: rawConfig, resumePolling: ctx.wasPolling, connection: connection)
+    } catch {
+      failWrite(code: .CONFIG_WRITE_FAILED, message: error.localizedDescription, phase: .readingConfig, rawConfig: rawConfig, resumePolling: ctx.wasPolling, connection: connection)
+    }
+  }
+
+  /// Patch the write base bytes with the profile fields and send `COMM_SET_CUSTOM_CONFIG`. The base
+  /// is either the bytes just read or the session's retained fresh bytes; either way the whole blob
+  /// is patched in place, so fields outside the curated tune groups survive untouched.
+  private func sendWrite(
+    _ ctx: ConfigWriteContext,
+    _ schema: RefloatConfigSchema,
+    _ rawConfig: [UInt8],
+    _ packageSignature: UInt32,
+    _ failPhase: ConfigWritePhase,
+    _ connection: ConfigRWConnection
+  ) {
+    do {
       let patched = try RefloatConfigEncoder.encode(schema: schema, rawConfig: rawConfig, fields: ctx.profileFields)
       state = .writeAwaitingSetAck(ctx, schema, rawConfig, patched)
       cancelTimeout()
@@ -354,16 +413,14 @@ internal final class ConfigRWController {
         RefloatConfigProtocol.buildSetCustomConfig(
           transport: ctx.transport,
           confInd: 0,
-          packageSignature: configBytes.packageSignature,
+          packageSignature: packageSignature,
           configBytes: patched
         )
       )
-    } catch let error as RefloatConfigSchemaException {
-      failWrite(code: .UNSUPPORTED_SCHEMA, message: error.message, phase: .readingConfig, rawConfig: rawConfig, connection: connection)
     } catch let error as RefloatConfigEncodeException {
-      failWrite(code: .CONFIG_ENCODE_FAILED, message: error.message, phase: .readingConfig, rawConfig: rawConfig, connection: connection)
+      failWrite(code: .CONFIG_ENCODE_FAILED, message: error.message, phase: failPhase, rawConfig: rawConfig, resumePolling: ctx.wasPolling, connection: connection)
     } catch {
-      failWrite(code: .CONFIG_WRITE_FAILED, message: error.localizedDescription, phase: .readingConfig, rawConfig: rawConfig, connection: connection)
+      failWrite(code: .CONFIG_WRITE_FAILED, message: error.localizedDescription, phase: failPhase, rawConfig: rawConfig, resumePolling: ctx.wasPolling, connection: connection)
     }
   }
 
@@ -372,10 +429,10 @@ internal final class ConfigRWController {
     _ schema: RefloatConfigSchema,
     _ original: [UInt8],
     _ patched: [UInt8],
-    _ boardConfig: [UInt8],
+    _ boardConfig: RefloatConfigBytes,
     _ connection: ConfigRWConnection
   ) {
-    switch RefloatConfigWriteVerifier.verifyExactBytes(expected: patched, actual: boardConfig) {
+    switch RefloatConfigWriteVerifier.verifyExactBytes(expected: patched, actual: boardConfig.config) {
     case .failure(let message):
       failWrite(code: .CONFIG_VERIFY_FAILED, message: message, phase: .verifying, rawConfig: original, connection: connection)
       return
@@ -385,14 +442,14 @@ internal final class ConfigRWController {
     do {
       let snapshot = try RefloatConfigDecoder.decode(
         schema: schema,
-        rawConfig: boardConfig,
+        rawConfig: boardConfig.config,
         boardId: ctx.appBoardId,
         canId: ctx.canId,
         capturedAt: nowMs(),
         fwVersion: ctx.fwVersion,
         refloatVersion: ctx.refloatVersion
       )
-      completeWrite(snapshot, RefloatConfigDecoder.decodeSafetyValues(schema: schema, rawConfig: boardConfig), connection)
+      completeWrite(snapshot, boardConfigValues(schema, boardConfig, ctx.appBoardId, connection), connection)
     } catch let error as RefloatConfigDecodeException {
       failWrite(code: .CONFIG_VERIFY_FAILED, message: error.message, phase: .verifying, rawConfig: original, connection: connection)
     } catch {
@@ -400,25 +457,43 @@ internal final class ConfigRWController {
     }
   }
 
-  private func complete(_ snapshot: RefloatConfigSnapshot, _ safety: ConfigSafetyValues, _ connection: ConfigRWConnection) {
+  /// Build the session's Board Config Values off the bytes just read: the whole-schema decoded map
+  /// plus the retained raw bytes, package signature, and schema that a later write patches.
+  private func boardConfigValues(
+    _ schema: RefloatConfigSchema,
+    _ configBytes: RefloatConfigBytes,
+    _ boardId: String?,
+    _ connection: ConfigRWConnection
+  ) -> BoardConfigValues {
+    RefloatConfigDecoder.decodeBoardConfigValues(
+      schema: schema,
+      configBytes: configBytes,
+      boardId: boardId,
+      refloatBaseVersion: connection.refloatBaseVersion,
+      capturedAt: nowMs()
+    )
+  }
+
+  private func complete(_ snapshot: RefloatConfigSnapshot, _ values: BoardConfigValues, _ connection: ConfigRWConnection) {
     let pending = readCallbacks
-    readCallbacks = nil
+    readCallbacks = []
     let resume = currentResumePolling
     state = .idle
     cancelTimeout()
     if resume { connection.startPolling() }
-    connection.evaluateConfigSafety(safety)
-    pending?.onSuccess(snapshot.toMap())
+    connection.onBoardConfigValues(values, .freshRead)
+    let map = snapshot.toMap()
+    for callbacks in pending { callbacks.onSuccess(map) }
   }
 
-  private func completeWrite(_ snapshot: RefloatConfigSnapshot, _ safety: ConfigSafetyValues, _ connection: ConfigRWConnection) {
+  private func completeWrite(_ snapshot: RefloatConfigSnapshot, _ values: BoardConfigValues, _ connection: ConfigRWConnection) {
     let pending = writeCallbacks
     writeCallbacks = nil
     let resume = currentResumePolling
     state = .idle
     cancelTimeout()
     if resume { connection.startPolling() }
-    connection.evaluateConfigSafety(safety)
+    connection.onBoardConfigValues(values, .vescapeWrite)
     pending?.onSuccess(snapshot.toMap())
   }
 
@@ -430,7 +505,7 @@ internal final class ConfigRWController {
     connection: ConfigRWConnection
   ) {
     let pending = readCallbacks
-    readCallbacks = nil
+    readCallbacks = []
     let resume = resumePolling ?? currentResumePolling
     let opId = currentOpId
     state = .idle
@@ -446,7 +521,7 @@ internal final class ConfigRWController {
         "raw_config_length": rawConfig?.count,
       ]
     )
-    pending?.onError(code.rawValue, message)
+    for callbacks in pending { callbacks.onError(code.rawValue, message) }
   }
 
   private func failWrite(
@@ -543,8 +618,15 @@ internal final class ConfigRWController {
   ) {
     timeoutGeneration += 1
     let generation = timeoutGeneration
-    DispatchQueue.main.asyncAfter(deadline: .now() + Double(timeoutMs) / 1000.0) { [weak self] in
+    scheduler.postDelayed(timeoutMs) { [weak self] in
       guard let self, self.timeoutGeneration == generation, self.isInFlight else { return }
+      if case .readCollectingXml(var ctx, let bytes, let expected) = self.state, !ctx.xmlRetried {
+        ctx.xmlRetried = true
+        self.state = .readCollectingXml(ctx, bytes, expected)
+        self.scheduleTimeout(.CONFIG_SCHEMA_TIMEOUT, CONFIG_SCHEMA_TIMEOUT_MS, connection)
+        _ = self.send(connection, self.buildXmlRequest(ctx.transport, expected: expected, nextOffset: bytes.count))
+        return
+      }
       self.abort(code: code, message: "Timed out reading Refloat config", resumePolling: nil, connection: connection)
     }
   }
@@ -577,16 +659,26 @@ internal struct ConfigRWConnection {
   let appBoardId: String?
   let transport: BoardTransport
   let fwVersion: String?
+  /// Refloat version the trusted Board Link observed. Seeds the write context so a push that skips
+  /// the pre-read still returns a snapshot Tune Compatibility can read.
+  let refloatVersion: String?
   let refloatBaseVersion: String?
   let linkIntegrity: LinkIntegrity
+  /// The session's held Board Config Values. A `fresh` object carries the write base a tune push
+  /// patches, which is what lets the push skip the pre-read entirely (ADR 0035).
+  let boardConfigValues: BoardConfigValues?
   let isPollingActive: () -> Bool
   let stopPolling: () -> Void
   let startPolling: () -> Void
   let sendPayload: ([UInt8]) -> Bool
   let captureDiagnostic: (String, [String: Any?]) -> Void
-  let loadProfile: (String) -> [String: Any?]?
-  let evaluateConfigSafety: (ConfigSafetyValues) -> Void
+  let loadProfile: (String) throws -> [String: Any?]?
+  /// Hand the freshly decoded Board Config Values to the session controller, which holds them as the
+  /// session's config truth, caches them, and runs warning evaluation.
+  let onBoardConfigValues: (BoardConfigValues, BoardConfigOperationOrigin) -> Void
 }
+
+internal enum BoardConfigOperationOrigin { case freshRead, vescapeWrite }
 
 private extension BoardTransport {
   var canId: Int? {

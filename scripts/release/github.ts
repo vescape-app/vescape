@@ -2,6 +2,7 @@ import { mkdtemp, readFile, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import type {
+  HistoricalReleaseManifest,
   ProductionManifest,
   ProductionOperation,
   PromotionManifest,
@@ -9,7 +10,12 @@ import type {
   WorkflowJob,
   WorkflowRun,
 } from './contracts'
-import { parseProductionManifest, parsePromotionManifest, parseReleaseManifest } from './contracts'
+import {
+  parseHistoricalReleaseManifest,
+  parseProductionManifest,
+  parsePromotionManifest,
+  parseReleaseManifest,
+} from './contracts'
 import { releaseNotesPath } from './prepare'
 
 const WORKFLOW_FILE = 'release-android.yml'
@@ -101,7 +107,6 @@ export interface ProductionDispatchPayload {
     marketing_version: string
     phone_code: string
     wear_code: string
-    rollout_percentage: string
   }
 }
 
@@ -120,7 +125,7 @@ export interface ArtifactRun {
 export function createDispatchPayload(
   sourceSha: string,
   requestId: string,
-  workflowRef = 'main',
+  workflowRef: string,
 ): DispatchPayload {
   if (!/^[0-9a-f]{40}$/i.test(sourceSha))
     throw new Error('Source SHA must be a full 40-character SHA')
@@ -158,24 +163,13 @@ export function createProductionDispatchPayload(
   candidate: ProductionCandidate,
   operation: ProductionOperation,
   requestId: string,
-  rolloutPercentage?: number,
   workflowRef = 'main',
 ): ProductionDispatchPayload {
   if (!/^[0-9a-f-]{36}$/i.test(requestId)) throw new Error('Request ID must be a UUID')
-  if (!['promote', 'status', 'halt', 'resume', 'advance'].includes(operation))
+  if (!['promote', 'status'].includes(operation))
     throw new Error(`Invalid production operation "${operation}"`)
   if (!Number.isSafeInteger(candidate.openPromotionRunId) || candidate.openPromotionRunId < 1)
     throw new Error('Open-promotion run ID must be a positive integer')
-  if (operation === 'promote' || operation === 'advance') {
-    if (
-      typeof rolloutPercentage !== 'number' ||
-      !Number.isFinite(rolloutPercentage) ||
-      rolloutPercentage <= 0 ||
-      rolloutPercentage > 100
-    ) {
-      throw new Error('Rollout percentage must be greater than 0 and at most 100')
-    }
-  }
   const { manifest, open } = candidate
   if (
     open.phone.status === 'failed' ||
@@ -199,7 +193,6 @@ export function createProductionDispatchPayload(
       marketing_version: manifest.marketingVersion,
       phone_code: String(manifest.versionCodes.phone),
       wear_code: String(manifest.versionCodes.wear),
-      rollout_percentage: rolloutPercentage === undefined ? '0' : String(rolloutPercentage),
     },
   }
 }
@@ -281,6 +274,7 @@ async function dispatchBuildWorkflow(
   workflowFile: string,
   payload: DispatchPayload,
   label: string,
+  extraInputs: readonly string[] = [],
 ): Promise<void> {
   await checkedGh(
     [
@@ -294,6 +288,7 @@ async function dispatchBuildWorkflow(
       `inputs[source_sha]=${payload.inputs.source_sha}`,
       '--raw-field',
       `inputs[request_id]=${payload.inputs.request_id}`,
+      ...extraInputs.flatMap((field) => ['--raw-field', field]),
     ],
     label,
   )
@@ -543,7 +538,15 @@ export async function failedWorkflowJobs(repo: string, runId: number): Promise<s
   return parseFailedWorkflowJobs(JSON.parse(output))
 }
 
-export async function downloadManifest(runId: number): Promise<ReleaseManifest> {
+export function downloadManifest(runId: number): Promise<ReleaseManifest> {
+  return downloadReleaseManifest(runId, parseReleaseManifest)
+}
+
+export function downloadHistoricalManifest(runId: number): Promise<HistoricalReleaseManifest> {
+  return downloadReleaseManifest(runId, parseHistoricalReleaseManifest)
+}
+
+async function downloadReleaseManifest<T>(runId: number, parse: (value: unknown) => T): Promise<T> {
   const directory = await mkdtemp(join(tmpdir(), 'vescape-release-'))
   try {
     await checkedGh(
@@ -551,7 +554,7 @@ export async function downloadManifest(runId: number): Promise<ReleaseManifest> 
       'Cannot download release manifest',
     )
     const contents = await readFile(join(directory, 'release-manifest.json'), 'utf8')
-    return parseWorkflowArtifact(contents, 'Release manifest', parseReleaseManifest)
+    return parseWorkflowArtifact(contents, 'Release manifest', parse)
   } finally {
     await rm(directory, { recursive: true, force: true })
   }

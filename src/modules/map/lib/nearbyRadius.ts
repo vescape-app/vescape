@@ -8,23 +8,36 @@ const ASSUMED_VIEWPORT_PX = 1024
 const MIN_WATCH_ROUTE_SPAN_METERS = 150
 const MAX_WATCH_ROUTE_SPAN_METERS = 2_000
 
-function metersPerPixel(zoom: number, latitude: number): number | null {
+/** Ground metres one screen pixel covers at [zoom] and [latitude]. Null on non-finite input. */
+export function metersPerPixel(zoom: number, latitude: number): number | null {
   if (!Number.isFinite(zoom) || !Number.isFinite(latitude)) return null
   const latitudeScale = Math.cos((Math.min(Math.abs(latitude), 85) * Math.PI) / 180)
   const value = (EARTH_CIRCUMFERENCE_METERS * latitudeScale) / (TILE_SIZE_PX * 2 ** zoom)
   return Number.isFinite(value) ? value : null
 }
 
+/** The zoom at which one screen pixel covers [scale] metres — the inverse of [metersPerPixel]. */
+export function zoomForMetersPerPixel(scale: number, latitude: number): number {
+  const latitudeScale = Math.cos((Math.min(Math.abs(latitude), 85) * Math.PI) / 180)
+  return Math.log2((EARTH_CIRCUMFERENCE_METERS * latitudeScale) / (TILE_SIZE_PX * scale))
+}
+
 /**
  * Radius to ask the server for, so a nearby read covers what the rider can actually see. Grows as
  * the camera zooms out and is clamped to the server's own limits.
+ *
+ * Quantised to a tenth of itself on purpose. The camera reports fractional zoom that drifts while
+ * it settles, and a radius measured to the metre made every one of those frames a different area —
+ * which the refetch heuristic reads as new ground and answers with a server read.
  */
 export function nearbyRadiusMeters(zoom: number, latitude: number): number {
   const scale = metersPerPixel(zoom, latitude)
   if (scale == null) return MIN_RADIUS_METERS
   const radius = (scale * ASSUMED_VIEWPORT_PX) / 2
   if (!Number.isFinite(radius)) return MIN_RADIUS_METERS
-  return Math.round(Math.min(Math.max(radius, MIN_RADIUS_METERS), MAX_RADIUS_METERS))
+  const clamped = Math.min(Math.max(radius, MIN_RADIUS_METERS), MAX_RADIUS_METERS)
+  const step = Math.max(MIN_RADIUS_METERS / 10, 10 ** Math.floor(Math.log10(clamped)) / 2)
+  return Math.min(Math.round(clamped / step) * step, MAX_RADIUS_METERS)
 }
 
 /** Horizontal ground span of the phone map, clamped to a useful watch-route zoom range. */

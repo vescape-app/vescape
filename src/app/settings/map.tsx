@@ -1,4 +1,4 @@
-import { ScrollView, StyleSheet, Switch } from 'react-native'
+import { ScrollView, StyleSheet } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import {
   ImageSquareIcon,
@@ -12,6 +12,7 @@ import { useShallow } from 'zustand/react/shallow'
 import { IconHero } from '@/components/settings/IconHero'
 import { SettingsCard } from '@/components/settings/SettingsCard'
 import { SettingsRow } from '@/components/settings/SettingsRow'
+import { Switch } from '@/components/controls/Switch'
 import { SettingsSectionTitle } from '@/components/settings/SettingsSectionTitle'
 import { Stepper } from '@/components/forms/Stepper'
 import { theme } from '@/constants/theme'
@@ -44,7 +45,7 @@ export default function MapSettingsScreen() {
       <ScrollView contentContainerStyle={styles.content}>
         <IconHero
           icon={ImageSquareIcon}
-          description="Tune map detail and satellite overlay without changing routes or pins."
+          description="Set the satellite baseline. Active theme and daylight adapt it without changing routes or pins."
         />
 
         <SettingsSectionTitle>General</SettingsSectionTitle>
@@ -58,13 +59,6 @@ export default function MapSettingsScreen() {
               <Switch
                 value={hideTelemetryMapDetails}
                 onValueChange={(enabled) => void set('hideTelemetryMapDetails', enabled)}
-                trackColor={{
-                  false: theme.palette.slate.border,
-                  true: theme.palette.sky.border,
-                }}
-                thumbColor={
-                  hideTelemetryMapDetails ? theme.palette.sky.color : theme.palette.slate.textMuted
-                }
               />
             }
           />
@@ -76,18 +70,11 @@ export default function MapSettingsScreen() {
             icon={ImageSquareIcon}
             iconColor={theme.palette.sky.color}
             label="Satellite overlay"
-            hint="Use the toned satellite image with One Dark labels"
+            hint="Use toned satellite imagery with roads and labels"
             right={
               <Switch
                 value={satelliteOverlayEnabled}
                 onValueChange={(enabled) => void set('satelliteOverlayEnabled', enabled)}
-                trackColor={{
-                  false: theme.palette.slate.border,
-                  true: theme.palette.sky.border,
-                }}
-                thumbColor={
-                  satelliteOverlayEnabled ? theme.palette.sky.color : theme.palette.slate.textMuted
-                }
               />
             }
           />
@@ -97,7 +84,7 @@ export default function MapSettingsScreen() {
                 icon={SlidersHorizontalIcon}
                 iconColor={theme.palette.cyan.color}
                 label="Home image opacity"
-                hint="Applies on the home telemetry map; Explore uses a clearer satellite overlay"
+                hint="Maximum for the home map; theme and daylight may dim it"
                 right={
                   <Stepper
                     value={satelliteOpacityPercent}
@@ -116,7 +103,7 @@ export default function MapSettingsScreen() {
                 icon={MapTrifoldIcon}
                 iconColor={theme.palette.violet.color}
                 label="Explore image opacity"
-                hint="Applies inside the full map Satellite view"
+                hint="Maximum in Explore; theme and daylight may dim it"
                 right={
                   <Stepper
                     value={satelliteMapOpacityPercent}
@@ -135,7 +122,7 @@ export default function MapSettingsScreen() {
                 icon={PaletteIcon}
                 iconColor={theme.palette.purple.color}
                 label="Satellite desaturation"
-                hint="Applies on the home telemetry map; 0% keeps the original colors"
+                hint="Base home-map value; night adaptation can desaturate further"
                 right={
                   <Stepper
                     value={satelliteDesaturationPercent}
@@ -161,7 +148,7 @@ export default function MapSettingsScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: theme.palette.slate.bg,
+    backgroundColor: theme.neutral.bg,
   },
   content: {
     padding: 16,

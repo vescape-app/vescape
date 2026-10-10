@@ -8,6 +8,10 @@ const internalWorkflow = readFileSync(join(root, '.github/workflows/release-andr
 const fastfile = readFileSync(join(root, 'fastlane/Fastfile'), 'utf8')
 const releaseEntry = readFileSync(join(root, 'scripts/release.ts'), 'utf8')
 const releasePreparation = readFileSync(join(root, 'scripts/release/prepare.ts'), 'utf8')
+const recordWorkflow = readFileSync(
+  join(root, '.github/workflows/record-released-version.yml'),
+  'utf8',
+)
 
 describe('production promotion workflow contract', () => {
   test('serializes Play writes and requires the production environment', () => {
@@ -34,21 +38,13 @@ describe('production promotion workflow contract', () => {
     expect(workflow).not.toMatch(/gradle|expo prebuild|bundleRelease|\.aab/i)
   })
 
-  test('supports status, halt, resume, and monotonic percentage advancement', () => {
+  // Staged rollout was removed deliberately: every promotion goes to 100% at once, so no
+  // percentage, halt, resume or advance path may creep back into the Play calls.
+  test('promotes to a completed release with no staged rollout path', () => {
     expect(fastfile).toContain('when "status"')
-    expect(fastfile).toContain('when "halt"')
-    expect(fastfile).toContain('when "resume"')
-    expect(fastfile).toContain('when "advance"')
-    expect(fastfile).toContain('rollout cannot move backwards')
-  })
-
-  test('passes staged rollout fractions as Fastlane strings and omits them at 100%', () => {
-    expect(fastfile).toContain('def rollout_upload_options')
-    expect(fastfile).toContain('{ rollout: fraction.to_s }')
-    expect(fastfile).toContain('**rollout_upload_options(initial_rollout)')
-    expect(fastfile).toContain('**rollout_upload_options(requested)')
-    expect(fastfile).not.toContain('rollout: initial_rollout')
-    expect(fastfile).not.toContain('rollout: requested')
+    expect(fastfile).toContain('track_promote_release_status: "completed"')
+    expect(fastfile).not.toMatch(/rollout|user_fraction|when "halt"|when "resume"|when "advance"/)
+    expect(workflow).not.toMatch(/rollout|percentage/i)
   })
 
   test('writes Fastlane results where the workflow assembles the manifest', () => {
@@ -71,6 +67,27 @@ describe('production promotion workflow contract', () => {
   test('distinguishes skipped GitHub finalization from an attempted failure', () => {
     expect(workflow).toContain('elif test "$GITHUB_OUTCOME" = skipped; then')
     expect(workflow).toContain('echo skipped > github-release-status.txt')
+  })
+
+  // The server reports what the stores serve, so the push must follow a successful Play write
+  // and must never fail a release that already reached production.
+  test('tells the server about the Android version only after Play succeeded', () => {
+    const play = workflow.indexOf('Apply Wear production operation')
+    const push = workflow.indexOf('Tell the server Android now serves this version')
+    expect(play).toBeGreaterThan(0)
+    expect(push).toBeGreaterThan(play)
+    expect(workflow).toContain('bun run scripts/release/releasedVersion.ts android')
+    expect(workflow.slice(push)).toContain('continue-on-error: true')
+    expect(workflow).toContain('INTERNAL_API_KEY: ${{ secrets.VESCAPE_INTERNAL_API_KEY }}')
+  })
+
+  // No store credential belongs in the server repository: it learns the version from here.
+  test('records iOS by hand, since nothing here releases it to the App Store', () => {
+    expect(recordWorkflow).toContain('options: [ios, android]')
+    expect(recordWorkflow).toContain(
+      'git merge-base --is-ancestor "v$VERSION^{commit}" origin/main',
+    )
+    expect(recordWorkflow).toContain('bun run scripts/release/releasedVersion.ts')
   })
 
   test('has no legacy or hidden second production path', () => {

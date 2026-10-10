@@ -75,6 +75,9 @@ struct RefloatConfigSchemaException: Error {
 enum RefloatConfigSchemaParser {
   static func parse(_ xmlBytes: [UInt8]) throws -> RefloatConfigSchema {
     let normalizedXmlBytes = normalizeXmlBytes(xmlBytes)
+    if containsDocumentType(String(decoding: normalizedXmlBytes, as: UTF8.self)) {
+      throw RefloatConfigSchemaException("UNSUPPORTED_SCHEMA: document type declarations are forbidden")
+    }
     let root: RefloatXmlNode
     do {
       root = try RefloatXmlNode.parse(Data(normalizedXmlBytes))
@@ -117,6 +120,25 @@ enum RefloatConfigSchemaParser {
       offset += type.byteSize
     }
     return RefloatConfigSchema(hash: sha256(normalizedXmlBytes), fields: fields)
+  }
+
+  static func containsDocumentType(_ xml: String) -> Bool {
+    let lower = xml.lowercased()
+    var cursor = lower.startIndex
+    while let marker = lower[cursor...].range(of: "<!")?.lowerBound {
+      if lower[marker...].hasPrefix("<!--") {
+        guard let end = lower[marker...].range(of: "-->")?.upperBound else { return false }
+        cursor = end
+      } else if lower[marker...].hasPrefix("<![cdata[") {
+        guard let end = lower[marker...].range(of: "]]>")?.upperBound else { return false }
+        cursor = end
+      } else if lower[marker...].hasPrefix("<!doctype") {
+        return true
+      } else {
+        cursor = lower.index(marker, offsetBy: 2)
+      }
+    }
+    return false
   }
 
   static func normalizeXmlBytes(_ bytes: [UInt8]) -> [UInt8] {

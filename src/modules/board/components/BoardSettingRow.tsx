@@ -3,11 +3,11 @@ import { CaretRightIcon } from 'phosphor-react-native'
 import { Pressable, StyleSheet, View } from 'react-native'
 import { Text } from '@/components/base/Text'
 
-import { interaction, theme } from '@/constants/theme'
+import { interaction, theme, type ThemeColor } from '@/constants/theme'
 
 interface BoardSettingRowProps {
   icon: Icon
-  iconColor: string
+  iconColor: ThemeColor
   label: string
   value: string
   hint?: string
@@ -43,7 +43,7 @@ export function BoardSettingRow({
           </Text>
         ) : null}
       </View>
-      <CaretRightIcon size={16} color={theme.palette.slate.color} weight="bold" />
+      <CaretRightIcon size={16} color={theme.neutral.textMuted} weight="bold" />
     </Pressable>
   )
 }
@@ -66,17 +66,17 @@ const styles = StyleSheet.create({
     gap: 2,
   },
   label: {
-    color: theme.palette.slate.textPrimary,
+    color: theme.neutral.textPrimary,
     fontSize: 15,
     fontWeight: '700',
   },
   value: {
-    color: theme.palette.slate.textSecondary,
+    color: theme.neutral.textSecondary,
     fontSize: 13,
     fontWeight: '600',
   },
   hint: {
-    color: theme.palette.slate.textMuted,
+    color: theme.neutral.textMuted,
     fontSize: 12,
     fontWeight: '500',
   },

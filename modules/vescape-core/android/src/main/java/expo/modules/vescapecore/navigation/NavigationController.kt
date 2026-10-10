@@ -1,9 +1,11 @@
 package expo.modules.vescapecore.navigation
 
 import android.content.Context
+import expo.modules.vescapecore.recording.RecordingStorageFailure
 import expo.modules.vescapecore.watch.WatchRouteMirror
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
@@ -186,11 +188,8 @@ class NavigationController(
 
   val current: Navigation? get() = synchronized(lock) { state }
 
-  /**
-   * How many Directions calls are in flight. A rider who taps two profiles in a row has two, and
-   * the rider is "waiting for a path" until the last of them lands — hence a count and not a flag.
-   */
-  private var inFlight = 0
+  /** Only the current intent owns the loader; superseded requests may finish in the background. */
+  private var computingRequest: Int? = null
 
   /**
    * Whether a path is being computed right now. The one piece of Navigation state that is not
@@ -200,10 +199,15 @@ class NavigationController(
    * path in place and publishes nothing, so without this the rider taps a Profile and sees the UI
    * do nothing at all for fifteen seconds.
    */
-  val computing: Boolean get() = synchronized(lock) { inFlight > 0 }
+  val computing: Boolean get() = synchronized(lock) { computingRequest != null }
 
   /** Notified on every change, including the clear to `null` and every [computing] transition. */
   var onChange: ((Navigation?) -> Unit)? = null
+
+  /** Process-scoped watch notification, separate from the JS subscriber. Never read back inline.
+   * @parity /modules/vescape-core/ios/navigation/NavigationController.swift `onWatchChange`
+   */
+  var onWatchChange: (() -> Unit)? = null
 
   /**
    * Notified with the rideable path of every published Navigation, `null` when there is none to
@@ -213,14 +217,24 @@ class NavigationController(
    * Separate from [onChange] because the two have different lifetimes: [onChange] belongs to the JS
    * module and is cleared on every reload, while this one carries the route to the Wear Mirror and
    * must survive one — see `WatchRouteMirror`.
+   *
+   * @parity /modules/vescape-core/ios/navigation/NavigationController.swift `onPathChange`
    */
   var onPathChange: ((List<Pair<Double, Double>>?) -> Unit)? = null
 
   /**
    * Where the rider is along the current path. Derived and never stored: recomputed by [onFix] and
-   * dropped whenever the Navigation it belongs to changes, so there is no cache to expire by hand.
+   * reprojected when the path changes, including while the rider stands still.
    */
   private var progress: RouteProgress? = null
+  private data class Fix(val latitude: Double, val longitude: Double, val speedMps: Double?)
+  private var latestFix: Fix? = null
+
+  private fun progressAtLatestFix(): RouteProgress? {
+    val fix = latestFix ?: return null
+    val points = ridePath(state) ?: return null
+    return RouteProgress.compute(points, fix.latitude, fix.longitude, fix.speedMps)
+  }
 
   val currentProgress: RouteProgress? get() = synchronized(lock) { progress }
 
@@ -237,8 +251,8 @@ class NavigationController(
    */
   fun onFix(latitude: Double, longitude: Double, speedMps: Double?) {
     synchronized(lock) {
-      val points = state?.takeIf { it.status == NavigationStatus.READY }?.points
-      val next = points?.let { RouteProgress.compute(it, latitude, longitude, speedMps) }
+      latestFix = Fix(latitude, longitude, speedMps)
+      val next = progressAtLatestFix()
       if (progress == next) return
       progress = next
       onProgressChange?.invoke(next)
@@ -271,7 +285,14 @@ class NavigationController(
         synchronized(lock) { if (!profileChosen) profile = stored }
       }
       val stored = store.load() ?: return@launch
-      val directionPoint = store.directionPoint()
+      val directionPoint = try {
+        store.directionPoint()
+      } catch (error: CancellationException) {
+        throw error
+      } catch (error: Exception) {
+        RecordingStorageFailure.reportRead("direction_point_read", error)
+        return@launch
+      }
       // The two are written separately, so an interrupted write can leave a path leading somewhere
       // the rider is no longer heading. Drawing a line to the wrong place is worse than drawing none.
       val usable = stored.takeIf {
@@ -318,12 +339,12 @@ class NavigationController(
     }
 
     val requested = currentProfile
-    beginComputing()
+    beginComputing(request)
     scope.launch {
       try {
         publish(request, compute(toLatitude, toLongitude, fromLatitude, fromLongitude, requested))
       } finally {
-        endComputing()
+        endComputing(request)
       }
     }
   }
@@ -376,7 +397,7 @@ class NavigationController(
       return
     }
 
-    beginComputing()
+    beginComputing(request)
     scope.launch {
       try {
         publish(
@@ -385,7 +406,7 @@ class NavigationController(
           keepUsablePath = true,
         )
       } finally {
-        endComputing()
+        endComputing(request)
       }
     }
   }
@@ -395,15 +416,21 @@ class NavigationController(
    * what JS mirrors: the spinner has to come on before the fetch and go off after the result has
    * already been published, or the rider sees a gap between the two.
    */
-  private fun beginComputing() = changeInFlight(1)
-
-  private fun endComputing() = changeInFlight(-1)
-
-  private fun changeInFlight(delta: Int) {
+  private fun beginComputing(request: Int) {
     synchronized(lock) {
-      val was = inFlight > 0
-      inFlight = (inFlight + delta).coerceAtLeast(0)
-      if (was != (inFlight > 0)) onChange?.invoke(state)
+      if (request != generation) return
+      computingRequest = request
+      onChange?.invoke(state)
+      onWatchChange?.invoke()
+    }
+  }
+
+  private fun endComputing(request: Int) {
+    synchronized(lock) {
+      if (computingRequest != request) return
+      computingRequest = null
+      onChange?.invoke(state)
+      onWatchChange?.invoke()
     }
   }
 
@@ -453,7 +480,16 @@ class NavigationController(
   /** Clearing the Direction Point ends the Navigation; they are strictly 1:1. */
   fun clear() = publish(claimRequest(), null)
 
-  private fun claimRequest(): Int = synchronized(lock) { ++generation }
+  private fun claimRequest(): Int = synchronized(lock) {
+    val wasComputing = computingRequest != null
+    computingRequest = null
+    ++generation
+    if (wasComputing) {
+      onChange?.invoke(state)
+      onWatchChange?.invoke()
+    }
+    generation
+  }
 
   /** The path a Navigation actually draws, or `null` when it has none — a failure has no line. */
   private fun ridePath(navigation: Navigation?): List<Pair<Double, Double>>? =
@@ -481,14 +517,15 @@ class NavigationController(
       }
       val previousPath = ridePath(state)
       state = navigation
-      // Route Progress belongs to exactly one Navigation, so it dies with the one being replaced
-      // rather than describing a path that is no longer drawn. The next fix refills it.
-      val hadProgress = progress != null
-      progress = null
+      // Reproject the latest fix immediately. Foreground GPS can wait for movement before
+      // delivering another fix, but selecting a route must work while standing still.
+      val previousProgress = progress
+      progress = progressAtLatestFix()
       onChange?.invoke(navigation)
-      if (hadProgress) onProgressChange?.invoke(null)
+      if (previousProgress != progress) onProgressChange?.invoke(progress)
       val nextPath = ridePath(navigation)
       if (previousPath != nextPath) onPathChange?.invoke(nextPath)
+      onWatchChange?.invoke()
     }
     persist(request)
   }

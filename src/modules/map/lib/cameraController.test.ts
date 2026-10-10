@@ -3,7 +3,11 @@ import { describe, expect, test } from 'bun:test'
 import {
   initialMapCameraControllerState,
   reduceMapCameraIntent,
+  zoomForRadarView,
 } from '@/modules/map/lib/cameraController'
+
+/** A phone-sized viewport: the radar view frames its outer range ring inside the narrow side. */
+const VIEWPORT = { width: 390, height: 844 }
 
 describe('map camera controller', () => {
   const gpsCamera = {
@@ -20,6 +24,109 @@ describe('map camera controller', () => {
 
     expect(repeated.state).toBe(browsing)
     expect(repeated.effect).toBeNull()
+  })
+
+  describe('preview pan ownership', () => {
+    const anchorCamera = {
+      centerCoordinate: [19, 50] as [number, number],
+      zoomLevel: 15,
+      heading: 30,
+      pitch: 20,
+    }
+    const liveCamera = {
+      centerCoordinate: [19.1, 50.1] as [number, number],
+      zoomLevel: 16,
+      heading: 90,
+      pitch: 52,
+    }
+
+    test('a cancelled drag rides back to the mode it interrupted', () => {
+      const panning = reduceMapCameraIntent(initialMapCameraControllerState, {
+        type: 'BeginPreviewPan',
+      }).state
+
+      const cancelled = reduceMapCameraIntent(panning, {
+        type: 'CancelPreviewPan',
+        liveCamera,
+        anchorCamera,
+      })
+
+      expect(cancelled.state.mode).toEqual({ kind: 'liveFollow' })
+      expect(cancelled.effect?.camera).toEqual(liveCamera)
+    })
+
+    test('a cancelled drag without a fix stays on its own anchor', () => {
+      const panning = reduceMapCameraIntent(initialMapCameraControllerState, {
+        type: 'BeginPreviewPan',
+      }).state
+
+      const cancelled = reduceMapCameraIntent(panning, {
+        type: 'CancelPreviewPan',
+        liveCamera: null,
+        anchorCamera,
+      })
+
+      expect(cancelled.effect?.camera).toEqual(anchorCamera)
+    })
+
+    test('an intent issued mid-drag takes the camera and the cancel does nothing', () => {
+      const panning = reduceMapCameraIntent(initialMapCameraControllerState, {
+        type: 'BeginPreviewPan',
+      }).state
+      const weather = reduceMapCameraIntent(panning, {
+        type: 'EnterWeatherView',
+        currentCamera: null,
+        fallbackCenterCoordinate: [19, 50],
+        viewport: VIEWPORT,
+        perspectiveEnabled: true,
+      })
+
+      const cancelled = reduceMapCameraIntent(weather.state, {
+        type: 'CancelPreviewPan',
+        liveCamera,
+        anchorCamera,
+      })
+
+      expect(weather.effect?.camera.zoomLevel).toBeCloseTo(zoomForRadarView(50, VIEWPORT), 5)
+      expect(cancelled.state).toBe(weather.state)
+      expect(cancelled.effect).toBeNull()
+    })
+
+    test('manual browsing does not take the camera from a drag in progress', () => {
+      const panning = reduceMapCameraIntent(initialMapCameraControllerState, {
+        type: 'BeginPreviewPan',
+      }).state
+
+      const browsing = reduceMapCameraIntent(panning, { type: 'BrowseManually' })
+
+      expect(browsing.state).toBe(panning)
+    })
+
+    test('a drag that ends on the map keeps the dragged viewport', () => {
+      const panning = reduceMapCameraIntent(initialMapCameraControllerState, {
+        type: 'BeginPreviewPan',
+      }).state
+
+      const ended = reduceMapCameraIntent(panning, { type: 'EndPreviewPan' })
+
+      expect(ended.state.mode).toEqual({ kind: 'manualBrowse' })
+      expect(ended.effect).toBeNull()
+    })
+
+    test('ending a drag that no longer owns the camera changes nothing', () => {
+      const weather = reduceMapCameraIntent(initialMapCameraControllerState, {
+        type: 'EnterWeatherView',
+        currentCamera: null,
+        fallbackCenterCoordinate: [19, 50],
+        viewport: VIEWPORT,
+        perspectiveEnabled: true,
+      }).state
+
+      const ended = reduceMapCameraIntent(weather, { type: 'EndPreviewPan' })
+
+      expect(ended.state).toBe(weather)
+      expect(ended.effect).toBeNull()
+    })
   })
 
   test('routes live follow through the GPS heading profile', () => {
@@ -186,12 +293,14 @@ describe('map camera controller', () => {
         pitch: 45,
       },
       fallbackCenterCoordinate: [15, 54],
+      viewport: VIEWPORT,
       perspectiveEnabled: true,
     })
 
     expect(result.effect?.camera).toEqual({
       centerCoordinate: [15, 54],
-      zoomLevel: 8,
+      // Framed on the 100 km ring rather than a fixed zoom, so it tightens as latitude rises.
+      zoomLevel: expect.closeTo(6.32, 2),
       heading: 0,
       pitch: 0,
     })

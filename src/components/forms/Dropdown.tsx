@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { Animated, Dimensions, Modal, Pressable, StyleSheet, View } from 'react-native'
+import type { View } from 'react-native'
+import { Animated, Dimensions, Modal, Pressable, StyleSheet } from 'react-native'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 
 import {
@@ -185,15 +186,10 @@ const styles = StyleSheet.create({
     ...StyleSheet.absoluteFill,
   },
   panel: {
-    backgroundColor: theme.palette.slate.surface,
+    backgroundColor: theme.control.background,
     borderRadius: 16,
     borderWidth: 1,
-    borderColor: theme.palette.slate.border,
+    borderColor: theme.control.border,
     overflow: 'hidden',
-    shadowColor: theme.palette.mono.black,
-    shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.45,
-    shadowRadius: 20,
-    elevation: 16,
   },
 })

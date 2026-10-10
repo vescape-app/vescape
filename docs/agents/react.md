@@ -8,12 +8,28 @@ For visual design principles (colors, layout, typography, when to use cards), se
 
 Every color must come from the `theme` object in `src/constants/theme.ts`. Never hardcode a hex or rgba value directly in a component.
 
+Use `theme.neutral` for the white/read-only canvas, separators, and neutral copy. Use `theme.control` for interactive surfaces and their foregrounds. Use `theme.palette.<hue>` for adaptive accent text, icons, borders, and small tinted states rendered by React Native. Metric visuals use `theme.telemetry`. Raw `theme.palette.slate` values are fixed dark swatches for map JSON and other non-adaptive assets.
+
+When adding or changing a color, choose its role first: neutral content, navy control, accent, telemetry, or fixed map/chart visual. `theme.palette.slate` is never a shortcut for a dark-looking UI border or surface. Check the edited component in both appearances, including a light → dark switch while it stays mounted.
+
+For a separator, border, or surface that changes with the rider's theme, read the resolved palette inside the component and apply the color in render. A `StyleSheet.create` entry is created once; an iOS native dynamic color captured there can retain the previous forced appearance after a switch. In particular, compute `theme.alpha(neutral.border, 0.6)` from `useResolvedNeutralColors()` during render, rather than storing `theme.alpha(theme.neutral.border, 0.6)` in a static style. Keep geometry in `StyleSheet.create`.
+
+Run `bun run theme:colors:check` as soon as a color edit is in place. It rejects raw hex/rgb/hsl literals outside the palette and reviewed fixed map-style files, new fixed-dark slate swatches, and the known static divider pattern. Use `transparent` only to mean no paint. Run `bun run ts` when changing the boundary between native color objects and string-only renderers. The checker covers color sourcing and those patterns; visual verification covers token choice, contrast, and mounted transitions.
+
+The adaptive neutral, control, accent, and telemetry tokens are native color objects at runtime. Mapbox, Skia, Reanimated worklets, and string-valued state/options cannot consume them. Use the corresponding hooks from `src/hooks/useTheme.ts`: `useResolvedNeutralColors()`, `useResolvedControlColors()`, `useResolvedAccentColors()`, and `useResolvedTelemetryColors()`. Pass only their plain string values into the renderer or data structure.
+
+Type native-facing color props as `ThemeColor`; keep renderer inputs and persisted colors typed as `string`. Resolve individual tokens with `useResolvedColor`, or `resolveAdaptiveColor(color, appearance)` outside React. Resolve before building color-based grouping keys, too. Casting a token to `string` bypasses this boundary without converting its runtime value.
+
+`theme.native.test.ts` exercises native-shaped Android/iOS colors in isolated processes, since the normal test preload uses strings. Its type assertions also prevent adaptive tokens from becoming string-compatible again. The Phosphor patch widens its native SVG color props to React Native's `ColorValue`; renderer props must retain their string-only contract. For Android rendering coverage, use the component-library smoke flow documented in `e2e/README.md`.
+
+Filled actions use the resolved hue's `solid` background and `onSolid` content pair. Do not infer the foreground from `color`, `text`, or a fixed black/white value; the pair is contrast-checked separately for each appearance.
+
 ```tsx
 import { theme } from '@/constants/theme'
 
 // ✅ Good
-backgroundColor: theme.neutral.surface,
-color: theme.wheel.color,
+backgroundColor: theme.control.background,
+color: theme.telemetry.speed,
 
 // ❌ Bad
 backgroundColor: '#1e293b',
@@ -71,7 +87,39 @@ import { ArrowLeftIcon, TrashIcon } from 'phosphor-react-native'
 - `destructive` shifts border to red-tinted and auto-tints icon to `theme.error.text` — no manual color needed
 - `loading` disables the button and shows an `ActivityIndicator` in the icon color
 - `style` accepts layout-level `ViewStyle` (position, margin, bottom/top/left/right)
-- One visual style only: `theme.neutral.surfaceDeep` bg at 72% opacity + `theme.neutral.textSecondary` border at 28% opacity
+- The default surface uses `theme.control.background`, `theme.control.border`, and `theme.control.icon`; destructive state changes the accent without abandoning the navy interaction language.
+
+## Switches
+
+Use **`Switch`** (`@/components/controls/Switch`) for every boolean toggle. React Native's `Switch` is
+not used anywhere in the app — it cannot show that the board has not answered yet, and its platform
+sizes disagree.
+
+```tsx
+import { Switch } from '@/components/controls/Switch'
+
+<Switch value={enabled} onValueChange={setEnabled} />
+<Switch value={lights} onValueChange={setLights} accent={theme.palette.amber.color} />
+<Switch value={capability.enabled} onValueChange={save} pending={saving} />
+```
+
+- `value` is `boolean | null`. `null` rests the thumb in the centre — the control does not know yet,
+  so it refuses to claim a side.
+- `pending` centres the thumb and spins it there until the owner answers. Prefer it over `disabled`
+  for a write in flight: `disabled` says "you may not", `pending` says "wait".
+- `accent` takes any `ThemeColor` and tints the on state. Inside a `SettingsRow` with an `iconColor`
+  the switch inherits it, so a tinted row states its colour once; without either it falls back to
+  `theme.palette.sky.color`. `SwitchAccentProvider` lends the same accent anywhere else.
+- A disabled switch drops its accent and dashes its outline instead of dimming its on colour.
+- The track follows the colored-action surface: on light it is a navy control base with the accent
+  washed over it when on, and the accent keeps its dark-theme tone; on dark the accent alone tints
+  the card beneath.
+- Tap and drag both toggle it. Inside a row that is itself pressable, wrap the switch in a
+  `<View pointerEvents="none">` so the row owns the tap and the switch only mirrors state.
+
+For one-of-several choices, put **`RadioIndicator`** (`@/components/controls/RadioIndicator`) on
+the row that owns the press. It uses the same colored surface as `Switch`, from
+`useColoredControlSurface`.
 
 ## Buttons
 

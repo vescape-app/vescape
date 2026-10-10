@@ -25,7 +25,7 @@ export function RainViewerOverlay({ visible }: RainViewerOverlayProps) {
     if (!visible) return undefined
 
     fetchRadar()
-    const interval = setInterval(() => fetchRadar(true), 5 * 60 * 1_000)
+    const interval = setInterval(() => void fetchRadar(true), 5 * 60 * 1_000)
     return () => {
       clearInterval(interval)
     }

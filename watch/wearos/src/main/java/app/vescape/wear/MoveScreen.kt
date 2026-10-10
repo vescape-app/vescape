@@ -17,10 +17,10 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
-import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.unit.dp
 import androidx.wear.compose.material.MaterialTheme
 import androidx.wear.compose.material.Text
 import kotlinx.coroutines.delay
@@ -30,7 +30,9 @@ private const val DIRECTION_FORWARD = 1
 private const val DIRECTION_BACKWARD = -1
 
 /**
- * Board Move from the wrist: one circle split across the middle, top half forward, bottom half back.
+ * Board Move from the wrist: the centre of the circle split across the middle, top half forward,
+ * bottom half back. It has no ring of its own — the rim gauges stay pinned behind every page, and
+ * duty and speed climbing on those arcs is the truest feedback that the board is rolling.
  * Hold to roll, release to stop — the same action as the phone's Move board card, reaching the same
  * native Board Move stream (ADR-0033), so the board behaves identically whichever the rider presses.
  *
@@ -40,6 +42,8 @@ private const val DIRECTION_BACKWARD = -1
  *
  * Only enabled on a LIVE mirror. A stale or absent frame means the phone has no fresh board
  * telemetry, and a Move nobody can see the result of is not one to offer.
+ *
+ * @parity /watch/watchos/MoveScreen.swift `MoveScreen`
  */
 @Composable
 fun MoveScreen(
@@ -90,7 +94,7 @@ fun MoveScreen(
     }
 
     Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-        MoveDial(held = held, enabled = enabled)
+        MoveSplit(held = held, enabled = enabled)
         Column(modifier = Modifier.fillMaxSize()) {
             MoveHalf(
                 glyph = "\u25B2",
@@ -105,20 +109,26 @@ fun MoveScreen(
                 modifier = Modifier.weight(1f),
             )
         }
-        CenterLabel(enabled = enabled, strengthPercent = settings.boardMoveStrengthPercent)
+        CenterLabel(
+            enabled = enabled,
+            strengthPercent = settings.boardMoveStrengthPercent,
+            // Starting a Move drops a locked tilt to neutral, and it does not come back afterwards.
+            clearsTilt = state.frame?.tiltControl == WatchTiltControl.MANUAL,
+        )
     }
 }
 
 /**
- * The dial itself: a thin ring split by the divider, plus a dim tint on whichever half is held.
- * Nothing bright and filled — the wrist follows the phone's rule that accents are borders, glyphs
- * and text (docs/design.md).
+ * Held-half feedback inside the pinned rim gauges: a dim tint on whichever half is held, and the
+ * divider that says the circle splits in two. No ring of its own — the rim arcs ([FrameLayout])
+ * are the only circle on screen now, and they carry the accent while the board rolls, which is
+ * better feedback anyway: the rider watches duty and speed climb.
  */
 @Composable
-private fun MoveDial(held: Int, enabled: Boolean) {
+private fun MoveSplit(held: Int, enabled: Boolean) {
     val accent = if (enabled) SpeedColor else GuideColor
     Canvas(modifier = Modifier.fillMaxSize()) {
-        val diameter = minOf(size.width, size.height) - RING_INSET_PX
+        val diameter = minOf(size.width, size.height) - GAUGE_INNER_INSET.toPx() * 2f
         val topLeft = Offset((size.width - diameter) / 2f, (size.height - diameter) / 2f)
         val arcSize = Size(diameter, diameter)
 
@@ -133,15 +143,6 @@ private fun MoveDial(held: Int, enabled: Boolean) {
             )
         }
 
-        drawArc(
-            color = accent,
-            startAngle = 0f,
-            sweepAngle = 360f,
-            useCenter = false,
-            topLeft = topLeft,
-            size = arcSize,
-            style = Stroke(width = RING_STROKE_PX),
-        )
         // Split in two so the divider does not strike through the label sitting on it.
         val midY = size.height / 2f
         val gap = size.width * DIVIDER_GAP_FRACTION / 2f
@@ -149,13 +150,13 @@ private fun MoveDial(held: Int, enabled: Boolean) {
             color = GuideColor,
             start = Offset(topLeft.x, midY),
             end = Offset(size.width / 2f - gap, midY),
-            strokeWidth = RING_STROKE_PX,
+            strokeWidth = DIVIDER_STROKE_PX,
         )
         drawLine(
             color = GuideColor,
             start = Offset(size.width / 2f + gap, midY),
             end = Offset(topLeft.x + diameter, midY),
-            strokeWidth = RING_STROKE_PX,
+            strokeWidth = DIVIDER_STROKE_PX,
         )
     }
 }
@@ -188,21 +189,31 @@ private fun MoveHalf(
 }
 
 @Composable
-private fun CenterLabel(enabled: Boolean, strengthPercent: Int?) {
+private fun CenterLabel(enabled: Boolean, strengthPercent: Int?, clearsTilt: Boolean) {
     val text = when {
         !enabled -> "Board not connected"
         strengthPercent != null -> "$strengthPercent%"
         else -> "Hold to move"
     }
-    Text(
-        text = text,
-        style = MaterialTheme.typography.caption2,
-        color = if (enabled) SecondaryText else DimText,
-        textAlign = TextAlign.Center,
-    )
+    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+        Text(
+            text = text,
+            style = MaterialTheme.typography.caption2,
+            color = if (enabled) SecondaryText else DimText,
+            textAlign = TextAlign.Center,
+        )
+        if (enabled && clearsTilt) {
+            Text(
+                text = "Clears tilt",
+                style = MaterialTheme.typography.caption3,
+                color = ArmedColor,
+                textAlign = TextAlign.Center,
+            )
+        }
+    }
 }
 
-private const val RING_INSET_PX = 12f
-private const val RING_STROKE_PX = 2f
+/** Clears the rim arcs: the Move centre lives inside the circle the gauges draw. */
+private const val DIVIDER_STROKE_PX = 2f
 private const val HELD_TINT_ALPHA = 0.18f
 private const val DIVIDER_GAP_FRACTION = 0.5f

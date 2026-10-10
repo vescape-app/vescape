@@ -14,6 +14,7 @@ import expo.modules.vescapecore.telemetry.AppSettings
  *
  * The wrist-side peer carries the same path and key names by convention.
  * @parity /watch/wearos/src/main/java/app/vescape/wear/WatchSettings.kt
+ * @parity /modules/vescape-core/ios/watch/WatchSettings.swift
  */
 internal const val WATCH_SETTINGS_PATH = "/settings"
 
@@ -23,18 +24,81 @@ internal const val WATCH_SETTING_RIDER_COLOR = "riderColor"
 /** Board Move strength as a percentage of full scale; the wrist displays it but never applies it. */
 internal const val WATCH_SETTING_BOARD_MOVE_STRENGTH = "boardMoveStrengthPercent"
 
+/** Whether the wrist draws the direction arrow over the route. Off hides the arrow, not the route. */
+internal const val WATCH_SETTING_NAV_ARROW = "navArrowEnabled"
+
+/** Show the trail behind telemetry gauges. The map page always retains its trail. */
+internal const val WATCH_SETTING_TELEMETRY_TRAIL = "telemetryTrailEnabled"
+
+/** Whether the telemetry screen draws Group Ride marks. Off: they fade in on the map page only. */
+internal const val WATCH_SETTING_TELEMETRY_GROUP = "telemetryGroupEnabled"
+
+/** Whether the telemetry screen draws the Navigation route line. Off: it fades in on the map page only. */
+internal const val WATCH_SETTING_TELEMETRY_ROUTE = "telemetryRouteEnabled"
+
+/** Whether the wrist draws the street map. Off: the phone sends no tiles; tiles already on the wrist stay. */
+internal const val WATCH_SETTING_STREET_MAP = "streetMapEnabled"
+
+/** Street map opacity behind the gauges, integer percent from [WatchMapGauges.STEPS]. */
+internal const val WATCH_SETTING_MAP_GAUGES = "mapGaugesPercent"
+
+/** App-wide speed and distance preference; older phones default to metric. */
+internal const val WATCH_SETTING_UNIT_SYSTEM = "unitSystem"
+
+/** Tilt stick speed at full deflection, percent of full tilt per second. Applied on the wrist. */
+internal const val WATCH_SETTING_TILT_RATE = "tiltRatePercent"
+
+/**
+ * Every [AppSettings] key the wrist depends on: the ones [toWatchSettings] mirrors (Board Move's
+ * wrist relay also reads `boardMoveStrengthPercent`), plus the push cadence. A JS write to any of
+ * them must reload native settings, or the wrist and the relay keep the old value until the app
+ * restarts — which is how a Move strength change once never reached the watch.
+ *
+ * @parity /modules/vescape-core/ios/watch/WatchSettings.swift `watchSourceSettingKeys`
+ */
+internal val WATCH_SOURCE_SETTING_KEYS = setOf(
+    "riderColor",
+    "boardMoveStrengthPercent",
+    "wearNavArrowEnabled",
+    "wearTelemetryTrailEnabled",
+    "wearTelemetryGroupEnabled",
+    "wearTelemetryRouteEnabled",
+    "wearStreetMapEnabled",
+    "wearMapGaugesPercent",
+    "unitSystem",
+    "wearTiltRatePercent",
+    "wearPushRateHz",
+)
+
 /** The wrist-relevant slice of [AppSettings]. Equality is what decides whether a push is needed. */
 internal data class WatchSettings(
     val riderColor: String?,
     val boardMoveStrengthPercent: Int,
+    val navArrowEnabled: Boolean,
+    val unitSystem: String = "metric",
+    val tiltRatePercent: Int = 20,
+    val telemetryTrailEnabled: Boolean = true,
+    val telemetryGroupEnabled: Boolean = true,
+    val telemetryRouteEnabled: Boolean = true,
+    val streetMapEnabled: Boolean = true,
+    val mapGaugesPercent: Int = WatchMapGauges.DEFAULT_PERCENT,
 )
 
 /**
  * Everything the wrist mirrors from the phone's settings. Adding a setting means adding a field
- * here, a key constant above, a `putX` in [WatchSettingsPusher], and a read on the wrist.
+ * here, a key constant above, its [AppSettings] key to [WATCH_SOURCE_SETTING_KEYS], a `putX` in
+ * [WatchSettingsPusher], and a read on the wrist.
  */
 internal fun AppSettings.toWatchSettings(): WatchSettings = WatchSettings(
     // Sent verbatim; the wrist is the one place that parses the colour, so garbage degrades there.
     riderColor = riderColor?.trim()?.takeIf { it.isNotEmpty() },
     boardMoveStrengthPercent = boardMoveStrengthPercent,
+    navArrowEnabled = wearNavArrowEnabled,
+    telemetryTrailEnabled = wearTelemetryTrailEnabled,
+    telemetryGroupEnabled = wearTelemetryGroupEnabled,
+    telemetryRouteEnabled = wearTelemetryRouteEnabled,
+    streetMapEnabled = wearStreetMapEnabled,
+    mapGaugesPercent = wearMapGaugesPercent,
+    unitSystem = unitSystem,
+    tiltRatePercent = wearTiltRatePercent,
 )

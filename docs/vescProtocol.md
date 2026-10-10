@@ -92,8 +92,8 @@ Smart-BMS presence and firmware identity are discovered during the **Board Probe
 candidate transport. While probing each transport for telemetry, `BoardTransportDetector` also
 fires a `COMM_BMS_GET_VALUES` request and firmware identity requests (`COMM_FW_VERSION` and
 Refloat `GET_INFO`) when available. The facts ride on the chosen `BoardCandidate` into the saved
-`BoardLink` as `linkVersion: 3`, so reachability, capability, exact identity, and normalized
-Refloat base version are proven together and stored together.
+`BoardLink` as `linkVersion: 4`. Native finalization accepts only a candidate from that probe,
+then persists its complete Last Known Board Config Values before returning the saveable link.
 
 Runtime connect still starts telemetry from the saved Board Transport without rediscovering CAN.
 After telemetry startup, a background Link Integrity Check lightly re-probes saved facts for the

@@ -61,6 +61,26 @@ interface MapPointActions {
 const byDistance = (a: MapPoint, b: MapPoint) =>
   a.distanceMeters - b.distanceMeters || a.id.localeCompare(b.id)
 
+/**
+ * Whether a fresh read says anything new.
+ *
+ * `distanceMeters` is deliberately not compared: it is measured from the query centre, so it moves
+ * a little on every read while the points themselves have not changed. Keeping the previous array
+ * in that case is what stops a still camera from re-rendering the whole map tree once a second.
+ */
+function sameMapPoints(previous: MapPoint[], next: MapPoint[]): boolean {
+  if (previous.length !== next.length) return false
+  return previous.every((point, index) => {
+    const candidate = next[index]
+    return (
+      point.id === candidate.id &&
+      point.updatedAt === candidate.updatedAt &&
+      point.score === candidate.score &&
+      point.myReaction === candidate.myReaction
+    )
+  })
+}
+
 function pruneSelectedMapPointId(selectedId: string | null, mapPoints: MapPoint[]) {
   if (!selectedId) return null
   return mapPoints.some((point) => point.id === selectedId) ? selectedId : null
@@ -95,14 +115,17 @@ export const useMapPointStore = create<MapPointState & MapPointActions>((set, ge
         target.longitude,
         target.radiusMeters,
       )
-      const mapPoints = [...nearby.items].sort(byDistance)
-      set((s) => ({
-        mapPoints,
-        truncated: nearby.truncated,
-        selectedMapPointId: pruneSelectedMapPointId(s.selectedMapPointId, mapPoints),
-        loading: false,
-        error: null,
-      }))
+      const sorted = [...nearby.items].sort(byDistance)
+      set((s) => {
+        const mapPoints = sameMapPoints(s.mapPoints, sorted) ? s.mapPoints : sorted
+        return {
+          mapPoints,
+          truncated: nearby.truncated,
+          selectedMapPointId: pruneSelectedMapPointId(s.selectedMapPointId, mapPoints),
+          loading: false,
+          error: null,
+        }
+      })
     } catch (error) {
       // Nothing is cached offline (Map Points are server-owned), so the map goes empty and says so.
       // `lastRead` is dropped so a still camera retries on its next idle instead of staying empty

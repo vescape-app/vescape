@@ -2,14 +2,12 @@ import { useNavigation } from 'expo-router'
 import { BellRingingIcon } from 'phosphor-react-native'
 import { type ReactNode, useEffect, useMemo } from 'react'
 import { ScrollView, StyleSheet, View } from 'react-native'
-import { type SharedValue } from 'react-native-reanimated'
+import type { SharedValue } from 'react-native-reanimated'
+import { SectionHeader } from '@/components/base/SectionHeader'
 import { Text } from '@/components/base/Text'
 
 import { MetricAlerts } from '@/modules/alerts/components/MetricAlerts'
-import {
-  buildMetricAlertRuleSnapshot,
-  getAlertThresholdValues,
-} from '@/modules/alerts/lib/alertTest'
+import { getAlertThresholdValues } from '@/modules/alerts/lib/alertTest'
 import { asAlertPresetMetric } from '@/modules/alerts/lib/alertPresets'
 import { useBoardMetricAlerts } from '@/modules/alerts/hooks/useMetricAlerts'
 import { theme } from '@/constants/theme'
@@ -69,8 +67,8 @@ export function ControlDetailLayout({
 }
 
 /**
- * Bind one control's gauge, history chart, and alert controls to one immutable rule snapshot.
- * Preset metrics place their chart inside MetricAlerts so the shared slider lands below it.
+ * Bind one control's gauge, alert controls, and history chart to one immutable rule snapshot.
+ * Alert controls stay directly below the main gauge; telemetry charts follow the complete block.
  */
 function ControlDetailAlerts({
   controlId,
@@ -89,20 +87,10 @@ function ControlDetailAlerts({
   const gradientsEnabled = useSettingsStore((s) => s.historyMetricGradientsEnabled)
   const hotRanges = useSettingsStore((s) => s.historyMetricHotRanges)
 
-  const ruleSnapshot = useMemo(
-    () =>
-      controller
-        ? buildMetricAlertRuleSnapshot({
-            metric: controller.metric,
-            level: controller.level,
-            rules: controller.rules,
-            boardTopSpeedKmh: controller.topSpeedKmh,
-            hasBatteryConfig: controller.hasBatteryConfig,
-          })
-        : [],
-    [controller],
+  const thresholds = useMemo(
+    () => getAlertThresholdValues(controller?.ruleSnapshot ?? []),
+    [controller?.ruleSnapshot],
   )
-  const thresholds = useMemo(() => getAlertThresholdValues(ruleSnapshot), [ruleSnapshot])
   const alertContext = useMemo(() => ({ controlId, thresholds }), [controlId, thresholds])
 
   if (controlId === 'state') {
@@ -123,35 +111,30 @@ function ControlDetailAlerts({
     : null
 
   const alerts = (
-    <MetricAlerts
-      controller={controller}
-      unit={unit}
-      liveValue={liveValue}
-      hotRange={hotRange}
-      ruleSnapshot={ruleSnapshot}
-    />
+    <MetricAlerts controller={controller} unit={unit} liveValue={liveValue} hotRange={hotRange} />
   )
 
   return (
     <MetricDetailAlertContext value={alertContext}>
       {asAlertPresetMetric(controlId) && controller ? (
-        <MetricAlerts
-          controller={controller}
-          unit={unit}
-          liveValue={liveValue}
-          hotRange={hotRange}
-          ruleSnapshot={ruleSnapshot}
-          detailContent={children}
-          controlsHeader={<AlertsHeader />}
-        />
+        <>
+          <MetricAlerts
+            controller={controller}
+            unit={unit}
+            liveValue={liveValue}
+            hotRange={hotRange}
+            controlsHeader={<AlertsHeader />}
+          />
+          {children}
+        </>
       ) : (
         <>
           {gauge}
-          {children}
           <View style={styles.alertsSection}>
             <AlertsHeader />
             {alerts}
           </View>
+          {children}
         </>
       )}
     </MetricDetailAlertContext>
@@ -159,18 +142,13 @@ function ControlDetailAlerts({
 }
 
 function AlertsHeader() {
-  return (
-    <View style={styles.sectionHeader}>
-      <BellRingingIcon size={20} color={theme.palette.yellow.color} weight="duotone" />
-      <Text style={styles.sectionLabel}>Alerts</Text>
-    </View>
-  )
+  return <SectionHeader icon={BellRingingIcon} color={theme.palette.yellow.color} title="Alerts" />
 }
 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: theme.palette.slate.bg,
+    backgroundColor: theme.neutral.bg,
   },
   content: {
     padding: 16,
@@ -187,13 +165,13 @@ const styles = StyleSheet.create({
     marginBottom: 2,
   },
   sectionLabel: {
-    color: theme.palette.slate.textPrimary,
+    color: theme.neutral.textPrimary,
     fontSize: 18,
     fontWeight: '700',
     letterSpacing: 0.2,
   },
   stateNote: {
-    color: theme.palette.slate.textDim,
+    color: theme.neutral.textDim,
     fontSize: 14,
   },
 })

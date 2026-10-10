@@ -14,87 +14,123 @@ enum DeviceCredentialState: String {
   case rejected
 }
 
+protocol DeviceCredentialStorage: AnyObject {
+  func read() -> (OSStatus, Data?)
+  func write(_ data: Data) -> OSStatus
+  func delete() -> OSStatus
+  var state: String? { get set }
+}
+
 /// Keychain-backed Device Token storage, readable after first unlock even while screen is locked.
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/auth/DeviceCredentialStore.kt
 final class DeviceCredentialStore {
   static let shared = DeviceCredentialStore()
-  private let service = "app.vescape.device-auth"
-  private let credentialAccount = "credential"
-  private let stateKey = "vescape_device_auth_state"
+  private let storage: DeviceCredentialStorage
   private let lock = NSRecursiveLock()
 
-  func read() -> DeviceCredential? {
+  convenience init() { self.init(storage: KeychainDeviceCredentialStorage()) }
+
+  init(storage: DeviceCredentialStorage) {
+    self.storage = storage
+  }
+
+  func read() throws -> DeviceCredential? {
     lock.lock()
     defer { lock.unlock() }
-    var query = baseQuery(account: credentialAccount)
-    query[kSecReturnData as String] = true
-    query[kSecMatchLimit as String] = kSecMatchLimitOne
-    var result: CFTypeRef?
-    guard SecItemCopyMatching(query as CFDictionary, &result) == errSecSuccess,
-          let data = result as? Data,
-          let credential = try? JSONDecoder().decode(DeviceCredential.self, from: data)
-    else { return nil }
-    return credential
+    let (status, data) = storage.read()
+    if status == errSecItemNotFound { return nil }
+    guard status == errSecSuccess else { throw keychainError(status) }
+    guard let data else { throw keychainError(errSecDecode) }
+    return try JSONDecoder().decode(DeviceCredential.self, from: data)
   }
 
   func write(_ credential: DeviceCredential) throws {
     lock.lock()
     defer { lock.unlock() }
     let data = try JSONEncoder().encode(credential)
-    let query = baseQuery(account: credentialAccount)
+    let status = storage.write(data)
+    guard status == errSecSuccess else { throw keychainError(status) }
+    storage.state = DeviceCredentialState.ready.rawValue
+  }
+
+  func updateExpiry(_ expiresAt: String) throws {
+    lock.lock()
+    defer { lock.unlock() }
+    guard var credential = try read() else { return }
+    credential.expiresAt = expiresAt
+    try write(credential)
+  }
+
+  func reject() throws {
+    lock.lock()
+    defer { lock.unlock() }
+    try deleteCredential()
+    storage.state = DeviceCredentialState.rejected.rawValue
+  }
+
+  func clear() throws {
+    lock.lock()
+    defer { lock.unlock() }
+    try deleteCredential()
+    storage.state = DeviceCredentialState.unavailable.rawValue
+  }
+
+  func state(credential: DeviceCredential?) -> DeviceCredentialState {
+    lock.lock()
+    defer { lock.unlock() }
+    if credential != nil { return .ready }
+    let stored = DeviceCredentialState(
+      rawValue: storage.state ?? ""
+    ) ?? .unavailable
+    return stored == .ready ? .unavailable : stored
+  }
+
+  private func deleteCredential() throws {
+    let status = storage.delete()
+    guard status == errSecSuccess || status == errSecItemNotFound else { throw keychainError(status) }
+  }
+
+  private func keychainError(_ status: OSStatus) -> NSError {
+    NSError(domain: NSOSStatusErrorDomain, code: Int(status))
+  }
+
+}
+
+private final class KeychainDeviceCredentialStorage: DeviceCredentialStorage {
+  private let service = "app.vescape.device-auth"
+  private let account = "credential"
+  private let stateKey = "vescape_device_auth_state"
+
+  var state: String? {
+    get { UserDefaults.standard.string(forKey: stateKey) }
+    set { UserDefaults.standard.set(newValue, forKey: stateKey) }
+  }
+
+  func read() -> (OSStatus, Data?) {
+    var query = baseQuery()
+    query[kSecReturnData as String] = true
+    query[kSecMatchLimit as String] = kSecMatchLimitOne
+    var result: CFTypeRef?
+    let status = SecItemCopyMatching(query as CFDictionary, &result)
+    return (status, result as? Data)
+  }
+
+  func write(_ data: Data) -> OSStatus {
+    let query = baseQuery()
     let attributes: [String: Any] = [
       kSecValueData as String: data,
       kSecAttrAccessible as String: kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly,
     ]
     let status = SecItemUpdate(query as CFDictionary, attributes as CFDictionary)
-    if status == errSecItemNotFound {
-      var insert = query
-      attributes.forEach { insert[$0.key] = $0.value }
-      guard SecItemAdd(insert as CFDictionary, nil) == errSecSuccess else {
-        throw NSError(domain: "DeviceCredentialStore", code: 1)
-      }
-    } else if status != errSecSuccess {
-      throw NSError(domain: "DeviceCredentialStore", code: Int(status))
-    }
-    UserDefaults.standard.set(DeviceCredentialState.ready.rawValue, forKey: stateKey)
+    guard status == errSecItemNotFound else { return status }
+    var insert = query
+    attributes.forEach { insert[$0.key] = $0.value }
+    return SecItemAdd(insert as CFDictionary, nil)
   }
 
-  func updateExpiry(_ expiresAt: String) {
-    lock.lock()
-    defer { lock.unlock() }
-    guard var credential = read() else { return }
-    credential.expiresAt = expiresAt
-    try? write(credential)
-  }
+  func delete() -> OSStatus { SecItemDelete(baseQuery() as CFDictionary) }
 
-  func reject() {
-    lock.lock()
-    defer { lock.unlock() }
-    deleteCredential()
-    UserDefaults.standard.set(DeviceCredentialState.rejected.rawValue, forKey: stateKey)
-  }
-
-  func clear() {
-    lock.lock()
-    defer { lock.unlock() }
-    deleteCredential()
-    UserDefaults.standard.set(DeviceCredentialState.unavailable.rawValue, forKey: stateKey)
-  }
-
-  func state() -> DeviceCredentialState {
-    lock.lock()
-    defer { lock.unlock() }
-    if read() != nil { return .ready }
-    return DeviceCredentialState(
-      rawValue: UserDefaults.standard.string(forKey: stateKey) ?? ""
-    ) ?? .unavailable
-  }
-
-  private func deleteCredential() {
-    SecItemDelete(baseQuery(account: credentialAccount) as CFDictionary)
-  }
-
-  private func baseQuery(account: String) -> [String: Any] {
+  private func baseQuery() -> [String: Any] {
     [
       kSecClass as String: kSecClassGenericPassword,
       kSecAttrService as String: service,

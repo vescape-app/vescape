@@ -1,10 +1,42 @@
 import Foundation
 
+internal let TELEMETRY_BUCKET_SIZE_MS: Int64 = 60_000
+internal let MAX_ENERGY_SAMPLE_GAP_MS: Int64 = 5_000
+
+internal struct BucketTelemetryPoint {
+  let capturedAtMs: Int64
+  /// Owning Board (`boards.id`); the durable identity telemetry is keyed on (ADR 0028).
+  let boardId: String?
+  /// Owning Ride Recording, or `LEGACY_RIDE_RECORDING_ID` for rows without durable identity.
+  var recordingId: String = LEGACY_RIDE_RECORDING_ID
+  let speedCentiKmh: Int
+  let batteryVoltageMv: Int
+  let motorCurrentMa: Int
+  let batteryCurrentMa: Int
+  let dutyPermille: Int
+  let odometerCm: Int64?
+  let tempMosfetDeciC: Int?
+  let tempMotorDeciC: Int?
+  var excludedFromAvgSpeed = false
+  var excludedFromMaxSpeed = false
+  var excludedFromMaxDuty = false
+}
+
+internal func telemetryMaxOptional(_ lhs: Int?, _ rhs: Int?) -> Int? {
+  guard let rhs else { return lhs }
+  return max(lhs ?? rhs, rhs)
+}
+
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/TelemetryBucketBuilder.kt
 internal struct TelemetryBucket {
   let bucketStartMs: Int64
-  let deviceId: String
-  var deviceName: String?
+  /// Owning Board (`boards.id`), or `""` when the samples match no saved Board — the column is part
+  /// of the bucket primary key, so unattributed rows need a value rather than null (ADR 0028).
+  let boardId: String
+  /// Owning Ride Recording, or `LEGACY_RIDE_RECORDING_ID` for buckets built before durable
+  /// recording identity. Part of the key so two recordings of one Board inside one minute aggregate
+  /// separately instead of being merged (ADR 0038).
+  let recordingId: String
   var sampleCount = 0
   var firstSampleAtMs = Int64.max
   var lastSampleAtMs = Int64.min
@@ -18,11 +50,11 @@ internal struct TelemetryBucket {
   var maxMotorCurrentAbsMa = 0
   var maxBatteryCurrentAbsMa = 0
   var maxDutyAbsPermille = 0
-  var faultCount = 0
   var firstOdometerCm: Int64?
   var lastOdometerCm: Int64?
   var gpsPointCount = 0
   var preciseGpsPointCount = 0
+  var gpsDistanceCm: Int64 = 0
   var maxGpsSpeedCentiMps: Int?
   var maxTempMosfetDeciC: Int?
   var maxTempMotorDeciC: Int?
@@ -34,7 +66,6 @@ internal struct TelemetryBucket {
 
   mutating func add(_ point: BucketTelemetryPoint) {
     sampleCount += 1
-    if point.deviceName != nil { deviceName = point.deviceName }
     firstSampleAtMs = min(firstSampleAtMs, point.capturedAtMs)
     lastSampleAtMs = max(lastSampleAtMs, point.capturedAtMs)
     let absSpeed = abs(point.speedCentiKmh)
@@ -50,20 +81,10 @@ internal struct TelemetryBucket {
     maxMotorCurrentAbsMa = max(maxMotorCurrentAbsMa, abs(point.motorCurrentMa))
     maxBatteryCurrentAbsMa = max(maxBatteryCurrentAbsMa, abs(point.batteryCurrentMa))
     if !point.excludedFromMaxDuty { maxDutyAbsPermille = max(maxDutyAbsPermille, abs(point.dutyPermille)) }
-    if point.hasFault { faultCount += 1 }
     if firstOdometerCm == nil { firstOdometerCm = point.odometerCm }
     if point.odometerCm != nil { lastOdometerCm = point.odometerCm }
     maxTempMosfetDeciC = telemetryMaxOptional(maxTempMosfetDeciC, point.tempMosfetDeciC)
     maxTempMotorDeciC = telemetryMaxOptional(maxTempMotorDeciC, point.tempMotorDeciC)
-    if point.gpsTimestampMs != nil {
-      gpsPointCount += 1
-      if point.preciseGps || (point.gpsAccuracyCm.map { $0 <= 2_000 } ?? false) { preciseGpsPointCount += 1 }
-      maxGpsSpeedCentiMps = telemetryMaxOptional(maxGpsSpeedCentiMps, point.gpsSpeedCentiMps)
-      if firstLatitudeE7 == nil, let latitude = point.latitudeE7, let longitude = point.longitudeE7 {
-        firstLatitudeE7 = latitude
-        firstLongitudeE7 = longitude
-      }
-    }
     if let previous = lastEnergyPoint {
       let dtMs = point.capturedAtMs - previous.capturedAtMs
       if dtMs > 0 && dtMs <= MAX_ENERGY_SAMPLE_GAP_MS {
@@ -75,17 +96,71 @@ internal struct TelemetryBucket {
     }
     lastEnergyPoint = point
   }
+
+  /// The Ride Track's contribution to this minute. Separate from `add` because the track is its own
+  /// stream on its own clock — a fix is not a Telemetry Sample and must not count as one (ADR 0038).
+  mutating func addLocation(_ point: BucketLocationPoint) {
+    gpsPointCount += 1
+    if point.precise { preciseGpsPointCount += 1 }
+    firstSampleAtMs = min(firstSampleAtMs, point.capturedAtMs)
+    lastSampleAtMs = max(lastSampleAtMs, point.capturedAtMs)
+    // GPS movement extends the Moving Window through a stretch with no telemetry at all, which is
+    // what keeps the seek timeline and Time honest after a board drops mid-ride (ADR 0017). It
+    // stays ends-only trimming: this widens the window, it never counts a Telemetry Sample.
+    if point.moving {
+      firstMovingAtMs = min(firstMovingAtMs ?? point.capturedAtMs, point.capturedAtMs)
+      lastMovingAtMs = max(lastMovingAtMs ?? point.capturedAtMs, point.capturedAtMs)
+    }
+    if firstLatitudeE7 == nil, let latitude = point.latitudeE7, let longitude = point.longitudeE7 {
+      firstLatitudeE7 = latitude
+      firstLongitudeE7 = longitude
+    }
+    gpsDistanceCm += point.distanceFromPreviousCm ?? 0
+    maxGpsSpeedCentiMps = telemetryMaxOptional(maxGpsSpeedCentiMps, point.gpsSpeedCentiMps)
+  }
+}
+
+/// One Ride Track fix as the minute buckets see it.
+/// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/TelemetryBucketBuilder.kt `BucketLocationPoint`
+internal struct BucketLocationPoint {
+  let capturedAtMs: Int64
+  let boardId: String?
+  let recordingId: String
+  let precise: Bool
+  /// GPS movement evidence: precise, with a reported speed at or above the rider's threshold.
+  let moving: Bool
+  let distanceFromPreviousCm: Int64?
+  let gpsSpeedCentiMps: Int?
+  let latitudeE7: Int64?
+  let longitudeE7: Int64?
 }
 
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/TelemetryBucketBuilder.kt `buildTelemetryBuckets`
-internal func buildTelemetryBuckets(_ points: [BucketTelemetryPoint]) -> [TelemetryBucket] {
+internal func buildTelemetryBuckets(
+  _ points: [BucketTelemetryPoint],
+  locationPoints: [BucketLocationPoint] = []
+) -> [TelemetryBucket] {
+  // Keyed on the Ride Recording as well as the Board and the minute: two recordings of one Board
+  // can share a minute, and merging them would fabricate one ride out of two (ADR 0038).
   var buckets: [String: TelemetryBucket] = [:]
   for point in points.sorted(by: { $0.capturedAtMs < $1.capturedAtMs }) {
     let bucketStart = point.capturedAtMs - (point.capturedAtMs % TELEMETRY_BUCKET_SIZE_MS)
-    let deviceId = point.deviceId ?? ""
-    let key = "\(deviceId):\(bucketStart)"
-    var bucket = buckets[key] ?? TelemetryBucket(bucketStartMs: bucketStart, deviceId: deviceId, deviceName: point.deviceName)
+    let boardId = point.boardId ?? UNKNOWN_TELEMETRY_BOARD_ID
+    let key = "\(boardId):\(point.recordingId):\(bucketStart)"
+    var bucket = buckets[key]
+      ?? TelemetryBucket(bucketStartMs: bucketStart, boardId: boardId, recordingId: point.recordingId)
     bucket.add(point)
+    buckets[key] = bucket
+  }
+  for point in locationPoints.sorted(by: { $0.capturedAtMs < $1.capturedAtMs }) {
+    let bucketStart = point.capturedAtMs - (point.capturedAtMs % TELEMETRY_BUCKET_SIZE_MS)
+    let boardId = point.boardId ?? UNKNOWN_TELEMETRY_BOARD_ID
+    let key = "\(boardId):\(point.recordingId):\(bucketStart)"
+    // A minute can hold fixes and no frame at all — a board dropout is exactly when the Ride Track
+    // matters most — so the track creates its own bucket rather than being discarded (ADR 0038).
+    var bucket = buckets[key]
+      ?? TelemetryBucket(bucketStartMs: bucketStart, boardId: boardId, recordingId: point.recordingId)
+    bucket.addLocation(point)
     buckets[key] = bucket
   }
   return Array(buckets.values)

@@ -1,5 +1,6 @@
 import legalPolicies from '../../../../shared/data/legal-policies.json'
-import { theme } from '@/constants/theme'
+import { theme, type ThemeColor } from '@/constants/theme'
+import { formatSpeedKmh, formatSpeedValue, speedUnit, type UnitSystem } from '@/helpers/units'
 import type { LegalRoadStatus } from '@/modules/legal/lib/types'
 
 export interface LegalLimitCountry {
@@ -374,7 +375,7 @@ export const LEGAL_ROAD_STATUS_LABELS: Record<LegalRoadStatus, string> = {
   unknown: 'Unknown',
 }
 
-export const LEGAL_ROAD_STATUS_COLORS: Record<LegalRoadStatus, string> = {
+export const LEGAL_ROAD_STATUS_COLORS: Record<LegalRoadStatus, ThemeColor> = {
   likelyLegal: theme.palette.green.color,
   restricted: theme.palette.amber.color,
   notRoadLegal: theme.palette.red.color,
@@ -403,10 +404,10 @@ export function getLegalLimitCountryDetail(
   return LEGAL_LIMIT_COUNTRY_DETAILS[country.code] ?? null
 }
 
-export function legalStatusColorExpression() {
+export function legalStatusColorExpression(colors: Record<LegalRoadStatus, string>) {
   const expression: unknown[] = ['match', ['get', 'iso_3166_1_alpha_3']]
   for (const country of LEGAL_LIMIT_COUNTRIES) {
-    expression.push(country.alpha3, LEGAL_ROAD_STATUS_COLORS[country.status])
+    expression.push(country.alpha3, colors[country.status])
   }
   expression.push('transparent')
   return expression
@@ -420,7 +421,11 @@ export function legalCountryFilterExpression() {
   ]
 }
 
-export function legalLimitLabelShape(): GeoJSON.FeatureCollection<GeoJSON.Point> {
+export function legalReferenceSpeedLabel(kmh: number | null, units: UnitSystem): string {
+  return kmh == null ? 'N/A' : formatSpeedKmh(kmh, units, units === 'imperial' ? 1 : 0)
+}
+
+export function legalLimitLabelShape(units: UnitSystem): GeoJSON.FeatureCollection<GeoJSON.Point> {
   return {
     type: 'FeatureCollection',
     features: LEGAL_LIMIT_COUNTRIES.map((country) => ({
@@ -428,8 +433,11 @@ export function legalLimitLabelShape(): GeoJSON.FeatureCollection<GeoJSON.Point>
       geometry: { type: 'Point', coordinates: country.labelCoordinate },
       properties: {
         code: country.code,
-        label: country.referenceSpeedKmh == null ? 'N/A' : `${country.referenceSpeedKmh}`,
-        subtitle: country.referenceSpeedKmh == null ? '' : 'km/h',
+        label:
+          country.referenceSpeedKmh == null
+            ? 'N/A'
+            : formatSpeedValue(country.referenceSpeedKmh, units, 1),
+        subtitle: country.referenceSpeedKmh == null ? '' : speedUnit(units),
         speedLimitBasis: country.speedLimitBasis,
         status: LEGAL_ROAD_STATUS_LABELS[country.status],
       },

@@ -1,11 +1,11 @@
 import type Mapbox from '@rnmapbox/maps'
-import { useCallback, useRef, useState, type ElementRef } from 'react'
+import { useCallback, useRef, useState, type ComponentRef } from 'react'
 import type { LayoutChangeEvent } from 'react-native'
 
 import type { MapLayout } from '@/screens/main/map/offscreenMapIndicators'
 
 export function useMapViewport() {
-  const mapViewRef = useRef<ElementRef<typeof Mapbox.MapView> | null>(null)
+  const mapViewRef = useRef<ComponentRef<typeof Mapbox.MapView> | null>(null)
   const [mapLayout, setMapLayout] = useState<MapLayout>({ width: 0, height: 0 })
 
   const handleMapLayout = useCallback((event: LayoutChangeEvent) => {

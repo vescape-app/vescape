@@ -7,9 +7,9 @@ import { LegalLimitCountrySheet } from '@/modules/legal/components/LegalLimitCou
 import type { LegalLimitCountry } from '@/modules/legal/lib/legalLimits'
 import {
   HISTORY_MARKER_LABELS,
-  buildHistoryMarkerMessage,
   type SelectedHistoryMarker,
 } from '@/modules/history/lib/historyMapMarkerInfo'
+import { useRideFormat } from '@/modules/history/hooks/useRideFormat'
 import {
   OffscreenMapIndicator,
   type OffscreenMapIndicatorState,
@@ -38,6 +38,7 @@ export function MainMapOverlays({
   onCloseLegalCountry: () => void
   onOffscreenIndicatorPress: (indicator: OffscreenMapIndicatorState) => void
 }) {
+  const { formatHistoryMarker } = useRideFormat()
   return (
     <>
       <InfoModal
@@ -47,7 +48,7 @@ export function MainMapOverlays({
             ? HISTORY_MARKER_LABELS[selectedHistoryMarker.marker.type]
             : 'History marker'
         }
-        message={selectedHistoryMarker ? buildHistoryMarkerMessage(selectedHistoryMarker) : ''}
+        message={selectedHistoryMarker ? formatHistoryMarker(selectedHistoryMarker) : ''}
         dismissLabel="Close"
         onDismiss={onDismissHistoryMarker}
       />
@@ -125,17 +126,17 @@ const styles = StyleSheet.create({
     ...StyleSheet.absoluteFill,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: theme.palette.slate.bg,
+    backgroundColor: theme.neutral.bg,
     paddingHorizontal: 28,
     gap: 8,
   },
   unavailableTitle: {
-    color: theme.palette.slate.textPrimary,
+    color: theme.neutral.textPrimary,
     fontSize: 18,
     fontWeight: '700',
   },
   unavailableMessage: {
-    color: theme.palette.slate.textSecondary,
+    color: theme.neutral.textSecondary,
     fontSize: 13,
     textAlign: 'center',
     lineHeight: 19,

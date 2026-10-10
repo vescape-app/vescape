@@ -1,3 +1,4 @@
+import { formatLengthMeters, type UnitSystem } from '@/helpers/units'
 import {
   ClockCountdownIcon,
   LinkBreakIcon,
@@ -8,7 +9,7 @@ import {
   type Icon,
 } from 'phosphor-react-native'
 
-import { theme } from '@/constants/theme'
+import { theme, type ThemeColor } from '@/constants/theme'
 import type { HistoryGpsSample, HistoryMarker } from '@/modules/history/store/historyStore'
 
 export interface SelectedHistoryMarker {
@@ -36,7 +37,7 @@ export const HISTORY_MARKER_ICONS: Record<HistoryMarker['type'], Icon> = {
   gap: ClockCountdownIcon,
 }
 
-export const HISTORY_MARKER_COLORS: Record<HistoryMarker['type'], string> = {
+export const HISTORY_MARKER_COLORS: Record<HistoryMarker['type'], ThemeColor> = {
   app_stop: theme.palette.yellow.color,
   auto_pause: theme.status.warning.color,
   connected: theme.palette.green.color,
@@ -66,7 +67,10 @@ function formatDuration(ms: number): string {
   return rest === 0 ? `${minutes}m` : `${minutes}m ${rest}s`
 }
 
-export function buildHistoryMarkerMessage(selection: SelectedHistoryMarker): string {
+export function buildHistoryMarkerMessage(
+  selection: SelectedHistoryMarker,
+  units: UnitSystem,
+): string {
   const { marker, gps } = selection
   const lines = [
     `Type: ${marker.type}`,
@@ -77,8 +81,8 @@ export function buildHistoryMarkerMessage(selection: SelectedHistoryMarker): str
     `Coordinate: ${gps.latitude.toFixed(7)}, ${gps.longitude.toFixed(7)}`,
   ]
 
-  if (gps.accuracyM != null) lines.push(`GPS accuracy: ${gps.accuracyM.toFixed(1)} m`)
-  if (marker.deviceName) lines.push(`Board: ${marker.deviceName}`)
+  if (gps.accuracyM != null)
+    lines.push(`GPS accuracy: ${formatLengthMeters(gps.accuracyM, units, 1)}`)
   if (marker.gapMs != null) lines.push(`Gap duration: ${formatDuration(marker.gapMs)}`)
   if (marker.message) lines.push(`Message: ${marker.message}`)
 

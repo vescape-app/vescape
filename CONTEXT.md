@@ -1,12 +1,40 @@
-# VESC App PoC Context
+# Vescape App Context
 
-This context defines the shared language for the VESC-based board app. The app centers on live board state, ride recording, ride history, and safety-sensitive Refloat tuning.
+This context defines the shared language for the Vescape app. The app centers on live board state, ride recording, ride history, and safety-sensitive Refloat tuning.
 
 ## Language
+
+**Accessory**:
+A saved external hardware unit that provides inputs, receives outputs, or reports its own telemetry to Vescape.
+_Avoid_: Board, sensor module (when referring to accessories generally)
+
+**Accessory Binding**:
+A rider-configured relationship that maps an Accessory input or Board telemetry to an Accessory output or Board action.
+_Avoid_: Sync, hardware mapping
+
+**Accessory Manifest**:
+What an Accessory declares about itself on every connection: its persistent Accessory ID, display name, firmware version, agreed protocol version, and Accessory Capabilities. Read again on each reconnect before saved settings are trusted.
+_Avoid_: Accessory info, device descriptor
+
+**Accessory Capability**:
+One thing an Accessory declares it can do, identified by a stable local id and a capability type. Types the app recognizes have predefined behavior; unrecognized ones are shown as unsupported rather than hidden.
+_Avoid_: Sensor, feature, channel
+
+**Accessory Compatibility**:
+The app's verdict on a read Accessory Manifest: supported, no common protocol version, or no capability the app can drive. Distinct from reachability — an Accessory can answer perfectly and still be unusable.
+_Avoid_: Accessory status, supported flag
+
+**Sensor Tilt Calibration**:
+The near and far ground clearances in centimetres, correction direction, and maximum Remote Tilt input defining a board-mounted distance sensor's Accessory Binding, with less clearance producing stronger correction.
+_Avoid_: Sensor sensitivity (for the full calibration)
 
 **Board**:
 A saved rideable device that can be connected over BLE and may expose one motor controller through CAN.
 _Avoid_: Device, controller, scooter
+
+**Board Tombstone**:
+A deleted Board's surviving row, marked by a deletion stamp. The Board leaves every Rider-facing list but stays resolvable by id, so Ride History can still name the Board that produced it. Its configuration is hard-deleted; its telemetry and Tune Profiles are not (ADR 0027).
+_Avoid_: Soft delete, archived Board
 
 **Board Link**:
 The saved, probe-confirmed reachability details for a Board, including BLE peripheral id, selected Board Transport, and capabilities or firmware facts discovered for that transport.
@@ -40,6 +68,10 @@ _Avoid_: Refloat version, firmware string, fw version, tune version
 A pre-save check that a scanned BLE peripheral can produce telemetry over at least one Board Transport and produce a Board Link. The rider-facing UI calls running a Board Probe "linking" (and re-running it "re-linking") — the screen, buttons, and progress timeline say "link", while the domain and code keep "Board Probe" for the act and "Board Link" for the saved result.
 _Avoid_: Validation, test connection, scan
 
+**App Storage Failure**:
+A condition in which the app's local storage is unusable and affected capabilities cannot reliably read or save their durable data.
+_Avoid_: App critical error, Board disconnection
+
 **Live State**:
 The current app-visible snapshot of board connection, GPS, scan, recording, and recent telemetry state.
 _Avoid_: UI state, cached status
@@ -72,9 +104,28 @@ _Avoid_: Battery Diagnostic Snapshot, BMS telemetry sample, cell voltage log, ba
 A single phone location sample used for live map position or ride recording.
 _Avoid_: Location event, GPS point
 
+**GPS Power Mode**:
+How hard the phone's GPS is currently being driven, and therefore what it costs: `off` when nothing
+justifies a fix, `map` for foreground-only delivery to a **Rider** looking at the app, `ride` for
+background delivery at full rate during a **Board Session** or a **Group Ride**. Native resolves it
+from app visibility, the Board Session, **Idle Pause**, Group Ride participation and replay; JS reads
+it and never asks for a mode. The GPS is armed for a reason, and the mode names the reason.
+_Avoid_: GPS accuracy setting, location mode, tracking level
+
+**Ride Dropout Grace**:
+The bounded window after a **Board Link** is lost during which a **Board Session** still counts as a
+ride for **GPS Power Mode**. Inside it the drop is a dropout and fixes keep flowing at `ride` strength
+so the **Ride Track** survives; past it the board is treated as powered off — the ordinary way a ride
+ends — and GPS stands down even though the Ride Recording and the reconnect loop both continue.
+_Avoid_: Reconnect timeout, GPS grace period, disconnect window
+
 **Ride Recording**:
-A persisted ride capture made from board telemetry samples, optionally enriched with precise GPS fixes captured at the same time as telemetry.
+A single persisted capture of one **Board**'s ride, begun while that Board is connected and retaining its identity through data gaps until explicitly ended, with independent **Telemetry Samples** and an optional **Ride Track**.
 _Avoid_: Session recording, raw recording
+
+**Ride Track**:
+The durable sequence of **GPS Fixes** recorded during one **Ride Recording**, stored on its own and not attached to **Telemetry Samples**. Every fix the phone produced while the ride is recording, outside **Idle Pause** and enabled **Privacy Zones** is kept with the accuracy it was reported at, including poor ones; how good a fix must be to draw a route or derive a value is a read-side decision, never a discard-on-write one. A Ride Track survives spans where the **Board Link** dropped and no telemetry existed, up to the **Ride Dropout Grace**; past that the phone stops producing fixes and the track ends where the riding did.
+_Avoid_: Route, GPS trace, location history, breadcrumb
 
 **Privacy Zone**:
 A user-defined geographic area where Ride Recording data is not retained.
@@ -89,11 +140,11 @@ A map-visible point in Ride History that explains a ride boundary, connection lo
 _Avoid_: Telemetry marker, debug marker, log point
 
 **Moving Window**:
-The span of a Ride Recording from its first to its last moving Telemetry Sample — the part the rider treats as actual riding. A Telemetry Sample counts as moving when it is not excluded from speed metrics (so low-speed and free-spin samples do not count). Leading and trailing non-moving spans fall outside the Moving Window; internal stops (photos, cooldown) stay inside it. Drives history-timeline trimming and the moving ride time shown in stats. A Ride Recording with no moving samples has no Moving Window and is not shown in Ride History; legacy recordings with an unknown Moving Window fall back to their full wall-clock span.
+The span of a Ride Recording from its first to its last movement evidenced by **Telemetry Samples** or **Ride Track**, including GPS-only stretches. A Telemetry Sample counts as moving when it is not excluded from speed metrics (so low-speed and free-spin samples do not count). Leading and trailing non-moving spans fall outside the Moving Window; internal stops (photos, cooldown) stay inside it. Drives history-timeline trimming and the moving ride time shown in stats. A Ride Recording with no movement evidenced by either stream has no Moving Window and is not shown in Ride History; legacy recordings with an unknown Moving Window fall back to their full wall-clock span.
 _Avoid_: Trim range, active range, ride duration
 
 **Idle Pause**:
-A temporary state of a Ride Recording in which sample persistence halts because the Board has produced no moving Telemetry Sample for a sustained interval, while the Board Session stays live at a reduced poll rate and auto-resumes on the next moving sample. Cuts battery, stored frames, and bucket sample counts together while the board is parked.
+A temporary state of a Ride Recording in which both **Telemetry Sample** and **Ride Track** persistence halt on the first disengaged Refloat Telemetry Sample, while the Board Session stays live at a reduced poll rate and auto-resumes on the next engaged sample. RUNNING, TILTBACK, and WHEELSLIP count as engaged, even at zero speed. Paused polling stays at about 1 Hz, accepting about a second of resume latency. Cuts battery, stored frames, and bucket sample counts together while the board is parked.
 _Avoid_: Stop recording, auto-stop, sleep, parked mode
 
 **Favorite**:
@@ -148,6 +199,22 @@ _Avoid_: Tilt setting, view camera hack, mode special case
 The rider's chosen map camera orientation: north up, GPS heading, compass, or free rotate. It says which way the map faces, not where the rider is going.
 _Avoid_: Navigation mode, map navigation, heading mode
 
+**Board Config Values**:
+The active **Board**'s Refloat configuration as native-owned truth, carrying the field map decoded across the whole schema and, when read in the current **Board Session**, the raw config bytes that alone may base a write.
+_Avoid_: Config safety values, settings dump, tune cache, cached config
+
+**Last Known Board Config Values**:
+The durable latest successfully read **Board Config Values** for one **Board** and **Tune Compatibility**, immediately usable by read-side consumers but never as a config write base.
+_Avoid_: Board config cache, provisional cache, cached config
+
+**VESC-Relative Alert Rule**:
+An **Alert Rule** whose threshold remains a field-and-offset relationship to **Board Config Values** instead of copying the field's current number.
+_Avoid_: Copied VESC threshold, synced alert value
+
+**Board Config Change Notice**:
+A one-time acknowledgement of field-level differences found when fresh **Board Config Values** disagree with the **Last Known Board Config Values** for the same **Board** and **Tune Compatibility**.
+_Avoid_: Board Warning, config warning, config change history
+
 **Tune Snapshot**:
 A read-only view of the board's current Refloat tuning configuration decoded from the board's schema and binary config.
 _Avoid_: Tune cache, settings dump
@@ -157,7 +224,7 @@ A user-authored, persisted set of all Refloat tune field values stored in semant
 _Avoid_: Tune preset, config file, settings backup
 
 **Tune Compatibility**:
-The normalized base Refloat package version scope in which a Tune Profile is allowed to be used.
+The Refloat major/minor version scope in which a Tune Profile is allowed to be used. Patch versions and suffixes do not split it: `1.2`, `1.2.7`, and `1.2.7-postfix` share Tune Compatibility.
 _Avoid_: Tune migration, tune schema version, firmware conversion
 
 **Tune History Entry**:
@@ -245,20 +312,40 @@ A user-authored spoken phrase on a single-threshold **Alert Rule** that may incl
 _Avoid_: TTS sound, voice preset, notification text
 
 **Watch Mirror**:
-The platform-neutral concept of the app on the rider's wrist that mirrors live board state and plays alert feedback. Display and playback only — it owns no durable truth, makes no alert decisions, and sends nothing back to the phone. A one-way reflection of phone truth. Has two concrete implementations: the **Wear OS Mirror** (Kotlin/Compose, Android) and the future **watchOS Mirror** (Apple Watch).
+The app on the rider's wrist that mirrors phone-owned live state and provides rider controls. Navigation and Group Ride can remain live without a Board Session. The wrist sends rider commands and reports its own awake state. Implemented by the **Wear OS Mirror** on Android and the **watchOS Mirror** on Apple Watch.
 _Avoid_: Wear Mirror (bakes in Google's Wear OS brand; use for the Android impl only), watch app, companion (Companion names the CompanionDeviceManager board-presence association, not the watch)
 
 **Watch Frame**:
 The compact, throttled telemetry snapshot the phone pushes to a **Watch Mirror** to drive its display. Distinct from a **Telemetry Sample** (raw, per-packet) and from **Live State** (the full app snapshot sent to JS).
 _Avoid_: Watch payload, wear message
 
-**Watch Alert**:
-A one-shot command the phone pushes to a **Watch Mirror** when the native alert engine fires, telling it to vibrate and/or sound. Carries no threshold logic — the alert decision already happened on the phone against an **Alert Rule**.
-_Avoid_: Wear alarm, watch notification
+**Watch Map**:
+The **Watch Mirror** presentation of the Rider's position, recent ridden trail, Navigation and nearby **Group Ride** Riders. It shares one camera across its layers and can remain visible without a **Board Session** or Navigation. The phone supplies its data; it owns no separate recording or location history.
+_Avoid_: Navigation overlay (the map also works without Navigation), watch recording
+
+**Group Ride Frame**:
+The compact snapshot of a joined **Group Ride** the phone pushes to a **Watch Mirror**: the Rider's own course and, for every other **Rider**, where they are relative to the Rider plus the few facts worth a glance. Independent of the **Watch Frame**, so it flows with or without a **Board Session**.
+_Avoid_: Group watch payload, roster push, rider feed
 
 **Board Warning**:
 An app-detected abnormal Board condition worth the rider's attention — such as excessive cell-voltage spread, unstable telemetry readings, or a dangerous VESC/Refloat setting. Detected natively, keyed one-per-problem-kind per Board (re-detection updates the same warning rather than duplicating it), and carries a severity of warn or critical. Stored durably like automotive fault codes: it clears automatically when its detector re-evaluates with real data and the condition is gone, and the rider may clear it manually — but a still-true condition simply re-fires it. Detection logic is app-authored (unlike a rider-authored **Alert Rule**) and the finding is rider-facing (unlike a debug-facing **Diagnostic Event**).
 _Avoid_: Board alert (collides with Alert Rule), fault (reserved for VESC firmware fault codes), board issue, health event
+
+**VESC Fault Occurrence**:
+A durable Board-owned record of one Refloat fault activation observed live during a Board Session, independent of Ride Recording, Ride History, Board Warnings, and Diagnostic Events.
+_Avoid_: Fault sample, Ride History fault, Board Warning, Diagnostic Event
+
+**VESC Fault Capture**:
+The recent decoded Board samples copied when a live VESC Fault Occurrence begins, covering up to five seconds before detection at the Board Session's achieved telemetry rate.
+_Avoid_: Ride Recording, Telemetry Sample snapshot, Debug Recording, raw BLE trace
+
+**Controller Fault Log**:
+The raw output of the VESC terminal `faults` command, read once when the rider opens the VESC faults drawer while the Board is connected and stopped. It is ephemeral diagnostic text: never parsed, persisted, or converted into a VESC Fault Occurrence or Board Warning.
+_Avoid_: VESC Fault Occurrence, fault-register snapshot, automatic fault audit
+
+**VESC Fault Collection**:
+A default-on App Setting that acts as a fault-specific kill switch. Turning it off stops new live fault occurrences, captures, and fault-driven indicators without deleting existing evidence or disabling manual Controller Fault Log reads.
+_Avoid_: Board Warnings switch, fault dismissal, clear fault register
 
 **Debug Recording**:
 A developer-facing `.jsonl` capture of one Board Session — raw BLE traffic, session-state transitions, GPS fixes, and phone sensor readings the board never sees (compass heading) — plus a `meta` header describing the board it was recorded from. Recorded on-device and exportable for offline analysis or detector replay. Replaying one drives a real session through the transport seam, and the recording owns that session's position, heading and time for its whole duration. Not a **Ride Recording** (no telemetry-sample persistence, not rider-facing) and not part of **Ride History**.
@@ -275,6 +362,10 @@ _Avoid_: fast-forward, playback rate, time scale
 **App Setting**:
 A user-controlled app preference that affects app behavior across boards unless explicitly scoped elsewhere.
 _Avoid_: Option, config
+
+**Rider Units**:
+An app-wide preference for the units used to show, enter, and announce speed and distance, without changing the underlying measurements or the physical meaning of saved thresholds.
+_Avoid_: Board units, telemetry units
 
 **Settings Drawer**:
 The edge drawer behind the top-right button on the main screen: the **Vescape Account**, the app's live self-status (backup, version, storage), the few settings worth one tap, and one link to Advanced settings for everything else. Its button wears whatever inside it needs attention — a required update, or a running backup with its progress — the way the Social button wears an active **Group Ride**.
@@ -325,7 +416,7 @@ An optional online identity that never gates the app's local, offline-first capa
 _Avoid_: Rider profile, User, Profile
 
 **Rider Presence**:
-A **Rider's** live shared snapshot within a **Group Ride**: location and heading from the phone **GPS Fix**, plus optional speed and **Battery SoC Estimate** when a **Board Session** is live. Ephemeral and server-relayed, never persisted on phone or server, suppressed while the Rider is inside a **Privacy Zone**. A Rider with no recent Rider Presence goes stale, then drops from the Group Ride.
+A **Rider's** live shared snapshot within a **Group Ride**: location and heading from the phone **GPS Fix**, the phone's own battery, their **Direction Point** when set, plus optional speed, **Battery SoC Estimate**, motor and controller temperatures and Board name when a **Board Session** is live. Ephemeral and server-relayed, never persisted on phone or server, suppressed while the Rider is inside a **Privacy Zone**. A Rider with no recent Rider Presence goes stale, then drops from the Group Ride.
 _Avoid_: Position update, presence ping, location share, group telemetry
 
 ## Relationships
@@ -333,7 +424,7 @@ _Avoid_: Position update, presence ping, location share, group telemetry
 - A **Board** has at most one **Board Link**; absence means the Board is offline-only or not yet linked.
 - A **Board Link** has exactly one **Board Transport**.
 - A **Board Link** has one **Board Link Version**.
-- A **Board Link** is only saved after a successful **Board Probe**.
+- A **Board Link** is only saved after a successful **Board Probe** has read and persisted **Last Known Board Config Values**; a config read or decode failure fails the probe.
 - An outdated **Board Link Version** keeps telemetry available but requires re-link before firmware-dependent commands.
 - A **Board Link** may include a **Board Firmware Identity** for the selected **Board Transport**.
 - A missing **Board Firmware Identity** does not invalidate a **Board Link**, but it is unusual and should be visible during linking.
@@ -343,6 +434,15 @@ _Avoid_: Position update, presence ping, location share, group telemetry
 - A **Link Integrity Check** verifies saved capability facts but does not discover new hardware capabilities; new capabilities require a full re-link.
 - Native owns **Link Integrity Check** truth; app UI only displays the resulting state.
 - A **Tune Snapshot** requires a trusted **Board Link** because tune field identity depends on the connected controller.
+- A valid **Board Link** guarantees **Last Known Board Config Values** for its **Board** and **Tune Compatibility**; an incompatible link version requires re-link so this invariant has no optional legacy case.
+- A **Board Session** starts with **Last Known Board Config Values**, then reads fresh **Board Config Values** once after link trust and refreshes them after the app's own writes.
+- Fresh **Board Config Values** stay authoritative while the **Board Session** continuously owns the link: a **Board** accepts one BLE connection at a time, so config changes only through the app's own writes while connected.
+- Only fresh **Board Config Values** carry the raw config bytes and package signature that may base a config write; **Last Known Board Config Values** are read-side truth only.
+- **Last Known Board Config Values** are scoped per **Board** and **Tune Compatibility**, kept while a **Board Link** is outdated, and cleared everywhere when link integrity is mismatched.
+- A **VESC-Relative Alert Rule** resolves from **Last Known Board Config Values** immediately when a **Board Session** starts and follows fresh values automatically when they arrive; it never materializes the referenced config number into the rule.
+- The first **VESC-Relative Alert Rule** is opt-in Duty feedback based on `tiltback_duty`; matching is off by default, and the selected Safe, Normal, or Minimal level determines its lead below the VESC threshold.
+- A fresh read differing from **Last Known Board Config Values** creates or replaces that Board's pending **Board Config Change Notice** unless Vescape made the change itself; every changed field is included and no history is retained.
+- Only the active **Board** presents its pending **Board Config Change Notice**; dismissing its modal by any route removes the notice.
 - A **Board Firmware Identity** may be rediscovered during a **Board Session**; any mismatch creates a **Stale Board Link**.
 - A **Stale Board Link** does not end a working **Board Session**, but only telemetry remains trusted until a fresh **Board Probe** replaces the link.
 - A **Stale Board Link** is latched for the current **Board Session** and is not persisted across app restarts.
@@ -350,12 +450,16 @@ _Avoid_: Position update, presence ping, location share, group telemetry
 - A **Board Session** uses the stored **Board Link** and is not established for a Board without one.
 - A **Board Probe** can resolve a **Board Transport** before a **Board** is created.
 - A **Board Session** owns one live BLE connection to a **Board**; only Telemetry Samples received during the active session count toward live state and Ride Recording.
+- A **Ride Recording** belongs to exactly one **Board**; explicitly attempting to connect a different Board ends the previous **Board Session** and **Ride Recording**, even if the new connection fails.
 - A **Board** produces **Telemetry Samples** while connected.
 - **Telemetry Stale** describes missing live data and is distinct from a **Stale Board Link**.
 - A **Board Session** may produce a **Live BMS Series** when its **Board Link** includes BMS capability; native retains it continuously in the recent live-telemetry window (`liveHistoryLimit`) but pushes it across the bridge to JS only while the battery-detail view is focused. It is ephemeral, never persisted, and never written to **Ride Recording**. The cell **spread** scalar shown in main telemetry is not the series: it derives from the latest smart-BMS frame on the `onBms` pipe (~4Hz, always flowing), separate from the 30Hz telemetry frame.
 - A **Metric Sanitizer** may create **Metric Exclusions** for values derived from **Telemetry Samples** while preserving the original samples and current live board readout.
 - A **Metric Exclusion** belongs to one **Telemetry Sample** and one metric.
-- A **GPS Fix** may be associated with live map state, but only GPS fixes captured alongside **Telemetry Samples** contribute to a **Ride Recording**.
+- A **GPS Fix** may be associated with live map state; GPS fixes produced during a **Ride Recording** are kept in its **Ride Track** whether or not a **Telemetry Sample** was captured at the same moment.
+- A **GPS Power Mode** is resolved by native alone and belongs to no **Board Session**: a session raises demand but does not own the monitor, and `off` is a normal resting state rather than a fault.
+- A **Ride Dropout Grace** belongs to one **Board Session** and starts at each **Board Link** loss; a board-ready ends it, and its expiry lowers **GPS Power Mode** without ending the **Ride Recording**.
+- A **Ride Track** belongs to one **Ride Recording** and is independent of its **Telemetry Samples**: either stream may have gaps the other does not.
 - A **Map Point** is placed by a signed-in **Vescape Account** on the live map and does not belong to **Ride Recording** or **Ride History**; the server owns it, and the app reads the ones near the camera without keeping a durable copy.
 - A **Map Point Reaction** belongs to one **Vescape Account** and one **Map Point**; the server derives the score from its reaction rows.
 - A **Direction Point** is one rider's private navigation target, is never a **Map Point**, and stays on the phone so **Group Ride** presence can share it.
@@ -364,7 +468,7 @@ _Avoid_: Position update, presence ping, location share, group telemetry
 - A **Navigation** outlives the app process and any single **Ride Recording**: a rider who restarts, crashes, or starts riding another day finds the same Direction Point and the same path waiting.
 - A **Navigation** is computed once and never changes on its own: straying from it, looping back, or riding side paths leaves it untouched, and only the rider asks for a new one.
 - **Route Progress** belongs to exactly one **Navigation** and attaches to the nearest point on it unconditionally: there is no off-route state, so a rider who loops away and comes back re-attaches without asking for anything.
-- **Route Progress** measures what is left along the path rather than the straight line to the **Direction Point**, and its bearing points at an aim point ahead on the path rather than at the target, so it follows the ways the path follows.
+- **Route Progress** measures what is left along the path rather than the straight line to the **Direction Point**, and its bearing points at an aim point ahead on the path rather than at the target, so it follows the ways the path follows. Once the nearest point is the path's end, as for a rider who rode past the Direction Point, nothing is left along the path: what is left is the straight line from the rider to that end, and the bearing points at it.
 - A **Map Camera Controller** may frame **Live State**, **Ride History**, **GPS Fixes**, or **Map Points**, but does not own those domain objects.
 - A **Map Camera Intent** is interpreted by the **Map Camera Controller**; outside components request camera behavior instead of mutating the map camera directly.
 - A **History Camera Refinement** belongs to one selected **Ride Recording** in **Ride History** and is ignored if the selected ride changes or the rider manually browses the map.
@@ -375,16 +479,17 @@ _Avoid_: Position update, presence ping, location share, group telemetry
 - A weather view uses a **Map Camera Profile** rather than a direct zoom change; it keeps the current map center while applying a weather overview zoom and low or flat pitch.
 - A **Map Camera Controller** uses **App Settings** such as map style, **Map Orientation Mode**, and perspective mode, but those settings remain durable preferences outside the controller.
 - A **Privacy Zone** limits what **Ride Recording** data is retained without changing **Live State**.
-- A **Ride Recording** becomes part of **Ride History**.
-- A **Moving Window** belongs to one **Ride Recording** and is derived from which **Telemetry Samples** are excluded from speed metrics; a Ride Recording without one is excluded from **Ride History**.
+- A **Ride Recording** with explicit recording boundaries contributes at most one entry to **Ride History**; data gaps do not split it, and a new recording after an explicit stop is a separate entry.
+- A **Moving Window** belongs to one **Ride Recording** and spans movement evidenced by **Telemetry Samples** or **Ride Track**; a Ride Recording without one is excluded from **Ride History**.
+- A gap in both streams remains inside the **Moving Window**, and counts toward Time, when movement is evidenced on both sides within the same **Ride Recording**.
 - A **Ride History Marker** belongs to **Ride History** and may explain where a **Ride Recording** lost or regained board data.
-- An **Idle Pause** belongs to one **Ride Recording**, begins after a sustained absence of moving **Telemetry Samples**, keeps the **Board Session** live at a reduced poll rate, and produces a **Ride History Marker**; its sample gap stays inside the **Moving Window** (and counts toward ride time) when it occurs between two moving spans.
+- An **Idle Pause** belongs to one **Ride Recording**, begins on the first disengaged Refloat **Telemetry Sample**, keeps the **Board Session** live at a reduced poll rate, and produces a **Ride History Marker**; its sample gap stays inside the **Moving Window** (and counts toward ride time) when it occurs between two moving spans.
 - A **Favorite** is a durable time range over **Ride History**; its telemetry is pinned against deletion, and a deleted ride leaves its favorited sub-ranges intact.
 - **Favorite Media** belongs to one **Favorite**, is copied into app storage, and is placed from a nearby recording-backed **GPS Fix** by capture time.
 - A **Tune Snapshot** belongs to the currently connected **Board** and is read-only.
 - A **Tune Profile** belongs to a **Board** and stores semantic field values independently of firmware schema.
-- A **Tune Profile** also belongs to one **Tune Compatibility**; profiles from other Refloat package versions are retained but not used for the current board state.
-- **Tune Compatibility** ignores Refloat suffixes or fork labels, while **Board Firmware Identity** keeps the exact reported version for link integrity.
+- A **Tune Profile** also belongs to one **Tune Compatibility**; profiles from other Refloat major/minor versions are retained but not used for the current board state.
+- **Tune Compatibility** ignores Refloat patch versions, suffixes, or fork labels, while **Board Firmware Identity** keeps the exact reported version for link integrity.
 - The first **Tune Profile** for a **Tune Compatibility** is created only after an explicit rider action.
 - Offline tune editing may use the saved **Board Link** to choose the active **Tune Compatibility**, but board tune reads and writes require trusted link integrity.
 - A **Tune History Entry** captures the previous state of a **Tune Profile** before each explicit save.
@@ -403,15 +508,32 @@ _Avoid_: Position update, presence ping, location share, group telemetry
 - A **Board Warning** firing for the first time in a **Board Session** also records one **Diagnostic Event**.
 - A **Board Warning** is not an **Alert Rule** (app-authored, not rider-authored) and produces no riding feedback; it is passive display only.
 - A **Board Warning** detector can be replayed offline against a **Debug Recording**'s BLE frames; a committed clean Debug Recording guards against false positives.
+- A **Board** may have zero or more **VESC Fault Occurrences** whether or not Ride Recording is enabled.
+- A **VESC Fault Occurrence** belongs to its **Board**, never to Ride History, and is not deleted or aggregated as part of telemetry history; removing that Board from active use does not delete its occurrences or captures.
+- A **VESC Fault Occurrence** is firmware-authored; a **Board Warning** is app-detected, and a **Diagnostic Event** describes app-observed failures.
+- Undismissed **VESC Fault Occurrences** drive their own indicator and their own sheet, separate from **Board Warnings** — separate feature, separate read model, separate persistence model.
+- Dismissing a **VESC Fault Occurrence** only removes that individual occurrence from the fault indicator. Its occurrence and capture remain durable, and a later activation of the same code begins undismissed.
+- Disabling **VESC Fault Collection** leaves existing occurrences and captures readable and dismissible. Re-enabling it resumes live collection. Manual Controller Fault Log reads remain available either way.
+- A live **VESC Fault Occurrence** begins when the active VESC fault changes from none or from another code; repeated observations of the same active code remain one occurrence until the code clears or changes.
+- A direct change from one active fault code to another closes the first occurrence and opens the second. Each occurrence owns its own **VESC Fault Capture**.
+- Losing the **Board Session** while a **VESC Fault Occurrence** is active does not prove that it cleared or reactivated; continuity remains unresolved until later controller evidence distinguishes another activation.
+- A **VESC Fault Capture** copies up to five seconds of recent decoded Board samples once, when the live occurrence opens. It never waits for future samples or for the fault to clear.
+- A **VESC Fault Capture** is independent of Ride Recording and Ride History sampling.
+- A **VESC Fault Capture** contains no **GPS Fix**; a read side may correlate a timed occurrence with existing Ride History without copying or owning its location.
+- A **Controller Fault Log** reads once per fault-drawer opening, connected-and-stopped only, and returns raw console text to the rider. It creates no occurrence, warning, capture, baseline, audit, or durable register evidence.
 - An **Alert Rule** evaluates against live **Telemetry Samples**.
 - A **One-Shot** or **Repeating Alert Rule** announces only while fired and needs an **Alert Re-Arm** before it can announce again; a **Geiger Alert Rule** has neither, its cadence follows **Alert Range Depth**.
 - An **Alert Rule** belongs to one **Board**; the alert engine evaluates only the connected **Board**'s rules, and deleting a **Board** deletes its rules.
+- Deleting a **Board** leaves a **Board Tombstone**: its configuration goes, its **Ride History** and **Tune Profiles** stay, and the row stays resolvable by id so history can still name it (ADR 0027).
+- Every durable record that belongs to a **Board** identifies it by **Board** id, never by BLE identifier. The BLE address survives in exactly one place, the **Board Link**'s `ble_id`, where it is a reachability detail of that Board and not a key anything else joins on (ADR 0028).
+- **Ride History** resolves the **Board** name by lookup rather than reading a copy stored at capture time, so renaming a **Board** relabels its whole history (ADR 0028).
 - An **Alert Preset** is set per metric and produces zero or more **Alert Rules** for that metric; those rules are regenerated wholesale when its level changes and coexist with the rider's manual **Alert Rules**.
 - A speed **Alert Preset** resolves its km/h thresholds from **Board Top Speed**; changing **Board Top Speed** regenerates the speed preset's **Alert Rules**.
 - An **Alert Message Template** belongs to one **Alert Rule**.
-- A **Watch Mirror** receives **Watch Frames** and **Watch Alerts** from the phone and never sends data back; it is not a **Board**, a **Board Session**, or a source of **Telemetry Samples**.
-- A **Watch Frame** is derived from **Live State** and is only pushed while a **Board Session** is producing **Telemetry Samples**.
-- A **Watch Alert** is pushed when an **Alert Rule** fires on the phone and does not re-evaluate any threshold on the **Watch Mirror**.
+- A **Watch Mirror** receives **Watch Frames** from the phone and can send rider commands and its own awake state back; it is not a **Board**, a **Board Session**, or a source of **Telemetry Samples**.
+- A **Watch Frame** is derived from **Live State** and is pushed whenever the phone feeds an awake **Watch Mirror**, with or without a **Board Session**; without one its Board readings are empty (ADR 0039).
+- A **Group Ride Frame** is derived from the joined **Group Ride**'s **Rider Presences** and is only pushed while the Rider is joined and the **Watch Mirror** is awake.
+- A **Watch Mirror** shows the **Group Ride** its Rider has joined whether or not a **Board Session** is live. Without Board telemetry its gauges show no reading rather than a "Board not connected" notice; a missing phone link is still said.
 - An **App Setting** affects app behavior and is not part of a **Tune Profile** or **Board** identity.
 - A **Release Policy** may issue an **Update Warning**, impose an **Online Block**, or impose an **App Block** for affected app versions.
 - An **Update Warning** does not change local or online capability availability.
@@ -423,7 +545,7 @@ _Avoid_: Position update, presence ping, location share, group telemetry
 - A **Group Ride** contains zero or more **Riders** and exists only while at least one **Rider** is present; it owns no durable truth and is never written to **Ride History**.
 - A **Rider** may be in at most one **Group Ride** at a time and is identified independently of any **Board**.
 - A **Vescape Account** is independent of a **Rider** and may enable optional online services such as backup, sync, or paid entitlements, but is not required to use local Boards, Ride Recording, Ride History, or tuning.
-- A **Rider Presence** belongs to one **Rider** in one **Group Ride**, derives location from a **GPS Fix** and optional speed/**Battery SoC Estimate** from a live **Board Session**, and is not produced while the Rider is inside a **Privacy Zone**.
+- A **Rider Presence** belongs to one **Rider** in one **Group Ride**, derives location from a **GPS Fix** and optional speed, **Battery SoC Estimate** and temperatures from a live **Board Session**, and is not produced while the Rider is inside a **Privacy Zone**.
 - A **Group Ride** requires only a phone **GPS Fix** to join; a **Board Session** is optional and only enriches a **Rider Presence**, never gates it.
 
 ## Example Dialogue
@@ -442,6 +564,9 @@ _Avoid_: Position update, presence ping, location share, group telemetry
 
 > **Dev:** "If an Online Block applies to this app version, does the rider lose access to their Board?"
 > **Domain expert:** "No. Only Online Capabilities such as Group Ride are unavailable; local Board and ride capabilities remain available. An exceptional App Block may hide normal app UI, but it still does not end already-running Board work."
+
+> **Dev:** "If a VESC fault occurs while Ride Recording is disabled, should it disappear with Ride History?"
+> **Domain expert:** "No. A VESC Fault Occurrence belongs to the Board and remains available independently of ride recording and history."
 
 ## Flagged Ambiguities
 
@@ -468,7 +593,7 @@ _Avoid_: Position update, presence ping, location share, group telemetry
 - "navigation mode" may mean how the map camera is oriented or guidance toward a destination; resolved term: use **Map Orientation Mode** for camera orientation and reserve "navigation" for destination guidance.
 - "smoother" is avoided in the raw-telemetry layer (see **Metric Sanitizer**) but is legitimate for the **Battery SoC Estimate**, a processed derived value that smooths the percentage only — never the raw voltage **Telemetry Sample**.
 - "BMS telemetry" may mean live smart-BMS cell values or a durable battery-health archive; resolved: use **Live BMS Series** for the ephemeral in-memory cell-voltage window (retained by `liveHistoryLimit`, never persisted), distinct from scalar **Telemetry Samples**. No durable BMS/battery-health store exists; if one is ever added it needs its own term and a rest-normalized capture trigger.
-- "pause" may mean stopping the **Board Session** versus temporarily halting sample persistence; resolved: **Idle Pause** halts **Ride Recording** sample persistence only — the **Board Session** stays connected and live at a reduced poll rate.
+- "pause" may mean stopping the **Board Session** versus temporarily halting sample persistence; resolved: **Idle Pause** halts both **Telemetry Sample** and **Ride Track** persistence — the **Board Session** stays connected and live at a reduced poll rate.
 - "ride" may mean a personal persisted capture or a live shared room; resolved terms: use **Ride Recording** for the local persisted capture and **Group Ride** for the live shared room. The two are independent — a Rider can do either, both, or neither.
 - "presence" / "location share" may mean a one-off map dot or the live group feed; resolved term: use **Rider Presence** for what a **Rider** shares into a **Group Ride**.
 - "account", "profile", and "Rider" were used interchangeably; resolved: a **Vescape Account** is optional online identity, while a **Rider** remains an anonymous device-local Group Ride participant.

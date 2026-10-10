@@ -153,6 +153,7 @@ fun parseOpenMeteoWeather(
     longitude: Double,
     fetchedAtMs: Long,
 ): Weather? {
+    // intentional-suppression: owning store exposes the failure to the active UI
     val json = runCatching { JSONObject(body) }.getOrNull() ?: return null
     val current = json.optJSONObject("current") ?: return null
     if (!current.has("temperature_2m") || current.isNull("temperature_2m")) return null

@@ -106,7 +106,7 @@ internal object RefloatConfigProtocol {
     )
   }
 
-  fun buildGetInfo(transport: BoardTransport, version: Int = 1): ByteArray {
+  fun buildGetInfo(transport: BoardTransport, version: Int = 2): ByteArray {
     require(version in 0..255) { "version must fit uint8" }
     return transport.frame(
       byteArrayOf(
@@ -256,6 +256,8 @@ internal object RefloatConfigProtocol {
     return parseGetInfoV1(payload, dataOffset)
   }
 
+  // @legacy-float info-v1: remove only when Float AND Refloat INFO v1 support ends.
+  // Removal checklist: /docs/legacy-float.md#info-v1
   private fun parseGetInfoV1(
     payload: ByteArray,
     dataOffset: Int,
@@ -268,7 +270,8 @@ internal object RefloatConfigProtocol {
     val versionCode = payload[dataOffset].toInt() and 0xff
     val major = versionCode / 10
     val minor = versionCode % 10
-    return RefloatConfigProtocolResult.Success(RefloatPackageInfo("Refloat $major.$minor"))
+    // Legacy INFO has no package name. Float and Refloat share this response format.
+    return RefloatConfigProtocolResult.Success(RefloatPackageInfo("Float/Refloat $major.$minor"))
   }
 
   private fun parseGetInfoV2(

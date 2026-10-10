@@ -1,4 +1,4 @@
-import { ScrollView, StyleSheet, Switch } from 'react-native'
+import { ScrollView, StyleSheet } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { useState } from 'react'
 import {
@@ -12,19 +12,50 @@ import {
 
 import { SettingsCard } from '@/components/settings/SettingsCard'
 import { SettingsRow } from '@/components/settings/SettingsRow'
+import { Switch } from '@/components/controls/Switch'
 import { SettingsSectionTitle } from '@/components/settings/SettingsSectionTitle'
 import { Stepper } from '@/components/forms/Stepper'
 import { ShowcaseCard } from '@/components/dev/ShowcaseCard'
 import { IconHero } from '@/components/settings/IconHero'
 import { theme } from '@/constants/theme'
 import { BoardTopSpeedCard } from '@/modules/alerts/components/BoardTopSpeedCard'
+import {
+  AutoStartCard,
+  type AutoStartBoard,
+  type AutoStartCardProps,
+} from '@/modules/settings/components/AutoStartCard'
 import { ReleaseActionPill } from '@/modules/release/components/ReleaseActionPill'
+
+const MOCK_BOARDS: AutoStartBoard[] = [
+  { id: 'showcase-1', name: 'Blue Board', bleId: 'AA:BB:CC:11:22:33' },
+  { id: 'showcase-2', name: 'Dirt Bike', bleId: 'AA:BB:CC:44:55:66' },
+  { id: 'showcase-3', name: 'Pint X', bleId: 'AA:BB:CC:77:88:99' },
+]
+
+/** Drives the showcase AutoStartCard so every state is reachable by tapping. */
+function useMockAutoStart(): AutoStartCardProps {
+  const [enabled, setEnabled] = useState(true)
+  const [armedBoardIds, setArmed] = useState<string[]>([MOCK_BOARDS[0].id])
+  const [cooldownMinutes, setCooldown] = useState(60)
+
+  return {
+    enabled,
+    boards: MOCK_BOARDS,
+    armedBoardIds,
+    cooldownMinutes,
+    onToggle: setEnabled,
+    onEnableBoard: (boardId) => setArmed((prev) => [...prev, boardId]),
+    onDisableBoard: (boardId) => setArmed((prev) => prev.filter((id) => id !== boardId)),
+    onCooldownChange: setCooldown,
+  }
+}
 
 export default function SettingsPage() {
   const [darkMode, setDarkMode] = useState(true)
   const [notifications, setNotifications] = useState(false)
-  const [threshold, setThreshold] = useState(3)
+  const [threshold, setThreshold] = useState(1.8641135767120018)
   const [boardTopSpeed, setBoardTopSpeed] = useState(50)
+  const autoStart = useMockAutoStart()
 
   return (
     <SafeAreaView style={styles.container} edges={['bottom']}>
@@ -61,14 +92,7 @@ export default function SettingsPage() {
               iconWeight="fill"
               label="Dark mode"
               hint="Use dark theme throughout the app"
-              right={
-                <Switch
-                  value={darkMode}
-                  onValueChange={setDarkMode}
-                  trackColor={{ false: theme.palette.slate.border, true: theme.palette.sky.border }}
-                  thumbColor={darkMode ? theme.palette.sky.color : theme.palette.slate.textMuted}
-                />
-              }
+              right={<Switch value={darkMode} onValueChange={setDarkMode} />}
             />
           </SettingsCard>
 
@@ -81,7 +105,8 @@ export default function SettingsPage() {
               right={
                 <Stepper
                   value={threshold}
-                  unit="km/h"
+                  unit="mph"
+                  formatValue={(value) => value.toFixed(1)}
                   min={0}
                   max={20}
                   onChange={(nextValue) => setThreshold(Math.min(20, Math.max(0, nextValue)))}
@@ -94,18 +119,10 @@ export default function SettingsPage() {
           <SettingsCard>
             <SettingsRow
               icon={BellIcon}
+              iconColor={theme.palette.amber.color}
               label="Push notifications"
-              hint="Receive alerts about your board"
-              right={
-                <Switch
-                  value={notifications}
-                  onValueChange={setNotifications}
-                  trackColor={{ false: theme.palette.slate.border, true: theme.palette.sky.border }}
-                  thumbColor={
-                    notifications ? theme.palette.sky.color : theme.palette.slate.textMuted
-                  }
-                />
-              }
+              hint="Tinted row — the switch inherits the icon colour"
+              right={<Switch value={notifications} onValueChange={setNotifications} />}
             />
             <SettingsRow
               icon={WifiHighIcon}
@@ -119,12 +136,16 @@ export default function SettingsPage() {
         <ShowcaseCard name="BoardTopSpeedCard">
           <BoardTopSpeedCard value={boardTopSpeed} onChange={setBoardTopSpeed} />
         </ShowcaseCard>
+
+        <ShowcaseCard name="AutoStartCard">
+          <AutoStartCard {...autoStart} />
+        </ShowcaseCard>
       </ScrollView>
     </SafeAreaView>
   )
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: theme.palette.slate.bg },
+  container: { flex: 1, backgroundColor: theme.neutral.bg },
   content: { padding: 12, gap: 12, paddingBottom: 40 },
 })

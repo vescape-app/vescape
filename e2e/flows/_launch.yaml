@@ -9,4 +9,6 @@ appId: ${APP_ID}
 - tapOn: 'http://.*:8081'
 - extendedWaitUntil:
     visible: No board
-    timeout: 60000
+    # `clearState` drops the dev-client's cached bundle, so every flow pays a cold Metro fetch
+    # and a full JS evaluation before the first screen renders. On an emulator that outruns 60s.
+    timeout: 180000

@@ -13,11 +13,17 @@ export const ROUTE_CAMERA = {
   routePaddingPx: 120,
   sidePaddingPx: 72,
   fallbackZoom: 11.8,
+  /** Bottom interface height assumed when a caller does not measure one. */
+  defaultBottomInsetPx: 180,
 } as const
 
 export interface RouteCameraViewport {
   width: number
   height: number
+  /**
+   * Height of whatever covers the bottom of the map — the History panel, which grows as the rider
+   * opens more metrics. The route is fitted into what is left, so opening a chart reframes it.
+   */
   bottomInset?: number
 }
 
@@ -52,7 +58,8 @@ function routePadding(viewport: RouteCameraViewport): RouteCameraPadding {
   return {
     paddingTop: ROUTE_CAMERA.routePaddingPx + 90,
     paddingRight: ROUTE_CAMERA.sidePaddingPx,
-    paddingBottom: ROUTE_CAMERA.routePaddingPx + 180,
+    paddingBottom:
+      ROUTE_CAMERA.routePaddingPx + (viewport.bottomInset ?? ROUTE_CAMERA.defaultBottomInsetPx),
     paddingLeft: ROUTE_CAMERA.sidePaddingPx,
   }
 }

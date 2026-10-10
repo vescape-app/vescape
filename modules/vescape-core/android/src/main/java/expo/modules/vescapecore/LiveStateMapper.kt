@@ -3,10 +3,15 @@ package expo.modules.vescapecore
 import expo.modules.vescapecore.connection.BoardPhase
 import expo.modules.vescapecore.service.SessionConfig
 
+import expo.modules.vescapecore.location.GpsPhase
+import expo.modules.vescapecore.location.GpsPowerMode
 import expo.modules.vescapecore.protocol.LocationSnapshot
 
 import expo.modules.vescapecore.telemetry.AppSettings
 import expo.modules.vescapecore.runtime.LinkIntegrity
+import expo.modules.vescapecore.recording.RecordingStorageFailure
+import expo.modules.vescapecore.recording.RecordingStorageFailureKind
+import expo.modules.vescapecore.recording.recordingFailureState
 
 internal data class VescLiveStateSnapshot(
     val boardPhase: BoardPhase,
@@ -15,7 +20,8 @@ internal data class VescLiveStateSnapshot(
     val connectionSeq: Long,
     val lastTelemetryAt: Long?,
     val recentTelemetry: List<Map<String, Any?>>,
-    val gpsActive: Boolean,
+    val gpsPhase: GpsPhase,
+    val gpsMode: GpsPowerMode,
     val latestLocation: LocationSnapshot?,
     val latestPreciseLocation: LocationSnapshot?,
     val recentLocations: List<Map<String, Any?>>,
@@ -25,6 +31,7 @@ internal data class VescLiveStateSnapshot(
     val remoteTiltValue: Int,
     val remoteTiltPhase: RemoteTiltPhase,
     val remoteTiltDecay: RemoteTiltDecayProgress?,
+    val remoteTiltOwner: RemoteInputOwner,
     val linkIntegrity: LinkIntegrity,
     val settings: AppSettings,
 )
@@ -36,17 +43,26 @@ internal fun remoteTiltWire(
     value: Int,
     phase: RemoteTiltPhase,
     decay: RemoteTiltDecayProgress?,
+    owner: RemoteInputOwner,
 ): Map<String, Any?>? {
     if (phase == RemoteTiltPhase.Idle) return null
     return buildMap {
         put("value", value)
         put("phase", phase.wireValue)
+        // Who asked for this tilt. The pad renders the same stream either way, but "the board is
+        // holding a tilt you did not command" and "the board is holding yours" are not the same
+        // sentence to read while standing on it.
+        put("owner", owner.wire)
         if (decay != null) {
             put("decay", mapOf("elapsedMs" to decay.elapsedMs, "totalMs" to decay.totalMs))
         }
     }
 }
 
+/**
+ * @parity /modules/vescape-core/ios/VescapeCoreModule.swift `liveState`
+ * @parity /modules/vescape-core/src/index.ts `LiveStateEvent`
+ */
 internal fun buildLiveState(snapshot: VescLiveStateSnapshot): Map<String, Any?> =
     mapOf(
         "board" to mapOf(
@@ -65,10 +81,12 @@ internal fun buildLiveState(snapshot: VescLiveStateSnapshot): Map<String, Any?> 
                 snapshot.remoteTiltValue,
                 snapshot.remoteTiltPhase,
                 snapshot.remoteTiltDecay,
+                snapshot.remoteTiltOwner,
             ),
         ),
         "gps" to mapOf(
-            "phase" to if (snapshot.gpsActive) "active" else "idle",
+            "phase" to snapshot.gpsPhase.wireValue,
+            "mode" to snapshot.gpsMode.slug,
             "latestFix" to snapshot.latestPreciseLocation?.toMap(),
             "latestApproximateFix" to snapshot.latestLocation?.toMap(),
             "latestPreciseFix" to snapshot.latestPreciseLocation?.toMap(),
@@ -85,5 +103,15 @@ internal fun buildLiveState(snapshot: VescLiveStateSnapshot): Map<String, Any?> 
             "paused" to snapshot.recordingPaused,
             "activeBoardId" to if (snapshot.recordingEnabled) snapshot.boardConfig?.appBoardId else null,
             "startedAt" to null,
+            "failure" to RecordingStorageFailure.value()?.let(::recordingFailureState),
         ),
     )
+
+internal fun liveStateWithStorageFailure(
+    state: Map<String, Any?>,
+    kind: RecordingStorageFailureKind,
+): Map<String, Any?> {
+    val recording = (state["recording"] as? Map<*, *>)?.entries
+        ?.associate { it.key.toString() to it.value }.orEmpty()
+    return state + ("recording" to (recording + ("failure" to recordingFailureState(kind))))
+}

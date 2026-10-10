@@ -1,0 +1,79 @@
+{
+  "courseDeg": 0,
+  "spanM": 400,
+  "riders": [
+    {
+      "id": "ola",
+      "name": "Ola",
+      "color": "#38BDF8",
+      "east": -40,
+      "north": 120,
+      "battery": 78,
+      "swing": { "east": 15, "north": 20, "periodS": 31 }
+    },
+    {
+      "id": "tomek",
+      "name": "Tomek",
+      "color": "#A78BFA",
+      "east": 25,
+      "north": -15,
+      "battery": 62,
+      "heatLevel": "critical",
+      "swing": { "east": 10, "north": 8, "periodS": 9 }
+    },
+    {
+      "id": "zosia",
+      "name": "Zosia",
+      "color": "#2DD4BF",
+      "east": 70,
+      "north": 80,
+      "battery": 25,
+      "batteryLevel": "warning"
+    },
+    {
+      "id": "aleksandra",
+      "name": "Aleksandra",
+      "color": "#F9A8D4",
+      "east": 55,
+      "north": -35,
+      "battery": 8,
+      "batteryLevel": "critical"
+    },
+    {
+      "id": "ania",
+      "name": "Ania",
+      "color": "#4ADE80",
+      "east": -45,
+      "north": -20,
+      "battery": 40,
+      "stale": true
+    },
+    {
+      "id": "piotr",
+      "name": "Piotr",
+      "color": "#A3E635",
+      "east": -30,
+      "north": 170,
+      "swing": { "east": 0, "north": 90, "periodS": 20 }
+    },
+    {
+      "id": "marek",
+      "name": "Marek",
+      "color": "#F472B6",
+      "east": 410,
+      "north": -710,
+      "battery": 64,
+      "swing": { "east": 60, "north": -100, "periodS": 41 }
+    },
+    {
+      "id": "kuba",
+      "name": "Kuba",
+      "color": "#FACC15",
+      "east": 2080,
+      "north": 1100,
+      "battery": 55,
+      "heatLevel": "warning",
+      "swing": { "east": 250, "north": 130, "periodS": 53 }
+    }
+  ]
+}

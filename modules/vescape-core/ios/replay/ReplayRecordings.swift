@@ -18,6 +18,7 @@ internal enum ReplayRecordings {
     bundledFixtureURLs()
       .sorted { $0.lastPathComponent < $1.lastPathComponent }
       .map { url in
+        // intentional-suppression: fixture file size is optional metadata
         let sizeBytes = Int64((try? url.resourceValues(forKeys: [.fileSizeKey]))?.fileSize ?? 0)
         return ["name": url.lastPathComponent, "sizeBytes": sizeBytes]
       }

@@ -190,6 +190,7 @@ export function useCameraIntentCommands({
       type: 'EnterWeatherView',
       currentCamera: currentCameraRef.current,
       fallbackCenterCoordinate: gpsCamera.centerCoordinate,
+      viewport,
       perspectiveEnabled,
     })
     applyCamera(effect?.camera)
@@ -199,6 +200,7 @@ export function useCameraIntentCommands({
     dispatchCameraIntent,
     gpsCamera.centerCoordinate,
     perspectiveEnabled,
+    viewport,
   ])
 
   const focusLegalLimits = useCallback(() => {

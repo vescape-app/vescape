@@ -1,44 +1,45 @@
-import { forwardRef, useRef, useState } from 'react'
-import { Pressable, StyleSheet, useWindowDimensions, View } from 'react-native'
-import { Text } from '@/components/base/Text'
+import { useMemo, useRef, useState } from 'react'
+import { StyleSheet, useWindowDimensions, View } from 'react-native'
 import {
   ArrowFatLinesUpIcon,
   BroadcastIcon,
   ArrowsClockwiseIcon,
-  CaretDownIcon,
   GearSixIcon,
-  PencilSimpleIcon,
-  PowerIcon,
   UsersThreeIcon,
 } from 'phosphor-react-native'
 import { router } from 'expo-router'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 
 import { BoardSelectorSheet } from '@/modules/board/components/BoardSelectorSheet'
-import { EdgeDrawer } from '@/components/overlays/AnchoredSheet'
+import { EdgeDrawer } from '@/components/overlays/EdgeDrawer'
 import { IconButton } from '@/components/base/IconButton'
 import { SocialSheet } from '@/modules/group-ride/components/SocialSheet'
 import { SettingsSheet } from '@/screens/main/overlays/SettingsSheet'
-import { BoardWarningControl } from '@/modules/board/components/BoardWarningControl'
-import { ReplayBadge } from '@/modules/board/components/ReplayBadge'
+import { ConnectedBoardPill } from '@/modules/board/components/ConnectedBoardPill'
+import { BoardIssueDrawers } from '@/modules/board/components/BoardIssueDrawers'
+import { BoardSelectorAccessories } from '@/screens/main/overlays/BoardSelectorAccessories'
+import { AccessoryIcon } from '@/modules/accessories/constants/accessoryIcon'
+import {
+  useAccessoryStore,
+  useConnectedAccessories,
+} from '@/modules/accessories/store/accessoryStore'
+import { useBoardIssues } from '@/modules/board/hooks/useBoardIssues'
 import { useBleStore } from '@/modules/board/store/bleStore'
 import { isReplayBoardId } from 'vescape-core'
 import { routes } from '@/navigation/routes'
-import { showDevControls } from '@/config/env'
 import type { Board } from '@/modules/board/store/boardStore'
 import { useGroupRideStore } from '@/modules/group-ride/store/groupRideStore'
-import { useWeatherStore } from '@/modules/weather/store/weatherStore'
 import { theme } from '@/constants/theme'
 import { selectAvailableUpdate } from '@/modules/release/lib/availableUpdate'
 import { settingsTriggerState } from '@/screens/main/overlays/settingsTrigger'
 import { useAppStatusStore } from '@/modules/release/store/appStatusStore'
 import { useBackupSlot } from '@/modules/profile/hooks/useBackupSlot'
 import type { MapSelection } from '@/modules/map/lib/mapSelection'
-import { DASH, fmtDistance } from '@/helpers/format'
+import { DASH } from '@/helpers/format'
+import { useFormat } from '@/hooks/useFormat'
 import { useMapStore } from '@/modules/map/store/mapStore'
 import { useRiderStore } from '@/modules/group-ride/store/riderStore'
 import { ActiveNavigationTopBar } from '@/screens/main/overlays/ActiveNavigationTopBar'
-import { WeatherSidePill } from '@/screens/main/overlays/WeatherSidePill'
 import {
   getMapPointKindIcon,
   getPlaceCategoryIcon,
@@ -52,88 +53,11 @@ interface TopBarProps {
   onSelectBoard: (id: string) => void
   onAddBoard: () => void
   onDisconnect: () => void
-  onWeatherPress?: () => void
+  onConnect: () => void
   activeNavigationTarget: MapSelection | null
   onNavigationPress: () => void
   onCancelNavigation: () => void
 }
-
-interface BoardPillProps {
-  maxWidth: number
-  activeBoardId: string | null
-  activeBoard: Board | undefined
-  bleStatus: string
-  isReplay: boolean
-  onOpenSelector: () => void
-  onDisconnect: () => void
-}
-
-/** The board identity pill: selector, edit, disconnect and the Board Warning control. */
-const BoardPill = forwardRef<View, BoardPillProps>(function BoardPill(
-  { maxWidth, activeBoardId, activeBoard, bleStatus, isReplay, onOpenSelector, onDisconnect },
-  ref,
-) {
-  const canDisconnect =
-    bleStatus === 'connected' ||
-    bleStatus === 'stale' ||
-    bleStatus === 'reconnecting' ||
-    bleStatus === 'rescanning' ||
-    bleStatus === 'waiting_for_telemetry'
-  const name = activeBoard?.name ?? 'No board'
-  const statusColor =
-    bleStatus === 'connected'
-      ? theme.palette.green.color
-      : bleStatus === 'error'
-        ? theme.status.error.color
-        : theme.palette.slate.textSecondary
-
-  return (
-    <View ref={ref} style={[styles.pill, { maxWidth }]}>
-      <Pressable
-        style={styles.boardButton}
-        onPress={onOpenSelector}
-        testID="board-selector-trigger"
-        accessibilityLabel="Board selector"
-      >
-        <View style={[styles.statusDot, { backgroundColor: statusColor }]} />
-        {isReplay && showDevControls && <ReplayBadge />}
-        <Text style={styles.boardText} numberOfLines={1}>
-          {name}
-        </Text>
-        <CaretDownIcon size={12} color={theme.palette.slate.textSecondary} weight="bold" />
-      </Pressable>
-      <View style={styles.divider} />
-      <Pressable
-        style={[styles.plugButton, !activeBoard && styles.iconRoundDisabled]}
-        disabled={!activeBoard}
-        onPress={() => {
-          if (!activeBoard) return
-          router.push({ pathname: routes.editBoard, params: { boardId: activeBoard.id } })
-        }}
-        testID="board-edit-button"
-      >
-        <PencilSimpleIcon
-          size={14}
-          color={activeBoard ? theme.palette.slate.textPrimary : theme.palette.slate.textMuted}
-          weight="bold"
-        />
-      </Pressable>
-      {canDisconnect && (
-        <>
-          <View style={styles.divider} />
-          <Pressable
-            style={styles.plugButton}
-            onPress={onDisconnect}
-            testID="board-disconnect-button"
-          >
-            <PowerIcon size={15} color={theme.status.error.color} weight="bold" />
-          </Pressable>
-        </>
-      )}
-      {activeBoardId && <BoardWarningControl boardId={activeBoardId} />}
-    </View>
-  )
-})
 
 export function TopBar({
   boards,
@@ -143,17 +67,29 @@ export function TopBar({
   onSelectBoard,
   onAddBoard,
   onDisconnect,
-  onWeatherPress,
+  onConnect,
   activeNavigationTarget,
   onNavigationPress,
   onCancelNavigation,
 }: TopBarProps) {
+  const { formatDistance } = useFormat()
   const insets = useSafeAreaInsets()
   const { width } = useWindowDimensions()
   const boardPillMaxWidth = width - 116
   const pillRef = useRef<View>(null)
   const socialRef = useRef<View>(null)
+  const warningRef = useRef<View>(null)
+  const faultRef = useRef<View>(null)
   const [selectorOpen, setSelectorOpen] = useState(false)
+  const [warningsOpen, setWarningsOpen] = useState(false)
+  const [faultsOpen, setFaultsOpen] = useState(false)
+  // What the selector was asked for on its way out. Presenting a modal while another is still
+  // dismissing is dropped, so anything opened from inside the selector waits for it to leave.
+  const pendingExit = useRef<{
+    kind: 'warnings' | 'faults' | 'edit' | 'accessory'
+    boardId?: string
+    accessoryId?: string
+  } | null>(null)
   const [socialOpen, setSocialOpen] = useState(false)
   const settingsRef = useRef<View>(null)
   const [settingsOpen, setSettingsOpen] = useState(false)
@@ -161,9 +97,14 @@ export function TopBar({
   const routeProgress = useMapStore((s) => s.routeProgress)
 
   const isReplay = useBleStore((s) => isReplayBoardId(s.connectedId))
+  const connectedId = useBleStore((s) => s.connectedId)
+  // Faults belong to whichever board the live session writes under — a replay's synthetic board
+  // while it plays, the selected board otherwise.
+  const sessionBoardId = isReplay ? connectedId : activeBoardId
+  // Read once here: the pill wears the badges, the selector offers the same two ways in.
+  const issues = useBoardIssues(activeBoardId, sessionBoardId)
   const nearbyBadge = useGroupRideStore((s) => s.badge)
   const rideActive = useGroupRideStore((s) => s.activeRideId !== null)
-  const weather = useWeatherStore((s) => s.weather)
   const appStatus = useAppStatusStore((s) => s.status)
   const availableUpdate = selectAvailableUpdate(appStatus)
   // A Release Policy warning escalates the gear itself; a merely newer version stays a quiet dot.
@@ -185,7 +126,40 @@ export function TopBar({
   // the river; the dash while native has no Route Progress is the honest answer, not a reason to
   // fall back to one.
   const navigationDistance =
-    routeProgress && activeNavigationTarget ? fmtDistance(routeProgress.remainingMeters) : DASH
+    routeProgress && activeNavigationTarget ? formatDistance(routeProgress.remainingMeters) : DASH
+
+  // The pill's leading badge. Only a live link earns it — a saved Accessory that is merely
+  // reconnecting must not read as one that is answering.
+  const hasAccessories = useAccessoryStore((s) => s.accessories.length > 0)
+  const accessoriesSection = useMemo(
+    () =>
+      hasAccessories ? (
+        <BoardSelectorAccessories
+          onOpenAccessory={(accessoryId) => {
+            pendingExit.current = { kind: 'accessory', accessoryId }
+            setSelectorOpen(false)
+          }}
+        />
+      ) : undefined,
+    [hasAccessories],
+  )
+  const connectedAccessories = useConnectedAccessories()
+  const accessoryBadge = useMemo(() => {
+    if (connectedAccessories.length === 0) return undefined
+    const only = connectedAccessories.length === 1 ? connectedAccessories[0] : undefined
+    return {
+      icon: AccessoryIcon,
+      label: only
+        ? `${only.name}, connected accessory`
+        : `${connectedAccessories.length} accessories connected`,
+      // One link has a detail screen to open. Several have no single "its details", so the badge
+      // opens the selector, which lists them all with their own state.
+      onPress: () =>
+        only
+          ? router.push({ pathname: routes.accessory, params: { accessoryId: only.accessoryId } })
+          : setSelectorOpen(true),
+    }
+  }, [connectedAccessories])
 
   return (
     <View style={[styles.wrap, { paddingTop: Math.max(insets.top, 8) }]} pointerEvents="box-none">
@@ -204,14 +178,20 @@ export function TopBar({
           <View ref={pillRef} collapsable={false}>
             <ActiveNavigationTopBar
               boardPill={
-                <BoardPill
+                <ConnectedBoardPill
                   maxWidth={boardPillMaxWidth}
-                  activeBoardId={activeBoardId}
+                  accessory={accessoryBadge}
                   activeBoard={activeBoard}
                   bleStatus={bleStatus}
                   isReplay={isReplay}
+                  issues={issues}
+                  warningTriggerRef={warningRef}
+                  faultTriggerRef={faultRef}
+                  onOpenWarnings={() => setWarningsOpen(true)}
+                  onOpenFaults={() => setFaultsOpen(true)}
                   onOpenSelector={() => setSelectorOpen(true)}
                   onDisconnect={onDisconnect}
+                  onConnect={onConnect}
                 />
               }
               maxWidth={Math.min(boardPillMaxWidth, 240)}
@@ -226,15 +206,21 @@ export function TopBar({
             />
           </View>
         ) : (
-          <BoardPill
+          <ConnectedBoardPill
             ref={pillRef}
             maxWidth={boardPillMaxWidth}
-            activeBoardId={activeBoardId}
+            accessory={accessoryBadge}
             activeBoard={activeBoard}
             bleStatus={bleStatus}
             isReplay={isReplay}
+            issues={issues}
+            warningTriggerRef={warningRef}
+            faultTriggerRef={faultRef}
+            onOpenWarnings={() => setWarningsOpen(true)}
+            onOpenFaults={() => setFaultsOpen(true)}
             onOpenSelector={() => setSelectorOpen(true)}
             onDisconnect={onDisconnect}
+            onConnect={onConnect}
           />
         )}
         {/* The gear wears whatever is happening inside the drawer — a required update, or a
@@ -259,16 +245,6 @@ export function TopBar({
           />
         </View>
       </View>
-      {weather ? (
-        <WeatherSidePill
-          icon={weather.icon}
-          temperature={weather.temperatureC}
-          precipProbability={weather.precipitationProbability}
-          verticalOffset={insets.top / 2}
-          onPress={onWeatherPress}
-        />
-      ) : null}
-
       <EdgeDrawer
         visible={socialOpen}
         triggerRef={socialRef}
@@ -278,7 +254,7 @@ export function TopBar({
         backdropTestID="social-drawer-backdrop"
         onClose={() => setSocialOpen(false)}
       >
-        <SocialSheet onNavigate={() => setSocialOpen(false)} />
+        <SocialSheet />
       </EdgeDrawer>
 
       <EdgeDrawer
@@ -295,9 +271,45 @@ export function TopBar({
         visible={selectorOpen}
         triggerRef={pillRef}
         boards={boards}
+        accessories={accessoriesSection}
         activeBoardId={activeBoardId}
         activeBoardLive={bleStatus === 'connected' || bleStatus === 'stale'}
-        onClose={() => setSelectorOpen(false)}
+        warnings={
+          issues.warningsEnabled && activeBoardId
+            ? {
+                count: issues.warningCount,
+                severity: issues.severity,
+                onPress: () => {
+                  pendingExit.current = { kind: 'warnings' }
+                  setSelectorOpen(false)
+                },
+              }
+            : undefined
+        }
+        faults={
+          issues.faultsEnabled && sessionBoardId
+            ? {
+                count: issues.faultCount,
+                onPress: () => {
+                  pendingExit.current = { kind: 'faults' }
+                  setSelectorOpen(false)
+                },
+              }
+            : undefined
+        }
+        onClose={() => {
+          setSelectorOpen(false)
+          const exit = pendingExit.current
+          pendingExit.current = null
+          if (exit?.kind === 'warnings') setWarningsOpen(true)
+          if (exit?.kind === 'faults') setFaultsOpen(true)
+          if (exit?.kind === 'edit' && exit.boardId) {
+            router.push({ pathname: routes.editBoard, params: { boardId: exit.boardId } })
+          }
+          if (exit?.kind === 'accessory' && exit.accessoryId) {
+            router.push({ pathname: routes.accessory, params: { accessoryId: exit.accessoryId } })
+          }
+        }}
         onSelectBoard={(id) => {
           onSelectBoard(id)
           setSelectorOpen(false)
@@ -306,6 +318,22 @@ export function TopBar({
           setSelectorOpen(false)
           onAddBoard()
         }}
+        onEditBoard={(id) => {
+          pendingExit.current = { kind: 'edit', boardId: id }
+          setSelectorOpen(false)
+        }}
+      />
+
+      <BoardIssueDrawers
+        issues={issues}
+        activeBoardId={activeBoardId}
+        sessionBoardId={sessionBoardId}
+        warningsOpen={warningsOpen}
+        faultsOpen={faultsOpen}
+        warningTriggerRef={warningRef}
+        faultTriggerRef={faultRef}
+        onCloseWarnings={() => setWarningsOpen(false)}
+        onCloseFaults={() => setFaultsOpen(false)}
       />
     </View>
   )
@@ -326,9 +354,6 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     paddingHorizontal: 10,
   },
-  iconRoundDisabled: {
-    opacity: 0.4,
-  },
   iconRight: {
     position: 'absolute',
     top: 0,
@@ -338,48 +363,5 @@ const styles = StyleSheet.create({
     position: 'absolute',
     top: 0,
     left: 10,
-  },
-  pill: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    minHeight: 38,
-    borderRadius: 19,
-    borderWidth: 1,
-    borderColor: theme.palette.slate.border,
-    backgroundColor: theme.palette.slate.surfaceDeep,
-    overflow: 'hidden',
-  },
-  boardButton: {
-    flexDirection: 'row',
-    flexShrink: 1,
-    alignItems: 'center',
-    gap: 6,
-    paddingLeft: 10,
-    paddingRight: 8,
-    minHeight: 38,
-    minWidth: 0,
-  },
-  statusDot: {
-    width: 7,
-    height: 7,
-    borderRadius: 4,
-  },
-  boardText: {
-    color: theme.palette.slate.textPrimary,
-    fontSize: 13,
-    fontWeight: '800',
-    maxWidth: 180,
-    flexShrink: 1,
-  },
-  divider: {
-    width: 1,
-    height: 20,
-    backgroundColor: theme.palette.slate.border,
-  },
-  plugButton: {
-    width: 38,
-    height: 38,
-    alignItems: 'center',
-    justifyContent: 'center',
   },
 })

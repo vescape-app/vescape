@@ -40,7 +40,7 @@ import {
   type TuneProfileColorId,
   type TuneProfileIconId,
 } from '@/modules/tune/lib/profileMetadata'
-import { theme } from '@/constants/theme'
+import { theme, type ThemeColor } from '@/constants/theme'
 
 export interface TuneProfileMetadataValue {
   name: string
@@ -55,6 +55,8 @@ interface TuneProfileMetadataModalProps {
   initialValue?: Partial<TuneProfileMetadataValue>
   onConfirm: (value: TuneProfileMetadataValue) => void
   onDismiss: () => void
+  loading?: boolean
+  error?: string | null
 }
 
 interface TuneProfileMetadataModalContentProps extends Omit<
@@ -64,11 +66,11 @@ interface TuneProfileMetadataModalContentProps extends Omit<
   initialValue: Partial<TuneProfileMetadataValue>
 }
 
-type PaletteTheme = {
-  bg: string
-  border: string
-  color: string
-  text: string
+interface PaletteTheme {
+  bg: ThemeColor
+  border: ThemeColor
+  color: ThemeColor
+  text: ThemeColor
 }
 
 const ICONS: Record<TuneProfileIconId, Icon> = {
@@ -150,7 +152,7 @@ export function TuneProfileIcon({
 }: {
   icon: string | null | undefined
   size: number
-  color: string
+  color: ThemeColor
   weight?: 'thin' | 'light' | 'regular' | 'bold' | 'fill' | 'duotone'
 }) {
   const IconComponent = ICONS[tuneProfileIconId(icon)]
@@ -167,6 +169,8 @@ function TuneProfileMetadataModalContent({
   initialValue,
   onConfirm,
   onDismiss,
+  loading = false,
+  error,
 }: TuneProfileMetadataModalContentProps) {
   const [name, setName] = useState(initialValue?.name ?? '')
   const [icon, setIcon] = useState<TuneProfileIconId>(
@@ -179,7 +183,7 @@ function TuneProfileMetadataModalContent({
   const accent = COLORS[color]
 
   return (
-    <Pressable style={styles.backdrop} onPress={onDismiss}>
+    <Pressable style={styles.backdrop} onPress={loading ? undefined : onDismiss}>
       <Pressable style={styles.modal} onPress={(event) => event.stopPropagation()}>
         <Text style={styles.title}>{title}</Text>
         <Input
@@ -187,10 +191,12 @@ function TuneProfileMetadataModalContent({
           value={name}
           onChangeText={setName}
           placeholder="Tune name"
-          placeholderTextColor={theme.palette.slate.textDim}
+          placeholderTextColor={theme.neutral.textDim}
           autoFocus
           selectTextOnFocus
+          editable={!loading}
         />
+        {error ? <Text style={styles.error}>{error}</Text> : null}
 
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>Icon</Text>
@@ -211,12 +217,13 @@ function TuneProfileMetadataModalContent({
                   accessibilityRole="button"
                   accessibilityLabel={ICON_LABELS[iconId]}
                   accessibilityState={{ selected }}
+                  disabled={loading}
                   onPress={() => setIcon(iconId)}
                 >
                   <TuneProfileIcon
                     icon={iconId}
                     size={22}
-                    color={selected ? accent.color : theme.palette.slate.textSecondary}
+                    color={selected ? accent.color : theme.neutral.textSecondary}
                   />
                 </Pressable>
               )
@@ -235,11 +242,12 @@ function TuneProfileMetadataModalContent({
                   key={colorId}
                   style={[
                     styles.colorChoice,
-                    { borderColor: selected ? swatch.color : theme.palette.slate.border },
+                    { borderColor: selected ? swatch.color : theme.neutral.border },
                   ]}
                   accessibilityRole="button"
                   accessibilityLabel={`${colorId} color`}
                   accessibilityState={{ selected }}
+                  disabled={loading}
                   onPress={() => setColor(colorId)}
                 >
                   <View style={[styles.swatch, { backgroundColor: swatch.bg }]}>
@@ -253,7 +261,7 @@ function TuneProfileMetadataModalContent({
         </View>
 
         <View style={styles.actions}>
-          <Pressable style={styles.cancelButton} onPress={onDismiss}>
+          <Pressable style={styles.cancelButton} onPress={onDismiss} disabled={loading}>
             <Text style={styles.cancelText}>Cancel</Text>
           </Pressable>
           <Pressable
@@ -263,8 +271,9 @@ function TuneProfileMetadataModalContent({
               if (!trimmed) return
               onConfirm({ name: trimmed, icon, color })
             }}
+            disabled={loading}
           >
-            <CheckIcon size={15} color={theme.palette.slate.surfaceDeep} weight="bold" />
+            <CheckIcon size={15} color={theme.neutral.surfaceDeep} weight="bold" />
             <Text style={styles.confirmText}>{confirmLabel}</Text>
           </Pressable>
         </View>
@@ -281,7 +290,12 @@ export function TuneProfileMetadataModal({
   const key = `${initialValue?.name ?? ''}:${initialValue?.icon ?? ''}:${initialValue?.color ?? ''}`
 
   return (
-    <Modal visible={visible} transparent animationType="fade" onRequestClose={props.onDismiss}>
+    <Modal
+      visible={visible}
+      transparent
+      animationType="fade"
+      onRequestClose={props.loading ? undefined : props.onDismiss}
+    >
       {visible ? (
         <TuneProfileMetadataModalContent key={key} initialValue={initialValue ?? {}} {...props} />
       ) : null}
@@ -290,6 +304,7 @@ export function TuneProfileMetadataModal({
 }
 
 const styles = StyleSheet.create({
+  error: { color: theme.status.error.text, fontSize: 12 },
   backdrop: {
     flex: 1,
     justifyContent: 'center',
@@ -300,15 +315,15 @@ const styles = StyleSheet.create({
   modal: {
     width: '100%',
     maxWidth: 420,
-    backgroundColor: theme.palette.slate.surface,
+    backgroundColor: theme.neutral.surface,
     borderRadius: 12,
     borderWidth: 1,
-    borderColor: theme.palette.slate.border,
+    borderColor: theme.neutral.border,
     padding: 16,
     gap: 16,
   },
   title: {
-    color: theme.palette.slate.textPrimary,
+    color: theme.neutral.textPrimary,
     fontSize: 16,
     fontWeight: '900',
   },
@@ -320,7 +335,7 @@ const styles = StyleSheet.create({
     gap: 10,
   },
   sectionTitle: {
-    color: theme.palette.slate.textMuted,
+    color: theme.neutral.textMuted,
     fontSize: 12,
     fontWeight: '800',
     textTransform: 'uppercase',
@@ -335,8 +350,8 @@ const styles = StyleSheet.create({
     height: 42,
     borderRadius: 12,
     borderWidth: 1,
-    borderColor: theme.palette.slate.border,
-    backgroundColor: theme.palette.slate.surfaceDeep,
+    borderColor: theme.neutral.border,
+    backgroundColor: theme.neutral.surfaceDeep,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -378,12 +393,12 @@ const styles = StyleSheet.create({
     paddingHorizontal: 14,
     borderRadius: 8,
     borderWidth: 1,
-    borderColor: theme.palette.slate.border,
+    borderColor: theme.neutral.border,
     alignItems: 'center',
     justifyContent: 'center',
   },
   cancelText: {
-    color: theme.palette.slate.textSecondary,
+    color: theme.neutral.textSecondary,
     fontSize: 13,
     fontWeight: '800',
   },
@@ -397,7 +412,7 @@ const styles = StyleSheet.create({
     gap: 6,
   },
   confirmText: {
-    color: theme.palette.slate.surfaceDeep,
+    color: theme.neutral.surfaceDeep,
     fontSize: 13,
     fontWeight: '900',
   },

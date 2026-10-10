@@ -469,6 +469,44 @@ class NavigationControllerTest {
         assertNull(controller.currentProgress)
     }
 
+    @Test
+    fun `a selected route is available to the watch without another GPS fix`() {
+        val route = navigation()
+        val (controller, _) = controller(FixedRoutes(DirectionsResult.Path(
+            route.points!!, distanceMeters = 1_000.0, durationSeconds = 600.0,
+        )))
+        controller.onFix(RIDER_LAT, RIDER_LNG, speedMps = 0.0)
+        controller.setTarget(TARGET_LAT, TARGET_LNG, RIDER_LAT, RIDER_LNG)
+        Thread.sleep(SETTLE_MS)
+        assertEquals(NavigationStatus.READY, controller.current?.status)
+        val beforeNextFix = controller.currentProgress
+        controller.onFix(RIDER_LAT, RIDER_LNG, speedMps = 0.0)
+        assertTrue("Control: the same GPS fix makes navigation available", controller.currentProgress != null)
+        assertTrue("Route is ready but watch navigation stays blank until another GPS fix", beforeNextFix != null)
+    }
+
+    @Test
+    fun `a newer fix received during routing is used immediately and clear ends loading`() {
+        val routes = GatedRoutes()
+        val (controller, _) = controller(routes)
+        controller.onFix(RIDER_LAT, RIDER_LNG, 0.0)
+        controller.setTarget(TARGET_LAT, TARGET_LNG, RIDER_LAT, RIDER_LNG)
+        assertTrue(controller.computing)
+        controller.onFix(RIDER_LAT + 0.01, RIDER_LNG + 0.01, 0.0)
+        routes.gate(TARGET_LAT).countDown()
+        Thread.sleep(SETTLE_MS)
+        assertTrue(controller.currentProgress!!.latitude > RIDER_LAT)
+        assertTrue(!controller.computing)
+        controller.setTarget(SECOND_TARGET_LAT, TARGET_LNG, RIDER_LAT, RIDER_LNG)
+        assertTrue(controller.computing)
+        controller.clear()
+        assertTrue(!controller.computing)
+        routes.gate(SECOND_TARGET_LAT).countDown()
+        Thread.sleep(SETTLE_MS)
+        assertNull(controller.current)
+        assertNull(controller.currentProgress)
+    }
+
     private companion object {
         const val RIDER_LAT = 52.2
         const val RIDER_LNG = 21.0

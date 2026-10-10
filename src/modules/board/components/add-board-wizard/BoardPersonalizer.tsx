@@ -2,7 +2,7 @@
 import * as Haptics from 'expo-haptics'
 import { CaretLeftIcon, CaretRightIcon } from 'phosphor-react-native'
 import { useCallback, useMemo, useState } from 'react'
-import { Platform, Pressable, StyleSheet, View } from 'react-native'
+import { Platform, Pressable, StyleSheet, View, type ColorValue } from 'react-native'
 import { Text } from '@/components/base/Text'
 import { Gesture, GestureDetector } from 'react-native-gesture-handler'
 import Animated, {
@@ -119,7 +119,7 @@ function RailOutline({
   muted = false,
 }: {
   path: string
-  color: string
+  color: ColorValue
   muted?: boolean
 }) {
   return (
@@ -129,7 +129,7 @@ function RailOutline({
         cy="32"
         r="30"
         fill="none"
-        stroke={muted ? theme.palette.slate.border : color}
+        stroke={muted ? theme.neutral.border : color}
         strokeWidth="1"
       />
       <Circle
@@ -137,13 +137,13 @@ function RailOutline({
         cy="32"
         r="15"
         fill="none"
-        stroke={muted ? theme.palette.slate.textDim : color}
+        stroke={muted ? theme.neutral.textDim : color}
         strokeWidth="1"
       />
       <Path
         d={path}
         fill="none"
-        stroke={muted ? theme.palette.slate.textDim : color}
+        stroke={muted ? theme.neutral.textDim : color}
         strokeWidth={muted ? 1.2 : 2.2}
         strokeLinecap="round"
         strokeLinejoin="round"
@@ -296,7 +296,7 @@ export function BoardPersonalizer({
             onPress={() => selectAdjacent(-1)}
             style={({ pressed }) => [styles.arrow, pressed && styles.pressed]}
           >
-            <CaretLeftIcon size={18} color={theme.palette.slate.textSecondary} weight="bold" />
+            <CaretLeftIcon size={18} color={theme.neutral.textSecondary} weight="bold" />
           </Pressable>
           <Text style={styles.railName}>
             {RAILS[selectedIndex]?.label ?? RAILS[DEFAULT_INDEX].label}
@@ -308,7 +308,7 @@ export function BoardPersonalizer({
             onPress={() => selectAdjacent(1)}
             style={({ pressed }) => [styles.arrow, pressed && styles.pressed]}
           >
-            <CaretRightIcon size={18} color={theme.palette.slate.textSecondary} weight="bold" />
+            <CaretRightIcon size={18} color={theme.neutral.textSecondary} weight="bold" />
           </Pressable>
         </View>
         <View>
@@ -373,14 +373,14 @@ export function BoardPersonalizer({
 const styles = StyleSheet.create({
   root: { gap: 8 },
   label: {
-    color: theme.palette.slate.textMuted,
+    color: theme.neutral.textMuted,
     fontSize: 12,
     fontWeight: '700',
     letterSpacing: 0.5,
     textTransform: 'uppercase',
   },
   railName: {
-    color: theme.palette.slate.textSecondary,
+    color: theme.neutral.textSecondary,
     fontSize: 12,
     fontWeight: '600',
     textAlign: 'center',
@@ -417,7 +417,7 @@ const styles = StyleSheet.create({
     height: 36,
     borderRadius: 18,
     borderWidth: 1.5,
-    borderColor: theme.palette.slate.border,
+    borderColor: theme.neutral.border,
     alignItems: 'center',
     justifyContent: 'center',
   },

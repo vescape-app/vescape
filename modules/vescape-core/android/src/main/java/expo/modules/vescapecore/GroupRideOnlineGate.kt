@@ -9,7 +9,7 @@ import okhttp3.Request
  * without okhttp's `Handler`/socket glue — the gate *decisions* themselves are one-liners over the
  * observer's own socket state and live inline there.
  *
- * @platform-diff Android-only: iOS Group Ride is an unsupported stub, so it has no online gate.
+ * @parity /modules/vescape-core/ios/groupride/GroupRideOnlineGate.swift
  */
 internal object GroupRideOnlineGate {
   /**

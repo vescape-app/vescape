@@ -24,9 +24,6 @@ internal data class GpsCourse(
  * Feed precise fixes only, in time order. Stateful, one instance per location source.
  *
  * @parity /modules/vescape-core/ios/location/GpsCourseDeriver.swift `GpsCourseDeriver`
- * @platform-diff No `reset()`: Android's `LocationTracker` outlives every session and keeps its
- * latest fixes across disconnects, so there is no teardown to hang one off. iOS clears its fix
- * state on disconnect and resets the deriver with it.
  * @parity /modules/vescape-core/src/index.ts `LocationEvent`
  */
 internal class GpsCourseDeriver {
@@ -48,6 +45,13 @@ internal class GpsCourseDeriver {
     previousTimestamp = timestamp
     lastCourse = course
     return course
+  }
+
+  fun reset() {
+    previousLatitude = null
+    previousLongitude = null
+    previousTimestamp = null
+    lastCourse = null
   }
 
   private fun resolve(

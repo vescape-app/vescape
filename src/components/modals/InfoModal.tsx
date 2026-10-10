@@ -52,7 +52,7 @@ export function InfoModal({
 
 const styles = StyleSheet.create({
   message: {
-    color: theme.palette.slate.textSecondary,
+    color: theme.neutral.textSecondary,
     fontSize: 13,
     fontWeight: '500',
     lineHeight: 19,

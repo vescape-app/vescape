@@ -1,0 +1,26 @@
+{
+  "scenario": "precomputed-history-reads",
+  "gapMs": 600000,
+  "pageSize": 1,
+  "olderRideOffsetMs": 1200000,
+  "expected": {
+    "emptySessionCount": 0,
+    "emptyRideCount": 0,
+    "firstPageSessionCount": 1,
+    "firstPageHasMore": true,
+    "currentStartAtMs": 1800000,
+    "currentEndAtMs": 1861000,
+    "currentSampleCount": 4,
+    "currentDistanceM": 2,
+    "secondPageSessionCount": 1,
+    "secondPageHasMore": false,
+    "profileRideCount": 2,
+    "profileRideTimeMs": 62000,
+    "profileDistanceM": 3,
+    "profileTopSpeedKmh": 17,
+    "profileAvgSpeedKmh": 16,
+    "profileMonthCount": 1,
+    "selectedYear": 1970,
+    "selectedMonth": 1
+  }
+}

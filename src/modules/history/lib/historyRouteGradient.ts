@@ -1,8 +1,9 @@
 import type { LineLayerStyle } from '@rnmapbox/maps'
 
 import { theme } from '@/constants/theme'
-import { telemetry } from '@/modules/board/constants/telemetry'
+import type { ResolvedTelemetryColors } from '@/constants/theme'
 import { distanceMeters } from '@/helpers/mapGeometry'
+import { routeDistanceProgress } from '@/modules/history/lib/routeProgress'
 import {
   getHistoryMetricColorRange,
   getMetricRampColor,
@@ -125,22 +126,25 @@ export function getHistoryRouteHighlightGradient(
   ] as unknown as NonNullable<LineLayerStyle['lineGradient']>
 }
 
-export function getHistoryMetricBaseColor(metric: HistoryMetricKey): string {
+export function getHistoryMetricBaseColor(
+  metric: HistoryMetricKey,
+  colors: ResolvedTelemetryColors,
+): string {
   switch (metric) {
     case 'speed':
-      return telemetry.speed.color
+      return colors.speed
     case 'duty':
-      return telemetry.duty.color
+      return colors.duty
     case 'battery':
-      return telemetry.battVoltage.color
+      return colors.battVoltage
     case 'tempMotor':
-      return telemetry.motorTemp.color
+      return colors.motorTemp
     case 'tempController':
-      return telemetry.controllerTemp.color
+      return colors.controllerTemp
     case 'motorCurrent':
-      return telemetry.motorCurrent.color
+      return colors.motorCurrent
     case 'batteryCurrent':
-      return telemetry.battCurrent.color
+      return colors.battCurrent
   }
 }
 
@@ -181,43 +185,30 @@ function advanceNearestTelemetryIndex(
   return index
 }
 
-function getRouteDistanceProgress(samples: readonly HistoryGpsSample[]): number[] {
-  const distances = new Array<number>(samples.length).fill(0)
-  let distanceM = 0
-  for (let index = 1; index < samples.length; index += 1) {
-    const from = samples[index - 1]
-    const to = samples[index]
-    distanceM += distanceMeters(
-      { longitude: from.longitude, latitude: from.latitude },
-      { longitude: to.longitude, latitude: to.latitude },
-    )
-    distances[index] = distanceM
-  }
-
-  if (distanceM <= 0) return distances
-  return distances.map((distance) => Math.max(0, Math.min(1, distance / distanceM)))
-}
-
 export function getHistoryRouteMetricGradient({
   gpsSamples,
   telemetrySamples,
   metric,
   hotRanges,
   gradientsEnabled,
+  colors,
+  hotColor,
 }: {
   gpsSamples: readonly HistoryGpsSample[]
   telemetrySamples: readonly TelemetrySample[]
   metric: HistoryMetricKey
   hotRanges: HistoryMetricHotRanges
   gradientsEnabled: boolean
+  colors: ResolvedTelemetryColors
+  hotColor: string
 }): NonNullable<LineLayerStyle['lineGradient']> | null {
   if (gpsSamples.length < 2 || telemetrySamples.length === 0) return null
-  const baseColor = getHistoryMetricBaseColor(metric)
-  const range = getHistoryMetricColorRange(metric, baseColor, hotRanges, gradientsEnabled)
+  const baseColor = getHistoryMetricBaseColor(metric, colors)
+  const range = getHistoryMetricColorRange(metric, baseColor, hotRanges, gradientsEnabled, hotColor)
   if (!range) return null
 
   const lastIndex = gpsSamples.length - 1
-  const routeProgress = getRouteDistanceProgress(gpsSamples)
+  const routeProgress = routeDistanceProgress(gpsSamples)
   const maxStops = 160
   const step = Math.max(1, Math.floor(lastIndex / (maxStops - 1)))
   const expression: unknown[] = ['interpolate', ['linear'], ['line-progress']]

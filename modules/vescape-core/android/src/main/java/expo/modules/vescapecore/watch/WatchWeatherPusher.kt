@@ -18,6 +18,8 @@ import kotlinx.coroutines.sync.withLock
  * Shaped like [WatchSettingsPusher] and for the same reasons: the Data Layer is last-value-wins per
  * path, so concurrent writes are serialized, and a failed write clears the cache so the next push
  * retries rather than assuming the wrist has data it never received.
+ *
+ * @parity /modules/vescape-core/ios/watch/WatchColdState.swift
  */
 internal class WatchWeatherPusher(
     private val context: Context,
@@ -61,6 +63,8 @@ internal class WatchWeatherPusher(
                         // Omitted rather than sent as a sentinel: the wrist reads absence directly.
                         weather.sunriseMinuteOfDay?.let { dataMap.putInt(WATCH_WEATHER_SUNRISE, it) }
                         weather.sunsetMinuteOfDay?.let { dataMap.putInt(WATCH_WEATHER_SUNSET, it) }
+                        dataMap.putDouble(WATCH_WEATHER_LATITUDE, weather.latitude)
+                        dataMap.putDouble(WATCH_WEATHER_LONGITUDE, weather.longitude)
                         dataMap.putLong(WATCH_WEATHER_FETCHED_AT, weather.fetchedAtMs)
                     }.asPutDataRequest().setUrgent()
                     Tasks.await(dataClient.putDataItem(request))

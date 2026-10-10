@@ -1,3 +1,10 @@
+import { draftAlertPreview } from '@/modules/alerts/lib/draftAlertPreview'
+import type { AlertTestRule } from 'vescape-core'
+import { useBoardConfigBases } from '@/modules/alerts/hooks/useBoardConfigBases'
+import { useResolvedAlertRules } from '@/modules/alerts/hooks/useResolvedAlertRules'
+import { toTestRule } from '@/modules/alerts/lib/alertTest'
+import type { BoardConfigBases } from '@/modules/alerts/lib/configRelativeFields'
+import { useUnitSystem } from '@/hooks/useUnitSystem'
 import { useMemo } from 'react'
 import { useShallow } from 'zustand/react/shallow'
 
@@ -11,6 +18,7 @@ import {
 import {
   boardAlertPresetSelection,
   boardHasBatteryConfig,
+  boardMatchBoardConfig,
   boardTopSpeedKmh,
 } from '@/modules/alerts/lib/boardAlertSettings'
 import {
@@ -31,6 +39,7 @@ import { useBoardStore } from '@/modules/board/store/boardStore'
  * editing as `/control` before a Board exists to own the rules.
  */
 export interface MetricAlertsController {
+  error: string | null
   /** The preset metric this control maps to, or `null` when it only supports custom rules. */
   metric: AlertPresetMetric | null
   controlId: string
@@ -38,17 +47,23 @@ export interface MetricAlertsController {
   level: AlertPresetLevel
   /** Rider-owned rules for this control. Preset-generated rules never appear here. */
   rules: DraftAlertRule[]
+  /** One resolved snapshot for markers, descriptions, chart lines, and sound preview. */
+  ruleSnapshot: AlertTestRule[]
+  configBases: BoardConfigBases
   topSpeedKmh: number
   hasBatteryConfig: boolean
+  /** Metrics this Board follows its own configuration for. */
+  matchBoardConfig: Partial<Record<AlertPresetMetric, boolean>>
+  setMatchBoardConfig(enabled: boolean): void
   setLevel(level: AlertPresetLevel): void
   /** Copy the current level's rules into {@link rules} and switch to `custom`. */
   customize(): void
   /** Drop every rule in {@link rules} and return to a generated level. */
   discardCustom(): void
-  addRule(draft: AlertRuleDraft): void
-  updateRule(id: string, draft: AlertRuleDraft): void
-  toggleRule(id: string): void
-  removeRule(id: string): void
+  addRule(draft: AlertRuleDraft): Promise<void>
+  updateRule(id: string, draft: AlertRuleDraft): Promise<void>
+  toggleRule(id: string): Promise<void>
+  removeRule(id: string): Promise<void>
 }
 
 /**
@@ -58,7 +73,14 @@ export interface MetricAlertsController {
  */
 export function useBoardMetricAlerts(controlId: string): MetricAlertsController | null {
   const board = useBoardStore((s) => s.boards.find((b) => b.id === s.activeBoardId))
+  const resolvedRules = useResolvedAlertRules()
+  const configBases = useBoardConfigBases()
+  const ruleSnapshot = useMemo(
+    () => resolvedRules.filter((rule) => rule.controlId === controlId).map(toTestRule),
+    [resolvedRules, controlId],
+  )
   const allRules = useAlertsStore((s) => s.rules)
+  const error = useAlertsStore((s) => s.error)
   const { add, update, toggle, remove } = useAlertsStore(
     useShallow((s) => ({ add: s.add, update: s.update, toggle: s.toggle, remove: s.remove })),
   )
@@ -73,26 +95,62 @@ export function useBoardMetricAlerts(controlId: string): MetricAlertsController 
     const presets = () => useAlertPresetStore.getState()
     return {
       metric,
+      error,
       controlId,
       level,
       rules,
+      ruleSnapshot,
+      configBases,
       topSpeedKmh: boardTopSpeedKmh(board),
       hasBatteryConfig: boardHasBatteryConfig(board),
+      matchBoardConfig: boardMatchBoardConfig(board),
+      setMatchBoardConfig: (enabled) => {
+        // intentional-suppression: the Alerts store error is rendered by MetricAlerts.
+        if (metric)
+          void presets()
+            .setMatchBoardConfig(metric, enabled)
+            .catch(() => undefined)
+      },
       setLevel: (next) => {
-        if (metric) void presets().setLevel(metric, next)
+        // intentional-suppression: the Alerts store error is rendered by MetricAlerts.
+        if (metric)
+          void presets()
+            .setLevel(metric, next)
+            .catch(() => undefined)
       },
       customize: () => {
-        if (metric) void presets().customize(metric)
+        // intentional-suppression: the Alerts store error is rendered by MetricAlerts.
+        if (metric)
+          void presets()
+            .customize(metric)
+            .catch(() => undefined)
       },
       discardCustom: () => {
-        if (metric) void presets().discardCustom(metric)
+        // intentional-suppression: the Alerts store error is rendered by MetricAlerts.
+        if (metric)
+          void presets()
+            .discardCustom(metric)
+            .catch(() => undefined)
       },
       addRule: (draft) => add(controlId, draft),
       updateRule: (id, draft) => update(id, draft),
-      toggleRule: (id) => void toggle(id),
-      removeRule: (id) => void remove(id),
+      toggleRule: (id) => toggle(id),
+      removeRule: (id) => remove(id),
     }
-  }, [board, metric, controlId, level, rules, add, update, toggle, remove])
+  }, [
+    board,
+    metric,
+    controlId,
+    level,
+    rules,
+    error,
+    add,
+    update,
+    toggle,
+    remove,
+    ruleSnapshot,
+    configBases,
+  ])
 }
 
 /** One metric's buffered alert setup inside the add-board wizard. */
@@ -117,6 +175,17 @@ export function useDraftMetricAlerts(
   metric: AlertPresetMetric,
   { setup, topSpeedKmh, hasBatteryConfig, onChange }: DraftMetricAlertsSource,
 ): MetricAlertsController {
+  const units = useUnitSystem()
+  const preview = useMemo(
+    () =>
+      draftAlertPreview(
+        metric,
+        setup.level,
+        { topSpeedKmh, hasBatteryConfig, speedUnitSystem: units },
+        setup.rules,
+      ),
+    [metric, setup.level, units, setup.rules, topSpeedKmh, hasBatteryConfig],
+  )
   return useMemo(() => {
     const withRules = (rules: DraftAlertRule[]) => onChange({ ...setup, rules })
     const mapRule = (id: string, change: (rule: DraftAlertRule) => DraftAlertRule) =>
@@ -124,22 +193,28 @@ export function useDraftMetricAlerts(
 
     return {
       metric,
+      error: preview.error,
       controlId: metric,
       level: setup.level,
       rules: setup.rules,
+      ruleSnapshot: preview.rules,
+      configBases: {},
       topSpeedKmh,
       hasBatteryConfig,
-      setLevel: (level) => onChange({ level, rules: setup.rules }),
-      customize: () =>
+      // The wizard has no Board yet, so no config has been read to match against.
+      matchBoardConfig: {},
+      setMatchBoardConfig: () => {},
+      setLevel: (level) => onChange({ ...setup, level }),
+      customize: () => {
+        if (preview.error) return
         onChange({
+          ...setup,
           level: 'custom',
-          rules: materializePresetRules(metric, setup.level, {
-            boardTopSpeedKmh: topSpeedKmh,
-            hasBatteryConfig,
-          }),
-        }),
+          rules: materializePresetRules(preview.presetRules, setup.rules),
+        })
+      },
       discardCustom: () => onChange({ level: ALERT_PRESET_FALLBACK_LEVEL, rules: [] }),
-      addRule: (draft) =>
+      addRule: async (draft) =>
         withRules([
           ...setup.rules,
           {
@@ -150,9 +225,9 @@ export function useDraftMetricAlerts(
             ...draft,
           },
         ]),
-      updateRule: (id, draft) => mapRule(id, (rule) => ({ ...rule, ...draft })),
-      toggleRule: (id) => mapRule(id, (rule) => ({ ...rule, enabled: !rule.enabled })),
-      removeRule: (id) => withRules(setup.rules.filter((rule) => rule.id !== id)),
+      updateRule: async (id, draft) => mapRule(id, (rule) => ({ ...rule, ...draft })),
+      toggleRule: async (id) => mapRule(id, (rule) => ({ ...rule, enabled: !rule.enabled })),
+      removeRule: async (id) => withRules(setup.rules.filter((rule) => rule.id !== id)),
     }
-  }, [metric, setup, topSpeedKmh, hasBatteryConfig, onChange])
+  }, [metric, setup, topSpeedKmh, hasBatteryConfig, onChange, preview])
 }

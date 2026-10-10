@@ -22,11 +22,11 @@ pushback is itself hazardous — keep `_speed` conservative (HV/LV default `1 °
 protection. If the cutoffs rise above LV pushback, the warning is defeated.
 
 **Voltage units (firmware-dependent):** since Refloat 1.2 on VESC **6.05+**, `tiltback_lv` /
-`tiltback_hv` are stored **per cell** (defaults `3.0` / `4.3`). On **6.02** they are a **pack total**
-(e.g. `3.0 × 15 = 45 V`). The config-safety detector (`ConfigSafetyDetector`) resolves the mode from
-the firmware version: per-cell → compare the raw value against `3.0` / `4.3`; pack → compare against
-`3.0 × series` / `4.3 × series` (needs the configured series count). When the firmware version is
-unknown/unparseable, or pack mode has no series count, the LV/HV rules are skipped rather than guessed.
+`tiltback_hv` support **per-cell** values (defaults `3.0` / `4.3`) while legacy **pack totals** remain
+valid. Refloat interprets values below `10 V` as per-cell and larger values as pack totals. On **6.02**
+all values are pack totals (e.g. `3.0 × 15 = 45 V`). The config-safety detector follows the same rule.
+When the firmware version is unknown/unparseable, or a pack total lacks the configured series count,
+the LV/HV rules are skipped rather than guessed.
 
 ## Fault disengagement (board turns off)
 
@@ -36,6 +36,12 @@ unknown/unparseable, or pack mode has no series count, the LV/HV rules are skipp
 | Roll fault            | `fault_roll`                | `45°`   | Excessive roll.                                                     |
 | Footpad switch fault  | `fault_adc1` / `fault_adc2` | `2.0 V` | Sensor zone reads below this → "foot off". `0` disables the switch. |
 | Half-state fault ERPM | `fault_adc_half_erpm`       | `~200`  | Speed above which a single footpad off counts as a fault.           |
+
+App note: the footpad UI resolves engagement from `fault_adc1` / `fault_adc2` through **Board Config
+Values**. The footpad control screen also lists the board's own fault setup read-only (engage
+voltages, half/full switch delays, `fault_adc_half_erpm`, Posi, moving faults, Darkride, Quickstop).
+The live indicator still shows engagement per zone only — one footpad off below `fault_adc_half_erpm`
+is tolerated by the board, and the app does not distinguish that case.
 
 `fault_delay_*` params add debounce — keep them small. `fault_moving_fault_disabled` and
 `fault_darkride_enabled` weaken fault protection and need correct speed calibration; default off.

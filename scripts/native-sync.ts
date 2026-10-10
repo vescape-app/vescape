@@ -1,6 +1,7 @@
 import { createHash } from 'crypto'
 import { existsSync, mkdirSync, readdirSync, readFileSync, statSync, writeFileSync } from 'fs'
 import { join, relative } from 'path'
+import { wearSharedSources } from '../plugins/wearSharedSources.ts'
 import { copyShared, sharedOutput, sharedSources, sharedTargets } from './copy-shared.ts'
 
 const ROOT = join(import.meta.dir, '..')
@@ -34,7 +35,7 @@ const PREBUILD_INPUTS = [
 const IOS_PREBUILD_INPUTS = ['targets']
 
 /** Android-only prebuild inputs: `withWearMirror` copies the Wear OS Mirror into `android/wearos/`. */
-const ANDROID_PREBUILD_INPUTS = ['watch']
+const ANDROID_PREBUILD_INPUTS = ['watch', ...wearSharedSources]
 
 /** Per-Expo-module prebuild inputs: native registration and dependency declarations. */
 const MODULE_PREBUILD_INPUTS = ['expo-module.config.json', 'package.json']
@@ -93,6 +94,9 @@ function hashFiles(paths: string[], root: string, into: Fingerprint) {
 
 export function prebuildFingerprint(platform: Platform, root = ROOT): Fingerprint {
   const fingerprint: Fingerprint = {}
+  if (platform === 'android') {
+    fingerprint['env:EXPO_PUBLIC_SMOKE'] = process.env.EXPO_PUBLIC_SMOKE === '1' ? '1' : '0'
+  }
   const inputs = [
     ...PREBUILD_INPUTS,
     ...(platform === 'ios' ? IOS_PREBUILD_INPUTS : ANDROID_PREBUILD_INPUTS),
@@ -271,12 +275,10 @@ function run(command: string[], options: { cwd?: string; env?: Record<string, st
   }
 }
 
-function main() {
-  const platform = process.argv[2] as Platform | undefined
-  if (!platform || !PLATFORMS.includes(platform)) {
-    console.error(`Usage: bun run scripts/native-sync.ts <${PLATFORMS.join('|')}>`)
-    process.exit(1)
-  }
+function syncPlatform(platform: Platform) {
+  // Android compiles these generated module resources directly. Keep them beside copy:shared's
+  // generated assets, but never make an iOS sync perform Android-only work.
+  if (platform === 'android') run(['bun', 'run', 'theme:android'])
 
   const steps = planSync({
     platform,
@@ -307,7 +309,8 @@ function main() {
     if (action === 'shared') {
       copyShared()
     } else if (action === 'prebuild') {
-      run(['bunx', 'expo', 'prebuild', '--platform', platform])
+      // The plan owns CocoaPods below; Expo's automatic install would run it twice.
+      run(['bunx', 'expo', 'prebuild', '--platform', platform, '--no-install'])
     } else {
       // CocoaPods reads paths as ASCII-8BIT and crashes on `unicode_normalize` unless the locale is
       // UTF-8, which non-interactive shells often lack; Expo's own CLI pins LANG for the same reason.
@@ -322,6 +325,16 @@ function main() {
   // Fingerprint the post-sync tree: prebuild can rewrite its own inputs (lockfile, package.json).
   writeCache(platform, readState(platform))
   console.log(`\nnative-sync ${platform}: synced`)
+}
+
+function main() {
+  const requested = process.argv[2] as Platform | undefined
+  if (requested && !PLATFORMS.includes(requested)) {
+    console.error(`Usage: bun run scripts/native-sync.ts [${PLATFORMS.join('|')}]`)
+    process.exit(1)
+  }
+
+  for (const platform of requested ? [requested] : PLATFORMS) syncPlatform(platform)
 }
 
 if (import.meta.main) {

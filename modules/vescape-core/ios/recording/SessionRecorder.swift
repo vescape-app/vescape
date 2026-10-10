@@ -7,6 +7,11 @@ import Foundation
 /// match Android byte-for-byte so recordings replay on either platform:
 /// `{"t":<ms>,"kind":"meta"|"ble-chunk"|"location"|"session-state",...}`.
 ///
+/// Lines are appended from several threads — BLE chunks arrive on the CoreBluetooth callback
+/// queue, phone heading comes from JS on the module queue — so every write holds `writeLock`.
+/// Without it two `write()` calls interleave on the shared handle and emit a concatenated line,
+/// which breaks replay of the whole recording.
+///
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/recording/SessionRecorder.kt `SessionRecorder`
 internal final class SessionRecorder {
   private let store: DebugRecordingStore
@@ -15,27 +20,24 @@ internal final class SessionRecorder {
   private let pollIntervalMs: Int
   private let startedAt: Int64
   private var handle: FileHandle?
+  private let writeLock = NSLock()
   let fileURL: URL
 
-  /// Fails (returns nil) when the recording file cannot be created or opened, so callers never
+  /// Throws when the recording file cannot be created or opened, so callers never
   /// install a recorder that silently drops every line.
-  init?(
+  init(
     store: DebugRecordingStore = DebugRecordingStore(),
     deviceName: String,
     deviceId: String,
     pollIntervalMs: Int
-  ) {
+  ) throws {
     self.store = store
     self.deviceName = deviceName
     self.deviceId = deviceId
     self.pollIntervalMs = pollIntervalMs
     self.startedAt = Int64(Date().timeIntervalSince1970 * 1000)
-    guard let url = store.createFile(deviceName: deviceName),
-      let handle = try? FileHandle(forWritingTo: url)
-    else {
-      NSLog("[vescape] Debug recording file creation failed for \(deviceName)")
-      return nil
-    }
+    let url = try store.createFile(deviceName: deviceName)
+    let handle = try FileHandle(forWritingTo: url)
     self.fileURL = url
     self.handle = handle
   }
@@ -52,19 +54,6 @@ internal final class SessionRecorder {
       ("startedAt", startedAt),
     ])
     recordState("recording-started")
-  }
-
-  /// The phone's compass bearing, pushed down from JS — the sensor is read there, so native cannot
-  /// observe it on its own. Recorded so a replay can drive the heading cone and Compass follow off
-  /// the real measured rotation instead of a stand-in derived from GPS course.
-  ///
-  /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/recording/SessionRecorder.kt `recordPhoneHeading`
-  func recordPhoneHeading(_ headingDeg: Double) {
-    write([
-      ("t", elapsed()),
-      ("kind", "phone-heading"),
-      ("headingDeg", headingDeg),
-    ])
   }
 
   func recordState(_ status: String, extra: [(String, Any?)] = []) {
@@ -108,15 +97,24 @@ internal final class SessionRecorder {
 
   func finish(status: String) {
     recordState(status)
-    try? handle?.close()
+    writeLock.lock()
+    defer { writeLock.unlock() }
+    do { try handle?.close() }
+    catch { UnexpectedNativeError.report(operation: "debug_recording_close", category: "file_close_failed", error: error) }
     handle = nil
   }
 
   private func elapsed() -> Int64 { Int64(Date().timeIntervalSince1970 * 1000) - startedAt }
 
   private func write(_ fields: [(String, Any?)]) {
-    guard let handle, let data = (Self.jsonLine(fields) + "\n").data(using: .utf8) else { return }
-    handle.write(data)
+    guard let data = (Self.jsonLine(fields) + "\n").data(using: .utf8) else { return }
+    writeLock.lock()
+    defer { writeLock.unlock() }
+    do { try handle?.write(contentsOf: data) }
+    catch {
+      handle = nil
+      UnexpectedNativeError.report(operation: "debug_recording_append", category: "file_write_failed", error: error)
+    }
   }
 
   /// Serialize one recording line with stable field order. `nil` values are omitted, matching
@@ -194,8 +192,8 @@ internal final class DebugRecordingStore {
     return FileManager.default.fileExists(atPath: url.path) ? url : nil
   }
 
-  func createFile(deviceName: String) -> URL? {
-    try? FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+  func createFile(deviceName: String) throws -> URL {
+    try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
     var safeName = deviceName.replacingOccurrences(
       of: "[^A-Za-z0-9._-]+",
       with: "-",
@@ -204,25 +202,31 @@ internal final class DebugRecordingStore {
     safeName = safeName.trimmingCharacters(in: CharacterSet(charactersIn: "-"))
     if safeName.isEmpty { safeName = "vesc-board" }
     let url = directory.appendingPathComponent("\(Int64(Date().timeIntervalSince1970 * 1000))-\(safeName).jsonl")
-    guard FileManager.default.createFile(atPath: url.path, contents: nil) else { return nil }
+    guard FileManager.default.createFile(atPath: url.path, contents: nil) else {
+      throw CocoaError(.fileWriteUnknown)
+    }
     return url
   }
 
   func list() throws -> [[String: Any]] {
-    guard FileManager.default.fileExists(atPath: directory.path) else { return [] }
-    let files = try FileManager.default.contentsOfDirectory(
-      at: directory,
-      includingPropertiesForKeys: [.contentModificationDateKey, .fileSizeKey, .isRegularFileKey]
-    )
-    return files
+    let files: [URL]
+    do {
+      files = try FileManager.default.contentsOfDirectory(
+        at: directory,
+        includingPropertiesForKeys: [.contentModificationDateKey, .fileSizeKey, .isRegularFileKey]
+      )
+    } catch let error as NSError
+      where error.domain == NSCocoaErrorDomain && error.code == NSFileReadNoSuchFileError
+    { return [] }
+    return try files
       .filter { $0.pathExtension == "jsonl" }
       .compactMap { url -> (URL, Int64, Int64)? in
-        guard
-          let values = try? url.resourceValues(forKeys: [.contentModificationDateKey, .fileSizeKey, .isRegularFileKey]),
-          values.isRegularFile == true
-        else { return nil }
-        let modifiedMs = Int64((values.contentModificationDate?.timeIntervalSince1970 ?? 0) * 1000)
-        return (url, modifiedMs, Int64(values.fileSize ?? 0))
+        let values = try url.resourceValues(forKeys: [.contentModificationDateKey, .fileSizeKey, .isRegularFileKey])
+        guard values.isRegularFile == true else { return nil }
+        guard let modified = values.contentModificationDate, let size = values.fileSize else {
+          throw CocoaError(.fileReadUnknown)
+        }
+        return (url, Int64(modified.timeIntervalSince1970 * 1000), Int64(size))
       }
       .sorted { $0.1 > $1.1 }
       .map { url, createdAt, sizeBytes in
@@ -251,7 +255,10 @@ internal final class DebugRecordingStore {
       try FileManager.default.removeItem(at: export)
     }
     try FileManager.default.copyItem(at: source, to: export)
-    let sizeBytes = Int64((try? export.resourceValues(forKeys: [.fileSizeKey]))?.fileSize ?? 0)
+    guard let size = try export.resourceValues(forKeys: [.fileSizeKey]).fileSize else {
+      throw CocoaError(.fileReadUnknown)
+    }
+    let sizeBytes = Int64(size)
     return [
       "uri": export.absoluteString,
       "name": name,

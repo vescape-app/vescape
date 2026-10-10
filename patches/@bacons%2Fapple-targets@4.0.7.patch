@@ -1,5 +1,8 @@
+diff --git a/node_modules/@bacons/apple-targets/.bun-tag-82c92e91eb5d5296 b/.bun-tag-82c92e91eb5d5296
+new file mode 100644
+index 0000000000000000000000000000000000000000..e69de29bb2d1d6434b8b29ae775ad8c2e48c5391
 diff --git a/build/with-xcode-changes.js b/build/with-xcode-changes.js
-index 343bcb93acde6926388ad54e309922d4962c2a38..04bae02024614c14e5c39dc9ec328f0a363ec426 100644
+index 343bcb93acde6926388ad54e309922d4962c2a38..b12ffe20be71e4e891b10739b0e7466b4081292d 100644
 --- a/build/with-xcode-changes.js
 +++ b/build/with-xcode-changes.js
 @@ -208,19 +208,23 @@ async function applyXcodeChanges(config, project, props) {
@@ -30,3 +33,42 @@ index 343bcb93acde6926388ad54e309922d4962c2a38..04bae02024614c14e5c39dc9ec328f0a
          // Create new build phases
          targetToUpdate.props.buildConfigurationList =
              (0, configuration_list_1.createConfigurationListForType)(project, props);
+@@ -317,7 +321,14 @@ async function applyXcodeChanges(config, project, props) {
+             .filter((file) => file !== ".DS_Store" &&
+             fs_1.default.statSync(path_1.default.join(assetsDir, file)).isDirectory())
+             .map((file) => path_1.default.join("assets", file));
+-    const protectedGroup = ensureProtectedGroup(project, path_1.default.dirname(props.cwd));
++    // The protected group is created once and shared by every target, so its path cannot depend on
++    // one target's parent directory: with targets under more than one root (e.g. `targets/*` and
++    // `watch/watchos`), the first target's parent won the group path and every later target
++    // resolved to a directory that does not exist, silently building an empty bundle. Anchor the
++    // group at the project's parent (the app root) and give each synchronized root group its full
++    // path from there.
++    const protectedGroup = ensureProtectedGroup(project, "..");
++    const syncRootGroupPath = path_1.default.relative("..", props.cwd).split(path_1.default.sep).join("/");
+     const sharedAssets = (0, glob_1.globSync)("_shared/*", {
+         absolute: false,
+         cwd: magicCwd,
+@@ -328,10 +339,10 @@ async function applyXcodeChanges(config, project, props) {
+         absolute: false,
+         cwd: targetsDir,
+     });
+-    let syncRootGroup = protectedGroup.props.children.find((child) => child.props.path === path_1.default.basename(props.cwd));
++    let syncRootGroup = protectedGroup.props.children.find((child) => child.props.path === syncRootGroupPath);
+     if (!syncRootGroup) {
+         syncRootGroup = xcode_1.PBXFileSystemSynchronizedRootGroup.create(project, {
+-            path: path_1.default.basename(props.cwd),
++            path: syncRootGroupPath,
+             exceptions: [
+                 xcode_1.PBXFileSystemSynchronizedBuildFileExceptionSet.create(project, {
+                     target: targetToUpdate,
+@@ -474,5 +485,9 @@ function ensureProtectedGroup(project, relativePath = "../targets") {
+     if (!hasProtectedGroup) {
+         project.rootObject.props.mainGroup.props.children.unshift(protectedGroup);
+     }
++    else {
++        // Re-anchor groups written by an earlier version that pointed at one target's parent.
++        protectedGroup.props.path = relativePath;
++    }
+     return protectedGroup;
+ }

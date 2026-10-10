@@ -1,0 +1,13 @@
+diff --git a/scripts/ios/cocoapods/installer.rb b/scripts/ios/cocoapods/installer.rb
+--- a/scripts/ios/cocoapods/installer.rb
++++ b/scripts/ios/cocoapods/installer.rb
+@@ -48,6 +48,9 @@
+       # Fix: replace the sequential generator with collision-safe random UUIDs for any
+       # objects created after predictabilize_uuids has run.
+       project = self.pods_project
++      # Discard sequential IDs queued before switching generators. They can already
++      # belong to objects created by React Native during the post_install hook.
++      project.instance_variable_set(:@available_uuids, [])
+       existing_uuids = project.objects_by_uuid.keys.to_set
+       project.define_singleton_method(:generate_available_uuid_list) do |count = 100|
+         new_uuids = (0..count).map { SecureRandom.hex(12).upcase }

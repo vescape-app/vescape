@@ -62,13 +62,7 @@ export function VersionNoticeModal({
       title={notice.title}
       titleIcon={notice.icon}
       titleIconColor={notice.iconColor}
-      footer={
-        <Button
-          label="Update"
-          onPress={onUpdate}
-          style={{ backgroundColor: theme.status.upgrade.color }}
-        />
-      }
+      footer={<Button label="Update" variant="tune" onPress={onUpdate} />}
       onExited={onExited}
     >
       <Markdown>{rendered}</Markdown>

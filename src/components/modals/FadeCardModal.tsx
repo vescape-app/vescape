@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, type ReactNode } from 'react'
 import {
   Animated,
   Modal,
+  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -12,7 +13,7 @@ import {
 import { XIcon, type Icon } from 'phosphor-react-native'
 
 import { Text } from '@/components/base/Text'
-import { theme } from '@/constants/theme'
+import { theme, type ThemeColor } from '@/constants/theme'
 
 const FADE_DURATION = 120
 
@@ -30,10 +31,10 @@ interface FadeCardModalProps {
   dismissDisabled?: boolean
   title?: string
   titleIcon?: Icon
-  titleIconColor?: string
+  titleIconColor?: ThemeColor
   titleIconWeight?: 'bold' | 'fill'
   /** Overrides the default primary-text title colour (a type accent, say). */
-  titleColor?: string
+  titleColor?: ThemeColor
   /** Close button in the header. Ignored when the card is non-dismissible. */
   showClose?: boolean
   /** Action row under the body. */
@@ -45,6 +46,8 @@ interface FadeCardModalProps {
   children: ReactNode
   /** The card finished fading out and is gone. Not called for a fade-out cut short by a reopen. */
   onExited?: () => void
+  /** Native presentation is gone; safe to open an OS share sheet or another modal. */
+  onDismissed?: () => void
 }
 
 /**
@@ -71,6 +74,7 @@ export function FadeCardModal({
   cardStyle,
   children,
   onExited,
+  onDismissed,
 }: FadeCardModalProps) {
   const [opacity] = useState(() => new Animated.Value(0))
   const [scale] = useState(() => new Animated.Value(0.92))
@@ -107,7 +111,13 @@ export function FadeCardModal({
     }
   }, [visible, mounted, opacity, scale])
 
-  if (!mounted) return null
+  const wasMounted = useRef(false)
+  useEffect(() => {
+    if (wasMounted.current && !mounted && Platform.OS !== 'ios') onDismissed?.()
+    wasMounted.current = mounted
+  }, [mounted, onDismissed])
+
+  // Keep the React Modal mounted while hidden so iOS can deliver its native onDismiss event.
 
   const dismiss = onDismiss && !dismissDisabled ? onDismiss : undefined
   const header =
@@ -127,7 +137,7 @@ export function FadeCardModal({
             accessibilityRole="button"
             accessibilityLabel="Close"
           >
-            <XIcon size={15} color={theme.palette.slate.textSecondary} weight="bold" />
+            <XIcon size={15} color={theme.neutral.textSecondary} weight="bold" />
           </Pressable>
         ) : null}
       </View>
@@ -135,7 +145,8 @@ export function FadeCardModal({
 
   return (
     <Modal
-      visible
+      visible={mounted}
+      onDismiss={onDismissed}
       transparent
       animationType="none"
       // No `onDismiss` means the card is non-dismissible: swallow Android back instead of exiting.
@@ -176,10 +187,10 @@ const styles = StyleSheet.create({
     width: '100%',
     maxWidth: 340,
     maxHeight: '78%',
-    backgroundColor: theme.palette.slate.surfaceDeep,
+    backgroundColor: theme.neutral.surfaceDeep,
     borderRadius: 16,
     borderWidth: 1,
-    borderColor: theme.palette.slate.border,
+    borderColor: theme.neutral.border,
     padding: 18,
     gap: 14,
   },
@@ -197,7 +208,7 @@ const styles = StyleSheet.create({
   },
   title: {
     flex: 1,
-    color: theme.palette.slate.textPrimary,
+    color: theme.neutral.textPrimary,
     fontSize: 16,
     fontWeight: '800',
   },
@@ -207,7 +218,7 @@ const styles = StyleSheet.create({
     borderRadius: 15,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: theme.palette.slate.surface,
+    backgroundColor: theme.neutral.surface,
   },
   body: {
     paddingRight: 2,

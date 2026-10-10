@@ -4,6 +4,7 @@ import { refreshWeather } from 'vescape-core'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 
 import { IconButton } from '@/components/base/IconButton'
+import { Text } from '@/components/base/Text'
 import { theme } from '@/constants/theme'
 import { WeatherHourlyStrip } from '@/modules/weather/components/WeatherHourlyStrip'
 import { WeatherPill } from '@/modules/weather/components/WeatherPill'
@@ -23,6 +24,7 @@ interface WeatherMapOverlayProps {
 export function WeatherMapOverlay({ visible, top, pillTop, onExit }: WeatherMapOverlayProps) {
   const insets = useSafeAreaInsets()
   const radarLoading = useRainViewerRadarStore((s) => s.loading)
+  const radarError = useRainViewerRadarStore((s) => s.error)
   const refreshRadar = useRainViewerRadarStore((s) => s.fetch)
 
   return (
@@ -49,6 +51,7 @@ export function WeatherMapOverlay({ visible, top, pillTop, onExit }: WeatherMapO
       />
       <View pointerEvents="none" style={[styles.weatherExpandedPill, { top: pillTop }]}>
         <WeatherPill expanded onPress={() => undefined} />
+        {radarError ? <Text style={styles.radarError}>{radarError}</Text> : null}
       </View>
       <View
         style={[
@@ -80,8 +83,6 @@ const styles = StyleSheet.create({
     position: 'absolute',
     left: 12,
     zIndex: 32,
-    borderColor: theme.alpha(theme.palette.slate.light, 0.3),
-    backgroundColor: theme.alpha(theme.palette.slate.surfaceDeep, 0.85),
   },
   weatherRefreshButton: {
     position: 'absolute',
@@ -94,6 +95,11 @@ const styles = StyleSheet.create({
     right: 0,
     alignItems: 'center',
     zIndex: 29,
+  },
+  radarError: {
+    color: theme.status.error.text,
+    fontSize: 11,
+    marginTop: 4,
   },
   weatherRadarTimelineContainer: {
     position: 'absolute',

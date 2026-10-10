@@ -18,6 +18,10 @@ import kotlinx.coroutines.sync.withLock
  *
  * The rider's own position is *not* here: it moves every fix, so it rides the Watch Frame lanes
  * (see [WatchFrame.riderEastM]) as an offset from this route's origin.
+ *
+ * @parity /modules/vescape-core/ios/watch/WatchRouteMirror.swift `WatchRouteMirror`
+ * @platform-diff `updateApplicationContext` is synchronous and latest-value-wins, so the iOS peer
+ *   needs neither the write mutex nor the generation counter an async `putDataItem` requires here.
  */
 internal class WatchRoutePusher(
     private val context: Context,
@@ -44,6 +48,11 @@ internal class WatchRoutePusher(
      */
     private val writes = Mutex()
 
+    @Volatile var desiredRouteId: Long = 0
+        private set
+    @Volatile var failed: Boolean = false
+        private set
+
     private val generationLock = Any()
     private var generation = 0
 
@@ -55,6 +64,7 @@ internal class WatchRoutePusher(
             return
         }
         mutate(
+            nextRouteId = WatchRouteStatusCodec.routeId(encoded),
             nextOrigin = points.first(),
             succeeded = "watch_route_pushed" to mapOf<String, Any?>("points" to points.size),
             failed = "watch_route_push_failed",
@@ -72,6 +82,7 @@ internal class WatchRoutePusher(
     /** Removes the route from the watch, which hides the wrist polyline. */
     fun clearRoute() {
         mutate(
+            nextRouteId = 0,
             nextOrigin = null,
             succeeded = null,
             failed = "watch_route_clear_failed",
@@ -87,13 +98,18 @@ internal class WatchRoutePusher(
      * fails, this is still the route the wrist actually holds.
      */
     private fun mutate(
+        nextRouteId: Long,
         nextOrigin: GeoPoint?,
         succeeded: Pair<String, Map<String, Any?>>?,
         failed: String,
         failureMessage: String,
         write: () -> Unit,
     ) {
-        val request = synchronized(generationLock) { ++generation }
+        val request = synchronized(generationLock) {
+            desiredRouteId = nextRouteId
+            this.failed = false
+            ++generation
+        }
         scope.launch {
             writes.withLock {
                 // A mutation the rider has already replaced is not worth a round trip to the watch.
@@ -103,6 +119,7 @@ internal class WatchRoutePusher(
                     origin = nextOrigin
                     succeeded?.let { (event, properties) -> record(event, properties) }
                 } catch (error: Exception) {
+                    synchronized(generationLock) { if (request == generation) this@WatchRoutePusher.failed = true }
                     Log.w(VESC_SESSION_TAG, failureMessage, error)
                     record(failed, mapOf("error" to error.message))
                 }

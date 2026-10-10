@@ -4,6 +4,8 @@ import Svg, { Polyline } from 'react-native-svg'
 
 import { Text } from '@/components/base/Text'
 import { theme } from '@/constants/theme'
+import { DASH } from '@/helpers/format'
+import { useResolvedNeutralColors } from '@/hooks/useTheme'
 
 export interface SpringTraceSample {
   t: number
@@ -34,6 +36,7 @@ export function SpringTraceChart({
   height = DEFAULT_HEIGHT,
   format = (v) => v.toFixed(4),
 }: SpringTraceChartProps) {
+  const neutral = useResolvedNeutralColors()
   const [width, setWidth] = useState(0)
   const last = samples[samples.length - 1]
 
@@ -66,9 +69,9 @@ export function SpringTraceChart({
       <View style={styles.header}>
         <Text style={styles.label}>{label}</Text>
         <Text style={styles.readout}>
-          <Text style={styles.position}>{last ? format(last.position) : '-'}</Text>
+          <Text style={styles.position}>{last ? format(last.position) : DASH}</Text>
           <Text style={styles.separator}> / </Text>
-          <Text style={styles.target}>{last ? format(last.target) : '-'}</Text>
+          <Text style={styles.target}>{last ? format(last.target) : DASH}</Text>
         </Text>
       </View>
       <View
@@ -79,7 +82,7 @@ export function SpringTraceChart({
           <Polyline
             points={targets.trim()}
             fill="none"
-            stroke={theme.palette.slate.textMuted}
+            stroke={neutral.textMuted}
             strokeWidth={1}
             strokeDasharray="3,3"
           />
@@ -99,20 +102,20 @@ const styles = StyleSheet.create({
   container: { gap: 4 },
   header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   label: {
-    color: theme.palette.slate.textSecondary,
+    color: theme.neutral.textSecondary,
     fontSize: 11,
     fontWeight: '700',
     fontFamily: 'monospace',
   },
   readout: { fontSize: 10, fontFamily: 'monospace' },
   position: { color: theme.palette.sky.color },
-  separator: { color: theme.palette.slate.textDim },
-  target: { color: theme.palette.slate.textMuted },
+  separator: { color: theme.neutral.textDim },
+  target: { color: theme.neutral.textMuted },
   plot: {
-    backgroundColor: theme.palette.slate.surfaceDeep,
+    backgroundColor: theme.neutral.surfaceDeep,
     borderRadius: 6,
     borderWidth: 1,
-    borderColor: theme.palette.slate.border,
+    borderColor: theme.neutral.border,
     overflow: 'hidden',
   },
 })

@@ -3,12 +3,17 @@ import { useMemo } from 'react'
 import { IS_MAPY_CONFIGURED } from '@/config/mapy'
 import { BLANK_STYLE, MAP_STYLES, type MapStyleKey } from '@/modules/map/constants/mapStyles'
 import {
-  getSatelliteDarkMapStyle,
   getSatelliteImageryPaint,
+  getSatelliteOverlayMapStyle,
 } from '@/modules/map/constants/satelliteDarkMapStyle'
 import { getOneDarkMapStyle } from '@/modules/map/constants/oneDarkMapStyle'
+import { resolveMapThemeTone } from '@/modules/map/lib/mapThemeTone'
+import { useThemeStore } from '@/hooks/useTheme'
+import { mapStyleForTheme } from '@/modules/map/lib/mapTheme'
+import Mapbox from '@rnmapbox/maps'
 
 import type { MainViewState } from '@/screens/main/mainViewState'
+import { baseStyleLayerIds } from '@/screens/main/map/baseStyleLayerIds'
 
 /**
  * Resolves the requested map style into everything the map view and the `existing`
@@ -23,7 +28,6 @@ export function useResolvedMapStyle({
   satelliteMapImageryOpacity,
   satelliteImagerySaturation,
   hideTelemetryMapDetails,
-  loadedStyleSignature,
 }: {
   mapStyleKey: MapStyleKey
   mode: MainViewState
@@ -32,9 +36,14 @@ export function useResolvedMapStyle({
   satelliteMapImageryOpacity: number
   satelliteImagerySaturation: number
   hideTelemetryMapDetails: boolean
-  loadedStyleSignature: string | null
 }) {
-  const requestedMapStyle = MAP_STYLES.find((style) => style.key === mapStyleKey) ?? MAP_STYLES[0]
+  const resolvedTheme = useThemeStore((state) => state.resolvedTheme)
+  const outdoorLight = useThemeStore((state) => state.outdoorLight)
+  const renderedStyleKey = mapStyleForTheme(mapStyleKey, resolvedTheme)
+  const requestedMapStyle =
+    renderedStyleKey === 'outdoors'
+      ? { key: 'outdoors' as const, styleURL: Mapbox.StyleURL.Outdoors }
+      : (MAP_STYLES.find((style) => style.key === renderedStyleKey) ?? MAP_STYLES[0])
   const selectedMapStyle =
     requestedMapStyle.key === 'mapy' && !IS_MAPY_CONFIGURED ? MAP_STYLES[0] : requestedMapStyle
   const isMapy = selectedMapStyle.key === 'mapy'
@@ -48,52 +57,86 @@ export function useResolvedMapStyle({
     mode === 'telemetry' ? satelliteImageryOpacity : satelliteMapImageryOpacity
   const effectiveSatelliteImagerySaturation = mode === 'telemetry' ? satelliteImagerySaturation : 0
 
-  const satelliteStyleJSON = useMemo(
+  const satelliteTone = useMemo(
     () =>
-      getSatelliteDarkMapStyle(
-        satelliteImageryOpacity,
-        true,
-        true,
-        false,
-        true,
-        satelliteImagerySaturation,
-        0.35,
-      ),
-    [satelliteImageryOpacity, satelliteImagerySaturation],
+      resolveMapThemeTone({
+        theme: resolvedTheme,
+        outdoorLight,
+        imageryOpacity: effectiveSatelliteImageryOpacity,
+        imagerySaturation: effectiveSatelliteImagerySaturation,
+      }),
+    [
+      effectiveSatelliteImageryOpacity,
+      effectiveSatelliteImagerySaturation,
+      outdoorLight,
+      resolvedTheme,
+    ],
   )
+
   const satelliteImageryPaint = useMemo(
     () =>
       getSatelliteImageryPaint(
-        effectiveSatelliteImageryOpacity,
-        effectiveSatelliteImagerySaturation,
+        satelliteTone.imageryOpacity,
+        satelliteTone.imagerySaturation,
+        satelliteTone.imageryContrast,
       ),
-    [effectiveSatelliteImageryOpacity, effectiveSatelliteImagerySaturation],
+    [satelliteTone.imageryContrast, satelliteTone.imageryOpacity, satelliteTone.imagerySaturation],
   )
   const oneDarkStyleJSON = useMemo(() => getOneDarkMapStyle(true, true, false), [])
+  const satelliteStyleJSON = useMemo(
+    () => getSatelliteOverlayMapStyle(resolvedTheme),
+    [resolvedTheme],
+  )
 
-  const styleSignature = isSatelliteOverlay
-    ? `${selectedMapStyle.key}:${satelliteImageryOpacity}:${satelliteImagerySaturation}`
-    : `${selectedMapStyle.key}:${useCustomJSON ? 'json' : selectedMapStyle.styleURL}`
-
-  return {
-    styleKey: selectedMapStyle.key,
-    isMapy,
-    isOneDark,
-    isSatellite,
-    isSatelliteOverlay,
-    mapDetailsVisible,
-    showBuildings3d: selectedMapStyle.key === 'outdoors' || selectedMapStyle.key === 'onedark',
-    styleURL: useCustomJSON ? undefined : selectedMapStyle.styleURL,
-    styleJSON: isOneDark
+  const styleJSON = isSatelliteOverlay
+    ? satelliteStyleJSON
+    : isOneDark
       ? oneDarkStyleJSON
       : isMapy
         ? BLANK_STYLE
-        : isSatelliteOverlay
-          ? satelliteStyleJSON
-          : undefined,
-    satelliteImageryPaint,
-    satelliteRoadLineOpacity: mode === 'telemetry' ? 0.35 : 0.75,
-    styleSignature,
-    canUpdateExistingStyleLayers: loadedStyleSignature === styleSignature && !isMapy,
-  }
+        : undefined
+  const existingLayerIds = useMemo(() => baseStyleLayerIds(styleJSON), [styleJSON])
+
+  // Signed by the style document Mapbox actually receives. A theme change replaces the
+  // satellite backdrop, so it must wait for the new document before adopting its layers.
+  const styleSignature = styleJSON
+    ? isMapy
+      ? 'json:blank'
+      : isSatelliteOverlay
+        ? `json:satellite:${resolvedTheme}`
+        : 'json:onedark'
+    : String(selectedMapStyle.styleURL)
+
+  return useMemo(
+    () => ({
+      styleKey: selectedMapStyle.key,
+      isMapy,
+      isOneDark,
+      isSatellite,
+      isSatelliteOverlay,
+      mapDetailsVisible,
+      showBuildings3d: selectedMapStyle.key === 'outdoors' || selectedMapStyle.key === 'onedark',
+      styleURL: useCustomJSON ? undefined : selectedMapStyle.styleURL,
+      styleJSON,
+      existingLayerIds,
+      satelliteImageryPaint,
+      satelliteRoadLineOpacity: satelliteTone.roadLineOpacity * (mode === 'telemetry' ? 0.6 : 1),
+      styleSignature,
+    }),
+    [
+      isMapy,
+      isOneDark,
+      isSatellite,
+      isSatelliteOverlay,
+      mapDetailsVisible,
+      mode,
+      satelliteImageryPaint,
+      satelliteTone,
+      selectedMapStyle,
+      styleJSON,
+      existingLayerIds,
+      styleSignature,
+      useCustomJSON,
+    ],
+  )
 }

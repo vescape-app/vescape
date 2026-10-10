@@ -6,9 +6,10 @@ import type { RefloatConfigField, TuneProfileFieldValue } from 'vescape-core'
 
 import { isDisplayableFieldValue } from '@/modules/tune/lib/fieldValues'
 import { formatProfileValue } from '@/modules/tune/lib/sliderDefinitions'
-import { formatTuneValue } from '@/modules/tune/lib/fields'
+import { formatTuneValue, tuneDisplayValue } from '@/modules/tune/lib/fields'
 import { TuneTileFill } from '@/modules/tune/components/TuneTileFill'
-import { theme } from '@/constants/theme'
+import { theme, type ThemeColor } from '@/constants/theme'
+import { useResolvedNeutralColors } from '@/hooks/useTheme'
 
 interface TuneConfigCellProps {
   field: RefloatConfigField
@@ -17,7 +18,7 @@ interface TuneConfigCellProps {
   profileValue: TuneProfileFieldValue | undefined
   dirty: boolean
   boardChanged: boolean
-  color: string
+  color: ThemeColor
   onPress: () => void
   onRevert: () => void
   onAcceptBoard: () => void
@@ -38,6 +39,7 @@ export const TuneConfigCell = forwardRef<View, TuneConfigCellProps>(function Tun
   },
   ref,
 ) {
+  const neutral = useResolvedNeutralColors()
   const canAcceptBoard = boardChanged && isDisplayableFieldValue(boardValue)
   const hasActions = dirty || canAcceptBoard
   const progressFraction =
@@ -54,7 +56,12 @@ export const TuneConfigCell = forwardRef<View, TuneConfigCellProps>(function Tun
   return (
     <View ref={ref} style={styles.cellWrapper}>
       <Pressable
-        style={[styles.cell, dirty && styles.cellDirty, boardChanged && styles.cellBoardChanged]}
+        style={[
+          styles.cell,
+          { borderColor: neutral.border, backgroundColor: neutral.surfaceDeep },
+          dirty && styles.cellDirty,
+          boardChanged && styles.cellBoardChanged,
+        ]}
         onPress={onPress}
       >
         <TuneTileFill fraction={progressFraction} color={color} />
@@ -73,18 +80,27 @@ export const TuneConfigCell = forwardRef<View, TuneConfigCellProps>(function Tun
         ) : null}
         <View style={styles.cellHeaderRow}>
           <Text
-            style={[styles.cellLabel, hasActions && styles.cellLabelWithAction]}
+            style={[
+              styles.cellLabel,
+              { color: neutral.textPrimary },
+              hasActions && styles.cellLabelWithAction,
+            ]}
             numberOfLines={2}
           >
             {field.label}
           </Text>
         </View>
-        <Text style={styles.cellValue} numberOfLines={1} adjustsFontSizeToFit selectable>
-          {formatTuneValue(field.value)}
+        <Text
+          style={[styles.cellValue, { color: neutral.textPrimary }]}
+          numberOfLines={1}
+          adjustsFontSizeToFit
+          selectable
+        >
+          {formatTuneValue(tuneDisplayValue(field.id, field.value))}
         </Text>
         {dirty && isDisplayableFieldValue(savedValue) ? (
           <Text style={[styles.cellOldValue, styles.cellTextWithActions]} numberOfLines={1}>
-            was {formatTuneValue(savedValue)}
+            was {formatTuneValue(tuneDisplayValue(field.id, savedValue))}
           </Text>
         ) : null}
         {boardChanged ? (
@@ -92,12 +108,15 @@ export const TuneConfigCell = forwardRef<View, TuneConfigCellProps>(function Tun
             style={[styles.cellProfileValue, hasActions && styles.cellTextWithActions]}
             numberOfLines={1}
           >
-            profile {formatProfileValue(profileValue)}
+            profile{' '}
+            {formatProfileValue(
+              profileValue == null ? profileValue : tuneDisplayValue(field.id, profileValue),
+            )}
           </Text>
         ) : null}
         {canAcceptBoard ? (
           <Text style={[styles.cellBoardValue, styles.cellTextWithActions]} numberOfLines={1}>
-            board {formatTuneValue(boardValue)}
+            board {formatTuneValue(tuneDisplayValue(field.id, boardValue))}
           </Text>
         ) : null}
       </Pressable>
@@ -116,16 +135,14 @@ const styles = StyleSheet.create({
     paddingHorizontal: 10,
     borderRadius: 10,
     borderWidth: 1,
-    borderColor: theme.palette.slate.border,
-    backgroundColor: theme.palette.slate.surface,
+    borderColor: theme.neutral.border,
+    backgroundColor: theme.neutral.surfaceDeep,
     overflow: 'hidden',
   },
   cellDirty: {
-    backgroundColor: theme.palette.sky.bg,
     borderColor: theme.palette.sky.border,
   },
   cellBoardChanged: {
-    backgroundColor: theme.palette.green.bg,
     borderColor: theme.palette.green.border,
   },
   cellRevertButton: {
@@ -165,7 +182,7 @@ const styles = StyleSheet.create({
     position: 'absolute',
     right: 10,
     bottom: 4,
-    color: theme.palette.slate.textPrimary,
+    color: theme.neutral.textPrimary,
     fontSize: 22,
     fontWeight: '500',
     fontVariant: ['tabular-nums'],
@@ -182,7 +199,7 @@ const styles = StyleSheet.create({
     marginTop: 1,
   },
   cellProfileValue: {
-    color: theme.palette.slate.textSecondary,
+    color: theme.neutral.textSecondary,
     fontSize: 10,
     fontWeight: '800',
     marginTop: 1,
@@ -194,7 +211,7 @@ const styles = StyleSheet.create({
     marginTop: 1,
   },
   cellLabel: {
-    color: theme.palette.slate.textPrimary,
+    color: theme.neutral.textPrimary,
     fontSize: 13,
     fontWeight: '800',
     flex: 1,

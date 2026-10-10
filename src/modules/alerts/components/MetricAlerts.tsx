@@ -1,18 +1,15 @@
 import { type ReactNode, useMemo, useState } from 'react'
 import { StyleSheet, View } from 'react-native'
-import { type SharedValue } from 'react-native-reanimated'
-import type { AlertTestRule } from 'vescape-core'
+import type { SharedValue } from 'react-native-reanimated'
 
 import { Text } from '@/components/base/Text'
-import { type DualGaugeAlert } from '@/components/charts/gaugeAlert'
 import { ConfirmModal } from '@/components/modals/ConfirmModal'
 import { theme } from '@/constants/theme'
 import { deriveBatteryConfig } from '@/modules/battery/lib'
-import { type DerivedBatteryConfig } from '@/modules/battery/lib/types'
+import type { DerivedBatteryConfig } from '@/modules/battery/lib/types'
 import { AlertPresetControl } from '@/modules/alerts/components/AlertPresetControl'
 import { AlertRuleList } from '@/modules/alerts/components/AlertRuleList'
-import { type MetricAlertsController } from '@/modules/alerts/hooks/useMetricAlerts'
-import { buildMetricAlertRuleSnapshot } from '@/modules/alerts/lib/alertTest'
+import type { MetricAlertsController } from '@/modules/alerts/hooks/useMetricAlerts'
 import { useBoardStore } from '@/modules/board/store/boardStore'
 
 /** Structural mirror of the gauge hot-range span; keeps this module clear of the history module. */
@@ -27,11 +24,8 @@ interface MetricAlertsProps {
   /** Live telemetry value driving the gauge needle; absent renders the offline preview. */
   liveValue?: SharedValue<number | null>
   hotRange?: MetricAlertsHotRange | null
-  /** Screen telemetry placed after the preset gauge but before its controls. */
-  detailContent?: ReactNode
+  /** Detail-screen Alerts heading, placed directly below the gauge. */
   controlsHeader?: ReactNode
-  /** Optional precomputed snapshot shared with the screen's chart markers. */
-  ruleSnapshot?: AlertTestRule[]
 }
 
 /**
@@ -47,39 +41,11 @@ export function MetricAlerts({
   unit,
   liveValue,
   hotRange,
-  detailContent,
   controlsHeader,
-  ruleSnapshot,
 }: MetricAlertsProps) {
   const [confirmingDiscard, setConfirmingDiscard] = useState(false)
 
   const batteryConfig = useBatteryConfig(controller?.controlId)
-  const customMarkers = useMemo<DualGaugeAlert[]>(
-    () =>
-      (controller?.rules ?? [])
-        .filter((rule) => rule.enabled)
-        .map((rule) => ({
-          id: rule.id,
-          threshold: rule.threshold,
-          thresholdMax: rule.thresholdMax,
-          repeats: rule.repeatEverySeconds != null,
-        })),
-    [controller?.rules],
-  )
-  const derivedRuleSnapshot = useMemo(
-    () =>
-      controller
-        ? buildMetricAlertRuleSnapshot({
-            metric: controller.metric,
-            level: controller.level,
-            rules: controller.rules,
-            boardTopSpeedKmh: controller.topSpeedKmh,
-            hasBatteryConfig: controller.hasBatteryConfig,
-          })
-        : [],
-    [controller],
-  )
-  const visibleRuleSnapshot = ruleSnapshot ?? derivedRuleSnapshot
 
   if (!controller) return <NoBoardNotice />
 
@@ -97,16 +63,20 @@ export function MetricAlerts({
           onLevelChange={controller.setLevel}
           liveValue={liveValue}
           boardTopSpeedKmh={controller.topSpeedKmh}
-          hasBatteryConfig={hasBatteryConfig}
-          customAlerts={customMarkers}
+          matchBoardConfig={controller.matchBoardConfig}
+          onMatchBoardConfigChange={controller.setMatchBoardConfig}
+          configBases={controller.configBases}
           hotRange={hotRange}
           disabled={batteryBlocked}
-          testRules={visibleRuleSnapshot}
-          detailContent={detailContent}
+          ruleSnapshot={controller.ruleSnapshot}
           controlsHeader={controlsHeader}
           onCustomize={controller.customize}
           onDiscardCustom={() => setConfirmingDiscard(true)}
         />
+      ) : null}
+
+      {controller.error && !isCustom && metric ? (
+        <Text style={styles.error}>{controller.error}</Text>
       ) : null}
 
       {batteryBlocked ? (
@@ -164,11 +134,12 @@ const styles = StyleSheet.create({
   container: {
     gap: 10,
   },
+  error: { color: theme.status.error.color, fontSize: 12 },
   rules: {
     gap: 8,
   },
   note: {
-    color: theme.palette.slate.textMuted,
+    color: theme.neutral.textMuted,
     fontSize: 12,
     fontWeight: '500',
     lineHeight: 16,

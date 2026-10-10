@@ -18,6 +18,7 @@ const ALLOWED_EDGES = new Set([
   'alerts -> battery',
   'board -> battery',
   // settings store is app-settings truth read by domain stores
+  'accessories -> settings',
   'alerts -> settings',
   'board -> settings',
   'history -> settings',
@@ -36,6 +37,8 @@ const ALLOWED_EDGES = new Set([
   // TODO(decouple): board components read alertsStore + history color scale
   'board -> alerts',
   'board -> history',
+  // DevBadge toggles debug session recording on the board store
+  'diagnostics -> board',
   // TODO(decouple): AlertFormModal renders TuneDial
   'alerts -> tune',
 ])

@@ -1,14 +1,81 @@
 name: CI
 
 on:
+  workflow_dispatch:
   push:
     branches: [main, dev]
   pull_request:
     types: [opened, synchronize, reopened]
 
+# Replace obsolete PR checks, while keeping a verdict for every dev/main commit.
+concurrency:
+  group: ci-${{ github.event_name }}-${{ github.event.pull_request.number || github.sha }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 jobs:
+  persistence-contracts:
+    uses: ./.github/workflows/persistence-contracts.yml
+    with:
+      source_sha: ${{ github.sha }}
+
+  # Full app-native builds cost minutes and require SDKs. Keep those filtered by platform source;
+  # the host-only persistence contract above remains unconditional because shared fixtures and
+  # archive exchange span both implementations.
+  native-gate:
+    name: Native gate
+    runs-on: ubuntu-24.04
+    outputs:
+      android: ${{ steps.filter.outputs.android }}
+      ios: ${{ steps.filter.outputs.ios }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dorny/paths-filter@v3
+        id: filter
+        with:
+          filters: |
+            shared: &shared
+              - 'shared/**'
+              - 'package.json'
+              - 'bun.lock'
+              - 'patches/**'
+              - '.github/workflows/ci.yml'
+            android:
+              - *shared
+              - 'modules/*/android/**'
+              - 'modules/*/*.podspec'
+              - 'plugins/**'
+              - 'watch/**'
+              - 'app.config.ts'
+              - 'scripts/generate-android-theme.ts'
+              - 'scripts/copy-shared.ts'
+            ios:
+              - *shared
+              - 'modules/*/ios/**'
+              - 'modules/*/Package.swift'
+              - 'scripts/test-ios.ts'
+              - 'scripts/native-sync.ts'
+
   check:
-    runs-on: blacksmith-4vcpu-ubuntu-2404
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - uses: oven-sh/setup-bun@v2
+      - run: bun install
+      - run: bun run copy:shared
+      - run: bun run ts
+      - run: bun run lint
+      - run: bun run format:check
+      - run: bun run knip
+      - run: bun run test:bun
+      - run: bun run release-notes:check
+
+  android:
+    needs: native-gate
+    if: needs.native-gate.outputs.android == 'true'
+    runs-on: ubuntu-24.04
     env:
       GRADLE_OPTS: -Dorg.gradle.caching=true -Dorg.gradle.daemon=false
     steps:
@@ -17,13 +84,11 @@ jobs:
         with:
           node-version: '24'
       - uses: oven-sh/setup-bun@v2
-        with:
-          bun-version: latest
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: '17'
-      - uses: useblacksmith/cache@v5
+      - uses: actions/cache@v5
         with:
           path: |
             ~/.gradle/caches
@@ -34,21 +99,79 @@ jobs:
       - uses: android-actions/setup-android@v3
         with:
           packages: ''
-      # The Android SDK download is independent of everything JS, so it overlaps
-      # with install + the pure-JS checks. Only the Gradle test below needs both.
+      - name: Install Android SDK components
+        run: sdkmanager "platforms;android-36" "build-tools;36.0.0"
       - run: bun install
       - run: bun run copy:shared
-      - parallel:
-          - name: Install Android SDK components
-            run: sdkmanager "platforms;android-36" "build-tools;36.0.0"
-          - run: bun run ts
-          - run: bun run lint
-          - run: bun run format:check
-          - run: bun run knip
-          - run: bun run test:bun
-          - run: bun run release-notes:check
       - run: bun x expo prebuild --platform android --no-install
       - run: bun run test:android
       - name: Release Gradle file handles
         if: always()
         run: cd android && ./gradlew --stop || true
+
+  # Swift was only ever compiled in the release build, so a type error in `modules/vescape-core/ios`
+  # escaped every PR and failed at TestFlight time. The SwiftPM package globs the same tree
+  # CocoaPods ships, so the tests cannot run without compiling it.
+  ios:
+    needs: native-gate
+    if: github.event_name == 'workflow_dispatch' || needs.native-gate.outputs.ios == 'true'
+    runs-on: macos-26
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+      - uses: actions/cache@v5
+        with:
+          path: |
+            ~/Library/Caches/org.swift.swiftpm
+            ~/Library/Developer/Xcode/DerivedData
+          key: spm-${{ runner.os }}-${{ hashFiles('modules/vescape-core/Package.swift') }}
+          restore-keys: |
+            spm-${{ runner.os }}-
+      - name: Prepare an available iOS test simulator
+        timeout-minutes: 15
+        run: |
+          bun run - <<'JS'
+          import { appendFileSync } from 'node:fs'
+
+          function simctl(args, timeout, capture = false, attempts = 1) {
+            for (let attempt = 1; attempt <= attempts; attempt++) {
+              const result = Bun.spawnSync(['xcrun', 'simctl', ...args], {
+                stdout: capture ? 'pipe' : 'inherit', stderr: 'pipe', timeout,
+              })
+              if (result.success) return capture ? result.stdout.toString() : ''
+              console.error(`simctl ${args.join(' ')} attempt ${attempt}/${attempts} failed after ${timeout}ms; exit=${result.exitCode}, signal=${result.signalCode}`)
+              const stderr = result.stderr.toString().trim()
+              if (stderr) console.error(stderr)
+            }
+            throw new Error(`simctl ${args.join(' ')} failed`)
+          }
+          // A hosted macOS runner can still be starting CoreSimulator when this step begins.
+          const inventory = JSON.parse(simctl(['list', 'devices', 'available', '--json'], 120_000, true, 2))
+          const selected = Object.entries(inventory.devices)
+            .filter(([runtime]) => runtime.includes('.iOS-'))
+            .flatMap(([, devices]) => devices)
+            .find((device) => device.name === 'iPhone 17' && device.isAvailable)
+          if (!selected) {
+            console.error(JSON.stringify(inventory, null, 2))
+            simctl(['list', 'runtimes'], 60_000)
+            throw new Error('No available iPhone 17 simulator on this runner.')
+          }
+          console.log(`Preparing iPhone 17 (${selected.udid})`)
+          if (selected.state !== 'Booted') simctl(['boot', selected.udid], 300_000)
+          // First boot on a fresh image can spend several minutes migrating system apps.
+          simctl(['bootstatus', selected.udid, '-b'], 600_000)
+          appendFileSync(process.env.GITHUB_ENV,
+            `IOS_TEST_DESTINATION=platform=iOS Simulator,id=${selected.udid}\n`)
+          JS
+      - run: bun run test:ios
+        env:
+          # A cold Swift build of the whole module is far past the local default.
+          IOS_TEST_TIMEOUT_MS: '1800000'
+      - name: Upload iOS test diagnostics
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ios-test-diagnostics
+          path: /tmp/vesc-ios-tests-*
+          include-hidden-files: true
+          retention-days: 7

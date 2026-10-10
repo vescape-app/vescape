@@ -4,6 +4,7 @@ import {
   formatFavoriteName,
   formatRideListDateTime,
   formatRideListDetails,
+  formatRideTime,
   suggestFavoriteName,
 } from '@/modules/history/lib/rideFormat'
 
@@ -45,4 +46,26 @@ test('a stored Favorite name wins over its generated suggestion', () => {
   expect(formatFavoriteName(null, start, end)).toBe('Evening ride')
   expect(formatFavoriteName('  ', start, end)).toBe('Evening ride')
   expect(formatFavoriteName(' Forest run ', start, end)).toBe('Forest run')
+})
+
+test('a ride still being recorded ends at now instead of a clock time', () => {
+  const start = new Date(2026, 7, 24, 8, 12).getTime()
+  const end = start + 30 * 60_000
+
+  expect(formatRideTime(start, end, true)).toBe('08:12 – now')
+  expect(formatRideListDateTime(start, end, true)).toBe('08:12 – now · 24 Aug 2026')
+  expect(formatRideListDateTime(start, end)).toBe('08:12 – 08:42 · 24 Aug 2026')
+})
+
+test('existing ride totals use miles even below the nearby-distance cutoff', () => {
+  const record = Object.freeze({ distanceM: 80, durationMs: 120_000 })
+  expect(formatRideListDetails(record.durationMs, record.distanceM, null, 'imperial')).toBe(
+    '2 min · 0.05 mi',
+  )
+  expect(formatRideListDetails(record.durationMs, record.distanceM, null, 'metric')).toBe(
+    '2 min · 0.08 km',
+  )
+  expect(formatRideListDetails(record.durationMs, null, null, 'imperial')).toBe('2 min')
+  expect(formatRideListDetails(0, 0, null, 'imperial')).toBe('1 min · 0.00 mi')
+  expect(record.distanceM).toBe(80)
 })

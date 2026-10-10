@@ -1,4 +1,16 @@
 import ExpoModulesCore
+
+private extension Promise {
+  /// Keep the bridge error code and the underlying native failure together.
+  func reject(_ code: String, _ message: String, cause: Error) {
+    reject(Exception(name: code, description: message, code: code).causedBy(cause))
+  }
+}
+
+private func reportTunePersistenceWrite(operation: String, error: Error) {
+  if let tuneError = error as? TuneProfileError, tuneError != .databaseUnavailable { return }
+  RecordingStorageFailure.report(operation: operation, category: "write_failed", error: error)
+}
 import Foundation
 import UIKit
 import UserNotifications
@@ -22,6 +34,7 @@ private final class ActiveBoardProbe {
 /// TODO(iOS parity): port Group Ride, debug recording, and Refloat config subsystems to match
 /// Android API/events/errors.
 public class VescapeCoreModule: Module {
+  private let scheduler = MainQueueScheduler()
 
   // MARK: - Session state
 
@@ -29,11 +42,11 @@ public class VescapeCoreModule: Module {
   /// Dev-setting request: capture a raw debug Session Recorder for the next Board Session.
   /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/VescapeCoreModule.kt `requestedDebugRecordingEnabled`
   private var requestedDebugRecordingEnabled = false
-  private let manualDisconnectSuppressedBoardKey = "vesc_manual_disconnect_auto_start_board_id"
 
   /// Retains the in-flight Board Probe across its async BLE lifecycle. Only one runs at a time —
   /// the probe owns the single BLE link (see Android `probeBoardLink`).
   private var activeProbe: ActiveBoardProbe?
+  private var completedProbes: [String: TransportDetection.Result] = [:]
 
   /// Frontend liveness gate. False while the app is backgrounded so the high-frequency telemetry
   /// firehose (`onLiveTick` at the board's poll rate, `onTelemetryHistory`, `onLiveSeries`) never
@@ -44,6 +57,9 @@ public class VescapeCoreModule: Module {
   private var frontendActive = true
   /// Events with at least one live JS listener, tracked via `OnStartObserving`/`OnStopObserving`.
   private var observedEvents = Set<String>()
+  /// Remover for this module's App Status mirror subscription; the Group Ride online gate holds its
+  /// own, so the sink cannot be a single assignable closure.
+  private var appStatusUnsubscribe: (() -> Void)?
 
   /// Shared, app-level Board Session owner that outlives this module instance. A JS runtime reload
   /// (dev reload, OTA update, JS crash recovery) tears down this module and builds a fresh one; the
@@ -76,7 +92,7 @@ public class VescapeCoreModule: Module {
 
     // @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/VescapeCoreModule.kt `Events`
     // @parity /modules/vescape-core/src/index.ts `VescapeCoreEvents`
-    Events("onDevice", "onError", "onLiveState", "onLiveTick", "onLiveSeries", "onTelemetryHistory", "onBms", "onBmsSeries", "onLocation", "onReplayPhoneHeading", "onTelemetryRebuildProgress", "onBoardProbeProgress", "onAppDataChanged", "onGroupRideConnection", "onGroupRideSnapshot", "onGroupRideCreated", "onGroupRideUpdated", "onGroupRideEnded", "onGroupRideJoined", "onGroupRideRoster", "onGroupRideError", "onBoardWarnings", "onAppStatus", "onNavigation", "onRouteProgress", "onWeather")
+    Events("onDevice", "onError", "onLiveState", "onLiveTick", "onLiveSeries", "onFocusedSeries", "onTelemetryHistory", "onBms", "onBmsSeries", "onLocation", "onReplayPhoneHeading", "onTelemetryRebuildProgress", "onBoardProbeProgress", "onAppDataChanged", "onGroupRideConnection", "onGroupRideSnapshot", "onGroupRideCreated", "onGroupRideUpdated", "onGroupRideEnded", "onGroupRideJoined", "onGroupRideRoster", "onGroupRideError", "onBoardWarnings", "onVescFaults", "onBoardConfigValues", "onMotorConfigValues", "onBoardConfigChangeNotice", "onBoardLights", "onAppStatus", "onNavigation", "onRouteProgress", "onWeather", "onAccessoryDevice", "onAccessoryScanError", "onAccessoryState", "onAccessoryReading")
 
     // Track per-event JS listeners so native skips emitting into the void, and gate the whole
     // firehose on app foreground (see `frontendActive`). Mirrors Android's observing + lifecycle
@@ -91,6 +107,8 @@ public class VescapeCoreModule: Module {
     OnStopObserving("onLiveTick") { self.observedEvents.remove("onLiveTick") }
     OnStartObserving("onLiveSeries") { self.observedEvents.insert("onLiveSeries") }
     OnStopObserving("onLiveSeries") { self.observedEvents.remove("onLiveSeries") }
+    OnStartObserving("onFocusedSeries") { self.observedEvents.insert("onFocusedSeries") }
+    OnStopObserving("onFocusedSeries") { self.observedEvents.remove("onFocusedSeries") }
     OnStartObserving("onTelemetryHistory") { self.observedEvents.insert("onTelemetryHistory") }
     OnStopObserving("onTelemetryHistory") { self.observedEvents.remove("onTelemetryHistory") }
     OnStartObserving("onBms") { self.observedEvents.insert("onBms") }
@@ -101,12 +119,56 @@ public class VescapeCoreModule: Module {
     OnStopObserving("onLocation") { self.observedEvents.remove("onLocation") }
     OnStartObserving("onTelemetryRebuildProgress") { self.observedEvents.insert("onTelemetryRebuildProgress") }
     OnStopObserving("onTelemetryRebuildProgress") { self.observedEvents.remove("onTelemetryRebuildProgress") }
+    // @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/VescapeCoreModule.kt `onGroupRideConnection`
+    OnStartObserving("onGroupRideConnection") { self.observedEvents.insert("onGroupRideConnection") }
+    OnStopObserving("onGroupRideConnection") { self.observedEvents.remove("onGroupRideConnection") }
+    OnStartObserving("onGroupRideSnapshot") { self.observedEvents.insert("onGroupRideSnapshot") }
+    OnStopObserving("onGroupRideSnapshot") { self.observedEvents.remove("onGroupRideSnapshot") }
+    OnStartObserving("onGroupRideCreated") { self.observedEvents.insert("onGroupRideCreated") }
+    OnStopObserving("onGroupRideCreated") { self.observedEvents.remove("onGroupRideCreated") }
+    OnStartObserving("onGroupRideUpdated") { self.observedEvents.insert("onGroupRideUpdated") }
+    OnStopObserving("onGroupRideUpdated") { self.observedEvents.remove("onGroupRideUpdated") }
+    OnStartObserving("onGroupRideEnded") { self.observedEvents.insert("onGroupRideEnded") }
+    OnStopObserving("onGroupRideEnded") { self.observedEvents.remove("onGroupRideEnded") }
+    OnStartObserving("onGroupRideJoined") { self.observedEvents.insert("onGroupRideJoined") }
+    OnStopObserving("onGroupRideJoined") { self.observedEvents.remove("onGroupRideJoined") }
+    OnStartObserving("onGroupRideRoster") { self.observedEvents.insert("onGroupRideRoster") }
+    OnStopObserving("onGroupRideRoster") { self.observedEvents.remove("onGroupRideRoster") }
+    OnStartObserving("onGroupRideError") { self.observedEvents.insert("onGroupRideError") }
+    OnStopObserving("onGroupRideError") { self.observedEvents.remove("onGroupRideError") }
     OnStartObserving("onBoardWarnings") {
       self.observedEvents.insert("onBoardWarnings")
       // Late subscriber: replay the current warnings for every board so JS is immediately consistent.
       BoardWarningRegistry.shared.emitSnapshot()
     }
     OnStopObserving("onBoardWarnings") { self.observedEvents.remove("onBoardWarnings") }
+
+    OnStartObserving("onVescFaults") {
+      self.observedEvents.insert("onVescFaults")
+      // Late subscriber: replay the current faults for every board so JS is immediately consistent.
+      VescFaultCoordinator.shared.emitSnapshot()
+    }
+    OnStopObserving("onVescFaults") { self.observedEvents.remove("onVescFaults") }
+    OnStartObserving("onBoardConfigValues") {
+      self.observedEvents.insert("onBoardConfigValues")
+      // Late subscriber: replay the held values (or the null) so JS is immediately consistent.
+      self.sendEvent("onBoardConfigValues", ["values": self.coordinator.boardConfigValuesMap()])
+    }
+    OnStopObserving("onBoardConfigValues") { self.observedEvents.remove("onBoardConfigValues") }
+    OnStartObserving("onMotorConfigValues") {
+      self.observedEvents.insert("onMotorConfigValues")
+      // Late subscriber: replay the held values (or the nil) so JS is immediately consistent.
+      self.sendEvent("onMotorConfigValues", ["values": self.coordinator.motorConfigValuesMap()])
+    }
+    OnStopObserving("onMotorConfigValues") { self.observedEvents.remove("onMotorConfigValues") }
+    OnStartObserving("onBoardConfigChangeNotice") { self.observedEvents.insert("onBoardConfigChangeNotice") }
+    OnStopObserving("onBoardConfigChangeNotice") { self.observedEvents.remove("onBoardConfigChangeNotice") }
+    OnStartObserving("onBoardLights") {
+      self.observedEvents.insert("onBoardLights")
+      // Late subscriber: replay what the board last said, so a drawer opened mid-session is right.
+      self.sendEvent("onBoardLights", self.coordinator.lightsEventBody())
+    }
+    OnStopObserving("onBoardLights") { self.observedEvents.remove("onBoardLights") }
     OnStartObserving("onAppStatus") {
       self.observedEvents.insert("onAppStatus")
       // Late subscriber: replay the current App Status so JS is immediately consistent.
@@ -135,11 +197,50 @@ public class VescapeCoreModule: Module {
       self.sendEvent("onWeather", ["weather": WeatherCoordinator.shared.current?.map])
     }
     OnStopObserving("onWeather") { self.observedEvents.remove("onWeather") }
+    OnStartObserving("onAccessoryDevice") { self.observedEvents.insert("onAccessoryDevice") }
+    OnStopObserving("onAccessoryDevice") { self.observedEvents.remove("onAccessoryDevice") }
+    OnStartObserving("onAccessoryScanError") { self.observedEvents.insert("onAccessoryScanError") }
+    OnStopObserving("onAccessoryScanError") { self.observedEvents.remove("onAccessoryScanError") }
+    OnStartObserving("onAccessoryState") { self.observedEvents.insert("onAccessoryState") }
+    OnStopObserving("onAccessoryState") { self.observedEvents.remove("onAccessoryState") }
+    OnStartObserving("onAccessoryReading") { self.observedEvents.insert("onAccessoryReading") }
+    OnStopObserving("onAccessoryReading") { self.observedEvents.remove("onAccessoryReading") }
 
     OnCreate {
+      // Seed GPS demand's visibility input. A cold start fires no foreground notification, and a
+      // background launch (CoreBluetooth state restoration, ADR 0034) must not be mistaken for a
+      // rider watching the map. `.inactive` counts as visible — the app is on screen, mid-transition.
+      //
+      // On main because `UIApplication.shared` is main-only and the setter it feeds resolves GPS
+      // demand, which touches `CLLocationManager`; definition blocks run on the module queue.
+      DispatchQueue.main.async {
+        self.coordinator.appVisible = UIApplication.shared.applicationState != .background
+      }
+      // Accessory discovery pushes devices as the radio finds them; the module is only the pipe.
+      // @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/VescapeCoreModule.kt `AccessoryDiscovery`
+      AccessoryDiscovery.shared.emit = { [weak self] name, body in
+        guard let self, self.shouldEmitToFrontend(name) else { return }
+        self.sendEvent(name, body)
+      }
+
+      // Enrolled Accessory sessions are native-owned and outlive this module; the bridge only
+      // mirrors their state while a JS runtime happens to exist.
+      // @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/VescapeCoreModule.kt `AccessorySessionManager`
+      AccessorySessionController.shared.emit = { [weak self] name, body in
+        guard let self, self.shouldEmitToFrontend(name) else { return }
+        self.sendEvent(name, body)
+      }
+
+      RecordingStorageFailure.observeOutage { [weak self] in
+        guard let self, self.shouldEmitToFrontend("onLiveState") else { return }
+        self.sendEvent("onLiveState", self.liveState())
+      }
       // Native owns App Status truth; JS mirrors it. Push every successful refresh (late
       // subscribers replay above and through `getAppStatus`).
-      AppStatusCoordinator.shared.onChange = { [weak self] status in self?.sendAppStatus(status) }
+      self.appStatusUnsubscribe?()
+      self.appStatusUnsubscribe = AppStatusCoordinator.shared.addChangeListener { [weak self] status in
+        self?.sendAppStatus(status)
+      }
 
       // The forecast is native-owned too; JS mirrors whatever the coordinator resolves.
       WeatherCoordinator.shared.onChange = { [weak self] weather in self?.sendWeather(weather) }
@@ -155,24 +256,38 @@ public class VescapeCoreModule: Module {
       // coalesced into this request.
       AppStatusCoordinator.shared.refresh()
       self.attachToCoordinator()
+      // Launch-time honesty pass (ADR 0034): a process killed mid-ride leaves its Live Activity
+      // rendering a confident live session forever. Guarded by the coordinator so a running or
+      // resuming session keeps its own activity.
+      self.coordinator.reapOrphanLiveActivities()
       AppDataRepository.onDataChanged = { [weak self] scope in self?.sendAppDataChanged(scope) }
       // JS keeps a dumb mirror of the durable Board Warning registry; push the full board list on
       // every registry change (late subscribers self-heal via the snapshot above).
+      // Same full-slice mirror for VESC Fault Occurrences; separate channel, separate JS store.
+      VescFaultCoordinator.shared.onChange = { [weak self] boardId, faults in
+        self?.sendVescFaults(boardId, faults)
+      }
       BoardWarningRegistry.shared.onChange = { [weak self] boardId, warnings in
         self?.sendBoardWarnings(boardId, warnings)
       }
-      self.autoConnectSelectedBoard()
+      BoardConfigStore.onNoticeChanged = { [weak self] notice in self?.sendEvent("onBoardConfigChangeNotice", ["notice": notice?.toMap()]) }
     }
 
     OnAppEntersForeground {
       self.frontendActive = true
+      self.coordinator.appVisible = true
       AppStatusCoordinator.shared.refresh()
     }
     OnAppEntersBackground {
       self.frontendActive = false
+      // Drops GPS demand to `off` unless a ride or a Group Ride is paying for it. Deliberately not
+      // mirrored in `OnDestroy`: a JS runtime teardown (dev reload, OTA) is not the rider putting
+      // the phone away, and the native session it leaves running still needs its fixes.
+      self.coordinator.appVisible = false
     }
 
     OnDestroy {
+      RecordingStorageFailure.observeOutage(nil)
       // JS runtime is tearing down (dev reload, OTA update, JS crash recovery). Detach only the
       // JS-facing sinks; the shared coordinator keeps the native Board Session, recording, GPS and
       // Live Activity alive so a fresh module re-attaches to the live session. Must not call
@@ -181,13 +296,26 @@ public class VescapeCoreModule: Module {
       self.detachFromCoordinator()
       AppDataRepository.onDataChanged = nil
       BoardWarningRegistry.shared.onChange = nil
-      AppStatusCoordinator.shared.onChange = nil
+      VescFaultCoordinator.shared.onChange = nil
+      BoardConfigStore.onNoticeChanged = nil
+      self.appStatusUnsubscribe?()
+      self.appStatusUnsubscribe = nil
       NavigationController.shared.onChange = nil
       NavigationController.shared.onProgressChange = nil
       self.frontendActive = false
       self.observedEvents.removeAll()
       self.cancelActiveProbe(reason: "module_destroyed")
       self.stopAlertTest()
+      AccessoryDiscovery.shared.emit = nil
+      AccessoryDiscovery.shared.stopScan()
+      AccessoryDiscovery.shared.cancelInspection()
+      // Only the mirror is dropped. The sessions belong to the launch-created central, and JS going
+      // away is not a reason for an enrolled Accessory to stop working.
+      AccessorySessionController.shared.emit = nil
+      // A preview is the one piece of demand JS owns, so it dies with JS. Without this a runtime
+      // that reloaded or crashed with the sensor screen open would leave the accessory measuring
+      // with nobody watching, and native's own renewals would keep the lease alive forever.
+      AccessorySessionController.shared.releasePreviews()
     }
 
     // MARK: Scan
@@ -200,17 +328,99 @@ public class VescapeCoreModule: Module {
       self.coordinator.stopScan()
     }
 
-    // MARK: Location
+    // MARK: Accessory discovery
 
-    Function("startLocationUpdates") {
-      self.coordinator.startLocationUpdates()
+    // Read-only: it scans for the Vescape Accessory service, reads one manifest, and disconnects.
+    // No Board or Accessory control can start from here.
+    // @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/VescapeCoreModule.kt `startAccessoryScan`
+    // @parity /modules/vescape-core/src/index.ts `startAccessoryScan`
+    Function("startAccessoryScan") {
+      AccessoryDiscovery.shared.startScan()
     }
 
-    // Flush buffered telemetry after stopping GPS so no pending rows are lost on the way down.
-    // @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/VescapeCoreModule.kt `stopLocationUpdates`
-    Function("stopLocationUpdates") {
-      self.coordinator.stopLocationUpdates()
-      TelemetryRepository.shared.flushBlocking()
+    Function("stopAccessoryScan") {
+      AccessoryDiscovery.shared.stopScan()
+    }
+
+    Function("cancelAccessoryInspection") {
+      AccessoryDiscovery.shared.cancelInspection()
+    }
+
+    AsyncFunction("inspectAccessory") { (deviceId: String, promise: Promise) in
+      AccessoryDiscovery.shared.inspect(deviceId: deviceId) { promise.resolve($0) }
+    }
+
+    // Enrollment and the saved sessions. JS sends the intent and renders the snapshot; identity,
+    // the manifest and the session all stay native.
+    // @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/VescapeCoreModule.kt `enrollAccessory`
+    // @parity /modules/vescape-core/src/index.ts `enrollAccessory`
+    AsyncFunction("enrollAccessory") { (deviceId: String, promise: Promise) in
+      AccessorySessionController.shared.enroll(deviceId: deviceId) { promise.resolve($0) }
+    }
+
+    AsyncFunction("forgetAccessory") { (accessoryId: String, promise: Promise) in
+      AccessorySessionController.shared.forget(accessoryId: accessoryId) { promise.resolve($0) }
+    }
+
+    // @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/VescapeCoreModule.kt `saveBrakeLightSettings`
+    // @parity /modules/vescape-core/src/index.ts `saveBrakeLightSettings`
+    AsyncFunction("saveBrakeLightSettings") { (accessoryId: String, capabilityId: String, sensitivity: Int, parked: String, promise: Promise) in
+      AccessorySessionController.shared.saveBrakeLight(accessoryId: accessoryId, capabilityId: capabilityId, sensitivity: sensitivity, parked: parked) { promise.resolve($0) }
+    }
+    // @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/VescapeCoreModule.kt `setAccessoryCapabilityEnabled`
+    // @parity /modules/vescape-core/src/index.ts `setAccessoryCapabilityEnabled`
+    AsyncFunction("setAccessoryCapabilityEnabled") { (accessoryId: String, capabilityId: String, enabled: Bool, promise: Promise) in
+      AccessorySessionController.shared.setCapabilityEnabled(accessoryId: accessoryId, capabilityId: capabilityId, enabled: enabled) { promise.resolve($0) }
+    }
+    // @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/VescapeCoreModule.kt `setAccessorySamplingRate`
+    // @parity /modules/vescape-core/src/index.ts `setAccessorySamplingRate`
+    AsyncFunction("setAccessorySamplingRate") { (accessoryId: String, capabilityId: String, rateHz: Double, promise: Promise) in
+      AccessorySessionController.shared.setSamplingRate(accessoryId: accessoryId, capabilityId: capabilityId, rateHz: rateHz) { promise.resolve($0) }
+    }
+    // @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/VescapeCoreModule.kt `setBrakeLightPreview`
+    // @parity /modules/vescape-core/src/index.ts `setBrakeLightPreview`
+    AsyncFunction("setBrakeLightPreview") { (accessoryId: String, capabilityId: String, mode: String?, promise: Promise) in
+      AccessorySessionController.shared.setLightPreview(accessoryId: accessoryId, capabilityId: capabilityId, mode: mode) { promise.resolve($0) }
+    }
+    Function("getAccessories") {
+      AccessorySessionController.shared.snapshot()
+    }
+
+    // Ground clearance. JS asks for measurements and offers numbers; native decides whether the
+    // sensor runs and whether the numbers are a calibration.
+    // @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/VescapeCoreModule.kt `setAccessoryPreview`
+    // @parity /modules/vescape-core/src/index.ts `setAccessoryPreview`
+    Function("setAccessoryPreview") { (accessoryId: String, capabilityId: String, open: Bool) in
+      AccessorySessionController.shared.setPreview(
+        accessoryId: accessoryId, capabilityId: capabilityId, open: open)
+    }
+
+    AsyncFunction("saveGroundClearanceCalibration") {
+      (
+        accessoryId: String, capabilityId: String, nearCm: Double, farCm: Double, direction: String,
+        strengthPercent: Int, promise: Promise
+      ) in
+      AccessorySessionController.shared.saveGroundClearance(
+        accessoryId: accessoryId, capabilityId: capabilityId, nearCm: nearCm, farCm: farCm,
+        direction: direction, strengthPercent: strengthPercent) { promise.resolve($0) }
+    }
+
+    AsyncFunction("clearGroundClearanceCalibration") {
+      (accessoryId: String, capabilityId: String, promise: Promise) in
+      AccessorySessionController.shared.clearGroundClearance(
+        accessoryId: accessoryId, capabilityId: capabilityId) { promise.resolve($0) }
+    }
+
+    // MARK: Location
+
+    // Nudge, not a command: native owns whether GPS runs (see `GpsDemand`). JS calls this once the
+    // location permission is answered, because a grant is the one demand input native cannot observe
+    // for itself.
+    // @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/VescapeCoreModule.kt `refreshLocationDemand`
+    Function("refreshLocationDemand") {
+      // Same reasoning as the `OnCreate` seed: demand resolution arms `CLLocationManager`, which
+      // belongs on main alongside the rest of the coordinator's state.
+      DispatchQueue.main.async { self.coordinator.refreshGpsDemand() }
     }
 
     // MARK: App lifecycle
@@ -226,36 +436,44 @@ public class VescapeCoreModule: Module {
       self.coordinator.stopScan()
     }
 
-    // MARK: Group Ride (Android native implementation; iOS keeps bridge shape)
-    // @platform-diff Group Ride networking is Android-only, so the Online Capability gate (refuse/
-    // tear down the relay socket while App Status is Online/App Blocked, `blocked` connection state,
-    // `Vescape-App-Version` upgrade header, 426 handling) has no iOS peer. These stubs never open a
-    // socket, so there is nothing to gate; iOS AppStatusCoordinator keeps its single `onChange` sink.
+    // MARK: Group Ride
+    // @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/VescapeCoreModule.kt `startGroupRideObserve`
 
-    Function("startGroupRideObserve") { (_: String) in
-      self.sendEvent("onGroupRideConnection", ["state": "idle"])
-      self.sendEvent("onGroupRideSnapshot", ["rides": []])
+    Function("startGroupRideObserve") { (serverUrl: String) in
+      self.coordinator.startGroupRideObserve(serverUrl)
     }
 
     Function("stopGroupRideObserve") {
-      self.sendEvent("onGroupRideConnection", ["state": "idle"])
+      self.coordinator.stopGroupRideObserve()
     }
 
-    Function("createGroupRide") { (_: String, _: String, _: String?, _: String?, _: Double, _: Double) in
-      // no-op until iOS native Group Ride support lands
+    Function("createGroupRide") { (riderId: String, riderName: String, riderColor: String?, name: String?, lat: Double, lng: Double, auto: Bool) in
+      self.coordinator.createGroupRide(
+        riderId: riderId,
+        riderName: riderName,
+        riderColor: riderColor,
+        name: name,
+        lat: lat,
+        lng: lng,
+        auto: auto
+      )
     }
 
-    Function("joinGroupRide") { (_: String, _: String, _: String?, _: String) in
-      // no-op until iOS native Group Ride support lands
+    Function("joinGroupRide") { (riderId: String, riderName: String, riderColor: String?, rideId: String) in
+      self.coordinator.joinGroupRide(
+        riderId: riderId,
+        riderName: riderName,
+        riderColor: riderColor,
+        rideId: rideId
+      )
     }
 
     Function("leaveGroupRide") {
-      self.sendEvent("onGroupRideJoined", ["rideId": nil])
-      self.sendEvent("onGroupRideRoster", ["rideId": nil, "riders": []])
+      self.coordinator.leaveGroupRide()
     }
 
-    Function("updateGroupRideIdentity") { (_: String, _: String, _: String?) in
-      // no-op until iOS native Group Ride support lands
+    Function("updateGroupRideIdentity") { (riderId: String, riderName: String, riderColor: String?) in
+      self.coordinator.updateGroupRideIdentity(riderId: riderId, riderName: riderName, riderColor: riderColor)
     }
 
     // MARK: Telemetry recording toggle
@@ -278,6 +496,16 @@ public class VescapeCoreModule: Module {
       self.coordinator.setBmsSeriesFocused(focused)
     }
 
+    // @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/VescapeCoreModule.kt `setFocusedSeriesMetrics`
+    Function("setFocusedSeriesMetrics") { (metrics: [String]) in
+      self.coordinator.setFocusedSeriesMetrics(metrics)
+    }
+
+    // @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/VescapeCoreModule.kt `setLiveSeriesMetrics`
+    Function("setLiveSeriesMetrics") { (metrics: [String]) in
+      self.coordinator.setLiveSeriesMetrics(metrics)
+    }
+
     AsyncFunction("getCriticalRideNotificationPermissionStatus") { (promise: Promise) in
       UNUserNotificationCenter.current().getNotificationSettings { settings in
         promise.resolve(Self.notificationPermissionStatus(settings.authorizationStatus))
@@ -297,7 +525,27 @@ public class VescapeCoreModule: Module {
     Function("previewAlertSound") { (soundType: String) in
       self.coordinator.previewAlertSound(soundType)
     }
+    Function("playAppSound") { (pack: String, cue: String) in
+      self.coordinator.playAppSound(pack: pack, cue: cue)
+    }
 
+    // @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/VescapeCoreModule.kt `customAppSoundPacks`
+    AsyncFunction("customAppSoundPacks") { CustomAppSounds.list() }
+    AsyncFunction("createAppSoundPack") { (name: String) in try CustomAppSounds.create(name) }
+    AsyncFunction("renameAppSoundPack") { (id: String, name: String) in try CustomAppSounds.rename(id, name: name) }
+    AsyncFunction("importAppSound") { (id: String, cue: String, uri: String) in try CustomAppSounds.import(id, cue: cue, uri: uri) }
+    AsyncFunction("removeAppSound") { (id: String, cue: String) in try CustomAppSounds.remove(id, cue: cue) }
+    AsyncFunction("deleteAppSoundPack") { (id: String) in
+      if (try self.appData.getSettings())["soundPack"] as? String == id {
+        try self.appData.updateSetting("soundPack", rawValue: "simple")
+        self.coordinator.reloadTelemetrySettings()
+      }
+      try CustomAppSounds.delete(id)
+    }
+    // @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/VescapeCoreModule.kt `mapTile`
+    AsyncFunction("mapTile") { (z: Int, x: Int, y: Int) async -> String? in
+      await MapTiles.shared.tile(z: z, x: x, y: y)?.absoluteString
+    }
     Function("getAlertSounds") {
       self.alertPresets
     }
@@ -358,14 +606,14 @@ public class VescapeCoreModule: Module {
         accountId: accountId
       )
     }
-    Function("getDeviceCredentialState") { () -> [String: Any?] in
-      NativeAuthCoordinator.shared.stateMap()
+    Function("getDeviceCredentialState") { () throws -> [String: Any?] in
+      try NativeAuthCoordinator.shared.stateMap()
     }
     AsyncFunction("revokeDeviceCredential") { () async throws in
       try await NativeAuthCoordinator.shared.revoke()
     }
     Function("clearDeviceCredential") {
-      NativeAuthCoordinator.shared.clear()
+      try NativeAuthCoordinator.shared.clear()
     }
 
     // Stable Vescape route keeps the app decoupled from the final store destination.
@@ -382,20 +630,44 @@ public class VescapeCoreModule: Module {
     // MARK: Board session
 
     Function("getLiveState") {
-      self.liveState()
+      self.liveState(includeRecent: true)
     }
 
-    Function("getRemoteTiltState") { () -> [String: Any]? in
-      nil
-    }
+    // @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/VescapeCoreModule.kt `getGroundClearanceTilt`
+    // @parity /modules/vescape-core/src/index.ts `getGroundClearanceTilt`
+    AsyncFunction("getGroundClearanceTilt") { () -> [String: Any?] in
+      self.coordinator.groundClearanceTiltState()
+    }.runOnQueue(.main)
+    // @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/VescapeCoreModule.kt `getRemoteTiltState`
+    // @parity /modules/vescape-core/src/index.ts `getRemoteTiltState`
+    AsyncFunction("getRemoteTiltState") { () -> [String: Any?]? in
+      self.coordinator.remoteTiltState()
+    }.runOnQueue(.main)
 
     Function("setSelectedBoard") { (boardId: String?) in
-      self.clearManualDisconnectAutoStartGate()
-      self.selectedBoardId = boardId
-      self.appData.updateSetting("selectedBoardId", rawValue: boardId)
+      do {
+        try self.appData.updateSetting("selectedBoardId", rawValue: boardId)
+        self.clearManualDisconnectAutoStartGate()
+        self.selectedBoardId = boardId
+      } catch {
+        RecordingStorageFailure.report(operation: "setting_save", category: "write_failed", error: error)
+        throw error
+      }
     }
 
     AsyncFunction("setCompanionPresenceEnabled") { (enabled: Bool, promise: Promise) in
+      promise.reject("UNSUPPORTED_PLATFORM", "Companion presence is Android-only")
+    }
+
+    AsyncFunction("getCompanionPresenceBoards") { (promise: Promise) in
+      promise.resolve([])
+    }
+
+    AsyncFunction("addCompanionPresenceBoard") { (_: String, promise: Promise) in
+      promise.reject("UNSUPPORTED_PLATFORM", "Companion presence is Android-only")
+    }
+
+    AsyncFunction("removeCompanionPresenceBoard") { (_: String, promise: Promise) in
       promise.reject("UNSUPPORTED_PLATFORM", "Companion presence is Android-only")
     }
 
@@ -407,6 +679,7 @@ public class VescapeCoreModule: Module {
       do {
         promise.resolve(try DebugRecordingStore().list())
       } catch {
+        UnexpectedNativeError.report(operation: "debug_recording_list", category: "file_metadata_failed", error: error)
         promise.reject("ERR_LIST_DEBUG_RECORDINGS", error.localizedDescription)
       }
     }
@@ -419,6 +692,7 @@ public class VescapeCoreModule: Module {
       do {
         promise.resolve(try DebugRecordingStore().export(name: name))
       } catch {
+        UnexpectedNativeError.report(operation: "debug_recording_export", category: "file_copy_failed", error: error)
         promise.reject("ERR_EXPORT_DEBUG_RECORDING", error.localizedDescription)
       }
     }
@@ -428,6 +702,7 @@ public class VescapeCoreModule: Module {
         try DebugRecordingStore().delete(name: name)
         promise.resolve(nil)
       } catch {
+        UnexpectedNativeError.report(operation: "debug_recording_delete", category: "file_delete_failed", error: error)
         promise.reject("ERR_DELETE_DEBUG_RECORDING", error.localizedDescription)
       }
     }
@@ -442,13 +717,10 @@ public class VescapeCoreModule: Module {
       )
     }
 
-    Function("recordPhoneHeading") { (headingDeg: Double) in
-      self.coordinator.recordPhoneHeading(headingDeg)
-    }
-
     // @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/VescapeCoreModule.kt `setWatchRouteSpanM`
-    // @platform-diff Wear Mirror is Android-only; keep the shared TS contract callable on iOS.
-    Function("setWatchRouteSpanM") { (_: Double?) in }
+    Function("setWatchRouteSpanM") { (spanM: Double?) in
+      WatchRouteMirror.shared.viewportSpanM = spanM
+    }
 
     AsyncFunction("stopDebugReplay") { (promise: Promise) in
       self.coordinator.stopBoard()
@@ -456,9 +728,15 @@ public class VescapeCoreModule: Module {
     }
 
     AsyncFunction("selectBoard") { (boardId: String, promise: Promise) in
-      self.clearManualDisconnectAutoStartGate()
-      self.selectedBoardId = boardId
-      self.appData.updateSetting("selectedBoardId", rawValue: boardId)
+      do {
+        try self.appData.updateSetting("selectedBoardId", rawValue: boardId)
+        self.clearManualDisconnectAutoStartGate()
+        self.selectedBoardId = boardId
+      } catch {
+        RecordingStorageFailure.report(operation: "setting_save", category: "write_failed", error: error)
+        promise.reject("APP_STORAGE_WRITE_FAILED", "Could not select Board")
+        return
+      }
       guard let config = self.connectConfig(boardId: boardId) else {
         promise.reject("NO_LINK", "Board has no Board Link: \(boardId)")
         return
@@ -471,13 +749,21 @@ public class VescapeCoreModule: Module {
     }
 
     AsyncFunction("stopBoard") { (promise: Promise) in
-      self.suppressAutoStartAfterManualDisconnect()
-      self.coordinator.stopBoard()
-      promise.resolve(nil)
+      Task { @MainActor in
+        await BoardSessionCommands.stopRide()
+        promise.resolve(nil)
+      }
     }
 
     AsyncFunction("probeBoardLink") { (bleId: String, probeId: String, promise: Promise) in
       DispatchQueue.main.async { self.startProbe(bleId: bleId, probeId: probeId, promise: promise) }
+    }
+
+    AsyncFunction("finalizeBoardLink") {
+      (probeId: String, boardId: String, bleId: String, candidate: [String: Any?], promise: Promise) in
+      DispatchQueue.main.async {
+        self.finalizeBoardLink(probeId: probeId, boardId: boardId, bleId: bleId, rawCandidate: candidate, promise: promise)
+      }
     }
 
     Function("cancelBoardProbe") { (probeId: String) in
@@ -487,15 +773,67 @@ public class VescapeCoreModule: Module {
     // MARK: Telemetry history
 
     AsyncFunction("getTelemetryHistory") { (options: [String: Any], promise: Promise) in
-      promise.resolve(TelemetryRepository.shared.getHistory(options))
+      try RecordingStorageFailure.requireAvailable()
+      do { promise.resolve(try TelemetryRepository.shared.getHistory(options)) }
+      catch {
+        RecordingStorageFailure.reportRead(operation: "history_buckets_read", error: error)
+        promise.reject("ERR_HISTORY_READ", "Could not load ride history", cause: error)
+      }
+    }
+
+    // @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/VescapeCoreModule.kt `getRideHistoryPage`
+    AsyncFunction("getRideHistoryPage") { (options: [String: Any], promise: Promise) in
+      try RecordingStorageFailure.requireAvailable()
+      do { promise.resolve(try RideHistoryRepository.shared.getPage(options)) }
+      catch {
+        RecordingStorageFailure.reportRead(operation: "history_page_read", error: error)
+        promise.reject("ERR_HISTORY_READ", "Could not load ride history", cause: error)
+      }
     }
 
     AsyncFunction("getTelemetrySamples") { (options: [String: Any], promise: Promise) in
-      promise.resolve(TelemetryRepository.shared.getSamples(options))
+      try RecordingStorageFailure.requireAvailable()
+      do { promise.resolve(try TelemetryRepository.shared.getSamples(options)) }
+      catch {
+        RecordingStorageFailure.reportRead(operation: "history_samples_read", error: error)
+        promise.reject("ERR_HISTORY_READ", "Could not load ride history", cause: error)
+      }
+    }
+
+    // @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/VescapeCoreModule.kt `exportRideGpx`
+    // @parity /modules/vescape-core/src/index.ts `exportRideGpx`
+    AsyncFunction("exportRideGpx") { (options: [String: Any], promise: Promise) in
+      try RecordingStorageFailure.requireAvailable()
+      do { promise.resolve(try TelemetryRepository.shared.exportRideGpx(options)) }
+      catch { promise.reject("ERR_RIDE_EXPORT", "Could not export ride", cause: error) }
+    }
+
+    // @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/VescapeCoreModule.kt `exportRideCsv`
+    // @parity /modules/vescape-core/src/index.ts `exportRideCsv`
+    AsyncFunction("exportRideCsv") { (options: [String: Any], promise: Promise) in
+      try RecordingStorageFailure.requireAvailable()
+      do { promise.resolve(try TelemetryRepository.shared.exportRideCsv(options)) }
+      catch { promise.reject("ERR_RIDE_EXPORT", "Could not export ride", cause: error) }
+    }
+
+    // @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/VescapeCoreModule.kt `exportLiveTelemetryCsv`
+    // @parity /modules/vescape-core/src/index.ts `exportLiveTelemetryCsv`
+    AsyncFunction("exportLiveTelemetryCsv") { (promise: Promise) in
+      do {
+        promise.resolve(try RideExport.liveCsv(self.coordinator.recentTelemetry(),
+          directory: FileManager.default.temporaryDirectory))
+      } catch {
+        promise.reject("ERR_LIVE_EXPORT", "Could not export live telemetry", cause: error)
+      }
     }
 
     AsyncFunction("getHistoryRange") { (options: [String: Any], promise: Promise) in
-      promise.resolve(TelemetryRepository.shared.getRange(options))
+      try RecordingStorageFailure.requireAvailable()
+      do { promise.resolve(try TelemetryRepository.shared.getRange(options)) }
+      catch {
+        RecordingStorageFailure.reportRead(operation: "history_range_read", error: error)
+        promise.reject("ERR_HISTORY_READ", "Could not load ride history", cause: error)
+      }
     }
 
     Function("reportUiError") { (message: String, source: String?, stack: String?) in
@@ -511,29 +849,86 @@ public class VescapeCoreModule: Module {
     }
 
     AsyncFunction("getDiagnosticEvents") { (options: [String: Any], promise: Promise) in
-      promise.resolve(TelemetryRepository.shared.getDiagnosticEvents(options))
+      try RecordingStorageFailure.requireAvailable()
+      do { promise.resolve(try TelemetryRepository.shared.getDiagnosticEvents(options)) }
+      catch { RecordingStorageFailure.reportRead(operation: "diagnostic_events_read", error: error); promise.reject("APP_STORAGE_READ_FAILED", "Could not read Diagnostic Events", cause: error) }
     }
 
     AsyncFunction("clearDiagnosticEvents") { (promise: Promise) in
-      TelemetryRepository.shared.clearDiagnosticEvents()
-      promise.resolve(nil)
+      try RecordingStorageFailure.requireAvailable()
+      do { try TelemetryRepository.shared.clearDiagnosticEvents(); promise.resolve(nil) }
+      catch { RecordingStorageFailure.report(operation: "diagnostic_events_clear", category: "write_failed", error: error); promise.reject("APP_STORAGE_WRITE_FAILED", "Could not clear Diagnostic Events", cause: error) }
     }
 
     AsyncFunction("getBoardWarnings") { (promise: Promise) in
-      promise.resolve(BoardWarningRegistry.shared.allWarnings().map { $0.toMap() })
+      try RecordingStorageFailure.requireAvailable()
+      do { promise.resolve(try BoardWarningRegistry.shared.allWarnings().map { $0.toMap() }) }
+      catch { RecordingStorageFailure.reportRead(operation: "board_warnings_read", error: error); promise.reject("APP_STORAGE_READ_FAILED", "Could not read Board Warnings", cause: error) }
+    }
+
+    /// VESC Fault Occurrences across every Board — the JS foreground catch-up pull.
+    /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/VescapeCoreModule.kt `getVescFaults`
+    /// @parity /modules/vescape-core/src/index.ts `getVescFaults`
+    AsyncFunction("getVescFaults") { (promise: Promise) in
+      try RecordingStorageFailure.requireAvailable()
+      do { promise.resolve(try VescFaultCoordinator.shared.allFaults().map { $0.toMap() }) }
+      catch { RecordingStorageFailure.reportRead(operation: "vesc_faults_read", error: error); promise.reject("APP_STORAGE_READ_FAILED", "Could not read VESC Faults", cause: error) }
+    }
+
+    /// Occurrence-level dismissal. Never deletes the occurrence — the evidence outlives the badge.
+    /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/VescapeCoreModule.kt `setVescFaultDismissed`
+    /// @parity /modules/vescape-core/src/index.ts `setVescFaultDismissed`
+    AsyncFunction("setVescFaultDismissed") { (id: String, dismissed: Bool, promise: Promise) in
+      try RecordingStorageFailure.requireAvailable()
+      do { try VescFaultCoordinator.shared.setDismissed(id: id, dismissed: dismissed); promise.resolve(nil) }
+      catch { RecordingStorageFailure.report(operation: "vesc_fault_dismiss", category: "write_failed", error: error); promise.reject("APP_STORAGE_WRITE_FAILED", "Could not update VESC Fault", cause: error) }
+    }
+
+    /// The VESC Fault Capture owned by one occurrence: window metadata plus every decoded Board
+    /// sample retained before detection. Nil when no capture was saved. Independent of Ride History.
+    /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/VescapeCoreModule.kt `getVescFaultCapture`
+    /// @parity /modules/vescape-core/src/index.ts `getVescFaultCapture`
+    AsyncFunction("getVescFaultCapture") { (occurrenceId: String, promise: Promise) in
+      try RecordingStorageFailure.requireAvailable()
+      do {
+        let captures = VescFaultCaptureCoordinator.shared
+        guard let capture = try captures.capture(occurrenceId) else { promise.resolve(nil); return }
+        var payload = capture.toMap()
+        payload["samples"] = try captures.samples(occurrenceId).map { $0.toMap() }
+        promise.resolve(payload)
+      } catch {
+        RecordingStorageFailure.reportRead(operation: "vesc_fault_capture_read", error: error)
+        promise.reject("APP_STORAGE_READ_FAILED", "Could not read VESC Fault Capture", cause: error)
+      }
+    }
+
+    /// Manual, ephemeral VESC `faults` terminal output for a connected, stopped Board.
+    /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/VescapeCoreModule.kt `readVescFaultLog`
+    /// @parity /modules/vescape-core/src/index.ts `readVescFaultLog`
+    AsyncFunction("readVescFaultLog") { (boardId: String, promise: Promise) in
+      DispatchQueue.main.async {
+        self.coordinator.readVescFaultLog(
+          boardId: boardId,
+          onSuccess: { promise.resolve($0) },
+          onError: { promise.reject($0, $1) }
+        )
+      }
     }
 
     AsyncFunction("clearBoardWarning") { (boardId: String, kind: String, promise: Promise) in
-      BoardWarningRegistry.shared.clearWarning(boardId: boardId, kind: kind)
-      promise.resolve(nil)
+      try RecordingStorageFailure.requireAvailable()
+      do { try BoardWarningRegistry.shared.clearWarning(boardId: boardId, kind: kind); promise.resolve(nil) }
+      catch { RecordingStorageFailure.report(operation: "board_warning_clear", category: "write_failed", error: error); promise.reject("APP_STORAGE_WRITE_FAILED", "Could not clear Board Warning", cause: error) }
     }
 
     AsyncFunction("clearAllBoardWarnings") { (boardId: String, promise: Promise) in
-      BoardWarningRegistry.shared.clearAllWarnings(boardId: boardId)
-      promise.resolve(nil)
+      try RecordingStorageFailure.requireAvailable()
+      do { try BoardWarningRegistry.shared.clearAllWarnings(boardId: boardId); promise.resolve(nil) }
+      catch { RecordingStorageFailure.report(operation: "board_warnings_clear", category: "write_failed", error: error); promise.reject("APP_STORAGE_WRITE_FAILED", "Could not clear Board Warnings", cause: error) }
     }
 
     AsyncFunction("devInjectBoardWarning") { (boardId: String, kind: String, severity: String, payloadJson: String, promise: Promise) in
+      try RecordingStorageFailure.requireAvailable()
       BoardWarningRegistry.shared.reportFinding(
         boardId: boardId,
         kind: kind,
@@ -543,20 +938,74 @@ public class VescapeCoreModule: Module {
       promise.resolve(nil)
     }
 
+    /// This Board Session's Board Config Values, decoded map + freshness only. The write base stays
+    /// native (ADR 0035).
+    /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/VescapeCoreModule.kt `getBoardConfigValues`
+    /// @parity /modules/vescape-core/src/index.ts `BoardConfigValues`
+    AsyncFunction("getBoardConfigValues") { (promise: Promise) in
+      promise.resolve(self.coordinator.boardConfigValuesMap())
+    }
+    /// Last Known Board Config Values for a Board with no Board Session — the values survive a
+    /// disconnect even though the session object does not.
+    /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/VescapeCoreModule.kt `getLastKnownBoardConfigValues`
+    /// @parity /modules/vescape-core/src/index.ts `BoardConfigValues`
+    AsyncFunction("getLastKnownBoardConfigValues") { (boardId: String, promise: Promise) in
+      try RecordingStorageFailure.requireAvailable()
+      do { promise.resolve(try BoardConfigStore.shared.loadLatest(boardId: boardId)?.toBridgeMap()) }
+      catch { RecordingStorageFailure.reportRead(operation: "board_config_latest_read", error: error); promise.reject("APP_STORAGE_READ_FAILED", "Could not read cached Board Config", cause: error) }
+    }
+    /// This Board Session's Motor Config Values — the decoded MCCONF map plus its signature. Read-only
+    /// permanently: there is no write base and no encoder (ADR 0036).
+    /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/VescapeCoreModule.kt `getMotorConfigValues`
+    /// @parity /modules/vescape-core/src/index.ts `MotorConfigValues`
+    AsyncFunction("getMotorConfigValues") { (promise: Promise) in
+      promise.resolve(self.coordinator.motorConfigValuesMap())
+    }
+    /// Last Known Motor Config Values for a Board with no Board Session.
+    /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/VescapeCoreModule.kt `getLastKnownMotorConfigValues`
+    /// @parity /modules/vescape-core/src/index.ts `MotorConfigValues`
+    AsyncFunction("getLastKnownMotorConfigValues") { (boardId: String, promise: Promise) in
+      try RecordingStorageFailure.requireAvailable()
+      do { promise.resolve(try MotorConfigStore.shared.loadLatest(boardId: boardId)?.toBridgeMap()) }
+      catch { RecordingStorageFailure.reportRead(operation: "motor_config_latest_read", error: error); promise.reject("APP_STORAGE_READ_FAILED", "Could not read cached Motor Config", cause: error) }
+    }
+    AsyncFunction("getBoardConfigChangeNotice") { (boardId: String, promise: Promise) in
+      try RecordingStorageFailure.requireAvailable()
+      do { promise.resolve(try BoardConfigStore.shared.loadNotice(boardId: boardId)?.toMap()) }
+      catch { RecordingStorageFailure.reportRead(operation: "board_config_notice_read", error: error); promise.reject("APP_STORAGE_READ_FAILED", "Could not read Board Config Change Notice", cause: error) }
+    }
+    AsyncFunction("dismissBoardConfigChangeNotice") { (boardId: String, promise: Promise) in
+      try RecordingStorageFailure.requireAvailable()
+      do { try BoardConfigStore.shared.dismissNotice(boardId: boardId); promise.resolve(nil) }
+      catch { RecordingStorageFailure.report(operation: "board_config_notice_delete", category: "write_failed", error: error); promise.reject("APP_STORAGE_WRITE_FAILED", "Could not dismiss Board Config Change Notice", cause: error) }
+    }
+
     AsyncFunction("devReportCleanBoardWarning") { (boardId: String, kind: String, promise: Promise) in
+      try RecordingStorageFailure.requireAvailable()
       BoardWarningRegistry.shared.reportCleanEvaluation(boardId: boardId, kind: kind)
       promise.resolve(nil)
     }
 
     AsyncFunction("getTelemetrySummary") { (promise: Promise) in
-      promise.resolve(TelemetryRepository.shared.getSummary())
+      try RecordingStorageFailure.requireAvailable()
+      do { promise.resolve(try TelemetryRepository.shared.getSummary()) }
+      catch {
+        RecordingStorageFailure.reportRead(operation: "history_summary_read", error: error)
+        promise.reject("ERR_HISTORY_READ", "Could not load ride history", cause: error)
+      }
     }
 
-    AsyncFunction("getDatabaseSizeBytes") { () -> Int in
-      Int(TelemetryDatabase.databaseSizeBytes)
+    AsyncFunction("getDatabaseSizeBytes") { (promise: Promise) in
+      try RecordingStorageFailure.requireAvailable()
+      do { promise.resolve(Int(try TelemetryDatabase.databaseSizeBytes())) }
+      catch {
+        RecordingStorageFailure.reportRead(operation: "database_size_read", error: error)
+        promise.reject("APP_STORAGE_READ_FAILED", "Could not read database size", cause: error)
+      }
     }
 
     AsyncFunction("backupDatabase") { (promise: Promise) in
+      try RecordingStorageFailure.requireAvailable()
       DispatchQueue.global(qos: .userInitiated).async {
         do {
           promise.resolve(try DatabaseBackupManager.createBackup())
@@ -590,20 +1039,32 @@ public class VescapeCoreModule: Module {
       )
     }
 
-    AsyncFunction("setRemoteTilt") { (_: Int) -> Bool in
-      false
-    }
+    // @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/VescapeCoreModule.kt `setRemoteTilt`
+    // @parity /modules/vescape-core/src/index.ts `setRemoteTilt`
+    AsyncFunction("setRemoteTilt") { (value: Int) -> Bool in
+      self.coordinator.setRemoteTilt(value: value)
+    }.runOnQueue(.main)
 
-    AsyncFunction("lockRemoteTilt") { (_: Int) -> Bool in
-      false
-    }
+    // @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/VescapeCoreModule.kt `lockRemoteTilt`
+    // @parity /modules/vescape-core/src/index.ts `lockRemoteTilt`
+    AsyncFunction("lockRemoteTilt") { (value: Int) -> Bool in
+      self.coordinator.lockRemoteTilt(value: value)
+    }.runOnQueue(.main)
 
-    AsyncFunction("releaseRemoteTilt") { (_: Int, _: Int) -> Bool in
-      false
-    }
+    // @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/VescapeCoreModule.kt `releaseRemoteTilt`
+    // @parity /modules/vescape-core/src/index.ts `releaseRemoteTilt`
+    AsyncFunction("releaseRemoteTilt") { (value: Int, durationMs: Int) -> Bool in
+      self.coordinator.releaseRemoteTilt(value: value, durationMs: Int64(durationMs))
+    }.runOnQueue(.main)
 
+    // @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/VescapeCoreModule.kt `stopRemoteTilt`
+    // @parity /modules/vescape-core/src/index.ts `stopRemoteTilt`
     AsyncFunction("stopRemoteTilt") { () -> Bool in
-      false
+      self.coordinator.stopRemoteTilt()
+    }.runOnQueue(.main)
+
+    AsyncFunction("setBoardLights") { (enabled: Bool, headlightsEnabled: Bool) -> Bool in
+      self.coordinator.setBoardLights(enabled: enabled, headlightsEnabled: headlightsEnabled)
     }
 
     AsyncFunction("startBoardMove") { (input: Int) -> Bool in
@@ -619,53 +1080,68 @@ public class VescapeCoreModule: Module {
     // owns the transactional semantics; mutations reject with Android's error vocabulary.
 
     AsyncFunction("getTuneProfiles") { (boardId: String, refloatBaseVersion: String?, promise: Promise) in
-      promise.resolve(TuneProfileStore.shared.getTuneProfiles(boardId, refloatBaseVersion: refloatBaseVersion))
+      try RecordingStorageFailure.requireAvailable()
+      do { promise.resolve(try TuneProfileStore.shared.getTuneProfiles(boardId, refloatBaseVersion: refloatBaseVersion)) }
+      catch { RecordingStorageFailure.reportRead(operation: "tune_profiles_read", error: error); promise.reject(TuneProfileStore.errorCode, error.localizedDescription) }
     }
 
     AsyncFunction("getTuneProfile") { (profileId: String, promise: Promise) in
-      promise.resolve(TuneProfileStore.shared.getTuneProfile(profileId))
+      try RecordingStorageFailure.requireAvailable()
+      do { promise.resolve(try TuneProfileStore.shared.getTuneProfile(profileId)) }
+      catch { RecordingStorageFailure.reportRead(operation: "tune_profile_read", error: error); promise.reject(TuneProfileStore.errorCode, error.localizedDescription) }
     }
 
     AsyncFunction("createProfile") { (boardId: String, name: String, icon: String, color: String, fields: [String: Any], refloatBaseVersion: String, promise: Promise) in
+      try RecordingStorageFailure.requireAvailable()
       do {
         promise.resolve(try TuneProfileStore.shared.createProfile(boardId: boardId, name: name, icon: icon, color: color, fields: fields, refloatBaseVersion: refloatBaseVersion))
       } catch {
+        reportTunePersistenceWrite(operation: "tune_profile_create", error: error)
         promise.reject(TuneProfileStore.errorCode, error.localizedDescription)
       }
     }
 
     AsyncFunction("renameProfile") { (profileId: String, name: String, icon: String, color: String, promise: Promise) in
+      try RecordingStorageFailure.requireAvailable()
       do {
         promise.resolve(try TuneProfileStore.shared.renameProfile(profileId: profileId, name: name, icon: icon, color: color))
       } catch {
+        reportTunePersistenceWrite(operation: "tune_profile_rename", error: error)
         promise.reject(TuneProfileStore.errorCode, error.localizedDescription)
       }
     }
 
     AsyncFunction("deleteProfile") { (profileId: String, promise: Promise) in
+      try RecordingStorageFailure.requireAvailable()
       do {
         try TuneProfileStore.shared.deleteProfile(profileId: profileId)
         promise.resolve(nil)
       } catch {
+        reportTunePersistenceWrite(operation: "tune_profile_delete", error: error)
         promise.reject(TuneProfileStore.errorCode, error.localizedDescription)
       }
     }
 
     AsyncFunction("getProfileHistory") { (profileId: String, promise: Promise) in
-      promise.resolve(TuneProfileStore.shared.getProfileHistory(profileId))
+      try RecordingStorageFailure.requireAvailable()
+      do { promise.resolve(try TuneProfileStore.shared.getProfileHistory(profileId)) }
+      catch { RecordingStorageFailure.reportRead(operation: "tune_history_read", error: error); promise.reject(TuneProfileStore.errorCode, error.localizedDescription) }
     }
 
     AsyncFunction("rollbackProfile") { (profileId: String, historyEntryId: Double, promise: Promise) in
+      try RecordingStorageFailure.requireAvailable()
       do {
         promise.resolve(
           try TuneProfileStore.shared.rollbackProfile(profileId: profileId, historyEntryId: Int64(historyEntryId))
         )
       } catch {
+        reportTunePersistenceWrite(operation: "tune_profile_rollback", error: error)
         promise.reject(TuneProfileStore.errorCode, error.localizedDescription)
       }
     }
 
     AsyncFunction("copyProfileToBoard") { (profileId: String, targetBoardId: String, newName: String, promise: Promise) in
+      try RecordingStorageFailure.requireAvailable()
       do {
         promise.resolve(
           try TuneProfileStore.shared.copyProfileToBoard(
@@ -675,20 +1151,24 @@ public class VescapeCoreModule: Module {
           )
         )
       } catch {
+        reportTunePersistenceWrite(operation: "tune_profile_copy", error: error)
         promise.reject(TuneProfileStore.errorCode, error.localizedDescription)
       }
     }
 
     AsyncFunction("saveProfile") { (profileId: String, fields: [String: Any], promise: Promise) in
+      try RecordingStorageFailure.requireAvailable()
       do {
         promise.resolve(try TuneProfileStore.shared.saveProfile(profileId: profileId, fields: fields))
       } catch {
+        reportTunePersistenceWrite(operation: "tune_profile_save", error: error)
         promise.reject(TuneProfileStore.errorCode, error.localizedDescription)
       }
     }
 
     // @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/VescapeCoreModule.kt `pushProfileToBoard`
     AsyncFunction("pushProfileToBoard") { (profileId: String, promise: Promise) in
+      try RecordingStorageFailure.requireAvailable()
       self.coordinator.pushProfileToBoard(
         profileId: profileId,
         onSuccess: { snapshot in promise.resolve(snapshot) },
@@ -696,140 +1176,251 @@ public class VescapeCoreModule: Module {
       )
     }
 
-    AsyncFunction("getTotalProfileStats") { (promise: Promise) in
-      promise.resolve(ProfileStatsRepository.shared.getTotalProfileStats())
-    }
-
-    AsyncFunction("getMonthlyProfileStats") { (options: [String: Any], promise: Promise) in
-      promise.resolve(ProfileStatsRepository.shared.getMonthlyProfileStats(options))
-    }
-
-    AsyncFunction("getProfileStatMonths") { (promise: Promise) in
-      promise.resolve(ProfileStatsRepository.shared.getProfileStatMonths())
+    // @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/VescapeCoreModule.kt `getProfileStatsSnapshot`
+    AsyncFunction("getProfileStatsSnapshot") { (options: [String: Any], promise: Promise) in
+      try RecordingStorageFailure.requireAvailable()
+      do { promise.resolve(try ProfileStatsRepository.shared.getProfileStatsSnapshot(options)) }
+      catch {
+        RecordingStorageFailure.reportRead(operation: "profile_stats_read", error: error)
+        promise.reject("ERR_PROFILE_STATS_READ", "Could not load profile stats", cause: error)
+      }
     }
 
     // Favorites (ADR 0029). JS supplies only the range and an optional name; identity, timestamps
     // and the denormalized summary are native.
     // @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/VescapeCoreModule.kt `getFavorites`
     AsyncFunction("getFavorites") { (promise: Promise) in
-      promise.resolve(TelemetryRepository.shared.getFavorites())
+      try RecordingStorageFailure.requireAvailable()
+      do { promise.resolve(try TelemetryRepository.shared.getFavorites()) }
+      catch {
+        RecordingStorageFailure.reportRead(operation: "favorites_read", error: error)
+        promise.reject("ERR_FAVORITES_READ", "Could not load Favorites", cause: error)
+      }
     }
 
     AsyncFunction("createFavorite") { (options: [String: Any], promise: Promise) in
-      guard let favorite = TelemetryRepository.shared.createFavorite(options) else {
-        promise.reject("ERR_CREATE_FAVORITE", "favorite range is invalid or could not be stored")
-        return
+      try RecordingStorageFailure.requireAvailable()
+      do {
+        guard let favorite = try TelemetryRepository.shared.createFavorite(options) else {
+          promise.reject("ERR_CREATE_FAVORITE", "favorite range is invalid")
+          return
+        }
+        promise.resolve(favorite)
+      } catch {
+        RecordingStorageFailure.report(operation: "favorite_create", category: "write_failed", error: error)
+        promise.reject("ERR_CREATE_FAVORITE", "Favorite could not be stored", cause: error)
       }
-      promise.resolve(favorite)
     }
 
     AsyncFunction("updateFavorite") { (id: String, options: [String: Any], promise: Promise) in
-      guard let favorite = TelemetryRepository.shared.updateFavorite(id, options: options) else {
-        promise.reject("ERR_UPDATE_FAVORITE", "favorite does not exist or could not be stored")
-        return
+      try RecordingStorageFailure.requireAvailable()
+      do {
+        guard let favorite = try TelemetryRepository.shared.updateFavorite(id, options: options) else {
+          promise.reject("ERR_UPDATE_FAVORITE", "Favorite does not exist or range is invalid")
+          return
+        }
+        promise.resolve(favorite)
+      } catch {
+        RecordingStorageFailure.report(operation: "favorite_update", category: "write_failed", error: error)
+        promise.reject("ERR_UPDATE_FAVORITE", "Favorite could not be stored", cause: error)
       }
-      promise.resolve(favorite)
     }
 
     AsyncFunction("deleteFavorite") { (id: String, promise: Promise) in
-      promise.resolve(TelemetryRepository.shared.deleteFavorite(id))
+      try RecordingStorageFailure.requireAvailable()
+      do {
+        guard try TelemetryRepository.shared.deleteFavorite(id) else {
+          promise.reject("ERR_DELETE_FAVORITE", "Favorite does not exist")
+          return
+        }
+        promise.resolve(true)
+      } catch let error as FavoriteMediaStoreError where error == .cleanupFailed {
+        // @parity /src/modules/history/store/favoriteStore.ts `FAVORITE_MEDIA_CLEANUP_ERROR`
+        UnexpectedNativeError.report(
+          operation: "favorite_media_delete", category: "file_delete_failed", error: error
+        )
+        promise.reject("ERR_DELETE_FAVORITE_MEDIA_CLEANUP", "Favorite deleted but its media could not be removed", cause: error)
+      } catch {
+        RecordingStorageFailure.report(operation: "favorite_delete", category: "write_failed", error: error)
+        promise.reject("ERR_DELETE_FAVORITE", "Favorite could not be deleted", cause: error)
+      }
     }
 
     AsyncFunction("getFavoriteMedia") { (favoriteId: String, promise: Promise) in
-      promise.resolve(TelemetryRepository.shared.getFavoriteMedia(favoriteId))
+      try RecordingStorageFailure.requireAvailable()
+      do { promise.resolve(try TelemetryRepository.shared.getFavoriteMedia(favoriteId)) }
+      catch {
+        RecordingStorageFailure.reportRead(operation: "favorite_media_read", error: error)
+        promise.reject("ERR_FAVORITE_MEDIA_READ", "Could not load Favorite Media", cause: error)
+      }
     }
 
     AsyncFunction("importFavoriteMedia") { (options: [String: Any], promise: Promise) in
+      try RecordingStorageFailure.requireAvailable()
       do {
         promise.resolve(try TelemetryRepository.shared.importFavoriteMedia(options))
       } catch {
+        RecordingStorageFailure.report(operation: "favorite_media_import", category: "write_failed", error: error)
         promise.reject("ERR_IMPORT_FAVORITE_MEDIA", error.localizedDescription)
       }
     }
 
     AsyncFunction("deleteTelemetryBefore") { (beforeMs: Double, promise: Promise) in
-      promise.resolve(TelemetryRepository.shared.deleteBefore(Int64(beforeMs)))
+      try RecordingStorageFailure.requireAvailable()
+      do { promise.resolve(try TelemetryRepository.shared.deleteBefore(Int64(beforeMs))) }
+      catch { RecordingStorageFailure.report(operation: "telemetry_prune", category: "write_failed", error: error); promise.reject("APP_STORAGE_WRITE_FAILED", "Could not prune telemetry", cause: error) }
     }
 
     AsyncFunction("deleteTelemetryRange") { (options: [String: Any], promise: Promise) in
-      promise.resolve(TelemetryRepository.shared.deleteRange(options))
+      try RecordingStorageFailure.requireAvailable()
+      do { promise.resolve(try TelemetryRepository.shared.deleteRange(options)) }
+      catch { RecordingStorageFailure.report(operation: "telemetry_range_delete", category: "write_failed", error: error); promise.reject("APP_STORAGE_WRITE_FAILED", "Could not delete telemetry", cause: error) }
     }
 
     // Gate progress on foreground + active listener and hop to main, like every other JS emit. The
     // rebuild callback fires from a background queue; skip the void when JS isn't listening.
     // @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/VescapeCoreModule.kt `rebuildTelemetryBuckets`
     AsyncFunction("rebuildTelemetryBuckets") { (promise: Promise) in
-      let count = TelemetryRepository.shared.rebuildBuckets { current, total in
+      try RecordingStorageFailure.requireAvailable()
+      do { let count = try TelemetryRepository.shared.rebuildBuckets { current, total in
         guard self.shouldEmitToFrontend("onTelemetryRebuildProgress") else { return }
         DispatchQueue.main.async {
           guard self.shouldEmitToFrontend("onTelemetryRebuildProgress") else { return }
           self.sendEvent("onTelemetryRebuildProgress", ["current": current, "total": total])
         }
       }
-      promise.resolve(count)
+      promise.resolve(count) }
+      catch { RecordingStorageFailure.report(operation: "telemetry_rebuild", category: "write_failed", error: error); promise.reject("APP_STORAGE_WRITE_FAILED", "Could not rebuild telemetry", cause: error) }
     }
 
     AsyncFunction("clearTelemetryHistory") { (promise: Promise) in
-      TelemetryRepository.shared.clearAll()
-      promise.resolve(nil)
+      try RecordingStorageFailure.requireAvailable()
+      do { try TelemetryRepository.shared.clearAll(); promise.resolve(nil) }
+      catch { RecordingStorageFailure.report(operation: "telemetry_clear", category: "write_failed", error: error); promise.reject("APP_STORAGE_WRITE_FAILED", "Could not clear telemetry", cause: error) }
     }
 
     AsyncFunction("getBoards") { (promise: Promise) in
-      promise.resolve(self.appData.getBoards())
+      try RecordingStorageFailure.requireAvailable()
+      do { promise.resolve(try self.appData.getBoards()) }
+      catch {
+        RecordingStorageFailure.reportRead(operation: "boards_read", error: error)
+        promise.reject("APP_STORAGE_READ_FAILED", "Could not read Boards")
+      }
     }
 
     AsyncFunction("upsertBoard") { (board: [String: Any], promise: Promise) in
-      self.appData.upsertBoard(board)
-      self.coordinator.reloadBoardDataForActiveBoard()
-      promise.resolve(nil)
+      try RecordingStorageFailure.requireAvailable()
+      do {
+        try self.appData.upsertBoard(board)
+        self.coordinator.reloadAlertRules()
+        self.coordinator.reloadBoardDataForActiveBoard()
+        self.connectSavedBoardLink(boardId: board["id"] as? String)
+        promise.resolve(nil)
+      } catch {
+        RecordingStorageFailure.report(operation: "board_save", category: "write_failed", error: error)
+        promise.reject("APP_STORAGE_WRITE_FAILED", "Could not save Board")
+      }
     }
 
     AsyncFunction("deleteBoard") { (id: String, promise: Promise) in
-      self.appData.deleteBoard(id)
-      promise.resolve(nil)
+      try RecordingStorageFailure.requireAvailable()
+      do {
+        try self.appData.deleteBoard(id)
+        promise.resolve(nil)
+      } catch {
+        RecordingStorageFailure.report(operation: "board_delete", category: "write_failed", error: error)
+        promise.reject("APP_STORAGE_WRITE_FAILED", "Could not delete Board")
+      }
     }
 
+    // @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/VescapeCoreModule.kt `previewAlertPreset`
+    // @parity /modules/vescape-core/src/index.ts `previewAlertPreset`
+    Function("previewAlertPreset") { (metric: String, level: String, topSpeedKmh: Double, hasBatteryConfig: Bool, speedUnitSystem: String) -> [[String: Any?]] in
+      try AlertPresetPersistence.preview(
+        metric: metric,
+        level: level,
+        topSpeedKmh: topSpeedKmh,
+        hasBatteryConfig: hasBatteryConfig,
+        speedUnitSystem: speedUnitSystem
+      ).map { rule in
+        [
+          "id": rule.id,
+          "controlId": rule.controlId,
+          "threshold": rule.threshold,
+          "thresholdMax": rule.thresholdMax,
+          "soundType": rule.soundType,
+          "repeatEverySeconds": rule.repeatEverySeconds,
+          "beepCount": rule.beepCount,
+        ]
+      }
+    }
+    // @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/VescapeCoreModule.kt `applyAlertPreset`
+    // @parity /modules/vescape-core/src/index.ts `applyAlertPreset`
+    AsyncFunction("applyAlertPreset") { (boardId: String, metric: String, action: String, level: String?, matchBoardConfig: Bool?, promise: Promise) in
+      try RecordingStorageFailure.requireAvailable()
+      do {
+        try self.appData.applyAlertPreset(boardId, metric, action, level, matchBoardConfig)
+        self.coordinator.reloadAlertRules()
+        promise.resolve(nil)
+      } catch {
+        RecordingStorageFailure.report(operation: "alert_preset_apply", category: "write_failed", error: error)
+        promise.reject("APP_STORAGE_WRITE_FAILED", "Could not apply Alert Preset")
+      }
+    }
     AsyncFunction("getAlertRules") { (boardId: String, promise: Promise) in
-      promise.resolve(self.appData.getAlertRules(boardId))
+      try RecordingStorageFailure.requireAvailable()
+      do { promise.resolve(try self.appData.getAlertRules(boardId)) }
+      catch { RecordingStorageFailure.reportRead(operation: "alert_rules_read", error: error); promise.reject("ERR_ALERT_RULES_READ", "Could not load Alert Rules", cause: error) }
     }
 
     AsyncFunction("upsertAlertRule") { (rule: [String: Any], promise: Promise) in
-      self.appData.upsertAlertRule(rule)
-      self.coordinator.reloadAlertRules()
-      promise.resolve(nil)
+      try RecordingStorageFailure.requireAvailable()
+      do { try self.appData.upsertAlertRule(rule); self.coordinator.reloadAlertRules(); promise.resolve(nil) }
+      catch { RecordingStorageFailure.report(operation: "alert_rule_save", category: "write_failed", error: error); promise.reject("ERR_ALERT_RULE_WRITE", "Alert Rule could not be stored", cause: error) }
     }
 
     AsyncFunction("setAlertRuleEnabled") { (boardId: String, id: String, enabled: Bool, promise: Promise) in
-      self.appData.setAlertRuleEnabled(boardId, id, enabled)
-      self.coordinator.reloadAlertRules()
-      promise.resolve(nil)
+      try RecordingStorageFailure.requireAvailable()
+      do { try self.appData.setAlertRuleEnabled(boardId, id, enabled); self.coordinator.reloadAlertRules(); promise.resolve(nil) }
+      catch { RecordingStorageFailure.report(operation: "alert_rule_enable", category: "write_failed", error: error); promise.reject("ERR_ALERT_RULE_WRITE", "Alert Rule could not be stored", cause: error) }
     }
 
     AsyncFunction("deleteAlertRule") { (boardId: String, id: String, promise: Promise) in
-      self.appData.deleteAlertRule(boardId, id)
-      self.coordinator.reloadAlertRules()
-      promise.resolve(nil)
+      try RecordingStorageFailure.requireAvailable()
+      do { try self.appData.deleteAlertRule(boardId, id); self.coordinator.reloadAlertRules(); promise.resolve(nil) }
+      catch { RecordingStorageFailure.report(operation: "alert_rule_delete", category: "write_failed", error: error); promise.reject("ERR_ALERT_RULE_WRITE", "Alert Rule could not be deleted", cause: error) }
     }
 
     AsyncFunction("getPrivacyZones") { (promise: Promise) in
-      promise.resolve(self.appData.getPrivacyZones())
+      try RecordingStorageFailure.requireAvailable()
+      do { promise.resolve(try self.appData.getPrivacyZones()) }
+      catch { RecordingStorageFailure.reportRead(operation: "privacy_zones_read", error: error); promise.reject("ERR_PRIVACY_ZONE_READ", "Could not load Privacy Zones", cause: error) }
     }
 
     AsyncFunction("upsertPrivacyZone") { (zone: [String: Any], promise: Promise) in
-      self.appData.upsertPrivacyZone(zone)
-      self.reloadPrivacyZonesIntoRecorder()
+      try RecordingStorageFailure.requireAvailable()
+      do { try self.appData.upsertPrivacyZone(zone) }
+      catch { RecordingStorageFailure.report(operation: "privacy_zone_save", category: "write_failed", error: error); promise.reject("ERR_PRIVACY_ZONE_WRITE", "Privacy Zone could not be stored", cause: error); return }
+      do { try self.reloadPrivacyZonesIntoRecorder() }
+      catch { RecordingStorageFailure.reportRead(operation: "privacy_zones_reload", error: error) }
       promise.resolve(nil)
     }
 
     AsyncFunction("setPrivacyZoneEnabled") { (id: String, enabled: Bool, promise: Promise) in
-      self.appData.setPrivacyZoneEnabled(id, enabled)
-      self.reloadPrivacyZonesIntoRecorder()
+      try RecordingStorageFailure.requireAvailable()
+      do { try self.appData.setPrivacyZoneEnabled(id, enabled) }
+      catch { RecordingStorageFailure.report(operation: "privacy_zone_enable", category: "write_failed", error: error); promise.reject("ERR_PRIVACY_ZONE_WRITE", "Privacy Zone could not be updated", cause: error); return }
+      do { try self.reloadPrivacyZonesIntoRecorder() }
+      catch { RecordingStorageFailure.reportRead(operation: "privacy_zones_reload", error: error) }
       promise.resolve(nil)
     }
 
     AsyncFunction("deletePrivacyZone") { (id: String, promise: Promise) in
-      self.appData.deletePrivacyZone(id)
-      self.reloadPrivacyZonesIntoRecorder()
+      try RecordingStorageFailure.requireAvailable()
+      do { try self.appData.deletePrivacyZone(id) }
+      catch { RecordingStorageFailure.report(operation: "privacy_zone_delete", category: "write_failed", error: error); promise.reject("ERR_PRIVACY_ZONE_WRITE", "Privacy Zone could not be deleted", cause: error); return }
+      do { try self.reloadPrivacyZonesIntoRecorder() }
+      catch { RecordingStorageFailure.reportRead(operation: "privacy_zones_reload", error: error) }
       promise.resolve(nil)
     }
 
@@ -882,9 +1473,17 @@ public class VescapeCoreModule: Module {
       }
     }
 
-    // The direction target is personal client state, never a Map Point.
+    // The direction target is personal client state, never a Map Point. Native keeps it so Group
+    // Ride presence can read it while JS is gone.
     AsyncFunction("setDirectionPoint") { (latitude: Double?, longitude: Double?, promise: Promise) in
-      self.appData.setDirectionPoint(latitude: latitude, longitude: longitude)
+      try RecordingStorageFailure.requireAvailable()
+      do { try self.appData.setDirectionPoint(latitude: latitude, longitude: longitude) }
+      catch {
+        RecordingStorageFailure.report(operation: "direction_point_save", category: "write_failed", error: error)
+        promise.reject("APP_STORAGE_WRITE_FAILED", "Could not save Direction Point", cause: error)
+        return
+      }
+      self.coordinator.loadGroupRideTarget()
 
       // A Navigation belongs to exactly one Direction Point: setting one asks for a path, clearing
       // one ends it. The Directions call runs off the promise so the pin lands immediately.
@@ -908,6 +1507,7 @@ public class VescapeCoreModule: Module {
     // @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/VescapeCoreModule.kt `recomputeNavigation`
     // @parity /modules/vescape-core/src/index.ts `recomputeNavigation`
     AsyncFunction("recomputeNavigation") { (promise: Promise) in
+      try RecordingStorageFailure.requireAvailable()
       self.recomputeNavigation()
       promise.resolve(nil)
     }
@@ -918,37 +1518,71 @@ public class VescapeCoreModule: Module {
     // @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/VescapeCoreModule.kt `setNavigationProfile`
     // @parity /modules/vescape-core/src/index.ts `setNavigationProfile`
     AsyncFunction("setNavigationProfile") { (profile: String, promise: Promise) in
+      try RecordingStorageFailure.requireAvailable()
       NavigationController.shared.selectProfile(NavigationProfile.fromWire(profile))
       self.recomputeNavigation()
       promise.resolve(nil)
     }
 
     AsyncFunction("getSettings") { (promise: Promise) in
-      promise.resolve(self.appData.getSettings())
+      try RecordingStorageFailure.requireAvailable()
+      do { promise.resolve(try self.appData.getSettings()) }
+      catch {
+        RecordingStorageFailure.reportRead(operation: "settings_read", error: error)
+        promise.reject("APP_STORAGE_READ_FAILED", "Could not read settings")
+      }
     }
 
     // @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/VescapeCoreModule.kt `refreshLegalPolicy`
     // @parity /modules/vescape-core/src/index.ts `refreshLegalPolicy`
     AsyncFunction("refreshLegalPolicy") { (promise: Promise) in
-      let settings = self.appData.getSettings()
+      try RecordingStorageFailure.requireAvailable()
+      let settings: [String: Any?]
+      do { settings = try self.appData.getSettings() }
+      catch {
+        RecordingStorageFailure.reportRead(operation: "legal_policy_settings_read", error: error)
+        promise.reject("APP_STORAGE_READ_FAILED", "Could not read settings")
+        return
+      }
       let latitude = settings["lastGpsLatitude"] as? Double
       let longitude = settings["lastGpsLongitude"] as? Double
       Task {
-        let countryCode: String? = if let latitude, let longitude {
+        let resolution: LegalPolicyResolution = if let latitude, let longitude {
           await self.legalPolicyResolver.resolve(latitude: latitude, longitude: longitude)
         } else {
-          nil
+          .resolved(nil)
         }
-        self.appData.updateLegalPolicy(jurisdictionCode: countryCode)
-        self.coordinator.reloadAlertRules()
-        promise.resolve(nil)
+        if case .cancelled = resolution {
+          promise.reject("LEGAL_POLICY_CANCELLED", "Legal Policy refresh was cancelled")
+          return
+        }
+        guard case .resolved(let countryCode) = resolution else {
+          promise.reject("LEGAL_POLICY_UNAVAILABLE", "Could not resolve Legal Policy")
+          return
+        }
+        do {
+          try self.appData.updateLegalPolicy(jurisdictionCode: countryCode)
+          self.coordinator.reloadAlertRules()
+          promise.resolve(nil)
+        } catch {
+          RecordingStorageFailure.report(operation: "legal_policy_save", category: "write_failed", error: error)
+          promise.reject("APP_STORAGE_WRITE_FAILED", "Could not save Legal Policy")
+        }
       }
     }
 
     // @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/VescapeCoreModule.kt `setLegalMode`
     // @parity /modules/vescape-core/src/index.ts `setLegalMode`
     AsyncFunction("setLegalMode") { (boardId: String, enabled: Bool, promise: Promise) in
-      guard self.appData.getBoard(boardId) != nil else {
+      try RecordingStorageFailure.requireAvailable()
+      let board: [String: Any?]?
+      do { board = try self.appData.getBoard(boardId) }
+      catch {
+        RecordingStorageFailure.reportRead(operation: "legal_mode_board_read", error: error)
+        promise.reject("APP_STORAGE_READ_FAILED", "Could not read Board")
+        return
+      }
+      guard board != nil else {
         promise.reject("BOARD_NOT_FOUND", "Board not found: \(boardId)")
         return
       }
@@ -957,7 +1591,13 @@ public class VescapeCoreModule: Module {
           promise.reject(code, message)
           return
         }
-        let settings = self.appData.getSettings()
+        let settings: [String: Any?]
+        do { settings = try self.appData.getSettings() }
+        catch {
+          RecordingStorageFailure.reportRead(operation: "legal_mode_settings_read", error: error)
+          promise.reject("APP_STORAGE_READ_FAILED", "Could not read settings")
+          return
+        }
         let jurisdictionCode =
           ((settings["legalPolicy"] ?? nil) as? [String: Any])?["jurisdictionCode"] as? String
         guard let jurisdictionCode, self.legalPolicyCatalog.speeds(countryCode: jurisdictionCode) != nil else {
@@ -965,9 +1605,14 @@ public class VescapeCoreModule: Module {
           return
         }
       }
-      self.appData.updateLegalMode(boardId: boardId, enabled: enabled)
-      self.coordinator.reloadAlertRules()
-      promise.resolve(nil)
+      do {
+        try self.appData.updateLegalMode(boardId: boardId, enabled: enabled)
+        self.coordinator.reloadAlertRules()
+        promise.resolve(nil)
+      } catch {
+        RecordingStorageFailure.report(operation: "legal_mode_save", category: "write_failed", error: error)
+        promise.reject("APP_STORAGE_WRITE_FAILED", "Could not save Legal Mode")
+      }
     }
 
     // JS sends the raw setting value (bool/number/string/object/null), matching Android's
@@ -976,8 +1621,13 @@ public class VescapeCoreModule: Module {
     // an off-thread `AsyncFunction` that would touch a live `JavaScriptValue` on a worker queue.
     // `appData.updateSetting` treats `NSNull` (JS null/undefined) as a delete.
     Function("updateSetting") { (key: String, value: JavaScriptValue) in
-      self.appData.updateSetting(key, rawValue: value.getAny())
+      do { try self.appData.updateSetting(key, rawValue: value.getAny()) }
+      catch {
+        RecordingStorageFailure.report(operation: "setting_save", category: "write_failed", error: error)
+        throw error
+      }
       if [
+        "unitSystem",
         "liveHistoryLimit",
         "movingSpeedThresholdKmh",
         "avgSpeedCutoffKmh",
@@ -987,8 +1637,19 @@ public class VescapeCoreModule: Module {
         "socEstimateWindowSeconds",
         "telemetryPollRateHz",
         "boardWarningsEnabled",
+        "vescFaultCollectionEnabled",
+        "connectionSoundsEnabled",
+        "soundPack",
       ].contains(key) {
         self.coordinator.reloadTelemetrySettings()
+      }
+      if key == "unitSystem" { self.coordinator.reloadAlertRules() }
+      // The Watch Mirror is process scoped, not session scoped, so its settings reload cannot ride
+      // on `reloadTelemetrySettings` — that one returns early with no Board Session.
+      // @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/VescapeCoreModule.kt `updateSetting`
+      if key == "unitSystem" { self.alertTestCoordinator?.unitSystem = (try self.appData.getSettings())["unitSystem"] as? String ?? "metric" }
+      if watchSourceSettingKeys.contains(key) {
+        self.coordinator.reloadWatchSettings()
       }
     }
   }
@@ -1001,6 +1662,8 @@ public class VescapeCoreModule: Module {
 
     let player = AlertAudioPlayer()
     let coordinator = AlertCoordinator(player: player, vibrateSingles: false)
+    do { coordinator.unitSystem = try appData.getSettings()["unitSystem"] as? String ?? "metric" }
+    catch { RecordingStorageFailure.reportRead(operation: "alert_test_settings", error: error); return }
     coordinator.replaceRules(rules)
     alertTestPlayer = player
     alertTestCoordinator = coordinator
@@ -1066,6 +1729,7 @@ public class VescapeCoreModule: Module {
       onComplete: { [weak self] result in
         guard self?.activeProbe?.id == probeId else { return }
         self?.activeProbe = nil
+        self?.completedProbes[probeId] = result
         promise.resolve(
           self?.probeResultToBridge(result) ?? [
             "outcome": "none",
@@ -1085,11 +1749,192 @@ public class VescapeCoreModule: Module {
   }
 
   private func cancelActiveProbe(probeId: String? = nil, reason: String) {
+    PendingLinkConnect.clear()
+    if let probeId { completedProbes.removeValue(forKey: probeId) }
     guard let activeProbe else { return }
     if let probeId, activeProbe.id != probeId { return }
     self.activeProbe = nil
     activeProbe.detector.cancel(reason: reason)
     activeProbe.promise.reject("PROBE_CANCELLED", "Board Probe cancelled")
+  }
+
+  /// Finalize only a candidate returned by this native probe; config persistence precedes v4.
+  /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/VescapeCoreModule.kt `finalizeBoardLink`
+  /// @parity /modules/vescape-core/src/index.ts `finalizeBoardLink`
+  private func finalizeBoardLink(
+    probeId: String, boardId: String, bleId: String,
+    rawCandidate: [String: Any?], promise: Promise
+  ) {
+    guard let result = completedProbes[probeId] else {
+      promise.reject("PROBE_NOT_FOUND", "Board Probe is no longer finalizable")
+      return
+    }
+    guard let transport = BoardTransport.fromBridge(rawCandidate["transport"] ?? nil),
+      let candidate = result.candidates.first(where: { $0.transport == transport }) else {
+      promise.reject("PROBE_CANDIDATE_UNVERIFIED", "Candidate was not confirmed by this Board Probe")
+      return
+    }
+    guard let baseVersion = candidate.refloatBaseVersion, !baseVersion.isEmpty else {
+      promise.reject("PROBE_CONFIG_IDENTITY_MISSING", "Refloat Tune Compatibility is required")
+      return
+    }
+    let previous: Int64
+    let previousMotor: Int64
+    do {
+      previous = try BoardConfigStore.shared.load(boardId: boardId, refloatBaseVersion: baseVersion)?.capturedAtMs ?? Int64.min
+      previousMotor = try MotorConfigStore.shared.loadLatest(boardId: boardId)?.capturedAtMs ?? Int64.min
+    } catch {
+      RecordingStorageFailure.reportRead(operation: "board_probe_config_read", error: error)
+      promise.reject("APP_STORAGE_READ_FAILED", "Could not read saved Board config", cause: error)
+      return
+    }
+    // The config read runs over a real Board Session — the same path rides use — so linking proves
+    // the production connect, not just the probe's own detection client.
+    sendEvent("onBoardProbeProgress", [
+      "probeId": probeId, "step": "session", "elapsedMs": 0, "transport": transport.bridgeValue,
+    ])
+    coordinator.connect(
+      config: BoardConnectConfig(
+        appBoardId: boardId, bleId: bleId, name: "Board Probe", transport: transport,
+        linkVersion: 4, hasBms: candidate.hasBms,
+        vescFirmwareVersion: candidate.vescFirmwareVersion,
+        refloatVersion: candidate.refloatVersion, refloatBaseVersion: baseVersion,
+        pollIntervalMs: 100, batteryConfig: nil, liveHistoryLimitMinutes: 5
+      ),
+      onSuccess: { [weak self] in
+        self?.sendEvent("onBoardProbeProgress", [
+          "probeId": probeId, "step": "config", "elapsedMs": 0, "transport": transport.bridgeValue,
+        ])
+        self?.awaitProbeConfig(
+          probeId: probeId, boardId: boardId, bleId: bleId, candidate: candidate,
+          previousCapturedAt: previous, previousMotorCapturedAt: previousMotor,
+          attemptsRemaining: 120, promise: promise
+        )
+      },
+      onError: { [weak self] code, message in
+        self?.completedProbes.removeValue(forKey: probeId)
+        self?.coordinator.stopBoard()
+        promise.reject(code, message)
+      }
+    )
+  }
+
+  private func awaitProbeConfig(
+    probeId: String, boardId: String, bleId: String,
+    candidate: TransportDetection.Candidate, previousCapturedAt: Int64,
+    previousMotorCapturedAt: Int64, attemptsRemaining: Int,
+    promise: Promise
+  ) {
+    guard completedProbes[probeId] != nil else {
+      coordinator.stopBoard()
+      promise.reject("PROBE_CANCELLED", "Board Probe cancelled")
+      return
+    }
+    let baseVersion = candidate.refloatBaseVersion!
+    let values: BoardConfigValues?
+    do { values = try BoardConfigStore.shared.load(boardId: boardId, refloatBaseVersion: baseVersion) }
+    catch {
+      coordinator.stopBoard()
+      completedProbes.removeValue(forKey: probeId)
+      RecordingStorageFailure.reportRead(operation: "board_probe_config_read", error: error)
+      promise.reject("APP_STORAGE_READ_FAILED", "Could not read saved Board config", cause: error)
+      return
+    }
+    if let values,
+      values.capturedAtMs > previousCapturedAt {
+      // Motor config is read after the Refloat read completes, so it is waited for separately. A
+      // board whose MCCONF signature no layout carries never lands a row and fails the link here —
+      // deliberate: a Board Link is only offered once every config it will show is proven readable.
+      sendEvent("onBoardProbeProgress", [
+        "probeId": probeId, "step": "motor-config", "elapsedMs": 0,
+        "transport": candidate.transport.bridgeValue,
+      ])
+      awaitProbeMotorConfig(
+        probeId: probeId, boardId: boardId, bleId: bleId, candidate: candidate,
+        previousCapturedAt: previousMotorCapturedAt,
+        attemptsRemaining: 80, promise: promise
+      )
+      return
+    }
+    guard attemptsRemaining > 0 else {
+      coordinator.stopBoard()
+      completedProbes.removeValue(forKey: probeId)
+      promise.reject("PROBE_CONFIG_TIMEOUT", "Full Refloat config was not acquired")
+      return
+    }
+    scheduler.postDelayed(250) { [weak self] in
+      self?.awaitProbeConfig(
+        probeId: probeId, boardId: boardId, bleId: bleId, candidate: candidate,
+        previousCapturedAt: previousCapturedAt, previousMotorCapturedAt: previousMotorCapturedAt,
+        attemptsRemaining: attemptsRemaining - 1,
+        promise: promise
+      )
+    }
+  }
+
+  private func awaitProbeMotorConfig(
+    probeId: String, boardId: String, bleId: String,
+    candidate: TransportDetection.Candidate, previousCapturedAt: Int64,
+    attemptsRemaining: Int, promise: Promise
+  ) {
+    guard completedProbes[probeId] != nil else {
+      coordinator.stopBoard()
+      promise.reject("PROBE_CANCELLED", "Board Probe cancelled")
+      return
+    }
+    let values: MotorConfigValues?
+    do { values = try MotorConfigStore.shared.loadLatest(boardId: boardId) }
+    catch {
+      coordinator.stopBoard()
+      completedProbes.removeValue(forKey: probeId)
+      RecordingStorageFailure.reportRead(operation: "board_probe_motor_config_read", error: error)
+      promise.reject("APP_STORAGE_READ_FAILED", "Could not read saved motor config", cause: error)
+      return
+    }
+    if let values,
+      values.capturedAtMs > previousCapturedAt {
+      finishBoardLink(
+        probeId: probeId, boardId: boardId, bleId: bleId, candidate: candidate, promise: promise)
+      return
+    }
+    guard attemptsRemaining > 0 else {
+      coordinator.stopBoard()
+      completedProbes.removeValue(forKey: probeId)
+      promise.reject(
+        "PROBE_MOTOR_CONFIG_TIMEOUT",
+        "VESC motor config was not acquired — this firmware may not be supported yet"
+      )
+      return
+    }
+    scheduler.postDelayed(250) { [weak self] in
+      self?.awaitProbeMotorConfig(
+        probeId: probeId, boardId: boardId, bleId: bleId, candidate: candidate,
+        previousCapturedAt: previousCapturedAt,
+        attemptsRemaining: attemptsRemaining - 1, promise: promise
+      )
+    }
+  }
+
+  private func finishBoardLink(
+    probeId: String, boardId: String, bleId: String,
+    candidate: TransportDetection.Candidate, promise: Promise
+  ) {
+    guard completedProbes[probeId] != nil else {
+      coordinator.stopBoard()
+      promise.reject("PROBE_CANCELLED", "Board Probe cancelled")
+      return
+    }
+    // The probe stays finalizable: the rider may still switch transports, and each pick
+    // acquires config for its own candidate before the link can be saved.
+    PendingLinkConnect.arm(boardId: boardId)
+    coordinator.stopBoard()
+    promise.resolve([
+      "linkVersion": 4, "bleId": bleId, "transport": candidate.transport.bridgeValue,
+      "hasBms": candidate.hasBms,
+      "vescFirmwareVersion": candidate.vescFirmwareVersion,
+      "refloatVersion": candidate.refloatVersion,
+      "refloatBaseVersion": candidate.refloatBaseVersion!,
+    ] as [String: Any?])
   }
 
   private func probeResultToBridge(_ result: TransportDetection.Result) -> [String: Any?] {
@@ -1136,93 +1981,76 @@ public class VescapeCoreModule: Module {
 
   // MARK: - Board session bridge
 
-  /// Auto-connect the selected board at app launch, native-driven and independent of JS. Mirrors
-  /// Android's `AutoConnectProvider` (fires at process start) → `autoConnectSelectedBoard`: JS
-  /// never triggers this, it only toggles the `autoConnect` setting. No-ops when auto-connect is
-  /// off, no board is selected, or the board is unlinked.
-  /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/connection/BoardSessionController.kt `autoConnectSelectedBoard`
-  private func autoConnectSelectedBoard() {
-    // The shared coordinator already owns a live session (e.g. this module was rebuilt by a JS
-    // reload mid-ride) — never restart it; the new module only re-attached its sinks. Mirrors
-    // Android, where auto-connect fires once at process start, not on every module create.
-    guard coordinator.connectedBoardId == nil else { return }
-    let settings = appData.getSettings()
-    guard settings["autoConnect"] as? Bool ?? true else { return }
-    guard let boardId = settings["selectedBoardId"] as? String, !boardId.isEmpty else { return }
-    guard !isAutoStartSuppressedAfterManualDisconnect(boardId: boardId) else { return }
-    DispatchQueue.main.async {
-      guard let config = self.connectConfig(boardId: boardId) else { return }
-      self.selectedBoardId = boardId
-      self.coordinator.connect(config: config, onSuccess: {}, onError: { _, _ in })
-    }
-  }
-
-  /// Resolve a stored board's Board Link into a runtime connect config. Returns `nil` when the
-  /// board is unlinked (JS routes those to Board Probe instead). Dumb connect (ADR 0015): the
-  /// transport is read straight from the link, never rediscovered.
+  /// Resolve the selected board's connect config. The resolution itself lives on
+  /// `BoardConnectConfig` so the headless resume path (#378) rebuilds the identical config.
   private func connectConfig(boardId: String) -> BoardConnectConfig? {
-    guard let board = appData.getBoard(boardId) else { return nil }
-    guard let link = board["link"] as? [String: Any?] else { return nil }
-    guard let bleId = link["bleId"] as? String, !bleId.isEmpty else { return nil }
-    let transport = BoardTransport.fromBridge(link["transport"] ?? nil) ?? .direct
-    let name = board["name"] as? String ?? "VESC Board"
-    let settings = appData.getSettings()
-    let hz = AppDataRepository.intValue(settings["telemetryPollRateHz"] ?? nil) ?? 0
-    return BoardConnectConfig(
-      appBoardId: boardId,
-      bleId: bleId,
-      name: name,
-      transport: transport,
-      linkVersion: AppDataRepository.intValue(link["linkVersion"] ?? nil),
-      hasBms: link["hasBms"] as? Bool,
-      vescFirmwareVersion: link["vescFirmwareVersion"] as? String,
-      refloatVersion: link["refloatVersion"] as? String,
-      refloatBaseVersion: link["refloatBaseVersion"] as? String,
-      pollIntervalMs: hz > 0 ? 1000 / hz : 0,
-      batteryConfig: AppDataRepository.normalizeBatteryConfig(board["batteryConfig"] ?? nil),
-      liveHistoryLimitMinutes: AppDataRepository.liveHistoryLimitMinutes(settings["liveHistoryLimit"] ?? nil) ?? 5,
+    BoardConnectConfig.resolve(
+      boardId: boardId,
+      appData: appData,
       recordingEnabled: requestedDebugRecordingEnabled
     )
   }
 
-  private func suppressAutoStartAfterManualDisconnect() {
-    let boardId = selectedBoardId ?? (appData.getSettings()["selectedBoardId"] as? String)
-    guard let boardId, !boardId.isEmpty else { return }
-    UserDefaults.standard.set(boardId, forKey: manualDisconnectSuppressedBoardKey)
-  }
-
-  private func isAutoStartSuppressedAfterManualDisconnect(boardId: String) -> Bool {
-    UserDefaults.standard.string(forKey: manualDisconnectSuppressedBoardKey) == boardId
+  /// Start the real Board Session for a Board Link the rider just saved. Linking already proved the
+  /// connect over a throwaway probe session and dropped it (`finalizeBoardLink`), so without this the
+  /// rider lands back on a disconnected app until the next app launch. Only the Board that proved a
+  /// link reconnects, so ordinary Board edits — a rename, a battery config — never disturb a live
+  /// session.
+  ///
+  /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/VescapeCoreModule.kt `connectSavedBoardLink`
+  private func connectSavedBoardLink(boardId: String?) {
+    guard let boardId, PendingLinkConnect.consume(boardId: boardId), activeProbe == nil else { return }
+    // The probe teardown looks like a manual disconnect to the gate. Saving a link is the opposite
+    // intent, so the suppression must not outlive it.
+    clearManualDisconnectAutoStartGate()
+    guard let config = connectConfig(boardId: boardId) else { return }
+    coordinator.connect(
+      config: config,
+      onSuccess: {},
+      onError: { [weak self] _, message in
+        self?.sendEvent("onError", ["message": message])
+      }
+    )
   }
 
   private func clearManualDisconnectAutoStartGate() {
-    UserDefaults.standard.removeObject(forKey: manualDisconnectSuppressedBoardKey)
+    ManualBoardStop.clearAutoStartSuppression()
   }
 
   /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/LiveStateMapper.kt `buildLiveState`
-  private func liveState() -> [String: Any?] {
-    let settings = appData.getSettings()
+  /// Status events carry latest fixes only; getLiveState includes the retained windows.
+  /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/connection/BoardSessionController.kt `liveStateMap`
+  /// @parity /modules/vescape-core/src/index.ts `LiveStateEvent`
+  private func liveState(includeRecent: Bool = false) -> [String: Any?] {
+    RecordingStorageFailure.initialize()
+    let settings: [String: Any?]
+    do { settings = try appData.getSettings() }
+    catch {
+      RecordingStorageFailure.reportRead(operation: "live_state_settings_read", error: error)
+      settings = [:]
+    }
     return [
       "board": [
         "phase": coordinator.phase.rawValue,
-        "selectedBoardId": selectedBoardId ?? (settings["selectedBoardId"] ?? nil),
+        "selectedBoardId": selectedBoardId ?? settings["selectedBoardId"] ?? nil,
         "connectedBoardId": coordinator.connectedBoardId,
         "bleId": coordinator.bleId,
         "name": coordinator.boardName,
         "connectionSeq": coordinator.connectionSeq,
         "lastTelemetryAt": coordinator.lastTelemetryAt,
-        "recentTelemetry": coordinator.recentTelemetry(),
+        "recentTelemetry": includeRecent ? coordinator.recentTelemetry() : [],
         "error": coordinator.boardError,
         "autoConnect": settings["autoConnect"] as? Bool ?? true,
         "linkIntegrity": coordinator.linkIntegrity.rawValue,
         "remoteTilt": coordinator.remoteTiltState(),
       ] as [String: Any?],
       "gps": [
-        "phase": coordinator.gpsActive() ? "active" : "idle",
+        "phase": coordinator.gpsPhase(),
+        "mode": coordinator.gpsMode(),
         "latestFix": coordinator.gpsLatestPreciseLocation(),
         "latestApproximateFix": coordinator.gpsLatestLocation(),
         "latestPreciseFix": coordinator.gpsLatestPreciseLocation(),
-        "recentLocations": coordinator.gpsRecentLocations(),
+        "recentLocations": includeRecent ? coordinator.gpsRecentLocations() : [],
         "error": coordinator.gpsLastError(),
       ] as [String: Any?],
       "scan": [
@@ -1237,6 +2065,7 @@ public class VescapeCoreModule: Module {
         // Always null, matching Android's live-state mapper — JS never consumes a real timestamp.
         // @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/LiveStateMapper.kt
         "startedAt": nil,
+        "failure": coordinator.recordingFailure().map(recordingFailureState),
       ] as [String: Any?],
     ]
   }
@@ -1250,14 +2079,17 @@ public class VescapeCoreModule: Module {
 
   /// Push the current enabled Privacy Zones into the recording store so mid-ride edits take effect
   /// immediately, not just on the next session. Mirrors Android `reloadPrivacyZonesIntoRecorder`.
-  private func reloadPrivacyZonesIntoRecorder() {
-    TelemetryRepository.shared.reloadPrivacyZones(appData.getEnabledPrivacyZoneEntities())
+  private func reloadPrivacyZonesIntoRecorder() throws {
+    TelemetryRepository.shared.reloadPrivacyZones(try appData.getEnabledPrivacyZoneEntities())
+    // The same zones gate Group Ride presence egress, so a mid-ride edit must reach both.
+    coordinator.loadPrivacyZones()
   }
 
   /// Emit `onAppDataChanged` so JS reloads the store for [scope]. Bypasses the `frontendActive`
   /// firehose gate — these are low-rate config writes JS must not miss (Android emits regardless).
   /// `sendEvent` must run on the main thread, so hop over from any background write closure.
   /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/AppDataRepository.kt `notifyDataChanged`
+  /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/VescapeCoreModule.kt `definition`
   private func sendAppDataChanged(_ scope: String) {
     DispatchQueue.main.async { self.sendEvent("onAppDataChanged", ["scope": scope]) }
   }
@@ -1267,6 +2099,16 @@ public class VescapeCoreModule: Module {
   /// the next registry change self-heal it).
   /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/VescapeCoreModule.kt
   /// @parity /modules/vescape-core/src/index.ts `BoardWarningsEvent`
+  /// Emit `onVescFaults` with the full current occurrence list for a Board.
+  /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/VescapeCoreModule.kt `onVescFaults`
+  /// @parity /modules/vescape-core/src/index.ts `VescFaultsEvent`
+  private func sendVescFaults(_ boardId: String, _ faults: [VescFaultOccurrence]) {
+    DispatchQueue.main.async {
+      guard self.shouldEmitToFrontend("onVescFaults") else { return }
+      self.sendEvent("onVescFaults", ["boardId": boardId, "faults": faults.map { $0.toMap() }])
+    }
+  }
+
   private func sendBoardWarnings(_ boardId: String, _ warnings: [BoardWarning]) {
     DispatchQueue.main.async {
       guard self.shouldEmitToFrontend("onBoardWarnings") else { return }
@@ -1297,7 +2139,13 @@ public class VescapeCoreModule: Module {
   /// Asks for the path again, to the Direction Point the rider already has and from where they are
   /// now. A no-op with no Direction Point: there is nothing to compute a path to.
   private func recomputeNavigation() {
-    guard let directionPoint = appData.getDirectionPoint() else { return }
+    let directionPoint: (latitude: Double, longitude: Double)?
+    do { directionPoint = try appData.getDirectionPoint() }
+    catch {
+      RecordingStorageFailure.reportRead(operation: "direction_point_read", error: error)
+      return
+    }
+    guard let directionPoint else { return }
     let origin = navigationOrigin()
     NavigationController.shared.recompute(
       toLatitude: directionPoint.latitude,
@@ -1317,7 +2165,12 @@ public class VescapeCoreModule: Module {
   /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/VescapeCoreModule.kt `navigationOrigin`
   private func navigationOrigin() -> (latitude: Double, longitude: Double)? {
     if let live = coordinator.riderPosition() { return live }
-    let settings = appData.getSettings()
+    let settings: [String: Any?]
+    do { settings = try appData.getSettings() }
+    catch {
+      RecordingStorageFailure.reportRead(operation: "navigation_origin_settings_read", error: error)
+      return nil
+    }
     guard let latitude = settings["lastGpsLatitude"] as? Double,
           let longitude = settings["lastGpsLongitude"] as? Double
     else { return nil }

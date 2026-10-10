@@ -1,16 +1,18 @@
 import { useCallback, useRef, useState } from 'react'
-import { Pressable, ScrollView, StyleSheet, Text, View, type ViewStyle } from 'react-native'
-import { CaretDownIcon, CheckIcon, type Icon as PhosphorIcon } from 'phosphor-react-native'
+import { Pressable, StyleSheet, Text, View, type ViewStyle } from 'react-native'
+import { CaretDownIcon, type Icon as PhosphorIcon } from 'phosphor-react-native'
 
-import { interaction, theme } from '@/constants/theme'
+import { interaction, theme, type ThemeColor } from '@/constants/theme'
 import { Dropdown } from '@/components/forms/Dropdown'
+import { DropdownOptionList } from '@/components/forms/DropdownOptionList'
 import type { SelectOption } from '@/components/forms/Select'
+import { useResolvedSecondaryWidgetSurface } from '@/components/widgets/widgetSurface'
 
 const MAX_DROPDOWN_HEIGHT = 280
 
 interface SelectCardProps<T extends string = string> {
   icon: PhosphorIcon
-  iconColor: string
+  iconColor: ThemeColor
   title: string
   description?: string
   options: SelectOption<T>[]
@@ -37,6 +39,7 @@ export function SelectCard<T extends string = string>({
 
   const selectedOption = options.find((o) => o.value === value)
 
+  const surface = useResolvedSecondaryWidgetSurface()
   const handleSelect = useCallback(
     (optionValue: T) => {
       onChange(optionValue)
@@ -46,7 +49,7 @@ export function SelectCard<T extends string = string>({
   )
 
   return (
-    <View style={[styles.container, style]}>
+    <View style={[surface, styles.container, style]}>
       <Pressable
         ref={triggerRef}
         style={({ pressed }) => [
@@ -71,7 +74,7 @@ export function SelectCard<T extends string = string>({
           >
             {selectedOption?.label ?? 'Select…'}
           </Text>
-          <CaretDownIcon size={16} color={theme.palette.slate.textMuted} weight="bold" />
+          <CaretDownIcon size={16} color={theme.neutral.textMuted} weight="bold" />
         </View>
       </Pressable>
       {children}
@@ -81,30 +84,7 @@ export function SelectCard<T extends string = string>({
         onClose={() => setOpen(false)}
         maxHeight={MAX_DROPDOWN_HEIGHT}
       >
-        <ScrollView bounces={false} showsVerticalScrollIndicator={false}>
-          {options.map((option, index) => {
-            const selected = option.value === value
-            return (
-              <Pressable
-                key={option.value}
-                style={({ pressed }) => [
-                  styles.option,
-                  index < options.length - 1 && styles.optionBorder,
-                  selected && styles.optionSelected,
-                  pressed && styles.optionPressed,
-                ]}
-                onPress={() => handleSelect(option.value)}
-              >
-                <Text style={[styles.optionText, selected && styles.optionTextSelected]}>
-                  {option.label}
-                </Text>
-                {selected ? (
-                  <CheckIcon size={14} color={theme.palette.sky.color} weight="bold" />
-                ) : null}
-              </Pressable>
-            )
-          })}
-        </ScrollView>
+        <DropdownOptionList options={options} value={value} onSelect={handleSelect} />
       </Dropdown>
     </View>
   )
@@ -113,11 +93,8 @@ export function SelectCard<T extends string = string>({
 const styles = StyleSheet.create({
   container: {
     gap: 4,
-    borderWidth: 1,
-    borderColor: theme.palette.slate.border,
     borderRadius: 10,
     padding: 12,
-    backgroundColor: theme.palette.slate.surface,
   },
   trigger: {
     flexDirection: 'row',
@@ -126,8 +103,8 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   titleRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
-  title: { color: theme.palette.slate.textPrimary, fontSize: 13, fontWeight: '900' },
-  description: { color: theme.palette.slate.textMuted, fontSize: 10, fontWeight: '600' },
+  title: { color: theme.neutral.textPrimary, fontSize: 13, fontWeight: '900' },
+  description: { color: theme.neutral.textSecondary, fontSize: 10, fontWeight: '600' },
   valueRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -135,33 +112,11 @@ const styles = StyleSheet.create({
     flexShrink: 1,
   },
   valueText: {
-    color: theme.palette.slate.textPrimary,
+    color: theme.neutral.textPrimary,
     fontSize: 11,
     fontWeight: '700',
     flexShrink: 1,
     paddingRight: 5,
   },
-  placeholderText: { color: theme.palette.slate.textMuted },
-  option: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: 14,
-    paddingVertical: 12,
-  },
-  optionBorder: {
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: theme.palette.slate.border,
-  },
-  optionSelected: { backgroundColor: theme.palette.sky.bg },
-  optionPressed: { backgroundColor: interaction.pressedBg },
-  optionText: {
-    color: theme.palette.slate.textPrimary,
-    fontSize: 14,
-    fontWeight: '500',
-  },
-  optionTextSelected: {
-    color: theme.palette.sky.color,
-    fontWeight: '600',
-  },
+  placeholderText: { color: theme.neutral.textMuted },
 })

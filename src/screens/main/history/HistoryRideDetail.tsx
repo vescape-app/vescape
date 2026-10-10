@@ -1,6 +1,13 @@
-import { useState, type RefObject } from 'react'
-import type { View } from 'react-native'
+import { useCallback, useMemo, useRef, useState, type RefObject } from 'react'
+import { StyleSheet, View } from 'react-native'
 
+import { ExportIcon, TrashIcon } from 'phosphor-react-native'
+import { Button } from '@/components/base/Button'
+import { theme } from '@/constants/theme'
+import { FadeCardModal } from '@/components/modals/FadeCardModal'
+import { InfoModal } from '@/components/modals/InfoModal'
+import { rideExportOptions } from '@/modules/history/lib/rideExport'
+import { shareRideExport } from '@/modules/history/lib/shareRideExport'
 import { ConfirmModal } from '@/components/modals/ConfirmModal'
 import {
   formatFavoriteName,
@@ -9,10 +16,8 @@ import {
 } from '@/modules/history/lib/rideFormat'
 import type { HistorySession } from '@/modules/history/store/historyStore'
 import { HistoryControls } from '@/screens/main/history/HistoryControls'
-import { HistoryMapLoading } from '@/screens/main/history/HistoryMapLoading'
-import { HistoryStatsBar } from '@/screens/main/history/HistoryStatsBar'
 import { HistoryTelemetryPanel } from '@/screens/main/history/HistoryTelemetryPanel'
-import { TrimStatsBar } from '@/screens/main/history/TrimStatsBar'
+import { RangeStatsBar } from '@/screens/main/history/RangeStatsBar'
 import type { MainHistoryOverlayProps } from '@/screens/main/history/HistoryOverlay'
 
 interface HistoryRideDetailProps {
@@ -30,6 +35,9 @@ interface HistoryRideDetailProps {
   listButtonRef: RefObject<View | null>
 }
 
+/** Stable identity: a Favorite has no Favorite ranges drawn over it, and a fresh [] re-renders. */
+const NO_FAVORITE_RANGES: { startMs: number; endMs: number }[] = []
+
 /** The replayed ride: chart panel, stats and header. Shared by history mode and favorite mode. */
 export function HistoryRideDetail({
   history,
@@ -42,18 +50,69 @@ export function HistoryRideDetail({
 }: HistoryRideDetailProps) {
   const [deleteVisible, setDeleteVisible] = useState(false)
   const [trimName, setTrimName] = useState('')
+  const [actionsVisible, setActionsVisible] = useState(false)
+  const [exportError, setExportError] = useState<string | null>(null)
+  const [exporting, setExporting] = useState(false)
+  const pendingAction = useRef<(() => void) | null>(null)
+  const afterActionsDismissed = () => {
+    const action = pendingAction.current
+    pendingAction.current = null
+    action?.()
+  }
+  const dismissForAction = (action: () => void) => {
+    pendingAction.current = action
+    setActionsVisible(false)
+  }
   const openFavorite = favoriteMode ? history.openFavorite : null
   const trimming = history.trimming
 
+  // Stable handlers, so the panel — which rebuilds every chart series it is handed — re-renders
+  // when the ride changes rather than every time this screen does.
+  const {
+    selectPreviousFavorite,
+    selectPreviousRide,
+    selectNextFavorite,
+    selectNextRide,
+    setHistorySheetVisible,
+    beginTrimFavorite,
+  } = history
+  const mediaAdd = history.mediaHistory.add
+  const handlePrevious = useCallback(() => {
+    void (favoriteMode ? selectPreviousFavorite() : selectPreviousRide())
+  }, [favoriteMode, selectPreviousFavorite, selectPreviousRide])
+  const handleNext = useCallback(() => {
+    void (favoriteMode ? selectNextFavorite() : selectNextRide())
+  }, [favoriteMode, selectNextFavorite, selectNextRide])
+  const handleOpenList = useCallback(() => setHistorySheetVisible(true), [setHistorySheetVisible])
+  const handleAddMedia = useCallback(() => void mediaAdd(), [mediaAdd])
+  const handleToggleFavorite = useCallback(() => {
+    setTrimName('')
+    beginTrimFavorite()
+  }, [beginTrimFavorite])
+  const trimSeedStartMs = history.trimSeed?.startMs
+  const trimSeedEndMs = history.trimSeed?.endMs
+  const updateTrimRange = history.updateTrimRange
+  const trimConfig = useMemo(
+    () =>
+      trimming && trimSeedStartMs != null && trimSeedEndMs != null
+        ? {
+            startMs: trimSeedStartMs,
+            endMs: trimSeedEndMs,
+            onChange: updateTrimRange,
+            onCommit: updateTrimRange,
+          }
+        : undefined,
+    [trimSeedEndMs, trimSeedStartMs, trimming, updateTrimRange],
+  )
+
   return (
     <>
-      {busy && <HistoryMapLoading />}
       <HistoryTelemetryPanel
         startAtMs={session.startAtMs}
         endAtMs={session.endAtMs}
         movingStartAtMs={session.movingStartAtMs}
         movingEndAtMs={session.movingEndAtMs}
-        deviceName={session.deviceName}
+        boardName={session.boardName}
         navigationTitle={
           openFavorite
             ? formatFavoriteName(openFavorite.name, openFavorite.startMs, openFavorite.endMs)
@@ -66,13 +125,14 @@ export function HistoryRideDetail({
                 .join(' · ')
             : undefined
         }
-        samples={history.sessionSamples}
+        gpsGapSamples={history.sessionSamples}
+        samples={history.sessionChartSamples}
         canPrevious={
           !trimming && (favoriteMode ? history.canPreviousFavorite : history.canPreviousRide)
         }
         canNext={!trimming && (favoriteMode ? history.canNextFavorite : history.nextRide != null)}
         favoriteMode={favoriteMode}
-        favoriteRanges={favoriteMode ? [] : history.favorites}
+        favoriteRanges={favoriteMode ? NO_FAVORITE_RANGES : history.favorites}
         favorited={history.selectedSessionFavorite != null}
         actionDisabled={busy || history.favoritesSaving}
         mediaAssets={history.mediaHistory.assets}
@@ -80,42 +140,22 @@ export function HistoryRideDetail({
         mediaLoading={history.mediaHistory.loading}
         mediaError={history.mediaHistory.error}
         listButtonRef={listButtonRef}
-        onPrevious={() => {
-          void (favoriteMode ? history.selectPreviousFavorite() : history.selectPreviousRide())
-        }}
-        onNext={() => {
-          void (favoriteMode ? history.selectNextFavorite() : history.selectNextRide())
-        }}
-        onOpenList={() => history.setHistorySheetVisible(true)}
-        onAddMedia={() => void history.mediaHistory.add()}
+        onPrevious={handlePrevious}
+        onNext={handleNext}
+        onOpenList={handleOpenList}
+        onAddMedia={handleAddMedia}
         onOpenMedia={history.openMedia}
-        onToggleFavorite={() => {
-          setTrimName('')
-          history.beginTrimFavorite()
-        }}
-        onSeek={history.onSeek}
+        onToggleFavorite={handleToggleFavorite}
         onMetricInteraction={history.setActiveHistoryMapMetric}
         onHeightChange={onPanelHeightChange}
-        trim={
-          trimming && history.trimSeed
-            ? {
-                startMs: history.trimSeed.startMs,
-                endMs: history.trimSeed.endMs,
-                onChange: history.updateTrimRange,
-                onCommit: history.updateTrimRange,
-              }
-            : undefined
-        }
+        trim={trimConfig}
       />
-      {trimming ? (
-        <TrimStatsBar
-          session={session}
-          samples={history.sessionSamples}
-          gpsSamples={history.sessionGpsSamples}
-        />
-      ) : (
-        <HistoryStatsBar session={session} />
-      )}
+      <RangeStatsBar
+        session={session}
+        samples={history.sessionSamples}
+        gpsSamples={history.sessionGpsSamples}
+        trimming={trimming}
+      />
       <HistoryControls
         loading={busy}
         tab={history.historyTab}
@@ -136,13 +176,12 @@ export function HistoryRideDetail({
                   setTrimName(openFavorite.name ?? '')
                   void history.beginEditFavorite()
                 },
-                onDelete: () => setDeleteVisible(true),
               }
             : undefined
         }
         onSelectTab={history.selectHistoryTab}
         onBack={history.exitHistory}
-        onRemove={onRemoveSession}
+        onOpenActions={() => setActionsVisible(true)}
         onCancelTrim={() => {
           setTrimName('')
           void history.cancelTrim()
@@ -152,6 +191,62 @@ export function HistoryRideDetail({
         }}
       />
 
+      <FadeCardModal
+        visible={actionsVisible}
+        title={openFavorite ? 'Favorite actions' : 'Ride actions'}
+        onDismiss={() => setActionsVisible(false)}
+        onDismissed={afterActionsDismissed}
+        scrollable={false}
+      >
+        {(['gpx', 'csv'] as const).map((format) => (
+          <Button
+            key={format}
+            label={`Export ${format.toUpperCase()}`}
+            icon={ExportIcon}
+            variant="secondary"
+            loading={exporting}
+            onPress={() => {
+              const options = rideExportOptions(session, openFavorite)
+              dismissForAction(() => {
+                setExporting(true)
+                void shareRideExport(options, format)
+                  .catch((cause: unknown) =>
+                    setExportError(
+                      cause instanceof Error ? cause.message : 'Could not export ride',
+                    ),
+                  )
+                  .finally(() => setExporting(false))
+              })
+            }}
+          />
+        ))}
+        <View
+          style={{
+            height: StyleSheet.hairlineWidth,
+            width: '40%',
+            alignSelf: 'center',
+            marginVertical: 8,
+            backgroundColor: theme.neutral.border,
+          }}
+        />
+        <Button
+          label="Delete"
+          icon={TrashIcon}
+          variant="destructive"
+          disabled={busy}
+          testID={openFavorite ? 'favorite-delete' : 'history-delete'}
+          onPress={() =>
+            dismissForAction(openFavorite ? () => setDeleteVisible(true) : onRemoveSession)
+          }
+        />
+      </FadeCardModal>
+      <InfoModal
+        visible={exportError != null}
+        title="Export failed"
+        message={exportError ?? ''}
+        variant="danger"
+        onDismiss={() => setExportError(null)}
+      />
       <ConfirmModal
         visible={deleteVisible}
         title="Delete Favorite"

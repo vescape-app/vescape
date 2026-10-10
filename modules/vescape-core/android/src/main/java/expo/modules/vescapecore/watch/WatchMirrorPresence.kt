@@ -20,6 +20,14 @@ import kotlinx.coroutines.launch
 internal const val WATCH_MIRROR_CAPABILITY = "vescape_watch_mirror"
 
 /**
+ * Declared only by wrist builds that report a [WatchMirrorWakeLevel]. Phone and watch ship as
+ * separate Play tracks and update independently, so the wake gate has to be opt-in per wrist build:
+ * without this, a phone that updated first would gate on a level an older wrist never sends and
+ * leave its Mirror permanently blank. Delete once the minimum supported wrist build sends one.
+ */
+internal const val WATCH_MIRROR_WAKE_CAPABILITY = "vescape_watch_mirror_wake"
+
+/**
  * Re-query cadence: a quick burst right after session start (the window where the watch link is
  * most likely still settling), then a slow steady heartbeat. The CapabilityClient listener stays
  * the instant path; this only backstops missed events.
@@ -54,26 +62,50 @@ internal class WatchMirrorPresence(
     var present: Boolean = false
         private set
 
+    /** Whether the reachable wrist build reports a wake level, and can therefore be gated on one. */
+    @Volatile
+    var reportsWakeLevel: Boolean = false
+        private set
+
     private var refreshJob: Job? = null
 
     private val listener = CapabilityClient.OnCapabilityChangedListener { info ->
+        if (info.name == WATCH_MIRROR_WAKE_CAPABILITY) {
+            reportsWakeLevel = info.nodes.isNotEmpty()
+            return@OnCapabilityChangedListener
+        }
         update(info.nodes.isNotEmpty(), source = "listener")
     }
 
     fun start() {
         if (refreshJob?.isActive == true) return
         capabilityClient.addListener(listener, WATCH_MIRROR_CAPABILITY)
+        capabilityClient.addListener(listener, WATCH_MIRROR_WAKE_CAPABILITY)
         refreshJob = scope.launch(Dispatchers.IO) {
             var attempt = 0
             while (isActive) {
+                // intentional-suppression: watch presence errors are reported or lifecycle teardown is best effort
                 val capabilityPresent = runCatching {
                     Tasks.await(
                         capabilityClient.getCapability(WATCH_MIRROR_CAPABILITY, CapabilityClient.FILTER_REACHABLE),
                     )
-                }.getOrNull()?.nodes?.isNotEmpty() ?: false
-                val next = capabilityPresent || debugReachableWearNode()
-                // Baseline event on the first query so an absent watch still leaves a trace.
-                update(next, source = "refresh", force = attempt == 0)
+                }.onFailure { record("watch_mirror_presence_query_failed", mapOf("capability" to "mirror")) }
+                    .getOrNull()?.nodes?.isNotEmpty()
+                // intentional-suppression: watch presence errors are reported or lifecycle teardown is best effort
+                val wakePresent = runCatching {
+                    Tasks.await(
+                        capabilityClient.getCapability(WATCH_MIRROR_WAKE_CAPABILITY, CapabilityClient.FILTER_REACHABLE),
+                    )
+                }.onFailure { record("watch_mirror_presence_query_failed", mapOf("capability" to "wake")) }
+                    .getOrNull()?.nodes?.isNotEmpty()
+                if (capabilityPresent != null && wakePresent != null) {
+                    reportsWakeLevel = wakePresent
+                    val debugPresent = if (capabilityPresent) false else debugReachableWearNode()
+                    if (debugPresent != null) {
+                        // Baseline event on the first successful query so an absent watch leaves a trace.
+                        update(capabilityPresent || debugPresent, source = "refresh", force = attempt == 0)
+                    }
+                }
                 delay(PRESENCE_REFRESH_BURST_MS.getOrElse(attempt) { PRESENCE_REFRESH_STEADY_MS })
                 attempt++
             }
@@ -83,8 +115,13 @@ internal class WatchMirrorPresence(
     fun stop() {
         refreshJob?.cancel()
         refreshJob = null
+        // Listener removal races with Play-services shutdown; stopped state is authoritative locally.
+        // intentional-suppression: watch presence errors are reported or lifecycle teardown is best effort
         runCatching { capabilityClient.removeListener(listener, WATCH_MIRROR_CAPABILITY) }
+        // intentional-suppression: watch presence errors are reported or lifecycle teardown is best effort
+        runCatching { capabilityClient.removeListener(listener, WATCH_MIRROR_WAKE_CAPABILITY) }
         present = false
+        reportsWakeLevel = false
     }
 
     private fun update(next: Boolean, source: String, force: Boolean = false) {
@@ -93,6 +130,7 @@ internal class WatchMirrorPresence(
         if (!changed && !force) return
         Log.d(VESC_SESSION_TAG, "Watch mirror presence: $next source=$source")
         scope.launch(Dispatchers.IO) {
+            // intentional-suppression: watch presence errors are reported or lifecycle teardown is best effort
             val connectedNodes = runCatching { Tasks.await(nodeClient.connectedNodes) }.getOrNull()?.size
             record(
                 if (next) "watch_mirror_present" else "watch_mirror_absent",
@@ -101,10 +139,12 @@ internal class WatchMirrorPresence(
         }
     }
 
-    private fun debugReachableWearNode(): Boolean {
+    private fun debugReachableWearNode(): Boolean? {
         if (!BuildConfig.DEBUG) return false
 
-        val nodes = runCatching { Tasks.await(nodeClient.connectedNodes) }.getOrNull().orEmpty()
-        return nodes.isNotEmpty()
+        // intentional-suppression: watch presence errors are reported or lifecycle teardown is best effort
+        return runCatching { Tasks.await(nodeClient.connectedNodes) }
+            .onFailure { record("watch_mirror_nodes_query_failed", emptyMap()) }
+            .getOrNull()?.isNotEmpty()
     }
 }

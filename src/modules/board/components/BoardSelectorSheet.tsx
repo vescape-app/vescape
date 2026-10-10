@@ -1,208 +1,487 @@
 import { Pressable, StyleSheet, View } from 'react-native'
-import { Text } from '@/components/base/Text'
-import { CheckCircleIcon, LightningIcon, PencilSimpleIcon, PlusIcon } from 'phosphor-react-native'
-import { router } from 'expo-router'
-import { routes } from '@/navigation/routes'
+import {
+  EngineIcon,
+  LightningIcon,
+  PencilSimpleIcon,
+  PlusIcon,
+  WarningDiamondIcon,
+  type Icon,
+} from 'phosphor-react-native'
+import type { BoardWarningSeverity } from 'vescape-core'
 
-import type { Board } from '@/modules/board/store/boardStore'
-import { interaction, theme } from '@/constants/theme'
-import { EdgeDrawer } from '@/components/overlays/AnchoredSheet'
+import { Text } from '@/components/base/Text'
+import { EdgeDrawer } from '@/components/overlays/EdgeDrawer'
+import { Placeholder } from '@/components/base/Placeholder'
 import { TickText } from '@/components/base/TickText'
+import type { Board } from '@/modules/board/store/boardStore'
+import { severityStatus } from '@/modules/board/constants/boardWarnings'
 import { liveTelemetryRuntime } from '@/modules/board/lib/liveTelemetryRuntime'
+import { useResolvedSecondaryWidgetSurface } from '@/components/widgets/widgetSurface'
+import { fmtTimeAgo } from '@/helpers/format'
+import { interaction, theme, type ThemeColor } from '@/constants/theme'
+import { useResolvedColor, useResolvedNeutralColors } from '@/hooks/useTheme'
 import { BoardStyleIcon } from '@/modules/board/components/add-board-wizard/BoardPersonalizer'
 
-interface BoardSelectorSheetProps {
-  visible: boolean
-  triggerRef: React.RefObject<View | null>
+/** A way into the active board's trouble, offered only while that surface is enabled. */
+export interface BoardSelectorLink {
+  count: number
+  onPress: () => void
+}
+
+interface BoardSelectorContentProps {
   boards: Board[]
+  /**
+   * The Accessories half of the selector, supplied by the screen composing it.
+   *
+   * A plain node, not accessory data: the selector is the entry point for both domains but knows
+   * only one of them. Accessories target the connected Board rather than any Board in this list, so
+   * they sit beside the Boards section, never inside a Board's row.
+   */
+  accessories?: React.ReactNode
   activeBoardId: string | null
   /** True while the active board has a live telemetry link, so its row shows the pull rate. */
   activeBoardLive?: boolean
-  onClose: () => void
+  warnings?: (BoardSelectorLink & { severity: BoardWarningSeverity | null }) | undefined
+  faults?: BoardSelectorLink | undefined
   onSelectBoard: (id: string) => void
   onAddBoard: () => void
+  onEditBoard: (id: string) => void
+}
+
+interface BoardSelectorSheetProps extends BoardSelectorContentProps {
+  visible: boolean
+  triggerRef: React.RefObject<View | null>
+  onClose: () => void
 }
 
 const PULL_RATE_FONT_SIZE = 11
+/** The readout draws on a Skia canvas, which needs a width of its own inside a row. */
+const PULL_RATE_WIDTH = 46
+
+/**
+ * What is known about a board while it is not talking: last battery, how long ago that was, and
+ * whether it is even linked. Gray throughout — none of it is live.
+ */
+function StaleMeta({ board }: { board: Board }) {
+  if (!board.link) return <Text style={styles.metaText}>Not linked</Text>
+  const last = board.lastBattery
+  return (
+    <>
+      {last && (
+        <>
+          <Text style={styles.metaBattery}>{`${Math.round(last.percent)}%`}</Text>
+          <Text style={styles.metaText}>{fmtTimeAgo(last.at)}</Text>
+          <Text style={styles.metaText}>·</Text>
+        </>
+      )}
+      <Text style={styles.metaText}>Offline</Text>
+    </>
+  )
+}
+
+/** The active board's link state. A pull rate exists only while the board is actually connected. */
+function ActiveMeta({ board, live }: { board: Board; live: boolean }) {
+  const liveColor = useResolvedColor(theme.status.success.color)
+  return (
+    <View style={styles.metaLine}>
+      <View
+        style={[
+          styles.dot,
+          {
+            borderColor: live ? liveColor : theme.neutral.textDim,
+            backgroundColor: live ? liveColor : 'transparent',
+          },
+        ]}
+      />
+      {live ? (
+        <TickText
+          value={liveTelemetryRuntime.values.pullRateHz}
+          decimals={0}
+          unit=" Hz"
+          size={PULL_RATE_FONT_SIZE}
+          width={PULL_RATE_WIDTH}
+          color={liveColor}
+        />
+      ) : (
+        <StaleMeta board={board} />
+      )}
+    </View>
+  )
+}
+
+interface StripLink {
+  key: string
+  icon: Icon
+  label: string
+  color: ThemeColor
+  /** Absent for a plain action like Edit, which is never "empty". */
+  count?: number
+  testID?: string
+  onPress: () => void
+}
+
+/**
+ * Warnings, VESC faults and Edit — the ways into the active board that used to hide behind the
+ * pencil on the pill. A counted link with nothing behind it grays out, so color always means
+ * "there is something here".
+ */
+function LinksStrip({ links }: { links: StripLink[] }) {
+  return (
+    <View style={styles.strip}>
+      {links.map(
+        ({ key, icon: LinkIcon, label, color: activeColor, count, testID, onPress }, i) => {
+          const color = count === 0 ? theme.neutral.textMuted : activeColor
+          return (
+            <View key={key} style={styles.stripCell}>
+              {i > 0 && <View style={styles.stripDivider} />}
+              <Pressable
+                onPress={onPress}
+                style={({ pressed }) => [styles.segment, pressed && styles.rowPressed]}
+                testID={testID}
+                accessibilityRole="button"
+                accessibilityLabel={count ? `${label}, ${count}` : label}
+              >
+                <View style={styles.segmentGlyph}>
+                  <LinkIcon size={17} color={color} weight="duotone" />
+                  {count != null && count > 0 && (
+                    <View style={[styles.countRing, { borderColor: color }]}>
+                      <Text style={[styles.count, { color }]}>{count}</Text>
+                    </View>
+                  )}
+                </View>
+                <Text style={styles.segmentLabel}>{label}</Text>
+              </Pressable>
+            </View>
+          )
+        },
+      )}
+    </View>
+  )
+}
+
+function BoardIcon({ board, active }: { board: Board; active: boolean }) {
+  const neutral = useResolvedNeutralColors()
+  return (
+    <View
+      style={[
+        styles.boardIcon,
+        { borderColor: theme.alpha(neutral.border, 0.6) },
+        active && styles.boardIconActive,
+      ]}
+    >
+      <BoardStyleIcon
+        railId={board.personalization?.railId}
+        railColorId={board.personalization?.railColorId}
+      />
+    </View>
+  )
+}
+
+/**
+ * The selector's list, without the drawer around it — one picker where the active board leads,
+ * one line taller and framed, with its links attached underneath.
+ */
+export function BoardSelectorContent({
+  boards,
+  accessories,
+  activeBoardId,
+  activeBoardLive = false,
+  warnings,
+  faults,
+  onSelectBoard,
+  onAddBoard,
+  onEditBoard,
+}: BoardSelectorContentProps) {
+  const neutral = useResolvedNeutralColors()
+  const cardSurface = useResolvedSecondaryWidgetSurface()
+  const active = boards.find((b) => b.id === activeBoardId)
+  const others = boards.filter((b) => b.id !== active?.id)
+
+  return (
+    <>
+      {active && (
+        <View style={[styles.activeBlock, cardSurface]}>
+          <View style={[styles.row, styles.activeRow]}>
+            <BoardIcon board={active} active />
+            <View style={styles.rowInfo}>
+              <Text style={styles.boardNameActive} numberOfLines={1}>
+                {active.name}
+              </Text>
+              <ActiveMeta board={active} live={activeBoardLive} />
+            </View>
+          </View>
+          <LinksStrip
+            links={[
+              ...(warnings
+                ? [
+                    {
+                      key: 'warnings',
+                      icon: EngineIcon,
+                      label: 'Warnings',
+                      color: severityStatus(warnings.severity ?? 'warn').color,
+                      count: warnings.count,
+                      onPress: warnings.onPress,
+                    },
+                  ]
+                : []),
+              ...(faults
+                ? [
+                    {
+                      key: 'faults',
+                      icon: WarningDiamondIcon,
+                      label: 'VESC faults',
+                      color: theme.status.caution.color,
+                      count: faults.count,
+                      onPress: faults.onPress,
+                    },
+                  ]
+                : []),
+              {
+                key: 'edit',
+                icon: PencilSimpleIcon,
+                label: 'Edit',
+                color: theme.neutral.textMuted,
+                testID: 'board-edit-button',
+                onPress: () => onEditBoard(active.id),
+              },
+            ]}
+          />
+        </View>
+      )}
+
+      <View style={styles.frame}>
+        {boards.length === 0 ? (
+          <Placeholder
+            icon={LightningIcon}
+            description="No boards yet. Add your board to connect over Bluetooth."
+            compact
+          />
+        ) : null}
+        {others.map((board) => (
+          <Pressable
+            key={board.id}
+            style={({ pressed }) => [cardSurface, styles.row, pressed && styles.rowPressed]}
+            onPress={() => onSelectBoard(board.id)}
+            accessibilityRole="button"
+            accessibilityLabel={`Select ${board.name}`}
+          >
+            <BoardIcon board={board} active={false} />
+            <View style={styles.rowInfo}>
+              <Text style={styles.boardName} numberOfLines={1}>
+                {board.name}
+              </Text>
+              <View style={styles.metaLine}>
+                <StaleMeta board={board} />
+              </View>
+            </View>
+            {/* Renaming a board should not cost a connection attempt first. */}
+            <Pressable
+              onPress={() => onEditBoard(board.id)}
+              hitSlop={8}
+              accessibilityRole="button"
+              accessibilityLabel={`Edit ${board.name}`}
+            >
+              <PencilSimpleIcon size={15} color={theme.neutral.textDim} weight="bold" />
+            </Pressable>
+          </Pressable>
+        ))}
+
+        {/* The last row in the list, only lighter — it is where a board would go, not a board. */}
+        <Pressable
+          style={({ pressed }) => [styles.row, styles.addRow, pressed && styles.rowPressed]}
+          onPress={onAddBoard}
+          testID="board-selector-add-board"
+          accessibilityRole="button"
+          accessibilityLabel="Add new board"
+        >
+          <View style={[styles.addIcon, { borderColor: theme.alpha(neutral.border, 0.6) }]}>
+            <PlusIcon size={16} color={theme.palette.sky.color} weight="bold" />
+          </View>
+          <Text style={styles.addText}>Add new board</Text>
+        </Pressable>
+      </View>
+
+      {accessories ? (
+        <>
+          <View
+            style={[styles.sectionDivider, { backgroundColor: theme.alpha(neutral.border, 0.6) }]}
+          />
+          {accessories}
+        </>
+      ) : null}
+    </>
+  )
+}
 
 export function BoardSelectorSheet({
   visible,
   triggerRef,
-  boards,
-  activeBoardId,
-  activeBoardLive = false,
   onClose,
-  onSelectBoard,
-  onAddBoard,
+  ...content
 }: BoardSelectorSheetProps) {
   return (
     <EdgeDrawer
       visible={visible}
       triggerRef={triggerRef}
       edge="top"
-      title="Your Boards"
+      title="Boards"
       icon={LightningIcon}
       iconColor={theme.palette.sky.color}
+      backdropTestID="board-selector-backdrop"
       onClose={onClose}
     >
-      <View style={styles.content}>
-        {boards.map((board) => {
-          const isActive = board.id === activeBoardId
-          return (
-            <Pressable
-              key={board.id}
-              style={({ pressed }) => [
-                styles.boardCard,
-                isActive && styles.boardCardActive,
-                pressed && styles.boardCardPressed,
-              ]}
-              onPress={() => onSelectBoard(board.id)}
-            >
-              <View style={[styles.boardIcon, isActive && styles.boardIconActive]}>
-                <BoardStyleIcon
-                  railId={board.personalization?.railId}
-                  railColorId={board.personalization?.railColorId}
-                />
-              </View>
-              <View style={styles.boardInfo}>
-                <Text style={[styles.boardName, isActive && styles.boardNameActive]}>
-                  {board.name}
-                </Text>
-                {isActive && activeBoardLive ? (
-                  <TickText
-                    value={liveTelemetryRuntime.values.pullRateHz}
-                    decimals={0}
-                    unit=" Hz"
-                    size={PULL_RATE_FONT_SIZE}
-                    color={theme.palette.slate.textMuted}
-                  />
-                ) : (
-                  <Text style={styles.boardStyleName}>
-                    {board.personalization?.railId?.toUpperCase() ?? 'XR'}
-                  </Text>
-                )}
-              </View>
-              {isActive ? (
-                <CheckCircleIcon size={20} color={theme.palette.sky.color} weight="fill" />
-              ) : null}
-              <Pressable
-                onPress={(event) => {
-                  event.stopPropagation()
-                  onClose()
-                  router.push({ pathname: routes.editBoard, params: { boardId: board.id } })
-                }}
-                hitSlop={8}
-                accessibilityRole="button"
-                accessibilityLabel={`Edit ${board.name}`}
-                style={({ pressed }) => [styles.editButton, pressed && styles.editButtonPressed]}
-              >
-                <PencilSimpleIcon size={16} color={theme.palette.slate.textDim} weight="bold" />
-              </Pressable>
-            </Pressable>
-          )
-        })}
-
-        <Pressable
-          style={({ pressed }) => [styles.addCard, pressed && styles.boardCardPressed]}
-          onPress={onAddBoard}
-          testID="board-selector-add-board"
-          accessibilityLabel="Add new board"
-        >
-          <View style={styles.addIcon}>
-            <PlusIcon size={18} color={theme.palette.sky.color} weight="bold" />
-          </View>
-          <Text style={styles.addText}>Add new board</Text>
-        </Pressable>
-      </View>
+      <BoardSelectorContent {...content} />
     </EdgeDrawer>
   )
 }
 
 const styles = StyleSheet.create({
-  content: {
-    paddingHorizontal: 16,
-    gap: 10,
+  frame: {
+    width: '100%',
+    gap: 6,
   },
-  boardCard: {
+  sectionDivider: {
+    height: StyleSheet.hairlineWidth * 2,
+    alignSelf: 'stretch',
+    marginTop: 8,
+    marginBottom: 10,
+  },
+  // The active board uses the same appearance-aware surface as the settings drawer's cards.
+  activeBlock: {
+    marginBottom: 4,
+    overflow: 'hidden',
+  },
+  row: {
     flexDirection: 'row',
     alignItems: 'center',
-    minHeight: 68,
-    paddingVertical: 8,
-    paddingHorizontal: 12,
-    borderRadius: 14,
-    borderWidth: 1,
-    borderColor: theme.palette.slate.border,
-    backgroundColor: theme.palette.slate.surfaceDeep,
+    paddingVertical: 10,
+    paddingHorizontal: 10,
+    gap: 10,
+  },
+  // The card breathes wider than a list row — it is the one thing in the drawer being read, not
+  // scanned.
+  activeRow: {
+    paddingVertical: 14,
+    paddingHorizontal: 14,
     gap: 12,
   },
-  boardCardActive: {
-    borderColor: theme.palette.sky.border,
-    backgroundColor: theme.palette.sky.bg,
-  },
-  boardCardPressed: {
+  rowPressed: {
     backgroundColor: interaction.pressedBg,
   },
-  boardIcon: {
-    width: 68,
-    height: 44,
-    borderRadius: 10,
-    backgroundColor: theme.palette.slate.surface,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  boardIconActive: {
-    backgroundColor: theme.palette.sky.bg,
-  },
-  boardInfo: {
+  rowInfo: {
     flex: 1,
     gap: 3,
   },
+  boardIcon: {
+    width: 58,
+    height: 32,
+    borderRadius: 8,
+    borderWidth: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  // Outline only, like every other tile in the list: the active board is already told apart by the
+  // card it sits in, so a filled tile on top of that was one signal too many.
+  boardIconActive: {
+    borderColor: theme.alpha(theme.palette.sky.color, 0.3),
+  },
   boardName: {
-    color: theme.palette.slate.textSecondary,
+    color: theme.neutral.textSecondary,
     fontSize: 14,
     fontWeight: '600',
   },
   boardNameActive: {
-    color: theme.palette.slate.textPrimary,
+    color: theme.neutral.textPrimary,
+    fontSize: 15,
+    fontWeight: '700',
   },
-  boardStyleName: {
-    color: theme.palette.slate.textMuted,
+
+  metaLine: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+  },
+  dot: {
+    width: 7,
+    height: 7,
+    borderRadius: 3.5,
+    borderWidth: 1.5,
+  },
+  // Mono and Raleway sit on different baselines; a shared line height keeps the row on one line.
+  metaBattery: {
+    fontFamily: theme.mono('600'),
+    color: theme.neutral.textMuted,
     fontSize: 11,
-    fontWeight: '600',
+    lineHeight: 14,
   },
-  editButton: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
+  metaText: {
+    color: theme.neutral.textDim,
+    fontSize: 11,
+    lineHeight: 14,
+  },
+  strip: {
+    flexDirection: 'row',
+    borderTopWidth: 1,
+    borderTopColor: theme.neutral.border,
+  },
+  stripCell: {
+    flex: 1,
+    flexDirection: 'row',
+  },
+  stripDivider: {
+    width: StyleSheet.hairlineWidth * 2,
+    backgroundColor: theme.neutral.border,
+  },
+  segment: {
+    flex: 1,
+    alignItems: 'center',
+    gap: 5,
+    paddingVertical: 12,
+  },
+  segmentGlyph: {
+    flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
   },
-  editButtonPressed: {
-    backgroundColor: interaction.pressedBg,
-  },
-  addCard: {
-    flexDirection: 'row',
+  countRing: {
+    position: 'absolute',
+    left: 11,
+    top: -4,
+    minWidth: 12,
+    height: 12,
+    borderRadius: 6,
+    borderWidth: StyleSheet.hairlineWidth * 2,
     alignItems: 'center',
-    minHeight: 60,
-    paddingVertical: 8,
-    paddingHorizontal: 12,
-    borderRadius: 14,
-    borderWidth: 1,
-    borderStyle: 'dashed',
-    borderColor: theme.palette.slate.border,
-    gap: 12,
+    justifyContent: 'center',
+    paddingHorizontal: 2,
   },
-  addIcon: {
-    width: 68,
-    height: 40,
+  count: {
+    fontFamily: theme.mono('700'),
+    fontSize: 8,
+    lineHeight: 9,
+  },
+  segmentLabel: {
+    color: theme.neutral.textMuted,
+    fontSize: 11,
+    fontWeight: '600',
+  },
+
+  addRow: {
+    paddingVertical: 8,
     borderRadius: 10,
-    backgroundColor: theme.palette.sky.bg,
+  },
+  // A board row's tile, thinned down to an outline: same size and place, less weight.
+  addIcon: {
+    width: 32,
+    height: 32,
+    borderRadius: 8,
+    borderWidth: 1,
     alignItems: 'center',
     justifyContent: 'center',
   },
   addText: {
     color: theme.palette.sky.color,
-    fontSize: 14,
-    fontWeight: '700',
+    fontSize: 13,
+    fontWeight: '600',
   },
 })

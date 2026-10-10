@@ -16,14 +16,25 @@ import Animated, {
   withTiming,
 } from 'react-native-reanimated'
 
-import { interaction, theme } from '@/constants/theme'
+import { useColoredAction, useResolvedColor } from '@/hooks/useTheme'
+import { interaction, theme, type ThemeColor } from '@/constants/theme'
 
 const SIZES = { sm: 38, md: 50, lg: 54 } as const
 const ICON_SIZES = { sm: 18, md: 21, lg: 22 } as const
 const RING_STROKE = 2.5
 
 /** Determinate ring hugging the button's border, filling clockwise from the top. */
-function ProgressRing({ dim, color, progress }: { dim: number; color: string; progress: number }) {
+function ProgressRing({
+  dim,
+  color,
+  progress,
+}: {
+  dim: number
+  color: ThemeColor
+  progress: number
+}) {
+  // Skia needs a color string, not a native adaptive color object.
+  const ringColor = useResolvedColor(color)
   const path = useMemo(() => {
     const inset = RING_STROKE / 2
     const p = Skia.Path.Make()
@@ -34,13 +45,18 @@ function ProgressRing({ dim, color, progress }: { dim: number; color: string; pr
 
   return (
     <Canvas pointerEvents="none" style={[styles.ring, { width: dim, height: dim }]}>
-      <Path path={path} style="stroke" strokeWidth={RING_STROKE} color={theme.alpha(color, 0.3)} />
+      <Path
+        path={path}
+        style="stroke"
+        strokeWidth={RING_STROKE}
+        color={theme.alpha(ringColor, 0.3)}
+      />
       <Path
         path={path}
         style="stroke"
         strokeWidth={RING_STROKE}
         strokeCap="round"
-        color={color}
+        color={ringColor}
         end={end}
       />
     </Canvas>
@@ -56,7 +72,7 @@ export interface IconButtonTakeover {
   /** Replaces the resting icon. Omit to keep it and only recolor. */
   icon?: Icon
   /** Replaces the icon and border color. */
-  accent?: string
+  accent?: ThemeColor
   /** 0–1 determinate ring drawn around the button. Omit for indeterminate work. */
   progress?: number
 }
@@ -71,9 +87,11 @@ interface IconButtonProps {
   disabled?: boolean
   destructive?: boolean
   /** Override the icon + border colour to signal an active state. */
-  accent?: string
+  accent?: ThemeColor
+  /** Override the icon colour only, leaving the border as the plain control border. */
+  iconColor?: ThemeColor
   /** Show a small pulsing badge dot in this colour (e.g. nearby Group Rides). */
-  dot?: string
+  dot?: ThemeColor
   loading?: boolean
   style?: StyleProp<ViewStyle>
   testID?: string
@@ -89,6 +107,7 @@ export function IconButton({
   disabled = false,
   destructive = false,
   accent,
+  iconColor,
   dot,
   loading = false,
   style,
@@ -101,12 +120,18 @@ export function IconButton({
   const Icon = takeover?.icon ?? RestingIcon
   // A takeover outranks `accent`: it is the state the Rider needs to see right now.
   const activeAccent = takeover?.accent ?? accent
-  const iconColor = destructive
-    ? theme.status.error.text
-    : (activeAccent ?? theme.palette.slate.textSecondary)
-  const borderColor = destructive
-    ? theme.status.error.border
-    : (activeAccent ?? theme.palette.slate.border)
+  // `destructive` puts the icon on a navy control surface, so it uses the bright red tint
+  // (readable on navy in both appearances) instead of `status.error.text`, which is a dark
+  // red meant for light surfaces.
+  const resolvedIconColor = destructive
+    ? theme.palette.red.light
+    : (activeAccent ?? iconColor ?? theme.control.icon)
+  const borderColor = destructive ? theme.palette.red.light : (activeAccent ?? theme.control.border)
+  // Colored actions (destructive, accent, takeover) wear the two-layer colored surface; a plain
+  // button keeps the navy control surface. Hook runs unconditionally; result ignored when plain.
+  const coloredAccent = destructive ? theme.palette.red.light : activeAccent
+  const coloredSurface = useColoredAction(coloredAccent ?? theme.control.background)
+  const background = coloredAccent ? coloredSurface : theme.control.background
   const progress = takeover?.progress
 
   const pulse = useSharedValue(0)
@@ -130,7 +155,13 @@ export function IconButton({
       accessibilityLabel={accessibilityLabel}
       style={({ pressed }) => [
         styles.base,
-        { width: dim, height: dim, borderRadius: dim / 2, borderColor },
+        {
+          width: dim,
+          height: dim,
+          borderRadius: dim / 2,
+          borderColor,
+          backgroundColor: background,
+        },
         isDisabled && styles.disabled,
         pressed && !isDisabled && { opacity: interaction.pressedOpacity },
         style,
@@ -141,12 +172,12 @@ export function IconButton({
       disabled={isDisabled}
     >
       {loading ? (
-        <ActivityIndicator size="small" color={iconColor} />
+        <ActivityIndicator size="small" color={resolvedIconColor} />
       ) : (
-        <Icon size={iconSize} color={iconColor} weight="bold" />
+        <Icon size={iconSize} color={resolvedIconColor} weight="bold" />
       )}
       {progress != null && !loading ? (
-        <ProgressRing dim={dim} color={iconColor} progress={progress} />
+        <ProgressRing dim={dim} color={resolvedIconColor} progress={progress} />
       ) : null}
       {dot && !loading ? (
         <Animated.View
@@ -162,7 +193,6 @@ const styles = StyleSheet.create({
   base: {
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: theme.palette.slate.surfaceDeep,
     borderWidth: 1,
   },
   disabled: {
@@ -181,6 +211,6 @@ const styles = StyleSheet.create({
     height: 10,
     borderRadius: 5,
     borderWidth: 2,
-    borderColor: theme.palette.slate.surfaceDeep,
+    borderColor: theme.control.background,
   },
 })

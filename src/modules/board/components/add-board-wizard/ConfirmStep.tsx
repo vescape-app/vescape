@@ -1,3 +1,5 @@
+import { useUnitSystem } from '@/hooks/useUnitSystem'
+import { draftAlertPreview } from '@/modules/alerts/lib/draftAlertPreview'
 import { useMemo } from 'react'
 import { StyleSheet, View } from 'react-native'
 import { Text } from '@/components/base/Text'
@@ -12,31 +14,40 @@ import {
 } from 'phosphor-react-native'
 
 import { Button } from '@/components/base/Button'
-import { theme } from '@/constants/theme'
-import {
-  ALERT_PRESET_METRICS,
-  formatAlertPresetSummary,
-  type AlertPresetMetric,
-} from '@/modules/alerts/lib/alertPresets'
+import { theme, type ThemeColor } from '@/constants/theme'
+import { ALERT_PRESET_METRICS, type AlertPresetMetric } from '@/modules/alerts/lib/alertPresets'
+import { useAlertPresetFormat } from '@/modules/alerts/hooks/useAlertPresetFormat'
 import { WizardStepLayout } from '@/modules/board/components/add-board-wizard/WizardStepLayout'
 import { ALERT_METRIC_META } from '@/modules/board/components/add-board-wizard/alertMetricMeta'
 import type { UseAddBoardWizard } from '@/modules/board/hooks/useAddBoardWizard'
 import { formatBmsSuffix, formatBoardTransport } from '@/modules/board/lib/boardTransport'
 
 export function ConfirmStep({ wizard }: { wizard: UseAddBoardWizard }) {
-  const alertSummaries = useMemo(() => {
-    return ALERT_PRESET_METRICS.map((metric) => {
+  const { formatSummary } = useAlertPresetFormat()
+  const units = useUnitSystem()
+  const { alertSummaries, previewErrors } = useMemo(() => {
+    const errors: string[] = []
+    const summaries = ALERT_PRESET_METRICS.map((metric) => {
       const { level, rules } = wizard.alertSetup[metric]
+      const preview = draftAlertPreview(
+        metric,
+        level,
+        {
+          speedUnitSystem: units,
+          topSpeedKmh: wizard.topSpeedKmh,
+          hasBatteryConfig: wizard.hasBatteryConfig,
+        },
+        rules,
+      )
+      if (preview.error) errors.push(`${ALERT_METRIC_META[metric].name}: ${preview.error}`)
       const summary =
         level === 'custom'
           ? `${rules.length} custom ${rules.length === 1 ? 'alert' : 'alerts'}`
-          : formatAlertPresetSummary(metric, level, {
-              boardTopSpeedKmh: wizard.topSpeedKmh,
-              hasBatteryConfig: wizard.hasBatteryConfig,
-            })
+          : formatSummary(metric, preview.rules)
       return { metric, summary }
     }).filter((row): row is { metric: AlertPresetMetric; summary: string } => row.summary != null)
-  }, [wizard.alertSetup, wizard.hasBatteryConfig, wizard.topSpeedKmh])
+    return { alertSummaries: summaries, previewErrors: errors }
+  }, [wizard.alertSetup, wizard.hasBatteryConfig, wizard.topSpeedKmh, formatSummary, units])
 
   return (
     <WizardStepLayout
@@ -58,8 +69,8 @@ export function ConfirmStep({ wizard }: { wizard: UseAddBoardWizard }) {
             label="Save"
             icon={CheckCircleIcon}
             iconPosition="right"
-            onPress={wizard.save}
-            disabled={!wizard.canSave}
+            onPress={() => void wizard.save()}
+            disabled={!wizard.canSave || previewErrors.length > 0}
             testID="add-board-save"
           />
         </View>
@@ -79,10 +90,21 @@ export function ConfirmStep({ wizard }: { wizard: UseAddBoardWizard }) {
         <View style={styles.divider} />
         <ConfirmRow
           icon={TextTIcon}
-          iconColor={theme.palette.yellow.color}
+          iconColor={theme.palette.orange.color}
           label="Name"
           value={wizard.name.trim() || 'Unnamed board'}
         />
+        {wizard.description.trim() ? (
+          <>
+            <View style={styles.divider} />
+            <ConfirmRow
+              icon={TextTIcon}
+              iconColor={theme.palette.orange.color}
+              label="Description"
+              value={wizard.description.trim()}
+            />
+          </>
+        ) : null}
         <View style={styles.divider} />
         <ConfirmRow
           icon={BatteryFullIcon}
@@ -93,13 +115,18 @@ export function ConfirmStep({ wizard }: { wizard: UseAddBoardWizard }) {
       </View>
 
       <Text style={styles.sectionTitle}>Alerts</Text>
+      {previewErrors.map((error) => (
+        <Text key={error} style={{ color: theme.status.error.color }}>
+          {error}
+        </Text>
+      ))}
       <View style={styles.card}>
         {alertSummaries.length === 0 ? (
           <ConfirmRow
             icon={BellRingingIcon}
             iconColor={theme.palette.amber.color}
             label="Alerts"
-            value="All off"
+            value={previewErrors.length ? 'Preview unavailable' : 'All off'}
           />
         ) : (
           alertSummaries.map(({ metric, summary }, index) => (
@@ -121,7 +148,7 @@ export function ConfirmStep({ wizard }: { wizard: UseAddBoardWizard }) {
 
 interface ConfirmRowProps {
   icon: Icon
-  iconColor: string
+  iconColor: ThemeColor
   label: string
   value: string
 }
@@ -147,14 +174,14 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   card: {
-    backgroundColor: theme.palette.slate.surface,
+    backgroundColor: theme.neutral.surface,
     borderRadius: 12,
     borderWidth: 1,
-    borderColor: theme.palette.slate.border,
+    borderColor: theme.neutral.border,
     paddingVertical: 4,
   },
   sectionTitle: {
-    color: theme.palette.slate.textMuted,
+    color: theme.neutral.textMuted,
     fontSize: 12,
     fontWeight: '700',
     textTransform: 'uppercase',
@@ -174,17 +201,17 @@ const styles = StyleSheet.create({
   },
   divider: {
     height: 1,
-    backgroundColor: theme.palette.slate.border,
+    backgroundColor: theme.neutral.border,
     marginLeft: 42,
   },
   label: {
-    color: theme.palette.slate.textMuted,
+    color: theme.neutral.textMuted,
     fontSize: 11,
     fontWeight: '700',
     textTransform: 'uppercase',
   },
   value: {
-    color: theme.palette.slate.textPrimary,
+    color: theme.neutral.textPrimary,
     fontSize: 14,
     fontWeight: '600',
   },

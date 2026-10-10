@@ -1,6 +1,7 @@
 import { describe, expect, test } from 'bun:test'
 import type { ReleaseManifest } from './contracts'
 import {
+  parseHistoricalReleaseManifest,
   parsePromotionManifest,
   parseProductionManifest,
   parseReleaseManifest,
@@ -19,6 +20,12 @@ const manifest = (
   marketingVersion: '0.83.1',
   versionCodes: { phone: 100_000_042, wear: 1_100_000_042 },
   workflow: { runId: 123, runUrl: 'https://example.test/run/123', runAttempt: 1 },
+  storageContracts: {
+    sourceSha: 'a'.repeat(40),
+    androidRoom: 'passed',
+    iosGrdb: 'passed',
+    crossPlatformArchives: 'passed',
+  },
   artifacts: {
     phone: { name: 'app-release.aab', sha256: 'a', signingCertificateSha256: 'c' },
     wear: { name: 'wearos-release.aab', sha256: 'b', signingCertificateSha256: 'c' },
@@ -62,8 +69,30 @@ describe('open promotion manifest', () => {
 })
 
 describe('release manifest', () => {
+  test('allows already uploaded historical builds to be promoted', () => {
+    const { storageContracts: _, ...historical } = manifest('succeeded', 'succeeded')
+    expect(parseHistoricalReleaseManifest(historical)).toEqual(historical)
+    expect(parseReleaseManifest(historical)).toEqual(historical)
+    expect(() =>
+      parseHistoricalReleaseManifest({
+        ...historical,
+        uploads: { phone: 'unknown', wear: 'succeeded' },
+      }),
+    ).toThrow('invalid shape')
+  })
+
   test('parses the workflow contract', () => {
-    expect(parseReleaseManifest(manifest('succeeded', 'succeeded')).sourceSha).toBe('a'.repeat(40))
+    const valid = manifest('succeeded', 'succeeded')
+    expect(parseReleaseManifest(valid).sourceSha).toBe('a'.repeat(40))
+    expect(parseReleaseManifest({ ...valid, storageContracts: undefined }).sourceSha).toBe(
+      valid.sourceSha,
+    )
+    expect(() =>
+      parseReleaseManifest({
+        ...valid,
+        storageContracts: { ...valid.storageContracts, sourceSha: 'b'.repeat(40) },
+      }),
+    ).toThrow('invalid shape')
     expect(() => parseReleaseManifest({ schemaVersion: 2 })).toThrow('invalid shape')
   })
 
@@ -84,36 +113,33 @@ describe('production manifest', () => {
     sourceSha: 'a'.repeat(40),
     marketingVersion: '0.83.1',
     operation: 'promote' as const,
-    requestedRolloutPercentage: 10,
     phone: {
       versionCode: 100_000_042,
       sourceTrack: 'beta',
       targetTrack: 'production',
       status: 'promoted' as const,
-      playStatus: 'inProgress',
-      rolloutPercentage: 10,
+      playStatus: 'completed',
     },
     wear: {
       versionCode: 1_100_000_042,
       sourceTrack: 'wear:beta',
       targetTrack: 'wear:production',
       status: 'already-production' as const,
-      playStatus: 'inProgress',
-      rolloutPercentage: 10,
+      playStatus: 'completed',
     },
     githubRelease: 'released' as const,
   }
 
-  test('parses exact staged rollout and GitHub state', () => {
+  test('parses exact production and GitHub state', () => {
     expect(parseProductionManifest(production)).toEqual(production)
-    expect(() =>
-      parseProductionManifest({ ...production, requestedRolloutPercentage: 101 }),
-    ).toThrow('invalid shape')
+    expect(() => parseProductionManifest({ ...production, operation: 'advance' })).toThrow(
+      'invalid shape',
+    )
   })
 
   test('renders partial retry state precisely', () => {
     expect(productionSummary(production)).toBe(
-      'phone 100000042: promoted @ 10% · Wear 1100000042: already-production @ 10% · GitHub released',
+      'phone 100000042: promoted · Wear 1100000042: already-production · GitHub released',
     )
   })
 })

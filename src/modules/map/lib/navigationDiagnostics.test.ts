@@ -42,7 +42,7 @@ describe('navigation diagnostics', () => {
     })
 
     expect(vm.selectedMode).toBe('GPS heading')
-    expect(vm.mapStyle).toBe('One Dark')
+    expect(vm.mapStyle).toBe('Streets')
     expect(vm.readiness).toBe('ready')
     expect(vm.fallbackReason).toBe('none')
     expect(vm.updatedAge).toBe('250 ms')

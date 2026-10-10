@@ -19,11 +19,14 @@ if (cleanFlag) {
 
   for (const tag of releases) {
     const prNum = tag.replace('pr-', '').replace('-screenshots', '')
-    const state = (
-      await $`gh pr view ${prNum} --json state -q .state`.text().catch(() => 'UNKNOWN')
-    ).trim()
+    const result = await $`gh pr view ${prNum} --json state -q .state`.nothrow().quiet()
+    if (result.exitCode !== 0) {
+      console.error(`Could not inspect PR ${prNum}; keeping ${tag}.`)
+      continue
+    }
+    const state = result.stdout.toString().trim()
 
-    if (state === 'MERGED' || state === 'CLOSED' || state === 'UNKNOWN') {
+    if (state === 'MERGED' || state === 'CLOSED') {
       await $`gh release delete ${tag} --yes --cleanup-tag`.quiet()
       console.error(`Cleaned up ${tag} (PR ${state})`)
     }

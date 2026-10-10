@@ -5,7 +5,7 @@ description: Break a plan, spec, or PRD into independently-grabbable issues on t
 
 # To Issues
 
-Break a VESC app plan into independently-grabbable GitHub issues using vertical slices (tracer bullets).
+Break a Vescape app plan into independently-grabbable GitHub issues using vertical slices (tracer bullets).
 
 The issue tracker and triage label vocabulary live in `docs/agents/issue-tracker.md` and `docs/agents/triage-labels.md`.
 

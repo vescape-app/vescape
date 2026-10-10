@@ -11,6 +11,7 @@ import expo.modules.vescapecore.weather.Weather
  * it does not know, a newer wrist falls back to its own default for keys an older phone never sends.
  *
  * @parity /watch/wearos/src/main/java/app/vescape/wear/WatchWeather.kt
+ * @parity /modules/vescape-core/ios/watch/WatchWeather.swift
  */
 internal const val WATCH_WEATHER_PATH = "/weather"
 
@@ -39,6 +40,14 @@ internal const val WATCH_WEATHER_HOUR_PRECIPS = "hourPrecips"
 internal const val WATCH_WEATHER_SUNRISE = "sunriseMinuteOfDay"
 internal const val WATCH_WEATHER_SUNSET = "sunsetMinuteOfDay"
 
+/**
+ * Where the forecast was taken, so the wrist can ask a radar provider for imagery around the rider.
+ * The forecast location, not a live fix: it moves once per forecast refresh, which is the accuracy
+ * a radar frame kilometres across is drawn at anyway.
+ */
+internal const val WATCH_WEATHER_LATITUDE = "latitude"
+internal const val WATCH_WEATHER_LONGITUDE = "longitude"
+
 /** When the forecast was fetched, so the wrist can age out a reading the phone stopped refreshing. */
 internal const val WATCH_WEATHER_FETCHED_AT = "fetchedAtMs"
 
@@ -58,6 +67,8 @@ internal data class WatchWeather(
     val hourPrecips: IntArray,
     val sunriseMinuteOfDay: Int?,
     val sunsetMinuteOfDay: Int?,
+    val latitude: Double,
+    val longitude: Double,
     val fetchedAtMs: Long,
 ) {
     // Arrays make the generated equals() identity-based, which would push an identical forecast on
@@ -73,7 +84,9 @@ internal data class WatchWeather(
             hourIcons == other.hourIcons &&
             hourPrecips.contentEquals(other.hourPrecips) &&
             sunriseMinuteOfDay == other.sunriseMinuteOfDay &&
-            sunsetMinuteOfDay == other.sunsetMinuteOfDay
+            sunsetMinuteOfDay == other.sunsetMinuteOfDay &&
+            latitude == other.latitude &&
+            longitude == other.longitude
 
     override fun hashCode(): Int {
         var result = temperatureC
@@ -86,6 +99,8 @@ internal data class WatchWeather(
         result = 31 * result + hourPrecips.contentHashCode()
         result = 31 * result + (sunriseMinuteOfDay ?: 0)
         result = 31 * result + (sunsetMinuteOfDay ?: 0)
+        result = 31 * result + latitude.hashCode()
+        result = 31 * result + longitude.hashCode()
         return result
     }
 }
@@ -105,5 +120,7 @@ internal fun Weather.toWatchWeather(): WatchWeather = WatchWeather(
     hourPrecips = hourly.map { it.precipitationProbability }.toIntArray(),
     sunriseMinuteOfDay = sunriseMinuteOfDay,
     sunsetMinuteOfDay = sunsetMinuteOfDay,
+    latitude = latitude,
+    longitude = longitude,
     fetchedAtMs = fetchedAtMs,
 )

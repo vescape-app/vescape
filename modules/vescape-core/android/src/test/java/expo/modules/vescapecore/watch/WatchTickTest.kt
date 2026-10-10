@@ -7,7 +7,7 @@ import org.junit.Test
 
 /**
  * Verifies the dedicated watch tick fires at its configured cadence and re-arms live when the
- * `wearMirrorIntervalMs` App Setting changes (ADR-0013/0019) — lowering the interval must take
+ * `wearPushRateHz` App Setting changes (ADR-0013/0019) — lowering the interval must take
  * effect immediately rather than waiting out the current, longer delay.
  */
 class WatchTickTest {

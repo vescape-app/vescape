@@ -25,17 +25,6 @@ export function fmtVoltageRange(min: number, max: number): string {
   return `${fmtVoltage(min)}–${fmtVoltage(max)} V`
 }
 
-/** Format a distance in meters as "240 m" below 1 km, else "1.2 km". */
-export function fmtDistance(meters: number): string {
-  if (meters < 1000) return `${Math.round(meters)} m`
-  return `${(meters / 1000).toFixed(1)} km`
-}
-
-/** Format a speed in m/s as a whole km/h label, e.g. "24 km/h". */
-export function fmtSpeedKmh(metersPerSecond: number): string {
-  return `${Math.round(metersPerSecond * 3.6)} km/h`
-}
-
 /** Format a temperature in °C as a whole-degree label, e.g. "64°". */
 export function fmtTempC(celsius: number): string {
   return `${Math.round(celsius)}°`

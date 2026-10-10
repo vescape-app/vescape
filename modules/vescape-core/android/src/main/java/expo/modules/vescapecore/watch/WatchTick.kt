@@ -6,7 +6,7 @@ import expo.modules.vescapecore.runtime.Scheduler
 /**
  * Dedicated watch tick (ADR-0013/0019): a service-scoped scheduler, independent of the board
  * session and poll rate, that reads the latest cold-path [WatchSnapshot] and pushes an encoded
- * Watch Frame at a configurable cadence (`wearMirrorIntervalMs` App Setting). Board lanes may be
+ * Watch Frame at a configurable cadence (`wearPushRateHz` App Setting). Board lanes may be
  * empty while GPS/navigation lanes stay live.
  *
  * Capability-gated: [canPush] is a cached flag ([WatchMirrorPresence]) checked before building the
@@ -21,13 +21,20 @@ internal class WatchTick(
     intervalMs: Long,
 ) {
     private var handle: Cancellable? = null
+    private var running = false
+    private var generation = 0L
     private var intervalMs: Long = intervalMs
 
     fun start() {
-        if (handle == null) schedule()
+        if (running) return
+        running = true
+        generation++
+        schedule()
     }
 
     fun stop() {
+        running = false
+        generation++
         handle?.cancel()
         handle = null
     }
@@ -39,7 +46,8 @@ internal class WatchTick(
     fun setIntervalMs(intervalMs: Long) {
         if (intervalMs == this.intervalMs) return
         this.intervalMs = intervalMs
-        if (handle != null) {
+        if (running) {
+            generation++
             handle?.cancel()
             handle = null
             schedule()
@@ -47,13 +55,15 @@ internal class WatchTick(
     }
 
     private fun schedule() {
+        val currentGeneration = generation
         handle = scheduler.postDelayed(intervalMs) {
+            if (!running || generation != currentGeneration) return@postDelayed
             if (canPush()) {
                 val snap = snapshot()
                 val frame = WatchFrameBuilder.build(snap, isStale())
                 push(WatchFrameBuilder.encode(frame))
             }
-            schedule()
+            if (running && generation == currentGeneration) schedule()
         }
     }
 }

@@ -195,7 +195,7 @@ export function BoardBatteryForm({
             value={manualMinVoltage}
             onChangeText={onChangeManualMinVoltage}
             placeholder="Min (0%)"
-            placeholderTextColor={theme.palette.slate.textDim}
+            placeholderTextColor={theme.neutral.textDim}
             keyboardType="decimal-pad"
             testID={testIDPrefix ? `${testIDPrefix}-manual-min-input` : undefined}
           />
@@ -204,7 +204,7 @@ export function BoardBatteryForm({
             value={manualMaxVoltage}
             onChangeText={onChangeManualMaxVoltage}
             placeholder="Max (100%)"
-            placeholderTextColor={theme.palette.slate.textDim}
+            placeholderTextColor={theme.neutral.textDim}
             keyboardType="decimal-pad"
             testID={testIDPrefix ? `${testIDPrefix}-manual-max-input` : undefined}
           />
@@ -226,10 +226,10 @@ const styles = StyleSheet.create({
   },
   segmented: {
     flexDirection: 'row',
-    backgroundColor: theme.palette.slate.surfaceDeep,
+    backgroundColor: theme.neutral.surfaceDeep,
     borderRadius: 8,
     borderWidth: 1,
-    borderColor: theme.palette.slate.border,
+    borderColor: theme.neutral.border,
     padding: 3,
   },
   segment: {
@@ -242,7 +242,7 @@ const styles = StyleSheet.create({
     backgroundColor: theme.palette.cyan.bg,
   },
   segmentText: {
-    color: theme.palette.slate.textSecondary,
+    color: theme.neutral.textSecondary,
     fontSize: 13,
     fontWeight: '700',
   },
@@ -266,7 +266,7 @@ const styles = StyleSheet.create({
     gap: 6,
   },
   label: {
-    color: theme.palette.slate.textMuted,
+    color: theme.neutral.textMuted,
     fontSize: 12,
     fontWeight: '700',
     letterSpacing: 0.5,

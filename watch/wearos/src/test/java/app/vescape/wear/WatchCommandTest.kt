@@ -12,6 +12,30 @@ class WatchCommandTest {
     }
 
     @Test
+    fun `a wake level command is a kind byte and the wire level`() {
+        assertArrayEquals(byteArrayOf(2, 0), encodeWakeLevelCommand(WakeLevel.ASLEEP))
+        assertArrayEquals(byteArrayOf(2, 1), encodeWakeLevelCommand(WakeLevel.ACTIVE))
+        assertArrayEquals(byteArrayOf(2, 2), encodeWakeLevelCommand(WakeLevel.AMBIENT))
+    }
+
+    @Test
+    fun `a lights command is a kind byte, bit0 the target and bit1 the switch`() {
+        assertArrayEquals(byteArrayOf(3, 0b00), encodeLightsCommand(LightSwitch.LEDS, false))
+        assertArrayEquals(byteArrayOf(3, 0b01), encodeLightsCommand(LightSwitch.LEDS, true))
+        assertArrayEquals(byteArrayOf(3, 0b10), encodeLightsCommand(LightSwitch.HEADLIGHT, false))
+        assertArrayEquals(byteArrayOf(3, 0b11), encodeLightsCommand(LightSwitch.HEADLIGHT, true))
+    }
+
+    @Test
+    fun `a tilt lock is the absolute unsigned value, clamped to the wire range`() {
+        assertArrayEquals(byteArrayOf(4, 128.toByte()), encodeTiltLockCommand(128))
+        assertArrayEquals(byteArrayOf(4, -1), encodeTiltLockCommand(255))
+        assertArrayEquals(byteArrayOf(4, -1), encodeTiltLockCommand(400))
+        assertArrayEquals(byteArrayOf(4, 0), encodeTiltLockCommand(-3))
+        assertArrayEquals(byteArrayOf(5, 0), encodeTiltCancelCommand())
+    }
+
+    @Test
     fun `a direction is clamped so the wrist can never ask for more than one board move`() {
         assertArrayEquals(byteArrayOf(1, 1), encodeMoveCommand(127))
         assertArrayEquals(byteArrayOf(1, -1), encodeMoveCommand(-127))

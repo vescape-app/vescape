@@ -17,10 +17,11 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import type { HistoryMarker, TelemetrySample } from 'vescape-core'
 
 import { IconButton } from '@/components/base/IconButton'
+import { useFormat } from '@/hooks/useFormat'
 import { telemetry } from '@/modules/board/constants/telemetry'
 import { dutyPercent } from '@/helpers/format'
 import { findVideoTelemetrySample, type MediaAssetInput } from '@/modules/history/lib/mediaHistory'
-import { theme } from '@/constants/theme'
+import { theme, type ThemeColor } from '@/constants/theme'
 
 function VideoAsset({
   asset,
@@ -33,6 +34,7 @@ function VideoAsset({
   markers: HistoryMarker[]
   top: number
 }) {
+  const { formatSpeedWithUnit } = useFormat()
   const [playbackSeconds, setPlaybackSeconds] = useState(0)
   const [unavailable, setUnavailable] = useState(false)
   const player = useVideoPlayer(asset.uri, (instance) => {
@@ -59,7 +61,7 @@ function VideoAsset({
         <View style={[styles.telemetryRow, { top }]}>
           <VideoTelemetryStat
             label="Speed"
-            value={telemetry.speed.formatWithUnit(sample.speedKmh)}
+            value={formatSpeedWithUnit(Math.abs(sample.speedKmh))}
             icon={GaugeIcon}
             accent={telemetry.speed.color}
           />
@@ -90,7 +92,7 @@ function VideoTelemetryStat({
   label: string
   value: string
   icon: Icon
-  accent: string
+  accent: ThemeColor
 }) {
   return (
     <View style={styles.telemetryStat}>
@@ -192,7 +194,7 @@ const styles = StyleSheet.create({
     flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: theme.palette.slate.surfaceDeep,
+    backgroundColor: theme.neutral.surfaceDeep,
   },
   media: {
     ...StyleSheet.absoluteFill,
@@ -213,7 +215,7 @@ const styles = StyleSheet.create({
   },
   position: {
     position: 'absolute',
-    color: theme.palette.slate.textPrimary,
+    color: theme.neutral.textPrimary,
     fontSize: 12,
     fontWeight: '800',
     fontVariant: ['tabular-nums'],
@@ -236,11 +238,11 @@ const styles = StyleSheet.create({
     paddingHorizontal: 10,
     borderRadius: 14,
     borderWidth: 1,
-    borderColor: theme.alpha(theme.palette.slate.light, 0.3),
-    backgroundColor: theme.alpha(theme.palette.slate.surfaceDeep, 0.6),
+    borderColor: theme.alpha(theme.neutral.textSecondary, 0.3),
+    backgroundColor: theme.alpha(theme.neutral.surfaceDeep, 0.6),
   },
   telemetryLabel: {
-    color: theme.palette.slate.textMuted,
+    color: theme.neutral.textMuted,
     fontSize: 9,
     fontWeight: '700',
   },
@@ -250,7 +252,7 @@ const styles = StyleSheet.create({
     gap: 5,
   },
   telemetryValue: {
-    color: theme.palette.slate.textPrimary,
+    color: theme.neutral.textPrimary,
     fontSize: 14,
     fontWeight: '800',
     fontVariant: ['tabular-nums'],
@@ -259,7 +261,7 @@ const styles = StyleSheet.create({
     color: theme.status.error.text,
     fontSize: 13,
     fontWeight: '800',
-    backgroundColor: theme.alpha(theme.palette.slate.surfaceDeep, 0.85),
+    backgroundColor: theme.alpha(theme.neutral.surfaceDeep, 0.85),
     borderRadius: 12,
     paddingHorizontal: 12,
     paddingVertical: 8,

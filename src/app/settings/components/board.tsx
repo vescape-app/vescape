@@ -1,6 +1,7 @@
 import { ScrollView, StyleSheet, View } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
+import { useSharedValue } from 'react-native-reanimated'
 import {
   CloudCheckIcon,
   DownloadSimpleIcon,
@@ -12,13 +13,24 @@ import {
 import { Text } from '@/components/base/Text'
 import { IconHero } from '@/components/settings/IconHero'
 import { DeviceRow } from '@/components/base/DeviceRow'
-import { InfoBadge } from '@/components/base/InfoBadge'
 import { StepTimeline, type StepState, type TimelineStep } from '@/components/base/StepTimeline'
 import { ShowcaseCard } from '@/components/dev/ShowcaseCard'
-import { DevBadge } from '@/components/dev/DevBadge'
+import { BoardConfigSection } from '@/modules/board/components/BoardConfigSection'
 import { BoardWarningRow } from '@/modules/board/components/BoardWarningRow'
-import { ReplayBadge } from '@/modules/board/components/ReplayBadge'
+import { VescFaultRow } from '@/modules/board/components/VescFaultRow'
+import { VescFaultCaptureSection } from '@/modules/board/components/VescFaultCaptureSection'
+import { LiveMetricCard } from '@/modules/board/components/LiveMetricCard'
+import { RimTempArc } from '@/modules/board/components/RimTempArc'
+import { presentTelemetryMetric, telemetry } from '@/modules/board/constants/telemetry'
+import { MOTOR_TEMP_CONFIG_ROWS } from '@/modules/board/constants/motorConfigRows'
 import { ChipRow, ToggleRow } from '@/components/dev/ShowcaseControls'
+import { RemoteTiltPadShowcase } from '@/screens/showcase/board/RemoteTiltPadShowcase'
+import { BoardPillShowcase } from '@/screens/showcase/board/BoardPillShowcase'
+import { BoardSelectorSheetShowcase } from '@/screens/showcase/board/BoardSelectorSheetShowcase'
+import { BoardAttitudeIndicatorShowcase } from '@/screens/showcase/board/BoardAttitudeIndicatorShowcase'
+import { ImuAttitudeDialShowcase } from '@/screens/showcase/board/ImuAttitudeDialShowcase'
+import { FootpadIndicatorShowcase } from '@/screens/showcase/board/FootpadIndicatorShowcase'
+import { GpsStatusPillShowcase } from '@/screens/showcase/board/GpsStatusPillShowcase'
 import { theme } from '@/constants/theme'
 
 function DeviceRowShowcase() {
@@ -37,17 +49,6 @@ function DeviceRowShowcase() {
         rssi={Number(rssi)}
         onPress={() => {}}
       />
-    </ShowcaseCard>
-  )
-}
-
-function InfoBadgeShowcase() {
-  return (
-    <ShowcaseCard name="InfoBadge">
-      <View style={{ flexDirection: 'row', gap: 8 }}>
-        <InfoBadge label="Motor temp" onPress={() => {}} />
-        <InfoBadge label="Overcurrent" danger onPress={() => {}} />
-      </View>
     </ShowcaseCard>
   )
 }
@@ -163,28 +164,299 @@ function BoardWarningRowShowcase() {
   )
 }
 
-function ReplayBadgeShowcase() {
+function VescFaultRowShowcase() {
+  const [now] = useState(() => Date.now())
+  const [dismissedIds, setDismissedIds] = useState<string[]>([])
+  // The live-fault shapes: an active known code, a cleared known code and a cleared unknown code.
+  const faults = [
+    {
+      id: 'active',
+      boardId: 'demo',
+      code: 2,
+      occurredAtMs: now - 45 * 1000,
+      lastObservedAtMs: now - 1000,
+      clearedAtMs: null,
+    },
+    {
+      id: 'cleared',
+      boardId: 'demo',
+      code: 4,
+      occurredAtMs: now - 26 * 60 * 60 * 1000,
+      lastObservedAtMs: now - 26 * 60 * 60 * 1000 + 2000,
+      clearedAtMs: now - 26 * 60 * 60 * 1000 + 2000,
+    },
+    {
+      id: 'unknown',
+      boardId: 'demo',
+      code: 247,
+      occurredAtMs: now - 3 * 60 * 60 * 1000,
+      lastObservedAtMs: now - 3 * 60 * 60 * 1000 + 4000,
+      clearedAtMs: now - 3 * 60 * 60 * 1000 + 4000,
+    },
+  ]
   return (
-    <ShowcaseCard name="ReplayBadge">
-      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-        <ReplayBadge />
-        <Text style={{ color: theme.palette.slate.textPrimary, fontSize: 13 }}>
-          Funwheel · connection pill context
-        </Text>
+    <ShowcaseCard
+      name="VescFaultRow"
+      controls={
+        <ToggleRow
+          label="dismissed"
+          value={dismissedIds.length > 0}
+          onToggle={(next) => setDismissedIds(next ? faults.map((f) => f.id) : [])}
+        />
+      }
+    >
+      <View style={{ gap: 10 }}>
+        {faults.map((fault) => (
+          <VescFaultRow
+            key={fault.id}
+            fault={{ ...fault, dismissed: dismissedIds.includes(fault.id) }}
+            onSetDismissed={(id, value) =>
+              setDismissedIds((prev) => (value ? [...prev, id] : prev.filter((k) => k !== id)))
+            }
+          />
+        ))}
       </View>
     </ShowcaseCard>
   )
 }
 
-function DevBadgeShowcase() {
+/** A response-paced burst: ~30 Hz easing out as the controller struggles into the fault. */
+function buildCaptureSamples(openedAtMs: number) {
+  let t = openedAtMs - 5_000
+  const samples = []
+  while (t <= openedAtMs) {
+    const offset = (t - openedAtMs) / 1000
+    samples.push({
+      capturedAtMs: Math.round(t),
+      speed: Math.max(0, 24 - Math.abs(offset) * 2),
+      dutyCycle: Math.min(0.98, 0.42 + Math.max(0, -offset) * 0.09),
+      erpm: 4200,
+      batteryVoltage: 58.4 - Math.max(0, -offset) * 0.7,
+      batteryCurrent: 18 + Math.max(0, -offset) * 6,
+      motorCurrent: 41 + Math.max(0, -offset) * 9,
+      tempMosfet: 48.2,
+      tempMotor: 61.5,
+      pitch: -3.4 - offset,
+      roll: 1.2,
+      balancePitch: -2.9,
+      adc1: 3.1,
+      adc2: 0.1,
+      state: 4,
+    })
+    t += 33
+  }
+  return samples
+}
+
+function VescFaultCaptureSectionShowcase() {
+  const [now] = useState(() => Date.now())
+  const [state, setState] = useState('captured')
+  const samples = buildCaptureSamples(now - 60_000)
+  const capture = {
+    occurrenceId: 'occ',
+    boardId: 'demo',
+    startedAtMs: now - 65_000,
+    openedAtMs: now - 60_000,
+    sampleCount: samples.length,
+    samples: state === 'empty' ? [] : samples,
+  }
+
   return (
-    <ShowcaseCard name="DevBadge">
-      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-        <DevBadge />
-        <Text style={{ color: theme.palette.slate.textPrimary, fontSize: 13 }}>
-          Dev build marker · tap to hide for one minute
-        </Text>
+    <ShowcaseCard
+      name="VescFaultCaptureSection"
+      controls={
+        <ChipRow
+          label="state"
+          options={['captured', 'empty', 'loading']}
+          selected={state}
+          onSelect={setState}
+        />
+      }
+    >
+      <VescFaultCaptureSection
+        capture={state === 'loading' ? null : capture}
+        loading={state === 'loading'}
+      />
+    </ShowcaseCard>
+  )
+}
+
+function RimTempArcShowcase() {
+  const [temp, setTemp] = useState('45')
+  const [radius, setRadius] = useState('72')
+  const motorTemp = useSharedValue<number | null>(null)
+  const controllerTemp = useSharedValue<number | null>(null)
+
+  useEffect(() => {
+    motorTemp.value = temp === 'none' ? null : Number(temp)
+    controllerTemp.value = temp === 'none' ? null : Number(temp) * 0.6
+  }, [controllerTemp, motorTemp, temp])
+
+  return (
+    <ShowcaseCard
+      name="RimTempArc"
+      controls={
+        <>
+          <ChipRow
+            label="motor temp"
+            options={['none', '5', '30', '45', '65', '90']}
+            selected={temp}
+            onSelect={setTemp}
+          />
+          <ChipRow label="radius" options={['72', '60']} selected={radius} onSelect={setRadius} />
+        </>
+      }
+    >
+      <View style={styles.rimArcRow}>
+        <RimTempArc
+          side="left"
+          label="Motor"
+          metric={telemetry.motorTemp}
+          value={motorTemp}
+          radius={Number(radius)}
+        />
+        <RimTempArc
+          side="right"
+          label="Ctrl"
+          metric={telemetry.controllerTemp}
+          value={controllerTemp}
+          radius={Number(radius)}
+        />
       </View>
+    </ShowcaseCard>
+  )
+}
+
+const ROW_WINDOW_MS = 5 * 60_000
+
+/** A wavy series ending now, sampled every 5 s over `spanMs`. */
+function demoSeries(spanMs: number, base: number, swing: number, phase = 0) {
+  const now = Date.now()
+  return Array.from({ length: Math.floor(spanMs / 5000) }, (_, i) => ({
+    ts: now - spanMs + i * 5000,
+    value: base + swing * Math.sin(i / 4 + phase),
+  }))
+}
+
+function LiveMetricCardShowcase() {
+  const [kind, setKind] = useState('single')
+  const [history, setHistory] = useState('full')
+  const spanMs = history === 'full' ? ROW_WINDOW_MS : history === 'short' ? 40_000 : 0
+  const first = useSharedValue<number | null>(null)
+  const second = useSharedValue<number | null>(null)
+
+  // Split: each half opens its own detail, the way the temperatures card does.
+  const split = kind === 'split'
+  const series =
+    kind === 'single'
+      ? [
+          {
+            title: 'Motor current',
+            metric: telemetry.motorCurrent,
+            value: first,
+            points: demoSeries(spanMs, 20, 15),
+          },
+        ]
+      : split
+        ? [
+            {
+              title: 'Motor temp',
+              metric: telemetry.motorTemp,
+              value: first,
+              points: demoSeries(spanMs, 62, 6),
+            },
+            {
+              title: 'Ctrl temp',
+              metric: telemetry.controllerTemp,
+              value: second,
+              points: demoSeries(spanMs, 38, 3, 1.5),
+            },
+          ]
+        : [
+            {
+              title: 'Pitch',
+              metric: telemetry.pitch,
+              value: first,
+              points: demoSeries(spanMs, 1, 4),
+            },
+            {
+              title: 'Roll',
+              metric: telemetry.roll,
+              value: second,
+              points: demoSeries(spanMs, -1, 3, 1.5),
+            },
+          ]
+  const lines = series.map((line) => ({
+    ...line,
+    metric: presentTelemetryMetric(line.metric, 'metric'),
+    onPress: split ? () => {} : undefined,
+  }))
+
+  useEffect(() => {
+    first.value = series[0].points.at(-1)?.value ?? null
+    second.value = series[1]?.points.at(-1)?.value ?? null
+  })
+
+  return (
+    <ShowcaseCard
+      name="LiveMetricCard"
+      controls={
+        <>
+          <ChipRow
+            label="lines"
+            options={['single', 'pair', 'split']}
+            selected={kind}
+            onSelect={setKind}
+          />
+          <ChipRow
+            label="history"
+            options={['full', 'short', 'none']}
+            selected={history}
+            onSelect={setHistory}
+          />
+        </>
+      }
+    >
+      <LiveMetricCard
+        lines={lines}
+        peaks={kind === 'single' ? 'range' : split ? 'max' : undefined}
+        windowMs={ROW_WINDOW_MS}
+        onPress={() => {}}
+      />
+    </ShowcaseCard>
+  )
+}
+
+const CONFIG_SECTION_VALUES = {
+  freshness: 'fresh',
+  values: { l_temp_motor_start: 80, l_temp_motor_end: 90 },
+} as const
+
+function BoardConfigSectionShowcase() {
+  const [state, setState] = useState('fresh')
+
+  return (
+    <ShowcaseCard
+      name="BoardConfigSection"
+      controls={
+        <ChipRow
+          label="state"
+          options={['fresh', 'last known', 'empty']}
+          selected={state}
+          onSelect={setState}
+        />
+      }
+    >
+      <BoardConfigSection
+        title="Motor config"
+        rows={MOTOR_TEMP_CONFIG_ROWS}
+        values={
+          state === 'empty'
+            ? null
+            : { ...CONFIG_SECTION_VALUES, freshness: state === 'fresh' ? 'fresh' : 'last-known' }
+        }
+        empty="No motor config read from this board yet. Connect it to read its cutoffs."
+      />
     </ShowcaseCard>
   )
 }
@@ -195,32 +467,42 @@ export default function BoardComponentsPage() {
       <ScrollView contentContainerStyle={styles.content}>
         <IconHero
           icon={LightningIcon}
-          description="DeviceRow, InfoBadge, StepTimeline, BoardWarningRow, ReplayBadge, DevBadge — board- and connection-flavored components."
+          description="Board pill states, warning and fault rows, telemetry captures, and connection components."
         />
+        <BoardAttitudeIndicatorShowcase />
+        <ImuAttitudeDialShowcase />
+        <RemoteTiltPadShowcase />
+        <BoardPillShowcase />
+        <BoardSelectorSheetShowcase />
+        <GpsStatusPillShowcase />
         <DeviceRowShowcase />
-        <InfoBadgeShowcase />
         <StepTimelineShowcase />
         <BoardWarningRowShowcase />
-        <ReplayBadgeShowcase />
-        <DevBadgeShowcase />
+        <VescFaultRowShowcase />
+        <VescFaultCaptureSectionShowcase />
+        <FootpadIndicatorShowcase />
+        <RimTempArcShowcase />
+        <LiveMetricCardShowcase />
+        <BoardConfigSectionShowcase />
       </ScrollView>
     </SafeAreaView>
   )
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: theme.palette.slate.bg },
+  rimArcRow: { flexDirection: 'row', justifyContent: 'space-between', alignSelf: 'stretch' },
+  container: { flex: 1, backgroundColor: theme.neutral.bg },
   content: { padding: 12, gap: 12, paddingBottom: 40 },
   timelineContentDemo: {
-    backgroundColor: theme.palette.slate.surface,
+    backgroundColor: theme.neutral.surface,
     borderRadius: 10,
     borderWidth: 1,
-    borderColor: theme.palette.slate.border,
+    borderColor: theme.neutral.border,
     paddingHorizontal: 12,
     paddingVertical: 10,
   },
   timelineContentDemoText: {
-    color: theme.palette.slate.textSecondary,
+    color: theme.neutral.textSecondary,
     fontSize: 12,
     fontWeight: '600',
   },

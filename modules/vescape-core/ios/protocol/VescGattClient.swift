@@ -15,6 +15,13 @@ internal protocol VescGattListener: AnyObject {
   func onGattDisconnected(intentional: Bool, message: String)
   func onGattFailure(code: String, message: String)
   func onGattFrameChunk(_ chunk: [UInt8])
+  /// CoreBluetooth handed the session central's state back after the app was relaunched into the
+  /// background (ADR 0034). `peripheralIds` are the peripherals iOS restored — empty when the link
+  /// died while the process was dead, which is a resume through the normal reconnect path.
+  ///
+  /// @platform-diff No Android peer: its `CoreForegroundService` keeps the process alive, so there
+  /// is nothing to restore.
+  func onGattRestored(peripheralIds: [String])
 }
 
 /// Transport seam under `BoardSessionController` (ADR 0024): everything the controller calls on
@@ -32,6 +39,10 @@ internal protocol SessionTransport: AnyObject {
   func stopReconnectScan()
   @discardableResult
   func sendPayload(_ payload: [UInt8]) -> Bool
+  /// Enqueue transient remote input (tilt or Board Move) into the replaceable slot.
+  /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/protocol/VescGattClient.kt `sendRemoteInput`
+  @discardableResult
+  func sendRemoteInput(_ payload: [UInt8], urgent: Bool) -> Bool
 }
 
 /// CoreBluetooth wrapper around a single VESC board connection plus BLE scanning. Owns one
@@ -48,13 +59,38 @@ internal final class VescGattClient: NSObject, SessionTransport {
   /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/protocol/VescGattClient.kt `recorder`
   var recorder: (() -> SessionRecorder?)?
   private weak var listener: VescGattListener?
-  private lazy var central = CBCentralManager(delegate: self, queue: nil)
+  private let scheduler: Scheduler
+  /// Stable across app versions on purpose: iOS keys the preserved central state on this string, so
+  /// changing it throws away every in-flight restoration. Only the Board Session client passes it;
+  /// the Board Probe's client (`BoardTransportDetector`) stays bare — probing never needs
+  /// resurrection, and two centrals may not share one restore identifier.
+  static let sessionRestoreIdentifier = "com.vescape.core.session-central"
+  private let restoreIdentifier: String?
+  private let centralFactory: (() -> VescCentralManager)?
+  private lazy var central: VescCentralManager = {
+    if let centralFactory { return centralFactory() }
+    guard let restoreIdentifier else { return CBCentralManager(delegate: self, queue: nil) }
+    return CBCentralManager(
+      delegate: self,
+      queue: nil,
+      options: [CBCentralManagerOptionRestoreIdentifierKey: restoreIdentifier]
+    )
+  }()
+  /// Peripherals handed back by `willRestoreState`, held until the coordinator adopts one.
+  private var restoredPeripherals: [CBPeripheral] = []
+  /// Adoption requested before the central reported `.poweredOn` (restoration delivers
+  /// `willRestoreState` first), completed from `centralManagerDidUpdateState`.
+  private var pendingRestoreAdoptId: UUID?
 
-  private var peripheral: CBPeripheral?
+  private var peripheral: VescPeripheral?
   private var txChar: CBCharacteristic?
   private var writeType: CBCharacteristicWriteType = .withoutResponse
+  /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/protocol/VescGattClient.kt `writeQueue`
+  private let writeQueue = VescWriteQueue()
   private var pendingNotifyEnables = 0
+  private var notifyTimeout: Cancellable?
   private var readyResolved = false
+  private var linkUp = false
   private var intentionalDisconnect = false
 
   /// True while emitting discovery devices to the listener (the `scan()` JS API).
@@ -64,21 +100,27 @@ internal final class VescGattClient: NSObject, SessionTransport {
 
   /// Deferred until the central reports `.poweredOn`.
   private var pendingDiscoveryScan = false
-  private var pendingConnectId: UUID?
+  private(set) var pendingConnectId: UUID?
   /// A persistent reconnect queued while the central was not yet `.poweredOn`.
   private var pendingReconnect = false
   /// Target of the active connect session, retained across reconnects so a board that never
   /// connected this session (e.g. powered off at launch) can still be re-resolved. Cleared only by
   /// an intentional `disconnect()`.
   private var lastConnectId: UUID?
-  /// True while a reconnect scans for its target without a retained peripheral, so the supplemental
-  /// rescan windows don't tear that scan down during their idle gaps.
-  private var reconnectTargetScan = false
 
-  init(listener: VescGattListener) {
+  /// `restoreIdentifier` opts this client's central into CoreBluetooth state restoration (ADR 0034).
+  init(
+    listener: VescGattListener,
+    restoreIdentifier: String? = nil,
+    scheduler: Scheduler = MainQueueScheduler(),
+    centralFactory: (() -> VescCentralManager)? = nil
+  ) {
     self.listener = listener
+    self.restoreIdentifier = restoreIdentifier
+    self.scheduler = scheduler
+    self.centralFactory = centralFactory
     super.init()
-    _ = central // Kick off state updates so poweredOn arrives before first use.
+    _ = self.central // Create during launch so state restoration starts before the resume window expires.
   }
 
   // MARK: - Scan (JS `scan()` API)
@@ -110,8 +152,6 @@ internal final class VescGattClient: NSObject, SessionTransport {
     }
     // A lingering peripheral from a previous attempt keeps delivering callbacks; tear it down.
     clear(markIntentional: true)
-    intentionalDisconnect = false
-    readyResolved = false
     lastConnectId = uuid
 
     guard central.state == .poweredOn else {
@@ -122,11 +162,11 @@ internal final class VescGattClient: NSObject, SessionTransport {
   }
 
   private func connectResolved(_ uuid: UUID) {
-    if let known = central.retrievePeripherals(withIdentifiers: [uuid]).first {
+    if let known = central.knownPeripherals([uuid]).first {
       connectPeripheral(known)
       return
     }
-    if let live = central.retrieveConnectedPeripherals(withServices: [VescGattUUIDs.service]).first(where: {
+    if let live = central.connectedPeripherals([VescGattUUIDs.service]).first(where: {
       $0.identifier == uuid
     }) {
       connectPeripheral(live)
@@ -137,8 +177,7 @@ internal final class VescGattClient: NSObject, SessionTransport {
     beginScan()
   }
 
-  private func connectPeripheral(_ peripheral: CBPeripheral) {
-    reconnectTargetScan = false
+  private func connectPeripheral(_ peripheral: VescPeripheral) {
     self.peripheral = peripheral
     peripheral.delegate = self
     central.connect(peripheral, options: nil)
@@ -146,7 +185,52 @@ internal final class VescGattClient: NSObject, SessionTransport {
 
   func disconnect() {
     lastConnectId = nil
+    restoredPeripherals = []
+    pendingRestoreAdoptId = nil
     clear(markIntentional: true)
+  }
+
+  // MARK: - State restoration (#378)
+
+  /// Adopt a peripheral CoreBluetooth restored into this launch as the session's link. The GATT
+  /// subscriptions survived the process death, but this object graph did not: the delegate is
+  /// re-set and services re-discovered so `txChar` and the frame callbacks exist again.
+  ///
+  /// Returns false when the id is not among the restored peripherals, which routes the coordinator
+  /// to a normal persistent connect instead.
+  @discardableResult
+  func adoptRestored(peripheralId: String) -> Bool {
+    guard
+      let uuid = UUID(uuidString: peripheralId),
+      let restored = restoredPeripherals.first(where: { $0.identifier == uuid })
+    else { return false }
+    restoredPeripherals = []
+    intentionalDisconnect = false
+    resetLinkState()
+    lastConnectId = uuid
+    peripheral = restored
+    restored.delegate = self
+    guard central.state == .poweredOn else {
+      // Restoration delivers `willRestoreState` before the first state update; finish once the
+      // radio reports in, or CoreBluetooth silently drops the discovery/connect.
+      pendingRestoreAdoptId = uuid
+      return true
+    }
+    resumeAdopted(restored)
+    return true
+  }
+
+  private func resumeAdopted(_ peripheral: VescPeripheral) {
+    guard peripheral === self.peripheral else { return }
+    if peripheral.state == .connected {
+      linkUp = true
+      intentionalDisconnect = false
+      listener?.onGattConnected()
+      peripheral.discoverServices([VescGattUUIDs.service])
+    } else {
+      // Restored but dropped since: persistent connect keeps retrying on its own.
+      central.connect(peripheral, options: nil)
+    }
   }
 
   // MARK: - Reconnect (#58)
@@ -159,10 +243,8 @@ internal final class VescGattClient: NSObject, SessionTransport {
   /// one-shot and the `ReconnectScheduler` drives retries with a fresh connect each attempt. iOS
   /// leans on CoreBluetooth's built-in persistent connect instead (see `BoardSessionController`).
   func reconnect() {
-    intentionalDisconnect = false
-    readyResolved = false
-    txChar = nil
-    pendingNotifyEnables = 0
+    resetLinkState()
+    pendingConnectId = nil
     guard central.state == .poweredOn else {
       pendingReconnect = true
       return
@@ -183,7 +265,6 @@ internal final class VescGattClient: NSObject, SessionTransport {
       listener?.onGattFailure(code: "RECONNECT_FAILED", message: "No peripheral to reconnect")
       return
     }
-    reconnectTargetScan = true
     connectResolved(target)
   }
 
@@ -200,25 +281,61 @@ internal final class VescGattClient: NSObject, SessionTransport {
   func stopReconnectScan() {
     // Keep scanning if a live JS `scan()` needs it, or if a peripheral-less reconnect is still
     // hunting for its target (tearing that down would abort the retry).
-    if !isDiscoveryScanning && !reconnectTargetScan {
+    let needsTargetScan = connectTargetId != nil && peripheral == nil
+    if !isDiscoveryScanning && !needsTargetScan {
       central.stopScan()
     }
   }
 
   func sendPayload(_ payload: [UInt8]) -> Bool {
-    guard let peripheral, let txChar else { return false }
-    let bytes = VescPacketCodec.encode(payload)
-    peripheral.writeValue(Data(bytes), for: txChar, type: writeType)
-    recorder?()?.recordChunk(direction: "tx", bytes: bytes)
-    return true
+    guard linkUp, peripheral != nil, txChar != nil else { return false }
+    writeQueue.enqueueNormal(VescPacketCodec.encode(payload))
+    return drainWriteQueue()
+  }
+
+  /// Enqueue transient remote input (tilt or Board Move). Only the latest unsent value survives, so
+  /// an emergency neutral command cannot sit behind stale tilt commands.
+  ///
+  /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/protocol/VescGattClient.kt `sendRemoteInput`
+  func sendRemoteInput(_ payload: [UInt8], urgent: Bool) -> Bool {
+    guard linkUp, peripheral != nil, txChar != nil else { return false }
+    writeQueue.replaceRemoteInput(VescPacketCodec.encode(payload), urgent: urgent)
+    return drainWriteQueue()
+  }
+
+  /// One outstanding write at a time. Serializing all writes stops telemetry polling and held
+  /// remote controls from dropping each other, and keeps the queue short enough that a neutral
+  /// reaches the board while the rider's finger is still lifting.
+  ///
+  /// `.withResponse` writes resume from `didWriteValueFor`; `.withoutResponse` writes have no
+  /// completion callback, so they complete inline and back off on `canSendWriteWithoutResponse`,
+  /// resuming from `peripheralIsReady`.
+  ///
+  /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/protocol/VescGattClient.kt `drainWriteQueue`
+  @discardableResult
+  private func drainWriteQueue() -> Bool {
+    guard linkUp, let peripheral, let txChar else { return false }
+    while true {
+      if writeType == .withoutResponse, !peripheral.canSendWriteWithoutResponse {
+        return true
+      }
+      guard let write = writeQueue.startNext() else { return true }
+      peripheral.writeValue(Data(write.bytes), for: txChar, type: writeType)
+      recorder?()?.recordChunk(direction: "tx", bytes: write.bytes)
+      if writeType == .withResponse { return true }
+      writeQueue.completeInFlight()
+    }
   }
 
   // MARK: - Teardown
 
   private func clear(markIntentional: Bool) {
+    resetLinkState()
     connectTargetId = nil
-    reconnectTargetScan = false
     pendingReconnect = false
+    // A connect deferred until Bluetooth powers on belongs to the cancelled attempt too.
+    pendingConnectId = nil
+    pendingRestoreAdoptId = nil
     if !isDiscoveryScanning {
       central.stopScan()
     }
@@ -227,7 +344,16 @@ internal final class VescGattClient: NSObject, SessionTransport {
       central.cancelPeripheralConnection(peripheral)
     }
     peripheral = nil
+  }
+
+  private func resetLinkState() {
+    linkUp = false
+    readyResolved = false
+    notifyTimeout?.cancel()
+    notifyTimeout = nil
     txChar = nil
+    // A cancelled write may never complete. Neither it nor queued commands belong to the next link.
+    writeQueue.clear()
     pendingNotifyEnables = 0
   }
 
@@ -243,7 +369,9 @@ internal final class VescGattClient: NSObject, SessionTransport {
   }
 
   private func resolveReady() {
-    guard !readyResolved else { return }
+    notifyTimeout?.cancel()
+    notifyTimeout = nil
+    guard linkUp, txChar != nil, !readyResolved else { return }
     readyResolved = true
     listener?.onGattReady()
   }
@@ -253,7 +381,11 @@ internal final class VescGattClient: NSObject, SessionTransport {
 
 extension VescGattClient: CBCentralManagerDelegate {
   func centralManagerDidUpdateState(_ central: CBCentralManager) {
-    switch central.state {
+    centralStateDidChange(central.state)
+  }
+
+  func centralStateDidChange(_ state: CBManagerState) {
+    switch state {
     case .poweredOn:
       if pendingDiscoveryScan {
         pendingDiscoveryScan = false
@@ -267,11 +399,22 @@ extension VescGattClient: CBCentralManagerDelegate {
         pendingReconnect = false
         reconnect()
       }
+      if let adoptId = pendingRestoreAdoptId {
+        pendingRestoreAdoptId = nil
+        if let peripheral, peripheral.identifier == adoptId {
+          resumeAdopted(peripheral)
+        }
+      }
     case .poweredOff:
       if isDiscoveryScanning || pendingDiscoveryScan {
         listener?.onScanFailure("Bluetooth is off")
       }
+      // A restored session waiting to adopt its peripheral is not a failed connect: failing it here
+      // would tear the session down and drop the durable resume marker, so a later power-on could
+      // never finish the adoption. Radio off is a pause; the adoption stays deferred (ADR 0034).
+      if pendingRestoreAdoptId != nil { return }
       if peripheral != nil || connectTargetId != nil || pendingConnectId != nil {
+        resetLinkState()
         listener?.onGattFailure(code: "BLE_OFF", message: "Bluetooth is off")
       }
     case .unauthorized:
@@ -279,6 +422,19 @@ extension VescGattClient: CBCentralManagerDelegate {
     default:
       break
     }
+  }
+
+  /// iOS relaunched the app (headlessly, on a board notification) and is handing the session
+  /// central's preserved state back. Peripherals are retained and their delegate re-set here; the
+  /// decision of what to do with them — rebuild the Board Session, or fall back to a normal
+  /// reconnect when none came back — belongs to the coordinator (ADR 0034).
+  func centralManager(_ central: CBCentralManager, willRestoreState dict: [String: Any]) {
+    let peripherals = (dict[CBCentralManagerRestoredStatePeripheralsKey] as? [CBPeripheral]) ?? []
+    for peripheral in peripherals {
+      peripheral.delegate = self
+    }
+    restoredPeripherals = peripherals
+    listener?.onGattRestored(peripheralIds: peripherals.map { $0.identifier.uuidString })
   }
 
   func centralManager(
@@ -308,7 +464,13 @@ extension VescGattClient: CBCentralManagerDelegate {
   }
 
   func centralManager(_ central: CBCentralManager, didConnect peripheral: CBPeripheral) {
+    didConnect(peripheral)
+  }
+
+  func didConnect(_ peripheral: VescPeripheral) {
     guard peripheral === self.peripheral else { return }
+    linkUp = true
+    intentionalDisconnect = false
     listener?.onGattConnected()
     peripheral.discoverServices([VescGattUUIDs.service])
   }
@@ -318,6 +480,10 @@ extension VescGattClient: CBCentralManagerDelegate {
     didFailToConnect peripheral: CBPeripheral,
     error: Error?
   ) {
+    didFailToConnect(peripheral, error: error)
+  }
+
+  func didFailToConnect(_ peripheral: VescPeripheral, error: Error?) {
     guard peripheral === self.peripheral else { return }
     listener?.onGattFailure(code: "CONNECT_FAILED", message: error?.localizedDescription ?? "Connect failed")
   }
@@ -327,16 +493,16 @@ extension VescGattClient: CBCentralManagerDelegate {
     didDisconnectPeripheral peripheral: CBPeripheral,
     error: Error?
   ) {
+    didDisconnect(peripheral, error: error)
+  }
+
+  func didDisconnect(_ peripheral: VescPeripheral, error: Error?) {
     guard peripheral === self.peripheral else { return }
     let wasIntentional = intentionalDisconnect
     intentionalDisconnect = false
-    txChar = nil
-    pendingNotifyEnables = 0
-    // Keep the peripheral reference on an unexpected drop so the coordinator can hand it back to a
-    // persistent `reconnect()`; only an intentional teardown releases it (via `clear`).
-    if wasIntentional {
-      self.peripheral = nil
-    }
+    resetLinkState()
+    // clear() already released the old reference. If this callback still matches, CoreBluetooth
+    // returned the same object for a pending new attempt; keep it so didConnect can finish that attempt.
     listener?.onGattDisconnected(
       intentional: wasIntentional,
       message: error?.localizedDescription ?? "Board disconnected"
@@ -347,8 +513,40 @@ extension VescGattClient: CBCentralManagerDelegate {
 // MARK: - CBPeripheralDelegate
 
 extension VescGattClient: CBPeripheralDelegate {
+  /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/protocol/VescGattClient.kt `onCharacteristicWrite`
+  func peripheral(
+    _ peripheral: CBPeripheral,
+    didWriteValueFor characteristic: CBCharacteristic,
+    error: Error?
+  ) {
+    didWriteValue(peripheral, characteristic: characteristic, error: error)
+  }
+
+  func didWriteValue(_ peripheral: VescPeripheral, characteristic: CBCharacteristic, error: Error?) {
+    guard linkUp, peripheral === self.peripheral, characteristic.uuid == VescGattUUIDs.tx else { return }
+    let completed = writeQueue.completeInFlight()
+    if let error {
+      NSLog("gatt write callback failed bytes=\(completed?.bytes.count ?? 0): \(error.localizedDescription)")
+    }
+    drainWriteQueue()
+  }
+
+  /// `.withoutResponse` back-pressure released: resume draining.
+  func peripheralIsReady(toSendWriteWithoutResponse peripheral: CBPeripheral) {
+    readyToWrite(peripheral)
+  }
+
+  func readyToWrite(_ peripheral: VescPeripheral) {
+    guard linkUp, peripheral === self.peripheral else { return }
+    drainWriteQueue()
+  }
+
   func peripheral(_ peripheral: CBPeripheral, didDiscoverServices error: Error?) {
-    guard peripheral === self.peripheral else { return }
+    didDiscoverServices(peripheral, error: error)
+  }
+
+  func didDiscoverServices(_ peripheral: VescPeripheral, error: Error?) {
+    guard linkUp, peripheral === self.peripheral else { return }
     listener?.onGattSubscribing()
     if let error {
       listener?.onGattFailure(code: "DISCOVERY_FAILED", message: error.localizedDescription)
@@ -366,7 +564,11 @@ extension VescGattClient: CBPeripheralDelegate {
     didDiscoverCharacteristicsFor service: CBService,
     error: Error?
   ) {
-    guard peripheral === self.peripheral else { return }
+    didDiscoverCharacteristics(peripheral, service: service, error: error)
+  }
+
+  func didDiscoverCharacteristics(_ peripheral: VescPeripheral, service: CBService, error: Error?) {
+    guard linkUp, peripheral === self.peripheral else { return }
     if let error {
       listener?.onGattFailure(code: "DISCOVERY_FAILED", message: error.localizedDescription)
       return
@@ -392,8 +594,11 @@ extension VescGattClient: CBPeripheralDelegate {
     for characteristic in notifiers {
       peripheral.setNotifyValue(true, for: characteristic)
     }
-    // Some boards never ack the subscribe; resolve after a grace period so connect never hangs.
-    DispatchQueue.main.asyncAfter(deadline: .now() + 4) { [weak self] in
+    // Some boards never ack the subscribe. Leave room for this fallback before the session's
+    // 2s handshake deadline, and cancel it on ready/teardown so it cannot resolve a later attempt.
+    // @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/protocol/VescGattClient.kt `cccdTimeout`
+    notifyTimeout?.cancel()
+    notifyTimeout = scheduler.postDelayed(1_000) { [weak self] in
       self?.resolveReady()
     }
   }
@@ -403,8 +608,13 @@ extension VescGattClient: CBPeripheralDelegate {
     didUpdateNotificationStateFor characteristic: CBCharacteristic,
     error: Error?
   ) {
-    guard peripheral === self.peripheral else { return }
-    pendingNotifyEnables = max(0, pendingNotifyEnables - 1)
+    didUpdateNotificationState(peripheral, characteristic: characteristic, error: error)
+  }
+
+  func didUpdateNotificationState(_ peripheral: VescPeripheral, characteristic: CBCharacteristic, error: Error?) {
+    guard linkUp, peripheral === self.peripheral else { return }
+    guard pendingNotifyEnables > 0 else { return }
+    pendingNotifyEnables -= 1
     if pendingNotifyEnables == 0 {
       resolveReady()
     }
@@ -415,7 +625,11 @@ extension VescGattClient: CBPeripheralDelegate {
     didUpdateValueFor characteristic: CBCharacteristic,
     error: Error?
   ) {
-    guard peripheral === self.peripheral else { return }
+    didUpdateValue(peripheral, characteristic: characteristic, error: error)
+  }
+
+  func didUpdateValue(_ peripheral: VescPeripheral, characteristic: CBCharacteristic, error: Error?) {
+    guard linkUp, peripheral === self.peripheral else { return }
     guard characteristic.uuid == VescGattUUIDs.rx || characteristic.uuid == VescGattUUIDs.tx else { return }
     guard let value = characteristic.value else { return }
     listener?.onGattFrameChunk([UInt8](value))

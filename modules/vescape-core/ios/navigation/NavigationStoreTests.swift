@@ -7,30 +7,30 @@ import XCTest
 /// @parity /modules/vescape-core/android/src/test/java/expo/modules/vescapecore/navigation/NavigationJsonTest.kt
 final class NavigationStoreTests: XCTestCase {
 
-  func testFailedNavigationSurvivesARoundTripWithNoPoints() {
+  func testFailedNavigationSurvivesARoundTripWithNoPoints() throws {
     let failed = navigation(status: .noPathFound, points: [])
 
-    let restored = NavigationJson.encode(failed).flatMap(NavigationJson.decode)
+    let restored = try NavigationJson.decode(try NavigationJson.encode(failed))
 
     XCTAssertEqual(restored?.status, .noPathFound)
     XCTAssertEqual(restored?.points.count, 0)
   }
 
-  func testReadyNavigationKeepsItsPoints() {
+  func testReadyNavigationKeepsItsPoints() throws {
     let ready = navigation(status: .ready, points: [(52.2, 21.0), (52.3, 21.1)])
 
-    let restored = NavigationJson.encode(ready).flatMap(NavigationJson.decode)
+    let restored = try NavigationJson.decode(try NavigationJson.encode(ready))
 
     XCTAssertEqual(restored?.status, .ready)
     XCTAssertEqual(restored?.points.count, 2)
   }
 
-  func testRowWrittenBeforeTheStatusExistedReadsAsReady() {
-    let encoded = NavigationJson.encode(
+  func testRowWrittenBeforeTheStatusExistedReadsAsReady() throws {
+    let encoded = try NavigationJson.encode(
       navigation(status: .ready, points: [(52.2, 21.0), (52.3, 21.1)])
     )
     guard
-      let data = encoded?.data(using: .utf8),
+      let data = encoded.data(using: .utf8),
       var stored = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any]
     else { return XCTFail("could not re-read the encoded row") }
     stored.removeValue(forKey: "status")
@@ -39,13 +39,13 @@ final class NavigationStoreTests: XCTestCase {
       let legacy = String(data: legacyData, encoding: .utf8)
     else { return XCTFail("could not rewrite the row without a status") }
 
-    XCTAssertEqual(NavigationJson.decode(legacy)?.status, .ready)
+    XCTAssertEqual(try NavigationJson.decode(legacy)?.status, .ready)
   }
 
-  func testReadyRowWithNoPointsIsAContradictionAndIsDropped() {
-    let impossible = NavigationJson.encode(navigation(status: .ready, points: []))
+  func testReadyRowWithNoPointsIsAContradictionAndIsDropped() throws {
+    let impossible = try NavigationJson.encode(navigation(status: .ready, points: []))
 
-    XCTAssertNil(impossible.flatMap(NavigationJson.decode))
+    XCTAssertNil(try NavigationJson.decode(impossible))
   }
 
   private func navigation(

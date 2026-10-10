@@ -7,11 +7,15 @@ import Foundation
 ///
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/alerts/AlertCoordinator.kt
 internal final class AlertCoordinator {
+  var unitSystem = "metric"
   private let engine = AlertEngine()
   private let player: AlertAudioPlayer
   private let vibrateSingles: Bool
   private var rules: [AlertRule] = []
   private var activeGeigerRuleIds: Set<String> = []
+  func updateBoardConfigValues(_ values: [String: Any]) { engine.updateBoardConfigValues(values) }
+
+  func updateMotorConfigValues(_ values: [String: Any]) { engine.updateMotorConfigValues(values) }
 
   init(player: AlertAudioPlayer, vibrateSingles: Bool = true) {
     self.player = player
@@ -93,7 +97,7 @@ internal final class AlertCoordinator {
     if !single.isEmpty {
       if let alert = single.first(where: { $0.soundType.hasPrefix("tts:") && $0.thresholdMax == nil }) {
         let template = String(alert.soundType.dropFirst("tts:".count))
-        let text = renderAlertMessageTemplate(template, alert: alert, batteryPercent: batteryPercent, onDiagnostic: onDiagnostic)
+        let text = renderAlertMessageTemplate(template, alert: alert, batteryPercent: batteryPercent, onDiagnostic: onDiagnostic, unitSystem: unitSystem)
         if !text.isEmpty { player.speakMessage(text) }
       }
       for alert in single where !alert.soundType.hasPrefix("tts:") {

@@ -7,5 +7,12 @@
   -->
   <string-array name="android_wear_capabilities">
     <item>vescape_watch_mirror</item>
+    <!--
+      Declares that this build reports its wake level (ADR-0033), so the phone may gate frame pushes
+      on it. Phone and watch ship as separate Play tracks and update independently, so a phone that
+      gated unconditionally would blank an older wrist that never sends one. Must match
+      WATCH_MIRROR_WAKE_CAPABILITY in the phone-side WatchMirrorPresence.
+    -->
+    <item>vescape_watch_mirror_wake</item>
   </string-array>
 </resources>

@@ -21,7 +21,7 @@ class NativeAuthCoordinator(private val context: Context) {
   fun stateMap(): Map<String, Any?> {
     val credential = store.read()
     return mapOf(
-      "state" to store.state().slug,
+      "state" to store.state(credential).slug,
       "accountId" to credential?.accountId,
       "expiresAt" to credential?.expiresAt,
     )

@@ -1,0 +1,11 @@
+[
+  { "meters": 0, "metric": "0 m", "imperial": "0 ft" },
+  { "meters": 2.5, "metric": "3 m", "imperial": "8 ft" },
+  { "meters": 160.9334, "metric": "161 m", "imperial": "528 ft" },
+  { "meters": 160.9344, "metric": "161 m", "imperial": "0.1 mi" },
+  { "meters": 999, "metric": "999 m", "imperial": "0.6 mi" },
+  { "meters": 1000, "metric": "1.0 km", "imperial": "0.6 mi" },
+  { "meters": 1250, "metric": "1.3 km", "imperial": "0.8 mi" },
+  { "meters": 1609.344, "metric": "1.6 km", "imperial": "1.0 mi" },
+  { "meters": 16093.44, "metric": "16.1 km", "imperial": "10.0 mi" }
+]

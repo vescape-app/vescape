@@ -20,6 +20,12 @@ export interface ReleaseManifest {
     runUrl: string
     runAttempt: number
   }
+  storageContracts?: {
+    sourceSha: string
+    androidRoom: 'passed'
+    iosGrdb: 'passed'
+    crossPlatformArchives: 'passed'
+  }
   artifacts: {
     phone: ArtifactIdentity
     wear: ArtifactIdentity
@@ -79,15 +85,8 @@ export interface PromotionManifest {
   wear: PromotionArtifactResult
 }
 
-export type ProductionOperation = 'promote' | 'status' | 'halt' | 'resume' | 'advance'
-export type ProductionArtifactStatus =
-  | 'promoted'
-  | 'already-production'
-  | 'active'
-  | 'halted'
-  | 'resumed'
-  | 'advanced'
-  | 'failed'
+export type ProductionOperation = 'promote' | 'status'
+export type ProductionArtifactStatus = 'promoted' | 'already-production' | 'active' | 'failed'
 
 export interface ProductionArtifactResult {
   versionCode: number
@@ -95,7 +94,6 @@ export interface ProductionArtifactResult {
   targetTrack: string
   status: ProductionArtifactStatus
   playStatus: string | null
-  rolloutPercentage: number | null
 }
 
 export interface ProductionManifest {
@@ -105,13 +103,29 @@ export interface ProductionManifest {
   sourceSha: string
   marketingVersion: string
   operation: ProductionOperation
-  requestedRolloutPercentage: number | null
   phone: ProductionArtifactResult
   wear: ProductionArtifactResult
   githubRelease: 'released' | 'already-released' | 'skipped' | 'failed'
 }
 
+/** Older builds may lack storage-test metadata, but remain valid promotion candidates. */
+export type HistoricalReleaseManifest = Omit<ReleaseManifest, 'storageContracts'>
+
 export function parseReleaseManifest(value: unknown): ReleaseManifest {
+  const manifest = parseHistoricalReleaseManifest(value) as ReleaseManifest
+  if (
+    manifest.storageContracts !== undefined &&
+    (manifest.storageContracts?.sourceSha !== manifest.sourceSha ||
+      manifest.storageContracts.androidRoom !== 'passed' ||
+      manifest.storageContracts.iosGrdb !== 'passed' ||
+      manifest.storageContracts.crossPlatformArchives !== 'passed')
+  ) {
+    throw new Error('Release manifest has an invalid shape')
+  }
+  return manifest
+}
+
+export function parseHistoricalReleaseManifest(value: unknown): HistoricalReleaseManifest {
   if (!value || typeof value !== 'object') throw new Error('Release manifest is not an object')
   const manifest = value as Partial<ReleaseManifest>
   if (
@@ -136,7 +150,7 @@ export function parseReleaseManifest(value: unknown): ReleaseManifest {
   ) {
     throw new Error('Release manifest has an invalid shape')
   }
-  return manifest as ReleaseManifest
+  return manifest as HistoricalReleaseManifest
 }
 
 export type ReleaseOutcome =
@@ -190,18 +204,13 @@ export function promotionSummary(manifest: PromotionManifest): string {
 export function parseProductionManifest(value: unknown): ProductionManifest {
   if (!value || typeof value !== 'object') throw new Error('Production manifest is not an object')
   const manifest = value as Partial<ProductionManifest>
-  const operations: ProductionOperation[] = ['promote', 'status', 'halt', 'resume', 'advance']
+  const operations: ProductionOperation[] = ['promote', 'status']
   const statuses: ProductionArtifactStatus[] = [
     'promoted',
     'already-production',
     'active',
-    'halted',
-    'resumed',
-    'advanced',
     'failed',
   ]
-  const validPercentage = (value: unknown) =>
-    value === null || (typeof value === 'number' && value > 0 && value <= 100)
   const validArtifact = (artifact: ProductionArtifactResult | undefined) =>
     artifact &&
     Number.isSafeInteger(artifact.versionCode) &&
@@ -211,10 +220,7 @@ export function parseProductionManifest(value: unknown): ProductionManifest {
     typeof artifact.targetTrack === 'string' &&
     artifact.targetTrack.length > 0 &&
     statuses.includes(artifact.status) &&
-    (artifact.playStatus === null || typeof artifact.playStatus === 'string') &&
-    validPercentage(artifact.rolloutPercentage)
-  const operationNeedsPercentage =
-    manifest.operation === 'promote' || manifest.operation === 'advance'
+    (artifact.playStatus === null || typeof artifact.playStatus === 'string')
   if (
     manifest.schemaVersion !== 1 ||
     typeof manifest.requestId !== 'string' ||
@@ -226,8 +232,6 @@ export function parseProductionManifest(value: unknown): ProductionManifest {
     typeof manifest.marketingVersion !== 'string' ||
     !/^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/.test(manifest.marketingVersion) ||
     !operations.includes(manifest.operation as ProductionOperation) ||
-    !validPercentage(manifest.requestedRolloutPercentage) ||
-    operationNeedsPercentage !== (typeof manifest.requestedRolloutPercentage === 'number') ||
     !validArtifact(manifest.phone) ||
     !validArtifact(manifest.wear) ||
     !['released', 'already-released', 'skipped', 'failed'].includes(manifest.githubRelease ?? '')
@@ -238,9 +242,7 @@ export function parseProductionManifest(value: unknown): ProductionManifest {
 }
 
 export function productionSummary(manifest: ProductionManifest): string {
-  const render = (name: string, artifact: ProductionArtifactResult) => {
-    const rollout = artifact.rolloutPercentage === null ? '' : ` @ ${artifact.rolloutPercentage}%`
-    return `${name} ${artifact.versionCode}: ${artifact.status}${rollout}`
-  }
+  const render = (name: string, artifact: ProductionArtifactResult) =>
+    `${name} ${artifact.versionCode}: ${artifact.status}`
   return `${render('phone', manifest.phone)} · ${render('Wear', manifest.wear)} · GitHub ${manifest.githubRelease}`
 }

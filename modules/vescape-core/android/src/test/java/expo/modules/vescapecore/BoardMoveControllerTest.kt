@@ -57,6 +57,24 @@ class BoardMoveControllerTest {
     }
 
     @Test
+    fun rcMoveRepeatsSlowlyEnoughForFirmwareToRampTheCurrent() {
+        generation = BoardMoveGeneration.RcMove
+        val controller = controller()
+
+        assertTrue(controller.hold(25))
+        assertEquals(1, sent.size)
+
+        // On the 1.3+ cadence this window would hold six re-sends, and each one restarts the
+        // firmware's current ramp from zero — the motor pulses instead of moving.
+        scheduler.advance(600)
+        assertEquals(1, sent.size)
+
+        scheduler.advance(200)
+        assertEquals(2, sent.size)
+        assertArrayEquals(move(25), sent.last())
+    }
+
+    @Test
     fun reversingMidHoldSwapsTheStreamWithoutAnExtraWrite() {
         val controller = controller()
         controller.hold(25)
@@ -129,7 +147,7 @@ class BoardMoveControllerTest {
 
         controller.hold(127)
         // [CUSTOM_APP_DATA, magic, RC_MOVE, direction, current, time, current + time]
-        assertArrayEquals(byteArrayOf(36, 101, 7, 1, 60, 1, 61), sent.single())
+        assertArrayEquals(byteArrayOf(36, 101, 7, 1, 60, 8, 68), sent.single())
 
         controller.stop()
         assertArrayEquals(byteArrayOf(36, 101, 7, 1, 0, 1, 1), sent.last())

@@ -1,5 +1,15 @@
 import { router } from 'expo-router'
-import { PauseIcon, RecordIcon, StopIcon } from 'phosphor-react-native'
+import {
+  ArrowsClockwiseIcon,
+  BluetoothSlashIcon,
+  BluetoothXIcon,
+  PauseIcon,
+  PlusCircleIcon,
+  RecordIcon,
+  StopIcon,
+  WarningCircleIcon,
+  type Icon,
+} from 'phosphor-react-native'
 import { useCallback } from 'react'
 import { isReplayBoardId, type LinkIntegrity } from 'vescape-core'
 import { useShallow } from 'zustand/react/shallow'
@@ -11,11 +21,10 @@ import {
   type FloatingStatusPillModel,
 } from '@/components/controls/FloatingBar'
 import { routes } from '@/navigation/routes'
-import { showDevControls } from '@/config/env'
 import type { Board } from '@/modules/board/store/boardStore'
 import { useBleStore } from '@/modules/board/store/bleStore'
 import { getConnectedLinkIntegrityWarning } from '@/modules/board/lib/boardLinkIntegrity'
-import { theme } from '@/constants/theme'
+import { theme, type ThemeColor } from '@/constants/theme'
 
 interface FloatingBarProps {
   bleStatus: string
@@ -27,30 +36,36 @@ interface FloatingBarProps {
 
 const ALERT_CONFIG = {
   warning: {
-    bg: theme.status.warning.bg,
+    bg: theme.control.background,
     border: theme.status.warning.border,
-    text: theme.status.warning.text,
+    text: theme.control.text,
     btnBg: theme.status.warning.color,
   },
   error: {
-    bg: theme.status.error.bg,
+    bg: theme.control.background,
     border: theme.status.error.border,
-    text: theme.status.error.text,
+    text: theme.control.text,
     btnBg: theme.status.error.color,
   },
   upgrade: {
-    bg: theme.status.upgrade.bg,
+    bg: theme.control.background,
     border: theme.status.upgrade.border,
-    text: theme.status.upgrade.text,
+    text: theme.control.text,
     btnBg: theme.status.upgrade.color,
   },
 } as const
 
-type SpinnerPill = { kind: 'spinner'; text: string; color: string; onPress: () => void }
-type ActionPill = {
-  kind: 'action'
+interface SpinnerPill {
+  kind: 'spinner'
+  icon?: Icon
   text: string
-  buttonText: string
+  color: ThemeColor
+  onPress: () => void
+}
+interface ActionPill {
+  kind: 'action'
+  icon: Icon
+  text: string
   config: (typeof ALERT_CONFIG)[keyof typeof ALERT_CONFIG]
   onPress: () => void
 }
@@ -72,16 +87,16 @@ function getStatusPill(
   if (!board)
     return {
       kind: 'action',
-      text: 'No board added',
-      buttonText: 'Add',
+      icon: PlusCircleIcon,
+      text: 'Add a new board',
       config: ALERT_CONFIG.warning,
       onPress: () => router.push(routes.addBoard),
     }
   if (!board.link)
     return {
       kind: 'action',
-      text: 'Board not linked',
-      buttonText: 'Link',
+      icon: BluetoothSlashIcon,
+      text: 'Link the board',
       config: ALERT_CONFIG.warning,
       onPress: () => router.push({ pathname: routes.addBoardScan, params: { boardId: board.id } }),
     }
@@ -149,14 +164,15 @@ function getStatusPill(
   if (linkWarning)
     return {
       kind: 'action',
-      text: linkWarning.text,
-      buttonText: linkWarning.buttonText,
+      icon: linkWarning.severity === 'error' ? WarningCircleIcon : ArrowsClockwiseIcon,
+      text: linkWarning.severity === 'error' ? 'Re-link the board' : 'Update the board link',
       config: ALERT_CONFIG.upgrade,
       onPress: () => router.push({ pathname: routes.editBoardLink, params: { boardId: board.id } }),
     }
   if (status === 'stale')
     return {
       kind: 'spinner',
+      icon: WarningCircleIcon,
       text: 'Telemetry stale',
       color: theme.status.error.color,
       onPress: onStopScan,
@@ -164,16 +180,16 @@ function getStatusPill(
   if (status === 'idle')
     return {
       kind: 'action',
-      text: 'Board not connected',
-      buttonText: 'Connect',
+      icon: BluetoothSlashIcon,
+      text: 'Connect to the board',
       config: ALERT_CONFIG.warning,
       onPress: onRetryConnect,
     }
   if (status === 'error')
     return {
       kind: 'action',
-      text: 'Connection failed',
-      buttonText: 'Retry',
+      icon: BluetoothXIcon,
+      text: 'Retry connection',
       config: ALERT_CONFIG.error,
       onPress: onRetryConnect,
     }
@@ -187,17 +203,19 @@ export function FloatingBar({
   onRetryConnect,
   bottomOffset = 16,
 }: FloatingBarProps) {
-  const { recording, paused, scanStatus, linkIntegrity, isReplay, start, stop } = useBleStore(
-    useShallow((s) => ({
-      recording: s.telemetryRecordingEnabled,
-      paused: s.telemetryRecordingPaused,
-      scanStatus: s.scanStatus,
-      linkIntegrity: s.linkIntegrity,
-      isReplay: isReplayBoardId(s.connectedId),
-      start: s.startTelemetryRecording,
-      stop: s.stopTelemetryRecording,
-    })),
-  )
+  const { recording, paused, recordingFailure, scanStatus, linkIntegrity, isReplay, start, stop } =
+    useBleStore(
+      useShallow((s) => ({
+        recording: s.telemetryRecordingEnabled,
+        paused: s.telemetryRecordingPaused,
+        recordingFailure: s.recordingFailure,
+        scanStatus: s.scanStatus,
+        linkIntegrity: s.linkIntegrity,
+        isReplay: isReplayBoardId(s.connectedId),
+        start: s.startTelemetryRecording,
+        stop: s.stopTelemetryRecording,
+      })),
+    )
 
   const toggleRecord = useCallback(() => {
     if (!recording && !canToggleRecording(bleStatus)) return
@@ -221,6 +239,7 @@ export function FloatingBar({
     pill?.kind === 'spinner'
       ? {
           kind: 'spinner',
+          icon: pill.icon,
           text: pill.text,
           color: pill.color,
           onPress: pill.onPress,
@@ -230,8 +249,8 @@ export function FloatingBar({
       : pill
         ? {
             kind: 'action',
+            icon: pill.icon,
             text: pill.text,
-            buttonText: pill.buttonText,
             bg: pill.config.bg,
             border: pill.config.border,
             textColor: pill.config.text,
@@ -243,22 +262,16 @@ export function FloatingBar({
 
   return (
     <FloatingBarFrame bottomOffset={bottomOffset}>
-      {/* Connection state — "No board added", "Connecting…", link warnings — is rider tooling that
-          only appears when something is wrong or in flight. None of it belongs in a store frame. */}
-      {uiPill && showDevControls ? <FloatingStatusPill pill={uiPill} /> : null}
-      {/* The REC control is rider tooling, not product surface — a store screenshot shows the ride,
-          not the capture affordance. */}
-      {showDevControls && (
-        <FloatingActionPill
-          icon={recording ? (paused ? PauseIcon : StopIcon) : RecordIcon}
-          label={recording ? (paused ? 'PAUSED' : 'STOP') : 'REC'}
-          active={recording}
-          paused={paused}
-          disabled={!recording && !canToggleRecording(bleStatus)}
-          onPress={toggleRecord}
-          testID="floating-bar-record"
-        />
-      )}
+      {uiPill ? <FloatingStatusPill pill={uiPill} /> : null}
+      <FloatingActionPill
+        icon={recording ? (paused ? PauseIcon : StopIcon) : RecordIcon}
+        label={recording ? (paused ? 'PAUSED' : 'STOP') : 'REC'}
+        active={recording}
+        paused={paused}
+        disabled={!recording && (!canToggleRecording(bleStatus) || recordingFailure != null)}
+        onPress={toggleRecord}
+        testID="floating-bar-record"
+      />
     </FloatingBarFrame>
   )
 }

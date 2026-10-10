@@ -4,15 +4,16 @@ import { useRouter } from 'expo-router'
 import { useShallow } from 'zustand/react/shallow'
 
 import { LinearGauge } from '@/components/charts/LinearGauge'
-import { type DualGaugeAlert } from '@/components/charts/gaugeAlert'
 import { telemetry } from '@/modules/board/constants/telemetry'
 import { TELEMETRY_THRESHOLDS } from '@/modules/board/constants/telemetryThresholds'
-import { theme } from '@/constants/theme'
+import { theme, type ThemeColor } from '@/constants/theme'
 import { deriveBatteryConfig, isBmsCharging, summarizeBms } from '@/modules/battery/lib'
 import { fmtTimeAgo } from '@/helpers/format'
 import { useLiveSeries } from '@/modules/board/hooks/useLiveMetric'
 import { useMinuteNow } from '@/hooks/useMinuteNow'
-import { useAlertsStore } from '@/modules/alerts/store/alertsStore'
+import { useResolvedNeutralColors } from '@/hooks/useTheme'
+import { useResolvedAlertRules } from '@/modules/alerts/hooks/useResolvedAlertRules'
+import { gaugeAlertsFor } from '@/modules/alerts/lib/gaugeAlerts'
 import { useBleStore } from '@/modules/board/store/bleStore'
 import { useBoardStore } from '@/modules/board/store/boardStore'
 import { routes } from '@/navigation/routes'
@@ -26,7 +27,7 @@ interface BatteryIndicatorProps {
 /** Warning shade when low on charge, else the battery metric color. Mirrors the gauge fill.
  *  Threshold sourced from the shared telemetry thresholds (battery.warning is a
  *  0-1 fraction; battery percent is 0-100). */
-function pickColor(percent: number | null): string {
+function pickColor(percent: number | null): ThemeColor {
   if (percent != null && percent < TELEMETRY_THRESHOLDS.battery.warning * 100) {
     return theme.status.warning.color
   }
@@ -34,6 +35,7 @@ function pickColor(percent: number | null): string {
 }
 
 export function BatteryIndicator({ compact, transparent, containerStyle }: BatteryIndicatorProps) {
+  const neutral = useResolvedNeutralColors()
   const router = useRouter()
   // Decimated series (native, ~1Hz). Battery is a slow signal, so the series cadence both
   // supplies the latest SoC/voltage sample and paces this component's re-render.
@@ -58,7 +60,7 @@ export function BatteryIndicator({ compact, transparent, containerStyle }: Batte
       }
     }),
   )
-  const alertRules = useAlertsStore((s) => s.rules)
+  const alertRules = useResolvedAlertRules()
 
   // Disconnected with a natively persisted reading: show it dimmed with its age.
   const stale = !connected && lastBattery != null
@@ -72,18 +74,8 @@ export function BatteryIndicator({ compact, transparent, containerStyle }: Batte
 
   // Battery alert thresholds are percent-scaled, so they only map onto the 0–100 bar once a
   // pack config exists. Hide them (and show the hint) until then.
-  const alerts = useMemo<DualGaugeAlert[]>(
-    () =>
-      batteryConfigured
-        ? alertRules
-            .filter((rule) => rule.enabled && rule.controlId === 'battery')
-            .map((rule) => ({
-              id: rule.id,
-              threshold: rule.threshold,
-              thresholdMax: rule.thresholdMax,
-              repeats: rule.repeatEverySeconds != null,
-            }))
-        : [],
+  const alerts = useMemo(
+    () => (batteryConfigured ? gaugeAlertsFor(alertRules, 'battery') : []),
     [alertRules, batteryConfigured],
   )
 
@@ -111,7 +103,7 @@ export function BatteryIndicator({ compact, transparent, containerStyle }: Batte
     <LinearGauge
       value={percent}
       max={100}
-      color={stale ? theme.palette.slate.textSecondary : pickColor(percent)}
+      color={stale ? neutral.textSecondary : pickColor(percent)}
       unit="%"
       alerts={alerts}
       aux={aux}

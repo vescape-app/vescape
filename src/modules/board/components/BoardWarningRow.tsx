@@ -35,7 +35,7 @@ export function BoardWarningRow({ warning, dismissed, onSetDismissed }: BoardWar
     <View
       style={[
         styles.card,
-        { borderColor: dismissed ? theme.palette.slate.border : s.border },
+        { borderColor: dismissed ? theme.neutral.border : s.border },
         dismissed && styles.cardDismissed,
       ]}
     >
@@ -45,16 +45,10 @@ export function BoardWarningRow({ warning, dismissed, onSetDismissed }: BoardWar
             {warningTitle(warning.kind)}
           </Text>
           <View
-            style={[
-              styles.chip,
-              { backgroundColor: dismissed ? theme.palette.slate.surfaceDeep : s.bg },
-            ]}
+            style={[styles.chip, { backgroundColor: dismissed ? theme.neutral.surfaceDeep : s.bg }]}
           >
             <Text
-              style={[
-                styles.chipText,
-                { color: dismissed ? theme.palette.slate.textMuted : s.text },
-              ]}
+              style={[styles.chipText, { color: dismissed ? theme.neutral.textMuted : s.text }]}
             >
               {dismissed ? 'Dismissed' : SEVERITY_LABEL[warning.severity]}
             </Text>
@@ -90,7 +84,7 @@ export function BoardWarningRow({ warning, dismissed, onSetDismissed }: BoardWar
 
 const styles = StyleSheet.create({
   card: {
-    backgroundColor: theme.palette.slate.surface,
+    backgroundColor: theme.neutral.surface,
     borderRadius: 12,
     borderWidth: 1,
     padding: 14,
@@ -109,7 +103,7 @@ const styles = StyleSheet.create({
     gap: 6,
   },
   title: {
-    color: theme.palette.slate.textPrimary,
+    color: theme.neutral.textPrimary,
     fontSize: 15,
     fontWeight: '800',
   },
@@ -126,12 +120,12 @@ const styles = StyleSheet.create({
     letterSpacing: 0.4,
   },
   description: {
-    color: theme.palette.slate.textSecondary,
+    color: theme.neutral.textSecondary,
     fontSize: 13,
     lineHeight: 18,
   },
   detected: {
-    color: theme.palette.slate.textMuted,
+    color: theme.neutral.textMuted,
     fontSize: 12,
   },
   detail: {
@@ -143,12 +137,12 @@ const styles = StyleSheet.create({
     gap: 12,
   },
   detailLabel: {
-    color: theme.palette.slate.textMuted,
+    color: theme.neutral.textMuted,
     fontSize: 12,
     flexShrink: 1,
   },
   detailValue: {
-    color: theme.palette.slate.textSecondary,
+    color: theme.neutral.textSecondary,
     fontSize: 12,
     fontWeight: '700',
     fontVariant: ['tabular-nums'],

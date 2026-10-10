@@ -230,12 +230,85 @@ class TelemetryPipelineTest {
         assertEquals(listOf(5.0), pipeline.recentSnapshot().map { it["speed"] })
     }
 
+    @Test
+    fun `focusedSeries returns null for an unknown metric key`() {
+        val pipeline = buildPipeline()
+        val session = BoardSession(id = 1)
+        pipeline.beginSession(session, sessionConfig)
+        pipeline.process(telemetry(speed = 20.0, packetAt = 1_000L), session)
+
+        assertNull(pipeline.focusedSeries("not-a-metric"))
+    }
+
+    @Test
+    fun `focusedSeries serves a detail-only metric absent from the center set`() {
+        val pipeline = buildPipeline()
+        val session = BoardSession(id = 1)
+        pipeline.beginSession(session, sessionConfig)
+        pipeline.process(telemetry(speed = 20.0, packetAt = 1_000L), session)
+
+        // pitch is focused-only (not streamed on the center `onLiveSeries` set).
+        assertTrue(LIVE_SERIES_METRICS.none { it.key == "pitch" })
+        assertTrue(ALL_SERIES_METRICS.any { it.key == "pitch" })
+        val focused = pipeline.focusedSeries("pitch")
+        assertNotNull(focused)
+        assertTrue(focused!!.series.isNotEmpty())
+    }
+
+    @Test
+    fun `focusedSeries reports the covered span and the measured packet rate`() {
+        val pipeline = buildPipeline()
+        val session = BoardSession(id = 1)
+        pipeline.beginSession(session, sessionConfig)
+
+        // Five samples 50ms apart: 200ms of coverage at 20Hz.
+        for (i in 0 until 5) {
+            pipeline.process(telemetry(speed = 20.0, packetAt = 1_000L + i * 50L), session)
+        }
+
+        val focused = pipeline.focusedSeries("speed")
+        assertNotNull(focused)
+        assertEquals(200L, focused!!.spanMs)
+        assertEquals(20.0, focused.sampleRateHz, 0.001)
+    }
+
+    @Test
+    fun `focusedSeries reports a zero rate until two samples exist`() {
+        val pipeline = buildPipeline()
+        val session = BoardSession(id = 1)
+        pipeline.beginSession(session, sessionConfig)
+        pipeline.process(telemetry(speed = 20.0, packetAt = 1_000L), session)
+
+        val focused = pipeline.focusedSeries("speed")
+        assertNotNull(focused)
+        assertEquals(0L, focused!!.spanMs)
+        assertEquals(0.0, focused.sampleRateHz, 0.001)
+    }
+
+    @Test
+    fun `focusedSeries carries avg_speed excluded spans for a low-speed run`() {
+        val pipeline = buildPipeline()
+        val session = BoardSession(id = 1)
+        pipeline.beginSession(session, sessionConfig)
+
+        // speed 1 km/h < 3 km/h threshold -> excluded from avg speed; the fast sample is not.
+        pipeline.process(telemetry(speed = 1.0, packetAt = 1_000L), session)
+        pipeline.process(telemetry(speed = 1.0, packetAt = 2_000L), session)
+        pipeline.process(telemetry(speed = 10.0, packetAt = 3_000L), session)
+
+        val focused = pipeline.focusedSeries("speed")
+        assertNotNull(focused)
+        assertEquals(
+            listOf(1_000.0, 2_000.0),
+            focused!!.exclusions[METRIC_AVG_SPEED]?.toList(),
+        )
+        assertNull(focused.exclusions[METRIC_MAX_DUTY])
+    }
+
     private fun telemetry(
         speed: Double = 0.0,
         packetAt: Long = 0L,
     ): RefloatTelemetry = RefloatTelemetry(
-        hasFault = false,
-        faultCode = 0,
         pitch = 0.0,
         roll = 0.0,
         balancePitch = 0.0,
@@ -253,6 +326,8 @@ class TelemetryPipelineTest {
         odometer = null,
         tempMosfet = null,
         tempMotor = null,
+        hasFault = false,
+        faultCode = 0,
         avgLatency = null,
         pullRateHz = null,
         lastPacketAt = packetAt,
@@ -266,11 +341,8 @@ class TelemetryPipelineTest {
     ): TelemetryCapture = TelemetryCapture(
         capturedAtMs = parsed.lastPacketAt,
         elapsedRealtimeMs = parsed.lastPacketAt,
-        deviceId = cfg.deviceId,
-        deviceName = cfg.deviceName,
+        boardId = cfg.appBoardId,
         canId = canId,
-        hasFault = parsed.hasFault,
-        faultCode = parsed.faultCode,
         pitch = parsed.pitch,
         roll = parsed.roll,
         balancePitch = parsed.balancePitch,

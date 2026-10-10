@@ -1,30 +1,39 @@
-import { ScrollView, StyleSheet, Switch } from 'react-native'
+import { ScrollView, StyleSheet } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { router } from 'expo-router'
-import { ListIcon, WarningIcon } from 'phosphor-react-native'
+import {
+  EngineIcon,
+  ListIcon,
+  MapPinIcon,
+  NavigationArrowIcon,
+  WarningDiamondIcon,
+} from 'phosphor-react-native'
 
 import { routes } from '@/navigation/routes'
 import { theme } from '@/constants/theme'
 import { SettingsCard } from '@/components/settings/SettingsCard'
 import { SettingsRow } from '@/components/settings/SettingsRow'
+import { Switch } from '@/components/controls/Switch'
 import { IconHero } from '@/components/settings/IconHero'
 import { useSettingsStore } from '@/modules/settings/store/settingsStore'
 
 export default function DiagnosticsSettingsScreen() {
   const boardWarningsEnabled = useSettingsStore((s) => s.boardWarningsEnabled)
+  const vescFaultCollectionEnabled = useSettingsStore((s) => s.vescFaultCollectionEnabled)
+  const showHistoryMapMarkers = useSettingsStore((s) => s.showHistoryMapMarkers)
   const set = useSettingsStore((s) => s.set)
 
   return (
     <SafeAreaView style={styles.container} edges={['bottom']}>
       <ScrollView contentContainerStyle={styles.content}>
         <IconHero
-          icon={WarningIcon}
-          description="Board health checks that watch telemetry and flag problems while you ride."
+          icon={EngineIcon}
+          description="Board health checks that watch telemetry and flag problems while you ride, plus live GPS and heading evidence."
         />
 
         <SettingsCard>
           <SettingsRow
-            icon={WarningIcon}
+            icon={EngineIcon}
             iconColor={theme.status.warning.color}
             label="Board warnings"
             hint="Master switch — off stops all detection and hides warnings"
@@ -32,10 +41,30 @@ export default function DiagnosticsSettingsScreen() {
               <Switch
                 value={boardWarningsEnabled}
                 onValueChange={(v) => void set('boardWarningsEnabled', v)}
-                trackColor={{ false: theme.palette.slate.border, true: theme.palette.sky.border }}
-                thumbColor={
-                  boardWarningsEnabled ? theme.palette.sky.color : theme.palette.slate.textMuted
-                }
+              />
+            }
+          />
+          <SettingsRow
+            icon={WarningDiamondIcon}
+            iconColor={theme.status.caution.color}
+            label="VESC fault collection"
+            hint="Record live Refloat faults. Controller log loads when the fault drawer opens"
+            right={
+              <Switch
+                value={vescFaultCollectionEnabled}
+                onValueChange={(v) => void set('vescFaultCollectionEnabled', v)}
+              />
+            }
+          />
+          <SettingsRow
+            icon={MapPinIcon}
+            iconColor={theme.palette.yellow.color}
+            label="Ride markers on map"
+            hint="Show pause, connection, error, and gap markers on history routes"
+            right={
+              <Switch
+                value={showHistoryMapMarkers}
+                onValueChange={(v) => void set('showHistoryMapMarkers', v)}
               />
             }
           />
@@ -46,6 +75,13 @@ export default function DiagnosticsSettingsScreen() {
             hint="Browse locally persisted diagnostic events"
             onPress={() => router.push(routes.settingsDiagnosticEvents)}
           />
+          <SettingsRow
+            icon={NavigationArrowIcon}
+            iconColor={theme.palette.sky.color}
+            label="Navigation diagnostics"
+            hint="Live map heading, GPS, and fallback evidence"
+            onPress={() => router.push(routes.settingsNavigationDiagnostic)}
+          />
         </SettingsCard>
       </ScrollView>
     </SafeAreaView>
@@ -55,7 +91,7 @@ export default function DiagnosticsSettingsScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: theme.palette.slate.bg,
+    backgroundColor: theme.neutral.bg,
   },
   content: {
     padding: 16,

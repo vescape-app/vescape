@@ -67,12 +67,12 @@ const styles = StyleSheet.create({
   title: {
     fontSize: 14,
     fontWeight: '700',
-    color: theme.palette.slate.textPrimary,
+    color: theme.neutral.textPrimary,
   },
   message: {
     fontSize: 13,
     fontWeight: '500',
     lineHeight: 19,
-    color: theme.palette.slate.textSecondary,
+    color: theme.neutral.textSecondary,
   },
 })

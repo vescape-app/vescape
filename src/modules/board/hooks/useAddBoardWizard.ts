@@ -9,9 +9,8 @@ import {
   type AlertPresetMetric,
   type AlertPresetSelection,
 } from '@/modules/alerts/lib/alertPresets'
-import { type DraftAlertSetup } from '@/modules/alerts/hooks/useMetricAlerts'
+import type { DraftAlertSetup } from '@/modules/alerts/hooks/useMetricAlerts'
 import { DEFAULT_BOARD_TOP_SPEED_KMH } from '@/modules/alerts/lib/boardAlertSettings'
-import { useAlertPresetStore } from '@/modules/alerts/store/alertPresetStore'
 import { useAlertsStore } from '@/modules/alerts/store/alertsStore'
 import { DEFAULT_BATTERY_CONFIG, deriveBatteryConfig } from '@/modules/battery/lib'
 import {
@@ -22,6 +21,7 @@ import {
   parseVoltage,
 } from '@/modules/board/lib/boardSetup'
 import { useBoardStore } from '@/modules/board/store/boardStore'
+import { generateId } from '@/helpers/id'
 import type {
   RailColorId,
   RailId,
@@ -52,6 +52,7 @@ export type WizardStepId = (typeof WIZARD_STEPS)[number]
 type PairPhase = 'select' | 'probing'
 
 interface AddBoardWizardState {
+  boardId: string
   step: number
   stepId: WizardStepId
   /** Active steps for this run. */
@@ -61,6 +62,7 @@ interface AddBoardWizardState {
   bleName: string
   draftLink: BoardLink | null
   name: string
+  description: string
   railId: RailId
   railColorId: RailColorId
   batteryMode: BatteryMode
@@ -88,6 +90,7 @@ interface AddBoardWizardActions {
   onDeviceProbed: (link: BoardLink) => void
   continueOffline: () => void
   setName: (v: string) => void
+  setDescription: (v: string) => void
   setRailId: (v: RailId) => void
   setRailColorId: (v: RailColorId) => void
   setBatteryMode: (v: BatteryMode) => void
@@ -98,7 +101,7 @@ interface AddBoardWizardActions {
   setManualMaxVoltage: (v: string) => void
   setTopSpeedKmh: (v: number) => void
   setAlertSetup: (metric: AlertPresetMetric, setup: DraftAlertSetup) => void
-  save: () => void
+  save: () => Promise<void>
 }
 
 export type UseAddBoardWizard = AddBoardWizardState & AddBoardWizardActions
@@ -112,11 +115,13 @@ export function useAddBoardWizard(): UseAddBoardWizard {
   const steps = WIZARD_STEPS
 
   const [step, setStep] = useState(0)
+  const [boardId] = useState(generateId)
   const [pairPhase, setPairPhase] = useState<PairPhase>('select')
   const [bleId, setBleId] = useState('')
   const [bleName, setBleName] = useState('')
   const [draftLink, setDraftLink] = useState<BoardLink | null>(null)
   const [name, setName] = useState('')
+  const [description, setDescription] = useState('')
   const [railId, setRailId] = useState<RailId>('xr')
   const [railColorId, setRailColorId] = useState<RailColorId>('cyan')
   const [batteryMode, setBatteryMode] = useState<BatteryMode>(DEFAULT_BATTERY_CONFIG.mode)
@@ -185,7 +190,7 @@ export function useAddBoardWizard(): UseAddBoardWizard {
     next()
   }
 
-  const save = () => {
+  const save = async () => {
     if (!canSave) return
     const batteryConfig = buildBatteryConfig(
       batteryMode,
@@ -195,32 +200,31 @@ export function useAddBoardWizard(): UseAddBoardWizard {
       manualMinVoltage,
       manualMaxVoltage,
     )
-    const board = addBoard({
+    const board = await addBoard({
+      id: boardId,
       name: name.trim(),
+      description: description.trim() || undefined,
       personalization: { railId, railColorId },
       link: draftLink,
       batteryConfig,
-      // Persist the draft alert setup onto the new Board (#254), then materialize its preset rules.
+      // Native saves the Board and its generated preset rules together.
       topSpeedKmh,
       alertPreset: draftAlertPresetSelection(alertSetup),
       alertPresetsOnboarded: true,
     })
     setActiveBoard(board.id)
-    void (async () => {
-      await useAlertsStore.getState().load(board.id)
-      // Flush the rider's own rules first: they carry no board id until one exists, and metrics
-      // holding them are `custom`, so the regeneration below never touches them.
-      for (const { rules } of Object.values(alertSetup)) {
-        for (const rule of rules) {
-          await useAlertsStore.getState().upsert({ ...rule, boardId: board.id })
-        }
+    await useAlertsStore.getState().load(board.id)
+    // Custom draft rules carry no Board id until the Board exists.
+    for (const { rules } of Object.values(alertSetup)) {
+      for (const rule of rules) {
+        await useAlertsStore.getState().upsert({ ...rule, boardId: board.id })
       }
-      await useAlertPresetStore.getState().regenerateAll()
-    })()
+    }
     router.dismissAll()
   }
 
   return {
+    boardId,
     step,
     stepId: steps[step] ?? steps[steps.length - 1]!,
     steps,
@@ -229,6 +233,7 @@ export function useAddBoardWizard(): UseAddBoardWizard {
     bleName,
     draftLink,
     name,
+    description,
     railId,
     railColorId,
     batteryMode,
@@ -251,6 +256,7 @@ export function useAddBoardWizard(): UseAddBoardWizard {
     onDeviceProbed,
     continueOffline,
     setName,
+    setDescription,
     setRailId,
     setRailColorId,
     setBatteryMode,

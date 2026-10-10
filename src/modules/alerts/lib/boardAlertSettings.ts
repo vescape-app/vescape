@@ -4,6 +4,8 @@ import { deriveBatteryConfig } from '@/modules/battery/lib'
 import {
   DEFAULT_ALERT_PRESET_SELECTION,
   normalizeAlertPresetSelection,
+  supportsBoardConfigMatch,
+  type AlertPresetMetric,
   type AlertPresetSelection,
 } from '@/modules/alerts/lib/alertPresets'
 
@@ -28,4 +30,18 @@ export function boardAlertPresetSelection(board: Board | null | undefined): Aler
 
 export function boardHasBatteryConfig(board: Board | null | undefined): boolean {
   return deriveBatteryConfig(board?.batteryConfig ?? null).warning == null
+}
+
+/** Which metrics this Board matches to its own configuration. Unknown keys and metrics that have
+ * no anchor to follow are dropped, so a stale bag cannot arm a match the generator ignores. */
+export function boardMatchBoardConfig(
+  board: Board | null | undefined,
+): Partial<Record<AlertPresetMetric, boolean>> {
+  const raw = board?.matchBoardConfig
+  if (!raw || typeof raw !== 'object') return {}
+  const entries = Object.entries(raw as Record<string, unknown>).filter(
+    ([metric, enabled]) =>
+      enabled === true && supportsBoardConfigMatch(metric as AlertPresetMetric),
+  )
+  return Object.fromEntries(entries) as Partial<Record<AlertPresetMetric, boolean>>
 }

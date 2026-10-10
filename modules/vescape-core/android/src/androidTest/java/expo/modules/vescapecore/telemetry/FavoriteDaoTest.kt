@@ -14,13 +14,13 @@ import org.junit.runner.RunWith
 
 @RunWith(AndroidJUnit4::class)
 class FavoriteDaoTest {
-  private lateinit var database: TelemetryDatabase
+  private lateinit var database: TelemetryRoomDatabase
   private lateinit var dao: TelemetryDao
 
   @Before
   fun setUp() {
     val context = ApplicationProvider.getApplicationContext<Context>()
-    database = Room.inMemoryDatabaseBuilder(context, TelemetryDatabase::class.java)
+    database = Room.inMemoryDatabaseBuilder(context, TelemetryRoomDatabase::class.java)
       .allowMainThreadQueries()
       .build()
     dao = database.telemetryDao()

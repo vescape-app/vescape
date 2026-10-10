@@ -39,7 +39,7 @@ export default function BoardLinkScreen() {
   const [bleId] = useState(() => routeBleId ?? board?.link?.bleId ?? null)
   const existingLink = board?.link ?? null
 
-  const link = useBoardLink(bleId)
+  const link = useBoardLink(bleId, boardId)
   const [saving, setSaving] = useState(false)
   const scrollRef = useRef<ScrollView>(null)
 
@@ -52,6 +52,7 @@ export default function BoardLinkScreen() {
     })
   }, [])
 
+  // Pure persist: config was already acquired as the last step of the linking run.
   const handleSave = async () => {
     if (!board || !link.selectedLink) return
     setSaving(true)
@@ -106,8 +107,9 @@ export default function BoardLinkScreen() {
             testID="board-link-choose-another"
           />
           <Button
-            style={[styles.actionButton, styles.upgradeButton]}
+            style={styles.actionButton}
             label="Retry"
+            variant="tune"
             onPress={link.retry}
             testID="board-link-retry"
           />
@@ -115,11 +117,11 @@ export default function BoardLinkScreen() {
       ) : (
         <View style={styles.footer}>
           <Button
-            style={styles.upgradeButton}
             label="Save link"
+            variant="tune"
             onPress={handleSave}
-            disabled={link.phase !== 'picking' || link.selectedLink == null}
-            loading={saving}
+            disabled={link.phase !== 'picking' || link.selectedLink == null || link.isFinalizing}
+            loading={saving || link.isFinalizing}
             testID="board-link-save"
           />
         </View>
@@ -131,7 +133,7 @@ export default function BoardLinkScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: theme.palette.slate.bg,
+    backgroundColor: theme.neutral.bg,
   },
   content: {
     flexGrow: 1,
@@ -151,8 +153,5 @@ const styles = StyleSheet.create({
   },
   actionButton: {
     flex: 1,
-  },
-  upgradeButton: {
-    backgroundColor: theme.status.upgrade.color,
   },
 })

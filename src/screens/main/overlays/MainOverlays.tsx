@@ -1,4 +1,4 @@
-import { useLayoutEffect, useState, type RefObject } from 'react'
+import { useLayoutEffect, type RefObject } from 'react'
 import { useSharedValue, withTiming, type SharedValue } from 'react-native-reanimated'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import type { MapPoint, MapPointPatch } from 'vescape-core'
@@ -9,18 +9,20 @@ import type { MapOrientationMode, MapStyleKey } from '@/modules/map/constants/ma
 import type { MapSelection } from '@/modules/map/lib/mapSelection'
 import type { DirectionPoint } from '@/modules/map/store/mapStore'
 import { WeatherMapOverlay } from '@/modules/weather/components/WeatherMapOverlay'
+import { useWeatherStore } from '@/modules/weather/store/weatherStore'
 import { HistoryOverlay, type MainHistoryOverlayProps } from '@/screens/main/history/HistoryOverlay'
-import { type MainMapHandle } from '@/screens/main/map/MainMap'
+import type { MainMapHandle } from '@/screens/main/map/MainMap'
 import { MapControls } from '@/screens/main/map/MapControls'
 import { MapModeOverlay } from '@/screens/main/map/MapModeOverlay'
 import { MapModeTabs } from '@/screens/main/map/MapModeTabs'
 import { MapVignette } from '@/screens/main/map/MapVignette'
 import type { OffscreenMapIndicatorState } from '@/screens/main/map/offscreenMapIndicators'
-import type { MapSelector } from '@/screens/main/mainScreenStore'
+import { useMainScreenStore, type MapSelector } from '@/screens/main/mainScreenStore'
 import type { MainViewState } from '@/screens/main/mainViewState'
 import { MapPointStatusBanner } from '@/modules/map-points/components/MapPointStatusBanner'
-import { STRIP_CONTENT_HEIGHT } from '@/screens/main/overlays/BottomTelemetryStrip'
 import { TelemetryOverlay } from '@/screens/main/overlays/TelemetryOverlay'
+import { WeatherSidePill } from '@/screens/main/overlays/WeatherSidePill'
+import { useTelemetryPanel } from '@/screens/main/overlays/TelemetryPanel'
 
 const TELEMETRY_FADE_TIMING = { duration: 260 } as const
 
@@ -45,6 +47,7 @@ interface MainMapOverlayProps {
   setMapSelector: (selector: MapSelector) => void
   enterMapFocus: () => void
   exitMapFocus: () => void
+  cancelMapFocus: () => void
   enterWeather: () => void
   exitWeather: () => void
   enterLegalLimits: () => void
@@ -70,10 +73,10 @@ interface MainMapOverlayProps {
 interface MainOverlaysProps {
   mode: MainViewState
   mapRef: RefObject<MainMapHandle | null>
-  mapInteractionHandlerRef: RefObject<(selection?: MapSelection) => boolean | void>
+  mapInteractionHandlerRef: RefObject<(selection?: MapSelection) => boolean | undefined>
   board: MainBoardOverlayProps
   map: MainMapOverlayProps
-  history: MainHistoryOverlayProps & { enterHistoryMode: () => void }
+  history: MainHistoryOverlayProps
 }
 
 /**
@@ -89,10 +92,15 @@ export function MainOverlays({
   history,
 }: MainOverlaysProps) {
   const insets = useSafeAreaInsets()
-  const [panelHeight, setPanelHeight] = useState(0)
+  const weather = useWeatherStore((s) => s.weather)
+  // In the store rather than in state: the map camera frames the route into the space this panel
+  // leaves, and it lives in a different tree.
+  const panelHeight = useMainScreenStore((s) => s.historyPanelHeight)
+  const setPanelHeight = useMainScreenStore((s) => s.setHistoryPanelHeight)
   // Owned here because the telemetry drag fades the map vignette as well as the telemetry face.
   const revealProgress = useSharedValue(0)
   const dragOpacity = useSharedValue(0)
+  const telemetryPanel = useTelemetryPanel(mode === 'telemetry')
 
   // Coming back to telemetry undoes whatever the reveal drag left behind.
   useLayoutEffect(() => {
@@ -101,7 +109,7 @@ export function MainOverlays({
     dragOpacity.value = withTiming(0, TELEMETRY_FADE_TIMING)
   }, [dragOpacity, mode, revealProgress])
 
-  const aboveStripBottom = STRIP_CONTENT_HEIGHT + Math.max(insets.bottom * 0.5, 8) + 8
+  const mapControlsBottom = Math.max(insets.bottom, 12) + 12
   const mapModeTabsTop = Math.max(insets.top, 8)
   const belowMapModeTabsTop = mapModeTabsTop + 48
   const mapTargetBottom = Math.max(insets.bottom, 16) + 16
@@ -121,6 +129,7 @@ export function MainOverlays({
         mapRef={mapRef}
         revealProgress={revealProgress}
         dragOpacity={dragOpacity}
+        telemetryPanel={telemetryPanel}
         boards={board.boards}
         activeBoardId={board.activeBoardId}
         activeBoard={board.activeBoard}
@@ -131,13 +140,23 @@ export function MainOverlays({
         onStopScan={board.onStopScan}
         onRetryConnect={board.onRetryConnect}
         onEnterMapFocus={map.enterMapFocus}
-        onEnterWeather={map.enterWeather}
+        onCancelMapFocus={map.cancelMapFocus}
         onEnterLegalLimits={map.enterLegalLimits}
-        onEnterHistory={() => void history.enterHistoryMode()}
+        onOpenHistoryRide={history.selectRide}
+        onOpenHistoryFavorite={history.selectFavoriteRide}
         onOffscreenIndicatorPress={map.onOffscreenIndicatorPress}
         activeNavigationTarget={map.activeNavigationTarget}
         onCancelNavigation={map.onCancelNavigation}
       />
+
+      {weather && (mode === 'telemetry' || mode === 'map') ? (
+        <WeatherSidePill
+          icon={weather.icon}
+          temperature={weather.temperatureC}
+          precipProbability={weather.precipitationProbability}
+          onPress={map.enterWeather}
+        />
+      ) : null}
 
       {isMapMode ? (
         <MapModeTabs
@@ -156,7 +175,7 @@ export function MainOverlays({
         mapRef={mapRef}
         mapInteractionHandlerRef={mapInteractionHandlerRef}
         top={mapModeTabsTop}
-        bottom={aboveStripBottom - 112}
+        bottom={mapControlsBottom}
         sheetBottom={mapTargetBottom}
         searchProximity={map.weatherLocation}
         directionPoint={map.directionPoint}

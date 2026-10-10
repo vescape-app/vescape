@@ -11,6 +11,7 @@ import expo.modules.vescapecore.telemetry.TelemetryPipeline
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
 
+// @parity /modules/vescape-core/ios/location/LocationTracker.swift
 internal class LocationTracker(
     private val applicationContext: Context,
     private val appDataScope: CoroutineScope,
@@ -32,12 +33,18 @@ internal class LocationTracker(
      * a second ago is the right place to start a path from, while the last precise fix can be
      * yesterday's and kilometres away. Precise only stands in when nothing newer exists at all.
      *
-     * @parity /modules/vescape-core/ios/connection/BoardSessionController.swift `riderPosition`
+     * @parity /modules/vescape-core/ios/location/LocationTracker.swift `riderPosition`
      */
     val riderPosition: LocationSnapshot?
         get() = latestLocation ?: latestPreciseLocation
 
-    fun onLocationUpdated(location: Location) {
+    /**
+     * Ingest one platform fix and return the [LocationSnapshot] it produced, so a caller acts on the
+     * fix it handed in rather than re-reading mutable tracker state.
+     *
+     * @parity /modules/vescape-core/ios/location/LocationTracker.swift `onLocationUpdated`
+     */
+    fun onLocationUpdated(location: Location): LocationSnapshot {
         val accuracyM = if (location.hasAccuracy()) location.accuracy.toDouble() else null
         val speedMps = if (location.hasSpeed()) location.speed.toDouble() else null
         val bearingDeg = if (location.hasBearing()) location.bearing.toDouble() else null
@@ -71,12 +78,12 @@ internal class LocationTracker(
         // Every fix moves Route Progress, approximate ones included: the same rule as
         // [riderPosition], where freshness beats accuracy. The bearing comes off the path rather
         // than off the fix, so a noisy position cannot spin it.
-        // @parity /modules/vescape-core/ios/connection/BoardSessionController.swift `onLocationUpdated`
+        // @parity /modules/vescape-core/ios/location/LocationTracker.swift `onLocationUpdated`
         NavigationController.get(applicationContext)
             .onFix(snapshot.latitude, snapshot.longitude, snapshot.speedMps)
         if (!snapshot.precise) {
             emitEvent("onLocation", snapshot.toMap())
-            return
+            return snapshot
         }
         latestPreciseLocation = snapshot
         persistLastGpsLocation(snapshot)
@@ -84,6 +91,7 @@ internal class LocationTracker(
         pruneRecentLocations(snapshot.timestamp)
         emitEvent("onLocation", snapshot.toMap())
         recordingCoordinator.recordLocation(snapshot)
+        return snapshot
     }
 
     fun recentLocations(): List<Map<String, Any?>> = recentLocations.toList()
@@ -97,9 +105,21 @@ internal class LocationTracker(
         }
     }
 
+    /**
+     * Clear fixes and course when entering or leaving replay, retaining the persistence throttle.
+     * @parity /modules/vescape-core/ios/location/LocationTracker.swift `clearReplayLocations`
+     */
+    fun clearReplayLocations() {
+        latestLocation = null
+        latestPreciseLocation = null
+        courseDeriver.reset()
+        recentLocations.clear()
+    }
+
+    // @parity /modules/vescape-core/ios/location/LastGpsLocationPersistence.swift `onLocationUpdated`
     private fun persistLastGpsLocation(location: LocationSnapshot) {
         val now = System.currentTimeMillis()
-        if (now - lastGpsPersistedAt < 30_000L) return
+        if (now - lastGpsPersistedAt < LAST_GPS_PERSIST_INTERVAL_MS) return
         lastGpsPersistedAt = now
         appDataScope.launch {
             AppDataRepository.get(applicationContext).updateLastGpsLocation(location.latitude, location.longitude)

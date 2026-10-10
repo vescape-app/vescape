@@ -5,7 +5,7 @@ import {
   ClockCounterClockwiseIcon,
   PencilSimpleIcon,
   StarIcon,
-  TrashIcon,
+  DotsThreeIcon,
   XIcon,
 } from 'phosphor-react-native'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
@@ -27,7 +27,6 @@ interface HistoryControlsProps {
    */
   favorite?: {
     onEdit: () => void
-    onDelete: () => void
   }
   saving: boolean
   trimName: string
@@ -35,7 +34,7 @@ interface HistoryControlsProps {
   onTrimNameChange: (name: string) => void
   onSelectTab: (tab: HistoryTab) => void
   onBack: () => void
-  onRemove: () => void
+  onOpenActions: () => void
   onCancelTrim: () => void
   onSaveTrim: () => void
 }
@@ -52,7 +51,7 @@ export function HistoryControls({
   onTrimNameChange,
   onSelectTab,
   onBack,
-  onRemove,
+  onOpenActions,
   onCancelTrim,
   onSaveTrim,
 }: HistoryControlsProps) {
@@ -76,6 +75,9 @@ export function HistoryControls({
               onChangeText={onTrimNameChange}
               placeholder={trimNamePlaceholder}
               editable={!saving}
+              // Renaming replaces the old name far more often than it appends to it, and the
+              // inline board-name field already behaves this way.
+              selectTextOnFocus
               returnKeyType="done"
               onSubmitEditing={onSaveTrim}
               style={styles.nameInput}
@@ -108,6 +110,7 @@ export function HistoryControls({
             activeId={tab}
             contained
             fitContent
+            variant="lightTabs"
             style={styles.tabs}
             contentContainerStyle={styles.tabsContent}
           >
@@ -115,7 +118,6 @@ export function HistoryControls({
               id="history"
               label="History"
               icon={ClockCounterClockwiseIcon}
-              activeLabelOnly
               activeWidth={116}
               inactiveWidth={46}
               color={theme.palette.sky}
@@ -126,7 +128,6 @@ export function HistoryControls({
               id="favorites"
               label="Favorites"
               icon={StarIcon}
-              activeLabelOnly
               activeWidth={126}
               inactiveWidth={46}
               color={theme.palette.amber}
@@ -146,22 +147,19 @@ export function HistoryControls({
                 accessibilityLabel="Edit Favorite"
               />
               <IconButton
-                icon={TrashIcon}
-                onPress={favorite.onDelete}
-                destructive
-                disabled={loading}
-                testID="favorite-delete"
-                accessibilityLabel="Delete Favorite"
+                icon={DotsThreeIcon}
+                onPress={onOpenActions}
+                testID="favorite-actions"
+                accessibilityLabel="Favorite actions"
               />
             </>
           ) : null}
           {!favorite && canRemove ? (
             <IconButton
-              icon={TrashIcon}
-              onPress={onRemove}
-              destructive
-              disabled={loading}
-              accessibilityLabel="Delete ride"
+              icon={DotsThreeIcon}
+              onPress={onOpenActions}
+              testID="history-actions"
+              accessibilityLabel="Ride actions"
             />
           ) : !favorite ? (
             <View style={styles.actionSpacer} />

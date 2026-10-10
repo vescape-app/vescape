@@ -4,11 +4,13 @@ import androidx.annotation.DrawableRes
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import kotlinx.coroutines.delay
+import java.util.Calendar
 
 /**
  * Data Layer path the phone publishes the forecast on. Must match the phone-side
@@ -16,6 +18,7 @@ import kotlinx.coroutines.delay
  * on every start rather than waited for.
  *
  * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/watch/WatchWeather.kt
+ * @parity /modules/vescape-core/ios/watch/WatchWeather.swift
  */
 const val WEATHER_PATH = "/weather"
 
@@ -29,6 +32,8 @@ const val WEATHER_HOUR_ICONS = "hourIcons"
 const val WEATHER_HOUR_PRECIPS = "hourPrecips"
 const val WEATHER_SUNRISE = "sunriseMinuteOfDay"
 const val WEATHER_SUNSET = "sunsetMinuteOfDay"
+const val WEATHER_LATITUDE = "latitude"
+const val WEATHER_LONGITUDE = "longitude"
 const val WEATHER_FETCHED_AT = "fetchedAtMs"
 
 /** One forecast hour, as the wrist renders it. [minuteOfDay] is local to the forecast location. */
@@ -52,8 +57,45 @@ data class WatchWeather(
     /** Minutes since local midnight; null when the phone had no daily times to send. */
     val sunriseMinuteOfDay: Int?,
     val sunsetMinuteOfDay: Int?,
+    /**
+     * Where the forecast was taken. Null from a phone too old to send it, which is why the radar
+     * page can be empty on a wrist that is otherwise showing weather fine.
+     */
+    val latitude: Double?,
+    val longitude: Double?,
     val fetchedAtMs: Long,
 )
+
+/** The Data Layer dictionary decoder, also used by fixture replay.
+ * @parity /modules/vescape-core/ios/watch/WatchWeather.swift `decode`
+ */
+internal fun decodeWatchWeather(payload: Map<String, Any?>?): WatchWeather? {
+    payload ?: return null
+    val temperature = payload[WEATHER_TEMP_C] as? Int ?: return null
+    val minutes = payload[WEATHER_HOUR_MINUTES] as? List<*> ?: emptyList<Any>()
+    val temps = payload[WEATHER_HOUR_TEMPS] as? List<*> ?: emptyList<Any>()
+    val icons = payload[WEATHER_HOUR_ICONS] as? Array<*> ?: emptyArray<Any>()
+    val precips = payload[WEATHER_HOUR_PRECIPS] as? List<*> ?: emptyList<Any>()
+    return WatchWeather(
+        temperatureC = temperature,
+        icon = payload[WEATHER_ICON] as? String ?: "",
+        label = payload[WEATHER_LABEL] as? String ?: "",
+        precipitationProbability = payload[WEATHER_PRECIP] as? Int ?: 0,
+        hourly = (0 until minOf(minutes.size, temps.size, icons.size, precips.size)).mapNotNull { index ->
+            WatchWeatherHour(
+                minuteOfDay = minutes[index] as? Int ?: return@mapNotNull null,
+                temperatureC = temps[index] as? Int ?: return@mapNotNull null,
+                icon = icons[index] as? String ?: return@mapNotNull null,
+                precipitationProbability = precips[index] as? Int ?: return@mapNotNull null,
+            )
+        },
+        sunriseMinuteOfDay = payload[WEATHER_SUNRISE] as? Int,
+        sunsetMinuteOfDay = payload[WEATHER_SUNSET] as? Int,
+        latitude = payload[WEATHER_LATITUDE] as? Double,
+        longitude = payload[WEATHER_LONGITUDE] as? Double,
+        fetchedAtMs = payload[WEATHER_FETCHED_AT] as? Long ?: 0,
+    )
+}
 
 /** Latest forecast pushed from the phone; null until the first push arrives. */
 object WeatherState {
@@ -115,6 +157,35 @@ fun weatherIconRes(slug: String): Int = when (slug) {
     "cloud-snow" -> R.drawable.ic_ph_cloud_snow
     "cloud-lightning" -> R.drawable.ic_ph_cloud_lightning
     else -> R.drawable.ic_ph_cloud
+}
+
+/**
+ * Local wall-clock minute of day, re-read on the same coarse tick as staleness so a forecast left
+ * open on the wrist crosses sunset on its own.
+ */
+@Composable
+fun currentMinuteOfDay(): Int {
+    var minuteOfDay by remember { mutableIntStateOf(minuteOfDayNow()) }
+
+    LaunchedEffect(Unit) {
+        while (true) {
+            delay(STALENESS_TICK_MS)
+            minuteOfDay = minuteOfDayNow()
+        }
+    }
+
+    return minuteOfDay
+}
+
+/** Minute of day from the device clock, the unit every sun and hour time on the wrist is in. */
+fun minuteOfDayNow(): Int = Calendar.getInstance().let {
+    it.get(Calendar.HOUR_OF_DAY) * 60 + it.get(Calendar.MINUTE)
+}
+
+/** Local minute of day for an instant, the unit every wrist time is formatted from. */
+fun minuteOfDay(epochMs: Long): Int = Calendar.getInstance().let {
+    it.timeInMillis = epochMs
+    it.get(Calendar.HOUR_OF_DAY) * 60 + it.get(Calendar.MINUTE)
 }
 
 /** `HH:MM` for a minute-of-day, matching [WatchClock]'s always-24h readout. */

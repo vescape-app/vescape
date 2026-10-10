@@ -40,6 +40,10 @@ describe('release-note bundler', () => {
     expect(() => validateReleaseMarkdown('## Fixed\n\n- One\n\n## New\n\n- Two')).toThrow(
       'sections must be ordered',
     )
+    expect(() => validateReleaseMarkdown('## Watch\n\n- One\n\n## Fixed\n\n- Two')).toThrow(
+      'sections must be ordered',
+    )
+    expect(() => validateReleaseMarkdown('## New\n\n- One\n\n## Watch\n\n- Two')).not.toThrow()
   })
 
   test('reports missing and stale generated output clearly', () => {

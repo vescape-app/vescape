@@ -5,13 +5,13 @@ import type { CommunityMessage, CommunityMessageAction, CommunityMessageType } f
 import { Button } from '@/components/base/Button'
 import { Markdown } from '@/components/base/Markdown'
 import { FadeCardModal } from '@/components/modals/FadeCardModal'
-import { theme } from '@/constants/theme'
+import { theme, type ThemeColor } from '@/constants/theme'
 
 /**
  * Icon, accent color and fallback header label per message type — the importance cue (PRD story 27).
  * A message carrying its own `title` replaces the label; icon and color always follow the type.
  */
-const TYPE_STYLE: Record<CommunityMessageType, { icon: Icon; color: string; label: string }> = {
+const TYPE_STYLE: Record<CommunityMessageType, { icon: Icon; color: ThemeColor; label: string }> = {
   info: { icon: InfoIcon, color: theme.status.info.color, label: 'Announcement' },
   warning: { icon: WarningIcon, color: theme.status.warning.color, label: 'Heads up' },
   critical: { icon: WarningOctagonIcon, color: theme.status.error.color, label: 'Important' },

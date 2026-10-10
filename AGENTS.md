@@ -19,6 +19,19 @@ Use **Oxfmt** (`bun run format`) for repository formatting. Do not run Prettier 
 apply Prettier-formatted rewrites; Prettier rewrites the style globally and causes
 `Formatter mismatch caught: Prettier rewrote style globally`.
 
+## Verification Budget
+
+Lefthook `pre-commit` already runs fmt, `ts`, lint, knip, and tests on staged files. Don't
+re-run `bun run check` after every edit — wasteful.
+
+- Big refactor, rename, move, deletion → `bun run ts` (+ `bun knip` after deletions).
+- Real logic change with tests → `bun test <path>`, that path only.
+- Check failed → re-run that one check until green.
+- Small edits (copy, style, props, docs) → nothing, let the hook catch it.
+- UI color or appearance edits → run `bun run theme:colors:check` immediately after the edit, before staging or committing. Fix its findings before broader checks.
+
+Narrow command over full `bun run check`.
+
 ## Git Branch Names
 
 Do **not** add generated prefixes to branch names, including agent/tool names like `codex/`,
@@ -35,9 +48,22 @@ Do not fix local machine, shell, PATH, Java, Android SDK, Maestro, or other CLI/
 - Keep project scripts portable and free of machine-specific paths.
 - If a tool is missing from non-interactive shells, repair the shell/agent environment, not `package.json`.
 
+## Device UI Verification
+
+Never use the already-installed production/release app as evidence for local JS or TypeScript UI
+changes. `adb shell am start`, `monkey`, and deep links only launch whichever bundle is already
+installed; they do not prove that the app contains the current working tree.
+
+- Before taking a verification screenshot, confirm that the launched app is the development build
+  attached to the current Metro server and current workspace bundle.
+- If that cannot be confirmed, report that the installed build is stale and do not draw conclusions
+  about the local UI from it.
+- A release APK has its JS bundled at build time. Rebuild and reinstall it before using it to verify
+  any JS or TypeScript change.
+
 ## Architecture Discipline
 
-This is a PoC, but keep it sharp:
+Keep the architecture sharp:
 
 - Native owns durable truth and long-lived work; JS renders state and sends intents.
 - Prefer clear architecture over compatibility, shortcuts, or hidden assumptions.
@@ -102,13 +128,34 @@ Rules:
 - `src/app/` — Expo Router routes only. Thin re-exports from modules/screens.
 - `src/constants/` — `theme.ts` only. `src/config/`, `src/navigation/` — static defs.
 
+## Docs
+
+`docs/index.md` maps every document in `docs/` — platform, protocol, features, performance, and the
+agent guides. Read it before assuming something is undocumented; the rules that always apply are in
+this file, the depth is there.
+
+Root `CONTEXT.md` holds the domain language and `docs/adr/` the decisions behind it.
+
+Docs contain lasting reference material: agreed product behavior, current architecture, contracts,
+operating procedures, and accepted decisions with their rationale. Clearly distinguish agreed but
+unimplemented behavior from what the app does today. `CONTEXT.md` is a glossary, not a feature spec.
+
+Keep investigation notes, code-review findings, proposed implementation plans, open questions,
+task checklists, and progress reports in the conversation or the relevant issue/PR. Do not add them
+to `docs/` just to preserve an agent's work; only create a planning or research document when the
+user explicitly requests that artifact. Existing planning files are not permission to add more.
+Before editing docs, ask: will this help a future reader understand or operate the product after
+this task is finished? Update the existing authoritative page instead of appending a task recap.
+
 ## React Native
 
-React Native UI conventions, including icon usage, live in `docs/agents/react.md`.
+React Native UI conventions, including adaptive color selection, resolution, and icon usage, live in `docs/agents/react.md`. Read its Colors section before changing UI colors or appearance behavior.
+Skia canvas rules — gesture frame cost, transform-only animation, worklet and repaint traps — live in `docs/agents/skia.md`.
 Visual design language (colors, layout, typography) lives in `docs/design.md`.
 Clerk production authentication setup and Android email-link debugging live in `docs/agents/clerk-auth.md`.
 Mapbox dependency patches and their native camera semantics live in `docs/agents/mapbox-patches.md`.
 Generated native state (`ios/`, `android/`, Pods) is kept in sync by `bun run ios` / `bun run android`; see `docs/agents/native-sync.md`.
+Phone + Wear emulators, paired and mirroring, come from `bun run android:up`; failures and wrist checks are in `docs/agents/watch-emulators.md`.
 
 When adding or changing a reusable UI component (or a new visual variant/state of one), add or update its preview in the component showcase under `src/app/settings/components/` so every component stays browsable with live controls.
 
@@ -116,11 +163,7 @@ When adding or changing a reusable UI component (or a new visual variant/state o
 
 ### Issue tracker
 
-Issues and PRDs are tracked in GitHub Issues for `KacperKozak/vescape`. See `docs/agents/issue-tracker.md`.
-
-### E2E tests
-
-Use the local `/e2e` skill for Maestro E2E runs. It covers fresh-shell execution, Android device checks, app install rules, and env-vs-project boundaries.
+Issues and PRDs are tracked in GitHub Issues for `vescape-app/vescape`. See `docs/agents/issue-tracker.md`.
 
 ### Triage labels
 

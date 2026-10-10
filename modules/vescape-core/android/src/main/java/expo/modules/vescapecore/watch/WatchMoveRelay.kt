@@ -19,6 +19,8 @@ import expo.modules.vescapecore.runtime.Scheduler
  *
  * Commands arrive on a Wear binder thread; every mutation hops to [scheduler], the one thread
  * allowed to touch Board Session state.
+ *
+ * @parity /modules/vescape-core/ios/watch/WatchMoveRelay.swift
  */
 internal class WatchMoveRelay(
     private val scheduler: Scheduler,

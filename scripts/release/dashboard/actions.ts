@@ -4,13 +4,17 @@ export type ActionId =
   | 'watch'
   | 'promote-open'
   | 'promote-production'
-  | 'advance'
-  | 'halt'
-  | 'resume'
   | 'status'
   | 'build'
   | 'prepare'
   | 'refresh'
+  | 'more'
+  | 'technical'
+  | 'exit'
+  | 'choose-open'
+  | 'choose-production'
+  | 'continue-prepared'
+  | 'resume-draft'
 
 export interface DashboardAction {
   id: ActionId
@@ -18,51 +22,75 @@ export interface DashboardAction {
 }
 
 /**
- * Only operations valid in the current recorded state, ordered by how far along the pipeline they
- * are — the next thing to do sits at the top and is preselected.
+ * Only operations valid in the current recorded state. Preparing a version starts the pipeline and
+ * is by far the most used entry, so it leads; the rest follow pipeline order.
  */
 export function availableActions(state: ReleaseState): DashboardAction[] {
   const actions: DashboardAction[] = []
   const { activeRun, internal, open, production } = state
 
-  actions.push({
-    id: 'watch',
-    label: activeRun
-      ? `Watch running Internal release #${activeRun.run_number ?? activeRun.id}`
-      : 'Watch / resume an Internal release',
-  })
-
-  if (state.pendingInternal > 0 && internal) {
+  if (activeRun) {
+    actions.push({ id: 'watch', label: 'Continue the running Internal release' })
+  } else if (state.failedRun) {
+    actions.push({ id: 'watch', label: 'Review and retry the failed Internal release' })
+  }
+  if (!activeRun && state.draft) {
+    actions.push({ id: 'resume-draft', label: `Resume draft ${state.draft.version}` })
+  }
+  if (!activeRun && state.preparedVersion && state.preparedVersion !== internal?.marketingVersion) {
+    actions.push({
+      id: 'continue-prepared',
+      label: `Build ${state.preparedVersion} for Internal`,
+    })
+  }
+  if (
+    internal &&
+    internal.runId === state.promotableInternalRunId &&
+    internal.runId !== open?.sourceRunId
+  ) {
     actions.push({
       id: 'promote-open',
-      label: `Promote ${internal.marketingVersion} → Open testing`,
+      label: `Send ${internal.marketingVersion} to Open testing`,
     })
   }
 
-  if (state.pendingOpen > 0 && open) {
+  if (
+    open &&
+    open.runId === state.productionEligibleOpenRunId &&
+    open.runId !== production?.sourceRunId
+  ) {
     actions.push({
       id: 'promote-production',
-      label: `Promote ${open.marketingVersion} → Production`,
+      label: `Publish ${open.marketingVersion} to production`,
     })
   }
+  actions.push({ id: 'prepare', label: 'Prepare a new release' })
+  actions.push({ id: 'more', label: 'More options' })
+  actions.push({ id: 'exit', label: 'Exit' })
 
-  if (production) {
-    const rollout = production.rolloutPercentage
-    if (production.halted) {
-      actions.push({ id: 'resume', label: `Resume halted ${production.marketingVersion} rollout` })
-    } else if (rollout !== null && rollout < 100) {
-      actions.push({
-        id: 'advance',
-        label: `Advance ${production.marketingVersion} rollout (${rollout}% → …)`,
-      })
-      actions.push({ id: 'halt', label: `Halt ${production.marketingVersion} rollout` })
-    }
-    actions.push({ id: 'status', label: 'Refresh live Play rollout status' })
-  }
+  return actions
+}
 
-  actions.push({ id: 'build', label: 'Build and send to Internal' })
-  actions.push({ id: 'prepare', label: 'Prepare a new release version' })
-  actions.push({ id: 'refresh', label: 'Reload dashboard' })
+/**
+ * Preselection is separate from ordering: preparing leads the list, but a running release is the
+ * thing you opened the dashboard for, so Enter still watches it.
+ */
+export function defaultActionIndex(
+  _actions: readonly DashboardAction[],
+  _state: ReleaseState,
+): number {
+  return 0
+}
 
+export function moreActions(state: ReleaseState): DashboardAction[] {
+  const actions: DashboardAction[] = []
+  if (!state.activeRun && !state.failedRun)
+    actions.push({ id: 'watch', label: 'Choose a previous Internal run' })
+  actions.push({ id: 'build', label: 'Build a specific git ref' })
+  actions.push({ id: 'choose-open', label: 'Choose an Internal build for Open testing' })
+  actions.push({ id: 'choose-production', label: 'Choose an Open build for production' })
+  if (state.production) actions.push({ id: 'status', label: 'Refresh live Play status' })
+  actions.push({ id: 'technical', label: 'Technical details' })
+  actions.push({ id: 'refresh', label: 'Reload release status' })
   return actions
 }

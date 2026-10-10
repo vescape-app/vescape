@@ -1,4 +1,5 @@
-import { useState } from 'react'
+import { useFormat } from '@/hooks/useFormat'
+import { useRef, useState } from 'react'
 import { StyleSheet, TouchableOpacity, View } from 'react-native'
 import {
   ChatTextIcon,
@@ -14,11 +15,11 @@ import { Button } from '@/components/base/Button'
 import { Text } from '@/components/base/Text'
 import { ConfirmModal } from '@/components/modals/ConfirmModal'
 import { theme } from '@/constants/theme'
-import { type DerivedBatteryConfig } from '@/modules/battery/lib/types'
-import { AlertFormModal } from '@/modules/alerts/components/AlertFormModal'
-import { type DraftAlertRule } from '@/modules/alerts/lib/customAlertRules'
-import { type MetricAlertsController } from '@/modules/alerts/hooks/useMetricAlerts'
-import { type AlertRuleDraft } from '@/modules/alerts/store/alertsStore'
+import type { DerivedBatteryConfig } from '@/modules/battery/lib/types'
+import { AlertFormSheet } from '@/modules/alerts/components/AlertFormSheet'
+import type { DraftAlertRule } from '@/modules/alerts/lib/customAlertRules'
+import type { MetricAlertsController } from '@/modules/alerts/hooks/useMetricAlerts'
+import type { AlertRuleDraft } from '@/modules/alerts/store/alertsStore'
 
 /**
  * The rider's own Alert Rules for one control: rows with mute + delete, and the add/edit form.
@@ -38,15 +39,16 @@ export function AlertRuleList({
   const [formVisible, setFormVisible] = useState(false)
   const [editRule, setEditRule] = useState<DraftAlertRule | null>(null)
   const [deleteTarget, setDeleteTarget] = useState<DraftAlertRule | null>(null)
+  const addButtonRef = useRef<View>(null)
 
   const closeForm = () => {
     setFormVisible(false)
     setEditRule(null)
   }
 
-  const handleSave = (draft: AlertRuleDraft) => {
-    if (editRule) controller.updateRule(editRule.id, draft)
-    else controller.addRule(draft)
+  const handleSave = async (draft: AlertRuleDraft) => {
+    if (editRule) await controller.updateRule(editRule.id, draft)
+    else await controller.addRule(draft)
     closeForm()
   }
 
@@ -62,7 +64,10 @@ export function AlertRuleList({
             setEditRule(rule)
             setFormVisible(true)
           }}
-          onToggle={() => controller.toggleRule(rule.id)}
+          onToggle={() => {
+            // intentional-suppression: Alerts store error is rendered by the active form or list
+            void controller.toggleRule(rule.id).catch(() => undefined) // Store error renders below.
+          }}
           onDelete={() => setDeleteTarget(rule)}
         />
       ))}
@@ -73,7 +78,9 @@ export function AlertRuleList({
         </Text>
       ) : null}
 
-      <View style={styles.addButtonRow}>
+      {controller.error ? <Text style={styles.errorText}>{controller.error}</Text> : null}
+
+      <View style={styles.addButtonRow} ref={addButtonRef} collapsable={false}>
         <Button
           label="Add alert"
           icon={PlusIcon}
@@ -86,12 +93,14 @@ export function AlertRuleList({
         />
       </View>
 
-      <AlertFormModal
+      <AlertFormSheet
         visible={formVisible}
+        triggerRef={addButtonRef}
         controlId={controller.controlId}
         unit={unit}
         editRule={editRule}
         batteryConfig={batteryConfig}
+        error={controller.error}
         onClose={closeForm}
         onSave={handleSave}
       />
@@ -102,8 +111,8 @@ export function AlertRuleList({
         message="Remove this alert? This cannot be undone."
         confirmLabel="Delete"
         destructive
-        onConfirm={() => {
-          if (deleteTarget) controller.removeRule(deleteTarget.id)
+        onConfirm={async () => {
+          if (deleteTarget) await controller.removeRule(deleteTarget.id)
           setDeleteTarget(null)
         }}
         onCancel={() => setDeleteTarget(null)}
@@ -127,6 +136,11 @@ function AlertRuleRow({
   onToggle: () => void
   onDelete: () => void
 }) {
+  const { formatSpeedWithUnit } = useFormat()
+  const format = (value: number) =>
+    rule.controlId === 'speed'
+      ? formatSpeedWithUnit(value, 1)
+      : formatAlertValue(value, batteryConfig, unit)
   const isGeiger = rule.thresholdMax != null
   const isTts = rule.soundType.startsWith('tts:')
   const TypeIcon = isGeiger ? RadioactiveIcon : isTts ? ChatTextIcon : WaveformIcon
@@ -142,7 +156,7 @@ function AlertRuleRow({
       <View style={styles.ruleTypeIcon}>
         <TypeIcon
           size={18}
-          color={rule.enabled ? theme.palette.yellow.color : theme.palette.slate.textDim}
+          color={rule.enabled ? theme.palette.orange.color : theme.neutral.textDim}
           weight="duotone"
         />
       </View>
@@ -150,8 +164,8 @@ function AlertRuleRow({
       <View style={styles.ruleContent}>
         <Text style={[styles.ruleThreshold, !rule.enabled && styles.ruleTextDisabled]}>
           {isGeiger
-            ? `${formatAlertValue(rule.threshold, batteryConfig, unit)} – ${formatAlertValue(rule.thresholdMax!, batteryConfig, unit)}`
-            : formatAlertValue(rule.threshold, batteryConfig, unit)}
+            ? `${format(rule.threshold)} – ${format(rule.thresholdMax!)}`
+            : format(rule.threshold)}
         </Text>
         {isTts && (
           <Text
@@ -177,9 +191,9 @@ function AlertRuleRow({
         style={styles.ruleAction}
       >
         {rule.enabled ? (
-          <SpeakerHighIcon size={16} color={theme.palette.yellow.color} />
+          <SpeakerHighIcon size={16} color={theme.palette.orange.color} />
         ) : (
-          <SpeakerSlashIcon size={16} color={theme.palette.slate.textDim} />
+          <SpeakerSlashIcon size={16} color={theme.neutral.textDim} />
         )}
       </TouchableOpacity>
 
@@ -215,30 +229,30 @@ const styles = StyleSheet.create({
     borderRadius: 8,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: theme.palette.slate.surface,
+    backgroundColor: theme.neutral.surface,
   },
   ruleContent: {
     flex: 1,
   },
   ruleThreshold: {
-    color: theme.palette.slate.textPrimary,
+    color: theme.neutral.textPrimary,
     fontSize: 14,
     fontWeight: '500',
   },
   ruleTtsTemplate: {
-    color: theme.palette.slate.textMuted,
+    color: theme.neutral.textMuted,
     fontSize: 12,
     fontWeight: '500',
     marginTop: 1,
   },
   ruleDetail: {
-    color: theme.palette.slate.textDim,
+    color: theme.neutral.textDim,
     fontSize: 11,
     fontWeight: '500',
     marginTop: 1,
   },
   ruleTextDisabled: {
-    color: theme.palette.slate.textDim,
+    color: theme.neutral.textDim,
   },
   ruleAction: {
     padding: 6,
@@ -248,7 +262,12 @@ const styles = StyleSheet.create({
     marginTop: 2,
   },
   emptyHintText: {
-    color: theme.palette.slate.textMuted,
+    color: theme.neutral.textMuted,
+    fontSize: 12,
+    fontWeight: '500',
+  },
+  errorText: {
+    color: theme.status.error.color,
     fontSize: 12,
     fontWeight: '500',
   },

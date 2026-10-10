@@ -7,8 +7,28 @@ import expo.modules.vescapecore.protocol.buildBoardMoveCommand
 import expo.modules.vescapecore.runtime.Cancellable
 import expo.modules.vescapecore.runtime.Scheduler
 
-/** Both Refloat generations lapse a move request within ~1s of silence. */
-private const val BOARD_MOVE_REPEAT_MS = 100L
+/**
+ * Refresh interval for the 1.3+ `REMOTE` input byte, which firmware lapses after
+ * ~1s of silence. The packet only carries a value, so re-sending it often is
+ * free.
+ */
+private const val BOARD_MOVE_REMOTE_REPEAT_MS = 100L
+
+/**
+ * Refresh interval for the 1.0–1.2 `RC_MOVE` command. That packet is a
+ * *duration* request carrying `RC_MOVE_TIME_STEPS` (~1s of run time), and
+ * firmware zeroes its move current and ramps it back to the target on every
+ * request. So both extremes stutter: repeating on the 1.3+ cadence restarts the
+ * ramp ten times a second, and repeating slower than the request's own life
+ * leaves silent gaps. Re-send inside that life, rarely enough that the ramp
+ * restart stays a dip rather than the signal.
+ */
+private const val BOARD_MOVE_RC_MOVE_REPEAT_MS = 700L
+
+private fun boardMoveRepeatMs(generation: BoardMoveGeneration): Long = when (generation) {
+    BoardMoveGeneration.Remote -> BOARD_MOVE_REMOTE_REPEAT_MS
+    BoardMoveGeneration.RcMove -> BOARD_MOVE_RC_MOVE_REPEAT_MS
+}
 
 /**
  * Streams Refloat's Board Move input: motor output while the board is
@@ -16,10 +36,11 @@ private const val BOARD_MOVE_REPEAT_MS = 100L
  * never writes config.
  *
  * The rider holds a direction button and the board keeps moving until release,
- * so the held input is repeated on a fixed [BOARD_MOVE_REPEAT_MS] tick (both
- * firmware generations drop the request after ~1s of silence). Releasing sends
- * an urgent neutral so the board stops immediately instead of coasting to the
- * firmware timeout.
+ * so the held input is repeated on a tick chosen per generation (both firmware
+ * generations drop the request after ~1s of silence, but only the 1.3+ packet
+ * tolerates a fast refresh — see [boardMoveRepeatMs]). Releasing sends an urgent
+ * neutral so the board stops immediately instead of coasting to the firmware
+ * timeout.
  *
  * Firmware owns the safety envelope: 1.0–1.2 `cmd_rc_move` and 1.3+
  * `remote_command_input` both apply output only from the ready (disengaged)
@@ -67,8 +88,9 @@ internal class BoardMoveController(
         this.input = clamped
         if (alreadyStreaming) return true
 
-        val sent = send(buildBoardMoveCommand(transport, generation(), clamped), false)
-        scheduleRepeat()
+        val generation = generation()
+        val sent = send(buildBoardMoveCommand(transport, generation, clamped), false)
+        scheduleRepeat(generation)
         return sent
     }
 
@@ -79,8 +101,8 @@ internal class BoardMoveController(
         return wasMoving
     }
 
-    private fun scheduleRepeat() {
-        repeat = scheduler.postDelayed(BOARD_MOVE_REPEAT_MS) {
+    private fun scheduleRepeat(generation: BoardMoveGeneration) {
+        repeat = scheduler.postDelayed(boardMoveRepeatMs(generation)) {
             val input = input
             val transport = transport()
             if (input == null || transport == null) {
@@ -91,8 +113,9 @@ internal class BoardMoveController(
                 stop()
                 return@postDelayed
             }
-            send(buildBoardMoveCommand(transport, generation(), input), false)
-            scheduleRepeat()
+            val generation = generation()
+            send(buildBoardMoveCommand(transport, generation, input), false)
+            scheduleRepeat(generation)
         }
     }
 

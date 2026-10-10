@@ -8,6 +8,8 @@ interface HistoryRideLabelProps {
   subtitle: string
   details?: string
   compact?: boolean
+  tone?: 'default' | 'control'
+  fill?: boolean
 }
 
 /** Shared ride identity hierarchy for the history selector and its session list. */
@@ -16,13 +18,31 @@ export function HistoryRideLabel({
   subtitle,
   details,
   compact = false,
+  tone = 'default',
+  fill = true,
 }: HistoryRideLabelProps) {
   return (
-    <View style={[styles.content, compact && styles.contentCompact]}>
-      <Text style={[styles.title, compact && styles.titleCompact]} numberOfLines={1}>
+    <View
+      style={[styles.content, !fill && styles.contentIntrinsic, compact && styles.contentCompact]}
+    >
+      <Text
+        style={[
+          styles.title,
+          compact && styles.titleCompact,
+          tone === 'control' && styles.titleControl,
+        ]}
+        numberOfLines={1}
+      >
         {title}
       </Text>
-      <Text style={[styles.subtitle, compact && styles.subtitleCompact]} numberOfLines={1}>
+      <Text
+        style={[
+          styles.subtitle,
+          compact && styles.subtitleCompact,
+          tone === 'control' && styles.subtitleControl,
+        ]}
+        numberOfLines={1}
+      >
         {subtitle}
       </Text>
       {details ? (
@@ -43,8 +63,11 @@ const styles = StyleSheet.create({
   contentCompact: {
     gap: 1,
   },
+  contentIntrinsic: {
+    flex: 0,
+  },
   title: {
-    color: theme.palette.slate.textPrimary,
+    color: theme.neutral.textPrimary,
     fontSize: 15,
     fontWeight: '700',
   },
@@ -52,18 +75,24 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: '800',
   },
+  titleControl: {
+    color: theme.control.text,
+  },
   subtitle: {
-    color: theme.palette.slate.textSecondary,
+    color: theme.neutral.textSecondary,
     fontSize: 12,
     fontWeight: '500',
   },
   subtitleCompact: {
-    color: theme.palette.slate.textMuted,
+    color: theme.neutral.textMuted,
     fontSize: 9,
     fontWeight: '600',
   },
+  subtitleControl: {
+    color: theme.control.textMuted,
+  },
   details: {
-    color: theme.palette.slate.textMuted,
+    color: theme.neutral.textMuted,
     fontSize: 11,
     fontWeight: '500',
   },

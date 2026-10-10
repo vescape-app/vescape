@@ -3,11 +3,10 @@ import { describe, expect, test } from 'bun:test'
 import { getHistoryPreviewRoute } from '@/modules/history/lib/previewRoute'
 
 describe('history preview route', () => {
-  test('uses available minute-bucket coordinates for approximate camera framing', () => {
+  test('frames the camera on the Ride Track fixes already loaded', () => {
     expect(
       getHistoryPreviewRoute([
         { longitude: 19, latitude: 50 },
-        { longitude: null, latitude: null },
         { longitude: 19.2, latitude: 50.2 },
       ]),
     ).toEqual([

@@ -1,7 +1,7 @@
 package expo.modules.vescapecore.connection
 
-import expo.modules.vescapecore.protocol.toCapture
-
+import expo.modules.vescapecore.accessory.AccessorySessionManager
+import expo.modules.vescapecore.accessory.BoardGroundClearanceBinding
 import expo.modules.vescapecore.service.foregroundServiceType
 import expo.modules.vescapecore.service.ACTION_CONNECT_FROM_NOTIFICATION
 import expo.modules.vescapecore.service.ACTION_DISCONNECT_FROM_NOTIFICATION
@@ -10,9 +10,12 @@ import expo.modules.vescapecore.alerts.AlertCoordinator
 import expo.modules.vescapecore.alerts.AlertFeedback
 import expo.modules.vescapecore.alerts.withLegalModeOverlay
 import expo.modules.vescapecore.location.LegalPolicyCatalog
+import expo.modules.vescapecore.recording.RecordingStorageFailure
 import expo.modules.vescapecore.telemetry.BmsSeriesFrame
 import expo.modules.vescapecore.telemetry.BmsSeriesRing
 import expo.modules.vescapecore.protocol.BmsTelemetry
+import expo.modules.vescapecore.protocol.BoardLightsGeneration
+import expo.modules.vescapecore.protocol.BoardLightsState
 import expo.modules.vescapecore.protocol.BoardMoveGeneration
 import expo.modules.vescapecore.service.BoardProbeAutoStartGate
 import expo.modules.vescapecore.protocol.COMM_BMS_GET_VALUES
@@ -21,21 +24,36 @@ import expo.modules.vescapecore.protocol.COMM_FORWARD_CAN
 import expo.modules.vescapecore.protocol.COMM_FW_VERSION
 import expo.modules.vescapecore.protocol.COMM_GET_CUSTOM_CONFIG
 import expo.modules.vescapecore.protocol.COMM_GET_CUSTOM_CONFIG_XML
+import expo.modules.vescapecore.protocol.COMM_GET_MCCONF
+import expo.modules.vescapecore.protocol.COMM_PRINT
 import expo.modules.vescapecore.protocol.COMM_SET_CUSTOM_CONFIG
+import expo.modules.vescapecore.protocol.buildFaultsTerminalCommand
+import expo.modules.vescapecore.protocol.buildLightsControlCommand
 import expo.modules.vescapecore.service.CompanionRestartGate
 import expo.modules.vescapecore.config.ConfigConnectionSnapshot
 import expo.modules.vescapecore.config.ConfigRWController
 import expo.modules.vescapecore.config.ConfigRWControllerPort
+import expo.modules.vescapecore.config.BoardConfigFlagField
+import expo.modules.vescapecore.config.BoardConfigOperationOrigin
 import expo.modules.vescapecore.service.CoreForegroundService
 import expo.modules.vescapecore.diagnostics.DiagnosticReporter
+import expo.modules.vescapecore.location.GpsDemand
 import expo.modules.vescapecore.location.GpsMonitor
+import expo.modules.vescapecore.location.GpsPowerMode
+import expo.modules.vescapecore.location.RIDE_DROPOUT_GRACE_MS
+import expo.modules.vescapecore.location.isPreciseGpsFix
 import expo.modules.vescapecore.GroupRideObserver
 import expo.modules.vescapecore.appstatus.AppStatusCoordinator
 import expo.modules.vescapecore.telemetry.LiveSeriesEmitter
+import expo.modules.vescapecore.telemetry.ProcessedTelemetry
 import expo.modules.vescapecore.protocol.LocationSnapshot
+import expo.modules.vescapecore.protocol.toCapture
 import expo.modules.vescapecore.location.LocationTracker
 import expo.modules.vescapecore.service.ManualDisconnectAutoStartGate
 import expo.modules.vescapecore.notification.NotificationController
+import expo.modules.vescapecore.config.McconfDecodeResult
+import expo.modules.vescapecore.config.MotorConfigValues
+import expo.modules.vescapecore.config.McconfDecoder
 import expo.modules.vescapecore.config.PendingConfigRead
 import expo.modules.vescapecore.service.PendingStart
 import expo.modules.vescapecore.protocol.REFLOAT_GET_INFO
@@ -46,6 +64,8 @@ import expo.modules.vescapecore.config.RefloatConfigProtocolResult
 import expo.modules.vescapecore.config.RefloatConfigSchemaParser
 import expo.modules.vescapecore.protocol.RefloatTelemetry
 import expo.modules.vescapecore.BoardMoveController
+import expo.modules.vescapecore.RemoteInputArbiter
+import expo.modules.vescapecore.RemoteInputOwner
 import expo.modules.vescapecore.RemoteTiltController
 import expo.modules.vescapecore.RiderPresence
 import expo.modules.vescapecore.service.SessionConfig
@@ -56,23 +76,23 @@ import expo.modules.vescapecore.protocol.SessionTransport
 import expo.modules.vescapecore.protocol.VescGattClient
 import expo.modules.vescapecore.protocol.VescGattListener
 import expo.modules.vescapecore.replay.ReplayLocation
-import expo.modules.vescapecore.replay.ReplayHeading
 import expo.modules.vescapecore.replay.ReplayClock
 import expo.modules.vescapecore.replay.ReplayTransport
 import expo.modules.vescapecore.VescLiveStateSnapshot
 import expo.modules.vescapecore.protocol.VescPacketReassembler
 import expo.modules.vescapecore.navigation.NavigationController
 import expo.modules.vescapecore.watch.GeoPoint
-import expo.modules.vescapecore.watch.WatchMirrorLauncher
-import expo.modules.vescapecore.watch.WatchMirrorPresence
+import expo.modules.vescapecore.watch.WatchBoard
+import expo.modules.vescapecore.watch.androidWatchMirror
+import expo.modules.vescapecore.watch.WatchLightsRelay
+import expo.modules.vescapecore.watch.WatchLightsSwitch
+import expo.modules.vescapecore.watch.GroupRideFrame
+import expo.modules.vescapecore.watch.GroupRideFrameBuilder
+import expo.modules.vescapecore.watch.WatchMirrorWakeLevel
 import expo.modules.vescapecore.watch.WatchMoveRelay
 import expo.modules.vescapecore.watch.WatchRouteMirror
-import expo.modules.vescapecore.watch.WatchSettingsPusher
 import expo.modules.vescapecore.watch.WatchSnapshot
-import expo.modules.vescapecore.watch.WatchTelemetryPusher
-import expo.modules.vescapecore.watch.WatchTick
-import expo.modules.vescapecore.watch.WatchWeatherPusher
-import expo.modules.vescapecore.watch.toWatchWeather
+import expo.modules.vescapecore.watch.WatchTiltControl
 import expo.modules.vescapecore.weather.Weather
 import expo.modules.vescapecore.weather.WeatherCoordinator
 import expo.modules.vescapecore.watch.offsetMeters
@@ -82,22 +102,29 @@ import expo.modules.vescapecore.telemetry.encodeBmsSeriesColumns
 import expo.modules.vescapecore.service.foregroundServiceTypeForConnectedDevicePromotion
 import expo.modules.vescapecore.protocol.parseBmsValues
 import expo.modules.vescapecore.protocol.parseFwVersion
+import expo.modules.vescapecore.protocol.parseLightsControlResponse
 import expo.modules.vescapecore.protocol.parseRefloatGetAllData
 import expo.modules.vescapecore.remoteTiltWire
 import expo.modules.vescapecore.warnings.BatteryConfigMismatchDetector
 import expo.modules.vescapecore.warnings.BoardWarningKind
+import expo.modules.vescapecore.faults.VescFaultCaptureCoordinator
+import expo.modules.vescapecore.faults.VescFaultCoordinator
+import expo.modules.vescapecore.faults.VescFaultLogReader
 import expo.modules.vescapecore.warnings.BoardWarningRegistry
 import expo.modules.vescapecore.warnings.BoardWarningSeverity
 import expo.modules.vescapecore.warnings.BoardWarningStore
 import expo.modules.vescapecore.warnings.CellSpreadDetector
+import expo.modules.vescapecore.config.BoardConfigFreshness
+import expo.modules.vescapecore.config.BoardConfigValues
 import expo.modules.vescapecore.warnings.ConfigSafetyDetector
-import expo.modules.vescapecore.warnings.ConfigSafetyValues
+import android.Manifest
 import android.annotation.SuppressLint
 import android.app.ActivityManager
 import android.app.Service
 import android.bluetooth.BluetoothAdapter
 import android.bluetooth.BluetoothManager
 import android.content.Context
+import android.content.pm.PackageManager
 import android.location.Location
 import android.location.LocationManager
 import android.os.BatteryManager
@@ -106,6 +133,7 @@ import android.os.Handler
 import android.os.Looper
 import android.os.SystemClock
 import android.util.Log
+import androidx.core.content.ContextCompat
 import java.io.File
 import kotlin.math.roundToInt
 import kotlinx.coroutines.CoroutineExceptionHandler
@@ -133,7 +161,6 @@ import expo.modules.vescapecore.runtime.postDelayedForSession
 import expo.modules.vescapecore.telemetry.AppDataRepository
 import expo.modules.vescapecore.telemetry.AppSettings
 import expo.modules.vescapecore.telemetry.BatterySocEstimator
-import expo.modules.vescapecore.telemetry.DEFAULT_MOVING_SPEED_THRESHOLD_CENTI_KMH
 import expo.modules.vescapecore.telemetry.IDLE_PAUSE_POLL_INTERVAL_MS
 import expo.modules.vescapecore.telemetry.IdlePauseDetector
 import expo.modules.vescapecore.telemetry.IdlePauseTransition
@@ -141,6 +168,7 @@ import expo.modules.vescapecore.telemetry.METRIC_MAX_DUTY
 import expo.modules.vescapecore.telemetry.PrivacyZoneEntity
 import expo.modules.vescapecore.telemetry.SocMedianWindow
 import expo.modules.vescapecore.telemetry.TelemetryCapture
+import expo.modules.vescapecore.telemetry.isRefloatEngaged
 import expo.modules.vescapecore.telemetry.TelemetryPipeline
 import expo.modules.vescapecore.telemetry.TelemetryRepository
 import expo.modules.vescapecore.telemetry.isInsideAnyPrivacyZone
@@ -151,10 +179,15 @@ private const val NOTIFICATION_ID = 1001
 private const val HISTORY_FLUSH_INTERVAL_MS = 300L
 private const val LIVE_SERIES_INTERVAL_MS = 1_000L
 private const val LIVE_SERIES_BUCKETS = 64
-private const val WATCH_FRAME_INTERVAL_MS = 250L
 private const val NOTIFICATION_TELEMETRY_INTERVAL_MS = 10_000L
+/** Sentinel active fault code meaning "state not yet established this Board Session". */
+private const val FAULT_CODE_UNKNOWN = -1
+
+/** How often a continuously active fault refreshes its occurrence's last-observed time. */
+private const val FAULT_OBSERVATION_INTERVAL_MS = 1_000L
+private const val MANUAL_FAULT_LOG_MAX_SPEED_KMH = 1.0
+
 private const val GATT_CONNECT_TIMEOUT_MS = 6_000L
-private const val GATT_READY_TIMEOUT_MS = 6_000L
 
 /** @parity /modules/vescape-core/ios/connection/BoardSessionController.swift `legalModeEnableError` */
 internal fun legalModeEnableError(
@@ -172,6 +205,23 @@ internal fun legalModeEnableError(
     return null
 }
 
+internal data class GroupRideTargetReload(val target: TargetPoint?, val loaded: Boolean)
+
+internal suspend fun reloadGroupRideTarget(
+    current: TargetPoint?,
+    read: suspend () -> TargetPoint?,
+    report: (Throwable) -> Unit = {
+        RecordingStorageFailure.reportRead("group_ride_target_read", it)
+    },
+): GroupRideTargetReload = try {
+    GroupRideTargetReload(read(), loaded = true)
+} catch (error: kotlinx.coroutines.CancellationException) {
+    throw error
+} catch (error: Throwable) {
+    report(error)
+    GroupRideTargetReload(current, loaded = false)
+}
+
 /**
  * Owns the durable board-session state and orchestration. [CoreForegroundService] is a thin Android
  * shell delegating lifecycle + the static JS bridge here. Holds a [service] reference solely for the
@@ -187,16 +237,15 @@ internal class BoardSessionController(private val service: CoreForegroundService
         isCurrentSession = ::isCurrentBoardSession,
         sendPayloadWithRetry = { payload, session -> sendPayloadWithRetry(payload, session) },
     )
-    // Idle Pause (ADR-0021): while recording a stationary board, throttle polling to ~1 Hz and stop
-    // persisting samples. configuredPollIntervalMs / movingThresholdCentiKmh are cached from settings
-    // so the hot path can flip pacing without re-reading settings.
+    // Idle Pause (ADR-0021): while recording a disengaged board, throttle polling to ~1 Hz and stop
+    // persisting samples. Cache the configured interval to restore it when the board engages.
     private val idlePauseDetector = IdlePauseDetector()
     private var configuredPollIntervalMs: Long = 0L
-    private var movingThresholdCentiKmh: Int = DEFAULT_MOVING_SPEED_THRESHOLD_CENTI_KMH
     private val connectionCoordinator = ConnectionCoordinator(
         scheduler = scheduler,
         isCurrentSession = ::isCurrentBoardSession,
     )
+    private val gattHandshakeDeadline = GattHandshakeDeadline()
     private val remoteTiltController = RemoteTiltController(
         scheduler = scheduler,
         transport = {
@@ -212,6 +261,24 @@ internal class BoardSessionController(private val service: CoreForegroundService
         canMove = ::firmwareCommandsTrusted,
         generation = { BoardMoveGeneration.forBaseVersion(boardConfig?.refloatBaseVersion) },
         send = { payload, urgent -> transport.sendRemoteInput(payload, urgent) },
+    )
+
+    /**
+     * The single writer of the Board's remote-input slot: the rider's pad, Board Move, and a
+     * ground-clearance Accessory all reach the two controllers above only through this.
+     *
+     * @parity /modules/vescape-core/ios/connection/BoardSessionController.swift `remoteInput`
+     */
+    private val remoteInput = RemoteInputArbiter(
+        tilt = remoteTiltController,
+        move = boardMoveController,
+        nowMs = { SystemClock.elapsedRealtime() },
+        sensorBound = AccessorySessionManager::groundClearanceBound,
+    )
+    private val groundClearanceBinding = BoardGroundClearanceBinding(
+        remoteInput,
+        AccessorySessionManager::groundClearanceBound,
+        AccessorySessionManager::groundClearanceTilt,
     )
     private val notificationController by lazy {
         NotificationController(
@@ -278,7 +345,15 @@ internal class BoardSessionController(private val service: CoreForegroundService
         RecordingCoordinator(
             context = service.applicationContext,
             applyLiveSettings = ::applyTelemetryPipelineSettings,
+            onRecordingFailure = ::onRecordingPersistenceFailure,
         )
+    }
+
+    private fun onRecordingPersistenceFailure() {
+        scheduler.post {
+            recordingCoordinator.handleStorageFailure()
+            emitState()
+        }
     }
     private val liveSeriesEmitter by lazy {
         LiveSeriesEmitter(
@@ -294,22 +369,15 @@ internal class BoardSessionController(private val service: CoreForegroundService
             speed = { sessionClock.speed },
         )
     }
-    private val watchPusher by lazy {
-        WatchTelemetryPusher(service.applicationContext, CoreForegroundService.appDataScope, ::recordWatchDiagnostic)
-    }
-    private val watchSettingsPusher by lazy {
-        WatchSettingsPusher(service.applicationContext, CoreForegroundService.appDataScope, ::recordWatchDiagnostic)
-    }
-    private val watchWeatherPusher by lazy {
-        WatchWeatherPusher(service.applicationContext, CoreForegroundService.appDataScope, ::recordWatchDiagnostic)
+    private val watchMirror by lazy {
+        androidWatchMirror(
+            service.applicationContext, CoreForegroundService.appDataScope, scheduler,
+            ::watchSnapshot, { telemetry != null && isTelemetryStale() }, ::groupRideFrame, ::recordWatchDiagnostic,
+            ::refreshGpsDemand,
+        )
     }
     private val weatherCoordinator = WeatherCoordinator.get()
-
-    /** Removes this controller's weather subscription; a restarted service must not stack them. */
     private var weatherUnsubscribe: (() -> Unit)? = null
-    private val watchMirrorPresence by lazy {
-        WatchMirrorPresence(service.applicationContext, CoreForegroundService.appDataScope, ::recordWatchDiagnostic)
-    }
     private val watchMoveRelay by lazy {
         WatchMoveRelay(
             scheduler = scheduler,
@@ -319,17 +387,12 @@ internal class BoardSessionController(private val service: CoreForegroundService
             record = ::recordWatchDiagnostic,
         )
     }
-    private val watchMirrorLauncher by lazy {
-        WatchMirrorLauncher(service.applicationContext, CoreForegroundService.appDataScope, ::recordWatchDiagnostic)
-    }
-    private val watchTick by lazy {
-        WatchTick(
+    private val watchLightsRelay by lazy {
+        WatchLightsRelay(
             scheduler = scheduler,
-            snapshot = ::watchSnapshot,
-            isStale = { telemetry != null && isTelemetryStale() },
-            canPush = { watchMirrorPresence.present },
-            push = watchPusher::pushFrame,
-            intervalMs = WATCH_FRAME_INTERVAL_MS,
+            currentLights = { boardLights },
+            setLights = ::setBoardLights,
+            record = ::recordWatchDiagnostic,
         )
     }
     private val locationTracker by lazy {
@@ -354,6 +417,7 @@ internal class BoardSessionController(private val service: CoreForegroundService
                         currentBoardTransport(),
                         fwVersionString,
                         boardSession?.linkIntegrity ?: LinkIntegrity.Unknown,
+                        boardConfigValues,
                     )
                 override fun isPollingActive() = pollingLoop.isActive
                 override fun stopPolling() = this@BoardSessionController.stopPolling()
@@ -365,8 +429,8 @@ internal class BoardSessionController(private val service: CoreForegroundService
                     this@BoardSessionController.diagnosticProperties(config, category)
                 override fun dumpDebugBytes(xmlBytes: ByteArray, configBytes: ByteArray) =
                     this@BoardSessionController.dumpRefloatConfigDebug(xmlBytes, configBytes)
-                override fun evaluateConfigSafety(values: ConfigSafetyValues) =
-                    this@BoardSessionController.evaluateConfigSafety(values)
+                override fun onBoardConfigValues(values: BoardConfigValues, origin: BoardConfigOperationOrigin) =
+                    this@BoardSessionController.onBoardConfigValues(values, origin)
             },
         )
     }
@@ -375,13 +439,19 @@ internal class BoardSessionController(private val service: CoreForegroundService
             context = service,
             looper = Looper.getMainLooper(),
             onLocation = ::onLocationUpdated,
+            record = ::captureDiagnostic,
         )
     }
+    /** @parity /modules/vescape-core/ios/connection/BoardSessionController.swift `groupRideObserver` */
     private val groupRideObserver by lazy {
         GroupRideObserver(
             handler = mainHandler,
             emit = ::emitEvent,
             online = AppStatusCoordinator.get(service.applicationContext),
+            // Participation is a GPS demand input, and most of the ways it ends are not
+            // rider-initiated. Reporting from inside the observer also lands after its `handler.post`
+            // has actually mutated the state, which a caller refreshing inline cannot.
+            onParticipationChanged = ::refreshGpsDemand,
         )
     }
 
@@ -390,8 +460,7 @@ internal class BoardSessionController(private val service: CoreForegroundService
      * when observing starts and on zone CRUD; reuses the same geometry as Ride Recording
      * suppression (ADR-0009 / ADR-0020). Touched off the main thread, so kept @Volatile.
      */
-    @Volatile
-    private var groupRidePrivacyZones: List<PrivacyZoneEntity> = emptyList()
+    private val groupRidePrivacy = PrivacyZoneReadState()
 
     /**
      * The Rider's shared map target (their direction Map Point), cached for presence egress.
@@ -418,14 +487,42 @@ internal class BoardSessionController(private val service: CoreForegroundService
     private val transport: SessionTransport get() = replayTransport ?: gattClient
 
     /**
-     * True while a replay has parked a GPS monitor that was already running when it started, so the
-     * live monitor can be re-armed when the replay ends. iOS needs no such flag: it stops the GPS
-     * monitor on every session end, replay or not.
+     * When the current Board Session last lost its link, or `null` while it is up. Feeds the ride
+     * dropout grace; cleared on every board-ready so a reconnect that succeeds restores a full ride.
      *
-     * @parity /modules/vescape-core/ios/connection/BoardSessionController.swift `beginSession`
-     * @platform-diff Android keeps GPS monitoring alive across sessions; iOS does not.
+     * @parity /modules/vescape-core/ios/connection/BoardSessionController.swift `linkLostAtMs`
      */
-    private var gpsSuppressedByReplay = false
+    private var linkLostAtMs: Long? = null
+
+    /**
+     * Fires once when the dropout grace expires. Demand is otherwise only recomputed on an event,
+     * and "enough time has passed" is the one input that produces none.
+     */
+    private var dropoutGraceHandle: Cancellable? = null
+
+    /**
+     * True only while [beginSession] is replacing one session with another. The teardown it runs
+     * first releases the outgoing session's GPS demand, and a host released there would take the
+     * incoming session down with it.
+     */
+    private var beginningSession = false
+
+    /**
+     * The rider has the app in front of them. Drives the `Map` half of GPS demand, so a backgrounded
+     * app with no ride in progress stops paying for fixes nobody is looking at.
+     *
+     * Distinct from [isAppVisible], which asks the OS what importance this process has right now —
+     * used by Auto Close, where a wrong answer closes the app under the rider. This one is the
+     * activity lifecycle's own answer, pushed in by the module.
+     *
+     * @parity /modules/vescape-core/ios/connection/BoardSessionController.swift `appVisible`
+     */
+    var appVisible: Boolean = false
+        set(value) {
+            if (field == value) return
+            field = value
+            refreshGpsDemand()
+        }
 
     private val reconnectBlePort = ReconnectBleScanner(
         scanner = { bluetoothAdapter.bluetoothLeScanner },
@@ -483,6 +580,23 @@ internal class BoardSessionController(private val service: CoreForegroundService
             transport.clear(markIntentional = false)
             bmsSeriesRing.clear()
             telemetryPipeline.clearLiveTelemetry()
+            // The Board Session survives the drop, but exclusive ownership of the config does not:
+            // while we were off the link another central could have written. The values stay
+            // displayable, they just stop backing a write until the post-trust read makes them fresh
+            // again (ADR 0035).
+            boardConfigValues = boardConfigValues?.demotedToProvisional()
+            // Lights stop being known across the drop: the board may reboot while off the link,
+            // which clears its runtime override and hands authority back to config. Keeping the old
+            // echo would leave the switch showing pre-reboot state that nothing ever corrects.
+            boardLights = null
+            publishBoardLights()
+            // Re-arm the post-trust read so the relinked session gets fresh values back.
+            boardConfigReadScheduled = false
+            // Same reasoning as the Refloat demote above: the disconnected window is where another
+            // tool could have rewritten the controller, so the values stay displayable but stop
+            // claiming to describe the live board.
+            motorConfigValues = motorConfigValues?.demotedToLastKnown()
+            motorConfigRequested = false
             boardError = reason
             transitionBoardPhase(
                 next = BoardPhase.Reconnecting,
@@ -582,6 +696,7 @@ internal class BoardSessionController(private val service: CoreForegroundService
         scheduler = scheduler,
         port = reconnectBlePort,
         listener = reconnectListener,
+        appForeground = { appVisible },
     )
 
     private var boardConfig: SessionConfig? = null
@@ -606,7 +721,7 @@ internal class BoardSessionController(private val service: CoreForegroundService
      * foreground service, and must not spam diagnostics per frame — so each site reports at most once
      * per session. Touched from the BMS hot path (main scheduler) and the app-data IO scope, so kept
      * thread-safe. Reset in [beginSession].
-     * @parity /modules/vescape-core/ios/warnings/BoardWarningStore.swift `BoardWarningFailureReporter`
+     * @parity /modules/vescape-core/ios/warnings/BoardWarningFailureReporter.swift `BoardWarningFailureReporter`
      */
     private val warningFailuresReported = java.util.Collections.synchronizedSet(HashSet<String>())
     /**
@@ -617,6 +732,10 @@ internal class BoardSessionController(private val service: CoreForegroundService
      */
     private val warningWriteExceptionHandler = CoroutineExceptionHandler { _, throwable ->
         reportWarningFailure("registry_write", throwable)
+    }
+    /** VESC Fault writes share the ordered persistence dispatcher but report as storage failures. */
+    private val faultWriteExceptionHandler = CoroutineExceptionHandler { _, throwable ->
+        RecordingStorageFailure.report("vesc_fault_write", "write_failed", throwable)
     }
     /** True while the battery-detail view is focused (JS intent); gates the `onBmsSeries` push only. */
     @Volatile
@@ -630,11 +749,24 @@ internal class BoardSessionController(private val service: CoreForegroundService
     private var latestDutyExcluded = false
     private var fwVersionString: String? = null
     private var boardReadyTimeoutHandle: Cancellable? = null
-    private var gpsError: String? = null
+    /**
+     * Lives in the monitor, not mirrored here: a refusal is decided inside `GpsMonitor.start()` and
+     * cleared by its `stop()`, so a stored copy would go stale the moment either runs.
+     *
+     * @parity /modules/vescape-core/ios/connection/BoardSessionController.swift `gpsError`
+     */
+    private val gpsError: String?
+        get() = gpsMonitor.error
+    private var gpsSessionStartedAt: Long? = null
+    private var gpsFixCount = 0
+    private var gpsPreciseFixCount = 0
+    private var gpsFirstFixAt: Long? = null
+    private var gpsFirstPreciseFixAt: Long? = null
+    private var gpsLastFixAt: Long? = null
     private var isStoppingService = false
     private var connectionSoundsEnabled = true
-private var wearAutoLaunchOnConnect = true
-    private var watchLaunchFiredSessionId = 0L
+    @Volatile
+    private var lastAppliedSettings = AppSettings()
     /**
      * Board Move strength the wrist inherits: the wrist sends a direction, the phone owns the scale.
      * Written from the settings load (`appDataScope`), read on the session scheduler by the relay.
@@ -669,8 +801,7 @@ private var wearAutoLaunchOnConnect = true
         refreshSelectedBoardName()
         // The wrist mirrors the phone, not the board session. Keep presence + frames alive while
         // this service owns GPS/navigation even when no board is selected or connected.
-        watchMirrorPresence.start()
-        watchTick.start()
+        watchMirror.start()
         weatherUnsubscribe = weatherCoordinator.addChangeListener(::onWeatherChanged)
         // The forecast survives a service restart, so replay what is already known rather than
         // leaving the wrist blank until the rider moves a kilometre.
@@ -716,7 +847,13 @@ private var wearAutoLaunchOnConnect = true
         )
     }
 
-    /** @parity /modules/vescape-core/ios/VescapeCoreModule.swift `autoConnectSelectedBoard` */
+    /**
+     * Auto-connect the selected Board at process start. Reached from `AutoConnectProvider`, i.e.
+     * before any JS exists — the trigger is the process, never the JS module lifecycle. iOS mirrors
+     * this from its app-delegate launch hook.
+     *
+     * @parity /modules/vescape-core/ios/connection/BoardSessionController.swift `autoConnectSelectedBoard`
+     */
     fun autoConnectSelectedBoard() {
         if (BoardProbeAutoStartGate.isActive()) {
             Log.i(VESC_SESSION_TAG, "Auto-connect skipped: Board Probe active")
@@ -753,7 +890,7 @@ private var wearAutoLaunchOnConnect = true
                 scheduler.post { stopIfIdle() }
                 return@launch
             }
-            val boardId = selectedCompanionBoardId(AppDataRepository.get(appCtx), address)
+            val boardId = companionBoardId(AppDataRepository.get(appCtx), address)
             if (boardId == null) {
                 scheduler.post { stopIfIdle() }
                 return@launch
@@ -763,8 +900,13 @@ private var wearAutoLaunchOnConnect = true
                 scheduler.post { stopIfIdle() }
                 return@launch
             }
+            // Presence can belong to any configured Board, not necessarily the last one the Rider
+            // used. Make the triggering Board selected before building/emitting the new session.
+            AppDataRepository.get(appCtx).setSelectedBoardId(boardId)
             val config = try {
                 buildSessionConfig(appCtx, boardId, recordingEnabled = false)
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                throw e
             } catch (e: Exception) {
                 Log.w(VESC_SESSION_TAG, "Companion connect config failed: ${e.message}")
                 scheduler.post { stopIfIdle() }
@@ -784,16 +926,18 @@ private var wearAutoLaunchOnConnect = true
         }
     }
 
-    private suspend fun selectedCompanionBoardId(repo: AppDataRepository, address: String): String? {
+    private suspend fun companionBoardId(repo: AppDataRepository, address: String): String? {
         val settings = repo.getTypedSettings()
         if (!settings.companionPresenceEnabled) return null
-        val selectedBoardId = settings.selectedBoardId ?: return null
-        val board = repo.getBoard(selectedBoardId) ?: return null
-        val link = board["link"] as? Map<*, *> ?: return null
-        val bleId = link["bleId"] as? String ?: return null
-        return selectedBoardId.takeIf { bleId.equals(address, ignoreCase = true) }
+        return companionBoardIdForAddress(repo.getBoards(), address)
     }
 
+    /**
+     * Native connect path (notification Connect, auto-connect). Clears the manual-disconnect gate:
+     * a started Board Session spends the stop that set it.
+     *
+     * @parity /modules/vescape-core/ios/connection/BoardSessionController.swift `beginSession`
+     */
     private fun connectSelectedBoard(recordingEnabled: Boolean) {
         if (boardConfig != null) return
         CoreForegroundService.appDataScope.launch {
@@ -802,6 +946,8 @@ private var wearAutoLaunchOnConnect = true
             ManualDisconnectAutoStartGate.clear(appCtx)
             val config = try {
                 buildSessionConfig(appCtx, boardId, recordingEnabled = recordingEnabled)
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                throw e
             } catch (e: Exception) {
                 Log.w(VESC_SESSION_TAG, "Notification connect failed: ${e.message}")
                 scheduler.post { stopIfIdle() }
@@ -826,8 +972,7 @@ private var wearAutoLaunchOnConnect = true
     fun onServiceDestroy() {
         weatherUnsubscribe?.invoke()
         weatherUnsubscribe = null
-        watchTick.stop()
-        watchMirrorPresence.stop()
+        watchMirror.stop()
         watchMoveRelay.cancel()
         autoCloseHandle?.cancel()
         autoCloseHandle = null
@@ -835,7 +980,7 @@ private var wearAutoLaunchOnConnect = true
             stopCurrentBoardSession(emitDisconnected = false)
         }
         alertFeedback.release()
-        stopLocationUpdates()
+        forceStopGps()
         groupRideObserver.stop()
         service.stopForeground(Service.STOP_FOREGROUND_REMOVE)
     }
@@ -843,7 +988,11 @@ private var wearAutoLaunchOnConnect = true
     val isStopping: Boolean get() = isStoppingService
 
     fun stopIfIdle() {
-        if (boardConfig == null && !gpsMonitor.active && !groupRideObserver.active) {
+        // Accessory sessions keep the host alive on their own. They are not a Board's property: a
+        // rider with no Board selected and a light enrolled still has a link that must stay up.
+        if (boardConfig == null && !gpsMonitor.active && !groupRideObserver.active &&
+            !AccessorySessionManager.hasSessions()
+        ) {
             isStoppingService = true
             notificationController.cancel()
             service.stopSelf()
@@ -867,7 +1016,7 @@ private var wearAutoLaunchOnConnect = true
             return
         }
         stop.onSuccess()
-        if (!gpsMonitor.active && !groupRideObserver.active) {
+        if (!gpsMonitor.active && !groupRideObserver.active && !AccessorySessionManager.hasSessions()) {
             isStoppingService = true
             service.stopSelf()
         }
@@ -890,6 +1039,7 @@ private var wearAutoLaunchOnConnect = true
         startGpsMonitoring()
     }
 
+    /** @parity /modules/vescape-core/ios/connection/BoardSessionController.swift `startGroupRideObserve` */
     fun consumePendingGroupRideObserve() {
         val url = CoreForegroundService.claimPendingGroupRideUrl() ?: return
         isStoppingService = false
@@ -901,21 +1051,23 @@ private var wearAutoLaunchOnConnect = true
         reassertForeground()
     }
 
+    /** @parity /modules/vescape-core/ios/connection/BoardSessionController.swift `stopGroupRideObserve` */
     fun stopGroupRideObserve() {
         CoreForegroundService.pendingGroupRideUrl = null
+        // `stop()` reports the participation edge, which refreshes demand; `stopIfIdle` then finds
+        // nothing left holding the host.
         groupRideObserver.stop()
-        if (boardConfig == null && !gpsMonitor.active) {
-            isStoppingService = true
-            service.stopSelf()
-        }
+        stopIfIdle()
     }
 
-    fun createGroupRide(riderId: String, riderName: String, riderColor: String?, name: String?, lat: Double, lng: Double) {
-        groupRideObserver.create(riderId, riderName, riderColor, name, lat, lng)
+    fun createGroupRide(riderId: String, riderName: String, riderColor: String?, name: String?, lat: Double, lng: Double, auto: Boolean) {
+        groupRideObserver.create(riderId, riderName, riderColor, name, lat, lng, auto)
     }
 
     fun joinGroupRide(riderId: String, riderName: String, riderColor: String?, rideId: String) {
-        startGpsMonitoring()
+        isStoppingService = false
+        // No refresh here: the observer reports its own participation edge, which is both correctly
+        // ordered behind its `handler.post` and the only way server-driven departures get seen.
         groupRideObserver.join(riderId, riderName, riderColor, rideId, latestRiderPresence())
     }
 
@@ -933,7 +1085,7 @@ private var wearAutoLaunchOnConnect = true
         service.stopForeground(Service.STOP_FOREGROUND_REMOVE)
         notificationController.cancel()
         stopCurrentBoardSession(emitDisconnected = true)
-        stopLocationUpdates()
+        forceStopGps()
         closeAppTask()
         service.stopSelf()
     }
@@ -950,20 +1102,29 @@ private var wearAutoLaunchOnConnect = true
         }
     }
 
+    /**
+     * The service has been (re)started to host GPS. Whether it actually arms is still the resolver's
+     * call — the host exists because *something* might want fixes, not because everything does.
+     */
     private fun startGpsMonitoring() {
         isStoppingService = false
-        gpsError = null
-        startLocationUpdates()
-        emitState()
-        reassertForeground()
+        refreshGpsDemand()
     }
 
+    /**
+     * Force GPS off regardless of demand, for the callers taking the host down with them
+     * (`exitApp`, Auto Close, notification Exit) or freezing every DB writer for a file swap
+     * (`restoreDatabase`).
+     *
+     * @parity /modules/vescape-core/ios/connection/BoardSessionController.swift `stopLocationUpdates`
+     */
     fun stopGpsMonitoring() {
         CoreForegroundService.pendingGpsStart = false
-        stopLocationUpdates()
-        gpsError = null
+        forceStopGps()
         emitState()
-        if (boardConfig == null && !groupRideObserver.active) {
+        // Accessory sessions are one of the things that keep this host alive, so the decision goes
+        // through `stopIfIdle` rather than a second copy of the same condition that forgets them.
+        if (boardConfig == null && !groupRideObserver.active && !AccessorySessionManager.hasSessions()) {
             isStoppingService = true
             service.stopSelf()
         } else {
@@ -971,10 +1132,23 @@ private var wearAutoLaunchOnConnect = true
         }
     }
 
+    private fun forceStopGps() {
+        clearDropoutGrace()
+        gpsMonitor.stop()
+    }
+
     private fun beginSession(start: PendingStart) {
         isStoppingService = false
-        withNotificationRepaintSuppressed { stopCurrentBoardSession(emitDisconnected = false) }
+        beginningSession = true
+        try {
+            withNotificationRepaintSuppressed { stopCurrentBoardSession(emitDisconnected = false) }
+        } finally {
+            beginningSession = false
+        }
         refreshLiveHistoryLimit()
+        // A replay starts a separate location timeline; live fixes must not seed its trail/course.
+        // @parity /modules/vescape-core/ios/connection/BoardSessionController.swift `connect`
+        if (start.boardConfig.replayRecordingName != null) locationTracker.clearReplayLocations()
         boardConfig = start.boardConfig
         // Load rules only after boardConfig is assigned — the engine scopes to the connected Board's
         // rules (#254), so reading before assignment would install the wrong Board's (or no) rules.
@@ -987,7 +1161,6 @@ private var wearAutoLaunchOnConnect = true
                 listener = gattListener,
                 dispatchListener = ::dispatchGattEvent,
                 onLocation = ::onReplayLocation,
-                onHeading = ::onReplayHeading,
                 clock = ReplayClock(
                     warmupMs = start.boardConfig.replayWarmupMs,
                     warmupSpeed = start.boardConfig.replayWarmupSpeed,
@@ -996,13 +1169,9 @@ private var wearAutoLaunchOnConnect = true
         }
         // A replay owns the session's notion of time for its lifetime.
         sessionClock = replayTransport?.clock ?: SystemSessionClock
-        // Guarding [startLocationUpdates] is not enough: the map, the recording toggle or a prior
-        // live session may already have the GPS monitor running, and those live fixes would fight
-        // the recorded ones. A replay owns position, so park the live monitor for its lifetime.
-        if (replayTransport != null && gpsMonitor.active) {
-            gpsSuppressedByReplay = true
-            stopLocationUpdates()
-        }
+        // A fresh session's link is up by definition; a stale timestamp from the previous one would
+        // otherwise have this session start already outside its dropout grace.
+        clearDropoutGrace()
         selectedBoardName = start.boardConfig.deviceName
         sessionSequence += 1
         val session = BoardSession(id = sessionSequence)
@@ -1017,15 +1186,30 @@ private var wearAutoLaunchOnConnect = true
         cellSpreadDetector.reset()
         batteryConfigMismatchDetector.reset()
         warningFailuresReported.clear()
-        configSafetyReadScheduled = false
+        boardConfigReadScheduled = false
+        motorConfigRequested = false
+        motorConfigValues = null
+        // No re-clear here: `stopCurrentBoardSession` above already nulled the held values, and the
+        // setter emits on every assignment — a second null would send a duplicate bridge event on
+        // every connection. Mirrors iOS, which assigns the restored value once.
+        alertCoordinator.updateBoardConfigValues(emptyMap())
+        restoreBoardConfigValues(start.boardConfig)
+        restoreMotorConfigValues(start.boardConfig)
         telemetryPipeline.beginSession(session, start.boardConfig)
+        wireFaultCaptures()
         // Tag telemetry frames with the CAN id resolved from the stored transport.
         telemetryPipeline.updateCanId(currentCanId)
         packetReassembler.reset()
         diagnosticsRecorder.resetTelemetryParseFailedCounters()
         connectionCoordinator.reset()
+        gattHandshakeDeadline.reset()
         reconnectScheduler.cancelAndReset()
         recordingCoordinator.beginBoardSession(start.boardConfig)
+        // Unknown fault state: the first frame of the session always reaches the fault coordinator,
+        // so a fault that opened before a restart is closed by the first normal frame after it.
+        liveFaultCode = FAULT_CODE_UNKNOWN
+        lastFaultDispatchAtMs = 0L
+        beginGpsSessionDiagnostics()
         // Reset per-session Board Warning breadcrumb bookkeeping (one Diagnostic Event per kind per
         // Board Session). Detectors that fire warnings this session land in later slices.
         start.boardConfig.appBoardId?.let {
@@ -1034,7 +1218,9 @@ private var wearAutoLaunchOnConnect = true
             registry.onManualClear = ::onWarningManuallyCleared
         }
         lastEmittedLinkIntegrity = session.startLinkIntegrityCheck(start.boardConfig.linkIdentity())
-        startLocationUpdates()
+        // One call decides both halves: a live session raises demand to `Ride`, and a replay drops it
+        // to `Off` for its lifetime so live fixes cannot fight the recorded ones on the map.
+        refreshGpsDemand()
         setStatus(BoardPhase.Connecting)
         emitState()
         updateLinkIntegrity(session.markOutdatedIfIncomplete(start.boardConfig.linkIdentity()))
@@ -1053,6 +1239,7 @@ private var wearAutoLaunchOnConnect = true
         return foregroundServiceType(
             boardActive = boardConfig != null,
             gpsActive = gpsMonitor.active,
+            accessoryActive = AccessorySessionManager.hasSessions(),
         )
     }
 
@@ -1066,12 +1253,24 @@ private var wearAutoLaunchOnConnect = true
         startForeground(type)
     }
 
+    /**
+     * Android 12+ refuses a foreground promotion requested while the process counts as background
+     * (`ForegroundServiceStartNotAllowedException`). Every caller here is a plain intent — GPS,
+     * Group Ride, a session repaint — so the refusal must not escape: thrown from a module call it
+     * rejects the JS call and, thrown from `onStartCommand`, it kills the process. Degrade instead:
+     * drop the promotion, and stop the service when nothing durable is left to keep alive.
+     */
     private fun startForeground(type: Int) {
         val notification = presenter.build(reportedBoardPhase())
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-            service.startForeground(NOTIFICATION_ID, notification, type)
-        } else {
-            service.startForeground(NOTIFICATION_ID, notification)
+        try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                service.startForeground(NOTIFICATION_ID, notification, type)
+            } else {
+                service.startForeground(NOTIFICATION_ID, notification)
+            }
+        } catch (e: Exception) {
+            Log.w(VESC_SESSION_TAG, "startForeground refused (type=$type): ${e.message}")
+            stopIfIdle()
         }
     }
 
@@ -1121,7 +1320,7 @@ private var wearAutoLaunchOnConnect = true
             )
             setStatus(BoardPhase.Discovering)
             connectionCoordinator.pendingConnect?.let {
-                armConnectPhaseTimeout(it, "gatt_ready", GATT_READY_TIMEOUT_MS)
+                armConnectPhaseTimeout(it, "gatt_ready", gattHandshakeDeadline.timeoutMs)
             }
         }
 
@@ -1199,6 +1398,11 @@ private var wearAutoLaunchOnConnect = true
                 )
                 setError("Board disconnected")
                 recordingCoordinator.finishDebugRecording("error")
+                // No reconnect is coming, but the Ride Recording stays open (nothing tore the
+                // session down), so release the connected-Board pause gate here too. Off the link
+                // there is no Board engagement signal to ever reopen it, and a gate stuck closed
+                // silently discards every later GPS Fix.
+                resetIdlePause()
             }
         }
 
@@ -1264,6 +1468,8 @@ private var wearAutoLaunchOnConnect = true
                 ConfigRWEvent.ConfigBytesPayloadReceived(payload, nowMs()),
             )
             COMM_SET_CUSTOM_CONFIG -> configController.onPayload(ConfigRWEvent.SetConfigResponseReceived(payload))
+            COMM_GET_MCCONF -> handleMcconfPayload(payload.copyOfRange(1, payload.size))
+            COMM_PRINT -> handlePrintPayload(payload.copyOfRange(1, payload.size))
             COMM_FORWARD_CAN -> {
                 if (payload.size >= 3) {
                     when (payload[2].toInt() and 0xff) {
@@ -1275,6 +1481,8 @@ private var wearAutoLaunchOnConnect = true
                             ConfigRWEvent.ConfigBytesPayloadReceived(payload, nowMs()),
                         )
                         COMM_SET_CUSTOM_CONFIG -> configController.onPayload(ConfigRWEvent.SetConfigResponseReceived(payload))
+                        COMM_GET_MCCONF -> handleMcconfPayload(payload.copyOfRange(3, payload.size))
+                        COMM_PRINT -> handlePrintPayload(payload.copyOfRange(3, payload.size))
                     }
                 }
             }
@@ -1301,6 +1509,13 @@ private var wearAutoLaunchOnConnect = true
             configController.onPayload(ConfigRWEvent.InfoPayloadReceived(payload))
             return
         }
+        parseLightsControlResponse(payload)?.let { lights ->
+            // The lights echo shares the telemetry command byte but carries no metrics; parsing it as
+            // a Telemetry Sample would only produce a parse-failure diagnostic. It is also the only
+            // truth about the board's lights, so it is what JS renders.
+            onBoardLightsEcho(lights)
+            return
+        }
         if ((payload[0].toInt() and 0xff) == COMM_CUSTOM_APP_DATA) {
             val now = nowMs()
             val parsed = parseRefloatGetAllData(
@@ -1314,7 +1529,29 @@ private var wearAutoLaunchOnConnect = true
                 return
             }
             val sessionToken = boardSession ?: return
+            // A valid mode-69 response still paces the response-driven poll loop — the frame is a
+            // real answer, it just carries no metrics.
             pollingLoop.onResponse()
+            if (parsed.hasFault) {
+                // Refloat fault mode: a state signal with zeroed metrics, never a Telemetry Sample.
+                // It opens/extends a VESC Fault Occurrence and stops before the telemetry pipeline —
+                // persisting or aggregating it would poison Ride History with a frame of zeros. The
+                // session bookkeeping above it still runs: the board answered, so it is ready and
+                // must not be torn down as unresponsive just because it is faulting.
+                //
+                // It also ends riding as far as Accessories are concerned. A fault frame carries
+                // zeroed metrics and no engagement, so returning without saying so would leave the
+                // last engaged sample standing and keep a sensor measuring — and eligible to drive
+                // tilt — for as long as the board keeps faulting.
+                telemetryPipeline.noteResponse(parsed, sessionToken)
+                markBoardReady()
+                startLinkIntegrityProbe(sessionToken)
+                AccessorySessionManager.setRiding(false)
+                AccessorySessionManager.clearLightTelemetry()
+                onRefloatFaultFrame(parsed.faultCode)
+                return
+            }
+            onRefloatNormalFrame()
             val processed = telemetryPipeline.process(parsed, sessionToken) ?: return
             markBoardReady()
             startLinkIntegrityProbe(sessionToken)
@@ -1341,12 +1578,17 @@ private var wearAutoLaunchOnConnect = true
             } else eventMap
                 refreshNotification(telemetry = parsed, batteryPercent = batteryEstimate)
                 // Hot path: tiny scalar tick every frame drives the live gauges (SharedValues, no React render).
-                emitEvent("onLiveTick", buildLiveTick(parsed, batteryEstimate, currentSessionId, firedAlerts))
+                emitEvent("onLiveTick", buildLiveTick(parsed, processed, batteryEstimate, currentSessionId, firedAlerts))
                 // Cold path: full samples buffered and flushed in batches for history/charts.
                 liveSeriesEmitter.enqueueHistorySample(historySample)
                 // First sample of the session also drives the first sparkline frame immediately.
                 liveSeriesEmitter.primeLiveSeriesIfNeeded()
                 updateIdlePause(processed.capture)
+                // Measurement demand follows the Board's own engagement, not the recorder's: a
+                // rider with recording turned off is still riding. #479 reads the arbitrated input
+                // back out of the same runtime to drive Remote Tilt.
+                AccessorySessionManager.setRiding(isRefloatEngaged(processed.capture.state))
+                AccessorySessionManager.setLightTelemetry(parsed.speed, isRefloatEngaged(processed.capture.state))
                 // Skip persistence while paused; live display, watch, and presence keep running off the
                 // paths above. When recording is off, recordTelemetry is already a no-op.
                 if (!idlePauseDetector.isPaused) {
@@ -1391,6 +1633,142 @@ private var wearAutoLaunchOnConnect = true
     }
 
     /**
+     * Refloat reported an active fault code. Independent of Ride Recording and Board Warnings: the
+     * VESC Fault Occurrence is Board-owned durable truth.
+     * @parity /modules/vescape-core/ios/connection/BoardSessionController.swift `onRefloatFaultFrame`
+     */
+    private fun onRefloatFaultFrame(code: Int) {
+        val boardId = boardConfig?.appBoardId ?: return
+        val now = nowMs()
+        // Edge-triggered plus a slow heartbeat: a fault can repeat at the full poll rate, and one
+        // occurrence must not cost one durable write per frame.
+        if (liveFaultCode == code && now - lastFaultDispatchAtMs < FAULT_OBSERVATION_INTERVAL_MS) return
+        liveFaultCode = code
+        lastFaultDispatchAtMs = now
+        val coordinator = VescFaultCoordinator.get(service.applicationContext)
+        launchFaultWrite { coordinator.onActiveFault(boardId, code) }
+    }
+
+    /**
+     * Refloat reported a normal `ALLDATA` frame — the controller is not faulting, so any open
+     * occurrence for this Board is closed.
+     * @parity /modules/vescape-core/ios/connection/BoardSessionController.swift `onRefloatNormalFrame`
+     */
+    private fun onRefloatNormalFrame() {
+        val now = nowMs()
+        // Retry a failed durable clear at the same bounded rate as an active observation.
+        if (liveFaultCode == null && now - lastFaultDispatchAtMs < FAULT_OBSERVATION_INTERVAL_MS) return
+        liveFaultCode = null
+        lastFaultDispatchAtMs = now
+        val boardId = boardConfig?.appBoardId ?: return
+        val coordinator = VescFaultCoordinator.get(service.applicationContext)
+        launchFaultWrite { coordinator.onFaultCleared(boardId) }
+    }
+
+    /**
+     * Point the VESC Fault Capture coordinator at this session's recent decoded window and at the
+     * occurrence transitions that mint capture ids. Reuses `TelemetryPipeline.recentSnapshot` — the
+     * same buffer behind `board.recentTelemetry` — rather than adding a second always-on pre-fault
+     * buffer.
+     * @parity /modules/vescape-core/ios/connection/BoardSessionController.swift `wireFaultCaptures`
+     */
+    private fun wireFaultCaptures() {
+        val captures = VescFaultCaptureCoordinator.get(service.applicationContext)
+        captures.recentWindow = { telemetryPipeline.recentSnapshot() }
+        captures.setCollectionEnabled(
+            VescFaultCoordinator.get(service.applicationContext).collectionEnabled,
+        )
+        VescFaultCoordinator.get(service.applicationContext).apply {
+            onOccurrenceOpened = { occurrence ->
+                captures.capturePast(occurrence.id, occurrence.boardId, occurrence.occurredAtMs)
+            }
+        }
+    }
+
+    // --- Manual VESC fault log ---
+
+    /**
+     * One user-requested terminal read at a time. Output is returned directly and never parsed,
+     * persisted, or converted into fault occurrences.
+     * @parity /modules/vescape-core/ios/connection/BoardSessionController.swift `faultLogReader`
+     */
+    private var faultLogReader: VescFaultLogReader? = null
+    private var faultLogTickHandle: Cancellable? = null
+
+    /**
+     * Read official VESC `faults` output on explicit user action. Refuse while moving because
+     * terminal traffic competes with response-paced ride telemetry.
+     * @parity /modules/vescape-core/ios/connection/BoardSessionController.swift `readVescFaultLog`
+     */
+    fun readVescFaultLog(
+        boardId: String,
+        onSuccess: (String) -> Unit,
+        onError: (String, String) -> Unit,
+    ) {
+        if (boardStatus != BoardPhase.Connected || boardConfig?.appBoardId != boardId) {
+            onError("VESC_FAULT_LOG_BOARD_NOT_CONNECTED", "Matching Board must be connected")
+            return
+        }
+        val speed = telemetry?.speed
+        if (speed == null || !speed.isFinite() || kotlin.math.abs(speed) > MANUAL_FAULT_LOG_MAX_SPEED_KMH) {
+            onError("VESC_FAULT_LOG_BOARD_MOVING", "Stop the Board before reading controller fault log")
+            return
+        }
+        if (faultLogReader != null) {
+            onError("VESC_FAULT_LOG_BUSY", "Controller fault log read already in progress")
+            return
+        }
+        val session = boardSession ?: return onError(
+            "VESC_FAULT_LOG_BOARD_NOT_CONNECTED",
+            "Matching Board must be connected",
+        )
+        val transport = currentBoardTransport() ?: return onError(
+            "VESC_FAULT_LOG_BOARD_NOT_CONNECTED",
+            "Matching Board must be connected",
+        )
+        val reader = VescFaultLogReader(nowMs(), onSuccess, onError)
+        faultLogReader = reader
+        sendPayloadWithRetry(buildFaultsTerminalCommand(transport), session)
+        scheduleFaultLogTick(session)
+    }
+
+    /** Poll the bounded completion policy until it resolves the read one way or the other. */
+    private fun scheduleFaultLogTick(session: BoardSession) {
+        faultLogTickHandle?.cancel()
+        faultLogTickHandle = scheduler.postDelayedForSession(
+            session,
+            VescFaultLogReader.TICK_MS,
+            ::isCurrentBoardSession,
+        ) {
+            faultLogTickHandle = null
+            val reader = faultLogReader ?: return@postDelayedForSession
+            if (!reader.poll(nowMs())) {
+                scheduleFaultLogTick(session)
+                return@postDelayedForSession
+            }
+            faultLogReader = null
+        }
+    }
+
+    /**
+     * Feed one `COMM_PRINT` frame to the in-flight read. Terminal text is deliberately isolated here
+     * and never reaches telemetry parsing; without an active read the bytes are dropped, because
+     * Vescape has no other reason to be listening to the controller's console.
+     * @parity /modules/vescape-core/ios/connection/BoardSessionController.swift `handlePrintPayload`
+     */
+    private fun handlePrintPayload(body: ByteArray) {
+        faultLogReader?.onPrintChunk(body, nowMs())
+    }
+
+    /**
+     * Last active Refloat fault code observed this Board Session, or null once cleared.
+     * [FAULT_CODE_UNKNOWN] means "not yet established", which forces one dispatch either way.
+     * @parity /modules/vescape-core/ios/connection/BoardSessionController.swift `liveFaultCode`
+     */
+    private var liveFaultCode: Int? = FAULT_CODE_UNKNOWN
+    private var lastFaultDispatchAtMs = 0L
+
+    /**
      * Launch a Board Warning registry write crash-isolated by [warningWriteExceptionHandler] and
      * serialized on [CoreForegroundService.warningWriteDispatcher] so concurrent findings commit in
      * submission order (preserving the monotonic-severity contract).
@@ -1398,6 +1776,12 @@ private var wearAutoLaunchOnConnect = true
     private fun launchWarningWrite(block: suspend () -> Unit) {
         CoreForegroundService.appDataScope.launch(
             warningWriteExceptionHandler + CoreForegroundService.warningWriteDispatcher,
+        ) { block() }
+    }
+
+    private fun launchFaultWrite(block: suspend () -> Unit) {
+        CoreForegroundService.appDataScope.launch(
+            faultWriteExceptionHandler + CoreForegroundService.warningWriteDispatcher,
         ) { block() }
     }
 
@@ -1475,18 +1859,115 @@ private var wearAutoLaunchOnConnect = true
     }
 
     /**
+     * Take ownership of the Board Config Values a read or write just produced: they become this
+     * session's config truth, get cached for the next connect, and feed warning evaluation.
+     * @parity /modules/vescape-core/ios/connection/BoardSessionController.swift `onBoardConfigValues`
+     */
+    private fun onBoardConfigValues(values: BoardConfigValues, origin: BoardConfigOperationOrigin) {
+        // The link can go `Mismatched` (or the Board change) while a read is on the wire; those bytes
+        // describe a board this session no longer owns, so they must not repopulate what was cleared.
+        if (values.boardId != boardConfig?.appBoardId) return
+        if (lastEmittedLinkIntegrity != LinkIntegrity.Trusted) return
+        boardConfigValues = values
+        syncBoardLightsFromConfig(values)
+        alertCoordinator.updateBoardConfigValues(values.values)
+        val repo = AppDataRepository.get(service.applicationContext)
+        CoreForegroundService.appDataScope.launch {
+            try {
+                if (origin == BoardConfigOperationOrigin.FRESH_READ) {
+                    repo.saveFreshBoardConfigValues(values)?.let { emitEvent("onBoardConfigChangeNotice", mapOf("notice" to it.toMap())) }
+                } else repo.saveBoardConfigValues(values)
+            } catch (e: kotlinx.coroutines.CancellationException) { throw e }
+            catch (e: Throwable) { RecordingStorageFailure.report("board_config_save", "write_failed", e) }
+        }
+        evaluateConfigSafety(values)
+    }
+
+    /**
+     * Restore the cached values for the connecting Board as `lastKnown`, so consumers have
+     * something before this session's fresh read lands. Never a write base (#396).
+     * @parity /modules/vescape-core/ios/connection/BoardSessionController.swift `restoredBoardConfigValues`
+     */
+    private fun restoreBoardConfigValues(config: SessionConfig) {
+        val boardId = config.appBoardId ?: return
+        val refloatBaseVersion = config.refloatBaseVersion ?: return
+        val repo = AppDataRepository.get(service.applicationContext)
+        val session = boardSession
+        CoreForegroundService.appDataScope.launch {
+            val restored = try { repo.getBoardConfigValues(boardId, refloatBaseVersion) }
+            catch (e: kotlinx.coroutines.CancellationException) { throw e }
+            catch (e: Throwable) { RecordingStorageFailure.reportRead("board_config_restore", e); return@launch }
+                ?: return@launch
+            scheduler.post {
+                // The load is async, so re-check everything that could have moved since: the session
+                // must still be the one that asked, on the same Board and Refloat base version, with a
+                // link that has not gone `Mismatched` (which clears the cache). And the session's own
+                // read wins — never downgrade fresh values to a cached lastKnown.
+                if (session == null || !isCurrentBoardSession(session)) return@post
+                if (boardConfig?.appBoardId != boardId) return@post
+                if (boardConfig?.refloatBaseVersion != refloatBaseVersion) return@post
+                if (lastEmittedLinkIntegrity == LinkIntegrity.Mismatched) return@post
+                if (boardConfigValues != null) return@post
+                boardConfigValues = restored
+                syncBoardLightsFromConfig(restored)
+                alertCoordinator.updateBoardConfigValues(restored.values)
+            }
+        }
+    }
+
+    /**
+     * Restore the cached Motor Config Values for the connecting Board as `lastKnown`. Unlike the
+     * Refloat cache there is no scope key to match on up front — the board's MCCONF signature is not
+     * known until it answers — so the latest row is restored optimistically and replaced when the
+     * session's own read lands under whatever signature the board reports.
+     * @parity /modules/vescape-core/ios/connection/BoardSessionController.swift `beginSession`
+     */
+    private fun restoreMotorConfigValues(config: SessionConfig) {
+        val boardId = config.appBoardId ?: return
+        val repo = AppDataRepository.get(service.applicationContext)
+        val session = boardSession
+        CoreForegroundService.appDataScope.launch {
+            val restored = try { repo.getLatestMotorConfigValues(boardId) }
+            catch (e: kotlinx.coroutines.CancellationException) { throw e }
+            catch (e: Throwable) { RecordingStorageFailure.reportRead("motor_config_restore", e); return@launch }
+                ?: return@launch
+            scheduler.post {
+                if (session == null || !isCurrentBoardSession(session)) return@post
+                if (boardConfig?.appBoardId != boardId) return@post
+                if (lastEmittedLinkIntegrity == LinkIntegrity.Mismatched) return@post
+                // The session's own read wins — never downgrade fresh values to a cached lastKnown.
+                if (motorConfigValues != null) return@post
+                motorConfigValues = restored
+            }
+        }
+    }
+
+    /**
+     * Drop held and persisted Board Config Values for the connected Board (`mismatched` link).
+     * @parity /modules/vescape-core/ios/connection/BoardSessionController.swift `clearBoardConfigValues`
+     */
+    private fun clearBoardConfigValues() {
+        boardConfigValues = null
+        motorConfigValues = null
+        alertCoordinator.updateBoardConfigValues(emptyMap())
+        val boardId = boardConfig?.appBoardId ?: return
+        val repo = AppDataRepository.get(service.applicationContext)
+        CoreForegroundService.appDataScope.launch { repo.clearBoardConfigValues(boardId) }
+    }
+
+    /**
      * Evaluate the config-safety rules against a freshly decoded config (background read after link
      * trust, or the in-hand bytes from a tune write) and report findings / clean evaluations through
      * the Board Warning registry. Per-cell rules use the configured battery series count and are
      * skipped when it is absent; skipped kinds report nothing so stored warnings stay untouched.
      * @parity /modules/vescape-core/ios/connection/BoardSessionController.swift `evaluateConfigSafety`
      */
-    private fun evaluateConfigSafety(values: ConfigSafetyValues) = guardWarningEval("config_safety") {
+    private fun evaluateConfigSafety(values: BoardConfigValues) = guardWarningEval("config_safety") {
         if (!boardWarningsEnabled) return@guardWarningEval
         val boardId = boardConfig?.appBoardId ?: return@guardWarningEval
         val seriesCount = (batteryConfigCache?.get("seriesCount") as? Number)?.toInt()
-        val perCell = ConfigSafetyDetector.usesPerCellVoltage(fwVersionString)
-        val report = ConfigSafetyDetector.evaluate(values, seriesCount, perCell)
+        val perCellSupported = ConfigSafetyDetector.supportsPerCellVoltage(fwVersionString)
+        val report = ConfigSafetyDetector.evaluate(values, seriesCount, perCellSupported)
         val registry = BoardWarningRegistry.get(service.applicationContext)
         launchWarningWrite {
             for (finding in report.findings) {
@@ -1494,6 +1975,9 @@ private var wearAutoLaunchOnConnect = true
             }
             for (kind in report.cleanKinds) {
                 registry.reportCleanEvaluation(boardId, kind)
+            }
+            for (wire in BoardWarningKind.RETIRED_WIRE) {
+                registry.reportCleanEvaluation(boardId, wire)
             }
         }
     }
@@ -1503,14 +1987,83 @@ private var wearAutoLaunchOnConnect = true
      * the config-safety detectors can evaluate the decoded config. Read-only; reuses the normal config
      * read path (pauses/resumes polling) and is skipped if a config op is already in flight.
      */
-    private fun triggerConfigSafetyRead(session: BoardSession) {
-        if (!boardWarningsEnabled) {
-            // Re-arm so re-enabling Board Warnings mid-session can schedule the read again.
-            configSafetyReadScheduled = false
-            return
-        }
+    private fun triggerBoardConfigRead(session: BoardSession) {
         if (!isCurrentBoardSession(session)) return
-        configController.consumeRead(PendingConfigRead(onSuccess = {}, onError = { _, _ -> }))
+        configController.consumeRead(
+            PendingConfigRead(
+                onSuccess = { requestMotorConfig(session) },
+                onError = { _, _ -> requestMotorConfig(session) },
+            ),
+        )
+    }
+
+    /**
+     * Ask the controller for its motor config (MCCONF) once per Board Session. Deliberately sequenced
+     * after the Refloat read rather than beside it: both are multi-packet transfers over one BLE link,
+     * and the Refloat read owns the polling pause while it runs.
+     *
+     * Mandatory link state, like the Refloat read: the Board Probe waits for the decoded values and
+     * fails the link without them, so a board whose signature no layout carries is refused at link
+     * time rather than losing its cutoffs silently at ride time (ADR 0036).
+     * @parity /modules/vescape-core/ios/connection/BoardSessionController.swift `requestMotorConfig`
+     */
+    private fun requestMotorConfig(session: BoardSession) {
+        if (!isCurrentBoardSession(session) || motorConfigRequested) return
+        val transport = currentBoardTransport() ?: return
+        motorConfigRequested = true
+        sendPayloadWithRetry(transport.frame(byteArrayOf(COMM_GET_MCCONF.toByte())), session)
+    }
+
+    /**
+     * @param body the MCCONF response with its framing (and CAN wrapper) already stripped.
+     * @parity /modules/vescape-core/ios/connection/BoardSessionController.swift `handleMcconfPayload`
+     */
+    private fun handleMcconfPayload(body: ByteArray) {
+        // A response only counts for the session that asked. The link can go `Mismatched` (clearing
+        // held and persisted values) or the Board can change while the blob is on the wire; without
+        // these guards those late bytes repopulate what was just cleared.
+        val session = boardSession ?: return
+        if (!isCurrentBoardSession(session) || !motorConfigRequested) return
+        if (lastEmittedLinkIntegrity != LinkIntegrity.Trusted) return
+        when (val result = McconfDecoder.decode(body)) {
+            is McconfDecodeResult.Decoded -> {
+                val values = MotorConfigValues(
+                    boardId = boardConfig?.appBoardId,
+                    signature = result.signature,
+                    firmware = result.firmware,
+                    capturedAtMs = nowMs(),
+                    freshness = BoardConfigFreshness.FRESH,
+                    values = result.values,
+                )
+                motorConfigValues = values
+                val repo = AppDataRepository.get(service.applicationContext)
+                CoreForegroundService.appDataScope.launch {
+                    try { repo.saveFreshMotorConfigValues(values)?.let {
+                      emitEvent("onBoardConfigChangeNotice", mapOf("notice" to it.toMap()))
+                    } } catch (e: kotlinx.coroutines.CancellationException) { throw e }
+                    catch (e: Throwable) { RecordingStorageFailure.report("motor_config_save", "write_failed", e) }
+                }
+                Log.i(
+                    VESC_SESSION_TAG,
+                    "MCCONF decoded: ${result.firmware} signature=${result.signature} fields=${result.values.size}",
+                )
+            }
+            // Not a failure of ours: this board runs a firmware whose layout is not carried yet.
+            // Report the signature so a table can be generated for it, and drop the optimistically
+            // restored cache row — it was read under a signature this board does not answer with,
+            // and no motor config is the honest answer here (ADR 0036).
+            is McconfDecodeResult.UnknownSignature -> {
+                motorConfigValues = null
+                Log.w(
+                    VESC_SESSION_TAG,
+                    "MCCONF signature ${result.signature} has no layout (${result.byteCount} bytes)",
+                )
+            }
+            is McconfDecodeResult.Malformed -> {
+                motorConfigValues = null
+                Log.w(VESC_SESSION_TAG, "MCCONF malformed: ${result.reason}")
+            }
+        }
     }
 
     /**
@@ -1527,6 +2080,28 @@ private var wearAutoLaunchOnConnect = true
             bmsSeriesRing.snapshot(telemetryPipeline.recentWindowMs(), nowMs()),
         )
     }
+
+    /**
+     * Detail-chart focus intent from JS: the set of metrics whose high-res `onFocusedSeries` stream
+     * should run (empty to stop). Emits an immediate snapshot on change; the live-series timer keeps
+     * it fresh thereafter.
+     * @parity /modules/vescape-core/ios/connection/BoardSessionController.swift (setFocusedSeriesMetrics)
+     */
+    fun setFocusedSeriesMetrics(metrics: List<String>) {
+        liveSeriesEmitter.setFocusedMetrics(metrics.toSet())
+    }
+
+    /**
+     * Telemetry panel intent from JS: the metrics `onLiveSeries` carries beyond the always-on set
+     * (empty while the panel is closed). Emits an immediate snapshot.
+     * @parity /modules/vescape-core/ios/connection/BoardSessionController.swift `setLiveSeriesMetrics`
+     */
+    fun setLiveSeriesMetrics(metrics: List<String>) {
+        liveSeriesEmitter.setLiveMetrics(metrics.toSet())
+    }
+
+    /** Every frame in the live telemetry window, oldest first. */
+    fun recentTelemetry(): List<Map<String, Any?>> = telemetryPipeline.recentSnapshot()
 
     private fun emitBmsSeries(mode: String, frames: List<BmsSeriesFrame>) {
         val cellCount = bmsSeriesRing.cellCount()
@@ -1578,25 +2153,75 @@ private var wearAutoLaunchOnConnect = true
                 updateLinkIntegrity(session.markBmsMissing(config.linkIdentity()))
             }
         }
+        scheduler.postDelayedForSession(session, LINK_INTEGRITY_CHECK_TIMEOUT_MS, ::isCurrentBoardSession) {
+            updateLinkIntegrity(session.markCheckTimedOut())
+        }
     }
 
     private var lastEmittedLinkIntegrity = LinkIntegrity.Unknown
-    private var configSafetyReadScheduled = false
+    private var boardConfigReadScheduled = false
+    private var motorConfigRequested = false
+
+    /**
+     * This Board Session's decoded motor config, keyed by firmware field id, or null while none has
+     * been decoded — no layout for the board's signature is a normal reason for that.
+     * @parity /modules/vescape-core/ios/connection/BoardSessionController.swift `motorConfigValues`
+     */
+    private var motorConfigValues: MotorConfigValues? = null
+        set(value) {
+            field = value
+            // Config-relative Alert Rules may anchor to MCCONF fields (temperature cutoffs), so the
+            // engine follows this value the same way it follows the Refloat config.
+            alertCoordinator.updateMotorConfigValues(value?.values.orEmpty())
+            emitEvent("onMotorConfigValues", mapOf("values" to value?.toBridgeMap()))
+        }
+
+    /**
+     * The held Motor Config Values in bridge shape, or null when none are held.
+     * @parity /modules/vescape-core/ios/connection/BoardSessionController.swift `motorConfigValuesMap`
+     */
+    internal fun motorConfigValuesMap(): Map<String, Any?>? = motorConfigValues?.toBridgeMap()
+
+    /**
+     * This Board Session's Board Config Values: `FRESH` once the post-trust read lands, `LAST_KNOWN`
+     * while it is the cache restored on connect. Native-owned truth; JS mirrors it through
+     * `getBoardConfigValues` + `onBoardConfigValues`.
+     *
+     * Every assignment emits — arrival, refresh after a write, and the clears (session end, board
+     * switch, `Mismatched`) — so the bridge event needs no separate call sites to stay honest.
+     * @parity /modules/vescape-core/ios/connection/BoardSessionController.swift `boardConfigValues`
+     */
+    private var boardConfigValues: BoardConfigValues? = null
+        set(value) {
+            field = value
+            emitEvent("onBoardConfigValues", mapOf("values" to value?.toBridgeMap()))
+        }
+
+    /**
+     * The held Board Config Values in bridge shape, or null when none are held.
+     * @parity /modules/vescape-core/ios/connection/BoardSessionController.swift `boardConfigValuesMap`
+     */
+    internal fun boardConfigValuesMap(): Map<String, Any?>? = boardConfigValues?.toBridgeMap()
 
     private fun updateLinkIntegrity(next: LinkIntegrity) {
         if (next == lastEmittedLinkIntegrity) return
         lastEmittedLinkIntegrity = next
         emitState()
-        // Link just became trusted — schedule the one background config-safety read for this session.
-        if (next == LinkIntegrity.Trusted) scheduleConfigSafetyRead()
+        // Trust is half of `lightsControllable`, and it moves without the lights moving.
+        pushWatchBoard()
+        // Link just became trusted — schedule the one background config read for this session.
+        if (next == LinkIntegrity.Trusted) scheduleBoardConfigRead()
+        // Mismatched firmware makes every cached offset meaningless: drop the held object and the
+        // persisted rows for this Board. `outdated` keeps them.
+        if (next == LinkIntegrity.Mismatched) clearBoardConfigValues()
     }
 
-    private fun scheduleConfigSafetyRead() {
-        if (configSafetyReadScheduled) return
-        configSafetyReadScheduled = true
+    private fun scheduleBoardConfigRead() {
+        if (boardConfigReadScheduled) return
+        boardConfigReadScheduled = true
         val session = boardSession ?: return
         scheduler.postDelayedForSession(session, CONFIG_SAFETY_READ_DELAY_MS, ::isCurrentBoardSession) {
-            triggerConfigSafetyRead(session)
+            triggerBoardConfigRead(session)
         }
     }
 
@@ -1653,6 +2278,7 @@ private var wearAutoLaunchOnConnect = true
         idlePauseDetector.reset()
         pollingLoop.start(session, sessionToken, transport)
         liveSeriesEmitter.start()
+        startGroundClearanceTilt(sessionToken)
     }
 
     /**
@@ -1670,6 +2296,14 @@ private var wearAutoLaunchOnConnect = true
 
     private fun stopPolling() {
         pollingLoop.stop()
+        // The binding reads riding off telemetry, so a Board that stopped being polled is a Board
+        // that stopped being evidence. The tick is what releases the tilt, so it outlives the poll
+        // loop by exactly one pass: `stopGroundClearanceTilt` cancels before the timer dies.
+        stopGroundClearanceTilt()
+        // No telemetry means no evidence of riding. An Accessory left measuring on the strength of
+        // the last sample before the Board went away would keep its sensor running indefinitely.
+        AccessorySessionManager.setRiding(false)
+        AccessorySessionManager.clearLightTelemetry()
         idlePauseDetector.reset()
         telemetryPipeline.cancelStaleWatchdog()
         liveSeriesEmitter.stop()
@@ -1678,9 +2312,7 @@ private var wearAutoLaunchOnConnect = true
     /** Latest cold-path snapshot: board lanes are empty without telemetry; navigation stays live. */
     private fun watchSnapshot(): WatchSnapshot {
         val current = telemetry
-        // Nav lanes are all-or-nothing: without Route Progress there is nothing to navigate by, and
-        // sending a rider position or a course alone would only place a dot on a route the wrist is
-        // not drawing. All five null is what hides the wrist overlay.
+        // Navigation lanes require Route Progress; course and trail stay live independently.
         val progress = NavigationController.get(service.applicationContext).currentProgress
         val origin = WatchRouteMirror.origin
         val rider = locationTracker.riderPosition
@@ -1705,16 +2337,61 @@ private var wearAutoLaunchOnConnect = true
             riderNorthM = offset?.second,
             // Absolute course, the rotation the wrist applies to its north-up world. Null while the
             // fix carries no usable heading, which leaves the wrist drawing the route north-up.
-            courseDeg = if (offset != null) rider?.courseDeg else null,
+            courseDeg = rider?.courseDeg,
             routeSpanM = WatchRouteMirror.viewportSpanM,
+            remoteTilt = if (current != null) remoteTiltController.currentValue else null,
+            tiltControl = watchTiltControl(),
+            mapPosition = rider?.let { expo.modules.vescapecore.watch.WatchMapPosition(it.latitude, it.longitude) },
+            riderSpeedMps = rider?.speedMps,
+            trail = expo.modules.vescapecore.watch.watchTrail(
+                rider?.let { GeoPoint(it.latitude, it.longitude) },
+                locationTracker.recentLocations(),
+            ),
         )
     }
 
+    /**
+     * The joined Group Ride as the wrist draws it, or null while the Rider is not in one. Measured
+     * from the Rider's latest GPS Fix, never from Board telemetry, so it needs no Board Session.
+     *
+     * @parity /modules/vescape-core/ios/connection/BoardSessionController.swift `groupRideFrame`
+     */
+    private fun groupRideFrame(): GroupRideFrame? {
+        val roster = groupRideObserver.joinedRoster ?: return null
+        val rider = locationTracker.riderPosition
+        return GroupRideFrameBuilder.build(
+            roster = roster,
+            own = rider?.let { GeoPoint(it.latitude, it.longitude) },
+            // The course survives a stop on the phone, so heading-up holds the last direction.
+            courseDeg = rider?.courseDeg,
+            spanM = WatchRouteMirror.viewportSpanM,
+            nowMs = System.currentTimeMillis(),
+        )
+    }
+
+    /**
+     * Who may drive Remote Tilt: the arbiter's own refusal first, then the link trust
+     * [lockRemoteTilt] adds on top of it.
+     *
+     * @parity /modules/vescape-core/ios/connection/BoardSessionController.swift `watchTiltControl`
+     */
+    private fun watchTiltControl(): WatchTiltControl = when (remoteInput.manualBlocker) {
+        RemoteInputOwner.SENSOR -> WatchTiltControl.SENSOR
+        RemoteInputOwner.MOVE -> WatchTiltControl.MOVE
+        else -> when {
+            !firmwareCommandsTrusted() -> WatchTiltControl.BLOCKED
+            remoteInput.owner == RemoteInputOwner.MANUAL -> WatchTiltControl.MANUAL
+            else -> WatchTiltControl.FREE
+        }
+    }
+
+    /** @parity /modules/vescape-core/ios/connection/BoardSessionController.swift `isTelemetryStale` */
     private fun isTelemetryStale(now: Long = nowMs()): Boolean =
         now - telemetryPipeline.lastTelemetryAt >= TELEMETRY_STALE_MS
 
     private fun buildLiveTick(
         parsed: RefloatTelemetry,
+        processed: ProcessedTelemetry,
         batteryPercent: Double?,
         generation: Long,
         firedAlerts: List<Map<String, Any?>>,
@@ -1722,6 +2399,8 @@ private var wearAutoLaunchOnConnect = true
         val tick = parsed.toMap().toMutableMap()
         tick.remove("location")
         tick["batteryPercent"] = batteryPercent
+        tick["speedPeak"] = processed.speedPeak
+        tick["dutyPeak"] = processed.dutyPeak
         tick["generation"] = generation
         tick["remoteTilt"] = remoteTiltState()
         if (firedAlerts.isNotEmpty()) tick["firedAlerts"] = firedAlerts
@@ -1779,6 +2458,7 @@ private var wearAutoLaunchOnConnect = true
             startPolling()
         }
         if (boardStatus == BoardPhase.Connected) return
+        gattHandshakeDeadline.reset()
         reconnectScheduler.resetAttempts()
         boardError = null
         recordLocalDiagnostic(
@@ -1789,20 +2469,11 @@ private var wearAutoLaunchOnConnect = true
         )
         boardConfig?.let { recordingCoordinator.markBoardReady(it) }
         if (connectionSoundsEnabled) alertFeedback.playConnect()
-        maybeLaunchWatchMirror()
+        watchMirror.boardConnected(currentSessionId)
+        // Telemetry is flowing again: a reconnect that landed inside the grace restores a full ride,
+        // and one that landed outside it raises demand back to `Ride`.
+        setLinkLost(false)
         transitionBoardPhase(BoardPhase.Connected)
-    }
-
-    /**
-     * Fresh connects only: at most once per BoardSession, so mid-ride auto-reconnects and
-     * Stale -> Connected recoveries (same session id) never re-wake the watch.
-     */
-    private fun maybeLaunchWatchMirror() {
-        if (!wearAutoLaunchOnConnect || !watchMirrorPresence.present) return
-        val sessionId = currentSessionId
-        if (sessionId == watchLaunchFiredSessionId) return
-        watchLaunchFiredSessionId = sessionId
-        watchMirrorLauncher.launch()
     }
 
     /** @parity /modules/vescape-core/ios/connection/BoardSessionController.swift `onTelemetryStaleFired` */
@@ -1837,18 +2508,188 @@ private var wearAutoLaunchOnConnect = true
     }
 
     fun setRemoteTilt(value: Int): Boolean =
-        firmwareCommandsTrusted() && remoteTiltController.hold(value)
+        firmwareCommandsTrusted() && remoteInput.manualHold(value)
 
     fun lockRemoteTilt(value: Int): Boolean =
-        firmwareCommandsTrusted() && remoteTiltController.lock(value)
+        firmwareCommandsTrusted() && remoteInput.manualLock(value)
 
     fun releaseRemoteTilt(value: Int, durationMs: Long): Boolean =
-        firmwareCommandsTrusted() && remoteTiltController.release(value, durationMs)
+        firmwareCommandsTrusted() && remoteInput.manualRelease(value, durationMs)
 
+    /**
+     * Eases the active tilt back to neutral rather than snapping — a step to neutral from a large
+     * tilt makes the board surge to correct the angle error and throws the rider.
+     */
+    // Cancellation must remain available if link trust changes during an active tilt.
+    // @parity /modules/vescape-core/ios/connection/BoardSessionController.swift `stopRemoteTilt`
     fun stopRemoteTilt(): Boolean =
-        firmwareCommandsTrusted() && remoteTiltController.stop()
+        remoteInput.cancelTilt()
 
-    fun startBoardMove(input: Int): Boolean = boardMoveController.hold(input)
+    // MARK: - Ground-clearance tilt
+
+    /**
+     * How often the ground-clearance binding re-decides what the Board is told.
+     *
+     * The same 100 ms [RemoteTiltController] repeats a held value on, so a decision never sits
+     * unsent for longer than the stream it feeds. It is a *timer*, not a reaction to samples, and
+     * that is the point: a sensor that stops sending produces no events to react to, and releasing
+     * on silence is the behaviour this whole slice exists for.
+     *
+     * @parity /modules/vescape-core/ios/connection/BoardSessionController.swift `startGroundClearanceTilt`
+     */
+    private fun startGroundClearanceTilt(session: BoardSession) {
+        groundClearanceBinding.start(
+            schedule = { tick ->
+                scheduler.postDelayedForSession(
+                    session,
+                    BoardGroundClearanceBinding.TICK_MS,
+                    ::isCurrentBoardSession,
+                ) { tick() }
+            },
+            boardInput = {
+                BoardGroundClearanceBinding.BoardInput(
+                    commandsTrusted = firmwareCommandsTrusted(),
+                    telemetryFresh = telemetry != null && !isTelemetryStale(),
+                )
+            },
+        )
+    }
+
+    /**
+     * Stops the binding and lets go of anything it was commanding.
+     *
+     * The release happens here rather than being left to the next tick, because the next tick is the
+     * thing being cancelled. A binding whose timer was stopped while it held a tilt would leave the
+     * Board holding that tilt until the firmware's own ~1s remote-input timeout.
+     */
+    private fun stopGroundClearanceTilt() {
+        groundClearanceBinding.stop()
+    }
+
+    /**
+     * What the binding is doing, for the Remote Tilt pad to render.
+     *
+     * Read synchronously off the bridge by the pad's own poll rather than pushed as live state: the
+     * only consumer is a screen that is already polling the commanded tilt at the same rate, and a
+     * 10 Hz event carrying a release reason that mostly does not change would be pure bridge traffic.
+     *
+     * @parity /modules/vescape-core/ios/connection/BoardSessionController.swift `groundClearanceTiltState`
+     * @parity /modules/vescape-core/src/index.ts `GroundClearanceTiltState`
+     */
+    fun groundClearanceTiltState(): Map<String, Any?> = groundClearanceBinding.state()
+
+    /**
+     * The board's lights as its last echo reported them, or `null` while this session has never
+     * heard one — the board is not saying, so JS shows nothing rather than a guess.
+     *
+     * @parity /modules/vescape-core/ios/connection/BoardSessionController.swift `boardLights`
+     */
+    private var boardLights: BoardLightsState? = null
+
+    /** @parity /modules/vescape-core/ios/connection/BoardSessionController.swift `lightsEventBody` */
+    fun lightsEventBody(): Map<String, Any?> = mapOf(
+        "enabled" to boardLights?.enabled,
+        "headlightsEnabled" to boardLights?.headlightsEnabled,
+    )
+
+    /**
+     * Every point [boardLights] changes ends here: JS gets the event, the wrist gets the same truth
+     * on the Data Layer. Nulls stay null on both sides — the board is not saying, so neither is the
+     * phone. `lightsControllable` repeats [setBoardLights]' own guards rather than a second policy,
+     * so the wrist never has to know what a trusted Board Link is.
+     */
+    private fun publishBoardLights() {
+        emitEvent("onBoardLights", lightsEventBody())
+        pushWatchBoard()
+    }
+
+    /**
+     * Push the wrist's slice of the light state. Called from [publishBoardLights] and from every
+     * phase and link-integrity change too, because `lightsControllable` moves on its own: a link
+     * that drops trust or a transport that goes away changes whether a write would be accepted
+     * without changing either switch, and the wrist would otherwise keep offering taps that the
+     * phone silently refuses. The pusher deduplicates, so the extra calls cost nothing on the wire.
+     */
+    private fun pushWatchBoard() {
+        watchMirror.pushBoard(
+            WatchBoard(
+                lightsEnabled = boardLights?.enabled,
+                headlightsEnabled = boardLights?.headlightsEnabled,
+                lightsControllable = firmwareCommandsTrusted() && currentBoardTransport() != null,
+            ),
+        )
+    }
+
+    /**
+     * State the board's lights: the LEDs and the headlights, each on or off. Both switches are
+     * always written, so a caller changing one must pass the other's current value. Runtime only:
+     * firmware applies it live and writes no config, so the board's own setting returns on the next
+     * power cycle.
+     *
+     * @parity /modules/vescape-core/ios/connection/BoardSessionController.swift `setBoardLights`
+     */
+    fun setBoardLights(enabled: Boolean, headlightsEnabled: Boolean): Boolean {
+        if (!firmwareCommandsTrusted()) return false
+        val transport = currentBoardTransport() ?: return false
+        return sendPayloadWithRetry(
+            buildLightsControlCommand(transport, lightsGeneration(), enabled, headlightsEnabled),
+        )
+    }
+
+    private fun lightsGeneration(): BoardLightsGeneration =
+        BoardLightsGeneration.forBaseVersion(boardConfig?.refloatBaseVersion)
+
+    /**
+     * Take the board's lights echo as this session's truth, and on
+     * [BoardLightsGeneration.Legacy] teach the config-change baseline about it.
+     *
+     * Refloat 1.1 and older have no runtime layer: the switch assigns the stored config, so the next
+     * fresh read legitimately differs from the cached baseline. Without this the rider's own tap
+     * comes back at them as "changed outside Vescape". Only the diff baseline is updated — never
+     * [boardConfigValues], whose raw bytes still describe what the board actually sent and must stay
+     * a faithful write base (ADR 0035).
+     */
+    private fun onBoardLightsEcho(lights: BoardLightsState) {
+        boardLights = lights
+        publishBoardLights()
+        if (lightsGeneration() != BoardLightsGeneration.Legacy) return
+        val values = boardConfigValues ?: return
+        val boardId = values.boardId ?: return
+        val baseVersion = values.refloatBaseVersion ?: return
+        val rebased = values
+            .withFlag(BoardConfigFlagField.LEDS_ON, lights.enabled)
+            ?.withFlag(BoardConfigFlagField.HEADLIGHTS_ON, lights.headlightsEnabled)
+            ?: return
+        // Only the two light fields are patched into the stored row. Writing the whole snapshot back
+        // would race a fresh read that landed since it was taken and reinstate its stale values as
+        // the comparison base.
+        val patch = rebased.values.filterKeys {
+            it == BoardConfigFlagField.LEDS_ON.id || it == BoardConfigFlagField.HEADLIGHTS_ON.id
+        }
+        val repo = AppDataRepository.get(service.applicationContext)
+        CoreForegroundService.appDataScope.launch { repo.patchBoardConfigValues(boardId, baseVersion, patch) }
+    }
+
+    /**
+     * Seed the lights from config, which is what firmware applies until something overrides it. On
+     * [BoardLightsGeneration.Legacy] config stays the truth for the whole session, because the
+     * switch writes it directly. On 1.2+ a runtime override detaches the two for the rest of the
+     * power cycle, so config only speaks until this session's first echo.
+     */
+    private fun syncBoardLightsFromConfig(values: BoardConfigValues) {
+        if (lightsGeneration() == BoardLightsGeneration.Current && boardLights != null) return
+        val enabled = values.flag(BoardConfigFlagField.LEDS_ON) ?: return
+        val lights = BoardLightsState(enabled, values.flag(BoardConfigFlagField.HEADLIGHTS_ON) ?: false)
+        if (lights == boardLights) return
+        boardLights = lights
+        publishBoardLights()
+    }
+
+    /**
+     * Board Move takes the remote-input slot from any tilt stream still holding it, and is refused
+     * outright while a sensor is correcting — see [RemoteInputArbiter.startMove].
+     */
+    fun startBoardMove(input: Int): Boolean = remoteInput.startMove(input)
 
     /**
      * A wrist Board Move tick (ADR-0033). Direction only — the phone applies the rider's strength
@@ -1856,9 +2697,48 @@ private var wearAutoLaunchOnConnect = true
      */
     fun watchMove(direction: Int) = watchMoveRelay.accept(direction)
 
+    /**
+     * A wrist light edit (ADR-0033). One switch named, both composed and written here, see
+     * [WatchLightsRelay].
+     */
+    internal fun watchLights(switch: WatchLightsSwitch, on: Boolean) = watchLightsRelay.accept(switch, on)
+
+    /** Whether the last wrist tilt lock was refused, so a refused drag records once, not per tick. */
+    private var watchTiltRefused = false
+
+    /**
+     * A wrist Remote Tilt lock: the same [lockRemoteTilt] the phone pad's lock makes, so the arbiter
+     * refuses it for the same reasons. No dead-man, unlike [watchMove] — a lock is a setpoint that
+     * outlives the wrist on purpose, and a stick drag arrives as a stream of absolute locks.
+     *
+     * @parity /modules/vescape-core/ios/connection/BoardSessionController.swift `watchTiltLock`
+     */
+    fun watchTiltLock(value: Int) = scheduler.post {
+        val refused = !lockRemoteTilt(value)
+        if (refused != watchTiltRefused) {
+            watchTiltRefused = refused
+            recordWatchDiagnostic(if (refused) "watch_tilt_refused" else "watch_tilt_locked", mapOf("value" to value))
+        }
+    }
+
+    /**
+     * A wrist tilt reset: the pad's ungated cancel, eased back to neutral.
+     *
+     * @parity /modules/vescape-core/ios/connection/BoardSessionController.swift `watchTiltCancel`
+     */
+    fun watchTiltCancel() = scheduler.post {
+        watchTiltRefused = false
+        recordWatchDiagnostic("watch_tilt_cancel", mapOf("accepted" to stopRemoteTilt()))
+    }
+
+    internal fun watchMirrorWakeLevel(level: WatchMirrorWakeLevel) {
+        // WearableListenerService callbacks arrive off the controller's scheduler.
+        scheduler.post { watchMirror.acceptWakeLevel(level) }
+    }
+
     // Deliberately ungated: a stop must reach the board even if the link lost trust mid-hold,
     // otherwise the rider's release does nothing and the board coasts to the firmware timeout.
-    fun stopBoardMove(): Boolean = boardMoveController.stop()
+    fun stopBoardMove(): Boolean = remoteInput.stopMove()
 
     /**
      * The live position Navigation starts a path from. See `LocationTracker.riderPosition`.
@@ -1872,8 +2752,10 @@ private var wearAutoLaunchOnConnect = true
             remoteTiltController.currentValue,
             remoteTiltController.phase,
             remoteTiltController.decayProgress,
+            remoteInput.owner,
         )
 
+    // @parity /modules/vescape-core/ios/connection/BoardSessionController.swift `sendPayloadWithRetry`
     private fun sendPayloadWithRetry(payload: ByteArray, session: BoardSession? = boardSession): Boolean {
         if (session != null && !isCurrentBoardSession(session)) return false
         val sent = sendPayload(payload)
@@ -1897,11 +2779,12 @@ private var wearAutoLaunchOnConnect = true
     private fun stopCurrentBoardSession(emitDisconnected: Boolean) {
         // Final write so the persisted last battery is fresh, not up to 30s stale.
         persistLastBattery(latestBatterySoc, telemetry?.batteryVoltage, nowMs(), force = true)
-        remoteTiltController.stop()
-        boardMoveController.stop()
+        stopGroundClearanceTilt()
+        remoteInput.reset()
         flushTelemetryDiagnostics("stop")
         configController.onSessionTerminated("Board session stopped during Refloat config op")
         val stoppedConfig = boardConfig
+        val wasReplay = replayTransport != null || stoppedConfig?.replayRecordingName != null
         reconnectScheduler.cancelAndReset()
         cancelBoardReadyTimeout()
         stopPolling()
@@ -1911,6 +2794,7 @@ private var wearAutoLaunchOnConnect = true
         // and the next session must not still be reading time from the past.
         sessionClock = SystemSessionClock
         alertCoordinator.stopAllGeiger()
+        recordGpsSessionSummary(stoppedConfig)
         recordingCoordinator.finishBoardSession(
             status = if (emitDisconnected) "disconnected" else "stopped",
             markerType = if (emitDisconnected) "disconnected" else "app_stop",
@@ -1919,6 +2803,13 @@ private var wearAutoLaunchOnConnect = true
         connectionCoordinator.clearPending()
         fwVersionString = null
         telemetry = null
+        // Board Config Values are per Board Session; the cache row survives, the held object does not.
+        boardConfigValues = null
+        motorConfigValues = null
+        motorConfigRequested = false
+        // Lights are per Board Session: what the last board's echo said means nothing for the next.
+        boardLights = null
+        publishBoardLights()
         boardSession?.invalidate()
         boardSession = null
         // A whole session with BMS data and no sustained spread auto-clears any stored cell-spread
@@ -1936,18 +2827,27 @@ private var wearAutoLaunchOnConnect = true
             }
         }
         bmsSeriesRing.clear()
+        faultLogTickHandle?.cancel()
+        faultLogTickHandle = null
+        faultLogReader?.cancel()
+        faultLogReader = null
         telemetryPipeline.endSession()
         sessionSequence += 1
         boardConfig = null
         boardError = null
-        // The replay released position; hand it back to the live monitor it displaced.
-        if (gpsSuppressedByReplay) {
-            gpsSuppressedByReplay = false
-            startLocationUpdates()
-        }
+        // The session is gone, so the grace it owned goes with it, and demand is re-resolved without
+        // it: a replay hands position back to the live monitor here, and a live session that was the
+        // only reason GPS was running lets it stand down.
+        // @parity /modules/vescape-core/ios/connection/BoardSessionController.swift `releaseGpsFromSession`
+        if (wasReplay) locationTracker.clearReplayLocations()
+        clearDropoutGrace()
         // Idle repaint (title + Connect action) rides on the phase transition, like every other
         // phase change — see [refreshNotification].
         transitionBoardPhase(BoardPhase.Idle)
+        // Last, because releasing the session's GPS demand can release the host with it: a
+        // `stopIfIdle` that lands before the repaint would cancel the notification and then have it
+        // painted straight back onto a service that is stopping.
+        refreshGpsDemand()
     }
 
     /** Persist the last Battery SoC Estimate per board so it survives full app kill (#152).
@@ -2004,6 +2904,9 @@ private var wearAutoLaunchOnConnect = true
         recordProperties: Map<String, Any?> = emptyMap(),
     ) {
         boardStatus = next
+        // A phase change can flip whether a light write would be accepted, with the lights
+        // themselves unchanged. See [pushWatchBoard].
+        pushWatchBoard()
         recordName?.let { recordingCoordinator.recordState(it, recordProperties) }
         rescheduleAutoClose()
         // The notification mirrors the phase, not just telemetry frames: without this a phase change
@@ -2013,7 +2916,7 @@ private var wearAutoLaunchOnConnect = true
     }
 
     /**
-     * Auto close (Connection settings): exit the whole app after the configured delay without a
+     * Auto close (Automation settings): exit the whole app after the configured delay without a
      * board link. The countdown arms when the phase leaves Connected/Stale and only cancels once a
      * link is back, so reconnect-loop phase churn never resets it. Deliberately does NOT arm the
      * companion restart gate: the board reappearing should be able to auto start the app again.
@@ -2062,7 +2965,7 @@ private var wearAutoLaunchOnConnect = true
         service.stopForeground(Service.STOP_FOREGROUND_REMOVE)
         notificationController.cancel()
         stopCurrentBoardSession(emitDisconnected = true)
-        stopLocationUpdates()
+        forceStopGps()
         closeAppTask()
         service.stopSelf()
     }
@@ -2070,14 +2973,27 @@ private var wearAutoLaunchOnConnect = true
     private fun setStatus(next: BoardPhase) =
         transitionBoardPhase(next, recordName = next.recordName())
 
+    /**
+     * @parity /modules/vescape-core/ios/connection/BoardSessionController.swift `beginReconnect`
+     */
     private fun scheduleAutoReconnect(session: SessionConfig, gattStatus: Int?, reason: String) {
         if (!session.autoReconnect || isStoppingService) return
         val reconnectSession = boardSession ?: return
+        // Release the connected-Board pause gate. While connected the Board decides Idle Pause and it
+        // halts *both* streams, GPS included — so a board that went stationary and then dropped would
+        // leave that gate stuck closed for the whole reconnect, silently discarding the rider's fixes.
+        // Off the link there is no Board engagement signal and no GPS-based Idle Pause (ADR 0021), so
+        // recording continues until the rider stops it; the detector takes over again on the next
+        // board-ready.
+        resetIdlePause()
         // Lost a live link (telemetry was flowing) — signal the rider we're now without telemetry.
         // Fires once at loss: subsequent reconnect attempts enter here as Reconnecting/Rescanning.
         if (connectionSoundsEnabled && (boardStatus == BoardPhase.Connected || boardStatus == BoardPhase.Stale)) {
             alertFeedback.playDisconnect()
         }
+        // Starts the ride dropout grace: GPS stays at `Ride` strength across the drop so the Ride
+        // Track survives it, and steps down once the grace says this is an ended ride, not a dropout.
+        setLinkLost(true)
         reconnectScheduler.schedule(
             session = reconnectSession,
             targetDeviceId = session.deviceId,
@@ -2150,24 +3066,95 @@ private var wearAutoLaunchOnConnect = true
     }
 
     /**
-     * The one place the phone's GPS is armed. A replay owns position for its whole session, so the
-     * guard lives here rather than at the call sites: the map, the settings toggle and the session
-     * start all ask for location updates independently, and a single live fix slipping through is
-     * enough to make the marker jump off the recorded track.
+     * A ride is in progress: a Board Session exists and Idle Pause is not holding it.
+     *
+     * Phase deliberately does not appear here beyond the session's existence. A mid-ride dropout is
+     * still a ride — the Ride Track is what keeps the route alive across it (ADR 0038) — so the
+     * reconnect states count, but only until [linkLostAtMs] ages past `RIDE_DROPOUT_GRACE_MS`. Past
+     * that the board is not dropping out, it is off, and the rider has stopped riding.
+     *
+     * @parity /modules/vescape-core/ios/connection/BoardSessionController.swift `riding`
      */
-    private fun startLocationUpdates() {
-        if (boardConfig?.replayRecordingName != null) return
-        gpsError = gpsMonitor.start()
-        if (gpsError != null) emitState()
+    private val riding: Boolean
+        get() {
+            if (boardConfig == null || idlePauseDetector.isPaused) return false
+            return GpsDemand.ridingThroughDropout(linkLostAtMs, nowMs())
+        }
+
+    /**
+     * The one place the phone's GPS is armed, at the one strength the current situation justifies.
+     * Every input it reads — app visibility, Board Session, Idle Pause, Group Ride, replay — calls
+     * back here when it changes, so no caller has to know the whole rule.
+     *
+     * @parity /modules/vescape-core/ios/connection/BoardSessionController.swift `refreshGpsDemand`
+     */
+    fun refreshGpsDemand() {
+        val mode = GpsDemand.resolve(
+            appVisible = appVisible,
+            riding = riding,
+            groupRideParticipating = groupRideObserver.participating,
+            watchNavigating = watchMirror.navigating,
+            replayOwnsPosition = replayTransport != null || boardConfig?.replayRecordingName != null,
+        )
+        val wasActive = gpsMonitor.active
+        gpsMonitor.apply(mode)
+        // Buffered rows are flushed on the way down so a monitor that may not run again for hours
+        // does not leave the rider's last fixes sitting in memory. Off the calling thread: the most
+        // common caller is the app being backgrounded, which is the worst moment to block on SQLite.
+        // Nothing is tearing down here, so the write has time to land.
+        if (wasActive && mode == GpsPowerMode.Off) {
+            val appContext = service.applicationContext
+            CoreForegroundService.appDataScope.launch {
+                TelemetryRepository.get(appContext).flushBlocking()
+            }
+        }
+        emitState()
+        // The asserted foreground-service type keys off `gpsMonitor.active`, so it has to be
+        // re-applied whenever that flips — including when GPS stops but an Accessory, a Group Ride
+        // or a live session keeps the host alive, where `stopIfIdle` is a no-op and the service
+        // would otherwise keep declaring LOCATION with no listener registered.
+        if (wasActive != gpsMonitor.active) reassertForeground()
+        // Dropping LOCATION is what lets an idle host stop existing — but never while `beginSession`
+        // is between tearing the old session down and building the new one. There `boardConfig` is
+        // momentarily null, so an idle check would `stopSelf()` the very host the incoming session
+        // is about to run in, and latch `isStoppingService` for its whole life.
+        if (!beginningSession && wasActive && !gpsMonitor.active) stopIfIdle()
     }
 
-    private fun stopLocationUpdates() {
-        gpsMonitor.stop()
+    /**
+     * Mark the link down (or back up) and re-resolve demand. The grace timer is what turns the
+     * passage of time into a demand change, so it is armed and cancelled alongside the timestamp.
+     *
+     * @parity /modules/vescape-core/ios/connection/BoardSessionController.swift `setLinkLost`
+     */
+    private fun setLinkLost(lost: Boolean) {
+        if (!lost) {
+            if (linkLostAtMs == null) return
+            dropoutGraceHandle?.cancel()
+            dropoutGraceHandle = null
+            linkLostAtMs = null
+            refreshGpsDemand()
+            return
+        }
+        // Already counting. The grace belongs to the *first* loss, and every retry after it is the
+        // same dropout — `scheduleAutoReconnect` is re-entered on each failed attempt. Cancelling or
+        // re-arming the timer here would let an endless retry loop push the cutoff out forever,
+        // which is precisely the case the grace exists to bound. Leave the armed timer alone.
+        if (linkLostAtMs != null) return
+        linkLostAtMs = nowMs()
+        dropoutGraceHandle?.cancel()
+        dropoutGraceHandle = scheduler.postDelayed(RIDE_DROPOUT_GRACE_MS) {
+            dropoutGraceHandle = null
+            refreshGpsDemand()
+        }
+        refreshGpsDemand()
     }
 
-    /** @parity /modules/vescape-core/ios/connection/BoardSessionController.swift `recordPhoneHeading` */
-    fun recordPhoneHeading(headingDeg: Double) {
-        recordingCoordinator.currentRecorder()?.recordPhoneHeading(headingDeg)
+    /** Clear the dropout grace a session leaves behind, so the next one starts inside its own. */
+    private fun clearDropoutGrace() {
+        linkLostAtMs = null
+        dropoutGraceHandle?.cancel()
+        dropoutGraceHandle = null
     }
 
     fun setTelemetryRecordingEnabled(enabled: Boolean) {
@@ -2226,37 +3213,102 @@ private var wearAutoLaunchOnConnect = true
         onLocationUpdated(location)
     }
 
-    /**
-     * Hand a recorded compass reading back to JS, which owns the magnetometer and therefore has to
-     * be the one to feed it into the map. Emitted rather than applied natively for the same reason
-     * it was recorded from JS: the sensor lives there.
-     *
-     * @parity /modules/vescape-core/ios/connection/BoardSessionController.swift `onReplayHeading`
-     */
-    private fun onReplayHeading(heading: ReplayHeading) {
-        emitEvent("onReplayPhoneHeading", mapOf("headingDeg" to heading.headingDeg))
-    }
-
     private fun onLocationUpdated(location: Location) {
-        locationTracker.onLocationUpdated(location)
+        recordGpsFix(location)
+        val snapshot = locationTracker.onLocationUpdated(location)
+        recordRideTrackFix(snapshot)
         latestRiderPresence()?.let(groupRideObserver::pushPresence)
         // Offered on every Fix; the coordinator owns the freshness and distance gates.
         weatherCoordinator.onPosition(location.latitude, location.longitude)
     }
 
     /**
-     * A new forecast: mirror it to JS and to the wrist. Runs on the main thread.
+     * Offer the fix that just arrived to the **Ride Track**.
+     *
+     * On the GPS clock, not the frame clock: this runs whether or not telemetry is flowing, which is
+     * what keeps the route alive through a board dropout (ADR 0038). Poor fixes are offered too —
+     * the store keeps them with their reported accuracy and the precision rule applies on read.
+     *
+     * Idle Pause halts both durable streams together, and paused fixes are dropped rather than
+     * backfilled on resume (ADR 0021). Live display, presence and the map are untouched by it.
+     */
+    private fun recordRideTrackFix(snapshot: LocationSnapshot) {
+        if (idlePauseDetector.isPaused) return
+        recordingCoordinator.recordGpsFix(snapshot.toCapture())
+    }
+
+    /**
+     * One low-volume Local Diagnostic Event per Board Session. No coordinates leave the GPS path.
+     * @parity /modules/vescape-core/ios/connection/BoardSessionController.swift `recordGpsSessionSummary`
+     */
+    private fun beginGpsSessionDiagnostics() {
+        gpsSessionStartedAt = nowMs()
+        gpsFixCount = 0
+        gpsPreciseFixCount = 0
+        gpsFirstFixAt = null
+        gpsFirstPreciseFixAt = null
+        gpsLastFixAt = null
+    }
+
+    private fun recordGpsFix(location: Location) {
+        if (gpsSessionStartedAt == null) return
+        val at = nowMs()
+        gpsFixCount += 1
+        if (gpsFirstFixAt == null) gpsFirstFixAt = at
+        gpsLastFixAt = at
+        val accuracyM = if (location.hasAccuracy()) location.accuracy.toDouble() else null
+        if (isPreciseGpsFix(location.provider, accuracyM)) {
+            gpsPreciseFixCount += 1
+            if (gpsFirstPreciseFixAt == null) gpsFirstPreciseFixAt = at
+        }
+    }
+
+    private fun recordGpsSessionSummary(config: SessionConfig?) {
+        val startedAt = gpsSessionStartedAt ?: return
+        val endedAt = nowMs()
+        val locationManager = service.getSystemService(Context.LOCATION_SERVICE) as? LocationManager
+        val fineGranted = ContextCompat.checkSelfPermission(service, Manifest.permission.ACCESS_FINE_LOCATION) ==
+            PackageManager.PERMISSION_GRANTED
+        val backgroundGranted = Build.VERSION.SDK_INT < Build.VERSION_CODES.Q ||
+            ContextCompat.checkSelfPermission(service, Manifest.permission.ACCESS_BACKGROUND_LOCATION) ==
+            PackageManager.PERMISSION_GRANTED
+        recordLocalDiagnostic(
+            "gps_session_summary",
+            config,
+            "gps",
+            mapOf(
+                "message" to "GPS Board Session summary",
+                "recording_enabled" to recordingCoordinator.telemetryRecordingEnabled,
+                "updates_started" to gpsMonitor.updatesStarted,
+                "fix_count" to gpsFixCount,
+                "precise_fix_count" to gpsPreciseFixCount,
+                "first_fix_delay_ms" to gpsFirstFixAt?.minus(startedAt),
+                "first_precise_fix_delay_ms" to gpsFirstPreciseFixAt?.minus(startedAt),
+                "last_fix_age_ms" to gpsLastFixAt?.let { endedAt - it },
+                "duration_ms" to endedAt - startedAt,
+                "foreground_permission" to fineGranted,
+                "background_permission" to backgroundGranted,
+                "gps_provider_enabled" to (locationManager?.isProviderEnabled(LocationManager.GPS_PROVIDER) ?: false),
+                "network_provider_enabled" to (locationManager?.isProviderEnabled(LocationManager.NETWORK_PROVIDER) ?: false),
+                "last_error" to gpsError,
+            ),
+        )
+        gpsSessionStartedAt = null
+    }
+
+    /**
+     * A new forecast: mirror it to JS on the main thread. WatchMirrorCoordinator owns the wrist subscription.
      *
      * @parity /modules/vescape-core/ios/VescapeCoreModule.swift `sendWeather`
-     * @platform-diff The wrist push is Android-only — Wear OS has no iOS peer (ADR-0019).
      */
     private fun onWeatherChanged(weather: Weather?) {
         if (weather == null) return
         emitEvent("onWeather", mapOf("weather" to weather.toMap()))
-        watchWeatherPusher.push(weather.toWatchWeather())
     }
 
+    /** @parity /modules/vescape-core/ios/connection/BoardSessionController.swift `latestRiderPresence` */
     private fun latestRiderPresence(): RiderPresence? {
+        if (!groupRidePrivacy.allowsLocationEgress) return null
         val location = locationTracker.latestPreciseLocation ?: locationTracker.latestLocation ?: return null
         // Privacy Zone egress gate (issue #144): freeze the group dot while inside a zone. Local GPS
         // keeps ticking; only the broadcast is suppressed, resuming automatically on exit.
@@ -2277,7 +3329,10 @@ private var wearAutoLaunchOnConnect = true
         )
     }
 
-    /** Device battery as a 0–1 fraction, or null when the platform can't report it. */
+    /**
+     * Device battery as a 0–1 fraction, or null when the platform can't report it.
+     * @parity /modules/vescape-core/ios/connection/BoardSessionController.swift `readPhoneBattery`
+     */
     private fun readPhoneBattery(): Double? {
         val manager = service.getSystemService(Context.BATTERY_SERVICE) as? BatteryManager ?: return null
         val level = manager.getIntProperty(BatteryManager.BATTERY_PROPERTY_CAPACITY)
@@ -2285,20 +3340,27 @@ private var wearAutoLaunchOnConnect = true
     }
 
     private fun isInsidePrivacyZone(location: LocationSnapshot): Boolean {
-        val zones = groupRidePrivacyZones
+        val zones = groupRidePrivacy.zones
         if (zones.isEmpty()) return false
         val latitudeE7 = (location.latitude * 10_000_000.0).roundToInt()
         val longitudeE7 = (location.longitude * 10_000_000.0).roundToInt()
         return isInsideAnyPrivacyZone(latitudeE7, longitudeE7, zones)
     }
 
-    /** Refresh the Group Ride presence zone gate from native storage (observe start + zone CRUD). */
+    /**
+     * Refresh the Group Ride presence zone gate from native storage (observe start + zone CRUD).
+     * @parity /modules/vescape-core/ios/connection/BoardSessionController.swift `loadPrivacyZones`
+     */
     suspend fun loadPrivacyZones(context: Context) {
-        groupRidePrivacyZones = try {
-            AppDataRepository.get(context).getEnabledPrivacyZoneEntities()
+        try {
+            groupRidePrivacy.reload {
+                AppDataRepository.get(context).getEnabledPrivacyZoneEntities()
+            }
+        } catch (e: kotlinx.coroutines.CancellationException) {
+            throw e
         } catch (e: Exception) {
             Log.w(VESC_SESSION_TAG, "Failed to load privacy zones for presence gate: ${e.message}")
-            emptyList()
+            RecordingStorageFailure.reportRead("group_ride_privacy_zones_read", e)
         }
     }
 
@@ -2306,24 +3368,40 @@ private var wearAutoLaunchOnConnect = true
      * Refresh the shared Group Ride target from native storage (observe start + direction-point
      * CRUD), then push presence immediately so peers see the change without waiting for the
      * next GPS tick.
+     *
+     * @parity /modules/vescape-core/ios/connection/BoardSessionController.swift `loadGroupRideTarget`
      */
     suspend fun loadGroupRideTarget(context: Context) {
-        groupRideTarget = try {
+        val reload = reloadGroupRideTarget(groupRideTarget, read = {
             AppDataRepository.get(context).getDirectionPoint()?.let { (latitude, longitude) ->
                 TargetPoint(lat = latitude, lng = longitude)
             }
-        } catch (e: Exception) {
-            Log.w(VESC_SESSION_TAG, "Failed to load direction target for presence: ${e.message}")
-            null
-        }
+        })
+        if (!reload.loaded) return
+        groupRideTarget = reload.target
         mainHandler.post { latestRiderPresence()?.let(groupRideObserver::pushPresence) }
     }
 
+    /**
+     * Status events carry latest fixes only; getLiveState includes the retained windows.
+     * @parity /modules/vescape-core/ios/VescapeCoreModule.swift `liveState`
+     */
     fun liveStateMap(includeRecent: Boolean = false): Map<String, Any?> {
         val settings = kotlinx.coroutines.runBlocking {
             AppDataRepository.get(service.applicationContext).getTypedSettings()
         }
         applyTelemetrySettings(settings)
+        return liveStateMapWithoutStorage(settings, includeRecent)
+    }
+
+    /** Builds an outage event from memory only, preserving the active Board and live telemetry. */
+    fun liveStateMapWithoutStorage(includeRecent: Boolean = false): Map<String, Any?> =
+        liveStateMapWithoutStorage(lastAppliedSettings, includeRecent)
+
+    private fun liveStateMapWithoutStorage(
+        settings: AppSettings,
+        includeRecent: Boolean,
+    ): Map<String, Any?> {
         val recentTelemetryValue = if (includeRecent) telemetryPipeline.recentSnapshot() else emptyList()
         val recentLocationsValue = if (includeRecent) locationTracker.recentLocations() else emptyList()
 
@@ -2335,7 +3413,8 @@ private var wearAutoLaunchOnConnect = true
                 connectionSeq = currentSessionId,
                 lastTelemetryAt = telemetry?.lastPacketAt,
                 recentTelemetry = recentTelemetryValue,
-                gpsActive = gpsMonitor.active,
+                gpsPhase = gpsMonitor.phase,
+                gpsMode = gpsMonitor.mode,
                 latestLocation = locationTracker.latestLocation,
                 latestPreciseLocation = locationTracker.latestPreciseLocation,
                 recentLocations = recentLocationsValue,
@@ -2345,6 +3424,7 @@ private var wearAutoLaunchOnConnect = true
                 remoteTiltValue = remoteTiltController.currentValue,
                 remoteTiltPhase = remoteTiltController.phase,
                 remoteTiltDecay = remoteTiltController.decayProgress,
+                remoteTiltOwner = remoteInput.owner,
                 linkIntegrity = boardSession?.linkIntegrity ?: LinkIntegrity.Unknown,
                 settings = settings,
             )
@@ -2362,6 +3442,7 @@ private var wearAutoLaunchOnConnect = true
         }
         try {
             val repo = AppDataRepository.get(context)
+            repo.repairMissingAlertPresetRelations(boardId)
             val board = repo.getBoard(boardId)
             val enabled = ((board?.get("legalMode") as? Map<*, *>)?.get("enabled") as? Boolean) == true
             val jurisdictionCode = repo.getTypedSettings().legalPolicy?.get("jurisdictionCode")
@@ -2376,11 +3457,11 @@ private var wearAutoLaunchOnConnect = true
             if (!CoreForegroundService.isLatestAlertRulesGeneration(generation)) return
             alertCoordinator.replaceRules(rules)
             Log.d(VESC_SESSION_TAG, "Loaded ${rules.size} alert rule(s)")
+        } catch (e: kotlinx.coroutines.CancellationException) {
+            throw e
         } catch (e: Exception) {
             Log.w(VESC_SESSION_TAG, "Failed to load alert rules: ${e.message}")
-            if (CoreForegroundService.isLatestAlertRulesGeneration(generation)) {
-                alertCoordinator.replaceRules(emptyList())
-            }
+            RecordingStorageFailure.reportRead("enabled_alert_rules_read", e)
         }
     }
 
@@ -2391,17 +3472,22 @@ private var wearAutoLaunchOnConnect = true
     suspend fun reloadBoardDataForActiveBoard() {
         val current = boardConfig
         val repo = AppDataRepository.get(service.applicationContext)
-        val selectedBoardId = repo.getTypedSettings().selectedBoardId
+        val selectedBoardId: String?
+        val board: Map<String, Any?>?
         val activeBoardId = current?.appBoardId
-        val boardId = activeBoardId ?: selectedBoardId ?: return
-        val board = try {
-            repo.getBoard(boardId)
+        try {
+            selectedBoardId = repo.getTypedSettings().selectedBoardId
+            val boardId = activeBoardId ?: selectedBoardId ?: return
+            board = repo.getBoard(boardId)
         } catch (e: kotlinx.coroutines.CancellationException) {
             throw e
         } catch (e: Exception) {
             Log.w(VESC_SESSION_TAG, "Failed to load board data: ${e.message}")
-            null
-        } ?: return
+            RecordingStorageFailure.reportRead("active_board_read", e)
+            return
+        }
+        val boardId = activeBoardId ?: selectedBoardId ?: return
+        board ?: return
         val name = (board["name"] as? String)?.takeIf { it.isNotEmpty() }
             ?: current?.deviceName
             ?: selectedBoardName
@@ -2447,7 +3533,8 @@ private var wearAutoLaunchOnConnect = true
             throw e
         } catch (e: Exception) {
             Log.w(VESC_SESSION_TAG, "Failed to load battery config: ${e.message}")
-            null
+            RecordingStorageFailure.reportRead("board_battery_config_read", e)
+            return
         }
     }
 
@@ -2474,25 +3561,54 @@ private var wearAutoLaunchOnConnect = true
     }
 
     private fun applyTelemetrySettings(settings: AppSettings) {
+        lastAppliedSettings = settings
         applyTelemetryPipelineSettings(settings)
         recordingCoordinator.applySettings(settings)
         socWindow.windowMs = settings.socEstimateWindowSeconds * 1000L
         connectionSoundsEnabled = settings.connectionSoundsEnabled
+        alertCoordinator.unitSystem = settings.unitSystem
+        alertFeedback.setSoundSettings(settings.soundPack, settings.audioSource)
+        // `VESC Fault Collection` is its own kill switch — deliberately not gated on
+        // `boardWarningsEnabled`, so turning warnings off keeps fault evidence flowing.
+        val coordinator = VescFaultCoordinator.get(service.applicationContext)
+        val collectionWasEnabled = coordinator.collectionEnabled
+        coordinator.collectionEnabled = settings.vescFaultCollectionEnabled
+        // The switch must stop capture persistence too, without deleting stored evidence.
+        VescFaultCaptureCoordinator.get(service.applicationContext)
+            .setCollectionEnabled(settings.vescFaultCollectionEnabled)
+        if (!collectionWasEnabled && settings.vescFaultCollectionEnabled) {
+            // Transitions were dropped while disabled, so the controller's edge state is a lie.
+            // Reset it to unknown so the next frame — fault or normal — reconciles the coordinator
+            // with what the controller is actually reporting.
+            liveFaultCode = FAULT_CODE_UNKNOWN
+            lastFaultDispatchAtMs = 0L
+        }
         val warningsWereEnabled = boardWarningsEnabled
         boardWarningsEnabled = settings.boardWarningsEnabled
         // Disabled→enabled with an already-trusted link: link integrity won't transition again, so
-        // schedule the config-safety read here (main-scheduler, like the rest of the one-shot state).
+        // re-arm here (main-scheduler, like the rest of the one-shot state) — evaluate the config this
+        // session already read, or retry the read if it never landed.
         if (!warningsWereEnabled && boardWarningsEnabled) {
             scheduler.post {
-                if (lastEmittedLinkIntegrity == LinkIntegrity.Trusted) scheduleConfigSafetyRead()
+                if (lastEmittedLinkIntegrity != LinkIntegrity.Trusted) return@post
+                val values = boardConfigValues
+                if (values != null && values.freshness == BoardConfigFreshness.FRESH) {
+                    evaluateConfigSafety(values)
+                } else {
+                    boardConfigReadScheduled = false
+                    scheduleBoardConfigRead()
+                }
             }
         }
         configuredPollIntervalMs = pollIntervalMsForHz(settings.telemetryPollRateHz)
-        movingThresholdCentiKmh = settings.toMetricSanitizerConfig().movingSpeedThresholdCentiKmh
         pollingLoop.setPollIntervalMs(effectivePollIntervalMs())
-        watchTick.setIntervalMs(settings.wearMirrorIntervalMs.toLong())
-        watchSettingsPusher.push(settings.toWatchSettings())
-        wearAutoLaunchOnConnect = settings.wearAutoLaunchOnConnect
+        scheduler.post {
+            watchMirror.applySettings(
+                settings.toWatchSettings(),
+                pollIntervalMsForHz(settings.wearPushRateHz),
+                settings.wearAutoLaunchOnConnect,
+            )
+        }
         boardMoveStrengthPercent = settings.boardMoveStrengthPercent
         autoCloseEnabled = settings.autoCloseEnabled
         autoCloseDelayMinutes = settings.autoCloseDelayMinutes
@@ -2515,20 +3631,23 @@ private var wearAutoLaunchOnConnect = true
             return
         }
         val transition = idlePauseDetector.onSample(
-            speedCentiKmh = (capture.speed * 100.0).roundToInt(),
-            movingThresholdCentiKmh = movingThresholdCentiKmh,
-            atMs = capture.capturedAtMs,
+            state = capture.state,
         ) ?: return
         if (transition == IdlePauseTransition.Paused) {
             recordingCoordinator.recordIdlePauseMarker(boardConfig)
         }
         pollingLoop.setPollIntervalMs(effectivePollIntervalMs())
+        // A pause is a stationary board with recording halted (ADR 0021): nothing is consuming fixes,
+        // so the chip stands down until the rider moves off again.
+        refreshGpsDemand()
         emitState()
     }
 
     private fun resetIdlePause() {
+        val wasPaused = idlePauseDetector.isPaused
         idlePauseDetector.reset()
         pollingLoop.setPollIntervalMs(effectivePollIntervalMs())
+        if (wasPaused) refreshGpsDemand()
     }
 
     private fun applyTelemetryPipelineSettings(settings: AppSettings) {
@@ -2556,6 +3675,7 @@ private var wearAutoLaunchOnConnect = true
     }
 
     private fun onConnectPhaseTimeout(timeout: ConnectPhaseTimeout) {
+        if (timeout.phase == "gatt_ready") gattHandshakeDeadline.timedOut()
         Log.w(
             VESC_SESSION_TAG,
             "connect phase timeout phase=${timeout.phase} device=${timeout.start.boardConfig.deviceId} attempt=${timeout.attempt} elapsedMs=${timeout.elapsedMs} status=${timeout.boardStatus} canId=${timeout.canId}",
@@ -2597,10 +3717,28 @@ private var wearAutoLaunchOnConnect = true
         diagnosticsRecorder.diagnosticProperties(session, operation)
 }
 
+internal fun companionBoardIdForAddress(
+    boards: List<Map<String, Any?>>,
+    address: String,
+): String? = boards.firstNotNullOfOrNull { board ->
+    val link = board["link"] as? Map<*, *> ?: return@firstNotNullOfOrNull null
+    val bleId = link["bleId"] as? String ?: return@firstNotNullOfOrNull null
+    (board["id"] as? String)?.takeIf { bleId.equals(address, ignoreCase = true) }
+}
+
 private const val LINK_INTEGRITY_BMS_TIMEOUT_MS = 12_000L
 
-/** Idle delay after link trust before the one background config-safety read fires (lets telemetry settle). */
-private const val CONFIG_SAFETY_READ_DELAY_MS = 2_500L
+// Deadline for proving the link either way. Longer than the BMS timeout so that verdict lands first
+// when a BMS is expected.
+// @parity /modules/vescape-core/ios/connection/BoardSessionController.swift `linkIntegrityCheckTimeoutSeconds`
+private const val LINK_INTEGRITY_CHECK_TIMEOUT_MS = 20_000L
+
+/**
+ * Idle delay after link trust before the one background config-safety read fires. Only long enough
+ * to let the connect burst clear: the read plus its multi-packet schema transfer is what the rider
+ * waits on, and a config-change notice has to reach them before they ride off.
+ */
+private const val CONFIG_SAFETY_READ_DELAY_MS = 400L
 
 private fun SessionConfig.linkIdentity(): LinkIdentity =
     LinkIdentity(

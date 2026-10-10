@@ -23,6 +23,7 @@ const getSettings = mock(async () => ({
   satelliteMapImageryOpacity: 1,
   satelliteImagerySaturation: -0.35,
   hideTelemetryMapDetails: true,
+  showHistoryMapMarkers: false,
   mapOrientationMode: 'northUp',
   historyMetricGradientsEnabled: true,
   historyMetricHotRanges: {},
@@ -65,7 +66,7 @@ beforeEach(async () => {
 test('new boards default to Molicel P50B 20S2P preset battery config', async () => {
   const { DEFAULT_BATTERY_CONFIG, useBoardStore } = await import('@/modules/board/store/boardStore')
 
-  const board = useBoardStore.getState().addBoard({ name: 'ADV' })
+  const board = await useBoardStore.getState().addBoard({ name: 'ADV' })
 
   expect(board.batteryConfig).toEqual(DEFAULT_BATTERY_CONFIG)
   expect(upsertBoard).toHaveBeenCalledWith(
@@ -73,10 +74,21 @@ test('new boards default to Molicel P50B 20S2P preset battery config', async () 
   )
 })
 
+test('failed selected Board save preserves active Board', async () => {
+  const { useBoardStore } = await import('@/modules/board/store/boardStore')
+  useBoardStore.setState({ activeBoardId: 'board-1' })
+  setSelectedBoard.mockImplementationOnce(() => {
+    throw new Error('storage unavailable')
+  })
+
+  expect(() => useBoardStore.getState().setActiveBoard('board-2')).toThrow()
+  expect(useBoardStore.getState().activeBoardId).toBe('board-1')
+})
+
 test('new boards start unlinked (no Board Link)', async () => {
   const { useBoardStore } = await import('@/modules/board/store/boardStore')
 
-  const board = useBoardStore.getState().addBoard({ name: 'ADV' })
+  const board = await useBoardStore.getState().addBoard({ name: 'ADV' })
 
   expect(board.link).toBeNull()
   expect(upsertBoard).toHaveBeenCalledWith(expect.objectContaining({ link: null }))
@@ -86,7 +98,7 @@ test('new boards persist their visual personalization', async () => {
   const { useBoardStore } = await import('@/modules/board/store/boardStore')
   const personalization = { railId: 'x7', railColorId: 'cyan' }
 
-  const board = useBoardStore.getState().addBoard({ name: 'ADV', personalization })
+  const board = await useBoardStore.getState().addBoard({ name: 'ADV', personalization })
 
   expect(board.personalization).toEqual(personalization)
   expect(upsertBoard).toHaveBeenCalledWith(expect.objectContaining({ personalization }))
@@ -95,7 +107,7 @@ test('new boards persist their visual personalization', async () => {
 test('new boards can be created with a draft Board Link', async () => {
   const { useBoardStore } = await import('@/modules/board/store/boardStore')
 
-  const board = useBoardStore
+  const board = await useBoardStore
     .getState()
     .addBoard({ name: 'ADV', link: { bleId: 'AA:BB', transport: 36 } })
 
@@ -105,6 +117,15 @@ test('new boards can be created with a draft Board Link', async () => {
   )
 })
 
+test('new boards retain a preallocated id used during Board Link finalization', async () => {
+  const { useBoardStore } = await import('@/modules/board/store/boardStore')
+
+  const board = await useBoardStore.getState().addBoard({ id: 'probe-board', name: 'ADV' })
+
+  expect(board.id).toBe('probe-board')
+  expect(upsertBoard).toHaveBeenCalledWith(expect.objectContaining({ id: 'probe-board' }))
+})
+
 test('stored Board Link survives a store reload from native boards', async () => {
   const { useBoardStore } = await import('@/modules/board/store/boardStore')
   const board: Board = {
@@ -112,6 +133,7 @@ test('stored Board Link survives a store reload from native boards', async () =>
     name: 'ADV',
     description: null,
     createdAt: 1,
+    deletedAt: null,
     batteryConfig: null,
     link: null,
   }
@@ -128,7 +150,7 @@ test('new boards can use manual battery config', async () => {
   const { useBoardStore } = await import('@/modules/board/store/boardStore')
   const batteryConfig = { mode: 'manual' as const, minVoltage: 60, maxVoltage: 84 }
 
-  const board = useBoardStore.getState().addBoard({ name: 'ADV', batteryConfig })
+  const board = await useBoardStore.getState().addBoard({ name: 'ADV', batteryConfig })
 
   expect(board.batteryConfig).toEqual(batteryConfig)
   expect(upsertBoard).toHaveBeenCalledWith(expect.objectContaining({ batteryConfig }))
@@ -141,6 +163,7 @@ test('updated battery config survives a store reload from native boards', async 
     name: 'ADV',
     description: null,
     createdAt: 1,
+    deletedAt: null,
     batteryConfig: {
       mode: 'preset',
       cellPresetId: 'molicel:21700:p50b',
@@ -158,4 +181,19 @@ test('updated battery config survives a store reload from native boards', async 
 
   expect(useBoardStore.getState().boards[0]?.batteryConfig).toEqual(batteryConfig)
   expect(upsertBoard).toHaveBeenCalledWith(expect.objectContaining({ batteryConfig }))
+})
+
+test('board edits render native-owned preset settings instead of echoing stale input', async () => {
+  const { useBoardStore } = await import('@/modules/board/store/boardStore')
+  const board = await useBoardStore.getState().addBoard({ name: 'ADV' })
+  upsertBoard.mockImplementationOnce(async (input) => {
+    persistedBoards = [{ ...input, alertPreset: { speed: 'normal' } }]
+  })
+  await useBoardStore
+    .getState()
+    .updateBoard({ ...board, name: 'Renamed', alertPreset: { speed: 'safe' } })
+  expect(useBoardStore.getState().boards[0]).toMatchObject({
+    name: 'Renamed',
+    alertPreset: { speed: 'normal' },
+  })
 })

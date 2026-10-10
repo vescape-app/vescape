@@ -36,6 +36,12 @@ internal let alertSoundPresets: [AlertSoundPreset] = [
   .init(name: "Sustained", uri: "preset:sustained", category: alertCategoryGeiger, fileName: "alert_sustained"),
 ]
 
+/// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/alerts/AlertEngine.kt `appSoundResources`
+internal let appSoundFiles: [String: [String: String]] = [
+  "simple": ["on": "on", "off": "off", "created": "simple_gr_created", "join": "simple_gr_join", "error": "simple_error"],
+  "retro": ["on": "retro_on", "off": "retro_off", "created": "retro_new_gr", "join": "retro_gr_join", "error": "retro_error"],
+]
+
 internal func alertSoundPresetMaps() -> [[String: Any]] {
   alertSoundPresets
     .filter { $0.uri != "preset:sustained" }
@@ -92,7 +98,7 @@ private final class GeigerLoop {
   let soundType: String
   var rangeDepth: Double
   let sustained: Bool
-  var workItem: DispatchWorkItem?
+  var workItem: Cancellable?
   /// Token used to cancel the sustained re-schedule cycle. A still-registered token with the same
   /// UUID means the completion-handler should keep looping; a changed/removed loop stops it.
   var sustainToken: UUID?
@@ -114,26 +120,49 @@ private final class GeigerLoop {
 ///
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/alerts/AlertEngine.kt `AlertFeedback`
 /// @platform-diff iOS uses `AVAudioEngine` + `AVAudioPlayerNode` with pre-loaded `AVAudioPCMBuffer`s
-/// instead of `SoundPool`; geiger tick scheduling uses `DispatchQueue.asyncAfter` instead of a
-/// `Handler`; sustained loops schedule the buffer with a completion callback instead of SoundPool
+/// instead of `SoundPool`; geiger tick scheduling uses a dedicated dispatch-backed scheduler;
+/// sustained loops schedule the buffer with a completion callback instead of SoundPool
 /// loop index. TTS uses `AVSpeechSynthesizer` instead of Android `TextToSpeech`.
+/// Android's alarm/media stream setting has no iOS equivalent; this player retains its playback session.
 internal final class AlertAudioPlayer {
   private static let audioSessionLock = NSLock()
   private static var audioSessionOwnerCount = 0
 
   private let engine = AVAudioEngine()
-  private let geigerQueue = DispatchQueue(label: "vescape.alerts.geiger", qos: .userInitiated)
+  private static let geigerQueueMarker = DispatchSpecificKey<ObjectIdentifier>()
+  private let geigerQueue: DispatchQueue
+  private let scheduler: Scheduler
   private let synthesizer = AVSpeechSynthesizer()
+  private let assetsDirectory: URL?
   private var buffersByFileName: [String: AVAudioPCMBuffer] = [:]
+  var soundPack = "retro"
   private var geigerLoops: [String: GeigerLoop] = [:]
   private var activeOneShotNodes: [AVAudioPlayerNode] = []
   private var started = false
+  /// A `goIdle()` waiting for in-flight sound to finish. Guarded by `geigerQueue`.
+  private var idleRequested = false
   private var ownsAudioSession = false
+  /// `released` is read from any thread (bridge, main, geiger queue) so it carries its own lock
+  /// rather than riding on `geigerQueue`; every other mutable field below is owned by `geigerQueue`.
+  private let releasedLock = NSLock()
   private var released = false
 
-  init() {
+  /// `assetsDirectory` overrides the bundled `VescapeCoreAssets.bundle` lookup. Production passes
+  /// nil; the SPM test target has no resource bundle and points at the repo's wav directory so the
+  /// engine graph is exercised for real.
+  init(
+    assetsDirectory: URL? = nil,
+    outputVolume: Float = 1,
+    geigerQueue: DispatchQueue = DispatchQueue(label: "vescape.alerts.geiger", qos: .userInitiated),
+    scheduler: Scheduler? = nil
+  ) {
+    self.assetsDirectory = assetsDirectory
+    self.geigerQueue = geigerQueue
+    self.scheduler = scheduler ?? DispatchQueueScheduler(queue: geigerQueue)
+    geigerQueue.setSpecific(key: Self.geigerQueueMarker, value: ObjectIdentifier(self))
     acquireAudioSession()
     let standardFormat = makeStandardFormat()
+    engine.mainMixerNode.outputVolume = outputVolume
     do {
       try engine.start()
       started = true
@@ -143,6 +172,7 @@ internal final class AlertAudioPlayer {
       // to start once the session is configured; a later play call will retry start (`startIfNeeded`).
       started = false
       Self.log("AlertAudioPlayer: engine.start FAILED: \(error)")
+      UnexpectedNativeError.report(operation: "alert_audio_engine_start", category: "audio_start_failed", error: error)
     }
     loadBuffers(using: standardFormat)
     Self.log("AlertAudioPlayer: buffers loaded=\(buffersByFileName.keys.sorted())")
@@ -150,6 +180,30 @@ internal final class AlertAudioPlayer {
 
   deinit {
     release()
+  }
+
+  /// True once `release()` has run. Safe to read from any thread.
+  private var isReleased: Bool {
+    releasedLock.lock()
+    defer { releasedLock.unlock() }
+    return released
+  }
+
+  /// Scheduler callbacks may be virtual in tests, but audio state always belongs to this queue.
+  private func onGeigerQueue(_ block: @escaping (AlertAudioPlayer) -> Void) {
+    geigerQueue.async { [weak self] in
+      guard let self, !self.isReleased else { return }
+      block(self)
+    }
+  }
+
+  /// Flip `released` once; returns false when another caller already released.
+  private func markReleased() -> Bool {
+    releasedLock.lock()
+    defer { releasedLock.unlock() }
+    if released { return false }
+    released = true
+    return true
   }
 
   private static func log(_ message: String) {
@@ -180,6 +234,7 @@ internal final class AlertAudioPlayer {
       // Soft-fail: playback category is the durable truth for background alerts; if the OS rejects
       // it (e.g. another app owns a non-mixable session), alerts degrade to silence rather than
       // crashing the bridge.
+      UnexpectedNativeError.report(operation: "alert_audio_session_configure", category: "audio_session_failed", error: error)
     }
   }
 
@@ -191,34 +246,91 @@ internal final class AlertAudioPlayer {
     let shouldDeactivate = Self.audioSessionOwnerCount == 0
     Self.audioSessionLock.unlock()
     if shouldDeactivate {
+      // intentional-suppression: audio teardown is best effort and asset-open failure is reported
       try? AVAudioSession.sharedInstance().setActive(false, options: [.notifyOthersOnDeactivation])
     }
   }
 
   private func startIfNeeded() {
-    guard !released, !started, engine.isRunning == false else { return }
+    // Sound is wanted again; a pending idle must not fire behind it.
+    idleRequested = false
+    guard !isReleased, !started, engine.isRunning == false else { return }
     do {
-      try AVAudioSession.sharedInstance().setActive(true, options: [])
+      try activateSession()
       try engine.start()
       started = true
     } catch {
       started = false
+      UnexpectedNativeError.report(operation: "alert_audio_engine_restart", category: "audio_start_failed", error: error)
     }
   }
 
+  /// Re-activating an already-active session is a cheap no-op, so this is safe on every play path
+  /// and is the only thing standing between an idled player and audible sound.
+  private func activateSession() throws {
+    try AVAudioSession.sharedInstance().setActive(true, options: [])
+  }
+
+  /// Stand down between Board Sessions without tearing the player down.
+  ///
+  /// A running `AVAudioEngine` holds a render thread, and an active `.playback` session is what tells
+  /// iOS the app still needs the `audio` background mode — together they keep the process awake long
+  /// after the ride that wanted them ended. Unlike `release()` this is reversible: buffers, nodes and
+  /// the loaded sound bank all survive, so the next alert costs a session activation and an engine
+  /// start rather than a rebuild, and nothing about alert latency mid-ride changes.
+  ///
+  /// @platform-diff iOS-only. Android's `AlertEngine` plays through `SoundPool`, which is idle
+  /// between plays and holds no session or render thread, so it has nothing to stand down from.
+  func goIdle() {
+    geigerQueue.async { [weak self] in
+      guard let self, !self.isReleased else { return }
+      self.idleRequested = true
+      self.idleIfQuietOnQueue()
+    }
+  }
+
+  /// Must run on `geigerQueue`.
+  ///
+  /// Deferred rather than abandoned when sound is still playing. A teardown normally enqueues the
+  /// disconnect one-shot *before* `goIdle`, so on the common path the node is still registered here
+  /// — dropping the request there would mean the engine never idles at all. The one-shot's
+  /// completion re-runs this once the node drains.
+  private func idleIfQuietOnQueue() {
+    guard idleRequested, !isReleased else { return }
+    // A geiger loop still ticking means a ride is still alerting; idling under it would cut the
+    // rider's audio off mid-session.
+    guard geigerLoops.isEmpty, activeOneShotNodes.isEmpty else { return }
+    idleRequested = false
+    synthesizer.stopSpeaking(at: .immediate)
+    if engine.isRunning { engine.stop() }
+    started = false
+    // intentional-suppression: audio deactivation is best effort; a refusal just leaves it active
+    try? AVAudioSession.sharedInstance().setActive(false, options: [.notifyOthersOnDeactivation])
+  }
+
   private func loadBuffers(using standardFormat: AVAudioFormat) {
-    guard let bundleURL = bundledAssetsURL(), let bundle = Bundle(url: bundleURL) else {
-      Self.log("AlertAudioPlayer: bundledAssetsURL missing — no presets will play")
-      return
+    let resolve: (String) -> URL?
+    if let assetsDirectory {
+      resolve = { assetsDirectory.appendingPathComponent("\($0).wav") }
+    } else {
+      guard let bundleURL = bundledAssetsURL(), let bundle = Bundle(url: bundleURL) else {
+        Self.log("AlertAudioPlayer: bundledAssetsURL missing — no presets will play")
+        UnexpectedNativeError.report(operation: "alert_audio_bundle_missing", category: "required_asset_missing", error: CocoaError(.fileNoSuchFile))
+        return
+      }
+      resolve = { bundle.url(forResource: $0, withExtension: "wav") }
     }
     var buffers: [String: AVAudioPCMBuffer] = [:]
-    for fileName in alertSoundPresets.map(\.fileName) + ["on", "off"] {
-      guard let url = bundle.url(forResource: fileName, withExtension: "wav") else {
+    for fileName in Set(alertSoundPresets.map(\.fileName) + appSoundFiles.values.flatMap { $0.values }) {
+      guard let url = resolve(fileName), FileManager.default.fileExists(atPath: url.path) else {
         Self.log("AlertAudioPlayer: missing \(fileName).wav in bundle")
+        UnexpectedNativeError.report(operation: "alert_audio_asset_missing", category: "required_asset_missing", error: CocoaError(.fileNoSuchFile))
         continue
       }
+      // intentional-suppression: audio teardown is best effort and asset-open failure is reported
       guard let file = try? AVAudioFile(forReading: url) else {
         Self.log("AlertAudioPlayer: AVAudioFile read failed for \(fileName).wav")
+        UnexpectedNativeError.report(operation: "alert_audio_asset_open", category: "audio_decode_failed", error: CocoaError(.fileReadCorruptFile))
         continue
       }
       guard let buffer = convertToStandard(file: file, standardFormat: standardFormat) else {
@@ -253,6 +365,7 @@ internal final class AlertAudioPlayer {
     do {
       try file.read(into: srcBuffer)
     } catch {
+      UnexpectedNativeError.report(operation: "alert_audio_asset_decode", category: "audio_decode_failed", error: error)
       return nil
     }
     if srcFormat == standardFormat { return srcBuffer }
@@ -274,7 +387,10 @@ internal final class AlertAudioPlayer {
     }
     var convertError: NSError?
     let status = converter.convert(to: outBuffer, error: &convertError, withInputFrom: inputBlock)
-    guard status != .error, convertError == nil else { return nil }
+    guard status != .error, convertError == nil else {
+      UnexpectedNativeError.report(operation: "alert_audio_asset_convert", category: "audio_decode_failed", error: convertError ?? CocoaError(.fileReadCorruptFile))
+      return nil
+    }
     return outBuffer
   }
 
@@ -289,11 +405,29 @@ internal final class AlertAudioPlayer {
   // MARK: - Connection sounds
 
   func playConnect() {
-    play("on")
+    playAppSound(pack: soundPack, cue: "on")
   }
 
   func playDisconnect() {
-    play("off")
+    playAppSound(pack: soundPack, cue: "off")
+  }
+
+  func playAppSound(pack: String, cue: String) {
+    if let customURL = CustomAppSounds.file(pack, cue: cue) {
+      geigerQueue.async { [weak self] in
+        guard let self else { return }
+        // intentional-suppression: an unreadable custom file falls back to the Classic cue below
+        if let audio = try? AVAudioFile(forReading: customURL),
+          let buffer = self.convertToStandard(file: audio, standardFormat: self.makeStandardFormat()) {
+          self.playBufferOnQueue(buffer, label: customURL.lastPathComponent)
+        } else if let classic = appSoundFiles["simple"]?[cue] {
+          self.playOnQueue(classic)
+        }
+      }
+      return
+    }
+    guard let file = (appSoundFiles[pack] ?? appSoundFiles["simple"])?[cue] else { return }
+    play(file)
   }
 
   // MARK: - Single
@@ -301,15 +435,15 @@ internal final class AlertAudioPlayer {
   /// Play one announcement: `beepCount` plays of the rule's sound, `alertBeepSpacingMs` apart.
   /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/alerts/AlertEngine.kt `playSingle`
   func playSingle(soundType: String, beepCount: Int = alertBeepCountDefault) {
-    guard !released else { return }
+    guard !isReleased else { return }
     let preset = resolveAlertPreset(soundType: soundType, category: alertCategorySingle)
     let beeps = normalizedAlertBeepCount(beepCount)
     play(preset.fileName)
     guard beeps > 1 else { return }
     let spacing = alertBeepSpacingMs / 1000
     for index in 1..<beeps {
-      geigerQueue.asyncAfter(deadline: .now() + spacing * Double(index)) { [weak self] in
-        self?.play(preset.fileName)
+      scheduler.postDelayed(Int64(spacing * Double(index) * 1000)) { [weak self] in
+        self?.onGeigerQueue { $0.playOnQueue(preset.fileName) }
       }
     }
   }
@@ -317,15 +451,16 @@ internal final class AlertAudioPlayer {
   // MARK: - Preview
 
   /// Play a preset once for UI preview, or speak a `tts:` template with a sample fired alert.
-  func preview(soundType: String) {
-    guard !released else { return }
+  func preview(soundType: String, unitSystem: String = "metric") {
+    guard !isReleased else { return }
     Self.log("AlertAudioPlayer.preview: \(soundType)")
     if soundType.hasPrefix(ttsPrefix) {
       let template = String(soundType.dropFirst(ttsPrefix.count))
       let text = renderAlertMessageTemplate(
         template,
         alert: ttsSampleAlert(soundType: soundType),
-        batteryPercent: 42.0
+        batteryPercent: 42.0,
+        unitSystem: unitSystem
       )
       Self.log("AlertAudioPlayer.preview TTS text='\(text)'")
       if !text.isEmpty { speakMessage(text) }
@@ -339,9 +474,12 @@ internal final class AlertAudioPlayer {
   // MARK: - Geiger
 
   func updateGeiger(ruleId: String, soundType: String, rangeDepth: Double) {
-    guard !released else { return }
+    guard !isReleased else { return }
     geigerQueue.async { [weak self] in
-      self?.updateGeigerSync(ruleId: ruleId, soundType: soundType, rangeDepth: rangeDepth)
+      // Re-check on the queue: `release()` can land between the check above and this block, and a
+      // loop created afterwards would re-arm its tick forever against a torn-down engine.
+      guard let self, !self.isReleased else { return }
+      self.updateGeigerSync(ruleId: ruleId, soundType: soundType, rangeDepth: rangeDepth)
     }
   }
 
@@ -404,15 +542,14 @@ internal final class AlertAudioPlayer {
   }
 
   private func scheduleGeigerTick(loop: GeigerLoop, ruleId: String, fileName: String, delayMs: Int) {
-    let workItem = DispatchWorkItem { [weak self] in
-      guard let self else { return }
-      guard let existing = self.geigerLoops[ruleId], existing === loop, !existing.sustained else { return }
-      self.play(fileName)
-      let interval = self.geigerIntervalMs(rangeDepth: loop.rangeDepth)
-      self.scheduleGeigerTick(loop: loop, ruleId: ruleId, fileName: fileName, delayMs: interval)
+    loop.workItem = scheduler.postDelayed(Int64(delayMs)) { [weak self] in
+      self?.onGeigerQueue { owner in
+        guard let existing = owner.geigerLoops[ruleId], existing === loop, !existing.sustained else { return }
+        owner.playOnQueue(fileName)
+        let interval = owner.geigerIntervalMs(rangeDepth: loop.rangeDepth)
+        owner.scheduleGeigerTick(loop: loop, ruleId: ruleId, fileName: fileName, delayMs: interval)
+      }
     }
-    loop.workItem = workItem
-    geigerQueue.asyncAfter(deadline: .now() + Double(delayMs) / 1000.0, execute: workItem)
   }
 
   /// Loop the buffer continuously until the loop is cancelled by `stopGeiger`/`stopAllGeiger`.
@@ -472,7 +609,23 @@ internal final class AlertAudioPlayer {
   // MARK: - TTS
 
   func speakMessage(_ text: String) {
-    guard !released else { return }
+    guard !isReleased else { return }
+    // The synthesizer plays through the shared session, which an earlier `goIdle()` may have
+    // deactivated; without this the utterance is silently dropped. Cancelling a pending idle and
+    // re-activating happen on `geigerQueue` — the same queue `goIdle` runs on — so a teardown racing
+    // an alert cannot deactivate the session out from under the utterance that follows.
+    let reactivate = { [self] in
+      idleRequested = false
+      // intentional-suppression: a refused activation degrades to silence, never a crash
+      try? activateSession()
+    }
+    // `sync` onto the current serial queue would deadlock, so run inline when already on it —
+    // the same guard `release()` uses.
+    if DispatchQueue.getSpecific(key: Self.geigerQueueMarker) == ObjectIdentifier(self) {
+      reactivate()
+    } else {
+      geigerQueue.sync(execute: reactivate)
+    }
     let utterance = AVSpeechUtterance(string: text)
     utterance.voice = AVSpeechSynthesisVoice(language: "en-US")
     utterance.preUtteranceDelay = 0
@@ -485,7 +638,7 @@ internal final class AlertAudioPlayer {
   /// Haptic feedback mirroring Android `vibrate`. A range-less alert triggers a crisp waveform
   /// pattern; a geiger alert scales one-shot intensity with `rangeDepth`.
   func vibrate(rangeDepth: Double?) {
-    guard !released else { return }
+    guard !isReleased else { return }
     #if canImport(UIKit)
     if let rangeDepth {
       let intensity = min(max(rangeDepth, 0.0), 1.0)
@@ -501,40 +654,63 @@ internal final class AlertAudioPlayer {
   // MARK: - Release
 
   func release() {
-    guard !released else { return }
-    released = true
+    guard markReleased() else { return }
     synthesizer.stopSpeaking(at: .immediate)
-    geigerQueue.sync {
-      for loop in geigerLoops.values {
-        loop.workItem?.cancel()
-        if let node = loop.sustainedNode {
-          node.stop()
-          detachPlayerNode(node)
-        }
-      }
-      geigerLoops.removeAll(keepingCapacity: true)
-      for node in activeOneShotNodes {
-        node.stop()
-        detachPlayerNode(node)
-      }
-      activeOneShotNodes.removeAll(keepingCapacity: true)
+    // Everything touching the engine graph or the node bookkeeping runs on `geigerQueue`, so a
+    // completion handler queued behind this block sees the drained state (and a node whose
+    // `engine` is already nil) instead of racing it. A queued closure strongifies `self` while it
+    // runs, so the last reference can drop on `geigerQueue` and reach here through `deinit` —
+    // `sync` onto the current serial queue would deadlock, so tear down inline in that case.
+    if DispatchQueue.getSpecific(key: Self.geigerQueueMarker) == ObjectIdentifier(self) {
+      releaseOnQueue()
+    } else {
+      geigerQueue.sync { releaseOnQueue() }
     }
+    releaseAudioSession()
+  }
+
+  /// Must run on `geigerQueue`.
+  private func releaseOnQueue() {
+    for loop in geigerLoops.values {
+      loop.workItem?.cancel()
+      stopSustainedPlaybackForLoop(loop)
+    }
+    geigerLoops.removeAll(keepingCapacity: true)
+    for node in activeOneShotNodes {
+      node.stop()
+      detachPlayerNode(node)
+    }
+    activeOneShotNodes.removeAll(keepingCapacity: true)
     if engine.isRunning { engine.stop() }
     started = false
-    releaseAudioSession()
     buffersByFileName.removeAll(keepingCapacity: true)
   }
 
   // MARK: - Low-level
 
+  /// Entry point from any thread. Hops to `geigerQueue`, the single owner of the engine graph and
+  /// of `activeOneShotNodes`.
   private func play(_ fileName: String) {
-    guard !released else { return }
+    guard !isReleased else { return }
+    geigerQueue.async { [weak self] in
+      self?.playOnQueue(fileName)
+    }
+  }
+
+  /// Must run on `geigerQueue`.
+  private func playOnQueue(_ fileName: String) {
+    guard !isReleased else { return }
     guard let buffer = buffersByFileName[fileName] else {
       Self.log("AlertAudioPlayer.play: NO BUFFER for \(fileName)")
       return
     }
+    playBufferOnQueue(buffer, label: fileName)
+  }
+
+  private func playBufferOnQueue(_ buffer: AVAudioPCMBuffer, label: String) {
+    guard !isReleased else { return }
     startIfNeeded()
-    Self.log("AlertAudioPlayer.play: schedule \(fileName) engine.running=\(engine.isRunning) frames=\(buffer.frameLength)")
+    Self.log("AlertAudioPlayer.play: schedule \(label) engine.running=\(engine.isRunning) frames=\(buffer.frameLength)")
     let node = makePlayerNode(format: buffer.format)
     activeOneShotNodes.append(node)
     node.scheduleBuffer(buffer, at: nil, options: [], completionHandler: { [weak self, weak node] in
@@ -542,6 +718,8 @@ internal final class AlertAudioPlayer {
       self.geigerQueue.async {
         self.activeOneShotNodes.removeAll { $0 === node }
         self.detachPlayerNode(node)
+        // A teardown may have asked to idle while this was still sounding.
+        self.idleIfQuietOnQueue()
       }
     })
     node.play()
@@ -554,7 +732,15 @@ internal final class AlertAudioPlayer {
     return node
   }
 
+  /// Detach is idempotent: `release()` and a pending completion handler can both reach the same
+  /// node, and `disconnectNodeOutput` raises an ObjC `NSException` (uncatchable from Swift, so it
+  /// aborts the process) when the node is no longer attached. `node.engine` is the attachment.
+  /// Must run on `geigerQueue`.
   private func detachPlayerNode(_ node: AVAudioPlayerNode) {
+    guard node.engine != nil else {
+      Self.log("AlertAudioPlayer.detachPlayerNode: already detached, skipping")
+      return
+    }
     engine.disconnectNodeOutput(node)
     engine.detach(node)
   }

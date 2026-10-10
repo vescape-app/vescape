@@ -1,4 +1,4 @@
-import { mkdirSync, readFileSync, writeFileSync } from 'fs'
+import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'fs'
 import { join } from 'path'
 
 /**
@@ -16,16 +16,36 @@ import { join } from 'path'
  * `watch-sweep.jsonl` is synthetic: every lane walked through its full range, including null and
  * stale stretches, so gauge extremes are reachable without hunting for them in a real ride.
  *
- * The recording carries no GPS, so the nav lanes in both fixtures are synthetic too: a destination
- * the rider closes on while the bearing swings around the wrist, ending in a stretch with no nav at
- * all, so both the navigating and the plain telemetry frame are reachable on an emulator.
+ * Navigation is synthetic: a route polyline (`watch-route.json`) plus per-sample rider lanes walking
+ * it, with a geographic origin at the recording's first GPS fix. GPS movement continues after the
+ * destination clears, so both navigation and a standalone map are reachable on an emulator. The
+ * forecast (`watch-weather.json`) is synthetic too. The street map under it is a handful of real
+ * dark-style tiles along the walked route (`watch-map-tiles/`), so between them the emulator shows
+ * every wrist surface without a phone or a network.
+ *
+ * Tiles download only when missing, with `EXPO_PUBLIC_MAPBOX_ACCESS_TOKEN` (Bun reads `.env.local`);
+ * the committed fixtures are the JPEGs alone.
  */
 
 const ROOT = join(import.meta.dir, '..')
 const SOURCE = join(ROOT, 'shared', 'fixtures', 'replay-thor301.jsonl')
 const OUT_DIR = join(ROOT, 'watch', 'wearos', 'src', 'main', 'assets')
+const MAP_TILE_DIR = join(OUT_DIR, 'watch-map-tiles')
 
-/** Watch tick cadence (`wearMirrorIntervalMs` default), so a replayed lane stream is paced like a real push. */
+/** The hosted dark street-map style, as `MapTiles.STYLE` fetches it. */
+const MAP_STYLE = 'kacperkozak/cmux9d4th002j01s4fm7tc4mt'
+
+/**
+ * The level the phone planner (`watchMapTileZoom`) picks for the replayed span: 400 m on a 480 px
+ * face at Wrocław's latitude is 0.83 m/px, and z16 is the lowest level whose 512 px tile is drawn at
+ * most 1.3x its size there (z15 would be 2.6x).
+ */
+const MAP_TILE_ZOOM = 16
+
+/** Tiles within this many metres of any replayed rider position: the face diagonal at the span. */
+const MAP_TILE_REACH_M = 300
+
+/** Watch tick cadence (`wearPushRateHz` default), so a replayed lane stream is paced like a real push. */
 const SAMPLE_INTERVAL_MS = 500
 
 const COMM_CUSTOM_APP_DATA = 36
@@ -60,7 +80,17 @@ type LaneSample = {
   /** Nav lanes. Omitted entirely on samples with no destination, which is how the watch hides nav. */
   navBearing?: number
   navDistance?: number
+  /** Simulated GPS in metres from the route origin, retained independently of Navigation. */
+  riderEast?: number
+  riderNorth?: number
+  course?: number
+  routeSpanM?: number
 }
+
+/** A synthetic route point in the wrist's drawing frame: metres east/north of the route origin. */
+type RoutePoint = { east: number; north: number }
+
+type GeoPoint = { latitude: number; longitude: number }
 
 function crc16(data: Uint8Array): number {
   let crc = 0
@@ -176,18 +206,48 @@ function serialize(samples: LaneSample[]): string {
   return samples.map((sample) => JSON.stringify(sample)).join('\n') + '\n'
 }
 
+type CaptureRecord = {
+  t?: number
+  kind?: string
+  direction?: string
+  base64?: string
+  latitude?: number
+  longitude?: number
+}
+
+function readCapture(): CaptureRecord[] {
+  const records: CaptureRecord[] = []
+  let malformedLines = 0
+  for (const line of readFileSync(SOURCE, 'utf8').split('\n')) {
+    if (!line) continue
+    try {
+      records.push(JSON.parse(line))
+    } catch {
+      malformedLines += 1
+    }
+  }
+  if (malformedLines > 0) console.warn(`Skipped ${malformedLines} malformed capture lines.`)
+  return records
+}
+
+const CAPTURE = readCapture()
+
+/** Where the synthetic route starts: the recording's first GPS fix, rounded to the wire's microdegrees. */
+function routeOrigin(): GeoPoint {
+  const fix = CAPTURE.find((record) => record.kind === 'location')
+  if (fix?.latitude === undefined || fix.longitude === undefined) {
+    throw new Error('the recording has no GPS fix to anchor the route')
+  }
+  return { latitude: round(fix.latitude, 6), longitude: round(fix.longitude, 6) }
+}
+
+const ORIGIN = routeOrigin()
+
 /** Decodes the recorded ride into one telemetry sample per parsed ALLDATA packet. */
 function decodeRide(): { t: number; telemetry: Telemetry }[] {
   const reassembler = new PacketReassembler()
   const decoded: { t: number; telemetry: Telemetry }[] = []
-  for (const line of readFileSync(SOURCE, 'utf8').split('\n')) {
-    if (!line) continue
-    let record: { t?: number; kind?: string; direction?: string; base64?: string }
-    try {
-      record = JSON.parse(line)
-    } catch {
-      continue
-    }
+  for (const record of CAPTURE) {
     if (record.kind !== 'ble-chunk' || record.direction !== 'rx' || !record.base64) continue
     const chunk = Uint8Array.from(Buffer.from(record.base64, 'base64'))
     for (const packet of reassembler.feed(chunk)) {
@@ -199,18 +259,169 @@ function decodeRide(): { t: number; telemetry: Telemetry }[] {
 }
 
 /**
- * Synthetic nav lanes for [progress] through a fixture (0 = start, 1 = end): the rider closes on a
- * destination 3.2 km out while the bearing swings a full turn around the wrist, so both distance
- * formats and every chevron angle are seen. Past arrival the lanes are omitted — that is the
- * no-destination case, and the watch drops the whole nav overlay.
+ * The synthetic route the rider follows: ~3 km of straights joined by every turn shape the wrist has
+ * to survive — 30/60/90/120/160°, taken both as sharp corners and as swept arcs, including a
+ * hairpin. Curvature has to live at the scale the wrist actually shows ([ROUTE_SPAN_M]): one long
+ * gentle arc renders as a straight line once it is cropped to the few hundred metres ahead, and a
+ * route with no hard turns never exercises the heading-up rotation.
+ *
+ * Fixed script, not a random source: the fixture is checked in, so every run must produce the same
+ * corners.
  */
-function navLanes(progress: number): { navBearing?: number; navDistance?: number } {
+type RouteSegment =
+  | { straightM: number }
+  /** [radiusM] 0 is a sharp corner; anything larger sweeps the turn as an arc. */
+  | { turnDeg: number; radiusM: number }
+
+const ROUTE_SCRIPT: RouteSegment[] = [
+  { straightM: 200 },
+  { turnDeg: 30, radiusM: 45 },
+  { straightM: 150 },
+  { turnDeg: -60, radiusM: 0 },
+  { straightM: 130 },
+  { turnDeg: 60, radiusM: 35 },
+  { straightM: 180 },
+  { turnDeg: -90, radiusM: 0 },
+  { straightM: 160 },
+  { turnDeg: 90, radiusM: 30 },
+  { straightM: 220 },
+  { turnDeg: -120, radiusM: 25 },
+  { straightM: 140 },
+  { turnDeg: 120, radiusM: 0 },
+  { straightM: 190 },
+  // Hairpin: the worst case for heading-up rotation, since the whole drawing spins nearly halfway.
+  { turnDeg: 160, radiusM: 20 },
+  { straightM: 240 },
+  { turnDeg: -30, radiusM: 0 },
+  { straightM: 210 },
+  { turnDeg: -160, radiusM: 55 },
+  { straightM: 300 },
+]
+
+/** Metres between polyline points on a straight; arcs subdivide by angle instead. */
+const ROUTE_STEP_M = 25
+const ROUTE_ARC_STEP_DEG = 8
+
+function buildRoute(): RoutePoint[] {
+  const points: RoutePoint[] = [{ east: 0, north: 0 }]
+  let headingDeg = 0
+  let east = 0
+  let north = 0
+
+  const advance = (distanceM: number) => {
+    const rad = (headingDeg * Math.PI) / 180
+    east += Math.sin(rad) * distanceM
+    north += Math.cos(rad) * distanceM
+    points.push({ east: round(east), north: round(north) })
+  }
+
+  for (const segment of ROUTE_SCRIPT) {
+    if ('straightM' in segment) {
+      const steps = Math.max(1, Math.round(segment.straightM / ROUTE_STEP_M))
+      for (let step = 0; step < steps; step++) advance(segment.straightM / steps)
+      continue
+    }
+    if (segment.radiusM === 0) {
+      headingDeg += segment.turnDeg
+      continue
+    }
+    // Swept turn: walk the arc in small heading steps, each chord long enough to keep the radius.
+    const steps = Math.max(1, Math.round(Math.abs(segment.turnDeg) / ROUTE_ARC_STEP_DEG))
+    const stepDeg = segment.turnDeg / steps
+    const chordM = 2 * segment.radiusM * Math.sin((Math.abs(stepDeg) * Math.PI) / 360)
+    for (let step = 0; step < steps; step++) {
+      headingDeg += stepDeg
+      advance(chordM)
+    }
+  }
+  return points
+}
+
+const ROUTE = buildRoute()
+const ROUTE_LEGS = ROUTE.slice(1).map((point, index) => distance(ROUTE[index], point))
+const ROUTE_LENGTH_M = ROUTE_LEGS.reduce((sum, leg) => sum + leg, 0)
+
+/** Horizontal route metres the phone map shows; the wrist zooms its route drawing to match. */
+const ROUTE_SPAN_M = 400
+
+function distance(from: RoutePoint, to: RoutePoint): number {
+  return Math.hypot(to.east - from.east, to.north - from.north)
+}
+
+/** Degrees clockwise from north, the convention every rider lane uses. */
+function bearing(from: RoutePoint, to: RoutePoint): number {
+  return ((Math.atan2(to.east - from.east, to.north - from.north) * 180) / Math.PI + 360) % 360
+}
+
+/** Walk the route, then continue along the final leg after passing the destination. */
+function walkRoute(alongM: number): { point: RoutePoint; courseDeg: number } {
+  let remaining = Math.max(alongM, 0)
+  for (let index = 0; index < ROUTE_LEGS.length; index++) {
+    const leg = ROUTE_LEGS[index]
+    if (remaining > leg && index < ROUTE_LEGS.length - 1) {
+      remaining -= leg
+      continue
+    }
+    const from = ROUTE[index]
+    const to = ROUTE[index + 1]
+    const fraction = leg === 0 ? 0 : remaining / leg
+    return {
+      point: {
+        east: from.east + (to.east - from.east) * fraction,
+        north: from.north + (to.north - from.north) * fraction,
+      },
+      courseDeg: bearing(from, to),
+    }
+  }
+  return { point: ROUTE[ROUTE.length - 1], courseDeg: 0 }
+}
+
+/**
+ * Synthetic nav + rider lanes for [progress] through a fixture (0 = start, 1 = end): the rider walks
+ * the route towards its far end, so the chevron, the distance and the drawn line all agree instead
+ * of each telling its own story. Past arrival only destination lanes disappear; GPS movement
+ * continues so the position ring and ridden trail remain on the standalone map.
+ */
+function mapLanes(progress: number): Partial<LaneSample> {
   const ARRIVAL_AT = 0.85
-  if (progress >= ARRIVAL_AT) return {}
-  const remaining = 1 - progress / ARRIVAL_AT
+  const alongM = (progress / ARRIVAL_AT) * ROUTE_LENGTH_M
+  const { point, courseDeg } = walkRoute(alongM)
+  const destination = ROUTE[ROUTE.length - 1]
   return {
-    navBearing: round((progress * 720) % 360),
-    navDistance: round(Math.max(15, remaining * 3200)),
+    ...(progress < ARRIVAL_AT
+      ? {
+          // Bearing is relative to travel direction: straight ahead is up on the wrist.
+          navBearing: round((bearing(point, destination) - courseDeg + 360) % 360),
+          navDistance: round(Math.max(15, ROUTE_LENGTH_M - alongM)),
+        }
+      : {}),
+    riderEast: round(point.east),
+    riderNorth: round(point.north),
+    course: round(courseDeg),
+    routeSpanM: ROUTE_SPAN_M,
+  }
+}
+
+/**
+ * Synthetic forecast for the wrist's weather surfaces. Hours carry no clock time: the replayer
+ * anchors them to the emulator's own clock, so the strip always reads as "the hours ahead".
+ */
+function buildWeather() {
+  const icons = ['sun', 'cloud-sun', 'cloud', 'cloud-rain', 'cloud-lightning', 'cloud-snow']
+  return {
+    temperatureC: 17,
+    icon: 'cloud-sun',
+    label: 'Partly cloudy',
+    precipitationProbability: 15,
+    sunriseMinuteOfDay: 5 * 60 + 12,
+    sunsetMinuteOfDay: 20 * 60 + 48,
+    latitude: 52.2297,
+    longitude: 21.0122,
+    hourly: Array.from({ length: 12 }, (_, hour) => ({
+      temperatureC: 17 + Math.round(6 * Math.sin((hour / 12) * Math.PI)),
+      icon: icons[hour % icons.length],
+      precipitationProbability: (hour * 13) % 90,
+    })),
   }
 }
 
@@ -236,7 +447,7 @@ function buildRide(): LaneSample[] {
       battery: round(estimateSoc(telemetry.batteryVoltage, telemetry.batteryCurrent, seriesCount)),
       motorTemp: telemetry.tempMotor === null ? null : round(telemetry.tempMotor),
       ctrlTemp: telemetry.tempMosfet === null ? null : round(telemetry.tempMosfet),
-      ...navLanes(progress),
+      ...mapLanes(progress),
     })
   }
   console.log(
@@ -263,7 +474,7 @@ function buildSweep(): LaneSample[] {
       battery: round(100 - p * 100),
       motorTemp: round(20 + p * 90),
       ctrlTemp: round(20 + p * 80),
-      ...navLanes(p * 0.5),
+      ...mapLanes(p * 0.5),
     })
   }
   for (let step = rampSteps; step >= 0; step--) {
@@ -274,7 +485,7 @@ function buildSweep(): LaneSample[] {
       battery: round(100 - p * 100),
       motorTemp: round(20 + p * 90),
       ctrlTemp: round(20 + p * 80),
-      ...navLanes(1 - p * 0.5),
+      ...mapLanes(1 - p * 0.5),
     })
   }
   for (let step = 0; step < 10; step++) {
@@ -287,7 +498,95 @@ function buildSweep(): LaneSample[] {
   return samples
 }
 
+/** Web Mercator tile coordinates of [point] at [zoom], fractional. */
+function tileCoordinates(point: GeoPoint, zoom: number): { x: number; y: number } {
+  const n = 2 ** zoom
+  const lat = (point.latitude * Math.PI) / 180
+  return {
+    x: ((point.longitude + 180) / 360) * n,
+    y: ((1 - Math.asinh(Math.tan(lat)) / Math.PI) / 2) * n,
+  }
+}
+
+/** Metres east/north of [ORIGIN] as a position: the inverse the wrist applies (`offsetFrom`). */
+function geoAt(east: number, north: number): GeoPoint {
+  return {
+    latitude: ORIGIN.latitude + north / 110_574,
+    longitude: ORIGIN.longitude + east / (111_320 * Math.cos((ORIGIN.latitude * Math.PI) / 180)),
+  }
+}
+
+/** Every [MAP_TILE_ZOOM] tile reaching within [MAP_TILE_REACH_M] of a replayed rider position. */
+function mapTileKeys(fixtures: LaneSample[][]): string[] {
+  const tileM = (40_075_016.7 * Math.cos((ORIGIN.latitude * Math.PI) / 180)) / 2 ** MAP_TILE_ZOOM
+  const reach = MAP_TILE_REACH_M / tileM
+  const keys = new Set<string>()
+  for (const sample of fixtures.flat()) {
+    if (sample.riderEast === undefined || sample.riderNorth === undefined) continue
+    const { x, y } = tileCoordinates(geoAt(sample.riderEast, sample.riderNorth), MAP_TILE_ZOOM)
+    for (let row = Math.floor(y - reach); row <= Math.floor(y + reach); row++) {
+      for (let column = Math.floor(x - reach); column <= Math.floor(x + reach); column++) {
+        const nearestX = Math.min(Math.max(x, column), column + 1)
+        const nearestY = Math.min(Math.max(y, row), row + 1)
+        if (Math.hypot(nearestX - x, nearestY - y) <= reach)
+          keys.add(`${MAP_TILE_ZOOM}/${column}/${row}`)
+      }
+    }
+  }
+  return [...keys].sort()
+}
+
+const MAP_TILE_FETCH_TIMEOUT_MS = 30_000
+
+/**
+ * Downloads missing tiles from the Static Tiles API, the URL `MapTiles` uses, and drops tiles no
+ * longer on the list. The token is read here only and never written anywhere.
+ */
+async function syncMapTiles(keys: string[]): Promise<void> {
+  const token = process.env.EXPO_PUBLIC_MAPBOX_ACCESS_TOKEN
+  const wanted = new Set(keys)
+  let downloaded = 0
+  for (const key of keys) {
+    const file = join(MAP_TILE_DIR, `${key}.jpg`)
+    if (existsSync(file)) continue
+    if (!token) throw new Error(`map tile ${key} is missing; set EXPO_PUBLIC_MAPBOX_ACCESS_TOKEN`)
+    const url = `https://api.mapbox.com/styles/v1/${MAP_STYLE}/tiles/512/${key}.jpeg?access_token=${token}`
+    // A network error carries the request URL, and with it the token: only its name goes out.
+    const hideUrl = (error: unknown): never => {
+      throw new Error(`map tile ${key}: ${error instanceof Error ? error.name : 'fetch failed'}`)
+    }
+    const response = await fetch(url, {
+      signal: AbortSignal.timeout(MAP_TILE_FETCH_TIMEOUT_MS),
+    }).catch(hideUrl)
+    if (!response.ok) throw new Error(`map tile ${key}: HTTP ${response.status}`)
+    const body = await response.arrayBuffer().catch(hideUrl)
+    mkdirSync(join(file, '..'), { recursive: true })
+    writeFileSync(file, Buffer.from(body))
+    downloaded++
+  }
+  let bytes = 0
+  for (const entry of readdirSync(MAP_TILE_DIR, { recursive: true, withFileTypes: true })) {
+    if (!entry.isFile()) continue
+    const file = join(entry.parentPath, entry.name)
+    const key = file.slice(MAP_TILE_DIR.length + 1).replace(/\.jpg$/, '')
+    if (wanted.has(key)) bytes += readFileSync(file).length
+    else rmSync(file)
+  }
+  writeFileSync(
+    join(OUT_DIR, 'watch-map-tiles.json'),
+    JSON.stringify({ style: MAP_STYLE, tiles: keys }),
+  )
+  console.log(
+    `watch-map-tiles: ${keys.length} z${MAP_TILE_ZOOM} tiles, ${Math.round(bytes / 1024)} KB, ${downloaded} downloaded`,
+  )
+}
+
 mkdirSync(OUT_DIR, { recursive: true })
-writeFileSync(join(OUT_DIR, 'watch-ride.jsonl'), serialize(buildRide()))
-writeFileSync(join(OUT_DIR, 'watch-sweep.jsonl'), serialize(buildSweep()))
+const ride = buildRide()
+const sweep = buildSweep()
+writeFileSync(join(OUT_DIR, 'watch-ride.jsonl'), serialize(ride))
+writeFileSync(join(OUT_DIR, 'watch-sweep.jsonl'), serialize(sweep))
+writeFileSync(join(OUT_DIR, 'watch-route.json'), JSON.stringify({ origin: ORIGIN, points: ROUTE }))
+writeFileSync(join(OUT_DIR, 'watch-weather.json'), JSON.stringify(buildWeather()))
+await syncMapTiles(mapTileKeys([ride, sweep]))
 console.log(`wrote fixtures to ${OUT_DIR}`)

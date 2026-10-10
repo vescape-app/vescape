@@ -25,7 +25,12 @@ const { useMapStore } = await import('@/modules/map/store/mapStore')
 beforeEach(() => {
   settings = { directionPointLatitude: null, directionPointLongitude: null }
   writeError = null
-  useMapStore.setState({ directionPoint: null, error: null })
+  useMapStore.setState({
+    directionPoint: null,
+    navigation: null,
+    acceptedNavigationComputedAtMs: null,
+    error: null,
+  })
   setDirectionPoint.mockClear()
   getSettings.mockClear()
 })
@@ -59,4 +64,27 @@ test('a refused write puts the previous direction point back', async () => {
 test('clearing an already empty direction point does not write', async () => {
   await useMapStore.getState().clearDirectionPoint()
   expect(setDirectionPoint).not.toHaveBeenCalled()
+})
+
+test('accepted navigation survives the same native snapshot and resets for a replacement', () => {
+  const navigation = {
+    target: { latitude: 52.5, longitude: 21.5 },
+    profile: 'walking' as const,
+    computedAtMs: 1_000,
+    status: 'ready' as const,
+    distanceMeters: 2_000,
+    durationSeconds: 600,
+    coordinates: [
+      [21.4, 52.4],
+      [21.5, 52.5],
+    ] as [number, number][],
+  }
+
+  useMapStore.getState().replaceNavigation(navigation, false)
+  useMapStore.getState().acceptNavigation()
+  useMapStore.getState().replaceNavigation(navigation, false)
+  expect(useMapStore.getState().acceptedNavigationComputedAtMs).toBe(1_000)
+
+  useMapStore.getState().replaceNavigation({ ...navigation, computedAtMs: 2_000 }, false)
+  expect(useMapStore.getState().acceptedNavigationComputedAtMs).toBeNull()
 })

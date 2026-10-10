@@ -13,6 +13,7 @@ interface ConfirmModalProps {
   cancelLabel?: string
   destructive?: boolean
   loading?: boolean
+  error?: string | null
   onConfirm: () => Promise<void> | void
   onCancel: () => void
 }
@@ -25,6 +26,7 @@ export function ConfirmModal({
   cancelLabel = 'Cancel',
   destructive = false,
   loading = false,
+  error,
   onConfirm,
   onCancel,
 }: ConfirmModalProps) {
@@ -57,6 +59,7 @@ export function ConfirmModal({
       }
     >
       <Text style={styles.message}>{message}</Text>
+      {error ? <Text style={styles.error}>{error}</Text> : null}
     </FadeCardModal>
   )
 }
@@ -68,11 +71,12 @@ const styles = StyleSheet.create({
     gap: 12,
   },
   message: {
-    color: theme.palette.slate.textSecondary,
+    color: theme.neutral.textSecondary,
     fontSize: 13,
     fontWeight: '500',
     lineHeight: 18,
   },
+  error: { color: theme.status.error.text, fontSize: 12 },
   actions: {
     flexDirection: 'row',
     gap: 10,

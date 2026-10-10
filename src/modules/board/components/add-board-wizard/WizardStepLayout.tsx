@@ -4,13 +4,13 @@ import { Text } from '@/components/base/Text'
 import { ArrowLeftIcon, ArrowRightIcon, type Icon } from 'phosphor-react-native'
 
 import { Button } from '@/components/base/Button'
-import { theme } from '@/constants/theme'
+import { theme, type ThemeColor } from '@/constants/theme'
 
 interface WizardStepLayoutProps {
   title: string
   description?: ReactNode
   icon: Icon
-  color: string
+  color: ThemeColor
   headerRight?: ReactNode
   footer?: ReactNode
   revealBottomOnKeyboard?: boolean
@@ -153,12 +153,12 @@ const styles = StyleSheet.create({
   },
   title: {
     flexShrink: 1,
-    color: theme.palette.slate.textPrimary,
+    color: theme.neutral.textPrimary,
     fontSize: 20,
     fontWeight: '800',
   },
   description: {
-    color: theme.palette.slate.textSecondary,
+    color: theme.neutral.textSecondary,
     fontSize: 13,
     fontWeight: '500',
     lineHeight: 18,

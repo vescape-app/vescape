@@ -117,6 +117,31 @@ describe('cameraEngine', () => {
     expect(engine.getCamera().centerCoordinate[0]).toBe(21.001)
   })
 
+  test('skips frames a rider could not see, and still lands exactly on target', () => {
+    // No post-landing hold: those writes exist to overwrite a native fling and are forced.
+    const { engine, frames, run } = createTestEngine({ holdAfterTargetMs: 0 })
+    // Pitch parked where `derivePitch` wants it, so heading is the only axis in motion.
+    engine.reset(camera([21, 52], 14, 0, 28))
+    // A hair of heading: every intermediate frame is far below a pixel of rotation.
+    engine.setTarget({ heading: 0.005 })
+    run(600)
+
+    // Only the landing write, which has to happen or the map rests off target.
+    expect(frames.length).toBe(1)
+    expect(frames.at(-1)?.heading).toBeCloseTo(0.005, 6)
+    expect(engine.getCamera().heading).toBeCloseTo(0.005, 6)
+  })
+
+  test('a heading move worth drawing still animates frame by frame', () => {
+    const { engine, frames, run } = createTestEngine({ holdAfterTargetMs: 0 })
+    engine.reset(camera([21, 52], 14, 0, 28))
+    engine.setTarget({ heading: 45 })
+    run(600)
+
+    expect(frames.length).toBeGreaterThan(10)
+    expect(frames.at(-1)?.heading).toBeCloseTo(45, 6)
+  })
+
   test('animates to target and idles exactly on it', () => {
     const { engine, frames, run, hasPending } = createTestEngine()
     engine.reset(camera([21, 52]))

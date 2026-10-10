@@ -1,4 +1,6 @@
+import { formatDistanceMeters, formatRideDistanceMeters, type UnitSystem } from '@/helpers/units'
 import type { ProfileStatsMonth } from 'vescape-core'
+import { DASH } from '@/helpers/format'
 
 export type ProfileMonth = ProfileStatsMonth
 
@@ -36,10 +38,11 @@ export function selectInitialMonth(months: ProfileMonth[], now = new Date()): Pr
   return months.find((month) => sameMonth(month, current)) ?? months[0] ?? current
 }
 
-export function formatDistance(valueM: number | null): string {
-  if (valueM == null) return '-'
-  if (valueM < 1000) return `${Math.round(valueM)} m`
-  return `${(valueM / 1000).toFixed(1)} km`
+export function formatDistance(valueM: number | null, units: UnitSystem = 'metric'): string {
+  if (valueM == null) return DASH
+  return units === 'imperial'
+    ? formatRideDistanceMeters(valueM, units)
+    : formatDistanceMeters(valueM, units)
 }
 
 export function formatDuration(valueMs: number): string {
@@ -50,12 +53,8 @@ export function formatDuration(valueMs: number): string {
   return minutes === 0 ? `${hours}h` : `${hours}h ${minutes}m`
 }
 
-export function formatSpeed(valueKmh: number): string {
-  return `${Math.round(valueKmh)} km/h`
-}
-
 export function formatEnergy(valueWh: number | null): string {
-  if (valueWh == null) return '-'
+  if (valueWh == null) return DASH
   if (valueWh < 1000) return `${Math.round(valueWh)} Wh`
   return `${(valueWh / 1000).toFixed(1)} kWh`
 }

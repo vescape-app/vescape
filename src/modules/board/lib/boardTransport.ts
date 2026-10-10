@@ -39,7 +39,7 @@ export function formatRefloatIdentity({
 
 export function formatBoardLinkFacts(link: BoardLink): string {
   const facts = [
-    link.linkVersion === 3 ? 'Board Link v3' : 'Legacy Board Link',
+    link.linkVersion === 4 ? 'Board Link v4' : 'Legacy Board Link',
     link.bleId,
     formatBoardTransport(link.transport),
   ]

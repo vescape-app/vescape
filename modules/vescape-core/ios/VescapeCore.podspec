@@ -10,8 +10,9 @@ Pod::Spec.new do |s|
   s.license        = 'MIT'
   s.author         = 'vescape'
   s.homepage       = 'https://github.com/vescape'
-  # 17.0 to match the app deployment target: the Board Session Live Activity (ActivityKit) driven
-  # from this pod needs 16.1+, and the app already ships 17.0, so nothing runs below it.
+  # 17.0 matches the app deployment target required by Clerk's native iOS SDK. The Board Session
+  # Live Activity driven from this pod needs 16.1+, so the app's floor also needs no availability
+  # gating in its ActivityKit code.
   s.platform       = :ios, '17.0'
   s.swift_version  = '5.9'
   s.source         = { :git => '' }
@@ -22,6 +23,9 @@ Pod::Spec.new do |s|
   # SPM test target in `../Package.swift` therefore pins 6.29.3, the first 6.x that compiles under
   # SPM on current Xcode. Same major, same DatabaseMigrator semantics — see the note there.
   s.dependency 'GRDB.swift', '~> 6.24.1'
+  # Match @sentry/react-native 7.11.0. Recording persistence reports directly from native when JS
+  # or the application database is unavailable.
+  s.dependency 'Sentry/HybridSDK', '8.58.0'
 
   # Swift/Objective-C compatibility
   s.static_framework = true
@@ -43,7 +47,7 @@ Pod::Spec.new do |s|
   # through a symlinked directory, so `fixtures/*.jsonl` silently matched nothing.
   s.resource_bundles = {
     'VescapeCoreAssets' => [
-      'cell-presets.json',
+      'cell-presets.json', 'alert-preset-definitions.json',
       'legal-policies.json',
       'alerts/*.wav',
       'fixtures/*.jsonl'

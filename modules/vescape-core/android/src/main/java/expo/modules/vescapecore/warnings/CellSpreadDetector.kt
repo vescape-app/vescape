@@ -150,11 +150,19 @@ class CellSpreadDetector(
     }
 
   companion object {
-    /** Spread ≥ this (V), sustained, fires a warn-level cell-spread warning. Field-tuned constant. */
-    const val WARN_THRESHOLD_V = 0.10
+    /**
+     * Spread ≥ this (V), sustained, fires a warn-level cell-spread warning. Field-tuned constant.
+     *
+     * @parity /src/modules/battery/lib/bms.ts `CELL_SPREAD_WARN_V`
+     */
+    const val WARN_THRESHOLD_V = 0.20
 
-    /** Peak sustained spread ≥ this (V) escalates the finding to critical. */
-    const val CRITICAL_THRESHOLD_V = 0.25
+    /**
+     * Peak sustained spread ≥ this (V) escalates the finding to critical.
+     *
+     * @parity /src/modules/battery/lib/bms.ts `CELL_SPREAD_CRITICAL_V`
+     */
+    const val CRITICAL_THRESHOLD_V = 0.50
 
     /** Spread must stay over threshold at least this long before firing — filters transient spikes. */
     const val SUSTAIN_MS = 3_000L

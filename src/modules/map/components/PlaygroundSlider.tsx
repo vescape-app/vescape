@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { PanResponder, StyleSheet, View, type GestureResponderHandlers } from 'react-native'
 
 import { Text } from '@/components/base/Text'
-import { theme } from '@/constants/theme'
+import { theme, type ThemeColor } from '@/constants/theme'
 
 interface PlaygroundSliderProps {
   label: string
@@ -10,7 +10,7 @@ interface PlaygroundSliderProps {
   min: number
   max: number
   step?: number
-  color?: string
+  color?: ThemeColor
   format?: (value: number) => string
   onChange: (value: number) => void
 }
@@ -106,7 +106,7 @@ const styles = StyleSheet.create({
   container: { gap: 4 },
   header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   label: {
-    color: theme.palette.slate.textSecondary,
+    color: theme.neutral.textSecondary,
     fontSize: 11,
     fontWeight: '700',
     fontFamily: 'monospace',
@@ -115,10 +115,10 @@ const styles = StyleSheet.create({
   track: {
     height: 22,
     justifyContent: 'center',
-    backgroundColor: theme.palette.slate.surfaceDeep,
+    backgroundColor: theme.neutral.surfaceDeep,
     borderRadius: 6,
     borderWidth: 1,
-    borderColor: theme.palette.slate.border,
+    borderColor: theme.neutral.border,
     overflow: 'hidden',
   },
   fill: { position: 'absolute', left: 0, top: 0, bottom: 0, opacity: 0.35 },
@@ -128,6 +128,6 @@ const styles = StyleSheet.create({
     height: THUMB,
     borderRadius: THUMB / 2,
     borderWidth: 2,
-    backgroundColor: theme.palette.slate.surface,
+    backgroundColor: theme.neutral.surface,
   },
 })

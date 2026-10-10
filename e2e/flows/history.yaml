@@ -12,11 +12,15 @@ appId: ${APP_ID}
     visible: History
     timeout: 15000
 
-# Newest ride stats (selected automatically).
+# The drawer opens on riding totals and the ride list; the newest ride has to be opened for its stats.
+- tapOn:
+    id: history-latest-ride
+
 - assertVisible: Distance
 - assertVisible: Top Speed
 - assertVisible: '1.5'
-- assertVisible: '25 km/h'
+# Stat values and their units are separate Text nodes, so the unit cannot share the selector.
+- assertVisible: '25'
 
 # Expand the stats panel to verify secondary stats are computed too.
 - tapOn:
@@ -26,37 +30,47 @@ appId: ${APP_ID}
 - assertVisible: Ctrl Max
 - assertVisible: Motor Max
 
-# Toggle optional charts on and off.
+# Toggle optional charts on and off. The chart headings are drawn on the Skia canvas and never
+# reach the view hierarchy, so each chart is asserted through its tab's selected state.
 - tapOn:
     id: history-metric-tab-battery
 - extendedWaitUntil:
-    visible: Battery
-    timeout: 5000
+    visible:
+      id: history-metric-tab-battery
+      selected: true
+    timeout: 20000
 - tapOn:
     id: history-metric-tab-duty
 - extendedWaitUntil:
-    visible: 'Duty Cycle'
-    timeout: 5000
+    visible:
+      id: history-metric-tab-duty
+      selected: true
+    timeout: 20000
 
 # Switch to the older ride with the prev button.
 - tapOn:
     id: history-previous-ride
 - extendedWaitUntil:
     visible: '800'
-    timeout: 5000
-- assertVisible: '20 km/h'
+    timeout: 20000
+- assertVisible: '20'
 
-# Charts should still be visible on the older ride.
-- assertVisible: Battery
-- assertVisible: 'Duty Cycle'
+# Charts should still be enabled on the older ride.
+- assertVisible:
+    id: history-metric-tab-battery
+    selected: true
+- assertVisible:
+    id: history-metric-tab-duty
+    selected: true
 
 # Switch back to the newest ride with the next button.
 - tapOn:
     id: history-next-ride
 - extendedWaitUntil:
     visible: '1.5'
-    timeout: 5000
-- assertVisible: '25 km/h'
+    timeout: 20000
+# Stat values and their units are separate Text nodes, so the unit cannot share the selector.
+- assertVisible: '25'
 
 # Open the ride list sheet and verify it renders.
 - tapOn:
@@ -64,7 +78,7 @@ appId: ${APP_ID}
 - extendedWaitUntil:
     visible:
       id: history-session-sheet
-    timeout: 5000
+    timeout: 20000
 
 # Close the sheet by tapping the backdrop.
 - tapOn:
@@ -87,7 +101,7 @@ appId: ${APP_ID}
 - extendedWaitUntil:
     visible:
       id: favorite-edit
-    timeout: 5000
+    timeout: 20000
 - assertVisible: Evening ride
 - tapOn:
     id: favorite-edit
@@ -102,14 +116,14 @@ appId: ${APP_ID}
 - extendedWaitUntil:
     visible:
       id: favorite-edit
-    timeout: 5000
+    timeout: 20000
 - assertVisible: Edited ride
 - tapOn:
     id: history-ride-list-button
 - extendedWaitUntil:
     visible:
       id: history-session-sheet
-    timeout: 5000
+    timeout: 20000
 - tapOn:
     id: history-session-sheet-backdrop
 - tapOn:

@@ -14,7 +14,6 @@ describe('mainScreenStore', () => {
     expect(state.historySheetVisible).toBe(false)
     expect(state.mapSelector).toBe(null)
     expect(state.perspectiveEnabled).toBe(true)
-    expect(state.seekTimeMs).toBe(null)
   })
 
   test('keeps only one compact map selector open', () => {
@@ -74,13 +73,11 @@ describe('mainScreenStore', () => {
     const store = useMainScreenStore.getState()
 
     store.setHistorySheetVisible(true)
-    store.setSeekTimeMs(1234)
     store.enterTelemetry()
 
     const state = useMainScreenStore.getState()
     expect(state.mode).toBe('telemetry')
     expect(state.historySheetVisible).toBe(false)
-    expect(state.seekTimeMs).toBe(null)
   })
 
   test('ends Favorite trimming when the ride context changes', () => {

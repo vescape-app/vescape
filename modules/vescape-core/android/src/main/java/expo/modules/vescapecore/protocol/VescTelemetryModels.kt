@@ -26,8 +26,6 @@ data class RefloatTelemetry(
     val location: LocationSnapshot?,
 ) {
     fun toMap(): Map<String, Any?> = mapOf(
-        "hasFault" to hasFault,
-        "faultCode" to faultCode,
         "pitch" to pitch,
         "roll" to roll,
         "balancePitch" to balancePitch,
@@ -130,6 +128,11 @@ data class LocationSnapshot(
     )
 }
 
+/**
+ * Refloat/Float package board state → wire label.
+ *
+ * @parity /modules/vescape-core/ios/protocol/VescProtocol.swift `stateName`
+ */
 private fun stateName(state: Int): String {
     return when (state and 0x0f) {
         0 -> "STARTUP"

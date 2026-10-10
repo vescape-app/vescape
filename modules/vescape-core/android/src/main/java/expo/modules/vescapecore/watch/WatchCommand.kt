@@ -12,11 +12,24 @@ package expo.modules.vescapecore.watch
  * degrades to "unknown kind, ignored" rather than to a misread command that moves the board.
  *
  * @parity /watch/wearos/src/main/java/app/vescape/wear/WatchCommand.kt
+ * @parity /modules/vescape-core/ios/watch/WatchCommand.swift
  */
 internal const val WATCH_COMMAND_PATH = "/command"
 
 /** Command kinds. Values are wire constants — append, never renumber. */
 internal const val WATCH_COMMAND_KIND_MOVE = 1
+internal const val WATCH_COMMAND_KIND_MIRROR_AWAKE = 2
+internal const val WATCH_COMMAND_KIND_LIGHTS = 3
+internal const val WATCH_COMMAND_KIND_TILT_LOCK = 4
+internal const val WATCH_COMMAND_KIND_TILT_CANCEL = 5
+
+/**
+ * How long the phone keeps pushing frames after the last wrist wake-level tick. The Mirror re-sends
+ * every `WATCH_MIRROR_AWAKE_HEARTBEAT_MS` (15 s) while it is on screen, so this is three missed
+ * ticks. An explicit `ASLEEP` on `onStop` is the fast path; this dead-man is what stops the push
+ * when that message is lost, the watch leaves Bluetooth range, or the wrist app is killed outright.
+ */
+internal const val WATCH_MIRROR_AWAKE_TIMEOUT_MS = 45_000L
 
 /**
  * How long a held Board Move survives without a fresh wrist tick before the phone stops the board.
@@ -29,10 +42,72 @@ internal const val WATCH_COMMAND_KIND_MOVE = 1
  */
 internal const val WATCH_MOVE_DEADMAN_MS = 900L
 
+/**
+ * How awake the wrist is, and therefore how fast frames are worth sending. Capability presence only
+ * proves the Mirror is *installed*; without this the phone pushes 4 Hz into a stopped activity for
+ * as long as the service lives, which is the single biggest avoidable drain on both devices.
+ *
+ * Wire values — append, never renumber.
+ */
+internal enum class WatchMirrorWakeLevel(val wire: Int) {
+    /** Mirror stopped (or presumed stopped after [WATCH_MIRROR_AWAKE_TIMEOUT_MS]). Push nothing. */
+    ASLEEP(0),
+
+    /** Mirror on screen and interactive. Full cadence. */
+    ACTIVE(1),
+
+    /** Mirror in ambient/AOD. The wrist redraws about once a minute, so trickle. */
+    AMBIENT(2),
+    ;
+
+    internal companion object {
+        fun fromWire(wire: Int): WatchMirrorWakeLevel? = entries.firstOrNull { it.wire == wire }
+    }
+}
+
+/**
+ * Which of the board's two light switches a wrist edit names.
+ *
+ * Deliberately *not* the wire mask `buildLightsControlCommand` writes (bit0 = LEDs, bit1 =
+ * headlights): there both bits are values, here bit1 is a selector and bit0 is the value. Reusing
+ * that bit order would make `0b10` mean "headlights on" on the BLE wire and "headlights off" here.
+ *
+ * Wire values — append, never renumber.
+ */
+internal enum class WatchLightsSwitch(val selector: Int) {
+    LEDS(0),
+    HEADLIGHT(1),
+    ;
+
+    internal companion object {
+        fun fromSelector(selector: Int): WatchLightsSwitch? = entries.firstOrNull { it.selector == selector }
+    }
+}
+
 /** A decoded wrist command. */
 internal sealed interface WatchCommand {
     /** Hold the board rolling in [direction] (`-1` back, `0` stop, `1` forward) until the next tick. */
     data class Move(val direction: Int) : WatchCommand
+
+    /** The Mirror reporting how awake it is; re-sent on a heartbeat so its absence is meaningful. */
+    data class MirrorAwake(val level: WatchMirrorWakeLevel) : WatchCommand
+
+    /**
+     * Put one light [switch] into state [on]. An edit, not an assertion of both switches: the
+     * phone composes the other value from its own [WatchBoard] truth, so a wrist holding a slightly
+     * stale `/board` push cannot revert a switch the phone flipped a moment earlier.
+     */
+    data class Lights(val switch: WatchLightsSwitch, val on: Boolean) : WatchCommand
+
+    /**
+     * Lock Remote Tilt at [value] (0..255, 128 neutral). Absolute, so a lost tick costs one step
+     * of a stick drag, never a drifted angle. No dead-man: a lock is a setpoint the rider chose to
+     * leave, not motor output, and it stays until a cancel whatever happens to the wrist.
+     */
+    data class TiltLock(val value: Int) : WatchCommand
+
+    /** Ease tilt back to neutral — the same cancel the phone pad sends. */
+    data object TiltCancel : WatchCommand
 }
 
 /** Pure bytes -> [WatchCommand] decoder. Returns null for a short buffer or an unknown kind. */
@@ -41,6 +116,19 @@ internal object WatchCommandDecoder {
         if (bytes.size < 2) return null
         return when (bytes[0].toInt()) {
             WATCH_COMMAND_KIND_MOVE -> WatchCommand.Move(bytes[1].toInt().coerceIn(-1, 1))
+            WATCH_COMMAND_KIND_MIRROR_AWAKE ->
+                WatchMirrorWakeLevel.fromWire(bytes[1].toInt())?.let(WatchCommand::MirrorAwake)
+            WATCH_COMMAND_KIND_LIGHTS -> {
+                val value = bytes[1].toInt() and 0xff
+                // bit0 = target on/off, bit1 = which switch. Anything above those two bits is a
+                // wrist newer than this phone, and is dropped rather than read as a switch it is
+                // not — the same lenience the unknown-kind branch gives.
+                WatchLightsSwitch.fromSelector((value shr 1) and 0x1)
+                    ?.takeIf { value and 0x3.inv() == 0 }
+                    ?.let { WatchCommand.Lights(it, value and 0x1 == 1) }
+            }
+            WATCH_COMMAND_KIND_TILT_LOCK -> WatchCommand.TiltLock(bytes[1].toInt() and 0xff)
+            WATCH_COMMAND_KIND_TILT_CANCEL -> WatchCommand.TiltCancel
             else -> null
         }
     }

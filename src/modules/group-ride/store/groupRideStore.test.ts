@@ -1,14 +1,16 @@
 import { beforeEach, expect, mock, test } from 'bun:test'
+import type { NearbyRide } from '@/modules/group-ride/lib/nearby'
+import type { RosterRider } from '@/modules/group-ride/lib/roster'
 
 type Listener<T> = (event: T) => void
 
 const connectionListeners: Listener<{ state: string }>[] = []
-const snapshotListeners: Listener<{ rides: any[] }>[] = []
-const createdListeners: Listener<{ ride: any }>[] = []
-const updatedListeners: Listener<{ ride: any }>[] = []
+const snapshotListeners: Listener<{ rides: unknown[] }>[] = []
+const createdListeners: Listener<{ ride: unknown }>[] = []
+const updatedListeners: Listener<{ ride: unknown }>[] = []
 const endedListeners: Listener<{ rideId: string }>[] = []
 const joinedListeners: Listener<{ rideId: string | null }>[] = []
-const rosterListeners: Listener<{ rideId: string | null; riders: any[] }>[] = []
+const rosterListeners: Listener<{ rideId: string | null; riders: unknown[] }>[] = []
 const errorListeners: Listener<{ message: string }>[] = []
 const locationListeners: Listener<{ latitude: number; longitude: number }>[] = []
 
@@ -18,7 +20,14 @@ const leaveGroupRide = mock(() => {})
 const updateGroupRideIdentity = mock(() => {})
 const startGroupRideObserve = mock(() => {})
 const stopGroupRideObserve = mock(() => {})
-const getSettings = mock(async () => ({ riderId: null, riderName: null }))
+const playGroupRideSound = mock(() => {})
+const getSettings = mock(
+  async (): Promise<{
+    riderId: string | null
+    riderName: string | null
+    riderColor?: string | null
+  }> => ({ riderId: null, riderName: null }),
+)
 const updateSetting = mock(async () => {})
 
 function subscribe<T>(listeners: Listener<T>[], listener: Listener<T>) {
@@ -31,20 +40,24 @@ function subscribe<T>(listeners: Listener<T>[], listener: Listener<T>) {
   }
 }
 
+// Load the real board store against the real native surface before narrowing `vescape-core`;
+// public riding only reads its `status`, which stays idle here.
+await import('@/modules/board/store/bleStore')
+
 mock.module('vescape-core', () => ({
   addGroupRideConnectionListener: (listener: Listener<{ state: string }>) =>
     subscribe(connectionListeners, listener),
-  addGroupRideSnapshotListener: (listener: Listener<{ rides: any[] }>) =>
+  addGroupRideSnapshotListener: (listener: Listener<{ rides: unknown[] }>) =>
     subscribe(snapshotListeners, listener),
-  addGroupRideCreatedListener: (listener: Listener<{ ride: any }>) =>
+  addGroupRideCreatedListener: (listener: Listener<{ ride: unknown }>) =>
     subscribe(createdListeners, listener),
-  addGroupRideUpdatedListener: (listener: Listener<{ ride: any }>) =>
+  addGroupRideUpdatedListener: (listener: Listener<{ ride: unknown }>) =>
     subscribe(updatedListeners, listener),
   addGroupRideEndedListener: (listener: Listener<{ rideId: string }>) =>
     subscribe(endedListeners, listener),
   addGroupRideJoinedListener: (listener: Listener<{ rideId: string | null }>) =>
     subscribe(joinedListeners, listener),
-  addGroupRideRosterListener: (listener: Listener<{ rideId: string | null; riders: any[] }>) =>
+  addGroupRideRosterListener: (listener: Listener<{ rideId: string | null; riders: unknown[] }>) =>
     subscribe(rosterListeners, listener),
   addGroupRideErrorListener: (listener: Listener<{ message: string }>) =>
     subscribe(errorListeners, listener),
@@ -56,6 +69,10 @@ mock.module('vescape-core', () => ({
   updateGroupRideIdentity,
   startGroupRideObserve,
   stopGroupRideObserve,
+  getCompanionPresenceBoards: async () => [],
+  addCompanionPresenceBoard: async () => undefined,
+  removeCompanionPresenceBoard: async () => undefined,
+  setCompanionPresenceEnabled: async () => undefined,
   getSettings,
   updateSetting,
 }))
@@ -91,7 +108,15 @@ beforeEach(async () => {
   updateGroupRideIdentity.mockClear()
   startGroupRideObserve.mockClear()
   stopGroupRideObserve.mockClear()
-  const { useGroupRideStore } = await import('@/modules/group-ride/store/groupRideStore')
+  playGroupRideSound.mockClear()
+  getSettings.mockReset()
+  getSettings.mockImplementation(async () => ({ riderId: null, riderName: null }))
+  updateSetting.mockReset()
+  updateSetting.mockImplementation(async () => {})
+  const { setGroupRideSoundPlayer, useGroupRideStore } =
+    await import('@/modules/group-ride/store/groupRideStore')
+  setGroupRideSoundPlayer(playGroupRideSound)
+  const { useRiderStore } = await import('@/modules/group-ride/store/riderStore')
   useGroupRideStore.setState({
     connection: 'idle',
     rides: [],
@@ -104,6 +129,72 @@ beforeEach(async () => {
     error: null,
     focusRequest: null,
     observing: false,
+  })
+  useRiderStore.setState({
+    riderId: null,
+    riderName: null,
+    riderColor: null,
+    loaded: false,
+    error: null,
+  })
+})
+
+test('identity load is single-flight and queued edits cannot be overwritten by stale settings', async () => {
+  const { useRiderStore } = await import('@/modules/group-ride/store/riderStore')
+  let resolveSettings!: (value: { riderId: string; riderName: string }) => void
+  getSettings.mockImplementationOnce(
+    () =>
+      new Promise((resolve) => {
+        resolveSettings = resolve
+      }),
+  )
+
+  const firstLoad = useRiderStore.getState().load()
+  const secondLoad = useRiderStore.getState().load()
+  const edit = useRiderStore.getState().setName('New name')
+  await Promise.resolve()
+
+  expect(firstLoad).toBe(secondLoad)
+  expect(getSettings).toHaveBeenCalledTimes(1)
+  expect(updateSetting).not.toHaveBeenCalled()
+
+  resolveSettings({ riderId: 'rider-1', riderName: 'Old name' })
+  await Promise.all([firstLoad, secondLoad, edit])
+
+  expect(updateSetting).toHaveBeenCalledTimes(1)
+  expect(updateSetting).toHaveBeenCalledWith('riderName', 'New name')
+  expect(useRiderStore.getState()).toMatchObject({
+    riderId: 'rider-1',
+    riderName: 'New name',
+    loaded: true,
+    error: null,
+  })
+})
+
+test('rapid rider edits persist and apply in request order', async () => {
+  const { useRiderStore } = await import('@/modules/group-ride/store/riderStore')
+  let finishNameWrite!: () => void
+  updateSetting.mockImplementationOnce(
+    () =>
+      new Promise<void>((resolve) => {
+        finishNameWrite = resolve
+      }),
+  )
+
+  const nameWrite = useRiderStore.getState().setName('First')
+  const colorWrite = useRiderStore.getState().setColor('#38bdf8')
+  await Promise.resolve()
+
+  expect(updateSetting).toHaveBeenCalledTimes(1)
+  expect(updateSetting).toHaveBeenCalledWith('riderName', 'First')
+  finishNameWrite()
+  await Promise.all([nameWrite, colorWrite])
+
+  expect(updateSetting).toHaveBeenNthCalledWith(2, 'riderColor', '#38bdf8')
+  expect(useRiderStore.getState()).toMatchObject({
+    riderName: 'First',
+    riderColor: '#38bdf8',
+    error: null,
   })
 })
 
@@ -134,11 +225,11 @@ test('online block clears stale ride state and marks the connection blocked', as
   useGroupRideStore.setState({
     connection: 'connected',
     rides: [ride('r1')],
-    nearby: [{ ride: ride('r1'), distanceM: 10 }] as any,
+    nearby: [{ ride: ride('r1'), distanceM: 10 }] as unknown as NearbyRide[],
     badge: true,
     activeRideId: 'r1',
     roster: [{ id: 'x', name: 'X', color: null, presence: null, stale: false, lastSeen: 1 }],
-    rosterRows: [{ id: 'x' }] as any,
+    rosterRows: [{ id: 'x' }] as unknown as RosterRider[],
     error: 'boom',
   })
 
@@ -205,4 +296,25 @@ test('name/color edits while observing push the new identity to peers', async ()
     riderName: 'New Name',
     riderColor: '#38bdf8',
   })
+})
+
+test('new nearby ride and new roster member request their sounds once', async () => {
+  const { useGroupRideStore } = await import('@/modules/group-ride/store/groupRideStore')
+  const { useRiderStore } = await import('@/modules/group-ride/store/riderStore')
+  useRiderStore.setState({ riderId: 'self' })
+  useGroupRideStore.setState({ ownLocation: { lat: 1, lng: 2 } })
+  useGroupRideStore.getState().startObserving()
+
+  createdListeners.forEach((listener) => listener({ ride: ride('new') }))
+  createdListeners.forEach((listener) => listener({ ride: ride('new') }))
+  expect(playGroupRideSound).toHaveBeenCalledTimes(1)
+  expect(playGroupRideSound).toHaveBeenCalledWith('created')
+
+  const self = { id: 'self', name: 'Me', color: null, presence: null, stale: false, lastSeen: 1 }
+  const peer = { ...self, id: 'peer', name: 'Peer' }
+  useGroupRideStore.setState({ activeRideId: 'new', roster: [self] })
+  rosterListeners.forEach((listener) => listener({ rideId: 'new', riders: [self, peer] }))
+  rosterListeners.forEach((listener) => listener({ rideId: 'new', riders: [self, peer] }))
+  expect(playGroupRideSound).toHaveBeenCalledTimes(2)
+  expect(playGroupRideSound).toHaveBeenLastCalledWith('join')
 })

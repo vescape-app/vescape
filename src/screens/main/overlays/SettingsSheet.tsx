@@ -1,4 +1,4 @@
-import { Platform, Pressable, StyleSheet, View } from 'react-native'
+import { Pressable, StyleSheet, View } from 'react-native'
 import Constants from 'expo-constants'
 import { router, type Href } from 'expo-router'
 import {
@@ -7,8 +7,8 @@ import {
   BluetoothConnectedIcon,
   CheckCircleIcon,
   DatabaseIcon,
-  GaugeIcon,
-  MapPinIcon,
+  HouseIcon,
+  SpeakerHighIcon,
   WatchIcon,
   WrenchIcon,
   type Icon,
@@ -19,57 +19,57 @@ import { Button } from '@/components/base/Button'
 import { Text } from '@/components/base/Text'
 import { VescapeWordmark } from '@/components/base/VescapeWordmark'
 import { LinkWidget } from '@/components/widgets/LinkWidget'
-import { widgetSurface } from '@/components/widgets/widgetSurface'
+import { useResolvedSecondaryWidgetSurface } from '@/components/widgets/widgetSurface'
 import { AccountPill } from '@/modules/profile/components/AccountPill'
 import { DASH, fmtCompactCount, fmtTimeAgo, formatBytes } from '@/helpers/format'
 import { backupProgressFraction, type BackupSlot } from '@/modules/profile/lib/backupSlot'
 import { selectAvailableUpdate } from '@/modules/release/lib/availableUpdate'
 import { useAppStatusStore } from '@/modules/release/store/appStatusStore'
 import { useDatabaseSize } from '@/modules/settings/hooks/useDatabaseSize'
+import { ThemePicker } from '@/modules/settings/components/ThemePicker'
 import { routes } from '@/navigation/routes'
-import { theme } from '@/constants/theme'
+import { theme, type ThemeColor } from '@/constants/theme'
+import { useResolvedNeutralColors } from '@/hooks/useTheme'
 
 const appVersion = Constants.expoConfig?.version ?? DASH
 
 interface Shortcut {
   icon: Icon
-  accent: string
+  accent: ThemeColor
   label: string
   hint: string
   route: Href
-  androidOnly?: boolean
 }
 
 /** The settings a Rider reaches for often enough to deserve a place outside Advanced. */
 const SHORTCUTS: Shortcut[] = [
   {
     icon: BluetoothConnectedIcon,
-    accent: theme.settingsIcon.connection,
-    label: 'Connection',
-    hint: 'Auto start, auto connect, and sounds',
-    route: routes.settingsConnection,
-  },
-  {
-    icon: GaugeIcon,
-    accent: theme.settingsIcon.liveTelemetry,
-    label: 'Live telemetry',
-    hint: 'Graphs, update rate, and battery smoothing',
-    route: routes.settingsLiveTelemetry,
+    accent: theme.settingsIcon.automation,
+    label: 'Automation',
+    hint: 'Auto start, auto connect, and recording',
+    route: routes.settingsAutomation,
   },
   {
     icon: WatchIcon,
     accent: theme.settingsIcon.watch,
     label: 'Watch',
-    hint: 'Auto open and telemetry push rate',
+    hint: 'Push rate and what the wrist shows',
     route: routes.settingsWatch,
-    androidOnly: true,
   },
   {
-    icon: MapPinIcon,
+    icon: HouseIcon,
     accent: theme.settingsIcon.privacyZones,
     label: 'Privacy zones',
     hint: 'Skip recording near saved places',
     route: routes.settingsPrivacyZones,
+  },
+  {
+    icon: SpeakerHighIcon,
+    accent: theme.settingsIcon.sounds,
+    label: 'Sounds',
+    hint: 'Choose and preview a sound pack',
+    route: routes.settingsSounds,
   },
 ]
 
@@ -84,6 +84,8 @@ interface SettingsSheetProps {
  * update, storage), the settings worth one tap, and one door to everything else.
  */
 export function SettingsSheet({ backup, onNavigate }: SettingsSheetProps) {
+  const neutral = useResolvedNeutralColors()
+  const secondarySurface = useResolvedSecondaryWidgetSurface()
   const dbSize = useDatabaseSize().bytes
   const appStatus = useAppStatusStore((s) => s.status)
   const availableUpdate = selectAvailableUpdate(appStatus)
@@ -100,9 +102,9 @@ export function SettingsSheet({ backup, onNavigate }: SettingsSheetProps) {
         <AccountPill onNavigate={onNavigate} />
       </View>
 
-      <View style={styles.strip}>
+      <View style={[styles.strip, secondarySurface]}>
         <BackupCell backup={backup} onSignIn={() => go(routes.signIn)} />
-        <View style={styles.stripDivider} />
+        <View style={[styles.stripDivider, { backgroundColor: neutral.border }]} />
         <StripCell
           icon={availableUpdate ? ArrowFatLinesUpIcon : CheckCircleIcon}
           accent={availableUpdate ? theme.settingsIcon.update : theme.status.success.color}
@@ -111,7 +113,7 @@ export function SettingsSheet({ backup, onNavigate }: SettingsSheetProps) {
           onPress={() => go(routes.settingsReleaseNotes)}
           accessibilityLabel="Release notes"
         />
-        <View style={styles.stripDivider} />
+        <View style={[styles.stripDivider, { backgroundColor: neutral.border }]} />
         <StripCell
           icon={DatabaseIcon}
           accent={theme.settingsIcon.database}
@@ -132,7 +134,7 @@ export function SettingsSheet({ backup, onNavigate }: SettingsSheetProps) {
         />
       ) : null}
 
-      {SHORTCUTS.filter((s) => !s.androidOnly || Platform.OS === 'android').map((s) => (
+      {SHORTCUTS.map((s) => (
         <LinkWidget
           key={s.label}
           icon={s.icon}
@@ -142,6 +144,8 @@ export function SettingsSheet({ backup, onNavigate }: SettingsSheetProps) {
           onPress={() => go(s.route)}
         />
       ))}
+
+      <ThemePicker />
 
       <LinkWidget
         icon={WrenchIcon}
@@ -162,7 +166,7 @@ function BackupCell({ backup, onSignIn }: { backup: BackupSlot; onSignIn: () => 
     return (
       <StripCell
         icon={ArrowsClockwiseIcon}
-        accent={theme.palette.slate.textMuted}
+        accent={theme.neutral.textMuted}
         value="Sync"
         label="No account"
         dim
@@ -176,7 +180,7 @@ function BackupCell({ backup, onSignIn }: { backup: BackupSlot; onSignIn: () => 
     return (
       <StripCell
         icon={ArrowsClockwiseIcon}
-        accent={theme.palette.slate.textMuted}
+        accent={theme.neutral.textMuted}
         value="Sync"
         label="Unavailable"
         dim
@@ -212,10 +216,10 @@ function BackupCell({ backup, onSignIn }: { backup: BackupSlot; onSignIn: () => 
 
 interface StripCellProps {
   icon: Icon
-  accent: string
+  accent: ThemeColor
   value: string
   label?: string
-  valueColor?: string
+  valueColor?: ThemeColor
   /** 0–1. Draws a bar under the value; the bar alone says the work is running. */
   progress?: number
   dim?: boolean
@@ -278,30 +282,31 @@ const styles = StyleSheet.create({
   dim: {
     opacity: 0.5,
   },
+  // The cells carry the padding, not the strip: a divider that stops short of the card edges reads
+  // as a broken line. Same rule as the board selector's links strip.
   strip: {
-    ...widgetSurface,
     flexDirection: 'row',
     alignItems: 'stretch',
-    paddingVertical: 14,
     marginBottom: 10,
+    overflow: 'hidden',
   },
   stripCell: {
     flex: 1,
     alignItems: 'center',
     gap: 3,
+    paddingVertical: 14,
     paddingHorizontal: 4,
   },
   stripDivider: {
-    width: 1,
-    backgroundColor: theme.palette.slate.border,
+    width: StyleSheet.hairlineWidth * 2,
   },
   stripValue: {
-    color: theme.palette.slate.textPrimary,
+    color: theme.neutral.textPrimary,
     fontSize: 14,
     fontWeight: '800',
   },
   stripLabel: {
-    color: theme.palette.slate.textMuted,
+    color: theme.neutral.textMuted,
     fontSize: 11,
     fontWeight: '600',
   },

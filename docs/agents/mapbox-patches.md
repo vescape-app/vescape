@@ -71,6 +71,24 @@ The patch updates all layers required by the package:
 - Android `RNMBXCameraModule`
 - iOS `RNMBXCamera` and `RNMBXCameraModule`
 
+## Camera-changed payload without bounds
+
+`onCameraChanged` fires synchronously from inside every camera write, including each frame the
+camera engine writes. Upstream builds its payload with a viewport unprojection:
+
+```swift
+let bounds = mapView.mapboxMap.coordinateBounds(for: cameraOptions)
+```
+
+No consumer in this app reads `bounds` off that event — both handlers
+(`src/screens/main/map/useMainMapCameraEvents.ts`, `src/screens/privacyZones/usePrivacyZoneEditor.ts`)
+take `center`, `zoom`, `heading`, `pitch`, and `gestures.isGestureActive`. The patch takes an
+`includeBounds` flag on the payload builder and passes `false` for `cameraChanged`, `true` for
+`mapIdle`, so a settled map still reports its bounds once per rest.
+
+`MapState['properties']['bounds']` is optional in the patched types to match. Both platforms are
+patched identically — the payload shape crosses the bridge, so it cannot diverge by platform.
+
 Do not edit `node_modules` directly and leave it uncommitted. Update the durable Bun patch instead.
 
 ## Updating `@rnmapbox/maps`
@@ -82,9 +100,11 @@ When changing the dependency version:
 3. Otherwise recreate the patch against the new version with `bun patch @rnmapbox/maps`.
 4. Reapply the direct setter to source, compiled output, declarations, TurboModule spec, Android, and
    iOS.
-5. Commit it with `bun patch --commit 'node_modules/@rnmapbox/maps'`.
-6. Verify a clean `bun install` applies it.
-7. Rebuild the native app. Metro refresh is insufficient for native patch changes.
+5. Reapply the `includeBounds` payload flag to `RNMBXMapView` on both platforms and the optional
+   `bounds` in `MapState`.
+6. Commit it with `bun patch --commit 'node_modules/@rnmapbox/maps'`.
+7. Verify a clean `bun install` applies it.
+8. Rebuild the native app. Metro refresh is insufficient for native patch changes.
 
 Minimum verification:
 

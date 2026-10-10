@@ -1,5 +1,5 @@
 import { beforeEach, expect, mock, test } from 'bun:test'
-import type { AppSettings } from 'vescape-core'
+import type { AppSettings, CompanionPresenceBoard } from 'vescape-core'
 
 const actualVescapeCore = await import('@/../modules/vescape-core/src/index')
 
@@ -16,60 +16,91 @@ const BASE: AppSettings = {
   rideSplitGapMinutes: 30,
   freeSpinMaxSpeedDeltaKmh: 12,
   freeSpinStationaryBoardCapKmh: 15,
+  unitSystem: 'metric',
+  themeMode: 'system',
   mapStyleKey: 'onedark',
   satelliteOverlayEnabled: true,
   satelliteImageryOpacity: 0.2,
   satelliteMapImageryOpacity: 1,
   satelliteImagerySaturation: -0.35,
   hideTelemetryMapDetails: true,
+  showHistoryMapMarkers: false,
   mapOrientationMode: 'northUp',
   historyMetricGradientsEnabled: true,
   historyMetricHotRanges: { battery: { start: 0, end: 1 } },
   socEstimateWindowSeconds: 20,
   boardMoveStrengthPercent: 60,
   connectionSoundsEnabled: true,
+  soundPack: 'retro',
+  audioSource: 'alarm',
   companionPresenceEnabled: false,
   boardWarningsEnabled: true,
+  vescFaultCollectionEnabled: true,
   companionPresenceCooldownMinutes: 60,
   autoCloseEnabled: false,
   autoCloseDelayMinutes: 15,
   telemetryPollRateHz: 20,
-  wearMirrorIntervalMs: 250,
+  wearPushRateHz: 4,
   wearAutoLaunchOnConnect: true,
+  wearNavArrowEnabled: false,
+  wearTelemetryTrailEnabled: true,
+  wearTelemetryGroupEnabled: true,
+  wearTelemetryRouteEnabled: true,
+  wearStreetMapEnabled: true,
+  wearMapGaugesPercent: 60,
+  wearTiltRatePercent: 20,
   riderId: null,
   riderName: null,
   riderColor: null,
+  groupRidePublicEnabled: false,
   legalPolicy: null,
   dismissedCommunityMessageIds: [],
 }
 
 let settings: AppSettings = BASE
+let companionBoards: CompanionPresenceBoard[] = []
 const getSettings = mock(async () => settings)
-const updateSetting = mock(async () => undefined)
+const getCompanionPresenceBoards = mock(async () => companionBoards)
+const addCompanionPresenceBoard = mock(async () => undefined)
+const removeCompanionPresenceBoard = mock(async () => undefined)
+const updateSetting = mock(async (): Promise<void> => undefined)
 const setCompanionPresenceEnabled = mock(async () => undefined)
 
 mock.module('vescape-core', () => ({
   ...actualVescapeCore,
   getSettings,
+  getCompanionPresenceBoards,
+  addCompanionPresenceBoard,
+  removeCompanionPresenceBoard,
   updateSetting,
   setCompanionPresenceEnabled,
 }))
 mock.module('../../modules/vescape-core/src/index', () => ({
   ...actualVescapeCore,
   getSettings,
+  getCompanionPresenceBoards,
+  addCompanionPresenceBoard,
+  removeCompanionPresenceBoard,
   updateSetting,
   setCompanionPresenceEnabled,
 }))
 
 beforeEach(async () => {
   settings = { ...BASE, historyMetricHotRanges: { battery: { start: 0, end: 1 } } }
+  companionBoards = []
   getSettings.mockClear()
   updateSetting.mockClear()
   setCompanionPresenceEnabled.mockClear()
+  getCompanionPresenceBoards.mockClear()
+  addCompanionPresenceBoard.mockClear()
+  removeCompanionPresenceBoard.mockClear()
   ;(globalThis as { __vescBleStoreCleanup?: () => void }).__vescBleStoreCleanup?.()
   const { useSettingsStore } = await import('@/modules/settings/store/settingsStore')
   useSettingsStore.setState({
     loaded: false,
+    loadError: null,
+    writeError: null,
+    companionPresenceBoards: [],
     load: useSettingsStore.getInitialState().load,
   })
 })
@@ -87,6 +118,57 @@ test('reloading identical settings notifies no subscribers and keeps object refs
 
   expect(notifications).toBe(0)
   expect(useSettingsStore.getState().historyMetricHotRanges).toBe(hotRangesRef)
+})
+
+test('failed settings read does not mark defaults as loaded', async () => {
+  const { useSettingsStore } = await import('@/modules/settings/store/settingsStore')
+  getSettings.mockRejectedValueOnce(new Error('storage unavailable'))
+
+  await useSettingsStore.getState().load()
+
+  expect(useSettingsStore.getState().loaded).toBe(false)
+  expect(useSettingsStore.getState().loadError).toBe(
+    'Settings could not be read. Restart Vescape before changing settings.',
+  )
+  await expect(useSettingsStore.getState().set('themeMode', 'dark')).rejects.toThrow(
+    'Settings are unavailable',
+  )
+  await expect(useSettingsStore.getState().addCompanionBoard('board-a')).rejects.toThrow(
+    'Settings are unavailable',
+  )
+  expect(updateSetting).not.toHaveBeenCalled()
+  expect(addCompanionPresenceBoard).not.toHaveBeenCalled()
+})
+
+test('failed settings write stays rejected and exposes a visible error', async () => {
+  const { useSettingsStore } = await import('@/modules/settings/store/settingsStore')
+  await useSettingsStore.getState().load()
+  updateSetting.mockRejectedValueOnce(new Error('disk failed'))
+
+  await expect(useSettingsStore.getState().set('themeMode', 'dark')).rejects.toThrow('disk failed')
+
+  expect(useSettingsStore.getState().themeMode).not.toBe('dark')
+  expect(useSettingsStore.getState().writeError).toBe('Setting could not be saved. Try again.')
+})
+
+test('failed reload revokes mutation access while preserving loaded values', async () => {
+  const { useSettingsStore } = await import('@/modules/settings/store/settingsStore')
+  await useSettingsStore.getState().load()
+  const loadedTheme = useSettingsStore.getState().themeMode
+  getSettings.mockRejectedValueOnce(new Error('storage unavailable'))
+
+  await useSettingsStore.getState().load()
+
+  expect(useSettingsStore.getState().loaded).toBe(false)
+  expect(useSettingsStore.getState().themeMode).toBe(loadedTheme)
+  await expect(useSettingsStore.getState().setCompanionPresence(true)).rejects.toThrow(
+    'Settings are unavailable',
+  )
+  await expect(useSettingsStore.getState().removeCompanionBoard('board-a')).rejects.toThrow(
+    'Settings are unavailable',
+  )
+  expect(setCompanionPresenceEnabled).not.toHaveBeenCalled()
+  expect(removeCompanionPresenceBoard).not.toHaveBeenCalled()
 })
 
 test('reload applies only the keys that actually changed', async () => {
@@ -118,4 +200,67 @@ test('companionPresenceEnabled forces autoConnect on load', async () => {
   await useSettingsStore.getState().load()
 
   expect(useSettingsStore.getState().autoConnect).toBe(true)
+})
+
+test('adding and removing auto-start boards reloads native association membership', async () => {
+  const { useSettingsStore } = await import('@/modules/settings/store/settingsStore')
+  const board = { boardId: 'board-a', name: 'Thor', bleId: 'AA:BB' }
+  await useSettingsStore.getState().load()
+
+  companionBoards = [board]
+  await useSettingsStore.getState().addCompanionBoard(board.boardId)
+  expect(addCompanionPresenceBoard).toHaveBeenCalledWith(board.boardId)
+  expect(useSettingsStore.getState().companionPresenceBoards).toEqual([board])
+  expect(useSettingsStore.getState().companionPresenceEnabled).toBe(true)
+
+  companionBoards = []
+  await useSettingsStore.getState().removeCompanionBoard(board.boardId)
+  expect(removeCompanionPresenceBoard).toHaveBeenCalledWith(board.boardId)
+  expect(useSettingsStore.getState().companionPresenceBoards).toEqual([])
+  expect(useSettingsStore.getState().companionPresenceEnabled).toBe(true)
+})
+
+test('master auto-start switch is independent from configured boards', async () => {
+  const { useSettingsStore } = await import('@/modules/settings/store/settingsStore')
+  const board = { boardId: 'board-a', name: 'Thor', bleId: 'AA:BB' }
+  await useSettingsStore.getState().load()
+  companionBoards = [board]
+
+  await useSettingsStore.getState().setCompanionPresence(true)
+  expect(setCompanionPresenceEnabled).toHaveBeenCalledWith(true)
+  expect(useSettingsStore.getState().companionPresenceEnabled).toBe(true)
+  expect(useSettingsStore.getState().companionPresenceBoards).toEqual([board])
+
+  companionBoards = []
+  await useSettingsStore.getState().setCompanionPresence(false)
+  expect(setCompanionPresenceEnabled).toHaveBeenCalledWith(false)
+  expect(useSettingsStore.getState().companionPresenceEnabled).toBe(false)
+  expect(useSettingsStore.getState().companionPresenceBoards).toEqual([])
+})
+
+test('unit preference publishes only after native save and survives a reload', async () => {
+  const { useSettingsStore } = await import('@/modules/settings/store/settingsStore')
+  await useSettingsStore.getState().load()
+  expect(useSettingsStore.getState().unitSystem).toBe('metric')
+  let finish!: () => void
+  updateSetting.mockImplementationOnce(
+    () =>
+      new Promise<void>((resolve) => {
+        finish = resolve
+      }),
+  )
+  const pending = useSettingsStore.getState().set('unitSystem', 'imperial')
+  expect(useSettingsStore.getState().unitSystem).toBe('metric')
+  finish()
+  await pending
+  expect(useSettingsStore.getState().unitSystem).toBe('imperial')
+  settings = { ...BASE, unitSystem: 'imperial' }
+  useSettingsStore.setState({ unitSystem: 'metric', loaded: false })
+  await useSettingsStore.getState().load()
+  expect(useSettingsStore.getState().unitSystem).toBe('imperial')
+  updateSetting.mockRejectedValueOnce(new Error('disk failed'))
+  await expect(useSettingsStore.getState().set('unitSystem', 'metric')).rejects.toThrow(
+    'disk failed',
+  )
+  expect(useSettingsStore.getState().unitSystem).toBe('imperial')
 })

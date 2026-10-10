@@ -18,7 +18,7 @@ final class FavoriteMediaStoreTests: XCTestCase {
     root = FileManager.default.temporaryDirectory
       .appendingPathComponent("favorite-media-tests-\(UUID().uuidString)", isDirectory: true)
     store = FavoriteMediaStore(dbWriter: queue, rootURL: root)
-    XCTAssertTrue(FavoriteStore(dbWriter: queue).insert(favorite()))
+    try FavoriteStore(dbWriter: queue).insert(favorite())
   }
 
   override func tearDownWithError() throws {
@@ -47,7 +47,7 @@ final class FavoriteMediaStoreTests: XCTestCase {
       SHA256.hash(data: bytes).map { String(format: "%02x", $0) }.joined()
     )
     XCTAssertTrue(FileManager.default.fileExists(atPath: store.fileURL(for: media).path))
-    XCTAssertEqual(store.list(favoriteId: "favorite-1").map(\.id), [media.id])
+    XCTAssertEqual(try store.list(favoriteId: "favorite-1").map(\.id), [media.id])
   }
 
   func testReadReconciliationRemovesMissingRowsAndOrphanFiles() throws {
@@ -67,7 +67,7 @@ final class FavoriteMediaStoreTests: XCTestCase {
       )
     }
 
-    XCTAssertTrue(store.list(favoriteId: "favorite-1").isEmpty)
+    XCTAssertTrue(try store.list(favoriteId: "favorite-1").isEmpty)
     XCTAssertFalse(FileManager.default.fileExists(atPath: orphan.path))
     XCTAssertFalse(FileManager.default.fileExists(atPath: interrupted.path))
   }
@@ -77,9 +77,20 @@ final class FavoriteMediaStoreTests: XCTestCase {
     try FileManager.default.createDirectory(at: orphanDirectory, withIntermediateDirectories: true)
     try Data([1]).write(to: orphanDirectory.appendingPathComponent("media.jpg"))
 
-    store.reconcileAll()
+    try store.reconcileAll()
 
     XCTAssertFalse(FileManager.default.fileExists(atPath: orphanDirectory.path))
+  }
+
+  func testFailedManifestLookupPreservesExistingFiles() throws {
+    let directory = root.appendingPathComponent("favorite-1", isDirectory: true)
+    try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+    let existing = directory.appendingPathComponent("existing.jpg")
+    try Data([1, 2, 3]).write(to: existing)
+    try queue.write { db in try db.drop(table: "favorite_media") }
+
+    XCTAssertThrowsError(try store.reconcile(favoriteId: "favorite-1"))
+    XCTAssertTrue(FileManager.default.fileExists(atPath: existing.path))
   }
 
   private func favorite() -> Favorite {

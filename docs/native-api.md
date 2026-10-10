@@ -6,16 +6,16 @@ Source of truth: `modules/vescape-core/src/index.ts` (types), `VescapeCoreModule
 
 ## Term map
 
-| Domain (CONTEXT.md) | Native/API name                                                        |
-| ------------------- | ---------------------------------------------------------------------- |
-| Board               | `device_id` in DB, `boardId` in API                                    |
-| Telemetry Sample    | `telemetry_frames` (DB), `TelemetrySample` (JS)                        |
-| Ride Recording      | frames + buckets + markers in DB                                       |
-| Ride History        | `getTelemetryHistory` (buckets), `getHistoryRange` (full)              |
-| Tune Profile        | `tune_profiles` table, `TuneProfile` type                              |
-| Tune Snapshot       | `RefloatConfigSnapshot`                                                |
-| Alert Rule          | `alerts` table, `AlertRule` type                                       |
-| User Profile Stats  | `ProfileStats` type, `getTotalProfileStats` / `getMonthlyProfileStats` |
+| Domain (CONTEXT.md) | Native/API name                                                 |
+| ------------------- | --------------------------------------------------------------- |
+| Board               | `board_id` in DB, `boardId` in API                              |
+| Telemetry Sample    | `telemetry_frames` (DB), `TelemetrySample` (JS)                 |
+| Ride Recording      | frames + buckets + markers in DB                                |
+| Ride History        | `getRideHistoryPage` (complete rides), `getHistoryRange` (full) |
+| Tune Profile        | `tune_profiles` table, `TuneProfile` type                       |
+| Tune Snapshot       | `RefloatConfigSnapshot`                                         |
+| Alert Rule          | `alerts` table, `AlertRule` type                                |
+| User Profile Stats  | `ProfileStatsSnapshot`, `getProfileStatsSnapshot`               |
 
 ---
 
@@ -25,6 +25,170 @@ Source of truth: `modules/vescape-core/src/index.ts` (types), `VescapeCoreModule
 | ------------ | ---- | ----------------------------------------------- |
 | `scan()`     | sync | void. Emits `onDevice` events per advertisement |
 | `stopScan()` | sync | void                                            |
+
+## Accessory discovery
+
+Read-only. Scanning matches the Vescape Accessory service UUID, never a name. One inspection runs at
+a time; it writes one `hello`, reads the manifest, and disconnects, so nothing on an accessory is
+activated by finding it. Contract: [accessory-protocol.md](./accessory-protocol.md).
+
+| fn                            | sync  | returns                                                               |
+| ----------------------------- | ----- | --------------------------------------------------------------------- |
+| `startAccessoryScan()`        | sync  | void. Emits `onAccessoryDevice` per advertisement                     |
+| `stopAccessoryScan()`         | sync  | void                                                                  |
+| `inspectAccessory(deviceId)`  | async | `AccessoryInspection` — `{deviceId, advertisedName, manifest, error}` |
+| `cancelAccessoryInspection()` | sync  | void                                                                  |
+
+### AccessoryManifest shape
+
+```ts
+{
+  accessoryId: string       // persistent identity; saved settings key on it, never on the BLE handle
+  name: string
+  firmwareVersion: string
+  protocolVersion: number | null   // null = no common version
+  supportedVersions: number[]      // what the accessory offers instead, only when none was agreed
+  compatibility: 'supported' | 'unsupported-version' | 'unsupported-capabilities'
+  capabilities: { id, type, supported, unit, rangeMin, rangeMax, ratesHz }[]
+}
+```
+
+`compatibility` and each capability's `supported` are native's verdict, not JS's to re-derive.
+
+## Enrolled Accessories
+
+Durable. Only an Accessory the rider added gets a session, and native keeps that session running
+with the JS runtime dead — Android from `CoreForegroundService`, iOS from a restore-identified
+central created in `didFinishLaunchingWithOptions`. JS sends intents and renders `onAccessoryState`.
+
+`enrollAccessory` takes a **device handle**, never an identity: native performs its own handshake
+and saves what the hardware actually said, so an enrollment cannot record a manifest JS invented.
+
+| fn                             | sync  | returns                                                          |
+| ------------------------------ | ----- | ---------------------------------------------------------------- |
+| `enrollAccessory(deviceId)`    | async | `AccessoryEnrollment` — `{accessoryId, error}`                   |
+| `forgetAccessory(accessoryId)` | async | `boolean` — whether a saved Accessory was removed                |
+| `getAccessories()`             | sync  | `SavedAccessory[]` — the same snapshot `onAccessoryState` pushes |
+
+### SavedAccessory shape
+
+```ts
+{
+  accessoryId: string        // manifest identity; the row's primary key
+  name: string               // live manifest name while connected, else the saved one
+  firmwareVersion: string
+  protocolVersion: number | null
+  deviceId: string | null    // where it answered last; a reconnect hint, never identity
+  enrolledAt: number
+  lastConnectedAt: number | null
+  phase: 'idle' | 'connecting' | 'handshaking' | 'connected' | 'unavailable' | 'incompatible'
+  error: string | null       // native's wire string for the last failure
+  compatibility: AccessoryCompatibility | null   // null until a session reads a manifest
+  capabilities: AccessoryCapability[]
+  capabilitiesChanged: boolean   // declared limits moved since enrollment; saved settings suspect
+  leaseHeldMs: number | null     // since the accessory last acknowledged a command
+}
+```
+
+A drop is `connecting`, not an error: both platforms keep the reconnect alive on their own.
+
+## Ground clearance
+
+JS asks for measurements and offers numbers; native decides whether the sensor runs and whether the
+numbers are a calibration. There is no Save step for the rider: send what they have as they change
+it and read the answer.
+
+| fn                                                                       | sync  | returns                                                |
+| ------------------------------------------------------------------------ | ----- | ------------------------------------------------------ |
+| `setAccessoryPreview(accessoryId, capabilityId, open)`                   | sync  | void. Demand to _measure_, never to tilt               |
+| `saveGroundClearanceCalibration(accessoryId, capabilityId, calibration)` | async | `{saved, problem}` — `problem` names the rule it broke |
+| `clearGroundClearanceCalibration(accessoryId, capabilityId)`             | async | `boolean` — whether a calibration was removed          |
+
+Measurement demand is the **union** of an open preview and the rider riding a board this capability
+is calibrated for. Neither alone permits sensor-driven tilt: a preview shows numbers on a parked
+board and commands nothing. Dropping both demands sends `configure{enabled:false}`, which stops the
+accessory's continuous measurement while its BLE session stays up. Riding is decided natively from
+the Board Session's own engagement predicate, never from a value that crossed the bridge.
+
+`onAccessoryReading` pushes one accepted sample, and **only** while that capability has a preview
+open — nothing else in the app consumes single samples. Every sample is range-checked against the
+live manifest before it crosses:
+
+```ts
+{
+  accessoryId: string
+  capabilityId: string
+  seq: number // per capability, restarts with each protocol session
+  sampleTimeMs: number // the accessory's own monotonic clock; orders samples, nothing else
+  status: 'ok' | 'out_of_range' | 'error'
+  valueCm: number | null // non-null ONLY when status is 'ok'
+  staleAfterMs: number // how long this sample stays evidence, from the acked rate
+}
+```
+
+`staleAfterMs` travels with every sample so a screen can drop the number the moment it stops
+describing the ground, without re-deriving native's window. A frozen distance presented as a live one
+is the same lie as an invalid reading shown as the maximum range, just slower.
+
+A preview is the only demand JS owns, so it dies with JS: native releases every preview when the
+module is destroyed, because a runtime that reloaded or crashed with the screen open would otherwise
+leave the accessory measuring forever — native's own renewals keep the lease alive. Riding demand is
+untouched by that, since it comes from the Board Session.
+
+The one rule everything else rests on: a missing or unreadable measurement is never a distance, and
+never the maximum of the declared range. A value outside the declared window arrives as
+`out_of_range` with no value rather than clamped to the nearest limit; an `ok` carrying no number,
+a null, text, or a status this build does not know all arrive as `error`.
+
+Each `AccessoryCapability` in the snapshot carries `calibration` (with its own `problem`, re-decided
+against the live manifest on every push) and `measuring`, the demand native actually resolved.
+Saving a calibration that fits the current manifest is also how the rider accepts declared limits
+that moved since enrollment — it rewrites the frozen `capabilities_json` baseline and clears
+`capabilitiesChanged`.
+
+## Ground-clearance tilt
+
+The binding that turns those readings into Remote Tilt is entirely native: a 100 ms timer inside the
+Board Session, not a reaction to samples. A sensor that stops sending produces no events to react to,
+and releasing on silence is the whole point.
+
+| fn                         | sync  | returns                                |
+| -------------------------- | ----- | -------------------------------------- |
+| `getGroundClearanceTilt()` | async | `GroundClearanceTiltState` — see below |
+
+```ts
+{
+  bound: boolean // a configured ground-clearance Accessory is connected → the tilt pad is read-only
+  driving: boolean // the binding is commanding tilt right now
+  release: GroundClearanceRelease | null // why it is not, or null while it is
+}
+```
+
+Polled, not pushed: the only consumer is the tilt pad, which already reads the commanded tilt on its
+own interval. `bound` is independent of `driving` — a binding waiting for the rider to set off still
+owns the pad, because manual input is not this Board's input method any more.
+
+`release` is the full list of ways the binding lets go. The first six are the Accessory's own,
+decided by the capability runtime; the last five are the Board Session's, and did not exist before
+sensor readings could command tilt:
+
+| release           | means                                                                |
+| ----------------- | -------------------------------------------------------------------- |
+| `not-riding`      | The Board is not engaged. A parked Board is not corrected.           |
+| `no-link`         | No Accessory session, or one not acknowledging commands.             |
+| `not-calibrated`  | Nothing saved, or what is saved no longer fits the declared limits.  |
+| `stale`           | Samples stopped arriving inside the acked rate's window.             |
+| `out-of-range`    | The sensor answered, and the answer is not a distance.               |
+| `sensor-error`    | The sensor could not measure, or sent something unreadable.          |
+| `board-untrusted` | The Board is not connected, or its Board Link is not Trusted.        |
+| `board-stale`     | The Board is connected but has stopped answering.                    |
+| `contested`       | More than one calibrated ground-clearance capability wants the slot. |
+| `board-move`      | Board Move holds the remote-input slot.                              |
+| `manual-tilt`     | A rider-commanded tilt still holds the slot while the binding arms.  |
+
+Every path that writes the Board's one remote-input slot — the pad, Board Move, and the sensor — goes
+through a single native arbiter. `remoteTilt.owner` on the live state and on `getRemoteTiltState()`
+names the winner (`none | manual | sensor | move`). See [remote-tilt.md](./remote-tilt.md).
 
 ## Location
 
@@ -68,7 +232,7 @@ Phases: `idle|connecting|discovering|subscribing|waiting_for_telemetry|connected
 1. BLE packet -> `TelemetryCapture` (human units)
 2. Scale to integer state (`FullTelemetryState`) for lossless storage
 3. Delta-encode against previous -> `TelemetryFrameEntity` (nulls = unchanged)
-4. Keyframe every 60s or on gap. Flags: `KEYFRAME=1, HAS_FAULT=2, HAS_LOCATION=4`
+4. Keyframe every 60s or on gap. Flags: `KEYFRAME=1, HAS_LOCATION=4`. Bit 2 is retired.
 5. Queue in-memory (max 1000 pending). Flush on 25 frames or 5s delay
 6. On flush: insert frames + upsert buckets (60s aggregates) + insert markers
 7. Gap marker auto-inserted when sample gap > 90s
@@ -92,23 +256,24 @@ Field omitted (null) when change < threshold from previous:
 
 ## Telemetry queries
 
-| fn                                                    | returns                                                                    | notes                                                                                             |
-| ----------------------------------------------------- | -------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------- |
-| `getTelemetryHistory(opts?)`                          | `TelemetryMinuteBucket[]`                                                  | 60s bucket aggregates. Pagination via `cursorBeforeMs`. Default limit 100, max 500                |
-| `getTelemetrySamples({fromMs,toMs,deviceId?,limit?})` | `TelemetrySample[]`                                                        | Decoded from compressed frames. Reconstructs state from nearest keyframe. Default 2000, max 10000 |
-| `getHistoryRange({fromMs,toMs,deviceId?,limit?})`     | `{boardSamples, gpsSamples, markers}`                                      | Combined query: decoded samples + GPS points + session markers                                    |
-| `getTelemetrySummary()`                               | `{sampleCount, gpsPointCount, firstAtMs, lastAtMs, droppedPendingSamples}` | DB-wide stats                                                                                     |
-| `getDatabaseSizeBytes()`                              | number                                                                     | File size of vescape.db                                                                           |
+| fn                                                   | returns                                                                    | notes                                                                                             |
+| ---------------------------------------------------- | -------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------- |
+| `getTelemetryHistory(opts?)`                         | `TelemetryMinuteBucket[]`                                                  | 60s bucket aggregates. Pagination via `cursorBeforeMs`. Default limit 100, max 500                |
+| `getRideHistoryPage({limit?,cursorBeforeMs?})`       | `RideHistoryPage`                                                          | Complete stable rides with coarse route points; cursor never cuts through a ride                  |
+| `getTelemetrySamples({fromMs,toMs,boardId?,limit?})` | `TelemetrySample[]`                                                        | Decoded from compressed frames. Reconstructs state from nearest keyframe. Default 2000, max 10000 |
+| `getHistoryRange({fromMs,toMs,boardId?,limit?})`     | `{boardSamples, chartSamples, gpsSamples, markers}`                        | Full decoded range plus a native-decimated chart overview (max 600 samples)                       |
+| `getTelemetrySummary()`                              | `{sampleCount, gpsPointCount, firstAtMs, lastAtMs, droppedPendingSamples}` | DB-wide stats                                                                                     |
+| `getDatabaseSizeBytes()`                             | number                                                                     | File size of vescape.db                                                                           |
 
 ### TelemetryMinuteBucket (bucket shape)
 
 ```ts
 {
-  id, startAtMs, endAtMs, bucketStartMs, deviceId, deviceName,
+  id, startAtMs, endAtMs, bucketStartMs, boardId, boardName,
   sampleCount, gpsPointCount, preciseGpsPointCount,
   maxAbsSpeedKmh, maxGpsSpeedKmh?, avgSpeedKmh, avgSpeedSampleCount,
   minBatteryVoltage?, maxMotorCurrent, maxBatteryCurrent, maxDuty,
-  faultCount, distanceDeltaM?, gpsDistanceM?,
+  distanceDeltaM?, gpsDistanceM?,
   maxTempMosfet?, maxTempMotor?,
   firstLatitude?, firstLongitude?,
   boundaryBefore: 'none'|'connected'|'disconnected'|'error'|'gap'|'app_stop',
@@ -120,30 +285,65 @@ Field omitted (null) when change < threshold from previous:
 
 ```ts
 {
-  id, capturedAtMs, deviceId, deviceName,
+  id, capturedAtMs, boardId, boardName,
   speedKmh, batteryVoltage, motorCurrent, batteryCurrent, dutyCycle,
   pitch, roll, balancePitch, balanceCurrent, erpm,
   state, switchState, adc1, adc2, odometer?,
-  tempMosfet?, tempMotor?, hasFault, faultCode,
+  tempMosfet?, tempMotor?,
   latitude?, longitude?
 }
 ```
 
+## VESC faults
+
+Native owns durable, Board-scoped live fault occurrences and their past telemetry captures.
+They are independent of Ride History and Board Warnings. Refloat fault-only responses do not
+produce telemetry samples or minute-bucket counts.
+
+| fn                                     | returns                                   | notes                                                                                                                                        |
+| -------------------------------------- | ----------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------- |
+| `getVescFaults()`                      | `Promise<VescFaultOccurrence[]>`          | All Boards; JS groups the result by Board.                                                                                                   |
+| `setVescFaultDismissed(id, dismissed)` | `Promise<void>`                           | Acknowledges or restores one occurrence without deleting evidence.                                                                           |
+| `getVescFaultCapture(occurrenceId)`    | `Promise<VescFaultCaptureDetail \| null>` | Past snapshot, samples oldest first.                                                                                                         |
+| `readVescFaultLog(boardId)`            | `Promise<string>`                         | Fixed read-only `faults` command; matching Board must be connected and report a finite speed at most 1 km/h. Rejects unavailable/busy reads. |
+
+```ts
+VescFaultOccurrence = {
+  id, boardId, code, occurredAtMs, lastObservedAtMs,
+  clearedAtMs: number | null, dismissed: boolean
+}
+VescFaultCaptureDetail = {
+  occurrenceId, boardId, startedAtMs, openedAtMs, sampleCount,
+  samples: VescFaultCaptureSample[]
+}
+```
+
+Each capture copies up to five seconds from the existing native live window once, at detection.
+It has no future tail or GPS. Sample fields and nullability are defined in
+`modules/vescape-core/src/index.ts`, `VescFaultCaptureSample`.
+
+`onVescFaults` emits `{ boardId, faults: VescFaultOccurrence[] }`, a full replacement list for one
+Board. JS also pulls on startup and foreground to catch changes made while backgrounded.
+`vescFaultCollectionEnabled` defaults to true; disabling it stops new live collection and fault
+indicators, but preserves existing evidence and access to the Controller Fault Log.
+
+The fault drawer requests the Controller Fault Log once when opened. Its raw text is ephemeral;
+it never creates occurrences, warnings, baselines, or persisted register snapshots. See
+[ADR 0037](./adr/0037-vesc-faults-are-board-owned-evidence.md).
+
 ## Telemetry deletion
 
-| fn                                              | returns                                                           |
-| ----------------------------------------------- | ----------------------------------------------------------------- |
-| `deleteTelemetryBefore(beforeMs)`               | frames deleted count. Also deletes matching markers + buckets     |
-| `deleteTelemetryRange({fromMs,toMs,deviceId?})` | frames deleted count. Flushes pending first                       |
-| `clearTelemetryHistory()`                       | void. Wipes all frames, markers, buckets + resets in-memory state |
+| fn                                             | returns                                                           |
+| ---------------------------------------------- | ----------------------------------------------------------------- |
+| `deleteTelemetryBefore(beforeMs)`              | frames deleted count. Also deletes matching markers + buckets     |
+| `deleteTelemetryRange({fromMs,toMs,boardId?})` | frames deleted count. Flushes pending first                       |
+| `clearTelemetryHistory()`                      | void. Wipes all frames, markers, buckets + resets in-memory state |
 
 ## User Profile Stats
 
-| fn                                     | returns                                      |
-| -------------------------------------- | -------------------------------------------- |
-| `getTotalProfileStats()`               | `ProfileStats` across all rides              |
-| `getMonthlyProfileStats({year,month})` | `ProfileStats` for one month                 |
-| `getProfileStatMonths()`               | `{year,month}[]` desc. Months with ride data |
+| fn                                        | returns                                                                   |
+| ----------------------------------------- | ------------------------------------------------------------------------- |
+| `getProfileStatsSnapshot({year?,month?})` | Lifetime + selected-month stats and available months from one native pass |
 
 ### ProfileStats shape
 
@@ -168,11 +368,15 @@ Rides computed from buckets + markers:
 | `upsertBoard(board)` | async | void                               |
 | `deleteBoard(id)`    | async | void                               |
 
+`upsertBoard` also starts the real Board Session when the Board being written is the one that just
+proved a link in `finalizeBoardLink` — linking connects over a throwaway probe session and drops it,
+so the persist on Save is what reconnects for real.
+
 ### Board shape
 
 ```ts
 { id, name, description?, createdAt, batteryConfig?,
-  link: { linkVersion: 3, bleId, transport, hasBms,
+  link: { linkVersion: 4, bleId, transport, hasBms,
           vescFirmwareVersion: string | null,
           refloatVersion: string | null,
           refloatBaseVersion: string | null } | null }
@@ -180,8 +384,9 @@ Rides computed from buckets + markers:
 
 A **Board Link** is saved whole or not at all: it always carries a proven BLE peripheral id
 plus a selected Board Transport (`'direct'` | CAN id). Current links also carry
-`linkVersion: 3`, a required `hasBms` boolean, exact firmware identity keys, and normalized
-`refloatBaseVersion` for Tune Compatibility. Missing or null required identity values keep
+`linkVersion: 4`, a required `hasBms` boolean, exact firmware identity keys, and normalized
+`refloatBaseVersion` for Tune Compatibility. Native finalization reads and persists Last Known
+Board Config Values before returning a saveable v4 link. Missing or null required identity values keep
 telemetry available but require re-link before firmware-dependent commands.
 
 Stored Board Links are normalized defensively: missing or malformed newer fields default to safe
@@ -270,6 +475,28 @@ Valid keys: `liveHistoryLimit`, `autoConnect`, `autoRecording`, `selectedBoardId
 
 Writing default-equivalent value deletes the override row. Unknown keys and type mismatches are silently ignored.
 
+## Auto start (companion presence)
+
+Android only — every fn rejects `UNSUPPORTED_PLATFORM` on iOS, except `getCompanionPresenceBoards()`
+which resolves `[]`. All are async.
+
+| fn                                      | returns                                                              |
+| --------------------------------------- | -------------------------------------------------------------------- |
+| `setCompanionPresenceEnabled(enabled)`  | void. Master switch; on also forces `autoConnect`                    |
+| `getCompanionPresenceBoards()`          | `CompanionPresenceBoard[]` — linked boards the OS is associated with |
+| `addCompanionPresenceBoard(boardId)`    | void. Opens the system chooser, then observes the board              |
+| `removeCompanionPresenceBoard(boardId)` | void. Stops observing and drops the association                      |
+
+Associations, not the settings flag, are the source of truth for which boards are armed. Disabling
+the master switch stops observing but keeps associations, so re-enabling needs no second chooser.
+Enabling and removing both prune associations no linked board claims.
+
+```ts
+CompanionPresenceBoard = { boardId, name, bleId }
+```
+
+Rejection codes are rider-facing; `src/modules/settings/lib/companionErrors.ts` maps them to copy.
+
 ## Diagnostics
 
 | fn                                      | sync | returns                                  |
@@ -289,19 +516,22 @@ Writing default-equivalent value deletes the override row. Unknown keys and type
 
 ## Events
 
-| event         | payload                            | when                                                                                                             |
-| ------------- | ---------------------------------- | ---------------------------------------------------------------------------------------------------------------- |
-| `onDevice`    | `{id, name, rssi, serviceUUIDs[]}` | BLE scan advertisement                                                                                           |
-| `onError`     | `{message}`                        | Native error                                                                                                     |
-| `onLiveState` | `LiveStateEvent`                   | Connection/GPS/scan/recording state change                                                                       |
-| `onTelemetry` | `TelemetryEvent`                   | Real-time board data. Includes `firedAlerts[]`                                                                   |
-| `onBms`       | `BmsEvent`                         | Smart-BMS cell-group values, ~1/8 telemetry rate. See [vescProtocol.md](./vescProtocol.md#bms-cell-group-values) |
-| `onLocation`  | `LocationEvent`                    | GPS fix from `startLocationUpdates()`                                                                            |
+| event                  | payload                            | when                                                                                                             |
+| ---------------------- | ---------------------------------- | ---------------------------------------------------------------------------------------------------------------- |
+| `onDevice`             | `{id, name, rssi, serviceUUIDs[]}` | BLE scan advertisement                                                                                           |
+| `onError`              | `{message}`                        | Native error                                                                                                     |
+| `onLiveState`          | `LiveStateEvent`                   | Connection/GPS/scan/recording state change                                                                       |
+| `onTelemetry`          | `TelemetryEvent`                   | Real-time board data. Includes `firedAlerts[]`                                                                   |
+| `onBms`                | `BmsEvent`                         | Smart-BMS cell-group values, ~1/8 telemetry rate. See [vescProtocol.md](./vescProtocol.md#bms-cell-group-values) |
+| `onLocation`           | `LocationEvent`                    | GPS fix from `startLocationUpdates()`                                                                            |
+| `onAccessoryDevice`    | `{id, name, rssi}`                 | Vescape Accessory service advertisement                                                                          |
+| `onAccessoryScanError` | `{error}`                          | The accessory scan could not run (`bluetooth-unavailable`, `scan-failed`)                                        |
+| `onAccessoryState`     | `{accessories}`                    | Every enrolled Accessory and its native link phase, on every change and on subscribe                             |
 
 ### TelemetryEvent shape (live, not history)
 
 ```ts
-{ generation?, location?, hasFault, faultCode,
+{ generation?, location?,
   pitch, roll, balancePitch, balanceCurrent,
   speed, batteryVoltage, motorCurrent, batteryCurrent, erpm, dutyCycle,
   state, stateName, switchState, adc1, adc2, odometer?, tempMosfet?, tempMotor?,
@@ -321,3 +551,19 @@ Live event has `stateName` + `avgLatency` + `firedAlerts`. History `TelemetrySam
 
 Not persisted to history and not fed into alerts. `bleStore` keeps only the latest
 snapshot (`latestBms`); UI derives min/max/spread via `summarizeBms` in `src/modules/battery/lib/bms.ts`.
+
+## Alert preset intents
+
+`applyAlertPreset(boardId, metric, intent)` switches a saved Board's alert setup. Intents are
+`{ action: 'select', level }`, `{ action: 'customize' }`, `{ action: 'discard-custom' }`, and
+`{ action: 'match-board-config', enabled }`. Selection and generated rule changes commit together
+in native storage. JS does not send generated rules or run a regeneration sequence. Board saves
+also update affected preset rules atomically when their inputs change. Successful writes publish
+`boards` and `alerts` data-change scopes and reload native alert evaluation.
+
+`previewAlertPreset(metric, level, { topSpeedKmh, hasBatteryConfig, speedUnitSystem? })` returns
+`AlertTestRule[]` synchronously for an unsaved add-board draft. It uses the same native generator
+as persistence, with explicit draft inputs and no database access, events, or alert-engine changes.
+Units default to metric; `off` and `custom` return no generated rules. The wizard has no Board
+configuration to match, so this operation only returns fixed thresholds. JS uses these snapshots
+for markers, summaries, sound previews, and copying a preset into editable draft rules.

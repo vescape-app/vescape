@@ -1,6 +1,7 @@
 package app.vescape.wear
 
 import android.os.SystemClock
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -28,12 +29,15 @@ import kotlinx.coroutines.delay
  * Readable straight off the wrist — no adb, and no phone round trip (the wrist->phone channel in
  * ADR-0033 carries rider commands, never diagnostics): counters answer "are frames arriving / decoding", the event ring shows link flaps and streak
  * starts with wall-clock times a rider can report or photograph.
+ *
+ * @parity /watch/watchos/DiagnosticsPanel.swift `DiagnosticsPanel`
  */
 @Composable
 fun DiagnosticsScreen() {
     val counters by WatchDiagnostics.counters
     val events by WatchDiagnostics.events
     val link by TelemetryState.phoneLink
+    val lights by BoardState.lights
 
     // Local clock tick so "last frame Xs ago" keeps counting while no new frames redraw the page.
     var nowMs by remember { mutableLongStateOf(SystemClock.elapsedRealtime()) }
@@ -44,7 +48,11 @@ fun DiagnosticsScreen() {
         }
     }
 
-    ScalingLazyColumn(modifier = Modifier.fillMaxSize()) {
+    // Vertical room so scrolled items never graze the pinned rim arcs above and below.
+    ScalingLazyColumn(
+        modifier = Modifier.fillMaxSize(),
+        contentPadding = PaddingValues(vertical = RIM_CLEARANCE),
+    ) {
         item {
             Text(
                 text = "Diagnostics",
@@ -60,6 +68,11 @@ fun DiagnosticsScreen() {
         if (counters.unknownPathMessages > 0) {
             item { StatLine("Other msgs", counters.unknownPathMessages.toString(), warn = true) }
         }
+        // Board lights have no UI of their own yet; these lines are how the /board path is
+        // verified end to end, and "unknown" has to read differently from "off".
+        item { StatLine("Lights", boardLightLabel(lights.lightsEnabled)) }
+        item { StatLine("Headlights", boardLightLabel(lights.headlightsEnabled)) }
+        item { StatLine("Lights ctrl", if (lights.lightsControllable) "yes" else "no") }
         item {
             Spacer(modifier = Modifier.height(6.dp))
         }
@@ -113,7 +126,20 @@ private fun EventLine(event: DiagnosticEvent) {
     }
 }
 
+/**
+ * "?" means the board has not reported a value.
+ * @parity /watch/watchos/DiagnosticsPanel.swift `lightLabel`
+ */
+private fun boardLightLabel(value: Boolean?): String = when (value) {
+    true -> "on"
+    false -> "off"
+    null -> "?"
+}
+
 private fun lastFrameLabel(lastFrameAtMs: Long?, nowMs: Long): String {
     if (lastFrameAtMs == null) return "never"
     return "${((nowMs - lastFrameAtMs).coerceAtLeast(0L)) / 1000}s ago"
 }
+
+/** Keeps the list clear of the rim gauges the mirror pins behind every page. */
+private val RIM_CLEARANCE = 28.dp

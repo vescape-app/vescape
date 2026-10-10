@@ -132,6 +132,22 @@ final class VescapeApiTests: XCTestCase {
     XCTAssertEqual(rejections, 0)
   }
 
+  func testExplicitBearerUnauthorizedDoesNotRejectStoredCredential() async {
+    let transport = FakeTransport(status(401))
+    let result = await text(api(transport, stored: credential), auth: .bearer("candidate-token"))
+
+    guard case .unauthorized = result else { return XCTFail("Expected unauthorized") }
+    XCTAssertEqual(rejections, 0)
+  }
+
+  func testCancellationStopsWithoutRetry() async {
+    let transport = FakeTransport({ throw CancellationError() })
+    let result = await text(api(transport, stored: credential))
+
+    guard case .cancelled = result else { return XCTFail("Expected cancellation") }
+    XCTAssertEqual(transport.requests.count, 1)
+  }
+
   func testMapsRefusalStatuses() async {
     let forbidden = await text(api(FakeTransport(status(403)), stored: credential))
     guard case .forbidden = forbidden else { return XCTFail("Expected forbidden") }

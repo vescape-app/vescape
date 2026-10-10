@@ -31,9 +31,13 @@ struct CellSpreadFinding {
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/warnings/CellSpreadDetector.kt
 final class CellSpreadDetector {
   /// Spread ≥ this (V), sustained, fires a warn-level cell-spread warning. Field-tuned constant.
-  static let warnThresholdV = 0.10
+  ///
+  /// @parity /src/modules/battery/lib/bms.ts `CELL_SPREAD_WARN_V`
+  static let warnThresholdV = 0.20
   /// Peak sustained spread ≥ this (V) escalates the finding to critical.
-  static let criticalThresholdV = 0.25
+  ///
+  /// @parity /src/modules/battery/lib/bms.ts `CELL_SPREAD_CRITICAL_V`
+  static let criticalThresholdV = 0.50
   /// Spread must stay over threshold at least this long before firing — filters transient spikes.
   static let sustainMs: Int64 = 3_000
   /// Inter-frame gap over this (ms) breaks sustain continuity — a reconnect / telemetry interruption.
@@ -86,7 +90,7 @@ final class CellSpreadDetector {
     balancing: [Bool],
     vCharge: Double,
     atMs: Int64
-  ) -> CellSpreadFinding? {
+  ) throws -> CellSpreadFinding? {
     var minV = Double.greatestFiniteMagnitude
     var maxV = -Double.greatestFiniteMagnitude
     var sum = 0.0
@@ -136,7 +140,7 @@ final class CellSpreadDetector {
     let balancingActive = balancing.contains(true)
     return CellSpreadFinding(
       severity: severity,
-      payloadJson: payloadJson(
+      payloadJson: try payloadJson(
         peakV: peakV,
         worstGroup: worstGroup,
         charging: charging,
@@ -166,8 +170,8 @@ final class CellSpreadDetector {
     return worst
   }
 
-  private func payloadJson(peakV: Double, worstGroup: Int, charging: Bool, balancing: Bool) -> String {
-    BoardWarningPayload.json([
+  private func payloadJson(peakV: Double, worstGroup: Int, charging: Bool, balancing: Bool) throws -> String {
+    try BoardWarningPayload.json([
       "peakSpread": BoardWarningPayload.round4(peakV),
       "worstGroup": worstGroup,
       "charging": charging,

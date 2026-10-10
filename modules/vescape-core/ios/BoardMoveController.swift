@@ -1,23 +1,36 @@
 import Foundation
 
-/// Both Refloat generations lapse a move request within ~1s of silence.
-private let BOARD_MOVE_REPEAT_MS = 100
+/// Refresh interval for the 1.3+ `REMOTE` input byte, which firmware lapses after ~1s of silence.
+/// The packet only carries a value, so re-sending it often is free.
+private let BOARD_MOVE_REMOTE_REPEAT_MS = 100
+
+/// Refresh interval for the 1.0–1.2 `RC_MOVE` command. That packet is a *duration* request carrying
+/// `RC_MOVE_TIME_STEPS` (~1s of run time), and firmware zeroes its move current and ramps it back to
+/// the target on every request. So both extremes stutter: repeating on the 1.3+ cadence restarts the
+/// ramp ten times a second, and repeating slower than the request's own life leaves silent gaps.
+/// Re-send inside that life, rarely enough that the ramp restart stays a dip rather than the signal.
+private let BOARD_MOVE_RC_MOVE_REPEAT_MS = 700
+
+private func boardMoveRepeatMs(_ generation: BoardMoveGeneration) -> Int {
+  switch generation {
+  case .remote: return BOARD_MOVE_REMOTE_REPEAT_MS
+  case .rcMove: return BOARD_MOVE_RC_MOVE_REPEAT_MS
+  }
+}
 
 /// Streams Refloat's Board Move input: motor output while the board is disengaged. This is not
 /// Remote Tilt — it never touches the tilt setpoint and never writes config.
 ///
 /// The rider holds a direction button and the board keeps moving until release, so the held input is
-/// repeated on a fixed `BOARD_MOVE_REPEAT_MS` tick (both firmware generations drop the request after
-/// ~1s of silence). Releasing sends a neutral stop so the board halts immediately instead of coasting
-/// to the firmware timeout.
+/// repeated on a tick chosen per generation (both firmware generations drop the request after ~1s of
+/// silence, but only the 1.3+ packet tolerates a fast refresh — see `boardMoveRepeatMs`). Releasing
+/// sends a neutral stop so the board halts immediately instead of coasting to the firmware timeout.
 ///
 /// Firmware owns the safety envelope: 1.0–1.2 `cmd_rc_move` and 1.3+ `remote_command_input` both
 /// apply output only from the ready (disengaged) state, and 1.3+ additionally holds a 2s grace after
 /// disengaging.
 ///
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/BoardMoveController.kt
-/// @platform-diff iOS has no replaceable remote-input write slot, so writes go through the plain
-/// payload path and the stop input is not prioritised ahead of queued telemetry polls.
 internal final class BoardMoveController {
   /// Supplies the active transport only while the session can talk to the board; `nil` otherwise.
   private let transport: () -> BoardTransport?
@@ -26,29 +39,25 @@ internal final class BoardMoveController {
   private let canMove: () -> Bool
   /// Picks the wire format from the linked Refloat version.
   private let generation: () -> BoardMoveGeneration
-  private let send: (_ payload: [UInt8]) -> Bool
-  private let schedule: (_ delayMs: Int, _ block: @escaping () -> Void) -> DispatchWorkItem
+  /// `urgent` means the neutral stop, which must pass normal traffic at the next write boundary.
+  private let send: (_ payload: [UInt8], _ urgent: Bool) -> Bool
+  private let scheduler: Scheduler
 
   private var input: Int?
-  private var repeatWork: DispatchWorkItem?
+  private var repeatWork: Cancellable?
 
   init(
     transport: @escaping () -> BoardTransport?,
     canMove: @escaping () -> Bool,
     generation: @escaping () -> BoardMoveGeneration,
-    send: @escaping (_ payload: [UInt8]) -> Bool,
-    schedule: @escaping (_ delayMs: Int, _ block: @escaping () -> Void) -> DispatchWorkItem = {
-      delayMs, block in
-      let work = DispatchWorkItem(block: block)
-      DispatchQueue.main.asyncAfter(deadline: .now() + Double(delayMs) / 1000.0, execute: work)
-      return work
-    }
+    send: @escaping (_ payload: [UInt8], _ urgent: Bool) -> Bool,
+    scheduler: Scheduler = MainQueueScheduler()
   ) {
     self.transport = transport
     self.canMove = canMove
     self.generation = generation
     self.send = send
-    self.schedule = schedule
+    self.scheduler = scheduler
   }
 
   /// The input currently being streamed (`-127...127`), or `nil` when idle.
@@ -69,8 +78,10 @@ internal final class BoardMoveController {
     self.input = clamped
     if alreadyStreaming { return true }
 
-    let sent = send(buildBoardMoveCommand(transport: transport, generation: generation(), input: clamped))
-    scheduleRepeat()
+    let generation = generation()
+    let sent = send(
+      buildBoardMoveCommand(transport: transport, generation: generation, input: clamped), false)
+    scheduleRepeat(generation: generation)
     return sent
   }
 
@@ -79,13 +90,14 @@ internal final class BoardMoveController {
     let wasMoving = input != nil
     clear()
     if let transport = transport() {
-      _ = send(buildBoardMoveCommand(transport: transport, generation: generation(), input: 0))
+      _ = send(
+        buildBoardMoveCommand(transport: transport, generation: generation(), input: 0), true)
     }
     return wasMoving
   }
 
-  private func scheduleRepeat() {
-    repeatWork = schedule(BOARD_MOVE_REPEAT_MS) { [weak self] in
+  private func scheduleRepeat(generation: BoardMoveGeneration) {
+    repeatWork = scheduler.postDelayed(Int64(boardMoveRepeatMs(generation))) { [weak self] in
       guard let self else { return }
       guard let input = self.input, let transport = self.transport() else {
         self.clear()
@@ -95,8 +107,10 @@ internal final class BoardMoveController {
         self.stop()
         return
       }
-      _ = self.send(buildBoardMoveCommand(transport: transport, generation: self.generation(), input: input))
-      self.scheduleRepeat()
+      let generation = self.generation()
+      _ = self.send(
+        buildBoardMoveCommand(transport: transport, generation: generation, input: input), false)
+      self.scheduleRepeat(generation: generation)
     }
   }
 

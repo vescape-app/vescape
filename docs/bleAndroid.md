@@ -88,7 +88,7 @@ if (char.uuid == NUS_RX_UUID || char.uuid == NUS_TX_UUID) { emit() }
 
 **Write type**: first 3 writes use `WRITE_TYPE_DEFAULT` (write-with-response) to confirm connectivity. Subsequent writes use `WRITE_TYPE_NO_RESPONSE` for throughput.
 
-**CCCD timeout fallback**: if `onDescriptorWrite` never fires (edge case on some bonded states), a 4-second timeout resolves the connect promise anyway. Always cancel this timeout when all descriptor writes succeed. A stale CCCD timeout can call the ready path twice and create confusing reconnect/ready logs even though subscription already completed.
+**CCCD timeout fallback**: if `onDescriptorWrite` never fires (edge case on some bonded states), a 1-second timeout resolves the connect promise anyway. Always cancel this timeout when all descriptor writes succeed. A stale CCCD timeout can call the ready path twice and create confusing reconnect/ready logs even though subscription already completed. A refused CCCD write logs a warning with the characteristic and remaining write count so descriptor/polling contention can be diagnosed on a device.
 
 **Fast connect write priority**: the runtime connect path seeds direct/CAN mode from the stored Board Transport and starts telemetry polling immediately. Link Integrity Check traffic (`COMM_FW_VERSION`, Refloat `GET_INFO`, and expected BMS observation) is a small background re-probe of saved facts after telemetry starts; it must not delay the first telemetry packet or change the selected transport. Android GATT accepts only one write in flight; immediate polling plus startup probes can return GATT busy, delay the first telemetry packet, and briefly push auto-connect into `reconnecting`.
 
@@ -101,7 +101,10 @@ if (char.uuid == NUS_RX_UUID || char.uuid == NUS_TX_UUID) { emit() }
 - **CAN bridge boards** (VESC Express T, Tronic 250r with BLE UART bridge): the motor controller + Refloat app sit behind CAN. Direct polling gets no telemetry — the Express/bridge has no motor data itself. The probe confirms a CAN transport for these.
 - **Direct boards**: the motor controller is directly connected via BLE. The probe confirms the Direct transport.
 
-Alongside the transport, the probe records **smart-BMS presence** per candidate (`hasBms`) and firmware identity when available (VESC firmware version, exact Refloat package version, and normalized Refloat base version). These facts are saved on the `BoardLink` as `linkVersion: 3` so the runtime knows, before connecting, which capabilities and firmware-dependent commands can be trusted. See `docs/vescProtocol.md#capability-detection-at-probe-and-verified-at-runtime`.
+Alongside the transport, the probe records **smart-BMS presence** and firmware identity. Finalizing
+the selected candidate performs a temporary trusted Board Session, reads the complete Refloat config,
+and persists Last Known Board Config Values before returning a saveable `linkVersion: 4` link.
+See `docs/vescProtocol.md#capability-detection-at-probe-and-verified-at-runtime`.
 
 **Probe connect retries status 133**: re-probing a _connected_ board tears down the live GATT and reconnects for the probe. Android releases the old connection asynchronously (the stop callback fires when `close()` is _called_, not when the stack is done), so an immediate reconnect gets `status=133` (`GATT_ERROR`). `BoardTransportDetector` therefore settles before its first connect and retries connect-phase drops a bounded number of times with backoff before failing — a single transient 133 no longer aborts the probe (and, with re-probe clearing the link first, no longer leaves a working board unlinked).
 

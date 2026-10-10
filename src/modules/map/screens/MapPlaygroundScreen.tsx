@@ -1,3 +1,4 @@
+import { useResolvedAccentColors } from '@/hooks/useTheme'
 import Mapbox, { type Camera as CameraRef } from '@rnmapbox/maps'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { ScrollView, StyleSheet, View } from 'react-native'
@@ -7,7 +8,7 @@ import { Text } from '@/components/base/Text'
 import { ChipRow, ToggleRow, ValueRow } from '@/components/dev/ShowcaseControls'
 import { MAPBOX_ACCESS_TOKEN } from '@/config/mapy'
 import { theme } from '@/constants/theme'
-import { makeCircleFeature } from '@/helpers/mapGeometry'
+import { makeCircleFeature, offsetCoordinate } from '@/helpers/mapGeometry'
 import { PlaygroundSlider } from '@/modules/map/components/PlaygroundSlider'
 import { SpringTraceChart, type SpringTraceSample } from '@/modules/map/components/SpringTraceChart'
 import {
@@ -21,7 +22,6 @@ import {
   advanceFakeGps,
   createFakeGpsState,
   fakeCompassHeading,
-  offsetCoordinate,
   type FakeGpsMode,
   type FakeGpsState,
 } from '@/modules/map/lib/fakeGps'
@@ -62,6 +62,7 @@ const INITIAL_CAMERA: EngineCamera = {
  * vs target traces are plotted.
  */
 export function MapPlaygroundScreen() {
+  const accents = useResolvedAccentColors()
   const cameraRef = useRef<CameraRef>(null)
   const engineRef = useRef<CameraEngine | null>(null)
   const cameraStateRef = useRef<EngineCamera>(INITIAL_CAMERA)
@@ -249,8 +250,8 @@ export function MapPlaygroundScreen() {
             <Mapbox.FillLayer
               id="playground-fix-fill"
               style={{
-                fillColor: theme.palette.violet.color,
-                fillOutlineColor: theme.palette.violet.light,
+                fillColor: accents.violet.color,
+                fillOutlineColor: accents.violet.light,
               }}
             />
           </Mapbox.ShapeSource>
@@ -368,14 +369,14 @@ export function MapPlaygroundScreen() {
 }
 
 const styles = StyleSheet.create({
-  screen: { flex: 1, backgroundColor: theme.palette.slate.bg },
+  screen: { flex: 1, backgroundColor: theme.neutral.bg },
   mapPane: { flex: 1, overflow: 'hidden' },
   map: { flex: 1 },
   panel: {
     flex: 1,
     borderTopWidth: 1,
-    borderTopColor: theme.palette.slate.border,
-    backgroundColor: theme.palette.slate.surface,
+    borderTopColor: theme.neutral.border,
+    backgroundColor: theme.neutral.surface,
   },
   panelContent: { padding: 12, gap: 8, paddingBottom: 32 },
   section: {

@@ -27,4 +27,29 @@ final class LegalPolicyResolverTests: XCTestCase {
 
     XCTAssertEqual(rows["CY"], LegalPolicySpeeds(warningSpeedKmh: 15, limitSpeedKmh: 20))
   }
+
+  func testFailedCatalogAndEmptyGeocoderAreUnavailable() async {
+    let failedCatalog = LegalPolicyCatalog(loader: { throw CocoaError(.fileNoSuchFile) })
+    let failed = LegalPolicyResolver(catalog: failedCatalog, countryLookup: { _, _ in "PL" })
+    let failedResult = await failed.resolve(latitude: 1, longitude: 2)
+    XCTAssertEqual(failedResult, .unavailable)
+
+    let validCatalog = LegalPolicyCatalog(loader: {
+      #"[{"code":"PL","legalSpeedKmh":25,"warningSpeedKmh":20}]"#
+    })
+    let empty = LegalPolicyResolver(catalog: validCatalog, countryLookup: { _, _ in nil })
+    let emptyResult = await empty.resolve(latitude: 1, longitude: 2)
+    XCTAssertEqual(emptyResult, .unavailable)
+  }
+
+  func testCancellationHasItsOwnOutcome() async {
+    let catalog = LegalPolicyCatalog(loader: {
+      #"[{"code":"PL","legalSpeedKmh":25,"warningSpeedKmh":20}]"#
+    })
+    let resolver = LegalPolicyResolver(catalog: catalog, countryLookup: { _, _ in
+      throw CancellationError()
+    })
+    let result = await resolver.resolve(latitude: 1, longitude: 2)
+    XCTAssertEqual(result, .cancelled)
+  }
 }
