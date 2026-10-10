@@ -20,9 +20,12 @@ async function checkVersion(): Promise<void> {
     new Response(proc.stderr).text(),
     proc.exited,
   ])
-  if (code !== 0 || stdout.trim() !== MAESTRO_VERSION) {
+  // A fresh install prints an analytics notice before the standalone version line.
+  const versions = stdout.trim().match(/^\d+\.\d+\.\d+(?:[-+][\w.-]+)?\r?$/gm) ?? []
+  const version = versions.length === 1 ? versions[0].trim() : undefined
+  if (code !== 0 || version !== MAESTRO_VERSION) {
     throw new Error(
-      `Maestro ${MAESTRO_VERSION} required; found ${stdout.trim() || stderr.trim() || `exit ${code}`}. Run bun run maestro:setup.`,
+      `Maestro ${MAESTRO_VERSION} required; found ${version || stdout.trim() || stderr.trim() || `exit ${code}`}. Run bun run maestro:setup.`,
     )
   }
 }

@@ -39,6 +39,14 @@ test('pinned Maestro produces the requested command', async () => {
   expect(JSON.parse(result.stdout)).toEqual(['maestro', 'test', 'flow.yaml'])
 })
 
+test('first-run analytics banner does not hide the installed version', async () => {
+  const result = await commandWithVersion(
+    `Anonymous analytics enabled. To opt out, set MAESTRO_CLI_NO_ANALYTICS environment variable to any value before running Maestro.\n\n${MAESTRO_VERSION}`,
+  )
+  expect(result.code).toBe(0)
+  expect(JSON.parse(result.stdout)).toEqual(['maestro', 'test', 'flow.yaml'])
+})
+
 test('version mismatch or failed version query prevents the test command', async () => {
   for (const [version, exitCode] of [
     ['2.6.0', 0],
