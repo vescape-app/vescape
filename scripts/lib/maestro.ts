@@ -13,7 +13,7 @@ async function checkVersion(): Promise<void> {
   const proc = Bun.spawn([executable, '--version'], {
     stdout: 'pipe',
     stderr: 'pipe',
-    timeout: 30_000,
+    timeout: 120_000,
   })
   const [stdout, stderr, code] = await Promise.all([
     new Response(proc.stdout).text(),

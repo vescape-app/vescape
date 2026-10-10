@@ -35,6 +35,7 @@ test('build-only exports an APK without resolving or booting a device', async ()
   writeFileSync(artifact, 'release APK')
   const args = readArgs(['--build-only', '--output', output])
   await main(args, {
+    checkMaestro: unexpected,
     buildApp: async (received) => {
       expect(received.platform).toBe('android')
       expect(received.replay).toBe('replay-thor301.jsonl')
@@ -55,6 +56,7 @@ test('iOS artifact export preserves executable bits and relative bundle symlinks
   chmodSync(join(artifact, 'binary'), 0o755)
   symlinkSync('binary', join(artifact, 'linked-binary'))
   await main(readArgs(['--platform', 'ios', '--build-only', '--output', output]), {
+    checkMaestro: unexpected,
     buildApp: async () => artifact,
     createDriver: unexpected,
     runFlow: unexpected,
@@ -95,8 +97,14 @@ test('artifact flows use one Maestro session after installing and restoring fixt
       await main(
         readArgs(['--platform', platform, '--app', app, ...(flow ? ['--flow', flow] : [])]),
         {
+          checkMaestro: async () => {
+            calls.push('version')
+          },
           buildApp: unexpected,
-          createDriver: async () => driver,
+          createDriver: async () => {
+            calls.push('driver')
+            return driver
+          },
           launchAndroidApp: async (deviceId) => {
             expect(platform).toBe('android')
             expect(deviceId).toBe(driver.deviceId)
@@ -121,6 +129,8 @@ test('artifact flows use one Maestro session after installing and restoring fixt
         },
       )
       expect(calls).toEqual([
+        'version',
+        'driver',
         'install',
         'awake',
         'fixtures',
@@ -136,10 +146,25 @@ test('artifact flows use one Maestro session after installing and restoring fixt
 test('unknown selected flows fail before building or acquiring a device', async () => {
   await expect(
     main(readArgs(['--flow', '../fixture/_boot']), {
+      checkMaestro: unexpected,
       buildApp: unexpected,
       createDriver: unexpected,
       runFlow: unexpected,
       launchAndroidApp: unexpected,
     }),
   ).rejects.toThrow('No smoke flow named')
+})
+
+test('failed Maestro preflight stops before acquiring or booting a device', async () => {
+  await expect(
+    main(readArgs(['--no-build', '--flow', '03-history']), {
+      checkMaestro: async () => {
+        throw new Error('Version preflight failed')
+      },
+      buildApp: unexpected,
+      createDriver: unexpected,
+      runFlow: unexpected,
+      launchAndroidApp: unexpected,
+    }),
+  ).rejects.toThrow('Version preflight failed')
 })
