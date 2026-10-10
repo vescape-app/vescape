@@ -11,6 +11,7 @@ import {
 import { ShowcaseCard } from '@/components/dev/ShowcaseCard'
 import { ChipRow, ToggleRow } from '@/components/dev/ShowcaseControls'
 import { BoardAttitudeIndicator } from '@/modules/board/components/BoardAttitudeIndicator'
+import { RAILS } from '@/modules/board/lib/railPresets'
 
 const POSES: Record<string, [number, number]> = {
   level: [0, 0],
@@ -26,6 +27,8 @@ export function BoardAttitudeIndicatorShowcase() {
   const [pose, setPose] = useState('level')
   const [connected, setConnected] = useState(true)
   const [sweep, setSweep] = useState(false)
+  const [railId, setRailId] = useState('xr')
+  const [railColorId, setRailColorId] = useState('cyan')
   const pitch = useSharedValue<number | null>(0)
   const roll = useSharedValue<number | null>(0)
 
@@ -72,6 +75,18 @@ export function BoardAttitudeIndicatorShowcase() {
             }}
           />
           <ToggleRow label="connected" value={connected} onToggle={setConnected} />
+          <ChipRow
+            label="rails"
+            options={RAILS.map((rail) => rail.id)}
+            selected={railId}
+            onSelect={setRailId}
+          />
+          <ChipRow
+            label="color"
+            options={['cyan', 'orange', 'purple']}
+            selected={railColorId}
+            onSelect={setRailColorId}
+          />
           <ToggleRow label="full roll / pitch sweep" value={sweep} onToggle={setSweep} />
         </>
       }
@@ -83,6 +98,8 @@ export function BoardAttitudeIndicatorShowcase() {
             pitch={pitch}
             roll={roll}
             connected={connected}
+            railId={railId}
+            railColorId={railColorId}
             size={size}
             testID={`attitude-preview-${size}`}
           />

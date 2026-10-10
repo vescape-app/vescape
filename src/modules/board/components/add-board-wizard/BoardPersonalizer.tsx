@@ -1,93 +1,27 @@
 /* eslint-disable react-hooks/immutability */
 import * as Haptics from 'expo-haptics'
 import { CaretLeftIcon, CaretRightIcon } from 'phosphor-react-native'
-import { useCallback, useMemo, useState } from 'react'
-import { Platform, Pressable, StyleSheet, View, type ColorValue } from 'react-native'
+import { useCallback, useEffect, useMemo, useState } from 'react'
+import { Platform, Pressable, StyleSheet, View } from 'react-native'
 import { Text } from '@/components/base/Text'
 import { Gesture, GestureDetector } from 'react-native-gesture-handler'
 import Animated, {
   cancelAnimation,
+  Easing,
   useAnimatedStyle,
   useSharedValue,
+  withRepeat,
   withSpring,
+  withTiming,
 } from 'react-native-reanimated'
 import Svg, { Circle, Path } from 'react-native-svg'
 import { scheduleOnRN } from 'react-native-worklets'
 
 import { personalizationColorOptions, theme } from '@/constants/theme'
-import { buildRailPath } from '@/modules/board/lib/railProfile'
+import { RAILS, type RailId } from '@/modules/board/lib/railPresets'
+import { BoardAttitudeIndicator } from '@/modules/board/components/BoardAttitudeIndicator'
 
-export const RAILS = [
-  {
-    id: 'xr',
-    label: 'XR',
-    path: buildRailPath(
-      [
-        [30, 32],
-        [179, 32],
-      ],
-      [0, 0],
-    ),
-  },
-  {
-    id: 'wtf',
-    label: 'WTF',
-    path: buildRailPath(
-      [
-        [29, 32],
-        [81, 37],
-        [96, 32],
-        [112, 32],
-        [129, 37],
-        [178, 32],
-      ],
-      [0, 0, 0, 0, 0, 0],
-    ),
-  },
-  {
-    id: 'x7',
-    label: 'X7',
-    path: buildRailPath(
-      [
-        [29, 29],
-        [81, 37],
-        [96, 29],
-        [114, 36],
-        [129, 37],
-        [178, 28],
-      ],
-      [0, 0, 0, 0, 0, 0],
-    ),
-  },
-  {
-    id: 'tail',
-    label: 'Tail Rails',
-    path: buildRailPath(
-      [
-        [29, 31],
-        [119, 32],
-        [154, 30],
-        [179, 27],
-      ],
-      [0, 0, 0, 0],
-    ),
-  },
-  {
-    id: 'moustache',
-    label: 'Moustache',
-    path: buildRailPath(
-      [
-        [30, 29],
-        [79, 34],
-        [128, 34],
-        [179, 27],
-      ],
-      [0, 0, 0, 0],
-    ),
-  },
-] as const
-
-export type RailId = (typeof RAILS)[number]['id']
+export type { RailId } from '@/modules/board/lib/railPresets'
 
 export const RAIL_COLORS = personalizationColorOptions
 
@@ -114,41 +48,46 @@ interface BoardPersonalizerProps {
 }
 
 function RailOutline({
-  path,
-  color,
+  railId,
+  railColorId,
   muted = false,
 }: {
-  path: string
-  color: ColorValue
+  railId: RailId
+  railColorId: RailColorId
   muted?: boolean
 }) {
+  const pitch = useSharedValue<number | null>(0)
+  const roll = useSharedValue<number | null>(28)
+  useEffect(() => {
+    if (!muted) {
+      roll.value = 28
+      roll.value = withRepeat(withTiming(388, { duration: 9000, easing: Easing.linear }), -1, false)
+      pitch.value = withRepeat(
+        withTiming(12, { duration: 4000, easing: Easing.inOut(Easing.sin) }),
+        -1,
+        true,
+      )
+    } else {
+      cancelAnimation(roll)
+      cancelAnimation(pitch)
+      roll.value = 28
+      pitch.value = 0
+    }
+    return () => {
+      cancelAnimation(roll)
+      cancelAnimation(pitch)
+    }
+  }, [muted, pitch, roll])
   return (
-    <Svg width={ITEM_WIDTH} height={70} viewBox="0 0 208 70">
-      <Circle
-        cx="104"
-        cy="32"
-        r="30"
-        fill="none"
-        stroke={muted ? theme.neutral.border : color}
-        strokeWidth="1"
-      />
-      <Circle
-        cx="104"
-        cy="32"
-        r="15"
-        fill="none"
-        stroke={muted ? theme.neutral.textDim : color}
-        strokeWidth="1"
-      />
-      <Path
-        d={path}
-        fill="none"
-        stroke={muted ? theme.neutral.textDim : color}
-        strokeWidth={muted ? 1.2 : 2.2}
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-    </Svg>
+    <BoardAttitudeIndicator
+      pitch={pitch}
+      roll={roll}
+      connected
+      muted={muted}
+      railId={railId}
+      railColorId={railColorId}
+      size={112}
+    />
   )
 }
 
@@ -330,8 +269,8 @@ export function BoardPersonalizer({
                     style={({ pressed }) => [styles.railItem, pressed && styles.railPressed]}
                   >
                     <RailOutline
-                      path={rail.path}
-                      color={selectedColor}
+                      railId={rail.id}
+                      railColorId={railColorId}
                       muted={loopIndex(index) !== selectedIndex}
                     />
                   </Pressable>
@@ -399,8 +338,8 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  viewport: { height: 86, overflow: 'hidden' },
-  railRow: { position: 'absolute', top: 4, flexDirection: 'row', gap: ITEM_GAP },
+  viewport: { height: 118, overflow: 'hidden' },
+  railRow: { position: 'absolute', top: 3, flexDirection: 'row', gap: ITEM_GAP },
   railItem: { width: ITEM_WIDTH, alignItems: 'center' },
   railPressed: { opacity: 0.65 },
   colors: {

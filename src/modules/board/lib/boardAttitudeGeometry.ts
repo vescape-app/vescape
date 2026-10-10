@@ -17,6 +17,22 @@ export type AttitudeMatrix = [
   number,
 ]
 
+export function curvedDeckMatrix(
+  rollDegrees: number | null,
+  x0: number,
+  x1: number,
+  height0: number,
+  height1: number,
+  baseHeight: number,
+): AttitudeMatrix {
+  'worklet'
+  const angle = (((rollDegrees ?? 0) % 360) * Math.PI) / 180
+  const sin = Math.sin(angle)
+  const cos = Math.cos(angle)
+  const slope = (height1 - height0) / (x1 - x0)
+  return [1, 0, 0, slope * cos, -sin, (baseHeight + height0 - slope * x0) * cos, 0, 0, 1]
+}
+
 function plane(yScale: number, yOffset = 0): AttitudeMatrix {
   'worklet'
   return [1, 0, 0, 0, yScale, yOffset, 0, 0, 1]

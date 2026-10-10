@@ -2,17 +2,19 @@ import { useMemo } from 'react'
 import { Canvas, Group, Path, Skia, type SkPath } from '@shopify/react-native-skia'
 import { useDerivedValue, type SharedValue } from 'react-native-reanimated'
 
-import { theme } from '@/constants/theme'
+import { personalizationColorOptions, theme } from '@/constants/theme'
 import { useResolvedColor } from '@/hooks/useTheme'
 import { HUD_IDLE_GLYPH_COLOR } from '@/modules/board/constants/telemetry'
 import {
   ATTITUDE_EXTENT,
   boardAttitudePose,
+  curvedDeckMatrix,
   TIRE_HALF_WIDTH,
   TIRE_RADIUS,
 } from '@/modules/board/lib/boardAttitudeGeometry'
+import { railDeckProfile, railSideFace } from '@/modules/board/lib/railPresets'
 
-function polygon(points: number[][]): SkPath {
+function polygon(points: readonly (readonly number[])[]): SkPath {
   const path = Skia.Path.Make()
   path.moveTo(points[0][0], points[0][1])
   for (let i = 1; i < points.length; i++) path.lineTo(points[i][0], points[i][1])
@@ -20,25 +22,49 @@ function polygon(points: number[][]): SkPath {
   return path
 }
 
-function deck(outerX: number): SkPath {
-  const path = polygon([
-    [-outerX, -64],
-    [-89, -64],
-    [-89, 64],
-    [-outerX, 64],
-  ])
-  path.addPath(
-    polygon([
-      [89, -64],
-      [outerX, -64],
-      [outerX, 64],
-      [89, 64],
-    ]),
-  )
-  return path
+function deckSegments(railId?: string, inset = 0) {
+  const outerProfile = railDeckProfile(railId)
+  const profile = inset
+    ? outerProfile.map(([x, height], index) => [
+        index === 0 ? -218 + inset : index === outerProfile.length - 1 ? 218 - inset : x,
+        height,
+      ])
+    : outerProfile
+  const heightAt = (x: number) => {
+    for (let i = 1; i < profile.length; i++) {
+      const [x0, h0] = profile[i - 1]!
+      const [x1, h1] = profile[i]!
+      if (x <= x1) return h0 + ((h1 - h0) * (x - x0)) / (x1 - x0)
+    }
+    return profile[profile.length - 1]![1]
+  }
+  const segments = [] as { path: SkPath; x0: number; x1: number; h0: number; h1: number }[]
+  for (const [start, end] of [
+    [-218 + inset, -89],
+    [89, 218 - inset],
+  ]) {
+    const cuts = [start, ...profile.map(([x]) => x).filter((x) => x > start && x < end), end]
+    for (let i = 1; i < cuts.length; i++) {
+      const x0 = cuts[i - 1]!
+      const x1 = cuts[i]!
+      segments.push({
+        path: polygon([
+          [x0, -64],
+          [x1, -64],
+          [x1, 64],
+          [x0, 64],
+        ]),
+        x0,
+        x1,
+        h0: heightAt(x0),
+        h1: heightAt(x1),
+      })
+    }
+  }
+  return segments
 }
 
-function buildPaths() {
+function buildPaths(railId?: string) {
   const tire = Skia.Path.Make()
   tire.addCircle(0, 0, TIRE_RADIUS)
   const farArc = Skia.Path.Make()
@@ -60,14 +86,9 @@ function buildPaths() {
   }
   return {
     edgeOn,
-    rail: polygon([
-      [-218, 12],
-      [218, 12],
-      [197, -12],
-      [-197, -12],
-    ]),
-    top: deck(218),
-    bottom: deck(197),
+    rail: polygon(railSideFace(railId)),
+    top: deckSegments(railId),
+    bottom: deckSegments(railId, 21),
     cap: polygon([
       [0, -64],
       [21, -64],
@@ -86,11 +107,46 @@ function buildPaths() {
   }
 }
 
-/** Erase only this canvas's earlier lines; the map remains visible through the solid outline. */
-function SolidOutline({ path, color, stroke }: { path: SkPath; color: string; stroke: number }) {
+function CurvedDeckFace({
+  segment,
+  roll,
+  baseHeight,
+  color,
+  fill,
+  stroke,
+}: {
+  segment: ReturnType<typeof deckSegments>[number]
+  roll: SharedValue<number | null>
+  baseHeight: number
+  color: string
+  fill: string
+  stroke: number
+}) {
+  const matrix = useDerivedValue(() =>
+    curvedDeckMatrix(roll.value, segment.x0, segment.x1, segment.h0, segment.h1, baseHeight),
+  )
+  return (
+    <Group matrix={matrix}>
+      <SolidFace path={segment.path} color={color} fill={fill} stroke={stroke} />
+    </Group>
+  )
+}
+
+/** Neutral faces give the rail profile visible volume without a large accent fill. */
+function SolidFace({
+  path,
+  color,
+  fill,
+  stroke,
+}: {
+  path: SkPath
+  color: string
+  fill: string
+  stroke: number
+}) {
   return (
     <>
-      <Path path={path} blendMode="dstOut" />
+      <Path path={path} color={fill} />
       <Path path={path} color={color} style="stroke" strokeWidth={stroke} strokeJoin="round" />
     </>
   )
@@ -100,6 +156,9 @@ interface BoardAttitudeIndicatorProps {
   pitch: SharedValue<number | null>
   roll: SharedValue<number | null>
   connected?: boolean
+  muted?: boolean
+  railId?: string
+  railColorId?: string
   size?: number
   testID?: string
 }
@@ -109,12 +168,20 @@ export function BoardAttitudeIndicator({
   pitch,
   roll,
   connected = true,
+  muted = false,
+  railId,
+  railColorId,
   size = 48,
   testID,
 }: BoardAttitudeIndicatorProps) {
   'use no memo'
-  const color = useResolvedColor(connected ? theme.palette.purple.color : HUD_IDLE_GLYPH_COLOR)
-  const paths = useMemo(() => buildPaths(), [])
+  const accent = personalizationColorOptions.find((option) => option.id === railColorId)?.value
+  const color = useResolvedColor(
+    connected && !muted ? (accent ?? theme.palette.purple.color) : HUD_IDLE_GLYPH_COLOR,
+  )
+  const fill = useResolvedColor(theme.neutral.surfaceDeep)
+  const topFill = useResolvedColor(theme.neutral.surface)
+  const paths = useMemo(() => buildPaths(railId), [railId])
   const scale = size / ATTITUDE_EXTENT
   const stroke = 1 / scale
   const pose = useDerivedValue(() => boardAttitudePose(connected ? roll.value : 0))
@@ -128,10 +195,19 @@ export function BoardAttitudeIndicator({
   const farTire = useDerivedValue(() => pose.value.farTire)
   const farTireArc = useDerivedValue(() => pose.value.farTireArc)
   const tread = useDerivedValue(() => pose.value.tread)
-  const top = useDerivedValue(() => pose.value.top)
-  const bottom = useDerivedValue(() => pose.value.bottom)
-  const leftCap = useDerivedValue(() => pose.value.leftCap)
-  const rightCap = useDerivedValue(() => pose.value.rightCap)
+  const profile = useMemo(() => railDeckProfile(railId), [railId])
+  const leftHeight = profile[0]![1]
+  const rightHeight = profile[profile.length - 1]![1]
+  const leftCap = useDerivedValue(() => {
+    const matrix = pose.value.leftCap.slice() as ReturnType<typeof boardAttitudePose>['leftCap']
+    matrix[5] += leftHeight * Math.cos(((roll.value ?? 0) * Math.PI) / 180)
+    return matrix
+  })
+  const rightCap = useDerivedValue(() => {
+    const matrix = pose.value.rightCap.slice() as ReturnType<typeof boardAttitudePose>['rightCap']
+    matrix[5] += rightHeight * Math.cos(((roll.value ?? 0) * Math.PI) / 180)
+    return matrix
+  })
   const edgeOnOpacity = useDerivedValue(() => pose.value.edgeOnOpacity)
   const topVisible = useDerivedValue(() => pose.value.topVisible)
   const bottomVisible = useDerivedValue(() => pose.value.bottomVisible)
@@ -142,7 +218,7 @@ export function BoardAttitudeIndicator({
       <Group layer transform={[{ translateX: size / 2 }, { translateY: size / 2 }, { scale }]}>
         <Group transform={rotation}>
           <Group matrix={farRail}>
-            <SolidOutline path={paths.rail} color={color} stroke={stroke} />
+            <SolidFace path={paths.rail} color={color} fill={fill} stroke={stroke} />
           </Group>
           {/* Cylinder silhouette = two ellipses and their connecting strip. Clear all first. */}
           <Group matrix={farTire}>
@@ -159,24 +235,43 @@ export function BoardAttitudeIndicator({
             <Path path={paths.farArc} color={color} style="stroke" strokeWidth={stroke} />
           </Group>
           <Group matrix={nearTire}>
+            <Path path={paths.tire} color={fill} />
             <Path path={paths.tire} color={color} style="stroke" strokeWidth={stroke} />
           </Group>
-          <Group opacity={topVisible} matrix={top}>
-            <SolidOutline path={paths.top} color={color} stroke={stroke} />
+          <Group opacity={topVisible}>
+            {paths.top.map((segment, index) => (
+              <CurvedDeckFace
+                key={index}
+                segment={segment}
+                roll={roll}
+                baseHeight={-12}
+                color={color}
+                fill={topFill}
+                stroke={stroke}
+              />
+            ))}
           </Group>
           <Group opacity={bottomVisible}>
-            <Group matrix={bottom}>
-              <SolidOutline path={paths.bottom} color={color} stroke={stroke} />
-            </Group>
+            {paths.bottom.map((segment, index) => (
+              <CurvedDeckFace
+                key={index}
+                segment={segment}
+                roll={roll}
+                baseHeight={12}
+                color={color}
+                fill={fill}
+                stroke={stroke}
+              />
+            ))}
             <Group matrix={leftCap}>
-              <SolidOutline path={paths.cap} color={color} stroke={stroke} />
+              <SolidFace path={paths.cap} color={color} fill={fill} stroke={stroke} />
             </Group>
             <Group matrix={rightCap}>
-              <SolidOutline path={paths.cap} color={color} stroke={stroke} />
+              <SolidFace path={paths.cap} color={color} fill={fill} stroke={stroke} />
             </Group>
           </Group>
           <Group matrix={nearRail}>
-            <SolidOutline path={paths.rail} color={color} stroke={stroke} />
+            <SolidFace path={paths.rail} color={color} fill={fill} stroke={stroke} />
           </Group>
           <Group opacity={edgeOnOpacity} matrix={tread}>
             <Path path={paths.edgeOn} color={color} style="stroke" strokeWidth={stroke} />
