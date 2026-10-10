@@ -61,11 +61,11 @@ function RailOutline({
   useEffect(() => {
     if (!muted) {
       roll.value = 28
-      roll.value = withRepeat(withTiming(388, { duration: 9000, easing: Easing.linear }), -1, false)
+      pitch.value = 0
       pitch.value = withRepeat(
-        withTiming(12, { duration: 4000, easing: Easing.inOut(Easing.sin) }),
+        withTiming(360, { duration: 9000, easing: Easing.linear }),
         -1,
-        true,
+        false,
       )
     } else {
       cancelAnimation(roll)
