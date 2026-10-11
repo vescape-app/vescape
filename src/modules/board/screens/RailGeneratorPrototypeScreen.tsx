@@ -327,7 +327,6 @@ export function RailGeneratorPrototypeScreen() {
   return (
     <View style={styles.screen}>
       <ScrollView contentContainerStyle={styles.content}>
-        <Text style={styles.kicker}>PROTOTYPE · RAIL PRESET GENERATOR</Text>
         <RailCanvas
           points={points}
           smoothing={smoothing}
@@ -464,15 +463,9 @@ export function RailGeneratorPrototypeScreen() {
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: theme.neutral.bg },
   content: { padding: 16, paddingBottom: 24, gap: 18 },
-  kicker: {
-    color: theme.neutral.textMuted,
-    fontSize: 12,
-    fontWeight: '800',
-    letterSpacing: 0.7,
-  },
   canvas: { height: 132, alignItems: 'center', justifyContent: 'center', overflow: 'hidden' },
-  canvasLarge: { height: 190 },
-  boardPreview: { position: 'absolute', top: -72, alignSelf: 'center' },
+  canvasLarge: { height: 230 },
+  boardPreview: { position: 'absolute', top: -52, alignSelf: 'center' },
   previewTopControl: { position: 'absolute', top: 0, left: 35, right: 35, alignItems: 'center' },
   previewRightControl: {
     position: 'absolute',
