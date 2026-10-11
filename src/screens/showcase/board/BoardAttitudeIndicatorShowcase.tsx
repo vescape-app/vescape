@@ -109,7 +109,7 @@ export function BoardAttitudeIndicatorShowcase() {
       </View>
       <Text>Saved board previews · list / edit</Text>
       <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-around' }}>
-        <BoardModelPreview railId={railId} railColorId={railColorId} size={64} />
+        <BoardModelPreview railId={railId} railColorId={railColorId} size={64} rollDegrees={0} />
         <BoardModelPreview railId={railId} railColorId={railColorId} size={220} />
       </View>
     </ShowcaseCard>

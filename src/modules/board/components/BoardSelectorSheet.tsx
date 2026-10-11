@@ -159,20 +159,14 @@ function LinksStrip({ links }: { links: StripLink[] }) {
   )
 }
 
-function BoardIcon({ board, active }: { board: Board; active: boolean }) {
-  const neutral = useResolvedNeutralColors()
+function BoardIcon({ board }: { board: Board }) {
   return (
-    <View
-      style={[
-        styles.boardIcon,
-        { borderColor: theme.alpha(neutral.border, 0.6) },
-        active && styles.boardIconActive,
-      ]}
-    >
+    <View style={styles.boardIcon}>
       <BoardModelPreview
         railId={board.personalization?.railId}
         railColorId={board.personalization?.railColorId}
         size={64}
+        rollDegrees={0}
       />
     </View>
   )
@@ -203,7 +197,7 @@ export function BoardSelectorContent({
       {active && (
         <View style={[styles.activeBlock, cardSurface]}>
           <View style={[styles.row, styles.activeRow]}>
-            <BoardIcon board={active} active />
+            <BoardIcon board={active} />
             <View style={styles.rowInfo}>
               <Text style={styles.boardNameActive} numberOfLines={1}>
                 {active.name}
@@ -266,7 +260,7 @@ export function BoardSelectorContent({
             accessibilityRole="button"
             accessibilityLabel={`Select ${board.name}`}
           >
-            <BoardIcon board={board} active={false} />
+            <BoardIcon board={board} />
             <View style={styles.rowInfo}>
               <Text style={styles.boardName} numberOfLines={1}>
                 {board.name}
@@ -376,16 +370,9 @@ const styles = StyleSheet.create({
   boardIcon: {
     width: 68,
     height: 44,
-    borderRadius: 8,
-    borderWidth: 1,
     alignItems: 'center',
     justifyContent: 'center',
     overflow: 'hidden',
-  },
-  // Outline only, like every other tile in the list: the active board is already told apart by the
-  // card it sits in, so a filled tile on top of that was one signal too many.
-  boardIconActive: {
-    borderColor: theme.alpha(theme.palette.sky.color, 0.3),
   },
   boardName: {
     color: theme.neutral.textSecondary,
