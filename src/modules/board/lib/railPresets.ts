@@ -1,4 +1,5 @@
 import { buildRailPath, type RailPoint } from '@/modules/board/lib/railProfile'
+import { RAIL_THICKNESS } from '@/modules/board/lib/boardAttitudeGeometry'
 
 /** Side profiles authored in the rail generator's 208 × 70 coordinate space. */
 const PRESETS = [
@@ -69,25 +70,38 @@ export function railPreset(id?: string) {
 }
 
 /** Both edges follow the same bend. The inner edge is inset at each end for the diagonal cuts. */
-export function railSideFace(id?: string): RailPoint[] {
-  const points = railPreset(id).points
+export function railSideFace(
+  id?: string,
+  customPoints?: readonly RailPoint[],
+  thickness = RAIL_THICKNESS,
+  pointThicknesses?: readonly number[],
+): RailPoint[] {
+  const points = customPoints ?? railPreset(id).points
   const firstX = points[0]![0]
   const lastX = points[points.length - 1]![0]
   const outer = points.map(
-    ([x, y]): RailPoint => [-218 + ((x - firstX) * 436) / (lastX - firstX), 12 - (y - 32) * 3.5],
+    ([x, y], index): RailPoint => [
+      -218 + ((x - firstX) * 436) / (lastX - firstX),
+      (pointThicknesses?.[index] ?? thickness) / 2 - (y - 32) * 3.5,
+    ],
   )
   const inner = outer.map(
     ([x, y], index): RailPoint => [
       index === 0 ? -197 : index === outer.length - 1 ? 197 : x,
-      y - 24,
+      y - (pointThicknesses?.[index] ?? thickness),
     ],
   )
   return [...outer, ...inner.reverse()]
 }
 
 /** Longitudinal height at the deck corners and every rail bend. */
-export function railDeckProfile(id?: string): RailPoint[] {
-  const face = railSideFace(id)
+export function railDeckProfile(
+  id?: string,
+  customPoints?: readonly RailPoint[],
+  thickness = RAIL_THICKNESS,
+  pointThicknesses?: readonly number[],
+): RailPoint[] {
+  const face = railSideFace(id, customPoints, thickness, pointThicknesses)
   const outer = face.slice(0, face.length / 2)
-  return outer.map(([x, y]) => [x, 12 - y])
+  return outer.map(([x, y], index) => [x, (pointThicknesses?.[index] ?? thickness) / 2 - y])
 }

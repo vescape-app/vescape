@@ -4,13 +4,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { Pressable, ScrollView, StyleSheet, View, type LayoutChangeEvent } from 'react-native'
 import * as Clipboard from 'expo-clipboard'
 import Svg, { Circle, Line, Path } from 'react-native-svg'
-import {
-  ArrowDownIcon,
-  ClipboardTextIcon,
-  CopyIcon,
-  MinusIcon,
-  PlusIcon,
-} from 'phosphor-react-native'
+import { ArrowDownIcon, ClipboardTextIcon, CopyIcon, PlusIcon, XIcon } from 'phosphor-react-native'
 import { Gesture, GestureDetector } from 'react-native-gesture-handler'
 import Animated, { useAnimatedStyle, useSharedValue } from 'react-native-reanimated'
 import { scheduleOnRN } from 'react-native-worklets'
@@ -19,7 +13,14 @@ import { Button } from '@/components/base/Button'
 import { Text } from '@/components/base/Text'
 import { Input } from '@/components/forms/Input'
 import { theme } from '@/constants/theme'
-import { buildRailPath, type RailPoint as Point } from '@/modules/board/lib/railProfile'
+import { BoardAttitudeIndicator } from '@/modules/board/components/BoardAttitudeIndicator'
+import { RAIL_THICKNESS } from '@/modules/board/lib/boardAttitudeGeometry'
+import {
+  buildRailPath,
+  sampleRailProfile,
+  sampleRailValues,
+  type RailPoint as Point,
+} from '@/modules/board/lib/railProfile'
 
 const WIDTH = 208
 const HEIGHT = 70
@@ -88,17 +89,38 @@ function RailCanvas({
   smoothing,
   selected,
   onSelect,
+  thickness,
+  pointThicknesses,
+  previewPoints,
+  pitch,
+  roll,
   large = false,
 }: {
   points: readonly Point[]
   smoothing: readonly number[]
   selected: number
   onSelect: (index: number) => void
+  thickness: number
+  pointThicknesses: readonly number[]
+  previewPoints: readonly Point[]
+  pitch: ReturnType<typeof useSharedValue<number | null>>
+  roll: ReturnType<typeof useSharedValue<number | null>>
   large?: boolean
 }) {
   const scale = large ? 1.55 : 1
   return (
     <View style={[styles.canvas, large && styles.canvasLarge]}>
+      <View pointerEvents="none" style={styles.boardPreview}>
+        <BoardAttitudeIndicator
+          pitch={pitch}
+          roll={roll}
+          railPoints={previewPoints}
+          railThickness={thickness}
+          railPointThicknesses={pointThicknesses}
+          railColorId="cyan"
+          size={WIDTH * scale}
+        />
+      </View>
       <Svg width={WIDTH * scale} height={HEIGHT * scale} viewBox={`0 0 ${WIDTH} ${HEIGHT}`}>
         <Line
           x1="0"
@@ -148,8 +170,22 @@ export function RailGeneratorPrototypeScreen() {
     [194, CENTER_Y],
   ])
   const [smoothing, setSmoothing] = useState([0, 0])
+  const [thickness, setThickness] = useState(RAIL_THICKNESS)
+  const [pointThicknesses, setPointThicknesses] = useState([RAIL_THICKNESS, RAIL_THICKNESS])
   const [selected, setSelected] = useState(0)
-  const output = JSON.stringify({ points, smooth: smoothing })
+  const previewPoints = useMemo(() => sampleRailProfile(points, smoothing), [points, smoothing])
+  const previewThicknesses = useMemo(
+    () => sampleRailValues(points, pointThicknesses, previewPoints),
+    [points, pointThicknesses, previewPoints],
+  )
+  const previewPitch = useSharedValue<number | null>(0)
+  const previewRoll = useSharedValue<number | null>(25)
+  const output = JSON.stringify({
+    points,
+    smooth: smoothing,
+    thickness,
+    pointThickness: pointThicknesses,
+  })
   const [presetText, setPresetText] = useState(output)
   const [presetError, setPresetError] = useState<string | null>(null)
 
@@ -177,6 +213,7 @@ export function RailGeneratorPrototypeScreen() {
         gapIndex = index
       }
     }
+    if (largestGap < 8) return
     const left = points[gapIndex]!
     const right = points[gapIndex + 1]!
     const point: Point = [
@@ -193,19 +230,33 @@ export function RailGeneratorPrototypeScreen() {
       0,
       ...current.slice(gapIndex + 1),
     ])
+    setPointThicknesses((current) => [
+      ...current.slice(0, gapIndex + 1),
+      Math.round((current[gapIndex]! + current[gapIndex + 1]!) / 2),
+      ...current.slice(gapIndex + 1),
+    ])
     setSelected(gapIndex + 1)
   }
-  const removePoint = () => {
+  const removePoint = (removedIndex: number) => {
     if (points.length <= 2) return
-    setPoints((current) => current.filter((_, index) => index !== selected))
-    setSmoothing((current) => current.filter((_, index) => index !== selected))
-    setSelected((current) => Math.max(0, Math.min(current, points.length - 2)))
+    setPoints((current) => current.filter((_, index) => index !== removedIndex))
+    setSmoothing((current) => current.filter((_, index) => index !== removedIndex))
+    setPointThicknesses((current) => current.filter((_, index) => index !== removedIndex))
+    setSelected((current) =>
+      Math.max(0, Math.min(current - (removedIndex < current ? 1 : 0), points.length - 2)),
+    )
   }
   const loadPreset = () => {
     try {
-      const parsed = JSON.parse(presetText) as Point[] | { points: Point[]; smooth?: number[] }
+      const parsed = JSON.parse(presetText) as
+        | Point[]
+        | { points: Point[]; smooth?: number[]; thickness?: number; pointThickness?: number[] }
       const nextPoints = Array.isArray(parsed) ? parsed : parsed.points
       const nextSmoothing = Array.isArray(parsed) ? [] : (parsed.smooth ?? [])
+      const nextThickness = Array.isArray(parsed)
+        ? RAIL_THICKNESS
+        : (parsed.thickness ?? RAIL_THICKNESS)
+      const nextPointThicknesses = Array.isArray(parsed) ? undefined : parsed.pointThickness
       if (
         !Array.isArray(nextPoints) ||
         nextPoints.length < 2 ||
@@ -215,12 +266,33 @@ export function RailGeneratorPrototypeScreen() {
             point.length !== 2 ||
             !Number.isFinite(point[0]) ||
             !Number.isFinite(point[1]),
-        )
+        ) ||
+        nextPoints.some(
+          (point, index) =>
+            point[0] < 4 ||
+            point[0] > 204 ||
+            point[1] < 18 ||
+            point[1] > 46 ||
+            (index > 0 && Math.round(point[0]) - Math.round(nextPoints[index - 1]![0]) < 4),
+        ) ||
+        !Number.isFinite(nextThickness) ||
+        nextThickness < 12 ||
+        nextThickness > 36 ||
+        (nextPointThicknesses !== undefined &&
+          (!Array.isArray(nextPointThicknesses) ||
+            nextPointThicknesses.length !== nextPoints.length ||
+            nextPointThicknesses.some(
+              (value) => !Number.isFinite(value) || value < 12 || value > 36,
+            )))
       ) {
-        throw new Error('Preset needs at least two valid [x,y] points')
+        throw new Error('Preset needs ordered points inside the editor and thickness 12–36')
       }
       setPoints(nextPoints.map(([x, y]) => [Math.round(x), Math.round(y)] as const))
       setSmoothing(nextPoints.map((_, index) => Math.round(nextSmoothing[index] ?? 0)))
+      setThickness(Math.round(nextThickness))
+      setPointThicknesses(
+        nextPoints.map((_, index) => Math.round(nextPointThicknesses?.[index] ?? nextThickness)),
+      )
       setSelected(0)
       setPresetError(null)
     } catch (error) {
@@ -228,29 +300,67 @@ export function RailGeneratorPrototypeScreen() {
     }
   }
 
+  const canAddPoint = points.some(
+    (point, index) => index > 0 && point[0] - points[index - 1]![0] >= 8,
+  )
+
   return (
     <View style={styles.screen}>
       <ScrollView contentContainerStyle={styles.content}>
         <Text style={styles.kicker}>PROTOTYPE · RAIL PRESET GENERATOR</Text>
+        <View style={styles.pointPicker}>
+          {points.map(([x], index) => (
+            <View
+              key={`${x}-${index}`}
+              style={[styles.pointChip, selected === index && styles.pointChipSelected]}
+            >
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel={`Select point ${index + 1}`}
+                onPress={() => setSelected(index)}
+                style={styles.pointSelect}
+              >
+                <Text style={styles.pointChipText}>P{index + 1}</Text>
+              </Pressable>
+              {points.length > 2 ? (
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityLabel={`Remove point ${index + 1}`}
+                  hitSlop={8}
+                  onPress={() => removePoint(index)}
+                  style={styles.pointRemove}
+                >
+                  <XIcon size={11} color={theme.neutral.textMuted} weight="bold" />
+                </Pressable>
+              ) : null}
+            </View>
+          ))}
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Add point"
+            disabled={!canAddPoint}
+            onPress={addPoint}
+            style={[styles.addPoint, !canAddPoint && styles.addPointDisabled]}
+          >
+            <PlusIcon
+              size={18}
+              color={canAddPoint ? theme.palette.cyan.color : theme.neutral.textMuted}
+              weight="bold"
+            />
+          </Pressable>
+        </View>
         <RailCanvas
           points={points}
           smoothing={smoothing}
           selected={selected}
           onSelect={setSelected}
+          thickness={thickness}
+          pointThicknesses={previewThicknesses}
+          previewPoints={previewPoints}
+          pitch={previewPitch}
+          roll={previewRoll}
           large
         />
-
-        <View style={styles.actions}>
-          <Button label="Add point" icon={PlusIcon} onPress={addPoint} style={styles.action} />
-          <Button
-            label="Remove"
-            icon={MinusIcon}
-            variant="secondary"
-            disabled={points.length <= 2}
-            onPress={removePoint}
-            style={styles.action}
-          />
-        </View>
 
         <View style={styles.controls}>
           <Text style={styles.controlLabel}>
@@ -278,17 +388,29 @@ export function RailGeneratorPrototypeScreen() {
             max={100}
             onChange={(value) => setCornerSmoothing(selected, value)}
           />
-          <View style={styles.pointPicker}>
-            {points.map(([x], index) => (
-              <Pressable
-                key={`${x}-${index}`}
-                onPress={() => setSelected(index)}
-                style={[styles.pointChip, selected === index && styles.pointChipSelected]}
-              >
-                <Text style={styles.pointChipText}>P{index + 1}</Text>
-              </Pressable>
-            ))}
-          </View>
+          <Text style={styles.sliderLabel}>All points thickness · {thickness}</Text>
+          <ValueSlider
+            value={thickness}
+            min={12}
+            max={36}
+            onChange={(value) => {
+              setThickness(value)
+              setPointThicknesses((current) => current.map(() => value))
+            }}
+          />
+          <Text style={styles.sliderLabel}>
+            Point P{selected + 1} thickness · {pointThicknesses[selected]}
+          </Text>
+          <ValueSlider
+            value={pointThicknesses[selected] ?? thickness}
+            min={12}
+            max={36}
+            onChange={(value) =>
+              setPointThicknesses((current) =>
+                current.map((amount, index) => (index === selected ? value : amount)),
+              )
+            }
+          />
         </View>
 
         <View style={styles.output}>
@@ -352,8 +474,7 @@ const styles = StyleSheet.create({
   },
   canvas: { height: 132, alignItems: 'center', justifyContent: 'center', overflow: 'hidden' },
   canvasLarge: { height: 190 },
-  actions: { flexDirection: 'row', gap: 10 },
-  action: { flex: 1 },
+  boardPreview: { position: 'absolute', top: -66, alignSelf: 'center' },
   controls: { gap: 14 },
   controlLabel: { color: theme.neutral.textSecondary, fontSize: 12, fontWeight: '700' },
   sliderLabel: {
@@ -389,18 +510,41 @@ const styles = StyleSheet.create({
     borderColor: theme.neutral.textPrimary,
     backgroundColor: theme.palette.sky.color,
   },
-  pointPicker: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+  pointPicker: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, alignItems: 'center' },
   pointChip: {
-    minWidth: 42,
-    height: 32,
-    borderRadius: 16,
+    height: 44,
+    borderRadius: 22,
     borderWidth: 1,
     borderColor: theme.neutral.border,
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  pointChipSelected: { borderColor: theme.palette.yellow.color },
+  pointSelect: {
+    minWidth: 50,
+    height: 42,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingLeft: 6,
+  },
+  pointChipText: { color: theme.neutral.textSecondary, fontSize: 15, fontWeight: '800' },
+  pointRemove: {
+    width: 28,
+    height: 42,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingRight: 4,
+  },
+  addPoint: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    borderWidth: 1,
+    borderColor: theme.palette.cyan.color,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  pointChipSelected: { borderColor: theme.palette.yellow.color },
-  pointChipText: { color: theme.neutral.textSecondary, fontSize: 11, fontWeight: '700' },
+  addPointDisabled: { borderColor: theme.neutral.border },
   output: {
     gap: 8,
     padding: 14,

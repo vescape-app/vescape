@@ -43,6 +43,92 @@ describe('IMU rail silhouettes', () => {
     expect(railSideFace('removed-preset')).toEqual(railSideFace('xr'))
   })
 
+  test('custom generator points preserve shape while thickness changes both side edges and end bevels', () => {
+    const points = [
+      [14, 32],
+      [104, 38],
+      [194, 29],
+    ] as const
+    const thin = railSideFace(undefined, points, 12)
+    const defaultFace = railSideFace(undefined, points)
+    const thick = railSideFace(undefined, points, 36)
+    for (let index = 0; index < points.length; index++) {
+      expect(thin[index]![0]).toBe(defaultFace[index]![0])
+      expect(thick[index]![0]).toBe(defaultFace[index]![0])
+      expect(thin[index]![1] - thin[thin.length - 1 - index]![1]).toBe(12)
+      expect(thick[index]![1] - thick[thick.length - 1 - index]![1]).toBe(36)
+      expect(railDeckProfile(undefined, points, 12)[index]![1]).toBe(
+        railDeckProfile(undefined, points, 36)[index]![1],
+      )
+    }
+    expect(boardAttitudePose(25, 12).rightCap[3]).not.toBe(boardAttitudePose(25, 36).rightCap[3])
+    for (const thickness of [12, 24, 36]) {
+      const face = railSideFace(undefined, points, thickness)
+      const profile = railDeckProfile(undefined, points, thickness)
+      for (const roll of [-45, 0, 45]) {
+        const pose = boardAttitudePose(roll, thickness)
+        const nearY = -64
+        for (let index = 1; index < profile.length; index++) {
+          const [x0, h0] = profile[index - 1]!
+          const [x1, h1] = profile[index]!
+          const top = curvedDeckMatrix(roll, x0, x1, h0, h1, -thickness / 2)
+          const outer = face[index]!
+          const deckPoint = project(top, x1, nearY)
+          const sidePoint = project(pose.nearRail, outer[0], outer[1])
+          expect(deckPoint[1]).toBeCloseTo(sidePoint[1], 7)
+        }
+      }
+    }
+  })
+
+  test('different point thicknesses join the deck and side face through the profile', () => {
+    const points = [
+      [14, 32],
+      [104, 38],
+      [194, 29],
+    ] as const
+    const thicknesses = [12, 36, 24]
+    const face = railSideFace(undefined, points, 24, thicknesses)
+    const profile = railDeckProfile(undefined, points, 24, thicknesses)
+    for (const roll of [-45, 0, 45]) {
+      const pose = boardAttitudePose(roll, 24, thicknesses[0], thicknesses[2])
+      for (let index = 0; index < points.length; index++) {
+        const outer = face[index]!
+        const inner = face[face.length - 1 - index]!
+        expect(outer[1] - inner[1]).toBe(thicknesses[index]!)
+        if (index === 0) continue
+        const [x0, h0] = profile[index - 1]!
+        const [x1, h1] = profile[index]!
+        const top = curvedDeckMatrix(
+          roll,
+          x0,
+          x1,
+          h0 - thicknesses[index - 1]! / 2,
+          h1 - thicknesses[index]! / 2,
+          0,
+        )
+        const bottomX0 = index === 1 ? -197 : x0
+        const bottomX1 = index === points.length - 1 ? 197 : x1
+        const bottom = curvedDeckMatrix(
+          roll,
+          bottomX0,
+          bottomX1,
+          h0 + thicknesses[index - 1]! / 2,
+          h1 + thicknesses[index]! / 2,
+          0,
+        )
+        expect(project(top, x1, -64)[1]).toBeCloseTo(
+          project(pose.nearRail, outer[0], outer[1])[1],
+          7,
+        )
+        expect(project(bottom, bottomX1, -64)[1]).toBeCloseTo(
+          project(pose.nearRail, inner[0], inner[1])[1],
+          7,
+        )
+      }
+    }
+  })
+
   test('bent deck corners meet both rail edges and diagonal end cuts through a full roll', () => {
     for (const rail of RAILS) {
       const profile = railDeckProfile(rail.id)

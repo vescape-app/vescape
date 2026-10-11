@@ -3,7 +3,7 @@ export const ATTITUDE_EXTENT = 480
 export const TIRE_RADIUS = 78
 export const TIRE_HALF_WIDTH = 43
 export const RAIL_HALF_WIDTH = 64
-export const RAIL_HALF_HEIGHT = 12
+export const RAIL_THICKNESS = 24
 
 export type AttitudeMatrix = [
   number,
@@ -42,7 +42,12 @@ function plane(yScale: number, yOffset = 0): AttitudeMatrix {
  * Roll changes plane transforms and which faces are in front. Pitch is a separate 2D rotation,
  * preserving the strip's existing clockwise-positive convention. No perspective or camera yaw.
  */
-export function boardAttitudePose(rollDegrees: number | null) {
+export function boardAttitudePose(
+  rollDegrees: number | null,
+  railThickness = RAIL_THICKNESS,
+  leftThickness = railThickness,
+  rightThickness = railThickness,
+) {
   'worklet'
   const roll = rollDegrees != null && Number.isFinite(rollDegrees) ? rollDegrees : 0
   const angle = (roll % 360) * (Math.PI / 180)
@@ -60,11 +65,31 @@ export function boardAttitudePose(rollDegrees: number | null) {
     farTire: plane(Math.abs(cos), -nearTireY),
     farTireArc: plane(Math.abs(cos) * (nearTireY < 0 ? -1 : 1), -nearTireY),
     tread: plane(Math.abs(sin)),
-    top: plane(-sin, -RAIL_HALF_HEIGHT * cos),
-    bottom: plane(-sin, RAIL_HALF_HEIGHT * cos),
+    top: plane(-sin, -(railThickness / 2) * cos),
+    bottom: plane(-sin, (railThickness / 2) * cos),
     // Cap coordinates are (end bevel distance, board width). The ends are diagonal cuts.
-    rightCap: [1, 0, 197, (-24 / 21) * cos, -sin, 12 * cos, 0, 0, 1] as AttitudeMatrix,
-    leftCap: [-1, 0, -197, (-24 / 21) * cos, -sin, 12 * cos, 0, 0, 1] as AttitudeMatrix,
+    rightCap: [
+      1,
+      0,
+      197,
+      (-rightThickness / 21) * cos,
+      -sin,
+      (rightThickness / 2) * cos,
+      0,
+      0,
+      1,
+    ] as AttitudeMatrix,
+    leftCap: [
+      -1,
+      0,
+      -197,
+      (-leftThickness / 21) * cos,
+      -sin,
+      (leftThickness / 2) * cos,
+      0,
+      0,
+      1,
+    ] as AttitudeMatrix,
     // Skia discards singular matrices. A static side-on contour takes over within
     // a subpixel distance of 90 degrees, so the wheel and rails never disappear.
     edgeOnOpacity: Math.max(0, 1 - Math.abs(cos) / 0.03),

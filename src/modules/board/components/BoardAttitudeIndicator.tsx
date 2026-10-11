@@ -9,10 +9,12 @@ import {
   ATTITUDE_EXTENT,
   boardAttitudePose,
   curvedDeckMatrix,
+  RAIL_THICKNESS,
   TIRE_HALF_WIDTH,
   TIRE_RADIUS,
 } from '@/modules/board/lib/boardAttitudeGeometry'
 import { railDeckProfile, railSideFace } from '@/modules/board/lib/railPresets'
+import type { RailPoint } from '@/modules/board/lib/railProfile'
 
 function polygon(points: readonly (readonly number[])[]): SkPath {
   const path = Skia.Path.Make()
@@ -22,14 +24,23 @@ function polygon(points: readonly (readonly number[])[]): SkPath {
   return path
 }
 
-function deckSegments(railId?: string, inset = 0) {
-  const outerProfile = railDeckProfile(railId)
+function deckSegments(
+  railId?: string,
+  railPoints?: readonly RailPoint[],
+  thickness = RAIL_THICKNESS,
+  pointThicknesses?: readonly number[],
+  inset = 0,
+) {
+  const outerProfile = railDeckProfile(railId, railPoints, thickness, pointThicknesses)
   const profile = inset
     ? outerProfile.map(([x, height], index) => [
         index === 0 ? -218 + inset : index === outerProfile.length - 1 ? 218 - inset : x,
-        height,
+        height + (pointThicknesses?.[index] ?? thickness) / 2,
       ])
-    : outerProfile
+    : outerProfile.map(([x, height], index) => [
+        x,
+        height - (pointThicknesses?.[index] ?? thickness) / 2,
+      ])
   const heightAt = (x: number) => {
     for (let i = 1; i < profile.length; i++) {
       const [x0, h0] = profile[i - 1]!
@@ -64,7 +75,12 @@ function deckSegments(railId?: string, inset = 0) {
   return segments
 }
 
-function buildPaths(railId?: string) {
+function buildPaths(
+  railId?: string,
+  railPoints?: readonly RailPoint[],
+  thickness = RAIL_THICKNESS,
+  pointThicknesses?: readonly number[],
+) {
   const tire = Skia.Path.Make()
   tire.addCircle(0, 0, TIRE_RADIUS)
   const farArc = Skia.Path.Make()
@@ -86,9 +102,9 @@ function buildPaths(railId?: string) {
   }
   return {
     edgeOn,
-    rail: polygon(railSideFace(railId)),
-    top: deckSegments(railId),
-    bottom: deckSegments(railId, 21),
+    rail: polygon(railSideFace(railId, railPoints, thickness, pointThicknesses)),
+    top: deckSegments(railId, railPoints, thickness, pointThicknesses),
+    bottom: deckSegments(railId, railPoints, thickness, pointThicknesses, 21),
     cap: polygon([
       [0, -64],
       [21, -64],
@@ -110,20 +126,18 @@ function buildPaths(railId?: string) {
 function CurvedDeckFace({
   segment,
   roll,
-  baseHeight,
   color,
   fill,
   stroke,
 }: {
   segment: ReturnType<typeof deckSegments>[number]
   roll: SharedValue<number | null>
-  baseHeight: number
   color: string
   fill: string
   stroke: number
 }) {
   const matrix = useDerivedValue(() =>
-    curvedDeckMatrix(roll.value, segment.x0, segment.x1, segment.h0, segment.h1, baseHeight),
+    curvedDeckMatrix(roll.value, segment.x0, segment.x1, segment.h0, segment.h1, 0),
   )
   return (
     <Group matrix={matrix}>
@@ -158,6 +172,9 @@ interface BoardAttitudeIndicatorProps {
   connected?: boolean
   muted?: boolean
   railId?: string
+  railPoints?: readonly RailPoint[]
+  railThickness?: number
+  railPointThicknesses?: readonly number[]
   railColorId?: string
   size?: number
   testID?: string
@@ -170,6 +187,9 @@ export function BoardAttitudeIndicator({
   connected = true,
   muted = false,
   railId,
+  railPoints,
+  railThickness = RAIL_THICKNESS,
+  railPointThicknesses,
   railColorId,
   size = 48,
   testID,
@@ -181,10 +201,17 @@ export function BoardAttitudeIndicator({
   )
   const fill = useResolvedColor(theme.neutral.surfaceDeep)
   const topFill = useResolvedColor(theme.neutral.surface)
-  const paths = useMemo(() => buildPaths(railId), [railId])
+  const paths = useMemo(
+    () => buildPaths(railId, railPoints, railThickness, railPointThicknesses),
+    [railId, railPoints, railThickness, railPointThicknesses],
+  )
   const scale = size / ATTITUDE_EXTENT
   const stroke = 1 / scale
-  const pose = useDerivedValue(() => boardAttitudePose(connected ? roll.value : 0))
+  const leftThickness = railPointThicknesses?.[0] ?? railThickness
+  const rightThickness = railPointThicknesses?.[railPointThicknesses.length - 1] ?? railThickness
+  const pose = useDerivedValue(() =>
+    boardAttitudePose(connected ? roll.value : 0, railThickness, leftThickness, rightThickness),
+  )
   const rotation = useDerivedValue(() => {
     const value = connected ? pitch.value : 0
     return [{ rotate: value != null && Number.isFinite(value) ? (value * Math.PI) / 180 : 0 }]
@@ -195,7 +222,10 @@ export function BoardAttitudeIndicator({
   const farTire = useDerivedValue(() => pose.value.farTire)
   const farTireArc = useDerivedValue(() => pose.value.farTireArc)
   const tread = useDerivedValue(() => pose.value.tread)
-  const profile = useMemo(() => railDeckProfile(railId), [railId])
+  const profile = useMemo(
+    () => railDeckProfile(railId, railPoints, railThickness, railPointThicknesses),
+    [railId, railPoints, railThickness, railPointThicknesses],
+  )
   const leftHeight = profile[0]![1]
   const rightHeight = profile[profile.length - 1]![1]
   const leftCap = useDerivedValue(() => {
@@ -244,7 +274,6 @@ export function BoardAttitudeIndicator({
                 key={index}
                 segment={segment}
                 roll={roll}
-                baseHeight={-12}
                 color={color}
                 fill={topFill}
                 stroke={stroke}
@@ -257,7 +286,6 @@ export function BoardAttitudeIndicator({
                 key={index}
                 segment={segment}
                 roll={roll}
-                baseHeight={12}
                 color={color}
                 fill={fill}
                 stroke={stroke}
