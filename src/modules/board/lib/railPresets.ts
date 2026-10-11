@@ -79,15 +79,20 @@ export function railSideFace(
   const points = customPoints ?? railPreset(id).points
   const firstX = points[0]![0]
   const lastX = points[points.length - 1]![0]
+  // Keep editor X in a fixed model scale so moving either end changes the rail length.
+  const modelX = customPoints
+    ? (x: number) => ((x - 104) * 436) / 180
+    : (x: number) => -218 + ((x - firstX) * 436) / (lastX - firstX)
   const outer = points.map(
     ([x, y], index): RailPoint => [
-      -218 + ((x - firstX) * 436) / (lastX - firstX),
+      modelX(x),
       (pointThicknesses?.[index] ?? thickness) / 2 - (y - 32) * 3.5,
     ],
   )
+  const bevel = Math.min(21, (outer[outer.length - 1]![0] - outer[0]![0]) / 2)
   const inner = outer.map(
     ([x, y], index): RailPoint => [
-      index === 0 ? -197 : index === outer.length - 1 ? 197 : x,
+      index === 0 ? x + bevel : index === outer.length - 1 ? x - bevel : x,
       y - (pointThicknesses?.[index] ?? thickness),
     ],
   )

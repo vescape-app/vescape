@@ -224,18 +224,10 @@ export function RailGeneratorPrototypeScreen() {
   const setCornerSmoothing = (index: number, value: number) =>
     setSmoothing((current) => current.map((amount, i) => (i === index ? value : amount)))
   const addPoint = () => {
-    let gapIndex = 0
-    let largestGap = 0
-    for (let index = 0; index < points.length - 1; index++) {
-      const gap = points[index + 1]![0] - points[index]![0]
-      if (gap > largestGap) {
-        largestGap = gap
-        gapIndex = index
-      }
-    }
-    if (largestGap < 8) return
+    const gapIndex = selected === points.length - 1 ? selected - 1 : selected
     const left = points[gapIndex]!
     const right = points[gapIndex + 1]!
+    if (right[0] - left[0] < 8) return
     const point: Point = [
       Math.round((left[0] + right[0]) / 2),
       Math.round((left[1] + right[1]) / 2),
@@ -320,9 +312,8 @@ export function RailGeneratorPrototypeScreen() {
     }
   }
 
-  const canAddPoint = points.some(
-    (point, index) => index > 0 && point[0] - points[index - 1]![0] >= 8,
-  )
+  const insertionGap = selected === points.length - 1 ? selected - 1 : selected
+  const canAddPoint = points[insertionGap + 1]![0] - points[insertionGap]![0] >= 8
 
   return (
     <View style={styles.screen}>

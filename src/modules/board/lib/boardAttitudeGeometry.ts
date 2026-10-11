@@ -73,6 +73,9 @@ export function boardAttitudePose(
   leftThickness = railThickness,
   rightThickness = railThickness,
   yawDegrees = 0,
+  leftCapX = -197,
+  rightCapX = 197,
+  capLength = 21,
 ) {
   'worklet'
   const roll = rollDegrees != null && Number.isFinite(rollDegrees) ? rollDegrees : 0
@@ -110,8 +113,8 @@ export function boardAttitudePose(
     rightCap: [
       yawCos,
       yawSin,
-      197 * yawCos,
-      (-rightThickness / 21) * cos,
+      rightCapX * yawCos,
+      (-rightThickness / capLength) * cos,
       -sin,
       (rightThickness / 2) * cos,
       0,
@@ -121,8 +124,8 @@ export function boardAttitudePose(
     leftCap: [
       -yawCos,
       yawSin,
-      -197 * yawCos,
-      (-leftThickness / 21) * cos,
+      leftCapX * yawCos,
+      (-leftThickness / capLength) * cos,
       -sin,
       (leftThickness / 2) * cos,
       0,

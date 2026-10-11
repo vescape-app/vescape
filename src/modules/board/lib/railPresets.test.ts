@@ -81,6 +81,41 @@ describe('IMU rail silhouettes', () => {
     }
   })
 
+  test('moving custom end points changes preview length and keeps its bevels attached', () => {
+    const short = [
+      [30, 32],
+      [104, 36],
+      [178, 32],
+    ] as const
+    const long = [
+      [14, 32],
+      [104, 36],
+      [194, 32],
+    ] as const
+    const shortFace = railSideFace(undefined, short)
+    const longFace = railSideFace(undefined, long)
+    expect(shortFace[0]![0]).toBeGreaterThan(longFace[0]![0])
+    expect(shortFace[2]![0]).toBeLessThan(longFace[2]![0])
+    expect(shortFace[1]![0]).toBe(longFace[1]![0])
+    const leftCapX = shortFace[shortFace.length - 1]![0]
+    const rightCapX = shortFace[shortFace.length / 2]![0]
+    const bevel = leftCapX - shortFace[0]![0]
+    for (const roll of [-45, 0, 45]) {
+      const pose = boardAttitudePose(roll, 24, 24, 24, 0, leftCapX, rightCapX, bevel)
+      for (const [cap, outer] of [
+        [pose.leftCap, shortFace[0]],
+        [pose.rightCap, shortFace[2]],
+      ] as const) {
+        for (const width of [-64, 64]) {
+          const capPoint = project(cap, bevel, width)
+          const railPoint = project(pose.nearRail, outer![0], outer![1])
+          expect(capPoint[0]).toBeCloseTo(railPoint[0])
+          if (width === -64) expect(capPoint[1]).toBeCloseTo(railPoint[1])
+        }
+      }
+    }
+  })
+
   test('different point thicknesses join the deck and side face through the profile', () => {
     const points = [
       [14, 32],

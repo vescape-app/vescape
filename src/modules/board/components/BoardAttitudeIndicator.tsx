@@ -33,9 +33,12 @@ function deckSegments(
   inset = 0,
 ) {
   const outerProfile = railDeckProfile(railId, railPoints, thickness, pointThicknesses)
+  const leftX = outerProfile[0]![0]
+  const rightX = outerProfile[outerProfile.length - 1]![0]
+  const endInset = Math.min(inset, (rightX - leftX) / 2)
   const profile = inset
     ? outerProfile.map(([x, height], index) => [
-        index === 0 ? -218 + inset : index === outerProfile.length - 1 ? 218 - inset : x,
+        index === 0 ? x + endInset : index === outerProfile.length - 1 ? x - endInset : x,
         height + (pointThicknesses?.[index] ?? thickness) / 2,
       ])
     : outerProfile.map(([x, height], index) => [
@@ -52,9 +55,10 @@ function deckSegments(
   }
   const segments = [] as { path: SkPath; x0: number; x1: number; h0: number; h1: number }[]
   for (const [start, end] of [
-    [-218 + inset, -89],
-    [89, 218 - inset],
+    [leftX + endInset, Math.min(-89, rightX - endInset)],
+    [Math.max(89, leftX + endInset), rightX - endInset],
   ]) {
+    if (start >= end) continue
     const cuts = [start, ...profile.map(([x]) => x).filter((x) => x > start && x < end), end]
     for (let i = 1; i < cuts.length; i++) {
       const x0 = cuts[i - 1]!
@@ -82,6 +86,11 @@ function buildPaths(
   thickness = RAIL_THICKNESS,
   pointThicknesses?: readonly number[],
 ) {
+  const railFace = railSideFace(railId, railPoints, thickness, pointThicknesses)
+  const half = railFace.length / 2
+  const leftX = railFace[0]![0]
+  const rightX = railFace[half - 1]![0]
+  const bevel = railFace[railFace.length - 1]![0] - leftX
   const tire = Skia.Path.Make()
   tire.addCircle(0, 0, TIRE_RADIUS)
   const farArc = Skia.Path.Make()
@@ -92,24 +101,24 @@ function buildPaths(
     treadSides.lineTo(x, TIRE_HALF_WIDTH)
   }
   const edgeOn = Skia.Path.Make()
-  for (const [halfLength, halfWidth] of [
-    [218, 64],
-    [78, 43],
+  for (const [start, end, halfWidth] of [
+    [leftX, rightX, 64],
+    [-78, 78, 43],
   ]) {
     for (const y of [-halfWidth, halfWidth]) {
-      edgeOn.moveTo(-halfLength, y)
-      edgeOn.lineTo(halfLength, y)
+      edgeOn.moveTo(start, y)
+      edgeOn.lineTo(end, y)
     }
   }
   return {
     edgeOn,
-    rail: polygon(railSideFace(railId, railPoints, thickness, pointThicknesses)),
+    rail: polygon(railFace),
     top: deckSegments(railId, railPoints, thickness, pointThicknesses),
     bottom: deckSegments(railId, railPoints, thickness, pointThicknesses, 21),
     cap: polygon([
       [0, -64],
-      [21, -64],
-      [21, 64],
+      [bevel, -64],
+      [bevel, 64],
       [0, 64],
     ]),
     tire,
@@ -228,6 +237,13 @@ export function BoardAttitudeIndicator({
   const stroke = 1 / scale
   const leftThickness = railPointThicknesses?.[0] ?? railThickness
   const rightThickness = railPointThicknesses?.[railPointThicknesses.length - 1] ?? railThickness
+  const railFace = useMemo(
+    () => railSideFace(railId, railPoints, railThickness, railPointThicknesses),
+    [railId, railPoints, railThickness, railPointThicknesses],
+  )
+  const leftCapX = railFace[railFace.length - 1]![0]
+  const rightCapX = railFace[railFace.length / 2]![0]
+  const capLength = leftCapX - railFace[0]![0]
   const pose = useDerivedValue(() =>
     boardAttitudePose(
       connected ? roll.value : 0,
@@ -235,6 +251,9 @@ export function BoardAttitudeIndicator({
       leftThickness,
       rightThickness,
       connected ? (yaw?.value ?? 0) : 0,
+      leftCapX,
+      rightCapX,
+      capLength,
     ),
   )
   const rotation = useDerivedValue(() => {
