@@ -10,6 +10,7 @@ import Animated, {
 import { theme } from '@/constants/theme'
 
 const THUMB_SIZE = 16
+const CENTER_SNAP_DEGREES = 10
 
 export function PreviewAngleSlider({
   value,
@@ -24,7 +25,8 @@ export function PreviewAngleSlider({
       'worklet'
       const travel = Math.max(length.value - THUMB_SIZE, 1)
       const thumbStart = Math.max(0, Math.min(travel, position - THUMB_SIZE / 2))
-      value.value = Math.round(-90 + (thumbStart / travel) * 180)
+      const angle = Math.round(-90 + (thumbStart / travel) * 180)
+      value.value = Math.abs(angle) <= CENTER_SNAP_DEGREES ? 0 : angle
     }
     return Gesture.Pan()
       .minDistance(0)
