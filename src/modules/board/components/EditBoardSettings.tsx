@@ -3,7 +3,6 @@ import { Pressable, StyleSheet, View } from 'react-native'
 import { Text } from '@/components/base/Text'
 import {
   BatteryChargingIcon,
-  LightningIcon,
   LinkIcon,
   TrashIcon,
   EngineIcon,
@@ -15,6 +14,7 @@ import { BoardNameField } from '@/modules/board/components/BoardNameField'
 import { BoardSettingRow } from '@/modules/board/components/BoardSettingRow'
 import { Button } from '@/components/base/Button'
 import { IconHero } from '@/components/settings/IconHero'
+import { BoardModelPreview } from '@/modules/board/components/BoardModelPreview'
 import { SettingsCard } from '@/components/settings/SettingsCard'
 import { SettingsRow } from '@/components/settings/SettingsRow'
 import { interaction, theme } from '@/constants/theme'
@@ -23,6 +23,8 @@ import type { BatterySummary } from '@/modules/board/lib/boardSetup'
 
 interface EditBoardSettingsProps {
   name: string
+  railId?: string
+  railColorId?: string
   nameSaving?: boolean
   onSaveName: (name: string) => Promise<void> | void
   link: BoardLink | null
@@ -50,6 +52,8 @@ interface EditBoardSettingsProps {
 
 export function EditBoardSettings({
   name,
+  railId,
+  railColorId,
   nameSaving = false,
   onSaveName,
   link,
@@ -72,10 +76,11 @@ export function EditBoardSettings({
   return (
     <>
       <IconHero
-        icon={LightningIcon}
-        iconSize={48}
-        iconColor={theme.palette.sky.color}
-        iconWeight="duotone"
+        media={
+          <View style={styles.modelPreview}>
+            <BoardModelPreview railId={railId} railColorId={railColorId} size={260} />
+          </View>
+        }
       >
         <BoardNameField name={name} saving={nameSaving} onSave={onSaveName} />
       </IconHero>
@@ -184,6 +189,13 @@ function formatWarningCounts({ active, dismissed }: { active: number; dismissed:
 }
 
 const styles = StyleSheet.create({
+  modelPreview: {
+    width: 260,
+    height: 150,
+    overflow: 'hidden',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   buttonGroup: {
     flexDirection: 'row',
     alignItems: 'center',

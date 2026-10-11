@@ -20,7 +20,7 @@ import { useResolvedSecondaryWidgetSurface } from '@/components/widgets/widgetSu
 import { fmtTimeAgo } from '@/helpers/format'
 import { interaction, theme, type ThemeColor } from '@/constants/theme'
 import { useResolvedColor, useResolvedNeutralColors } from '@/hooks/useTheme'
-import { BoardStyleIcon } from '@/modules/board/components/add-board-wizard/BoardPersonalizer'
+import { BoardModelPreview } from '@/modules/board/components/BoardModelPreview'
 
 /** A way into the active board's trouble, offered only while that surface is enabled. */
 export interface BoardSelectorLink {
@@ -169,9 +169,10 @@ function BoardIcon({ board, active }: { board: Board; active: boolean }) {
         active && styles.boardIconActive,
       ]}
     >
-      <BoardStyleIcon
+      <BoardModelPreview
         railId={board.personalization?.railId}
         railColorId={board.personalization?.railColorId}
+        size={64}
       />
     </View>
   )
@@ -373,12 +374,13 @@ const styles = StyleSheet.create({
     gap: 3,
   },
   boardIcon: {
-    width: 58,
-    height: 32,
+    width: 68,
+    height: 44,
     borderRadius: 8,
     borderWidth: 1,
     alignItems: 'center',
     justifyContent: 'center',
+    overflow: 'hidden',
   },
   // Outline only, like every other tile in the list: the active board is already told apart by the
   // card it sits in, so a filled tile on top of that was one signal too many.

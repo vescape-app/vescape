@@ -1,4 +1,4 @@
-import { buildRailPath, type RailPoint } from '@/modules/board/lib/railProfile'
+import type { RailPoint } from '@/modules/board/lib/railProfile'
 import { RAIL_THICKNESS } from '@/modules/board/lib/boardAttitudeGeometry'
 
 /** Side profiles authored in the rail generator's 208 × 70 coordinate space. */
@@ -62,7 +62,7 @@ export type RailId = (typeof PRESETS)[number]['id']
 /** The generator profiles face left. Mirror them around its 208 px canvas for right-facing boards. */
 export const RAILS = PRESETS.map((preset) => {
   const points = [...preset.points].reverse().map(([x, y]): RailPoint => [208 - x, y])
-  return { ...preset, points, path: buildRailPath(points, []) }
+  return { ...preset, points }
 })
 
 export function railPreset(id?: string) {

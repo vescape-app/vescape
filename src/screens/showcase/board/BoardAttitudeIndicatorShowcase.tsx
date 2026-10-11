@@ -11,6 +11,8 @@ import {
 import { ShowcaseCard } from '@/components/dev/ShowcaseCard'
 import { ChipRow, ToggleRow } from '@/components/dev/ShowcaseControls'
 import { BoardAttitudeIndicator } from '@/modules/board/components/BoardAttitudeIndicator'
+import { BoardModelPreview } from '@/modules/board/components/BoardModelPreview'
+import { Text } from '@/components/base/Text'
 import { RAILS } from '@/modules/board/lib/railPresets'
 
 const POSES: Record<string, [number, number]> = {
@@ -104,6 +106,11 @@ export function BoardAttitudeIndicatorShowcase() {
             testID={`attitude-preview-${size}`}
           />
         ))}
+      </View>
+      <Text>Saved board previews · list / edit</Text>
+      <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-around' }}>
+        <BoardModelPreview railId={railId} railColorId={railColorId} size={64} />
+        <BoardModelPreview railId={railId} railColorId={railColorId} size={220} />
       </View>
     </ShowcaseCard>
   )

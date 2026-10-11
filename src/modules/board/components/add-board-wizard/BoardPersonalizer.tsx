@@ -15,7 +15,6 @@ import Animated, {
   withSpring,
   withTiming,
 } from 'react-native-reanimated'
-import Svg, { Circle, Path } from 'react-native-svg'
 import { scheduleOnRN } from 'react-native-worklets'
 
 import { personalizationColorOptions, theme } from '@/constants/theme'
@@ -124,27 +123,6 @@ function RailOutline({
         size={112}
       />
     </Animated.View>
-  )
-}
-
-export function BoardStyleIcon({ railId, railColorId }: { railId?: string; railColorId?: string }) {
-  const rail = RAILS.find((option) => option.id === railId) ?? RAILS[DEFAULT_INDEX]
-  const color =
-    RAIL_COLORS.find((option) => option.id === railColorId)?.value ?? RAIL_COLORS[0].value
-
-  return (
-    <Svg width={58} height={32} viewBox="0 0 208 70">
-      <Circle cx="104" cy="32" r="30" fill="none" stroke={color} strokeWidth="2" />
-      <Circle cx="104" cy="32" r="15" fill="none" stroke={color} strokeWidth="2" />
-      <Path
-        d={rail.path}
-        fill="none"
-        stroke={color}
-        strokeWidth="3"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-    </Svg>
   )
 }
 

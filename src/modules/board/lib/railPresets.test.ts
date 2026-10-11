@@ -12,7 +12,6 @@ describe('IMU rail silhouettes', () => {
     const tail = railPreset('tail')
     expect(tail.points[0]).toEqual([29, 27])
     expect(tail.points[tail.points.length - 1]).toEqual([179, 31])
-    expect(tail.path).toStartWith('M29 27')
     const face = railSideFace('tail')
     expect(face[0]![1]).toBeGreaterThan(face[tail.points.length - 1]![1])
   })

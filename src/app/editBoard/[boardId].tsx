@@ -110,6 +110,8 @@ export default function EditBoardScreen() {
         <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
           <EditBoardSettings
             name={form.name}
+            railId={editingBoard.personalization?.railId}
+            railColorId={editingBoard.personalization?.railColorId}
             nameSaving={form.saving === 'info'}
             onSaveName={form.saveName}
             link={editingBoard.link}
