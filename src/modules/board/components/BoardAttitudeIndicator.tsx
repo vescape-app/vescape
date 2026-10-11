@@ -9,6 +9,7 @@ import {
   ATTITUDE_EXTENT,
   boardAttitudePose,
   curvedDeckMatrix,
+  endOnTirePose,
   RAIL_THICKNESS,
   TIRE_HALF_WIDTH,
   TIRE_RADIUS,
@@ -112,6 +113,12 @@ function buildPaths(
       [0, 64],
     ]),
     tire,
+    endOnTire: polygon([
+      [-TIRE_HALF_WIDTH, -TIRE_RADIUS],
+      [TIRE_HALF_WIDTH, -TIRE_RADIUS],
+      [TIRE_HALF_WIDTH, TIRE_RADIUS],
+      [-TIRE_HALF_WIDTH, TIRE_RADIUS],
+    ]),
     farArc,
     treadSides,
     tread: polygon([
@@ -126,18 +133,28 @@ function buildPaths(
 function CurvedDeckFace({
   segment,
   roll,
+  yaw,
   color,
   fill,
   stroke,
 }: {
   segment: ReturnType<typeof deckSegments>[number]
   roll: SharedValue<number | null>
+  yaw?: SharedValue<number | null>
   color: string
   fill: string
   stroke: number
 }) {
   const matrix = useDerivedValue(() =>
-    curvedDeckMatrix(roll.value, segment.x0, segment.x1, segment.h0, segment.h1, 0),
+    curvedDeckMatrix(
+      roll.value,
+      segment.x0,
+      segment.x1,
+      segment.h0,
+      segment.h1,
+      0,
+      yaw?.value ?? 0,
+    ),
   )
   return (
     <Group matrix={matrix}>
@@ -169,6 +186,7 @@ function SolidFace({
 interface BoardAttitudeIndicatorProps {
   pitch: SharedValue<number | null>
   roll: SharedValue<number | null>
+  yaw?: SharedValue<number | null>
   connected?: boolean
   muted?: boolean
   railId?: string
@@ -184,6 +202,7 @@ interface BoardAttitudeIndicatorProps {
 export function BoardAttitudeIndicator({
   pitch,
   roll,
+  yaw,
   connected = true,
   muted = false,
   railId,
@@ -210,7 +229,13 @@ export function BoardAttitudeIndicator({
   const leftThickness = railPointThicknesses?.[0] ?? railThickness
   const rightThickness = railPointThicknesses?.[railPointThicknesses.length - 1] ?? railThickness
   const pose = useDerivedValue(() =>
-    boardAttitudePose(connected ? roll.value : 0, railThickness, leftThickness, rightThickness),
+    boardAttitudePose(
+      connected ? roll.value : 0,
+      railThickness,
+      leftThickness,
+      rightThickness,
+      connected ? (yaw?.value ?? 0) : 0,
+    ),
   )
   const rotation = useDerivedValue(() => {
     const value = connected ? pitch.value : 0
@@ -241,6 +266,15 @@ export function BoardAttitudeIndicator({
   const edgeOnOpacity = useDerivedValue(() => pose.value.edgeOnOpacity)
   const topVisible = useDerivedValue(() => pose.value.topVisible)
   const bottomVisible = useDerivedValue(() => pose.value.bottomVisible)
+  const endTire = useDerivedValue(() => endOnTirePose(roll.value, yaw?.value ?? 0))
+  const endTireMatrix = useDerivedValue(() => endTire.value.matrix)
+  const endTireOpacity = useDerivedValue(() => endTire.value.opacity)
+  const rightFrontOpacity = useDerivedValue(() =>
+    Math.max(0, Math.sin(((yaw?.value ?? 0) * Math.PI) / 180)),
+  )
+  const leftFrontOpacity = useDerivedValue(() =>
+    Math.max(0, -Math.sin(((yaw?.value ?? 0) * Math.PI) / 180)),
+  )
 
   return (
     <Canvas style={{ width: size, height: size }} testID={testID}>
@@ -274,6 +308,7 @@ export function BoardAttitudeIndicator({
                 key={index}
                 segment={segment}
                 roll={roll}
+                yaw={yaw}
                 color={color}
                 fill={topFill}
                 stroke={stroke}
@@ -286,6 +321,7 @@ export function BoardAttitudeIndicator({
                 key={index}
                 segment={segment}
                 roll={roll}
+                yaw={yaw}
                 color={color}
                 fill={fill}
                 stroke={stroke}
@@ -300,6 +336,15 @@ export function BoardAttitudeIndicator({
           </Group>
           <Group matrix={nearRail}>
             <SolidFace path={paths.rail} color={color} fill={fill} stroke={stroke} />
+          </Group>
+          <Group opacity={leftFrontOpacity} matrix={leftCap}>
+            <SolidFace path={paths.cap} color={color} fill={fill} stroke={stroke} />
+          </Group>
+          <Group opacity={rightFrontOpacity} matrix={rightCap}>
+            <SolidFace path={paths.cap} color={color} fill={fill} stroke={stroke} />
+          </Group>
+          <Group opacity={endTireOpacity} matrix={endTireMatrix}>
+            <SolidFace path={paths.endOnTire} color={color} fill={fill} stroke={stroke} />
           </Group>
           <Group opacity={edgeOnOpacity} matrix={tread}>
             <Path path={paths.edgeOn} color={color} style="stroke" strokeWidth={stroke} />

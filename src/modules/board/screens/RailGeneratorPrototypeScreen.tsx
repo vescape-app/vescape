@@ -20,6 +20,7 @@ import { Text } from '@/components/base/Text'
 import { Input } from '@/components/forms/Input'
 import { theme } from '@/constants/theme'
 import { BoardAttitudeIndicator } from '@/modules/board/components/BoardAttitudeIndicator'
+import { PreviewAngleSlider } from '@/modules/board/components/PreviewAngleSlider'
 import { RAIL_THICKNESS } from '@/modules/board/lib/boardAttitudeGeometry'
 import {
   buildRailPath,
@@ -32,7 +33,6 @@ const WIDTH = 208
 const HEIGHT = 70
 const CENTER_Y = 32
 const THUMB_SIZE = 18
-
 function ValueSlider({
   value,
   min,
@@ -100,6 +100,7 @@ function RailCanvas({
   previewPoints,
   pitch,
   roll,
+  yaw,
   large = false,
 }: {
   points: readonly Point[]
@@ -111,6 +112,7 @@ function RailCanvas({
   previewPoints: readonly Point[]
   pitch: ReturnType<typeof useSharedValue<number | null>>
   roll: ReturnType<typeof useSharedValue<number | null>>
+  yaw: ReturnType<typeof useSharedValue<number | null>>
   large?: boolean
 }) {
   const scale = large ? 1.55 : 1
@@ -120,6 +122,7 @@ function RailCanvas({
         <BoardAttitudeIndicator
           pitch={pitch}
           roll={roll}
+          yaw={yaw}
           railPoints={previewPoints}
           railThickness={thickness}
           railPointThicknesses={pointThicknesses}
@@ -137,14 +140,7 @@ function RailCanvas({
           strokeWidth="1"
           strokeDasharray="4 4"
         />
-        <Circle
-          cx="104"
-          cy={CENTER_Y}
-          r="27"
-          fill="none"
-          stroke={theme.neutral.border}
-          strokeWidth="1"
-        />
+        <Circle cx="104" cy={CENTER_Y} r="2" fill={theme.neutral.textMuted} />
         <Path
           d={buildRailPath(points, smoothing)}
           fill="none"
@@ -175,6 +171,14 @@ function RailCanvas({
           </G>
         ))}
       </Svg>
+      <View style={styles.previewTopControl}>
+        <Text style={styles.previewAxisLabel}>FRONT / BACK</Text>
+        <PreviewAngleSlider value={yaw} />
+      </View>
+      <View style={styles.previewRightControl}>
+        <Text style={styles.previewAxisLabel}>ROLL</Text>
+        <PreviewAngleSlider value={roll} vertical />
+      </View>
     </View>
   )
 }
@@ -195,6 +199,7 @@ export function RailGeneratorPrototypeScreen() {
   )
   const previewPitch = useSharedValue<number | null>(0)
   const previewRoll = useSharedValue<number | null>(25)
+  const previewYaw = useSharedValue<number | null>(0)
   const output = JSON.stringify({
     points,
     smooth: smoothing,
@@ -333,6 +338,7 @@ export function RailGeneratorPrototypeScreen() {
           previewPoints={previewPoints}
           pitch={previewPitch}
           roll={previewRoll}
+          yaw={previewYaw}
           large
         />
 
@@ -380,16 +386,6 @@ export function RailGeneratorPrototypeScreen() {
             max={100}
             onChange={(value) => setCornerSmoothing(selected, value)}
           />
-          <Text style={styles.sliderLabel}>All points thickness · {thickness}</Text>
-          <ValueSlider
-            value={thickness}
-            min={12}
-            max={36}
-            onChange={(value) => {
-              setThickness(value)
-              setPointThicknesses((current) => current.map(() => value))
-            }}
-          />
           <Text style={styles.sliderLabel}>
             Point P{selected + 1} thickness · {pointThicknesses[selected]}
           </Text>
@@ -402,6 +398,16 @@ export function RailGeneratorPrototypeScreen() {
                 current.map((amount, index) => (index === selected ? value : amount)),
               )
             }
+          />
+          <Text style={styles.sliderLabel}>All points thickness · {thickness}</Text>
+          <ValueSlider
+            value={thickness}
+            min={12}
+            max={36}
+            onChange={(value) => {
+              setThickness(value)
+              setPointThicknesses((current) => current.map(() => value))
+            }}
           />
         </View>
 
@@ -466,7 +472,22 @@ const styles = StyleSheet.create({
   },
   canvas: { height: 132, alignItems: 'center', justifyContent: 'center', overflow: 'hidden' },
   canvasLarge: { height: 190 },
-  boardPreview: { position: 'absolute', top: -66, alignSelf: 'center' },
+  boardPreview: { position: 'absolute', top: -72, alignSelf: 'center' },
+  previewTopControl: { position: 'absolute', top: 0, left: 35, right: 35, alignItems: 'center' },
+  previewRightControl: {
+    position: 'absolute',
+    top: 28,
+    bottom: 12,
+    right: 0,
+    width: 30,
+    alignItems: 'center',
+  },
+  previewAxisLabel: {
+    color: theme.neutral.textMuted,
+    fontSize: 9,
+    fontWeight: '700',
+    letterSpacing: 0.3,
+  },
   actions: { flexDirection: 'row', gap: 10 },
   action: { flex: 1 },
   controls: { gap: 14 },
