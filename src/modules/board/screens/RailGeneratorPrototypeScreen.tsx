@@ -1,10 +1,16 @@
 /* eslint-disable react-hooks/immutability */
 // PROTOTYPE: large-canvas rail point generator selected from the explored A/B/C variants.
 import { useEffect, useMemo, useState } from 'react'
-import { Pressable, ScrollView, StyleSheet, View, type LayoutChangeEvent } from 'react-native'
+import { ScrollView, StyleSheet, View, type LayoutChangeEvent } from 'react-native'
 import * as Clipboard from 'expo-clipboard'
-import Svg, { Circle, Line, Path } from 'react-native-svg'
-import { ArrowDownIcon, ClipboardTextIcon, CopyIcon, PlusIcon, XIcon } from 'phosphor-react-native'
+import Svg, { Circle, G, Line, Path } from 'react-native-svg'
+import {
+  ArrowDownIcon,
+  ClipboardTextIcon,
+  CopyIcon,
+  MinusIcon,
+  PlusIcon,
+} from 'phosphor-react-native'
 import { Gesture, GestureDetector } from 'react-native-gesture-handler'
 import Animated, { useAnimatedStyle, useSharedValue } from 'react-native-reanimated'
 import { scheduleOnRN } from 'react-native-worklets'
@@ -148,16 +154,25 @@ function RailCanvas({
           strokeLinejoin="round"
         />
         {points.map(([x, y], index) => (
-          <Circle
-            key={`${x}-${index}`}
-            cx={x}
-            cy={y}
-            r={index === selected ? 4.5 : 3}
-            fill={theme.neutral.bg}
-            stroke={index === selected ? theme.palette.yellow.color : theme.palette.cyan.color}
-            strokeWidth="2"
-            onPress={() => onSelect(index)}
-          />
+          <G key={`${x}-${index}`}>
+            <Circle
+              cx={x}
+              cy={y}
+              r={13}
+              fill={theme.neutral.bg}
+              fillOpacity={0.01}
+              onPress={() => onSelect(index)}
+            />
+            <Circle
+              cx={x}
+              cy={y}
+              r={index === selected ? 4.5 : 3}
+              fill={theme.neutral.bg}
+              stroke={index === selected ? theme.palette.yellow.color : theme.palette.cyan.color}
+              strokeWidth="2"
+              onPress={() => onSelect(index)}
+            />
+          </G>
         ))}
       </Svg>
     </View>
@@ -308,47 +323,6 @@ export function RailGeneratorPrototypeScreen() {
     <View style={styles.screen}>
       <ScrollView contentContainerStyle={styles.content}>
         <Text style={styles.kicker}>PROTOTYPE · RAIL PRESET GENERATOR</Text>
-        <View style={styles.pointPicker}>
-          {points.map(([x], index) => (
-            <View
-              key={`${x}-${index}`}
-              style={[styles.pointChip, selected === index && styles.pointChipSelected]}
-            >
-              <Pressable
-                accessibilityRole="button"
-                accessibilityLabel={`Select point ${index + 1}`}
-                onPress={() => setSelected(index)}
-                style={styles.pointSelect}
-              >
-                <Text style={styles.pointChipText}>P{index + 1}</Text>
-              </Pressable>
-              {points.length > 2 ? (
-                <Pressable
-                  accessibilityRole="button"
-                  accessibilityLabel={`Remove point ${index + 1}`}
-                  hitSlop={8}
-                  onPress={() => removePoint(index)}
-                  style={styles.pointRemove}
-                >
-                  <XIcon size={11} color={theme.neutral.textMuted} weight="bold" />
-                </Pressable>
-              ) : null}
-            </View>
-          ))}
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel="Add point"
-            disabled={!canAddPoint}
-            onPress={addPoint}
-            style={[styles.addPoint, !canAddPoint && styles.addPointDisabled]}
-          >
-            <PlusIcon
-              size={18}
-              color={canAddPoint ? theme.palette.cyan.color : theme.neutral.textMuted}
-              weight="bold"
-            />
-          </Pressable>
-        </View>
         <RailCanvas
           points={points}
           smoothing={smoothing}
@@ -361,6 +335,24 @@ export function RailGeneratorPrototypeScreen() {
           roll={previewRoll}
           large
         />
+
+        <View style={styles.actions}>
+          <Button
+            label="Add point"
+            icon={PlusIcon}
+            disabled={!canAddPoint}
+            onPress={addPoint}
+            style={styles.action}
+          />
+          <Button
+            label="Remove point"
+            icon={MinusIcon}
+            variant="secondary"
+            disabled={points.length <= 2}
+            onPress={() => removePoint(selected)}
+            style={styles.action}
+          />
+        </View>
 
         <View style={styles.controls}>
           <Text style={styles.controlLabel}>
@@ -475,6 +467,8 @@ const styles = StyleSheet.create({
   canvas: { height: 132, alignItems: 'center', justifyContent: 'center', overflow: 'hidden' },
   canvasLarge: { height: 190 },
   boardPreview: { position: 'absolute', top: -66, alignSelf: 'center' },
+  actions: { flexDirection: 'row', gap: 10 },
+  action: { flex: 1 },
   controls: { gap: 14 },
   controlLabel: { color: theme.neutral.textSecondary, fontSize: 12, fontWeight: '700' },
   sliderLabel: {
@@ -510,41 +504,6 @@ const styles = StyleSheet.create({
     borderColor: theme.neutral.textPrimary,
     backgroundColor: theme.palette.sky.color,
   },
-  pointPicker: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, alignItems: 'center' },
-  pointChip: {
-    height: 44,
-    borderRadius: 22,
-    borderWidth: 1,
-    borderColor: theme.neutral.border,
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  pointChipSelected: { borderColor: theme.palette.yellow.color },
-  pointSelect: {
-    minWidth: 50,
-    height: 42,
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingLeft: 6,
-  },
-  pointChipText: { color: theme.neutral.textSecondary, fontSize: 15, fontWeight: '800' },
-  pointRemove: {
-    width: 28,
-    height: 42,
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingRight: 4,
-  },
-  addPoint: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    borderWidth: 1,
-    borderColor: theme.palette.cyan.color,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  addPointDisabled: { borderColor: theme.neutral.border },
   output: {
     gap: 8,
     padding: 14,
