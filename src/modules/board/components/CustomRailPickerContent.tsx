@@ -28,7 +28,7 @@ export function CustomRailPickerContent({
 }) {
   return (
     <View style={styles.body}>
-      {onBack ? (
+      {onBack && brand === null ? (
         <Pressable onPress={onBack} style={styles.back}>
           <ArrowLeftIcon size={16} color={theme.palette.cyan.color} />
           <Text style={styles.backText}>Board appearance</Text>
@@ -82,9 +82,9 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: theme.neutral.border,
     borderRadius: 12,
-    backgroundColor: theme.control.background,
+    backgroundColor: theme.neutral.surface,
   },
-  name: { flex: 1, fontSize: 15, fontWeight: '700' },
+  name: { flex: 1, fontSize: 15, fontWeight: '700', color: theme.neutral.textPrimary },
   back: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingVertical: 8 },
   backText: { color: theme.palette.cyan.color, fontSize: 13, fontWeight: '700' },
 })

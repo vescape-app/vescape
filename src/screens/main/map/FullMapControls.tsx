@@ -6,7 +6,7 @@ import type { MapPointCategory } from 'vescape-core'
 
 import { IconButton } from '@/components/base/IconButton'
 import { useResolvedAccentColors } from '@/hooks/useTheme'
-import { useRiderStore } from '@/modules/group-ride/store/riderStore'
+import { useSelectedBoardRailColor } from '@/modules/group-ride/lib/selectedBoardRailColor'
 import type { MapSelection } from '@/modules/map/lib/mapSelection'
 import type { MapSearchResult } from '@/modules/map/lib/search'
 import { MapPointAddMenu } from '@/modules/map-points/components/MapPointAddMenu'
@@ -55,7 +55,7 @@ export function FullMapControls({
   onRequireMapAccount,
 }: FullMapControlsProps) {
   const accents = useResolvedAccentColors()
-  const riderColor = useRiderStore((s) => s.riderColor)
+  const riderColor = useSelectedBoardRailColor()
   // Category visibility and Map Point creation are store truth, not screen wiring.
   const hiddenMapPointCategories = useMapPointStore((s) => s.hiddenMapPointCategories)
   const toggleMapPointCategoryVisibility = useMapPointStore(

@@ -26,6 +26,9 @@ import { useBleStore } from '@/modules/board/store/bleStore'
 import { nearbyRides, type NearbyRide } from '@/modules/group-ride/lib/nearby'
 import { riderRoster, rosterRowsEqual, type RosterRider } from '@/modules/group-ride/lib/roster'
 import { useRiderStore } from '@/modules/group-ride/store/riderStore'
+import { useBoardStore } from '@/modules/board/store/boardStore'
+import { useThemeStore } from '@/hooks/useTheme'
+import { selectedBoardRailColor } from '@/modules/group-ride/lib/selectedBoardRailColor'
 import { SERVER_WS_URL } from '@/config/server'
 
 type GroupRideSoundCue = 'created' | 'join'
@@ -181,14 +184,22 @@ export const useGroupRideStore = create<GroupRideState>((set, get) => ({
           ...deriveRoster({ ownLocation: { lat: latitude, lng: longitude } }, state),
         })),
       ),
-      // Push name/color edits to the live socket so peers see them without a rejoin.
+      // Push name and Board rail changes to peers without rejoining.
       {
         remove: useRiderStore.subscribe((rider, previous) => {
-          if (rider.riderName === previous.riderName && rider.riderColor === previous.riderColor)
-            return
-          const { riderId, riderName, riderColor } = currentIdentity()
-          if (!riderId) return
-          updateGroupRideIdentity({ riderId, riderName, riderColor })
+          if (rider.riderName === previous.riderName) return
+          pushIdentity()
+        }),
+      },
+      {
+        remove: useBoardStore.subscribe((board, previous) => {
+          if (board.activeBoardId !== previous.activeBoardId || board.boards !== previous.boards)
+            pushIdentity()
+        }),
+      },
+      {
+        remove: useThemeStore.subscribe((theme, previous) => {
+          if (theme.resolvedTheme !== previous.resolvedTheme) pushIdentity()
         }),
       },
     ]
@@ -281,7 +292,8 @@ function currentIdentity(): {
   riderName: string
   riderColor: string | null
 } {
-  const { riderId, riderName, riderColor } = useRiderStore.getState()
+  const { riderId, riderName } = useRiderStore.getState()
+  const riderColor = selectedBoardRailColor(useThemeStore.getState().resolvedTheme)
   return { riderId, riderName: riderName?.trim() || 'Rider', riderColor }
 }
 
@@ -362,4 +374,9 @@ function startRide(
     lng: ownLocation.lng,
     auto,
   })
+}
+
+function pushIdentity() {
+  const { riderId, riderName, riderColor } = currentIdentity()
+  if (riderId) updateGroupRideIdentity({ riderId, riderName, riderColor })
 }

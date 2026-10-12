@@ -13,7 +13,7 @@ import { SoundPicker } from '@/components/forms/SoundPicker'
 import { ShowcaseCard } from '@/components/dev/ShowcaseCard'
 import { OpenButton } from '@/components/dev/ShowcaseControls'
 
-import { riderColorOptions } from '@/modules/group-ride/constants/riderColors'
+import { accentColors } from '@/constants/theme'
 import { theme } from '@/constants/theme'
 import type { AlertSound } from 'vescape-core'
 
@@ -110,10 +110,16 @@ function SoundPickerShowcase() {
 }
 
 function ColorPickerShowcase() {
-  const [color, setColor] = useState<string | null>(riderColorOptions[0] ?? null)
+  const [color, setColor] = useState<string | null>(
+    Object.values(accentColors.dark).map((accent) => accent.color)[0] ?? null,
+  )
   return (
     <ShowcaseCard name="ColorPicker">
-      <ColorPicker value={color} colors={riderColorOptions} onChange={setColor} />
+      <ColorPicker
+        value={color}
+        colors={Object.values(accentColors.dark).map((accent) => accent.color)}
+        onChange={setColor}
+      />
     </ShowcaseCard>
   )
 }

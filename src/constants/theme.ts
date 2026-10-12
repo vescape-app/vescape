@@ -587,7 +587,7 @@ export const interaction = {
   pressedOpacity: 0.55,
 } as const
 
-/** Shared rider/board personalization choices. Keep Social and board identity in sync. */
+/** Board rail personalization choices. */
 export const personalizationColorOptions = [
   { id: 'sky', value: palette.sky.color },
   { id: 'cyan', value: palette.cyan.color },

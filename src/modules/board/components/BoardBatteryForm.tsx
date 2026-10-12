@@ -287,6 +287,7 @@ const styles = StyleSheet.create({
   },
   voltageInput: {
     width: '100%',
+    fontFamily: theme.mono('600'),
   },
   warning: {
     color: theme.status.warning.text,

@@ -3,7 +3,7 @@ import { useCallback, useEffect, useState } from 'react'
 import { StyleSheet, View } from 'react-native'
 
 import { ConfirmModal } from '@/components/modals/ConfirmModal'
-import { useRiderStore } from '@/modules/group-ride/store/riderStore'
+import { useSelectedBoardRailColor } from '@/modules/group-ride/lib/selectedBoardRailColor'
 import type { MapSelection } from '@/modules/map/lib/mapSelection'
 import { useMapStore } from '@/modules/map/store/mapStore'
 import { MapTargetSheetHost } from '@/modules/map-points/components/MapTargetSheetHost'
@@ -44,7 +44,7 @@ export function MapModeOverlay({
   const router = useRouter()
   // The server authorizes Map Point writes on the Device Token, so that is what gates the UI.
   const canContribute = useMapContributionReady()
-  const riderColor = useRiderStore((s) => s.riderColor)
+  const riderColor = useSelectedBoardRailColor()
   const [signInPromptVisible, setSignInPromptVisible] = useState(false)
   const [editingMapPointId, setEditingMapPointId] = useState<string | null>(null)
   const [addMenuOpen, setAddMenuOpen] = useState(false)

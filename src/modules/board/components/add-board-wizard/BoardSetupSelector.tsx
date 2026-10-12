@@ -5,6 +5,7 @@ import { ArrowLeftIcon, CaretRightIcon, CheckIcon, SquaresFourIcon } from 'phosp
 import { Text } from '@/components/base/Text'
 import { EdgeDrawer } from '@/components/overlays/EdgeDrawer'
 import { font, theme } from '@/constants/theme'
+import { useResolvedNeutralColors } from '@/hooks/useTheme'
 import { BoardModelPreview } from '@/modules/board/components/BoardModelPreview'
 import { CustomRailPickerContent } from '@/modules/board/components/CustomRailPickerContent'
 import { AnimatedBoardPreview } from '@/modules/board/components/add-board-wizard/AnimatedBoardPreview'
@@ -21,6 +22,7 @@ import {
 } from '@/modules/board/lib/boardPresets'
 
 export function BoardSetupSelector({ wizard }: { wizard: UseAddBoardWizard }) {
+  const neutral = useResolvedNeutralColors()
   const [sheet, setSheet] = useState<'presets' | 'rails' | null>(null)
   const [presetBrand, setPresetBrand] = useState<BoardPresetBrand | null>(null)
   const [railBrand, setRailBrand] = useState<RailBrand | null>(null)
@@ -50,7 +52,7 @@ export function BoardSetupSelector({ wizard }: { wizard: UseAddBoardWizard }) {
       </View>
 
       <Pressable
-        style={styles.nameLine}
+        style={[styles.nameLine, { borderBottomColor: neutral.border }]}
         onLayout={(event) => setLineWidth(event.nativeEvent.layout.width)}
         onPress={() => nameInputRef.current?.focus()}
       >
@@ -73,7 +75,10 @@ export function BoardSetupSelector({ wizard }: { wizard: UseAddBoardWizard }) {
           testID="add-board-name-input"
           style={[
             styles.nameInput,
-            { width: Math.min(lineWidth || 32, Math.max(32, nameWidth + 24)) },
+            {
+              width: Math.min(lineWidth || 32, Math.max(32, nameWidth + 24)),
+              color: neutral.textPrimary,
+            },
           ]}
         />
         {!wizard.name && !nameFocused ? (
@@ -244,7 +249,7 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     textAlign: 'center',
-    color: theme.neutral.textDim,
+    color: theme.neutral.textSecondary,
     fontSize: 28,
     fontWeight: '700',
   },
@@ -259,12 +264,12 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: theme.neutral.border,
     borderRadius: 12,
-    backgroundColor: theme.control.background,
+    backgroundColor: theme.neutral.surface,
   },
   choiceSelected: { borderColor: theme.palette.cyan.color },
-  choiceEyebrow: { color: theme.control.textMuted, fontSize: 12, fontWeight: '600' },
+  choiceEyebrow: { color: theme.neutral.textSecondary, fontSize: 12, fontWeight: '600' },
   choiceValueRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
-  choiceValue: { flex: 1, fontSize: 14, fontWeight: '700', color: theme.control.text },
+  choiceValue: { flex: 1, fontSize: 14, fontWeight: '700', color: theme.neutral.textPrimary },
   choiceValueSelected: { color: theme.palette.cyan.color },
   sheetBody: { gap: 8, paddingHorizontal: 16, paddingBottom: 18 },
   sheetRow: {
@@ -276,9 +281,9 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: theme.neutral.border,
     borderRadius: 12,
-    backgroundColor: theme.control.background,
+    backgroundColor: theme.neutral.surface,
   },
-  sheetName: { flex: 1, fontSize: 15, fontWeight: '700' },
+  sheetName: { flex: 1, fontSize: 15, fontWeight: '700', color: theme.neutral.textPrimary },
   sheetBack: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingVertical: 8 },
   sheetBackText: { color: theme.palette.cyan.color, fontSize: 13, fontWeight: '700' },
 })

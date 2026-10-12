@@ -170,9 +170,7 @@ export function EdgeDrawer({
     >
       <GestureHandlerRootView style={styles.modalGestureRoot}>
         <View style={styles.drawer}>
-          <Reanimated.View
-            style={[StyleSheet.absoluteFill, styles.drawerScrim, scrimStyle, backdropStyle]}
-          >
+          <Reanimated.View style={[StyleSheet.absoluteFill, scrimStyle, backdropStyle]}>
             <Pressable testID={backdropTestID} style={StyleSheet.absoluteFill} onPress={close} />
           </Reanimated.View>
         </View>
@@ -262,14 +260,6 @@ const styles = StyleSheet.create({
   },
   focusRoot: {
     flex: 1,
-  },
-  /**
-   * A flat translucent scrim rather than a vignette gradient. The gradient was there to fake a panel
-   * edge, but its falloff never lined up with where the drawer actually ended, and the dismissal
-   * fade is what conveys the drawer leaving.
-   */
-  drawerScrim: {
-    backgroundColor: theme.alpha(theme.neutral.surfaceDeep, 0.85),
   },
   drawerBody: {
     paddingHorizontal: 12,
