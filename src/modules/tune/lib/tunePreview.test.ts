@@ -589,8 +589,8 @@ describe('Tune Preview longitudinal response', () => {
     })
   })
 
-  test('moves ground right for forward travel when the Board nose points left', () => {
-    expect(groundTravelToVisualOffset(0.1)).toBeGreaterThan(0)
+  test('moves ground left for forward travel when the Board nose points right', () => {
+    expect(groundTravelToVisualOffset(0.1)).toBeLessThan(0)
     expect(groundTravelToVisualOffset(1)).toBeCloseTo(0)
   })
 
@@ -604,9 +604,9 @@ describe('Tune Preview longitudinal response', () => {
     )
   })
 
-  test('terrain slope sign matches the visible terrain immediately ahead of the left-side Nose', () => {
+  test('terrain slope sign matches the visible terrain immediately ahead of the right-side Nose', () => {
     const input = { hillsEnabled: true, hillHeightMeters: 1, hillSpacingMeters: 4 }
-    const visibleHeightAhead = terrainHeightRelativeToWheel(-6, 0, 1, 4)
+    const visibleHeightAhead = terrainHeightRelativeToWheel(6, 0, 1, 4)
     const atrTerrainSlope = calculateTerrainSlope(0, input)
 
     expect(Math.sign(atrTerrainSlope)).toBe(Math.sign(visibleHeightAhead))

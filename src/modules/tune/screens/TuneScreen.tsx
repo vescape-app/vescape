@@ -149,7 +149,15 @@ export function TuneScreen() {
         }}
       />
 
-      <TunePreviewSection fields={profileFields ?? {}} active={isFocused} visible={hasTuneView}>
+      <TunePreviewSection
+        fields={profileFields ?? {}}
+        active={isFocused}
+        visible={hasTuneView}
+        railId={allBoards.find((board) => board.id === selectedBoardId)?.personalization?.railId}
+        railColorId={
+          allBoards.find((board) => board.id === selectedBoardId)?.personalization?.railColorId
+        }
+      >
         {profileError ? (
           <View style={styles.errorBanner}>
             <WarningCircleIcon size={16} color={theme.status.error.color} />
