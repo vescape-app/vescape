@@ -20,6 +20,7 @@ export function BoardColorPicker({
     <View style={styles.colors} accessibilityRole="radiogroup">
       {RAIL_COLORS.map((color) => {
         const selected = color.id === railColorId
+        const swatchStyle = { backgroundColor: color.value }
         return (
           <Pressable
             key={color.id}
@@ -36,7 +37,7 @@ export function BoardColorPicker({
               pressed && styles.pressed,
             ]}
           >
-            <View style={[styles.colorSwatch, { backgroundColor: color.value }]} />
+            <View style={[styles.colorSwatch, swatchStyle]} />
           </Pressable>
         )
       })}
