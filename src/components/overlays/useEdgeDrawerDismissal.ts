@@ -46,6 +46,7 @@ export interface EdgeDrawerDismissalOptions {
   triggerRef: React.RefObject<View | null>
   initialFocusRef?: React.RefObject<View | null>
   autoScrollOnContentExpand: boolean
+  contentPageKey?: string
   onClose: () => void
   onReachContentEnd?: () => void
 }
@@ -63,6 +64,7 @@ export function useEdgeDrawerDismissal({
   triggerRef,
   initialFocusRef,
   autoScrollOnContentExpand,
+  contentPageKey,
   onClose,
   onReachContentEnd,
 }: EdgeDrawerDismissalOptions) {
@@ -79,6 +81,8 @@ export function useEdgeDrawerDismissal({
   const dismissRangeRef = useRef(0)
   const previousContentHeightRef = useRef(0)
   const scrollOffsetRef = useRef(0)
+  const previousContentPageKeyRef = useRef(contentPageKey)
+  const pinContentStartRef = useRef(false)
   const scrollOffset = useSharedValue(0)
   /** 0 hidden at the drawer's own edge, 1 fully present. Drives both open and close. */
   const presence = useSharedValue(0)
@@ -93,6 +97,23 @@ export function useEdgeDrawerDismissal({
     if ('scrollToOffset' in scroll) scroll.scrollToOffset({ offset: y, animated })
     else scroll.scrollTo({ y, animated })
   }, [])
+  const scrollToContentStart = useCallback(
+    (range: number) => {
+      const offset = opensFromTop ? 0 : Math.min(range, height)
+      scrollOffsetRef.current = offset
+      scrollOffset.value = offset
+      requestAnimationFrame(() => scrollToOffset(offset, false))
+    },
+    [height, opensFromTop, scrollOffset, scrollToOffset],
+  )
+
+  useEffect(() => {
+    if (previousContentPageKeyRef.current === contentPageKey) return
+    previousContentPageKeyRef.current = contentPageKey
+    if (!mounted || contentPageKey === undefined) return
+    pinContentStartRef.current = true
+    scrollToContentStart(dismissRangeRef.current)
+  }, [contentPageKey, mounted, scrollToContentStart])
 
   useEffect(() => {
     if (!visible) return
@@ -107,6 +128,7 @@ export function useEdgeDrawerDismissal({
       previousContentHeightRef.current = 0
       setKeyboardInset(0)
       scrollOffsetRef.current = 0
+      pinContentStartRef.current = false
       scrollOffset.value = 0
       openStartedRef.current = false
       dismissArmed.value = false
@@ -276,6 +298,11 @@ export function useEdgeDrawerDismissal({
         return
       }
 
+      if (pinContentStartRef.current) {
+        scrollToContentStart(range)
+        return
+      }
+
       // Content grows over many frames, so this follows every one of them from the live offset —
       // a per-frame "was the drawer fully open?" test loses the race after the first frame and
       // leaves the drawer stranded half faded.
@@ -312,6 +339,7 @@ export function useEdgeDrawerDismissal({
       opensFromTop,
       scrollOffset,
       scrollToOffset,
+      scrollToContentStart,
     ],
   )
 
@@ -365,6 +393,7 @@ export function useEdgeDrawerDismissal({
 
   const handleScrollEndDrag = useCallback(
     (event: NativeSyntheticEvent<NativeScrollEvent>) => {
+      pinContentStartRef.current = false
       const { contentOffset, targetContentOffset, velocity } = event.nativeEvent
       scrollOffsetRef.current = contentOffset.y
       const projectedOffset =

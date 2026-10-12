@@ -8,29 +8,41 @@ function project(matrix: AttitudeMatrix, x: number, y: number) {
 }
 
 describe('IMU rail silhouettes', () => {
-  test('asymmetric rails face right in picker and IMU preview', () => {
-    const tail = railPreset('tail')
-    expect(tail.points[0]).toEqual([29, 27])
-    expect(tail.points[tail.points.length - 1]).toEqual([179, 31])
-    const face = railSideFace('tail')
-    expect(face[0]![1]).toBeGreaterThan(face[tail.points.length - 1]![1])
+  test('asymmetric rails keep their authored direction in picker and IMU preview', () => {
+    const x7 = railPreset('x7')
+    expect(x7.points[0]).toEqual([14, 31])
+    expect(x7.points[x7.points.length - 1]).toEqual([194, 30])
+    const face = railSideFace('x7')
+    expect(face[0]![1]).toBeLessThan(face[x7.points.length - 1]![1])
   })
 
   test('each picker preset produces its own closed side face', () => {
     const outlines = RAILS.map(({ id, points }) => {
       const face = railSideFace(id)
       expect(face).toHaveLength(points.length * 2)
-      expect(face[0]![0]).toBeLessThan(-200)
-      expect(face[points.length - 1]![0]).toBeGreaterThan(200)
+      expect(face[0]![0]).toBeLessThan(0)
+      expect(face[points.length - 1]![0]).toBeGreaterThan(0)
       for (let index = 0; index < points.length; index++) {
         const lower = face[face.length - 1 - index]!
         expect(lower[0]).toBe(
-          index === 0 ? -197 : index === points.length - 1 ? 197 : face[index]![0],
+          index === 0
+            ? face[0]![0] + 21
+            : index === points.length - 1
+              ? face[points.length - 1]![0] - 21
+              : face[index]![0],
         )
-        expect(lower[1] - face[index]![1]).toBe(-24)
+        expect(lower[1] - face[index]![1]).toBeCloseTo(
+          -RAILS.find((rail) => rail.id === id)!.pointThicknesses[index]!,
+          7,
+        )
       }
       expect(railDeckProfile(id).map(([, height]) => height)).toEqual(
-        face.slice(0, points.length).map(([, y]) => 12 - y),
+        face
+          .slice(0, points.length)
+          .map(
+            ([, y], index) =>
+              RAILS.find((rail) => rail.id === id)!.pointThicknesses[index]! / 2 - y,
+          ),
       )
       return JSON.stringify(face)
     })
@@ -167,39 +179,53 @@ describe('IMU rail silhouettes', () => {
     for (const rail of RAILS) {
       const profile = railDeckProfile(rail.id)
       const face = railSideFace(rail.id)
+      const thicknesses = rail.pointThicknesses
+      const leftCapX = face[face.length - 1]![0]
+      const rightCapX = face[face.length / 2]![0]
+      const capLength = leftCapX - face[0]![0]
       for (const roll of [-180, -135, -90, -45, 0, 45, 90, 135, 180]) {
-        const pose = boardAttitudePose(roll)
+        const pose = boardAttitudePose(
+          roll,
+          rail.thickness,
+          thicknesses[0],
+          thicknesses[thicknesses.length - 1],
+          0,
+          leftCapX,
+          rightCapX,
+          capLength,
+        )
         const nearY = Math.cos((roll * Math.PI) / 180) < -1e-8 ? 64 : -64
         for (let i = 1; i < profile.length; i++) {
           const [x0, h0] = profile[i - 1]!
           const [x1, h1] = profile[i]!
-          const top = curvedDeckMatrix(roll, x0, x1, h0, h1, -12)
-          for (const [x, height] of [
-            [x0, h0],
-            [x1, h1],
-          ]) {
-            const railPoint = project(pose.nearRail, x, 12 - height)
-            const deckPoint = project(top, x, nearY)
-            expect(deckPoint[0]).toBeCloseTo(railPoint[0], 7)
-            expect(deckPoint[1]).toBeCloseTo(railPoint[1], 7)
-          }
-        }
-        for (let i = 1; i < profile.length; i++) {
-          const [outerX0, h0] = profile[i - 1]!
-          const [outerX1, h1] = profile[i]!
-          const x0 = i === 1 ? -197 : outerX0
-          const x1 = i === profile.length - 1 ? 197 : outerX1
-          const bottom = curvedDeckMatrix(roll, x0, x1, h0, h1, 12)
-          for (const [index, x] of [
-            [i - 1, x0],
-            [i, x1],
-          ]) {
-            const inner = face[face.length - 1 - index]!
-            const deckPoint = project(bottom, x, nearY)
-            const railPoint = project(pose.nearRail, inner[0], inner[1])
-            expect(deckPoint[0]).toBeCloseTo(railPoint[0], 7)
-            expect(deckPoint[1]).toBeCloseTo(railPoint[1], 7)
-          }
+          const top = curvedDeckMatrix(
+            roll,
+            x0,
+            x1,
+            h0 - thicknesses[i - 1]! / 2,
+            h1 - thicknesses[i]! / 2,
+            0,
+          )
+          const outer = face[i]!
+          expect(project(top, x1, nearY)[1]).toBeCloseTo(
+            project(pose.nearRail, outer[0], outer[1])[1],
+            7,
+          )
+          const bottomX0 = i === 1 ? leftCapX : x0
+          const bottomX1 = i === profile.length - 1 ? rightCapX : x1
+          const bottom = curvedDeckMatrix(
+            roll,
+            bottomX0,
+            bottomX1,
+            h0 + thicknesses[i - 1]! / 2,
+            h1 + thicknesses[i]! / 2,
+            0,
+          )
+          const inner = face[face.length - 1 - i]!
+          expect(project(bottom, bottomX1, nearY)[1]).toBeCloseTo(
+            project(pose.nearRail, inner[0], inner[1])[1],
+            7,
+          )
         }
         for (const [index, cap] of [
           [0, pose.leftCap],
@@ -208,8 +234,7 @@ describe('IMU rail silhouettes', () => {
           const [x, height] = profile[index]!
           const matrix = cap.slice() as AttitudeMatrix
           matrix[5] += height * Math.cos((roll * Math.PI) / 180)
-          const capX = 21
-          const capPoint = project(matrix, capX, nearY)
+          const capPoint = project(matrix, capLength, nearY)
           const outerPoint = project(pose.nearRail, x, face[index]![1])
           expect(capPoint[0]).toBeCloseTo(outerPoint[0], 7)
           expect(capPoint[1]).toBeCloseTo(outerPoint[1], 7)

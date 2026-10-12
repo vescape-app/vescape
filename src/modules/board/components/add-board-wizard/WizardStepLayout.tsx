@@ -14,6 +14,7 @@ interface WizardStepLayoutProps {
   headerRight?: ReactNode
   footer?: ReactNode
   revealBottomOnKeyboard?: boolean
+  alignContentTop?: boolean
   children: ReactNode
 }
 
@@ -25,6 +26,7 @@ export function WizardStepLayout({
   headerRight,
   footer,
   revealBottomOnKeyboard = false,
+  alignContentTop = false,
   children,
 }: WizardStepLayoutProps) {
   const scrollRef = useRef<ScrollView>(null)
@@ -62,7 +64,7 @@ export function WizardStepLayout({
           </View>
           {description ? <Text style={styles.description}>{description}</Text> : null}
         </View>
-        <View style={styles.mainContent}>
+        <View style={[styles.mainContent, alignContentTop && styles.mainContentTop]}>
           <View style={styles.contentStack}>{children}</View>
         </View>
       </ScrollView>
@@ -146,6 +148,9 @@ const styles = StyleSheet.create({
     flex: 1,
     minHeight: 0,
     justifyContent: 'center',
+  },
+  mainContentTop: {
+    justifyContent: 'flex-start',
   },
   contentStack: {
     gap: 14,

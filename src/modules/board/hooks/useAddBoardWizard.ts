@@ -22,10 +22,9 @@ import {
 } from '@/modules/board/lib/boardSetup'
 import { useBoardStore } from '@/modules/board/store/boardStore'
 import { generateId } from '@/helpers/id'
-import type {
-  RailColorId,
-  RailId,
-} from '@/modules/board/components/add-board-wizard/BoardPersonalizer'
+import type { RailColorId } from '@/modules/board/components/add-board-wizard/BoardColorPicker'
+import type { RailId } from '@/modules/board/lib/railPresets'
+import { getBoardPreset, getCustomRailOption } from '@/modules/board/lib/boardPresets'
 
 /** The wizard's buffered alert setup for every preset metric, flushed onto the Board on save. */
 export type DraftAlertSetupBag = Record<AlertPresetMetric, DraftAlertSetup>
@@ -65,6 +64,8 @@ interface AddBoardWizardState {
   description: string
   railId: RailId
   railColorId: RailColorId
+  boardPresetId: string | null
+  customRailOptionId: string | null
   batteryMode: BatteryMode
   cellPresetId: string
   seriesCount: number
@@ -93,6 +94,9 @@ interface AddBoardWizardActions {
   setDescription: (v: string) => void
   setRailId: (v: RailId) => void
   setRailColorId: (v: RailColorId) => void
+  selectBoardPreset: (id: string) => void
+  selectCustomRail: (id: string) => void
+  enterCustomBuild: () => void
   setBatteryMode: (v: BatteryMode) => void
   setCellPresetId: (v: string) => void
   setSeriesCount: (v: number) => void
@@ -124,6 +128,8 @@ export function useAddBoardWizard(): UseAddBoardWizard {
   const [description, setDescription] = useState('')
   const [railId, setRailId] = useState<RailId>('xr')
   const [railColorId, setRailColorId] = useState<RailColorId>('cyan')
+  const [boardPresetId, setBoardPresetId] = useState<string | null>(null)
+  const [customRailOptionId, setCustomRailOptionId] = useState<string | null>(null)
   const [batteryMode, setBatteryMode] = useState<BatteryMode>(DEFAULT_BATTERY_CONFIG.mode)
   const [cellPresetId, setCellPresetId] = useState(DEFAULT_BATTERY_CONFIG.cellPresetId)
   const [seriesCount, setSeriesCount] = useState(DEFAULT_BATTERY_CONFIG.seriesCount)
@@ -135,6 +141,41 @@ export function useAddBoardWizard(): UseAddBoardWizard {
 
   const setMetricAlertSetup = (metric: AlertPresetMetric, setup: DraftAlertSetup) =>
     setAlertSetup((prev) => ({ ...prev, [metric]: setup }))
+
+  const selectBoardPreset = (id: string) => {
+    const preset = getBoardPreset(id)
+    if (!preset) return
+    setBoardPresetId(id)
+    setCustomRailOptionId(null)
+    setRailId(preset.railId)
+    const battery = preset.batteryConfig
+    const derived = deriveBatteryConfig(battery)
+    setBatteryMode('preset')
+    setCellPresetId(battery.cellPresetId)
+    setSeriesCount(battery.seriesCount)
+    setParallelCount(battery.parallelCount)
+    setManualMinVoltage(String(derived.minVoltage))
+    setManualMaxVoltage(String(derived.maxVoltage))
+  }
+
+  const enterCustomBuild = () => {
+    if (boardPresetId !== null) {
+      setBatteryMode(DEFAULT_BATTERY_CONFIG.mode)
+      setCellPresetId(DEFAULT_BATTERY_CONFIG.cellPresetId)
+      setSeriesCount(DEFAULT_BATTERY_CONFIG.seriesCount)
+      setParallelCount(DEFAULT_BATTERY_CONFIG.parallelCount)
+    }
+    setBoardPresetId(null)
+    setRailId(getCustomRailOption(customRailOptionId)?.railId ?? 'xr')
+  }
+
+  const selectCustomRail = (id: string) => {
+    const option = getCustomRailOption(id)
+    if (!option) return
+    setCustomRailOptionId(id)
+    setBoardPresetId(null)
+    setRailId(option.railId)
+  }
 
   const previewConfig: BatteryConfig =
     batteryMode === 'preset'
@@ -236,6 +277,8 @@ export function useAddBoardWizard(): UseAddBoardWizard {
     description,
     railId,
     railColorId,
+    boardPresetId,
+    customRailOptionId,
     batteryMode,
     cellPresetId,
     seriesCount,
@@ -259,6 +302,9 @@ export function useAddBoardWizard(): UseAddBoardWizard {
     setDescription,
     setRailId,
     setRailColorId,
+    selectBoardPreset,
+    selectCustomRail,
+    enterCustomBuild,
     setBatteryMode,
     setCellPresetId,
     setSeriesCount,

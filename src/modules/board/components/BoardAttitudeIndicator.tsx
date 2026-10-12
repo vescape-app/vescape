@@ -14,7 +14,7 @@ import {
   TIRE_HALF_WIDTH,
   TIRE_RADIUS,
 } from '@/modules/board/lib/boardAttitudeGeometry'
-import { railDeckProfile, railSideFace } from '@/modules/board/lib/railPresets'
+import { railDeckProfile, railPreset, railSideFace } from '@/modules/board/lib/railPresets'
 import type { RailPoint } from '@/modules/board/lib/railProfile'
 
 function polygon(points: readonly (readonly number[])[]): SkPath {
@@ -216,13 +216,17 @@ export function BoardAttitudeIndicator({
   muted = false,
   railId,
   railPoints,
-  railThickness = RAIL_THICKNESS,
+  railThickness,
   railPointThicknesses,
   railColorId,
   size = 48,
   testID,
 }: BoardAttitudeIndicatorProps) {
   'use no memo'
+  const preset = railPreset(railId)
+  const thickness = railThickness ?? (railPoints ? RAIL_THICKNESS : preset.thickness)
+  const pointThicknesses =
+    railPointThicknesses ?? (railPoints ? undefined : preset.pointThicknesses)
   const accent = personalizationColorOptions.find((option) => option.id === railColorId)?.value
   const color = useResolvedColor(
     connected && !muted ? (accent ?? theme.palette.purple.color) : HUD_IDLE_GLYPH_COLOR,
@@ -230,16 +234,16 @@ export function BoardAttitudeIndicator({
   const fill = useResolvedColor(theme.neutral.surfaceDeep)
   const topFill = useResolvedColor(theme.neutral.surface)
   const paths = useMemo(
-    () => buildPaths(railId, railPoints, railThickness, railPointThicknesses),
-    [railId, railPoints, railThickness, railPointThicknesses],
+    () => buildPaths(railId, railPoints, thickness, pointThicknesses),
+    [railId, railPoints, thickness, pointThicknesses],
   )
   const scale = size / ATTITUDE_EXTENT
   const stroke = 1 / scale
-  const leftThickness = railPointThicknesses?.[0] ?? railThickness
-  const rightThickness = railPointThicknesses?.[railPointThicknesses.length - 1] ?? railThickness
+  const leftThickness = pointThicknesses?.[0] ?? thickness
+  const rightThickness = pointThicknesses?.[pointThicknesses.length - 1] ?? thickness
   const railFace = useMemo(
-    () => railSideFace(railId, railPoints, railThickness, railPointThicknesses),
-    [railId, railPoints, railThickness, railPointThicknesses],
+    () => railSideFace(railId, railPoints, thickness, pointThicknesses),
+    [railId, railPoints, thickness, pointThicknesses],
   )
   const leftCapX = railFace[railFace.length - 1]![0]
   const rightCapX = railFace[railFace.length / 2]![0]
@@ -247,7 +251,7 @@ export function BoardAttitudeIndicator({
   const pose = useDerivedValue(() =>
     boardAttitudePose(
       connected ? roll.value : 0,
-      railThickness,
+      thickness,
       leftThickness,
       rightThickness,
       connected ? (yaw?.value ?? 0) : 0,
@@ -267,8 +271,8 @@ export function BoardAttitudeIndicator({
   const farTireArc = useDerivedValue(() => pose.value.farTireArc)
   const tread = useDerivedValue(() => pose.value.tread)
   const profile = useMemo(
-    () => railDeckProfile(railId, railPoints, railThickness, railPointThicknesses),
-    [railId, railPoints, railThickness, railPointThicknesses],
+    () => railDeckProfile(railId, railPoints, thickness, pointThicknesses),
+    [railId, railPoints, thickness, pointThicknesses],
   )
   const leftHeight = profile[0]![1]
   const rightHeight = profile[profile.length - 1]![1]

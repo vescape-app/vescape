@@ -7,6 +7,7 @@ import {
   TrashIcon,
   EngineIcon,
   WarningDiamondIcon,
+  PencilSimpleIcon,
 } from 'phosphor-react-native'
 import type { BoardLink } from 'vescape-core'
 
@@ -14,7 +15,8 @@ import { BoardNameField } from '@/modules/board/components/BoardNameField'
 import { BoardSettingRow } from '@/modules/board/components/BoardSettingRow'
 import { Button } from '@/components/base/Button'
 import { IconHero } from '@/components/settings/IconHero'
-import { BoardModelPreview } from '@/modules/board/components/BoardModelPreview'
+import { AnimatedBoardPreview } from '@/modules/board/components/add-board-wizard/AnimatedBoardPreview'
+import { railPreset } from '@/modules/board/lib/railPresets'
 import { SettingsCard } from '@/components/settings/SettingsCard'
 import { SettingsRow } from '@/components/settings/SettingsRow'
 import { interaction, theme } from '@/constants/theme'
@@ -44,6 +46,9 @@ interface EditBoardSettingsProps {
   faultsAnchorRef: RefObject<View | null>
   onOpenFaults: () => void
   onOpenBattery: () => void
+  batteryAnchorRef: RefObject<View | null>
+  appearanceAnchorRef: RefObject<View | null>
+  onOpenAppearance: () => void
   onLink: () => void
   onRelink: () => void
   onUnlink: () => Promise<void> | void
@@ -68,6 +73,9 @@ export function EditBoardSettings({
   faultsAnchorRef,
   onOpenFaults,
   onOpenBattery,
+  batteryAnchorRef,
+  appearanceAnchorRef,
+  onOpenAppearance,
   onLink,
   onRelink,
   onUnlink,
@@ -77,25 +85,42 @@ export function EditBoardSettings({
     <>
       <IconHero
         media={
-          <View style={styles.modelPreview}>
-            <BoardModelPreview railId={railId} railColorId={railColorId} size={260} />
+          <View ref={appearanceAnchorRef} collapsable={false}>
+            <Pressable
+              style={styles.modelPreview}
+              onPress={onOpenAppearance}
+              accessibilityRole="button"
+              accessibilityLabel="Edit board appearance"
+              testID="edit-board-appearance-button"
+            >
+              <AnimatedBoardPreview
+                railId={railPreset(railId).id}
+                railColorId={railColorId ?? 'cyan'}
+                size={260}
+              />
+              <View style={styles.editBadge}>
+                <PencilSimpleIcon size={18} color={theme.neutral.textPrimary} weight="duotone" />
+              </View>
+            </Pressable>
           </View>
         }
       >
         <BoardNameField name={name} saving={nameSaving} onSave={onSaveName} />
       </IconHero>
 
-      <SettingsCard>
-        <BoardSettingRow
-          icon={BatteryChargingIcon}
-          iconColor={theme.settingsIcon.battery}
-          label={keepMissingBatteryConfig ? 'Not configured' : batterySummary.title}
-          value={batterySummary.value}
-          hint={batterySummary.hint}
-          onPress={onOpenBattery}
-          testID="edit-board-battery-row"
-        />
-      </SettingsCard>
+      <View ref={batteryAnchorRef} collapsable={false}>
+        <SettingsCard>
+          <BoardSettingRow
+            icon={BatteryChargingIcon}
+            iconColor={theme.settingsIcon.battery}
+            label={keepMissingBatteryConfig ? 'Not configured' : batterySummary.title}
+            value={batterySummary.value}
+            hint={batterySummary.hint}
+            onPress={onOpenBattery}
+            testID="edit-board-battery-row"
+          />
+        </SettingsCard>
+      </View>
 
       {boardControls}
 
@@ -192,9 +217,14 @@ const styles = StyleSheet.create({
   modelPreview: {
     width: 260,
     height: 150,
-    overflow: 'hidden',
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  editBadge: {
+    position: 'absolute',
+    right: 4,
+    top: 4,
+    padding: 8,
   },
   buttonGroup: {
     flexDirection: 'row',

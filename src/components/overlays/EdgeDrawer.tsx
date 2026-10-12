@@ -47,6 +47,8 @@ interface EdgeDrawerProps {
   iconColor?: ThemeColor
   /** Scroll newly expanded content into view when the drawer grows. */
   autoScrollOnContentExpand?: boolean
+  /** Return to the start of the drawer content when switching between pages. */
+  contentPageKey?: string
   /** Bring one child into the initially visible drawer area after opening. */
   initialFocusRef?: React.RefObject<View | null>
   /** Called after scrolling settles near the end of the drawer content. */
@@ -71,6 +73,7 @@ export function EdgeDrawer({
   icon: IconComponent,
   iconColor = theme.neutral.textSecondary,
   autoScrollOnContentExpand = false,
+  contentPageKey,
   initialFocusRef,
   onReachContentEnd,
   backdropTestID,
@@ -99,6 +102,7 @@ export function EdgeDrawer({
     triggerRef,
     initialFocusRef,
     autoScrollOnContentExpand,
+    contentPageKey,
     onClose,
     onReachContentEnd,
   })

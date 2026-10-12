@@ -289,15 +289,15 @@ export function RailGeneratorPrototypeScreen() {
         ) ||
         !Number.isFinite(nextThickness) ||
         nextThickness < 12 ||
-        nextThickness > 36 ||
+        nextThickness > 40 ||
         (nextPointThicknesses !== undefined &&
           (!Array.isArray(nextPointThicknesses) ||
             nextPointThicknesses.length !== nextPoints.length ||
             nextPointThicknesses.some(
-              (value) => !Number.isFinite(value) || value < 12 || value > 36,
+              (value) => !Number.isFinite(value) || value < 12 || value > 40,
             )))
       ) {
-        throw new Error('Preset needs ordered points inside the editor and thickness 12–36')
+        throw new Error('Preset needs ordered points inside the editor and thickness 12–40')
       }
       setPoints(nextPoints.map(([x, y]) => [Math.round(x), Math.round(y)] as const))
       setSmoothing(nextPoints.map((_, index) => Math.round(nextSmoothing[index] ?? 0)))
@@ -382,7 +382,7 @@ export function RailGeneratorPrototypeScreen() {
           <ValueSlider
             value={pointThicknesses[selected] ?? thickness}
             min={12}
-            max={36}
+            max={40}
             onChange={(value) =>
               setPointThicknesses((current) =>
                 current.map((amount, index) => (index === selected ? value : amount)),
@@ -393,7 +393,7 @@ export function RailGeneratorPrototypeScreen() {
           <ValueSlider
             value={thickness}
             min={12}
-            max={36}
+            max={40}
             onChange={(value) => {
               setThickness(value)
               setPointThicknesses((current) => current.map(() => value))
