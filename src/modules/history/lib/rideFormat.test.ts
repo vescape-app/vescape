@@ -2,18 +2,10 @@ import { expect, test } from 'bun:test'
 
 import {
   formatFavoriteName,
-  formatRideListDateTime,
   formatRideListDetails,
   formatRideTime,
   suggestFavoriteName,
 } from '@/modules/history/lib/rideFormat'
-
-test('list date combines the ride time range with the readable calendar date', () => {
-  const start = new Date(2026, 6, 10, 23, 30).getTime()
-  const end = new Date(2026, 6, 10, 23, 34).getTime()
-
-  expect(formatRideListDateTime(start, end)).toBe('23:30 – 23:34 · 10 Jul 2026')
-})
 
 test('list details use contextual duration units and keep the board last', () => {
   expect(formatRideListDetails(50 * 60_000, 1_820, 'Thor3')).toBe('50 min · 1.82 km · Thor3')
@@ -53,8 +45,7 @@ test('a ride still being recorded ends at now instead of a clock time', () => {
   const end = start + 30 * 60_000
 
   expect(formatRideTime(start, end, true)).toBe('08:12 – now')
-  expect(formatRideListDateTime(start, end, true)).toBe('08:12 – now · 24 Aug 2026')
-  expect(formatRideListDateTime(start, end)).toBe('08:12 – 08:42 · 24 Aug 2026')
+  expect(formatRideTime(start, end)).toBe('08:12 – 08:42')
 })
 
 test('existing ride totals use miles even below the nearby-distance cutoff', () => {

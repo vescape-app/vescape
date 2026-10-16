@@ -21,7 +21,7 @@ export function HistoryRideRowShowcase() {
       controls={<ToggleRow label="selected" value={selected} onToggle={setSelected} />}
     >
       <HistoryRideRow
-        title="17:15 – 17:28 · 10 Oct 2026"
+        title="17:15 – 17:28"
         subtitle="13 min · 4.14 km · VESC Board"
         routePoints={route}
         selected={selected}
@@ -29,7 +29,7 @@ export function HistoryRideRowShowcase() {
       />
       <HistoryRideRow
         title="Evening ride"
-        subtitle="10 Oct 2026"
+        subtitle="18:05 – 18:09"
         details="4 min · 1.42 km"
         routePoints={route}
         selected={selected}

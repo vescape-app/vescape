@@ -9,9 +9,10 @@ import { Placeholder } from '@/components/base/Placeholder'
 import { EdgeDrawer } from '@/components/overlays/EdgeDrawer'
 import { interaction, theme } from '@/constants/theme'
 import { HistoryRideRow } from '@/modules/history/components/HistoryRideRow'
+import { historyListRows } from '@/modules/history/lib/historyList'
 import { favoriteSessionId } from '@/modules/history/lib/favorites'
-import { formatFavoriteName, formatRideListDateTime } from '@/modules/history/lib/rideFormat'
-import { isLiveRide, rideMovingWindow } from '@/modules/history/lib/sessions'
+import { formatFavoriteName, formatRideTime } from '@/modules/history/lib/rideFormat'
+import { isLiveRide } from '@/modules/history/lib/sessions'
 import { useHistoryAutoRefresh } from '@/modules/history/hooks/useHistoryAutoRefresh'
 import type { HistorySession } from '@/modules/history/store/historyStore'
 
@@ -50,16 +51,14 @@ export function HistorySessionSheet({
     [favorites],
   )
 
+  const rows = useMemo(() => historyListRows(sessions), [sessions])
+
   const renderSession = useCallback(
     ({ item }: { item: unknown }) => {
-      const session = item as HistorySession
+      const { session, window: rideWindow, dateHeader } = item as (typeof rows)[number]
       const selected = session.id === selectedSessionId
       const favorite = favoritesBySessionId.get(session.id)
-      const rideWindow = rideMovingWindow(session) ?? {
-        startMs: session.startAtMs,
-        endMs: session.endAtMs,
-      }
-      const dateTime = formatRideListDateTime(
+      const time = formatRideTime(
         rideWindow.startMs,
         rideWindow.endMs,
         !favorite && isLiveRide(session, Date.now()),
@@ -70,21 +69,26 @@ export function HistorySessionSheet({
         favorite?.boardName ?? session.boardName,
       )
       return (
-        <HistoryRideRow
-          ref={selected ? selectedRowRef : undefined}
-          testID={`history-session-row-${session.id}`}
-          title={
-            favorite
-              ? formatFavoriteName(favorite.name, favorite.startMs, favorite.endMs)
-              : dateTime
-          }
-          subtitle={favorite ? dateTime : details}
-          details={favorite ? details : undefined}
-          routePoints={session.routePoints}
-          selected={selected}
-          accent={favorite ? theme.palette.amber.color : undefined}
-          onPress={() => onSelectSession(session)}
-        />
+        <View>
+          {dateHeader ? (
+            <Text accessibilityRole="header" style={styles.dateHeader}>
+              {dateHeader}
+            </Text>
+          ) : null}
+          <HistoryRideRow
+            ref={selected ? selectedRowRef : undefined}
+            testID={`history-session-row-${session.id}`}
+            title={
+              favorite ? formatFavoriteName(favorite.name, favorite.startMs, favorite.endMs) : time
+            }
+            subtitle={favorite ? time : details}
+            details={favorite ? details : undefined}
+            routePoints={session.routePoints}
+            selected={selected}
+            accent={favorite ? theme.palette.amber.color : undefined}
+            onPress={() => onSelectSession(session)}
+          />
+        </View>
       )
     },
     [favoritesBySessionId, onSelectSession, selectedSessionId, formatRideDetails],
@@ -128,9 +132,9 @@ export function HistorySessionSheet({
       initialFocusRef={selectedRowRef}
       backdropTestID="history-session-sheet-backdrop"
       virtualizedContent={{
-        data: sessions,
+        data: rows,
         renderItem: renderSession,
-        keyExtractor: (item) => (item as HistorySession).id,
+        keyExtractor: (item) => (item as (typeof rows)[number]).session.id,
         empty,
         footer,
         separator: HistoryRowSeparator,
@@ -148,6 +152,13 @@ function HistoryRowSeparator() {
 
 const styles = StyleSheet.create({
   separator: { height: 8 },
+  dateHeader: {
+    color: theme.neutral.textSecondary,
+    fontSize: 12,
+    fontWeight: '700',
+    paddingTop: 12,
+    paddingBottom: 10,
+  },
   empty: {
     paddingVertical: 28,
   },

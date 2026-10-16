@@ -32,10 +32,6 @@ export function formatRideMeta(startAtMs: number, endAtMs: number, boardName: st
     : formatRideDate(startAtMs, endAtMs)
 }
 
-export function formatRideListDateTime(startAtMs: number, endAtMs: number, live = false): string {
-  return `${formatRideTime(startAtMs, endAtMs, live)} · ${formatRideDate(startAtMs, endAtMs)}`
-}
-
 export function formatRideListDetails(
   durationMs: number,
   distanceM: number | null,
