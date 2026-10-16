@@ -1,6 +1,6 @@
 import { useRideFormat } from '@/modules/history/hooks/useRideFormat'
-import { useCallback, useMemo, useRef, type RefObject } from 'react'
-import { StyleSheet, View } from 'react-native'
+import { useCallback, useMemo, type RefObject } from 'react'
+import { StyleSheet, View, useWindowDimensions } from 'react-native'
 import { Text } from '@/components/base/Text'
 import { ClockCounterClockwiseIcon, StarIcon } from 'phosphor-react-native'
 import type { Favorite } from 'vescape-core'
@@ -8,8 +8,14 @@ import type { Favorite } from 'vescape-core'
 import { Placeholder } from '@/components/base/Placeholder'
 import { EdgeDrawer } from '@/components/overlays/EdgeDrawer'
 import { theme } from '@/constants/theme'
+import { HistoryTabs } from '@/modules/history/components/HistoryTabs'
 import { HistoryRideRow, HistoryRideRowSkeleton } from '@/modules/history/components/HistoryRideRow'
-import { historyListRows } from '@/modules/history/lib/historyList'
+import {
+  historyListRows,
+  historyListLayouts,
+  HISTORY_RIDE_ROW_HEIGHT,
+  HISTORY_RIDE_ROW_GAP,
+} from '@/modules/history/lib/historyList'
 import { favoriteSessionId } from '@/modules/history/lib/favorites'
 import { formatFavoriteName, formatRideTime } from '@/modules/history/lib/rideFormat'
 import { isLiveRide } from '@/modules/history/lib/sessions'
@@ -27,6 +33,7 @@ interface HistorySessionSheetProps {
   loadingMore: boolean
   onClose: () => void
   onSelectSession: (session: HistorySession) => void
+  onSelectTab: (tab: 'history' | 'favorites') => void
   onLoadMore: () => void
 }
 
@@ -42,9 +49,11 @@ export function HistorySessionSheet({
   onClose,
   onSelectSession,
   onLoadMore,
+  onSelectTab,
 }: HistorySessionSheetProps) {
   const { formatRideDetails } = useRideFormat()
-  const selectedRowRef = useRef<View>(null)
+  const { fontScale } = useWindowDimensions()
+  const dateHeaderHeight = 22 + 16 * fontScale
   useHistoryAutoRefresh(visible && !favoriteMode)
   const favoritesBySessionId = useMemo(
     () => new Map(favorites.map((favorite) => [favoriteSessionId(favorite.id), favorite])),
@@ -52,6 +61,12 @@ export function HistorySessionSheet({
   )
 
   const rows = useMemo(() => historyListRows(sessions), [sessions])
+  const layouts = useMemo(
+    () => historyListLayouts(rows, dateHeaderHeight),
+    [rows, dateHeaderHeight],
+  )
+  const selectedIndex = sessions.findIndex((session) => session.id === selectedSessionId)
+  const selectedLayout = layouts[selectedIndex]
 
   const renderSession = useCallback(
     ({ item }: { item: unknown }) => {
@@ -71,12 +86,14 @@ export function HistorySessionSheet({
       return (
         <View>
           {dateHeader ? (
-            <Text accessibilityRole="header" style={styles.dateHeader}>
+            <Text
+              accessibilityRole="header"
+              style={[styles.dateHeader, { height: dateHeaderHeight }]}
+            >
               {dateHeader}
             </Text>
           ) : null}
           <HistoryRideRow
-            ref={selected ? selectedRowRef : undefined}
             testID={`history-session-row-${session.id}`}
             title={
               favorite ? formatFavoriteName(favorite.name, favorite.startMs, favorite.endMs) : time
@@ -91,7 +108,7 @@ export function HistorySessionSheet({
         </View>
       )
     },
-    [favoritesBySessionId, onSelectSession, selectedSessionId, formatRideDetails],
+    [favoritesBySessionId, onSelectSession, selectedSessionId, formatRideDetails, dateHeaderHeight],
   )
 
   const empty = (
@@ -126,14 +143,17 @@ export function HistorySessionSheet({
     <EdgeDrawer
       visible={visible}
       triggerRef={triggerRef}
-      title={favoriteMode ? 'Favorites' : 'History'}
-      icon={favoriteMode ? StarIcon : ClockCounterClockwiseIcon}
-      iconColor={favoriteMode ? theme.palette.amber.color : theme.palette.purple.color}
+      header={
+        <HistoryTabs tab={favoriteMode ? 'favorites' : 'history'} onSelectTab={onSelectTab} />
+      }
       onClose={onClose}
-      initialFocusRef={selectedRowRef}
       backdropTestID="history-session-sheet-backdrop"
       virtualizedContent={{
         data: rows,
+        initialFocus: selectedLayout
+          ? { offset: selectedLayout.rowOffset, height: HISTORY_RIDE_ROW_HEIGHT }
+          : undefined,
+        getItemLayout: (_data, index) => layouts[index],
         renderItem: renderSession,
         keyExtractor: (item) => (item as (typeof rows)[number]).session.id,
         empty,
@@ -152,10 +172,12 @@ function HistoryRowSeparator() {
 }
 
 const styles = StyleSheet.create({
-  separator: { height: 8 },
+  separator: { height: HISTORY_RIDE_ROW_GAP },
   dateHeader: {
     color: theme.neutral.textSecondary,
     fontSize: 12,
+    lineHeight: 16,
+    includeFontPadding: false,
     fontWeight: '700',
     paddingTop: 12,
     paddingBottom: 10,

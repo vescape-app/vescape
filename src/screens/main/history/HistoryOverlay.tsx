@@ -16,6 +16,7 @@ import type {
   TelemetryMinuteBucket,
   TelemetrySample,
 } from '@/modules/history/store/historyStore'
+import { useFavoriteStore } from '@/modules/history/store/favoriteStore'
 import { HistoryControls } from '@/screens/main/history/HistoryControls'
 import { HistoryRideDetail } from '@/screens/main/history/HistoryRideDetail'
 import type { HistoryTab } from '@/screens/main/mainScreenStore'
@@ -97,6 +98,13 @@ export function HistoryOverlay({
 }: HistoryOverlayProps) {
   const [removeConfirmVisible, setRemoveConfirmVisible] = useState(false)
   const listButtonRef = useRef<View>(null)
+  // Browsing the picker never changes the ride being displayed behind it.
+  const [listTab, setListTab] = useState<HistoryTab | null>(null)
+  const listFavoriteMode = (listTab ?? history.historyTab) === 'favorites'
+  const closeList = () => {
+    history.setHistorySheetVisible(false)
+    setListTab(null)
+  }
   const busy =
     history.loadingSession ||
     history.historyLoading ||
@@ -152,20 +160,25 @@ export function HistoryOverlay({
       <HistorySessionSheet
         visible={history.historySheetVisible}
         triggerRef={listButtonRef}
-        favoriteMode={favoriteMode}
-        sessions={favoriteMode ? history.favoriteSessions : history.sessions}
-        favorites={favoriteMode ? history.favorites : []}
+        favoriteMode={listFavoriteMode}
+        onSelectTab={(tab) => {
+          if (tab === (listTab ?? history.historyTab)) return
+          setListTab(tab)
+          if (tab === 'favorites') void useFavoriteStore.getState().load()
+        }}
+        sessions={listFavoriteMode ? history.favoriteSessions : history.sessions}
+        favorites={listFavoriteMode ? history.favorites : []}
         selectedSessionId={history.selectedSession?.id ?? null}
-        hasMore={!favoriteMode && history.historyHasMore}
-        loadingMore={history.historyLoading}
-        onClose={() => history.setHistorySheetVisible(false)}
+        hasMore={!listFavoriteMode && history.historyHasMore}
+        loadingMore={!listFavoriteMode && history.historyLoading}
+        onClose={closeList}
         onSelectSession={(session) => {
-          history.setHistorySheetVisible(false)
-          if (favoriteMode) {
+          closeList()
+          if (listFavoriteMode) {
             const favorite = history.favorites.find(
               (item) => session.id === favoriteSessionId(item.id),
             )
-            if (favorite) void history.selectFavorite(favorite)
+            if (favorite) history.selectFavoriteRide(favorite.id, session)
           } else {
             history.selectRide(session)
           }

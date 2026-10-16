@@ -5,10 +5,11 @@ import { CaretRightIcon } from 'phosphor-react-native'
 import { interaction, theme, type ThemeColor } from '@/constants/theme'
 import { HistoryRideLabel } from '@/modules/history/components/HistoryRideLabel'
 import { RouteSparkline } from '@/modules/history/components/RouteSparkline'
+import { HISTORY_RIDE_ROW_HEIGHT } from '@/modules/history/lib/historyList'
 import type { RoutePoint } from '@/modules/history/lib/routePreview'
 
 const PREVIEW_WIDTH = 86
-const ROW_HEIGHT = 88
+const ROW_HEIGHT = HISTORY_RIDE_ROW_HEIGHT
 
 interface HistoryRideRowProps {
   title: string

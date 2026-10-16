@@ -1,5 +1,5 @@
 import { expect, test } from 'bun:test'
-import { historyListRows } from './historyList'
+import { historyListRows, historyListLayouts } from './historyList'
 
 const at = (day: number, hour: number) => new Date(2026, 9, day, hour).getTime()
 const ride = (day: number, hour: number) => ({
@@ -35,4 +35,18 @@ test('group by the displayed moving start, keeping overnight rides on their star
   expect(rows[0].window).toEqual({ startMs: at(16, 0), endMs: at(16, 1) })
   expect(rows[1].window.endMs).toBe(at(16, 0))
   expect(historyListRows([])).toEqual([])
+})
+
+test('exact frames include date headers and gaps across appended pages without moving existing rows', () => {
+  const firstPage = [ride(16, 18), ride(16, 12)]
+  const layouts = historyListLayouts(historyListRows(firstPage), 38)
+  const paged = historyListLayouts(historyListRows([...firstPage, ride(16, 8), ride(15, 20)]), 38)
+  expect(paged.slice(0, 2)).toEqual(layouts)
+  expect(paged).toEqual([
+    { index: 0, offset: 0, length: 126, rowOffset: 38 },
+    { index: 1, offset: 134, length: 88, rowOffset: 134 },
+    { index: 2, offset: 230, length: 88, rowOffset: 230 },
+    { index: 3, offset: 326, length: 126, rowOffset: 364 },
+  ])
+  expect(historyListLayouts(historyListRows(firstPage), 54)[1].rowOffset).toBe(150)
 })
