@@ -60,7 +60,41 @@ export const HistoryRideRow = forwardRef<View, HistoryRideRowProps>(function His
   )
 })
 
+/** Same footprint as a ride row so paging can extend the scroll area while native reads. */
+export function HistoryRideRowSkeleton() {
+  return (
+    <View
+      style={styles.row}
+      accessibilityElementsHidden
+      importantForAccessibility="no-hide-descendants"
+    >
+      <View style={[styles.preview, styles.skeletonBlock]} />
+      <View style={[styles.main, styles.skeletonDetails]}>
+        <View style={[styles.skeletonBlock, styles.skeletonTitle]} />
+        <View style={[styles.skeletonBlock, styles.skeletonSubtitle]} />
+      </View>
+    </View>
+  )
+}
+
 const styles = StyleSheet.create({
+  skeletonBlock: {
+    opacity: 0.5,
+    backgroundColor: theme.neutral.border,
+  },
+  skeletonDetails: {
+    gap: 8,
+  },
+  skeletonTitle: {
+    width: '58%',
+    height: 14,
+    borderRadius: 4,
+  },
+  skeletonSubtitle: {
+    width: '85%',
+    height: 10,
+    borderRadius: 3,
+  },
   row: {
     height: ROW_HEIGHT,
     borderRadius: 12,

@@ -1,14 +1,14 @@
 import { useRideFormat } from '@/modules/history/hooks/useRideFormat'
 import { useCallback, useMemo, useRef, type RefObject } from 'react'
-import { ActivityIndicator, Pressable, StyleSheet, View } from 'react-native'
+import { StyleSheet, View } from 'react-native'
 import { Text } from '@/components/base/Text'
 import { ClockCounterClockwiseIcon, StarIcon } from 'phosphor-react-native'
 import type { Favorite } from 'vescape-core'
 
 import { Placeholder } from '@/components/base/Placeholder'
 import { EdgeDrawer } from '@/components/overlays/EdgeDrawer'
-import { interaction, theme } from '@/constants/theme'
-import { HistoryRideRow } from '@/modules/history/components/HistoryRideRow'
+import { theme } from '@/constants/theme'
+import { HistoryRideRow, HistoryRideRowSkeleton } from '@/modules/history/components/HistoryRideRow'
 import { historyListRows } from '@/modules/history/lib/historyList'
 import { favoriteSessionId } from '@/modules/history/lib/favorites'
 import { formatFavoriteName, formatRideTime } from '@/modules/history/lib/rideFormat'
@@ -107,19 +107,20 @@ export function HistorySessionSheet({
     />
   )
 
-  const footer = hasMore ? (
-    <Pressable
-      style={({ pressed }) => [styles.loadingRow, pressed && styles.loadingPressed]}
-      disabled={loadingMore}
-      onPress={onLoadMore}
-    >
-      {loadingMore ? (
-        <ActivityIndicator size="small" color={theme.palette.sky.color} />
-      ) : (
-        <Text style={styles.loadingText}>Load older rides</Text>
-      )}
-    </Pressable>
-  ) : null
+  const footer =
+    hasMore && loadingMore ? (
+      <View
+        style={styles.loadingRows}
+        accessibilityLabel="Loading older rides"
+        accessibilityRole="progressbar"
+        accessibilityState={{ busy: true }}
+        testID="history-loading-older-rides"
+      >
+        {Array.from({ length: 6 }, (_, index) => (
+          <HistoryRideRowSkeleton key={index} />
+        ))}
+      </View>
+    ) : null
 
   return (
     <EdgeDrawer
@@ -162,21 +163,8 @@ const styles = StyleSheet.create({
   empty: {
     paddingVertical: 28,
   },
-  loadingRow: {
-    minHeight: 34,
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderRadius: 10,
-    borderWidth: 1,
-    borderColor: theme.neutral.border,
-    backgroundColor: theme.neutral.surfaceDeep,
-  },
-  loadingPressed: {
-    backgroundColor: interaction.pressedBg,
-  },
-  loadingText: {
-    color: theme.neutral.textMuted,
-    fontSize: 11,
-    fontWeight: '700',
+  loadingRows: {
+    gap: 8,
+    paddingTop: 8,
   },
 })
