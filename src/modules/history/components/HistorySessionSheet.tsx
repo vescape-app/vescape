@@ -82,6 +82,7 @@ export function HistorySessionSheet({
           details={favorite ? details : undefined}
           routePoints={session.routePoints}
           selected={selected}
+          accent={favorite ? theme.palette.amber.color : undefined}
           onPress={() => onSelectSession(session)}
         />
       )

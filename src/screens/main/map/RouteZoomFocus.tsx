@@ -1,3 +1,4 @@
+import { HISTORY_ENDPOINT_LAYER_ID } from '@/modules/history/lib/historyMapLayers'
 import { LineLayer, ShapeSource, type LineLayerStyle } from '@rnmapbox/maps'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useAnimatedReaction } from 'react-native-reanimated'
@@ -155,6 +156,7 @@ export function RouteZoomFocus({
     <>
       <ShapeSource id="center-ride-zoom-focus-source" shape={routeShape} lineMetrics>
         <LineLayer
+          belowLayerID={HISTORY_ENDPOINT_LAYER_ID}
           id="center-ride-zoom-focus-line"
           style={{
             lineGradient: gradient,
@@ -167,6 +169,7 @@ export function RouteZoomFocus({
       {focus ? (
         <ShapeSource id="center-ride-zoom-slice-source" shape={focus.shape} lineMetrics>
           <LineLayer
+            belowLayerID={HISTORY_ENDPOINT_LAYER_ID}
             id="center-ride-zoom-slice-casing"
             style={{
               lineColor: theme.alpha(theme.palette.slate.surfaceDeep, 0.85),
@@ -176,6 +179,7 @@ export function RouteZoomFocus({
             }}
           />
           <LineLayer
+            belowLayerID={HISTORY_ENDPOINT_LAYER_ID}
             id="center-ride-zoom-slice-line"
             style={{
               lineColor: getHistoryMetricBaseColor(metric, telemetryColors),

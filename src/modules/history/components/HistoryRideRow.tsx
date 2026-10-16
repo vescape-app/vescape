@@ -47,7 +47,7 @@ export const HistoryRideRow = forwardRef<View, HistoryRideRowProps>(function His
           points={routePoints}
           width={PREVIEW_WIDTH}
           height={ROW_HEIGHT - 2}
-          color={accent ?? (selected ? theme.palette.sky.color : theme.palette.purple.color)}
+          color={selected ? theme.palette.sky.color : (accent ?? theme.palette.purple.color)}
           endpoints
           style={styles.previewImage}
         />

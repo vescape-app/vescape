@@ -32,6 +32,7 @@ export function HistoryRideRowShowcase() {
         subtitle="10 Oct 2026"
         details="4 min · 1.42 km"
         routePoints={route}
+        selected={selected}
         accent={theme.palette.amber.color}
         onPress={() => undefined}
       />
