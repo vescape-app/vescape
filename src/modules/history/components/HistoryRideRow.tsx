@@ -5,10 +5,11 @@ import { CaretRightIcon } from 'phosphor-react-native'
 import { interaction, theme, type ThemeColor } from '@/constants/theme'
 import { HistoryRideLabel } from '@/modules/history/components/HistoryRideLabel'
 import { RouteSparkline } from '@/modules/history/components/RouteSparkline'
+import { HISTORY_RIDE_ROW_HEIGHT } from '@/modules/history/lib/historyList'
 import type { RoutePoint } from '@/modules/history/lib/routePreview'
 
 const PREVIEW_WIDTH = 86
-const ROW_HEIGHT = 88
+const ROW_HEIGHT = HISTORY_RIDE_ROW_HEIGHT
 
 interface HistoryRideRowProps {
   title: string
@@ -47,7 +48,7 @@ export const HistoryRideRow = forwardRef<View, HistoryRideRowProps>(function His
           points={routePoints}
           width={PREVIEW_WIDTH}
           height={ROW_HEIGHT - 2}
-          color={accent ?? (selected ? theme.palette.sky.color : theme.palette.purple.color)}
+          color={selected ? theme.palette.sky.color : (accent ?? theme.palette.purple.color)}
           endpoints
           style={styles.previewImage}
         />
@@ -60,7 +61,41 @@ export const HistoryRideRow = forwardRef<View, HistoryRideRowProps>(function His
   )
 })
 
+/** Same footprint as a ride row so paging can extend the scroll area while native reads. */
+export function HistoryRideRowSkeleton() {
+  return (
+    <View
+      style={styles.row}
+      accessibilityElementsHidden
+      importantForAccessibility="no-hide-descendants"
+    >
+      <View style={[styles.preview, styles.skeletonBlock]} />
+      <View style={[styles.main, styles.skeletonDetails]}>
+        <View style={[styles.skeletonBlock, styles.skeletonTitle]} />
+        <View style={[styles.skeletonBlock, styles.skeletonSubtitle]} />
+      </View>
+    </View>
+  )
+}
+
 const styles = StyleSheet.create({
+  skeletonBlock: {
+    opacity: 0.5,
+    backgroundColor: theme.neutral.border,
+  },
+  skeletonDetails: {
+    gap: 8,
+  },
+  skeletonTitle: {
+    width: '58%',
+    height: 14,
+    borderRadius: 4,
+  },
+  skeletonSubtitle: {
+    width: '85%',
+    height: 10,
+    borderRadius: 3,
+  },
   row: {
     height: ROW_HEIGHT,
     borderRadius: 12,
