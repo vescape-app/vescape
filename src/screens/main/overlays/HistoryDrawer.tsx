@@ -275,6 +275,7 @@ export function HistoryDrawer({
         visible={listMode !== null}
         triggerRef={triggerRef}
         favoriteMode={listMode === 'favorites'}
+        onSelectTab={(tab) => setListMode(tab === 'history' ? 'rides' : 'favorites')}
         sessions={listMode === 'favorites' ? favoriteSessions : sessions}
         favorites={favorites}
         selectedSessionId={null}

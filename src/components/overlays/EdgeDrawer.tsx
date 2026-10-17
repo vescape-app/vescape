@@ -1,3 +1,4 @@
+import { useState } from 'react'
 import {
   Modal,
   Pressable,
@@ -5,6 +6,7 @@ import {
   View,
   type FlatList,
   type ListRenderItem,
+  type FlatListProps,
   type StyleProp,
   type ViewStyle,
 } from 'react-native'
@@ -24,6 +26,10 @@ import { theme, type ThemeColor } from '@/constants/theme'
 import { useResolvedNeutralColors } from '@/hooks/useTheme'
 
 interface EdgeDrawerVirtualizedContent {
+  /** Exact data-row frames allow scrolling to rows outside the render window. */
+  getItemLayout?: FlatListProps<unknown>['getItemLayout']
+  /** Focus rectangle relative to the first data row (the drawer adds its header). */
+  initialFocus?: { offset: number; height: number }
   data: readonly unknown[]
   renderItem: ListRenderItem<unknown>
   keyExtractor: (item: unknown, index: number) => string
@@ -41,6 +47,8 @@ interface EdgeDrawerProps {
   onClose: () => void
   /** Which edge the drawer opens from. `auto` picks the edge nearest the trigger. */
   edge?: 'auto' | 'top' | 'bottom'
+  /** Custom interactive header, replacing the default title and icon. */
+  header?: React.ReactNode
   title?: string
   /** Optional glyph shown left of a centred title. */
   icon?: Icon
@@ -70,6 +78,7 @@ export function EdgeDrawer({
   onClose,
   edge = 'bottom',
   title,
+  header,
   icon: IconComponent,
   iconColor = theme.neutral.textSecondary,
   autoScrollOnContentExpand = false,
@@ -80,6 +89,7 @@ export function EdgeDrawer({
   children,
   virtualizedContent,
 }: EdgeDrawerProps) {
+  const [listHeaderHeight, setListHeaderHeight] = useState(0)
   const {
     mounted,
     closing,
@@ -101,6 +111,8 @@ export function EdgeDrawer({
     edge,
     triggerRef,
     initialFocusRef,
+    virtualized: virtualizedContent != null,
+    initialFocusLayout: listFocusLayout(listHeaderHeight, virtualizedContent?.initialFocus),
     autoScrollOnContentExpand,
     contentPageKey,
     onClose,
@@ -118,7 +130,9 @@ export function EdgeDrawer({
     <Pressable style={{ height: dismissAreaHeight }} onPress={close} accessible={false} />
   )
 
-  const drawerTitle = title ? (
+  const drawerTitle = header ? (
+    <View style={styles.drawerHeader}>{header}</View>
+  ) : title ? (
     <Pressable
       style={styles.drawerHeader}
       onPress={close}
@@ -138,18 +152,23 @@ export function EdgeDrawer({
   }
 
   const listHeader = virtualizedContent ? (
-    <>
+    <View onLayout={(event) => setListHeaderHeight(event.nativeEvent.layout.height)}>
       {!opensFromTop ? emptyDismissArea : null}
       <View style={[styles.listChrome, opensFromTop && { paddingTop: edgePadding }]}>
         {!opensFromTop ? <View style={[styles.grabber, colorStyle]} /> : null}
         {drawerTitle}
       </View>
-    </>
+    </View>
   ) : null
 
   const listFooter = virtualizedContent ? (
     <>
       {virtualizedContent.footer}
+      <VirtualizedFocusFooter
+        focus={virtualizedContent.initialFocus}
+        opensFromTop={opensFromTop}
+        height={dismissAreaHeight}
+      />
       <View style={[styles.listChrome, opensFromTop ? undefined : { paddingBottom: edgePadding }]}>
         {opensFromTop ? <View style={[styles.grabber, colorStyle]} /> : null}
       </View>
@@ -184,6 +203,10 @@ export function EdgeDrawer({
                     data={virtualizedContent.data as unknown[]}
                     renderItem={virtualizedContent.renderItem}
                     keyExtractor={virtualizedContent.keyExtractor}
+                    getItemLayout={withListHeaderLayout(
+                      virtualizedContent.getItemLayout,
+                      listHeaderHeight,
+                    )}
                     ListHeaderComponent={listHeader}
                     ListEmptyComponent={virtualizedContent.empty}
                     ListFooterComponent={listFooter}
@@ -245,6 +268,38 @@ export function EdgeDrawer({
       </GestureHandlerRootView>
     </Modal>
   )
+}
+
+function listFocusLayout(
+  headerHeight: number,
+  focus: EdgeDrawerVirtualizedContent['initialFocus'],
+) {
+  if (!focus || headerHeight <= 0) return undefined
+  return { offset: headerHeight + focus.offset, height: focus.height }
+}
+
+function withListHeaderLayout(
+  getLayout: EdgeDrawerVirtualizedContent['getItemLayout'],
+  headerHeight: number,
+): EdgeDrawerVirtualizedContent['getItemLayout'] {
+  if (!getLayout) return undefined
+  return (data, index) => {
+    const layout = getLayout(data, index)
+    return { ...layout, offset: headerHeight + layout.offset }
+  }
+}
+
+/** Let even the final selected row reach the screen center. */
+function VirtualizedFocusFooter({
+  focus,
+  opensFromTop,
+  height,
+}: {
+  focus: EdgeDrawerVirtualizedContent['initialFocus']
+  opensFromTop: boolean
+  height: number
+}) {
+  return focus && !opensFromTop ? <View style={{ height: height / 2 }} /> : null
 }
 
 const styles = StyleSheet.create({

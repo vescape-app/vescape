@@ -20,6 +20,7 @@ import { mkdirSync, readdirSync } from 'fs'
 import { basename, join } from 'path'
 
 import { applicationId } from '../src/config/appVariant.ts'
+import { maestroCommand } from './lib/maestro.ts'
 import { createAndroidDriver } from './lib/androidCapture.ts'
 import {
   CommandFailed,
@@ -129,17 +130,18 @@ async function runFlow(file: string, driver: CaptureDriver): Promise<void> {
   console.log(`› ${basename(file, '.yaml')}`)
   // Without --device Maestro picks the first attached device itself, which silently drives whatever
   // else is plugged in rather than the one this run prepared.
-  await runOrDie([
-    'maestro',
-    'test',
-    '--device',
-    driver.deviceId,
-    '-e',
-    `APP_ID=${applicationId}`,
-    '-e',
-    `OUT_DIR=${driver.outDir}`,
-    join(FLOWS_DIR, file),
-  ])
+  await runOrDie(
+    await maestroCommand(
+      'test',
+      '--device',
+      driver.deviceId,
+      '-e',
+      `APP_ID=${applicationId}`,
+      '-e',
+      `OUT_DIR=${driver.outDir}`,
+      join(FLOWS_DIR, file),
+    ),
+  )
 }
 
 async function createDriver(platform: CapturePlatform, args: Args): Promise<CaptureDriver> {

@@ -25,6 +25,7 @@ import { tmpdir } from 'os'
 import { basename, dirname, join, relative, resolve } from 'path'
 
 import { applicationId } from '../src/config/appVariant.ts'
+import { maestroCommand } from './lib/maestro.ts'
 import { createAndroidDriver } from './lib/androidCapture.ts'
 import {
   CommandFailed,
@@ -122,15 +123,16 @@ async function runFlow(path: string, driver: CaptureDriver): Promise<void> {
   console.log(`› ${basename(path, '.yaml')}`)
   // Without --device Maestro picks the first attached device itself, which silently drives whatever
   // else is plugged in rather than the one this run prepared.
-  await runOrDie([
-    'maestro',
-    'test',
-    '--device',
-    driver.deviceId,
-    '-e',
-    `APP_ID=${applicationId}`,
-    path,
-  ])
+  await runOrDie(
+    await maestroCommand(
+      'test',
+      '--device',
+      driver.deviceId,
+      '-e',
+      `APP_ID=${applicationId}`,
+      path,
+    ),
+  )
 }
 
 async function launchAndroidApp(deviceId: string): Promise<void> {
@@ -165,6 +167,7 @@ async function launchAndroidApp(deviceId: string): Promise<void> {
 }
 
 interface SmokeDependencies {
+  checkMaestro: () => Promise<unknown>
   buildApp: (args: Args) => Promise<string>
   createDriver: (args: Args) => Promise<CaptureDriver>
   runFlow: typeof runFlow
@@ -172,6 +175,7 @@ interface SmokeDependencies {
 }
 
 const dependencies: SmokeDependencies = {
+  checkMaestro: () => maestroCommand(),
   buildApp: (args) =>
     args.platform === 'ios'
       ? buildIosFixture('smoke', args.replay)
@@ -199,6 +203,8 @@ export async function main(args: Args, deps: SmokeDependencies = dependencies): 
     return
   }
 
+  // Check before a cold simulator boot competes with the CLI's JVM startup.
+  await deps.checkMaestro()
   const driver = await deps.createDriver(args)
 
   console.log(`\nSmoke · ${driver.deviceLabel}`)

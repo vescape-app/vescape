@@ -18,7 +18,7 @@ interface RouteSparklineProps {
   height: number
   /** Line color; the ride list tints a selected row and Favorites use their own amber. */
   color?: ThemeColor
-  /** Green start and red end dots. Off on small thumbnails where they only add noise. */
+  /** Tiny duty-colored start and palette-red end dots, matching the full-map flags. */
   endpoints?: boolean
   /** Dark street map behind the route once its tiles are on disk; the plain route until then. */
   map?: boolean
@@ -41,8 +41,8 @@ export function RouteSparkline({
 }: RouteSparklineProps) {
   const tiles = useRoutePreviewTiles(points, width, height, map)
   const resolvedColor = useResolvedColor(color)
-  const startColor = useResolvedColor(theme.palette.green.color)
-  const endColor = useResolvedColor(theme.status.error.color)
+  const startColor = useResolvedColor(theme.telemetry.duty)
+  const endColor = useResolvedColor(theme.palette.red.color)
   const path = useMemo(() => routePreviewPath(points, width, height), [height, points, width])
   const marks = useMemo(() => {
     if (!endpoints || points.length < 2) return null
@@ -74,8 +74,8 @@ export function RouteSparkline({
           />
           {marks ? (
             <>
-              <Circle cx={marks.start.x} cy={marks.start.y} r={3} color={startColor} />
-              <Circle cx={marks.end.x} cy={marks.end.y} r={3} color={endColor} />
+              <Circle cx={marks.start.x} cy={marks.start.y} r={1.5} color={startColor} />
+              <Circle cx={marks.end.x} cy={marks.end.y} r={1.5} color={endColor} />
             </>
           ) : null}
         </Canvas>

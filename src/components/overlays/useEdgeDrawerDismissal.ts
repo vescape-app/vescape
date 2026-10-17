@@ -22,6 +22,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import {
   DRAWER_INITIAL_OPEN_FRACTION,
   edgeDrawerContentResizeOffset,
+  edgeDrawerFocusOffset,
   edgeDrawerDismissOpacity,
   edgeDrawerHasCommitted,
   edgeDrawerRestoreOffset,
@@ -45,6 +46,8 @@ export interface EdgeDrawerDismissalOptions {
   edge: 'auto' | 'top' | 'bottom'
   triggerRef: React.RefObject<View | null>
   initialFocusRef?: React.RefObject<View | null>
+  initialFocusLayout?: { offset: number; height: number }
+  virtualized?: boolean
   autoScrollOnContentExpand: boolean
   contentPageKey?: string
   onClose: () => void
@@ -63,6 +66,8 @@ export function useEdgeDrawerDismissal({
   edge,
   triggerRef,
   initialFocusRef,
+  initialFocusLayout,
+  virtualized = false,
   autoScrollOnContentExpand,
   contentPageKey,
   onClose,
@@ -77,6 +82,7 @@ export function useEdgeDrawerDismissal({
   const [keyboardInset, setKeyboardInset] = useState(0)
   const scrollRef = useRef<ScrollView | FlatList<unknown>>(null)
   const positionedRef = useRef(false)
+  const indexedFocusAppliedRef = useRef(false)
   const openStartedRef = useRef(false)
   const dismissRangeRef = useRef(0)
   const previousContentHeightRef = useRef(0)
@@ -125,6 +131,7 @@ export function useEdgeDrawerDismissal({
       setCloseRequested(false)
       dismissRangeRef.current = 0
       positionedRef.current = false
+      indexedFocusAppliedRef.current = false
       previousContentHeightRef.current = 0
       setKeyboardInset(0)
       scrollOffsetRef.current = 0
@@ -267,11 +274,27 @@ export function useEdgeDrawerDismissal({
       if (!positionedRef.current) {
         positionedRef.current = true
         const initialOpenOffset = Math.min(range, height * DRAWER_INITIAL_OPEN_FRACTION)
-        const initialOffset = opensFromTop ? 0 : initialOpenOffset
+        const focus = initialFocusLayout
+        const initialOffset = focus
+          ? edgeDrawerFocusOffset({
+              offset: focus.offset,
+              itemHeight: focus.height,
+              range,
+              height,
+              opensFromTop,
+            })
+          : opensFromTop
+            ? 0
+            : initialOpenOffset
         scrollOffsetRef.current = initialOffset
         scrollOffset.value = initialOffset
         requestAnimationFrame(() => {
-          scrollToOffset(initialOffset, false)
+          // A header layout may already have focused the row. Never overwrite it with
+          // the default opening offset from an earlier content-size callback.
+          if (!indexedFocusAppliedRef.current) {
+            if (focus) indexedFocusAppliedRef.current = true
+            scrollToOffset(initialOffset, false)
+          }
           dismissArmed.value = true
           if (!initialFocusRef?.current) return
           requestAnimationFrame(() => {
@@ -282,12 +305,13 @@ export function useEdgeDrawerDismissal({
             initialFocusRef.current.measureLayout(
               nativeScrollRef,
               (_x, focusY, _width, focusHeight) => {
-                const visibleCenter = height * (opensFromTop ? 0.375 : 0.625)
-                const minimumOffset = opensFromTop ? 0 : initialOffset
-                const focusedOffset = Math.max(
-                  minimumOffset,
-                  Math.min(range, focusY + focusHeight / 2 - visibleCenter),
-                )
+                const focusedOffset = edgeDrawerFocusOffset({
+                  offset: focusY,
+                  itemHeight: focusHeight,
+                  range,
+                  height,
+                  opensFromTop,
+                })
                 scrollOffsetRef.current = focusedOffset
                 scrollOffset.value = focusedOffset
                 scrollToOffset(focusedOffset, false)
@@ -306,7 +330,12 @@ export function useEdgeDrawerDismissal({
       // Content grows over many frames, so this follows every one of them from the live offset —
       // a per-frame "was the drawer fully open?" test loses the race after the first frame and
       // leaves the drawer stranded half faded.
-      const pinsToOwnEdge = !opensFromTop && range !== previousRange && !initialFocusRef
+      const pinsToOwnEdge =
+        !virtualized &&
+        !opensFromTop &&
+        range !== previousRange &&
+        !initialFocusRef &&
+        !initialFocusLayout
       if (pinsToOwnEdge) {
         const pinnedOffset = edgeDrawerContentResizeOffset({
           offset: scrollOffset.value,
@@ -336,12 +365,56 @@ export function useEdgeDrawerDismissal({
       dismissArmed,
       height,
       initialFocusRef,
+      initialFocusLayout,
+      virtualized,
       opensFromTop,
       scrollOffset,
       scrollToOffset,
       scrollToContentStart,
     ],
   )
+
+  // Unlike ref measurement, a known frame can focus a row that FlatList has never mounted.
+  const focusOffset = initialFocusLayout?.offset
+  const focusHeight = initialFocusLayout?.height
+  useEffect(() => {
+    if (
+      !visible ||
+      !mounted ||
+      !positionedRef.current ||
+      indexedFocusAppliedRef.current ||
+      focusOffset == null ||
+      focusHeight == null
+    )
+      return
+    const frame = requestAnimationFrame(() => {
+      // A late header/layout pass can temporarily report only the first render window.
+      // Wait until native content bounds can contain the target instead of locking in a clamp.
+      if (dismissRangeRef.current < focusOffset + focusHeight / 2 - height / 2) return
+      const target = edgeDrawerFocusOffset({
+        offset: focusOffset,
+        itemHeight: focusHeight,
+        range: dismissRangeRef.current,
+        height,
+        opensFromTop,
+      })
+      indexedFocusAppliedRef.current = true
+      scrollOffsetRef.current = target
+      scrollOffset.value = target
+      scrollToOffset(target, false)
+    })
+    return () => cancelAnimationFrame(frame)
+  }, [
+    visible,
+    mounted,
+    dismissRange,
+    focusOffset,
+    focusHeight,
+    height,
+    opensFromTop,
+    scrollOffset,
+    scrollToOffset,
+  ])
 
   /** Settle a half-faded drawer back to the offset where it is fully opaque again. */
   const restoreFullyVisible = useCallback(() => {

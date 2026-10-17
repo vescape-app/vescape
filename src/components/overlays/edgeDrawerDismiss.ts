@@ -153,3 +153,21 @@ export function edgeDrawerContentResizeOffset({
   const pinned = wasOpaque ? Math.max(grown, edgeDrawerRestoreOffset(range, height, false)) : grown
   return clamp(pinned, 0, range)
 }
+
+/** Center a known child without entering the drawer's transparent dismissal area. */
+export function edgeDrawerFocusOffset({
+  offset,
+  itemHeight,
+  range,
+  height,
+  opensFromTop,
+}: {
+  offset: number
+  itemHeight: number
+  range: number
+  height: number
+  opensFromTop: boolean
+}): number {
+  const minimum = opensFromTop ? 0 : Math.min(range, height * DRAWER_INITIAL_OPEN_FRACTION)
+  return Math.max(minimum, Math.min(range, offset + itemHeight / 2 - height / 2))
+}
