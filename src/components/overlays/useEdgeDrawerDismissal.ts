@@ -79,7 +79,7 @@ export function useEdgeDrawerDismissal({
   const [closeRequested, setCloseRequested] = useState(false)
   const [opensFromTop, setOpensFromTop] = useState(true)
   const [dismissRange, setDismissRange] = useState(0)
-  const [keyboardInset, setKeyboardInset] = useState(0)
+  const [keyboardInset, setKeyboardInset] = useDrawerKeyboardInset(mounted)
   const scrollRef = useRef<ScrollView | FlatList<unknown>>(null)
   const positionedRef = useRef(false)
   const indexedFocusAppliedRef = useRef(false)
@@ -165,20 +165,6 @@ export function useEdgeDrawerDismissal({
       easing: ReanimatedEasing.out(ReanimatedEasing.quad),
     })
   }, [presence])
-
-  useEffect(() => {
-    if (!mounted) return
-    const showSubscription = Keyboard.addListener('keyboardDidShow', (event) => {
-      setKeyboardInset(event.endCoordinates.height)
-    })
-    const hideSubscription = Keyboard.addListener('keyboardDidHide', () => {
-      setKeyboardInset(0)
-    })
-    return () => {
-      showSubscription.remove()
-      hideSubscription.remove()
-    }
-  }, [mounted])
 
   const finishClose = useCallback(() => {
     setCloseRequested(false)
@@ -515,3 +501,21 @@ export function useEdgeDrawerDismissal({
   }
 }
 /* eslint-enable react-hooks/immutability */
+
+function useDrawerKeyboardInset(mounted: boolean) {
+  const [keyboardInset, setKeyboardInset] = useState(0)
+  useEffect(() => {
+    if (!mounted) return
+    const showSubscription = Keyboard.addListener('keyboardDidShow', (event) => {
+      setKeyboardInset(event.endCoordinates.height)
+    })
+    const hideSubscription = Keyboard.addListener('keyboardDidHide', () => {
+      setKeyboardInset(0)
+    })
+    return () => {
+      showSubscription.remove()
+      hideSubscription.remove()
+    }
+  }, [mounted])
+  return [keyboardInset, setKeyboardInset] as const
+}

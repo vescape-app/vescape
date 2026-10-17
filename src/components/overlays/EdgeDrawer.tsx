@@ -120,6 +120,7 @@ export function EdgeDrawer({
   })
 
   const focus = useWidgetFocusHost()
+  const { rootRef: focusRootRef, active: focusActive, controller: focusController } = focus
   // JS-side resolution: baked adaptive tokens in a StyleSheet go stale inside a live Modal window
   // after the rider changes the appearance in place — the window re-resolves only on remount.
   const neutral = useResolvedNeutralColors()
@@ -184,7 +185,7 @@ export function EdgeDrawer({
       statusBarTranslucent
       navigationBarTranslucent
       presentationStyle="overFullScreen"
-      onRequestClose={focus.active ? focus.controller.close : close}
+      onRequestClose={focusActive ? focusController.close : close}
       onShow={startOpen}
     >
       <GestureHandlerRootView style={styles.modalGestureRoot}>
@@ -194,7 +195,7 @@ export function EdgeDrawer({
           </Reanimated.View>
         </View>
         <Reanimated.View style={[styles.drawer, presenceStyle]}>
-          <View ref={focus.rootRef} collapsable={false} style={styles.focusRoot}>
+          <View ref={focusRootRef} collapsable={false} style={styles.focusRoot}>
             <NativeScrollGestureContext.Provider value={nativeScrollGesture}>
               <GestureDetector gesture={nativeScrollGesture}>
                 {virtualizedContent ? (
@@ -218,7 +219,7 @@ export function EdgeDrawer({
                     onScroll={scrollHandler}
                     onScrollEndDrag={handleScrollEndDrag}
                     onMomentumScrollEnd={handleScrollEnd}
-                    scrollEnabled={!closing && !focus.active}
+                    scrollEnabled={!closing && !focusActive}
                     scrollEventThrottle={16}
                     showsVerticalScrollIndicator={false}
                     bounces={false}
@@ -237,7 +238,7 @@ export function EdgeDrawer({
                     onScroll={scrollHandler}
                     onScrollEndDrag={handleScrollEndDrag}
                     onMomentumScrollEnd={handleScrollEnd}
-                    scrollEnabled={!closing && !focus.active}
+                    scrollEnabled={!closing && !focusActive}
                     scrollEventThrottle={16}
                     showsVerticalScrollIndicator={false}
                     bounces={false}

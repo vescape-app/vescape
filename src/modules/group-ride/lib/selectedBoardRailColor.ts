@@ -7,8 +7,7 @@ export function selectedBoardRailColor(appearance: ResolvedTheme): string | null
   const { boards, activeBoardId } = useBoardStore.getState()
   const colorId = boards.find((board) => board.id === activeBoardId)?.personalization?.railColorId
   if (!colorId) return null
-  const accent = accentColors[appearance][colorId as keyof typeof accentColors.dark]
-  return accent?.color ?? null
+  return resolveRailColor(colorId, appearance)
 }
 
 export function useSelectedBoardRailColor(): string | null {
@@ -18,5 +17,13 @@ export function useSelectedBoardRailColor(): string | null {
   )
   const appearance = useThemeStore((state) => state.resolvedTheme)
   if (!colorId) return null
-  return accentColors[appearance][colorId as keyof typeof accentColors.dark]?.color ?? null
+  return resolveRailColor(colorId, appearance)
+}
+
+function resolveRailColor(colorId: string, appearance: ResolvedTheme): string | null {
+  return (
+    accentColors[appearance][
+      (colorId === 'group-ride' ? 'mint' : colorId) as keyof typeof accentColors.dark
+    ]?.color ?? null
+  )
 }

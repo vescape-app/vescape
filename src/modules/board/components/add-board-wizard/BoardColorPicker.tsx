@@ -29,7 +29,7 @@ export function BoardColorPicker({
               void Haptics.selectionAsync()
             }}
             accessibilityRole="radio"
-            accessibilityLabel={`${color.id} rails`}
+            accessibilityLabel={`${'label' in color ? color.label : color.id} rails`}
             accessibilityState={{ selected }}
             style={({ pressed }) => [
               styles.colorTarget,

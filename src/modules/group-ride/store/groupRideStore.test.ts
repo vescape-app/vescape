@@ -323,7 +323,7 @@ test('selected Board rail color follows Board and appearance; no Board clears it
   const { useBoardStore } = await import('@/modules/board/store/boardStore')
   const { useThemeStore } = await import('@/hooks/useTheme')
   const { selectedBoardRailColor } = await import('@/modules/group-ride/lib/selectedBoardRailColor')
-  const { accentColors } = await import('@/constants/theme')
+  const { accentColors, personalizationColorOptions } = await import('@/constants/theme')
 
   useBoardStore.setState({ boards: [], activeBoardId: null })
   expect(selectedBoardRailColor('dark')).toBeNull()
@@ -338,6 +338,30 @@ test('selected Board rail color follows Board and appearance; no Board clears it
   useBoardStore.setState({ activeBoardId: 'second' })
   expect(selectedBoardRailColor('dark')).toBe(accentColors.dark.amber.color)
   expect(selectedBoardRailColor('light')).toBe(accentColors.light.amber.color)
+  useBoardStore.setState({
+    boards: [{ id: 'mint', personalization: { railId: 'x7', railColorId: 'group-ride' } }] as never,
+    activeBoardId: 'mint',
+  })
+  expect(selectedBoardRailColor('dark')).not.toBeNull()
+  expect(selectedBoardRailColor('dark')).toBe(accentColors.dark.mint.color)
+  expect(selectedBoardRailColor('light')).toBe(accentColors.light.mint.color)
+  for (const { id } of personalizationColorOptions) {
+    useBoardStore.setState({
+      boards: [{ id: 'choice', personalization: { railId: 'x7', railColorId: id } }] as never,
+      activeBoardId: 'choice',
+    })
+    for (const appearance of ['light', 'dark'] as const) {
+      expect(selectedBoardRailColor(appearance)).toBe(
+        accentColors[appearance][id === 'group-ride' ? 'mint' : id].color,
+      )
+    }
+  }
+  expect(accentColors.light.mint.color).not.toBe(accentColors.light.teal.color)
+  useBoardStore.setState({
+    boards: [{ id: 'unknown', personalization: { railId: 'x7', railColorId: 'unknown' } }] as never,
+    activeBoardId: 'unknown',
+  })
+  expect(selectedBoardRailColor('dark')).toBeNull()
   useThemeStore.setState({ resolvedTheme: 'light' })
   useBoardStore.setState({ activeBoardId: null })
   expect(selectedBoardRailColor(useThemeStore.getState().resolvedTheme)).toBeNull()

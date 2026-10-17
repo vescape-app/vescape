@@ -1,4 +1,4 @@
-import { useEffect, useState, type RefObject } from 'react'
+import { useState, type RefObject } from 'react'
 import { Pressable, StyleSheet, View } from 'react-native'
 import { CaretRightIcon, PencilSimpleIcon } from 'phosphor-react-native'
 
@@ -36,13 +36,20 @@ export function BoardAppearanceEditorSheet({
   const [brand, setBrand] = useState<RailBrand | null>(null)
   const [saving, setSaving] = useState(false)
 
-  useEffect(() => {
-    if (!visible) return
-    setDraftRailId(railPreset(railId).id)
-    setDraftColorId(validColorId(railColorId))
-    setRailPage(false)
-    setBrand(null)
-  }, [visible, railId, railColorId])
+  const [previousInputs, setPreviousInputs] = useState({ visible, railId, railColorId })
+  if (
+    previousInputs.visible !== visible ||
+    previousInputs.railId !== railId ||
+    previousInputs.railColorId !== railColorId
+  ) {
+    setPreviousInputs({ visible, railId, railColorId })
+    if (visible) {
+      setDraftRailId(railPreset(railId).id)
+      setDraftColorId(validColorId(railColorId))
+      setRailPage(false)
+      setBrand(null)
+    }
+  }
 
   const save = async () => {
     setSaving(true)
