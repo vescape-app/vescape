@@ -41,7 +41,7 @@ export function TuneProfilePill({
   const activeProgress = useSharedValue(active ? 1 : 0)
 
   useEffect(() => {
-    activeProgress.value = withTiming(active ? 1 : 0, PROFILE_ANIMATION)
+    activeProgress.set(withTiming(active ? 1 : 0, PROFILE_ANIMATION))
   }, [active, activeProgress])
 
   const frameStyle = useAnimatedStyle(

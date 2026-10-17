@@ -362,8 +362,6 @@ const styles = StyleSheet.create({
     gap: 12,
     borderRadius: 16,
     borderCurve: 'continuous',
-    borderWidth: 1,
-    borderColor: theme.neutral.border,
     backgroundColor: theme.neutral.surface,
   },
   panelTitle: {

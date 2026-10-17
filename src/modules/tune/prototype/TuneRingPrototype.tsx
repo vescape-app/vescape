@@ -1,133 +1,102 @@
-// THROWAWAY: six deliberately close ring interactions, three pages, local values only.
-// Compare radial handles, orbit handles, detents, a fourth axis, a contour and a focus ring.
-import { useEffect, useState, type ReactNode } from 'react'
-import { ScrollView, StyleSheet, View, useWindowDimensions } from 'react-native'
-import Svg, { Circle, Line, Polygon } from 'react-native-svg'
+// THROWAWAY: compare a human-facing 0–10 scale with real tune editor ranges.
+import { use, useState, type ReactNode } from 'react'
+import {
+  ScrollView,
+  StyleSheet,
+  View,
+  useWindowDimensions,
+  type StyleProp,
+  type ViewStyle,
+} from 'react-native'
+import Svg, { Circle, Defs, Line } from 'react-native-svg'
 import { Gesture, GestureDetector } from 'react-native-gesture-handler'
-import Animated, { useAnimatedStyle, useSharedValue } from 'react-native-reanimated'
+import Animated, {
+  useAnimatedProps,
+  useAnimatedStyle,
+  useSharedValue,
+  type SharedValue,
+} from 'react-native-reanimated'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { scheduleOnRN } from 'react-native-worklets'
-import { ArrowLeftIcon, ArrowRightIcon, MinusIcon, PlusIcon } from 'phosphor-react-native'
+import { TreeIcon, CityIcon, MagicWandIcon, CoffeeIcon, CompassIcon } from 'phosphor-react-native'
 import { Button } from '@/components/base/Button'
-import { IconButton } from '@/components/base/IconButton'
 import { Text } from '@/components/base/Text'
-import { theme } from '@/constants/theme'
 import { useResolvedAccentColors, useResolvedNeutralColors } from '@/hooks/useTheme'
 
+import { TuneDial } from '@/modules/tune/components/TuneDial'
+import { FieldEditorPopover } from '@/modules/tune/components/FieldEditorPopover'
+import { TuneRingNavigation, TuneRingVariantSwitcher } from './TuneRingChrome'
+import { NativeScrollGestureContext } from '@/components/gestures/NativeScrollGestureContext'
+import { TuneRingSideTargets } from './TuneRingSideTargets'
+import { TuneRingParallaxLayer, TuneRingSavedCircle } from './TuneRingParallaxLayer'
+import { TuneRingSectionTabs } from './TuneRingSectionTabs'
+import { RingResizeGesture } from './RingResizeGesture'
+import { RingHandle } from './RingHandle'
+import { TuneRingParameterLabel } from './TuneRingParameterLabel'
+import { TuneRingGradient } from './TuneRingGradient'
+import { TuneRingFeelGuide } from './TuneRingFeelGuide'
+import { usePrototypeTuneEditor } from './usePrototypeTuneEditor'
+import { controlsForVariant, GROUPS, realValue, TUNE_PRESETS } from './tuneRingControls'
+import { ANGLES, handleCircle, valueRadius, constrainCircleEdit } from './tuneRingGeometry'
+
+const AnimatedCircle = Animated.createAnimatedComponent(Circle)
+
+const PRESET_ICONS = [TreeIcon, CityIcon, MagicWandIcon, CoffeeIcon, CompassIcon]
+
 const VARIANTS = [
-  ['Radial', 'Slide each handle toward or away from your Board.'],
-  ['Orbit', 'Sweep each handle around its short arc.'],
-  ['Detents', 'Radial travel snaps to ten deliberate steps.'],
-  ['Four axes', 'A bottom handle adds a fourth parameter.'],
-  ['Contour', 'The outline shows the balance between all three values.'],
-  ['Focus', 'Select an axis, then swipe left or right across the disc.'],
+  'Simple · 0–10',
+  'Real ranges',
+  'Graph only',
+  'Graph · no board',
+  'Graph · resize',
+  'Tune workspace',
 ] as const
-const GROUPS = [
-  {
-    name: 'Feel',
-    labels: ['Aggressiveness', 'Tail stiffness', 'Nose stiffness', 'Braking'],
-    defaults: [55, 45, 60, 50],
-  },
-  {
-    name: 'Brake / Turn',
-    labels: ['Brake strength', 'Turn response', 'Turn tilt', 'Brake tilt'],
-    defaults: [60, 45, 35, 40],
-  },
-  {
-    name: 'ATR',
-    labels: ['ATR strength', 'Uphill response', 'Downhill response', 'Recovery'],
-    defaults: [50, 65, 40, 55],
-  },
-] as const
-const ANGLES = [-Math.PI / 2, (Math.PI * 5) / 6, Math.PI / 6, Math.PI / 2]
 const bound = (n: number) => Math.max(0, Math.min(100, n))
 
-function RingHandle({
-  value,
-  angle,
-  radius,
-  center,
-  orbit,
-  snap,
-  selected,
+function PresetBadges({
+  activePreset,
   color,
-  label,
-  onChange,
-  onSelect,
+  onApply,
 }: {
-  value: number
-  angle: number
-  radius: number
-  center: number
-  orbit: boolean
-  snap: boolean
-  selected: boolean
+  activePreset: string | null
   color: string
-  label: string
-  onChange: (value: number) => void
-  onSelect: () => void
+  onApply: (preset: (typeof TUNE_PRESETS)[number]) => void
 }) {
-  'use no memo'
-  const live = useSharedValue(value)
-  const start = useSharedValue(value)
-  useEffect(() => {
-    live.set(value)
-  }, [live, value])
-  const gesture = Gesture.Pan()
-    .minDistance(0)
-    .onBegin(() => {
-      start.set(live.value)
-      scheduleOnRN(onSelect)
-    })
-    .onUpdate((event) => {
-      const movement = orbit
-        ? ((-Math.sin(angle) * event.translationX + Math.cos(angle) * event.translationY) /
-            radius) *
-          100
-        : ((Math.cos(angle) * event.translationX + Math.sin(angle) * event.translationY) /
-            (radius * 0.42)) *
-          100
-      const raw = Math.max(0, Math.min(100, start.value + movement))
-      live.set(snap ? Math.round(raw / 10) * 10 : Math.round(raw))
-    })
-    .onEnd(() => {
-      scheduleOnRN(onChange, live.value)
-    })
-  const animated = useAnimatedStyle(() => {
-    const a = orbit ? angle + (live.value / 100 - 0.5) * 0.9 : angle
-    const r = orbit ? radius * 0.85 : radius * (0.58 + live.value * 0.0042)
-    return {
-      transform: [
-        { translateX: center + Math.cos(a) * r - 22 },
-        { translateY: center + Math.sin(a) * r - 22 },
-      ],
-    }
-  })
+  const neutral = useResolvedNeutralColors()
+  const pagerGesture = use(NativeScrollGestureContext)
+  const presetScroll = Gesture.Native().shouldActivateOnStart(true).disallowInterruption(true)
+  if (pagerGesture) presetScroll.blocksExternalGesture(pagerGesture)
   return (
-    <GestureDetector gesture={gesture}>
-      <Animated.View
-        accessible
-        accessibilityRole="adjustable"
-        accessibilityLabel={label}
-        accessibilityValue={{ min: 0, max: 100, now: value }}
-        accessibilityActions={[{ name: 'increment' }, { name: 'decrement' }]}
-        onAccessibilityAction={(event) =>
-          onChange(bound(value + (event.nativeEvent.actionName === 'increment' ? 5 : -5)))
-        }
-        style={[styles.handleTarget, animated]}
+    <View style={{ gap: 4 }}>
+      <Text
+        accessibilityRole="header"
+        style={{ fontSize: 12, fontWeight: '700', color: neutral.textMuted }}
       >
-        <View
-          style={[
-            styles.handle,
-            {
-              borderColor: color,
-              backgroundColor: theme.neutral.surface,
-              borderWidth: selected ? 3 : 1.5,
-            },
-          ]}
-        />
-      </Animated.View>
-    </GestureDetector>
+        Start with a preset
+      </Text>
+      <GestureDetector gesture={presetScroll}>
+        <ScrollView
+          horizontal
+          nestedScrollEnabled
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={styles.presets}
+        >
+          {TUNE_PRESETS.map((preset, index) => (
+            <Button
+              key={preset.name}
+              label={preset.name}
+              icon={PRESET_ICONS[index]}
+              size="sm"
+              variant="secondary"
+              accent={activePreset === preset.name ? color : undefined}
+              style={styles.presetBadge}
+              accessibilityLabel={`${preset.name}, demo preset${activePreset === preset.name ? ', selected' : ''}`}
+              onPress={() => onApply(preset)}
+            />
+          ))}
+        </ScrollView>
+      </GestureDetector>
+    </View>
   )
 }
 
@@ -135,329 +104,396 @@ export function TuneRingPrototype({
   variant,
   onVariant,
   board,
-  boardName,
-  onPose,
+  liveValues,
+  embeddedPage,
+  draft,
+  onDraftChange,
+  pagerPosition,
+  onAdjacentPage,
+  originalValues,
 }: {
   variant: number
   onVariant: (variant: number) => void
   board: ReactNode
-  boardName: string
-  onPose: (values: readonly number[]) => void
+  liveValues: SharedValue<number[]>
+  embeddedPage?: number
+  draft?: number[][]
+  onDraftChange?: (values: number[][]) => void
+  pagerPosition?: SharedValue<number>
+  onAdjacentPage?: (page: number) => void
+  originalValues?: number[]
 }) {
+  'use no memo'
   const insets = useSafeAreaInsets()
   const neutral = useResolvedNeutralColors()
   const accents = useResolvedAccentColors()
-  const colors = [
-    accents.purple.color,
-    accents.cyan.color,
-    accents.orange.color,
-    accents.green.color,
+  const [localPage, setPage] = useState(0)
+  const page = embeddedPage ?? localPage
+  const pagerGesture = use(NativeScrollGestureContext)
+  const [activePreset, setActivePreset] = useState<string | null>(null)
+  // Match colors to riding behavior across labels, handles, axes, and the dial.
+  const pageColors = [
+    [accents.blue, accents.cyan, accents.teal],
+    [accents.red, accents.yellow, accents.orange],
+    [accents.violet, accents.amber, accents.mint],
   ]
-  const [page, setPage] = useState(0)
-  const [selection, setSelected] = useState(0)
-  const selected = variant !== 4 && selection === 3 ? 0 : selection
-  const [values, setValues] = useState<number[][]>(() => GROUPS.map((group) => [...group.defaults]))
-  const width = Math.min(useWindowDimensions().width - 24, 420)
+  const colors = [...pageColors[page].map((accent) => accent.color), accents.purple.color]
+  const [selected, setSelected] = useState(0)
+  const controls = controlsForVariant(variant)
+  const [localValues, setLocalValues] = useState<number[][]>(() =>
+    GROUPS.map((group) => [...group.defaults]),
+  )
+  const values = draft ?? localValues
+  const setValues = (next: number[][] | ((current: number[][]) => number[][])) => {
+    const result = typeof next === 'function' ? next(values) : next
+    if (onDraftChange) onDraftChange(result)
+    else setLocalValues(result)
+  }
+  const window = useWindowDimensions()
+  const width = Math.min(window.width - 24, 420)
   const center = width / 2
   const radius = width * 0.36
   const current = GROUPS[page]
-  const count = variant === 4 ? 4 : 3
+  const control = controls[page][selected]
+  const normalizedSteps = controls[page].map((item) => (item.step / (item.max - item.min)) * 100)
+  const goPage = (index: number) => {
+    setPage(index)
+    setSelected(0)
+    liveValues.set(values[index])
+  }
   const change = (index: number, value: number) => {
+    setActivePreset(null)
     const next = values.map((group, i) =>
       i === page ? group.map((v, j) => (j === index ? bound(value) : v)) : group,
     )
     setValues(next)
-    onPose(next[page])
+    liveValues.set(next[page])
   }
-  const points = values[page]
-    .slice(0, count)
-    .map((value, index) => {
-      const r = radius * (0.58 + value * 0.0042)
-      return `${center + Math.cos(ANGLES[index]) * r},${center + Math.sin(ANGLES[index]) * r}`
+  const editor = usePrototypeTuneEditor(change)
+  const circleProps = useAnimatedProps(() => handleCircle(liveValues.value, radius, center))
+  const dragCircle = useSharedValue({ cx: center, cy: center, r: radius })
+  const commitMix = (mixed: number[]) => {
+    editor.clear(page)
+    setActivePreset(null)
+    setValues((groups) => groups.map((group, i) => (i === page ? [...mixed] : group)))
+  }
+  const mixGesture = Gesture.Pan()
+    .minDistance(0)
+    .onBegin(() => {
+      dragCircle.set(handleCircle(liveValues.value, radius, center))
     })
-    .join(' ')
-  const focusGesture = Gesture.Pan()
-    .minDistance(5)
-    .onEnd((event) => {
-      // Full ring is a horizontal sweep; handle modes retain direct radial gestures.
-      scheduleOnRN(
-        change,
-        selected,
-        bound(values[page][selected] + Math.round(event.translationX / 2)),
+    .onUpdate((event) => {
+      const initial = dragCircle.value
+      const mixed = constrainCircleEdit(
+        initial,
+        {
+          ...initial,
+          cx: initial.cx + event.translationX,
+          cy: initial.cy + event.translationY,
+        },
+        radius,
+        center,
+        normalizedSteps,
+        liveValues.value[3],
       )
+      if (mixed) liveValues.set(mixed)
     })
+    .onEnd(() => {
+      scheduleOnRN(commitMix, liveValues.value)
+    })
+  if (pagerGesture) mixGesture.blocksExternalGesture(pagerGesture)
+  const mixPosition = useAnimatedStyle(() => {
+    const circle = handleCircle(liveValues.value, radius, center)
+    return { transform: [{ translateX: circle.cx - 22 }, { translateY: circle.cy - 22 }] }
+  })
+
+  const parameterLabel = (index: number, style: StyleProp<ViewStyle>) => (
+    <TuneRingParameterLabel
+      key={index}
+      label={current.labels[index]}
+      placement={index === 0 ? 'top' : 'bottom'}
+      description={variant >= 3 ? controls[page][index].description : undefined}
+      value={realValue(values[page][index], page, index, variant)}
+      liveValues={liveValues}
+      index={index}
+      range={controls[page][index]}
+      color={colors[index]}
+      style={style}
+      onPress={(ref) => {
+        if (variant >= 3) editor.open(page, index, values[page][index], ref, colors[index])
+        else setSelected(index)
+      }}
+    />
+  )
   return (
-    <View style={[styles.root, { backgroundColor: neutral.bg }]}>
-      <ScrollView contentContainerStyle={[styles.content, { paddingBottom: 120 + insets.bottom }]}>
-        <View style={styles.heading}>
-          <Text style={[styles.eyebrow, { color: accents.purple.text }]}>TUNE LAB · IN MEMORY</Text>
-          <Text style={[styles.title, { color: neutral.textPrimary }]}>Find your feel</Text>
-          <Text style={[styles.caption, { color: neutral.textMuted }]}>
-            Same Board. Six ways to shape the ride.
-          </Text>
-        </View>
-        <View style={styles.tabs}>
-          {GROUPS.map((group, index) => (
-            <Button
-              key={group.name}
-              label={group.name}
-              size="sm"
-              variant={page === index ? 'tune' : 'secondary'}
-              style={styles.flex}
-              onPress={() => {
-                setPage(index)
-                setSelected(0)
-                onPose(values[index])
-              }}
+    <View
+      style={[
+        styles.root,
+        {
+          backgroundColor: embeddedPage == null ? neutral.bg : 'transparent',
+          paddingTop: embeddedPage == null ? insets.top : 0,
+        },
+      ]}
+    >
+      <ScrollView
+        style={embeddedPage != null ? styles.visibleOverflow : undefined}
+        removeClippedSubviews={false}
+        scrollEnabled={embeddedPage == null}
+        contentContainerStyle={[
+          styles.content,
+          { paddingBottom: variant >= 3 ? 4 : 24 + insets.bottom },
+        ]}
+      >
+        {embeddedPage == null && (
+          <>
+            <TuneRingVariantSwitcher
+              variant={variant}
+              label={VARIANTS[variant - 1]}
+              onVariant={onVariant}
             />
-          ))}
-        </View>
-        <View style={{ width, height: width + 10, alignSelf: 'center' }}>
-          <Svg width={width} height={width} pointerEvents="none" style={StyleSheet.absoluteFill}>
-            <Circle
-              cx={center}
-              cy={center}
-              r={radius}
-              fill={neutral.surfaceDeep}
-              stroke={neutral.border}
-              strokeWidth={1}
-            />
-            {[0.58, 0.79].map((ratio) => (
+            <TuneRingSectionTabs page={page} onPage={goPage} />
+          </>
+        )}
+        {variant >= 3 && (
+          <View style={embeddedPage != null ? styles.guideSlot : undefined}>
+            <TuneRingFeelGuide page={page} color={pageColors[page][0].color} />
+          </View>
+        )}
+        {variant >= 3 &&
+          parameterLabel(
+            0,
+            embeddedPage != null
+              ? [styles.topParameter, styles.topParameterSlot]
+              : styles.topParameter,
+          )}
+        <View
+          style={{
+            width,
+            height:
+              embeddedPage != null
+                ? width - 6
+                : variant >= 3
+                  ? width + (page === 2 ? 30 : page === 1 ? 12 : -6)
+                  : width - 8,
+            alignSelf: 'center',
+            marginTop:
+              variant >= 3 ? -50 : Math.max(20, window.height / 2 - insets.top - 176 - width / 2),
+          }}
+        >
+          <TuneRingParallaxLayer position={pagerPosition} section={page} pageWidth={window.width}>
+            {variant < 4 && (
+              <View
+                pointerEvents="none"
+                style={[styles.board, { left: center - 90, top: center - 90 }]}
+              >
+                {board}
+              </View>
+            )}
+            <Svg width={width} height={width} pointerEvents="none" style={StyleSheet.absoluteFill}>
               <Circle
-                key={ratio}
                 cx={center}
                 cy={center}
-                r={radius * ratio}
+                r={valueRadius(50, radius)}
                 fill="none"
-                stroke={neutral.border}
-                strokeWidth={1}
-                strokeDasharray={variant === 3 ? '2 7' : undefined}
+                stroke={neutral.textDim}
+                strokeWidth={valueRadius(75, radius) - valueRadius(25, radius)}
+                strokeOpacity={0.1}
               />
-            ))}
-            {Array.from({ length: variant === 3 ? 60 : 36 }, (_, i) => {
-              const a = (i * Math.PI * 2) / (variant === 3 ? 60 : 36)
-              return (
-                <Line
-                  key={i}
-                  x1={center + Math.cos(a) * (radius + 5)}
-                  y1={center + Math.sin(a) * (radius + 5)}
-                  x2={center + Math.cos(a) * (radius + (i % 3 === 0 ? 11 : 8))}
-                  y2={center + Math.sin(a) * (radius + (i % 3 === 0 ? 11 : 8))}
+              <Circle
+                cx={center}
+                cy={center}
+                r={radius}
+                fill={pageColors[page][0].color}
+                fillOpacity={0.03}
+                stroke={neutral.textDim}
+                strokeWidth={1}
+                strokeOpacity={0.65}
+              />
+              <Defs>
+                <TuneRingGradient id="stiffness" color={pageColors[page][0].color} />
+              </Defs>
+              <TuneRingSavedCircle
+                values={originalValues}
+                liveValues={liveValues}
+                radius={radius}
+                center={center}
+                color={accents.yellow.color}
+              />
+              <AnimatedCircle
+                animatedProps={circleProps}
+                fill="url(#stiffness)"
+                stroke={pageColors[page][0].color}
+                strokeOpacity={0.5}
+                strokeWidth={1}
+              />
+              {(variant >= 4 ? [0, 25, 50, 75] : [25, 50, 75]).map((percent) => (
+                <Circle
+                  key={percent}
+                  cx={center}
+                  cy={center}
+                  r={valueRadius(percent, radius)}
+                  fill="none"
                   stroke={neutral.textDim}
                   strokeWidth={1}
+                  strokeOpacity={0.65}
                 />
-              )
-            })}
-            {variant === 5 && (
-              <Polygon
-                points={points}
-                fill={theme.alpha(accents.purple.color, 0.12)}
-                stroke={accents.purple.color}
-                strokeWidth={1.5}
-                strokeLinejoin="round"
-              />
-            )}
-            {ANGLES.slice(0, count).map((angle, index) => (
-              <Line
-                key={angle}
-                x1={center + Math.cos(angle) * radius * 0.52}
-                y1={center + Math.sin(angle) * radius * 0.52}
-                x2={center + Math.cos(angle) * radius}
-                y2={center + Math.sin(angle) * radius}
-                stroke={index === selected ? colors[index] : neutral.border}
-                strokeWidth={1}
-                strokeDasharray="2 5"
-              />
-            ))}
-            {variant === 6 && (
-              <Circle
-                cx={center}
-                cy={center}
-                r={radius + 4}
-                fill="none"
-                stroke={colors[selected]}
-                strokeWidth={2}
-                strokeDasharray={`${(values[page][selected] / 100) * 2 * Math.PI * (radius + 4)} ${2 * Math.PI * (radius + 4)}`}
-                transform={`rotate(-90 ${center} ${center})`}
-              />
-            )}
-          </Svg>
-          <View
-            pointerEvents="none"
-            style={[styles.board, { left: center - 90, top: center - 82 }]}
-          >
-            {board}
-            <Text numberOfLines={1} style={[styles.boardName, { color: neutral.textSecondary }]}>
-              {boardName}
-            </Text>
-          </View>
-          <Text
-            pointerEvents="none"
-            style={[styles.axisLabel, { top: 0, left: center - 85, width: 170, color: colors[0] }]}
-          >
-            {current.labels[0]} · {values[page][0]}
-          </Text>
-          {[1, 2].map((index) => (
-            <Text
-              key={index}
-              pointerEvents="none"
-              style={[
-                styles.axisLabel,
-                {
-                  top: center + radius * 0.62 + 17,
-                  left: index === 1 ? 0 : width - 130,
-                  width: 130,
-                  color: colors[index],
-                },
-              ]}
-            >
-              {current.labels[index]}
-              {'\n'}
-              {values[page][index]}
-            </Text>
-          ))}
-          {count === 4 && (
-            <Text
-              pointerEvents="none"
-              style={[
-                styles.axisLabel,
-                { top: width - 16, left: center - 70, width: 140, color: colors[3] },
-              ]}
-            >
-              {current.labels[3]} · {values[page][3]}
-            </Text>
-          )}
-          {variant === 6 ? (
-            <GestureDetector gesture={focusGesture}>
-              <View style={StyleSheet.absoluteFill} />
-            </GestureDetector>
-          ) : (
-            ANGLES.slice(0, count).map((angle, index) => (
+              ))}
+              {ANGLES.slice(0, 3).map((angle, index) => (
+                <Line
+                  key={angle}
+                  x1={center + Math.cos(angle) * 28}
+                  y1={center + Math.sin(angle) * 28}
+                  x2={center + Math.cos(angle) * radius}
+                  y2={center + Math.sin(angle) * radius}
+                  stroke={colors[index]}
+                  strokeOpacity={0.65}
+                  strokeWidth={1.5}
+                  strokeDasharray="2 5"
+                />
+              ))}
+            </Svg>
+            <RingResizeGesture
+              values={liveValues}
+              radius={radius}
+              center={center}
+              steps={normalizedSteps}
+              onCommit={commitMix}
+            />
+            {ANGLES.slice(0, 3).map((angle, index) => (
               <RingHandle
                 key={`${page}-${variant}-${index}`}
+                liveValues={liveValues}
+                index={index}
                 value={values[page][index]}
                 angle={angle}
                 radius={radius}
                 center={center}
-                orbit={variant === 2}
-                snap={variant === 3}
-                selected={selected === index}
+                normalizedStep={normalizedSteps[index]}
+                range={{
+                  min: controls[page][index].min,
+                  max: controls[page][index].max,
+                  now: realValue(values[page][index], page, index, variant),
+                }}
+                selected={variant < 3 && selected === index}
                 color={colors[index]}
                 label={current.labels[index]}
-                onSelect={() => setSelected(index)}
-                onChange={(value) => change(index, value)}
+                onSelect={() => {
+                  if (variant < 3) setSelected(index)
+                }}
+                onChange={(value) => {
+                  editor.clear(page, index)
+                  change(index, value)
+                }}
               />
-            ))
+            ))}
+            <GestureDetector gesture={mixGesture}>
+              <Animated.View
+                accessibilityLabel="Mix all three parameters"
+                style={[styles.handleTarget, mixPosition]}
+              >
+                <View style={[styles.mixDot, { backgroundColor: pageColors[page][0].color }]} />
+              </Animated.View>
+            </GestureDetector>
+          </TuneRingParallaxLayer>
+          {variant < 3 &&
+            [0, 1, 2].map((index) =>
+              parameterLabel(
+                index,
+                index === 0
+                  ? {
+                      top: 0,
+                      left: center - 85,
+                      width: 170,
+                    }
+                  : {
+                      top: center + radius * 0.62 + 17,
+                      left: index === 1 ? 0 : width - 130,
+                      width: 130,
+                    },
+              ),
+            )}
+          {variant >= 3 &&
+            [1, 2].map((index) =>
+              parameterLabel(index, {
+                top: center + Math.sin(ANGLES[index]) * radius + 22,
+                left: Math.max(
+                  0,
+                  Math.min(width - 140, center + Math.cos(ANGLES[index]) * (radius + 18) - 70),
+                ),
+                width: 140,
+              }),
+            )}
+          {onAdjacentPage && (
+            <TuneRingSideTargets
+              page={page}
+              center={center}
+              radius={radius}
+              onPage={onAdjacentPage}
+            />
           )}
         </View>
-        <Text style={[styles.hint, { color: neutral.textMuted }]}>{VARIANTS[variant - 1][1]}</Text>
-        <View style={styles.values}>
-          {current.labels.slice(0, count).map((label, index) => (
-            <Button
-              key={label}
-              label={`${label}  ${values[page][index]}`}
-              size="sm"
-              accent={selected === index ? colors[index] : undefined}
-              variant="secondary"
-              onPress={() => setSelected(index)}
+        <PresetBadges
+          activePreset={activePreset}
+          color={pageColors[page][0].color}
+          onApply={(preset) => {
+            const next = preset.values.map((group) => [...group])
+            editor.clearAll()
+            setValues(next)
+            liveValues.set(next[page])
+            setActivePreset(preset.name)
+          }}
+        />
+        {variant < 3 && (
+          <>
+            <View style={styles.readout}>
+              <Text style={[styles.stepLabel, { color: colors[selected] }]}>
+                {current.name} · {current.labels[selected]}
+              </Text>
+              <Text style={{ color: neutral.textMuted, fontSize: 11 }}>
+                {control.min} – {control.max}
+                {control.unit ? ` ${control.unit}` : ''}
+              </Text>
+            </View>
+            <TuneDial
+              key={`${variant}-${page}-${selected}-${control.id}`}
+              value={realValue(values[page][selected], page, selected, variant)}
+              min={control.min}
+              max={control.max}
+              step={control.step}
+              unit={control.unit}
+              displayDecimals={control.step < 1 ? Math.ceil(-Math.log10(control.step)) : 0}
+              valueChangeMode="live"
+              color={colors[selected]}
+              onValueChange={(value) => {
+                editor.clear(page, selected)
+                change(selected, ((value - control.min) / (control.max - control.min)) * 100)
+              }}
             />
-          ))}
-        </View>
-        <View style={styles.adjust}>
-          <IconButton
-            icon={MinusIcon}
-            accessibilityLabel={`Decrease ${current.labels[selected]}`}
-            onPress={() => change(selected, values[page][selected] - (variant === 3 ? 10 : 5))}
-          />
-          <View style={styles.readout}>
-            <Text style={[styles.number, { color: colors[selected] }]}>
-              {values[page][selected]}
-              <Text style={[styles.unit, { color: neutral.textMuted }]}> / 100</Text>
-            </Text>
-            <Text style={[styles.caption, { color: neutral.textSecondary }]}>
-              {current.labels[selected]}
-            </Text>
-          </View>
-          <IconButton
-            icon={PlusIcon}
-            accessibilityLabel={`Increase ${current.labels[selected]}`}
-            onPress={() => change(selected, values[page][selected] + (variant === 3 ? 10 : 5))}
-          />
-        </View>
-        <View style={styles.reset}>
-          <Button
-            label="Reset page"
-            size="sm"
-            variant="secondary"
-            onPress={() => {
-              setValues(values.map((v, i) => (i === page ? [...current.defaults] : v)))
-              onPose(current.defaults)
-            }}
-          />
-          <Button
-            label="Reset all"
-            size="sm"
-            variant="secondary"
-            onPress={() => {
-              setValues(GROUPS.map((g) => [...g.defaults]))
-              onPose(current.defaults)
-            }}
-          />
-        </View>
-        <Text style={[styles.disclaimer, { color: neutral.textDim }]}>
-          Concept values, 0–100. No firmware mapping. Nothing is saved or sent to your Board.
-        </Text>
+          </>
+        )}
       </ScrollView>
-      <View
-        style={[
-          styles.switcher,
-          {
-            bottom: 12 + insets.bottom,
-            backgroundColor: neutral.surface,
-            borderColor: neutral.border,
-          },
-        ]}
-      >
-        <IconButton
-          icon={ArrowLeftIcon}
-          accessibilityLabel="Previous variant"
-          onPress={() => onVariant(variant === 1 ? 6 : variant - 1)}
+      {embeddedPage == null && (
+        <TuneRingNavigation
+          page={page}
+          onPage={goPage}
+          paddingBottom={Math.max(insets.bottom, 16)}
         />
-        <View style={styles.flex}>
-          <Text style={[styles.switchTitle, { color: neutral.textPrimary }]}>
-            {variant} / 6 · {VARIANTS[variant - 1][0]}
-          </Text>
-          <Text style={[styles.switchCaption, { color: neutral.textMuted }]}>
-            THROWAWAY PROTOTYPE
-          </Text>
-        </View>
-        <IconButton
-          icon={ArrowRightIcon}
-          accessibilityLabel="Next variant"
-          onPress={() => onVariant(variant === 6 ? 1 : variant + 1)}
-        />
-      </View>
+      )}
+      <FieldEditorPopover target={editor.target} onCancel={editor.close} onApply={editor.apply} />
     </View>
   )
 }
 const styles = StyleSheet.create({
   root: { flex: 1 },
-  content: { padding: 16, paddingBottom: 120, gap: 14 },
-  heading: { gap: 5 },
-  eyebrow: { fontSize: 10, fontWeight: '800', letterSpacing: 2 },
-  title: { fontSize: 29, fontWeight: '700' },
-  caption: { fontSize: 12 },
-  tabs: { flexDirection: 'row', gap: 6 },
+  content: { padding: 16, gap: 14 },
+  topParameter: { position: 'relative', width: 220, alignSelf: 'center', marginTop: 12 },
+  presets: { gap: 8, alignItems: 'center', paddingVertical: 4 },
+  presetBadge: { borderRadius: 999 },
+  visibleOverflow: { overflow: 'visible' },
+  guideSlot: { height: 88 },
+  topParameterSlot: { height: 96, justifyContent: 'flex-end', marginTop: 4 },
   flex: { flex: 1 },
-  board: { position: 'absolute', alignItems: 'center', width: 180 },
-  boardName: { fontSize: 10, marginTop: -25, maxWidth: 145 },
-  axisLabel: {
-    position: 'absolute',
-    textAlign: 'center',
-    fontSize: 11,
-    lineHeight: 18,
-    fontWeight: '700',
-  },
+  board: { position: 'absolute', alignItems: 'center', width: 180, opacity: 0.4 },
   handleTarget: {
     position: 'absolute',
     width: 44,
@@ -465,27 +501,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  handle: { width: 23, height: 23, borderRadius: 12 },
-  hint: { fontSize: 12, textAlign: 'center', minHeight: 18 },
-  values: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'center', gap: 6 },
-  adjust: { flexDirection: 'row', justifyContent: 'center', alignItems: 'center', gap: 25 },
+  mixDot: { width: 9, height: 9, borderRadius: 5 },
+  stepLabel: { fontSize: 11, fontWeight: '700', textAlign: 'center' },
   readout: { alignItems: 'center', gap: 4, minWidth: 150 },
-  number: { fontFamily: theme.mono('700'), fontSize: 32 },
-  unit: { fontSize: 13 },
-  reset: { flexDirection: 'row', justifyContent: 'center', gap: 8 },
-  disclaimer: { fontSize: 11, lineHeight: 17, textAlign: 'center' },
-  switcher: {
-    position: 'absolute',
-    bottom: 18,
-    left: 20,
-    right: 20,
-    borderRadius: 32,
-    borderWidth: 1,
-    padding: 8,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-  },
-  switchTitle: { fontSize: 13, fontWeight: '700', textAlign: 'center' },
-  switchCaption: { fontSize: 8, letterSpacing: 1.5, textAlign: 'center', marginTop: 4 },
 })

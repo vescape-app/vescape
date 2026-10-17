@@ -19,7 +19,7 @@ import { useLegalReferenceSpeedFormat } from '@/modules/legal/hooks/useLegalLimi
 import { legalPolicyFromReference } from '@/modules/legal/lib/legalMode'
 import { routes } from '@/navigation/routes'
 import { theme } from '@/constants/theme'
-import { TuneProfilePill } from '@/screens/main/overlays/TuneProfilePill'
+import { TuneProfilePill } from '@/modules/tune/components/TuneProfilePill'
 import { LegalMapWidget, LegalModeWidget } from '@/screens/main/overlays/TuneDrawerLegalWidgets'
 import { errorMessage } from '@/helpers/error'
 import { useBleStore } from '@/modules/board/store/bleStore'
