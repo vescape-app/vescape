@@ -11,6 +11,7 @@ import {
 import { Gesture } from 'react-native-gesture-handler'
 import {
   Easing as ReanimatedEasing,
+  type SharedValue,
   useAnimatedScrollHandler,
   useAnimatedStyle,
   useSharedValue,
@@ -97,12 +98,8 @@ export function useEdgeDrawerDismissal({
   const dismissTriggered = useSharedValue(false)
   const animatedDismissRange = useSharedValue(1)
   const nativeScrollGesture = useMemo(() => Gesture.Native(), [])
-  const scrollToOffset = useCallback((y: number, animated: boolean) => {
-    const scroll = scrollRef.current
-    if (!scroll) return
-    if ('scrollToOffset' in scroll) scroll.scrollToOffset({ offset: y, animated })
-    else scroll.scrollTo({ y, animated })
-  }, [])
+  const scrollToOffset = useDrawerScrollToOffset(scrollRef)
+
   const scrollToContentStart = useCallback(
     (range: number) => {
       const offset = opensFromTop ? 0 : Math.min(range, height)
@@ -151,20 +148,23 @@ export function useEdgeDrawerDismissal({
     void measureTrigger(triggerRef).then((trigger) => {
       openFrom(trigger.y + trigger.height / 2 < height / 2)
     })
-  }, [dismissArmed, dismissTriggered, edge, height, presence, scrollOffset, triggerRef, visible])
+  }, [
+    dismissArmed,
+    dismissTriggered,
+    edge,
+    height,
+    presence,
+    scrollOffset,
+    setKeyboardInset,
+    triggerRef,
+    visible,
+  ])
 
   /**
    * The Modal window appears a frame or more after mount, so the opening animation is started by
    * `onShow` — kicked off any earlier it would already be over by the time anything is on screen.
    */
-  const startOpen = useCallback(() => {
-    if (openStartedRef.current) return
-    openStartedRef.current = true
-    presence.value = withTiming(1, {
-      duration: DRAWER_OPEN_DURATION,
-      easing: ReanimatedEasing.out(ReanimatedEasing.quad),
-    })
-  }, [presence])
+  const startOpen = useDrawerOpenAnimation(openStartedRef, presence)
 
   const finishClose = useCallback(() => {
     setCloseRequested(false)
@@ -500,7 +500,6 @@ export function useEdgeDrawerDismissal({
     dismissAreaHeight: height,
   }
 }
-/* eslint-enable react-hooks/immutability */
 
 function useDrawerKeyboardInset(mounted: boolean) {
   const [keyboardInset, setKeyboardInset] = useState(0)
@@ -519,3 +518,32 @@ function useDrawerKeyboardInset(mounted: boolean) {
   }, [mounted])
   return [keyboardInset, setKeyboardInset] as const
 }
+
+function useDrawerOpenAnimation(
+  openStartedRef: React.RefObject<boolean>,
+  presence: SharedValue<number>,
+) {
+  const startOpen = useCallback(() => {
+    if (openStartedRef.current) return
+    openStartedRef.current = true
+    presence.value = withTiming(1, {
+      duration: DRAWER_OPEN_DURATION,
+      easing: ReanimatedEasing.out(ReanimatedEasing.quad),
+    })
+  }, [openStartedRef, presence])
+  return startOpen
+}
+
+function useDrawerScrollToOffset(scrollRef: React.RefObject<ScrollView | FlatList | null>) {
+  const scrollToOffset = useCallback(
+    (y: number, animated: boolean) => {
+      const scroll = scrollRef.current
+      if (!scroll) return
+      if ('scrollToOffset' in scroll) scroll.scrollToOffset({ offset: y, animated })
+      else scroll.scrollTo({ y, animated })
+    },
+    [scrollRef],
+  )
+  return scrollToOffset
+}
+/* eslint-enable react-hooks/immutability */
