@@ -12,6 +12,7 @@ import { HUD_ARC_EDGE_INSET, telemetry } from '@/modules/board/constants/telemet
 import { routes } from '@/navigation/routes'
 import { useRenderRateWarning } from '@/hooks/useRenderRateWarning'
 import { useBleStore } from '@/modules/board/store/bleStore'
+import { useBoardStore } from '@/modules/board/store/boardStore'
 import { liveTelemetryRuntime } from '@/modules/board/lib/liveTelemetryRuntime'
 import { useFootpadThreshold, usePosiSensor } from '@/modules/board/store/boardConfigValuesStore'
 import { BoardAttitudeIndicator } from '@/modules/board/components/BoardAttitudeIndicator'
@@ -75,6 +76,9 @@ export function BottomTelemetryStrip({
   const { height } = useWindowDimensions()
   const bleStatus = useBleStore((s) => s.status)
   const imuConnected = bleStatus === 'connected'
+  const personalization = useBoardStore(
+    (s) => s.boards.find((board) => board.id === s.activeBoardId)?.personalization,
+  )
   // Live numbers, IMU tilt and the footpad pad read SharedValues (hot path, ~31Hz, no re-render).
   const tick = liveTelemetryRuntime.values
 
@@ -125,6 +129,8 @@ export function BottomTelemetryStrip({
                   pitch={tick.pitch}
                   roll={tick.roll}
                   connected={imuConnected}
+                  railId={personalization?.railId}
+                  railColorId={personalization?.railColorId}
                   testID="telemetry-attitude-indicator"
                 />
               </Pressable>

@@ -29,6 +29,7 @@ interface BoardActions {
     id?: string
     name: string
     description?: string
+    personalization?: Board['personalization']
     link?: BoardLink | null
     batteryConfig?: BatteryConfig | null
     topSpeedKmh?: number
@@ -80,6 +81,7 @@ export const useBoardStore = create<BoardState & BoardActions>((set, get) => ({
     id,
     name,
     description,
+    personalization,
     link,
     batteryConfig,
     topSpeedKmh,
@@ -90,6 +92,7 @@ export const useBoardStore = create<BoardState & BoardActions>((set, get) => ({
       id: id ?? generateId(),
       name,
       description: description ?? null,
+      personalization,
       createdAt: Date.now(),
       deletedAt: null,
       batteryConfig: batteryConfig ?? DEFAULT_BATTERY_CONFIG,

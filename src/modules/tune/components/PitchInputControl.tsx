@@ -9,7 +9,10 @@ import Animated, {
 } from 'react-native-reanimated'
 
 import { theme } from '@/constants/theme'
-import { MAX_PITCH_INPUT_DEGREES } from '@/modules/tune/lib/tunePreview'
+import {
+  pitchInputFromTrackPosition,
+  pitchInputTrackPosition,
+} from '@/modules/tune/lib/pitchInputPosition'
 
 interface PitchInputControlProps {
   angleDegrees: SharedValue<number>
@@ -26,7 +29,7 @@ export function PitchInputControl({ angleDegrees, active }: PitchInputControlPro
       'worklet'
       const travel = Math.max(width.value - THUMB_SIZE, 1)
       const thumbLeft = Math.max(0, Math.min(travel, x - THUMB_SIZE / 2))
-      angleDegrees.value = ((thumbLeft / travel) * 2 - 1) * MAX_PITCH_INPUT_DEGREES
+      angleDegrees.value = pitchInputFromTrackPosition(thumbLeft, travel)
     }
 
     return Gesture.Pan()
@@ -44,8 +47,7 @@ export function PitchInputControl({ angleDegrees, active }: PitchInputControlPro
 
   const thumbStyle = useAnimatedStyle(() => {
     const travel = Math.max(width.value - THUMB_SIZE, 0)
-    const normalized = angleDegrees.value / MAX_PITCH_INPUT_DEGREES
-    return { transform: [{ translateX: ((1 + normalized) / 2) * travel }] }
+    return { transform: [{ translateX: pitchInputTrackPosition(angleDegrees.value, travel) }] }
   })
   const handleLayout = (event: LayoutChangeEvent) => {
     width.value = event.nativeEvent.layout.width
@@ -66,9 +68,9 @@ export function PitchInputControl({ angleDegrees, active }: PitchInputControlPro
         </View>
       </GestureDetector>
       <View style={styles.labels}>
-        <Text style={styles.edgeLabel}>Nose</Text>
-        <Text style={styles.hint}>Hold to add pitch rate · release to recover</Text>
         <Text style={styles.edgeLabel}>Tail</Text>
+        <Text style={styles.hint}>Hold to add pitch rate · release to recover</Text>
+        <Text style={styles.edgeLabel}>Nose</Text>
       </View>
     </View>
   )

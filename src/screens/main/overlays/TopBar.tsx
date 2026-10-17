@@ -38,7 +38,7 @@ import type { MapSelection } from '@/modules/map/lib/mapSelection'
 import { DASH } from '@/helpers/format'
 import { useFormat } from '@/hooks/useFormat'
 import { useMapStore } from '@/modules/map/store/mapStore'
-import { useRiderStore } from '@/modules/group-ride/store/riderStore'
+import { useSelectedBoardRailColor } from '@/modules/group-ride/lib/selectedBoardRailColor'
 import { ActiveNavigationTopBar } from '@/screens/main/overlays/ActiveNavigationTopBar'
 import {
   getMapPointKindIcon,
@@ -93,7 +93,7 @@ export function TopBar({
   const [socialOpen, setSocialOpen] = useState(false)
   const settingsRef = useRef<View>(null)
   const [settingsOpen, setSettingsOpen] = useState(false)
-  const riderColor = useRiderStore((s) => s.riderColor) ?? theme.palette.green.color
+  const riderColor = useSelectedBoardRailColor() ?? theme.palette.green.color
   const routeProgress = useMapStore((s) => s.routeProgress)
 
   const isReplay = useBleStore((s) => isReplayBoardId(s.connectedId))

@@ -4,7 +4,6 @@ import { StyleSheet, View, useWindowDimensions } from 'react-native'
 import { Text } from '@/components/base/Text'
 import {
   Canvas,
-  Circle,
   DashPathEffect,
   Line,
   Path,
@@ -21,6 +20,7 @@ import {
 import type { TuneProfileFieldValue } from 'vescape-core'
 
 import { theme } from '@/constants/theme'
+import { BoardAttitudeIndicator } from '@/modules/board/components/BoardAttitudeIndicator'
 import { TunePreviewHeader } from '@/modules/tune/components/TunePreviewHeader'
 import {
   CANVAS_HEIGHT,
@@ -32,7 +32,6 @@ import {
   GROUND_Y,
   READOUT_FONT_SIZE,
   SPEED_FONT_SIZE,
-  WHEEL_RADIUS,
   ZERO_MARKER_GAP,
   ZERO_MARKER_LENGTH,
   formatSignedDegrees,
@@ -70,6 +69,8 @@ interface TunePreviewProps {
   onHelp: () => void
   speedKmh?: SharedValue<number>
   groundToBoardAngleDegrees?: SharedValue<number>
+  railId?: string
+  railColorId?: string
 }
 
 interface TunePreviewScenario {
@@ -94,6 +95,8 @@ export function TunePreview({
   onHelp,
   speedKmh,
   groundToBoardAngleDegrees,
+  railId,
+  railColorId,
 }: TunePreviewProps) {
   const accents = useResolvedAccentColors()
   const neutral = useResolvedNeutralColors()
@@ -108,6 +111,8 @@ export function TunePreview({
   const centerX = canvasWidth / 2
 
   const state = useSharedValue(createTunePreviewState(TUNE_PREVIEW_RESET_SPEED_KMH))
+  const modelPitch = useDerivedValue<number | null>(() => -state.value.angleDegrees)
+  const modelRoll = useSharedValue<number | null>(0)
   const scenario = useSharedValue<TunePreviewScenario>({
     parameters,
     hillsEnabled,
@@ -173,18 +178,6 @@ export function TunePreview({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [running])
 
-  const deckPath = useDerivedValue(() => {
-    const line = tunePreviewDeckLine(
-      state.value.angleDegrees,
-      centerX,
-      DECK_CENTER_Y,
-      DECK_HALF_LENGTH,
-    )
-    const path = Skia.Path.Make()
-    path.moveTo(line.x1, line.y1)
-    path.lineTo(line.x2, line.y2)
-    return path
-  })
   const targetPath = useDerivedValue(() => {
     const line = tunePreviewDeckLine(
       state.value.targetAngleDegrees,
@@ -198,10 +191,10 @@ export function TunePreview({
     return path
   })
   const frontArrow = useDerivedValue(() =>
-    pitchInputArrow(state.value.angleDegrees, pitchInputDegrees.value, centerX, -FOOTPAD_OFFSET),
+    pitchInputArrow(state.value.angleDegrees, pitchInputDegrees.value, centerX, FOOTPAD_OFFSET),
   )
   const rearArrow = useDerivedValue(() =>
-    pitchInputArrow(state.value.angleDegrees, pitchInputDegrees.value, centerX, FOOTPAD_OFFSET),
+    pitchInputArrow(state.value.angleDegrees, pitchInputDegrees.value, centerX, -FOOTPAD_OFFSET),
   )
   const frontArrowPath = useDerivedValue(() => frontArrow.value.path)
   const frontArrowOpacity = useDerivedValue(() => frontArrow.value.opacity)
@@ -288,16 +281,6 @@ export function TunePreview({
               strokeWidth={1.5}
               strokeCap="round"
             />
-            <Path path={targetPath} style="stroke" color={accents.purple.light} strokeWidth={1}>
-              <DashPathEffect intervals={[6, 5]} />
-            </Path>
-            <Path
-              path={deckPath}
-              style="stroke"
-              color={accents.sky.color}
-              strokeWidth={1}
-              strokeCap="round"
-            />
             <Path
               path={frontArrowPath}
               opacity={frontArrowOpacity}
@@ -316,29 +299,7 @@ export function TunePreview({
               strokeCap="round"
               strokeJoin="round"
             />
-            <Circle
-              cx={centerX}
-              cy={GROUND_Y - WHEEL_RADIUS}
-              r={WHEEL_RADIUS}
-              color={neutral.surface}
-            />
-            <Circle
-              cx={centerX}
-              cy={GROUND_Y - WHEEL_RADIUS}
-              r={WHEEL_RADIUS}
-              style="stroke"
-              color={neutral.textSecondary}
-              strokeWidth={1}
-            />
             <Path path={ticksPath} style="stroke" color={neutral.textMuted} strokeWidth={1} />
-            <Circle
-              cx={centerX}
-              cy={GROUND_Y - WHEEL_RADIUS}
-              r={4}
-              style="stroke"
-              color={neutral.border}
-              strokeWidth={1}
-            />
             {hillsEnabled ? (
               <Path path={terrainPath} style="stroke" color={neutral.textMuted} strokeWidth={1} />
             ) : (
@@ -359,6 +320,20 @@ export function TunePreview({
               />
             )}
           </Canvas>
+          <View style={styles.boardModel} pointerEvents="none">
+            <BoardAttitudeIndicator
+              pitch={modelPitch}
+              roll={modelRoll}
+              railId={railId}
+              railColorId={railColorId}
+              size={154}
+            />
+          </View>
+          <Canvas style={styles.targetOverlay} pointerEvents="none">
+            <Path path={targetPath} style="stroke" color={accents.purple.light} strokeWidth={1}>
+              <DashPathEffect intervals={[6, 5]} />
+            </Path>
+          </Canvas>
         </View>
       )}
     </View>
@@ -369,6 +344,8 @@ const styles = StyleSheet.create({
   card: {},
   canvasWrap: { position: 'relative', height: CANVAS_HEIGHT },
   canvas: { width: '100%', height: CANVAS_HEIGHT },
+  boardModel: { position: 'absolute', alignSelf: 'center', top: DECK_CENTER_Y - 77 },
+  targetOverlay: { position: 'absolute', inset: 0 },
   unsupported: { height: CANVAS_HEIGHT, alignItems: 'center', justifyContent: 'center', gap: 5 },
   unsupportedTitle: { color: theme.neutral.textPrimary, fontSize: 13, fontWeight: '800' },
   unsupportedText: { color: theme.neutral.textMuted, fontSize: 11 },

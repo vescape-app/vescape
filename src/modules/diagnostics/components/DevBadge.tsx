@@ -7,6 +7,7 @@ import {
   CameraRotateIcon,
   EyeSlashIcon,
   ListBulletsIcon,
+  PathIcon,
   PlayIcon,
   RecordIcon,
   SwatchesIcon,
@@ -45,6 +46,12 @@ const DEV_PAGE_SHORTCUTS = [
     route: routes.devMapPlayground,
     icon: CameraRotateIcon,
     iconColor: theme.palette.violet.color,
+  },
+  {
+    label: 'Rail generator prototype',
+    route: routes.devRailGeneratorPrototype,
+    icon: PathIcon,
+    iconColor: theme.palette.cyan.color,
   },
   {
     label: 'Other',

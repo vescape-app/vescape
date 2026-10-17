@@ -77,6 +77,7 @@
     "dequal": "^2.0.3",
     "expo": "~57.0.24",
     "expo-build-properties": "~57.0.21",
+    "expo-clipboard": "~57.0.1",
     "expo-constants": "~57.0.19",
     "expo-dev-client": "~57.0.19",
     "expo-document-picker": "~57.0.2",

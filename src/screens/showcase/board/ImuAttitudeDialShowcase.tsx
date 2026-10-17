@@ -4,6 +4,7 @@ import { useSharedValue } from 'react-native-reanimated'
 import { ShowcaseCard } from '@/components/dev/ShowcaseCard'
 import { ChipRow, ToggleRow } from '@/components/dev/ShowcaseControls'
 import { ImuAttitudeDial } from '@/modules/board/components/ImuAttitudeDial'
+import { RAILS } from '@/modules/board/lib/railPresets'
 
 /** Pitch, roll and balance setpoint per pose; `null` is no telemetry yet. */
 const POSES: Record<string, [number, number, number] | null> = {
@@ -19,6 +20,7 @@ export function ImuAttitudeDialShowcase() {
   'use no memo'
   const [pose, setPose] = useState('nose up')
   const [connected, setConnected] = useState(true)
+  const [railId, setRailId] = useState('xr')
   const pitch = useSharedValue<number | null>(null)
   const roll = useSharedValue<number | null>(null)
   const balancePitch = useSharedValue<number | null>(null)
@@ -37,6 +39,12 @@ export function ImuAttitudeDialShowcase() {
         <>
           <ChipRow label="pose" options={Object.keys(POSES)} selected={pose} onSelect={setPose} />
           <ToggleRow label="connected" value={connected} onToggle={setConnected} />
+          <ChipRow
+            label="rails"
+            options={RAILS.map((rail) => rail.id)}
+            selected={railId}
+            onSelect={setRailId}
+          />
         </>
       }
     >
@@ -45,6 +53,8 @@ export function ImuAttitudeDialShowcase() {
         roll={roll}
         balancePitch={balancePitch}
         connected={connected}
+        railId={railId}
+        railColorId="cyan"
       />
     </ShowcaseCard>
   )

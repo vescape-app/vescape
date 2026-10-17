@@ -1,7 +1,7 @@
 import { TextTIcon } from 'phosphor-react-native'
 
 import { theme } from '@/constants/theme'
-import { BoardInfoForm } from '@/modules/board/components/BoardInfoForm'
+import { BoardSetupSelector } from '@/modules/board/components/add-board-wizard/BoardSetupSelector'
 import {
   WizardNavActions,
   WizardStepLayout,
@@ -11,9 +11,10 @@ import type { UseAddBoardWizard } from '@/modules/board/hooks/useAddBoardWizard'
 export function NameStep({ wizard }: { wizard: UseAddBoardWizard }) {
   return (
     <WizardStepLayout
-      title="Name your board"
+      title="Personalize your board"
       icon={TextTIcon}
       color={theme.palette.orange.color}
+      alignContentTop
       footer={
         <WizardNavActions
           canContinue={Boolean(wizard.name.trim())}
@@ -23,14 +24,7 @@ export function NameStep({ wizard }: { wizard: UseAddBoardWizard }) {
         />
       }
     >
-      <BoardInfoForm
-        name={wizard.name}
-        description={wizard.description}
-        onChangeName={wizard.setName}
-        onChangeDescription={wizard.setDescription}
-        nameTestID="add-board-name-input"
-        descriptionTestID="add-board-description-input"
-      />
+      <BoardSetupSelector wizard={wizard} />
     </WizardStepLayout>
   )
 }

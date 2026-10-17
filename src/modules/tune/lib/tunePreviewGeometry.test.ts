@@ -9,17 +9,17 @@ import {
 } from '@/modules/tune/lib/tunePreviewGeometry'
 
 describe('Tune Preview deck geometry', () => {
-  test('renders a positive nose-lift angle with the left-side nose above the tail', () => {
+  test('renders a positive tail-lift angle with the right-side nose above the tail', () => {
     const line = tunePreviewDeckLine(10, 100, 50, 40)
 
     expect(line.x1).toBeLessThan(line.x2)
-    expect(line.y1).toBeLessThan(line.y2)
+    expect(line.y1).toBeGreaterThan(line.y2)
   })
 
-  test('renders a negative regen angle with the left-side nose below the tail', () => {
+  test('renders a negative nose-drive angle with the right-side nose below the tail', () => {
     const line = tunePreviewDeckLine(-10, 100, 50, 40)
 
-    expect(line.y1).toBeGreaterThan(line.y2)
+    expect(line.y1).toBeLessThan(line.y2)
   })
 
   test('uses the rendered 11-inch wheel as the shared one-to-one terrain scale', () => {
@@ -32,8 +32,8 @@ describe('Tune Preview deck geometry', () => {
     const heightMeters = 2
     const spacingMeters = 20
     const quarterWavePixels = (spacingMeters / 4) * TUNE_PREVIEW_PIXELS_PER_METER
-    const peak = terrainHeightRelativeToWheel(quarterWavePixels, 0, heightMeters, spacingMeters)
-    const valley = terrainHeightRelativeToWheel(-quarterWavePixels, 0, heightMeters, spacingMeters)
+    const valley = terrainHeightRelativeToWheel(quarterWavePixels, 0, heightMeters, spacingMeters)
+    const peak = terrainHeightRelativeToWheel(-quarterWavePixels, 0, heightMeters, spacingMeters)
 
     expect(peak - valley).toBeCloseTo(heightMeters * TUNE_PREVIEW_PIXELS_PER_METER)
   })

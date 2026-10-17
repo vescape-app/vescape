@@ -112,7 +112,7 @@ export function WeatherSidePill({
       onPress={onPress}
       style={styles.pill}
     >
-      {icon === 'cloud-rain' && precipProbability != null && precipProbability > 0 ? (
+      {precipProbability != null && precipProbability > 0 ? (
         <RainWaterFill probability={precipProbability} />
       ) : null}
       {icon === 'cloud-snow' ? <Snowfall /> : null}

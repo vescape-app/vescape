@@ -3,7 +3,7 @@ import { FillExtrusionLayer, RasterLayer, RasterSource } from '@rnmapbox/maps'
 import { MAPY_TILE_URL_TEMPLATE } from '@/config/mapy'
 import { theme } from '@/constants/theme'
 import { rosterRiderColor } from '@/modules/group-ride/lib/riderColor'
-import { useRiderStore } from '@/modules/group-ride/store/riderStore'
+import { useSelectedBoardRailColor } from '@/modules/group-ride/lib/selectedBoardRailColor'
 import { PrivacyZonesMapLayer } from '@/modules/history/components/PrivacyZonesMapLayer'
 import { LegalLimitsMapLayer } from '@/modules/legal/components/LegalLimitsMapLayer'
 import { MapPin } from '@/modules/map/components/MapPin'
@@ -102,7 +102,7 @@ export function MainMapLayers(props: MainMapLayersProps) {
     riders,
     onSelectLegalCountry,
   } = props
-  const riderColor = useRiderStore((state) => state.riderColor)
+  const riderColor = useSelectedBoardRailColor()
   const showHistoryMapMarkers = useSettingsStore((state) => state.showHistoryMapMarkers)
 
   return (

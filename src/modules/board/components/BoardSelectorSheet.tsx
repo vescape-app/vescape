@@ -20,6 +20,7 @@ import { useResolvedSecondaryWidgetSurface } from '@/components/widgets/widgetSu
 import { fmtTimeAgo } from '@/helpers/format'
 import { interaction, theme, type ThemeColor } from '@/constants/theme'
 import { useResolvedColor, useResolvedNeutralColors } from '@/hooks/useTheme'
+import { BoardModelPreview } from '@/modules/board/components/BoardModelPreview'
 
 /** A way into the active board's trouble, offered only while that surface is enabled. */
 export interface BoardSelectorLink {
@@ -158,20 +159,14 @@ function LinksStrip({ links }: { links: StripLink[] }) {
   )
 }
 
-function BoardIcon({ active }: { active: boolean }) {
-  const neutral = useResolvedNeutralColors()
+function BoardIcon({ board }: { board: Board }) {
   return (
-    <View
-      style={[
-        styles.boardIcon,
-        { borderColor: theme.alpha(neutral.border, 0.6) },
-        active && styles.boardIconActive,
-      ]}
-    >
-      <LightningIcon
-        size={16}
-        color={active ? theme.palette.sky.color : theme.neutral.textMuted}
-        weight="regular"
+    <View style={styles.boardIcon}>
+      <BoardModelPreview
+        railId={board.personalization?.railId}
+        railColorId={board.personalization?.railColorId}
+        size={64}
+        rollDegrees={0}
       />
     </View>
   )
@@ -202,7 +197,7 @@ export function BoardSelectorContent({
       {active && (
         <View style={[styles.activeBlock, cardSurface]}>
           <View style={[styles.row, styles.activeRow]}>
-            <BoardIcon active />
+            <BoardIcon board={active} />
             <View style={styles.rowInfo}>
               <Text style={styles.boardNameActive} numberOfLines={1}>
                 {active.name}
@@ -265,7 +260,7 @@ export function BoardSelectorContent({
             accessibilityRole="button"
             accessibilityLabel={`Select ${board.name}`}
           >
-            <BoardIcon active={false} />
+            <BoardIcon board={board} />
             <View style={styles.rowInfo}>
               <Text style={styles.boardName} numberOfLines={1}>
                 {board.name}
@@ -373,17 +368,11 @@ const styles = StyleSheet.create({
     gap: 3,
   },
   boardIcon: {
-    width: 32,
-    height: 32,
-    borderRadius: 8,
-    borderWidth: 1,
+    width: 68,
+    height: 44,
     alignItems: 'center',
     justifyContent: 'center',
-  },
-  // Outline only, like every other tile in the list: the active board is already told apart by the
-  // card it sits in, so a filled tile on top of that was one signal too many.
-  boardIconActive: {
-    borderColor: theme.alpha(theme.palette.sky.color, 0.3),
+    overflow: 'hidden',
   },
   boardName: {
     color: theme.neutral.textSecondary,
