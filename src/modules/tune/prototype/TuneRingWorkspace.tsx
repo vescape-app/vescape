@@ -10,8 +10,9 @@ import Animated, {
 import { scheduleOnRN } from 'react-native-worklets'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { NativeScrollGestureContext } from '@/components/gestures/NativeScrollGestureContext'
-import { useResolvedNeutralColors } from '@/hooks/useTheme'
+import { useResolvedAccentColors, useResolvedNeutralColors } from '@/hooks/useTheme'
 import { TuneRingSectionTabs } from './TuneRingSectionTabs'
+import { TuneRingPresets } from './TuneRingPresets'
 import { GROUPS } from './tuneRingControls'
 import { TuneRingPrototype } from './TuneRingPrototype'
 import { TuneRingTopBar, TuneRingProfileFooter, TuneRingVariantSwitcher } from './TuneRingChrome'
@@ -57,6 +58,9 @@ export function TuneRingWorkspace({ onVariant }: { onVariant: (variant: number) 
   const insets = useSafeAreaInsets()
   const { width } = useWindowDimensions()
   const neutral = useResolvedNeutralColors()
+  const accents = useResolvedAccentColors()
+  const [activePreset, setActivePreset] = useState<string | null>(null)
+  const [presetRevision, setPresetRevision] = useState(0)
   const [page, setPage] = useState(0)
   const [values, setValues] = useState<number[][]>(() => GROUPS.map((group) => [...group.defaults]))
   const lab = usePrototypeProfiles(values, setValues)
@@ -109,11 +113,14 @@ export function TuneRingWorkspace({ onVariant }: { onVariant: (variant: number) 
                 importantForAccessibility={page !== index ? 'no-hide-descendants' : 'auto'}
               >
                 <WorkspacePage
-                  key={`${lab.activeId}-${lab.revision}-${index}`}
+                  key={`${lab.activeId}-${lab.revision}-${presetRevision}-${index}`}
                   section={index}
                   originalValues={lab.savedValues[index]}
                   values={values}
-                  onChange={setValues}
+                  onChange={(next) => {
+                    setActivePreset(null)
+                    setValues(next)
+                  }}
                   position={position}
                   onPage={(target) =>
                     pager.current?.scrollTo({ x: target * width, animated: true })
@@ -124,6 +131,17 @@ export function TuneRingWorkspace({ onVariant }: { onVariant: (variant: number) 
           </Animated.ScrollView>
         </GestureDetector>
       </NativeScrollGestureContext>
+      <View style={styles.presets}>
+        <TuneRingPresets
+          activePreset={lab.dirty ? activePreset : null}
+          color={[accents.blue.color, accents.red.color, accents.violet.color][page]}
+          onApply={(preset) => {
+            setValues(preset.values.map((group) => [...group]))
+            setActivePreset(preset.name)
+            setPresetRevision((current) => current + 1)
+          }}
+        />
+      </View>
       <TuneRingProfileFooter lab={lab} paddingBottom={Math.max(16, insets.bottom)} />
     </View>
   )
@@ -133,4 +151,5 @@ const styles = StyleSheet.create({
   header: { paddingHorizontal: 16, paddingTop: 8 },
   tabs: { flexDirection: 'row', gap: 6, paddingHorizontal: 16, paddingTop: 14, paddingBottom: 4 },
   pager: { flex: 1 },
+  presets: { paddingHorizontal: 16 },
 })

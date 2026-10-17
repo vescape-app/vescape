@@ -18,8 +18,6 @@ import Animated, {
 } from 'react-native-reanimated'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { scheduleOnRN } from 'react-native-worklets'
-import { TreeIcon, CityIcon, MagicWandIcon, CoffeeIcon, CompassIcon } from 'phosphor-react-native'
-import { Button } from '@/components/base/Button'
 import { Text } from '@/components/base/Text'
 import { useResolvedAccentColors, useResolvedNeutralColors } from '@/hooks/useTheme'
 
@@ -34,14 +32,13 @@ import { RingResizeGesture } from './RingResizeGesture'
 import { RingHandle } from './RingHandle'
 import { TuneRingParameterLabel } from './TuneRingParameterLabel'
 import { TuneRingGradient } from './TuneRingGradient'
+import { TuneRingPresets } from './TuneRingPresets'
 import { TuneRingFeelGuide } from './TuneRingFeelGuide'
 import { usePrototypeTuneEditor } from './usePrototypeTuneEditor'
-import { controlsForVariant, GROUPS, realValue, TUNE_PRESETS } from './tuneRingControls'
+import { controlsForVariant, GROUPS, realValue } from './tuneRingControls'
 import { ANGLES, handleCircle, valueRadius, constrainCircleEdit } from './tuneRingGeometry'
 
 const AnimatedCircle = Animated.createAnimatedComponent(Circle)
-
-const PRESET_ICONS = [TreeIcon, CityIcon, MagicWandIcon, CoffeeIcon, CompassIcon]
 
 const VARIANTS = [
   'Simple · 0–10',
@@ -52,53 +49,6 @@ const VARIANTS = [
   'Tune workspace',
 ] as const
 const bound = (n: number) => Math.max(0, Math.min(100, n))
-
-function PresetBadges({
-  activePreset,
-  color,
-  onApply,
-}: {
-  activePreset: string | null
-  color: string
-  onApply: (preset: (typeof TUNE_PRESETS)[number]) => void
-}) {
-  const neutral = useResolvedNeutralColors()
-  const pagerGesture = use(NativeScrollGestureContext)
-  const presetScroll = Gesture.Native().shouldActivateOnStart(true).disallowInterruption(true)
-  if (pagerGesture) presetScroll.blocksExternalGesture(pagerGesture)
-  return (
-    <View style={{ gap: 4 }}>
-      <Text
-        accessibilityRole="header"
-        style={{ fontSize: 12, fontWeight: '700', color: neutral.textMuted }}
-      >
-        Start with a preset
-      </Text>
-      <GestureDetector gesture={presetScroll}>
-        <ScrollView
-          horizontal
-          nestedScrollEnabled
-          showsHorizontalScrollIndicator={false}
-          contentContainerStyle={styles.presets}
-        >
-          {TUNE_PRESETS.map((preset, index) => (
-            <Button
-              key={preset.name}
-              label={preset.name}
-              icon={PRESET_ICONS[index]}
-              size="sm"
-              variant="secondary"
-              accent={activePreset === preset.name ? color : undefined}
-              style={styles.presetBadge}
-              accessibilityLabel={`${preset.name}, demo preset${activePreset === preset.name ? ', selected' : ''}`}
-              onPress={() => onApply(preset)}
-            />
-          ))}
-        </ScrollView>
-      </GestureDetector>
-    </View>
-  )
-}
 
 export function TuneRingPrototype({
   variant,
@@ -432,17 +382,19 @@ export function TuneRingPrototype({
             />
           )}
         </View>
-        <PresetBadges
-          activePreset={activePreset}
-          color={pageColors[page][0].color}
-          onApply={(preset) => {
-            const next = preset.values.map((group) => [...group])
-            editor.clearAll()
-            setValues(next)
-            liveValues.set(next[page])
-            setActivePreset(preset.name)
-          }}
-        />
+        {embeddedPage == null && (
+          <TuneRingPresets
+            activePreset={activePreset}
+            color={pageColors[page][0].color}
+            onApply={(preset) => {
+              const next = preset.values.map((group) => [...group])
+              editor.clearAll()
+              setValues(next)
+              liveValues.set(next[page])
+              setActivePreset(preset.name)
+            }}
+          />
+        )}
         {variant < 3 && (
           <>
             <View style={styles.readout}>
@@ -487,8 +439,6 @@ const styles = StyleSheet.create({
   root: { flex: 1 },
   content: { padding: 16, gap: 14 },
   topParameter: { position: 'relative', width: 220, alignSelf: 'center', marginTop: 12 },
-  presets: { gap: 8, alignItems: 'center', paddingVertical: 4 },
-  presetBadge: { borderRadius: 999 },
   visibleOverflow: { overflow: 'visible' },
   guideSlot: { height: 88 },
   topParameterSlot: { height: 96, justifyContent: 'flex-end', marginTop: 4 },
