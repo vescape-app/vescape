@@ -51,6 +51,7 @@ export const routes = {
   settingsReleaseNotes: '/settings/release-notes' as Href,
   devMapPlayground: '/dev/map-playground' as Href,
   devRailGeneratorPrototype: '/dev/rail-generator-prototype' as Href,
+  devTuneRingPrototype: '/dev/tune-ring-prototype' as Href,
   historyCharts: '/history/charts' as Href,
 } as const
 
@@ -95,5 +96,6 @@ export const stackScreens = {
   settingsReleaseNotes: 'settings/release-notes',
   devMapPlayground: 'dev/map-playground',
   devRailGeneratorPrototype: 'dev/rail-generator-prototype',
+  devTuneRingPrototype: 'dev/tune-ring-prototype',
   historyCharts: 'history/charts',
 } as const

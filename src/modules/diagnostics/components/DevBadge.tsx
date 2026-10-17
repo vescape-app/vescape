@@ -8,6 +8,7 @@ import {
   EyeSlashIcon,
   ListBulletsIcon,
   PathIcon,
+  SlidersHorizontalIcon,
   PlayIcon,
   RecordIcon,
   SwatchesIcon,
@@ -52,6 +53,12 @@ const DEV_PAGE_SHORTCUTS = [
     route: routes.devRailGeneratorPrototype,
     icon: PathIcon,
     iconColor: theme.palette.cyan.color,
+  },
+  {
+    label: 'Tune ring prototype',
+    route: routes.devTuneRingPrototype,
+    icon: SlidersHorizontalIcon,
+    iconColor: theme.tune.color,
   },
   {
     label: 'Other',
