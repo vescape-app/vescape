@@ -7,8 +7,6 @@ import {
   BluetoothConnectedIcon,
   CheckCircleIcon,
   DatabaseIcon,
-  HouseIcon,
-  SpeakerHighIcon,
   WatchIcon,
   WrenchIcon,
   type Icon,
@@ -56,20 +54,6 @@ const SHORTCUTS: Shortcut[] = [
     label: 'Watch',
     hint: 'Push rate and what the wrist shows',
     route: routes.settingsWatch,
-  },
-  {
-    icon: HouseIcon,
-    accent: theme.settingsIcon.privacyZones,
-    label: 'Privacy zones',
-    hint: 'Skip recording near saved places',
-    route: routes.settingsPrivacyZones,
-  },
-  {
-    icon: SpeakerHighIcon,
-    accent: theme.settingsIcon.sounds,
-    label: 'Sounds',
-    hint: 'Choose and preview a sound pack',
-    route: routes.settingsSounds,
   },
 ]
 

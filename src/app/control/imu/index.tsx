@@ -11,6 +11,7 @@ import { telemetry } from '@/modules/board/constants/telemetry'
 import { liveSelectors, useLiveMetric } from '@/modules/board/hooks/useLiveMetric'
 import { liveTelemetryRuntime } from '@/modules/board/lib/liveTelemetryRuntime'
 import { useBleStore } from '@/modules/board/store/bleStore'
+import { useBoardStore } from '@/modules/board/store/boardStore'
 import { useLiveWindowMs } from '@/modules/settings/store/settingsStore'
 
 const pitchCfg = telemetry.pitch
@@ -24,6 +25,9 @@ export default function ImuScreen() {
   const windowMs = useLiveWindowMs()
   const hot = liveTelemetryRuntime.values
   const connected = useBleStore((s) => s.status === 'connected')
+  const personalization = useBoardStore(
+    (s) => s.boards.find((board) => board.id === s.activeBoardId)?.personalization,
+  )
 
   // Pitch, roll and balance in one stack: they are read against each other, and one gesture over
   // the column puts the same moment under the finger on all three.
@@ -52,6 +56,8 @@ export default function ImuScreen() {
           roll={hot.roll}
           balancePitch={hot.balancePitch}
           connected={connected}
+          railId={personalization?.railId}
+          railColorId={personalization?.railColorId}
         />
       }
     >

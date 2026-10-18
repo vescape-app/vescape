@@ -1,6 +1,11 @@
 import { describe, expect, test } from 'bun:test'
 
-import { boardAttitudePose, type AttitudeMatrix } from './boardAttitudeGeometry'
+import {
+  boardAttitudePose,
+  curvedDeckMatrix,
+  endOnTirePose,
+  type AttitudeMatrix,
+} from './boardAttitudeGeometry'
 
 function project(matrix: AttitudeMatrix, x: number, y: number) {
   return [matrix[0] * x + matrix[1] * y + matrix[2], matrix[3] * x + matrix[4] * y + matrix[5]]
@@ -12,6 +17,29 @@ function samePoint(a: number[], b: number[]) {
 }
 
 describe('orthographic board outline', () => {
+  test('yaw shows nose and tail while keeping deck, rail and bevel endpoints joined', () => {
+    for (const yaw of [-90, -45, 0, 45, 90]) {
+      for (const roll of [0, 25, 90]) {
+        const pose = boardAttitudePose(roll, 24, 24, 24, yaw)
+        const top = curvedDeckMatrix(roll, 89, 218, 0, 0, -12, yaw)
+        const nearY = -64
+        samePoint(project(top, 218, nearY), project(pose.nearRail, 218, 12))
+        samePoint(project(top, 218, nearY), project(pose.rightCap, 21, nearY))
+        samePoint(project(pose.bottom, 197, nearY), project(pose.rightCap, 0, nearY))
+      }
+    }
+    const nose = boardAttitudePose(25, 24, 24, 24, 90)
+    const tail = boardAttitudePose(25, 24, 24, 24, -90)
+    expect(nose.rightCap[1]).toBe(1)
+    expect(tail.leftCap[1]).toBe(-1)
+    expect(nose.nearRail[0]).toBe(0)
+    expect(endOnTirePose(0, 90).opacity).toBe(1)
+    expect(endOnTirePose(0, -90).opacity).toBe(1)
+    expect(endOnTirePose(0, 0).opacity).toBe(0)
+    const endWheel = endOnTirePose(0, 90).matrix
+    samePoint(project(endWheel, -43, -78), [-43, -78])
+    samePoint(project(endWheel, 43, 78), [43, 78])
+  })
   test('deck/cap/rail corners stay joined through a full roll, including vertical faces', () => {
     for (let roll = -180; roll <= 180; roll++) {
       const pose = boardAttitudePose(roll)

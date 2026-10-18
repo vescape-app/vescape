@@ -5,7 +5,7 @@ import { processColor } from 'react-native'
 import { theme } from '@/constants/theme'
 import { useResolvedAccentColors, useResolvedNeutralColors } from '@/hooks/useTheme'
 import { RiderPresencePin, RiderTrail } from '@/modules/group-ride/components/RiderMapLayers'
-import { useRiderStore } from '@/modules/group-ride/store/riderStore'
+import { useSelectedBoardRailColor } from '@/modules/group-ride/lib/selectedBoardRailColor'
 import { MAP_DEFAULTS } from '@/modules/map/constants/mapStyles'
 import type { MainMapLayersProps } from '@/screens/main/map/mainMapLayerTypes'
 
@@ -27,7 +27,7 @@ export function LiveMapLayers({
   riders: MainMapLayersProps['riders']
   highContrastRoutes: boolean
 }) {
-  const riderColor = useRiderStore((state) => state.riderColor)
+  const riderColor = useSelectedBoardRailColor()
   const neutral = useResolvedNeutralColors()
   const accents = useResolvedAccentColors()
   const accuracyFillColor = theme.alpha(accents.violet.color, 0.12)

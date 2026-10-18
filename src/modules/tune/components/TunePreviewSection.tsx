@@ -24,9 +24,18 @@ interface TunePreviewSectionProps {
   active: boolean
   visible: boolean
   children: ReactNode
+  railId?: string
+  railColorId?: string
 }
 
-export function TunePreviewSection({ fields, active, visible, children }: TunePreviewSectionProps) {
+export function TunePreviewSection({
+  fields,
+  active,
+  visible,
+  children,
+  railId,
+  railColorId,
+}: TunePreviewSectionProps) {
   const neutral = useResolvedNeutralColors()
   const insets = useSafeAreaInsets()
   const { width } = useWindowDimensions()
@@ -116,6 +125,8 @@ export function TunePreviewSection({ fields, active, visible, children }: TunePr
               onHelp={() => setPreviewHelpVisible(true)}
               speedKmh={previewSpeedKmh}
               groundToBoardAngleDegrees={groundToBoardAngleDegrees}
+              railId={railId}
+              railColorId={railColorId}
             />
           </View>
         ) : null}

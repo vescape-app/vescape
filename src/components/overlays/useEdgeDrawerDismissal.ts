@@ -11,6 +11,7 @@ import {
 import { Gesture } from 'react-native-gesture-handler'
 import {
   Easing as ReanimatedEasing,
+  type SharedValue,
   useAnimatedScrollHandler,
   useAnimatedStyle,
   useSharedValue,
@@ -49,6 +50,7 @@ export interface EdgeDrawerDismissalOptions {
   initialFocusLayout?: { offset: number; height: number }
   virtualized?: boolean
   autoScrollOnContentExpand: boolean
+  contentPageKey?: string
   onClose: () => void
   onReachContentEnd?: () => void
 }
@@ -68,6 +70,7 @@ export function useEdgeDrawerDismissal({
   initialFocusLayout,
   virtualized = false,
   autoScrollOnContentExpand,
+  contentPageKey,
   onClose,
   onReachContentEnd,
 }: EdgeDrawerDismissalOptions) {
@@ -77,7 +80,7 @@ export function useEdgeDrawerDismissal({
   const [closeRequested, setCloseRequested] = useState(false)
   const [opensFromTop, setOpensFromTop] = useState(true)
   const [dismissRange, setDismissRange] = useState(0)
-  const [keyboardInset, setKeyboardInset] = useState(0)
+  const [keyboardInset, setKeyboardInset] = useDrawerKeyboardInset(mounted)
   const scrollRef = useRef<ScrollView | FlatList<unknown>>(null)
   const positionedRef = useRef(false)
   const indexedFocusAppliedRef = useRef(false)
@@ -85,6 +88,8 @@ export function useEdgeDrawerDismissal({
   const dismissRangeRef = useRef(0)
   const previousContentHeightRef = useRef(0)
   const scrollOffsetRef = useRef(0)
+  const previousContentPageKeyRef = useRef(contentPageKey)
+  const pinContentStartRef = useRef(false)
   const scrollOffset = useSharedValue(0)
   /** 0 hidden at the drawer's own edge, 1 fully present. Drives both open and close. */
   const presence = useSharedValue(0)
@@ -93,12 +98,25 @@ export function useEdgeDrawerDismissal({
   const dismissTriggered = useSharedValue(false)
   const animatedDismissRange = useSharedValue(1)
   const nativeScrollGesture = useMemo(() => Gesture.Native(), [])
-  const scrollToOffset = useCallback((y: number, animated: boolean) => {
-    const scroll = scrollRef.current
-    if (!scroll) return
-    if ('scrollToOffset' in scroll) scroll.scrollToOffset({ offset: y, animated })
-    else scroll.scrollTo({ y, animated })
-  }, [])
+  const scrollToOffset = useDrawerScrollToOffset(scrollRef)
+
+  const scrollToContentStart = useCallback(
+    (range: number) => {
+      const offset = opensFromTop ? 0 : Math.min(range, height)
+      scrollOffsetRef.current = offset
+      scrollOffset.value = offset
+      requestAnimationFrame(() => scrollToOffset(offset, false))
+    },
+    [height, opensFromTop, scrollOffset, scrollToOffset],
+  )
+
+  useEffect(() => {
+    if (previousContentPageKeyRef.current === contentPageKey) return
+    previousContentPageKeyRef.current = contentPageKey
+    if (!mounted || contentPageKey === undefined) return
+    pinContentStartRef.current = true
+    scrollToContentStart(dismissRangeRef.current)
+  }, [contentPageKey, mounted, scrollToContentStart])
 
   useEffect(() => {
     if (!visible) return
@@ -114,6 +132,7 @@ export function useEdgeDrawerDismissal({
       previousContentHeightRef.current = 0
       setKeyboardInset(0)
       scrollOffsetRef.current = 0
+      pinContentStartRef.current = false
       scrollOffset.value = 0
       openStartedRef.current = false
       dismissArmed.value = false
@@ -129,34 +148,23 @@ export function useEdgeDrawerDismissal({
     void measureTrigger(triggerRef).then((trigger) => {
       openFrom(trigger.y + trigger.height / 2 < height / 2)
     })
-  }, [dismissArmed, dismissTriggered, edge, height, presence, scrollOffset, triggerRef, visible])
+  }, [
+    dismissArmed,
+    dismissTriggered,
+    edge,
+    height,
+    presence,
+    scrollOffset,
+    setKeyboardInset,
+    triggerRef,
+    visible,
+  ])
 
   /**
    * The Modal window appears a frame or more after mount, so the opening animation is started by
    * `onShow` — kicked off any earlier it would already be over by the time anything is on screen.
    */
-  const startOpen = useCallback(() => {
-    if (openStartedRef.current) return
-    openStartedRef.current = true
-    presence.value = withTiming(1, {
-      duration: DRAWER_OPEN_DURATION,
-      easing: ReanimatedEasing.out(ReanimatedEasing.quad),
-    })
-  }, [presence])
-
-  useEffect(() => {
-    if (!mounted) return
-    const showSubscription = Keyboard.addListener('keyboardDidShow', (event) => {
-      setKeyboardInset(event.endCoordinates.height)
-    })
-    const hideSubscription = Keyboard.addListener('keyboardDidHide', () => {
-      setKeyboardInset(0)
-    })
-    return () => {
-      showSubscription.remove()
-      hideSubscription.remove()
-    }
-  }, [mounted])
+  const startOpen = useDrawerOpenAnimation(openStartedRef, presence)
 
   const finishClose = useCallback(() => {
     setCloseRequested(false)
@@ -300,6 +308,11 @@ export function useEdgeDrawerDismissal({
         return
       }
 
+      if (pinContentStartRef.current) {
+        scrollToContentStart(range)
+        return
+      }
+
       // Content grows over many frames, so this follows every one of them from the live offset —
       // a per-frame "was the drawer fully open?" test loses the race after the first frame and
       // leaves the drawer stranded half faded.
@@ -343,6 +356,7 @@ export function useEdgeDrawerDismissal({
       opensFromTop,
       scrollOffset,
       scrollToOffset,
+      scrollToContentStart,
     ],
   )
 
@@ -438,6 +452,7 @@ export function useEdgeDrawerDismissal({
 
   const handleScrollEndDrag = useCallback(
     (event: NativeSyntheticEvent<NativeScrollEvent>) => {
+      pinContentStartRef.current = false
       const { contentOffset, targetContentOffset, velocity } = event.nativeEvent
       scrollOffsetRef.current = contentOffset.y
       const projectedOffset =
@@ -484,5 +499,51 @@ export function useEdgeDrawerDismissal({
     handleScrollEndDrag,
     dismissAreaHeight: height,
   }
+}
+
+function useDrawerKeyboardInset(mounted: boolean) {
+  const [keyboardInset, setKeyboardInset] = useState(0)
+  useEffect(() => {
+    if (!mounted) return
+    const showSubscription = Keyboard.addListener('keyboardDidShow', (event) => {
+      setKeyboardInset(event.endCoordinates.height)
+    })
+    const hideSubscription = Keyboard.addListener('keyboardDidHide', () => {
+      setKeyboardInset(0)
+    })
+    return () => {
+      showSubscription.remove()
+      hideSubscription.remove()
+    }
+  }, [mounted])
+  return [keyboardInset, setKeyboardInset] as const
+}
+
+function useDrawerOpenAnimation(
+  openStartedRef: React.RefObject<boolean>,
+  presence: SharedValue<number>,
+) {
+  const startOpen = useCallback(() => {
+    if (openStartedRef.current) return
+    openStartedRef.current = true
+    presence.value = withTiming(1, {
+      duration: DRAWER_OPEN_DURATION,
+      easing: ReanimatedEasing.out(ReanimatedEasing.quad),
+    })
+  }, [openStartedRef, presence])
+  return startOpen
+}
+
+function useDrawerScrollToOffset(scrollRef: React.RefObject<ScrollView | FlatList | null>) {
+  const scrollToOffset = useCallback(
+    (y: number, animated: boolean) => {
+      const scroll = scrollRef.current
+      if (!scroll) return
+      if ('scrollToOffset' in scroll) scroll.scrollToOffset({ offset: y, animated })
+      else scroll.scrollTo({ y, animated })
+    },
+    [scrollRef],
+  )
+  return scrollToOffset
 }
 /* eslint-enable react-hooks/immutability */

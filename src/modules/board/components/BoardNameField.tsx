@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Pressable, StyleSheet, TextInput } from 'react-native'
+import { Pressable, StyleSheet, TextInput, View } from 'react-native'
 import { PencilSimpleIcon } from 'phosphor-react-native'
 
 import { Text } from '@/components/base/Text'
@@ -50,7 +50,9 @@ export function BoardNameField({ name, saving = false, onSave }: BoardNameFieldP
       accessibilityLabel="Edit board name"
     >
       <Text style={styles.title}>{name.trim() || 'Unnamed board'}</Text>
-      <PencilSimpleIcon size={18} color={theme.neutral.textSecondary} weight="duotone" />
+      <View style={styles.editIcon}>
+        <PencilSimpleIcon size={18} color={theme.neutral.textPrimary} weight="duotone" />
+      </View>
     </Pressable>
   )
 }
@@ -74,4 +76,5 @@ const styles = StyleSheet.create({
     borderBottomColor: theme.neutral.border,
     paddingVertical: 4,
   },
+  editIcon: { transform: [{ translateY: 3 }] },
 })

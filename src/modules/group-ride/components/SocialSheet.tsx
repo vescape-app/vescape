@@ -4,7 +4,7 @@ import { Text } from '@/components/base/Text'
 import {
   BroadcastIcon,
   CrosshairIcon,
-  PaletteIcon,
+  UserCircleIcon,
   PlusIcon,
   SignOutIcon,
   UsersIcon,
@@ -13,14 +13,13 @@ import {
 } from 'phosphor-react-native'
 import { Button } from '@/components/base/Button'
 import { Placeholder } from '@/components/base/Placeholder'
-import { ColorPicker } from '@/components/forms/ColorPicker'
 import { Switch } from '@/components/controls/Switch'
 import { CanvasWidget } from '@/components/widgets/CanvasWidget'
 import { InputWidget } from '@/components/widgets/InputWidget'
-import { riderColorOptions } from '@/modules/group-ride/constants/riderColors'
 import { useGroupRideStore } from '@/modules/group-ride/store/groupRideStore'
 import { useRenderRateWarning } from '@/hooks/useRenderRateWarning'
 import { useRiderStore } from '@/modules/group-ride/store/riderStore'
+import { useSelectedBoardRailColor } from '@/modules/group-ride/lib/selectedBoardRailColor'
 import { theme } from '@/constants/theme'
 import { NearbyRideBody, RosterGrid } from '@/modules/group-ride/components/GroupRideRoster'
 
@@ -36,9 +35,8 @@ export function SocialSheet() {
 function RiderNameWidget() {
   const riderName = useRiderStore((s) => s.riderName)
   const setName = useRiderStore((s) => s.setName)
-  const riderColor = useRiderStore((s) => s.riderColor)
-  const setColor = useRiderStore((s) => s.setColor)
   const error = useRiderStore((s) => s.error)
+  const riderColor = useSelectedBoardRailColor()
 
   return (
     <View style={styles.riderIdentity}>
@@ -52,32 +50,12 @@ function RiderNameWidget() {
           void setName(value).catch(() => undefined) // The store exposes this failure below.
         }}
         accessibilityLabel="Rider display name"
-        commitOnBlur={false}
         leading={
-          <View
-            style={[
-              styles.colorDot,
-              riderColor ? { backgroundColor: riderColor } : styles.colorDotEmpty,
-            ]}
-            accessibilityLabel={riderColor ? `Your color ${riderColor}` : 'No color selected'}
-          >
-            {riderColor ? null : (
-              <PaletteIcon size={14} color={theme.neutral.textSecondary} weight="duotone" />
-            )}
-          </View>
-        }
-        editingContent={
-          <View style={styles.colorEditor}>
-            <Text style={styles.fieldLabel}>Color</Text>
-            <ColorPicker
-              value={riderColor}
-              colors={riderColorOptions}
-              onChange={(color) => {
-                // intentional-suppression: Rider store error is rendered by Social Sheet
-                void setColor(color).catch(() => undefined) // The store exposes this failure below.
-              }}
-            />
-          </View>
+          <UserCircleIcon
+            size={24}
+            color={riderColor ?? theme.neutral.textSecondary}
+            weight="duotone"
+          />
         }
       />
       {error ? <Text style={styles.errorText}>{error}</Text> : null}
@@ -259,22 +237,6 @@ const styles = StyleSheet.create({
     fontSize: 11,
     fontWeight: '800',
     letterSpacing: 0.5,
-  },
-  colorDot: {
-    width: 24,
-    height: 24,
-    borderRadius: 12,
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderWidth: 1.5,
-    borderColor: theme.neutral.border,
-  },
-  colorDotEmpty: {
-    backgroundColor: theme.neutral.surfaceDeep,
-  },
-  colorEditor: {
-    marginLeft: 36,
-    gap: 8,
   },
   fieldLabel: {
     color: theme.neutral.textMuted,

@@ -106,6 +106,7 @@ final class AppDataRepository {
     // Other board-scoped settings. `nil` means the setting row is removed.
     let settings: [(String, Any?)] = [
       ("description", (board["description"] as? String).flatMap { $0.isEmpty ? nil : $0 }),
+      ("personalization", Self.normalizePersonalization(board["personalization"] ?? nil)),
       ("batteryConfig", Self.normalizeBatteryConfig(board["batteryConfig"] ?? nil)),
       ("dismissedWarnings", Self.normalizeDismissedWarnings(board["dismissedWarnings"] ?? nil)),
       ("topSpeedKmh", Self.topSpeedKmh(board["topSpeedKmh"] ?? nil)),
@@ -174,6 +175,7 @@ final class AppDataRepository {
       "id": row["id"] as String,
       "name": row["name"] as String,
       "description": values["description"],
+      "personalization": values["personalization"],
       "createdAt": row["created_at"] as Int64,
       "batteryConfig": values["batteryConfig"],
       "lastBattery": values["lastBattery"],
@@ -199,6 +201,7 @@ final class AppDataRepository {
     let link = BoardLinkPersistence.compose(bleId: board.bleId, storedTransport: board.transport, values: values)
     return [
       "id": board.id, "name": board.name, "description": values["description"],
+      "personalization": values["personalization"],
       "createdAt": board.createdAt, "batteryConfig": values["batteryConfig"],
       "lastBattery": values["lastBattery"], "dismissedWarnings": values["dismissedWarnings"],
       "topSpeedKmh": values["topSpeedKmh"] ?? defaultTopSpeedKmh,
@@ -213,6 +216,8 @@ final class AppDataRepository {
     switch key {
     case "description":
       return raw as? String
+    case "personalization":
+      return normalizePersonalization(raw)
     case "batteryConfig":
       return normalizeBatteryConfig(raw)
     case "hasBms":
@@ -244,6 +249,16 @@ final class AppDataRepository {
   /// board's own configuration. JS owns behavior; native persists each as an opaque object.
   /// Non-object/empty payloads normalize away (row removed).
   /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/AppDataRepository.kt `normalizeMetricBag`
+  /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/AppDataRepository.kt `normalizePersonalization`
+  /// @parity /modules/vescape-core/src/index.ts `Board.personalization`
+  private static func normalizePersonalization(_ raw: Any?) -> [String: String]? {
+    guard let map = raw as? [String: Any],
+          let railId = map["railId"] as? String, !railId.isEmpty,
+          let railColorId = map["railColorId"] as? String, !railColorId.isEmpty
+    else { return nil }
+    return ["railId": railId, "railColorId": railColorId]
+  }
+
   private static func normalizeMetricBag(_ raw: Any?) -> [String: Any]? {
     guard let map = raw as? [String: Any], !map.isEmpty else { return nil }
     return map

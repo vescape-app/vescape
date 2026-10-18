@@ -94,6 +94,8 @@ interface ImuAttitudeDialProps {
   roll: SharedValue<number | null>
   balancePitch: SharedValue<number | null>
   connected: boolean
+  railId?: string
+  railColorId?: string
 }
 
 /**
@@ -102,7 +104,14 @@ interface ImuAttitudeDialProps {
  * chevron inside the ring at both ends, so the gap between it and the pitch mark is how far off
  * balance the board sits. Each corner value takes its mark's colour, which is also its chart's.
  */
-export function ImuAttitudeDial({ pitch, roll, balancePitch, connected }: ImuAttitudeDialProps) {
+export function ImuAttitudeDial({
+  pitch,
+  roll,
+  balancePitch,
+  connected,
+  railId,
+  railColorId,
+}: ImuAttitudeDialProps) {
   'use no memo'
   const colors = useResolvedTelemetryColors()
   const offColor = useResolvedColor(theme.palette.pink.color)
@@ -172,6 +181,8 @@ export function ImuAttitudeDial({ pitch, roll, balancePitch, connected }: ImuAtt
           pitch={pitch}
           roll={roll}
           connected={connected}
+          railId={railId}
+          railColorId={railColorId}
           size={BOARD_SIZE * scale}
         />
       </View>

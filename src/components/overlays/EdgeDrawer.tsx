@@ -55,6 +55,8 @@ interface EdgeDrawerProps {
   iconColor?: ThemeColor
   /** Scroll newly expanded content into view when the drawer grows. */
   autoScrollOnContentExpand?: boolean
+  /** Return to the start of the drawer content when switching between pages. */
+  contentPageKey?: string
   /** Bring one child into the initially visible drawer area after opening. */
   initialFocusRef?: React.RefObject<View | null>
   /** Called after scrolling settles near the end of the drawer content. */
@@ -80,6 +82,7 @@ export function EdgeDrawer({
   icon: IconComponent,
   iconColor = theme.neutral.textSecondary,
   autoScrollOnContentExpand = false,
+  contentPageKey,
   initialFocusRef,
   onReachContentEnd,
   backdropTestID,
@@ -111,11 +114,13 @@ export function EdgeDrawer({
     virtualized: virtualizedContent != null,
     initialFocusLayout: listFocusLayout(listHeaderHeight, virtualizedContent?.initialFocus),
     autoScrollOnContentExpand,
+    contentPageKey,
     onClose,
     onReachContentEnd,
   })
 
   const focus = useWidgetFocusHost()
+  const { rootRef: focusRootRef, active: focusActive, controller: focusController } = focus
   // JS-side resolution: baked adaptive tokens in a StyleSheet go stale inside a live Modal window
   // after the rider changes the appearance in place — the window re-resolves only on remount.
   const neutral = useResolvedNeutralColors()
@@ -180,19 +185,17 @@ export function EdgeDrawer({
       statusBarTranslucent
       navigationBarTranslucent
       presentationStyle="overFullScreen"
-      onRequestClose={focus.active ? focus.controller.close : close}
+      onRequestClose={focusActive ? focusController.close : close}
       onShow={startOpen}
     >
       <GestureHandlerRootView style={styles.modalGestureRoot}>
         <View style={styles.drawer}>
-          <Reanimated.View
-            style={[StyleSheet.absoluteFill, styles.drawerScrim, scrimStyle, backdropStyle]}
-          >
+          <Reanimated.View style={[StyleSheet.absoluteFill, scrimStyle, backdropStyle]}>
             <Pressable testID={backdropTestID} style={StyleSheet.absoluteFill} onPress={close} />
           </Reanimated.View>
         </View>
         <Reanimated.View style={[styles.drawer, presenceStyle]}>
-          <View ref={focus.rootRef} collapsable={false} style={styles.focusRoot}>
+          <View ref={focusRootRef} collapsable={false} style={styles.focusRoot}>
             <NativeScrollGestureContext.Provider value={nativeScrollGesture}>
               <GestureDetector gesture={nativeScrollGesture}>
                 {virtualizedContent ? (
@@ -216,7 +219,7 @@ export function EdgeDrawer({
                     onScroll={scrollHandler}
                     onScrollEndDrag={handleScrollEndDrag}
                     onMomentumScrollEnd={handleScrollEnd}
-                    scrollEnabled={!closing && !focus.active}
+                    scrollEnabled={!closing && !focusActive}
                     scrollEventThrottle={16}
                     showsVerticalScrollIndicator={false}
                     bounces={false}
@@ -235,7 +238,7 @@ export function EdgeDrawer({
                     onScroll={scrollHandler}
                     onScrollEndDrag={handleScrollEndDrag}
                     onMomentumScrollEnd={handleScrollEnd}
-                    scrollEnabled={!closing && !focus.active}
+                    scrollEnabled={!closing && !focusActive}
                     scrollEventThrottle={16}
                     showsVerticalScrollIndicator={false}
                     bounces={false}
@@ -313,14 +316,6 @@ const styles = StyleSheet.create({
   },
   focusRoot: {
     flex: 1,
-  },
-  /**
-   * A flat translucent scrim rather than a vignette gradient. The gradient was there to fake a panel
-   * edge, but its falloff never lined up with where the drawer actually ended, and the dismissal
-   * fade is what conveys the drawer leaving.
-   */
-  drawerScrim: {
-    backgroundColor: theme.alpha(theme.neutral.surfaceDeep, 0.85),
   },
   drawerBody: {
     paddingHorizontal: 12,

@@ -3,11 +3,11 @@ import { Pressable, StyleSheet, View } from 'react-native'
 import { Text } from '@/components/base/Text'
 import {
   BatteryChargingIcon,
-  LightningIcon,
   LinkIcon,
   TrashIcon,
   EngineIcon,
   WarningDiamondIcon,
+  PencilSimpleIcon,
 } from 'phosphor-react-native'
 import type { BoardLink } from 'vescape-core'
 
@@ -15,6 +15,8 @@ import { BoardNameField } from '@/modules/board/components/BoardNameField'
 import { BoardSettingRow } from '@/modules/board/components/BoardSettingRow'
 import { Button } from '@/components/base/Button'
 import { IconHero } from '@/components/settings/IconHero'
+import { AnimatedBoardPreview } from '@/modules/board/components/add-board-wizard/AnimatedBoardPreview'
+import { railPreset } from '@/modules/board/lib/railPresets'
 import { SettingsCard } from '@/components/settings/SettingsCard'
 import { SettingsRow } from '@/components/settings/SettingsRow'
 import { interaction, theme } from '@/constants/theme'
@@ -23,6 +25,8 @@ import type { BatterySummary } from '@/modules/board/lib/boardSetup'
 
 interface EditBoardSettingsProps {
   name: string
+  railId?: string
+  railColorId?: string
   nameSaving?: boolean
   onSaveName: (name: string) => Promise<void> | void
   link: BoardLink | null
@@ -42,6 +46,9 @@ interface EditBoardSettingsProps {
   faultsAnchorRef: RefObject<View | null>
   onOpenFaults: () => void
   onOpenBattery: () => void
+  batteryAnchorRef: RefObject<View | null>
+  appearanceAnchorRef: RefObject<View | null>
+  onOpenAppearance: () => void
   onLink: () => void
   onRelink: () => void
   onUnlink: () => Promise<void> | void
@@ -50,6 +57,8 @@ interface EditBoardSettingsProps {
 
 export function EditBoardSettings({
   name,
+  railId,
+  railColorId,
   nameSaving = false,
   onSaveName,
   link,
@@ -64,6 +73,9 @@ export function EditBoardSettings({
   faultsAnchorRef,
   onOpenFaults,
   onOpenBattery,
+  batteryAnchorRef,
+  appearanceAnchorRef,
+  onOpenAppearance,
   onLink,
   onRelink,
   onUnlink,
@@ -72,25 +84,43 @@ export function EditBoardSettings({
   return (
     <>
       <IconHero
-        icon={LightningIcon}
-        iconSize={48}
-        iconColor={theme.palette.sky.color}
-        iconWeight="duotone"
+        media={
+          <View ref={appearanceAnchorRef} collapsable={false}>
+            <Pressable
+              style={styles.modelPreview}
+              onPress={onOpenAppearance}
+              accessibilityRole="button"
+              accessibilityLabel="Edit board appearance"
+              testID="edit-board-appearance-button"
+            >
+              <AnimatedBoardPreview
+                railId={railPreset(railId).id}
+                railColorId={railColorId ?? 'cyan'}
+                size={260}
+              />
+              <View style={styles.editBadge}>
+                <PencilSimpleIcon size={18} color={theme.neutral.textPrimary} weight="duotone" />
+              </View>
+            </Pressable>
+          </View>
+        }
       >
         <BoardNameField name={name} saving={nameSaving} onSave={onSaveName} />
       </IconHero>
 
-      <SettingsCard>
-        <BoardSettingRow
-          icon={BatteryChargingIcon}
-          iconColor={theme.settingsIcon.battery}
-          label={keepMissingBatteryConfig ? 'Not configured' : batterySummary.title}
-          value={batterySummary.value}
-          hint={batterySummary.hint}
-          onPress={onOpenBattery}
-          testID="edit-board-battery-row"
-        />
-      </SettingsCard>
+      <View ref={batteryAnchorRef} collapsable={false}>
+        <SettingsCard>
+          <BoardSettingRow
+            icon={BatteryChargingIcon}
+            iconColor={theme.settingsIcon.battery}
+            label={keepMissingBatteryConfig ? 'Not configured' : batterySummary.title}
+            value={batterySummary.value}
+            hint={batterySummary.hint}
+            onPress={onOpenBattery}
+            testID="edit-board-battery-row"
+          />
+        </SettingsCard>
+      </View>
 
       {boardControls}
 
@@ -184,6 +214,18 @@ function formatWarningCounts({ active, dismissed }: { active: number; dismissed:
 }
 
 const styles = StyleSheet.create({
+  modelPreview: {
+    width: 260,
+    height: 150,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  editBadge: {
+    position: 'absolute',
+    right: 4,
+    top: 4,
+    padding: 8,
+  },
   buttonGroup: {
     flexDirection: 'row',
     alignItems: 'center',

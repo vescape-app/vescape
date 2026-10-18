@@ -174,7 +174,7 @@ export const accentColors = {
     // @parity /watch/watchos/Palette.swift `trail`
     violet: hue('#7c6fef', '#8b5cf6', '#a78bfa', '#2e1065', '#5b21b6', '#5b21b6', '#ffffff'),
     teal: hue('#14b8a6', '#2dd4bf', '#99f6e4', '#042f2e', '#0f766e', '#0f766e', '#ffffff'),
-    groupRide: hue('#10c69a', '#5eead4', '#7af0d6', '#04302a', '#0c8f74', '#0f766e', '#ffffff'),
+    mint: hue('#10c69a', '#5eead4', '#7af0d6', '#04302a', '#0c8f74', '#0f766e', '#ffffff'),
     pink: hue('#ec4899', '#f472b6', '#fbcfe8', '#500724', '#be185d', '#be185d', '#ffffff'),
     beige: hue('#d6c2a5', '#e8dcc8', '#f5eee4', '#3a3026', '#8d7353', '#806549', '#ffffff'),
   },
@@ -191,7 +191,7 @@ export const accentColors = {
     fuchsia: hue('#c026d3', '#d946ef', '#86198f', '#fae8ff', '#f0abfc', '#d946ef', '#2e064d'),
     violet: hue('#7c3aed', '#8b5cf6', '#5b21b6', '#ede9fe', '#c4b5fd', '#7c3aed', '#ffffff'),
     teal: hue('#0d9488', '#14b8a6', '#115e59', '#ccfbf1', '#5eead4', '#14b8a6', '#042f2e'),
-    groupRide: hue('#0d9488', '#10b981', '#115e59', '#ccfbf1', '#5eead4', '#10b981', '#032e27'),
+    mint: hue('#059669', '#10b981', '#115e59', '#ccfbf1', '#5eead4', '#10b981', '#032e27'),
     pink: hue('#db2777', '#ec4899', '#9d174d', '#fce7f3', '#f9a8d4', '#ec4899', '#3f071f'),
     beige: hue('#8d7353', '#a68a66', '#614d37', '#f5eee4', '#d6c2a5', '#d6c2a5', '#3a3026'),
   },
@@ -204,7 +204,7 @@ type AccentName = keyof (typeof accentColors)['dark']
 function adaptiveHue(name: AccentName): Hue<ThemeColor> {
   const dark = accentColors.dark[name]
   const light = accentColors.light[name]
-  const resourceName = name === 'groupRide' ? 'group_ride' : name
+  const resourceName = name
   return {
     color: adaptiveColor(`accent_${resourceName}_color`, dark.color, light.color),
     alt: adaptiveColor(`accent_${resourceName}_light`, dark.light, light.light),
@@ -254,7 +254,8 @@ export const palette = {
     moon: adaptiveColor('accent_violet_moon', '#a78bfa', '#7c3aed'),
   },
   teal: adaptiveHue('teal'),
-  groupRide: adaptiveHue('groupRide'),
+  mint: adaptiveHue('mint'),
+  groupRide: adaptiveHue('mint'),
   pink: adaptiveHue('pink'),
   beige: adaptiveHue('beige'),
 } as const
@@ -587,6 +588,26 @@ export const interaction = {
   pressedOpacity: 0.55,
 } as const
 
+/** Board rail choices reuse shared hues; extend this list independently of UI accent roles.
+ * `group-ride` is the persisted legacy ID for mint. Keep it stable for saved Boards.
+ */
+export const personalizationColorOptions = [
+  { id: 'sky', value: palette.sky.color },
+  { id: 'cyan', value: palette.cyan.color },
+  { id: 'teal', value: palette.teal.color },
+  { id: 'group-ride', label: 'Mint', value: palette.mint.color },
+  { id: 'green', value: palette.green.color },
+  { id: 'beige', value: palette.beige.color },
+  { id: 'yellow', value: palette.yellow.color },
+  { id: 'amber', value: palette.amber.color },
+  { id: 'orange', value: palette.orange.color },
+  { id: 'red', value: palette.red.color },
+  { id: 'pink', value: palette.pink.color },
+  { id: 'fuchsia', value: palette.fuchsia.color },
+  { id: 'purple', value: palette.purple.color },
+  { id: 'violet', value: palette.violet.color },
+] as const
+
 /** Weights shipped as static Raleway instances in `assets/fonts/`. Android ignores the
  *  `wght` variation axis of a custom variable font (it renders the file's default
  *  instance), so each weight is its own font file and family name. */
@@ -618,6 +639,7 @@ export const theme = {
   weather,
   zone,
   interaction,
+  personalizationColorOptions,
   font,
   mono,
 } as const
