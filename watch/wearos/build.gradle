@@ -91,7 +91,9 @@ dependencies {
   implementation 'androidx.wear.compose:compose-material:1.4.1'
   implementation 'androidx.wear.compose:compose-foundation:1.4.1'
   implementation 'androidx.wear:wear-ongoing:1.1.0'
+  implementation 'androidx.wear.watchface:watchface-complications-data-source-ktx:1.2.1'
   implementation 'com.google.android.gms:play-services-wearable:18.2.0'
+  debugImplementation 'androidx.wear.watchface:watchface-complications-rendering:1.2.1'
   testImplementation 'junit:junit:4.13.2'
   // Real org.json on the JVM: the android.jar stub throws, and the replay fixture parser is JSON.
   testImplementation 'org.json:json:20240303'

@@ -81,6 +81,10 @@ class MainActivity : ComponentActivity() {
                     val weather = if (deleted) null else readWeather(event.dataItem)
                     runOnUiThread { WeatherState.accept(weather) }
                 }
+                LAST_BATTERY_PATH -> {
+                    val value = if (deleted) null else decodeLastBatteryItem(event.dataItem)
+                    runOnUiThread { LastBatteryState.value.value = value }
+                }
                 BOARD_PATH -> {
                     // Deletion is the phone saying nothing, which decodes to unknown, never off.
                     val lights = decodeBoardLights(if (deleted) null else dataMapOf(event.dataItem))
@@ -172,6 +176,7 @@ class MainActivity : ComponentActivity() {
             WeatherState.accept(weather?.let(::readWeather))
             val board = items.firstOrNull { it.uri.path == BOARD_PATH }
             BoardState.accept(decodeBoardLights(board?.let(::dataMapOf)))
+            LastBatteryState.value.value = items.firstOrNull { it.uri.path == LAST_BATTERY_PATH }?.let(::decodeLastBatteryItem)
             items.release()
         }
         phoneLinkMonitor.start()

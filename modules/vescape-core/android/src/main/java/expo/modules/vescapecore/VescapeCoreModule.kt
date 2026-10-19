@@ -1,5 +1,6 @@
 package expo.modules.vescapecore
 
+import expo.modules.vescapecore.watch.WatchLastBatteryPusher
 import expo.modules.kotlin.functions.Queues
 import expo.modules.kotlin.modules.ModuleDefinitionBuilder
 
@@ -668,6 +669,7 @@ class VescapeCoreModule : Module() {
         throw error
       }
       ManualDisconnectAutoStartGate.clear(context.applicationContext)
+      CoreForegroundService.appDataScope.launch { pushWatchLastBattery(context.applicationContext) }
       companionPresence.refreshForSelectedBoard()
     }
     Function("setDebugRecordingEnabled") { enabled: Boolean ->
@@ -1690,6 +1692,13 @@ class VescapeCoreModule : Module() {
     )
   }
 
+  private suspend fun pushWatchLastBattery(appCtx: Context) {
+    try { WatchLastBatteryPusher.pushStored(appCtx) }
+    catch (error: Exception) {
+      TelemetryRepository.get(appCtx).recordDiagnosticEvent("watch_last_battery_push_failed", mapOf("error" to error.message))
+    }
+  }
+
   private suspend fun selectBoard(boardId: String) {
     val appCtx = context.applicationContext
     try {
@@ -1698,6 +1707,7 @@ class VescapeCoreModule : Module() {
       RecordingStorageFailure.report("setting_save", "write_failed", error)
       throw error
     }
+    pushWatchLastBattery(appCtx)
     ManualDisconnectAutoStartGate.clear(appCtx)
     companionPresence.refreshForSelectedBoard()
     val config = buildSessionConfig(appCtx, boardId, requestedDebugRecordingEnabled)

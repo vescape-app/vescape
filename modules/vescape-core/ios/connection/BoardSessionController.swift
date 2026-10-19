@@ -2591,8 +2591,26 @@ internal final class BoardSessionController: VescGattListener {
     do {
       try appData.updateLastBattery(boardId: boardId, percent: percent, voltage: voltage, atMs: now)
       lastBatteryPersistedAt = now
+      pushWatchLastBattery()
     } catch {
       RecordingStorageFailure.report(operation: "last_battery_save", category: "write_failed", error: error)
+    }
+  }
+
+  /// Push only committed storage, including selection changes and cold launch.
+  /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/connection/BoardSessionController.kt `pushWatchLastBattery`
+  func pushWatchLastBattery() {
+    do {
+      let settings = try appData.getSettings()
+      var battery: WatchLastBattery?
+      if let id = settings["selectedBoardId"] as? String, let board = try appData.getBoard(id) {
+        let stored = board["lastBattery"] as? [String: Any]
+        battery = WatchLastBattery(boardId: id, boardName: board["name"] as? String ?? "Board",
+          percent: stored?["percent"] as? Double, at: (stored?["at"] as? NSNumber)?.int64Value)
+      }
+      watchPusher.pushLastBattery(battery)
+    } catch {
+      RecordingStorageFailure.report(operation: "watch_last_battery_read", category: "read_failed", error: error)
     }
   }
 
@@ -2651,6 +2669,7 @@ internal final class BoardSessionController: VescGattListener {
       }
     }
     watchPusher.start()
+    pushWatchLastBattery()
     reloadWatchSettings()
     // The opening board push, before any board session exists: unknown switches and no write
     // offered. Without it a wrist that reconnects to a phone that has never connected a board finds

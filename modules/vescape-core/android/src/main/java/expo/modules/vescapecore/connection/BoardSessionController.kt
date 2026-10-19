@@ -83,6 +83,7 @@ import expo.modules.vescapecore.navigation.NavigationController
 import expo.modules.vescapecore.watch.GeoPoint
 import expo.modules.vescapecore.watch.WatchBoard
 import expo.modules.vescapecore.watch.WatchBoardPusher
+import expo.modules.vescapecore.watch.WatchLastBatteryPusher
 import expo.modules.vescapecore.watch.WatchLightsRelay
 import expo.modules.vescapecore.watch.WatchLightsSwitch
 import expo.modules.vescapecore.watch.WatchMirrorLauncher
@@ -833,6 +834,7 @@ private var wearAutoLaunchOnConnect = true
         DiagnosticReporter.initialize(service)
         notificationController.createChannel()
         refreshSelectedBoardName()
+        CoreForegroundService.appDataScope.launch { pushWatchLastBattery() }
         // The wrist mirrors the phone, not the board session. Keep presence + frames alive while
         // this service owns GPS/navigation even when no board is selected or connected.
         watchMirrorPresence.start()
@@ -2920,7 +2922,21 @@ private var wearAutoLaunchOnConnect = true
         if (!force && now - lastBatteryPersistedAt < 30_000L) return
         lastBatteryPersistedAt = now
         CoreForegroundService.appDataScope.launch {
-            AppDataRepository.get(service.applicationContext).updateLastBattery(boardId, percent, voltage, now)
+            try {
+                AppDataRepository.get(service.applicationContext).updateLastBattery(boardId, percent, voltage, now)
+                pushWatchLastBattery()
+            } catch (error: Exception) {
+                RecordingStorageFailure.report("last_battery_save", "write_failed", error)
+            }
+        }
+    }
+
+    /** @parity /modules/vescape-core/ios/connection/BoardSessionController.swift `pushWatchLastBattery` */
+    private suspend fun pushWatchLastBattery() {
+        try {
+            WatchLastBatteryPusher.pushStored(service.applicationContext)
+        } catch (error: Exception) {
+            recordWatchDiagnostic("watch_last_battery_push_failed", mapOf("error" to error.message))
         }
     }
 

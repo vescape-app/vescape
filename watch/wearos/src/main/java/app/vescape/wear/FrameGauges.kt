@@ -419,7 +419,8 @@ private fun batteryColor(value: Double?): Color = when {
     else -> BatteryColor
 }
 
-private const val BATTERY_WARNING_PERCENT = 20.0
+/** @parity /modules/vescape-core/ios/watch/WatchGauge.swift `batteryWarningPercent` */
+internal const val BATTERY_WARNING_PERCENT = 20.0
 
 /**
  * A lane's colour. Ambient only tints as a [readout] what it actually has: an absent or frozen lane

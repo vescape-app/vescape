@@ -640,6 +640,7 @@ public class VescapeCoreModule: Module {
         try self.appData.updateSetting("selectedBoardId", rawValue: boardId)
         self.clearManualDisconnectAutoStartGate()
         self.selectedBoardId = boardId
+        self.coordinator.pushWatchLastBattery()
       } catch {
         RecordingStorageFailure.report(operation: "setting_save", category: "write_failed", error: error)
         throw error
@@ -723,6 +724,7 @@ public class VescapeCoreModule: Module {
         try self.appData.updateSetting("selectedBoardId", rawValue: boardId)
         self.clearManualDisconnectAutoStartGate()
         self.selectedBoardId = boardId
+        self.coordinator.pushWatchLastBattery()
       } catch {
         RecordingStorageFailure.report(operation: "setting_save", category: "write_failed", error: error)
         promise.reject("APP_STORAGE_WRITE_FAILED", "Could not select Board")

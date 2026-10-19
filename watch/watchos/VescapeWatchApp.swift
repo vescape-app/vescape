@@ -10,6 +10,21 @@ struct VescapeWatchApp: App {
 
   var body: some Scene {
     WindowGroup {
+      Group {
+#if DEBUG && targetEnvironment(simulator)
+        if let state = BatteryComplicationGallery.requested {
+          BatteryComplicationGallery(state: state)
+        } else {
+          mirror
+        }
+#else
+        mirror
+#endif
+      }
+    }
+  }
+
+  private var mirror: some View {
       MirrorScreen(link: link)
         .font(WatchTypography.ui(size: 12))
         // Replay owns its inputs; live phone context must not overwrite the fixtures.
@@ -27,6 +42,5 @@ struct VescapeWatchApp: App {
             link.activate()
           }
         }
-    }
   }
 }

@@ -19,6 +19,8 @@ enum WatchGauge {
   static let tempMax = 80.0
 
   /// Below this the battery reading takes the warning colour, and keeps it into ambient.
+  /// @parity /watch/wearos/src/main/java/app/vescape/wear/FrameGauges.kt `BATTERY_WARNING_PERCENT`
+  /// @parity /watch/watchos/BatteryComplicationView.swift
   static let batteryWarningPercent = 20.0
 
   /// An empty lane reads as this, never as zero: a board that is not connected and a board sitting

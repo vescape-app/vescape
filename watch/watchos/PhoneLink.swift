@@ -1,5 +1,6 @@
 import Foundation
 import WatchConnectivity
+import WidgetKit
 
 /// Wrist-side end of the Watch Frame path (ADR-0019). Receives the frames `WatchTelemetryPusher`
 /// sends from `vescape-core`, reduces them to a Mirror State, and publishes that alongside the
@@ -74,6 +75,7 @@ final class PhoneLink: NSObject, ObservableObject, WCSessionDelegate {
   ///
   /// @parity /watch/wearos/src/main/java/app/vescape/wear/WatchBoard.kt `BoardState`
   @Published private(set) var board = WatchBoardLights()
+  @Published private(set) var lastBattery = WatchBatteryDefaults.value
 
   /// Bumped on every route change. The wrist's route animators are measured from the route's own
   /// origin, so a replacement route moves the frame underneath them; this is what tells the view to
@@ -330,6 +332,9 @@ final class PhoneLink: NSObject, ObservableObject, WCSessionDelegate {
   ///
   /// @parity /watch/wearos/src/main/java/app/vescape/wear/MainActivity.kt `dataListener`
   private func acceptColdState(_ context: [String: Any]) {
+    if let payload = context[watchLastBatteryChannel] as? [String: Any] {
+      acceptLastBattery(WatchLastBattery.decode(payload))
+    }
     let next = WatchSettings.decode(context: context)
     if next != settings { settings = next }
     let forecast = WatchWeather.decode(context: context)
@@ -340,6 +345,18 @@ final class PhoneLink: NSObject, ObservableObject, WCSessionDelegate {
     let lights = WatchBoardLights.decode(context: context)
     if lights != board { board = lights }
     acceptRoute(WatchRoute.decode(context: context))
+  }
+
+  private func acceptLastBattery(_ battery: WatchLastBattery?) {
+    guard battery != lastBattery else { return }
+    lastBattery = battery
+    WatchBatteryDefaults.write(battery)
+    WidgetCenter.shared.reloadTimelines(ofKind: WatchBatteryDefaults.widgetKind)
+  }
+
+  func session(_ session: WCSession, didReceiveUserInfo userInfo: [String: Any] = [:]) {
+    guard let payload = userInfo[watchLastBatteryChannel] as? [String: Any] else { return }
+    DispatchQueue.main.async { self.acceptLastBattery(WatchLastBattery.decode(payload)) }
   }
 
   /// The pushed forecast while it is still worth believing, else nil.
@@ -397,6 +414,12 @@ final class PhoneLink: NSObject, ObservableObject, WCSessionDelegate {
       self.received.record(nowMs: nowMs)
       self.applied.record(nowMs: Self.nowMs())
       if let previous = self.lastFrameAtMs { self.frameGapMs = max(nowMs - previous, 0) }
+      if !decoded.stale, let percent = decoded.battery, let stored = self.lastBattery {
+        let live = WatchLastBattery(boardId: stored.boardId, boardName: stored.boardName,
+          percent: percent, at: Self.wallClockMs())
+        // Reload only whole-percent changes. Persisted cold state still refreshes the exact stamp.
+        if live.text != stored.text { self.acceptLastBattery(live) }
+      }
       self.latestFrame = decoded
       self.lastFrameAtMs = nowMs
       self.lastFrameAt = now

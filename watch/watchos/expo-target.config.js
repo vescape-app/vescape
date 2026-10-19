@@ -10,7 +10,7 @@
  *
  * @type {import('@bacons/apple-targets').Config}
  */
-module.exports = {
+module.exports = (config) => ({
   type: 'watch',
   name: 'VescapeWatch',
   displayName: 'Vescape',
@@ -25,5 +25,8 @@ module.exports = {
   deploymentTarget: '10.0',
   // `WatchKit` is only linked for `WKInterfaceDevice.play(_:)`, the wrist's haptic engine; the UI
   // itself is SwiftUI.
-  frameworks: ['WatchConnectivity', 'WatchKit'],
-}
+  frameworks: ['WatchConnectivity', 'WatchKit', 'WidgetKit'],
+  entitlements: {
+    'com.apple.security.application-groups': [`group.${config.ios.bundleIdentifier}.watch`],
+  },
+})
