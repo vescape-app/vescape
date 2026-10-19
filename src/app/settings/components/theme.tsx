@@ -1,4 +1,5 @@
 import type { ReactNode } from 'react'
+import { ThemePicker } from '@/modules/settings/components/ThemePicker'
 import { ScrollView, StyleSheet, View } from 'react-native'
 import { GearSixIcon, TrashIcon } from 'phosphor-react-native'
 
@@ -47,6 +48,8 @@ export default function ThemeShowcase() {
       <Text style={styles.intro}>
         Active appearance: {appearance}. White is the content canvas; navy identifies interaction.
       </Text>
+
+      <ThemePicker />
 
       <ThemeSection name="Canvas and copy">
         <View style={styles.flatPreview}>

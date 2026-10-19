@@ -11,16 +11,16 @@ import type { Icon } from 'phosphor-react-native'
 import { Text } from '@/components/base/Text'
 import { theme } from '@/constants/theme'
 import {
+  useColoredAction,
+  useColoredActionForeground,
   useResolvedColor,
   useResolvedControlColors,
-  useResolvedNeutralColors,
   useThemeStore,
 } from '@/hooks/useTheme'
 import {
+  PILL_SIZES,
   TRANSPARENT,
   TUNE_ANIMATION,
-  TUNE_DEFAULT_ACTIVE_WIDTH,
-  TUNE_OPTION_WIDTH,
   styles,
   usePillSelectorCtx,
   type ActiveTheme,
@@ -105,6 +105,8 @@ function PillSelectorItemContent({
   badge,
   labelStyle,
 }: PillSelectorItemContentProps) {
+  const { size } = usePillSelectorCtx()
+  const sizeStyle = size === 'lg' ? { fontSize: 14 } : null
   const textStateStyle = active
     ? { color: accentColor, fontWeight: '800' as const }
     : { color: inactiveAccent }
@@ -113,17 +115,20 @@ function PillSelectorItemContent({
     <>
       {IconComp ? (
         <IconComp
-          size={collapseLabel ? 18 : 14}
+          size={size === 'lg' ? 20 : collapseLabel ? 18 : 14}
           color={active ? accentColor : inactiveAccent}
           weight="duotone"
         />
       ) : null}
       {collapseLabel ? (
-        <AnimatedText style={[styles.pillText, textStateStyle, labelStyle]} numberOfLines={1}>
+        <AnimatedText
+          style={[styles.pillText, sizeStyle, textStateStyle, labelStyle]}
+          numberOfLines={1}
+        >
           {label}
         </AnimatedText>
       ) : showLabel ? (
-        <Text style={[styles.pillText, textStateStyle]} numberOfLines={1}>
+        <Text style={[styles.pillText, sizeStyle, textStateStyle]} numberOfLines={1}>
           {label}
         </Text>
       ) : null}
@@ -143,16 +148,18 @@ export function PillSelectorItem({
   hintVisibility = 'inactive',
   hintGap = 2,
   color,
-  activeWidth = TUNE_DEFAULT_ACTIVE_WIDTH,
-  inactiveWidth = TUNE_OPTION_WIDTH,
+  activeWidth: requestedActiveWidth,
+  inactiveWidth: requestedInactiveWidth,
   testID,
   onPress,
   children,
 }: PillSelectorItemProps) {
   const control = useResolvedControlColors()
-  const neutral = useResolvedNeutralColors()
   const resolvedTheme = useThemeStore((state) => state.resolvedTheme)
-  const { activeId, contained, showFullLabel, variant, openMenu, closeMenu } = usePillSelectorCtx()
+  const { activeId, contained, showFullLabel, variant, size, openMenu, closeMenu } =
+    usePillSelectorCtx()
+  const activeWidth = requestedActiveWidth ?? PILL_SIZES[size].activeWidth
+  const inactiveWidth = requestedInactiveWidth ?? PILL_SIZES[size].inactiveWidth
   const useLightTabs = variant === 'lightTabs' && resolvedTheme === 'light'
   const pillRef = useRef<View>(null)
   const active = id === activeId
@@ -163,8 +170,11 @@ export function PillSelectorItem({
     hintVisibility,
   })
   const accentBorder = useResolvedColor(color?.border ?? theme.palette.green.border)
-  const accentColor = useResolvedColor(color?.color ?? theme.palette.green.color)
-  const inactiveAccent = useLightTabs ? control.textMuted : theme.alpha(accentColor, 0.6)
+  const resolvedAccent = useResolvedColor(color?.color ?? theme.palette.green.color)
+  const coloredBackground = useColoredAction(color?.color ?? theme.palette.green.color)
+  const onDarkAccent = useColoredActionForeground(color?.color ?? theme.palette.green.color)
+  const accentColor = useLightTabs ? onDarkAccent : resolvedAccent
+  const inactiveAccent = useLightTabs ? resolvedAccent : theme.alpha(accentColor, 0.6)
   const activeProgress = useSharedValue(active ? 1 : 0)
   const labelProgress = useSharedValue(resolved.showLabel ? 1 : 0)
 
@@ -194,7 +204,11 @@ export function PillSelectorItem({
               : contained
                 ? TRANSPARENT
                 : control.background,
-          showFullLabel ? TRANSPARENT : useLightTabs ? neutral.surface : control.backgroundPressed,
+          showFullLabel
+            ? TRANSPARENT
+            : useLightTabs
+              ? coloredBackground
+              : control.backgroundPressed,
         ],
       ),
       borderColor: interpolateColor(
@@ -220,8 +234,8 @@ export function PillSelectorItem({
       inactiveWidth,
       control.background,
       control.backgroundPressed,
+      coloredBackground,
       control.border,
-      neutral.surface,
       showFullLabel,
       useLightTabs,
     ],
@@ -256,11 +270,16 @@ export function PillSelectorItem({
         contained && styles.containedPill,
         useLightTabs && styles.lightTabPill,
         frameStyle,
+        size === 'lg' && { height: 44, borderRadius: 22 },
       ]}
     >
       <Pressable
         testID={testID}
-        style={[styles.pillPressable, resolved.collapseLabel && styles.collapsingPillPressable]}
+        style={[
+          styles.pillPressable,
+          resolved.collapseLabel && styles.collapsingPillPressable,
+          size === 'lg' && { height: 44 },
+        ]}
         accessibilityRole="button"
         accessibilityLabel={label}
         accessibilityState={{ selected: active }}

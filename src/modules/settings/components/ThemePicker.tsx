@@ -1,119 +1,80 @@
+import { useResolvedSecondaryWidgetSurface } from '@/components/widgets/widgetSurface'
 import { useState } from 'react'
-import { Pressable, StyleSheet, View } from 'react-native'
-import { CheckIcon, PaletteIcon } from 'phosphor-react-native'
+import { StyleSheet, View } from 'react-native'
+import { InfoIcon, PaletteIcon } from 'phosphor-react-native'
 
+import { PillSelector, PillSelectorItem } from '@/components/controls/PillSelector'
 import { Text } from '@/components/base/Text'
-import { FloatingSheet } from '@/components/overlays/AnchoredSheet'
-import { useTriggerRef } from '@/components/overlays/measureTrigger'
-import { SelectWidget } from '@/components/widgets/SelectWidget'
 import { theme } from '@/constants/theme'
+import { useResolvedNeutralColors } from '@/hooks/useTheme'
 import { THEME_OPTIONS } from '@/modules/settings/lib/themeOptions'
 import { useSettingsStore } from '@/modules/settings/store/settingsStore'
 
-/** Settings Drawer row: current theme as a value pill; tapping opens the four theme choices. */
+/** Inline appearance choices in the quick-settings drawer. */
 export function ThemePicker() {
   const mode = useSettingsStore((s) => s.themeMode)
   const setSetting = useSettingsStore((s) => s.set)
-  const [open, setOpen] = useState(false)
-  const triggerRef = useTriggerRef()
+  const [headerWidth, setHeaderWidth] = useState(0)
+  const neutral = useResolvedNeutralColors()
+  const surface = useResolvedSecondaryWidgetSurface()
   const selected = THEME_OPTIONS.find((o) => o.mode === mode) ?? THEME_OPTIONS[0]!
 
   return (
-    <View>
-      <View ref={triggerRef} collapsable={false}>
-        <SelectWidget
-          icon={PaletteIcon}
-          accent={theme.palette.purple.color}
-          label="Theme"
-          value={selected.label}
-          description={selected.hint}
-          selectIcon={selected.Icon}
-          selectAccent={selected.hue.color}
-          selectBackground={selected.hue.bg}
-          selectBorder={selected.hue.border}
-          selectOpen={open}
-          onPress={() => setOpen((o) => !o)}
-          onSelectPress={() => setOpen((o) => !o)}
-        />
-      </View>
-      <FloatingSheet
-        visible={open}
-        triggerRef={triggerRef}
-        matchTriggerWidth
-        onClose={() => setOpen(false)}
-        contentContainerStyle={styles.optionList}
+    <View style={[styles.card, surface]}>
+      <View
+        style={styles.topRow}
+        onLayout={(event) => setHeaderWidth(event.nativeEvent.layout.width)}
       >
-        {THEME_OPTIONS.map((option) => {
-          const active = option.mode === mode
-          return (
-            <Pressable
+        <View style={styles.heading}>
+          <PaletteIcon size={22} color={theme.palette.purple.color} weight="duotone" />
+          <Text style={styles.title}>Theme</Text>
+        </View>
+        <PillSelector
+          size="lg"
+          activeId={mode}
+          contained
+          fitContent
+          variant="lightTabs"
+          style={[styles.tabs, headerWidth > 0 && { maxWidth: headerWidth }]}
+        >
+          {THEME_OPTIONS.map((option) => (
+            <PillSelectorItem
+              activeWidth={104}
+              inactiveWidth={44}
               key={option.mode}
-              style={({ pressed }) => [
-                styles.optionRow,
-                { backgroundColor: active ? option.hue.bg : 'transparent' },
-                pressed && !active && styles.optionRowPressed,
-              ]}
-              accessibilityRole="button"
-              accessibilityState={{ selected: active }}
-              accessibilityLabel={option.label}
-              onPress={() => {
-                void setSetting('themeMode', option.mode)
-                setOpen(false)
-              }}
-            >
-              <option.Icon
-                size={20}
-                color={active ? option.hue.color : theme.neutral.textMuted}
-                weight="duotone"
-              />
-              <View style={styles.optionText}>
-                <Text
-                  style={[
-                    styles.optionLabel,
-                    { color: active ? option.hue.color : theme.neutral.textPrimary },
-                  ]}
-                >
-                  {option.label}
-                </Text>
-                <Text style={styles.optionHint} numberOfLines={1}>
-                  {option.hint}
-                </Text>
-              </View>
-              {active ? <CheckIcon size={17} color={option.hue.color} weight="bold" /> : null}
-            </Pressable>
-          )
-        })}
-      </FloatingSheet>
+              id={option.mode}
+              label={option.mode === 'sun' ? 'Sun' : option.label}
+              icon={option.Icon}
+              color={option.hue}
+              onPress={() => void setSetting('themeMode', option.mode)}
+            />
+          ))}
+        </PillSelector>
+      </View>
+      <View style={styles.hint}>
+        <InfoIcon size={16} color={neutral.textMuted} />
+        <Text style={styles.hintText}>{selected.hint}</Text>
+      </View>
     </View>
   )
 }
 
 const styles = StyleSheet.create({
-  optionList: {
-    gap: 6,
-  },
-  optionRow: {
+  card: { padding: 16, gap: 12 },
+  heading: {
     flexDirection: 'row',
     alignItems: 'center',
+    gap: 14,
+  },
+  topRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    alignItems: 'center',
+    justifyContent: 'space-between',
     gap: 12,
-    paddingVertical: 12,
-    paddingHorizontal: 14,
-    borderRadius: 14,
   },
-  optionRowPressed: {
-    backgroundColor: theme.neutral.surface,
-  },
-  optionText: {
-    flex: 1,
-    minWidth: 0,
-    gap: 2,
-  },
-  optionLabel: {
-    fontSize: 14,
-    fontWeight: '700',
-  },
-  optionHint: {
-    color: theme.neutral.textSecondary,
-    fontSize: 11,
-  },
+  title: { color: theme.neutral.textPrimary, fontSize: 15, fontWeight: '700' },
+  tabs: { maxWidth: '100%' },
+  hint: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  hintText: { color: theme.neutral.textMuted, fontSize: 12, flex: 1 },
 })

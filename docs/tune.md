@@ -725,3 +725,14 @@ Before implementing writes, keep field IDs aligned with the serialized struct
 names returned by the board's `<SerOrder>`. Do not derive IDs from `cDefine`;
 those defaults are VESC Tool names and can differ from Refloat's wire-format
 field IDs, as with `atr_strength_up` / `atr_strength_down`.
+
+## Profile selector summary
+
+The quick-settings Tune card summarizes the saved selected profile with five
+segments per metric. Aggression uses the Basic Aggressiveness slider (`kp`), Turning uses
+Basic Carve Tilt (`turntilt_strength`), and ATR uses Basic ATR intensity (the stronger of uphill
+and downhill strength). Each existing Basic slider range is normalized to 0–5 and rounded to
+the nearest segment; custom values are clamped to that range. Missing or non-finite sources
+show an unavailable dash, distinct from a valid zero. These summarize configured strengths,
+not measured handling or a simulated ride rating. Unsaved editor changes do not change the
+saved profile summary.

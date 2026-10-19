@@ -1,3 +1,4 @@
+import { useColoredActionForeground, useResolvedColor, useThemeStore } from '@/hooks/useTheme'
 import {
   ArrowUpIcon,
   ArrowsClockwiseIcon,
@@ -14,8 +15,6 @@ import {
 } from '@/components/controls/ExpandableCircleMenu'
 import { MAP_ORIENTATION_MODES, type MapOrientationMode } from '@/modules/map/constants/mapStyles'
 import { theme, type ThemeColor } from '@/constants/theme'
-
-const COLLAPSED_ICON_COLOR = theme.palette.mono.white
 
 interface MapOrientationSelectorProps {
   activeMode: MapOrientationMode
@@ -34,6 +33,12 @@ export function MapOrientationSelector({
   onToggle,
   onSelect,
 }: MapOrientationSelectorProps) {
+  const light = useThemeStore((state) => state.resolvedTheme === 'light')
+  const activeForeground = useColoredActionForeground(theme.palette.green.color)
+  const inactiveForeground = useResolvedColor(
+    light ? theme.palette.green.color : theme.palette.mono.white,
+  )
+  const collapsedForeground = theme.palette.mono.white
   const iconSize = size === 'sm' ? 18 : 21
   const optionIconSize = size === 'sm' ? 17 : 20
   const freeRotateIconStyle = useAnimatedStyle(() => ({
@@ -42,25 +47,31 @@ export function MapOrientationSelector({
   const options: { key: MapOrientationMode; label: string; icon: ReactNode }[] =
     MAP_ORIENTATION_MODES.map((option) => ({
       ...option,
-      icon: getNavigationIcon(option.key, activeMode, optionIconSize),
+      icon: getNavigationIcon(
+        option.key,
+        activeMode,
+        optionIconSize,
+        activeForeground,
+        inactiveForeground,
+      ),
     }))
   const activeIcon =
     activeMode === 'northUp' ? (
       <NorthAwareIcon heading={heading}>
-        <ArrowUpIcon size={iconSize} color={COLLAPSED_ICON_COLOR} weight="bold" />
+        <ArrowUpIcon size={iconSize} color={collapsedForeground} weight="bold" />
       </NorthAwareIcon>
     ) : activeMode === 'gpsHeading' ? (
       <NorthAwareIcon heading={heading} rotateNorthDot>
-        <ForwardNavigationIcon size={iconSize} color={COLLAPSED_ICON_COLOR} />
+        <ForwardNavigationIcon size={iconSize} color={collapsedForeground} />
       </NorthAwareIcon>
     ) : activeMode === 'phoneHeading' ? (
       <NorthAwareIcon heading={heading} rotateNorthDot>
-        <DeviceMobileIcon size={iconSize} color={COLLAPSED_ICON_COLOR} weight="bold" />
+        <DeviceMobileIcon size={iconSize} color={collapsedForeground} weight="bold" />
       </NorthAwareIcon>
     ) : (
       <NorthAwareIcon heading={heading} rotateNorthDot>
         <Animated.View style={freeRotateIconStyle}>
-          <ArrowUpIcon size={iconSize} color={COLLAPSED_ICON_COLOR} weight="bold" />
+          <ArrowUpIcon size={iconSize} color={collapsedForeground} weight="bold" />
         </Animated.View>
       </NorthAwareIcon>
     )
@@ -86,8 +97,10 @@ function getNavigationIcon(
   mode: MapOrientationMode,
   activeMode: MapOrientationMode,
   iconSize: number,
+  activeColor: ThemeColor,
+  inactiveColor: ThemeColor,
 ) {
-  const color = activeMode === mode ? theme.palette.green.color : theme.palette.mono.white
+  const color = activeMode === mode ? activeColor : inactiveColor
   if (mode === 'northUp') {
     return <ArrowUpIcon size={iconSize} color={color} weight="bold" />
   }

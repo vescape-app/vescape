@@ -108,6 +108,8 @@ export function SettingsSheet({ backup, onNavigate }: SettingsSheetProps) {
         />
       </View>
 
+      <ThemePicker />
+
       {availableUpdate ? (
         <Button
           label={`Update to v${availableUpdate.latestVersion}`}
@@ -128,8 +130,6 @@ export function SettingsSheet({ backup, onNavigate }: SettingsSheetProps) {
           onPress={() => go(s.route)}
         />
       ))}
-
-      <ThemePicker />
 
       <LinkWidget
         icon={WrenchIcon}
