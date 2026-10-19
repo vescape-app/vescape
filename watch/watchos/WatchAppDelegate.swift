@@ -8,6 +8,7 @@ final class WatchAppDelegate: NSObject, WKApplicationDelegate {
 
   func applicationDidFinishLaunching() {
 #if DEBUG && targetEnvironment(simulator)
+    if BatteryComplicationGallery.seedRequestedFixture() { return }
     if BatteryComplicationGallery.requested != nil || FrameReplayer.requestedFixture != nil { return }
 #endif
     let session = WCSession.default

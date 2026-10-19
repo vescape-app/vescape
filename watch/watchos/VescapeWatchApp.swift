@@ -13,7 +13,7 @@ struct VescapeWatchApp: App {
     WindowGroup {
       Group {
 #if DEBUG && targetEnvironment(simulator)
-        if let state = BatteryComplicationGallery.requested {
+        if let state = BatteryComplicationGallery.requestedFixture ?? BatteryComplicationGallery.requested {
           BatteryComplicationGallery(state: state)
         } else {
           mirror

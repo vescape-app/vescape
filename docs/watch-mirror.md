@@ -305,6 +305,10 @@ They do not verify background delivery, app-kill persistence or physical watch-f
 - watchOS simulator Debug build: launch `VescapeWatch` with
   `--battery-preview healthy`, `warning`, `stale` or `unknown`. The gallery uses the same
   `BatteryComplicationView` as WidgetKit; corner labels are laid out by WidgetKit on a watch face.
+  To render an installed watch-face slot with synthetic data, use `--battery-fixture` with the same
+  state names. This seeds the production App Group store, reloads WidgetKit, and skips phone
+  connectivity for that launch. The app shows the labeled DEBUG gallery; return to the face to
+  inspect the actual slot. A normal launch resumes receiving committed phone state.
 - Wear OS Debug APK: launch `app.vescape.wear.BatteryComplicationPreviewActivity` with intent
   string extra `state` set to the same fixture names. It draws the production provider's data
   through AndroidX `ComplicationDrawable`. The preview activity and renderer dependency are absent
