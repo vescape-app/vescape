@@ -1294,6 +1294,7 @@ public class VescapeCoreModule: Module {
       try RecordingStorageFailure.requireAvailable()
       do {
         try self.appData.upsertBoard(board)
+        self.coordinator.pushWatchLastBattery()
         self.coordinator.reloadAlertRules()
         self.coordinator.reloadBoardDataForActiveBoard()
         self.connectSavedBoardLink(boardId: board["id"] as? String)

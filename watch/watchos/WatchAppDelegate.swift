@@ -32,6 +32,7 @@ final class WatchAppDelegate: NSObject, WKApplicationDelegate {
   private func completeDrainedTasks() {
     let session = WCSession.default
     guard session.activationState == .activated, !session.hasContentPending else { return }
+    PhoneLink.shared.refreshLastBatteryContext()
     for task in tasks { task.setTaskCompletedWithSnapshot(false) }
     tasks.removeAll()
   }

@@ -1229,6 +1229,7 @@ class VescapeCoreModule : Module() {
       RecordingStorageFailure.requireAvailable()
       try {
         AppDataRepository.get(context.applicationContext).upsertBoard(board)
+        pushWatchLastBattery(context.applicationContext)
         CoreForegroundService.reloadAlertRules(context.applicationContext)
         CoreForegroundService.reloadBoardData()
         connectSavedBoardLink(board["id"] as? String)

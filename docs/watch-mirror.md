@@ -264,7 +264,8 @@ rider dot follow it. The watchOS Mirror carries the same bag on its own channel 
 
 The selected Board's last persisted battery is a separate cold-state channel. Every successful
 30-second or forced `updateLastBattery` write pushes committed storage to the wrist. Selection
-changes and native Mirror startup push the selected Board's stored reading too. The payload is
+changes, successful Board saves including renames, and native Mirror startup push the selected
+Board's stored reading too. The payload is
 `{ boardId, boardName, percent, at }`, where `at` is Unix milliseconds. Optional `percent` and `at`
 are omitted for a never-seen Board because WatchConnectivity property lists cannot encode null.
 An empty payload clears the selected Board. Android also includes a `present` flag on the item.
@@ -272,10 +273,15 @@ An empty payload clears the selected Board. Android also includes a `present` fl
 watchOS merges `lastBattery` into Application Context. The watch app stores it in App Group
 `group.<phone bundle id>.watch`, shared with its `WatchBattery` WidgetKit extension. The suite is
 separate for development and production. The phone additionally requests a complication wake on
-whole-percent or Board changes while more than five complication transfers remain. Reaching the
+whole-percent, Board or Board-name changes while more than five complication transfers remain.
+Reaching the
 reserve records `watch_complication_budget_exhausted` once per exhausted period. Application
 Context continues updating when no wake budget remains. The watch reloads widget timelines on
-receipt and on whole-percent changes from fresh foreground Watch Frames. Future timeline entries
+receipt of committed cold state. Queued complication transfers only wake the receiver, which reads
+the latest Application Context instead of applying an older queued snapshot. This also preserves
+Board switches and clears across process restarts. Foreground Watch Frames do not update this
+store because they lack Board identity and a source capture timestamp. Foreground complications
+therefore refresh after successful battery writes, normally every 30 seconds. Future timeline entries
 advance the stored reading's age even when the phone stops sending.
 
 Wear OS publishes `/last-battery`. Its Data Layer item is the durable storage; the complication

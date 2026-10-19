@@ -57,8 +57,15 @@ enum WatchBatteryDefaults {
   }
   static var defaults: UserDefaults? { UserDefaults(suiteName: suiteName) }
   static var value: WatchLastBattery? { WatchLastBattery.decode(defaults?.dictionary(forKey: watchLastBatteryChannel)) }
-  static func write(_ value: WatchLastBattery?) {
-    defaults?.set(value?.payload ?? [:], forKey: watchLastBatteryChannel)
+  /// Application Context is the only authority. Queued complication transfers only wake this reader.
+  /// Reading at apply time also avoids replaying an older callback after a newer context arrived.
+  /// Wear reads its latest Data Layer item directly; no queued snapshot is applied there either.
+  static func receiveLatestContext(_ context: () -> [String: Any], store: UserDefaults? = defaults) -> Bool {
+    guard let store, let payload = context()[watchLastBatteryChannel] as? [String: Any] else { return false }
+    let value = WatchLastBattery.decode(payload)
+    guard value != WatchLastBattery.decode(store.dictionary(forKey: watchLastBatteryChannel)) else { return false }
+    store.set(value?.payload ?? [:], forKey: watchLastBatteryChannel)
+    return true
   }
 }
 
@@ -68,7 +75,7 @@ struct WatchBatteryWakeGate {
   static let reserve = 5
   private(set) var lastKey: String?
   mutating func shouldSend(_ battery: WatchLastBattery?, remaining: Int) -> Bool {
-    let key = "\(battery?.boardId ?? ""):\(battery?.text ?? "--")"
+    let key = "\(battery?.boardId ?? ""):\(battery?.boardName ?? ""):\(battery?.text ?? "--")"
     guard key != lastKey, remaining > Self.reserve else { return false }
     lastKey = key
     return true

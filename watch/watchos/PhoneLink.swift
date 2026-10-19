@@ -334,9 +334,7 @@ final class PhoneLink: NSObject, ObservableObject, WCSessionDelegate {
   ///
   /// @parity /watch/wearos/src/main/java/app/vescape/wear/MainActivity.kt `dataListener`
   private func acceptColdState(_ context: [String: Any]) {
-    if let payload = context[watchLastBatteryChannel] as? [String: Any] {
-      acceptLastBattery(WatchLastBattery.decode(payload))
-    }
+    refreshLastBatteryContext()
     let next = WatchSettings.decode(context: context)
     if next != settings { settings = next }
     let forecast = WatchWeather.decode(context: context)
@@ -349,16 +347,19 @@ final class PhoneLink: NSObject, ObservableObject, WCSessionDelegate {
     acceptRoute(WatchRoute.decode(context: context))
   }
 
-  private func acceptLastBattery(_ battery: WatchLastBattery?) {
-    guard battery != lastBattery else { return }
-    lastBattery = battery
-    WatchBatteryDefaults.write(battery)
+  /// Also called before completing a connectivity background task, so shared storage is current
+  /// even when the system's pending-content observation arrives before the delegate's UI work.
+  func refreshLastBatteryContext() {
+    guard WatchBatteryDefaults.receiveLatestContext({ WCSession.default.receivedApplicationContext }) else { return }
+    lastBattery = WatchBatteryDefaults.value
     WidgetCenter.shared.reloadTimelines(ofKind: WatchBatteryDefaults.widgetKind)
   }
 
   func session(_ session: WCSession, didReceiveUserInfo userInfo: [String: Any] = [:]) {
-    guard let payload = userInfo[watchLastBatteryChannel] as? [String: Any] else { return }
-    DispatchQueue.main.async { self.acceptLastBattery(WatchLastBattery.decode(payload)) }
+    guard userInfo[watchLastBatteryChannel] != nil else { return }
+    // Transfers can wait behind newer contexts, including Board switches and clears. Never apply
+    // their snapshot. If this wake arrives first, the later context callback applies the reading.
+    DispatchQueue.main.async { self.refreshLastBatteryContext() }
   }
 
   /// The pushed forecast while it is still worth believing, else nil.
@@ -393,7 +394,7 @@ final class PhoneLink: NSObject, ObservableObject, WCSessionDelegate {
   }
 
   func session(_ session: WCSession, didReceiveApplicationContext applicationContext: [String: Any]) {
-    DispatchQueue.main.async { self.acceptColdState(applicationContext) }
+    DispatchQueue.main.async { self.acceptColdState(session.receivedApplicationContext) }
   }
 
   func sessionCompanionAppInstalledDidChange(_ session: WCSession) {
@@ -419,12 +420,8 @@ final class PhoneLink: NSObject, ObservableObject, WCSessionDelegate {
       self.received.record(nowMs: nowMs)
       self.applied.record(nowMs: Self.nowMs())
       if let previous = self.lastFrameAtMs { self.frameGapMs = max(nowMs - previous, 0) }
-      if !decoded.stale, let percent = decoded.battery, let stored = self.lastBattery {
-        let live = WatchLastBattery(boardId: stored.boardId, boardName: stored.boardName,
-          percent: percent, at: Self.wallClockMs())
-        // Reload only whole-percent changes. Persisted cold state still refreshes the exact stamp.
-        if live.text != stored.text { self.acceptLastBattery(live) }
-      }
+      // Frames have neither Board identity nor a source capture timestamp. Complications use
+      // committed cold state, never a live frame assigned to whichever Board is selected now.
       self.latestFrame = decoded
       self.lastFrameAtMs = nowMs
       self.lastFrameAt = now
