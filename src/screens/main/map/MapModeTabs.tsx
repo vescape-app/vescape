@@ -6,7 +6,7 @@ import { StyleSheet, View } from 'react-native'
 import { Text } from '@/components/base/Text'
 import { PillSelector, PillSelectorItem } from '@/components/controls/PillSelector'
 import { theme, type ThemeColor } from '@/constants/theme'
-import { useThemeStore } from '@/hooks/useTheme'
+import { useResolvedNeutralColors, useThemeStore } from '@/hooks/useTheme'
 import { WeatherIcon } from '@/modules/weather/components/WeatherIcon'
 import { weatherIconColor } from '@/modules/weather/lib/weather'
 import { useWeatherStore } from '@/modules/weather/store/weatherStore'
@@ -45,10 +45,10 @@ export function MapModeTabs({
   const weather = useWeatherStore((s) => s.weather)
   const resolvedTheme = useThemeStore((state) => state.resolvedTheme)
   const light = resolvedTheme === 'light'
+  const neutral = useResolvedNeutralColors()
   const weatherColor = weather ? weatherIconColor(weather.icon) : theme.palette.sky.color
-  // In light mode the inactive weather segment should read neutral (white on the navy track),
-  // not colored — match the other map-mode tabs. The active segment keeps the weather hue.
-  const inactiveWeatherColor = light ? theme.palette.mono.white : weatherColor
+  // The inactive temperature sits on the light tab track; keep it as readable as its icon.
+  const inactiveWeatherColor = light ? neutral.textSecondary : weatherColor
   const weatherSelection = {
     bg: theme.alpha(weatherColor, 0.12),
     border: theme.alpha(weatherColor, 0.4),

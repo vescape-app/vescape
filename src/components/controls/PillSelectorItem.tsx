@@ -11,6 +11,8 @@ import type { Icon } from 'phosphor-react-native'
 import { Text } from '@/components/base/Text'
 import { theme } from '@/constants/theme'
 import {
+  useColoredAction,
+  useColoredActionForeground,
   useResolvedColor,
   useResolvedControlColors,
   useResolvedNeutralColors,
@@ -170,8 +172,11 @@ export function PillSelectorItem({
     hintVisibility,
   })
   const accentBorder = useResolvedColor(color?.border ?? theme.palette.green.border)
-  const accentColor = useResolvedColor(color?.color ?? theme.palette.green.color)
-  const inactiveAccent = useLightTabs ? control.textMuted : theme.alpha(accentColor, 0.6)
+  const resolvedAccent = useResolvedColor(color?.color ?? theme.palette.green.color)
+  const coloredBackground = useColoredAction(color?.color ?? theme.palette.green.color)
+  const onDarkAccent = useColoredActionForeground(color?.color ?? theme.palette.green.color)
+  const accentColor = useLightTabs ? onDarkAccent : resolvedAccent
+  const inactiveAccent = useLightTabs ? neutral.textSecondary : theme.alpha(accentColor, 0.6)
   const activeProgress = useSharedValue(active ? 1 : 0)
   const labelProgress = useSharedValue(resolved.showLabel ? 1 : 0)
 
@@ -201,7 +206,11 @@ export function PillSelectorItem({
               : contained
                 ? TRANSPARENT
                 : control.background,
-          showFullLabel ? TRANSPARENT : useLightTabs ? neutral.surface : control.backgroundPressed,
+          showFullLabel
+            ? TRANSPARENT
+            : useLightTabs
+              ? coloredBackground
+              : control.backgroundPressed,
         ],
       ),
       borderColor: interpolateColor(
@@ -227,8 +236,8 @@ export function PillSelectorItem({
       inactiveWidth,
       control.background,
       control.backgroundPressed,
+      coloredBackground,
       control.border,
-      neutral.surface,
       showFullLabel,
       useLightTabs,
     ],

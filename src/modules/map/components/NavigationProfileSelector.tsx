@@ -7,7 +7,13 @@ import {
   type ExpandableCircleMenuSize,
 } from '@/components/controls/ExpandableCircleMenu'
 import { theme } from '@/constants/theme'
-import { useResolvedAccentColors, useResolvedControlColors } from '@/hooks/useTheme'
+import {
+  useColoredActionForeground,
+  useResolvedAccentColors,
+  useResolvedControlColors,
+  useResolvedNeutralColors,
+  useThemeStore,
+} from '@/hooks/useTheme'
 
 /**
  * Which kind of ways the path may follow, switched inline while looking at it. Deliberately not a
@@ -34,6 +40,10 @@ export function NavigationProfileSelector({
 }) {
   const accents = useResolvedAccentColors()
   const control = useResolvedControlColors()
+  const neutral = useResolvedNeutralColors()
+  const appearance = useThemeStore((state) => state.resolvedTheme)
+  const light = appearance === 'light'
+  const activeForeground = useColoredActionForeground(theme.palette.green.color)
   const [expanded, setExpanded] = useState(false)
   const iconSize = size === 'sm' ? 18 : 21
   const optionIconSize = size === 'sm' ? 17 : 20
@@ -44,7 +54,15 @@ export function NavigationProfileSelector({
     icon: (
       <Icon
         size={optionIconSize}
-        color={activeProfile === key ? accents.green.color : control.textMuted}
+        color={
+          activeProfile === key
+            ? light
+              ? activeForeground
+              : accents.green.color
+            : light
+              ? neutral.textSecondary
+              : control.textMuted
+        }
         weight="bold"
       />
     ),
@@ -54,8 +72,14 @@ export function NavigationProfileSelector({
   return (
     <ExpandableCircleMenu
       activeKey={activeProfile}
-      activeIcon={<ActiveIcon size={iconSize} color={theme.palette.mono.white} weight="bold" />}
-      activeColor={accents.green.color}
+      activeIcon={
+        <ActiveIcon
+          size={iconSize}
+          color={light ? activeForeground : theme.palette.mono.white}
+          weight="bold"
+        />
+      }
+      activeColor={theme.palette.green.color}
       activeBackground={theme.control.background}
       collapsedAccessibilityLabel={`Path follows: ${profileOption(activeProfile).label}`}
       expanded={open || expanded}

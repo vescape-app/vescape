@@ -15,9 +15,16 @@ import Animated, { useAnimatedStyle, useSharedValue, withTiming } from 'react-na
 import { Text } from '@/components/base/Text'
 import { Dropdown, useTriggerRef } from '@/components/forms/Dropdown'
 import { theme } from '@/constants/theme'
-import { useResolvedColor, useResolvedControlColors, useThemeStore } from '@/hooks/useTheme'
+import {
+  useColoredAction,
+  useResolvedColor,
+  useResolvedControlColors,
+  useResolvedNeutralColors,
+  useThemeStore,
+} from '@/hooks/useTheme'
 import type { PillSelectorItemProps } from '@/components/controls/PillSelectorItem'
 import {
+  type ActiveTheme,
   PILL_SIZES,
   PillSelectorContext,
   TRANSPARENT,
@@ -96,6 +103,21 @@ function getFullLabelHighlight(
   return { x: contained ? 1 : 16, width: 0, color: undefined }
 }
 
+function useTabColors(variant: 'control' | 'lightTabs', color: ActiveTheme | undefined) {
+  const neutral = useResolvedNeutralColors()
+  const control = useResolvedControlColors()
+  const appearance = useThemeStore((state) => state.resolvedTheme)
+  const lightTabs = variant === 'lightTabs' && appearance === 'light'
+  const coloredBackground = useColoredAction(color?.color ?? theme.palette.green.color)
+  const highlightBackground = useResolvedColor(
+    lightTabs ? coloredBackground : (color?.bg ?? theme.palette.green.bg),
+  )
+  const highlightBorder = useResolvedColor(
+    lightTabs ? control.border : (color?.border ?? theme.palette.green.border),
+  )
+  return { neutral, lightTabs, highlightBackground, highlightBorder }
+}
+
 export function PillSelector({
   activeId,
   size = 'md',
@@ -119,11 +141,9 @@ export function PillSelector({
   const fullLabelHighlight = getFullLabelHighlight(children, activeId, gap, contained, size)
   const highlightX = useSharedValue(fullLabelHighlight.x)
   const highlightWidth = useSharedValue(fullLabelHighlight.width)
-  const highlightBackground = useResolvedColor(
-    fullLabelHighlight.color?.bg ?? theme.palette.green.bg,
-  )
-  const highlightBorder = useResolvedColor(
-    fullLabelHighlight.color?.border ?? theme.palette.green.border,
+  const { neutral, lightTabs, highlightBackground, highlightBorder } = useTabColors(
+    variant,
+    fullLabelHighlight.color,
   )
   const highlightStyle = useAnimatedStyle(() => ({
     left: highlightX.value,
@@ -169,6 +189,8 @@ export function PillSelector({
         style={[
           styles.container,
           contained && styles.containedContainer,
+          contained &&
+            lightTabs && { backgroundColor: neutral.surfaceDeep, borderColor: neutral.border },
           contained && size === 'lg' && { height: 46, borderRadius: 23 },
           fitContentStyle,
           style,
@@ -229,6 +251,7 @@ export function PillSelectorAdd({ testID, onPress, style }: PillSelectorAddProps
   const { addRef, contained, variant, size } = usePillSelectorCtx()
   const control = useResolvedControlColors()
   const resolvedTheme = useThemeStore((state) => state.resolvedTheme)
+  const neutral = useResolvedNeutralColors()
   const useLightTabs = variant === 'lightTabs' && resolvedTheme === 'light'
   return (
     <Pressable
@@ -240,7 +263,7 @@ export function PillSelectorAdd({ testID, onPress, style }: PillSelectorAddProps
         size === 'lg' && { height: 44, width: 44, borderRadius: 22 },
         useLightTabs && {
           backgroundColor: TRANSPARENT,
-          borderColor: control.divider,
+          borderColor: neutral.border,
           borderWidth: 1,
           borderStyle: 'dashed',
         },
@@ -248,7 +271,11 @@ export function PillSelectorAdd({ testID, onPress, style }: PillSelectorAddProps
       ]}
       onPress={onPress}
     >
-      <PlusIcon size={16} color={control.icon} weight="bold" />
+      <PlusIcon
+        size={16}
+        color={useLightTabs ? neutral.textSecondary : control.icon}
+        weight="bold"
+      />
     </Pressable>
   )
 }
