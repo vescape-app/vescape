@@ -3,7 +3,7 @@ import XCTest
 
 final class WatchLastBatteryTests: XCTestCase {
   func testPayloadRoundTripUnknownClearAndInvalidReading() throws {
-    let known = WatchLastBattery(boardId: "a", boardName: "Floatwheel ADV2", percent: 78.5, at: 1_000)
+    let known = WatchLastBattery(boardId: "a", boardName: "X7", percent: 78.5, at: 1_000)
     XCTAssertEqual(WatchLastBattery.decode(known.payload), known)
     XCTAssertEqual(known.text, "79%")
     let unknown = WatchLastBattery(boardId: "b", boardName: "New board", percent: nil, at: nil)

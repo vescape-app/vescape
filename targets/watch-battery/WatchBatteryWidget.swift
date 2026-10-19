@@ -7,7 +7,7 @@ struct BatteryEntry: TimelineEntry {
 }
 struct BatteryProvider: TimelineProvider {
   func placeholder(in context: Context) -> BatteryEntry {
-    BatteryEntry(date: .now, battery: WatchLastBattery(boardId: "preview", boardName: "Floatwheel ADV2", percent: 78, at: Int64(Date.now.timeIntervalSince1970 * 1000)))
+    BatteryEntry(date: .now, battery: WatchLastBattery(boardId: "preview", boardName: "X7", percent: 78, at: Int64(Date.now.timeIntervalSince1970 * 1000)))
   }
   func getSnapshot(in context: Context, completion: @escaping (BatteryEntry) -> Void) {
     completion(context.isPreview ? placeholder(in: context) : BatteryEntry(date: .now, battery: WatchBatteryDefaults.value))

@@ -27,7 +27,7 @@ class BatteryComplicationService : SuspendingComplicationDataSourceService() {
         } finally { items.release() }
     }
     override fun getPreviewData(type: ComplicationType): ComplicationData = batteryComplicationData(
-        WatchLastBattery("preview", "Floatwheel ADV2", 78.0, System.currentTimeMillis()), type, System.currentTimeMillis(), null, packageName,
+        WatchLastBattery("preview", "X7", 78.0, System.currentTimeMillis()), type, System.currentTimeMillis(), null, packageName,
     )
     private fun tapAction() = PendingIntent.getActivity(this, 0, Intent(this, MainActivity::class.java), PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
 }

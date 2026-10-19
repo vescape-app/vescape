@@ -10,7 +10,7 @@ struct BatteryComplicationGallery: View {
   private static func battery(for state: String) -> WatchLastBattery? {
     guard state != "unknown" else { return nil }
     let now = Int64(Date.now.timeIntervalSince1970 * 1000)
-    return WatchLastBattery(boardId: "fixture", boardName: "Floatwheel ADV2",
+    return WatchLastBattery(boardId: "fixture", boardName: "X7",
       percent: state == "warning" ? 15 : 78, at: now - (state == "stale" ? 7_200_000 : 0))
   }
 

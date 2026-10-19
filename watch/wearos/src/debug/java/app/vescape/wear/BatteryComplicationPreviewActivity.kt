@@ -19,7 +19,7 @@ class BatteryComplicationPreviewActivity : Activity() {
     }
     private class Preview(context: Context, private val state: String) : View(context) {
         private val now = System.currentTimeMillis()
-        private val battery = if (state == "unknown") null else WatchLastBattery("fixture", "Floatwheel ADV2", if (state == "warning") 15.0 else 78.0, now - if (state == "stale") 7_200_000 else 0)
+        private val battery = if (state == "unknown") null else WatchLastBattery("fixture", "X7", if (state == "warning") 15.0 else 78.0, now - if (state == "stale") 7_200_000 else 0)
         private val label = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = Color.LTGRAY; textAlign = Paint.Align.CENTER }
         private val complications = listOf(ComplicationType.RANGED_VALUE, ComplicationType.SHORT_TEXT, ComplicationType.LONG_TEXT).map { type ->
             ComplicationDrawable(context).apply {

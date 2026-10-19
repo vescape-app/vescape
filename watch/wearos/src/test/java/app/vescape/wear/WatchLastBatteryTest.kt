@@ -5,7 +5,7 @@ import org.junit.Test
 
 class WatchLastBatteryTest {
     @Test fun decodesKnownUnknownClearAndRejectsInvalidValues() {
-        val payload = mapOf("boardId" to "a", "boardName" to "Floatwheel ADV2", "percent" to 78.5, "at" to 1000L)
+        val payload = mapOf("boardId" to "a", "boardName" to "X7", "percent" to 78.5, "at" to 1000L)
         val value = WatchLastBattery.decode(payload)!!
         assertEquals("79%", value.text)
         assertEquals(1000L, value.at)
