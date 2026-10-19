@@ -552,6 +552,10 @@ for invalid in unitFixture["invalid"] as! [Any] {
   try require(validUnitSystem(invalid) == nil, "invalid units accepted")
 }
 try boardPersistence.saveSetting(.init(key: "unitSystem", valueJson: "\"\(validUnitSystem(unitFixture["selected"])!)\"", updatedAt: contractCreatedAt))
+let editorFixture = boardFixture["tuneEditor"] as! [String: Any]
+let editorKey = editorFixture["key"] as! String
+let editorDefault = editorFixture["default"] as! String
+try boardPersistence.saveSetting(.init(key: editorKey, valueJson: "\"\(editorFixture["selected"] as! String)\"", updatedAt: contractCreatedAt))
 let trailFixture = boardFixture["telemetryTrail"] as! [String: Any]
 let trailKey = trailFixture["key"] as! String
 let trailDefault = trailFixture["default"] as! Bool
@@ -559,6 +563,11 @@ try boardPersistence.saveSetting(.init(key: trailKey, valueJson: String(trailFix
 try boardQueue!.close()
 boardQueue = try DatabaseQueue(path: boardURL.path)
 boardPersistence = BoardSettingsPersistence(writer: boardQueue!)
+let reopenedEditor = try boardPersistence.settings(defaults: [editorKey: editorDefault])
+try require(reopenedEditor[editorKey] as? String == editorFixture["selected"] as? String, "tune editor mode survives reopen")
+try boardPersistence.deleteSetting(editorKey)
+let defaultEditor = try boardPersistence.settings(defaults: [editorKey: editorDefault])
+try require(defaultEditor[editorKey] as? String == editorDefault, "tune editor default after deletion")
 let reopenedTrail = try boardPersistence.settings(defaults: [trailKey: trailDefault])
 try require(reopenedTrail[trailKey] as? Bool == trailFixture["selected"] as? Bool, "watch trail false survives reopen")
 try boardPersistence.deleteSetting(trailKey)

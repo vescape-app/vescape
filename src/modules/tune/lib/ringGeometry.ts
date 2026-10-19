@@ -1,4 +1,4 @@
-// THROWAWAY: circumcircle shared by the ring and its drag target.
+// Circumcircle geometry shared by production Rings and the visual prototype.
 export const ANGLES = [-Math.PI / 2, (Math.PI * 5) / 6, Math.PI / 6, Math.PI / 2]
 
 // Linear scale: equal value intervals have equal radial travel.
@@ -94,4 +94,11 @@ export function constrainCircleEdit(
     }
   }
   return result
+}
+
+// Counter the page translation enough to leave `peek` pixels of each neighboring
+// reference circle inside the viewport, even when the chart reaches its size cap.
+export function ringPageRevealOffset(viewport: number, radius: number, peek = 36) {
+  'worklet'
+  return Math.max(0, viewport / 2 - radius + peek)
 }

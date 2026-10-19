@@ -2,7 +2,7 @@ import { Pressable, StyleSheet, View, type StyleProp, type ViewStyle } from 'rea
 import Animated, { useAnimatedStyle, type SharedValue } from 'react-native-reanimated'
 import { Text } from '@/components/base/Text'
 import { useResolvedAccentColors, useResolvedNeutralColors } from '@/hooks/useTheme'
-import { GROUPS } from './tuneRingControls'
+import { RING_SECTIONS } from '../lib/ringModel'
 
 function SectionTab({
   index,
@@ -28,6 +28,7 @@ function SectionTab({
   }))
   return (
     <Pressable
+      hitSlop={{ top: 8, bottom: 8 }}
       accessibilityRole="tab"
       accessibilityState={{ selected: active }}
       style={styles.tab}
@@ -63,14 +64,14 @@ export function TuneRingSectionTabs({
   style?: StyleProp<ViewStyle>
 }) {
   const accents = useResolvedAccentColors()
-  const colors = [accents.blue.color, accents.red.color, accents.violet.color]
+  const colors = [accents.blue.color, accents.fuchsia.color, accents.green.color]
   return (
     <View style={[styles.row, style]}>
-      {GROUPS.map((group, index) => (
+      {RING_SECTIONS.map((name, index) => (
         <SectionTab
-          key={group.name}
+          key={name}
           index={index}
-          label={group.name}
+          label={name}
           active={page === index}
           color={colors[index]}
           position={position}
@@ -83,6 +84,6 @@ export function TuneRingSectionTabs({
 }
 const styles = StyleSheet.create({
   row: { flexDirection: 'row', gap: 6 },
-  tab: { flex: 1, gap: 8 },
+  tab: { flex: 1, gap: 8, justifyContent: 'space-between' },
   track: { height: 2, borderRadius: 1, overflow: 'hidden' },
 })

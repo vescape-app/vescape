@@ -1166,6 +1166,17 @@ public class VescapeCoreModule: Module {
       }
     }
 
+    // @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/VescapeCoreModule.kt `sendTuneDraftToBoard`
+    // @parity /modules/vescape-core/src/index.ts `sendTuneDraftToBoard`
+    AsyncFunction("sendTuneDraftToBoard") { (profileId: String, fields: [String: Any], promise: Promise) in
+      try RecordingStorageFailure.requireAvailable()
+      self.coordinator.pushProfileToBoard(
+        profileId: profileId, draftFields: fields,
+        onSuccess: { snapshot in promise.resolve(snapshot) },
+        onError: { code, message in promise.reject(code, message) }
+      )
+    }
+
     // @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/VescapeCoreModule.kt `pushProfileToBoard`
     AsyncFunction("pushProfileToBoard") { (profileId: String, promise: Promise) in
       try RecordingStorageFailure.requireAvailable()

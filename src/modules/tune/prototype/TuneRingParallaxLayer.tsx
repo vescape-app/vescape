@@ -1,7 +1,7 @@
 import type { ReactNode } from 'react'
 import { StyleSheet } from 'react-native'
 import { Circle } from 'react-native-svg'
-import { handleCircle } from './tuneRingGeometry'
+import { handleCircle } from '../lib/ringGeometry'
 import Animated, {
   useAnimatedProps,
   useAnimatedStyle,

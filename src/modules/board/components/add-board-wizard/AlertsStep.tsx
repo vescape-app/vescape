@@ -14,6 +14,7 @@ import {
   WizardStepLayout,
 } from '@/modules/board/components/add-board-wizard/WizardStepLayout'
 import { ALERT_METRIC_META } from '@/modules/board/components/add-board-wizard/alertMetricMeta'
+import { moveWizardSubstep } from '@/modules/board/lib/wizardSubstep'
 import type { UseAddBoardWizard } from '@/modules/board/hooks/useAddBoardWizard'
 
 interface AlertSubstep {
@@ -42,11 +43,22 @@ export function AlertsStep({
   substepIndex: number
   onSubstepIndexChange: Dispatch<SetStateAction<number>>
 }) {
-  const substep = ALERT_SUBSTEPS[substepIndex]!
-  const isFirst = substepIndex === 0
-  const isLast = substepIndex === ALERT_SUBSTEPS.length - 1
-  const onBack = () => (isFirst ? wizard.back() : onSubstepIndexChange((current) => current - 1))
-  const onNext = () => (isLast ? wizard.next() : onSubstepIndexChange((current) => current + 1))
+  const index = Math.max(0, Math.min(ALERT_SUBSTEPS.length - 1, substepIndex))
+  const substep = ALERT_SUBSTEPS[index]!
+  const isFirst = index === 0
+  const isLast = index === ALERT_SUBSTEPS.length - 1
+  const onBack = () =>
+    isFirst
+      ? wizard.back()
+      : onSubstepIndexChange((current) =>
+          moveWizardSubstep(current, substepIndex, -1, ALERT_SUBSTEP_COUNT),
+        )
+  const onNext = () =>
+    isLast
+      ? wizard.next()
+      : onSubstepIndexChange((current) =>
+          moveWizardSubstep(current, substepIndex, 1, ALERT_SUBSTEP_COUNT),
+        )
   const description = isFirst
     ? 'The fastest you consider yourself capable of riding. Scales the speed gauge and alerts.'
     : 'Pick how loudly this metric warns you. Adjust it any time from its control on the main screen.'

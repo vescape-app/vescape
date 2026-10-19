@@ -1,4 +1,4 @@
-// THROWAWAY: explain the visual metaphor, not a calibrated prediction of board behavior.
+// Visual scale guide; provisional calibration does not predict rider experience.
 import { StyleSheet, View } from 'react-native'
 import Svg, { Circle, Defs } from 'react-native-svg'
 import { TuneRingGradient } from './TuneRingGradient'
@@ -11,10 +11,13 @@ const FEEL_GUIDES = [
     ['Firm & direct', 'Firmer support underfoot, with sharper responses to your movement.'],
   ],
   [
-    ['Subtle tilt', 'Less nose lift under braking and smaller changes in angle through turns.'],
     [
-      'More pronounced tilt',
-      'More nose lift under braking and a larger tilt response through turns.',
+      'Slow & nose-down',
+      'More nose lift under braking; turns lower the nose. Slower tilt response.',
+    ],
+    [
+      'Quick & nose-up',
+      'Less extra nose lift under braking; turns raise the nose. Faster tilt response.',
     ],
   ],
   [

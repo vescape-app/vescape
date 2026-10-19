@@ -5,7 +5,7 @@ import { StyleSheet } from 'react-native'
 import { Gesture, GestureDetector } from 'react-native-gesture-handler'
 import Animated, { useSharedValue, type SharedValue } from 'react-native-reanimated'
 import { scheduleOnRN } from 'react-native-worklets'
-import { constrainCircleEdit, handleCircle } from './tuneRingGeometry'
+import { constrainCircleEdit, handleCircle } from '../lib/ringGeometry'
 
 export function RingResizeGesture({
   values,

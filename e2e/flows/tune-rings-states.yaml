@@ -1,0 +1,62 @@
+# Current E2E dev client; isolated component fixture, no board/profile writes.
+appId: ${APP_ID}
+---
+- openLink: 'vescape://settings/components/tune'
+- scrollUntilVisible:
+    element:
+      text: Rings production editor
+    direction: UP
+- tapOn: custom
+- tapOn: Open Rings editor
+- runFlow:
+    when:
+      visible: Your tune in Rings
+    commands:
+      - tapOn: Got it
+- assertNotVisible: Your tune in Rings
+- assertVisible: 'Aggressiveness, .*Custom.*'
+- tapOn:
+    id: ring-preset-0-soft
+- assertNotVisible: Replace custom fields?
+- assertNotVisible: 'Aggressiveness, .*Custom.*'
+- tapOn:
+    id: tune-discard
+- assertNotVisible: 'Aggressiveness, .*Custom.*'
+- tapOn: Close Rings editor
+- tapOn: Open Rings editor
+- assertNotVisible: Your tune in Rings
+- tapOn: Close Rings editor
+- tapOn: missing
+- tapOn: Open Rings editor
+- assertVisible: 'Missing settings. Check Advanced.'
+- assertVisible:
+    id: ring-control-0
+    enabled: false
+- assertVisible:
+    id: ring-control-1
+    enabled: true
+- tapOn:
+    id: ring-control-1
+- tapOn: Cancel
+- tapOn: Close Rings editor
+- tapOn: mapped
+- tapOn: Open Rings editor
+- tapOn: '2 · Brake / Turn'
+- tapOn:
+    id: ring-control-5
+- tapOn: Enter value manually
+- tapOn:
+    id: tune-manual-value
+- eraseText
+- inputText: '-1.7'
+- pressKey: Enter
+- tapOn:
+    id: tune-editor-apply
+- assertVisible: 'Turning, -1.7.*'
+- tapOn:
+    id: tune-discard
+- assertVisible: 'Turning, 0.0.*'
+- tapOn: '3 · ATR'
+- assertVisible:
+    id: ring-control-8
+- tapOn: Close Rings editor

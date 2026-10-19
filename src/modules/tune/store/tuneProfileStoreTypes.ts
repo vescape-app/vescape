@@ -18,6 +18,7 @@ export interface TuneProfileState {
   refloatBaseVersion: string | null
   draftFields: Record<string, TuneProfileFieldValue>
   hasDirtyFields: boolean
+  boardEncodingScales: Record<string, number | null>
   boardFields: Record<string, TuneProfileFieldValue>
   boardDiff: TuneProfileBoardDiff[]
   hasBoardDiff: boolean
@@ -51,6 +52,9 @@ export interface TuneProfileActions {
     targetBoardId: string,
     newName: string,
   ) => Promise<TuneProfile | null>
+  setDraftFields: (fields: Record<string, TuneProfileFieldValue>) => void
+  readBoardToDraft: () => Promise<void>
+  sendDraftToBoard: () => Promise<void>
   setDraftField: (fieldId: string, value: TuneProfileFieldValue) => void
   setBoardSnapshot: (snapshot: RefloatConfigSnapshot | null) => void
   getDirtyFields: () => Record<string, TuneProfileFieldValue>
@@ -72,6 +76,7 @@ export const INITIAL_TUNE_PROFILE_STATE: TuneProfileState = {
   refloatBaseVersion: null,
   draftFields: {},
   hasDirtyFields: false,
+  boardEncodingScales: {},
   boardFields: {},
   boardDiff: [],
   hasBoardDiff: false,

@@ -3,7 +3,7 @@ import { Pressable, StyleSheet, type View, type StyleProp, type ViewStyle } from
 import { Text } from '@/components/base/Text'
 import { useResolvedNeutralColors } from '@/hooks/useTheme'
 import type { SharedValue } from 'react-native-reanimated'
-import { TuneRingLiveValue } from './TuneRingLiveValue'
+import { TuneRingLiveValue } from '../components/RingLiveValue'
 
 export function TuneRingParameterLabel({
   label,

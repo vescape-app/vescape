@@ -3,6 +3,24 @@ import XCTest
 
 /// Ported from Android `RefloatConfigEncoderTest.kt` to keep encode byte-for-byte aligned.
 final class RefloatConfigEncoderTests: XCTestCase {
+  func testDraftHalfStepRoundsUpWithTheSchemaMultiplier() throws {
+    let schema = RefloatConfigSchema(hash: "scaled", fields: [RefloatConfigSchemaField(id: "kp", type: .float16Scaled, label: "kp", unit: nil, min: 0, max: 40, offset: 0, scale: 10)])
+    let result = try RefloatConfigEncoder.encode(schema: schema, rawConfig: [0, 0, 77, 88], fields: ["kp": 15.45], strict: true)
+    XCTAssertEqual(result, [0, 155, 77, 88])
+  }
+
+  func testDraftEncodingRejectsMissingNonFiniteAndOutOfBoundsFields() throws {
+    let schema = RefloatConfigSchema(hash: "draft", fields: [RefloatConfigSchemaField(id: "kp", type: .float32, label: "kp", unit: nil, min: 0, max: 50, offset: 0)])
+    let invalid: [[String: Any]] = [["missing": 1.0], ["kp2": 1.0], ["kp": true], ["kp": Double.nan], ["kp": Double.infinity], ["kp": 51.0]]
+    for fields in invalid {
+      XCTAssertThrowsError(try RefloatConfigEncoder.encode(schema: schema, rawConfig: Array(repeating: 0, count: 8), fields: fields, strict: true))
+    }
+    let raw: [UInt8] = [0, 0, 0, 0, 1, 2, 3, 4]
+    let result = try RefloatConfigEncoder.encode(schema: schema, rawConfig: raw, fields: ["kp": 22.5], strict: true)
+    XCTAssertEqual(Array(result[4..<8]), Array(raw[4..<8]))
+    XCTAssertEqual(Array(result[0..<4]), [0x41, 0xB4, 0, 0])
+  }
+
 
   func testRoundTripPreservesAllBytes() throws {
     let schema = allTypeSchema()

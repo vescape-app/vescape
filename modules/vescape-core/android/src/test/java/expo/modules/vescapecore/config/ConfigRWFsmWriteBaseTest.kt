@@ -65,6 +65,14 @@ class ConfigRWFsmWriteBaseTest {
     }
 
     @Test
+    fun draftReadsFreshEvenWhenSessionWriteBaseExists() {
+        val (state, effects) = ConfigRWFsm.apply(ConfigRWState.Idle, startWrite(writeBase()).copy(draft = true))
+        assertTrue(state is ConfigRWState.WriteCollectingXml)
+        assertTrue(effects.sends(COMM_GET_CUSTOM_CONFIG_XML))
+        assertFalse(effects.sends(COMM_SET_CUSTOM_CONFIG))
+    }
+
+    @Test
     fun noWriteBaseReadsTheBoardFirst() {
         val (state, effects) = ConfigRWFsm.apply(ConfigRWState.Idle, startWrite(null))
 

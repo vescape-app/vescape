@@ -22,9 +22,12 @@ const FIELD_INFO: Record<string, string> = {
   atr_threshold_down: 'Angle threshold before downhill ATR behavior starts.',
   atr_speed_boost: 'Boosts ATR response as speed increases.',
   atr_angle_limit: 'Maximum angle ATR tiltback is allowed to apply.',
-  atr_on_speed: 'Maximum speed where ATR tiltback can be applied.',
-  atr_off_speed: 'Maximum speed where ATR tiltback can be released.',
-  atr_response_boost: 'Boost factor for tiltback response.',
+  atr_on_speed:
+    'ATR application rate in degrees per second. Legacy Refloat also uses this rate for Brake Tilt.',
+  atr_off_speed:
+    'ATR release rate in degrees per second. Legacy Refloat also uses this rate for Brake Tilt.',
+  atr_response_boost:
+    'Increases ATR application speed at higher ERPM; does not set low-speed base response or ATR strength.',
   atr_transition_boost: 'Boost factor around ATR response transitions.',
   atr_filter: 'Current filter frequency used by ATR.',
   atr_amps_accel_ratio: 'Ratio used by acceleration-side ATR behavior.',
@@ -42,7 +45,7 @@ const FIELD_INFO: Record<string, string> = {
   turntilt_angle_limit: 'Maximum turn tiltback angle.',
   turntilt_start_angle: 'Turn aggregate threshold before turn tiltback response starts.',
   turntilt_start_erpm: 'ERPM threshold before turn tiltback response starts.',
-  turntilt_speed: 'Maximum speed where turn tiltback can be applied.',
+  turntilt_speed: 'Turn Tilt application rate in degrees per second.',
   turntilt_erpm_boost: 'Speed-based boost percentage for turn tiltback.',
   turntilt_erpm_boost_end: 'ERPM where turn tiltback speed boost reaches its maximum.',
   turntilt_yaw_aggregate: 'Target accumulated yaw or turn value for turn tiltback.',

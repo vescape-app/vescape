@@ -11,7 +11,7 @@ import Animated, {
 } from 'react-native-reanimated'
 import { scheduleOnRN } from 'react-native-worklets'
 import { theme } from '@/constants/theme'
-import { valueRadius, radiusValue } from './tuneRingGeometry'
+import { valueRadius, radiusValue } from '../lib/ringGeometry'
 const bound = (n: number) => Math.max(0, Math.min(100, n))
 export function RingHandle({
   value,

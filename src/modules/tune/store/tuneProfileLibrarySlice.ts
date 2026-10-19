@@ -94,7 +94,7 @@ export const createTuneProfileLibrarySlice: SliceFactory = (set, get) => ({
         currentActive && isCompatibleProfile(currentActive, boardId, refloatBaseVersion)
           ? (profiles.find((profile) => profile.id === currentActive.id) ?? profiles[0] ?? null)
           : (profiles[0] ?? null)
-      const diff = boardDiff(activeProfile, get().boardFields)
+      const diff = boardDiff(activeProfile, get().boardFields, get().boardEncodingScales)
       set({
         profiles,
         activeProfile,
@@ -135,7 +135,7 @@ export const createTuneProfileLibrarySlice: SliceFactory = (set, get) => ({
       }
       const normalizedProfile = profile ? withDefaultMetadata(profile) : null
       set((state) => {
-        const diff = boardDiff(normalizedProfile, state.boardFields)
+        const diff = boardDiff(normalizedProfile, state.boardFields, state.boardEncodingScales)
         return {
           profiles:
             normalizedProfile == null
@@ -171,7 +171,7 @@ export const createTuneProfileLibrarySlice: SliceFactory = (set, get) => ({
             isCompatibleProfile(p, state.activeBoardId, state.refloatBaseVersion),
         ) ?? null
       if (!profile) return state
-      const diff = boardDiff(profile, state.boardFields)
+      const diff = boardDiff(profile, state.boardFields, state.boardEncodingScales)
       return {
         activeProfile: profile,
         draftFields: {},
@@ -203,7 +203,7 @@ export const createTuneProfileLibrarySlice: SliceFactory = (set, get) => ({
         state.refloatBaseVersion,
       )
       set((prevState) => {
-        const diff = boardDiff(profile, prevState.boardFields)
+        const diff = boardDiff(profile, prevState.boardFields, prevState.boardEncodingScales)
         return {
           profiles: [...prevState.profiles, profile],
           activeProfile: profile,
@@ -250,7 +250,7 @@ export const createTuneProfileLibrarySlice: SliceFactory = (set, get) => ({
         const remaining = state.profiles.filter((p) => p.id !== profileId)
         const needSwitch = state.activeProfile?.id === profileId
         const nextActive = needSwitch ? (remaining[0] ?? null) : state.activeProfile
-        const diff = boardDiff(nextActive, state.boardFields)
+        const diff = boardDiff(nextActive, state.boardFields, state.boardEncodingScales)
         return {
           profiles: remaining,
           activeProfile: nextActive,
@@ -284,7 +284,7 @@ export const createTuneProfileLibrarySlice: SliceFactory = (set, get) => ({
     try {
       const restored = await nativeRollbackProfile(profile.id, historyEntryId)
       set((state) => {
-        const diff = boardDiff(restored, state.boardFields)
+        const diff = boardDiff(restored, state.boardFields, state.boardEncodingScales)
         return {
           profiles: state.profiles.map((p) => (p.id === restored.id ? restored : p)),
           activeProfile: restored,
@@ -324,6 +324,7 @@ export const createTuneProfileLibrarySlice: SliceFactory = (set, get) => ({
       draftFields: {},
       hasDirtyFields: false,
       boardFields: {},
+      boardEncodingScales: {},
       boardDiff: [],
       hasBoardDiff: false,
       loading: false,

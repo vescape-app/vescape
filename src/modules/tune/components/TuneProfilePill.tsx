@@ -1,22 +1,18 @@
-import { useEffect } from 'react'
-import { Pressable, StyleSheet } from 'react-native'
-import Animated, {
-  interpolateColor,
-  useAnimatedStyle,
-  useSharedValue,
-  withTiming,
-} from 'react-native-reanimated'
+import { Pressable, StyleSheet, View } from 'react-native'
 import type { Icon } from 'phosphor-react-native'
 
 import { Text } from '@/components/base/Text'
 import { theme } from '@/constants/theme'
-import { useResolvedColor, useResolvedNeutralColors } from '@/hooks/useTheme'
+import {
+  useColoredAction,
+  useColoredActionForeground,
+  useResolvedColor,
+  useResolvedNeutralColors,
+} from '@/hooks/useTheme'
 import type { tuneProfileColorTheme } from '@/modules/tune/components/TuneProfileMetadataModal'
 
 const PROFILE_OPTION_WIDTH = 46
 const PROFILE_ACTIVE_WIDTH = 126
-const PROFILE_ANIMATION = { duration: 180 } as const
-const AnimatedText = Animated.createAnimatedComponent(Text)
 
 interface TuneProfilePillProps {
   label: string
@@ -34,40 +30,22 @@ export function TuneProfilePill({
   onPress,
 }: TuneProfilePillProps) {
   const neutral = useResolvedNeutralColors()
-  const resolvedBackground = useResolvedColor(color.bg)
-  const resolvedBorder = useResolvedColor(color.border)
+  const resolvedBackground = useColoredAction(color.color)
+  const resolvedBorder = useColoredActionForeground(color.color)
   const resolvedColor = useResolvedColor(color.color)
+  const activeColor = resolvedBorder
   const fadedColor = theme.alpha(resolvedColor, 0.6)
-  const activeProgress = useSharedValue(active ? 1 : 0)
-
-  useEffect(() => {
-    activeProgress.set(withTiming(active ? 1 : 0, PROFILE_ANIMATION))
-  }, [active, activeProgress])
-
-  const frameStyle = useAnimatedStyle(
-    () => ({
-      width:
-        PROFILE_OPTION_WIDTH + (PROFILE_ACTIVE_WIDTH - PROFILE_OPTION_WIDTH) * activeProgress.value,
-      backgroundColor: interpolateColor(
-        activeProgress.value,
-        [0, 1],
-        [neutral.surfaceDeep, resolvedBackground],
-      ),
-      borderColor: interpolateColor(activeProgress.value, [0, 1], [neutral.border, resolvedBorder]),
-    }),
-    [neutral.border, neutral.surfaceDeep, resolvedBackground, resolvedBorder],
-  )
-  const labelStyle = useAnimatedStyle(
-    () => ({
-      opacity: activeProgress.value,
-      maxWidth: PROFILE_ACTIVE_WIDTH * activeProgress.value,
-      marginLeft: 7 * activeProgress.value,
-    }),
-    [],
-  )
-
   return (
-    <Animated.View style={[styles.profilePill, frameStyle]}>
+    <View
+      style={[
+        styles.profilePill,
+        {
+          width: active ? PROFILE_ACTIVE_WIDTH : PROFILE_OPTION_WIDTH,
+          backgroundColor: active ? resolvedBackground : neutral.surfaceDeep,
+          borderColor: active ? resolvedBorder : neutral.border,
+        },
+      ]}
+    >
       <Pressable
         style={({ pressed }) => [styles.profilePillPressable, pressed && styles.profilePillPressed]}
         accessibilityRole="button"
@@ -75,19 +53,17 @@ export function TuneProfilePill({
         accessibilityState={{ selected: active }}
         onPress={onPress}
       >
-        <IconComponent size={18} color={active ? resolvedColor : fadedColor} weight="duotone" />
-        <AnimatedText
-          style={[
-            styles.profilePillText,
-            { color: active ? resolvedColor : neutral.textMuted },
-            labelStyle,
-          ]}
-          numberOfLines={1}
-        >
-          {label}
-        </AnimatedText>
+        <IconComponent size={18} color={active ? activeColor : fadedColor} weight="duotone" />
+        {active ? (
+          <Text
+            style={[styles.profilePillText, { color: activeColor, marginLeft: 7, flexShrink: 1 }]}
+            numberOfLines={1}
+          >
+            {label}
+          </Text>
+        ) : null}
       </Pressable>
-    </Animated.View>
+    </View>
   )
 }
 

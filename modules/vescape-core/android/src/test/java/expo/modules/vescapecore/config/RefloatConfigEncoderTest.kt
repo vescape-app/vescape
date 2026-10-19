@@ -9,6 +9,29 @@ import org.junit.Test
 import kotlin.math.abs
 
 class RefloatConfigEncoderTest {
+  @Test
+  fun draftHalfStepRoundsUpWithTheSchemaMultiplier() {
+    val schema = RefloatConfigSchema("scaled", listOf(RefloatConfigSchemaField("kp", RefloatConfigValueType.FLOAT16_SCALED, "kp", null, 0.0, 40.0, 0, 10.0)))
+    val result = RefloatConfigEncoder.encode(schema, byteArrayOf(0, 0, 77, 88), mapOf("kp" to 15.45), strict = true)
+    assertEquals(155.toShort(), ByteBuffer.wrap(result).short)
+    assertArrayEquals(byteArrayOf(77, 88), result.copyOfRange(2, 4))
+  }
+
+  @Test
+  fun draftEncodingRejectsMissingNonFiniteAndOutOfBoundsFields() {
+    val schema = RefloatConfigSchema("draft", listOf(RefloatConfigSchemaField("kp", RefloatConfigValueType.FLOAT32, "kp", null, 0.0, 50.0, 0)))
+    for (fields in listOf(mapOf("missing" to 1.0), mapOf("kp2" to 1.0), mapOf("kp" to true), mapOf("kp" to Double.NaN), mapOf("kp" to Double.POSITIVE_INFINITY), mapOf("kp" to 51.0))) {
+      try {
+        RefloatConfigEncoder.encode(schema, ByteArray(8), fields, strict = true)
+        org.junit.Assert.fail("invalid draft accepted: $fields")
+      } catch (_: RefloatConfigEncodeException) { }
+    }
+    val raw = byteArrayOf(0, 0, 0, 0, 1, 2, 3, 4)
+    val result = RefloatConfigEncoder.encode(schema, raw, mapOf("kp" to 22.5), strict = true)
+    assertArrayEquals(raw.copyOfRange(4, 8), result.copyOfRange(4, 8))
+    assertEquals(22.5f, ByteBuffer.wrap(result).float)
+  }
+
 
   private fun allTypeSchema(): RefloatConfigSchema {
     var offset = 0

@@ -32,6 +32,7 @@ const DEFAULTS: AppSettings = {
   freeSpinStationaryBoardCapKmh: 15,
   rideSplitGapMinutes: DEFAULT_RIDE_SPLIT_GAP_MINUTES,
   unitSystem: 'metric',
+  tuneEditorMode: 'rings',
   themeMode: 'system',
   mapStyleKey: 'onedark',
   satelliteOverlayEnabled: true,

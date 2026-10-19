@@ -23,6 +23,8 @@ struct RefloatTuneGroupDefinition {
   let fields: [RefloatTuneFieldDefinition]
 }
 
+// @parity /modules/vescape-core/src/index.ts `RefloatConfigField`
+// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/config/RefloatConfigModels.kt `RefloatConfigField`
 struct RefloatConfigField {
   let id: String
   let label: String
@@ -30,6 +32,7 @@ struct RefloatConfigField {
   let unit: String?
   let min: Double?
   let max: Double?
+  var encodingScale: Double? = nil
 
   func toMap() -> [String: Any?] {
     [
@@ -39,6 +42,7 @@ struct RefloatConfigField {
       "unit": unit,
       "min": min,
       "max": max,
+      "encodingScale": encodingScale,
     ]
   }
 }

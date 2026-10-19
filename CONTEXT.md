@@ -227,6 +227,10 @@ _Avoid_: Tune preset, config file, settings backup
 The Refloat major/minor version scope in which a Tune Profile is allowed to be used. Patch versions and suffixes do not split it: `1.2`, `1.2.7`, and `1.2.7-postfix` share Tune Compatibility.
 _Avoid_: Tune migration, tune schema version, firmware conversion
 
+**Rings**:
+The Tune editor mode that projects the current Tune Profile draft onto three-axis circular charts. It shares the raw draft with Floaty and Advanced; its simplified projection may be Custom.
+_Avoid_: Tune Profile, automatic board sync
+
 **Tune History Entry**:
 An immutable snapshot of a Tune Profile's field values captured immediately before an explicit save, enabling rollback to any prior state.
 _Avoid_: Sync log, change event, audit trail

@@ -2,8 +2,10 @@ import { ScrollView, StyleSheet } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { ToolboxIcon } from 'phosphor-react-native'
 
+import { RingsEditorShowcase } from '@/screens/showcase/tune/RingsEditorShowcase'
+import { RingsChartShowcase } from '@/screens/showcase/tune/RingsChartShowcase'
 import { IconHero } from '@/components/settings/IconHero'
-import { theme } from '@/constants/theme'
+import { useResolvedNeutralColors } from '@/hooks/useTheme'
 import {
   AlertPercentageTuneDialShowcase,
   CompactTuneDialShowcase,
@@ -19,13 +21,16 @@ import {
 } from '@/screens/showcase/tune/TunePreviewShowcases'
 
 export default function TunePage() {
+  const neutral = useResolvedNeutralColors()
   return (
-    <SafeAreaView style={styles.container} edges={['bottom']}>
+    <SafeAreaView style={[styles.container, { backgroundColor: neutral.bg }]} edges={['bottom']}>
       <ScrollView contentContainerStyle={styles.content}>
         <IconHero
           icon={ToolboxIcon}
-          description="TuneDial, BasicSliderCell, Tune Preview, Movement Board Test, TuneSyncBar, TuneGroupGrid."
+          description="TuneDial, BasicSliderCell, Tune Preview, Movement Board Test, RingsChart, TuneGroupGrid."
         />
+        <RingsEditorShowcase />
+        <RingsChartShowcase />
         <ManualTuneEditorShowcase />
         <TuneDialShowcase />
         <CompactTuneDialShowcase />
@@ -41,6 +46,6 @@ export default function TunePage() {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: theme.neutral.bg },
+  container: { flex: 1 },
   content: { padding: 12, gap: 12, paddingBottom: 40 },
 })

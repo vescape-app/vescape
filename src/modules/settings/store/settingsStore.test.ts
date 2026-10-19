@@ -17,6 +17,7 @@ const BASE: AppSettings = {
   freeSpinMaxSpeedDeltaKmh: 12,
   freeSpinStationaryBoardCapKmh: 15,
   unitSystem: 'metric',
+  tuneEditorMode: 'rings',
   themeMode: 'system',
   mapStyleKey: 'onedark',
   satelliteOverlayEnabled: true,

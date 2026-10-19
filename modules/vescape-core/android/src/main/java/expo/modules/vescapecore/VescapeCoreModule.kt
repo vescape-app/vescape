@@ -1055,6 +1055,17 @@ class VescapeCoreModule : Module() {
     AsyncFunction("stopBoardMove") {
       CoreForegroundService.stopBoardMove()
     }
+    // @parity /modules/vescape-core/ios/VescapeCoreModule.swift `sendTuneDraftToBoard`
+    // @parity /modules/vescape-core/src/index.ts `sendTuneDraftToBoard`
+    AsyncFunction("sendTuneDraftToBoard") { profileId: String, fields: Map<String, Any?>, promise: Promise ->
+      RecordingStorageFailure.requireAvailable()
+      CoreForegroundService.pushProfileToBoard(
+        context.applicationContext, profileId,
+        onSuccess = { snapshot -> promise.resolve(snapshot) },
+        onError = { code, message -> promise.reject(code, message, null) },
+        draftFields = fields,
+      )
+    }
     AsyncFunction("pushProfileToBoard") { profileId: String, promise: Promise ->
       RecordingStorageFailure.requireAvailable()
       CoreForegroundService.pushProfileToBoard(

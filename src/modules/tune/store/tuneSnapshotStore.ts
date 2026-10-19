@@ -55,7 +55,8 @@ export const useTuneSnapshotStore = create<TuneSnapshotState & TuneSnapshotActio
             // downstream recomputes. Anything else is a plain refresh, not a diff prompt.
             snapshot:
               state.snapshot?.boardId === snapshot.boardId &&
-              state.snapshot?.rawConfigHash === snapshot.rawConfigHash
+              state.snapshot?.rawConfigHash === snapshot.rawConfigHash &&
+              state.snapshot?.schemaHash === snapshot.schemaHash
                 ? state.snapshot
                 : snapshot,
             error: null,

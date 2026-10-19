@@ -28,7 +28,8 @@ class ConfigRWControllerLinkIntegrityTest {
         telemetryRecordingEnabled = false,
     )
 
-    private fun controller() = ConfigRWController(
+    private fun controller(loader: suspend (String) -> Map<String, Any?>? = { error("repository should not be used") }) = ConfigRWController(
+        loadProfile = loader,
         scheduler = scheduler,
         appDataScope = CoroutineScope(Dispatchers.Unconfined),
         repository = { error("repository should not be used") },
@@ -54,6 +55,19 @@ class ConfigRWControllerLinkIntegrityTest {
             override fun onBoardConfigValues(values: BoardConfigValues, origin: BoardConfigOperationOrigin) = Unit
         },
     )
+
+    @Test
+    fun disconnectCancelsDraftWhoseProfileIsStillLoading() {
+        val loaded = kotlinx.coroutines.CompletableDeferred<Map<String, Any?>?>()
+        val controller = controller { loaded.await() }
+        controller.consumeWrite(PendingConfigWrite("profile-1", { error("stale write succeeded") }, { code, message -> errors.add(code to message) }, mapOf("kp" to 25.0)))
+        controller.onSessionTerminated("Disconnected")
+        loaded.complete(mapOf("boardId" to "board-1", "refloatBaseVersion" to "1.2", "fields" to mapOf("kp" to 20.0)))
+        scheduler.advance(0)
+        assertEquals(listOf(RefloatConfigErrorCode.BOARD_NOT_CONNECTED.name), errors.map { it.first })
+        assertFalse(sentPayload)
+        assertFalse(stoppedPolling)
+    }
 
     @Test
     fun readFailsClosedWhenLinkIsChecking() {

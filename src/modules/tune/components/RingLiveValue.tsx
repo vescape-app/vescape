@@ -1,4 +1,4 @@
-// THROWAWAY: UI-thread readout. Gestures never send per-frame values through React.
+// UI-thread readout. Gestures never send per-frame values through React.
 import { useMemo } from 'react'
 import { Platform, StyleSheet } from 'react-native'
 import { Canvas, matchFont, Text as SkiaText } from '@shopify/react-native-skia'

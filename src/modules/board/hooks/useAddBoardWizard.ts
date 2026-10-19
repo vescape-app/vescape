@@ -198,8 +198,8 @@ export function useAddBoardWizard(): UseAddBoardWizard {
     parallelCount,
   )
 
-  const next = () => setStep((s) => Math.min(s + 1, steps.length - 1))
-  const back = () => setStep((s) => Math.max(s - 1, 0))
+  const next = () => setStep(Math.min(step + 1, steps.length - 1))
+  const back = () => setStep(Math.max(step - 1, 0))
 
   // Selecting a peripheral starts a Board Probe before the rest of the wizard.
   const selectDevice = (id: string, deviceName: string) => {

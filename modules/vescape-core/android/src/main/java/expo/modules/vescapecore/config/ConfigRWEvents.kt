@@ -29,6 +29,7 @@ internal sealed class ConfigRWEvent {
          * retained bytes directly instead of reading the board first (ADR 0035).
          */
         val writeBase: BoardConfigWriteBase?,
+        val draft: Boolean = false,
     ) : ConfigRWEvent()
 
     data class XmlPayloadReceived(val payload: ByteArray) : ConfigRWEvent()

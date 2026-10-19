@@ -8,10 +8,21 @@ appId: ${APP_ID}
 - scrollUntilVisible:
     element:
       text: 'Edit threshold'
-    direction: UP
+    direction: DOWN
+    visibilityPercentage: 50
 - extendedWaitUntil:
     visible: 'Edit threshold'
     timeout: 30000
+# At large text sizes the result row can sit just below the viewport. Scroll
+# along the gallery edge so the interactive chart does not claim the gesture.
+- runFlow:
+    when:
+      notVisible: 'Applied value:.*'
+    commands:
+      - swipe:
+          start: 95%, 85%
+          end: 95%, 60%
+          duration: 400
 - tapOn: 'Edit threshold'
 - tapOn: 'Enter value manually'
 - tapOn:
@@ -37,7 +48,7 @@ appId: ${APP_ID}
 - assertVisible:
     id: 'tune-editor-apply'
     enabled: true
-- takeScreenshot: /tmp/tune-manual-warning
+- takeScreenshot: tune-manual-warning
 - tapOn:
     id: 'tune-editor-apply'
 - assertVisible: 'Applied value: 6'
@@ -48,7 +59,7 @@ appId: ${APP_ID}
 - eraseText
 - inputText: '1.7'
 - pressKey: Enter
-- takeScreenshot: /tmp/tune-manual-valid
+- takeScreenshot: tune-manual-valid
 - tapOn:
     id: 'tune-editor-apply'
 - assertVisible: 'Applied value: 1.7'

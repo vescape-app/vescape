@@ -7,3 +7,8 @@ INFO v1 exposes only major/minor; INFO v2 adds patch and package details. An app
 Board Firmware Identity and Link Integrity keep exact reported versions. Tune compatibility does not weaken those checks or schema validation before writing.
 
 When a trusted board read finds no Tune Profile for the current Refloat major/minor version, the app waits for an explicit rider action such as "Create tune based on board config" before creating the first profile from the board. Tune writes remain read-before-write and schema-validated as described in [ADR 0001](./0001-tune-profile-storage-and-sync.md), but Refloat-version compatibility gates which profiles can be selected or pushed.
+
+A rider may also explicitly create the first profile offline by choosing a bundled Refloat
+compatibility template. This choice scopes the saved profile; it does not claim a firmware version
+for the Board Link or establish confirmed board values. Native storage and write compatibility checks
+remain the same. See [Tune](../tune.md) for the available templates and offline reopening behavior.

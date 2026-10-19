@@ -24,14 +24,14 @@ export const APP_TUNE_GROUPS: AppTuneGroupDefinition[] = [
     id: 'general',
     title: 'General',
     fields: [
-      { id: 'kp', manualDecimals: 1, label: 'Angle P', unit: null, min: 0, max: 50 },
-      { id: 'kp2', manualDecimals: 2, label: 'Rate P', unit: null, min: 0, max: 5 },
+      { id: 'kp', manualDecimals: 6, label: 'Angle P', unit: null, min: 0, max: 50 },
+      { id: 'kp2', manualDecimals: 6, label: 'Rate P', unit: null, min: 0, max: 5 },
       { id: 'kp_brake', manualDecimals: 2, label: 'Angle P (Braking)', unit: 'x', min: 0, max: 5 },
       { id: 'kp2_brake', manualDecimals: 2, label: 'Rate P (Braking)', unit: 'x', min: 0, max: 5 },
-      { id: 'ki', manualDecimals: 3, label: 'Angle I', unit: null, min: 0, max: 0.5, step: 0.001 },
+      { id: 'ki', manualDecimals: 6, label: 'Angle I', unit: null, min: 0, max: 0.5, step: 0.001 },
       { id: 'ki_limit', manualDecimals: 1, label: 'I Term Limit', unit: 'A', min: 0, max: 100 },
-      { id: 'mahony_kp', manualDecimals: 2, label: 'Pitch KP', unit: null, min: 0, max: 10 },
-      { id: 'mahony_kp_roll', manualDecimals: 2, label: 'Roll KP', unit: null, min: 0, max: 10 },
+      { id: 'mahony_kp', manualDecimals: 6, label: 'Pitch KP', unit: null, min: 0, max: 10 },
+      { id: 'mahony_kp_roll', manualDecimals: 6, label: 'Roll KP', unit: null, min: 0, max: 10 },
     ],
   },
   {
@@ -40,7 +40,7 @@ export const APP_TUNE_GROUPS: AppTuneGroupDefinition[] = [
     fields: [
       {
         id: 'atr_strength_up',
-        manualDecimals: 1,
+        manualDecimals: 6,
         label: 'ATR Uphill Strength',
         unit: null,
         min: 0,
@@ -48,7 +48,7 @@ export const APP_TUNE_GROUPS: AppTuneGroupDefinition[] = [
       },
       {
         id: 'atr_strength_down',
-        manualDecimals: 1,
+        manualDecimals: 6,
         label: 'ATR Downhill Strength',
         unit: null,
         min: 0,
@@ -108,7 +108,7 @@ export const APP_TUNE_GROUPS: AppTuneGroupDefinition[] = [
       },
       {
         id: 'atr_response_boost',
-        manualDecimals: 1,
+        manualDecimals: 6,
         label: 'Tiltback Response Boost',
         unit: 'x',
         min: 0,
@@ -147,7 +147,7 @@ export const APP_TUNE_GROUPS: AppTuneGroupDefinition[] = [
     fields: [
       {
         id: 'turntilt_strength',
-        manualDecimals: 1,
+        manualDecimals: 6,
         label: 'Strength',
         unit: null,
         min: 0,
@@ -179,7 +179,7 @@ export const APP_TUNE_GROUPS: AppTuneGroupDefinition[] = [
       },
       {
         id: 'turntilt_speed',
-        manualDecimals: 1,
+        manualDecimals: 6,
         label: 'Max Tiltback Speed',
         unit: 'deg/s',
         min: 0,
@@ -218,7 +218,7 @@ export const APP_TUNE_GROUPS: AppTuneGroupDefinition[] = [
     fields: [
       {
         id: 'torquetilt_strength',
-        manualDecimals: 2,
+        manualDecimals: 6,
         label: 'Strength',
         unit: 'deg/A',
         min: 0,
@@ -226,7 +226,7 @@ export const APP_TUNE_GROUPS: AppTuneGroupDefinition[] = [
       },
       {
         id: 'torquetilt_strength_regen',
-        manualDecimals: 2,
+        manualDecimals: 6,
         label: 'Strength (Regen)',
         unit: 'deg/A',
         min: 0,
@@ -272,7 +272,7 @@ export const APP_TUNE_GROUPS: AppTuneGroupDefinition[] = [
     fields: [
       {
         id: 'braketilt_strength',
-        manualDecimals: 0,
+        manualDecimals: 6,
         label: 'Brake Tilt Strength',
         unit: null,
         min: 0,
@@ -280,7 +280,7 @@ export const APP_TUNE_GROUPS: AppTuneGroupDefinition[] = [
       },
       {
         id: 'braketilt_lingering',
-        manualDecimals: 0,
+        manualDecimals: 6,
         label: 'Brake Tilt Lingering',
         unit: null,
         min: 1,

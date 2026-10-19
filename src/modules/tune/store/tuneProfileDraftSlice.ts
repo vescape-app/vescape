@@ -1,6 +1,7 @@
 import type { StoreApi } from 'zustand'
 import {
   pushProfileToBoard as nativePushProfileToBoard,
+  sendTuneDraftToBoard as nativeSendTuneDraftToBoard,
   saveProfile as nativeSaveProfile,
 } from 'vescape-core'
 
@@ -11,6 +12,7 @@ import {
 } from '@/modules/board/lib/boardLinkIntegrity'
 import { useBleStore } from '@/modules/board/store/bleStore'
 import {
+  isCompatibleProfile,
   boardDiff,
   sameFieldValue,
   dirtyFields,
@@ -26,6 +28,9 @@ import { omitKey } from '@/helpers/records'
 
 type TuneProfileDraftSlice = Pick<
   TuneProfileActions,
+  | 'setDraftFields'
+  | 'readBoardToDraft'
+  | 'sendDraftToBoard'
   | 'setDraftField'
   | 'setBoardSnapshot'
   | 'getDirtyFields'
@@ -44,6 +49,88 @@ type SliceFactory = (
 ) => TuneProfileDraftSlice
 
 export const createTuneProfileDraftSlice: SliceFactory = (set, get) => ({
+  setDraftFields(fields) {
+    set((state) => {
+      if (!state.activeProfile) return state
+      const draftFields = Object.entries(fields).reduce(
+        (draft, [id, value]) => nextDraftWithField(state.activeProfile!, draft, id, value),
+        { ...state.draftFields },
+      )
+      return {
+        draftFields,
+        hasDirtyFields: Object.keys(dirtyFields(state.activeProfile, draftFields)).length > 0,
+      }
+    })
+  },
+
+  async readBoardToDraft() {
+    const profile = get().activeProfile
+    if (!profile || get().syncing || get().saving) return
+    const link = useBleStore.getState()
+    if (link.status !== 'connected' || !canRunFirmwareCommand(link.linkIntegrity)) {
+      set({ error: firmwareCommandBlockedMessage(link.linkIntegrity) })
+      return
+    }
+    const capturedFields = { ...profile.fields, ...get().draftFields }
+    set({ syncing: true, error: null })
+    const snapshot = await useTuneSnapshotStore.getState().read()
+    if (!snapshot) {
+      set({ syncing: false, error: useTuneSnapshotStore.getState().error ?? 'Board read failed.' })
+      return
+    }
+    const state = get()
+    if (
+      state.activeProfile?.id === profile.id &&
+      snapshot.boardId === profile.boardId &&
+      isCompatibleProfile(profile, snapshot.boardId, snapshot.refloatBaseVersion ?? null) &&
+      useTuneSnapshotStore.getState().status === 'ready' &&
+      useBleStore.getState().status === 'connected'
+    ) {
+      const boardFields = fieldsFromSnapshot(snapshot)
+      const recognized = Object.fromEntries(
+        Object.entries(boardFields).filter(([id, value]) => id in profile.fields && value != null),
+      )
+      const currentFields = { ...profile.fields, ...state.draftFields }
+      const replacements = Object.fromEntries(
+        Object.entries(recognized).filter(([id]) =>
+          sameFieldValue(currentFields[id], capturedFields[id]),
+        ),
+      )
+      const draftFields = dirtyFields(profile, { ...state.draftFields, ...replacements })
+      set({ draftFields, hasDirtyFields: Object.keys(draftFields).length > 0 })
+      get().setBoardSnapshot(snapshot)
+    }
+    set({ syncing: false })
+  },
+
+  async sendDraftToBoard() {
+    const state = get()
+    const profile = state.activeProfile
+    if (!profile || state.syncing || state.saving) return
+    const linkIntegrity = useBleStore.getState().linkIntegrity
+    if (useBleStore.getState().status !== 'connected' || !canRunFirmwareCommand(linkIntegrity)) {
+      set({ error: firmwareCommandBlockedMessage(linkIntegrity) })
+      return
+    }
+    const captured = { ...profile.fields, ...state.draftFields }
+    set({ syncing: true, error: null })
+    try {
+      const snapshot = await nativeSendTuneDraftToBoard(profile.id, captured)
+      if (
+        get().activeBoardId === snapshot.boardId &&
+        useBleStore.getState().status === 'connected'
+      ) {
+        useTuneSnapshotStore.getState().setSnapshot(snapshot)
+        get().setBoardSnapshot(snapshot)
+      }
+      set({ syncing: false })
+    } catch (error) {
+      useTuneSnapshotStore.getState().clear()
+      set({ syncing: false, error: errorMessage(error, 'Unable to send tune draft.') })
+      throw error
+    }
+  },
+
   setDraftField(fieldId, value) {
     set((state) => {
       if (!state.activeProfile) return state
@@ -60,10 +147,16 @@ export const createTuneProfileDraftSlice: SliceFactory = (set, get) => ({
 
   setBoardSnapshot(snapshot) {
     const boardFields = fieldsFromSnapshot(snapshot)
+    const boardEncodingScales = Object.fromEntries(
+      snapshot?.groups.flatMap((group) =>
+        group.fields.map((field) => [field.id, field.encodingScale ?? null]),
+      ) ?? [],
+    )
     set((state) => {
-      const diff = boardDiff(state.activeProfile, boardFields)
+      const diff = boardDiff(state.activeProfile, boardFields, boardEncodingScales)
       return {
         boardFields,
+        boardEncodingScales,
         refloatBaseVersion: snapshot?.refloatBaseVersion ?? state.refloatBaseVersion,
         boardDiff: diff,
         hasBoardDiff: diff.length > 0,
@@ -128,7 +221,7 @@ export const createTuneProfileDraftSlice: SliceFactory = (set, get) => ({
 
   async saveActiveProfile() {
     const profile = get().activeProfile
-    if (!profile) return null
+    if (!profile || get().saving) return null
     const dirty = get().getDirtyFields()
     if (Object.keys(dirty).length === 0) return profile
     set({ saving: true, error: null })
@@ -136,12 +229,9 @@ export const createTuneProfileDraftSlice: SliceFactory = (set, get) => ({
       const saved = await nativeSaveProfile(profile.id, { ...profile.fields, ...dirty })
       set((state) => {
         if (state.activeProfile?.id !== profile.id) return { saving: false }
-        const remainingDraft = Object.fromEntries(
-          Object.entries(state.draftFields).filter(
-            ([fieldId, value]) => !(fieldId in dirty) || dirty[fieldId] !== value,
-          ),
-        )
-        const diff = boardDiff(saved, state.boardFields)
+        const currentFields = { ...state.activeProfile.fields, ...state.draftFields }
+        const remainingDraft = dirtyFields(saved, currentFields)
+        const diff = boardDiff(saved, state.boardFields, state.boardEncodingScales)
         return {
           profiles: state.profiles.map((item) => (item.id === saved.id ? saved : item)),
           activeProfile: saved,

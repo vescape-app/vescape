@@ -41,7 +41,8 @@ enum RefloatConfigDecoder {
             value: try readValue(rawConfig, schemaField),
             unit: schemaField.unit ?? fieldDef.unitFallback,
             min: schemaField.min,
-            max: schemaField.max
+            max: schemaField.max,
+            encodingScale: (schemaField.type == .float16Scaled || schemaField.type == .float32Scaled) ? schemaField.scale.flatMap { $0.isFinite && $0 > 0 ? $0 : nil } : nil
           )
         )
       }

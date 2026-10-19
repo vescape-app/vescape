@@ -1,21 +1,23 @@
+import { useResolvedNeutralColors } from '@/hooks/useTheme'
+import { useRef, useState } from 'react'
 import {
-  ArrowsClockwiseIcon,
+  CircuitryIcon,
+  DotsThreeIcon,
+  PlusIcon,
   ClockCounterClockwiseIcon,
   CopyIcon,
   PencilSimpleIcon,
   TrashIcon,
 } from 'phosphor-react-native'
-import { StyleSheet, View } from 'react-native'
+import { ScrollView, StyleSheet, View, useWindowDimensions } from 'react-native'
 
 import { IconButton } from '@/components/base/IconButton'
+import { Button } from '@/components/base/Button'
+import { Select } from '@/components/forms/Select'
+import { Dropdown } from '@/components/forms/Dropdown'
 import { theme } from '@/constants/theme'
 import { Text } from '@/components/base/Text'
-import {
-  PillSelector,
-  PillSelectorAdd,
-  PillSelectorItem,
-  PillSelectorMenuItem,
-} from '@/components/controls/PillSelector'
+import { TuneProfilePill } from '../components/TuneProfilePill'
 import { HeaderBackButton } from '@/components/base/HeaderBackButton'
 import {
   tuneProfileColorTheme,
@@ -29,16 +31,17 @@ type TuneScreenData = ReturnType<typeof useTuneScreenData>
 /** Profile pills, plus history and re-read actions. Rendered as the navigator's own header. */
 export function TuneScreenHeader({
   paddingTop,
-  profiles,
   activeProfile,
-  boardConnected,
-  boardSnapshotStatus,
-  firmwareCommandsTrusted,
+  profiles,
   modals,
-  onSelectProfile,
+  onOpenBoards,
   onOpenHistory,
-  onReadBoard,
+  mode,
+  onModeChange,
 }: {
+  mode?: 'rings' | 'floaty' | 'advanced'
+  onModeChange?: (mode: 'rings' | 'floaty' | 'advanced') => void
+  onOpenBoards: () => void
   paddingTop: number
   profiles: TuneScreenData['profiles']
   activeProfile: TuneScreenData['activeProfile']
@@ -50,70 +53,133 @@ export function TuneScreenHeader({
   onOpenHistory: () => void
   onReadBoard: () => void
 }) {
+  const neutral = useResolvedNeutralColors()
+  const { fontScale } = useWindowDimensions()
+  const [menuOpen, setMenuOpen] = useState(false)
+  const menuRef = useRef<View>(null)
+  const action = (callback: () => void) => {
+    setMenuOpen(false)
+    callback()
+  }
   return (
-    <View style={[styles.header, { paddingTop }]}>
+    <View style={[styles.header, { paddingTop, backgroundColor: neutral.bg }]}>
       <HeaderBackButton />
       <View style={styles.headerCenter}>
-        {profiles.length > 0 ? (
-          <PillSelector
-            activeId={activeProfile?.id ?? ''}
-            contained
-            fitContent
-            variant="lightTabs"
-            style={styles.headerPills}
-          >
-            {profiles.map((profile) => (
-              <PillSelectorItem
-                key={profile.id}
-                id={profile.id}
-                label={profile.name}
-                icon={tuneProfileIconComponent(profile.icon)}
-                color={tuneProfileColorTheme(profile.color)}
-                onPress={() => onSelectProfile(profile.id)}
-              >
-                <PillSelectorMenuItem
-                  icon={PencilSimpleIcon}
-                  label="Edit"
-                  onPress={() => modals.setMetadataModalProfile(profile)}
-                />
-                {modals.otherBoards.length > 0 ? (
-                  <PillSelectorMenuItem
-                    icon={CopyIcon}
-                    label="Copy to board"
-                    onPress={() => modals.setCopySourceProfile(profile)}
-                  />
-                ) : null}
-                {profiles.length > 1 ? (
-                  <PillSelectorMenuItem
-                    icon={TrashIcon}
-                    label="Delete"
-                    onPress={() => modals.setDeleteConfirmProfile(profile)}
-                    danger
-                    separator
-                  />
-                ) : null}
-              </PillSelectorItem>
-            ))}
-            <PillSelectorAdd onPress={() => modals.handleCreateProfile(activeProfile?.id)} />
-          </PillSelector>
+        {mode && onModeChange ? (
+          <Select
+            testID="tune-mode"
+            value={mode}
+            onChange={onModeChange}
+            options={[
+              { value: 'rings', label: 'Rings' },
+              { value: 'floaty', label: 'Floaty' },
+              { value: 'advanced', label: 'Advanced' },
+            ]}
+            style={{ width: 168 * Math.max(1, fontScale), maxWidth: '100%', borderRadius: 24 }}
+          />
         ) : (
           <Text style={styles.headerTitle}>Tune</Text>
         )}
       </View>
-      <View style={styles.headerActions}>
-        {activeProfile ? (
-          <IconButton icon={ClockCounterClockwiseIcon} onPress={onOpenHistory} />
-        ) : null}
-        {boardConnected ? (
-          <IconButton
-            icon={ArrowsClockwiseIcon}
-            onPress={onReadBoard}
-            loading={boardSnapshotStatus === 'loading'}
-            disabled={!firmwareCommandsTrusted}
-          />
-        ) : null}
+      <View ref={menuRef} collapsable={false}>
+        <IconButton
+          icon={DotsThreeIcon}
+          accessibilityLabel="Tune menu"
+          testID="tune-menu"
+          onPress={() => setMenuOpen(true)}
+        />
       </View>
+      <Dropdown
+        visible={menuOpen}
+        triggerRef={menuRef}
+        onClose={() => setMenuOpen(false)}
+        matchTriggerWidth={false}
+        minWidth={220}
+      >
+        <View style={{ padding: 8, gap: 6 }}>
+          {activeProfile ? (
+            <>
+              <Button
+                icon={ClockCounterClockwiseIcon}
+                label="Tune history"
+                variant="secondary"
+                onPress={() => action(onOpenHistory)}
+              />
+              <Button
+                icon={PencilSimpleIcon}
+                label="Edit tune metadata"
+                variant="secondary"
+                onPress={() => action(() => modals.setMetadataModalProfile(activeProfile))}
+              />
+              {modals.otherBoards.length > 0 ? (
+                <Button
+                  icon={CopyIcon}
+                  label="Copy to board"
+                  variant="secondary"
+                  onPress={() => action(() => modals.setCopySourceProfile(activeProfile))}
+                />
+              ) : null}
+              {profiles.length > 1 ? (
+                <Button
+                  icon={TrashIcon}
+                  label="Delete tune"
+                  variant="destructive"
+                  onPress={() => action(() => modals.setDeleteConfirmProfile(activeProfile))}
+                />
+              ) : null}
+            </>
+          ) : null}
+          <Button
+            icon={CircuitryIcon}
+            label="Select tune board"
+            variant="secondary"
+            onPress={() => action(onOpenBoards)}
+          />
+        </View>
+      </Dropdown>
     </View>
+  )
+}
+
+export function TuneProfileSelector({
+  profiles,
+  activeProfile,
+  modals,
+  onSelectProfile,
+}: Pick<
+  Parameters<typeof TuneScreenHeader>[0],
+  'profiles' | 'activeProfile' | 'modals' | 'onSelectProfile'
+>) {
+  return (
+    <ScrollView
+      horizontal
+      showsHorizontalScrollIndicator={false}
+      style={{ flexGrow: 0 }}
+      contentContainerStyle={{
+        flexGrow: 1,
+        justifyContent: 'center',
+        gap: 8,
+        alignItems: 'center',
+        paddingHorizontal: 2,
+      }}
+    >
+      {profiles.map((profile) => (
+        <TuneProfilePill
+          key={profile.id}
+          label={profile.name}
+          icon={tuneProfileIconComponent(profile.icon)}
+          color={tuneProfileColorTheme(profile.color)}
+          active={profile.id === activeProfile?.id}
+          onPress={() => onSelectProfile(profile.id)}
+        />
+      ))}
+      <IconButton
+        size="md"
+        icon={PlusIcon}
+        accessibilityLabel="Add tune"
+        onPress={() => modals.handleCreateProfile(activeProfile?.id)}
+      />
+    </ScrollView>
   )
 }
 
@@ -124,22 +190,14 @@ const styles = StyleSheet.create({
     gap: 8,
     paddingHorizontal: 10,
     paddingBottom: 0,
-    backgroundColor: theme.neutral.bg,
   },
   headerCenter: {
     flex: 1,
     alignItems: 'center',
   },
-  headerPills: {
-    maxWidth: '100%',
-  },
   headerTitle: {
     color: theme.neutral.textPrimary,
     fontSize: 17,
     fontWeight: '900',
-  },
-  headerActions: {
-    flexDirection: 'row',
-    gap: 8,
   },
 })

@@ -503,6 +503,7 @@ data class AppSettings(
   val freeSpinStationaryBoardCapKmh: Double = DEFAULT_FREE_SPIN_STATIONARY_BOARD_CAP_KMH,
   val rideSplitGapMinutes: Int = DEFAULT_RIDE_SPLIT_GAP_MINUTES,
   val unitSystem: String = "metric",
+  val tuneEditorMode: String = "rings",
   val themeMode: String = "system",
   val mapStyleKey: String = "onedark",
   val satelliteOverlayEnabled: Boolean = true,

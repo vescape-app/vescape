@@ -1,3 +1,4 @@
+import CoreFoundation
 import Foundation
 
 struct RefloatConfigEncodeException: Error {
@@ -13,12 +14,37 @@ enum RefloatConfigEncoder {
   static func encode(
     schema: RefloatConfigSchema,
     rawConfig: [UInt8],
-    fields: [String: Any]
+    fields: [String: Any],
+    strict: Bool = false
   ) throws -> [UInt8] {
     var result = rawConfig
     let byId = Dictionary(uniqueKeysWithValues: schema.fields.map { ($0.id, $0) })
+    let allowed = Set(REFLOAT_TUNE_GROUPS.flatMap { $0.fields.map { $0.id } })
     for (fieldId, value) in fields {
-      guard let field = byId[fieldId] else { continue }
+      if strict, !allowed.contains(fieldId) { throw RefloatConfigEncodeException("Not a tune field: \(fieldId)") }
+      guard let field = byId[fieldId] else {
+        if strict { throw RefloatConfigEncodeException("Missing draft field in board schema: \(fieldId)") }
+        continue
+      }
+      if strict, field.type != .bool {
+        if let boxed = value as? NSNumber, CFGetTypeID(boxed) == CFBooleanGetTypeID() {
+          throw RefloatConfigEncodeException("Draft numeric field cannot be Boolean: \(fieldId)")
+        }
+        let number = try toDouble(value)
+        guard number.isFinite, field.min.map({ number >= $0 }) ?? true, field.max.map({ number <= $0 }) ?? true else {
+          throw RefloatConfigEncodeException("Draft value outside firmware bounds: \(fieldId)")
+        }
+        let scaled = floor(number * (field.scale ?? 1) + 0.5)
+        switch field.type {
+        case .float16Scaled:
+          guard scaled >= Double(Int16.min), scaled <= Double(Int16.max) else { throw RefloatConfigEncodeException("Draft value cannot be encoded: \(fieldId)") }
+        case .float32Scaled:
+          guard scaled >= Double(Int32.min), scaled <= Double(Int32.max) else { throw RefloatConfigEncodeException("Draft value cannot be encoded: \(fieldId)") }
+        case .float32, .float32Auto:
+          guard Float(number).isFinite else { throw RefloatConfigEncodeException("Draft value cannot be encoded: \(fieldId)") }
+        default: break
+        }
+      }
       try writeValue(&result, field, value)
     }
     return result

@@ -74,6 +74,10 @@ const deleteProfile = mock(async () => {})
 const getProfileHistory = mock(async () => [])
 const rollbackProfile = mock(async () => profile)
 const copyProfileToBoard = mock(async () => profile)
+const sendTuneDraftToBoard = mock(
+  async (_id: string, _fields: TuneProfile['fields']) => boardSnapshot,
+)
+const getRefloatConfigSnapshot = mock(async () => boardSnapshot)
 const pushProfileToBoard = mock(async () => boardSnapshot)
 
 const vescBleMock = {
@@ -88,12 +92,19 @@ const vescBleMock = {
   rollbackProfile,
   copyProfileToBoard,
   pushProfileToBoard,
+  sendTuneDraftToBoard,
+  getRefloatConfigSnapshot,
 }
 
 mock.module('vescape-core', () => vescBleMock)
 mock.module('../../modules/vescape-core/src/index', () => vescBleMock)
 
 beforeEach(async () => {
+  sendTuneDraftToBoard.mockReset()
+  sendTuneDraftToBoard.mockImplementation(async () => boardSnapshot)
+  getRefloatConfigSnapshot.mockReset()
+  getRefloatConfigSnapshot.mockImplementation(async () => boardSnapshot)
+  saveProfile.mockImplementation(async (_id, fields) => ({ ...profile, fields, updatedAt: 2000 }))
   getTuneProfiles.mockClear()
   getTuneProfiles.mockImplementation(async (_boardId: string) => [profile])
   getTuneProfile.mockClear()
@@ -116,6 +127,7 @@ beforeEach(async () => {
     draftFields: {},
     hasDirtyFields: false,
     boardFields: {},
+    boardEncodingScales: {},
     boardDiff: [],
     hasBoardDiff: false,
     loading: false,
@@ -355,7 +367,7 @@ test('does not mark board-only snapshot fields as board diffs', async () => {
   expect(useTuneProfileStore.getState().hasBoardDiff).toBe(false)
 })
 
-test('does not keep rounded-equivalent draft values dirty', async () => {
+test('preserves explicit raw edits even when their display or float32 values match', async () => {
   const { useTuneProfileStore } = await import('@/modules/tune/store/tuneProfileStore')
 
   getTuneProfiles.mockImplementation(async (_boardId: string) => [
@@ -371,9 +383,9 @@ test('does not keep rounded-equivalent draft values dirty', async () => {
   await useTuneProfileStore.getState().loadProfiles('board-1', '1.3.0')
   useTuneProfileStore.getState().setDraftField('angle_p', 0.026)
 
-  expect(useTuneProfileStore.getState().draftFields).toEqual({})
-  expect(useTuneProfileStore.getState().hasDirtyFields).toBe(false)
-  expect(useTuneProfileStore.getState().getDirtyFields()).toEqual({})
+  expect(useTuneProfileStore.getState().draftFields).toEqual({ angle_p: 0.026 })
+  expect(useTuneProfileStore.getState().hasDirtyFields).toBe(true)
+  expect(useTuneProfileStore.getState().getDirtyFields()).toEqual({ angle_p: 0.026 })
 })
 
 test('accepts board values into draft and saves through normal profile flow', async () => {
@@ -618,4 +630,156 @@ test('keeps saved tunes visible when INFO v2 adds patch and suffix on the same b
     'legacy',
     'patch',
   ])
+})
+
+test('draft Send captures unsaved fields without saving or replacing edits made during send', async () => {
+  const { useTuneProfileStore } = await import('./tuneProfileStore')
+  const { useBleStore } = await import('@/modules/board/store/bleStore')
+  useBleStore.setState({ status: 'connected', linkIntegrity: 'trusted' })
+  await useTuneProfileStore.getState().loadProfiles('board-1', '1.3.0')
+  useTuneProfileStore.getState().setDraftFields({ kp: 24, atr_strength_up: 0.7 })
+  let finish!: (snapshot: RefloatConfigSnapshot) => void
+  sendTuneDraftToBoard.mockImplementation(
+    () =>
+      new Promise((resolve) => {
+        finish = resolve
+      }),
+  )
+  const request = useTuneProfileStore.getState().sendDraftToBoard()
+  useTuneProfileStore.getState().setDraftField('kp', 28)
+  finish(boardSnapshot)
+  await request
+  expect(sendTuneDraftToBoard).toHaveBeenCalledWith(profile.id, { kp: 24, atr_strength_up: 0.7 })
+  expect(saveProfile).not.toHaveBeenCalled()
+  expect(useTuneProfileStore.getState().activeProfile?.fields).toEqual(profile.fields)
+  expect(useTuneProfileStore.getState().draftFields).toEqual({ kp: 28, atr_strength_up: 0.7 })
+})
+
+test('failed draft Send preserves profile and draft and invalidates board knowledge', async () => {
+  const { useTuneProfileStore } = await import('./tuneProfileStore')
+  const { useTuneSnapshotStore } = await import('./tuneSnapshotStore')
+  const { useBleStore } = await import('@/modules/board/store/bleStore')
+  useBleStore.setState({ status: 'connected', linkIntegrity: 'trusted' })
+  await useTuneProfileStore.getState().loadProfiles('board-1', '1.3.0')
+  useTuneProfileStore.getState().setDraftField('kp', 27)
+  useTuneSnapshotStore.getState().setSnapshot(boardSnapshot)
+  sendTuneDraftToBoard.mockImplementation(async () => {
+    throw new Error('verification failed')
+  })
+  await expect(useTuneProfileStore.getState().sendDraftToBoard()).rejects.toThrow(
+    'verification failed',
+  )
+  expect(useTuneProfileStore.getState().draftFields).toEqual({ kp: 27 })
+  expect(useTuneProfileStore.getState().activeProfile?.fields).toEqual(profile.fields)
+  expect(useTuneSnapshotStore.getState().snapshot).toBeNull()
+  expect(saveProfile).not.toHaveBeenCalled()
+})
+
+test('explicit Read replaces recognized draft fields and preserves fields absent from the read', async () => {
+  const { useTuneProfileStore } = await import('./tuneProfileStore')
+  const { useBleStore } = await import('@/modules/board/store/bleStore')
+  useBleStore.setState({ status: 'connected', linkIntegrity: 'trusted' })
+  await useTuneProfileStore.getState().loadProfiles('board-1', '1.3.0')
+  useTuneProfileStore.getState().setDraftFields({ kp: 29, atr_strength_up: 0.6 })
+  await useTuneProfileStore.getState().readBoardToDraft()
+  expect(getRefloatConfigSnapshot).toHaveBeenCalledTimes(1)
+  expect(useTuneProfileStore.getState().draftFields).toEqual({ kp: 24, atr_strength_up: 0.6 })
+  expect(saveProfile).not.toHaveBeenCalled()
+})
+
+test('failed Read leaves draft unchanged', async () => {
+  const { useTuneProfileStore } = await import('./tuneProfileStore')
+  const { useBleStore } = await import('@/modules/board/store/bleStore')
+  useBleStore.setState({ status: 'connected', linkIntegrity: 'trusted' })
+  await useTuneProfileStore.getState().loadProfiles('board-1', '1.3.0')
+  useTuneProfileStore.getState().setDraftField('kp', 29)
+  getRefloatConfigSnapshot.mockImplementation(async () => {
+    throw new Error('read failed')
+  })
+  await useTuneProfileStore.getState().readBoardToDraft()
+  expect(useTuneProfileStore.getState().draftFields).toEqual({ kp: 29 })
+  expect(useTuneProfileStore.getState().error).toBe('read failed')
+})
+
+test('reverting to original value during save remains a dirty edit against the new baseline', async () => {
+  const { useTuneProfileStore } = await import('./tuneProfileStore')
+  await useTuneProfileStore.getState().loadProfiles('board-1', '1.3.0')
+  useTuneProfileStore.getState().setDraftField('kp', 25)
+  let finish!: (saved: TuneProfile) => void
+  saveProfile.mockImplementation(
+    () =>
+      new Promise((resolve) => {
+        finish = resolve
+      }),
+  )
+  const request = useTuneProfileStore.getState().saveActiveProfile()
+  useTuneProfileStore.getState().revertField('kp')
+  finish({ ...profile, fields: { ...profile.fields, kp: 25 } })
+  await request
+  expect(useTuneProfileStore.getState().activeProfile?.fields.kp).toBe(25)
+  expect(useTuneProfileStore.getState().draftFields).toEqual({ kp: 20 })
+})
+
+test('failed Save preserves baseline and all draft fields', async () => {
+  const { useTuneProfileStore } = await import('./tuneProfileStore')
+  await useTuneProfileStore.getState().loadProfiles('board-1', '1.3.0')
+  useTuneProfileStore.getState().setDraftFields({ kp: 25, atr_strength_up: 0.9 })
+  saveProfile.mockImplementation(async () => {
+    throw new Error('storage failed')
+  })
+  await expect(useTuneProfileStore.getState().saveActiveProfile()).rejects.toThrow('storage failed')
+  expect(useTuneProfileStore.getState().activeProfile).toEqual(profile)
+  expect(useTuneProfileStore.getState().draftFields).toEqual({ kp: 25, atr_strength_up: 0.9 })
+})
+
+test('an edit made during explicit Read is preserved over the read result', async () => {
+  const { useTuneProfileStore } = await import('./tuneProfileStore')
+  const { useBleStore } = await import('@/modules/board/store/bleStore')
+  useBleStore.setState({ status: 'connected', linkIntegrity: 'trusted' })
+  await useTuneProfileStore.getState().loadProfiles('board-1', '1.3.0')
+  useTuneProfileStore.getState().setDraftField('kp', 29)
+  let finish!: (value: RefloatConfigSnapshot) => void
+  getRefloatConfigSnapshot.mockImplementation(
+    () =>
+      new Promise((resolve) => {
+        finish = resolve
+      }),
+  )
+  const request = useTuneProfileStore.getState().readBoardToDraft()
+  useTuneProfileStore.getState().setDraftField('kp', 27)
+  finish(boardSnapshot)
+  await request
+  expect(useTuneProfileStore.getState().draftFields).toEqual({ kp: 27 })
+  expect(saveProfile).not.toHaveBeenCalled()
+})
+
+test('raw edits at a scaled half-step remain dirty even when float32 values coincide', async () => {
+  const { useTuneProfileStore } = await import('./tuneProfileStore')
+  getTuneProfiles.mockImplementation(async () => [{ ...profile, fields: { kp: 30.049999 } }])
+  await useTuneProfileStore.getState().loadProfiles('board-1', '1.3.0')
+  expect(Math.fround(30.049999)).toBe(Math.fround(30.05))
+  useTuneProfileStore.getState().setDraftField('kp', 30.05)
+  expect(useTuneProfileStore.getState().draftFields).toEqual({ kp: 30.05 })
+  useTuneProfileStore.getState().setBoardSnapshot({
+    ...boardSnapshot,
+    groups: [
+      {
+        id: 'general',
+        title: 'General',
+        fields: [
+          {
+            id: 'kp',
+            label: 'Angle P',
+            value: 30,
+            unit: null,
+            min: 0,
+            max: 40,
+            encodingScale: 10,
+          },
+        ],
+      },
+    ],
+  })
+  expect(useTuneProfileStore.getState().boardDiff).toEqual([])
+  expect(useTuneProfileStore.getState().draftFields).toEqual({ kp: 30.05 })
 })

@@ -48,9 +48,9 @@ const DEV_PAGE_SHORTCUTS = [
     iconColor: theme.palette.cyan.color,
   },
   {
-    label: 'Tune ring prototype',
-    hint: 'Six ring controls; in-memory values only',
-    route: routes.devTuneRingPrototype,
+    label: 'Rings calibration',
+    hint: 'Temporary Feel mapping anchors',
+    route: routes.settingsRingsCalibration,
     icon: SlidersHorizontalIcon,
     iconColor: theme.tune.color,
   },

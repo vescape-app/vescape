@@ -5,19 +5,26 @@ import type { Board } from '@/modules/board/store/boardStore'
 import { theme } from '@/constants/theme'
 
 interface BoardPickerModalProps {
+  title?: string
   visible: boolean
   boards: Board[]
   onSelect: (board: Board) => void
   onDismiss: () => void
 }
 
-export function BoardPickerModal({ visible, boards, onSelect, onDismiss }: BoardPickerModalProps) {
+export function BoardPickerModal({
+  title = 'Copy to board',
+  visible,
+  boards,
+  onSelect,
+  onDismiss,
+}: BoardPickerModalProps) {
   return (
     <Modal visible={visible} transparent animationType="fade" onRequestClose={onDismiss}>
       <Pressable style={styles.modalBackdrop} onPress={onDismiss}>
         <Pressable style={styles.promptModal} onPress={(e) => e.stopPropagation()}>
           <View style={styles.promptHeader}>
-            <Text style={styles.promptTitle}>Copy to board</Text>
+            <Text style={styles.promptTitle}>{title}</Text>
             <Pressable style={styles.promptCloseBtn} onPress={onDismiss}>
               <XIcon size={14} color={theme.neutral.textPrimary} weight="bold" />
             </Pressable>

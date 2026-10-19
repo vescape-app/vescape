@@ -331,6 +331,7 @@ class CoreForegroundService : Service() {
             profileId: String,
             onSuccess: (Map<String, Any?>) -> Unit,
             onError: (String, String) -> Unit,
+            draftFields: Map<String, Any?>? = null,
         ) {
             val service = instance
             if (service == null) {
@@ -340,7 +341,7 @@ class CoreForegroundService : Service() {
                 )
                 return
             }
-            pendingConfigWrite = PendingConfigWrite(profileId, onSuccess, onError)
+            pendingConfigWrite = PendingConfigWrite(profileId, onSuccess, onError, draftFields?.toMap())
             service.controller.consumePendingConfigWrite()
         }
 
