@@ -16,9 +16,12 @@ struct BatteryComplicationView: View {
     Group {
       switch family {
       case .accessoryCorner:
-        Text(text).font(.system(.title3, design: .rounded).weight(.semibold))
+        Color.clear
           .widgetLabel {
             Gauge(value: value, in: 0...100) { Text("Battery") }
+              currentValueLabel: { Text("") }
+              minimumValueLabel: { Text(text) }
+              maximumValueLabel: { Text("") }
               .tint(color)
           }
       case .accessoryCircular:
