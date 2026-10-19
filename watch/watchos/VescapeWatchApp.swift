@@ -5,7 +5,8 @@ import SwiftUI
 /// (ADR-0019) — the peer of `watch/wearos/` on Android.
 @main
 struct VescapeWatchApp: App {
-  @StateObject private var link = PhoneLink()
+  @WKApplicationDelegateAdaptor(WatchAppDelegate.self) private var appDelegate
+  @StateObject private var link = PhoneLink.shared
   @State private var replayer: FrameReplayer?
 
   var body: some Scene {

@@ -19,6 +19,8 @@ import WidgetKit
 /// @parity /watch/wearos/src/main/java/app/vescape/wear/TelemetryState.kt
 /// @parity /watch/wearos/src/main/java/app/vescape/wear/PhoneLinkMonitor.kt
 final class PhoneLink: NSObject, ObservableObject, WCSessionDelegate {
+  static let shared = PhoneLink()
+  var onActivation: (() -> Void)?
   /// What the wrist draws: the reduced state, never the raw frame. A view that read `frame`
   /// directly would render a reading the reducer has already declared too old to trust.
   @Published private(set) var mirror = MirrorStateReducer.reduce(frame: nil, lastFrameAtMs: nil, nowMs: 0)
@@ -374,7 +376,10 @@ final class PhoneLink: NSObject, ObservableObject, WCSessionDelegate {
     activationDidCompleteWith activationState: WCSessionActivationState,
     error: Error?
   ) {
-    DispatchQueue.main.async { self.syncCounterpart(session) }
+    DispatchQueue.main.async {
+      self.syncCounterpart(session)
+      self.onActivation?()
+    }
   }
 
   func sessionReachabilityDidChange(_ session: WCSession) {
