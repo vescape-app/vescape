@@ -101,7 +101,7 @@ const styles = StyleSheet.create({
     borderRadius: 19,
     backgroundColor: theme.alpha(theme.neutral.surfaceDeep, 0.85),
     borderWidth: 1,
-    borderColor: theme.alpha(theme.palette.slate.light, 0.3),
+    borderColor: theme.alpha(theme.neutral.textSecondary, 0.3),
     position: 'relative',
     overflow: 'hidden',
   },

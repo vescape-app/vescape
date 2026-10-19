@@ -113,7 +113,7 @@ export default function SettingsScreen() {
             icon={GaugeIcon}
             iconColor={theme.settingsIcon.liveTelemetry}
             label="Live telemetry"
-            hint="Graphs, update rate, and battery smoothing"
+            hint="Chart length and update rate"
             onPress={() => router.push(routes.settingsLiveTelemetry)}
           />
           <SettingsRow
@@ -195,7 +195,7 @@ export default function SettingsScreen() {
             icon={ClockCounterClockwiseIcon}
             iconColor={theme.settingsIcon.filters}
             label="History"
-            hint="Ride splitting and ride data filtering"
+            hint="Ride splitting, data filters and battery smoothing"
             onPress={() => router.push(routes.settingsHistory)}
           />
           <SettingsRow

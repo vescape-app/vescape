@@ -501,6 +501,11 @@ public class VescapeCoreModule: Module {
       self.coordinator.setFocusedSeriesMetrics(metrics)
     }
 
+    // @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/VescapeCoreModule.kt `setLiveSeriesMetrics`
+    Function("setLiveSeriesMetrics") { (metrics: [String]) in
+      self.coordinator.setLiveSeriesMetrics(metrics)
+    }
+
     AsyncFunction("getCriticalRideNotificationPermissionStatus") { (promise: Promise) in
       UNUserNotificationCenter.current().getNotificationSettings { settings in
         promise.resolve(Self.notificationPermissionStatus(settings.authorizationStatus))
@@ -536,6 +541,10 @@ public class VescapeCoreModule: Module {
         self.coordinator.reloadTelemetrySettings()
       }
       try CustomAppSounds.delete(id)
+    }
+    // @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/VescapeCoreModule.kt `mapTile`
+    AsyncFunction("mapTile") { (z: Int, x: Int, y: Int) async -> String? in
+      await MapTiles.shared.tile(z: z, x: x, y: y)?.absoluteString
     }
     Function("getAlertSounds") {
       self.alertPresets
@@ -742,8 +751,8 @@ public class VescapeCoreModule: Module {
     }
 
     AsyncFunction("stopBoard") { (promise: Promise) in
-      DispatchQueue.main.async {
-        BoardSessionCommands.stopRide()
+      Task { @MainActor in
+        await BoardSessionCommands.stopRide()
         promise.resolve(nil)
       }
     }
@@ -807,6 +816,17 @@ public class VescapeCoreModule: Module {
       try RecordingStorageFailure.requireAvailable()
       do { promise.resolve(try TelemetryRepository.shared.exportRideCsv(options)) }
       catch { promise.reject("ERR_RIDE_EXPORT", "Could not export ride", cause: error) }
+    }
+
+    // @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/VescapeCoreModule.kt `exportLiveTelemetryCsv`
+    // @parity /modules/vescape-core/src/index.ts `exportLiveTelemetryCsv`
+    AsyncFunction("exportLiveTelemetryCsv") { (promise: Promise) in
+      do {
+        promise.resolve(try RideExport.liveCsv(self.coordinator.recentTelemetry(),
+          directory: FileManager.default.temporaryDirectory))
+      } catch {
+        promise.reject("ERR_LIVE_EXPORT", "Could not export live telemetry", cause: error)
+      }
     }
 
     AsyncFunction("getHistoryRange") { (options: [String: Any], promise: Promise) in

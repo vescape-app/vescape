@@ -31,13 +31,13 @@ import androidx.wear.compose.material.Text
 import kotlin.math.absoluteValue
 
 /**
- * No fresh frames: name the reason from the watch-local [PhoneLink], so a dead Bluetooth link, a
- * missing phone app and an idle one are distinguishable at a glance.
+ * No fresh frames and a phone-link problem the wrist cannot fix itself ([LinkNotice]): name it, so a
+ * dead Bluetooth link, a missing phone app and a link still being probed are distinguishable at a
+ * glance. A reachable phone app that is not pushing gets no notice at all (ADR-0039).
  *
  * Each title names the thing that is missing rather than the state of the chain, in the rider's
- * words and not the enum's: the failure is always one broken step in watch → phone → board, and the
- * last of those is not about the phone at all. Titles that differ only in a word ("No phone link" /
- * "Phone linked") read as the same shape on a round screen at arm's length.
+ * words and not the enum's. Titles that differ only in a word ("No phone link" / "Phone linked")
+ * read as the same shape on a round screen at arm's length.
  *
  * This draws inside the gauge shell, not instead of it. The shell drops its speed and duty heroes
  * while disconnected, so the reason owns the centre of the circle rather than dodging two dashes.
@@ -45,17 +45,15 @@ import kotlin.math.absoluteValue
  * @parity /watch/watchos/StatusLayouts.swift `DisconnectedLayout`
  */
 @Composable
-internal fun DisconnectedLayout(ambient: AmbientMode) {
-    val link by TelemetryState.phoneLink
-    val (title, caption) = when (link) {
-        PhoneLink.UNKNOWN -> "Connecting…" to ""
+internal fun DisconnectedLayout(notice: LinkNotice, ambient: AmbientMode) {
+    val (title, caption) = when (notice) {
+        LinkNotice.CONNECTING -> "Connecting…" to ""
         // The title already says it. "Check Bluetooth" was the only fix a rider could try, and
         // they try it without being told.
-        PhoneLink.NO_PHONE -> "Phone not connected" to ""
+        LinkNotice.NO_PHONE -> "Phone not connected" to ""
         // The capability is absent when the app is missing *or* too old, so the caption has to
         // cover both; naming only one of them sends half the riders down the wrong path.
-        PhoneLink.PHONE_ONLY -> "Phone app missing" to "Install or update Vescape"
-        PhoneLink.APP_REACHABLE -> "Board not connected" to "Connect it on your phone"
+        LinkNotice.APP_MISSING -> "Phone app missing" to "Install or update Vescape"
     }
     StatusLayout(title = title, caption = caption, ambient = ambient)
 }

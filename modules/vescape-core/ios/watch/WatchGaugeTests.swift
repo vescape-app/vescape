@@ -24,6 +24,50 @@ final class WatchGaugeTests: XCTestCase {
     return ReplayFixtureParser.parse(text: text)
   }
 
+
+  private func fixtureOrigin() throws -> WatchMapPosition {
+    let json = try String(contentsOf: Self.fixtures.appendingPathComponent("watch-route.json"), encoding: .utf8)
+    return try XCTUnwrap(ReplaySceneParser.parseOrigin(json: json))
+  }
+
+  func testRideFixtureKeepsMovingAndShowingItsTrailAfterNavigationEnds() throws {
+    let text = try String(contentsOf: Self.fixtures.appendingPathComponent("watch-ride.jsonl"), encoding: .utf8)
+    let origin = try fixtureOrigin()
+    for wander in [false, true] {
+      let samples = ReplayFixtureParser.parse(text: text, wander: wander, origin: origin)
+      let arrival = try XCTUnwrap(samples.firstIndex { $0.frame.navBearing == nil })
+      XCTAssertGreaterThan(arrival, 0)
+      let after = samples.dropFirst(arrival)
+      XCTAssertFalse(after.isEmpty)
+      XCTAssertTrue(after.allSatisfy { $0.frame.mapPosition != nil && $0.frame.trail.count > 1 })
+      XCTAssertNotEqual(after.first?.frame.mapPosition, after.last?.frame.mapPosition)
+    }
+  }
+
+  func testSeededDetoursMoveSmoothlyOffRouteThenRejoinAndTrailFollowsActualPositions() throws {
+    let lines = (0...240).map { i in
+      "{\"t\":\(i * 500),\"speed\":21.6,\"riderEast\":0,\"riderNorth\":\(i * 3),\"course\":0,\"navBearing\":0,\"navDistance\":2000}"
+    }
+    let straight = ReplayFixtureParser.parse(lines)
+    let detour = ReplayFixtureParser.parse(lines, wander: true)
+    XCTAssertEqual(detour.map(\.frame), ReplayFixtureParser.parse(lines, wander: true).map(\.frame))
+    XCTAssertEqual(straight.first?.frame, detour.first?.frame)
+    XCTAssertEqual(detour.last?.frame.riderEastM, 0)
+    XCTAssertEqual(detour.last?.frame.riderNorthM, 720)
+    XCTAssertTrue(detour.contains { abs($0.frame.riderEastM!) > 15 })
+    XCTAssertTrue(detour.contains { abs($0.frame.courseDeg!) > 5 })
+    for i in 1..<detour.count {
+      let frame = detour[i].frame
+      let previous = detour[i - 1].frame
+      XCTAssertLessThan(hypot(frame.riderEastM! - previous.riderEastM!, frame.riderNorthM! - previous.riderNorthM!), 5)
+      XCTAssertEqual(frame.navBearing, straight[i].frame.navBearing)
+      XCTAssertEqual(frame.trail.first!.eastM, -frame.riderEastM!, accuracy: 0.0001)
+      XCTAssertEqual(frame.trail.first!.northM, -frame.riderNorthM!, accuracy: 0.0001)
+      XCTAssertEqual(frame.trail.last!.eastM, 0)
+      XCTAssertEqual(frame.trail.last!.northM, 0)
+    }
+  }
+
   func testReplayRouteMatchesSharedRiderCoordinates() throws {
     let json = try String(
       contentsOf: Self.fixtures.appendingPathComponent("watch-route.json"), encoding: .utf8
@@ -97,7 +141,7 @@ final class WatchGaugeTests: XCTestCase {
     // A temperature below the arc floor is an empty arc, never a negative one.
     XCTAssertEqual(WatchGauge.tempFraction(-40), 0)
     XCTAssertEqual(WatchGauge.tempFraction(WatchGauge.tempMax + 10), 1)
-    XCTAssertEqual(WatchGauge.tempFraction(45), 0.5, accuracy: 0.0001)
+    XCTAssertEqual(WatchGauge.tempFraction(60), 0.5, accuracy: 0.0001)
   }
 
   /// An unreported lane parks its arc at the floor. It must not be confused with a real reading of
@@ -181,5 +225,26 @@ final class WatchGaugeTests: XCTestCase {
 
     XCTAssertEqual(samples.count, 1)
     XCTAssertEqual(samples[0].atMs, 1_000)
+  }
+
+  func testShippedStreetMapTilesSitUnderEveryReplayedRiderPosition() throws {
+    let json = try String(contentsOf: Self.fixtures.appendingPathComponent("watch-map-tiles.json"), encoding: .utf8)
+    let tiles = try XCTUnwrap(ReplaySceneParser.parseMapTiles(json: json)).tiles
+    XCTAssertFalse(tiles.isEmpty)
+    for tile in tiles {
+      XCTAssertTrue(FileManager.default.fileExists(atPath: Self.fixtures.appendingPathComponent("watch-map-tiles/\(tile.key).jpg").path))
+    }
+    let origin = try fixtureOrigin()
+    for fixture in ["watch-ride.jsonl", "watch-sweep.jsonl"] {
+      let text = try String(contentsOf: Self.fixtures.appendingPathComponent(fixture), encoding: .utf8)
+      let positions = ReplayFixtureParser.parse(text: text, wander: true, origin: origin).compactMap(\.frame.mapPosition)
+      XCTAssertFalse(positions.isEmpty)
+      for position in positions {
+        XCTAssertTrue(tiles.contains { tile in
+          position.latitude <= tile.northWest.latitude && position.latitude > tile.southEast.latitude
+            && position.longitude >= tile.northWest.longitude && position.longitude < tile.southEast.longitude
+        }, "\(fixture): no tile under \(position)")
+      }
+    }
   }
 }

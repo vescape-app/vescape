@@ -6,6 +6,7 @@ import { Text } from '@/components/base/Text'
 import { capabilityPresentation } from '@/modules/accessories/constants/accessoryCapabilities'
 import { capabilityStateCopy } from '@/modules/accessories/lib/capabilityStateCopy'
 import { interaction, theme } from '@/constants/theme'
+import { useResolvedNeutralColors } from '@/hooks/useTheme'
 
 /**
  * One capability an Accessory declares, with what the app can do about it.
@@ -32,6 +33,7 @@ export function AccessoryCapabilityRow({
   /** Omit when this capability has nothing to open. */
   onPress?: () => void
 }) {
+  const neutral = useResolvedNeutralColors()
   const { title, description, icon: CapabilityIcon } = capabilityPresentation(capability)
   const off = capability.supported && capability.enabled === false
   const tint = !capability.supported
@@ -53,7 +55,7 @@ export function AccessoryCapabilityRow({
 
   const body = (
     <>
-      <View style={styles.icon}>
+      <View style={[styles.icon, { borderColor: theme.alpha(neutral.border, 0.6) }]}>
         <CapabilityIcon size={18} color={tint} weight="duotone" />
       </View>
       <View style={styles.body}>
@@ -103,7 +105,6 @@ const styles = StyleSheet.create({
     height: 34,
     borderRadius: 9,
     borderWidth: 1,
-    borderColor: theme.alpha(theme.neutral.border, 0.6),
     alignItems: 'center',
     justifyContent: 'center',
   },

@@ -15,7 +15,6 @@ import Foundation
 ///   body.** A new protocol session restarts them, which is what makes an old queue harmless.
 ///
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/accessory/AccessorySession.kt
-/// @parity /modules/vescape-core/src/index.ts `AccessoryCapabilitySettings`
 enum AccessorySession {
   /// How long an accessory holds a command before falling back to its local behavior.
   static let leaseMs: Int = 2_000
@@ -49,7 +48,6 @@ enum AccessorySession {
 /// carried on every send, so a renewal is a replay and never a partial update.
 ///
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/accessory/AccessorySession.kt `AccessoryCommand`
-/// @parity /modules/vescape-core/src/index.ts `AccessoryCommandSnapshot`
 enum AccessoryCommand: Equatable {
   /// Measurement demand for a `ground_clearance` capability.
   case configure(capabilityId: String, enabled: Bool, rateHz: Double)

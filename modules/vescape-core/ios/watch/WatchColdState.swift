@@ -57,6 +57,7 @@ final class WatchColdState {
   /// moved its origin on *intent* would place the rider against a route the wrist never received,
   /// and unlike a one-frame skew that lasts until the next route change.
   var onDelivered: ((String) -> Void)?
+  var onFailed: ((String) -> Void)?
 
   init(
     context: @escaping () -> [String: Any],
@@ -95,6 +96,7 @@ final class WatchColdState {
       onDelivered?(channel)
     } catch {
       pushed.removeValue(forKey: channel)
+      onFailed?(channel)
       record("watch_cold_state_push_failed", ["channel": channel, "error": error.localizedDescription])
     }
   }

@@ -94,8 +94,18 @@ explicit flushes. A minute bucket is updated repeatedly, rather than waiting for
 
 History reads decode and join the saved segments, using their endpoint times to preserve gaps across
 minute boundaries. `RideRoutePoint.breakBefore` starts a new thumbnail subpath. Thumbnail fitting
-uses longitude's latitude-dependent scale and one uniform scale for both axes, centred in its frame.
-It does not smooth corners. The 30-second gap rule shares the existing limitation around short
+uses Web Mercator and one uniform scale for both axes, centred in its frame, never tighter than
+300 m across. It does not smooth corners.
+
+Thumbnails draw a dark street map behind the route. Native `MapTiles` downloads 512 px JPEG tiles of
+a Mapbox-hosted style from the Static Tiles API and keeps them in the app's cache directory with no
+expiry; concurrent requests share one download and a failed one stores nothing. The style is the
+One Dark ground layers without labels, icons or boundaries, published to the app's Mapbox account
+with `bun run map:publish-thumbnail-style` (needs `MAPBOX_SECRET_TOKEN` with `styles:list`,
+`styles:read` and `styles:write`). Its `owner/styleId` is a native constant and part of the cache
+path. Republishing under the same ID leaves cached tiles as they were. A thumbnail shows its map only
+once every tile it needs is on disk; until then, and offline, it shows the plain route. The map
+ignores Privacy Zones, so it is for on-device display only. The 30-second gap rule shares the existing limitation around short
 Privacy Zone spans: no explicit privacy-break metadata is stored.
 
 Older buckets keep their first-coordinate fallback until the rider runs the existing **Rebuild
@@ -372,3 +382,11 @@ mid-chain range starts beyond one page, optional NULL transitions, keyframe rese
 switch decoding, rejected GPS pages, legacy precision, first/previous/final GPS matching,
 missing GPS, exact Board scope, empty telemetry, and escaping. External imports and device
 share sheets remain rider-led tests.
+
+### Live telemetry CSV
+
+The telemetry panel's **Export CSV** writes the live telemetry window instead of stored history:
+every frame native holds in memory for the configured live telemetry length, at the full packet
+rate, oldest first. `exportLiveTelemetryCsv` takes no options and returns the same closed
+`RideExportFile`. The file uses the ride CSV's columns and decoders; live frames carry no GPS fix,
+so the location columns stay empty. An empty window rejects instead of producing a header-only file.

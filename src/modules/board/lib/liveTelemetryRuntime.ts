@@ -7,6 +7,9 @@ import { finite, absolute } from '@/helpers/finite'
 interface LiveTelemetryValues {
   speedKmh: SharedValue<number | null>
   dutyPercent: SharedValue<number | null>
+  /** Highest speed / duty across the live window, from native. */
+  speedPeakKmh: SharedValue<number | null>
+  dutyPeakPercent: SharedValue<number | null>
   motorCurrent: SharedValue<number | null>
   batteryCurrent: SharedValue<number | null>
   batteryVoltage: SharedValue<number | null>
@@ -29,6 +32,8 @@ type TickScalars = Record<keyof LiveTelemetryValues, number | null>
 const EMPTY_TICK: TickScalars = {
   speedKmh: null,
   dutyPercent: null,
+  speedPeakKmh: null,
+  dutyPeakPercent: null,
   motorCurrent: null,
   batteryCurrent: null,
   batteryVoltage: null,
@@ -63,6 +68,8 @@ function createValues(): LiveTelemetryValues {
   return {
     speedKmh: makeMutable<number | null>(null),
     dutyPercent: makeMutable<number | null>(null),
+    speedPeakKmh: makeMutable<number | null>(null),
+    dutyPeakPercent: makeMutable<number | null>(null),
     motorCurrent: makeMutable<number | null>(null),
     batteryCurrent: makeMutable<number | null>(null),
     batteryVoltage: makeMutable<number | null>(null),
@@ -85,6 +92,8 @@ function tickScalars(telemetry: TelemetryEvent): TickScalars {
   return {
     speedKmh: absolute(telemetry.speed),
     dutyPercent: dutyPercent(telemetry.dutyCycle),
+    speedPeakKmh: finite(telemetry.speedPeak),
+    dutyPeakPercent: finite(telemetry.dutyPeak),
     motorCurrent: finite(telemetry.motorCurrent),
     batteryCurrent: finite(telemetry.batteryCurrent),
     batteryVoltage: finite(telemetry.batteryVoltage),
@@ -112,6 +121,8 @@ export function createLiveTelemetryRuntime(): LiveTelemetryRuntime {
     'worklet'
     values.speedKmh.value = next.speedKmh
     values.dutyPercent.value = next.dutyPercent
+    values.speedPeakKmh.value = next.speedPeakKmh
+    values.dutyPeakPercent.value = next.dutyPeakPercent
     values.motorCurrent.value = next.motorCurrent
     values.batteryCurrent.value = next.batteryCurrent
     values.batteryVoltage.value = next.batteryVoltage

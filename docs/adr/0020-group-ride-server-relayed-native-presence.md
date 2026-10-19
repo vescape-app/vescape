@@ -1,5 +1,7 @@
 # Group Ride as a server-relayed, native-owned presence pillar
 
+Current implementation note, 2026-09-29: iOS Group Ride now exists (`modules/vescape-core/ios/groupride/`), so the iOS deferral below is historical. Rider Presence also carries motor and controller temperatures, phone battery, Board name and the Direction Point. ADR-0039 adds the Group Ride Frame that shows the Group Ride on the Watch Mirror.
+
 The app needs **Group Rides** — live, ephemeral rooms where nearby **Riders** share **Rider Presence** (location + heading, plus optional speed and **Battery SoC Estimate**) so they can see each other on the live map while riding together. This is the first app concept that is **not local-only truth**: it requires a network, multi-device relay, and rider identity, none of which existed. The app was 100% local-first (BLE board + phone GPS + local storage). Group Ride adds a single new pillar — a relay server and a native network client — without disturbing the rest of the local-first model.
 
 The durable, long-lived work (the WebSocket connection and the location pushes that must continue while riding with the screen off) lives in **native**, alongside `CoreForegroundService` / `GpsMonitor`, per the project's law that native owns durable truth and long-lived work while JS renders state and sends intents. JS owns only the **Social panel** UI and join/leave intents.

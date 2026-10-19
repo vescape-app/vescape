@@ -238,7 +238,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 10,
     borderRadius: 14,
     borderWidth: 1,
-    borderColor: theme.alpha(theme.palette.slate.light, 0.3),
+    borderColor: theme.alpha(theme.neutral.textSecondary, 0.3),
     backgroundColor: theme.alpha(theme.neutral.surfaceDeep, 0.6),
   },
   telemetryLabel: {

@@ -580,6 +580,13 @@ export interface Board {
   id: string
   name: string
   description: string | null
+  /**
+   * Rider-selected visual identity. Native persists this opaque presentation value; JS owns the
+   * available rail and color catalogs.
+   * @parity /modules/vescape-core/ios/telemetry/AppDataRepository.swift `normalizePersonalization`
+   * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/AppDataRepository.kt `normalizePersonalization`
+   */
+  personalization?: { railId: string; railColorId: string }
   createdAt: number
   /**
    * Tombstone stamp: epoch ms of the rider's delete, `null` while the Board is alive. A deleted
@@ -772,7 +779,7 @@ export interface PrivacyZone {
  *
  * @parity /modules/vescape-core/ios/mappoints/MapPointApi.swift
  * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/mappoints/MapPointApi.kt
- * @parity /Users/kacper/Workspace/vescape-server/src/mapPoints/protocol.ts `MapPointCategorySchema`
+ * Mirrors vescape-server `src/mapPoints/protocol.ts` `MapPointCategorySchema`.
  */
 export type MapPointCategory =
   | 'drop'
@@ -869,6 +876,14 @@ export interface TelemetryEvent {
   pullRateHz: number | null
   lastPacketAt: number
   firedAlerts?: FiredAlert[]
+  /**
+   * Highest speed (km/h, unsigned) and duty (%, unsigned) across the live window, as the live
+   * charts plot them. Only on `onLiveTick`.
+   * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/TelemetryPipeline.kt `ProcessedTelemetry`
+   * @parity /modules/vescape-core/ios/telemetry/LiveSeriesEmitter.swift `LivePeaks`
+   */
+  speedPeak?: number | null
+  dutyPeak?: number | null
 }
 
 /** Smart-BMS snapshot decoded from a VESC `COMM_BMS_GET_VALUES` reply. */
@@ -1435,7 +1450,7 @@ export interface ProfileStatsMonth {
 }
 
 /**
- * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/ProfileStatsRepository.kt `getProfileStatsSnapshot`
+ * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/ProfileStatsRepositoryAndroid.kt `getProfileStatsSnapshot`
  * @parity /modules/vescape-core/ios/telemetry/ProfileStatsRepository.swift `getProfileStatsSnapshot`
  */
 export interface ProfileStatsSnapshot {
@@ -1499,7 +1514,7 @@ export interface RideHistorySession {
 }
 
 /**
- * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/RideHistoryRepository.kt `getPage`
+ * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/RideHistoryRepositoryAndroid.kt `getPage`
  * @parity /modules/vescape-core/ios/telemetry/RideHistoryRepository.swift `getPage`
  */
 export interface RideHistoryPage {
@@ -1654,6 +1669,44 @@ export interface AppSettings {
    * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/watch/WatchSettings.kt
    */
   wearNavArrowEnabled: boolean
+  /**
+   * Show the ridden trail behind watch telemetry gauges. Enabled by default; the map page
+   * always shows the trail. Mirrored as cold settings to both watch platforms.
+   * @parity /modules/vescape-core/ios/watch/WatchSettings.swift
+   * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/watch/WatchSettings.kt
+   */
+  wearTelemetryTrailEnabled: boolean
+  /**
+   * Show Group Ride dots and edge triangles on the watch telemetry screen. Enabled by default; off,
+   * they fade in on the map page only, and the Group Ride page is unchanged. The phone keeps sending
+   * the Group Ride frame either way. Mirrored as cold settings to both watch platforms.
+   * @parity /modules/vescape-core/ios/watch/WatchSettings.swift
+   * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/watch/WatchSettings.kt
+   */
+  wearTelemetryGroupEnabled: boolean
+  /**
+   * Draw the Navigation route line on the watch telemetry screen. Enabled by default; off, it fades in
+   * on the map page only. The nav chevron and distance readout stay, and the phone keeps sending the
+   * route either way. Mirrored as cold settings to both watch platforms.
+   * @parity /modules/vescape-core/ios/watch/WatchSettings.swift
+   * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/watch/WatchSettings.kt
+   */
+  wearTelemetryRouteEnabled: boolean
+  /**
+   * Draw the street map on the watch. Enabled by default. Off: the phone sends no map tiles and
+   * both wrists hide the map; tiles already on the wrist stay. Mirrored as cold settings.
+   * @parity /modules/vescape-core/ios/watch/WatchSettings.swift
+   * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/watch/WatchSettings.kt
+   */
+  wearStreetMapEnabled: boolean
+  /**
+   * Street map opacity behind the watch gauges, integer percent: one of 0 (Off), 30, 45, 60, 75, 90
+   * (default 60). The map page always draws it at 100 %. Native snaps any other value to 60. Mirrored as cold
+   * settings.
+   * @parity /modules/vescape-core/ios/watch/WatchMapTile.swift `WatchMapGauges`
+   * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/watch/WatchMapTile.kt `WatchMapGauges`
+   */
+  wearMapGaugesPercent: number
   /**
    * Wrist Tilt stick speed at full deflection, percent of full tilt per second (1–100). Pushed to the
    * wrist, which integrates the stick into a Remote Tilt lock.
@@ -2241,7 +2294,10 @@ export interface MotorConfigValuesEvent {
   values: MotorConfigValues | null
 }
 
-/** @parity native BoardConfigChangeNotice peers. */
+/**
+ * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/config/BoardConfigChangeNotice.kt `BoardConfigChangeDiff`
+ * @parity /modules/vescape-core/ios/config/BoardConfigStore.swift `BoardConfigChangeDiff`
+ */
 export interface BoardConfigChangeDiff {
   fieldId: string
   label: string
@@ -2504,11 +2560,15 @@ export interface RouteProgress {
   /** The point on the path nearest to the rider. */
   latitude: number
   longitude: number
-  /** Metres left to the Direction Point measured along the path, not as the crow flies. */
+  /**
+   * Metres left to the Direction Point measured along the path, not as the crow flies. Projected
+   * onto the path's end, it is the straight line from the rider to that end.
+   */
   remainingMeters: number
   /**
-   * Absolute degrees clockwise from north, aimed a short way further along the path. Absolute, not
-   * relative to where the rider is pointing — rotate it yourself if a view needs it rider-up.
+   * Absolute degrees clockwise from north, aimed a short way further along the path, or at the
+   * path's end once the rider is projected onto it. Absolute, not relative to where the rider is
+   * pointing — rotate it yourself if a view needs it rider-up.
    */
   bearingDeg: number
 }
@@ -2683,12 +2743,14 @@ type VescapeCoreNativeModule = NativeEventEmitter<VescapeCoreEvents> & {
   setTelemetryRecordingEnabled(enabled: boolean): void
   setBmsSeriesFocused(focused: boolean): void
   setFocusedSeriesMetrics(metrics: string[]): void
+  setLiveSeriesMetrics(metrics: string[]): void
   reloadAlertRules(): void
   getCriticalRideNotificationPermissionStatus(): Promise<CriticalRideNotificationPermissionStatus>
   requestCriticalRideNotificationPermission(): Promise<CriticalRideNotificationPermissionStatus>
   getAlertSounds(): AlertSound[]
   previewAlertSound(soundType: AlertSoundType): void
   playAppSound(pack: string, cue: 'on' | 'off' | 'created' | 'join' | 'error'): void
+  mapTile(z: number, x: number, y: number): Promise<string | null>
   customAppSoundPacks(): Promise<CustomAppSoundPack[]>
   createAppSoundPack(name: string): Promise<CustomAppSoundPack[]>
   renameAppSoundPack(id: string, name: string): Promise<void>
@@ -2752,6 +2814,7 @@ type VescapeCoreNativeModule = NativeEventEmitter<VescapeCoreEvents> & {
   }): Promise<TelemetrySample[]>
   exportRideGpx(options: RideExportOptions): Promise<RideExportFile>
   exportRideCsv(options: RideExportOptions): Promise<RideExportFile>
+  exportLiveTelemetryCsv(): Promise<RideExportFile>
   getHistoryRange(options: {
     fromMs: number
     toMs: number
@@ -3140,6 +3203,14 @@ export function setFocusedSeriesMetrics(metrics: string[]): void {
   native.setFocusedSeriesMetrics(metrics)
 }
 
+/**
+ * Set the metric keys `onLiveSeries` carries beyond the always-on battery set (empty array to drop
+ * back to it). The telemetry panel holds these while it is open.
+ */
+export function setLiveSeriesMetrics(metrics: string[]): void {
+  native.setLiveSeriesMetrics(metrics)
+}
+
 /** Tell the Android foreground service to re-read alert rules from native storage. */
 export function reloadAlertRules(): void {
   native.reloadAlertRules()
@@ -3193,6 +3264,13 @@ export interface CustomAppSoundPack {
   sounds: Partial<Record<AppSoundCueId, string>>
 }
 export const customAppSoundPacks = (): Promise<CustomAppSoundPack[]> => native.customAppSoundPacks()
+
+/**
+ * File URI of one 512 px Web Mercator tile (z/x/y) of the hosted thumbnail map style, cached on disk
+ * with no expiry. Null for an invalid tile or a failed download; the next call retries.
+ */
+export const mapTile = (z: number, x: number, y: number): Promise<string | null> =>
+  native.mapTile(z, x, y)
 export const createAppSoundPack = (name: string): Promise<CustomAppSoundPack[]> =>
   native.createAppSoundPack(name)
 export const renameAppSoundPack = (id: string, name: string): Promise<void> =>
@@ -3540,6 +3618,16 @@ export async function exportRideGpx(options: RideExportOptions): Promise<RideExp
  */
 export async function exportRideCsv(options: RideExportOptions): Promise<RideExportFile> {
   return native.exportRideCsv(options)
+}
+
+/**
+ * Live telemetry, every frame at full rate, as a CSV in the ride export's columns. Rejects when the
+ * window is empty.
+ * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/VescapeCoreModule.kt `exportLiveTelemetryCsv`
+ * @parity /modules/vescape-core/ios/VescapeCoreModule.swift `exportLiveTelemetryCsv`
+ */
+export async function exportLiveTelemetryCsv(): Promise<RideExportFile> {
+  return native.exportLiveTelemetryCsv()
 }
 
 export async function getHistoryRange(options: {

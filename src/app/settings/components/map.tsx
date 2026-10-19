@@ -253,7 +253,7 @@ export default function MapComponentsShowcase() {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: theme.palette.slate.bg },
+  container: { flex: 1, backgroundColor: theme.neutral.bg },
   topRight: {
     position: 'absolute',
     top: 12,
@@ -262,10 +262,10 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   floatingButton: {
-    backgroundColor: theme.alpha(theme.palette.slate.surfaceDeep, 0.85),
+    backgroundColor: theme.alpha(theme.neutral.surfaceDeep, 0.85),
   },
   hint: {
-    color: theme.palette.slate.textMuted,
+    color: theme.neutral.textMuted,
     fontSize: 12,
     lineHeight: 17,
   },

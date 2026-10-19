@@ -150,6 +150,39 @@ final class NavigationControllerTests: XCTestCase {
     )
   }
 
+  func testSelectedRouteUsesLatestFixWithoutWaitingForMovement() {
+    let routes = GatedRoutes()
+    let controller = NavigationController(api: routes, store: FakeStore())
+    controller.onFix(latitude: riderLatitude, longitude: riderLongitude, speedMps: 0)
+    controller.setTarget(toLatitude: targetLatitude, toLongitude: targetLongitude,
+                         fromLatitude: riderLatitude, fromLongitude: riderLongitude)
+    XCTAssertTrue(controller.computing)
+    // A fresher position arrives while Directions is running; use that, not the request origin.
+    controller.onFix(latitude: riderLatitude + 0.01, longitude: riderLongitude + 0.01, speedMps: 0)
+    routes.release(targetLatitude)
+    settle()
+    XCTAssertEqual(controller.current?.status, .ready)
+    XCTAssertNotNil(controller.currentProgress)
+    XCTAssertGreaterThan(controller.currentProgress?.latitude ?? 0, riderLatitude)
+    XCTAssertFalse(controller.computing)
+    controller.clear()
+    XCTAssertNil(controller.currentProgress)
+  }
+
+  func testClearingAnInFlightRouteEndsLoadingImmediately() {
+    let routes = GatedRoutes()
+    let controller = NavigationController(api: routes, store: FakeStore())
+    controller.setTarget(toLatitude: targetLatitude, toLongitude: targetLongitude,
+                         fromLatitude: riderLatitude, fromLongitude: riderLongitude)
+    XCTAssertTrue(controller.computing)
+    controller.clear()
+    XCTAssertFalse(controller.computing)
+    routes.release(targetLatitude)
+    settle()
+    XCTAssertNil(controller.current)
+    XCTAssertFalse(controller.computing)
+  }
+
   func testStoredPathComesBackOnRestoreWithoutADirectionsCall() {
     let routes = GatedRoutes()
     let store = FakeStore(

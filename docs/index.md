@@ -63,6 +63,7 @@ deeper references it points at.
 - [agents/react.md](./agents/react.md) — React Native UI conventions, icon usage
 - [agents/skia.md](./agents/skia.md) — Skia canvas: gesture frame cost, transform-only animation, worklet traps
 - [agents/native-sync.md](./agents/native-sync.md) — keeping generated `ios/`, `android/`, Pods in sync
+- [agents/watch-emulators.md](./agents/watch-emulators.md) — `android:up`: phone + Wear emulators paired and mirroring, failures and fixes
 - [agents/mapbox-patches.md](./agents/mapbox-patches.md) — Mapbox dependency patches and native camera semantics
 - [agents/ios-profiling.md](./agents/ios-profiling.md) — headless Instruments on a real device: record, export, parse
 - [agents/clerk-auth.md](./agents/clerk-auth.md) — Clerk production auth setup, Android email-link debugging

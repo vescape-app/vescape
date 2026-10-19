@@ -33,14 +33,26 @@ internal object RideExport {
     val fromMs = (options["fromMs"] as? Number)?.toLong() ?: error("Missing export start")
     val toMs = (options["toMs"] as? Number)?.toLong() ?: error("Missing export end")
     require(fromMs <= toMs) { "Invalid export range" }
-    val extension = if (csv) "csv" else "gpx"
-    val file = File(directory, "vescape-ride-${UUID.randomUUID()}.$extension")
+    return write(directory, "vescape-ride", csv) { writer ->
+      if (csv) writeCsv(dao, writer, fromMs, toMs, options["boardId"] as? String, options["recordingId"] as? String)
+      else writeGpx(dao, writer, fromMs, toMs, options["boardId"] as? String,
+        options["recordingId"] as? String, options["name"] as? String ?: "Vescape ride")
+    }
+  }
+
+  /** Live telemetry, every frame at full rate, in the ride CSV's columns. Live frames carry no GPS fix,
+   * so the location columns stay empty.
+   * @parity /modules/vescape-core/ios/telemetry/RideExport.swift `liveCsv`
+   */
+  fun liveCsv(rows: List<Map<String, Any?>>, directory: File): Map<String, Any> {
+    require(rows.isNotEmpty()) { "No live telemetry to export" }
+    return write(directory, "vescape-live", true) { writer -> writeLiveCsv(writer, rows) }
+  }
+
+  private inline fun write(directory: File, prefix: String, csv: Boolean, body: (Writer) -> Unit): Map<String, Any> {
+    val file = File(directory, "$prefix-${UUID.randomUUID()}.${if (csv) "csv" else "gpx"}")
     try {
-      file.bufferedWriter(Charsets.UTF_8).use { writer ->
-        if (csv) writeCsv(dao, writer, fromMs, toMs, options["boardId"] as? String, options["recordingId"] as? String)
-        else writeGpx(dao, writer, fromMs, toMs, options["boardId"] as? String,
-          options["recordingId"] as? String, options["name"] as? String ?: "Vescape ride")
-      }
+      file.bufferedWriter(Charsets.UTF_8).use(body)
       return mapOf("uri" to file.toURI().toString(), "mimeType" to if (csv) "text/csv" else "application/gpx+xml", "uti" to if (csv) "public.comma-separated-values-text" else "com.topografix.gpx")
     } catch (error: Throwable) { file.delete(); throw error }
   }
@@ -109,20 +121,39 @@ internal object RideExport {
         }
         fun scaled(i: Int, divisor: Double) = values[i]?.toDouble()?.div(divisor)
         val packedState = values[10]?.toInt()
-        val switch = values[11]?.toInt()?.and(15)?.let { state ->
-          when (state) { 0 -> 0; 2 -> 3; 1 -> if (values[12] == null || values[13] == null) null
-            else if (values[12]!!.toInt() > values[13]!!.toInt()) 1 else 2; else -> null }
-        }
         val p = currentGps
         writer.write(csvLine(listOf(f.capturedAtMs, scaled(0, 100.0), scaled(4, 1000.0), scaled(1, 1000.0),
           scaled(3, 1000.0), scaled(2, 1000.0), scaled(16, 10.0), scaled(15, 10.0), scaled(14, 100.0),
-          scaled(6, 100.0), scaled(7, 100.0), scaled(5, 100.0), packedState?.and(15), switch,
+          scaled(6, 100.0), scaled(7, 100.0), scaled(5, 100.0), packedState?.and(15),
+          footpadSwitch(values[11]?.toInt(), scaled(12, 1000.0), scaled(13, 1000.0)),
           packedState?.ushr(4)?.and(15), scaled(12, 1000.0), scaled(13, 1000.0), p?.altitudeCm?.div(100.0),
           p?.latitudeE7?.div(10_000_000.0), p?.longitudeE7?.div(10_000_000.0), p?.accuracyCm?.div(100.0),
           p?.gpsSpeedCentiMps?.div(100.0), p?.fixAtMs, values[9], scaled(8, 1000.0), values[11])))
       }
       afterMs = rows.last().capturedAtMs; afterId = rows.last().id
     }
+  }
+
+  private fun writeLiveCsv(writer: Writer, rows: List<Map<String, Any?>>) {
+    writer.write(csvLine(csvHeaders))
+    for (row in rows) {
+      fun num(key: String) = (row[key] as? Number)?.toDouble()
+      val packedState = (row["state"] as? Number)?.toInt()
+      val rawSwitch = (row["switchState"] as? Number)?.toInt()
+      writer.write(csvLine(listOf(row["lastPacketAt"], num("speed"), num("dutyCycle"), num("batteryVoltage"),
+        num("batteryCurrent"), num("motorCurrent"), num("tempMotor"), num("tempMosfet"), num("odometer"),
+        num("roll"), num("balancePitch"), num("pitch"), packedState?.and(15),
+        footpadSwitch(rawSwitch, num("adc1"), num("adc2")), packedState?.ushr(4)?.and(15), num("adc1"),
+        num("adc2"), null, null, null, null, null, null, row["erpm"], num("balanceCurrent"), rawSwitch)))
+    }
+  }
+
+  /** Float Control's switch column from Refloat's raw state: one pad down reads as the side that is. */
+  private fun footpadSwitch(raw: Int?, adc1: Double?, adc2: Double?): Int? = when (raw?.and(15)) {
+    0 -> 0
+    2 -> 3
+    1 -> if (adc1 == null || adc2 == null) null else if (adc1 > adc2) 1 else 2
+    else -> null
   }
 
   private class TrackCursor(val dao: TelemetryDao, val fromMs: Long, val toMs: Long,

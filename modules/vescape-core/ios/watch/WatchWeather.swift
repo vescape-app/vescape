@@ -107,7 +107,7 @@ struct WatchWeather {
   /// fabricated 0 °C clear sky — the same rule the phone's own parser follows for a short hourly
   /// array. The hours are parallel arrays, so an hour is kept only where every lane has a value.
   ///
-  /// @parity /watch/wearos/src/main/java/app/vescape/wear/MainActivity.kt `readWeather`
+  /// @parity /watch/wearos/src/main/java/app/vescape/wear/WatchWeather.kt `decodeWatchWeather`
   static func decode(_ payload: [String: Any]?) -> WatchWeather? {
     guard let payload,
       let temperatureC = (payload[WatchWeatherKey.temperatureC] as? NSNumber)?.intValue,

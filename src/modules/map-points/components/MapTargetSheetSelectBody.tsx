@@ -151,7 +151,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     gap: 7,
     borderWidth: 1,
-    borderColor: theme.alpha(theme.palette.slate.light, 0.3),
+    borderColor: theme.alpha(theme.neutral.textSecondary, 0.3),
     backgroundColor: theme.alpha(theme.neutral.bg, 0.75),
   },
   editText: {
@@ -166,7 +166,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     borderWidth: 1,
-    borderColor: theme.alpha(theme.palette.slate.light, 0.3),
+    borderColor: theme.alpha(theme.neutral.textSecondary, 0.3),
     backgroundColor: theme.alpha(theme.neutral.bg, 0.75),
   },
   voteGroup: {

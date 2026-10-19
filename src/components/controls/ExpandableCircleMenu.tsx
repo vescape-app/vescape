@@ -3,6 +3,8 @@ import { Pressable, StyleSheet, View } from 'react-native'
 import Animated, { useAnimatedStyle, withTiming } from 'react-native-reanimated'
 import { theme, type ThemeColor } from '@/constants/theme'
 import {
+  useColoredAction,
+  useColoredActionForeground,
   useResolvedColor,
   useResolvedControlColors,
   useResolvedNeutralColors,
@@ -80,12 +82,16 @@ export function ExpandableCircleMenu<Key extends string>({
   onToggle,
   onSelect,
 }: ExpandableCircleMenuProps<Key>) {
-  const resolvedActiveColor = useResolvedColor(activeColor)
+  const baseActiveColor = useResolvedColor(activeColor)
+  const onDarkActiveColor = useColoredActionForeground(activeColor)
+  const coloredBackground = useColoredAction(activeColor)
   const resolvedActiveBackground = useResolvedColor(activeBackground)
   const control = useResolvedControlColors()
   const neutral = useResolvedNeutralColors()
   const resolvedTheme = useThemeStore((state) => state.resolvedTheme)
   const useLightTabs = variant === 'lightTabs' && resolvedTheme === 'light'
+  const resolvedActiveColor = useLightTabs ? onDarkActiveColor : baseActiveColor
+  const shellBackground = useLightTabs && expanded ? neutral.surfaceDeep : control.background
   const metrics = MENU_METRICS[size]
   const optionCount = options.length
   const onToggleRef = useRef(onToggle)
@@ -134,8 +140,8 @@ export function ExpandableCircleMenu<Key extends string>({
         {
           height: metrics.height,
           borderRadius: metrics.radius,
-          backgroundColor: control.background,
-          borderColor: control.border,
+          backgroundColor: shellBackground,
+          borderColor: useLightTabs && expanded ? neutral.border : control.border,
         },
         shellStyle,
       ]}
@@ -154,7 +160,7 @@ export function ExpandableCircleMenu<Key extends string>({
             selected={activeKey === option.key}
             expanded={expanded}
             activeColor={resolvedActiveColor}
-            activeBackground={useLightTabs ? neutral.surface : resolvedActiveBackground}
+            activeBackground={useLightTabs ? coloredBackground : resolvedActiveBackground}
             activeBorder={theme.alpha(resolvedActiveColor, 0.6)}
             inactiveBackground={TRANSPARENT_OPTION_COLOR}
             inactiveBorder={TRANSPARENT_OPTION_COLOR}

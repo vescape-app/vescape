@@ -228,7 +228,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 2,
   },
   legalCountryRowPressed: {
-    backgroundColor: theme.alpha(theme.palette.slate.light, 0.12),
+    backgroundColor: theme.alpha(theme.neutral.textSecondary, 0.12),
   },
   legalCountryDot: {
     width: 9,

@@ -329,7 +329,7 @@ function BoardConfigMatchControl({
       >
         <View style={[styles.checkbox, checked && available && styles.checkboxChecked]}>
           {checked && available ? (
-            <CheckIcon size={13} color={theme.palette.slate.text} weight="bold" />
+            <CheckIcon size={13} color={theme.neutral.textPrimary} weight="bold" />
           ) : null}
         </View>
         <Text style={styles.matchLabel}>Match VESC board configuration</Text>
@@ -462,7 +462,7 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   description: {
-    color: theme.palette.slate.textSecondary,
+    color: theme.neutral.textSecondary,
     fontSize: 12,
     lineHeight: 16,
   },
@@ -478,7 +478,7 @@ const styles = StyleSheet.create({
     height: 20,
     borderRadius: 5,
     borderWidth: 1,
-    borderColor: theme.palette.slate.border,
+    borderColor: theme.neutral.border,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -486,8 +486,8 @@ const styles = StyleSheet.create({
     backgroundColor: theme.palette.blue.bg,
     borderColor: theme.palette.blue.border,
   },
-  matchLabel: { color: theme.palette.slate.text, fontSize: 14, fontWeight: '600' },
-  matchNote: { color: theme.palette.slate.textMuted, fontSize: 12, lineHeight: 17, marginLeft: 28 },
+  matchLabel: { color: theme.neutral.textPrimary, fontSize: 14, fontWeight: '600' },
+  matchNote: { color: theme.neutral.textMuted, fontSize: 12, lineHeight: 17, marginLeft: 28 },
   testButton: {
     height: 28,
     paddingHorizontal: 10,
@@ -512,7 +512,7 @@ const styles = StyleSheet.create({
     borderRadius: 19,
     backgroundColor: theme.alpha(theme.neutral.surfaceDeep, 0.85),
     borderWidth: 1,
-    borderColor: theme.alpha(theme.palette.slate.light, 0.3),
+    borderColor: theme.alpha(theme.neutral.textSecondary, 0.3),
     position: 'relative',
     overflow: 'hidden',
   },

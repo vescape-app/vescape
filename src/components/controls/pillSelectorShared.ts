@@ -10,6 +10,7 @@ export interface ActiveTheme {
 }
 
 export interface PillSelectorCtx {
+  size: 'md' | 'lg'
   activeId: string
   openMenu: (id: string, triggerRef: React.RefObject<View | null>, content: ReactNode) => void
   closeMenu: () => void
@@ -20,6 +21,10 @@ export interface PillSelectorCtx {
 }
 
 export const PillSelectorContext = createContext<PillSelectorCtx | null>(null)
+export const PILL_SIZES = {
+  md: { height: 36, inactiveWidth: 38, activeWidth: 112 },
+  lg: { height: 44, inactiveWidth: 46, activeWidth: 126 },
+} as const
 export const TUNE_OPTION_WIDTH = 38
 export const TUNE_DEFAULT_ACTIVE_WIDTH = 112
 export const TUNE_ANIMATION = { duration: 180 } as const

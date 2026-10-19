@@ -1,7 +1,7 @@
 import Foundation
 
-/// Dedicated watch tick (ADR-0013/0019): a session-scoped scheduler, independent of the board
-/// session poll rate, that reads the latest cold-path `WatchSnapshot` and pushes an encoded Watch
+/// Dedicated watch tick (ADR-0013/0019): a mirror-scoped scheduler, independent of the board
+/// session and poll rate, that reads the latest cold-path `WatchSnapshot` and pushes an encoded Watch
 /// Frame at a configurable cadence. Board lanes may be empty while the session is still connecting.
 ///
 /// Capability-gated: `canPush` is checked before building the frame, so when no Mirror is reachable
@@ -15,6 +15,8 @@ final class WatchTick {
   private let canPush: () -> Bool
   private let push: (Data) -> Void
 
+  private var running = false
+  private var generation = 0
   private var handle: Cancellable?
   private var intervalMs: Int64
 
@@ -35,10 +37,15 @@ final class WatchTick {
   }
 
   func start() {
-    if handle == nil { schedule() }
+    guard !running else { return }
+    running = true
+    generation += 1
+    schedule()
   }
 
   func stop() {
+    running = false
+    generation += 1
     handle?.cancel()
     handle = nil
   }
@@ -48,7 +55,8 @@ final class WatchTick {
   func setIntervalMs(_ intervalMs: Int64) {
     if intervalMs == self.intervalMs { return }
     self.intervalMs = intervalMs
-    if handle != nil {
+    if running {
+      generation += 1
       handle?.cancel()
       handle = nil
       schedule()
@@ -56,13 +64,14 @@ final class WatchTick {
   }
 
   private func schedule() {
+    let currentGeneration = generation
     handle = scheduler.postDelayed(intervalMs) { [weak self] in
-      guard let self else { return }
+      guard let self, running, generation == currentGeneration else { return }
       if self.canPush() {
         let frame = WatchFrameBuilder.build(snapshot: self.snapshot(), stale: self.isStale())
         self.push(WatchFrameBuilder.encode(frame))
       }
-      self.schedule()
+      if running, generation == currentGeneration { schedule() }
     }
   }
 }

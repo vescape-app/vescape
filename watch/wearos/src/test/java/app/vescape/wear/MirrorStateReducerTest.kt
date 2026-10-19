@@ -67,6 +67,45 @@ class MirrorStateReducerTest {
         assertNull(state.frame)
     }
 
+    @Test
+    fun `a reachable phone app that is not pushing gets no notice`() {
+        val disconnected = MirrorStateReducer.reduce(frame = null, lastFrameAtMs = null, nowMs = 0L)
+
+        // No Board is not a fault (ADR-0039): the shell stays empty and says nothing.
+        assertNull(MirrorStateReducer.linkNotice(disconnected.status, PhoneLink.APP_REACHABLE))
+    }
+
+    @Test
+    fun `phone-link problems are still named while no frames arrive`() {
+        val disconnected = MirrorStateReducer.reduce(frame = null, lastFrameAtMs = null, nowMs = 0L).status
+
+        assertEquals(LinkNotice.CONNECTING, MirrorStateReducer.linkNotice(disconnected, PhoneLink.UNKNOWN))
+        assertEquals(LinkNotice.NO_PHONE, MirrorStateReducer.linkNotice(disconnected, PhoneLink.NO_PHONE))
+        assertEquals(LinkNotice.APP_MISSING, MirrorStateReducer.linkNotice(disconnected, PhoneLink.PHONE_ONLY))
+    }
+
+    @Test
+    fun `a board-less navigation frame is live, with its nav lanes and no notice`() {
+        val navOnly = WatchFrame(
+            speed = null,
+            duty = null,
+            battery = null,
+            motorTemp = null,
+            ctrlTemp = null,
+            stale = false,
+            navBearing = 42.0,
+            navDistanceM = 1_250.0,
+        )
+
+        val state = MirrorStateReducer.reduce(navOnly, lastFrameAtMs = 1_000L, nowMs = 1_000L)
+
+        assertEquals(MirrorStatus.LIVE, state.status)
+        assertEquals(1_250.0, state.frame?.navDistanceM)
+        assertNull(state.frame?.speed)
+        // The link view is irrelevant once frames flow, whatever it last said.
+        PhoneLink.entries.forEach { assertNull(MirrorStateReducer.linkNotice(state.status, it)) }
+    }
+
     private fun frame(stale: Boolean): WatchFrame = WatchFrame(
         speed = 18.5,
         duty = 42.0,

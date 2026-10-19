@@ -1,6 +1,7 @@
 import { ScrollView, StyleSheet, View } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { useEffect, useState } from 'react'
+import { useSharedValue } from 'react-native-reanimated'
 import {
   CloudCheckIcon,
   DownloadSimpleIcon,
@@ -18,17 +19,18 @@ import { BoardConfigSection } from '@/modules/board/components/BoardConfigSectio
 import { BoardWarningRow } from '@/modules/board/components/BoardWarningRow'
 import { VescFaultRow } from '@/modules/board/components/VescFaultRow'
 import { VescFaultCaptureSection } from '@/modules/board/components/VescFaultCaptureSection'
-import { TelemetryCell } from '@/modules/board/components/TelemetryCell'
-import type { SparklinePoint } from '@/components/charts/Sparkline'
+import { LiveMetricCard } from '@/modules/board/components/LiveMetricCard'
+import { RimTempArc } from '@/modules/board/components/RimTempArc'
+import { presentTelemetryMetric, telemetry } from '@/modules/board/constants/telemetry'
 import { MOTOR_TEMP_CONFIG_ROWS } from '@/modules/board/constants/motorConfigRows'
-import { telemetry } from '@/modules/board/constants/telemetry'
 import { ChipRow, ToggleRow } from '@/components/dev/ShowcaseControls'
 import { RemoteTiltPadShowcase } from '@/screens/showcase/board/RemoteTiltPadShowcase'
 import { BoardPillShowcase } from '@/screens/showcase/board/BoardPillShowcase'
 import { BoardSelectorSheetShowcase } from '@/screens/showcase/board/BoardSelectorSheetShowcase'
+import { BoardAttitudeIndicatorShowcase } from '@/screens/showcase/board/BoardAttitudeIndicatorShowcase'
+import { ImuAttitudeDialShowcase } from '@/screens/showcase/board/ImuAttitudeDialShowcase'
 import { FootpadIndicatorShowcase } from '@/screens/showcase/board/FootpadIndicatorShowcase'
 import { GpsStatusPillShowcase } from '@/screens/showcase/board/GpsStatusPillShowcase'
-import { useSharedValue } from 'react-native-reanimated'
 import { theme } from '@/constants/theme'
 
 function DeviceRowShowcase() {
@@ -165,18 +167,26 @@ function BoardWarningRowShowcase() {
 function VescFaultRowShowcase() {
   const [now] = useState(() => Date.now())
   const [dismissedIds, setDismissedIds] = useState<string[]>([])
-  // The two live-fault shapes: a still-active known code and a cleared unknown code.
+  // The live-fault shapes: an active known code, a cleared known code and a cleared unknown code.
   const faults = [
     {
       id: 'active',
       boardId: 'demo',
-      code: 9,
+      code: 2,
       occurredAtMs: now - 45 * 1000,
       lastObservedAtMs: now - 1000,
       clearedAtMs: null,
     },
     {
       id: 'cleared',
+      boardId: 'demo',
+      code: 4,
+      occurredAtMs: now - 26 * 60 * 60 * 1000,
+      lastObservedAtMs: now - 26 * 60 * 60 * 1000 + 2000,
+      clearedAtMs: now - 26 * 60 * 60 * 1000 + 2000,
+    },
+    {
+      id: 'unknown',
       boardId: 'demo',
       code: 247,
       occurredAtMs: now - 3 * 60 * 60 * 1000,
@@ -271,48 +281,148 @@ function VescFaultCaptureSectionShowcase() {
   )
 }
 
-const DEMO_SERIES: SparklinePoint[] = Array.from({ length: 40 }, (_, i) => ({
-  ts: Date.now() - (40 - i) * 1000,
-  value: 34 + Math.sin(i / 4) * 8,
-}))
-
-function TelemetryCellShowcase() {
-  const [live, setLive] = useState(false)
+function RimTempArcShowcase() {
+  const [temp, setTemp] = useState('45')
+  const [radius, setRadius] = useState('72')
   const motorTemp = useSharedValue<number | null>(null)
-  const motorCurrent = useSharedValue<number | null>(null)
-  const battCurrent = useSharedValue<number | null>(null)
+  const controllerTemp = useSharedValue<number | null>(null)
 
   useEffect(() => {
-    motorTemp.value = live ? 42.3 : null
-    motorCurrent.value = live ? 21.4 : null
-    battCurrent.value = live ? 12.8 : null
-  }, [live, motorTemp, motorCurrent, battCurrent])
+    motorTemp.value = temp === 'none' ? null : Number(temp)
+    controllerTemp.value = temp === 'none' ? null : Number(temp) * 0.6
+  }, [controllerTemp, motorTemp, temp])
 
   return (
     <ShowcaseCard
-      name="TelemetryCell"
-      controls={<ToggleRow label="board connected" value={live} onToggle={setLive} />}
+      name="RimTempArc"
+      controls={
+        <>
+          <ChipRow
+            label="motor temp"
+            options={['none', '5', '30', '45', '65', '90']}
+            selected={temp}
+            onSelect={setTemp}
+          />
+          <ChipRow label="radius" options={['72', '60']} selected={radius} onSelect={setRadius} />
+        </>
+      }
     >
-      <View style={styles.telemetryRow}>
-        <TelemetryCell
+      <View style={styles.rimArcRow}>
+        <RimTempArc
+          side="left"
           label="Motor"
           metric={telemetry.motorTemp}
           value={motorTemp}
-          series={live ? DEMO_SERIES : []}
+          radius={Number(radius)}
         />
-        <TelemetryCell
-          label="Motor"
-          metric={telemetry.motorCurrent}
-          value={motorCurrent}
-          series={live ? DEMO_SERIES : []}
-        />
-        <TelemetryCell
-          label="Batt"
-          metric={telemetry.battCurrent}
-          value={battCurrent}
-          series={live ? DEMO_SERIES : []}
+        <RimTempArc
+          side="right"
+          label="Ctrl"
+          metric={telemetry.controllerTemp}
+          value={controllerTemp}
+          radius={Number(radius)}
         />
       </View>
+    </ShowcaseCard>
+  )
+}
+
+const ROW_WINDOW_MS = 5 * 60_000
+
+/** A wavy series ending now, sampled every 5 s over `spanMs`. */
+function demoSeries(spanMs: number, base: number, swing: number, phase = 0) {
+  const now = Date.now()
+  return Array.from({ length: Math.floor(spanMs / 5000) }, (_, i) => ({
+    ts: now - spanMs + i * 5000,
+    value: base + swing * Math.sin(i / 4 + phase),
+  }))
+}
+
+function LiveMetricCardShowcase() {
+  const [kind, setKind] = useState('single')
+  const [history, setHistory] = useState('full')
+  const spanMs = history === 'full' ? ROW_WINDOW_MS : history === 'short' ? 40_000 : 0
+  const first = useSharedValue<number | null>(null)
+  const second = useSharedValue<number | null>(null)
+
+  // Split: each half opens its own detail, the way the temperatures card does.
+  const split = kind === 'split'
+  const series =
+    kind === 'single'
+      ? [
+          {
+            title: 'Motor current',
+            metric: telemetry.motorCurrent,
+            value: first,
+            points: demoSeries(spanMs, 20, 15),
+          },
+        ]
+      : split
+        ? [
+            {
+              title: 'Motor temp',
+              metric: telemetry.motorTemp,
+              value: first,
+              points: demoSeries(spanMs, 62, 6),
+            },
+            {
+              title: 'Ctrl temp',
+              metric: telemetry.controllerTemp,
+              value: second,
+              points: demoSeries(spanMs, 38, 3, 1.5),
+            },
+          ]
+        : [
+            {
+              title: 'Pitch',
+              metric: telemetry.pitch,
+              value: first,
+              points: demoSeries(spanMs, 1, 4),
+            },
+            {
+              title: 'Roll',
+              metric: telemetry.roll,
+              value: second,
+              points: demoSeries(spanMs, -1, 3, 1.5),
+            },
+          ]
+  const lines = series.map((line) => ({
+    ...line,
+    metric: presentTelemetryMetric(line.metric, 'metric'),
+    onPress: split ? () => {} : undefined,
+  }))
+
+  useEffect(() => {
+    first.value = series[0].points.at(-1)?.value ?? null
+    second.value = series[1]?.points.at(-1)?.value ?? null
+  })
+
+  return (
+    <ShowcaseCard
+      name="LiveMetricCard"
+      controls={
+        <>
+          <ChipRow
+            label="lines"
+            options={['single', 'pair', 'split']}
+            selected={kind}
+            onSelect={setKind}
+          />
+          <ChipRow
+            label="history"
+            options={['full', 'short', 'none']}
+            selected={history}
+            onSelect={setHistory}
+          />
+        </>
+      }
+    >
+      <LiveMetricCard
+        lines={lines}
+        peaks={kind === 'single' ? 'range' : split ? 'max' : undefined}
+        windowMs={ROW_WINDOW_MS}
+        onPress={() => {}}
+      />
     </ShowcaseCard>
   )
 }
@@ -359,6 +469,8 @@ export default function BoardComponentsPage() {
           icon={LightningIcon}
           description="Board pill states, warning and fault rows, telemetry captures, and connection components."
         />
+        <BoardAttitudeIndicatorShowcase />
+        <ImuAttitudeDialShowcase />
         <RemoteTiltPadShowcase />
         <BoardPillShowcase />
         <BoardSelectorSheetShowcase />
@@ -368,8 +480,9 @@ export default function BoardComponentsPage() {
         <BoardWarningRowShowcase />
         <VescFaultRowShowcase />
         <VescFaultCaptureSectionShowcase />
-        <TelemetryCellShowcase />
         <FootpadIndicatorShowcase />
+        <RimTempArcShowcase />
+        <LiveMetricCardShowcase />
         <BoardConfigSectionShowcase />
       </ScrollView>
     </SafeAreaView>
@@ -377,9 +490,9 @@ export default function BoardComponentsPage() {
 }
 
 const styles = StyleSheet.create({
+  rimArcRow: { flexDirection: 'row', justifyContent: 'space-between', alignSelf: 'stretch' },
   container: { flex: 1, backgroundColor: theme.neutral.bg },
   content: { padding: 12, gap: 12, paddingBottom: 40 },
-  telemetryRow: { flexDirection: 'row', gap: 8, alignSelf: 'stretch' },
   timelineContentDemo: {
     backgroundColor: theme.neutral.surface,
     borderRadius: 10,

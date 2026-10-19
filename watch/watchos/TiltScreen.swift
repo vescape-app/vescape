@@ -16,28 +16,36 @@ import WatchKit
 /// the phone reports the last lock back, it shows the wrist's own value instead so it never lags.
 ///
 /// Vertical drags belong to this page: the vertical axis is already parked off the gauges, and a
-/// drag that goes horizontal first pages the control pager, so the rider can still swipe away.
-/// A drag that goes vertical first holds both pagers for as long as it lasts, the way a Move hold
-/// does.
+/// drag that goes horizontal first moves the control pager with the finger, so the rider can still
+/// swipe away. A drag that goes vertical first holds both pagers for as long as it lasts, the way a
+/// Move hold does.
 ///
 /// @parity /watch/wearos/src/main/java/app/vescape/wear/TiltScreen.kt `TiltScreen`
 /// @platform-diff Only the active scene phase drives, as on Move and Lights: watchOS keeps an
 ///   inactive app on screen, and a stick nobody is looking at must not keep steering.
-/// @platform-diff A drivable page steps the pager itself on a sideways release instead of the pager
-///   following the finger: on watchOS the stick's drag gesture takes every touch from the pager.
+/// @platform-diff A drivable page drives the pager's drag itself — offset live, snapped on release or
+///   cancel — because on watchOS any drag gesture here takes the whole touch from the paging scroll
+///   view. Wear OS leaves a sideways drag to its pager through touch slop.
 struct TiltScreen: View {
   @ObservedObject var link: PhoneLink
   /// False while the page is mid-transition; a touch then belongs to the pager, not to the board.
   let interactionEnabled: Bool
   /// Reported to the screen so a drag locks both pagers and suspends the idle return.
   let onHoldChanged: (Bool) -> Void
-  /// A sideways swipe the stick gesture took from the control pager: +1 next page, -1 previous.
-  let onPageSwipe: (Int) -> Void
+  /// A sideways drag the stick gesture took from the control pager, points the page has followed
+  /// the finger by: negative toward the next page.
+  let onPageDrag: (CGFloat) -> Void
+  /// That drag's end: +1 next page, -1 previous, 0 back to this one. Also sent when the system
+  /// cancels the touch, so the pager never stays offset.
+  let onPageRelease: (Int) -> Void
 
   @Environment(\.scenePhase) private var scenePhase
 
-  /// The touch in flight, reset by the system if the gesture is cancelled mid-way.
-  @GestureState private var touch: StickTouch?
+  /// The touch in flight, set and ended in the gesture's own callbacks so they stay in order.
+  @State private var touch: StickTouch?
+  /// True while the gesture is live. The system resets it when it cancels the gesture, which is
+  /// the one end `onEnded` never hears about.
+  @GestureState private var touching = false
   @State private var dragging = false
   /// Thumb travel from where it touched down, points, positive up.
   @State private var deflection: CGFloat = 0
@@ -98,14 +106,22 @@ struct TiltScreen: View {
       .allowsHitTesting(false)
     }
     .contentShape(Rectangle())
-    // Only while drivable: otherwise the pager swipes natively. The tap stays separate, so a reset
-    // never waits for the drag to fail.
-    .simultaneousGesture(stickGesture, including: canDrive ? .all : .subviews)
+    // Only while drivable: otherwise the pager swipes natively. A touch in flight keeps it, because
+    // the page stops being settled as soon as a sideways drag moves it, and changing the mask cancels
+    // the gesture. The tap stays separate, so a reset never waits for the drag to fail.
+    .simultaneousGesture(stickGesture, including: canDrive || touch != nil ? .all : .subviews)
     .onTapGesture { if canReset { onTap(at: Date()) } }
     .onChange(of: touch) { _, next in
       let steering = canDrive && next?.kind == .stick
       deflection = steering ? next?.deflection ?? 0 : 0
       if steering != dragging { dragging = steering }
+    }
+    // A cancelled gesture: `onEnded` never ran, so end the touch here. A sideways one springs back
+    // or lands wherever the finger had taken it, so the pager is never left between pages.
+    .onChange(of: touching) { _, live in
+      guard !live, let touch else { return }
+      self.touch = nil
+      if touch.kind == .pager { onPageRelease(pageStep(travel: touch.offset)) }
     }
     // The drag itself: integrate the stick every frame, send the lock whenever it lands on a new
     // wire value, at most every SEND_INTERVAL_MS. Cancelled when the drag ends, which is what sends
@@ -140,31 +156,54 @@ struct TiltScreen: View {
       if !allowed { armedAt = nil }
     }
     .onDisappear {
+      touch = nil
       dragging = false
       onHoldChanged(false)
+      onPageRelease(0)
     }
   }
 
   // MARK: - Input
 
   /// Any drag gesture here takes the touch from the control pager on watchOS, the sideways ones
-  /// too, so a drag that goes sideways first pages the pager itself on release.
+  /// too, so a drag that goes sideways first drives the pager itself. Global coordinates, because
+  /// the page moves with the finger and a local translation would chase itself.
   private var stickGesture: some Gesture {
-    DragGesture(minimumDistance: TOUCH_SLOP)
-      .updating($touch) { value, state, _ in
+    DragGesture(minimumDistance: TOUCH_SLOP, coordinateSpace: .global)
+      .updating($touching) { _, live, _ in live = true }
+      .onChanged { value in
         let dx = value.translation.width
         let dy = value.translation.height
         // Classified once, on the first move past the slop: vertical is the stick's, sideways the
         // pager's.
-        var next = state ?? StickTouch(kind: abs(dy) > abs(dx) ? .stick : .pager)
-        if next.kind == .stick { next.deflection = -dy }
-        state = next
+        var next = touch ?? StickTouch(kind: abs(dy) > abs(dx) ? .stick : .pager)
+        switch next.kind {
+        case .stick: next.deflection = -dy
+        case .pager:
+          if abs(dx - next.offset) >= 1 { next.movedAt = value.time }
+          next.offset = dx
+          onPageDrag(dx)
+        }
+        touch = next
       }
       .onEnded { value in
-        let dx = value.translation.width
-        guard abs(dx) > abs(value.translation.height), abs(dx) >= PAGE_SWIPE_MIN else { return }
-        onPageSwipe(dx < 0 ? 1 : -1)
+        guard let ended = touch else { return }
+        touch = nil
+        guard ended.kind == .pager else { return }
+        // A finger that stopped before lifting does not fling, as on the native pager; SwiftUI's
+        // prediction still carries the speed of its last move.
+        let flung = ended.movedAt.map { value.time.timeIntervalSince($0) < FLING_WINDOW } ?? false
+        onPageRelease(pageStep(travel: flung ? value.predictedEndTranslation.width : value.translation.width))
       }
+  }
+
+  /// Where a sideways drag lands, the way the native pager decides: past half a page, counting the
+  /// fling, is the next page in that direction; anything short of it springs back.
+  private func pageStep(travel: CGFloat) -> Int {
+    let half = WKInterfaceDevice.current().screenBounds.width / 2
+    if travel <= -half { return 1 }
+    if travel >= half { return -1 }
+    return 0
   }
 
   private func onTap(at time: Date) {
@@ -319,6 +358,10 @@ private struct StickTouch: Equatable {
   let kind: Kind
   /// Thumb travel from touch-down, points, positive up. Only meaningful for `.stick`.
   var deflection: CGFloat = 0
+  /// Sideways travel from touch-down, points, positive right. Only meaningful for `.pager`.
+  var offset: CGFloat = 0
+  /// When the sideways travel last changed. Only meaningful for `.pager`.
+  var movedAt: Date?
 }
 
 /// Everything the echo wait re-decides on; a change to any of it restarts the wait.
@@ -362,8 +405,8 @@ private let HAPTIC_NOTCH_PERCENT = 5.0
 /// Compose supplies its own touch slop on Wear OS; SwiftUI exposes none to read.
 private let TOUCH_SLOP: CGFloat = 8
 
-/// Sideways travel that pages the control pager when the stick gesture holds the touch.
-private let PAGE_SWIPE_MIN: CGFloat = 24
+/// How recently a sideways drag must have moved for its release to count as a fling.
+private let FLING_WINDOW: TimeInterval = 0.1
 
 /// Stick integration step: the display's frame rate, as `withFrameMillis` paces it on Wear OS.
 private let FRAME_MS = 16

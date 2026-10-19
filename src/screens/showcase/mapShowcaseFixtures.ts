@@ -1,5 +1,6 @@
 import type { HistoryGpsSample, HistoryMarker, MapPoint, TelemetrySample } from 'vescape-core'
 
+import { accentColors } from '@/constants/theme'
 import { makeCircleFeature, makeTrailLineString } from '@/helpers/mapGeometry'
 import type { DirectionPoint } from '@/modules/map/store/mapStore'
 import type { MediaHistoryAsset } from '@/modules/history/lib/mediaHistory'
@@ -238,7 +239,7 @@ export const FIXTURE_RIDERS: RosterRider[] = [
   {
     id: 'fixture-rider-miguel',
     name: 'Miguel',
-    color: '#ef4444',
+    color: accentColors.dark.red.color,
     presence: {
       lat: BASE_LAT + 0.0058,
       lng: BASE_LON + 0.0022,

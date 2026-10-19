@@ -257,7 +257,7 @@ export default function DiagnosticEventsScreen() {
         }
         ListFooterComponent={
           loading && events.length > 0 ? (
-            <ActivityIndicator color={theme.palette.slate.color} style={styles.footer} />
+            <ActivityIndicator color={theme.neutral.textMuted} style={styles.footer} />
           ) : !hasMore && events.length > 0 ? (
             <Text style={styles.footerText}>— end —</Text>
           ) : null

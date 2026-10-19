@@ -190,28 +190,40 @@ export function BoardBatteryForm({
         </>
       ) : (
         <View style={styles.selectGrid}>
-          <Input
-            style={styles.voltageInput}
-            value={manualMinVoltage}
-            onChangeText={onChangeManualMinVoltage}
-            placeholder="Min (0%)"
-            placeholderTextColor={theme.neutral.textDim}
-            keyboardType="decimal-pad"
-            testID={testIDPrefix ? `${testIDPrefix}-manual-min-input` : undefined}
-          />
-          <Input
-            style={styles.voltageInput}
-            value={manualMaxVoltage}
-            onChangeText={onChangeManualMaxVoltage}
-            placeholder="Max (100%)"
-            placeholderTextColor={theme.neutral.textDim}
-            keyboardType="decimal-pad"
-            testID={testIDPrefix ? `${testIDPrefix}-manual-max-input` : undefined}
-          />
+          <View style={styles.selectField}>
+            <Text style={styles.label}>Min voltage (0%)</Text>
+            <Input
+              style={styles.voltageInput}
+              value={manualMinVoltage}
+              onChangeText={onChangeManualMinVoltage}
+              placeholder="V"
+              placeholderTextColor={theme.neutral.textDim}
+              keyboardType="decimal-pad"
+              testID={testIDPrefix ? `${testIDPrefix}-manual-min-input` : undefined}
+            />
+          </View>
+          <View style={styles.selectField}>
+            <Text style={styles.label}>Max voltage (100%)</Text>
+            <Input
+              style={styles.voltageInput}
+              value={manualMaxVoltage}
+              onChangeText={onChangeManualMaxVoltage}
+              placeholder="V"
+              placeholderTextColor={theme.neutral.textDim}
+              keyboardType="decimal-pad"
+              testID={testIDPrefix ? `${testIDPrefix}-manual-max-input` : undefined}
+            />
+          </View>
         </View>
       )}
 
-      {draftWarning ? <Text style={styles.warning}>{draftWarning}</Text> : null}
+      {draftWarning ? (
+        <Text style={styles.warning}>
+          {batteryMode === 'manual' && (!manualMinVoltage || !manualMaxVoltage)
+            ? 'Enter the voltage range for your battery.'
+            : 'Check the battery values.'}
+        </Text>
+      ) : null}
     </View>
   )
 }
@@ -256,6 +268,7 @@ const styles = StyleSheet.create({
   selectField: {
     flex: 1,
     minWidth: 0,
+    gap: 6,
   },
   stepperGrid: {
     flexDirection: 'row',
@@ -273,7 +286,8 @@ const styles = StyleSheet.create({
     textTransform: 'uppercase',
   },
   voltageInput: {
-    flex: 1,
+    width: '100%',
+    fontFamily: theme.mono('600'),
   },
   warning: {
     color: theme.status.warning.text,

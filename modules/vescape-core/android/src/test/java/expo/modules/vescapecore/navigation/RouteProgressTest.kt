@@ -53,6 +53,19 @@ class RouteProgressTest {
     }
 
     @Test
+    fun `a rider who rode past the direction point reads the straight line back to it`() {
+        // 300 m north of the end of a path whose last leg runs north: projected onto the end, with
+        // no path left along it. Not 0 ft while the pin is behind them, and the arrow points back
+        // south at it rather than on along the last leg (#560).
+        val pastEnd = 0.002 + 300.0 / METERS_PER_DEGREE
+        val progress = RouteProgress.compute(cornerPath, pastEnd, 0.002, speedMps = 10.0)!!
+
+        assertEquals(0.002, progress.latitude, 1e-9)
+        assertEquals(300.0, progress.remainingMeters, 1.0)
+        assertEquals(SOUTH, progress.bearingDeg, 1.0)
+    }
+
+    @Test
     fun `aim point follows the path around a corner rather than pointing at the target`() {
         // 15 m before the corner with a 25 m aim: the aim lands past it, so the bearing is already
         // turning north while the target still lies north-east.
@@ -140,6 +153,7 @@ class RouteProgressTest {
         const val LEG_METERS = 0.002 * METERS_PER_DEGREE
         const val HALF_LEG_METERS = LEG_METERS / 2
         const val NORTH = 0.0
+        const val SOUTH = 180.0
         const val WEST = 270.0
         const val AROUND_THE_CORNER = 56.3
     }

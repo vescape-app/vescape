@@ -20,6 +20,8 @@ export const MAP_DEFAULTS = {
   markerColor: theme.palette.violet.color,
   markerInactiveColor: theme.palette.slate.light,
   trailColor: theme.palette.violet.color,
+  // @parity /watch/wearos/src/main/java/app/vescape/wear/RiderTrail.kt
+  // @parity /watch/watchos/RiderTrail.swift
   trailWidth: 3,
   navigationWidth: 5,
   accuracyFillColor: theme.alpha(theme.palette.violet.color, 0.12),

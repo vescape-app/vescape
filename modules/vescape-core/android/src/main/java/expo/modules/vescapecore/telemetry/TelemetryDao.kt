@@ -1017,7 +1017,7 @@ interface TelemetryDao {
   @Query("DELETE FROM accessory_brake_light WHERE accessory_id = :accessoryId")
   suspend fun deleteBrakeLights(accessoryId: String): Int
 
-  // @parity /modules/vescape-core/ios/telemetry/AccessoryPersistence.swift `GroundClearanceStore`
+  // @parity /modules/vescape-core/ios/telemetry/AccessoryPersistence.swift `groundClearances`
 
   @Query("SELECT * FROM accessory_ground_clearance ORDER BY accessory_id ASC, capability_id ASC")
   suspend fun getGroundClearances(): List<AccessoryGroundClearanceEntity>

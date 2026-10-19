@@ -54,7 +54,7 @@ export function MonoText({
   text,
   size,
   weight = '700',
-  color = theme.palette.slate.textPrimary,
+  color = theme.neutral.textPrimary,
   align = 'left',
   x = 0,
   y = 0,
@@ -67,7 +67,7 @@ export function MonoText({
   // Adaptive tokens are native color objects, not strings, so the split is on "is it a shared
   // value" — a `typeof === 'string'` test sends them to Skia raw, which crashes on paint.
   const staticColor = useResolvedColor(
-    isSharedValue<string>(color) ? theme.palette.slate.textPrimary : (color as ThemeColor),
+    isSharedValue<string>(color) ? theme.neutral.textPrimary : (color as ThemeColor),
   )
   const rendererColor = isSharedValue<string>(color) ? color : staticColor
 
@@ -87,6 +87,82 @@ export function MonoText({
 
   if (!font) return null
   return <SkiaText x={textX} y={baseline} text={text} font={font} color={rendererColor} />
+}
+
+export interface MonoReadoutProps {
+  /** The number, aligned in its box. */
+  text: DerivedValue<string>
+  /** Set smaller after the number on its baseline; empty to leave it out. */
+  unit: DerivedValue<string>
+  size: number
+  unitSize: number
+  weight?: MonoWeight
+  color?: ThemeColor | DerivedValue<string>
+  /** Right keeps the unit still as the digits change; left keeps the number's start still. */
+  align?: 'left' | 'right'
+  /** Left edge of the number's box, in canvas coordinates. */
+  x: number
+  /** Top edge of the number's line box. */
+  y: number
+  /** Room the number aligns in. Right-aligned, the unit starts past it; left-aligned, the unit
+   * follows the digits and can run past it. */
+  width: number
+}
+
+const UNIT_GAP = 1
+
+/**
+ * A live number with its unit small after it on the same baseline, the way the battery bar sets
+ * its `%`.
+ */
+export function MonoReadout({
+  text,
+  unit,
+  size,
+  unitSize,
+  weight = '800',
+  color = theme.neutral.textPrimary,
+  align = 'right',
+  x,
+  y,
+  width,
+}: MonoReadoutProps) {
+  const valueFont = useSkiaMonoFont(weight, size)
+  const unitFont = useSkiaMonoFont('500', unitSize)
+  const staticColor = useResolvedColor(
+    isSharedValue<string>(color) ? theme.neutral.textPrimary : (color as ThemeColor),
+  )
+  const unitColor = isSharedValue<string>(color) ? color : staticColor
+  // The value's own baseline, as MonoText centres its glyphs in the line box.
+  const baseline = useMemo(() => {
+    if (!valueFont) return 0
+    const { ascent, descent } = valueFont.getMetrics()
+    return y + size / 2 - (ascent + descent) / 2
+  }, [size, valueFont, y])
+  const unitX = useDerivedValue(() =>
+    align === 'right' || !valueFont
+      ? x + width + UNIT_GAP
+      : x + textAdvanceWidth(valueFont, text.value) + UNIT_GAP,
+  )
+
+  return (
+    <>
+      <MonoText
+        text={text}
+        size={size}
+        weight={weight}
+        color={color}
+        align={align}
+        x={x}
+        y={y}
+        width={width}
+        height={size}
+      />
+      {unitFont ? (
+        <SkiaText x={unitX} y={baseline} text={unit} font={unitFont} color={unitColor} />
+      ) : null}
+    </>
+  )
 }
 
 export interface MonoValueProps extends Omit<MonoTextProps, 'x' | 'y' | 'width' | 'height'> {

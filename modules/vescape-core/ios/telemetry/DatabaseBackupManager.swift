@@ -6,7 +6,7 @@ import GRDB
 /// the incoming database already satisfies. It must match the newest migration in
 /// `TelemetryDatabase.migrator`.
 ///
-/// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/TelemetryDatabase.kt `TELEMETRY_DATABASE_VERSION`
+/// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/TelemetryRoomDatabase.kt `TELEMETRY_DATABASE_VERSION`
 internal let TELEMETRY_SCHEMA_VERSION = 49
 
 /// Released schema generations that have a complete production path to the current schema.

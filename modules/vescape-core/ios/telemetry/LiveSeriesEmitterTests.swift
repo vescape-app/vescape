@@ -49,7 +49,8 @@ final class LiveSeriesEmitterTests: XCTestCase {
     }
 
     emitter.start()
-    emitter.add(sample(ts: 1_000, speed: 10))
+    // Battery is the always-on `onLiveSeries` set; speed streams only on request.
+    emitter.add(["lastPacketAt": Int64(1_000), "batteryVoltage": 50.0])
     XCTAssertEqual(1, emissions)
 
     scheduler.advance(999)

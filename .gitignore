@@ -20,6 +20,7 @@ expo-env.d.ts
 *.p12
 *.key
 *.mobileprovision
+*.swiftmodule
 
 # Metro
 .metro-health-check*
@@ -94,3 +95,6 @@ modules/vescape-core/*.swiftsourceinfo
 # Entitlements generated from apple-targets config for each build variant
 watch/watchos/generated.entitlements
 targets/watch-battery/generated.entitlements
+
+# App preview footage and exports
+/previews/

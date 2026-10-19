@@ -1,7 +1,12 @@
 import { useEffect, useMemo } from 'react'
 import type { TelemetryEvent } from 'vescape-core'
 
-import { acquireFocusedSeries, releaseFocusedSeries } from '@/modules/board/store/bleStore'
+import {
+  acquireFocusedSeries,
+  acquireLiveSeries,
+  releaseFocusedSeries,
+  releaseLiveSeries,
+} from '@/modules/board/store/bleStore'
 import { useLiveSeriesStore } from '@/modules/board/store/liveSeriesStore'
 import { useFocusedSeriesStore } from '@/modules/board/store/focusedSeriesStore'
 import { type ExcludedRange, toExcludedRanges } from '@/components/charts/chartMath'
@@ -63,13 +68,36 @@ function flatToPoints(flat: number[]): LiveMetricPoint[] {
 }
 
 /**
- * Center-screen sparkline series: decimated natively (min/max per bucket) and pushed ~1Hz
+ * Center-screen series (the battery bar): decimated natively (min/max per bucket) and pushed ~1Hz
  * on `onLiveSeries`. `metricKey` matches the native `LIVE_SERIES_METRICS` set. No raw samples
  * cross the bridge and no per-render projection runs.
  */
 export function useLiveSeries(metricKey: string): LiveMetricPoint[] {
   const flat = useLiveSeriesStore((s) => s.metrics[metricKey] ?? EMPTY_FLAT)
   return useMemo(() => flatToPoints(flat), [flat])
+}
+
+/** `useLiveSeries` for several metrics at once, keyed by metric. Pass a stable array. */
+export function useLiveSeriesGroup(
+  metricKeys: readonly string[],
+): Record<string, LiveMetricPoint[]> {
+  const metrics = useLiveSeriesStore((s) => s.metrics)
+  return useMemo(
+    () =>
+      Object.fromEntries(metricKeys.map((key) => [key, flatToPoints(metrics[key] ?? EMPTY_FLAT)])),
+    [metricKeys, metrics],
+  )
+}
+
+/**
+ * Adds `metricKeys` to the ~1Hz `onLiveSeries` stream while mounted, so native decimates them
+ * only while something shows them. Pass a stable array.
+ */
+export function useLiveSeriesMetrics(metricKeys: readonly string[]): void {
+  useEffect(() => {
+    acquireLiveSeries(metricKeys)
+    return () => releaseLiveSeries(metricKeys)
+  }, [metricKeys])
 }
 
 /**

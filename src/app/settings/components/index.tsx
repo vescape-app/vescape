@@ -97,7 +97,7 @@ const groups = [
         hint: 'Cards and rows used to build settings screens',
         route: '/settings/components/settings',
         icon: GearSixIcon,
-        color: theme.palette.slate.light,
+        color: theme.neutral.textSecondary,
       },
     ],
   },

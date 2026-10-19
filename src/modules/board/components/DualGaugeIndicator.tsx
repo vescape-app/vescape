@@ -3,10 +3,10 @@ import type { StyleProp, ViewStyle } from 'react-native'
 
 import { DualGauge } from '@/modules/board/components/DualGauge'
 import { useResolvedAlertRules } from '@/modules/alerts/hooks/useResolvedAlertRules'
+import { gaugeAlertsFor } from '@/modules/alerts/lib/gaugeAlerts'
 import { boardTopSpeedKmh } from '@/modules/alerts/lib/boardAlertSettings'
 import { useBoardStore } from '@/modules/board/store/boardStore'
-import { useLiveSeries } from '@/modules/board/hooks/useLiveMetric'
-import { useLiveWindowMs, useSettingsStore } from '@/modules/settings/store/settingsStore'
+import { useSettingsStore } from '@/modules/settings/store/settingsStore'
 import { liveTelemetryRuntime } from '@/modules/board/lib/liveTelemetryRuntime'
 import { getHistoryMetricHotRange } from '@/modules/history/lib/metricColorScale'
 
@@ -30,48 +30,21 @@ export function DualGaugeIndicator({
   // a 30 km/h board's alert markers sit in a different place on each screen.
   const activeBoard = useBoardStore((s) => s.boards.find((b) => b.id === s.activeBoardId))
   const speedMax = boardTopSpeedKmh(activeBoard)
-  const speedSeries = useLiveSeries('speed')
-  const dutySeries = useLiveSeries('duty')
-  const windowMs = useLiveWindowMs()
   const alertRules = useResolvedAlertRules()
   const gradientsEnabled = useSettingsStore((s) => s.historyMetricGradientsEnabled)
   const hotRanges = useSettingsStore((s) => s.historyMetricHotRanges)
   const speedHotRange = getHistoryMetricHotRange('speed', hotRanges, gradientsEnabled)
   const dutyHotRange = getHistoryMetricHotRange('duty', hotRanges, gradientsEnabled)
 
-  const speedAlerts = useMemo(
-    () =>
-      alertRules
-        .filter((rule) => rule.enabled && rule.controlId === 'speed')
-        .map((rule) => ({
-          id: rule.id,
-          threshold: rule.threshold,
-          thresholdMax: rule.thresholdMax,
-          repeats: rule.repeatEverySeconds != null,
-        })),
-    [alertRules],
-  )
-
-  const dutyAlerts = useMemo(
-    () =>
-      alertRules
-        .filter((rule) => rule.enabled && rule.controlId === 'duty')
-        .map((rule) => ({
-          id: rule.id,
-          threshold: rule.threshold,
-          thresholdMax: rule.thresholdMax,
-          repeats: rule.repeatEverySeconds != null,
-        })),
-    [alertRules],
-  )
+  const speedAlerts = useMemo(() => gaugeAlertsFor(alertRules, 'speed'), [alertRules])
+  const dutyAlerts = useMemo(() => gaugeAlertsFor(alertRules, 'duty'), [alertRules])
 
   return (
     <DualGauge
       speedValue={liveTelemetryRuntime.values.speedKmh}
       dutyValue={liveTelemetryRuntime.values.dutyPercent}
-      speedSeries={speedSeries}
-      dutySeries={dutySeries}
-      windowMs={windowMs}
+      speedPeak={liveTelemetryRuntime.values.speedPeakKmh}
+      dutyPeak={liveTelemetryRuntime.values.dutyPeakPercent}
       speedMax={speedMax}
       dutyMax={DUTY_MAX}
       speedHotRange={speedHotRange}

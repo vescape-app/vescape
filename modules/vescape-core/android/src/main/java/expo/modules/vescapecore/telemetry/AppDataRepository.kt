@@ -11,6 +11,7 @@ import expo.modules.vescapecore.service.CoreForegroundService
 
 import expo.modules.vescapecore.connection.BoardTransport
 import expo.modules.vescapecore.alerts.CustomAppSounds
+import expo.modules.vescapecore.watch.WatchMapGauges
 import android.content.Context
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -320,7 +321,7 @@ class AppDataRepository private constructor(private val context: Context) {
    * The Board's most recently captured Motor Config Values, whatever signature they were read
    * under. Restored as `lastKnown`; the caller drops them if the live board turns out to answer
    * with a different signature.
-   * @parity /modules/vescape-core/ios/config/MotorConfigStore.swift `latest`
+   * @parity /modules/vescape-core/ios/config/MotorConfigStore.swift `loadLatest`
    */
   internal suspend fun getLatestMotorConfigValues(boardId: String): MotorConfigValues? =
     withContext(Dispatchers.IO) {
@@ -440,6 +441,11 @@ class AppDataRepository private constructor(private val context: Context) {
       wearPushRateHz = req("wearPushRateHz", 4, ::validWearPushRateHz),
       wearAutoLaunchOnConnect = req("wearAutoLaunchOnConnect", true) { it as? Boolean },
       wearNavArrowEnabled = req("wearNavArrowEnabled", false) { it as? Boolean },
+      wearTelemetryTrailEnabled = req("wearTelemetryTrailEnabled", true) { it as? Boolean },
+      wearTelemetryGroupEnabled = req("wearTelemetryGroupEnabled", true) { it as? Boolean },
+      wearTelemetryRouteEnabled = req("wearTelemetryRouteEnabled", true) { it as? Boolean },
+      wearStreetMapEnabled = req("wearStreetMapEnabled", true) { it as? Boolean },
+      wearMapGaugesPercent = req("wearMapGaugesPercent", WatchMapGauges.DEFAULT_PERCENT, WatchMapGauges::percent),
       groupRidePublicEnabled = req("groupRidePublicEnabled", false) { it as? Boolean },
       wearTiltRatePercent = req("wearTiltRatePercent", 20, ::validWearTiltRatePercent),
       companionPresenceEnabled = req("companionPresenceEnabled", false) { it as? Boolean },
@@ -530,6 +536,11 @@ class AppDataRepository private constructor(private val context: Context) {
         validWearPushRateHz(value) ?: return@withContext
       "wearAutoLaunchOnConnect" -> value as? Boolean ?: return@withContext
       "wearNavArrowEnabled" -> value as? Boolean ?: return@withContext
+      "wearTelemetryTrailEnabled" -> value as? Boolean ?: return@withContext
+      "wearTelemetryGroupEnabled" -> value as? Boolean ?: return@withContext
+      "wearTelemetryRouteEnabled" -> value as? Boolean ?: return@withContext
+      "wearStreetMapEnabled" -> value as? Boolean ?: return@withContext
+      "wearMapGaugesPercent" -> WatchMapGauges.percent(value) ?: return@withContext
       "groupRidePublicEnabled" -> value as? Boolean ?: return@withContext
       "wearTiltRatePercent" ->
         validWearTiltRatePercent(value) ?: return@withContext
@@ -590,6 +601,11 @@ class AppDataRepository private constructor(private val context: Context) {
         "wearPushRateHz" -> d.wearPushRateHz
         "wearAutoLaunchOnConnect" -> d.wearAutoLaunchOnConnect
         "wearNavArrowEnabled" -> d.wearNavArrowEnabled
+        "wearTelemetryTrailEnabled" -> d.wearTelemetryTrailEnabled
+        "wearTelemetryGroupEnabled" -> d.wearTelemetryGroupEnabled
+        "wearTelemetryRouteEnabled" -> d.wearTelemetryRouteEnabled
+        "wearStreetMapEnabled" -> d.wearStreetMapEnabled
+        "wearMapGaugesPercent" -> d.wearMapGaugesPercent
         "groupRidePublicEnabled" -> d.groupRidePublicEnabled
         "wearTiltRatePercent" -> d.wearTiltRatePercent
         "companionPresenceEnabled" -> d.companionPresenceEnabled
@@ -797,7 +813,7 @@ class AppDataRepository private constructor(private val context: Context) {
    * The personal direction target. Not a Map Point: it is never shared, and Group Ride presence
    * reads it natively while JS is gone.
    *
-   * @parity /modules/vescape-core/ios/telemetry/AppDataRepository.swift `directionPoint`
+   * @parity /modules/vescape-core/ios/telemetry/AppDataRepository.swift `getDirectionPoint`
    */
   suspend fun getDirectionPoint(): Pair<Double, Double>? = withContext(Dispatchers.IO) {
     val settings = getTypedSettings()
@@ -918,6 +934,7 @@ fun BoardEntity.toMap(settings: List<BoardSettingEntity>): Map<String, Any?> {
     "id" to id,
     "name" to name,
     "description" to values["description"],
+    "personalization" to values["personalization"],
     "createdAt" to createdAt,
     "batteryConfig" to values["batteryConfig"],
     "lastBattery" to values["lastBattery"],
@@ -968,6 +985,11 @@ fun AppSettings.toMap(): Map<String, Any?> = mapOf(
   "wearPushRateHz" to wearPushRateHz,
   "wearAutoLaunchOnConnect" to wearAutoLaunchOnConnect,
   "wearNavArrowEnabled" to wearNavArrowEnabled,
+  "wearTelemetryTrailEnabled" to wearTelemetryTrailEnabled,
+  "wearTelemetryGroupEnabled" to wearTelemetryGroupEnabled,
+  "wearTelemetryRouteEnabled" to wearTelemetryRouteEnabled,
+  "wearStreetMapEnabled" to wearStreetMapEnabled,
+  "wearMapGaugesPercent" to wearMapGaugesPercent,
   "groupRidePublicEnabled" to groupRidePublicEnabled,
   "wearTiltRatePercent" to wearTiltRatePercent,
   "companionPresenceEnabled" to companionPresenceEnabled,
@@ -1172,6 +1194,7 @@ internal fun Map<String, Any?>.toBoardSettingEntities(boardId: String): Pair<Lis
   }
 
   putOrDelete("description", (get("description") as? String)?.takeIf { it.isNotBlank() })
+  putOrDelete("personalization", normalizePersonalization(get("personalization")))
   putOrDelete("batteryConfig", normalizeBatteryConfig(get("batteryConfig")))
   putOrDelete("dismissedWarnings", normalizeDismissedWarnings(get("dismissedWarnings")))
   putOrDelete("topSpeedKmh", validTopSpeedKmh(get("topSpeedKmh")))
@@ -1198,6 +1221,7 @@ private fun BoardSettingEntity.decodeBoardSetting(): Pair<String, Any?>? {
   }
   return when (key) {
     "description" -> (raw as? String)?.let { key to it }
+    "personalization" -> normalizePersonalization(raw)?.let { key to it }
     "batteryConfig" -> normalizeBatteryConfig(raw)?.let { key to it }
     "transport" -> (raw as? String)?.let {
       key to BoardTransport.toBridge(BoardTransport.decode(it))
@@ -1214,6 +1238,15 @@ private fun BoardSettingEntity.decodeBoardSetting(): Pair<String, Any?>? {
     "legalMode" -> normalizeLegalMode(raw)?.let { key to it }
     else -> null
   }
+}
+
+// @parity /modules/vescape-core/ios/telemetry/AppDataRepository.swift `normalizePersonalization`
+// @parity /modules/vescape-core/src/index.ts `Board.personalization`
+private fun normalizePersonalization(raw: Any?): Map<String, String>? {
+  val map = raw.asStringKeyMap() ?: return null
+  val railId = (map["railId"] as? String)?.takeIf { it.isNotBlank() } ?: return null
+  val railColorId = (map["railColorId"] as? String)?.takeIf { it.isNotBlank() } ?: return null
+  return mapOf("railId" to railId, "railColorId" to railColorId)
 }
 
 private fun normalizeLegalMode(raw: Any?): Map<String, Boolean>? =

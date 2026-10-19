@@ -1,7 +1,7 @@
 import Foundation
 
 /// Explicit rider stop shared by JS and App Intent entry points. The active Board id is the
-/// idempotency key: `BoardSessionController.stopBoard()` succeeds only for a live session, so a
+/// idempotency key: `BoardSessionController.stopBoard()` accepts a live or restoring session, so a
 /// duplicate intent cannot repeat teardown. The tombstone also prevents a later module bootstrap
 /// from immediately auto-connecting the Board the rider just stopped.
 struct ManualBoardStop {

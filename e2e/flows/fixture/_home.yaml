@@ -15,51 +15,64 @@
 # never return early.
 appId: ${APP_ID}
 ---
+# Known callers provide the exit control, avoiding six hierarchy scans on a live screen.
+# Screenshot callers can still omit it and use the existing panel discovery below.
 - runFlow:
     when:
-      visible:
-        id: weather-exit
+      true: ${typeof HOME_EXIT_ID !== 'undefined'}
     commands:
       - tapOn:
-          id: weather-exit
+          id: ${HOME_EXIT_ID}
+          waitToSettleTimeoutMs: 1000
 - runFlow:
     when:
-      visible:
-        id: legal-limits-exit
+      true: ${typeof HOME_EXIT_ID === 'undefined'}
     commands:
-      - tapOn:
-          id: legal-limits-exit
-- runFlow:
-    when:
-      visible:
-        id: history-back
-    commands:
-      - tapOn:
-          id: history-back
-- runFlow:
-    when:
-      visible:
-        id: social-drawer-backdrop
-    commands:
-      # A point, not the element: the backdrop is a full-screen `Pressable` *behind* the drawer, so
-      # tapping its centre lands on the drawer content and the drawer stays open. The lower screen
-      # is backdrop everywhere the drawer does not reach.
-      - tapOn:
-          point: 50%, 90%
-- runFlow:
-    when:
-      visible:
-        id: header-back
-    commands:
-      - tapOn:
-          id: header-back
-- runFlow:
-    when:
-      visible:
-        id: map-exit
-    commands:
-      - tapOn:
-          id: map-exit
+      - runFlow:
+          when:
+            visible:
+              id: weather-exit
+          commands:
+            - tapOn:
+                id: weather-exit
+      - runFlow:
+          when:
+            visible:
+              id: legal-limits-exit
+          commands:
+            - tapOn:
+                id: legal-limits-exit
+      - runFlow:
+          when:
+            visible:
+              id: history-back
+          commands:
+            - tapOn:
+                id: history-back
+      - runFlow:
+          when:
+            visible:
+              id: social-drawer-backdrop
+          commands:
+            # A point, not the element: the backdrop is a full-screen `Pressable` *behind* the drawer, so
+            # tapping its centre lands on the drawer content and the drawer stays open. The lower screen
+            # is backdrop everywhere the drawer does not reach.
+            - tapOn:
+                point: 50%, 90%
+      - runFlow:
+          when:
+            visible:
+              id: header-back
+          commands:
+            - tapOn:
+                id: header-back
+      - runFlow:
+          when:
+            visible:
+              id: map-exit
+          commands:
+            - tapOn:
+                id: map-exit
 - extendedWaitUntil:
     visible:
       id: battery-bar

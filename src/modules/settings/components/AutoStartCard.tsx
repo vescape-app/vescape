@@ -88,7 +88,7 @@ export function AutoStartCard({
           icon={RocketLaunchIcon}
           iconColor={
             !enabled
-              ? theme.palette.slate.textSecondary
+              ? theme.neutral.textSecondary
               : nothingArmed
                 ? theme.palette.amber.color
                 : theme.palette.green.color

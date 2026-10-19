@@ -34,6 +34,7 @@ import expo.modules.vescapecore.connection.TransportDetection
 import expo.modules.vescapecore.connection.PendingLinkConnect
 import expo.modules.vescapecore.connection.buildSessionConfig
 
+import expo.modules.vescapecore.maptiles.MapTiles
 import expo.modules.vescapecore.navigation.NavigationController
 import expo.modules.vescapecore.navigation.NavigationProfile
 import expo.modules.vescapecore.watch.WATCH_SOURCE_SETTING_KEYS
@@ -66,6 +67,7 @@ import expo.modules.vescapecore.mappoints.MapPointApi
 import expo.modules.vescapecore.telemetry.AppDataRepository
 import expo.modules.vescapecore.telemetry.DatabaseBackupManager
 import expo.modules.vescapecore.telemetry.ProfileStatsRepository
+import expo.modules.vescapecore.telemetry.RideExport
 import expo.modules.vescapecore.telemetry.RideHistoryRepository
 import expo.modules.vescapecore.telemetry.TELEMETRY_DATABASE_NAME
 import expo.modules.vescapecore.telemetry.TelemetryRepository
@@ -82,6 +84,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.withContext
 import java.util.concurrent.ConcurrentHashMap
 
 private const val TAG = "VescapeCore"
@@ -563,6 +566,9 @@ class VescapeCoreModule : Module() {
     Function("setFocusedSeriesMetrics") { metrics: List<String> ->
       CoreForegroundService.setFocusedSeriesMetrics(metrics)
     }
+    Function("setLiveSeriesMetrics") { metrics: List<String> ->
+      CoreForegroundService.setLiveSeriesMetrics(metrics)
+    }
     Function("reloadAlertRules") {
       CoreForegroundService.reloadAlertRules(context.applicationContext)
     }
@@ -573,6 +579,10 @@ class VescapeCoreModule : Module() {
       CoreForegroundService.playAppSound(context.applicationContext, pack, cue)
     }
     registerCustomAppSounds()
+    // @parity /modules/vescape-core/ios/VescapeCoreModule.swift `mapTile`
+    AsyncFunction("mapTile") Coroutine { z: Int, x: Int, y: Int ->
+      MapTiles.get(context.applicationContext).tile(z, x, y)?.let { Uri.fromFile(it).toString() }
+    }
     Function("getAlertSounds") {
       CoreForegroundService.alertSoundPresets()
     }
@@ -826,6 +836,17 @@ class VescapeCoreModule : Module() {
       try { TelemetryRepository.get(context.applicationContext).exportRideCsv(options) }
       catch (error: CancellationException) { throw error }
       catch (error: Exception) { throw CodedException("ERR_RIDE_EXPORT", "Could not export ride", error) }
+    }
+    // @parity /modules/vescape-core/ios/VescapeCoreModule.swift `exportLiveTelemetryCsv`
+    // @parity /modules/vescape-core/src/index.ts `exportLiveTelemetryCsv`
+    AsyncFunction("exportLiveTelemetryCsv") Coroutine { ->
+      try {
+        withContext(Dispatchers.IO) {
+          RideExport.liveCsv(CoreForegroundService.recentTelemetry(), context.applicationContext.cacheDir)
+        }
+      }
+      catch (error: CancellationException) { throw error }
+      catch (error: Exception) { throw CodedException("ERR_LIVE_EXPORT", "Could not export live telemetry", error) }
     }
     AsyncFunction("getHistoryRange") Coroutine { options: Map<String, Any?> ->
       RecordingStorageFailure.requireAvailable()

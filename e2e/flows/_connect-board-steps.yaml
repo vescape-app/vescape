@@ -16,10 +16,6 @@ appId: ${APP_ID}
 - assertVisible:
     id: telemetry-controller-temp-cell
 - assertVisible:
-    id: telemetry-motor-current-cell
-- assertVisible:
-    id: telemetry-battery-current-cell
-- assertVisible:
     id: battery-bar
 
 # Editing lives in the board selector now, not on the pill.

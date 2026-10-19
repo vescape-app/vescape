@@ -99,6 +99,15 @@ CONTEXT.md                   Shared domain language
 
 ## Development
 
+Use the Bun version pinned in `package.json` under `packageManager` or a newer stable version.
+Installation and Git hooks reject older versions; CI uses the exact pin. To install that version on
+macOS or Linux:
+
+```bash
+expected_bun=$(bun -p 'require("./package.json").packageManager.slice(4)')
+curl -fsSL https://bun.com/install | bash -s "bun-v$expected_bun"
+```
+
 Install dependencies:
 
 ```bash
@@ -129,6 +138,13 @@ Build, test, or install the Wear OS companion on a connected watch:
 bun run wear:build
 bun run wear:test
 bun run wear
+```
+
+Phone + watch emulators: boot both AVDs, pair them, install both apps and wait for live frames on
+the wrist (needs Metro running; see [docs/agents/watch-emulators.md](docs/agents/watch-emulators.md)):
+
+```bash
+bun run android:up
 ```
 
 Run tests (JS via Bun + native Kotlin and Swift unit tests):

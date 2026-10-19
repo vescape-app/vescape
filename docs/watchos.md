@@ -256,6 +256,16 @@ gauges, navigation. The control axis nests inside the gauges page — gauges, Ti
 diagnostics — and shows no page dots, because they land on the battery gauge and Android has none
 either. The pages those slices fill arrived with later slices (#486–#491); the axes are the point.
 
+The Group Ride page follows navigation while the Rider is joined. Its list takes the crown and the
+vertical drag only while it is the settled page and has more than five Riders; once the page is left
+the crown pages the vertical axis again. Wear OS's pager has no crown binding, so its list takes the
+crown whenever the page has settled.
+
+The list's drag is a SwiftUI `DragGesture` on the page, which takes the touch from the paging scroll
+view outright — same-axis nested scroll views have no hand-off here. The list rubber-bands past
+either end; a pull down of at least 24 pt that began at the top pages back to navigation on release.
+Wear OS hands the same pull to its pager as it happens, through Compose nested scroll.
+
 ### Where the wrist logic lives
 
 The parts with a right answer — the reducer, the gauge fractions, the readout strings, the fixture
@@ -273,6 +283,8 @@ the wrist. `WatchGauge` rounds away from zero explicitly, and a test pins it.
 `bun run watchos:build` builds the watch simulator target. `bun run watchos:replay` rebuilds,
 installs and relaunches ride replay on the single booted watch simulator. With multiple watches
 booted, select one using `WATCHOS_UDID=<uuid> bun run watchos:replay`. A booted iPhone is ignored.
+`bun run watchos:replay --group` also passes `--group`, feeding `watch-group-ride.json` (beside the
+JSONL) into `PhoneLink.groupRide` at 1 Hz, the same fixture Group Ride as `wear:replay ride --group`.
 These commands use the selected Xcode's watch simulator SDK and discover the generated project,
 app path and bundle identifier. Generate `ios/` first with `bun run native:sync ios` if missing.
 
@@ -290,6 +302,10 @@ Restart replay after three hours to refresh it. Replay skips live phone listener
 so an empty phone context cannot erase the fixture. Wear OS already supported this companion asset;
 watchOS now uses the same data and timing rules.
 
+The street map replays offline too: `watch-map-tiles.json` lists the fixture tiles and
+`watch-map-tiles/<z>/<x>/<y>.jpg` holds them. Each is copied into `MapTileStore` through `receive`,
+the path a finished phone transfer takes, so the store never deletes the repo's files.
+
 The forecast is synthetic; radar uses real network imagery at the fixture coordinates. Open weather
 to check temperature, hourly scrolling and sun times, then radar to check loading and animation.
 No rain at that location can mean little visible radar color. A fetch failure is recorded in
@@ -306,6 +322,32 @@ xcrun simctl launch <watch-udid> app.vescape.dev.watchkitapp \
 
 Build with `-target VescapeWatch`, not `-scheme`: `-sdk watchsimulator` applies to every target in a
 scheme, and the Live Activity widget is iOS-only, so the scheme build fails on `ActivityKit`.
+
+### Simulator ride end to end
+
+`bun run watchos:ride` is the watchOS peer of `wear:ride` (see "Ride end to end" in
+`docs/watch-mirror.md`). It needs one booted, connected phone + watch pair (`xcrun simctl list
+pairs` shows `(active, connected)`; pair as above), the phone dev build installed with
+`bun run ios`, and Metro running. With more than one such pair, select the watch with
+`WATCHOS_UDID=<uuid>`.
+
+It builds and installs the watch app and launches it in its normal mirror mode, without `--replay`.
+It then relaunches the phone app on Metro (`--initialUrl`, which the dev launcher reads without a
+prompt) and at once opens
+`<bundle-id>://dev/watch-ride?replay=replay-thor301.jsonl&lat=51.13185&lon=16.98653` on the phone.
+A link that arrives while the bundle loads is held by the dev launcher and handed over as the initial
+URL. The phone starts the thor301 replay and, after the first replayed fix, sets the Direction Point;
+native runs Directions and pushes the route through the Application Context.
+
+The link uses the bundle-id scheme, not `vescape://`: a simulator with the store build installed
+beside the dev build would send `vescape://` to either app. If the simulator asks "Open in “vescape
+dev”?", tap Open. `simctl openurl` asks whenever the app is not already in front, and nothing in
+`simctl` can answer it.
+
+Unlike `wear:ride`, the command cannot confirm the ride started: an iOS dev build's `console.log`
+does not reach the simulator log. Check the phone (a Direction Point banner with a distance, and the replayed board
+connected) and the wrist with `xcrun simctl io <udid> screenshot shot.png`. The route arrives a
+few seconds after the phone has loaded.
 
 ### Verified on the simulator, 2026-09-15
 
@@ -337,6 +379,15 @@ Board Move (#490) connects its hold lifecycle to both pager locks and to command
 `moveHeld` is true the vertical axis is disabled, the horizontal axis loses its returning override,
 and the idle return is suspended. Cancelled drags, crown scrolling, nested diagnostics scrolling and
 long holds are still unverified on a device.
+
+The Tilt page is the one control page with its own drag recognizer, and on watchOS any drag gesture
+there takes the touch from the paging scroll view, sideways ones too; `.gesture` or dropping the
+gesture mid-touch does not hand it back. So a sideways drag on a drivable Tilt page offsets the
+control pager's content by the finger's travel and, on release, animates to the next page or back —
+the same half-page-or-fling rule the native pager uses. The gesture's mask stays on for a touch in
+flight, because a moving page stops being settled and changing the mask cancels the gesture. A
+cancelled touch is detected through `@GestureState` and settles the pager and the stick lock the same
+way a release does.
 
 ### Paging regression findings (2026-09-15)
 
@@ -418,8 +469,8 @@ across two Gradle modules, which is why it has two `WatchSettings.kt`.
 
 ### Cadence
 
-`wearPushRateHz` (1–20, default 4) is re-read by `BoardSessionController.reloadWatchSettings()` and
-re-arms the live tick; `WatchTick.setIntervalMs` already cancels and reschedules, so a lowered
+`wearPushRateHz` (1–20, default 4) is applied by `WatchMirrorCoordinator` when App Settings change and
+re-arms the live tick; `WatchTick.setIntervalMs` cancels and reschedules, so a lowered
 interval takes effect immediately rather than after the current, longer delay.
 
 This deliberately does **not** ride on `reloadTelemetrySettings`, which returns early with no Board
@@ -567,6 +618,20 @@ not by an app build.
 The route the rider is following now reaches the wrist, and the Wear OS route, pointer and distance
 are on the rectangle.
 
+### Route startup feedback
+
+Route Progress is recalculated from the latest GPS Fix as soon as a path is published, so selecting
+a route while stationary does not wait for movement. A separate `route-status` live message carries
+creation/failure state and the expected polyline fingerprint. The watch displays an animated ring around the rider position
+while creating or receiving the route, or when GPS placement is missing. Loading has no visible
+text; a failed request still shows **Route unavailable**. The gauges remain visible. Clearing navigation dismisses the loader; losing the live frame
+stream clears transient status. Ambient mode suppresses the spinner.
+
+Status is sent on route actions and repeated alongside live Watch Frames. Its separate message key
+preserves the telemetry wire format used by older watch apps. The fingerprint is a nonzero uint32
+FNV-1a over the encoded route bytes, shared with Wear OS. Preview the receiving state with
+`bun run watchos:replay --route-loading`.
+
 ### The clear is a value, not a missing key
 
 Android publishes the polyline on its own `/route` Data Layer path and clears it by **deleting** the
@@ -591,13 +656,15 @@ rejects an oversized payload with `WCErrorCodePayloadTooLarge` and Apple publish
 cap is a margin rather than a number tuned against a measured one. Above it the route is strided
 down with its endpoints kept, exactly as Android does.
 
-### The origin moves only once the route has landed
+### Origin commit and wrist receipt
 
 The wrist picture has two halves: the polyline on the cold channel, and where the rider is on it, in
 the Watch Frame's `riderEast`/`riderNorth` lanes as metres from the route's origin. An origin
 pointing at a route the wrist does not hold puts the rider off the line, and unlike a one-frame skew
 that state lasts until the next route change. So `WatchColdState` reports the channel it actually
-wrote — including on the activation retry — and the mirror promotes its origin only then. With no
+queued, including on the activation retry, and the mirror promotes its origin only then.
+This is transport acceptance, not proof of receipt: the watch keeps its loader until the decoded
+polyline matches the fingerprint in the live route status. With no
 route the origin is nil and the nav lanes ride as `NaN`, which is the "no Navigation" case the wrist
 already drew before there was a route to draw.
 
@@ -628,19 +695,19 @@ and the wrist draws the route at the scale the rider set on the phone.
   because a round panel's drawing bounds are square and the line would otherwise run to the bezel.
   Here the clip is the display's own rounded rectangle one step inside the rim gauges, so the route
   uses the corners the rectangle has.
-- **Motion is a shape's `animatableData`, not four `Animatable`s.** The rider offset, the course and
-  the zoom interpolate together as one animatable pair rather than as three independent springs. The
-  course is kept unwrapped so a heading crossing north turns the short way, which is the same rule
-  `shortestAngleDelta` encodes on Android.
-- **The empty-nav hint draws the ported Phosphor map-pin**, the same artwork Wear OS bundles. The
-  chevron and the pin beside the distance are drawn by hand on both wrists, so those match stroke
-  for stroke too.
+- **The map layers share motion.** `WatchMapScene` retargets `WatchMapView` using one absolute GPS
+  anchor, heading and zoom. Route and trail share position animation; Group Ride marks use the
+  same heading and zoom. Layers sample that state on `TimelineView`s. Those timelines run only while the map eases (or a
+  stale Rider pulses). The course is kept unwrapped so a heading crossing north turns the short way,
+  the same `shortestAngleDelta` rule Android uses, and the zoom uses Android's fast-out-slow-in curve.
+- **The chevron and the pin beside the distance are drawn by hand** on both wrists, so they match
+  stroke for stroke.
 
 Everything behavioural stays Android's: the same default and clamped route spans, the same rider drop
 below centre, the same line widths and opacities at rest and in focus, the same rule that the arrow
 setting hides the chevron and nothing else, the same nav-focus behaviour where the readouts leave and
-the nav stack grows, and the same "No navigation / Set a destination on your phone" when the phone is
-not navigating. Ambient skips the route layer for Android's reason: a moving map is the most
+the nav stack grows, and the same map page without Navigation: rider ring, trail and street map, no
+placeholder text. Ambient skips the route layer for Android's reason: a moving map is the most
 expensive thing an always-on panel could be asked to draw.
 
 ### Verified, 2026-09-15
@@ -940,3 +1007,35 @@ the phone and power cutoff accessible. Complete Lights before testing Move.
 
 Record failures and remaining platform differences here and track unresolved work in #491 before
 shipping. App Store preparation remains #493.
+
+## Street map (#551)
+
+The shared behaviour is in "Street map" in `docs/watch-mirror.md`. watchOS-specific parts:
+
+- Tiles ride `transferFile`. `PhoneLink` moves each received file into
+  `Application Support/map-tiles/<style>/<z>/<x>/<y>-<receipt>.jpg` on the delegate queue, because
+  the system deletes it once the callback returns. Each receipt gets its own file and a drop deletes
+  only the file it held, so a resend landing just after a drop survives it. `MapTileStore` deletes
+  every file not on the latest `mapTiles` list and every other style's directory, and applies the
+  list again once the launch scan of kept files has merged.
+- The `mapTiles` list is one more channel on the merged Application Context; `WatchColdState` stays
+  its only writer. An absent or unreadable list leaves the wrist's files alone.
+- The phone records finished transfers in `WCSession.watchDirectoryURL`. That directory goes with a
+  reinstall or an unpair, and `sessionWatchStateDidChange` makes the sender read the record again,
+  so a fresh watch app gets every tile again. The system drops outstanding transfers on a reinstall,
+  an unpair or a watch switch (`sessionDidBecomeInactive`) without a `didFinish`; their sends fail
+  then, and on every wake, so they cannot hold the four in-flight slots for good.
+- A transfer an earlier phone process left queued counts as delivered (it still lands and is
+  recorded) and is cancelled if its tile is dropped; one of another style is cancelled.
+
+### Verified on the simulator, 2026-10-07
+
+iPhone 17 + Apple Watch SE 3 40 mm, `bun run watchos:ride`: the phone plans, fetches and issues
+`transferFile` for each tile and writes the record. The tile list reaches the wrist through the
+Application Context, and the wrist then deletes files not on it. Tiles copied into the wrist's
+container are drawn under the trail, dimmed behind the gauges and at full opacity on the map page.
+
+**Not verified.** The simulator's `wcd` never delivers the file payload to the watch: the phone
+reports each transfer finished without an error (`failed to find transfer` in the phone `wcd` log)
+and the watch receives none. File delivery, a reinstall on hardware, and the frame cost of the layer
+need a physical Apple Watch.

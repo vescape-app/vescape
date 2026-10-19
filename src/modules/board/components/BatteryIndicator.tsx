@@ -4,7 +4,6 @@ import { useRouter } from 'expo-router'
 import { useShallow } from 'zustand/react/shallow'
 
 import { LinearGauge } from '@/components/charts/LinearGauge'
-import type { DualGaugeAlert } from '@/components/charts/gaugeAlert'
 import { telemetry } from '@/modules/board/constants/telemetry'
 import { TELEMETRY_THRESHOLDS } from '@/modules/board/constants/telemetryThresholds'
 import { theme, type ThemeColor } from '@/constants/theme'
@@ -14,6 +13,7 @@ import { useLiveSeries } from '@/modules/board/hooks/useLiveMetric'
 import { useMinuteNow } from '@/hooks/useMinuteNow'
 import { useResolvedNeutralColors } from '@/hooks/useTheme'
 import { useResolvedAlertRules } from '@/modules/alerts/hooks/useResolvedAlertRules'
+import { gaugeAlertsFor } from '@/modules/alerts/lib/gaugeAlerts'
 import { useBleStore } from '@/modules/board/store/bleStore'
 import { useBoardStore } from '@/modules/board/store/boardStore'
 import { routes } from '@/navigation/routes'
@@ -74,18 +74,8 @@ export function BatteryIndicator({ compact, transparent, containerStyle }: Batte
 
   // Battery alert thresholds are percent-scaled, so they only map onto the 0–100 bar once a
   // pack config exists. Hide them (and show the hint) until then.
-  const alerts = useMemo<DualGaugeAlert[]>(
-    () =>
-      batteryConfigured
-        ? alertRules
-            .filter((rule) => rule.enabled && rule.controlId === 'battery')
-            .map((rule) => ({
-              id: rule.id,
-              threshold: rule.threshold,
-              thresholdMax: rule.thresholdMax,
-              repeats: rule.repeatEverySeconds != null,
-            }))
-        : [],
+  const alerts = useMemo(
+    () => (batteryConfigured ? gaugeAlertsFor(alertRules, 'battery') : []),
     [alertRules, batteryConfigured],
   )
 

@@ -2,6 +2,7 @@ import Mapbox, { SymbolLayer } from '@rnmapbox/maps'
 import { memo } from 'react'
 
 import type { MapStyleKey } from '@/modules/map/constants/mapStyles'
+import { ONE_DARK_POI_ICON_COLOR } from '@/modules/map/constants/oneDarkOverlayLayers'
 
 const SATELLITE_ROAD_LINE_LAYER_IDS = [
   'road-path',
@@ -78,7 +79,7 @@ export const MapBaseStyleLayers = memo(function MapBaseStyleLayers({
             existing
             style={{
               visibility,
-              iconColor: '#8ba4bf',
+              iconColor: ONE_DARK_POI_ICON_COLOR,
               iconHaloWidth: 0,
               iconOpacity: 0.76,
             }}
@@ -90,7 +91,7 @@ export const MapBaseStyleLayers = memo(function MapBaseStyleLayers({
             existing
             style={{
               visibility,
-              iconColor: '#8ba4bf',
+              iconColor: ONE_DARK_POI_ICON_COLOR,
               iconHaloWidth: 0,
               iconOpacity: 0.76,
             }}

@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import type { LocationEvent, MapPoint, MapPointCategory } from 'vescape-core'
 
 import { useGroupRideStore } from '@/modules/group-ride/store/groupRideStore'
-import { useRiderStore } from '@/modules/group-ride/store/riderStore'
+import { useSelectedBoardRailColor } from '@/modules/group-ride/lib/selectedBoardRailColor'
 import { getLiveGpsPresentation } from '@/helpers/liveGpsPresentation'
 import { makeCircleFeature, makeTrailLineString } from '@/helpers/mapGeometry'
 import type { HistoryGpsSample } from '@/modules/history/store/historyStore'
@@ -96,7 +96,7 @@ export function useLiveMapModel({
       ) ?? null,
     [hiddenMapPointCategories, mapPoints, selectedMapPointId],
   )
-  const riderColor = useRiderStore((state) => state.riderColor)
+  const riderColor = useSelectedBoardRailColor()
   const riderFocusRows = useGroupRideStore((state) => state.rosterRows)
   const mapRiders = useMemo(() => riderFocusRows.filter((row) => !row.isSelf), [riderFocusRows])
   const riderTargetPoints = useMemo(

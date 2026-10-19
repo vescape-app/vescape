@@ -43,6 +43,16 @@ final class WatchTelemetryPusher: NSObject, WCSessionDelegate {
     record: { [weak self] name, props in self?.record(name, props) }
   )
 
+  /// Street-map tiles share this session and the merged cold state (`WatchColdState` stays the
+  /// only Application Context writer).
+  private(set) lazy var mapTiles = WatchMapTilePusher(
+    session: { [weak self] in
+      guard let session = self?.session, session.activationState == .activated else { return nil }
+      return session
+    },
+    putList: { [weak self] in self?.pushColdState(channel: watchMapTilesChannel, payload: $0) }
+  )
+
   init(record: @escaping (String, [String: Any?]) -> Void) {
     self.record = record
     super.init()
@@ -106,6 +116,19 @@ final class WatchTelemetryPusher: NSObject, WCSessionDelegate {
     session.transferCurrentComplicationUserInfo([watchLastBatteryChannel: desiredBattery?.payload ?? [:]])
   }
 
+  var onColdStateFailed: ((String) -> Void)? {
+    get { coldState.onFailed }
+    set { coldState.onFailed = newValue }
+  }
+
+  /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/watch/WatchTelemetryPusher.kt `pushRouteStatus`
+  func pushRouteStatus(_ status: WatchRouteStatus) {
+    guard let session, canPush else { return }
+    session.sendMessage([watchRouteStatusMessageKey: WatchRouteStatusCodec.encode(status)], replyHandler: nil) { [weak self] error in
+      self?.reportIssue("watch_frame_send_failed", ["path": watchRouteStatusMessageKey, "error": error.localizedDescription])
+    }
+  }
+
   func pushFrame(_ frame: Data) {
     guard let session, canPush else { return }
     session.sendMessageData(
@@ -113,6 +136,21 @@ final class WatchTelemetryPusher: NSObject, WCSessionDelegate {
       replyHandler: nil,
       errorHandler: { [weak self] error in
         self?.reportIssue("watch_frame_send_failed", ["error": error.localizedDescription])
+      }
+    )
+  }
+
+  /// A Group Ride Frame (ADR-0039). Its own message key rather than `sendMessageData`, which the
+  /// Watch Frame owns; same reachability gate and the same failure streak reporting.
+  ///
+  /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/watch/WatchTelemetryPusher.kt `pushGroupRideFrame`
+  func pushGroupRideFrame(_ frame: Data) {
+    guard let session, canPush else { return }
+    session.sendMessage(
+      [watchGroupRideMessageKey: frame],
+      replyHandler: nil,
+      errorHandler: { [weak self] error in
+        self?.reportIssue("watch_frame_send_failed", ["path": watchGroupRideMessageKey, "error": error.localizedDescription])
       }
     )
   }
@@ -148,6 +186,10 @@ final class WatchTelemetryPusher: NSObject, WCSessionDelegate {
     onCommand?(command)
   }
 
+  func session(_ session: WCSession, didFinish fileTransfer: WCSessionFileTransfer, error: Error?) {
+    mapTiles.finished(fileTransfer, error: error)
+  }
+
   func sessionReachabilityDidChange(_ session: WCSession) {
     guard self.session != nil else { return }
     let reachable = session.isReachable
@@ -166,11 +208,14 @@ final class WatchTelemetryPusher: NSObject, WCSessionDelegate {
       "watch_state_changed",
       ["paired": session.isPaired, "app_installed": session.isWatchAppInstalled]
     )
+    mapTiles.watchStateChanged()
   }
 
   /// Required on iOS: the system tears the session down when the rider switches paired watches, and
   /// expects it reactivated against the new one.
-  func sessionDidBecomeInactive(_ session: WCSession) {}
+  func sessionDidBecomeInactive(_ session: WCSession) {
+    mapTiles.watchStateChanged()
+  }
 
   func sessionDidDeactivate(_ session: WCSession) {
     guard self.session != nil else { return }

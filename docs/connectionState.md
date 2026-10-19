@@ -100,17 +100,18 @@ resolved from demand — see below.
 ### GPS demand
 
 `GpsDemand.resolve` is the one place that decides the **GPS Power Mode**, on both platforms, from
-four facts:
+five facts:
 
 | input                    | source                                                                                                        |
 | ------------------------ | ------------------------------------------------------------------------------------------------------------- |
 | app visible              | activity/app lifecycle, pushed into the controller                                                            |
 | riding                   | a Board Session exists, Idle Pause is not holding it, and the link is up or inside the **Ride Dropout Grace** |
 | Group Ride participating | the rider's position is being broadcast                                                                       |
+| watch navigating         | a Watch Mirror is taking frames while Navigation has a drawable route (`WatchMirrorCoordinator.navigating`)   |
 | replay owns position     | a replay is feeding recorded fixes through the live path                                                      |
 
-Resolution, in order: a replay forces `off`; riding or Group Ride participation gives `ride`; a
-visible app gives `map`; otherwise `off`.
+Resolution, in order: a replay forces `off`; riding, Group Ride participation or watch navigating
+gives `ride`; a visible app gives `map`; otherwise `off`.
 
 The modes differ only in what they cost:
 
@@ -134,8 +135,13 @@ Two of them are easy to get wrong:
 
 Consequences worth naming:
 
-- Backgrounding the app with no ride and no Group Ride stops GPS entirely. On Android that also drops
-  the `LOCATION` foreground-service type, which lets an otherwise idle host stop existing.
+- The wrist draws its route around the rider's live position, so Navigation on a Watch Mirror keeps
+  fixes flowing from a pocket without a Board or a Group Ride. The input follows the wrist's own
+  push gate: an asleep or unreachable Watch Mirror, or a route that is computing, failed or cleared,
+  stops paying for fixes. The coordinator re-evaluates it on every watch tick and refreshes demand
+  on an edge.
+- Backgrounding the app with no ride, no Group Ride and no wrist Navigation stops GPS entirely. On
+  Android that also drops the `LOCATION` foreground-service type, which lets an otherwise idle host stop existing.
 - Idle Pause stands GPS down while the app is backgrounded. Recording is already halted there
   (ADR 0021), so nothing is lost but the time-to-first-fix on resume.
 - The `gps_fix_stale` watchdog runs only in `ride` mode. In `map` mode a stationary rider produces no
@@ -241,6 +247,20 @@ writes during startup.
   CAN id resolution happens once at setup via Board Probe, not on connect.
 - GATT descriptor timeout fallbacks must be canceled after successful CCCD writes,
   otherwise a stale timeout can double-resolve the connection.
+- Every GATT connection, including a reconnect, has a discovery/subscription deadline on both
+  platforms: initially 2 seconds, increasing to 4 then 6 seconds after handshake timeouts. It stays
+  capped at 6 seconds until valid telemetry arrives or a new Board Session starts. Scan cycles and
+  radio connect failures do not reset that allowance. The notification acknowledgement fallback
+  runs after 1 second. Neither deadline delays a successful callback.
+- Handshake timeouts, missing telemetry, and runtime GATT failures reset the stalled connection
+  and retry. iOS clears interrupted writes when reconnecting so a missing write completion cannot
+  block the new connection. Explicit Disconnect cancels recovery, including work deferred until
+  Bluetooth powers on; malformed identifiers and replay failures remain terminal.
+- Failure-driven retries on iOS use Android's backoff: 500 ms, increasing by 500 ms to 5 seconds.
+  After 12 unsuccessful attempts, background retries wait 30 seconds. This counter resets on
+  valid telemetry or a new session, independently of iOS's supplemental scan cycle.
+- When iOS cannot retrieve a saved peripheral, its required target scan stays active across
+  supplemental reconnect scan windows until the target appears or the rider disconnects.
 - Tune/config reads should not compete with initial telemetry startup. If a config
   read starts while the board is still settling, prefer gating/queuing over adding
   long connection delays.

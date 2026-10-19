@@ -36,8 +36,6 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: oven-sh/setup-bun@v2
-        with:
-          bun-version: latest
       # The version must already be tagged and released here: recording one the store does not
       # serve would tell every Rider to install a build they cannot get.
       - name: Verify the version is a released tag on main

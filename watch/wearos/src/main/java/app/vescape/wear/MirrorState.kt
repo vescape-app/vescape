@@ -12,6 +12,16 @@ const val WATCH_FRAME_INTERVAL_MS = 250L
 const val MIRROR_DISCONNECTED_MIN_TIMEOUT_MS = 750L
 const val MIRROR_DISCONNECTED_MAX_TIMEOUT_MS = 30_000L
 
+/**
+ * How many recent arrival gaps the cadence is read from. The window is sized by the longest of them,
+ * never the last: transports deliver in bursts, so the last gap inside a burst is ~0 and would shrink
+ * the window to the floor, flipping the mirror to DISCONNECTED in every pause between bursts.
+ *
+ * @parity /modules/vescape-core/ios/watch/MirrorState.swift `cadenceWindowGaps`
+ */
+const val MIRROR_CADENCE_WINDOW_GAPS = 8
+
+/** [frameGapMs] is the longest recent arrival gap (see [MIRROR_CADENCE_WINDOW_GAPS]). */
 fun mirrorDisconnectedTimeoutMs(frameGapMs: Long?): Long =
     ((frameGapMs ?: WATCH_FRAME_INTERVAL_MS) * 3)
         .coerceIn(MIRROR_DISCONNECTED_MIN_TIMEOUT_MS, MIRROR_DISCONNECTED_MAX_TIMEOUT_MS)
@@ -44,6 +54,20 @@ enum class PhoneLink {
 
     /** The Vescape phone app is installed and the node is reachable; it just isn't pushing. */
     APP_REACHABLE,
+}
+
+/**
+ * What the gauge shell says while no frames arrive: only the phone-link problems the wrist cannot fix
+ * itself. A reachable phone app that is not pushing has nothing to say — no Board is not a fault,
+ * the rider may be on foot in a Group Ride or navigating (ADR-0039) — so it gets no notice and the
+ * shell reads exactly as it does for a board-less frame.
+ *
+ * @parity /modules/vescape-core/ios/watch/MirrorState.swift `MirrorLinkNotice`
+ */
+enum class LinkNotice {
+    CONNECTING,
+    NO_PHONE,
+    APP_MISSING,
 }
 
 /** @parity /modules/vescape-core/ios/watch/MirrorState.swift `MirrorState` */
@@ -81,5 +105,20 @@ object MirrorStateReducer {
             status = if (frame.stale) MirrorStatus.STALE else MirrorStatus.LIVE,
             frame = frame,
         )
+    }
+
+    /**
+     * The notice for [status] given the watch-local [link]; null means the shell says nothing.
+     *
+     * @parity /modules/vescape-core/ios/watch/MirrorState.swift `linkNotice`
+     */
+    fun linkNotice(status: MirrorStatus, link: PhoneLink): LinkNotice? {
+        if (status != MirrorStatus.DISCONNECTED) return null
+        return when (link) {
+            PhoneLink.UNKNOWN -> LinkNotice.CONNECTING
+            PhoneLink.NO_PHONE -> LinkNotice.NO_PHONE
+            PhoneLink.PHONE_ONLY -> LinkNotice.APP_MISSING
+            PhoneLink.APP_REACHABLE -> null
+        }
     }
 }

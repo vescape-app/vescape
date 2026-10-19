@@ -31,7 +31,7 @@ final class WatchFrameTests: XCTestCase {
     )
     let data = WatchFrameBuilder.encode(frame)
 
-    XCTAssertEqual(data.count, WATCH_FRAME_BYTES)
+    XCTAssertEqual(data.count, WATCH_FRAME_BYTES + 20)
     XCTAssertEqual(Int(data[0]), WATCH_FRAME_FIELD_COUNT)
     // Only the stale bit: the legacy "waiting" bit is never set by this phone side.
     XCTAssertEqual(Int(data[1]), WATCH_FRAME_FLAG_STALE)

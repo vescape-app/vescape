@@ -22,17 +22,23 @@ appId: ${APP_ID}
 # the fixture recording is 13 minutes and a full pass can outlast it (Maestro spends most of its
 # time waiting for a live hierarchy to settle). Either way the next step needs a session that is
 # over, so both routes are correct — this one must not care which happened.
-- runFlow:
-    when:
-      visible:
-        id: board-disconnect-button
+# Live telemetry keeps changing even when a hosted simulator misses the tap. Retry this idempotent
+# transition against the disconnected state, rather than Maestro's generic UI-change detection.
+- retry:
+    maxRetries: 3
     commands:
-      - tapOn:
-          id: board-disconnect-button
-- extendedWaitUntil:
-    visible:
-      id: floating-bar-connect
-    timeout: 30000
+      - runFlow:
+          when:
+            visible:
+              id: board-disconnect-button
+          commands:
+            - tapOn:
+                id: board-disconnect-button
+                waitToSettleTimeoutMs: 1000
+      - extendedWaitUntil:
+          visible:
+            id: floating-bar-connect
+          timeout: 30000
 
 - tapOn:
     id: board-selector-trigger

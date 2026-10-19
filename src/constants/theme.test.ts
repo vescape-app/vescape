@@ -97,7 +97,7 @@ describe('accent palettes', () => {
       }
 
       for (const [name, accent] of Object.entries(accentColors[appearance])) {
-        const resourceName = name === 'groupRide' ? 'group_ride' : snakeCase(name)
+        const resourceName = snakeCase(name)
         for (const role of ['color', 'light', 'text', 'bg', 'border'] as const) {
           expect(resources.get(`vescape_accent_${resourceName}_${role}`)).toBe(
             accent[role].toLowerCase(),

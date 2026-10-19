@@ -1,1 +1,0 @@
-../../modules/vescape-core/ios/watch/WatchSettings.swift

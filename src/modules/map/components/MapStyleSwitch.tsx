@@ -3,7 +3,11 @@ import {
   type ExpandableCircleMenuSize,
 } from '@/components/controls/ExpandableCircleMenu'
 import { IS_MAPY_CONFIGURED } from '@/config/mapy'
-import { useResolvedAccentColors } from '@/hooks/useTheme'
+import {
+  useColoredActionForeground,
+  useResolvedAccentColors,
+  useThemeStore,
+} from '@/hooks/useTheme'
 import { MAP_STYLES, type MapStyleKey } from '@/modules/map/constants/mapStyles'
 import { theme } from '@/constants/theme'
 
@@ -23,6 +27,8 @@ export function MapStyleSwitch({
   onSelect,
 }: MapStyleSwitchProps) {
   const accents = useResolvedAccentColors()
+  const light = useThemeStore((state) => state.resolvedTheme === 'light')
+  const activeForeground = useColoredActionForeground(theme.palette.sky.color)
   const iconSize = size === 'sm' ? 18 : 21
   const availableStyles = IS_MAPY_CONFIGURED
     ? MAP_STYLES
@@ -41,7 +47,13 @@ export function MapStyleSwitch({
     icon: (
       <style.Icon
         size={iconSize}
-        color={effectiveActiveKey === style.key ? accents.sky.color : theme.palette.mono.white}
+        color={
+          effectiveActiveKey === style.key
+            ? activeForeground
+            : light
+              ? accents.sky.color
+              : theme.palette.mono.white
+        }
         weight={effectiveActiveKey === style.key ? 'fill' : 'bold'}
       />
     ),
@@ -50,8 +62,8 @@ export function MapStyleSwitch({
   return (
     <ExpandableCircleMenu
       activeKey={effectiveActiveKey}
-      activeIcon={<activeStyle.Icon size={iconSize} color={accents.sky.color} weight="fill" />}
-      activeColor={accents.sky.color}
+      activeIcon={<activeStyle.Icon size={iconSize} color={activeForeground} weight="fill" />}
+      activeColor={theme.palette.sky.color}
       activeBackground={theme.alpha(accents.sky.color, 0.12)}
       collapsedAccessibilityLabel={`Basemap: ${activeStyle.label}`}
       expanded={expanded}

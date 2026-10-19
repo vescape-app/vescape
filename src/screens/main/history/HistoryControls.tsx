@@ -2,16 +2,14 @@ import { StyleSheet, View } from 'react-native'
 import {
   ArrowLeftIcon,
   CheckIcon,
-  ClockCounterClockwiseIcon,
   PencilSimpleIcon,
-  StarIcon,
   DotsThreeIcon,
   XIcon,
 } from 'phosphor-react-native'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 
 import { IconButton } from '@/components/base/IconButton'
-import { PillSelector, PillSelectorItem } from '@/components/controls/PillSelector'
+import { HistoryTabs } from '@/modules/history/components/HistoryTabs'
 import { Input } from '@/components/forms/Input'
 import { theme } from '@/constants/theme'
 import type { HistoryTab } from '@/screens/main/mainScreenStore'
@@ -106,35 +104,7 @@ export function HistoryControls({
           accessibilityLabel="Back"
         />
         <View style={styles.tabsWrap} pointerEvents="box-none">
-          <PillSelector
-            activeId={tab}
-            contained
-            fitContent
-            variant="lightTabs"
-            style={styles.tabs}
-            contentContainerStyle={styles.tabsContent}
-          >
-            <PillSelectorItem
-              id="history"
-              label="History"
-              icon={ClockCounterClockwiseIcon}
-              activeWidth={116}
-              inactiveWidth={46}
-              color={theme.palette.sky}
-              testID="history-tab-history"
-              onPress={() => onSelectTab('history')}
-            />
-            <PillSelectorItem
-              id="favorites"
-              label="Favorites"
-              icon={StarIcon}
-              activeWidth={126}
-              inactiveWidth={46}
-              color={theme.palette.amber}
-              testID="history-tab-favorites"
-              onPress={() => onSelectTab('favorites')}
-            />
-          </PillSelector>
+          <HistoryTabs tab={tab} onSelectTab={onSelectTab} />
         </View>
         <View style={styles.actions}>
           {favorite ? (
@@ -200,12 +170,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 8,
     zIndex: 1,
-  },
-  tabs: {
-    alignSelf: 'center',
-  },
-  tabsContent: {
-    justifyContent: 'center',
   },
   headerTitleWrap: {
     flex: 1,

@@ -1,4 +1,3 @@
-import { DropIcon } from 'phosphor-react-native'
 import { Pressable, StyleSheet, View } from 'react-native'
 import { Canvas, Circle, Path, Skia, useClock } from '@shopify/react-native-skia'
 import { useDerivedValue, type SharedValue } from 'react-native-reanimated'
@@ -100,22 +99,20 @@ export function WeatherSidePill({
   icon,
   temperature,
   precipProbability,
-  verticalOffset,
   onPress,
 }: {
   icon: WeatherIconSlug
   temperature: number
   precipProbability: number | null
-  verticalOffset: number
   onPress?: () => void
 }) {
   return (
     <Pressable
       accessibilityLabel={`Weather, ${temperature} degrees`}
       onPress={onPress}
-      style={[styles.pill, { transform: [{ translateY: verticalOffset }] }]}
+      style={styles.pill}
     >
-      {icon === 'cloud-rain' && precipProbability != null && precipProbability > 0 ? (
+      {precipProbability != null && precipProbability > 0 ? (
         <RainWaterFill probability={precipProbability} />
       ) : null}
       {icon === 'cloud-snow' ? <Snowfall /> : null}
@@ -124,7 +121,6 @@ export function WeatherSidePill({
         <Text style={styles.temperature}>{temperature}°</Text>
         {precipProbability != null && precipProbability > 0 ? (
           <View style={styles.precipitation}>
-            <DropIcon size={9} color={theme.palette.sky.color} weight="duotone" />
             <Text style={styles.precipitationText}>{precipProbability}%</Text>
           </View>
         ) : null}
@@ -136,6 +132,7 @@ export function WeatherSidePill({
 const styles = StyleSheet.create({
   pill: {
     position: 'absolute',
+    zIndex: 43,
     top: '50%',
     right: 12,
     width: PILL_WIDTH,

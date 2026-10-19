@@ -28,6 +28,7 @@ re-run `bun run check` after every edit — wasteful.
 - Real logic change with tests → `bun test <path>`, that path only.
 - Check failed → re-run that one check until green.
 - Small edits (copy, style, props, docs) → nothing, let the hook catch it.
+- UI color or appearance edits → run `bun run theme:colors:check` immediately after the edit, before staging or committing. Fix its findings before broader checks.
 
 Narrow command over full `bun run check`.
 
@@ -148,12 +149,13 @@ this task is finished? Update the existing authoritative page instead of appendi
 
 ## React Native
 
-React Native UI conventions, including icon usage, live in `docs/agents/react.md`.
+React Native UI conventions, including adaptive color selection, resolution, and icon usage, live in `docs/agents/react.md`. Read its Colors section before changing UI colors or appearance behavior.
 Skia canvas rules — gesture frame cost, transform-only animation, worklet and repaint traps — live in `docs/agents/skia.md`.
 Visual design language (colors, layout, typography) lives in `docs/design.md`.
 Clerk production authentication setup and Android email-link debugging live in `docs/agents/clerk-auth.md`.
 Mapbox dependency patches and their native camera semantics live in `docs/agents/mapbox-patches.md`.
 Generated native state (`ios/`, `android/`, Pods) is kept in sync by `bun run ios` / `bun run android`; see `docs/agents/native-sync.md`.
+Phone + Wear emulators, paired and mirroring, come from `bun run android:up`; failures and wrist checks are in `docs/agents/watch-emulators.md`.
 
 When adding or changing a reusable UI component (or a new visual variant/state of one), add or update its preview in the component showcase under `src/app/settings/components/` so every component stays browsable with live controls.
 

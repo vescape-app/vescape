@@ -3,12 +3,12 @@ import { speedFromKmh, speedUnit } from '@/helpers/units'
 import { useMemo, type ReactNode } from 'react'
 import { Pressable, StyleSheet, View } from 'react-native'
 import { useDerivedValue, type SharedValue } from 'react-native-reanimated'
-import { Canvas, Group, Path } from '@shopify/react-native-skia'
+import { Canvas, Group, Path, Text as SkiaText } from '@shopify/react-native-skia'
 
 import type { DualGaugeAlert } from '@/components/charts/gaugeAlert'
-import type { SparklinePoint } from '@/components/charts/Sparkline'
-import { buildSparklinePaths, SparklineLayer } from '@/components/charts/SparklineLayer'
 import { useCanvasSize } from '@/hooks/useCanvasSize'
+import { useSkiaMonoFont } from '@/hooks/useSkiaFont'
+import { textAdvanceWidth } from '@/helpers/skiaText'
 import { DASH } from '@/helpers/format'
 import { interaction, theme, type AlphaLevel } from '@/constants/theme'
 import { useResolvedAccentColors, useResolvedTelemetryColors } from '@/hooks/useTheme'
@@ -16,7 +16,9 @@ import type { MetricHotRange } from '@/modules/history/lib/metricColorScale'
 import {
   arcPath,
   clamp01,
+  polar,
   radialTickPath,
+  segmentPath,
   STROKE,
   svgPath,
   wedgePath,
@@ -54,9 +56,17 @@ const VB_CROP_RIGHT_X = RIGHT_ARC.cx - CROP_PAD
 // The touch row is clipped to that so it matches what the rider actually sees.
 const ARC_BOTTOM_RATIO = (LEFT_ARC.cy - CROP_TOP) / VB_CROP_H
 
-const SPARKLINE_HEIGHT = 28
-const SPARKLINE_TOP = 12
-const SPARKLINE_GAP = 32
+const ARC_GAP = 32
+
+// Peak marker, in arc units: a faint tick across the stroke with the value just outside the arc.
+const PEAK_TICK_INSET = 3.5
+const PEAK_TICK_OUTSET = 2
+const PEAK_LABEL_SIZE = 6
+const PEAK_LABEL_GAP = 1
+/** Level line from the tick's outer end to the value, so the value reads as level with it. */
+const PEAK_LEADER_LENGTH = 2.5
+/** Low peaks are of no interest, and lower on the arc the label would run off the screen. */
+const PEAK_MIN_FRACTION = 0.4
 
 const GLOW_STOPS = [0, 0.6, 0.95, 1]
 const GLOW_OPACITIES: AlphaLevel[] = [0, 0, 0.12, 0.3]
@@ -73,6 +83,8 @@ interface QuarterArcProps {
   displayScale?: number
   alerts?: DualGaugeAlert[]
   hotRange?: MetricHotRange | null
+  /** Highest value across the live window, marked on the arc. */
+  peak?: SharedValue<number | null>
 }
 
 interface QuarterArcLayerProps extends QuarterArcProps {
@@ -86,6 +98,8 @@ function QuarterArcLayer({
   color,
   alerts = [],
   hotRange,
+  peak,
+  displayScale,
   transform,
 }: QuarterArcLayerProps) {
   'use no memo'
@@ -135,9 +149,99 @@ function QuarterArcLayer({
         <AlertMarker key={alert.id} arc={arc} alert={alert} max={max} />
       ))}
 
+      {peak ? (
+        <PeakMarker
+          arc={arc}
+          side={side}
+          peak={peak}
+          max={max}
+          color={color}
+          displayScale={displayScale}
+        />
+      ) : null}
+
       {/* Position marker */}
       <Path path={markerPath} color={arcColor} style="stroke" strokeWidth={1.5} strokeCap="butt" />
     </Group>
+  )
+}
+
+/**
+ * Where the live window topped out: a tick across the arc, then a short level line out to the value
+ * on the gauge's outer side — left of the speed arc, right of the duty arc — clear of the top bar.
+ * Hidden while the peak is low on the arc.
+ */
+function PeakMarker({
+  arc,
+  side,
+  peak,
+  max,
+  color,
+  displayScale = 1,
+}: {
+  arc: Arc
+  side: 'left' | 'right'
+  peak: SharedValue<number | null>
+  max: number
+  color: string
+  displayScale?: number
+}) {
+  'use no memo'
+  const font = useSkiaMonoFont('600', PEAK_LABEL_SIZE)
+  const fraction = useDerivedValue(() => clamp01((peak.value ?? 0) / max))
+  const opacity = useDerivedValue(() =>
+    peak.value != null && fraction.value >= PEAK_MIN_FRACTION ? 1 : 0,
+  )
+  const tick = useDerivedValue(() =>
+    radialTickPath(arc, fraction.value, PEAK_TICK_INSET, PEAK_TICK_OUTSET),
+  )
+  const text = useDerivedValue(() =>
+    peak.value == null ? '' : Math.round(peak.value * displayScale).toString(),
+  )
+  const anchor = useDerivedValue(() => polar(arc, arc.r + PEAK_TICK_OUTSET, fraction.value))
+  const leaderEnd = useDerivedValue(() =>
+    side === 'left' ? anchor.value.x - PEAK_LEADER_LENGTH : anchor.value.x + PEAK_LEADER_LENGTH,
+  )
+  const leader = useDerivedValue(() =>
+    segmentPath(anchor.value.x, anchor.value.y, leaderEnd.value, anchor.value.y),
+  )
+  const labelX = useDerivedValue(() => {
+    const width = font ? textAdvanceWidth(font, text.value) : 0
+    return side === 'left'
+      ? leaderEnd.value - PEAK_LABEL_GAP - width
+      : leaderEnd.value + PEAK_LABEL_GAP
+  })
+  const labelY = useDerivedValue(() => anchor.value.y + PEAK_LABEL_SIZE * 0.36)
+
+  return (
+    <>
+      <Path
+        path={tick}
+        color={theme.alpha(color, 0.7)}
+        style="stroke"
+        strokeWidth={0.6}
+        strokeCap="round"
+        opacity={opacity}
+      />
+      <Path
+        path={leader}
+        color={theme.alpha(color, 0.7)}
+        style="stroke"
+        strokeWidth={0.6}
+        strokeCap="round"
+        opacity={opacity}
+      />
+      {font ? (
+        <SkiaText
+          x={labelX}
+          y={labelY}
+          text={text}
+          font={font}
+          color={theme.alpha(color, 0.8)}
+          opacity={opacity}
+        />
+      ) : null}
+    </>
   )
 }
 
@@ -174,15 +278,14 @@ function GaugeValueLayer({
 interface GaugePairProps {
   speedValue: SharedValue<number | null>
   dutyValue: SharedValue<number | null>
+  speedPeak?: SharedValue<number | null>
+  dutyPeak?: SharedValue<number | null>
   speedMax: number
   dutyMax: number
   speedAlerts: DualGaugeAlert[]
   dutyAlerts: DualGaugeAlert[]
   speedHotRange: MetricHotRange | null
   dutyHotRange: MetricHotRange | null
-  speedSeries: SparklinePoint[]
-  dutySeries: SparklinePoint[]
-  windowMs?: number
   /** Rendered against the bottom of the arcs, inside the space the gauge box leaves below them. */
   footer?: ReactNode
   onPressSpeed: () => void
@@ -192,15 +295,14 @@ interface GaugePairProps {
 export function GaugePair({
   speedValue,
   dutyValue,
+  speedPeak,
+  dutyPeak,
   speedMax,
   dutyMax,
   speedAlerts,
   dutyAlerts,
   speedHotRange,
   dutyHotRange,
-  speedSeries,
-  dutySeries,
-  windowMs,
   footer,
   onPressSpeed,
   onPressDuty,
@@ -208,40 +310,17 @@ export function GaugePair({
   const units = useUnitSystem()
   const telemetryColors = useResolvedTelemetryColors()
   const { size, onLayout } = useCanvasSize()
-  const cellWidth = Math.max(0, (size.w - SPARKLINE_GAP) / 2)
+  const cellWidth = Math.max(0, (size.w - ARC_GAP) / 2)
   const scale = cellWidth / VB_CROP_W
   const gaugeHeight = cellWidth * (VB_CROP_H / VB_CROP_W)
-  const sparklinePaths = useMemo(
-    () => [
-      buildSparklinePaths({
-        points: speedSeries,
-        width: cellWidth,
-        height: SPARKLINE_HEIGHT,
-        range: { min: 0, max: speedMax },
-        windowMs,
-      }),
-      buildSparklinePaths({
-        points: dutySeries,
-        width: cellWidth,
-        height: SPARKLINE_HEIGHT,
-        range: { min: 0, max: dutyMax },
-        windowMs,
-      }),
-    ],
-    [cellWidth, dutyMax, dutySeries, speedMax, speedSeries, windowMs],
-  )
   const leftTransform = useMemo(
-    () => [
-      { translateX: -VB_CROP_LEFT_X * scale },
-      { translateY: SPARKLINE_HEIGHT + SPARKLINE_TOP - CROP_TOP * scale },
-      { scale },
-    ],
+    () => [{ translateX: -VB_CROP_LEFT_X * scale }, { translateY: -CROP_TOP * scale }, { scale }],
     [scale],
   )
   const rightTransform = useMemo(
     () => [
-      { translateX: cellWidth + SPARKLINE_GAP - VB_CROP_RIGHT_X * scale },
-      { translateY: SPARKLINE_HEIGHT + SPARKLINE_TOP - CROP_TOP * scale },
+      { translateX: cellWidth + ARC_GAP - VB_CROP_RIGHT_X * scale },
+      { translateY: -CROP_TOP * scale },
       { scale },
     ],
     [cellWidth, scale],
@@ -251,25 +330,19 @@ export function GaugePair({
   // Where the drawn gauges actually end. The box is a fixed aspect ratio and the arcs stop at
   // their centre line, so everything below this — the touch row's floor, the footer slot — has to
   // be placed against this line rather than against the box.
-  const arcBottom = SPARKLINE_TOP + SPARKLINE_HEIGHT + gaugeHeight * ARC_BOTTOM_RATIO
-  const bowlTop = SPARKLINE_HEIGHT + SPARKLINE_TOP + gaugeHeight * 0.1
+  const arcBottom = gaugeHeight * ARC_BOTTOM_RATIO
+  const bowlTop = gaugeHeight * 0.1
   const bowl = {
     y: bowlTop,
     width: size.w * 0.4,
-    height: size.h - bowlTop - gaugeHeight * 0.05,
+    height: gaugeHeight * 0.95 - bowlTop,
   }
   return (
+    // The touch cells size the box: each holds the arcs' fixed aspect and the gap between them is
+    // fixed, so no single aspect ratio fits every screen, but the cells lay it out in one pass.
     <View style={styles.gaugePair} onLayout={onLayout}>
       {scale > 0 ? (
         <Canvas style={styles.svg}>
-          <Group transform={[{ translateY: SPARKLINE_TOP }]}>
-            <SparklineLayer paths={sparklinePaths[0]} color={telemetryColors.speed} showMax />
-          </Group>
-          <Group
-            transform={[{ translateX: cellWidth + SPARKLINE_GAP }, { translateY: SPARKLINE_TOP }]}
-          >
-            <SparklineLayer paths={sparklinePaths[1]} color={telemetryColors.duty} showMax />
-          </Group>
           <QuarterArcLayer
             side="left"
             value={speedValue}
@@ -278,6 +351,8 @@ export function GaugePair({
             unit={speedUnit(units)}
             alerts={speedAlerts}
             hotRange={speedHotRange}
+            peak={speedPeak}
+            displayScale={speedFromKmh(1, units)}
             transform={leftTransform}
           />
           <QuarterArcLayer
@@ -288,6 +363,7 @@ export function GaugePair({
             unit="%"
             alerts={dutyAlerts}
             hotRange={dutyHotRange}
+            peak={dutyPeak}
             transform={rightTransform}
           />
           <GaugeValueLayer
@@ -307,19 +383,23 @@ export function GaugePair({
           />
         </Canvas>
       ) : null}
-      <View style={[styles.gaugeTouchRow, { height: arcBottom }]}>
-        <Pressable
-          style={styles.halfPressable}
-          testID="gauge-speed"
-          onPress={onPressSpeed}
-          android_ripple={interaction.ripple}
-        />
-        <Pressable
-          style={styles.halfPressable}
-          testID="gauge-duty"
-          onPress={onPressDuty}
-          android_ripple={interaction.ripple}
-        />
+      <View style={styles.gaugeTouchRow}>
+        <View style={styles.cell}>
+          <Pressable
+            style={styles.halfPressable}
+            testID="gauge-speed"
+            onPress={onPressSpeed}
+            android_ripple={interaction.ripple}
+          />
+        </View>
+        <View style={styles.cell}>
+          <Pressable
+            style={styles.halfPressable}
+            testID="gauge-duty"
+            onPress={onPressDuty}
+            android_ripple={interaction.ripple}
+          />
+        </View>
       </View>
       {footer ? (
         <View pointerEvents="box-none" style={[styles.footer, { top: arcBottom }]}>
@@ -331,15 +411,26 @@ export function GaugePair({
 }
 
 const styles = StyleSheet.create({
-  gaugePair: { width: '100%', aspectRatio: 1.4, position: 'relative' },
-  gaugeTouchRow: { position: 'absolute', top: 0, left: 0, right: 0, flexDirection: 'row', gap: 32 },
+  gaugePair: { width: '100%', position: 'relative' },
+  gaugeTouchRow: {
+    flexDirection: 'row',
+    gap: ARC_GAP,
+  },
   footer: { position: 'absolute', left: 0, right: 0, alignItems: 'center' },
-  halfPressable: {
+  cell: {
     flex: 1,
+    aspectRatio: VB_CROP_W / VB_CROP_H,
+  },
+  // Touch stops where the arcs do, leaving the footer's strip below to the footer.
+  halfPressable: {
+    height: `${ARC_BOTTOM_RATIO * 100}%`,
     overflow: 'visible',
   },
   svg: {
-    width: '100%',
-    height: '100%',
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
   },
 })

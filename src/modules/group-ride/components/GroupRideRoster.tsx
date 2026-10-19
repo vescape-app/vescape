@@ -49,7 +49,7 @@ function StatCell({
   level?: TelemetryLevel
 }) {
   const alert = level !== 'normal'
-  const color = alert ? TELEMETRY_LEVEL_COLOR[level] : theme.palette.slate.textSecondary
+  const color = alert ? TELEMETRY_LEVEL_COLOR[level] : theme.neutral.textSecondary
   return (
     <View style={styles.statCell}>
       <View style={styles.statIconSlot}>
@@ -71,12 +71,12 @@ function RiderCell({
   accent: ThemeColor
   connected: boolean
 }) {
-  const dotColor = rider.color || theme.palette.slate.textMuted
+  const dotColor = rider.color || theme.neutral.textMuted
   const boardName = rider.presence?.boardName?.trim() || 'Board not connected'
   // Only claim a rider is "Live" when our own relay link is up — otherwise the roster is just
   // the last snapshot we received and we can't know it's current.
   const fresh = !rider.stale && connected
-  const statusColor = fresh ? accent : theme.palette.slate.textMuted
+  const statusColor = fresh ? accent : theme.neutral.textMuted
   const status = fresh ? 'Live' : 'Stale'
   const s = useRiderStats(rider.presence)
 
@@ -149,21 +149,21 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   rideMeta: {
-    color: theme.palette.slate.textSecondary,
+    color: theme.neutral.textSecondary,
     fontSize: 13,
   },
   rideMetaDim: {
-    color: theme.palette.slate.textSecondary,
+    color: theme.neutral.textSecondary,
     fontSize: 12,
     opacity: 0.7,
   },
   rideName: {
-    color: theme.palette.slate.textPrimary,
+    color: theme.neutral.textPrimary,
     fontSize: 17,
     fontWeight: '700',
   },
   riderBoard: {
-    color: theme.palette.slate.textSecondary,
+    color: theme.neutral.textSecondary,
     fontSize: 12,
   },
   riderCell: {
@@ -183,7 +183,7 @@ const styles = StyleSheet.create({
   },
   riderName: {
     flexShrink: 1,
-    color: theme.palette.slate.textPrimary,
+    color: theme.neutral.textPrimary,
     fontSize: 14,
     fontWeight: '700',
   },
@@ -222,7 +222,7 @@ const styles = StyleSheet.create({
   },
   statValue: {
     flexShrink: 1,
-    color: theme.palette.slate.textSecondary,
+    color: theme.neutral.textSecondary,
     fontSize: 11,
     fontWeight: '600',
   },

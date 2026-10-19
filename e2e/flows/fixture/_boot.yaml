@@ -4,19 +4,48 @@
 # and fixtures pushed by the runner. The app's own bootstrap restores the backup zip and starts the
 # replay session before it mounts, so this wait covers a database restore plus a replay handshake.
 #
-# Waiting on `battery-bar` rather than a blind settle: it is the first thing on screen that can only
-# be there once the live session is delivering, which is the state both runs need and neither can
-# assert by watching animations stop.
+# Wait for the restored dashboard instead of animations settling. Flows that need an active
+# replay also assert its badge; the battery bar alone can remain visible after replay ends.
 appId: ${APP_ID}
 ---
-- launchApp
-# iOS 26 shows the location prompt on first launch even after `simctl privacy grant`, and a system
-# alert owns the whole hierarchy: every assertion below it fails with the app running fine
-# underneath. Optional, so Android — where the runner grants permissions outright — skips it.
-- tapOn:
-    text: 'Allow While Using App'
-    optional: true
-- extendedWaitUntil:
-    visible:
-      id: battery-bar
-    timeout: 60000
+# Android smoke launches through bounded adb after fixture preparation. Other callers still launch
+# here. Avoid Maestro's unbounded Android permission/launch ADB calls (Maestro issue #3658).
+- runFlow:
+    when:
+      true: ${typeof APP_ALREADY_LAUNCHED === 'undefined' || APP_ALREADY_LAUNCHED !== 'true'}
+    commands:
+      - launchApp
+# A fresh hosted Android image can stall Pixel Launcher during app installation. Its system
+# dialog owns the accessibility tree even when Vescape is running underneath. Check between
+# bounded waits because the dialog can appear after launch. Never dismiss Vescape's own ANR.
+- retry:
+    maxRetries: 2
+    commands:
+      # iOS can show this prompt despite simctl privacy grant. Only tap when it exists; an optional
+      # tap can spend minutes searching for an absent alert on a hosted simulator. Recheck between
+      # battery waits so a late first-launch prompt is still handled.
+      - runFlow:
+          when:
+            platform: iOS
+          commands:
+            - runFlow:
+                when:
+                  visible: 'Allow While Using App'
+                commands:
+                  - tapOn:
+                      text: 'Allow While Using App'
+                      waitToSettleTimeoutMs: 1000
+      - runFlow:
+          when:
+            platform: Android
+          commands:
+            - runFlow:
+                when:
+                  visible: "Pixel Launcher isn't responding"
+                commands:
+                  - tapOn:
+                      id: android:id/aerr_close
+      - extendedWaitUntil:
+          visible:
+            id: battery-bar
+          timeout: 20000

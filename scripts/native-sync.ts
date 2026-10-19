@@ -1,6 +1,7 @@
 import { createHash } from 'crypto'
 import { existsSync, mkdirSync, readdirSync, readFileSync, statSync, writeFileSync } from 'fs'
 import { join, relative } from 'path'
+import { wearSharedSources } from '../plugins/wearSharedSources.ts'
 import { copyShared, sharedOutput, sharedSources, sharedTargets } from './copy-shared.ts'
 
 const ROOT = join(import.meta.dir, '..')
@@ -34,10 +35,7 @@ const PREBUILD_INPUTS = [
 const IOS_PREBUILD_INPUTS = ['targets']
 
 /** Android-only prebuild inputs: `withWearMirror` copies the Wear OS Mirror into `android/wearos/`. */
-const ANDROID_PREBUILD_INPUTS = [
-  'watch',
-  'modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/UnitPresentation.kt',
-]
+const ANDROID_PREBUILD_INPUTS = ['watch', ...wearSharedSources]
 
 /** Per-Expo-module prebuild inputs: native registration and dependency declarations. */
 const MODULE_PREBUILD_INPUTS = ['expo-module.config.json', 'package.json']
@@ -311,7 +309,8 @@ function syncPlatform(platform: Platform) {
     if (action === 'shared') {
       copyShared()
     } else if (action === 'prebuild') {
-      run(['bunx', 'expo', 'prebuild', '--platform', platform])
+      // The plan owns CocoaPods below; Expo's automatic install would run it twice.
+      run(['bunx', 'expo', 'prebuild', '--platform', platform, '--no-install'])
     } else {
       // CocoaPods reads paths as ASCII-8BIT and crashes on `unicode_normalize` unless the locale is
       // UTF-8, which non-interactive shells often lack; Expo's own CLI pins LANG for the same reason.

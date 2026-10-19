@@ -183,6 +183,22 @@ const telemetryDefinitions = {
 
 export const telemetry = defineTelemetry(telemetryDefinitions)
 
+/**
+ * Temperature span of the rim arcs, °C. Below the floor an arc is empty, not negative. The floor
+ * sits above ambient and the ceiling clears the alert presets (up to 95 °C), so their marks spread
+ * along the arc. Same scale as the watch rims, so a temperature fills the same share on both.
+ *
+ * @parity /modules/vescape-core/ios/watch/WatchGauge.swift `tempMin`
+ * @parity /watch/wearos/src/main/java/app/vescape/wear/FrameGauges.kt `TEMP_MIN`
+ */
+export const RIM_TEMP_RANGE = { min: 20, max: 100 } as const
+
+/** Screen-edge gap shared by the HUD arcs, so the speed/duty arcs line up over the rim temp arcs. */
+export const HUD_ARC_EDGE_INSET = 12
+
+/** Strip glyph at rest — an unpressed footpad rail, a board with no IMU link. */
+export const HUD_IDLE_GLYPH_COLOR = theme.alpha(theme.palette.slate.textDim, 0.4)
+
 export const telemetryByControlId = Object.fromEntries(
   Object.values(telemetry)
     .filter((metric) => metric.controlId != null)

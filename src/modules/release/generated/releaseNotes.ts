@@ -2,6 +2,16 @@ import type { BundledReleaseNote } from '../lib/releaseNotes'
 
 export const bundledReleaseNotes = [
   {
+    version: '0.99.0',
+    markdown:
+      "## New\n\n- Pull up the bottom telemetry strip to see live charts for speed, duty cycle, temperatures, currents, battery voltage, footpads, pitch and roll. Export recent readings as a CSV.\n\n## Improved\n\n- The riding screen now has temperature arcs with alert markers, a board pitch-and-roll indicator, and recent peak markers on the speed and duty gauges.\n- Ride thumbnails now show street maps behind your route, making past rides easier to recognize.\n\n## Fixed\n\n- VESC faults now show the correct controller fault names and plain-language explanations instead of unrelated riding-state labels.\n- Stalled Bluetooth connections now retry instead of getting stuck connecting or waiting for telemetry.\n- On iOS, stopping from the ride widget now cancels connections still starting or restoring and dismisses the Live Activity.\n- Navigation updates when you change routes while standing still. If you pass the destination, the remaining distance now shows how far back it is instead of zero.\n\n## Watch\n\n- Apple Watch and Wear OS now show street maps, your position and a recent riding trail, even without an active route. Choose which map layers appear behind the gauges and adjust the street map's visibility in Watch settings.\n- Watch navigation now shows a loading indicator while a route is being calculated or received, and reports when a route is unavailable.\n",
+  },
+  {
+    version: '0.98.0',
+    markdown:
+      '## Watch\n\n- Group Ride comes to Apple Watch and Wear OS, with indicators for other riders\' low board batteries and high motor or controller temperatures. See riders on the map, locate those beyond its edge, and browse a list showing their direction and distance. Works without a connected board.\n- When no board is connected, gauges show empty readings without a "Board not connected" notice. Apple Watch navigation also stays fully visible instead of dimming as though updates had stopped.\n- On Apple Watch, swiping sideways from Remote Tilt now follows your finger and settles onto the next page or back into place.\n',
+  },
+  {
     version: '0.97.3',
     markdown:
       '## Improved\n\n- Ride history maps now hide pause, connection, error, and gap markers by default. Turn on "Ride markers on map" in Settings → Diagnostics to show them.\n\n## Fixed\n\n- Fixed the live map trail disappearing when connecting, switching, or disconnecting a board, and after returning to the app. Your phone\'s location continues updating independently of the board connection.\n',

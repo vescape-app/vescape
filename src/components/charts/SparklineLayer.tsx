@@ -24,8 +24,12 @@ export interface SparklinePathOptions {
 
 export interface SparklinePaths {
   linePath: ReturnType<typeof Skia.Path.Make> | null
+  /** Flat stand-in when there is no line to draw: no samples, one, or no spread. */
   baselinePath: ReturnType<typeof Skia.Path.Make> | null
+  /** Flat stub across the window before the first sample. */
+  leadInPath: ReturnType<typeof Skia.Path.Make> | null
   maxPos: { x: number; y: number } | null
+  minPos: { x: number; y: number } | null
 }
 
 const SPARKLINE_INSET = 1.5
@@ -50,7 +54,13 @@ function singlePointPaths(
   }
   const t = Math.max(0, Math.min(1, (point.value - yMin) / (yMax - yMin)))
   const y = height - SPARKLINE_INSET - (height - SPARKLINE_INSET * 2) * t
-  return { linePath: null, baselinePath: makeBaseline(0, width, y), maxPos: { x: width, y } }
+  return {
+    linePath: null,
+    baselinePath: makeBaseline(0, width, y),
+    leadInPath: null,
+    maxPos: { x: width, y },
+    minPos: { x: width, y },
+  }
 }
 
 /** The y range the line is drawn in: the caller's, or the data's own padded extent. */
@@ -83,7 +93,13 @@ export function buildSparklinePaths({
   minSpan = 0,
   windowMs,
 }: SparklinePathOptions): SparklinePaths {
-  const empty: SparklinePaths = { linePath: null, baselinePath: null, maxPos: null }
+  const empty: SparklinePaths = {
+    linePath: null,
+    baselinePath: null,
+    leadInPath: null,
+    maxPos: null,
+    minPos: null,
+  }
   if (width < 1) return empty
   if (points.length === 1) return singlePointPaths(points[0], width, height, range, minSpan)
   if (points.length < 2) return { ...empty, baselinePath: makeBaseline(0, width, height / 2) }
@@ -105,8 +121,10 @@ export function buildSparklinePaths({
     y: height - SPARKLINE_INSET - (height - SPARKLINE_INSET * 2) * ((p.value - yMin) / ySpan),
   })
   let maxIndex = 0
+  let minIndex = 0
   for (let i = 1; i < points.length; i += 1) {
     if (points[i].value > points[maxIndex].value) maxIndex = i
+    if (points[i].value < points[minIndex].value) minIndex = i
   }
   const first = project(points[0])
   const builder = Skia.PathBuilder.Make().moveTo(first.x, first.y)
@@ -116,8 +134,10 @@ export function buildSparklinePaths({
   }
   return {
     linePath: builder.detach(),
-    baselinePath: first.x > 0 ? makeBaseline(0, first.x, first.y) : null,
+    baselinePath: null,
+    leadInPath: first.x > 0 ? makeBaseline(0, first.x, first.y) : null,
     maxPos: project(points[maxIndex]),
+    minPos: project(points[minIndex]),
   }
 }
 
@@ -125,17 +145,27 @@ interface SparklineLayerProps {
   paths: SparklinePaths
   color: ThemeColor
   showMax?: boolean
+  showMin?: boolean
+  /** Draw `leadInPath`; off where an empty stretch reads better than a flat line. */
+  showLeadIn?: boolean
 }
 
 /** Draw-only layer. Parent owns Canvas, so many lines share one GPU surface. */
-export function SparklineLayer({ paths, color, showMax = false }: SparklineLayerProps) {
+export function SparklineLayer({
+  paths,
+  color,
+  showMax = false,
+  showMin = false,
+  showLeadIn = true,
+}: SparklineLayerProps) {
   const neutral = useResolvedNeutralColors()
   const resolvedColor = useResolvedColor(color)
+  const flatPath = paths.baselinePath ?? (showLeadIn ? paths.leadInPath : null)
   return (
     <>
-      {paths.baselinePath ? (
+      {flatPath ? (
         <Path
-          path={paths.baselinePath}
+          path={flatPath}
           color={theme.palette.slate.border}
           style="stroke"
           strokeWidth={1}
@@ -153,18 +183,28 @@ export function SparklineLayer({ paths, color, showMax = false }: SparklineLayer
         />
       ) : null}
       {showMax && paths.maxPos ? (
-        <>
-          <Circle cx={paths.maxPos.x} cy={paths.maxPos.y} r={2.5} color={resolvedColor} />
-          <Circle
-            cx={paths.maxPos.x}
-            cy={paths.maxPos.y}
-            r={2.5}
-            color={neutral.surfaceDeep}
-            style="stroke"
-            strokeWidth={1}
-          />
-        </>
+        <PeakDot pos={paths.maxPos} color={resolvedColor} ring={neutral.surfaceDeep} />
       ) : null}
+      {showMin && paths.minPos ? (
+        <PeakDot pos={paths.minPos} color={resolvedColor} ring={neutral.surfaceDeep} />
+      ) : null}
+    </>
+  )
+}
+
+function PeakDot({
+  pos,
+  color,
+  ring,
+}: {
+  pos: { x: number; y: number }
+  color: string
+  ring: string
+}) {
+  return (
+    <>
+      <Circle cx={pos.x} cy={pos.y} r={2.5} color={color} />
+      <Circle cx={pos.x} cy={pos.y} r={2.5} color={ring} style="stroke" strokeWidth={1} />
     </>
   )
 }

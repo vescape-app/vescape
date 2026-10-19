@@ -75,6 +75,7 @@ struct WatchRoutePoint: Equatable {
 /// @parity /watch/wearos/src/main/java/app/vescape/wear/WatchRoute.kt `WatchRoute`
 struct WatchRoute: Equatable {
   var points: [WatchRoutePoint]
+  var routeId: UInt32? = nil
 
   /// The route channel of a whole Application Context. Nil for an absent channel, for the explicit
   /// clear, for a version this build does not understand, and for a short or truncated buffer — a
@@ -172,7 +173,7 @@ enum WatchRouteCodec {
         )
       )
     }
-    return WatchRoute(points: points)
+    return WatchRoute(points: points, routeId: WatchRouteStatusCodec.routeId(data))
   }
 
   /// Even stride down to `WATCH_ROUTE_MAX_POINTS`, endpoints kept. Cheap on purpose: this is a

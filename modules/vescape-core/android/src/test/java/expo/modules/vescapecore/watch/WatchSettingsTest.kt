@@ -16,6 +16,11 @@ class WatchSettingsTest {
             "riderColor" to AppSettings(riderColor = "#ff0000"),
             "boardMoveStrengthPercent" to AppSettings(boardMoveStrengthPercent = 30),
             "wearNavArrowEnabled" to AppSettings(wearNavArrowEnabled = true),
+            "wearTelemetryTrailEnabled" to AppSettings(wearTelemetryTrailEnabled = false),
+            "wearTelemetryGroupEnabled" to AppSettings(wearTelemetryGroupEnabled = false),
+            "wearTelemetryRouteEnabled" to AppSettings(wearTelemetryRouteEnabled = false),
+            "wearStreetMapEnabled" to AppSettings(wearStreetMapEnabled = false),
+            "wearMapGaugesPercent" to AppSettings(wearMapGaugesPercent = 90),
             "unitSystem" to AppSettings(unitSystem = "imperial"),
             "wearTiltRatePercent" to AppSettings(wearTiltRatePercent = 40),
         )
@@ -25,6 +30,15 @@ class WatchSettingsTest {
         for (changed in changedByKey.values) {
             org.junit.Assert.assertNotEquals(AppSettings().toWatchSettings(), changed.toWatchSettings())
         }
+    }
+
+    /** Issue #557: JS writes arrive as doubles; only whole steps persist. */
+    @Test
+    fun `map behind gauges accepts whole steps from the bridge only`() {
+        assertEquals(45, WatchMapGauges.percent(45.0))
+        assertEquals(90, WatchMapGauges.percent(90))
+        assertEquals(0, WatchMapGauges.percent(0.0))
+        for (invalid in listOf(45.5, 50, 15, -30, 100, "60", true, null)) assertNull(WatchMapGauges.percent(invalid))
     }
 
     @Test

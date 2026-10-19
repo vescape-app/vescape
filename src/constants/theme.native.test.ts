@@ -26,7 +26,7 @@ for (const platform of ['android', 'ios', 'web']) {
         PlatformColor: (...resource_paths) => ({ resource_paths }),
         DynamicColorIOS: (dynamic) => ({ dynamic }),
       }))
-      const { theme, accentColors, resolveAdaptiveColor } = await import('./src/constants/theme.ts')
+      const { theme, accentColors, neutralColors, resolveAdaptiveColor } = await import('./src/constants/theme.ts')
       const { groupBands } = await import('./src/components/charts/line/bandGroups.ts')
       const { toScrubTargets } = await import('./src/components/charts/line/scrubTargets.ts')
       const { resolveRampGradient } = await import('./src/components/charts/line/colorRamp.ts')
@@ -37,6 +37,11 @@ for (const platform of ['android', 'ios', 'web']) {
       assert.equal(typeof theme.alpha(cyan, 0.3), native ? 'object' : 'string')
       for (const appearance of ['dark', 'light']) {
         const palette = accentColors[native ? appearance : 'dark']
+        const neutrals = neutralColors[native ? appearance : 'dark']
+        assert.equal(resolveAdaptiveColor(theme.neutral.bg, appearance), neutrals.bg)
+        assert.equal(resolveAdaptiveColor(theme.neutral.textPrimary, appearance), neutrals.textPrimary)
+        assert.equal(resolveAdaptiveColor(theme.neutral.border, appearance), neutrals.border)
+        assert.equal(resolveAdaptiveColor(theme.alpha(theme.neutral.border, 0.3), appearance), theme.alpha(neutrals.border, 0.3))
         assert.equal(resolveAdaptiveColor(cyan, appearance), palette.cyan.color)
         assert.equal(resolveAdaptiveColor(theme.alpha(cyan, 0.3), appearance), theme.alpha(palette.cyan.color, 0.3))
         const groups = groupBands([

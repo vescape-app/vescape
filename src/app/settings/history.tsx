@@ -10,6 +10,7 @@ import {
   ProhibitIcon,
   ClockCounterClockwiseIcon,
   PathIcon,
+  WaveformIcon,
 } from 'phosphor-react-native'
 import { useShallow } from 'zustand/react/shallow'
 
@@ -36,6 +37,7 @@ export default function HistorySettingsScreen() {
     movingSpeedThresholdKmh,
     freeSpinMaxSpeedDeltaKmh,
     freeSpinStationaryBoardCapKmh,
+    socEstimateWindowSeconds,
     set,
   } = useSettingsStore(
     useShallow((s) => ({
@@ -43,6 +45,7 @@ export default function HistorySettingsScreen() {
       movingSpeedThresholdKmh: s.movingSpeedThresholdKmh,
       freeSpinMaxSpeedDeltaKmh: s.freeSpinMaxSpeedDeltaKmh,
       freeSpinStationaryBoardCapKmh: s.freeSpinStationaryBoardCapKmh,
+      socEstimateWindowSeconds: s.socEstimateWindowSeconds,
       set: s.set,
     })),
   )
@@ -162,6 +165,26 @@ export default function HistorySettingsScreen() {
                   )
                   if (clampedValue !== freeSpinStationaryBoardCapKmh) {
                     void set('freeSpinStationaryBoardCapKmh', clampedValue)
+                  }
+                }}
+              />
+            }
+          />
+          <SettingsRow
+            icon={WaveformIcon}
+            label="Battery smoothing"
+            hint="Median window steadies battery % for display and alerts. 0 = off"
+            right={
+              <Stepper
+                value={socEstimateWindowSeconds}
+                unit="s"
+                min={0}
+                max={120}
+                step={5}
+                onChange={(nextValue) => {
+                  const clampedValue = Math.min(120, Math.max(0, nextValue))
+                  if (clampedValue !== socEstimateWindowSeconds) {
+                    void set('socEstimateWindowSeconds', clampedValue)
                   }
                 }}
               />

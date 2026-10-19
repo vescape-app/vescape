@@ -43,7 +43,7 @@ export function BoardSettingRow({
           </Text>
         ) : null}
       </View>
-      <CaretRightIcon size={16} color={theme.palette.slate.color} weight="bold" />
+      <CaretRightIcon size={16} color={theme.neutral.textMuted} weight="bold" />
     </Pressable>
   )
 }

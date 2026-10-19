@@ -17,6 +17,7 @@ import {
   addBmsSeriesListener,
   setBmsSeriesFocused as nativeSetBmsSeriesFocused,
   setFocusedSeriesMetrics as nativeSetFocusedSeriesMetrics,
+  setLiveSeriesMetrics as nativeSetLiveSeriesMetrics,
   type BoardPhase,
   type ScanStatus,
   type LiveStateEvent,
@@ -91,6 +92,8 @@ let bmsSeriesSub: EventSubscription | null = null
 // The high-res focused stream only runs while a `/control` detail chart is mounted.
 // Ref-counted per metric so native emits `onFocusedSeries` only for focused metrics.
 const focusedSeriesRefs = new Map<string, number>()
+/** Holds on extra `onLiveSeries` metrics (the telemetry panel), per metric. */
+const liveSeriesRefs = new Map<string, number>()
 let bmsSeriesStreamRefs = 0
 let scanSub: EventSubscription | null = null
 let scanErrorSub: EventSubscription | null = null
@@ -311,9 +314,44 @@ function ensureFocusedSeriesSub(): void {
 
 /** Re-arm focus after a (re)connect: subscriptions were torn down but the ref counts survive. */
 function reapplyFocusedSeries(): void {
+  // Native may be a fresh session (or a fresh Android service) that never heard the extras.
+  if (liveSeriesRefs.size > 0) syncLiveSeriesMetrics()
   if (focusedSeriesRefs.size === 0) return
   ensureFocusedSeriesSub()
   syncFocusedSeriesMetrics()
+}
+
+function syncLiveSeriesMetrics(): void {
+  nativeSetLiveSeriesMetrics([...liveSeriesRefs.keys()])
+}
+
+/**
+ * Adds metrics to the ~1Hz `onLiveSeries` stream on top of the always-on battery set. Ref-counted
+ * per metric like the focused series, and re-sent on every reconnect.
+ */
+export function acquireLiveSeries(metrics: readonly string[]): void {
+  let added = false
+  for (const metric of metrics) {
+    const prev = liveSeriesRefs.get(metric) ?? 0
+    liveSeriesRefs.set(metric, prev + 1)
+    if (prev === 0) added = true
+  }
+  if (added) syncLiveSeriesMetrics()
+}
+
+export function releaseLiveSeries(metrics: readonly string[]): void {
+  let removed = false
+  for (const metric of metrics) {
+    const prev = liveSeriesRefs.get(metric) ?? 0
+    if (prev === 0) continue
+    if (prev > 1) {
+      liveSeriesRefs.set(metric, prev - 1)
+    } else {
+      liveSeriesRefs.delete(metric)
+      removed = true
+    }
+  }
+  if (removed) syncLiveSeriesMetrics()
 }
 
 /**

@@ -8,16 +8,12 @@ interface RiderState {
   riderId: string | null
   /** Rider-chosen display name, or null when unset. */
   riderName: string | null
-  /** Rider-chosen marker color (hex), or null when unset. */
-  riderColor: string | null
   loaded: boolean
   error: string | null
   /** Load identity from native settings, generating a Rider id on first use. */
   load: () => Promise<void>
   /** Set the display name (trimmed; empty clears it back to null). */
   setName: (name: string) => Promise<void>
-  /** Set the marker color (hex); null clears it. */
-  setColor: (color: string | null) => Promise<void>
 }
 let identityWriteQueue: Promise<void> = Promise.resolve()
 let identityLoad: Promise<void> | null = null
@@ -32,7 +28,6 @@ function enqueueIdentityWrite(task: () => Promise<void>): Promise<void> {
 export const useRiderStore = create<RiderState>((set) => ({
   riderId: null,
   riderName: null,
-  riderColor: null,
   loaded: false,
   error: null,
 
@@ -46,10 +41,18 @@ export const useRiderStore = create<RiderState>((set) => ({
           riderId = generateId()
           await updateSetting('riderId', riderId)
         }
+        // Clear the retired Social color without touching the Rider's id or name.
+        if (settings.riderColor != null) {
+          // A cleanup failure must not hide the Rider's existing identity.
+          try {
+            await updateSetting('riderColor', null)
+          } catch {
+            // Retried on the next load.
+          }
+        }
         set({
           riderId,
           riderName: settings.riderName ?? null,
-          riderColor: settings.riderColor ?? null,
           loaded: true,
           error: null,
         })
@@ -72,18 +75,6 @@ export const useRiderStore = create<RiderState>((set) => ({
         set({ riderName: value, error: null })
       } catch (error) {
         set({ error: 'Your name could not be saved.' })
-        throw error
-      }
-    })
-  },
-
-  setColor(color) {
-    return enqueueIdentityWrite(async () => {
-      try {
-        await updateSetting('riderColor', color)
-        set({ riderColor: color, error: null })
-      } catch (error) {
-        set({ error: 'Your color could not be saved.' })
         throw error
       }
     })

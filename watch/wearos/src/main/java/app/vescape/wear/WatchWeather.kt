@@ -66,6 +66,37 @@ data class WatchWeather(
     val fetchedAtMs: Long,
 )
 
+/** The Data Layer dictionary decoder, also used by fixture replay.
+ * @parity /modules/vescape-core/ios/watch/WatchWeather.swift `decode`
+ */
+internal fun decodeWatchWeather(payload: Map<String, Any?>?): WatchWeather? {
+    payload ?: return null
+    val temperature = payload[WEATHER_TEMP_C] as? Int ?: return null
+    val minutes = payload[WEATHER_HOUR_MINUTES] as? List<*> ?: emptyList<Any>()
+    val temps = payload[WEATHER_HOUR_TEMPS] as? List<*> ?: emptyList<Any>()
+    val icons = payload[WEATHER_HOUR_ICONS] as? Array<*> ?: emptyArray<Any>()
+    val precips = payload[WEATHER_HOUR_PRECIPS] as? List<*> ?: emptyList<Any>()
+    return WatchWeather(
+        temperatureC = temperature,
+        icon = payload[WEATHER_ICON] as? String ?: "",
+        label = payload[WEATHER_LABEL] as? String ?: "",
+        precipitationProbability = payload[WEATHER_PRECIP] as? Int ?: 0,
+        hourly = (0 until minOf(minutes.size, temps.size, icons.size, precips.size)).mapNotNull { index ->
+            WatchWeatherHour(
+                minuteOfDay = minutes[index] as? Int ?: return@mapNotNull null,
+                temperatureC = temps[index] as? Int ?: return@mapNotNull null,
+                icon = icons[index] as? String ?: return@mapNotNull null,
+                precipitationProbability = precips[index] as? Int ?: return@mapNotNull null,
+            )
+        },
+        sunriseMinuteOfDay = payload[WEATHER_SUNRISE] as? Int,
+        sunsetMinuteOfDay = payload[WEATHER_SUNSET] as? Int,
+        latitude = payload[WEATHER_LATITUDE] as? Double,
+        longitude = payload[WEATHER_LONGITUDE] as? Double,
+        fetchedAtMs = payload[WEATHER_FETCHED_AT] as? Long ?: 0,
+    )
+}
+
 /** Latest forecast pushed from the phone; null until the first push arrives. */
 object WeatherState {
     val weather = mutableStateOf<WatchWeather?>(null)

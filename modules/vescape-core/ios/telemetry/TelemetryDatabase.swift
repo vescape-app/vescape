@@ -881,7 +881,7 @@ internal let ORPHAN_BOARD_ID_PREFIX = "orphan-"
 ///
 /// The minted row is a tombstone with no Board Link: `deleted_at` keeps it out of every
 /// Rider-facing list, and a null `ble_id` stops it from ever capturing a future re-link.
-/// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/TelemetryDatabase.kt `mintOrphanBoards`
+/// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/TelemetryMigrations.kt `mintOrphanBoards`
 internal func mintOrphanBoards(_ db: Database) throws {
   let now = telemetryNowMs()
   for (table, timeColumn) in telemetryTablesKeyedOnDeviceId {
@@ -918,7 +918,7 @@ internal func mintOrphanBoards(_ db: Database) throws {
 /// are ordered by. All five are minted for and rebuilt together: a Board minted from one table's
 /// identifiers has to exist before any other table resolves the same identifier, or the two
 /// disagree about who owns the history — the defect this migration exists to remove.
-/// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/TelemetryDatabase.kt `TELEMETRY_TABLES_KEYED_ON_DEVICE_ID`
+/// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/TelemetryMigrations.kt `TELEMETRY_TABLES_KEYED_ON_DEVICE_ID`
 private let telemetryTablesKeyedOnDeviceId = [
   ("telemetry_frames", "captured_at_ms"),
   ("telemetry_minute_buckets", "bucket_start_ms"),
@@ -929,7 +929,7 @@ private let telemetryTablesKeyedOnDeviceId = [
 
 /// Scratch table holding the board-id migration's one and only BLE identifier → Board decision.
 /// Temp, so it belongs to the connection and never reaches the durable schema.
-/// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/TelemetryDatabase.kt `DEVICE_BOARD_MAP`
+/// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/TelemetryMigrations.kt `DEVICE_BOARD_MAP`
 private let DEVICE_BOARD_MAP = "telemetry_device_board_map"
 
 /// One BLE identifier can be claimed by more than one Board — the same peripheral linked twice,
@@ -947,7 +947,7 @@ private let DEVICE_BOARD_MAP = "telemetry_device_board_map"
 /// exist, stable because re-running the migration reaches the same answer. Deliberately not left
 /// unattributed: an unowned row is never uploaded and is pruned on age, so "unknown" would quietly
 /// destroy the history a merely mis-labelled ride keeps intact.
-/// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/TelemetryDatabase.kt `buildDeviceBoardMap`
+/// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/TelemetryMigrations.kt `buildDeviceBoardMap`
 internal func buildDeviceBoardMap(_ db: Database) throws {
   try db.execute(sql: """
     CREATE TEMP TABLE \(DEVICE_BOARD_MAP) (
@@ -971,7 +971,7 @@ internal func buildDeviceBoardMap(_ db: Database) throws {
 ///
 /// The lookup hits a primary key holding one row per identifier, so unlike a scan over `boards` it
 /// cannot resolve the same identifier two ways in two statements.
-/// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/TelemetryDatabase.kt `boardIdFromDeviceId`
+/// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/TelemetryMigrations.kt `boardIdFromDeviceId`
 private func boardIdFromDeviceId(_ alias: String, unattributed: String) -> String {
   """
   CASE
@@ -984,7 +984,7 @@ private func boardIdFromDeviceId(_ alias: String, unattributed: String) -> Strin
   """
 }
 
-/// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/TelemetryDatabase.kt `rebuildFramesOnBoardId`
+/// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/TelemetryMigrations.kt `rebuildFramesOnBoardId`
 private func rebuildFramesOnBoardId(_ db: Database) throws {
   let columns = """
     captured_at_ms, elapsed_realtime_ms, can_id, flags, changed_mask_1, changed_mask_2, \
@@ -1051,7 +1051,7 @@ private func rebuildFramesOnBoardId(_ db: Database) throws {
 
 /// The primary key move from `(bucket_start_ms, device_id)` to `(bucket_start_ms, board_id)` is a
 /// table rebuild, not an `ALTER`.
-/// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/TelemetryDatabase.kt `rebuildBucketsOnBoardId`
+/// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/TelemetryMigrations.kt `rebuildBucketsOnBoardId`
 private func rebuildBucketsOnBoardId(_ db: Database) throws {
   let columns = """
     bucket_start_ms, sample_count, first_sample_at_ms, last_sample_at_ms, \
@@ -1146,7 +1146,7 @@ private func rebuildBucketsOnBoardId(_ db: Database) throws {
 /// A Marker notes something that happened while recording — a gap, a resume. It belongs to the
 /// Board it happened on, and `board_id` stays nullable because a Marker can be written with no
 /// Board connected. `device_name` goes with the identifier: the Board holds that text once.
-/// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/TelemetryDatabase.kt `rebuildMarkersOnBoardId`
+/// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/TelemetryMigrations.kt `rebuildMarkersOnBoardId`
 private func rebuildMarkersOnBoardId(_ db: Database) throws {
   try db.execute(sql: "DROP INDEX IF EXISTS index_telemetry_markers_occurred_at_ms")
   try db.execute(sql: "DROP INDEX IF EXISTS index_telemetry_markers_device_id_occurred_at_ms")
@@ -1176,7 +1176,7 @@ private func rebuildMarkersOnBoardId(_ db: Database) throws {
   try db.execute(sql: "CREATE INDEX IF NOT EXISTS index_telemetry_markers_board_id_occurred_at_ms ON telemetry_markers(board_id, occurred_at_ms)")
 }
 
-/// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/TelemetryDatabase.kt `rebuildDiagnosticEventsOnBoardId`
+/// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/TelemetryMigrations.kt `rebuildDiagnosticEventsOnBoardId`
 private func rebuildDiagnosticEventsOnBoardId(_ db: Database) throws {
   try db.execute(sql: "DROP INDEX IF EXISTS index_diagnostic_events_occurred_at_ms")
   try db.execute(sql: "DROP INDEX IF EXISTS index_diagnostic_events_event_name")
@@ -1215,7 +1215,7 @@ private func rebuildDiagnosticEventsOnBoardId(_ db: Database) throws {
 /// unlike a Marker it has no meaning without one: `board_id` is NOT NULL, as `device_id` was. A row
 /// that never named a device takes the same unattributed sentinel a bucket does — the column is NOT
 /// NULL on both, so one sentinel across the two keeps "no Board" a single idea.
-/// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/TelemetryDatabase.kt `rebuildExclusionRangesOnBoardId`
+/// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/TelemetryMigrations.kt `rebuildExclusionRangesOnBoardId`
 private func rebuildExclusionRangesOnBoardId(_ db: Database) throws {
   try db.execute(sql: "DROP INDEX IF EXISTS index_metric_exclusion_ranges_start_ms_end_ms")
   try db.execute(sql: "DROP INDEX IF EXISTS index_metric_exclusion_ranges_device_id_start_ms_end_ms")

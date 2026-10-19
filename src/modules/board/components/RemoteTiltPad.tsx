@@ -422,7 +422,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     backgroundColor: 'transparent',
     borderBottomWidth: 1,
-    borderBottomColor: theme.alpha(theme.palette.slate.light, 0.3),
+    borderBottomColor: theme.alpha(theme.neutral.textSecondary, 0.3),
     borderStyle: 'dashed',
   },
   lockBandText: {
@@ -438,7 +438,7 @@ const styles = StyleSheet.create({
     bottom: 0,
     width: 1,
     marginLeft: -0.5,
-    backgroundColor: theme.alpha(theme.palette.slate.light, 0.3),
+    backgroundColor: theme.alpha(theme.neutral.textSecondary, 0.3),
   },
   centerLine: {
     left: '50%',
@@ -451,7 +451,7 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     height: 1,
-    backgroundColor: theme.alpha(theme.palette.slate.light, 0.3),
+    backgroundColor: theme.alpha(theme.neutral.textSecondary, 0.3),
   },
   gridLabel: {
     position: 'absolute',

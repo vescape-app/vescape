@@ -42,7 +42,6 @@ const ICONS: { name: string; weight: Weight }[] = [
   { name: 'cloud-snow', weight: 'duotone' },
   { name: 'cloud-lightning', weight: 'duotone' },
   { name: 'drop', weight: 'duotone' },
-  { name: 'map-pin', weight: 'duotone' },
   { name: 'lightbulb', weight: 'duotone' },
   { name: 'headlights', weight: 'duotone' },
   { name: 'target', weight: 'duotone' },

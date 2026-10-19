@@ -16,7 +16,7 @@ import {
   BAR_H,
   BAR_H_COMPACT,
   LINE_THICK,
-  MARKER_RATIO,
+  BAND_RATIO,
   VALUE_GAP,
   GaugeBar,
   fractionOf,
@@ -33,7 +33,7 @@ function useBarWidth() {
 }
 
 // Charging particles: tiny dots drifting left → right along the line, absorbed
-// at the head marker. Uniform size; wide speed spread + stratified phases keep
+// at the fill head. Uniform size; wide speed spread + stratified phases keep
 // the stream desynced instead of clumping into one group. Count scales with
 // travel span so long bars don't look sparse and short ones don't crowd.
 interface LinearGaugeProps {
@@ -50,7 +50,7 @@ interface LinearGaugeProps {
   aux?: ReactNode
   /** Shown when value is null. */
   hint?: string
-  /** Animates particles flowing into the head marker while true. */
+  /** Animates particles flowing into the fill head while true. */
   charging?: boolean
   compact?: boolean
   transparent?: boolean
@@ -83,11 +83,11 @@ export function LinearGauge({
   const valueText =
     value == null ? DASH : decimals === 0 ? Math.round(value).toString() : value.toFixed(decimals)
 
-  // The value rides just left of the head, its top aligned with the head marker's top.
+  // The value rides just left of the head, its top half the bar height above the line.
   // Below 20% there's no room on the left, so it flips to the right of the head.
   const headX = width * fraction
   const valueSlot = getLinearGaugeValueSlot({ width, headX, compact, gap: VALUE_GAP })
-  const valueSlotTop = height - LINE_THICK - height * MARKER_RATIO
+  const valueSlotTop = height - LINE_THICK - height * BAND_RATIO
 
   const content = (
     <>
@@ -111,7 +111,7 @@ export function LinearGauge({
               numberOfLines={1}
             >
               {valueText}
-              <Text style={styles.unit}>{unit}</Text>
+              <Text style={[styles.unit, { color: resolvedColor }]}>{unit}</Text>
             </Text>
           </View>
         ) : null}
@@ -147,9 +147,17 @@ export function LinearGauge({
   )
 }
 
+/** The footer line under a gauge, shared by gauges set on the same line. */
+export const GAUGE_FOOTER_TEXT = {
+  color: theme.neutral.textMuted,
+  fontSize: 10,
+  fontFamily: 'monospace',
+  fontWeight: '600',
+} as const
+
 const styles = StyleSheet.create({
   wrap: {
-    backgroundColor: theme.palette.slate.surface,
+    backgroundColor: theme.neutral.surface,
     borderRadius: 12,
     paddingVertical: 10,
     paddingHorizontal: 14,
@@ -171,7 +179,7 @@ const styles = StyleSheet.create({
     width: '100%',
     position: 'relative',
   },
-  // Sits in [0, head − gap], right-aligned, so the value ends just left of the head marker.
+  // Sits in [0, head − gap], right-aligned, so the value ends just left of the fill head.
   valueSlot: {
     position: 'absolute',
     left: 0,
@@ -197,14 +205,10 @@ const styles = StyleSheet.create({
   underRow: {
     flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'center',
     marginTop: -4,
   },
-  auxText: {
-    color: theme.palette.slate.textMuted,
-    fontSize: 10,
-    fontFamily: 'monospace',
-    fontWeight: '600',
-  },
+  auxText: GAUGE_FOOTER_TEXT,
   hintCenter: {
     position: 'absolute',
     left: 0,
@@ -212,7 +216,7 @@ const styles = StyleSheet.create({
     top: 0,
     bottom: LINE_THICK,
     textAlignVertical: 'center',
-    color: theme.palette.slate.textMuted,
+    color: theme.neutral.textMuted,
     fontSize: 10,
     fontWeight: '600',
     textAlign: 'center',

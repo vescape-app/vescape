@@ -48,7 +48,7 @@ final class WeatherCoordinator {
   /// Separate from `onChange` because that slot belongs to the Expo module and is re-assigned on
   /// every JS reload: the wrist mirror is process scoped and must not be unsubscribed by one.
   ///
-  /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/connection/BoardSessionController.kt `onWeatherChanged`
+  /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/watch/AndroidWatchMirror.kt
   var onNativeChange: ((Weather) -> Void)?
 
   private let transport: WeatherTransport

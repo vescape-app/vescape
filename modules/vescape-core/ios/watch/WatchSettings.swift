@@ -23,6 +23,16 @@ enum WatchSettingsKey {
   static let boardMoveStrengthPercent = "boardMoveStrengthPercent"
   /// Whether the wrist draws the direction arrow over the route. Off hides the arrow, not the route.
   static let navArrowEnabled = "navArrowEnabled"
+  /// Show the trail behind telemetry gauges. The map page always retains its trail.
+  static let telemetryTrailEnabled = "telemetryTrailEnabled"
+  /// Whether the telemetry screen draws Group Ride marks. Off: they fade in on the map page only.
+  static let telemetryGroupEnabled = "telemetryGroupEnabled"
+  /// Whether the telemetry screen draws the Navigation route line. Off: it fades in on the map page only.
+  static let telemetryRouteEnabled = "telemetryRouteEnabled"
+  /// Whether the wrist draws the street map. Off: the phone sends no tiles; tiles already on the wrist stay.
+  static let streetMapEnabled = "streetMapEnabled"
+  /// Street map opacity behind the gauges, integer percent from ``WatchMapGauges/steps``.
+  static let mapGaugesPercent = "mapGaugesPercent"
   static let unitSystem = "unitSystem"
   /// Tilt stick speed at full deflection, percent of full tilt per second. Applied on the wrist.
   static let tiltRatePercent = "tiltRatePercent"
@@ -50,6 +60,11 @@ let watchSourceSettingKeys: Set<String> = [
   "riderColor",
   "boardMoveStrengthPercent",
   "wearNavArrowEnabled",
+  "wearTelemetryTrailEnabled",
+  "wearTelemetryGroupEnabled",
+  "wearTelemetryRouteEnabled",
+  "wearStreetMapEnabled",
+  "wearMapGaugesPercent",
   "unitSystem",
   "wearTiltRatePercent",
   "wearPushRateHz",
@@ -62,6 +77,11 @@ struct WatchSettings: Equatable {
   var boardMoveStrengthPercent: Int?
   /// Off by default: an older phone never sends the key, and the arrow is opt-in until it works.
   var navArrowEnabled: Bool = false
+  var telemetryTrailEnabled: Bool = true
+  var telemetryGroupEnabled: Bool = true
+  var telemetryRouteEnabled: Bool = true
+  var streetMapEnabled: Bool = true
+  var mapGaugesPercent: Int = WatchMapGauges.defaultPercent
   var unitSystem: String = "metric"
   var tiltRatePercent: Int = watchDefaultTiltRatePercent
 
@@ -76,6 +96,11 @@ struct WatchSettings: Equatable {
     var payload: [String: Any] = [
       WatchSettingsKey.riderColor: riderColor ?? "",
       WatchSettingsKey.navArrowEnabled: navArrowEnabled,
+      WatchSettingsKey.telemetryTrailEnabled: telemetryTrailEnabled,
+      WatchSettingsKey.telemetryGroupEnabled: telemetryGroupEnabled,
+      WatchSettingsKey.telemetryRouteEnabled: telemetryRouteEnabled,
+      WatchSettingsKey.streetMapEnabled: streetMapEnabled,
+      WatchSettingsKey.mapGaugesPercent: mapGaugesPercent,
       WatchSettingsKey.unitSystem: unitSystem,
       WatchSettingsKey.tiltRatePercent: tiltRatePercent,
     ]
@@ -86,7 +111,7 @@ struct WatchSettings: Equatable {
   /// Read the bag leniently. A missing key is the wrist default, never a zero — `getInt`-style
   /// coercion of an absent strength would read as 0 %, which is a number the rider never chose.
   ///
-  /// @parity /watch/wearos/src/main/java/app/vescape/wear/MainActivity.kt `readSettings`
+  /// @parity /watch/wearos/src/main/java/app/vescape/wear/WatchSettings.kt `decode`
   static func decode(_ payload: [String: Any]?) -> WatchSettings {
     guard let payload else { return wristDefaults }
     let color = (payload[WatchSettingsKey.riderColor] as? String)?
@@ -95,6 +120,11 @@ struct WatchSettings: Equatable {
       riderColor: (color?.isEmpty ?? true) ? nil : color,
       boardMoveStrengthPercent: (payload[WatchSettingsKey.boardMoveStrengthPercent] as? NSNumber)?.intValue,
       navArrowEnabled: payload[WatchSettingsKey.navArrowEnabled] as? Bool ?? wristDefaults.navArrowEnabled,
+      telemetryTrailEnabled: payload[WatchSettingsKey.telemetryTrailEnabled] as? Bool ?? wristDefaults.telemetryTrailEnabled,
+      telemetryGroupEnabled: payload[WatchSettingsKey.telemetryGroupEnabled] as? Bool ?? wristDefaults.telemetryGroupEnabled,
+      telemetryRouteEnabled: payload[WatchSettingsKey.telemetryRouteEnabled] as? Bool ?? wristDefaults.telemetryRouteEnabled,
+      streetMapEnabled: payload[WatchSettingsKey.streetMapEnabled] as? Bool ?? wristDefaults.streetMapEnabled,
+      mapGaugesPercent: WatchMapGauges.percent(payload[WatchSettingsKey.mapGaugesPercent]) ?? wristDefaults.mapGaugesPercent,
       unitSystem: payload[WatchSettingsKey.unitSystem] as? String == "imperial" ? "imperial" : "metric",
       // Held to the range the phone repositories accept (1–100) on read too: the wrist integrates
       // this every frame, and a rate from a newer or broken phone must not spin the stick.
@@ -108,30 +138,4 @@ struct WatchSettings: Equatable {
   static func decode(context: [String: Any]) -> WatchSettings {
     decode(context[watchSettingsChannel] as? [String: Any])
   }
-}
-
-/// A rider colour resolved to components. Deliberately not a `Color`: this file is compiled into
-/// the phone target too, and the wrist is the only place that paints with it.
-struct WatchRiderColor: Equatable {
-  var red: Double
-  var green: Double
-  var blue: Double
-}
-
-/// `#RRGGBB` / `#AARRGGBB` (the form the phone's rider palette stores) into components. Anything
-/// else — blank, a colour name, a future format — is nil, which leaves the wrist on its own palette
-/// rather than drawing a route in a colour nobody picked. Alpha is parsed and dropped: the wrist
-/// draws its own opacity, and a rider colour that arrived half-transparent would read as a dim lane.
-///
-/// @parity /watch/wearos/src/main/java/app/vescape/wear/WatchSettings.kt `parseRiderColor`
-func parseWatchRiderColor(_ value: String?) -> WatchRiderColor? {
-  guard var hex = value?.trimmingCharacters(in: .whitespaces) else { return nil }
-  if hex.hasPrefix("#") { hex.removeFirst() }
-  guard hex.count == 6 || hex.count == 8 else { return nil }
-  guard let rgb = UInt32(hex, radix: 16) else { return nil }
-  return WatchRiderColor(
-    red: Double((rgb >> 16) & 0xff) / 255,
-    green: Double((rgb >> 8) & 0xff) / 255,
-    blue: Double(rgb & 0xff) / 255
-  )
 }

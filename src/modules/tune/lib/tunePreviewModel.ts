@@ -222,7 +222,7 @@ export function speedKmhToReferenceErpm(speedKmh: number): number {
 
 export function groundTravelToVisualOffset(groundTravelMeters: number): number {
   const tickSpacingPixels = GROUND_TICK_SPACING_METERS * TUNE_PREVIEW_PIXELS_PER_METER
-  return (groundTravelMeters * TUNE_PREVIEW_PIXELS_PER_METER) % tickSpacingPixels
+  return (-groundTravelMeters * TUNE_PREVIEW_PIXELS_PER_METER) % tickSpacingPixels
 }
 
 export function pitchInputControlToRate(controlDegrees: number): number {

@@ -1,6 +1,8 @@
 package app.vescape.wear
 
 import androidx.compose.runtime.mutableStateOf
+import expo.modules.vescapecore.watch.WatchRouteStatus
+import expo.modules.vescapecore.watch.WatchRouteStatusCodec
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
 import kotlin.math.cos
@@ -26,7 +28,7 @@ private const val METERS_PER_DEGREE_LON_EQUATOR = 111_320.0
  * the same frame the Watch Frame's rider lanes use, so placing the rider is a straight subtraction.
  */
 /** @parity /modules/vescape-core/ios/watch/WatchRoute.swift `WatchRoute` */
-data class WatchRoute(val points: List<RoutePoint>)
+data class WatchRoute(val points: List<RoutePoint>, val routeId: Long? = null)
 
 /** @parity /modules/vescape-core/ios/watch/WatchRoute.swift `WatchRoutePoint` */
 data class RoutePoint(val eastM: Float, val northM: Float)
@@ -38,6 +40,7 @@ data class RoutePoint(val eastM: Float, val northM: Float)
  */
 object RouteState {
     val route = mutableStateOf<WatchRoute?>(null)
+    val status = mutableStateOf<WatchRouteStatus?>(null)
 
     fun accept(route: WatchRoute?) {
         this.route.value = route
@@ -74,6 +77,6 @@ object WatchRouteDecoder {
             val north = lat / MICRO_DEGREES * METERS_PER_DEGREE_LAT
             points.add(RoutePoint(east.toFloat(), north.toFloat()))
         }
-        return WatchRoute(points)
+        return WatchRoute(points, WatchRouteStatusCodec.routeId(bytes))
     }
 }
