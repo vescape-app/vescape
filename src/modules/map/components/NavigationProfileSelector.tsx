@@ -11,7 +11,6 @@ import {
   useColoredActionForeground,
   useResolvedAccentColors,
   useResolvedControlColors,
-  useResolvedNeutralColors,
   useThemeStore,
 } from '@/hooks/useTheme'
 
@@ -40,7 +39,6 @@ export function NavigationProfileSelector({
 }) {
   const accents = useResolvedAccentColors()
   const control = useResolvedControlColors()
-  const neutral = useResolvedNeutralColors()
   const appearance = useThemeStore((state) => state.resolvedTheme)
   const light = appearance === 'light'
   const activeForeground = useColoredActionForeground(theme.palette.green.color)
@@ -60,7 +58,7 @@ export function NavigationProfileSelector({
               ? activeForeground
               : accents.green.color
             : light
-              ? neutral.textSecondary
+              ? accents.green.color
               : control.textMuted
         }
         weight="bold"

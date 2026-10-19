@@ -6,7 +6,6 @@ import { StyleSheet, View } from 'react-native'
 import { Text } from '@/components/base/Text'
 import { PillSelector, PillSelectorItem } from '@/components/controls/PillSelector'
 import { theme, type ThemeColor } from '@/constants/theme'
-import { useResolvedNeutralColors, useThemeStore } from '@/hooks/useTheme'
 import { WeatherIcon } from '@/modules/weather/components/WeatherIcon'
 import { weatherIconColor } from '@/modules/weather/lib/weather'
 import { useWeatherStore } from '@/modules/weather/store/weatherStore'
@@ -25,7 +24,7 @@ function makeWeatherModeIcon(weather: Weather | null, weatherColor: ThemeColor):
   return function WeatherModeIcon({ color, size, weight }) {
     const iconSize = typeof size === 'number' ? size : 18
     // PillSelectorItem passes the inactive accent as `color` when this segment is not selected;
-    // honor it so the icon turns neutral in light mode and keeps the weather hue when active.
+    // honor it so weather uses the same active/inactive accent treatment as the other tabs.
     const iconColor = color ?? weatherColor
     return weather ? (
       <WeatherIcon icon={weather.icon} size={iconSize} color={iconColor} weight={weight} />
@@ -43,12 +42,7 @@ export function MapModeTabs({
   onEnterLegalLimits,
 }: MapModeTabsProps) {
   const weather = useWeatherStore((s) => s.weather)
-  const resolvedTheme = useThemeStore((state) => state.resolvedTheme)
-  const light = resolvedTheme === 'light'
-  const neutral = useResolvedNeutralColors()
   const weatherColor = weather ? weatherIconColor(weather.icon) : theme.palette.sky.color
-  // The inactive temperature sits on the light tab track; keep it as readable as its icon.
-  const inactiveWeatherColor = light ? neutral.textSecondary : weatherColor
   const weatherSelection = {
     bg: theme.alpha(weatherColor, 0.12),
     border: theme.alpha(weatherColor, 0.4),
@@ -93,7 +87,7 @@ export function MapModeTabs({
           inactiveWidth={58}
           hint={
             weather ? (
-              <Text style={[styles.mapModeBadgeText, { color: inactiveWeatherColor }]}>
+              <Text style={[styles.mapModeBadgeText, { color: weatherColor }]}>
                 {weather.temperatureC}°
               </Text>
             ) : null

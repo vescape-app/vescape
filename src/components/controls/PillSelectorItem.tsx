@@ -15,7 +15,6 @@ import {
   useColoredActionForeground,
   useResolvedColor,
   useResolvedControlColors,
-  useResolvedNeutralColors,
   useThemeStore,
 } from '@/hooks/useTheme'
 import {
@@ -156,7 +155,6 @@ export function PillSelectorItem({
   children,
 }: PillSelectorItemProps) {
   const control = useResolvedControlColors()
-  const neutral = useResolvedNeutralColors()
   const resolvedTheme = useThemeStore((state) => state.resolvedTheme)
   const { activeId, contained, showFullLabel, variant, size, openMenu, closeMenu } =
     usePillSelectorCtx()
@@ -176,7 +174,7 @@ export function PillSelectorItem({
   const coloredBackground = useColoredAction(color?.color ?? theme.palette.green.color)
   const onDarkAccent = useColoredActionForeground(color?.color ?? theme.palette.green.color)
   const accentColor = useLightTabs ? onDarkAccent : resolvedAccent
-  const inactiveAccent = useLightTabs ? neutral.textSecondary : theme.alpha(accentColor, 0.6)
+  const inactiveAccent = useLightTabs ? resolvedAccent : theme.alpha(accentColor, 0.6)
   const activeProgress = useSharedValue(active ? 1 : 0)
   const labelProgress = useSharedValue(resolved.showLabel ? 1 : 0)
 
