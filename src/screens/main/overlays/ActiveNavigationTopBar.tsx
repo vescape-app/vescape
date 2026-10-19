@@ -10,6 +10,7 @@ import Animated, {
 } from 'react-native-reanimated'
 
 import { Text } from '@/components/base/Text'
+import { fmtRideDuration } from '@/helpers/format'
 import { theme, type ThemeColor } from '@/constants/theme'
 import { useResolvedNeutralColors, useThemeStore } from '@/hooks/useTheme'
 
@@ -21,6 +22,7 @@ interface ActiveNavigationTopBarProps {
   targetTitle: string
   targetIcon: Icon
   distanceLabel: string
+  remainingDurationSeconds?: number | null
   riderColor: ThemeColor
   onNavigationPress: () => void
   onCancel: () => void
@@ -97,10 +99,14 @@ export function ActiveNavigationTopBar({
   targetTitle,
   targetIcon,
   distanceLabel,
+  remainingDurationSeconds,
   riderColor,
   onNavigationPress,
   onCancel,
 }: ActiveNavigationTopBarProps) {
+  const durationLabel =
+    remainingDurationSeconds != null ? fmtRideDuration(remainingDurationSeconds) : null
+  const progressLabel = durationLabel ? `${distanceLabel} · ${durationLabel}` : distanceLabel
   const { width } = useWindowDimensions()
   const neutral = useResolvedNeutralColors()
   const light = useThemeStore((state) => state.resolvedTheme === 'light')
@@ -197,7 +203,14 @@ export function ActiveNavigationTopBar({
                 >
                   {targetTitle}
                 </Text>
-                <Text style={[styles.distance, { color: riderColor }]}>{distanceLabel}</Text>
+                <Text
+                  numberOfLines={1}
+                  adjustsFontSizeToFit
+                  minimumFontScale={0.8}
+                  style={[styles.distance, { color: riderColor }]}
+                >
+                  {progressLabel}
+                </Text>
               </View>
               <CancelButton color={riderColor} onPress={onCancel} />
             </Pressable>
@@ -215,7 +228,7 @@ export function ActiveNavigationTopBar({
             >
               <TargetIcon icon={targetIcon} color={riderColor} size={12} />
               <Text style={[styles.navigationMiniDistance, { color: riderColor }]}>
-                {distanceLabel}
+                {progressLabel}
               </Text>
             </Pressable>
           )}
