@@ -18,11 +18,10 @@ import { theme } from '@/constants/theme'
 import { useResolvedColor, useResolvedControlColors, useThemeStore } from '@/hooks/useTheme'
 import type { PillSelectorItemProps } from '@/components/controls/PillSelectorItem'
 import {
+  PILL_SIZES,
   PillSelectorContext,
   TRANSPARENT,
   TUNE_ANIMATION,
-  TUNE_DEFAULT_ACTIVE_WIDTH,
-  TUNE_OPTION_WIDTH,
   styles,
   usePillSelectorCtx,
 } from '@/components/controls/pillSelectorShared'
@@ -35,6 +34,7 @@ interface MenuState {
 }
 
 interface PillSelectorProps {
+  size?: 'md' | 'lg'
   activeId: string
   children: ReactNode
   centered?: boolean
@@ -52,20 +52,21 @@ function getFitContentWidth(
   gap: number,
   contained: boolean,
   showFullLabel: boolean,
+  size: 'md' | 'lg',
 ) {
   const items = Children.toArray(children).filter(Boolean)
   const contentWidth = items.reduce<number>((width, child) => {
     if (!isValidElement<PillSelectorItemProps>(child)) return width
     const { id, labelBehavior, activeWidth, inactiveWidth, icon } = child.props
-    if (!id) return width + 36
-    if (showFullLabel) return width + (activeWidth ?? TUNE_DEFAULT_ACTIVE_WIDTH)
+    if (!id) return width + PILL_SIZES[size].height
+    if (showFullLabel) return width + (activeWidth ?? PILL_SIZES[size].activeWidth)
     const behavior = labelBehavior ?? 'active-only'
     if (behavior === 'active-only' && icon) {
       return (
         width +
         (id === activeId
-          ? (activeWidth ?? TUNE_DEFAULT_ACTIVE_WIDTH)
-          : (inactiveWidth ?? TUNE_OPTION_WIDTH))
+          ? (activeWidth ?? PILL_SIZES[size].activeWidth)
+          : (inactiveWidth ?? PILL_SIZES[size].inactiveWidth))
       )
     }
     return width + 160
@@ -80,6 +81,7 @@ function getFullLabelHighlight(
   activeId: string,
   gap: number,
   contained: boolean,
+  size: 'md' | 'lg',
 ) {
   let x = contained ? 1 : 16
   for (const child of Children.toArray(children).filter(Boolean)) {
@@ -87,7 +89,7 @@ function getFullLabelHighlight(
       x += 36 + gap
       continue
     }
-    const width = child.props.activeWidth ?? TUNE_DEFAULT_ACTIVE_WIDTH
+    const width = child.props.activeWidth ?? PILL_SIZES[size].activeWidth
     if (child.props.id === activeId) return { x, width, color: child.props.color }
     x += width + gap
   }
@@ -96,6 +98,7 @@ function getFullLabelHighlight(
 
 export function PillSelector({
   activeId,
+  size = 'md',
   children,
   centered = false,
   contained = false,
@@ -113,7 +116,7 @@ export function PillSelector({
   const addRef = useTriggerRef()
   const scrollEnabled = viewportWidth > 0 && contentWidth > viewportWidth + 1
   const gap = contained ? 0 : 8
-  const fullLabelHighlight = getFullLabelHighlight(children, activeId, gap, contained)
+  const fullLabelHighlight = getFullLabelHighlight(children, activeId, gap, contained, size)
   const highlightX = useSharedValue(fullLabelHighlight.x)
   const highlightWidth = useSharedValue(fullLabelHighlight.width)
   const highlightBackground = useResolvedColor(
@@ -147,16 +150,29 @@ export function PillSelector({
 
   const fitContentStyle = fitContent
     ? {
-        width: getFitContentWidth(children, activeId, contained ? 0 : 8, contained, showFullLabel),
+        width: getFitContentWidth(
+          children,
+          activeId,
+          contained ? 0 : 8,
+          contained,
+          showFullLabel,
+          size,
+        ),
       }
     : null
 
   return (
     <PillSelectorContext.Provider
-      value={{ activeId, openMenu, closeMenu, addRef, contained, showFullLabel, variant }}
+      value={{ size, activeId, openMenu, closeMenu, addRef, contained, showFullLabel, variant }}
     >
       <View
-        style={[styles.container, contained && styles.containedContainer, fitContentStyle, style]}
+        style={[
+          styles.container,
+          contained && styles.containedContainer,
+          contained && size === 'lg' && { height: 46, borderRadius: 23 },
+          fitContentStyle,
+          style,
+        ]}
       >
         <ScrollView
           ref={scrollRef}
@@ -169,6 +185,7 @@ export function PillSelector({
           contentContainerStyle={[
             styles.scrollContent,
             contained && styles.containedScrollContent,
+            contained && size === 'lg' && { height: 44 },
             centered && styles.scrollContentCentered,
             contentContainerStyle,
           ]}
@@ -179,6 +196,7 @@ export function PillSelector({
               style={[
                 styles.fullLabelHighlight,
                 highlightStyle,
+                size === 'lg' && { borderRadius: 21 },
                 { backgroundColor: highlightBackground, borderColor: highlightBorder },
               ]}
             />
@@ -208,7 +226,7 @@ interface PillSelectorAddProps {
 }
 
 export function PillSelectorAdd({ testID, onPress, style }: PillSelectorAddProps) {
-  const { addRef, contained, variant } = usePillSelectorCtx()
+  const { addRef, contained, variant, size } = usePillSelectorCtx()
   const control = useResolvedControlColors()
   const resolvedTheme = useThemeStore((state) => state.resolvedTheme)
   const useLightTabs = variant === 'lightTabs' && resolvedTheme === 'light'
@@ -219,6 +237,7 @@ export function PillSelectorAdd({ testID, onPress, style }: PillSelectorAddProps
       style={[
         styles.addPill,
         contained && styles.containedAddPill,
+        size === 'lg' && { height: 44, width: 44, borderRadius: 22 },
         useLightTabs && {
           backgroundColor: TRANSPARENT,
           borderColor: control.divider,
