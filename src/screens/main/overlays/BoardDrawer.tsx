@@ -79,15 +79,12 @@ export function BoardDrawer({ onNavigate, onOpenLegalLimits }: TuneDrawerProps) 
   const quickControlsEnabled = boardConnected && canRunFirmwareCommand(linkIntegrity)
   const waitingForTrustedLink = boardConnected && !quickControlsEnabled
   const profilesForBoard = profilesLoadedForBoard
-    ? profiles.filter(
-        (profile) =>
-          profile.boardId === activeBoardId && profile.refloatBaseVersion === tuneCompatibility,
-      )
+    ? profiles.filter((profile) => isCompatibleProfile(profile, activeBoardId, tuneCompatibility))
     : []
   const activeProfileForBoard =
     profilesLoadedForBoard &&
-    activeProfile?.boardId === activeBoardId &&
-    activeProfile.refloatBaseVersion === tuneCompatibility
+    activeProfile != null &&
+    isCompatibleProfile(activeProfile, activeBoardId, tuneCompatibility)
       ? activeProfile
       : null
   const hasProfiles = profilesForBoard.length > 0
