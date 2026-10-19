@@ -164,11 +164,11 @@ One rider's private navigation target on the map, stored on the phone only. It i
 _Avoid_: Direction map point, navigation Map Point, destination marker
 
 **Navigation**:
-The rideable path from the rider to their **Direction Point**, following real ways rather than a straight line. Navigation exists exactly while a Direction Point is set and is native-owned so it survives backgrounding. Once computed it is fixed for the ride, so the rider is free to wander without it changing under them. It describes where the rider could go and is never **Ride History**, which records where they did go.
+The rideable path from the rider to their **Direction Point**, following real ways rather than a straight line. Navigation exists exactly while a Direction Point is set and is native-owned so it survives backgrounding. Native recalculates it from the current GPS Fix when the nearest path is farther away than the configurable threshold (50 m by default), retaining the usable path if replacement fails. It describes where the rider could go and is never **Ride History**, which records where they did go.
 _Avoid_: Route, ride route, navigation mode, guidance, directions
 
 **Route Progress**:
-Where the rider is along their **Navigation** right now: the point on the path nearest to them, how far is left to the **Direction Point** from there, and the bearing to an aim point a short way further along. It is derived and never stored, it changes with every **GPS Fix**, and it ends with the Navigation it belongs to. Navigation is the fixed path; Route Progress is the moving place on it.
+Where the rider is along their **Navigation** right now: the point on the path nearest to them, how far is left to the **Direction Point** from there, and the bearing to an aim point a short way further along. It is derived and never stored, it changes with every **GPS Fix**, and it ends with the Navigation it belongs to. Route Progress also supplies the passed-path split and rider-to-path deviation from that same nearest projection.
 _Avoid_: Navigation progress, route position, ETA, remaining route, navigation fix
 
 **Navigation Profile**:
@@ -466,8 +466,8 @@ _Avoid_: Position update, presence ping, location share, group telemetry
 - A **Navigation** belongs to exactly one **Direction Point**: setting a Direction Point creates it and clearing one ends it, so a rider never has more than one Navigation.
 - A **Navigation** is produced under one **Navigation Profile** and keeps it: choosing a different profile does not redraw the existing path, it produces a new Navigation in its place.
 - A **Navigation** outlives the app process and any single **Ride Recording**: a rider who restarts, crashes, or starts riding another day finds the same Direction Point and the same path waiting.
-- A **Navigation** is computed once and never changes on its own: straying from it, looping back, or riding side paths leaves it untouched, and only the rider asks for a new one.
-- **Route Progress** belongs to exactly one **Navigation** and attaches to the nearest point on it unconditionally: there is no off-route state, so a rider who loops away and comes back re-attaches without asking for anything.
+- A **Navigation** is automatically recalculated beyond the configured path-deviation threshold, to the same **Direction Point** under the selected **Navigation Profile**. Automatic requests do not overlap and wait 30 seconds after completion before retrying; a failure retains the usable path.
+- **Route Progress** belongs to exactly one **Navigation** and attaches to the nearest point on it unconditionally: nearest-point selection uses no progress history or heading matching. Nearby legs and river detours can therefore select another leg or understate deviation; this limitation is accepted for rider testing.
 - **Route Progress** measures what is left along the path rather than the straight line to the **Direction Point**, and its bearing points at an aim point ahead on the path rather than at the target, so it follows the ways the path follows. Once the nearest point is the path's end, as for a rider who rode past the Direction Point, nothing is left along the path: what is left is the straight line from the rider to that end, and the bearing points at it.
 - A **Map Camera Controller** may frame **Live State**, **Ride History**, **GPS Fixes**, or **Map Points**, but does not own those domain objects.
 - A **Map Camera Intent** is interpreted by the **Map Camera Controller**; outside components request camera behavior instead of mutating the map camera directly.

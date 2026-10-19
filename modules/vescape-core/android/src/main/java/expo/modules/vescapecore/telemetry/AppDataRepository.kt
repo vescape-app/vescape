@@ -429,6 +429,7 @@ class AppDataRepository private constructor(private val context: Context) {
       satelliteImagerySaturation = req("satelliteImagerySaturation", -0.35, ::validSatelliteImagerySaturation),
       hideTelemetryMapDetails = req("hideTelemetryMapDetails", true) { it as? Boolean },
       showHistoryMapMarkers = req("showHistoryMapMarkers", false) { it as? Boolean },
+      navigationRerouteDistanceMeters = req("navigationRerouteDistanceMeters", 50.0) { (it as? Number)?.toDouble()?.takeIf { n -> n.isFinite() && n in 1.0..1000.0 } },
       mapOrientationMode = req("mapOrientationMode", "northUp", ::validMapOrientationMode),
       historyMetricGradientsEnabled = req("historyMetricGradientsEnabled", true) { it as? Boolean },
       historyMetricHotRanges = req("historyMetricHotRanges", DEFAULT_HISTORY_METRIC_HOT_RANGES, ::validHistoryMetricHotRanges),
@@ -518,6 +519,7 @@ class AppDataRepository private constructor(private val context: Context) {
         validSatelliteImagerySaturation(value) ?: return@withContext
       "hideTelemetryMapDetails" -> value as? Boolean ?: return@withContext
       "showHistoryMapMarkers" -> value as? Boolean ?: return@withContext
+      "navigationRerouteDistanceMeters" -> requireNotNull((value as? Number)?.toDouble()?.takeIf { it.isFinite() && it in 1.0..1000.0 }) { "Invalid navigationRerouteDistanceMeters" }
       "mapOrientationMode" ->
         validMapOrientationMode(value) ?: return@withContext
       "historyMetricGradientsEnabled" -> value as? Boolean ?: return@withContext
@@ -589,6 +591,7 @@ class AppDataRepository private constructor(private val context: Context) {
         "satelliteImagerySaturation" -> d.satelliteImagerySaturation
         "hideTelemetryMapDetails" -> d.hideTelemetryMapDetails
         "showHistoryMapMarkers" -> d.showHistoryMapMarkers
+        "navigationRerouteDistanceMeters" -> d.navigationRerouteDistanceMeters
         "mapOrientationMode" -> d.mapOrientationMode
         "historyMetricGradientsEnabled" -> d.historyMetricGradientsEnabled
         "historyMetricHotRanges" -> d.historyMetricHotRanges
@@ -973,6 +976,7 @@ fun AppSettings.toMap(): Map<String, Any?> = mapOf(
   "satelliteImagerySaturation" to satelliteImagerySaturation,
   "hideTelemetryMapDetails" to hideTelemetryMapDetails,
   "showHistoryMapMarkers" to showHistoryMapMarkers,
+  "navigationRerouteDistanceMeters" to navigationRerouteDistanceMeters,
   "mapOrientationMode" to mapOrientationMode,
   "historyMetricGradientsEnabled" to historyMetricGradientsEnabled,
   "historyMetricHotRanges" to historyMetricHotRanges,

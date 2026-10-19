@@ -72,8 +72,8 @@ enum class NavigationProfile(val wire: String) {
 }
 
 /**
- * A rideable path from the rider to their Direction Point, following real ways. Computed once and
- * then fixed: nothing here recomputes, reroutes, or reacts to the rider moving.
+ * A rideable path from the rider to their Direction Point, following real ways. Replaced natively when
+ * the rider moves beyond the configured distance from the path.
  *
  * It is a plain value with no behaviour on it, because a later slice shares it over Group Ride.
  *
@@ -115,11 +115,8 @@ data class Navigation(
  * Owns the process's single Navigation. Setting a Direction Point asks for one; clearing the
  * Direction Point ends it. The two are strictly 1:1, so this holds at most one at a time.
  *
- * **There is deliberately no rerouting.** No off-route detection, no arrival detection, no automatic
- * retry — not in the foreground and not in the background. EUC riders leave the line by hundreds of
- * metres as a matter of course, and a path that redraws itself under them is worse than a stale one.
- * A failed Navigation stays failed until the rider asks again, which is a [recompute] call made from
- * a rider's tap. Only the rider replaces a Navigation. Please do not add rerouting here.
+ * GPS-driven automatic recalculation uses the same nearest projection as Route Progress.
+ * Requests never overlap automatically; failures keep the usable path with a 30-second cooldown.
  *
  * Durable: every change is written through to [NavigationStore], and [restore] brings the stored
  * path back on cold start. Restoring is a read, never a fetch — the stored path is the truth however
@@ -169,6 +166,7 @@ class NavigationController(
   private val api: DirectionsRoutes,
   private val store: NavigationStore,
   private val scope: CoroutineScope = CoroutineScope(SupervisorJob() + Dispatchers.IO),
+  private val nowMillis: () -> Long = { android.os.SystemClock.elapsedRealtime() },
 ) {
   private val lock = Any()
 
@@ -241,21 +239,48 @@ class NavigationController(
   /** Notified on every Route Progress change, including the clear to `null`. */
   var onProgressChange: ((RouteProgress?) -> Unit)? = null
 
-  /**
-   * A GPS Fix arrived. Recomputes Route Progress against the current path and notifies when it
-   * moved. This is the *only* thing a fix does to a Navigation: it does not recompute, reroute or
-   * retry the path itself.
-   *
-   * A fix with no usable path publishes `null` rather than keeping the last position, so nothing
-   * downstream can show progress along a path that is gone.
-   */
+  // @parity /modules/vescape-core/ios/navigation/NavigationController.swift `onFix`
+  private var rerouteDistanceMeters = 50.0
+  private var thresholdChosen = false
+  private var automaticRequest: Int? = null
+  private var nextAutomaticAtMs = 0L
+
+  fun setRerouteDistanceMeters(distance: Double) = synchronized(lock) {
+    if (!distance.isFinite() || distance !in 1.0..1000.0) return@synchronized
+    thresholdChosen = true
+    rerouteDistanceMeters = distance
+  }
+
+  /** One nearest projection supplies progress and deviation, even while JS is suspended. */
   fun onFix(latitude: Double, longitude: Double, speedMps: Double?) {
-    synchronized(lock) {
+    val work = synchronized(lock) {
       latestFix = Fix(latitude, longitude, speedMps)
       val next = progressAtLatestFix()
-      if (progress == next) return
-      progress = next
-      onProgressChange?.invoke(next)
+      if (progress != next) {
+        progress = next
+        onProgressChange?.invoke(next)
+      }
+      val navigation = state
+      if (next == null || navigation == null || computingRequest != null || automaticRequest != null ||
+        next.deviationMeters <= rerouteDistanceMeters || nowMillis() < nextAutomaticAtMs) return
+      // Reserve synchronously with the decision: another fix cannot launch a duplicate, and a
+      // subsequent target/profile/clear intent invalidates this token before the coroutine runs.
+      val request = claimRequest()
+      automaticRequest = request
+      beginComputing(request)
+      Triple(request, navigation, profile)
+    }
+    scope.launch {
+      try {
+        publish(work.first, compute(work.second.targetLatitude, work.second.targetLongitude,
+          latitude, longitude, work.third), keepUsablePath = true)
+      } finally {
+        synchronized(lock) {
+          if (automaticRequest == work.first) automaticRequest = null
+          nextAutomaticAtMs = nowMillis() + 30_000L
+        }
+        endComputing(work.first)
+      }
     }
   }
 
@@ -280,6 +305,8 @@ class NavigationController(
   fun restore() {
     val request = claimRequest()
     scope.launch {
+      val threshold = store.loadRerouteDistanceMeters()
+      synchronized(lock) { if (!thresholdChosen) rerouteDistanceMeters = threshold }
       store.loadProfile()?.let { stored ->
         // The rider may have switched while this read was in flight; their choice is the newer one.
         synchronized(lock) { if (!profileChosen) profile = stored }
@@ -364,6 +391,7 @@ class NavigationController(
     synchronized(lock) {
       if (profile == next && profileChosen) return
       profile = next
+      claimRequest() // A result under the previous profile is already stale.
       // A restore still in flight must not undo this with yesterday's value.
       profileChosen = true
     }
@@ -376,8 +404,7 @@ class NavigationController(
 
   /**
    * The rider asking for a fresh path to the Direction Point they already have, from where they are
-   * now. This is the *only* way a Navigation is replaced once computed — nothing may call it on a
-   * timer, on reconnect or on a new fix.
+   * now. Automatic replacements use the same publish and failure-retention rules.
    *
    * Unlike [setTarget] it does not drop the current path first, and a request that produces no path
    * is discarded while a usable one is already drawn: losing a working line by asking for a better
@@ -450,7 +477,7 @@ class NavigationController(
             targetLatitude = toLatitude,
             targetLongitude = toLongitude,
             profile = profile,
-            computedAtMs = System.currentTimeMillis(),
+            computedAtMs = synchronized(lock) { maxOf(System.currentTimeMillis(), (state?.computedAtMs ?: 0L) + 1) },
             distanceMeters = result.distanceMeters,
             durationSeconds = result.durationSeconds,
             status = NavigationStatus.READY,
@@ -470,7 +497,7 @@ class NavigationController(
     targetLatitude = toLatitude,
     targetLongitude = toLongitude,
     profile = profile,
-    computedAtMs = System.currentTimeMillis(),
+    computedAtMs = synchronized(lock) { maxOf(System.currentTimeMillis(), (state?.computedAtMs ?: 0L) + 1) },
     status = status,
     distanceMeters = 0.0,
     durationSeconds = 0.0,
@@ -522,7 +549,7 @@ class NavigationController(
       val previousProgress = progress
       progress = progressAtLatestFix()
       onChange?.invoke(navigation)
-      if (previousProgress != progress) onProgressChange?.invoke(progress)
+      if (previousProgress != progress || progress != null) onProgressChange?.invoke(progress)
       val nextPath = ridePath(navigation)
       if (previousPath != nextPath) onPathChange?.invoke(nextPath)
       onWatchChange?.invoke()

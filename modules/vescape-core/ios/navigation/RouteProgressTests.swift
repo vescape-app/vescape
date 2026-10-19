@@ -21,6 +21,21 @@ final class RouteProgressTests: XCTestCase {
   /// One long straight run east with nothing between its ends — the sparse-vertex case.
   private let straightPath: [(latitude: Double, longitude: Double)] = [(0.0, 0.0), (0.0, 0.01)]
 
+  func testSplitAndDeviationUseClampedNearestSegment() throws {
+    let middle = try XCTUnwrap(RouteProgress.compute(points: straightPath,
+      riderLatitude: 0.001, riderLongitude: 0.005, speedMps: nil))
+    XCTAssertEqual(middle.segmentIndex, 0)
+    XCTAssertEqual(middle.segmentFraction, 0.5, accuracy: 0.000001)
+    XCTAssertEqual(middle.deviationMeters, 111.195, accuracy: 0.1)
+    let end = try XCTUnwrap(RouteProgress.compute(points: straightPath,
+      riderLatitude: 0, riderLongitude: 0.012, speedMps: nil))
+    XCTAssertEqual(end.segmentFraction, 1)
+    XCTAssertGreaterThan(end.remainingMeters, 200)
+    let start = try XCTUnwrap(RouteProgress.compute(points: straightPath,
+      riderLatitude: 0, riderLongitude: -0.001, speedMps: nil))
+    XCTAssertEqual(start.segmentFraction, 0)
+  }
+
   func testProjectsOntoSegmentRatherThanNearestVertex() throws {
     // Halfway along a 1.1 km run with no vertex near: the nearest *vertex* is 550 m away.
     let progress = try XCTUnwrap(

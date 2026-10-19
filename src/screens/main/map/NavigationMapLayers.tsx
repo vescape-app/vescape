@@ -15,6 +15,8 @@ import {
 import { getPlaceCategoryIconKey } from '@/modules/map-points/constants/placeCategoryIcon'
 import type { MapSelection } from '@/modules/map/lib/mapSelection'
 import { useMapStore } from '@/modules/map/store/mapStore'
+import { navigationPathShape } from '@/modules/map/lib/navigationPath'
+import { useNavigationDiagnosticsStore } from '@/modules/map/store/navigationDiagnosticsStore'
 import type { MainMapLayersProps } from '@/screens/main/map/mainMapLayerTypes'
 
 /**
@@ -106,17 +108,27 @@ export function NavigationMapLayers({
   // No path could be computed. The pin stays exactly where the rider put it — it is still their
   // Direction Point, with a bearing and a distance — but it stops pretending a route is coming.
   const navigationFailed = navigation != null && navigation.status !== 'ready'
-  const navigationShape = useMemo<GeoJSON.Feature<GeoJSON.LineString> | null>(
-    () =>
-      navigation && navigation.coordinates.length > 1
-        ? {
-            type: 'Feature',
-            geometry: { type: 'LineString', coordinates: navigation.coordinates },
-            properties: {},
-          }
-        : null,
-    [navigation],
+  const progress = useMapStore((state) => state.routeProgress)
+  const showConnector = useNavigationDiagnosticsStore((state) => state.showProjectionConnector)
+  const gpsFix = useNavigationDiagnosticsStore((state) => state.gpsFix)
+  const navigationShape = useMemo(
+    () => navigationPathShape(navigation, progress),
+    [navigation, progress],
   )
+  const connector =
+    showConnector && progress && gpsFix
+      ? {
+          type: 'Feature' as const,
+          geometry: {
+            type: 'LineString' as const,
+            coordinates: [
+              [gpsFix.longitude, gpsFix.latitude],
+              [progress.longitude, progress.latitude],
+            ],
+          },
+          properties: {},
+        }
+      : null
 
   const showDirectionPoint = directionPoint != null && activeNavigationTarget?.type !== 'mapPoint'
   const pinColor = useResolvedColor(navigationFailed ? theme.status.warning.color : directionColor)
@@ -127,12 +139,12 @@ export function NavigationMapLayers({
     <>
       {showDirectionPoint &&
         navigationShape && (
-          // Drawn whole, never trimmed or dimmed as the rider advances — deliberate, see #353.
-          // `lineMetrics` is free now and is what a later dimming pass would need.
+          // Both dots and halo share the native projection split.
           <ShapeSource id="center-navigation-source" shape={navigationShape} lineMetrics>
             <LineLayer
               id="center-navigation-casing"
               style={{
+                lineOpacity: ['get', 'opacity'],
                 lineColor: theme.alpha(neutral.surfaceDeep, 0.85),
                 lineWidth: NAVIGATION_CASING_WIDTH,
                 lineCap: 'round',
@@ -143,6 +155,7 @@ export function NavigationMapLayers({
             <LineLayer
               id="center-navigation-line"
               style={{
+                lineOpacity: ['get', 'opacity'],
                 lineColor: routeColor,
                 lineWidth: MAP_DEFAULTS.navigationWidth,
                 lineCap: 'round',
@@ -152,6 +165,14 @@ export function NavigationMapLayers({
             />
           </ShapeSource>
         )}
+      {connector && showDirectionPoint && (
+        <ShapeSource id="navigation-projection-source" shape={connector}>
+          <LineLayer
+            id="navigation-projection-line"
+            style={{ lineColor: routeColor, lineOpacity: 0.8, lineWidth: 3 }}
+          />
+        </ShapeSource>
+      )}
       {showDirectionPoint && (
         <MapPin
           // Color in the key: PointAnnotation snapshots its children natively, so a

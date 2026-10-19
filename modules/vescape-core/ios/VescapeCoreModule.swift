@@ -1643,6 +1643,10 @@ public class VescapeCoreModule: Module {
       ].contains(key) {
         self.coordinator.reloadTelemetrySettings()
       }
+      if key == "navigationRerouteDistanceMeters" {
+        NavigationController.shared.setRerouteDistanceMeters(
+          (try self.appData.getSettings())["navigationRerouteDistanceMeters"] as? Double ?? 50.0)
+      }
       if key == "unitSystem" { self.coordinator.reloadAlertRules() }
       // The Watch Mirror is process scoped, not session scoped, so its settings reload cannot ride
       // on `reloadTelemetrySettings` — that one returns early with no Board Session.

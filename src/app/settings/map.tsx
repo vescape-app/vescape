@@ -15,11 +15,14 @@ import { SettingsRow } from '@/components/settings/SettingsRow'
 import { Switch } from '@/components/controls/Switch'
 import { SettingsSectionTitle } from '@/components/settings/SettingsSectionTitle'
 import { Stepper } from '@/components/forms/Stepper'
+import { lengthFromMeters, lengthInputToMeters, lengthUnit } from '@/helpers/units'
 import { theme } from '@/constants/theme'
 import { useSettingsStore } from '@/modules/settings/store/settingsStore'
 
 export default function MapSettingsScreen() {
   const {
+    navigationRerouteDistanceMeters,
+    unitSystem,
     satelliteOverlayEnabled,
     satelliteImageryOpacity,
     satelliteMapImageryOpacity,
@@ -28,6 +31,8 @@ export default function MapSettingsScreen() {
     set,
   } = useSettingsStore(
     useShallow((s) => ({
+      navigationRerouteDistanceMeters: s.navigationRerouteDistanceMeters,
+      unitSystem: s.unitSystem,
       satelliteOverlayEnabled: s.satelliteOverlayEnabled,
       satelliteImageryOpacity: s.satelliteImageryOpacity,
       satelliteMapImageryOpacity: s.satelliteMapImageryOpacity,
@@ -64,6 +69,35 @@ export default function MapSettingsScreen() {
           />
         </SettingsCard>
 
+        <SettingsSectionTitle>Navigation</SettingsSectionTitle>
+        <SettingsCard>
+          <SettingsRow
+            icon={MapTrifoldIcon}
+            label="Recalculate beyond"
+            hint="Distance from the path before finding a new way to your Direction Point"
+            right={
+              <Stepper
+                value={Math.round(lengthFromMeters(navigationRerouteDistanceMeters, unitSystem))}
+                unit={lengthUnit(unitSystem)}
+                min={Math.ceil(lengthFromMeters(1, unitSystem))}
+                max={Math.floor(lengthFromMeters(1000, unitSystem))}
+                step={unitSystem === 'imperial' ? 25 : 10}
+                onChange={(value) =>
+                  void set(
+                    'navigationRerouteDistanceMeters',
+                    lengthInputToMeters(
+                      value,
+                      navigationRerouteDistanceMeters,
+                      unitSystem,
+                      1,
+                      1000,
+                    ),
+                  )
+                }
+              />
+            }
+          />
+        </SettingsCard>
         <SettingsSectionTitle>Satellite view</SettingsSectionTitle>
         <SettingsCard>
           <SettingsRow
