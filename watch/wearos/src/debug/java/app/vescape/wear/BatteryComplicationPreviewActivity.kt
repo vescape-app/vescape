@@ -7,6 +7,7 @@ import android.graphics.Color
 import android.graphics.Paint
 import android.content.Context
 import android.view.View
+import androidx.compose.ui.graphics.toArgb
 import androidx.wear.watchface.complications.data.ComplicationType
 import androidx.wear.watchface.complications.rendering.ComplicationDrawable
 import java.time.Instant
@@ -28,7 +29,7 @@ class BatteryComplicationPreviewActivity : Activity() {
                 activeStyle.textColor = Color.WHITE
                 activeStyle.titleColor = Color.LTGRAY
                 activeStyle.iconColor = Color.WHITE
-                activeStyle.rangedValuePrimaryColor = if (this@Preview.state == "warning") Color.rgb(249, 115, 22) else Color.rgb(34, 197, 94)
+                activeStyle.rangedValuePrimaryColor = batteryColor(battery?.percent).toArgb()
                 activeStyle.rangedValueSecondaryColor = Color.DKGRAY
             }
         }

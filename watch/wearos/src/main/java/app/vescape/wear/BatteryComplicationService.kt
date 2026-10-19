@@ -3,7 +3,7 @@ package app.vescape.wear
 import android.app.PendingIntent
 import android.content.ComponentName
 import android.content.Intent
-import android.graphics.Color
+import androidx.compose.ui.graphics.toArgb
 import android.graphics.drawable.Icon
 import android.net.Uri
 import androidx.wear.watchface.complications.data.*
@@ -37,23 +37,25 @@ internal fun decodeLastBatteryItem(item: DataItem): WatchLastBattery? {
     return WatchLastBattery.decode(map.keySet().associateWith { map.get<Any>(it) })
 }
 
-/** The watch face owns typography and placement; these are its production data fields.
+/**
+ * The watch face owns typography and placement; these are its production data fields.
  * @parity /watch/watchos/BatteryComplicationView.swift
+ * @platform-diff A never-seen Board is No Data, the watch face's own empty state; watchOS shows
+ *   the Board name with `--`.
  */
 internal fun batteryComplicationData(battery: WatchLastBattery?, type: ComplicationType, now: Long, tap: PendingIntent?, packageName: String): ComplicationData {
     if (battery?.percent == null) return NoDataComplicationData()
     val percent = PlainComplicationText.Builder(battery.text).build()
-    val age = battery.age(now)
-    val full = listOfNotNull(battery.boardName, battery.text, age?.let { "$it ago" }).joinToString(" · ")
+    val full = listOfNotNull(battery.boardName, battery.text, battery.ageLabel(now)).joinToString(" · ")
     val description = PlainComplicationText.Builder(full).build()
     val icon = MonochromaticImage.Builder(Icon.createWithResource(packageName, R.drawable.ic_battery_complication)).build()
     return when (type) {
         ComplicationType.RANGED_VALUE -> RangedValueComplicationData.Builder(battery.percent.toFloat(), 0f, 100f, description)
             .setText(percent).setMonochromaticImage(icon).setTapAction(tap)
-            .setColorRamp(ColorRamp(intArrayOf(if (battery.percent < BATTERY_WARNING_PERCENT) Color.rgb(249, 115, 22) else Color.rgb(34, 197, 94)), false)).build()
+            .setColorRamp(ColorRamp(intArrayOf(batteryColor(battery.percent).toArgb()), false)).build()
         ComplicationType.SHORT_TEXT -> ShortTextComplicationData.Builder(percent, description)
             .setMonochromaticImage(icon).setTapAction(tap).build()
-        ComplicationType.LONG_TEXT -> LongTextComplicationData.Builder(PlainComplicationText.Builder(full).build(), description)
+        ComplicationType.LONG_TEXT -> LongTextComplicationData.Builder(description, description)
             .setMonochromaticImage(icon).setTapAction(tap).build()
         else -> NoDataComplicationData()
     }

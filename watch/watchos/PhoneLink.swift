@@ -388,7 +388,7 @@ final class PhoneLink: NSObject, ObservableObject, WCSessionDelegate {
     WidgetCenter.shared.reloadTimelines(ofKind: WatchBatteryDefaults.widgetKind)
   }
 
-  func session(_ session: WCSession, didReceiveUserInfo userInfo: [String: Any] = [:]) {
+  func session(_ session: WCSession, didReceiveUserInfo userInfo: [String: Any]) {
     guard userInfo[watchLastBatteryChannel] != nil else { return }
     // Transfers can wait behind newer contexts, including Board switches and clears. Never apply
     // their snapshot. If this wake arrives first, the later context callback applies the reading.

@@ -17,7 +17,7 @@ struct DiagnosticsPanel: View {
           row("rx", String(format: "%.1f / %.1f Hz", link.receivedHz, link.appliedHz))
           row("battery board", link.lastBattery?.boardName ?? "--")
           row("battery", link.lastBattery?.text ?? "--")
-          row("battery age", link.lastBattery?.age(now: context.date).map { "\($0) ago" } ?? "<1h / unknown")
+          row("battery age", link.lastBattery?.ageLabel(now: context.date) ?? "<1h / unknown")
           row("frames", "\(link.diagnostics.framesDecoded)")
           if link.diagnostics.decodeFailures > 0 {
             // Repeated failures can indicate incompatible phone/watch frame layouts.

@@ -61,21 +61,38 @@ final class WatchLastBatteryTests: XCTestCase {
     var gate = WatchBatteryWakeGate()
     let before = WatchLastBattery(boardId: "a", boardName: "Old name", percent: 78.2, at: 1000)
     let after = WatchLastBattery(boardId: "a", boardName: "New name", percent: 78.2, at: 1000)
-    XCTAssertTrue(gate.shouldSend(before, remaining: 50))
+    XCTAssertTrue(gate.shouldSend(before))
     XCTAssertTrue(WatchBatteryDefaults.receiveLatestContext({ [watchLastBatteryChannel: before.payload] }, store: store))
-    XCTAssertTrue(gate.shouldSend(after, remaining: 49))
+    XCTAssertTrue(gate.shouldSend(after))
     XCTAssertTrue(WatchBatteryDefaults.receiveLatestContext({ [watchLastBatteryChannel: after.payload] }, store: store))
     XCTAssertEqual(WatchLastBattery.decode(store.dictionary(forKey: watchLastBatteryChannel)), after)
-    XCTAssertFalse(gate.shouldSend(after, remaining: 48))
+    XCTAssertFalse(gate.shouldSend(after))
   }
 
-  func testWakeBudgetReserveDoesNotConsumeChangeAndRetriesAfterReset() {
-    let battery = WatchLastBattery(boardId: "a", boardName: "A", percent: 78.2, at: 1)
+  func testWakeGateSendsOnlyVisibleChanges() {
     var gate = WatchBatteryWakeGate()
-    XCTAssertFalse(gate.shouldSend(battery, remaining: 5))
-    XCTAssertTrue(gate.shouldSend(battery, remaining: 50))
-    XCTAssertFalse(gate.shouldSend(WatchLastBattery(boardId: "a", boardName: "A", percent: 78.4, at: 2), remaining: 49))
-    XCTAssertTrue(gate.shouldSend(WatchLastBattery(boardId: "b", boardName: "B", percent: 78.4, at: 2), remaining: 49))
-    XCTAssertTrue(gate.shouldSend(nil, remaining: 48))
+    XCTAssertTrue(gate.shouldSend(WatchLastBattery(boardId: "a", boardName: "A", percent: 78.2, at: 1)))
+    XCTAssertFalse(gate.shouldSend(WatchLastBattery(boardId: "a", boardName: "A", percent: 78.4, at: 2)))
+    XCTAssertTrue(gate.shouldSend(WatchLastBattery(boardId: "b", boardName: "B", percent: 78.4, at: 2)))
+    XCTAssertTrue(gate.shouldSend(nil))
+    XCTAssertFalse(gate.shouldSend(nil))
+  }
+
+  func testSelectedReadsStoredBoardAndDropsIncompleteOrDeletedBoards() {
+    let stored: [String: Any?] = ["percent": 78.0, "voltage": nil, "at": Int64(1000)]
+    let board: [String: Any?] = ["name": "X7", "lastBattery": stored, "deletedAt": nil]
+    XCTAssertEqual(WatchLastBattery.selected(boardId: "a", board: board),
+      WatchLastBattery(boardId: "a", boardName: "X7", percent: 78, at: 1000))
+    var neverSeen = board
+    neverSeen.removeValue(forKey: "lastBattery")
+    XCTAssertEqual(WatchLastBattery.selected(boardId: "a", board: neverSeen),
+      WatchLastBattery(boardId: "a", boardName: "X7", percent: nil, at: nil))
+    var invalid = board
+    invalid["lastBattery"] = ["percent": Double.nan, "at": Int64(1)] as [String: Any?]
+    XCTAssertNil(WatchLastBattery.selected(boardId: "a", board: invalid)?.percent)
+    var deleted = board
+    deleted["deletedAt"] = Int64(5)
+    XCTAssertNil(WatchLastBattery.selected(boardId: "a", board: deleted))
+    XCTAssertNil(WatchLastBattery.selected(boardId: nil, board: board))
   }
 }

@@ -800,7 +800,7 @@ internal class BoardSessionController(private val service: CoreForegroundService
         DiagnosticReporter.initialize(service)
         notificationController.createChannel()
         refreshSelectedBoardName()
-        CoreForegroundService.appDataScope.launch { pushWatchLastBattery() }
+        WatchLastBatteryPusher.push(service)
         // The wrist mirrors the phone, not the board session. Keep presence + frames alive while
         // this service owns GPS/navigation even when no board is selected or connected.
         watchMirror.start()
@@ -2862,19 +2862,10 @@ internal class BoardSessionController(private val service: CoreForegroundService
         CoreForegroundService.appDataScope.launch {
             try {
                 AppDataRepository.get(service.applicationContext).updateLastBattery(boardId, percent, voltage, now)
-                pushWatchLastBattery()
+                WatchLastBatteryPusher.push(service)
             } catch (error: Exception) {
                 RecordingStorageFailure.report("last_battery_save", "write_failed", error)
             }
-        }
-    }
-
-    /** @parity /modules/vescape-core/ios/connection/BoardSessionController.swift `pushWatchLastBattery` */
-    private suspend fun pushWatchLastBattery() {
-        try {
-            WatchLastBatteryPusher.pushStored(service.applicationContext)
-        } catch (error: Exception) {
-            recordWatchDiagnostic("watch_last_battery_push_failed", mapOf("error" to error.message))
         }
     }
 

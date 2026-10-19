@@ -2676,19 +2676,13 @@ internal final class BoardSessionController: VescGattListener {
   }
 
   /// Push only committed storage, including selection changes and cold launch.
-  /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/connection/BoardSessionController.kt `pushWatchLastBattery`
+  /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/watch/WatchLastBatteryPusher.kt
   func pushWatchLastBattery() {
     do {
-      let settings = try appData.getSettings()
-      var battery: WatchLastBattery?
-      if let id = settings["selectedBoardId"] as? String, let board = try appData.getBoard(id) {
-        let stored = board["lastBattery"] as? [String: Any]
-        battery = WatchLastBattery(boardId: id, boardName: board["name"] as? String ?? "Board",
-          percent: stored?["percent"] as? Double, at: (stored?["at"] as? NSNumber)?.int64Value)
-      }
-      watchMirror.pushLastBattery(battery)
+      let id = try appData.getSettings()["selectedBoardId"] as? String
+      watchMirror.pushLastBattery(.selected(boardId: id, board: try id.flatMap { try appData.getBoard($0) }))
     } catch {
-      RecordingStorageFailure.report(operation: "watch_last_battery_read", category: "read_failed", error: error)
+      RecordingStorageFailure.reportRead(operation: "watch_last_battery_read", error: error)
     }
   }
 

@@ -197,3 +197,16 @@ test('board edits render native-owned preset settings instead of echoing stale i
     alertPreset: { speed: 'normal' },
   })
 })
+
+test('removing the active Board moves the native selection to a remaining Board', async () => {
+  const { useBoardStore } = await import('@/modules/board/store/boardStore')
+  const first = await useBoardStore.getState().addBoard({ name: 'First' })
+  const second = await useBoardStore.getState().addBoard({ name: 'Second' })
+  useBoardStore.getState().setActiveBoard(first.id)
+  setSelectedBoard.mockClear()
+
+  await useBoardStore.getState().removeBoard(first.id)
+
+  expect(setSelectedBoard).toHaveBeenCalledWith(second.id)
+  expect(useBoardStore.getState().activeBoardId).toBe(second.id)
+})

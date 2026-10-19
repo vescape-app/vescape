@@ -566,11 +566,12 @@ rider dot follow it. The watchOS Mirror carries the same bag on its own channel 
 
 The selected Board's last persisted battery is a separate cold-state channel. Every successful
 30-second or forced `updateLastBattery` write pushes committed storage to the wrist. Selection
-changes, successful Board saves including renames, and native Mirror startup push the selected
-Board's stored reading too. The payload is
+changes, successful Board saves including renames, Board deletion, database restore, and native
+Mirror startup push the selected Board's stored reading too. A deleted selected Board clears the
+wrist. The payload is
 `{ boardId, boardName, percent, at }`, where `at` is Unix milliseconds. Optional `percent` and `at`
 are omitted for a never-seen Board because WatchConnectivity property lists cannot encode null.
-An empty payload clears the selected Board. Android also includes a `present` flag on the item.
+On watchOS an empty payload clears the selected Board; on Wear OS the phone deletes the item.
 
 watchOS merges `lastBattery` into Application Context. The watch app stores it in App Group
 `group.<phone bundle id>.watch`, shared with its `WatchBattery` WidgetKit extension. The suite is

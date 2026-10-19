@@ -2,8 +2,9 @@ import Foundation
 
 let watchLastBatteryChannel = "lastBattery"
 
-/// Latest persisted reading. Missing percent/at means never seen; an empty payload clears the board.
-/// Optional keys are omitted because WatchConnectivity property lists cannot encode null.
+/// Latest persisted reading. `percent` and `at` are both set or both nil (never seen); an empty
+/// payload clears the board. Nil keys are omitted because WatchConnectivity property lists cannot
+/// encode null.
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/watch/WatchLastBattery.kt
 /// @parity /watch/wearos/src/main/java/app/vescape/wear/WatchLastBattery.kt
 struct WatchLastBattery: Equatable {
@@ -12,9 +13,21 @@ struct WatchLastBattery: Equatable {
   let percent: Double?
   let at: Int64?
 
+  /// The selected Board as `AppDataRepository.getBoard` returns it; nil without a live selection.
+  /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/watch/WatchLastBattery.kt `selected`
+  static func selected(boardId: String?, board: [String: Any?]?) -> WatchLastBattery? {
+    guard let boardId, let board, (board["deletedAt"] ?? nil) == nil else { return nil }
+    let stored = (board["lastBattery"] ?? nil) as? [String: Any?]
+    let percent = ((stored?["percent"] ?? nil) as? Double).flatMap { $0.isFinite ? $0 : nil }
+    let at = (stored?["at"] ?? nil) as? Int64
+    let known = percent != nil && at != nil
+    return WatchLastBattery(boardId: boardId, boardName: (board["name"] ?? nil) as? String ?? "Board",
+      percent: known ? percent : nil, at: known ? at : nil)
+  }
+
   var payload: [String: Any] {
     var result: [String: Any] = ["boardId": boardId, "boardName": boardName]
-    if let percent, percent.isFinite, let at { result["percent"] = percent; result["at"] = at }
+    if let percent, let at { result["percent"] = percent; result["at"] = at }
     return result
   }
 
@@ -38,46 +51,13 @@ struct WatchLastBattery: Equatable {
     return hours < 24 ? "\(hours)h" : "\(hours / 24)d"
   }
 
+  func ageLabel(now: Date) -> String? { age(now: now).map { "\($0) ago" } }
+
   /// Entries land at the reading's age boundaries, not wall-clock hours.
   func timelineDates(now: Date) -> [Date] {
     guard let at, percent != nil else { return [now] }
     let origin = Date(timeIntervalSince1970: Double(at) / 1000)
     let firstHour = max(1, Int(now.timeIntervalSince(origin) / 3600) + 1)
     return [now] + (firstHour..<(firstHour + 48)).map { origin.addingTimeInterval(Double($0) * 3600) }
-  }
-}
-
-/// Shared between the watch app and its WidgetKit extension. Both derive the suite from identity.
-enum WatchBatteryDefaults {
-  static let widgetKind = "VescapeBoardBattery"
-  static var suiteName: String {
-    let id = Bundle.main.bundleIdentifier ?? ""
-    let phone = id.components(separatedBy: ".watchkitapp").first ?? id
-    return "group.\(phone).watch"
-  }
-  static var defaults: UserDefaults? { UserDefaults(suiteName: suiteName) }
-  static var value: WatchLastBattery? { WatchLastBattery.decode(defaults?.dictionary(forKey: watchLastBatteryChannel)) }
-  /// Application Context is the only authority. Queued complication transfers only wake this reader.
-  /// Reading at apply time also avoids replaying an older callback after a newer context arrived.
-  /// Wear reads its latest Data Layer item directly; no queued snapshot is applied there either.
-  static func receiveLatestContext(_ context: () -> [String: Any], store: UserDefaults? = defaults) -> Bool {
-    guard let store, let payload = context()[watchLastBatteryChannel] as? [String: Any] else { return false }
-    let value = WatchLastBattery.decode(payload)
-    guard value != WatchLastBattery.decode(store.dictionary(forKey: watchLastBatteryChannel)) else { return false }
-    store.set(value?.payload ?? [:], forKey: watchLastBatteryChannel)
-    return true
-  }
-}
-
-/// @parity /watch/wearos/src/main/java/app/vescape/wear/BatteryComplicationService.kt
-/// @platform-diff Only iOS budgets complication wake transfers. Cold state always updates.
-struct WatchBatteryWakeGate {
-  static let reserve = 5
-  private(set) var lastKey: String?
-  mutating func shouldSend(_ battery: WatchLastBattery?, remaining: Int) -> Bool {
-    let key = "\(battery?.boardId ?? ""):\(battery?.boardName ?? ""):\(battery?.text ?? "--")"
-    guard key != lastKey, remaining > Self.reserve else { return false }
-    lastKey = key
-    return true
   }
 }

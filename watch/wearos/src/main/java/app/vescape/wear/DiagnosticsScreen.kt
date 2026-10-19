@@ -38,7 +38,7 @@ fun DiagnosticsScreen() {
     val events by WatchDiagnostics.events
     val link by TelemetryState.phoneLink
     val lights by BoardState.lights
-    val battery by LastBatteryState.value
+    val battery by LastBatteryState.battery
 
     // Local clock tick so "last frame Xs ago" keeps counting while no new frames redraw the page.
     var nowMs by remember { mutableLongStateOf(SystemClock.elapsedRealtime()) }
@@ -69,11 +69,11 @@ fun DiagnosticsScreen() {
         if (counters.unknownPathMessages > 0) {
             item { StatLine("Other msgs", counters.unknownPathMessages.toString(), warn = true) }
         }
-        // Board lights have no UI of their own yet; these lines are how the /board path is
-        // verified end to end, and "unknown" has to read differently from "off".
         item { StatLine("Battery board", battery?.boardName ?: "--") }
         item { StatLine("Battery", battery?.text ?: "--") }
-        item { StatLine("Battery age", battery?.age(System.currentTimeMillis())?.let { "$it ago" } ?: "<1h / unknown") }
+        item { StatLine("Battery age", battery?.ageLabel(System.currentTimeMillis()) ?: "<1h / unknown") }
+        // Board lights have no UI of their own yet; these lines are how the /board path is
+        // verified end to end, and "unknown" has to read differently from "off".
         item { StatLine("Lights", boardLightLabel(lights.lightsEnabled)) }
         item { StatLine("Headlights", boardLightLabel(lights.headlightsEnabled)) }
         item { StatLine("Lights ctrl", if (lights.lightsControllable) "yes" else "no") }

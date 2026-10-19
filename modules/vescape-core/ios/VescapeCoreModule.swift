@@ -1027,6 +1027,7 @@ public class VescapeCoreModule: Module {
       DispatchQueue.global(qos: .userInitiated).async {
         do {
           try DatabaseBackupManager.restoreBackup(uriString: uri)
+          self.coordinator.pushWatchLastBattery()
           promise.resolve(nil)
         } catch {
           promise.reject("ERR_RESTORE_DATABASE", error.localizedDescription)
@@ -1329,6 +1330,7 @@ public class VescapeCoreModule: Module {
       try RecordingStorageFailure.requireAvailable()
       do {
         try self.appData.deleteBoard(id)
+        self.coordinator.pushWatchLastBattery()
         promise.resolve(nil)
       } catch {
         RecordingStorageFailure.report(operation: "board_delete", category: "write_failed", error: error)

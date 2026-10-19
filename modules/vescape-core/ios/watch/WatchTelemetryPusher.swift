@@ -112,7 +112,7 @@ final class WatchTelemetryPusher: NSObject, WCSessionDelegate {
       return
     }
     budgetExhausted = false
-    guard wakeGate.shouldSend(desiredBattery, remaining: remaining) else { return }
+    guard wakeGate.shouldSend(desiredBattery) else { return }
     session.transferCurrentComplicationUserInfo([watchLastBatteryChannel: desiredBattery?.payload ?? [:]])
   }
 

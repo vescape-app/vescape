@@ -3,35 +3,54 @@ package expo.modules.vescapecore.watch
 import android.content.Context
 import com.google.android.gms.tasks.Tasks
 import com.google.android.gms.wearable.PutDataMapRequest
+import com.google.android.gms.wearable.PutDataRequest
 import com.google.android.gms.wearable.Wearable
+import expo.modules.vescapecore.recording.RecordingStorageFailure
+import expo.modules.vescapecore.service.CoreForegroundService
 import expo.modules.vescapecore.telemetry.AppDataRepository
+import expo.modules.vescapecore.telemetry.TelemetryRepository
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 
-/** Latest committed storage, serialized with selection pushes so an older write cannot win. */
+/**
+ * Publishes the selected Board's committed battery to the wrist. Fire-and-forget like the iOS
+ * Application Context push; each write rereads storage under the mutex, so an older one cannot win.
+ *
+ * @parity /modules/vescape-core/ios/connection/BoardSessionController.swift `pushWatchLastBattery`
+ */
 internal object WatchLastBatteryPusher {
     private val writes = Mutex()
-    suspend fun pushStored(context: Context) = writes.withLock {
-        val repo = AppDataRepository.get(context)
-        val id = repo.getTypedSettings().selectedBoardId
-        val board = id?.let { repo.getBoard(it) }
-        val stored = board?.get("lastBattery") as? Map<*, *>
-        val value = if (id != null && board != null) WatchLastBattery(
-            id, board["name"] as? String ?: "Board",
-            (stored?.get("percent") as? Number)?.toDouble(), (stored?.get("at") as? Number)?.toLong(),
-        ) else null
-        val request = PutDataMapRequest.create("/last-battery").apply {
-            // Explicit empty item clears the channel and remains available to a cold watch app.
-            dataMap.putBoolean("present", value != null)
-            value?.payload()?.forEach { (key, entry) ->
-                when (entry) {
-                    is String -> dataMap.putString(key, entry)
-                    is Double -> dataMap.putDouble(key, entry)
-                    is Long -> dataMap.putLong(key, entry)
-                }
+
+    fun push(context: Context) {
+        val appCtx = context.applicationContext
+        CoreForegroundService.appDataScope.launch { writes.withLock { write(appCtx) } }
+    }
+
+    private suspend fun write(context: Context) {
+        val battery = try {
+            val repo = AppDataRepository.get(context)
+            val id = repo.getTypedSettings().selectedBoardId
+            WatchLastBattery.selected(id, id?.let { repo.getBoard(it) })
+        } catch (error: Exception) {
+            RecordingStorageFailure.reportRead("watch_last_battery_read", error)
+            return
+        }
+        try {
+            val dataClient = Wearable.getDataClient(context)
+            if (battery == null) {
+                Tasks.await(dataClient.deleteDataItems(PutDataRequest.create(WATCH_LAST_BATTERY_PATH).uri))
+                return
             }
-        }.asPutDataRequest().setUrgent()
-        Tasks.await(Wearable.getDataClient(context).putDataItem(request))
-        Unit
+            val request = PutDataMapRequest.create(WATCH_LAST_BATTERY_PATH).apply {
+                dataMap.putString("boardId", battery.boardId)
+                dataMap.putString("boardName", battery.boardName)
+                battery.percent?.let { dataMap.putDouble("percent", it) }
+                battery.at?.let { dataMap.putLong("at", it) }
+            }.asPutDataRequest().setUrgent()
+            Tasks.await(dataClient.putDataItem(request))
+        } catch (error: Exception) {
+            TelemetryRepository.get(context).recordDiagnosticEvent("watch_last_battery_push_failed", mapOf("error" to error.message))
+        }
     }
 }

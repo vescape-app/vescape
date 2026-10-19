@@ -188,7 +188,7 @@ internal fun FrameLayout(
             // ── Bottom: battery % above the bottom gauge ──
             if (showReadouts) Text(
                 // Same size as the curved temp values so the three secondary readouts match.
-                text = if (ambientBlind) DASH else frame.battery?.let { "${format(it, 0)}%" } ?: DASH,
+                text = if (ambientBlind) DASH else frame.battery?.let(::batteryPercent) ?: DASH,
                 style = WatchTypography.mono(MaterialTheme.typography.title3.copy(fontSize = TEMP_FONT_SIZE)),
                 color = battColor,
                 modifier = Modifier
@@ -315,7 +315,10 @@ private fun temp(value: Double?, blind: Boolean = false): String =
 private fun heroValue(value: Double?, blind: Boolean): String =
     if (blind) DASH else value?.let { format(it, 0) } ?: DASH
 
-private fun batteryColor(value: Double?): Color = when {
+/** @parity /modules/vescape-core/ios/watch/WatchGauge.swift `batteryPercent` */
+internal fun batteryPercent(value: Double): String = "${format(value, 0)}%"
+
+internal fun batteryColor(value: Double?): Color = when {
     value == null -> SecondaryText
     value < BATTERY_WARNING_PERCENT -> WarningColor
     else -> BatteryColor

@@ -6,7 +6,7 @@ import SwiftUI
 @main
 struct VescapeWatchApp: App {
   @WKApplicationDelegateAdaptor(WatchAppDelegate.self) private var appDelegate
-  @StateObject private var link = PhoneLink.shared
+  @ObservedObject private var link = PhoneLink.shared
   @State private var replayer: FrameReplayer?
 
   var body: some Scene {
@@ -25,23 +25,20 @@ struct VescapeWatchApp: App {
     }
   }
 
+  /// `WatchAppDelegate` activates the live phone link before any scene; replay replaces it here.
   private var mirror: some View {
-      MirrorScreen(link: link)
-        .font(WatchTypography.ui(size: 12))
-        // Replay owns its inputs; live phone context must not overwrite the fixtures.
-        // @parity /watch/wearos/src/main/java/app/vescape/wear/MainActivity.kt `onStart`
-        .onAppear {
-          // Simulator only, and only when asked for by launch argument. On a watch and on a device
-          // build `requestedFixture` is nil and this is not reachable.
-          if let fixture = FrameReplayer.requestedFixture {
-            guard replayer == nil else { return }
-            let replayer = FrameReplayer(link: link)
-            link.replayTiltEcho = { [weak replayer] value in replayer?.echoTilt(value) }
-            replayer.start(fixture: fixture, group: FrameReplayer.requestedGroup, routeLoading: ProcessInfo.processInfo.arguments.contains("--route-loading"))
-            self.replayer = replayer
-          } else {
-            link.activate()
-          }
-        }
+    MirrorScreen(link: link)
+      .font(WatchTypography.ui(size: 12))
+      // Replay owns its inputs; live phone context must not overwrite the fixtures.
+      // @parity /watch/wearos/src/main/java/app/vescape/wear/MainActivity.kt `onStart`
+      .onAppear {
+        // Simulator only, and only when asked for by launch argument. On a watch and on a device
+        // build `requestedFixture` is nil and this is not reachable.
+        guard let fixture = FrameReplayer.requestedFixture, replayer == nil else { return }
+        let replayer = FrameReplayer(link: link)
+        link.replayTiltEcho = { [weak replayer] value in replayer?.echoTilt(value) }
+        replayer.start(fixture: fixture, group: FrameReplayer.requestedGroup, routeLoading: ProcessInfo.processInfo.arguments.contains("--route-loading"))
+        self.replayer = replayer
+      }
   }
 }

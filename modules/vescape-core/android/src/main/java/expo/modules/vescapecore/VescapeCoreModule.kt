@@ -679,7 +679,7 @@ class VescapeCoreModule : Module() {
         throw error
       }
       ManualDisconnectAutoStartGate.clear(context.applicationContext)
-      CoreForegroundService.appDataScope.launch { pushWatchLastBattery(context.applicationContext) }
+      WatchLastBatteryPusher.push(context)
       companionPresence.refreshForSelectedBoard()
     }
     Function("setDebugRecordingEnabled") { enabled: Boolean ->
@@ -1021,6 +1021,7 @@ class VescapeCoreModule : Module() {
     AsyncFunction("restoreDatabase") Coroutine { uri: String ->
       stopNativeWorkForDatabaseRestore()
       DatabaseBackupManager.restoreBackup(context.applicationContext, uri)
+      WatchLastBatteryPusher.push(context)
     }
     AsyncFunction("getRefloatConfigSnapshot") { promise: Promise ->
       CoreForegroundService.getRefloatConfigSnapshot(
@@ -1250,7 +1251,7 @@ class VescapeCoreModule : Module() {
       RecordingStorageFailure.requireAvailable()
       try {
         AppDataRepository.get(context.applicationContext).upsertBoard(board)
-        pushWatchLastBattery(context.applicationContext)
+        WatchLastBatteryPusher.push(context)
         CoreForegroundService.reloadAlertRules(context.applicationContext)
         CoreForegroundService.reloadBoardData()
         connectSavedBoardLink(board["id"] as? String)
@@ -1263,6 +1264,7 @@ class VescapeCoreModule : Module() {
       RecordingStorageFailure.requireAvailable()
       try {
         AppDataRepository.get(context.applicationContext).deleteBoard(id)
+        WatchLastBatteryPusher.push(context)
       } catch (error: Exception) {
         RecordingStorageFailure.report("board_delete", "write_failed", error)
         throw error
@@ -1714,13 +1716,6 @@ class VescapeCoreModule : Module() {
     )
   }
 
-  private suspend fun pushWatchLastBattery(appCtx: Context) {
-    try { WatchLastBatteryPusher.pushStored(appCtx) }
-    catch (error: Exception) {
-      TelemetryRepository.get(appCtx).recordDiagnosticEvent("watch_last_battery_push_failed", mapOf("error" to error.message))
-    }
-  }
-
   private suspend fun selectBoard(boardId: String) {
     val appCtx = context.applicationContext
     try {
@@ -1729,7 +1724,7 @@ class VescapeCoreModule : Module() {
       RecordingStorageFailure.report("setting_save", "write_failed", error)
       throw error
     }
-    pushWatchLastBattery(appCtx)
+    WatchLastBatteryPusher.push(appCtx)
     ManualDisconnectAutoStartGate.clear(appCtx)
     companionPresence.refreshForSelectedBoard()
     val config = buildSessionConfig(appCtx, boardId, requestedDebugRecordingEnabled)

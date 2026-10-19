@@ -135,14 +135,10 @@ export const useBoardStore = create<BoardState & BoardActions>((set, get) => ({
 
   async removeBoard(id) {
     await nativeDeleteBoard(id)
-    set((state) => {
-      const remaining = state.boards.filter((b) => b.id !== id)
-      return {
-        boards: remaining,
-        activeBoardId:
-          state.activeBoardId === id ? (remaining[0]?.id ?? null) : state.activeBoardId,
-      }
-    })
+    const remaining = get().boards.filter((b) => b.id !== id)
+    set({ boards: remaining })
+    // Native owns the selection; leaving it on the deleted Board would keep it on the wrist.
+    if (get().activeBoardId === id) get().setActiveBoard(remaining[0]?.id ?? null)
   },
 
   setActiveBoard(id) {
