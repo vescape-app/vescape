@@ -231,7 +231,9 @@ class NavigationController(
   private fun progressAtLatestFix(): RouteProgress? {
     val fix = latestFix ?: return null
     val points = ridePath(state) ?: return null
-    return RouteProgress.compute(points, fix.latitude, fix.longitude, fix.speedMps)
+    return RouteProgress.compute(points, fix.latitude, fix.longitude, fix.speedMps,
+      routeDistanceMeters = state?.distanceMeters ?: 0.0,
+      routeDurationSeconds = state?.durationSeconds ?: 0.0)
   }
 
   val currentProgress: RouteProgress? get() = synchronized(lock) { progress }

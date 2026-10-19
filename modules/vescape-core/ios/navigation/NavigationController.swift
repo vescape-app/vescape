@@ -214,7 +214,8 @@ final class NavigationController {
   private func progressAtLatestFix() -> RouteProgress? {
     guard let fix = latestFix, let points = ridePath(state) else { return nil }
     return RouteProgress.compute(
-      points: points, riderLatitude: fix.latitude, riderLongitude: fix.longitude, speedMps: fix.speedMps
+      points: points, riderLatitude: fix.latitude, riderLongitude: fix.longitude, speedMps: fix.speedMps,
+      routeDistanceMeters: state?.distanceMeters ?? 0, routeDurationSeconds: state?.durationSeconds ?? 0
     )
   }
 

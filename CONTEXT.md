@@ -168,7 +168,7 @@ The rideable path from the rider to their **Direction Point**, following real wa
 _Avoid_: Route, ride route, navigation mode, guidance, directions
 
 **Route Progress**:
-Where the rider is along their **Navigation** right now: the point on the path nearest to them, how far is left to the **Direction Point** from there, and the bearing to an aim point a short way further along. It is derived and never stored, it changes with every **GPS Fix**, and it ends with the Navigation it belongs to. Route Progress also supplies the passed-path split and rider-to-path deviation from that same nearest projection.
+Where the rider is along their **Navigation** right now: the point on the path nearest to them, how far is left to the **Direction Point** from there, and the bearing to an aim point a short way further along. It is derived and never stored, it changes with every **GPS Fix**, and it ends with the Navigation it belongs to. Route Progress also supplies the passed-path split and rider-to-path deviation from that same nearest projection. Its remaining-time estimate scales the routing service’s total duration by remaining distance divided by its total distance, independently of current speed; it is unavailable without timing or beyond the path’s end.
 _Avoid_: Navigation progress, route position, ETA, remaining route, navigation fix
 
 **Navigation Profile**:

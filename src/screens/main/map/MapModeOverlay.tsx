@@ -60,6 +60,9 @@ export function MapModeOverlay({
   const navigationRemainingDistanceMeters = useMapStore(
     (s) => s.routeProgress?.remainingMeters ?? null,
   )
+  const navigationRemainingDurationSeconds = useMapStore(
+    (s) => s.routeProgress?.remainingDurationSeconds ?? null,
+  )
   const navigationComputing = useMapStore((s) => s.navigationComputing)
   const recomputeNavigation = useMapStore((s) => s.recomputeNavigation)
   const setNavigationProfile = useMapStore((s) => s.setNavigationProfile)
@@ -202,6 +205,7 @@ export function MapModeOverlay({
             activeNavigationAccepted={activeNavigationAccepted}
             onEditActiveNavigation={editNavigation}
             navigationRemainingDistanceMeters={navigationRemainingDistanceMeters}
+            navigationRemainingDurationSeconds={navigationRemainingDurationSeconds}
             navigationStatus={navigationStatus}
             navigationPath={
               navigationStatus === 'ready'

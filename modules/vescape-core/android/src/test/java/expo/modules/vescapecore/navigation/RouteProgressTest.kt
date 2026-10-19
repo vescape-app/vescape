@@ -17,6 +17,21 @@ import org.junit.Test
  */
 class RouteProgressTest {
     @Test
+    fun `remaining duration shrinks with progress without using rider speed`() {
+        val path = listOf(0.0 to 0.0, 0.0 to 0.01)
+        val length = expo.modules.vescapecore.geo.GeoMath.distanceMeters(0.0, 0.0, 0.0, 0.01)
+        fun at(longitude: Double, speed: Double = 0.0) = RouteProgress.compute(path,
+            0.0, longitude, speed, routeDistanceMeters = length, routeDurationSeconds = 600.0)!!
+        assertEquals(600.0, at(0.0).remainingDurationSeconds!!, 0.01)
+        assertEquals(300.0, at(0.005).remainingDurationSeconds!!, 0.01)
+        assertEquals(at(0.005).remainingDurationSeconds, at(0.005, 20.0).remainingDurationSeconds)
+        assertEquals(0.0, at(0.01).remainingDurationSeconds!!, 0.0)
+        assertTrue(at(0.012).remainingMeters > 200)
+        assertNull(at(0.012).remainingDurationSeconds)
+        assertNull(RouteProgress.compute(path, 0.0, 0.005, 0.0)!!.remainingDurationSeconds)
+    }
+
+    @Test
     fun `split and deviation use clamped nearest segment`() {
         val path = listOf(0.0 to 0.0, 0.0 to 0.01)
         val middle = RouteProgress.compute(path, 0.001, 0.005, null)!!

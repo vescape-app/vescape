@@ -2571,6 +2571,8 @@ export interface RouteProgress {
    * onto the path's end, it is the straight line from the rider to that end.
    */
   remainingMeters: number
+  /** Routing-service duration × remaining/total distance. Null without timing or beyond the path end. */
+  remainingDurationSeconds: number | null
   /**
    * Absolute degrees clockwise from north, aimed a short way further along the path, or at the
    * path's end once the rider is projected onto it. Absolute, not relative to where the rider is

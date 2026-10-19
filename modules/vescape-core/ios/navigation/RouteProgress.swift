@@ -26,6 +26,8 @@ struct RouteProgress: Equatable {
   /// away across a river is the 2 km the rider actually has to ride. Projected onto the path's end,
   /// with nothing left along it, it is the straight line from the rider to that end.
   let remainingMeters: Double
+  /// Profile-based estimate scaled by remaining distance; nil without timing or past the end.
+  let remainingDurationSeconds: Double?
   /// Absolute degrees clockwise from north, from the projection to an aim point a short way further
   /// along the path, or from the rider to the path's end once projected onto it. Absolute on purpose: the wrist rotates a north-up world by the GPS course, so
   /// one convention keeps the two rotations from disagreeing.
@@ -45,6 +47,7 @@ struct RouteProgress: Equatable {
       "segmentFraction": segmentFraction,
       "deviationMeters": deviationMeters,
       "remainingMeters": remainingMeters,
+      "remainingDurationSeconds": remainingDurationSeconds.map { $0 as Any } ?? NSNull(),
       "bearingDeg": bearingDeg,
     ]
   }
@@ -57,7 +60,9 @@ struct RouteProgress: Equatable {
     points: [(latitude: Double, longitude: Double)],
     riderLatitude: Double,
     riderLongitude: Double,
-    speedMps: Double?
+    speedMps: Double?,
+    routeDistanceMeters: Double = 0,
+    routeDurationSeconds: Double = 0
   ) -> RouteProgress? {
     guard points.count >= 2, let target = points.last else { return nil }
 
@@ -112,6 +117,10 @@ struct RouteProgress: Equatable {
       }
     }
 
+    let remainingDurationSeconds: Double? = routeDistanceMeters.isFinite && routeDistanceMeters > 0
+      && routeDurationSeconds.isFinite && routeDurationSeconds > 0
+      ? routeDurationSeconds * min(1, max(0, remainingMeters / routeDistanceMeters)) : nil
+
     // Walk forward from the projection until the aim budget runs out. Running off the end of the
     // path instead leaves the aim on the Direction Point, which is the right answer for the last
     // few metres of a ride.
@@ -153,6 +162,7 @@ struct RouteProgress: Equatable {
         segmentFraction: bestFraction,
         deviationMeters: GeoMath.distanceMeters(riderLatitude, riderLongitude, latitude, longitude),
         remainingMeters: pastEndMeters,
+        remainingDurationSeconds: nil,
         bearingDeg: GeoMath.travelBearingDeg(
           riderLatitude, riderLongitude, target.latitude, target.longitude
         )
@@ -175,6 +185,7 @@ struct RouteProgress: Equatable {
       segmentFraction: bestFraction,
       deviationMeters: GeoMath.distanceMeters(riderLatitude, riderLongitude, latitude, longitude),
       remainingMeters: remainingMeters,
+      remainingDurationSeconds: remainingDurationSeconds,
       bearingDeg: bearingDeg
     )
   }

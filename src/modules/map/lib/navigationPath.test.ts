@@ -23,6 +23,7 @@ const progress: RouteProgress = {
   segmentFraction: 0.5,
   deviationMeters: 12,
   remainingMeters: 75,
+  remainingDurationSeconds: 7.5,
   bearingDeg: 0,
 }
 

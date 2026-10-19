@@ -34,6 +34,8 @@ data class RouteProgress(
    * nothing left along it, it is the straight line from the rider to that end.
    */
   val remainingMeters: Double,
+  /** Profile-based estimate scaled by remaining distance; null without timing or past the end. */
+  val remainingDurationSeconds: Double?,
   /**
    * Absolute degrees clockwise from north, from the projection to an aim point a short way further
    * along the path, or from the rider to the path's end once projected onto it. Absolute on
@@ -49,6 +51,7 @@ data class RouteProgress(
     "segmentFraction" to segmentFraction,
     "deviationMeters" to deviationMeters,
     "remainingMeters" to remainingMeters,
+    "remainingDurationSeconds" to remainingDurationSeconds,
     "bearingDeg" to bearingDeg,
   )
 
@@ -72,6 +75,8 @@ data class RouteProgress(
       riderLatitude: Double,
       riderLongitude: Double,
       speedMps: Double?,
+      routeDistanceMeters: Double = 0.0,
+      routeDurationSeconds: Double = 0.0,
     ): RouteProgress? {
       if (points.size < 2) return null
 
@@ -123,6 +128,11 @@ data class RouteProgress(
           GeoMath.distanceMeters(previousLatitude, previousLongitude, nextLatitude, nextLongitude)
       }
 
+      val remainingDurationSeconds = if (routeDistanceMeters.isFinite() && routeDistanceMeters > 0 &&
+        routeDurationSeconds.isFinite() && routeDurationSeconds > 0) {
+        routeDurationSeconds * (remainingMeters / routeDistanceMeters).coerceIn(0.0, 1.0)
+      } else null
+
       // Walk forward from the projection until the aim budget runs out. Running off the end of the
       // path instead leaves the aim on the Direction Point, which is the right answer for the last
       // few metres of a ride.
@@ -164,6 +174,7 @@ data class RouteProgress(
           segmentFraction = bestFraction,
           deviationMeters = GeoMath.distanceMeters(riderLatitude, riderLongitude, latitude, longitude),
           remainingMeters = pastEndMeters,
+          remainingDurationSeconds = null,
           bearingDeg =
             GeoMath.travelBearingDeg(riderLatitude, riderLongitude, targetLatitude, targetLongitude),
         )
@@ -188,6 +199,7 @@ data class RouteProgress(
         segmentFraction = bestFraction,
         deviationMeters = GeoMath.distanceMeters(riderLatitude, riderLongitude, latitude, longitude),
         remainingMeters = remainingMeters,
+        remainingDurationSeconds = remainingDurationSeconds,
         bearingDeg = bearingDeg,
       )
     }
