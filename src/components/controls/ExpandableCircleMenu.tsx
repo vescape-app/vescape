@@ -91,11 +91,7 @@ export function ExpandableCircleMenu<Key extends string>({
   const resolvedTheme = useThemeStore((state) => state.resolvedTheme)
   const useLightTabs = variant === 'lightTabs' && resolvedTheme === 'light'
   const resolvedActiveColor = useLightTabs ? onDarkActiveColor : baseActiveColor
-  const shellBackground = useLightTabs
-    ? expanded
-      ? neutral.surfaceDeep
-      : coloredBackground
-    : control.background
+  const shellBackground = useLightTabs && expanded ? neutral.surfaceDeep : control.background
   const metrics = MENU_METRICS[size]
   const optionCount = options.length
   const onToggleRef = useRef(onToggle)
