@@ -11,7 +11,7 @@ import type { ThemeMode } from '@/modules/settings/lib/themeMode'
 
 type ThemeHue = (typeof theme.palette)['cyan']
 
-/** The four theme choices, used by the quick-settings row and its selection menu. */
+/** The four theme choices used by the inline quick-settings picker. */
 export const THEME_OPTIONS: {
   mode: ThemeMode
   label: string

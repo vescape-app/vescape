@@ -157,7 +157,10 @@ export function useTuneScreenData() {
           return
         }
       }
-      if (state.activeProfile && isCompatibleProfile(state.activeProfile, boardId, compatibility))
+      // A version lookup can finish after the rider has selected another Board or opened a profile.
+      if (useBoardStore.getState().activeBoardId !== boardId) return
+      const latest = useTuneProfileStore.getState()
+      if (latest.activeProfile && isCompatibleProfile(latest.activeProfile, boardId, compatibility))
         return
       setBoardSnapshot(null)
       // intentional-suppression: Tune store error is rendered by the active screen or modal

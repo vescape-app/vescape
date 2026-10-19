@@ -66,6 +66,7 @@ export function MapPointFilterMenu({
       ) : null}
       <IconButton
         icon={FunnelIcon}
+        iconColor={open ? theme.palette.sky.text : undefined}
         size="lg"
         onPress={onToggleMenu}
         style={open ? styles.mapFilterButtonAttached : undefined}
