@@ -71,6 +71,7 @@ test('accepted navigation survives the same native snapshot and follows a same-t
     target: { latitude: 52.5, longitude: 21.5 },
     profile: 'walking' as const,
     computedAtMs: 1_000,
+    cameraRevision: 1,
     status: 'ready' as const,
     distanceMeters: 2_000,
     durationSeconds: 600,

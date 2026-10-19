@@ -68,12 +68,15 @@ struct Navigation {
   let durationSeconds: Double
   /// Path points in encoding order, each `(latitude, longitude)`. Empty unless `status` is `ready`.
   let points: [(latitude: Double, longitude: Double)]
+  /// Process-local presentation revision. Automatic replacements retain it; never persisted.
+  var cameraRevision: Int64 = 0
 
   func toMap() -> [String: Any] {
     [
       "target": ["latitude": targetLatitude, "longitude": targetLongitude],
       "profile": profile.rawValue,
       "computedAtMs": computedAtMs,
+      "cameraRevision": cameraRevision,
       "status": status.rawValue,
       "distanceMeters": distanceMeters,
       "durationSeconds": durationSeconds,
@@ -144,6 +147,7 @@ final class NavigationController {
   private let nowMillis: () -> Double
   private let lock = NSLock()
 
+  private var cameraRevision: Int64 = 0
   private var state: Navigation?
   var current: Navigation? { lock.withLock { state } }
 
@@ -263,7 +267,7 @@ final class NavigationController {
     Task {
       let replacement = await compute(navigation.targetLatitude, navigation.targetLongitude,
         latitude, longitude, requested)
-      publish(request, replacement, keepUsablePath: true)
+      publish(request, replacement, keepUsablePath: true, frameCamera: false)
       lock.withLock {
         if automaticRequest == request { automaticRequest = nil }
         nextAutomaticAtMs = nowMillis() + 30_000
@@ -520,20 +524,23 @@ final class NavigationController {
   ///
   /// `onChange` only hops to the main queue to emit and never calls back into this controller, so
   /// holding the lock across it cannot deadlock.
-  private func publish(_ request: Int, _ navigation: Navigation?, keepUsablePath: Bool = false) {
+  private func publish(_ request: Int, _ navigation: Navigation?, keepUsablePath: Bool = false, frameCamera: Bool = true) {
     let committed: Bool = lock.withLock {
       guard request == generation, !isSame(state, navigation) else { return false }
       // A recompute that found nothing must not take away a path the rider can still ride. Checked
       // in here rather than at the call site so the read of `state` and the write are one step.
       if keepUsablePath, navigation?.status != .ready, state?.status == .ready { return false }
       let previousPath = ridePath(state)
-      state = navigation
+      if frameCamera, navigation?.status == .ready { cameraRevision += 1 }
+      var next = navigation
+      next?.cameraRevision = cameraRevision
+      state = next
       // Reproject immediately: foreground GPS may not deliver another fix until the rider moves.
       let previousProgress = progress
       progress = progressAtLatestFix()
-      onChange?(navigation)
+      onChange?(state)
       if previousProgress != progress || progress != nil { onProgressChange?(progress) }
-      let nextPath = ridePath(navigation)
+      let nextPath = ridePath(state)
       if !samePath(previousPath, nextPath) { onPathChange?(nextPath) }
       onWatchChange?()
       return true

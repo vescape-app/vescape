@@ -99,10 +99,14 @@ data class Navigation(
   /** Path points in encoding order, each `(latitude, longitude)`. Empty unless [status] is READY. */
   val points: List<Pair<Double, Double>>,
 ) {
+  /** Process-local presentation revision. Automatic replacements retain it; never persisted. */
+  var cameraRevision: Long = 0
+
   fun toMap(): Map<String, Any?> = mapOf(
     "target" to mapOf("latitude" to targetLatitude, "longitude" to targetLongitude),
     "profile" to profile.wire,
     "computedAtMs" to computedAtMs,
+    "cameraRevision" to cameraRevision,
     "status" to status.wire,
     "distanceMeters" to distanceMeters,
     "durationSeconds" to durationSeconds,
@@ -171,6 +175,7 @@ class NavigationController(
   private val lock = Any()
 
   private var state: Navigation? = null
+  private var cameraRevision = 0L
 
   /**
    * The Navigation Profile the next computed path will use — the rider's last choice, cached here so
@@ -275,7 +280,7 @@ class NavigationController(
     scope.launch {
       try {
         publish(work.first, compute(work.second.targetLatitude, work.second.targetLongitude,
-          latitude, longitude, work.third), keepUsablePath = true)
+          latitude, longitude, work.third), keepUsablePath = true, frameCamera = false)
       } finally {
         synchronized(lock) {
           if (automaticRequest == work.first) automaticRequest = null
@@ -533,7 +538,7 @@ class NavigationController(
    * `onChange` only enqueues an event emit and never calls back into this controller, so holding
    * the lock across it cannot deadlock.
    */
-  private fun publish(request: Int, navigation: Navigation?, keepUsablePath: Boolean = false) {
+  private fun publish(request: Int, navigation: Navigation?, keepUsablePath: Boolean = false, frameCamera: Boolean = true) {
     synchronized(lock) {
       if (request != generation || state == navigation) return
       // A recompute that found nothing must not take away a path the rider can still ride. Checked
@@ -545,14 +550,15 @@ class NavigationController(
         return
       }
       val previousPath = ridePath(state)
-      state = navigation
+      if (frameCamera && navigation?.status == NavigationStatus.READY) cameraRevision += 1
+      state = navigation?.copy()?.also { it.cameraRevision = cameraRevision }
       // Reproject the latest fix immediately. Foreground GPS can wait for movement before
       // delivering another fix, but selecting a route must work while standing still.
       val previousProgress = progress
       progress = progressAtLatestFix()
-      onChange?.invoke(navigation)
+      onChange?.invoke(state)
       if (previousProgress != progress || progress != null) onProgressChange?.invoke(progress)
-      val nextPath = ridePath(navigation)
+      val nextPath = ridePath(state)
       if (previousPath != nextPath) onPathChange?.invoke(nextPath)
       onWatchChange?.invoke()
     }

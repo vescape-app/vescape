@@ -28,6 +28,7 @@ class NavigationControllerTest {
         val controller = NavigationController(routes, FakeStore(old, old.targetLatitude to old.targetLongitude), nowMillis = { 0L })
         controller.restore()
         Thread.sleep(SETTLE_MS)
+        val cameraRevision = controller.current!!.cameraRevision
         controller.setRerouteDistanceMeters(1000.0)
         val offLatitude = RIDER_LAT + 0.001
         controller.onFix(offLatitude, RIDER_LNG, 0.0)
@@ -44,6 +45,7 @@ class NavigationControllerTest {
         routes.gate(old.targetLatitude).countDown()
         Thread.sleep(SETTLE_MS)
         assertTrue(!controller.computing)
+        assertEquals(cameraRevision, controller.current!!.cameraRevision)
         assertEquals(offLatitude, controller.current!!.points.first().first, 0.0)
         assertEquals(0.0, controller.currentProgress!!.deviationMeters, 0.01)
         controller.clear()
@@ -102,11 +104,13 @@ class NavigationControllerTest {
         val controller = NavigationController(routes, FakeStore(old, TARGET_LAT to TARGET_LNG))
         controller.restore()
         Thread.sleep(SETTLE_MS)
+        val cameraRevision = controller.current!!.cameraRevision
         val projections = AtomicInteger(0)
         controller.onProgressChange = { if (it != null) projections.incrementAndGet() }
         controller.onFix(RIDER_LAT, RIDER_LNG, 0.0)
         controller.recompute(TARGET_LAT, TARGET_LNG, RIDER_LAT, RIDER_LNG)
         Thread.sleep(SETTLE_MS)
+        assertTrue(controller.current!!.cameraRevision > cameraRevision)
         assertEquals(2, projections.get())
         assertTrue(controller.current!!.computedAtMs != old.computedAtMs)
     }

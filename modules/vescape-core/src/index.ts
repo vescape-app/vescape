@@ -2485,6 +2485,8 @@ export interface Navigation {
    */
   profile: NavigationProfile
   computedAtMs: number
+  /** Process-local framing revision. Automatic replacements keep it; never persisted. */
+  cameraRevision: number
   status: NavigationStatus
   /**
    * How far the path runs and how long the routing service thinks it takes. Both are `0` unless

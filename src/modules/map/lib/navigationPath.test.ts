@@ -6,6 +6,7 @@ const navigation: Navigation = {
   target: { latitude: 1, longitude: 2 },
   profile: 'walking',
   computedAtMs: 1,
+  cameraRevision: 1,
   status: 'ready',
   distanceMeters: 100,
   durationSeconds: 10,

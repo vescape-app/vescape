@@ -163,6 +163,7 @@ final class NavigationControllerTests: XCTestCase {
       store: FakeStore(stored: old, directionPoint: (targetLatitude, targetLongitude)))
     controller.restore()
     settle()
+    let cameraRevision = controller.current?.cameraRevision
     controller.setRerouteDistanceMeters(1000)
     let offLatitude = riderLatitude + 0.001
     controller.onFix(latitude: offLatitude, longitude: riderLongitude, speedMps: 0)
@@ -179,6 +180,7 @@ final class NavigationControllerTests: XCTestCase {
     routes.release(targetLatitude)
     settle()
     XCTAssertFalse(controller.computing)
+    XCTAssertEqual(controller.current?.cameraRevision, cameraRevision)
     XCTAssertEqual(controller.current?.points.first?.latitude, offLatitude)
     XCTAssertEqual(controller.currentProgress?.deviationMeters ?? 999, 0, accuracy: 0.01)
     controller.clear()
@@ -231,12 +233,14 @@ final class NavigationControllerTests: XCTestCase {
       store: FakeStore(stored: old, directionPoint: (targetLatitude, targetLongitude)))
     controller.restore()
     settle()
+    let cameraRevision = controller.current?.cameraRevision ?? 0
     var projections = 0
     controller.onProgressChange = { if $0 != nil { projections += 1 } }
     controller.onFix(latitude: riderLatitude, longitude: riderLongitude, speedMps: 0)
     controller.recompute(toLatitude: targetLatitude, toLongitude: targetLongitude,
       fromLatitude: riderLatitude, fromLongitude: riderLongitude)
     settle()
+    XCTAssertGreaterThan(controller.current?.cameraRevision ?? 0, cameraRevision)
     XCTAssertEqual(projections, 2)
     XCTAssertNotEqual(controller.current?.computedAtMs, old.computedAtMs)
   }
