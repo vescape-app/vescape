@@ -1,6 +1,7 @@
 package expo.modules.vescapecore.alerts
 
 import android.content.Context
+import android.media.AudioAttributes
 import android.media.MediaMetadataRetriever
 import android.media.MediaPlayer
 import android.net.Uri
@@ -223,6 +224,51 @@ internal object MySounds {
   /** Audio overriding effects [slot], null when the slot follows the pack. */
   @Synchronized fun overrideFile(context: Context, slot: String): File? =
     read(context).overrides[slot]?.let { file(context, it) }
+
+  private val activePlayers = HashMap<MediaPlayer, Any?>()
+
+  private fun finish(player: MediaPlayer, failed: Boolean, onDone: (Boolean) -> Unit) {
+    val owned = synchronized(activePlayers) { activePlayers.containsKey(player).also { activePlayers.remove(player) } }
+    player.setOnCompletionListener(null)
+    player.setOnErrorListener(null)
+    player.setOnPreparedListener(null)
+    player.release()
+    if (owned) onDone(failed)
+  }
+
+  /**
+   * Play My sound [file] once through MediaPlayer, which takes a whole accepted clip (SoundPool
+   * caps a decoded sample near 1 MB, about 6 s of 44.1 kHz stereo). [onDone] runs on completion
+   * with `failed` true when it could not play, so the caller falls back to the pack slot.
+   */
+  fun play(file: File, source: String, owner: Any? = null, onDone: (failed: Boolean) -> Unit) {
+    val player = MediaPlayer()
+    synchronized(activePlayers) { activePlayers[player] = owner }
+    try {
+      player.setAudioAttributes(audioAttributes(source, AudioAttributes.CONTENT_TYPE_SONIFICATION))
+      player.setDataSource(file.path)
+      player.setOnPreparedListener {
+        try { it.start() }
+        catch (_: Exception) { finish(it, true, onDone) }
+      }
+      player.setOnCompletionListener { finish(it, false, onDone) }
+      player.setOnErrorListener { p, _, _ -> finish(p, true, onDone); true }
+      player.prepareAsync()
+    } catch (_: Exception) { finish(player, true, onDone) }
+  }
+
+  /** Stop and release every player [owner] started, without running their callbacks. */
+  fun releasePlayers(owner: Any) {
+    val players = synchronized(activePlayers) {
+      activePlayers.filterValues { it === owner }.keys.toList().also { it.forEach(activePlayers::remove) }
+    }
+    players.forEach { player ->
+      player.setOnCompletionListener(null)
+      player.setOnErrorListener(null)
+      player.setOnPreparedListener(null)
+      player.release()
+    }
+  }
 
   private val durations = java.util.concurrent.ConcurrentHashMap<String, Long>()
 

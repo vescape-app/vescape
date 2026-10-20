@@ -427,11 +427,13 @@ internal class AlertFeedback(
 
     /**
      * Sample [slot] plays (see [slotClip]): My sound [my] or the slot's override, loaded on first
-     * use, else the pack's. A My sound that failed to load falls back to the pack; 0 when nothing
-     * loaded.
+     * use, else the pack's; only the pack's when [mine] is false. A My sound that failed to load
+     * falls back to the pack; 0 when nothing loaded. Geiger ticks play from here; one-shot My
+     * sounds go through [playOnce], since SoundPool truncates long clips.
      */
-    private fun slotSample(slot: String, pack: String = soundPack, my: String? = null): Int {
+    private fun slotSample(slot: String, pack: String = soundPack, my: String? = null, mine: Boolean = true): Int {
         val packSample = soundIds["${effectsPackId(pack)}/$slot"] ?: 0
+        if (!mine) return packSample
         val clip = slotClip(context, pack, slot, my) as? SlotClip.Mine ?: return packSample
         val sample = fileSamples.getOrPut(clip.file.path) {
             // intentional-suppression: an unloadable My sound plays the pack slot instead
@@ -476,11 +478,29 @@ internal class AlertFeedback(
             handler.post { playAppSound(pack, cue) }
             return
         }
+        playOnce(appCueSlot(cue) ?: return, pack)
+    }
+
+    /**
+     * Play [slot] once (see [slotClip]): a My sound through [MySounds.play], whole, falling back to
+     * the pack's clip if it cannot play; otherwise the pack's sample.
+     */
+    private fun playOnce(slot: String, pack: String = soundPack, my: String? = null) {
         if (released) return
-        val sample = slotSample(appCueSlot(cue) ?: return, pack)
+        val mine = slotClip(context, pack, slot, my) as? SlotClip.Mine
+        if (mine == null) {
+            playPackSlot(slot, pack)
+            return
+        }
+        MySounds.play(mine.file, audioSource, this) { failed -> if (failed) handler.post { playPackSlot(slot, pack) } }
+    }
+
+    private fun playPackSlot(slot: String, pack: String) {
+        if (released) return
+        val sample = slotSample(slot, pack, mine = false)
         when (samples.state(sample)) {
             SoundSampleQueue.State.READY -> playRaw(sample)
-            SoundSampleQueue.State.PENDING -> samples.enqueue(sample) { playAppSound(pack, cue) }
+            SoundSampleQueue.State.PENDING -> samples.enqueue(sample) { playPackSlot(slot, pack) }
             SoundSampleQueue.State.FAILED -> Unit
         }
     }
@@ -562,9 +582,9 @@ internal class AlertFeedback(
             val slot = sound.severity.slot
             val duration = slotClip(context, soundPack, slot, my)?.durationMs(context) ?: 0L
             val interval = if (duration > ALERT_BEEP_SPACING_MS) duration + ALERT_BEEP_SPACING_MS else ALERT_BEEP_SPACING_MS
-            playSlot(slot, my = my)
+            playOnce(slot, my = my)
             for (index in 1 until sound.count) {
-                handler.postDelayed({ playSlot(slot, my = my) }, index * interval)
+                handler.postDelayed({ playOnce(slot, my = my) }, index * interval)
             }
         } catch (e: Exception) {
             Log.w(VESC_SESSION_TAG, "Alert sound failed: ${e.message}")
@@ -605,7 +625,7 @@ internal class AlertFeedback(
             return
         }
         try {
-            playSlot(previewSlot(soundType), my = mySoundId(soundType))
+            playOnce(previewSlot(soundType), my = mySoundId(soundType))
         } catch (e: Exception) {
             Log.w(VESC_SESSION_TAG, "Alert preview failed: ${e.message}")
             UnexpectedNativeError.report("alert_audio_preview", "audio_play_failed", e)
@@ -692,6 +712,7 @@ internal class AlertFeedback(
         released = true
         stopAllGeiger()
         samples.reset()
+        MySounds.releasePlayers(this)
         soundPool.release()
         tts?.stop()
         tts?.shutdown()
@@ -741,7 +762,7 @@ internal class AlertFeedback(
         /** Preview without requiring a running board session. */
         fun previewAppSound(context: Context, pack: String, cue: String, source: String) {
             val slot = appCueSlot(cue) ?: return
-            previewClip(context, Handler(contextMainLooper()), slotClip(context, pack, slot), source)
+            previewClip(context, Handler(contextMainLooper()), pack, slot, source = source)
         }
 
         fun preview(context: Context, soundType: String, source: String) {
@@ -762,7 +783,7 @@ internal class AlertFeedback(
                     t.speak(text, TextToSpeech.QUEUE_FLUSH, null, "preview")
                     handler.postDelayed({ t.stop(); t.shutdown() }, 5_000)
                 }
-                previewClip(context, handler, slotClip(context, settings.soundPack, tts.severity.slot), source, speechDelayMs(context, settings.soundPack, tts.severity)) {
+                previewClip(context, handler, settings.soundPack, tts.severity.slot, source = source, doneAfterMs = speechDelayMs(context, settings.soundPack, tts.severity)) {
                     soundDone = true
                     speakWhenReady()
                 }
@@ -776,15 +797,33 @@ internal class AlertFeedback(
                 }
                 return
             }
-            previewClip(context, handler, slotClip(context, settings.soundPack, previewSlot(soundType), mySoundId(soundType)), source)
+            previewClip(context, handler, settings.soundPack, previewSlot(soundType), mySoundId(soundType), source)
         }
 
         /**
-         * Play [clip] once on a throwaway pool. [onDone] runs once it has finished, or right away if
-         * the sample fails to load.
+         * Play [slot] once as [slotClip] resolves it. A My sound plays whole through
+         * [MySounds.play] and falls back to [pack]'s clip if it cannot. [onDone] runs once the
+         * sound has finished.
          */
-        private fun previewClip(context: Context, handler: Handler, clip: SlotClip?, source: String, doneAfterMs: Long = 0L, onDone: (() -> Unit)? = null) {
-            if (clip == null) {
+        private fun previewClip(context: Context, handler: Handler, pack: String, slot: String, my: String? = null, source: String, doneAfterMs: Long = 0L, onDone: (() -> Unit)? = null) {
+            val packPath = { EffectsPackAssets.path(context, pack, slot) }
+            when (val clip = slotClip(context, pack, slot, my)) {
+                is SlotClip.Mine -> MySounds.play(clip.file, source) { failed ->
+                    handler.post {
+                        if (failed) previewAsset(context, handler, packPath(), source, doneAfterMs, onDone) else onDone?.invoke()
+                    }
+                }
+                is SlotClip.Asset -> previewAsset(context, handler, clip.path, source, doneAfterMs, onDone)
+                null -> previewAsset(context, handler, null, source, doneAfterMs, onDone)
+            }
+        }
+
+        /**
+         * Play the pack clip at asset [path] once on a throwaway pool. [onDone] runs once it has
+         * finished, or right away if the sample fails to load.
+         */
+        private fun previewAsset(context: Context, handler: Handler, path: String?, source: String, doneAfterMs: Long, onDone: (() -> Unit)?) {
+            if (path == null) {
                 UnexpectedNativeError.report("alert_audio_preview_load", "bundled_asset", IllegalStateException())
                 onDone?.let { handler.post(it) }
                 return
@@ -805,12 +844,9 @@ internal class AlertFeedback(
                         onDone?.let { handler.post(it) }
                     }
                 }
-                when (clip) {
-                    is SlotClip.Mine -> pool.load(clip.file.path, 1)
-                    is SlotClip.Asset -> context.assets.openFd(clip.path).use { pool.load(it, 1) }
-                }
+                context.assets.openFd(path).use { pool.load(it, 1) }
                 // Outlive the whole clip (HEV critical runs past a second) plus load time.
-                handler.postDelayed({ pool.release() }, clip.durationMs(context) + 1_000)
+                handler.postDelayed({ pool.release() }, EffectsPackAssets.durationMs(context, path) + 1_000)
             } catch (e: Exception) {
                 pool.release()
                 onDone?.let { handler.post(it) }

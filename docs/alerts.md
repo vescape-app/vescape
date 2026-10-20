@@ -41,7 +41,9 @@ clears its overrides.
 
 Custom rules can pick any My sound: `alert(<count>):my:<id>` for single rules, `geiger:my:<id>` for
 range rules. A sound that is gone or fails to decode falls back to the parsed pack slot (`warning`
-or `soft`), never silence. Previews and alert tests resolve the same way.
+or `soft`), never silence. Previews and alert tests resolve the same way. One-shot My sounds play whole (Android
+MediaPlayer, iOS the alert engine); a geiger tick plays from the low-latency pool, which on Android
+caps a decoded clip near 1 MB (about 6 s of 44.1 kHz stereo).
 
 The custom app sound packs My sounds replaced (`custom-app-sounds/packs.json`) migrate on first
 read: every assigned cue becomes a My sound named `<pack> <cue>`, reusing its file. On the next
