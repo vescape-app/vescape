@@ -39,6 +39,9 @@ import {
 import { theme, type ThemeColor } from '@/constants/theme'
 import { useResolvedAccentColors, useResolvedNeutralColors } from '@/hooks/useTheme'
 import { useAlertTest } from '@/modules/alerts/hooks/useAlertTest'
+import { SoundPicker } from '@/components/forms/SoundPicker'
+import { geigerPickerSound, getPresetsForCategory } from '@/modules/alerts/lib/alertFormDefaults'
+import { parseGeigerAlertSound } from '@/modules/alerts/lib/alertSoundString'
 
 /** Controlled preset selection and gauge. The caller supplies one resolved rule snapshot for
  * markers, descriptions and the sound preview; saved Boards never regenerate rules here. */
@@ -123,6 +126,8 @@ interface AlertPresetControlProps {
   /** Metrics whose preset follows the board's own configuration. */
   matchBoardConfig?: Partial<Record<AlertPresetMetric, boolean>>
   onMatchBoardConfigChange?: (enabled: boolean) => void
+  /** Pick the geiger sound of a range preset; omitted hides the select. */
+  onGeigerSoundChange?: (soundType: string) => void
   /** The board's decoded configs, for resolving what a matched preset lands on right now. */
   configBases?: BoardConfigBases
   /** History hot-range gradient for the gauge arc (kept in sync with the detail gauge). */
@@ -148,6 +153,7 @@ export function AlertPresetControl({
   boardTopSpeedKmh,
   matchBoardConfig,
   onMatchBoardConfigChange,
+  onGeigerSoundChange,
   configBases,
   hotRange,
   disabled,
@@ -249,6 +255,9 @@ export function AlertPresetControl({
           onChange={onMatchBoardConfigChange}
         />
       ) : null}
+      {onGeigerSoundChange && !isCustom ? (
+        <PresetGeigerSound ruleSnapshot={ruleSnapshot} onChange={onGeigerSoundChange} />
+      ) : null}
       <View style={styles.levelRow}>
         {isCustom ? (
           <CustomLabel />
@@ -265,6 +274,27 @@ export function AlertPresetControl({
         ) : null}
       </View>
     </View>
+  )
+}
+
+/** Soft / Mid / Hard for a range preset. The saved preset rules carry the geiger sound, so a level
+ * without range rules (off, or a discrete metric) has nothing to pick and renders nothing. */
+function PresetGeigerSound({
+  ruleSnapshot,
+  onChange,
+}: {
+  ruleSnapshot: AlertTestRule[]
+  onChange: (soundType: string) => void
+}) {
+  const sounds = useMemo(() => getPresetsForCategory('geiger'), [])
+  const rule = ruleSnapshot.find((it) => parseGeigerAlertSound(it.soundType))
+  if (!rule) return null
+  return (
+    <SoundPicker
+      presets={sounds}
+      selected={geigerPickerSound(rule.soundType)}
+      onSelect={onChange}
+    />
   )
 }
 

@@ -51,4 +51,14 @@ final class AlertSoundStringTests: XCTestCase {
     ]
     for (raw, expected) in cases { XCTAssertEqual(parseSlotAlertSound(raw), expected, raw) }
   }
+
+  func testReadsGeigerLevelsWithLegacyAndUnknownFallbacks() {
+    let cases: [(String, GeigerLevel?)] = [
+      ("geiger:soft", .soft), ("geiger:mid", .mid), ("geiger:hard", .hard),
+      ("geiger:loud", .soft), ("geiger:my:abc", .soft),
+      ("preset:tick", .soft), ("preset:tick_hard", .mid), ("preset:gamma", .hard), ("preset:sustained", .hard),
+      ("alert:warning", nil), ("preset:beep", nil), ("default", nil),
+    ]
+    for (raw, expected) in cases { XCTAssertEqual(parseGeigerAlertSound(raw), expected, raw) }
+  }
 }

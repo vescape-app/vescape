@@ -110,6 +110,19 @@ func runAlertPresetContract() throws {
   try require(try rules().filter { $0.controlId == "speed" }.count == 1, "discard removes manual")
   try BoardSettingsPersistence(writer: queue).upsertBoard(board, settings: [setting("topSpeedKmh", "60")], deletedKeys: [])
   try require(abs(try rules().first { $0.controlId == "speed" }!.threshold - 43.452288) < 0.000001, "top-speed native regeneration")
+  func sound(_ metric: String) throws -> String { try rules().first { $0.controlId == metric && $0.source == "preset" }!.soundType }
+  try require(try sound("speed") == "geiger:soft" && sound("duty") == "geiger:hard", "geiger preset defaults")
+  try queue.write { try $0.execute(sql: "UPDATE alerts SET sound_type = 'preset:gamma' WHERE board_id = 'board' AND control_id = 'speed'") }
+  try BoardSettingsPersistence(writer: queue).upsertBoard(board, settings: [setting("topSpeedKmh", "55")], deletedKeys: [])
+  try require(try sound("speed") == "geiger:soft", "legacy preset sound gives way to default")
+  try apply("speed", "geiger-sound", "geiger:mid")
+  try BoardSettingsPersistence(writer: queue).upsertBoard(board, settings: [setting("topSpeedKmh", "60")], deletedKeys: [])
+  try apply("speed", "select", "safe")
+  try apply("speed", "select", "normal")
+  try require(try sound("speed") == "geiger:mid", "chosen geiger sound survives regeneration")
+  failed = false
+  do { try apply("speed", "geiger-sound", "alert:warning") } catch { failed = true }
+  try require(failed, "non-geiger sound rejected")
   try apply("duty", "match-board-config", nil, true)
   try queue.write { try $0.execute(sql: "DELETE FROM alerts WHERE board_id = 'board' AND control_id = 'duty'") }
   try require(try AlertPresetPersistence(writer: queue).repairMissingRelations(boardId: board.id), "legacy missing relation repair")

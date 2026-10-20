@@ -68,9 +68,11 @@ internal object AlertPresetPersistence {
     val settings = dao.getBoardSettings(boardId).associate { it.key to decodeSettingJson(it.valueJson) }
     val selection = json(settings["alertPreset"])
     for (metric in onlyMetric?.let { listOf(it) } ?: metrics) {
-      dao.getAlertRules(boardId).filter { it.controlId == metric && it.source == "preset" }
-        .forEach { dao.deleteAlertRule(boardId, it.id) }
+      val saved = dao.getAlertRules(boardId).filter { it.controlId == metric && it.source == "preset" }
+      val chosen = chosenGeigerSound(saved)
+      saved.forEach { dao.deleteAlertRule(boardId, it.id) }
       generate(dao, boardId, metric, selection.optString(metric, "off"), settings)
+        .map { rule -> if (chosen != null && isGeigerGrammar(rule.soundType)) rule.copy(soundType = chosen) else rule }
         .forEach { dao.upsertAlertRule(it) }
     }
   }
@@ -106,6 +108,14 @@ internal object AlertPresetPersistence {
         dao.getAlertRules(boardId).filter { it.controlId == metric && it.source != "preset" }.forEach { dao.deleteAlertRule(boardId, it.id) }
         selection.put(metric, "normal")
       }
+      "geiger-sound" -> {
+        val sound = level
+        require(sound != null && isGeigerGrammar(sound)) { "Invalid geiger sound" }
+        // Regenerate first so legacy tick names become today's grammar defaults, then pick.
+        regenerate(dao, boardId, metric)
+        dao.getAlertRules(boardId).filter { it.controlId == metric && it.source == "preset" && isGeigerGrammar(it.soundType) }
+          .forEach { dao.upsertAlertRule(it.copy(soundType = sound)) }
+      }
       "match-board-config" -> {
         require(AlertPresetGenerator.matchField(metric) != null && matchBoardConfig != null) { "Metric cannot match board config" }
         val match = json(settings["matchBoardConfig"]).put(metric, matchBoardConfig)
@@ -117,6 +127,17 @@ internal object AlertPresetPersistence {
     regenerate(dao, boardId, metric)
     customized.forEach { dao.upsertAlertRule(it) }
   }
+
+  /**
+   * The rider's geiger sound on a metric's saved preset rules, carried across regeneration. Only a
+   * grammar string (`geiger:<level>`) counts: legacy `preset:` names were generated defaults, never
+   * a choice, so they give way to the current default.
+   */
+  private fun chosenGeigerSound(saved: List<AlertRuleEntity>): String? =
+    saved.firstNotNullOfOrNull { rule -> rule.soundType.takeIf(::isGeigerGrammar) }
+
+  /** A `geiger:<sound>` string. Generated preset ticks always use the grammar. */
+  private fun isGeigerGrammar(soundType: String) = soundType.startsWith("geiger:")
 
   private suspend fun materializeRules(dao: TelemetryDao, boardId: String, metric: String): List<AlertRuleEntity> {
     val saved = dao.getAlertRules(boardId).filter { it.controlId == metric && it.source == "preset" }

@@ -102,3 +102,39 @@ export const ALERT_SEVERITY_LABELS: Record<AlertSeverity, string> = {
 export function slotAlertSoundLabel({ count, severity }: SlotAlertSound): string {
   return `${count}× ${ALERT_SEVERITY_LABELS[severity]}`
 }
+
+/**
+ * Tick level of a geiger (range) rule: picks the active effects pack's `geiger.<id>` slot.
+ *
+ * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/alerts/AlertSoundString.kt `GeigerLevel`
+ * @parity /modules/vescape-core/ios/alerts/AlertSoundString.swift `GeigerLevel`
+ */
+export const GEIGER_LEVELS = ['soft', 'mid', 'hard'] as const
+export type GeigerLevel = (typeof GEIGER_LEVELS)[number]
+
+const LEGACY_GEIGER: Record<string, GeigerLevel> = {
+  'preset:tick': 'soft',
+  'preset:tick_hard': 'mid',
+  'preset:gamma': 'hard',
+  'preset:sustained': 'hard',
+}
+
+/**
+ * `geiger:level` — a range rule's tick level, or null when `soundType` is not a geiger sound.
+ * Strings from before the grammar map `preset:tick|tick_hard|gamma|sustained` → soft, mid, hard,
+ * hard. A not-yet-supported sound (`geiger:my:<id>`) or unknown level ticks soft.
+ *
+ * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/alerts/AlertSoundString.kt `parseGeigerAlertSound`
+ * @parity /modules/vescape-core/ios/alerts/AlertSoundString.swift `parseGeigerAlertSound`
+ */
+export function parseGeigerAlertSound(soundType: string): GeigerLevel | null {
+  const legacy = LEGACY_GEIGER[soundType]
+  if (legacy) return legacy
+  const parsed = parseAlertSoundString(soundType)
+  if (parsed?.kind !== 'geiger') return null
+  return GEIGER_LEVELS.find((it) => it === parsed.sound) ?? 'soft'
+}
+
+export function formatGeigerAlertSound(level: GeigerLevel): string {
+  return `geiger:${level}`
+}

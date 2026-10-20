@@ -135,7 +135,7 @@ class AlertEngineTest {
         assertEquals("speed", rules[0].controlId)
         assertEquals(15.0, rules[0].threshold, 0.0)
         assertEquals(20.0, rules[0].thresholdMax!!, 0.0)
-        assertEquals("preset:tick", rules[0].soundType)
+        assertEquals("geiger:soft", rules[0].soundType)
         assertNull(rules[0].source)
     }
 

@@ -77,3 +77,50 @@ internal fun parseSlotAlertSound(soundType: String): SlotAlertSound {
     }
     return SlotAlertSound(1, legacy)
 }
+
+/**
+ * Tick level of a geiger (range) rule: picks the active effects pack's `geiger.<id>` slot.
+ *
+ * @parity /src/modules/alerts/lib/alertSoundString.ts `GEIGER_LEVELS`
+ * @parity /modules/vescape-core/ios/alerts/AlertSoundString.swift `GeigerLevel`
+ */
+internal enum class GeigerLevel(val id: String) {
+    SOFT("soft"),
+    MID("mid"),
+    HARD("hard");
+
+    val slot: String get() = "geiger.$id"
+}
+
+private val LEGACY_GEIGER = mapOf(
+    "preset:tick" to GeigerLevel.SOFT,
+    "preset:tick_hard" to GeigerLevel.MID,
+    "preset:gamma" to GeigerLevel.HARD,
+    "preset:sustained" to GeigerLevel.HARD,
+)
+
+/**
+ * `geiger:level` — a range rule's tick level, or null when [soundType] is not a geiger sound.
+ * Strings from before the grammar map `preset:tick|tick_hard|gamma|sustained` → soft, mid, hard,
+ * hard. A not-yet-supported sound (`geiger:my:<id>`) or unknown level ticks soft.
+ *
+ * @parity /src/modules/alerts/lib/alertSoundString.ts `parseGeigerAlertSound`
+ * @parity /modules/vescape-core/ios/alerts/AlertSoundString.swift `parseGeigerAlertSound`
+ */
+internal fun parseGeigerAlertSound(soundType: String): GeigerLevel? {
+    LEGACY_GEIGER[soundType]?.let { return it }
+    val parsed = AlertSoundString.parse(soundType)
+    if (parsed?.kind != "geiger") return null
+    return GeigerLevel.entries.firstOrNull { it.id == parsed.sound } ?: GeigerLevel.SOFT
+}
+
+/**
+ * Geiger slot for a range rule's `soundType` (see [parseGeigerAlertSound]); a non-geiger string
+ * ticks soft.
+ *
+ * @parity /modules/vescape-core/ios/alerts/AlertSoundString.swift `geigerSlot`
+ */
+internal fun geigerSlot(soundType: String): String = (parseGeigerAlertSound(soundType) ?: GeigerLevel.SOFT).slot
+
+/** True for a `soundType` that names a geiger tick rather than a single alert sound. */
+internal fun isGeigerSoundType(soundType: String): Boolean = parseGeigerAlertSound(soundType) != null

@@ -169,9 +169,16 @@ Direction is hardcoded per control — not stored.
 ## Geiger mode
 
 Set `threshold_max` to add a range. Active range alerts run a native tick loop with a geiger tick
-of the selected effects pack: `preset:tick` → `geiger.soft`, `preset:tick_hard` → `geiger.mid`,
-`preset:gamma` → `geiger.hard` (a level select replaces these names in #579). The interval shrinks
-linearly:
+of the selected effects pack at the rule's level, `geiger:soft|mid|hard` → `geiger.<level>`. Rules
+saved before the sound string grammar keep working through the parser: `preset:tick` → soft,
+`preset:tick_hard` → mid, `preset:gamma` and `preset:sustained` → hard. An unknown level, or a
+not-yet-supported `geiger:my:<id>`, ticks soft.
+
+The speed and duty cycle presets and the custom geiger form offer a Soft / Mid / Hard select.
+Preset defaults: speed `geiger:soft`, duty cycle `geiger:hard`. A picked level is stored on the
+metric's preset rules and carried across regeneration (level, top speed, or config-match changes);
+legacy `preset:` names on preset rules count as generated defaults and give way to the current
+default on the next regeneration. The interval shrinks linearly:
 
 - at `threshold` → about 800 ms between ticks
 - at `threshold_max` → the tick loops continuously

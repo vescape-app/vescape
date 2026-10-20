@@ -2,7 +2,7 @@
   "metrics": {
     "speed": {
       "family": "geiger",
-      "soundType": "preset:gamma",
+      "soundType": "geiger:soft",
       "scaledByTopSpeed": true,
       "levels": {
         "safe": {
@@ -21,7 +21,7 @@
     },
     "duty": {
       "family": "geiger",
-      "soundType": "preset:tick",
+      "soundType": "geiger:hard",
       "levels": {
         "safe": {
           "start": 75,

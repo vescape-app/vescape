@@ -22,6 +22,9 @@ import {
 import type { DraftAlertRule } from '@/modules/alerts/lib/customAlertRules'
 import {
   ALERT_SEVERITY_DEFAULT,
+  formatGeigerAlertSound,
+  parseAlertSoundString,
+  parseGeigerAlertSound,
   parseSlotAlertSound,
   parseTtsAlertSound,
 } from '@/modules/alerts/lib/alertSoundString'
@@ -103,6 +106,12 @@ export function getAlertDialConfig(controlId: string, batteryConfig: DerivedBatt
   }
 }
 
+/** A geiger rule's picker shows its level; a pre-grammar tick name reads as its equivalent level. */
+export function geigerPickerSound(soundType: string): string {
+  if (parseAlertSoundString(soundType)?.kind === 'geiger') return soundType
+  return formatGeigerAlertSound(parseGeigerAlertSound(soundType) ?? 'soft')
+}
+
 export function getEditFormDefaults(
   editRule: DraftAlertRule,
   dialConfig: ReturnType<typeof getAlertDialConfig>,
@@ -116,7 +125,11 @@ export function getEditFormDefaults(
     tab,
     threshold: editRule.threshold,
     thresholdMax: editRule.thresholdMax ?? dialConfig.max,
-    soundType: slot ? `alert:${slot.severity}` : editRule.soundType,
+    soundType: slot
+      ? `alert:${slot.severity}`
+      : tab === 'geiger'
+        ? geigerPickerSound(editRule.soundType)
+        : editRule.soundType,
     messageTemplate: tts?.text ?? getDefaultMessageTemplate(editRule.controlId, batteryConfig),
     severity: tts?.severity ?? ALERT_SEVERITY_DEFAULT,
     repeatEverySeconds: editRule.repeatEverySeconds,

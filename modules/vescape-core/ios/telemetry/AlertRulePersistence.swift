@@ -9,7 +9,7 @@ struct PersistedAlertRule: Codable, FetchableRecord, PersistableRecord {
   let threshold: Double
   let thresholdMax: Double?
   let enabled: Bool
-  let soundType: String
+  var soundType: String
   let createdAt: Int64
   let repeatEverySeconds: Int64?
   let source: String?

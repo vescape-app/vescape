@@ -159,6 +159,20 @@ class AlertPresetPersistenceHostTest {
     dao.upsertBoardWithSettings(board, listOf(setting("topSpeedKmh", "60")), emptyList())
     assertEquals(43.452288, dao.getAlertRules(board.id).single { it.controlId == "speed" }.threshold, 0.0000001)
     assertEquals(duty, dao.getAlertRules(board.id).single { it.id == duty.id })
+    suspend fun sound(metric: String) = dao.getAlertRules(board.id).single { it.controlId == metric && it.source == "preset" }.soundType
+    assertEquals("geiger:soft", sound("speed")); assertEquals("geiger:hard", sound("duty"))
+    val speedRule = dao.getAlertRules(board.id).single { it.controlId == "speed" }
+    dao.upsertAlertRule(speedRule.copy(soundType = "preset:gamma"))
+    dao.upsertBoardWithSettings(board, listOf(setting("topSpeedKmh", "55")), emptyList())
+    assertEquals("geiger:soft", sound("speed"))
+    dao.applyAlertPreset(board.id, "speed", "geiger-sound", "geiger:mid", null)
+    dao.upsertBoardWithSettings(board, listOf(setting("topSpeedKmh", "60")), emptyList())
+    dao.applyAlertPreset(board.id, "speed", "select", "safe", null)
+    dao.applyAlertPreset(board.id, "speed", "select", "normal", null)
+    assertEquals("geiger:mid", sound("speed"))
+    var rejected = false
+    try { dao.applyAlertPreset(board.id, "speed", "geiger-sound", "alert:warning", null) } catch (_: IllegalArgumentException) { rejected = true }
+    assertTrue(rejected)
     dao.applyAlertPreset(board.id, "duty", "match-board-config", null, true)
     val dormant = dao.getAlertRules(board.id).single { it.controlId == "duty" }
     assertEquals("config-relative", dormant.thresholdKind); assertEquals(-10.0, dormant.thresholdOffset!!, 0.0)

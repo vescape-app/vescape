@@ -82,9 +82,30 @@ final class AlertPresetPersistence {
     let values = try settings(db, boardId)
     let selection = object(values["alertPreset"])
     for metric in metric.map({ [$0] }) ?? metrics {
+      let chosen = try chosenGeigerSound(db, boardId: boardId, metric: metric)
       try db.execute(sql: "DELETE FROM alerts WHERE board_id = ? AND control_id = ? AND source = 'preset'", arguments: [boardId, metric])
-      for rule in try generate(db, boardId: boardId, metric: metric, level: selection[metric] as? String ?? "off", settings: values) { try rule.save(db) }
+      for var rule in try generate(db, boardId: boardId, metric: metric, level: selection[metric] as? String ?? "off", settings: values) {
+        if let chosen, isGeigerGrammar(rule.soundType) { rule.soundType = chosen }
+        try rule.save(db)
+      }
     }
+  }
+
+  /// The rider's geiger sound on a metric's saved preset rules, carried across regeneration. Only a
+  /// grammar string (`geiger:<level>`) counts: legacy `preset:` names were generated defaults, never
+  /// a choice, so they give way to the current default.
+  private static func chosenGeigerSound(_ db: Database, boardId: String, metric: String) throws -> String? {
+    try savedPresetRules(db, boardId: boardId, metric: metric)
+      .lazy.map(\.soundType).first(where: isGeigerGrammar)
+  }
+
+  /// A `geiger:<sound>` string. Generated preset ticks always use the grammar.
+  private static func isGeigerGrammar(_ soundType: String) -> Bool { soundType.hasPrefix("geiger:") }
+
+  private static func savedPresetRules(_ db: Database, boardId: String, metric: String) throws -> [PersistedAlertRule] {
+    try PersistedAlertRule
+      .filter(Column("board_id") == boardId && Column("control_id") == metric && Column("source") == "preset")
+      .fetchAll(db)
   }
   func apply(
     boardId: String,
@@ -112,6 +133,14 @@ final class AlertPresetPersistence {
       case "discard-custom":
         try db.execute(sql: "DELETE FROM alerts WHERE board_id = ? AND control_id = ? AND (source IS NULL OR source != 'preset')", arguments: [boardId, metric])
         selection[metric] = "normal"
+      case "geiger-sound":
+        guard let sound = level, Self.isGeigerGrammar(sound) else { throw InvalidPreset.invalidIntent }
+        // Regenerate first so legacy tick names become today's grammar defaults, then pick.
+        try Self.regenerate(db, boardId: boardId, metric: metric)
+        for var rule in try Self.savedPresetRules(db, boardId: boardId, metric: metric) where Self.isGeigerGrammar(rule.soundType) {
+          rule.soundType = sound
+          try rule.save(db)
+        }
       case "match-board-config":
         guard let matchBoardConfig, try AlertPresetGenerator.matchField(metric) != nil else { throw InvalidPreset.invalidIntent }
         var match = Self.object(values["matchBoardConfig"])
@@ -125,9 +154,7 @@ final class AlertPresetPersistence {
     }
   }
   private static func materializeRules(_ db: Database, boardId: String, metric: String) throws -> [PersistedAlertRule] {
-    let saved = try PersistedAlertRule
-      .filter(Column("board_id") == boardId && Column("control_id") == metric && Column("source") == "preset")
-      .fetchAll(db)
+    let saved = try savedPresetRules(db, boardId: boardId, metric: metric)
     return try saved.compactMap { rule in
       var threshold = rule.threshold
       var thresholdMax = rule.thresholdMax

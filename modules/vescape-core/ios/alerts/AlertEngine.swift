@@ -75,7 +75,7 @@ internal func withLegalModeOverlay(
       thresholdMax: limitSpeedKmh,
       thresholdKind: "fixed", configFieldId: nil, thresholdOffset: nil, thresholdMaxOffset: nil,
       enabled: true,
-      soundType: "preset:tick",
+      soundType: "geiger:soft",
       createdAt: 0,
       source: nil
     ),

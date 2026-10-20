@@ -30,22 +30,6 @@ internal func appCueSlot(_ cue: String) -> String? {
   }
 }
 
-/// Geiger slot for a range rule's `soundType`: today's tick names map onto the pack's soft/mid/hard
-/// ticks; anything else ticks soft.
-/// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/alerts/EffectsPacks.kt `geigerSlot`
-internal func geigerSlot(_ soundType: String) -> String {
-  switch soundType {
-  case "preset:tick_hard": return "geiger.mid"
-  case "preset:gamma", "preset:sustained": return "geiger.hard"
-  default: return "geiger.soft"
-  }
-}
-
-/// True for a `soundType` that names a geiger tick rather than a single alert sound.
-internal func isGeigerSoundType(_ soundType: String) -> Bool {
-  ["preset:tick", "preset:tick_hard", "preset:gamma", "preset:sustained"].contains(soundType)
-}
-
 /// Clip files of every built-in pack's slots under `root` (the folder holding `effects-<id>/`),
 /// keyed `"<pack>/<slot>"`. A pack whose manifest cannot be read contributes nothing.
 internal func effectsPackSlotFiles(root: URL) -> [String: URL] {

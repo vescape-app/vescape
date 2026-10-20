@@ -1,4 +1,5 @@
 import { resolvedAlertRules } from '@/modules/alerts/lib/resolvedAlertRules'
+import { parseGeigerAlertSound } from '@/modules/alerts/lib/alertSoundString'
 import { toTestRule } from '@/modules/alerts/lib/alertTest'
 import type { DraftAlertRule } from '@/modules/alerts/lib/customAlertRules'
 import { useUnitSystem } from '@/hooks/useUnitSystem'
@@ -62,7 +63,7 @@ const MATCHED_NORMAL_FIXTURES: Partial<Record<AlertPresetMetric, DraftAlertRule[
       },
       enabled: true,
       createdAt: 0,
-      soundType: 'preset:tick',
+      soundType: 'geiger:soft',
       repeatEverySeconds: null,
     },
   ],
@@ -154,6 +155,7 @@ export function AlertPresetControlShowcase() {
   const [disabled, setDisabled] = useState(false)
   const [match, setMatch] = useState(false)
   const [configOff, setConfigOff] = useState(false)
+  const [geigerSound, setGeigerSound] = useState<string | null>(null)
   const configBases = configOff ? SHOWCASE_CONFIG_BASES_OFF : SHOWCASE_CONFIG_BASES
   const setMatched = (enabled: boolean) => {
     setMatch(enabled)
@@ -168,7 +170,7 @@ export function AlertPresetControlShowcase() {
             controlId: metric,
             thresholdMax: null,
             enabled: true,
-            soundType: metric === 'speed' || metric === 'duty' ? 'preset:tick' : 'alert(3):warning',
+            soundType: metric === 'speed' || metric === 'duty' ? 'geiger:soft' : 'alert(3):warning',
             repeatEverySeconds: null,
             createdAt: 0,
           }))
@@ -237,7 +239,14 @@ export function AlertPresetControlShowcase() {
         matchBoardConfig={{ [metric]: match }}
         onMatchBoardConfigChange={setMatched}
         configBases={configBases}
-        ruleSnapshot={preview.rules}
+        ruleSnapshot={
+          geigerSound
+            ? preview.rules.map((rule) =>
+                parseGeigerAlertSound(rule.soundType) ? { ...rule, soundType: geigerSound } : rule,
+              )
+            : preview.rules
+        }
+        onGeigerSoundChange={setGeigerSound}
         onCustomize={editable ? () => setLevel('custom') : undefined}
         onDiscardCustom={editable ? () => setLevel('normal') : undefined}
       />

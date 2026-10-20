@@ -425,7 +425,7 @@ Single threshold -> one-shot alert. Both threshold+thresholdMax -> geiger (progr
 { name, uri, category: 'single'|'geiger' }
 ```
 
-Presets: beep, urgent, notify (single); tick, tick_hard, gamma (geiger)
+Sounds: `alert:info|warning|critical` (single); `geiger:soft|mid|hard` (geiger)
 
 ## Tune profiles
 
@@ -556,7 +556,9 @@ snapshot (`latestBms`); UI derives min/max/spread via `summarizeBms` in `src/mod
 
 `applyAlertPreset(boardId, metric, intent)` switches a saved Board's alert setup. Intents are
 `{ action: 'select', level }`, `{ action: 'customize' }`, `{ action: 'discard-custom' }`, and
-`{ action: 'match-board-config', enabled }`. Selection and generated rule changes commit together
+`{ action: 'match-board-config', enabled }`, and `{ action: 'geiger-sound', soundType }` (a
+`geiger:<level>` string written onto the metric's preset tick rules and kept across regeneration).
+Selection and generated rule changes commit together
 in native storage. JS does not send generated rules or run a regeneration sequence. Board saves
 also update affected preset rules atomically when their inputs change. Successful writes publish
 `boards` and `alerts` data-change scopes and reload native alert evaluation.

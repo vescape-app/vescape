@@ -126,7 +126,7 @@ final class AlertEngineTests: XCTestCase {
     XCTAssertEqual("speed", rules[0].controlId)
     XCTAssertEqual(15, rules[0].threshold)
     XCTAssertEqual(20, rules[0].thresholdMax)
-    XCTAssertEqual("preset:tick", rules[0].soundType)
+    XCTAssertEqual("geiger:soft", rules[0].soundType)
     XCTAssertNil(rules[0].source)
   }
 

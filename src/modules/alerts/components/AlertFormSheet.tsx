@@ -78,7 +78,7 @@ export function AlertFormSheet({
   const geigerPresets = useMemo(() => getPresetsForCategory('geiger'), [])
   const defaultSoundType: AlertSoundType =
     singlePresets.find((p) => p.uri === 'alert:warning')?.uri ?? 'alert:warning'
-  const geigerDefaultSoundType: AlertSoundType = geigerPresets[0]?.uri ?? 'preset:tick'
+  const geigerDefaultSoundType: AlertSoundType = geigerPresets[0]?.uri ?? 'geiger:soft'
 
   const [tab, setTab] = useState<AlertTab>('single')
   const [threshold, setThreshold] = useState(dialConfig.min)

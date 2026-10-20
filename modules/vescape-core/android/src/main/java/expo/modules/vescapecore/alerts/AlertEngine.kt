@@ -179,7 +179,7 @@ internal fun withLegalModeOverlay(
         threshold = warningSpeedKmh,
         thresholdMax = limitSpeedKmh,
         enabled = true,
-        soundType = "preset:tick",
+        soundType = "geiger:soft",
         createdAt = 0L,
         source = null,
     )
@@ -828,9 +828,9 @@ internal fun alertSoundMaps(): List<Map<String, Any>> = listOf(
     Triple("Info", "alert:info", ALERT_CATEGORY_SINGLE),
     Triple("Warning", "alert:warning", ALERT_CATEGORY_SINGLE),
     Triple("Critical", "alert:critical", ALERT_CATEGORY_SINGLE),
-    Triple("Tick", "preset:tick", ALERT_CATEGORY_GEIGER),
-    Triple("Hard Tick", "preset:tick_hard", ALERT_CATEGORY_GEIGER),
-    Triple("Gamma", "preset:gamma", ALERT_CATEGORY_GEIGER),
+    Triple("Soft", "geiger:soft", ALERT_CATEGORY_GEIGER),
+    Triple("Mid", "geiger:mid", ALERT_CATEGORY_GEIGER),
+    Triple("Hard", "geiger:hard", ALERT_CATEGORY_GEIGER),
 ).map { (name, uri, category) -> mapOf("name" to name, "uri" to uri, "category" to category) }
 
 // @parity /modules/vescape-core/ios/alerts/AlertAudioPlayer.swift `alertCategorySingle`

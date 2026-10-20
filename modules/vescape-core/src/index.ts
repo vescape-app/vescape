@@ -3236,9 +3236,9 @@ const FALLBACK_SOUNDS: AlertSound[] = [
   { name: 'Info', uri: 'alert:info', category: 'single' },
   { name: 'Warning', uri: 'alert:warning', category: 'single' },
   { name: 'Critical', uri: 'alert:critical', category: 'single' },
-  { name: 'Tick', uri: 'preset:tick', category: 'geiger' },
-  { name: 'Hard Tick', uri: 'preset:tick_hard', category: 'geiger' },
-  { name: 'Gamma', uri: 'preset:gamma', category: 'geiger' },
+  { name: 'Soft', uri: 'geiger:soft', category: 'geiger' },
+  { name: 'Mid', uri: 'geiger:mid', category: 'geiger' },
+  { name: 'Hard', uri: 'geiger:hard', category: 'geiger' },
 ]
 
 export function getAlertSounds(): AlertSound[] {
@@ -4050,6 +4050,8 @@ export type AlertPresetIntent =
   | { action: 'select'; level: Exclude<AlertPresetLevel, 'custom'> }
   | { action: 'customize' | 'discard-custom' }
   | { action: 'match-board-config'; enabled: boolean }
+  /** Geiger sound (`geiger:<level>`) for the metric's preset ticks; kept across regeneration. */
+  | { action: 'geiger-sound'; soundType: string }
 
 /**
  * Calculate an unsaved wizard preset with the same native generator used when saving it.
@@ -4084,7 +4086,11 @@ export async function applyAlertPreset(
     boardId,
     metric,
     intent.action,
-    intent.action === 'select' ? intent.level : null,
+    intent.action === 'select'
+      ? intent.level
+      : intent.action === 'geiger-sound'
+        ? intent.soundType
+        : null,
     intent.action === 'match-board-config' ? intent.enabled : null,
   )
 }

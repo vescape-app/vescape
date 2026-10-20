@@ -21,9 +21,9 @@ internal func alertSoundChoices() -> [[String: Any]] {
     ("Info", "alert:info", alertCategorySingle),
     ("Warning", "alert:warning", alertCategorySingle),
     ("Critical", "alert:critical", alertCategorySingle),
-    ("Tick", "preset:tick", alertCategoryGeiger),
-    ("Hard Tick", "preset:tick_hard", alertCategoryGeiger),
-    ("Gamma", "preset:gamma", alertCategoryGeiger),
+    ("Soft", "geiger:soft", alertCategoryGeiger),
+    ("Mid", "geiger:mid", alertCategoryGeiger),
+    ("Hard", "geiger:hard", alertCategoryGeiger),
   ].map { ["name": $0.0, "uri": $0.1, "category": $0.2] }
 }
 

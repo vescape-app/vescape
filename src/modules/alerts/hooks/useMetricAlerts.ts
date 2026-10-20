@@ -55,6 +55,8 @@ export interface MetricAlertsController {
   /** Metrics this Board follows its own configuration for. */
   matchBoardConfig: Partial<Record<AlertPresetMetric, boolean>>
   setMatchBoardConfig(enabled: boolean): void
+  /** Pick the preset's geiger sound. Absent where it cannot be stored (the add-board wizard). */
+  setGeigerSound?(soundType: string): void
   setLevel(level: AlertPresetLevel): void
   /** Copy the current level's rules into {@link rules} and switch to `custom`. */
   customize(): void
@@ -109,6 +111,13 @@ export function useBoardMetricAlerts(controlId: string): MetricAlertsController 
         if (metric)
           void presets()
             .setMatchBoardConfig(metric, enabled)
+            .catch(() => undefined)
+      },
+      setGeigerSound: (soundType) => {
+        // intentional-suppression: the Alerts store error is rendered by MetricAlerts.
+        if (metric)
+          void presets()
+            .setGeigerSound(metric, soundType)
             .catch(() => undefined)
       },
       setLevel: (next) => {

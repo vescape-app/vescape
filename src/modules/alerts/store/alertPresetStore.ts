@@ -14,6 +14,7 @@ interface AlertPresetActions {
   customize(metric: AlertPresetMetric, boardId?: string): Promise<void>
   discardCustom(metric: AlertPresetMetric, boardId?: string): Promise<void>
   setMatchBoardConfig(metric: AlertPresetMetric, enabled: boolean, boardId?: string): Promise<void>
+  setGeigerSound(metric: AlertPresetMetric, soundType: string, boardId?: string): Promise<void>
 }
 
 let pending = 0
@@ -54,5 +55,7 @@ export const useAlertPresetStore = create<AlertPresetState & AlertPresetActions>
     discardCustom: (metric, boardId) => apply(metric, { action: 'discard-custom' }, boardId),
     setMatchBoardConfig: (metric, enabled, boardId) =>
       apply(metric, { action: 'match-board-config', enabled }, boardId),
+    setGeigerSound: (metric, soundType, boardId) =>
+      apply(metric, { action: 'geiger-sound', soundType }, boardId),
   }
 })

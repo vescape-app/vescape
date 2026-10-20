@@ -36,22 +36,6 @@ internal fun appCueSlot(cue: String): String? = when (cue) {
 }
 
 /**
- * Geiger slot for a range rule's `soundType`: today's tick names map onto the pack's soft/mid/hard
- * ticks; anything else ticks soft.
- *
- * @parity /modules/vescape-core/ios/alerts/EffectsPacks.swift `geigerSlot`
- */
-internal fun geigerSlot(soundType: String): String = when (soundType) {
-    "preset:tick_hard" -> "geiger.mid"
-    "preset:gamma", "preset:sustained" -> "geiger.hard"
-    else -> "geiger.soft"
-}
-
-/** True for a `soundType` that names a geiger tick rather than a single alert sound. */
-internal fun isGeigerSoundType(soundType: String): Boolean =
-    soundType in setOf("preset:tick", "preset:tick_hard", "preset:gamma", "preset:sustained")
-
-/**
  * Slot a one-shot preview of [soundType] plays: a geiger tick, or the severity sound once.
  *
  * @parity /modules/vescape-core/ios/alerts/AlertAudioPlayer.swift `previewSlot`

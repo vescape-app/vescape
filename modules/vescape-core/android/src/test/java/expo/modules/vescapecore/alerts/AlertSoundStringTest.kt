@@ -56,4 +56,23 @@ class AlertSoundStringTest {
         )
         for ((raw, expected) in cases) assertEquals(raw, expected, parseSlotAlertSound(raw))
     }
+
+    @Test
+    fun readsGeigerLevelsWithLegacyAndUnknownFallbacks() {
+        val cases = listOf(
+            "geiger:soft" to GeigerLevel.SOFT,
+            "geiger:mid" to GeigerLevel.MID,
+            "geiger:hard" to GeigerLevel.HARD,
+            "geiger:loud" to GeigerLevel.SOFT,
+            "geiger:my:abc" to GeigerLevel.SOFT,
+            "preset:tick" to GeigerLevel.SOFT,
+            "preset:tick_hard" to GeigerLevel.MID,
+            "preset:gamma" to GeigerLevel.HARD,
+            "preset:sustained" to GeigerLevel.HARD,
+            "alert:warning" to null,
+            "preset:beep" to null,
+            "default" to null,
+        )
+        for ((raw, expected) in cases) assertEquals(raw, expected, parseGeigerAlertSound(raw))
+    }
 }

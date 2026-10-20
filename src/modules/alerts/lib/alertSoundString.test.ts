@@ -1,9 +1,12 @@
 import { describe, expect, test } from 'bun:test'
 
 import {
+  formatGeigerAlertSound,
   formatSlotAlertSound,
+  type GeigerLevel,
   formatTtsAlertSound,
   parseAlertSoundString,
+  parseGeigerAlertSound,
   parseSlotAlertSound,
   parseTtsAlertSound,
   type SlotAlertSound,
@@ -73,5 +76,28 @@ describe('parseSlotAlertSound', () => {
       count: 4,
       severity: 'critical',
     })
+  })
+})
+
+describe('parseGeigerAlertSound', () => {
+  test.each([
+    ['geiger:soft', 'soft'],
+    ['geiger:mid', 'mid'],
+    ['geiger:hard', 'hard'],
+    ['geiger:loud', 'soft'],
+    ['geiger:my:abc', 'soft'],
+    ['preset:tick', 'soft'],
+    ['preset:tick_hard', 'mid'],
+    ['preset:gamma', 'hard'],
+    ['preset:sustained', 'hard'],
+    ['alert:warning', null],
+    ['preset:beep', null],
+    ['default', null],
+  ] satisfies [string, GeigerLevel | null][])('%p', (raw, expected) => {
+    expect(parseGeigerAlertSound(raw)).toBe(expected)
+  })
+
+  test('round-trips through formatGeigerAlertSound', () => {
+    expect(parseGeigerAlertSound(formatGeigerAlertSound('mid'))).toBe('mid')
   })
 })

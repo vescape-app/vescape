@@ -88,3 +88,44 @@ internal func parseSlotAlertSound(_ soundType: String) -> SlotAlertSound {
   default: return SlotAlertSound(count: 1, severity: .warning)
   }
 }
+
+/// Tick level of a geiger (range) rule: picks the active effects pack's `geiger.<id>` slot.
+///
+/// @parity /src/modules/alerts/lib/alertSoundString.ts `GEIGER_LEVELS`
+/// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/alerts/AlertSoundString.kt `GeigerLevel`
+internal enum GeigerLevel: String, CaseIterable {
+  case soft, mid, hard
+
+  var slot: String { "geiger.\(rawValue)" }
+}
+
+private let legacyGeiger: [String: GeigerLevel] = [
+  "preset:tick": .soft,
+  "preset:tick_hard": .mid,
+  "preset:gamma": .hard,
+  "preset:sustained": .hard,
+]
+
+/// `geiger:level` — a range rule's tick level, or nil when `soundType` is not a geiger sound.
+/// Strings from before the grammar map `preset:tick|tick_hard|gamma|sustained` → soft, mid, hard,
+/// hard. A not-yet-supported sound (`geiger:my:<id>`) or unknown level ticks soft.
+///
+/// @parity /src/modules/alerts/lib/alertSoundString.ts `parseGeigerAlertSound`
+/// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/alerts/AlertSoundString.kt `parseGeigerAlertSound`
+internal func parseGeigerAlertSound(_ soundType: String) -> GeigerLevel? {
+  if let legacy = legacyGeiger[soundType] { return legacy }
+  guard let parsed = AlertSoundString.parse(soundType), parsed.kind == "geiger" else { return nil }
+  return GeigerLevel(rawValue: parsed.sound) ?? .soft
+}
+
+/// Geiger slot for a range rule's `soundType` (see `parseGeigerAlertSound`); a non-geiger string
+/// ticks soft.
+/// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/alerts/AlertSoundString.kt `geigerSlot`
+internal func geigerSlot(_ soundType: String) -> String {
+  (parseGeigerAlertSound(soundType) ?? .soft).slot
+}
+
+/// True for a `soundType` that names a geiger tick rather than a single alert sound.
+internal func isGeigerSoundType(_ soundType: String) -> Bool {
+  parseGeigerAlertSound(soundType) != nil
+}
