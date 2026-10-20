@@ -152,7 +152,8 @@ export function getNewFormDefaults(
       soundType: preset.tab === 'geiger' ? geigerSoundType : defaultSoundType,
       messageTemplate: getDefaultMessageTemplate(controlId, batteryConfig),
       repeatEverySeconds: null,
-      beepCount: ALERT_BEEP_COUNT_DEFAULT,
+      // A speech rule starts with Beep before Off.
+      beepCount: preset.tab === 'message' ? 0 : ALERT_BEEP_COUNT_DEFAULT,
     }
   }
 

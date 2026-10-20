@@ -1562,6 +1562,13 @@ internal object TelemetryMigrations {
       db.execSQL("ALTER TABLE telemetry_minute_buckets ADD COLUMN route_preview TEXT")
     }
 
+    // Speech rules gain Beep before (#577), stored in `beep_count`. They used to ignore it, so
+    // existing ones land on Off and keep sounding exactly as before.
+    // @parity /modules/vescape-core/ios/telemetry/TelemetryDatabase.swift `v50_tts_beep_before_off`
+    internal val MIGRATION_49_50 = migration(49, 50) { db ->
+      db.execSQL("UPDATE alerts SET beep_count = 0 WHERE sound_type LIKE 'tts:%'")
+    }
+
     /** Every migration registered with Room, in the graph's production order. */
     val all = listOf(
       MIGRATION_3_4,
@@ -1607,6 +1614,7 @@ internal object TelemetryMigrations {
       MIGRATION_46_47,
       MIGRATION_47_48,
       MIGRATION_48_49,
+      MIGRATION_49_50,
     )
 
 }

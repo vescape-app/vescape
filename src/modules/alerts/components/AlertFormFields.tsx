@@ -40,6 +40,38 @@ export function RepeatField({
   )
 }
 
+/** Beep before choices for a speech rule; `0` is Off. Past 3 the beeps only delay the message. */
+const BEEP_BEFORE_CHOICES = [0, 1, 2, 3] as const
+
+/** Severity beeps played before a speech rule's message; `Off` speaks alone. */
+export function BeepBeforeField({
+  value,
+  onChange,
+}: {
+  value: number
+  onChange: (next: number) => void
+}) {
+  return (
+    <View style={styles.dialField}>
+      <Text style={styles.fieldLabel}>BEEP BEFORE</Text>
+      <PillChoiceRow
+        options={BEEP_BEFORE_CHOICES.map((count) => ({
+          value: count,
+          label: count === 0 ? 'Off' : `${count}×`,
+        }))}
+        value={value}
+        onChange={onChange}
+        accent={theme.palette.green}
+      />
+      <Text style={styles.fieldHint}>
+        {value === 0
+          ? 'Speaks the message alone'
+          : `Plays ${value} beep${value === 1 ? '' : 's'}, then speaks the message`}
+      </Text>
+    </View>
+  )
+}
+
 const styles = StyleSheet.create({
   dialField: {
     gap: 6,

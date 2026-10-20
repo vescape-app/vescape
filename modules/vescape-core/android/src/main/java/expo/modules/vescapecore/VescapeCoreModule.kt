@@ -572,8 +572,8 @@ class VescapeCoreModule : Module() {
     Function("reloadAlertRules") {
       CoreForegroundService.reloadAlertRules(context.applicationContext)
     }
-    Function("previewAlertSound") { soundType: String ->
-      CoreForegroundService.previewAlertSound(context.applicationContext, soundType)
+    Function("previewAlertSound") { soundType: String, beepCount: Int ->
+      CoreForegroundService.previewAlertSound(context.applicationContext, soundType, beepCount)
     }
     Function("playAppSound") { pack: String, cue: String ->
       CoreForegroundService.playAppSound(context.applicationContext, pack, cue)

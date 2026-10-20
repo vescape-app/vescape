@@ -436,8 +436,9 @@ internal final class AlertAudioPlayer {
   /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/alerts/AlertEngine.kt `playSingle`
   func playSingle(soundType: String, beepCount: Int = alertBeepCountDefault) {
     guard !isReleased else { return }
-    let preset = resolveAlertPreset(soundType: soundType, category: alertCategorySingle)
     let beeps = normalizedAlertBeepCount(beepCount)
+    guard beeps > 0 else { return }
+    let preset = resolveAlertPreset(soundType: soundType, category: alertCategorySingle)
     play(preset.fileName)
     guard beeps > 1 else { return }
     let spacing = alertBeepSpacingMs / 1000
@@ -450,8 +451,25 @@ internal final class AlertAudioPlayer {
 
   // MARK: - Preview
 
-  /// Play a preset once for UI preview, or speak a `tts:` template with a sample fired alert.
-  func preview(soundType: String, unitSystem: String = "metric") {
+  /// Speak a TTS rule's `text` after its Beep before: `beepCount` single beeps, then speech once the
+  /// last beep has finished, so the two never overlap. `0` speaks immediately.
+  /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/alerts/AlertEngine.kt `speakAfterBeeps`
+  func speakAfterBeeps(soundType: String, text: String, beepCount: Int) {
+    guard !isReleased else { return }
+    let beeps = normalizedAlertBeepCount(beepCount)
+    guard beeps > 0 else {
+      speakMessage(text)
+      return
+    }
+    playSingle(soundType: soundType, beepCount: beeps)
+    scheduler.postDelayed(speechDelayAfterBeepsMs(beeps)) { [weak self] in
+      self?.speakMessage(text)
+    }
+  }
+
+  /// Play a preset once for UI preview, or speak a `tts:` template with a sample fired alert after
+  /// its `beepCount` Beep before.
+  func preview(soundType: String, beepCount: Int = 0, unitSystem: String = "metric") {
     guard !isReleased else { return }
     Self.log("AlertAudioPlayer.preview: \(soundType)")
     if soundType.hasPrefix(ttsPrefix) {
@@ -463,7 +481,7 @@ internal final class AlertAudioPlayer {
         unitSystem: unitSystem
       )
       Self.log("AlertAudioPlayer.preview TTS text='\(text)'")
-      if !text.isEmpty { speakMessage(text) }
+      if !text.isEmpty { speakAfterBeeps(soundType: soundType, text: text, beepCount: beepCount) }
       return
     }
     let preset = resolveAlertPreset(soundType: soundType, category: nil)

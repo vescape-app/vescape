@@ -581,7 +581,7 @@ final class AlertEngineTests: XCTestCase {
 
   func testBeepCountIsClampedToItsRange() {
     XCTAssertEqual(alertBeepCountRange.upperBound, normalizedAlertBeepCount(99))
-    XCTAssertEqual(alertBeepCountRange.lowerBound, normalizedAlertBeepCount(0))
+    XCTAssertEqual(alertBeepCountRange.lowerBound, normalizedAlertBeepCount(-1))
     XCTAssertEqual(alertBeepCountDefault, normalizedAlertBeepCount(nil))
   }
 }

@@ -79,7 +79,7 @@ and adds a virtual geiger speed rule whenever rules load. Nothing is written to 
 | `sound_type`           | TEXT             | feedback value, e.g. `preset:beep` or `tts:Battery {percent}%` |
 | `created_at`           | INTEGER          | ms epoch                                                       |
 | `repeat_every_seconds` | INTEGER nullable | repeat cadence for a single-threshold rule; NULL is one-shot   |
-| `beep_count`           | INTEGER          | sound plays per announcement, 1–5 (preset sounds only)         |
+| `beep_count`           | INTEGER          | sound plays per announcement, 1–5; `tts:` Beep before, 0–3     |
 | `threshold_kind`       | TEXT             | `fixed` or `config-relative`                                   |
 | `config_field_id`      | TEXT nullable    | VESC config field used by a relative rule                      |
 | `threshold_offset`     | REAL nullable    | start offset in alert units                                    |
@@ -120,9 +120,13 @@ Set `repeat_every_seconds` to keep announcing on a fixed cadence for as long as 
 past the threshold. Native floors it at `ALERT_REPEAT_MIN_SECONDS` (3 s). Re-arming resets the
 repeat clock, so a fresh crossing announces immediately rather than waiting out the cadence.
 
-`beep_count` sets how many times the preset sound plays per announcement, 200 ms apart, so a rider
-can give different rules different signatures. It does nothing for `tts:` rules, which speak once
-per announcement, or for range rules, which own their own cadence.
+`beep_count` sets how many times the preset sound plays per announcement, one beep spacing apart
+(Android 350 ms, iOS 200 ms), so a rider can give different rules different signatures. It does
+nothing for range rules, which own their own cadence.
+
+For a `tts:` rule, `beep_count` is its **Beep before**: Off (`0`) or 1–3 single beeps, then the
+message. Speech starts one full beep spacing per beep after the first, so it begins only after the
+last beep has finished. Preset speech rules and speech rules saved before schema 50 are Off.
 
 The latch and repeat clock are cleared only when a new Board Session starts — not on rule edits,
 preset regeneration, idle pause, or backgrounding. Preset rule ids are deterministic, so changing a
@@ -171,7 +175,7 @@ Runtime behavior:
 - Message alerts vibrate once, same as one-shot preset alerts.
 - If multiple spoken messages compete, the most urgent alert wins and may stop a less urgent spoken message.
 - Spoken messages play over active geiger ticks; geiger loops are not paused or ducked.
-- Preview supports `tts:` templates with sample placeholder values.
+- Preview supports `tts:` templates with sample placeholder values, including the form's Beep before.
 - There is no app-level template length limit beyond what native storage and the platform can handle.
 
 ## Alert Presets

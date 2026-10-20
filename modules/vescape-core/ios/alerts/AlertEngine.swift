@@ -8,7 +8,7 @@ internal let alertRepeatMinSeconds: Int64 = 3
 /// Inclusive bounds on an Alert Rule's beep count.
 /// @parity /modules/vescape-core/src/index.ts `ALERT_BEEP_COUNT_RANGE`
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/alerts/AlertEngine.kt `ALERT_BEEP_COUNT_RANGE`
-internal let alertBeepCountRange = 1...5
+internal let alertBeepCountRange = 0...5
 
 /// Beeps per announcement when nothing says otherwise.
 /// @parity /modules/vescape-core/src/index.ts `ALERT_BEEP_COUNT_DEFAULT`
@@ -27,6 +27,13 @@ internal func normalizedAlertRepeatSeconds(_ raw: Double?) -> Int64? {
 
 /// Clamp a beep count coming from JS; absent or out of range falls back to the default.
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/alerts/AlertEngine.kt `normalizedAlertBeepCount`
+/// Speech start after `beeps` Beep before beeps: the last beep starts at `beeps - 1` spacings and
+/// no bundled single sound outlasts one spacing, so a full spacing per beep clears it.
+/// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/alerts/AlertEngine.kt `speechDelayAfterBeepsMs`
+internal func speechDelayAfterBeepsMs(_ beeps: Int) -> Int64 {
+  Int64(Double(beeps) * alertBeepSpacingMs)
+}
+
 internal func normalizedAlertBeepCount(_ raw: Int?) -> Int {
   guard let raw else { return alertBeepCountDefault }
   return min(max(raw, alertBeepCountRange.lowerBound), alertBeepCountRange.upperBound)

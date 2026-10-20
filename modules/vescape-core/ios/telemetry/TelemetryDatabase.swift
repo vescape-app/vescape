@@ -856,6 +856,12 @@ enum TelemetryDatabase {
     migrator.registerMigration("v49_bucket_route_preview") { db in
       try db.execute(sql: "ALTER TABLE telemetry_minute_buckets ADD COLUMN route_preview TEXT")
     }
+    // Speech rules gain Beep before (#577), stored in `beep_count`. They used to ignore it, so
+    // existing ones land on Off and keep sounding exactly as before.
+    // @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/TelemetryMigrations.kt `MIGRATION_49_50`
+    migrator.registerMigration("v50_tts_beep_before_off") { db in
+      try db.execute(sql: "UPDATE alerts SET beep_count = 0 WHERE sound_type LIKE 'tts:%'")
+    }
 
     return migrator
   }

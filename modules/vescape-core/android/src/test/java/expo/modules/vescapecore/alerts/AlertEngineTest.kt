@@ -496,7 +496,7 @@ class AlertEngineTest {
     @Test
     fun beepCountIsClampedToItsRange() {
         assertEquals(ALERT_BEEP_COUNT_RANGE.last, normalizedAlertBeepCount(99))
-        assertEquals(ALERT_BEEP_COUNT_RANGE.first, normalizedAlertBeepCount(0))
+        assertEquals(ALERT_BEEP_COUNT_RANGE.first, normalizedAlertBeepCount(-1))
         assertEquals(ALERT_BEEP_COUNT_DEFAULT, normalizedAlertBeepCount(null))
     }
 

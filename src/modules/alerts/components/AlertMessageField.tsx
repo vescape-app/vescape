@@ -20,6 +20,7 @@ export function AlertMessageField({
   batteryConfig,
   messageTemplate,
   onChangeTemplate,
+  beepCount,
 }: {
   controlId: string
   unit: string
@@ -28,6 +29,8 @@ export function AlertMessageField({
   batteryConfig: DerivedBatteryConfig | null
   messageTemplate: string
   onChangeTemplate: (next: string | ((current: string) => string)) => void
+  /** Beep before, previewed ahead of the speech the same way a ride plays it. */
+  beepCount: number
 }) {
   const formatMessage = useAlertMessageFormat()
   return (
@@ -58,6 +61,7 @@ export function AlertMessageField({
           onPress={() =>
             previewAlertSound(
               `tts:${formatMessage(messageTemplate, threshold, unit, dialConfig, controlId, batteryConfig)}`,
+              beepCount,
             )
           }
           style={styles.previewButton}

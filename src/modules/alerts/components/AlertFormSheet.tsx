@@ -20,7 +20,7 @@ import { EdgeDrawer } from '@/components/overlays/EdgeDrawer'
 import { theme } from '@/constants/theme'
 import { AlertMessageField } from '@/modules/alerts/components/AlertMessageField'
 import { AlertTypeTabs } from '@/modules/alerts/components/AlertTypeTabs'
-import { RepeatField } from '@/modules/alerts/components/AlertFormFields'
+import { BeepBeforeField, RepeatField } from '@/modules/alerts/components/AlertFormFields'
 import {
   getAlertDialConfig,
   getDefaultMessageTemplate,
@@ -110,6 +110,8 @@ export function AlertFormSheet({
   const handleTabSwitch = useCallback(
     (next: AlertTab) => {
       setTab(next)
+      // A speech rule starts with Beep before Off; a sound rule needs at least one beep.
+      setBeepCount(next === 'message' ? 0 : ALERT_BEEP_COUNT_DEFAULT)
       if (next === 'message') {
         setMessageTemplate(getDefaultMessageTemplate(controlId, batteryConfig))
       } else {
@@ -129,8 +131,8 @@ export function AlertFormSheet({
       threshold,
       thresholdMax: isRange ? thresholdMax : null,
       soundType: tab === 'message' ? `tts:${messageTemplate}` : soundType,
-      // A range rule's cadence follows range depth, and text-to-speech speaks once per
-      // announcement — neither has a beep count or a repeat interval to honor.
+      // A range rule's cadence follows range depth, so it has no repeat interval to honor. A
+      // speech rule's beep count is its Beep before.
       repeatEverySeconds: isRange ? null : repeatEverySeconds,
       beepCount,
     })
@@ -220,7 +222,7 @@ export function AlertFormSheet({
             <Text style={styles.fieldLabel}>BEEPS</Text>
             <Stepper
               value={beepCount}
-              min={ALERT_BEEP_COUNT_RANGE.min}
+              min={1}
               max={ALERT_BEEP_COUNT_RANGE.max}
               onChange={setBeepCount}
               style={styles.beepStepper}
@@ -229,17 +231,24 @@ export function AlertFormSheet({
         )}
 
         {tab === 'message' ? (
-          <View style={styles.cardField}>
-            <AlertMessageField
-              controlId={controlId}
-              unit={unit}
-              threshold={threshold}
-              dialConfig={dialConfig}
-              batteryConfig={batteryConfig}
-              messageTemplate={messageTemplate}
-              onChangeTemplate={setMessageTemplate}
-            />
-          </View>
+          // An array, not a fragment: SettingsCard separates flattened children.
+          [
+            <View key="beep-before" style={styles.cardField}>
+              <BeepBeforeField value={beepCount} onChange={setBeepCount} />
+            </View>,
+            <View key="message" style={styles.cardField}>
+              <AlertMessageField
+                beepCount={beepCount}
+                controlId={controlId}
+                unit={unit}
+                threshold={threshold}
+                dialConfig={dialConfig}
+                batteryConfig={batteryConfig}
+                messageTemplate={messageTemplate}
+                onChangeTemplate={setMessageTemplate}
+              />
+            </View>,
+          ]
         ) : (
           <View style={styles.cardField}>
             <SoundPicker

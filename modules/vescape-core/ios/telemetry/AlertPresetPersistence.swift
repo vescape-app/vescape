@@ -194,7 +194,8 @@ final class AlertPresetPersistence {
         soundType: spec.soundType,
         createdAt: createdAt,
         repeatEverySeconds: spec.point.repeatEverySeconds,
-        beepCount: 3,
+        // Preset speech keeps Beep before Off; preset sounds play the default burst.
+        beepCount: spec.soundType.hasPrefix("tts:") ? 0 : alertBeepCountDefault,
         source: "preset",
         thresholdKind: spec.relation == nil ? "fixed" : "config-relative",
         configFieldId: spec.relation?.fieldId,

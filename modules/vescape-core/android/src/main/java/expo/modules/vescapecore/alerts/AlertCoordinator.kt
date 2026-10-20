@@ -86,7 +86,7 @@ internal class AlertCoordinator(
         if (single.isNotEmpty()) {
             single.firstOrNull { it.soundType.startsWith("tts:") && it.thresholdMax == null }?.let { alert ->
                 val text = renderAlertMessageTemplate(alert.soundType.removePrefix("tts:"), alert, batteryPercent, onDiagnostic, unitSystem)
-                if (text.isNotEmpty()) feedback().speakMessage(text)
+                if (text.isNotEmpty()) feedback().speakAfterBeeps(alert.soundType, text, alert.beepCount)
             }
             for (alert in single) if (!alert.soundType.startsWith("tts:")) feedback().playSingle(alert.soundType, alert.beepCount)
             if (vibrateSingles) feedback().vibrate(null)

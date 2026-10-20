@@ -1,5 +1,6 @@
 package expo.modules.vescapecore.telemetry
 
+import expo.modules.vescapecore.alerts.ALERT_BEEP_COUNT_DEFAULT
 import expo.modules.vescapecore.alerts.resolveConfigRelativeBase
 import org.json.JSONObject
 import java.util.UUID
@@ -189,6 +190,8 @@ internal object AlertPresetPersistence {
         soundType = spec.soundType,
         createdAt = createdAt,
         repeatEverySeconds = spec.point.repeatSeconds,
+        // Preset speech keeps Beep before Off; preset sounds play the default burst.
+        beepCount = if (spec.soundType.startsWith("tts:")) 0 else ALERT_BEEP_COUNT_DEFAULT,
         source = "preset",
       )
     }

@@ -3662,8 +3662,8 @@ internal class BoardSessionController(private val service: CoreForegroundService
         telemetryPipeline.metricSanitizerConfig = settings.toMetricSanitizerConfig()
     }
 
-    fun previewAlertSound(soundType: String) {
-        alertFeedback.preview(soundType)
+    fun previewAlertSound(soundType: String, beepCount: Int) {
+        alertFeedback.preview(soundType, beepCount)
     }
 
     private fun closeAppTask() {

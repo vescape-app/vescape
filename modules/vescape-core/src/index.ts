@@ -727,8 +727,9 @@ export interface AlertRule {
    */
   repeatEverySeconds: number | null
   /**
-   * How many times the sound plays per announcement, {@link ALERT_BEEP_COUNT_RANGE}. Applies to
-   * preset sounds only — a text-to-speech rule speaks once regardless.
+   * How many times the sound plays per announcement, {@link ALERT_BEEP_COUNT_RANGE}. For a
+   * text-to-speech rule it is the Beep before: that many single beeps, then speech after the last
+   * one ends. `0` (Off) speaks alone.
    */
   beepCount: number
   /**
@@ -749,12 +750,13 @@ export const ALERT_REPEAT_MIN_SECONDS = 3
 
 /**
  * Inclusive bounds on {@link AlertRule.beepCount}. Past 5 the beeps stop being countable by ear
- * at riding speed, which is the only thing the count is for.
+ * at riding speed, which is the only thing the count is for. `0` plays no beeps — a speech rule
+ * with Beep before Off; sound rules are authored with at least one.
  *
  * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/alerts/AlertEngine.kt `ALERT_BEEP_COUNT_RANGE`
  * @parity /modules/vescape-core/ios/alerts/AlertEngine.swift `alertBeepCountRange`
  */
-export const ALERT_BEEP_COUNT_RANGE = { min: 1, max: 5 } as const
+export const ALERT_BEEP_COUNT_RANGE = { min: 0, max: 5 } as const
 
 /** Beeps per announcement when nothing says otherwise — matches the pre-`beepCount` behavior. */
 export const ALERT_BEEP_COUNT_DEFAULT = 3
@@ -2748,7 +2750,7 @@ type VescapeCoreNativeModule = NativeEventEmitter<VescapeCoreEvents> & {
   getCriticalRideNotificationPermissionStatus(): Promise<CriticalRideNotificationPermissionStatus>
   requestCriticalRideNotificationPermission(): Promise<CriticalRideNotificationPermissionStatus>
   getAlertSounds(): AlertSound[]
-  previewAlertSound(soundType: AlertSoundType): void
+  previewAlertSound(soundType: AlertSoundType, beepCount: number): void
   playAppSound(pack: string, cue: 'on' | 'off' | 'created' | 'join' | 'error'): void
   mapTile(z: number, x: number, y: number): Promise<string | null>
   customAppSoundPacks(): Promise<CustomAppSoundPack[]>
@@ -3251,8 +3253,9 @@ export function getAlertSounds(): AlertSound[] {
   }
 }
 
-export function previewAlertSound(soundType: AlertSoundType): void {
-  native.previewAlertSound(soundType)
+/** `beepCount` is a `tts:` sound's Beep before; preset sounds always preview once. */
+export function previewAlertSound(soundType: AlertSoundType, beepCount = 0): void {
+  native.previewAlertSound(soundType, beepCount)
 }
 
 /** @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/alerts/CustomAppSounds.kt

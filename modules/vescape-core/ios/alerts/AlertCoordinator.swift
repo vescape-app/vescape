@@ -98,7 +98,7 @@ internal final class AlertCoordinator {
       if let alert = single.first(where: { $0.soundType.hasPrefix("tts:") && $0.thresholdMax == nil }) {
         let template = String(alert.soundType.dropFirst("tts:".count))
         let text = renderAlertMessageTemplate(template, alert: alert, batteryPercent: batteryPercent, onDiagnostic: onDiagnostic, unitSystem: unitSystem)
-        if !text.isEmpty { player.speakMessage(text) }
+        if !text.isEmpty { player.speakAfterBeeps(soundType: alert.soundType, text: text, beepCount: alert.beepCount) }
       }
       for alert in single where !alert.soundType.hasPrefix("tts:") {
         player.playSingle(soundType: alert.soundType, beepCount: alert.beepCount)
