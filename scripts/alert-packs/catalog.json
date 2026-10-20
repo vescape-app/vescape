@@ -1,0 +1,32 @@
+{
+  "severities": ["info", "warning", "critical"],
+  "effectSlots": [
+    "severity.info",
+    "severity.warning",
+    "severity.critical",
+    "cue.on",
+    "cue.off",
+    "cue.error",
+    "cue.groupRide.created",
+    "cue.groupRide.joined",
+    "cue.ride.end",
+    "geiger.soft",
+    "geiger.mid",
+    "geiger.hard"
+  ],
+  "voiceKeys": {
+    "battery": "percent",
+    "motorTemp": "degrees",
+    "controllerTemp": "degrees",
+    "link.connected": null,
+    "link.lost": null,
+    "system.error": null,
+    "groupRide.created": null,
+    "groupRide.joined": null,
+    "ride.end": null
+  },
+  "valueRanges": {
+    "percent": { "min": 0, "max": 100 },
+    "degrees": { "min": -30, "max": 300 }
+  }
+}

@@ -40,6 +40,7 @@
     "format": "oxfmt . '!.agents/skills/**'",
     "format:check": "oxfmt --check . '!.agents/skills/**'",
     "clear": "bun run scripts/clear.ts",
+    "alerts:packs": "bun run scripts/alert-packs/generate.ts",
     "copy:shared": "bun run scripts/copy-shared.ts",
     "map:publish-thumbnail-style": "bun run scripts/publish-map-thumbnail-style.ts",
     "skills-check": "bun run scripts/skills-check.ts",

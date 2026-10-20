@@ -50,7 +50,49 @@ User WAVs move to a **My sounds** library that can override a fixed set of slots
 board on/off, other cues). Resolution per slot: override > pinned pack > app-wide choice.
 
 All sounds that can fire during a ride stay decoded in memory for the session, so playback starts
-without load delay. Pack generation (Kokoro TTS + sox, offline) and the line schema live in #574.
+without load delay. The line schema lives in #574.
+
+### Built-in packs (generated, not yet played)
+
+The HEV and Clean packs are generated and committed under `shared/alerts/packs/`; native does not
+read them yet (#578, #580). `scripts/copy-shared.ts` copies only top-level files of
+`shared/alerts/`, so the pack folders do not reach Android `res/raw`.
+
+```text
+scripts/alert-packs/
+  catalog.json          required effect slots, voice keys + value type, value ranges
+  effects-<id>.json     tone segments per slot (sox synth), beep shape
+  voice-<id>.json       Kokoro voice + speed, sox voice fx chain, unit words, lines per key
+  generate.ts           manifests → packs;  kokoro.py  TTS helper;  packs.ts  shared checks
+shared/alerts/packs/
+  effects-<id>/pack.json + <slot>.m4a            severity.*, cue.*, geiger.*
+  voice-<id>/pack.json + lines/<key>.<start|end>.<i>.m4a + values/<type>/<n>.m4a
+```
+
+- **Effect slots**: `severity.info|warning|critical` (1/2/3 beeps), `cue.on`, `cue.off`,
+  `cue.error`, `cue.groupRide.created`, `cue.groupRide.joined`, `cue.ride.end`, `geiger.soft|mid|hard`.
+  Effects packs never contain voice; `pack.json` names the matching voice pack.
+- **Voice keys**: `battery` (percent), `motorTemp`, `controllerTemp` (degrees), `link.connected`,
+  `link.lost`, `system.error`, `groupRide.created`, `groupRide.joined`, `ride.end`. Each key needs a
+  generic line; `<key>.<severity>` variants are optional. A line is `start` (+ value) (+ `end`),
+  each part a list of variants, one Kokoro call per sentence.
+- **Value clips**: one clip per number with its unit, spelled out (`minus five degrees.`):
+  percent 0–100, degrees −30…300 (the clip says only "degrees", shared by °C and °F).
+- **Format**: AAC-LC in `.m4a`, mono 22 050 Hz, 40 kbit/s. Android `MediaCodec` and iOS
+  `AVAudioFile` both decode it; Ogg Opus has no iOS decoder. Native must drop the AAC encoder
+  priming (~1024 samples of leading silence) before joining clips. Intermediate WAVs are not kept.
+
+Regenerate on a Mac dev machine with sox, ffmpeg, and a Python that has `mlx_audio`:
+
+```sh
+KOKORO_PYTHON=/path/to/venv/bin/python bun run alerts:packs            # all packs
+KOKORO_PYTHON=/path/to/venv/bin/python bun run alerts:packs voice-hev  # one manifest
+```
+
+The generator validates the manifests against `catalog.json` before generating and checks the
+written pack after. `bun test scripts/alert-packs` fails when a committed pack misses a slot, a
+key's generic line, a value clip, or a listed file. Encoding is bitexact, so an unchanged manifest
+regenerates identical files. Kokoro mispronounces "error"; HEV wording says "failure".
 
 ## Per-board ownership
 

@@ -1,0 +1,24 @@
+{
+  "id": "clean",
+  "kind": "voice",
+  "kokoro": { "voice": "bf_emma", "speed": 0.9 },
+  "fx": "highpass 90 equalizer 3000 1.5q +4 compand 0.002,0.08 -70,-70,-50,-8,-20,-3,0,-1.5 gain -n -0.3 compand 0.0005,0.03 -10,-10,-3,-2,0,-1 gain -n -0.3 compand 0.001,0.05 -6,-6,0,-1 gain -n -0.3",
+  "units": { "percent": ["percent", "percent"], "degrees": ["degree", "degrees"] },
+  "lines": {
+    "battery": { "start": ["Battery..."] },
+    "battery.warning": { "start": ["Battery low..."] },
+    "battery.critical": { "start": ["Battery critical..."] },
+    "motorTemp": { "start": ["Motor temperature..."] },
+    "motorTemp.warning": { "start": ["Motor getting hot..."] },
+    "motorTemp.critical": { "start": ["Motor overheating..."] },
+    "controllerTemp": { "start": ["Controller temperature..."] },
+    "controllerTemp.warning": { "start": ["Controller getting hot..."] },
+    "controllerTemp.critical": { "start": ["Controller overheating..."] },
+    "link.connected": { "start": ["Board connected."] },
+    "link.lost": { "start": ["Board disconnected."] },
+    "system.error": { "start": ["Something went wrong."] },
+    "groupRide.created": { "start": ["Group ride created."] },
+    "groupRide.joined": { "start": ["You joined the group ride."] },
+    "ride.end": { "start": ["Ride ended."] }
+  }
+}

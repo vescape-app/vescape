@@ -1,0 +1,24 @@
+{
+  "id": "hev",
+  "kind": "voice",
+  "kokoro": { "voice": "bf_emma", "speed": 0.9 },
+  "fx": "pitch -120 sinc 280-3600 flanger 0 0.6 0 40 0.4 sine equalizer 2500 1.2q +6 compand 0.003,0.08 -70,-70,-50,-10,-20,-4,0,-2 gain -n -0.3 overdrive 4 gain -n -0.5 compand 0.001,0.05 -6,-6,0,-1 gain -n -0.3",
+  "units": { "percent": ["percent", "percent"], "degrees": ["degree", "degrees"] },
+  "lines": {
+    "battery": { "start": ["Power reserve..."] },
+    "battery.warning": { "start": ["Caution. Power reserve low..."] },
+    "battery.critical": { "start": ["Warning. Power level critical..."] },
+    "motorTemp": { "start": ["Motor temperature..."] },
+    "motorTemp.warning": { "start": ["Caution. Motor heat elevated..."] },
+    "motorTemp.critical": { "start": ["Warning. Motor overheat imminent..."] },
+    "controllerTemp": { "start": ["Controller temperature..."] },
+    "controllerTemp.warning": { "start": ["Caution. Controller heat elevated..."] },
+    "controllerTemp.critical": { "start": ["Warning. Controller thermal limit approaching..."] },
+    "link.connected": { "start": ["Board link established. All systems nominal."] },
+    "link.lost": { "start": ["Warning. Board link lost."] },
+    "system.error": { "start": ["Warning. System failure."] },
+    "groupRide.created": { "start": ["Group ride initiated. Awaiting riders."] },
+    "groupRide.joined": { "start": ["Rider joined. Squad link active."] },
+    "ride.end": { "start": ["Ride session terminated."] }
+  }
+}
