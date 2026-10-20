@@ -64,6 +64,7 @@ internal object ConfigRWFsm {
             transport = event.transport,
             wasPolling = event.wasPolling,
             profileFields = event.profileFields,
+            draft = event.draft,
             appBoardId = event.appBoardId,
             fwVersion = event.fwVersion,
             refloatBaseVersion = event.refloatBaseVersion,
@@ -75,7 +76,7 @@ internal object ConfigRWFsm {
         // only have changed through our own writes — the session's fresh bytes are still the board's
         // bytes and back the write directly. Provisional values carry no write base by construction,
         // so a cache-restored session falls through to the read (ADR 0035).
-        val writeBase = event.writeBase
+        val writeBase = if (event.draft) null else event.writeBase
         if (writeBase != null) {
             return sendWrite(
                 ctx = ctx,
@@ -527,7 +528,7 @@ internal object ConfigRWFsm {
         packageSignature: Long,
         failPhase: ConfigWritePhaseTag,
     ): Pair<ConfigRWState, List<ConfigRWEffect>> = try {
-        val patched = RefloatConfigEncoder.encode(schema, rawConfig, ctx.profileFields)
+        val patched = RefloatConfigEncoder.encode(schema, rawConfig, ctx.profileFields, strict = ctx.draft)
         ConfigRWState.WriteAwaitingSetAck(
             ctx = ctx,
             schema = schema,

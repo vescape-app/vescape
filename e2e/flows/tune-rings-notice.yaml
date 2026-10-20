@@ -1,0 +1,25 @@
+# UI-only fixture: reset notice state explicitly for a repeatable presentation test.
+appId: ${APP_ID}
+---
+- runFlow:
+    when:
+      visible: Close Rings editor
+    commands:
+      - tapOn: Close Rings editor
+- openLink: 'vescape://settings/components/tune'
+- scrollUntilVisible:
+    element:
+      text: Rings production editor
+    direction: UP
+- tapOn: custom
+- tapOn: Reset mapping notice
+- tapOn: Open Rings editor
+- extendedWaitUntil:
+    visible: Your tune in Rings
+    timeout: 10000
+- tapOn: Got it
+- assertNotVisible: Your tune in Rings
+- tapOn: Close Rings editor
+- tapOn: Open Rings editor
+- assertNotVisible: Your tune in Rings
+- tapOn: Close Rings editor

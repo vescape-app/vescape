@@ -61,3 +61,41 @@ test('does not read board snapshot until firmware commands are trusted', async (
   expect(readBoardSnapshot).not.toHaveBeenCalled()
   expect(loadProfiles).not.toHaveBeenCalled()
 })
+
+test('fresh board retry does not reload profiles or reset an existing draft', async () => {
+  const readBoardSnapshot = mock(async () => snapshot)
+  const loadProfiles = mock(async () => [])
+  await refreshBoardSnapshotAndProfiles({
+    boardConnected: true,
+    firmwareCommandsTrusted: true,
+    selectedBoardId: 'board-1',
+    preserveDraft: () => true,
+    readBoardSnapshot,
+    loadProfiles,
+  })
+  expect(readBoardSnapshot).toHaveBeenCalledTimes(1)
+  expect(loadProfiles).not.toHaveBeenCalled()
+})
+
+test('a profile opened during an automatic read is preserved when that read finishes', async () => {
+  let finish!: (value: RefloatConfigSnapshot) => void
+  let profileOpened = false
+  const readBoardSnapshot = mock(
+    () =>
+      new Promise<RefloatConfigSnapshot>((resolve) => {
+        finish = resolve
+      }),
+  )
+  const loadProfiles = mock(async () => [])
+  const request = refreshBoardSnapshotAndProfiles({
+    boardConnected: true,
+    selectedBoardId: 'board-1',
+    preserveDraft: () => profileOpened,
+    readBoardSnapshot,
+    loadProfiles,
+  })
+  profileOpened = true
+  finish(snapshot)
+  await request
+  expect(loadProfiles).not.toHaveBeenCalled()
+})

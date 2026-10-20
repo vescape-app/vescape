@@ -25,6 +25,7 @@ internal data class WriteContext(
     /** Refloat base version of the connected board — Tune Compatibility scope (ADR 0022). */
     val refloatBaseVersion: String? = null,
     val refloatVersion: String? = null,
+    val draft: Boolean = false,
 )
 
 internal sealed class ConfigRWState {

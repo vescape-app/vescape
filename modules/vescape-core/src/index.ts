@@ -1383,6 +1383,8 @@ export interface ImportFavoriteMediaOptions {
   mediaKind: 'photo' | 'video'
 }
 
+// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/config/RefloatConfigModels.kt `RefloatConfigField`
+// @parity /modules/vescape-core/ios/config/RefloatConfigModels.swift `RefloatConfigField`
 export interface RefloatConfigField {
   id: string
   label: string
@@ -1390,6 +1392,8 @@ export interface RefloatConfigField {
   unit: string | null
   min: number | null
   max: number | null
+  /** Native wire multiplier for scaled numeric encodings; null for floating encodings. */
+  encodingScale?: number | null
 }
 
 export interface RefloatConfigGroup {
@@ -1554,6 +1558,7 @@ export interface AppSettings {
   rideSplitGapMinutes: number
   /** App appearance source. `sun` resolves from local daylight at the last GPS fix. */
   unitSystem: 'metric' | 'imperial'
+  tuneEditorMode: 'rings' | 'floaty' | 'advanced'
   themeMode: 'system' | 'light' | 'dark' | 'sun'
   mapStyleKey: 'onedark' | 'outdoors' | 'satellite' | 'mapy'
   /** Use the custom satellite overlay style instead of the stock satellite style. */
@@ -2885,6 +2890,10 @@ type VescapeCoreNativeModule = NativeEventEmitter<VescapeCoreEvents> & {
     profileId: string,
     fields: Record<string, TuneProfileFieldValue>,
   ): Promise<TuneProfile>
+  sendTuneDraftToBoard(
+    profileId: string,
+    fields: Record<string, TuneProfileFieldValue>,
+  ): Promise<RefloatConfigSnapshot>
   pushProfileToBoard(profileId: string): Promise<RefloatConfigSnapshot>
   getProfileStatsSnapshot(options: Partial<ProfileStatsMonth>): Promise<ProfileStatsSnapshot>
   rebuildTelemetryBuckets(): Promise<number>
@@ -3986,6 +3995,16 @@ export async function saveProfile(
   fields: Record<string, TuneProfileFieldValue>,
 ): Promise<TuneProfile> {
   return native.saveProfile(profileId, fields)
+}
+
+/** Sends a captured draft through native fresh read-patch-write and confirmed readback. No profile save. */
+// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/VescapeCoreModule.kt `sendTuneDraftToBoard`
+// @parity /modules/vescape-core/ios/VescapeCoreModule.swift `sendTuneDraftToBoard`
+export async function sendTuneDraftToBoard(
+  profileId: string,
+  fields: Record<string, TuneProfileFieldValue>,
+): Promise<RefloatConfigSnapshot> {
+  return native.sendTuneDraftToBoard(profileId, fields)
 }
 
 export async function pushProfileToBoard(profileId: string): Promise<RefloatConfigSnapshot> {

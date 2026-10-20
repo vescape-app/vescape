@@ -4,6 +4,7 @@ import { router } from 'expo-router'
 import {
   CameraRotateIcon,
   PathIcon,
+  SlidersHorizontalIcon,
   CodeIcon,
   RecordIcon,
   SwatchesIcon,
@@ -45,6 +46,13 @@ const DEV_PAGE_SHORTCUTS = [
     route: routes.devRailGeneratorPrototype,
     icon: PathIcon,
     iconColor: theme.palette.cyan.color,
+  },
+  {
+    label: 'Rings calibration',
+    hint: 'Temporary Feel mapping anchors',
+    route: routes.settingsRingsCalibration,
+    icon: SlidersHorizontalIcon,
+    iconColor: theme.tune.color,
   },
   {
     label: 'Other',

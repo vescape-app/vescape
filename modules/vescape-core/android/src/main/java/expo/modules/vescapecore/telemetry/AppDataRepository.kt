@@ -421,6 +421,7 @@ class AppDataRepository private constructor(private val context: Context) {
       freeSpinMaxSpeedDeltaKmh = req("freeSpinMaxSpeedDeltaKmh", DEFAULT_FREE_SPIN_MAX_SPEED_DELTA_KMH) { (it as? Number)?.toDouble() },
       freeSpinStationaryBoardCapKmh = req("freeSpinStationaryBoardCapKmh", DEFAULT_FREE_SPIN_STATIONARY_BOARD_CAP_KMH) { (it as? Number)?.toDouble() },
       unitSystem = req("unitSystem", "metric", ::validUnitSystem),
+      tuneEditorMode = req("tuneEditorMode", "rings") { (it as? String)?.takeIf { mode -> mode in setOf("rings", "floaty", "advanced") } },
       themeMode = req("themeMode", "system", ::validThemeMode),
       mapStyleKey = req("mapStyleKey", "onedark", ::validMapStyleKey),
       satelliteOverlayEnabled = req("satelliteOverlayEnabled", true) { it as? Boolean },
@@ -506,6 +507,7 @@ class AppDataRepository private constructor(private val context: Context) {
       "freeSpinMaxSpeedDeltaKmh", "freeSpinStationaryBoardCapKmh" ->
         ((value as? Number)?.toDouble() ?: return@withContext).coerceAtLeast(0.0)
       "unitSystem" -> requireNotNull(validUnitSystem(value)) { "Invalid unitSystem" }
+      "tuneEditorMode" -> (value as? String)?.takeIf { it in setOf("rings", "floaty", "advanced") } ?: return@withContext
       "themeMode" -> validThemeMode(value) ?: return@withContext
       "mapStyleKey" ->
         validMapStyleKey(value) ?: return@withContext
@@ -581,6 +583,7 @@ class AppDataRepository private constructor(private val context: Context) {
         "freeSpinMaxSpeedDeltaKmh" -> d.freeSpinMaxSpeedDeltaKmh
         "freeSpinStationaryBoardCapKmh" -> d.freeSpinStationaryBoardCapKmh
         "unitSystem" -> d.unitSystem
+        "tuneEditorMode" -> d.tuneEditorMode
         "themeMode" -> d.themeMode
         "mapStyleKey" -> d.mapStyleKey
         "satelliteOverlayEnabled" -> d.satelliteOverlayEnabled
@@ -965,6 +968,7 @@ fun AppSettings.toMap(): Map<String, Any?> = mapOf(
   "freeSpinMaxSpeedDeltaKmh" to freeSpinMaxSpeedDeltaKmh,
   "freeSpinStationaryBoardCapKmh" to freeSpinStationaryBoardCapKmh,
   "unitSystem" to unitSystem,
+  "tuneEditorMode" to tuneEditorMode,
   "themeMode" to themeMode,
   "mapStyleKey" to mapStyleKey,
   "satelliteOverlayEnabled" to satelliteOverlayEnabled,

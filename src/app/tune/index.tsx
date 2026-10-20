@@ -1,3 +1,1 @@
-import { TuneScreen } from '@/modules/tune/screens/TuneScreen'
-
-export default TuneScreen
+export { TuneEditorScreen as default } from '@/screens/TuneEditorScreen'

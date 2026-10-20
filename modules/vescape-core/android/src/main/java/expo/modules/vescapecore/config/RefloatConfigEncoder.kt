@@ -15,11 +15,34 @@ internal object RefloatConfigEncoder {
     schema: RefloatConfigSchema,
     rawConfig: ByteArray,
     fields: Map<String, Any>,
+    strict: Boolean = false,
   ): ByteArray {
     val result = rawConfig.copyOf()
     val byId = schema.fields.associateBy { it.id }
+    val allowed = REFLOAT_TUNE_GROUPS.flatMap { it.fields }.map { it.id }.toSet()
     for ((fieldId, value) in fields) {
-      val schemaField = byId[fieldId] ?: continue
+      if (strict && fieldId !in allowed) throw RefloatConfigEncodeException("Not a tune field: $fieldId")
+      val schemaField = byId[fieldId]
+      if (schemaField == null) {
+        if (strict) throw RefloatConfigEncodeException("Missing draft field in board schema: $fieldId")
+        continue
+      }
+      if (strict) {
+        val number = (value as? Number)?.toDouble()
+        if (schemaField.type != RefloatConfigValueType.BOOL && (number == null || !number.isFinite() || (schemaField.min != null && number < schemaField.min) || (schemaField.max != null && number > schemaField.max))) {
+          throw RefloatConfigEncodeException("Draft value outside firmware bounds: $fieldId")
+        }
+        if (number != null) {
+          val scaled = number * (schemaField.scale ?: 1.0)
+          val representable = when (schemaField.type) {
+            RefloatConfigValueType.FLOAT16_SCALED -> kotlin.math.floor(scaled + 0.5) in Short.MIN_VALUE.toDouble()..Short.MAX_VALUE.toDouble()
+            RefloatConfigValueType.FLOAT32_SCALED -> kotlin.math.floor(scaled + 0.5) in Int.MIN_VALUE.toDouble()..Int.MAX_VALUE.toDouble()
+            RefloatConfigValueType.FLOAT32, RefloatConfigValueType.FLOAT32_AUTO -> number.toFloat().isFinite()
+            else -> true
+          }
+          if (!representable) throw RefloatConfigEncodeException("Draft value cannot be encoded: $fieldId")
+        }
+      }
       writeValue(result, schemaField, value)
     }
     return result

@@ -563,6 +563,9 @@ final class AppDataRepository {
     } else if key == "audioSource" {
       guard let source = Self.audioSource(rawValue) else { return }
       value = source
+    } else if key == "tuneEditorMode" {
+      guard let mode = rawValue as? String, ["rings", "floaty", "advanced"].contains(mode) else { return }
+      value = mode
     } else if key == "themeMode" {
       guard let mode = Self.themeMode(rawValue) else { return }
       value = mode
@@ -654,6 +657,7 @@ final class AppDataRepository {
     "freeSpinMaxSpeedDeltaKmh": DEFAULT_FREE_SPIN_MAX_SPEED_DELTA_KMH,
     "freeSpinStationaryBoardCapKmh": DEFAULT_FREE_SPIN_STATIONARY_BOARD_CAP_KMH,
     "unitSystem": "metric",
+    "tuneEditorMode": "rings",
     "themeMode": "system",
     "satelliteOverlayEnabled": true,
     "satelliteImageryOpacity": 0.2,
@@ -704,6 +708,7 @@ final class AppDataRepository {
     normalized["liveHistoryLimit"] =
       liveHistoryLimitMinutes(settings["liveHistoryLimit"]) ?? defaultSettings["liveHistoryLimit"]
     normalized["unitSystem"] = validUnitSystem(settings["unitSystem"]) ?? "metric"
+    normalized["tuneEditorMode"] = (settings["tuneEditorMode"] as? String).flatMap { ["rings", "floaty", "advanced"].contains($0) ? $0 : nil } ?? "rings"
     normalized["themeMode"] = themeMode(settings["themeMode"]) ?? defaultSettings["themeMode"]
     normalized["audioSource"] = audioSource(settings["audioSource"]) ?? "alarm"
     let pack = settings["soundPack"] as? String ?? "retro"

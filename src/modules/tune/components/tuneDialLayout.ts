@@ -19,5 +19,7 @@ export function formatDisplayValue(value: number, decimals: number): string {
   'worklet'
 
   if (decimals <= 0) return String(Math.round(value))
-  return String(Number(value.toFixed(decimals)))
+  // Arithmetic and native decoding can leave binary tails (0.7000000000000002).
+  // This is presentation only; the editor retains its original raw value.
+  return String(Number(Number(value.toPrecision(15)).toFixed(Math.min(decimals, 100))))
 }

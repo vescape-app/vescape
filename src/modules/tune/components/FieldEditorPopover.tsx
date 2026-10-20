@@ -11,13 +11,12 @@ import {
 } from 'phosphor-react-native'
 
 import { IconButton } from '@/components/base/IconButton'
-import { parseManualTuneValue } from '@/modules/tune/lib/manualTuneValue'
+import { formatManualTuneValue, parseManualTuneValue } from '@/modules/tune/lib/manualTuneValue'
 import { Button } from '@/components/base/Button'
 import { Input } from '@/components/forms/Input'
 import { EdgeDrawer } from '@/components/overlays/EdgeDrawer'
 import { TuneDial } from '@/modules/tune/components/TuneDial'
 import { theme, type ThemeColor } from '@/constants/theme'
-import { snapValue } from '@/modules/tune/lib/sliderDefinitions'
 import type { LinkedFieldPreview } from '@/modules/tune/lib/sliderDefinitions'
 import { formatTuneValue } from '@/modules/tune/lib/fields'
 
@@ -30,6 +29,7 @@ export interface FieldEditorTarget {
   min: number
   max: number
   step: number
+  strictRange?: boolean
   manualDecimals?: number
   unit: string | null
   help: string
@@ -66,13 +66,13 @@ interface FieldEditorPopoverInnerProps {
 function FieldEditorPopoverInner({ target, onCancel, onApply }: FieldEditorPopoverInnerProps) {
   const [draftValue, setDraftValue] = useState(target.value)
   const [mode, setMode] = useState<'ruler' | 'manual'>('ruler')
-  const [manualText, setManualText] = useState(String(target.value))
-  const manual = parseManualTuneValue(manualText, target.manualDecimals ?? 3)
+  const [manualText, setManualText] = useState(formatManualTuneValue(target.value))
+  const manual = parseManualTuneValue(manualText, target.manualDecimals ?? 3, target.value)
   const manualError = mode === 'manual' ? manual.error : null
   const outsideRange = draftValue < target.min || draftValue > target.max
   const changeManualText = (text: string) => {
     setManualText(text)
-    const parsed = parseManualTuneValue(text, target.manualDecimals ?? 3)
+    const parsed = parseManualTuneValue(text, target.manualDecimals ?? 3, target.value)
     if (parsed.error === null) setDraftValue(parsed.value)
   }
   const toggleMode = () => {
@@ -81,7 +81,7 @@ function FieldEditorPopoverInner({ target, onCancel, onApply }: FieldEditorPopov
       Keyboard.dismiss()
       setMode('ruler')
     } else {
-      setManualText(String(draftValue))
+      setManualText(formatManualTuneValue(draftValue))
       setMode('manual')
     }
   }
@@ -109,14 +109,26 @@ function FieldEditorPopoverInner({ target, onCancel, onApply }: FieldEditorPopov
           field.id,
           editedLinkedFields[field.id]
             ? (linkedDrafts[field.id] ?? '')
-            : formatTuneValue(computedLinkedValues[field.id]),
+            : formatManualTuneValue(computedLinkedValues[field.id]),
         ]),
       ) as Record<string, string>,
     [editedLinkedFields, linkedDrafts, linkedFields, computedLinkedValues],
   )
 
+  const linkedError = linkedFields.some(
+    (field) =>
+      editedLinkedFields[field.id] &&
+      parseManualTuneValue(linkedDrafts[field.id] ?? '', 6, field.currentValue).error != null,
+  )
+  const linkedOutsideRange = linkedFields.some((field) => {
+    if (!editedLinkedFields[field.id]) return false
+    const parsed = parseManualTuneValue(linkedDrafts[field.id] ?? '', 6, field.currentValue)
+    return parsed.error == null && (parsed.value < field.min || parsed.value > field.max)
+  })
+  const scaleError = target.strictRange ? outsideRange : false
+  const applyBlocked = [manualError, linkedError, scaleError].some(Boolean)
   const applyEditor = () => {
-    if (manualError) return
+    if (applyBlocked) return
     Keyboard.dismiss()
     if (draftValue === target.value && Object.keys(editedLinkedFields).length === 0) {
       onCancel()
@@ -125,10 +137,9 @@ function FieldEditorPopoverInner({ target, onCancel, onApply }: FieldEditorPopov
     const linkedValues = Object.fromEntries(
       linkedFields.flatMap((field) => {
         if (!editedLinkedFields[field.id]) return []
-        const parsed = Number.parseFloat(linkedDrafts[field.id] ?? '')
-        const value = Number.isFinite(parsed)
-          ? snapValue(parsed, field.min, field.max, field.step)
-          : computedLinkedValues[field.id]
+        const parsed = parseManualTuneValue(linkedDrafts[field.id] ?? '', 6, field.currentValue)
+        if (parsed.error !== null) return []
+        const value = parsed.value
         return [[field.id, value]]
       }),
     )
@@ -251,22 +262,14 @@ function FieldEditorPopoverInner({ target, onCancel, onApply }: FieldEditorPopov
                     </Text>
                     <Input
                       style={styles.linkedInput}
+                      accessibilityLabel={`${field.label} raw value`}
+                      testID={`tune-linked-${field.id}`}
                       value={linkedInputValues[field.id] ?? ''}
                       keyboardType="decimal-pad"
                       selectTextOnFocus
                       onChangeText={(text) => {
                         setEditedLinkedFields((current) => ({ ...current, [field.id]: true }))
                         setLinkedDrafts((current) => ({ ...current, [field.id]: text }))
-                      }}
-                      onBlur={() => {
-                        const parsed = Number.parseFloat(linkedInputValues[field.id] ?? '')
-                        const value = Number.isFinite(parsed)
-                          ? snapValue(parsed, field.min, field.max, field.step)
-                          : computedLinkedValues[field.id]
-                        setLinkedDrafts((current) => ({
-                          ...current,
-                          [field.id]: formatTuneValue(value),
-                        }))
                       }}
                     />
                     {field.unit ? (
@@ -326,6 +329,11 @@ function FieldEditorPopoverInner({ target, onCancel, onApply }: FieldEditorPopov
           ) : null}
         </Pressable>
 
+        <LinkedValueNotices
+          scaleError={scaleError}
+          linkedError={linkedError}
+          linkedOutsideRange={linkedOutsideRange}
+        />
         <View style={styles.actions}>
           <Button
             label="Cancel"
@@ -339,12 +347,40 @@ function FieldEditorPopoverInner({ target, onCancel, onApply }: FieldEditorPopov
             accent={target.color}
             style={styles.actionButton}
             onPress={applyEditor}
-            disabled={Boolean(manualError)}
+            disabled={applyBlocked}
             testID="tune-editor-apply"
           />
         </View>
       </View>
     </EdgeDrawer>
+  )
+}
+
+function LinkedValueNotices({
+  scaleError,
+  linkedError,
+  linkedOutsideRange,
+}: {
+  scaleError: boolean
+  linkedError: boolean
+  linkedOutsideRange: boolean
+}) {
+  return (
+    <>
+      {scaleError ? (
+        <Text style={styles.help}>
+          Outside the Rings scale. Use linked raw fields for values outside the model.
+        </Text>
+      ) : null}
+      {linkedError ? (
+        <Text style={styles.help}>Enter valid linked values (up to 6 decimals).</Text>
+      ) : null}
+      {linkedOutsideRange ? (
+        <Text style={styles.help}>
+          Linked value outside the usual range. Native validation still applies before board writes.
+        </Text>
+      ) : null}
+    </>
   )
 }
 
@@ -362,8 +398,6 @@ const styles = StyleSheet.create({
     gap: 12,
     borderRadius: 16,
     borderCurve: 'continuous',
-    borderWidth: 1,
-    borderColor: theme.neutral.border,
     backgroundColor: theme.neutral.surface,
   },
   panelTitle: {

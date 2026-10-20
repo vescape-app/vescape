@@ -25,6 +25,7 @@ internal data class PendingConfigWrite(
     val profileId: String,
     val onSuccess: (Map<String, Any?>) -> Unit,
     val onError: (String, String) -> Unit,
+    val draftFields: Map<String, Any?>? = null,
 )
 
 internal data class ConfigConnectionSnapshot(
@@ -62,7 +63,9 @@ internal class ConfigRWController(
     private val appDataScope: CoroutineScope,
     private val repository: () -> AppDataRepository,
     private val port: ConfigRWControllerPort,
+    private val loadProfile: suspend (String) -> Map<String, Any?>? = { repository().getTuneProfile(it) },
 ) {
+    private var sessionGeneration = 0L
     private var state: ConfigRWState = ConfigRWState.Idle
     /**
      * Every consumer waiting on the current read. A read started in the background (post-trust config
@@ -114,8 +117,9 @@ internal class ConfigRWController(
         if (!initial.connected()) return pending.notConnected()
         if (!initial.trusted()) return pending.linkNotTrusted()
         if (initial.transport == null) return pending.noCanId("push")
+        val generation = sessionGeneration
         appDataScope.launch {
-            val profile = try { repository().getTuneProfile(pending.profileId) } catch (error: Exception) {
+            val profile = try { loadProfile(pending.profileId) } catch (error: Exception) {
                 RecordingStorageFailure.reportRead("board_tune_profile_read", error)
                 scheduler.post { pending.onError(RefloatConfigErrorCode.CONFIG_READ_FAILED.name, "Tune profile could not be loaded") }
                 return@launch
@@ -126,8 +130,13 @@ internal class ConfigRWController(
                 }
                 return@launch
             }
-            @Suppress("UNCHECKED_CAST") val fields = (profile["fields"] as? Map<String, Any>) ?: emptyMap()
+            if (pending.draftFields?.values?.any { it == null } == true) {
+                scheduler.post { pending.onError(RefloatConfigErrorCode.CONFIG_ENCODE_FAILED.name, "Draft values cannot be null") }
+                return@launch
+            }
+            @Suppress("UNCHECKED_CAST") val fields = (pending.draftFields ?: (profile["fields"] as? Map<String, Any>))?.filterValues { it != null }?.mapValues { it.value!! } ?: emptyMap()
             scheduler.post {
+                if (generation != sessionGeneration) return@post pending.notConnected()
                 if (isInFlight) return@post pending.inFlight()
                 val connection = port.connection()
                 if (!connection.connected()) return@post pending.notConnected()
@@ -157,7 +166,8 @@ internal class ConfigRWController(
                         connection.fwVersion,
                         connectedRefloatBaseVersion,
                         connection.config?.refloatVersion,
-                        connection.boardConfigValues?.writeBase,
+                        if (pending.draftFields == null) connection.boardConfigValues?.writeBase else null,
+                        draft = pending.draftFields != null,
                     ),
                 )
             }
@@ -165,7 +175,11 @@ internal class ConfigRWController(
     }
 
     fun onPayload(event: ConfigRWEvent) = dispatch(event)
-    fun onSessionTerminated(message: String) { if (isInFlight) dispatch(ConfigRWEvent.SessionTerminated(message)) }
+    fun onSessionTerminated(message: String) {
+        // iOS loads the profile synchronously; Android must also cancel its pending off-thread load.
+        sessionGeneration += 1
+        if (isInFlight) dispatch(ConfigRWEvent.SessionTerminated(message))
+    }
 
     private fun dispatch(event: ConfigRWEvent) {
         val (next, effects) = ConfigRWFsm.apply(state, event)

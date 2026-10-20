@@ -1,0 +1,52 @@
+# Uses real native profiles on a fixture Board with no reported Refloat version.
+appId: ${APP_ID}
+---
+- openLink: 'vescape://e2e-seed?flow=tune-offline'
+- extendedWaitUntil:
+    visible:
+      id: tune-mode
+    timeout: 30000
+- runFlow:
+    when:
+      visible:
+        id: tune-create-offline
+    commands:
+      - assertVisible:
+          id: tune-offline-version
+      - tapOn:
+          id: tune-create-offline
+- extendedWaitUntil:
+    visible:
+      id: ring-control-0
+    timeout: 30000
+- runFlow:
+    when:
+      visible: Your tune in Rings
+    commands:
+      - tapOn: Got it
+- assertVisible:
+    id: tune-send-board
+    enabled: false
+- assertNotVisible:
+    id: tune-board-match-badge
+- tapOn:
+    id: ring-preset-0-soft
+- assertNotVisible: Replace custom fields?
+- runFlow:
+    when:
+      notVisible:
+        id: tune-save
+    commands:
+      - tapOn:
+          id: ring-preset-0-firm
+- tapOn:
+    id: tune-save
+- assertNotVisible:
+    id: tune-dirty-count
+- openLink: 'vescape://e2e-seed?flow=tune-offline'
+- extendedWaitUntil:
+    visible:
+      id: ring-control-0
+    timeout: 30000
+- assertNotVisible:
+    id: tune-create-offline

@@ -1,5 +1,117 @@
 # Tune Screen Reference
 
+## Production editor modes and calibration
+
+The editor has Rings, Floaty, and Advanced modes over one semantic-field draft. Rings is the default;
+the last selected mode is a native-persisted app setting (`tuneEditorMode`), outside the Tune Profile.
+Changing modes or opening/applying unchanged details does not normalize raw values. Floaty retains
+its existing formulas and haptics; Advanced contains the detailed field groups. Tune Preview is
+available in Floaty and Advanced. The top-bar dropdown selects the editor mode; the Tune menu
+keeps history, metadata, Board selection, and applicable copy/delete actions together. The footer
+uses the selected Tune Profile's color for the profile pill and unsaved-edit controls.
+
+Save persists the captured draft through native Tune Profile storage and establishes the local
+baseline only after success. Edits made during Save remain against the new baseline, including a
+revert to the old saved value. Discard restores the latest local save and does not command the Board.
+The footer counts changed raw fields across the whole draft using exact semantic-value equality.
+Board equality is separate: it uses the native schema multiplier and firmware half-up rounding.
+An explicit Rings mapping edit rounds only its owned fields when native encoding metadata is
+available; opening an editor or projecting a profile never rounds stored fields.
+
+Read from board performs a fresh native read, confirms replacement of unsaved edits, and replaces
+only recognized profile fields after success. Absent fields remain unchanged. Send to board captures
+the current draft, including unsaved edits, without saving a profile or adding profile history.
+`sendTuneDraftToBoard(profileId, fields)` validates the native profile's Board and Refloat major/minor
+scope and uses fresh schema/config read-patch-write with exact byte readback. It preserves unknown
+config bytes and rejects fields outside the native Tune allowlist, absent schema fields, non-finite numeric values, and values outside firmware
+bounds. The usual UI ruler range remains distinct from firmware bounds. Send uses
+`COMM_SET_CUSTOM_CONFIG`; it is not a RAM-only or reset-on-restart promise. Existing saved-profile
+pushes retain the session write-base behavior in ADR 0035; the explicit draft-send path always reads
+fresh first. Native protocol and trusted-link gating apply to both paths.
+
+The send badge compares the draft with confirmed native board values at native schema encoding precision.
+Offline, missing fields, in-flight operations, and read/send failures show unknown. Merely starting a
+send never establishes a match. Save state and board match state are independent.
+
+### Rings model
+
+Each section has three axes, with evenly spaced radial scale rings. UI values use `0..10` in `0.1`
+steps. The lightly shaded middle reference band describes UI values, not safety. Neighboring
+reference circles remain visible at the pager edges: their offset follows the measured viewport
+and chart radius, including when the chart reaches its maximum size. Turning presents `-5..+5` with zero halfway along its axis. A chart projection is read-only:
+custom compound combinations and out-of-range values are marked Custom, while missing/non-finite
+fields disable the affected control. Matching custom outlines do not imply identical raw fields.
+When the focused editor first shows an approximate Rings mapping in an app session, an informational
+popup explains that displaying it preserves original values while editing a point applies the
+app’s linked mapping. This is information, not a replacement confirmation. Presentation has one shared owner across
+kept-alive screens; hidden editors cannot show it. One dismissal acknowledges it for the app session.
+Explicit mapping edits, mix/resize, and presets immediately replace their owned custom fields in the
+local draft. Discard restores the saved profile; Save and Send remain explicit actions.
+Direct raw-field edits preserve other linked values.
+
+| Section      | Axis              | Owned fields                                                |
+| ------------ | ----------------- | ----------------------------------------------------------- |
+| Feel         | Aggressiveness    | `kp`, `kp2`, `ki`, `mahony_kp`, `mahony_kp_roll`            |
+| Feel         | Tail stiffness    | `torquetilt_strength_regen`                                 |
+| Feel         | Nose stiffness    | `torquetilt_strength`                                       |
+| Brake / Turn | Response speed    | `turntilt_speed`, inversely `braketilt_lingering`           |
+| Brake / Turn | Braking           | `braketilt_strength`: raw `5 / 2.5 / 0` at UI `0 / 5 / 10`  |
+| Brake / Turn | Turning           | `turntilt_strength`: raw `-15 / 0 / 15` at UI `-5 / 0 / +5` |
+| ATR          | Response Boost    | `atr_response_boost` only                                   |
+| ATR          | Downhill strength | `atr_strength_down`                                         |
+| ATR          | Uphill strength   | `atr_strength_up`                                           |
+
+Braking changes additional Brake Tilt nose lift, not braking force, PID stiffness, or Tail stiffness.
+ATR Response Boost increases application speed at higher ERPM; it does not change low-speed base
+response or strength. Rings and its presets never write `atr_on_speed` or `atr_off_speed`, including
+legacy firmware where Brake Tilt shares those speeds. Availability follows actual fields in the
+native-decoded schema/profile, rather than assuming every Refloat version contains legacy fields.
+
+The yellow dashed reference circle represents the last successful app save. It disappears when all
+three projected values match. Mix translates the circumcircle; edge resizing changes its radius.
+Both stop the whole movement at the first axis limit. Resizing rebases after its activation dead zone
+so the first active frame has no jump. Cancelled gestures restore their starting projection. Rings
+feedback is soft and rate-limited across axes; Floaty feedback is unchanged.
+
+### Temporary calibration settings
+
+Rings → Calibration (also Dev → Rings calibration) edits piecewise-linear raw-field anchors within bundled-reference bounds. Apply
+updates mappings and read-only projections immediately, without changing an existing profile/draft
+or sending to a Board. These temporary overrides last for the JS session; Reset restores defaults.
+Braking and Turning retain the fixed agreed anchors above.
+
+These defaults are **uncalibrated starting proposals**, using Floaty endpoints where agreed and the bundled Refloat schema bounds.
+Software verification establishes mapping contracts, not ride feel or safety. Presets also remain
+rider-calibration candidates. Rider tests must establish suitable endpoints, midpoints, braking,
+turning, climbs/descents, and behavior across riding speeds.
+
+| Field                                              | Rings 0 | Rings 5 | Rings 10 |
+| -------------------------------------------------- | ------: | ------: | -------: |
+| `kp`                                               |      15 |    22.5 |       30 |
+| `kp2`                                              |     0.4 |    0.75 |      1.1 |
+| `ki`                                               |   0.015 |  0.0225 |     0.03 |
+| `mahony_kp`, `mahony_kp_roll`                      |     2.2 |    1.85 |      1.5 |
+| `torquetilt_strength`, `torquetilt_strength_regen` |       0 |    0.15 |      0.3 |
+| `turntilt_speed`                                   |       0 |      50 |      100 |
+| `braketilt_lingering`                              |       5 |       3 |        1 |
+| `atr_response_boost`                               |       1 |     1.5 |        2 |
+| `atr_strength_down`, `atr_strength_up`             |       0 |       1 |        2 |
+
+Section presets are independent and affect only that section's draft fields: Feel has Soft, Firm,
+Trail, Street, Tricks, Chillout; Brake / Turn has Mission, Brake Support, Smooth, Tricks, Chillout;
+ATR has Street, Trail, Mountain, Flow. ATR fast/slow descriptions refer only to high-speed Response
+Boost. Presets neither save nor send. Their numeric candidates live in `ringModel.ts` alongside field
+ownership; calibration anchors live in `ringCalibration.ts`.
+
+The component gallery includes the production Rings editor in an isolated fixture. The
+`tune-rings` Maestro flow exercises section presets and local Save/Discard controls there without
+changing real profiles or commanding a Board. `tune-rings-states` covers custom replacement,
+missing fields, and signed Turning edits. `tune-workspace` seeds an isolated E2E Board and real
+native Tune Profiles, then exercises the main screen's shared draft, mode dropdown, menus, profile
+selection, Save, and offline board-action gating. Native config tests cover draft validation, fresh
+reads, unknown-byte preservation, verification, and cancellation of a pending Android profile load
+when the Board Session ends.
+
 ## Tune Preview model
 
 The flat-response Tune Preview uses model version `refloat-bundled-legacy-v18`, tied to
@@ -703,19 +815,19 @@ compound controls, not as harmless aliases.
 ### Save Semantics
 
 Changing slider state should be treated separately from persisting to the board.
-A safe UX has three distinct phases:
+The production editor separates four actions:
 
 - Read current config from the controller.
 - Apply edits to a local draft.
-- Explicitly write and save the final draft.
+- Save the profile locally in the app.
+- Explicitly send the current draft to the board.
 
-The current app should keep read-only tune inspection separate from future write
-paths until mutation commands, save behavior, and failure recovery are designed
-and tested.
+The production editor keeps local profile Save separate from explicit native board Read/Send as
+described above.
 
 ## Implementation Notes for This Repo
 
-Current local read-only field groups live in:
+Native tune field groups live in:
 
 ```text
 modules/vescape-core/android/src/main/java/expo/modules/vescapecore/RefloatConfigModels.kt
@@ -725,6 +837,17 @@ Before implementing writes, keep field IDs aligned with the serialized struct
 names returned by the board's `<SerOrder>`. Do not derive IDs from `cDefine`;
 those defaults are VESC Tool names and can differ from Refloat's wire-format
 field IDs, as with `atr_strength_up` / `atr_strength_down`.
+
+Offline first-profile creation offers the bundled Refloat 1.0, 1.1, 1.2 and 1.3 beta
+configuration templates. The rider chooses the compatibility version explicitly; this does not
+change the Board Link's reported firmware identity. Template values are not confirmed board values.
+The numeric Tune defaults in `src/modules/tune/lib/offlineTuneDefaults.json` are extracted from
+the corresponding `shared/fixtures/refloat-schema/settings-*.xml.zlib` files and checked against
+those sources by `offlineTune.test.ts`. Fields outside the app's Tune catalog are excluded.
+Creation and subsequent saves use native profile storage. When no board firmware version is known,
+reopening uses the current profile scope, or discovers saved profiles in the bundled compatibility
+scopes (newest first). A reported board version takes precedence. Sending still requires a trusted
+connection, matching native compatibility, and a fresh schema-validated read-patch-write.
 
 ## Profile selector summary
 

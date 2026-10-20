@@ -253,3 +253,12 @@ test('drops the snapshot when the Board Session ends', async () => {
   expect(useTuneSnapshotStore.getState().snapshot).toBeNull()
   stop()
 })
+
+test('a changed schema replaces the snapshot even when raw config bytes match', async () => {
+  const { useTuneSnapshotStore } = await import('./tuneSnapshotStore')
+  useTuneSnapshotStore.getState().setSnapshot(snapshot)
+  const changedSchema = { ...snapshot, schemaHash: 'new-schema' }
+  getRefloatConfigSnapshot.mockImplementation(async () => changedSchema)
+  await useTuneSnapshotStore.getState().read()
+  expect(useTuneSnapshotStore.getState().snapshot).toBe(changedSchema)
+})

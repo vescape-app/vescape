@@ -11,6 +11,7 @@
   "scripts": {
     "preinstall": "bun run scripts/check-bun.ts",
     "start": "expo start",
+    "prototype:tune": "EXPO_PUBLIC_VESCAPE_APP_VARIANT=development expo start --dev-client --port 8083",
     "postinstall": "bun run release-notes:build && bun run theme:android && bun run copy:shared",
     "prebuild": "expo prebuild",
     "native:sync": "bun run scripts/native-sync.ts",

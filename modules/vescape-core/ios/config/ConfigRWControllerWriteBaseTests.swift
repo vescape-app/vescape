@@ -21,6 +21,14 @@ final class ConfigRWControllerWriteBaseTests: XCTestCase {
     XCTAssertTrue(sent.frames.isEmpty)
   }
 
+  func testDraftAlwaysReadsFreshEvenWithSessionWriteBase() {
+    let sent = SentFrames()
+    let controller = ConfigRWController()
+    controller.consumeWrite(profileId: "profile-1", draftFields: ["tuned": 9.0], connection: connection(fresh(), sent), onSuccess: { _ in }, onError: { code, message in XCTFail("\(code): \(message)") })
+    XCTAssertTrue(sent.frames.contains { command($0) == COMM_GET_CUSTOM_CONFIG_XML })
+    XCTAssertFalse(sent.frames.contains { command($0) == COMM_SET_CUSTOM_CONFIG })
+  }
+
   func testFreshValuesWriteWithoutReadingFirst() {
     let sent = SentFrames()
     let controller = ConfigRWController()

@@ -1,0 +1,44 @@
+# Isolated production-editor showcase. No real profiles or board commands are changed.
+appId: ${APP_ID}
+---
+- openLink: 'vescape://settings/components/tune'
+- scrollUntilVisible:
+    element:
+      text: 'Rings production editor'
+    direction: UP
+- tapOn: 'Open Rings editor'
+- scrollUntilVisible:
+    element:
+      id: 'ring-preset-0-soft'
+    direction: DOWN
+- tapOn:
+    id: 'ring-preset-0-soft'
+- scrollUntilVisible:
+    element:
+      id: 'tune-dirty-count'
+    direction: DOWN
+- assertVisible:
+    id: 'tune-dirty-count'
+- tapOn:
+    id: 'tune-discard'
+- assertNotVisible:
+    id: 'tune-dirty-count'
+- tapOn:
+    id: 'ring-preset-0-soft'
+- tapOn:
+    id: 'tune-save'
+- assertNotVisible:
+    id: 'tune-dirty-count'
+- tapOn:
+    id: 'ring-preset-0-firm'
+- scrollUntilVisible:
+    element:
+      id: 'tune-dirty-count'
+    direction: DOWN
+- assertVisible:
+    id: 'tune-dirty-count'
+- tapOn:
+    id: 'tune-discard'
+- assertNotVisible:
+    id: 'tune-dirty-count'
+- tapOn: 'Close Rings editor'

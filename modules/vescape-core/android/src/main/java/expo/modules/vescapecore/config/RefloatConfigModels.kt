@@ -13,6 +13,8 @@ internal data class RefloatTuneGroupDefinition(
   val fields: List<RefloatTuneFieldDefinition>,
 )
 
+// @parity /modules/vescape-core/src/index.ts `RefloatConfigField`
+// @parity /modules/vescape-core/ios/config/RefloatConfigModels.swift `RefloatConfigField`
 internal data class RefloatConfigField(
   val id: String,
   val label: String,
@@ -20,6 +22,7 @@ internal data class RefloatConfigField(
   val unit: String?,
   val min: Double?,
   val max: Double?,
+  val encodingScale: Double? = null,
 ) {
   fun toMap(): Map<String, Any?> = mapOf(
     "id" to id,
@@ -28,6 +31,7 @@ internal data class RefloatConfigField(
     "unit" to unit,
     "min" to min,
     "max" to max,
+    "encodingScale" to encodingScale,
   )
 }
 

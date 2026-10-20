@@ -1,3 +1,4 @@
+import { draftBoardState } from '@/modules/tune/lib/draftBoardState'
 import { tuneCompatibilityVersion } from '@/modules/tune/lib/tuneCompatibility'
 import {
   createProfile as nativeCreateProfile,
@@ -8,7 +9,6 @@ import {
 } from 'vescape-core'
 
 import { errorMessage } from '@/helpers/error'
-import { formatTuneValue } from '@/modules/tune/lib/fields'
 import {
   DEFAULT_TUNE_PROFILE_COLOR,
   DEFAULT_TUNE_PROFILE_ICON,
@@ -16,15 +16,12 @@ import {
 import type { TuneProfileBoardDiff } from '@/modules/tune/store/tuneProfileStoreTypes'
 import { omitKey } from '@/helpers/records'
 
+/** Draft identity is exact; board equality uses native encoding metadata in boardDiff. */
 export function sameFieldValue(
   a: TuneProfileFieldValue | undefined,
   b: TuneProfileFieldValue | undefined,
 ): boolean {
-  if (a === b) return true
-  if (typeof a === 'number' && typeof b === 'number') {
-    return formatTuneValue(a) === formatTuneValue(b)
-  }
-  return false
+  return a === b
 }
 
 export function dirtyFields(
@@ -53,6 +50,7 @@ export function fieldsFromSnapshot(
 export function boardDiff(
   profile: TuneProfile | null,
   boardFields: Record<string, TuneProfileFieldValue>,
+  encodingScales: Record<string, number | null> = {},
 ): TuneProfileBoardDiff[] {
   if (!profile) return []
   return Object.entries(boardFields)
@@ -61,7 +59,12 @@ export function boardDiff(
         boardValue !== null && Object.prototype.hasOwnProperty.call(profile.fields, fieldId),
     )
     .flatMap(([fieldId, boardValue]) =>
-      sameFieldValue(profile.fields[fieldId], boardValue)
+      draftBoardState(
+        { [fieldId]: profile.fields[fieldId] },
+        { [fieldId]: boardValue },
+        true,
+        encodingScales,
+      ) === 'match'
         ? []
         : [{ fieldId, profileValue: profile.fields[fieldId], boardValue }],
     )

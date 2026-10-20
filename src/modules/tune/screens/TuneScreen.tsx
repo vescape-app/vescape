@@ -1,27 +1,41 @@
+import { createOfflineTune } from '../lib/offlineTune'
+import { useResolvedNeutralColors } from '@/hooks/useTheme'
 import { useIsFocused, useNavigation, useRouter } from 'expo-router'
-import { CaretDownIcon, CaretUpIcon, WarningCircleIcon } from 'phosphor-react-native'
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
-import { Pressable, StyleSheet, View } from 'react-native'
+import { StyleSheet } from 'react-native'
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context'
 
-import { Button } from '@/components/base/Button'
 import { Text } from '@/components/base/Text'
-import { theme } from '@/constants/theme'
 import { TuneGroupGrid } from '@/modules/tune/components/TuneGroupGrid'
 import { TunePreviewSection } from '@/modules/tune/components/TunePreviewSection'
-import { TuneSyncBar } from '@/modules/tune/components/TuneSyncBar'
+import { TuneEditorFooter } from '@/modules/tune/components/TuneEditorFooter'
+import { RingsEditor } from '@/modules/tune/components/RingsEditor'
+import { BoardPickerModal } from '@/modules/tune/components/BoardPickerModal'
+import { useBoardStore } from '@/modules/board/store/boardStore'
+import { ConfirmModal } from '@/components/modals/ConfirmModal'
+import { draftBoardState, tuneBoardActions } from '@/modules/tune/lib/draftBoardState'
 import { useTuneModals } from '@/modules/tune/hooks/useTuneModals'
 import { useTuneScreenData } from '@/modules/tune/hooks/useTuneScreenData'
 import { reportTuneCompatibilityIssue } from '@/modules/tune/lib/tuneCompatibilityReporting'
 import { BasicSliderItemCell, TuneFieldCell } from '@/modules/tune/screens/TuneFieldCells'
 import { TuneModalHost } from '@/modules/tune/screens/TuneModalHost'
 import { TuneScreenHeader } from '@/modules/tune/screens/TuneScreenHeader'
+import { TuneEditorNotices } from '@/modules/tune/components/TuneEditorNotices'
 import { TuneScreenStates } from '@/modules/tune/screens/TuneScreenStates'
 import { useTuneProfileStore } from '@/modules/tune/store/tuneProfileStore'
 import { routes } from '@/navigation/routes'
 
-/** Edits the active Tune Profile: basic sliders, advanced field groups, and the sync bar. */
-export function TuneScreen() {
+/** Edits the active Tune Profile: Rings, Floaty, Advanced, and shared draft actions. */
+export function TuneScreen({
+  mode,
+  onModeChange,
+  settingError,
+}: {
+  mode: 'rings' | 'floaty' | 'advanced'
+  onModeChange: (mode: 'rings' | 'floaty' | 'advanced') => void
+  settingError: string | null
+}) {
+  const neutral = useResolvedNeutralColors()
   const navigation = useNavigation()
   const router = useRouter()
   const insets = useSafeAreaInsets()
@@ -34,6 +48,7 @@ export function TuneScreen() {
     boardDiffByField,
     boardSnapshot,
     boardSnapshotStatus,
+    boardSnapshotError,
     boardsLoaded,
     dirtyFields,
     displayGroups,
@@ -46,21 +61,67 @@ export function TuneScreen() {
     profileFields,
     profileState,
     profiles,
-    retryBoardSnapshot,
     schemaMismatchFields,
     selectedBoardId,
-    syncBarState,
     tuneCompatibilityIssue,
   } = useTuneScreenData()
+  const [boardPickerVisible, setBoardPickerVisible] = useState(false)
+  const setActiveBoard = useBoardStore((state) => state.setActiveBoard)
+  const encodingScales = Object.fromEntries(
+    boardSnapshot?.groups.flatMap((group) =>
+      group.fields.map((field) => [field.id, field.encodingScale]),
+    ) ?? [],
+  )
+
   const reportedCompatibilityIssue = useRef<string | null>(null)
-  const [advancedSettingsVisible, setAdvancedSettingsVisible] = useState(false)
+  const [confirmAction, setConfirmAction] = useState<(() => void) | null>(null)
+  const noticesError =
+    profileError ??
+    boardSnapshotError ??
+    tuneCompatibilityIssue?.message ??
+    firmwareCommandBlockReason
+  const dirtyCount = Object.keys(dirtyFields).length
+  const syncing = useTuneProfileStore((state) => state.syncing)
+  const saving = useTuneProfileStore((state) => state.saving)
+  const boardActions = tuneBoardActions({
+    connected: boardConnected,
+    trusted: firmwareCommandsTrusted,
+    snapshotReady: boardSnapshotStatus === 'ready',
+    schemaMismatch: schemaMismatchFields != null,
+    compatibilityIssue: tuneCompatibilityIssue != null,
+    busy: syncing,
+    error: profileError != null,
+  })
+  const readBoardToDraft = useTuneProfileStore((state) => state.readBoardToDraft)
+  const sendDraftToBoard = useTuneProfileStore((state) => state.sendDraftToBoard)
+  const boardFields = useTuneProfileStore((state) => state.boardFields)
   const setActiveProfile = useTuneProfileStore((s) => s.setActiveProfile)
+  const guardedAction = useCallback(
+    (action: () => void) => {
+      if (dirtyCount > 0) setConfirmAction(() => action)
+      else action()
+    },
+    [dirtyCount],
+  )
+  const readDraft = useCallback(
+    () =>
+      guardedAction(() => {
+        if (useTuneProfileStore.getState().activeProfile?.id === activeProfile?.id)
+          void readBoardToDraft()
+      }),
+    [activeProfile?.id, guardedAction, readBoardToDraft],
+  )
+  const selectProfile = useCallback(
+    (id: string) => {
+      if (id !== activeProfile?.id) guardedAction(() => setActiveProfile(id))
+    },
+    [activeProfile?.id, guardedAction, setActiveProfile],
+  )
+  const setDraftFields = useTuneProfileStore((state) => state.setDraftFields)
   const revertField = useTuneProfileStore((s) => s.revertField)
   const acceptBoardField = useTuneProfileStore((s) => s.acceptBoardField)
-  const acceptAllBoardValues = useTuneProfileStore((s) => s.acceptAllBoardValues)
   const discardAllEdits = useTuneProfileStore((s) => s.discardAllEdits)
   const saveActiveProfile = useTuneProfileStore((s) => s.saveActiveProfile)
-  const syncToBoard = useTuneProfileStore((s) => s.syncToBoard)
 
   const modals = useTuneModals(activeProfile, basicSliders, draftFields, allBoards, selectedBoardId)
 
@@ -83,19 +144,24 @@ export function TuneScreen() {
       header: () => (
         <TuneScreenHeader
           paddingTop={Math.max(insets.top, 8)}
+          mode={mode}
+          onModeChange={onModeChange}
           profiles={profiles}
           activeProfile={activeProfile}
           boardConnected={boardConnected}
           boardSnapshotStatus={boardSnapshotStatus}
           firmwareCommandsTrusted={firmwareCommandsTrusted}
           modals={modals}
-          onSelectProfile={setActiveProfile}
+          onSelectProfile={selectProfile}
           onOpenHistory={openHistory}
-          onReadBoard={() => void loadOnline()}
+          onReadBoard={readDraft}
+          onOpenBoards={() => setBoardPickerVisible(true)}
         />
       ),
     })
   }, [
+    mode,
+    onModeChange,
     activeProfile,
     boardConnected,
     boardSnapshotStatus,
@@ -107,6 +173,8 @@ export function TuneScreen() {
     profiles,
     modals,
     setActiveProfile,
+    selectProfile,
+    readDraft,
   ])
 
   const handleSave = () => {
@@ -114,25 +182,15 @@ export function TuneScreen() {
     void saveActiveProfile().catch(() => undefined) // Store error renders in the banner below.
   }
 
-  const handleSaveAndSync = () => {
-    if (!firmwareCommandsTrusted) return
-    // intentional-suppression: Tune store error is rendered by the active screen or modal
-    void (async () => {
-      await saveActiveProfile()
-      await syncToBoard()
-    })().catch(() => undefined) // Store error renders in the banner below.
-  }
-
-  const handleSync = () => {
-    if (!firmwareCommandsTrusted) return
-    // intentional-suppression: Tune store error is rendered by the active screen or modal
-    void syncToBoard().catch(() => undefined) // Store error renders in the banner below.
+  const handleSend = () => {
+    // intentional-suppression: Tune store error is rendered by the active screen
+    void sendDraftToBoard().catch(() => undefined)
   }
 
   const hasTuneView = activeProfile != null
 
   return (
-    <SafeAreaView style={styles.container} edges={['bottom']}>
+    <SafeAreaView style={[styles.container, { backgroundColor: neutral.bg }]} edges={['bottom']}>
       <TuneScreenStates
         hasTuneView={hasTuneView}
         boardsLoaded={boardsLoaded}
@@ -143,90 +201,68 @@ export function TuneScreen() {
         firmwareCommandBlockReason={firmwareCommandBlockReason}
         loadOnline={loadOnline}
         loadOffline={loadOffline}
+        onCreateOffline={async (version) => {
+          if (!selectedBoardId) return
+          await createOfflineTune(selectedBoardId, version)
+          if (useBoardStore.getState().activeBoardId !== selectedBoardId) return
+          await loadOffline(selectedBoardId, version)
+        }}
         onCreateFirstProfile={() => {
           // intentional-suppression: Tune store error is rendered by the active screen or modal
           void modals.storeCreateProfile('Main', '', '').catch(() => undefined) // Tune error state replaces the empty screen.
         }}
       />
 
+      {settingError ? <Text>{settingError}</Text> : null}
+      {mode === 'rings' ? (
+        <TuneEditorNotices
+          error={noticesError}
+          schemaMismatchFields={schemaMismatchFields}
+          showBadgeInfo={modals.showBadgeInfo}
+        />
+      ) : null}
+      {mode === 'rings' && activeProfile && profileFields ? (
+        <RingsEditor
+          key={activeProfile.id}
+          active={isFocused}
+          fields={profileFields}
+          savedFields={activeProfile.fields}
+          disabled={syncing}
+          encodingScales={encodingScales}
+          onPatch={setDraftFields}
+        />
+      ) : null}
       <TunePreviewSection
         fields={profileFields ?? {}}
         active={isFocused}
-        visible={hasTuneView}
+        visible={hasTuneView && mode !== 'rings'}
         railId={allBoards.find((board) => board.id === selectedBoardId)?.personalization?.railId}
         railColorId={
           allBoards.find((board) => board.id === selectedBoardId)?.personalization?.railColorId
         }
       >
-        {profileError ? (
-          <View style={styles.errorBanner}>
-            <WarningCircleIcon size={16} color={theme.status.error.color} />
-            <Text style={styles.errorBannerText}>{profileError}</Text>
-          </View>
+        <TuneEditorNotices
+          error={noticesError}
+          schemaMismatchFields={schemaMismatchFields}
+          showBadgeInfo={modals.showBadgeInfo}
+        />
+
+        {mode === 'floaty' ? (
+          <TuneGroupGrid title="Basic">
+            {basicSliders.map((item) => (
+              <BasicSliderItemCell
+                key={item.id}
+                item={item}
+                editable={activeProfile != null}
+                fullWidth={item.id === 'aggressiveness' || item.id === 'atrIntensity'}
+                onPress={modals.openBasicSliderEditor}
+                onResetFormula={() => modals.handleBasicSliderReset(item.id)}
+              />
+            ))}
+          </TuneGroupGrid>
         ) : null}
 
-        {schemaMismatchFields ? (
-          <Pressable
-            style={styles.schemaMismatchBar}
-            onPress={() =>
-              modals.showBadgeInfo(
-                'Schema Mismatch',
-                `Profile and board have different field sets.${
-                  schemaMismatchFields.profileOnly.length > 0
-                    ? `\n\nIn profile but not board: ${schemaMismatchFields.profileOnly.join(', ')}`
-                    : ''
-                }${
-                  schemaMismatchFields.boardOnly.length > 0
-                    ? `\n\nIn board but not profile: ${schemaMismatchFields.boardOnly.join(', ')}`
-                    : ''
-                }`,
-              )
-            }
-          >
-            <WarningCircleIcon size={16} color={theme.palette.yellow.color} weight="fill" />
-            <View style={styles.schemaMismatchTextWrap}>
-              <Text style={styles.schemaMismatchTitle}>Schema mismatch</Text>
-              <Text style={styles.schemaMismatchText}>
-                {schemaMismatchFields.profileOnly.length > 0
-                  ? `${schemaMismatchFields.profileOnly.length} field${schemaMismatchFields.profileOnly.length === 1 ? '' : 's'} in profile not on board`
-                  : ''}
-                {schemaMismatchFields.profileOnly.length > 0 &&
-                schemaMismatchFields.boardOnly.length > 0
-                  ? ' · '
-                  : ''}
-                {schemaMismatchFields.boardOnly.length > 0
-                  ? `${schemaMismatchFields.boardOnly.length} new field${schemaMismatchFields.boardOnly.length === 1 ? '' : 's'} on board`
-                  : ''}
-              </Text>
-            </View>
-          </Pressable>
-        ) : null}
-
-        <TuneGroupGrid title="Basic">
-          {basicSliders.map((item) => (
-            <BasicSliderItemCell
-              key={item.id}
-              item={item}
-              editable={activeProfile != null}
-              fullWidth={item.id === 'aggressiveness' || item.id === 'atrIntensity'}
-              onPress={modals.openBasicSliderEditor}
-              onResetFormula={() => modals.handleBasicSliderReset(item.id)}
-            />
-          ))}
-        </TuneGroupGrid>
-
-        <View style={styles.advancedSettingsToggle}>
-          <Button
-            label={advancedSettingsVisible ? 'Hide advanced settings' : 'Show advanced settings'}
-            icon={advancedSettingsVisible ? CaretUpIcon : CaretDownIcon}
-            iconPosition="right"
-            variant="secondary"
-            size="sm"
-            onPress={() => setAdvancedSettingsVisible((visible) => !visible)}
-          />
-        </View>
-
-        {advancedSettingsVisible
+        {mode === 'advanced'
           ? displayGroups.map((group) => (
               <TuneGroupGrid
                 key={group.id}
@@ -262,18 +298,49 @@ export function TuneScreen() {
           : null}
       </TunePreviewSection>
 
-      {hasTuneView && !modals.editor ? (
-        <TuneSyncBar
-          state={syncBarState}
+      {hasTuneView ? (
+        <TuneEditorFooter
+          selector={{ profiles, activeProfile, modals, onSelectProfile: selectProfile }}
+          dirtyCount={dirtyCount}
+          saving={saving}
+          busy={syncing}
+          reading={boardSnapshotStatus === 'loading'}
+          boardConnected={boardConnected}
+          canRead={boardActions.canRead}
+          canSend={boardActions.canSend}
+          boardState={draftBoardState(
+            profileFields ?? {},
+            boardFields,
+            boardActions.confirmed,
+            encodingScales,
+          )}
           onSave={handleSave}
-          onSaveAndSync={handleSaveAndSync}
-          onSync={handleSync}
-          onUpdateTune={acceptAllBoardValues}
           onDiscard={discardAllEdits}
-          onRetryConfig={() => void retryBoardSnapshot()}
-          bottomOffset={Math.max(insets.bottom, 24) + 16}
+          onRead={readDraft}
+          onSend={handleSend}
         />
       ) : null}
+      <ConfirmModal
+        visible={confirmAction != null}
+        title="Replace unsaved edits?"
+        message="This replaces your current draft. The saved profile and board remain unchanged."
+        confirmLabel="Continue"
+        onCancel={() => setConfirmAction(null)}
+        onConfirm={() => {
+          confirmAction?.()
+          setConfirmAction(null)
+        }}
+      />
+      <BoardPickerModal
+        title="Select tune board"
+        visible={boardPickerVisible}
+        boards={allBoards}
+        onDismiss={() => setBoardPickerVisible(false)}
+        onSelect={(board) => {
+          setBoardPickerVisible(false)
+          if (board.id !== selectedBoardId) guardedAction(() => setActiveBoard(board.id))
+        }}
+      />
       <TuneModalHost modals={modals} />
     </SafeAreaView>
   )
@@ -282,47 +349,5 @@ export function TuneScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: theme.neutral.bg,
-  },
-  errorBanner: {
-    flexDirection: 'row',
-    gap: 8,
-    alignItems: 'center',
-    backgroundColor: theme.status.error.bg,
-    borderColor: theme.status.error.border,
-    borderWidth: 1,
-    borderRadius: 8,
-    padding: 12,
-  },
-  errorBannerText: {
-    color: theme.status.error.text,
-    flex: 1,
-  },
-  schemaMismatchBar: {
-    flexDirection: 'row',
-    gap: 10,
-    alignItems: 'center',
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: theme.palette.yellow.border,
-    backgroundColor: theme.palette.yellow.bg,
-    padding: 12,
-  },
-  schemaMismatchTextWrap: {
-    flex: 1,
-    gap: 2,
-  },
-  schemaMismatchTitle: {
-    color: theme.palette.yellow.text,
-    fontSize: 13,
-    fontWeight: '900',
-  },
-  schemaMismatchText: {
-    color: theme.palette.yellow.color,
-    fontSize: 11,
-    fontWeight: '700',
-  },
-  advancedSettingsToggle: {
-    alignItems: 'center',
   },
 })

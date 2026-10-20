@@ -1,4 +1,7 @@
+import { errorMessage } from '@/helpers/error'
 import { useCallback, useEffect, useMemo } from 'react'
+import { getTuneProfiles } from 'vescape-core'
+import { OFFLINE_REFLOAT_VERSIONS } from '../lib/offlineTune'
 import type { RefloatConfigGroup, RefloatConfigSnapshot, TuneProfileFieldValue } from 'vescape-core'
 
 import { useBoardStore } from '@/modules/board/store/boardStore'
@@ -18,8 +21,11 @@ import {
 } from '@/modules/board/lib/boardLinkIntegrity'
 import { isDisplayableFieldValue } from '@/modules/tune/lib/fieldValues'
 import { basicSlidersFromGroups } from '@/modules/tune/lib/sliderDefinitions'
-import { getSyncBarState } from '@/modules/tune/lib/syncBarState'
-import { getTuneCompatibilityIssue } from '@/modules/tune/lib/tuneCompatibility'
+import { isCompatibleProfile } from '@/modules/tune/store/tuneProfileHelpers'
+import {
+  getTuneCompatibilityIssue,
+  tuneCompatibilityVersion,
+} from '@/modules/tune/lib/tuneCompatibility'
 
 type ProfileState =
   | { phase: 'loading'; error: null }
@@ -33,8 +39,10 @@ export async function refreshBoardSnapshotAndProfiles({
   selectedBoardId,
   readBoardSnapshot,
   loadProfiles,
+  preserveDraft = () => false,
 }: {
   boardConnected: boolean
+  preserveDraft?: () => boolean
   firmwareCommandsTrusted?: boolean
   selectedBoardId: string | null
   readBoardSnapshot: () => Promise<RefloatConfigSnapshot | null>
@@ -43,7 +51,7 @@ export async function refreshBoardSnapshotAndProfiles({
   if (!boardConnected || !firmwareCommandsTrusted) return
   const snapshot = await readBoardSnapshot()
   const boardId = snapshot?.boardId ?? selectedBoardId
-  if (boardId && boardId === selectedBoardId) {
+  if (!preserveDraft() && boardId && boardId === selectedBoardId) {
     // intentional-suppression: Tune store error is rendered by the active screen or modal
     await loadProfiles(boardId, snapshot).catch(() => [])
   }
@@ -101,8 +109,9 @@ export function useTuneScreenData() {
     [boardConfigValues, currentBoardSnapshot, selectedBoardId],
   )
   const boardValues: TuneBoardValues | null = currentBoardSnapshot ?? prefill
-  const tuneCompatibility =
-    currentBoardSnapshot?.refloatBaseVersion ?? selectedBoard?.link?.refloatBaseVersion ?? null
+  const tuneCompatibility = tuneCompatibilityVersion(
+    currentBoardSnapshot?.refloatBaseVersion ?? selectedBoard?.link?.refloatBaseVersion ?? null,
+  )
   const tuneCompatibilityIssue = useMemo(
     () =>
       boardSnapshotStatus === 'ready'
@@ -116,22 +125,46 @@ export function useTuneScreenData() {
   const activeProfile = useTuneProfileStore((s) => s.activeProfile)
   const profileBoardId = useTuneProfileStore((s) => s.activeBoardId)
   const draftFields = useTuneProfileStore((s) => s.draftFields)
-  const hasDirtyFields = useTuneProfileStore((s) => s.hasDirtyFields)
   const profileLoading = useTuneProfileStore((s) => s.loading)
-  const savingProfile = useTuneProfileStore((s) => s.saving)
-  const syncingProfile = useTuneProfileStore((s) => s.syncing)
   const profileError = useTuneProfileStore((s) => s.error)
   const boardDiff = useTuneProfileStore((s) => s.boardDiff)
-  const hasBoardDiff = useTuneProfileStore((s) => s.hasBoardDiff)
   const loadProfiles = useTuneProfileStore((s) => s.loadProfiles)
   const setBoardSnapshot = useTuneProfileStore((s) => s.setBoardSnapshot)
   const getDirtyFields = useTuneProfileStore((s) => s.getDirtyFields)
   const clearProfiles = useTuneProfileStore((s) => s.clear)
   const loadProfileConfig = useCallback(
-    async (boardId: string) => {
+    async (boardId: string, chosenVersion?: string) => {
+      const state = useTuneProfileStore.getState()
+      let compatibility = chosenVersion ?? tuneCompatibility
+      if (!compatibility && state.activeBoardId === boardId)
+        compatibility = state.refloatBaseVersion
+      if (!compatibility) {
+        try {
+          for (const version of [...OFFLINE_REFLOAT_VERSIONS].reverse()) {
+            if ((await getTuneProfiles(boardId, version)).length) {
+              compatibility = version
+              break
+            }
+          }
+        } catch (error) {
+          if (useBoardStore.getState().activeBoardId === boardId) {
+            useTuneProfileStore.setState({
+              activeBoardId: boardId,
+              loading: false,
+              error: errorMessage(error, 'Unable to load offline tunes.'),
+            })
+          }
+          return
+        }
+      }
+      // A version lookup can finish after the rider has selected another Board or opened a profile.
+      if (useBoardStore.getState().activeBoardId !== boardId) return
+      const latest = useTuneProfileStore.getState()
+      if (latest.activeProfile && isCompatibleProfile(latest.activeProfile, boardId, compatibility))
+        return
       setBoardSnapshot(null)
       // intentional-suppression: Tune store error is rendered by the active screen or modal
-      await loadProfiles(boardId, tuneCompatibility).catch(() => [])
+      await loadProfiles(boardId, compatibility).catch(() => [])
     },
     [loadProfiles, setBoardSnapshot, tuneCompatibility],
   )
@@ -141,6 +174,7 @@ export function useTuneScreenData() {
       boardConnected,
       firmwareCommandsTrusted,
       selectedBoardId,
+      preserveDraft: () => useTuneProfileStore.getState().activeProfile != null,
       readBoardSnapshot,
       loadProfiles: (boardId, snapshot) =>
         // intentional-suppression: Tune store error is rendered by the active screen or modal
@@ -193,8 +227,8 @@ export function useTuneScreenData() {
   // Only the fresh Tune Snapshot backs the board diff and "accept board value": a diff is a
   // comparison against the board, and a lastKnown value is not board truth (ADR 0035).
   useEffect(() => {
-    setBoardSnapshot(boardSnapshot)
-  }, [boardSnapshot, setBoardSnapshot])
+    setBoardSnapshot(currentBoardSnapshot)
+  }, [currentBoardSnapshot, setBoardSnapshot])
 
   const profileFields = useMemo(
     () => (activeProfile ? { ...activeProfile.fields, ...draftFields } : null),
@@ -264,40 +298,6 @@ export function useTuneScreenData() {
     [boardDiff],
   )
 
-  const boardSnapshotReady = firmwareCommandsTrusted && boardSnapshotStatus === 'ready'
-  const syncBarState = useMemo(
-    () =>
-      getSyncBarState({
-        hasProfile: activeProfile != null,
-        bleStatus,
-        hasDirtyFields,
-        hasBoardDiff,
-        dirtyCount: Object.keys(dirtyFields).length,
-        diffCount: boardDiff.length,
-        loadingConfig: firmwareCommandsTrusted && boardSnapshotStatus === 'loading',
-        configError:
-          firmwareCommandBlockReason ?? (firmwareCommandsTrusted ? boardSnapshotError : null),
-        boardSnapshotReady,
-        saving: savingProfile,
-        syncing: syncingProfile,
-      }),
-    [
-      activeProfile,
-      bleStatus,
-      firmwareCommandsTrusted,
-      firmwareCommandBlockReason,
-      boardSnapshotError,
-      boardSnapshotReady,
-      boardSnapshotStatus,
-      hasDirtyFields,
-      hasBoardDiff,
-      dirtyFields,
-      boardDiff,
-      savingProfile,
-      syncingProfile,
-    ],
-  )
-
   return {
     activeProfile,
     allBoards,
@@ -308,7 +308,7 @@ export function useTuneScreenData() {
     firmwareCommandsTrusted,
     boardDiff,
     boardDiffByField,
-    boardSnapshot: boardSnapshot as RefloatConfigSnapshot | null,
+    boardSnapshot: currentBoardSnapshot,
     boardSnapshotError,
     boardSnapshotStatus,
     boardsLoaded,
@@ -324,7 +324,6 @@ export function useTuneScreenData() {
     retryBoardSnapshot,
     schemaMismatchFields,
     selectedBoardId,
-    syncBarState,
     tuneCompatibilityIssue,
   }
 }

@@ -22,5 +22,10 @@
     "key": "wearTelemetryTrailEnabled",
     "default": true,
     "selected": false
+  },
+  "tuneEditor": {
+    "key": "tuneEditorMode",
+    "default": "rings",
+    "selected": "advanced"
   }
 }

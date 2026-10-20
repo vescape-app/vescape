@@ -8,6 +8,7 @@ import {
   EyeSlashIcon,
   ListBulletsIcon,
   PathIcon,
+  SlidersHorizontalIcon,
   PlayIcon,
   RecordIcon,
   SwatchesIcon,
@@ -52,6 +53,12 @@ const DEV_PAGE_SHORTCUTS = [
     route: routes.devRailGeneratorPrototype,
     icon: PathIcon,
     iconColor: theme.palette.cyan.color,
+  },
+  {
+    label: 'Rings calibration',
+    route: routes.settingsRingsCalibration,
+    icon: SlidersHorizontalIcon,
+    iconColor: theme.tune.color,
   },
   {
     label: 'Other',
@@ -229,7 +236,8 @@ const styles = StyleSheet.create({
   menu: {
     position: 'absolute',
     top: 30,
-    width: 246,
+    width: DEV_PAGE_SHORTCUTS.length * 42 + (DEV_PAGE_SHORTCUTS.length - 1) * 4 + 18,
+    maxWidth: '95%',
     padding: 8,
     gap: 2,
     borderWidth: 1,
@@ -239,6 +247,8 @@ const styles = StyleSheet.create({
   },
   shortcuts: {
     flexDirection: 'row',
+    flexWrap: 'wrap',
+    justifyContent: 'center',
     gap: 4,
   },
   shortcut: {

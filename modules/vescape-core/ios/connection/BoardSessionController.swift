@@ -564,6 +564,7 @@ internal final class BoardSessionController: VescGattListener {
   /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/config/ConfigRWController.kt `consumeWrite`
   func pushProfileToBoard(
     profileId: String,
+    draftFields: [String: Any]? = nil,
     onSuccess: @escaping ([String: Any?]) -> Void,
     onError: @escaping (String, String) -> Void
   ) {
@@ -576,6 +577,7 @@ internal final class BoardSessionController: VescGattListener {
     }
     configController.consumeWrite(
       profileId: profileId,
+      draftFields: draftFields,
       connection: configConnection(config),
       onSuccess: onSuccess,
       onError: onError

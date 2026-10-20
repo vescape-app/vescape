@@ -38,6 +38,10 @@ internal object RefloatConfigDecoder {
           unit = schemaField.unit ?: fieldDef.unitFallback,
           min = schemaField.min,
           max = schemaField.max,
+          encodingScale = when (schemaField.type) {
+            RefloatConfigValueType.FLOAT16_SCALED, RefloatConfigValueType.FLOAT32_SCALED -> schemaField.scale?.takeIf { it > 0 && it.isFinite() }
+            else -> null
+          },
         )
       }
       if (fields.isEmpty()) null else RefloatConfigGroup(groupDef.id, groupDef.title, fields)

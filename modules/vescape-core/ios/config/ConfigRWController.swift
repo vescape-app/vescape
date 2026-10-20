@@ -44,6 +44,7 @@ private struct ConfigReadContext {
 }
 
 private struct ConfigWriteContext {
+  var draft = false
   let opId: String
   let canId: Int?
   let transport: BoardTransport
@@ -134,6 +135,7 @@ internal final class ConfigRWController {
 
   func consumeWrite(
     profileId: String,
+    draftFields: [String: Any]? = nil,
     connection: ConfigRWConnection,
     onSuccess: @escaping ([String: Any?]) -> Void,
     onError: @escaping (String, String) -> Void
@@ -173,11 +175,16 @@ internal final class ConfigRWController {
       onError(RefloatConfigErrorCode.PROFILE_BOARD_MISMATCH.rawValue, "Tune profile does not match the connected board Refloat Tune Compatibility")
       return
     }
-    let fields = ((profile["fields"] ?? nil) as? [String: Any]) ?? [:]
+    if draftFields?.values.contains(where: { $0 is NSNull }) == true {
+      onError(RefloatConfigErrorCode.CONFIG_ENCODE_FAILED.rawValue, "Draft values cannot be null")
+      return
+    }
+    let fields = draftFields ?? ((profile["fields"] ?? nil) as? [String: Any]) ?? [:]
     let wasPolling = connection.isPollingActive()
     connection.stopPolling()
     writeCallbacks = PendingConfigWrite(onSuccess: onSuccess, onError: onError)
     let ctx = ConfigWriteContext(
+      draft: draftFields != nil,
       opId: UUID().uuidString.lowercased(),
       canId: connection.transport.canId,
       transport: connection.transport,
@@ -191,7 +198,7 @@ internal final class ConfigRWController {
     // only have changed through our own writes — the session's `fresh` bytes are still the board's
     // bytes and back the write directly. `lastKnown` values carry no write base by construction,
     // so a cache-restored session falls through to the read (ADR 0035).
-    if let writeBase = connection.boardConfigValues?.writeBase {
+    if draftFields == nil, let writeBase = connection.boardConfigValues?.writeBase {
       sendWrite(ctx, writeBase.schema, writeBase.rawConfig, writeBase.packageSignature, .sendingWrite, connection)
       return
     }
@@ -404,7 +411,7 @@ internal final class ConfigRWController {
     _ connection: ConfigRWConnection
   ) {
     do {
-      let patched = try RefloatConfigEncoder.encode(schema: schema, rawConfig: rawConfig, fields: ctx.profileFields)
+      let patched = try RefloatConfigEncoder.encode(schema: schema, rawConfig: rawConfig, fields: ctx.profileFields, strict: ctx.draft)
       state = .writeAwaitingSetAck(ctx, schema, rawConfig, patched)
       cancelTimeout()
       scheduleTimeout(.CONFIG_WRITE_TIMEOUT, CONFIG_WRITE_TIMEOUT_MS, connection)

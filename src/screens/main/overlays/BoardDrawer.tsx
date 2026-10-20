@@ -6,6 +6,7 @@ import { router } from 'expo-router'
 import { BoardLightsControl } from '@/modules/board/components/BoardLightsControl'
 import { BoardMoveControl } from '@/modules/board/components/BoardMoveControl'
 import { RemoteTiltControl } from '@/modules/board/components/RemoteTiltControl'
+import { ConfirmModal } from '@/components/modals/ConfirmModal'
 import { InfoModal } from '@/components/modals/InfoModal'
 import {
   tuneProfileColorTheme,
@@ -25,6 +26,8 @@ import { useBleStore } from '@/modules/board/store/bleStore'
 import { useBoardStore } from '@/modules/board/store/boardStore'
 import { useLegalModeStore } from '@/modules/legal/store/legalModeStore'
 import { useSettingsStore } from '@/modules/settings/store/settingsStore'
+import { isCompatibleProfile } from '@/modules/tune/store/tuneProfileHelpers'
+import { tuneCompatibilityVersion } from '@/modules/tune/lib/tuneCompatibility'
 import { useTuneProfileStore } from '@/modules/tune/store/tuneProfileStore'
 
 interface TuneDrawerProps {
@@ -34,12 +37,13 @@ interface TuneDrawerProps {
 
 export function BoardDrawer({ onNavigate, onOpenLegalLimits }: TuneDrawerProps) {
   const formatReferenceSpeed = useLegalReferenceSpeedFormat()
+  const [pendingProfileId, setPendingProfileId] = useState<string | null>(null)
   const [legalWarningOpen, setLegalWarningOpen] = useState(false)
   // The message outlives `visible` on purpose: `FadeCardModal` keeps rendering its children through
   // the exit animation, so clearing it on dismiss would blank the card as it fades.
   const [legalModeError, setLegalModeError] = useState({ message: '', visible: false })
   const activeBoardId = useBoardStore((state) => state.activeBoardId)
-  const tuneCompatibility = useBoardStore(
+  const reportedCompatibility = useBoardStore(
     (state) =>
       state.boards.find((board) => board.id === state.activeBoardId)?.link?.refloatBaseVersion ??
       null,
@@ -49,6 +53,9 @@ export function BoardDrawer({ onNavigate, onOpenLegalLimits }: TuneDrawerProps) 
   const profileLoading = useTuneProfileStore((state) => state.loading)
   const profileBoardId = useTuneProfileStore((state) => state.activeBoardId)
   const profileCompatibility = useTuneProfileStore((state) => state.refloatBaseVersion)
+  const tuneCompatibility =
+    tuneCompatibilityVersion(reportedCompatibility) ??
+    (profileBoardId === activeBoardId ? profileCompatibility : null)
   const loadProfiles = useTuneProfileStore((state) => state.loadProfiles)
   const setActiveProfile = useTuneProfileStore((state) => state.setActiveProfile)
   const legalModeEnabled = useBoardStore(
@@ -72,22 +79,27 @@ export function BoardDrawer({ onNavigate, onOpenLegalLimits }: TuneDrawerProps) 
   const quickControlsEnabled = boardConnected && canRunFirmwareCommand(linkIntegrity)
   const waitingForTrustedLink = boardConnected && !quickControlsEnabled
   const profilesForBoard = profilesLoadedForBoard
-    ? profiles.filter(
-        (profile) =>
-          profile.boardId === activeBoardId && profile.refloatBaseVersion === tuneCompatibility,
-      )
+    ? profiles.filter((profile) => isCompatibleProfile(profile, activeBoardId, tuneCompatibility))
     : []
   const activeProfileForBoard =
     profilesLoadedForBoard &&
-    activeProfile?.boardId === activeBoardId &&
-    activeProfile.refloatBaseVersion === tuneCompatibility
+    activeProfile != null &&
+    isCompatibleProfile(activeProfile, activeBoardId, tuneCompatibility)
       ? activeProfile
       : null
   const hasProfiles = profilesForBoard.length > 0
 
   useEffect(() => {
+    if (!activeBoardId) return
+    const current = useTuneProfileStore.getState()
+    // The drawer and editor share a draft. Reopening quick settings must not reload it.
+    if (
+      current.activeProfile &&
+      isCompatibleProfile(current.activeProfile, activeBoardId, tuneCompatibility)
+    )
+      return
     // intentional-suppression: board config store error is rendered by the drawer
-    if (activeBoardId) void loadProfiles(activeBoardId, tuneCompatibility).catch(() => undefined) // Store error renders in this drawer.
+    void loadProfiles(activeBoardId, tuneCompatibility).catch(() => undefined) // Store error renders in this drawer.
   }, [activeBoardId, loadProfiles, tuneCompatibility])
 
   const openTune = () => {
@@ -96,6 +108,12 @@ export function BoardDrawer({ onNavigate, onOpenLegalLimits }: TuneDrawerProps) 
   }
 
   const openProfile = (profileId: string) => {
+    const current = useTuneProfileStore.getState()
+    if (current.activeProfile?.id === profileId) return
+    if (Object.keys(current.getDirtyFields()).length > 0) {
+      setPendingProfileId(profileId)
+      return
+    }
     setActiveProfile(profileId)
   }
 
@@ -181,6 +199,17 @@ export function BoardDrawer({ onNavigate, onOpenLegalLimits }: TuneDrawerProps) 
         </View>
       </View>
 
+      <ConfirmModal
+        visible={pendingProfileId != null}
+        title="Discard unsaved tune changes?"
+        message="Switching profiles discards your unsaved edits in the app. Nothing is sent to the board."
+        confirmLabel="Switch profile"
+        onCancel={() => setPendingProfileId(null)}
+        onConfirm={() => {
+          if (pendingProfileId) setActiveProfile(pendingProfileId)
+          setPendingProfileId(null)
+        }}
+      />
       <InfoModal
         visible={legalWarningOpen}
         title="Legal Road Status"

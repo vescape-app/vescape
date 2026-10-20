@@ -1,0 +1,73 @@
+# Current-workspace E2E dev client. Real native profiles on an isolated fake Board;
+# no BLE commands and no app-state clearing.
+appId: ${APP_ID}
+---
+- openLink: 'vescape://e2e-seed?flow=tune'
+- extendedWaitUntil:
+    visible:
+      id: tune-mode
+    timeout: 30000
+- assertVisible: E2E Rings
+- assertVisible:
+    id: tune-read-board
+    enabled: false
+- assertVisible:
+    id: tune-send-board
+    enabled: false
+- takeScreenshot: tune-workspace-clean
+- tapOn:
+    id: ring-preset-0-soft
+- assertVisible:
+    id: tune-dirty-count
+- tapOn:
+    id: tune-mode
+- tapOn:
+    id: tune-mode-option-floaty
+- assertVisible:
+    id: tune-dirty-count
+- tapOn:
+    id: tune-mode
+- tapOn:
+    id: tune-mode-option-advanced
+- assertVisible:
+    id: tune-dirty-count
+- tapOn:
+    id: tune-mode
+- tapOn:
+    id: tune-mode-option-rings
+- assertVisible:
+    id: tune-dirty-count
+- takeScreenshot: tune-workspace-dirty
+- tapOn:
+    id: tune-discard
+- assertNotVisible:
+    id: tune-dirty-count
+- tapOn: E2E Trail
+- tapOn:
+    id: tune-menu
+- tapOn: Edit tune metadata
+- tapOn: Cancel
+- tapOn:
+    id: tune-menu
+- tapOn: Select tune board
+- assertVisible: E2E Tune Board
+- back
+- tapOn: E2E Rings
+- tapOn:
+    id: ring-preset-0-firm
+- tapOn:
+    id: tune-save
+- assertNotVisible:
+    id: tune-dirty-count
+- tapOn: E2E Trail
+- tapOn: E2E Rings
+- assertNotVisible:
+    id: tune-dirty-count
+- tapOn: '2 · Brake / Turn'
+- assertVisible:
+    id: ring-control-5
+- tapOn: '3 · ATR'
+- assertVisible:
+    id: ring-control-8
+- tapOn: '1 · Feel'
+- takeScreenshot: tune-workspace-saved

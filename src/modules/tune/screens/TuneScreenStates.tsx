@@ -1,3 +1,7 @@
+import { useState } from 'react'
+import { Select } from '@/components/forms/Select'
+import { OFFLINE_REFLOAT_VERSIONS } from '../lib/offlineTune'
+import { errorMessage } from '@/helpers/error'
 import { ActivityIndicator, StyleSheet, View } from 'react-native'
 import {
   ArrowsClockwiseIcon,
@@ -26,6 +30,7 @@ export function TuneScreenStates({
   loadOnline,
   loadOffline,
   onCreateFirstProfile,
+  onCreateOffline,
 }: {
   hasTuneView: boolean
   boardsLoaded: TuneScreenData['boardsLoaded']
@@ -37,7 +42,11 @@ export function TuneScreenStates({
   loadOnline: TuneScreenData['loadOnline']
   loadOffline: TuneScreenData['loadOffline']
   onCreateFirstProfile: () => void
+  onCreateOffline: (version: string) => Promise<void>
 }) {
+  const [version, setVersion] = useState('1.2')
+  const [creating, setCreating] = useState(false)
+  const [creationError, setCreationError] = useState<string | null>(null)
   return (
     <>
       {!selectedBoardId && boardsLoaded && !hasTuneView ? (
@@ -59,10 +68,12 @@ export function TuneScreenStates({
         <View style={styles.mainState}>
           <Placeholder
             icon={FadersIcon}
-            title="Create tune based on board config"
+            title="Create your first tune"
+            compact
+            style={{ flex: 0, paddingHorizontal: 0 }}
             description={
               firmwareCommandBlockReason ??
-              'Connect to your board to read its current configuration and create your first Tune Profile'
+              'Read your board configuration, or choose a Refloat version to start editing offline from its bundled template.'
             }
             action={
               boardSnapshot?.refloatBaseVersion && firmwareCommandsTrusted ? (
@@ -77,6 +88,34 @@ export function TuneScreenStates({
               ) : null
             }
           />
+          <Select
+            testID="tune-offline-version"
+            value={version}
+            onChange={setVersion}
+            options={OFFLINE_REFLOAT_VERSIONS.map((value) => ({
+              value,
+              label: `Refloat ${value}${value === '1.3' ? ' (beta template)' : ''}`,
+            }))}
+            style={{ width: '100%', maxWidth: 320 }}
+          />
+          <Button
+            label="Create offline tune"
+            testID="tune-create-offline"
+            variant="tune"
+            loading={creating}
+            onPress={async () => {
+              setCreating(true)
+              setCreationError(null)
+              try {
+                await onCreateOffline(version)
+              } catch (error) {
+                setCreationError(errorMessage(error, 'Unable to create offline tune.'))
+              } finally {
+                setCreating(false)
+              }
+            }}
+          />
+          {creationError ? <Text style={styles.errorText}>{creationError}</Text> : null}
         </View>
       ) : null}
 
