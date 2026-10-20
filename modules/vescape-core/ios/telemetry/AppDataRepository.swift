@@ -575,6 +575,11 @@ final class AppDataRepository {
       // Strict Bool, same reasoning as the board-warnings switch above.
       guard let flag = rawValue as? Bool else { return }
       value = flag
+    } else if key == "navigationRerouteDistanceMeters" {
+      guard let distance = Self.navigationRerouteDistanceMeters(rawValue) else {
+        throw NSError(domain: "AppSettings", code: 1, userInfo: [NSLocalizedDescriptionKey: "Invalid navigationRerouteDistanceMeters"])
+      }
+      value = distance
     } else if key == "boardMoveStrengthPercent" {
       guard let percent = Self.boardMoveStrengthPercent(rawValue) else { return }
       value = percent
@@ -659,6 +664,7 @@ final class AppDataRepository {
     "satelliteImageryOpacity": 0.2,
     "satelliteMapImageryOpacity": 1.0,
     "satelliteImagerySaturation": -0.35,
+    "navigationRerouteDistanceMeters": 50.0,
     "hideTelemetryMapDetails": true,
     "showHistoryMapMarkers": false,
     "telemetryPollRateHz": 20,
@@ -699,8 +705,16 @@ final class AppDataRepository {
     return source
   }
 
+  // @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/AppDataRepository.kt `getTypedSettings`
+  static func navigationRerouteDistanceMeters(_ value: Any?) -> Double? {
+    guard let number = value as? NSNumber, CFGetTypeID(number) != CFBooleanGetTypeID() else { return nil }
+    let distance = number.doubleValue
+    return distance.isFinite && (1...1000).contains(distance) ? distance : nil
+  }
+
   static func normalizeSettings(_ settings: [String: Any]) -> [String: Any] {
     var normalized = settings
+    normalized["navigationRerouteDistanceMeters"] = navigationRerouteDistanceMeters(settings["navigationRerouteDistanceMeters"]) ?? 50.0
     normalized["liveHistoryLimit"] =
       liveHistoryLimitMinutes(settings["liveHistoryLimit"]) ?? defaultSettings["liveHistoryLimit"]
     normalized["unitSystem"] = validUnitSystem(settings["unitSystem"]) ?? "metric"

@@ -66,11 +66,12 @@ test('clearing an already empty direction point does not write', async () => {
   expect(setDirectionPoint).not.toHaveBeenCalled()
 })
 
-test('accepted navigation survives the same native snapshot and resets for a replacement', () => {
+test('accepted navigation survives the same native snapshot and follows a same-target replacement', () => {
   const navigation = {
     target: { latitude: 52.5, longitude: 21.5 },
     profile: 'walking' as const,
     computedAtMs: 1_000,
+    cameraRevision: 1,
     status: 'ready' as const,
     distanceMeters: 2_000,
     durationSeconds: 600,
@@ -86,5 +87,12 @@ test('accepted navigation survives the same native snapshot and resets for a rep
   expect(useMapStore.getState().acceptedNavigationComputedAtMs).toBe(1_000)
 
   useMapStore.getState().replaceNavigation({ ...navigation, computedAtMs: 2_000 }, false)
+  expect(useMapStore.getState().acceptedNavigationComputedAtMs).toBe(2_000)
+  useMapStore
+    .getState()
+    .replaceNavigation(
+      { ...navigation, computedAtMs: 3_000, target: { latitude: 10, longitude: 20 } },
+      false,
+    )
   expect(useMapStore.getState().acceptedNavigationComputedAtMs).toBeNull()
 })

@@ -40,6 +40,7 @@ const DEFAULTS: AppSettings = {
   satelliteImagerySaturation: DEFAULT_SATELLITE_IMAGERY_SATURATION,
   hideTelemetryMapDetails: true,
   showHistoryMapMarkers: false,
+  navigationRerouteDistanceMeters: 50,
   mapOrientationMode: 'northUp',
   historyMetricGradientsEnabled: true,
   historyMetricHotRanges: DEFAULT_HISTORY_METRIC_HOT_RANGES,

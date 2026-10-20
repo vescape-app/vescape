@@ -15,6 +15,7 @@ import org.json.JSONObject
  * @parity /modules/vescape-core/ios/navigation/NavigationStore.swift `NavigationStore`
  */
 interface NavigationStore {
+  suspend fun loadRerouteDistanceMeters(): Double = 50.0
   /** The stored Navigation, or `null` when none was ever written or the row is unreadable. */
   suspend fun load(): Navigation?
 
@@ -110,6 +111,15 @@ object NavigationJson {
  */
 class AppDataNavigationStore(context: Context) : NavigationStore {
   private val repository = AppDataRepository.get(context.applicationContext)
+
+  override suspend fun loadRerouteDistanceMeters(): Double = try {
+    repository.getTypedSettings().navigationRerouteDistanceMeters
+  } catch (error: CancellationException) {
+    throw error
+  } catch (error: Exception) {
+    RecordingStorageFailure.reportRead("navigation_threshold_read", error)
+    50.0
+  }
 
   override suspend fun load(): Navigation? = try {
     repository.getNavigationPath()?.let(NavigationJson::decode)
