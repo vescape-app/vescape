@@ -456,16 +456,22 @@ internal final class AlertAudioPlayer {
   /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/alerts/AlertEngine.kt `speakAfterBeeps`
   func speakAfterBeeps(soundType: String, text: String, beepCount: Int) {
     guard !isReleased else { return }
+    // A newer announcement supersedes speech still waiting out an older one's beeps.
+    pendingSpeech?.cancel()
+    pendingSpeech = nil
     let beeps = normalizedAlertBeepCount(beepCount)
     guard beeps > 0 else {
       speakMessage(text)
       return
     }
     playSingle(soundType: soundType, beepCount: beeps)
-    scheduler.postDelayed(speechDelayAfterBeepsMs(beeps)) { [weak self] in
+    // Written only from the announcing caller; cancelling an already-run item is a no-op.
+    pendingSpeech = scheduler.postDelayed(speechDelayAfterBeepsMs(beeps)) { [weak self] in
       self?.speakMessage(text)
     }
   }
+
+  private var pendingSpeech: Cancellable?
 
   /// Play a preset once for UI preview, or speak a `tts:` template with a sample fired alert after
   /// its `beepCount` Beep before.
