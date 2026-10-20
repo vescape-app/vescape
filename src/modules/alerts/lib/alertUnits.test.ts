@@ -60,7 +60,6 @@ test('open form retains exact range endpoints through live unit switches and unr
     createdAt: 0,
     soundType: 'preset:tick',
     repeatEverySeconds: null,
-    beepCount: 1,
     threshold: 40.2336,
     thresholdMax: 50.123456789,
   }

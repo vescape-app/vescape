@@ -53,6 +53,8 @@ modules/vescape-core/android/src/test/resources/data/
 modules/vescape-core/android/src/test/resources/fixtures/
 modules/vescape-core/android/src/main/assets/fixtures/
 modules/vescape-core/ios/fixtures/
+modules/vescape-core/ios/alert-packs/
+modules/vescape-core/android/src/main/assets/alert-packs/
 modules/vescape-core/android/src/main/res/values/colors.xml
 modules/vescape-core/android/src/main/res/values-night/colors.xml
 modules/vescape-core/.build/

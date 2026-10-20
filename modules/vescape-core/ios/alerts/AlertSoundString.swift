@@ -4,8 +4,8 @@ import Foundation
 /// `:` after the kind and optional variant splits, so the sound part (TTS text) may contain `:`.
 /// Strings outside the grammar (no `kind:` prefix) parse to nil.
 ///
-/// Only `tts` has a typed reading today; `alert`, `geiger`, and `voice` plug in as new readings of
-/// the same parsed parts.
+/// `tts` and `alert` have typed readings; `geiger` and `voice` plug in as new readings of the same
+/// parsed parts.
 ///
 /// @parity /src/modules/alerts/lib/alertSoundString.ts
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/alerts/AlertSoundString.kt
@@ -34,21 +34,15 @@ internal struct AlertSoundString: Equatable {
   }
 }
 
-/// Severity of a spoken announcement: picks the sound played once before the speech. Until effects
-/// packs land (#578) each maps to a bundled single sound.
+/// Severity of an announcement: picks the active effects pack's `severity.<id>` slot, played before
+/// speech or as an alert rule's sound.
 ///
 /// @parity /src/modules/alerts/lib/alertSoundString.ts `ALERT_SEVERITIES`
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/alerts/AlertSoundString.kt `AlertSeverity`
 internal enum AlertSeverity: String, CaseIterable {
   case info, warning, critical
 
-  var soundType: String {
-    switch self {
-    case .info: return "preset:notify"
-    case .warning: return "preset:beep"
-    case .critical: return "preset:urgent"
-    }
-  }
+  var slot: String { "severity.\(rawValue)" }
 
   /// Absent or unknown severities read as `.warning`.
   static func from(_ raw: String?) -> AlertSeverity {
@@ -66,4 +60,31 @@ internal struct TtsAlertSound: Equatable {
 internal func parseTtsAlertSound(_ soundType: String) -> TtsAlertSound? {
   guard let parsed = AlertSoundString.parse(soundType), parsed.kind == "tts" else { return nil }
   return TtsAlertSound(severity: AlertSeverity.from(parsed.variant), text: parsed.sound)
+}
+
+/// `alert(count):severity` — the active effects pack's severity sound, `count` times.
+internal struct SlotAlertSound: Equatable {
+  let count: Int
+  let severity: AlertSeverity
+}
+
+/// Read any non-TTS single-alert `soundType` as a slot sound. `alert:` means one play. Strings from
+/// before the grammar map onto the matching severity (`preset:notify|beep|urgent` → info, warning,
+/// critical, played once); anything unknown, including a not-yet-supported `my:` sound, plays the
+/// warning sound once, so a rule is never silent.
+///
+/// @parity /src/modules/alerts/lib/alertSoundString.ts `parseSlotAlertSound`
+/// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/alerts/AlertSoundString.kt `parseSlotAlertSound`
+internal func parseSlotAlertSound(_ soundType: String) -> SlotAlertSound {
+  if let parsed = AlertSoundString.parse(soundType), parsed.kind == "alert" {
+    let count = parsed.variant.flatMap { Int($0) }.map {
+      min(max($0, alertBeepCountRange.lowerBound), alertBeepCountRange.upperBound)
+    } ?? 1
+    return SlotAlertSound(count: count, severity: AlertSeverity(rawValue: parsed.sound) ?? .warning)
+  }
+  switch soundType {
+  case "preset:notify", "notify", "pulse": return SlotAlertSound(count: 1, severity: .info)
+  case "preset:urgent", "urgent": return SlotAlertSound(count: 1, severity: .critical)
+  default: return SlotAlertSound(count: 1, severity: .warning)
+  }
 }

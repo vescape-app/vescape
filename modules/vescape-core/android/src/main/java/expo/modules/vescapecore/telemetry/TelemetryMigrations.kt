@@ -1,7 +1,6 @@
 package expo.modules.vescapecore.telemetry
 
 import androidx.sqlite.SQLiteConnection
-import expo.modules.vescapecore.alerts.ALERT_BEEP_COUNT_DEFAULT
 
 // @parity /modules/vescape-core/ios/VescapeCoreModule.swift
 internal const val TELEMETRY_DATABASE_NAME = "vescape.db"
@@ -1267,7 +1266,7 @@ internal object TelemetryMigrations {
           db.execSQL("ALTER TABLE alerts ADD COLUMN repeat_every_seconds INTEGER")
         }
         if (!hasColumn(db, "alerts", "beep_count")) {
-          db.execSQL("ALTER TABLE alerts ADD COLUMN beep_count INTEGER NOT NULL DEFAULT $ALERT_BEEP_COUNT_DEFAULT")
+          db.execSQL("ALTER TABLE alerts ADD COLUMN beep_count INTEGER NOT NULL DEFAULT 3")
         }
     }
 
@@ -1562,6 +1561,68 @@ internal object TelemetryMigrations {
       db.execSQL("ALTER TABLE telemetry_minute_buckets ADD COLUMN route_preview TEXT")
     }
 
+    /**
+     * A single alert's beep count moves into its sound string (#578): `preset:beep` with
+     * `beep_count` 3 becomes `alert(3):warning`, playing the effects pack's severity slot. Legacy
+     * `preset:beep|urgent|notify` (and the older bare names) map to warning, critical, info. TTS,
+     * geiger, and unknown strings keep their sound. `beep_count` is then dropped; SQLite before
+     * 3.35 has no `DROP COLUMN`, so the table is rebuilt by copy.
+     *
+     * @parity /modules/vescape-core/ios/telemetry/TelemetryDatabase.swift `v50_alert_sound_count`
+     */
+    internal val MIGRATION_49_50 = migration(49, 50) { db ->
+        db.execSQL(ALERT_SOUND_COUNT_SQL)
+        db.execSQL(
+          """
+          CREATE TABLE alerts_new (
+            board_id TEXT NOT NULL,
+            id TEXT NOT NULL,
+            control_id TEXT NOT NULL,
+            threshold REAL NOT NULL,
+            threshold_max REAL,
+            enabled INTEGER NOT NULL,
+            sound_type TEXT NOT NULL,
+            created_at INTEGER NOT NULL,
+            source TEXT,
+            repeat_every_seconds INTEGER,
+            threshold_kind TEXT NOT NULL DEFAULT 'fixed',
+            config_field_id TEXT,
+            threshold_offset REAL,
+            threshold_max_offset REAL,
+            PRIMARY KEY (board_id, id)
+          )
+          """.trimIndent(),
+        )
+        db.execSQL(
+          """
+          INSERT INTO alerts_new (board_id, id, control_id, threshold, threshold_max, enabled, sound_type,
+            created_at, source, repeat_every_seconds, threshold_kind, config_field_id, threshold_offset,
+            threshold_max_offset)
+          SELECT board_id, id, control_id, threshold, threshold_max, enabled, sound_type, created_at,
+            source, repeat_every_seconds, threshold_kind, config_field_id, threshold_offset,
+            threshold_max_offset
+          FROM alerts
+          """.trimIndent(),
+        )
+        db.execSQL("DROP TABLE alerts")
+        db.execSQL("ALTER TABLE alerts_new RENAME TO alerts")
+        db.execSQL("CREATE INDEX IF NOT EXISTS index_alerts_board_id ON alerts(board_id)")
+        db.execSQL("CREATE INDEX IF NOT EXISTS index_alerts_control_id ON alerts(control_id)")
+        db.execSQL("CREATE INDEX IF NOT EXISTS index_alerts_enabled ON alerts(enabled)")
+        db.execSQL("CREATE INDEX IF NOT EXISTS index_alerts_created_at ON alerts(created_at)")
+    }
+
+    /** @parity /modules/vescape-core/ios/telemetry/TelemetryDatabase.swift `alertSoundCountSql` */
+    private val ALERT_SOUND_COUNT_SQL = """
+      UPDATE alerts SET sound_type = 'alert(' || MAX(1, MIN(5, beep_count)) || '):' ||
+        CASE sound_type
+          WHEN 'preset:urgent' THEN 'critical' WHEN 'urgent' THEN 'critical'
+          WHEN 'preset:notify' THEN 'info' WHEN 'notify' THEN 'info' WHEN 'pulse' THEN 'info'
+          ELSE 'warning'
+        END
+      WHERE sound_type IN ('preset:beep', 'preset:urgent', 'preset:notify', 'default', 'beep', 'urgent', 'notify', 'pulse')
+    """.trimIndent()
+
     /** Every migration registered with Room, in the graph's production order. */
     val all = listOf(
       MIGRATION_3_4,
@@ -1607,6 +1668,7 @@ internal object TelemetryMigrations {
       MIGRATION_46_47,
       MIGRATION_47_48,
       MIGRATION_48_49,
+      MIGRATION_49_50,
     )
 
 }

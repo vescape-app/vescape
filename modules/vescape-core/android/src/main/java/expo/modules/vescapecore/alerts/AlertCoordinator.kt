@@ -90,7 +90,7 @@ internal class AlertCoordinator(
                 val text = renderAlertMessageTemplate(tts.text, alert, batteryPercent, onDiagnostic, unitSystem)
                 if (text.isNotEmpty()) feedback().speakAfterSeverity(tts.severity, text)
             }
-            for (alert in single) if (parseTtsAlertSound(alert.soundType) == null) feedback().playSingle(alert.soundType, alert.beepCount)
+            for (alert in single) if (parseTtsAlertSound(alert.soundType) == null) feedback().playSingle(alert.soundType)
             if (vibrateSingles) feedback().vibrate(null)
         }
         return fired.map { it.toMap() }

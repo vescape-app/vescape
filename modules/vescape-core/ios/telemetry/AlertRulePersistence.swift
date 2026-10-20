@@ -12,7 +12,6 @@ struct PersistedAlertRule: Codable, FetchableRecord, PersistableRecord {
   let soundType: String
   let createdAt: Int64
   let repeatEverySeconds: Int64?
-  let beepCount: Int
   let source: String?
   let thresholdKind: String
   let configFieldId: String?
@@ -22,7 +21,7 @@ struct PersistedAlertRule: Codable, FetchableRecord, PersistableRecord {
   enum CodingKeys: String, CodingKey {
     case boardId = "board_id", id, controlId = "control_id", threshold
     case thresholdMax = "threshold_max", enabled, soundType = "sound_type", createdAt = "created_at"
-    case repeatEverySeconds = "repeat_every_seconds", beepCount = "beep_count", source
+    case repeatEverySeconds = "repeat_every_seconds", source
     case thresholdKind = "threshold_kind", configFieldId = "config_field_id"
     case thresholdOffset = "threshold_offset", thresholdMaxOffset = "threshold_max_offset"
   }

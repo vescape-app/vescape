@@ -39,6 +39,5 @@ export function toTestRule(rule: DraftAlertRule): AlertTestRule {
     thresholdMax: rule.thresholdMax,
     soundType: rule.soundType,
     repeatEverySeconds: rule.repeatEverySeconds,
-    beepCount: rule.beepCount,
   }
 }

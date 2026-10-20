@@ -300,7 +300,7 @@ final class AppDataRepository {
             "thresholdOffset": row.thresholdOffset, "thresholdMaxOffset": row.thresholdMaxOffset
           ] : ["kind": "fixed"],
           "enabled": row.enabled, "soundType": row.soundType, "createdAt": row.createdAt,
-          "repeatEverySeconds": row.repeatEverySeconds, "beepCount": row.beepCount, "source": row.source,
+          "repeatEverySeconds": row.repeatEverySeconds, "source": row.source,
         ]
     }
   }
@@ -331,7 +331,6 @@ final class AppDataRepository {
           soundType: row["sound_type"] as String,
           createdAt: row["created_at"] as Int64,
           repeatEverySeconds: row["repeat_every_seconds"] as Int64?,
-          beepCount: row["beep_count"] as Int? ?? alertBeepCountDefault,
           source: row["source"] as String?
         )
       }
@@ -350,7 +349,6 @@ final class AppDataRepository {
     let soundType = rule["soundType"] as? String ?? "default"
     let createdAt = Self.longValue(rule["createdAt"] ?? nil) ?? nowMs()
     let repeatEverySeconds = normalizedAlertRepeatSeconds(Self.doubleValue(rule["repeatEverySeconds"] ?? nil))
-    let beepCount = normalizedAlertBeepCount(Self.longValue(rule["beepCount"] ?? nil).map { Int($0) })
     let source = rule["source"] as? String
     let thresholdRule = rule["thresholdRule"] as? [String: Any]
     let thresholdKind = thresholdRule?["kind"] as? String ?? "fixed"
@@ -358,7 +356,7 @@ final class AppDataRepository {
     let thresholdOffset = Self.doubleValue(thresholdRule?["thresholdOffset"])
     let thresholdMaxOffset = Self.doubleValue(thresholdRule?["thresholdMaxOffset"])
     guard let writer else { throw StorageUnavailable.databaseNotOpen }
-    let record = PersistedAlertRule(boardId: boardId, id: id, controlId: controlId, threshold: threshold, thresholdMax: thresholdMax, enabled: enabled, soundType: soundType, createdAt: createdAt, repeatEverySeconds: repeatEverySeconds, beepCount: beepCount, source: source, thresholdKind: thresholdKind, configFieldId: configFieldId, thresholdOffset: thresholdOffset, thresholdMaxOffset: thresholdMaxOffset)
+    let record = PersistedAlertRule(boardId: boardId, id: id, controlId: controlId, threshold: threshold, thresholdMax: thresholdMax, enabled: enabled, soundType: soundType, createdAt: createdAt, repeatEverySeconds: repeatEverySeconds, source: source, thresholdKind: thresholdKind, configFieldId: configFieldId, thresholdOffset: thresholdOffset, thresholdMaxOffset: thresholdMaxOffset)
     try AlertRulePersistence(writer: writer).save(record)
   }
 
@@ -558,7 +556,7 @@ final class AppDataRepository {
       value = saturation
     } else if key == "soundPack" {
       guard let pack = rawValue as? String,
-        pack == "simple" || pack == "retro" || CustomAppSounds.exists(pack) else { return }
+        effectsPackIds.contains(pack) || CustomAppSounds.exists(pack) else { return }
       value = pack
     } else if key == "audioSource" {
       guard let source = Self.audioSource(rawValue) else { return }
@@ -707,7 +705,7 @@ final class AppDataRepository {
     normalized["themeMode"] = themeMode(settings["themeMode"]) ?? defaultSettings["themeMode"]
     normalized["audioSource"] = audioSource(settings["audioSource"]) ?? "alarm"
     let pack = settings["soundPack"] as? String ?? "retro"
-    normalized["soundPack"] = pack == "simple" || pack == "retro" || CustomAppSounds.exists(pack) ? pack : "simple"
+    normalized["soundPack"] = effectsPackIds.contains(pack) || CustomAppSounds.exists(pack) ? pack : effectsPackFallback
     normalized["satelliteImageryOpacity"] =
       satelliteImageryOpacity(settings["satelliteImageryOpacity"]) ?? defaultSettings["satelliteImageryOpacity"]
     normalized["satelliteMapImageryOpacity"] =

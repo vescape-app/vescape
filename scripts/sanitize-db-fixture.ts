@@ -201,7 +201,6 @@ async function seedAlertPresets(db: Database, boardId: string, work: string): Pr
       created_at: now,
       source: ALERT_PRESET_SOURCE,
       repeat_every_seconds: rule.repeatEverySeconds,
-      beep_count: rule.beepCount,
     }).filter(([column]) => alertColumns.has(column))
     db.exec(
       `INSERT INTO alerts (${values.map(([column]) => column).join(', ')}) VALUES (${values.map(() => '?').join(', ')})`,

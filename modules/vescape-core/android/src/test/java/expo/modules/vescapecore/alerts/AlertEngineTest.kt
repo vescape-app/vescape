@@ -20,7 +20,6 @@ class AlertEngineTest {
         thresholdMax: Double? = null,
         soundType: String = "default",
         repeatEverySeconds: Long? = null,
-        beepCount: Int = ALERT_BEEP_COUNT_DEFAULT,
         thresholdKind: String = "fixed",
         configFieldId: String? = null,
         thresholdOffset: Double? = null,
@@ -37,7 +36,6 @@ class AlertEngineTest {
         soundType = soundType,
         createdAt = 0L,
         repeatEverySeconds = repeatEverySeconds,
-        beepCount = beepCount,
         source = null,
     )
 
@@ -476,28 +474,11 @@ class AlertEngineTest {
     }
 
     @Test
-    fun beepCountReachesTheFiredAlert() {
-        val fired = engine.evaluate(
-            listOf(rule(threshold = 60.0, beepCount = 2)),
-            telemetry(dutyCycle = 0.66),
-        )
-
-        assertEquals(2, fired[0].beepCount)
-    }
-
-    @Test
     fun repeatCadenceIsFlooredWhateverJsAsksFor() {
         assertEquals(ALERT_REPEAT_MIN_SECONDS, normalizedAlertRepeatSeconds(0.5))
         assertNull(normalizedAlertRepeatSeconds(0.0))
         assertNull(normalizedAlertRepeatSeconds(null))
         assertEquals(30L, normalizedAlertRepeatSeconds(30.0))
-    }
-
-    @Test
-    fun beepCountIsClampedToItsRange() {
-        assertEquals(ALERT_BEEP_COUNT_RANGE.last, normalizedAlertBeepCount(99))
-        assertEquals(ALERT_BEEP_COUNT_RANGE.first, normalizedAlertBeepCount(0))
-        assertEquals(ALERT_BEEP_COUNT_DEFAULT, normalizedAlertBeepCount(null))
     }
 
     @Test
@@ -658,7 +639,6 @@ class VescAlertTemplateTest {
         thresholdMax = thresholdMax,
         soundType = "tts:test",
         rangeDepth = null,
-        beepCount = ALERT_BEEP_COUNT_DEFAULT,
         firedAt = 0L,
     )
 

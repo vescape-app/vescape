@@ -5,20 +5,16 @@ import Foundation
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/alerts/AlertEngine.kt `ALERT_REPEAT_MIN_SECONDS`
 internal let alertRepeatMinSeconds: Int64 = 3
 
-/// Inclusive bounds on an Alert Rule's beep count.
+/// Inclusive bounds on the count of an `alert(count):severity` sound.
 /// @parity /modules/vescape-core/src/index.ts `ALERT_BEEP_COUNT_RANGE`
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/alerts/AlertEngine.kt `ALERT_BEEP_COUNT_RANGE`
 internal let alertBeepCountRange = 1...5
 
-/// Beeps per announcement when nothing says otherwise.
-/// @parity /modules/vescape-core/src/index.ts `ALERT_BEEP_COUNT_DEFAULT`
-/// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/alerts/AlertEngine.kt `ALERT_BEEP_COUNT_DEFAULT`
-
 /// Gap between beeps of one announcement — tight enough that a burst reads as a single signal.
 internal let alertBeepSpacingMs: Double = 200
 
-/// Speech start after the severity sound: every bundled single sound ends within it, so the two
-/// never overlap.
+/// Earliest speech start after the severity sound starts. A longer sound (a multi-beep pack
+/// severity) delays speech to its end, so the two never overlap.
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/alerts/AlertEngine.kt `ALERT_SPEECH_DELAY_MS`
 internal let alertSpeechDelayMs: Int64 = 350
 
@@ -28,13 +24,6 @@ internal let alertSpeechDelayMs: Int64 = 350
 internal func normalizedAlertRepeatSeconds(_ raw: Double?) -> Int64? {
   guard let raw, raw.isFinite, raw > 0 else { return nil }
   return max(alertRepeatMinSeconds, Int64(raw.rounded()))
-}
-
-/// Clamp a beep count coming from JS; absent or out of range falls back to the default.
-/// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/alerts/AlertEngine.kt `normalizedAlertBeepCount`
-internal func normalizedAlertBeepCount(_ raw: Int?) -> Int {
-  guard let raw else { return alertBeepCountDefault }
-  return min(max(raw, alertBeepCountRange.lowerBound), alertBeepCountRange.upperBound)
 }
 
 /// Alert rule persisted in GRDB (`alerts` table). Mirrors Android `AlertRuleEntity`.
@@ -55,8 +44,6 @@ internal struct AlertRule {
   /// Repeat cadence in seconds for a single-threshold rule; nil is one-shot. Ignored for range
   /// rules. Mirrors TS `AlertRule.repeatEverySeconds`.
   var repeatEverySeconds: Int64? = nil
-  /// Sound repeats per announcement. Mirrors TS `AlertRule.beepCount`.
-  var beepCount: Int = alertBeepCountDefault
   /// Free-text provenance tag mirroring TS `AlertRule.source`: `manual` (or nil) or `preset`.
   /// JS authors and regenerates preset rules; native only persists the string.
   let source: String?
@@ -105,7 +92,6 @@ internal struct FiredAlert {
   let thresholdMax: Double?
   let soundType: String
   let rangeDepth: Double?
-  let beepCount: Int
   let firedAt: Int64
 
   func toMap() -> [String: Any?] {
@@ -117,7 +103,6 @@ internal struct FiredAlert {
       "thresholdMax": thresholdMax,
       "soundType": soundType,
       "rangeDepth": rangeDepth,
-      "beepCount": beepCount,
       "firedAt": firedAt,
     ]
   }
@@ -408,7 +393,6 @@ internal final class AlertEngine {
       thresholdMax: thresholds.1,
       soundType: rule.soundType,
       rangeDepth: rangeDepth,
-      beepCount: rule.beepCount,
       firedAt: now
     )
   }

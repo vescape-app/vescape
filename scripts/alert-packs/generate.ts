@@ -31,6 +31,7 @@ import {
   MANIFEST_DIR,
   packDir,
   type Segment,
+  SOURCES_DIR,
   validateManifest,
   validatePack,
   valueRange,
@@ -109,6 +110,10 @@ function tone(out: string, segment: Segment) {
   ])
 }
 
+/** A recorded clip resampled to the pack format. */
+const recorded = (out: string, file: string) =>
+  run('sox', ['-D', '-R', join(SOURCES_DIR, file), '-r', RATE, '-b', '16', '-c', '1', out])
+
 /** Fixed bitrate and bitexact muxing keep re-encoding byte-identical. */
 const encode = (wav: string, out: string) =>
   run('ffmpeg', [
@@ -140,11 +145,13 @@ function generateEffects(manifest: EffectsManifest, dir: string, tmp: string) {
       parts.push(out)
     }
     for (const segment of segments) {
+      const beep = manifest.beep
       if (segment.gap) add((out) => silence(out, segment.gap!))
-      else if (segment.beep) {
+      else if (segment.file) add((out) => recorded(out, segment.file!))
+      else if (segment.beep && beep) {
         for (let i = 0; i < segment.beep; i++) {
-          if (i) add((out) => silence(out, manifest.beep.gap))
-          add((out) => tone(out, manifest.beep))
+          if (i) add((out) => silence(out, beep.gap))
+          add((out) => tone(out, beep))
         }
       } else add((out) => tone(out, segment))
     }

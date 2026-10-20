@@ -12,8 +12,7 @@ final class AlertEngineTests: XCTestCase {
     thresholdMax: Double? = nil,
     soundType: String = "default",
     repeatEverySeconds: Int64? = nil,
-    beepCount: Int = alertBeepCountDefault
-    , thresholdKind: String = "fixed", configFieldId: String? = nil,
+    thresholdKind: String = "fixed", configFieldId: String? = nil,
     thresholdOffset: Double? = nil, thresholdMaxOffset: Double? = nil
   ) -> AlertRule {
     AlertRule(
@@ -28,7 +27,6 @@ final class AlertEngineTests: XCTestCase {
       soundType: soundType,
       createdAt: 0,
       repeatEverySeconds: repeatEverySeconds,
-      beepCount: beepCount,
       source: nil
     )
   }
@@ -563,26 +561,11 @@ final class AlertEngineTests: XCTestCase {
     XCTAssertEqual(2, fired.count)
   }
 
-  func testBeepCountReachesTheFiredAlert() {
-    let fired = engine.evaluate(
-      rules: [rule(threshold: 60.0, beepCount: 2)],
-      telemetry: telemetry(dutyCycle: 0.66)
-    )
-
-    XCTAssertEqual(2, fired[0].beepCount)
-  }
-
   func testRepeatCadenceIsFlooredWhateverJsAsksFor() {
     XCTAssertEqual(alertRepeatMinSeconds, normalizedAlertRepeatSeconds(0.5))
     XCTAssertNil(normalizedAlertRepeatSeconds(0.0))
     XCTAssertNil(normalizedAlertRepeatSeconds(nil))
     XCTAssertEqual(30, normalizedAlertRepeatSeconds(30.0))
-  }
-
-  func testBeepCountIsClampedToItsRange() {
-    XCTAssertEqual(alertBeepCountRange.upperBound, normalizedAlertBeepCount(99))
-    XCTAssertEqual(alertBeepCountRange.lowerBound, normalizedAlertBeepCount(0))
-    XCTAssertEqual(alertBeepCountDefault, normalizedAlertBeepCount(nil))
   }
 }
 
@@ -602,7 +585,6 @@ final class AlertTemplateTests: XCTestCase {
       thresholdMax: thresholdMax,
       soundType: "tts:test",
       rangeDepth: nil,
-      beepCount: alertBeepCountDefault,
       firedAt: 0
     )
   }

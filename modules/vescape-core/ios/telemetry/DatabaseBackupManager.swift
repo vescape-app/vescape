@@ -7,7 +7,7 @@ import GRDB
 /// `TelemetryDatabase.migrator`.
 ///
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/TelemetryRoomDatabase.kt `TELEMETRY_DATABASE_VERSION`
-internal let TELEMETRY_SCHEMA_VERSION = 49
+internal let TELEMETRY_SCHEMA_VERSION = 50
 
 /// Released schema generations that have a complete production path to the current schema.
 /// 37–39 never shipped as standalone migrations: Android deliberately jumps 36→40.
@@ -107,7 +107,7 @@ enum DatabaseBackupManager {
       if let saved,
         // intentional-suppression: malformed selected-pack JSON follows normal settings validation
         let pack = try? JSONSerialization.jsonObject(with: Data(saved.utf8)) as? String,
-        pack != "simple", pack != "retro", !CustomAppSounds.backupContains(staged.sounds, pack) {
+        !effectsPackIds.contains(pack), !CustomAppSounds.backupContains(staged.sounds, pack) {
         try pool.write { db in
           try db.execute(sql: "UPDATE app_settings SET value_json = ? WHERE key = 'soundPack'", arguments: ["\"simple\""])
         }

@@ -11,7 +11,6 @@ import expo.modules.vescapecore.accessory.AccessoryDiscovery
 import expo.modules.vescapecore.accessory.AccessorySessionManager
 import expo.modules.vescapecore.alerts.CustomAppSounds
 import expo.modules.vescapecore.alerts.AlertFeedback
-import expo.modules.vescapecore.alerts.normalizedAlertBeepCount
 import expo.modules.vescapecore.alerts.normalizedAlertRepeatSeconds
 import expo.modules.vescapecore.alerts.AlertCoordinator
 import expo.modules.vescapecore.appstatus.AppStatusCoordinator
@@ -107,7 +106,6 @@ private fun Map<String, Any?>.toAlertTestRule(): AlertRuleEntity? {
     soundType = soundType,
     createdAt = 0,
     repeatEverySeconds = normalizedAlertRepeatSeconds((this["repeatEverySeconds"] as? Number)?.toDouble()),
-    beepCount = normalizedAlertBeepCount((this["beepCount"] as? Number)?.toInt()),
     source = null,
   )
 }
@@ -1281,7 +1279,6 @@ class VescapeCoreModule : Module() {
           "thresholdMax" to rule.thresholdMax,
           "soundType" to rule.soundType,
           "repeatEverySeconds" to rule.repeatEverySeconds,
-          "beepCount" to rule.beepCount,
         )
       }
     }

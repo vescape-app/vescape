@@ -10,7 +10,6 @@ const preview: AlertTestRule[] = [
     thresholdMax: 45.061632,
     soundType: 'preset:tick',
     repeatEverySeconds: null,
-    beepCount: 2,
   },
 ]
 
@@ -22,7 +21,6 @@ test('customizing a native preview preserves every authored setting with fresh o
     thresholdMax: preview[0]!.thresholdMax,
     soundType: 'preset:tick',
     repeatEverySeconds: null,
-    beepCount: 2,
     enabled: true,
   })
   expect(rules[0]!.id).not.toBe(preview[0]!.id)

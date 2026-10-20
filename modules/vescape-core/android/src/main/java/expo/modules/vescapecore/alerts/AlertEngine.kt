@@ -4,8 +4,6 @@ import expo.modules.vescapecore.telemetry.formatValue
 import expo.modules.vescapecore.telemetry.UnitPresentation
 import expo.modules.vescapecore.telemetry.AppDataRepository
 
-import expo.modules.vescapecore.R
-
 import expo.modules.vescapecore.protocol.RefloatTelemetry
 import expo.modules.vescapecore.diagnostics.UnexpectedNativeError
 import expo.modules.vescapecore.service.VESC_SESSION_TAG
@@ -32,7 +30,7 @@ import kotlin.math.abs
 const val ALERT_REPEAT_MIN_SECONDS = 3L
 
 /**
- * Inclusive bounds on an Alert Rule's beep count.
+ * Inclusive bounds on the count of an `alert(count):severity` sound.
  *
  * @parity /modules/vescape-core/src/index.ts `ALERT_BEEP_COUNT_RANGE`
  * @parity /modules/vescape-core/ios/alerts/AlertEngine.swift `alertBeepCountRange`
@@ -52,16 +50,16 @@ fun normalizedAlertRepeatSeconds(raw: Double?): Long? {
 }
 
 /**
- * Speech start after the severity sound: every bundled single sound ends within it, so the two
- * never overlap.
+ * Earliest speech start after the severity sound starts. A longer sound (a multi-beep pack
+ * severity) delays speech to its end, so the two never overlap.
  *
  * @parity /modules/vescape-core/ios/alerts/AlertEngine.swift `alertSpeechDelayMs`
  */
 internal const val ALERT_SPEECH_DELAY_MS = 350L
 
-/** Clamp a beep count coming from JS; absent or out of range falls back to the default. */
-fun normalizedAlertBeepCount(raw: Int?): Int =
-    raw?.coerceIn(ALERT_BEEP_COUNT_RANGE.first, ALERT_BEEP_COUNT_RANGE.last) ?: ALERT_BEEP_COUNT_DEFAULT
+/** When speech may start after [severity]'s sound in [pack] starts playing. */
+internal fun speechDelayMs(context: Context, pack: String, severity: AlertSeverity): Long =
+    maxOf(ALERT_SPEECH_DELAY_MS, EffectsPackAssets.durationMs(context, pack, severity.slot))
 
 internal fun alertControlUnit(controlId: String): String =
     telemetryMetricByControlId[controlId]?.unit ?: ""
@@ -126,7 +124,6 @@ private fun ttsSampleAlert(soundType: String) = FiredAlert(
     thresholdMax = null,
     soundType = soundType,
     rangeDepth = null,
-    beepCount = ALERT_BEEP_COUNT_DEFAULT,
     firedAt = System.currentTimeMillis(),
 )
 
@@ -144,7 +141,6 @@ internal data class FiredAlert(
     val thresholdMax: Double?,
     val soundType: String,
     val rangeDepth: Double?,
-    val beepCount: Int,
     val firedAt: Long,
 ) {
     fun toMap(): Map<String, Any?> = mapOf(
@@ -155,7 +151,6 @@ internal data class FiredAlert(
         "thresholdMax" to thresholdMax,
         "soundType" to soundType,
         "rangeDepth" to rangeDepth,
-        "beepCount" to beepCount,
         "firedAt" to firedAt,
     )
 }
@@ -307,7 +302,6 @@ internal class AlertEngine(private val now: () -> Long = { System.currentTimeMil
         thresholdMax = effective.second,
         soundType = soundType,
         rangeDepth = rangeDepth,
-        beepCount = beepCount,
         firedAt = now,
     )
 
@@ -367,25 +361,6 @@ internal class AlertEngine(private val now: () -> Long = { System.currentTimeMil
     }
 }
 
-internal data class AlertSoundPreset(
-    val name: String,
-    val uri: String,
-    val category: String,
-    val resId: Int,
-) {
-    fun toMap(): Map<String, Any> = mapOf(
-        "name" to name,
-        "uri" to uri,
-        "category" to category,
-    )
-}
-
-/** @parity /modules/vescape-core/ios/alerts/AlertAudioPlayer.swift `appSoundFiles` */
-private val appSoundResources = mapOf(
-    "simple" to mapOf("on" to R.raw.on, "off" to R.raw.off, "created" to R.raw.simple_gr_created, "join" to R.raw.simple_gr_join, "error" to R.raw.simple_error),
-    "retro" to mapOf("on" to R.raw.retro_on, "off" to R.raw.retro_off, "created" to R.raw.retro_new_gr, "join" to R.raw.retro_gr_join, "error" to R.raw.retro_error),
-)
-
 internal class AlertFeedback(
     private val context: Context,
     private val handler: Handler,
@@ -401,10 +376,9 @@ internal class AlertFeedback(
     private fun newSoundPool() = SoundPool.Builder().setMaxStreams(8)
         .setAudioAttributes(audioAttributes(audioSource, AudioAttributes.CONTENT_TYPE_SONIFICATION)).build()
     private var soundPool = newSoundPool()
-    private val soundIds = HashMap<Int, Int>()
+    /** SoundPool sample per `"<pack>/<slot>"` of every built-in effects pack. */
+    private val soundIds = HashMap<String, Int>()
     private val geigerLoops = HashMap<String, GeigerLoop>()
-    private val appSounds = appSoundResources
-    private val appSoundIds = HashMap<Int, Int>()
     private val samples = SoundSampleQueue()
     private val pendingGeiger = HashMap<String, Pair<String, Double>>()
     var soundPack: String = "retro"
@@ -423,7 +397,6 @@ internal class AlertFeedback(
 
     private fun loadAssets() {
         soundIds.clear()
-        appSoundIds.clear()
         samples.reset()
         soundPool.setOnLoadCompleteListener { pool, sampleId, status ->
             handler.post {
@@ -437,11 +410,18 @@ internal class AlertFeedback(
                 for ((id, request) in loops) updateGeiger(id, request.first, request.second)
             }
         }
-        for (preset in ALERT_SOUND_PRESETS) soundIds[preset.resId] = soundPool.load(context, preset.resId, 1)
-        for (resource in appSounds.values.flatMap { it.values }.distinct()) {
-            appSoundIds[resource] = soundPool.load(context, resource, 1)
+        try {
+            for ((key, path) in EffectsPackAssets.slots(context)) {
+                soundIds[key] = context.assets.openFd(path).use { soundPool.load(it, 1) }
+            }
+        } catch (e: Exception) {
+            UnexpectedNativeError.report("alert_audio_asset_load", "bundled_asset", e)
         }
     }
+
+    /** Sample of [slot] in the active effects pack; 0 when it never loaded. */
+    private fun slotSample(slot: String, pack: String = soundPack): Int =
+        soundIds["${effectsPackId(pack)}/$slot"] ?: 0
 
     fun setAudioSource(source: String) {
         if (android.os.Looper.myLooper() != handler.looper) {
@@ -480,9 +460,8 @@ internal class AlertFeedback(
             return
         }
         if (released) return
-        if (CustomAppSounds.play(context, pack, cue, audioSource, { playAppSound("simple", cue) }, this)) return
-        val resource = (appSounds[pack] ?: appSounds["simple"])?.get(cue) ?: return
-        val sample = appSoundIds[resource] ?: 0
+        if (CustomAppSounds.play(context, pack, cue, audioSource, { playAppSound(EFFECTS_PACK_FALLBACK, cue) }, this)) return
+        val sample = slotSample(appCueSlot(cue) ?: return, pack)
         when (samples.state(sample)) {
             SoundSampleQueue.State.READY -> playRaw(sample)
             SoundSampleQueue.State.PENDING -> samples.enqueue(sample) { playAppSound(pack, cue) }
@@ -543,18 +522,30 @@ internal class AlertFeedback(
         tts?.speak(text, TextToSpeech.QUEUE_FLUSH, null, "vesc_alert")
     }
 
-    /** Play one announcement: [beepCount] plays of the rule's sound, [ALERT_BEEP_SPACING_MS] apart. */
-    fun playSingle(soundType: String, beepCount: Int = ALERT_BEEP_COUNT_DEFAULT) {
+    /** Play when the Board Session ride ends. */
+    fun playRideEnd() {
+        if (android.os.Looper.myLooper() != handler.looper) { handler.post { playRideEnd() }; return }
+        playAppSound(soundPack, "ride.end")
+    }
+
+    /**
+     * Play one announcement: an `alert(count):severity` rule's severity sound from the active effects
+     * pack, [count][SlotAlertSound.count] times, [ALERT_BEEP_SPACING_MS] apart.
+     */
+    fun playSingle(soundType: String) {
         if (android.os.Looper.myLooper() != handler.looper) {
-            handler.post { playSingle(soundType, beepCount) }
+            handler.post { playSingle(soundType) }
             return
         }
+        playSeverity(parseSlotAlertSound(soundType))
+    }
+
+    private fun playSeverity(sound: SlotAlertSound) {
         try {
-            val preset = resolveAlertPreset(soundType, ALERT_CATEGORY_SINGLE)
-            val beeps = normalizedAlertBeepCount(beepCount)
-            playPreset(preset)
-            for (index in 1 until beeps) {
-                handler.postDelayed({ playPreset(preset) }, index * ALERT_BEEP_SPACING_MS)
+            val slot = sound.severity.slot
+            playSlot(slot)
+            for (index in 1 until sound.count) {
+                handler.postDelayed({ playSlot(slot) }, index * ALERT_BEEP_SPACING_MS)
             }
         } catch (e: Exception) {
             Log.w(VESC_SESSION_TAG, "Alert sound failed: ${e.message}")
@@ -575,10 +566,10 @@ internal class AlertFeedback(
         }
         // A newer announcement supersedes speech still waiting out an older one's sound.
         pendingSpeech?.let { handler.removeCallbacks(it) }
-        playSingle(severity.soundType, 1)
+        playSeverity(SlotAlertSound(1, severity))
         val speech = Runnable { pendingSpeech = null; speakMessage(text) }
         pendingSpeech = speech
-        handler.postDelayed(speech, ALERT_SPEECH_DELAY_MS)
+        handler.postDelayed(speech, speechDelayMs(context, soundPack, severity))
     }
 
     private var pendingSpeech: Runnable? = null
@@ -595,7 +586,7 @@ internal class AlertFeedback(
             return
         }
         try {
-            playPreset(resolveAlertPreset(soundType, null))
+            playSlot(previewSlot(soundType))
         } catch (e: Exception) {
             Log.w(VESC_SESSION_TAG, "Alert preview failed: ${e.message}")
             UnexpectedNativeError.report("alert_audio_preview", "audio_play_failed", e)
@@ -608,8 +599,8 @@ internal class AlertFeedback(
             return
         }
         if (released) return
-        val tickPreset = resolveAlertPreset(soundType, ALERT_CATEGORY_GEIGER)
-        val sample = soundIds[tickPreset.resId] ?: 0
+        val tickSlot = geigerSlot(soundType)
+        val sample = slotSample(tickSlot)
         if (samples.state(sample) == SoundSampleQueue.State.FAILED) { stopGeiger(ruleId); return }
         if (samples.state(sample) == SoundSampleQueue.State.PENDING) {
             pendingGeiger[ruleId] = soundType to rangeDepth
@@ -622,7 +613,7 @@ internal class AlertFeedback(
                 existing?.runnable?.let { handler.removeCallbacks(it) }
                 if (existing?.sustained == true) return
                 existing?.streamId?.let { soundPool.stop(it) }
-                val streamId = playPreset(tickPreset, loop = -1)
+                val streamId = playSlot(tickSlot, loop = -1)
                 geigerLoops[ruleId] = GeigerLoop(soundType, depth, sustained = true, streamId = streamId)
                 return
             }
@@ -639,7 +630,7 @@ internal class AlertFeedback(
             val runnable = object : Runnable {
                 override fun run() {
                     if (released || geigerLoops[ruleId] !== loop) return
-                    playPreset(tickPreset)
+                    playSlot(tickSlot)
                     handler.postDelayed(this, geigerIntervalMs(loop.rangeDepth))
                 }
             }
@@ -704,12 +695,12 @@ internal class AlertFeedback(
         }
     }
 
-    private fun playPreset(preset: AlertSoundPreset, loop: Int = 0): Int {
+    private fun playSlot(slot: String, loop: Int = 0): Int {
         if (released) return 0
-        val soundId = soundIds[preset.resId] ?: 0
-        if (samples.state(soundId) == SoundSampleQueue.State.FAILED) return 0
+        val soundId = slotSample(slot)
+        if (soundId == 0 || samples.state(soundId) == SoundSampleQueue.State.FAILED) return 0
         if (samples.state(soundId) == SoundSampleQueue.State.PENDING) {
-            samples.enqueue(soundId) { playPreset(preset, loop) }
+            samples.enqueue(soundId) { playSlot(slot, loop) }
             return 0
         }
         return soundPool.play(soundId, 1f, 1f, 1, loop, 1f)
@@ -731,24 +722,26 @@ internal class AlertFeedback(
         /** Preview without requiring a running board session. */
         fun previewAppSound(context: Context, pack: String, cue: String, source: String) {
             if (CustomAppSounds.play(context, pack, cue, source, {
-                previewAppSound(context, "simple", cue, source)
+                previewAppSound(context, EFFECTS_PACK_FALLBACK, cue, source)
             })) return
-            val resource = (appSoundResources[pack] ?: appSoundResources["simple"])?.get(cue) ?: return
+            val path = EffectsPackAssets.path(context, pack, appCueSlot(cue) ?: return) ?: return
             val pool = SoundPool.Builder().setMaxStreams(1).setAudioAttributes(
                 audioAttributes(source, AudioAttributes.CONTENT_TYPE_SONIFICATION)
             ).build()
             pool.setOnLoadCompleteListener { soundPool, sampleId, status ->
                 if (status == 0) soundPool.play(sampleId, 1f, 1f, 1, 0, 1f)
             }
-            pool.load(context, resource, 1)
+            context.assets.openFd(path).use { pool.load(it, 1) }
             Handler(contextMainLooper()).postDelayed({ pool.release() }, 5_000)
         }
 
         fun preview(context: Context, soundType: String, source: String) {
             val handler = Handler(contextMainLooper())
+            val settings = kotlinx.coroutines.runBlocking { AppDataRepository.get(context).getTypedSettings() }
+            fun slotPath(slot: String) = EffectsPackAssets.path(context, settings.soundPack, slot)
             val tts = parseTtsAlertSound(soundType)
             if (tts != null) {
-                val text = renderAlertMessageTemplate(tts.text, ttsSampleAlert(soundType), batteryPercent = 42.0, unitSystem = kotlinx.coroutines.runBlocking { AppDataRepository.get(context).getTypedSettings().unitSystem })
+                val text = renderAlertMessageTemplate(tts.text, ttsSampleAlert(soundType), batteryPercent = 42.0, unitSystem = settings.unitSystem)
                 if (text.isEmpty()) return
                 // Speech waits for both the engine and the severity sound, whichever is later. Both
                 // callbacks land on the main looper, so the flags need no locking.
@@ -761,7 +754,7 @@ internal class AlertFeedback(
                     t.speak(text, TextToSpeech.QUEUE_FLUSH, null, "preview")
                     handler.postDelayed({ t.stop(); t.shutdown() }, 5_000)
                 }
-                previewPreset(context, handler, resolveAlertPreset(tts.severity.soundType, ALERT_CATEGORY_SINGLE), source) {
+                previewClip(context, handler, slotPath(tts.severity.slot), source, speechDelayMs(context, settings.soundPack, tts.severity)) {
                     soundDone = true
                     speakWhenReady()
                 }
@@ -775,14 +768,19 @@ internal class AlertFeedback(
                 }
                 return
             }
-            previewPreset(context, handler, resolveAlertPreset(soundType, null), source)
+            previewClip(context, handler, slotPath(previewSlot(soundType)), source)
         }
 
         /**
-         * Play [preset] once on a throwaway pool. [onDone] runs once it has finished, or right away
-         * if the sample fails to load.
+         * Play the pack clip at asset [path] once on a throwaway pool. [onDone] runs once it has
+         * finished, or right away if the sample fails to load.
          */
-        private fun previewPreset(context: Context, handler: Handler, preset: AlertSoundPreset, source: String, onDone: (() -> Unit)? = null) {
+        private fun previewClip(context: Context, handler: Handler, path: String?, source: String, doneAfterMs: Long = 0L, onDone: (() -> Unit)? = null) {
+            if (path == null) {
+                UnexpectedNativeError.report("alert_audio_preview_load", "bundled_asset", IllegalStateException())
+                onDone?.let { handler.post(it) }
+                return
+            }
             val pool = SoundPool.Builder()
                 .setMaxStreams(2)
                 .setAudioAttributes(
@@ -793,13 +791,13 @@ internal class AlertFeedback(
                 pool.setOnLoadCompleteListener { soundPool, sampleId, status ->
                     if (status == 0) {
                         soundPool.play(sampleId, 1f, 1f, 1, 0, 1f)
-                        onDone?.let { handler.postDelayed(it, ALERT_SPEECH_DELAY_MS) }
+                        onDone?.let { handler.postDelayed(it, doneAfterMs) }
                     } else {
                         UnexpectedNativeError.report("alert_audio_preview_load", "bundled_asset", IllegalStateException())
                         onDone?.let { handler.post(it) }
                     }
                 }
-                pool.load(context, preset.resId, 1)
+                context.assets.openFd(path).use { pool.load(it, 1) }
                 handler.postDelayed({ pool.release() }, 1_000)
             } catch (e: Exception) {
                 pool.release()
@@ -813,10 +811,21 @@ internal class AlertFeedback(
     }
 }
 
-internal fun alertSoundPresetMaps(): List<Map<String, Any>> =
-    ALERT_SOUND_PRESETS
-        .filter { it.uri != "preset:sustained" }
-        .map { it.toMap() }
+/**
+ * Sounds the alert form offers: the active effects pack's severities for single alerts, geiger ticks
+ * for range alerts.
+ *
+ * @parity /modules/vescape-core/ios/alerts/AlertAudioPlayer.swift `alertSoundChoices`
+ * @parity /modules/vescape-core/src/index.ts `FALLBACK_SOUNDS`
+ */
+internal fun alertSoundMaps(): List<Map<String, Any>> = listOf(
+    Triple("Info", "alert:info", ALERT_CATEGORY_SINGLE),
+    Triple("Warning", "alert:warning", ALERT_CATEGORY_SINGLE),
+    Triple("Critical", "alert:critical", ALERT_CATEGORY_SINGLE),
+    Triple("Tick", "preset:tick", ALERT_CATEGORY_GEIGER),
+    Triple("Hard Tick", "preset:tick_hard", ALERT_CATEGORY_GEIGER),
+    Triple("Gamma", "preset:gamma", ALERT_CATEGORY_GEIGER),
+).map { (name, uri, category) -> mapOf("name" to name, "uri" to uri, "category" to category) }
 
 // @parity /modules/vescape-core/ios/alerts/AlertAudioPlayer.swift `alertCategorySingle`
 // @parity /modules/vescape-core/src/index.ts `AlertSoundCategory`
@@ -825,30 +834,3 @@ private const val ALERT_CATEGORY_SINGLE = "single"
 // @parity /modules/vescape-core/ios/alerts/AlertAudioPlayer.swift `alertCategoryGeiger`
 // @parity /modules/vescape-core/src/index.ts `AlertSoundCategory`
 private const val ALERT_CATEGORY_GEIGER = "geiger"
-
-private val ALERT_SOUND_PRESETS = listOf(
-    AlertSoundPreset("Beep", "preset:beep", ALERT_CATEGORY_SINGLE, R.raw.alert_beep),
-    AlertSoundPreset("Urgent", "preset:urgent", ALERT_CATEGORY_SINGLE, R.raw.alert_urgent),
-    AlertSoundPreset("Notify", "preset:notify", ALERT_CATEGORY_SINGLE, R.raw.alert_notify),
-    AlertSoundPreset("Tick", "preset:tick", ALERT_CATEGORY_GEIGER, R.raw.alert_tick),
-    AlertSoundPreset("Hard Tick", "preset:tick_hard", ALERT_CATEGORY_GEIGER, R.raw.alert_tick_hard),
-    AlertSoundPreset("Gamma", "preset:gamma", ALERT_CATEGORY_GEIGER, R.raw.alert_gamma),
-    AlertSoundPreset("Sustained", "preset:sustained", ALERT_CATEGORY_GEIGER, R.raw.alert_sustained),
-)
-
-private fun resolveAlertPreset(soundType: String, category: String?): AlertSoundPreset {
-    val key = when {
-        soundType.startsWith("preset:") -> soundType.removePrefix("preset:")
-        soundType.contains(":") -> null
-        soundType == "default" -> "beep"
-        soundType == "pulse" -> "notify"
-        else -> soundType
-    }
-    val uri = key?.let { "preset:$it" }
-    val preset = ALERT_SOUND_PRESETS.firstOrNull { it.uri == uri }
-    if (preset != null && (category == null || preset.category == category)) return preset
-    return when (category) {
-        ALERT_CATEGORY_GEIGER -> ALERT_SOUND_PRESETS.first { it.uri == "preset:tick" }
-        else -> ALERT_SOUND_PRESETS.first { it.uri == "preset:beep" }
-    }
-}

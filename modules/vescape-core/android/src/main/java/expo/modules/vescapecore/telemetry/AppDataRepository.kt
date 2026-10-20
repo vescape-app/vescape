@@ -11,6 +11,7 @@ import expo.modules.vescapecore.service.CoreForegroundService
 
 import expo.modules.vescapecore.connection.BoardTransport
 import expo.modules.vescapecore.alerts.CustomAppSounds
+import expo.modules.vescapecore.alerts.EFFECTS_PACK_IDS
 import expo.modules.vescapecore.watch.WatchMapGauges
 import android.content.Context
 import kotlinx.coroutines.Dispatchers
@@ -18,7 +19,6 @@ import kotlinx.coroutines.withContext
 import org.json.JSONArray
 import org.json.JSONObject
 import java.util.UUID
-import expo.modules.vescapecore.alerts.normalizedAlertBeepCount
 import expo.modules.vescapecore.alerts.normalizedAlertRepeatSeconds
 
 // @parity /modules/vescape-core/ios/telemetry/AppDataRepository.swift `AppDataScope`
@@ -435,7 +435,7 @@ class AppDataRepository private constructor(private val context: Context) {
       socEstimateWindowSeconds = req("socEstimateWindowSeconds", 20, ::validSocEstimateWindowSeconds),
       boardMoveStrengthPercent = req("boardMoveStrengthPercent", 60, ::validBoardMoveStrengthPercent),
       connectionSoundsEnabled = req("connectionSoundsEnabled", true) { it as? Boolean },
-      soundPack = req("soundPack", if ("soundPack" in map) "simple" else "retro") { (it as? String)?.takeIf { pack -> pack == "simple" || pack == "retro" || CustomAppSounds.exists(context, pack) } },
+      soundPack = req("soundPack", if ("soundPack" in map) "simple" else "retro") { (it as? String)?.takeIf { pack -> pack in EFFECTS_PACK_IDS || CustomAppSounds.exists(context, pack) } },
       audioSource = req("audioSource", "alarm") { (it as? String)?.takeIf { source -> source == "alarm" || source == "media" } },
       telemetryPollRateHz = req("telemetryPollRateHz", 20, ::validTelemetryPollRateHz),
       wearPushRateHz = req("wearPushRateHz", 4, ::validWearPushRateHz),
@@ -528,7 +528,7 @@ class AppDataRepository private constructor(private val context: Context) {
       "boardMoveStrengthPercent" ->
         validBoardMoveStrengthPercent(value) ?: return@withContext
       "connectionSoundsEnabled" -> value as? Boolean ?: return@withContext
-      "soundPack" -> (value as? String)?.takeIf { it == "simple" || it == "retro" || CustomAppSounds.exists(context, it) } ?: return@withContext
+      "soundPack" -> (value as? String)?.takeIf { it in EFFECTS_PACK_IDS || CustomAppSounds.exists(context, it) } ?: return@withContext
       "audioSource" -> (value as? String)?.takeIf { it == "alarm" || it == "media" } ?: return@withContext
       "telemetryPollRateHz" ->
         validTelemetryPollRateHz(value) ?: return@withContext
@@ -1036,7 +1036,6 @@ fun AlertRuleEntity.toMap(): Map<String, Any?> = mapOf(
   "soundType" to soundType,
   "createdAt" to createdAt,
   "repeatEverySeconds" to repeatEverySeconds,
-  "beepCount" to beepCount,
   "source" to source,
 )
 
@@ -1352,7 +1351,6 @@ private fun Map<String, Any?>.toAlertRuleEntity(): AlertRuleEntity = AlertRuleEn
   soundType = get("soundType") as? String ?: "default",
   createdAt = getLong("createdAt"),
   repeatEverySeconds = normalizedAlertRepeatSeconds(getDoubleOrNull("repeatEverySeconds")),
-  beepCount = normalizedAlertBeepCount((get("beepCount") as? Number)?.toInt()),
   source = get("source") as? String,
 )
 

@@ -12,12 +12,25 @@ Fired alerts embedded in that packet's telemetry map → visible in recentTeleme
 
 No separate event. No JS-side audio. Native storage is the source of truth.
 
-## App sound packs
+## Sound effects
 
-The five app cues (Connect, Disconnect, Error, New Group Ride, Rider joined Group Ride) are
-separate from Alert Rule presets and Geiger sounds. A custom pack may assign any subset. Native
-playback and previews read the same app-owned `custom-app-sounds` manifest and WAV files; a cue
-without a usable file plays its Classic counterpart. Imports accept decodable WAV up to 2 MB and
+The app-wide **Sound effects** setting (`soundPack`, default `retro`) picks one built-in effects
+pack: Retro, Simple, HEV, or Clean. The selected pack supplies every sound native plays: app cues,
+the severity sounds of alert rules and speech, and geiger ticks (see
+[Built-in packs](#built-in-packs)). Retro and Simple are today's sound themes turned into packs, so
+a saved theme keeps its id and sounds the same. Settings previews the selected pack's cues and its
+Info/Warning/Critical sounds.
+
+App cues: Connect (`cue.on`), Disconnect (`cue.off`), Error, New Group Ride, Rider joined Group
+Ride, and Ride end (`cue.ride.end`), which plays when the ride dropout grace expires after a lost
+link, the point at which a Board Session ride is treated as ended.
+
+### Custom app sound packs
+
+A custom pack replaces the five original app cues (Connect, Disconnect, Error, New Group Ride,
+Rider joined Group Ride) and may assign any subset. While one is selected, alert and geiger sounds,
+Ride end, and every cue without a usable file come from Simple. Native playback and previews read
+the same app-owned `custom-app-sounds` manifest and WAV files. Imports accept decodable WAV up to 2 MB and
 15 seconds. The document picker source is copied, so its URI is never used for later playback.
 
 Database backups include the custom pack manifest and audio files under `custom-app-sounds/`.
@@ -25,17 +38,15 @@ Android copies the referenced files and manifest under the pack store lock befor
 archive. Restore retains the previous database and pack files until both have installed; a failed
 sound install rolls both back.
 Restoring an older backup without these entries clears custom packs. A restored pack drops any
-assignment whose file is absent, while a selected pack that no longer exists resolves to Classic.
+assignment whose file is absent, while a selected pack that no longer exists resolves to Simple.
 
-## Sound effects and voice packs (planned)
+## Voice packs (planned)
 
-> Agreed in #574, not implemented yet. Everything above describes current behavior.
+> Agreed in #574, not implemented yet. Sound effects (above) are implemented; the rest of this
+> section is planned.
 
-App sound will come from two app-wide choices backed by pre-generated packs:
+Speech will come from a second app-wide choice next to Sound effects:
 
-- **Sound effects** (replaces today's sound theme: Retro, Simple, HEV, Clean): severity beeps
-  `info`/`warning`/`critical`, app cues (adds `ride.end`), and geiger ticks `soft`/`mid`/`hard`.
-  Effects packs never contain speech.
 - **Voice** (`Matching` or a voice pack): whole-sentence lines per message key plus value clips,
   joined natively into one buffer as severity beeps + line + value. `Matching` uses the voice the
   effects pack names; packs without one use Clean.
@@ -50,25 +61,27 @@ before speech) or use effects and user sounds; voice lines exist only for built-
 User WAVs move to a **My sounds** library that can override a fixed set of slots (pre-beeps,
 board on/off, other cues). Resolution per slot: override > pinned pack > app-wide choice.
 
-Every `sound_type` follows one grammar, `kind(variant):sound` (only `tts` is parsed today, see
-[Message mode](#message-mode)); the planned kinds are `alert(3):warning` (pack sound, 3 times),
-`geiger:soft`, and `voice(critical):battery:10` (severity sound, then voice line + value). `my:`
-names a My sound. `alert:` defaults to `alert(1):`; an unknown kind or slot falls back to the plain
-beep, never silence.
+Every `sound_type` follows one grammar, `kind(variant):sound` (`tts` and `alert` are parsed today,
+see [Message mode](#message-mode)); the planned kinds are `geiger:soft` and
+`voice(critical):battery:10` (severity sound, then voice line + value). `my:` names a My sound.
 
 All sounds that can fire during a ride stay decoded in memory for the session, so playback starts
 without load delay. The line schema lives in #574.
 
-### Built-in packs (generated, not yet played)
+### Built-in packs
 
-The HEV and Clean packs are generated and committed under `shared/alerts/packs/`; native does not
-read them yet (#578, #580). `scripts/copy-shared.ts` copies only top-level files of
-`shared/alerts/`, so the pack folders do not reach Android `res/raw`.
+Packs are generated and committed under `shared/alerts/packs/`. `bun run copy:shared` copies the
+effects packs, keeping their `<pack>/pack.json` layout, to Android `assets/alert-packs/` and to
+`modules/vescape-core/ios/alert-packs/`, which the podspec bundles as a folder in
+`VescapeCoreAssets.bundle`. Native reads each `pack.json` and decodes every slot of every effects
+pack at player start (`EffectsPacks.kt`, `EffectsPacks.swift`). Voice packs are not copied or
+played yet (#580).
 
 ```text
 scripts/alert-packs/
   catalog.json          required effect slots, voice keys + value type, value ranges
-  effects-<id>.json     tone segments per slot (sox synth), beep shape
+  effects-<id>.json     segments per slot: sox synth tones or recorded `sources/` clips
+  sources/              recorded WAVs behind Retro and Simple (today's sounds)
   voice-<id>.json       Kokoro voice + speed, sox voice fx chain, unit words, lines per key
   generate.ts           manifests → packs;  kokoro.py  TTS helper;  packs.ts  shared checks
 shared/alerts/packs/
@@ -76,7 +89,8 @@ shared/alerts/packs/
   voice-<id>/pack.json + lines/<key>.<start|end>.<i>.m4a + values/<type>/<n>.m4a
 ```
 
-- **Effect slots**: `severity.info|warning|critical` (1/2/3 beeps), `cue.on`, `cue.off`,
+- **Effect slots**: `severity.info|warning|critical` (HEV/Clean: 1/2/3 beeps; Retro/Simple: the
+  former Notify, Beep, and Urgent sounds), `cue.on`, `cue.off`,
   `cue.error`, `cue.groupRide.created`, `cue.groupRide.joined`, `cue.ride.end`, `geiger.soft|mid|hard`.
   Effects packs never contain voice; `pack.json` names the matching voice pack.
 - **Voice keys**: `battery` (percent), `motorTemp`, `controllerTemp` (degrees), `link.connected`,
@@ -120,22 +134,21 @@ and adds a virtual geiger speed rule whenever rules load. Nothing is written to 
 
 ## Schema — `alerts` table
 
-| column                 | type             | notes                                                          |
-| ---------------------- | ---------------- | -------------------------------------------------------------- |
-| `board_id`             | TEXT             | owning Board; PK is `(board_id, id)`                           |
-| `id`                   | TEXT             | UUID or `preset:<metric>:<index>`                              |
-| `control_id`           | TEXT             | see Control IDs below                                          |
-| `threshold`            | REAL             | trigger point                                                  |
-| `threshold_max`        | REAL nullable    | range upper bound (Geiger mode)                                |
-| `enabled`              | INTEGER 0/1      | toggled by user                                                |
-| `sound_type`           | TEXT             | feedback value, e.g. `preset:beep` or `tts:Battery {percent}%` |
-| `created_at`           | INTEGER          | ms epoch                                                       |
-| `repeat_every_seconds` | INTEGER nullable | repeat cadence for a single-threshold rule; NULL is one-shot   |
-| `beep_count`           | INTEGER          | sound plays per announcement, 1–5 (preset sounds only)         |
-| `threshold_kind`       | TEXT             | `fixed` or `config-relative`                                   |
-| `config_field_id`      | TEXT nullable    | VESC config field used by a relative rule                      |
-| `threshold_offset`     | REAL nullable    | start offset in alert units                                    |
-| `threshold_max_offset` | REAL nullable    | range ceiling offset in alert units                            |
+| column                 | type             | notes                                                             |
+| ---------------------- | ---------------- | ----------------------------------------------------------------- |
+| `board_id`             | TEXT             | owning Board; PK is `(board_id, id)`                              |
+| `id`                   | TEXT             | UUID or `preset:<metric>:<index>`                                 |
+| `control_id`           | TEXT             | see Control IDs below                                             |
+| `threshold`            | REAL             | trigger point                                                     |
+| `threshold_max`        | REAL nullable    | range upper bound (Geiger mode)                                   |
+| `enabled`              | INTEGER 0/1      | toggled by user                                                   |
+| `sound_type`           | TEXT             | sound string, e.g. `alert(3):warning` or `tts:Battery {percent}%` |
+| `created_at`           | INTEGER          | ms epoch                                                          |
+| `repeat_every_seconds` | INTEGER nullable | repeat cadence for a single-threshold rule; NULL is one-shot      |
+| `threshold_kind`       | TEXT             | `fixed` or `config-relative`                                      |
+| `config_field_id`      | TEXT nullable    | VESC config field used by a relative rule                         |
+| `threshold_offset`     | REAL nullable    | start offset in alert units                                       |
+| `threshold_max_offset` | REAL nullable    | range ceiling offset in alert units                               |
 
 ## Control IDs & implicit direction
 
@@ -155,10 +168,13 @@ Direction is hardcoded per control — not stored.
 
 ## Geiger mode
 
-Set `threshold_max` to add a range. Active range alerts run a native SoundPool tick loop using the selected geiger preset. The interval shrinks linearly:
+Set `threshold_max` to add a range. Active range alerts run a native tick loop with a geiger tick
+of the selected effects pack: `preset:tick` → `geiger.soft`, `preset:tick_hard` → `geiger.mid`,
+`preset:gamma` → `geiger.hard` (a level select replaces these names in #579). The interval shrinks
+linearly:
 
 - at `threshold` → about 800 ms between ticks
-- at `threshold_max` → the selected geiger preset loops continuously
+- at `threshold_max` → the tick loops continuously
 
 ## Single-threshold rules: arm, announce, re-arm
 
@@ -172,10 +188,14 @@ Set `repeat_every_seconds` to keep announcing on a fixed cadence for as long as 
 past the threshold. Native floors it at `ALERT_REPEAT_MIN_SECONDS` (3 s). Re-arming resets the
 repeat clock, so a fresh crossing announces immediately rather than waiting out the cadence.
 
-`beep_count` sets how many times the preset sound plays per announcement, one beep spacing apart
-(Android 350 ms, iOS 200 ms), so a rider can give different rules different signatures. It does
-nothing for `tts` rules, which play their severity sound once, or for range rules, which own
-their own cadence.
+A single sound rule stores `alert(<count>):<severity>`: the selected effects pack's `info`,
+`warning`, or `critical` sound, played `count` times (1–5) per announcement, one beep spacing apart
+(Android 350 ms, iOS 200 ms), so a rider can give different rules different signatures. The form
+offers Info/Warning/Critical plus a beep count. `alert:` means one play; an unknown severity
+(including a `my:` sound before My sounds exist, #584) plays `warning`. Strings from before the
+grammar still play: `preset:notify|beep|urgent` read as `info|warning|critical`, once. Schema v50
+folded the former `beep_count` column into the string (`preset:beep` + 3 → `alert(3):warning`) and
+dropped it; `tts` and geiger strings were left unchanged.
 
 The latch and repeat clock are cleared only when a new Board Session starts — not on rule edits,
 preset regeneration, idle pause, or backgrounding. Preset rule ids are deterministic, so changing a
@@ -200,16 +220,15 @@ tts(warning):Battery {voltage} volts, {percent}%
 split on the first `:` after the kind and optional variant, so colons inside the message are part
 of the message.
 
-- `preset:beep` → play bundled preset
+- `alert(3):warning` → the pack's warning sound, 3 times (see above)
 - `tts(info|warning|critical):Battery {value} {unit}` → severity sound once, then speak the template
 - `tts:…` (no variant) or an unknown variant → `warning`, so rules saved before severity need no
   migration
 
 The form's **Severity** select (Info/Warning/Critical, default Warning) on the Message tab sets the
-variant. Until effects packs land (#578) the severity sounds are bundled single sounds: info →
-`preset:notify`, warning → `preset:beep`, critical → `preset:urgent`. Speech starts 350 ms after
-the sound (`ALERT_SPEECH_DELAY_MS`), longer than any bundled single sound, so the two never
-overlap; a newer announcement cancels speech still waiting on an older one's sound.
+variant, which plays the selected effects pack's `severity.<variant>` sound once. Speech starts
+once the sound has played, and no earlier than 350 ms after it starts (`ALERT_SPEECH_DELAY_MS`), so
+the two never overlap, even for a pack's three-beep critical sound; a newer announcement cancels speech still waiting on an older one's sound.
 
 Message mode is single-threshold only (one-shot or repeating). Geiger/range alerts (`threshold_max != null`) use geiger presets and must not use `tts:`. Native should guard against invalid stored combinations.
 

@@ -12,7 +12,6 @@ const nativeSnapshot: AlertTestRule[] = [
     thresholdMax: 45.678,
     soundType: 'preset:gamma',
     repeatEverySeconds: null,
-    beepCount: 3,
   },
 ]
 const options = { topSpeedKmh: 50, hasBatteryConfig: true, speedUnitSystem: 'imperial' as const }

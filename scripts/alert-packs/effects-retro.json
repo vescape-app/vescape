@@ -1,0 +1,82 @@
+{
+  "id": "retro",
+  "kind": "effects",
+  "voice": "clean",
+  "sounds": {
+    "severity.info": [
+      {
+        "file": "alert_notify.wav"
+      }
+    ],
+    "severity.warning": [
+      {
+        "file": "alert_beep.wav"
+      }
+    ],
+    "severity.critical": [
+      {
+        "file": "alert_urgent.wav"
+      }
+    ],
+    "cue.on": [
+      {
+        "file": "retro_on.wav"
+      }
+    ],
+    "cue.off": [
+      {
+        "file": "retro_off.wav"
+      }
+    ],
+    "cue.error": [
+      {
+        "file": "retro_error.wav"
+      }
+    ],
+    "cue.groupRide.created": [
+      {
+        "file": "retro_new_gr.wav"
+      }
+    ],
+    "cue.groupRide.joined": [
+      {
+        "file": "retro_gr_join.wav"
+      }
+    ],
+    "cue.ride.end": [
+      {
+        "synth": "sine 967",
+        "dur": 0.1
+      },
+      {
+        "gap": 0.03
+      },
+      {
+        "synth": "sine 830",
+        "dur": 0.1
+      },
+      {
+        "gap": 0.03
+      },
+      {
+        "synth": "sine 660",
+        "dur": 0.24
+      }
+    ],
+    "geiger.soft": [
+      {
+        "file": "alert_tick.wav"
+      }
+    ],
+    "geiger.mid": [
+      {
+        "file": "alert_tick_hard.wav"
+      }
+    ],
+    "geiger.hard": [
+      {
+        "file": "alert_gamma.wav"
+      }
+    ]
+  }
+}

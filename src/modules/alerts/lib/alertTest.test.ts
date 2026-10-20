@@ -1,5 +1,4 @@
 import { expect, test } from 'bun:test'
-import { ALERT_BEEP_COUNT_DEFAULT } from 'vescape-core'
 
 import {
   batteryDrainAlertTestEasing,
@@ -33,7 +32,6 @@ test('chart thresholds include range ceilings once in numeric order', () => {
         thresholdMax: 90,
         soundType: 'preset:tick',
         repeatEverySeconds: null,
-        beepCount: ALERT_BEEP_COUNT_DEFAULT,
       },
       {
         id: 'single',
@@ -42,7 +40,6 @@ test('chart thresholds include range ceilings once in numeric order', () => {
         thresholdMax: null,
         soundType: 'preset:beep',
         repeatEverySeconds: null,
-        beepCount: ALERT_BEEP_COUNT_DEFAULT,
       },
     ]),
   ).toEqual([80, 90])

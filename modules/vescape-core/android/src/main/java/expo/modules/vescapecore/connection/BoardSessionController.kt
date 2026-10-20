@@ -3152,6 +3152,8 @@ internal class BoardSessionController(private val service: CoreForegroundService
         dropoutGraceHandle?.cancel()
         dropoutGraceHandle = scheduler.postDelayed(RIDE_DROPOUT_GRACE_MS) {
             dropoutGraceHandle = null
+            // Past the grace the board is treated as powered off: that is how a ride ends.
+            if (connectionSoundsEnabled) alertFeedback.playRideEnd()
             refreshGpsDemand()
         }
         refreshGpsDemand()

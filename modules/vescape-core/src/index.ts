@@ -694,9 +694,8 @@ export interface AlertTestRule {
   threshold: number
   thresholdMax: number | null
   soundType: AlertSoundType
-  /** Carried so a test sounds like the real rule: same cadence, same number of beeps. */
+  /** Carried so a test sounds like the real rule: same cadence. */
   repeatEverySeconds: number | null
-  beepCount: number
 }
 
 // @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/TelemetryEntities.kt `AlertRuleEntity`
@@ -727,11 +726,6 @@ export interface AlertRule {
    */
   repeatEverySeconds: number | null
   /**
-   * How many times the sound plays per announcement, {@link ALERT_BEEP_COUNT_RANGE}. Applies to
-   * preset sounds only — a text-to-speech rule speaks once regardless.
-   */
-  beepCount: number
-  /**
    * Provenance tag. `manual` (or absent) = rider-authored. `preset` rules are generated + owned
    * by native preset generation. JS sends selection intents and renders the saved rules.
    */
@@ -748,15 +742,15 @@ export interface AlertRule {
 export const ALERT_REPEAT_MIN_SECONDS = 3
 
 /**
- * Inclusive bounds on {@link AlertRule.beepCount}. Past 5 the beeps stop being countable by ear
- * at riding speed, which is the only thing the count is for.
+ * Inclusive bounds on the count of an `alert(count):severity` sound. Past 5 the beeps stop being
+ * countable by ear at riding speed, which is the only thing the count is for.
  *
  * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/alerts/AlertEngine.kt `ALERT_BEEP_COUNT_RANGE`
  * @parity /modules/vescape-core/ios/alerts/AlertEngine.swift `alertBeepCountRange`
  */
 export const ALERT_BEEP_COUNT_RANGE = { min: 1, max: 5 } as const
 
-/** Beeps per announcement when nothing says otherwise — matches the pre-`beepCount` behavior. */
+/** Count a new alert rule starts with — matches the sound before counts were configurable. */
 export const ALERT_BEEP_COUNT_DEFAULT = 3
 
 export type PrivacyZonePreset = 'home' | 'work' | 'custom'
@@ -2749,7 +2743,7 @@ type VescapeCoreNativeModule = NativeEventEmitter<VescapeCoreEvents> & {
   requestCriticalRideNotificationPermission(): Promise<CriticalRideNotificationPermissionStatus>
   getAlertSounds(): AlertSound[]
   previewAlertSound(soundType: AlertSoundType): void
-  playAppSound(pack: string, cue: 'on' | 'off' | 'created' | 'join' | 'error'): void
+  playAppSound(pack: string, cue: AppSoundCueId | 'ride.end'): void
   mapTile(z: number, x: number, y: number): Promise<string | null>
   customAppSoundPacks(): Promise<CustomAppSoundPack[]>
   createAppSoundPack(name: string): Promise<CustomAppSoundPack[]>
@@ -3234,10 +3228,14 @@ export async function requestCriticalRideNotificationPermission(): Promise<Criti
   }
 }
 
-const FALLBACK_PRESETS: AlertSound[] = [
-  { name: 'Beep', uri: 'preset:beep', category: 'single' },
-  { name: 'Urgent', uri: 'preset:urgent', category: 'single' },
-  { name: 'Notify', uri: 'preset:notify', category: 'single' },
+/**
+ * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/alerts/AlertEngine.kt `alertSoundMaps`
+ * @parity /modules/vescape-core/ios/alerts/AlertAudioPlayer.swift `alertSoundChoices`
+ */
+const FALLBACK_SOUNDS: AlertSound[] = [
+  { name: 'Info', uri: 'alert:info', category: 'single' },
+  { name: 'Warning', uri: 'alert:warning', category: 'single' },
+  { name: 'Critical', uri: 'alert:critical', category: 'single' },
   { name: 'Tick', uri: 'preset:tick', category: 'geiger' },
   { name: 'Hard Tick', uri: 'preset:tick_hard', category: 'geiger' },
   { name: 'Gamma', uri: 'preset:gamma', category: 'geiger' },
@@ -3247,7 +3245,7 @@ export function getAlertSounds(): AlertSound[] {
   try {
     return native.getAlertSounds()
   } catch {
-    return FALLBACK_PRESETS
+    return FALLBACK_SOUNDS
   }
 }
 
@@ -3281,8 +3279,11 @@ export const removeAppSound = (id: string, cue: AppSoundCueId): Promise<void> =>
   native.removeAppSound(id, cue)
 export const deleteAppSoundPack = (id: string): Promise<void> => native.deleteAppSoundPack(id)
 
-/** Play a bundled or custom app cue; native resolves invalid assignments to Classic. */
-export function playAppSound(pack: string, cue: 'on' | 'off' | 'created' | 'join' | 'error'): void {
+/**
+ * Play an app cue from an effects pack or a custom pack; native resolves invalid assignments to
+ * Simple. `ride.end` has no custom slot and always comes from the effects pack.
+ */
+export function playAppSound(pack: string, cue: AppSoundCueId | 'ride.end'): void {
   native.playAppSound(pack, cue)
 }
 

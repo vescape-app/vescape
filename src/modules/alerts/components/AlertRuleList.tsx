@@ -18,7 +18,11 @@ import { theme } from '@/constants/theme'
 import type { DerivedBatteryConfig } from '@/modules/battery/lib/types'
 import { AlertFormSheet } from '@/modules/alerts/components/AlertFormSheet'
 import type { DraftAlertRule } from '@/modules/alerts/lib/customAlertRules'
-import { parseTtsAlertSound } from '@/modules/alerts/lib/alertSoundString'
+import {
+  parseSlotAlertSound,
+  parseTtsAlertSound,
+  slotAlertSoundLabel,
+} from '@/modules/alerts/lib/alertSoundString'
 import type { MetricAlertsController } from '@/modules/alerts/hooks/useMetricAlerts'
 import type { AlertRuleDraft } from '@/modules/alerts/store/alertsStore'
 
@@ -148,7 +152,7 @@ function AlertRuleRow({
   const TypeIcon = isGeiger ? RadioactiveIcon : isTts ? ChatTextIcon : WaveformIcon
   const detail = [
     rule.repeatEverySeconds == null ? null : `every ${rule.repeatEverySeconds}s`,
-    isGeiger || isTts ? null : `${rule.beepCount}×`,
+    isGeiger || isTts ? null : slotAlertSoundLabel(parseSlotAlertSound(rule.soundType)),
   ]
     .filter(Boolean)
     .join(' · ')

@@ -7,9 +7,12 @@ import XCTest
 /// drive the paths where `release()` and pending `scheduleBuffer` completion handlers overlap, so
 /// a regression shows up as a crashed test run rather than a Sentry report from a rider.
 final class AlertAudioPlayerTests: XCTestCase {
-  /// The SPM test target has no `VescapeCoreAssets.bundle`; the wavs live next to the source.
+  /// The SPM test target has no `VescapeCoreAssets.bundle`; read the effects packs from `shared/`.
   private var assetsDirectory: URL {
-    URL(fileURLWithPath: #filePath).deletingLastPathComponent()
+    URL(fileURLWithPath: #filePath)
+      .deletingLastPathComponent()
+      .appendingPathComponent("../../../../shared/alerts/packs")
+      .standardizedFileURL
   }
 
   private func makePlayer() -> AlertAudioPlayer {
@@ -21,8 +24,9 @@ final class AlertAudioPlayerTests: XCTestCase {
     let player = makePlayer()
     player.updateGeiger(ruleId: "sustained", soundType: "preset:sustained", rangeDepth: 1.0)
     player.updateGeiger(ruleId: "ticking", soundType: "preset:tick", rangeDepth: 0.9)
-    player.playSingle(soundType: "preset:beep", beepCount: 3)
-    player.preview(soundType: "preset:urgent")
+    player.playSingle(soundType: "alert(3):warning")
+    player.preview(soundType: "alert:critical")
+    player.playRideEnd()
     player.playConnect()
 
     // Let buffers actually start so completion handlers are pending when release lands.
@@ -51,7 +55,7 @@ final class AlertAudioPlayerTests: XCTestCase {
       autoreleasepool {
         let player = makePlayer()
         player.updateGeiger(ruleId: "sustained", soundType: "preset:sustained", rangeDepth: 1.0)
-        player.playSingle(soundType: "preset:beep", beepCount: 2)
+        player.playSingle(soundType: "alert(2):critical")
       }
       Thread.sleep(forTimeInterval: 0.05)
     }

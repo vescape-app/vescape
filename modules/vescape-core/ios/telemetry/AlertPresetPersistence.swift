@@ -140,7 +140,7 @@ final class AlertPresetPersistence {
         boardId: boardId, id: UUID().uuidString, controlId: metric,
         threshold: threshold, thresholdMax: thresholdMax, enabled: rule.enabled,
         soundType: rule.soundType, createdAt: rule.createdAt,
-        repeatEverySeconds: rule.repeatEverySeconds, beepCount: rule.beepCount,
+        repeatEverySeconds: rule.repeatEverySeconds,
         source: nil, thresholdKind: "fixed", configFieldId: nil,
         thresholdOffset: nil, thresholdMaxOffset: nil
       )
@@ -194,7 +194,6 @@ final class AlertPresetPersistence {
         soundType: spec.soundType,
         createdAt: createdAt,
         repeatEverySeconds: spec.point.repeatEverySeconds,
-        beepCount: 3,
         source: "preset",
         thresholdKind: spec.relation == nil ? "fixed" : "config-relative",
         configFieldId: spec.relation?.fieldId,

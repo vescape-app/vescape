@@ -631,7 +631,7 @@ enum TelemetryDatabase {
       }
       if !columns.contains("beep_count") {
         try db.execute(
-          sql: "ALTER TABLE alerts ADD COLUMN beep_count INTEGER NOT NULL DEFAULT \(alertBeepCountDefault)"
+          sql: "ALTER TABLE alerts ADD COLUMN beep_count INTEGER NOT NULL DEFAULT 3"
         )
       }
     }
@@ -857,8 +857,63 @@ enum TelemetryDatabase {
       try db.execute(sql: "ALTER TABLE telemetry_minute_buckets ADD COLUMN route_preview TEXT")
     }
 
+    // A single alert's beep count moves into its sound string (#578): `preset:beep` with
+    // `beep_count` 3 becomes `alert(3):warning`, playing the effects pack's severity slot. Legacy
+    // `preset:beep|urgent|notify` (and the older bare names) map to warning, critical, info. TTS,
+    // geiger, and unknown strings keep their sound. `beep_count` is then dropped by copy, matching
+    // Android, which cannot rely on `DROP COLUMN`.
+    // @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/TelemetryMigrations.kt `MIGRATION_49_50`
+    migrator.registerMigration("v50_alert_sound_count") { db in
+      try db.execute(sql: alertSoundCountSql)
+      try db.execute(sql: """
+        CREATE TABLE alerts_new (
+          board_id TEXT NOT NULL,
+          id TEXT NOT NULL,
+          control_id TEXT NOT NULL,
+          threshold REAL NOT NULL,
+          threshold_max REAL,
+          enabled INTEGER NOT NULL,
+          sound_type TEXT NOT NULL,
+          created_at INTEGER NOT NULL,
+          source TEXT,
+          repeat_every_seconds INTEGER,
+          threshold_kind TEXT NOT NULL DEFAULT 'fixed',
+          config_field_id TEXT,
+          threshold_offset REAL,
+          threshold_max_offset REAL,
+          PRIMARY KEY (board_id, id)
+        )
+        """)
+      try db.execute(sql: """
+        INSERT INTO alerts_new (board_id, id, control_id, threshold, threshold_max, enabled, sound_type,
+          created_at, source, repeat_every_seconds, threshold_kind, config_field_id, threshold_offset,
+          threshold_max_offset)
+        SELECT board_id, id, control_id, threshold, threshold_max, enabled, sound_type, created_at,
+          source, repeat_every_seconds, threshold_kind, config_field_id, threshold_offset,
+          threshold_max_offset
+        FROM alerts
+        """)
+      try db.execute(sql: "DROP TABLE alerts")
+      try db.execute(sql: "ALTER TABLE alerts_new RENAME TO alerts")
+      try db.execute(sql: "CREATE INDEX IF NOT EXISTS index_alerts_board_id ON alerts(board_id)")
+      try db.execute(sql: "CREATE INDEX IF NOT EXISTS index_alerts_control_id ON alerts(control_id)")
+      try db.execute(sql: "CREATE INDEX IF NOT EXISTS index_alerts_enabled ON alerts(enabled)")
+      try db.execute(sql: "CREATE INDEX IF NOT EXISTS index_alerts_created_at ON alerts(created_at)")
+    }
+
     return migrator
   }
+
+  /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/TelemetryMigrations.kt `ALERT_SOUND_COUNT_SQL`
+  private static let alertSoundCountSql = """
+    UPDATE alerts SET sound_type = 'alert(' || MAX(1, MIN(5, beep_count)) || '):' ||
+      CASE sound_type
+        WHEN 'preset:urgent' THEN 'critical' WHEN 'urgent' THEN 'critical'
+        WHEN 'preset:notify' THEN 'info' WHEN 'notify' THEN 'info' WHEN 'pulse' THEN 'info'
+        ELSE 'warning'
+      END
+    WHERE sound_type IN ('preset:beep', 'preset:urgent', 'preset:notify', 'default', 'beep', 'urgent', 'notify', 'pulse')
+    """
 }
 
 /// Stand-in Board id for buckets whose samples match no saved Board. `board_id` is part of the

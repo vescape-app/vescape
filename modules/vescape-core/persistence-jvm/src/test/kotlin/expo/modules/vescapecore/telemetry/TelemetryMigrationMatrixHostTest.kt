@@ -70,6 +70,12 @@ class TelemetryMigrationMatrixHostTest {
       4 -> db.exec("INSERT INTO app_settings (id,live_history_limit,auto_connect,auto_recording) VALUES (1,17,0,1)")
       12 -> db.exec("INSERT INTO app_settings VALUES ('era-setting','\"preserved\"',1200)")
       30 -> db.exec("INSERT INTO favorites VALUES ('favorite-era30','board-era3','Favorite',900,1100,30,31,2,1,20,100,1200,1234,3)")
+      32 -> {
+        db.exec("INSERT INTO alerts (board_id,id,control_id,threshold,enabled,sound_type,created_at,beep_count) VALUES ('board-era3','speech-era32','speed',20,1,'tts:Slow down',3200,3)")
+        db.exec("INSERT INTO alerts (board_id,id,control_id,threshold,enabled,sound_type,created_at,beep_count) VALUES ('board-era3','beep-era32','speed',25,1,'preset:beep',3201,2)")
+        db.exec("INSERT INTO alerts (board_id,id,control_id,threshold,enabled,sound_type,created_at,beep_count) VALUES ('board-era3','urgent-era32','speed',30,1,'preset:urgent',3202,5)")
+        db.exec("INSERT INTO alerts (board_id,id,control_id,threshold,threshold_max,enabled,sound_type,created_at,beep_count) VALUES ('board-era3','tick-era32','duty',80,90,1,'preset:tick',3203,3)")
+      }
       33 -> db.exec("INSERT INTO board_config_values VALUES ('board-era3','2.0','{\"motor_current_max\":55.5}',3300)")
     }
   }
@@ -178,6 +184,14 @@ class TelemetryMigrationMatrixHostTest {
         assertEquals(null, db.long("SELECT moving_speed_sample_count FROM telemetry_minute_buckets WHERE bucket_start_ms=960"))
         if (start >= 12) assertEquals("\"preserved\"", db.text("SELECT value_json FROM app_settings WHERE key='era-setting'"))
         if (start >= 30) assertEquals("Favorite", db.text("SELECT name FROM favorites WHERE id='favorite-era30'"))
+        // Single alerts carry their beep count in the sound string (#578); the column is gone.
+        if (start >= 32) {
+          assertEquals("tts:Slow down", db.text("SELECT sound_type FROM alerts WHERE id='speech-era32'"))
+          assertEquals("alert(2):warning", db.text("SELECT sound_type FROM alerts WHERE id='beep-era32'"))
+          assertEquals("alert(5):critical", db.text("SELECT sound_type FROM alerts WHERE id='urgent-era32'"))
+          assertEquals("preset:tick", db.text("SELECT sound_type FROM alerts WHERE id='tick-era32'"))
+        }
+        assertEquals(0L, db.long("SELECT COUNT(*) FROM pragma_table_info('alerts') WHERE name='beep_count'"))
         if (start >= 33) assertEquals("{\"motor_current_max\":55.5}", db.text("SELECT values_json FROM board_config_values WHERE board_id='board-era3'"))
       }
       Files.deleteIfExists(path)

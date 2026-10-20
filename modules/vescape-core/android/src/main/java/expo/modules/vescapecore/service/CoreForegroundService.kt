@@ -8,7 +8,7 @@ import expo.modules.vescapecore.notification.NotificationController
 import expo.modules.vescapecore.config.PendingConfigRead
 import expo.modules.vescapecore.config.PendingConfigWrite
 import expo.modules.vescapecore.config.RefloatConfigErrorCode
-import expo.modules.vescapecore.alerts.alertSoundPresetMaps
+import expo.modules.vescapecore.alerts.alertSoundMaps
 
 import android.annotation.SuppressLint
 import android.app.Service
@@ -530,7 +530,7 @@ class CoreForegroundService : Service() {
             AlertFeedback.previewAppSound(context, pack, cue, kotlinx.coroutines.runBlocking { AppDataRepository.get(context).getTypedSettings().audioSource })
         }
 
-        fun alertSoundPresets(): List<Map<String, Any>> = alertSoundPresetMaps()
+        fun alertSoundPresets(): List<Map<String, Any>> = alertSoundMaps()
 
         fun currentLiveState(context: Context): Map<String, Any?> {
             RecordingStorageFailure.initialize(context.applicationContext)

@@ -36,4 +36,24 @@ class AlertSoundStringTest {
         )
         for ((raw, expected) in cases) assertEquals(raw, expected, parseTtsAlertSound(raw))
     }
+
+    @Test
+    fun readsSlotAlertSoundsWithLegacyAndUnknownFallbacks() {
+        val cases = listOf(
+            "alert(3):warning" to SlotAlertSound(3, AlertSeverity.WARNING),
+            "alert(1):critical" to SlotAlertSound(1, AlertSeverity.CRITICAL),
+            "alert:info" to SlotAlertSound(1, AlertSeverity.INFO),
+            "alert(9):info" to SlotAlertSound(5, AlertSeverity.INFO),
+            "alert(0):info" to SlotAlertSound(1, AlertSeverity.INFO),
+            "alert(x):critical" to SlotAlertSound(1, AlertSeverity.CRITICAL),
+            "alert(2):my:beep" to SlotAlertSound(2, AlertSeverity.WARNING),
+            "alert(2):loud" to SlotAlertSound(2, AlertSeverity.WARNING),
+            "preset:beep" to SlotAlertSound(1, AlertSeverity.WARNING),
+            "preset:urgent" to SlotAlertSound(1, AlertSeverity.CRITICAL),
+            "preset:notify" to SlotAlertSound(1, AlertSeverity.INFO),
+            "default" to SlotAlertSound(1, AlertSeverity.WARNING),
+            "nonsense" to SlotAlertSound(1, AlertSeverity.WARNING),
+        )
+        for ((raw, expected) in cases) assertEquals(raw, expected, parseSlotAlertSound(raw))
+    }
 }

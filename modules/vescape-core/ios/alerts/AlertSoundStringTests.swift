@@ -32,4 +32,23 @@ final class AlertSoundStringTests: XCTestCase {
     ]
     for (raw, expected) in cases { XCTAssertEqual(parseTtsAlertSound(raw), expected, raw) }
   }
+
+  func testReadsSlotAlertSoundsWithLegacyAndUnknownFallbacks() {
+    let cases: [(String, SlotAlertSound)] = [
+      ("alert(3):warning", SlotAlertSound(count: 3, severity: .warning)),
+      ("alert(1):critical", SlotAlertSound(count: 1, severity: .critical)),
+      ("alert:info", SlotAlertSound(count: 1, severity: .info)),
+      ("alert(9):info", SlotAlertSound(count: 5, severity: .info)),
+      ("alert(0):info", SlotAlertSound(count: 1, severity: .info)),
+      ("alert(x):critical", SlotAlertSound(count: 1, severity: .critical)),
+      ("alert(2):my:beep", SlotAlertSound(count: 2, severity: .warning)),
+      ("alert(2):loud", SlotAlertSound(count: 2, severity: .warning)),
+      ("preset:beep", SlotAlertSound(count: 1, severity: .warning)),
+      ("preset:urgent", SlotAlertSound(count: 1, severity: .critical)),
+      ("preset:notify", SlotAlertSound(count: 1, severity: .info)),
+      ("default", SlotAlertSound(count: 1, severity: .warning)),
+      ("nonsense", SlotAlertSound(count: 1, severity: .warning)),
+    ]
+    for (raw, expected) in cases { XCTAssertEqual(parseSlotAlertSound(raw), expected, raw) }
+  }
 }

@@ -34,7 +34,7 @@ func runAlertPresetContract() throws {
         try require(preview.count == rules.count, name + " preview count")
         for (draft, saved) in zip(preview, rules) {
           try require(draft.id == saved.id && draft.threshold == saved.threshold && draft.thresholdMax == saved.thresholdMax, name + " preview thresholds")
-          try require(draft.soundType == saved.soundType && draft.repeatEverySeconds == saved.repeatEverySeconds && draft.beepCount == saved.beepCount, name + " preview sound")
+          try require(draft.soundType == saved.soundType && draft.repeatEverySeconds == saved.repeatEverySeconds, name + " preview sound")
           try require(draft.createdAt == 0 && draft.boardId == "", name + " preview deterministic metadata")
         }
         try require(try Int.fetchOne(db, sql: "SELECT count(*) FROM alerts") == 0, "preview must not write")
@@ -76,7 +76,7 @@ func runAlertPresetContract() throws {
   let duty = try rules().first { $0.controlId == "duty" }!
   try queue.write { db in
     try db.execute(sql: "INSERT OR REPLACE INTO app_settings VALUES ('unitSystem', '\"imperial\"', 1)")
-    try db.execute(sql: "INSERT INTO alerts (board_id,id,control_id,threshold,threshold_max,enabled,sound_type,created_at,beep_count,threshold_kind) VALUES ('board','manual','speed',12,NULL,1,'preset:tick',1,3,'fixed')")
+    try db.execute(sql: "INSERT INTO alerts (board_id,id,control_id,threshold,threshold_max,enabled,sound_type,created_at,threshold_kind) VALUES ('board','manual','speed',12,NULL,1,'preset:tick',1,'fixed')")
   }
   try apply("speed", "select", "safe")
   let selected = try rules().first { $0.controlId == "speed" && $0.source == "preset" }!
@@ -149,7 +149,7 @@ func runAlertPresetUnitSwitchContract() throws {
   let duty = try rules("first").first { $0.controlId == "duty" }!
   let custom = switchCase["custom"] as! [Double]
   try queue.write { db in
-    try db.execute(sql: "INSERT INTO alerts (board_id,id,control_id,threshold,threshold_max,enabled,sound_type,created_at,beep_count,threshold_kind) VALUES ('first','manual','speed',?,?,1,'preset:tick',1,3,'fixed')", arguments: [custom[0], custom[1]])
+    try db.execute(sql: "INSERT INTO alerts (board_id,id,control_id,threshold,threshold_max,enabled,sound_type,created_at,threshold_kind) VALUES ('first','manual','speed',?,?,1,'preset:tick',1,'fixed')", arguments: [custom[0], custom[1]])
   }
   for units in ["imperial", "metric", "imperial"] {
     try BoardSettingsPersistence(writer: queue).updateUnitSystem(units)

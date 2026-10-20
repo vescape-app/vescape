@@ -3,7 +3,11 @@ import { StyleSheet, View } from 'react-native'
 import { Text } from '@/components/base/Text'
 import { PillChoiceRow } from '@/components/forms/PillChoiceRow'
 import { theme } from '@/constants/theme'
-import { ALERT_SEVERITIES, type AlertSeverity } from '@/modules/alerts/lib/alertSoundString'
+import {
+  ALERT_SEVERITIES,
+  ALERT_SEVERITY_LABELS,
+  type AlertSeverity,
+} from '@/modules/alerts/lib/alertSoundString'
 
 /**
  * Repeat cadences offered to the rider, with `Off` as the one-shot choice. Deliberately coarse: the
@@ -41,12 +45,6 @@ export function RepeatField({
   )
 }
 
-const SEVERITY_LABELS: Record<AlertSeverity, string> = {
-  info: 'Info',
-  warning: 'Warning',
-  critical: 'Critical',
-}
-
 /** Severity of a speech rule: picks the sound played once before the message. */
 export function SeverityField({
   value,
@@ -61,7 +59,7 @@ export function SeverityField({
       <PillChoiceRow
         options={ALERT_SEVERITIES.map((severity) => ({
           value: severity,
-          label: SEVERITY_LABELS[severity],
+          label: ALERT_SEVERITY_LABELS[severity],
         }))}
         value={value}
         onChange={onChange}

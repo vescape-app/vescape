@@ -20,6 +20,7 @@ import {
   deleteAppSoundPack,
   importAppSound,
   playAppSound,
+  previewAlertSound,
   removeAppSound,
   renameAppSoundPack,
   type CustomAppSoundPack,
@@ -36,13 +37,29 @@ import { SettingsSectionTitle } from '@/components/settings/SettingsSectionTitle
 import { RadioIndicator } from '@/components/controls/RadioIndicator'
 import { Switch } from '@/components/controls/Switch'
 import { interaction, theme } from '@/constants/theme'
-import { APP_SOUND_CUES } from '@/modules/settings/lib/appSounds'
+import { APP_SOUND_CUES, EFFECTS_PACKS } from '@/modules/settings/lib/appSounds'
 import { useSettingsStore } from '@/modules/settings/store/settingsStore'
+import { ALERT_SEVERITIES, ALERT_SEVERITY_LABELS } from '@/modules/alerts/lib/alertSoundString'
 
-const PACKS = [
-  { id: 'retro', name: 'Retro' },
-  { id: 'simple', name: 'Classic' },
-] as const
+/** What an effects pack's preview strip plays: its app cues, then its severity sounds. */
+const PREVIEW_ROWS: { label: string; play: (pack: string) => void }[][] = [
+  APP_SOUND_CUES.slice(0, 3).map((cue) => ({
+    label: cue.label,
+    play: (pack: string) => playAppSound(pack, cue.id),
+  })),
+  [
+    ...APP_SOUND_CUES.slice(3).map((cue) => ({
+      label: cue.label,
+      play: (pack: string) => playAppSound(pack, cue.id),
+    })),
+    { label: 'Ride end', play: (pack: string) => playAppSound(pack, 'ride.end') },
+  ],
+  ALERT_SEVERITIES.map((severity) => ({
+    label: ALERT_SEVERITY_LABELS[severity],
+    // Alert sounds always come from the selected pack, which is the one previewing.
+    play: () => previewAlertSound(`alert:${severity}`),
+  })),
+]
 
 const NEW_PACK_NAME = 'Unnamed'
 
@@ -131,7 +148,7 @@ export default function SoundsSettingsScreen() {
     })
   }
   const packs: { id: string; name: string; sounds?: CustomAppSoundPack['sounds'] }[] = [
-    ...PACKS,
+    ...EFFECTS_PACKS,
     ...customPacks,
   ]
 
@@ -182,7 +199,7 @@ export default function SoundsSettingsScreen() {
           )}
         </SettingsCard>
 
-        <SettingsSectionTitle>Sound packs</SettingsSectionTitle>
+        <SettingsSectionTitle>Sound effects</SettingsSectionTitle>
         {packLoadError && (
           <Text>Sound packs could not be loaded. Try opening this screen again.</Text>
         )}
@@ -267,17 +284,17 @@ export default function SoundsSettingsScreen() {
                 </Pressable>
                 {active && !custom && (
                   <View style={styles.previewStrip}>
-                    {[APP_SOUND_CUES.slice(0, 3), APP_SOUND_CUES.slice(3)].map((row, rowIndex) => (
+                    {PREVIEW_ROWS.map((row, rowIndex) => (
                       <View
                         key={rowIndex}
                         style={[styles.previewRow, rowIndex > 0 && styles.previewRowDivider]}
                       >
                         {row.map((cue, index) => (
                           <Pressable
-                            key={cue.id}
+                            key={cue.label}
                             accessibilityRole="button"
                             accessibilityLabel={`Play ${cue.label}`}
-                            onPress={() => playAppSound(pack.id, cue.id)}
+                            onPress={() => cue.play(pack.id)}
                             style={({ pressed }) => [
                               styles.preview,
                               index > 0 && styles.previewDivider,

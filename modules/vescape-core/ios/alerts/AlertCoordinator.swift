@@ -102,7 +102,7 @@ internal final class AlertCoordinator {
         if !text.isEmpty { player.speakAfterSeverity(tts.severity, text: text) }
       }
       for alert in single where parseTtsAlertSound(alert.soundType) == nil {
-        player.playSingle(soundType: alert.soundType, beepCount: alert.beepCount)
+        player.playSingle(soundType: alert.soundType)
       }
       if vibrateSingles { player.vibrate(rangeDepth: nil) }
     }

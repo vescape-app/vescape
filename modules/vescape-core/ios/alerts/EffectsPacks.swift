@@ -1,0 +1,64 @@
+import Foundation
+
+/// Built-in effects packs (`shared/alerts/packs/effects-<id>`): every pack fills every slot of
+/// `scripts/alert-packs/catalog.json` — severity beeps, app cues, geiger ticks. The `soundPack`
+/// setting names one of them, or a custom app sound pack whose cues override `effectsPackFallback`.
+///
+/// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/alerts/EffectsPacks.kt
+/// @parity /src/modules/settings/lib/appSounds.ts `EFFECTS_PACKS`
+internal let effectsPackIds = ["retro", "simple", "hev", "clean"]
+
+/// Pack whose slots back a custom app sound pack or an unknown id.
+internal let effectsPackFallback = "simple"
+
+internal func effectsPackId(_ pack: String) -> String {
+  effectsPackIds.contains(pack) ? pack : effectsPackFallback
+}
+
+/// App cue id (the custom app sound pack cue names) → effects slot.
+/// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/alerts/EffectsPacks.kt `appCueSlot`
+/// @parity /src/modules/settings/lib/appSounds.ts `APP_SOUND_CUES`
+internal func appCueSlot(_ cue: String) -> String? {
+  switch cue {
+  case "on": return "cue.on"
+  case "off": return "cue.off"
+  case "error": return "cue.error"
+  case "created": return "cue.groupRide.created"
+  case "join": return "cue.groupRide.joined"
+  case "ride.end": return "cue.ride.end"
+  default: return nil
+  }
+}
+
+/// Geiger slot for a range rule's `soundType`: today's tick names map onto the pack's soft/mid/hard
+/// ticks; anything else ticks soft.
+/// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/alerts/EffectsPacks.kt `geigerSlot`
+internal func geigerSlot(_ soundType: String) -> String {
+  switch soundType {
+  case "preset:tick_hard": return "geiger.mid"
+  case "preset:gamma", "preset:sustained": return "geiger.hard"
+  default: return "geiger.soft"
+  }
+}
+
+/// True for a `soundType` that names a geiger tick rather than a single alert sound.
+internal func isGeigerSoundType(_ soundType: String) -> Bool {
+  ["preset:tick", "preset:tick_hard", "preset:gamma", "preset:sustained"].contains(soundType)
+}
+
+/// Clip files of every built-in pack's slots under `root` (the folder holding `effects-<id>/`),
+/// keyed `"<pack>/<slot>"`. A pack whose manifest cannot be read contributes nothing.
+internal func effectsPackSlotFiles(root: URL) -> [String: URL] {
+  var files: [String: URL] = [:]
+  for pack in effectsPackIds {
+    let dir = root.appendingPathComponent("effects-\(pack)")
+    // intentional-suppression: a missing or corrupt bundled manifest is reported by the player
+    guard
+      let data = try? Data(contentsOf: dir.appendingPathComponent("pack.json")),
+      let manifest = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+      let slots = manifest["slots"] as? [String: String]
+    else { continue }
+    for (slot, file) in slots { files["\(pack)/\(slot)"] = dir.appendingPathComponent(file) }
+  }
+  return files
+}

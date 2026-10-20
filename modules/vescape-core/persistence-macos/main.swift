@@ -16,7 +16,7 @@ if CommandLine.arguments.dropFirst().first == "--preview-alert-presets" {
     output += rules.map { rule in
       ["id": rule.id, "controlId": rule.controlId, "threshold": rule.threshold,
        "thresholdMax": rule.thresholdMax as Any? ?? NSNull(), "soundType": rule.soundType,
-       "repeatEverySeconds": rule.repeatEverySeconds as Any? ?? NSNull(), "beepCount": rule.beepCount]
+       "repeatEverySeconds": rule.repeatEverySeconds as Any? ?? NSNull()]
     }
   }
   let data = try JSONSerialization.data(withJSONObject: output, options: [.sortedKeys])
@@ -743,7 +743,7 @@ try tuneQueue!.write { db in
 }
 _ = try tuneStore.saveProfile(profileId: tuneId, fields: ["kp": 2])
 var alertPersistence = AlertRulePersistence(writer: tuneQueue!)
-try alertPersistence.save(PersistedAlertRule(boardId: tuneAlertBoardId, id: alertValues["id"] as! String, controlId: alertValues["controlId"] as! String, threshold: alertValues["threshold"] as! Double, thresholdMax: nil, enabled: true, soundType: alertValues["soundType"] as! String, createdAt: 1, repeatEverySeconds: nil, beepCount: 1, source: alertValues["source"] as? String, thresholdKind: "fixed", configFieldId: nil, thresholdOffset: nil, thresholdMaxOffset: nil))
+try alertPersistence.save(PersistedAlertRule(boardId: tuneAlertBoardId, id: alertValues["id"] as! String, controlId: alertValues["controlId"] as! String, threshold: alertValues["threshold"] as! Double, thresholdMax: nil, enabled: true, soundType: alertValues["soundType"] as! String, createdAt: 1, repeatEverySeconds: nil, source: alertValues["source"] as? String, thresholdKind: "fixed", configFieldId: nil, thresholdOffset: nil, thresholdMaxOffset: nil))
 try alertPersistence.setEnabled(boardId: tuneAlertBoardId, id: alertValues["id"] as! String, enabled: false)
 try tuneQueue!.close()
 tuneQueue = try DatabaseQueue(path: tuneURL.path)

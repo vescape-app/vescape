@@ -4,7 +4,16 @@ import { join } from 'path'
 export const ROOT = join(import.meta.dir, '..', '..')
 export const MANIFEST_DIR = import.meta.dir
 export const PACKS_DIR = join(ROOT, 'shared', 'alerts', 'packs')
-export const MANIFESTS = ['effects-hev', 'effects-clean', 'voice-hev', 'voice-clean'] as const
+export const MANIFESTS = [
+  'effects-retro',
+  'effects-simple',
+  'effects-hev',
+  'effects-clean',
+  'voice-hev',
+  'voice-clean',
+] as const
+/** Recorded clips that `file` segments transcode into a pack: today's Retro and Simple sounds. */
+export const SOURCES_DIR = join(MANIFEST_DIR, 'sources')
 export const CLIP_EXTENSION = '.m4a'
 
 export type ValueType = 'percent' | 'degrees'
@@ -17,6 +26,8 @@ export interface Catalog {
 }
 
 export interface Segment {
+  /** A recorded clip under `sources/`, resampled to the pack format. */
+  file?: string
   synth?: string
   dur?: number
   vol?: number
@@ -31,7 +42,8 @@ export interface EffectsManifest {
   kind: 'effects'
   voice: string
   sounds: Record<string, Segment[]>
-  beep: Segment & { gap: number }
+  /** Tone of a `beep` segment; only packs that use `beep` need it. */
+  beep?: Segment & { gap: number }
 }
 
 export interface Line {
@@ -95,8 +107,14 @@ export function validateManifest(catalog: Catalog, manifest: EffectsManifest | V
     for (const slot of catalog.effectSlots) {
       if (!manifest.sounds[slot]?.length) errors.push(`missing slot ${slot}`)
     }
-    for (const slot of Object.keys(manifest.sounds)) {
+    for (const [slot, segments] of Object.entries(manifest.sounds)) {
       if (!catalog.effectSlots.includes(slot)) errors.push(`unknown slot ${slot}`)
+      for (const segment of segments) {
+        if (segment.beep && !manifest.beep) errors.push(`${slot}: beep without a beep tone`)
+        if (segment.file && !existsSync(join(SOURCES_DIR, segment.file))) {
+          errors.push(`${slot}: missing source ${segment.file}`)
+        }
+      }
     }
   } else {
     for (const key of Object.keys(catalog.voiceKeys)) {

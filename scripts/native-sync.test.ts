@@ -1,5 +1,13 @@
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, unlinkSync, writeFileSync } from 'fs'
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  unlinkSync,
+  writeFileSync,
+} from 'fs'
 import { tmpdir } from 'os'
 import { join } from 'path'
 import { copyWearSharedSources, wearSharedSources } from '../plugins/wearSharedSources.ts'
@@ -26,7 +34,7 @@ beforeEach(() => {
   write('app.config.ts', 'export default {}')
   write('package.json', '{}')
   write('assets/images/icon.png', 'icon')
-  write('shared/alerts/alert_beep.wav', 'beep')
+  write('shared/alerts/packs/effects-retro/severity.warning.m4a', 'beep')
   write('shared/data/cell-presets.json', '{}')
   write('modules/vescape-core/expo-module.config.json', '{}')
   write('modules/vescape-core/ios/VescapeCore.podspec', 'spec')
@@ -159,7 +167,8 @@ describe('prebuildFingerprint', () => {
 describe('shared assets', () => {
   it('reports every copy as missing before copy:shared runs', () => {
     expect(missingSharedOutputs(root)).toEqual([
-      'modules/vescape-core/android/src/main/res/raw/alert_beep.wav',
+      'modules/vescape-core/android/src/main/assets/alert-packs/effects-retro/severity.warning.m4a',
+      'modules/vescape-core/ios/alert-packs/effects-retro/severity.warning.m4a',
       'modules/vescape-core/android/src/main/assets/data/cell-presets.json',
       'modules/vescape-core/android/src/test/resources/data/cell-presets.json',
     ])
@@ -173,22 +182,39 @@ describe('shared assets', () => {
 
   it('reports a deleted copy as missing', () => {
     copyShared(root, { quiet: true })
-    unlinkSync(join(root, 'modules/vescape-core/android/src/main/res/raw/alert_beep.wav'))
+    unlinkSync(
+      join(
+        root,
+        'modules/vescape-core/android/src/main/assets/alert-packs/effects-retro/severity.warning.m4a',
+      ),
+    )
 
     expect(missingSharedOutputs(root)).toEqual([
-      'modules/vescape-core/android/src/main/res/raw/alert_beep.wav',
+      'modules/vescape-core/android/src/main/assets/alert-packs/effects-retro/severity.warning.m4a',
     ])
   })
 
-  it('copies sources whose extension is upper-case, since the copy is lower-cased anyway', () => {
-    write('shared/alerts/Alert_Loud.WAV', 'loud')
+  it('copies only effects packs, keeping their directory layout', () => {
+    write('shared/alerts/packs/voice-hev/pack.json', '{}')
+    write('shared/alerts/packs/effects-hev/pack.json', '{}')
 
-    expect(missingSharedOutputs(root)).toContain(
-      'modules/vescape-core/android/src/main/res/raw/alert_loud.wav',
-    )
+    const missing = missingSharedOutputs(root)
+    expect(missing).toContain('modules/vescape-core/ios/alert-packs/effects-hev/pack.json')
+    expect(missing.some((path) => path.includes('voice-hev'))).toBe(false)
 
     copyShared(root, { quiet: true })
     expect(missingSharedOutputs(root)).toEqual([])
+  })
+
+  it('removes a copied pack file that is no longer in shared/', () => {
+    write('shared/alerts/packs/effects-hev/cue.on.m4a', 'on')
+    copyShared(root, { quiet: true })
+    unlinkSync(join(root, 'shared/alerts/packs/effects-hev/cue.on.m4a'))
+    copyShared(root, { quiet: true })
+
+    expect(
+      existsSync(join(root, 'modules/vescape-core/ios/alert-packs/effects-hev/cue.on.m4a')),
+    ).toBe(false)
   })
 
   it('fingerprints the shared source, not the generated copies', () => {
@@ -197,7 +223,7 @@ describe('shared assets', () => {
 
     expect(sharedFingerprint(root)).toEqual(before)
 
-    write('shared/alerts/alert_beep.wav', 'louder beep')
+    write('shared/alerts/packs/effects-retro/severity.warning.m4a', 'louder beep')
     expect(sharedFingerprint(root)).not.toEqual(before)
   })
 })
@@ -301,34 +327,45 @@ describe('planSync', () => {
 
   it('copies shared assets when the shared source changed', () => {
     const base = synced('android')
-    write('shared/alerts/alert_beep.wav', 'louder beep')
+    write('shared/alerts/packs/effects-retro/severity.warning.m4a', 'louder beep')
 
     const steps = planSync({ ...base, next: state('android') })
 
-    expect(steps).toEqual([{ action: 'shared', reasons: ['~ shared/alerts/alert_beep.wav'] }])
+    expect(steps).toEqual([
+      { action: 'shared', reasons: ['~ shared/alerts/packs/effects-retro/severity.warning.m4a'] },
+    ])
   })
 
   it('copies shared assets when a generated copy was deleted', () => {
     const base = synced('android')
-    unlinkSync(join(root, 'modules/vescape-core/android/src/main/res/raw/alert_beep.wav'))
+    unlinkSync(
+      join(
+        root,
+        'modules/vescape-core/android/src/main/assets/alert-packs/effects-retro/severity.warning.m4a',
+      ),
+    )
 
     const steps = planSync({ ...base, missingSharedOutputs: missingSharedOutputs(root) })
 
     expect(steps).toEqual([
       {
         action: 'shared',
-        reasons: ['! modules/vescape-core/android/src/main/res/raw/alert_beep.wav is missing'],
+        reasons: [
+          '! modules/vescape-core/android/src/main/assets/alert-packs/effects-retro/severity.warning.m4a is missing',
+        ],
       },
     ])
   })
 
   it('does not copy shared assets for iOS, which symlinks them', () => {
     const base = synced('ios')
-    write('shared/alerts/alert_beep.wav', 'louder beep')
+    write('shared/alerts/packs/effects-retro/severity.warning.m4a', 'louder beep')
 
     const steps = planSync({
       ...base,
-      missingSharedOutputs: ['modules/vescape-core/android/src/main/res/raw/alert_beep.wav'],
+      missingSharedOutputs: [
+        'modules/vescape-core/android/src/main/assets/alert-packs/effects-retro/severity.warning.m4a',
+      ],
       next: state('ios'),
     })
 
@@ -337,7 +374,7 @@ describe('planSync', () => {
 
   it('copies shared assets before prebuilding', () => {
     const base = synced('android')
-    write('shared/alerts/alert_beep.wav', 'louder beep')
+    write('shared/alerts/packs/effects-retro/severity.warning.m4a', 'louder beep')
     write('app.config.ts', 'export default { name: "vescape" }')
 
     const steps = planSync({ ...base, next: state('android') })

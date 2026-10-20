@@ -25,8 +25,8 @@ interface AlertsState {
 
 /**
  * Everything the rider can author on a rule. Grouped rather than passed positionally: a rule now
- * carries a shape (threshold / range), a sound, a repeat cadence and a beep count, and every one of
- * those travels together from the form to the store to native.
+ * carries a shape (threshold / range), a sound (with its count), and a repeat cadence, and every one
+ * of those travels together from the form to the store to native.
  */
 export interface AlertRuleDraft {
   threshold: number
@@ -34,7 +34,6 @@ export interface AlertRuleDraft {
   soundType: AlertSoundType
   /** Seconds between repeats while past the threshold; `null` ⇒ announce once per crossing. */
   repeatEverySeconds: number | null
-  beepCount: number
 }
 
 interface AlertsActions {

@@ -12,66 +12,25 @@ internal let alertCategorySingle = "single"
 /// @parity /modules/vescape-core/src/index.ts `AlertSoundCategory`
 internal let alertCategoryGeiger = "geiger"
 
-/// Bundled alert sound preset. Mirrors Android `AlertSoundPreset`.
-/// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/alerts/AlertEngine.kt `AlertSoundPreset`
-internal struct AlertSoundPreset {
-  let name: String
-  let uri: String
-  let category: String
-  let fileName: String
-
-  func toMap() -> [String: Any] {
-    ["name": name, "uri": uri, "category": category]
-  }
+/// Sounds the alert form offers: the active effects pack's severities for single alerts, geiger
+/// ticks for range alerts.
+/// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/alerts/AlertEngine.kt `alertSoundMaps`
+/// @parity /modules/vescape-core/src/index.ts `FALLBACK_SOUNDS`
+internal func alertSoundChoices() -> [[String: Any]] {
+  [
+    ("Info", "alert:info", alertCategorySingle),
+    ("Warning", "alert:warning", alertCategorySingle),
+    ("Critical", "alert:critical", alertCategorySingle),
+    ("Tick", "preset:tick", alertCategoryGeiger),
+    ("Hard Tick", "preset:tick_hard", alertCategoryGeiger),
+    ("Gamma", "preset:gamma", alertCategoryGeiger),
+  ].map { ["name": $0.0, "uri": $0.1, "category": $0.2] }
 }
 
-internal let alertSoundPresets: [AlertSoundPreset] = [
-  .init(name: "Beep", uri: "preset:beep", category: alertCategorySingle, fileName: "alert_beep"),
-  .init(name: "Urgent", uri: "preset:urgent", category: alertCategorySingle, fileName: "alert_urgent"),
-  .init(name: "Notify", uri: "preset:notify", category: alertCategorySingle, fileName: "alert_notify"),
-  .init(name: "Tick", uri: "preset:tick", category: alertCategoryGeiger, fileName: "alert_tick"),
-  .init(name: "Hard Tick", uri: "preset:tick_hard", category: alertCategoryGeiger, fileName: "alert_tick_hard"),
-  .init(name: "Gamma", uri: "preset:gamma", category: alertCategoryGeiger, fileName: "alert_gamma"),
-  .init(name: "Sustained", uri: "preset:sustained", category: alertCategoryGeiger, fileName: "alert_sustained"),
-]
-
-/// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/alerts/AlertEngine.kt `appSoundResources`
-internal let appSoundFiles: [String: [String: String]] = [
-  "simple": ["on": "on", "off": "off", "created": "simple_gr_created", "join": "simple_gr_join", "error": "simple_error"],
-  "retro": ["on": "retro_on", "off": "retro_off", "created": "retro_new_gr", "join": "retro_gr_join", "error": "retro_error"],
-]
-
-internal func alertSoundPresetMaps() -> [[String: Any]] {
-  alertSoundPresets
-    .filter { $0.uri != "preset:sustained" }
-    .map { $0.toMap() }
-}
-
-/// Resolve a `soundType` URI to a preset, scoped by category when given. Falls back to
-/// `preset:tick` for geiger and `preset:beep` otherwise. Mirrors Android `resolveAlertPreset`.
-/// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/alerts/AlertEngine.kt `resolveAlertPreset`
-internal func resolveAlertPreset(soundType: String, category: String?) -> AlertSoundPreset {
-  let key: String?
-  if soundType.hasPrefix("preset:") {
-    key = String(soundType.dropFirst("preset:".count))
-  } else if soundType.contains(":") {
-    key = nil
-  } else if soundType == "default" {
-    key = "beep"
-  } else if soundType == "pulse" {
-    key = "notify"
-  } else {
-    key = soundType
-  }
-  let uri = key.map { "preset:\($0)" }
-  if let uri, let preset = alertSoundPresets.first(where: { $0.uri == uri }),
-     category == nil || preset.category == category {
-    return preset
-  }
-  if category == alertCategoryGeiger {
-    return alertSoundPresets.first { $0.uri == "preset:tick" }!
-  }
-  return alertSoundPresets.first { $0.uri == "preset:beep" }!
+/// Slot a one-shot preview of `soundType` plays: a geiger tick, or the severity sound once.
+/// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/alerts/EffectsPacks.kt `previewSlot`
+internal func previewSlot(_ soundType: String) -> String {
+  isGeigerSoundType(soundType) ? geigerSlot(soundType) : parseSlotAlertSound(soundType).severity.slot
 }
 
 /// A fired sample alert used for TTS preview rendering, mirroring Android `ttsSampleAlert`.
@@ -84,7 +43,6 @@ private func ttsSampleAlert(soundType: String) -> FiredAlert {
     thresholdMax: nil,
     soundType: soundType,
     rangeDepth: nil,
-    beepCount: alertBeepCountDefault,
     firedAt: alertNowMs()
   )
 }
@@ -133,7 +91,10 @@ internal final class AlertAudioPlayer {
   private let scheduler: Scheduler
   private let synthesizer = AVSpeechSynthesizer()
   private let assetsDirectory: URL?
-  private var buffersByFileName: [String: AVAudioPCMBuffer] = [:]
+  /// Decoded clip per `"<pack>/<slot>"` of every built-in effects pack.
+  private var buffersBySlot: [String: AVAudioPCMBuffer] = [:]
+  /// Length of each clip in `buffersBySlot`, written once in `init` and only read afterwards.
+  private var clipDurationsMs: [String: Int64] = [:]
   var soundPack = "retro"
   private var geigerLoops: [String: GeigerLoop] = [:]
   private var activeOneShotNodes: [AVAudioPlayerNode] = []
@@ -146,9 +107,10 @@ internal final class AlertAudioPlayer {
   private let releasedLock = NSLock()
   private var released = false
 
-  /// `assetsDirectory` overrides the bundled `VescapeCoreAssets.bundle` lookup. Production passes
-  /// nil; the SPM test target has no resource bundle and points at the repo's wav directory so the
-  /// engine graph is exercised for real.
+  /// `assetsDirectory` overrides the bundled `VescapeCoreAssets.bundle/alert-packs` lookup with a
+  /// folder holding `effects-<id>/pack.json`. Production passes nil; the SPM test target has no
+  /// resource bundle and points at the repo's `shared/alerts/packs` so the engine graph is exercised
+  /// for real.
   init(
     assetsDirectory: URL? = nil,
     outputVolume: Float = 1,
@@ -174,7 +136,7 @@ internal final class AlertAudioPlayer {
       UnexpectedNativeError.report(operation: "alert_audio_engine_start", category: "audio_start_failed", error: error)
     }
     loadBuffers(using: standardFormat)
-    Self.log("AlertAudioPlayer: buffers loaded=\(buffersByFileName.keys.sorted())")
+    Self.log("AlertAudioPlayer: buffers loaded=\(buffersBySlot.keys.sorted())")
   }
 
   deinit {
@@ -308,37 +270,42 @@ internal final class AlertAudioPlayer {
   }
 
   private func loadBuffers(using standardFormat: AVAudioFormat) {
-    let resolve: (String) -> URL?
+    let root: URL
     if let assetsDirectory {
-      resolve = { assetsDirectory.appendingPathComponent("\($0).wav") }
+      root = assetsDirectory
     } else {
-      guard let bundleURL = bundledAssetsURL(), let bundle = Bundle(url: bundleURL) else {
-        Self.log("AlertAudioPlayer: bundledAssetsURL missing — no presets will play")
+      guard let bundleURL = bundledAssetsURL() else {
+        Self.log("AlertAudioPlayer: bundledAssetsURL missing — no sounds will play")
         UnexpectedNativeError.report(operation: "alert_audio_bundle_missing", category: "required_asset_missing", error: CocoaError(.fileNoSuchFile))
         return
       }
-      resolve = { bundle.url(forResource: $0, withExtension: "wav") }
+      root = bundleURL.appendingPathComponent("alert-packs")
+    }
+    let files = effectsPackSlotFiles(root: root)
+    if files.isEmpty {
+      UnexpectedNativeError.report(operation: "alert_audio_asset_missing", category: "required_asset_missing", error: CocoaError(.fileNoSuchFile))
     }
     var buffers: [String: AVAudioPCMBuffer] = [:]
-    for fileName in Set(alertSoundPresets.map(\.fileName) + appSoundFiles.values.flatMap { $0.values }) {
-      guard let url = resolve(fileName), FileManager.default.fileExists(atPath: url.path) else {
-        Self.log("AlertAudioPlayer: missing \(fileName).wav in bundle")
-        UnexpectedNativeError.report(operation: "alert_audio_asset_missing", category: "required_asset_missing", error: CocoaError(.fileNoSuchFile))
-        continue
-      }
+    for (key, url) in files {
       // intentional-suppression: audio teardown is best effort and asset-open failure is reported
       guard let file = try? AVAudioFile(forReading: url) else {
-        Self.log("AlertAudioPlayer: AVAudioFile read failed for \(fileName).wav")
+        Self.log("AlertAudioPlayer: AVAudioFile read failed for \(key)")
         UnexpectedNativeError.report(operation: "alert_audio_asset_open", category: "audio_decode_failed", error: CocoaError(.fileReadCorruptFile))
         continue
       }
       guard let buffer = convertToStandard(file: file, standardFormat: standardFormat) else {
-        Self.log("AlertAudioPlayer: convert failed for \(fileName).wav src=\(file.processingFormat)")
+        Self.log("AlertAudioPlayer: convert failed for \(key) src=\(file.processingFormat)")
         continue
       }
-      buffers[fileName] = buffer
+      buffers[key] = buffer
     }
-    buffersByFileName = buffers
+    buffersBySlot = buffers
+    clipDurationsMs = buffers.mapValues { Int64(Double($0.frameLength) / $0.format.sampleRate * 1000) }
+  }
+
+  /// Key of `slot` in the active (or given) effects pack.
+  private func slotKey(_ slot: String, pack: String? = nil) -> String {
+    "\(effectsPackId(pack ?? soundPack))/\(slot)"
   }
 
   private func makeStandardFormat() -> AVAudioFormat {
@@ -411,7 +378,13 @@ internal final class AlertAudioPlayer {
     playAppSound(pack: soundPack, cue: "off")
   }
 
+  /// Play when the Board Session ride ends.
+  func playRideEnd() {
+    playAppSound(pack: soundPack, cue: "ride.end")
+  }
+
   func playAppSound(pack: String, cue: String) {
+    guard let slot = appCueSlot(cue) else { return }
     if let customURL = CustomAppSounds.file(pack, cue: cue) {
       geigerQueue.async { [weak self] in
         guard let self else { return }
@@ -419,30 +392,33 @@ internal final class AlertAudioPlayer {
         if let audio = try? AVAudioFile(forReading: customURL),
           let buffer = self.convertToStandard(file: audio, standardFormat: self.makeStandardFormat()) {
           self.playBufferOnQueue(buffer, label: customURL.lastPathComponent)
-        } else if let classic = appSoundFiles["simple"]?[cue] {
-          self.playOnQueue(classic)
+        } else {
+          self.playOnQueue(self.slotKey(slot, pack: effectsPackFallback))
         }
       }
       return
     }
-    guard let file = (appSoundFiles[pack] ?? appSoundFiles["simple"])?[cue] else { return }
-    play(file)
+    play(slotKey(slot, pack: pack))
   }
 
   // MARK: - Single
 
-  /// Play one announcement: `beepCount` plays of the rule's sound, `alertBeepSpacingMs` apart.
+  /// Play one announcement: an `alert(count):severity` rule's severity sound from the active
+  /// effects pack, `count` times, `alertBeepSpacingMs` apart.
   /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/alerts/AlertEngine.kt `playSingle`
-  func playSingle(soundType: String, beepCount: Int = alertBeepCountDefault) {
+  func playSingle(soundType: String) {
+    playSeverity(parseSlotAlertSound(soundType))
+  }
+
+  private func playSeverity(_ sound: SlotAlertSound) {
     guard !isReleased else { return }
-    let beeps = normalizedAlertBeepCount(beepCount)
-    let preset = resolveAlertPreset(soundType: soundType, category: alertCategorySingle)
-    play(preset.fileName)
-    guard beeps > 1 else { return }
+    let key = slotKey(sound.severity.slot)
+    play(key)
+    guard sound.count > 1 else { return }
     let spacing = alertBeepSpacingMs / 1000
-    for index in 1..<beeps {
+    for index in 1..<sound.count {
       scheduler.postDelayed(Int64(spacing * Double(index) * 1000)) { [weak self] in
-        self?.onGeigerQueue { $0.playOnQueue(preset.fileName) }
+        self?.onGeigerQueue { $0.playOnQueue(key) }
       }
     }
   }
@@ -456,9 +432,10 @@ internal final class AlertAudioPlayer {
     guard !isReleased else { return }
     // A newer announcement supersedes speech still waiting out an older one's sound.
     pendingSpeech?.cancel()
-    playSingle(soundType: severity.soundType, beepCount: 1)
+    playSeverity(SlotAlertSound(count: 1, severity: severity))
     // Written only from the announcing caller; cancelling an already-run item is a no-op.
-    pendingSpeech = scheduler.postDelayed(alertSpeechDelayMs) { [weak self] in
+    let delay = max(alertSpeechDelayMs, clipDurationsMs[slotKey(severity.slot)] ?? 0)
+    pendingSpeech = scheduler.postDelayed(delay) { [weak self] in
       self?.speakMessage(text)
     }
   }
@@ -481,9 +458,9 @@ internal final class AlertAudioPlayer {
       if !text.isEmpty { speakAfterSeverity(tts.severity, text: text) }
       return
     }
-    let preset = resolveAlertPreset(soundType: soundType, category: nil)
-    Self.log("AlertAudioPlayer.preview resolved=\(preset.uri) file=\(preset.fileName)")
-    play(preset.fileName)
+    let key = slotKey(previewSlot(soundType))
+    Self.log("AlertAudioPlayer.preview resolved=\(key)")
+    play(key)
   }
 
   // MARK: - Geiger
@@ -500,7 +477,7 @@ internal final class AlertAudioPlayer {
 
   private func updateGeigerSync(ruleId: String, soundType: String, rangeDepth: Double) {
     let depth = min(max(rangeDepth, 0.0), 1.0)
-    let tickPreset = resolveAlertPreset(soundType: soundType, category: alertCategoryGeiger)
+    let tickKey = slotKey(geigerSlot(soundType))
     let existing = geigerLoops[ruleId]
 
     if depth >= 1.0 {
@@ -511,7 +488,7 @@ internal final class AlertAudioPlayer {
       stopSustained(ruleId: ruleId)
       let loop = GeigerLoop(soundType: soundType, rangeDepth: depth, sustained: true)
       geigerLoops[ruleId] = loop
-      scheduleSustainedLoop(loop: loop, ruleId: ruleId, fileName: tickPreset.fileName)
+      scheduleSustainedLoop(loop: loop, ruleId: ruleId, clipKey: tickKey)
       return
     }
 
@@ -525,7 +502,7 @@ internal final class AlertAudioPlayer {
     existing?.workItem?.cancel()
     let loop = GeigerLoop(soundType: soundType, rangeDepth: depth, sustained: false)
     geigerLoops[ruleId] = loop
-    scheduleGeigerTick(loop: loop, ruleId: ruleId, fileName: tickPreset.fileName)
+    scheduleGeigerTick(loop: loop, ruleId: ruleId, clipKey: tickKey)
   }
 
   func stopGeiger(ruleId: String) {
@@ -550,32 +527,32 @@ internal final class AlertAudioPlayer {
     }
   }
 
-  private func scheduleGeigerTick(loop: GeigerLoop, ruleId: String, fileName: String) {
+  private func scheduleGeigerTick(loop: GeigerLoop, ruleId: String, clipKey: String) {
     let startDepth = max(0, loop.rangeDepth)
     let startDelay = geigerIntervalMs(rangeDepth: startDepth)
-    scheduleGeigerTick(loop: loop, ruleId: ruleId, fileName: fileName, delayMs: startDelay)
+    scheduleGeigerTick(loop: loop, ruleId: ruleId, clipKey: clipKey, delayMs: startDelay)
   }
 
-  private func scheduleGeigerTick(loop: GeigerLoop, ruleId: String, fileName: String, delayMs: Int) {
+  private func scheduleGeigerTick(loop: GeigerLoop, ruleId: String, clipKey: String, delayMs: Int) {
     loop.workItem = scheduler.postDelayed(Int64(delayMs)) { [weak self] in
       self?.onGeigerQueue { owner in
         guard let existing = owner.geigerLoops[ruleId], existing === loop, !existing.sustained else { return }
-        owner.playOnQueue(fileName)
+        owner.playOnQueue(clipKey)
         let interval = owner.geigerIntervalMs(rangeDepth: loop.rangeDepth)
-        owner.scheduleGeigerTick(loop: loop, ruleId: ruleId, fileName: fileName, delayMs: interval)
+        owner.scheduleGeigerTick(loop: loop, ruleId: ruleId, clipKey: clipKey, delayMs: interval)
       }
     }
   }
 
   /// Loop the buffer continuously until the loop is cancelled by `stopGeiger`/`stopAllGeiger`.
-  private func scheduleSustainedLoop(loop: GeigerLoop, ruleId: String, fileName: String) {
+  private func scheduleSustainedLoop(loop: GeigerLoop, ruleId: String, clipKey: String) {
     let token = UUID()
     loop.sustainToken = token
-    scheduleSustainedBuffer(loop: loop, ruleId: ruleId, fileName: fileName, token: token)
+    scheduleSustainedBuffer(loop: loop, ruleId: ruleId, clipKey: clipKey, token: token)
   }
 
-  private func scheduleSustainedBuffer(loop: GeigerLoop, ruleId: String, fileName: String, token: UUID) {
-    guard let buffer = buffersByFileName[fileName] else { return }
+  private func scheduleSustainedBuffer(loop: GeigerLoop, ruleId: String, clipKey: String, token: UUID) {
+    guard let buffer = buffersBySlot[clipKey] else { return }
     startIfNeeded()
     let node = loop.sustainedNode ?? makePlayerNode(format: buffer.format)
     loop.sustainedNode = node
@@ -593,7 +570,7 @@ internal final class AlertAudioPlayer {
           if let node { self.detachPlayerNode(node) }
           return
         }
-        self.scheduleSustainedBuffer(loop: loop, ruleId: ruleId, fileName: fileName, token: token)
+        self.scheduleSustainedBuffer(loop: loop, ruleId: ruleId, clipKey: clipKey, token: token)
       }
     })
     node.play()
@@ -698,28 +675,28 @@ internal final class AlertAudioPlayer {
     activeOneShotNodes.removeAll(keepingCapacity: true)
     if engine.isRunning { engine.stop() }
     started = false
-    buffersByFileName.removeAll(keepingCapacity: true)
+    buffersBySlot.removeAll(keepingCapacity: true)
   }
 
   // MARK: - Low-level
 
   /// Entry point from any thread. Hops to `geigerQueue`, the single owner of the engine graph and
   /// of `activeOneShotNodes`.
-  private func play(_ fileName: String) {
+  private func play(_ clipKey: String) {
     guard !isReleased else { return }
     geigerQueue.async { [weak self] in
-      self?.playOnQueue(fileName)
+      self?.playOnQueue(clipKey)
     }
   }
 
   /// Must run on `geigerQueue`.
-  private func playOnQueue(_ fileName: String) {
+  private func playOnQueue(_ clipKey: String) {
     guard !isReleased else { return }
-    guard let buffer = buffersByFileName[fileName] else {
-      Self.log("AlertAudioPlayer.play: NO BUFFER for \(fileName)")
+    guard let buffer = buffersBySlot[clipKey] else {
+      Self.log("AlertAudioPlayer.play: NO BUFFER for \(clipKey)")
       return
     }
-    playBufferOnQueue(buffer, label: fileName)
+    playBufferOnQueue(buffer, label: clipKey)
   }
 
   private func playBufferOnQueue(_ buffer: AVAudioPCMBuffer, label: String) {

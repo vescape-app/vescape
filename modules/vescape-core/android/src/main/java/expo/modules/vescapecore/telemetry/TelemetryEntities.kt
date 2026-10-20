@@ -5,7 +5,6 @@ import androidx.room.Entity
 import androidx.room.ForeignKey
 import androidx.room.Index
 import androidx.room.PrimaryKey
-import expo.modules.vescapecore.alerts.ALERT_BEEP_COUNT_DEFAULT
 
 // @parity /modules/vescape-core/ios/alerts/AlertEngine.swift
 const val TELEMETRY_FLAG_KEYFRAME = 1
@@ -420,9 +419,6 @@ data class AlertRuleEntity(
    */
   @ColumnInfo(name = "repeat_every_seconds")
   val repeatEverySeconds: Long? = null,
-  /** Sound repeats per announcement. Mirrors TS `AlertRule.beepCount`. */
-  @ColumnInfo(name = "beep_count")
-  val beepCount: Int = ALERT_BEEP_COUNT_DEFAULT,
   /**
    * Free-text provenance tag mirroring TS `AlertRule.source`: `manual` (or null) or `preset`.
    * Native owns preset generation; JS submits selection intents.

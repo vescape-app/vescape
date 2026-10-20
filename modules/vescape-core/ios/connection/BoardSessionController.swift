@@ -952,8 +952,11 @@ internal final class BoardSessionController: VescGattListener {
     linkLostAtMs = nowMs()
     dropoutGraceTimer?.cancel()
     dropoutGraceTimer = scheduler.postDelayed(RIDE_DROPOUT_GRACE_MS) { [weak self] in
-      self?.dropoutGraceTimer = nil
-      self?.refreshGpsDemand()
+      guard let self else { return }
+      self.dropoutGraceTimer = nil
+      // Past the grace the board is treated as powered off: that is how a ride ends.
+      if self.connectionSoundsEnabled { self.alertAudioPlayer.playRideEnd() }
+      self.refreshGpsDemand()
     }
     refreshGpsDemand()
   }

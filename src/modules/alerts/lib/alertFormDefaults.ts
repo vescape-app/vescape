@@ -20,7 +20,11 @@ import {
   type TelemetryAlertTab as AlertTab,
 } from '@/modules/board/constants/telemetryThresholds'
 import type { DraftAlertRule } from '@/modules/alerts/lib/customAlertRules'
-import { ALERT_SEVERITY_DEFAULT, parseTtsAlertSound } from '@/modules/alerts/lib/alertSoundString'
+import {
+  ALERT_SEVERITY_DEFAULT,
+  parseSlotAlertSound,
+  parseTtsAlertSound,
+} from '@/modules/alerts/lib/alertSoundString'
 
 export function getPresetsForCategory(category: AlertSoundCategory): AlertSound[] {
   return getAlertSounds().filter((p) => p.category === category)
@@ -105,15 +109,18 @@ export function getEditFormDefaults(
   batteryConfig: DerivedBatteryConfig | null,
 ) {
   const tts = parseTtsAlertSound(editRule.soundType)
+  const tab = (tts ? 'message' : editRule.thresholdMax != null ? 'geiger' : 'single') as AlertTab
+  // A single rule's picker shows the pack slot; its count lives in the beep stepper.
+  const slot = tab === 'single' ? parseSlotAlertSound(editRule.soundType) : null
   return {
-    tab: (tts ? 'message' : editRule.thresholdMax != null ? 'geiger' : 'single') as AlertTab,
+    tab,
     threshold: editRule.threshold,
     thresholdMax: editRule.thresholdMax ?? dialConfig.max,
-    soundType: editRule.soundType,
+    soundType: slot ? `alert:${slot.severity}` : editRule.soundType,
     messageTemplate: tts?.text ?? getDefaultMessageTemplate(editRule.controlId, batteryConfig),
     severity: tts?.severity ?? ALERT_SEVERITY_DEFAULT,
     repeatEverySeconds: editRule.repeatEverySeconds,
-    beepCount: editRule.beepCount,
+    beepCount: slot?.count ?? ALERT_BEEP_COUNT_DEFAULT,
   }
 }
 

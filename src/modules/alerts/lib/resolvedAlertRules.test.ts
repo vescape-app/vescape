@@ -15,7 +15,6 @@ const saved: AlertRule = {
   soundType: 'preset:tick',
   source: 'preset',
   repeatEverySeconds: null,
-  beepCount: 1,
   createdAt: 0,
 }
 const matched: AlertRule = {

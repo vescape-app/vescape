@@ -11,7 +11,6 @@ import {
   withTiming,
 } from 'react-native-reanimated'
 
-import { ALERT_BEEP_COUNT_DEFAULT } from 'vescape-core'
 import { AlertPresetControl } from '@/modules/alerts/components/AlertPresetControl'
 import { draftAlertPreview } from '@/modules/alerts/lib/draftAlertPreview'
 import { Text } from '@/components/base/Text'
@@ -65,7 +64,6 @@ const MATCHED_NORMAL_FIXTURES: Partial<Record<AlertPresetMetric, DraftAlertRule[
       createdAt: 0,
       soundType: 'preset:tick',
       repeatEverySeconds: null,
-      beepCount: ALERT_BEEP_COUNT_DEFAULT,
     },
   ],
   'motor-temp': [
@@ -84,7 +82,6 @@ const MATCHED_NORMAL_FIXTURES: Partial<Record<AlertPresetMetric, DraftAlertRule[
       createdAt: 0,
       soundType: 'tts:Motor {value} {unit}',
       repeatEverySeconds: null,
-      beepCount: ALERT_BEEP_COUNT_DEFAULT,
     },
     {
       id: 'matched-motor',
@@ -101,7 +98,6 @@ const MATCHED_NORMAL_FIXTURES: Partial<Record<AlertPresetMetric, DraftAlertRule[
       createdAt: 0,
       soundType: 'tts:Motor {value} {unit}',
       repeatEverySeconds: 10,
-      beepCount: ALERT_BEEP_COUNT_DEFAULT,
     },
   ],
   'controller-temp': [
@@ -120,7 +116,6 @@ const MATCHED_NORMAL_FIXTURES: Partial<Record<AlertPresetMetric, DraftAlertRule[
       createdAt: 0,
       soundType: 'tts:Controller {value} {unit}',
       repeatEverySeconds: null,
-      beepCount: ALERT_BEEP_COUNT_DEFAULT,
     },
     {
       id: 'matched-controller',
@@ -137,7 +132,6 @@ const MATCHED_NORMAL_FIXTURES: Partial<Record<AlertPresetMetric, DraftAlertRule[
       createdAt: 0,
       soundType: 'tts:Controller {value} {unit}',
       repeatEverySeconds: 10,
-      beepCount: ALERT_BEEP_COUNT_DEFAULT,
     },
   ],
 }
@@ -174,9 +168,8 @@ export function AlertPresetControlShowcase() {
             controlId: metric,
             thresholdMax: null,
             enabled: true,
-            soundType: metric === 'speed' || metric === 'duty' ? 'preset:tick' : 'preset:beep',
+            soundType: metric === 'speed' || metric === 'duty' ? 'preset:tick' : 'alert(3):warning',
             repeatEverySeconds: null,
-            beepCount: ALERT_BEEP_COUNT_DEFAULT,
             createdAt: 0,
           }))
         : []

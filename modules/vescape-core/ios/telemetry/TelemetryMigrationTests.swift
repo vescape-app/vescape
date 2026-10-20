@@ -150,6 +150,42 @@ final class TelemetryMigrationTests: XCTestCase {
     XCTAssertEqual(primaryKey, ["board_id", "id"])
   }
 
+  /// The beep count moves into the sound string and its column goes (#578); speech, geiger, and
+  /// rule identity survive the table rebuild.
+  func testAlertSoundCountMigrationFoldsBeepCountIntoTheSoundString() throws {
+    try migrate(upTo: "v49_bucket_route_preview")
+    try queue.write { db in
+      for (id, threshold, max, sound, count) in [
+        ("speech", 20.0, nil, "tts:Slow down", 3), ("beep", 25.0, nil, "preset:beep", 2),
+        ("urgent", 30.0, nil, "preset:urgent", 9), ("notify", 35.0, nil, "notify", 1),
+        ("tick", 80.0, 90.0 as Double?, "preset:tick", 3),
+      ] {
+        try db.execute(
+          sql: """
+            INSERT INTO alerts (board_id, id, control_id, threshold, threshold_max, enabled, sound_type, created_at, beep_count)
+            VALUES ('board-1', ?, 'speed', ?, ?, 1, ?, 1000, ?)
+            """,
+          arguments: [id, threshold, max, sound, count]
+        )
+      }
+    }
+
+    try migrate()
+
+    XCTAssertFalse(try columnNames("alerts").contains("beep_count"))
+    let sounds = try queue.read { db in
+      try Dictionary(uniqueKeysWithValues: Row.fetchAll(db, sql: "SELECT id, sound_type FROM alerts").map {
+        ($0["id"] as String, $0["sound_type"] as String)
+      })
+    }
+    XCTAssertEqual(sounds, [
+      "speech": "tts:Slow down", "beep": "alert(2):warning", "urgent": "alert(5):critical",
+      "notify": "alert(1):info", "tick": "preset:tick",
+    ])
+    let primaryKey = try queue.read { db in try db.primaryKey("alerts").columns }
+    XCTAssertEqual(primaryKey, ["board_id", "id"])
+  }
+
   func testBoardIdMigrationRebuildsLegacyGlobalAlertsAndDropsTheirRows() throws {
     try migrate(upTo: "v26_alert_source")
     try replaceAlertsWithLegacyGlobalTable()

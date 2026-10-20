@@ -1,10 +1,5 @@
 import { afterEach, beforeEach, expect, mock, test } from 'bun:test'
-import {
-  ALERT_BEEP_COUNT_DEFAULT,
-  type AlertRule,
-  type Board,
-  type AlertPresetIntent,
-} from 'vescape-core'
+import type { AlertRule, Board, AlertPresetIntent } from 'vescape-core'
 
 const actualVescapeCore = await import('@/../modules/vescape-core/src/index')
 const applyAlertPreset = mock(
@@ -123,7 +118,6 @@ test('failed Alert Rule save does not publish optimistic state', async () => {
       thresholdMax: null,
       soundType: 'preset:beep',
       repeatEverySeconds: null,
-      beepCount: ALERT_BEEP_COUNT_DEFAULT,
     }),
   ).rejects.toThrow('disk unavailable')
   expect(useAlertsStore.getState().rules).toEqual([])

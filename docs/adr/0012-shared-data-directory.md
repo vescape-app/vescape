@@ -1,11 +1,11 @@
 # Shared data directory
 
-Data and assets used by both JS and native (Android/iOS) live in `shared/` at the project root. JS imports files directly (Metro resolves them at bundle time). Native platforms receive copies via `bun run copy:shared`, which places files into platform-specific locations (Android assets, res/raw; iOS bundle resources when added).
+Data and assets used by both JS and native (Android/iOS) live in `shared/` at the project root. JS imports files directly (Metro resolves them at bundle time). Native platforms receive copies via `bun run copy:shared`, which places files into platform-specific locations (Android assets; iOS bundle resources).
 
 ## Structure
 
 - `shared/data/` — JSON data files (cell presets, future config). Copied to `android/src/main/assets/data/` and `android/src/test/resources/data/`.
-- `shared/alerts/` — Audio assets for alert feedback. Copied to `android/src/main/res/raw/`.
+- `shared/alerts/packs/` — Generated alert sound packs. Effects packs are copied, keeping their folder layout, to `android/src/main/assets/alert-packs/` and `ios/alert-packs/` (bundled as a folder).
 
 Copied targets are gitignored — `shared/` is the source of truth.
 

@@ -31,7 +31,9 @@ import {
 import {
   ALERT_SEVERITY_DEFAULT,
   type AlertSeverity,
+  formatSlotAlertSound,
   formatTtsAlertSound,
+  parseSlotAlertSound,
 } from '@/modules/alerts/lib/alertSoundString'
 import type { AlertRuleDraft } from '@/modules/alerts/store/alertsStore'
 import type { DraftAlertRule } from '@/modules/alerts/lib/customAlertRules'
@@ -74,8 +76,9 @@ export function AlertFormSheet({
 
   const singlePresets = useMemo(() => getPresetsForCategory('single'), [])
   const geigerPresets = useMemo(() => getPresetsForCategory('geiger'), [])
-  const defaultSoundType: AlertSoundType = singlePresets[0]?.uri ?? 'preset:beep'
-  const geigerDefaultSoundType: AlertSoundType = geigerPresets[0]?.uri ?? 'preset:beep'
+  const defaultSoundType: AlertSoundType =
+    singlePresets.find((p) => p.uri === 'alert:warning')?.uri ?? 'alert:warning'
+  const geigerDefaultSoundType: AlertSoundType = geigerPresets[0]?.uri ?? 'preset:tick'
 
   const [tab, setTab] = useState<AlertTab>('single')
   const [threshold, setThreshold] = useState(dialConfig.min)
@@ -120,11 +123,10 @@ export function AlertFormSheet({
       if (next === 'message') {
         setMessageTemplate(getDefaultMessageTemplate(controlId, batteryConfig))
       } else {
-        const presets = next === 'single' ? singlePresets : geigerPresets
-        setSoundType(presets[0]?.uri ?? 'preset:beep')
+        setSoundType(next === 'single' ? defaultSoundType : geigerDefaultSoundType)
       }
     },
-    [singlePresets, geigerPresets, controlId, batteryConfig],
+    [defaultSoundType, geigerDefaultSoundType, controlId, batteryConfig],
   )
 
   const handleSave = useCallback(() => {
@@ -135,11 +137,14 @@ export function AlertFormSheet({
     void onSave({
       threshold,
       thresholdMax: isRange ? thresholdMax : null,
-      soundType: tab === 'message' ? formatTtsAlertSound(severity, messageTemplate) : soundType,
-      // A range rule's cadence follows range depth, and text-to-speech speaks once per
-      // announcement — neither has a beep count or a repeat interval to honor.
+      soundType:
+        tab === 'message'
+          ? formatTtsAlertSound(severity, messageTemplate)
+          : tab === 'single'
+            ? formatSlotAlertSound(beepCount, parseSlotAlertSound(soundType).severity)
+            : soundType,
+      // A range rule's cadence follows range depth — it has no repeat interval to honor.
       repeatEverySeconds: isRange ? null : repeatEverySeconds,
-      beepCount,
     })
       .catch(() => undefined) // The alerts store owns the error rendered below.
       .finally(() => setSaving(false))

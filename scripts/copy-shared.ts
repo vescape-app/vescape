@@ -1,5 +1,5 @@
 import { copyFileSync, existsSync, mkdirSync, readdirSync, rmSync } from 'fs'
-import { extname, join, parse, relative } from 'path'
+import { dirname, extname, join, parse, relative } from 'path'
 
 const ROOT = join(import.meta.dir, '..')
 
@@ -8,7 +8,15 @@ export interface SharedTarget {
   dest: string
   extensions: Set<string>
   rename: (file: string) => string
+  /**
+   * Walk subdirectories and keep their layout under `dest`. Only paths `include` accepts (relative
+   * to `src`) are copied.
+   */
+  include?: (path: string) => boolean
 }
+
+/** Built-in effects packs (#578). Voice packs ship once native plays them (#580). */
+const effectsPacks = (path: string) => path.startsWith('effects-') && path.includes('/')
 
 /**
  * Shared assets have exactly one source of truth: `shared/`. iOS reads single files through symlinks
@@ -20,12 +28,21 @@ export function sharedTargets(root = ROOT): SharedTarget[] {
   const androidSrc = join(root, 'modules', 'vescape-core', 'android', 'src')
 
   return [
+    // Alert packs keep their `<pack>/pack.json` layout: Android reads them from assets, iOS from a
+    // folder in `VescapeCoreAssets.bundle` (a flattening resource glob would collide on slot names).
     {
-      src: join(root, 'shared', 'alerts'),
-      dest: join(androidSrc, 'main', 'res', 'raw'),
-      extensions: new Set(['.ogg', '.wav']),
-      rename: (file: string) =>
-        `${parse(file).name}${extname(file)}`.toLowerCase().replace(/[^a-z0-9_.]/g, '_'),
+      src: join(root, 'shared', 'alerts', 'packs'),
+      dest: join(androidSrc, 'main', 'assets', 'alert-packs'),
+      extensions: new Set(['.json', '.m4a']),
+      rename: (file: string) => file,
+      include: effectsPacks,
+    },
+    {
+      src: join(root, 'shared', 'alerts', 'packs'),
+      dest: join(root, 'modules', 'vescape-core', 'ios', 'alert-packs'),
+      extensions: new Set(['.json', '.m4a']),
+      rename: (file: string) => file,
+      include: effectsPacks,
     },
     {
       src: join(root, 'shared', 'data'),
@@ -66,18 +83,27 @@ export function sharedTargets(root = ROOT): SharedTarget[] {
   ]
 }
 
+/** Files under `dir`, relative to it; one level unless `recursive`. */
+function listFiles(dir: string, recursive: boolean): string[] {
+  if (!existsSync(dir)) return []
+  return readdirSync(dir, { recursive, withFileTypes: true })
+    .filter((entry) => entry.isFile())
+    .map((entry) => relative(dir, join(entry.parentPath, entry.name)))
+}
+
 /** Source files a target copies, absolute, sorted. */
 export function sharedSources(target: SharedTarget): string[] {
-  if (!existsSync(target.src)) return []
-  return readdirSync(target.src)
+  return listFiles(target.src, !!target.include)
     .filter((file) => target.extensions.has(extname(file).toLowerCase()))
+    .filter((file) => !target.include || target.include(file))
     .sort()
     .map((file) => join(target.src, file))
 }
 
 /** Where a source file lands once copied. */
 export function sharedOutput(target: SharedTarget, source: string): string {
-  return join(target.dest, target.rename(parse(source).base))
+  const path = relative(target.src, source)
+  return join(target.dest, dirname(path), target.rename(parse(path).base))
 }
 
 export function copyShared(root = ROOT, { quiet = false } = {}) {
@@ -96,9 +122,9 @@ export function copyShared(root = ROOT, { quiet = false } = {}) {
     // that no longer existed in the repo. Only names this target would produce survive, so a
     // destination it shares with anything else is left alone.
     const expected = new Set(
-      sharedSources(target).map((source) => parse(sharedOutput(target, source)).base),
+      sharedSources(target).map((source) => relative(target.dest, sharedOutput(target, source))),
     )
-    for (const file of readdirSync(target.dest)) {
+    for (const file of listFiles(target.dest, !!target.include)) {
       if (!target.extensions.has(extname(file).toLowerCase()) || expected.has(file)) continue
       rmSync(join(target.dest, file))
       log(`    ✗ ${file} (removed, no longer in ${relative(root, target.src)})`)
@@ -106,10 +132,11 @@ export function copyShared(root = ROOT, { quiet = false } = {}) {
 
     for (const source of sharedSources(target)) {
       const output = sharedOutput(target, source)
+      mkdirSync(dirname(output), { recursive: true })
       copyFileSync(source, output)
 
-      const file = parse(source).base
-      const outputName = parse(output).base
+      const file = relative(target.src, source)
+      const outputName = relative(target.dest, output)
       const renamed = outputName !== file ? ` (→ ${outputName})` : ''
       log(`    ✓ ${file}${renamed}`)
       totalCopied += 1

@@ -76,10 +76,8 @@ public class VescapeCoreModule: Module {
   private let legalPolicyResolver = LegalPolicyResolver()
   private let legalPolicyCatalog = LegalPolicyCatalog()
 
-  /// Bundled alert sounds surfaced to JS through `getAlertSounds`. Mirrors Android
-  /// `alertSoundPresetMaps()`.
-  /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/alerts/AlertEngine.kt `alertSoundPresetMaps`
-  private let alertPresets: [[String: Any]] = alertSoundPresetMaps()
+  /// Alert sounds surfaced to JS through `getAlertSounds`.
+  private let alertPresets: [[String: Any]] = alertSoundChoices()
   /// UI alert tests never share evaluator or audio state with the live Board Session.
   private var alertTestPlayer: AlertAudioPlayer?
   private var alertTestCoordinator: AlertCoordinator?
@@ -1355,7 +1353,6 @@ public class VescapeCoreModule: Module {
           "thresholdMax": rule.thresholdMax,
           "soundType": rule.soundType,
           "repeatEverySeconds": rule.repeatEverySeconds,
-          "beepCount": rule.beepCount,
         ]
       }
     }
@@ -1700,7 +1697,6 @@ public class VescapeCoreModule: Module {
       soundType: soundType,
       createdAt: 0,
       repeatEverySeconds: normalizedAlertRepeatSeconds((value["repeatEverySeconds"] as? NSNumber)?.doubleValue),
-      beepCount: normalizedAlertBeepCount((value["beepCount"] as? NSNumber)?.intValue),
       source: nil
     )
   }

@@ -1,9 +1,12 @@
 import { describe, expect, test } from 'bun:test'
 
 import {
+  formatSlotAlertSound,
   formatTtsAlertSound,
   parseAlertSoundString,
+  parseSlotAlertSound,
   parseTtsAlertSound,
+  type SlotAlertSound,
   type TtsAlertSound,
 } from '@/modules/alerts/lib/alertSoundString'
 
@@ -42,6 +45,33 @@ describe('parseTtsAlertSound', () => {
     expect(parseTtsAlertSound(formatTtsAlertSound('critical', 'At 12:30: stop'))).toEqual({
       severity: 'critical',
       text: 'At 12:30: stop',
+    })
+  })
+})
+
+describe('parseSlotAlertSound', () => {
+  test.each([
+    ['alert(3):warning', { count: 3, severity: 'warning' }],
+    ['alert(1):critical', { count: 1, severity: 'critical' }],
+    ['alert:info', { count: 1, severity: 'info' }],
+    ['alert(9):info', { count: 5, severity: 'info' }],
+    ['alert(0):info', { count: 1, severity: 'info' }],
+    ['alert(x):critical', { count: 1, severity: 'critical' }],
+    ['alert(2):my:beep', { count: 2, severity: 'warning' }],
+    ['alert(2):loud', { count: 2, severity: 'warning' }],
+    ['preset:beep', { count: 1, severity: 'warning' }],
+    ['preset:urgent', { count: 1, severity: 'critical' }],
+    ['preset:notify', { count: 1, severity: 'info' }],
+    ['default', { count: 1, severity: 'warning' }],
+    ['nonsense', { count: 1, severity: 'warning' }],
+  ] satisfies [string, SlotAlertSound][])('%p', (raw, expected) => {
+    expect(parseSlotAlertSound(raw)).toEqual(expected)
+  })
+
+  test('round-trips through formatSlotAlertSound', () => {
+    expect(parseSlotAlertSound(formatSlotAlertSound(4, 'critical'))).toEqual({
+      count: 4,
+      severity: 'critical',
     })
   })
 })
