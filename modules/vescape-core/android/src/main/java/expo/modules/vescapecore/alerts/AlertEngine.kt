@@ -23,8 +23,6 @@ import android.util.Log
 import expo.modules.vescapecore.telemetry.AlertRuleEntity
 import kotlin.math.abs
 
-private const val TTS_PREFIX = "tts:"
-
 /**
  * Floor on an Alert Rule's repeat cadence, in seconds.
  *
@@ -34,13 +32,12 @@ private const val TTS_PREFIX = "tts:"
 const val ALERT_REPEAT_MIN_SECONDS = 3L
 
 /**
- * Inclusive bounds on an Alert Rule's beep count. `0` plays no beeps: a speech rule with Beep before
- * Off. Sound rules are authored with at least one.
+ * Inclusive bounds on an Alert Rule's beep count.
  *
  * @parity /modules/vescape-core/src/index.ts `ALERT_BEEP_COUNT_RANGE`
  * @parity /modules/vescape-core/ios/alerts/AlertEngine.swift `alertBeepCountRange`
  */
-val ALERT_BEEP_COUNT_RANGE = 0..5
+val ALERT_BEEP_COUNT_RANGE = 1..5
 
 /** Gap between beeps of one announcement — tight enough that a burst reads as a single signal. */
 internal const val ALERT_BEEP_SPACING_MS = 350L
@@ -55,12 +52,12 @@ fun normalizedAlertRepeatSeconds(raw: Double?): Long? {
 }
 
 /**
- * Speech start after [beeps] Beep before beeps: the last beep starts at `(beeps - 1)` spacings and
- * no bundled single sound outlasts one spacing, so a full spacing per beep clears it.
+ * Speech start after the severity sound: every bundled single sound ends within it, so the two
+ * never overlap.
  *
- * @parity /modules/vescape-core/ios/alerts/AlertEngine.swift `speechDelayAfterBeepsMs`
+ * @parity /modules/vescape-core/ios/alerts/AlertEngine.swift `alertSpeechDelayMs`
  */
-internal fun speechDelayAfterBeepsMs(beeps: Int): Long = beeps * ALERT_BEEP_SPACING_MS
+internal const val ALERT_SPEECH_DELAY_MS = 350L
 
 /** Clamp a beep count coming from JS; absent or out of range falls back to the default. */
 fun normalizedAlertBeepCount(raw: Int?): Int =
@@ -552,10 +549,9 @@ internal class AlertFeedback(
             handler.post { playSingle(soundType, beepCount) }
             return
         }
-        val beeps = normalizedAlertBeepCount(beepCount)
-        if (beeps == 0) return
         try {
             val preset = resolveAlertPreset(soundType, ALERT_CATEGORY_SINGLE)
+            val beeps = normalizedAlertBeepCount(beepCount)
             playPreset(preset)
             for (index in 1 until beeps) {
                 handler.postDelayed({ playPreset(preset) }, index * ALERT_BEEP_SPACING_MS)
@@ -567,38 +563,35 @@ internal class AlertFeedback(
     }
 
     /**
-     * Speak a TTS rule's [text] after its Beep before: [beepCount] single beeps, then speech once the
-     * last beep has finished, so the two never overlap. `0` speaks immediately.
+     * Speak a TTS rule's [text] after its [severity] sound, played once; speech starts once the sound
+     * has finished, so the two never overlap.
      *
-     * @parity /modules/vescape-core/ios/alerts/AlertAudioPlayer.swift `speakAfterBeeps`
+     * @parity /modules/vescape-core/ios/alerts/AlertAudioPlayer.swift `speakAfterSeverity`
      */
-    fun speakAfterBeeps(soundType: String, text: String, beepCount: Int) {
+    fun speakAfterSeverity(severity: AlertSeverity, text: String) {
         if (android.os.Looper.myLooper() != handler.looper) {
-            handler.post { speakAfterBeeps(soundType, text, beepCount) }
+            handler.post { speakAfterSeverity(severity, text) }
             return
         }
-        // A newer announcement supersedes speech still waiting out an older one's beeps.
+        // A newer announcement supersedes speech still waiting out an older one's sound.
         pendingSpeech?.let { handler.removeCallbacks(it) }
-        pendingSpeech = null
-        val beeps = normalizedAlertBeepCount(beepCount)
-        if (beeps == 0) { speakMessage(text); return }
-        playSingle(soundType, beeps)
+        playSingle(severity.soundType, 1)
         val speech = Runnable { pendingSpeech = null; speakMessage(text) }
         pendingSpeech = speech
-        handler.postDelayed(speech, speechDelayAfterBeepsMs(beeps))
+        handler.postDelayed(speech, ALERT_SPEECH_DELAY_MS)
     }
 
     private var pendingSpeech: Runnable? = null
 
-    fun preview(soundType: String, beepCount: Int = 0) {
+    fun preview(soundType: String) {
         if (android.os.Looper.myLooper() != handler.looper) {
-            handler.post { preview(soundType, beepCount) }
+            handler.post { preview(soundType) }
             return
         }
-        if (soundType.startsWith(TTS_PREFIX)) {
-            val template = soundType.removePrefix(TTS_PREFIX)
-            val text = renderAlertMessageTemplate(template, ttsSampleAlert(soundType), batteryPercent = 42.0, unitSystem = kotlinx.coroutines.runBlocking { AppDataRepository.get(context).getTypedSettings().unitSystem })
-            if (text.isNotEmpty()) speakAfterBeeps(soundType, text, beepCount)
+        val tts = parseTtsAlertSound(soundType)
+        if (tts != null) {
+            val text = renderAlertMessageTemplate(tts.text, ttsSampleAlert(soundType), batteryPercent = 42.0, unitSystem = kotlinx.coroutines.runBlocking { AppDataRepository.get(context).getTypedSettings().unitSystem })
+            if (text.isNotEmpty()) speakAfterSeverity(tts.severity, text)
             return
         }
         try {
@@ -751,29 +744,26 @@ internal class AlertFeedback(
             Handler(contextMainLooper()).postDelayed({ pool.release() }, 5_000)
         }
 
-        fun preview(context: Context, soundType: String, source: String, beepCount: Int = 0) {
+        fun preview(context: Context, soundType: String, source: String) {
             val handler = Handler(contextMainLooper())
-            if (soundType.startsWith(TTS_PREFIX)) {
-                val template = soundType.removePrefix(TTS_PREFIX)
-                val text = renderAlertMessageTemplate(template, ttsSampleAlert(soundType), batteryPercent = 42.0, unitSystem = kotlinx.coroutines.runBlocking { AppDataRepository.get(context).getTypedSettings().unitSystem })
+            val tts = parseTtsAlertSound(soundType)
+            if (tts != null) {
+                val text = renderAlertMessageTemplate(tts.text, ttsSampleAlert(soundType), batteryPercent = 42.0, unitSystem = kotlinx.coroutines.runBlocking { AppDataRepository.get(context).getTypedSettings().unitSystem })
                 if (text.isEmpty()) return
-                val beeps = normalizedAlertBeepCount(beepCount)
-                // Speech waits for both the engine and the last beep, whichever is later. Both
+                // Speech waits for both the engine and the severity sound, whichever is later. Both
                 // callbacks land on the main looper, so the flags need no locking.
                 var ready: TextToSpeech? = null
-                var beepsDone = beeps == 0
+                var soundDone = false
                 fun speakWhenReady() {
                     val t = ready ?: return
-                    if (!beepsDone) return
+                    if (!soundDone) return
                     ready = null
                     t.speak(text, TextToSpeech.QUEUE_FLUSH, null, "preview")
                     handler.postDelayed({ t.stop(); t.shutdown() }, 5_000)
                 }
-                if (beeps > 0) {
-                    previewPreset(context, handler, resolveAlertPreset(soundType, ALERT_CATEGORY_SINGLE), source, beeps) {
-                        beepsDone = true
-                        speakWhenReady()
-                    }
+                previewPreset(context, handler, resolveAlertPreset(tts.severity.soundType, ALERT_CATEGORY_SINGLE), source) {
+                    soundDone = true
+                    speakWhenReady()
                 }
                 val holder = arrayOfNulls<TextToSpeech>(1)
                 holder[0] = TextToSpeech(context) { status ->
@@ -785,14 +775,14 @@ internal class AlertFeedback(
                 }
                 return
             }
-            previewPreset(context, handler, resolveAlertPreset(soundType, null), source, 1)
+            previewPreset(context, handler, resolveAlertPreset(soundType, null), source)
         }
 
         /**
-         * Play [preset] [beeps] times on a throwaway pool, [ALERT_BEEP_SPACING_MS] apart. [onDone]
-         * runs once the last beep has finished, or right away if the sample fails to load.
+         * Play [preset] once on a throwaway pool. [onDone] runs once it has finished, or right away
+         * if the sample fails to load.
          */
-        private fun previewPreset(context: Context, handler: Handler, preset: AlertSoundPreset, source: String, beeps: Int, onDone: (() -> Unit)? = null) {
+        private fun previewPreset(context: Context, handler: Handler, preset: AlertSoundPreset, source: String, onDone: (() -> Unit)? = null) {
             val pool = SoundPool.Builder()
                 .setMaxStreams(2)
                 .setAudioAttributes(
@@ -803,17 +793,14 @@ internal class AlertFeedback(
                 pool.setOnLoadCompleteListener { soundPool, sampleId, status ->
                     if (status == 0) {
                         soundPool.play(sampleId, 1f, 1f, 1, 0, 1f)
-                        for (index in 1 until beeps) {
-                            handler.postDelayed({ soundPool.play(sampleId, 1f, 1f, 1, 0, 1f) }, index * ALERT_BEEP_SPACING_MS)
-                        }
-                        onDone?.let { handler.postDelayed(it, speechDelayAfterBeepsMs(beeps)) }
+                        onDone?.let { handler.postDelayed(it, ALERT_SPEECH_DELAY_MS) }
                     } else {
                         UnexpectedNativeError.report("alert_audio_preview_load", "bundled_asset", IllegalStateException())
                         onDone?.let { handler.post(it) }
                     }
                 }
                 pool.load(context, preset.resId, 1)
-                handler.postDelayed({ pool.release() }, 1_000 + beeps * ALERT_BEEP_SPACING_MS)
+                handler.postDelayed({ pool.release() }, 1_000)
             } catch (e: Exception) {
                 pool.release()
                 onDone?.let { handler.post(it) }

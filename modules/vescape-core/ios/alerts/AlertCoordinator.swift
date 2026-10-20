@@ -95,12 +95,13 @@ internal final class AlertCoordinator {
 
     let single = fired.filter { $0.rangeDepth == nil }
     if !single.isEmpty {
-      if let alert = single.first(where: { $0.soundType.hasPrefix("tts:") && $0.thresholdMax == nil }) {
-        let template = String(alert.soundType.dropFirst("tts:".count))
-        let text = renderAlertMessageTemplate(template, alert: alert, batteryPercent: batteryPercent, onDiagnostic: onDiagnostic, unitSystem: unitSystem)
-        if !text.isEmpty { player.speakAfterBeeps(soundType: alert.soundType, text: text, beepCount: alert.beepCount) }
+      if let (alert, tts) = single.lazy.compactMap({ alert in
+        alert.thresholdMax == nil ? parseTtsAlertSound(alert.soundType).map { (alert, $0) } : nil
+      }).first {
+        let text = renderAlertMessageTemplate(tts.text, alert: alert, batteryPercent: batteryPercent, onDiagnostic: onDiagnostic, unitSystem: unitSystem)
+        if !text.isEmpty { player.speakAfterSeverity(tts.severity, text: text) }
       }
-      for alert in single where !alert.soundType.hasPrefix("tts:") {
+      for alert in single where parseTtsAlertSound(alert.soundType) == nil {
         player.playSingle(soundType: alert.soundType, beepCount: alert.beepCount)
       }
       if vibrateSingles { player.vibrate(rangeDepth: nil) }

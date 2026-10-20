@@ -522,8 +522,8 @@ public class VescapeCoreModule: Module {
       }
     }
 
-    Function("previewAlertSound") { (soundType: String, beepCount: Int) in
-      self.coordinator.previewAlertSound(soundType, beepCount: beepCount)
+    Function("previewAlertSound") { (soundType: String) in
+      self.coordinator.previewAlertSound(soundType)
     }
     Function("playAppSound") { (pack: String, cue: String) in
       self.coordinator.playAppSound(pack: pack, cue: cue)

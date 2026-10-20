@@ -1256,10 +1256,10 @@ internal final class BoardSessionController: VescGattListener {
   /// Play a preset once for UI preview, or speak a `tts:` template. Mirrors Android
   /// `previewAlertSound`.
   /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/connection/BoardSessionController.kt `previewAlertSound`
-  func previewAlertSound(_ soundType: String, beepCount: Int) {
+  func previewAlertSound(_ soundType: String) {
     do {
       let settings = try appData.getSettings()
-      alertAudioPlayer.preview(soundType: soundType, beepCount: beepCount, unitSystem: settings["unitSystem"] as? String ?? "metric")
+      alertAudioPlayer.preview(soundType: soundType, unitSystem: settings["unitSystem"] as? String ?? "metric")
     } catch { RecordingStorageFailure.reportRead(operation: "alert_preview_settings", error: error) }
   }
 

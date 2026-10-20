@@ -20,7 +20,7 @@ import { EdgeDrawer } from '@/components/overlays/EdgeDrawer'
 import { theme } from '@/constants/theme'
 import { AlertMessageField } from '@/modules/alerts/components/AlertMessageField'
 import { AlertTypeTabs } from '@/modules/alerts/components/AlertTypeTabs'
-import { BeepBeforeField, RepeatField } from '@/modules/alerts/components/AlertFormFields'
+import { RepeatField } from '@/modules/alerts/components/AlertFormFields'
 import {
   getAlertDialConfig,
   getDefaultMessageTemplate,
@@ -28,6 +28,11 @@ import {
   getNewFormDefaults,
   getPresetsForCategory,
 } from '@/modules/alerts/lib/alertFormDefaults'
+import {
+  ALERT_SEVERITY_DEFAULT,
+  type AlertSeverity,
+  formatTtsAlertSound,
+} from '@/modules/alerts/lib/alertSoundString'
 import type { AlertRuleDraft } from '@/modules/alerts/store/alertsStore'
 import type { DraftAlertRule } from '@/modules/alerts/lib/customAlertRules'
 import type { DerivedBatteryConfig } from '@/modules/battery/lib/types'
@@ -81,6 +86,7 @@ export function AlertFormSheet({
   )
   const [repeatEverySeconds, setRepeatEverySeconds] = useState<number | null>(null)
   const [beepCount, setBeepCount] = useState(ALERT_BEEP_COUNT_DEFAULT)
+  const [severity, setSeverity] = useState<AlertSeverity>(ALERT_SEVERITY_DEFAULT)
   const [prevVisible, setPrevVisible] = useState(visible)
   const [saving, setSaving] = useState(false)
 
@@ -102,6 +108,7 @@ export function AlertFormSheet({
     setMessageTemplate(defaults.messageTemplate)
     setRepeatEverySeconds(defaults.repeatEverySeconds)
     setBeepCount(defaults.beepCount)
+    setSeverity(defaults.severity)
   }
   if (visible !== prevVisible) {
     setPrevVisible(visible)
@@ -110,8 +117,6 @@ export function AlertFormSheet({
   const handleTabSwitch = useCallback(
     (next: AlertTab) => {
       setTab(next)
-      // A speech rule starts with Beep before Off; a sound rule needs at least one beep.
-      setBeepCount(next === 'message' ? 0 : ALERT_BEEP_COUNT_DEFAULT)
       if (next === 'message') {
         setMessageTemplate(getDefaultMessageTemplate(controlId, batteryConfig))
       } else {
@@ -130,9 +135,9 @@ export function AlertFormSheet({
     void onSave({
       threshold,
       thresholdMax: isRange ? thresholdMax : null,
-      soundType: tab === 'message' ? `tts:${messageTemplate}` : soundType,
-      // A range rule's cadence follows range depth, so it has no repeat interval to honor. A
-      // speech rule's beep count is its Beep before.
+      soundType: tab === 'message' ? formatTtsAlertSound(severity, messageTemplate) : soundType,
+      // A range rule's cadence follows range depth, and text-to-speech speaks once per
+      // announcement — neither has a beep count or a repeat interval to honor.
       repeatEverySeconds: isRange ? null : repeatEverySeconds,
       beepCount,
     })
@@ -146,6 +151,7 @@ export function AlertFormSheet({
     messageTemplate,
     repeatEverySeconds,
     beepCount,
+    severity,
     onSave,
     saving,
   ])
@@ -222,7 +228,7 @@ export function AlertFormSheet({
             <Text style={styles.fieldLabel}>BEEPS</Text>
             <Stepper
               value={beepCount}
-              min={1}
+              min={ALERT_BEEP_COUNT_RANGE.min}
               max={ALERT_BEEP_COUNT_RANGE.max}
               onChange={setBeepCount}
               style={styles.beepStepper}
@@ -231,24 +237,19 @@ export function AlertFormSheet({
         )}
 
         {tab === 'message' ? (
-          // An array, not a fragment: SettingsCard separates flattened children.
-          [
-            <View key="beep-before" style={styles.cardField}>
-              <BeepBeforeField value={beepCount} onChange={setBeepCount} />
-            </View>,
-            <View key="message" style={styles.cardField}>
-              <AlertMessageField
-                beepCount={beepCount}
-                controlId={controlId}
-                unit={unit}
-                threshold={threshold}
-                dialConfig={dialConfig}
-                batteryConfig={batteryConfig}
-                messageTemplate={messageTemplate}
-                onChangeTemplate={setMessageTemplate}
-              />
-            </View>,
-          ]
+          <View style={styles.cardField}>
+            <AlertMessageField
+              severity={severity}
+              onChangeSeverity={setSeverity}
+              controlId={controlId}
+              unit={unit}
+              threshold={threshold}
+              dialConfig={dialConfig}
+              batteryConfig={batteryConfig}
+              messageTemplate={messageTemplate}
+              onChangeTemplate={setMessageTemplate}
+            />
+          </View>
         ) : (
           <View style={styles.cardField}>
             <SoundPicker

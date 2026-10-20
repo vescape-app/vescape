@@ -9,10 +9,14 @@ import { theme } from '@/constants/theme'
 import type { DerivedBatteryConfig } from '@/modules/battery/lib/types'
 import type { getAlertDialConfig } from '@/modules/alerts/lib/alertFormDefaults'
 import { getMessagePlaceholders } from '@/modules/alerts/lib/alertFormDefaults'
+import { SeverityField } from '@/modules/alerts/components/AlertFormFields'
 import { useAlertMessageFormat } from '@/modules/alerts/hooks/useAlertMessageFormat'
+import { type AlertSeverity, formatTtsAlertSound } from '@/modules/alerts/lib/alertSoundString'
 
-/** Spoken-message template, its placeholder chips, and a preview of what will be said. */
+/** Severity select, spoken-message template, its placeholder chips, and a preview of what will be said. */
 export function AlertMessageField({
+  severity,
+  onChangeSeverity,
   controlId,
   unit,
   threshold,
@@ -20,8 +24,10 @@ export function AlertMessageField({
   batteryConfig,
   messageTemplate,
   onChangeTemplate,
-  beepCount,
 }: {
+  /** Played once ahead of the previewed speech, the same way a ride plays it. */
+  severity: AlertSeverity
+  onChangeSeverity: (next: AlertSeverity) => void
   controlId: string
   unit: string
   threshold: number
@@ -29,12 +35,11 @@ export function AlertMessageField({
   batteryConfig: DerivedBatteryConfig | null
   messageTemplate: string
   onChangeTemplate: (next: string | ((current: string) => string)) => void
-  /** Beep before, previewed ahead of the speech the same way a ride plays it. */
-  beepCount: number
 }) {
   const formatMessage = useAlertMessageFormat()
   return (
     <View style={styles.messageField}>
+      <SeverityField value={severity} onChange={onChangeSeverity} />
       <Text style={styles.fieldLabel}>TEMPLATE</Text>
       <Input
         value={messageTemplate}
@@ -60,8 +65,17 @@ export function AlertMessageField({
           accessibilityLabel="Preview the spoken message"
           onPress={() =>
             previewAlertSound(
-              `tts:${formatMessage(messageTemplate, threshold, unit, dialConfig, controlId, batteryConfig)}`,
-              beepCount,
+              formatTtsAlertSound(
+                severity,
+                formatMessage(
+                  messageTemplate,
+                  threshold,
+                  unit,
+                  dialConfig,
+                  controlId,
+                  batteryConfig,
+                ),
+              ),
             )
           }
           style={styles.previewButton}

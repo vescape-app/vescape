@@ -39,15 +39,22 @@ App sound will come from two app-wide choices backed by pre-generated packs:
 - **Voice** (`Matching` or a voice pack): whole-sentence lines per message key plus value clips,
   joined natively into one buffer as severity beeps + line + value. `Matching` uses the voice the
   effects pack names; packs without one use Clean.
-- **Voice level** `Off | Minimal | Full`: Off plays effects only, Minimal (default) speaks alerts,
-  Full also speaks app cues and group ride events after their effect.
+- **Voice level** `Off | Standard | Full`: Off plays effects only, Standard (default) speaks
+  alerts, Full also speaks app cues and group ride events after their effect. Voice level only
+  affects presets and app sounds, never custom rules.
 
 Preset alerts emit a message key, severity, and value instead of a `tts:` template, and resolve
 the line severity variant → generic → beeps only. Each preset can pin its own effects or voice
-pack; unpinned presets follow the app-wide choice. Custom rules keep TTS (with optional beeps
+pack; unpinned presets follow the app-wide choice. Custom rules keep TTS (with the severity sound
 before speech) or use effects and user sounds; voice lines exist only for built-in alert keys.
 User WAVs move to a **My sounds** library that can override a fixed set of slots (pre-beeps,
 board on/off, other cues). Resolution per slot: override > pinned pack > app-wide choice.
+
+Every `sound_type` follows one grammar, `kind(variant):sound` (only `tts` is parsed today, see
+[Message mode](#message-mode)); the planned kinds are `alert(3):warning` (pack sound, 3 times),
+`geiger:soft`, and `voice(critical):battery:10` (severity sound, then voice line + value). `my:`
+names a My sound. `alert:` defaults to `alert(1):`; an unknown kind or slot falls back to the plain
+beep, never silence.
 
 All sounds that can fire during a ride stay decoded in memory for the session, so playback starts
 without load delay. The line schema lives in #574.
@@ -124,7 +131,7 @@ and adds a virtual geiger speed rule whenever rules load. Nothing is written to 
 | `sound_type`           | TEXT             | feedback value, e.g. `preset:beep` or `tts:Battery {percent}%` |
 | `created_at`           | INTEGER          | ms epoch                                                       |
 | `repeat_every_seconds` | INTEGER nullable | repeat cadence for a single-threshold rule; NULL is one-shot   |
-| `beep_count`           | INTEGER          | sound plays per announcement, 1–5; `tts:` Beep before, 0–3     |
+| `beep_count`           | INTEGER          | sound plays per announcement, 1–5 (preset sounds only)         |
 | `threshold_kind`       | TEXT             | `fixed` or `config-relative`                                   |
 | `config_field_id`      | TEXT nullable    | VESC config field used by a relative rule                      |
 | `threshold_offset`     | REAL nullable    | start offset in alert units                                    |
@@ -167,11 +174,8 @@ repeat clock, so a fresh crossing announces immediately rather than waiting out 
 
 `beep_count` sets how many times the preset sound plays per announcement, one beep spacing apart
 (Android 350 ms, iOS 200 ms), so a rider can give different rules different signatures. It does
-nothing for range rules, which own their own cadence.
-
-For a `tts:` rule, `beep_count` is its **Beep before**: Off (`0`) or 1–3 single beeps, then the
-message. Speech starts one full beep spacing per beep after the first, so it begins only after the
-last beep has finished. Preset speech rules and speech rules saved before schema 50 are Off.
+nothing for `tts` rules, which play their severity sound once, or for range rules, which own
+their own cadence.
 
 The latch and repeat clock are cleared only when a new Board Session starts — not on rule edits,
 preset regeneration, idle pause, or backgrounding. Preset rule ids are deterministic, so changing a
@@ -185,18 +189,27 @@ latch silently — they are past their thresholds, so they are spent rather than
 
 ## Message mode
 
-Single-threshold alerts may use native Android text-to-speech by storing the spoken template directly in `sound_type`:
+Single-threshold alerts may use native text-to-speech by storing the spoken template directly in `sound_type`, with a severity variant:
 
 ```text
-tts:Battery {voltage} volts, {percent}%
+tts(warning):Battery {voltage} volts, {percent}%
 ```
 
-This is a plain prefix payload, not a URL. Native only treats the first prefix as meaningful:
+`sound_type` is read by one sound string parser per platform (`AlertSoundString.kt`,
+`AlertSoundString.swift`, `src/modules/alerts/lib/alertSoundString.ts`): `kind(variant):sound`,
+split on the first `:` after the kind and optional variant, so colons inside the message are part
+of the message.
 
 - `preset:beep` → play bundled preset
-- `tts:Battery {value} {unit}` → speak the template
+- `tts(info|warning|critical):Battery {value} {unit}` → severity sound once, then speak the template
+- `tts:…` (no variant) or an unknown variant → `warning`, so rules saved before severity need no
+  migration
 
-Additional colons inside the message are part of the message.
+The form's **Severity** select (Info/Warning/Critical, default Warning) on the Message tab sets the
+variant. Until effects packs land (#578) the severity sounds are bundled single sounds: info →
+`preset:notify`, warning → `preset:beep`, critical → `preset:urgent`. Speech starts 350 ms after
+the sound (`ALERT_SPEECH_DELAY_MS`), longer than any bundled single sound, so the two never
+overlap; a newer announcement cancels speech still waiting on an older one's sound.
 
 Message mode is single-threshold only (one-shot or repeating). Geiger/range alerts (`threshold_max != null`) use geiger presets and must not use `tts:`. Native should guard against invalid stored combinations.
 
@@ -216,11 +229,11 @@ Runtime behavior:
 
 - Android native `TextToSpeech` speaks from the foreground service so messages can fire while JS is suspended.
 - Android presets, app cues, and TTS use the selected audio output: Alarm (default, including existing installs) or Media. Switching streams during a session recreates the SoundPool, reloads assets, and restarts active Geiger loops. iOS retains its existing playback session and hides this Android-only choice.
-- TTS is initialized lazily when rules include a `tts:` message and speech plays as soon as possible. Do not pre-generate or cache message audio.
+- TTS is initialized lazily when rules include a `tts` message and speech plays as soon as possible. Do not pre-generate or cache message audio.
 - Message alerts vibrate once, same as one-shot preset alerts.
 - If multiple spoken messages compete, the most urgent alert wins and may stop a less urgent spoken message.
 - Spoken messages play over active geiger ticks; geiger loops are not paused or ducked.
-- Preview supports `tts:` templates with sample placeholder values, including the form's Beep before.
+- Preview supports `tts` templates with sample placeholder values and plays the severity sound first.
 - There is no app-level template length limit beyond what native storage and the platform can handle.
 
 ## Alert Presets

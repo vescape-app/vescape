@@ -18,6 +18,7 @@ import { theme } from '@/constants/theme'
 import type { DerivedBatteryConfig } from '@/modules/battery/lib/types'
 import { AlertFormSheet } from '@/modules/alerts/components/AlertFormSheet'
 import type { DraftAlertRule } from '@/modules/alerts/lib/customAlertRules'
+import { parseTtsAlertSound } from '@/modules/alerts/lib/alertSoundString'
 import type { MetricAlertsController } from '@/modules/alerts/hooks/useMetricAlerts'
 import type { AlertRuleDraft } from '@/modules/alerts/store/alertsStore'
 
@@ -142,7 +143,7 @@ function AlertRuleRow({
       ? formatSpeedWithUnit(value, 1)
       : formatAlertValue(value, batteryConfig, unit)
   const isGeiger = rule.thresholdMax != null
-  const isTts = rule.soundType.startsWith('tts:')
+  const isTts = parseTtsAlertSound(rule.soundType) != null
   const TypeIcon = isGeiger ? RadioactiveIcon : isTts ? ChatTextIcon : WaveformIcon
   const detail = [
     rule.repeatEverySeconds == null ? null : `every ${rule.repeatEverySeconds}s`,

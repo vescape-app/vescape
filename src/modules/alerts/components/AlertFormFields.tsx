@@ -3,6 +3,7 @@ import { StyleSheet, View } from 'react-native'
 import { Text } from '@/components/base/Text'
 import { PillChoiceRow } from '@/components/forms/PillChoiceRow'
 import { theme } from '@/constants/theme'
+import { ALERT_SEVERITIES, type AlertSeverity } from '@/modules/alerts/lib/alertSoundString'
 
 /**
  * Repeat cadences offered to the rider, with `Off` as the one-shot choice. Deliberately coarse: the
@@ -40,34 +41,33 @@ export function RepeatField({
   )
 }
 
-/** Beep before choices for a speech rule; `0` is Off. Past 3 the beeps only delay the message. */
-const BEEP_BEFORE_CHOICES = [0, 1, 2, 3] as const
+const SEVERITY_LABELS: Record<AlertSeverity, string> = {
+  info: 'Info',
+  warning: 'Warning',
+  critical: 'Critical',
+}
 
-/** Severity beeps played before a speech rule's message; `Off` speaks alone. */
-export function BeepBeforeField({
+/** Severity of a speech rule: picks the sound played once before the message. */
+export function SeverityField({
   value,
   onChange,
 }: {
-  value: number
-  onChange: (next: number) => void
+  value: AlertSeverity
+  onChange: (next: AlertSeverity) => void
 }) {
   return (
     <View style={styles.dialField}>
-      <Text style={styles.fieldLabel}>BEEP BEFORE</Text>
+      <Text style={styles.fieldLabel}>SEVERITY</Text>
       <PillChoiceRow
-        options={BEEP_BEFORE_CHOICES.map((count) => ({
-          value: count,
-          label: count === 0 ? 'Off' : `${count}×`,
+        options={ALERT_SEVERITIES.map((severity) => ({
+          value: severity,
+          label: SEVERITY_LABELS[severity],
         }))}
         value={value}
         onChange={onChange}
         accent={theme.palette.green}
       />
-      <Text style={styles.fieldHint}>
-        {value === 0
-          ? 'Speaks the message alone'
-          : `Plays ${value} beep${value === 1 ? '' : 's'}, then speaks the message`}
-      </Text>
+      <Text style={styles.fieldHint}>Plays the {value} sound, then speaks the message</Text>
     </View>
   )
 }

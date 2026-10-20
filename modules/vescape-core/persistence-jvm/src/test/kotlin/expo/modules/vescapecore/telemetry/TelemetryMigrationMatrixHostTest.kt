@@ -70,10 +70,6 @@ class TelemetryMigrationMatrixHostTest {
       4 -> db.exec("INSERT INTO app_settings (id,live_history_limit,auto_connect,auto_recording) VALUES (1,17,0,1)")
       12 -> db.exec("INSERT INTO app_settings VALUES ('era-setting','\"preserved\"',1200)")
       30 -> db.exec("INSERT INTO favorites VALUES ('favorite-era30','board-era3','Favorite',900,1100,30,31,2,1,20,100,1200,1234,3)")
-      32 -> {
-        db.exec("INSERT INTO alerts (board_id,id,control_id,threshold,enabled,sound_type,created_at,beep_count) VALUES ('board-era3','speech-era32','speed',20,1,'tts:Slow down',3200,3)")
-        db.exec("INSERT INTO alerts (board_id,id,control_id,threshold,enabled,sound_type,created_at,beep_count) VALUES ('board-era3','sound-era32','speed',25,1,'preset:beep',3201,2)")
-      }
       33 -> db.exec("INSERT INTO board_config_values VALUES ('board-era3','2.0','{\"motor_current_max\":55.5}',3300)")
     }
   }
@@ -182,9 +178,6 @@ class TelemetryMigrationMatrixHostTest {
         assertEquals(null, db.long("SELECT moving_speed_sample_count FROM telemetry_minute_buckets WHERE bucket_start_ms=960"))
         if (start >= 12) assertEquals("\"preserved\"", db.text("SELECT value_json FROM app_settings WHERE key='era-setting'"))
         if (start >= 30) assertEquals("Favorite", db.text("SELECT name FROM favorites WHERE id='favorite-era30'"))
-        // Speech rules predating Beep before (#577) land on Off; sound rules keep their count.
-        if (start in 32..49) assertEquals(0L, db.long("SELECT beep_count FROM alerts WHERE id='speech-era32'"))
-        if (start in 32..49) assertEquals(2L, db.long("SELECT beep_count FROM alerts WHERE id='sound-era32'"))
         if (start >= 33) assertEquals("{\"motor_current_max\":55.5}", db.text("SELECT values_json FROM board_config_values WHERE board_id='board-era3'"))
       }
       Files.deleteIfExists(path)

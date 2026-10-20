@@ -84,11 +84,13 @@ internal class AlertCoordinator(
 
         val single = fired.filter { it.rangeDepth == null }
         if (single.isNotEmpty()) {
-            single.firstOrNull { it.soundType.startsWith("tts:") && it.thresholdMax == null }?.let { alert ->
-                val text = renderAlertMessageTemplate(alert.soundType.removePrefix("tts:"), alert, batteryPercent, onDiagnostic, unitSystem)
-                if (text.isNotEmpty()) feedback().speakAfterBeeps(alert.soundType, text, alert.beepCount)
+            single.firstNotNullOfOrNull { alert ->
+                if (alert.thresholdMax == null) parseTtsAlertSound(alert.soundType)?.let { alert to it } else null
+            }?.let { (alert, tts) ->
+                val text = renderAlertMessageTemplate(tts.text, alert, batteryPercent, onDiagnostic, unitSystem)
+                if (text.isNotEmpty()) feedback().speakAfterSeverity(tts.severity, text)
             }
-            for (alert in single) if (!alert.soundType.startsWith("tts:")) feedback().playSingle(alert.soundType, alert.beepCount)
+            for (alert in single) if (parseTtsAlertSound(alert.soundType) == null) feedback().playSingle(alert.soundType, alert.beepCount)
             if (vibrateSingles) feedback().vibrate(null)
         }
         return fired.map { it.toMap() }

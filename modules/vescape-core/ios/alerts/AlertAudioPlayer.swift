@@ -4,7 +4,6 @@ import Foundation
 import UIKit
 #endif
 
-private let ttsPrefix = "tts:"
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/alerts/AlertEngine.kt `ALERT_CATEGORY_SINGLE`
 /// @parity /modules/vescape-core/src/index.ts `AlertSoundCategory`
 internal let alertCategorySingle = "single"
@@ -437,7 +436,6 @@ internal final class AlertAudioPlayer {
   func playSingle(soundType: String, beepCount: Int = alertBeepCountDefault) {
     guard !isReleased else { return }
     let beeps = normalizedAlertBeepCount(beepCount)
-    guard beeps > 0 else { return }
     let preset = resolveAlertPreset(soundType: soundType, category: alertCategorySingle)
     play(preset.fileName)
     guard beeps > 1 else { return }
@@ -451,43 +449,36 @@ internal final class AlertAudioPlayer {
 
   // MARK: - Preview
 
-  /// Speak a TTS rule's `text` after its Beep before: `beepCount` single beeps, then speech once the
-  /// last beep has finished, so the two never overlap. `0` speaks immediately.
-  /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/alerts/AlertEngine.kt `speakAfterBeeps`
-  func speakAfterBeeps(soundType: String, text: String, beepCount: Int) {
+  /// Speak a TTS rule's `text` after its `severity` sound, played once; speech starts once the
+  /// sound has finished, so the two never overlap.
+  /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/alerts/AlertEngine.kt `speakAfterSeverity`
+  func speakAfterSeverity(_ severity: AlertSeverity, text: String) {
     guard !isReleased else { return }
-    // A newer announcement supersedes speech still waiting out an older one's beeps.
+    // A newer announcement supersedes speech still waiting out an older one's sound.
     pendingSpeech?.cancel()
-    pendingSpeech = nil
-    let beeps = normalizedAlertBeepCount(beepCount)
-    guard beeps > 0 else {
-      speakMessage(text)
-      return
-    }
-    playSingle(soundType: soundType, beepCount: beeps)
+    playSingle(soundType: severity.soundType, beepCount: 1)
     // Written only from the announcing caller; cancelling an already-run item is a no-op.
-    pendingSpeech = scheduler.postDelayed(speechDelayAfterBeepsMs(beeps)) { [weak self] in
+    pendingSpeech = scheduler.postDelayed(alertSpeechDelayMs) { [weak self] in
       self?.speakMessage(text)
     }
   }
 
   private var pendingSpeech: Cancellable?
 
-  /// Play a preset once for UI preview, or speak a `tts:` template with a sample fired alert after
-  /// its `beepCount` Beep before.
-  func preview(soundType: String, beepCount: Int = 0, unitSystem: String = "metric") {
+  /// Play a preset once for UI preview, or speak a `tts` template with a sample fired alert after
+  /// its severity sound.
+  func preview(soundType: String, unitSystem: String = "metric") {
     guard !isReleased else { return }
     Self.log("AlertAudioPlayer.preview: \(soundType)")
-    if soundType.hasPrefix(ttsPrefix) {
-      let template = String(soundType.dropFirst(ttsPrefix.count))
+    if let tts = parseTtsAlertSound(soundType) {
       let text = renderAlertMessageTemplate(
-        template,
+        tts.text,
         alert: ttsSampleAlert(soundType: soundType),
         batteryPercent: 42.0,
         unitSystem: unitSystem
       )
       Self.log("AlertAudioPlayer.preview TTS text='\(text)'")
-      if !text.isEmpty { speakAfterBeeps(soundType: soundType, text: text, beepCount: beepCount) }
+      if !text.isEmpty { speakAfterSeverity(tts.severity, text: text) }
       return
     }
     let preset = resolveAlertPreset(soundType: soundType, category: nil)

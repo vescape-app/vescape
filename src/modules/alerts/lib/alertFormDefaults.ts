@@ -20,6 +20,7 @@ import {
   type TelemetryAlertTab as AlertTab,
 } from '@/modules/board/constants/telemetryThresholds'
 import type { DraftAlertRule } from '@/modules/alerts/lib/customAlertRules'
+import { ALERT_SEVERITY_DEFAULT, parseTtsAlertSound } from '@/modules/alerts/lib/alertSoundString'
 
 export function getPresetsForCategory(category: AlertSoundCategory): AlertSound[] {
   return getAlertSounds().filter((p) => p.category === category)
@@ -103,15 +104,14 @@ export function getEditFormDefaults(
   dialConfig: ReturnType<typeof getAlertDialConfig>,
   batteryConfig: DerivedBatteryConfig | null,
 ) {
-  const isTts = editRule.soundType.startsWith('tts:')
+  const tts = parseTtsAlertSound(editRule.soundType)
   return {
-    tab: (isTts ? 'message' : editRule.thresholdMax != null ? 'geiger' : 'single') as AlertTab,
+    tab: (tts ? 'message' : editRule.thresholdMax != null ? 'geiger' : 'single') as AlertTab,
     threshold: editRule.threshold,
     thresholdMax: editRule.thresholdMax ?? dialConfig.max,
     soundType: editRule.soundType,
-    messageTemplate: isTts
-      ? editRule.soundType.slice(4)
-      : getDefaultMessageTemplate(editRule.controlId, batteryConfig),
+    messageTemplate: tts?.text ?? getDefaultMessageTemplate(editRule.controlId, batteryConfig),
+    severity: tts?.severity ?? ALERT_SEVERITY_DEFAULT,
     repeatEverySeconds: editRule.repeatEverySeconds,
     beepCount: editRule.beepCount,
   }
@@ -152,8 +152,8 @@ export function getNewFormDefaults(
       soundType: preset.tab === 'geiger' ? geigerSoundType : defaultSoundType,
       messageTemplate: getDefaultMessageTemplate(controlId, batteryConfig),
       repeatEverySeconds: null,
-      // A speech rule starts with Beep before Off.
-      beepCount: preset.tab === 'message' ? 0 : ALERT_BEEP_COUNT_DEFAULT,
+      beepCount: ALERT_BEEP_COUNT_DEFAULT,
+      severity: ALERT_SEVERITY_DEFAULT,
     }
   }
 
@@ -165,5 +165,6 @@ export function getNewFormDefaults(
     messageTemplate: getDefaultMessageTemplate(controlId, batteryConfig),
     repeatEverySeconds: null,
     beepCount: ALERT_BEEP_COUNT_DEFAULT,
+    severity: ALERT_SEVERITY_DEFAULT,
   }
 }
