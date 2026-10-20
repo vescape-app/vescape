@@ -126,11 +126,23 @@ internal struct VoicePackManifest {
   }
 }
 
-/// Picks one clip per line part at random, never the same `start` twice in a row for a key.
+/// Picks one clip per line part at random, never the same `start` twice in a row for a key. The
+/// pick after each announcement is made right away, so `next` lets the caller join it ahead.
+/// An `end` of `""` is the "none" variant.
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/alerts/VoicePacks.kt `VoiceVariantPicker`
 internal final class VoiceVariantPicker {
+  private struct Choice {
+    let start: Int
+    let end: Int?
+
+    /// False for a pick made against another pack's line (the picker serves every pack).
+    func fits(_ line: VoiceLine) -> Bool {
+      start < line.start.count && (end.map { $0 < line.end.count } ?? line.end.isEmpty)
+    }
+  }
+
   private let random: (Int) -> Int
-  private var lastStart: [String: Int] = [:]
+  private var upcoming: [String: Choice] = [:]
   private let lock = NSLock()
 
   init(random: @escaping (Int) -> Int = { Int.random(in: 0..<$0) }) {
@@ -139,18 +151,41 @@ internal final class VoiceVariantPicker {
 
   /// Clip files of `announcement` in play order (start, value, end); nil when the pack has no line.
   func clips(_ manifest: VoicePackManifest, _ announcement: VoiceAnnouncement) -> [String]? {
-    guard let key = announcement.key,
-      let line = manifest.line(key: key, severity: announcement.severity), !line.start.isEmpty
-    else { return nil }
+    guard let (key, line) = resolve(manifest, announcement) else { return nil }
     lock.lock()
     defer { lock.unlock() }
     let lineKey = "\(key).\(announcement.severity.rawValue)"
+    let choice = upcoming[lineKey].flatMap { $0.fits(line) ? $0 : nil } ?? choose(line, avoid: nil)
+    upcoming[lineKey] = choose(line, avoid: choice.start)
+    return files(manifest, key, line, choice, announcement.value)
+  }
+
+  /// Clip files the next `clips` call for `announcement` returns, without consuming the pick.
+  func next(_ manifest: VoicePackManifest, _ announcement: VoiceAnnouncement) -> [String]? {
+    guard let (key, line) = resolve(manifest, announcement) else { return nil }
+    lock.lock()
+    defer { lock.unlock() }
+    guard let choice = upcoming["\(key).\(announcement.severity.rawValue)"], choice.fits(line) else { return nil }
+    return files(manifest, key, line, choice, announcement.value)
+  }
+
+  private func resolve(_ manifest: VoicePackManifest, _ announcement: VoiceAnnouncement) -> (String, VoiceLine)? {
+    guard let key = announcement.key,
+      let line = manifest.line(key: key, severity: announcement.severity), !line.start.isEmpty
+    else { return nil }
+    return (key, line)
+  }
+
+  private func choose(_ line: VoiceLine, avoid: Int?) -> Choice {
     var start = random(line.start.count)
-    if line.start.count > 1, start == lastStart[lineKey] { start = (start + 1) % line.start.count }
-    lastStart[lineKey] = start
-    var clips = [line.start[start]]
-    if let value = announcement.value, let clip = manifest.valueClip(key: key, value: value) { clips.append(clip) }
-    if !line.end.isEmpty { clips.append(line.end[random(line.end.count)]) }
+    if line.start.count > 1, start == avoid { start = (start + 1) % line.start.count }
+    return Choice(start: start, end: line.end.isEmpty ? nil : random(line.end.count))
+  }
+
+  private func files(_ manifest: VoicePackManifest, _ key: String, _ line: VoiceLine, _ choice: Choice, _ value: Int?) -> [String] {
+    var clips = [line.start[choice.start]]
+    if let value, let clip = manifest.valueClip(key: key, value: value) { clips.append(clip) }
+    if let end = choice.end, !line.end[end].isEmpty { clips.append(line.end[end]) }
     return clips
   }
 }

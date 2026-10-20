@@ -133,28 +133,55 @@ internal class VoicePackManifest(val lines: Map<String, VoiceLine>, val values: 
 }
 
 /**
- * Picks one clip per line part at random, never the same `start` twice in a row for a key.
+ * Picks one clip per line part at random, never the same `start` twice in a row for a key. The
+ * pick after each announcement is made right away, so [next] lets the caller join it ahead.
+ * An `end` of `""` is the "none" variant.
  *
  * @parity /modules/vescape-core/ios/alerts/VoicePacks.swift `VoiceVariantPicker`
  */
 internal class VoiceVariantPicker(private val random: (Int) -> Int = { kotlin.random.Random.nextInt(it) }) {
-    private val lastStart = HashMap<String, Int>()
+    private data class Choice(val start: Int, val end: Int?) {
+        /** False for a pick made against another pack's line (the picker serves every pack). */
+        fun fits(line: VoiceLine) = start < line.start.size && (end?.let { it < line.end.size } ?: line.end.isEmpty())
+    }
+
+    private val upcoming = HashMap<String, Choice>()
 
     /** Clip files of [announcement] in play order (start, value, end); null when [manifest] has no line. */
     @Synchronized
     fun clips(manifest: VoicePackManifest, announcement: VoiceAnnouncement): List<String>? {
-        val key = announcement.key ?: return null
-        val line = manifest.line(key, announcement.severity)?.takeIf { it.start.isNotEmpty() } ?: return null
+        val (key, line) = resolve(manifest, announcement) ?: return null
         val lineKey = "$key.${announcement.severity.id}"
-        var start = random(line.start.size)
-        if (line.start.size > 1 && start == lastStart[lineKey]) start = (start + 1) % line.start.size
-        lastStart[lineKey] = start
-        return listOfNotNull(
-            line.start[start],
-            announcement.value?.let { manifest.valueClip(key, it) },
-            line.end.takeIf { it.isNotEmpty() }?.let { it[random(it.size)] },
-        )
+        val choice = upcoming[lineKey]?.takeIf { it.fits(line) }
+            ?: choose(line, avoid = null)
+        upcoming[lineKey] = choose(line, avoid = choice.start)
+        return files(manifest, key, line, choice, announcement.value)
     }
+
+    /** Clip files the next [clips] call for [announcement] returns, without consuming the pick. */
+    @Synchronized
+    fun next(manifest: VoicePackManifest, announcement: VoiceAnnouncement): List<String>? {
+        val (key, line) = resolve(manifest, announcement) ?: return null
+        val choice = upcoming["$key.${announcement.severity.id}"]?.takeIf { it.fits(line) } ?: return null
+        return files(manifest, key, line, choice, announcement.value)
+    }
+
+    private fun resolve(manifest: VoicePackManifest, announcement: VoiceAnnouncement): Pair<String, VoiceLine>? {
+        val key = announcement.key ?: return null
+        return manifest.line(key, announcement.severity)?.takeIf { it.start.isNotEmpty() }?.let { key to it }
+    }
+
+    private fun choose(line: VoiceLine, avoid: Int?): Choice {
+        var start = random(line.start.size)
+        if (line.start.size > 1 && start == avoid) start = (start + 1) % line.start.size
+        return Choice(start, line.end.takeIf { it.isNotEmpty() }?.let { random(it.size) })
+    }
+
+    private fun files(manifest: VoicePackManifest, key: String, line: VoiceLine, choice: Choice, value: Int?) = listOfNotNull(
+        line.start[choice.start],
+        value?.let { manifest.valueClip(key, it) },
+        choice.end?.let { line.end[it] }?.takeIf { it.isNotEmpty() },
+    )
 }
 
 /**
@@ -186,6 +213,9 @@ internal object VoicePackAssets {
     private val manifests = ConcurrentHashMap<String, VoicePackManifest>()
     private val decoded = ConcurrentHashMap<String, VoicePcm>()
     val picker = VoiceVariantPicker()
+    /** Next announcement's buffer per line, joined ahead: file list → PCM. */
+    private val prepared = ConcurrentHashMap<String, Pair<List<String>, VoicePcm>>()
+    private val preparer = java.util.concurrent.Executors.newSingleThreadExecutor { Thread(it, "voice-prepare").apply { isDaemon = true } }
 
     fun manifest(context: Context, pack: String): VoicePackManifest? {
         val id = if (pack in VOICE_PACK_IDS) pack else VOICE_PACK_FALLBACK
@@ -203,7 +233,7 @@ internal object VoicePackAssets {
     fun prewarm(context: Context, pack: String) {
         val manifest = manifest(context, pack) ?: return
         val id = if (pack in VOICE_PACK_IDS) pack else VOICE_PACK_FALLBACK
-        manifest.lines.values.flatMap { it.start + it.end }.forEach { decode(context, id, it) }
+        manifest.lines.values.flatMap { it.start + it.end }.filter { it.isNotEmpty() }.forEach { decode(context, id, it) }
     }
 
     /**
@@ -213,7 +243,19 @@ internal object VoicePackAssets {
     fun join(context: Context, pack: String, announcement: VoiceAnnouncement): VoicePcm? {
         val id = if (pack in VOICE_PACK_IDS) pack else VOICE_PACK_FALLBACK
         val manifest = manifest(context, id) ?: return null
-        val clips = picker.clips(manifest, announcement)?.mapNotNull { decode(context, id, it) } ?: return null
+        val files = picker.clips(manifest, announcement) ?: return null
+        val slot = "$id/${announcement.key}.${announcement.severity.id}"
+        val pcm = prepared.remove(slot)?.takeIf { it.first == files }?.second ?: concat(context, id, files)
+        // The next pick joins now, so its variant costs the next announcement nothing.
+        preparer.execute {
+            val next = picker.next(manifest, announcement) ?: return@execute
+            concat(context, id, next)?.let { prepared[slot] = next to it }
+        }
+        return pcm
+    }
+
+    private fun concat(context: Context, pack: String, files: List<String>): VoicePcm? {
+        val clips = files.mapNotNull { decode(context, pack, it) }
         if (clips.isEmpty()) return null
         val rate = clips.first().sampleRate
         val joined = ShortArray(clips.sumOf { if (it.sampleRate == rate) it.samples.size else 0 })

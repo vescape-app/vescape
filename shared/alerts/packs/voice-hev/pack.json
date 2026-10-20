@@ -4,63 +4,69 @@
   "format": "aac-lc m4a, mono 22050 Hz",
   "lines": {
     "battery": {
-      "start": ["lines/battery.start.0.m4a"],
+      "start": ["lines/battery.start.0.m4a", "lines/battery.start.1.m4a"],
       "end": []
     },
     "battery.warning": {
-      "start": ["lines/battery.warning.start.0.m4a"],
+      "start": ["lines/battery.warning.start.0.m4a", "lines/battery.warning.start.1.m4a"],
       "end": []
     },
     "battery.critical": {
-      "start": ["lines/battery.critical.start.0.m4a"],
-      "end": []
+      "start": ["lines/battery.critical.start.0.m4a", "lines/battery.critical.start.1.m4a"],
+      "end": ["", "lines/battery.critical.end.1.m4a"]
     },
     "motorTemp": {
-      "start": ["lines/motorTemp.start.0.m4a"],
+      "start": ["lines/motorTemp.start.0.m4a", "lines/motorTemp.start.1.m4a"],
       "end": []
     },
     "motorTemp.warning": {
-      "start": ["lines/motorTemp.warning.start.0.m4a"],
+      "start": ["lines/motorTemp.warning.start.0.m4a", "lines/motorTemp.warning.start.1.m4a"],
       "end": []
     },
     "motorTemp.critical": {
-      "start": ["lines/motorTemp.critical.start.0.m4a"],
-      "end": []
+      "start": ["lines/motorTemp.critical.start.0.m4a", "lines/motorTemp.critical.start.1.m4a"],
+      "end": ["", "lines/motorTemp.critical.end.1.m4a"]
     },
     "controllerTemp": {
-      "start": ["lines/controllerTemp.start.0.m4a"],
+      "start": ["lines/controllerTemp.start.0.m4a", "lines/controllerTemp.start.1.m4a"],
       "end": []
     },
     "controllerTemp.warning": {
-      "start": ["lines/controllerTemp.warning.start.0.m4a"],
+      "start": [
+        "lines/controllerTemp.warning.start.0.m4a",
+        "lines/controllerTemp.warning.start.1.m4a"
+      ],
       "end": []
     },
     "controllerTemp.critical": {
-      "start": ["lines/controllerTemp.critical.start.0.m4a"],
-      "end": []
+      "start": [
+        "lines/controllerTemp.critical.start.0.m4a",
+        "lines/controllerTemp.critical.start.1.m4a"
+      ],
+      "end": ["", "lines/controllerTemp.critical.end.1.m4a"]
     },
     "link.connected": {
-      "start": ["lines/link.connected.start.0.m4a"],
+      "start": ["lines/link.connected.start.0.m4a", "lines/link.connected.start.1.m4a"],
       "end": []
     },
     "link.lost": {
-      "start": ["lines/link.lost.start.0.m4a"],
+      "start": ["lines/link.lost.start.0.m4a", "lines/link.lost.start.1.m4a"],
       "end": []
     },
     "system.error": {
-      "start": ["lines/system.error.start.0.m4a"],
+      "start": ["lines/system.error.start.0.m4a", "lines/system.error.start.1.m4a"],
       "end": []
     },
     "groupRide.created": {
-      "start": ["lines/groupRide.created.start.0.m4a"],
+      "start": ["lines/groupRide.created.start.0.m4a", "lines/groupRide.created.start.1.m4a"],
       "end": []
     },
     "groupRide.joined": {
-      "start": ["lines/groupRide.joined.start.0.m4a"],
+      "start": ["lines/groupRide.joined.start.0.m4a", "lines/groupRide.joined.start.1.m4a"],
       "end": []
     },
     "ride.end": {
-      "start": ["lines/ride.end.start.0.m4a"],
+      "start": ["lines/ride.end.start.0.m4a", "lines/ride.end.start.1.m4a"],
       "end": []
     }
   },
@@ -504,20 +510,38 @@
   },
   "sources": {
     "lines/battery.start.0.m4a": "71d350df968bfa73",
+    "lines/battery.start.1.m4a": "4523efe86a8c4129",
     "lines/battery.warning.start.0.m4a": "f074b301f36a8431",
+    "lines/battery.warning.start.1.m4a": "9ee5ff0e0d4a605e",
     "lines/battery.critical.start.0.m4a": "d9bf6b854399bb66",
+    "lines/battery.critical.start.1.m4a": "f6cab2070e7aa581",
+    "lines/battery.critical.end.1.m4a": "26751db1a337a36c",
     "lines/motorTemp.start.0.m4a": "12703c4022abf935",
+    "lines/motorTemp.start.1.m4a": "831000e5b189f82d",
     "lines/motorTemp.warning.start.0.m4a": "6936b80718db0071",
+    "lines/motorTemp.warning.start.1.m4a": "92cbcd4c6b89ccc2",
     "lines/motorTemp.critical.start.0.m4a": "586c4bc57739bf61",
+    "lines/motorTemp.critical.start.1.m4a": "383377b6d3e43872",
+    "lines/motorTemp.critical.end.1.m4a": "c6b6fe45502fab2a",
     "lines/controllerTemp.start.0.m4a": "aa16b916854f56f5",
+    "lines/controllerTemp.start.1.m4a": "9176f14770be68f6",
     "lines/controllerTemp.warning.start.0.m4a": "a47a266305d01d44",
+    "lines/controllerTemp.warning.start.1.m4a": "6848f20efe410327",
     "lines/controllerTemp.critical.start.0.m4a": "24062dd8dec2fa6b",
+    "lines/controllerTemp.critical.start.1.m4a": "216e40e6d2f2e8f4",
+    "lines/controllerTemp.critical.end.1.m4a": "c6b6fe45502fab2a",
     "lines/link.connected.start.0.m4a": "53230011a2ff60f6",
+    "lines/link.connected.start.1.m4a": "881f9d24d4279c3c",
     "lines/link.lost.start.0.m4a": "7f80ad03f4104006",
+    "lines/link.lost.start.1.m4a": "46d0ef6a964373f5",
     "lines/system.error.start.0.m4a": "435bfacf14678e3b",
+    "lines/system.error.start.1.m4a": "04efc8b2af243a18",
     "lines/groupRide.created.start.0.m4a": "e3393c32203d84e7",
+    "lines/groupRide.created.start.1.m4a": "2dc9e4536e411c26",
     "lines/groupRide.joined.start.0.m4a": "2d8f440e60ac7f32",
+    "lines/groupRide.joined.start.1.m4a": "f3f5de200cac2b85",
     "lines/ride.end.start.0.m4a": "dee989727d4bfe2b",
+    "lines/ride.end.start.1.m4a": "3028308a90aaf093",
     "values/percent/0.m4a": "459aab31a55fd27e",
     "values/percent/1.m4a": "bdd4dc362607429a",
     "values/percent/2.m4a": "0f80da7e75fafbd6",
@@ -619,6 +643,36 @@
     "values/percent/98.m4a": "b030b2daf5ee7abf",
     "values/percent/99.m4a": "e67e90d33d35e0a3",
     "values/percent/100.m4a": "9d34c87802e0344a",
+    "values/degrees/-30.m4a": "5e181a6543615cf4",
+    "values/degrees/-29.m4a": "edefe9b34393ca18",
+    "values/degrees/-28.m4a": "79bf231c255e5e27",
+    "values/degrees/-27.m4a": "390df5d2d23f4e21",
+    "values/degrees/-26.m4a": "f34e9fb697c56a80",
+    "values/degrees/-25.m4a": "3c3757e41b251b39",
+    "values/degrees/-24.m4a": "b460b5eb5e55156a",
+    "values/degrees/-23.m4a": "952262f8551349ea",
+    "values/degrees/-22.m4a": "0bf9e9a07022052d",
+    "values/degrees/-21.m4a": "bd863fd00ae0dfef",
+    "values/degrees/-20.m4a": "5718ee37bfc91466",
+    "values/degrees/-19.m4a": "bb1124fb780374bf",
+    "values/degrees/-18.m4a": "bcd1094601323f36",
+    "values/degrees/-17.m4a": "8674c038c26faec4",
+    "values/degrees/-16.m4a": "3ee5143bd917904c",
+    "values/degrees/-15.m4a": "4fa68375fcd34a72",
+    "values/degrees/-14.m4a": "734bfb685fa19e74",
+    "values/degrees/-13.m4a": "868c950e1411a7da",
+    "values/degrees/-12.m4a": "1088e98a8dc4ef97",
+    "values/degrees/-11.m4a": "003b163c71573bd4",
+    "values/degrees/-10.m4a": "ec035d64f7fe812a",
+    "values/degrees/-9.m4a": "87f4929356537ea4",
+    "values/degrees/-8.m4a": "533f46318f01e8dd",
+    "values/degrees/-7.m4a": "1bc8df505234b1e7",
+    "values/degrees/-6.m4a": "51eea1d6c4f0a907",
+    "values/degrees/-5.m4a": "8348b801a742bf60",
+    "values/degrees/-4.m4a": "6cab5e76a0ab0c48",
+    "values/degrees/-3.m4a": "8e10b2097e61378f",
+    "values/degrees/-2.m4a": "aeb7fe3fca9ccdc4",
+    "values/degrees/-1.m4a": "f085c20fc45101de",
     "values/degrees/0.m4a": "84c5791b5086fc2f",
     "values/degrees/1.m4a": "a6a80089a15f1e50",
     "values/degrees/2.m4a": "6ee1b8123c282963",
@@ -919,36 +973,6 @@
     "values/degrees/297.m4a": "e1bf4a25a7fe6c24",
     "values/degrees/298.m4a": "df75190bbaf81fb0",
     "values/degrees/299.m4a": "086bc35110e86bfe",
-    "values/degrees/300.m4a": "863eb207e4e865ac",
-    "values/degrees/-30.m4a": "5e181a6543615cf4",
-    "values/degrees/-29.m4a": "edefe9b34393ca18",
-    "values/degrees/-28.m4a": "79bf231c255e5e27",
-    "values/degrees/-27.m4a": "390df5d2d23f4e21",
-    "values/degrees/-26.m4a": "f34e9fb697c56a80",
-    "values/degrees/-25.m4a": "3c3757e41b251b39",
-    "values/degrees/-24.m4a": "b460b5eb5e55156a",
-    "values/degrees/-23.m4a": "952262f8551349ea",
-    "values/degrees/-22.m4a": "0bf9e9a07022052d",
-    "values/degrees/-21.m4a": "bd863fd00ae0dfef",
-    "values/degrees/-20.m4a": "5718ee37bfc91466",
-    "values/degrees/-19.m4a": "bb1124fb780374bf",
-    "values/degrees/-18.m4a": "bcd1094601323f36",
-    "values/degrees/-17.m4a": "8674c038c26faec4",
-    "values/degrees/-16.m4a": "3ee5143bd917904c",
-    "values/degrees/-15.m4a": "4fa68375fcd34a72",
-    "values/degrees/-14.m4a": "734bfb685fa19e74",
-    "values/degrees/-13.m4a": "868c950e1411a7da",
-    "values/degrees/-12.m4a": "1088e98a8dc4ef97",
-    "values/degrees/-11.m4a": "003b163c71573bd4",
-    "values/degrees/-10.m4a": "ec035d64f7fe812a",
-    "values/degrees/-9.m4a": "87f4929356537ea4",
-    "values/degrees/-8.m4a": "533f46318f01e8dd",
-    "values/degrees/-7.m4a": "1bc8df505234b1e7",
-    "values/degrees/-6.m4a": "51eea1d6c4f0a907",
-    "values/degrees/-5.m4a": "8348b801a742bf60",
-    "values/degrees/-4.m4a": "6cab5e76a0ab0c48",
-    "values/degrees/-3.m4a": "8e10b2097e61378f",
-    "values/degrees/-2.m4a": "aeb7fe3fca9ccdc4",
-    "values/degrees/-1.m4a": "f085c20fc45101de"
+    "values/degrees/300.m4a": "863eb207e4e865ac"
   }
 }

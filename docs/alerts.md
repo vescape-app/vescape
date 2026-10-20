@@ -84,7 +84,10 @@ stay cached.
   to °F under imperial units before rounding to the nearest clip (degree clips say only
   "degrees", −30…300). A missing value clip is skipped.
 - **Line**: `<key>.<severity>`, else the generic `<key>`, else none (severity sound only, never
-  silence). Variants are picked at random per part; the same `start` never repeats twice in a row.
+  silence). The fallback resolves first, then variants are picked at random per part (`start` and
+  `end` independently; an `end` of `""` is "none"); the same `start` never repeats twice in a row
+  for a key and severity. The pick for the next announcement of a line is made and joined in the
+  background right after each one plays, so variety adds no latency.
 
 **Presets** (battery, motor and controller temperature) emit `voice(<severity>):<key>`; the
 generator ranks severity per ladder point: last (most severe) `critical`, first `info`, the rest
@@ -100,7 +103,7 @@ the Voice pack but ignore Voice level.
 
 Planned (not implemented): per-preset pinned effects/voice packs, app cue and group ride lines at
 Voice level Full (#581). All sounds that can fire during a ride stay decoded in memory for the
-session (#576). The line schema lives in #574.
+session (#576).
 
 ### Built-in packs
 
@@ -130,7 +133,9 @@ shared/alerts/packs/
 - **Voice keys**: `battery` (percent), `motorTemp`, `controllerTemp` (degrees), `link.connected`,
   `link.lost`, `system.error`, `groupRide.created`, `groupRide.joined`, `ride.end`. Each key needs a
   generic line; `<key>.<severity>` variants are optional. A line is `start` (+ value) (+ `end`),
-  each part a list of variants, one Kokoro call per sentence.
+  each part a list of variants, one Kokoro call per sentence; `""` in `end` is the "none" variant
+  and gets no clip. HEV and Clean ship two `start` variants per line and an optional `end` on
+  critical lines.
 - **Value clips**: one clip per number with its unit, spelled out (`minus five degrees.`):
   percent 0–100, degrees −30…300 (the clip says only "degrees", shared by °C and °F).
 - **Format**: AAC-LC in `.m4a`, mono 22 050 Hz, 40 kbit/s. Android `MediaCodec` and iOS

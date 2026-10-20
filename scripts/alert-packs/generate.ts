@@ -177,6 +177,8 @@ function generateVoice(manifest: VoiceManifest, dir: string, tmp: string) {
   for (const [key, line] of Object.entries(manifest.lines)) {
     const part = (name: 'start' | 'end') =>
       (line[name] ?? []).map((text, i) => {
+        // An empty `end` is the "none" variant: no clip, native plays start + value only.
+        if (!text) return ''
         const file = `lines/${key}.${name}.${i}${CLIP_EXTENSION}`
         clips.push({ text, file })
         return file

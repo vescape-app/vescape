@@ -12,7 +12,8 @@ class VoicePacksTest {
           "lines": {
             "battery": { "start": ["b.0"], "end": [] },
             "battery.critical": { "start": ["bc.0", "bc.1"], "end": ["plug"] },
-            "motorTemp": { "start": ["m.0"], "end": [] }
+            "motorTemp": { "start": ["m.0"], "end": [] },
+            "motorTemp.warning": { "start": ["mw.0"], "end": ["soon", ""] }
           },
           "values": {
             "percent": { "20": "p20" },
@@ -65,6 +66,27 @@ class VoicePacksTest {
         assertEquals("bc.0", picker.clips(manifest, critical)!!.first())
         assertEquals("bc.1", picker.clips(manifest, critical)!!.first())
         assertEquals("bc.0", picker.clips(manifest, critical)!!.first())
+    }
+
+    @Test
+    fun nextIsThePickTheFollowingAnnouncementPlays() {
+        val picks = ArrayDeque(listOf(1, 0, 0, 0, 0, 0))
+        val picker = VoiceVariantPicker { picks.removeFirst() }
+        val critical = VoiceAnnouncement(AlertSeverity.CRITICAL, "battery", 20)
+        assertNull(picker.next(manifest, critical))
+        assertEquals(listOf("bc.1", "p20", "plug"), picker.clips(manifest, critical))
+        val ahead = picker.next(manifest, critical)
+        assertEquals(listOf("bc.0", "p20", "plug"), ahead)
+        assertEquals(ahead, picker.clips(manifest, critical))
+    }
+
+    @Test
+    fun anEmptyEndIsTheNoneVariant() {
+        val picks = ArrayDeque(listOf(0, 1, 0, 0, 0, 0))
+        val picker = VoiceVariantPicker { picks.removeFirst() }
+        val warning = VoiceAnnouncement(AlertSeverity.WARNING, "motorTemp", null)
+        assertEquals(listOf("mw.0"), picker.clips(manifest, warning))
+        assertEquals(listOf("mw.0", "soon"), picker.clips(manifest, warning))
     }
 
     @Test

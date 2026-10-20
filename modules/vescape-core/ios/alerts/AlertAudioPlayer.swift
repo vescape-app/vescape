@@ -112,6 +112,9 @@ internal final class AlertAudioPlayer {
   private var voiceClips: [String: AVAudioPCMBuffer] = [:]
   private let voiceLock = NSLock()
   private let voicePicker = VoiceVariantPicker()
+  /// Next announcement's buffer per line (`"<pack>/<key>.<severity>"`), joined ahead. Guarded by
+  /// `voiceLock`.
+  private var preparedVoice: [String: (files: [String], buffer: AVAudioPCMBuffer)] = [:]
   /// Voice line playing now; a newer line stops it. Owned by `geigerQueue`.
   private var voiceNode: AVAudioPlayerNode?
   private var geigerLoops: [String: GeigerLoop] = [:]
@@ -592,16 +595,34 @@ internal final class AlertAudioPlayer {
   private func prewarmVoice(_ pack: String) {
     guard let manifest = voiceManifest(pack) else { return }
     let id = voicePackIds.contains(pack) ? pack : voicePackFallback
-    for line in manifest.lines.values { for file in line.start + line.end { _ = voiceClip(id, file) } }
+    for line in manifest.lines.values { for file in line.start + line.end where !file.isEmpty { _ = voiceClip(id, file) } }
   }
 
   /// `announcement` joined into one buffer from `pack`, or nil when the pack has no line for its key.
+  /// The next pick joins right after on a utility queue, so its variant costs the next announcement
+  /// nothing.
   private func joinedVoice(_ announcement: VoiceAnnouncement, pack: String) -> AVAudioPCMBuffer? {
     let id = voicePackIds.contains(pack) ? pack : voicePackFallback
-    guard let manifest = voiceManifest(id),
-      let clips = voicePicker.clips(manifest, announcement)?.compactMap({ voiceClip(id, $0) }),
-      let format = clips.first?.format
-    else { return nil }
+    guard let manifest = voiceManifest(id), let files = voicePicker.clips(manifest, announcement) else { return nil }
+    let slot = "\(id)/\(announcement.key ?? "").\(announcement.severity.rawValue)"
+    voiceLock.lock()
+    let prepared = preparedVoice.removeValue(forKey: slot)
+    voiceLock.unlock()
+    let buffer = prepared?.files == files ? prepared?.buffer : concatVoice(id, files)
+    DispatchQueue.global(qos: .utility).async { [weak self] in
+      guard let self, let next = self.voicePicker.next(manifest, announcement),
+        let joined = self.concatVoice(id, next)
+      else { return }
+      self.voiceLock.lock()
+      self.preparedVoice[slot] = (next, joined)
+      self.voiceLock.unlock()
+    }
+    return buffer
+  }
+
+  private func concatVoice(_ pack: String, _ files: [String]) -> AVAudioPCMBuffer? {
+    let clips = files.compactMap { voiceClip(pack, $0) }
+    guard let format = clips.first?.format else { return nil }
     let total = clips.reduce(0) { $0 + $1.frameLength }
     guard total > 0, let joined = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: total),
       let target = joined.floatChannelData?[0]

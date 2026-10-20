@@ -8,7 +8,8 @@ final class VoicePacksTests: XCTestCase {
       "lines": {
         "battery": { "start": ["b.0"], "end": [] },
         "battery.critical": { "start": ["bc.0", "bc.1"], "end": ["plug"] },
-        "motorTemp": { "start": ["m.0"], "end": [] }
+        "motorTemp": { "start": ["m.0"], "end": [] },
+        "motorTemp.warning": { "start": ["mw.0"], "end": ["soon", ""] }
       },
       "values": {
         "percent": { "20": "p20" },
@@ -69,6 +70,25 @@ final class VoicePacksTests: XCTestCase {
     XCTAssertEqual(picker.clips(manifest, critical)?.first, "bc.0")
     XCTAssertEqual(picker.clips(manifest, critical)?.first, "bc.1")
     XCTAssertEqual(picker.clips(manifest, critical)?.first, "bc.0")
+  }
+
+  func testNextIsThePickTheFollowingAnnouncementPlays() {
+    var picks = [1, 0, 0, 0, 0, 0]
+    let picker = VoiceVariantPicker { _ in picks.removeFirst() }
+    let critical = VoiceAnnouncement(severity: .critical, key: "battery", value: 20)
+    XCTAssertNil(picker.next(manifest, critical))
+    XCTAssertEqual(picker.clips(manifest, critical), ["bc.1", "p20", "plug"])
+    let ahead = picker.next(manifest, critical)
+    XCTAssertEqual(ahead, ["bc.0", "p20", "plug"])
+    XCTAssertEqual(picker.clips(manifest, critical), ahead)
+  }
+
+  func testAnEmptyEndIsTheNoneVariant() {
+    var picks = [0, 1, 0, 0, 0, 0]
+    let picker = VoiceVariantPicker { _ in picks.removeFirst() }
+    let warning = VoiceAnnouncement(severity: .warning, key: "motorTemp", value: nil)
+    XCTAssertEqual(picker.clips(manifest, warning), ["mw.0"])
+    XCTAssertEqual(picker.clips(manifest, warning), ["mw.0", "soon"])
   }
 
   func testTrimsOnlyLeadingPadding() {

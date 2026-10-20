@@ -5,20 +5,31 @@
   "fx": "highpass 90 equalizer 3000 1.5q +4 compand 0.002,0.08 -70,-70,-50,-8,-20,-3,0,-1.5 gain -n -0.3 compand 0.0005,0.03 -10,-10,-3,-2,0,-1 gain -n -0.3 compand 0.001,0.05 -6,-6,0,-1 gain -n -0.3",
   "units": { "percent": ["percent", "percent"], "degrees": ["degree", "degrees"] },
   "lines": {
-    "battery": { "start": ["Battery..."] },
-    "battery.warning": { "start": ["Battery low..."] },
-    "battery.critical": { "start": ["Battery critical..."] },
-    "motorTemp": { "start": ["Motor temperature..."] },
-    "motorTemp.warning": { "start": ["Motor getting hot..."] },
-    "motorTemp.critical": { "start": ["Motor overheating..."] },
-    "controllerTemp": { "start": ["Controller temperature..."] },
-    "controllerTemp.warning": { "start": ["Controller getting hot..."] },
-    "controllerTemp.critical": { "start": ["Controller overheating..."] },
-    "link.connected": { "start": ["Board connected."] },
-    "link.lost": { "start": ["Board disconnected."] },
-    "system.error": { "start": ["Something went wrong."] },
-    "groupRide.created": { "start": ["Group ride created."] },
-    "groupRide.joined": { "start": ["You joined the group ride."] },
-    "ride.end": { "start": ["Ride ended."] }
+    "battery": { "start": ["Battery...", "Battery at..."] },
+    "battery.warning": { "start": ["Battery low...", "Battery getting low..."] },
+    "battery.critical": {
+      "start": ["Battery critical...", "Battery almost empty..."],
+      "end": ["", "Time to charge."]
+    },
+    "motorTemp": { "start": ["Motor temperature...", "Motor at..."] },
+    "motorTemp.warning": { "start": ["Motor getting hot...", "Motor warming up..."] },
+    "motorTemp.critical": {
+      "start": ["Motor overheating...", "Motor too hot..."],
+      "end": ["", "Ease off."]
+    },
+    "controllerTemp": { "start": ["Controller temperature...", "Controller at..."] },
+    "controllerTemp.warning": {
+      "start": ["Controller getting hot...", "Controller warming up..."]
+    },
+    "controllerTemp.critical": {
+      "start": ["Controller overheating...", "Controller too hot..."],
+      "end": ["", "Ease off."]
+    },
+    "link.connected": { "start": ["Board connected.", "Board is connected."] },
+    "link.lost": { "start": ["Board disconnected.", "Lost the board."] },
+    "system.error": { "start": ["Something went wrong.", "An error occurred."] },
+    "groupRide.created": { "start": ["Group ride created.", "Your group ride is ready."] },
+    "groupRide.joined": { "start": ["You joined the group ride.", "Joined the group ride."] },
+    "ride.end": { "start": ["Ride ended.", "Ride finished."] }
   }
 }

@@ -46,6 +46,7 @@ export interface EffectsManifest {
   beep?: Segment & { gap: number }
 }
 
+/** `start` + value + `end`; each part lists variants picked at random, `""` in `end` is "none". */
 export interface Line {
   start: string[]
   end?: string[]
@@ -149,7 +150,8 @@ export function validatePack(catalog: Catalog, dir: string): string[] {
         if (!clips[n]) errors.push(`missing value ${type}.${n}`)
       }
     }
-    for (const line of Object.values(pack.lines)) files.push(...line.start, ...line.end)
+    for (const line of Object.values(pack.lines))
+      files.push(...line.start, ...line.end.filter(Boolean))
     for (const clips of Object.values(pack.values)) files.push(...Object.values(clips ?? {}))
   }
   for (const file of files) {
