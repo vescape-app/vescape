@@ -34,7 +34,9 @@ import {
   ALERT_SEVERITY_DEFAULT,
   type AlertSeverity,
   formatSlotAlertSound,
+  customVoiceKey,
   formatTtsAlertSound,
+  formatVoiceAlertSound,
   slotSoundPart,
 } from '@/modules/alerts/lib/alertSoundString'
 import type { AlertRuleDraft } from '@/modules/alerts/store/alertsStore'
@@ -53,6 +55,21 @@ interface AlertFormSheetProps {
   error: string | null
   onClose(): void
   onSave(draft: AlertRuleDraft): Promise<void>
+}
+
+/**
+ * A Message tab rule: the TTS template, or the voice line of its metric. Metrics without voice
+ * lines (no `voiceKey`) speak through TTS only.
+ */
+function messageSoundType(
+  tts: boolean,
+  voiceKey: string | null,
+  severity: AlertSeverity,
+  template: string,
+): string {
+  return tts || voiceKey == null
+    ? formatTtsAlertSound(severity, template)
+    : formatVoiceAlertSound(severity)
 }
 
 /** Writes one alert rule: its threshold, how it sounds, and how often it repeats. */
@@ -93,6 +110,8 @@ export function AlertFormSheet({
   const [repeatEverySeconds, setRepeatEverySeconds] = useState<number | null>(null)
   const [beepCount, setBeepCount] = useState(ALERT_BEEP_COUNT_DEFAULT)
   const [severity, setSeverity] = useState<AlertSeverity>(ALERT_SEVERITY_DEFAULT)
+  const [messageTts, setMessageTts] = useState(false)
+  const voiceKey = customVoiceKey(controlId, batteryConfig != null)
   const [prevVisible, setPrevVisible] = useState(visible)
   const [saving, setSaving] = useState(false)
 
@@ -115,6 +134,7 @@ export function AlertFormSheet({
     setRepeatEverySeconds(defaults.repeatEverySeconds)
     setBeepCount(defaults.beepCount)
     setSeverity(defaults.severity)
+    setMessageTts(defaults.messageTts)
   }
   if (visible !== prevVisible) {
     setPrevVisible(visible)
@@ -125,6 +145,7 @@ export function AlertFormSheet({
       setTab(next)
       if (next === 'message') {
         setMessageTemplate(getDefaultMessageTemplate(controlId, batteryConfig))
+        setMessageTts(false)
       } else {
         setSoundType(next === 'single' ? defaultSoundType : geigerDefaultSoundType)
       }
@@ -142,7 +163,7 @@ export function AlertFormSheet({
       thresholdMax: isRange ? thresholdMax : null,
       soundType:
         tab === 'message'
-          ? formatTtsAlertSound(severity, messageTemplate)
+          ? messageSoundType(messageTts, voiceKey, severity, messageTemplate)
           : tab === 'single'
             ? formatSlotAlertSound(beepCount, slotSoundPart(soundType))
             : soundType,
@@ -160,6 +181,8 @@ export function AlertFormSheet({
     repeatEverySeconds,
     beepCount,
     severity,
+    messageTts,
+    voiceKey,
     onSave,
     saving,
   ])
@@ -249,6 +272,9 @@ export function AlertFormSheet({
             <AlertMessageField
               severity={severity}
               onChangeSeverity={setSeverity}
+              voiceKey={voiceKey}
+              tts={messageTts}
+              onChangeTts={setMessageTts}
               controlId={controlId}
               unit={unit}
               threshold={threshold}

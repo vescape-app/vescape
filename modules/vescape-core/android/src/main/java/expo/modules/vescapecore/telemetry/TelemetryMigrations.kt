@@ -1623,6 +1623,34 @@ internal object TelemetryMigrations {
       WHERE sound_type IN ('preset:beep', 'preset:urgent', 'preset:notify', 'default', 'beep', 'urgent', 'notify', 'pulse')
     """.trimIndent()
 
+    /**
+     * Preset battery and temperature alerts speak voice lines (#580): their generated `tts:`
+     * templates become `voice(<severity>):<key>`, severity by the rule's rank in its ladder (see
+     * [AlertPresetGenerator.pointSoundType]). Only the three exact generated templates match; this is
+     * the one place text matching is accepted. Custom rules keep their TTS text.
+     *
+     * @parity /modules/vescape-core/ios/telemetry/TelemetryDatabase.swift `v51_preset_voice`
+     */
+    internal val MIGRATION_50_51 = migration(50, 51) { db -> db.execSQL(PRESET_VOICE_SQL) }
+
+    /** @parity /modules/vescape-core/ios/telemetry/TelemetryDatabase.swift `presetVoiceSql` */
+    private val PRESET_VOICE_SQL = """
+      UPDATE alerts SET sound_type = 'voice(' ||
+        CASE CAST(substr(id, length('preset:' || control_id || ':') + 1) AS INTEGER)
+          WHEN (SELECT COUNT(*) - 1 FROM alerts AS ladder
+            WHERE ladder.board_id = alerts.board_id AND ladder.control_id = alerts.control_id AND ladder.source = 'preset')
+            THEN 'critical'
+          WHEN 0 THEN 'info'
+          ELSE 'warning'
+        END || '):' ||
+        CASE control_id WHEN 'battery' THEN 'battery' WHEN 'motor-temp' THEN 'motorTemp' ELSE 'controllerTemp' END
+      WHERE source = 'preset' AND (
+        (control_id = 'battery' AND sound_type = 'tts:Battery {percent}%') OR
+        (control_id = 'motor-temp' AND sound_type = 'tts:Motor {value} {unit}') OR
+        (control_id = 'controller-temp' AND sound_type = 'tts:Controller {value} {unit}')
+      )
+    """.trimIndent()
+
     /** Every migration registered with Room, in the graph's production order. */
     val all = listOf(
       MIGRATION_3_4,
@@ -1669,6 +1697,7 @@ internal object TelemetryMigrations {
       MIGRATION_47_48,
       MIGRATION_48_49,
       MIGRATION_49_50,
+      MIGRATION_50_51,
     )
 
 }

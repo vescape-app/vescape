@@ -100,6 +100,20 @@ internal final class AlertAudioPlayer {
   private var myBuffers: [String: AVAudioPCMBuffer?] = [:]
   private let myBuffersLock = NSLock()
   var soundPack = "retro"
+  private var voice = voiceMatching
+  private var voiceLevel = voiceLevelDefault
+  /// Folder holding `effects-<id>/` and `voice-<id>/`; nil when the bundle is missing.
+  private var packsRoot: URL?
+  /// Voice each effects pack names, read once in `init`.
+  private var effectsVoices: [String: String] = [:]
+  /// Parsed voice pack manifests and decoded clips (`"<pack>/<file>"`), filled on first use from
+  /// any thread, so they carry their own lock.
+  private var voiceManifests: [String: VoicePackManifest] = [:]
+  private var voiceClips: [String: AVAudioPCMBuffer] = [:]
+  private let voiceLock = NSLock()
+  private let voicePicker = VoiceVariantPicker()
+  /// Voice line playing now; a newer line stops it. Owned by `geigerQueue`.
+  private var voiceNode: AVAudioPlayerNode?
   private var geigerLoops: [String: GeigerLoop] = [:]
   private var activeOneShotNodes: [AVAudioPlayerNode] = []
   private var started = false
@@ -285,6 +299,8 @@ internal final class AlertAudioPlayer {
       }
       root = bundleURL.appendingPathComponent("alert-packs")
     }
+    packsRoot = root
+    effectsVoices = effectsPackVoices(root: root)
     let files = effectsPackSlotFiles(root: root)
     if files.isEmpty {
       UnexpectedNativeError.report(operation: "alert_audio_asset_missing", category: "required_asset_missing", error: CocoaError(.fileNoSuchFile))
@@ -406,6 +422,21 @@ internal final class AlertAudioPlayer {
     return nil
   }
 
+  // MARK: - Settings
+
+  /// Apply the app's sound settings: effects pack, voice, and voice level. Prewarms the voice lines.
+  /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/alerts/AlertEngine.kt `setSoundSettings`
+  func applySoundSettings(_ settings: [String: Any?]) {
+    soundPack = settings["soundPack"] as? String ?? soundPack
+    voice = settings["voice"] as? String ?? voice
+    voiceLevel = settings["voiceLevel"] as? String ?? voiceLevel
+    let pack = voicePack
+    DispatchQueue.global(qos: .utility).async { [weak self] in self?.prewarmVoice(pack) }
+  }
+
+  /// Voice pack the `voice` setting plays with the active effects pack.
+  private var voicePack: String { voicePackId(voice, effectsVoice: effectsVoices[effectsPackId(soundPack)]) }
+
   // MARK: - Connection sounds
 
   func playConnect() {
@@ -470,11 +501,110 @@ internal final class AlertAudioPlayer {
 
   private var pendingSpeech: Cancellable?
 
+  /// Speak `announcement`: its severity sound once, then the voice pack line joined with its value
+  /// into one buffer, starting once the sound has finished. A `preset` at Voice level `off`, or a
+  /// key the pack has no line for, plays the severity sound only. Custom rules ignore the level.
+  /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/alerts/AlertEngine.kt `speakVoice`
+  func speakVoice(_ announcement: VoiceAnnouncement, preset: Bool) {
+    guard !isReleased else { return }
+    pendingSpeech?.cancel()
+    pendingSpeech = nil
+    playSeverity(SlotAlertSound(count: 1, severity: announcement.severity))
+    if preset && voiceLevel == "off" { return }
+    guard let line = joinedVoice(announcement, pack: voicePack) else { return }
+    let delay = max(alertSpeechDelayMs, clipDurationMs(clipKey(announcement.severity.slot)))
+    pendingSpeech = scheduler.postDelayed(delay) { [weak self] in
+      self?.onGeigerQueue { owner in
+        owner.synthesizer.stopSpeaking(at: .immediate)
+        owner.stopVoiceOnQueue()
+        owner.voiceNode = owner.playBufferOnQueue(line, label: "voice/\(announcement.key ?? "")")
+      }
+    }
+  }
+
+  /// Must run on `geigerQueue`. A finished line's node is already detached and needs no stop.
+  private func stopVoiceOnQueue() {
+    if let node = voiceNode, node.engine != nil { node.stop() }
+    voiceNode = nil
+  }
+
+  private func voiceManifest(_ pack: String) -> VoicePackManifest? {
+    voiceLock.lock()
+    defer { voiceLock.unlock() }
+    if let cached = voiceManifests[pack] { return cached }
+    guard let root = packsRoot, let manifest = voicePackManifest(root: root, pack: pack) else { return nil }
+    voiceManifests[pack] = manifest
+    return manifest
+  }
+
+  /// Decoded clip `file` of `pack`, leading padding trimmed; nil when it cannot decode.
+  private func voiceClip(_ pack: String, _ file: String) -> AVAudioPCMBuffer? {
+    let key = "\(pack)/\(file)"
+    voiceLock.lock()
+    if let cached = voiceClips[key] { voiceLock.unlock(); return cached }
+    voiceLock.unlock()
+    // intentional-suppression: an undecodable clip is left out of the line
+    guard let root = packsRoot,
+      let audio = try? AVAudioFile(forReading: root.appendingPathComponent("voice-\(pack)/\(file)")),
+      let decoded = convertToStandard(file: audio, standardFormat: makeStandardFormat()),
+      let samples = decoded.floatChannelData?[0]
+    else { return nil }
+    let frames = Int(decoded.frameLength)
+    let skip = leadingSilenceFrames(
+      UnsafeBufferPointer(start: samples, count: frames),
+      maxFrames: Int(voicePrimingMaxSeconds * decoded.format.sampleRate)
+    )
+    guard let trimmed = AVAudioPCMBuffer(pcmFormat: decoded.format, frameCapacity: AVAudioFrameCount(frames - skip)),
+      let target = trimmed.floatChannelData?[0]
+    else { return nil }
+    target.update(from: samples + skip, count: frames - skip)
+    trimmed.frameLength = AVAudioFrameCount(frames - skip)
+    voiceLock.lock()
+    voiceClips[key] = trimmed
+    voiceLock.unlock()
+    return trimmed
+  }
+
+  /// Decode every line clip of `pack` ahead of the first announcement. Value clips decode on use.
+  private func prewarmVoice(_ pack: String) {
+    guard let manifest = voiceManifest(pack) else { return }
+    let id = voicePackIds.contains(pack) ? pack : voicePackFallback
+    for line in manifest.lines.values { for file in line.start + line.end { _ = voiceClip(id, file) } }
+  }
+
+  /// `announcement` joined into one buffer from `pack`, or nil when the pack has no line for its key.
+  private func joinedVoice(_ announcement: VoiceAnnouncement, pack: String) -> AVAudioPCMBuffer? {
+    let id = voicePackIds.contains(pack) ? pack : voicePackFallback
+    guard let manifest = voiceManifest(id),
+      let clips = voicePicker.clips(manifest, announcement)?.compactMap({ voiceClip(id, $0) }),
+      let format = clips.first?.format
+    else { return nil }
+    let total = clips.reduce(0) { $0 + $1.frameLength }
+    guard total > 0, let joined = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: total),
+      let target = joined.floatChannelData?[0]
+    else { return nil }
+    var offset = 0
+    for clip in clips {
+      guard let source = clip.floatChannelData?[0] else { continue }
+      (target + offset).update(from: source, count: Int(clip.frameLength))
+      offset += Int(clip.frameLength)
+    }
+    joined.frameLength = AVAudioFrameCount(offset)
+    return joined
+  }
+
   /// Play a preset once for UI preview, or speak a `tts` template with a sample fired alert after
   /// its severity sound.
   func preview(soundType: String, unitSystem: String = "metric") {
     guard !isReleased else { return }
     Self.log("AlertAudioPlayer.preview: \(soundType)")
+    if let sound = parseVoiceAlertSound(soundType) {
+      speakVoice(
+        voiceAnnouncement(sound, controlId: nil, threshold: nil, percentAvailable: true, unitSystem: unitSystem),
+        preset: false
+      )
+      return
+    }
     if let tts = parseTtsAlertSound(soundType) {
       let text = renderAlertMessageTemplate(
         tts.text,
@@ -637,6 +767,7 @@ internal final class AlertAudioPlayer {
     // an alert cannot deactivate the session out from under the utterance that follows.
     let reactivate = { [self] in
       idleRequested = false
+      stopVoiceOnQueue()
       // intentional-suppression: a refused activation degrades to silence, never a crash
       try? activateSession()
     }
@@ -728,8 +859,9 @@ internal final class AlertAudioPlayer {
     playBufferOnQueue(buffer, label: clipKey)
   }
 
-  private func playBufferOnQueue(_ buffer: AVAudioPCMBuffer, label: String) {
-    guard !isReleased else { return }
+  @discardableResult
+  private func playBufferOnQueue(_ buffer: AVAudioPCMBuffer, label: String) -> AVAudioPlayerNode? {
+    guard !isReleased else { return nil }
     startIfNeeded()
     Self.log("AlertAudioPlayer.play: schedule \(label) engine.running=\(engine.isRunning) frames=\(buffer.frameLength)")
     let node = makePlayerNode(format: buffer.format)
@@ -744,6 +876,7 @@ internal final class AlertAudioPlayer {
       }
     })
     node.play()
+    return node
   }
 
   private func makePlayerNode(format: AVAudioFormat) -> AVAudioPlayerNode {

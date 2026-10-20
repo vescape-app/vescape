@@ -53,6 +53,62 @@ export function formatTtsAlertSound(severity: AlertSeverity, text: string): stri
   return `tts(${severity}):${text}`
 }
 
+/**
+ * `voice(severity):key:value` — the severity sound once, then the voice pack's line for `key` with
+ * `value` spoken last. A custom rule stores `voice(severity):`: key from its metric, value from its
+ * threshold. A `value` is in the key's metric unit (%, °C).
+ *
+ * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/alerts/AlertSoundString.kt `parseVoiceAlertSound`
+ * @parity /modules/vescape-core/ios/alerts/AlertSoundString.swift `parseVoiceAlertSound`
+ */
+export interface VoiceAlertSound {
+  severity: AlertSeverity
+  key: string | null
+  value: number | null
+}
+
+export function parseVoiceAlertSound(soundType: string): VoiceAlertSound | null {
+  const parsed = parseAlertSoundString(soundType)
+  if (parsed?.kind !== 'voice') return null
+  const split = parsed.sound.indexOf(':')
+  const key = split < 0 ? parsed.sound : parsed.sound.slice(0, split)
+  const rawValue = split < 0 ? '' : parsed.sound.slice(split + 1)
+  const value = rawValue.trim() === '' ? NaN : Number(rawValue)
+  const severity = ALERT_SEVERITIES.find((it) => it === parsed.variant) ?? ALERT_SEVERITY_DEFAULT
+  return { severity, key: key || null, value: Number.isFinite(value) ? value : null }
+}
+
+/** A custom rule's `voice(severity):`, or a preview naming its `key` and `value`. */
+export function formatVoiceAlertSound(
+  severity: AlertSeverity,
+  key: string | null = null,
+  value: number | null = null,
+): string {
+  if (key == null) return `voice(${severity}):`
+  return value == null ? `voice(${severity}):${key}` : `voice(${severity}):${key}:${value}`
+}
+
+/**
+ * Voice key an alert on a metric speaks; metrics without one have no voice lines.
+ *
+ * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/alerts/VoicePacks.kt `voiceKey`
+ * @parity /modules/vescape-core/ios/alerts/VoicePacks.swift `voiceKey`
+ */
+export const VOICE_KEY_BY_CONTROL: Partial<Record<string, string>> = {
+  battery: 'battery',
+  'motor-temp': 'motorTemp',
+  'controller-temp': 'controllerTemp',
+}
+
+/**
+ * Voice key a custom rule on `controlId` can speak, or null when it must use TTS. Battery speaks a
+ * percent, so it needs a battery config (without one its threshold is volts).
+ */
+export function customVoiceKey(controlId: string, hasBatteryConfig: boolean): string | null {
+  if (controlId === 'battery' && !hasBatteryConfig) return null
+  return VOICE_KEY_BY_CONTROL[controlId] ?? null
+}
+
 /** `alert(count):severity` — the active effects pack's severity sound, `count` times. */
 export interface SlotAlertSound {
   count: number

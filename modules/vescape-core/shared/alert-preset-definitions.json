@@ -39,7 +39,7 @@
     },
     "motor-temp": {
       "family": "discrete",
-      "soundType": "tts:Motor {value} {unit}",
+      "soundType": "voice:motorTemp",
       "levels": {
         "safe": [
           {
@@ -75,7 +75,7 @@
     },
     "controller-temp": {
       "family": "discrete",
-      "soundType": "tts:Controller {value} {unit}",
+      "soundType": "voice:controllerTemp",
       "levels": {
         "safe": [
           {
@@ -111,7 +111,7 @@
     },
     "battery": {
       "family": "discrete",
-      "soundType": "tts:Battery {percent}%",
+      "soundType": "voice:battery",
       "requiresBatteryConfig": true,
       "levels": {
         "safe": [

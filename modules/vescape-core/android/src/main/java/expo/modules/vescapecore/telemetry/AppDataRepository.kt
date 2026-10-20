@@ -12,6 +12,10 @@ import expo.modules.vescapecore.service.CoreForegroundService
 import expo.modules.vescapecore.connection.BoardTransport
 import expo.modules.vescapecore.alerts.MySounds
 import expo.modules.vescapecore.alerts.EFFECTS_PACK_IDS
+import expo.modules.vescapecore.alerts.VOICE_LEVELS
+import expo.modules.vescapecore.alerts.VOICE_LEVEL_DEFAULT
+import expo.modules.vescapecore.alerts.VOICE_MATCHING
+import expo.modules.vescapecore.alerts.VOICE_PACK_IDS
 import expo.modules.vescapecore.watch.WatchMapGauges
 import android.content.Context
 import kotlinx.coroutines.Dispatchers
@@ -29,6 +33,10 @@ internal enum class AppDataScope(val wire: String) {
   ALERTS("alerts"),
   SETTINGS("settings"),
 }
+
+/** `matching` or a built-in voice pack id. @parity /modules/vescape-core/ios/telemetry/AppDataRepository.swift `voice` */
+internal fun validVoice(value: Any?): String? =
+  (value as? String)?.takeIf { it == VOICE_MATCHING || it in VOICE_PACK_IDS }
 
 internal fun validMapStyleKey(value: Any?): String? =
   (value as? String)?.takeIf { it in setOf("onedark", "outdoors", "satellite", "mapy") }
@@ -440,6 +448,8 @@ class AppDataRepository private constructor(private val context: Context) {
         (it as? String)?.also { pack -> MySounds.adoptLegacyPack(context, pack) }?.takeIf { pack -> pack in EFFECTS_PACK_IDS }
       },
       audioSource = req("audioSource", "alarm") { (it as? String)?.takeIf { source -> source == "alarm" || source == "media" } },
+      voice = req("voice", VOICE_MATCHING, ::validVoice),
+      voiceLevel = req("voiceLevel", VOICE_LEVEL_DEFAULT) { (it as? String)?.takeIf { level -> level in VOICE_LEVELS } },
       telemetryPollRateHz = req("telemetryPollRateHz", 20, ::validTelemetryPollRateHz),
       wearPushRateHz = req("wearPushRateHz", 4, ::validWearPushRateHz),
       wearAutoLaunchOnConnect = req("wearAutoLaunchOnConnect", true) { it as? Boolean },
@@ -533,6 +543,8 @@ class AppDataRepository private constructor(private val context: Context) {
       "connectionSoundsEnabled" -> value as? Boolean ?: return@withContext
       "soundPack" -> (value as? String)?.takeIf { it in EFFECTS_PACK_IDS } ?: return@withContext
       "audioSource" -> (value as? String)?.takeIf { it == "alarm" || it == "media" } ?: return@withContext
+      "voice" -> validVoice(value) ?: return@withContext
+      "voiceLevel" -> (value as? String)?.takeIf { it in VOICE_LEVELS } ?: return@withContext
       "telemetryPollRateHz" ->
         validTelemetryPollRateHz(value) ?: return@withContext
       "wearPushRateHz" ->
@@ -600,6 +612,8 @@ class AppDataRepository private constructor(private val context: Context) {
         "connectionSoundsEnabled" -> d.connectionSoundsEnabled
         "soundPack" -> d.soundPack
         "audioSource" -> d.audioSource
+        "voice" -> d.voice
+        "voiceLevel" -> d.voiceLevel
         "telemetryPollRateHz" -> d.telemetryPollRateHz
         "wearPushRateHz" -> d.wearPushRateHz
         "wearAutoLaunchOnConnect" -> d.wearAutoLaunchOnConnect
@@ -984,6 +998,8 @@ fun AppSettings.toMap(): Map<String, Any?> = mapOf(
   "connectionSoundsEnabled" to connectionSoundsEnabled,
   "soundPack" to soundPack,
   "audioSource" to audioSource,
+  "voice" to voice,
+  "voiceLevel" to voiceLevel,
   "telemetryPollRateHz" to telemetryPollRateHz,
   "wearPushRateHz" to wearPushRateHz,
   "wearAutoLaunchOnConnect" to wearAutoLaunchOnConnect,

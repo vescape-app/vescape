@@ -186,6 +186,42 @@ final class TelemetryMigrationTests: XCTestCase {
     XCTAssertEqual(primaryKey, ["board_id", "id"])
   }
 
+  /// Preset speech templates become voice lines ranked by ladder position (#580); a custom rule
+  /// with the same text keeps it.
+  func testPresetVoiceMigrationRanksPresetSpeechBySeverity() throws {
+    try migrate(upTo: "v50_alert_sound_count")
+    try queue.write { db in
+      for (id, control, sound, source) in [
+        ("preset:battery:0", "battery", "tts:Battery {percent}%", "preset" as String?),
+        ("preset:battery:1", "battery", "tts:Battery {percent}%", "preset"),
+        ("preset:battery:2", "battery", "tts:Battery {percent}%", "preset"),
+        ("preset:controller-temp:0", "controller-temp", "tts:Controller {value} {unit}", "preset"),
+        ("custom", "battery", "tts:Battery {percent}%", nil),
+      ] {
+        try db.execute(
+          sql: """
+            INSERT INTO alerts (board_id, id, control_id, threshold, threshold_max, enabled, sound_type, created_at, source)
+            VALUES ('board-1', ?, ?, 20, NULL, 1, ?, 1000, ?)
+            """,
+          arguments: [id, control, sound, source]
+        )
+      }
+    }
+
+    try migrate()
+
+    let sounds = try queue.read { db in
+      try Dictionary(uniqueKeysWithValues: Row.fetchAll(db, sql: "SELECT id, sound_type FROM alerts").map {
+        ($0["id"] as String, $0["sound_type"] as String)
+      })
+    }
+    XCTAssertEqual(sounds, [
+      "preset:battery:0": "voice(info):battery", "preset:battery:1": "voice(warning):battery",
+      "preset:battery:2": "voice(critical):battery", "preset:controller-temp:0": "voice(critical):controllerTemp",
+      "custom": "tts:Battery {percent}%",
+    ])
+  }
+
   func testBoardIdMigrationRebuildsLegacyGlobalAlertsAndDropsTheirRows() throws {
     try migrate(upTo: "v26_alert_source")
     try replaceAlertsWithLegacyGlobalTable()

@@ -588,7 +588,7 @@ class VescapeCoreModule : Module() {
       val feedback = previewAlertFeedback ?: AlertFeedback(context.applicationContext, mainHandler)
         .also { previewAlertFeedback = it }
       val settings = kotlinx.coroutines.runBlocking { AppDataRepository.get(context.applicationContext).getTypedSettings() }
-      feedback.setSoundSettings(settings.soundPack, settings.audioSource)
+      feedback.setSoundSettings(settings)
       feedback.updateGeiger("preview", soundType, rangeDepth)
     }
     Function("stopGeigerSimulation") {
@@ -1483,7 +1483,9 @@ class VescapeCoreModule : Module() {
         key == "vescFaultCollectionEnabled" ||
         key == "connectionSoundsEnabled" ||
         key == "soundPack" ||
-        key == "audioSource"
+        key == "audioSource" ||
+        key == "voice" ||
+        key == "voiceLevel"
       ) {
         CoreForegroundService.reloadTelemetrySettings(context.applicationContext)
       }
@@ -1530,7 +1532,7 @@ class VescapeCoreModule : Module() {
     val feedback = AlertFeedback(context.applicationContext, mainHandler)
     val settings = kotlinx.coroutines.runBlocking { AppDataRepository.get(context.applicationContext).getTypedSettings() }
     // A test sounds like the real rule: same effects pack, same output.
-    feedback.setSoundSettings(settings.soundPack, settings.audioSource)
+    feedback.setSoundSettings(settings)
     val coordinator = AlertCoordinator(feedback = { feedback }, vibrateSingles = false)
     coordinator.unitSystem = settings.unitSystem
     coordinator.replaceRules(rules)

@@ -56,42 +56,60 @@ database and sound files until both have installed; a failed sound install rolls
 Restoring an older backup without these entries clears My sounds; one carrying `packs.json`
 migrates as above. A restored sound whose file is absent is dropped with its overrides.
 
-## Voice packs (planned)
+## Voice
 
-> Agreed in #574, not implemented yet. Sound effects (above) are implemented; the rest of this
-> section is planned.
+Speech comes from a second app-wide choice next to Sound effects:
 
-Speech will come from a second app-wide choice next to Sound effects:
+- **Voice** (`voice` setting: `matching`, `hev`, `clean`; default `matching`): whole-sentence lines
+  per message key plus value clips. `Matching` plays the voice the effects pack's `pack.json` names
+  (HEV → HEV; Retro, Simple, Clean → Clean).
+- **Voice level** (`voiceLevel`: `off`, `standard`, `full`; default `standard`): Off plays effects
+  only for presets, Standard speaks preset alerts. Full is stored and shown with its hint; speaking
+  app cues and group ride events at Full is #581 and not implemented yet. Voice level never affects
+  custom rules.
 
-- **Voice** (`Matching` or a voice pack): whole-sentence lines per message key plus value clips,
-  joined natively into one buffer as severity beeps + line + value. `Matching` uses the voice the
-  effects pack names; packs without one use Clean.
-- **Voice level** `Off | Standard | Full`: Off plays effects only, Standard (default) speaks
-  alerts, Full also speaks app cues and group ride events after their effect. Voice level only
-  affects presets and app sounds, never custom rules.
+A `voice(<severity>):<key>:<value>` sound plays the effects pack's `severity.<severity>` sound
+once, then the voice line, starting once the sound has finished (the same timing as TTS). Native
+joins the line's `start` clip, the value clip, and the `end` clip into one PCM buffer
+(`VoicePacks.kt`, `VoicePacks.swift`) and plays it: Android through a static `AudioTrack` on the
+selected alarm/media stream, iOS through the player's `AVAudioEngine`. Leading encoder priming and
+silence (at most 2048 frames) is trimmed from each clip before joining. Line clips of the selected
+voice are decoded in the background when sound settings apply; value clips decode on first use and
+stay cached.
 
-Preset alerts emit a message key, severity, and value instead of a `tts:` template, and resolve
-the line severity variant → generic → beeps only. Each preset can pin its own effects or voice
-pack; unpinned presets follow the app-wide choice. Custom rules keep TTS (with the severity sound
-before speech) or use effects and user sounds; voice lines exist only for built-in alert keys.
-Resolution per slot: override ([My sounds](#my-sounds-and-overrides)) > pinned pack > app-wide
-choice.
+- **Key**: from the sound string, else from the rule's metric (`battery` → `battery`, `motor-temp` →
+  `motorTemp`, `controller-temp` → `controllerTemp`). No key: severity sound only.
+- **Value**: from the sound string, else the rule's (effective) threshold. Battery speaks a
+  percent, so a battery rule without a battery percent speaks no value. Degrees are °C, converted
+  to °F under imperial units before rounding to the nearest clip (degree clips say only
+  "degrees", −30…300). A missing value clip is skipped.
+- **Line**: `<key>.<severity>`, else the generic `<key>`, else none (severity sound only, never
+  silence). Variants are picked at random per part; the same `start` never repeats twice in a row.
 
-Every `sound_type` follows one grammar, `kind(variant):sound` (`tts` and `alert` are parsed today,
-see [Message mode](#message-mode)); the planned kinds are `geiger:soft` and
-`voice(critical):battery:10` (severity sound, then voice line + value). `my:` names a My sound.
+**Presets** (battery, motor and controller temperature) emit `voice(<severity>):<key>`; the
+generator ranks severity per ladder point: last (most severe) `critical`, first `info`, the rest
+`warning`, and a one-point ladder is `critical`. Schema v51 rewrote the previously generated preset
+templates (`tts:Battery {percent}%`, `tts:Motor {value} {unit}`, `tts:Controller {value} {unit}`)
+the same way; custom rules with the same text keep it.
 
-All sounds that can fire during a ride stay decoded in memory for the session, so playback starts
-without load delay. The line schema lives in #574.
+**Custom rules** on battery (with a battery config) and temperature default to `voice(<severity>):`
+on the Message tab. Its **TTS** switch turns on the text template (`tts(<severity>):<text>`).
+Other metrics have no voice lines: TTS is forced on and the switch is hidden. Preview plays the
+severity sound and the voice line with the threshold as value, or the TTS text. Custom rules use
+the Voice pack but ignore Voice level.
+
+Planned (not implemented): per-preset pinned effects/voice packs, app cue and group ride lines at
+Voice level Full (#581). All sounds that can fire during a ride stay decoded in memory for the
+session (#576). The line schema lives in #574.
 
 ### Built-in packs
 
 Packs are generated and committed under `shared/alerts/packs/`. `bun run copy:shared` copies the
-effects packs, keeping their `<pack>/pack.json` layout, to Android `assets/alert-packs/` and to
+effects and voice packs, keeping their `<pack>/pack.json` layout, to Android `assets/alert-packs/` and to
 `modules/vescape-core/ios/alert-packs/`, which the podspec bundles as a folder in
 `VescapeCoreAssets.bundle`. Native reads each `pack.json` and decodes every slot of every effects
-pack at player start (`EffectsPacks.kt`, `EffectsPacks.swift`). Voice packs are not copied or
-played yet (#580).
+pack at player start (`EffectsPacks.kt`, `EffectsPacks.swift`); voice packs are copied the same
+way and decoded per clip (see [Voice](#voice)).
 
 ```text
 scripts/alert-packs/
@@ -150,21 +168,21 @@ and adds a virtual geiger speed rule whenever rules load. Nothing is written to 
 
 ## Schema — `alerts` table
 
-| column                 | type             | notes                                                             |
-| ---------------------- | ---------------- | ----------------------------------------------------------------- |
-| `board_id`             | TEXT             | owning Board; PK is `(board_id, id)`                              |
-| `id`                   | TEXT             | UUID or `preset:<metric>:<index>`                                 |
-| `control_id`           | TEXT             | see Control IDs below                                             |
-| `threshold`            | REAL             | trigger point                                                     |
-| `threshold_max`        | REAL nullable    | range upper bound (Geiger mode)                                   |
-| `enabled`              | INTEGER 0/1      | toggled by user                                                   |
-| `sound_type`           | TEXT             | sound string, e.g. `alert(3):warning` or `tts:Battery {percent}%` |
-| `created_at`           | INTEGER          | ms epoch                                                          |
-| `repeat_every_seconds` | INTEGER nullable | repeat cadence for a single-threshold rule; NULL is one-shot      |
-| `threshold_kind`       | TEXT             | `fixed` or `config-relative`                                      |
-| `config_field_id`      | TEXT nullable    | VESC config field used by a relative rule                         |
-| `threshold_offset`     | REAL nullable    | start offset in alert units                                       |
-| `threshold_max_offset` | REAL nullable    | range ceiling offset in alert units                               |
+| column                 | type             | notes                                                                         |
+| ---------------------- | ---------------- | ----------------------------------------------------------------------------- |
+| `board_id`             | TEXT             | owning Board; PK is `(board_id, id)`                                          |
+| `id`                   | TEXT             | UUID or `preset:<metric>:<index>`                                             |
+| `control_id`           | TEXT             | see Control IDs below                                                         |
+| `threshold`            | REAL             | trigger point                                                                 |
+| `threshold_max`        | REAL nullable    | range upper bound (Geiger mode)                                               |
+| `enabled`              | INTEGER 0/1      | toggled by user                                                               |
+| `sound_type`           | TEXT             | sound string, e.g. `alert(3):warning`, `voice(info):battery`, `tts:Slow down` |
+| `created_at`           | INTEGER          | ms epoch                                                                      |
+| `repeat_every_seconds` | INTEGER nullable | repeat cadence for a single-threshold rule; NULL is one-shot                  |
+| `threshold_kind`       | TEXT             | `fixed` or `config-relative`                                                  |
+| `config_field_id`      | TEXT nullable    | VESC config field used by a relative rule                                     |
+| `threshold_offset`     | REAL nullable    | start offset in alert units                                                   |
+| `threshold_max_offset` | REAL nullable    | range ceiling offset in alert units                                           |
 
 ## Control IDs & implicit direction
 
@@ -248,6 +266,8 @@ of the message.
 - `tts(info|warning|critical):Battery {value} {unit}` → severity sound once, then speak the template
 - `tts:…` (no variant) or an unknown variant → `warning`, so rules saved before severity need no
   migration
+- `voice(info|warning|critical):<key>:<value>` → severity sound once, then the voice line (see
+  [Voice](#voice)); a custom rule stores `voice(<severity>):`
 
 The form's **Severity** select (Info/Warning/Critical, default Warning) on the Message tab sets the
 variant, which plays the selected effects pack's `severity.<variant>` sound once. Speech starts
@@ -317,15 +337,16 @@ the extreme.
 
 Five metrics, in two feedback families:
 
-| metric            | family   | feedback                                                         |
-| ----------------- | -------- | ---------------------------------------------------------------- |
-| `battery`         | discrete | one TTS rule per SoC % point; needs a valid Board battery config |
-| `motor-temp`      | discrete | one TTS rule per °C point                                        |
-| `controller-temp` | discrete | one TTS rule per °C point                                        |
-| `speed`           | geiger   | one range rule, start scaled by Rider Top Speed                  |
-| `duty`            | geiger   | one range rule over % duty                                       |
+| metric            | family   | feedback                                                           |
+| ----------------- | -------- | ------------------------------------------------------------------ |
+| `battery`         | discrete | one voice rule per SoC % point; needs a valid Board battery config |
+| `motor-temp`      | discrete | one voice rule per °C point                                        |
+| `controller-temp` | discrete | one voice rule per °C point                                        |
+| `speed`           | geiger   | one range rule, start scaled by Rider Top Speed                    |
+| `duty`            | geiger   | one range rule over % duty                                         |
 
-- **discrete** → one single-threshold `tts:` rule per configured point.
+- **discrete** → one single-threshold `voice(<severity>):<key>` rule per configured point (see
+  [Voice](#voice)).
 - **geiger** → one range rule (`threshold` → `thresholdMax`); the start drops with protection while the
   ceiling stays fixed.
 

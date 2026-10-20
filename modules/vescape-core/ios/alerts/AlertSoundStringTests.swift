@@ -33,6 +33,18 @@ final class AlertSoundStringTests: XCTestCase {
     for (raw, expected) in cases { XCTAssertEqual(parseTtsAlertSound(raw), expected, raw) }
   }
 
+  func testReadsVoiceKeyAndValue() {
+    let cases: [(String, VoiceAlertSound?)] = [
+      ("voice(critical):battery:10", VoiceAlertSound(severity: .critical, key: "battery", value: 10)),
+      ("voice(info):motorTemp", VoiceAlertSound(severity: .info, key: "motorTemp", value: nil)),
+      ("voice(warning):", VoiceAlertSound(severity: .warning, key: nil, value: nil)),
+      ("voice:battery:-5.5", VoiceAlertSound(severity: .warning, key: "battery", value: -5.5)),
+      ("voice(info):battery:x", VoiceAlertSound(severity: .info, key: "battery", value: nil)),
+      ("tts(info):battery", nil),
+    ]
+    for (raw, expected) in cases { XCTAssertEqual(parseVoiceAlertSound(raw), expected, raw) }
+  }
+
   func testReadsSlotAlertSoundsWithLegacyAndUnknownFallbacks() {
     let cases: [(String, SlotAlertSound)] = [
       ("alert(3):warning", SlotAlertSound(count: 3, severity: .warning)),

@@ -33,6 +33,8 @@ const BASE: AppSettings = {
   connectionSoundsEnabled: true,
   soundPack: 'retro',
   audioSource: 'alarm',
+  voice: 'matching',
+  voiceLevel: 'standard',
   companionPresenceEnabled: false,
   boardWarningsEnabled: true,
   vescFaultCollectionEnabled: true,

@@ -560,6 +560,12 @@ final class AppDataRepository {
     } else if key == "audioSource" {
       guard let source = Self.audioSource(rawValue) else { return }
       value = source
+    } else if key == "voice" {
+      guard let voice = Self.voice(rawValue) else { return }
+      value = voice
+    } else if key == "voiceLevel" {
+      guard let level = Self.voiceLevel(rawValue) else { return }
+      value = level
     } else if key == "themeMode" {
       guard let mode = Self.themeMode(rawValue) else { return }
       value = mode
@@ -678,6 +684,9 @@ final class AppDataRepository {
     // @parity /modules/vescape-core/src/index.ts `AppSettings`
     // @platform-diff iOS has no Android alarm/media stream selection; stored for shared settings and backups.
     "audioSource": "alarm",
+    // @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/TelemetryEntities.kt `AppSettings`
+    "voice": voiceMatching,
+    "voiceLevel": voiceLevelDefault,
     "historyMetricGradientsEnabled": true,
     "historyMetricHotRanges": [
       "speed": ["start": 30, "end": 40],
@@ -696,6 +705,17 @@ final class AppDataRepository {
     return source
   }
 
+  /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/AppDataRepository.kt `validVoice`
+  static func voice(_ value: Any?) -> String? {
+    guard let voice = value as? String, voice == voiceMatching || voicePackIds.contains(voice) else { return nil }
+    return voice
+  }
+
+  static func voiceLevel(_ value: Any?) -> String? {
+    guard let level = value as? String, voiceLevels.contains(level) else { return nil }
+    return level
+  }
+
   static func normalizeSettings(_ settings: [String: Any]) -> [String: Any] {
     var normalized = settings
     normalized["liveHistoryLimit"] =
@@ -703,6 +723,8 @@ final class AppDataRepository {
     normalized["unitSystem"] = validUnitSystem(settings["unitSystem"]) ?? "metric"
     normalized["themeMode"] = themeMode(settings["themeMode"]) ?? defaultSettings["themeMode"]
     normalized["audioSource"] = audioSource(settings["audioSource"]) ?? "alarm"
+    normalized["voice"] = voice(settings["voice"]) ?? voiceMatching
+    normalized["voiceLevel"] = voiceLevel(settings["voiceLevel"]) ?? voiceLevelDefault
     let pack = settings["soundPack"] as? String ?? "retro"
     // A custom app sound pack id from before My sounds turns into overrides, then reads as the fallback.
     MySounds.adoptLegacyPack(pack)

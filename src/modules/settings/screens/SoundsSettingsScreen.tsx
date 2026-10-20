@@ -3,12 +3,14 @@ import * as DocumentPicker from 'expo-document-picker'
 import { Alert, Platform, Pressable, ScrollView, StyleSheet, TextInput, View } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import {
+  ChatTextIcon,
   PencilSimpleIcon,
   PlusIcon,
   SpeakerHighIcon,
   SpeakerSimpleHighIcon,
   TrashSimpleIcon,
   VibrateIcon,
+  WaveformIcon,
 } from 'phosphor-react-native'
 import {
   deleteMySound,
@@ -29,12 +31,16 @@ import { SettingsCard } from '@/components/settings/SettingsCard'
 import { SettingsRow } from '@/components/settings/SettingsRow'
 import { SettingsSectionTitle } from '@/components/settings/SettingsSectionTitle'
 import { RadioIndicator } from '@/components/controls/RadioIndicator'
+import { SegmentedToggle } from '@/components/controls/SegmentedToggle'
 import { Switch } from '@/components/controls/Switch'
 import { interaction, theme } from '@/constants/theme'
 import {
   APP_SOUND_CUES,
   EFFECTS_PACKS,
+  matchingVoiceName,
   SOUND_OVERRIDE_SLOTS,
+  VOICE_LEVELS,
+  VOICE_PACKS,
 } from '@/modules/settings/lib/appSounds'
 import { useSettingsStore } from '@/modules/settings/store/settingsStore'
 import {
@@ -83,6 +89,8 @@ const PACK_OPTION = ''
 export default function SoundsSettingsScreen() {
   const soundPack = useSettingsStore((state) => state.soundPack)
   const audioSource = useSettingsStore((state) => state.audioSource)
+  const voice = useSettingsStore((state) => state.voice)
+  const voiceLevel = useSettingsStore((state) => state.voiceLevel)
   const enabled = useSettingsStore((state) => state.connectionSoundsEnabled)
   const set = useSettingsStore((state) => state.set)
   const { state: library, setState: setLibrary, loadError } = useMySounds()
@@ -235,6 +243,50 @@ export default function SoundsSettingsScreen() {
           })}
         </View>
 
+        <SettingsSectionTitle>Voice</SettingsSectionTitle>
+        <SettingsCard>
+          <SettingsRow
+            icon={ChatTextIcon}
+            iconColor={theme.settingsIcon.sounds}
+            label="Voice"
+            right={
+              <Select
+                options={[
+                  { label: `Matching (${matchingVoiceName(soundPack)})`, value: 'matching' },
+                  ...VOICE_PACKS.map((pack) => ({ label: pack.name, value: pack.id })),
+                ]}
+                value={voice}
+                onChange={(next) => void set('voice', next)}
+                style={styles.voiceSelect}
+              />
+            }
+          />
+          <SettingsRow
+            icon={WaveformIcon}
+            iconColor={theme.settingsIcon.sounds}
+            label="Voice level"
+          >
+            <View style={styles.voiceLevel}>
+              <SegmentedToggle
+                options={[...VOICE_LEVELS]}
+                value={voiceLevel}
+                onChange={(next) => void set('voiceLevel', next)}
+                accent={theme.settingsIcon.sounds}
+              />
+              <Text style={styles.voiceDescription}>
+                Only affects built-in alerts and app sounds. Custom alert rules always play as
+                configured.
+              </Text>
+              {voiceLevel === 'full' && (
+                <Text style={styles.voiceDescription}>
+                  Speaks connection and group ride events too. Pick Full with HEV for the complete
+                  HEV suit experience.
+                </Text>
+              )}
+            </View>
+          </SettingsRow>
+        </SettingsCard>
+
         <SettingsSectionTitle>My sounds</SettingsSectionTitle>
         {loadError && <Text>My sounds could not be loaded. Try opening this screen again.</Text>}
         <View style={styles.pack}>
@@ -365,6 +417,9 @@ const styles = StyleSheet.create({
     marginRight: 14,
     marginBottom: 14,
   },
+  voiceSelect: { width: 170 },
+  voiceLevel: { gap: 8, marginLeft: 58, marginRight: 14, marginBottom: 14 },
+  voiceDescription: { color: theme.neutral.textMuted, fontSize: 12, fontWeight: '500' },
   disabledPacks: { opacity: 0.5 },
   pack: {
     borderRadius: 14,

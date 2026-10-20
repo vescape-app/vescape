@@ -4,6 +4,9 @@ import expo.modules.vescapecore.protocol.RefloatTelemetry
 
 import expo.modules.vescapecore.telemetry.AlertRuleEntity
 
+/** Id prefix of generated preset rules (`preset:<metric>:<index>`), the rules Voice level applies to. */
+internal const val PRESET_RULE_PREFIX = "preset:"
+
 internal class AlertCoordinator(
     private val feedback: () -> AlertFeedback,
     /** Test feedback must not start a system vibration that cannot be cancelled per source. */
@@ -84,13 +87,21 @@ internal class AlertCoordinator(
 
         val single = fired.filter { it.rangeDepth == null }
         if (single.isNotEmpty()) {
-            single.firstNotNullOfOrNull { alert ->
-                if (alert.thresholdMax == null) parseTtsAlertSound(alert.soundType)?.let { alert to it } else null
-            }?.let { (alert, tts) ->
+            // One spoken announcement per evaluation: the most severe, which sorts first.
+            single.firstOrNull { it.thresholdMax == null && isSpokenSoundType(it.soundType) }?.let { alert ->
+                val voice = parseVoiceAlertSound(alert.soundType)
+                if (voice != null) {
+                    feedback().speakVoice(
+                        voiceAnnouncement(voice, alert.controlId, alert.threshold, batteryPercent != null, unitSystem),
+                        preset = alert.ruleId.startsWith(PRESET_RULE_PREFIX),
+                    )
+                    return@let
+                }
+                val tts = parseTtsAlertSound(alert.soundType) ?: return@let
                 val text = renderAlertMessageTemplate(tts.text, alert, batteryPercent, onDiagnostic, unitSystem)
                 if (text.isNotEmpty()) feedback().speakAfterSeverity(tts.severity, text)
             }
-            for (alert in single) if (parseTtsAlertSound(alert.soundType) == null) feedback().playSingle(alert.soundType)
+            for (alert in single) if (!isSpokenSoundType(alert.soundType)) feedback().playSingle(alert.soundType)
             if (vibrateSingles) feedback().vibrate(null)
         }
         return fired.map { it.toMap() }

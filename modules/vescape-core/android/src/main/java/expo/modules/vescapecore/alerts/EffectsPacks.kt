@@ -82,6 +82,16 @@ internal object EffectsPackAssets {
 
     fun path(context: Context, pack: String, slot: String): String? = slots(context)["${effectsPackId(pack)}/$slot"]
 
+    @Volatile private var voices: Map<String, String?>? = null
+
+    /** Voice pack [pack]'s manifest names for the `matching` voice, null when it names none. */
+    fun voice(context: Context, pack: String): String? = (voices ?: synchronized(this) {
+        voices ?: EFFECTS_PACK_IDS.associateWith { id ->
+            context.assets.open("$ROOT/effects-$id/pack.json").bufferedReader()
+                .use { JSONObject(it.readText()) }.optString("voice").ifEmpty { null }
+        }.also { voices = it }
+    })[effectsPackId(pack)]
+
     private val durations = java.util.concurrent.ConcurrentHashMap<String, Long>()
 
     /** Length of [slot] in [pack], 0 when unreadable. */

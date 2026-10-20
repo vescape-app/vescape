@@ -1237,7 +1237,7 @@ internal final class BoardSessionController: VescGattListener {
     boardWarningsEnabled = settings["boardWarningsEnabled"] as? Bool ?? true
     connectionSoundsEnabled = settings["connectionSoundsEnabled"] as? Bool ?? true
     alertCoordinator.unitSystem = settings["unitSystem"] as? String ?? "metric"
-    alertAudioPlayer.soundPack = settings["soundPack"] as? String ?? "retro"
+    alertAudioPlayer.applySoundSettings(settings)
     // Disabled→enabled with an already-trusted link: link integrity won't transition again, so
     // schedule the config-safety read here.
     if !warningsWereEnabled, boardWarningsEnabled, lastEmittedLinkIntegrity == .trusted {
@@ -1263,7 +1263,7 @@ internal final class BoardSessionController: VescGattListener {
     do {
       let settings = try appData.getSettings()
       // Without a Board Session nothing else keeps the player on the selected pack.
-      alertAudioPlayer.soundPack = settings["soundPack"] as? String ?? alertAudioPlayer.soundPack
+      alertAudioPlayer.applySoundSettings(settings)
       alertAudioPlayer.preview(soundType: soundType, unitSystem: settings["unitSystem"] as? String ?? "metric")
     } catch { RecordingStorageFailure.reportRead(operation: "alert_preview_settings", error: error) }
   }
@@ -1274,7 +1274,7 @@ internal final class BoardSessionController: VescGattListener {
 
   /// Drive a geiger preview loop without a connected board — UI slider over `rangeDepth`.
   func startGeigerSimulation(soundType: String, rangeDepth: Double) {
-    do { alertAudioPlayer.soundPack = try appData.getSettings()["soundPack"] as? String ?? alertAudioPlayer.soundPack }
+    do { alertAudioPlayer.applySoundSettings(try appData.getSettings()) }
     catch { RecordingStorageFailure.reportRead(operation: "geiger_preview_settings", error: error) }
     alertAudioPlayer.updateGeiger(ruleId: geigerSimulationId, soundType: soundType, rangeDepth: rangeDepth)
   }
@@ -1541,7 +1541,7 @@ internal final class BoardSessionController: VescGattListener {
     boardWarningsEnabled = sessionSettings["boardWarningsEnabled"] as? Bool ?? true
     connectionSoundsEnabled = sessionSettings["connectionSoundsEnabled"] as? Bool ?? true
     alertCoordinator.unitSystem = sessionSettings["unitSystem"] as? String ?? "metric"
-    alertAudioPlayer.soundPack = sessionSettings["soundPack"] as? String ?? "retro"
+    alertAudioPlayer.applySoundSettings(sessionSettings)
     recordingCoordinator.beginBoardSession(config: config, restoredRecordingId: restoredRecordingId)
     beginGpsSessionDiagnostics()
     // Reset per-session Board Warning breadcrumb bookkeeping (one Diagnostic Event per kind per

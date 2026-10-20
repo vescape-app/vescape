@@ -311,6 +311,18 @@ _Avoid_: Alert Sound (the audio asset), Alert Level as a rules concept, warning 
 A user-authored spoken phrase on a single-threshold **Alert Rule** that may include current alert-value placeholders and is spoken by native text-to-speech when the rule fires.
 _Avoid_: TTS sound, voice preset, notification text
 
+**Voice Pack**:
+A bundled set of pre-generated spoken lines per **Message Key** plus value clips, chosen app-wide by the Voice setting (or Matching, the voice the selected effects pack names). A voice announcement plays the severity sound, then the line with its value; it never contains beeps.
+_Avoid_: TTS, voice preset, sound pack
+
+**Message Key**:
+The name of what an announcement says (`battery`, `motorTemp`, `controllerTemp`), resolved by the **Voice Pack** to its most specific line: `<key>.<severity>`, else the generic `<key>`, else the severity sound only.
+_Avoid_: message text, template
+
+**Voice Level**:
+The app-wide amount of speech for preset alerts and app sounds: Off, Standard, or Full. Custom **Alert Rules** ignore it.
+_Avoid_: verbosity, voice volume
+
 **Watch Mirror**:
 The app on the rider's wrist that mirrors phone-owned live state and provides rider controls. Navigation and Group Ride can remain live without a Board Session. The wrist sends rider commands and reports its own awake state. Implemented by the **Wear OS Mirror** on Android and the **watchOS Mirror** on Apple Watch.
 _Avoid_: Wear Mirror (bakes in Google's Wear OS brand; use for the Android impl only), watch app, companion (Companion names the CompanionDeviceManager board-presence association, not the watch)

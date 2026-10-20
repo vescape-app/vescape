@@ -10,15 +10,20 @@ import expo.modules.vescapecore.service.VESC_SESSION_TAG
 import expo.modules.vescapecore.telemetry.telemetryMetricByControlId
 
 import android.content.Context
+import android.media.AudioFormat
 import android.media.AudioManager
 import android.media.AudioAttributes
+import android.media.AudioTrack
 import android.media.SoundPool
 import android.os.Handler
+import android.os.SystemClock
 import android.os.VibrationEffect
 import android.os.Vibrator
 import android.speech.tts.TextToSpeech
 import android.util.Log
 import expo.modules.vescapecore.telemetry.AlertRuleEntity
+import expo.modules.vescapecore.telemetry.AppSettings
+import java.util.concurrent.Executors
 import kotlin.math.abs
 
 /**
@@ -387,15 +392,28 @@ internal class AlertFeedback(
     private val samples = SoundSampleQueue()
     private val pendingGeiger = HashMap<String, Pair<String, Double>>()
     var soundPack: String = "retro"
+    private var voice: String = VOICE_MATCHING
+    private var voiceLevel: String = VOICE_LEVEL_DEFAULT
+    /** Voice line playing now; a newer announcement or [release] stops it. */
+    private var voiceTrack: AudioTrack? = null
+    /** Bumped per voice announcement, so a line still decoding for an older one never plays. */
+    private var voiceGeneration = 0
 
-    fun setSoundSettings(pack: String, source: String) {
+    /** Voice pack the `voice` setting plays with the active effects pack. */
+    private val voicePack: String get() = voicePackId(voice, EffectsPackAssets.voice(context, soundPack))
+
+    fun setSoundSettings(settings: AppSettings) {
         if (android.os.Looper.myLooper() != handler.looper) {
-            handler.post { setSoundSettings(pack, source) }
+            handler.post { setSoundSettings(settings) }
             return
         }
         if (released) return
-        soundPack = pack
-        setAudioSource(source)
+        soundPack = settings.soundPack
+        voice = settings.voice
+        voiceLevel = settings.voiceLevel
+        setAudioSource(settings.audioSource)
+        val pack = voicePack
+        voiceExecutor.execute { VoicePackAssets.prewarm(context, pack) }
     }
 
     init { loadAssets() }
@@ -525,6 +543,8 @@ internal class AlertFeedback(
             return
         }
         if (released) return
+        voiceTrack?.let(::releaseTrack)
+        voiceTrack = null
         val existing = tts
         if (existing == null) {
             ttsPendingText = text
@@ -605,6 +625,7 @@ internal class AlertFeedback(
         }
         // A newer announcement supersedes speech still waiting out an older one's sound.
         pendingSpeech?.let { handler.removeCallbacks(it) }
+        voiceGeneration++
         playSeverity(SlotAlertSound(1, severity))
         val speech = Runnable { pendingSpeech = null; speakMessage(text) }
         pendingSpeech = speech
@@ -613,9 +634,53 @@ internal class AlertFeedback(
 
     private var pendingSpeech: Runnable? = null
 
+    /**
+     * Speak [announcement]: its severity sound once, then the voice pack line joined with its value
+     * into one buffer, starting once the sound has finished. A [preset] at Voice level `off`, or a
+     * key the pack has no line for, plays the severity sound only. Custom rules ignore the level.
+     *
+     * @parity /modules/vescape-core/ios/alerts/AlertAudioPlayer.swift `speakVoice`
+     */
+    fun speakVoice(announcement: VoiceAnnouncement, preset: Boolean) {
+        if (android.os.Looper.myLooper() != handler.looper) {
+            handler.post { speakVoice(announcement, preset) }
+            return
+        }
+        if (released) return
+        pendingSpeech?.let { handler.removeCallbacks(it) }
+        pendingSpeech = null
+        val generation = ++voiceGeneration
+        playSeverity(SlotAlertSound(1, announcement.severity))
+        if (preset && voiceLevel == "off") return
+        val due = SystemClock.uptimeMillis() + speechDelayMs(context, soundPack, announcement.severity)
+        val pack = voicePack
+        // Decoding runs off the audio looper while the severity sound covers it.
+        voiceExecutor.execute {
+            val pcm = VoicePackAssets.join(context, pack, announcement) ?: return@execute
+            handler.post {
+                if (released || generation != voiceGeneration) return@post
+                val speech = Runnable { pendingSpeech = null; if (generation == voiceGeneration) playVoice(pcm) }
+                pendingSpeech = speech
+                handler.postAtTime(speech, maxOf(due, SystemClock.uptimeMillis()))
+            }
+        }
+    }
+
+    private fun playVoice(pcm: VoicePcm) {
+        if (released) return
+        voiceTrack?.let(::releaseTrack)
+        tts?.stop()
+        voiceTrack = playPcm(pcm, audioSource, handler) { track -> if (voiceTrack === track) voiceTrack = null }
+    }
+
     fun preview(soundType: String) {
         if (android.os.Looper.myLooper() != handler.looper) {
             handler.post { preview(soundType) }
+            return
+        }
+        parseVoiceAlertSound(soundType)?.let { sound ->
+            val unitSystem = kotlinx.coroutines.runBlocking { AppDataRepository.get(context).getTypedSettings().unitSystem }
+            speakVoice(voiceAnnouncement(sound, null, null, percentAvailable = true, unitSystem = unitSystem), preset = false)
             return
         }
         val tts = parseTtsAlertSound(soundType)
@@ -711,6 +776,8 @@ internal class AlertFeedback(
         if (released) return
         released = true
         stopAllGeiger()
+        voiceTrack?.let(::releaseTrack)
+        voiceTrack = null
         samples.reset()
         MySounds.releasePlayers(this)
         soundPool.release()
@@ -759,6 +826,44 @@ internal class AlertFeedback(
     )
 
     companion object {
+        /** Decodes and joins voice lines off the audio looper. */
+        private val voiceExecutor = Executors.newSingleThreadExecutor { Thread(it, "vescape-voice").apply { isDaemon = true } }
+
+        /**
+         * Play [pcm] once on its own static [AudioTrack] on [source]'s stream, released once it has
+         * finished; [onDone] runs then on [handler]. Null when the track could not start.
+         */
+        private fun playPcm(pcm: VoicePcm, source: String, handler: Handler, onDone: (AudioTrack) -> Unit = {}): AudioTrack? {
+            if (pcm.samples.isEmpty()) return null
+            return try {
+                val track = AudioTrack.Builder()
+                    .setAudioAttributes(audioAttributes(source, AudioAttributes.CONTENT_TYPE_SPEECH))
+                    .setAudioFormat(
+                        AudioFormat.Builder()
+                            .setEncoding(AudioFormat.ENCODING_PCM_16BIT)
+                            .setSampleRate(pcm.sampleRate)
+                            .setChannelMask(AudioFormat.CHANNEL_OUT_MONO)
+                            .build()
+                    )
+                    .setTransferMode(AudioTrack.MODE_STATIC)
+                    .setBufferSizeInBytes(pcm.samples.size * 2)
+                    .build()
+                track.write(pcm.samples, 0, pcm.samples.size)
+                track.play()
+                handler.postDelayed({ releaseTrack(track); onDone(track) }, pcm.durationMs + 300)
+                track
+            } catch (e: Exception) {
+                UnexpectedNativeError.report("alert_voice_play", "audio_play_failed", e)
+                null
+            }
+        }
+
+        private fun releaseTrack(track: AudioTrack) {
+            // intentional-suppression: a track already released or never started has nothing to stop
+            runCatching { track.stop() }
+            track.release()
+        }
+
         /** Preview without requiring a running board session. */
         fun previewAppSound(context: Context, pack: String, cue: String, source: String) {
             val slot = appCueSlot(cue) ?: return
@@ -768,6 +873,25 @@ internal class AlertFeedback(
         fun preview(context: Context, soundType: String, source: String) {
             val handler = Handler(contextMainLooper())
             val settings = kotlinx.coroutines.runBlocking { AppDataRepository.get(context).getTypedSettings() }
+            parseVoiceAlertSound(soundType)?.let { sound ->
+                val announcement = voiceAnnouncement(sound, null, null, percentAvailable = true, unitSystem = settings.unitSystem)
+                val pack = voicePackId(settings.voice, EffectsPackAssets.voice(context, settings.soundPack))
+                var pcm: VoicePcm? = null
+                var soundDone = false
+                fun speakWhenReady() {
+                    if (!soundDone) return
+                    pcm?.let { pcm = null; playPcm(it, source, handler) }
+                }
+                voiceExecutor.execute {
+                    val joined = VoicePackAssets.join(context, pack, announcement) ?: return@execute
+                    handler.post { pcm = joined; speakWhenReady() }
+                }
+                previewClip(context, handler, settings.soundPack, sound.severity.slot, source = source, doneAfterMs = speechDelayMs(context, settings.soundPack, sound.severity)) {
+                    soundDone = true
+                    speakWhenReady()
+                }
+                return
+            }
             val tts = parseTtsAlertSound(soundType)
             if (tts != null) {
                 val text = renderAlertMessageTemplate(tts.text, ttsSampleAlert(soundType), batteryPercent = 42.0, unitSystem = settings.unitSystem)

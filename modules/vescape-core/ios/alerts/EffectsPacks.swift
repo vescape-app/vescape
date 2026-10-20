@@ -46,3 +46,18 @@ internal func effectsPackSlotFiles(root: URL) -> [String: URL] {
   }
   return files
 }
+
+/// Voice pack each built-in effects pack's manifest names for the `matching` voice, keyed by pack id.
+internal func effectsPackVoices(root: URL) -> [String: String] {
+  var voices: [String: String] = [:]
+  for pack in effectsPackIds {
+    // intentional-suppression: a pack without a readable manifest matches the fallback voice
+    guard
+      let data = try? Data(contentsOf: root.appendingPathComponent("effects-\(pack)/pack.json")),
+      let manifest = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+      let voice = manifest["voice"] as? String
+    else { continue }
+    voices[pack] = voice
+  }
+  return voices
+}

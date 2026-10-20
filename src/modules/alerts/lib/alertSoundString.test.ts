@@ -10,6 +10,9 @@ import {
   parseGeigerAlertSound,
   parseSlotAlertSound,
   parseTtsAlertSound,
+  parseVoiceAlertSound,
+  formatVoiceAlertSound,
+  type VoiceAlertSound,
   type SlotAlertSound,
   type TtsAlertSound,
 } from '@/modules/alerts/lib/alertSoundString'
@@ -49,6 +52,29 @@ describe('parseTtsAlertSound', () => {
     expect(parseTtsAlertSound(formatTtsAlertSound('critical', 'At 12:30: stop'))).toEqual({
       severity: 'critical',
       text: 'At 12:30: stop',
+    })
+  })
+})
+
+describe('parseVoiceAlertSound', () => {
+  test.each([
+    ['voice(critical):battery:10', { severity: 'critical', key: 'battery', value: 10 }],
+    ['voice(info):motorTemp', { severity: 'info', key: 'motorTemp', value: null }],
+    ['voice(warning):', { severity: 'warning', key: null, value: null }],
+    ['voice:battery:-5.5', { severity: 'warning', key: 'battery', value: -5.5 }],
+    ['voice(info):battery:x', { severity: 'info', key: 'battery', value: null }],
+    ['tts(info):battery', null],
+  ] satisfies [string, VoiceAlertSound | null][])('%p', (raw, expected) => {
+    expect(parseVoiceAlertSound(raw)).toEqual(expected)
+  })
+
+  test('formats what it parses', () => {
+    expect(formatVoiceAlertSound('info')).toBe('voice(info):')
+    expect(formatVoiceAlertSound('critical', 'battery', 20)).toBe('voice(critical):battery:20')
+    expect(parseVoiceAlertSound(formatVoiceAlertSound('warning', 'motorTemp', 95))).toEqual({
+      severity: 'warning',
+      key: 'motorTemp',
+      value: 95,
     })
   })
 })

@@ -1,5 +1,9 @@
 import Foundation
 
+/// Id prefix of generated preset rules (`preset:<metric>:<index>`), the rules Voice level applies to.
+/// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/alerts/AlertCoordinator.kt `PRESET_RULE_PREFIX`
+internal let presetRulePrefix = "preset:"
+
 /// Bridges the pure alert evaluator with the side-effectful audio player. Each telemetry frame is
 /// evaluated against the loaded rules; geiger loops update/stop to track live rule activity, and
 /// one-shot alerts play a triple-beep pattern (plus optional TTS message). Returns the fired
@@ -95,13 +99,25 @@ internal final class AlertCoordinator {
 
     let single = fired.filter { $0.rangeDepth == nil }
     if !single.isEmpty {
-      if let (alert, tts) = single.lazy.compactMap({ alert in
-        alert.thresholdMax == nil ? parseTtsAlertSound(alert.soundType).map { (alert, $0) } : nil
-      }).first {
-        let text = renderAlertMessageTemplate(tts.text, alert: alert, batteryPercent: batteryPercent, onDiagnostic: onDiagnostic, unitSystem: unitSystem)
-        if !text.isEmpty { player.speakAfterSeverity(tts.severity, text: text) }
+      // One spoken announcement per evaluation: the most severe, which sorts first.
+      if let alert = single.first(where: { $0.thresholdMax == nil && isSpokenSoundType($0.soundType) }) {
+        if let voice = parseVoiceAlertSound(alert.soundType) {
+          player.speakVoice(
+            voiceAnnouncement(
+              voice,
+              controlId: alert.controlId,
+              threshold: alert.threshold,
+              percentAvailable: batteryPercent != nil,
+              unitSystem: unitSystem
+            ),
+            preset: alert.ruleId.hasPrefix(presetRulePrefix)
+          )
+        } else if let tts = parseTtsAlertSound(alert.soundType) {
+          let text = renderAlertMessageTemplate(tts.text, alert: alert, batteryPercent: batteryPercent, onDiagnostic: onDiagnostic, unitSystem: unitSystem)
+          if !text.isEmpty { player.speakAfterSeverity(tts.severity, text: text) }
+        }
       }
-      for alert in single where parseTtsAlertSound(alert.soundType) == nil {
+      for alert in single where !isSpokenSoundType(alert.soundType) {
         player.playSingle(soundType: alert.soundType)
       }
       if vibrateSingles { player.vibrate(rangeDepth: nil) }

@@ -62,6 +62,31 @@ internal func parseTtsAlertSound(_ soundType: String) -> TtsAlertSound? {
   return TtsAlertSound(severity: AlertSeverity.from(parsed.variant), text: parsed.sound)
 }
 
+/// `voice(severity):key:value` — the severity sound once, then the voice pack's line for `key` with
+/// `value` spoken last. A custom rule stores `voice(severity):`: key from its metric, value from its
+/// threshold. A `value` is in the key's metric unit (%, °C).
+///
+/// @parity /src/modules/alerts/lib/alertSoundString.ts `parseVoiceAlertSound`
+/// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/alerts/AlertSoundString.kt `parseVoiceAlertSound`
+internal struct VoiceAlertSound: Equatable {
+  let severity: AlertSeverity
+  let key: String?
+  let value: Double?
+}
+
+internal func parseVoiceAlertSound(_ soundType: String) -> VoiceAlertSound? {
+  guard let parsed = AlertSoundString.parse(soundType), parsed.kind == "voice" else { return nil }
+  let parts = parsed.sound.split(separator: ":", maxSplits: 1, omittingEmptySubsequences: false)
+  let key = parts.first.map(String.init).flatMap { $0.isEmpty ? nil : $0 }
+  let value = parts.count > 1 ? Double(parts[1]).flatMap { $0.isFinite ? $0 : nil } : nil
+  return VoiceAlertSound(severity: AlertSeverity.from(parsed.variant), key: key, value: value)
+}
+
+/// True for a `soundType` spoken after its severity sound: system TTS or a voice line.
+internal func isSpokenSoundType(_ soundType: String) -> Bool {
+  parseTtsAlertSound(soundType) != nil || parseVoiceAlertSound(soundType) != nil
+}
+
 /// `alert(count):severity` — the active effects pack's severity sound, `count` times.
 internal struct SlotAlertSound: Equatable {
   let count: Int

@@ -15,8 +15,9 @@ export interface SharedTarget {
   include?: (path: string) => boolean
 }
 
-/** Built-in effects packs (#578). Voice packs ship once native plays them (#580). */
-const effectsPacks = (path: string) => path.startsWith('effects-') && path.includes('/')
+/** Built-in effects (#578) and voice (#580) packs. */
+const alertPacks = (path: string) =>
+  (path.startsWith('effects-') || path.startsWith('voice-')) && path.includes('/')
 
 /**
  * Shared assets have exactly one source of truth: `shared/`. iOS reads single files through symlinks
@@ -35,14 +36,14 @@ export function sharedTargets(root = ROOT): SharedTarget[] {
       dest: join(androidSrc, 'main', 'assets', 'alert-packs'),
       extensions: new Set(['.json', '.m4a']),
       rename: (file: string) => file,
-      include: effectsPacks,
+      include: alertPacks,
     },
     {
       src: join(root, 'shared', 'alerts', 'packs'),
       dest: join(root, 'modules', 'vescape-core', 'ios', 'alert-packs'),
       extensions: new Set(['.json', '.m4a']),
       rename: (file: string) => file,
-      include: effectsPacks,
+      include: alertPacks,
     },
     {
       src: join(root, 'shared', 'data'),

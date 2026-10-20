@@ -517,6 +517,10 @@ data class AppSettings(
   // @parity /modules/vescape-core/ios/telemetry/AppDataRepository.swift `defaultSettings`
   // @parity /modules/vescape-core/src/index.ts `AppSettings`
   val audioSource: String = "alarm",
+  /** `matching` or a voice pack id. @parity /modules/vescape-core/ios/telemetry/AppDataRepository.swift `defaultSettings` */
+  val voice: String = "matching",
+  /** `off` / `standard` / `full`. @parity /modules/vescape-core/ios/telemetry/AppDataRepository.swift `defaultSettings` */
+  val voiceLevel: String = "standard",
   val telemetryPollRateHz: Int = 20,
   val wearPushRateHz: Int = 4,
   val wearAutoLaunchOnConnect: Boolean = true,

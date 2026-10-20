@@ -1635,6 +1635,8 @@ public class VescapeCoreModule: Module {
         "vescFaultCollectionEnabled",
         "connectionSoundsEnabled",
         "soundPack",
+        "voice",
+        "voiceLevel",
       ].contains(key) {
         self.coordinator.reloadTelemetrySettings()
       }
@@ -1660,7 +1662,7 @@ public class VescapeCoreModule: Module {
     catch { RecordingStorageFailure.reportRead(operation: "alert_test_settings", error: error); return }
     let player = AlertAudioPlayer()
     // A test sounds like the real rule: same effects pack.
-    player.soundPack = settings["soundPack"] as? String ?? effectsPackIds[0]
+    player.applySoundSettings(settings)
     let coordinator = AlertCoordinator(player: player, vibrateSingles: false)
     coordinator.unitSystem = settings["unitSystem"] as? String ?? "metric"
     coordinator.replaceRules(rules)

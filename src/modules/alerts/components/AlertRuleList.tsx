@@ -18,7 +18,12 @@ import { theme } from '@/constants/theme'
 import type { DerivedBatteryConfig } from '@/modules/battery/lib/types'
 import { AlertFormSheet } from '@/modules/alerts/components/AlertFormSheet'
 import type { DraftAlertRule } from '@/modules/alerts/lib/customAlertRules'
-import { parseTtsAlertSound, slotAlertSoundLabel } from '@/modules/alerts/lib/alertSoundString'
+import {
+  ALERT_SEVERITY_LABELS,
+  parseTtsAlertSound,
+  parseVoiceAlertSound,
+  slotAlertSoundLabel,
+} from '@/modules/alerts/lib/alertSoundString'
 import type { MetricAlertsController } from '@/modules/alerts/hooks/useMetricAlerts'
 import type { AlertRuleDraft } from '@/modules/alerts/store/alertsStore'
 
@@ -144,11 +149,13 @@ function AlertRuleRow({
       : formatAlertValue(value, batteryConfig, unit)
   const isGeiger = rule.thresholdMax != null
   const tts = parseTtsAlertSound(rule.soundType)
-  const isTts = tts != null
-  const TypeIcon = isGeiger ? RadioactiveIcon : isTts ? ChatTextIcon : WaveformIcon
+  const voice = parseVoiceAlertSound(rule.soundType)
+  const spokenText = tts?.text ?? (voice ? 'Voice line' : null)
+  const TypeIcon = isGeiger ? RadioactiveIcon : spokenText != null ? ChatTextIcon : WaveformIcon
   const detail = [
     rule.repeatEverySeconds == null ? null : `every ${rule.repeatEverySeconds}s`,
-    isGeiger || isTts ? null : slotAlertSoundLabel(rule.soundType),
+    voice ? ALERT_SEVERITY_LABELS[voice.severity] : null,
+    isGeiger || spokenText != null ? null : slotAlertSoundLabel(rule.soundType),
   ]
     .filter(Boolean)
     .join(' · ')
@@ -169,12 +176,12 @@ function AlertRuleRow({
             ? `${format(rule.threshold)} – ${format(rule.thresholdMax!)}`
             : format(rule.threshold)}
         </Text>
-        {tts && (
+        {spokenText != null && (
           <Text
             style={[styles.ruleTtsTemplate, !rule.enabled && styles.ruleTextDisabled]}
             numberOfLines={1}
           >
-            {tts.text}
+            {spokenText}
           </Text>
         )}
         {detail ? (

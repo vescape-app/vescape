@@ -52,6 +52,28 @@ internal fun parseTtsAlertSound(soundType: String): TtsAlertSound? {
     return TtsAlertSound(AlertSeverity.from(parsed.variant), parsed.sound)
 }
 
+/**
+ * `voice(severity):key:value` — the severity sound once, then the voice pack's line for [key] with
+ * [value] spoken last. A custom rule stores `voice(severity):`: key from its metric, value from its
+ * threshold. A [value] is in the key's metric unit (%, °C).
+ *
+ * @parity /src/modules/alerts/lib/alertSoundString.ts `parseVoiceAlertSound`
+ * @parity /modules/vescape-core/ios/alerts/AlertSoundString.swift `parseVoiceAlertSound`
+ */
+internal data class VoiceAlertSound(val severity: AlertSeverity, val key: String?, val value: Double?)
+
+internal fun parseVoiceAlertSound(soundType: String): VoiceAlertSound? {
+    val parsed = AlertSoundString.parse(soundType) ?: return null
+    if (parsed.kind != "voice") return null
+    val key = parsed.sound.substringBefore(':').ifEmpty { null }
+    val value = parsed.sound.substringAfter(':', "").toDoubleOrNull()?.takeIf { it.isFinite() }
+    return VoiceAlertSound(AlertSeverity.from(parsed.variant), key, value)
+}
+
+/** True for a `soundType` spoken after its severity sound: system TTS or a voice line. */
+internal fun isSpokenSoundType(soundType: String): Boolean =
+    parseTtsAlertSound(soundType) != null || parseVoiceAlertSound(soundType) != null
+
 /** `alert(count):severity` — the active effects pack's severity sound, [count] times. */
 internal data class SlotAlertSound(val count: Int, val severity: AlertSeverity)
 

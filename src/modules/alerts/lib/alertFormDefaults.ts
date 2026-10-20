@@ -27,6 +27,7 @@ import {
   parseGeigerAlertSound,
   parseSlotAlertSound,
   parseTtsAlertSound,
+  parseVoiceAlertSound,
   slotSoundPart,
 } from '@/modules/alerts/lib/alertSoundString'
 
@@ -131,7 +132,10 @@ export function getEditFormDefaults(
   batteryConfig: DerivedBatteryConfig | null,
 ) {
   const tts = parseTtsAlertSound(editRule.soundType)
-  const tab = (tts ? 'message' : editRule.thresholdMax != null ? 'geiger' : 'single') as AlertTab
+  const voice = parseVoiceAlertSound(editRule.soundType)
+  const tab = (
+    tts || voice ? 'message' : editRule.thresholdMax != null ? 'geiger' : 'single'
+  ) as AlertTab
   // A single rule's picker shows the pack slot or My sound; its count lives in the beep stepper.
   const slot = tab === 'single' ? parseSlotAlertSound(editRule.soundType) : null
   return {
@@ -144,7 +148,8 @@ export function getEditFormDefaults(
         ? geigerPickerSound(editRule.soundType)
         : editRule.soundType,
     messageTemplate: tts?.text ?? getDefaultMessageTemplate(editRule.controlId, batteryConfig),
-    severity: tts?.severity ?? ALERT_SEVERITY_DEFAULT,
+    severity: tts?.severity ?? voice?.severity ?? ALERT_SEVERITY_DEFAULT,
+    messageTts: tts != null,
     repeatEverySeconds: editRule.repeatEverySeconds,
     beepCount: slot?.count ?? ALERT_BEEP_COUNT_DEFAULT,
   }
@@ -187,6 +192,7 @@ export function getNewFormDefaults(
       repeatEverySeconds: null,
       beepCount: ALERT_BEEP_COUNT_DEFAULT,
       severity: ALERT_SEVERITY_DEFAULT,
+      messageTts: false,
     }
   }
 
@@ -199,5 +205,6 @@ export function getNewFormDefaults(
     repeatEverySeconds: null,
     beepCount: ALERT_BEEP_COUNT_DEFAULT,
     severity: ALERT_SEVERITY_DEFAULT,
+    messageTts: false,
   }
 }

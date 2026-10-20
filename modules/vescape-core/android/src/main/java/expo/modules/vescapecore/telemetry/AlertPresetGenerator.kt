@@ -129,9 +129,11 @@ internal object AlertPresetGenerator {
     level: String,
     input: PresetInput,
   ): List<GeneratedPresetRule> =
-    definition.levels.getValue(level).map { point ->
-      val threshold = if (definition.scaledByTopSpeed) speedRange(point, input) else point
-      GeneratedPresetRule(threshold, definition.soundType)
+    definition.levels.getValue(level).let { points ->
+      points.mapIndexed { index, point ->
+        val threshold = if (definition.scaledByTopSpeed) speedRange(point, input) else point
+        GeneratedPresetRule(threshold, pointSoundType(definition.soundType, index, points.size))
+      }
     }
 
   private fun relativeRules(
@@ -140,7 +142,7 @@ internal object AlertPresetGenerator {
     level: String,
     base: Double?,
   ): List<GeneratedPresetRule> =
-    match.levels.getValue(level).map { offset ->
+    match.levels.getValue(level).let { offsets -> offsets.mapIndexed { index, offset ->
       val relation = PresetRelation(match.fieldId, offset.threshold, offset.thresholdMax)
       val point = if (base == null) {
         // No anchor yet: persist the relationship, but no firing threshold.
@@ -152,8 +154,25 @@ internal object AlertPresetGenerator {
           repeatSeconds = offset.repeatSeconds,
         )
       }
-      GeneratedPresetRule(point, definition.soundType, relation)
+      GeneratedPresetRule(point, pointSoundType(definition.soundType, index, offsets.size), relation)
+    } }
+
+  /**
+   * Sound of a ladder's point [index] of [count]. A `voice:<key>` definition speaks each point with a
+   * severity by rank: the last (most severe) point `critical`, the first `info`, the rest `warning`.
+   *
+   * @parity /modules/vescape-core/ios/telemetry/AlertPresetGenerator.swift `pointSoundType`
+   * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/TelemetryMigrations.kt `PRESET_VOICE_SQL`
+   */
+  fun pointSoundType(soundType: String, index: Int, count: Int): String {
+    if (!soundType.startsWith("voice:")) return soundType
+    val severity = when (index) {
+      count - 1 -> "critical"
+      0 -> "info"
+      else -> "warning"
     }
+    return "voice($severity):${soundType.removePrefix("voice:")}"
+  }
 
   private fun speedRange(point: PresetPoint, input: PresetInput): PresetPoint {
     val top = input.topSpeedKmh.takeIf { it.isFinite() && it > 0 } ?: 50.0

@@ -75,6 +75,11 @@ class TelemetryMigrationMatrixHostTest {
         db.exec("INSERT INTO alerts (board_id,id,control_id,threshold,enabled,sound_type,created_at,beep_count) VALUES ('board-era3','beep-era32','speed',25,1,'preset:beep',3201,2)")
         db.exec("INSERT INTO alerts (board_id,id,control_id,threshold,enabled,sound_type,created_at,beep_count) VALUES ('board-era3','urgent-era32','speed',30,1,'preset:urgent',3202,5)")
         db.exec("INSERT INTO alerts (board_id,id,control_id,threshold,threshold_max,enabled,sound_type,created_at,beep_count) VALUES ('board-era3','tick-era32','duty',80,90,1,'preset:tick',3203,3)")
+        for (index in 0..2) {
+          db.exec("INSERT INTO alerts (board_id,id,control_id,threshold,enabled,sound_type,created_at,source,beep_count) VALUES ('board-era3','preset:battery:$index','battery',${30 - index * 10},1,'tts:Battery {percent}%',3204,'preset',3)")
+        }
+        db.exec("INSERT INTO alerts (board_id,id,control_id,threshold,enabled,sound_type,created_at,source,beep_count) VALUES ('board-era3','preset:motor-temp:0','motor-temp',95,1,'tts:Motor {value} {unit}',3205,'preset',3)")
+        db.exec("INSERT INTO alerts (board_id,id,control_id,threshold,enabled,sound_type,created_at,beep_count) VALUES ('board-era3','custom-battery-era32','battery',25,1,'tts:Battery {percent}%',3206,3)")
       }
       33 -> db.exec("INSERT INTO board_config_values VALUES ('board-era3','2.0','{\"motor_current_max\":55.5}',3300)")
     }
@@ -190,6 +195,12 @@ class TelemetryMigrationMatrixHostTest {
           assertEquals("alert(2):warning", db.text("SELECT sound_type FROM alerts WHERE id='beep-era32'"))
           assertEquals("alert(5):critical", db.text("SELECT sound_type FROM alerts WHERE id='urgent-era32'"))
           assertEquals("preset:tick", db.text("SELECT sound_type FROM alerts WHERE id='tick-era32'"))
+          // Preset speech templates become voice lines ranked by ladder position (#580).
+          assertEquals("voice(info):battery", db.text("SELECT sound_type FROM alerts WHERE id='preset:battery:0'"))
+          assertEquals("voice(warning):battery", db.text("SELECT sound_type FROM alerts WHERE id='preset:battery:1'"))
+          assertEquals("voice(critical):battery", db.text("SELECT sound_type FROM alerts WHERE id='preset:battery:2'"))
+          assertEquals("voice(critical):motorTemp", db.text("SELECT sound_type FROM alerts WHERE id='preset:motor-temp:0'"))
+          assertEquals("tts:Battery {percent}%", db.text("SELECT sound_type FROM alerts WHERE id='custom-battery-era32'"))
         }
         assertEquals(0L, db.long("SELECT COUNT(*) FROM pragma_table_info('alerts') WHERE name='beep_count'"))
         if (start >= 33) assertEquals("{\"motor_current_max\":55.5}", db.text("SELECT values_json FROM board_config_values WHERE board_id='board-era3'"))

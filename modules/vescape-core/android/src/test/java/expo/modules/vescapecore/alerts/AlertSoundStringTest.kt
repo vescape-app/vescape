@@ -38,6 +38,19 @@ class AlertSoundStringTest {
     }
 
     @Test
+    fun readsVoiceKeyAndValue() {
+        val cases = listOf(
+            "voice(critical):battery:10" to VoiceAlertSound(AlertSeverity.CRITICAL, "battery", 10.0),
+            "voice(info):motorTemp" to VoiceAlertSound(AlertSeverity.INFO, "motorTemp", null),
+            "voice(warning):" to VoiceAlertSound(AlertSeverity.WARNING, null, null),
+            "voice:battery:-5.5" to VoiceAlertSound(AlertSeverity.WARNING, "battery", -5.5),
+            "voice(info):battery:x" to VoiceAlertSound(AlertSeverity.INFO, "battery", null),
+            "tts(info):battery" to null,
+        )
+        for ((raw, expected) in cases) assertEquals(raw, expected, parseVoiceAlertSound(raw))
+    }
+
+    @Test
     fun readsSlotAlertSoundsWithLegacyAndUnknownFallbacks() {
         val cases = listOf(
             "alert(3):warning" to SlotAlertSound(3, AlertSeverity.WARNING),

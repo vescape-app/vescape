@@ -194,13 +194,17 @@ describe('shared assets', () => {
     ])
   })
 
-  it('copies only effects packs, keeping their directory layout', () => {
-    write('shared/alerts/packs/voice-hev/pack.json', '{}')
+  it('copies effects and voice packs only, keeping their directory layout', () => {
+    write('shared/alerts/packs/voice-hev/values/percent/5.m4a', 'five')
     write('shared/alerts/packs/effects-hev/pack.json', '{}')
+    write('shared/alerts/packs/sources/notes.json', '{}')
 
     const missing = missingSharedOutputs(root)
     expect(missing).toContain('modules/vescape-core/ios/alert-packs/effects-hev/pack.json')
-    expect(missing.some((path) => path.includes('voice-hev'))).toBe(false)
+    expect(missing).toContain(
+      'modules/vescape-core/android/src/main/assets/alert-packs/voice-hev/values/percent/5.m4a',
+    )
+    expect(missing.some((path) => path.includes('notes.json'))).toBe(false)
 
     copyShared(root, { quiet: true })
     expect(missingSharedOutputs(root)).toEqual([])

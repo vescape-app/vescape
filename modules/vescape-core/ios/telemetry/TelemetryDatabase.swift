@@ -901,8 +901,35 @@ enum TelemetryDatabase {
       try db.execute(sql: "CREATE INDEX IF NOT EXISTS index_alerts_created_at ON alerts(created_at)")
     }
 
+    // Preset battery and temperature alerts speak voice lines (#580): their generated `tts:` templates
+    // become `voice(<severity>):<key>`, severity by the rule's rank in its ladder
+    // (`AlertPresetGenerator.pointSoundType`). Only the three exact generated templates match; this is
+    // the one place text matching is accepted. Custom rules keep their TTS text.
+    // @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/TelemetryMigrations.kt `MIGRATION_50_51`
+    migrator.registerMigration("v51_preset_voice") { db in
+      try db.execute(sql: presetVoiceSql)
+    }
+
     return migrator
   }
+
+  /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/TelemetryMigrations.kt `PRESET_VOICE_SQL`
+  private static let presetVoiceSql = """
+    UPDATE alerts SET sound_type = 'voice(' ||
+      CASE CAST(substr(id, length('preset:' || control_id || ':') + 1) AS INTEGER)
+        WHEN (SELECT COUNT(*) - 1 FROM alerts AS ladder
+          WHERE ladder.board_id = alerts.board_id AND ladder.control_id = alerts.control_id AND ladder.source = 'preset')
+          THEN 'critical'
+        WHEN 0 THEN 'info'
+        ELSE 'warning'
+      END || '):' ||
+      CASE control_id WHEN 'battery' THEN 'battery' WHEN 'motor-temp' THEN 'motorTemp' ELSE 'controllerTemp' END
+    WHERE source = 'preset' AND (
+      (control_id = 'battery' AND sound_type = 'tts:Battery {percent}%') OR
+      (control_id = 'motor-temp' AND sound_type = 'tts:Motor {value} {unit}') OR
+      (control_id = 'controller-temp' AND sound_type = 'tts:Controller {value} {unit}')
+    )
+    """
 
   /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/TelemetryMigrations.kt `ALERT_SOUND_COUNT_SQL`
   private static let alertSoundCountSql = """

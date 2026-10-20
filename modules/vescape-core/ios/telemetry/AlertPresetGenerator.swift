@@ -123,9 +123,10 @@ final class AlertPresetGenerator {
   }
 
   private static func fixedRules(_ definition: PresetDefinition, level: String, input: PresetInput) -> [GeneratedPresetRule] {
-    definition.levels[level]!.map { point in
+    let points = definition.levels[level]!
+    return points.enumerated().map { index, point in
       let threshold = definition.scaledByTopSpeed ? speedRange(point, input: input) : point
-      return GeneratedPresetRule(point: threshold, soundType: definition.soundType!)
+      return GeneratedPresetRule(point: threshold, soundType: pointSoundType(definition.soundType!, index: index, count: points.count))
     }
   }
 
@@ -135,7 +136,8 @@ final class AlertPresetGenerator {
     level: String,
     base: Double?
   ) -> [GeneratedPresetRule] {
-    match.levels[level]!.map { offset in
+    let offsets = match.levels[level]!
+    return offsets.enumerated().map { index, offset in
       let relation = PresetRelation(fieldId: match.fieldId!, offset: offset.threshold, maxOffset: offset.thresholdMax)
       let point: PresetPoint
       if let base {
@@ -148,8 +150,22 @@ final class AlertPresetGenerator {
         // No anchor yet: persist the relationship, but no firing threshold.
         point = PresetPoint(threshold: 0, repeatEverySeconds: offset.repeatEverySeconds)
       }
-      return GeneratedPresetRule(point: point, soundType: definition.soundType!, relation: relation)
+      return GeneratedPresetRule(
+        point: point,
+        soundType: pointSoundType(definition.soundType!, index: index, count: offsets.count),
+        relation: relation
+      )
     }
+  }
+
+  /// Sound of a ladder's point `index` of `count`. A `voice:<key>` definition speaks each point with a
+  /// severity by rank: the last (most severe) point `critical`, the first `info`, the rest `warning`.
+  /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/AlertPresetGenerator.kt `pointSoundType`
+  /// @parity /modules/vescape-core/ios/telemetry/TelemetryDatabase.swift `presetVoiceSql`
+  static func pointSoundType(_ soundType: String, index: Int, count: Int) -> String {
+    guard soundType.hasPrefix("voice:") else { return soundType }
+    let severity = index == count - 1 ? "critical" : index == 0 ? "info" : "warning"
+    return "voice(\(severity)):\(soundType.dropFirst("voice:".count))"
   }
 
   private static func speedRange(_ point: PresetPoint, input: PresetInput) -> PresetPoint {
