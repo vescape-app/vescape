@@ -143,7 +143,8 @@ function AlertRuleRow({
       ? formatSpeedWithUnit(value, 1)
       : formatAlertValue(value, batteryConfig, unit)
   const isGeiger = rule.thresholdMax != null
-  const isTts = parseTtsAlertSound(rule.soundType) != null
+  const tts = parseTtsAlertSound(rule.soundType)
+  const isTts = tts != null
   const TypeIcon = isGeiger ? RadioactiveIcon : isTts ? ChatTextIcon : WaveformIcon
   const detail = [
     rule.repeatEverySeconds == null ? null : `every ${rule.repeatEverySeconds}s`,
@@ -168,12 +169,12 @@ function AlertRuleRow({
             ? `${format(rule.threshold)} – ${format(rule.thresholdMax!)}`
             : format(rule.threshold)}
         </Text>
-        {isTts && (
+        {tts && (
           <Text
             style={[styles.ruleTtsTemplate, !rule.enabled && styles.ruleTextDisabled]}
             numberOfLines={1}
           >
-            {rule.soundType.slice(4)}
+            {tts.text}
           </Text>
         )}
         {detail ? (
