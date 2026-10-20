@@ -246,6 +246,10 @@ export function AlertPresetControlShowcase() {
               )
             : preview.rules
         }
+        geigerSound={
+          geigerSound ??
+          preview.rules.find((rule) => parseGeigerAlertSound(rule.soundType))?.soundType
+        }
         onGeigerSoundChange={setGeigerSound}
         onCustomize={editable ? () => setLevel('custom') : undefined}
         onDiscardCustom={editable ? () => setLevel('normal') : undefined}

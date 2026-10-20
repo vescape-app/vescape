@@ -27,6 +27,7 @@ import {
   type DraftAlertRule,
 } from '@/modules/alerts/lib/customAlertRules'
 import { useAlertPresetStore } from '@/modules/alerts/store/alertPresetStore'
+import { parseGeigerAlertSound } from '@/modules/alerts/lib/alertSoundString'
 import { useAlertsStore, type AlertRuleDraft } from '@/modules/alerts/store/alertsStore'
 import { useBoardStore } from '@/modules/board/store/boardStore'
 
@@ -55,6 +56,8 @@ export interface MetricAlertsController {
   /** Metrics this Board follows its own configuration for. */
   matchBoardConfig: Partial<Record<AlertPresetMetric, boolean>>
   setMatchBoardConfig(enabled: boolean): void
+  /** Sound of this metric's saved preset geiger rules; null without any. */
+  geigerSound?: string | null
   /** Pick the preset's geiger sound. Absent where it cannot be stored (the add-board wizard). */
   setGeigerSound?(soundType: string): void
   setLevel(level: AlertPresetLevel): void
@@ -89,6 +92,17 @@ export function useBoardMetricAlerts(controlId: string): MetricAlertsController 
 
   const metric = asAlertPresetMetric(controlId)
   const rules = useMemo(() => customRulesForControl(allRules, controlId), [allRules, controlId])
+  // Only generated rules hold the preset's sound; the rider's own rules carry their own.
+  const geigerSound = useMemo(
+    () =>
+      allRules.find(
+        (rule) =>
+          rule.controlId === controlId &&
+          rule.source === 'preset' &&
+          parseGeigerAlertSound(rule.soundType),
+      )?.soundType ?? null,
+    [allRules, controlId],
+  )
   // Controls without presets are always rider-owned, so they read as `custom` with no way back.
   const level = board && metric ? boardAlertPresetSelection(board)[metric] : 'custom'
 
@@ -113,6 +127,7 @@ export function useBoardMetricAlerts(controlId: string): MetricAlertsController 
             .setMatchBoardConfig(metric, enabled)
             .catch(() => undefined)
       },
+      geigerSound,
       setGeigerSound: (soundType) => {
         // intentional-suppression: the Alerts store error is rendered by MetricAlerts.
         if (metric)
@@ -159,6 +174,7 @@ export function useBoardMetricAlerts(controlId: string): MetricAlertsController 
     remove,
     ruleSnapshot,
     configBases,
+    geigerSound,
   ])
 }
 

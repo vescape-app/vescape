@@ -65,6 +65,7 @@ export function MetricAlerts({
           boardTopSpeedKmh={controller.topSpeedKmh}
           matchBoardConfig={controller.matchBoardConfig}
           onMatchBoardConfigChange={controller.setMatchBoardConfig}
+          geigerSound={controller.geigerSound}
           onGeigerSoundChange={controller.setGeigerSound}
           configBases={controller.configBases}
           hotRange={hotRange}
