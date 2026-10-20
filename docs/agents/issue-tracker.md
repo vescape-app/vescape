@@ -114,11 +114,11 @@ When creating a new `area:*` label, use gray unless it belongs to an explicitly 
 
 Every implementation issue must have exactly one complexity label. Complexity reflects **risk and precision needed**, not size. A 5-line native pipeline change can be `complexity:high`; a 100-line UI component can be `complexity:low`.
 
-| Label               | When to use                                                          | Claude         | OpenAI        |
-| ------------------- | -------------------------------------------------------------------- | -------------- | ------------- |
-| `complexity:low`    | Isolated changes, hard to break other things (UI, docs, config)      | sonnet / haiku | GPT-5.3 Codex |
-| `complexity:medium` | Moderate integration surface, needs care but not safety-critical     | sonnet         | GPT-5.4 Codex |
-| `complexity:high`   | Critical paths, subtle correctness, native pipelines, data integrity | opus           | GPT-5.5       |
+| Label               | When to use                                                                                                                    | Claude         | OpenAI        |
+| ------------------- | ------------------------------------------------------------------------------------------------------------------------------ | -------------- | ------------- |
+| `complexity:low`    | Routine changes with a clear solution and easy checks. Can touch multiple files or platforms when following existing patterns. | sonnet / haiku | GPT-5.3 Codex |
+| `complexity:medium` | Moderate integration surface, needs care but not safety-critical                                                               | sonnet         | GPT-5.4 Codex |
+| `complexity:high`   | Critical paths, subtle correctness, native pipelines, data integrity                                                           | opus           | GPT-5.5       |
 
 ## Kind labels
 
