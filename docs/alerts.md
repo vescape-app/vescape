@@ -27,6 +27,31 @@ sound install rolls both back.
 Restoring an older backup without these entries clears custom packs. A restored pack drops any
 assignment whose file is absent, while a selected pack that no longer exists resolves to Classic.
 
+## Sound effects and voice packs (planned)
+
+> Agreed in #574, not implemented yet. Everything above describes current behavior.
+
+App sound will come from two app-wide choices backed by pre-generated packs:
+
+- **Sound effects** (replaces today's sound theme: Retro, Simple, HEV, Clean): severity beeps
+  `info`/`warning`/`critical`, app cues (adds `ride.end`), and geiger ticks `soft`/`mid`/`hard`.
+  Effects packs never contain speech.
+- **Voice** (`Matching` or a voice pack): whole-sentence lines per message key plus value clips,
+  joined natively into one buffer as severity beeps + line + value. `Matching` uses the voice the
+  effects pack names; packs without one use Clean.
+- **Voice level** `Off | Minimal | Full`: Off plays effects only, Minimal (default) speaks alerts,
+  Full also speaks app cues and group ride events after their effect.
+
+Preset alerts emit a message key, severity, and value instead of a `tts:` template, and resolve
+the line severity variant → generic → beeps only. Each preset can pin its own effects or voice
+pack; unpinned presets follow the app-wide choice. Custom rules keep TTS (with optional beeps
+before speech) or use effects and user sounds; voice lines exist only for built-in alert keys.
+User WAVs move to a **My sounds** library that can override a fixed set of slots (pre-beeps,
+board on/off, other cues). Resolution per slot: override > pinned pack > app-wide choice.
+
+All sounds that can fire during a ride stay decoded in memory for the session, so playback starts
+without load delay. Pack generation (Kokoro TTS + sox, offline) and the line schema live in #574.
+
 ## Per-board ownership
 
 Alert Rules are owned by one Board. The native alert engine loads **only the connected Board's**
