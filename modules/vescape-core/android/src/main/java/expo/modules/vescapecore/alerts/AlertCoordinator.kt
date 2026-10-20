@@ -87,13 +87,19 @@ internal class AlertCoordinator(
 
         val single = fired.filter { it.rangeDepth == null }
         if (single.isNotEmpty()) {
+            // Preset voice rules at Voice level Off play their severity sound only and leave the
+            // spoken slot to the rest.
+            val mutedPresets = if (feedback().presetVoiceEnabled) emptySet() else single.filter {
+                it.ruleId.startsWith(PRESET_RULE_PREFIX) && parseVoiceAlertSound(it.soundType) != null
+            }.mapTo(HashSet()) { it.ruleId }
             // One spoken announcement per evaluation: the most severe, which sorts first.
-            single.firstOrNull { it.thresholdMax == null && isSpokenSoundType(it.soundType) }?.let { alert ->
+            single.firstOrNull {
+                it.thresholdMax == null && isSpokenSoundType(it.soundType) && it.ruleId !in mutedPresets
+            }?.let { alert ->
                 val voice = parseVoiceAlertSound(alert.soundType)
                 if (voice != null) {
                     feedback().speakVoice(
                         voiceAnnouncement(voice, alert.controlId, alert.threshold, batteryPercent != null, unitSystem),
-                        preset = alert.ruleId.startsWith(PRESET_RULE_PREFIX),
                     )
                     return@let
                 }
@@ -101,7 +107,12 @@ internal class AlertCoordinator(
                 val text = renderAlertMessageTemplate(tts.text, alert, batteryPercent, onDiagnostic, unitSystem)
                 if (text.isNotEmpty()) feedback().speakAfterSeverity(tts.severity, text)
             }
-            for (alert in single) if (!isSpokenSoundType(alert.soundType)) feedback().playSingle(alert.soundType)
+            for (alert in single) {
+                if (!isSpokenSoundType(alert.soundType)) feedback().playSingle(alert.soundType)
+                else if (alert.ruleId in mutedPresets) {
+                    feedback().playSingle("alert:${parseVoiceAlertSound(alert.soundType)!!.severity.id}")
+                }
+            }
             if (vibrateSingles) feedback().vibrate(null)
         }
         return fired.map { it.toMap() }

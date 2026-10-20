@@ -99,8 +99,15 @@ internal final class AlertCoordinator {
 
     let single = fired.filter { $0.rangeDepth == nil }
     if !single.isEmpty {
+      // Preset voice rules at Voice level Off play their severity sound only and leave the spoken
+      // slot to the rest.
+      let mutedPresets = player.presetVoiceEnabled ? [] : single.filter {
+        $0.ruleId.hasPrefix(presetRulePrefix) && parseVoiceAlertSound($0.soundType) != nil
+      }.map(\.ruleId)
       // One spoken announcement per evaluation: the most severe, which sorts first.
-      if let alert = single.first(where: { $0.thresholdMax == nil && isSpokenSoundType($0.soundType) }) {
+      if let alert = single.first(where: {
+        $0.thresholdMax == nil && isSpokenSoundType($0.soundType) && !mutedPresets.contains($0.ruleId)
+      }) {
         if let voice = parseVoiceAlertSound(alert.soundType) {
           player.speakVoice(
             voiceAnnouncement(
@@ -109,16 +116,16 @@ internal final class AlertCoordinator {
               threshold: alert.threshold,
               percentAvailable: batteryPercent != nil,
               unitSystem: unitSystem
-            ),
-            preset: alert.ruleId.hasPrefix(presetRulePrefix)
+            )
           )
         } else if let tts = parseTtsAlertSound(alert.soundType) {
           let text = renderAlertMessageTemplate(tts.text, alert: alert, batteryPercent: batteryPercent, onDiagnostic: onDiagnostic, unitSystem: unitSystem)
           if !text.isEmpty { player.speakAfterSeverity(tts.severity, text: text) }
         }
       }
-      for alert in single where !isSpokenSoundType(alert.soundType) {
-        player.playSingle(soundType: alert.soundType)
+      for alert in single where !isSpokenSoundType(alert.soundType) || mutedPresets.contains(alert.ruleId) {
+        let severity = parseVoiceAlertSound(alert.soundType)?.severity
+        player.playSingle(soundType: severity.map { "alert:\($0.rawValue)" } ?? alert.soundType)
       }
       if vibrateSingles { player.vibrate(rangeDepth: nil) }
     }

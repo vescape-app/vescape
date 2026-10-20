@@ -393,7 +393,10 @@ internal class AlertFeedback(
     private val pendingGeiger = HashMap<String, Pair<String, Double>>()
     var soundPack: String = "retro"
     private var voice: String = VOICE_MATCHING
-    private var voiceLevel: String = VOICE_LEVEL_DEFAULT
+    @Volatile private var voiceLevel: String = VOICE_LEVEL_DEFAULT
+
+    /** False at Voice level `off`: preset voice rules then play their severity sound only. */
+    val presetVoiceEnabled: Boolean get() = voiceLevel != "off"
     /** Voice line playing now; a newer announcement or [release] stops it. */
     private var voiceTrack: AudioTrack? = null
     /** Bumped per voice announcement, so a line still decoding for an older one never plays. */
@@ -636,14 +639,14 @@ internal class AlertFeedback(
 
     /**
      * Speak [announcement]: its severity sound once, then the voice pack line joined with its value
-     * into one buffer, starting once the sound has finished. A [preset] at Voice level `off`, or a
-     * key the pack has no line for, plays the severity sound only. Custom rules ignore the level.
+     * into one buffer, starting once the sound has finished. A key the pack has no line for plays
+     * the severity sound only. Voice level is the caller's ([presetVoiceEnabled]).
      *
      * @parity /modules/vescape-core/ios/alerts/AlertAudioPlayer.swift `speakVoice`
      */
-    fun speakVoice(announcement: VoiceAnnouncement, preset: Boolean) {
+    fun speakVoice(announcement: VoiceAnnouncement) {
         if (android.os.Looper.myLooper() != handler.looper) {
-            handler.post { speakVoice(announcement, preset) }
+            handler.post { speakVoice(announcement) }
             return
         }
         if (released) return
@@ -651,7 +654,6 @@ internal class AlertFeedback(
         pendingSpeech = null
         val generation = ++voiceGeneration
         playSeverity(SlotAlertSound(1, announcement.severity))
-        if (preset && voiceLevel == "off") return
         val due = SystemClock.uptimeMillis() + speechDelayMs(context, soundPack, announcement.severity)
         val pack = voicePack
         // Decoding runs off the audio looper while the severity sound covers it.
@@ -669,6 +671,7 @@ internal class AlertFeedback(
     private fun playVoice(pcm: VoicePcm) {
         if (released) return
         voiceTrack?.let(::releaseTrack)
+        ttsPendingText = null
         tts?.stop()
         voiceTrack = playPcm(pcm, audioSource, handler) { track -> if (voiceTrack === track) voiceTrack = null }
     }
@@ -680,7 +683,7 @@ internal class AlertFeedback(
         }
         parseVoiceAlertSound(soundType)?.let { sound ->
             val unitSystem = kotlinx.coroutines.runBlocking { AppDataRepository.get(context).getTypedSettings().unitSystem }
-            speakVoice(voiceAnnouncement(sound, null, null, percentAvailable = true, unitSystem = unitSystem), preset = false)
+            speakVoice(voiceAnnouncement(sound, null, null, percentAvailable = true, unitSystem = unitSystem))
             return
         }
         val tts = parseTtsAlertSound(soundType)

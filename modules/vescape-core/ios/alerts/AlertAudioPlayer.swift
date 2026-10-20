@@ -491,30 +491,53 @@ internal final class AlertAudioPlayer {
     guard !isReleased else { return }
     // A newer announcement supersedes speech still waiting out an older one's sound.
     pendingSpeech?.cancel()
+    let generation = nextSpeechGeneration()
     playSeverity(SlotAlertSound(count: 1, severity: severity))
     // Written only from the announcing caller; cancelling an already-run item is a no-op.
     let delay = max(alertSpeechDelayMs, clipDurationMs(clipKey(severity.slot)))
     pendingSpeech = scheduler.postDelayed(delay) { [weak self] in
-      self?.speakMessage(text)
+      guard let self, self.isCurrentSpeech(generation) else { return }
+      self.speakMessage(text)
     }
   }
 
   private var pendingSpeech: Cancellable?
+  /// Bumped per spoken announcement; speech whose timer already fired checks it before starting,
+  /// so a newer announcement supersedes it even after cancellation comes too late.
+  private var speechGeneration = 0
+  private let speechGenerationLock = NSLock()
+
+  private func nextSpeechGeneration() -> Int {
+    speechGenerationLock.lock()
+    defer { speechGenerationLock.unlock() }
+    speechGeneration += 1
+    return speechGeneration
+  }
+
+  private func isCurrentSpeech(_ generation: Int) -> Bool {
+    speechGenerationLock.lock()
+    defer { speechGenerationLock.unlock() }
+    return speechGeneration == generation
+  }
+
+  /// False at Voice level `off`: preset voice rules then play their severity sound only.
+  var presetVoiceEnabled: Bool { voiceLevel != "off" }
 
   /// Speak `announcement`: its severity sound once, then the voice pack line joined with its value
-  /// into one buffer, starting once the sound has finished. A `preset` at Voice level `off`, or a
-  /// key the pack has no line for, plays the severity sound only. Custom rules ignore the level.
+  /// into one buffer, starting once the sound has finished. A key the pack has no line for plays the
+  /// severity sound only. Voice level is the caller's (`presetVoiceEnabled`).
   /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/alerts/AlertEngine.kt `speakVoice`
-  func speakVoice(_ announcement: VoiceAnnouncement, preset: Bool) {
+  func speakVoice(_ announcement: VoiceAnnouncement) {
     guard !isReleased else { return }
     pendingSpeech?.cancel()
     pendingSpeech = nil
+    let generation = nextSpeechGeneration()
     playSeverity(SlotAlertSound(count: 1, severity: announcement.severity))
-    if preset && voiceLevel == "off" { return }
     guard let line = joinedVoice(announcement, pack: voicePack) else { return }
     let delay = max(alertSpeechDelayMs, clipDurationMs(clipKey(announcement.severity.slot)))
     pendingSpeech = scheduler.postDelayed(delay) { [weak self] in
       self?.onGeigerQueue { owner in
+        guard owner.isCurrentSpeech(generation) else { return }
         owner.synthesizer.stopSpeaking(at: .immediate)
         owner.stopVoiceOnQueue()
         owner.voiceNode = owner.playBufferOnQueue(line, label: "voice/\(announcement.key ?? "")")
@@ -600,8 +623,7 @@ internal final class AlertAudioPlayer {
     Self.log("AlertAudioPlayer.preview: \(soundType)")
     if let sound = parseVoiceAlertSound(soundType) {
       speakVoice(
-        voiceAnnouncement(sound, controlId: nil, threshold: nil, percentAvailable: true, unitSystem: unitSystem),
-        preset: false
+        voiceAnnouncement(sound, controlId: nil, threshold: nil, percentAvailable: true, unitSystem: unitSystem)
       )
       return
     }
