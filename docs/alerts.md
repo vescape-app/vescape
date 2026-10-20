@@ -87,12 +87,15 @@ Regenerate on a Mac dev machine with sox, ffmpeg, and a Python that has `mlx_aud
 ```sh
 KOKORO_PYTHON=/path/to/venv/bin/python bun run alerts:packs            # all packs
 KOKORO_PYTHON=/path/to/venv/bin/python bun run alerts:packs voice-hev  # one manifest
+KOKORO_PYTHON=/path/to/venv/bin/python bun run alerts:packs --force    # re-synthesize every voice clip
 ```
 
-The generator validates the manifests against `catalog.json` before generating and checks the
-written pack after. `bun test scripts/alert-packs` fails when a committed pack misses a slot, a
-key's generic line, a value clip, or a listed file. Encoding is bitexact, so an unchanged manifest
-regenerates identical files. Kokoro mispronounces "error"; HEV wording says "failure".
+The generator validates the manifests against `catalog.json` before generating, builds into a
+`<pack>.staging` directory, and replaces the committed pack only after the result validates. `bun test scripts/alert-packs` fails when a committed pack misses a slot, a
+key's generic line, a value clip, or a listed file. Kokoro is not bit-stable run to run, so a
+voice `pack.json` records a `sources` hash per clip (text, Kokoro settings, fx) and only clips whose
+hash changed are re-synthesized; effects encoding is bitexact, so an unchanged manifest regenerates
+identical files. Kokoro mispronounces "error"; HEV wording says "failure".
 
 ## Per-board ownership
 

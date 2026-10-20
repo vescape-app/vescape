@@ -5,9 +5,20 @@
  *
  *   bun run alerts:packs            all packs
  *   bun run alerts:packs voice-hev  one manifest
+ *   bun run alerts:packs --force    re-synthesize every voice clip
  */
 import { spawnSync } from 'child_process'
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'fs'
+import { createHash } from 'crypto'
+import {
+  copyFileSync,
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  renameSync,
+  rmSync,
+  writeFileSync,
+} from 'fs'
 import { tmpdir } from 'os'
 import { join } from 'path'
 import {
@@ -31,6 +42,15 @@ import {
 
 const RATE = '22050'
 const FORMAT = 'aac-lc m4a, mono 22050 Hz'
+const FORCE = process.argv.includes('--force')
+
+const sourceHash = (source: unknown) =>
+  createHash('sha256').update(JSON.stringify(source)).digest('hex').slice(0, 16)
+
+function readPreviousPack<T>(dir: string): T | null {
+  const path = join(dir, 'pack.json')
+  return existsSync(path) ? (JSON.parse(readFileSync(path, 'utf8')) as T) : null
+}
 
 function run(command: string, args: string[], input?: string) {
   const result = spawnSync(command, args, {
@@ -110,8 +130,7 @@ const encode = (wav: string, out: string) =>
     out,
   ])
 
-function generateEffects(manifest: EffectsManifest, tmp: string) {
-  const dir = packDir(manifest)
+function generateEffects(manifest: EffectsManifest, dir: string, tmp: string) {
   const slots: Record<string, string> = {}
   for (const [slot, segments] of Object.entries(manifest.sounds)) {
     const parts: string[] = []
@@ -144,9 +163,8 @@ function generateEffects(manifest: EffectsManifest, tmp: string) {
   return pack
 }
 
-function generateVoice(manifest: VoiceManifest, tmp: string) {
+function generateVoice(manifest: VoiceManifest, dir: string, tmp: string) {
   const catalog = loadCatalog()
-  const dir = packDir(manifest)
   const clips: { text: string; file: string }[] = []
   const lines: VoicePack['lines'] = {}
   for (const [key, line] of Object.entries(manifest.lines)) {
@@ -171,26 +189,41 @@ function generateVoice(manifest: VoiceManifest, tmp: string) {
     values[type] = set
   }
 
-  const raw = (i: number) => join(tmp, `raw${i}.wav`)
-  run(
-    process.env.KOKORO_PYTHON ?? 'python3',
-    ['-I', join(MANIFEST_DIR, 'kokoro.py')],
-    JSON.stringify({
-      ...manifest.kokoro,
-      clips: clips.map((clip, i) => ({ text: clip.text, out: raw(i) })),
-    }),
-  )
-
   mkdirSync(join(dir, 'lines'), { recursive: true })
   for (const type of types) mkdirSync(join(dir, 'values', type), { recursive: true })
+
+  // Kokoro on the GPU is not bit-stable run to run, so a clip is synthesized only when its text,
+  // voice, or fx changed; unchanged clips are carried over from the committed pack.
+  const sources: Record<string, string> = {}
+  const previous = readPreviousPack<VoicePack>(packDir(manifest))
+  const synth: { text: string; file: string; raw: string }[] = []
+  for (const clip of clips) {
+    sources[clip.file] = sourceHash({ text: clip.text, kokoro: manifest.kokoro, fx: manifest.fx })
+    const old = join(packDir(manifest), clip.file)
+    if (!FORCE && previous?.sources?.[clip.file] === sources[clip.file] && existsSync(old)) {
+      copyFileSync(old, join(dir, clip.file))
+    } else synth.push({ ...clip, raw: join(tmp, `raw${synth.length}.wav`) })
+  }
+  console.log(`  ${synth.length} of ${clips.length} clips to synthesize`)
+  if (synth.length) {
+    run(
+      process.env.KOKORO_PYTHON ?? 'python3',
+      ['-I', join(MANIFEST_DIR, 'kokoro.py')],
+      JSON.stringify({
+        ...manifest.kokoro,
+        clips: synth.map((clip) => ({ text: clip.text, out: clip.raw })),
+      }),
+    )
+  }
+
   const fx = manifest.fx.split(' ')
   const wav = join(tmp, 'clip.wav')
-  clips.forEach((clip, i) => {
+  for (const clip of synth) {
     // A stronger end trim clips word tails; voice fx are baked in so native never applies any.
     run('sox', [
       '-D',
       '-R',
-      raw(i),
+      clip.raw,
       '-b',
       '16',
       wav,
@@ -212,27 +245,39 @@ function generateVoice(manifest: VoiceManifest, tmp: string) {
       RATE,
     ])
     encode(wav, join(dir, clip.file))
-  })
-  const pack: VoicePack = { id: manifest.id, kind: 'voice', format: FORMAT, lines, values }
+  }
+  const pack: VoicePack = { id: manifest.id, kind: 'voice', format: FORMAT, lines, values, sources }
   return pack
 }
 
 const catalog = loadCatalog()
-const names = process.argv.slice(2).length ? process.argv.slice(2) : [...MANIFESTS]
+const args = process.argv.slice(2).filter((arg) => arg !== '--force')
+const names = args.length ? args : [...MANIFESTS]
 const manifests = names.map(loadManifest)
 const invalid = manifests.flatMap((manifest) => validateManifest(catalog, manifest))
 if (invalid.length) throw new Error(invalid.join('\n'))
 
 for (const manifest of manifests) {
   const dir = packDir(manifest)
+  // Build beside the committed pack and swap only after it validates, so a failed run leaves
+  // the previous pack intact.
+  const staging = `${dir}.staging`
   const tmp = mkdtempSync(join(tmpdir(), 'alert-pack-'))
-  rmSync(dir, { recursive: true, force: true })
-  mkdirSync(dir, { recursive: true })
-  console.log(`${manifest.kind}-${manifest.id}…`)
-  const pack =
-    manifest.kind === 'effects' ? generateEffects(manifest, tmp) : generateVoice(manifest, tmp)
-  writeFileSync(join(dir, 'pack.json'), `${JSON.stringify(pack, null, 2)}\n`)
-  rmSync(tmp, { recursive: true, force: true })
-  const errors = validatePack(catalog, dir)
-  if (errors.length) throw new Error(errors.join('\n'))
+  try {
+    rmSync(staging, { recursive: true, force: true })
+    mkdirSync(staging, { recursive: true })
+    console.log(`${manifest.kind}-${manifest.id}…`)
+    const pack =
+      manifest.kind === 'effects'
+        ? generateEffects(manifest, staging, tmp)
+        : generateVoice(manifest, staging, tmp)
+    writeFileSync(join(staging, 'pack.json'), `${JSON.stringify(pack, null, 2)}\n`)
+    const errors = validatePack(catalog, staging)
+    if (errors.length) throw new Error(errors.join('\n'))
+    rmSync(dir, { recursive: true, force: true })
+    renameSync(staging, dir)
+  } finally {
+    rmSync(tmp, { recursive: true, force: true })
+    rmSync(staging, { recursive: true, force: true })
+  }
 }

@@ -63,6 +63,8 @@ export interface VoicePack {
   format: string
   lines: Record<string, { start: string[]; end: string[] }>
   values: Partial<Record<ValueType, Record<string, string>>>
+  /** Clip path → hash of its text, Kokoro settings, and fx; unchanged clips are not re-synthesized. */
+  sources: Record<string, string>
 }
 
 const readJson = <T>(path: string): T => JSON.parse(readFileSync(path, 'utf8')) as T

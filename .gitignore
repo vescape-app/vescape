@@ -98,3 +98,6 @@ targets/watch-battery/generated.entitlements
 
 # App preview footage and exports
 /previews/
+
+# Alert pack generator staging (crashed runs)
+shared/alerts/packs/*.staging/
