@@ -86,6 +86,7 @@ class MainActivity : ComponentActivity() {
                     runOnUiThread { if (load == null) MapTileState.remove(mapTile) else MapTileState.put(mapTile, load) }
                     continue
                 }
+                val battery = if (!deleted && path == LAST_BATTERY_PATH) decodeLastBatteryItem(item) else null
                 val bytes = if (!deleted && path == ROUTE_PATH) item.data else null
                 val payload = if (!deleted && path in setOf(SETTINGS_PATH, WEATHER_PATH, BOARD_PATH)) dataMapOf(item) else null
                 runOnUiThread {
@@ -95,6 +96,7 @@ class MainActivity : ComponentActivity() {
                             SETTINGS_PATH -> acceptSettings(payload)
                             WEATHER_PATH -> acceptWeather(payload)
                             BOARD_PATH -> acceptBoard(payload)
+                            LAST_BATTERY_PATH -> LastBatteryState.value.value = battery
                         }
                     }
                 }
@@ -163,6 +165,7 @@ class MainActivity : ComponentActivity() {
                 val weather = items.firstOrNull { it.uri.path == WEATHER_PATH }?.let(::dataMapOf)
                 val board = items.firstOrNull { it.uri.path == BOARD_PATH }?.let(::dataMapOf)
                 MirrorIntakeState.apply { restoreColdState(route, settings, weather, board) }
+                LastBatteryState.value.value = items.firstOrNull { it.uri.path == LAST_BATTERY_PATH }?.let(::decodeLastBatteryItem)
                 MapTileState.replace(
                     items.mapNotNull { item ->
                         val tile = item.uri.path?.let(WatchMapTile::fromPath)?.second ?: return@mapNotNull null

@@ -32,6 +32,7 @@ private final class IOSWatchMirrorTransport: WatchMirrorTransport {
     pusher.pushColdState(channel: watchWeatherChannel, payload: weather.payload)
   }
   func pushRoute(_ payload: [String: Any]) { pusher.pushColdState(channel: watchRouteChannel, payload: payload) }
+  func pushLastBattery(_ battery: WatchLastBattery?) { pusher.pushLastBattery(battery) }
   func pushBoard(_ board: WatchBoardLights) { pusher.pushColdState(channel: watchBoardChannel, payload: board.payload) }
 }
 

@@ -5,11 +5,27 @@ import SwiftUI
 /// (ADR-0019) — the peer of `watch/wearos/` on Android.
 @main
 struct VescapeWatchApp: App {
-  @StateObject private var link = PhoneLink()
+  @WKApplicationDelegateAdaptor(WatchAppDelegate.self) private var appDelegate
+  @StateObject private var link = PhoneLink.shared
   @State private var replayer: FrameReplayer?
 
   var body: some Scene {
     WindowGroup {
+      Group {
+#if DEBUG && targetEnvironment(simulator)
+        if let state = BatteryComplicationGallery.requestedFixture ?? BatteryComplicationGallery.requested {
+          BatteryComplicationGallery(state: state)
+        } else {
+          mirror
+        }
+#else
+        mirror
+#endif
+      }
+    }
+  }
+
+  private var mirror: some View {
       MirrorScreen(link: link)
         .font(WatchTypography.ui(size: 12))
         // Replay owns its inputs; live phone context must not overwrite the fixtures.
@@ -27,6 +43,5 @@ struct VescapeWatchApp: App {
             link.activate()
           }
         }
-    }
   }
 }

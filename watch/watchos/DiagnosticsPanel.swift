@@ -15,6 +15,9 @@ struct DiagnosticsPanel: View {
           row("link", link.statusLabel)
           row("age", link.lastFrameAt.map { String(format: "%.1fs", context.date.timeIntervalSince($0)) } ?? WatchGauge.dash)
           row("rx", String(format: "%.1f / %.1f Hz", link.receivedHz, link.appliedHz))
+          row("battery board", link.lastBattery?.boardName ?? "--")
+          row("battery", link.lastBattery?.text ?? "--")
+          row("battery age", link.lastBattery?.age(now: context.date).map { "\($0) ago" } ?? "<1h / unknown")
           row("frames", "\(link.diagnostics.framesDecoded)")
           if link.diagnostics.decodeFailures > 0 {
             // Repeated failures can indicate incompatible phone/watch frame layouts.

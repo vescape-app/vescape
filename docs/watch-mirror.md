@@ -561,3 +561,60 @@ route geometry, and gauge proportions stay metric.
 The rider colour is another of these: pick a colour on the phone and the wrist route, chevron and
 rider dot follow it. The watchOS Mirror carries the same bag on its own channel — see
 `docs/watchos.md` for how the two transports differ.
+
+## Board battery complication
+
+The selected Board's last persisted battery is a separate cold-state channel. Every successful
+30-second or forced `updateLastBattery` write pushes committed storage to the wrist. Selection
+changes, successful Board saves including renames, and native Mirror startup push the selected
+Board's stored reading too. The payload is
+`{ boardId, boardName, percent, at }`, where `at` is Unix milliseconds. Optional `percent` and `at`
+are omitted for a never-seen Board because WatchConnectivity property lists cannot encode null.
+An empty payload clears the selected Board. Android also includes a `present` flag on the item.
+
+watchOS merges `lastBattery` into Application Context. The watch app stores it in App Group
+`group.<phone bundle id>.watch`, shared with its `WatchBattery` WidgetKit extension. The suite is
+separate for development and production. The phone additionally requests a complication wake on
+whole-percent, Board or Board-name changes while more than five complication transfers remain.
+Reaching the
+reserve records `watch_complication_budget_exhausted` once per exhausted period. Application
+Context continues updating when no wake budget remains. The watch reloads widget timelines on
+receipt of committed cold state. Queued complication transfers only wake the receiver, which reads
+the latest Application Context instead of applying an older queued snapshot. This also preserves
+Board switches and clears across process restarts. Foreground Watch Frames do not update this
+store because they lack Board identity and a source capture timestamp. Foreground complications
+therefore refresh after successful battery writes, normally every 30 seconds. Future timeline entries
+advance the stored reading's age even when the phone stops sending.
+
+Wear OS publishes `/last-battery`. Its Data Layer item is the durable storage; the complication
+provider reads it directly without launching the Mirror. A manifest-registered listener requests
+updates while the app is closed, deduplicating unchanged whole-percent and age buckets. The
+system also requests updates every 15 minutes so age continues advancing. Diagnostics on both
+watches show the received Board, percent and age.
+
+watchOS supports corner, circular, rectangular and inline slots. Wear OS supports ranged value,
+short text and long text. The value is rounded to a whole percent with a 0–100 gauge; below 20%
+uses the same warning threshold as the Mirror gauges. No reading displays `--` on watchOS and
+No Data on Wear OS. Slots with room show the Board name and, from one hour, the reading's age.
+Watch faces control their own monochrome/tinted rendering, so Wear text-only slots may not show
+the provider's warning color.
+
+### Simulator visual previews
+
+These previews show production complication views or provider data with explicit DEBUG fixtures.
+They do not verify background delivery, app-kill persistence or physical watch-face integration.
+
+- watchOS simulator Debug build: launch `VescapeWatch` with
+  `--battery-preview healthy`, `warning`, `stale` or `unknown`. The gallery uses the same
+  `BatteryComplicationView` as WidgetKit; corner labels are laid out by WidgetKit on a watch face.
+  To render an installed watch-face slot with synthetic data, use `--battery-fixture` with the same
+  state names. This seeds the production App Group store, reloads WidgetKit, and skips phone
+  connectivity for that launch. The app shows the labeled DEBUG gallery; return to the face to
+  inspect the actual slot. A normal launch resumes receiving committed phone state.
+- Wear OS Debug APK: launch `app.vescape.wear.BatteryComplicationPreviewActivity` with intent
+  string extra `state` set to the same fixture names. It draws the production provider's data
+  through AndroidX `ComplicationDrawable`. The preview activity and renderer dependency are absent
+  from Release builds.
+
+The native transfer budget, phone-kill freshness and closed-app update behavior still require a
+paired phone and physical watch on each platform before they can be treated as observed working.
