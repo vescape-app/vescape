@@ -587,7 +587,8 @@ class VescapeCoreModule : Module() {
     Function("startGeigerSimulation") { soundType: String, rangeDepth: Double ->
       val feedback = previewAlertFeedback ?: AlertFeedback(context.applicationContext, mainHandler)
         .also { previewAlertFeedback = it }
-      feedback.setAudioSource(kotlinx.coroutines.runBlocking { AppDataRepository.get(context.applicationContext).getTypedSettings().audioSource })
+      val settings = kotlinx.coroutines.runBlocking { AppDataRepository.get(context.applicationContext).getTypedSettings() }
+      feedback.setSoundSettings(settings.soundPack, settings.audioSource)
       feedback.updateGeiger("preview", soundType, rangeDepth)
     }
     Function("stopGeigerSimulation") {
@@ -1536,9 +1537,11 @@ class VescapeCoreModule : Module() {
     if (rules.any { it.controlId != controlId }) return
 
     val feedback = AlertFeedback(context.applicationContext, mainHandler)
-    feedback.setAudioSource(kotlinx.coroutines.runBlocking { AppDataRepository.get(context.applicationContext).getTypedSettings().audioSource })
+    val settings = kotlinx.coroutines.runBlocking { AppDataRepository.get(context.applicationContext).getTypedSettings() }
+    // A test sounds like the real rule: same effects pack, same output.
+    feedback.setSoundSettings(settings.soundPack, settings.audioSource)
     val coordinator = AlertCoordinator(feedback = { feedback }, vibrateSingles = false)
-    coordinator.unitSystem = kotlinx.coroutines.runBlocking { AppDataRepository.get(context.applicationContext).getTypedSettings().unitSystem }
+    coordinator.unitSystem = settings.unitSystem
     coordinator.replaceRules(rules)
     alertTestFeedback = feedback
     alertTestCoordinator = coordinator

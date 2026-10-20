@@ -37,7 +37,10 @@ const val ALERT_REPEAT_MIN_SECONDS = 3L
  */
 val ALERT_BEEP_COUNT_RANGE = 1..5
 
-/** Gap between beeps of one announcement — tight enough that a burst reads as a single signal. */
+/**
+ * Gap between beeps of one announcement — tight enough that a burst reads as a single signal. A
+ * sound longer than this (a pack's multi-beep severity) repeats once it ends, this far apart.
+ */
 internal const val ALERT_BEEP_SPACING_MS = 350L
 
 /**
@@ -543,9 +546,11 @@ internal class AlertFeedback(
     private fun playSeverity(sound: SlotAlertSound) {
         try {
             val slot = sound.severity.slot
+            val duration = EffectsPackAssets.durationMs(context, soundPack, slot)
+            val interval = if (duration > ALERT_BEEP_SPACING_MS) duration + ALERT_BEEP_SPACING_MS else ALERT_BEEP_SPACING_MS
             playSlot(slot)
             for (index in 1 until sound.count) {
-                handler.postDelayed({ playSlot(slot) }, index * ALERT_BEEP_SPACING_MS)
+                handler.postDelayed({ playSlot(slot) }, index * interval)
             }
         } catch (e: Exception) {
             Log.w(VESC_SESSION_TAG, "Alert sound failed: ${e.message}")
@@ -798,7 +803,8 @@ internal class AlertFeedback(
                     }
                 }
                 context.assets.openFd(path).use { pool.load(it, 1) }
-                handler.postDelayed({ pool.release() }, 1_000)
+                // Outlive the whole clip (HEV critical runs past a second) plus load time.
+                handler.postDelayed({ pool.release() }, EffectsPackAssets.durationMs(context, path) + 1_000)
             } catch (e: Exception) {
                 pool.release()
                 onDone?.let { handler.post(it) }

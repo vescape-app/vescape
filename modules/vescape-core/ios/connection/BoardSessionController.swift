@@ -1262,6 +1262,8 @@ internal final class BoardSessionController: VescGattListener {
   func previewAlertSound(_ soundType: String) {
     do {
       let settings = try appData.getSettings()
+      // Without a Board Session nothing else keeps the player on the selected pack.
+      alertAudioPlayer.soundPack = settings["soundPack"] as? String ?? alertAudioPlayer.soundPack
       alertAudioPlayer.preview(soundType: soundType, unitSystem: settings["unitSystem"] as? String ?? "metric")
     } catch { RecordingStorageFailure.reportRead(operation: "alert_preview_settings", error: error) }
   }
@@ -1272,6 +1274,8 @@ internal final class BoardSessionController: VescGattListener {
 
   /// Drive a geiger preview loop without a connected board — UI slider over `rangeDepth`.
   func startGeigerSimulation(soundType: String, rangeDepth: Double) {
+    do { alertAudioPlayer.soundPack = try appData.getSettings()["soundPack"] as? String ?? alertAudioPlayer.soundPack }
+    catch { RecordingStorageFailure.reportRead(operation: "geiger_preview_settings", error: error) }
     alertAudioPlayer.updateGeiger(ruleId: geigerSimulationId, soundType: soundType, rangeDepth: rangeDepth)
   }
 

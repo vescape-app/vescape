@@ -190,7 +190,8 @@ repeat clock, so a fresh crossing announces immediately rather than waiting out 
 
 A single sound rule stores `alert(<count>):<severity>`: the selected effects pack's `info`,
 `warning`, or `critical` sound, played `count` times (1–5) per announcement, one beep spacing apart
-(Android 350 ms, iOS 200 ms), so a rider can give different rules different signatures. The form
+(Android 350 ms, iOS 200 ms; a sound longer than that, such as HEV's three-beep critical, repeats
+one spacing after it ends), so a rider can give different rules different signatures. The form
 offers Info/Warning/Critical plus a beep count. `alert:` means one play; an unknown severity
 (including a `my:` sound before My sounds exist, #584) plays `warning`. Strings from before the
 grammar still play: `preset:notify|beep|urgent` read as `info|warning|critical`, once. Schema v50

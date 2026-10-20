@@ -196,9 +196,9 @@ export function planSync(input: {
   const { platform, nativeDirExists, podsDirExists, missingSharedOutputs, cached, next } = input
   const steps: SyncStep[] = []
 
-  // Android compiles the copies under `modules/vescape-core/android/src/`; iOS reads `shared/` through
-  // symlinks, so it has nothing to copy.
-  if (platform === 'android') {
+  // Android compiles the copies under `modules/vescape-core/android/src/`; iOS bundles the copied
+  // alert packs and fixtures under `modules/vescape-core/ios/`, so both platforms need them fresh.
+  {
     const cachedShared = cached?.shared ?? {}
     const shared = isEmpty(cachedShared)
       ? ['no cached shared-asset fingerprint']

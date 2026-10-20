@@ -260,6 +260,7 @@ describe('planSync', () => {
 
   it('syncs everything when no fingerprint was ever cached', () => {
     expect(planSync({ ...synced('ios'), cached: null })).toEqual([
+      { action: 'shared', reasons: ['no cached shared-asset fingerprint'] },
       { action: 'prebuild', reasons: ['no cached native fingerprint'] },
       { action: 'pods', reasons: ['prebuild regenerates the Podfile'] },
     ])
@@ -357,19 +358,22 @@ describe('planSync', () => {
     ])
   })
 
-  it('does not copy shared assets for iOS, which symlinks them', () => {
+  it('copies shared assets for iOS too, which bundles the copied alert packs', () => {
     const base = synced('ios')
-    write('shared/alerts/packs/effects-retro/severity.warning.m4a', 'louder beep')
+    unlinkSync(
+      join(root, 'modules/vescape-core/ios/alert-packs/effects-retro/severity.warning.m4a'),
+    )
 
-    const steps = planSync({
-      ...base,
-      missingSharedOutputs: [
-        'modules/vescape-core/android/src/main/assets/alert-packs/effects-retro/severity.warning.m4a',
-      ],
-      next: state('ios'),
-    })
+    const steps = planSync({ ...base, missingSharedOutputs: missingSharedOutputs(root) })
 
-    expect(steps).toEqual([])
+    expect(steps).toEqual([
+      {
+        action: 'shared',
+        reasons: [
+          '! modules/vescape-core/ios/alert-packs/effects-retro/severity.warning.m4a is missing',
+        ],
+      },
+    ])
   })
 
   it('copies shared assets before prebuilding', () => {

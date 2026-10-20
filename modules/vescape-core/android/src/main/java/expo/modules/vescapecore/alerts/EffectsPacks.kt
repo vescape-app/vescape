@@ -78,9 +78,12 @@ internal object EffectsPackAssets {
 
     private val durations = java.util.concurrent.ConcurrentHashMap<String, Long>()
 
-    /** Length of [slot] in [pack], 0 when unreadable. Read once per clip. */
-    fun durationMs(context: Context, pack: String, slot: String): Long {
-        val path = path(context, pack, slot) ?: return 0L
+    /** Length of [slot] in [pack], 0 when unreadable. */
+    fun durationMs(context: Context, pack: String, slot: String): Long =
+        path(context, pack, slot)?.let { durationMs(context, it) } ?: 0L
+
+    /** Length of the clip at asset [path], 0 when unreadable. Read once per clip. */
+    fun durationMs(context: Context, path: String): Long {
         return durations.getOrPut(path) {
             // intentional-suppression: an unreadable length only falls back to the minimum speech delay
             runCatching {

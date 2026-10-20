@@ -1662,10 +1662,14 @@ public class VescapeCoreModule: Module {
     guard let controlId = rules.first?.controlId else { return }
     guard rules.allSatisfy({ $0.controlId == controlId }) else { return }
 
-    let player = AlertAudioPlayer()
-    let coordinator = AlertCoordinator(player: player, vibrateSingles: false)
-    do { coordinator.unitSystem = try appData.getSettings()["unitSystem"] as? String ?? "metric" }
+    let settings: [String: Any?]
+    do { settings = try appData.getSettings() }
     catch { RecordingStorageFailure.reportRead(operation: "alert_test_settings", error: error); return }
+    let player = AlertAudioPlayer()
+    // A test sounds like the real rule: same effects pack.
+    player.soundPack = settings["soundPack"] as? String ?? effectsPackIds[0]
+    let coordinator = AlertCoordinator(player: player, vibrateSingles: false)
+    coordinator.unitSystem = settings["unitSystem"] as? String ?? "metric"
     coordinator.replaceRules(rules)
     alertTestPlayer = player
     alertTestCoordinator = coordinator

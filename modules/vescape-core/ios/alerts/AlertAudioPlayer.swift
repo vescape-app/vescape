@@ -415,9 +415,11 @@ internal final class AlertAudioPlayer {
     let key = slotKey(sound.severity.slot)
     play(key)
     guard sound.count > 1 else { return }
-    let spacing = alertBeepSpacingMs / 1000
+    // A sound longer than the spacing (a pack's multi-beep severity) repeats once it ends.
+    let duration = Double(clipDurationsMs[key] ?? 0)
+    let interval = duration > alertBeepSpacingMs ? duration + alertBeepSpacingMs : alertBeepSpacingMs
     for index in 1..<sound.count {
-      scheduler.postDelayed(Int64(spacing * Double(index) * 1000)) { [weak self] in
+      scheduler.postDelayed(Int64(interval * Double(index))) { [weak self] in
         self?.onGeigerQueue { $0.playOnQueue(key) }
       }
     }
@@ -502,7 +504,7 @@ internal final class AlertAudioPlayer {
     existing?.workItem?.cancel()
     let loop = GeigerLoop(soundType: soundType, rangeDepth: depth, sustained: false)
     geigerLoops[ruleId] = loop
-    scheduleGeigerTick(loop: loop, ruleId: ruleId, clipKey: tickKey)
+    scheduleGeigerTick(loop: loop, ruleId: ruleId, slot: geigerSlot(soundType))
   }
 
   func stopGeiger(ruleId: String) {
@@ -527,19 +529,20 @@ internal final class AlertAudioPlayer {
     }
   }
 
-  private func scheduleGeigerTick(loop: GeigerLoop, ruleId: String, clipKey: String) {
+  private func scheduleGeigerTick(loop: GeigerLoop, ruleId: String, slot: String) {
     let startDepth = max(0, loop.rangeDepth)
     let startDelay = geigerIntervalMs(rangeDepth: startDepth)
-    scheduleGeigerTick(loop: loop, ruleId: ruleId, clipKey: clipKey, delayMs: startDelay)
+    scheduleGeigerTick(loop: loop, ruleId: ruleId, slot: slot, delayMs: startDelay)
   }
 
-  private func scheduleGeigerTick(loop: GeigerLoop, ruleId: String, clipKey: String, delayMs: Int) {
+  /// Each tick resolves `slot` in the current pack, so a pack switch mid-loop takes effect.
+  private func scheduleGeigerTick(loop: GeigerLoop, ruleId: String, slot: String, delayMs: Int) {
     loop.workItem = scheduler.postDelayed(Int64(delayMs)) { [weak self] in
       self?.onGeigerQueue { owner in
         guard let existing = owner.geigerLoops[ruleId], existing === loop, !existing.sustained else { return }
-        owner.playOnQueue(clipKey)
+        owner.playOnQueue(owner.slotKey(slot))
         let interval = owner.geigerIntervalMs(rangeDepth: loop.rangeDepth)
-        owner.scheduleGeigerTick(loop: loop, ruleId: ruleId, clipKey: clipKey, delayMs: interval)
+        owner.scheduleGeigerTick(loop: loop, ruleId: ruleId, slot: slot, delayMs: interval)
       }
     }
   }
