@@ -95,6 +95,10 @@ internal final class AlertAudioPlayer {
   private var buffersBySlot: [String: AVAudioPCMBuffer] = [:]
   /// Length of each clip in `buffersBySlot`, written once in `init` and only read afterwards.
   private var clipDurationsMs: [String: Int64] = [:]
+  /// Decoded My sound per `"my/<file>"`, loaded on first play (nil when it failed to decode). Read
+  /// from any thread, so it carries its own lock.
+  private var myBuffers: [String: AVAudioPCMBuffer?] = [:]
+  private let myBuffersLock = NSLock()
   var soundPack = "retro"
   private var geigerLoops: [String: GeigerLoop] = [:]
   private var activeOneShotNodes: [AVAudioPlayerNode] = []
@@ -308,6 +312,40 @@ internal final class AlertAudioPlayer {
     "\(effectsPackId(pack ?? soundPack))/\(slot)"
   }
 
+  /// Key `slot` plays from: My sound `my` when it still exists, else the slot's override, else the
+  /// pack's clip. A missing or undecodable My sound falls back to the pack, never silence.
+  /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/alerts/EffectsPacks.kt `slotClip`
+  private func clipKey(_ slot: String, my: String? = nil, pack: String? = nil) -> String {
+    if let url = my.flatMap(MySounds.file) ?? MySounds.overrideFile(slot), let key = myBufferKey(url) { return key }
+    return slotKey(slot, pack: pack)
+  }
+
+  /// Key of the decoded My sound at `url`, decoding it on first use; nil when it cannot decode.
+  private func myBufferKey(_ url: URL) -> String? {
+    let key = "my/\(url.lastPathComponent)"
+    myBuffersLock.lock()
+    defer { myBuffersLock.unlock() }
+    if let cachedBuffer = myBuffers[key] { return cachedBuffer == nil ? nil : key }
+    // intentional-suppression: an undecodable My sound plays the pack slot instead
+    let buffer = (try? AVAudioFile(forReading: url)).flatMap {
+      convertToStandard(file: $0, standardFormat: makeStandardFormat())
+    }
+    myBuffers[key] = .some(buffer)
+    return buffer == nil ? nil : key
+  }
+
+  private func buffer(_ key: String) -> AVAudioPCMBuffer? {
+    guard key.hasPrefix("my/") else { return buffersBySlot[key] }
+    myBuffersLock.lock()
+    defer { myBuffersLock.unlock() }
+    return myBuffers[key] ?? nil
+  }
+
+  private func clipDurationMs(_ key: String) -> Int64 {
+    guard key.hasPrefix("my/") else { return clipDurationsMs[key] ?? 0 }
+    return buffer(key).map { Int64(Double($0.frameLength) / $0.format.sampleRate * 1000) } ?? 0
+  }
+
   private func makeStandardFormat() -> AVAudioFormat {
     if let format = AVAudioFormat(
       standardFormatWithSampleRate: engine.mainMixerNode.outputFormat(forBus: 0).sampleRate,
@@ -385,20 +423,7 @@ internal final class AlertAudioPlayer {
 
   func playAppSound(pack: String, cue: String) {
     guard let slot = appCueSlot(cue) else { return }
-    if let customURL = CustomAppSounds.file(pack, cue: cue) {
-      geigerQueue.async { [weak self] in
-        guard let self else { return }
-        // intentional-suppression: an unreadable custom file falls back to the Classic cue below
-        if let audio = try? AVAudioFile(forReading: customURL),
-          let buffer = self.convertToStandard(file: audio, standardFormat: self.makeStandardFormat()) {
-          self.playBufferOnQueue(buffer, label: customURL.lastPathComponent)
-        } else {
-          self.playOnQueue(self.slotKey(slot, pack: effectsPackFallback))
-        }
-      }
-      return
-    }
-    play(slotKey(slot, pack: pack))
+    play(clipKey(slot, pack: pack))
   }
 
   // MARK: - Single
@@ -407,16 +432,17 @@ internal final class AlertAudioPlayer {
   /// effects pack, `count` times, `alertBeepSpacingMs` apart.
   /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/alerts/AlertEngine.kt `playSingle`
   func playSingle(soundType: String) {
-    playSeverity(parseSlotAlertSound(soundType))
+    playSeverity(parseSlotAlertSound(soundType), my: mySoundId(soundType))
   }
 
-  private func playSeverity(_ sound: SlotAlertSound) {
+  /// `sound`'s severity slot, or My sound `my` in its place, `sound.count` times.
+  private func playSeverity(_ sound: SlotAlertSound, my: String? = nil) {
     guard !isReleased else { return }
-    let key = slotKey(sound.severity.slot)
+    let key = clipKey(sound.severity.slot, my: my)
     play(key)
     guard sound.count > 1 else { return }
     // A sound longer than the spacing (a pack's multi-beep severity) repeats once it ends.
-    let duration = Double(clipDurationsMs[key] ?? 0)
+    let duration = Double(clipDurationMs(key))
     let interval = duration > alertBeepSpacingMs ? duration + alertBeepSpacingMs : alertBeepSpacingMs
     for index in 1..<sound.count {
       scheduler.postDelayed(Int64(interval * Double(index))) { [weak self] in
@@ -436,7 +462,7 @@ internal final class AlertAudioPlayer {
     pendingSpeech?.cancel()
     playSeverity(SlotAlertSound(count: 1, severity: severity))
     // Written only from the announcing caller; cancelling an already-run item is a no-op.
-    let delay = max(alertSpeechDelayMs, clipDurationsMs[slotKey(severity.slot)] ?? 0)
+    let delay = max(alertSpeechDelayMs, clipDurationMs(clipKey(severity.slot)))
     pendingSpeech = scheduler.postDelayed(delay) { [weak self] in
       self?.speakMessage(text)
     }
@@ -460,7 +486,7 @@ internal final class AlertAudioPlayer {
       if !text.isEmpty { speakAfterSeverity(tts.severity, text: text) }
       return
     }
-    let key = slotKey(previewSlot(soundType))
+    let key = clipKey(previewSlot(soundType), my: mySoundId(soundType))
     Self.log("AlertAudioPlayer.preview resolved=\(key)")
     play(key)
   }
@@ -479,7 +505,7 @@ internal final class AlertAudioPlayer {
 
   private func updateGeigerSync(ruleId: String, soundType: String, rangeDepth: Double) {
     let depth = min(max(rangeDepth, 0.0), 1.0)
-    let tickKey = slotKey(geigerSlot(soundType))
+    let tickKey = clipKey(geigerSlot(soundType), my: mySoundId(soundType))
     let existing = geigerLoops[ruleId]
 
     if depth >= 1.0 {
@@ -535,12 +561,12 @@ internal final class AlertAudioPlayer {
     scheduleGeigerTick(loop: loop, ruleId: ruleId, slot: slot, delayMs: startDelay)
   }
 
-  /// Each tick resolves `slot` in the current pack, so a pack switch mid-loop takes effect.
+  /// Each tick resolves `slot` (or the loop's My sound) afresh, so a pack switch mid-loop takes effect.
   private func scheduleGeigerTick(loop: GeigerLoop, ruleId: String, slot: String, delayMs: Int) {
     loop.workItem = scheduler.postDelayed(Int64(delayMs)) { [weak self] in
       self?.onGeigerQueue { owner in
         guard let existing = owner.geigerLoops[ruleId], existing === loop, !existing.sustained else { return }
-        owner.playOnQueue(owner.slotKey(slot))
+        owner.playOnQueue(owner.clipKey(slot, my: mySoundId(loop.soundType)))
         let interval = owner.geigerIntervalMs(rangeDepth: loop.rangeDepth)
         owner.scheduleGeigerTick(loop: loop, ruleId: ruleId, slot: slot, delayMs: interval)
       }
@@ -555,7 +581,7 @@ internal final class AlertAudioPlayer {
   }
 
   private func scheduleSustainedBuffer(loop: GeigerLoop, ruleId: String, clipKey: String, token: UUID) {
-    guard let buffer = buffersBySlot[clipKey] else { return }
+    guard let buffer = buffer(clipKey) else { return }
     startIfNeeded()
     let node = loop.sustainedNode ?? makePlayerNode(format: buffer.format)
     loop.sustainedNode = node
@@ -695,7 +721,7 @@ internal final class AlertAudioPlayer {
   /// Must run on `geigerQueue`.
   private func playOnQueue(_ clipKey: String) {
     guard !isReleased else { return }
-    guard let buffer = buffersBySlot[clipKey] else {
+    guard let buffer = buffer(clipKey) else {
       Self.log("AlertAudioPlayer.play: NO BUFFER for \(clipKey)")
       return
     }

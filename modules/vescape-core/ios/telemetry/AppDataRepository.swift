@@ -555,8 +555,7 @@ final class AppDataRepository {
       guard let saturation = Self.satelliteImagerySaturation(rawValue) else { return }
       value = saturation
     } else if key == "soundPack" {
-      guard let pack = rawValue as? String,
-        effectsPackIds.contains(pack) || CustomAppSounds.exists(pack) else { return }
+      guard let pack = rawValue as? String, effectsPackIds.contains(pack) else { return }
       value = pack
     } else if key == "audioSource" {
       guard let source = Self.audioSource(rawValue) else { return }
@@ -705,7 +704,9 @@ final class AppDataRepository {
     normalized["themeMode"] = themeMode(settings["themeMode"]) ?? defaultSettings["themeMode"]
     normalized["audioSource"] = audioSource(settings["audioSource"]) ?? "alarm"
     let pack = settings["soundPack"] as? String ?? "retro"
-    normalized["soundPack"] = effectsPackIds.contains(pack) || CustomAppSounds.exists(pack) ? pack : effectsPackFallback
+    // A custom app sound pack id from before My sounds turns into overrides, then reads as the fallback.
+    MySounds.adoptLegacyPack(pack)
+    normalized["soundPack"] = effectsPackIds.contains(pack) ? pack : effectsPackFallback
     normalized["satelliteImageryOpacity"] =
       satelliteImageryOpacity(settings["satelliteImageryOpacity"]) ?? defaultSettings["satelliteImageryOpacity"]
     normalized["satelliteMapImageryOpacity"] =

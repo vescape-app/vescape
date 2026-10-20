@@ -27,13 +27,15 @@ import {
   getEditFormDefaults,
   getNewFormDefaults,
   getPresetsForCategory,
+  pickerSounds,
 } from '@/modules/alerts/lib/alertFormDefaults'
+import { useMySounds } from '@/modules/alerts/hooks/useMySounds'
 import {
   ALERT_SEVERITY_DEFAULT,
   type AlertSeverity,
   formatSlotAlertSound,
   formatTtsAlertSound,
-  parseSlotAlertSound,
+  slotSoundPart,
 } from '@/modules/alerts/lib/alertSoundString'
 import type { AlertRuleDraft } from '@/modules/alerts/store/alertsStore'
 import type { DraftAlertRule } from '@/modules/alerts/lib/customAlertRules'
@@ -76,6 +78,7 @@ export function AlertFormSheet({
 
   const singlePresets = useMemo(() => getPresetsForCategory('single'), [])
   const geigerPresets = useMemo(() => getPresetsForCategory('geiger'), [])
+  const { sounds: library } = useMySounds().state
   const defaultSoundType: AlertSoundType =
     singlePresets.find((p) => p.uri === 'alert:warning')?.uri ?? 'alert:warning'
   const geigerDefaultSoundType: AlertSoundType = geigerPresets[0]?.uri ?? 'geiger:soft'
@@ -141,7 +144,7 @@ export function AlertFormSheet({
         tab === 'message'
           ? formatTtsAlertSound(severity, messageTemplate)
           : tab === 'single'
-            ? formatSlotAlertSound(beepCount, parseSlotAlertSound(soundType).severity)
+            ? formatSlotAlertSound(beepCount, slotSoundPart(soundType))
             : soundType,
       // A range rule's cadence follows range depth — it has no repeat interval to honor.
       repeatEverySeconds: isRange ? null : repeatEverySeconds,
@@ -258,7 +261,7 @@ export function AlertFormSheet({
         ) : (
           <View style={styles.cardField}>
             <SoundPicker
-              presets={tab === 'single' ? singlePresets : geigerPresets}
+              presets={pickerSounds(tab === 'single' ? 'single' : 'geiger', library)}
               selected={soundType}
               onSelect={setSoundType}
             />

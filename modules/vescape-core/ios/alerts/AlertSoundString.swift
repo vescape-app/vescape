@@ -70,8 +70,8 @@ internal struct SlotAlertSound: Equatable {
 
 /// Read any non-TTS single-alert `soundType` as a slot sound. `alert:` means one play. Strings from
 /// before the grammar map onto the matching severity (`preset:notify|beep|urgent` → info, warning,
-/// critical, played once); anything unknown, including a not-yet-supported `my:` sound, plays the
-/// warning sound once, so a rule is never silent.
+/// critical, played once); anything unknown plays the warning sound once, so a rule is never silent.
+/// A `my:<id>` sound reads as warning too: the fallback when that My sound is gone (see `mySoundId`).
 ///
 /// @parity /src/modules/alerts/lib/alertSoundString.ts `parseSlotAlertSound`
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/alerts/AlertSoundString.kt `parseSlotAlertSound`
@@ -108,7 +108,7 @@ private let legacyGeiger: [String: GeigerLevel] = [
 
 /// `geiger:level` — a range rule's tick level, or nil when `soundType` is not a geiger sound.
 /// Strings from before the grammar map `preset:tick|tick_hard|gamma|sustained` → soft, mid, hard,
-/// hard. A not-yet-supported sound (`geiger:my:<id>`) or unknown level ticks soft.
+/// hard. An unknown level ticks soft, as does `geiger:my:<id>` when that My sound is gone.
 ///
 /// @parity /src/modules/alerts/lib/alertSoundString.ts `parseGeigerAlertSound`
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/alerts/AlertSoundString.kt `parseGeigerAlertSound`
@@ -128,4 +128,16 @@ internal func geigerSlot(_ soundType: String) -> String {
 /// True for a `soundType` that names a geiger tick rather than a single alert sound.
 internal func isGeigerSoundType(_ soundType: String) -> Bool {
   parseGeigerAlertSound(soundType) != nil
+}
+
+/// My sound id of an `alert(count):my:<id>` or `geiger:my:<id>` sound, else nil. The player uses it
+/// when the sound still exists and falls back to the parsed pack slot otherwise, never silence.
+///
+/// @parity /src/modules/alerts/lib/alertSoundString.ts `mySoundId`
+/// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/alerts/AlertSoundString.kt `mySoundId`
+internal func mySoundId(_ soundType: String) -> String? {
+  guard let parsed = AlertSoundString.parse(soundType), parsed.kind == "alert" || parsed.kind == "geiger",
+    parsed.sound.hasPrefix("my:") else { return nil }
+  let id = String(parsed.sound.dropFirst("my:".count))
+  return id.isEmpty ? nil : id
 }

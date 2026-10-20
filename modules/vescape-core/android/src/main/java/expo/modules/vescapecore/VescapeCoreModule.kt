@@ -9,7 +9,7 @@ import expo.modules.vescapecore.telemetry.FavoriteMediaCleanupException
 
 import expo.modules.vescapecore.accessory.AccessoryDiscovery
 import expo.modules.vescapecore.accessory.AccessorySessionManager
-import expo.modules.vescapecore.alerts.CustomAppSounds
+import expo.modules.vescapecore.alerts.MySounds
 import expo.modules.vescapecore.alerts.AlertFeedback
 import expo.modules.vescapecore.alerts.normalizedAlertRepeatSeconds
 import expo.modules.vescapecore.alerts.AlertCoordinator
@@ -576,7 +576,7 @@ class VescapeCoreModule : Module() {
     Function("playAppSound") { pack: String, cue: String ->
       CoreForegroundService.playAppSound(context.applicationContext, pack, cue)
     }
-    registerCustomAppSounds()
+    registerMySounds()
     // @parity /modules/vescape-core/ios/VescapeCoreModule.swift `mapTile`
     AsyncFunction("mapTile") Coroutine { z: Int, x: Int, y: Int ->
       MapTiles.get(context.applicationContext).tile(z, x, y)?.let { Uri.fromFile(it).toString() }
@@ -1512,22 +1512,13 @@ class VescapeCoreModule : Module() {
     }
   }
 
-  private fun ModuleDefinitionBuilder.registerCustomAppSounds() {
-    // @parity /modules/vescape-core/ios/VescapeCoreModule.swift `customAppSoundPacks`
-    AsyncFunction("customAppSoundPacks") { CustomAppSounds.list(context.applicationContext) }
-    AsyncFunction("createAppSoundPack") { name: String -> CustomAppSounds.create(context.applicationContext, name) }
-    AsyncFunction("renameAppSoundPack") { id: String, name: String -> CustomAppSounds.rename(context.applicationContext, id, name) }
-    AsyncFunction("importAppSound") { id: String, cue: String, uri: String -> CustomAppSounds.import(context.applicationContext, id, cue, uri) }
-    AsyncFunction("removeAppSound") { id: String, cue: String -> CustomAppSounds.remove(context.applicationContext, id, cue) }
-    AsyncFunction("deleteAppSoundPack") Coroutine { id: String ->
-      val appContext = context.applicationContext
-      val selected = AppDataRepository.get(appContext).getTypedSettings().soundPack
-      if (selected == id) {
-        AppDataRepository.get(appContext).updateSetting("soundPack", "simple")
-        CoreForegroundService.reloadTelemetrySettings(appContext)
-      }
-      CustomAppSounds.delete(appContext, id)
-    }
+  private fun ModuleDefinitionBuilder.registerMySounds() {
+    // @parity /modules/vescape-core/ios/VescapeCoreModule.swift `mySounds`
+    AsyncFunction("mySounds") { MySounds.state(context.applicationContext) }
+    AsyncFunction("importMySound") { uri: String, name: String -> MySounds.import(context.applicationContext, uri, name) }
+    AsyncFunction("renameMySound") { id: String, name: String -> MySounds.rename(context.applicationContext, id, name) }
+    AsyncFunction("deleteMySound") { id: String -> MySounds.delete(context.applicationContext, id) }
+    AsyncFunction("setSoundOverride") { slot: String, id: String? -> MySounds.setOverride(context.applicationContext, slot, id) }
   }
 
   private fun startAlertTest(ruleMaps: List<Map<String, Any?>>) {

@@ -25,20 +25,34 @@ App cues: Connect (`cue.on`), Disconnect (`cue.off`), Error, New Group Ride, Rid
 Ride, and Ride end (`cue.ride.end`), which plays when the ride dropout grace expires after a lost
 link, the point at which a Board Session ride is treated as ended.
 
-### Custom app sound packs
+### My sounds and overrides
 
-A custom pack replaces the five original app cues (Connect, Disconnect, Error, New Group Ride,
-Rider joined Group Ride) and may assign any subset. While one is selected, alert and geiger sounds,
-Ride end, and every cue without a usable file come from Simple. Native playback and previews read
-the same app-owned `custom-app-sounds` manifest and WAV files. Imports accept decodable WAV up to 2 MB and
-15 seconds. The document picker source is copied, so its URI is never used for later playback.
+**My sounds** is the rider's library of named WAVs: add (import), rename, delete, preview. Imports
+accept decodable WAV up to 2 MB and 15 seconds; the document picker source is copied, so its URI is
+never used for later playback. Native owns the store (`MySounds.kt`, `MySounds.swift`):
+`custom-app-sounds/my-sounds.json` (`{ sounds: [{id, name}], overrides: {slot: id} }`) plus one
+`<id>.wav` per sound.
 
-Database backups include the custom pack manifest and audio files under `custom-app-sounds/`.
-Android copies the referenced files and manifest under the pack store lock before writing the
-archive. Restore retains the previous database and pack files until both have installed; a failed
-sound install rolls both back.
-Restoring an older backup without these entries clears custom packs. A restored pack drops any
-assignment whose file is absent, while a selected pack that no longer exists resolves to Simple.
+**Overrides** are a fixed list of slots, each optionally set to a My sound that wins over the
+effects pack: the `severity.info|warning|critical` sounds (alert rules and the sound before TTS
+speech), `cue.on`, `cue.off`, `cue.error`, `cue.groupRide.created`, `cue.groupRide.joined`. Clearing
+one returns the slot to the pack. Ride end and geiger ticks are not overridable. Deleting a sound
+clears its overrides.
+
+Custom rules can pick any My sound: `alert(<count>):my:<id>` for single rules, `geiger:my:<id>` for
+range rules. A sound that is gone or fails to decode falls back to the parsed pack slot (`warning`
+or `soft`), never silence. Previews and alert tests resolve the same way.
+
+The custom app sound packs My sounds replaced (`custom-app-sounds/packs.json`) migrate on first
+read: every assigned cue becomes a My sound named `<pack> <cue>`, reusing its file. On the next
+settings read, the pack the `soundPack` setting still named becomes overrides for its cues and the
+setting resolves to Simple; the other packs' sounds stay plain library entries.
+
+Database backups include the manifest and audio files under `custom-app-sounds/`. Android copies the
+files and manifest under the store lock before writing the archive. Restore retains the previous
+database and sound files until both have installed; a failed sound install rolls both back.
+Restoring an older backup without these entries clears My sounds; one carrying `packs.json`
+migrates as above. A restored sound whose file is absent is dropped with its overrides.
 
 ## Voice packs (planned)
 
@@ -58,8 +72,8 @@ Preset alerts emit a message key, severity, and value instead of a `tts:` templa
 the line severity variant → generic → beeps only. Each preset can pin its own effects or voice
 pack; unpinned presets follow the app-wide choice. Custom rules keep TTS (with the severity sound
 before speech) or use effects and user sounds; voice lines exist only for built-in alert keys.
-User WAVs move to a **My sounds** library that can override a fixed set of slots (pre-beeps,
-board on/off, other cues). Resolution per slot: override > pinned pack > app-wide choice.
+Resolution per slot: override ([My sounds](#my-sounds-and-overrides)) > pinned pack > app-wide
+choice.
 
 Every `sound_type` follows one grammar, `kind(variant):sound` (`tts` and `alert` are parsed today,
 see [Message mode](#message-mode)); the planned kinds are `geiger:soft` and
@@ -171,8 +185,8 @@ Direction is hardcoded per control — not stored.
 Set `threshold_max` to add a range. Active range alerts run a native tick loop with a geiger tick
 of the selected effects pack at the rule's level, `geiger:soft|mid|hard` → `geiger.<level>`. Rules
 saved before the sound string grammar keep working through the parser: `preset:tick` → soft,
-`preset:tick_hard` → mid, `preset:gamma` and `preset:sustained` → hard. An unknown level, or a
-not-yet-supported `geiger:my:<id>`, ticks soft.
+`preset:tick_hard` → mid, `preset:gamma` and `preset:sustained` → hard. An unknown level ticks soft;
+`geiger:my:<id>` ticks with that My sound, or soft once it is gone.
 
 The speed and duty cycle presets and the custom geiger form offer a Soft / Mid / Hard select.
 Preset defaults: speed `geiger:soft`, duty cycle `geiger:hard`. A picked level is stored on the
@@ -199,8 +213,8 @@ A single sound rule stores `alert(<count>):<severity>`: the selected effects pac
 `warning`, or `critical` sound, played `count` times (1–5) per announcement, one beep spacing apart
 (Android 350 ms, iOS 200 ms; a sound longer than that, such as HEV's three-beep critical, repeats
 one spacing after it ends), so a rider can give different rules different signatures. The form
-offers Info/Warning/Critical plus a beep count. `alert:` means one play; an unknown severity
-(including a `my:` sound before My sounds exist, #584) plays `warning`. Strings from before the
+offers Info/Warning/Critical plus a beep count. `alert:` means one play; an unknown severity plays
+`warning`. `alert(<count>):my:<id>` plays that My sound instead, `warning` once it is gone. Strings from before the
 grammar still play: `preset:notify|beep|urgent` read as `info|warning|critical`, once. Schema v50
 folded the former `beep_count` column into the string (`preset:beep` + 3 → `alert(3):warning`) and
 dropped it; `tts` and geiger strings were left unchanged.

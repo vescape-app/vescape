@@ -70,8 +70,8 @@ const LEGACY_SEVERITY: Record<string, AlertSeverity> = {
 /**
  * Read any non-TTS single-alert `soundType` as a slot sound. `alert:` means one play. Strings from
  * before the grammar map onto the matching severity (`preset:notify|beep|urgent` → info, warning,
- * critical, played once); anything unknown, including a not-yet-supported `my:` sound, plays the
- * warning sound once, so a rule is never silent.
+ * critical, played once); anything unknown plays the warning sound once, so a rule is never silent.
+ * A `my:<id>` sound reads as warning too: the fallback when that My sound is gone (see `mySoundId`).
  *
  * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/alerts/AlertSoundString.kt `parseSlotAlertSound`
  * @parity /modules/vescape-core/ios/alerts/AlertSoundString.swift `parseSlotAlertSound`
@@ -88,8 +88,9 @@ export function parseSlotAlertSound(soundType: string): SlotAlertSound {
   return { count: 1, severity: LEGACY_SEVERITY[soundType] ?? ALERT_SEVERITY_DEFAULT }
 }
 
-export function formatSlotAlertSound(count: number, severity: AlertSeverity): string {
-  return `alert(${count}):${severity}`
+/** `sound` is a severity or a `my:<id>` My sound. */
+export function formatSlotAlertSound(count: number, sound: AlertSeverity | MySoundRef): string {
+  return `alert(${count}):${sound}`
 }
 
 export const ALERT_SEVERITY_LABELS: Record<AlertSeverity, string> = {
@@ -98,9 +99,10 @@ export const ALERT_SEVERITY_LABELS: Record<AlertSeverity, string> = {
   critical: 'Critical',
 }
 
-/** Short rule summary, e.g. `3× Warning`. */
-export function slotAlertSoundLabel({ count, severity }: SlotAlertSound): string {
-  return `${count}× ${ALERT_SEVERITY_LABELS[severity]}`
+/** Short single rule summary, e.g. `3× Warning` or `2× My sound`. */
+export function slotAlertSoundLabel(soundType: string): string {
+  const { count, severity } = parseSlotAlertSound(soundType)
+  return `${count}× ${mySoundId(soundType) ? 'My sound' : ALERT_SEVERITY_LABELS[severity]}`
 }
 
 /**
@@ -122,7 +124,7 @@ const LEGACY_GEIGER: Record<string, GeigerLevel> = {
 /**
  * `geiger:level` — a range rule's tick level, or null when `soundType` is not a geiger sound.
  * Strings from before the grammar map `preset:tick|tick_hard|gamma|sustained` → soft, mid, hard,
- * hard. A not-yet-supported sound (`geiger:my:<id>`) or unknown level ticks soft.
+ * hard. An unknown level ticks soft, as does `geiger:my:<id>` when that My sound is gone.
  *
  * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/alerts/AlertSoundString.kt `parseGeigerAlertSound`
  * @parity /modules/vescape-core/ios/alerts/AlertSoundString.swift `parseGeigerAlertSound`
@@ -137,4 +139,31 @@ export function parseGeigerAlertSound(soundType: string): GeigerLevel | null {
 
 export function formatGeigerAlertSound(level: GeigerLevel): string {
   return `geiger:${level}`
+}
+
+/** The sound part naming a My sound. */
+export type MySoundRef = `my:${string}`
+
+export function mySoundRef(id: string): MySoundRef {
+  return `my:${id}`
+}
+
+/** Sound part of a single rule: its My sound when it names one, else its severity. */
+export function slotSoundPart(soundType: string): AlertSeverity | MySoundRef {
+  const id = mySoundId(soundType)
+  return id ? mySoundRef(id) : parseSlotAlertSound(soundType).severity
+}
+
+/**
+ * My sound id of an `alert(count):my:<id>` or `geiger:my:<id>` sound, else null. Native plays it
+ * when the sound still exists and falls back to the parsed pack slot otherwise, never silence.
+ *
+ * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/alerts/AlertSoundString.kt `mySoundId`
+ * @parity /modules/vescape-core/ios/alerts/AlertSoundString.swift `mySoundId`
+ */
+export function mySoundId(soundType: string): string | null {
+  const parsed = parseAlertSoundString(soundType)
+  if (parsed?.kind !== 'alert' && parsed?.kind !== 'geiger') return null
+  if (!parsed.sound.startsWith('my:')) return null
+  return parsed.sound.slice(3) || null
 }

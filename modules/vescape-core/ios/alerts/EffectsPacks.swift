@@ -2,20 +2,20 @@ import Foundation
 
 /// Built-in effects packs (`shared/alerts/packs/effects-<id>`): every pack fills every slot of
 /// `scripts/alert-packs/catalog.json` — severity beeps, app cues, geiger ticks. The `soundPack`
-/// setting names one of them, or a custom app sound pack whose cues override `effectsPackFallback`.
+/// setting names one of them; My sounds overrides (`soundOverrideSlots`) win over its slots.
 ///
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/alerts/EffectsPacks.kt
 /// @parity /src/modules/settings/lib/appSounds.ts `EFFECTS_PACKS`
 internal let effectsPackIds = ["retro", "simple", "hev", "clean"]
 
-/// Pack whose slots back a custom app sound pack or an unknown id.
+/// Pack standing in for an unknown id.
 internal let effectsPackFallback = "simple"
 
 internal func effectsPackId(_ pack: String) -> String {
   effectsPackIds.contains(pack) ? pack : effectsPackFallback
 }
 
-/// App cue id (the custom app sound pack cue names) → effects slot.
+/// App cue id (the `playAppSound` cue names) → effects slot.
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/alerts/EffectsPacks.kt `appCueSlot`
 /// @parity /src/modules/settings/lib/appSounds.ts `APP_SOUND_CUES`
 internal func appCueSlot(_ cue: String) -> String? {

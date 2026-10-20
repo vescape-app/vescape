@@ -60,9 +60,9 @@ fun normalizedAlertRepeatSeconds(raw: Double?): Long? {
  */
 internal const val ALERT_SPEECH_DELAY_MS = 350L
 
-/** When speech may start after [severity]'s sound in [pack] starts playing. */
+/** When speech may start after [severity]'s sound (its override, else [pack]'s) starts playing. */
 internal fun speechDelayMs(context: Context, pack: String, severity: AlertSeverity): Long =
-    maxOf(ALERT_SPEECH_DELAY_MS, EffectsPackAssets.durationMs(context, pack, severity.slot))
+    maxOf(ALERT_SPEECH_DELAY_MS, slotClip(context, pack, severity.slot)?.durationMs(context) ?: 0L)
 
 internal fun alertControlUnit(controlId: String): String =
     telemetryMetricByControlId[controlId]?.unit ?: ""
@@ -381,6 +381,8 @@ internal class AlertFeedback(
     private var soundPool = newSoundPool()
     /** SoundPool sample per `"<pack>/<slot>"` of every built-in effects pack. */
     private val soundIds = HashMap<String, Int>()
+    /** SoundPool sample per My sound file path, loaded on first play. */
+    private val fileSamples = HashMap<String, Int>()
     private val geigerLoops = HashMap<String, GeigerLoop>()
     private val samples = SoundSampleQueue()
     private val pendingGeiger = HashMap<String, Pair<String, Double>>()
@@ -400,6 +402,7 @@ internal class AlertFeedback(
 
     private fun loadAssets() {
         soundIds.clear()
+        fileSamples.clear()
         samples.reset()
         soundPool.setOnLoadCompleteListener { pool, sampleId, status ->
             handler.post {
@@ -422,9 +425,20 @@ internal class AlertFeedback(
         }
     }
 
-    /** Sample of [slot] in the active effects pack; 0 when it never loaded. */
-    private fun slotSample(slot: String, pack: String = soundPack): Int =
-        soundIds["${effectsPackId(pack)}/$slot"] ?: 0
+    /**
+     * Sample [slot] plays (see [slotClip]): My sound [my] or the slot's override, loaded on first
+     * use, else the pack's. A My sound that failed to load falls back to the pack; 0 when nothing
+     * loaded.
+     */
+    private fun slotSample(slot: String, pack: String = soundPack, my: String? = null): Int {
+        val packSample = soundIds["${effectsPackId(pack)}/$slot"] ?: 0
+        val clip = slotClip(context, pack, slot, my) as? SlotClip.Mine ?: return packSample
+        val sample = fileSamples.getOrPut(clip.file.path) {
+            // intentional-suppression: an unloadable My sound plays the pack slot instead
+            runCatching { soundPool.load(clip.file.path, 1) }.getOrDefault(0)
+        }
+        return if (samples.state(sample) == SoundSampleQueue.State.FAILED) packSample else sample
+    }
 
     fun setAudioSource(source: String) {
         if (android.os.Looper.myLooper() != handler.looper) {
@@ -463,7 +477,6 @@ internal class AlertFeedback(
             return
         }
         if (released) return
-        if (CustomAppSounds.play(context, pack, cue, audioSource, { playAppSound(EFFECTS_PACK_FALLBACK, cue) }, this)) return
         val sample = slotSample(appCueSlot(cue) ?: return, pack)
         when (samples.state(sample)) {
             SoundSampleQueue.State.READY -> playRaw(sample)
@@ -540,17 +553,18 @@ internal class AlertFeedback(
             handler.post { playSingle(soundType) }
             return
         }
-        playSeverity(parseSlotAlertSound(soundType))
+        playSeverity(parseSlotAlertSound(soundType), mySoundId(soundType))
     }
 
-    private fun playSeverity(sound: SlotAlertSound) {
+    /** [sound]'s severity slot, or My sound [my] in its place, [SlotAlertSound.count] times. */
+    private fun playSeverity(sound: SlotAlertSound, my: String? = null) {
         try {
             val slot = sound.severity.slot
-            val duration = EffectsPackAssets.durationMs(context, soundPack, slot)
+            val duration = slotClip(context, soundPack, slot, my)?.durationMs(context) ?: 0L
             val interval = if (duration > ALERT_BEEP_SPACING_MS) duration + ALERT_BEEP_SPACING_MS else ALERT_BEEP_SPACING_MS
-            playSlot(slot)
+            playSlot(slot, my = my)
             for (index in 1 until sound.count) {
-                handler.postDelayed({ playSlot(slot) }, index * interval)
+                handler.postDelayed({ playSlot(slot, my = my) }, index * interval)
             }
         } catch (e: Exception) {
             Log.w(VESC_SESSION_TAG, "Alert sound failed: ${e.message}")
@@ -591,7 +605,7 @@ internal class AlertFeedback(
             return
         }
         try {
-            playSlot(previewSlot(soundType))
+            playSlot(previewSlot(soundType), my = mySoundId(soundType))
         } catch (e: Exception) {
             Log.w(VESC_SESSION_TAG, "Alert preview failed: ${e.message}")
             UnexpectedNativeError.report("alert_audio_preview", "audio_play_failed", e)
@@ -605,7 +619,8 @@ internal class AlertFeedback(
         }
         if (released) return
         val tickSlot = geigerSlot(soundType)
-        val sample = slotSample(tickSlot)
+        val my = mySoundId(soundType)
+        val sample = slotSample(tickSlot, my = my)
         if (samples.state(sample) == SoundSampleQueue.State.FAILED) { stopGeiger(ruleId); return }
         if (samples.state(sample) == SoundSampleQueue.State.PENDING) {
             pendingGeiger[ruleId] = soundType to rangeDepth
@@ -618,7 +633,7 @@ internal class AlertFeedback(
                 existing?.runnable?.let { handler.removeCallbacks(it) }
                 if (existing?.sustained == true) return
                 existing?.streamId?.let { soundPool.stop(it) }
-                val streamId = playSlot(tickSlot, loop = -1)
+                val streamId = playSlot(tickSlot, loop = -1, my = my)
                 geigerLoops[ruleId] = GeigerLoop(soundType, depth, sustained = true, streamId = streamId)
                 return
             }
@@ -635,7 +650,7 @@ internal class AlertFeedback(
             val runnable = object : Runnable {
                 override fun run() {
                     if (released || geigerLoops[ruleId] !== loop) return
-                    playSlot(tickSlot)
+                    playSlot(tickSlot, my = my)
                     handler.postDelayed(this, geigerIntervalMs(loop.rangeDepth))
                 }
             }
@@ -677,7 +692,6 @@ internal class AlertFeedback(
         released = true
         stopAllGeiger()
         samples.reset()
-        CustomAppSounds.releasePlayers(this)
         soundPool.release()
         tts?.stop()
         tts?.shutdown()
@@ -700,12 +714,12 @@ internal class AlertFeedback(
         }
     }
 
-    private fun playSlot(slot: String, loop: Int = 0): Int {
+    private fun playSlot(slot: String, loop: Int = 0, my: String? = null): Int {
         if (released) return 0
-        val soundId = slotSample(slot)
+        val soundId = slotSample(slot, my = my)
         if (soundId == 0 || samples.state(soundId) == SoundSampleQueue.State.FAILED) return 0
         if (samples.state(soundId) == SoundSampleQueue.State.PENDING) {
-            samples.enqueue(soundId) { playSlot(slot, loop) }
+            samples.enqueue(soundId) { playSlot(slot, loop, my) }
             return 0
         }
         return soundPool.play(soundId, 1f, 1f, 1, loop, 1f)
@@ -726,24 +740,13 @@ internal class AlertFeedback(
     companion object {
         /** Preview without requiring a running board session. */
         fun previewAppSound(context: Context, pack: String, cue: String, source: String) {
-            if (CustomAppSounds.play(context, pack, cue, source, {
-                previewAppSound(context, EFFECTS_PACK_FALLBACK, cue, source)
-            })) return
-            val path = EffectsPackAssets.path(context, pack, appCueSlot(cue) ?: return) ?: return
-            val pool = SoundPool.Builder().setMaxStreams(1).setAudioAttributes(
-                audioAttributes(source, AudioAttributes.CONTENT_TYPE_SONIFICATION)
-            ).build()
-            pool.setOnLoadCompleteListener { soundPool, sampleId, status ->
-                if (status == 0) soundPool.play(sampleId, 1f, 1f, 1, 0, 1f)
-            }
-            context.assets.openFd(path).use { pool.load(it, 1) }
-            Handler(contextMainLooper()).postDelayed({ pool.release() }, 5_000)
+            val slot = appCueSlot(cue) ?: return
+            previewClip(context, Handler(contextMainLooper()), slotClip(context, pack, slot), source)
         }
 
         fun preview(context: Context, soundType: String, source: String) {
             val handler = Handler(contextMainLooper())
             val settings = kotlinx.coroutines.runBlocking { AppDataRepository.get(context).getTypedSettings() }
-            fun slotPath(slot: String) = EffectsPackAssets.path(context, settings.soundPack, slot)
             val tts = parseTtsAlertSound(soundType)
             if (tts != null) {
                 val text = renderAlertMessageTemplate(tts.text, ttsSampleAlert(soundType), batteryPercent = 42.0, unitSystem = settings.unitSystem)
@@ -759,7 +762,7 @@ internal class AlertFeedback(
                     t.speak(text, TextToSpeech.QUEUE_FLUSH, null, "preview")
                     handler.postDelayed({ t.stop(); t.shutdown() }, 5_000)
                 }
-                previewClip(context, handler, slotPath(tts.severity.slot), source, speechDelayMs(context, settings.soundPack, tts.severity)) {
+                previewClip(context, handler, slotClip(context, settings.soundPack, tts.severity.slot), source, speechDelayMs(context, settings.soundPack, tts.severity)) {
                     soundDone = true
                     speakWhenReady()
                 }
@@ -773,15 +776,15 @@ internal class AlertFeedback(
                 }
                 return
             }
-            previewClip(context, handler, slotPath(previewSlot(soundType)), source)
+            previewClip(context, handler, slotClip(context, settings.soundPack, previewSlot(soundType), mySoundId(soundType)), source)
         }
 
         /**
-         * Play the pack clip at asset [path] once on a throwaway pool. [onDone] runs once it has
-         * finished, or right away if the sample fails to load.
+         * Play [clip] once on a throwaway pool. [onDone] runs once it has finished, or right away if
+         * the sample fails to load.
          */
-        private fun previewClip(context: Context, handler: Handler, path: String?, source: String, doneAfterMs: Long = 0L, onDone: (() -> Unit)? = null) {
-            if (path == null) {
+        private fun previewClip(context: Context, handler: Handler, clip: SlotClip?, source: String, doneAfterMs: Long = 0L, onDone: (() -> Unit)? = null) {
+            if (clip == null) {
                 UnexpectedNativeError.report("alert_audio_preview_load", "bundled_asset", IllegalStateException())
                 onDone?.let { handler.post(it) }
                 return
@@ -802,9 +805,12 @@ internal class AlertFeedback(
                         onDone?.let { handler.post(it) }
                     }
                 }
-                context.assets.openFd(path).use { pool.load(it, 1) }
+                when (clip) {
+                    is SlotClip.Mine -> pool.load(clip.file.path, 1)
+                    is SlotClip.Asset -> context.assets.openFd(clip.path).use { pool.load(it, 1) }
+                }
                 // Outlive the whole clip (HEV critical runs past a second) plus load time.
-                handler.postDelayed({ pool.release() }, EffectsPackAssets.durationMs(context, path) + 1_000)
+                handler.postDelayed({ pool.release() }, clip.durationMs(context) + 1_000)
             } catch (e: Exception) {
                 pool.release()
                 onDone?.let { handler.post(it) }

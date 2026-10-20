@@ -61,4 +61,13 @@ final class AlertSoundStringTests: XCTestCase {
     ]
     for (raw, expected) in cases { XCTAssertEqual(parseGeigerAlertSound(raw), expected, raw) }
   }
+
+  func testReadsMySoundIdsOnlyFromAlertAndGeigerSounds() {
+    let cases: [(String, String?)] = [
+      ("alert(3):my:beep", "beep"), ("alert:my:beep", "beep"), ("geiger:my:abc", "abc"),
+      ("alert(2):my:", nil), ("alert:warning", nil), ("geiger:soft", nil),
+      ("tts(warning):my:beep", nil), ("my:beep", nil),
+    ]
+    for (raw, expected) in cases { XCTAssertEqual(mySoundId(raw), expected, raw) }
+  }
 }

@@ -7,20 +7,20 @@ import org.json.JSONObject
 /**
  * Built-in effects packs (`shared/alerts/packs/effects-<id>`): every pack fills every slot of
  * `scripts/alert-packs/catalog.json` — severity beeps, app cues, geiger ticks. The `soundPack`
- * setting names one of them, or a custom app sound pack whose cues override [EFFECTS_PACK_FALLBACK].
+ * setting names one of them; My sounds overrides ([SOUND_OVERRIDE_SLOTS]) win over its slots.
  *
  * @parity /modules/vescape-core/ios/alerts/EffectsPacks.swift
  * @parity /src/modules/settings/lib/appSounds.ts `EFFECTS_PACKS`
  */
 internal val EFFECTS_PACK_IDS = listOf("retro", "simple", "hev", "clean")
 
-/** Pack whose slots back a custom app sound pack or an unknown id. */
+/** Pack standing in for an unknown id. */
 internal const val EFFECTS_PACK_FALLBACK = "simple"
 
 internal fun effectsPackId(pack: String): String = if (pack in EFFECTS_PACK_IDS) pack else EFFECTS_PACK_FALLBACK
 
 /**
- * App cue id (the custom app sound pack cue names) → effects slot.
+ * App cue id (the `playAppSound` cue names) → effects slot.
  *
  * @parity /modules/vescape-core/ios/alerts/EffectsPacks.swift `appCueSlot`
  * @parity /src/modules/settings/lib/appSounds.ts `APP_SOUND_CUES`
@@ -42,6 +42,28 @@ internal fun appCueSlot(cue: String): String? = when (cue) {
  */
 internal fun previewSlot(soundType: String): String =
     if (isGeigerSoundType(soundType)) geigerSlot(soundType) else parseSlotAlertSound(soundType).severity.slot
+
+/** Where a slot plays from: a My sound file, or a built-in pack clip at an asset path. */
+internal sealed interface SlotClip {
+    data class Mine(val file: java.io.File) : SlotClip
+    data class Asset(val path: String) : SlotClip
+}
+
+/**
+ * Clip [slot] plays: My sound [my] when it still exists, else the slot's override, else [pack]'s
+ * clip. A missing My sound falls back to the pack, never silence.
+ *
+ * @parity /modules/vescape-core/ios/alerts/AlertAudioPlayer.swift `clipKey`
+ */
+internal fun slotClip(context: Context, pack: String, slot: String, my: String? = null): SlotClip? =
+    (my?.let { MySounds.file(context, it) } ?: MySounds.overrideFile(context, slot))?.let(SlotClip::Mine)
+        ?: EffectsPackAssets.path(context, pack, slot)?.let(SlotClip::Asset)
+
+/** Length of the clip, 0 when unreadable. */
+internal fun SlotClip.durationMs(context: Context): Long = when (this) {
+    is SlotClip.Mine -> MySounds.durationMs(file)
+    is SlotClip.Asset -> EffectsPackAssets.durationMs(context, path)
+}
 
 /** Asset paths of every built-in pack's slots, `"<pack>/<slot>"` → asset path. Read once. */
 internal object EffectsPackAssets {

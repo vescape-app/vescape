@@ -1585,11 +1585,9 @@ export interface AppSettings {
   boardMoveStrengthPercent: number
   /** Play on/off sounds on board connect and involuntary disconnect. */
   connectionSoundsEnabled: boolean
-  /** Selected bundled or custom app feedback pack. Missing saved value defaults to retro. */
-  /** @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/alerts/AlertEngine.kt `appSoundResources` */
-  /** @parity /modules/vescape-core/ios/alerts/AlertAudioPlayer.swift `appSoundFiles` */
-  /** @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/alerts/CustomAppSounds.kt */
-  /** @parity /modules/vescape-core/ios/alerts/CustomAppSounds.swift */
+  /** Selected built-in effects pack. Missing saved value defaults to retro. */
+  /** @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/alerts/EffectsPacks.kt */
+  /** @parity /modules/vescape-core/ios/alerts/EffectsPacks.swift */
   soundPack: string
   /** Android playback volume stream. iOS retains its playback session. */
   /** @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/TelemetryEntities.kt `AppSettings` */
@@ -2745,12 +2743,11 @@ type VescapeCoreNativeModule = NativeEventEmitter<VescapeCoreEvents> & {
   previewAlertSound(soundType: AlertSoundType): void
   playAppSound(pack: string, cue: AppSoundCueId | 'ride.end'): void
   mapTile(z: number, x: number, y: number): Promise<string | null>
-  customAppSoundPacks(): Promise<CustomAppSoundPack[]>
-  createAppSoundPack(name: string): Promise<CustomAppSoundPack[]>
-  renameAppSoundPack(id: string, name: string): Promise<void>
-  importAppSound(id: string, cue: AppSoundCueId, uri: string): Promise<void>
-  removeAppSound(id: string, cue: AppSoundCueId): Promise<void>
-  deleteAppSoundPack(id: string): Promise<void>
+  mySounds(): Promise<MySoundsState>
+  importMySound(uri: string, name: string): Promise<MySoundsState>
+  renameMySound(id: string, name: string): Promise<MySoundsState>
+  deleteMySound(id: string): Promise<MySoundsState>
+  setSoundOverride(slot: SoundOverrideSlot, id: string | null): Promise<MySoundsState>
 
   startGeigerSimulation(soundType: string, rangeDepth: number): void
   stopGeigerSimulation(): void
@@ -3253,15 +3250,45 @@ export function previewAlertSound(soundType: AlertSoundType): void {
   native.previewAlertSound(soundType)
 }
 
-/** @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/alerts/CustomAppSounds.kt
- * @parity /modules/vescape-core/ios/alerts/CustomAppSounds.swift */
+/** @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/alerts/EffectsPacks.kt `appCueSlot`
+ * @parity /modules/vescape-core/ios/alerts/EffectsPacks.swift `appCueSlot` */
 export type AppSoundCueId = 'on' | 'off' | 'created' | 'join' | 'error'
-export interface CustomAppSoundPack {
-  id: string
-  name: string
-  sounds: Partial<Record<AppSoundCueId, string>>
+
+/** Effects slot a My sound can override; see `SOUND_OVERRIDE_SLOTS` in the settings module. */
+export type SoundOverrideSlot =
+  | 'severity.info'
+  | 'severity.warning'
+  | 'severity.critical'
+  | 'cue.on'
+  | 'cue.off'
+  | 'cue.error'
+  | 'cue.groupRide.created'
+  | 'cue.groupRide.joined'
+
+/**
+ * The My sounds library and the override slots pointing into it. Rules name a sound as
+ * `alert(n):my:<id>` or `geiger:my:<id>`.
+ *
+ * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/alerts/MySounds.kt
+ * @parity /modules/vescape-core/ios/alerts/MySounds.swift
+ */
+export interface MySoundsState {
+  sounds: { id: string; name: string }[]
+  overrides: Partial<Record<SoundOverrideSlot, string>>
 }
-export const customAppSoundPacks = (): Promise<CustomAppSoundPack[]> => native.customAppSoundPacks()
+export const mySounds = (): Promise<MySoundsState> => native.mySounds()
+/** Import a picked WAV (≤2 MB, ≤15 s) under `name`; native validates and stores it. */
+export const importMySound = (uri: string, name: string): Promise<MySoundsState> =>
+  native.importMySound(uri, name)
+export const renameMySound = (id: string, name: string): Promise<MySoundsState> =>
+  native.renameMySound(id, name)
+/** Delete a sound and its overrides; rules still naming it fall back to the pack. */
+export const deleteMySound = (id: string): Promise<MySoundsState> => native.deleteMySound(id)
+/** Point `slot` at My sound `id`, or back to the effects pack with null. */
+export const setSoundOverride = (
+  slot: SoundOverrideSlot,
+  id: string | null,
+): Promise<MySoundsState> => native.setSoundOverride(slot, id)
 
 /**
  * File URI of one 512 px Web Mercator tile (z/x/y) of the hosted thumbnail map style, cached on disk
@@ -3269,19 +3296,10 @@ export const customAppSoundPacks = (): Promise<CustomAppSoundPack[]> => native.c
  */
 export const mapTile = (z: number, x: number, y: number): Promise<string | null> =>
   native.mapTile(z, x, y)
-export const createAppSoundPack = (name: string): Promise<CustomAppSoundPack[]> =>
-  native.createAppSoundPack(name)
-export const renameAppSoundPack = (id: string, name: string): Promise<void> =>
-  native.renameAppSoundPack(id, name)
-export const importAppSound = (id: string, cue: AppSoundCueId, uri: string): Promise<void> =>
-  native.importAppSound(id, cue, uri)
-export const removeAppSound = (id: string, cue: AppSoundCueId): Promise<void> =>
-  native.removeAppSound(id, cue)
-export const deleteAppSoundPack = (id: string): Promise<void> => native.deleteAppSoundPack(id)
 
 /**
- * Play an app cue from an effects pack or a custom pack; native resolves invalid assignments to
- * Simple. `ride.end` has no custom slot and always comes from the effects pack.
+ * Play an app cue: its My sounds override when set, else `pack`'s clip. `ride.end` is not
+ * overridable and always comes from the pack.
  */
 export function playAppSound(pack: string, cue: AppSoundCueId | 'ride.end'): void {
   native.playAppSound(pack, cue)

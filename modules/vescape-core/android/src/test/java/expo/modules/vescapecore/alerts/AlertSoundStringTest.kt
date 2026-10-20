@@ -75,4 +75,19 @@ class AlertSoundStringTest {
         )
         for ((raw, expected) in cases) assertEquals(raw, expected, parseGeigerAlertSound(raw))
     }
+
+    @Test
+    fun readsMySoundIdsOnlyFromAlertAndGeigerSounds() {
+        val cases = listOf(
+            "alert(3):my:beep" to "beep",
+            "alert:my:beep" to "beep",
+            "geiger:my:abc" to "abc",
+            "alert(2):my:" to null,
+            "alert:warning" to null,
+            "geiger:soft" to null,
+            "tts(warning):my:beep" to null,
+            "my:beep" to null,
+        )
+        for ((raw, expected) in cases) assertEquals(raw, expected, mySoundId(raw))
+    }
 }

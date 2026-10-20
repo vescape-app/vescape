@@ -27,10 +27,23 @@ import {
   parseGeigerAlertSound,
   parseSlotAlertSound,
   parseTtsAlertSound,
+  slotSoundPart,
 } from '@/modules/alerts/lib/alertSoundString'
 
 export function getPresetsForCategory(category: AlertSoundCategory): AlertSound[] {
   return getAlertSounds().filter((p) => p.category === category)
+}
+
+/** Picker options of `category`: the pack sounds, then My sounds as `alert:my:<id>` / `geiger:my:<id>`. */
+export function pickerSounds(
+  category: AlertSoundCategory,
+  mySounds: { id: string; name: string }[],
+): AlertSound[] {
+  const kind = category === 'single' ? 'alert' : 'geiger'
+  return [
+    ...getPresetsForCategory(category),
+    ...mySounds.map((sound) => ({ name: sound.name, uri: `${kind}:my:${sound.id}`, category })),
+  ]
 }
 
 export function getDefaultMessageTemplate(
@@ -119,14 +132,14 @@ export function getEditFormDefaults(
 ) {
   const tts = parseTtsAlertSound(editRule.soundType)
   const tab = (tts ? 'message' : editRule.thresholdMax != null ? 'geiger' : 'single') as AlertTab
-  // A single rule's picker shows the pack slot; its count lives in the beep stepper.
+  // A single rule's picker shows the pack slot or My sound; its count lives in the beep stepper.
   const slot = tab === 'single' ? parseSlotAlertSound(editRule.soundType) : null
   return {
     tab,
     threshold: editRule.threshold,
     thresholdMax: editRule.thresholdMax ?? dialConfig.max,
     soundType: slot
-      ? `alert:${slot.severity}`
+      ? `alert:${slotSoundPart(editRule.soundType)}`
       : tab === 'geiger'
         ? geigerPickerSound(editRule.soundType)
         : editRule.soundType,

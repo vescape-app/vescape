@@ -2,7 +2,7 @@ import Foundation
 import XCTest
 @testable import VescapeCore
 
-final class CustomAppSoundsTests: XCTestCase {
+final class MySoundsTests: XCTestCase {
   func testFailedSoundInstallAfterDatabaseCopyRestoresBothStores() throws {
     let fm = FileManager.default
     let work = fm.temporaryDirectory.appendingPathComponent("sound-restore-\(UUID().uuidString)")
@@ -17,20 +17,20 @@ final class CustomAppSoundsTests: XCTestCase {
     try fm.createDirectory(at: sounds, withIntermediateDirectories: true)
     let oldName = "11111111-1111-1111-1111-111111111111.wav"
     let newName = "22222222-2222-2222-2222-222222222222.wav"
-    let oldManifest = Data("[{\"id\":\"old\",\"name\":\"Old\",\"sounds\":{\"on\":\"\(oldName)\"}}]".utf8)
-    let newManifest = Data("[{\"id\":\"new\",\"name\":\"New\",\"sounds\":{\"on\":\"\(newName)\"}}]".utf8)
-    try oldManifest.write(to: sounds.appendingPathComponent("packs.json"))
+    let oldManifest = Data("{\"sounds\":[{\"id\":\"\(oldName.dropLast(4))\",\"name\":\"Old\"}],\"overrides\":{}}".utf8)
+    let newManifest = Data("{\"sounds\":[{\"id\":\"\(newName.dropLast(4))\",\"name\":\"New\"}],\"overrides\":{}}".utf8)
+    try oldManifest.write(to: sounds.appendingPathComponent("my-sounds.json"))
     try Data("old audio".utf8).write(to: sounds.appendingPathComponent(oldName))
 
     XCTAssertThrowsError(try replacingDatabaseFiles(source: incoming, target: database) { _ in
-      try CustomAppSounds.replaceFromBackup(
-        ["packs.json": newManifest, newName: Data("new audio".utf8)],
+      try MySounds.replaceFromBackup(
+        ["my-sounds.json": newManifest, newName: Data("new audio".utf8)],
         at: sounds,
         writeEntry: { _, _ in throw CocoaError(.fileWriteNoPermission) }
       )
     } as Void)
     XCTAssertEqual(try Data(contentsOf: database), Data("old database".utf8))
-    XCTAssertEqual(try Data(contentsOf: sounds.appendingPathComponent("packs.json")), oldManifest)
+    XCTAssertEqual(try Data(contentsOf: sounds.appendingPathComponent("my-sounds.json")), oldManifest)
     XCTAssertEqual(try Data(contentsOf: sounds.appendingPathComponent(oldName)), Data("old audio".utf8))
     XCTAssertFalse(fm.fileExists(atPath: sounds.appendingPathComponent(newName).path))
   }

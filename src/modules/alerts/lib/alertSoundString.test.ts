@@ -3,6 +3,7 @@ import { describe, expect, test } from 'bun:test'
 import {
   formatGeigerAlertSound,
   formatSlotAlertSound,
+  mySoundId,
   type GeigerLevel,
   formatTtsAlertSound,
   parseAlertSoundString,
@@ -99,5 +100,24 @@ describe('parseGeigerAlertSound', () => {
 
   test('round-trips through formatGeigerAlertSound', () => {
     expect(parseGeigerAlertSound(formatGeigerAlertSound('mid'))).toBe('mid')
+  })
+})
+
+describe('mySoundId', () => {
+  test.each([
+    ['alert(3):my:beep', 'beep'],
+    ['alert:my:beep', 'beep'],
+    ['geiger:my:abc', 'abc'],
+    ['alert(2):my:', null],
+    ['alert:warning', null],
+    ['geiger:soft', null],
+    ['tts(warning):my:beep', null],
+    ['my:beep', null],
+  ] satisfies [string, string | null][])('%p', (raw, expected) => {
+    expect(mySoundId(raw)).toBe(expected)
+  })
+
+  test('round-trips through formatSlotAlertSound', () => {
+    expect(mySoundId(formatSlotAlertSound(2, 'my:beep'))).toBe('beep')
   })
 })
