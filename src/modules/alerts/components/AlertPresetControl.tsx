@@ -192,8 +192,6 @@ export function AlertPresetControl({
     min: gauge.min,
     max,
     alertAbove: metric !== 'battery',
-    lingerNearMax: metric === 'speed' || metric === 'duty',
-    slowForMessages: metric === 'motor-temp' || metric === 'controller-temp',
   })
   const gaugeValue = alertTest.running ? alertTest.value : liveValue
   // Says what this level actually sounds like — the ramp is otherwise learned by riding it.
