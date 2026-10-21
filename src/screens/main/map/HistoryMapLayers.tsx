@@ -1,4 +1,7 @@
-import { LineLayer, ShapeSource } from '@rnmapbox/maps'
+import { HISTORY_ENDPOINT_LAYER_ID } from '@/modules/history/lib/historyMapLayers'
+import Svg, { Line, Polygon, Rect } from 'react-native-svg'
+import { View } from 'react-native'
+import { LineLayer, PointAnnotation, PointAnnotationManager, ShapeSource } from '@rnmapbox/maps'
 import { useEffect, useMemo, useState } from 'react'
 
 import { theme } from '@/constants/theme'
@@ -61,6 +64,7 @@ function TrimRouteHighlight({ rideGpsSamples }: { rideGpsSamples: HistoryGpsSamp
   return (
     <ShapeSource id="center-ride-trim-source" shape={shape}>
       <LineLayer
+        belowLayerID={HISTORY_ENDPOINT_LAYER_ID}
         id="center-ride-trim-line"
         style={{
           lineColor: accents.amber.color,
@@ -212,6 +216,11 @@ export function HistoryMapLayers({
 
   return (
     <>
+      {/* Create the native symbol layer before strokes that reference it for ordering. */}
+      <PointAnnotationManager id={HISTORY_ENDPOINT_LAYER_ID} iconAllowOverlap iconIgnorePlacement>
+        {rideRoute[0] && renderHistoryEndpointFlag(rideRoute[0], telemetryColors.duty, 'start')}
+        {rideRoute.at(-1) && renderHistoryEndpointFlag(rideRoute.at(-1)!, accents.red.color, 'end')}
+      </PointAnnotationManager>
       <FavoriteRouteBorder
         rideGpsSamples={rideGpsSamples}
         favoriteRanges={favoriteRanges}
@@ -221,6 +230,7 @@ export function HistoryMapLayers({
       {rideRouteShape && (
         <ShapeSource id="center-ride-route-source" shape={rideRouteShape} lineMetrics>
           <LineLayer
+            belowLayerID={HISTORY_ENDPOINT_LAYER_ID}
             id="center-ride-route-casing"
             style={{
               lineColor: theme.alpha(neutral.surfaceDeep, 0.85),
@@ -231,6 +241,7 @@ export function HistoryMapLayers({
             }}
           />
           <LineLayer
+            belowLayerID={HISTORY_ENDPOINT_LAYER_ID}
             id="center-ride-route-line"
             style={{
               lineColor: getHistoryMetricBaseColor(activeHistoryMapMetric, telemetryColors),
@@ -259,6 +270,7 @@ export function HistoryMapLayers({
       {rideRouteShape && (
         <ShapeSource id="center-ride-route-highlight-source" shape={rideRouteShape} lineMetrics>
           <LineLayer
+            belowLayerID={HISTORY_ENDPOINT_LAYER_ID}
             id="center-ride-route-highlight"
             style={{
               lineGradient: routeHighlightGradient,
@@ -271,20 +283,6 @@ export function HistoryMapLayers({
         </ShapeSource>
       )}
       <TrimRouteHighlight rideGpsSamples={rideGpsSamples} />
-      {rideRoute[0] && (
-        <MapPin
-          id="center-ride-start"
-          coordinate={rideRoute[0]}
-          color={theme.palette.green.color}
-        />
-      )}
-      {rideRoute.at(-1) && (
-        <MapPin
-          id="center-ride-end"
-          coordinate={rideRoute.at(-1)!}
-          color={theme.status.error.color}
-        />
-      )}
       <SeekPositionPin rideGpsSamples={rideGpsSamples} />
 
       {resolveMarkerRenderData(rideMarkers, rideGpsSamples).map(
@@ -313,5 +311,73 @@ export function HistoryMapLayers({
         />
       ))}
     </>
+  )
+}
+
+// PointAnnotation snapshots the flag into the map renderer, like saved Map Points.
+// The pole's base is (2, 28) inside a 22 × 30 viewport, exactly at the map coordinate.
+function renderHistoryEndpointFlag(
+  coordinate: [number, number],
+  stroke: string,
+  kind: 'start' | 'end',
+) {
+  return (
+    <PointAnnotation
+      key={`history-${kind}-${stroke}`}
+      id={`center-ride-${kind}`}
+      coordinate={coordinate}
+      anchor={{ x: 2 / 22, y: 28 / 30 }}
+    >
+      <View collapsable={false} style={{ width: 55 / 3, height: 25 }}>
+        <Svg width={55 / 3} height={25} viewBox="-2 -28 22 30">
+          <Line
+            x1={0}
+            y1={0}
+            x2={0}
+            y2={-26}
+            stroke={stroke}
+            strokeWidth={2}
+            strokeLinecap="round"
+          />
+          {kind === 'start' ? (
+            <Polygon
+              points="0,-26 16,-18 0,-10"
+              fill={stroke}
+              fillOpacity={0.25}
+              stroke={stroke}
+              strokeWidth={2}
+              strokeLinejoin="round"
+            />
+          ) : (
+            <>
+              <Rect
+                x={0}
+                y={-26}
+                width={18}
+                height={14}
+                fill="none"
+                stroke={stroke}
+                strokeWidth={2}
+                strokeLinejoin="round"
+              />
+              {[0, 1, 2].flatMap((row) =>
+                [0, 1, 2, 3]
+                  .filter((col) => (row + col) % 2 === 0)
+                  .map((col) => (
+                    <Rect
+                      key={`${row}-${col}`}
+                      x={col * 4.5}
+                      y={-26 + row * (14 / 3)}
+                      width={4.5}
+                      height={14 / 3}
+                      fill={stroke}
+                    />
+                  )),
+              )}
+            </>
+          )}
+        </Svg>
+      </View>
+    </PointAnnotation>
   )
 }

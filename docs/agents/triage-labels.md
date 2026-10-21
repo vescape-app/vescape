@@ -22,7 +22,7 @@ many as fit. Two are flagged red because they signal extra implementation risk:
 | Label         | Meaning                                                    |
 | ------------- | ---------------------------------------------------------- |
 | `area:native` | Touches native side (`modules/vescape-core`, Swift/Kotlin) |
-| `area:db`     | Touches database / persistent storage                      |
+| `area:db`     | Includes a database migration                              |
 
 When an issue carries `area:native` or `area:db`, expect native rebuilds and/or
 storage migrations — factor that into the agent brief and complexity rating.

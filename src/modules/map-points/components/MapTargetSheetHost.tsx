@@ -1,7 +1,7 @@
 import { ArrowClockwiseIcon, CheckIcon, NavigationArrowIcon, XIcon } from 'phosphor-react-native'
 import type { MapPoint, MapPointPatch, NavigationProfile, NavigationStatus } from 'vescape-core'
 
-import { theme } from '@/constants/theme'
+import { theme, type ThemeColor } from '@/constants/theme'
 import { useColoredAction, useResolvedAccentColors } from '@/hooks/useTheme'
 import { ActiveNavigationSheet } from '@/modules/map-points/components/ActiveNavigationSheet'
 import { MapTargetSheet } from '@/modules/map-points/components/MapTargetSheet'
@@ -18,8 +18,8 @@ interface MapTargetSheetHostProps {
   bottom: number
   /** Set while the selected Map Point is in its edit draft. */
   editingMapPointId: string | null
-  actionColor: string
-  actionTextColor: string
+  actionColor: ThemeColor
+  actionTextColor: ThemeColor
   onBeginEdit: (id: string) => void
   onEndEdit: () => void
   onNavigateSelected: () => void

@@ -1,8 +1,10 @@
 import { describe, expect, test } from 'bun:test'
 
+import { getOneDarkMapStyle } from '@/modules/map/constants/oneDarkMapStyle'
 import {
   getSatelliteDarkMapStyle,
   getSatelliteImageryPaint,
+  getSatelliteOverlayMapStyle,
 } from '@/modules/map/constants/satelliteDarkMapStyle'
 
 describe('satellite dark map style', () => {
@@ -30,7 +32,7 @@ describe('satellite dark map style', () => {
       rasterContrast: 0,
     })
     expect(getSatelliteImageryPaint(0, 2)).toEqual({
-      rasterOpacity: 0.1,
+      rasterOpacity: 0,
       rasterSaturation: 1,
       rasterContrast: -0.25,
     })
@@ -74,5 +76,43 @@ describe('satellite dark map style', () => {
     expect(style.layers.find((layer) => layer.id === 'background')?.paint).toEqual({
       'background-color': '#e8eef5',
     })
+  })
+
+  test('overlay backdrop follows theme without changing road or label IDs', () => {
+    const dark = JSON.parse(getSatelliteOverlayMapStyle('dark')) as {
+      layers: { id: string; paint?: Record<string, unknown> }[]
+    }
+    const light = JSON.parse(getSatelliteOverlayMapStyle('light')) as typeof dark
+
+    expect(dark.layers[0].paint?.['background-color']).toBe('#172033')
+    expect(light.layers[0].paint?.['background-color']).toBe('#e8eef5')
+    expect(light.layers.map((layer) => layer.id)).toEqual(dark.layers.map((layer) => layer.id))
+    for (const road of dark.layers.filter(
+      (layer) => layer.id.startsWith('road-') && layer.paint?.['line-color'],
+    )) {
+      expect(road.paint?.['line-color']).toBe('#ffffff')
+      expect(light.layers.find((layer) => layer.id === road.id)?.paint?.['line-color']).toBe(
+        '#000000',
+      )
+    }
+  })
+
+  test('satellite document keeps roads and labels without One Dark ground geometry', () => {
+    const satellite = JSON.parse(getSatelliteDarkMapStyle(true, true, false, true)) as {
+      layers: { id: string; type: string; source?: string; 'source-layer'?: string }[]
+    }
+    const streets = JSON.parse(getOneDarkMapStyle(true, true, false)) as {
+      layers: { id: string }[]
+    }
+    const ids = satellite.layers.map((layer) => layer.id)
+
+    expect(ids).toContain('road-path') // raster insertion anchor
+    expect(ids).toContain('road-label')
+    expect(ids).toContain('poi-label')
+    expect(ids).toContain('transit-label')
+    expect(satellite.layers.some((layer) => layer['source-layer'] === 'building')).toBe(false)
+    expect(ids.some((id) => id.startsWith('landcover-') || id.startsWith('landuse-'))).toBe(false)
+    expect(streets.layers.map((layer) => layer.id)).toContain('building')
+    expect(streets.layers.map((layer) => layer.id)).toContain('building-outline')
   })
 })

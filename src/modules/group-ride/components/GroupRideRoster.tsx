@@ -8,12 +8,12 @@ import {
 } from 'phosphor-react-native'
 
 import { Text } from '@/components/base/Text'
-import { theme } from '@/constants/theme'
-import { DASH, fmtDistance, fmtPercent, fmtSpeedKmh, fmtTempC } from '@/helpers/format'
+import { theme, type ThemeColor } from '@/constants/theme'
+import { DASH } from '@/helpers/format'
+import { useFormat } from '@/hooks/useFormat'
+import { useRiderStats } from '@/modules/group-ride/hooks/useRiderStats'
 import {
-  batteryLevel,
   TELEMETRY_LEVEL_COLOR,
-  tempLevel,
   type TelemetryLevel,
 } from '@/modules/board/constants/telemetryThresholds'
 import type { NearbyRide } from '@/modules/group-ride/lib/nearby'
@@ -25,7 +25,7 @@ export function RosterGrid({
   connected,
 }: {
   rows: RosterRider[]
-  accent: string
+  accent: ThemeColor
   connected: boolean
 }) {
   return (
@@ -35,55 +35,6 @@ export function RosterGrid({
       ))}
     </View>
   )
-}
-
-interface RiderStat {
-  value?: string
-  level: TelemetryLevel
-}
-
-interface RiderStats {
-  speed: RiderStat
-  soc: RiderStat
-  motor: RiderStat
-  ctrl: RiderStat
-  phone: RiderStat
-}
-
-const NORMAL_STAT: RiderStat = { level: 'normal' }
-
-/** Per-Rider telemetry values for the roster stat grid, each carrying its alert level. */
-export function riderStats(p: RosterRider['presence']): RiderStats {
-  if (!p)
-    return {
-      speed: NORMAL_STAT,
-      soc: NORMAL_STAT,
-      motor: NORMAL_STAT,
-      ctrl: NORMAL_STAT,
-      phone: NORMAL_STAT,
-    }
-  return {
-    speed: {
-      value: p.speed != null ? fmtSpeedKmh(p.speed) : undefined,
-      level: 'normal',
-    },
-    soc: {
-      value: p.soc != null ? fmtPercent(p.soc) : undefined,
-      level: batteryLevel(p.soc),
-    },
-    motor: {
-      value: p.motorTemp != null ? `M ${fmtTempC(p.motorTemp)}` : undefined,
-      level: tempLevel(p.motorTemp),
-    },
-    ctrl: {
-      value: p.ctrlTemp != null ? `C ${fmtTempC(p.ctrlTemp)}` : undefined,
-      level: tempLevel(p.ctrlTemp),
-    },
-    phone: {
-      value: p.phoneBattery != null ? fmtPercent(p.phoneBattery) : undefined,
-      level: 'normal',
-    },
-  }
 }
 
 /** One fixed column of the stat grid: its icon is always shown; a missing value reads as a dash.
@@ -98,7 +49,7 @@ function StatCell({
   level?: TelemetryLevel
 }) {
   const alert = level !== 'normal'
-  const color = alert ? TELEMETRY_LEVEL_COLOR[level] : theme.palette.slate.textSecondary
+  const color = alert ? TELEMETRY_LEVEL_COLOR[level] : theme.neutral.textSecondary
   return (
     <View style={styles.statCell}>
       <View style={styles.statIconSlot}>
@@ -117,17 +68,17 @@ function RiderCell({
   connected,
 }: {
   rider: RosterRider
-  accent: string
+  accent: ThemeColor
   connected: boolean
 }) {
-  const dotColor = rider.color || theme.palette.slate.textMuted
+  const dotColor = rider.color || theme.neutral.textMuted
   const boardName = rider.presence?.boardName?.trim() || 'Board not connected'
   // Only claim a rider is "Live" when our own relay link is up — otherwise the roster is just
   // the last snapshot we received and we can't know it's current.
   const fresh = !rider.stale && connected
-  const statusColor = fresh ? accent : theme.palette.slate.textMuted
+  const statusColor = fresh ? accent : theme.neutral.textMuted
   const status = fresh ? 'Live' : 'Stale'
-  const s = riderStats(rider.presence)
+  const s = useRiderStats(rider.presence)
 
   return (
     <View style={styles.riderCell}>
@@ -167,6 +118,7 @@ function RiderCell({
 }
 
 export function NearbyRideBody({ nearby }: { nearby: NearbyRide[] }) {
+  const { formatDistance } = useFormat()
   const nearest = nearby[0]
   const ride = nearest.ride
   const name = ride.name?.trim() || `${ride.creator.name || 'Rider'}'s ride`
@@ -179,7 +131,7 @@ export function NearbyRideBody({ nearby }: { nearby: NearbyRide[] }) {
       </Text>
       <Text style={styles.rideMeta} numberOfLines={1}>
         {ride.riderCount} {ride.riderCount === 1 ? 'rider' : 'riders'} ·{' '}
-        {fmtDistance(nearest.distanceM)} away
+        {formatDistance(nearest.distanceM)} away
       </Text>
       {extra > 0 ? (
         <Text style={styles.rideMetaDim}>
@@ -197,21 +149,21 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   rideMeta: {
-    color: theme.palette.slate.textSecondary,
+    color: theme.neutral.textSecondary,
     fontSize: 13,
   },
   rideMetaDim: {
-    color: theme.palette.slate.textSecondary,
+    color: theme.neutral.textSecondary,
     fontSize: 12,
     opacity: 0.7,
   },
   rideName: {
-    color: theme.palette.slate.textPrimary,
+    color: theme.neutral.textPrimary,
     fontSize: 17,
     fontWeight: '700',
   },
   riderBoard: {
-    color: theme.palette.slate.textSecondary,
+    color: theme.neutral.textSecondary,
     fontSize: 12,
   },
   riderCell: {
@@ -231,7 +183,7 @@ const styles = StyleSheet.create({
   },
   riderName: {
     flexShrink: 1,
-    color: theme.palette.slate.textPrimary,
+    color: theme.neutral.textPrimary,
     fontSize: 14,
     fontWeight: '700',
   },
@@ -270,7 +222,7 @@ const styles = StyleSheet.create({
   },
   statValue: {
     flexShrink: 1,
-    color: theme.palette.slate.textSecondary,
+    color: theme.neutral.textSecondary,
     fontSize: 11,
     fontWeight: '600',
   },

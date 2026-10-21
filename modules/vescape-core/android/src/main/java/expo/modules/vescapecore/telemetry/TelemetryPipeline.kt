@@ -21,33 +21,35 @@ private fun Map<String, Any?>.excluded(key: String): Boolean =
 
 /**
  * Center-screen live metrics streamed continuously as the decimated `onLiveSeries`
- * firehose (strip + dual gauge + battery sparklines). Kept in sync with `liveSelectors`
+ * firehose (the battery bar). Kept in sync with `liveSelectors`
  * on the JS side, keyed by the same names: any abs/scale/exclusion is applied here
  * *before* min/max bucketing so native decimation matches what JS would compute, and
  * the UI renders the values verbatim.
  *
- * Detail-only metrics live in [FOCUSED_ONLY_SERIES_METRICS] and are not streamed
- * globally — a `/control` detail screen pulls them via [focusedSeries] on focus.
+ * The rest live in [FOCUSED_ONLY_SERIES_METRICS]: a `/control` detail screen pulls one via
+ * [focusedSeries] on focus, and the telemetry panel adds them to `onLiveSeries` while open
+ * (`LiveSeriesEmitter.setLiveMetrics`).
  *
- * @parity /modules/vescape-core/src/index.ts `liveSelectors`
+ * @parity /modules/vescape-core/ios/telemetry/LiveSeriesEmitter.swift `centerMetrics`
+ * @parity /src/modules/board/hooks/useLiveMetric.ts `liveSelectors`
  */
 internal val LIVE_SERIES_METRICS = listOf(
+    LiveSeriesMetric("batteryVoltage") { row -> row.num("batteryVoltage") },
+    LiveSeriesMetric("batteryPercent") { row -> row.num("batteryPercent") },
+)
+
+/** Metrics streamed only on request: focused by a detail chart, or added by the telemetry panel. */
+internal val FOCUSED_ONLY_SERIES_METRICS = listOf(
     LiveSeriesMetric("motorTemp") { row -> row.num("tempMotor")?.takeIf { it > 0 } },
     LiveSeriesMetric("controllerTemp") { row -> row.num("tempMosfet") },
     LiveSeriesMetric("motorCurrent") { row -> row.num("motorCurrent") },
     LiveSeriesMetric("batteryCurrent") { row -> row.num("batteryCurrent") },
-    LiveSeriesMetric("batteryVoltage") { row -> row.num("batteryVoltage") },
-    LiveSeriesMetric("batteryPercent") { row -> row.num("batteryPercent") },
     LiveSeriesMetric("speed") { row ->
         if (row.excluded("max_speed")) null else row.num("speed")?.let { kotlin.math.abs(it) }
     },
     LiveSeriesMetric("duty") { row ->
         if (row.excluded("max_duty")) null else row.num("dutyCycle")?.let { kotlin.math.abs(it) * 100 }
     },
-)
-
-/** Detail-chart-only metrics (no center sparkline). Served only via [focusedSeries]. */
-internal val FOCUSED_ONLY_SERIES_METRICS = listOf(
     LiveSeriesMetric("pitch") { row -> row.num("pitch") },
     LiveSeriesMetric("roll") { row -> row.num("roll") },
     LiveSeriesMetric("balancePitch") { row -> row.num("balancePitch") },
@@ -87,6 +89,9 @@ internal data class ProcessedTelemetry(
     val eventMap: MutableMap<String, Any?>,
     val capture: TelemetryCapture,
     val metricExclusionUpdates: List<Map<String, Any?>>,
+    /** Highest speed (km/h) and duty (%) across the live window, as the live charts plot them. */
+    val speedPeak: Double?,
+    val dutyPeak: Double?,
 )
 
 internal class TelemetryPipeline(
@@ -99,9 +104,14 @@ internal class TelemetryPipeline(
     private data class LivePoint(
         val bucketPoint: BucketTelemetryPoint,
         val eventMap: MutableMap<String, Any?>,
+        /** The fix this packet carried, as a Ride Track point — what free spin compares against. */
+        val fix: RideTrackPointEntity?,
     )
 
     private val recentTelemetry = ArrayDeque<MutableMap<String, Any?>>()
+    // Guarded by recentLock with the window they track.
+    private val speedPeak = LiveWindowPeak(ALL_SERIES_METRICS.first { it.key == "speed" }.select)
+    private val dutyPeak = LiveWindowPeak(ALL_SERIES_METRICS.first { it.key == "duty" }.select)
     private val liveTelemetryPoints = ArrayDeque<LivePoint>()
     // recentTelemetry is appended on the BLE callback thread and read (snapshot/decimated)
     // on the main thread, so every structural access goes through this lock.
@@ -120,7 +130,7 @@ internal class TelemetryPipeline(
 
     fun beginSession(session: BoardSession, config: SessionConfig) {
         cancelStaleWatchdog()
-        synchronized(recentLock) { recentTelemetry.clear() }
+        clearRecentTelemetry()
         synchronized(liveLock) { liveTelemetryPoints.clear() }
         lastTelemetryAt = 0L
         this.session = session
@@ -132,7 +142,7 @@ internal class TelemetryPipeline(
 
     fun endSession() {
         cancelStaleWatchdog()
-        synchronized(recentLock) { recentTelemetry.clear() }
+        clearRecentTelemetry()
         synchronized(liveLock) { liveTelemetryPoints.clear() }
         lastTelemetryAt = 0L
         session = null
@@ -151,7 +161,7 @@ internal class TelemetryPipeline(
      */
     fun clearLiveTelemetry() {
         cancelStaleWatchdog()
-        synchronized(recentLock) { recentTelemetry.clear() }
+        clearRecentTelemetry()
         synchronized(liveLock) { liveTelemetryPoints.clear() }
         lastTelemetryAt = 0L
     }
@@ -303,18 +313,33 @@ internal class TelemetryPipeline(
 
         val capture = captureBuilder(parsed, cfg, canId)
         val baseEventMap = parsed.toMap().toMutableMap()
-        val bucketPoint = FullTelemetryState.from(capture).toBucketPoint()
+        val state = FullTelemetryState.from(capture, recordingId = null)
+        val bucketPoint = state.toBucketPoint()
         val updates = synchronized(liveLock) {
-            liveTelemetryPoints.addLast(LivePoint(bucketPoint, baseEventMap))
+            liveTelemetryPoints.addLast(LivePoint(bucketPoint, baseEventMap, state.toLiveTrackPoint()))
             pruneLiveTelemetryPoints(parsed.lastPacketAt)
             sanitizeLivePoints()
         }
-        synchronized(recentLock) {
+        val peaks = synchronized(recentLock) {
+            // Re-labelled samples can move the peak either way.
+            if (updates.isNotEmpty()) {
+                speedPeak.invalidate()
+                dutyPeak.invalidate()
+            }
             recentTelemetry.addLast(baseEventMap)
+            speedPeak.add(baseEventMap)
+            dutyPeak.add(baseEventMap)
             pruneRecentTelemetry(parsed.lastPacketAt)
+            speedPeak.value(recentTelemetry) to dutyPeak.value(recentTelemetry)
         }
 
-        return ProcessedTelemetry(baseEventMap, capture, updates)
+        return ProcessedTelemetry(baseEventMap, capture, updates, peaks.first, peaks.second)
+    }
+
+    private fun clearRecentTelemetry() = synchronized(recentLock) {
+        recentTelemetry.clear()
+        speedPeak.reset()
+        dutyPeak.reset()
     }
 
     private fun pruneLiveTelemetryPoints(now: Long) {
@@ -331,14 +356,19 @@ internal class TelemetryPipeline(
         while (recentTelemetry.isNotEmpty()) {
             val ts = (recentTelemetry.first()["lastPacketAt"] as? Number)?.toLong() ?: break
             if (ts >= oldest) break
-            recentTelemetry.removeFirst()
+            val dropped = recentTelemetry.removeFirst()
+            speedPeak.evict(dropped)
+            dutyPeak.evict(dropped)
         }
     }
 
     private fun sanitizeLivePoints(): List<Map<String, Any?>> {
         if (liveTelemetryPoints.isEmpty()) return emptyList()
         val points = liveTelemetryPoints.map { it.bucketPoint }
-        val sanitization = sanitizeTelemetrySamples(points, metricSanitizerConfig)
+        // The live equivalent of the Ride Track: the fixes these packets arrived with, so free spin
+        // has the same phone-speed comparison it has in history, without position on the sample.
+        val track = liveTelemetryPoints.mapNotNull { it.fix }.sortedBy { it.fixAtMs }
+        val sanitization = sanitizeTelemetrySamples(points, track, metricSanitizerConfig)
         val updates = mutableListOf<Map<String, Any?>>()
         val lastIndex = liveTelemetryPoints.size - 1
         liveTelemetryPoints.forEachIndexed { index, point ->

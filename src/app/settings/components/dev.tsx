@@ -66,8 +66,8 @@ export default function DevComponentsPage() {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: theme.palette.slate.bg },
+  container: { flex: 1, backgroundColor: theme.neutral.bg },
   content: { padding: 12, gap: 12, paddingBottom: 40 },
   badgeStage: { height: 260, alignSelf: 'stretch' },
-  caption: { color: theme.palette.slate.textPrimary, fontSize: 13, flex: 1 },
+  caption: { color: theme.neutral.textPrimary, fontSize: 13, flex: 1 },
 })

@@ -4,7 +4,7 @@ import { Text } from '@/components/base/Text'
 import {
   BroadcastIcon,
   CrosshairIcon,
-  PaletteIcon,
+  UserCircleIcon,
   PlusIcon,
   SignOutIcon,
   UsersIcon,
@@ -13,13 +13,13 @@ import {
 } from 'phosphor-react-native'
 import { Button } from '@/components/base/Button'
 import { Placeholder } from '@/components/base/Placeholder'
-import { ColorPicker } from '@/components/forms/ColorPicker'
+import { Switch } from '@/components/controls/Switch'
 import { CanvasWidget } from '@/components/widgets/CanvasWidget'
 import { InputWidget } from '@/components/widgets/InputWidget'
-import { riderColorOptions } from '@/modules/group-ride/constants/riderColors'
 import { useGroupRideStore } from '@/modules/group-ride/store/groupRideStore'
 import { useRenderRateWarning } from '@/hooks/useRenderRateWarning'
 import { useRiderStore } from '@/modules/group-ride/store/riderStore'
+import { useSelectedBoardRailColor } from '@/modules/group-ride/lib/selectedBoardRailColor'
 import { theme } from '@/constants/theme'
 import { NearbyRideBody, RosterGrid } from '@/modules/group-ride/components/GroupRideRoster'
 
@@ -35,42 +35,31 @@ export function SocialSheet() {
 function RiderNameWidget() {
   const riderName = useRiderStore((s) => s.riderName)
   const setName = useRiderStore((s) => s.setName)
-  const riderColor = useRiderStore((s) => s.riderColor)
-  const setColor = useRiderStore((s) => s.setColor)
+  const error = useRiderStore((s) => s.error)
+  const riderColor = useSelectedBoardRailColor()
 
   return (
-    <InputWidget
-      label="Your name"
-      value={riderName}
-      placeholder="Add a display name"
-      maxLength={32}
-      onCommit={(value) => void setName(value)}
-      accessibilityLabel="Rider display name"
-      commitOnBlur={false}
-      leading={
-        <View
-          style={[
-            styles.colorDot,
-            riderColor ? { backgroundColor: riderColor } : styles.colorDotEmpty,
-          ]}
-          accessibilityLabel={riderColor ? `Your color ${riderColor}` : 'No color selected'}
-        >
-          {riderColor ? null : (
-            <PaletteIcon size={14} color={theme.neutral.textSecondary} weight="duotone" />
-          )}
-        </View>
-      }
-      editingContent={
-        <View style={styles.colorEditor}>
-          <Text style={styles.colorLabel}>Color</Text>
-          <ColorPicker
-            value={riderColor}
-            colors={riderColorOptions}
-            onChange={(color) => void setColor(color)}
+    <View style={styles.riderIdentity}>
+      <InputWidget
+        label="Your name"
+        value={riderName}
+        placeholder="Add a display name"
+        maxLength={32}
+        onCommit={(value) => {
+          // intentional-suppression: Rider store error is rendered by Social Sheet
+          void setName(value).catch(() => undefined) // The store exposes this failure below.
+        }}
+        accessibilityLabel="Rider display name"
+        leading={
+          <UserCircleIcon
+            size={24}
+            color={riderColor ?? theme.neutral.textSecondary}
+            weight="duotone"
           />
-        </View>
-      }
-    />
+        }
+      />
+      {error ? <Text style={styles.errorText}>{error}</Text> : null}
+    </View>
   )
 }
 
@@ -85,6 +74,8 @@ function GroupRideWidget() {
   const createRide = useGroupRideStore((s) => s.createRide)
   const leaveRide = useGroupRideStore((s) => s.leaveRide)
   const joinRide = useGroupRideStore((s) => s.joinRide)
+  const publicRiding = useGroupRideStore((s) => s.publicRiding)
+  const setPublicRiding = useGroupRideStore((s) => s.setPublicRiding)
 
   const [nearbyDismissed, setNearbyDismissed] = useState(false)
 
@@ -153,7 +144,7 @@ function GroupRideWidget() {
     />
   )
 
-  const action = active ? (
+  const status = active ? (
     <LiveBadge connected={connection === 'connected'} />
   ) : showNearby ? (
     <Pressable
@@ -164,6 +155,19 @@ function GroupRideWidget() {
       <XIcon size={18} color={theme.neutral.textSecondary} weight="bold" />
     </Pressable>
   ) : null
+
+  const action = (
+    <View style={styles.headerActions}>
+      {status}
+      <Text style={styles.fieldLabel}>Auto</Text>
+      <Switch
+        value={publicRiding}
+        onValueChange={setPublicRiding}
+        accent={accent}
+        accessibilityLabel="Ride publicly"
+      />
+    </View>
+  )
 
   return (
     <CanvasWidget
@@ -182,6 +186,11 @@ function GroupRideWidget() {
         ) : (
           <Placeholder icon={UsersIcon} description="Waiting for other riders to join." />
         )
+      ) : publicRiding ? (
+        <Placeholder
+          icon={BroadcastIcon}
+          description="Auto is on. When your board connects, you join the nearest group ride or start one."
+        />
       ) : showNearby ? (
         <NearbyRideBody nearby={nearby} />
       ) : !connected ? (
@@ -229,23 +238,7 @@ const styles = StyleSheet.create({
     fontWeight: '800',
     letterSpacing: 0.5,
   },
-  colorDot: {
-    width: 24,
-    height: 24,
-    borderRadius: 12,
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderWidth: 1.5,
-    borderColor: theme.neutral.border,
-  },
-  colorDotEmpty: {
-    backgroundColor: theme.neutral.surfaceDeep,
-  },
-  colorEditor: {
-    marginLeft: 36,
-    gap: 8,
-  },
-  colorLabel: {
+  fieldLabel: {
     color: theme.neutral.textMuted,
     fontSize: 11,
     fontWeight: '700',
@@ -255,7 +248,19 @@ const styles = StyleSheet.create({
   fill: {
     flex: 1,
   },
+  headerActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+  },
   list: {
     gap: 12,
+  },
+  riderIdentity: {
+    gap: 6,
+  },
+  errorText: {
+    color: theme.status.error.text,
+    fontSize: 12,
   },
 })

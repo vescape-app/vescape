@@ -3,21 +3,21 @@ import { Text } from '@/components/base/Text'
 import { CaretDownIcon, type Icon } from 'phosphor-react-native'
 
 import { useResolvedSecondaryWidgetSurface } from '@/components/widgets/widgetSurface'
-import { theme } from '@/constants/theme'
+import { theme, type ThemeColor } from '@/constants/theme'
 
 interface SelectWidgetProps {
   icon: Icon
   selectIcon?: Icon
   /** Status marker shown next to the value pill — an icon alone, no label, no press target. */
   badgeIcon?: Icon
-  badgeAccent?: string
+  badgeAccent?: ThemeColor
   label: string
   value: string
   description?: string
-  accent?: string
-  selectAccent?: string
-  selectBackground?: string
-  selectBorder?: string
+  accent?: ThemeColor
+  selectAccent?: ThemeColor
+  selectBackground?: ThemeColor
+  selectBorder?: ThemeColor
   selectOpen?: boolean
   disabled?: boolean
   showSelect?: boolean

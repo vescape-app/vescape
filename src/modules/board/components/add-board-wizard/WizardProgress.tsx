@@ -9,10 +9,10 @@ import {
   type Icon,
 } from 'phosphor-react-native'
 
-import { theme } from '@/constants/theme'
+import { theme, type ThemeColor } from '@/constants/theme'
 import type { WizardStepId } from '@/modules/board/hooks/useAddBoardWizard'
 
-const STEP_META: Record<WizardStepId, { label: string; icon: Icon; color: string }> = {
+const STEP_META: Record<WizardStepId, { label: string; icon: Icon; color: ThemeColor }> = {
   scan: { label: 'Pair', icon: BluetoothIcon, color: theme.palette.sky.color },
   name: { label: 'Name', icon: TextTIcon, color: theme.palette.orange.color },
   battery: { label: 'Battery', icon: BatteryFullIcon, color: theme.palette.green.color },

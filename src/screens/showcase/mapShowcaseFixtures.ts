@@ -1,5 +1,6 @@
 import type { HistoryGpsSample, HistoryMarker, MapPoint, TelemetrySample } from 'vescape-core'
 
+import { accentColors } from '@/constants/theme'
 import { makeCircleFeature, makeTrailLineString } from '@/helpers/mapGeometry'
 import type { DirectionPoint } from '@/modules/map/store/mapStore'
 import type { MediaHistoryAsset } from '@/modules/history/lib/mediaHistory'
@@ -81,7 +82,7 @@ export const FIXTURE_RIDE_GPS_SAMPLES: HistoryGpsSample[] = rideRouteCoordinates
       accuracyM: 5,
       altitudeM: 240 + index,
       timestamp: NOW - (ROUTE_POINT_COUNT - 1 - index) * 5_000,
-      precise: true,
+      recordingId: null,
       distanceFromPreviousM: index === 0 ? null : 80,
     }
   },
@@ -238,7 +239,7 @@ export const FIXTURE_RIDERS: RosterRider[] = [
   {
     id: 'fixture-rider-miguel',
     name: 'Miguel',
-    color: '#ef4444',
+    color: accentColors.dark.red.color,
     presence: {
       lat: BASE_LAT + 0.0058,
       lng: BASE_LON + 0.0022,

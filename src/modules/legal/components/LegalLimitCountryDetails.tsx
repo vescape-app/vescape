@@ -12,13 +12,14 @@ import { StyleSheet, View } from 'react-native'
 
 import { Text } from '@/components/base/Text'
 import { useResolvedSecondaryWidgetSurface } from '@/components/widgets/widgetSurface'
-import { theme } from '@/constants/theme'
+import { theme, type ThemeColor } from '@/constants/theme'
 import {
   getLegalLimitCountryDetail,
   LEGAL_ROAD_STATUS_COLORS,
   LEGAL_ROAD_STATUS_LABELS,
   type LegalLimitCountry,
 } from '@/modules/legal/lib/legalLimits'
+import { useLegalReferenceSpeedFormat } from '@/modules/legal/hooks/useLegalLimitsFormat'
 
 import { LEGAL_LIMIT_STATUS_ICONS } from '@/modules/legal/lib/legalLimitStatusIcon'
 
@@ -33,16 +34,17 @@ interface DetailRowProps {
 }
 
 interface AlertRowProps {
-  color: string
+  color: ThemeColor
   text: string
 }
 
 export function LegalLimitCountryDetails({ country }: LegalLimitCountryDetailsProps) {
+  const formatReferenceSpeed = useLegalReferenceSpeedFormat()
   const surface = useResolvedSecondaryWidgetSurface()
   const detail = getLegalLimitCountryDetail(country)
   const statusColor = LEGAL_ROAD_STATUS_COLORS[country.status]
   const StatusIcon = LEGAL_LIMIT_STATUS_ICONS[country.status]
-  const speedLabel = country.referenceSpeedKmh == null ? 'N/A' : `${country.referenceSpeedKmh} km/h`
+  const speedLabel = formatReferenceSpeed(country.referenceSpeedKmh)
 
   return (
     <View style={styles.container}>
@@ -223,7 +225,7 @@ const styles = StyleSheet.create({
     borderRadius: 15,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: theme.alpha(theme.palette.slate.light, 0.12),
+    backgroundColor: theme.alpha(theme.neutral.textSecondary, 0.12),
   },
   detailText: {
     flex: 1,

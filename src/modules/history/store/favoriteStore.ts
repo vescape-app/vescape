@@ -9,6 +9,10 @@ import {
   type UpdateFavoriteOptions,
 } from 'vescape-core'
 
+// @parity /modules/vescape-core/ios/VescapeCoreModule.swift `ERR_DELETE_FAVORITE_MEDIA_CLEANUP`
+// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/VescapeCoreModule.kt `ERR_DELETE_FAVORITE_MEDIA_CLEANUP`
+const FAVORITE_MEDIA_CLEANUP_ERROR = 'ERR_DELETE_FAVORITE_MEDIA_CLEANUP'
+
 interface FavoriteState {
   favorites: Favorite[]
   loading: boolean
@@ -102,7 +106,12 @@ export const useFavoriteStore = create<FavoriteState & FavoriteActions>((set, ge
       await deleteFavorite(id)
       set({ favorites: get().favorites.filter((favorite) => favorite.id !== id) })
     } catch (err) {
-      set({ error: err instanceof Error ? err.message : String(err) })
+      if ((err as { code?: string } | null)?.code === FAVORITE_MEDIA_CLEANUP_ERROR) {
+        set({
+          favorites: get().favorites.filter((favorite) => favorite.id !== id),
+          error: 'Favorite removed, but some attached media could not be cleaned up.',
+        })
+      } else set({ error: err instanceof Error ? err.message : String(err) })
     } finally {
       favoriteMutationVersion++
       set({ saving: false })

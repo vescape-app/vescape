@@ -1,7 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
-import { ScrollView, StyleSheet, View } from 'react-native'
+import { StyleSheet, View } from 'react-native'
 import { Text } from '@/components/base/Text'
-import { FadersIcon, FootprintsIcon } from 'phosphor-react-native'
 import { router } from 'expo-router'
 
 import { BoardLightsControl } from '@/modules/board/components/BoardLightsControl'
@@ -12,17 +11,17 @@ import {
   tuneProfileColorTheme,
   tuneProfileIconComponent,
 } from '@/modules/tune/components/TuneProfileMetadataModal'
-import { SelectWidget } from '@/components/widgets/SelectWidget'
 import { useResolvedSecondaryWidgetSurface } from '@/components/widgets/widgetSurface'
 import { canRunFirmwareCommand } from '@/modules/board/lib/boardLinkIntegrity'
+import { useLegalReferenceSpeedFormat } from '@/modules/legal/hooks/useLegalLimitsFormat'
 import { legalPolicyFromReference } from '@/modules/legal/lib/legalMode'
 import { routes } from '@/navigation/routes'
 import { theme } from '@/constants/theme'
-import { TuneProfilePill } from '@/screens/main/overlays/TuneProfilePill'
+import { TuneProfileSelectCard } from '@/modules/tune/components/TuneProfileSelectCard'
+import { PillSelector, PillSelectorItem } from '@/components/controls/PillSelector'
 import { LegalMapWidget, LegalModeWidget } from '@/screens/main/overlays/TuneDrawerLegalWidgets'
 import { errorMessage } from '@/helpers/error'
 import { useBleStore } from '@/modules/board/store/bleStore'
-import { usePosiSensor } from '@/modules/board/store/boardConfigValuesStore'
 import { useBoardStore } from '@/modules/board/store/boardStore'
 import { useLegalModeStore } from '@/modules/legal/store/legalModeStore'
 import { useSettingsStore } from '@/modules/settings/store/settingsStore'
@@ -34,7 +33,7 @@ interface TuneDrawerProps {
 }
 
 export function BoardDrawer({ onNavigate, onOpenLegalLimits }: TuneDrawerProps) {
-  const [tuneSelectOpen, setTuneSelectOpen] = useState(false)
+  const formatReferenceSpeed = useLegalReferenceSpeedFormat()
   const [legalWarningOpen, setLegalWarningOpen] = useState(false)
   // The message outlives `visible` on purpose: `FadeCardModal` keeps rendering its children through
   // the exit animation, so clearing it on dismiss would blank the card as it fades.
@@ -68,7 +67,6 @@ export function BoardDrawer({ onNavigate, onOpenLegalLimits }: TuneDrawerProps) 
     activeBoardId != null &&
     profileBoardId === activeBoardId &&
     profileCompatibility === tuneCompatibility
-  const posiSensor = usePosiSensor()
   const boardConnected = useBleStore((state) => state.status === 'connected')
   const linkIntegrity = useBleStore((state) => state.linkIntegrity)
   const quickControlsEnabled = boardConnected && canRunFirmwareCommand(linkIntegrity)
@@ -88,7 +86,8 @@ export function BoardDrawer({ onNavigate, onOpenLegalLimits }: TuneDrawerProps) 
   const hasProfiles = profilesForBoard.length > 0
 
   useEffect(() => {
-    if (activeBoardId) void loadProfiles(activeBoardId, tuneCompatibility).catch(() => undefined)
+    // intentional-suppression: board config store error is rendered by the drawer
+    if (activeBoardId) void loadProfiles(activeBoardId, tuneCompatibility).catch(() => undefined) // Store error renders in this drawer.
   }, [activeBoardId, loadProfiles, tuneCompatibility])
 
   const openTune = () => {
@@ -98,7 +97,6 @@ export function BoardDrawer({ onNavigate, onOpenLegalLimits }: TuneDrawerProps) 
 
   const openProfile = (profileId: string) => {
     setActiveProfile(profileId)
-    openTune()
   }
 
   const toggleLegalMode = (enabled: boolean) => {
@@ -119,58 +117,39 @@ export function BoardDrawer({ onNavigate, onOpenLegalLimits }: TuneDrawerProps) 
         ? (activeProfileForBoard?.name ?? (profileLoading ? 'Loading...' : 'No profile'))
         : 'Loading...'
   const legalModeDescription = legalPolicy
-    ? `${legalPolicy.name} · max ${legalPolicy.referenceSpeedKmh ?? 'N/A'} km/h`
+    ? `${legalPolicy.name} · max ${formatReferenceSpeed(legalPolicy.referenceSpeedKmh)}`
     : 'Jurisdiction unresolved'
-  const SelectIcon = activeProfileForBoard
-    ? tuneProfileIconComponent(activeProfileForBoard.icon)
-    : undefined
-  const selectTheme = activeProfileForBoard
-    ? tuneProfileColorTheme(activeProfileForBoard.color)
-    : tuneProfileColorTheme('purple')
 
   return (
     <View style={styles.content}>
-      <SelectWidget
-        icon={FadersIcon}
-        selectIcon={SelectIcon}
-        badgeIcon={posiSensor ? FootprintsIcon : undefined}
-        badgeAccent={theme.palette.green.color}
-        label="Tune"
-        value={activeName}
-        description="Pick how your board should feel."
-        accent={theme.tune.color}
-        selectAccent={selectTheme.color}
-        selectBackground={selectTheme.bg}
-        selectBorder={selectTheme.border}
-        selectOpen={tuneSelectOpen}
-        showSelect={hasProfiles}
-        onPress={openTune}
-        onSelectPress={() => setTuneSelectOpen((open) => !open)}
-      />
-
-      {tuneSelectOpen && hasProfiles ? (
-        <ScrollView
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          contentContainerStyle={styles.profilePills}
-        >
-          {profilesForBoard.map((profile) => {
-            const active = profile.id === activeProfileForBoard?.id
-            const Icon = tuneProfileIconComponent(profile.icon)
-            const color = tuneProfileColorTheme(profile.color)
-            return (
-              <TuneProfilePill
+      <TuneProfileSelectCard
+        title
+        activeProfile={activeProfileForBoard}
+        emptyLabel={activeName}
+        onEdit={openTune}
+      >
+        {hasProfiles ? (
+          <PillSelector
+            size="lg"
+            activeId={activeProfileForBoard?.id ?? ''}
+            contained
+            fitContent
+            variant="lightTabs"
+            style={styles.profilePills}
+          >
+            {profilesForBoard.map((profile) => (
+              <PillSelectorItem
                 key={profile.id}
+                id={profile.id}
                 label={profile.name}
-                icon={Icon}
-                active={active}
-                color={color}
+                icon={tuneProfileIconComponent(profile.icon)}
+                color={tuneProfileColorTheme(profile.color)}
                 onPress={() => openProfile(profile.id)}
               />
-            )
-          })}
-        </ScrollView>
-      ) : null}
+            ))}
+          </PillSelector>
+        ) : null}
+      </TuneProfileSelectCard>
 
       <BoardLightsControl enabled={quickControlsEnabled} />
 
@@ -227,8 +206,7 @@ const styles = StyleSheet.create({
     gap: 14,
   },
   profilePills: {
-    gap: 8,
-    paddingRight: 8,
+    marginHorizontal: 0,
   },
   remoteTiltBox: {
     padding: 14,

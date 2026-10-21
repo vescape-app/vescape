@@ -1,5 +1,6 @@
 package expo.modules.vescapecore.service
 
+import expo.modules.vescapecore.accessory.AccessorySessionManager
 import expo.modules.vescapecore.alerts.AlertFeedback
 import expo.modules.vescapecore.connection.BoardKind
 import expo.modules.vescapecore.connection.BoardSessionController
@@ -16,11 +17,19 @@ import android.content.Context
 import android.content.Intent
 import android.os.IBinder
 import expo.modules.vescapecore.recording.RecordingCoordinator
+import expo.modules.vescapecore.recording.RecordingStorageFailure
+import expo.modules.vescapecore.recording.RecordingStorageFailureKind
+import expo.modules.vescapecore.recording.recordingFailureState
+import expo.modules.vescapecore.liveStateWithStorageFailure
 import expo.modules.vescapecore.protocol.LocationSnapshot
+import expo.modules.vescapecore.telemetry.AccessoryPersistence
+import expo.modules.vescapecore.watch.WatchSettingsPusher
+import expo.modules.vescapecore.watch.toWatchSettings
 import expo.modules.vescapecore.telemetry.AppDataRepository
 import expo.modules.vescapecore.telemetry.DEFAULT_LIVE_HISTORY_LIMIT_MINUTES
 import expo.modules.vescapecore.telemetry.MAX_LIVE_HISTORY_LIMIT_MINUTES
 import expo.modules.vescapecore.telemetry.MIN_LIVE_HISTORY_LIMIT_MINUTES
+import expo.modules.vescapecore.telemetry.TelemetryDatabase
 import expo.modules.vescapecore.telemetry.TelemetryRepository
 import expo.modules.vescapecore.watch.WatchLightsSwitch
 import expo.modules.vescapecore.watch.WatchMirrorWakeLevel
@@ -45,6 +54,7 @@ private const val ACTION_STOP_GPS_MONITORING = "expo.modules.vescapecore.ACTION_
 internal const val ACTION_START_GROUP_RIDE_OBSERVE = "expo.modules.vescapecore.ACTION_START_GROUP_RIDE_OBSERVE"
 private const val ACTION_STOP_GROUP_RIDE_OBSERVE = "expo.modules.vescapecore.ACTION_STOP_GROUP_RIDE_OBSERVE"
 internal const val ACTION_AUTO_CONNECT_SELECTED_BOARD = "expo.modules.vescapecore.ACTION_AUTO_CONNECT_SELECTED_BOARD"
+internal const val ACTION_AUTO_CONNECT_ACCESSORIES = "expo.modules.vescapecore.ACTION_AUTO_CONNECT_ACCESSORIES"
 internal const val ACTION_COMPANION_DEVICE_APPEARED = "expo.modules.vescapecore.ACTION_COMPANION_DEVICE_APPEARED"
 internal const val EXTRA_COMPANION_ADDRESS = "expo.modules.vescapecore.EXTRA_COMPANION_ADDRESS"
 internal const val TELEMETRY_STALE_MS = 4_000L
@@ -106,6 +116,15 @@ class CoreForegroundService : Service() {
         internal var pendingConfigWrite: PendingConfigWrite? = null
         internal var pendingGpsStart = false
         internal var pendingGroupRideUrl: String? = null
+
+        /**
+         * Last known activity visibility, kept at process scope because the service outlives any one
+         * activity and is often created while the app is already backgrounded (companion auto start,
+         * a boot-time reconnect). A host created then must not assume a rider is watching.
+         *
+         * @parity /modules/vescape-core/ios/connection/BoardSessionController.swift `appVisible`
+         */
+        internal var appVisible = false
         internal val appDataScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
         private val alertRulesGeneration = AtomicLong(0)
         private val alertRulesReloadMutex = Mutex()
@@ -207,6 +226,31 @@ class CoreForegroundService : Service() {
             }
         }
 
+        /**
+         * Brings up every enrolled Accessory's session at process start.
+         *
+         * Deliberately separate from the Board's auto-connect: an Accessory is enrolled in its own
+         * right, so it comes up with no Board selected, with Board auto-connect off, and after a
+         * manual Board disconnect. The service is only started when something is actually enrolled
+         * — a rider with no Accessories pays nothing for this path.
+         *
+         * @parity /modules/vescape-core/ios/connection/VescapeLaunchSubscriber.swift
+         */
+        fun autoConnectAccessories(context: Context) {
+            val app = context.applicationContext
+            appDataScope.launch {
+                val enrolled = try {
+                    AccessoryPersistence(TelemetryDatabase.get(app).telemetryDao()).getAccessories()
+                } catch (e: Exception) {
+                    android.util.Log.w(VESC_SESSION_TAG, "Accessory auto-connect read failed: ${e.message}")
+                    return@launch
+                }
+                if (enrolled.isEmpty()) return@launch
+                CoreForegroundServiceLauncher.autoConnectAccessories(app)
+                    .logIfSkipped("Accessory session service start skipped")
+            }
+        }
+
         fun getRefloatConfigSnapshot(
             onSuccess: (Map<String, Any?>) -> Unit,
             onError: (String, String) -> Unit,
@@ -270,6 +314,16 @@ class CoreForegroundService : Service() {
             instance?.controller?.watchLights(switch, on)
         }
 
+        /** Wrist Remote Tilt lock. Dropped when no session is running — nothing to tilt. */
+        fun watchTiltLock(value: Int) {
+            instance?.controller?.watchTiltLock(value)
+        }
+
+        /** Wrist Remote Tilt reset. Dropped when no session is running — nothing is commanded. */
+        fun watchTiltCancel() {
+            instance?.controller?.watchTiltCancel()
+        }
+
         /** Wrist wake level. Dropped when no service is running — nothing is pushing frames anyway. */
         internal fun watchMirrorWakeLevel(level: WatchMirrorWakeLevel) {
             instance?.controller?.watchMirrorWakeLevel(level)
@@ -291,6 +345,19 @@ class CoreForegroundService : Service() {
             }
             pendingConfigWrite = PendingConfigWrite(profileId, onSuccess, onError)
             service.controller.consumePendingConfigWrite()
+        }
+
+        /**
+         * Mirror the activity lifecycle into the GPS demand resolver.
+         *
+         * Never starts the service: a backgrounding app has nothing to arm, and a foregrounding one
+         * goes through `refreshLocationDemand` (which checks the location permission first) to get a
+         * host. Remembered while no service exists so a host created later starts with the right
+         * answer instead of defaulting to "not visible".
+         */
+        fun setAppVisible(@Suppress("UNUSED_PARAMETER") context: Context, visible: Boolean) {
+            appVisible = visible
+            instance?.controller?.appVisible = visible
         }
 
         fun startGpsMonitoring(context: Context) {
@@ -354,8 +421,9 @@ class CoreForegroundService : Service() {
             name: String?,
             lat: Double,
             lng: Double,
+            auto: Boolean,
         ) {
-            instance?.controller?.createGroupRide(riderId, riderName, riderColor, name, lat, lng)
+            instance?.controller?.createGroupRide(riderId, riderName, riderColor, name, lat, lng, auto)
         }
 
         fun joinGroupRide(
@@ -384,7 +452,9 @@ class CoreForegroundService : Service() {
         fun setTelemetryRecordingEnabled(context: Context, enabled: Boolean) {
             RecordingCoordinator.requestTelemetryRecording(enabled)
             instance?.controller?.setTelemetryRecordingEnabled(enabled)
-            if (!enabled) TelemetryRepository.get(context.applicationContext).flushBlocking()
+            if (!enabled && RecordingStorageFailure.value() == null) {
+                TelemetryRepository.get(context.applicationContext).flushBlocking()
+            }
         }
 
         fun setBmsSeriesFocused(focused: Boolean) {
@@ -395,6 +465,12 @@ class CoreForegroundService : Service() {
             instance?.controller?.setFocusedSeriesMetrics(metrics)
         }
 
+        fun setLiveSeriesMetrics(metrics: List<String>) {
+            instance?.controller?.setLiveSeriesMetrics(metrics)
+        }
+
+        fun recentTelemetry(): List<Map<String, Any?>> = instance?.controller?.recentTelemetry().orEmpty()
+
         fun setLiveHistoryLimit(limit: Number?) {
             val minutes = (limit?.toInt() ?: DEFAULT_LIVE_HISTORY_LIMIT_MINUTES)
                 .coerceIn(MIN_LIVE_HISTORY_LIMIT_MINUTES, MAX_LIVE_HISTORY_LIMIT_MINUTES)
@@ -403,7 +479,13 @@ class CoreForegroundService : Service() {
 
         fun reloadTelemetrySettings(context: Context) {
             appDataScope.launch {
-                instance?.controller?.loadTelemetrySettings(context.applicationContext)
+                val controller = instance?.controller
+                if (controller != null) {
+                    controller.loadTelemetrySettings(context.applicationContext)
+                } else {
+                    val settings = AppDataRepository.get(context.applicationContext).getTypedSettings()
+                    WatchSettingsPusher.get(context.applicationContext, appDataScope).push(settings.toWatchSettings())
+                }
             }
         }
 
@@ -444,26 +526,47 @@ class CoreForegroundService : Service() {
         }
 
         fun previewAlertSound(context: Context, soundType: String) {
-            instance?.controller?.previewAlertSound(soundType) ?: AlertFeedback.preview(context, soundType)
+            instance?.controller?.previewAlertSound(soundType) ?: AlertFeedback.preview(context, soundType, kotlinx.coroutines.runBlocking { AppDataRepository.get(context).getTypedSettings().audioSource })
+        }
+
+        fun playAppSound(context: Context, pack: String, cue: String) {
+            AlertFeedback.previewAppSound(context, pack, cue, kotlinx.coroutines.runBlocking { AppDataRepository.get(context).getTypedSettings().audioSource })
         }
 
         fun alertSoundPresets(): List<Map<String, Any>> = alertSoundPresetMaps()
 
-        fun currentLiveState(context: Context): Map<String, Any?> =
-            instance?.controller?.liveStateMap(includeRecent = true)
+        fun currentLiveState(context: Context): Map<String, Any?> {
+            RecordingStorageFailure.initialize(context.applicationContext)
+            return instance?.controller?.liveStateMap(includeRecent = true)
                 ?: idleState(AppDataRepository.get(context.applicationContext))
+        }
+
+        /** State payload for a broad DB outage; deliberately performs no persistence read. */
+        fun storageUnavailableLiveState(): Map<String, Any?> =
+            liveStateWithStorageFailure(
+                instance?.controller?.liveStateMapWithoutStorage() ?: idleState(null),
+                RecordingStorageFailure.value() ?: RecordingStorageFailureKind.StorageUnavailable,
+            )
 
         fun currentRemoteTiltState(): Map<String, Any?>? = instance?.controller?.remoteTiltState()
+
+        /**
+         * What the ground-clearance binding is doing, or an unbound state while no Board Session is
+         * up — with no Board there is no tilt channel for a sensor to hold.
+         */
+        fun currentGroundClearanceTilt(): Map<String, Any?> =
+            instance?.controller?.groundClearanceTiltState()
+                ?: mapOf("bound" to false, "driving" to false, "release" to null)
 
         /** Live rider position for Navigation; null while the service is not up. */
         fun currentRiderPosition(): LocationSnapshot? = instance?.controller?.riderPosition()
 
-        private fun idleState(repository: AppDataRepository): Map<String, Any?> {
-            val settings = kotlinx.coroutines.runBlocking { repository.getTypedSettings() }
+        private fun idleState(repository: AppDataRepository?): Map<String, Any?> {
+            val settings = repository?.let { kotlinx.coroutines.runBlocking { it.getTypedSettings() } }
             return mapOf(
                 "board" to mapOf(
                     "phase" to "idle",
-                    "selectedBoardId" to settings.selectedBoardId,
+                    "selectedBoardId" to settings?.selectedBoardId,
                     "connectedBoardId" to null,
                     "bleId" to null,
                     "name" to null,
@@ -471,7 +574,7 @@ class CoreForegroundService : Service() {
                     "lastTelemetryAt" to null,
                     "recentTelemetry" to emptyList<Map<String, Any?>>(),
                     "error" to null,
-                    "autoConnect" to settings.autoConnect,
+                    "autoConnect" to (settings?.autoConnect ?: false),
                     "remoteTilt" to null,
                 ),
                 "gps" to mapOf(
@@ -493,8 +596,10 @@ class CoreForegroundService : Service() {
                 ),
                 "recording" to mapOf(
                     "enabled" to false,
+                    "paused" to false,
                     "activeBoardId" to null,
                     "startedAt" to null,
+                    "failure" to RecordingStorageFailure.value()?.let(::recordingFailureState),
                 ),
             )
         }
@@ -507,9 +612,13 @@ class CoreForegroundService : Service() {
 
     override fun onCreate() {
         super.onCreate()
+        RecordingStorageFailure.initialize(applicationContext)
         controller = BoardSessionController(this)
         instance = this
         controller.onCreate()
+        // After `onCreate`, because the setter resolves GPS demand and must not run against a
+        // half-built controller.
+        controller.appVisible = appVisible
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -527,6 +636,10 @@ class CoreForegroundService : Service() {
                 controller.promoteConnectedDeviceForeground()
                 controller.autoConnectSelectedBoard()
             }
+            ACTION_AUTO_CONNECT_ACCESSORIES -> {
+                controller.promoteConnectedDeviceForeground()
+                AccessorySessionManager.start(applicationContext)
+            }
             ACTION_COMPANION_DEVICE_APPEARED -> {
                 controller.promoteConnectedDeviceForeground()
                 intent.getStringExtra(EXTRA_COMPANION_ADDRESS)?.let(controller::connectCompanionDevice)
@@ -543,6 +656,10 @@ class CoreForegroundService : Service() {
     }
 
     override fun onDestroy() {
+        // The Accessory sessions' host is going away, so the links go with it. Keeping GATT open
+        // past the service is how a background BLE link becomes a leak Android eventually kills
+        // anyway, without the rider ever being told it stopped.
+        AccessorySessionManager.stopAll()
         controller.onServiceDestroy()
         instance = null
         super.onDestroy()

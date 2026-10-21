@@ -1,3 +1,4 @@
+import { tuneCompatibilityVersion } from '@/modules/tune/lib/tuneCompatibility'
 import {
   createProfile as nativeCreateProfile,
   renameProfile as nativeRenameProfile,
@@ -82,7 +83,12 @@ export function isCompatibleProfile(
   boardId: string | null,
   refloatBaseVersion: string | null,
 ): boolean {
-  return profile.boardId === boardId && profile.refloatBaseVersion === refloatBaseVersion
+  const compatibility = tuneCompatibilityVersion(refloatBaseVersion)
+  return (
+    compatibility !== null &&
+    profile.boardId === boardId &&
+    tuneCompatibilityVersion(profile.refloatBaseVersion) === compatibility
+  )
 }
 
 export function withDefaultMetadata(profile: TuneProfile): TuneProfile {

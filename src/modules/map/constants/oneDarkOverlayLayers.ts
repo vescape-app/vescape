@@ -1,5 +1,8 @@
 import { theme } from '@/constants/theme'
 
+/** Fixed icon tint for the One Dark map style. */
+export const ONE_DARK_POI_ICON_COLOR = '#8ba4bf'
+
 /** One Dark admin boundaries and every label drawn over the ground layers. */
 export const ONE_DARK_OVERLAY_LAYERS = [
   // --- admin boundaries ---
@@ -61,7 +64,7 @@ export const ONE_DARK_OVERLAY_LAYERS = [
       'text-max-angle': 30,
     },
     paint: {
-      'text-color': '#8ba4bf',
+      'text-color': ONE_DARK_POI_ICON_COLOR,
       'text-halo-color': '#172033',
       'text-halo-width': 1.5,
     },
@@ -113,7 +116,7 @@ export const ONE_DARK_OVERLAY_LAYERS = [
       'text-anchor': 'top',
     },
     paint: {
-      'icon-color': '#8ba4bf',
+      'icon-color': ONE_DARK_POI_ICON_COLOR,
       'icon-halo-width': 0,
       'icon-opacity': 0.76,
       'text-color': '#7890a8',
@@ -154,7 +157,7 @@ export const ONE_DARK_OVERLAY_LAYERS = [
       'text-anchor': 'top',
     },
     paint: {
-      'icon-color': '#8ba4bf',
+      'icon-color': ONE_DARK_POI_ICON_COLOR,
       'icon-halo-width': 0,
       'icon-opacity': 0.76,
       'text-color': '#7890a8',
@@ -310,7 +313,7 @@ export const ONE_DARK_OVERLAY_LAYERS = [
       'text-letter-spacing': 0.1,
     },
     paint: {
-      'text-color': '#8ba4bf',
+      'text-color': ONE_DARK_POI_ICON_COLOR,
       'text-halo-color': '#172033',
       'text-halo-width': 2,
     },

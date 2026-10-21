@@ -3,23 +3,27 @@ import { FillExtrusionLayer, RasterLayer, RasterSource } from '@rnmapbox/maps'
 import { MAPY_TILE_URL_TEMPLATE } from '@/config/mapy'
 import { theme } from '@/constants/theme'
 import { rosterRiderColor } from '@/modules/group-ride/lib/riderColor'
-import { useRiderStore } from '@/modules/group-ride/store/riderStore'
+import { useSelectedBoardRailColor } from '@/modules/group-ride/lib/selectedBoardRailColor'
 import { PrivacyZonesMapLayer } from '@/modules/history/components/PrivacyZonesMapLayer'
 import { LegalLimitsMapLayer } from '@/modules/legal/components/LegalLimitsMapLayer'
 import { MapPin } from '@/modules/map/components/MapPin'
 import { MAP_DEFAULTS } from '@/modules/map/constants/mapStyles'
+import { useSettingsStore } from '@/modules/settings/store/settingsStore'
 import { getMapPointKindIcon } from '@/modules/map-points/constants/mapPointIcons'
 import { RadarRangeRings } from '@/modules/weather/components/RadarRangeRings'
 import { RainViewerOverlay } from '@/modules/weather/components/RainViewerOverlay'
 import { HistoryMapLayers } from '@/screens/main/map/HistoryMapLayers'
 import { LiveMapLayers } from '@/screens/main/map/LiveMapLayers'
 import { MapPointLayers } from '@/screens/main/map/MapPointLayers'
-import { NavigationMapLayers } from '@/screens/main/map/NavigationMapLayers'
+import { NAVIGATION_ROUTE_COLOR, NavigationMapLayers } from '@/screens/main/map/NavigationMapLayers'
 import {
   DESTINATION_POINT_COLOR,
   DESTINATION_POINT_TEXT_COLOR,
 } from '@/screens/main/map/offscreenMapIndicators'
 import type { MainMapLayersProps } from '@/screens/main/map/mainMapLayerTypes'
+
+// Ride History Markers are diagnostic detail; the history route stays clean unless they are opted in.
+const NO_MARKERS: MainMapLayersProps['rideMarkers'] = []
 
 export { HistoryMapLayers }
 
@@ -98,7 +102,8 @@ export function MainMapLayers(props: MainMapLayersProps) {
     riders,
     onSelectLegalCountry,
   } = props
-  const riderColor = useRiderStore((state) => state.riderColor)
+  const riderColor = useSelectedBoardRailColor()
+  const showHistoryMapMarkers = useSettingsStore((state) => state.showHistoryMapMarkers)
 
   return (
     <>
@@ -113,7 +118,7 @@ export function MainMapLayers(props: MainMapLayersProps) {
           rideRoute={props.rideRoute}
           rideTelemetrySamples={props.rideTelemetrySamples}
           activeHistoryMapMetric={props.activeHistoryMapMetric}
-          rideMarkers={props.rideMarkers}
+          rideMarkers={showHistoryMapMarkers ? props.rideMarkers : NO_MARKERS}
           rideGpsSamples={props.rideGpsSamples}
           mediaAssets={props.mediaAssets}
           favoriteRanges={props.favoriteRanges}
@@ -135,6 +140,7 @@ export function MainMapLayers(props: MainMapLayersProps) {
             selectedNavigationTarget={props.selectedNavigationTarget}
             directionColor={riderColor ?? DESTINATION_POINT_COLOR}
             directionTextColor={riderColor ?? DESTINATION_POINT_TEXT_COLOR}
+            routeColor={riderColor ?? NAVIGATION_ROUTE_COLOR}
             onFocusDirectionPoint={props.onFocusDirectionPoint}
           />
           <LiveMapLayers

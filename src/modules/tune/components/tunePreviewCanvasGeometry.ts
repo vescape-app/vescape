@@ -11,7 +11,7 @@ import {
   TUNE_PREVIEW_WHEEL_RADIUS_PIXELS,
 } from '@/modules/tune/lib/tunePreviewGeometry'
 
-export const GROUND_Y = 58
+export const GROUND_Y = 78
 export const WHEEL_RADIUS = TUNE_PREVIEW_WHEEL_RADIUS_PIXELS
 export const DECK_HALF_LENGTH = 72
 export const DECK_CENTER_Y = GROUND_Y - WHEEL_RADIUS
@@ -20,10 +20,9 @@ export const ZERO_MARKER_LENGTH = 12
 export const GROUND_TICK_SPACING = GROUND_TICK_SPACING_METERS * TUNE_PREVIEW_PIXELS_PER_METER
 export const FOOTPAD_OFFSET = 46
 const INPUT_ARROW_IDLE_GAP = 34
-const INPUT_ARROW_TRAVEL = 18
 const INPUT_ARROW_LENGTH = 16
 const INPUT_ARROW_HEAD = 4
-export const CANVAS_HEIGHT = 122
+export const CANVAS_HEIGHT = 142
 export const READOUT_FONT_SIZE = 9
 export const READOUT_BASELINE = 9
 export const READOUT_HEIGHT = 12
@@ -52,12 +51,12 @@ export function pitchInputArrow(
   const magnitude = Math.abs(normalized)
   const rate =
     Math.sign(normalized) * (1 - (1 - magnitude) ** 2) * MAX_PITCH_INPUT_RATE_DEGREES_PER_SECOND
-  const sideRate = footpadOffset < 0 ? Math.max(-rate, 0) : Math.max(rate, 0)
+  const sideRate = footpadOffset > 0 ? Math.max(-rate, 0) : Math.max(rate, 0)
   const progress = Math.min(1, Math.max(0, sideRate / MAX_PITCH_INPUT_RATE_DEGREES_PER_SECOND))
   const radians = (angleDegrees * Math.PI) / 180
   const footpadX = centerX + Math.cos(radians) * footpadOffset
-  const footpadY = DECK_CENTER_Y + Math.sin(radians) * footpadOffset
-  const arrowTop = footpadY - INPUT_ARROW_IDLE_GAP + INPUT_ARROW_TRAVEL * progress
+  const footpadY = DECK_CENTER_Y - Math.sin(radians) * footpadOffset
+  const arrowTop = footpadY - INPUT_ARROW_IDLE_GAP
   const arrowTip = arrowTop + INPUT_ARROW_LENGTH
   const headY = arrowTip - INPUT_ARROW_HEAD
   const opacity = progress <= 0 ? 0 : 0.18 + progress * 0.82

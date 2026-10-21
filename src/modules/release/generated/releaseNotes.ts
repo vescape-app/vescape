@@ -2,6 +2,71 @@ import type { BundledReleaseNote } from '../lib/releaseNotes'
 
 export const bundledReleaseNotes = [
   {
+    version: '0.99.0',
+    markdown:
+      "## New\n\n- Pull up the bottom telemetry strip to see live charts for speed, duty cycle, temperatures, currents, battery voltage, footpads, pitch and roll. Export recent readings as a CSV.\n\n## Improved\n\n- The riding screen now has temperature arcs with alert markers, a board pitch-and-roll indicator, and recent peak markers on the speed and duty gauges.\n- Ride thumbnails now show street maps behind your route, making past rides easier to recognize.\n\n## Fixed\n\n- VESC faults now show the correct controller fault names and plain-language explanations instead of unrelated riding-state labels.\n- Stalled Bluetooth connections now retry instead of getting stuck connecting or waiting for telemetry.\n- On iOS, stopping from the ride widget now cancels connections still starting or restoring and dismisses the Live Activity.\n- Navigation updates when you change routes while standing still. If you pass the destination, the remaining distance now shows how far back it is instead of zero.\n\n## Watch\n\n- Apple Watch and Wear OS now show street maps, your position and a recent riding trail, even without an active route. Choose which map layers appear behind the gauges and adjust the street map's visibility in Watch settings.\n- Watch navigation now shows a loading indicator while a route is being calculated or received, and reports when a route is unavailable.\n",
+  },
+  {
+    version: '0.98.0',
+    markdown:
+      '## Watch\n\n- Group Ride comes to Apple Watch and Wear OS, with indicators for other riders\' low board batteries and high motor or controller temperatures. See riders on the map, locate those beyond its edge, and browse a list showing their direction and distance. Works without a connected board.\n- When no board is connected, gauges show empty readings without a "Board not connected" notice. Apple Watch navigation also stays fully visible instead of dimming as though updates had stopped.\n- On Apple Watch, swiping sideways from Remote Tilt now follows your finger and settles onto the next page or back into place.\n',
+  },
+  {
+    version: '0.97.3',
+    markdown:
+      '## Improved\n\n- Ride history maps now hide pause, connection, error, and gap markers by default. Turn on "Ride markers on map" in Settings → Diagnostics to show them.\n\n## Fixed\n\n- Fixed the live map trail disappearing when connecting, switching, or disconnecting a board, and after returning to the app. Your phone\'s location continues updating independently of the board connection.\n',
+  },
+  {
+    version: '0.97.2',
+    markdown:
+      "## Improved\n\n- Group Ride now remembers your Auto setting between app sessions. When enabled, it joins the nearest public group ride or starts one once your board is connected and your location is available. Leaving a ride turns Auto off so you won't automatically rejoin.\n",
+  },
+  {
+    version: '0.97.1',
+    markdown:
+      '## Watch\n\n- Fixed sideways swipes getting stuck on the Remote Tilt page on Apple Watch.\n- Remote Tilt now defaults to 20% per second instead of 10% on Apple Watch and Wear OS, making adjustments faster. Your saved speed setting is preserved.\n',
+  },
+  {
+    version: '0.97.0',
+    markdown:
+      '## New\n\n- Turn on the Group Ride switch to automatically join the nearest public ride within 10 km, or create one if none is nearby. Turn it off to leave.\n',
+  },
+  {
+    version: '0.96.0',
+    markdown:
+      "## Fixed\n\n- Fixed hard-to-read dropdown options in light theme, with clearer selected choices and switch states.\n\n## Watch\n\n- Added Remote Tilt control on Apple Watch and Wear OS. Drag up or down to adjust tilt, release to hold it, and double-tap to ease back to neutral. Tilt stays set when the watch sleeps or disconnects. The gauges show active tilt, and Board Move warns when moving will clear it. Adjust the stick's speed in Watch settings on your phone.\n",
+  },
+  {
+    version: '0.95.2',
+    markdown:
+      "## New\n\n- Added a Molicel P42A cell preset for configuring your board's battery.\n",
+  },
+  {
+    version: '0.95.1',
+    markdown:
+      '## Improved\n\n- Board light switches now show when their state is unknown, and accessory switches show a spinner while saving changes.\n- Open Sounds directly from the settings drawer to choose and preview a sound pack.\n\n## Fixed\n\n- Speed alert presets now recalculate to whole-number thresholds when you switch between km/h and mph, with active alerts updating immediately. Custom alert thresholds stay unchanged.\n',
+  },
+  {
+    version: '0.95.0',
+    markdown:
+      "## New\n\n- Choose Alarm or Media audio output on Android for alerts, spoken warnings, and app sounds.\n- Switch to imperial units for mph, miles, and feet across live readings, ride history, navigation, and spoken speed alerts. Saved alert thresholds keep the same physical meaning.\n- Export rides and Favorites as GPX routes or CSV telemetry files.\n- Choose Retro or Classic app sounds, or build custom packs from WAV files for connection, error, and Group Ride cues. Custom packs are included in backups.\n\n## Improved\n\n- Tune editing now supports precise manual entry alongside the ruler, with warnings for values outside the usual range.\n- Changing map style now preserves your app appearance preference.\n- Ride and Favorite thumbnails show more route detail, preserve proportions, and leave gaps where GPS data is missing.\n\n## Fixed\n\n- Board-matched alert presets recover missing rules once configuration becomes available. Alert markers and previews now reflect the saved thresholds used during rides.\n- Applying an unchanged tune value no longer rounds it or overwrites custom linked settings. ATR Speed Boost now displays and edits the correct percentage.\n- Tune profiles remain available after Refloat patch updates within the same major and minor version.\n- Fixed app launch on iOS 27.\n\n## Watch\n\n- Apple Watch and Wear OS follow the phone's unit preference for speed, navigation distance, and radar distance labels.\n",
+  },
+  {
+    version: '0.94.0',
+    markdown:
+      '## Fixed\n\n- Fixed an app error when saved sign-in credentials temporarily cannot be read.\n- Fixed hard-to-read disabled buttons in light mode and GPS status colors that did not update when switching themes.\n\n## Watch\n\n- Added Apple Watch support with live speed, duty cycle, battery and temperature gauges, plus your route, distance to destination, weather forecast and rain radar. You can also control board lights and hold to move the board from your wrist. Move stops when you release or the connection is lost. Open Vescape on the watch manually to get started.\n- Adjusted the Wear OS weather layout to keep the forecast and sunrise or sunset time visible on smaller screens.\n',
+  },
+  {
+    version: '0.93.0',
+    markdown:
+      '## New\n\n- Added support for compatible Bluetooth accessories, including ground-clearance sensors for automatic tilt adjustment and brake lights with adjustable sensitivity and parked behavior.\n- Remote Tilt is now available on iOS, including tilt lock and timed return to neutral.\n- Added linking support for older Float and Refloat boards, including controllers running VESC 6.02.\n\n## Improved\n\n- Speed alerts now use a different sound from duty-cycle alerts, making them easier to tell apart while riding.\n- Ride routes continue recording through brief board disconnects without splitting the ride. Recording pauses when the board disengages and resumes when you ride again.\n- GPS now switches off in the background when neither riding nor sharing your Group Ride location needs it.\n- The board selector puts your active board first, with direct access to warnings, VESC faults and editing.\n\n## Fixed\n\n- Remote Tilt handles delayed responses more reliably, preventing older drag commands from overriding a release or cancel and keeping the return countdown steady.\n- Storage failures now show clear errors instead of appearing to save successfully. Recording stops with a visible warning if ride data cannot be saved.\n- Reconnecting no longer restarts recording after you explicitly stop it.\n',
+  },
+  {
+    version: '0.92.1',
+    markdown:
+      '## Fixed\n\n- Fixed ride recording on iOS so new rides save correctly and appear in ride history.\n\n## Watch\n\n- Wear OS always-on mode now keeps the full gauge layout visible, including battery and motor/controller temperatures, with readings refreshing every 10 seconds. Speed and duty are dimmed to indicate delayed readings, and stale telemetry clears instead of leaving frozen values on screen. Low battery keeps its warning color on supported displays.\n- Clearer connection messages distinguish a disconnected phone, a missing or outdated phone app, and a disconnected board, with guidance on what to do next.\n',
+  },
+  {
     version: '0.92.0',
     markdown:
       '## New\n\n- View animated rain radar on your watch, centered around your location with 50 km and 100 km range guides and a timeline of the last two hours.\n- Control your board’s lights and headlight independently from your watch on compatible Refloat firmware.\n- A status below the live gauges now clearly shows when GPS is starting, searching, weak, lost, off, or blocked, with quick access to navigation diagnostics.\n\n## Improved\n\n- Speed, duty, battery, and temperature gauges now stay pinned around the watch face while you use weather, navigation, Board Move, light controls, or diagnostics.\n- Rain radar in the app now adds labeled range rings, frames the full 100 km view, and resumes playback after you scrub the timeline.\n\n## Fixed\n\n- On iPhone, GPS now continues after a board disconnect and remembers your last precise location between app launches.\n',

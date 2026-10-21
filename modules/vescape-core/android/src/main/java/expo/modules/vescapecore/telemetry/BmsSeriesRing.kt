@@ -7,7 +7,7 @@ import java.nio.ByteOrder
  * Fixed lanes preceding the per-cell voltage lanes in the columnar BMS series payload.
  *
  * @parity /modules/vescape-core/ios/telemetry/BmsSeriesRing.swift `BMS_SERIES_FIXED_LANES`
- * @parity /modules/vescape-core/src/index.ts `BMS_SERIES_FIXED_LANES`
+ * @parity /modules/vescape-core/src/bmsSeries.ts `BMS_SERIES_FIXED_LANES`
  */
 internal const val BMS_SERIES_FIXED_LANES = 3
 
@@ -15,7 +15,7 @@ internal const val BMS_SERIES_FIXED_LANES = 3
  *  bits, so the balancing bitmask is split across two lanes of 30 bits each.
  *
  * @parity /modules/vescape-core/ios/telemetry/BmsSeriesRing.swift `BMS_SERIES_BALANCE_LANE_BITS`
- * @parity /modules/vescape-core/src/index.ts `BMS_SERIES_BALANCE_LANE_BITS`
+ * @parity /modules/vescape-core/src/bmsSeries.ts `BMS_SERIES_BALANCE_LANE_BITS`
  */
 internal const val BMS_SERIES_BALANCE_LANE_BITS = 30
 

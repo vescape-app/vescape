@@ -5,12 +5,27 @@ JS layer may be suspended during a ride. Alerts are evaluated natively so they f
 ## Data flow
 
 ```
-JS calls VescapeCore alert CRUD / Legal Mode intent → native storage updates → native reloads rules
+JS sends preset intent / custom Alert Rule CRUD / Legal Mode intent → native transaction → native reloads rules
 CoreForegroundService: each BLE packet → evaluateAlerts() → SoundPool/TextToSpeech + Vibrator
 Fired alerts embedded in that packet's telemetry map → visible in recentTelemetry
 ```
 
 No separate event. No JS-side audio. Native storage is the source of truth.
+
+## App sound packs
+
+The five app cues (Connect, Disconnect, Error, New Group Ride, Rider joined Group Ride) are
+separate from Alert Rule presets and Geiger sounds. A custom pack may assign any subset. Native
+playback and previews read the same app-owned `custom-app-sounds` manifest and WAV files; a cue
+without a usable file plays its Classic counterpart. Imports accept decodable WAV up to 2 MB and
+15 seconds. The document picker source is copied, so its URI is never used for later playback.
+
+Database backups include the custom pack manifest and audio files under `custom-app-sounds/`.
+Android copies the referenced files and manifest under the pack store lock before writing the
+archive. Restore retains the previous database and pack files until both have installed; a failed
+sound install rolls both back.
+Restoring an older backup without these entries clears custom packs. A restored pack drops any
+assignment whose file is absent, while a selected pack that no longer exists resolves to Classic.
 
 ## Per-board ownership
 
@@ -126,7 +141,7 @@ Templates render from current alert values when the rule fires:
 Runtime behavior:
 
 - Android native `TextToSpeech` speaks from the foreground service so messages can fire while JS is suspended.
-- TTS uses the same alarm-style audio attributes as alert presets.
+- Android presets, app cues, and TTS use the selected audio output: Alarm (default, including existing installs) or Media. Switching streams during a session recreates the SoundPool, reloads assets, and restarts active Geiger loops. iOS retains its existing playback session and hides this Android-only choice.
 - TTS is initialized lazily when rules include a `tts:` message and speech plays as soon as possible. Do not pre-generate or cache message audio.
 - Message alerts vibrate once, same as one-shot preset alerts.
 - If multiple spoken messages compete, the most urgent alert wins and may stop a less urgent spoken message.
@@ -136,8 +151,10 @@ Runtime behavior:
 
 ## Alert Presets
 
-Presets generate Alert Rules in JS. Fixed rules carry concrete thresholds; a preset the rider opts
-into matching carries a durable relationship to a board config field instead. Native resolves that
+Native generates and persists preset Alert Rules. JS sends preset intents and renders saved rules.
+Unsaved add-board drafts call the synchronous native `previewAlertPreset` operation, which uses
+the same generator without reading or writing the database. Fixed rules carry concrete thresholds;
+a preset the rider opts into matching carries a durable relationship to a board config field instead. Native resolves that
 field from Last Known Board Config Values (Refloat) or Last Known Motor Config Values (MCCONF) and
 follows fresh reads/writes without rewriting the rule.
 
@@ -155,9 +172,10 @@ table mirrored across TS and both platforms (`configRelativeFields`) rather than
 field that is missing, unread, or disabled leaves the relationship inactive: the rule persists, and
 neither a sound nor a gauge marker comes from it until the board supplies a value.
 
-A rider picks one **level** per **metric**; `generateAlertPresetRules` (`src/modules/alerts/lib/alertPresets.ts`)
-deterministically expands `(metric, level, options)` into concrete rule specs the Alert Preset store
-persists through the same CRUD as manual rules.
+A rider picks one **level** per **metric**. `applyAlertPreset` accepts a select, customize,
+discard-custom, or match-board-config intent. Native reads that Board's persisted settings and
+configuration, then commits the selection and rule changes in one database transaction. A failure
+rolls the whole operation back; neither the selected level nor part of its rule set survives alone.
 
 ### Levels
 
@@ -181,16 +199,26 @@ Five metrics, in two feedback families:
 - **geiger** → one range rule (`threshold` → `thresholdMax`); the start drops with protection while the
   ceiling stays fixed.
 
-Values seed from the shared `TELEMETRY_THRESHOLDS` where sensible so presets track the visual warning
-tiers. Tune counts/values only in `alertPresets.ts` — never in native or components.
+Preset values, sound types, and config-relative offsets live in
+`modules/vescape-core/shared/alert-preset-definitions.json`. Both native generators consume this
+single definition. Edit that file to change preset values. JS formats returned rule snapshots and
+does not implement preset generation.
 
 ### Provenance & regeneration
 
 Preset rules carry `source = "preset"` (`ALERT_PRESET_SOURCE`) with deterministic ids
-(`presetAlertRuleId(metric, index)`) and the active Board's `board_id`. Changing a level regenerates
-that one metric wholesale (delete-then-upsert scoped to its preset rules on that Board) — manual rules
-and other metrics' preset rules survive. The per-metric level selection is the durable `alertPreset`
-**Board Settings** bag; regeneration reads it back plus that Board's Board Top Speed and battery config.
+(`preset:<metric>:<index>`) and the owning Board's `board_id`. Changing a level replaces that
+metric's preset rows inside the same transaction that updates the durable `alertPreset` Board
+Settings bag. Manual rules and other metrics survive. Native also updates affected presets in the
+Board-save transaction when their generation inputs change.
+
+Saved-board markers, descriptions, chart references, and sound previews read saved Alert Rules.
+Config-relative values are resolved for display from the Board's current configuration; unresolved
+relations remain stored but do not draw markers or fire. JS never regenerates persisted rules when
+configuration arrives. Before session evaluation, native restores missing matched-preset relations
+left by older JS saves, preserving existing rules and disabled states. Native reloads evaluation
+after committed writes and publishes an `alerts`
+data-change event; JS reloads after that event and on foreground catch-up.
 
 ### Board Top Speed
 
@@ -231,6 +259,7 @@ store.toggle(id)
 store.remove(id)
 
 // native API is board-scoped
+applyAlertPreset(boardId, metric, { action: 'select', level: 'normal' })
 getAlertRules(boardId)
 upsertAlertRule(rule)                    // rule carries boardId
 setAlertRuleEnabled(boardId, id, enabled)

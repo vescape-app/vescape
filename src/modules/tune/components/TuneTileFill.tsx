@@ -2,12 +2,12 @@ import { useCallback, useState } from 'react'
 import { StyleSheet, View, type LayoutChangeEvent } from 'react-native'
 import { Canvas, LinearGradient, Rect, RoundedRect, vec } from '@shopify/react-native-skia'
 
-import { theme } from '@/constants/theme'
+import { theme, type ThemeColor } from '@/constants/theme'
 import { useResolvedColor, useResolvedNeutralColors } from '@/hooks/useTheme'
 
 interface TuneTileFillProps {
   fraction: number | null
-  color?: string
+  color?: ThemeColor
 }
 
 const FILL_HEIGHT_RATIO = 0.42

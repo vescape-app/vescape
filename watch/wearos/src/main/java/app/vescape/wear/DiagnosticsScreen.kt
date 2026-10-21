@@ -29,6 +29,8 @@ import kotlinx.coroutines.delay
  * Readable straight off the wrist — no adb, and no phone round trip (the wrist->phone channel in
  * ADR-0033 carries rider commands, never diagnostics): counters answer "are frames arriving / decoding", the event ring shows link flaps and streak
  * starts with wall-clock times a rider can report or photograph.
+ *
+ * @parity /watch/watchos/DiagnosticsPanel.swift `DiagnosticsPanel`
  */
 @Composable
 fun DiagnosticsScreen() {
@@ -36,6 +38,7 @@ fun DiagnosticsScreen() {
     val events by WatchDiagnostics.events
     val link by TelemetryState.phoneLink
     val lights by BoardState.lights
+    val battery by LastBatteryState.battery
 
     // Local clock tick so "last frame Xs ago" keeps counting while no new frames redraw the page.
     var nowMs by remember { mutableLongStateOf(SystemClock.elapsedRealtime()) }
@@ -66,6 +69,9 @@ fun DiagnosticsScreen() {
         if (counters.unknownPathMessages > 0) {
             item { StatLine("Other msgs", counters.unknownPathMessages.toString(), warn = true) }
         }
+        item { StatLine("Battery board", battery?.boardName ?: "--") }
+        item { StatLine("Battery", battery?.text ?: "--") }
+        item { StatLine("Battery age", battery?.ageLabel(System.currentTimeMillis()) ?: "<1h / unknown") }
         // Board lights have no UI of their own yet; these lines are how the /board path is
         // verified end to end, and "unknown" has to read differently from "off".
         item { StatLine("Lights", boardLightLabel(lights.lightsEnabled)) }
@@ -124,7 +130,10 @@ private fun EventLine(event: DiagnosticEvent) {
     }
 }
 
-/** "?" is the board never having said, which is not the same answer as "off". */
+/**
+ * "?" means the board has not reported a value.
+ * @parity /watch/watchos/DiagnosticsPanel.swift `lightLabel`
+ */
 private fun boardLightLabel(value: Boolean?): String = when (value) {
     true -> "on"
     false -> "off"

@@ -10,8 +10,8 @@ import Animated, {
 } from 'react-native-reanimated'
 
 import { Text } from '@/components/base/Text'
-import { theme } from '@/constants/theme'
-import { useResolvedNeutralColors } from '@/hooks/useTheme'
+import { theme, type ThemeColor } from '@/constants/theme'
+import { useResolvedNeutralColors, useThemeStore } from '@/hooks/useTheme'
 
 interface ActiveNavigationTopBarProps {
   boardPill: ReactNode
@@ -21,7 +21,7 @@ interface ActiveNavigationTopBarProps {
   targetTitle: string
   targetIcon: Icon
   distanceLabel: string
-  riderColor: string
+  riderColor: ThemeColor
   onNavigationPress: () => void
   onCancel: () => void
 }
@@ -70,11 +70,11 @@ function CompactBoardPill({
   )
 }
 
-function TargetIcon({ icon, color, size = 16 }: { icon: Icon; color: string; size?: number }) {
+function TargetIcon({ icon, color, size = 16 }: { icon: Icon; color: ThemeColor; size?: number }) {
   return createElement(icon, { size, color, weight: 'bold' })
 }
 
-function CancelButton({ color, onPress }: { color: string; onPress: () => void }) {
+function CancelButton({ color, onPress }: { color: ThemeColor; onPress: () => void }) {
   return (
     <Pressable
       accessibilityLabel="Cancel navigation"
@@ -103,6 +103,7 @@ export function ActiveNavigationTopBar({
 }: ActiveNavigationTopBarProps) {
   const { width } = useWindowDimensions()
   const neutral = useResolvedNeutralColors()
+  const light = useThemeStore((state) => state.resolvedTheme === 'light')
   const [navigationPrimary, setNavigationPrimary] = useState(true)
   const navigationPrimaryRef = useRef(true)
   const gestureTriggeredRef = useRef(false)
@@ -206,7 +207,10 @@ export function ActiveNavigationTopBar({
               onPress={() => swapPrimary(true)}
               style={[
                 styles.navigationMini,
-                { borderColor: targetBorder, backgroundColor: targetTint },
+                {
+                  borderColor: targetBorder,
+                  backgroundColor: light ? neutral.surfaceDeep : targetTint,
+                },
               ]}
             >
               <TargetIcon icon={targetIcon} color={riderColor} size={12} />
@@ -254,7 +258,7 @@ const styles = StyleSheet.create({
     borderRadius: 14,
     borderWidth: 1,
     borderColor: theme.control.border,
-    backgroundColor: theme.neutral.surfaceDeep,
+    backgroundColor: theme.control.background,
   },
   boardPillDotOnly: {
     width: 28,
@@ -275,7 +279,7 @@ const styles = StyleSheet.create({
   },
   boardName: {
     maxWidth: 52,
-    color: theme.neutral.textMuted,
+    color: theme.control.text,
     fontSize: 10,
     fontWeight: '800',
   },

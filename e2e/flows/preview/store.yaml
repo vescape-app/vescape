@@ -1,0 +1,49 @@
+# Short App Store cut. Recorder callbacks omit setup/XCTest startup from the footage.
+appId: ${APP_ID}
+---
+- runFlow: _boot.yaml
+- runScript:
+    file: _recorder.js
+    env:
+      ACTION: start
+- runScript:
+    file: _recorder.js
+    env:
+      ACTION: dwell
+      MS: 6000
+- tapOn:
+    id: history-button
+    waitToSettleTimeoutMs: 0
+- extendedWaitUntil:
+    visible:
+      id: history-latest-ride
+    timeout: 10000
+- runScript:
+    file: _recorder.js
+    env:
+      ACTION: dwell
+      MS: 1000
+- tapOn:
+    id: history-latest-ride
+    waitToSettleTimeoutMs: 0
+- extendedWaitUntil:
+    visible:
+      id: history-metric-tab-duty
+    timeout: 10000
+- runScript:
+    file: _recorder.js
+    env:
+      ACTION: dwell
+      MS: 1000
+- tapOn:
+    id: history-previous-ride
+    waitToSettleTimeoutMs: 0
+- runScript:
+    file: _recorder.js
+    env:
+      ACTION: dwell
+      MS: 1000
+- runScript:
+    file: _recorder.js
+    env:
+      ACTION: stop

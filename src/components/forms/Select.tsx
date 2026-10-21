@@ -1,13 +1,14 @@
 import { useCallback, useRef, useState } from 'react'
 import type { View } from 'react-native'
-import { Pressable, ScrollView, StyleSheet } from 'react-native'
+import { Pressable, StyleSheet } from 'react-native'
 import { Text } from '@/components/base/Text'
-import { CaretDownIcon, CheckIcon } from 'phosphor-react-native'
+import { CaretDownIcon } from 'phosphor-react-native'
 
-import { interaction, theme } from '@/constants/theme'
+import { theme } from '@/constants/theme'
 import { Dropdown } from '@/components/forms/Dropdown'
+import { DropdownOptionList } from '@/components/forms/DropdownOptionList'
 import { inputBase } from '@/components/forms/Input'
-import { useResolvedControlColors, useResolvedNeutralColors } from '@/hooks/useTheme'
+import { useResolvedControlColors } from '@/hooks/useTheme'
 
 const MAX_DROPDOWN_HEIGHT = 280
 
@@ -36,7 +37,6 @@ export function Select<T extends string = string>({
   const triggerRef = useRef<View>(null)
   const [open, setOpen] = useState(false)
   const control = useResolvedControlColors()
-  const neutral = useResolvedNeutralColors()
 
   const selectedOption = options.find((o) => o.value === value)
 
@@ -68,7 +68,7 @@ export function Select<T extends string = string>({
         >
           {selectedOption?.label ?? placeholder}
         </Text>
-        <CaretDownIcon size={14} color={neutral.textMuted} weight="bold" />
+        <CaretDownIcon size={14} color={control.textMuted} weight="bold" />
       </Pressable>
 
       <Dropdown
@@ -77,34 +77,12 @@ export function Select<T extends string = string>({
         onClose={() => setOpen(false)}
         maxHeight={MAX_DROPDOWN_HEIGHT}
       >
-        <ScrollView bounces={false} showsVerticalScrollIndicator={false}>
-          {options.map((option, index) => {
-            const selected = option.value === value
-            return (
-              <Pressable
-                key={option.value}
-                testID={testID ? `${testID}-option-${option.value}` : undefined}
-                style={({ pressed }) => [
-                  styles.option,
-                  index < options.length - 1 && [
-                    styles.optionBorder,
-                    { borderColor: neutral.border },
-                  ],
-                  selected && styles.optionSelected,
-                  pressed && styles.optionPressed,
-                ]}
-                onPress={() => handleSelect(option.value)}
-              >
-                <Text style={[styles.optionText, selected && styles.optionTextSelected]}>
-                  {option.label}
-                </Text>
-                {selected ? (
-                  <CheckIcon size={14} color={theme.palette.sky.color} weight="bold" />
-                ) : null}
-              </Pressable>
-            )
-          })}
-        </ScrollView>
+        <DropdownOptionList
+          options={options}
+          value={value}
+          onSelect={handleSelect}
+          {...(testID ? { testID } : {})}
+        />
       </Dropdown>
     </>
   )
@@ -125,31 +103,5 @@ const styles = StyleSheet.create({
     fontSize: 15,
     fontWeight: '600',
     flex: 1,
-  },
-  option: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: 14,
-    paddingVertical: 12,
-  },
-  optionBorder: {
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: theme.neutral.border,
-  },
-  optionSelected: {
-    backgroundColor: theme.palette.sky.bg,
-  },
-  optionPressed: {
-    backgroundColor: interaction.pressedBg,
-  },
-  optionText: {
-    color: theme.neutral.textPrimary,
-    fontSize: 14,
-    fontWeight: '500',
-  },
-  optionTextSelected: {
-    color: theme.palette.sky.color,
-    fontWeight: '600',
   },
 })

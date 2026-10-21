@@ -6,6 +6,51 @@ import org.junit.Assert.assertNull
 import org.junit.Test
 
 class WatchSettingsTest {
+    /**
+     * Regression: `boardMoveStrengthPercent` was missing from the reload list, so a strength change
+     * never reached the watch. Every mirrored field needs its key in the list, and vice versa.
+     */
+    @Test
+    fun `every mirrored setting has its key in the reload list`() {
+        val changedByKey = mapOf(
+            "riderColor" to AppSettings(riderColor = "#ff0000"),
+            "boardMoveStrengthPercent" to AppSettings(boardMoveStrengthPercent = 30),
+            "wearNavArrowEnabled" to AppSettings(wearNavArrowEnabled = true),
+            "wearTelemetryTrailEnabled" to AppSettings(wearTelemetryTrailEnabled = false),
+            "wearTelemetryGroupEnabled" to AppSettings(wearTelemetryGroupEnabled = false),
+            "wearTelemetryRouteEnabled" to AppSettings(wearTelemetryRouteEnabled = false),
+            "wearStreetMapEnabled" to AppSettings(wearStreetMapEnabled = false),
+            "wearMapGaugesPercent" to AppSettings(wearMapGaugesPercent = 90),
+            "unitSystem" to AppSettings(unitSystem = "imperial"),
+            "wearTiltRatePercent" to AppSettings(wearTiltRatePercent = 40),
+        )
+        val mirroredFields = WatchSettings::class.java.declaredFields.count { !java.lang.reflect.Modifier.isStatic(it.modifiers) }
+        assertEquals(mirroredFields, changedByKey.size)
+        assertEquals(WATCH_SOURCE_SETTING_KEYS - "wearPushRateHz", changedByKey.keys)
+        for (changed in changedByKey.values) {
+            org.junit.Assert.assertNotEquals(AppSettings().toWatchSettings(), changed.toWatchSettings())
+        }
+    }
+
+    /** Issue #557: JS writes arrive as doubles; only whole steps persist. */
+    @Test
+    fun `map behind gauges accepts whole steps from the bridge only`() {
+        assertEquals(45, WatchMapGauges.percent(45.0))
+        assertEquals(90, WatchMapGauges.percent(90))
+        assertEquals(0, WatchMapGauges.percent(0.0))
+        for (invalid in listOf(45.5, 50, 15, -30, 100, "60", true, null)) assertNull(WatchMapGauges.percent(invalid))
+    }
+
+    @Test
+    fun `unit preference belongs to cold settings and invalidates equality`() {
+        val metric = AppSettings().toWatchSettings()
+        val imperial = AppSettings(unitSystem = "imperial").toWatchSettings()
+        assertEquals("metric", metric.unitSystem)
+        assertEquals("imperial", imperial.unitSystem)
+        org.junit.Assert.assertNotEquals(metric, imperial)
+        assertEquals(imperial, AppSettings(unitSystem = "imperial", telemetryPollRateHz = 5).toWatchSettings())
+    }
+
     @Test
     fun `the rider colour rides to the wrist as the phone stores it`() {
         assertEquals("#38bdf8", AppSettings(riderColor = "#38bdf8").toWatchSettings().riderColor)

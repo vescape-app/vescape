@@ -27,7 +27,7 @@ async function reloadRuntime() {
 }
 
 export function useSettingsDatabaseOps() {
-  const { bytes: dbSize, refresh: refreshDatabaseSize } = useDatabaseSize()
+  const { bytes: dbSize, error: dbSizeError, refresh: refreshDatabaseSize } = useDatabaseSize()
   const [rebuildState, setRebuildState] = useState<OpState>('idle')
   const [rebuildResult, setRebuildResult] = useState<string | null>(null)
   const [backupState, setBackupState] = useState<OpState>('idle')
@@ -131,7 +131,7 @@ export function useSettingsDatabaseOps() {
   const rebuildHint =
     rebuildState === 'error' && rebuildResult
       ? rebuildResult
-      : 'Refresh historical data with newest algorithms and settings'
+      : 'Refresh historical summaries and route previews with current settings'
   const rebuildProgressValue =
     rebuildProgress && rebuildProgress.total > 0
       ? Math.min(1, rebuildProgress.current / rebuildProgress.total)
@@ -154,6 +154,7 @@ export function useSettingsDatabaseOps() {
 
   return {
     dbSize,
+    dbSizeError,
     rebuildState,
     rebuildHint,
     rebuildProgressValue,

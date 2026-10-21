@@ -135,12 +135,18 @@ export const createTuneProfileDraftSlice: SliceFactory = (set, get) => ({
     try {
       const saved = await nativeSaveProfile(profile.id, { ...profile.fields, ...dirty })
       set((state) => {
+        if (state.activeProfile?.id !== profile.id) return { saving: false }
+        const remainingDraft = Object.fromEntries(
+          Object.entries(state.draftFields).filter(
+            ([fieldId, value]) => !(fieldId in dirty) || dirty[fieldId] !== value,
+          ),
+        )
         const diff = boardDiff(saved, state.boardFields)
         return {
           profiles: state.profiles.map((item) => (item.id === saved.id ? saved : item)),
           activeProfile: saved,
-          draftFields: {},
-          hasDirtyFields: false,
+          draftFields: remainingDraft,
+          hasDirtyFields: Object.keys(dirtyFields(saved, remainingDraft)).length > 0,
           boardDiff: diff,
           hasBoardDiff: diff.length > 0,
           saving: false,
@@ -149,7 +155,7 @@ export const createTuneProfileDraftSlice: SliceFactory = (set, get) => ({
       })
       return saved
     } catch (error) {
-      set({ saving: false, error: errorMessage(error, 'Unable to load tune profiles.') })
+      set({ saving: false, error: errorMessage(error, 'Unable to save tune profile.') })
       throw error
     }
   },
@@ -169,7 +175,10 @@ export const createTuneProfileDraftSlice: SliceFactory = (set, get) => ({
       get().setBoardSnapshot(snapshot)
       set({ syncing: false })
     } catch (error) {
-      set({ syncing: false, error: errorMessage(error, 'Unable to load tune profiles.') })
+      set({
+        syncing: false,
+        error: errorMessage(error, 'Unable to sync tune profile to the board.'),
+      })
       throw error
     }
   },

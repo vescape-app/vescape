@@ -8,9 +8,9 @@ final class VescFaultCaptureCoordinatorTests: XCTestCase {
     var captures: [String: VescFaultCapture] = [:]
     var samples: [String: [VescFaultCaptureSample]] = [:]
 
-    func upsertCapture(_ capture: VescFaultCapture) { captures[capture.occurrenceId] = capture }
-    func appendSamples(_ occurrenceId: String, _ samples: [VescFaultCaptureSample]) {
-      self.samples[occurrenceId] = samples
+    func saveCapture(_ capture: VescFaultCapture, samples: [VescFaultCaptureSample]) {
+      captures[capture.occurrenceId] = capture
+      self.samples[capture.occurrenceId] = samples
     }
     func getCapture(_ occurrenceId: String) -> VescFaultCapture? { captures[occurrenceId] }
     func getSamples(_ occurrenceId: String) -> [VescFaultCaptureSample] { samples[occurrenceId] ?? [] }

@@ -10,6 +10,8 @@ post-merge:
 pre-commit:
   parallel: true
   commands:
+    bun-version:
+      run: bun run scripts/check-bun.ts
     format:
       glob: '*.{ts,tsx,json,md,yml,yaml}'
       run: bunx oxfmt {staged_files}
@@ -21,6 +23,9 @@ pre-commit:
     typecheck:
       glob: '*.{ts,tsx}'
       run: bun run ts
+    theme-colors:
+      glob: '*.{ts,tsx}'
+      run: bun run theme:colors:check
     lint:
       glob: '*.{ts,tsx,json}'
       run: bun run lint
@@ -33,3 +38,16 @@ pre-commit:
     test-android:
       glob: '*.{kt,kts}'
       run: bun run test:android
+
+commit-msg:
+  commands:
+    commit-policy:
+      run: bun run scripts/git-hooks/policy.ts commit-msg "{1}"
+
+pre-push:
+  commands:
+    bun-version:
+      run: bun run scripts/check-bun.ts
+    commit-policy:
+      run: bun run scripts/git-hooks/policy.ts pre-push
+      use_stdin: true

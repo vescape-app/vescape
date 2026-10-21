@@ -11,6 +11,7 @@ import expo.modules.vescapecore.weather.Weather
  * it does not know, a newer wrist falls back to its own default for keys an older phone never sends.
  *
  * @parity /watch/wearos/src/main/java/app/vescape/wear/WatchWeather.kt
+ * @parity /modules/vescape-core/ios/watch/WatchWeather.swift
  */
 internal const val WATCH_WEATHER_PATH = "/weather"
 

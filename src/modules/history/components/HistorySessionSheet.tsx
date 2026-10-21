@@ -1,20 +1,24 @@
-import { useCallback, useMemo, useRef, type RefObject } from 'react'
-import { ActivityIndicator, Pressable, StyleSheet, View } from 'react-native'
+import { useRideFormat } from '@/modules/history/hooks/useRideFormat'
+import { useCallback, useMemo, type RefObject } from 'react'
+import { StyleSheet, View, useWindowDimensions } from 'react-native'
 import { Text } from '@/components/base/Text'
 import { ClockCounterClockwiseIcon, StarIcon } from 'phosphor-react-native'
 import type { Favorite } from 'vescape-core'
 
 import { Placeholder } from '@/components/base/Placeholder'
 import { EdgeDrawer } from '@/components/overlays/EdgeDrawer'
-import { interaction, theme } from '@/constants/theme'
-import { HistoryRideRow } from '@/modules/history/components/HistoryRideRow'
-import { favoriteSessionId } from '@/modules/history/lib/favorites'
+import { theme } from '@/constants/theme'
+import { HistoryTabs } from '@/modules/history/components/HistoryTabs'
+import { HistoryRideRow, HistoryRideRowSkeleton } from '@/modules/history/components/HistoryRideRow'
 import {
-  formatFavoriteName,
-  formatRideListDateTime,
-  formatRideListDetails,
-} from '@/modules/history/lib/rideFormat'
-import { isLiveRide, rideMovingWindow } from '@/modules/history/lib/sessions'
+  historyListRows,
+  historyListLayouts,
+  HISTORY_RIDE_ROW_HEIGHT,
+  HISTORY_RIDE_ROW_GAP,
+} from '@/modules/history/lib/historyList'
+import { favoriteSessionId } from '@/modules/history/lib/favorites'
+import { formatFavoriteName, formatRideTime } from '@/modules/history/lib/rideFormat'
+import { isLiveRide } from '@/modules/history/lib/sessions'
 import { useHistoryAutoRefresh } from '@/modules/history/hooks/useHistoryAutoRefresh'
 import type { HistorySession } from '@/modules/history/store/historyStore'
 
@@ -29,6 +33,7 @@ interface HistorySessionSheetProps {
   loadingMore: boolean
   onClose: () => void
   onSelectSession: (session: HistorySession) => void
+  onSelectTab: (tab: 'history' | 'favorites') => void
   onLoadMore: () => void
 }
 
@@ -44,51 +49,66 @@ export function HistorySessionSheet({
   onClose,
   onSelectSession,
   onLoadMore,
+  onSelectTab,
 }: HistorySessionSheetProps) {
-  const selectedRowRef = useRef<View>(null)
+  const { formatRideDetails } = useRideFormat()
+  const { fontScale } = useWindowDimensions()
+  const dateHeaderHeight = 22 + 16 * fontScale
   useHistoryAutoRefresh(visible && !favoriteMode)
   const favoritesBySessionId = useMemo(
     () => new Map(favorites.map((favorite) => [favoriteSessionId(favorite.id), favorite])),
     [favorites],
   )
 
+  const rows = useMemo(() => historyListRows(sessions), [sessions])
+  const layouts = useMemo(
+    () => historyListLayouts(rows, dateHeaderHeight),
+    [rows, dateHeaderHeight],
+  )
+  const selectedIndex = sessions.findIndex((session) => session.id === selectedSessionId)
+  const selectedLayout = layouts[selectedIndex]
+
   const renderSession = useCallback(
     ({ item }: { item: unknown }) => {
-      const session = item as HistorySession
+      const { session, window: rideWindow, dateHeader } = item as (typeof rows)[number]
       const selected = session.id === selectedSessionId
       const favorite = favoritesBySessionId.get(session.id)
-      const rideWindow = rideMovingWindow(session) ?? {
-        startMs: session.startAtMs,
-        endMs: session.endAtMs,
-      }
-      const dateTime = formatRideListDateTime(
+      const time = formatRideTime(
         rideWindow.startMs,
         rideWindow.endMs,
         !favorite && isLiveRide(session, Date.now()),
       )
-      const details = formatRideListDetails(
+      const details = formatRideDetails(
         rideWindow.endMs - rideWindow.startMs,
         session.distanceM,
         favorite?.boardName ?? session.boardName,
       )
       return (
-        <HistoryRideRow
-          ref={selected ? selectedRowRef : undefined}
-          testID={`history-session-row-${session.id}`}
-          title={
-            favorite
-              ? formatFavoriteName(favorite.name, favorite.startMs, favorite.endMs)
-              : dateTime
-          }
-          subtitle={favorite ? dateTime : details}
-          details={favorite ? details : undefined}
-          routePoints={session.routePoints}
-          selected={selected}
-          onPress={() => onSelectSession(session)}
-        />
+        <View>
+          {dateHeader ? (
+            <Text
+              accessibilityRole="header"
+              style={[styles.dateHeader, { height: dateHeaderHeight }]}
+            >
+              {dateHeader}
+            </Text>
+          ) : null}
+          <HistoryRideRow
+            testID={`history-session-row-${session.id}`}
+            title={
+              favorite ? formatFavoriteName(favorite.name, favorite.startMs, favorite.endMs) : time
+            }
+            subtitle={favorite ? time : details}
+            details={favorite ? details : undefined}
+            routePoints={session.routePoints}
+            selected={selected}
+            accent={favorite ? theme.palette.amber.color : undefined}
+            onPress={() => onSelectSession(session)}
+          />
+        </View>
       )
     },
-    [favoritesBySessionId, onSelectSession, selectedSessionId],
+    [favoritesBySessionId, onSelectSession, selectedSessionId, formatRideDetails, dateHeaderHeight],
   )
 
   const empty = (
@@ -104,34 +124,38 @@ export function HistorySessionSheet({
     />
   )
 
-  const footer = hasMore ? (
-    <Pressable
-      style={({ pressed }) => [styles.loadingRow, pressed && styles.loadingPressed]}
-      disabled={loadingMore}
-      onPress={onLoadMore}
-    >
-      {loadingMore ? (
-        <ActivityIndicator size="small" color={theme.palette.sky.color} />
-      ) : (
-        <Text style={styles.loadingText}>Load older rides</Text>
-      )}
-    </Pressable>
-  ) : null
+  const footer =
+    hasMore && loadingMore ? (
+      <View
+        style={styles.loadingRows}
+        accessibilityLabel="Loading older rides"
+        accessibilityRole="progressbar"
+        accessibilityState={{ busy: true }}
+        testID="history-loading-older-rides"
+      >
+        {Array.from({ length: 6 }, (_, index) => (
+          <HistoryRideRowSkeleton key={index} />
+        ))}
+      </View>
+    ) : null
 
   return (
     <EdgeDrawer
       visible={visible}
       triggerRef={triggerRef}
-      title={favoriteMode ? 'Favorites' : 'History'}
-      icon={favoriteMode ? StarIcon : ClockCounterClockwiseIcon}
-      iconColor={favoriteMode ? theme.palette.amber.color : theme.palette.purple.color}
+      header={
+        <HistoryTabs tab={favoriteMode ? 'favorites' : 'history'} onSelectTab={onSelectTab} />
+      }
       onClose={onClose}
-      initialFocusRef={selectedRowRef}
       backdropTestID="history-session-sheet-backdrop"
       virtualizedContent={{
-        data: sessions,
+        data: rows,
+        initialFocus: selectedLayout
+          ? { offset: selectedLayout.rowOffset, height: HISTORY_RIDE_ROW_HEIGHT }
+          : undefined,
+        getItemLayout: (_data, index) => layouts[index],
         renderItem: renderSession,
-        keyExtractor: (item) => (item as HistorySession).id,
+        keyExtractor: (item) => (item as (typeof rows)[number]).session.id,
         empty,
         footer,
         separator: HistoryRowSeparator,
@@ -148,25 +172,21 @@ function HistoryRowSeparator() {
 }
 
 const styles = StyleSheet.create({
-  separator: { height: 8 },
+  separator: { height: HISTORY_RIDE_ROW_GAP },
+  dateHeader: {
+    color: theme.neutral.textSecondary,
+    fontSize: 12,
+    lineHeight: 16,
+    includeFontPadding: false,
+    fontWeight: '700',
+    paddingTop: 12,
+    paddingBottom: 10,
+  },
   empty: {
     paddingVertical: 28,
   },
-  loadingRow: {
-    minHeight: 34,
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderRadius: 10,
-    borderWidth: 1,
-    borderColor: theme.neutral.border,
-    backgroundColor: theme.neutral.surfaceDeep,
-  },
-  loadingPressed: {
-    backgroundColor: interaction.pressedBg,
-  },
-  loadingText: {
-    color: theme.neutral.textMuted,
-    fontSize: 11,
-    fontWeight: '700',
+  loadingRows: {
+    gap: 8,
+    paddingTop: 8,
   },
 })

@@ -3,59 +3,42 @@ import Foundation
 /// Keepalive poll spacing while in an Idle Pause: ~1 Hz keeps the resume signal alive.
 internal let IDLE_PAUSE_POLL_INTERVAL_MS = 1_000
 
-/// Continuous non-moving time before a Ride Recording enters an Idle Pause.
-internal let DEFAULT_IDLE_PAUSE_AFTER_MS: Int64 = 180_000
-
 internal enum IdlePauseTransition {
   case paused
   case resumed
 }
 
-/// Decides when a Ride Recording enters or leaves an Idle Pause (CONTEXT.md, ADR-0021).
+/// Whether the Board is carrying a rider, from one Refloat state word.
 ///
-/// Pure state machine fed each sample's speed; it returns a transition only when the pause state
-/// flips. "Moving" reuses the low-speed metric sanitizer's rule (`abs(speed) >= threshold`) so there
-/// is one definition of moving shared with the Moving Window. Asymmetric on purpose: pauses only
-/// after `pauseAfterMs` of continuous non-moving samples, resumes on the first moving sample —
-/// slow-to-pause / instant-to-resume prevents flapping at traffic lights.
+/// RUNNING, TILTBACK and WHEELSLIP are all engaged — a board balancing at a standstill is being
+/// ridden, and one in tiltback is being ridden badly. Everything else, including the ready state a
+/// board sits in on the ground, is not.
+///
+/// The one place this is decided. Idle Pause and Accessory measurement demand both ask it, and a
+/// second copy of the nibble arithmetic would be a second definition of "riding" that could drift.
+///
+/// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/IdlePauseDetector.kt `isRefloatEngaged`
+// GET_ALLDATA packs state_compat in the lower nibble and saturation in the upper nibble.
+internal func isRefloatEngaged(state: Int) -> Bool { (1...3).contains(state & 0x0f) }
+
+/// Pauses recording on the first disengaged Refloat sample and resumes on the first engaged sample.
+/// RUNNING, TILTBACK, and WHEELSLIP remain engaged, including while balancing at zero speed.
+/// Paused polling stays at ~1 Hz, so detecting engagement can take about a second (ADR-0021).
 ///
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/IdlePauseDetector.kt
 internal final class IdlePauseDetector {
-  private let pauseAfterMs: Int64
   private var paused = false
-  private var nonMovingSinceMs: Int64?
-
-  init(pauseAfterMs: Int64 = DEFAULT_IDLE_PAUSE_AFTER_MS) {
-    self.pauseAfterMs = pauseAfterMs
-  }
 
   var isPaused: Bool { paused }
 
-  func onSample(speedCentiKmh: Int, movingThresholdCentiKmh: Int, atMs: Int64) -> IdlePauseTransition? {
-    // Mirror MetricSanitizer exactly: moving when abs(speed) >= threshold (>= 0).
-    // A threshold of 0 means every sample is moving, so a stopped board never idle-pauses.
-    let moving = abs(speedCentiKmh) >= max(0, movingThresholdCentiKmh)
-    if moving {
-      nonMovingSinceMs = nil
-      if !paused { return nil }
-      paused = false
-      return .resumed
-    }
-    if paused { return nil }
-    let since: Int64
-    if let existing = nonMovingSinceMs {
-      since = existing
-    } else {
-      since = atMs
-      nonMovingSinceMs = atMs
-    }
-    if atMs - since < pauseAfterMs { return nil }
-    paused = true
-    return .paused
+  func onSample(state: Int) -> IdlePauseTransition? {
+    let nextPaused = !isRefloatEngaged(state: state)
+    guard nextPaused != paused else { return nil }
+    paused = nextPaused
+    return paused ? .paused : .resumed
   }
 
   func reset() {
     paused = false
-    nonMovingSinceMs = nil
   }
 }

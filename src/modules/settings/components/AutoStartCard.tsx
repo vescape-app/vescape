@@ -1,10 +1,11 @@
-import { LayoutAnimation, Platform, StyleSheet, Switch, UIManager, View } from 'react-native'
+import { LayoutAnimation, Platform, StyleSheet, UIManager, View } from 'react-native'
 import { CheckIcon, ClockCountdownIcon, RocketLaunchIcon } from 'phosphor-react-native'
 
 import { Text } from '@/components/base/Text'
 import { Button } from '@/components/base/Button'
 import { SettingsCard } from '@/components/settings/SettingsCard'
 import { SettingsRow } from '@/components/settings/SettingsRow'
+import { Switch } from '@/components/controls/Switch'
 import { SettingsSectionTitle } from '@/components/settings/SettingsSectionTitle'
 import { Stepper } from '@/components/forms/Stepper'
 import { theme } from '@/constants/theme'
@@ -87,7 +88,7 @@ export function AutoStartCard({
           icon={RocketLaunchIcon}
           iconColor={
             !enabled
-              ? theme.palette.slate.textSecondary
+              ? theme.neutral.textSecondary
               : nothingArmed
                 ? theme.palette.amber.color
                 : theme.palette.green.color
@@ -101,8 +102,6 @@ export function AutoStartCard({
               // switch on with nothing to turn it off.
               disabled={masterBusy || (noBoards && !enabled)}
               onValueChange={toggle}
-              trackColor={{ false: theme.palette.slate.border, true: theme.palette.sky.border }}
-              thumbColor={enabled ? theme.palette.sky.color : theme.palette.slate.textMuted}
             />
           }
         />

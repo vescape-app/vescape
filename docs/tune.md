@@ -112,6 +112,26 @@ Display values are rounded after conversion to the underlying field value.
 | Brake tilt     |   `0..5` |  `1` | Writes brake tiltback strength directly.          |
 | ATR intensity  |  `0..15` |  `1` | Writes uphill and downhill ATR strength together. |
 
+Individual field editors keep raw values in profiles and convert only for display. ATR Speed Boost
+uses a usual raw range of `-1..1` and displays `-100..100%` in one-percent steps.
+The Turn Speed Boost ruler spans `0..10000%` in steps of five. The Angle I ruler spans
+`0..0.5` in `0.001` steps, including values
+produced by Aggressiveness. Editor precision does not depend on whether the current value
+happens to be an integer. ATR Threshold Angle Up and Down both use `0..5°` with fixed
+`0.5°` steps.
+
+Tune field editors open in ruler mode. The keyboard button switches to manual input, and the
+ruler button switches back without snapping the value. Only moving the ruler snaps to its step.
+Manual input validates the field's display precision, accepts a decimal comma or point,
+and disables Apply for invalid input. Values outside the ruler's usual range show a warning
+but remain unchanged and can be applied. Percentages are entered in display
+units and converted back to raw values on Apply. Cancel leaves the profile unchanged.
+
+Opening an editor and applying without changing anything preserves the saved values. Basic
+controls show the actual linked values until the dial changes; changing the dial explicitly
+applies its formula. Editing only a linked field preserves the other fields, including unequal
+ATR uphill/downhill strengths.
+
 ## Basic Slider Formulas
 
 ### Aggressiveness
@@ -628,7 +648,7 @@ The firmware version string is useful diagnostics, but it is not the primary dec
 expose a different schema on the same nominal firmware family, and the XML schema is the source of
 truth for field order and encoding.
 
-Tune Profiles are not migrated across normalized base Refloat package versions. A profile created
+Tune Profiles are not migrated across Refloat major/minor versions. A profile created
 under one base version is retained for that version and hidden from normal use when the board
 reports a different base version. Suffixes and fork labels stay in the exact Refloat version used
 for link integrity, but they do not split Tune Profile compatibility. If the board later returns to
@@ -648,7 +668,7 @@ Known version-sensitive field semantics:
 
 For our app, this means tune read/write support requires a trusted Board Link with known Refloat
 package version. Writes are still gated by schema validation and field presence, but profile
-visibility is gated by Refloat package version. The app does not silently convert old tune values
+visibility is gated by Refloat major/minor version; patch versions and suffixes share profiles. The app does not silently convert old tune values
 to new Refloat versions.
 
 ### Basic and Advanced Values Must Stay in Sync
@@ -705,3 +725,14 @@ Before implementing writes, keep field IDs aligned with the serialized struct
 names returned by the board's `<SerOrder>`. Do not derive IDs from `cDefine`;
 those defaults are VESC Tool names and can differ from Refloat's wire-format
 field IDs, as with `atr_strength_up` / `atr_strength_down`.
+
+## Profile selector summary
+
+The quick-settings Tune card summarizes the saved selected profile with five
+segments per metric. Aggression uses the Basic Aggressiveness slider (`kp`), Turning uses
+Basic Carve Tilt (`turntilt_strength`), and ATR uses Basic ATR intensity (the stronger of uphill
+and downhill strength). Each existing Basic slider range is normalized to 0–5 and rounded to
+the nearest segment; custom values are clamped to that range. Missing or non-finite sources
+show an unavailable dash, distinct from a valid zero. These summarize configured strengths,
+not measured handling or a simulated ride rating. Unsaved editor changes do not change the
+saved profile summary.

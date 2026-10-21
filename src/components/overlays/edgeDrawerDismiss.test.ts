@@ -4,6 +4,7 @@ import {
   COMMIT_FRACTION,
   DRAWER_INITIAL_OPEN_FRACTION,
   edgeDrawerContentResizeOffset,
+  edgeDrawerFocusOffset,
   edgeDrawerDismissOpacity,
   edgeDrawerOnScreenPixels,
   edgeDrawerRestoreOffset,
@@ -228,4 +229,30 @@ describe('edgeDrawerContentResizeOffset', () => {
     expect(offset).toBe(200)
     expect(offset).toBeLessThan(edgeDrawerRestoreOffset(900, height, false))
   })
+})
+
+test('focuses a virtualized row far below the first window at screen center without dismissal', () => {
+  const rowOffset = HEIGHT + 64 + 80 * 96
+  const itemHeight = 88
+  for (const opensFromTop of [false, true]) {
+    const range = rowOffset + HEIGHT
+    const offset = edgeDrawerFocusOffset({
+      offset: rowOffset,
+      itemHeight,
+      range,
+      height: HEIGHT,
+      opensFromTop,
+    })
+    expect(rowOffset - offset + itemHeight / 2).toBe(HEIGHT / 2)
+    expect(edgeDrawerVisibleFraction({ offset, range, height: HEIGHT, opensFromTop })).toBe(1)
+  }
+  const range = 700
+  const offset = edgeDrawerFocusOffset({
+    offset: 100,
+    itemHeight,
+    range,
+    height: HEIGHT,
+    opensFromTop: false,
+  })
+  expect(edgeDrawerVisibleFraction({ offset, range, height: HEIGHT, opensFromTop: false })).toBe(1)
 })

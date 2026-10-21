@@ -1,7 +1,7 @@
 import { StyleSheet, View } from 'react-native'
 import Animated, { FadeOut, withTiming } from 'react-native-reanimated'
 
-import { theme } from '@/constants/theme'
+import { theme, type ThemeColor } from '@/constants/theme'
 import { useResolvedColor, useResolvedNeutralColors } from '@/hooks/useTheme'
 
 const pointerEntering = () => {
@@ -33,7 +33,13 @@ const pulseEntering = () => {
 }
 
 /** The viewfinder the add menu places a feature at, pulsing once per placement. */
-export function CenterPlacementPointer({ color, pulseKey }: { color: string; pulseKey: number }) {
+export function CenterPlacementPointer({
+  color,
+  pulseKey,
+}: {
+  color: ThemeColor
+  pulseKey: number
+}) {
   const neutral = useResolvedNeutralColors()
   const resolvedColor = useResolvedColor(color)
 

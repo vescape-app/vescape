@@ -2,11 +2,10 @@ import { useState, type ReactNode } from 'react'
 import { StyleSheet, View } from 'react-native'
 import { ChartLineUpIcon, WarningCircleIcon } from 'phosphor-react-native'
 
-import { Button } from '@/components/base/Button'
 import { Placeholder } from '@/components/base/Placeholder'
 import { SegmentedToggle } from '@/components/controls/SegmentedToggle'
 import { useResolvedSecondaryWidgetSurface } from '@/components/widgets/widgetSurface'
-import { pickProfileStatItems } from '@/modules/profile/components/profileStatItems'
+import { useProfileStatItems } from '@/modules/profile/hooks/useProfileStatItems'
 import { ProfileStatsGrid } from '@/modules/profile/components/ProfileStatsGrid'
 import { useProfileStats } from '@/modules/profile/hooks/useProfileStats'
 import { formatMonthLabel } from '@/modules/profile/lib/profileStats'
@@ -25,10 +24,11 @@ interface ProfileStatsSummaryProps {
  * The full breakdown lives on the Profile Stats screen; this is the glance version.
  */
 export function ProfileStatsSummary({ active = true, action }: ProfileStatsSummaryProps) {
-  const { total, monthly, selectedMonth, loading, error, empty, refresh } = useProfileStats(active)
+  const { total, monthly, selectedMonth, loading, error, empty } = useProfileStats(active)
   const surface = useResolvedSecondaryWidgetSurface()
   const [scope, setScope] = useState<Scope>('total')
   const stats = scope === 'total' ? total : monthly
+  const items = useProfileStatItems(stats, ['topSpeed', 'distance', 'longestRide', 'rides'])
 
   return (
     <View
@@ -52,21 +52,17 @@ export function ProfileStatsSummary({ active = true, action }: ProfileStatsSumma
         {!loading && error ? (
           <Placeholder
             icon={WarningCircleIcon}
-            description="Could not load riding totals"
-            action={<Button label="Retry" size="sm" variant="secondary" onPress={refresh} />}
+            description="Could not load riding totals. Restart the app to try again"
             style={styles.empty}
           />
         ) : !loading && empty ? (
           <Placeholder
             icon={ChartLineUpIcon}
-            description="Your riding totals appear once a ride is recorded"
+            description="Record a ride and your totals appear here"
             style={styles.empty}
           />
         ) : (
-          <ProfileStatsGrid
-            items={pickProfileStatItems(stats, ['distance', 'rides', 'topSpeed', 'longestRide'])}
-            emphasis
-          />
+          <ProfileStatsGrid items={items} emphasis columns={4} />
         )}
       </View>
     </View>
@@ -88,7 +84,7 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
   },
   body: {
-    minHeight: 134,
+    minHeight: 72,
     justifyContent: 'center',
   },
 })

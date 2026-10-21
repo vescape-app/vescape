@@ -4,7 +4,7 @@ import XCTest
 final class RefloatConfigProtocolTests: XCTestCase {
   func testBuildsForwardedGetInfoRequest() {
     XCTAssertEqual(
-      [UInt8(COMM_FORWARD_CAN), 7, UInt8(COMM_CUSTOM_APP_DATA), UInt8(REFLOAT_MAGIC), UInt8(REFLOAT_GET_INFO), 1],
+      [UInt8(COMM_FORWARD_CAN), 7, UInt8(COMM_CUSTOM_APP_DATA), UInt8(REFLOAT_MAGIC), UInt8(REFLOAT_GET_INFO), 2],
       RefloatConfigProtocol.buildGetInfo(transport: .can(7))
     )
   }
@@ -19,7 +19,8 @@ final class RefloatConfigProtocolTests: XCTestCase {
       0,
     ]))
 
-    XCTAssertEqual("Refloat 1.2", parsed.version)
+    // @legacy-float info-v1: replace with rejection coverage when support ends; /docs/legacy-float.md#info-v1.
+    XCTAssertEqual("Float/Refloat 1.2", parsed.version)
   }
 
   func testParsesForwardedGetInfoV2Response() throws {

@@ -1,0 +1,468 @@
+import Foundation
+import WatchConnectivity
+import WidgetKit
+
+/// Wrist-side end of the Watch Frame path (ADR-0019). Receives the frames `WatchTelemetryPusher`
+/// sends from `vescape-core`, reduces them to a Mirror State, and publishes that alongside the
+/// lifecycle evidence the port is blocked on: what the session thinks its state is, when the last
+/// frame actually landed, and at what rate they are arriving versus being shown.
+///
+/// Nothing here interprets the ride. Decoding is `WatchFrame.swift` and the fresh/stale/waiting/
+/// disconnected decision is `MirrorState.swift`, both the phone's own files symlinked in, so the
+/// wrist cannot drift from the encoder or from Android's reducer.
+///
+/// This is Android's `TelemetryState` plus its `PhoneLinkMonitor`: watchOS needs no separate node
+/// and capability poll, because `WCSession` publishes paired, companion-installed and reachable
+/// directly and tells the delegate when they change.
+///
+/// @parity /modules/vescape-core/ios/watch/WatchTelemetryPusher.swift
+/// @parity /watch/wearos/src/main/java/app/vescape/wear/TelemetryState.kt
+/// @parity /watch/wearos/src/main/java/app/vescape/wear/PhoneLinkMonitor.kt
+final class PhoneLink: NSObject, ObservableObject, WCSessionDelegate {
+  static let shared = PhoneLink()
+  var onActivation: (() -> Void)?
+  /// What the wrist draws: the reduced state, never the raw frame. A view that read `frame`
+  /// directly would render a reading the reducer has already declared too old to trust.
+  @Published private(set) var mirror = MirrorStateReducer.reduce(frame: nil, lastFrameAtMs: nil, nowMs: 0)
+  /// Why there is nothing to draw, while there is nothing to draw.
+  @Published private(set) var link: MirrorPhoneLink = .unknown
+  /// When the last decodable frame landed, by the watch's own clock. The wrist-down question is
+  /// answered by watching this against the wall clock, not by looking at the numbers above it.
+  @Published private(set) var lastFrameAt: Date?
+  @Published private(set) var activation: WCSessionActivationState = .notActivated
+  @Published private(set) var reachable = false
+  @Published private(set) var companionInstalled = false
+  /// Counters and the event ring the diagnostics page reads. The wrist's only field instrument:
+  /// it is written here and nowhere else, because every fact worth recording — frames, decode
+  /// failures, counterpart changes, the wake level — already passes through this object.
+  ///
+  /// @parity /watch/wearos/src/main/java/app/vescape/wear/WatchDiagnostics.kt `WatchDiagnostics`
+  @Published private(set) var diagnostics = WatchDiagnosticsLog()
+  /// The rider's phone settings, as last pushed. Cold state: it is read out of the received
+  /// Application Context at activation, so a wrist restart or a reconnect finds the current values
+  /// already there instead of waiting for the rider to touch a switch again.
+  ///
+  /// @parity /watch/wearos/src/main/java/app/vescape/wear/WatchSettings.kt `SettingsState`
+  @Published private(set) var settings: WatchSettings = .wristDefaults
+
+  /// The phone's forecast, as last pushed. Cold state on the same channel-merged context as the
+  /// settings, so a wrist restart or a reconnect finds the current forecast already there instead
+  /// of a blank weather page until the phone next refreshes.
+  ///
+  /// Held raw, including when it has aged out: `freshWeather(nowMs:)` is what decides whether it is
+  /// still worth showing, and the difference between "stale" and "never arrived" is what the radar
+  /// and weather pages say to the rider.
+  ///
+  /// @parity /watch/wearos/src/main/java/app/vescape/wear/WatchWeather.kt `WeatherState`
+  @Published private(set) var weather: WatchWeather?
+
+  /// The phone's route, as last pushed. Cold state on the same merged context, so a wrist restart
+  /// or a reconnect finds the route already drawn instead of a blank nav page until the rider picks
+  /// a new destination.
+  ///
+  /// Nil covers three cases the wrist draws identically — never pushed, explicitly cleared, and a
+  /// payload this build cannot read. The one that matters is the middle one: the phone's clear is a
+  /// payload and not a removed channel, so the value that survives a reconnect is the clear rather
+  /// than the route it replaced.
+  ///
+  /// @parity /watch/wearos/src/main/java/app/vescape/wear/WatchRoute.kt `RouteState`
+  @Published private(set) var route: WatchRoute?
+  @Published private(set) var routeStatus: WatchRouteStatus?
+
+  /// The board's two light switches, as last pushed. Cold state on the same merged context, so a
+  /// wrist restart or a reconnect finds the current switches already there rather than a dead Lights
+  /// page until the board next echoes.
+  ///
+  /// Unknown until the phone says otherwise, and unknown again the moment it says the board is gone:
+  /// the phone always states this channel, so there is no "absent means the last value still holds".
+  ///
+  /// @parity /watch/wearos/src/main/java/app/vescape/wear/WatchBoard.kt `BoardState`
+  @Published private(set) var board = WatchBoardLights()
+  @Published private(set) var lastBattery = WatchBatteryDefaults.value
+
+  /// The joined Group Ride, as last pushed; nil when the Rider is in none or the frames stopped.
+  /// Hot state like the Watch Frame, so it ages out in `refresh()` instead of surviving a restart.
+  ///
+  /// @parity /watch/wearos/src/main/java/app/vescape/wear/WatchGroupRide.kt `GroupRideState`
+  @Published private(set) var groupRide: WatchGroupRide?
+
+  /// Latest wake level reported to the phone, and the heartbeat that keeps re-asserting it.
+  private var wakeLevel: WatchMirrorWakeLevel = .asleep
+  private var wakeHeartbeat: Timer?
+
+  /// Arrival timestamps inside the rolling window. `applied` diverges from `received` only once
+  /// something coalesces frames; today every decoded frame is published, so equal rates are the
+  /// expected reading and a gap between them is a finding.
+  private var received = WatchFrameRate()
+  private var applied = WatchFrameRate()
+
+  private var intake = WatchMirrorIntake()
+
+  var receivedHz: Double { received.hertz(nowMs: Self.nowMs()) }
+  var appliedHz: Double { applied.hertz(nowMs: Self.nowMs()) }
+
+  /// One line for the whole counterpart state, in the words the diagnostics page shows. The
+  /// failures are ordered — an unactivated session says nothing about reachability — so the first
+  /// unmet condition is the only useful one to name.
+  ///
+  /// It lives here rather than in the view because the event ring records the same string: a link
+  /// line in the log and the `link` row above it must never be able to disagree.
+  var statusLabel: String {
+    switch activation {
+    case .activated: break
+    case .inactive: return "inactive"
+    case .notActivated: return "not activated"
+    @unknown default: return "unknown"
+    }
+    if !companionInstalled { return "no phone app" }
+    return reachable ? "reachable" : "unreachable"
+  }
+
+  /// The radar page's one failure, which is the wrist's own and not the phone's. Routed through
+  /// here so the ring keeps a single writer.
+  ///
+  /// @parity /watch/wearos/src/main/java/app/vescape/wear/WatchDiagnostics.kt `recordRadarFailure`
+  @MainActor
+  func recordRadarFailure() { diagnostics.recordRadarFailure(nowMs: Self.wallClockMs()) }
+
+  /// Replay's own line, so simulator gauges are never mistaken for a ride.
+  @MainActor
+  func recordReplay(fixture: String, sampleCount: Int) {
+    diagnostics.recordReplay(fixture: fixture, sampleCount: sampleCount, nowMs: Self.wallClockMs())
+  }
+
+  func activate() {
+    guard WCSession.isSupported() else { return }
+    let session = WCSession.default
+    session.delegate = self
+    session.activate()
+  }
+
+  /// Tell the phone how awake the Mirror is. The phone picks its push cadence from this, so it is
+  /// re-asserted on a heartbeat: an absent level is what lets the phone notice a wrist that stopped
+  /// running without ever getting a chance to say so.
+  ///
+  /// The message is fire-and-forget on the same transport the frames use. A dropped tick costs
+  /// nothing — the next one is 15 s away, and until then the phone keeps the cadence it had.
+  ///
+  /// @parity /watch/wearos/src/main/java/app/vescape/wear/MainActivity.kt `wakeHeartbeat`
+  func reportWakeLevel(_ level: WatchMirrorWakeLevel) {
+    wakeLevel = level
+    // Recorded before the send, and recorded even when the phone is out of reach: the question the
+    // rider is answering with this line is what the wrist decided, not what the radio managed.
+    diagnostics.recordWakeLevel(level, nowMs: Self.wallClockMs())
+    sendWakeLevel()
+    wakeHeartbeat?.invalidate()
+    guard level != .asleep else { return }
+    wakeHeartbeat = Timer.scheduledTimer(
+      withTimeInterval: Double(watchMirrorAwakeHeartbeatMs) / 1000,
+      repeats: true
+    ) { [weak self] _ in self?.sendWakeLevel() }
+  }
+
+  /// Flip one of the board's light switches. The wrist sends the *edit* and never both switches:
+  /// the phone composes the pair it writes from its own board truth, so a wrist holding a slightly
+  /// stale board push cannot revert the switch the rider did not touch.
+  ///
+  /// Fire-and-forget, like every other wrist command. `sendMessageData` has no delivery guarantee,
+  /// which is exactly why the optimistic value the caller holds has to time out rather than wait —
+  /// see ``LightsScreen``.
+  ///
+  /// @parity /watch/wearos/src/main/java/app/vescape/wear/WatchCommand.kt `sendLights`
+  func sendLights(_ `switch`: WatchLightsSwitch, on: Bool) {
+    send(.lights(`switch`, on))
+  }
+
+  /// Re-state the direction the rider is holding, or `0` for the release. Direction only: the
+  /// phone scales it by the rider's strength setting and owns every gate around it.
+  ///
+  /// Fire-and-forget on `sendMessageData`, and that is load-bearing rather than a limitation.
+  /// `sendMessageData` drops when the phone is unreachable; it never queues. The deferred paths —
+  /// `transferUserInfo`, the Application Context — must never be used here, because a FIFO queue
+  /// would deliver a backlog of stale holds after a reconnect, i.e. a board that starts rolling by
+  /// itself minutes after the rider let go. A dropped tick is covered by the next one, and the tick
+  /// that never comes is covered by the phone's dead-man.
+  ///
+  /// So a stop cannot get stuck behind the holds that preceded it: there is nothing for it to be
+  /// behind. Android has to build a latest-wins slot in front of its blocking Data Layer send to
+  /// get the same property.
+  ///
+  /// @parity /watch/wearos/src/main/java/app/vescape/wear/WatchCommand.kt `sendMove`
+  /// @platform-diff `WCSession.sendMessageData` is already latest-wins and non-blocking, so the
+  ///   wrist needs no coalescing queue of its own.
+  func sendMove(_ direction: Int) {
+    send(.move(direction))
+  }
+
+  /// Lock Remote Tilt at `value` (0..255, 128 neutral) until the next lock or a cancel. A stick drag
+  /// sends at most one lock per 100 ms, so while the phone is reachable the few that
+  /// `sendMessageData` has in flight are delivered in order and a cancel lands after all of them.
+  ///
+  /// @parity /watch/wearos/src/main/java/app/vescape/wear/WatchCommand.kt `sendTiltLock`
+  /// @platform-diff Android coalesces lock and cancel into one latest-wins slot because its Data
+  ///   Layer send blocks and a backlog would build behind it; WatchConnectivity delivers in order
+  ///   without blocking the caller, so the wrist keeps no slot and relies on that ordering.
+  func sendTiltLock(_ value: Int) {
+    if let replayTiltEcho { return replayTiltEcho(min(max(value, 0), 255)) }
+    send(.tiltLock(value))
+  }
+
+  /// Ease tilt back to neutral — the phone pad's cancel.
+  ///
+  /// @parity /watch/wearos/src/main/java/app/vescape/wear/WatchCommand.kt `sendTiltCancel`
+  func sendTiltCancel() {
+    if let replayTiltEcho { return replayTiltEcho(nil) }
+    send(.tiltCancel)
+  }
+
+  /// Simulator fixture replay only (``FrameReplayer``): there is no phone to hold a lock, so tilt
+  /// commands go to the replayer, which echoes them back in its frames. Nil everywhere else.
+  ///
+  /// @parity /watch/wearos/src/main/java/app/vescape/wear/WatchCommand.kt `replayTiltEcho`
+  var replayTiltEcho: ((Int?) -> Void)?
+
+  private func sendWakeLevel() {
+    send(.mirrorAwake(wakeLevel))
+  }
+
+  /// Every wrist command's one way out: fire-and-forget, and dropped rather than deferred while the
+  /// phone is out of reach (see ``sendMove(_:)`` for why nothing here may ever queue).
+  private func send(_ command: WatchCommand) {
+    let session = WCSession.default
+    guard session.activationState == .activated, session.isReachable else { return }
+    session.sendMessageData(WatchCommandCodec.encode(command), replyHandler: nil, errorHandler: nil)
+  }
+
+  /// Ages a stopped stream into `disconnected` without an explicit phone message. The UI drives
+  /// this off its own timeline, so the tick slows down in the Always On state with everything else.
+  ///
+  /// @parity /watch/wearos/src/main/java/app/vescape/wear/TelemetryState.kt `refresh`
+  /// @parity /watch/wearos/src/main/java/app/vescape/wear/WatchMirrorIntake.kt `refresh`
+  func refresh() {
+    intake.refresh(nowMs: Self.nowMs())
+    publishIntake()
+  }
+
+  /// Views keep their individual subscriptions; all channel mutation lives in the intake.
+  private func publishIntake() {
+    if mirror != intake.mirror { mirror = intake.mirror }
+    if route != intake.route { route = intake.route }
+    if routeStatus != intake.routeStatus { routeStatus = intake.routeStatus }
+    if settings != intake.settings { settings = intake.settings }
+    // Weather equality deliberately ignores the refreshed-at stamp, but expiry cannot.
+    if weather != intake.weather || weather?.fetchedAtMs != intake.weather?.fetchedAtMs { weather = intake.weather }
+    if board != intake.board { board = intake.board }
+    if groupRide != intake.groupRide { groupRide = intake.groupRide }
+    if let list = intake.mapTiles, list != retainedMapTiles {
+      retainedMapTiles = list
+      MapTileStore.shared.retain(list)
+    }
+  }
+
+  /// The street-map list last applied to `MapTileStore`.
+  private var retainedMapTiles: WatchMapTileList?
+
+  /// The watch's own monotonic clock. A wall clock would let a phone time-sync jump the mirror
+  /// straight to `disconnected`, or worse, hold a dead stream open.
+  private static func nowMs() -> Int64 { Int64(ProcessInfo.processInfo.systemUptime * 1000) }
+
+  /// Wall clock, for the event ring only. A rider reads those times out loud and matches them
+  /// against a phone log, which an uptime cannot be matched against.
+  private static func wallClockMs() -> Int64 { Int64(Date().timeIntervalSince1970 * 1000) }
+
+  /// The facts `WCSession` publishes on the wrist, read in the order their failures nest: a session
+  /// that has not activated says nothing about the companion, and a missing companion says nothing
+  /// about the radio link.
+  ///
+  /// Android distinguishes "no connected node" from "node present, capability absent" with two
+  /// separate queries. watchOS has no pairing query on this side — `isPaired` is the phone's — so
+  /// the absent companion and the dead link are read off the two flags it does publish. A watch app
+  /// only runs on a paired watch anyway, which is why the unpaired case does not need a third.
+  ///
+  /// @platform-diff `WCSession.isPaired` is iOS-only; the wrist infers the same three reasons from
+  ///   activation, companion-installed and reachability.
+  private func syncCounterpart(_ session: WCSession) {
+    activation = session.activationState
+    reachable = session.isReachable
+    companionInstalled = session.isCompanionAppInstalled
+    // After the three flags and before anything else: `statusLabel` reads them, and the ring must
+    // record the state being moved to rather than the one being left.
+    diagnostics.recordLink(statusLabel, nowMs: Self.wallClockMs())
+    // Cold state the system already holds for this app, including from before this launch. Read on
+    // every counterpart change, not only at activation: `receivedApplicationContext` is the latest
+    // value either way, so re-reading it is free and covers a context that landed while the app
+    // was not running.
+    acceptColdState(session.receivedApplicationContext)
+    link = {
+      guard session.activationState == .activated else { return .unknown }
+      if !session.isCompanionAppInstalled { return .phoneOnly }
+      // Installed but out of touch: the radio link to the phone is what is missing, which is the
+      // same thing a rider fixes as Android's "no connected node".
+      return session.isReachable ? .appReachable : .noPhone
+    }()
+  }
+
+  /// Simulator inputs encode with the phone's codec before entering the live application path.
+  /// @parity /watch/wearos/src/main/java/app/vescape/wear/WatchMirrorReplayAdapter.kt
+  @MainActor
+  func acceptReplayFrame(_ frame: WatchFrame) {
+    acceptTelemetry(WatchMirrorReplayAdapter.telemetry(frame), receivedAtMs: Self.nowMs(), receivedAt: Date())
+  }
+
+  @MainActor
+  func acceptReplayRouteStatus(_ status: WatchRouteStatus?) {
+    intake.acceptRouteStatus(status.map(WatchRouteStatusCodec.encode))
+    publishIntake()
+  }
+
+  @MainActor
+  func acceptReplayRoute(_ path: WatchRoute?, origin: WatchMapPosition?) {
+    intake.acceptRoute(origin.flatMap { WatchMirrorReplayAdapter.route(path, origin: $0) })
+    publishIntake()
+  }
+
+  /// Fixture tiles enter the store the way a finished transfer does. Each is a copy moved in, so the
+  /// store never owns, or deletes, the repo's files.
+  /// @parity /watch/wearos/src/main/java/app/vescape/wear/FrameReplay.kt `FrameReplayer.loadScene`
+  @MainActor
+  func acceptReplayMapTiles(_ list: WatchMapTileList, directory: URL) {
+    for tile in list.tiles {
+      let copy = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+      do {
+        try FileManager.default.copyItem(at: directory.appendingPathComponent("\(tile.key).jpg"), to: copy)
+      } catch {
+        print("[replay] missing map tile fixture: \(tile.key)")
+        continue
+      }
+      MapTileStore.shared.receive(copy, style: list.style, tile: tile, generation: list.generation)
+    }
+  }
+
+  @MainActor
+  func acceptReplayGroupRide(_ frame: GroupRideFrame) {
+    acceptGroupRide(GroupRideFrameCodec.encode(frame), receivedAtMs: Self.nowMs())
+  }
+
+  @MainActor
+  func acceptReplayWeather(_ forecast: WatchWeather) {
+    intake.acceptWeather(forecast.payload)
+    publishIntake()
+  }
+
+  @MainActor
+  func acceptReplaySettings(_ payload: [String: Any]) {
+    intake.acceptSettings(payload)
+    publishIntake()
+  }
+
+  private func acceptColdState(_ context: [String: Any]) {
+    refreshLastBatteryContext()
+    intake.restoreColdState(context)
+    publishIntake()
+  }
+
+  private func acceptGroupRide(_ bytes: Data, receivedAtMs: Int64) {
+    intake.acceptGroupRide(bytes, receivedAtMs: receivedAtMs)
+    publishIntake()
+  }
+
+  /// Both paths preserve arrival versus application timing. Queued delivery cannot renew freshness.
+  private func acceptTelemetry(_ bytes: Data, receivedAtMs: Int64, receivedAt: Date) {
+    let appliedAtMs = Self.nowMs()
+    guard intake.acceptTelemetry(bytes, receivedAtMs: receivedAtMs, appliedAtMs: appliedAtMs) else {
+      diagnostics.recordDecodeFailure(byteCount: bytes.count, lanes: bytes.first, nowMs: Self.wallClockMs())
+      return
+    }
+    received.record(nowMs: receivedAtMs)
+    applied.record(nowMs: appliedAtMs)
+    lastFrameAt = receivedAt
+    diagnostics.recordFrame(nowMs: Self.wallClockMs())
+    publishIntake()
+  }
+
+  /// Also called before completing a connectivity background task, so shared storage is current
+  /// even when the system's pending-content observation arrives before the delegate's UI work.
+  func refreshLastBatteryContext() {
+    guard WatchBatteryDefaults.receiveLatestContext({ WCSession.default.receivedApplicationContext }) else { return }
+    lastBattery = WatchBatteryDefaults.value
+    WidgetCenter.shared.reloadTimelines(ofKind: WatchBatteryDefaults.widgetKind)
+  }
+
+  func session(_ session: WCSession, didReceiveUserInfo userInfo: [String: Any]) {
+    guard userInfo[watchLastBatteryChannel] != nil else { return }
+    // Transfers can wait behind newer contexts, including Board switches and clears. Never apply
+    // their snapshot. If this wake arrives first, the later context callback applies the reading.
+    DispatchQueue.main.async { self.refreshLastBatteryContext() }
+  }
+
+  /// The pushed forecast while it is still worth believing, else nil.
+  ///
+  /// @parity /watch/wearos/src/main/java/app/vescape/wear/WatchWeather.kt `freshWeather`
+  func freshWeather(nowMs: Int64 = Int64(Date().timeIntervalSince1970 * 1000)) -> WatchWeather? {
+    guard let weather, weather.isFresh(nowMs: nowMs) else { return nil }
+    return weather
+  }
+
+  // MARK: - WCSessionDelegate
+
+  func session(
+    _ session: WCSession,
+    activationDidCompleteWith activationState: WCSessionActivationState,
+    error: Error?
+  ) {
+    DispatchQueue.main.async {
+      self.syncCounterpart(session)
+      self.onActivation?()
+    }
+  }
+
+  func sessionReachabilityDidChange(_ session: WCSession) {
+    DispatchQueue.main.async {
+      self.syncCounterpart(session)
+      // A phone that just became reachable has not heard this wrist's wake level since it went
+      // away, and the heartbeat is up to 15 s out. Re-assert immediately so the cadence is right
+      // for the frames that start flowing now, not for the ones after the next tick.
+      if session.isReachable, self.wakeLevel != .asleep { self.sendWakeLevel() }
+    }
+  }
+
+  func session(_ session: WCSession, didReceiveApplicationContext applicationContext: [String: Any]) {
+    DispatchQueue.main.async { self.acceptColdState(session.receivedApplicationContext) }
+  }
+
+  func sessionCompanionAppInstalledDidChange(_ session: WCSession) {
+    DispatchQueue.main.async { self.syncCounterpart(session) }
+  }
+
+  /// Group Ride Frames (ADR-0039), on their own message key. A frame this build cannot read (another
+  /// wire version) is dropped; the group then times out rather than drawing something misread.
+  ///
+  /// @parity /watch/wearos/src/main/java/app/vescape/wear/MainActivity.kt `listener`
+  func session(_ session: WCSession, didReceiveMessage message: [String: Any]) {
+    let receivedAtMs = Self.nowMs()
+    if let bytes = message[watchRouteStatusMessageKey] as? Data {
+      DispatchQueue.main.async {
+        self.intake.acceptRouteStatus(bytes)
+        self.publishIntake()
+      }
+      return
+    }
+    guard let bytes = message[watchGroupRideMessageKey] as? Data else { return }
+    DispatchQueue.main.async { self.acceptGroupRide(bytes, receivedAtMs: receivedAtMs) }
+  }
+
+  /// A street-map tile (#551). Moved into place here, on the delegate queue: the system deletes the
+  /// received file as soon as this returns. Unrecognised files are left to that deletion.
+  func session(_ session: WCSession, didReceive file: WCSessionFile) {
+    guard let sent = WatchMapTileTransfer.decode(file.metadata) else { return }
+    MapTileStore.shared.receive(file.fileURL, style: sent.style, tile: sent.tile, generation: sent.generation)
+  }
+
+  func session(_ session: WCSession, didReceiveMessageData messageData: Data) {
+    let receivedAt = Date()
+    let receivedAtMs = Self.nowMs()
+    DispatchQueue.main.async {
+      self.acceptTelemetry(messageData, receivedAtMs: receivedAtMs, receivedAt: receivedAt)
+    }
+  }
+}

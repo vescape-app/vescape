@@ -4,12 +4,12 @@ import { CaretDownIcon, CaretUpIcon, type Icon } from 'phosphor-react-native'
 
 import { IconButton } from '@/components/base/IconButton'
 import { widgetSurface, type WidgetSize } from '@/components/widgets/widgetSurface'
-import { theme } from '@/constants/theme'
+import { theme, type ThemeColor } from '@/constants/theme'
 
 interface StepperWidgetProps {
   icon?: Icon
   label: string
-  accent?: string
+  accent?: ThemeColor
   size?: Extract<WidgetSize, 'half' | 'full'>
   disabled?: boolean
   onPrevious: () => void

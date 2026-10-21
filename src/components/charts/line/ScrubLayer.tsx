@@ -136,8 +136,9 @@ export function useScrubReadout({
         }
 
         const decimals = target.decimals ?? 1
+        const displayValue = sample.value * (target.displayScale ?? 1)
         const formatted =
-          decimals === 0 ? Math.round(sample.value).toString() : sample.value.toFixed(decimals)
+          decimals === 0 ? Math.round(displayValue).toString() : displayValue.toFixed(decimals)
         const unit = target.unit ? ` ${target.unit}` : ''
         const value = `${formatted}${unit}`
         const row = target.label ? `${target.label} ${value}` : value

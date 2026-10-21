@@ -9,9 +9,31 @@ Native owns live truth. JS sends intents and renders native snapshots.
 JS must not optimistically set board connection status. If UI shows `connecting`,
 `connected`, `stale`, or `error`, that value came from native `LiveState`.
 
+## Legacy firmware identity
+
+Removal boundaries and code markers are tracked in [legacy Float support removal](./legacy-float.md).
+
+Link Integrity compares INFO responses using the precision captured by the saved Board Link.
+INFO v1 supplied only major/minor and no package name. Older app versions saved that response as
+`Refloat 1.2`, even when the package was Float; current versions display `Float/Refloat 1.2`.
+Both saved forms accept Float or Refloat observations with the same major/minor, including richer
+INFO v2 versions such as `Refloat 1.2.7`. This avoids invalidating an unchanged Board after an app
+upgrade. A legacy link cannot detect a package or patch change that INFO v1 never recorded.
+
+Saved INFO v2 identities retain exact package, patch, and suffix checks. Compatibility does not
+allow an observation to drop those known facts. VESC firmware, BMS, and Board Link Version checks
+still apply. The comparison also accepts the corresponding derived base-version precision change;
+it does not rewrite persisted versions or change Tune Compatibility keys.
+
 ## Shape
 
-Native emits `onLiveState` and exposes `getLiveState()`:
+Native emits `onLiveState` and exposes `getLiveState()`. Both platforms use the same history
+contract: `getLiveState()` includes the retained `recentTelemetry` and `recentLocations` windows;
+`onLiveState` status events carry empty history arrays, including storage-failure events. The arrays
+in an event mean history was omitted, not cleared. JS merges the latest GPS fixes from events and
+replaces its history only from an explicit snapshot. Replay teardown still clears replay fixes.
+
+The shared shape is:
 
 ```ts
 type LiveState = {
@@ -67,36 +89,103 @@ Native has separate live runtimes:
 - GPS runtime: location listener, latest fix, recent fixes, map data
 - scan runtime: BLE scanner owned by the Expo module bridge
 
-Board connect/disconnect must not clear GPS fixes. GPS is app-level map data.
+Board connect/disconnect must not clear GPS fixes. GPS _state_ is app-level map data.
 On iOS, `GpsMonitor` owns the location manager and `LocationTracker` owns fix state, course
 derivation and the recent-fix window. `BoardSessionController` reads the tracker and wires its
-consumers. Replay teardown alone clears recorded fixes and restores the parked live monitor.
+consumers. Replay teardown alone clears recorded fixes.
+
+App-level state is not the same as an always-on radio. Whether the monitor runs, and how hard, is
+resolved from demand — see below.
+
+### GPS demand
+
+`GpsDemand.resolve` is the one place that decides the **GPS Power Mode**, on both platforms, from
+five facts:
+
+| input                    | source                                                                                                        |
+| ------------------------ | ------------------------------------------------------------------------------------------------------------- |
+| app visible              | activity/app lifecycle, pushed into the controller                                                            |
+| riding                   | a Board Session exists, Idle Pause is not holding it, and the link is up or inside the **Ride Dropout Grace** |
+| Group Ride participating | the rider's position is being broadcast                                                                       |
+| watch navigating         | a Watch Mirror is taking frames while Navigation has a drawable route (`WatchMirrorCoordinator.navigating`)   |
+| replay owns position     | a replay is feeding recorded fixes through the live path                                                      |
+
+Resolution, in order: a replay forces `off`; riding, Group Ride participation or watch navigating
+gives `ride`; a visible app gives `map`; otherwise `off`.
+
+The modes differ only in what they cost:
+
+- `ride` — background delivery, best accuracy, no distance filter, OS auto-pause disabled. Nothing
+  may cut a Ride Track short.
+- `map` — **foreground-only** delivery, best accuracy, a small distance filter, OS auto-pause
+  enabled. The rider is looking at the screen, which already dominates the power draw; the saving is
+  that this mode cannot outlive the app going to the background.
+- `off` — the location manager is torn down, not idled.
+
+Every input calls `refreshGpsDemand()` when it changes, so no call site has to know the whole rule.
+Two of them are easy to get wrong:
+
+- **Time** produces no event, so the dropout grace arms a one-shot timer. It belongs to the _first_
+  link loss — the reconnect entry point is re-entered on every failed attempt, and re-arming there
+  would let an endless retry loop push the cutoff out forever.
+- **Group Ride participation** mostly ends in ways the rider never asked for (the host ends the ride,
+  App Status blocks the socket, the relay reports the ride gone). The observer reports its own
+  participation edge rather than the caller refreshing after calling `join`/`leave`, which also fixes
+  Android ordering — its observer mutates behind a `handler.post`.
+
+Consequences worth naming:
+
+- The wrist draws its route around the rider's live position, so Navigation on a Watch Mirror keeps
+  fixes flowing from a pocket without a Board or a Group Ride. The input follows the wrist's own
+  push gate: an asleep or unreachable Watch Mirror, or a route that is computing, failed or cleared,
+  stops paying for fixes. The coordinator re-evaluates it on every watch tick and refreshes demand
+  on an edge.
+- Backgrounding the app with no ride, no Group Ride and no wrist Navigation stops GPS entirely. On
+  Android that also drops the `LOCATION` foreground-service type, which lets an otherwise idle host stop existing.
+- Idle Pause stands GPS down while the app is backgrounded. Recording is already halted there
+  (ADR 0021), so nothing is lost but the time-to-first-fix on resume.
+- The `gps_fix_stale` watchdog runs only in `ride` mode. In `map` mode a stationary rider produces no
+  fixes by design, so watching for silence would log noise rather than a fault.
 
 ### GPS phase
 
 Native decides the phase; JS renders it and never derives one from a boolean.
 
-- `idle` — no location manager is held.
+- `idle` — no location manager is held. The normal resting state whenever demand is `off`, not a
+  fault.
 - `starting` — a manager is held but updates are not running: the iOS permission dialog is open, or
   the Android foreground service that arms the monitor is still starting.
 - `active` — location updates were actually requested and fixes can arrive.
 - `error` — the monitor refused or failed. Always carries the same string as `gps.error`.
 
+`gps.mode` sits alongside it and carries the **GPS Power Mode**. Phase says whether fixes flow; mode
+says what they cost, and therefore why they flow at all.
+
 ## JS role
 
-`src/modules/board/store/bleStore.ts` mirrors native state:
+`src/bootstrap/liveStateSync.ts` owns the combined native status and location subscriptions at
+app root, independently of the active screen. Startup, foreground entry, and retention-setting
+changes restore both mirrors from one `getLiveState()` snapshot.
 
-- `syncNativeState()` reads `getLiveState()`
-- `onLiveState` replaces lifecycle status
-- `onTelemetry` appends telemetry only when `connectionSeq` matches
-- `onLocation` appends GPS fixes
-- foreground restore hydrates recent telemetry from native `getLiveState()`
+- `bleStore` and `liveTelemetryRuntime` mirror board, scan, recording, and board telemetry state.
+  Board connection changes reset only board presentation; scalar ticks remain on SharedValues.
+- `src/modules/location/store/locationStore.ts` owns the JS GPS status, latest fix, and precise
+  trail. `onLocation` publishes on a separate one-second cadence. Approximate fixes update the
+  position marker without entering the precise trail.
+- Full snapshots replace each domain's retained history, including an empty native window.
+  Status events merge latest GPS fixes and never interpret omitted history as a clear command.
+- Entering, leaving, or switching debug replay resets both mirrors before applying native state,
+  so replay coordinates cannot join the real trail.
+- Board connect/disconnect and GPS permission refresh do not own the location subscription.
+  Background collection and GPS power decisions stay native on both platforms.
 
 Commands call native only:
 
 - `connect(boardId)` → `selectBoard(boardId)`
 - `disconnect()` → `stopBoard()`
-- `startGpsTracking()` → `startLocationUpdates()`
+- `refreshGpsDemand()` → `refreshLocationDemand()` — a nudge, not a command to start. JS calls it
+  once the location permission is answered, because a grant is the one demand input native cannot
+  observe for itself.
 - `startTelemetryRecording()` → `setTelemetryRecordingEnabled(true)`
 
 ## Auto-connect
@@ -126,6 +215,27 @@ on its own, with or without a JS runtime.
 Native owns the connection throughout. On Android the foreground service keeps BLE work
 alive while JS is backgrounded or frozen.
 
+### Accessories
+
+Enrolled Accessories ride the same two launch triggers and are otherwise independent of the Board:
+they come up with no Board selected, with the `autoConnect` setting off, and after a manual Board
+stop, because the rider enrolled the Accessory rather than the Board it happens to ride with.
+
+- Android: `AutoConnectProvider` → `CoreForegroundService.autoConnectAccessories` →
+  `AccessorySessionManager`. The service is started only when something is actually enrolled, and
+  once started, live Accessory sessions keep it alive the way a Board Session or GPS does — a rider
+  with a light and no Board still has a link that must stay up.
+- iOS: `VescapeLaunchSubscriber` → `AccessorySessionController.prepareForLaunch`, after the Board's
+  prepare. Its central carries **its own restore identifier**, so CoreBluetooth can relaunch the app
+  for an Accessory link; like the Board's, it only works when the central is re-created inside
+  `didFinishLaunchingWithOptions`.
+
+An Accessory link never optimistically reports connected. Each reconnect reads the manifest again
+and checks it against the enrolled identity before any saved setting is used; a different unit
+answering on a remembered handle is refused rather than driven. A drop reports `connecting`, not an
+error — Android's `autoConnect` GATT and CoreBluetooth's open-ended `connect` both keep trying — and
+`AccessorySessionManager` / `AccessorySessionController` push every change as `onAccessoryState`.
+
 ### Fast Connect Stability
 
 The fastest stable path is not to wait longer; it is to avoid competing native
@@ -137,20 +247,90 @@ writes during startup.
   CAN id resolution happens once at setup via Board Probe, not on connect.
 - GATT descriptor timeout fallbacks must be canceled after successful CCCD writes,
   otherwise a stale timeout can double-resolve the connection.
+- Every GATT connection, including a reconnect, has a discovery/subscription deadline on both
+  platforms: initially 2 seconds, increasing to 4 then 6 seconds after handshake timeouts. It stays
+  capped at 6 seconds until valid telemetry arrives or a new Board Session starts. Scan cycles and
+  radio connect failures do not reset that allowance. The notification acknowledgement fallback
+  runs after 1 second. Neither deadline delays a successful callback.
+- Handshake timeouts, missing telemetry, and runtime GATT failures reset the stalled connection
+  and retry. iOS clears interrupted writes when reconnecting so a missing write completion cannot
+  block the new connection. Explicit Disconnect cancels recovery, including work deferred until
+  Bluetooth powers on; malformed identifiers and replay failures remain terminal.
+- Failure-driven retries on iOS use Android's backoff: 500 ms, increasing by 500 ms to 5 seconds.
+  After 12 unsuccessful attempts, background retries wait 30 seconds. This counter resets on
+  valid telemetry or a new session, independently of iOS's supplemental scan cycle.
+- When iOS cannot retrieve a saved peripheral, its required target scan stays active across
+  supplemental reconnect scan windows until the target appears or the rider disconnects.
 - Tune/config reads should not compete with initial telemetry startup. If a config
   read starts while the board is still settling, prefer gating/queuing over adding
   long connection delays.
 
 ## Recording
 
-Recording means real ride recording:
+Recording means real Ride Recording. A connected Board starts it; from then on it is a capture with
+its own durable identity, not a property of the Board Link.
 
-- allowed only when board phase is `connected`
-- saves board telemetry plus precise GPS samples
-- stays active during short native reconnect windows
-- stops on explicit board disconnect, fatal board error, or service stop
+- A connected Board must have started it. Standalone GPS never starts one — GPS without a Board is
+  map/status only, and creates no ride history.
+- It saves Board telemetry **and** a Ride Track of GPS fixes, on two separate clocks (ADR 0038).
+- **It outlives the Board Link.** An unexpected drop does not end it, and telemetry rejoins the same
+  recording when the Board returns — one ride, one history entry, with an honest gap where the
+  telemetry was missing. GPS fixes keep landing in that recording for the **Ride Dropout Grace**;
+  past it the phone stops producing fixes, so the Ride Track ends there even though the recording and
+  the reconnect loop both continue. A board that is simply off is how a ride ends, and a track of the
+  rider walking home is not what the recording is for.
+- There is no hard timeout and no GPS-based Idle Pause. Neither elapsed disconnection time nor GPS
+  inactivity ends or pauses a recording.
+- It ends only on **explicit rider Stop Recording**, **explicit Disconnect**, a fatal board error, or
+  service stop — plus an explicit Connect to a **different** Board (below).
 
-Standalone GPS does not create ride history. GPS without board is only for map/status.
+### Persisted end intent
+
+`ride_recordings.ended_at_ms` is the durable record that a recording ended, and nothing clears it.
+Only a row with `ended_at_ms IS NULL` can be rejoined, which is what stops a late reconnect callback,
+a stale delegate call, or an iOS state-restoration relaunch from reviving a ride the rider ended.
+Starting again after a stop mints a new identity, even within the same minute.
+
+Within a live Board Session the same intent is held in memory: auto-recording fires at the **first**
+board-ready of a session only, so a reconnect's board-ready never restarts a recording the rider
+stopped, nor mints a second one beside the recording still open across the drop. Auto-recording is
+therefore a _connect_ rule: enabling the setting mid-session does not start a recording, and a later
+reconnect's board-ready does not either. The next Board Session picks it up.
+
+A recording left open by a process that died is closed as `disconnected` at the first moment nothing
+can rejoin it — on Android at process start, on iOS when the launch resume window expires without a
+state restoration — and its end is stamped at its own last durable write, not at the sweep. Ride
+History only shows finished recordings, so a row left open is a ride missing from history.
+
+### Idle Pause and disconnection
+
+While **connected**, the Board controls Idle Pause (ADR 0021): the first disengaged Refloat sample
+pauses both telemetry and Ride Track writes. RUNNING, TILTBACK, and WHEELSLIP are engaged states;
+the next sample in any of those states resumes both streams, even at zero speed. Polling remains
+at about 1 Hz while paused, accepting about a second of resume latency to save battery.
+Phone movement cannot override the Board, and paused samples are never backfilled.
+
+On **unexpected disconnection the pause gate is released**, because it halts GPS too and off the link
+there is no Board engagement signal to ever reopen it. Recording continues on GPS alone until the rider
+stops it. On reconnection the detector takes over again from the next board-ready.
+
+### Changing Boards
+
+An explicit Connect targeting the **same** Board — the rider tapping Connect to hurry a reconnect
+loop along — rejoins the recording still open for that Board rather than ending it. One ride stays
+one identity and one history entry, and nothing is labelled `stopped` that the rider never stopped.
+Capture stays armed from that connect, not from the board-ready after it, so no GPS Fix is dropped
+in between.
+
+An explicit Connect targeting a different Board ends the previous Board Session and Ride Recording
+immediately, as `board_change` — including while the old Board is disconnected and reconnecting, and
+even if the new connection then fails. Merely browsing or selecting another Board does not end capture. Writes
+already admitted are flushed under their original Board and recording identities; fixes captured
+between two recordings are never backfilled into either. Old reconnect work is cancelled and late
+callbacks for the old Board cannot revive its recording or contaminate the new one.
+
+Stopping a recording releases only its own GPS demand. An independent live GPS consumer — Group Ride,
+the map — keeps its own lifetime and stays armed.
 
 Debug raw BLE recording is separate. Android Dev → Debug recordings can capture
 raw chunks, connection states, and location for diagnosis, then list and export
@@ -161,3 +341,20 @@ the JSONL files. Debug replay playback is intentionally removed from the app.
 On app foreground/resume, JS calls `syncNativeState()` and shows a restoring state
 until the first native snapshot arrives. The restored state comes from native
 service truth, not from cached JS status.
+
+### iOS state-restoration relaunch
+
+A CoreBluetooth state-restoration relaunch (ADR 0034) rebuilds the Board Session that was live when
+the process died, and its recording **rejoins the open Ride Recording** instead of starting a second
+one — a process death the rider never asked for must not split their ride into two history entries.
+
+The resume marker only says the rider had recording on; whether a recording is still open is the
+database's answer, so an explicitly stopped or disconnected recording is not revived and a new one is
+started instead. The dead interval stays a real gap in both streams: nothing is fabricated for time
+the process could not run.
+
+A recording left open by a process that died and was never restored is closed (`disconnected`) when
+the next recording is minted — the one moment it is known to be unrejoinable.
+
+@platform-diff Android has no peer. `CoreForegroundService` keeps the process alive, so there is no
+restoration relaunch, and its launch auto-connect is an ordinary cold start that may be days later.

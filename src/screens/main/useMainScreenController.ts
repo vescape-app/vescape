@@ -1,3 +1,4 @@
+import { useLocationStore } from '@/modules/location/store/locationStore'
 import { useCallback, useEffect, useMemo, useRef, useState, type RefObject } from 'react'
 import { BackHandler, ToastAndroid } from 'react-native'
 import { useFocusEffect } from 'expo-router'
@@ -19,7 +20,6 @@ import { useSettingsStore } from '@/modules/settings/store/settingsStore'
 import { useFavoriteMedia } from '@/modules/history/hooks/useMediaHistory'
 import type { MediaAssetInput } from '@/modules/history/lib/mediaHistory'
 import { getHistoryPreviewRoute } from '@/modules/history/lib/previewRoute'
-import { themeOverrideForMapStyle } from '@/modules/map/lib/mapTheme'
 
 interface UseMainScreenControllerArgs {
   mapRef: RefObject<MainMapHandle | null>
@@ -63,8 +63,8 @@ export function useMainScreenController({ mapRef }: UseMainScreenControllerArgs)
       setActiveHistoryMapMetric: s.setActiveHistoryMapMetric,
     })),
   )
-  const liveLocations = useBleStore((s) => s.liveLocationHistory)
-  const latestApproximateLocation = useBleStore((s) => s.latestApproximateLocation)
+  const liveLocations = useLocationStore((s) => s.liveLocationHistory)
+  const latestApproximateLocation = useLocationStore((s) => s.latestApproximateLocation)
   const mapStyleKey = useSettingsStore((s) => s.mapStyleKey)
   const satelliteOverlayEnabled = useSettingsStore((s) => s.satelliteOverlayEnabled)
   const satelliteImageryOpacity = useSettingsStore((s) => s.satelliteImageryOpacity)
@@ -194,8 +194,8 @@ export function useMainScreenController({ mapRef }: UseMainScreenControllerArgs)
   }, [loadingSession, selectedSession, sessionGpsSamples])
 
   const historyPreviewRoute = useMemo(
-    () => (loadingSession ? getHistoryPreviewRoute(sessionSamples) : []),
-    [loadingSession, sessionSamples],
+    () => (loadingSession ? getHistoryPreviewRoute(sessionGpsSamples) : []),
+    [loadingSession, sessionGpsSamples],
   )
 
   const exitMapFocus = useCallback(() => {
@@ -258,10 +258,6 @@ export function useMainScreenController({ mapRef }: UseMainScreenControllerArgs)
 
   const setMapStyleKey = useCallback(
     (key: typeof mapStyleKey) => {
-      // A basemap with an explicit appearance is the rider picking a theme, so it persists as one.
-      // Satellite has no opinion and leaves the configured mode alone.
-      const override = themeOverrideForMapStyle(key)
-      if (override) void setSetting('themeMode', override)
       void setSetting('mapStyleKey', key)
     },
     [setSetting],

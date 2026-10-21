@@ -44,6 +44,8 @@ import kotlinx.coroutines.launch
  * Ambient does not replace this tree, it settles it: the pagers stay mounted and are parked on the
  * gauges with their gestures off, so going in and out of always-on never rebuilds the screen or
  * restarts the idle clock. What ambient changes is inside [AmbientMode].
+ *
+ * @parity /watch/watchos/MirrorScreen.swift `MirrorScreen`
  */
 @Composable
 internal fun MirrorScreen(
@@ -55,25 +57,45 @@ internal fun MirrorScreen(
     val state by TelemetryState.mirrorState
     var showClosePrompt by remember { mutableStateOf(false) }
     // A hold must not be interpreted as a page swipe, and must never end because the page moved.
-    var moveHeld by remember { mutableStateOf(false) }
+    var controlHeld by remember { mutableStateOf(false) }
     // One pager owns the whole vertical axis: weather above the gauges, nav focus below. Two
     // stacked vertical pagers used to compete for the same drag — the inner one claimed the
     // pointer, forwarded the leftover delta to the outer one but kept the velocity, so the outer
     // could only settle by dragging past half the screen and a normal flick sprang back.
-    val verticalPagerState = rememberPagerState(initialPage = VERTICAL_PAGE_GAUGES, pageCount = { VERTICAL_PAGE_COUNT })
-    // Fractional position on the axis, from radar at 0 up to nav focus at the end. Both focus
-    // progresses are read off it, so a drag fades exactly as far as it has travelled.
+    // The Group Ride page exists only while joined. It is the last page, so adding or dropping it
+    // never renumbers the pages above it. Derived: a frame lands every second, and only joining or
+    // leaving may touch the pager.
+    val joined by remember { derivedStateOf { GroupRideState.group.value != null } }
+    val verticalPagerState = rememberPagerState(
+        initialPage = VERTICAL_PAGE_GAUGES,
+        pageCount = { if (joined) VERTICAL_PAGE_COUNT_JOINED else VERTICAL_PAGE_COUNT },
+    )
+    // Fractional position on the axis, from radar at 0 down to the last page. Every focus
+    // progress is read off it, so a drag fades exactly as far as it has travelled.
     val verticalPosition = {
         verticalPagerState.currentPage + verticalPagerState.currentPageOffsetFraction
     }
     // Nav focus is a page of its own so the drag is a real gesture, but nothing new is drawn there:
     // the gauges pin themselves in place (see [navFocus]) and shed their readouts on the way.
     val navFocus = { (verticalPosition() - VERTICAL_PAGE_GAUGES).coerceIn(0f, 1f) }
+    // The Group Ride page taking over from nav focus: the map and nav readout leave for it.
+    val groupFocus = { (verticalPosition() - VERTICAL_PAGE_NAV).coerceIn(0f, 1f) }
     val scope = rememberCoroutineScope()
     // Which page owns the vertical axis right now. The radar page fetches while it is on screen and
     // nowhere else, so this is the difference between an idle wrist and a fetching one.
     val onGauges = verticalPagerState.currentPage == VERTICAL_PAGE_GAUGES
     val radarVisible = !isAmbient && verticalPagerState.currentPage == VERTICAL_PAGE_RADAR
+    // The Group Ride list takes the crown only once its page has settled: focusing it mid-fling
+    // would bring it into view and drag the pager along. Its drag needs no gate: it nests under the
+    // pager's, which takes the drag first while a page is mid-way.
+    val groupPageSettled by remember(verticalPagerState, isAmbient) {
+        derivedStateOf {
+            !isAmbient &&
+                verticalPagerState.currentPage == VERTICAL_PAGE_GROUP &&
+                !verticalPagerState.isScrollInProgress &&
+                verticalPagerState.currentPageOffsetFraction == 0f
+        }
+    }
 
     // Mutually exclusive by `enabled`: back closes the innermost thing that is open, and only the
     // gauges themselves treat back as "leave the mirror".
@@ -88,6 +110,14 @@ internal fun MirrorScreen(
         showClosePrompt = true
     }
 
+    // Leaving the ride on the Group Ride page lands on nav focus, one page up, rather than wherever
+    // the pager's own clamp would settle.
+    LaunchedEffect(joined) {
+        if (!joined && verticalPagerState.currentPage > VERTICAL_PAGE_NAV) {
+            verticalPagerState.scrollToPage(VERTICAL_PAGE_NAV)
+        }
+    }
+
     LaunchedEffect(isAmbient) {
         while (true) {
             delay(if (isAmbient) AMBIENT_REFRESH_INTERVAL_MS else WATCH_FRAME_INTERVAL_MS)
@@ -95,15 +125,15 @@ internal fun MirrorScreen(
         }
     }
 
-    MaterialTheme {
+    MaterialTheme(typography = WatchTypography.material) {
         when {
             showClosePrompt -> Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                 ClosePrompt(onStay = { showClosePrompt = false }, onClose = onRequestClose)
             }
             else -> {
                 val dismissState = rememberSwipeToDismissBoxState()
-                // Page 0 = gauges centre (empty), 1 = Board Move, 2 = board Lights,
-                // 3 = diagnostics. Dismiss stays on the left edge; interior horizontal swipes page.
+                // Page 0 = gauges centre (empty), 1 = Remote Tilt, 2 = Board Move, 3 = board Lights,
+                // 4 = diagnostics. Dismiss stays on the left edge; interior horizontal swipes page.
                 val controlPagerState = rememberPagerState(pageCount = { CONTROL_PAGE_COUNT })
                 var dismissEnabled by remember { mutableStateOf(true) }
                 // Idle clock for the auto-return.
@@ -163,9 +193,9 @@ internal fun MirrorScreen(
                 // the gauges. The vertical axis is never moved: weather and the nav-focus map are
                 // places a rider parks on deliberately. Re-keying on lastTouchMs restarts the
                 // window; a held Move suspends it outright.
-                LaunchedEffect(lastTouchMs, moveHeld, isAmbient) {
+                LaunchedEffect(lastTouchMs, controlHeld, isAmbient) {
                     // Ambient has already parked the pager, and an animation there is wasted panel.
-                    if (moveHeld || isAmbient) return@LaunchedEffect
+                    if (controlHeld || isAmbient) return@LaunchedEffect
                     delay(CONTROL_IDLE_RETURN_MS)
                     if (controlPagerState.currentPage != CONTROL_PAGE_GAUGES) {
                         controlPagerState.animateScrollToPage(CONTROL_PAGE_GAUGES)
@@ -201,7 +231,7 @@ internal fun MirrorScreen(
                                 // The vertical axis belongs to the gauges alone: weather above,
                                 // nav focus below. From a control page it would open a blank map
                                 // over a page the rider is working on, so it is only live there.
-                                userScrollEnabled = !isAmbient && !moveHeld && activePage == CONTROL_PAGE_GAUGES,
+                                userScrollEnabled = !isAmbient && !controlHeld && activePage == CONTROL_PAGE_GAUGES,
                                 // A page swap on the wrist is a flick, not a drag: the default
                                 // half-screen threshold means a rider has to pull the weather page
                                 // most of the way down or watch it spring back.
@@ -220,9 +250,10 @@ internal fun MirrorScreen(
                                     // swap — a pager clips its pages, so content inside would
                                     // slide away instead of pinning.
                                     VERTICAL_PAGE_NAV -> Unit
+                                    VERTICAL_PAGE_GROUP -> GroupRidePage(settled = groupPageSettled)
                                     else -> HorizontalPager(
                                         state = controlPagerState,
-                                        userScrollEnabled = !isAmbient && !moveHeld,
+                                        userScrollEnabled = !isAmbient && !controlHeld,
                                         modifier = Modifier
                                             .fillMaxSize()
                                             .then(
@@ -241,6 +272,11 @@ internal fun MirrorScreen(
                                                 // Page 0 is empty: it is the gauges themselves,
                                                 // pinned at the root behind this transparent pager.
                                                 CONTROL_PAGE_GAUGES -> Unit
+                                                CONTROL_PAGE_TILT -> TiltScreen(
+                                                    sender = sender,
+                                                    interactionEnabled = !isAmbient && activePage == CONTROL_PAGE_TILT,
+                                                    onHoldChanged = { controlHeld = it },
+                                                )
                                                 CONTROL_PAGE_MOVE -> MoveScreen(
                                                     sender = sender,
                                                     // Ambient parks the pager, but the park is a
@@ -248,7 +284,7 @@ internal fun MirrorScreen(
                                                     // stop the moment the wrist goes always-on, not
                                                     // once the page has finished travelling.
                                                     interactionEnabled = !isAmbient && activePage == CONTROL_PAGE_MOVE,
-                                                    onHoldChanged = { moveHeld = it },
+                                                    onHoldChanged = { controlHeld = it },
                                                 )
                                                 CONTROL_PAGE_LIGHTS -> LightsScreen(
                                                     sender = sender,
@@ -272,6 +308,7 @@ internal fun MirrorScreen(
                                 focus = navFocus,
                                 controlFocus = controlFocus,
                                 weatherFocus = weatherFocus,
+                                groupFocus = groupFocus,
                                 onWeatherClick = if (weatherTappable) {
                                     {
                                         scope.launch {
@@ -297,22 +334,26 @@ private const val PAGE_SNAP_THRESHOLD = 0.25f
 private const val CONTROL_IDLE_RETURN_MS = 45_000L
 
 /**
- * Radar and weather above the gauges, nav focus below: one pager owns the whole vertical axis.
- * Radar sits above the forecast because it is the same subject one step further out — the rider
- * swipes up from the numbers, to the hours, to the sky itself.
+ * Radar and weather above the gauges, nav focus below, and the Group Ride page below that while
+ * joined: one pager owns the whole vertical axis. Radar sits above the forecast because it is the
+ * same subject one step further out — the rider swipes up from the numbers, to the hours, to the sky
+ * itself.
  */
 private const val VERTICAL_PAGE_RADAR = 0
 private const val VERTICAL_PAGE_WEATHER = 1
 private const val VERTICAL_PAGE_GAUGES = 2
 private const val VERTICAL_PAGE_NAV = 3
+private const val VERTICAL_PAGE_GROUP = 4
 private const val VERTICAL_PAGE_COUNT = 4
+private const val VERTICAL_PAGE_COUNT_JOINED = VERTICAL_PAGE_GROUP + 1
 
-/** Gauges centre, Board Move, board Lights, diagnostics. */
+/** Gauges centre, Remote Tilt, Board Move, board Lights, diagnostics. */
 private const val CONTROL_PAGE_GAUGES = 0
-private const val CONTROL_PAGE_MOVE = 1
-private const val CONTROL_PAGE_LIGHTS = 2
-private const val CONTROL_PAGE_DIAGNOSTICS = 3
-private const val CONTROL_PAGE_COUNT = 4
+private const val CONTROL_PAGE_TILT = 1
+private const val CONTROL_PAGE_MOVE = 2
+private const val CONTROL_PAGE_LIGHTS = 3
+private const val CONTROL_PAGE_DIAGNOSTICS = 4
+private const val CONTROL_PAGE_COUNT = 5
 
 @Composable
 private fun MirrorContent(
@@ -321,40 +362,37 @@ private fun MirrorContent(
     focus: () -> Float = { 0f },
     controlFocus: () -> Float = { 0f },
     weatherFocus: () -> Float = { 0f },
+    groupFocus: () -> Float = { 0f },
     onWeatherClick: (() -> Unit)? = null,
 ) {
-    when (state.status) {
-        // The gauge shell is the app, so a stalled stream keeps its arcs and reads the reason inside
-        // them. Dropping to a bare notice threw the layout away exactly when the rider was already
-        // lost, and it hid that the clock, forecast and battery arc still had something to say.
-        MirrorStatus.DISCONNECTED -> {
-            FrameLayout(
-                EMPTY_FRAME,
-                false,
-                focus,
-                controlFocus,
-                weatherFocus,
-                onWeatherClick,
-                ambient,
-                showReadouts = false,
-            )
-            // A readout like any other: it leaves with them rather than bleeding under whatever page
-            // took the centre.
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .graphicsLayer { alpha = fadeOut(maxOf(focus(), controlFocus(), weatherFocus())) },
-                contentAlignment = Alignment.Center,
-            ) {
-                DisconnectedLayout(ambient)
-            }
+    val link by TelemetryState.phoneLink
+    val notice = MirrorStateReducer.linkNotice(state.status, link)
+    // The gauge shell is the app, so a stalled stream keeps its arcs and reads the reason inside
+    // them. Dropping to a bare notice threw the layout away exactly when the rider was already
+    // lost, and it hid that the clock, forecast and battery arc still had something to say. With no
+    // notice a disconnected shell reads as it does for a board-less frame: nothing the wrist could fix.
+    FrameLayout(
+        frame = state.frame ?: EMPTY_FRAME,
+        muted = state.status == MirrorStatus.STALE,
+        focus = focus,
+        controlFocus = controlFocus,
+        weatherFocus = weatherFocus,
+        groupFocus = groupFocus,
+        onWeatherClick = onWeatherClick,
+        ambient = ambient,
+        showReadouts = notice == null,
+    )
+    if (notice != null) {
+        // A readout like any other: it leaves with them rather than bleeding under whatever page
+        // took the centre.
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .graphicsLayer { alpha = fadeOut(maxOf(focus(), controlFocus(), weatherFocus())) },
+            contentAlignment = Alignment.Center,
+        ) {
+            DisconnectedLayout(notice, ambient)
         }
-        MirrorStatus.WAITING ->
-            FrameLayout(state.frame!!, false, focus, controlFocus, weatherFocus, onWeatherClick, ambient)
-        MirrorStatus.STALE ->
-            FrameLayout(state.frame!!, true, focus, controlFocus, weatherFocus, onWeatherClick, ambient)
-        MirrorStatus.LIVE ->
-            FrameLayout(state.frame!!, false, focus, controlFocus, weatherFocus, onWeatherClick, ambient)
     }
 }
 
@@ -374,6 +412,6 @@ private val EMPTY_FRAME = WatchFrame(
  * saving a single radio wake. One minute — the system's own ambient callback rate — left battery and
  * temperatures up to a minute behind data the watch already had in memory.
  *
- * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/connection/BoardSessionController.kt `WATCH_FRAME_AMBIENT_INTERVAL_MS`
+ * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/watch/WatchMirrorCoordinator.kt `WATCH_FRAME_AMBIENT_INTERVAL_MS`
  */
 private const val AMBIENT_REFRESH_INTERVAL_MS = 10_000L

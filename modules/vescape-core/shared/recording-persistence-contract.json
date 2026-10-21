@@ -1,0 +1,33 @@
+{
+  "scenario": "moving-recording-close-reopen",
+  "boardId": "board-contract",
+  "samples": [
+    {
+      "capturedAtMs": 1800000,
+      "elapsedRealtimeMs": 100,
+      "speedCentiKmh": 1500,
+      "batteryVoltageMv": 80000,
+      "odometerCm": 12300
+    },
+    {
+      "capturedAtMs": 1801000,
+      "elapsedRealtimeMs": 1100,
+      "speedCentiKmh": 1700,
+      "batteryVoltageMv": 79500,
+      "odometerCm": 12400
+    }
+  ],
+  "expected": {
+    "frameCount": 2,
+    "bucketCount": 1,
+    "sampleCount": 2,
+    "movingSampleCount": 2,
+    "sumMovingSpeedCentiKmh": 3200,
+    "maxSpeedCentiKmh": 1700,
+    "minBatteryVoltageMv": 79500,
+    "firstOdometerCm": 12300,
+    "lastOdometerCm": 12400,
+    "rideStartAtMs": 1800000,
+    "rideEndAtMs": 1801000
+  }
+}

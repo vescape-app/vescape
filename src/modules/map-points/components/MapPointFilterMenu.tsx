@@ -5,7 +5,6 @@ import type { MapPointCategory } from 'vescape-core'
 import { IconButton } from '@/components/base/IconButton'
 import { Text } from '@/components/base/Text'
 import { theme } from '@/constants/theme'
-import { useResolvedNeutralColors } from '@/hooks/useTheme'
 import { mapSheetStyles } from '@/modules/map-points/components/mapSheetStyles'
 import { getMapPointKindIcon } from '@/modules/map-points/constants/mapPointIcons'
 import {
@@ -28,7 +27,6 @@ export function MapPointFilterMenu({
   onToggleMenu: () => void
   onToggleCategory: (category: MapPointCategory) => void
 }) {
-  const neutral = useResolvedNeutralColors()
   return (
     <View style={[styles.mapFilterAction, { bottom }]}>
       {open ? (
@@ -68,14 +66,10 @@ export function MapPointFilterMenu({
       ) : null}
       <IconButton
         icon={FunnelIcon}
+        iconColor={open ? theme.palette.sky.text : undefined}
         size="lg"
-        iconColor={neutral.textPrimary}
         onPress={onToggleMenu}
-        style={
-          open
-            ? styles.mapFilterButtonAttached
-            : { backgroundColor: neutral.surfaceDeep, borderColor: neutral.border }
-        }
+        style={open ? styles.mapFilterButtonAttached : undefined}
       />
     </View>
   )
@@ -105,7 +99,7 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
     backgroundColor: theme.alpha(theme.neutral.surfaceDeep, 0.85),
     borderWidth: 1,
-    borderColor: theme.alpha(theme.palette.slate.light, 0.3),
+    borderColor: theme.alpha(theme.neutral.textSecondary, 0.3),
   },
   mapFilterMenuAttached: {
     borderBottomLeftRadius: 5,
@@ -125,7 +119,7 @@ const styles = StyleSheet.create({
     right: 0,
     bottom: 0,
     height: 1,
-    backgroundColor: theme.alpha(theme.palette.slate.light, 0.3),
+    backgroundColor: theme.alpha(theme.neutral.textSecondary, 0.3),
   },
   mapFilterRowHidden: {
     opacity: 0.38,
@@ -137,7 +131,7 @@ const styles = StyleSheet.create({
   },
   mapFilterButtonAttached: {
     backgroundColor: theme.alpha(theme.neutral.surfaceDeep, 0.85),
-    borderColor: theme.alpha(theme.palette.slate.light, 0.3),
+    borderColor: theme.alpha(theme.neutral.textSecondary, 0.3),
     borderTopLeftRadius: 5,
     borderTopRightRadius: 5,
     borderBottomLeftRadius: 27,

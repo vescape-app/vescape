@@ -9,7 +9,7 @@ import { theme } from '@/constants/theme'
 import { DASH } from '@/helpers/format'
 
 export default function StateScreen() {
-  const hasLiveTelemetry = useBleStore((s) => s.liveStatus.boardLastPacketAt != null)
+  const hasLiveTelemetry = useBleStore((s) => s.lastTelemetryAt != null)
 
   return (
     <ControlDetailLayout title="State" controlId="state">

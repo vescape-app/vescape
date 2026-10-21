@@ -9,7 +9,7 @@ import {
 import { Text } from '@/components/base/Text'
 import { useColoredAction, useColoredActionForeground } from '@/hooks/useTheme'
 
-import { interaction, theme } from '@/constants/theme'
+import { interaction, theme, type ThemeColor } from '@/constants/theme'
 
 interface ButtonProps {
   label: string
@@ -17,7 +17,7 @@ interface ButtonProps {
   testID?: string
   accessibilityLabel?: string
   /** Overrides the variant's accent for field-specific actions. */
-  accent?: string
+  accent?: ThemeColor
   variant?:
     | 'primary'
     | 'accent'
@@ -56,14 +56,26 @@ export function Button({
   const coloredAction = useColoredAction(accentToken)
   const coloredBorder = useColoredActionForeground(accentToken)
   const coloredForeground = useColoredActionForeground(accent ?? variantColors.foreground)
-  const button = isColored
-    ? { backgroundColor: coloredAction, borderWidth: 1, borderColor: coloredBorder }
-    : {
-        backgroundColor: theme.control.background,
+  // A disabled button drops its accent entirely: dimming the accent pill with opacity washes it out
+  // against a light background until the label is unreadable.
+  const button = isDisabled
+    ? {
+        backgroundColor: theme.control.backgroundDisabled,
         borderWidth: 1,
-        borderColor: variantColors.border,
+        borderColor: theme.control.border,
       }
-  const foreground = isColored ? coloredForeground : variantColors.foreground
+    : isColored
+      ? { backgroundColor: coloredAction, borderWidth: 1, borderColor: coloredBorder }
+      : {
+          backgroundColor: theme.control.background,
+          borderWidth: 1,
+          borderColor: variantColors.border,
+        }
+  const foreground = isDisabled
+    ? theme.control.textMuted
+    : isColored
+      ? coloredForeground
+      : variantColors.foreground
   const icon =
     IconComponent && !loading ? (
       <IconComponent
@@ -79,7 +91,6 @@ export function Button({
         styles.base,
         size === 'sm' ? styles.sm : size === 'lg' ? styles.lg : styles.md,
         button,
-        isDisabled && styles.disabled,
         pressed && !isDisabled && { opacity: interaction.pressedOpacity },
         style,
       ]}
@@ -99,7 +110,13 @@ export function Button({
         style={[
           styles.label,
           size === 'sm' ? styles.labelSm : size === 'lg' ? styles.labelLg : styles.labelMd,
-          { color: isColored ? coloredForeground : variantColors.text },
+          {
+            color: isDisabled
+              ? theme.control.textMuted
+              : isColored
+                ? coloredForeground
+                : variantColors.text,
+          },
         ]}
       >
         {label}
@@ -184,9 +201,6 @@ const styles = StyleSheet.create({
   sm: {
     height: 32,
     paddingHorizontal: 12,
-  },
-  disabled: {
-    opacity: 0.4,
   },
   label: {
     fontWeight: '700',

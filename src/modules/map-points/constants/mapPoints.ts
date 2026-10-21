@@ -1,6 +1,6 @@
 import type { MapPointCategory } from 'vescape-core'
 
-import { theme, type ResolvedAccentColors } from '@/constants/theme'
+import { theme, type ThemeColor, type ResolvedAccentColors } from '@/constants/theme'
 
 /**
  * What a pin on the map can be: a server Map Point category, or the rider's own direction target.
@@ -49,11 +49,15 @@ function appearance(kind: MapPinKind): MapPinAppearance {
   return APPEARANCE_BY_KIND.get(kind) ?? MAP_POINT_CATEGORY_OPTIONS[0]
 }
 
+export function getMapPointKindColor(kind: MapPinKind, accents: ResolvedAccentColors): string
+export function getMapPointKindColor(kind: MapPinKind): ThemeColor
 export function getMapPointKindColor(kind: MapPinKind, accents?: ResolvedAccentColors) {
   const themeKey = appearance(kind).themeKey
   return accents?.[themeKey].color ?? theme.palette[themeKey].color
 }
 
+export function getMapPointKindTextColor(kind: MapPinKind, accents: ResolvedAccentColors): string
+export function getMapPointKindTextColor(kind: MapPinKind): ThemeColor
 export function getMapPointKindTextColor(kind: MapPinKind, accents?: ResolvedAccentColors) {
   const themeKey = appearance(kind).themeKey
   return accents?.[themeKey].text ?? theme.palette[themeKey].text

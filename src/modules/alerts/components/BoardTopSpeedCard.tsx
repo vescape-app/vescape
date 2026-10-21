@@ -1,3 +1,6 @@
+import { useUnitSystem } from '@/hooks/useUnitSystem'
+import { speedFromKmh, speedInputToKmh, speedUnit } from '@/helpers/units'
+import { stepDelta } from '@/helpers/numberStep'
 import { SpeedometerIcon } from 'phosphor-react-native'
 
 import { SettingsCard } from '@/components/settings/SettingsCard'
@@ -20,8 +23,9 @@ export function BoardTopSpeedCard({
   value: number
   onChange: (kmh: number) => void
 }) {
+  const units = useUnitSystem()
   const setTopSpeed = (next: number) => {
-    const clamped = Math.min(BOARD_TOP_SPEED_MAX, Math.max(BOARD_TOP_SPEED_MIN, next))
+    const clamped = speedInputToKmh(next, value, units, BOARD_TOP_SPEED_MIN, BOARD_TOP_SPEED_MAX)
     if (clamped === value) return
     onChange(clamped)
   }
@@ -35,11 +39,12 @@ export function BoardTopSpeedCard({
         hint="Fastest you consider yourself capable of riding this board. Scales speed gauges and alerts"
         right={
           <Stepper
-            value={value}
-            unit="km/h"
-            min={BOARD_TOP_SPEED_MIN}
-            max={BOARD_TOP_SPEED_MAX}
-            step={5}
+            value={speedFromKmh(value, units)}
+            formatValue={(v) => Number(v.toFixed(1)).toString()}
+            unit={speedUnit(units)}
+            min={speedFromKmh(BOARD_TOP_SPEED_MIN, units)}
+            max={speedFromKmh(BOARD_TOP_SPEED_MAX, units)}
+            step={(v, direction) => stepDelta(v, direction, 5)}
             onChange={setTopSpeed}
           />
         }

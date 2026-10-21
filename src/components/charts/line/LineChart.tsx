@@ -14,7 +14,6 @@ import { SeriesLayer } from '@/components/charts/line/SeriesLayer'
 import { toScrubTargets } from '@/components/charts/line/scrubTargets'
 import type { PreparedChart } from '@/components/charts/line/stackData'
 import type { ChartPlotBox, ChartYRange } from '@/components/charts/line/types'
-import { resolveAdaptiveColor } from '@/constants/theme'
 import type { useSkiaMonoFont } from '@/hooks/useSkiaFont'
 import { useResolvedAccentColors, useResolvedNeutralColors, useThemeStore } from '@/hooks/useTheme'
 import { textAdvanceWidth } from '../../../helpers/skiaText'
@@ -68,10 +67,7 @@ export function LineChart({ chart, width, index }: LineChartProps) {
     () => ({ x: plot.x, y: plot.y, width: plot.width, height: plot.height }),
     [plot],
   )
-  const scrubTargets = useMemo(
-    () => toScrubTargets(chart, (color) => resolveAdaptiveColor(color, appearance) as string),
-    [appearance, chart],
-  )
+  const scrubTargets = useMemo(() => toScrubTargets(chart, appearance), [appearance, chart])
   const plotTransform = useMemo(
     () => [{ translateX: plot.x }, { translateY: plot.y }],
     [plot.x, plot.y],
@@ -163,6 +159,8 @@ export function LineChart({ chart, width, index }: LineChartProps) {
           {chart.series.map((series) => (
             <SeriesLayer
               key={series.key}
+              domainStartMs={domainStartMs}
+              domainEndMs={domainEndMs}
               paths={series.paths}
               color={series.color}
               ramp={series.ramp}
@@ -188,9 +186,23 @@ export function LineChart({ chart, width, index }: LineChartProps) {
         />
       )}
 
-      {axisFont && <AxisTicks font={axisFont} plot={plot} range={chart.left.range} side="left" />}
+      {axisFont && (
+        <AxisTicks
+          font={axisFont}
+          plot={plot}
+          range={chart.left.range}
+          displayScale={chart.left.displayScale}
+          side="left"
+        />
+      )}
       {axisFont && chart.right && (
-        <AxisTicks font={axisFont} plot={plot} range={chart.right.range} side="right" />
+        <AxisTicks
+          font={axisFont}
+          plot={plot}
+          range={chart.right.range}
+          displayScale={chart.right.displayScale}
+          side="right"
+        />
       )}
 
       {/* Over the plot: what is outside the selection is dimmed, lines included. */}
@@ -232,11 +244,12 @@ interface AxisTicksProps {
   font: NonNullable<ReturnType<typeof useSkiaMonoFont>>
   plot: ChartPlotBox
   range: ChartYRange
+  displayScale?: number
   side: 'left' | 'right'
 }
 
 /** Three ticks — top, middle, bottom — matching the three grid lines of the plot. */
-function AxisTicks({ font, plot, range, side }: AxisTicksProps) {
+function AxisTicks({ font, plot, range, side, displayScale = 1 }: AxisTicksProps) {
   const neutral = useResolvedNeutralColors()
   const ticks = useMemo(() => {
     const values = [range.max, (range.min + range.max) / 2, range.min]
@@ -246,12 +259,12 @@ function AxisTicks({ font, plot, range, side }: AxisTicksProps) {
       plot.y + plot.height,
     ]
     return values.map((value, index) => {
-      const text = formatAxisNumber(value)
+      const text = formatAxisNumber(value * displayScale)
       const x =
         side === 'left' ? plot.x - 4 - textAdvanceWidth(font, text) : plot.x + plot.width + 4
       return { text, x, y: baselines[index] }
     })
-  }, [font, plot, range, side])
+  }, [font, plot, range, side, displayScale])
 
   return (
     <>

@@ -11,6 +11,7 @@ internal enum class ForegroundServiceStartAction {
     BoardSession,
     CompanionDevice,
     AutoConnectSelectedBoard,
+    AccessorySessions,
     GpsMonitoring,
     GroupRideObserve,
 }
@@ -81,6 +82,13 @@ internal fun foregroundServiceLaunchSkipReason(
                 else -> null
             }
         }
+        ForegroundServiceStartAction.AccessorySessions -> {
+            if (!preflight.bluetoothConnectGranted) {
+                ForegroundServiceLaunchSkipReason.BluetoothPermissionMissing
+            } else {
+                null
+            }
+        }
         ForegroundServiceStartAction.GpsMonitoring -> {
             if (!preflight.locationGranted) {
                 ForegroundServiceLaunchSkipReason.LocationPermissionMissing
@@ -130,6 +138,29 @@ internal object CoreForegroundServiceLauncher {
             context = context,
             intentAction = ACTION_AUTO_CONNECT_SELECTED_BOARD,
             failurePrefix = "Auto-connect service start",
+            beforeStart = {},
+        )
+    }
+
+    /**
+     * Brings the host up for enrolled Accessories, independently of any Board.
+     *
+     * An Accessory session is not a Board session: it must come up with no Board selected and with
+     * Board auto-connect switched off, because the rider enrolled the Accessory rather than the
+     * Board it happens to ride with.
+     */
+    fun autoConnectAccessories(context: Context): ForegroundServiceLaunchResult {
+        val skipReason = foregroundServiceLaunchSkipReason(
+            ForegroundServiceLaunchPreflight(
+                action = ForegroundServiceStartAction.AccessorySessions,
+                bluetoothConnectGranted = hasBluetoothConnectPermission(context),
+            ),
+        )
+        if (skipReason != null) return ForegroundServiceLaunchResult(started = false, skipReason = skipReason)
+        return startForegroundService(
+            context = context,
+            intentAction = ACTION_AUTO_CONNECT_ACCESSORIES,
+            failurePrefix = "Accessory session service start",
             beforeStart = {},
         )
     }

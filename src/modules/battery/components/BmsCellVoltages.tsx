@@ -32,7 +32,7 @@ import { useRenderRateWarning } from '@/hooks/useRenderRateWarning'
 import { useBleStore } from '@/modules/board/store/bleStore'
 import { telemetry } from '@/modules/board/constants/telemetry'
 import { useBoardStore } from '@/modules/board/store/boardStore'
-import { resolveAdaptiveColor, theme } from '@/constants/theme'
+import { resolveAdaptiveColor, theme, type ThemeColor } from '@/constants/theme'
 import { useThemeStore } from '@/hooks/useTheme'
 
 function formatWindowLabel(windowMs: number | null | undefined): string {
@@ -201,12 +201,12 @@ export function BmsCellVoltagesView({
   )
 }
 
-function statColor(tone: 'min' | 'max' | 'neutral'): string {
+function statColor(tone: 'min' | 'max' | 'neutral'): ThemeColor {
   return tone === 'min'
     ? theme.status.warning.text
     : tone === 'max'
       ? theme.palette.yellow.text
-      : theme.palette.slate.textPrimary
+      : theme.neutral.textPrimary
 }
 
 /**
@@ -218,9 +218,9 @@ function useSpreadColor(spread: DerivedValue<number | null>): DerivedValue<strin
   const appearance = useThemeStore((state) => state.resolvedTheme)
   const ramp = useMemo(
     () => ({
-      ok: resolveAdaptiveColor(theme.palette.green.text, appearance) as string,
-      warn: resolveAdaptiveColor(theme.status.warning.text, appearance) as string,
-      critical: resolveAdaptiveColor(theme.status.error.text, appearance) as string,
+      ok: resolveAdaptiveColor(theme.palette.green.text, appearance),
+      warn: resolveAdaptiveColor(theme.status.warning.text, appearance),
+      critical: resolveAdaptiveColor(theme.status.error.text, appearance),
     }),
     [appearance],
   )
@@ -356,7 +356,7 @@ const styles = StyleSheet.create({
   statLabel: {
     flex: 1,
     textAlign: 'center',
-    color: theme.palette.slate.textMuted,
+    color: theme.neutral.textMuted,
     fontSize: 9,
     fontWeight: '700',
     letterSpacing: 0.5,

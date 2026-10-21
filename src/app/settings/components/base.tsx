@@ -266,9 +266,10 @@ function ButtonShowcase() {
 function PlaceholderShowcase() {
   const [showTitle, setShowTitle] = useState(true)
   const [showAction, setShowAction] = useState(true)
+  const [compact, setCompact] = useState(false)
   const [colorKey, setColorKey] = useState<'muted' | 'sky' | 'error'>('muted')
   const color = {
-    muted: theme.palette.slate.textMuted,
+    muted: theme.neutral.textMuted,
     sky: theme.palette.sky.color,
     error: theme.status.error.color,
   }[colorKey]
@@ -280,6 +281,7 @@ function PlaceholderShowcase() {
         <>
           <ToggleRow label="showTitle" value={showTitle} onToggle={setShowTitle} />
           <ToggleRow label="showAction" value={showAction} onToggle={setShowAction} />
+          <ToggleRow label="compact" value={compact} onToggle={setCompact} />
           <ChipRow
             label="iconColor"
             options={['muted', 'sky', 'error']}
@@ -293,6 +295,7 @@ function PlaceholderShowcase() {
         <Placeholder
           iconColor={color}
           icon={GhostIcon}
+          compact={compact}
           title={showTitle ? 'No data yet' : undefined}
           description="Connect board to start streaming telemetry"
           action={
@@ -389,7 +392,7 @@ function TickTextShowcase() {
           size={12}
           weight={weight}
           align={align}
-          color={theme.palette.slate.textMuted}
+          color={theme.neutral.textMuted}
           style={styles.tickValue}
         />
       </View>
@@ -406,6 +409,12 @@ function SectionHeaderShowcase() {
         title="Cell balance"
         description="20S pack"
         right={<Button label="Preview" variant="caution" size="sm" onPress={() => {}} />}
+      />
+      <SectionHeader
+        icon={BellRingingIcon}
+        title="Centred"
+        description="Centred variant"
+        align="center"
       />
     </ShowcaseCard>
   )

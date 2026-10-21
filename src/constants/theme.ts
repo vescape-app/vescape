@@ -43,12 +43,12 @@ interface AdaptiveColorMetadata {
   light: string
 }
 
-declare const adaptiveColorBrand: unique symbol
-type AdaptiveColor = string & { readonly [adaptiveColorBrand]: true }
+/** Native-compatible theme token. Resolve it before passing it to a string-only renderer. */
+export type ThemeColor = ReactNative.ColorValue
 
 const adaptiveColorMetadata = new WeakMap<object, AdaptiveColorMetadata>()
 
-function adaptiveColor(resource: string, dark: string, light: string): AdaptiveColor {
+function adaptiveColor(resource: string, dark: string, light: string): ThemeColor {
   const metadata: AdaptiveColorMetadata = { resource, dark, light }
   let color: unknown
 
@@ -57,21 +57,24 @@ function adaptiveColor(resource: string, dark: string, light: string): AdaptiveC
   } else if (ReactNativeModule.Platform?.OS === 'android') {
     color = ReactNativeModule.PlatformColor(`@color/vescape_${resource}`)
   } else {
-    return dark as AdaptiveColor
+    return dark
   }
 
   adaptiveColorMetadata.set(color as object, metadata)
-  return color as AdaptiveColor
+  return color as ReactNative.OpaqueColorValue
 }
 
 /** Resolve an adaptive native color to a renderer-safe string for the current appearance. */
-export function resolveAdaptiveColor(color: unknown, appearance: 'light' | 'dark'): unknown {
-  if (typeof color !== 'object' || color === null) return color
+export function resolveAdaptiveColor(color: ThemeColor, appearance: ResolvedTheme): string {
+  if (typeof color === 'string') return color
   const metadata = adaptiveColorMetadata.get(color)
-  return metadata ? metadata[appearance] : color
+  if (!metadata) throw new Error('Cannot resolve an unregistered native theme color')
+  return metadata[appearance]
 }
 
-function alpha(color: string, level: AlphaLevel): string {
+function alpha(color: string, level: AlphaLevel): string
+function alpha(color: ThemeColor, level: AlphaLevel): ThemeColor
+function alpha(color: ThemeColor, level: AlphaLevel): ThemeColor {
   const colorValue = color as unknown
   const adaptive =
     typeof colorValue === 'object' && colorValue !== null
@@ -84,6 +87,9 @@ function alpha(color: string, level: AlphaLevel): string {
       alpha(adaptive.light, level),
     )
   }
+
+  if (typeof color !== 'string')
+    throw new Error('Cannot apply alpha to an unregistered native theme color')
 
   if (color.startsWith('#')) {
     const hex = color.slice(1)
@@ -122,14 +128,14 @@ export function blend(base: string, over: string, level: number): string {
   return `rgb(${mix(br, or)},${mix(bg, og)},${mix(bb, ob)})`
 }
 
-interface Hue {
-  color: string
+interface Hue<Color = string> {
+  color: Color
   /** Alternate shade within the same hue — aliases `light`. */
-  alt: string
-  light: string
-  text: string
-  bg: string
-  border: string
+  alt: Color
+  light: Color
+  text: Color
+  bg: Color
+  border: Color
 }
 
 export type AccentHue = Hue & {
@@ -164,9 +170,11 @@ export const accentColors = {
     yellow: hue('#facc15', '#fde047', '#fde047', '#422006', '#854d0e', '#a16207', '#ffffff'),
     purple: hue('#a855f7', '#a78bfa', '#d8b4fe', '#1e1338', '#7e22ce', '#7e22ce', '#ffffff'),
     fuchsia: hue('#c084fc', '#e879f9', '#f0abfc', '#4a0444', '#a21caf', '#a21caf', '#ffffff'),
+    // @parity /watch/wearos/src/main/java/app/vescape/wear/Palette.kt `TrailColor`
+    // @parity /watch/watchos/Palette.swift `trail`
     violet: hue('#7c6fef', '#8b5cf6', '#a78bfa', '#2e1065', '#5b21b6', '#5b21b6', '#ffffff'),
     teal: hue('#14b8a6', '#2dd4bf', '#99f6e4', '#042f2e', '#0f766e', '#0f766e', '#ffffff'),
-    groupRide: hue('#10c69a', '#5eead4', '#7af0d6', '#04302a', '#0c8f74', '#0f766e', '#ffffff'),
+    mint: hue('#10c69a', '#5eead4', '#7af0d6', '#04302a', '#0c8f74', '#0f766e', '#ffffff'),
     pink: hue('#ec4899', '#f472b6', '#fbcfe8', '#500724', '#be185d', '#be185d', '#ffffff'),
     beige: hue('#d6c2a5', '#e8dcc8', '#f5eee4', '#3a3026', '#8d7353', '#806549', '#ffffff'),
   },
@@ -183,7 +191,7 @@ export const accentColors = {
     fuchsia: hue('#c026d3', '#d946ef', '#86198f', '#fae8ff', '#f0abfc', '#d946ef', '#2e064d'),
     violet: hue('#7c3aed', '#8b5cf6', '#5b21b6', '#ede9fe', '#c4b5fd', '#7c3aed', '#ffffff'),
     teal: hue('#0d9488', '#14b8a6', '#115e59', '#ccfbf1', '#5eead4', '#14b8a6', '#042f2e'),
-    groupRide: hue('#0d9488', '#10b981', '#115e59', '#ccfbf1', '#5eead4', '#10b981', '#032e27'),
+    mint: hue('#059669', '#10b981', '#115e59', '#ccfbf1', '#5eead4', '#10b981', '#032e27'),
     pink: hue('#db2777', '#ec4899', '#9d174d', '#fce7f3', '#f9a8d4', '#ec4899', '#3f071f'),
     beige: hue('#8d7353', '#a68a66', '#614d37', '#f5eee4', '#d6c2a5', '#d6c2a5', '#3a3026'),
   },
@@ -193,10 +201,10 @@ export type ResolvedAccentColors = (typeof accentColors)[ResolvedTheme]
 
 type AccentName = keyof (typeof accentColors)['dark']
 
-function adaptiveHue(name: AccentName): Hue {
+function adaptiveHue(name: AccentName): Hue<ThemeColor> {
   const dark = accentColors.dark[name]
   const light = accentColors.light[name]
-  const resourceName = name === 'groupRide' ? 'group_ride' : name
+  const resourceName = name
   return {
     color: adaptiveColor(`accent_${resourceName}_color`, dark.color, light.color),
     alt: adaptiveColor(`accent_${resourceName}_light`, dark.light, light.light),
@@ -246,7 +254,8 @@ export const palette = {
     moon: adaptiveColor('accent_violet_moon', '#a78bfa', '#7c3aed'),
   },
   teal: adaptiveHue('teal'),
-  groupRide: adaptiveHue('groupRide'),
+  mint: adaptiveHue('mint'),
+  groupRide: adaptiveHue('mint'),
   pink: adaptiveHue('pink'),
   beige: adaptiveHue('beige'),
 } as const
@@ -301,9 +310,8 @@ export const controlColors = {
 } as const
 
 /**
- * @parity /modules/vescape-core/android/src/main/res/values/colors.xml
- * @parity /modules/vescape-core/android/src/main/res/values-night/colors.xml
- * @platform-diff iOS resolves these same JS values through DynamicColorIOS; Android needs resources.
+ * iOS resolves these values through DynamicColorIOS; Android needs resources, which
+ * `scripts/generate-android-theme.ts` generates from them.
  */
 export const neutral = {
   bg: adaptiveColor('neutral_bg', neutralColors.dark.bg, neutralColors.light.bg),
@@ -395,9 +403,12 @@ export const telemetryColors = {
     battVoltage: accentColors.dark.green.light,
     footpad1: neutralColors.dark.textSecondary,
     footpad2: neutralColors.dark.textMuted,
-    pitch: accentColors.dark.purple.light,
-    roll: accentColors.dark.fuchsia.color,
-    balancePitch: accentColors.dark.fuchsia.light,
+    // Pitch, roll and balance are read side by side on the IMU dial, with the pink off-balance
+    // reading: unrelated hues, so each mark finds its number. Balance is the setpoint the others
+    // are read against, so it takes the neutral.
+    pitch: accentColors.dark.cyan.color,
+    roll: accentColors.dark.purple.color,
+    balancePitch: neutralColors.dark.textSecondary,
     altitude: accentColors.dark.amber.color,
     gpsAccuracy: accentColors.dark.green.light,
   },
@@ -411,9 +422,9 @@ export const telemetryColors = {
     battVoltage: accentColors.light.green.color,
     footpad1: neutralColors.light.textSecondary,
     footpad2: neutralColors.light.textMuted,
-    pitch: accentColors.light.purple.color,
-    roll: accentColors.light.fuchsia.color,
-    balancePitch: accentColors.light.pink.color,
+    pitch: accentColors.light.cyan.color,
+    roll: accentColors.light.purple.color,
+    balancePitch: neutralColors.light.textSecondary,
     altitude: accentColors.light.amber.color,
     gpsAccuracy: accentColors.light.green.color,
   },
@@ -422,7 +433,7 @@ export const telemetryColors = {
 export type ResolvedTelemetryColors = (typeof telemetryColors)[ResolvedTheme]
 export type TelemetryColorName = keyof ResolvedTelemetryColors
 
-function adaptiveTelemetry(name: TelemetryColorName): AdaptiveColor {
+function adaptiveTelemetry(name: TelemetryColorName): ThemeColor {
   const resourceName = name.replace(/[A-Z]/g, (letter) => `_${letter.toLowerCase()}`)
   return adaptiveColor(
     `telemetry_${resourceName}`,
@@ -516,10 +527,11 @@ export const settingsIcon = {
   update: status.upgrade.color,
   database: status.warning.color,
   link: palette.purple.color,
-  connection: palette.purple.color,
+  automation: palette.sky.color,
   liveTelemetry: telemetry.speed,
   diagnostics: status.warning.color,
   map: palette.sky.color,
+  sounds: palette.pink.color,
   watch: palette.amber.color,
   privacyZones: palette.green.color,
   filters: palette.purple.color,
@@ -576,6 +588,26 @@ export const interaction = {
   pressedOpacity: 0.55,
 } as const
 
+/** Board rail choices reuse shared hues; extend this list independently of UI accent roles.
+ * `group-ride` is the persisted legacy ID for mint. Keep it stable for saved Boards.
+ */
+export const personalizationColorOptions = [
+  { id: 'sky', value: palette.sky.color },
+  { id: 'cyan', value: palette.cyan.color },
+  { id: 'teal', value: palette.teal.color },
+  { id: 'group-ride', label: 'Mint', value: palette.mint.color },
+  { id: 'green', value: palette.green.color },
+  { id: 'beige', value: palette.beige.color },
+  { id: 'yellow', value: palette.yellow.color },
+  { id: 'amber', value: palette.amber.color },
+  { id: 'orange', value: palette.orange.color },
+  { id: 'red', value: palette.red.color },
+  { id: 'pink', value: palette.pink.color },
+  { id: 'fuchsia', value: palette.fuchsia.color },
+  { id: 'purple', value: palette.purple.color },
+  { id: 'violet', value: palette.violet.color },
+] as const
+
 /** Weights shipped as static Raleway instances in `assets/fonts/`. Android ignores the
  *  `wght` variation axis of a custom variable font (it renders the file's default
  *  instance), so each weight is its own font file and family name. */
@@ -607,6 +639,7 @@ export const theme = {
   weather,
   zone,
   interaction,
+  personalizationColorOptions,
   font,
   mono,
 } as const

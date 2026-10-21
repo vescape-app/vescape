@@ -40,6 +40,7 @@ private struct ConfigReadContext {
   let appBoardId: String?
   let fwVersion: String?
   var refloatVersion: String?
+  var xmlRetried = false
 }
 
 private struct ConfigWriteContext {
@@ -59,6 +60,7 @@ private struct ConfigWriteContext {
 ///
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/config/ConfigRWController.kt
 internal final class ConfigRWController {
+  private let scheduler: Scheduler
   private var state: ConfigRWState = .idle
   /// Every consumer waiting on the current read. A read started in the background (post-trust config
   /// acquisition) is joined by a later caller instead of rejecting it with `CONFIG_REQUEST_IN_FLIGHT`
@@ -66,6 +68,10 @@ internal final class ConfigRWController {
   private var readCallbacks: [PendingConfigRead] = []
   private var writeCallbacks: PendingConfigWrite?
   private var timeoutGeneration: Int64 = 0
+
+  init(scheduler: Scheduler = MainQueueScheduler()) {
+    self.scheduler = scheduler
+  }
 
   var isInFlight: Bool {
     if case .idle = state { return false }
@@ -147,7 +153,13 @@ internal final class ConfigRWController {
       )
       return
     }
-    guard let profile = connection.loadProfile(profileId) else {
+    let loadedProfile: [String: Any?]?
+    do { loadedProfile = try connection.loadProfile(profileId) }
+    catch {
+      onError(RefloatConfigErrorCode.CONFIG_READ_FAILED.rawValue, "Tune profile could not be loaded")
+      return
+    }
+    guard let profile = loadedProfile else {
       onError(RefloatConfigErrorCode.PROFILE_NOT_FOUND.rawValue, "Tune profile not found: \(profileId)")
       return
     }
@@ -156,8 +168,8 @@ internal final class ConfigRWController {
       onError(RefloatConfigErrorCode.PROFILE_BOARD_MISMATCH.rawValue, "Tune profile does not belong to the connected board")
       return
     }
-    let profileRefloatBaseVersion = (profile["refloatBaseVersion"] ?? nil) as? String
-    if profileRefloatBaseVersion == nil || profileRefloatBaseVersion!.isEmpty || profileRefloatBaseVersion != connection.refloatBaseVersion {
+    let profileRefloatBaseVersion = TuneProfileStore.validRefloatBaseVersion((profile["refloatBaseVersion"] ?? nil) as? String)
+    if profileRefloatBaseVersion == nil || profileRefloatBaseVersion!.isEmpty || profileRefloatBaseVersion != TuneProfileStore.validRefloatBaseVersion(connection.refloatBaseVersion) {
       onError(RefloatConfigErrorCode.PROFILE_BOARD_MISMATCH.rawValue, "Tune profile does not match the connected board Refloat Tune Compatibility")
       return
     }
@@ -249,11 +261,14 @@ internal final class ConfigRWController {
 
   private func applyXml(_ payload: [UInt8], _ connection: ConfigRWConnection) {
     switch state {
-    case .readCollectingXml(let ctx, let xmlBytes, _):
+    case .readCollectingXml(var ctx, let xmlBytes, _):
       switch RefloatConfigProtocol.parseCustomConfigXmlResponse(payload) {
       case .failure(let message):
         fail(code: .UNEXPECTED_CONFIG_RESPONSE, message: message, rawConfig: nil, connection: connection)
       case .success(let chunk):
+        // A delayed reply to a retried request must not append the same bytes twice.
+        guard chunk.offset == xmlBytes.count else { return }
+        ctx.xmlRetried = false
         let merged = xmlBytes + chunk.chunk
         let nextOffset = chunk.offset + chunk.chunk.count
         if nextOffset >= chunk.totalLength {
@@ -603,8 +618,15 @@ internal final class ConfigRWController {
   ) {
     timeoutGeneration += 1
     let generation = timeoutGeneration
-    DispatchQueue.main.asyncAfter(deadline: .now() + Double(timeoutMs) / 1000.0) { [weak self] in
+    scheduler.postDelayed(timeoutMs) { [weak self] in
       guard let self, self.timeoutGeneration == generation, self.isInFlight else { return }
+      if case .readCollectingXml(var ctx, let bytes, let expected) = self.state, !ctx.xmlRetried {
+        ctx.xmlRetried = true
+        self.state = .readCollectingXml(ctx, bytes, expected)
+        self.scheduleTimeout(.CONFIG_SCHEMA_TIMEOUT, CONFIG_SCHEMA_TIMEOUT_MS, connection)
+        _ = self.send(connection, self.buildXmlRequest(ctx.transport, expected: expected, nextOffset: bytes.count))
+        return
+      }
       self.abort(code: code, message: "Timed out reading Refloat config", resumePolling: nil, connection: connection)
     }
   }
@@ -650,7 +672,7 @@ internal struct ConfigRWConnection {
   let startPolling: () -> Void
   let sendPayload: ([UInt8]) -> Bool
   let captureDiagnostic: (String, [String: Any?]) -> Void
-  let loadProfile: (String) -> [String: Any?]?
+  let loadProfile: (String) throws -> [String: Any?]?
   /// Hand the freshly decoded Board Config Values to the session controller, which holds them as the
   /// session's config truth, caches them, and runs warning evaluation.
   let onBoardConfigValues: (BoardConfigValues, BoardConfigOperationOrigin) -> Void

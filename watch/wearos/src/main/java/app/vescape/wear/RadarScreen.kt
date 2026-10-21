@@ -1,5 +1,7 @@
 package app.vescape.wear
 
+import expo.modules.vescapecore.telemetry.UnitPresentation
+
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -53,6 +55,8 @@ import kotlin.math.roundToInt
  *
  * The only wrist surface that fetches for itself (see [RadarState]); it does so only while it is
  * the page on screen.
+ *
+ * @parity /watch/watchos/RadarScreen.swift
  */
 @Composable
 fun RadarScreen(visible: Boolean) {
@@ -137,8 +141,8 @@ fun RadarScreen(visible: Boolean) {
             Text(
                 // Unit on the outermost ring only: the inner one reads as the same scale without
                 // repeating it next to a line 10 dp away.
-                text = if (km == rings.last().first) "$km km" else "$km",
-                style = MaterialTheme.typography.caption3.copy(fontSize = RING_FONT_SIZE),
+                text = if (SettingsState.settings.value.unitSystem == "imperial") UnitPresentation.distance(km * 1000.0, "imperial") else if (km == rings.last().first) "$km km" else "$km",
+                style = WatchTypography.mono(MaterialTheme.typography.caption3.copy(fontSize = RING_FONT_SIZE)),
                 color = DimText,
                 modifier = Modifier
                     .align(Alignment.Center)
@@ -148,7 +152,7 @@ fun RadarScreen(visible: Boolean) {
         RadarHeader()
         Text(
             text = formatHour(minuteOfDay(frame.timeSec * 1_000L)),
-            style = MaterialTheme.typography.caption2,
+            style = WatchTypography.mono(MaterialTheme.typography.caption2),
             color = SecondaryText,
             modifier = Modifier
                 .align(Alignment.BottomCenter)

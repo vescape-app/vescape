@@ -90,7 +90,7 @@ final class CellSpreadDetector {
     balancing: [Bool],
     vCharge: Double,
     atMs: Int64
-  ) -> CellSpreadFinding? {
+  ) throws -> CellSpreadFinding? {
     var minV = Double.greatestFiniteMagnitude
     var maxV = -Double.greatestFiniteMagnitude
     var sum = 0.0
@@ -140,7 +140,7 @@ final class CellSpreadDetector {
     let balancingActive = balancing.contains(true)
     return CellSpreadFinding(
       severity: severity,
-      payloadJson: payloadJson(
+      payloadJson: try payloadJson(
         peakV: peakV,
         worstGroup: worstGroup,
         charging: charging,
@@ -170,8 +170,8 @@ final class CellSpreadDetector {
     return worst
   }
 
-  private func payloadJson(peakV: Double, worstGroup: Int, charging: Bool, balancing: Bool) -> String {
-    BoardWarningPayload.json([
+  private func payloadJson(peakV: Double, worstGroup: Int, charging: Bool, balancing: Bool) throws -> String {
+    try BoardWarningPayload.json([
       "peakSpread": BoardWarningPayload.round4(peakV),
       "worstGroup": worstGroup,
       "charging": charging,

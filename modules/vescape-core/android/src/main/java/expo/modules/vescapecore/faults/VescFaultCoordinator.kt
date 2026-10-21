@@ -3,6 +3,7 @@ package expo.modules.vescapecore.faults
 import android.content.Context
 import expo.modules.vescapecore.telemetry.TelemetryDatabase
 import expo.modules.vescapecore.telemetry.VescFaultOccurrenceEntity
+import expo.modules.vescapecore.recording.RecordingStorageFailure
 import java.util.UUID
 import kotlin.coroutines.cancellation.CancellationException
 
@@ -154,8 +155,14 @@ class VescFaultCoordinator(
         if (occurrence.id == id) active[boardId] = occurrence.copy(dismissed = dismissed)
       }
     }
-    val boardId = store.getAll().firstOrNull { it.id == id }?.boardId ?: return
-    emit(boardId)
+    try {
+      val boardId = store.getAll().firstOrNull { it.id == id }?.boardId ?: return
+      emit(boardId)
+    } catch (cancellation: CancellationException) {
+      throw cancellation
+    } catch (failure: Throwable) {
+      RecordingStorageFailure.reportRead("vesc_fault_reload_after_dismiss", failure)
+    }
   }
 
   /** Every occurrence across all Boards — the JS foreground catch-up pull. */
@@ -184,6 +191,7 @@ class VescFaultCoordinator(
     } catch (cancellation: CancellationException) {
       throw cancellation
     } catch (failure: Throwable) {
+      RecordingStorageFailure.reportRead("vesc_fault_open_read", failure)
       return false
     }
     synchronized(lock) {

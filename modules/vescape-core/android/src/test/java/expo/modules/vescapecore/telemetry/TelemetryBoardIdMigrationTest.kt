@@ -62,8 +62,7 @@ class TelemetryBoardIdMigrationTest {
       ?: throw AssertionError("no migration statement contains `$match`")
 
   @Test
-  fun migrationTargetsTheCurrentSchemaVersion() {
-    assertEquals(42, TELEMETRY_DATABASE_VERSION)
+  fun migrationSpansTheBoardIdSchemaStep() {
     assertEquals(41, TelemetryDatabase.MIGRATION_41_42.startVersion)
     assertEquals(42, TelemetryDatabase.MIGRATION_41_42.endVersion)
   }

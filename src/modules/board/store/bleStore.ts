@@ -2,7 +2,6 @@ import { create } from 'zustand'
 import {
   scan as nativeScan,
   stopScan as nativeStopScan,
-  startLocationUpdates as nativeStartLocationUpdates,
   setTelemetryRecordingEnabled as nativeSetTelemetryRecordingEnabled,
   selectBoard as nativeSelectBoard,
   stopBoard as nativeStopBoard,
@@ -11,34 +10,26 @@ import {
   setSelectedBoard as nativeSetSelectedBoard,
   addDeviceListener,
   addErrorListener,
-  addLiveStateListener,
   addLiveTickListener,
   addLiveSeriesListener,
   addFocusedSeriesListener,
   addBmsListener,
   addBmsSeriesListener,
-  addLocationListener,
-  getRemoteTiltState as nativeGetRemoteTiltState,
   setBmsSeriesFocused as nativeSetBmsSeriesFocused,
   setFocusedSeriesMetrics as nativeSetFocusedSeriesMetrics,
+  setLiveSeriesMetrics as nativeSetLiveSeriesMetrics,
   type BoardPhase,
-  type GpsPhase,
   type ScanStatus,
-  type LocationEvent,
   type LiveStateEvent,
   type LinkIntegrity,
   type BmsEvent,
   type BmsSeriesFrame,
   type BmsSeriesUpdate,
-  type RemoteTiltState,
-  isReplayBoardId,
 } from 'vescape-core'
 
-import { useSettingsStore } from '@/modules/settings/store/settingsStore'
 import { useLiveSeriesStore } from '@/modules/board/store/liveSeriesStore'
 import { useFocusedSeriesStore } from '@/modules/board/store/focusedSeriesStore'
 import { liveTelemetryRuntime } from '@/modules/board/lib/liveTelemetryRuntime'
-import type { LiveStatusSummary } from '@/modules/board/lib/liveMetricHistory'
 
 interface EventSubscription {
   remove(): void
@@ -57,7 +48,6 @@ type BleStatus = BoardPhase
 
 interface BleState {
   status: BleStatus
-  gpsStatus: GpsPhase
   scanStatus: ScanStatus
   connectionSeq: number
   nativeStateReady: boolean
@@ -65,19 +55,15 @@ interface BleState {
   selectedBoardId: string | null
   connectedId: string | null
   error: string | undefined
-  liveLocationHistory: LocationEvent[]
-  latestApproximateLocation: LocationEvent | null
-  liveStatus: LiveStatusSummary
-  metricVersion: number
+  lastTelemetryAt: number | null
   telemetryRecordingEnabled: boolean
   telemetryRecordingPaused: boolean
+  recordingFailure: LiveStateEvent['recording']['failure']
   recordDebugSession: boolean
   latestBms: BmsEvent | null
   bmsSeries: BmsSeriesFrame[]
   bmsSeriesWindowMs: number | null
   linkIntegrity: LinkIntegrity
-  /** Active remote-tilt command mirrored from native telemetry, or null when idle. */
-  remoteTilt: RemoteTiltState | null
 }
 
 interface BleActions {
@@ -87,11 +73,9 @@ interface BleActions {
   disconnect: () => Promise<void>
   setRecordDebugSession: (enabled: boolean) => void
   syncNativeState: () => void
-  syncRemoteTilt: () => void
   setSelectedBoard: (boardId: string | null) => void
   startTelemetryRecording: () => void
   stopTelemetryRecording: () => void
-  startGpsTracking: () => void
 }
 
 type BleStore = BleState & BleActions
@@ -100,30 +84,23 @@ type BleSet = (
   replace?: false,
 ) => void
 
-let liveSub: EventSubscription | null = null
 let liveTickSub: EventSubscription | null = null
 let liveSeriesSub: EventSubscription | null = null
 let focusedSeriesSub: EventSubscription | null = null
 let bmsSub: EventSubscription | null = null
 let bmsSeriesSub: EventSubscription | null = null
-let locationSub: EventSubscription | null = null
 // The high-res focused stream only runs while a `/control` detail chart is mounted.
 // Ref-counted per metric so native emits `onFocusedSeries` only for focused metrics.
 const focusedSeriesRefs = new Map<string, number>()
+/** Holds on extra `onLiveSeries` metrics (the telemetry panel), per metric. */
+const liveSeriesRefs = new Map<string, number>()
 let bmsSeriesStreamRefs = 0
 let scanSub: EventSubscription | null = null
 let scanErrorSub: EventSubscription | null = null
-let settingsUnsubscribe: (() => void) | null = null
 
 let pendingDevices = new Map<string, ScannedDevice>()
 let scanFlushTimer: ReturnType<typeof setTimeout> | null = null
 const SCAN_FLUSH_MS = 500
-
-// Cold-path publish throttle. The 31Hz tick → SharedValues path stays unthrottled (no render);
-// this only caps how often the store snapshot bumps, which re-renders the SVG sparklines, live
-// charts and map trail. GPS fixes drive it, so an unthrottled publish saturates the JS thread.
-let liveHistoryPublishTimer: ReturnType<typeof setTimeout> | null = null
-const LIVE_HISTORY_PUBLISH_MS = 1000
 
 const MAC_ADDRESS_RE = /^([0-9a-f]{2}:){5}[0-9a-f]{2}$/i
 
@@ -133,31 +110,16 @@ function scannedDeviceName(id: string, name?: string): string {
   return `Unknown ${id.slice(-5)}`
 }
 
-const EMPTY_LIVE_STATUS: LiveStatusSummary = {
-  boardSampleCount: 0,
-  boardLastPacketAt: null,
-  boardAvgLatencyMs: null,
-  gpsSampleCount: 0,
-  gpsLastFixAt: null,
-  gpsPrecise: false,
-  gpsAccuracyM: null,
-}
-
 function removeLiveSubscriptions(): void {
-  removeBmsSeriesStream(useBleStore.setState as BleSet)
+  removeBmsSeriesStream(useBleStore.setState as BleSet, true)
   removeFocusedSeriesStream()
-  liveSub?.remove()
   liveTickSub?.remove()
   liveSeriesSub?.remove()
   bmsSub?.remove()
-  locationSub?.remove()
-  liveSub = null
   liveTickSub = null
   liveSeriesSub = null
   bmsSub = null
-  locationSub = null
   useLiveSeriesStore.getState().clear()
-  clearLiveHistoryPublishTimer()
 }
 
 /** Detach the focused-series bridge sub and clear its JS window; keeps the per-metric ref counts. */
@@ -165,12 +127,6 @@ function removeFocusedSeriesStream(): void {
   focusedSeriesSub?.remove()
   focusedSeriesSub = null
   useFocusedSeriesStore.getState().clear()
-}
-
-function clearLiveHistoryPublishTimer(): void {
-  if (!liveHistoryPublishTimer) return
-  clearTimeout(liveHistoryPublishTimer)
-  liveHistoryPublishTimer = null
 }
 
 function clearScanFlushTimer(): void {
@@ -218,116 +174,50 @@ function removeScanSubscriptions(): void {
 function cleanupBleStoreModule(): void {
   removeLiveSubscriptions()
   removeScanSubscriptions()
-  settingsUnsubscribe?.()
-  settingsUnsubscribe = null
 }
 
-/** Board id of the replay session the last live state described, or `null` when it was live. */
-let lastReplayBoardId: string | null = null
-
-function applyLiveState(state: LiveStateEvent, set: BleSet): void {
+/** Apply board/scan/recording state only; app bootstrap owns the combined native event. */
+export function applyBoardLiveState(state: LiveStateEvent, source: 'snapshot' | 'event'): void {
+  const set = useBleStore.setState
   const isBoardConnected = state.board.phase === 'connected'
-  const hasRecentTelemetry = isBoardConnected && state.board.recentTelemetry.length > 0
-  const hasRecentLocations = state.gps.recentLocations.length > 0
-  const shouldSeedLiveState = hasRecentTelemetry || hasRecentLocations
-  let live
-
-  // Every live state carries the authoritative generation, and `ingestTick` drops any tick that
-  // disagrees with it. Syncing only on the seeding paths left a hole: a session that connects
-  // before the UI mounts and has no telemetry or GPS to seed from yet (a replay, or a board that
-  // connects faster than its first frame) leaves the runtime on the previous generation, so every
-  // later tick is discarded and the gauges read "—" while the store-fed sparklines keep updating.
   liveTelemetryRuntime.syncConnectionSeq(state.board.connectionSeq)
-
-  // A replay's recorded fixes ride the same path live ones do (ADR 0024), so ending one has to drop
-  // them from the JS mirror as well: native clears its own buffers in the replay teardown, but the
-  // store retains GPS across a disconnect by design, and would re-publish the recorded track and
-  // then draw a jump-line from it to the first real fix.
-  // @parity /modules/vescape-core/ios/connection/BoardSessionController.swift `releaseGpsFromSession`
-  const replayBoardId = isReplayBoardId(state.board.connectedBoardId)
-    ? state.board.connectedBoardId
-    : null
-  const replayEnded = lastReplayBoardId != null && replayBoardId == null
-  lastReplayBoardId = replayBoardId
-  if (replayEnded) liveTelemetryRuntime.reset()
-
-  if (isBoardConnected) {
-    live = shouldSeedLiveState
-      ? liveTelemetryRuntime.seedFromLiveState(state)
-      : liveTelemetryRuntime.getSnapshot()
-  } else {
+  if (!isBoardConnected) {
     useLiveSeriesStore.getState().clear()
     useFocusedSeriesStore.getState().clear()
-    live = liveTelemetryRuntime.clearBoardTelemetry()
+  }
+  if (source === 'snapshot') {
+    liveTelemetryRuntime.seedFromBoardState(
+      isBoardConnected ? state.board : { ...state.board, recentTelemetry: [] },
+    )
+  } else if (!isBoardConnected) {
+    liveTelemetryRuntime.reset()
   }
 
   set({
     status: state.board.phase,
-    gpsStatus: state.gps.phase,
     scanStatus: state.scan.phase,
     connectionSeq: state.board.connectionSeq,
     nativeStateReady: true,
     selectedBoardId: state.board.selectedBoardId,
     connectedId: state.board.connectedBoardId ?? state.board.bleId,
-    error: state.board.error ?? state.gps.error ?? state.scan.error ?? undefined,
+    error: state.board.error ?? state.scan.error ?? undefined,
     telemetryRecordingEnabled: state.recording.enabled,
     telemetryRecordingPaused: state.recording.paused,
-    remoteTilt: state.board.remoteTilt,
+    recordingFailure: state.recording.failure ?? null,
     linkIntegrity: state.board.linkIntegrity,
-    ...(shouldSeedLiveState || !isBoardConnected
-      ? {
-          liveLocationHistory: live.liveLocationHistory,
-          latestApproximateLocation: live.latestApproximateLocation,
-          liveStatus: live.liveStatus,
-          metricVersion: liveTelemetryRuntime.getVersion(),
-        }
-      : {}),
+    lastTelemetryAt: isBoardConnected ? state.board.lastTelemetryAt : null,
   })
-}
-
-function sameRemoteTilt(a: RemoteTiltState | null, b: RemoteTiltState | null): boolean {
-  return (
-    a?.value === b?.value &&
-    a?.phase === b?.phase &&
-    a?.decay?.elapsedMs === b?.decay?.elapsedMs &&
-    a?.decay?.totalMs === b?.decay?.totalMs
-  )
 }
 
 function resetLivePresentation(set: BleSet): void {
-  clearLiveHistoryPublishTimer()
   useLiveSeriesStore.getState().clear()
   useFocusedSeriesStore.getState().clear()
-  const live = liveTelemetryRuntime.reset()
+  liveTelemetryRuntime.reset()
   set({
-    liveLocationHistory: live.liveLocationHistory,
-    latestApproximateLocation: live.latestApproximateLocation,
-    liveStatus: live.liveStatus,
-    metricVersion: liveTelemetryRuntime.getVersion(),
+    lastTelemetryAt: null,
     latestBms: null,
     bmsSeries: [],
     bmsSeriesWindowMs: null,
-  })
-}
-
-// Coalesces store snapshot bumps onto a fixed cadence. The 31Hz tick path never calls this —
-// it only touches SharedValues. This drives the cold render path (sparklines/charts/map trail).
-function scheduleLiveSnapshot(set: BleSet): void {
-  if (liveHistoryPublishTimer) return
-  liveHistoryPublishTimer = setTimeout(() => {
-    liveHistoryPublishTimer = null
-    publishLiveSnapshot(set)
-  }, LIVE_HISTORY_PUBLISH_MS)
-}
-
-function publishLiveSnapshot(set: BleSet): void {
-  const live = liveTelemetryRuntime.consumePendingSnapshot()
-  if (!live) return
-  set({
-    liveLocationHistory: live.liveLocationHistory,
-    latestApproximateLocation: live.latestApproximateLocation,
-    liveStatus: live.liveStatus,
-    metricVersion: liveTelemetryRuntime.getVersion(),
   })
 }
 
@@ -369,30 +259,23 @@ function applyBmsSeriesUpdate(update: BmsSeriesUpdate, set: BleSet): void {
   })
 }
 
-function removeBmsSeriesStream(set: BleSet): void {
+function removeBmsSeriesStream(set: BleSet, preserveHolds = false): void {
   if (bmsSeriesStreamRefs > 0 || bmsSeriesSub) {
     nativeSetBmsSeriesFocused(false)
   }
   bmsSeriesSub?.remove()
   bmsSeriesSub = null
-  bmsSeriesStreamRefs = 0
+  if (!preserveHolds) bmsSeriesStreamRefs = 0
   set({ bmsSeries: [], bmsSeriesWindowMs: null })
 }
 
-function installLiveSubscriptions(set: BleSet): void {
-  if (!liveSub) {
-    liveSub = addLiveStateListener((state) => applyLiveState(state, set))
-  }
+export function startBoardLiveStreams(): () => void {
+  const set = useBleStore.setState
   if (!liveTickSub) {
-    // Hot path: scalar tick drives SharedValues. Remote tilt is the one deliberate
-    // store mirror here: the mounted pad needs each authoritative native command value.
+    // Hot path: scalar ticks drive SharedValues. Tilt reads its own native control state.
     liveTickSub = addLiveTickListener((tick) => {
       if (!acceptsBoardTelemetry(tick.generation)) return
       liveTelemetryRuntime.ingestTick(tick)
-      if (tick.remoteTilt !== undefined) {
-        const remoteTilt = tick.remoteTilt ?? null
-        set((state) => (sameRemoteTilt(state.remoteTilt, remoteTilt) ? {} : { remoteTilt }))
-      }
     })
   }
   if (!liveSeriesSub) {
@@ -410,12 +293,7 @@ function installLiveSubscriptions(set: BleSet): void {
       set({ latestBms: bms })
     })
   }
-  if (!locationSub) {
-    locationSub = addLocationListener((location) => {
-      liveTelemetryRuntime.ingestLocation(location)
-      scheduleLiveSnapshot(set)
-    })
-  }
+  return removeLiveSubscriptions
 }
 
 /** Push the current focused-metric set to native (the union of everything held). */
@@ -436,9 +314,44 @@ function ensureFocusedSeriesSub(): void {
 
 /** Re-arm focus after a (re)connect: subscriptions were torn down but the ref counts survive. */
 function reapplyFocusedSeries(): void {
+  // Native may be a fresh session (or a fresh Android service) that never heard the extras.
+  if (liveSeriesRefs.size > 0) syncLiveSeriesMetrics()
   if (focusedSeriesRefs.size === 0) return
   ensureFocusedSeriesSub()
   syncFocusedSeriesMetrics()
+}
+
+function syncLiveSeriesMetrics(): void {
+  nativeSetLiveSeriesMetrics([...liveSeriesRefs.keys()])
+}
+
+/**
+ * Adds metrics to the ~1Hz `onLiveSeries` stream on top of the always-on battery set. Ref-counted
+ * per metric like the focused series, and re-sent on every reconnect.
+ */
+export function acquireLiveSeries(metrics: readonly string[]): void {
+  let added = false
+  for (const metric of metrics) {
+    const prev = liveSeriesRefs.get(metric) ?? 0
+    liveSeriesRefs.set(metric, prev + 1)
+    if (prev === 0) added = true
+  }
+  if (added) syncLiveSeriesMetrics()
+}
+
+export function releaseLiveSeries(metrics: readonly string[]): void {
+  let removed = false
+  for (const metric of metrics) {
+    const prev = liveSeriesRefs.get(metric) ?? 0
+    if (prev === 0) continue
+    if (prev > 1) {
+      liveSeriesRefs.set(metric, prev - 1)
+    } else {
+      liveSeriesRefs.delete(metric)
+      removed = true
+    }
+  }
+  if (removed) syncLiveSeriesMetrics()
 }
 
 /**
@@ -477,14 +390,19 @@ export function releaseFocusedSeries(metric: string): void {
 export function acquireBmsSeriesStream(): void {
   bmsSeriesStreamRefs += 1
   if (bmsSeriesStreamRefs > 1) return
-  const set = useBleStore.setState as BleSet
   try {
-    applyLiveState(nativeGetLiveState(), set)
+    applyBoardLiveState(nativeGetLiveState(), 'snapshot')
   } catch {
     // No live state yet (not connected) — focus intent still attaches for future samples.
   }
+  ensureBmsSeriesStream()
+}
+
+function ensureBmsSeriesStream(): void {
   if (!bmsSeriesSub) {
-    bmsSeriesSub = addBmsSeriesListener((update) => applyBmsSeriesUpdate(update, set))
+    bmsSeriesSub = addBmsSeriesListener((update) =>
+      applyBmsSeriesUpdate(update, useBleStore.setState),
+    )
   }
   nativeSetBmsSeriesFocused(true)
 }
@@ -499,7 +417,6 @@ export function releaseBmsSeriesStream(): void {
 
 export const useBleStore = create<BleState & BleActions>((set, get) => ({
   status: 'idle',
-  gpsStatus: 'idle',
   scanStatus: 'idle',
   connectionSeq: 0,
   nativeStateReady: false,
@@ -507,18 +424,15 @@ export const useBleStore = create<BleState & BleActions>((set, get) => ({
   selectedBoardId: null,
   connectedId: null,
   error: undefined,
-  liveLocationHistory: [],
-  latestApproximateLocation: null,
-  liveStatus: EMPTY_LIVE_STATUS,
-  metricVersion: 0,
+  lastTelemetryAt: null,
   telemetryRecordingEnabled: false,
   telemetryRecordingPaused: false,
+  recordingFailure: null,
   recordDebugSession: false,
   latestBms: null,
   bmsSeries: [],
   bmsSeriesWindowMs: null,
   linkIntegrity: 'unknown',
-  remoteTilt: null,
 
   startScan() {
     const currentStatus = get().status
@@ -610,15 +524,7 @@ export const useBleStore = create<BleState & BleActions>((set, get) => ({
   },
 
   syncNativeState() {
-    installLiveSubscriptions(set)
-    const state = nativeGetLiveState()
-    applyLiveState(state, set)
-  },
-
-  syncRemoteTilt() {
-    installLiveSubscriptions(set)
-    const remoteTilt = nativeGetRemoteTiltState()
-    set((state) => (sameRemoteTilt(state.remoteTilt, remoteTilt) ? {} : { remoteTilt }))
+    applyBoardLiveState(nativeGetLiveState(), 'snapshot')
   },
 
   setSelectedBoard(boardId: string | null) {
@@ -633,11 +539,6 @@ export const useBleStore = create<BleState & BleActions>((set, get) => ({
 
   stopTelemetryRecording() {
     nativeSetTelemetryRecordingEnabled(false)
-    get().syncNativeState()
-  },
-
-  startGpsTracking() {
-    nativeStartLocationUpdates()
     get().syncNativeState()
   },
 }))
@@ -655,13 +556,18 @@ type BleStoreGlobal = typeof globalThis & {
 const bleStoreGlobal = globalThis as BleStoreGlobal
 bleStoreGlobal.__vescBleStoreCleanup?.()
 
-settingsUnsubscribe = useSettingsStore.subscribe((settings, previousSettings) => {
-  if (settings.liveHistoryLimit === previousSettings.liveHistoryLimit) return
-  const state = nativeGetLiveState()
-  applyLiveState(state, useBleStore.setState)
-})
-
 bleStoreGlobal.__vescBleStoreCleanup = cleanupBleStoreModule
 
 const hotModule = typeof module === 'undefined' ? null : (module as unknown as HotModule)
 hotModule?.hot?.dispose?.(cleanupBleStoreModule)
+
+/** Replay transitions reset board presentation independently of phone location. */
+export function resetBoardLivePresentation(): void {
+  resetLivePresentation(useBleStore.setState)
+}
+
+/** Restore held chart streams after the current native generation has been applied. */
+export function restoreBoardStreamFocus(): void {
+  reapplyFocusedSeries()
+  if (bmsSeriesStreamRefs > 0) ensureBmsSeriesStream()
+}

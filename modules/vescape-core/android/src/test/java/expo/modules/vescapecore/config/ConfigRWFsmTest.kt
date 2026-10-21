@@ -1,4 +1,6 @@
 package expo.modules.vescapecore.config
+
+import org.junit.Assert.assertArrayEquals
 import expo.modules.vescapecore.protocol.COMM_FORWARD_CAN
 import expo.modules.vescapecore.protocol.COMM_CUSTOM_APP_DATA
 import expo.modules.vescapecore.protocol.COMM_GET_CUSTOM_CONFIG
@@ -85,7 +87,7 @@ class ConfigRWFsmTest {
         assertEquals(12345L, complete.snapshot.capturedAt)
         assertTrue(complete.resumePolling)
         assertEquals(4, complete.snapshot.rawConfigLength)
-        assertEquals("Refloat 1.2", complete.snapshot.refloatVersion)
+        assertEquals("Float/Refloat 1.2", complete.snapshot.refloatVersion)
     }
 
     @Test
@@ -146,10 +148,32 @@ class ConfigRWFsmTest {
     }
 
     @Test
-    fun `schema timeout in read returns failure with CONFIG_SCHEMA_TIMEOUT`() {
+    fun `lost XML chunk can recover and a delayed duplicate is ignored`() {
+        var state = ConfigRWFsm.apply(ConfigRWState.Idle, startRead(canId, wasPolling = true)).first
+        val first = ConfigRWEvent.XmlPayloadReceived(buildXmlChunkPayload(schemaXml.size, 0, schemaXml.copyOfRange(0, 10)))
+        state = ConfigRWFsm.apply(state, first).first
+        state = ConfigRWFsm.apply(state, ConfigRWEvent.Timeout(RefloatConfigErrorCode.CONFIG_SCHEMA_TIMEOUT)).first
+        val (unchanged, effects) = ConfigRWFsm.apply(state, first)
+        assertSame(state, unchanged)
+        assertTrue(effects.isEmpty())
+        val (recovered, _) = ConfigRWFsm.apply(state, ConfigRWEvent.XmlPayloadReceived(
+            buildXmlChunkPayload(schemaXml.size, 10, schemaXml.copyOfRange(10, schemaXml.size)),
+        ))
+        assertTrue(recovered is ConfigRWState.ReadAwaitingConfig)
+        assertArrayEquals(schemaXml, (recovered as ConfigRWState.ReadAwaitingConfig).xmlBytes)
+    }
+
+    @Test
+    fun `schema timeout retries once then returns CONFIG_SCHEMA_TIMEOUT`() {
         val (state, _) = ConfigRWFsm.apply(ConfigRWState.Idle, startRead(canId, wasPolling = true))
-        val (next, effects) = ConfigRWFsm.apply(
+        val (retry, retryEffects) = ConfigRWFsm.apply(
             state,
+            ConfigRWEvent.Timeout(RefloatConfigErrorCode.CONFIG_SCHEMA_TIMEOUT),
+        )
+        assertTrue(retry is ConfigRWState.ReadCollectingXml)
+        assertEquals(1, retryEffects.filterIsInstance<ConfigRWEffect.SendFrame>().size)
+        val (next, effects) = ConfigRWFsm.apply(
+            retry,
             ConfigRWEvent.Timeout(RefloatConfigErrorCode.CONFIG_SCHEMA_TIMEOUT),
         )
         assertSame(ConfigRWState.Idle, next)

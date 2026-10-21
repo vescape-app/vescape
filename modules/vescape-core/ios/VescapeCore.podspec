@@ -23,6 +23,9 @@ Pod::Spec.new do |s|
   # SPM test target in `../Package.swift` therefore pins 6.29.3, the first 6.x that compiles under
   # SPM on current Xcode. Same major, same DatabaseMigrator semantics — see the note there.
   s.dependency 'GRDB.swift', '~> 6.24.1'
+  # Match @sentry/react-native 7.11.0. Recording persistence reports directly from native when JS
+  # or the application database is unavailable.
+  s.dependency 'Sentry/HybridSDK', '8.58.0'
 
   # Swift/Objective-C compatibility
   s.static_framework = true
@@ -44,7 +47,7 @@ Pod::Spec.new do |s|
   # through a symlinked directory, so `fixtures/*.jsonl` silently matched nothing.
   s.resource_bundles = {
     'VescapeCoreAssets' => [
-      'cell-presets.json',
+      'cell-presets.json', 'alert-preset-definitions.json',
       'legal-policies.json',
       'alerts/*.wav',
       'fixtures/*.jsonl'

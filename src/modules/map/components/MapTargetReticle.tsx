@@ -1,7 +1,7 @@
 import { StyleSheet, View } from 'react-native'
 import Animated, { withTiming } from 'react-native-reanimated'
 
-import { theme } from '@/constants/theme'
+import { theme, type ThemeColor } from '@/constants/theme'
 
 const pulseEntering = () => {
   'worklet'
@@ -15,7 +15,13 @@ const pulseEntering = () => {
 }
 
 /** Shared map-centre target: a bright lens over the map with a coloured reticle. */
-export function MapTargetReticle({ color, pulseKey = 0 }: { color: string; pulseKey?: number }) {
+export function MapTargetReticle({
+  color,
+  pulseKey = 0,
+}: {
+  color: ThemeColor
+  pulseKey?: number
+}) {
   return (
     <View style={styles.frame} pointerEvents="none">
       {pulseKey > 0 ? (

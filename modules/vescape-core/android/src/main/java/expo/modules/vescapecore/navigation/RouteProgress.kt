@@ -28,13 +28,15 @@ data class RouteProgress(
   /**
    * Metres left to the Direction Point measured **along** the path from the projection: the rest of
    * the projected segment plus every segment after it. Not the straight line — a target 679 m away
-   * across a river is the 2 km the rider actually has to ride.
+   * across a river is the 2 km the rider actually has to ride. Projected onto the path's end, with
+   * nothing left along it, it is the straight line from the rider to that end.
    */
   val remainingMeters: Double,
   /**
    * Absolute degrees clockwise from north, from the projection to an aim point a short way further
-   * along the path. Absolute on purpose: the wrist rotates a north-up world by the GPS course, so
-   * one convention keeps the two rotations from disagreeing.
+   * along the path, or from the rider to the path's end once projected onto it. Absolute on
+   * purpose: the wrist rotates a north-up world by the GPS course, so one convention keeps the two
+   * rotations from disagreeing.
    */
   val bearingDeg: Double,
 ) {
@@ -138,6 +140,25 @@ data class RouteProgress(
         budget -= segment
         fromLatitude = nextLatitude
         fromLongitude = nextLongitude
+      }
+
+      // Projected onto the end of the path, the rider is past the Direction Point or beside it, and
+      // no path is left to measure along. What is left is the straight line back to the end, and
+      // the arrow points there: a rider who rode past the pin must not read 0 ft while it is
+      // hundreds of metres behind them (#560).
+      val pastEndMeters = if (remainingMeters <= DEGENERATE_AIM_METERS) {
+        GeoMath.distanceMeters(riderLatitude, riderLongitude, targetLatitude, targetLongitude)
+      } else {
+        0.0
+      }
+      if (pastEndMeters > DEGENERATE_AIM_METERS) {
+        return RouteProgress(
+          latitude = latitude,
+          longitude = longitude,
+          remainingMeters = pastEndMeters,
+          bearingDeg =
+            GeoMath.travelBearingDeg(riderLatitude, riderLongitude, targetLatitude, targetLongitude),
+        )
       }
 
       // A rider standing on the end of the path leaves the aim point on top of the projection, and

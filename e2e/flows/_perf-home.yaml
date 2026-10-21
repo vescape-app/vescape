@@ -1,5 +1,5 @@
 # Perf harness setup flow (not a standalone e2e test — prefixed with _).
-# Lands on the connected home telemetry view (map + gauges + sparklines),
+# Lands on the connected home telemetry view (map + gauges + strip),
 # with the e2e fake feed streaming. scripts/perf-telemetry.ts then measures
 # rendering while the app sits here.
 appId: ${APP_ID}

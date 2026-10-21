@@ -3,6 +3,7 @@ import { join } from 'path'
 import { tmpdir } from 'os'
 import { applicationId } from '../src/config/appVariant.ts'
 import { listAdbDevices } from './lib/devices.ts'
+import { devClientUrl } from './lib/devLinks.ts'
 
 const ROOT = join(import.meta.dir, '..')
 
@@ -90,7 +91,7 @@ if (
       '-a',
       'android.intent.action.VIEW',
       '-d',
-      'vescape://expo-development-client/?url=http%3A%2F%2F127.0.0.1%3A8081',
+      devClientUrl('vescape'),
       applicationId,
     ])
   }

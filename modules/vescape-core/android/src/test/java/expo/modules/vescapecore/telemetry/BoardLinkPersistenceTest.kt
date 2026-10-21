@@ -100,4 +100,20 @@ class BoardLinkPersistenceTest {
     assertNull(roundTrip(mapOf("bleId" to "", "transport" to 84)))
     assertNull(roundTrip(mapOf("bleId" to "AA:BB", "transport" to 999)))
   }
+
+  @Test
+  fun personalizationSurvivesBoardRoundTrip() {
+    val board = mapOf(
+      "id" to "b1",
+      "name" to "Board",
+      "createdAt" to 0L,
+      "personalization" to mapOf("railId" to "x7", "railColorId" to "cyan"),
+    )
+    val (settings, _) = board.toBoardSettingEntities("b1")
+
+    assertEquals(
+      mapOf("railId" to "x7", "railColorId" to "cyan"),
+      board.toBoardEntity().toMap(settings)["personalization"],
+    )
+  }
 }

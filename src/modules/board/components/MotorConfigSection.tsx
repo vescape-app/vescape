@@ -2,7 +2,10 @@ import {
   BoardConfigSection,
   type MotorConfigRow,
 } from '@/modules/board/components/BoardConfigSection'
-import { useMotorConfigFields } from '@/modules/board/store/motorConfigValuesStore'
+import {
+  useMotorConfigFields,
+  useMotorConfigValuesStore,
+} from '@/modules/board/store/motorConfigValuesStore'
 
 /**
  * The VESC motor config (MCCONF) rows beside a `/control/<metric>` screen's live telemetry.
@@ -13,11 +16,13 @@ import { useMotorConfigFields } from '@/modules/board/store/motorConfigValuesSto
  */
 export function MotorConfigSection({ rows }: { rows: MotorConfigRow[] }) {
   const values = useMotorConfigFields()
+  const error = useMotorConfigValuesStore((state) => state.error)
   return (
     <BoardConfigSection
       title="Motor config"
       rows={rows}
       values={values}
+      error={error}
       empty="No motor config read from this board yet. Connect it to read its limits."
     />
   )

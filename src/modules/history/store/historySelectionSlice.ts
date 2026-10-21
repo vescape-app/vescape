@@ -16,6 +16,7 @@ function getSessionRangeOptions(session: HistorySession) {
     fromMs: session.startAtMs,
     toMs: session.endAtMs,
     ...(session.boardId ? { boardId: session.boardId } : {}),
+    ...(session.recordingId ? { recordingId: session.recordingId } : {}),
   }
 }
 
@@ -130,7 +131,9 @@ export const createHistorySelectionSlice: SliceFactory = (set, get) => ({
         sessionExclusions: range.exclusions,
         sessionTruncated:
           range.boardSamples.length < session.sampleCount ||
-          range.gpsSamples.length < session.gpsPointCount,
+          // `gpsSamples` is the route stream: native already dropped fixes that fail the shared
+          // precision rule, so the honest comparison is against the precise count (ADR 0038).
+          range.gpsSamples.length < session.preciseGpsPointCount,
       })
     } catch (err) {
       await minimumLoading

@@ -9,7 +9,7 @@ import Animated, {
 } from 'react-native-reanimated'
 import { Text } from '@/components/base/Text'
 
-import { interaction, theme } from '@/constants/theme'
+import { interaction, theme, type ThemeColor } from '@/constants/theme'
 import { useResolvedColor } from '@/hooks/useTheme'
 
 interface FloatingBarFrameProps {
@@ -21,10 +21,10 @@ export interface FloatingStatusPillAction {
   kind: 'action'
   icon: Icon
   text: string
-  bg: string
-  border: string
-  textColor: string
-  buttonBg: string
+  bg: ThemeColor
+  border: ThemeColor
+  textColor: ThemeColor
+  buttonBg: ThemeColor
   onPress: () => void
   testID?: string
 }
@@ -33,7 +33,7 @@ export interface FloatingStatusPillSpinner {
   kind: 'spinner'
   icon?: Icon
   text: string
-  color: string
+  color: ThemeColor
   onPress: () => void
   testID?: string
   cancelTestID?: string
@@ -199,11 +199,13 @@ export function FloatingActionPill({
   // map, where the native trait collection can still report the system appearance and render the
   // wrong palette. On a filled surface the readable foreground is the status `text` token, not
   // `color`, which is tuned for the app background.
-  const status = paused ? theme.status.warning : theme.status.error
+  const status = theme.status.error
   const filled = active || paused
-  const accent = useResolvedColor(status.color)
-  const surface = useResolvedColor(status.bg)
-  const foreground = useResolvedColor(filled ? status.text : status.color)
+  const accent = useResolvedColor(paused ? theme.control.border : status.color)
+  const surface = useResolvedColor(paused ? theme.control.background : status.bg)
+  const foreground = useResolvedColor(
+    paused ? theme.control.textMuted : filled ? status.text : status.color,
+  )
 
   return (
     <Pressable

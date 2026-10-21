@@ -1,3 +1,4 @@
+import { useFormat } from '@/hooks/useFormat'
 import { useRef, useState } from 'react'
 import { StyleSheet, TouchableOpacity, View } from 'react-native'
 import {
@@ -45,9 +46,9 @@ export function AlertRuleList({
     setEditRule(null)
   }
 
-  const handleSave = (draft: AlertRuleDraft) => {
-    if (editRule) controller.updateRule(editRule.id, draft)
-    else controller.addRule(draft)
+  const handleSave = async (draft: AlertRuleDraft) => {
+    if (editRule) await controller.updateRule(editRule.id, draft)
+    else await controller.addRule(draft)
     closeForm()
   }
 
@@ -63,7 +64,10 @@ export function AlertRuleList({
             setEditRule(rule)
             setFormVisible(true)
           }}
-          onToggle={() => controller.toggleRule(rule.id)}
+          onToggle={() => {
+            // intentional-suppression: Alerts store error is rendered by the active form or list
+            void controller.toggleRule(rule.id).catch(() => undefined) // Store error renders below.
+          }}
           onDelete={() => setDeleteTarget(rule)}
         />
       ))}
@@ -73,6 +77,8 @@ export function AlertRuleList({
           No alerts yet — get notified when this crosses a threshold
         </Text>
       ) : null}
+
+      {controller.error ? <Text style={styles.errorText}>{controller.error}</Text> : null}
 
       <View style={styles.addButtonRow} ref={addButtonRef} collapsable={false}>
         <Button
@@ -94,6 +100,7 @@ export function AlertRuleList({
         unit={unit}
         editRule={editRule}
         batteryConfig={batteryConfig}
+        error={controller.error}
         onClose={closeForm}
         onSave={handleSave}
       />
@@ -104,8 +111,8 @@ export function AlertRuleList({
         message="Remove this alert? This cannot be undone."
         confirmLabel="Delete"
         destructive
-        onConfirm={() => {
-          if (deleteTarget) controller.removeRule(deleteTarget.id)
+        onConfirm={async () => {
+          if (deleteTarget) await controller.removeRule(deleteTarget.id)
           setDeleteTarget(null)
         }}
         onCancel={() => setDeleteTarget(null)}
@@ -129,6 +136,11 @@ function AlertRuleRow({
   onToggle: () => void
   onDelete: () => void
 }) {
+  const { formatSpeedWithUnit } = useFormat()
+  const format = (value: number) =>
+    rule.controlId === 'speed'
+      ? formatSpeedWithUnit(value, 1)
+      : formatAlertValue(value, batteryConfig, unit)
   const isGeiger = rule.thresholdMax != null
   const isTts = rule.soundType.startsWith('tts:')
   const TypeIcon = isGeiger ? RadioactiveIcon : isTts ? ChatTextIcon : WaveformIcon
@@ -152,8 +164,8 @@ function AlertRuleRow({
       <View style={styles.ruleContent}>
         <Text style={[styles.ruleThreshold, !rule.enabled && styles.ruleTextDisabled]}>
           {isGeiger
-            ? `${formatAlertValue(rule.threshold, batteryConfig, unit)} – ${formatAlertValue(rule.thresholdMax!, batteryConfig, unit)}`
-            : formatAlertValue(rule.threshold, batteryConfig, unit)}
+            ? `${format(rule.threshold)} – ${format(rule.thresholdMax!)}`
+            : format(rule.threshold)}
         </Text>
         {isTts && (
           <Text
@@ -234,7 +246,7 @@ const styles = StyleSheet.create({
     marginTop: 1,
   },
   ruleDetail: {
-    color: theme.palette.slate.textDim,
+    color: theme.neutral.textDim,
     fontSize: 11,
     fontWeight: '500',
     marginTop: 1,
@@ -251,6 +263,11 @@ const styles = StyleSheet.create({
   },
   emptyHintText: {
     color: theme.neutral.textMuted,
+    fontSize: 12,
+    fontWeight: '500',
+  },
+  errorText: {
+    color: theme.status.error.color,
     fontSize: 12,
     fontWeight: '500',
   },

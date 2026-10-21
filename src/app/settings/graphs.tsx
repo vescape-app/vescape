@@ -1,4 +1,7 @@
-import { View, Switch, StyleSheet, ScrollView } from 'react-native'
+import { useUnitSystem } from '@/hooks/useUnitSystem'
+import { speedFromKmh, speedInputToKmh, speedUnit } from '@/helpers/units'
+import { stepDelta } from '@/helpers/numberStep'
+import { View, StyleSheet, ScrollView } from 'react-native'
 import { Text } from '@/components/base/Text'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { GaugeIcon, ChartLineUpIcon } from 'phosphor-react-native'
@@ -13,6 +16,7 @@ import {
 } from '@/modules/history/lib/metricColorScale'
 import { SettingsCard } from '@/components/settings/SettingsCard'
 import { SettingsRow } from '@/components/settings/SettingsRow'
+import { Switch } from '@/components/controls/Switch'
 import { Stepper } from '@/components/forms/Stepper'
 import { IconHero } from '@/components/settings/IconHero'
 
@@ -32,6 +36,7 @@ const HOT_RANGE_METRICS: {
 ]
 
 export default function GraphsSettingsScreen() {
+  const units = useUnitSystem()
   const { historyMetricGradientsEnabled, historyMetricHotRanges, set } = useSettingsStore(
     useShallow((s) => ({
       historyMetricGradientsEnabled: s.historyMetricGradientsEnabled,
@@ -64,21 +69,13 @@ export default function GraphsSettingsScreen() {
         <SettingsCard>
           <SettingsRow
             icon={GaugeIcon}
+            iconColor={theme.status.warning.color}
             label="Graph hot gradients"
             hint="Color live, history, and map graphs by metric value"
             right={
               <Switch
                 value={historyMetricGradientsEnabled}
                 onValueChange={(v) => void set('historyMetricGradientsEnabled', v)}
-                trackColor={{
-                  false: theme.neutral.border,
-                  true: theme.status.warning.border,
-                }}
-                thumbColor={
-                  historyMetricGradientsEnabled
-                    ? theme.status.warning.color
-                    : theme.neutral.textMuted
-                }
               />
             }
           />
@@ -86,23 +83,33 @@ export default function GraphsSettingsScreen() {
             const fallback = DEFAULT_HISTORY_METRIC_HOT_RANGES[metric.key] ?? { start: 0, end: 1 }
             const range = historyMetricHotRanges[metric.key] ?? fallback
 
+            const isSpeed = metric.key === 'speed'
+            const display = (value: number) => (isSpeed ? speedFromKmh(value, units) : value)
+            const unit = isSpeed ? speedUnit(units) : metric.unit
+            const formatValue = (value: number) => String(Number(value.toFixed(1)))
+
             return (
               <View key={metric.key} style={styles.hotRangeRow}>
                 <View style={styles.hotRangeBody}>
                   <Text style={styles.hotRangeName}>{metric.label}</Text>
                   <Text style={styles.hotRangeHint}>
-                    Default: {fallback.start}-{fallback.end} {metric.unit}
+                    Default: {formatValue(display(fallback.start))}-
+                    {formatValue(display(fallback.end))} {unit}
                   </Text>
                 </View>
                 <View style={styles.hotRangeControl}>
                   <Text style={styles.hotRangeLabel}>Start</Text>
                   <Stepper
-                    value={range.start}
-                    unit={metric.unit}
-                    min={metric.min}
-                    max={metric.max}
+                    value={display(range.start)}
+                    formatValue={formatValue}
+                    step={isSpeed ? stepDelta : 1}
+                    unit={unit}
+                    min={display(metric.min)}
+                    max={display(metric.max)}
                     onChange={(nextValue) => {
-                      const clampedValue = Math.min(metric.max, Math.max(metric.min, nextValue))
+                      const clampedValue = isSpeed
+                        ? speedInputToKmh(nextValue, range.start, units, metric.min, metric.max)
+                        : Math.min(metric.max, Math.max(metric.min, nextValue))
                       if (clampedValue !== range.start) {
                         setHotRangeValue(metric.key, 'start', clampedValue)
                       }
@@ -112,12 +119,16 @@ export default function GraphsSettingsScreen() {
                 <View style={styles.hotRangeControl}>
                   <Text style={styles.hotRangeLabel}>End</Text>
                   <Stepper
-                    value={range.end}
-                    unit={metric.unit}
-                    min={metric.min}
-                    max={metric.max}
+                    value={display(range.end)}
+                    formatValue={formatValue}
+                    step={isSpeed ? stepDelta : 1}
+                    unit={unit}
+                    min={display(metric.min)}
+                    max={display(metric.max)}
                     onChange={(nextValue) => {
-                      const clampedValue = Math.min(metric.max, Math.max(metric.min, nextValue))
+                      const clampedValue = isSpeed
+                        ? speedInputToKmh(nextValue, range.end, units, metric.min, metric.max)
+                        : Math.min(metric.max, Math.max(metric.min, nextValue))
                       if (clampedValue !== range.end) {
                         setHotRangeValue(metric.key, 'end', clampedValue)
                       }

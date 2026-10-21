@@ -20,7 +20,14 @@ const leaveGroupRide = mock(() => {})
 const updateGroupRideIdentity = mock(() => {})
 const startGroupRideObserve = mock(() => {})
 const stopGroupRideObserve = mock(() => {})
-const getSettings = mock(async () => ({ riderId: null, riderName: null }))
+const playGroupRideSound = mock(() => {})
+const getSettings = mock(
+  async (): Promise<{
+    riderId: string | null
+    riderName: string | null
+    riderColor?: string | null
+  }> => ({ riderId: null, riderName: null }),
+)
 const updateSetting = mock(async () => {})
 
 function subscribe<T>(listeners: Listener<T>[], listener: Listener<T>) {
@@ -32,6 +39,10 @@ function subscribe<T>(listeners: Listener<T>[], listener: Listener<T>) {
     },
   }
 }
+
+// Load the real board store against the real native surface before narrowing `vescape-core`;
+// public riding only reads its `status`, which stays idle here.
+await import('@/modules/board/store/bleStore')
 
 mock.module('vescape-core', () => ({
   addGroupRideConnectionListener: (listener: Listener<{ state: string }>) =>
@@ -58,6 +69,10 @@ mock.module('vescape-core', () => ({
   updateGroupRideIdentity,
   startGroupRideObserve,
   stopGroupRideObserve,
+  getCompanionPresenceBoards: async () => [],
+  addCompanionPresenceBoard: async () => undefined,
+  removeCompanionPresenceBoard: async () => undefined,
+  setCompanionPresenceEnabled: async () => undefined,
   getSettings,
   updateSetting,
 }))
@@ -93,7 +108,15 @@ beforeEach(async () => {
   updateGroupRideIdentity.mockClear()
   startGroupRideObserve.mockClear()
   stopGroupRideObserve.mockClear()
-  const { useGroupRideStore } = await import('@/modules/group-ride/store/groupRideStore')
+  playGroupRideSound.mockClear()
+  getSettings.mockReset()
+  getSettings.mockImplementation(async () => ({ riderId: null, riderName: null }))
+  updateSetting.mockReset()
+  updateSetting.mockImplementation(async () => {})
+  const { setGroupRideSoundPlayer, useGroupRideStore } =
+    await import('@/modules/group-ride/store/groupRideStore')
+  setGroupRideSoundPlayer(playGroupRideSound)
+  const { useRiderStore } = await import('@/modules/group-ride/store/riderStore')
   useGroupRideStore.setState({
     connection: 'idle',
     rides: [],
@@ -106,6 +129,89 @@ beforeEach(async () => {
     error: null,
     focusRequest: null,
     observing: false,
+  })
+  useRiderStore.setState({
+    riderId: null,
+    riderName: null,
+    loaded: false,
+    error: null,
+  })
+})
+
+test('identity load is single-flight and queued edits cannot be overwritten by stale settings', async () => {
+  const { useRiderStore } = await import('@/modules/group-ride/store/riderStore')
+  let resolveSettings!: (value: { riderId: string; riderName: string }) => void
+  getSettings.mockImplementationOnce(
+    () =>
+      new Promise((resolve) => {
+        resolveSettings = resolve
+      }),
+  )
+
+  const firstLoad = useRiderStore.getState().load()
+  const secondLoad = useRiderStore.getState().load()
+  const edit = useRiderStore.getState().setName('New name')
+  await Promise.resolve()
+
+  expect(firstLoad).toBe(secondLoad)
+  expect(getSettings).toHaveBeenCalledTimes(1)
+  expect(updateSetting).not.toHaveBeenCalled()
+
+  resolveSettings({ riderId: 'rider-1', riderName: 'Old name' })
+  await Promise.all([firstLoad, secondLoad, edit])
+
+  expect(updateSetting).toHaveBeenCalledTimes(1)
+  expect(updateSetting).toHaveBeenCalledWith('riderName', 'New name')
+  expect(useRiderStore.getState()).toMatchObject({
+    riderId: 'rider-1',
+    riderName: 'New name',
+    loaded: true,
+    error: null,
+  })
+})
+
+test('legacy Social color is cleared without changing Rider identity', async () => {
+  const { useRiderStore } = await import('@/modules/group-ride/store/riderStore')
+  getSettings.mockImplementationOnce(async () => ({
+    riderId: 'rider-1',
+    riderName: 'Rider name',
+    riderColor: '#38bdf8',
+  }))
+
+  await useRiderStore.getState().load()
+
+  expect(updateSetting).toHaveBeenCalledTimes(1)
+  expect(updateSetting).toHaveBeenCalledWith('riderColor', null)
+  expect(useRiderStore.getState()).toMatchObject({
+    riderId: 'rider-1',
+    riderName: 'Rider name',
+    loaded: true,
+  })
+})
+
+test('rapid rider name edits persist and apply in request order', async () => {
+  const { useRiderStore } = await import('@/modules/group-ride/store/riderStore')
+  let finishNameWrite!: () => void
+  updateSetting.mockImplementationOnce(
+    () =>
+      new Promise<void>((resolve) => {
+        finishNameWrite = resolve
+      }),
+  )
+
+  const nameWrite = useRiderStore.getState().setName('First')
+  const secondNameWrite = useRiderStore.getState().setName('Second')
+  await Promise.resolve()
+
+  expect(updateSetting).toHaveBeenCalledTimes(1)
+  expect(updateSetting).toHaveBeenCalledWith('riderName', 'First')
+  finishNameWrite()
+  await Promise.all([nameWrite, secondNameWrite])
+
+  expect(updateSetting).toHaveBeenNthCalledWith(2, 'riderName', 'Second')
+  expect(useRiderStore.getState()).toMatchObject({
+    riderName: 'Second',
+    error: null,
   })
 })
 
@@ -187,11 +293,11 @@ test('joining another ride clears stale relay error immediately', async () => {
   expect(useGroupRideStore.getState().error).toBeNull()
 })
 
-test('name/color edits while observing push the new identity to peers', async () => {
+test('name/board color edits while observing push the new identity to peers', async () => {
   const { useGroupRideStore } = await import('@/modules/group-ride/store/groupRideStore')
   const { useRiderStore } = await import('@/modules/group-ride/store/riderStore')
 
-  useRiderStore.setState({ riderId: 'rider-1', riderName: 'Old', riderColor: null, loaded: true })
+  useRiderStore.setState({ riderId: 'rider-1', riderName: 'Old', loaded: true })
   useGroupRideStore.getState().startObserving()
 
   await useRiderStore.getState().setName('  New Name  ')
@@ -201,10 +307,83 @@ test('name/color edits while observing push the new identity to peers', async ()
     riderColor: null,
   })
 
-  await useRiderStore.getState().setColor('#38bdf8')
+  const { useBoardStore } = await import('@/modules/board/store/boardStore')
+  useBoardStore.setState({
+    activeBoardId: 'board-1',
+    boards: [{ id: 'board-1', personalization: { railId: 'x7', railColorId: 'cyan' } } as never],
+  })
   expect(updateGroupRideIdentity).toHaveBeenLastCalledWith({
     riderId: 'rider-1',
     riderName: 'New Name',
-    riderColor: '#38bdf8',
+    riderColor: expect.any(String),
   })
+})
+
+test('selected Board rail color follows Board and appearance; no Board clears it', async () => {
+  const { useBoardStore } = await import('@/modules/board/store/boardStore')
+  const { useThemeStore } = await import('@/hooks/useTheme')
+  const { selectedBoardRailColor } = await import('@/modules/group-ride/lib/selectedBoardRailColor')
+  const { accentColors, personalizationColorOptions } = await import('@/constants/theme')
+
+  useBoardStore.setState({ boards: [], activeBoardId: null })
+  expect(selectedBoardRailColor('dark')).toBeNull()
+  useBoardStore.setState({
+    boards: [
+      { id: 'first', personalization: { railId: 'x7', railColorId: 'cyan' } },
+      { id: 'second', personalization: { railId: 'x7', railColorId: 'amber' } },
+    ] as never,
+    activeBoardId: 'first',
+  })
+  expect(selectedBoardRailColor('dark')).toBe(accentColors.dark.cyan.color)
+  useBoardStore.setState({ activeBoardId: 'second' })
+  expect(selectedBoardRailColor('dark')).toBe(accentColors.dark.amber.color)
+  expect(selectedBoardRailColor('light')).toBe(accentColors.light.amber.color)
+  useBoardStore.setState({
+    boards: [{ id: 'mint', personalization: { railId: 'x7', railColorId: 'group-ride' } }] as never,
+    activeBoardId: 'mint',
+  })
+  expect(selectedBoardRailColor('dark')).not.toBeNull()
+  expect(selectedBoardRailColor('dark')).toBe(accentColors.dark.mint.color)
+  expect(selectedBoardRailColor('light')).toBe(accentColors.light.mint.color)
+  for (const { id } of personalizationColorOptions) {
+    useBoardStore.setState({
+      boards: [{ id: 'choice', personalization: { railId: 'x7', railColorId: id } }] as never,
+      activeBoardId: 'choice',
+    })
+    for (const appearance of ['light', 'dark'] as const) {
+      expect(selectedBoardRailColor(appearance)).toBe(
+        accentColors[appearance][id === 'group-ride' ? 'mint' : id].color,
+      )
+    }
+  }
+  expect(accentColors.light.mint.color).not.toBe(accentColors.light.teal.color)
+  useBoardStore.setState({
+    boards: [{ id: 'unknown', personalization: { railId: 'x7', railColorId: 'unknown' } }] as never,
+    activeBoardId: 'unknown',
+  })
+  expect(selectedBoardRailColor('dark')).toBeNull()
+  useThemeStore.setState({ resolvedTheme: 'light' })
+  useBoardStore.setState({ activeBoardId: null })
+  expect(selectedBoardRailColor(useThemeStore.getState().resolvedTheme)).toBeNull()
+})
+
+test('new nearby ride and new roster member request their sounds once', async () => {
+  const { useGroupRideStore } = await import('@/modules/group-ride/store/groupRideStore')
+  const { useRiderStore } = await import('@/modules/group-ride/store/riderStore')
+  useRiderStore.setState({ riderId: 'self' })
+  useGroupRideStore.setState({ ownLocation: { lat: 1, lng: 2 } })
+  useGroupRideStore.getState().startObserving()
+
+  createdListeners.forEach((listener) => listener({ ride: ride('new') }))
+  createdListeners.forEach((listener) => listener({ ride: ride('new') }))
+  expect(playGroupRideSound).toHaveBeenCalledTimes(1)
+  expect(playGroupRideSound).toHaveBeenCalledWith('created')
+
+  const self = { id: 'self', name: 'Me', color: null, presence: null, stale: false, lastSeen: 1 }
+  const peer = { ...self, id: 'peer', name: 'Peer' }
+  useGroupRideStore.setState({ activeRideId: 'new', roster: [self] })
+  rosterListeners.forEach((listener) => listener({ rideId: 'new', riders: [self, peer] }))
+  rosterListeners.forEach((listener) => listener({ rideId: 'new', riders: [self, peer] }))
+  expect(playGroupRideSound).toHaveBeenCalledTimes(2)
+  expect(playGroupRideSound).toHaveBeenLastCalledWith('join')
 })

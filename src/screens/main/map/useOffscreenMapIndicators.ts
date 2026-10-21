@@ -12,6 +12,7 @@ import {
   type TrackedMapPoint,
 } from '@/screens/main/map/offscreenMapIndicators'
 import type { CameraSnapshot } from '@/screens/main/map/useCameraControls'
+import { reportUnexpectedError } from '@/config/sentry'
 
 const OFFSCREEN_INDICATOR_VISIBILITY_CHECK_MS = 200
 
@@ -109,8 +110,9 @@ export function useOffscreenMapIndicators({
         })
         applyDrafts(next)
       })
-      .catch(() => {
+      .catch((error: unknown) => {
         if (projectionRequestRef.current !== requestId) return
+        reportUnexpectedError(error, 'map_indicator_projection')
         clear()
       })
   }, [applyDrafts, clear, currentCameraRef, enabled, mapLayout, mapViewRef, trackedPoints])

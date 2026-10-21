@@ -1,0 +1,255 @@
+import XCTest
+@testable import VescapeCore
+
+/// @parity /modules/vescape-core/android/src/test/java/expo/modules/vescapecore/watch/WatchMirrorCoordinatorTest.kt
+final class WatchMirrorCoordinatorTests: XCTestCase {
+  private final class Transport: WatchMirrorTransport {
+    var reachable = true
+    var requiresWakeReport = true
+    var starts = 0
+    var stops = 0
+    var frames: [Data] = []
+    var onFrame: () -> Void = {}
+    var onGroup: () -> Void = {}
+    var groups = 0
+    var statuses = 0
+    var settings = 0
+    var batteries: [WatchLastBattery?] = []
+    var receive: ((WatchCommand) -> Void)?
+    func start(command: @escaping (WatchCommand) -> Void) { starts += 1; receive = command }
+    func stop() { stops += 1; receive = nil }
+    func pushFrame(_ frame: Data) { frames.append(frame); onFrame() }
+    func pushGroup(_ frame: Data) { groups += 1; onGroup() }
+    func pushRouteStatus(_ status: WatchRouteStatus) { statuses += 1 }
+    func pushSettings(_ settings: WatchSettings) { self.settings += 1 }
+    func pushWeather(_ weather: WatchWeather) {}
+    func pushRoute(_ payload: [String: Any]) {}
+    func pushBoard(_ board: WatchBoardLights) {}
+    func pushLastBattery(_ battery: WatchLastBattery?) { batteries.append(battery) }
+  }
+  private final class Sources: WatchMirrorSources {
+    var subscribed = 0
+    var cancelled = 0
+    var changed: () -> Void = {}
+    var phase: WatchRoutePhase = .ready
+    func routeStatus() -> WatchRouteStatus { WatchRouteStatus(phase: phase, routeId: 1) }
+    func mapRoute() -> WatchMapRouteProgress? { nil }
+    func subscribe(
+      routeChanged: @escaping () -> Void,
+      weatherChanged: @escaping (WatchWeather) -> Void,
+      routePayload: @escaping ([String: Any]) -> Void
+    ) -> () -> Void {
+      subscribed += 1
+      changed = routeChanged
+      return { self.cancelled += 1 }
+    }
+  }
+  private final class Harness {
+    let scheduler = TestScheduler()
+    let transport = Transport()
+    let sources = Sources()
+    var board = true
+    var commands = 0
+    var navigatingChanges = 0
+    var mapPosition: WatchMapPosition? = WatchMapPosition(latitude: 51.1, longitude: 17)
+    var mapTiles: [WatchMapRider?] = []
+    lazy var coordinator = WatchMirrorCoordinator(
+      scheduler: scheduler, nowMs: { self.scheduler.currentTimeMs },
+      snapshot: {
+        WatchSnapshot(speed: self.board ? 25 : nil, navBearing: 90, navDistanceM: 100, routeSpanM: 800,
+          mapPosition: self.mapPosition, riderSpeedMps: 5)
+      },
+      isStale: { false }, groupFrame: { GroupRideFrame(courseDeg: 0, spanM: 600, riders: []) },
+      transport: transport, sources: sources, command: { _ in self.commands += 1 }, record: { _, _ in },
+      onNavigatingChanged: { self.navigatingChanges += 1 },
+      mapTiles: { self.mapTiles.append($0) }
+    )
+    func active() { coordinator.start(); coordinator.acceptWakeLevel(.active) }
+  }
+
+  func testPersistedBatteryAndSelectionClearBypassLiveStreamWakeGate() {
+    let h = Harness()
+    h.transport.reachable = false
+    h.coordinator.start()
+    let battery = WatchLastBattery(boardId: "board", boardName: "X7", percent: 78, at: 1_000)
+    h.coordinator.pushLastBattery(battery)
+    h.coordinator.pushLastBattery(nil)
+    h.scheduler.advance(1000)
+    XCTAssertEqual(h.transport.batteries.count, 2)
+    XCTAssertEqual(h.transport.batteries[0], battery)
+    XCTAssertNil(h.transport.batteries[1])
+    XCTAssertEqual(h.transport.frames.count, 0)
+  }
+
+  func testLifetimeIsIdempotentAndSurvivesBoardDisconnect() {
+    let h = Harness()
+    h.active()
+    h.coordinator.start()
+    h.scheduler.advance(1000)
+    h.board = false
+    h.scheduler.advance(1000)
+    XCTAssertEqual(h.transport.starts, 1)
+    XCTAssertEqual(h.sources.subscribed, 1)
+    XCTAssertEqual(h.transport.frames.count, 8)
+    XCTAssertEqual(h.transport.groups, 2)
+    XCTAssertEqual(h.transport.statuses, 8)
+    let frame = WatchFrameBuilder.decode(h.transport.frames.last!)
+    XCTAssertNil(frame?.speed)
+    XCTAssertEqual(frame?.navDistanceM, 100)
+    XCTAssertEqual(frame?.stale, false)
+    h.coordinator.stop()
+    h.coordinator.stop()
+    h.scheduler.advance(5000)
+    XCTAssertEqual(h.transport.frames.count, 8)
+    XCTAssertEqual(h.transport.stops, 1)
+    XCTAssertEqual(h.sources.cancelled, 1)
+    XCTAssertEqual(h.scheduler.pendingCount, 0)
+  }
+
+  func testReachabilityGatePreservesIOSFramesWithoutWakeButRequiresWakeForGroup() {
+    let h = Harness()
+    h.transport.requiresWakeReport = false
+    h.coordinator.start()
+    h.scheduler.advance(1000)
+    XCTAssertEqual(h.transport.frames.count, 4)
+    XCTAssertEqual(h.transport.groups, 0)
+    h.coordinator.acceptWakeLevel(.active)
+    h.transport.reachable = false
+    h.scheduler.advance(1000)
+    XCTAssertEqual(h.transport.frames.count, 4)
+    XCTAssertEqual(h.transport.groups, 0)
+  }
+
+  func testAmbientSettingsReloadKeepsSlowCadenceAndActiveRestoresLatestRate() {
+    let h = Harness()
+    h.active()
+    h.coordinator.acceptWakeLevel(.ambient)
+    h.coordinator.applySettings(WatchSettings(), intervalMs: 100)
+    h.scheduler.advance(4999)
+    XCTAssertEqual(h.transport.frames.count, 0)
+    h.scheduler.advance(1)
+    XCTAssertEqual(h.transport.frames.count, 1)
+    XCTAssertEqual(h.transport.groups, 0)
+    h.coordinator.acceptWakeLevel(.active)
+    h.scheduler.advance(100)
+    XCTAssertEqual(h.transport.frames.count, 2)
+    XCTAssertEqual(h.transport.settings, 1)
+  }
+
+  func testExpiredWakeHeartbeatStopsStreamsAndSameLevelResumes() {
+    let h = Harness()
+    h.active()
+    h.scheduler.advance(watchMirrorAwakeTimeoutMs)
+    let frames = h.transport.frames.count
+    let groups = h.transport.groups
+    h.scheduler.advance(2000)
+    XCTAssertEqual(h.transport.frames.count, frames)
+    XCTAssertEqual(h.transport.groups, groups)
+    h.coordinator.acceptWakeLevel(.active)
+    h.scheduler.advance(1000)
+    XCTAssertEqual(h.transport.frames.count, frames + 4)
+    XCTAssertEqual(h.transport.groups, groups + 1)
+  }
+
+  func testStopFromDeliveryCallbackCannotRearmEitherStream() {
+    for stopFromGroup in [false, true] {
+      let h = Harness()
+      if stopFromGroup { h.transport.onGroup = { h.coordinator.stop() } }
+      else { h.transport.onFrame = { h.coordinator.stop() } }
+      h.active()
+      h.scheduler.advance(1000)
+      let frames = h.transport.frames.count
+      let groups = h.transport.groups
+      h.scheduler.advance(5000)
+      XCTAssertEqual(h.transport.frames.count, frames)
+      XCTAssertEqual(h.transport.groups, groups)
+      XCTAssertEqual(h.scheduler.pendingCount, 0)
+    }
+  }
+
+  func testOldSourceAndCommandCallbacksCannotAffectARestartedMirror() {
+    let h = Harness()
+    h.active()
+    let oldCallback = h.sources.changed
+    let oldCommand = h.transport.receive!
+    oldCallback()
+    oldCommand(.move(1))
+    h.coordinator.stop()
+    h.active()
+    oldCallback()
+    oldCommand(.move(1))
+    h.scheduler.advance(0)
+    XCTAssertEqual(h.transport.statuses, 0)
+    XCTAssertEqual(h.commands, 0)
+    h.sources.changed()
+    h.transport.receive?(.move(1))
+    h.scheduler.advance(0)
+    XCTAssertEqual(h.transport.statuses, 1)
+    XCTAssertEqual(h.commands, 1)
+  }
+
+  /// Issue #550: the wrist route needs live fixes, so its demand must follow route and wrist edges.
+  func testNavigatingFollowsADrawableRouteOnAReceivingWrist() {
+    let h = Harness()
+    h.coordinator.start()
+    h.scheduler.advance(1000)
+    XCTAssertFalse(h.coordinator.navigating) // Asleep wrist: nothing to keep GPS on for.
+    h.coordinator.acceptWakeLevel(.active)
+    h.scheduler.advance(250)
+    XCTAssertTrue(h.coordinator.navigating)
+    h.sources.phase = .computing
+    h.scheduler.advance(250)
+    XCTAssertFalse(h.coordinator.navigating)
+    h.sources.phase = .ready
+    h.scheduler.advance(250)
+    XCTAssertTrue(h.coordinator.navigating)
+    h.transport.reachable = false
+    h.scheduler.advance(250)
+    XCTAssertFalse(h.coordinator.navigating)
+    h.scheduler.advance(1000)
+    XCTAssertEqual(h.navigatingChanges, 4)
+  }
+
+  /// Issue #551: tiles only reach an awake wrist that draws a map, around a GPS fix.
+  func testStreetMapTilesFollowAnActiveWristOnly() {
+    let h = Harness()
+    h.transport.requiresWakeReport = false // iOS: frames flow without a wake report, tiles do not.
+    h.coordinator.start()
+    h.scheduler.advance(1000)
+    XCTAssertFalse(h.mapTiles.isEmpty)
+    XCTAssertTrue(h.mapTiles.allSatisfy { $0 == nil })
+    h.coordinator.acceptWakeLevel(.active)
+    h.mapTiles = []
+    h.scheduler.advance(250)
+    XCTAssertEqual(h.mapTiles, [WatchMapRider(position: WatchMapPosition(latitude: 51.1, longitude: 17), courseDeg: nil, speedMps: 5, spanM: 800)])
+    h.coordinator.acceptWakeLevel(.ambient)
+    h.mapTiles = []
+    h.scheduler.advance(WATCH_FRAME_AMBIENT_INTERVAL_MS)
+    XCTAssertEqual(h.mapTiles, [nil])
+    h.coordinator.acceptWakeLevel(.active)
+    h.mapPosition = nil
+    h.mapTiles = []
+    h.scheduler.advance(250)
+    XCTAssertEqual(h.mapTiles, [nil]) // No fix to plan around.
+    h.mapTiles = []
+    h.coordinator.stop()
+    XCTAssertEqual(h.mapTiles, [nil])
+  }
+
+  /// Issue #554: the Street map setting pauses tiles to an active wrist and resumes them.
+  func testStreetMapSettingOffPausesTilesAndOnResumesThem() {
+    let h = Harness()
+    h.coordinator.start()
+    h.coordinator.acceptWakeLevel(.active)
+    h.coordinator.applySettings(WatchSettings(streetMapEnabled: false), intervalMs: 250)
+    h.mapTiles = []
+    h.scheduler.advance(1000)
+    XCTAssertFalse(h.mapTiles.isEmpty)
+    XCTAssertTrue(h.mapTiles.allSatisfy { $0 == nil })
+    XCTAssertFalse(h.transport.frames.isEmpty) // Only the map pauses; frames keep flowing.
+    h.coordinator.applySettings(WatchSettings(streetMapEnabled: true), intervalMs: 250)
+    h.mapTiles = []
+    h.scheduler.advance(250)
+    XCTAssertEqual(h.mapTiles, [WatchMapRider(position: WatchMapPosition(latitude: 51.1, longitude: 17), courseDeg: nil, speedMps: 5, spanM: 800)])
+  }
+}

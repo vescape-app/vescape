@@ -19,22 +19,27 @@ interface MotorConfigValuesState {
   values: MotorConfigValues | null
   /** The durable copy for one Board, loaded on demand for readers that outlive the Board Session. */
   lastKnown: MotorConfigValues | null
+  error: string | null
   replace: (values: MotorConfigValues | null) => void
   loadLastKnown: (boardId: string) => Promise<void>
 }
+let lastKnownLoadGeneration = 0
 
 export const useMotorConfigValuesStore = create<MotorConfigValuesState>((set, get) => ({
   values: null,
   lastKnown: null,
-  replace: (values) => set({ values }),
+  error: null,
+  replace: (values) => set({ values, error: null }),
   loadLastKnown: async (boardId) => {
     if (get().lastKnown?.boardId === boardId) return
+    const request = ++lastKnownLoadGeneration
     try {
       const values = await getLastKnownMotorConfigValues(boardId)
       // A Board switch mid-flight must not land the wrong Board's values.
-      if (values == null || values.boardId === boardId) set({ lastKnown: values })
+      if (request === lastKnownLoadGeneration) set({ lastKnown: values, error: null })
     } catch {
-      // Nothing to show is the same outcome as a failed load; the next mount retries.
+      if (request === lastKnownLoadGeneration)
+        set({ error: 'Saved motor configuration could not be read.' })
     }
   },
 }))
@@ -73,14 +78,17 @@ export function startMotorConfigValuesSync(): () => void {
     useMotorConfigValuesStore.getState().replace(event.values)
   })
   const pull = () => {
-    const startedAt = revision
+    const startedAt = ++revision
     void getMotorConfigValues()
       .then((values) => {
         if (revision !== startedAt) return
-        useMotorConfigValuesStore.getState().replace(values)
+        useMotorConfigValuesStore.setState({ values, error: null })
       })
       // A failed pull keeps the last known mirror; the next foreground or push heals it.
-      .catch(() => undefined)
+      .catch(() => {
+        if (revision !== startedAt) return
+        useMotorConfigValuesStore.setState({ error: 'Motor configuration could not be refreshed.' })
+      })
   }
   pull()
   const appStateSub = AppState.addEventListener('change', (nextState) => {

@@ -1,4 +1,5 @@
 import * as Sentry from '@sentry/react-native'
+import { UnitSystemContext } from '@/hooks/useUnitSystem'
 import { ClerkProvider } from '@clerk/expo'
 import { tokenCache } from '@clerk/expo/token-cache'
 import { resourceCache } from '@clerk/expo/resource-cache'
@@ -19,8 +20,9 @@ import { DiagnosticErrorBoundary } from '@/modules/diagnostics/DiagnosticErrorBo
 import { HeaderBackButton } from '@/components/base/HeaderBackButton'
 import { initSentry } from '@/config/sentry'
 import { stackScreens } from '@/navigation/routes'
-import { startAlertPresetConfigSync } from '@/modules/alerts/lib/alertPresetConfigSync'
+import { startAccessoryStateMirror } from '@/modules/accessories/store/accessoryStore'
 import { startAlertsBoardSync } from '@/bootstrap/alertsBoardSync'
+import { startLiveStateSync } from '@/bootstrap/liveStateSync'
 import { startAppDataSync } from '@/bootstrap/appDataSync'
 import { useSessionFixtures } from '@/bootstrap/sessionFixtures'
 import { startBoardConfigValuesSync } from '@/modules/board/store/boardConfigValuesStore'
@@ -30,7 +32,11 @@ import { BoardConfigChangeNoticeModal } from '@/modules/board/components/BoardCo
 import { startTuneSnapshotSessionSync } from '@/modules/tune/store/tuneSnapshotStore'
 import { startBoardWarningsSync } from '@/modules/board/store/boardWarningsStore'
 import { startVescFaultsSync } from '@/modules/board/store/vescFaultsStore'
-import { useGroupRideStore } from '@/modules/group-ride/store/groupRideStore'
+import {
+  setGroupRideSoundPlayer,
+  useGroupRideStore,
+} from '@/modules/group-ride/store/groupRideStore'
+import { playSelectedAppSound } from '@/modules/settings/lib/appSounds'
 import { useRiderStore } from '@/modules/group-ride/store/riderStore'
 import { ReleaseSurfaces } from '@/modules/release/components/ReleaseSurfaces'
 import { startNavigationSync } from '@/modules/map/store/mapStore'
@@ -41,7 +47,7 @@ import { ThemeController } from '@/modules/settings/components/ThemeController'
 import { useThemeStore } from '@/hooks/useTheme'
 import { neutralColors, theme } from '@/constants/theme'
 import { DeviceAuthSync } from '@/modules/profile/components/DeviceAuthSync'
-import { MapThemeCoordinator } from '@/screens/MapThemeCoordinator'
+import { AppStorageFailureBanner } from '@/screens/AppStorageFailureBanner'
 
 const clerkPublishableKey = requireClerkPublishableKey()
 
@@ -63,6 +69,7 @@ configureReanimatedLogger({ strict: false })
 initSentry()
 
 function RootLayout() {
+  const unitSystem = useSettingsStore((state) => state.unitSystem)
   const insets = useSafeAreaInsets()
   const resolvedTheme = useThemeStore((state) => state.resolvedTheme)
   const resolvedNeutral = neutralColors[resolvedTheme]
@@ -92,7 +99,9 @@ function RootLayout() {
     if (!fixturesReady) return
     void useSettingsStore.getState().load()
     void useRiderStore.getState().load()
+    setGroupRideSoundPlayer(playSelectedAppSound)
     useGroupRideStore.getState().startObserving()
+    const stopLiveStateSync = startLiveStateSync()
     const stopAppDataSync = startAppDataSync()
     const stopBoardWarningsSync = startBoardWarningsSync()
     const stopVescFaultsSync = startVescFaultsSync()
@@ -101,12 +110,14 @@ function RootLayout() {
     const stopBoardConfigChangeNoticeSync = startBoardConfigChangeNoticeSync()
     const stopTuneSnapshotSessionSync = startTuneSnapshotSessionSync()
     const stopAlertsBoardSync = startAlertsBoardSync()
-    const stopAlertPresetConfigSync = startAlertPresetConfigSync()
     const stopAppStatusSync = startAppStatusSync()
     const stopNavigationSync = startNavigationSync()
     const stopWeatherSync = startWeatherSync()
+    const stopAccessoryStateMirror = startAccessoryStateMirror()
     return () => {
       useGroupRideStore.getState().stopObserving()
+      setGroupRideSoundPlayer(null)
+      stopLiveStateSync()
       stopAppDataSync()
       stopBoardWarningsSync()
       stopVescFaultsSync()
@@ -115,10 +126,10 @@ function RootLayout() {
       stopBoardConfigChangeNoticeSync()
       stopTuneSnapshotSessionSync()
       stopAlertsBoardSync()
-      stopAlertPresetConfigSync()
       stopAppStatusSync()
       stopNavigationSync()
       stopWeatherSync()
+      stopAccessoryStateMirror()
     }
   }, [fixturesReady])
 
@@ -135,119 +146,152 @@ function RootLayout() {
       // blank the account UI or look like a sign-out.
       __experimental_resourceCache={resourceCache}
     >
-      <DeviceAuthSync />
-      <BoardConfigChangeNoticeModal />
-      <DiagnosticErrorBoundary>
-        <GestureHandlerRootView style={{ flex: 1 }}>
-          <ThemeController />
-          <MapThemeCoordinator />
-          <Stack
-            screenOptions={{
-              headerStyle: { backgroundColor: resolvedNeutral.bg },
-              headerTintColor: resolvedNeutral.textPrimary,
-              headerTitleStyle: { fontFamily: theme.font('600'), fontSize: 14 },
-              headerTitleAlign: 'center',
-              headerShadowVisible: false,
-              headerLeft: () => <HeaderBackButton />,
-              headerLeftContainerStyle: { paddingLeft: 10 },
-              headerRightContainerStyle: { paddingRight: 10 },
-              cardStyle: { backgroundColor: resolvedNeutral.bg },
-            }}
-          >
-            <Stack.Screen name={stackScreens.home} options={{ headerShown: false }} />
-            <Stack.Screen name={stackScreens.profileStats} options={{ title: 'Profile stats' }} />
-            {/* Clerk's own dismiss control is off (its native header carries system
+      <UnitSystemContext value={unitSystem}>
+        <DeviceAuthSync />
+        <BoardConfigChangeNoticeModal />
+        <DiagnosticErrorBoundary>
+          <GestureHandlerRootView style={{ flex: 1 }}>
+            <ThemeController>
+              <Stack
+                screenOptions={{
+                  headerStyle: { backgroundColor: resolvedNeutral.bg },
+                  headerTintColor: resolvedNeutral.textPrimary,
+                  headerTitleStyle: { fontFamily: theme.font('600'), fontSize: 14 },
+                  headerTitleAlign: 'center',
+                  headerShadowVisible: false,
+                  headerLeft: () => <HeaderBackButton />,
+                  headerLeftContainerStyle: { paddingLeft: 10 },
+                  headerRightContainerStyle: { paddingRight: 10 },
+                  cardStyle: { backgroundColor: resolvedNeutral.bg },
+                }}
+              >
+                <Stack.Screen name={stackScreens.home} options={{ headerShown: false }} />
+                <Stack.Screen
+                  name={stackScreens.profileStats}
+                  options={{ title: 'Profile stats' }}
+                />
+                {/* Clerk's own dismiss control is off (its native header carries system
                 Liquid Glass); the JS header owns back/dismiss instead. */}
-            <Stack.Screen name={stackScreens.signIn} options={{ title: 'Sign in' }} />
-            <Stack.Screen name={stackScreens.account} options={{ headerShown: false }} />
-            <Stack.Screen name={stackScreens.settings} options={{ title: 'Settings' }} />
-            <Stack.Screen name={stackScreens.settingsDev} options={{ title: 'Dev' }} />
-            <Stack.Screen
-              name={stackScreens.settingsDebugRecordings}
-              options={{ title: 'Debug recordings' }}
-            />
-            <Stack.Screen
-              name={stackScreens.settingsComponents}
-              options={{ title: 'Components' }}
-            />
-            <Stack.Screen
-              name={stackScreens.settingsComponentsTheme}
-              options={{ title: 'Theme foundations' }}
-            />
-            <Stack.Screen
-              name={stackScreens.settingsNavigationDiagnostic}
-              options={{ title: 'Navigation diagnostics' }}
-            />
-            <Stack.Screen
-              name={stackScreens.settingsDiagnosticEvents}
-              options={{ title: 'Event log' }}
-            />
-            <Stack.Screen name={stackScreens.settingsOther} options={{ title: 'Other' }} />
-            <Stack.Screen
-              name={stackScreens.settingsRawSettings}
-              options={{ title: 'Raw settings' }}
-            />
-            <Stack.Screen
-              name={stackScreens.settingsPrivacyZones}
-              options={{ title: 'Privacy Zones' }}
-            />
-            <Stack.Screen
-              name={stackScreens.settingsConnection}
-              options={{ title: 'Connection' }}
-            />
-            <Stack.Screen
-              name={stackScreens.settingsDiagnostics}
-              options={{ title: 'Diagnostics' }}
-            />
-            <Stack.Screen
-              name={stackScreens.settingsLiveTelemetry}
-              options={{ title: 'Live telemetry' }}
-            />
-            <Stack.Screen name={stackScreens.settingsVisuals} options={{ title: 'Appearance' }} />
-            <Stack.Screen name={stackScreens.settingsMap} options={{ title: 'Map' }} />
-            <Stack.Screen name={stackScreens.settingsWatch} options={{ title: 'Watch' }} />
-            <Stack.Screen name={stackScreens.settingsHistory} options={{ title: 'History' }} />
-            <Stack.Screen name={stackScreens.settingsGraphs} options={{ title: 'Graphs' }} />
-            <Stack.Screen name={stackScreens.settingsDatabase} options={{ title: 'Database' }} />
-            <Stack.Screen name={stackScreens.settingsAbout} options={{ title: 'About us' }} />
-            <Stack.Screen
-              name={stackScreens.settingsReleaseNotes}
-              options={{ title: 'Release notes' }}
-            />
-            <Stack.Screen
-              name={stackScreens.devMapPlayground}
-              options={{ title: 'Camera playground' }}
-            />
-            <Stack.Screen name={stackScreens.historyCharts} options={{ headerShown: false }} />
-            <Stack.Screen name={stackScreens.controlBatteryRaw} options={{ title: 'Raw BMS' }} />
-            <Stack.Screen name={stackScreens.tune} options={{ title: 'Tune' }} />
-            <Stack.Screen name={stackScreens.tuneHistory} options={{ title: 'Tune History' }} />
-            <Stack.Screen name={stackScreens.addBoardScan} options={{ title: 'Pair Board' }} />
-            <Stack.Screen name={stackScreens.addBoard} options={{ title: 'Add Board' }} />
-            <Stack.Screen name={stackScreens.editBoard} options={{ title: 'Edit Board' }} />
-            <Stack.Screen name={stackScreens.editBoardLink} options={{ title: 'Board Link' }} />
-            <Stack.Screen name={stackScreens.editBoardConfig} options={{ title: 'Board Config' }} />
-          </Stack>
-          {/* Above navigation so a Release surface covers every screen. Only ever one at a time. */}
-          <ReleaseSurfaces />
-          <View
-            pointerEvents="box-none"
-            style={{
-              position: 'absolute',
-              // DevBadge owns 8px of real top hit padding; offset it so the visible pill stays put.
-              top: Math.max(2, insets.top - 6) - 8,
-              bottom: 0,
-              left: 0,
-              right: 0,
-              zIndex: 100,
-              alignItems: 'center',
-            }}
-          >
-            <DevBadge />
-          </View>
-          <StatusBar style={resolvedTheme === 'dark' ? 'light' : 'dark'} />
-        </GestureHandlerRootView>
-      </DiagnosticErrorBoundary>
+                <Stack.Screen name={stackScreens.signIn} options={{ title: 'Sign in' }} />
+                <Stack.Screen name={stackScreens.account} options={{ headerShown: false }} />
+                <Stack.Screen name={stackScreens.settings} options={{ title: 'Settings' }} />
+                <Stack.Screen name={stackScreens.settingsDev} options={{ title: 'Dev' }} />
+                <Stack.Screen
+                  name={stackScreens.settingsDebugRecordings}
+                  options={{ title: 'Debug recordings' }}
+                />
+                <Stack.Screen
+                  name={stackScreens.settingsComponents}
+                  options={{ title: 'Components' }}
+                />
+                <Stack.Screen
+                  name={stackScreens.settingsComponentsTheme}
+                  options={{ title: 'Theme foundations' }}
+                />
+                <Stack.Screen
+                  name={stackScreens.settingsNavigationDiagnostic}
+                  options={{ title: 'Navigation diagnostics' }}
+                />
+                <Stack.Screen
+                  name={stackScreens.settingsDiagnosticEvents}
+                  options={{ title: 'Event log' }}
+                />
+                <Stack.Screen name={stackScreens.settingsOther} options={{ title: 'Other' }} />
+                <Stack.Screen
+                  name={stackScreens.settingsRawSettings}
+                  options={{ title: 'Raw settings' }}
+                />
+                <Stack.Screen
+                  name={stackScreens.settingsPrivacyZones}
+                  options={{ title: 'Privacy Zones' }}
+                />
+                <Stack.Screen
+                  name={stackScreens.settingsAutomation}
+                  options={{ title: 'Automation' }}
+                />
+                <Stack.Screen
+                  name={stackScreens.settingsDiagnostics}
+                  options={{ title: 'Diagnostics' }}
+                />
+                <Stack.Screen
+                  name={stackScreens.settingsLiveTelemetry}
+                  options={{ title: 'Live telemetry' }}
+                />
+                <Stack.Screen name={stackScreens.settingsSounds} options={{ title: 'Sounds' }} />
+                <Stack.Screen name={stackScreens.settingsMap} options={{ title: 'Map' }} />
+                <Stack.Screen name={stackScreens.settingsWatch} options={{ title: 'Watch' }} />
+                <Stack.Screen name={stackScreens.settingsHistory} options={{ title: 'History' }} />
+                <Stack.Screen name={stackScreens.settingsGraphs} options={{ title: 'Graphs' }} />
+                <Stack.Screen
+                  name={stackScreens.settingsDatabase}
+                  options={{ title: 'Database' }}
+                />
+                <Stack.Screen name={stackScreens.settingsAbout} options={{ title: 'About us' }} />
+                <Stack.Screen
+                  name={stackScreens.settingsReleaseNotes}
+                  options={{ title: 'Release notes' }}
+                />
+                <Stack.Screen
+                  name={stackScreens.devMapPlayground}
+                  options={{ title: 'Camera playground' }}
+                />
+                <Stack.Screen
+                  name={stackScreens.devRailGeneratorPrototype}
+                  options={{ title: 'Rail generator prototype' }}
+                />
+                <Stack.Screen name={stackScreens.historyCharts} options={{ headerShown: false }} />
+                <Stack.Screen
+                  name={stackScreens.controlBatteryRaw}
+                  options={{ title: 'Raw BMS' }}
+                />
+                <Stack.Screen name={stackScreens.tune} options={{ title: 'Tune' }} />
+                <Stack.Screen name={stackScreens.tuneHistory} options={{ title: 'Tune History' }} />
+                <Stack.Screen name={stackScreens.addBoardScan} options={{ title: 'Pair Board' }} />
+                <Stack.Screen name={stackScreens.addBoard} options={{ title: 'Add Board' }} />
+                <Stack.Screen name={stackScreens.editBoard} options={{ title: 'Edit Board' }} />
+                <Stack.Screen name={stackScreens.editBoardLink} options={{ title: 'Board Link' }} />
+                <Stack.Screen
+                  name={stackScreens.editBoardConfig}
+                  options={{ title: 'Board Config' }}
+                />
+                <Stack.Screen name={stackScreens.accessories} options={{ title: 'Accessories' }} />
+                <Stack.Screen
+                  name={stackScreens.accessoryScan}
+                  options={{ title: 'Add Accessory' }}
+                />
+                <Stack.Screen name={stackScreens.accessory} options={{ title: 'Accessory' }} />
+                <Stack.Screen
+                  name={stackScreens.accessoryBrakeLight}
+                  options={{ title: 'Brake light' }}
+                />
+                <Stack.Screen
+                  name={stackScreens.accessoryGroundClearance}
+                  options={{ title: 'Ground clearance' }}
+                />
+              </Stack>
+            </ThemeController>
+            {/* Above navigation so a Release surface covers every screen. Only ever one at a time. */}
+            <ReleaseSurfaces />
+            <AppStorageFailureBanner top={insets.top + 8} />
+            <View
+              pointerEvents="box-none"
+              style={{
+                position: 'absolute',
+                // DevBadge owns 8px of real top hit padding; offset it so the visible pill stays put.
+                top: Math.max(2, insets.top - 6) - 8,
+                bottom: 0,
+                left: 0,
+                right: 0,
+                zIndex: 100,
+                alignItems: 'center',
+              }}
+            >
+              <DevBadge />
+            </View>
+            <StatusBar style={resolvedTheme === 'dark' ? 'light' : 'dark'} />
+          </GestureHandlerRootView>
+        </DiagnosticErrorBoundary>
+      </UnitSystemContext>
     </ClerkProvider>
   )
 }

@@ -1,6 +1,7 @@
 import { AppState } from 'react-native'
 import { addAppDataChangedListener, type AppDataChangedEvent } from 'vescape-core'
 
+import { useAlertsStore } from '@/modules/alerts/store/alertsStore'
 import { useBoardStore } from '@/modules/board/store/boardStore'
 import { useSettingsStore } from '@/modules/settings/store/settingsStore'
 
@@ -16,6 +17,13 @@ import { useSettingsStore } from '@/modules/settings/store/settingsStore'
 const RELOADERS: Record<AppDataChangedEvent['scope'], () => void> = {
   boards: () => void useBoardStore.getState().load(),
   settings: () => void useSettingsStore.getState().load(),
+  alerts: () => {
+    // intentional-suppression: Alerts store error is rendered by the active form or list
+    void useAlertsStore
+      .getState()
+      .load(useBoardStore.getState().activeBoardId)
+      .catch(() => undefined)
+  },
 }
 
 function reloadAll(): void {
@@ -30,8 +38,8 @@ function reloadAll(): void {
  * - **Pull:** a foreground catch-up. `onAppDataChanged` is fire-and-forget, so any emit made while
  *   JS was backgrounded (or torn down while the native foreground service kept persisting) is lost
  *   — leaving JS showing e.g. a stale `lastBattery` age after a ride (#174). Re-reading native truth
- *   on `AppState -> active` picks those missed writes up, mirroring how `useBleAppLifecycle`
- *   re-syncs BLE state on foreground.
+ *   on `AppState -> active` picks those missed writes up, mirroring how `startLiveStateSync`
+ *   re-syncs live state on foreground.
  */
 export function startAppDataSync(): () => void {
   const sub = addAppDataChangedListener((event) => RELOADERS[event.scope]?.())

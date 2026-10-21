@@ -4,6 +4,7 @@ import java.io.ByteArrayInputStream
 import java.security.MessageDigest
 import java.util.zip.InflaterInputStream
 import javax.xml.parsers.DocumentBuilderFactory
+import org.xml.sax.SAXException
 
 // @parity /modules/vescape-core/ios/config/RefloatConfigSchema.swift
 internal enum class RefloatConfigValueType(val byteSize: Int) {
@@ -41,22 +42,20 @@ internal class RefloatConfigSchemaException(message: String) : Exception(message
 internal object RefloatConfigSchemaParser {
   fun parse(xmlBytes: ByteArray): RefloatConfigSchema {
     val normalizedXmlBytes = normalizeXmlBytes(xmlBytes)
+    if (containsDocumentType(String(normalizedXmlBytes, Charsets.UTF_8))) {
+      throw RefloatConfigSchemaException("UNSUPPORTED_SCHEMA: document type declarations are forbidden")
+    }
     val doc = try {
       val factory = DocumentBuilderFactory.newInstance().apply {
         isNamespaceAware = false
         isIgnoringComments = true
-        for ((feature, value) in listOf(
-          "http://apache.org/xml/features/disallow-doctype-decl" to true,
-          "http://xml.org/sax/features/external-general-entities" to false,
-          "http://xml.org/sax/features/external-parameter-entities" to false,
-        )) {
-          try {
-            setFeature(feature, value)
-          } catch (_: Exception) {
-          }
-        }
       }
-      factory.newDocumentBuilder().parse(ByteArrayInputStream(normalizedXmlBytes))
+      // Android's DOM provider rejects the SAX external-entity feature flags supported by the JVM.
+      // Reject DTDs above and external resolution here without relying on optional parser features.
+      val builder = factory.newDocumentBuilder().apply {
+        setEntityResolver { _, _ -> throw SAXException("External XML entities are forbidden") }
+      }
+      builder.parse(ByteArrayInputStream(normalizedXmlBytes))
     } catch (e: Exception) {
       val preview = xmlBytes
         .take(96)
@@ -99,6 +98,21 @@ internal object RefloatConfigSchemaParser {
     return RefloatConfigSchema(hash = sha256(normalizedXmlBytes), fields = fields)
   }
 
+  internal fun containsDocumentType(xml: String): Boolean {
+    var cursor = 0
+    val lower = xml.lowercase()
+    while (true) {
+      val marker = lower.indexOf("<!", cursor)
+      if (marker < 0) return false
+      when {
+        lower.startsWith("<!--", marker) -> cursor = lower.indexOf("-->", marker + 4).let { if (it < 0) return false else it + 3 }
+        lower.startsWith("<![cdata[", marker) -> cursor = lower.indexOf("]]>", marker + 9).let { if (it < 0) return false else it + 3 }
+        lower.startsWith("<!doctype", marker) -> return true
+        else -> cursor = marker + 2
+      }
+    }
+  }
+
   fun normalizeXmlBytes(bytes: ByteArray): ByteArray {
     val zlibStart = findZlibStart(bytes)
     if (zlibStart >= 0) {
@@ -106,6 +120,7 @@ internal object RefloatConfigSchemaParser {
         return InflaterInputStream(ByteArrayInputStream(bytes, zlibStart, bytes.size - zlibStart)).use {
           it.readBytes()
         }
+      // intentional-suppression: failed compressed decode falls through to the raw XML decoder
       } catch (_: Exception) {
       }
     }

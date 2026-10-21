@@ -39,4 +39,28 @@ final class LiveSeriesEmitterTests: XCTestCase {
     emitter.stop()
     XCTAssertTrue(emitter.recentSnapshot().isEmpty)
   }
+
+  func testTickUsesVirtualTimeAndStopPreventsRescheduling() {
+    let scheduler = TestScheduler()
+    let emitter = LiveSeriesEmitter(scheduler: scheduler)
+    var emissions = 0
+    emitter.emit = { event, _ in
+      if event == "onLiveSeries" { emissions += 1 }
+    }
+
+    emitter.start()
+    // Battery is the always-on `onLiveSeries` set; speed streams only on request.
+    emitter.add(["lastPacketAt": Int64(1_000), "batteryVoltage": 50.0])
+    XCTAssertEqual(1, emissions)
+
+    scheduler.advance(999)
+    XCTAssertEqual(1, emissions)
+    scheduler.advance(1)
+    XCTAssertEqual(2, emissions)
+
+    emitter.stop()
+    scheduler.advance(1_000)
+    XCTAssertEqual(2, emissions)
+    XCTAssertEqual(0, scheduler.pendingCount)
+  }
 }

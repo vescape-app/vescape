@@ -9,6 +9,8 @@ import { EdgeDrawer } from '@/components/overlays/EdgeDrawer'
 import { useTriggerRef } from '@/components/overlays/measureTrigger'
 import { ShowcaseCard } from '@/components/dev/ShowcaseCard'
 import { OpenButton } from '@/components/dev/ShowcaseControls'
+import { ToggleRow } from '@/components/dev/ShowcaseControls'
+import { HistoryTabs } from '@/modules/history/components/HistoryTabs'
 import { theme } from '@/constants/theme'
 
 interface EdgeDrawerPositionShowcaseProps {
@@ -142,27 +144,39 @@ const VIRTUALIZED_ROWS = Array.from({ length: 100 }, (_, index) => ({
 export function EdgeDrawerVirtualizedShowcase() {
   const triggerRef = useTriggerRef()
   const [visible, setVisible] = useState(false)
+  const [customHeader, setCustomHeader] = useState(true)
+  const [tab, setTab] = useState<'history' | 'favorites'>('history')
+
+  const focusedIndex = tab === 'history' ? 79 : 3
 
   return (
     <ShowcaseCard
       name="EdgeDrawer — virtualized list"
       controls={
-        <View ref={triggerRef} collapsable={false} style={styles.trigger}>
-          <OpenButton label="Open 100 rows" onPress={() => setVisible(true)} />
-        </View>
+        <>
+          <ToggleRow label="tab header" value={customHeader} onToggle={setCustomHeader} />
+          <View ref={triggerRef} collapsable={false} style={styles.trigger}>
+            <OpenButton label="Open at row 80" onPress={() => setVisible(true)} />
+          </View>
+        </>
       }
     >
-      <Text style={styles.previewHint}>FlatList path for long lists and early pagination.</Text>
+      <Text style={styles.previewHint}>
+        Opens at row 80 outside the initial render window. Tabs stay mounted while content swaps.
+      </Text>
       <EdgeDrawer
         visible={visible}
         triggerRef={triggerRef}
         title="Virtualized rows"
+        header={customHeader ? <HistoryTabs tab={tab} onSelectTab={setTab} /> : undefined}
         onClose={() => setVisible(false)}
         virtualizedContent={{
-          data: VIRTUALIZED_ROWS,
+          data: tab === 'history' ? VIRTUALIZED_ROWS : VIRTUALIZED_ROWS.slice(0, 5),
+          initialFocus: { offset: focusedIndex * 80, height: 72 },
+          getItemLayout: (_data, index) => ({ index, length: 72, offset: index * 80 }),
           keyExtractor: (item) => (item as (typeof VIRTUALIZED_ROWS)[number]).id,
           renderItem: ({ item }) => (
-            <View style={styles.tile}>
+            <View style={[styles.tile, { height: 72 }]}>
               <Text style={styles.tileText}>
                 {(item as (typeof VIRTUALIZED_ROWS)[number]).label}
               </Text>

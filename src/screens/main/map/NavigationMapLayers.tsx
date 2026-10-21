@@ -4,7 +4,7 @@ import { useMemo } from 'react'
 import Animated, { withTiming } from 'react-native-reanimated'
 
 import { theme } from '@/constants/theme'
-import { useResolvedNeutralColors } from '@/hooks/useTheme'
+import { useResolvedNeutralColors, useResolvedColor } from '@/hooks/useTheme'
 import { MapTargetReticle } from '@/modules/map/components/MapTargetReticle'
 import { MapPin } from '@/modules/map/components/MapPin'
 import { MAP_DEFAULTS } from '@/modules/map/constants/mapStyles'
@@ -16,6 +16,14 @@ import { getPlaceCategoryIconKey } from '@/modules/map-points/constants/placeCat
 import type { MapSelection } from '@/modules/map/lib/mapSelection'
 import { useMapStore } from '@/modules/map/store/mapStore'
 import type { MainMapLayersProps } from '@/screens/main/map/mainMapLayerTypes'
+
+/**
+ * Route line when the rider has not picked a colour of their own — the same purple the watch draws.
+ *
+ * @parity /watch/wearos/src/main/java/app/vescape/wear/Palette.kt `NavColor`
+ * @parity /watch/watchos/Palette.swift `nav`
+ */
+export const NAVIGATION_ROUTE_COLOR = theme.map.user
 
 /** The dark halo the dots sit on, so a light path stays readable over a satellite tile. */
 const NAVIGATION_CASING_WIDTH = MAP_DEFAULTS.navigationWidth + 4
@@ -80,6 +88,7 @@ export function NavigationMapLayers({
   selectedNavigationTarget,
   directionColor,
   directionTextColor,
+  routeColor,
   onFocusDirectionPoint,
 }: {
   directionPoint: MainMapLayersProps['directionPoint']
@@ -87,6 +96,7 @@ export function NavigationMapLayers({
   selectedNavigationTarget: MainMapLayersProps['selectedNavigationTarget']
   directionColor: string
   directionTextColor: string
+  routeColor: string
   onFocusDirectionPoint: MainMapLayersProps['onFocusDirectionPoint']
 }) {
   const neutral = useResolvedNeutralColors()
@@ -109,7 +119,7 @@ export function NavigationMapLayers({
   )
 
   const showDirectionPoint = directionPoint != null && activeNavigationTarget?.type !== 'mapPoint'
-  const pinColor = navigationFailed ? theme.status.warning.color : directionColor
+  const pinColor = useResolvedColor(navigationFailed ? theme.status.warning.color : directionColor)
   const pinTextColor = navigationFailed ? theme.status.warning.text : directionTextColor
   const pinIcon = navigationFailed ? WarningIcon : getNavigationTargetIcon(activeNavigationTarget)
 
@@ -133,7 +143,7 @@ export function NavigationMapLayers({
             <LineLayer
               id="center-navigation-line"
               style={{
-                lineColor: directionColor,
+                lineColor: routeColor,
                 lineWidth: MAP_DEFAULTS.navigationWidth,
                 lineCap: 'round',
                 lineJoin: 'round',

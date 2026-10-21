@@ -1,3 +1,4 @@
+import { speedFromKmh, speedUnit, type UnitSystem } from '@/helpers/units'
 import type { ExcludedRange } from '@/components/charts/chartMath'
 import type {
   ChartBand,
@@ -5,7 +6,7 @@ import type {
   ChartSpec,
   ChartYRange,
 } from '@/components/charts/line/types'
-import { theme } from '@/constants/theme'
+import { theme, type ThemeColor } from '@/constants/theme'
 import type { TelemetryMetricConfig } from '@/modules/board/constants/telemetry'
 import type { LiveMetricPoint } from '@/modules/board/hooks/useLiveMetric'
 
@@ -31,7 +32,7 @@ export function toChartSeries(
   return { ts, vs }
 }
 
-function exclusionColor(reason: string): string {
+function exclusionColor(reason: string): ThemeColor {
   return reason === 'free_spin' ? theme.palette.yellow.color : theme.palette.slate.textSecondary
 }
 
@@ -67,7 +68,7 @@ export interface LiveChartInput {
     key: string
     data: ChartSeriesData
     range: ChartYRange
-    color: string
+    color: ThemeColor
     unit?: string
     decimals?: number
   }
@@ -116,5 +117,22 @@ export function toLiveChart({
           ]
         : []),
     ],
+  }
+}
+
+/** Convert only chart text. Unit changes reuse canonical series, ranges, thresholds and keys. */
+export function presentLiveChart(chart: ChartSpec, units: UnitSystem): ChartSpec {
+  const speed = chart.series.some((series) => series.unit === 'km/h' && series.axis !== 'right')
+  const rightSpeed = chart.series.some(
+    (series) => series.unit === 'km/h' && series.axis === 'right',
+  )
+  const scale = speedFromKmh(1, units)
+  return {
+    ...chart,
+    left: speed ? { ...chart.left, displayScale: scale } : chart.left,
+    right: rightSpeed && chart.right ? { ...chart.right, displayScale: scale } : chart.right,
+    series: chart.series.map((series) =>
+      series.unit === 'km/h' ? { ...series, displayScale: scale, unit: speedUnit(units) } : series,
+    ),
   }
 }

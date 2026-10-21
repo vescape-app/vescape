@@ -2,9 +2,9 @@ import XCTest
 @testable import VescapeCore
 
 final class LocationTrackerTests: XCTestCase {
-  private func fix(_ timestamp: Int64, precise: Bool = true, bearing: Double? = 90) -> TelemetryLocationCapture {
+  private func fix(_ timestamp: Int64, precise: Bool = true, bearing: Double? = 90, latitude: Double = 52) -> TelemetryLocationCapture {
     TelemetryLocationCapture(
-      latitude: 52, longitude: 21, speedMps: 2, bearingDeg: bearing,
+      latitude: latitude, longitude: 21, speedMps: 2, bearingDeg: bearing,
       accuracyM: precise ? 5 : 100, altitudeM: 110, timestamp: timestamp, precise: precise
     )
   }
@@ -87,7 +87,8 @@ final class LocationTrackerTests: XCTestCase {
     XCTAssertNil(tracker.latestPreciseLocation)
     XCTAssertNil(tracker.riderPosition)
     XCTAssertTrue(tracker.recentLocations.isEmpty)
-    let live = tracker.onLocationUpdated(fix(101_000, bearing: nil))
+    // Far enough to derive a bearing from the replay's last coordinate if reset left it behind.
+    let live = tracker.onLocationUpdated(fix(101_000, bearing: nil, latitude: 52.0001))
     XCTAssertNil(live.courseDeg)
     XCTAssertNil(live.courseSourceTimestamp)
     XCTAssertEqual(tracker.latestLocation?.timestamp, 101_000)

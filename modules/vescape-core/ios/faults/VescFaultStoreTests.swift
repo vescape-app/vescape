@@ -31,16 +31,16 @@ final class VescFaultStoreTests: XCTestCase {
     )
   }
 
-  func testReadsNewestFirst() {
-    store.upsert(occurrence("old", occurredAtMs: 1_000))
-    store.upsert(occurrence("new", occurredAtMs: 9_000))
+  func testReadsNewestFirst() throws {
+    try store.upsert(occurrence("old", occurredAtMs: 1_000))
+    try store.upsert(occurrence("new", occurredAtMs: 9_000))
 
-    XCTAssertEqual(store.getForBoard("board").map(\.id), ["new", "old"])
+    XCTAssertEqual(try store.getForBoard("board").map(\.id), ["new", "old"])
   }
 
   func testOpenLiveIgnoresClearedRows() throws {
-    store.upsert(occurrence("cleared", occurredAtMs: 1_000, clearedAtMs: 2_000))
-    store.upsert(occurrence("open", occurredAtMs: 4_000))
+    try store.upsert(occurrence("cleared", occurredAtMs: 1_000, clearedAtMs: 2_000))
+    try store.upsert(occurrence("open", occurredAtMs: 4_000))
 
     XCTAssertEqual(try store.openLive("board")?.id, "open")
   }
@@ -53,25 +53,25 @@ final class VescFaultStoreTests: XCTestCase {
     XCTAssertThrowsError(try unavailable.openLive("board"))
   }
 
-  func testDismissalPreservesTheOccurrence() {
-    store.upsert(occurrence("a"))
+  func testDismissalPreservesTheOccurrence() throws {
+    try store.upsert(occurrence("a"))
 
-    XCTAssertTrue(store.setDismissed("a", true))
-    XCTAssertEqual(store.getForBoard("board").count, 1)
-    XCTAssertTrue(store.getForBoard("board")[0].dismissed)
+    XCTAssertTrue(try store.setDismissed("a", true))
+    XCTAssertEqual(try store.getForBoard("board").count, 1)
+    XCTAssertTrue(try store.getForBoard("board")[0].dismissed)
   }
 
   func testBoardRemovalDoesNotDeleteFaultEvidence() throws {
     try queue.write { db in
       try db.execute(sql: "INSERT INTO boards (id, name) VALUES ('board', 'Demo')")
     }
-    store.upsert(occurrence("a"))
+    try store.upsert(occurrence("a"))
 
     try queue.write { db in
       try db.execute(sql: "DELETE FROM boards WHERE id = 'board'")
     }
 
     // No foreign key, no cascade: the evidence outlives the Board record on purpose.
-    XCTAssertEqual(store.getForBoard("board").count, 1)
+    XCTAssertEqual(try store.getForBoard("board").count, 1)
   }
 }

@@ -27,6 +27,12 @@ android {
     testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
   }
 
+  sourceSets.test.resources.srcDir "../shared"
+  sourceSets.main.resources {
+    srcDirs "../shared", "../../../shared/data"
+    include "alert-preset-definitions.json", "cell-presets.json"
+  }
+
   buildTypes {
     release {
       minifyEnabled false
@@ -55,8 +61,11 @@ dependencies {
   implementation "androidx.wear:wear-remote-interactions:1.1.0"
   implementation "androidx.room:room-runtime:2.8.4"
   implementation "androidx.room:room-ktx:2.8.4"
+  implementation "androidx.sqlite:sqlite-bundled:2.6.2"
+  implementation "io.sentry:sentry-android:8.31.0"
   ksp "androidx.room:room-compiler:2.8.4"
   testImplementation "junit:junit:4.13.2"
+  testImplementation "org.mockito:mockito-core:5.19.0"
   testImplementation "org.json:json:20231013"
   testImplementation "androidx.room:room-testing:2.8.4"
   androidTestImplementation "androidx.test:core:1.6.1"

@@ -56,6 +56,22 @@ final class RouteProgressTests: XCTestCase {
     XCTAssertEqual(progress.remainingMeters, 0, accuracy: 0.5)
   }
 
+  func testARiderWhoRodePastTheDirectionPointReadsTheStraightLineBackToIt() throws {
+    // 300 m north of the end of a path whose last leg runs north: projected onto the end, with no
+    // path left along it. Not 0 ft while the pin is behind them, and the arrow points back south at
+    // it rather than on along the last leg (#560).
+    let pastEnd = 0.002 + 300.0 / metersPerDegree
+    let progress = try XCTUnwrap(
+      RouteProgress.compute(
+        points: cornerPath, riderLatitude: pastEnd, riderLongitude: 0.002, speedMps: 10
+      )
+    )
+
+    XCTAssertEqual(progress.latitude, 0.002, accuracy: 1e-9)
+    XCTAssertEqual(progress.remainingMeters, 300, accuracy: 1.0)
+    XCTAssertEqual(progress.bearingDeg, 180, accuracy: 1.0)
+  }
+
   func testAimPointFollowsThePathAroundACorner() throws {
     // 15 m before the corner with a 25 m aim: the aim lands past it, so the bearing is already
     // turning north while the target still lies north-east. 15 m east then 10 m north: atan2(15, 10).

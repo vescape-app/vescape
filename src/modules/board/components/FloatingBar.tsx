@@ -21,11 +21,10 @@ import {
   type FloatingStatusPillModel,
 } from '@/components/controls/FloatingBar'
 import { routes } from '@/navigation/routes'
-import { showDevControls } from '@/config/env'
 import type { Board } from '@/modules/board/store/boardStore'
 import { useBleStore } from '@/modules/board/store/bleStore'
 import { getConnectedLinkIntegrityWarning } from '@/modules/board/lib/boardLinkIntegrity'
-import { theme } from '@/constants/theme'
+import { theme, type ThemeColor } from '@/constants/theme'
 
 interface FloatingBarProps {
   bleStatus: string
@@ -60,7 +59,7 @@ interface SpinnerPill {
   kind: 'spinner'
   icon?: Icon
   text: string
-  color: string
+  color: ThemeColor
   onPress: () => void
 }
 interface ActionPill {
@@ -205,17 +204,19 @@ export function FloatingBar({
   onRetryConnect,
   bottomOffset = 16,
 }: FloatingBarProps) {
-  const { recording, paused, scanStatus, linkIntegrity, isReplay, start, stop } = useBleStore(
-    useShallow((s) => ({
-      recording: s.telemetryRecordingEnabled,
-      paused: s.telemetryRecordingPaused,
-      scanStatus: s.scanStatus,
-      linkIntegrity: s.linkIntegrity,
-      isReplay: isReplayBoardId(s.connectedId),
-      start: s.startTelemetryRecording,
-      stop: s.stopTelemetryRecording,
-    })),
-  )
+  const { recording, paused, recordingFailure, scanStatus, linkIntegrity, isReplay, start, stop } =
+    useBleStore(
+      useShallow((s) => ({
+        recording: s.telemetryRecordingEnabled,
+        paused: s.telemetryRecordingPaused,
+        recordingFailure: s.recordingFailure,
+        scanStatus: s.scanStatus,
+        linkIntegrity: s.linkIntegrity,
+        isReplay: isReplayBoardId(s.connectedId),
+        start: s.startTelemetryRecording,
+        stop: s.stopTelemetryRecording,
+      })),
+    )
 
   const toggleRecord = useCallback(() => {
     if (!recording && !canToggleRecording(bleStatus)) return
@@ -262,22 +263,16 @@ export function FloatingBar({
 
   return (
     <FloatingBarFrame bottomOffset={bottomOffset}>
-      {/* Connection state — "No board added", "Connecting…", link warnings — is rider tooling that
-          only appears when something is wrong or in flight. None of it belongs in a store frame. */}
-      {uiPill && showDevControls ? <FloatingStatusPill pill={uiPill} /> : null}
-      {/* The REC control is rider tooling, not product surface — a store screenshot shows the ride,
-          not the capture affordance. */}
-      {showDevControls && (
-        <FloatingActionPill
-          icon={recording ? (paused ? PauseIcon : StopIcon) : RecordIcon}
-          label={recording ? (paused ? 'PAUSED' : 'STOP') : 'REC'}
-          active={recording}
-          paused={paused}
-          disabled={!recording && !canToggleRecording(bleStatus)}
-          onPress={toggleRecord}
-          testID="floating-bar-record"
-        />
-      )}
+      {uiPill ? <FloatingStatusPill pill={uiPill} /> : null}
+      <FloatingActionPill
+        icon={recording ? (paused ? PauseIcon : StopIcon) : RecordIcon}
+        label={recording ? (paused ? 'PAUSED' : 'STOP') : 'REC'}
+        active={recording}
+        paused={paused}
+        disabled={!recording && (!canToggleRecording(bleStatus) || recordingFailure != null)}
+        onPress={toggleRecord}
+        testID="floating-bar-record"
+      />
     </FloatingBarFrame>
   )
 }

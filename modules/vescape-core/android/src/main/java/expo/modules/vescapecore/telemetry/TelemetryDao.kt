@@ -7,6 +7,15 @@ import androidx.room.Query
 import androidx.room.Transaction
 import androidx.room.Update
 import androidx.room.Upsert
+import org.json.JSONObject
+
+private const val RIDE_TRACK_RANGE_QUERY = """
+  SELECT * FROM ride_track_points
+  WHERE fix_at_ms >= :fromMs AND fix_at_ms <= :toMs
+    AND (:boardId IS NULL OR board_id = :boardId)
+    AND (:recordingId IS NULL OR recording_id = :recordingId)
+  ORDER BY fix_at_ms ASC
+"""
 
 // @parity /modules/vescape-core/ios/telemetry/TelemetryDao.swift
 @Dao
@@ -27,6 +36,9 @@ interface TelemetryDao {
 
   @Query("DELETE FROM metric_exclusion_ranges WHERE start_ms <= :toMs AND end_ms >= :fromMs")
   suspend fun deleteExclusionsRange(fromMs: Long, toMs: Long): Int
+
+  @Query("DELETE FROM metric_exclusion_ranges WHERE start_ms <= :toMs AND end_ms >= :fromMs AND ((:boardId IS NOT NULL AND board_id = :boardId) OR (:boardId IS NULL AND board_id IS NULL))")
+  suspend fun deleteExclusionsRangeForBoard(fromMs: Long, toMs: Long, boardId: String?): Int
 
   @Query("DELETE FROM metric_exclusion_ranges")
   suspend fun clearExclusions()
@@ -88,13 +100,25 @@ interface TelemetryDao {
   @Update
   suspend fun updateBucket(bucket: TelemetryMinuteBucketEntity)
 
-  @Query("SELECT * FROM telemetry_minute_buckets WHERE bucket_start_ms = :bucketStartMs AND board_id = :boardId LIMIT 1")
-  suspend fun getBucket(bucketStartMs: Long, boardId: String): TelemetryMinuteBucketEntity?
+  @Query(
+    """
+    SELECT * FROM telemetry_minute_buckets
+    WHERE bucket_start_ms = :bucketStartMs
+      AND board_id = :boardId
+      AND recording_id = :recordingId
+    LIMIT 1
+    """,
+  )
+  suspend fun getBucket(
+    bucketStartMs: Long,
+    boardId: String,
+    recordingId: String,
+  ): TelemetryMinuteBucketEntity?
 
   @Transaction
   suspend fun upsertBuckets(buckets: Collection<TelemetryMinuteBucketEntity>) {
     for (bucket in buckets) {
-      val existing = getBucket(bucket.bucketStartMs, bucket.boardId)
+      val existing = getBucket(bucket.bucketStartMs, bucket.boardId, bucket.recordingId)
       if (existing == null) {
         insertBucket(bucket)
       } else {
@@ -104,17 +128,190 @@ interface TelemetryDao {
   }
 
   @Transaction
+  suspend fun beginRideRecording(recording: RideRecordingEntity, replacingId: String? = null) {
+    if (replacingId != null) endRideRecording(replacingId, recording.startedAtMs, RIDE_RECORDING_END_STOPPED)
+    closeAbandonedRideRecordings(RIDE_RECORDING_END_DISCONNECTED, recording.id)
+    insertRideRecording(recording)
+  }
+
+  @Transaction
   suspend fun insertBatch(
     frames: List<TelemetryFrameEntity>,
     buckets: Collection<TelemetryMinuteBucketEntity>,
     markers: List<TelemetryMarkerEntity>,
     exclusions: List<MetricExclusionRangeEntity> = emptyList(),
+    trackPoints: List<RideTrackPointEntity> = emptyList(),
   ) {
     if (frames.isNotEmpty()) insertFrames(frames)
     if (buckets.isNotEmpty()) upsertBuckets(buckets)
     if (markers.isNotEmpty()) insertMarkers(markers)
     if (exclusions.isNotEmpty()) upsertExclusionRanges(exclusions)
+    if (trackPoints.isNotEmpty()) {
+      insertRideTrackPoints(trackPoints)
+      for (point in trackPoints.distinctBy { Triple(it.fixAtMs / TELEMETRY_BUCKET_SIZE_MS, it.boardId, it.recordingId) }) {
+        refreshBucketRoutePreview(point.fixAtMs - point.fixAtMs % TELEMETRY_BUCKET_SIZE_MS,
+          point.boardId ?: UNKNOWN_TELEMETRY_BOARD_ID, point.recordingId ?: LEGACY_RIDE_RECORDING_ID)
+      }
+    }
   }
+
+  /** Only called inside recording/rebuild transactions, after the raw fixes are durable there.
+   * Re-read one indexed minute instead of retaining a second mutable cache across process restarts.
+   * @parity /modules/vescape-core/ios/telemetry/BucketRoutePreview.swift `refreshBucketRoutePreview`
+   */
+  suspend fun refreshBucketRoutePreview(bucketStartMs: Long, boardId: String, recordingId: String) {
+    val track = getBucketRouteTrack(bucketStartMs, bucketStartMs + TELEMETRY_BUCKET_SIZE_MS,
+      boardId.takeUnless { it == UNKNOWN_TELEMETRY_BOARD_ID }, recordingId.takeUnless { it == LEGACY_RIDE_RECORDING_ID })
+    updateBucketRoutePreview(bucketStartMs, boardId, recordingId, BucketRoutePreview.build(track))
+  }
+
+  @Query("""SELECT * FROM ride_track_points WHERE fix_at_ms >= :fromMs AND fix_at_ms < :toMs
+    AND board_id IS :boardId AND recording_id IS :recordingId ORDER BY fix_at_ms, id""")
+  suspend fun getBucketRouteTrack(fromMs: Long, toMs: Long, boardId: String?, recordingId: String?): List<RideTrackPointEntity>
+
+  @Query("""UPDATE telemetry_minute_buckets SET route_preview = :preview
+    WHERE bucket_start_ms = :bucketStartMs AND board_id = :boardId AND recording_id = :recordingId""")
+  suspend fun updateBucketRoutePreview(bucketStartMs: Long, boardId: String, recordingId: String, preview: String)
+
+  // Ride Recording identity and Ride Track (ADR 0038). The durable contract #449 reads for history
+  // composition and #450 extends across Board Session teardown.
+
+  @Insert
+  suspend fun insertRideRecording(recording: RideRecordingEntity)
+
+  @Query(
+    """
+    UPDATE ride_recordings
+    SET ended_at_ms = :endedAtMs, ended_reason = :reason
+    WHERE id = :id AND ended_at_ms IS NULL
+    """,
+  )
+  suspend fun endRideRecording(id: String, endedAtMs: Long, reason: String): Int
+
+  /**
+   * Close every recording left open by a process that died without ending it. Called at launch and
+   * again before minting a new recording — the moments we know the old row can no longer be
+   * rejoined.
+   *
+   * The end is stamped at the recording's **last durable write**, not at the sweep: a ride abandoned
+   * days ago lasted minutes, not days, and `ended_at_ms` is the column #449 reads to decide a
+   * recording is finished. A recording with no writes at all ends where it started.
+   *
+   * @parity /modules/vescape-core/ios/telemetry/RideTrackStore.swift `closeAbandonedRideRecordings`
+   */
+  @Query(
+    """
+    UPDATE ride_recordings SET ended_at_ms = MAX(
+        started_at_ms,
+        COALESCE(
+          (SELECT MAX(captured_at_ms) FROM telemetry_frames f WHERE f.recording_id = ride_recordings.id),
+          0
+        ),
+        COALESCE(
+          (SELECT MAX(fix_at_ms) FROM ride_track_points p WHERE p.recording_id = ride_recordings.id),
+          0
+        )
+      ), ended_reason = :reason
+    WHERE ended_at_ms IS NULL AND id IS NOT :keepOpenId
+    """,
+  )
+  suspend fun closeAbandonedRideRecordings(reason: String, keepOpenId: String?): Int
+
+  @Insert
+  suspend fun insertRideTrackPoints(points: List<RideTrackPointEntity>)
+
+  /**
+   * The Ride Track over a time range, on the GPS clock. Every stored fix is returned with the
+   * accuracy it was reported with — filtering poor fixes is a read-side decision the caller makes,
+   * not one this query bakes in.
+   */
+  // @parity /modules/vescape-core/ios/telemetry/RideTrackStore.swift `fetchRideTrack`
+  @Query(RIDE_TRACK_RANGE_QUERY + " LIMIT :limit")
+  suspend fun getRideTrackPoints(
+    fromMs: Long,
+    toMs: Long,
+    boardId: String?,
+    limit: Int,
+    recordingId: String? = null,
+  ): List<RideTrackPointEntity>
+
+  // Raw keyset pages: advance using the last RAW row, even when every row is imprecise.
+  // @parity /modules/vescape-core/ios/telemetry/RideExport.swift `rideExportTrackPage`
+  @Query("""
+    SELECT * FROM ride_track_points
+    WHERE fix_at_ms >= :fromMs AND fix_at_ms <= :toMs
+      AND board_id IS :boardId
+      AND (:recordingId IS NULL OR recording_id = :recordingId)
+      AND (fix_at_ms > :afterMs OR (fix_at_ms = :afterMs AND id > :afterId))
+    ORDER BY fix_at_ms, id LIMIT :limit
+  """)
+  suspend fun getRideExportTrackPage(fromMs: Long, toMs: Long, boardId: String?, recordingId: String?,
+    afterMs: Long, afterId: Long, limit: Int): List<RideTrackPointEntity>
+
+  /** Complete input for durable summaries and bucket rebuilds, without the bridge read cap. */
+  // @parity /modules/vescape-core/ios/telemetry/RideTrackStore.swift `fetchRideTrackForAggregation`
+  @Query(RIDE_TRACK_RANGE_QUERY)
+  suspend fun getRideTrackForAggregation(
+    fromMs: Long,
+    toMs: Long,
+    boardId: String?,
+    recordingId: String? = null,
+  ): List<RideTrackPointEntity>
+
+  @Query("SELECT COUNT(*) FROM ride_track_points")
+  suspend fun countRideTrackPoints(): Long
+
+  /**
+   * Ride Track bounds, on the GPS clock. A rebuild covers them as well as the frame bounds: a
+   * minute can hold fixes and no frame at all, and that minute still owns a bucket (ADR 0038).
+   */
+  @Query("SELECT MIN(fix_at_ms) FROM ride_track_points")
+  suspend fun firstRideTrackAt(): Long?
+
+  @Query("SELECT MAX(fix_at_ms) FROM ride_track_points")
+  suspend fun lastRideTrackAt(): Long?
+
+  @Query("DELETE FROM ride_track_points WHERE fix_at_ms < :beforeMs")
+  suspend fun deleteRideTrackPointsBefore(beforeMs: Long): Int
+
+  @Query(
+    """
+    DELETE FROM ride_track_points
+    WHERE fix_at_ms >= :fromMs
+      AND fix_at_ms <= :toMs
+      AND (
+        (:boardId IS NOT NULL AND board_id = :boardId)
+        OR (:boardId IS NULL AND board_id IS NULL)
+      )
+    """,
+  )
+  suspend fun deleteRideTrackPointsRange(fromMs: Long, toMs: Long, boardId: String?): Int
+
+  @Query("DELETE FROM ride_track_points WHERE fix_at_ms >= :fromMs AND fix_at_ms <= :toMs")
+  suspend fun deleteRideTrackPointsRangeAllDevices(fromMs: Long, toMs: Long): Int
+
+  @Query("DELETE FROM ride_track_points")
+  suspend fun clearRideTrackPoints()
+
+  /**
+   * Drop closed recordings no row references any more. Identity outlives its rows only as long as
+   * something can still be attributed to it, and an open recording is never pruned.
+   */
+  @Query(
+    """
+    DELETE FROM ride_recordings
+    WHERE ended_at_ms IS NOT NULL
+      AND NOT EXISTS (SELECT 1 FROM ride_track_points p WHERE p.recording_id = ride_recordings.id)
+      AND NOT EXISTS (SELECT 1 FROM telemetry_frames f WHERE f.recording_id = ride_recordings.id)
+      AND NOT EXISTS (
+        SELECT 1 FROM telemetry_minute_buckets b WHERE b.recording_id = ride_recordings.id
+      )
+    """,
+  )
+  suspend fun pruneOrphanRideRecordings(): Int
+
+  @Query("DELETE FROM ride_recordings")
+  suspend fun clearRideRecordings()
 
   @Transaction
   suspend fun upsertExclusionRanges(exclusions: List<MetricExclusionRangeEntity>) {
@@ -158,8 +355,41 @@ interface TelemetryDao {
     limit: Int,
   ): List<TelemetryMinuteBucketEntity>
 
+  @Query("""
+    SELECT * FROM telemetry_minute_buckets
+    WHERE board_id = :boardId AND bucket_start_ms >= :fromMs AND bucket_start_ms <= :toMs
+    ORDER BY first_sample_at_ms, bucket_start_ms, recording_id
+  """)
+  suspend fun getFavoriteRouteBuckets(fromMs: Long, toMs: Long, boardId: String): List<TelemetryMinuteBucketEntity>
+
   @Query("SELECT * FROM telemetry_minute_buckets ORDER BY bucket_start_ms ASC")
   suspend fun getAllHistoryBucketsAsc(): List<TelemetryMinuteBucketEntity>
+
+  /**
+   * Ride grouping reads every bucket, including the ones a Ride Track wrote with no Telemetry
+   * Sample in them. A board dropout is exactly when those minutes exist, and they carry the Moving
+   * Window and route anchor that keep Time and the seek timeline honest across it (ADR 0038).
+   * [getHistoryBuckets] stays sample-only: its rows are graph buckets.
+   * The limit is soft: every bucket in the boundary minute is included.
+   */
+  // @parity /modules/vescape-core/ios/telemetry/RideHistoryRepository.swift `fetchRideHistoryBucketBatch`
+  @Query(
+    """
+    SELECT * FROM telemetry_minute_buckets
+    WHERE bucket_start_ms < :beforeMs AND bucket_start_ms >= (
+      SELECT MIN(bucket_start_ms) FROM (
+        SELECT bucket_start_ms FROM telemetry_minute_buckets
+        WHERE bucket_start_ms < :beforeMs ORDER BY bucket_start_ms DESC LIMIT :limit
+      )
+    )
+    ORDER BY bucket_start_ms DESC
+    """,
+  )
+  suspend fun getRideBuckets(beforeMs: Long, limit: Int): List<TelemetryMinuteBucketEntity>
+
+  // @parity /modules/vescape-core/ios/telemetry/RideHistoryRepository.swift `fetchRideHistoryBucketBatch`
+  @Query("SELECT EXISTS(SELECT 1 FROM telemetry_minute_buckets WHERE bucket_start_ms < :beforeMs)")
+  suspend fun hasRideBucketsBefore(beforeMs: Long): Boolean
 
   @Query(
     """
@@ -189,11 +419,30 @@ interface TelemetryDao {
     limit: Int,
   ): List<DiagnosticEventEntity>
 
+  // @parity /modules/vescape-core/ios/telemetry/RideExport.swift `writeCsv`
+  @Query("""
+    SELECT * FROM telemetry_frames WHERE captured_at_ms < :fromMs AND board_id IS :boardId
+      AND (:recordingId IS NULL OR recording_id = :recordingId) AND (flags & 1) != 0
+    ORDER BY captured_at_ms DESC, id DESC LIMIT 1
+  """)
+  suspend fun getRideExportKeyframe(fromMs: Long, boardId: String?, recordingId: String?): TelemetryFrameEntity?
+
+  // @parity /modules/vescape-core/ios/telemetry/RideExport.swift `writeCsv`
+  @Query("""
+    SELECT * FROM telemetry_frames WHERE captured_at_ms >= :fromMs AND captured_at_ms <= :toMs
+      AND board_id IS :boardId AND (:recordingId IS NULL OR recording_id = :recordingId)
+      AND (captured_at_ms > :afterMs OR (captured_at_ms = :afterMs AND id > :afterId))
+    ORDER BY captured_at_ms, id LIMIT :limit
+  """)
+  suspend fun getRideExportTelemetryPage(fromMs: Long, toMs: Long, boardId: String?, recordingId: String?,
+    afterMs: Long, afterId: Long, limit: Int): List<TelemetryFrameEntity>
+
   @Query(
     """
     SELECT * FROM telemetry_frames
     WHERE captured_at_ms <= :fromMs
       AND (:boardId IS NULL OR board_id = :boardId)
+      AND (:recordingId IS NULL OR recording_id = :recordingId)
       AND (flags & :keyframeFlag) != 0
     ORDER BY captured_at_ms DESC
     LIMIT 1
@@ -203,6 +452,7 @@ interface TelemetryDao {
     fromMs: Long,
     boardId: String?,
     keyframeFlag: Int = TELEMETRY_FLAG_KEYFRAME,
+    recordingId: String? = null,
   ): TelemetryFrameEntity?
 
   @Query(
@@ -211,11 +461,12 @@ interface TelemetryDao {
     WHERE captured_at_ms >= :fromMs
       AND captured_at_ms <= :toMs
       AND (:boardId IS NULL OR board_id = :boardId)
+      AND (:recordingId IS NULL OR recording_id = :recordingId)
     ORDER BY captured_at_ms ASC
     LIMIT :limit
     """,
   )
-  suspend fun getFrames(fromMs: Long, toMs: Long, boardId: String?, limit: Int): List<TelemetryFrameEntity>
+  suspend fun getFrames(fromMs: Long, toMs: Long, boardId: String?, limit: Int, recordingId: String? = null): List<TelemetryFrameEntity>
 
   @Query(
     """
@@ -247,9 +498,6 @@ interface TelemetryDao {
   @Query("SELECT COUNT(*) FROM telemetry_frames")
   suspend fun countFrames(): Long
 
-  @Query("SELECT COALESCE(SUM(gps_point_count), 0) FROM telemetry_minute_buckets WHERE sample_count > 0")
-  suspend fun countTelemetryGpsPoints(): Long
-
   @Query("SELECT MIN(captured_at_ms) FROM telemetry_frames")
   suspend fun firstFrameAt(): Long?
 
@@ -275,6 +523,8 @@ interface TelemetryDao {
     deleteBucketsBefore(beforeMs)
     deleteDiagnosticEventsBefore(beforeMs)
     deleteExclusionsBefore(beforeMs)
+    deleteRideTrackPointsBefore(beforeMs)
+    pruneOrphanRideRecordings()
     return frames
   }
 
@@ -320,7 +570,9 @@ interface TelemetryDao {
     val frames = deleteFramesRange(fromMs, toMs, boardId)
     deleteMarkersRange(fromMs, toMs, boardId)
     deleteBucketsRange(fromMs, toMs, boardId ?: UNKNOWN_TELEMETRY_BOARD_ID)
-    deleteExclusionsRange(fromMs, toMs)
+    deleteExclusionsRangeForBoard(fromMs, toMs, boardId)
+    deleteRideTrackPointsRange(fromMs, toMs, boardId)
+    pruneOrphanRideRecordings()
     return frames
   }
 
@@ -345,8 +597,39 @@ interface TelemetryDao {
     deleteMarkersRangeAllDevices(fromMs, toMs)
     deleteBucketsRangeAllDevices(fromMs, toMs)
     deleteExclusionsRange(fromMs, toMs)
+    deleteRideTrackPointsRangeAllDevices(fromMs, toMs)
+    pruneOrphanRideRecordings()
     return frames
   }
+
+  @Query("DELETE FROM telemetry_frames WHERE recording_id = :recordingId AND captured_at_ms BETWEEN :fromMs AND :toMs")
+  suspend fun deleteRecordingFrames(recordingId: String, fromMs: Long, toMs: Long): Int
+
+  @Query("DELETE FROM ride_track_points WHERE recording_id = :recordingId AND fix_at_ms BETWEEN :fromMs AND :toMs")
+  suspend fun deleteRecordingTrack(recordingId: String, fromMs: Long, toMs: Long): Int
+
+  @Query("DELETE FROM telemetry_minute_buckets WHERE recording_id = :recordingId AND last_sample_at_ms >= :fromMs AND first_sample_at_ms <= :toMs")
+  suspend fun deleteRecordingBuckets(recordingId: String, fromMs: Long, toMs: Long): Int
+
+  @Transaction
+  suspend fun deleteRecordingRanges(recordingId: String, ranges: List<TelemetryTimeRange>): Int {
+    var deleted = 0
+    for (range in ranges) {
+      deleted += deleteRecordingFrames(recordingId, range.startMs, range.endMs)
+      deleteRecordingTrack(recordingId, range.startMs, range.endMs)
+      deleteRecordingBuckets(recordingId, range.startMs, range.endMs)
+    }
+    // Markers/exclusions belong to time ranges, so cannot safely be attributed to this recording.
+    pruneOrphanRideRecordings()
+    return deleted
+  }
+
+  @Transaction
+  suspend fun deleteRanges(ranges: List<TelemetryTimeRange>, boardId: String?, allBoards: Boolean): Int =
+    ranges.sumOf { range ->
+      if (allBoards) deleteRangeAllDevices(range.startMs, range.endMs)
+      else deleteRange(range.startMs, range.endMs, boardId)
+    }
 
   @Query("DELETE FROM telemetry_frames")
   suspend fun clearFrames()
@@ -367,7 +650,25 @@ interface TelemetryDao {
     clearBuckets()
     clearDiagnosticEvents()
     clearExclusions()
+    clearRideTrackPoints()
+    clearRideRecordings()
   }
+
+  @Transaction
+  suspend fun clearExcept(protectedRanges: List<TelemetryTimeRange>) {
+    if (protectedRanges.isEmpty()) return clearAll()
+    val requested = TelemetryTimeRange(Long.MIN_VALUE, Long.MAX_VALUE)
+    subtractProtectedTelemetryRanges(requested, protectedRanges).forEach { range ->
+      deleteRangeAllDevices(range.startMs, range.endMs)
+    }
+    clearDiagnosticEvents()
+  }
+
+  @Transaction
+  suspend fun rebuildTelemetryBuckets(
+    config: MetricSanitizerConfig,
+    onProgress: (Int, Int) -> Unit,
+  ): Int = rebuildTelemetryBucketsImpl(config, onProgress)
 
   /** Live Boards only — a tombstoned Board is gone from every Rider-facing list (ADR 0027). */
   @Query("SELECT * FROM boards WHERE deleted_at IS NULL ORDER BY created_at ASC")
@@ -417,9 +718,21 @@ interface TelemetryDao {
 
   @Transaction
   suspend fun upsertBoardWithSettings(board: BoardEntity, settings: List<BoardSettingEntity>, deletedKeys: List<String>) {
+    val existing = getBoard(board.id) != null
+    val presetKeys = setOf("alertPreset", "matchBoardConfig")
+    val previousSettings = getBoardSettings(board.id).associate { it.key to decodeSettingJson(it.valueJson) }
     upsertBoard(board)
-    deletedKeys.forEach { deleteBoardSetting(board.id, it) }
-    settings.forEach { upsertBoardSetting(it) }
+    deletedKeys.filterNot { existing && it in presetKeys }.forEach { deleteBoardSetting(board.id, it) }
+    settings.filterNot { existing && it.key in presetKeys }.forEach { upsertBoardSetting(it) }
+    AlertPresetPersistence.regenerateChanged(this, board.id, previousSettings)
+  }
+
+  @Transaction
+  suspend fun repairMissingAlertPresetRelations(boardId: String): Boolean = AlertPresetPersistence.repairMissingRelations(this, boardId)
+
+  @Transaction
+  suspend fun applyAlertPreset(boardId: String, metric: String, action: String, level: String?, matchBoardConfig: Boolean?) {
+    AlertPresetPersistence.apply(this, boardId, metric, action, level, matchBoardConfig)
   }
 
   @Query("DELETE FROM board_settings WHERE board_id = :boardId")
@@ -438,6 +751,8 @@ interface TelemetryDao {
     deleteBoardWarnings(id)
     // Alert Rules are Board-owned (#254) — drop them with the Board so no orphan rows survive.
     deleteAlertRules(id)
+    deleteBoardConfigValues(id)
+    deleteBoardConfigChangeNotice(id)
     insertBoardRow(board.copy(deletedAt = deletedAt))
   }
 
@@ -468,13 +783,37 @@ interface TelemetryDao {
   @Insert(onConflict = OnConflictStrategy.REPLACE)
   suspend fun upsertAppSetting(setting: AppSettingEntity)
 
+  /** @parity /modules/vescape-core/ios/telemetry/BoardSettingsPersistence.swift `updateUnitSystem` */
+  @Transaction
+  suspend fun updateUnitSystem(units: String) {
+    require(units in setOf("metric", "imperial")) { "Invalid unit system" }
+    val previous = getAppSetting("unitSystem")?.let { decodeSettingJson(it.valueJson) } ?: "metric"
+    upsertAppSetting(AppSettingEntity("unitSystem", JSONObject.quote(units), System.currentTimeMillis()))
+    if (previous != units) {
+      getBoards().forEach { AlertPresetPersistence.regenerate(this, it.id, "speed") }
+    }
+  }
+
   @Query("DELETE FROM app_settings WHERE key = :key")
   suspend fun deleteAppSetting(key: String)
 
+  @Transaction
+  suspend fun replaceAppSettings(settings: List<AppSettingEntity?>, keys: List<String>) {
+    require(settings.size == keys.size)
+    settings.zip(keys).forEach { (setting, key) ->
+      if (setting == null) deleteAppSetting(key) else upsertAppSetting(setting)
+    }
+  }
+
   // Tune Profile / Tune History DAO. Transactional bodies below are mirrored in Swift.
   // @parity /modules/vescape-core/ios/telemetry/TuneProfileStore.swift
-  @Query("SELECT * FROM tune_profiles WHERE board_id = :boardId AND refloat_base_version = :refloatBaseVersion ORDER BY created_at ASC")
-  suspend fun getTuneProfilesByBoard(boardId: String, refloatBaseVersion: String): List<TuneProfileEntity>
+  @Query("SELECT * FROM tune_profiles WHERE board_id = :boardId ORDER BY created_at ASC")
+  suspend fun getStoredTuneProfilesByBoard(boardId: String): List<TuneProfileEntity>
+
+  suspend fun getTuneProfilesByBoard(boardId: String, refloatBaseVersion: String): List<TuneProfileEntity> {
+    val compatibility = tuneCompatibilityVersion(refloatBaseVersion) ?: return emptyList()
+    return getStoredTuneProfilesByBoard(boardId).filter { tuneCompatibilityVersion(it.refloatBaseVersion) == compatibility }
+  }
 
   @Query("SELECT * FROM tune_profiles WHERE id = :id LIMIT 1")
   suspend fun getTuneProfile(id: String): TuneProfileEntity?
@@ -503,11 +842,18 @@ interface TelemetryDao {
   @Insert(onConflict = OnConflictStrategy.IGNORE)
   suspend fun insertTuneProfile(profile: TuneProfileEntity): Long
 
-  @Query("SELECT COUNT(*) FROM tune_profiles WHERE board_id = :boardId AND refloat_base_version = :refloatBaseVersion")
-  suspend fun countTuneProfilesForBoard(boardId: String, refloatBaseVersion: String): Int
+  suspend fun countTuneProfilesForBoard(boardId: String, refloatBaseVersion: String): Int =
+    getTuneProfilesByBoard(boardId, refloatBaseVersion).size
 
   @Insert
   suspend fun insertTuneHistoryEntry(entry: TuneHistoryEntryEntity): Long
+
+  @Transaction
+  suspend fun createTuneProfile(profile: TuneProfileEntity, historyEntry: TuneHistoryEntryEntity): TuneProfileEntity {
+    upsertTuneProfile(profile)
+    insertTuneHistoryEntry(historyEntry)
+    return getTuneProfile(profile.id) ?: throw IllegalStateException("Tune Profile disappeared during save: ${profile.id}")
+  }
 
   // `id` breaks ties: a save and a rollback can land in the same millisecond, and without a
   // monotonic tiebreaker `created_at DESC` alone returns them in insertion order — oldest first —
@@ -592,6 +938,133 @@ interface TelemetryDao {
   @Query("DELETE FROM board_warnings WHERE board_id = :boardId")
   suspend fun deleteBoardWarnings(boardId: String): Int
 
+  // Enrolled Accessories. Deliberately unrelated to `boards`: an Accessory Binding targets whichever
+  // Board is connected, so deleting a Board must not forget the rider's hardware.
+  // @parity /modules/vescape-core/ios/telemetry/AccessoryPersistence.swift
+
+  @Query("SELECT * FROM accessories ORDER BY enrolled_at ASC")
+  suspend fun getAccessories(): List<SavedAccessoryEntity>
+
+  @Query("SELECT * FROM accessories WHERE accessory_id = :accessoryId LIMIT 1")
+  suspend fun getAccessory(accessoryId: String): SavedAccessoryEntity?
+
+  /**
+   * Enroll or re-validate. `REPLACE` on the manifest identity is the whole duplicate defence: the
+   * same hardware under a new name, a new firmware version or a new BLE handle updates its row
+   * instead of adding one.
+   */
+  @Insert(onConflict = OnConflictStrategy.REPLACE)
+  suspend fun upsertAccessory(accessory: SavedAccessoryEntity)
+
+  @Query("DELETE FROM accessories WHERE accessory_id = :accessoryId")
+  suspend fun deleteAccessory(accessoryId: String): Int
+
+  /**
+   * Forgetting, with everything the rider calibrated against this Accessory.
+   *
+   * One transaction, and the calibration goes first. Deleting the identity alone would leave rows
+   * nothing can reach and nothing can clean up — and re-adding the same hardware later would find
+   * them and drive the board to numbers the rider set for a mounting position they have since
+   * changed. "Forget" means forget.
+   */
+  @Transaction
+  suspend fun forgetAccessory(accessoryId: String): Int {
+    deleteGroundClearances(accessoryId)
+    deleteBrakeLights(accessoryId)
+    deleteAccessoryCapabilitySettings(accessoryId)
+    return deleteAccessory(accessoryId)
+  }
+
+  /**
+   * Adopts what the last handshake declared as the new baseline for saved settings.
+   *
+   * Separate from [revalidateAccessory] on purpose: that one deliberately preserves the baseline so
+   * the "declared limits changed" warning survives a restart. This is the other half — the rider
+   * saved a calibration that fits the *current* manifest, which is the moment the new limits stop
+   * being a change to warn about and start being the limits.
+   */
+  @Query("UPDATE accessories SET capabilities_json = :capabilitiesJson WHERE accessory_id = :accessoryId")
+  suspend fun adoptAccessoryCapabilities(accessoryId: String, capabilitiesJson: String): Int
+
+  // Ground-clearance calibration, keyed on the Accessory *and* the capability.
+  @Query("SELECT * FROM accessory_brake_light ORDER BY accessory_id, capability_id")
+  suspend fun getBrakeLights(): List<AccessoryBrakeLightEntity>
+
+  @Query("SELECT * FROM accessory_capability_settings ORDER BY accessory_id, capability_id")
+  suspend fun getAccessoryCapabilitySettings(): List<AccessoryCapabilitySettingsEntity>
+
+  @Insert(onConflict = OnConflictStrategy.REPLACE)
+  suspend fun upsertAccessoryCapabilitySettings(settings: AccessoryCapabilitySettingsEntity)
+
+  @Transaction
+  suspend fun saveAccessoryCapabilitySettings(settings: AccessoryCapabilitySettingsEntity) {
+    check(getAccessory(settings.accessoryId) != null) { "Accessory is no longer enrolled" }
+    upsertAccessoryCapabilitySettings(settings)
+  }
+
+  @Query("DELETE FROM accessory_capability_settings WHERE accessory_id = :accessoryId")
+  suspend fun deleteAccessoryCapabilitySettings(accessoryId: String): Int
+
+  @Insert(onConflict = OnConflictStrategy.REPLACE)
+  suspend fun upsertBrakeLight(settings: AccessoryBrakeLightEntity)
+
+  @Transaction
+  suspend fun saveBrakeLight(settings: AccessoryBrakeLightEntity) {
+    check(getAccessory(settings.accessoryId) != null) { "Accessory is no longer enrolled" }
+    upsertBrakeLight(settings)
+  }
+
+  @Query("DELETE FROM accessory_brake_light WHERE accessory_id = :accessoryId")
+  suspend fun deleteBrakeLights(accessoryId: String): Int
+
+  // @parity /modules/vescape-core/ios/telemetry/AccessoryPersistence.swift `groundClearances`
+
+  @Query("SELECT * FROM accessory_ground_clearance ORDER BY accessory_id ASC, capability_id ASC")
+  suspend fun getGroundClearances(): List<AccessoryGroundClearanceEntity>
+
+  @Query(
+    "SELECT * FROM accessory_ground_clearance WHERE accessory_id = :accessoryId AND capability_id = :capabilityId LIMIT 1",
+  )
+  suspend fun getGroundClearance(accessoryId: String, capabilityId: String): AccessoryGroundClearanceEntity?
+
+  @Insert(onConflict = OnConflictStrategy.REPLACE)
+  suspend fun upsertGroundClearance(calibration: AccessoryGroundClearanceEntity)
+
+  @Query(
+    "DELETE FROM accessory_ground_clearance WHERE accessory_id = :accessoryId AND capability_id = :capabilityId",
+  )
+  suspend fun deleteGroundClearance(accessoryId: String, capabilityId: String): Int
+
+  @Query("DELETE FROM accessory_ground_clearance WHERE accessory_id = :accessoryId")
+  suspend fun deleteGroundClearances(accessoryId: String): Int
+
+  /**
+   * Records what the last handshake observed, for a row that still exists.
+   *
+   * Update-only on purpose: a handshake landing just after the rider forgot the Accessory must not
+   * resurrect it. `capabilities_json` and `enrolled_at` are left alone — the first is the baseline
+   * saved settings were validated against, the second is when the rider added it.
+   */
+  @Query(
+    """
+    UPDATE accessories
+    SET name = :name,
+        firmware_version = :firmwareVersion,
+        protocol_version = :protocolVersion,
+        device_id = :deviceId,
+        last_connected_at = :connectedAt
+    WHERE accessory_id = :accessoryId
+    """,
+  )
+  suspend fun revalidateAccessory(
+    accessoryId: String,
+    name: String,
+    firmwareVersion: String,
+    protocolVersion: Int?,
+    deviceId: String?,
+    connectedAt: Long?,
+  ): Int
+
   // VESC Fault Occurrences — see VescFaultCoordinator for lifecycle rules. Deliberately absent from
   // `deleteBoardWithSettings`: fault evidence outlives the Board record.
   // @parity /modules/vescape-core/ios/faults/VescFaultStore.swift
@@ -652,6 +1125,12 @@ interface TelemetryDao {
   @Insert
   suspend fun insertVescFaultCaptureSamples(samples: List<VescFaultCaptureSampleEntity>)
 
+  @Transaction
+  suspend fun saveVescFaultCapture(capture: VescFaultCaptureEntity, samples: List<VescFaultCaptureSampleEntity>) {
+    upsertVescFaultCapture(capture)
+    if (samples.isNotEmpty()) insertVescFaultCaptureSamples(samples)
+  }
+
   @Query(
     "SELECT * FROM vesc_fault_capture_samples WHERE occurrence_id = :occurrenceId " +
       "ORDER BY captured_at ASC, id ASC",
@@ -704,9 +1183,17 @@ interface TelemetryDao {
   @Query("DELETE FROM board_config_change_notices WHERE board_id = :boardId")
   suspend fun deleteBoardConfigChangeNotice(boardId: String)
 
+  /** Clears every cached config scope and its notice as one durable operation. */
   @Transaction
-  suspend fun replaceBaselineAndNotice(values: BoardConfigValuesEntity, buildNotice: (BoardConfigValuesEntity?) -> BoardConfigChangeNoticeEntity?): BoardConfigChangeNoticeEntity? {
-    val notice = buildNotice(getBoardConfigValues(values.boardId, values.refloatBaseVersion))
+  suspend fun clearBoardConfigState(boardId: String) {
+    deleteBoardConfigValues(boardId)
+    deleteMotorConfigValues(boardId)
+    deleteBoardConfigChangeNotice(boardId)
+  }
+
+  @Transaction
+  suspend fun replaceBaselineAndNotice(values: BoardConfigValuesEntity, buildNotice: (BoardConfigValuesEntity?, BoardConfigChangeNoticeEntity?) -> BoardConfigChangeNoticeEntity?): BoardConfigChangeNoticeEntity? {
+    val notice = buildNotice(getBoardConfigValues(values.boardId, values.refloatBaseVersion), getBoardConfigChangeNotice(values.boardId))
     if (notice != null) upsertBoardConfigChangeNotice(notice)
     upsertBoardConfigValues(values)
     return notice

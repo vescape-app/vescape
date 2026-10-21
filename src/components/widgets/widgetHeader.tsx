@@ -2,13 +2,13 @@ import { StyleSheet, View } from 'react-native'
 import type { Icon } from 'phosphor-react-native'
 
 import { Text } from '@/components/base/Text'
-import { theme } from '@/constants/theme'
+import { theme, type ThemeColor } from '@/constants/theme'
 
 export interface WidgetHeaderProps {
   icon: Icon
   title: string
   description?: string
-  accent?: string
+  accent?: ThemeColor
 }
 
 /** Icon + title + description row shared by a widget's collapsed card and its focused panel. */

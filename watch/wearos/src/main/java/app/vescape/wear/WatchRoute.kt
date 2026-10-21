@@ -1,6 +1,8 @@
 package app.vescape.wear
 
 import androidx.compose.runtime.mutableStateOf
+import expo.modules.vescapecore.watch.WatchRouteStatus
+import expo.modules.vescapecore.watch.WatchRouteStatusCodec
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
 import kotlin.math.cos
@@ -9,6 +11,8 @@ import kotlin.math.cos
  * Data Layer path the phone pushes the route polyline on. Must match the phone-side
  * `WatchRoutePusher`. Unlike the Watch Frame this arrives once per route change and then persists,
  * so a long polyline is never re-sent per tick.
+ *
+ * @parity /modules/vescape-core/ios/watch/WatchRoute.swift `watchRouteChannel`
  */
 const val ROUTE_PATH = "/route"
 
@@ -23,13 +27,20 @@ private const val METERS_PER_DEGREE_LON_EQUATOR = 111_320.0
  * A route in the wrist's drawing frame: points as metres east/north of the route origin, which is
  * the same frame the Watch Frame's rider lanes use, so placing the rider is a straight subtraction.
  */
-data class WatchRoute(val points: List<RoutePoint>)
+/** @parity /modules/vescape-core/ios/watch/WatchRoute.swift `WatchRoute` */
+data class WatchRoute(val points: List<RoutePoint>, val routeId: Long? = null)
 
+/** @parity /modules/vescape-core/ios/watch/WatchRoute.swift `WatchRoutePoint` */
 data class RoutePoint(val eastM: Float, val northM: Float)
 
-/** Latest route held on the wrist. Null means the phone has no active route. */
+/**
+ * Latest route held on the wrist. Null means the phone has no active route.
+ *
+ * @parity /watch/watchos/PhoneLink.swift `route`
+ */
 object RouteState {
     val route = mutableStateOf<WatchRoute?>(null)
+    val status = mutableStateOf<WatchRouteStatus?>(null)
 
     fun accept(route: WatchRoute?) {
         this.route.value = route
@@ -40,6 +51,8 @@ object RouteState {
  * Pure bytes -> [WatchRoute] decoder: version byte, uint16 count, float64 origin, then int32
  * micro-degree deltas from the previous point. Returns null on an unknown version or a short buffer,
  * so a newer phone format degrades to "no route" instead of a garbled line.
+ *
+ * @parity /modules/vescape-core/ios/watch/WatchRoute.swift `WatchRouteCodec`
  */
 object WatchRouteDecoder {
     fun decode(bytes: ByteArray): WatchRoute? {
@@ -64,6 +77,6 @@ object WatchRouteDecoder {
             val north = lat / MICRO_DEGREES * METERS_PER_DEGREE_LAT
             points.add(RoutePoint(east.toFloat(), north.toFloat()))
         }
-        return WatchRoute(points)
+        return WatchRoute(points, WatchRouteStatusCodec.routeId(bytes))
     }
 }

@@ -1,5 +1,7 @@
 package expo.modules.vescapecore.config
 
+import expo.modules.vescapecore.recording.RecordingStorageFailure
+
 import expo.modules.vescapecore.connection.BoardPhase
 import expo.modules.vescapecore.service.SessionConfig
 import expo.modules.vescapecore.diagnostics.DiagnosticReporter
@@ -9,6 +11,7 @@ import expo.modules.vescapecore.diagnostics.newOperationId
 import expo.modules.vescapecore.runtime.Cancellable
 import expo.modules.vescapecore.runtime.LinkIntegrity
 import expo.modules.vescapecore.runtime.Scheduler
+import expo.modules.vescapecore.telemetry.tuneCompatibilityVersion
 import expo.modules.vescapecore.telemetry.AppDataRepository
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
@@ -112,7 +115,11 @@ internal class ConfigRWController(
         if (!initial.trusted()) return pending.linkNotTrusted()
         if (initial.transport == null) return pending.noCanId("push")
         appDataScope.launch {
-            val profile = try { repository().getTuneProfile(pending.profileId) } catch (_: Exception) { null }
+            val profile = try { repository().getTuneProfile(pending.profileId) } catch (error: Exception) {
+                RecordingStorageFailure.reportRead("board_tune_profile_read", error)
+                scheduler.post { pending.onError(RefloatConfigErrorCode.CONFIG_READ_FAILED.name, "Tune profile could not be loaded") }
+                return@launch
+            }
             if (profile == null) {
                 scheduler.post {
                     pending.onError(RefloatConfigErrorCode.PROFILE_NOT_FOUND.name, "Tune profile not found: ${pending.profileId}")
@@ -127,13 +134,13 @@ internal class ConfigRWController(
                 if (!connection.trusted()) return@post pending.linkNotTrusted()
                 val transport = connection.transport ?: return@post pending.noCanId("push")
                 val profileBoardId = profile["boardId"] as? String
-                val profileRefloatBaseVersion = profile["refloatBaseVersion"] as? String
+                val profileRefloatBaseVersion = tuneCompatibilityVersion(profile["refloatBaseVersion"] as? String)
                 val connectedBoardId = connection.config?.appBoardId
                 if (profileBoardId.isNullOrBlank() || connectedBoardId.isNullOrBlank() || profileBoardId != connectedBoardId) {
                     return@post pending.onError(RefloatConfigErrorCode.PROFILE_BOARD_MISMATCH.name, "Tune profile does not belong to the connected board")
                 }
                 val connectedRefloatBaseVersion = connection.config?.refloatBaseVersion
-                if (profileRefloatBaseVersion.isNullOrBlank() || connectedRefloatBaseVersion.isNullOrBlank() || profileRefloatBaseVersion != connectedRefloatBaseVersion) {
+                if (profileRefloatBaseVersion.isNullOrBlank() || connectedRefloatBaseVersion.isNullOrBlank() || profileRefloatBaseVersion != tuneCompatibilityVersion(connectedRefloatBaseVersion)) {
                     return@post pending.onError(RefloatConfigErrorCode.PROFILE_BOARD_MISMATCH.name, "Tune profile does not match the connected board Refloat Tune Compatibility")
                 }
                 val wasPolling = port.isPollingActive()

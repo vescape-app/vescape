@@ -46,6 +46,19 @@ export function warningDescription(kind: string): string | null {
   return WARNING_DESCRIPTIONS[kind as BoardWarningKind] ?? null
 }
 
+/**
+ * Warnings still waiting on the rider. A dismissed kind stays in the board's list — the warnings
+ * sheet renders it grayed — but stops counting toward any indicator, so every count and severity
+ * an indicator shows runs through here first.
+ */
+export function pendingWarnings(
+  warnings: BoardWarning[],
+  dismissedKinds: string[] | undefined,
+): BoardWarning[] {
+  if (!dismissedKinds?.length) return warnings
+  return warnings.filter((w) => !dismissedKinds.includes(w.kind))
+}
+
 /** Worst active severity across a board's warnings, or null when there are none. */
 export function worstSeverity(warnings: BoardWarning[]): BoardWarningSeverity | null {
   if (warnings.length === 0) return null

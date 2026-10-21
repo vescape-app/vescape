@@ -4,15 +4,16 @@ import { CaretRightIcon, type Icon } from 'phosphor-react-native'
 
 import {
   type WidgetSize,
+  useResolvedSecondaryWidgetPressed,
   useResolvedSecondaryWidgetSurface,
 } from '@/components/widgets/widgetSurface'
-import { theme } from '@/constants/theme'
+import { theme, type ThemeColor } from '@/constants/theme'
 
 interface LinkWidgetProps {
   icon: Icon
   label: string
   hint?: string
-  accent?: string
+  accent?: ThemeColor
   size?: WidgetSize
   disabled?: boolean
   onPress: () => void
@@ -29,6 +30,7 @@ export function LinkWidget({
   onPress,
 }: LinkWidgetProps) {
   const surface = useResolvedSecondaryWidgetSurface()
+  const pressedSurface = useResolvedSecondaryWidgetPressed()
   const square = size === 'square'
   const iconSize = square ? 26 : size === 'half' ? 20 : 22
 
@@ -37,7 +39,7 @@ export function LinkWidget({
       style={({ pressed }) => [
         surface,
         square ? styles.widgetSquare : styles.widgetRow,
-        pressed && !disabled && styles.pressed,
+        pressed && !disabled && pressedSurface,
         disabled && styles.disabled,
       ]}
       disabled={disabled}
@@ -68,9 +70,6 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     gap: 8,
     padding: 14,
-  },
-  pressed: {
-    backgroundColor: theme.neutral.surface,
   },
   disabled: {
     opacity: 0.45,

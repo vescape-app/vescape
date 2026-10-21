@@ -92,8 +92,8 @@ gh pr create --base dev --title "<title>" --body "$(cat <<'EOF'
 <1-3 short sentences describing the outcome and why it matters.>
 
 > [!NOTE]
-> **Risk:** <Low | Medium | High> — <short reason>
-> **Complexity:** <Low | Medium | High> — <short reason>
+> **Risk:** <Low | Medium | High> <1–10>/10 - <short reason>
+> **Complexity:** <Low | Medium | High> <1–10>/10 - <short reason>
 > **DB:** <category> — <short impact>
 
 ## Description

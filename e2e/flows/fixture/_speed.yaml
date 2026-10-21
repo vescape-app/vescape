@@ -1,0 +1,17 @@
+# A loaded hosted simulator can miss a gauge tap while live telemetry is rendering.
+# Retry navigation only, and never tap again once the detail screen has opened.
+appId: ${APP_ID}
+---
+- retry:
+    maxRetries: 3
+    commands:
+      - runFlow:
+          when:
+            notVisible: 'Speed'
+          commands:
+            - tapOn:
+                id: gauge-speed
+                waitToSettleTimeoutMs: 1000
+      - extendedWaitUntil:
+          visible: 'Speed'
+          timeout: 15000

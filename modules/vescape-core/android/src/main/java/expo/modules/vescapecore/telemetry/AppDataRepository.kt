@@ -10,6 +10,8 @@ import expo.modules.vescapecore.diagnostics.DiagnosticReporter
 import expo.modules.vescapecore.service.CoreForegroundService
 
 import expo.modules.vescapecore.connection.BoardTransport
+import expo.modules.vescapecore.alerts.CustomAppSounds
+import expo.modules.vescapecore.watch.WatchMapGauges
 import android.content.Context
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -24,6 +26,7 @@ import expo.modules.vescapecore.alerts.normalizedAlertRepeatSeconds
 /** Scope of an `onAppDataChanged` emit; mirrors the JS `AppDataChangedEvent['scope']` union. */
 internal enum class AppDataScope(val wire: String) {
   BOARDS("boards"),
+  ALERTS("alerts"),
   SETTINGS("settings"),
 }
 
@@ -112,20 +115,17 @@ internal fun validTopSpeedKmh(value: Any?): Double? =
     ?.takeIf { it.isFinite() }
     ?.coerceIn(5.0, 150.0)
 
+/** Wrist Tilt stick speed at full deflection, percent of full tilt per second. */
+internal fun validWearTiltRatePercent(value: Any?): Int? =
+  (value as? Number)
+    ?.toInt()
+    ?.coerceIn(1, 100)
+
 /** Watch push rate in Hz; 1 Hz floor, 20 Hz ceiling (the 50 ms the wrist link can still keep up with). */
 internal fun validWearPushRateHz(value: Any?): Int? =
   (value as? Number)
     ?.toInt()
     ?.coerceIn(1, 20)
-
-val DEFAULT_HISTORY_METRIC_HOT_RANGES: Map<String, Map<String, Double>> = mapOf(
-  "speed" to mapOf("start" to 30.0, "end" to 40.0),
-  "duty" to mapOf("start" to 60.0, "end" to 80.0),
-  "tempMotor" to mapOf("start" to 70.0, "end" to 90.0),
-  "tempController" to mapOf("start" to 60.0, "end" to 80.0),
-  "motorCurrent" to mapOf("start" to 35.0, "end" to 55.0),
-  "batteryCurrent" to mapOf("start" to 25.0, "end" to 45.0),
-)
 
 private val historyMetricHotRangeKeys = setOf(
   "speed",
@@ -180,6 +180,8 @@ private fun Any?.asStringKeyMap(): Map<String, Any?>? = when (this) {
 // @parity /modules/vescape-core/ios/telemetry/AppDataRepository.swift
 class AppDataRepository private constructor(private val context: Context) {
   private val dao = TelemetryDatabase.get(context).telemetryDao()
+  private val tuneAlerts = TuneAlertPersistence(dao)
+  private val boardSettings = BoardSettingsPersistence(dao)
 
   /** Notify JS that persisted data in [scope] changed, so the matching store reloads and stays in
    *  sync without an app restart. Every mutating method below funnels through here — new writes get
@@ -190,28 +192,37 @@ class AppDataRepository private constructor(private val context: Context) {
   }
 
   suspend fun getBoards(): List<Map<String, Any?>> = withContext(Dispatchers.IO) {
-    val boards = dao.getBoards()
+    val boards = boardSettings.getBoards()
     val settingsByBoard =
-      if (boards.isEmpty()) emptyMap() else dao.getBoardSettings(boards.map { it.id }).groupBy { it.boardId }
+      if (boards.isEmpty()) emptyMap() else boardSettings.getBoardSettings(boards.map { it.id }).groupBy { it.boardId }
     boards.map { it.toMap(settingsByBoard[it.id].orEmpty()) }
   }
 
   suspend fun getBoard(id: String): Map<String, Any?>? = withContext(Dispatchers.IO) {
-    dao.getBoard(id)?.toMap(dao.getBoardSettings(id))
+    boardSettings.getBoard(id)?.toMap(boardSettings.getBoardSettings(id))
   }
 
   suspend fun upsertBoard(board: Map<String, Any?>): Unit = withContext(Dispatchers.IO) {
     val boardId = board.getString("id")
     val (settings, deletedKeys) = board.toBoardSettingEntities(boardId)
-    dao.upsertBoardWithSettings(board.toBoardEntity(), settings, deletedKeys)
+    boardSettings.upsertBoard(board.toBoardEntity(), settings, deletedKeys)
     notifyDataChanged(AppDataScope.BOARDS)
+    notifyDataChanged(AppDataScope.ALERTS)
+  }
+
+  suspend fun repairMissingAlertPresetRelations(boardId: String): Unit = withContext(Dispatchers.IO) {
+    if (dao.repairMissingAlertPresetRelations(boardId)) notifyDataChanged(AppDataScope.ALERTS)
+  }
+
+  suspend fun applyAlertPreset(boardId: String, metric: String, action: String, level: String?, matchBoardConfig: Boolean?): Unit = withContext(Dispatchers.IO) {
+    dao.applyAlertPreset(boardId, metric, action, level, matchBoardConfig)
+    notifyDataChanged(AppDataScope.BOARDS)
+    notifyDataChanged(AppDataScope.ALERTS)
   }
 
   /** Tombstones the Board and hard-deletes its configuration; see [TelemetryDao.deleteBoardWithSettings]. */
   suspend fun deleteBoard(id: String): Unit = withContext(Dispatchers.IO) {
-    dao.deleteBoardWithSettings(id, System.currentTimeMillis())
-    dao.deleteBoardConfigValues(id)
-    dao.deleteBoardConfigChangeNotice(id)
+    boardSettings.deleteBoard(id, System.currentTimeMillis())
     notifyDataChanged(AppDataScope.BOARDS)
   }
 
@@ -294,12 +305,7 @@ class AppDataRepository private constructor(private val context: Context) {
   internal suspend fun saveFreshBoardConfigValues(values: BoardConfigValues): BoardConfigChangeNotice? = withContext(Dispatchers.IO) {
     val boardId = values.boardId ?: return@withContext null
     val base = values.refloatBaseVersion ?: return@withContext null
-    val row = dao.replaceBaselineAndNotice(BoardConfigValuesEntity(boardId, base, values.valuesJson(), values.capturedAtMs)) { old ->
-      val oldValues = old?.let { BoardConfigValues.lastKnown(boardId, base, it.capturedAt, it.valuesJson).values } ?: return@replaceBaselineAndNotice null
-      val diffs = BoardConfigChangeNotice.diff(oldValues, values.values, values.writeBase?.schema)
-      diffs.takeIf { it.isNotEmpty() }?.let { BoardConfigChangeNoticeEntity(boardId, values.capturedAtMs, BoardConfigChangeNotice(boardId, values.capturedAtMs, it).diffsJson()) }
-    }
-    row?.let { BoardConfigChangeNotice.from(it.boardId, it.detectedAt, it.diffsJson) }
+    ConfigPersistence(dao).saveFreshBoard(boardId, base, values.values, values.capturedAtMs, values.writeBase?.schema)
   }
 
   internal suspend fun getBoardConfigChangeNotice(boardId: String): BoardConfigChangeNotice? = withContext(Dispatchers.IO) {
@@ -315,7 +321,7 @@ class AppDataRepository private constructor(private val context: Context) {
    * The Board's most recently captured Motor Config Values, whatever signature they were read
    * under. Restored as `lastKnown`; the caller drops them if the live board turns out to answer
    * with a different signature.
-   * @parity /modules/vescape-core/ios/config/MotorConfigStore.swift `latest`
+   * @parity /modules/vescape-core/ios/config/MotorConfigStore.swift `loadLatest`
    */
   internal suspend fun getLatestMotorConfigValues(boardId: String): MotorConfigValues? =
     withContext(Dispatchers.IO) {
@@ -342,36 +348,7 @@ class AppDataRepository private constructor(private val context: Context) {
   internal suspend fun saveFreshMotorConfigValues(values: MotorConfigValues): BoardConfigChangeNotice? =
     withContext(Dispatchers.IO) {
       val boardId = values.boardId?.takeIf { it.isNotBlank() } ?: return@withContext null
-      val entity = MotorConfigValuesEntity(
-        boardId = boardId,
-        mcconfSignature = values.signature,
-        firmware = values.firmware,
-        valuesJson = values.valuesJson(),
-        capturedAt = values.capturedAtMs,
-      )
-      val row = dao.replaceMotorBaselineAndNotice(entity) { old, existingNotice ->
-        if (old == null || old.mcconfSignature != values.signature) return@replaceMotorBaselineAndNotice existingNotice
-        val oldValues = MotorConfigValues.lastKnown(
-          boardId = boardId,
-          signature = old.mcconfSignature,
-          firmware = old.firmware,
-          capturedAtMs = old.capturedAt,
-          valuesJson = old.valuesJson,
-        ).values
-        // Motor config carries no schema, so a field's id is its own label (ADR 0036).
-        val diffs = BoardConfigChangeNotice.diff(oldValues, values.values, null)
-        if (diffs.isEmpty()) return@replaceMotorBaselineAndNotice existingNotice
-        val previous = existingNotice
-          ?.let { BoardConfigChangeNotice.from(it.boardId, it.detectedAt, it.diffsJson)?.diffs }
-          .orEmpty()
-        val merged = BoardConfigChangeNotice.mergeDiffs(previous, diffs)
-        BoardConfigChangeNoticeEntity(
-          boardId,
-          values.capturedAtMs,
-          BoardConfigChangeNotice(boardId, values.capturedAtMs, merged).diffsJson(),
-        )
-      }
-      row?.let { BoardConfigChangeNotice.from(it.boardId, it.detectedAt, it.diffsJson) }
+      ConfigPersistence(dao).saveFreshMotor(boardId, values.signature, values.firmware, values.values, values.capturedAtMs)
     }
 
   /**
@@ -381,13 +358,11 @@ class AppDataRepository private constructor(private val context: Context) {
    */
   internal suspend fun clearBoardConfigValues(boardId: String): Unit = withContext(Dispatchers.IO) {
     if (boardId.isBlank()) return@withContext
-    dao.deleteBoardConfigValues(boardId)
-    dao.deleteBoardConfigChangeNotice(boardId)
-    dao.deleteMotorConfigValues(boardId)
+    dao.clearBoardConfigState(boardId)
   }
 
   suspend fun getAlertRules(boardId: String): List<Map<String, Any?>> = withContext(Dispatchers.IO) {
-    dao.getAlertRules(boardId).map { it.toMap() }
+    tuneAlerts.alertRules(boardId).map { it.toMap() }
   }
 
   /** The given Board's enabled rules — the alert engine evaluates only the connected Board's rules. */
@@ -397,16 +372,16 @@ class AppDataRepository private constructor(private val context: Context) {
     }
 
   suspend fun upsertAlertRule(rule: Map<String, Any?>): Unit = withContext(Dispatchers.IO) {
-    dao.upsertAlertRule(rule.toAlertRuleEntity())
+    tuneAlerts.saveAlert(rule.toAlertRuleEntity())
   }
 
   suspend fun setAlertRuleEnabled(boardId: String, id: String, enabled: Boolean): Unit =
     withContext(Dispatchers.IO) {
-      dao.setAlertRuleEnabled(boardId, id, enabled)
+      tuneAlerts.setAlertEnabled(boardId, id, enabled)
     }
 
   suspend fun deleteAlertRule(boardId: String, id: String): Unit = withContext(Dispatchers.IO) {
-    dao.deleteAlertRule(boardId, id)
+    tuneAlerts.deleteAlert(boardId, id)
   }
 
   suspend fun getSettings(): Map<String, Any?> = withContext(Dispatchers.IO) {
@@ -414,7 +389,7 @@ class AppDataRepository private constructor(private val context: Context) {
   }
 
   suspend fun getTypedSettings(): AppSettings = withContext(Dispatchers.IO) {
-    val rows = dao.getAllAppSettings()
+    val rows = boardSettings.getSettings()
     val map = rows.associateBy { it.key }
     val badKeys = mutableListOf<String>()
 
@@ -445,6 +420,7 @@ class AppDataRepository private constructor(private val context: Context) {
       movingSpeedThresholdKmh = req("movingSpeedThresholdKmh", 3.0) { (it as? Number)?.toDouble() },
       freeSpinMaxSpeedDeltaKmh = req("freeSpinMaxSpeedDeltaKmh", DEFAULT_FREE_SPIN_MAX_SPEED_DELTA_KMH) { (it as? Number)?.toDouble() },
       freeSpinStationaryBoardCapKmh = req("freeSpinStationaryBoardCapKmh", DEFAULT_FREE_SPIN_STATIONARY_BOARD_CAP_KMH) { (it as? Number)?.toDouble() },
+      unitSystem = req("unitSystem", "metric", ::validUnitSystem),
       themeMode = req("themeMode", "system", ::validThemeMode),
       mapStyleKey = req("mapStyleKey", "onedark", ::validMapStyleKey),
       satelliteOverlayEnabled = req("satelliteOverlayEnabled", true) { it as? Boolean },
@@ -452,16 +428,26 @@ class AppDataRepository private constructor(private val context: Context) {
       satelliteMapImageryOpacity = req("satelliteMapImageryOpacity", 1.0, ::validSatelliteImageryOpacity),
       satelliteImagerySaturation = req("satelliteImagerySaturation", -0.35, ::validSatelliteImagerySaturation),
       hideTelemetryMapDetails = req("hideTelemetryMapDetails", true) { it as? Boolean },
+      showHistoryMapMarkers = req("showHistoryMapMarkers", false) { it as? Boolean },
       mapOrientationMode = req("mapOrientationMode", "northUp", ::validMapOrientationMode),
       historyMetricGradientsEnabled = req("historyMetricGradientsEnabled", true) { it as? Boolean },
       historyMetricHotRanges = req("historyMetricHotRanges", DEFAULT_HISTORY_METRIC_HOT_RANGES, ::validHistoryMetricHotRanges),
       socEstimateWindowSeconds = req("socEstimateWindowSeconds", 20, ::validSocEstimateWindowSeconds),
       boardMoveStrengthPercent = req("boardMoveStrengthPercent", 60, ::validBoardMoveStrengthPercent),
       connectionSoundsEnabled = req("connectionSoundsEnabled", true) { it as? Boolean },
+      soundPack = req("soundPack", if ("soundPack" in map) "simple" else "retro") { (it as? String)?.takeIf { pack -> pack == "simple" || pack == "retro" || CustomAppSounds.exists(context, pack) } },
+      audioSource = req("audioSource", "alarm") { (it as? String)?.takeIf { source -> source == "alarm" || source == "media" } },
       telemetryPollRateHz = req("telemetryPollRateHz", 20, ::validTelemetryPollRateHz),
       wearPushRateHz = req("wearPushRateHz", 4, ::validWearPushRateHz),
       wearAutoLaunchOnConnect = req("wearAutoLaunchOnConnect", true) { it as? Boolean },
       wearNavArrowEnabled = req("wearNavArrowEnabled", false) { it as? Boolean },
+      wearTelemetryTrailEnabled = req("wearTelemetryTrailEnabled", true) { it as? Boolean },
+      wearTelemetryGroupEnabled = req("wearTelemetryGroupEnabled", true) { it as? Boolean },
+      wearTelemetryRouteEnabled = req("wearTelemetryRouteEnabled", true) { it as? Boolean },
+      wearStreetMapEnabled = req("wearStreetMapEnabled", true) { it as? Boolean },
+      wearMapGaugesPercent = req("wearMapGaugesPercent", WatchMapGauges.DEFAULT_PERCENT, WatchMapGauges::percent),
+      groupRidePublicEnabled = req("groupRidePublicEnabled", false) { it as? Boolean },
+      wearTiltRatePercent = req("wearTiltRatePercent", 20, ::validWearTiltRatePercent),
       companionPresenceEnabled = req("companionPresenceEnabled", false) { it as? Boolean },
       boardWarningsEnabled = req("boardWarningsEnabled", true) { it as? Boolean },
       vescFaultCollectionEnabled = req("vescFaultCollectionEnabled", true) { it as? Boolean },
@@ -482,7 +468,11 @@ class AppDataRepository private constructor(private val context: Context) {
     )
 
     if (badKeys.isNotEmpty()) {
-      for (key in badKeys) dao.deleteAppSetting(key)
+      for (key in badKeys) {
+        if (key == "soundPack") {
+          dao.upsertAppSetting(AppSettingEntity(key, encodeSettingJson("simple"), System.currentTimeMillis()))
+        } else dao.deleteAppSetting(key)
+      }
       DiagnosticReporter.get(context).capture(
         "app_setting_corrupt",
         mapOf("keys" to badKeys.joinToString(",")),
@@ -515,6 +505,7 @@ class AppDataRepository private constructor(private val context: Context) {
         ((value as? Number)?.toDouble() ?: return@withContext).coerceAtLeast(0.0)
       "freeSpinMaxSpeedDeltaKmh", "freeSpinStationaryBoardCapKmh" ->
         ((value as? Number)?.toDouble() ?: return@withContext).coerceAtLeast(0.0)
+      "unitSystem" -> requireNotNull(validUnitSystem(value)) { "Invalid unitSystem" }
       "themeMode" -> validThemeMode(value) ?: return@withContext
       "mapStyleKey" ->
         validMapStyleKey(value) ?: return@withContext
@@ -526,6 +517,7 @@ class AppDataRepository private constructor(private val context: Context) {
       "satelliteImagerySaturation" ->
         validSatelliteImagerySaturation(value) ?: return@withContext
       "hideTelemetryMapDetails" -> value as? Boolean ?: return@withContext
+      "showHistoryMapMarkers" -> value as? Boolean ?: return@withContext
       "mapOrientationMode" ->
         validMapOrientationMode(value) ?: return@withContext
       "historyMetricGradientsEnabled" -> value as? Boolean ?: return@withContext
@@ -536,12 +528,22 @@ class AppDataRepository private constructor(private val context: Context) {
       "boardMoveStrengthPercent" ->
         validBoardMoveStrengthPercent(value) ?: return@withContext
       "connectionSoundsEnabled" -> value as? Boolean ?: return@withContext
+      "soundPack" -> (value as? String)?.takeIf { it == "simple" || it == "retro" || CustomAppSounds.exists(context, it) } ?: return@withContext
+      "audioSource" -> (value as? String)?.takeIf { it == "alarm" || it == "media" } ?: return@withContext
       "telemetryPollRateHz" ->
         validTelemetryPollRateHz(value) ?: return@withContext
       "wearPushRateHz" ->
         validWearPushRateHz(value) ?: return@withContext
       "wearAutoLaunchOnConnect" -> value as? Boolean ?: return@withContext
       "wearNavArrowEnabled" -> value as? Boolean ?: return@withContext
+      "wearTelemetryTrailEnabled" -> value as? Boolean ?: return@withContext
+      "wearTelemetryGroupEnabled" -> value as? Boolean ?: return@withContext
+      "wearTelemetryRouteEnabled" -> value as? Boolean ?: return@withContext
+      "wearStreetMapEnabled" -> value as? Boolean ?: return@withContext
+      "wearMapGaugesPercent" -> WatchMapGauges.percent(value) ?: return@withContext
+      "groupRidePublicEnabled" -> value as? Boolean ?: return@withContext
+      "wearTiltRatePercent" ->
+        validWearTiltRatePercent(value) ?: return@withContext
       "companionPresenceEnabled" -> value as? Boolean ?: return@withContext
       "boardWarningsEnabled" -> value as? Boolean ?: return@withContext
       "vescFaultCollectionEnabled" -> value as? Boolean ?: return@withContext
@@ -578,6 +580,7 @@ class AppDataRepository private constructor(private val context: Context) {
         "movingSpeedThresholdKmh" -> d.movingSpeedThresholdKmh
         "freeSpinMaxSpeedDeltaKmh" -> d.freeSpinMaxSpeedDeltaKmh
         "freeSpinStationaryBoardCapKmh" -> d.freeSpinStationaryBoardCapKmh
+        "unitSystem" -> d.unitSystem
         "themeMode" -> d.themeMode
         "mapStyleKey" -> d.mapStyleKey
         "satelliteOverlayEnabled" -> d.satelliteOverlayEnabled
@@ -585,16 +588,26 @@ class AppDataRepository private constructor(private val context: Context) {
         "satelliteMapImageryOpacity" -> d.satelliteMapImageryOpacity
         "satelliteImagerySaturation" -> d.satelliteImagerySaturation
         "hideTelemetryMapDetails" -> d.hideTelemetryMapDetails
+        "showHistoryMapMarkers" -> d.showHistoryMapMarkers
         "mapOrientationMode" -> d.mapOrientationMode
         "historyMetricGradientsEnabled" -> d.historyMetricGradientsEnabled
         "historyMetricHotRanges" -> d.historyMetricHotRanges
         "socEstimateWindowSeconds" -> d.socEstimateWindowSeconds
         "boardMoveStrengthPercent" -> d.boardMoveStrengthPercent
         "connectionSoundsEnabled" -> d.connectionSoundsEnabled
+        "soundPack" -> d.soundPack
+        "audioSource" -> d.audioSource
         "telemetryPollRateHz" -> d.telemetryPollRateHz
         "wearPushRateHz" -> d.wearPushRateHz
         "wearAutoLaunchOnConnect" -> d.wearAutoLaunchOnConnect
         "wearNavArrowEnabled" -> d.wearNavArrowEnabled
+        "wearTelemetryTrailEnabled" -> d.wearTelemetryTrailEnabled
+        "wearTelemetryGroupEnabled" -> d.wearTelemetryGroupEnabled
+        "wearTelemetryRouteEnabled" -> d.wearTelemetryRouteEnabled
+        "wearStreetMapEnabled" -> d.wearStreetMapEnabled
+        "wearMapGaugesPercent" -> d.wearMapGaugesPercent
+        "groupRidePublicEnabled" -> d.groupRidePublicEnabled
+        "wearTiltRatePercent" -> d.wearTiltRatePercent
         "companionPresenceEnabled" -> d.companionPresenceEnabled
         "boardWarningsEnabled" -> d.boardWarningsEnabled
         "vescFaultCollectionEnabled" -> d.vescFaultCollectionEnabled
@@ -610,7 +623,10 @@ class AppDataRepository private constructor(private val context: Context) {
         else -> null
       }
     }
-    if (coerced == default) {
+    if (normalizedKey == "unitSystem") {
+      dao.updateUnitSystem(coerced as String)
+      notifyDataChanged(AppDataScope.ALERTS)
+    } else if (coerced == default) {
       dao.deleteAppSetting(normalizedKey)
     } else {
       dao.upsertAppSetting(
@@ -686,11 +702,11 @@ class AppDataRepository private constructor(private val context: Context) {
   // @parity /modules/vescape-core/ios/telemetry/TuneProfileStore.swift
   suspend fun getTuneProfiles(boardId: String, refloatBaseVersion: String?): List<Map<String, Any?>> = withContext(Dispatchers.IO) {
     val compatibility = validRefloatBaseVersion(refloatBaseVersion) ?: return@withContext emptyList()
-    dao.getTuneProfilesByBoard(boardId, compatibility).map { it.toMap() }
+    tuneAlerts.profiles(boardId, compatibility).map { it.toMap() }
   }
 
   suspend fun getTuneProfile(id: String): Map<String, Any?>? = withContext(Dispatchers.IO) {
-    dao.getTuneProfile(id)?.toMap()
+    tuneAlerts.profile(id)?.toMap()
   }
 
   suspend fun createProfile(
@@ -717,15 +733,7 @@ class AppDataRepository private constructor(private val context: Context) {
         createdAt = now,
         updatedAt = now,
       )
-      dao.upsertTuneProfile(profile)
-      dao.insertTuneHistoryEntry(
-        TuneHistoryEntryEntity(
-          profileId = profile.id,
-          fieldsJson = fieldsJson,
-          createdAt = now,
-        ),
-      )
-      profile.toMap()
+      tuneAlerts.createProfile(profile).toMap()
     }
 
   suspend fun renameProfile(
@@ -745,7 +753,7 @@ class AppDataRepository private constructor(private val context: Context) {
   }
 
   suspend fun getProfileHistory(profileId: String): List<Map<String, Any?>> = withContext(Dispatchers.IO) {
-    dao.getTuneHistoryEntries(profileId).map { it.toMap() }
+    tuneAlerts.history(profileId).map { it.toMap() }
   }
 
   suspend fun rollbackProfile(profileId: String, historyEntryId: Long): Map<String, Any?> =
@@ -769,20 +777,12 @@ class AppDataRepository private constructor(private val context: Context) {
         createdAt = now,
         updatedAt = now,
       )
-      dao.upsertTuneProfile(copy)
-      dao.insertTuneHistoryEntry(
-        TuneHistoryEntryEntity(
-          profileId = copy.id,
-          fieldsJson = copy.fieldsJson,
-          createdAt = now,
-        ),
-      )
-      copy.toMap()
+      tuneAlerts.createProfile(copy).toMap()
     }
 
   suspend fun saveProfile(profileId: String, fields: Map<String, Any?>): Map<String, Any?> =
     withContext(Dispatchers.IO) {
-      dao.saveTuneProfile(
+      tuneAlerts.saveProfile(
         profileId = profileId,
         fieldsJson = fields.toJsonObject().toString(),
         updatedAt = System.currentTimeMillis(),
@@ -813,7 +813,7 @@ class AppDataRepository private constructor(private val context: Context) {
    * The personal direction target. Not a Map Point: it is never shared, and Group Ride presence
    * reads it natively while JS is gone.
    *
-   * @parity /modules/vescape-core/ios/telemetry/AppDataRepository.swift `directionPoint`
+   * @parity /modules/vescape-core/ios/telemetry/AppDataRepository.swift `getDirectionPoint`
    */
   suspend fun getDirectionPoint(): Pair<Double, Double>? = withContext(Dispatchers.IO) {
     val settings = getTypedSettings()
@@ -825,11 +825,12 @@ class AppDataRepository private constructor(private val context: Context) {
   suspend fun setDirectionPoint(latitude: Double?, longitude: Double?): Unit =
     withContext(Dispatchers.IO) {
       val now = System.currentTimeMillis()
-      dao.upsertAppSetting(
-        AppSettingEntity(DIRECTION_POINT_LATITUDE, encodeSettingJson(latitude), now),
-      )
-      dao.upsertAppSetting(
-        AppSettingEntity(DIRECTION_POINT_LONGITUDE, encodeSettingJson(longitude), now),
+      dao.replaceAppSettings(
+        listOf(
+          latitude?.let { AppSettingEntity(DIRECTION_POINT_LATITUDE, encodeSettingJson(it), now) },
+          longitude?.let { AppSettingEntity(DIRECTION_POINT_LONGITUDE, encodeSettingJson(it), now) },
+        ),
+        listOf(DIRECTION_POINT_LATITUDE, DIRECTION_POINT_LONGITUDE),
       )
       notifyDataChanged(AppDataScope.SETTINGS)
     }
@@ -933,6 +934,7 @@ fun BoardEntity.toMap(settings: List<BoardSettingEntity>): Map<String, Any?> {
     "id" to id,
     "name" to name,
     "description" to values["description"],
+    "personalization" to values["personalization"],
     "createdAt" to createdAt,
     // Board family. Absent row = VESC — every board predates the OneWheel session path.
     // TODO(iOS parity): OneWheel sessions are Android-only for now.
@@ -965,6 +967,7 @@ fun AppSettings.toMap(): Map<String, Any?> = mapOf(
   "movingSpeedThresholdKmh" to movingSpeedThresholdKmh,
   "freeSpinMaxSpeedDeltaKmh" to freeSpinMaxSpeedDeltaKmh,
   "freeSpinStationaryBoardCapKmh" to freeSpinStationaryBoardCapKmh,
+  "unitSystem" to unitSystem,
   "themeMode" to themeMode,
   "mapStyleKey" to mapStyleKey,
   "satelliteOverlayEnabled" to satelliteOverlayEnabled,
@@ -972,16 +975,26 @@ fun AppSettings.toMap(): Map<String, Any?> = mapOf(
   "satelliteMapImageryOpacity" to satelliteMapImageryOpacity,
   "satelliteImagerySaturation" to satelliteImagerySaturation,
   "hideTelemetryMapDetails" to hideTelemetryMapDetails,
+  "showHistoryMapMarkers" to showHistoryMapMarkers,
   "mapOrientationMode" to mapOrientationMode,
   "historyMetricGradientsEnabled" to historyMetricGradientsEnabled,
   "historyMetricHotRanges" to historyMetricHotRanges,
   "socEstimateWindowSeconds" to socEstimateWindowSeconds,
   "boardMoveStrengthPercent" to boardMoveStrengthPercent,
   "connectionSoundsEnabled" to connectionSoundsEnabled,
+  "soundPack" to soundPack,
+  "audioSource" to audioSource,
   "telemetryPollRateHz" to telemetryPollRateHz,
   "wearPushRateHz" to wearPushRateHz,
   "wearAutoLaunchOnConnect" to wearAutoLaunchOnConnect,
   "wearNavArrowEnabled" to wearNavArrowEnabled,
+  "wearTelemetryTrailEnabled" to wearTelemetryTrailEnabled,
+  "wearTelemetryGroupEnabled" to wearTelemetryGroupEnabled,
+  "wearTelemetryRouteEnabled" to wearTelemetryRouteEnabled,
+  "wearStreetMapEnabled" to wearStreetMapEnabled,
+  "wearMapGaugesPercent" to wearMapGaugesPercent,
+  "groupRidePublicEnabled" to groupRidePublicEnabled,
+  "wearTiltRatePercent" to wearTiltRatePercent,
   "companionPresenceEnabled" to companionPresenceEnabled,
   "boardWarningsEnabled" to boardWarningsEnabled,
   "vescFaultCollectionEnabled" to vescFaultCollectionEnabled,
@@ -1010,12 +1023,6 @@ internal fun encodeSettingJson(value: Any?): String {
   arr.put(jsonCompatibleValue(value))
   val s = arr.toString()
   return s.substring(1, s.length - 1)
-}
-
-internal fun decodeSettingJson(json: String): Any? {
-  val obj = JSONObject("{\"v\":$json}")
-  val v = obj.get("v")
-  return jsonValue(v)
 }
 
 fun AlertRuleEntity.toMap(): Map<String, Any?> = mapOf(
@@ -1049,7 +1056,7 @@ fun TuneProfileEntity.toMap(): Map<String, Any?> = mapOf(
 )
 
 internal fun validRefloatBaseVersion(value: String?): String? =
-  value?.takeIf { it.matches(Regex("""\d+\.\d+(?:\.\d+)?""")) }
+  tuneCompatibilityVersion(value)
 
 fun TuneHistoryEntryEntity.toMap(): Map<String, Any?> = mapOf(
   "id" to id,
@@ -1103,23 +1110,6 @@ private fun String.toJsonMap(): Map<String, Any?> {
     result[key] = jsonValue(json.get(key))
   }
   return result
-}
-
-private fun jsonValue(value: Any?): Any? {
-  return when (value) {
-    JSONObject.NULL -> null
-    is JSONObject -> {
-      val result = mutableMapOf<String, Any?>()
-      val keys = value.keys()
-      while (keys.hasNext()) {
-        val key = keys.next()
-        result[key] = jsonValue(value.get(key))
-      }
-      result
-    }
-    is JSONArray -> List(value.length()) { index -> jsonValue(value.get(index)) }
-    else -> value
-  }
 }
 
 fun PrivacyZoneEntity.toMap(): Map<String, Any?> = mapOf(
@@ -1209,6 +1199,7 @@ internal fun Map<String, Any?>.toBoardSettingEntities(boardId: String): Pair<Lis
   putOrDelete("description", (get("description") as? String)?.takeIf { it.isNotBlank() })
   // Only the non-default family persists; a VESC board stores no `kind` row.
   putOrDelete("kind", (get("kind") as? String)?.takeIf { it == "onewheel" })
+  putOrDelete("personalization", normalizePersonalization(get("personalization")))
   putOrDelete("batteryConfig", normalizeBatteryConfig(get("batteryConfig")))
   putOrDelete("dismissedWarnings", normalizeDismissedWarnings(get("dismissedWarnings")))
   putOrDelete("topSpeedKmh", validTopSpeedKmh(get("topSpeedKmh")))
@@ -1236,6 +1227,7 @@ private fun BoardSettingEntity.decodeBoardSetting(): Pair<String, Any?>? {
   return when (key) {
     "description" -> (raw as? String)?.let { key to it }
     "kind" -> (raw as? String)?.takeIf { it == "onewheel" }?.let { key to it }
+    "personalization" -> normalizePersonalization(raw)?.let { key to it }
     "batteryConfig" -> normalizeBatteryConfig(raw)?.let { key to it }
     "transport" -> (raw as? String)?.let {
       key to BoardTransport.toBridge(BoardTransport.decode(it))
@@ -1252,6 +1244,15 @@ private fun BoardSettingEntity.decodeBoardSetting(): Pair<String, Any?>? {
     "legalMode" -> normalizeLegalMode(raw)?.let { key to it }
     else -> null
   }
+}
+
+// @parity /modules/vescape-core/ios/telemetry/AppDataRepository.swift `normalizePersonalization`
+// @parity /modules/vescape-core/src/index.ts `Board.personalization`
+private fun normalizePersonalization(raw: Any?): Map<String, String>? {
+  val map = raw.asStringKeyMap() ?: return null
+  val railId = (map["railId"] as? String)?.takeIf { it.isNotBlank() } ?: return null
+  val railColorId = (map["railColorId"] as? String)?.takeIf { it.isNotBlank() } ?: return null
+  return mapOf("railId" to railId, "railColorId" to railColorId)
 }
 
 private fun normalizeLegalMode(raw: Any?): Map<String, Boolean>? =

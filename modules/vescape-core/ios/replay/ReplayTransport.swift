@@ -36,6 +36,7 @@ internal final class ReplayTransport: SessionTransport {
   private weak var listener: VescGattListener?
   private let recordingName: String
   private let onLocation: (ReplayLocation) -> Void
+  private let scheduler: Scheduler
   /// The session clock this playback drives; installed by the controller for the session.
   let clock: ReplayClock
   private var cancelled = false
@@ -46,12 +47,14 @@ internal final class ReplayTransport: SessionTransport {
     recordingName: String,
     listener: VescGattListener,
     onLocation: @escaping (ReplayLocation) -> Void,
-    clock: ReplayClock
+    clock: ReplayClock,
+    scheduler: Scheduler = MainQueueScheduler()
   ) {
     self.recordingName = recordingName
     self.listener = listener
     self.onLocation = onLocation
     self.clock = clock
+    self.scheduler = scheduler
   }
 
   func connect(peripheralId: String) {
@@ -60,6 +63,7 @@ internal final class ReplayTransport: SessionTransport {
       guard let self else { return }
       guard
         let url = ReplayRecordings.url(name: self.recordingName),
+        // intentional-suppression: caller emits REPLAY_LOAD_FAILED
         let jsonl = try? String(contentsOf: url, encoding: .utf8)
       else {
         DispatchQueue.main.async { [weak self] in
@@ -112,7 +116,7 @@ internal final class ReplayTransport: SessionTransport {
 
   private func schedule(atRecordedMs recordedMs: Int64, _ block: @escaping () -> Void) {
     let delayMs = clock.delayUntilRecorded(recordedMs)
-    DispatchQueue.main.asyncAfter(deadline: .now() + Double(delayMs) / 1000.0) { [weak self] in
+    scheduler.postDelayed(delayMs) { [weak self] in
       guard let self, !self.cancelled else { return }
       block()
     }
@@ -121,6 +125,7 @@ internal final class ReplayTransport: SessionTransport {
   /// Replay swallows all writes; request/response FSMs get replies on the recording's schedule.
   @discardableResult
   func sendPayload(_ payload: [UInt8]) -> Bool { !cancelled }
+  func sendRemoteInput(_ payload: [UInt8], urgent: Bool) -> Bool { !cancelled }
 
   func disconnect() { cancelled = true }
   func reconnect() {}

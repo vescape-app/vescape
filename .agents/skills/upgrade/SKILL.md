@@ -49,7 +49,9 @@ For `Worklets` JS/plugin mismatch, inspect the offending transform's `__pluginVe
 ## Native state
 
 - Native dependency/config-plugin change: run the repo's `bun run native:sync <platform>` or `bun run ios` / `bun run android`; do not hand-edit generated `ios/` or `android/`.
+- After `bun install --force`, rerun `pod install` in `ios/` before building. Reinstallation removes Skia's generated `libs/` frameworks; its podspec restores them. The native-sync fingerprint can remain unchanged and skip this step.
 - iOS build needs signing/device environment. Report missing environment honestly; do not encode machine fixes in project files.
+- Keep simulator signing enabled for runtime tests (`CODE_SIGN_IDENTITY=-` is sufficient). `CODE_SIGNING_ALLOWED=NO` omits simulated entitlements and makes Secure Store fail with `A required entitlement isn't present`.
 - Sentry upload is not compilation. For local release-build proof without credentials: `SENTRY_DISABLE_AUTO_UPLOAD=true bun run build:release`.
 
 ## Validation

@@ -31,6 +31,7 @@ const DEFAULTS: AppSettings = {
   freeSpinMaxSpeedDeltaKmh: 12,
   freeSpinStationaryBoardCapKmh: 15,
   rideSplitGapMinutes: DEFAULT_RIDE_SPLIT_GAP_MINUTES,
+  unitSystem: 'metric',
   themeMode: 'system',
   mapStyleKey: 'onedark',
   satelliteOverlayEnabled: true,
@@ -38,12 +39,15 @@ const DEFAULTS: AppSettings = {
   satelliteMapImageryOpacity: DEFAULT_SATELLITE_MAP_IMAGERY_OPACITY,
   satelliteImagerySaturation: DEFAULT_SATELLITE_IMAGERY_SATURATION,
   hideTelemetryMapDetails: true,
+  showHistoryMapMarkers: false,
   mapOrientationMode: 'northUp',
   historyMetricGradientsEnabled: true,
   historyMetricHotRanges: DEFAULT_HISTORY_METRIC_HOT_RANGES,
   socEstimateWindowSeconds: 20,
   boardMoveStrengthPercent: 60,
   connectionSoundsEnabled: true,
+  soundPack: 'retro',
+  audioSource: 'alarm',
   companionPresenceEnabled: false,
   boardWarningsEnabled: true,
   vescFaultCollectionEnabled: true,
@@ -54,15 +58,24 @@ const DEFAULTS: AppSettings = {
   wearPushRateHz: 4,
   wearAutoLaunchOnConnect: true,
   wearNavArrowEnabled: false,
+  wearTelemetryTrailEnabled: true,
+  wearTelemetryGroupEnabled: true,
+  wearTelemetryRouteEnabled: true,
+  wearStreetMapEnabled: true,
+  wearMapGaugesPercent: 60,
+  wearTiltRatePercent: 20,
   riderId: null,
   riderName: null,
   riderColor: null,
+  groupRidePublicEnabled: false,
   legalPolicy: null,
   dismissedCommunityMessageIds: [],
 }
 
 interface SettingsState extends AppSettings {
   loaded: boolean
+  loadError: string | null
+  writeError: string | null
   companionPresenceBoards: CompanionPresenceBoard[]
   load: () => Promise<void>
   set: <K extends Exclude<keyof AppSettings, 'legalPolicy'>>(
@@ -82,9 +95,15 @@ export function getLiveWindowMs(): number {
   return useSettingsStore.getState().liveHistoryLimit * 60_000
 }
 
+function assertSettingsAvailable(loaded: boolean): void {
+  if (!loaded) throw new Error('Settings are unavailable')
+}
+
 export const useSettingsStore = create<SettingsState>((set, get) => ({
   ...DEFAULTS,
   loaded: false,
+  loadError: null,
+  writeError: null,
   companionPresenceBoards: [],
 
   async load() {
@@ -108,19 +127,37 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
         patch.companionPresenceBoards = companionPresenceBoards
       }
       if (!prev.loaded) patch.loaded = true
+      if (prev.loadError) patch.loadError = null
       if (Object.keys(patch).length > 0) set(patch)
     } catch {
-      if (!get().loaded) set({ loaded: true })
+      set({
+        loaded: false,
+        loadError: 'Settings could not be read. Restart Vescape before changing settings.',
+      })
     }
   },
 
-  async set(key, value) {
-    if (key === 'autoConnect' && value === false && get().companionPresenceEnabled) return
-    set({ [key]: value })
-    await updateSetting(key, value)
+  set(key, value) {
+    const operation = (async () => {
+      set({ writeError: null })
+      try {
+        assertSettingsAvailable(get().loaded)
+        if (key === 'autoConnect' && value === false && get().companionPresenceEnabled) return
+        await updateSetting(key, value)
+        set({ [key]: value })
+      } catch (error) {
+        set({ writeError: 'Setting could not be saved. Try again.' })
+        throw error
+      }
+    })()
+    // Settings controls are fire-and-forget; attach an observer while preserving rejection for awaiters.
+    // intentional-suppression: settings write error is rendered by AppStorageFailureBanner
+    void operation.catch(() => undefined) // Visible owner: writeError in AppStorageFailureBanner.
+    return operation
   },
 
   async setCompanionPresence(enabled) {
+    assertSettingsAvailable(get().loaded)
     await setCompanionPresenceEnabled(enabled)
     const companionPresenceBoards = await getCompanionPresenceBoards()
     set({
@@ -131,12 +168,14 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
   },
 
   async addCompanionBoard(boardId) {
+    assertSettingsAvailable(get().loaded)
     await addCompanionPresenceBoard(boardId)
     const companionPresenceBoards = await getCompanionPresenceBoards()
     set({ companionPresenceBoards, companionPresenceEnabled: companionPresenceBoards.length > 0 })
   },
 
   async removeCompanionBoard(boardId) {
+    assertSettingsAvailable(get().loaded)
     await removeCompanionPresenceBoard(boardId)
     const companionPresenceBoards = await getCompanionPresenceBoards()
     set({ companionPresenceBoards })

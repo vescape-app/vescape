@@ -2,16 +2,14 @@ import { StyleSheet, View } from 'react-native'
 import {
   ArrowLeftIcon,
   CheckIcon,
-  ClockCounterClockwiseIcon,
   PencilSimpleIcon,
-  StarIcon,
-  TrashIcon,
+  DotsThreeIcon,
   XIcon,
 } from 'phosphor-react-native'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 
 import { IconButton } from '@/components/base/IconButton'
-import { PillSelector, PillSelectorItem } from '@/components/controls/PillSelector'
+import { HistoryTabs } from '@/modules/history/components/HistoryTabs'
 import { Input } from '@/components/forms/Input'
 import { theme } from '@/constants/theme'
 import type { HistoryTab } from '@/screens/main/mainScreenStore'
@@ -27,7 +25,6 @@ interface HistoryControlsProps {
    */
   favorite?: {
     onEdit: () => void
-    onDelete: () => void
   }
   saving: boolean
   trimName: string
@@ -35,7 +32,7 @@ interface HistoryControlsProps {
   onTrimNameChange: (name: string) => void
   onSelectTab: (tab: HistoryTab) => void
   onBack: () => void
-  onRemove: () => void
+  onOpenActions: () => void
   onCancelTrim: () => void
   onSaveTrim: () => void
 }
@@ -52,7 +49,7 @@ export function HistoryControls({
   onTrimNameChange,
   onSelectTab,
   onBack,
-  onRemove,
+  onOpenActions,
   onCancelTrim,
   onSaveTrim,
 }: HistoryControlsProps) {
@@ -76,6 +73,9 @@ export function HistoryControls({
               onChangeText={onTrimNameChange}
               placeholder={trimNamePlaceholder}
               editable={!saving}
+              // Renaming replaces the old name far more often than it appends to it, and the
+              // inline board-name field already behaves this way.
+              selectTextOnFocus
               returnKeyType="done"
               onSubmitEditing={onSaveTrim}
               style={styles.nameInput}
@@ -104,35 +104,7 @@ export function HistoryControls({
           accessibilityLabel="Back"
         />
         <View style={styles.tabsWrap} pointerEvents="box-none">
-          <PillSelector
-            activeId={tab}
-            contained
-            fitContent
-            variant="lightTabs"
-            style={styles.tabs}
-            contentContainerStyle={styles.tabsContent}
-          >
-            <PillSelectorItem
-              id="history"
-              label="History"
-              icon={ClockCounterClockwiseIcon}
-              activeWidth={116}
-              inactiveWidth={46}
-              color={theme.palette.sky}
-              testID="history-tab-history"
-              onPress={() => onSelectTab('history')}
-            />
-            <PillSelectorItem
-              id="favorites"
-              label="Favorites"
-              icon={StarIcon}
-              activeWidth={126}
-              inactiveWidth={46}
-              color={theme.palette.amber}
-              testID="history-tab-favorites"
-              onPress={() => onSelectTab('favorites')}
-            />
-          </PillSelector>
+          <HistoryTabs tab={tab} onSelectTab={onSelectTab} />
         </View>
         <View style={styles.actions}>
           {favorite ? (
@@ -145,22 +117,19 @@ export function HistoryControls({
                 accessibilityLabel="Edit Favorite"
               />
               <IconButton
-                icon={TrashIcon}
-                onPress={favorite.onDelete}
-                destructive
-                disabled={loading}
-                testID="favorite-delete"
-                accessibilityLabel="Delete Favorite"
+                icon={DotsThreeIcon}
+                onPress={onOpenActions}
+                testID="favorite-actions"
+                accessibilityLabel="Favorite actions"
               />
             </>
           ) : null}
           {!favorite && canRemove ? (
             <IconButton
-              icon={TrashIcon}
-              onPress={onRemove}
-              destructive
-              disabled={loading}
-              accessibilityLabel="Delete ride"
+              icon={DotsThreeIcon}
+              onPress={onOpenActions}
+              testID="history-actions"
+              accessibilityLabel="Ride actions"
             />
           ) : !favorite ? (
             <View style={styles.actionSpacer} />
@@ -201,12 +170,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 8,
     zIndex: 1,
-  },
-  tabs: {
-    alignSelf: 'center',
-  },
-  tabsContent: {
-    justifyContent: 'center',
   },
   headerTitleWrap: {
     flex: 1,

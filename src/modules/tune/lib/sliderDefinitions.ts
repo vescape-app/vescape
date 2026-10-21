@@ -109,9 +109,8 @@ function nearEqual(a: number, b: number): boolean {
 }
 
 export function fieldStep(field: RefloatConfigField): number {
-  if (Number.isInteger(field.value) && Number.isInteger(field.min) && Number.isInteger(field.max)) {
-    return 1
-  }
+  const explicitStep = APP_TUNE_FIELD_BY_ID.get(field.id)?.step
+  if (explicitStep != null) return explicitStep
   const range = (field.max ?? 1) - (field.min ?? 0)
   if (range <= 1) return 0.01
   if (range <= 5) return 0.05
@@ -286,6 +285,16 @@ const BASIC_SLIDERS: BasicSliderDefinition[] = [
   },
 ]
 
+/** Opening an editor does not opt into replacing custom linked values with a formula. */
+export function basicSliderChanges(
+  def: BasicSliderDefinition,
+  value: number,
+  originalValue: number,
+  linkedFieldValues?: Record<string, number>,
+): Record<string, number> {
+  return { ...(value === originalValue ? {} : def.computeFieldValues(value)), ...linkedFieldValues }
+}
+
 export const BASIC_SLIDER_BY_ID = new Map(BASIC_SLIDERS.map((s) => [s.id, s]))
 
 export function basicSlidersFromGroups(
@@ -324,6 +333,7 @@ export interface LinkedFieldPreview {
   min: number
   max: number
   step: number
+  currentValue?: number
   computeValue: (sliderVal: number) => number
 }
 

@@ -34,7 +34,6 @@ interface MapVignetteProps {
 
 interface VignetteLayerProps {
   color: string
-  levelScale: number
   width: number
   height: number
   opacity: { value: number }
@@ -60,9 +59,8 @@ const HISTORY_TOP_POSITIONS = [0, 0.52, 1]
 const HISTORY_BOTTOM_POSITIONS = [0, 0.5, 0.6, 1]
 
 /**
- * Light mode holds the wash near full strength for most of the band and then drops off fast, and
- * reaches further into the screen: the readouts sit below the dark-mode edge band, and a near-white
- * wash over a light map needs the extra reach to lift them off the map detail.
+ * Light mode holds the wash longer and reaches further into the screen for map-surface controls.
+ * Its alpha matches dark mode; only the shape of the edge band differs.
  *
  * Weather mode carries the most text of any map surface at the bottom — the radar timeline and the
  * hourly strip — so its bottom band is stronger and starts higher than its top one.
@@ -97,19 +95,12 @@ function mapEdgeVignetteSpace(mode: MainViewState, resolvedTheme: ResolvedTheme)
   }
 }
 
-/**
- * The light wash is near-white over a light map, so the same level lifts far less contrast than the
- * navy wash does on dark. Light mode scales every level up to keep the numbers readable.
- */
-const LIGHT_LEVEL_SCALE = 1.5
-
-function vignetteOpacity(color: string, level: number, levelScale: number) {
-  return theme.alpha(color, Math.min(1, level * levelScale) as 0 | 0.12 | 0.3 | 0.6 | 0.85)
+function vignetteOpacity(color: string, level: number) {
+  return theme.alpha(color, level as 0 | 0.12 | 0.3 | 0.6 | 0.85)
 }
 
 function VignetteLayer({
   color,
-  levelScale,
   width,
   height,
   opacity,
@@ -135,7 +126,7 @@ function VignetteLayer({
             <RadialGradient
               c={vec(width / 2, height / 2)}
               r={radialRadius}
-              colors={radial.map((level) => vignetteOpacity(color, level, levelScale))}
+              colors={radial.map((level) => vignetteOpacity(color, level))}
               positions={RADIAL_POSITIONS}
             />
           </Rect>
@@ -145,7 +136,7 @@ function VignetteLayer({
         <LinearGradient
           start={vec(0, 0)}
           end={vec(0, height * topEnd)}
-          colors={top.map((level) => vignetteOpacity(color, level, levelScale))}
+          colors={top.map((level) => vignetteOpacity(color, level))}
           positions={topPositions}
         />
       </Rect>
@@ -154,7 +145,7 @@ function VignetteLayer({
           <LinearGradient
             start={vec(0, height)}
             end={vec(0, height * bottomStart)}
-            colors={bottom.map((level) => vignetteOpacity(color, level, levelScale))}
+            colors={bottom.map((level) => vignetteOpacity(color, level))}
             positions={bottomPositions}
           />
         </Rect>
@@ -166,13 +157,11 @@ function VignetteLayer({
 
 function AnimatedHistoryBottomGradient({
   color,
-  levelScale,
   width,
   height,
   bottomStart,
 }: {
   color: string
-  levelScale: number
   width: number
   height: number
   bottomStart: SharedValue<number>
@@ -186,7 +175,7 @@ function AnimatedHistoryBottomGradient({
       <LinearGradient
         start={vec(0, height)}
         end={gradientEnd}
-        colors={[0.85, 0.6, 0.3, 0].map((level) => vignetteOpacity(color, level, levelScale))}
+        colors={[0.85, 0.6, 0.3, 0].map((level) => vignetteOpacity(color, level))}
         positions={HISTORY_BOTTOM_POSITIONS}
       />
     </Rect>
@@ -202,7 +191,6 @@ export function MapVignette({
 }: MapVignetteProps) {
   const neutral = useResolvedNeutralColors()
   const resolvedTheme = useThemeStore((state) => state.resolvedTheme)
-  const levelScale = resolvedTheme === 'light' ? LIGHT_LEVEL_SCALE : 1
   const { width, height } = useWindowDimensions()
   const mapSurfaceVisible = mode === 'map' || mode === 'weather' || mode === 'legalLimits'
   const mapEdgeSpace = mapEdgeVignetteSpace(mode === 'telemetry' ? 'map' : mode, resolvedTheme)
@@ -241,7 +229,6 @@ export function MapVignette({
       <Canvas style={styles.canvas}>
         <VignetteLayer
           color={neutral.surfaceDeep}
-          levelScale={levelScale}
           width={width}
           height={height}
           opacity={homeLayerOpacity}
@@ -255,7 +242,6 @@ export function MapVignette({
         />
         <VignetteLayer
           color={neutral.surfaceDeep}
-          levelScale={levelScale}
           width={width}
           height={height}
           opacity={mapSurfaceLayerOpacity}
@@ -269,7 +255,6 @@ export function MapVignette({
         {!topOnly ? (
           <VignetteLayer
             color={neutral.surfaceDeep}
-            levelScale={levelScale}
             width={width}
             height={height}
             opacity={historyLayerOpacity}
@@ -280,7 +265,6 @@ export function MapVignette({
           >
             <AnimatedHistoryBottomGradient
               color={neutral.surfaceDeep}
-              levelScale={levelScale}
               width={width}
               height={height}
               bottomStart={historyBottomStartValue}

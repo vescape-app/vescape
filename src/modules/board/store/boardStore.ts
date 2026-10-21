@@ -31,12 +31,13 @@ interface BoardActions {
     name: string
     kind?: BoardKind
     description?: string
+    personalization?: Board['personalization']
     link?: BoardLink | null
     batteryConfig?: BatteryConfig | null
     topSpeedKmh?: number
     alertPreset?: Record<string, unknown> | null
     alertPresetsOnboarded?: boolean
-  }) => Board
+  }) => Promise<Board>
   updateBoard: (board: Board) => Promise<void>
   /** Dismiss (acknowledge) or restore a Board Warning kind; persisted on the board record. */
   setWarningDismissed: (boardId: string, kind: string, dismissed: boolean) => Promise<void>
@@ -72,18 +73,18 @@ export const useBoardStore = create<BoardState & BoardActions>((set, get) => ({
     if (mergedBoards !== prevBoards) patch.boards = mergedBoards
     if (nextActiveBoardId !== activeBoardId) patch.activeBoardId = nextActiveBoardId
     if (!hasLoaded) patch.hasLoaded = true
-    if (Object.keys(patch).length > 0) set(patch)
-
     if (nextActiveBoardId !== settings.selectedBoardId) {
       nativeSetSelectedBoard(nextActiveBoardId)
     }
+    if (Object.keys(patch).length > 0) set(patch)
   },
 
-  addBoard({
+  async addBoard({
     id,
     name,
     kind,
     description,
+    personalization,
     link,
     batteryConfig,
     topSpeedKmh,
@@ -95,6 +96,7 @@ export const useBoardStore = create<BoardState & BoardActions>((set, get) => ({
       name,
       kind: kind ?? 'vesc',
       description: description ?? null,
+      personalization,
       createdAt: Date.now(),
       deletedAt: null,
       // `null` means the board supplies SoC directly (original OneWheel).
@@ -105,19 +107,18 @@ export const useBoardStore = create<BoardState & BoardActions>((set, get) => ({
       legalMode: { enabled: false },
       link: link ?? null,
     }
+    await upsertBoard(board)
     set((state) => ({
       boards: [...state.boards, board],
       activeBoardId: state.activeBoardId ?? board.id,
     }))
-    void upsertBoard(board)
     return board
   },
 
   async updateBoard(board) {
-    set((state) => ({
-      boards: state.boards.map((b) => (b.id === board.id ? board : b)),
-    }))
     await upsertBoard(board)
+    const boards = await getBoards()
+    set((state) => ({ boards: mergeBoards(state.boards, boards) }))
   },
 
   async setWarningDismissed(boardId, kind, dismissed) {
@@ -138,20 +139,16 @@ export const useBoardStore = create<BoardState & BoardActions>((set, get) => ({
   },
 
   async removeBoard(id) {
-    set((state) => {
-      const remaining = state.boards.filter((b) => b.id !== id)
-      return {
-        boards: remaining,
-        activeBoardId:
-          state.activeBoardId === id ? (remaining[0]?.id ?? null) : state.activeBoardId,
-      }
-    })
     await nativeDeleteBoard(id)
+    const remaining = get().boards.filter((b) => b.id !== id)
+    set({ boards: remaining })
+    // Native owns the selection; leaving it on the deleted Board would keep it on the wrist.
+    if (get().activeBoardId === id) get().setActiveBoard(remaining[0]?.id ?? null)
   },
 
   setActiveBoard(id) {
-    set({ activeBoardId: id })
     nativeSetSelectedBoard(id)
+    set({ activeBoardId: id })
   },
 }))
 

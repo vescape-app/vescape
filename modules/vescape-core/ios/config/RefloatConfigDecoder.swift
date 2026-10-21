@@ -75,6 +75,7 @@ enum RefloatConfigDecoder {
     var values: [String: Any] = [:]
     for field in schema.fields {
       guard rawConfig.count >= field.offset + field.type.byteSize else { continue }
+      // intentional-suppression: one malformed field must not discard other decoded fields
       guard let value = try? readValue(rawConfig, field) else { continue }
       if let double = value as? Double {
         if double.isFinite { values[field.id] = double }

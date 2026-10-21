@@ -20,6 +20,12 @@ export interface ReleaseManifest {
     runUrl: string
     runAttempt: number
   }
+  storageContracts?: {
+    sourceSha: string
+    androidRoom: 'passed'
+    iosGrdb: 'passed'
+    crossPlatformArchives: 'passed'
+  }
   artifacts: {
     phone: ArtifactIdentity
     wear: ArtifactIdentity
@@ -102,7 +108,24 @@ export interface ProductionManifest {
   githubRelease: 'released' | 'already-released' | 'skipped' | 'failed'
 }
 
+/** Older builds may lack storage-test metadata, but remain valid promotion candidates. */
+export type HistoricalReleaseManifest = Omit<ReleaseManifest, 'storageContracts'>
+
 export function parseReleaseManifest(value: unknown): ReleaseManifest {
+  const manifest = parseHistoricalReleaseManifest(value) as ReleaseManifest
+  if (
+    manifest.storageContracts !== undefined &&
+    (manifest.storageContracts?.sourceSha !== manifest.sourceSha ||
+      manifest.storageContracts.androidRoom !== 'passed' ||
+      manifest.storageContracts.iosGrdb !== 'passed' ||
+      manifest.storageContracts.crossPlatformArchives !== 'passed')
+  ) {
+    throw new Error('Release manifest has an invalid shape')
+  }
+  return manifest
+}
+
+export function parseHistoricalReleaseManifest(value: unknown): HistoricalReleaseManifest {
   if (!value || typeof value !== 'object') throw new Error('Release manifest is not an object')
   const manifest = value as Partial<ReleaseManifest>
   if (
@@ -127,7 +150,7 @@ export function parseReleaseManifest(value: unknown): ReleaseManifest {
   ) {
     throw new Error('Release manifest has an invalid shape')
   }
-  return manifest as ReleaseManifest
+  return manifest as HistoricalReleaseManifest
 }
 
 export type ReleaseOutcome =

@@ -413,7 +413,7 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
   sectionLabel: {
-    color: theme.palette.slate.textMuted,
+    color: theme.neutral.textMuted,
     fontSize: 13,
     fontWeight: '700',
     textTransform: 'uppercase',
@@ -453,7 +453,7 @@ const styles = StyleSheet.create({
     fontWeight: '700',
   },
   owNoticeText: {
-    color: theme.palette.slate.textSecondary,
+    color: theme.neutral.textSecondary,
     fontSize: 14,
     lineHeight: 21,
   },

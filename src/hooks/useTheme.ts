@@ -9,6 +9,7 @@ import {
   resolveAdaptiveColor,
   telemetryColors,
   type ResolvedTheme,
+  type ThemeColor,
 } from '@/constants/theme'
 
 interface ThemeState {
@@ -48,9 +49,9 @@ export function useResolvedTelemetryColors() {
 }
 
 /** Resolve one adaptive token when a renderer-facing API accepts a caller-selected color. */
-export function useResolvedColor(color: string): string {
+export function useResolvedColor(color: ThemeColor): string {
   const resolvedTheme = useThemeStore((state) => state.resolvedTheme)
-  return resolveAdaptiveColor(color, resolvedTheme) as string
+  return resolveAdaptiveColor(color, resolvedTheme)
 }
 
 /**
@@ -61,9 +62,9 @@ export function useResolvedColor(color: string): string {
  * computed color (same pixels, no palette addition). Pass the accent as a resolved hex or adaptive
  * token.
  */
-export function useColoredAction(accent: string): string {
+export function useColoredAction(accent: ThemeColor): string {
   const resolvedTheme = useThemeStore((state) => state.resolvedTheme)
-  const accentColor = resolveAdaptiveColor(accent, resolvedTheme) as string
+  const accentColor = resolveAdaptiveColor(accent, resolvedTheme)
   if (resolvedTheme === 'dark') return `rgba(${hexToRgb(accentColor)},${coloredAction.darkTint})`
   return blend(controlColors.light.background, accentColor, coloredAction.tint)
 }
@@ -73,8 +74,8 @@ export function useColoredAction(accent: string): string {
  * in both themes, so the accent must keep its dark-theme tone on light as well — the light-theme
  * tone is tuned for a light surface and disappears against the navy wash.
  */
-export function useColoredActionForeground(accent: string): string {
-  return resolveAdaptiveColor(accent, 'dark') as string
+export function useColoredActionForeground(accent: ThemeColor): string {
+  return resolveAdaptiveColor(accent, 'dark')
 }
 
 function hexToRgb(hex: string): string {

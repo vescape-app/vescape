@@ -5,17 +5,46 @@ import org.junit.Test
 
 class ReconnectPolicyTest {
     @Test
-    fun `backoff grows linearly then caps`() {
+    fun `backoff grows linearly then caps while the drop still looks recoverable`() {
         assertEquals(ReconnectRetry(attempt = 1, delayMs = 500L), ReconnectPolicy.nextRetry(0))
         assertEquals(ReconnectRetry(attempt = 2, delayMs = 1_000L), ReconnectPolicy.nextRetry(1))
         assertEquals(ReconnectRetry(attempt = 10, delayMs = 5_000L), ReconnectPolicy.nextRetry(9))
-        assertEquals(ReconnectRetry(attempt = 60, delayMs = 5_000L), ReconnectPolicy.nextRetry(59))
+        assertEquals(
+            ReconnectRetry(attempt = RECONNECT_SLOW_AFTER_ATTEMPTS, delayMs = 5_000L),
+            ReconnectPolicy.nextRetry(RECONNECT_SLOW_AFTER_ATTEMPTS - 1),
+        )
     }
 
     @Test
-    fun `retries stay capped and never give up`() {
-        assertEquals(ReconnectRetry(attempt = 61, delayMs = 5_000L), ReconnectPolicy.nextRetry(60))
-        assertEquals(ReconnectRetry(attempt = 1_000, delayMs = 5_000L), ReconnectPolicy.nextRetry(999))
+    fun `backoff drops to the slow tier once the board is plainly off`() {
+        assertEquals(
+            ReconnectRetry(attempt = RECONNECT_SLOW_AFTER_ATTEMPTS + 1, delayMs = RECONNECT_SLOW_BACKOFF_MS),
+            ReconnectPolicy.nextRetry(RECONNECT_SLOW_AFTER_ATTEMPTS),
+        )
+        assertEquals(
+            ReconnectRetry(attempt = 60, delayMs = RECONNECT_SLOW_BACKOFF_MS),
+            ReconnectPolicy.nextRetry(59),
+        )
+    }
+
+    /**
+     * A rider watching "Reconnecting" must not wait 30s between attempts; the slow tier is for a
+     * pocketed phone chasing a board that is off.
+     */
+    @Test
+    fun `the slow tier never applies while the rider is watching`() {
+        assertEquals(
+            ReconnectRetry(attempt = 60, delayMs = 5_000L),
+            ReconnectPolicy.nextRetry(59, appForeground = true),
+        )
+    }
+
+    @Test
+    fun `retries never give up`() {
+        assertEquals(
+            ReconnectRetry(attempt = 1_000, delayMs = RECONNECT_SLOW_BACKOFF_MS),
+            ReconnectPolicy.nextRetry(999),
+        )
     }
 
     @Test

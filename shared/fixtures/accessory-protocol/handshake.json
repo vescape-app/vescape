@@ -1,0 +1,313 @@
+{
+  "$comment": "Vescape Accessory Protocol v1 discovery handshake contract. Kotlin, Swift and the ESP32 firmware all run these cases. `hello.line` is the exact line the app writes after subscribing — the only write discovery is allowed to make. Each manifest case is one received line plus either the parsed accessory it must produce or the reason it must be rejected. `canonical: true` marks a line a conforming accessory emits byte for byte, so the firmware builder is asserted against it too; the rest exist only to exercise the app-side parser.",
+  "recognizedCapabilityTypes": ["ground_clearance", "brake_light"],
+  "compatibilities": ["supported", "unsupported-version", "unsupported-capabilities"],
+  "errors": ["malformed", "invalid", "session-mismatch"],
+  "hello": {
+    "sessionId": "b06b9d76-6c73-4d70-a763-d933b294c45b",
+    "requestId": 1,
+    "supportedVersions": [1],
+    "line": "{\"type\":\"hello\",\"requestId\":1,\"sessionId\":\"b06b9d76-6c73-4d70-a763-d933b294c45b\",\"supportedVersions\":[1]}"
+  },
+  "cases": [
+    {
+      "name": "ground-clearance sensor is supported",
+      "canonical": true,
+      "line": "{\"type\":\"manifest\",\"requestId\":1,\"sessionId\":\"b06b9d76-6c73-4d70-a763-d933b294c45b\",\"protocolVersion\":1,\"accessoryId\":\"b36ed5bd-1d24-460c-8034-aaeaefc5d016\",\"name\":\"Clearance sensor\",\"firmwareVersion\":\"0.1.0\",\"capabilities\":[{\"id\":\"clearance\",\"type\":\"ground_clearance\",\"unit\":\"cm\",\"range\":{\"min\":3,\"max\":100},\"ratesHz\":[10,20,30]}]}",
+      "error": null,
+      "expected": {
+        "accessoryId": "b36ed5bd-1d24-460c-8034-aaeaefc5d016",
+        "name": "Clearance sensor",
+        "firmwareVersion": "0.1.0",
+        "protocolVersion": 1,
+        "supportedVersions": [],
+        "compatibility": "supported",
+        "capabilities": [
+          {
+            "id": "clearance",
+            "type": "ground_clearance",
+            "supported": true,
+            "unit": "cm",
+            "rangeMin": 3,
+            "rangeMax": 100,
+            "ratesHz": [10, 20, 30]
+          }
+        ]
+      }
+    },
+    {
+      "name": "brake light is supported and declares no measurement limits",
+      "canonical": true,
+      "line": "{\"type\":\"manifest\",\"requestId\":1,\"sessionId\":\"b06b9d76-6c73-4d70-a763-d933b294c45b\",\"protocolVersion\":1,\"accessoryId\":\"0f0be7c8-6d97-4a56-9b1b-2d5f3b6a0c11\",\"name\":\"Rear light\",\"firmwareVersion\":\"0.2.1\",\"capabilities\":[{\"id\":\"rear_light\",\"type\":\"brake_light\"}]}",
+      "error": null,
+      "expected": {
+        "accessoryId": "0f0be7c8-6d97-4a56-9b1b-2d5f3b6a0c11",
+        "name": "Rear light",
+        "firmwareVersion": "0.2.1",
+        "protocolVersion": 1,
+        "supportedVersions": [],
+        "compatibility": "supported",
+        "capabilities": [
+          {
+            "id": "rear_light",
+            "type": "brake_light",
+            "supported": true,
+            "unit": null,
+            "rangeMin": null,
+            "rangeMax": null,
+            "ratesHz": []
+          }
+        ]
+      }
+    },
+    {
+      "name": "an unknown capability type is listed unsupported beside recognized ones",
+      "canonical": false,
+      "line": "{\"type\":\"manifest\",\"requestId\":1,\"sessionId\":\"b06b9d76-6c73-4d70-a763-d933b294c45b\",\"protocolVersion\":1,\"accessoryId\":\"5c1a6f2e-9f43-4f6c-bd0a-7e1d8a4c9b20\",\"name\":\"Combo unit\",\"firmwareVersion\":\"0.3.0\",\"capabilities\":[{\"id\":\"clearance\",\"type\":\"ground_clearance\",\"unit\":\"cm\",\"range\":{\"min\":3,\"max\":100},\"ratesHz\":[10,20,30]},{\"id\":\"horn\",\"type\":\"air_horn\"},{\"id\":\"rear_light\",\"type\":\"brake_light\"}]}",
+      "error": null,
+      "expected": {
+        "accessoryId": "5c1a6f2e-9f43-4f6c-bd0a-7e1d8a4c9b20",
+        "name": "Combo unit",
+        "firmwareVersion": "0.3.0",
+        "protocolVersion": 1,
+        "supportedVersions": [],
+        "compatibility": "supported",
+        "capabilities": [
+          {
+            "id": "clearance",
+            "type": "ground_clearance",
+            "supported": true,
+            "unit": "cm",
+            "rangeMin": 3,
+            "rangeMax": 100,
+            "ratesHz": [10, 20, 30]
+          },
+          {
+            "id": "horn",
+            "type": "air_horn",
+            "supported": false,
+            "unit": null,
+            "rangeMin": null,
+            "rangeMax": null,
+            "ratesHz": []
+          },
+          {
+            "id": "rear_light",
+            "type": "brake_light",
+            "supported": true,
+            "unit": null,
+            "rangeMin": null,
+            "rangeMax": null,
+            "ratesHz": []
+          }
+        ]
+      }
+    },
+    {
+      "name": "an accessory with only unknown capability types is incompatible",
+      "canonical": false,
+      "line": "{\"type\":\"manifest\",\"requestId\":1,\"sessionId\":\"b06b9d76-6c73-4d70-a763-d933b294c45b\",\"protocolVersion\":1,\"accessoryId\":\"a2d8e0f1-3b44-4d2f-8c6a-11d3b7e5f900\",\"name\":\"Air horn\",\"firmwareVersion\":\"1.0.0\",\"capabilities\":[{\"id\":\"horn\",\"type\":\"air_horn\"}]}",
+      "error": null,
+      "expected": {
+        "accessoryId": "a2d8e0f1-3b44-4d2f-8c6a-11d3b7e5f900",
+        "name": "Air horn",
+        "firmwareVersion": "1.0.0",
+        "protocolVersion": 1,
+        "supportedVersions": [],
+        "compatibility": "unsupported-capabilities",
+        "capabilities": [
+          {
+            "id": "horn",
+            "type": "air_horn",
+            "supported": false,
+            "unit": null,
+            "rangeMin": null,
+            "rangeMax": null,
+            "ratesHz": []
+          }
+        ]
+      }
+    },
+    {
+      "name": "no common protocol version blocks every capability",
+      "canonical": true,
+      "line": "{\"type\":\"manifest\",\"requestId\":1,\"sessionId\":\"b06b9d76-6c73-4d70-a763-d933b294c45b\",\"protocolVersion\":null,\"supportedVersions\":[2,3],\"accessoryId\":\"ee3c1a55-72b9-4b47-9f1e-6f0d2a3c4d55\",\"name\":\"Future sensor\",\"firmwareVersion\":\"2.0.0\",\"capabilities\":[{\"id\":\"clearance\",\"type\":\"ground_clearance\",\"unit\":\"cm\",\"range\":{\"min\":3,\"max\":100},\"ratesHz\":[10,20,30]}]}",
+      "error": null,
+      "expected": {
+        "accessoryId": "ee3c1a55-72b9-4b47-9f1e-6f0d2a3c4d55",
+        "name": "Future sensor",
+        "firmwareVersion": "2.0.0",
+        "protocolVersion": null,
+        "supportedVersions": [2, 3],
+        "compatibility": "unsupported-version",
+        "capabilities": [
+          {
+            "id": "clearance",
+            "type": "ground_clearance",
+            "supported": false,
+            "unit": "cm",
+            "rangeMin": 3,
+            "rangeMax": 100,
+            "ratesHz": [10, 20, 30]
+          }
+        ]
+      }
+    },
+    {
+      "name": "unknown optional fields are ignored within a supported version",
+      "canonical": false,
+      "line": "{\"type\":\"manifest\",\"requestId\":1,\"sessionId\":\"b06b9d76-6c73-4d70-a763-d933b294c45b\",\"protocolVersion\":1,\"accessoryId\":\"77aa1122-3344-4556-8899-aabbccddeeff\",\"name\":\"Clearance sensor\",\"firmwareVersion\":\"0.1.0\",\"vendor\":\"Vescape\",\"batteryPercent\":82,\"capabilities\":[{\"id\":\"clearance\",\"type\":\"ground_clearance\",\"unit\":\"cm\",\"range\":{\"min\":3,\"max\":100},\"ratesHz\":[10,20,30],\"calibrationHint\":\"nose\"}]}",
+      "error": null,
+      "expected": {
+        "accessoryId": "77aa1122-3344-4556-8899-aabbccddeeff",
+        "name": "Clearance sensor",
+        "firmwareVersion": "0.1.0",
+        "protocolVersion": 1,
+        "supportedVersions": [],
+        "compatibility": "supported",
+        "capabilities": [
+          {
+            "id": "clearance",
+            "type": "ground_clearance",
+            "supported": true,
+            "unit": "cm",
+            "rangeMin": 3,
+            "rangeMax": 100,
+            "ratesHz": [10, 20, 30]
+          }
+        ]
+      }
+    },
+    {
+      "name": "a ground-clearance capability in the wrong unit is unsupported",
+      "canonical": false,
+      "line": "{\"type\":\"manifest\",\"requestId\":1,\"sessionId\":\"b06b9d76-6c73-4d70-a763-d933b294c45b\",\"protocolVersion\":1,\"accessoryId\":\"9b8c7d6e-5f40-4312-a1b2-c3d4e5f60718\",\"name\":\"Millimetre sensor\",\"firmwareVersion\":\"0.1.0\",\"capabilities\":[{\"id\":\"clearance\",\"type\":\"ground_clearance\",\"unit\":\"mm\",\"range\":{\"min\":3,\"max\":100},\"ratesHz\":[10,20,30]}]}",
+      "error": null,
+      "expected": {
+        "accessoryId": "9b8c7d6e-5f40-4312-a1b2-c3d4e5f60718",
+        "name": "Millimetre sensor",
+        "firmwareVersion": "0.1.0",
+        "protocolVersion": 1,
+        "supportedVersions": [],
+        "compatibility": "unsupported-capabilities",
+        "capabilities": [
+          {
+            "id": "clearance",
+            "type": "ground_clearance",
+            "supported": false,
+            "unit": "mm",
+            "rangeMin": 3,
+            "rangeMax": 100,
+            "ratesHz": [10, 20, 30]
+          }
+        ]
+      }
+    },
+    {
+      "name": "a ground-clearance range that is not an interval is unsupported",
+      "canonical": false,
+      "line": "{\"type\":\"manifest\",\"requestId\":1,\"sessionId\":\"b06b9d76-6c73-4d70-a763-d933b294c45b\",\"protocolVersion\":1,\"accessoryId\":\"1122aabb-ccdd-4eef-8899-001122334455\",\"name\":\"Broken range sensor\",\"firmwareVersion\":\"0.1.0\",\"capabilities\":[{\"id\":\"clearance\",\"type\":\"ground_clearance\",\"unit\":\"cm\",\"range\":{\"min\":100,\"max\":100},\"ratesHz\":[10,20,30]}]}",
+      "error": null,
+      "expected": {
+        "accessoryId": "1122aabb-ccdd-4eef-8899-001122334455",
+        "name": "Broken range sensor",
+        "firmwareVersion": "0.1.0",
+        "protocolVersion": 1,
+        "supportedVersions": [],
+        "compatibility": "unsupported-capabilities",
+        "capabilities": [
+          {
+            "id": "clearance",
+            "type": "ground_clearance",
+            "supported": false,
+            "unit": "cm",
+            "rangeMin": 100,
+            "rangeMax": 100,
+            "ratesHz": [10, 20, 30]
+          }
+        ]
+      }
+    },
+    {
+      "name": "a ground-clearance capability offering no usable rate is unsupported",
+      "canonical": false,
+      "line": "{\"type\":\"manifest\",\"requestId\":1,\"sessionId\":\"b06b9d76-6c73-4d70-a763-d933b294c45b\",\"protocolVersion\":1,\"accessoryId\":\"33445566-7788-4999-aabb-ccddeeff0011\",\"name\":\"Rateless sensor\",\"firmwareVersion\":\"0.1.0\",\"capabilities\":[{\"id\":\"clearance\",\"type\":\"ground_clearance\",\"unit\":\"cm\",\"range\":{\"min\":3,\"max\":100},\"ratesHz\":[]}]}",
+      "error": null,
+      "expected": {
+        "accessoryId": "33445566-7788-4999-aabb-ccddeeff0011",
+        "name": "Rateless sensor",
+        "firmwareVersion": "0.1.0",
+        "protocolVersion": 1,
+        "supportedVersions": [],
+        "compatibility": "unsupported-capabilities",
+        "capabilities": [
+          {
+            "id": "clearance",
+            "type": "ground_clearance",
+            "supported": false,
+            "unit": "cm",
+            "rangeMin": 3,
+            "rangeMax": 100,
+            "ratesHz": []
+          }
+        ]
+      }
+    },
+    {
+      "name": "a line that is not JSON is malformed",
+      "canonical": false,
+      "line": "{\"type\":\"manifest\"",
+      "error": "malformed",
+      "expected": null
+    },
+    {
+      "name": "a JSON array is not a message",
+      "canonical": false,
+      "line": "[1,2,3]",
+      "error": "malformed",
+      "expected": null
+    },
+    {
+      "name": "a manifest without an accessory id is invalid",
+      "canonical": false,
+      "line": "{\"type\":\"manifest\",\"requestId\":1,\"sessionId\":\"b06b9d76-6c73-4d70-a763-d933b294c45b\",\"protocolVersion\":1,\"name\":\"Nameless\",\"firmwareVersion\":\"0.1.0\",\"capabilities\":[{\"id\":\"clearance\",\"type\":\"ground_clearance\",\"unit\":\"cm\",\"range\":{\"min\":3,\"max\":100},\"ratesHz\":[10,20,30]}]}",
+      "error": "invalid",
+      "expected": null
+    },
+    {
+      "name": "a non-manifest reply to hello is invalid",
+      "canonical": false,
+      "line": "{\"type\":\"ack\",\"requestId\":1,\"sessionId\":\"b06b9d76-6c73-4d70-a763-d933b294c45b\",\"capabilityId\":\"clearance\"}",
+      "error": "invalid",
+      "expected": null
+    },
+    {
+      "name": "a capability without an id is invalid",
+      "canonical": false,
+      "line": "{\"type\":\"manifest\",\"requestId\":1,\"sessionId\":\"b06b9d76-6c73-4d70-a763-d933b294c45b\",\"protocolVersion\":1,\"accessoryId\":\"b36ed5bd-1d24-460c-8034-aaeaefc5d016\",\"name\":\"Clearance sensor\",\"firmwareVersion\":\"0.1.0\",\"capabilities\":[{\"type\":\"ground_clearance\",\"unit\":\"cm\"}]}",
+      "error": "invalid",
+      "expected": null
+    },
+    {
+      "name": "duplicate capability ids are invalid",
+      "canonical": false,
+      "line": "{\"type\":\"manifest\",\"requestId\":1,\"sessionId\":\"b06b9d76-6c73-4d70-a763-d933b294c45b\",\"protocolVersion\":1,\"accessoryId\":\"b36ed5bd-1d24-460c-8034-aaeaefc5d016\",\"name\":\"Clearance sensor\",\"firmwareVersion\":\"0.1.0\",\"capabilities\":[{\"id\":\"clearance\",\"type\":\"ground_clearance\",\"unit\":\"cm\",\"range\":{\"min\":3,\"max\":100},\"ratesHz\":[10,20,30]},{\"id\":\"clearance\",\"type\":\"brake_light\",\"unit\":\"cm\",\"range\":{\"min\":3,\"max\":100},\"ratesHz\":[10,20,30]}]}",
+      "error": "invalid",
+      "expected": null
+    },
+    {
+      "name": "a manifest from another session is ignored",
+      "canonical": false,
+      "line": "{\"type\":\"manifest\",\"requestId\":1,\"sessionId\":\"00000000-0000-4000-8000-000000000000\",\"protocolVersion\":1,\"accessoryId\":\"b36ed5bd-1d24-460c-8034-aaeaefc5d016\",\"name\":\"Clearance sensor\",\"firmwareVersion\":\"0.1.0\",\"capabilities\":[{\"id\":\"clearance\",\"type\":\"ground_clearance\",\"unit\":\"cm\",\"range\":{\"min\":3,\"max\":100},\"ratesHz\":[10,20,30]}]}",
+      "error": "session-mismatch",
+      "expected": null
+    },
+    {
+      "name": "a manifest answering another request is ignored",
+      "canonical": false,
+      "line": "{\"type\":\"manifest\",\"requestId\":7,\"sessionId\":\"b06b9d76-6c73-4d70-a763-d933b294c45b\",\"protocolVersion\":1,\"accessoryId\":\"b36ed5bd-1d24-460c-8034-aaeaefc5d016\",\"name\":\"Clearance sensor\",\"firmwareVersion\":\"0.1.0\",\"capabilities\":[{\"id\":\"clearance\",\"type\":\"ground_clearance\",\"unit\":\"cm\",\"range\":{\"min\":3,\"max\":100},\"ratesHz\":[10,20,30]}]}",
+      "error": "session-mismatch",
+      "expected": null
+    }
+  ]
+}

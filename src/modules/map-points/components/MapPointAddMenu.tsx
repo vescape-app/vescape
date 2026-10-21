@@ -57,16 +57,7 @@ export function MapPointAddMenu({
     return (
       <View style={[styles.mapAddAction, { bottom }]}>
         <Animated.View>
-          <IconButton
-            icon={PlusIcon}
-            size="lg"
-            iconColor={neutral.textPrimary}
-            onPress={onToggle}
-            style={{
-              backgroundColor: neutral.surfaceDeep,
-              borderColor: neutral.border,
-            }}
-          />
+          <IconButton icon={PlusIcon} size="lg" onPress={onToggle} />
         </Animated.View>
       </View>
     )
@@ -224,8 +215,8 @@ const styles = StyleSheet.create({
   mapAddFeatureButton: {
     borderRadius: 999,
     borderWidth: 1,
-    borderColor: theme.alpha(theme.palette.slate.light, 0.3),
-    backgroundColor: theme.alpha(theme.palette.slate.light, 0.12),
+    borderColor: theme.alpha(theme.neutral.textSecondary, 0.3),
+    backgroundColor: theme.alpha(theme.neutral.textSecondary, 0.12),
     alignItems: 'center',
     justifyContent: 'center',
     gap: 8,
@@ -266,7 +257,7 @@ const styles = StyleSheet.create({
     padding: 12,
     borderRadius: 22,
     borderWidth: 1,
-    borderColor: theme.alpha(theme.palette.slate.light, 0.3),
+    borderColor: theme.alpha(theme.neutral.textSecondary, 0.3),
     backgroundColor: theme.alpha(theme.neutral.surfaceDeep, 0.85),
   },
   mapAddSheetHeader: {

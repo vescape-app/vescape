@@ -1,15 +1,14 @@
 package app.vescape.wear
 
+import expo.modules.vescapecore.telemetry.UnitPresentation
+
 import androidx.compose.foundation.Canvas
-import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -21,8 +20,6 @@ import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.graphicsLayer
-import androidx.compose.ui.res.painterResource
-import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -32,7 +29,6 @@ import androidx.wear.compose.foundation.CurvedDirection
 import androidx.wear.compose.foundation.CurvedLayout
 import androidx.wear.compose.foundation.CurvedTextStyle
 import androidx.wear.compose.foundation.curvedColumn
-import androidx.wear.compose.material.Icon
 import androidx.wear.compose.material.MaterialTheme
 import androidx.wear.compose.material.Text
 import androidx.wear.compose.material.curvedText
@@ -66,9 +62,15 @@ import kotlin.math.sin
  * - [focus] — nav focus (up-drag over the gauges): readouts leave, the nav stack stays and grows.
  * - [controlFocus] — the horizontal control pager (Move, diagnostics): readouts and nav stack leave.
  * - [weatherFocus] — the forecast page above: readouts and nav stack leave.
+ * - [groupFocus] — the Group Ride page below nav focus: the nav stack leaves too; readouts are
+ *   already gone with [focus].
  *
  * The clock and the forecast readout at the top rim gap fade with the readouts; on the weather
  * centre they would otherwise duplicate the fuller forecast underneath.
+ *
+ * @parity /watch/watchos/FrameLayout.swift `FrameLayout`
+ * @parity /watch/watchos/RimGauge.swift
+ * @parity /modules/vescape-core/ios/watch/WatchGauge.swift
  */
 @Composable
 internal fun FrameLayout(
@@ -77,6 +79,7 @@ internal fun FrameLayout(
     focus: () -> Float = { 0f },
     controlFocus: () -> Float = { 0f },
     weatherFocus: () -> Float = { 0f },
+    groupFocus: () -> Float = { 0f },
     onWeatherClick: (() -> Unit)? = null,
     ambient: AmbientMode = AmbientOff,
     showReadouts: Boolean = true,
@@ -99,168 +102,107 @@ internal fun FrameLayout(
 
     // Readouts leave for any focus mode; the nav stack survives nav focus alone.
     val readoutFocus = { maxOf(focus(), controlFocus(), weatherFocus()) }
-    val navStackAlpha = { fadeOut(maxOf(controlFocus(), weatherFocus())) }
+    WatchMapScene(
+        frame = frame, muted = muted, ambient = ambient,
+        focus = focus, awayFocus = { maxOf(controlFocus(), weatherFocus(), groupFocus()) },
+        readoutFocus = readoutFocus,
+        gauges = {
+            // Rim gauges on one shared screen-centred circle.
+            Canvas(modifier = Modifier.fillMaxSize()) {
+                val radius = size.minDimension / 2f - GAUGE_RIM_INSET.toPx()
+                val center = Offset(size.width / 2f, size.height / 2f)
+                // Every lane keeps its last reading in ambient; a frame that has stopped arriving
+                // empties all of them at once.
+                val speedFrac = if (ambientBlind) 0f else ((frame.speed ?: 0.0) / SPEED_MAX).toFloat().coerceIn(0f, 1f)
+                val dutyFrac = if (ambientBlind) 0f else ((frame.duty ?: 0.0) / 100.0).toFloat().coerceIn(0f, 1f)
+                val battFrac = if (ambientBlind) 0f else ((frame.battery ?: 0.0) / 100.0).toFloat().coerceIn(0f, 1f)
+                val motorFrac = if (ambientBlind) 0f else tempFraction(frame.motorTemp)
+                val ctrlFrac = if (ambientBlind) 0f else tempFraction(frame.ctrlTemp)
+                // Read in the draw scope, so a drag repaints the arcs without recomposing them.
+                // The wedge fills recede on a focused page: the rim lines still carry the values, but
+                // their glow stops competing with whatever took the centre of the circle.
+                val glowDim = ambient.glow(dimGlow(readoutFocus()))
+                val motorGlow = (0.08f + 0.40f * motorFrac) * glowDim
+                val ctrlGlow = (0.08f + 0.40f * ctrlFrac) * glowDim
+                val battGlow = (0.06f + 0.20f * battFrac) * glowDim
 
-    val navBearing = frame.navBearing
-    val navDistance = frame.navDistanceM
-    val hasNav = navBearing != null && navDistance != null
-
-    Box(modifier = Modifier.fillMaxSize()) {
-        // Bottom layer: route ahead + rider dot, under every gauge and readout. Ambient skips it:
-        // the lanes animate their zoom, and a moving map is the most expensive thing on the panel.
-        if (hasNav && !ambient.active) {
-            Box(modifier = Modifier.fillMaxSize().graphicsLayer { alpha = navStackAlpha() }) {
-                NavRoute(frame = frame, muted = muted, navFocus = focus)
+                // Speed: left (180°) -> top, sweep clockwise.
+                drawGauge(center, radius, 180f, QUARTER_SWEEP, speedFrac, speedColor, style = StrongGaugeStyle, glowStrength = STRONG_GLOW * glowDim)
+                // Duty: right (360°) -> top, sweep counter-clockwise.
+                drawGauge(center, radius, 360f, -QUARTER_SWEEP, dutyFrac, dutyColor, style = StrongGaugeStyle, glowStrength = STRONG_GLOW * glowDim)
+                // Battery: bottom arc, left (140°) -> right (40°) through 90°.
+                drawGauge(center, radius, 140f, -BATTERY_SWEEP, battFrac, battColor, style = SoftGaugeStyle, drawHead = false, glowStrength = battGlow)
+                // Temps: small arcs in the gaps beside the battery gauge, growing from the bottom.
+                drawGauge(center, radius, MOTOR_ARC_START, TEMP_SWEEP, motorFrac, motorColor, style = SoftGaugeStyle, drawHead = false, glowStrength = motorGlow)
+                drawGauge(center, radius, CTRL_ARC_START, -TEMP_SWEEP, ctrlFrac, ctrlColor, style = SoftGaugeStyle, drawHead = false, glowStrength = ctrlGlow)
             }
-        }
+        },
+        readouts = {
+            // Center each label/value stack on its full gauge arc, independent of font width or fill.
+            // Colour carries which is which (red = motor, orange = controller).
+            if (showReadouts) {
+                CurvedTemp(MOTOR_ARC_START + TEMP_SWEEP / 2, temp(frame.motorTemp, ambientBlind), "MOTOR", motorColor, readoutFocus)
+                CurvedTemp(CTRL_ARC_START - TEMP_SWEEP / 2, temp(frame.ctrlTemp, ambientBlind), "CTRL", ctrlColor, readoutFocus)
+            }
 
-        // Rim gauges on one shared screen-centred circle.
-        Canvas(modifier = Modifier.fillMaxSize()) {
-            val radius = size.minDimension / 2f - GAUGE_RIM_INSET.toPx()
-            val center = Offset(size.width / 2f, size.height / 2f)
-            // Every lane keeps its last reading in ambient; a frame that has stopped arriving
-            // empties all of them at once.
-            val speedFrac = if (ambientBlind) 0f else ((frame.speed ?: 0.0) / SPEED_MAX).toFloat().coerceIn(0f, 1f)
-            val dutyFrac = if (ambientBlind) 0f else ((frame.duty ?: 0.0) / 100.0).toFloat().coerceIn(0f, 1f)
-            val battFrac = if (ambientBlind) 0f else ((frame.battery ?: 0.0) / 100.0).toFloat().coerceIn(0f, 1f)
-            val motorFrac = if (ambientBlind) 0f else tempFraction(frame.motorTemp)
-            val ctrlFrac = if (ambientBlind) 0f else tempFraction(frame.ctrlTemp)
-            // Read in the draw scope, so a drag repaints the arcs without recomposing them.
-            // The wedge fills recede on a focused page: the rim lines still carry the values, but
-            // their glow stops competing with whatever took the centre of the circle.
-            val glowDim = ambient.glow(dimGlow(readoutFocus()))
-            val motorGlow = (0.08f + 0.40f * motorFrac) * glowDim
-            val ctrlGlow = (0.08f + 0.40f * ctrlFrac) * glowDim
-            val battGlow = (0.06f + 0.20f * battFrac) * glowDim
+            // ── Top: wall clock at the rim gap, forecast under it ──
+            // Its own stack, so the heroes below never move when the forecast appears or disappears.
+            Column(
+                modifier = Modifier
+                    .align(Alignment.TopCenter)
+                    .offset(offset.x, offset.y)
+                    .padding(top = 8.dp)
+                    .graphicsLayer { alpha = fadeOut(readoutFocus()) },
+                horizontalAlignment = Alignment.CenterHorizontally,
+            ) {
+                // Both survive ambient unchanged: the mirror hides the system clock, and a forecast is
+                // the slowest-moving thing on the screen.
+                WatchClock(color = ambient.readout(if (muted) DimText else SecondaryText))
+                WeatherReadout(muted = muted || ambient.active, onClick = onWeatherClick)
+            }
 
-            // Speed: left (180°) -> top, sweep clockwise.
-            drawGauge(center, radius, 180f, QUARTER_SWEEP, speedFrac, speedColor, style = StrongGaugeStyle, glowStrength = STRONG_GLOW * glowDim)
-            // Duty: right (360°) -> top, sweep counter-clockwise.
-            drawGauge(center, radius, 360f, -QUARTER_SWEEP, dutyFrac, dutyColor, style = StrongGaugeStyle, glowStrength = STRONG_GLOW * glowDim)
-            // Battery: bottom arc, left (140°) -> right (40°) through 90°.
-            drawGauge(center, radius, 140f, -BATTERY_SWEEP, battFrac, battColor, style = SoftGaugeStyle, drawHead = false, glowStrength = battGlow)
-            // Temps: small arcs in the gaps beside the battery gauge, growing from the bottom.
-            drawGauge(center, radius, MOTOR_ARC_START, TEMP_SWEEP, motorFrac, motorColor, style = SoftGaugeStyle, drawHead = false, glowStrength = motorGlow)
-            drawGauge(center, radius, CTRL_ARC_START, -TEMP_SWEEP, ctrlFrac, ctrlColor, style = SoftGaugeStyle, drawHead = false, glowStrength = ctrlGlow)
-        }
+            // ── Speed + duty: pinned to the rim, not stacked under the clock ──
+            if (showReadouts) Row(
+                modifier = Modifier
+                    .align(Alignment.TopCenter)
+                    .offset(offset.x, offset.y)
+                    .fillMaxWidth()
+                    .padding(start = 32.dp, end = 32.dp, top = HERO_TOP_INSET)
+                    .graphicsLayer {
+                        val f = readoutFocus()
+                        alpha = fadeOut(f)
+                        // Values retreat into the arcs they belong to: speed/duty up to the top
+                        // rim, battery down to the bottom one.
+                        translationY = -f * HERO_FOCUS_RISE.toPx()
+                        scaleX = 1f - HERO_FOCUS_SHRINK * f
+                        scaleY = scaleX
+                    },
+                verticalAlignment = Alignment.Bottom,
+            ) {
+                // Ambient keeps the slots, the sizes and the units, and only drains the colour, so
+                // waking lights the numbers where they already were instead of rebuilding the screen.
+                LargeGaugeValue(Modifier.weight(1f), heroValue(frame.speed?.let { UnitPresentation.speedFromKmh(it, SettingsState.settings.value.unitSystem) }, ambientBlind), UnitPresentation.speedUnit(SettingsState.settings.value.unitSystem), speedColor)
+                LargeGaugeValue(Modifier.weight(1f), heroValue(frame.duty, ambientBlind), "%", dutyColor)
+            }
 
-        // Navigation, only while the phone is sending it: chevron on the rim + distance above the
-        // battery %. No destination means no nav lanes, and the frame renders exactly as before.
-        if (hasNav) {
-            NavPointer(
-                bearingDeg = navBearing!!,
-                distanceM = navDistance!!,
-                muted = muted || ambient.active,
-                focus = focus,
-                stackAlpha = navStackAlpha,
+            // ── Bottom: battery % above the bottom gauge ──
+            if (showReadouts) Text(
+                // Same size as the curved temp values so the three secondary readouts match.
+                text = if (ambientBlind) DASH else frame.battery?.let(::batteryPercent) ?: DASH,
+                style = WatchTypography.mono(MaterialTheme.typography.title3.copy(fontSize = TEMP_FONT_SIZE)),
+                color = battColor,
+                modifier = Modifier
+                    .align(Alignment.BottomCenter)
+                    .offset(offset.x, offset.y)
+                    .padding(bottom = 16.dp)
+                    .graphicsLayer {
+                        val f = readoutFocus()
+                        alpha = fadeOut(f)
+                        translationY = f * BATTERY_FOCUS_DROP.toPx()
+                    },
             )
-        } else {
-            // Nav focus with nothing to show would be a blank circle. Say why, but only once the
-            // drag is nearly done, so it never flickers under the departing readouts.
-            NavAbsentHint(focus = focus, stackAlpha = navStackAlpha)
-        }
-
-        // Temp readouts ride their own arc: curved text just inside the gauge line, centred on the
-        // arc's mid-angle. Colour carries which is which (red = motor, orange = controller).
-        if (showReadouts) {
-            CurvedTemp(MOTOR_ARC_START + TEMP_SWEEP / 2f, temp(frame.motorTemp, ambientBlind), "MOTOR", motorColor, readoutFocus)
-            CurvedTemp(CTRL_ARC_START - TEMP_SWEEP / 2f, temp(frame.ctrlTemp, ambientBlind), "CTRL", ctrlColor, readoutFocus)
-        }
-
-        // ── Top: wall clock at the rim gap, forecast under it ──
-        // Its own stack, so the heroes below never move when the forecast appears or disappears.
-        Column(
-            modifier = Modifier
-                .align(Alignment.TopCenter)
-                .offset(offset.x, offset.y)
-                .padding(top = 8.dp)
-                .graphicsLayer { alpha = fadeOut(readoutFocus()) },
-            horizontalAlignment = Alignment.CenterHorizontally,
-        ) {
-            // Both survive ambient unchanged: the mirror hides the system clock, and a forecast is
-            // the slowest-moving thing on the screen.
-            WatchClock(color = ambient.readout(if (muted) DimText else SecondaryText))
-            WeatherReadout(muted = muted || ambient.active, onClick = onWeatherClick)
-        }
-
-        // ── Speed + duty: pinned to the rim, not stacked under the clock ──
-        if (showReadouts) Row(
-            modifier = Modifier
-                .align(Alignment.TopCenter)
-                .offset(offset.x, offset.y)
-                .fillMaxWidth()
-                .padding(start = 32.dp, end = 32.dp, top = HERO_TOP_INSET)
-                .graphicsLayer {
-                    val f = readoutFocus()
-                    alpha = fadeOut(f)
-                    // Values retreat into the arcs they belong to: speed/duty up to the top
-                    // rim, battery down to the bottom one.
-                    translationY = -f * HERO_FOCUS_RISE.toPx()
-                    scaleX = 1f - HERO_FOCUS_SHRINK * f
-                    scaleY = scaleX
-                },
-            verticalAlignment = Alignment.Bottom,
-        ) {
-            // Ambient keeps the slots, the sizes and the units, and only drains the colour, so
-            // waking lights the numbers where they already were instead of rebuilding the screen.
-            LargeGaugeValue(Modifier.weight(1f), heroValue(frame.speed, ambientBlind), "km/h", speedColor)
-            LargeGaugeValue(Modifier.weight(1f), heroValue(frame.duty, ambientBlind), "%", dutyColor)
-        }
-
-        // ── Bottom: battery % above the bottom gauge ──
-        if (showReadouts) Text(
-            // Same size as the curved temp values so the three secondary readouts match.
-            text = if (ambientBlind) DASH else frame.battery?.let { "${format(it, 0)}%" } ?: DASH,
-            style = MaterialTheme.typography.title3.copy(fontSize = TEMP_FONT_SIZE),
-            color = battColor,
-            modifier = Modifier
-                .align(Alignment.BottomCenter)
-                .offset(offset.x, offset.y)
-                .padding(bottom = 16.dp)
-                .graphicsLayer {
-                    val f = readoutFocus()
-                    alpha = fadeOut(f)
-                    translationY = f * BATTERY_FOCUS_DROP.toPx()
-                },
-        )
-    }
-}
-
-/**
- * What the nav focus page shows when the phone is not navigating: a centred, dim two-liner that
- * fades in as the readouts leave. Alpha is read inside the graphics layer so the drag never
- * recomposes.
- */
-@Composable
-private fun NavAbsentHint(focus: () -> Float, stackAlpha: () -> Float) {
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .padding(horizontal = 32.dp)
-            .graphicsLayer { alpha = fadeIn(focus()) * stackAlpha() },
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.Center,
-    ) {
-        Icon(
-            painter = painterResource(R.drawable.ic_ph_map_pin),
-            contentDescription = null,
-            tint = DimText,
-            modifier = Modifier.size(HINT_ICON_SIZE),
-        )
-        Text(
-            text = "No navigation",
-            style = MaterialTheme.typography.title3.copy(fontSize = TEMP_FONT_SIZE),
-            color = SecondaryText,
-            modifier = Modifier.padding(top = 4.dp),
-        )
-        Text(
-            text = "Set a destination on your phone",
-            style = MaterialTheme.typography.caption2.copy(fontSize = HINT_FONT_SIZE),
-            color = DimText,
-            textAlign = TextAlign.Center,
-            modifier = Modifier.padding(top = 4.dp),
-        )
-    }
+        },
+    )
 }
 
 /**
@@ -290,8 +232,16 @@ private fun CurvedTemp(anchorDeg: Float, value: String, label: String, color: Co
             radialDirection = CurvedDirection.Radial.OutsideIn,
             angularAlignment = CurvedAlignment.Angular.Center,
         ) {
-            curvedText(text = value, color = color, style = CurvedTextStyle(fontSize = TEMP_FONT_SIZE))
-            curvedText(text = label, color = SecondaryText, style = CurvedTextStyle(fontSize = TEMP_LABEL_FONT_SIZE))
+            curvedText(
+                text = value,
+                color = color,
+                style = WatchTypography.curvedMono(CurvedTextStyle(fontSize = TEMP_FONT_SIZE)),
+            )
+            curvedText(
+                text = label,
+                color = SecondaryText,
+                style = WatchTypography.curvedUi(CurvedTextStyle(fontSize = TEMP_LABEL_FONT_SIZE)),
+            )
         }
     }
 }
@@ -352,8 +302,8 @@ private fun DrawScope.drawGauge(
 @Composable
 private fun LargeGaugeValue(modifier: Modifier, value: String, unit: String, color: Color) {
     Column(modifier = modifier, horizontalAlignment = Alignment.CenterHorizontally) {
-        Text(text = value, style = MaterialTheme.typography.display1, color = color)
-        Text(text = unit, style = MaterialTheme.typography.caption3, color = SecondaryText)
+        Text(text = value, style = WatchTypography.mono(MaterialTheme.typography.display1), color = color)
+        Text(text = unit, style = WatchTypography.mono(MaterialTheme.typography.caption3), color = SecondaryText)
     }
 }
 
@@ -365,13 +315,17 @@ private fun temp(value: Double?, blind: Boolean = false): String =
 private fun heroValue(value: Double?, blind: Boolean): String =
     if (blind) DASH else value?.let { format(it, 0) } ?: DASH
 
-private fun batteryColor(value: Double?): Color = when {
+/** @parity /modules/vescape-core/ios/watch/WatchGauge.swift `batteryPercent` */
+internal fun batteryPercent(value: Double): String = "${format(value, 0)}%"
+
+internal fun batteryColor(value: Double?): Color = when {
     value == null -> SecondaryText
     value < BATTERY_WARNING_PERCENT -> WarningColor
     else -> BatteryColor
 }
 
-private const val BATTERY_WARNING_PERCENT = 20.0
+/** @parity /modules/vescape-core/ios/watch/WatchGauge.swift `batteryWarningPercent` */
+internal const val BATTERY_WARNING_PERCENT = 20.0
 
 /**
  * A lane's colour. Ambient only tints as a [readout] what it actually has: an absent or frozen lane
@@ -396,8 +350,9 @@ internal val GAUGE_INNER_INSET = 14.dp
 
 private const val SPEED_MAX = 50.0
 
-private const val TEMP_MIN = 10.0
-private const val TEMP_MAX = 80.0
+/** @parity /src/modules/board/constants/telemetry.ts `RIM_TEMP_RANGE` */
+private const val TEMP_MIN = 20.0
+private const val TEMP_MAX = 100.0
 private const val TEMP_SWEEP = 32f
 private const val MOTOR_ARC_START = 144f
 private const val CTRL_ARC_START = 36f
@@ -415,19 +370,15 @@ internal fun dimGlow(focus: Float): Float = 1f - focus.coerceIn(0f, 1f) * GLOW_F
 
 private const val GLOW_FOCUS_DIM = 0.55f
 
-/** The no-nav hint arrives only after the readouts are gone, so the two never overlap. */
-private fun fadeIn(focus: Float): Float =
-    ((focus - HINT_FADE_ONSET) / (1f - HINT_FADE_ONSET)).coerceIn(0f, 1f)
-
-private const val HINT_FADE_ONSET = 0.6f
-private val HINT_FONT_SIZE = 11.sp
-private val HINT_ICON_SIZE = 22.dp
-
 /** Heroes sit on a fixed rim offset; the clock/forecast stack floats above them independently. */
 private val HERO_TOP_INSET = 56.dp
+/** @parity /watch/watchos/FrameLayout.swift `HERO_FOCUS_RISE` */
 private val HERO_FOCUS_RISE = 30.dp
+/** @parity /watch/watchos/FrameLayout.swift `HERO_FOCUS_SHRINK` */
 private const val HERO_FOCUS_SHRINK = 0.12f
+/** @parity /watch/watchos/FrameLayout.swift `BATTERY_FOCUS_DROP` */
 private val BATTERY_FOCUS_DROP = 18.dp
+/** @parity /watch/watchos/FrameLayout.swift `TEMP_FOCUS_SPREAD` */
 private const val TEMP_FOCUS_SPREAD = 0.06f
 
 // Curved temp text: clears the rim line with a small gap so it reads above the arc.

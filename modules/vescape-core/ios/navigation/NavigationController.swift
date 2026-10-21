@@ -168,9 +168,8 @@ final class NavigationController {
   /// The Navigation Profile the next computed path will use.
   var currentProfile: NavigationProfile { lock.withLock { profile } }
 
-  /// How many Directions calls are in flight. A rider who taps two profiles in a row has two, and
-  /// the rider is "waiting for a path" until the last of them lands — hence a count and not a flag.
-  private var inFlight = 0
+  /// Only the current intent owns the loader; superseded requests may finish in the background.
+  private var computingRequest: Int?
 
   /// Whether a path is being computed right now. The one piece of Navigation state that is not
   /// durable: a request in flight dies with the process, and a cold start is never waiting.
@@ -178,14 +177,49 @@ final class NavigationController {
   /// It exists because the alternative reads as a broken app. A recompute that fails leaves the old
   /// path in place and publishes nothing, so without this the rider taps a Profile and sees the UI
   /// do nothing at all for fifteen seconds.
-  var computing: Bool { lock.withLock { inFlight > 0 } }
+  var computing: Bool { lock.withLock { computingRequest != nil } }
 
   /// Notified on every change, including the clear to `nil` and every `computing` transition.
   var onChange: ((Navigation?) -> Void)?
 
+  /// Process-scoped watch notification, separate from the JS subscriber. Never read back inline.
+  /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/navigation/NavigationController.kt `onWatchChange`
+  var onWatchChange: (() -> Void)?
+
+  /// Notified with the rideable path of every published Navigation, `nil` when there is none to
+  /// draw — a failed Navigation is a `nil` path, not an empty one. Fired only when the path itself
+  /// changes, so a `computing` transition over an unchanged path does not re-push it.
+  ///
+  /// Separate from `onChange` because the two have different lifetimes: `onChange` belongs to the
+  /// JS module and is re-assigned on every reload, while this one carries the route to the Watch
+  /// Mirror and must survive one — see `WatchRouteMirror`.
+  ///
+  /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/navigation/NavigationController.kt `onPathChange`
+  var onPathChange: (([(latitude: Double, longitude: Double)]?) -> Void)?
+
+  /// The path the current Navigation actually draws, for a listener attaching after it was
+  /// published — a restore that ran before the Watch Mirror was wired up.
+  var currentPath: [(latitude: Double, longitude: Double)]? { lock.withLock { ridePath(state) } }
+
+  /// The path a Navigation actually draws, or `nil` when it has none — a failure has no line.
+  ///
+  /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/navigation/NavigationController.kt `ridePath`
+  private func ridePath(_ navigation: Navigation?) -> [(latitude: Double, longitude: Double)]? {
+    guard let navigation, navigation.status == .ready, !navigation.points.isEmpty else { return nil }
+    return navigation.points
+  }
+
   /// Where the rider is along the current path. Derived and never stored: recomputed by `onFix` and
-  /// dropped whenever the Navigation it belongs to changes, so there is no cache to expire by hand.
+  /// reprojected when the path changes, including while the rider stands still.
   private var progress: RouteProgress?
+  private var latestFix: (latitude: Double, longitude: Double, speedMps: Double?)?
+
+  private func progressAtLatestFix() -> RouteProgress? {
+    guard let fix = latestFix, let points = ridePath(state) else { return nil }
+    return RouteProgress.compute(
+      points: points, riderLatitude: fix.latitude, riderLongitude: fix.longitude, speedMps: fix.speedMps
+    )
+  }
 
   var currentProgress: RouteProgress? { lock.withLock { progress } }
 
@@ -200,12 +234,8 @@ final class NavigationController {
   /// downstream can show progress along a path that is gone.
   func onFix(latitude: Double, longitude: Double, speedMps: Double?) {
     lock.withLock {
-      let points = state?.status == .ready ? state?.points : nil
-      let next = points.flatMap {
-        RouteProgress.compute(
-          points: $0, riderLatitude: latitude, riderLongitude: longitude, speedMps: speedMps
-        )
-      }
+      latestFix = (latitude, longitude, speedMps)
+      let next = progressAtLatestFix()
       guard progress != next else { return }
       progress = next
       onProgressChange?(next)
@@ -222,7 +252,13 @@ final class NavigationController {
 
   private func claimRequest() -> Int {
     lock.withLock {
+      let wasComputing = computingRequest != nil
+      computingRequest = nil
       generation += 1
+      if wasComputing {
+        onChange?(state)
+        onWatchChange?()
+      }
       return generation
     }
   }
@@ -246,7 +282,12 @@ final class NavigationController {
         lock.withLock { if !profileChosen { profile = stored } }
       }
       guard let stored = await store.load() else { return }
-      let directionPoint = await store.directionPoint()
+      let directionPoint: (latitude: Double, longitude: Double)?
+      do { directionPoint = try await store.directionPoint() }
+      catch {
+        RecordingStorageFailure.reportRead(operation: "direction_point_read", error: error)
+        return
+      }
       // The two are written separately, so an interrupted write can leave a path leading somewhere
       // the rider is no longer heading. Drawing a line to the wrong place is worse than drawing none.
       let matchesDirectionPoint = stored.targetLatitude == directionPoint?.latitude
@@ -289,13 +330,13 @@ final class NavigationController {
     }
 
     let requested = currentProfile
-    beginComputing()
+    beginComputing(request)
     Task {
       let navigation = await compute(
         toLatitude, toLongitude, fromLatitude, fromLongitude, requested
       )
       publish(request, navigation)
-      endComputing()
+      endComputing(request)
     }
   }
 
@@ -344,28 +385,34 @@ final class NavigationController {
       return
     }
 
-    beginComputing()
+    beginComputing(request)
     Task {
       let navigation = await compute(
         toLatitude, toLongitude, fromLatitude, fromLongitude, requested
       )
       publish(request, navigation, keepUsablePath: true)
-      endComputing()
+      endComputing(request)
     }
   }
 
   /// Bracket around one in-flight Directions call. Both ends notify, because `computing` is part of
   /// what JS mirrors: the spinner has to come on before the fetch and go off after the result has
   /// already been published, or the rider sees a gap between the two.
-  private func beginComputing() { changeInFlight(1) }
-
-  private func endComputing() { changeInFlight(-1) }
-
-  private func changeInFlight(_ delta: Int) {
+  private func beginComputing(_ request: Int) {
     lock.withLock {
-      let was = inFlight > 0
-      inFlight = max(0, inFlight + delta)
-      if was != (inFlight > 0) { onChange?(state) }
+      guard request == generation else { return }
+      computingRequest = request
+      onChange?(state)
+      onWatchChange?()
+    }
+  }
+
+  private func endComputing(_ request: Int) {
+    lock.withLock {
+      guard computingRequest == request else { return }
+      computingRequest = nil
+      onChange?(state)
+      onWatchChange?()
     }
   }
 
@@ -442,13 +489,16 @@ final class NavigationController {
       // A recompute that found nothing must not take away a path the rider can still ride. Checked
       // in here rather than at the call site so the read of `state` and the write are one step.
       if keepUsablePath, navigation?.status != .ready, state?.status == .ready { return false }
+      let previousPath = ridePath(state)
       state = navigation
-      // Route Progress belongs to exactly one Navigation, so it dies with the one being replaced
-      // rather than describing a path that is no longer drawn. The next fix refills it.
-      let hadProgress = progress != nil
-      progress = nil
+      // Reproject immediately: foreground GPS may not deliver another fix until the rider moves.
+      let previousProgress = progress
+      progress = progressAtLatestFix()
       onChange?(navigation)
-      if hadProgress { onProgressChange?(nil) }
+      if previousProgress != progress { onProgressChange?(progress) }
+      let nextPath = ridePath(navigation)
+      if !samePath(previousPath, nextPath) { onPathChange?(nextPath) }
+      onWatchChange?()
       return true
     }
     if committed { persist(request) }
@@ -468,6 +518,21 @@ final class NavigationController {
         guard let navigation else { return }
         await store.save(navigation)
       }
+    }
+  }
+
+  /// Tuple arrays are not `Equatable`, so the path comparison Android gets from `List<Pair<..>>`
+  /// equality is written out here.
+  private func samePath(
+    _ a: [(latitude: Double, longitude: Double)]?,
+    _ b: [(latitude: Double, longitude: Double)]?
+  ) -> Bool {
+    switch (a, b) {
+    case (nil, nil): return true
+    case let (a?, b?):
+      return a.count == b.count
+        && zip(a, b).allSatisfy { $0.latitude == $1.latitude && $0.longitude == $1.longitude }
+    default: return false
     }
   }
 

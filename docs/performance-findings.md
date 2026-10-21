@@ -28,9 +28,11 @@ Native events → liveTelemetryRuntime (mutable buffer + SharedValues)
                     │
                     └── 1Hz timer → zustand set({ metricVersion, liveStatus, liveLocationHistory })
                                         │
-                                        └── useLiveSeries(key) → center sparklines
+                                        └── useLiveSeries(key) → battery bar, telemetry panel
                                             Reads the natively-decimated `onLiveSeries`
-                                            store (~1Hz). No JS-thread projection.
+                                            store (~1Hz). No JS-thread projection. The
+                                            panel's metrics stream only while it is open
+                                            (`setLiveSeriesMetrics`).
 
 Native (focused)  → onFocusedSeries (per focused metric, full-resolution 20ms buckets)
                         └── useLiveMetric(selector) → focusedSeriesStore
@@ -40,13 +42,13 @@ Native (focused)  → onFocusedSeries (per focused metric, full-resolution 20ms 
 
 ### Key design decisions
 
-| Decision                                            | Why                                                                                                                                                                |
-| --------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| Mutable buffer, not zustand state                   | Avoid creating new arrays every sample. Buffer holds ~6000 items at 5min window.                                                                                   |
-| Native decimation, not JS projection                | Sparklines read the natively-decimated `onLiveSeries` store; detail charts read the focused `onFocusedSeries` stream. No JS-thread projection over the raw buffer. |
-| Version counter in zustand                          | Single primitive selector. All metric consumers batch into one React render pass.                                                                                  |
-| SharedValues for real-time display                  | Speed gauge, duty %, temps update at full telemetry rate (~20Hz) without React renders.                                                                            |
-| 1Hz publish rate (`LIVE_HISTORY_PUBLISH_MS = 1000`) | Charts don't need faster updates. Keeps React render budget low. Do not decrease this value.                                                                       |
+| Decision                                            | Why                                                                                                                                                                                             |
+| --------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Mutable buffer, not zustand state                   | Avoid creating new arrays every sample. Buffer holds ~6000 items at 5min window.                                                                                                                |
+| Native decimation, not JS projection                | The battery bar and the telemetry panel read the natively-decimated `onLiveSeries` store; detail charts read the focused `onFocusedSeries` stream. No JS-thread projection over the raw buffer. |
+| Version counter in zustand                          | Single primitive selector. All metric consumers batch into one React render pass.                                                                                                               |
+| SharedValues for real-time display                  | Speed gauge, duty %, temps update at full telemetry rate (~20Hz) without React renders.                                                                                                         |
+| 1Hz publish rate (`LIVE_HISTORY_PUBLISH_MS = 1000`) | Charts don't need faster updates. Keeps React render budget low. Do not decrease this value.                                                                                                    |
 
 ## Performance characteristics
 

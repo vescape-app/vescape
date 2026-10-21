@@ -1,7 +1,7 @@
 import { Pressable, StyleSheet, View, type StyleProp, type ViewStyle } from 'react-native'
 
 import { Text } from '@/components/base/Text'
-import { interaction, theme } from '@/constants/theme'
+import { interaction, theme, type ThemeColor } from '@/constants/theme'
 
 export interface SegmentedOption<T extends string> {
   value: T
@@ -13,7 +13,7 @@ interface SegmentedToggleProps<T extends string> {
   value: T
   onChange: (value: T) => void
   /** Tint of the selected segment. */
-  accent?: string
+  accent?: ThemeColor
   /** Surface the toggle sits on. Controls default to navy; secondary cards use adaptive neutrals. */
   variant?: 'control' | 'secondary'
   style?: StyleProp<ViewStyle>
@@ -74,8 +74,8 @@ const styles = StyleSheet.create({
   track: {
     flexDirection: 'row',
     alignSelf: 'flex-start',
-    backgroundColor: theme.alpha(theme.palette.mono.black, 0.3),
-    borderColor: theme.palette.slate.border,
+    backgroundColor: theme.control.background,
+    borderColor: theme.control.border,
     borderWidth: 1,
     borderRadius: 999,
     padding: 3,
@@ -90,12 +90,12 @@ const styles = StyleSheet.create({
     backgroundColor: interaction.pressedBg,
   },
   label: {
-    color: theme.palette.slate.textMuted,
+    color: theme.control.textMuted,
     fontSize: 12,
     fontWeight: '700',
   },
   labelSelected: {
-    color: theme.palette.slate.textPrimary,
+    color: theme.control.text,
   },
   secondaryTrack: {
     backgroundColor: theme.neutral.bg,

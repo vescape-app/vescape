@@ -1,9 +1,7 @@
 import { forwardRef, type RefObject } from 'react'
 import { Pressable, StyleSheet, View } from 'react-native'
 import {
-  CaretDownIcon,
   EngineIcon,
-  PencilSimpleIcon,
   PowerIcon,
   RecordIcon,
   WarningDiamondIcon,
@@ -14,11 +12,23 @@ import type { BoardWarningSeverity } from 'vescape-core'
 import { Text } from '@/components/base/Text'
 import { ReplayBadge } from '@/modules/board/components/ReplayBadge'
 import { severityStatus } from '@/modules/board/constants/boardWarnings'
-import { theme } from '@/constants/theme'
+import { theme, type ThemeColor } from '@/constants/theme'
 
 interface PillAction {
   onPress: () => void
   ref?: RefObject<View | null>
+}
+
+/**
+ * A live Accessory link, handed in already resolved.
+ *
+ * The icon and the label arrive as props because the pill belongs to the Board domain and must not
+ * learn what an Accessory is — the same seam the Board selector uses for its Accessories section.
+ */
+export interface BoardPillAccessory {
+  icon: Icon
+  label: string
+  onPress: () => void
 }
 
 interface BoardPillProps {
@@ -27,11 +37,14 @@ interface BoardPillProps {
   bleStatus: string
   replay?: boolean
   onOpenSelector: () => void
-  onEdit?: () => void
   onDisconnect: () => void
+  /** Starts a connection while the board is idle; absent when there is no board to reach. */
+  onConnect?: () => void
   onStopRecording?: () => void
   warning?: PillAction & { severity: BoardWarningSeverity }
   fault?: PillAction
+  /** Present only while at least one Accessory is actually connected. */
+  accessory?: BoardPillAccessory
 }
 
 /** Shared presentation for the live board bar and its state-controlled design preview. */
@@ -42,11 +55,12 @@ export const BoardPill = forwardRef<View, BoardPillProps>(function BoardPill(
     bleStatus,
     replay,
     onOpenSelector,
-    onEdit,
     onDisconnect,
+    onConnect,
     onStopRecording,
     warning,
     fault,
+    accessory,
   },
   ref,
 ) {
@@ -65,6 +79,18 @@ export const BoardPill = forwardRef<View, BoardPillProps>(function BoardPill(
 
   return (
     <View ref={ref} collapsable={false} style={[styles.pill, { maxWidth }]}>
+      {/* Leads the pill, green, only while a link is up: a rider glancing down sees that the
+          hardware is talking without opening anything. */}
+      {accessory && (
+        <BoardPillButton
+          icon={accessory.icon}
+          onPress={accessory.onPress}
+          label={accessory.label}
+          testID="board-accessory-button"
+          color={theme.status.success.color}
+          dividerSide="after"
+        />
+      )}
       <Pressable
         style={({ pressed }) => [styles.boardButton, pressed && styles.pressed]}
         onPress={onOpenSelector}
@@ -77,15 +103,9 @@ export const BoardPill = forwardRef<View, BoardPillProps>(function BoardPill(
         <Text style={styles.boardText} numberOfLines={1}>
           {name ?? 'No board'}
         </Text>
-        <CaretDownIcon size={12} color={theme.control.textMuted} weight="bold" />
       </Pressable>
-      <BoardPillButton
-        icon={PencilSimpleIcon}
-        onPress={onEdit}
-        label="Edit board"
-        testID="board-edit-button"
-      />
-      {canDisconnect && (
+      {/* One power key: red while there is a link to cut, quiet gray while there is one to open. */}
+      {canDisconnect ? (
         <BoardPillButton
           icon={PowerIcon}
           onPress={onDisconnect}
@@ -93,7 +113,15 @@ export const BoardPill = forwardRef<View, BoardPillProps>(function BoardPill(
           testID="board-disconnect-button"
           color={theme.status.error.color}
         />
-      )}
+      ) : onConnect ? (
+        <BoardPillButton
+          icon={PowerIcon}
+          onPress={onConnect}
+          label="Connect board"
+          testID="board-connect-button"
+          color={theme.control.textMuted}
+        />
+      ) : null}
       {onStopRecording && (
         <BoardPillButton
           icon={RecordIcon}
@@ -134,17 +162,21 @@ function BoardPillButton({
   label,
   testID,
   color = theme.control.text,
+  dividerSide = 'before',
 }: {
   icon: Icon
   onPress?: () => void
   anchorRef?: RefObject<View | null>
   label: string
   testID: string
-  color?: string
+  color?: ThemeColor
+  /** Which edge the separator sits on, so a leading button is cut off from the name, not the air. */
+  dividerSide?: 'before' | 'after'
 }) {
+  const divider = <View style={styles.divider} />
   return (
     <>
-      <View style={styles.divider} />
+      {dividerSide === 'before' && divider}
       <View ref={anchorRef} collapsable={false}>
         <Pressable
           style={({ pressed }) => [
@@ -166,6 +198,7 @@ function BoardPillButton({
           />
         </Pressable>
       </View>
+      {dividerSide === 'after' && divider}
     </>
   )
 }
@@ -186,8 +219,7 @@ const styles = StyleSheet.create({
     flexShrink: 1,
     alignItems: 'center',
     gap: 6,
-    paddingLeft: 10,
-    paddingRight: 8,
+    paddingHorizontal: 12,
     minHeight: 38,
     minWidth: 0,
     overflow: 'hidden',
@@ -200,7 +232,13 @@ const styles = StyleSheet.create({
     maxWidth: 180,
     flexShrink: 1,
   },
-  divider: { width: 1, height: 20, backgroundColor: theme.control.divider },
+  // Runs the pill's full height rather than floating in the middle of it — same rule as the
+  // board selector's links strip and the settings status strip.
+  divider: {
+    width: StyleSheet.hairlineWidth * 2,
+    alignSelf: 'stretch',
+    backgroundColor: theme.control.divider,
+  },
   button: { width: 38, height: 38, alignItems: 'center', justifyContent: 'center' },
   disabled: { opacity: 0.4 },
   pressed: { opacity: 0.7 },

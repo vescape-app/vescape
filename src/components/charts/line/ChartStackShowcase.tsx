@@ -1,3 +1,5 @@
+import { useUnitSystem } from '@/hooks/useUnitSystem'
+import { speedFromKmh, speedUnit } from '@/helpers/units'
 import { useEffect, useMemo, useState } from 'react'
 import { StyleSheet, View } from 'react-native'
 
@@ -112,6 +114,7 @@ function generateBands(count: number, stepMs: number): ChartBand[] {
 }
 
 export function ChartStackShowcase() {
+  const units = useUnitSystem()
   const [size, setSize] = useState<SizeKey>('tiny')
   const [selectable, setSelectable] = useState(false)
   const [showDuty, setShowDuty] = useState(true)
@@ -143,12 +146,13 @@ export function ChartStackShowcase() {
             key: 'speed',
             data: speed,
             color: theme.palette.cyan.color,
-            unit: 'km/h',
+            unit: speedUnit(units),
+            displayScale: speedFromKmh(1, units),
             decimals: 0,
             ramp: SPEED_RAMP,
           },
         ],
-        left: { range: rangeOf(speed) },
+        left: { range: rangeOf(speed), displayScale: speedFromKmh(1, units) },
         bands: generateBands(count, stepMs),
       },
       ...(displayDuty
@@ -183,7 +187,7 @@ export function ChartStackShowcase() {
           ]
         : []),
     ],
-    [count, displayDuty, duty, speed, stepMs, volts],
+    [count, displayDuty, duty, speed, stepMs, volts, units],
   )
 
   useEffect(() => {

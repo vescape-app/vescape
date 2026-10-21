@@ -27,6 +27,7 @@ import java.net.URL
  * A watch with no network simply shows nothing here; every other page is unaffected.
  *
  * @parity /src/modules/weather/store/rainViewerRadarStore.ts
+ * @parity /modules/vescape-core/ios/watch/WatchRadar.swift
  */
 private const val RAINVIEWER_META_URL = "https://api.rainviewer.com/public/weather-maps.json"
 

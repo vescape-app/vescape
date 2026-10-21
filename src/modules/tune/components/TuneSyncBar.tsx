@@ -208,7 +208,7 @@ export function TuneSyncBar({
               icon: (
                 <ArrowCounterClockwiseIcon
                   size={12}
-                  color={theme.palette.slate.text}
+                  color={theme.neutral.textPrimary}
                   weight="bold"
                 />
               ),

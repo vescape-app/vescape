@@ -19,5 +19,5 @@ export function formatDisplayValue(value: number, decimals: number): string {
   'worklet'
 
   if (decimals <= 0) return String(Math.round(value))
-  return value.toFixed(decimals)
+  return String(Number(value.toFixed(decimals)))
 }

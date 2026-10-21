@@ -17,6 +17,22 @@ export function formatFocusedSeriesDetail(spanMs: number, sampleRateHz: number):
   return `Full resolution data at ~${rate < 10 ? rate.toFixed(1) : Math.round(rate)} Hz`
 }
 
+/**
+ * Second line of the telemetry panel: how far the live window reaches — partway while it fills,
+ * then the configured length — and the packet rate.
+ */
+export function formatLiveTelemetryDetail(
+  spanMs: number,
+  windowMinutes: number,
+  rateHz: number | null,
+): string {
+  if (rateHz == null || !Number.isFinite(spanMs) || spanMs <= 0) return 'Waiting for data'
+  const span = formatSpan(spanMs)
+  const window = `${windowMinutes} min`
+  const reach = span === window ? `Last ${window}` : `${span} of ${window}`
+  return `${reach} · ~${rateHz} Hz`
+}
+
 /** Sub-minute spans read in seconds; longer ones round to whole minutes. */
 function formatSpan(spanMs: number): string {
   const seconds = Math.round(spanMs / 1000)

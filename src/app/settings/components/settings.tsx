@@ -1,4 +1,4 @@
-import { ScrollView, StyleSheet, Switch } from 'react-native'
+import { ScrollView, StyleSheet } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { useState } from 'react'
 import {
@@ -12,6 +12,7 @@ import {
 
 import { SettingsCard } from '@/components/settings/SettingsCard'
 import { SettingsRow } from '@/components/settings/SettingsRow'
+import { Switch } from '@/components/controls/Switch'
 import { SettingsSectionTitle } from '@/components/settings/SettingsSectionTitle'
 import { Stepper } from '@/components/forms/Stepper'
 import { ShowcaseCard } from '@/components/dev/ShowcaseCard'
@@ -52,7 +53,7 @@ function useMockAutoStart(): AutoStartCardProps {
 export default function SettingsPage() {
   const [darkMode, setDarkMode] = useState(true)
   const [notifications, setNotifications] = useState(false)
-  const [threshold, setThreshold] = useState(3)
+  const [threshold, setThreshold] = useState(1.8641135767120018)
   const [boardTopSpeed, setBoardTopSpeed] = useState(50)
   const autoStart = useMockAutoStart()
 
@@ -91,14 +92,7 @@ export default function SettingsPage() {
               iconWeight="fill"
               label="Dark mode"
               hint="Use dark theme throughout the app"
-              right={
-                <Switch
-                  value={darkMode}
-                  onValueChange={setDarkMode}
-                  trackColor={{ false: theme.neutral.border, true: theme.palette.sky.border }}
-                  thumbColor={darkMode ? theme.palette.sky.color : theme.neutral.textMuted}
-                />
-              }
+              right={<Switch value={darkMode} onValueChange={setDarkMode} />}
             />
           </SettingsCard>
 
@@ -111,7 +105,8 @@ export default function SettingsPage() {
               right={
                 <Stepper
                   value={threshold}
-                  unit="km/h"
+                  unit="mph"
+                  formatValue={(value) => value.toFixed(1)}
                   min={0}
                   max={20}
                   onChange={(nextValue) => setThreshold(Math.min(20, Math.max(0, nextValue)))}
@@ -124,16 +119,10 @@ export default function SettingsPage() {
           <SettingsCard>
             <SettingsRow
               icon={BellIcon}
+              iconColor={theme.palette.amber.color}
               label="Push notifications"
-              hint="Receive alerts about your board"
-              right={
-                <Switch
-                  value={notifications}
-                  onValueChange={setNotifications}
-                  trackColor={{ false: theme.neutral.border, true: theme.palette.sky.border }}
-                  thumbColor={notifications ? theme.palette.sky.color : theme.neutral.textMuted}
-                />
-              }
+              hint="Tinted row — the switch inherits the icon colour"
+              right={<Switch value={notifications} onValueChange={setNotifications} />}
             />
             <SettingsRow
               icon={WifiHighIcon}

@@ -57,6 +57,7 @@ internal class VescGattClient(
     private var gatt: BluetoothGatt? = null
     private var txChar: BluetoothGattCharacteristic? = null
     private var pendingCccdWrites = 0
+    // @parity /modules/vescape-core/ios/protocol/VescGattClient.swift `notifyTimeout`
     private var cccdTimeout: Runnable? = null
     private var writeRetry: Runnable? = null
     private var intentionalDisconnect = false
@@ -179,7 +180,8 @@ internal class VescGattClient(
                 Log.w(VESC_SESSION_TAG, "CCCD ack timeout, resolving connect pending=$pendingCccdWrites")
                 dispatchListener { listener.onGattReady() }
             }
-            handler.postDelayed(cccdTimeout!!, 4000)
+            // Leave room for the notification fallback inside the 2s handshake deadline.
+            handler.postDelayed(cccdTimeout!!, 1_000)
         }
 
         override fun onDescriptorWrite(gatt: BluetoothGatt, descriptor: BluetoothGattDescriptor, status: Int) {
@@ -292,6 +294,12 @@ internal class VescGattClient(
             }
         }
         Log.d(VESC_SESSION_TAG, "gatt writeCccd started=$ok")
+        if (!ok) {
+            Log.w(
+                VESC_SESSION_TAG,
+                "CCCD write refused char=${descriptor.characteristic.uuid} pending=$pendingCccdWrites; notification enable was not queued",
+            )
+        }
     }
 
     private fun cancelCccdTimeout() {

@@ -1,0 +1,22 @@
+# Requires the development app already connected to this workspace's Metro server.
+# Preserves app data; no E2E fake board or state reset is needed.
+appId: ${APP_ID}
+---
+- openLink: 'vescape://settings/components/base'
+- extendedWaitUntil:
+    visible: IconButton
+    timeout: 30000
+- tapOn: '10%'
+- assertVisible: IconButton
+- tapOn: '85%'
+- assertVisible: IconButton
+- tapOn: '40%'
+- assertVisible: IconButton
+- openLink: 'vescape://settings/components/charts'
+- extendedWaitUntil:
+    visible: ChartStack / one canvas, shared camera
+    timeout: 15000
+- openLink: 'vescape://settings/components/typography'
+- extendedWaitUntil:
+    visible: Typography roles
+    timeout: 15000

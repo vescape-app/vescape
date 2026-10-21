@@ -7,6 +7,10 @@ import {
 } from '../release-notes/bundler'
 import { resolveEditorCommand } from '../release-notes/editor'
 import { selectPrompt } from '../release-notes/prompt'
+import { resolveReleaseNotePlan } from '../release-notes/plan'
+import { releaseNotesPrompt } from '../release-notes/draftPrompt'
+import { reviewReleaseNoteDraft } from '../release-notes/review'
+import { clearReleaseDraft, loadReleaseDraft, saveReleaseDraft } from './draftCache'
 
 const ROOT = join(import.meta.dir, '../..')
 const PACKAGE_PATH = join(ROOT, 'package.json')
@@ -168,6 +172,38 @@ export async function currentMarketingVersion(): Promise<string> {
   return pkg.version
 }
 
+export async function currentPreparedReleaseVersion(): Promise<string | null> {
+  const [version, subject, head, remoteDev, remoteMain] = await Promise.all([
+    currentMarketingVersion(),
+    checked('git', ['log', '-1', '--format=%s'], 'Cannot read latest commit'),
+    checked('git', ['rev-parse', 'HEAD^{commit}'], 'Cannot read HEAD'),
+    command('git', ['rev-parse', 'origin/dev^{commit}']),
+    command('git', ['rev-parse', 'origin/main^{commit}']),
+  ])
+  if (
+    subject !== `release: ${version}` ||
+    remoteDev.exitCode !== 0 ||
+    remoteMain.exitCode !== 0 ||
+    remoteDev.stdout !== head ||
+    remoteMain.stdout !== head
+  )
+    return null
+  const notes = await command('git', ['cat-file', '-e', `HEAD:${releaseNotesPath(version)}`])
+  return notes.exitCode === 0 ? version : null
+}
+
+export async function currentReleaseDraft(): Promise<{
+  version: string
+  bump: VersionBump
+} | null> {
+  const [baseVersion, sourceSha] = await Promise.all([
+    currentMarketingVersion(),
+    checked('git', ['rev-parse', 'HEAD^{commit}'], 'Cannot read HEAD'),
+  ])
+  const draft = await loadReleaseDraft(sourceSha, baseVersion)
+  return draft ? { version: bumpMarketingVersion(baseVersion, draft.bump), bump: draft.bump } : null
+}
+
 export async function verifyReleasePreparationReady(): Promise<void> {
   resolveEditorCommand()
   const branch = await checked('git', ['branch', '--show-current'], 'Cannot read current branch')
@@ -188,7 +224,11 @@ export async function verifyReleasePreparationReady(): Promise<void> {
 
 export async function prepareReleaseCandidate(
   bump: VersionBump,
-): Promise<{ marketingVersion: string; sourceSha: string }> {
+): Promise<
+  | { kind: 'prepared'; marketingVersion: string; sourceSha: string }
+  | { kind: 'discarded' }
+  | { kind: 'paused' }
+> {
   await verifyReleasePreparationReady()
   const initialStatus = await checked(
     'git',
@@ -196,34 +236,128 @@ export async function prepareReleaseCandidate(
     'Cannot inspect working tree',
   )
   const resumingDraft = parsePorcelainPaths(initialStatus).length > 0
-  if (!resumingDraft) {
-    await checked('git', ['pull', '--ff-only', 'origin', 'dev'], 'Cannot update dev')
-    await verifyReleasePreparationReady()
-    await checked('git', ['checkout', 'main'], 'Cannot switch to main')
-    try {
-      await checked('git', ['pull', '--ff-only', 'origin', 'main'], 'Cannot update main')
-    } finally {
-      await checked('git', ['checkout', 'dev'], 'Cannot switch back to dev')
-    }
-  }
-
   const originalPackage = await readFile(PACKAGE_PATH, 'utf8')
   const baseVersion = await currentMarketingVersion()
   const pkg = JSON.parse(originalPackage) as { version?: unknown }
   if (typeof pkg.version !== 'string') throw new Error('package.json has no marketing version')
-  const marketingVersion = bumpMarketingVersion(baseVersion, bump)
+  let selectedBump = bump
+  let marketingVersion = bumpMarketingVersion(baseVersion, selectedBump)
   if (resumingDraft) {
     if (pkg.version !== marketingVersion) {
       throw new Error(
         `Existing release draft is v${pkg.version}; choose the matching version bump to resume it`,
       )
     }
-  } else {
-    pkg.version = marketingVersion
-    await writeFile(PACKAGE_PATH, `${JSON.stringify(pkg, null, 2)}\n`)
   }
 
-  const notesPath = await prepareReleaseNotes(marketingVersion)
+  if (!resumingDraft) {
+    const pinnedSourceSha = await checked(
+      'git',
+      ['rev-parse', 'HEAD^{commit}'],
+      'Cannot pin release source',
+    )
+    const cached = await loadReleaseDraft(pinnedSourceSha, baseVersion)
+    if (cached) selectedBump = cached.bump
+    let savedDraft: { markdown: string; threadId: string } | undefined = cached ?? undefined
+    while (true) {
+      marketingVersion = bumpMarketingVersion(baseVersion, selectedBump)
+      const notePlan = await resolveReleaseNotePlan(pinnedSourceSha, marketingVersion)
+      const review = await reviewReleaseNoteDraft({
+        root: ROOT,
+        destination: join(ROOT, releaseNotesPath(marketingVersion)),
+        label: `${marketingVersion}.md`,
+        editorCommand: resolveEditorCommand(),
+        initialPrompt: releaseNotesPrompt(notePlan),
+        initialDraft: savedDraft,
+        persist: false,
+        allowVersionChange: true,
+        acceptLabel: `Accept and release ${marketingVersion}`,
+        onDraft: (draft) =>
+          saveReleaseDraft({
+            sourceSha: pinnedSourceSha,
+            baseVersion,
+            bump: selectedBump,
+            ...draft,
+          }),
+      })
+      if (review.kind === 'discarded') {
+        await clearReleaseDraft()
+        return { kind: 'discarded' }
+      }
+      if (review.kind === 'paused') return { kind: 'paused' }
+      if (review.kind === 'change-version') {
+        savedDraft = review
+        try {
+          selectedBump = await selectPrompt('Choose a different version', [
+            { value: 'patch', label: `Patch  ${bumpMarketingVersion(baseVersion, 'patch')}` },
+            { value: 'minor', label: `Minor  ${bumpMarketingVersion(baseVersion, 'minor')}` },
+            { value: 'major', label: `Major  ${bumpMarketingVersion(baseVersion, 'major')}` },
+          ] as const)
+        } catch (error) {
+          if (!(error instanceof Error && error.message === 'Selection cancelled')) throw error
+        }
+        continue
+      }
+
+      const currentSourceSha = await checked(
+        'git',
+        ['rev-parse', 'HEAD^{commit}'],
+        'Cannot revalidate release source',
+      )
+      if (currentSourceSha !== pinnedSourceSha) {
+        throw new Error('Source changed while reviewing release notes; generate a fresh draft')
+      }
+      const acceptanceStatus = await checked(
+        'git',
+        ['status', '--porcelain'],
+        'Cannot revalidate working tree',
+      )
+      if (acceptanceStatus) {
+        throw new Error(
+          'Working tree changed while reviewing release notes; no release files were written',
+        )
+      }
+      await checked('git', ['fetch', 'origin', 'dev', 'main'], 'Cannot refresh release branches')
+      const remoteDev = await checked(
+        'git',
+        ['rev-parse', 'origin/dev^{commit}'],
+        'Cannot read origin/dev',
+      )
+      const remoteMain = await checked(
+        'git',
+        ['rev-parse', 'origin/main^{commit}'],
+        'Cannot read origin/main',
+      )
+      const remoteDevAncestor = await command('git', [
+        'merge-base',
+        '--is-ancestor',
+        remoteDev,
+        pinnedSourceSha,
+      ])
+      const remoteMainAncestor = await command('git', [
+        'merge-base',
+        '--is-ancestor',
+        remoteMain,
+        pinnedSourceSha,
+      ])
+      if (remoteDevAncestor.exitCode !== 0 || remoteMainAncestor.exitCode !== 0) {
+        throw new Error(
+          'A release branch changed incompatibly while reviewing notes; generate a fresh draft',
+        )
+      }
+      pkg.version = marketingVersion
+      await writeFile(PACKAGE_PATH, `${JSON.stringify(pkg, null, 2)}\n`)
+      await writeFile(join(ROOT, releaseNotesPath(marketingVersion)), review.markdown, {
+        flag: 'wx',
+      })
+      await buildReleaseNotes()
+      break
+    }
+  } else {
+    await prepareReleaseNotes(marketingVersion)
+  }
+
+  const notesPath = releaseNotesPath(marketingVersion)
 
   const status = await checked('git', ['status', '--porcelain'], 'Cannot inspect release changes')
   const changedPaths = parsePorcelainPaths(status)
@@ -247,25 +381,14 @@ export async function prepareReleaseCandidate(
     ['commit', '-m', `release: ${marketingVersion}`],
     'Cannot commit release candidate',
   )
-  try {
-    await checked('git', ['checkout', 'main'], 'Cannot switch to main')
-    try {
-      await checked('git', ['merge', '--ff-only', 'dev'], 'Cannot fast-forward main to dev')
-    } finally {
-      await checked('git', ['checkout', 'dev'], 'Cannot switch back to dev')
-    }
-    await checked(
-      'git',
-      ['push', '--atomic', 'origin', 'dev', 'main'],
-      'Cannot publish release candidate branches',
-    )
-  } catch (error) {
-    const branch = await command('git', ['branch', '--show-current'])
-    if (branch.stdout === 'main') await command('git', ['checkout', 'dev'])
-    throw error
-  }
+  await clearReleaseDraft()
+  await checked(
+    'git',
+    ['push', '--atomic', 'origin', 'HEAD:dev', 'HEAD:main'],
+    'Cannot publish release candidate branches',
+  )
   const sourceSha = (
     await checked('git', ['rev-parse', 'HEAD^{commit}'], 'Cannot resolve release candidate')
   ).toLowerCase()
-  return { marketingVersion, sourceSha }
+  return { kind: 'prepared', marketingVersion, sourceSha }
 }

@@ -4,7 +4,7 @@ import type { StyleProp, ViewStyle } from 'react-native'
 import { Text } from '@/components/base/Text'
 import type { Icon } from 'phosphor-react-native'
 
-import { theme } from '@/constants/theme'
+import { theme, type ThemeColor } from '@/constants/theme'
 
 /**
  * State of one timeline step. Drives the glyph colour, connector colour, and
@@ -108,7 +108,7 @@ function StepGlyph({ icon: StepIcon, state }: { icon: Icon; state: StepState }) 
   )
 }
 
-const GLYPH_COLOR: Record<StepState, string> = {
+const GLYPH_COLOR: Record<StepState, ThemeColor> = {
   done: theme.palette.green.color,
   active: theme.status.upgrade.color,
   failed: theme.status.error.color,

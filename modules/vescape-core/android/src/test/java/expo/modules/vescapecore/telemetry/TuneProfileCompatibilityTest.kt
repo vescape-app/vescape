@@ -26,12 +26,12 @@ class TuneProfileCompatibilityTest {
   }
 
   @Test
-  fun tuneCompatibilityRejectsUnscopedAndNonBaseVersions() {
-    assertEquals("1.3.0", validRefloatBaseVersion("1.3.0"))
+  fun tuneCompatibilityIgnoresPatchAndSuffixButRejectsUnknownVersions() {
+    assertEquals("1.3", validRefloatBaseVersion("1.3.0"))
     assertEquals("1.1", validRefloatBaseVersion("1.1"))
     assertEquals(null, validRefloatBaseVersion(""))
     assertEquals(null, validRefloatBaseVersion(null))
-    assertEquals(null, validRefloatBaseVersion("1.3.0-preview2"))
+    assertEquals("1.3", validRefloatBaseVersion("1.3.0-preview2"))
     assertEquals(null, validRefloatBaseVersion("Refloat 1.3.0"))
   }
 

@@ -84,7 +84,7 @@ final class BoardConfigValuesTests: XCTestCase {
     XCTAssertEqual(values.writeBase?.schema.hash, "hash")
   }
 
-  func testProvisionalRoundTripKeepsTypesAndHasNoWriteBase() {
+  func testProvisionalRoundTripKeepsTypesAndHasNoWriteBase() throws {
     let fresh = BoardConfigValues(
       boardId: "board-1",
       refloatBaseVersion: "3.0",
@@ -94,7 +94,7 @@ final class BoardConfigValuesTests: XCTestCase {
       writeBase: nil
     )
 
-    let restored = BoardConfigValues.lastKnown(
+    let restored = try BoardConfigValues.lastKnown(
       boardId: "board-1",
       refloatBaseVersion: "3.0",
       capturedAtMs: 7,

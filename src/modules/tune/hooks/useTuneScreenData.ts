@@ -44,6 +44,7 @@ export async function refreshBoardSnapshotAndProfiles({
   const snapshot = await readBoardSnapshot()
   const boardId = snapshot?.boardId ?? selectedBoardId
   if (boardId && boardId === selectedBoardId) {
+    // intentional-suppression: Tune store error is rendered by the active screen or modal
     await loadProfiles(boardId, snapshot).catch(() => [])
   }
 }
@@ -129,6 +130,7 @@ export function useTuneScreenData() {
   const loadProfileConfig = useCallback(
     async (boardId: string) => {
       setBoardSnapshot(null)
+      // intentional-suppression: Tune store error is rendered by the active screen or modal
       await loadProfiles(boardId, tuneCompatibility).catch(() => [])
     },
     [loadProfiles, setBoardSnapshot, tuneCompatibility],
@@ -141,6 +143,7 @@ export function useTuneScreenData() {
       selectedBoardId,
       readBoardSnapshot,
       loadProfiles: (boardId, snapshot) =>
+        // intentional-suppression: Tune store error is rendered by the active screen or modal
         loadProfiles(
           boardId,
           snapshot?.refloatBaseVersion ?? selectedBoard?.link?.refloatBaseVersion ?? null,

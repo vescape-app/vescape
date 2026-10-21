@@ -11,12 +11,9 @@ class VescFaultCaptureCoordinatorTest {
     val captures = LinkedHashMap<String, VescFaultCapture>()
     val samples = LinkedHashMap<String, List<VescFaultCaptureSample>>()
 
-    override suspend fun upsertCapture(capture: VescFaultCapture) {
+    override suspend fun saveCapture(capture: VescFaultCapture, samples: List<VescFaultCaptureSample>) {
       captures[capture.occurrenceId] = capture
-    }
-
-    override suspend fun appendSamples(occurrenceId: String, samples: List<VescFaultCaptureSample>) {
-      this.samples[occurrenceId] = samples
+      this.samples[capture.occurrenceId] = samples
     }
 
     override suspend fun getCapture(occurrenceId: String) = captures[occurrenceId]

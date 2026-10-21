@@ -1,3 +1,5 @@
+import { useSettingsStore } from '@/modules/settings/store/settingsStore'
+import { AccessoryIcon } from '@/modules/accessories/constants/accessoryIcon'
 import { useLayoutEffect } from 'react'
 import { View, StyleSheet, ScrollView, Platform } from 'react-native'
 import { Text } from '@/components/base/Text'
@@ -20,13 +22,14 @@ import {
   WatchIcon,
   EngineIcon,
   MapTrifoldIcon,
-  PaletteIcon,
+  SpeakerHighIcon,
 } from 'phosphor-react-native'
 
 import { routes } from '@/navigation/routes'
 import { theme } from '@/constants/theme'
 import { DASH, formatBytes } from '@/helpers/format'
 import { IconButton } from '@/components/base/IconButton'
+import { Select } from '@/components/forms/Select'
 import { SettingsCard } from '@/components/settings/SettingsCard'
 import { SettingsRow } from '@/components/settings/SettingsRow'
 import { SettingsSectionTitle } from '@/components/settings/SettingsSectionTitle'
@@ -42,6 +45,8 @@ import { useResolvedNeutralColors } from '@/hooks/useTheme'
 const appVersion = Constants.expoConfig?.version ?? DASH
 
 export default function SettingsScreen() {
+  const unitSystem = useSettingsStore((state) => state.unitSystem)
+  const setSetting = useSettingsStore((state) => state.set)
   const db = useSettingsDatabaseOps()
   const navigation = useNavigation()
   const appStatus = useAppStatusStore((state) => state.status)
@@ -94,21 +99,21 @@ export default function SettingsScreen() {
           />
         </IconHero>
 
-        <SettingsSectionTitle>General</SettingsSectionTitle>
+        <SettingsSectionTitle>Connection</SettingsSectionTitle>
 
         <SettingsCard>
           <SettingsRow
             icon={BluetoothConnectedIcon}
-            iconColor={theme.settingsIcon.connection}
-            label="Connection"
-            hint="Auto start, auto connect, and sounds"
-            onPress={() => router.push(routes.settingsConnection)}
+            iconColor={theme.settingsIcon.automation}
+            label="Automation"
+            hint="Auto start and auto connect"
+            onPress={() => router.push(routes.settingsAutomation)}
           />
           <SettingsRow
             icon={GaugeIcon}
             iconColor={theme.settingsIcon.liveTelemetry}
             label="Live telemetry"
-            hint="Graphs, update rate, and battery smoothing"
+            hint="Chart length and update rate"
             onPress={() => router.push(routes.settingsLiveTelemetry)}
           />
           <SettingsRow
@@ -118,37 +123,63 @@ export default function SettingsScreen() {
             hint="Board warnings and health checks"
             onPress={() => router.push(routes.settingsDiagnostics)}
           />
+        </SettingsCard>
+
+        <SettingsSectionTitle>Preferences</SettingsSectionTitle>
+
+        <SettingsCard>
           <SettingsRow
-            icon={PaletteIcon}
-            iconColor={theme.palette.purple.color}
-            label="Appearance"
-            hint="System, light, dark, or sunrise and sunset"
-            onPress={() => router.push(routes.settingsVisuals)}
+            icon={GaugeIcon}
+            iconColor={theme.palette.amber.color}
+            label="Units"
+            hint={unitSystem === 'metric' ? 'km/h · km · m' : 'mph · mi · ft'}
+            right={
+              <Select
+                options={[
+                  { label: 'Metric', value: 'metric' },
+                  { label: 'Imperial', value: 'imperial' },
+                ]}
+                value={unitSystem}
+                onChange={(value) => void setSetting('unitSystem', value)}
+                style={styles.unitsSelect}
+                testID="unit-system-select"
+              />
+            }
           />
           <SettingsRow
             icon={MapTrifoldIcon}
-            iconColor={theme.settingsIcon.map}
+            iconColor={theme.palette.green.color}
             label="Map"
             hint="Map appearance and satellite imagery"
             onPress={() => router.push(routes.settingsMap)}
           />
+          <SettingsRow
+            icon={SpeakerHighIcon}
+            iconColor={theme.settingsIcon.sounds}
+            label="Sounds"
+            hint="Choose and preview a sound pack"
+            onPress={() => router.push(routes.settingsSounds)}
+          />
         </SettingsCard>
 
-        {Platform.OS === 'android' && (
-          <>
-            <SettingsSectionTitle>Watch</SettingsSectionTitle>
+        <SettingsSectionTitle>Devices</SettingsSectionTitle>
 
-            <SettingsCard>
-              <SettingsRow
-                icon={WatchIcon}
-                iconColor={theme.settingsIcon.watch}
-                label="Watch"
-                hint="Auto open and telemetry push rate"
-                onPress={() => router.push(routes.settingsWatch)}
-              />
-            </SettingsCard>
-          </>
-        )}
+        <SettingsCard>
+          <SettingsRow
+            icon={WatchIcon}
+            iconColor={theme.settingsIcon.watch}
+            label="Watch"
+            hint="Push rate and what the wrist shows"
+            onPress={() => router.push(routes.settingsWatch)}
+          />
+          <SettingsRow
+            icon={AccessoryIcon}
+            iconColor={theme.palette.teal.color}
+            label="Accessories"
+            hint="Manage sensors and lights"
+            onPress={() => router.push(routes.accessories)}
+          />
+        </SettingsCard>
 
         <SettingsSectionTitle>Recording</SettingsSectionTitle>
 
@@ -164,7 +195,7 @@ export default function SettingsScreen() {
             icon={ClockCounterClockwiseIcon}
             iconColor={theme.settingsIcon.filters}
             label="History"
-            hint="Ride splitting and ride data filtering"
+            hint="Ride splitting, data filters and battery smoothing"
             onPress={() => router.push(routes.settingsHistory)}
           />
           <SettingsRow
@@ -207,6 +238,7 @@ const styles = StyleSheet.create({
     padding: 16,
     gap: 8,
   },
+  unitsSelect: { width: 150 },
   headerStats: {
     flexDirection: 'row',
     gap: 20,

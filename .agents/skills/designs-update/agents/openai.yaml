@@ -1,0 +1,4 @@
+interface:
+  display_name: 'Update Vescape designs'
+  short_description: 'Sync Penpot designs from the dev commit checkpoint'
+  default_prompt: 'Use $designs-update to synchronize Penpot with latest dev and record the verified checkpoint.'

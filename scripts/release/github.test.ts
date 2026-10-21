@@ -279,6 +279,12 @@ describe('release workflow dispatch', () => {
       marketingVersion: '0.83.1',
       versionCodes: { phone: 100_000_042, wear: 1_100_000_042 },
       workflow: { runId: 123, runUrl: 'https://example.test/123', runAttempt: 1 },
+      storageContracts: {
+        sourceSha: 'a'.repeat(40),
+        androidRoom: 'passed' as const,
+        iosGrdb: 'passed' as const,
+        crossPlatformArchives: 'passed' as const,
+      },
       artifacts: {
         phone: { name: 'phone.aab', sha256: 'a', signingCertificateSha256: 'c' },
         wear: { name: 'wear.aab', sha256: 'b', signingCertificateSha256: 'c' },
@@ -373,6 +379,12 @@ describe('release workflow dispatch', () => {
       marketingVersion: '0.83.1',
       versionCodes: { phone: 100_000_042, wear: 1_100_000_042 },
       workflow: { runId: 302, runUrl: 'https://example.test/302', runAttempt: 1 },
+      storageContracts: {
+        sourceSha: 'a'.repeat(40),
+        androidRoom: 'passed' as const,
+        iosGrdb: 'passed' as const,
+        crossPlatformArchives: 'passed' as const,
+      },
       artifacts: {
         phone: { name: 'phone.aab', sha256: 'a', signingCertificateSha256: 'c' },
         wear: { name: 'wear.aab', sha256: 'b', signingCertificateSha256: 'c' },

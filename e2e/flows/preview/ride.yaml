@@ -1,0 +1,20 @@
+# A minute of the warmed ride for the landing page and promo edit.
+appId: ${APP_ID}
+---
+- runFlow: _boot.yaml
+- runScript:
+    file: _recorder.js
+    env:
+      ACTION: start
+- repeat:
+    times: 2
+    commands:
+      - runScript:
+          file: _recorder.js
+          env:
+            ACTION: dwell
+            MS: 30000
+- runScript:
+    file: _recorder.js
+    env:
+      ACTION: stop

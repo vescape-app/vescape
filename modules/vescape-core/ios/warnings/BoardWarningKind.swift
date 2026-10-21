@@ -44,10 +44,14 @@ enum BoardWarningSeverity: String {
 enum BoardWarningPayload {
   static func round4(_ value: Double) -> Double { (value * 10_000).rounded() / 10_000 }
 
-  static func json(_ fields: [String: Any]) -> String {
-    guard let data = try? JSONSerialization.data(withJSONObject: fields, options: [.sortedKeys]),
-          let string = String(data: data, encoding: .utf8)
-    else { return "{}" }
+  static func json(_ fields: [String: Any]) throws -> String {
+    guard JSONSerialization.isValidJSONObject(fields) else {
+      throw CocoaError(.propertyListWriteInvalid)
+    }
+    let data = try JSONSerialization.data(withJSONObject: fields, options: [.sortedKeys])
+    guard let string = String(data: data, encoding: .utf8) else {
+      throw CocoaError(.fileWriteInapplicableStringEncoding)
+    }
     return string
   }
 }

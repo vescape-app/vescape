@@ -18,6 +18,8 @@ enum ApiResult<T> {
   case malformed(String)
   /// Offline, timed out, or a server fault. Retryable later.
   case unavailable(String)
+  /// The calling task was cancelled. Callers must stop their operation without reporting a fault.
+  case cancelled
 }
 
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/api/ApiResult.kt `HttpMethod`
@@ -43,6 +45,13 @@ enum AuthMode {
   case required
   case optional
   case bearer(String)
+}
+
+extension AuthMode {
+  var rejectsStoredCredential: Bool {
+    if case .required = self { return true }
+    return false
+  }
 }
 
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/api/ApiResult.kt `ApiRequest`

@@ -111,8 +111,7 @@ data class VescFaultCapture(
  * @parity /modules/vescape-core/ios/faults/VescFaultCaptureCoordinator.swift `VescFaultCaptureStoring`
  */
 interface VescFaultCaptureStore {
-  suspend fun upsertCapture(capture: VescFaultCapture)
-  suspend fun appendSamples(occurrenceId: String, samples: List<VescFaultCaptureSample>)
+  suspend fun saveCapture(capture: VescFaultCapture, samples: List<VescFaultCaptureSample>)
   suspend fun getCapture(occurrenceId: String): VescFaultCapture?
   suspend fun getSamples(occurrenceId: String): List<VescFaultCaptureSample>
 }
@@ -148,16 +147,15 @@ class VescFaultCaptureCoordinator(
     val samples = (recentWindow?.invoke() ?: emptyList())
       .mapNotNull { VescFaultCaptureSample.fromLiveSample(it) }
       .filter { it.capturedAtMs in startedAtMs..openedAtMs }
-    store.upsertCapture(
+    store.saveCapture(
       VescFaultCapture(
         occurrenceId = occurrenceId,
         boardId = boardId,
         startedAtMs = startedAtMs,
         openedAtMs = openedAtMs,
         sampleCount = samples.size,
-      ),
+      ), samples,
     )
-    if (samples.isNotEmpty()) store.appendSamples(occurrenceId, samples)
   }
 
   /**
@@ -193,21 +191,16 @@ class VescFaultCaptureCoordinator(
 private class RoomVescFaultCaptureStore(
   private val dao: expo.modules.vescapecore.telemetry.TelemetryDao,
 ) : VescFaultCaptureStore {
-  override suspend fun upsertCapture(capture: VescFaultCapture) = dao.upsertVescFaultCapture(
+  override suspend fun saveCapture(capture: VescFaultCapture, samples: List<VescFaultCaptureSample>) = dao.saveVescFaultCapture(
     VescFaultCaptureEntity(
       occurrenceId = capture.occurrenceId,
       boardId = capture.boardId,
       startedAtMs = capture.startedAtMs,
       openedAtMs = capture.openedAtMs,
       sampleCount = capture.sampleCount,
-    ),
-  )
-
-  override suspend fun appendSamples(occurrenceId: String, samples: List<VescFaultCaptureSample>) =
-    dao.insertVescFaultCaptureSamples(
-      samples.map {
+    ), samples.map {
         VescFaultCaptureSampleEntity(
-          occurrenceId = occurrenceId,
+          occurrenceId = capture.occurrenceId,
           capturedAtMs = it.capturedAtMs,
           speed = it.speed,
           dutyCycle = it.dutyCycle,
@@ -224,8 +217,7 @@ private class RoomVescFaultCaptureStore(
           adc2 = it.adc2,
           state = it.state,
         )
-      },
-    )
+      })
 
   override suspend fun getCapture(occurrenceId: String): VescFaultCapture? =
     dao.getVescFaultCapture(occurrenceId)?.let {

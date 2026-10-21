@@ -40,22 +40,26 @@ interface BoardConfigValuesState {
    * Session values always win; this only fills the gap while the Board is off.
    */
   lastKnown: BoardConfigValues | null
+  error: string | null
   replace: (values: BoardConfigValues | null) => void
   loadLastKnown: (boardId: string) => Promise<void>
 }
+let lastKnownLoadGeneration = 0
 
 export const useBoardConfigValuesStore = create<BoardConfigValuesState>((set, get) => ({
   values: null,
   lastKnown: null,
-  replace: (values) => set({ values }),
+  error: null,
+  replace: (values) => set({ values, error: null }),
   loadLastKnown: async (boardId) => {
     if (get().lastKnown?.boardId === boardId) return
+    const request = ++lastKnownLoadGeneration
     try {
       const values = await getLastKnownBoardConfigValues(boardId)
-      // A Board switch mid-flight must not land the wrong Board's values.
-      if (values == null || values.boardId === boardId) set({ lastKnown: values })
+      if (request === lastKnownLoadGeneration) set({ lastKnown: values, error: null })
     } catch {
-      // Nothing to show is the same outcome as a failed load; the next mount retries.
+      if (request === lastKnownLoadGeneration)
+        set({ error: 'Saved board configuration could not be read.' })
     }
   },
 }))
@@ -127,14 +131,17 @@ export function startBoardConfigValuesSync(): () => void {
     useBoardConfigValuesStore.getState().replace(event.values)
   })
   const pull = () => {
-    const startedAt = revision
+    const startedAt = ++revision
     void getBoardConfigValues()
       .then((values) => {
         if (revision !== startedAt) return
-        useBoardConfigValuesStore.getState().replace(values)
+        useBoardConfigValuesStore.setState({ values, error: null })
       })
       // A failed pull keeps the last known mirror; the next foreground or push heals it.
-      .catch(() => undefined)
+      .catch(() => {
+        if (revision !== startedAt) return
+        useBoardConfigValuesStore.setState({ error: 'Board configuration could not be refreshed.' })
+      })
   }
   pull()
   const appStateSub = AppState.addEventListener('change', (nextState) => {

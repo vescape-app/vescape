@@ -9,7 +9,6 @@ import expo.modules.vescapecore.alerts.ALERT_BEEP_COUNT_DEFAULT
 
 // @parity /modules/vescape-core/ios/alerts/AlertEngine.swift
 const val TELEMETRY_FLAG_KEYFRAME = 1
-const val TELEMETRY_FLAG_HAS_LOCATION = 1 shl 2
 
 const val TELEMETRY_MASK_SPEED = 1
 const val TELEMETRY_MASK_BATTERY_VOLTAGE = 1 shl 1
@@ -29,13 +28,12 @@ const val TELEMETRY_MASK_ODOMETER = 1 shl 14
 const val TELEMETRY_MASK_TEMP_MOSFET = 1 shl 15
 const val TELEMETRY_MASK_TEMP_MOTOR = 1 shl 16
 
-const val TELEMETRY_MASK2_LOCATION = 1
-
 @Entity(
   tableName = "telemetry_frames",
   indices = [
     Index(value = ["captured_at_ms"]),
     Index(value = ["board_id", "captured_at_ms"]),
+    Index(value = ["recording_id", "captured_at_ms"]),
   ],
 )
 data class TelemetryFrameEntity(
@@ -52,6 +50,13 @@ data class TelemetryFrameEntity(
    */
   @ColumnInfo(name = "board_id")
   val boardId: String?,
+  /**
+   * Owning Ride Recording (`ride_recordings.id`), or null for rows recorded before durable
+   * recording identity existed. Board attribution and recording identity are separate facts: one
+   * Board produces many recordings, and two of them can share a minute (ADR 0038).
+   */
+  @ColumnInfo(name = "recording_id")
+  val recordingId: String? = null,
   @ColumnInfo(name = "can_id")
   val canId: Int?,
   val flags: Int,
@@ -91,25 +96,124 @@ data class TelemetryFrameEntity(
   val tempMosfetDeciC: Int?,
   @ColumnInfo(name = "temp_motor_deci_c")
   val tempMotorDeciC: Int?,
+)
+
+/**
+ * One **Ride Recording**: durable identity and explicit start/end boundaries for a capture, held
+ * apart from the Board that produced it (ADR 0038).
+ *
+ * `board_id` stays Board attribution — it says *which Board*, never *which recording*. Two
+ * recordings of one Board minutes (or seconds) apart are two rows here, which is what keeps their
+ * frames, track and minute buckets from being merged on read.
+ *
+ * [endedAtMs] is null while the recording is open. Only an explicit rider Stop Recording or
+ * Disconnect closes it: an unexpected drop, an Idle Pause, a process restart or an hour of silence
+ * in both streams leave it open.
+ *
+ * @parity /modules/vescape-core/ios/telemetry/RideTrackStore.swift `RideRecording`
+ */
+@Entity(
+  tableName = "ride_recordings",
+  indices = [
+    Index(value = ["started_at_ms"]),
+    Index(value = ["board_id", "started_at_ms"]),
+  ],
+)
+data class RideRecordingEntity(
+  @PrimaryKey
+  val id: String,
+  /** Owning Board (`boards.id`), or null when the recording matched no saved Board. */
+  @ColumnInfo(name = "board_id")
+  val boardId: String?,
+  @ColumnInfo(name = "started_at_ms")
+  val startedAtMs: Long,
+  /** Null while the recording is open. */
+  @ColumnInfo(name = "ended_at_ms")
+  val endedAtMs: Long? = null,
+  /**
+   * Why the recording ended: [RIDE_RECORDING_END_STOPPED], [RIDE_RECORDING_END_DISCONNECTED] or
+   * [RIDE_RECORDING_END_BOARD_CHANGE]. Null while open.
+   */
+  @ColumnInfo(name = "ended_reason")
+  val endedReason: String? = null,
+)
+
+/** Rider stopped recording explicitly. */
+const val RIDE_RECORDING_END_STOPPED = "stopped"
+
+/** Rider disconnected the Board explicitly. */
+const val RIDE_RECORDING_END_DISCONNECTED = "disconnected"
+
+/** An explicit connection attempt to another Board ended this one, however that attempt turned out. */
+const val RIDE_RECORDING_END_BOARD_CHANGE = "board_change"
+
+/**
+ * One point of a **Ride Track**: a single GPS Fix recorded during a Ride Recording, on the GPS
+ * clock (ADR 0038).
+ *
+ * Every admitted fix is stored with the accuracy the platform reported, poor ones included — the
+ * precision rule is a read-side decision, and a write-time discard is unrecoverable. The two gates
+ * that do drop a fix are the Ride Recording state (Idle Pause halts both streams) and Privacy Zones
+ * (ADR 0009), which must filter this stream on its own now that position no longer rides along on a
+ * suppressed Telemetry Sample.
+ *
+ * [fixAtMs] is the GPS clock, deliberately not aligned to any telemetry frame's capture time: a fix
+ * survives a board dropout, and the two streams are joined on read, not on write.
+ *
+ * @parity /modules/vescape-core/ios/telemetry/RideTrackStore.swift `RideTrackPoint`
+ */
+@Entity(
+  tableName = "ride_track_points",
+  indices = [
+    Index(value = ["fix_at_ms"]),
+    Index(value = ["board_id", "fix_at_ms"]),
+    Index(value = ["recording_id", "fix_at_ms"]),
+  ],
+)
+data class RideTrackPointEntity(
+  @PrimaryKey(autoGenerate = true)
+  val id: Long = 0,
+  /**
+   * Owning Ride Recording (`ride_recordings.id`), or null for points migrated out of
+   * `telemetry_frames`, which predate durable recording identity. Legacy history keeps its
+   * gap-based grouping (`rideSplitGapMinutes`) rather than having recordings invented for it.
+   */
+  @ColumnInfo(name = "recording_id")
+  val recordingId: String?,
+  /** Owning Board (`boards.id`), or null when the fix matched no saved Board (ADR 0028). */
+  @ColumnInfo(name = "board_id")
+  val boardId: String?,
+  /** GPS clock: when the platform says the fix was taken. */
+  @ColumnInfo(name = "fix_at_ms")
+  val fixAtMs: Long,
   @ColumnInfo(name = "latitude_e7")
-  val latitudeE7: Int?,
+  val latitudeE7: Int,
   @ColumnInfo(name = "longitude_e7")
-  val longitudeE7: Int?,
-  @ColumnInfo(name = "gps_speed_centi_mps")
-  val gpsSpeedCentiMps: Int?,
-  @ColumnInfo(name = "bearing_centi_deg")
-  val bearingCentiDeg: Int?,
+  val longitudeE7: Int,
+  /** Reported horizontal accuracy. Stored as reported; never a filter at write time. */
   @ColumnInfo(name = "accuracy_cm")
   val accuracyCm: Int?,
+  @ColumnInfo(name = "gps_speed_centi_mps")
+  val gpsSpeedCentiMps: Int?,
+  /** Raw platform bearing, not the derived course. */
+  @ColumnInfo(name = "bearing_centi_deg")
+  val bearingCentiDeg: Int?,
   @ColumnInfo(name = "altitude_cm")
   val altitudeCm: Int?,
-  @ColumnInfo(name = "location_timestamp_ms")
-  val locationTimestampMs: Long?,
 )
+
+/**
+ * Stand-in Ride Recording id for minute buckets aggregated from rows without durable recording
+ * identity. `recording_id` is part of the bucket primary key, so legacy rows need a value rather
+ * than null.
+ *
+ * @parity /modules/vescape-core/ios/telemetry/RideTrackStore.swift `LEGACY_RIDE_RECORDING_ID`
+ */
+const val LEGACY_RIDE_RECORDING_ID = ""
 
 @Entity(
   tableName = "telemetry_minute_buckets",
-  primaryKeys = ["bucket_start_ms", "board_id"],
+  primaryKeys = ["bucket_start_ms", "board_id", "recording_id"],
   indices = [Index(value = ["bucket_start_ms"])],
 )
 data class TelemetryMinuteBucketEntity(
@@ -122,6 +226,13 @@ data class TelemetryMinuteBucketEntity(
    */
   @ColumnInfo(name = "board_id")
   val boardId: String,
+  /**
+   * Owning Ride Recording (`ride_recordings.id`), or [LEGACY_RIDE_RECORDING_ID] for buckets built
+   * before durable recording identity. Part of the key so two recordings of one Board inside one
+   * minute aggregate separately instead of being merged (ADR 0038).
+   */
+  @ColumnInfo(name = "recording_id")
+  val recordingId: String = LEGACY_RIDE_RECORDING_ID,
   @ColumnInfo(name = "sample_count")
   val sampleCount: Int,
   @ColumnInfo(name = "first_sample_at_ms")
@@ -172,6 +283,9 @@ data class TelemetryMinuteBucketEntity(
   val firstMovingAtMs: Long? = null,
   @ColumnInfo(name = "last_moving_at_ms")
   val lastMovingAtMs: Long? = null,
+  /** @parity /modules/vescape-core/ios/telemetry/BucketRoutePreview.swift */
+  @ColumnInfo(name = "route_preview")
+  val routePreview: String? = null,
 )
 
 @Entity(
@@ -311,7 +425,7 @@ data class AlertRuleEntity(
   val beepCount: Int = ALERT_BEEP_COUNT_DEFAULT,
   /**
    * Free-text provenance tag mirroring TS `AlertRule.source`: `manual` (or null) or `preset`.
-   * JS authors and regenerates preset rules; native only persists the string.
+   * Native owns preset generation; JS submits selection intents.
    */
   val source: String?,
 )
@@ -388,6 +502,7 @@ data class AppSettings(
   val freeSpinMaxSpeedDeltaKmh: Double = DEFAULT_FREE_SPIN_MAX_SPEED_DELTA_KMH,
   val freeSpinStationaryBoardCapKmh: Double = DEFAULT_FREE_SPIN_STATIONARY_BOARD_CAP_KMH,
   val rideSplitGapMinutes: Int = DEFAULT_RIDE_SPLIT_GAP_MINUTES,
+  val unitSystem: String = "metric",
   val themeMode: String = "system",
   val mapStyleKey: String = "onedark",
   val satelliteOverlayEnabled: Boolean = true,
@@ -395,16 +510,27 @@ data class AppSettings(
   val satelliteMapImageryOpacity: Double = 1.0,
   val satelliteImagerySaturation: Double = -0.35,
   val hideTelemetryMapDetails: Boolean = true,
+  val showHistoryMapMarkers: Boolean = false,
   val mapOrientationMode: String = "northUp",
   val historyMetricGradientsEnabled: Boolean = true,
   val historyMetricHotRanges: Map<String, Map<String, Double>> = DEFAULT_HISTORY_METRIC_HOT_RANGES,
   val socEstimateWindowSeconds: Int = 20,
   val boardMoveStrengthPercent: Int = 60,
   val connectionSoundsEnabled: Boolean = true,
+  val soundPack: String = "retro",
+  // @parity /modules/vescape-core/ios/telemetry/AppDataRepository.swift `defaultSettings`
+  // @parity /modules/vescape-core/src/index.ts `AppSettings`
+  val audioSource: String = "alarm",
   val telemetryPollRateHz: Int = 20,
   val wearPushRateHz: Int = 4,
   val wearAutoLaunchOnConnect: Boolean = true,
   val wearNavArrowEnabled: Boolean = false,
+  val wearTelemetryTrailEnabled: Boolean = true,
+  val wearTelemetryGroupEnabled: Boolean = true,
+  val wearTelemetryRouteEnabled: Boolean = true,
+  val wearStreetMapEnabled: Boolean = true,
+  val wearMapGaugesPercent: Int = 60,
+  val wearTiltRatePercent: Int = 20,
   val companionPresenceEnabled: Boolean = false,
   val boardWarningsEnabled: Boolean = true,
   /** `VESC Fault Collection` master switch — independent of [boardWarningsEnabled] (#430). */
@@ -415,6 +541,7 @@ data class AppSettings(
   val riderId: String? = null,
   val riderName: String? = null,
   val riderColor: String? = null,
+  val groupRidePublicEnabled: Boolean = false,
   val legalPolicy: Map<String, String>? = null,
   val dismissedCommunityMessageIds: List<String> = emptyList(),
 )
@@ -547,7 +674,7 @@ data class FavoriteEntity(
    */
   fun toMap(
     boardName: String?,
-    routePoints: List<Map<String, Double>> = emptyList(),
+    routePoints: List<Map<String, Any>> = emptyList(),
   ): Map<String, Any?> = mapOf(
     "id" to id,
     "boardId" to boardId,
@@ -784,4 +911,89 @@ data class VescFaultCaptureSampleEntity(
   val adc1: Double?,
   val adc2: Double?,
   val state: Int?,
+)
+
+/**
+ * One enrolled Accessory: the durable half of an Accessory, and the only reason one auto-connects.
+ *
+ * Identity is [accessoryId] — the persistent UUID the manifest carries — never the BLE handle and
+ * never the name. Both of those move: Android reports a rotating MAC, iOS a per-install peripheral
+ * id, and the rider can rename the unit from its own firmware. Keying the row on the manifest id is
+ * what makes a renamed Accessory the same Accessory instead of a second one.
+ *
+ * [deviceId] is a reconnect hint and nothing more. It is where the Accessory answered last time, so
+ * the session has somewhere to look before falling back to a scan; a stale one costs a scan, never
+ * a duplicate row.
+ *
+ * [capabilitiesJson] is the capability set validated at the last successful handshake. Every
+ * reconnect reads the manifest again and compares: a capability whose declared limits moved is a
+ * capability whose saved per-capability settings may no longer fit, and the binding says setup is
+ * required rather than driving hardware to numbers it no longer accepts.
+ *
+ * @parity /modules/vescape-core/ios/telemetry/AccessoryPersistence.swift `SavedAccessory`
+ */
+@Entity(tableName = "accessories")
+data class SavedAccessoryEntity(
+  @PrimaryKey @ColumnInfo(name = "accessory_id") val accessoryId: String,
+  /** Manifest name at the last handshake. A label to show, refreshed on every reconnect. */
+  val name: String,
+  @ColumnInfo(name = "firmware_version") val firmwareVersion: String,
+  /** Last agreed protocol version, or null when the two sides found none. */
+  @ColumnInfo(name = "protocol_version") val protocolVersion: Int?,
+  /** Where it answered last. A hint for the next connect, not identity. */
+  @ColumnInfo(name = "device_id") val deviceId: String?,
+  @ColumnInfo(name = "capabilities_json") val capabilitiesJson: String,
+  @ColumnInfo(name = "enrolled_at") val enrolledAt: Long,
+  @ColumnInfo(name = "last_connected_at") val lastConnectedAt: Long?,
+)
+
+/**
+ * What the rider calibrated for one ground-clearance capability.
+ *
+ * Keyed on the Accessory *and* the capability, never on the Accessory alone: the protocol lets one
+ * unit declare several measurement capabilities, and the eventual hardware has a nose sensor and a
+ * tail sensor on the same board. Collapsing this onto the Accessory row would make those two share
+ * a calibration, which is the one thing they can never do.
+ *
+ * There is no partial row and no draft. A calibration is written when it is complete and valid, so
+ * anything stored here was a usable calibration at the moment it was saved. Whether it is still one
+ * is decided against the live manifest every session — a firmware that narrowed its measurement
+ * range invalidates a row it no longer fits, and the rider is asked to set it again rather than
+ * having their numbers quietly squeezed into the new limits.
+ *
+ * @parity /modules/vescape-core/ios/telemetry/AccessoryPersistence.swift `SavedGroundClearance`
+ * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/accessory/GroundClearance.kt `GroundClearanceCalibration`
+ */
+@Entity(tableName = "accessory_ground_clearance", primaryKeys = ["accessory_id", "capability_id"])
+data class AccessoryGroundClearanceEntity(
+  @ColumnInfo(name = "accessory_id") val accessoryId: String,
+  /** Stable within the Accessory and across firmware updates, exactly as the manifest declares it. */
+  @ColumnInfo(name = "capability_id") val capabilityId: String,
+  /** Clearance at which correction is at full strength. Always below [farCm]. */
+  @ColumnInfo(name = "near_cm") val nearCm: Double,
+  /** Clearance at which correction starts. Above it nothing is commanded. */
+  @ColumnInfo(name = "far_cm") val farCm: Double,
+  /** Raw wire value for where the sensor is mounted. A value this app cannot read is incomplete. */
+  val direction: String,
+  /** Maximum Remote Tilt input this binding may command, as a percentage. */
+  @ColumnInfo(name = "strength_percent") val strengthPercent: Int,
+  @ColumnInfo(name = "updated_at") val updatedAt: Long,
+)
+
+/** @parity /modules/vescape-core/ios/telemetry/AccessoryPersistence.swift `SavedBrakeLight` */
+@Entity(tableName = "accessory_brake_light", primaryKeys = ["accessory_id", "capability_id"])
+data class AccessoryBrakeLightEntity(
+ @ColumnInfo(name = "accessory_id") val accessoryId: String,
+ @ColumnInfo(name = "capability_id") val capabilityId: String,
+ val sensitivity: Int,
+ val parked: String,
+)
+
+/** @parity /modules/vescape-core/ios/telemetry/AccessoryPersistence.swift `SavedAccessoryCapabilitySettings` */
+@Entity(tableName = "accessory_capability_settings", primaryKeys = ["accessory_id", "capability_id"])
+data class AccessoryCapabilitySettingsEntity(
+  @ColumnInfo(name = "accessory_id") val accessoryId: String,
+  @ColumnInfo(name = "capability_id") val capabilityId: String,
+  val enabled: Boolean,
+  @ColumnInfo(name = "sampling_rate_hz") val samplingRateHz: Double? = null,
 )

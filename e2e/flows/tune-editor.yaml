@@ -1,0 +1,67 @@
+# Run against a dev client attached to the current workspace Metro. Preserves app data.
+appId: ${APP_ID}
+---
+- tapOn:
+    text: Cancel
+    optional: true
+- openLink: 'vescape://settings/components/tune'
+- scrollUntilVisible:
+    element:
+      text: 'Edit threshold'
+    direction: UP
+- extendedWaitUntil:
+    visible: 'Edit threshold'
+    timeout: 30000
+- tapOn: 'Edit threshold'
+- tapOn: 'Enter value manually'
+- tapOn:
+    id: 'tune-manual-value'
+- eraseText
+- inputText: '2.3'
+- pressKey: Enter
+- tapOn: 'Use ruler'
+- tapOn: 'Enter value manually'
+- assertVisible: '2.3'
+- pressKey: Enter
+- tapOn:
+    id: 'tune-editor-apply'
+- assertVisible: 'Applied value: 2.3'
+- tapOn: 'Edit threshold'
+- tapOn: 'Enter value manually'
+- tapOn:
+    id: 'tune-manual-value'
+- eraseText
+- inputText: '6'
+- pressKey: Enter
+- assertVisible: 'Outside the usual range.*'
+- assertVisible:
+    id: 'tune-editor-apply'
+    enabled: true
+- takeScreenshot: /tmp/tune-manual-warning
+- tapOn:
+    id: 'tune-editor-apply'
+- assertVisible: 'Applied value: 6'
+- tapOn: 'Edit threshold'
+- tapOn: 'Enter value manually'
+- tapOn:
+    id: 'tune-manual-value'
+- eraseText
+- inputText: '1.7'
+- pressKey: Enter
+- takeScreenshot: /tmp/tune-manual-valid
+- tapOn:
+    id: 'tune-editor-apply'
+- assertVisible: 'Applied value: 1.7'
+- tapOn: 'Edit threshold'
+- tapOn: 'Enter value manually'
+- tapOn:
+    id: 'tune-manual-value'
+- eraseText
+- inputText: '2.34'
+- pressKey: Enter
+- assertVisible: 'Use up to 1 decimal places.'
+- assertVisible:
+    id: 'tune-editor-apply'
+    enabled: false
+- tapOn: 'Cancel'
+- assertVisible: 'Applied value: 1.7'

@@ -120,11 +120,14 @@ struct BoardConfigValues {
 
   /// Decoded values as the JSON stored in the per-Board cache row. Bools serialize as `true` /
   /// `false` so the restored map keeps the same types.
-  func valuesJson() -> String {
-    guard
-      let data = try? JSONSerialization.data(withJSONObject: values),
-      let json = String(data: data, encoding: .utf8)
-    else { return "{}" }
+  func valuesJson() throws -> String {
+    guard JSONSerialization.isValidJSONObject(values) else {
+      throw CocoaError(.propertyListWriteInvalid)
+    }
+    let data = try JSONSerialization.data(withJSONObject: values)
+    guard let json = String(data: data, encoding: .utf8) else {
+      throw CocoaError(.fileWriteInapplicableStringEncoding)
+    }
     return json
   }
 
@@ -164,24 +167,24 @@ struct BoardConfigValues {
     refloatBaseVersion: String?,
     capturedAtMs: Int64,
     valuesJson: String
-  ) -> BoardConfigValues {
+  ) throws -> BoardConfigValues {
     BoardConfigValues(
       boardId: boardId,
       refloatBaseVersion: refloatBaseVersion,
       capturedAtMs: capturedAtMs,
       freshness: .lastKnown,
-      values: decodeValuesJson(valuesJson),
+      values: try decodeValuesJson(valuesJson),
       writeBase: nil
     )
   }
 
   /// JSON numbers all arrive as `NSNumber`, so a stored `true` would otherwise read back as `1.0`.
   /// `CFBoolean` is the only way to tell the two apart.
-  private static func decodeValuesJson(_ json: String) -> [String: Any] {
-    guard
-      let data = json.data(using: .utf8),
-      let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
-    else { return [:] }
+  private static func decodeValuesJson(_ json: String) throws -> [String: Any] {
+    guard let data = json.data(using: .utf8) else { throw ConfigStorageError.invalidCachedJSON }
+    guard let object = try JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+      throw ConfigStorageError.invalidCachedJSON
+    }
     var values: [String: Any] = [:]
     for (id, raw) in object {
       if let number = raw as? NSNumber {

@@ -1,6 +1,7 @@
 import { useSyncExternalStore } from 'react'
 import { getDeviceCredentialState } from 'vescape-core'
 
+import { readDeviceCredential } from '@/modules/profile/lib/readDeviceCredential'
 import { useDeviceAuthStore } from '@/modules/profile/store/deviceAuthStore'
 
 /**
@@ -14,6 +15,6 @@ import { useDeviceAuthStore } from '@/modules/profile/store/deviceAuthStore'
 export function useMapContributionReady(): boolean {
   return useSyncExternalStore(
     useDeviceAuthStore.subscribe,
-    () => getDeviceCredentialState().state === 'ready',
+    () => readDeviceCredential(getDeviceCredentialState).status?.state === 'ready',
   )
 }

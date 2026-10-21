@@ -7,6 +7,7 @@ import { Placeholder } from '@/components/base/Placeholder'
 import { Text } from '@/components/base/Text'
 import { VescFaultRow } from '@/modules/board/components/VescFaultRow'
 import { theme } from '@/constants/theme'
+import { useVescFaultsStore } from '@/modules/board/store/vescFaultsStore'
 
 interface VescFaultsSheetProps {
   boardId: string
@@ -28,6 +29,8 @@ export function VescFaultsSheet({ boardId, faults, visible }: VescFaultsSheetPro
   const [faultLog, setFaultLog] = useState<string | null>(null)
   const [faultLogError, setFaultLogError] = useState<string | null>(null)
   const [readingFaultLog, setReadingFaultLog] = useState(false)
+  const [dismissError, setDismissError] = useState<string | null>(null)
+  const readError = useVescFaultsStore((state) => state.error)
 
   useEffect(() => {
     if (!visible) return
@@ -70,12 +73,20 @@ export function VescFaultsSheet({ boardId, faults, visible }: VescFaultsSheetPro
             <VescFaultRow
               key={fault.id}
               fault={fault}
-              onSetDismissed={(id, value) => void setVescFaultDismissed(id, value)}
+              onSetDismissed={(id, value) => {
+                setDismissError(null)
+                void setVescFaultDismissed(id, value).catch(() => {
+                  setDismissError('Fault dismissal could not be saved.')
+                })
+              }}
             />
           ))}
         </View>
       )}
       <View style={styles.consoleSection}>
+        {dismissError || readError ? (
+          <Text style={styles.consoleError}>{dismissError ?? readError}</Text>
+        ) : null}
         <View style={styles.consoleHeader}>
           <View style={styles.consoleCopy}>
             <Text style={styles.consoleTitle}>Controller fault log</Text>

@@ -1,7 +1,6 @@
 package app.vescape.wear
 
 import androidx.compose.runtime.mutableStateOf
-import com.google.android.gms.wearable.DataMap
 
 /**
  * Data Layer path the phone publishes board state on. Must match the phone-side `WatchBoardPusher`.
@@ -36,29 +35,18 @@ data class WatchBoardLights(
 )
 
 /**
- * Decode a pushed `/board` payload, or a deletion when [dataMap] is null — deletion means the phone
+ * Decode a pushed `/board` payload, or a deletion when [payload] is null — deletion means the phone
  * has nothing to say, which is unknown, never off.
  *
- * Absence is read explicitly: `getBoolean` answers `false` for a key that was never sent, which
- * would render "the board has never said" as the fact "the lights are off".
+ * Missing keys stay unknown, so "the board has never said" never becomes "the lights are off".
+ * Pure payload decoder shared by Data Layer reception, replay and sequence tests.
+ * @parity /modules/vescape-core/ios/watch/WatchBoard.swift `decode`
  */
-fun decodeBoardLights(dataMap: DataMap?): WatchBoardLights {
-    if (dataMap == null) return WatchBoardLights()
-    return WatchBoardLights(
-        lightsEnabled = if (dataMap.containsKey(BOARD_LIGHTS_ENABLED)) {
-            dataMap.getBoolean(BOARD_LIGHTS_ENABLED)
-        } else {
-            null
-        },
-        headlightsEnabled = if (dataMap.containsKey(BOARD_HEADLIGHTS_ENABLED)) {
-            dataMap.getBoolean(BOARD_HEADLIGHTS_ENABLED)
-        } else {
-            null
-        },
-        // An older phone never sends the key, and no answer must not offer a write.
-        lightsControllable = dataMap.getBoolean(BOARD_LIGHTS_CONTROLLABLE, false),
-    )
-}
+internal fun decodeBoardLightsPayload(payload: Map<String, Any?>?): WatchBoardLights = WatchBoardLights(
+    lightsEnabled = payload?.get(BOARD_LIGHTS_ENABLED) as? Boolean,
+    headlightsEnabled = payload?.get(BOARD_HEADLIGHTS_ENABLED) as? Boolean,
+    lightsControllable = payload?.get(BOARD_LIGHTS_CONTROLLABLE) as? Boolean ?: false,
+)
 
 /** Latest board state pushed from the phone. Unknown until the first push arrives. */
 object BoardState {

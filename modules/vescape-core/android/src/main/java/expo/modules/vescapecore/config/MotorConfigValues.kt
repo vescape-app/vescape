@@ -69,11 +69,7 @@ internal data class MotorConfigValues(
 
     /** JSON integral numbers read back as `Int`/`Long`, so every number is normalized to `Double`. */
     private fun decodeValuesJson(json: String): Map<String, Double> {
-      val parsed = try {
-        JSONObject(json)
-      } catch (_: Exception) {
-        return emptyMap()
-      }
+      val parsed = JSONObject(json)
       val values = mutableMapOf<String, Double>()
       for (id in parsed.keys()) {
         (parsed.opt(id) as? Number)?.toDouble()?.takeIf { it.isFinite() }?.let { values[id] = it }

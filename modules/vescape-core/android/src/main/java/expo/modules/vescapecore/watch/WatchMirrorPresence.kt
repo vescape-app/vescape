@@ -84,19 +84,28 @@ internal class WatchMirrorPresence(
         refreshJob = scope.launch(Dispatchers.IO) {
             var attempt = 0
             while (isActive) {
+                // intentional-suppression: watch presence errors are reported or lifecycle teardown is best effort
                 val capabilityPresent = runCatching {
                     Tasks.await(
                         capabilityClient.getCapability(WATCH_MIRROR_CAPABILITY, CapabilityClient.FILTER_REACHABLE),
                     )
-                }.getOrNull()?.nodes?.isNotEmpty() ?: false
-                reportsWakeLevel = runCatching {
+                }.onFailure { record("watch_mirror_presence_query_failed", mapOf("capability" to "mirror")) }
+                    .getOrNull()?.nodes?.isNotEmpty()
+                // intentional-suppression: watch presence errors are reported or lifecycle teardown is best effort
+                val wakePresent = runCatching {
                     Tasks.await(
                         capabilityClient.getCapability(WATCH_MIRROR_WAKE_CAPABILITY, CapabilityClient.FILTER_REACHABLE),
                     )
-                }.getOrNull()?.nodes?.isNotEmpty() ?: false
-                val next = capabilityPresent || debugReachableWearNode()
-                // Baseline event on the first query so an absent watch still leaves a trace.
-                update(next, source = "refresh", force = attempt == 0)
+                }.onFailure { record("watch_mirror_presence_query_failed", mapOf("capability" to "wake")) }
+                    .getOrNull()?.nodes?.isNotEmpty()
+                if (capabilityPresent != null && wakePresent != null) {
+                    reportsWakeLevel = wakePresent
+                    val debugPresent = if (capabilityPresent) false else debugReachableWearNode()
+                    if (debugPresent != null) {
+                        // Baseline event on the first successful query so an absent watch leaves a trace.
+                        update(capabilityPresent || debugPresent, source = "refresh", force = attempt == 0)
+                    }
+                }
                 delay(PRESENCE_REFRESH_BURST_MS.getOrElse(attempt) { PRESENCE_REFRESH_STEADY_MS })
                 attempt++
             }
@@ -106,7 +115,10 @@ internal class WatchMirrorPresence(
     fun stop() {
         refreshJob?.cancel()
         refreshJob = null
+        // Listener removal races with Play-services shutdown; stopped state is authoritative locally.
+        // intentional-suppression: watch presence errors are reported or lifecycle teardown is best effort
         runCatching { capabilityClient.removeListener(listener, WATCH_MIRROR_CAPABILITY) }
+        // intentional-suppression: watch presence errors are reported or lifecycle teardown is best effort
         runCatching { capabilityClient.removeListener(listener, WATCH_MIRROR_WAKE_CAPABILITY) }
         present = false
         reportsWakeLevel = false
@@ -118,6 +130,7 @@ internal class WatchMirrorPresence(
         if (!changed && !force) return
         Log.d(VESC_SESSION_TAG, "Watch mirror presence: $next source=$source")
         scope.launch(Dispatchers.IO) {
+            // intentional-suppression: watch presence errors are reported or lifecycle teardown is best effort
             val connectedNodes = runCatching { Tasks.await(nodeClient.connectedNodes) }.getOrNull()?.size
             record(
                 if (next) "watch_mirror_present" else "watch_mirror_absent",
@@ -126,10 +139,12 @@ internal class WatchMirrorPresence(
         }
     }
 
-    private fun debugReachableWearNode(): Boolean {
+    private fun debugReachableWearNode(): Boolean? {
         if (!BuildConfig.DEBUG) return false
 
-        val nodes = runCatching { Tasks.await(nodeClient.connectedNodes) }.getOrNull().orEmpty()
-        return nodes.isNotEmpty()
+        // intentional-suppression: watch presence errors are reported or lifecycle teardown is best effort
+        return runCatching { Tasks.await(nodeClient.connectedNodes) }
+            .onFailure { record("watch_mirror_nodes_query_failed", emptyMap()) }
+            .getOrNull()?.isNotEmpty()
     }
 }

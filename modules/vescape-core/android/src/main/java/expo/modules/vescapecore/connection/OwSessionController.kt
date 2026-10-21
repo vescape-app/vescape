@@ -52,6 +52,7 @@ private const val TRANSPORT_STALE_MS = 20_000L
 internal class OwSessionController(
   private val context: Context,
   private val handler: Handler,
+  private val gpsState: (Boolean) -> Any?,
 ) {
   private val scheduler = HandlerScheduler(handler)
 
@@ -90,8 +91,17 @@ internal class OwSessionController(
     liveSeriesBuckets = LIVE_SERIES_BUCKETS,
   )
 
-  private val recordingCoordinator by lazy {
-    RecordingCoordinator(context = context, applyLiveSettings = {})
+  private val recordingCoordinator: RecordingCoordinator by lazy {
+    RecordingCoordinator(
+      context = context,
+      applyLiveSettings = {},
+      onRecordingFailure = {
+        handler.post {
+          recordingCoordinator.handleStorageFailure()
+          emitEvent("onLiveState", liveStateMap(includeRecent = false))
+        }
+      },
+    )
   }
 
   // Alert feedback owns a SoundPool/TTS — fresh per session, released on stop.
@@ -277,8 +287,9 @@ internal class OwSessionController(
         connectionSeq = session?.id ?: 0L,
         lastTelemetryAt = pipeline.lastTelemetryAt.takeIf { it > 0L },
         recentTelemetry = if (includeRecent) pipeline.recentSnapshot() else emptyList(),
-        // GPS stays VESC-session-owned for now; OneWheel rides record without location.
+        // The host supplies the shared GPS state below for both board families.
         gpsPhase = GpsPhase.Idle,
+        gpsMode = expo.modules.vescapecore.location.GpsPowerMode.Off,
         latestLocation = null,
         latestPreciseLocation = null,
         recentLocations = emptyList(),
@@ -288,10 +299,11 @@ internal class OwSessionController(
         remoteTiltValue = 0,
         remoteTiltPhase = RemoteTiltPhase.Idle,
         remoteTiltDecay = null,
+        remoteTiltOwner = expo.modules.vescapecore.RemoteInputOwner.NONE,
         linkIntegrity = LinkIntegrity.Unknown,
         settings = settings,
       ),
-    )
+    ) + ("gps" to gpsState(includeRecent))
   }
 
   fun reloadAlertRules() {

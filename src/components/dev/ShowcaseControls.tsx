@@ -1,4 +1,5 @@
-import { Pressable, StyleSheet, Switch, View } from 'react-native'
+import { Pressable, StyleSheet, View } from 'react-native'
+import { Switch } from '@/components/controls/Switch'
 import { Text } from '@/components/base/Text'
 
 import { Button } from '@/components/base/Button'
@@ -14,13 +15,7 @@ export function ToggleRow({ label, value, onToggle }: ToggleRowProps) {
   return (
     <View style={styles.toggleRow}>
       <Text style={styles.label}>{label}</Text>
-      <Switch
-        value={value}
-        onValueChange={onToggle}
-        trackColor={{ false: theme.neutral.border, true: theme.palette.sky.border }}
-        thumbColor={value ? theme.palette.sky.color : theme.neutral.textMuted}
-        style={styles.toggleSwitch}
-      />
+      <Switch value={value} onValueChange={onToggle} />
     </View>
   )
 }
@@ -86,9 +81,6 @@ const styles = StyleSheet.create({
     fontSize: 11,
     fontWeight: '700',
     fontFamily: 'monospace',
-  },
-  toggleSwitch: {
-    transform: [{ scaleX: 0.75 }, { scaleY: 0.75 }],
   },
   chipRow: {
     flexDirection: 'row',

@@ -1,3 +1,4 @@
+import type { OpaqueColorValue } from 'react-native'
 import { mock } from 'bun:test'
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
@@ -28,8 +29,8 @@ const baseColors = [...nativeColors.entries()]
   .filter(([resource]) => !resource.includes('_alpha_'))
   .map(([resource, color]) => ({
     name: resource.slice(RESOURCE_PREFIX.length),
-    dark: resolveAdaptiveColor(color, 'dark') as string,
-    light: resolveAdaptiveColor(color, 'light') as string,
+    dark: resolveAdaptiveColor(color as unknown as OpaqueColorValue, 'dark'),
+    light: resolveAdaptiveColor(color as unknown as OpaqueColorValue, 'light'),
   }))
   .sort((left, right) => left.name.localeCompare(right.name))
 

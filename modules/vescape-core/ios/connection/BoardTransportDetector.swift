@@ -39,8 +39,9 @@ internal final class BoardTransportDetector: VescGattListener {
   private let onComplete: (TransportDetection.Result) -> Void
   private let onError: (String, String) -> Void
   private let nowMs: () -> Int64
+  private let scheduler: Scheduler
 
-  private lazy var gatt = VescGattClient(listener: self)
+  private lazy var gatt = VescGattClient(listener: self, scheduler: scheduler)
   private let reassembler = VescPacketReassembler()
 
   private var responders = Set<Int>()
@@ -54,7 +55,7 @@ internal final class BoardTransportDetector: VescGattListener {
   private var currentRefloatBaseVersion: String?
   private var connectAttempts = 0
   private var phase: Phase = .connecting
-  private var stepWork: DispatchWorkItem?
+  private var stepWork: Cancellable?
   private var finished = false
   private var startMs: Int64 = 0
 
@@ -65,7 +66,8 @@ internal final class BoardTransportDetector: VescGattListener {
     onProgress: @escaping ([String: Any?]) -> Void,
     onComplete: @escaping (TransportDetection.Result) -> Void,
     onError: @escaping (String, String) -> Void,
-    nowMs: @escaping () -> Int64 = { Int64(Date().timeIntervalSince1970 * 1000) }
+    nowMs: @escaping () -> Int64 = { Int64(Date().timeIntervalSince1970 * 1000) },
+    scheduler: Scheduler = MainQueueScheduler()
   ) {
     self.probeId = probeId
     self.bleId = bleId
@@ -74,6 +76,7 @@ internal final class BoardTransportDetector: VescGattListener {
     self.onComplete = onComplete
     self.onError = onError
     self.nowMs = nowMs
+    self.scheduler = scheduler
   }
 
   private func elapsed() -> Int64 { nowMs() - startMs }
@@ -512,18 +515,16 @@ internal final class BoardTransportDetector: VescGattListener {
   // MARK: - Timers (main queue)
 
   private func after(_ ms: Int, _ block: @escaping () -> Void) {
-    DispatchQueue.main.asyncAfter(deadline: .now() + Double(ms) / 1000.0, execute: block)
+    scheduler.postDelayed(Int64(ms), block)
   }
 
   private func armStep(_ ms: Int, _ action: @escaping () -> Void) {
     cancelStep()
-    let work = DispatchWorkItem { [weak self] in
+    stepWork = scheduler.postDelayed(Int64(ms)) { [weak self] in
       guard let self else { return }
       self.stepWork = nil
       if !self.finished { action() }
     }
-    stepWork = work
-    DispatchQueue.main.asyncAfter(deadline: .now() + Double(ms) / 1000.0, execute: work)
   }
 
   private func cancelStep() {
@@ -532,10 +533,7 @@ internal final class BoardTransportDetector: VescGattListener {
   }
 
   private func completeAfterGattRelease(_ action: @escaping () -> Void) {
-    DispatchQueue.main.asyncAfter(
-      deadline: .now() + Double(PROBE_GATT_RELEASE_DELAY_MS) / 1000.0,
-      execute: action
-    )
+    scheduler.postDelayed(Int64(PROBE_GATT_RELEASE_DELAY_MS), action)
   }
 
   private func forwardedForCurrent(_ payload: [UInt8]) -> Bool {

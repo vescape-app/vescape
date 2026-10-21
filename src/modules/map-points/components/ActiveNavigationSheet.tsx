@@ -12,9 +12,10 @@ import Animated, {
 } from 'react-native-reanimated'
 import { scheduleOnRN } from 'react-native-worklets'
 
+import { useFormat } from '@/hooks/useFormat'
 import { Text } from '@/components/base/Text'
-import { theme } from '@/constants/theme'
-import { DASH, fmtDistance, fmtRideDuration } from '@/helpers/format'
+import { theme, type ThemeColor } from '@/constants/theme'
+import { DASH, fmtRideDuration } from '@/helpers/format'
 import { useResolvedNeutralColors } from '@/hooks/useTheme'
 import { mapSheetStyles } from '@/modules/map-points/components/mapSheetStyles'
 import {
@@ -51,14 +52,15 @@ export function ActiveNavigationSheet({
   bottom: number
   remainingDistanceMeters: number | null
   durationSeconds: number
-  targetColor: string
-  targetTextColor: string
-  accentColor: string
-  cancelColor: string
-  cancelBackgroundColor: string
+  targetColor: ThemeColor
+  targetTextColor: ThemeColor
+  accentColor: ThemeColor
+  cancelColor: ThemeColor
+  cancelBackgroundColor: ThemeColor
   onOpen: () => void
   onCancel: () => void
 }) {
+  const { formatDistance } = useFormat()
   const neutral = useResolvedNeutralColors()
   const expansion = useSharedValue(0)
   const animatedContainerStyle = useAnimatedStyle(() => ({
@@ -89,7 +91,7 @@ export function ActiveNavigationSheet({
   )
 
   const distanceLabel =
-    remainingDistanceMeters != null ? fmtDistance(remainingDistanceMeters) : DASH
+    remainingDistanceMeters != null ? formatDistance(remainingDistanceMeters) : DASH
 
   return (
     <GestureDetector gesture={expandGesture}>

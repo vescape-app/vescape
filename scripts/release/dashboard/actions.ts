@@ -8,6 +8,13 @@ export type ActionId =
   | 'build'
   | 'prepare'
   | 'refresh'
+  | 'more'
+  | 'technical'
+  | 'exit'
+  | 'choose-open'
+  | 'choose-production'
+  | 'continue-prepared'
+  | 'resume-draft'
 
 export interface DashboardAction {
   id: ActionId
@@ -22,35 +29,44 @@ export function availableActions(state: ReleaseState): DashboardAction[] {
   const actions: DashboardAction[] = []
   const { activeRun, internal, open, production } = state
 
-  actions.push({ id: 'prepare', label: 'Prepare a new release version' })
-
-  actions.push({
-    id: 'watch',
-    label: activeRun
-      ? `Watch running Internal release #${activeRun.run_number ?? activeRun.id}`
-      : 'Watch / resume an Internal release',
-  })
-
-  if (state.pendingInternal > 0 && internal) {
+  if (activeRun) {
+    actions.push({ id: 'watch', label: 'Continue the running Internal release' })
+  } else if (state.failedRun) {
+    actions.push({ id: 'watch', label: 'Review and retry the failed Internal release' })
+  }
+  if (!activeRun && state.draft) {
+    actions.push({ id: 'resume-draft', label: `Resume draft ${state.draft.version}` })
+  }
+  if (!activeRun && state.preparedVersion && state.preparedVersion !== internal?.marketingVersion) {
+    actions.push({
+      id: 'continue-prepared',
+      label: `Build ${state.preparedVersion} for Internal`,
+    })
+  }
+  if (
+    internal &&
+    internal.runId === state.promotableInternalRunId &&
+    internal.runId !== open?.sourceRunId
+  ) {
     actions.push({
       id: 'promote-open',
-      label: `Promote ${internal.marketingVersion} → Open testing`,
+      label: `Send ${internal.marketingVersion} to Open testing`,
     })
   }
 
-  if (state.pendingOpen > 0 && open) {
+  if (
+    open &&
+    open.runId === state.productionEligibleOpenRunId &&
+    open.runId !== production?.sourceRunId
+  ) {
     actions.push({
       id: 'promote-production',
-      label: `Promote ${open.marketingVersion} → Production`,
+      label: `Publish ${open.marketingVersion} to production`,
     })
   }
-
-  if (production) {
-    actions.push({ id: 'status', label: 'Refresh live Play release status' })
-  }
-
-  actions.push({ id: 'build', label: 'Build and send to Internal' })
-  actions.push({ id: 'refresh', label: 'Reload dashboard' })
+  actions.push({ id: 'prepare', label: 'Prepare a new release' })
+  actions.push({ id: 'more', label: 'More options' })
+  actions.push({ id: 'exit', label: 'Exit' })
 
   return actions
 }
@@ -60,10 +76,21 @@ export function availableActions(state: ReleaseState): DashboardAction[] {
  * thing you opened the dashboard for, so Enter still watches it.
  */
 export function defaultActionIndex(
-  actions: readonly DashboardAction[],
-  state: ReleaseState,
+  _actions: readonly DashboardAction[],
+  _state: ReleaseState,
 ): number {
-  if (!state.activeRun) return 0
-  const watching = actions.findIndex((action) => action.id === 'watch')
-  return watching === -1 ? 0 : watching
+  return 0
+}
+
+export function moreActions(state: ReleaseState): DashboardAction[] {
+  const actions: DashboardAction[] = []
+  if (!state.activeRun && !state.failedRun)
+    actions.push({ id: 'watch', label: 'Choose a previous Internal run' })
+  actions.push({ id: 'build', label: 'Build a specific git ref' })
+  actions.push({ id: 'choose-open', label: 'Choose an Internal build for Open testing' })
+  actions.push({ id: 'choose-production', label: 'Choose an Open build for production' })
+  if (state.production) actions.push({ id: 'status', label: 'Refresh live Play status' })
+  actions.push({ id: 'technical', label: 'Technical details' })
+  actions.push({ id: 'refresh', label: 'Reload release status' })
+  return actions
 }

@@ -1,5 +1,5 @@
 import Mapbox from '@rnmapbox/maps'
-import { MoonStarsIcon, MountainsIcon, PlanetIcon, SunIcon } from 'phosphor-react-native'
+import { MapTrifoldIcon, MountainsIcon, PlanetIcon } from 'phosphor-react-native'
 import { theme } from '@/constants/theme'
 
 export const MAP_DEFAULTS = {
@@ -20,6 +20,8 @@ export const MAP_DEFAULTS = {
   markerColor: theme.palette.violet.color,
   markerInactiveColor: theme.palette.slate.light,
   trailColor: theme.palette.violet.color,
+  // @parity /watch/wearos/src/main/java/app/vescape/wear/RiderTrail.kt
+  // @parity /watch/watchos/RiderTrail.swift
   trailWidth: 3,
   navigationWidth: 5,
   accuracyFillColor: theme.alpha(theme.palette.violet.color, 0.12),
@@ -36,8 +38,7 @@ export const BLANK_STYLE = JSON.stringify({
 })
 
 export const MAP_STYLES = [
-  { key: 'onedark', label: 'One Dark', styleURL: null, Icon: MoonStarsIcon },
-  { key: 'outdoors', label: 'Outdoors', styleURL: Mapbox.StyleURL.Outdoors, Icon: SunIcon },
+  { key: 'onedark', label: 'Streets', styleURL: null, Icon: MapTrifoldIcon },
   {
     key: 'satellite',
     label: 'Satellite',
@@ -47,7 +48,8 @@ export const MAP_STYLES = [
   { key: 'mapy', label: 'Mapy.cz', styleURL: null, Icon: MountainsIcon },
 ] as const
 
-export type MapStyleKey = (typeof MAP_STYLES)[number]['key']
+/** Outdoors remains a valid saved key for existing installations. */
+export type MapStyleKey = (typeof MAP_STYLES)[number]['key'] | 'outdoors'
 export const MAP_ORIENTATION_MODES = [
   { key: 'northUp', label: 'North up' },
   { key: 'gpsHeading', label: 'GPS heading' },

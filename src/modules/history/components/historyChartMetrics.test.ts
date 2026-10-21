@@ -2,6 +2,7 @@ import { expect, test } from 'bun:test'
 
 import {
   ALL_CHART_METRICS,
+  historyChartPresentation,
   EXTRA_CHART_METRICS,
   PANEL_CHART_METRICS,
   OPTIONAL_CHART_METRICS,
@@ -55,5 +56,21 @@ test('the ride panel offers speed and a short list, the full-screen page offers 
   ])
   expect(ALL_CHART_METRICS.length).toBe(
     1 + OPTIONAL_CHART_METRICS.length + EXTRA_CHART_METRICS.length,
+  )
+})
+
+test('chart axes and scrubs share selected speed and fixed length units', () => {
+  const speed = historyChartPresentation('speed', 'imperial')
+  expect(speed.unit).toBe('mph')
+  expect(40 * speed.displayScale).toBeCloseTo(24.8548476895)
+  for (const key of ['altitude', 'gpsAccuracy'] as const) {
+    const length = historyChartPresentation(key, 'imperial')
+    expect(length.unit).toBe('ft')
+    expect(1000 * length.displayScale).toBeCloseTo(3280.839895)
+    expect(historyChartPresentation(key, 'metric')).toEqual({ unit: 'm', displayScale: 1 })
+  }
+  expect(historyChartPresentation('speed', 'metric')).toEqual({ unit: 'km/h', displayScale: 1 })
+  expect(historyChartPresentation('tempMotor', 'imperial')).toEqual(
+    historyChartPresentation('tempMotor', 'metric'),
   )
 })

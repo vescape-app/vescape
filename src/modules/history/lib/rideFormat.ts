@@ -1,3 +1,5 @@
+import { formatRideDistanceMeters, type UnitSystem } from '@/helpers/units'
+
 export function formatRideTime(startMs: number, endMs: number, live = false): string {
   const start = new Date(startMs)
   const end = new Date(endMs)
@@ -30,18 +32,15 @@ export function formatRideMeta(startAtMs: number, endAtMs: number, boardName: st
     : formatRideDate(startAtMs, endAtMs)
 }
 
-export function formatRideListDateTime(startAtMs: number, endAtMs: number, live = false): string {
-  return `${formatRideTime(startAtMs, endAtMs, live)} · ${formatRideDate(startAtMs, endAtMs)}`
-}
-
 export function formatRideListDetails(
   durationMs: number,
   distanceM: number | null,
   boardName: string | null,
+  units: UnitSystem = 'metric',
 ): string {
   return [
     formatRideListDuration(durationMs),
-    distanceM == null ? null : `${(distanceM / 1000).toFixed(2)} km`,
+    distanceM == null ? null : formatRideDistanceMeters(distanceM, units, 2),
     boardName?.trim() || null,
   ]
     .filter((part): part is string => part != null)

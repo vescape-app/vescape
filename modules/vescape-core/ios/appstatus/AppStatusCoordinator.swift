@@ -121,7 +121,11 @@ final class AppStatusCoordinator: OnlineCapability {
     baseUrl: String,
     transport: @escaping AppStatusTransport,
     deviceTokenProvider: @escaping () -> String? = {
-      DeviceCredentialStore.shared.read()?.token
+      do { return try DeviceCredentialStore.shared.read()?.token }
+      catch {
+        UnexpectedNativeError.report(operation: "device_credential_read", category: "secure_store_read", error: error)
+        return nil
+      }
     }
   ) {
     self.installedVersion = installedVersion
@@ -158,6 +162,7 @@ final class AppStatusCoordinator: OnlineCapability {
   }
 
   private func applyDeviceTokenState(_ body: Data) {
+    // intentional-suppression: device-token response subsection is optional
     guard let root = try? JSONSerialization.jsonObject(with: body) as? [String: Any],
           let token = root["deviceToken"] as? [String: Any],
           let state = token["state"] as? String
@@ -165,10 +170,12 @@ final class AppStatusCoordinator: OnlineCapability {
     switch state {
     case "valid":
       if let expiresAt = token["expiresAt"] as? String {
-        DeviceCredentialStore.shared.updateExpiry(expiresAt)
+        do { try DeviceCredentialStore.shared.updateExpiry(expiresAt) }
+        catch { UnexpectedNativeError.report(operation: "device_credential_expiry_write", category: "secure_store_write", error: error) }
       }
     case "expired", "revoked":
-      DeviceCredentialStore.shared.reject()
+      do { try DeviceCredentialStore.shared.reject() }
+      catch { UnexpectedNativeError.report(operation: "device_credential_reject", category: "secure_store_delete", error: error) }
     default:
       break
     }

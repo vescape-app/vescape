@@ -1,16 +1,14 @@
 import { EyeIcon, QuestionIcon } from 'phosphor-react-native'
 import { Canvas, Text as SkiaText } from '@shopify/react-native-skia'
-import { Pressable, StyleSheet, Switch, View } from 'react-native'
-import type { SharedValue } from 'react-native-reanimated'
+import { Pressable, StyleSheet, View } from 'react-native'
+import { useDerivedValue, type SharedValue } from 'react-native-reanimated'
+import { useFormat } from '@/hooks/useFormat'
 import type { SkFont } from '@shopify/react-native-skia'
 
+import { Switch } from '@/components/controls/Switch'
 import { Text } from '@/components/base/Text'
 import { theme } from '@/constants/theme'
-import {
-  useResolvedAccentColors,
-  useResolvedNeutralColors,
-  useResolvedTelemetryColors,
-} from '@/hooks/useTheme'
+import { useResolvedAccentColors, useResolvedTelemetryColors } from '@/hooks/useTheme'
 import {
   LEGEND_VALUE_WIDTH,
   READOUT_BASELINE,
@@ -22,7 +20,7 @@ import {
 
 /** Title, live speed, the enable switch, and the board/target/motor legend. */
 export function TunePreviewHeader({
-  speedStr,
+  speedKmh,
   boardAngleStr,
   targetAngleStr,
   currentStr,
@@ -33,7 +31,7 @@ export function TunePreviewHeader({
   onDisable,
   description,
 }: {
-  speedStr: SharedValue<string>
+  speedKmh: SharedValue<number>
   boardAngleStr: SharedValue<string>
   targetAngleStr: SharedValue<string>
   currentStr: SharedValue<string>
@@ -44,8 +42,10 @@ export function TunePreviewHeader({
   onDisable?: () => void
   description: string
 }) {
+  'use no memo'
+  const { formatSpeed, speedUnit } = useFormat()
+  const speedStr = useDerivedValue(() => formatSpeed(speedKmh.value, 1))
   const accents = useResolvedAccentColors()
-  const neutral = useResolvedNeutralColors()
   const telemetry = useResolvedTelemetryColors()
   return (
     <View style={styles.header}>
@@ -56,7 +56,7 @@ export function TunePreviewHeader({
             <View style={styles.titleRow}>
               <Text style={styles.title}>Tune Preview</Text>
               <Pressable hitSlop={8} onPress={onHelp}>
-                <QuestionIcon size={14} color={theme.palette.slate.textMuted} weight="bold" />
+                <QuestionIcon size={14} color={theme.neutral.textMuted} weight="bold" />
               </Pressable>
             </View>
             <Text style={styles.subtitle}>{description}</Text>
@@ -73,7 +73,7 @@ export function TunePreviewHeader({
                 />
               )}
             </Canvas>
-            <Text style={styles.speedUnit}>km/h</Text>
+            <Text style={styles.speedUnit}>{speedUnit}</Text>
           </View>
           {onDisable ? (
             <Switch
@@ -81,11 +81,7 @@ export function TunePreviewHeader({
               onValueChange={(enabled) => {
                 if (!enabled) onDisable()
               }}
-              trackColor={{
-                false: neutral.border,
-                true: theme.alpha(accents.purple.color, 0.6),
-              }}
-              thumbColor={accents.purple.color}
+              accent={theme.palette.purple.color}
               accessibilityLabel="Disable Tune Preview"
             />
           ) : null}
@@ -159,14 +155,14 @@ const styles = StyleSheet.create({
   },
   titleRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
   title: {
-    color: theme.palette.slate.textMuted,
+    color: theme.neutral.textMuted,
     fontSize: 12,
     fontWeight: '700',
     textTransform: 'uppercase',
     letterSpacing: 0.5,
   },
   subtitle: {
-    color: theme.palette.slate.textMuted,
+    color: theme.neutral.textMuted,
     fontSize: 10,
     fontWeight: '600',
   },
@@ -179,7 +175,7 @@ const styles = StyleSheet.create({
     height: SPEED_HEIGHT,
   },
   speedUnit: {
-    color: theme.palette.slate.textMuted,
+    color: theme.neutral.textMuted,
     fontSize: 8,
     fontWeight: '700',
   },

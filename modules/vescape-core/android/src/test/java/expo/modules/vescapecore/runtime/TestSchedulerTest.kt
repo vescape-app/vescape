@@ -5,6 +5,7 @@ import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
+// @parity /modules/vescape-core/ios/runtime/SchedulerTests.swift
 class TestSchedulerTest {
 
     @Test

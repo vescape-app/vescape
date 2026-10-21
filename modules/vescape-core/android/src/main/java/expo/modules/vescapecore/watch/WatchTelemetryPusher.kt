@@ -50,7 +50,19 @@ internal class WatchTelemetryPusher(
 
     private val refreshing = AtomicBoolean(false)
 
-    fun pushFrame(frame: ByteArray) {
+    fun pushFrame(frame: ByteArray) = send(WATCH_TELEMETRY_PATH, frame)
+
+    /**
+     * A Group Ride Frame on its own path (ADR-0039), sharing this pusher's node cache.
+     *
+     * @parity /modules/vescape-core/ios/watch/WatchTelemetryPusher.swift `pushGroupRideFrame`
+     */
+    fun pushGroupRideFrame(frame: ByteArray) = send(WATCH_GROUP_RIDE_PATH, frame)
+
+    /** @parity /modules/vescape-core/ios/watch/WatchTelemetryPusher.swift `pushRouteStatus` */
+    fun pushRouteStatus(status: WatchRouteStatus) = send(WATCH_ROUTE_STATUS_PATH, WatchRouteStatusCodec.encode(status))
+
+    private fun send(path: String, frame: ByteArray) {
         val targets = nodeIds
         // On the timestamp, never on emptiness: "no nodes" is a valid cached answer, and re-asking
         // for it every frame would restore the very 4 Hz blocking lookup the cache exists to remove.
@@ -60,13 +72,13 @@ internal class WatchTelemetryPusher(
         // A frame is worthless once stale; the next tick ships against the refreshed cache.
         if (targets.isEmpty()) return
         for (nodeId in targets) {
-            messageClient.sendMessage(nodeId, WATCH_TELEMETRY_PATH, frame)
+            messageClient.sendMessage(nodeId, path, frame)
                 .addOnSuccessListener { reportRecovered() }
                 .addOnFailureListener { error ->
                     invalidateNodes()
                     reportIssue(
                         "watch_frame_send_failed",
-                        mapOf("node" to nodeId, "error" to error.message),
+                        mapOf("node" to nodeId, "path" to path, "error" to error.message),
                     )
                 }
         }
@@ -76,14 +88,17 @@ internal class WatchTelemetryPusher(
         if (!refreshing.compareAndSet(false, true)) return
         scope.launch {
             try {
+                // intentional-suppression: missing nodes are reported by the null branch
                 val nodes = runCatching { Tasks.await(nodeClient.connectedNodes) }.getOrNull()
                 when {
                     nodes == null -> reportIssue("watch_nodes_lookup_failed")
                     nodes.isEmpty() -> reportIssue("watch_frame_no_nodes")
                 }
-                nodeIds = nodes.orEmpty().map { it.id }
-                // A failed lookup is cached as "none" for the TTL too — retrying it at frame cadence
-                // is what made the failure expensive, and the next pass is 30 s away.
+                if (nodes != null) {
+                    nodeIds = nodes.map { it.id }
+                }
+                // Back off failed IPC probes too. Keep the last trusted nodes, but do not turn every
+                // 2 Hz telemetry frame into another blocking Play-services query.
                 nodeIdsAtMs = SystemClock.elapsedRealtime()
             } finally {
                 refreshing.set(false)

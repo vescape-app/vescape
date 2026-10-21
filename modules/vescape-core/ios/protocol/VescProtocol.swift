@@ -32,6 +32,9 @@ internal let REFLOAT_LIGHTS_CONTROL = 20
 ///
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/protocol/VescProtocol.kt `REFLOAT_LIGHTS_CONTROL_LEGACY`
 internal let REFLOAT_LIGHTS_CONTROL_LEGACY = 202
+// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/protocol/VescProtocol.kt `REMOTE_TILT_CENTER`
+// @parity /src/modules/board/lib/remoteTiltPresentation.ts `TILT_CENTER`
+// @parity /modules/vescape-core/ios/watch/WatchTiltStick.swift `center`
 internal let REMOTE_TILT_CENTER = 128
 
 /// The one and only terminal command Vescape sends. VESC's `faults` command prints the controller's
@@ -719,7 +722,9 @@ internal func parseBmsValues(_ payload: [UInt8], packetAt: Int64) -> BmsTelemetr
   )
 }
 
-/// Refloat/Float package board state → wire label. Mirrors Android `stateName`.
+/// Refloat/Float package board state → wire label.
+///
+/// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/protocol/VescTelemetryModels.kt `stateName`
 internal func stateName(_ state: Int) -> String {
   switch state & 0x0f {
   case 0: return "STARTUP"

@@ -19,6 +19,7 @@ import {
   TextAaIcon,
 } from 'phosphor-react-native'
 
+import { AccessoryIcon } from '@/modules/accessories/constants/accessoryIcon'
 import { SettingsCard } from '@/components/settings/SettingsCard'
 import { SettingsRow } from '@/components/settings/SettingsRow'
 import { SettingsSectionTitle } from '@/components/settings/SettingsSectionTitle'
@@ -96,7 +97,7 @@ const groups = [
         hint: 'Cards and rows used to build settings screens',
         route: '/settings/components/settings',
         icon: GearSixIcon,
-        color: theme.palette.slate.light,
+        color: theme.neutral.textSecondary,
       },
     ],
   },
@@ -109,6 +110,13 @@ const groups = [
         route: '/settings/components/board',
         icon: LightningIcon,
         color: theme.palette.sky.color,
+      },
+      {
+        label: 'Accessories',
+        hint: 'Accessory rows, compatibility verdicts, and capability listings',
+        route: '/settings/components/accessories',
+        icon: AccessoryIcon,
+        color: theme.palette.teal.color,
       },
       {
         label: 'Widgets',

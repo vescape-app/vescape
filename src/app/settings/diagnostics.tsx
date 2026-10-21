@@ -1,9 +1,10 @@
-import { ScrollView, StyleSheet, Switch } from 'react-native'
+import { ScrollView, StyleSheet } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { router } from 'expo-router'
 import {
   EngineIcon,
   ListIcon,
+  MapPinIcon,
   NavigationArrowIcon,
   WarningDiamondIcon,
 } from 'phosphor-react-native'
@@ -12,12 +13,14 @@ import { routes } from '@/navigation/routes'
 import { theme } from '@/constants/theme'
 import { SettingsCard } from '@/components/settings/SettingsCard'
 import { SettingsRow } from '@/components/settings/SettingsRow'
+import { Switch } from '@/components/controls/Switch'
 import { IconHero } from '@/components/settings/IconHero'
 import { useSettingsStore } from '@/modules/settings/store/settingsStore'
 
 export default function DiagnosticsSettingsScreen() {
   const boardWarningsEnabled = useSettingsStore((s) => s.boardWarningsEnabled)
   const vescFaultCollectionEnabled = useSettingsStore((s) => s.vescFaultCollectionEnabled)
+  const showHistoryMapMarkers = useSettingsStore((s) => s.showHistoryMapMarkers)
   const set = useSettingsStore((s) => s.set)
 
   return (
@@ -38,10 +41,6 @@ export default function DiagnosticsSettingsScreen() {
               <Switch
                 value={boardWarningsEnabled}
                 onValueChange={(v) => void set('boardWarningsEnabled', v)}
-                trackColor={{ false: theme.neutral.border, true: theme.palette.sky.border }}
-                thumbColor={
-                  boardWarningsEnabled ? theme.palette.sky.color : theme.neutral.textMuted
-                }
               />
             }
           />
@@ -54,10 +53,18 @@ export default function DiagnosticsSettingsScreen() {
               <Switch
                 value={vescFaultCollectionEnabled}
                 onValueChange={(v) => void set('vescFaultCollectionEnabled', v)}
-                trackColor={{ false: theme.neutral.border, true: theme.palette.sky.border }}
-                thumbColor={
-                  vescFaultCollectionEnabled ? theme.palette.sky.color : theme.neutral.textMuted
-                }
+              />
+            }
+          />
+          <SettingsRow
+            icon={MapPinIcon}
+            iconColor={theme.palette.yellow.color}
+            label="Ride markers on map"
+            hint="Show pause, connection, error, and gap markers on history routes"
+            right={
+              <Switch
+                value={showHistoryMapMarkers}
+                onValueChange={(v) => void set('showHistoryMapMarkers', v)}
               />
             }
           />

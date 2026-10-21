@@ -27,6 +27,15 @@ class WatchCommandTest {
     }
 
     @Test
+    fun `a tilt lock is the absolute unsigned value, clamped to the wire range`() {
+        assertArrayEquals(byteArrayOf(4, 128.toByte()), encodeTiltLockCommand(128))
+        assertArrayEquals(byteArrayOf(4, -1), encodeTiltLockCommand(255))
+        assertArrayEquals(byteArrayOf(4, -1), encodeTiltLockCommand(400))
+        assertArrayEquals(byteArrayOf(4, 0), encodeTiltLockCommand(-3))
+        assertArrayEquals(byteArrayOf(5, 0), encodeTiltCancelCommand())
+    }
+
+    @Test
     fun `a direction is clamped so the wrist can never ask for more than one board move`() {
         assertArrayEquals(byteArrayOf(1, 1), encodeMoveCommand(127))
         assertArrayEquals(byteArrayOf(1, -1), encodeMoveCommand(-127))

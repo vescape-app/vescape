@@ -4,6 +4,7 @@ import { getDatabaseSizeBytes } from 'vescape-core'
 export interface DatabaseSize {
   /** Bytes the database occupies, or null until native has answered. */
   bytes: number | null
+  error: string | null
   refresh: () => void
 }
 
@@ -13,16 +14,20 @@ export interface DatabaseSize {
  */
 export function useDatabaseSize(): DatabaseSize {
   const [bytes, setBytes] = useState<number | null>(null)
+  const [error, setError] = useState<string | null>(null)
 
   const refresh = useCallback(() => {
     getDatabaseSizeBytes()
-      .then(setBytes)
-      .catch(() => {})
+      .then((nextBytes) => {
+        setBytes(nextBytes)
+        setError(null)
+      })
+      .catch(() => setError('Database size could not be read.'))
   }, [])
 
   useEffect(() => {
     refresh()
   }, [refresh])
 
-  return { bytes, refresh }
+  return { bytes, error, refresh }
 }

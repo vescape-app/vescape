@@ -7,12 +7,12 @@ import { BracketsCurlyIcon, EngineIcon, WarningDiamondIcon } from 'phosphor-reac
 import { useShallow } from 'zustand/react/shallow'
 
 import { BoardBatteryEditorModal } from '@/modules/board/components/BoardBatteryEditorModal'
+import { BoardAppearanceEditorSheet } from '@/modules/board/components/BoardAppearanceEditorSheet'
 import { IconButton } from '@/components/base/IconButton'
 import { ConfirmModal } from '@/components/modals/ConfirmModal'
 import { SettingsSectionTitle } from '@/components/settings/SettingsSectionTitle'
 import { BoardTopSpeedCard } from '@/modules/alerts/components/BoardTopSpeedCard'
 import { boardTopSpeedKmh } from '@/modules/alerts/lib/boardAlertSettings'
-import { useAlertPresetStore } from '@/modules/alerts/store/alertPresetStore'
 import { EditBoardSettings } from '@/modules/board/components/EditBoardSettings'
 import { EdgeDrawer } from '@/components/overlays/EdgeDrawer'
 import { BoardWarningsSheet } from '@/modules/board/components/BoardWarningsSheet'
@@ -47,6 +47,9 @@ export default function EditBoardScreen() {
   const faultsAnchorRef = useRef<View>(null)
   const [faultsOpen, setFaultsOpen] = useState(false)
   const [batteryModalVisible, setBatteryModalVisible] = useState(false)
+  const batteryAnchorRef = useRef<View>(null)
+  const appearanceAnchorRef = useRef<View>(null)
+  const [appearanceOpen, setAppearanceOpen] = useState(false)
   const [removeConfirmVisible, setRemoveConfirmVisible] = useState(false)
   const [removeSaving, setRemoveSaving] = useState(false)
   const form = useEditBoardForm({
@@ -111,6 +114,8 @@ export default function EditBoardScreen() {
         <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
           <EditBoardSettings
             name={form.name}
+            railId={editingBoard.personalization?.railId}
+            railColorId={editingBoard.personalization?.railColorId}
             nameSaving={form.saving === 'info'}
             onSaveName={form.saveName}
             link={editingBoard.link}
@@ -124,9 +129,7 @@ export default function EditBoardScreen() {
                 <BoardTopSpeedCard
                   value={topSpeedKmh}
                   onChange={(kmh) => {
-                    void updateBoard({ ...editingBoard, topSpeedKmh: kmh }).then(() =>
-                      useAlertPresetStore.getState().regenerateSpeed(editingBoard.id),
-                    )
+                    void updateBoard({ ...editingBoard, topSpeedKmh: kmh })
                   }}
                 />
               </>
@@ -138,6 +141,9 @@ export default function EditBoardScreen() {
             faultsAnchorRef={faultsAnchorRef}
             onOpenFaults={() => setFaultsOpen(true)}
             onOpenBattery={() => setBatteryModalVisible(true)}
+            batteryAnchorRef={batteryAnchorRef}
+            appearanceAnchorRef={appearanceAnchorRef}
+            onOpenAppearance={() => setAppearanceOpen(true)}
             onLink={handleLink}
             onRelink={handleRelink}
             onUnlink={form.unlink}
@@ -175,6 +181,7 @@ export default function EditBoardScreen() {
 
       <BoardBatteryEditorModal
         visible={editingBoard.kind !== 'onewheel' && batteryModalVisible}
+        triggerRef={batteryAnchorRef}
         batteryMode={form.battery.batteryMode}
         cellPresetId={form.battery.cellPresetId}
         seriesCount={form.battery.seriesCount}
@@ -186,6 +193,21 @@ export default function EditBoardScreen() {
           if (await form.saveBattery(value)) setBatteryModalVisible(false)
         }}
         onCancel={() => setBatteryModalVisible(false)}
+      />
+      <BoardAppearanceEditorSheet
+        visible={appearanceOpen}
+        triggerRef={appearanceAnchorRef}
+        railId={editingBoard.personalization?.railId}
+        railColorId={editingBoard.personalization?.railColorId}
+        onClose={() => setAppearanceOpen(false)}
+        onSave={async (railId, railColorId) => {
+          const current = useBoardStore.getState().boards.find((board) => board.id === boardId)
+          if (!current) return
+          await updateBoard({
+            ...current,
+            personalization: { ...current.personalization, railId, railColorId },
+          })
+        }}
       />
       <ConfirmModal
         visible={removeConfirmVisible}

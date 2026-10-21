@@ -1,5 +1,12 @@
+import {
+  lengthFromMeters,
+  lengthUnit,
+  speedFromKmh,
+  speedUnit,
+  type UnitSystem,
+} from '@/helpers/units'
 import type { AutoRangeOptions } from '@/components/charts/chartMath'
-import { theme } from '@/constants/theme'
+import { theme, type ThemeColor } from '@/constants/theme'
 import { telemetry, type TelemetryMetricConfig } from '@/modules/board/constants/telemetry'
 import type { HistoryMetricKey } from '@/modules/history/lib/metricColorScale'
 
@@ -43,7 +50,7 @@ export type OptionalChartMetric =
 export interface ChartMetricDef {
   key: HistoryMetricKey
   label: string
-  color: string
+  color: ThemeColor
   range: AutoRangeOptions
   /** Session-exclusion stat keys that grey out this chart's ranges. */
   statKeys?: string | string[]
@@ -152,7 +159,7 @@ export interface ExtraChartMetricDef {
   key: ExtraChartMetric
   label: string
   multilineLabel?: [string, string]
-  color: string
+  color: ThemeColor
   range: AutoRangeOptions
   source: ExtraChartSource
   unit?: string
@@ -255,7 +262,7 @@ export type ChartToggleMetric = 'speed' | OptionalChartMetric | ExtraChartMetric
 export interface ChartTabMetricDef {
   key: ChartToggleMetric
   label: string
-  color: string
+  color: ThemeColor
   multilineLabel?: [string, string]
   tabLabel?: string
 }
@@ -318,4 +325,22 @@ export function toggleOptionalChartMetric<T extends ChartToggleMetric>(
     next.add(metric)
   }
   return next
+}
+
+/** Display metadata only: series, domains and color ramps remain canonical. */
+export function historyChartPresentation(
+  key: ChartToggleMetric,
+  units: UnitSystem,
+): {
+  unit: string | undefined
+  displayScale: number
+} {
+  if (key === 'speed') return { unit: speedUnit(units), displayScale: speedFromKmh(1, units) }
+  if (key === 'altitude' || key === 'gpsAccuracy') {
+    return { unit: lengthUnit(units), displayScale: lengthFromMeters(1, units) }
+  }
+  const definition = [...OPTIONAL_CHART_METRICS, ...EXTRA_CHART_METRICS].find(
+    (def) => def.key === key,
+  )
+  return { unit: definition?.unit, displayScale: 1 }
 }

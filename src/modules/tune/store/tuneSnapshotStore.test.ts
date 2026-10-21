@@ -1,6 +1,6 @@
 import { beforeEach, expect, mock, test } from 'bun:test'
 
-import type { RefloatConfigSnapshot } from 'vescape-core'
+import type { BoardConfigValues, MotorConfigValues, RefloatConfigSnapshot } from 'vescape-core'
 
 const actualVescapeCore = await import('@/../modules/vescape-core/src/index')
 
@@ -17,10 +17,18 @@ const snapshot: RefloatConfigSnapshot = {
 }
 
 const getRefloatConfigSnapshot = mock(async () => snapshot)
+const getLastKnownBoardConfigValues = mock(
+  async (_boardId: string) => null as BoardConfigValues | null,
+)
+const getLastKnownMotorConfigValues = mock(
+  async (_boardId: string) => null as MotorConfigValues | null,
+)
 
 const vescBleMock = {
   ...actualVescapeCore,
   getRefloatConfigSnapshot,
+  getLastKnownBoardConfigValues,
+  getLastKnownMotorConfigValues,
 }
 
 mock.module('vescape-core', () => vescBleMock)
@@ -29,11 +37,66 @@ mock.module('../../modules/vescape-core/src/index', () => vescBleMock)
 beforeEach(async () => {
   getRefloatConfigSnapshot.mockClear()
   getRefloatConfigSnapshot.mockImplementation(async () => snapshot)
+  getLastKnownBoardConfigValues.mockReset()
+  getLastKnownBoardConfigValues.mockImplementation(async () => null)
+  getLastKnownMotorConfigValues.mockReset()
+  getLastKnownMotorConfigValues.mockImplementation(async () => null)
   const { useBleStore } = await import('@/modules/board/store/bleStore')
   const { useTuneSnapshotStore } = await import('@/modules/tune/store/tuneSnapshotStore')
   useBleStore.setState({ linkIntegrity: 'trusted' })
   useTuneSnapshotStore.setState({ status: 'idle', snapshot: null, error: null })
   useTuneSnapshotStore.getState().clear()
+})
+
+test('last-known config mirrors ignore an older board read after a board switch', async () => {
+  const { useBoardConfigValuesStore } = await import('@/modules/board/store/boardConfigValuesStore')
+  const { useMotorConfigValuesStore } = await import('@/modules/board/store/motorConfigValuesStore')
+  const boardB = {
+    boardId: 'board-b',
+    refloatBaseVersion: null,
+    capturedAtMs: 2,
+    freshness: 'fresh' as const,
+    values: {},
+  }
+  const motorB: MotorConfigValues = {
+    boardId: 'board-b',
+    signature: 1,
+    firmware: 'release_6_05',
+    capturedAtMs: 2,
+    freshness: 'fresh',
+    values: {},
+  }
+  let rejectOldBoard!: (error: Error) => void
+  let rejectOldMotor!: (error: Error) => void
+  getLastKnownBoardConfigValues
+    .mockImplementationOnce(
+      () =>
+        new Promise((_resolve, reject) => {
+          rejectOldBoard = reject
+        }),
+    )
+    .mockImplementationOnce(async () => boardB)
+  getLastKnownMotorConfigValues
+    .mockImplementationOnce(
+      () =>
+        new Promise((_resolve, reject) => {
+          rejectOldMotor = reject
+        }),
+    )
+    .mockImplementationOnce(async () => motorB)
+
+  const oldBoardRead = useBoardConfigValuesStore.getState().loadLastKnown('board-a')
+  const oldMotorRead = useMotorConfigValuesStore.getState().loadLastKnown('board-a')
+  await Promise.all([
+    useBoardConfigValuesStore.getState().loadLastKnown('board-b'),
+    useMotorConfigValuesStore.getState().loadLastKnown('board-b'),
+  ])
+  rejectOldBoard(new Error('old board failed'))
+  rejectOldMotor(new Error('old motor failed'))
+  await Promise.all([oldBoardRead, oldMotorRead])
+
+  expect(useBoardConfigValuesStore.getState()).toMatchObject({ lastKnown: boardB, error: null })
+  expect(useMotorConfigValuesStore.getState()).toMatchObject({ lastKnown: motorB, error: null })
 })
 
 test('joins concurrent board snapshot reads', async () => {

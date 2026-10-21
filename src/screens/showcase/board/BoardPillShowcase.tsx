@@ -6,6 +6,7 @@ import { Text } from '@/components/base/Text'
 import { ShowcaseCard } from '@/components/dev/ShowcaseCard'
 import { ToggleRow } from '@/components/dev/ShowcaseControls'
 import { BoardPill } from '@/modules/board/components/BoardPill'
+import { AccessoryIcon } from '@/modules/accessories/constants/accessoryIcon'
 import { theme } from '@/constants/theme'
 
 const CONNECTION_STATES: BoardPhase[] = [
@@ -25,7 +26,6 @@ const CONNECTION_STATES: BoardPhase[] = [
 export function BoardPillShowcase() {
   const [selected, setSelected] = useState(true)
   const [status, setStatus] = useState<BoardPhase>('connected')
-  const [editable, setEditable] = useState(true)
   const [warnings, setWarnings] = useState(false)
   const [critical, setCritical] = useState(false)
   const [faults, setFaults] = useState(false)
@@ -33,6 +33,7 @@ export function BoardPillShowcase() {
   const [replay, setReplay] = useState(false)
   const [longName, setLongName] = useState(false)
   const [narrow, setNarrow] = useState(false)
+  const [accessory, setAccessory] = useState(false)
   const [width, setWidth] = useState(300)
   const [lastAction, setLastAction] = useState('Tap any pill button to see its action here.')
 
@@ -50,7 +51,6 @@ export function BoardPillShowcase() {
               onToggle={(on) => setStatus(on ? state : 'idle')}
             />
           ))}
-          <ToggleRow label="edit enabled" value={editable} onToggle={setEditable} />
           <ToggleRow
             label="board warning"
             value={warnings}
@@ -68,6 +68,7 @@ export function BoardPillShowcase() {
             }}
           />
           <ToggleRow label="VESC fault" value={faults} onToggle={setFaults} />
+          <ToggleRow label="accessory connected" value={accessory} onToggle={setAccessory} />
           <ToggleRow label="debug recording" value={recording} onToggle={setRecording} />
           <ToggleRow label="replay" value={replay} onToggle={setReplay} />
           <ToggleRow label="long board name" value={longName} onToggle={setLongName} />
@@ -88,7 +89,7 @@ export function BoardPillShowcase() {
           bleStatus={status}
           replay={replay}
           onOpenSelector={() => setLastAction('Open board selector')}
-          onEdit={selected && editable ? () => setLastAction('Edit board') : undefined}
+          onConnect={selected ? () => setLastAction('Connect board') : undefined}
           onDisconnect={() => {
             setStatus('idle')
             setLastAction('Board disconnected')
@@ -110,6 +111,15 @@ export function BoardPillShowcase() {
               : undefined
           }
           fault={faults ? { onPress: () => setLastAction('Open VESC faults') } : undefined}
+          accessory={
+            accessory
+              ? {
+                  icon: AccessoryIcon,
+                  label: 'Clearance sensor, connected accessory',
+                  onPress: () => setLastAction('Open accessory details'),
+                }
+              : undefined
+          }
         />
         <Text style={styles.caption}>
           {status.replaceAll('_', ' ')} · {lastAction}

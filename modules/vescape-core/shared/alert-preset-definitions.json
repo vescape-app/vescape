@@ -1,0 +1,278 @@
+{
+  "metrics": {
+    "speed": {
+      "family": "geiger",
+      "soundType": "preset:gamma",
+      "scaledByTopSpeed": true,
+      "levels": {
+        "safe": {
+          "start": 0.6,
+          "ceiling": 0.9
+        },
+        "normal": {
+          "start": 0.72,
+          "ceiling": 0.9
+        },
+        "minimal": {
+          "start": 0.82,
+          "ceiling": 0.9
+        }
+      }
+    },
+    "duty": {
+      "family": "geiger",
+      "soundType": "preset:tick",
+      "levels": {
+        "safe": {
+          "start": 75,
+          "ceiling": 90
+        },
+        "normal": {
+          "start": 80,
+          "ceiling": 90
+        },
+        "minimal": {
+          "start": 85,
+          "ceiling": 90
+        }
+      }
+    },
+    "motor-temp": {
+      "family": "discrete",
+      "soundType": "tts:Motor {value} {unit}",
+      "levels": {
+        "safe": [
+          {
+            "threshold": 70,
+            "repeatEverySeconds": null
+          },
+          {
+            "threshold": 85,
+            "repeatEverySeconds": null
+          },
+          {
+            "threshold": 95,
+            "repeatEverySeconds": 10
+          }
+        ],
+        "normal": [
+          {
+            "threshold": 85,
+            "repeatEverySeconds": null
+          },
+          {
+            "threshold": 95,
+            "repeatEverySeconds": 10
+          }
+        ],
+        "minimal": [
+          {
+            "threshold": 95,
+            "repeatEverySeconds": 10
+          }
+        ]
+      }
+    },
+    "controller-temp": {
+      "family": "discrete",
+      "soundType": "tts:Controller {value} {unit}",
+      "levels": {
+        "safe": [
+          {
+            "threshold": 60,
+            "repeatEverySeconds": null
+          },
+          {
+            "threshold": 75,
+            "repeatEverySeconds": null
+          },
+          {
+            "threshold": 85,
+            "repeatEverySeconds": 10
+          }
+        ],
+        "normal": [
+          {
+            "threshold": 75,
+            "repeatEverySeconds": null
+          },
+          {
+            "threshold": 85,
+            "repeatEverySeconds": 10
+          }
+        ],
+        "minimal": [
+          {
+            "threshold": 85,
+            "repeatEverySeconds": 10
+          }
+        ]
+      }
+    },
+    "battery": {
+      "family": "discrete",
+      "soundType": "tts:Battery {percent}%",
+      "requiresBatteryConfig": true,
+      "levels": {
+        "safe": [
+          {
+            "threshold": 50,
+            "repeatEverySeconds": null
+          },
+          {
+            "threshold": 40,
+            "repeatEverySeconds": null
+          },
+          {
+            "threshold": 30,
+            "repeatEverySeconds": null
+          },
+          {
+            "threshold": 20,
+            "repeatEverySeconds": null
+          },
+          {
+            "threshold": 15,
+            "repeatEverySeconds": null
+          },
+          {
+            "threshold": 10,
+            "repeatEverySeconds": null
+          },
+          {
+            "threshold": 5,
+            "repeatEverySeconds": null
+          }
+        ],
+        "normal": [
+          {
+            "threshold": 50,
+            "repeatEverySeconds": null
+          },
+          {
+            "threshold": 35,
+            "repeatEverySeconds": null
+          },
+          {
+            "threshold": 20,
+            "repeatEverySeconds": null
+          },
+          {
+            "threshold": 10,
+            "repeatEverySeconds": null
+          },
+          {
+            "threshold": 5,
+            "repeatEverySeconds": null
+          }
+        ],
+        "minimal": [
+          {
+            "threshold": 20,
+            "repeatEverySeconds": null
+          },
+          {
+            "threshold": 10,
+            "repeatEverySeconds": null
+          },
+          {
+            "threshold": 5,
+            "repeatEverySeconds": null
+          }
+        ]
+      }
+    }
+  },
+  "match": {
+    "duty": {
+      "family": "geiger",
+      "fieldId": "tiltback_duty",
+      "levels": {
+        "safe": {
+          "start": -15,
+          "ceiling": 0
+        },
+        "normal": {
+          "start": -10,
+          "ceiling": 0
+        },
+        "minimal": {
+          "start": -5,
+          "ceiling": 0
+        }
+      }
+    },
+    "motor-temp": {
+      "family": "discrete",
+      "fieldId": "l_temp_motor_start",
+      "levels": {
+        "safe": [
+          {
+            "threshold": -20,
+            "repeatEverySeconds": null
+          },
+          {
+            "threshold": -10,
+            "repeatEverySeconds": null
+          },
+          {
+            "threshold": 0,
+            "repeatEverySeconds": 10
+          }
+        ],
+        "normal": [
+          {
+            "threshold": -10,
+            "repeatEverySeconds": null
+          },
+          {
+            "threshold": 0,
+            "repeatEverySeconds": 10
+          }
+        ],
+        "minimal": [
+          {
+            "threshold": 0,
+            "repeatEverySeconds": 10
+          }
+        ]
+      }
+    },
+    "controller-temp": {
+      "family": "discrete",
+      "fieldId": "l_temp_fet_start",
+      "levels": {
+        "safe": [
+          {
+            "threshold": -20,
+            "repeatEverySeconds": null
+          },
+          {
+            "threshold": -10,
+            "repeatEverySeconds": null
+          },
+          {
+            "threshold": 0,
+            "repeatEverySeconds": 10
+          }
+        ],
+        "normal": [
+          {
+            "threshold": -10,
+            "repeatEverySeconds": null
+          },
+          {
+            "threshold": 0,
+            "repeatEverySeconds": 10
+          }
+        ],
+        "minimal": [
+          {
+            "threshold": 0,
+            "repeatEverySeconds": 10
+          }
+        ]
+      }
+    }
+  }
+}

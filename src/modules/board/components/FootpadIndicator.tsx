@@ -9,14 +9,21 @@ import {
   Skia,
   type SkPath,
 } from '@shopify/react-native-skia'
-import { useDerivedValue, type SharedValue } from 'react-native-reanimated'
+import {
+  Easing,
+  useAnimatedReaction,
+  useDerivedValue,
+  useSharedValue,
+  withTiming,
+  type SharedValue,
+} from 'react-native-reanimated'
 
 import { MonoText } from '@/components/base/MonoValue'
 import { theme } from '@/constants/theme'
 import { useResolvedColor } from '@/hooks/useTheme'
+import { HUD_IDLE_GLYPH_COLOR } from '@/modules/board/constants/telemetry'
 import { FOOTPAD_FALLBACK_THRESHOLD_V } from '@/modules/board/store/boardConfigValuesStore'
 
-const TRACK_COLOR = theme.alpha(theme.palette.slate.textDim, 0.4)
 /** Disabled zone (`fault_adc = 0`): the rail is still drawn so the pad keeps its shape, but muted. */
 const DISABLED_COLOR = theme.alpha(theme.palette.slate.textDim, 0.12)
 
@@ -33,6 +40,10 @@ const VALUE_PAD = 8
 /** How much of the rail's own width the glow spreads to, once the zone engages. */
 const GLOW_WIDTH_FACTOR = 5
 const GLOW_OPACITY = 0.35
+
+/** How long a rail takes to catch up to a new reading: a few telemetry frames, enough to see it fill
+ * rather than jump, short enough not to hide what the sensor reads. */
+const FILL_EASE = { duration: 120, easing: Easing.out(Easing.quad) }
 
 /** A real Onewheel pad is 25cm × 22cm; the drawing keeps that ratio so it reads as the same object. */
 const FOOTPAD_ASPECT = 22 / 25
@@ -117,9 +128,11 @@ function buildGeometry(width: number): FootpadGeometry {
 }
 
 interface ZoneDrive {
-  /** Trim end of the fill rail, `0…1`. Reaching `1` is exactly the zone engaging. */
+  /** Trim end of the fill rail, `0…1`, eased toward the reading. Reaching `1` is the zone
+   * engaging. */
   end: SharedValue<number>
-  /** Glow opacity — `0` until the zone engages, so "full" is unmistakable at strip size. */
+  /** Glow opacity — `0` until the zone engages, so "full" is unmistakable at strip size. Off the
+   * raw reading, so the engagement itself is never late. */
   glow: SharedValue<number>
   disabled: boolean
 }
@@ -140,13 +153,22 @@ function useZoneDrive(value: SharedValue<number | null>, threshold: number | nul
   // `fault_adc = 0` disables that zone's switch outright: it can never engage, so the rail stays
   // empty for the whole session. The `footpad-disabled` Board Warning carries the explanation.
   const disabled = engageAt <= 0
-  const end = useDerivedValue(() => {
+  const target = useDerivedValue(() => {
     if (disabled) return 0
     const adc = value.value
     if (adc == null || adc <= 0) return 0
     return Math.min(1, adc / engageAt)
   })
-  const glow = useDerivedValue<number>(() => (end.value >= 1 ? GLOW_OPACITY : 0))
+  const end = useSharedValue(0)
+  useAnimatedReaction(
+    () => target.value,
+    (next) => {
+      // Reanimated shared values are mutable handles by design.
+      // eslint-disable-next-line react-hooks/immutability
+      end.value = withTiming(next, FILL_EASE)
+    },
+  )
+  const glow = useDerivedValue<number>(() => (target.value >= 1 ? GLOW_OPACITY : 0))
   return { end, glow, disabled }
 }
 
@@ -180,7 +202,7 @@ function FootpadZone({ path, stroke, drive, fillColor }: FootpadZoneProps) {
         strokeWidth={stroke}
         strokeCap="round"
         strokeJoin="round"
-        color={drive.disabled ? DISABLED_COLOR : TRACK_COLOR}
+        color={drive.disabled ? DISABLED_COLOR : HUD_IDLE_GLYPH_COLOR}
       />
       {/* Trimming is geometry per frame, which the canvas rules normally forbid — but the fill runs
           along a curve that turns a corner, so no transform or linear clip can express it, and it

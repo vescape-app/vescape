@@ -3,14 +3,14 @@ import Foundation
 /// Fixed lanes preceding the per-cell voltage lanes in the columnar BMS series payload.
 ///
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/BmsSeriesRing.kt `BMS_SERIES_FIXED_LANES`
-/// @parity /modules/vescape-core/src/index.ts `BMS_SERIES_FIXED_LANES`
+/// @parity /modules/vescape-core/src/bmsSeries.ts `BMS_SERIES_FIXED_LANES`
 internal let BMS_SERIES_FIXED_LANES = 3
 
 /// Bits per balancing lane. Cell counts go up to 60 and a Float64 only holds 53 exact integer
 /// bits, so the balancing bitmask is split across two lanes of 30 bits each.
 ///
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/BmsSeriesRing.kt `BMS_SERIES_BALANCE_LANE_BITS`
-/// @parity /modules/vescape-core/src/index.ts `BMS_SERIES_BALANCE_LANE_BITS`
+/// @parity /modules/vescape-core/src/bmsSeries.ts `BMS_SERIES_BALANCE_LANE_BITS`
 internal let BMS_SERIES_BALANCE_LANE_BITS = 30
 
 internal struct BmsSeriesFrame {

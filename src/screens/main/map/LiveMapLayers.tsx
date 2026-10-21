@@ -5,7 +5,7 @@ import { processColor } from 'react-native'
 import { theme } from '@/constants/theme'
 import { useResolvedAccentColors, useResolvedNeutralColors } from '@/hooks/useTheme'
 import { RiderPresencePin, RiderTrail } from '@/modules/group-ride/components/RiderMapLayers'
-import { useRiderStore } from '@/modules/group-ride/store/riderStore'
+import { useSelectedBoardRailColor } from '@/modules/group-ride/lib/selectedBoardRailColor'
 import { MAP_DEFAULTS } from '@/modules/map/constants/mapStyles'
 import type { MainMapLayersProps } from '@/screens/main/map/mainMapLayerTypes'
 
@@ -27,7 +27,7 @@ export function LiveMapLayers({
   riders: MainMapLayersProps['riders']
   highContrastRoutes: boolean
 }) {
-  const riderColor = useRiderStore((state) => state.riderColor)
+  const riderColor = useSelectedBoardRailColor()
   const neutral = useResolvedNeutralColors()
   const accents = useResolvedAccentColors()
   const accuracyFillColor = theme.alpha(accents.violet.color, 0.12)
@@ -36,6 +36,7 @@ export function LiveMapLayers({
   const trailGradientStart = riderColor
     ? theme.alpha(riderColor, 0)
     : theme.alpha(accents.violet.color, 0)
+  // @platform-diff Watch trail peaks at 60% opacity to separate it from the planned route.
   const trailGradientEnd = riderColor
     ? theme.alpha(riderColor, 0.85)
     : theme.alpha(accents.violet.color, 0.85)
@@ -93,6 +94,8 @@ export function LiveMapLayers({
               lineWidth: MAP_DEFAULTS.trailWidth,
               lineCap: 'round',
               lineJoin: 'round',
+              // @parity /watch/wearos/src/main/java/app/vescape/wear/RiderTrail.kt
+              // @parity /watch/watchos/RiderTrail.swift
               lineGradient: [
                 'interpolate',
                 ['linear'],

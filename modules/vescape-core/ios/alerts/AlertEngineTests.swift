@@ -607,6 +607,16 @@ final class AlertTemplateTests: XCTestCase {
     )
   }
 
+  func testSpeedUnitsConvertPlaceholdersAndPreserveLiteralText() {
+    let sample = alert(controlId: "speed", value: 40.2336, threshold: 40.0)
+    let template = "{value} {unit} over {threshold} {unit}; literal km/h"
+    XCTAssertEqual("25 mph over 25 mph; literal km/h",
+      renderAlertMessageTemplate(template, alert: sample, batteryPercent: nil, unitSystem: "imperial"))
+    XCTAssertEqual("40 km/h over 40 km/h; literal km/h",
+      renderAlertMessageTemplate(template, alert: sample, batteryPercent: nil, unitSystem: "metric"))
+    XCTAssertEqual(40.0, sample.threshold)
+  }
+
   func testBasicPlaceholdersRendered() {
     let result = renderAlertMessageTemplate(
       "{value} {unit} over {threshold} {unit}",

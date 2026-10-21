@@ -1,18 +1,20 @@
-import type { ReactNode } from 'react'
-import { ScrollView, StyleSheet, View } from 'react-native'
+import { useEffect, useRef, type ReactNode } from 'react'
+import { Keyboard, ScrollView, StyleSheet, View } from 'react-native'
 import { Text } from '@/components/base/Text'
 import { ArrowLeftIcon, ArrowRightIcon, type Icon } from 'phosphor-react-native'
 
 import { Button } from '@/components/base/Button'
-import { theme } from '@/constants/theme'
+import { theme, type ThemeColor } from '@/constants/theme'
 
 interface WizardStepLayoutProps {
   title: string
   description?: ReactNode
   icon: Icon
-  color: string
+  color: ThemeColor
   headerRight?: ReactNode
   footer?: ReactNode
+  revealBottomOnKeyboard?: boolean
+  alignContentTop?: boolean
   children: ReactNode
 }
 
@@ -23,13 +25,31 @@ export function WizardStepLayout({
   color,
   headerRight,
   footer,
+  revealBottomOnKeyboard = false,
+  alignContentTop = false,
   children,
 }: WizardStepLayoutProps) {
+  const scrollRef = useRef<ScrollView>(null)
+
+  useEffect(() => {
+    if (!revealBottomOnKeyboard) return
+
+    const subscription = Keyboard.addListener('keyboardDidShow', () => {
+      requestAnimationFrame(() => {
+        scrollRef.current?.scrollToEnd({ animated: true })
+      })
+    })
+    return () => subscription.remove()
+  }, [revealBottomOnKeyboard])
+
   return (
     <View style={styles.fill}>
       <ScrollView
+        ref={scrollRef}
         style={styles.scroll}
         contentContainerStyle={styles.body}
+        automaticallyAdjustKeyboardInsets
+        keyboardDismissMode="interactive"
         keyboardShouldPersistTaps="handled"
       >
         <View style={styles.topContent}>
@@ -44,7 +64,7 @@ export function WizardStepLayout({
           </View>
           {description ? <Text style={styles.description}>{description}</Text> : null}
         </View>
-        <View style={styles.mainContent}>
+        <View style={[styles.mainContent, alignContentTop && styles.mainContentTop]}>
           <View style={styles.contentStack}>{children}</View>
         </View>
       </ScrollView>
@@ -128,6 +148,9 @@ const styles = StyleSheet.create({
     flex: 1,
     minHeight: 0,
     justifyContent: 'center',
+  },
+  mainContentTop: {
+    justifyContent: 'flex-start',
   },
   contentStack: {
     gap: 14,

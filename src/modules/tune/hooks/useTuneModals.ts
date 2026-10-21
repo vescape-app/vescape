@@ -1,3 +1,4 @@
+import type { ThemeColor } from '@/constants/theme'
 import { useCallback, useMemo, useState } from 'react'
 import type { View } from 'react-native'
 import type { RefloatConfigField, TuneProfile, TuneProfileFieldValue } from 'vescape-core'
@@ -6,9 +7,10 @@ import type { FieldEditorTarget } from '@/modules/tune/components/FieldEditorPop
 import { basicSliderColor, basicSliderIcon } from '@/modules/tune/components/basicSliderIcons'
 import type { Board } from '@/modules/board/store/boardStore'
 import { useTuneProfileStore } from '@/modules/tune/store/tuneProfileStore'
-import { formatTuneValue } from '@/modules/tune/lib/fields'
+import { APP_TUNE_FIELD_BY_ID, formatTuneValue, tuneDisplayScale } from '@/modules/tune/lib/fields'
 import {
   BASIC_SLIDER_BY_ID,
+  basicSliderChanges,
   fieldHelp,
   fieldStep,
   getLinkedFieldPreviews,
@@ -52,10 +54,11 @@ export function useTuneModals(
   }, [])
 
   const showFieldInfo = useCallback((field: RefloatConfigField) => {
+    const scale = tuneDisplayScale(field.id)
     const limits =
       field.min != null || field.max != null
-        ? `\n\nRange: ${field.min != null ? formatTuneValue(field.min) : DASH} to ${
-            field.max != null ? formatTuneValue(field.max) : DASH
+        ? `\n\nRange: ${field.min != null ? formatTuneValue(field.min * scale) : DASH} to ${
+            field.max != null ? formatTuneValue(field.max * scale) : DASH
           }${field.unit ? ` ${field.unit}` : ''}`
         : ''
     const units = field.unit ? `\nUnit: ${field.unit}` : ''
@@ -66,7 +69,7 @@ export function useTuneModals(
   }, [])
 
   const openFieldEditor = useCallback(
-    (field: RefloatConfigField, ref: { current: View | null }, color?: string) => {
+    (field: RefloatConfigField, ref: { current: View | null }, color?: ThemeColor) => {
       if (!activeProfile) {
         showFieldInfo(field)
         return
@@ -78,15 +81,17 @@ export function useTuneModals(
         )
         return
       }
+      const scale = tuneDisplayScale(field.id)
       setEditorKind({ kind: 'field', fieldId: field.id })
       setEditor({
         triggerRef: ref as React.RefObject<View | null>,
         label: field.label,
         fieldId: field.id,
-        value: field.value as number,
-        min: field.min!,
-        max: field.max!,
-        step: fieldStep(field),
+        value: (field.value as number) * scale,
+        min: field.min! * scale,
+        max: field.max! * scale,
+        step: fieldStep(field) * scale,
+        manualDecimals: APP_TUNE_FIELD_BY_ID.get(field.id)?.manualDecimals ?? 3,
         unit: field.unit,
         help: fieldHelp(field),
         color,
@@ -115,21 +120,24 @@ export function useTuneModals(
         help: `${item.info}\n\nSource: ${item.source}`,
         icon: basicSliderIcon(item.id),
         color: basicSliderColor(item.id),
-        linkedFields: getLinkedFieldPreviews(def),
+        linkedFields: getLinkedFieldPreviews(def).map((field) => {
+          const value = draftFields[field.id] ?? activeProfile.fields[field.id]
+          return { ...field, currentValue: typeof value === 'number' ? value : undefined }
+        }),
       })
     },
-    [activeProfile, basicSliders],
+    [activeProfile, basicSliders, draftFields],
   )
 
   const handleEditorApply = useCallback(
     (value: number, linkedFieldValues?: Record<string, number>) => {
-      if (!editorKind) return
+      if (!editorKind || !editor) return
       if (editorKind.kind === 'field') {
-        setDraftField(editorKind.fieldId, value)
+        setDraftField(editorKind.fieldId, value / tuneDisplayScale(editorKind.fieldId))
       } else {
         const def = BASIC_SLIDER_BY_ID.get(editorKind.sliderId)
         if (def) {
-          const fieldValues = { ...def.computeFieldValues(value), ...linkedFieldValues }
+          const fieldValues = basicSliderChanges(def, value, editor.value, linkedFieldValues)
           for (const [id, v] of Object.entries(fieldValues)) {
             setDraftField(id, v)
           }
@@ -138,7 +146,7 @@ export function useTuneModals(
       setEditor(null)
       setEditorKind(null)
     },
-    [editorKind, setDraftField],
+    [editorKind, editor, setDraftField],
   )
 
   const closeEditor = useCallback(() => {
@@ -176,9 +184,9 @@ export function useTuneModals(
   }, [])
 
   const handleCopyConfirm = useCallback(
-    (name: string) => {
+    async (name: string) => {
       if (!copySourceProfile || !copyTargetBoard) return
-      void storeCopyProfile(copySourceProfile.id, copyTargetBoard.id, name)
+      await storeCopyProfile(copySourceProfile.id, copyTargetBoard.id, name)
       setCopySourceProfile(null)
       setCopyTargetBoard(null)
     },

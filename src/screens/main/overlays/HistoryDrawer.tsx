@@ -1,3 +1,5 @@
+import { useRideFormat } from '@/modules/history/hooks/useRideFormat'
+import { useFormat } from '@/hooks/useFormat'
 import { useCallback, useEffect, useMemo, useState, type RefObject } from 'react'
 import { router } from 'expo-router'
 import {
@@ -14,10 +16,10 @@ import { SectionHeader } from '@/components/base/SectionHeader'
 import { EdgeDrawer } from '@/components/overlays/EdgeDrawer'
 import { theme } from '@/constants/theme'
 import { FavoriteRideCard } from '@/modules/history/components/FavoriteRideCard'
-import { HistoryRideRow } from '@/modules/history/components/HistoryRideRow'
+import { RidePreviewCard } from '@/modules/history/components/RidePreviewCard'
 import { HistorySessionSheet } from '@/modules/history/components/HistorySessionSheet'
 import { favoriteSessionId, favoriteToSession } from '@/modules/history/lib/favorites'
-import { formatRideListDateTime, formatRideListDetails } from '@/modules/history/lib/rideFormat'
+import { formatRideDate, formatRideTime } from '@/modules/history/lib/rideFormat'
 import { isLiveRide, rideMovingWindow, type HistorySession } from '@/modules/history/lib/sessions'
 import { useHistoryAutoRefresh } from '@/modules/history/hooks/useHistoryAutoRefresh'
 import { useFavoriteStore, type Favorite } from '@/modules/history/store/favoriteStore'
@@ -43,6 +45,8 @@ export function HistoryDrawer({
   onOpenRide,
   onOpenFavorite,
 }: HistoryDrawerProps) {
+  const { formatSpeedWithUnit } = useFormat()
+  const { formatRideDetails } = useRideFormat()
   const [listMode, setListMode] = useState<ListMode>(null)
   const [ridesLoaded, setRidesLoaded] = useState(false)
   const [favoritesLoaded, setFavoritesLoaded] = useState(false)
@@ -162,15 +166,7 @@ export function HistoryDrawer({
             <Placeholder
               icon={WarningCircleIcon}
               title="Could not load rides"
-              description="Try loading ride history again"
-              action={
-                <Button
-                  label="Retry"
-                  size="sm"
-                  variant="secondary"
-                  onPress={() => useHistoryStore.getState().loadInitial()}
-                />
-              }
+              description="Restart the app to try again"
               style={styles.placeholder}
             />
           ) : sessions.length === 0 ? (
@@ -181,32 +177,39 @@ export function HistoryDrawer({
               style={styles.placeholder}
             />
           ) : (
-            <View style={styles.rideList}>
-              {sessions.slice(0, 3).map((session, index) => {
+            <ScrollView
+              horizontal
+              style={styles.cardScroll}
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={styles.cardList}
+            >
+              {sessions.slice(0, 8).map((session, index) => {
                 const window = rideMovingWindow(session) ?? {
                   startMs: session.startAtMs,
                   endMs: session.endAtMs,
                 }
                 const details = [
-                  formatRideListDetails(window.endMs - window.startMs, session.distanceM, null),
-                  `${Math.round(session.maxSpeedKmh)} km/h`,
+                  formatRideDetails(window.endMs - window.startMs, session.distanceM, null),
+                  formatSpeedWithUnit(session.maxSpeedKmh),
                 ].join(' · ')
                 return (
-                  <HistoryRideRow
+                  <RidePreviewCard
                     key={session.id}
                     testID={index === 0 ? 'history-latest-ride' : undefined}
-                    title={formatRideListDateTime(
+                    title={formatRideTime(
                       window.startMs,
                       window.endMs,
                       isLiveRide(session, Date.now()),
                     )}
+                    date={formatRideDate(window.startMs, window.endMs)}
                     subtitle={details}
                     routePoints={session.routePoints}
+                    color={theme.palette.purple.color}
                     onPress={() => openRide(session)}
                   />
                 )
               })}
-            </View>
+            </ScrollView>
           )}
 
           <SectionHeader
@@ -245,14 +248,15 @@ export function HistoryDrawer({
             <Placeholder
               icon={StarIcon}
               title="No favorites yet"
-              description="Open a ride in History, tap the star, adjust the range, then save"
+              description="Star a stretch of a ride in History to keep it here"
               style={styles.placeholder}
             />
           ) : (
             <ScrollView
               horizontal
+              style={styles.cardScroll}
               showsHorizontalScrollIndicator={false}
-              contentContainerStyle={styles.favoriteList}
+              contentContainerStyle={styles.cardList}
             >
               {favorites.slice(0, 8).map((favorite, index) => (
                 <FavoriteRideCard
@@ -271,6 +275,7 @@ export function HistoryDrawer({
         visible={listMode !== null}
         triggerRef={triggerRef}
         favoriteMode={listMode === 'favorites'}
+        onSelectTab={(tab) => setListMode(tab === 'history' ? 'rides' : 'favorites')}
         sessions={listMode === 'favorites' ? favoriteSessions : sessions}
         favorites={favorites}
         selectedSessionId={null}
@@ -290,7 +295,7 @@ export function HistoryDrawer({
 
 function RideListSkeleton() {
   return (
-    <View style={styles.rideList} accessibilityLabel="Loading recent rides">
+    <View style={styles.cardList} accessibilityLabel="Loading recent rides">
       {[0, 1, 2].map((index) => (
         <View key={index} style={styles.rideSkeleton} />
       ))}
@@ -303,20 +308,21 @@ const styles = StyleSheet.create({
     padding: 12,
     gap: 12,
   },
-  rideList: {
-    gap: 8,
-  },
   rideSkeleton: {
-    height: 74,
-    borderRadius: 12,
+    width: 172,
+    height: 165,
+    borderRadius: 18,
     borderWidth: 1,
-    borderColor: theme.palette.slate.border,
-    backgroundColor: theme.palette.slate.surfaceDeep,
+    borderColor: theme.neutral.border,
+    backgroundColor: theme.neutral.surfaceDeep,
     opacity: 0.55,
   },
-  favoriteList: {
+  cardList: {
     gap: 10,
-    paddingRight: 12,
+    paddingHorizontal: 24,
+  },
+  cardScroll: {
+    marginHorizontal: -24,
   },
   placeholder: {
     minHeight: 170,

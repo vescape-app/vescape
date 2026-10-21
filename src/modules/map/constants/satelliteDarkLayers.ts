@@ -4,11 +4,12 @@ const SATELLITE_TEXT = theme.palette.mono.white
 const SATELLITE_MUTED_TEXT = theme.palette.mono.white
 const SATELLITE_HALO = 'hsl(0, 5%, 0%)'
 const SATELLITE_SOFT_HALO = 'hsla(0, 5%, 0%, 0.75)'
-const SATELLITE_ROAD = theme.palette.mono.white
-const SATELLITE_PATH = theme.palette.mono.white
-
-/** Thin white road casings, drawn over the imagery only when the rider asks for street lines. */
-export function satelliteStreetLineLayers(showStreetLines: boolean, streetLineOpacity: number) {
+/** Thin road lines over imagery, colored for the active theme. */
+export function satelliteStreetLineLayers(
+  showStreetLines: boolean,
+  streetLineOpacity: number,
+  roadColor: string = theme.palette.mono.white,
+) {
   const clampedStreetLineOpacity = Math.max(0, Math.min(1, streetLineOpacity))
   return [
     ...(showStreetLines
@@ -20,7 +21,7 @@ export function satelliteStreetLineLayers(showStreetLines: boolean, streetLineOp
             'source-layer': 'road',
             filter: ['all', ['==', ['get', 'class'], 'path']],
             paint: {
-              'line-color': SATELLITE_PATH,
+              'line-color': roadColor,
               'line-width': ['interpolate', ['linear'], ['zoom'], 14, 0.45, 18, 1.2],
               'line-dasharray': [2, 1.5],
               'line-opacity': clampedStreetLineOpacity,
@@ -33,7 +34,7 @@ export function satelliteStreetLineLayers(showStreetLines: boolean, streetLineOp
             'source-layer': 'road',
             filter: ['==', ['get', 'class'], 'track'],
             paint: {
-              'line-color': SATELLITE_PATH,
+              'line-color': roadColor,
               'line-width': ['interpolate', ['linear'], ['zoom'], 12, 0.4, 16, 1.4, 18, 2],
               'line-dasharray': [3, 1.5],
               'line-opacity': clampedStreetLineOpacity,
@@ -46,7 +47,7 @@ export function satelliteStreetLineLayers(showStreetLines: boolean, streetLineOp
             'source-layer': 'road',
             filter: ['==', ['get', 'class'], 'service'],
             paint: {
-              'line-color': SATELLITE_ROAD,
+              'line-color': roadColor,
               'line-width': ['interpolate', ['linear'], ['zoom'], 14, 0.45, 18, 2],
               'line-opacity': clampedStreetLineOpacity,
             },
@@ -62,7 +63,7 @@ export function satelliteStreetLineLayers(showStreetLines: boolean, streetLineOp
               ['==', ['get', 'class'], 'street_limited'],
             ],
             paint: {
-              'line-color': SATELLITE_ROAD,
+              'line-color': roadColor,
               'line-width': ['interpolate', ['linear'], ['zoom'], 12, 0.35, 16, 1.8, 18, 3.4],
               'line-opacity': clampedStreetLineOpacity,
             },
@@ -78,7 +79,7 @@ export function satelliteStreetLineLayers(showStreetLines: boolean, streetLineOp
               ['==', ['get', 'class'], 'tertiary'],
             ],
             paint: {
-              'line-color': SATELLITE_ROAD,
+              'line-color': roadColor,
               'line-width': ['interpolate', ['linear'], ['zoom'], 10, 0.5, 14, 1.8, 18, 4.5],
               'line-opacity': clampedStreetLineOpacity,
             },
@@ -90,7 +91,7 @@ export function satelliteStreetLineLayers(showStreetLines: boolean, streetLineOp
             'source-layer': 'road',
             filter: ['==', ['get', 'class'], 'primary'],
             paint: {
-              'line-color': SATELLITE_ROAD,
+              'line-color': roadColor,
               'line-width': ['interpolate', ['linear'], ['zoom'], 8, 0.55, 14, 2.2, 18, 5.5],
               'line-opacity': clampedStreetLineOpacity,
             },
@@ -102,7 +103,7 @@ export function satelliteStreetLineLayers(showStreetLines: boolean, streetLineOp
             'source-layer': 'road',
             filter: ['==', ['get', 'class'], 'trunk'],
             paint: {
-              'line-color': SATELLITE_ROAD,
+              'line-color': roadColor,
               'line-width': ['interpolate', ['linear'], ['zoom'], 6, 0.4, 12, 1.8, 18, 6],
               'line-opacity': clampedStreetLineOpacity,
             },
@@ -114,7 +115,7 @@ export function satelliteStreetLineLayers(showStreetLines: boolean, streetLineOp
             'source-layer': 'road',
             filter: ['==', ['get', 'class'], 'motorway'],
             paint: {
-              'line-color': SATELLITE_ROAD,
+              'line-color': roadColor,
               'line-width': ['interpolate', ['linear'], ['zoom'], 6, 0.55, 12, 2.4, 18, 7],
               'line-opacity': clampedStreetLineOpacity,
             },

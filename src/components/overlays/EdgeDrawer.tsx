@@ -1,3 +1,4 @@
+import { useState } from 'react'
 import {
   Modal,
   Pressable,
@@ -5,6 +6,9 @@ import {
   View,
   type FlatList,
   type ListRenderItem,
+  type FlatListProps,
+  type StyleProp,
+  type ViewStyle,
 } from 'react-native'
 import { GestureDetector, GestureHandlerRootView } from 'react-native-gesture-handler'
 import Reanimated from 'react-native-reanimated'
@@ -18,9 +22,14 @@ import {
   WidgetFocusOverlay,
   WidgetFocusProvider,
 } from '@/components/overlays/widgetFocus'
-import { theme } from '@/constants/theme'
+import { theme, type ThemeColor } from '@/constants/theme'
+import { useResolvedNeutralColors } from '@/hooks/useTheme'
 
 interface EdgeDrawerVirtualizedContent {
+  /** Exact data-row frames allow scrolling to rows outside the render window. */
+  getItemLayout?: FlatListProps<unknown>['getItemLayout']
+  /** Focus rectangle relative to the first data row (the drawer adds its header). */
+  initialFocus?: { offset: number; height: number }
   data: readonly unknown[]
   renderItem: ListRenderItem<unknown>
   keyExtractor: (item: unknown, index: number) => string
@@ -38,12 +47,16 @@ interface EdgeDrawerProps {
   onClose: () => void
   /** Which edge the drawer opens from. `auto` picks the edge nearest the trigger. */
   edge?: 'auto' | 'top' | 'bottom'
+  /** Custom interactive header, replacing the default title and icon. */
+  header?: React.ReactNode
   title?: string
   /** Optional glyph shown left of a centred title. */
   icon?: Icon
-  iconColor?: string
+  iconColor?: ThemeColor
   /** Scroll newly expanded content into view when the drawer grows. */
   autoScrollOnContentExpand?: boolean
+  /** Return to the start of the drawer content when switching between pages. */
+  contentPageKey?: string
   /** Bring one child into the initially visible drawer area after opening. */
   initialFocusRef?: React.RefObject<View | null>
   /** Called after scrolling settles near the end of the drawer content. */
@@ -65,15 +78,18 @@ export function EdgeDrawer({
   onClose,
   edge = 'bottom',
   title,
+  header,
   icon: IconComponent,
   iconColor = theme.neutral.textSecondary,
   autoScrollOnContentExpand = false,
+  contentPageKey,
   initialFocusRef,
   onReachContentEnd,
   backdropTestID,
   children,
   virtualizedContent,
 }: EdgeDrawerProps) {
+  const [listHeaderHeight, setListHeaderHeight] = useState(0)
   const {
     mounted,
     closing,
@@ -95,12 +111,19 @@ export function EdgeDrawer({
     edge,
     triggerRef,
     initialFocusRef,
+    virtualized: virtualizedContent != null,
+    initialFocusLayout: listFocusLayout(listHeaderHeight, virtualizedContent?.initialFocus),
     autoScrollOnContentExpand,
+    contentPageKey,
     onClose,
     onReachContentEnd,
   })
 
   const focus = useWidgetFocusHost()
+  const { rootRef: focusRootRef, active: focusActive, controller: focusController } = focus
+  // JS-side resolution: baked adaptive tokens in a StyleSheet go stale inside a live Modal window
+  // after the rider changes the appearance in place — the window re-resolves only on remount.
+  const neutral = useResolvedNeutralColors()
 
   if (!mounted) return null
 
@@ -108,7 +131,9 @@ export function EdgeDrawer({
     <Pressable style={{ height: dismissAreaHeight }} onPress={close} accessible={false} />
   )
 
-  const drawerTitle = title ? (
+  const drawerTitle = header ? (
+    <View style={styles.drawerHeader}>{header}</View>
+  ) : title ? (
     <Pressable
       style={styles.drawerHeader}
       onPress={close}
@@ -116,25 +141,37 @@ export function EdgeDrawer({
       accessibilityLabel={`Close ${title}`}
     >
       {IconComponent ? <IconComponent size={28} color={iconColor} weight="duotone" /> : null}
-      <Text style={styles.drawerTitle}>{title}</Text>
+      <Text style={[styles.drawerTitle, { color: neutral.textPrimary }]}>{title}</Text>
     </Pressable>
   ) : null
 
+  const scrimStyle: StyleProp<ViewStyle> = {
+    backgroundColor: theme.alpha(neutral.surfaceDeep, 0.85),
+  }
+  const colorStyle: StyleProp<ViewStyle> = {
+    backgroundColor: theme.alpha(neutral.textSecondary, 0.6),
+  }
+
   const listHeader = virtualizedContent ? (
-    <>
+    <View onLayout={(event) => setListHeaderHeight(event.nativeEvent.layout.height)}>
       {!opensFromTop ? emptyDismissArea : null}
       <View style={[styles.listChrome, opensFromTop && { paddingTop: edgePadding }]}>
-        {!opensFromTop ? <View style={styles.grabber} /> : null}
+        {!opensFromTop ? <View style={[styles.grabber, colorStyle]} /> : null}
         {drawerTitle}
       </View>
-    </>
+    </View>
   ) : null
 
   const listFooter = virtualizedContent ? (
     <>
       {virtualizedContent.footer}
+      <VirtualizedFocusFooter
+        focus={virtualizedContent.initialFocus}
+        opensFromTop={opensFromTop}
+        height={dismissAreaHeight}
+      />
       <View style={[styles.listChrome, opensFromTop ? undefined : { paddingBottom: edgePadding }]}>
-        {opensFromTop ? <View style={styles.grabber} /> : null}
+        {opensFromTop ? <View style={[styles.grabber, colorStyle]} /> : null}
       </View>
       {opensFromTop ? emptyDismissArea : null}
     </>
@@ -148,17 +185,17 @@ export function EdgeDrawer({
       statusBarTranslucent
       navigationBarTranslucent
       presentationStyle="overFullScreen"
-      onRequestClose={focus.active ? focus.controller.close : close}
+      onRequestClose={focusActive ? focusController.close : close}
       onShow={startOpen}
     >
       <GestureHandlerRootView style={styles.modalGestureRoot}>
         <View style={styles.drawer}>
-          <Reanimated.View style={[StyleSheet.absoluteFill, styles.drawerScrim, backdropStyle]}>
+          <Reanimated.View style={[StyleSheet.absoluteFill, scrimStyle, backdropStyle]}>
             <Pressable testID={backdropTestID} style={StyleSheet.absoluteFill} onPress={close} />
           </Reanimated.View>
         </View>
         <Reanimated.View style={[styles.drawer, presenceStyle]}>
-          <View ref={focus.rootRef} collapsable={false} style={styles.focusRoot}>
+          <View ref={focusRootRef} collapsable={false} style={styles.focusRoot}>
             <NativeScrollGestureContext.Provider value={nativeScrollGesture}>
               <GestureDetector gesture={nativeScrollGesture}>
                 {virtualizedContent ? (
@@ -167,6 +204,10 @@ export function EdgeDrawer({
                     data={virtualizedContent.data as unknown[]}
                     renderItem={virtualizedContent.renderItem}
                     keyExtractor={virtualizedContent.keyExtractor}
+                    getItemLayout={withListHeaderLayout(
+                      virtualizedContent.getItemLayout,
+                      listHeaderHeight,
+                    )}
                     ListHeaderComponent={listHeader}
                     ListEmptyComponent={virtualizedContent.empty}
                     ListFooterComponent={listFooter}
@@ -178,7 +219,7 @@ export function EdgeDrawer({
                     onScroll={scrollHandler}
                     onScrollEndDrag={handleScrollEndDrag}
                     onMomentumScrollEnd={handleScrollEnd}
-                    scrollEnabled={!closing && !focus.active}
+                    scrollEnabled={!closing && !focusActive}
                     scrollEventThrottle={16}
                     showsVerticalScrollIndicator={false}
                     bounces={false}
@@ -197,7 +238,7 @@ export function EdgeDrawer({
                     onScroll={scrollHandler}
                     onScrollEndDrag={handleScrollEndDrag}
                     onMomentumScrollEnd={handleScrollEnd}
-                    scrollEnabled={!closing && !focus.active}
+                    scrollEnabled={!closing && !focusActive}
                     scrollEventThrottle={16}
                     showsVerticalScrollIndicator={false}
                     bounces={false}
@@ -210,12 +251,12 @@ export function EdgeDrawer({
                         opensFromTop ? { paddingTop: edgePadding } : { paddingBottom: edgePadding },
                       ]}
                     >
-                      {!opensFromTop ? <View style={styles.grabber} /> : null}
+                      {!opensFromTop ? <View style={[styles.grabber, colorStyle]} /> : null}
                       {drawerTitle}
                       <WidgetFocusProvider host={focus}>
                         <View style={styles.drawerContent}>{children}</View>
                       </WidgetFocusProvider>
-                      {opensFromTop ? <View style={styles.grabber} /> : null}
+                      {opensFromTop ? <View style={[styles.grabber, colorStyle]} /> : null}
                     </View>
                     {opensFromTop ? emptyDismissArea : null}
                   </Reanimated.ScrollView>
@@ -228,6 +269,38 @@ export function EdgeDrawer({
       </GestureHandlerRootView>
     </Modal>
   )
+}
+
+function listFocusLayout(
+  headerHeight: number,
+  focus: EdgeDrawerVirtualizedContent['initialFocus'],
+) {
+  if (!focus || headerHeight <= 0) return undefined
+  return { offset: headerHeight + focus.offset, height: focus.height }
+}
+
+function withListHeaderLayout(
+  getLayout: EdgeDrawerVirtualizedContent['getItemLayout'],
+  headerHeight: number,
+): EdgeDrawerVirtualizedContent['getItemLayout'] {
+  if (!getLayout) return undefined
+  return (data, index) => {
+    const layout = getLayout(data, index)
+    return { ...layout, offset: headerHeight + layout.offset }
+  }
+}
+
+/** Let even the final selected row reach the screen center. */
+function VirtualizedFocusFooter({
+  focus,
+  opensFromTop,
+  height,
+}: {
+  focus: EdgeDrawerVirtualizedContent['initialFocus']
+  opensFromTop: boolean
+  height: number
+}) {
+  return focus && !opensFromTop ? <View style={{ height: height / 2 }} /> : null
 }
 
 const styles = StyleSheet.create({
@@ -243,14 +316,6 @@ const styles = StyleSheet.create({
   },
   focusRoot: {
     flex: 1,
-  },
-  /**
-   * A flat translucent scrim rather than a vignette gradient. The gradient was there to fake a panel
-   * edge, but its falloff never lined up with where the drawer actually ended, and the dismissal
-   * fade is what conveys the drawer leaving.
-   */
-  drawerScrim: {
-    backgroundColor: theme.alpha(theme.neutral.surfaceDeep, 0.85),
   },
   drawerBody: {
     paddingHorizontal: 12,

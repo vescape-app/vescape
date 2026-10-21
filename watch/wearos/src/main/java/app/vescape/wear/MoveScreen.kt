@@ -42,6 +42,8 @@ private const val DIRECTION_BACKWARD = -1
  *
  * Only enabled on a LIVE mirror. A stale or absent frame means the phone has no fresh board
  * telemetry, and a Move nobody can see the result of is not one to offer.
+ *
+ * @parity /watch/watchos/MoveScreen.swift `MoveScreen`
  */
 @Composable
 fun MoveScreen(
@@ -107,7 +109,12 @@ fun MoveScreen(
                 modifier = Modifier.weight(1f),
             )
         }
-        CenterLabel(enabled = enabled, strengthPercent = settings.boardMoveStrengthPercent)
+        CenterLabel(
+            enabled = enabled,
+            strengthPercent = settings.boardMoveStrengthPercent,
+            // Starting a Move drops a locked tilt to neutral, and it does not come back afterwards.
+            clearsTilt = state.frame?.tiltControl == WatchTiltControl.MANUAL,
+        )
     }
 }
 
@@ -182,18 +189,28 @@ private fun MoveHalf(
 }
 
 @Composable
-private fun CenterLabel(enabled: Boolean, strengthPercent: Int?) {
+private fun CenterLabel(enabled: Boolean, strengthPercent: Int?, clearsTilt: Boolean) {
     val text = when {
         !enabled -> "Board not connected"
         strengthPercent != null -> "$strengthPercent%"
         else -> "Hold to move"
     }
-    Text(
-        text = text,
-        style = MaterialTheme.typography.caption2,
-        color = if (enabled) SecondaryText else DimText,
-        textAlign = TextAlign.Center,
-    )
+    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+        Text(
+            text = text,
+            style = MaterialTheme.typography.caption2,
+            color = if (enabled) SecondaryText else DimText,
+            textAlign = TextAlign.Center,
+        )
+        if (enabled && clearsTilt) {
+            Text(
+                text = "Clears tilt",
+                style = MaterialTheme.typography.caption3,
+                color = ArmedColor,
+                textAlign = TextAlign.Center,
+            )
+        }
+    }
 }
 
 /** Clears the rim arcs: the Move centre lives inside the circle the gauges draw. */

@@ -19,9 +19,9 @@ The app has adaptive light and dark appearances. The durable `themeMode` setting
 - `dark` — always dark.
 - `sun` — light between local sunrise and sunset, dark otherwise, using the current or last known GPS location. It falls back to the system appearance when no location is available.
 
-Selecting the explicit One Dark or Outdoors basemap applies a dark or light appearance override for the current app session. This does not overwrite `themeMode`; Satellite and Mapy.cz clear the session override. When there is no session override, the configured appearance keeps explicit basemaps paired in the other direction: light uses Outdoors and dark uses One Dark. Satellite and Mapy.cz remain unchanged. This also resolves a persisted mismatch on the next app start.
+App theme and map style are independent preferences. Selecting a map never changes `themeMode`. The Streets option renders One Dark in dark appearance and Outdoors in light appearance, including System and Sunrise & sunset transitions. Existing saved `onedark` and `outdoors` selections both represent Streets; theme changes do not rewrite the saved map choice. Satellite and Mapy.cz remain selected across appearance changes.
 
-Neutral UI colors come from `theme.neutral`, while accent UI colors come from `theme.palette.<hue>`. Both are backed by iOS dynamic colors and Android day/night resources, so values captured by `StyleSheet.create` still update when the active appearance changes. `theme.palette.slate` remains a raw dark swatch for fixed dark map styles; do not use it for app surfaces or text.
+Neutral UI colors come from `theme.neutral`, while accent UI colors come from `theme.palette.<hue>`. Both are backed by iOS dynamic colors and Android day/night resources. For surfaces and separators that must track an in-app appearance switch while mounted, resolve the color during render with the hooks in `src/hooks/useTheme.ts`; a native color held in a static `StyleSheet.create` entry can retain the previous forced appearance on iOS. `theme.palette.slate` remains a raw dark swatch for fixed dark map styles; do not use it for app surfaces or text.
 
 The light appearance uses a pure-white canvas. Read-only content sits directly on that canvas and is separated with spacing, typography, or thin neutral rules rather than raised cards. Interactive controls use the dark navy `theme.control` family in both appearances — the same `#0f172a` base in light and dark — making affordances obvious without shadows and keeping the accent-colored actions legible. Dark-contrasted chrome must use the adaptive `theme.control.*` family (or `theme.neutral.*` for content surfaces) — never the fixed `theme.palette.slate.*` raw swatches, which stay near-black in both appearances and are reserved for on-map/chart graphics.
 
@@ -33,7 +33,7 @@ Non-React-Native renderers and worklets use the plain-string palettes from `useR
 
 Android native `Switch` color props also receive resolved string colors. Its native color converter does not reliably resolve the adaptive resource-path value used by the rest of the React Native style system.
 
-Satellite keeps its own selected basemap across appearance changes. In light appearance, satellite tiles blend over the light neutral map background and low-opacity telemetry imagery is lifted enough to stay legible; dark appearance keeps the subdued nighttime treatment.
+Satellite follows the effective app appearance with a navy backdrop in dark mode and a light backdrop in light mode. Home and Explore retain independent imagery-opacity preferences.
 
 | Role           | Token                         |
 | -------------- | ----------------------------- |
@@ -200,6 +200,8 @@ Every `Text` instance renders through the wrapper at `src/components/base/Text.t
 - A Skia canvas does **not** grow to fit its text the way a `Text`/`TextInput` box does. Give `MonoValue` a `width`, or a parent with a definite width plus `alignSelf: 'stretch'`, or the readout collapses or clips. Canvases drawn at a measured size use `useCanvasSize` on a host view (`onLayout` is unsupported on a Fabric canvas).
 - Stack header titles (and any style fed to a native component that bypasses the wrapper) must set `fontFamily: theme.font('600')` explicitly — see `src/app/_layout.tsx` `headerTitleStyle` — and must not set `fontWeight`.
 - `fontVariant: ['tabular-nums']` still aligns numeric columns on Raleway.
+
+Watch companions use the same bundled families: Raleway for labels and JetBrains Mono for numeric readouts. Their native typography helpers keep watch-specific sizes; system symbols and the watchOS system clock keep the platform font. Watch targets reuse `assets/fonts/` rather than maintaining separate font files.
 
 Typography roles:
 

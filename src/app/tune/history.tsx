@@ -59,13 +59,17 @@ export default function TuneHistoryScreen() {
   const loadHistory = useTuneProfileStore((s) => s.loadHistory)
   const rollbackToHistory = useTuneProfileStore((s) => s.rollbackToHistory)
   const currentFields = useTuneProfileStore((s) => s.activeProfile?.fields)
+  const error = useTuneProfileStore((s) => s.error)
 
   const [entries, setEntries] = useState<TuneHistoryEntry[]>([])
   const [rollbackConfirmEntryId, setRollbackConfirmEntryId] = useState<number | null>(null)
 
   useEffect(() => {
     if (!activeProfile) return
-    void loadHistory(activeProfile.id).then(setEntries)
+    // intentional-suppression: Tune store error is rendered by the active screen or modal
+    void loadHistory(activeProfile.id)
+      .then(setEntries)
+      .catch(() => undefined) // Store error renders in Tune.
   }, [activeProfile, loadHistory])
 
   const handleRestore = useCallback((entryId: number) => {
@@ -74,6 +78,7 @@ export default function TuneHistoryScreen() {
 
   return (
     <SafeAreaView style={styles.container} edges={['bottom']}>
+      {error ? <Text style={styles.error}>{error}</Text> : null}
       {entries.length === 0 ? (
         <Text style={styles.empty}>No history entries yet.</Text>
       ) : (
@@ -125,7 +130,10 @@ export default function TuneHistoryScreen() {
         confirmLabel="Restore"
         onConfirm={() => {
           if (rollbackConfirmEntryId != null) {
-            void rollbackToHistory(rollbackConfirmEntryId).then(() => router.back())
+            // intentional-suppression: Tune store error is rendered by the active screen or modal
+            void rollbackToHistory(rollbackConfirmEntryId)
+              .then(() => router.back())
+              .catch(() => undefined) // Keep this screen open; the store owns the visible error.
           }
           setRollbackConfirmEntryId(null)
         }}
@@ -139,6 +147,11 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: theme.neutral.bg,
+  },
+  error: {
+    color: theme.status.error.text,
+    fontSize: 12,
+    padding: 16,
   },
   empty: {
     color: theme.neutral.textMuted,

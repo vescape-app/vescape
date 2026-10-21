@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Pressable, StyleSheet, TextInput } from 'react-native'
+import { Pressable, StyleSheet, TextInput, View } from 'react-native'
 import { PencilSimpleIcon } from 'phosphor-react-native'
 
 import { Text } from '@/components/base/Text'
@@ -34,7 +34,7 @@ export function BoardNameField({ name, saving = false, onSave }: BoardNameFieldP
         returnKeyType="done"
         editable={!saving}
         placeholder="Board name"
-        placeholderTextColor={theme.palette.slate.textDim}
+        placeholderTextColor={theme.neutral.textDim}
         testID="edit-board-name-input"
         accessibilityLabel="Board name"
       />
@@ -50,7 +50,9 @@ export function BoardNameField({ name, saving = false, onSave }: BoardNameFieldP
       accessibilityLabel="Edit board name"
     >
       <Text style={styles.title}>{name.trim() || 'Unnamed board'}</Text>
-      <PencilSimpleIcon size={18} color={theme.palette.slate.textSecondary} weight="duotone" />
+      <View style={styles.editIcon}>
+        <PencilSimpleIcon size={18} color={theme.neutral.textPrimary} weight="duotone" />
+      </View>
     </Pressable>
   )
 }
@@ -62,7 +64,7 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   title: {
-    color: theme.palette.slate.textPrimary,
+    color: theme.neutral.textPrimary,
     fontSize: 28,
     fontWeight: '700',
     textAlign: 'center',
@@ -71,7 +73,8 @@ const styles = StyleSheet.create({
     alignSelf: 'stretch',
     fontFamily: theme.font('700'),
     borderBottomWidth: 1,
-    borderBottomColor: theme.palette.slate.border,
+    borderBottomColor: theme.neutral.border,
     paddingVertical: 4,
   },
+  editIcon: { transform: [{ translateY: 3 }] },
 })

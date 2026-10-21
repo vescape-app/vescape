@@ -13,20 +13,26 @@
 - [ios.md](./ios.md) — iOS specifics: Live Activity, background ride recording, notifications
 - [bleAndroid.md](./bleAndroid.md) — BLE connection problems & fixes (custom native module)
 - [watch-mirror.md](./watch-mirror.md) — Wear OS Mirror local install and Data Layer troubleshooting
+- [watchos.md](./watchos.md) — watchOS requirements, platform decisions, constraints, and device findings
 
 ### Board protocol & telemetry
 
 - [vescProtocol.md](./vescProtocol.md) — VESC packet framing, CAN forwarding, Refloat commands
 - [refloatAlldata.md](./refloatAlldata.md) — Refloat `COMMAND_GET_ALLDATA` binary layout
 - [mcconf.md](./mcconf.md) — VESC motor config binary layout, signature versioning, decode traps
+- [legacy-float.md](./legacy-float.md) — removal checklist for legacy INFO, saved links, and VESC 6.02 support
 - [chargingDetection.md](./chargingDetection.md) — charging indicator investigation & findings
 - [pin-lock.md](./pin-lock.md) — upstream VESC PIN write-lock: fork firmware, commands, what it blocks (not implemented)
 
 ### Features
 
+- [units.md](./units.md) — metric/imperial speed and distance preferences, conversion, editing, alerts, and watches
+- [accessories.md](./accessories.md) — in-progress accessory design: ground-clearance tilt sensor and brake light
+- [accessory-protocol.md](./accessory-protocol.md) — JSON/BLE protocol v1: discovery implemented against shared fixtures; commands, readings, and failure handling still draft
 - [history.md](./history.md) — ride history persistence, grouping, markers, and map rendering
 - [tune.md](./tune.md) — Refloat tune screen behavior, basic slider formulas, field groups
 - [tune-preview-pl.md](./tune-preview-pl.md) — Tune vs Tune Preview, explained (Polish)
+- [remote-tilt.md](./remote-tilt.md) — Remote Tilt gesture ownership, native command timing, and latency checks
 - [alerts.md](./alerts.md) — telemetry alerts: storage, native evaluation, Geiger mode
 - [safety.md](./safety.md) — safety warnings & thresholds: firmware pushbacks, faults, voltage cutoffs
 - [board-warnings.md](./board-warnings.md) — Board Warnings catalog: every kind's slug, title, severity, trigger, payload, clear semantics
@@ -42,6 +48,10 @@
 
 ### Process
 
+- [persistence-reliability-plan.md](./persistence-reliability-plan.md) — in-progress Android/iOS persistence reliability plan and shared native DB contract tests
+- [persistence-operation-inventory.md](./persistence-operation-inventory.md) — every native durable operation and its executable contract owner
+- [error-handling-audit.md](./error-handling-audit.md) — swallowed-error audit, explicit failure outcomes, and regression checks
+
 - [design.md](./design.md) — visual design language: colors, layout, typography
 - [release.md](./release.md) — versioning, per-version notes tiers, tags & GitHub Releases
 
@@ -53,6 +63,7 @@ deeper references it points at.
 - [agents/react.md](./agents/react.md) — React Native UI conventions, icon usage
 - [agents/skia.md](./agents/skia.md) — Skia canvas: gesture frame cost, transform-only animation, worklet traps
 - [agents/native-sync.md](./agents/native-sync.md) — keeping generated `ios/`, `android/`, Pods in sync
+- [agents/watch-emulators.md](./agents/watch-emulators.md) — `android:up`: phone + Wear emulators paired and mirroring, failures and fixes
 - [agents/mapbox-patches.md](./agents/mapbox-patches.md) — Mapbox dependency patches and native camera semantics
 - [agents/ios-profiling.md](./agents/ios-profiling.md) — headless Instruments on a real device: record, export, parse
 - [agents/clerk-auth.md](./agents/clerk-auth.md) — Clerk production auth setup, Android email-link debugging

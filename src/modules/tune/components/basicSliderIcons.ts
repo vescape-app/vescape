@@ -9,7 +9,7 @@ import {
   WaveSineIcon,
 } from 'phosphor-react-native'
 
-import { theme } from '@/constants/theme'
+import { theme, type ThemeColor } from '@/constants/theme'
 
 const BASIC_SLIDER_ICONS: Record<string, Icon> = {
   aggressiveness: LightningIcon,
@@ -24,7 +24,7 @@ export function basicSliderIcon(sliderId: string): Icon {
   return BASIC_SLIDER_ICONS[sliderId] ?? NavigationArrowIcon
 }
 
-const BASIC_SLIDER_COLORS: Record<string, string> = {
+const BASIC_SLIDER_COLORS: Record<string, ThemeColor> = {
   aggressiveness: theme.telemetry.speed,
   noseStiffness: theme.telemetry.duty,
   tailStiffness: theme.telemetry.duty,
@@ -33,6 +33,6 @@ const BASIC_SLIDER_COLORS: Record<string, string> = {
   atrIntensity: theme.palette.green.color,
 }
 
-export function basicSliderColor(sliderId: string): string {
+export function basicSliderColor(sliderId: string): ThemeColor {
   return BASIC_SLIDER_COLORS[sliderId] ?? theme.telemetry.speed
 }

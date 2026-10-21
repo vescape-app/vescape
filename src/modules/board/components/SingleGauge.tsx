@@ -5,7 +5,7 @@ import { Canvas, Group, Path } from '@shopify/react-native-skia'
 
 import { Text } from '@/components/base/Text'
 import type { DualGaugeAlert } from '@/components/charts/gaugeAlert'
-import { theme, type AlphaLevel } from '@/constants/theme'
+import { theme, type AlphaLevel, type ThemeColor } from '@/constants/theme'
 import { useSkiaFont } from '@/hooks/useSkiaFont'
 import {
   useResolvedAccentColors,
@@ -36,9 +36,11 @@ interface SingleGaugeProps {
   value: SharedValue<number | null>
   min?: number
   max: number
-  color: string
+  color: ThemeColor
   unit: string
   decimals?: number
+  /** Numeric readout only; arc, color ramp, markers and max stay canonical. */
+  displayScale?: number
   label?: string
   /** Optional action aligned with the gauge label in the chart's top-right corner. */
   headerRight?: ReactNode
@@ -72,11 +74,13 @@ function HalfArc({
   color,
   unit,
   decimals = 0,
+  displayScale = 1,
   alerts = [],
   hotRange,
   showValue = true,
 }: Required<Pick<SingleGaugeProps, 'value' | 'min' | 'max' | 'color' | 'unit'>> &
-  Pick<SingleGaugeProps, 'decimals' | 'alerts' | 'hotRange' | 'showValue'>) {
+  Pick<SingleGaugeProps, 'decimals' | 'displayScale' | 'alerts' | 'hotRange' | 'showValue'>) {
+  'use no memo'
   const resolvedColor = useResolvedColor(color)
   const accents = useResolvedAccentColors()
   const neutral = useResolvedNeutralColors()
@@ -87,7 +91,8 @@ function HalfArc({
   const valueText = useDerivedValue(() => {
     const current = value.value
     if (current == null) return DASH
-    return decimals === 0 ? Math.round(current).toString() : current.toFixed(decimals)
+    const displayed = current * displayScale
+    return decimals === 0 ? Math.round(displayed).toString() : displayed.toFixed(decimals)
   })
 
   const arc = useDerivedValue(() =>
@@ -187,6 +192,7 @@ export function SingleGauge({
   color,
   unit,
   decimals,
+  displayScale,
   label,
   headerRight,
   alerts = [],
@@ -209,6 +215,7 @@ export function SingleGauge({
         color={color}
         unit={unit}
         decimals={decimals}
+        displayScale={displayScale}
         alerts={alerts}
         hotRange={hotRange}
         showValue={showValue}

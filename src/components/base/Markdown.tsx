@@ -1,7 +1,6 @@
 import { Image, type ImageLoadEventData } from 'expo-image'
 import { Fragment, useMemo, useState } from 'react'
 import {
-  Linking,
   ScrollView,
   StyleSheet,
   View,
@@ -19,6 +18,7 @@ import {
   type MarkdownInline,
 } from '@/components/base/markdownTree'
 import { theme } from '@/constants/theme'
+import { openExternalUrl } from '@/components/base/openExternalUrl'
 
 interface MarkdownProps {
   /** Markdown source. Raw HTML is inert and unsafe URLs are dropped. */
@@ -39,7 +39,7 @@ const PLACEHOLDER_RATIO = 16 / 9
 const CELL_WIDTH = 120
 
 const openLink = (href: string) => {
-  void Linking.openURL(href).catch(() => {})
+  openExternalUrl(href, 'markdown_link')
 }
 
 /**

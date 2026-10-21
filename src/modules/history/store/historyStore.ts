@@ -54,7 +54,11 @@ export const useHistoryStore = create<HistoryStore>((set, get) => ({
         nextCursorBeforeMs: page.nextCursorBeforeMs,
       })
     } catch (err) {
-      set({ error: err instanceof Error ? err.message : String(err) })
+      set({
+        ...INITIAL_HISTORY_STATE,
+        error: err instanceof Error ? err.message : String(err),
+        loading: true,
+      })
     } finally {
       set({ loading: false })
     }
@@ -101,7 +105,10 @@ export const useHistoryStore = create<HistoryStore>((set, get) => ({
       })
     } catch (err) {
       if (version !== recentRefreshVersion) return
-      set({ error: err instanceof Error ? err.message : String(err) })
+      set({
+        ...INITIAL_HISTORY_STATE,
+        error: err instanceof Error ? err.message : String(err),
+      })
     } finally {
       recentRefreshInFlight = false
     }
@@ -163,6 +170,7 @@ export const useHistoryStore = create<HistoryStore>((set, get) => ({
         fromMs: selectedSession.startAtMs,
         toMs: selectedSession.endAtMs,
         boardId: selectedSession.boardId,
+        ...(selectedSession.recordingId ? { recordingId: selectedSession.recordingId } : {}),
       })
       const selectedIndex = sessions.findIndex((session) => session.id === selectedSession.id)
       const [blocks, page] = await Promise.all([

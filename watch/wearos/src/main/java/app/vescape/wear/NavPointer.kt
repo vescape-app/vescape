@@ -1,5 +1,7 @@
 package app.vescape.wear
 
+import expo.modules.vescapecore.telemetry.UnitPresentation
+
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -25,7 +27,6 @@ import androidx.compose.ui.unit.sp
 import androidx.wear.compose.material.MaterialTheme
 import androidx.wear.compose.material.Text
 import kotlin.math.cos
-import kotlin.math.roundToInt
 import kotlin.math.sin
 
 /**
@@ -38,6 +39,8 @@ import kotlin.math.sin
  * [focus] is the nav-focus progress (see [FrameLayout]): as the telemetry readouts leave, the
  * chevron and the distance grow into the room they free up. [stackAlpha] is the opposite pull — the
  * control and weather pages take the whole centre, so the nav stack fades out with the readouts.
+ *
+ * @parity /watch/watchos/NavPointer.swift `NavPointer`
  */
 @Composable
 internal fun NavPointer(
@@ -46,6 +49,8 @@ internal fun NavPointer(
     muted: Boolean,
     focus: () -> Float = { 0f },
     stackAlpha: () -> Float = { 1f },
+    /** Rides the distance's line after it, e.g. the locked-tilt badge. */
+    trailing: @Composable () -> Unit = {},
 ) {
     val color = if (muted) DimText else navColor()
 
@@ -85,11 +90,12 @@ internal fun NavPointer(
                 drawMapPin(Offset(size.width / 2f, size.height / 2f), size.minDimension * 0.74f, color)
             }
             Text(
-                text = distanceLabel(distanceM),
+                text = UnitPresentation.distance(distanceM, SettingsState.settings.value.unitSystem),
                 modifier = Modifier.padding(start = PIN_GAP),
-                style = MaterialTheme.typography.caption2.copy(fontSize = DISTANCE_FONT_SIZE),
+                style = WatchTypography.mono(MaterialTheme.typography.caption2.copy(fontSize = NAV_READOUT_FONT_SIZE)),
                 color = color,
             )
+            trailing()
         }
     }
 }
@@ -138,13 +144,9 @@ private fun DrawScope.pointOnCircle(center: Offset, radius: Float, deg: Float): 
     return Offset(center.x + (radius * cos(rad)).toFloat(), center.y + (radius * sin(rad)).toFloat())
 }
 
-/** Metres under a kilometre, one decimal above it — same split the phone's nav readout uses. */
-private fun distanceLabel(meters: Double): String =
-    if (meters < 1000) "${meters.roundToInt()} m" else String.format("%.1f km", meters / 1000.0)
-
 private val NAV_RIM_INSET = 30.dp
 // Sits in the band between the rider dot and the battery %.
-private val NAV_READOUT_BOTTOM_PAD = 46.dp
+internal val NAV_READOUT_BOTTOM_PAD = 46.dp
 private const val CHEVRON_FOCUS_GROWTH = 0.18f
 private val READOUT_FOCUS_DROP = 6.dp
 private const val READOUT_FOCUS_GROWTH = 0.25f
@@ -152,4 +154,4 @@ private val CHEVRON_W = 26.dp
 private val CHEVRON_H = 22.dp
 private val PIN_BOX = 11.dp
 private val PIN_GAP = 3.dp
-private val DISTANCE_FONT_SIZE = 12.sp
+internal val NAV_READOUT_FONT_SIZE = 12.sp

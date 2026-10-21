@@ -1,7 +1,8 @@
-import React, { useEffect, useState } from 'react'
+import { sendToOpenTesting } from './flows/open'
+import React, { useEffect, useRef, useState } from 'react'
 import { Box, render, Text, useApp, useInput } from 'ink'
 import type { ProductionOperation, ReleaseManifest, WorkflowJob, WorkflowRun } from './contracts'
-import { productionSummary, promotionSummary, releaseOutcome } from './contracts'
+import { releaseOutcome } from './contracts'
 import {
   canonicalNotesPath,
   createDispatchPayload,
@@ -27,7 +28,6 @@ import {
   listInternalWorkflowRuns,
   listProductionCandidates,
   marketingVersion,
-  type ReleaseTrackConfig,
   type ProductionCandidate,
   releaseTrackConfig,
   repositoryDefaultBranch,
@@ -38,7 +38,7 @@ import {
   verifyRemoteCommit,
 } from './github'
 import { publishGithubRelease } from './githubRelease'
-import { internalReleaseProgress, workflowElapsed } from './progress'
+import { internalReleaseProgress, releaseWorkflowProgress, workflowElapsed } from './progress'
 import {
   bumpMarketingVersion,
   currentMarketingVersion,
@@ -46,45 +46,52 @@ import {
   verifyReleasePreparationReady,
 } from './prepare'
 import { Dashboard } from './dashboard/Dashboard'
-import { availableActions, defaultActionIndex, type ActionId } from './dashboard/actions'
+import {
+  availableActions,
+  defaultActionIndex,
+  moreActions,
+  type ActionId,
+} from './dashboard/actions'
 import { initialReleaseState, loadReleaseState, type ReleaseState } from './dashboard/state'
 import { Confirm, Hint, isEnter, Menu, Rule } from './ui'
-import {
-  productionFields,
-  promotionFields,
-  type Plan,
-  type ProductionPlan,
-  type PromotionPlan,
-} from './flows/plans'
+import type { Plan, ProductionPlan, PromotionPlan } from './flows/plans'
 
 type Phase =
   | 'dashboard'
+  | 'more'
+  | 'technical'
   | 'version-bump'
-  | 'version-confirm'
   | 'build-source'
   | 'internal-runs'
   | 'checking'
   | 'candidate'
   | 'production-candidate'
   | 'confirm'
-  | 'promote-confirm'
-  | 'production-confirm'
   | 'dispatching'
   | 'waiting'
   | 'running'
   | 'complete'
   | 'error'
 
+const buildStepNames: Record<string, string> = {
+  'Release gates': 'Check the app',
+  'Build signed artifacts once': 'Build the app',
+  'Upload phone internal': 'Upload the phone app',
+  'Upload Wear internal': 'Upload the watch app',
+  'Publish release manifest': 'Save the build results',
+  'Waiting for runner': 'Waiting for a build machine',
+}
+const buildStepName = (name: string) => buildStepNames[name] ?? name
+
 const versionBumps: ReadonlyArray<{ bump: VersionBump; label: string }> = [
-  { bump: 'major', label: 'Major' },
-  { bump: 'minor', label: 'Minor' },
-  { bump: 'patch', label: 'Patch' },
+  { bump: 'patch', label: 'Patch: fixes and small changes' },
+  { bump: 'minor', label: 'Minor: new features' },
+  { bump: 'major', label: 'Major: a major release' },
 ]
 
 const sleep = (milliseconds: number) => new Promise((resolve) => setTimeout(resolve, milliseconds))
 
 const CONFIRM_INDEX = 0
-const CANCEL_INDEX = 1
 
 export interface ReleaseCliOptions {
   initialPhase?: 'dashboard' | 'build-source'
@@ -108,6 +115,7 @@ function App({ finish, initialPhase = 'dashboard', initialSourceRef }: AppProps)
   const [sourceChecking, setSourceChecking] = useState(false)
   const [phase, setPhase] = useState<Phase>(initialPhase)
   const [status, setStatus] = useState('')
+  const [activity, setActivity] = useState('Release')
   const [releaseState, setReleaseState] = useState<ReleaseState>(initialReleaseState)
   const [index, setIndex] = useState(0)
   const [plan, setPlan] = useState<Plan | null>(null)
@@ -121,11 +129,18 @@ function App({ finish, initialPhase = 'dashboard', initialSourceRef }: AppProps)
   const [watchedRun, setWatchedRun] = useState<WorkflowRun | null>(null)
   const [clock, setClock] = useState(Date.now())
   const [currentVersion, setCurrentVersion] = useState('')
-  const [bumpIndex, setBumpIndex] = useState(1)
   const [run, setRun] = useState<{ id: number; url: string } | null>(null)
   const [iosRun, setIosRun] = useState<{ id: number; url: string } | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [retryRunId, setRetryRunId] = useState<number | null>(null)
+  const inputTransitioning = useRef(false)
+  const retryContext = useRef<{ repo: string; finish: (run: WorkflowRun) => Promise<void> } | null>(
+    null,
+  )
+
+  useEffect(() => {
+    inputTransitioning.current = false
+  }, [phase])
 
   const goto = (next: Phase, nextIndex = 0) => {
     setIndex(nextIndex)
@@ -145,6 +160,12 @@ function App({ finish, initialPhase = 'dashboard', initialSourceRef }: AppProps)
   const loadDashboard = () => {
     setReleaseState(initialReleaseState())
     setStatus('')
+    setRun(null)
+    setIosRun(null)
+    setWatchedRun(null)
+    setWorkflowJobs([])
+    setRetryRunId(null)
+    setError(null)
     goto('dashboard')
     void loadReleaseState((patch) => setReleaseState((previous) => ({ ...previous, ...patch })))
   }
@@ -152,7 +173,7 @@ function App({ finish, initialPhase = 'dashboard', initialSourceRef }: AppProps)
   useEffect(() => {
     if (initialPhase === 'dashboard') loadDashboard()
     // Preparation already fixed the commit to build; asking for it again answers nothing.
-    else if (initialSourceRef) void prepare()
+    else if (initialSourceRef) void prepare(true)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
@@ -174,6 +195,7 @@ function App({ finish, initialPhase = 'dashboard', initialSourceRef }: AppProps)
   }, [phase, sourceRef])
 
   const actions = availableActions(releaseState)
+  const advancedActions = moreActions(releaseState)
 
   const activeRunId = releaseState.activeRun?.id ?? null
   useEffect(() => {
@@ -183,20 +205,20 @@ function App({ finish, initialPhase = 'dashboard', initialSourceRef }: AppProps)
 
   const prepareVersionMenu = async () => {
     goto('checking')
-    setStatus('Checking branch and working tree…')
+    setStatus('Checking for unfinished changes…')
     try {
       await verifyReleasePreparationReady()
       setCurrentVersion(await currentMarketingVersion())
       setStatus('')
-      goto('version-bump', 1)
+      goto('version-bump')
     } catch (caught) {
       fail(caught)
     }
   }
 
-  const prepare = async () => {
+  const prepare = async (autoDispatch = false) => {
     goto('checking')
-    setStatus('Checking gh auth and source commit…')
+    setStatus('Checking the build source and GitHub connection…')
     try {
       await verifyGhAuthentication()
       const repo = await repositoryName()
@@ -204,58 +226,79 @@ function App({ finish, initialPhase = 'dashboard', initialSourceRef }: AppProps)
       const sourceSha = await resolveSourceSha(sourceRef)
       await verifyRemoteCommit(repo, sourceSha)
       const version = await marketingVersion(repo, sourceSha)
-      setPlan({
+      const nextPlan: Plan = {
         repo,
         workflowRef,
         sourceSha,
         marketingVersion: version,
         requestId: crypto.randomUUID(),
-      })
+      }
+      setPlan(nextPlan)
       setStatus('')
-      goto('confirm')
+      if (autoDispatch) void dispatch(nextPlan)
+      else goto('confirm')
     } catch (caught) {
       fail(caught)
     }
   }
 
-  const preparePromotion = async () => {
+  const preparePromotion = async (chooseCandidate = false) => {
     goto('checking')
-    setStatus('Loading successful internal manifests…')
+    setStatus('Checking the selected build…')
     try {
       await verifyGhAuthentication()
       const repo = await repositoryName()
       const [available, tracks, workflowRef] = await Promise.all([
-        listInternalCandidates(repo),
+        chooseCandidate
+          ? listInternalCandidates(repo)
+          : releaseState.internal
+            ? downloadManifest(releaseState.internal.runId).then((candidate) => [candidate])
+            : Promise.resolve([]),
         releaseTrackConfig(repo),
         repositoryDefaultBranch(repo),
       ])
-      if (available.length === 0) throw new Error('No successful internal release manifests found')
+      if (available.length === 0)
+        throw new Error('No uploaded builds are available for Open testing.')
       setCandidates(available)
-      setPromotionPlan({
+      const nextPlan: PromotionPlan = {
         repo,
         workflowRef,
         candidate: available[0],
         requestId: crypto.randomUUID(),
         notesPath: '',
         tracks,
-      })
-      setStatus('')
-      goto('candidate')
+      }
+      setPromotionPlan(nextPlan)
+      if (chooseCandidate) {
+        setStatus('')
+        goto('candidate')
+      } else {
+        await sendOpenCandidate(nextPlan)
+      }
     } catch (caught) {
       fail(caught)
     }
+  }
+
+  const sendOpenCandidate = async (plan: PromotionPlan) => {
+    await sendToOpenTesting(
+      plan.candidate,
+      (candidate) => canonicalNotesPath(plan.repo, candidate.marketingVersion, candidate.sourceSha),
+      async (candidate, notesPath) => {
+        const ready = { ...plan, candidate, notesPath }
+        setPromotionPlan(ready)
+        await promote(ready)
+      },
+    )
   }
 
   const confirmPromotionCandidate = async (candidateIndex: number) => {
     const candidate = candidates[candidateIndex]
     if (!promotionPlan || !candidate) return
     goto('checking')
-    setStatus(`Checking canonical notes for ${candidate.marketingVersion}…`)
+    setStatus('Checking release notes…')
     try {
-      const notesPath = await canonicalNotesPath(promotionPlan.repo, candidate.marketingVersion)
-      setPromotionPlan({ ...promotionPlan, candidate, notesPath })
-      setStatus('')
-      goto('promote-confirm')
+      await sendOpenCandidate({ ...promotionPlan, candidate })
     } catch (caught) {
       fail(caught)
     }
@@ -265,7 +308,7 @@ function App({ finish, initialPhase = 'dashboard', initialSourceRef }: AppProps)
     basePlan: ProductionPlan,
     candidate: ProductionCandidate,
   ) => {
-    setStatus(`Checking canonical notes for ${candidate.manifest.marketingVersion}…`)
+    setStatus(`Checking release notes for ${candidate.manifest.marketingVersion}…`)
     const notesPath = await canonicalNotesPath(
       basePlan.repo,
       candidate.manifest.marketingVersion,
@@ -274,16 +317,16 @@ function App({ finish, initialPhase = 'dashboard', initialSourceRef }: AppProps)
     const next = { ...basePlan, candidate, notesPath }
     setProductionPlan(next)
     setStatus('')
-    goto('production-confirm', CANCEL_INDEX)
+    await runProduction(next)
   }
 
   /**
    * A status refresh reads whatever is already on production, so only `promote` needs the
    * candidate picker; `status` resolves its candidate from the recorded production version.
    */
-  const prepareProduction = async (operation: ProductionOperation) => {
+  const prepareProduction = async (operation: ProductionOperation, chooseCandidate = false) => {
     goto('checking')
-    setStatus('Loading releases proven active on open testing…')
+    setStatus('Checking builds available in Open testing…')
     try {
       await verifyGhAuthentication()
       const repo = await repositoryName()
@@ -292,7 +335,8 @@ function App({ finish, initialPhase = 'dashboard', initialSourceRef }: AppProps)
         releaseTrackConfig(repo),
         repositoryDefaultBranch(repo),
       ])
-      if (available.length === 0) throw new Error('No exact open-tested release manifests found')
+      if (available.length === 0)
+        throw new Error('No builds are ready to publish from Open testing.')
       const basePlan: ProductionPlan = {
         repo,
         workflowRef,
@@ -303,10 +347,14 @@ function App({ finish, initialPhase = 'dashboard', initialSourceRef }: AppProps)
         operation,
       }
       if (operation === 'promote') {
-        setProductionCandidates(available)
-        setProductionPlan(basePlan)
-        setStatus('')
-        goto('production-candidate')
+        if (chooseCandidate) {
+          setProductionCandidates(available)
+          setProductionPlan(basePlan)
+          setStatus('')
+          goto('production-candidate')
+          return
+        }
+        await applyProductionCandidate(basePlan, available[0])
         return
       }
       const live = releaseState.production
@@ -316,8 +364,8 @@ function App({ finish, initialPhase = 'dashboard', initialSourceRef }: AppProps)
       if (!target)
         throw new Error(
           live
-            ? `No open-tested manifest matches the exact artifacts on production (open promotion run ${live.openPromotionRunId}); cannot target the live release`
-            : 'Nothing is recorded on production; cannot target a live release',
+            ? `Could not find the build record for the current production release. Check its GitHub progress link.`
+            : 'No production release has been recorded yet.',
         )
       await applyProductionCandidate(basePlan, target)
     } catch (caught) {
@@ -343,7 +391,7 @@ function App({ finish, initialPhase = 'dashboard', initialSourceRef }: AppProps)
       await verifyGhAuthentication()
       const repo = await repositoryName()
       const available = await listInternalWorkflowRuns(repo)
-      if (available.length === 0) throw new Error('No resumable Internal release runs found')
+      if (available.length === 0) throw new Error('No previous Internal builds were found.')
       setInternalRunsRepo(repo)
       setInternalRuns(available)
       setStatus('')
@@ -354,7 +402,7 @@ function App({ finish, initialPhase = 'dashboard', initialSourceRef }: AppProps)
   }
 
   const finishInternalRun = async (repo: string, workflowRun: WorkflowRun) => {
-    setStatus('Reading release manifest…')
+    setStatus('Checking the upload results…')
     let manifest
     try {
       manifest = await downloadManifest(workflowRun.id)
@@ -362,14 +410,14 @@ function App({ finish, initialPhase = 'dashboard', initialSourceRef }: AppProps)
       if (workflowRun.conclusion !== 'success') {
         const failedJobs = await failedWorkflowJobs(repo, workflowRun.id)
         throw new Error(
-          `Workflow failed${failedJobs.length > 0 ? ` in ${failedJobs.join(', ')}` : ''}. ${workflowRun.html_url}`,
+          `Build failed${failedJobs.length > 0 ? ` in ${failedJobs.join(', ')}` : ''}. ${workflowRun.html_url}`,
         )
       }
       throw manifestError
     }
     const outcome = releaseOutcome(manifest)
     if (outcome.kind === 'success') {
-      setStatus('Internal ready')
+      setStatus('Ready for Internal testing')
     } else if (outcome.kind === 'partial') {
       setStatus(`${outcome.succeeded} uploaded; ${outcome.failed} failed`)
       setRetryRunId(workflowRun.id)
@@ -380,15 +428,15 @@ function App({ finish, initialPhase = 'dashboard', initialSourceRef }: AppProps)
     goto('complete')
   }
 
-  const watchInternalRun = async (repo: string, initialRun: WorkflowRun) => {
+  const watchReleaseRun = async (repo: string, initialRun: WorkflowRun) => {
     let workflowRun = initialRun
-    setClock(Date.now())
+    setRetryRunId(null)
     setRun({ id: workflowRun.id, url: workflowRun.html_url })
     setWatchedRun(workflowRun)
     setWorkflowJobs(await getWorkflowJobs(repo, workflowRun.id))
+    setClock(Date.now())
     goto('running')
     while (workflowRun.status !== 'completed') {
-      setStatus(`Internal release ${workflowRun.status.replace('_', ' ')}…`)
       await sleep(10_000)
       const [nextRun, jobs] = await Promise.all([
         getWorkflowRun(repo, workflowRun.id),
@@ -398,17 +446,50 @@ function App({ finish, initialPhase = 'dashboard', initialSourceRef }: AppProps)
       setWatchedRun(nextRun)
       setWorkflowJobs(jobs)
     }
-    await finishInternalRun(repo, workflowRun)
+    if (workflowRun.conclusion !== 'success') setRetryRunId(workflowRun.id)
+    return workflowRun
+  }
+
+  const watchInternalRun = async (repo: string, initialRun: WorkflowRun) => {
+    setActivity('Android build')
+    retryContext.current = { repo, finish: (run) => finishInternalRun(repo, run) }
+    setStatus('Building and uploading for Internal testing…')
+    const finished = await watchReleaseRun(repo, initialRun)
+    await finishInternalRun(repo, finished)
   }
 
   const resumeInternalRun = async (runIndex: number) => {
     const selected = internalRuns[runIndex]
     if (!selected || !internalRunsRepo) return
     goto('checking')
-    setStatus('Loading live workflow progress…')
+    setStatus('Checking build progress…')
     try {
       const current = await getWorkflowRun(internalRunsRepo, selected.id)
       await watchInternalRun(internalRunsRepo, current)
+    } catch (caught) {
+      fail(caught)
+    }
+  }
+
+  const continueActiveRun = async () => {
+    if (!releaseState.repo || !releaseState.activeRun) return
+    goto('checking')
+    setStatus('Checking build progress…')
+    try {
+      const current = await getWorkflowRun(releaseState.repo, releaseState.activeRun.id)
+      await watchInternalRun(releaseState.repo, current)
+    } catch (caught) {
+      fail(caught)
+    }
+  }
+
+  const reviewFailedRun = async () => {
+    if (!releaseState.repo || !releaseState.failedRun) return
+    goto('checking')
+    setStatus('Checking what went wrong…')
+    try {
+      const latest = await getWorkflowRun(releaseState.repo, releaseState.failedRun.id)
+      await watchInternalRun(releaseState.repo, latest)
     } catch (caught) {
       fail(caught)
     }
@@ -418,10 +499,8 @@ function App({ finish, initialPhase = 'dashboard', initialSourceRef }: AppProps)
     goto('dispatching')
     setStatus(`Publishing the v${confirmedPlan.marketingVersion} GitHub release…`)
     try {
-      const githubRelease = await publishGithubRelease(confirmedPlan.repo, confirmedPlan)
-      setStatus(
-        `GitHub release ${githubRelease} · dispatching Android and iOS workflows from ${confirmedPlan.workflowRef}…`,
-      )
+      await publishGithubRelease(confirmedPlan.repo, confirmedPlan)
+      setStatus(`Release notes published. Starting Android and iOS builds…`)
       const payload = createDispatchPayload(
         confirmedPlan.sourceSha,
         confirmedPlan.requestId,
@@ -431,7 +510,7 @@ function App({ finish, initialPhase = 'dashboard', initialSourceRef }: AppProps)
       await dispatchInternalBuild(confirmedPlan.repo, payload)
       await dispatchIosInternalBuild(confirmedPlan.repo, payload)
       goto('waiting')
-      setStatus('Waiting for structured workflow runs…')
+      setStatus('Waiting for GitHub to start the builds…')
       let workflowRun = null
       let iosWorkflowRun = null
       for (let attempt = 0; attempt < 30 && !(workflowRun && iosWorkflowRun); attempt += 1) {
@@ -442,16 +521,35 @@ function App({ finish, initialPhase = 'dashboard', initialSourceRef }: AppProps)
         if (!(workflowRun && iosWorkflowRun)) await sleep(2_000)
       }
       if (iosWorkflowRun) setIosRun({ id: iosWorkflowRun.id, url: iosWorkflowRun.html_url })
-      if (!workflowRun) throw new Error('Dispatch succeeded, but its workflow run was not found')
+      if (!workflowRun)
+        throw new Error(
+          'GitHub accepted the build request, but has not reported progress yet. Check GitHub before starting another build.',
+        )
       await watchInternalRun(confirmedPlan.repo, workflowRun)
     } catch (caught) {
       fail(caught)
     }
   }
 
+  const finishOpenRun = async (workflowRun: WorkflowRun) => {
+    setStatus('Checking whether phone and watch are available to testers…')
+    const manifest = await downloadPromotionManifest(workflowRun.id)
+    setStatus(
+      manifest.phone.status === 'failed' || manifest.wear.status === 'failed'
+        ? 'Open testing was not fully updated. Retry the failed steps.'
+        : manifest.marketingVersion + ' is available in Open testing on phone and watch.',
+    )
+    if (manifest.phone.status === 'failed' || manifest.wear.status === 'failed') {
+      setRetryRunId(workflowRun.id)
+    }
+    goto('complete')
+  }
+
   const promote = async (confirmedPlan: PromotionPlan) => {
+    setActivity('Open testing update')
+    retryContext.current = { repo: confirmedPlan.repo, finish: finishOpenRun }
     goto('dispatching')
-    setStatus(`Dispatching trusted open-promotion workflow from ${confirmedPlan.workflowRef}…`)
+    setStatus(`Sending ${confirmedPlan.candidate.marketingVersion} to Open testing…`)
     try {
       await dispatchOpenPromotion(
         confirmedPlan.repo,
@@ -462,37 +560,50 @@ function App({ finish, initialPhase = 'dashboard', initialSourceRef }: AppProps)
         ),
       )
       goto('waiting')
-      setStatus('Waiting for structured promotion run…')
+      setStatus('Starting Open testing promotion…')
       let workflowRun = null
       for (let attempt = 0; attempt < 30 && !workflowRun; attempt += 1) {
         workflowRun = await findPromotionRun(confirmedPlan.repo, confirmedPlan.requestId)
         if (!workflowRun) await sleep(2_000)
       }
-      if (!workflowRun) throw new Error('Dispatch succeeded, but its promotion run was not found')
-      setRun({ id: workflowRun.id, url: workflowRun.html_url })
-      goto('running')
-      while (workflowRun.status !== 'completed') {
-        setStatus(`Promotion ${workflowRun.status.replace('_', ' ')}…`)
-        await sleep(10_000)
-        workflowRun = await getWorkflowRun(confirmedPlan.repo, workflowRun.id)
-      }
-      setStatus('Reading per-form-factor promotion result…')
-      const manifest = await downloadPromotionManifest(workflowRun.id)
-      setStatus(promotionSummary(manifest))
-      if (manifest.phone.status === 'failed' || manifest.wear.status === 'failed') {
-        setRetryRunId(workflowRun.id)
-      }
-      goto('complete')
+      if (!workflowRun)
+        throw new Error(
+          'GitHub accepted the request, but has not reported progress yet. Check GitHub before sending again.',
+        )
+      workflowRun = await watchReleaseRun(confirmedPlan.repo, workflowRun)
+      await finishOpenRun(workflowRun)
     } catch (caught) {
       fail(caught)
     }
   }
 
-  const runProduction = async (confirmedPlan: ProductionPlan) => {
-    goto('dispatching')
+  const finishProductionRun = async (workflowRun: WorkflowRun) => {
+    setStatus('Checking what is live on Google Play…')
+    const manifest = await downloadProductionManifest(workflowRun.id)
     setStatus(
-      `Dispatching trusted production ${confirmedPlan.operation} workflow from ${confirmedPlan.workflowRef}…`,
+      manifest.phone.status === 'failed' || manifest.wear.status === 'failed'
+        ? 'Google Play was not fully updated. Retry the failed steps.'
+        : manifest.githubRelease === 'failed'
+          ? 'Google Play is updated, but updating the GitHub release failed.'
+          : manifest.marketingVersion + ' is live on Google Play for phone and watch.',
     )
+    if (
+      manifest.phone.status === 'failed' ||
+      manifest.wear.status === 'failed' ||
+      manifest.githubRelease === 'failed'
+    ) {
+      setRetryRunId(workflowRun.id)
+    }
+    goto('complete')
+  }
+
+  const runProduction = async (confirmedPlan: ProductionPlan) => {
+    setActivity(
+      confirmedPlan.operation === 'status' ? 'Release status check' : 'Production release',
+    )
+    retryContext.current = { repo: confirmedPlan.repo, finish: finishProductionRun }
+    goto('dispatching')
+    setStatus(`Starting the Google Play update…`)
     try {
       await dispatchProduction(
         confirmedPlan.repo,
@@ -504,44 +615,45 @@ function App({ finish, initialPhase = 'dashboard', initialSourceRef }: AppProps)
         ),
       )
       goto('waiting')
-      setStatus('Waiting for structured production run…')
+      setStatus('Waiting for GitHub to start the production update…')
       let workflowRun = null
       for (let attempt = 0; attempt < 30 && !workflowRun; attempt += 1) {
         workflowRun = await findProductionRun(confirmedPlan.repo, confirmedPlan.requestId)
         if (!workflowRun) await sleep(2_000)
       }
-      if (!workflowRun) throw new Error('Dispatch succeeded, but its production run was not found')
-      setRun({ id: workflowRun.id, url: workflowRun.html_url })
-      goto('running')
-      while (workflowRun.status !== 'completed') {
-        setStatus(`Production ${workflowRun.status.replace('_', ' ')}…`)
-        await sleep(10_000)
-        workflowRun = await getWorkflowRun(confirmedPlan.repo, workflowRun.id)
-      }
-      setStatus('Reading exact production release state…')
-      const manifest = await downloadProductionManifest(workflowRun.id)
-      setStatus(productionSummary(manifest))
-      if (
-        manifest.phone.status === 'failed' ||
-        manifest.wear.status === 'failed' ||
-        manifest.githubRelease === 'failed'
-      ) {
-        setRetryRunId(workflowRun.id)
-      }
-      goto('complete')
+      if (!workflowRun)
+        throw new Error(
+          'GitHub accepted the request, but has not reported progress yet. Check GitHub before publishing again.',
+        )
+      workflowRun = await watchReleaseRun(confirmedPlan.repo, workflowRun)
+      await finishProductionRun(workflowRun)
     } catch (caught) {
       fail(caught)
     }
   }
 
   const startAction = (id: ActionId) => {
-    if (id === 'watch') void prepareInternalRuns()
-    else if (id === 'promote-open') void preparePromotion()
+    if (id === 'watch') {
+      if (releaseState.activeRun) void continueActiveRun()
+      else if (releaseState.failedRun) void reviewFailedRun()
+      else void prepareInternalRuns()
+    } else if (id === 'promote-open') void preparePromotion()
     else if (id === 'promote-production') void prepareProduction('promote')
     else if (id === 'status') void prepareProduction('status')
+    else if (id === 'choose-open') void preparePromotion(true)
+    else if (id === 'choose-production') void prepareProduction('promote', true)
     else if (id === 'build') gotoBuildSource()
-    else if (id === 'prepare') void prepareVersionMenu()
-    else loadDashboard()
+    else if (id === 'continue-prepared') void prepare(true)
+    else if (id === 'resume-draft' && releaseState.draft) {
+      finish({ kind: 'prepare', bump: releaseState.draft.bump })
+      exit()
+    } else if (id === 'prepare') void prepareVersionMenu()
+    else if (id === 'more') goto('more')
+    else if (id === 'technical') goto('technical')
+    else if (id === 'exit') {
+      finish({ kind: 'exit' })
+      exit()
+    } else loadDashboard()
   }
 
   const moveIndex = (key: { upArrow: boolean; downArrow: boolean }, length: number) => {
@@ -552,8 +664,12 @@ function App({ finish, initialPhase = 'dashboard', initialSourceRef }: AppProps)
 
   useInput((input, key) => {
     const enter = isEnter(input, key)
+    if (phase === 'dashboard' && releaseState.loading && !releaseState.error) return
+    if (enter) {
+      if (inputTransitioning.current) return
+      inputTransitioning.current = true
+    }
     if (phase === 'dashboard') {
-      if (releaseState.loading && !releaseState.error) return
       moveIndex(key, actions.length)
       if (enter && actions[index]) startAction(actions[index].id)
       else if (key.escape) {
@@ -562,27 +678,28 @@ function App({ finish, initialPhase = 'dashboard', initialSourceRef }: AppProps)
       }
       return
     }
+    if (phase === 'more') {
+      moveIndex(key, advancedActions.length)
+      if (enter && advancedActions[index]) startAction(advancedActions[index].id)
+      else if (key.escape) goto('dashboard')
+      return
+    }
+    if (phase === 'technical') {
+      if (key.escape || enter) goto('more')
+      return
+    }
     if (phase === 'version-bump') {
       moveIndex(key, versionBumps.length)
       if (enter) {
-        setBumpIndex(index)
-        goto('version-confirm')
+        finish({ kind: 'prepare', bump: versionBumps[index].bump })
+        exit()
       } else if (key.escape) loadDashboard()
-      return
-    }
-    if (phase === 'version-confirm') {
-      moveIndex(key, 2)
-      if (enter) {
-        if (index === CONFIRM_INDEX) {
-          finish({ kind: 'prepare', bump: versionBumps[bumpIndex].bump })
-          exit()
-        } else goto('version-bump', bumpIndex)
-      } else if (key.escape) goto('version-bump', bumpIndex)
       return
     }
     if (phase === 'build-source') {
       if (enter) {
         if (sourcePreview) void prepare()
+        else inputTransitioning.current = false
       } else if (key.escape) loadDashboard()
       else if (key.backspace || key.delete) {
         setSourceRefEdited(true)
@@ -623,33 +740,34 @@ function App({ finish, initialPhase = 'dashboard', initialSourceRef }: AppProps)
       } else if (key.escape) gotoBuildSource()
       return
     }
-    if (phase === 'promote-confirm') {
-      moveIndex(key, 2)
-      if (enter) {
-        if (index === CONFIRM_INDEX && promotionPlan) void promote(promotionPlan)
-        else goto('candidate')
-      } else if (key.escape) goto('candidate')
-      return
-    }
-    if (phase === 'production-confirm') {
-      moveIndex(key, 2)
-      if (enter) {
-        if (index === CONFIRM_INDEX && productionPlan) void runProduction(productionPlan)
-        else loadDashboard()
-      } else if (key.escape) loadDashboard()
-      return
-    }
-    if (phase === 'complete' && retryRunId && input.toLowerCase() === 'r') {
+    if ((phase === 'complete' || phase === 'error') && retryRunId && input.toLowerCase() === 'r') {
+      const context = retryContext.current
+      if (!context) return
+      const id = retryRunId
       setRetryRunId(null)
+      setError(null)
       setWatchedRun(null)
-      goto('running')
-      setStatus('Retrying failed jobs only…')
-      void retryFailedJobs(retryRunId)
-        .then(() => {
-          setStatus(`Retry requested for workflow ${retryRunId}. Re-run this CLI to watch it.`)
-          goto('complete')
-        })
-        .catch(fail)
+      goto('waiting')
+      setStatus('Retrying the failed steps…')
+      void (async () => {
+        const previous = await getWorkflowRun(context.repo, id)
+        await retryFailedJobs(id)
+        for (let attempt = 0; attempt < 30; attempt++) {
+          const next = await getWorkflowRun(context.repo, id)
+          if (
+            next.status !== 'completed' ||
+            (next.run_attempt ?? 1) > (previous.run_attempt ?? 1)
+          ) {
+            const finished = await watchReleaseRun(context.repo, next)
+            await context.finish(finished)
+            return
+          }
+          await sleep(2_000)
+        }
+        throw new Error(
+          'GitHub accepted the retry but has not started it yet. Check the run on GitHub.',
+        )
+      })().catch(fail)
       return
     }
     if (phase === 'complete' || phase === 'error') {
@@ -667,18 +785,60 @@ function App({ finish, initialPhase = 'dashboard', initialSourceRef }: AppProps)
     return () => clearInterval(timer)
   }, [phase, watchedRun])
 
-  const progress = watchedRun ? internalReleaseProgress(workflowJobs) : null
+  const progress = watchedRun ? releaseWorkflowProgress(workflowJobs, watchedRun) : null
+  const buildEstimate =
+    watchedRun?.status !== 'completed' &&
+    workflowJobs.some((job) => job.name === 'Build signed artifacts once')
+      ? internalReleaseProgress(workflowJobs, clock).remaining
+      : null
 
   return (
     <Box flexDirection="column" gap={1}>
       <Text bold color="cyan">
-        Vescape · Android Release{releaseState.repo ? `  ${releaseState.repo}` : ''}
+        Vescape · Releases{releaseState.repo ? `  ${releaseState.repo}` : ''}
       </Text>
+      {phase === 'complete' && (
+        <Text bold color={retryRunId ? 'red' : 'green'}>
+          {retryRunId
+            ? `✗ ${activity} did not fully complete`
+            : `✓ ${activity} completed successfully`}
+        </Text>
+      )}
+      {phase === 'error' && (
+        <Text bold color="red">
+          Could not finish this release step
+        </Text>
+      )}
       {status ? <Text>{status}</Text> : null}
       {phase === 'dashboard' && <Dashboard state={releaseState} actions={actions} index={index} />}
+      {phase === 'more' && (
+        <Box flexDirection="column">
+          <Text bold>More options</Text>
+          <Menu
+            items={advancedActions.map((action) => ({ key: action.id, label: action.label }))}
+            index={index}
+          />
+          <Hint>↑/↓ · Enter · Esc goes back</Hint>
+        </Box>
+      )}
+      {phase === 'technical' && (
+        <Box flexDirection="column">
+          <Text bold>Technical details</Text>
+          <Text>Repository: {releaseState.repo ?? '—'}</Text>
+          <Text>Dev version: {releaseState.devVersion ?? '—'}</Text>
+          <Text>
+            Internal codes: {releaseState.internal?.phone ?? '—'} /{' '}
+            {releaseState.internal?.wear ?? '—'}
+          </Text>
+          <Text>Internal run: {releaseState.internal?.runId ?? '—'}</Text>
+          <Text>Open run: {releaseState.open?.runId ?? '—'}</Text>
+          <Text>Production run: {releaseState.production?.runId ?? '—'}</Text>
+          <Hint>Enter or Esc goes back</Hint>
+        </Box>
+      )}
       {phase === 'version-bump' && (
         <Box flexDirection="column">
-          <Text bold>Choose the next marketing version</Text>
+          <Text bold>What kind of release is this?</Text>
           <Menu
             items={versionBumps.map((item) => ({
               key: item.bump,
@@ -688,30 +848,6 @@ function App({ finish, initialPhase = 'dashboard', initialSourceRef }: AppProps)
           />
           <Hint>↑/↓ · Enter · Esc goes back</Hint>
         </Box>
-      )}
-      {phase === 'version-confirm' && (
-        <Confirm
-          title="Prepare release candidate"
-          fields={[
-            { label: 'Current version', value: currentVersion },
-            {
-              label: 'Next version',
-              value: (
-                <Text color="cyan">
-                  {bumpMarketingVersion(currentVersion, versionBumps[bumpIndex].bump)}
-                </Text>
-              ),
-            },
-            {
-              label: 'Next steps',
-              value:
-                'notes → commit dev → fast-forward main → push → GitHub release → Android + iOS internal build',
-            },
-          ]}
-          note="No Play upload or production mutation happens yet."
-          confirmLabel="Prepare and push this release candidate"
-          index={index}
-        />
       )}
       {phase === 'build-source' && (
         <Box flexDirection="column">
@@ -776,7 +912,7 @@ function App({ finish, initialPhase = 'dashboard', initialSourceRef }: AppProps)
             }))}
             index={index}
           />
-          <Hint>Only successful exact open-promotion manifests · ↑/↓ · Enter · Esc cancels</Hint>
+          <Hint>Builds available in Open testing · ↑/↓ · Enter · Esc goes back</Hint>
         </Box>
       )}
       {plan && phase === 'confirm' && (
@@ -795,41 +931,22 @@ function App({ finish, initialPhase = 'dashboard', initialSourceRef }: AppProps)
               value: 'phone internal + Wear internal + TestFlight internal only',
             },
           ]}
-          confirmLabel="Create workflow run"
+          confirmLabel="Start build"
           index={index}
         />
       )}
-      {promotionPlan && phase === 'promote-confirm' && (
-        <Confirm
-          title="Promote Internal → Open testing"
-          fields={promotionFields(promotionPlan)}
-          note="Workflow revalidates both exact codes on live Play tracks before mutation."
-          confirmLabel="Promote existing Play artifacts"
-          index={index}
-        />
-      )}
-      {productionPlan && phase === 'production-confirm' && (
-        <Confirm
-          title={`Production ${productionPlan.operation}`}
-          fields={productionFields(productionPlan)}
-          note="Trusted workflow revalidates source ancestry, canonical notes, and both live Play tracks."
-          confirmLabel="Run explicitly approved production operation"
-          index={index}
-        />
-      )}
-      {phase === 'running' && watchedRun && progress && (
+      {['running', 'complete', 'error'].includes(phase) && watchedRun && progress && (
         <Box flexDirection="column">
           <Text>
             <Text color="cyan">[{progress.bar}]</Text> {progress.completed}/{progress.total} stages
           </Text>
           <Text>
-            Now: <Text bold>{progress.current}</Text>
+            Now: <Text bold>{buildStepName(progress.current)}</Text>
           </Text>
-          {progress.detail && <Hint>Step: {progress.detail}</Hint>}
           <Box flexDirection="column" marginTop={1}>
             {progress.stages.map((stage) => (
               <Text
-                key={stage.name}
+                key={buildStepName(stage.name)}
                 color={
                   stage.state === 'done'
                     ? 'green'
@@ -850,41 +967,40 @@ function App({ finish, initialPhase = 'dashboard', initialSourceRef }: AppProps)
                       : stage.state === 'skipped'
                         ? '–'
                         : '○'}{' '}
-                {stage.name}
+                {buildStepName(stage.name)}
               </Text>
             ))}
           </Box>
           <Text>
-            Elapsed: {workflowElapsed(watchedRun, clock)} · Remaining: {progress.remaining}
+            {watchedRun.status === 'completed' ? 'Finished in' : 'Elapsed:'}{' '}
+            {workflowElapsed(watchedRun, clock)}
+            {buildEstimate ? ` · Remaining: ${buildEstimate}` : null}
           </Text>
-          <Hint>
-            Run #{watchedRun.run_number ?? watchedRun.id} · attempt {watchedRun.run_attempt ?? 1} ·{' '}
-            {watchedRun.head_sha?.slice(0, 12) ?? 'source SHA unavailable'}
-          </Hint>
         </Box>
       )}
-      {run && phase !== 'dashboard' && (
+      {run && ['running', 'complete', 'error'].includes(phase) && (
         <Text>
-          Run: {run.id} · {run.url}
+          {watchedRun?.status === 'completed'
+            ? 'View details on GitHub'
+            : 'View progress on GitHub'}
+          : {run.url}
         </Text>
       )}
-      {iosRun && phase !== 'dashboard' && (
-        <Text>
-          iOS run: {iosRun.id} · {iosRun.url}
-        </Text>
-      )}
+      {iosRun && phase !== 'dashboard' && <Text>iOS build on GitHub: {iosRun.url}</Text>}
       {phase === 'complete' && (
         <Box flexDirection="column">
           <Rule />
           <Hint>
-            {retryRunId ? 'R retries failed jobs only · ' : ''}Enter returns to dashboard · Q quits
+            {retryRunId ? 'R retries failed steps · ' : ''}Enter returns to dashboard · Q quits
           </Hint>
         </Box>
       )}
       {phase === 'error' && (
         <Box flexDirection="column">
           <Text color="red">{error}</Text>
-          <Hint>Enter returns to dashboard · Q quits</Hint>
+          <Hint>
+            {retryRunId ? 'R retries failed steps · ' : ''}Enter returns to dashboard · Q quits
+          </Hint>
         </Box>
       )}
     </Box>
@@ -895,6 +1011,8 @@ export async function runReleaseCli(options: ReleaseCliOptions = {}): Promise<Re
   let result: ReleaseCliResult = { kind: 'exit' }
   const instance = render(<App {...options} finish={(next) => (result = next)} />)
   await instance.waitUntilExit()
+  instance.clear()
+  instance.unmount()
   return result
 }
 

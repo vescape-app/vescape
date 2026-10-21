@@ -64,15 +64,7 @@ export function favoriteToSession(
   const spanned = blocks
     .filter((block) => block.startAtMs <= favorite.endMs && block.endAtMs >= favorite.startMs)
     .sort((a, b) => a.startAtMs - b.startAtMs)
-  const routePoints =
-    favorite.routePoints.length > 0
-      ? favorite.routePoints
-      : spanned
-          .filter((block) => block.firstLatitude != null && block.firstLongitude != null)
-          .map((block) => ({
-            latitude: block.firstLatitude!,
-            longitude: block.firstLongitude!,
-          }))
+  const routePoints = favorite.routePoints
   const latitudes = routePoints.map((point) => point.latitude).filter(isFinitePoint)
   const longitudes = routePoints.map((point) => point.longitude).filter(isFinitePoint)
   return {

@@ -1,7 +1,16 @@
+import { UnitSystemContext, useUnitSystem } from '@/hooks/useUnitSystem'
+import { speedFromKmh, speedUnit, type UnitSystem } from '@/helpers/units'
 import { Pressable, ScrollView, StyleSheet, View } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { Easing, useSharedValue, withRepeat, withTiming } from 'react-native-reanimated'
+import {
+  Easing,
+  useAnimatedReaction,
+  useSharedValue,
+  withRepeat,
+  withTiming,
+  type SharedValue,
+} from 'react-native-reanimated'
 
 import { ChartLineUpIcon } from 'phosphor-react-native'
 import { LinearGauge } from '@/components/charts/LinearGauge'
@@ -26,6 +35,108 @@ import {
   getHistoryMetricHotRange,
   type HistoryMetricKey,
 } from '@/modules/history/lib/metricColorScale'
+
+import { RouteSparkline } from '@/modules/history/components/RouteSparkline'
+import { RidePreviewCard } from '@/modules/history/components/RidePreviewCard'
+import { HistoryRideRowShowcase } from '@/screens/showcase/history/HistoryRideRowShowcase'
+import type { RoutePoint } from '@/modules/history/lib/routePreview'
+
+const PREVIEW_ROUTES: Record<string, RoutePoint[]> = {
+  corners: [
+    { latitude: 52, longitude: 18 },
+    { latitude: 52.001, longitude: 18 },
+    { latitude: 52.001, longitude: 18.0015 },
+    { latitude: 52.0005, longitude: 18.0015 },
+    { latitude: 52.0005, longitude: 18.002 },
+  ],
+  straight: [
+    { latitude: 52, longitude: 18 },
+    { latitude: 52, longitude: 18.002 },
+  ],
+  gap: [
+    { latitude: 52, longitude: 18 },
+    { latitude: 52.001, longitude: 18 },
+    { latitude: 52.001, longitude: 18.0015, breakBefore: true },
+    { latitude: 52.0005, longitude: 18.0015 },
+  ],
+  empty: [],
+}
+
+function RouteSparklineShowcase() {
+  const [route, setRoute] = useState('corners')
+  const [endpoints, setEndpoints] = useState(true)
+  const [map, setMap] = useState(false)
+  return (
+    <ShowcaseCard
+      name="RouteSparkline"
+      controls={
+        <>
+          <ChipRow
+            label="route"
+            options={Object.keys(PREVIEW_ROUTES)}
+            selected={route}
+            onSelect={setRoute}
+          />
+          <ToggleRow label="endpoints" value={endpoints} onToggle={setEndpoints} />
+          <ToggleRow label="map" value={map} onToggle={setMap} />
+        </>
+      }
+    >
+      <RouteSparkline
+        points={PREVIEW_ROUTES[route]}
+        width={74}
+        height={52}
+        endpoints={endpoints}
+        map={map}
+      />
+      <RouteSparkline
+        points={PREVIEW_ROUTES[route]}
+        width={148}
+        height={104}
+        endpoints={endpoints}
+        map={map}
+      />
+    </ShowcaseCard>
+  )
+}
+
+function RidePreviewCardShowcase() {
+  const [route, setRoute] = useState('corners')
+  return (
+    <ShowcaseCard
+      name="RidePreviewCard"
+      controls={
+        <ChipRow
+          label="route"
+          options={Object.keys(PREVIEW_ROUTES)}
+          selected={route}
+          onSelect={setRoute}
+        />
+      }
+    >
+      <View style={styles.rideCards}>
+        <RidePreviewCard
+          title="15:29 – 15:30"
+          date="11 Sep 2026"
+          subtitle="1 min · 0.80 km · 23 km/h"
+          routePoints={PREVIEW_ROUTES[route]}
+          color={theme.palette.purple.color}
+          map={false}
+          onPress={() => undefined}
+        />
+        <RidePreviewCard
+          title="Evening ride"
+          date="10 Oct 2026"
+          subtitle="12 min · 3.45 km"
+          routePoints={PREVIEW_ROUTES[route]}
+          color={theme.palette.amber.color}
+          map={false}
+          onPress={() => undefined}
+        />
+      </View>
+    </ShowcaseCard>
+  )
+}
 
 const EMPTY_SERIES: ChartSeriesData = { ts: [], vs: [] }
 
@@ -121,6 +232,7 @@ function SparklineShowcase() {
 }
 
 function AnimatedSingleGaugeShowcase() {
+  const units = useUnitSystem()
   const [metricKey, setMetricKey] = useState<'speed' | 'duty' | 'motorTemp' | 'controllerTemp'>(
     'speed',
   )
@@ -164,11 +276,12 @@ function AnimatedSingleGaugeShowcase() {
       }
     >
       <SingleGauge
+        displayScale={metricKey === 'speed' ? speedFromKmh(1, units) : 1}
         value={value}
         min={metric.chartRange.min}
         max={metric.chartRange.max}
         color={metric.color}
-        unit={metric.unit}
+        unit={metricKey === 'speed' ? speedUnit(units) : metric.unit}
         decimals={metric.decimals}
         label={metric.label.toUpperCase()}
         hotRange={hotRange}
@@ -189,22 +302,47 @@ function AnimatedSingleGaugeShowcase() {
   )
 }
 
+const SHOWCASE_SPEED_MAX = 50
+const SHOWCASE_DUTY_MAX = 100
+/** `ride` follows the ramp like a real window peak; the rest pin it at a share of full scale. */
+const PEAK_MODES = ['ride', 'off', '20%', '39%', '40%', '70%', '100%', '120%']
+
+/** Peak for the showcase ramp: the sweep's running max, or pinned at a share of full scale. */
+function useShowcasePeak(value: SharedValue<number | null>, max: number, mode: string) {
+  const peak = useSharedValue<number | null>(null)
+  useEffect(() => {
+    peak.value = mode === 'ride' || mode === 'off' ? null : (parseFloat(mode) / 100) * max
+  }, [max, mode, peak])
+  useAnimatedReaction(
+    () => value.value,
+    (v) => {
+      if (mode !== 'ride' || v == null) return
+      // Each sweep starts fresh, as if the old peak had rolled out of the live window.
+      if (v < max * 0.02) peak.value = null
+      else if (peak.value == null || v > peak.value) peak.value = v
+    },
+    [mode, max],
+  )
+  return peak
+}
+
 function AnimatedDualGaugeShowcase() {
   const [compact, setCompact] = useState(false)
+  const [peakMode, setPeakMode] = useState('ride')
   const speed = useSharedValue<number | null>(0)
   const duty = useSharedValue<number | null>(0)
-
-  const speedSeries = useMemo(() => generateSparklineData(60, 28, 6, 11), [])
-  const dutySeries = useMemo(() => generateSparklineData(60, 55, 14, 23), [])
+  const speedPeak = useShowcasePeak(speed, SHOWCASE_SPEED_MAX, peakMode)
+  const dutyPeak = useShowcasePeak(duty, SHOWCASE_DUTY_MAX, peakMode)
+  const peaks = peakMode !== 'off'
 
   useEffect(() => {
     speed.value = withRepeat(
-      withTiming(50, { duration: 2600, easing: Easing.inOut(Easing.quad) }),
+      withTiming(SHOWCASE_SPEED_MAX, { duration: 2600, easing: Easing.inOut(Easing.quad) }),
       -1,
       true,
     )
     duty.value = withRepeat(
-      withTiming(100, { duration: 1700, easing: Easing.inOut(Easing.quad) }),
+      withTiming(SHOWCASE_DUTY_MAX, { duration: 1700, easing: Easing.inOut(Easing.quad) }),
       -1,
       true,
     )
@@ -213,13 +351,20 @@ function AnimatedDualGaugeShowcase() {
   return (
     <ShowcaseCard
       name="DualGauge / animated ramp"
-      controls={<ToggleRow label="compact" value={compact} onToggle={setCompact} />}
+      controls={
+        <>
+          <ToggleRow label="compact" value={compact} onToggle={setCompact} />
+          <ChipRow label="peak" options={PEAK_MODES} selected={peakMode} onSelect={setPeakMode} />
+        </>
+      }
     >
       <DualGauge
         speedValue={speed}
         dutyValue={duty}
-        speedSeries={speedSeries}
-        dutySeries={dutySeries}
+        speedPeak={peaks ? speedPeak : undefined}
+        dutyPeak={peaks ? dutyPeak : undefined}
+        speedMax={SHOWCASE_SPEED_MAX}
+        dutyMax={SHOWCASE_DUTY_MAX}
         compact={compact}
         speedAlerts={[{ id: 'speed-warn', threshold: 42, thresholdMax: null }]}
         dutyAlerts={[{ id: 'duty-warn', threshold: 80, thresholdMax: 95 }]}
@@ -399,26 +544,38 @@ function BmsCellVoltagesShowcase() {
 }
 
 export default function ChartsPage() {
+  const [units, setUnits] = useState<UnitSystem>('metric')
   return (
-    <SafeAreaView style={styles.container} edges={['bottom']}>
-      <ScrollView contentContainerStyle={styles.content}>
-        <IconHero
-          icon={ChartLineUpIcon}
-          description="ChartStack, Sparkline, LinearGauge, SingleGauge, DualGauge, ChartLoadingOverlay, ChartGestureHint, BmsCellVoltages."
-        />
-        <ChartStackShowcase />
-        <SparklineShowcase />
-        <LinearGaugeShowcase />
-        <AnimatedSingleGaugeShowcase />
-        <AnimatedDualGaugeShowcase />
-        <ChartLoadingOverlayShowcase />
-        <ShowcaseCard name="ChartGestureHint">
-          <ChartGestureHint />
-          <ChartGestureHint compact />
-        </ShowcaseCard>
-        <BmsCellVoltagesShowcase />
-      </ScrollView>
-    </SafeAreaView>
+    <UnitSystemContext value={units}>
+      <SafeAreaView style={styles.container} edges={['bottom']}>
+        <ScrollView contentContainerStyle={styles.content}>
+          <IconHero
+            icon={ChartLineUpIcon}
+            description="ChartStack, Sparkline, LinearGauge, SingleGauge, DualGauge, ChartLoadingOverlay, ChartGestureHint, BmsCellVoltages."
+          />
+          <ChartStackShowcase />
+          <SparklineShowcase />
+          <RouteSparklineShowcase />
+          <RidePreviewCardShowcase />
+          <HistoryRideRowShowcase />
+          <LinearGaugeShowcase />
+          <ChipRow
+            label="units"
+            options={['metric', 'imperial']}
+            selected={units}
+            onSelect={(value) => setUnits(value as UnitSystem)}
+          />
+          <AnimatedSingleGaugeShowcase />
+          <AnimatedDualGaugeShowcase />
+          <ChartLoadingOverlayShowcase />
+          <ShowcaseCard name="ChartGestureHint">
+            <ChartGestureHint />
+            <ChartGestureHint compact />
+          </ShowcaseCard>
+          <BmsCellVoltagesShowcase />
+        </ScrollView>
+      </SafeAreaView>
+    </UnitSystemContext>
   )
 }
 
@@ -426,4 +583,5 @@ const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: theme.neutral.bg },
   content: { padding: 12, gap: 12, paddingBottom: 40 },
   chartExample: { marginBottom: 10 },
+  rideCards: { flexDirection: 'row', flexWrap: 'wrap', gap: 10 },
 })

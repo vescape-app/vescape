@@ -86,6 +86,8 @@ export function TextPromptModalShowcase() {
         placeholder="Enter new name"
         initialValue="My Board"
         confirmLabel="Rename"
+        error="Name could not be saved."
+        loading={false}
         onConfirm={(value) => {
           setVisible(false)
           console.log(value)

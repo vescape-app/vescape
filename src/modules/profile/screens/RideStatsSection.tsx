@@ -1,11 +1,11 @@
 import { useCallback, useMemo } from 'react'
-import { ActivityIndicator, Pressable, StyleSheet, View } from 'react-native'
+import { ActivityIndicator, StyleSheet, View } from 'react-native'
 import { Text } from '@/components/base/Text'
 import { ChartLineUpIcon } from 'phosphor-react-native'
 
 import { Placeholder } from '@/components/base/Placeholder'
 import { ProfileStatsGrid } from '@/modules/profile/components/ProfileStatsGrid'
-import { profileStatItems } from '@/modules/profile/components/profileStatItems'
+import { useProfileStatItems } from '@/modules/profile/hooks/useProfileStatItems'
 import { useProfileStats } from '@/modules/profile/hooks/useProfileStats'
 import { formatMonthLabel, getAdjacentMonths } from '@/modules/profile/lib/profileStats'
 import { PrevNextSelector } from '@/components/controls/PrevNextSelector'
@@ -22,11 +22,10 @@ export function RideStatsSection() {
     monthLoading,
     error,
     empty,
-    refresh,
     selectMonth,
   } = useProfileStats()
-  const totalItems = useMemo(() => profileStatItems(total), [total])
-  const monthItems = useMemo(() => profileStatItems(monthly), [monthly])
+  const totalItems = useProfileStatItems(total)
+  const monthItems = useProfileStatItems(monthly)
   const adjacent = useMemo(() => getAdjacentMonths(months, selectedMonth), [months, selectedMonth])
 
   const monthOptions: SelectOption[] = useMemo(
@@ -51,7 +50,12 @@ export function RideStatsSection() {
 
   return (
     <View testID="profile-stats-section" style={styles.section}>
-      {empty && !loading ? (
+      {error && !loading ? (
+        <View style={styles.errorCard}>
+          <Text style={styles.errorTitle}>Could not load profile stats</Text>
+          <Text style={styles.errorText}>Restart the app to try again</Text>
+        </View>
+      ) : empty && !loading ? (
         <Placeholder
           icon={ChartLineUpIcon}
           title="No riding stats yet"
@@ -100,14 +104,6 @@ export function RideStatsSection() {
         <View style={styles.loadingWrap}>
           <ActivityIndicator size="small" color={theme.palette.sky.color} />
         </View>
-      ) : null}
-
-      {error ? (
-        <Pressable style={styles.errorCard} onPress={() => void refresh()}>
-          <Text style={styles.errorTitle}>Could not load profile stats</Text>
-          <Text style={styles.errorText}>{error}</Text>
-          <Text style={styles.retryText}>Tap to retry</Text>
-        </Pressable>
       ) : null}
     </View>
   )
@@ -187,11 +183,5 @@ const styles = StyleSheet.create({
   errorText: {
     color: theme.status.error.color,
     fontSize: 12,
-  },
-  retryText: {
-    color: theme.neutral.textPrimary,
-    fontSize: 12,
-    fontWeight: '700',
-    marginTop: 4,
   },
 })

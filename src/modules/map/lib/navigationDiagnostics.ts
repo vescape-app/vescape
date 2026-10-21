@@ -10,8 +10,8 @@ const MAP_ORIENTATION_MODE_LABELS: Record<MapOrientationMode, string> = {
 }
 
 const MAP_STYLE_LABELS: Record<string, string> = {
-  onedark: 'One Dark',
-  outdoors: 'Outdoors',
+  onedark: 'Streets',
+  outdoors: 'Streets',
   satellite: 'Satellite',
   mapy: 'Mapy.cz',
 }

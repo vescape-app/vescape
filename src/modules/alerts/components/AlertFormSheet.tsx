@@ -1,3 +1,5 @@
+import { useUnitSystem } from '@/hooks/useUnitSystem'
+import { speedFromKmh, speedInputToKmh, speedUnit } from '@/helpers/units'
 import { useCallback, useMemo, useState } from 'react'
 import { StyleSheet, View } from 'react-native'
 import {
@@ -39,8 +41,9 @@ interface AlertFormSheetProps {
   unit: string
   editRule: DraftAlertRule | null
   batteryConfig: DerivedBatteryConfig | null
+  error: string | null
   onClose(): void
-  onSave(draft: AlertRuleDraft): void
+  onSave(draft: AlertRuleDraft): Promise<void>
 }
 
 /** Writes one alert rule: its threshold, how it sounds, and how often it repeats. */
@@ -51,9 +54,13 @@ export function AlertFormSheet({
   unit,
   editRule,
   batteryConfig,
+  error,
   onClose,
   onSave,
 }: AlertFormSheetProps) {
+  const units = useUnitSystem()
+  const isSpeed = controlId === 'speed'
+  const toDisplay = (value: number) => (isSpeed ? speedFromKmh(value, units) : value)
   const isEditing = editRule != null
   const dialConfig = useMemo(
     () => getAlertDialConfig(controlId, batteryConfig),
@@ -75,6 +82,7 @@ export function AlertFormSheet({
   const [repeatEverySeconds, setRepeatEverySeconds] = useState<number | null>(null)
   const [beepCount, setBeepCount] = useState(ALERT_BEEP_COUNT_DEFAULT)
   const [prevVisible, setPrevVisible] = useState(visible)
+  const [saving, setSaving] = useState(false)
 
   if (visible && !prevVisible) {
     const defaults = editRule
@@ -85,6 +93,7 @@ export function AlertFormSheet({
           geigerDefaultSoundType,
           controlId,
           batteryConfig,
+          units,
         )
     setTab(defaults.tab)
     setThreshold(defaults.threshold)
@@ -112,8 +121,11 @@ export function AlertFormSheet({
   )
 
   const handleSave = useCallback(() => {
+    if (saving) return
     const isRange = tab === 'geiger'
-    onSave({
+    setSaving(true)
+    // intentional-suppression: Alerts store error is rendered by the active form or list
+    void onSave({
       threshold,
       thresholdMax: isRange ? thresholdMax : null,
       soundType: tab === 'message' ? `tts:${messageTemplate}` : soundType,
@@ -122,6 +134,8 @@ export function AlertFormSheet({
       repeatEverySeconds: isRange ? null : repeatEverySeconds,
       beepCount,
     })
+      .catch(() => undefined) // The alerts store owns the error rendered below.
+      .finally(() => setSaving(false))
   }, [
     tab,
     threshold,
@@ -131,6 +145,7 @@ export function AlertFormSheet({
     repeatEverySeconds,
     beepCount,
     onSave,
+    saving,
   ])
 
   return (
@@ -147,15 +162,23 @@ export function AlertFormSheet({
         <View style={styles.cardField}>
           <Text style={styles.fieldLabel}>THRESHOLD</Text>
           <TuneDial
-            value={threshold}
-            previousValue={editRule?.threshold ?? undefined}
-            min={dialConfig.min}
-            max={dialConfig.max}
+            key={units}
+            value={toDisplay(threshold)}
+            previousValue={editRule ? toDisplay(editRule.threshold) : undefined}
+            min={toDisplay(dialConfig.min)}
+            max={toDisplay(dialConfig.max)}
             step={dialConfig.step}
-            unit={dialConfig.unit}
+            unit={isSpeed ? speedUnit(units) : dialConfig.unit}
+            displayDecimals={isSpeed ? 1 : undefined}
             indicatorGlow={tab === 'geiger' ? 'right' : undefined}
             valueChangeMode="commit"
-            onValueChange={setThreshold}
+            onValueChange={(next) =>
+              setThreshold(
+                isSpeed
+                  ? speedInputToKmh(next, threshold, units, dialConfig.min, dialConfig.max)
+                  : next,
+              )
+            }
           />
         </View>
 
@@ -163,15 +186,25 @@ export function AlertFormSheet({
           <View style={styles.cardField}>
             <Text style={styles.fieldLabel}>THRESHOLD MAX</Text>
             <TuneDial
-              value={thresholdMax}
-              previousValue={editRule?.thresholdMax ?? undefined}
-              min={dialConfig.min}
-              max={dialConfig.max}
+              key={units}
+              value={toDisplay(thresholdMax)}
+              previousValue={
+                editRule?.thresholdMax != null ? toDisplay(editRule.thresholdMax) : undefined
+              }
+              min={toDisplay(dialConfig.min)}
+              max={toDisplay(dialConfig.max)}
               step={dialConfig.step}
-              unit={dialConfig.unit}
+              unit={isSpeed ? speedUnit(units) : dialConfig.unit}
+              displayDecimals={isSpeed ? 1 : undefined}
               indicatorGlow="left"
               valueChangeMode="commit"
-              onValueChange={setThresholdMax}
+              onValueChange={(next) =>
+                setThresholdMax(
+                  isSpeed
+                    ? speedInputToKmh(next, thresholdMax, units, dialConfig.min, dialConfig.max)
+                    : next,
+                )
+              }
             />
           </View>
         )}
@@ -218,6 +251,8 @@ export function AlertFormSheet({
         )}
       </SettingsCard>
 
+      {error ? <Text style={styles.error}>{error}</Text> : null}
+
       <View style={styles.actions}>
         <Button label="Cancel" variant="secondary" onPress={onClose} style={styles.actionButton} />
         <Button
@@ -225,6 +260,7 @@ export function AlertFormSheet({
           icon={isEditing ? CheckIcon : PlusIcon}
           variant="accent"
           onPress={handleSave}
+          loading={saving}
           style={styles.actionButton}
         />
       </View>
@@ -255,5 +291,9 @@ const styles = StyleSheet.create({
   },
   actionButton: {
     minWidth: 128,
+  },
+  error: {
+    color: theme.status.error.text,
+    fontSize: 12,
   },
 })

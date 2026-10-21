@@ -2,85 +2,46 @@ import XCTest
 
 @testable import VescapeCore
 
-/// Mirrors android `IdlePauseDetectorTest.kt` 1:1 (ADR-0021 parity).
+/// @parity /modules/vescape-core/android/src/test/java/expo/modules/vescapecore/telemetry/IdlePauseDetectorTest.kt
 final class IdlePauseDetectorTests: XCTestCase {
-  private let threshold = 300 // 3 km/h in centi-km/h, the default moving threshold
-
-  func testDoesNotPauseBeforeIdleWindowElapses() {
-    let d = IdlePauseDetector(pauseAfterMs: 30_000)
-    XCTAssertNil(d.onSample(speedCentiKmh: 0, movingThresholdCentiKmh: threshold, atMs: 0))
-    XCTAssertNil(d.onSample(speedCentiKmh: 0, movingThresholdCentiKmh: threshold, atMs: 29_999))
-    XCTAssertFalse(d.isPaused)
-  }
-
-  func testPausesAfterContinuousNonMovingTimeReachesWindow() {
-    let d = IdlePauseDetector(pauseAfterMs: 30_000)
-    _ = d.onSample(speedCentiKmh: 0, movingThresholdCentiKmh: threshold, atMs: 0)
-    XCTAssertEqual(.paused, d.onSample(speedCentiKmh: 50, movingThresholdCentiKmh: threshold, atMs: 30_000))
+  func testDisengagementPausesImmediatelyWithoutRepeatedTransitions() {
+    let d = IdlePauseDetector()
+    XCTAssertNil(d.onSample(state: 1))
+    XCTAssertEqual(.paused, d.onSample(state: 9))
     XCTAssertTrue(d.isPaused)
-  }
-
-  func testMovingSampleMidWindowResetsIdleTimer() {
-    let d = IdlePauseDetector(pauseAfterMs: 30_000)
-    _ = d.onSample(speedCentiKmh: 0, movingThresholdCentiKmh: threshold, atMs: 0)
-    _ = d.onSample(speedCentiKmh: 500, movingThresholdCentiKmh: threshold, atMs: 20_000) // moving -> resets
-    XCTAssertNil(d.onSample(speedCentiKmh: 0, movingThresholdCentiKmh: threshold, atMs: 45_000)) // only 25s since reset
+    XCTAssertNil(d.onSample(state: 9))
+    XCTAssertNil(d.onSample(state: 6))
+    XCTAssertEqual(.resumed, d.onSample(state: 1))
     XCTAssertFalse(d.isPaused)
+    XCTAssertNil(d.onSample(state: 1))
+    XCTAssertNil(d.onSample(state: 2))
+    XCTAssertNil(d.onSample(state: 3))
+    XCTAssertEqual(.paused, d.onSample(state: 9))
   }
 
-  func testSpeedAtExactlyThresholdCountsAsMoving() {
-    let d = IdlePauseDetector(pauseAfterMs: 30_000)
-    _ = d.onSample(speedCentiKmh: 0, movingThresholdCentiKmh: threshold, atMs: 0)
-    XCTAssertNil(d.onSample(speedCentiKmh: threshold, movingThresholdCentiKmh: threshold, atMs: 30_000))
-    XCTAssertFalse(d.isPaused)
+  func testAllPackedStatesUseOnlyEngagementNibble() {
+    for sat in 0...15 {
+      for state in 0...15 {
+        let d = IdlePauseDetector()
+        _ = d.onSample(state: 9)
+        let transition = d.onSample(state: (sat << 4) | state)
+        if (1...3).contains(state) {
+          XCTAssertEqual(.resumed, transition)
+          XCTAssertFalse(d.isPaused)
+        } else {
+          XCTAssertNil(transition)
+          XCTAssertTrue(d.isPaused)
+        }
+      }
+    }
   }
 
-  func testResumesInstantlyOnFirstMovingSampleAfterPause() {
-    let d = IdlePauseDetector(pauseAfterMs: 30_000)
-    _ = d.onSample(speedCentiKmh: 0, movingThresholdCentiKmh: threshold, atMs: 0)
-    _ = d.onSample(speedCentiKmh: 0, movingThresholdCentiKmh: threshold, atMs: 30_000) // pause
-    XCTAssertEqual(.resumed, d.onSample(speedCentiKmh: 400, movingThresholdCentiKmh: threshold, atMs: 60_000))
-    XCTAssertFalse(d.isPaused)
-  }
-
-  func testStaysPausedWhileStillNonMovingAndEmitsNoRepeatTransition() {
-    let d = IdlePauseDetector(pauseAfterMs: 30_000)
-    _ = d.onSample(speedCentiKmh: 0, movingThresholdCentiKmh: threshold, atMs: 0)
-    _ = d.onSample(speedCentiKmh: 0, movingThresholdCentiKmh: threshold, atMs: 30_000) // pause
-    XCTAssertNil(d.onSample(speedCentiKmh: 0, movingThresholdCentiKmh: threshold, atMs: 31_000))
-    XCTAssertNil(d.onSample(speedCentiKmh: 0, movingThresholdCentiKmh: threshold, atMs: 120_000))
-    XCTAssertTrue(d.isPaused)
-  }
-
-  func testNegativeSpeedBeyondThresholdCountsAsMoving() {
-    let d = IdlePauseDetector(pauseAfterMs: 30_000)
-    _ = d.onSample(speedCentiKmh: 0, movingThresholdCentiKmh: threshold, atMs: 0)
-    XCTAssertNil(d.onSample(speedCentiKmh: -500, movingThresholdCentiKmh: threshold, atMs: 30_000))
-    XCTAssertFalse(d.isPaused)
-  }
-
-  func testRePausesAfterAResume() {
-    let d = IdlePauseDetector(pauseAfterMs: 30_000)
-    _ = d.onSample(speedCentiKmh: 0, movingThresholdCentiKmh: threshold, atMs: 0)
-    _ = d.onSample(speedCentiKmh: 0, movingThresholdCentiKmh: threshold, atMs: 30_000) // pause
-    _ = d.onSample(speedCentiKmh: 400, movingThresholdCentiKmh: threshold, atMs: 31_000) // resume
-    _ = d.onSample(speedCentiKmh: 0, movingThresholdCentiKmh: threshold, atMs: 31_000)
-    XCTAssertEqual(.paused, d.onSample(speedCentiKmh: 0, movingThresholdCentiKmh: threshold, atMs: 61_000))
-  }
-
-  func testThresholdOfZeroTreatsEverySampleAsMovingSoNeverPauses() {
-    let d = IdlePauseDetector(pauseAfterMs: 30_000)
-    XCTAssertNil(d.onSample(speedCentiKmh: 0, movingThresholdCentiKmh: 0, atMs: 0))
-    XCTAssertNil(d.onSample(speedCentiKmh: 0, movingThresholdCentiKmh: 0, atMs: 60_000))
-    XCTAssertFalse(d.isPaused)
-  }
-
-  func testResetClearsPauseAndTimer() {
-    let d = IdlePauseDetector(pauseAfterMs: 30_000)
-    _ = d.onSample(speedCentiKmh: 0, movingThresholdCentiKmh: threshold, atMs: 0)
-    _ = d.onSample(speedCentiKmh: 0, movingThresholdCentiKmh: threshold, atMs: 30_000) // pause
+  func testResetClearsOldSessionAndNextDisengagedSamplePausesImmediately() {
+    let d = IdlePauseDetector()
+    XCTAssertEqual(.paused, d.onSample(state: 0))
     d.reset()
     XCTAssertFalse(d.isPaused)
-    XCTAssertNil(d.onSample(speedCentiKmh: 0, movingThresholdCentiKmh: threshold, atMs: 31_000)) // timer restarted
+    XCTAssertNil(d.onSample(state: 1))
+    XCTAssertEqual(.paused, d.onSample(state: 15))
   }
 }

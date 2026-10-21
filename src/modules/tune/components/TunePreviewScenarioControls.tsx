@@ -1,3 +1,4 @@
+import { useFormat } from '@/hooks/useFormat'
 /* eslint-disable react-hooks/immutability */
 import { useCallback, useRef, useState } from 'react'
 import { StyleSheet, View } from 'react-native'
@@ -12,7 +13,23 @@ import {
 } from 'react-native-reanimated'
 import { scheduleOnRN } from 'react-native-worklets'
 
-import type { SelectOption } from '@/components/forms/Select'
+import { useUnitSystem } from '@/hooks/useUnitSystem'
+import {
+  lengthFromMeters,
+  lengthInputToMeters,
+  lengthUnit,
+  speedFromKmh,
+  speedInputToKmh,
+  speedUnit,
+} from '@/helpers/units'
+import {
+  HILLS_PRESETS,
+  MOVEMENT_RANGES,
+  type HillsPresetId,
+  type MovementPresetId,
+} from '@/modules/tune/lib/tunePreviewPresentation'
+import { useTunePreviewFormat } from '@/modules/tune/hooks/useTunePreviewFormat'
+export type { HillsPresetId } from '@/modules/tune/lib/tunePreviewPresentation'
 import { SelectCard } from '@/components/forms/SelectCard'
 import { PitchInputControl } from '@/modules/tune/components/PitchInputControl'
 import { TuneDial } from '@/modules/tune/components/TuneDial'
@@ -22,46 +39,15 @@ import {
   pitchInputRateToControlDegrees,
 } from '@/modules/tune/lib/tunePreview'
 
-export type HillsPresetId = 'flat' | 'large' | 'small' | 'pumptrack' | 'custom'
-
-const HILLS_PRESETS: Record<
-  Exclude<HillsPresetId, 'custom'>,
-  { label: string; heightMeters: number; spacingMeters: number }
-> = {
-  flat: { label: 'Flat road', heightMeters: 0, spacingMeters: 0 },
-  large: { label: 'Large hills · 8 m · 90 m', heightMeters: 8, spacingMeters: 90 },
-  small: { label: 'Small hills · 2 m · 24 m', heightMeters: 2, spacingMeters: 24 },
-  pumptrack: { label: 'Pumptrack · 0.5 m · 5 m', heightMeters: 0.5, spacingMeters: 5 },
-}
-
-const HILLS_OPTIONS: SelectOption<HillsPresetId>[] = [
-  ...Object.entries(HILLS_PRESETS).map(([value, preset]) => ({
-    value: value as HillsPresetId,
-    label: preset.label,
-  })),
-  { value: 'custom', label: 'Enter your own' },
-]
-
-type MovementPresetId = 'manual' | 'slow' | 'rapid' | 'frontBack' | 'custom'
 type MovementDirection = 'nose' | 'tail'
 
 const RAPID_MOVEMENT_RATE_DEGREES_PER_SECOND = 125
 const SLOW_MOVEMENT_RATE_DEGREES_PER_SECOND = 128
 const FRONT_BACK_MOVEMENT_RATE_DEGREES_PER_SECOND = 125
-const FORWARD_MOVEMENT_LOW_SPEED_KMH = 15
-const FORWARD_MOVEMENT_HIGH_SPEED_KMH = 30
 const MOVEMENT_BOARD_FULL_POWER_GROUND_ANGLE_DEGREES = 7.5
 const MOVEMENT_BOARD_MAX_GROUND_ANGLE_DEGREES = 15
 const AUTO_MOVEMENT_SMOOTH_MS = 1400
 const AUTO_MOVEMENT_RELEASE_MS = 700
-
-const MOVEMENT_OPTIONS: SelectOption<MovementPresetId>[] = [
-  { value: 'manual', label: 'Manual pitch slider' },
-  { value: 'slow', label: 'Wide speed range · 5-35 km/h' },
-  { value: 'rapid', label: 'Quick speed range · 15-30 km/h' },
-  { value: 'frontBack', label: 'Forward/back range · -10-10 km/h' },
-  { value: 'custom', label: 'Custom range' },
-]
 
 interface TunePreviewScenarioControlsProps {
   hillsPreset: HillsPresetId
@@ -88,6 +74,9 @@ export function TunePreviewScenarioControls({
   speedKmh,
   groundToBoardAngleDegrees,
 }: TunePreviewScenarioControlsProps) {
+  const units = useUnitSystem()
+  const { formatSpeedWithUnit } = useFormat()
+  const { options, formatHillHeight, formatHillSpacing } = useTunePreviewFormat()
   const [movementPreset, setMovementPreset] = useState<MovementPresetId>('manual')
   const [customLowSpeedKmh, setCustomLowSpeedKmh] = useState(10)
   const [customHighSpeedKmh, setCustomHighSpeedKmh] = useState(25)
@@ -121,22 +110,12 @@ export function TunePreviewScenarioControls({
         return
       }
 
-      const lowSpeed =
-        activeMovementPreset === 'frontBack'
-          ? -10
-          : activeMovementPreset === 'rapid'
-            ? FORWARD_MOVEMENT_LOW_SPEED_KMH
-            : activeMovementPreset === 'slow'
-              ? 5
-              : customLowSpeedKmh
-      const highSpeed =
-        activeMovementPreset === 'frontBack'
-          ? 10
-          : activeMovementPreset === 'rapid'
-            ? FORWARD_MOVEMENT_HIGH_SPEED_KMH
-            : activeMovementPreset === 'slow'
-              ? 35
-              : customHighSpeedKmh
+      const range =
+        activeMovementPreset === 'custom'
+          ? { lowKmh: customLowSpeedKmh, highKmh: customHighSpeedKmh }
+          : MOVEMENT_RANGES[activeMovementPreset]
+      const lowSpeed = range.lowKmh
+      const highSpeed = range.highKmh
       const rate =
         activeMovementPreset === 'rapid'
           ? RAPID_MOVEMENT_RATE_DEGREES_PER_SECOND
@@ -209,33 +188,43 @@ export function TunePreviewScenarioControls({
         iconColor={theme.palette.cyan.color}
         title="Balance Input"
         description="Simulates rider lean"
-        options={MOVEMENT_OPTIONS}
+        options={options.movement}
         value={movementPreset}
         onChange={handleMovementPresetChange}
       >
         {movementPreset === 'custom' ? (
           <>
-            <Text style={styles.description}>Low speed · {customLowSpeedKmh.toFixed(0)} km/h</Text>
-            <TuneDial
-              value={customLowSpeedKmh}
-              min={-30}
-              max={45}
-              step={1}
-              unit="km/h"
-              valueChangeMode="live"
-              onValueChange={setCustomLowSpeedKmh}
-            />
             <Text style={styles.description}>
-              High speed · {customHighSpeedKmh.toFixed(0)} km/h
+              Low speed · {formatSpeedWithUnit(customLowSpeedKmh, 1)}
             </Text>
             <TuneDial
-              value={customHighSpeedKmh}
-              min={-15}
-              max={50}
+              key={`low-${units}`}
+              value={speedFromKmh(customLowSpeedKmh, units)}
+              min={speedFromKmh(-30, units)}
+              max={speedFromKmh(45, units)}
               step={1}
-              unit="km/h"
+              displayDecimals={1}
+              unit={speedUnit(units)}
               valueChangeMode="live"
-              onValueChange={setCustomHighSpeedKmh}
+              onValueChange={(value) =>
+                setCustomLowSpeedKmh(speedInputToKmh(value, customLowSpeedKmh, units, -30, 45))
+              }
+            />
+            <Text style={styles.description}>
+              High speed · {formatSpeedWithUnit(customHighSpeedKmh, 1)}
+            </Text>
+            <TuneDial
+              key={`high-${units}`}
+              value={speedFromKmh(customHighSpeedKmh, units)}
+              min={speedFromKmh(-15, units)}
+              max={speedFromKmh(50, units)}
+              step={1}
+              displayDecimals={1}
+              unit={speedUnit(units)}
+              valueChangeMode="live"
+              onValueChange={(value) =>
+                setCustomHighSpeedKmh(speedInputToKmh(value, customHighSpeedKmh, units, -15, 50))
+              }
             />
             <Text style={styles.description}>
               Pitch rate · ±{customRateDegreesPerSecond.toFixed(0)}°/s
@@ -261,35 +250,43 @@ export function TunePreviewScenarioControls({
         iconColor={theme.palette.green.color}
         title="Terrain"
         description="Simulates the slope"
-        options={HILLS_OPTIONS}
+        options={options.hills}
         value={hillsPreset}
         onChange={handlePresetChange}
       >
         {hillsPreset === 'custom' ? (
           <>
             <Text style={styles.description}>
-              Valley-to-peak height · {hillHeightMeters.toFixed(1)} m
+              Valley-to-peak height · {formatHillHeight(hillHeightMeters)}
             </Text>
             <TuneDial
-              value={hillHeightMeters}
-              min={0}
-              max={50}
+              key={`height-${units}`}
+              value={lengthFromMeters(hillHeightMeters, units)}
+              min={lengthFromMeters(0, units)}
+              max={lengthFromMeters(50, units)}
               step={0.1}
-              unit="m"
+              displayDecimals={1}
+              unit={lengthUnit(units)}
               valueChangeMode="live"
-              onValueChange={onHillHeightChange}
+              onValueChange={(value) =>
+                onHillHeightChange(lengthInputToMeters(value, hillHeightMeters, units, 0, 50))
+              }
             />
             <Text style={styles.description}>
-              Peak-to-peak distance · {hillSpacingMeters.toFixed(0)} m
+              Peak-to-peak distance · {formatHillSpacing(hillSpacingMeters)}
             </Text>
             <TuneDial
-              value={hillSpacingMeters}
-              min={2}
-              max={1000}
+              key={`spacing-${units}`}
+              value={lengthFromMeters(hillSpacingMeters, units)}
+              min={lengthFromMeters(2, units)}
+              max={lengthFromMeters(1000, units)}
               step={1}
-              unit="m"
+              displayDecimals={1}
+              unit={lengthUnit(units)}
               valueChangeMode="live"
-              onValueChange={onHillSpacingChange}
+              onValueChange={(value) =>
+                onHillSpacingChange(lengthInputToMeters(value, hillSpacingMeters, units, 2, 1000))
+              }
             />
           </>
         ) : null}

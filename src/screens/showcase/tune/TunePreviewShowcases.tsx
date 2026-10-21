@@ -1,3 +1,5 @@
+import { UnitSystemContext } from '@/hooks/useUnitSystem'
+import type { UnitSystem } from '@/helpers/units'
 import { StyleSheet, View } from 'react-native'
 import { useMemo, useState } from 'react'
 import { useSharedValue } from 'react-native-reanimated'
@@ -120,6 +122,7 @@ export function BasicSliderCellShowcase() {
 }
 
 export function TunePreviewShowcase() {
+  const [units, setUnits] = useState<UnitSystem>('metric')
   const pitchInputDegrees = useSharedValue(0)
   const pitchInputActive = useSharedValue(false)
   const previewSpeedKmh = useSharedValue(15)
@@ -178,44 +181,52 @@ export function TunePreviewShowcase() {
   }
 
   return (
-    <ShowcaseCard
-      name="Tune Preview"
-      controls={
-        <>
-          <ChipRow
-            label="state"
-            options={['flat', 'hills', 'dense hills']}
-            selected={scenario}
-            onSelect={selectScenario}
-          />
-          <ValueRow label="pitch input" value="hold and drag" />
-        </>
-      }
-    >
-      <TunePreview
-        fields={fields}
-        pitchInputDegrees={pitchInputDegrees}
-        pitchInputActive={pitchInputActive}
-        hillsEnabled={hillsEnabled}
-        hillHeightMeters={hillHeightMeters}
-        hillSpacingMeters={hillSpacingMeters}
-        onHelp={() => {}}
-        speedKmh={previewSpeedKmh}
-        groundToBoardAngleDegrees={groundToBoardAngleDegrees}
-      />
-      <TunePreviewScenarioControls
-        hillsPreset={hillsPreset}
-        onHillsPresetChange={setHillsPreset}
-        hillHeightMeters={hillHeightMeters}
-        onHillHeightChange={setHillHeightMeters}
-        hillSpacingMeters={hillSpacingMeters}
-        onHillSpacingChange={setHillSpacingMeters}
-        pitchInputDegrees={pitchInputDegrees}
-        pitchInputActive={pitchInputActive}
-        speedKmh={previewSpeedKmh}
-        groundToBoardAngleDegrees={groundToBoardAngleDegrees}
-      />
-    </ShowcaseCard>
+    <UnitSystemContext value={units}>
+      <ShowcaseCard
+        name="Tune Preview"
+        controls={
+          <>
+            <ChipRow
+              label="state"
+              options={['flat', 'hills', 'dense hills']}
+              selected={scenario}
+              onSelect={selectScenario}
+            />
+            <ChipRow
+              label="units"
+              options={['metric', 'imperial']}
+              selected={units}
+              onSelect={(next) => setUnits(next as UnitSystem)}
+            />
+            <ValueRow label="pitch input" value="hold and drag" />
+          </>
+        }
+      >
+        <TunePreview
+          fields={fields}
+          pitchInputDegrees={pitchInputDegrees}
+          pitchInputActive={pitchInputActive}
+          hillsEnabled={hillsEnabled}
+          hillHeightMeters={hillHeightMeters}
+          hillSpacingMeters={hillSpacingMeters}
+          onHelp={() => {}}
+          speedKmh={previewSpeedKmh}
+          groundToBoardAngleDegrees={groundToBoardAngleDegrees}
+        />
+        <TunePreviewScenarioControls
+          hillsPreset={hillsPreset}
+          onHillsPresetChange={setHillsPreset}
+          hillHeightMeters={hillHeightMeters}
+          onHillHeightChange={setHillHeightMeters}
+          hillSpacingMeters={hillSpacingMeters}
+          onHillSpacingChange={setHillSpacingMeters}
+          pitchInputDegrees={pitchInputDegrees}
+          pitchInputActive={pitchInputActive}
+          speedKmh={previewSpeedKmh}
+          groundToBoardAngleDegrees={groundToBoardAngleDegrees}
+        />
+      </ShowcaseCard>
+    </UnitSystemContext>
   )
 }
 
@@ -260,6 +271,8 @@ export function TuneProfileMetadataModalShowcase() {
         visible={open}
         title="Edit Profile"
         confirmLabel="Save"
+        error="Profile could not be saved."
+        loading={false}
         initialValue={value}
         onConfirm={(next) => {
           setValue(next)
@@ -294,3 +307,41 @@ const styles = StyleSheet.create({
     fontWeight: '800',
   },
 })
+
+export function ManualTuneEditorShowcase() {
+  const triggerRef = useTriggerRef()
+  const [value, setValue] = useState(2.5)
+  const [open, setOpen] = useState(false)
+  return (
+    <>
+      <ShowcaseCard name="Tune editor modes" controls={<Text>Applied value: {value}</Text>}>
+        <View ref={triggerRef} collapsable={false}>
+          <OpenButton label="Edit threshold" onPress={() => setOpen(true)} />
+        </View>
+      </ShowcaseCard>
+      <FieldEditorPopover
+        target={
+          open
+            ? {
+                triggerRef,
+                label: 'Threshold Angle Up',
+                fieldId: 'atr_threshold_up',
+                value,
+                min: 0,
+                max: 5,
+                step: 0.5,
+                manualDecimals: 1,
+                unit: 'deg',
+                help: 'Manual entry accepts tenths of a degree; the ruler moves in half-degree steps.',
+              }
+            : null
+        }
+        onCancel={() => setOpen(false)}
+        onApply={(next) => {
+          setValue(next)
+          setOpen(false)
+        }}
+      />
+    </>
+  )
+}

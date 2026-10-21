@@ -1,0 +1,751 @@
+{
+  "$comment": "Vescape Accessory Protocol v1 operational session contract: the commands an enrolled Accessory's session sends, the acknowledgements it accepts back, and the request-id rules the accessory enforces. Kotlin, Swift and the ESP32 firmware all run these cases. `encode` pins the exact bytes the app writes for one desired command at one request id — a map-backed encoder does not promise key order, and three implementations comparing bytes is what keeps the wire from drifting. `decode` is the app-side parser: what an accessory line must produce, or that it must be ignored without disturbing the session. `peer` drives the firmware: a sequence of received lines and the exact lines it must answer with, which is where stale/reused request ids, duplicate-retry replay and rate resolution are pinned.",
+  "sessionId": "b06b9d76-6c73-4d70-a763-d933b294c45b",
+  "otherSessionId": "1a2b3c4d-0000-4000-8000-000000000000",
+  "helloRequestId": 1,
+  "timing": {
+    "leaseMs": 2000,
+    "renewIntervalMs": 500,
+    "requestTimeoutMs": 500,
+    "handshakeTimeoutMs": 3000
+  },
+  "errorCodes": [
+    "invalid_argument",
+    "unknown_capability",
+    "unsupported_message",
+    "not_ready",
+    "hardware_error",
+    "stale_request",
+    "request_id_reused"
+  ],
+  "encode": [
+    {
+      "name": "configure puts a clearance sensor into measurement standby",
+      "requestId": 2,
+      "command": {
+        "kind": "configure",
+        "capabilityId": "clearance",
+        "enabled": false,
+        "rateHz": 20
+      },
+      "line": "{\"type\":\"configure\",\"sessionId\":\"b06b9d76-6c73-4d70-a763-d933b294c45b\",\"requestId\":2,\"capabilityId\":\"clearance\",\"enabled\":false,\"rateHz\":20}"
+    },
+    {
+      "name": "configure enables measurement at a resolved rate",
+      "requestId": 3,
+      "command": {
+        "kind": "configure",
+        "capabilityId": "clearance",
+        "enabled": true,
+        "rateHz": 30
+      },
+      "line": "{\"type\":\"configure\",\"sessionId\":\"b06b9d76-6c73-4d70-a763-d933b294c45b\",\"requestId\":3,\"capabilityId\":\"clearance\",\"enabled\":true,\"rateHz\":30}"
+    },
+    {
+      "name": "state reports Board telemetry unavailable and omits mode",
+      "requestId": 4,
+      "command": {
+        "kind": "state",
+        "capabilityId": "rear_light",
+        "telemetry": "unavailable",
+        "mode": null,
+        "parked": "off",
+        "preview": false
+      },
+      "line": "{\"type\":\"state\",\"sessionId\":\"b06b9d76-6c73-4d70-a763-d933b294c45b\",\"requestId\":4,\"capabilityId\":\"rear_light\",\"telemetry\":\"unavailable\",\"parked\":\"off\"}"
+    },
+    {
+      "name": "state carries a riding mode when Board telemetry is available",
+      "requestId": 5,
+      "command": {
+        "kind": "state",
+        "capabilityId": "rear_light",
+        "telemetry": "available",
+        "mode": "braking",
+        "parked": "glow",
+        "preview": false
+      },
+      "line": "{\"type\":\"state\",\"sessionId\":\"b06b9d76-6c73-4d70-a763-d933b294c45b\",\"requestId\":5,\"capabilityId\":\"rear_light\",\"telemetry\":\"available\",\"mode\":\"braking\",\"parked\":\"glow\"}"
+    },
+    {
+      "name": "preview labels simulated state and may pair unavailable telemetry with a mode",
+      "requestId": 6,
+      "command": {
+        "kind": "state",
+        "capabilityId": "rear_light",
+        "telemetry": "unavailable",
+        "mode": "hard_braking",
+        "parked": "glow",
+        "preview": true
+      },
+      "line": "{\"type\":\"state\",\"sessionId\":\"b06b9d76-6c73-4d70-a763-d933b294c45b\",\"requestId\":6,\"capabilityId\":\"rear_light\",\"telemetry\":\"unavailable\",\"mode\":\"hard_braking\",\"parked\":\"glow\",\"preview\":true}"
+    }
+  ],
+  "decode": [
+    {
+      "name": "ack carries the values actually applied and the lease they hold",
+      "line": "{\"type\":\"ack\",\"sessionId\":\"b06b9d76-6c73-4d70-a763-d933b294c45b\",\"requestId\":2,\"capabilityId\":\"clearance\",\"applied\":{\"enabled\":false,\"rateHz\":20},\"leaseMs\":2000}",
+      "ack": {
+        "requestId": 2,
+        "capabilityId": "clearance",
+        "leaseMs": 2000,
+        "appliedEnabled": false,
+        "appliedRateHz": 20
+      }
+    },
+    {
+      "name": "ack for a state command reports the state the accessory is now in",
+      "line": "{\"type\":\"ack\",\"sessionId\":\"b06b9d76-6c73-4d70-a763-d933b294c45b\",\"requestId\":4,\"capabilityId\":\"rear_light\",\"applied\":{\"telemetry\":\"unavailable\",\"parked\":\"off\"},\"leaseMs\":2000}",
+      "ack": {
+        "requestId": 4,
+        "capabilityId": "rear_light",
+        "leaseMs": 2000,
+        "appliedTelemetry": "unavailable",
+        "appliedParked": "off"
+      }
+    },
+    {
+      "name": "an error names the request it refused",
+      "line": "{\"type\":\"error\",\"sessionId\":\"b06b9d76-6c73-4d70-a763-d933b294c45b\",\"requestId\":3,\"code\":\"invalid_argument\",\"message\":\"rateHz must be positive\"}",
+      "error": {
+        "requestId": 3,
+        "code": "invalid_argument"
+      }
+    },
+    {
+      "name": "an ack from another session is ignored and renews nothing",
+      "line": "{\"type\":\"ack\",\"sessionId\":\"1a2b3c4d-0000-4000-8000-000000000000\",\"requestId\":2,\"capabilityId\":\"clearance\",\"applied\":{\"enabled\":false,\"rateHz\":20},\"leaseMs\":2000}",
+      "ignored": true
+    },
+    {
+      "name": "an ack without a lease is not an applied command",
+      "line": "{\"type\":\"ack\",\"sessionId\":\"b06b9d76-6c73-4d70-a763-d933b294c45b\",\"requestId\":2,\"capabilityId\":\"clearance\",\"applied\":{\"enabled\":false,\"rateHz\":20}}",
+      "ignored": true
+    },
+    {
+      "name": "a message type this slice does not handle is ignored, not a protocol failure",
+      "line": "{\"type\":\"telemetry\",\"sessionId\":\"b06b9d76-6c73-4d70-a763-d933b294c45b\",\"capabilityId\":\"clearance\",\"speedKmh\":12.4}",
+      "ignored": true
+    },
+    {
+      "name": "a line that is not JSON ends the protocol session",
+      "line": "not json at all",
+      "malformed": true
+    }
+  ],
+  "peer": [
+    {
+      "name": "configure is acknowledged with the values actually applied",
+      "requests": [
+        "{\"type\":\"configure\",\"sessionId\":\"b06b9d76-6c73-4d70-a763-d933b294c45b\",\"requestId\":2,\"capabilityId\":\"rear_light\",\"enabled\":false,\"rateHz\":20}"
+      ],
+      "replies": [
+        "{\"type\":\"error\",\"sessionId\":\"b06b9d76-6c73-4d70-a763-d933b294c45b\",\"requestId\":2,\"code\":\"invalid_argument\",\"message\":\"capability does not take a configuration\"}"
+      ]
+    },
+    {
+      "name": "a state command is acknowledged and leased",
+      "requests": [
+        "{\"type\":\"state\",\"sessionId\":\"b06b9d76-6c73-4d70-a763-d933b294c45b\",\"requestId\":2,\"capabilityId\":\"rear_light\",\"telemetry\":\"unavailable\",\"parked\":\"off\"}"
+      ],
+      "replies": [
+        "{\"type\":\"ack\",\"sessionId\":\"b06b9d76-6c73-4d70-a763-d933b294c45b\",\"requestId\":2,\"capabilityId\":\"rear_light\",\"applied\":{\"telemetry\":\"unavailable\",\"parked\":\"off\"},\"leaseMs\":2000}"
+      ]
+    },
+    {
+      "name": "retrying the same request id replays the same reply",
+      "requests": [
+        "{\"type\":\"state\",\"sessionId\":\"b06b9d76-6c73-4d70-a763-d933b294c45b\",\"requestId\":2,\"capabilityId\":\"rear_light\",\"telemetry\":\"unavailable\",\"parked\":\"off\"}",
+        "{\"type\":\"state\",\"sessionId\":\"b06b9d76-6c73-4d70-a763-d933b294c45b\",\"requestId\":2,\"capabilityId\":\"rear_light\",\"telemetry\":\"unavailable\",\"parked\":\"off\"}"
+      ],
+      "replies": [
+        "{\"type\":\"ack\",\"sessionId\":\"b06b9d76-6c73-4d70-a763-d933b294c45b\",\"requestId\":2,\"capabilityId\":\"rear_light\",\"applied\":{\"telemetry\":\"unavailable\",\"parked\":\"off\"},\"leaseMs\":2000}",
+        "{\"type\":\"ack\",\"sessionId\":\"b06b9d76-6c73-4d70-a763-d933b294c45b\",\"requestId\":2,\"capabilityId\":\"rear_light\",\"applied\":{\"telemetry\":\"unavailable\",\"parked\":\"off\"},\"leaseMs\":2000}"
+      ],
+      "leaseRenewals": 1
+    },
+    {
+      "name": "an older request id is refused as stale",
+      "requests": [
+        "{\"type\":\"state\",\"sessionId\":\"b06b9d76-6c73-4d70-a763-d933b294c45b\",\"requestId\":3,\"capabilityId\":\"rear_light\",\"telemetry\":\"unavailable\",\"parked\":\"off\"}",
+        "{\"type\":\"state\",\"sessionId\":\"b06b9d76-6c73-4d70-a763-d933b294c45b\",\"requestId\":2,\"capabilityId\":\"rear_light\",\"telemetry\":\"available\",\"mode\":\"riding\",\"parked\":\"off\"}"
+      ],
+      "replies": [
+        "{\"type\":\"ack\",\"sessionId\":\"b06b9d76-6c73-4d70-a763-d933b294c45b\",\"requestId\":3,\"capabilityId\":\"rear_light\",\"applied\":{\"telemetry\":\"unavailable\",\"parked\":\"off\"},\"leaseMs\":2000}",
+        "{\"type\":\"error\",\"sessionId\":\"b06b9d76-6c73-4d70-a763-d933b294c45b\",\"requestId\":2,\"code\":\"stale_request\",\"message\":\"request id is older than the last one applied\"}"
+      ],
+      "leaseRenewals": 1
+    },
+    {
+      "name": "reusing a request id with a different body is refused",
+      "requests": [
+        "{\"type\":\"state\",\"sessionId\":\"b06b9d76-6c73-4d70-a763-d933b294c45b\",\"requestId\":2,\"capabilityId\":\"rear_light\",\"telemetry\":\"unavailable\",\"parked\":\"off\"}",
+        "{\"type\":\"state\",\"sessionId\":\"b06b9d76-6c73-4d70-a763-d933b294c45b\",\"requestId\":2,\"capabilityId\":\"rear_light\",\"telemetry\":\"available\",\"mode\":\"riding\",\"parked\":\"off\"}"
+      ],
+      "replies": [
+        "{\"type\":\"ack\",\"sessionId\":\"b06b9d76-6c73-4d70-a763-d933b294c45b\",\"requestId\":2,\"capabilityId\":\"rear_light\",\"applied\":{\"telemetry\":\"unavailable\",\"parked\":\"off\"},\"leaseMs\":2000}",
+        "{\"type\":\"error\",\"sessionId\":\"b06b9d76-6c73-4d70-a763-d933b294c45b\",\"requestId\":2,\"code\":\"request_id_reused\",\"message\":\"request id was already used with a different body\"}"
+      ],
+      "leaseRenewals": 1
+    },
+    {
+      "name": "an unknown capability id is refused without touching anything",
+      "requests": [
+        "{\"type\":\"state\",\"sessionId\":\"b06b9d76-6c73-4d70-a763-d933b294c45b\",\"requestId\":2,\"capabilityId\":\"front_light\",\"telemetry\":\"unavailable\",\"parked\":\"off\"}"
+      ],
+      "replies": [
+        "{\"type\":\"error\",\"sessionId\":\"b06b9d76-6c73-4d70-a763-d933b294c45b\",\"requestId\":2,\"code\":\"unknown_capability\",\"message\":\"no capability with that id\"}"
+      ],
+      "leaseRenewals": 0
+    },
+    {
+      "name": "a mode without available telemetry is only legal under preview",
+      "requests": [
+        "{\"type\":\"state\",\"sessionId\":\"b06b9d76-6c73-4d70-a763-d933b294c45b\",\"requestId\":2,\"capabilityId\":\"rear_light\",\"telemetry\":\"unavailable\",\"mode\":\"braking\",\"parked\":\"off\"}"
+      ],
+      "replies": [
+        "{\"type\":\"error\",\"sessionId\":\"b06b9d76-6c73-4d70-a763-d933b294c45b\",\"requestId\":2,\"code\":\"invalid_argument\",\"message\":\"mode requires available telemetry unless preview\"}"
+      ],
+      "leaseRenewals": 0
+    },
+    {
+      "name": "a command from another session never renews a lease",
+      "requests": [
+        "{\"type\":\"state\",\"sessionId\":\"1a2b3c4d-0000-4000-8000-000000000000\",\"requestId\":2,\"capabilityId\":\"rear_light\",\"telemetry\":\"unavailable\",\"parked\":\"off\"}"
+      ],
+      "replies": [],
+      "leaseRenewals": 0
+    },
+    {
+      "name": "a well-formed message type v1 does not define is refused, not disconnected",
+      "requests": [
+        "{\"type\":\"calibrate\",\"sessionId\":\"b06b9d76-6c73-4d70-a763-d933b294c45b\",\"requestId\":2,\"capabilityId\":\"rear_light\"}"
+      ],
+      "replies": [
+        "{\"type\":\"error\",\"sessionId\":\"b06b9d76-6c73-4d70-a763-d933b294c45b\",\"requestId\":2,\"code\":\"unsupported_message\",\"message\":\"v1 defines no such message\"}"
+      ],
+      "leaseRenewals": 0
+    }
+  ],
+  "rateResolution": [
+    {
+      "name": "exact rate is kept",
+      "ratesHz": [10, 20, 30],
+      "requested": 20,
+      "resolved": 20
+    },
+    {
+      "name": "nearest supported rate wins",
+      "ratesHz": [10, 20, 30],
+      "requested": 28,
+      "resolved": 30
+    },
+    {
+      "name": "a tie resolves to the lower rate",
+      "ratesHz": [10, 20, 30],
+      "requested": 25,
+      "resolved": 20
+    },
+    {
+      "name": "below the slowest rate clamps to it",
+      "ratesHz": [10, 20, 30],
+      "requested": 1,
+      "resolved": 10
+    },
+    {
+      "name": "above the fastest rate clamps to it",
+      "ratesHz": [10, 20, 30],
+      "requested": 500,
+      "resolved": 30
+    }
+  ],
+  "readings": {
+    "$comment": "Ground-clearance readings: the unacknowledged sample stream, and the single rule the whole feature rests on — a sample that is not a measurement never becomes a distance. `ok` is the only status that carries a value, and the decode cases below pin what happens to every way a line can fail to be one: a missing value, a non-numeric value, a status this app does not know. All of them resolve to `error`, never to the top of the declared range. The firmware answers to `encode`; the app answers to `decode`, `rangeCheck`, `acceptance` and `staleAfterMs`.",
+    "capabilityId": "clearance",
+    "declaredRange": {
+      "min": 3,
+      "max": 100
+    },
+    "encode": [
+      {
+        "name": "a measured sample carries its value in centimetres",
+        "seq": 1,
+        "sampleTimeMs": 125,
+        "status": "ok",
+        "valueCm": 12.4,
+        "line": "{\"type\":\"reading\",\"sessionId\":\"b06b9d76-6c73-4d70-a763-d933b294c45b\",\"capabilityId\":\"clearance\",\"seq\":1,\"sampleTimeMs\":125,\"status\":\"ok\",\"value\":12.4}"
+      },
+      {
+        "name": "nothing in reach is out of range and carries no value",
+        "seq": 2,
+        "sampleTimeMs": 175,
+        "status": "out_of_range",
+        "valueCm": null,
+        "line": "{\"type\":\"reading\",\"sessionId\":\"b06b9d76-6c73-4d70-a763-d933b294c45b\",\"capabilityId\":\"clearance\",\"seq\":2,\"sampleTimeMs\":175,\"status\":\"out_of_range\"}"
+      },
+      {
+        "name": "a sensor that could not measure reports an error and carries no value",
+        "seq": 3,
+        "sampleTimeMs": 225,
+        "status": "error",
+        "valueCm": null,
+        "line": "{\"type\":\"reading\",\"sessionId\":\"b06b9d76-6c73-4d70-a763-d933b294c45b\",\"capabilityId\":\"clearance\",\"seq\":3,\"sampleTimeMs\":225,\"status\":\"error\"}"
+      },
+      {
+        "name": "a whole-centimetre value still prints as a decimal",
+        "seq": 4,
+        "sampleTimeMs": 275,
+        "status": "ok",
+        "valueCm": 9.0,
+        "line": "{\"type\":\"reading\",\"sessionId\":\"b06b9d76-6c73-4d70-a763-d933b294c45b\",\"capabilityId\":\"clearance\",\"seq\":4,\"sampleTimeMs\":275,\"status\":\"ok\",\"value\":9.0}"
+      }
+    ],
+    "decode": [
+      {
+        "name": "a measured sample decodes to a distance in centimetres",
+        "line": "{\"type\":\"reading\",\"sessionId\":\"b06b9d76-6c73-4d70-a763-d933b294c45b\",\"capabilityId\":\"clearance\",\"seq\":1,\"sampleTimeMs\":125,\"status\":\"ok\",\"value\":12.4}",
+        "reading": {
+          "capabilityId": "clearance",
+          "seq": 1,
+          "sampleTimeMs": 125,
+          "status": "ok",
+          "valueCm": 12.4
+        }
+      },
+      {
+        "name": "out of range decodes without a value",
+        "line": "{\"type\":\"reading\",\"sessionId\":\"b06b9d76-6c73-4d70-a763-d933b294c45b\",\"capabilityId\":\"clearance\",\"seq\":2,\"sampleTimeMs\":175,\"status\":\"out_of_range\"}",
+        "reading": {
+          "capabilityId": "clearance",
+          "seq": 2,
+          "sampleTimeMs": 175,
+          "status": "out_of_range",
+          "valueCm": null
+        }
+      },
+      {
+        "name": "an error decodes without a value",
+        "line": "{\"type\":\"reading\",\"sessionId\":\"b06b9d76-6c73-4d70-a763-d933b294c45b\",\"capabilityId\":\"clearance\",\"seq\":3,\"sampleTimeMs\":225,\"status\":\"error\"}",
+        "reading": {
+          "capabilityId": "clearance",
+          "seq": 3,
+          "sampleTimeMs": 225,
+          "status": "error",
+          "valueCm": null
+        }
+      },
+      {
+        "name": "an ok carrying no value is an error, never the maximum distance",
+        "line": "{\"type\":\"reading\",\"sessionId\":\"b06b9d76-6c73-4d70-a763-d933b294c45b\",\"capabilityId\":\"clearance\",\"seq\":4,\"sampleTimeMs\":275,\"status\":\"ok\"}",
+        "reading": {
+          "capabilityId": "clearance",
+          "seq": 4,
+          "sampleTimeMs": 275,
+          "status": "error",
+          "valueCm": null
+        }
+      },
+      {
+        "name": "an ok whose value is null is an error, never the maximum distance",
+        "line": "{\"type\":\"reading\",\"sessionId\":\"b06b9d76-6c73-4d70-a763-d933b294c45b\",\"capabilityId\":\"clearance\",\"seq\":5,\"sampleTimeMs\":325,\"status\":\"ok\",\"value\":null}",
+        "reading": {
+          "capabilityId": "clearance",
+          "seq": 5,
+          "sampleTimeMs": 325,
+          "status": "error",
+          "valueCm": null
+        }
+      },
+      {
+        "name": "an ok whose value is text is an error, never the maximum distance",
+        "line": "{\"type\":\"reading\",\"sessionId\":\"b06b9d76-6c73-4d70-a763-d933b294c45b\",\"capabilityId\":\"clearance\",\"seq\":6,\"sampleTimeMs\":375,\"status\":\"ok\",\"value\":\"12.4\"}",
+        "reading": {
+          "capabilityId": "clearance",
+          "seq": 6,
+          "sampleTimeMs": 375,
+          "status": "error",
+          "valueCm": null
+        }
+      },
+      {
+        "name": "a status this app does not know is an error, never a distance",
+        "line": "{\"type\":\"reading\",\"sessionId\":\"b06b9d76-6c73-4d70-a763-d933b294c45b\",\"capabilityId\":\"clearance\",\"seq\":7,\"sampleTimeMs\":425,\"status\":\"saturated\",\"value\":12.4}",
+        "reading": {
+          "capabilityId": "clearance",
+          "seq": 7,
+          "sampleTimeMs": 425,
+          "status": "error",
+          "valueCm": null
+        }
+      },
+      {
+        "name": "a reading with no status at all is an error",
+        "line": "{\"type\":\"reading\",\"sessionId\":\"b06b9d76-6c73-4d70-a763-d933b294c45b\",\"capabilityId\":\"clearance\",\"seq\":8,\"sampleTimeMs\":475}",
+        "reading": {
+          "capabilityId": "clearance",
+          "seq": 8,
+          "sampleTimeMs": 475,
+          "status": "error",
+          "valueCm": null
+        }
+      },
+      {
+        "name": "a reading from another session is ignored and renews no freshness",
+        "line": "{\"type\":\"reading\",\"sessionId\":\"1a2b3c4d-0000-4000-8000-000000000000\",\"capabilityId\":\"clearance\",\"seq\":9,\"sampleTimeMs\":525,\"status\":\"ok\",\"value\":12.4}",
+        "ignored": true
+      },
+      {
+        "name": "a reading naming no capability is ignored",
+        "line": "{\"type\":\"reading\",\"sessionId\":\"b06b9d76-6c73-4d70-a763-d933b294c45b\",\"capabilityId\":\"\",\"seq\":10,\"sampleTimeMs\":575,\"status\":\"ok\",\"value\":12.4}",
+        "ignored": true
+      },
+      {
+        "name": "a reading whose sequence number is not a whole number is ignored",
+        "line": "{\"type\":\"reading\",\"sessionId\":\"b06b9d76-6c73-4d70-a763-d933b294c45b\",\"capabilityId\":\"clearance\",\"seq\":1.5,\"sampleTimeMs\":625,\"status\":\"ok\",\"value\":12.4}",
+        "ignored": true
+      },
+      {
+        "name": "a reading with no sample time is ignored",
+        "line": "{\"type\":\"reading\",\"sessionId\":\"b06b9d76-6c73-4d70-a763-d933b294c45b\",\"capabilityId\":\"clearance\",\"seq\":11,\"status\":\"ok\",\"value\":12.4}",
+        "ignored": true
+      }
+    ],
+    "rangeCheck": [
+      {
+        "name": "a value inside the declared window is a measurement",
+        "valueCm": 12.4,
+        "resolvedStatus": "ok",
+        "resolvedValueCm": 12.4
+      },
+      {
+        "name": "a value on the declared minimum is a measurement",
+        "valueCm": 3,
+        "resolvedStatus": "ok",
+        "resolvedValueCm": 3
+      },
+      {
+        "name": "a value on the declared maximum is a measurement",
+        "valueCm": 100,
+        "resolvedStatus": "ok",
+        "resolvedValueCm": 100
+      },
+      {
+        "name": "a value below the declared window is out of range, not a near reading",
+        "valueCm": 1,
+        "resolvedStatus": "out_of_range",
+        "resolvedValueCm": null
+      },
+      {
+        "name": "a value above the declared window is out of range, not the maximum",
+        "valueCm": 140,
+        "resolvedStatus": "out_of_range",
+        "resolvedValueCm": null
+      }
+    ],
+    "acceptance": [
+      {
+        "name": "the first sample of a session is accepted",
+        "previous": null,
+        "seq": 1,
+        "sampleTimeMs": 125,
+        "accepted": true
+      },
+      {
+        "name": "the next sample is accepted",
+        "previous": {
+          "seq": 4,
+          "sampleTimeMs": 300
+        },
+        "seq": 5,
+        "sampleTimeMs": 350,
+        "accepted": true
+      },
+      {
+        "name": "a repeated sequence number is a duplicate and is dropped",
+        "previous": {
+          "seq": 4,
+          "sampleTimeMs": 300
+        },
+        "seq": 4,
+        "sampleTimeMs": 350,
+        "accepted": false
+      },
+      {
+        "name": "an older sequence number is dropped",
+        "previous": {
+          "seq": 4,
+          "sampleTimeMs": 300
+        },
+        "seq": 3,
+        "sampleTimeMs": 400,
+        "accepted": false
+      },
+      {
+        "name": "a sequence number that advanced across a measurement pause is accepted",
+        "previous": {
+          "seq": 4,
+          "sampleTimeMs": 300
+        },
+        "seq": 40,
+        "sampleTimeMs": 9000,
+        "accepted": true
+      },
+      {
+        "name": "a regressed sample time is dropped even when the sequence advanced",
+        "previous": {
+          "seq": 4,
+          "sampleTimeMs": 300
+        },
+        "seq": 5,
+        "sampleTimeMs": 299,
+        "accepted": false
+      },
+      {
+        "name": "a repeated sample time with a new sequence number is accepted",
+        "previous": {
+          "seq": 4,
+          "sampleTimeMs": 300
+        },
+        "seq": 5,
+        "sampleTimeMs": 300,
+        "accepted": true
+      }
+    ],
+    "staleAfterMs": [
+      {
+        "name": "30 Hz uses the floor",
+        "rateHz": 30,
+        "staleAfterMs": 300
+      },
+      {
+        "name": "20 Hz uses the floor",
+        "rateHz": 20,
+        "staleAfterMs": 300
+      },
+      {
+        "name": "10 Hz uses the floor",
+        "rateHz": 10,
+        "staleAfterMs": 300
+      },
+      {
+        "name": "5 Hz uses three sample periods",
+        "rateHz": 5,
+        "staleAfterMs": 600
+      },
+      {
+        "name": "2 Hz uses three sample periods",
+        "rateHz": 2,
+        "staleAfterMs": 1500
+      }
+    ]
+  },
+  "groundClearance": {
+    "$comment": "Saved ground-clearance calibration, and what it turns a reading into. Validity is checked against the capability's own declared window, so a firmware that narrowed its range invalidates a calibration that no longer fits instead of driving the board to numbers the hardware refuses. `problem` is the named reason a calibration is not one — a boolean would leave the rider's screen with nothing to say, and the rules live natively so a screen cannot grow a second definition of valid. `tiltInput` is signed: positive lifts the nose. Less ground clearance always means more correction; the mounting direction only decides which way.",
+    "declaredRange": {
+      "min": 3,
+      "max": 100
+    },
+    "validity": [
+      {
+        "name": "near below far is a complete calibration",
+        "calibration": {
+          "nearCm": 5,
+          "farCm": 20,
+          "direction": "nose",
+          "strengthPercent": 60
+        },
+        "valid": true,
+        "problem": null
+      },
+      {
+        "name": "near equal to far leaves no window to map",
+        "calibration": {
+          "nearCm": 20,
+          "farCm": 20,
+          "direction": "nose",
+          "strengthPercent": 60
+        },
+        "valid": false,
+        "problem": "near-not-below-far"
+      },
+      {
+        "name": "near above far is not a calibration",
+        "calibration": {
+          "nearCm": 30,
+          "farCm": 20,
+          "direction": "nose",
+          "strengthPercent": 60
+        },
+        "valid": false,
+        "problem": "near-not-below-far"
+      },
+      {
+        "name": "a near below the declared minimum no longer fits the hardware",
+        "calibration": {
+          "nearCm": 1,
+          "farCm": 20,
+          "direction": "nose",
+          "strengthPercent": 60
+        },
+        "valid": false,
+        "problem": "outside-declared-range"
+      },
+      {
+        "name": "a far above the declared maximum no longer fits the hardware",
+        "calibration": {
+          "nearCm": 5,
+          "farCm": 140,
+          "direction": "nose",
+          "strengthPercent": 60
+        },
+        "valid": false,
+        "problem": "outside-declared-range"
+      },
+      {
+        "name": "a tail mounting is a complete calibration",
+        "calibration": {
+          "nearCm": 5,
+          "farCm": 20,
+          "direction": "tail",
+          "strengthPercent": 100
+        },
+        "valid": true,
+        "problem": null
+      },
+      {
+        "name": "a direction this app does not know drives nothing",
+        "calibration": {
+          "nearCm": 5,
+          "farCm": 20,
+          "direction": "sideways",
+          "strengthPercent": 60
+        },
+        "valid": false,
+        "problem": "unknown-direction"
+      },
+      {
+        "name": "zero strength commands nothing and is not a calibration",
+        "calibration": {
+          "nearCm": 5,
+          "farCm": 20,
+          "direction": "nose",
+          "strengthPercent": 0
+        },
+        "valid": false,
+        "problem": "strength-out-of-bounds"
+      },
+      {
+        "name": "strength past full is not a calibration",
+        "calibration": {
+          "nearCm": 5,
+          "farCm": 20,
+          "direction": "nose",
+          "strengthPercent": 140
+        },
+        "valid": false,
+        "problem": "strength-out-of-bounds"
+      },
+      {
+        "name": "a non-finite distance is not a calibration",
+        "calibration": {
+          "nearCm": 5,
+          "farCm": null,
+          "direction": "nose",
+          "strengthPercent": 60
+        },
+        "valid": false,
+        "problem": "not-a-number"
+      }
+    ],
+    "tilt": [
+      {
+        "name": "at the far distance nothing is commanded",
+        "calibration": {
+          "nearCm": 5,
+          "farCm": 20,
+          "direction": "nose",
+          "strengthPercent": 100
+        },
+        "valueCm": 20,
+        "tiltInput": 0
+      },
+      {
+        "name": "past the far distance nothing is commanded",
+        "calibration": {
+          "nearCm": 5,
+          "farCm": 20,
+          "direction": "nose",
+          "strengthPercent": 100
+        },
+        "valueCm": 60,
+        "tiltInput": 0
+      },
+      {
+        "name": "at the near distance the full strength is commanded",
+        "calibration": {
+          "nearCm": 5,
+          "farCm": 20,
+          "direction": "nose",
+          "strengthPercent": 100
+        },
+        "valueCm": 5,
+        "tiltInput": 1
+      },
+      {
+        "name": "below the near distance it stays at full strength",
+        "calibration": {
+          "nearCm": 5,
+          "farCm": 20,
+          "direction": "nose",
+          "strengthPercent": 100
+        },
+        "valueCm": 3,
+        "tiltInput": 1
+      },
+      {
+        "name": "halfway through the window is half the correction",
+        "calibration": {
+          "nearCm": 5,
+          "farCm": 20,
+          "direction": "nose",
+          "strengthPercent": 100
+        },
+        "valueCm": 12.5,
+        "tiltInput": 0.5
+      },
+      {
+        "name": "strength scales the whole command",
+        "calibration": {
+          "nearCm": 5,
+          "farCm": 20,
+          "direction": "nose",
+          "strengthPercent": 50
+        },
+        "valueCm": 5,
+        "tiltInput": 0.5
+      },
+      {
+        "name": "a tail sensor corrects the other way",
+        "calibration": {
+          "nearCm": 5,
+          "farCm": 20,
+          "direction": "tail",
+          "strengthPercent": 100
+        },
+        "valueCm": 5,
+        "tiltInput": -1
+      },
+      {
+        "name": "a tail sensor is also released at the far distance",
+        "calibration": {
+          "nearCm": 5,
+          "farCm": 20,
+          "direction": "tail",
+          "strengthPercent": 100
+        },
+        "valueCm": 20,
+        "tiltInput": 0
+      }
+    ]
+  }
+}

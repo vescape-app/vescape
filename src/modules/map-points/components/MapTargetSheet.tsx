@@ -1,3 +1,4 @@
+import type { ThemeColor } from '@/constants/theme'
 import type { ReactNode } from 'react'
 import type { MapPoint, MapPointPatch } from 'vescape-core'
 
@@ -36,8 +37,8 @@ export function MapTargetSheet({
   /** Navigation mode only: smaller buttons flanking the primary one. */
   sideActions?: readonly MapTargetSheetAction[]
   /** Navigation mode only: the target's colour for the header badge. */
-  targetColor?: string
-  targetTextColor?: string
+  targetColor?: ThemeColor
+  targetTextColor?: ThemeColor
   /** Navigation mode only: why there is no path, in rider-facing words. */
   notice?: string | null
   /** Navigation mode only: how far the drawn path runs and how long it takes. */

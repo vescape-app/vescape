@@ -36,6 +36,7 @@ final class RideLiveActivityController {
   private var activity: Activity<RideActivityAttributes>?
   private var lastState: RideActivityAttributes.ContentState?
   private var heartbeat: DispatchSourceTimer?
+  private var pendingEnd: Task<Void, Never>?
 
   /// Whether the OS + user allow Live Activities right now.
   private var enabled: Bool { ActivityAuthorizationInfo().areActivitiesEnabled }
@@ -97,6 +98,13 @@ final class RideLiveActivityController {
     end(activities)
   }
 
+  /// An App Intent must await dismissal before returning: after ride teardown there may be no
+  /// location or BLE work keeping the app alive to finish an unstructured ActivityKit task.
+  @MainActor
+  func waitForDismissal() async {
+    await pendingEnd?.value
+  }
+
   /// Remove activities this process does not own — the ghosts a previous, killed process left
   /// behind. Only safe to call when nothing wants to reclaim an existing activity; the caller owns
   /// that decision (see `BoardSessionController.reapOrphanLiveActivities`).
@@ -141,7 +149,9 @@ final class RideLiveActivityController {
 
   private func end(_ activities: [Activity<RideActivityAttributes>]) {
     guard !activities.isEmpty else { return }
-    Task {
+    let previousEnd = pendingEnd
+    pendingEnd = Task {
+      await previousEnd?.value
       for activity in activities {
         await activity.end(nil, dismissalPolicy: .immediate)
       }

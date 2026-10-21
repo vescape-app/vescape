@@ -93,33 +93,14 @@ internal struct TelemetryCapture {
   let location: TelemetryLocationCapture?
 }
 
-internal struct BucketTelemetryPoint {
-  let capturedAtMs: Int64
-  /// Owning Board (`boards.id`); the durable identity telemetry is keyed on (ADR 0028).
-  let boardId: String?
-  let speedCentiKmh: Int
-  let batteryVoltageMv: Int
-  let motorCurrentMa: Int
-  let batteryCurrentMa: Int
-  let dutyPermille: Int
-  let odometerCm: Int64?
-  let tempMosfetDeciC: Int?
-  let tempMotorDeciC: Int?
-  let gpsSpeedCentiMps: Int?
-  let gpsTimestampMs: Int64?
-  let gpsAccuracyCm: Int?
-  let latitudeE7: Int64?
-  let longitudeE7: Int64?
-  let bearingCentiDeg: Int?
-  let altitudeCm: Int?
-  let preciseGps: Bool
-  var excludedFromAvgSpeed = false
-  var excludedFromMaxSpeed = false
-  var excludedFromMaxDuty = false
-}
-
 internal struct FullTelemetryState {
   let capture: TelemetryCapture
+  /// Owning Ride Recording, stamped when the frame is admitted rather than when it is flushed: a
+  /// flush can land after the recording that produced these frames was closed, and reading the
+  /// current recording then would file them under whatever opened next (ADR 0038).
+  ///
+  /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/TelemetryRepository.kt `FullTelemetryState`
+  var recordingId: String?
 
   var t: RefloatTelemetry { capture.telemetry }
   var capturedAtMs: Int64 { capture.capturedAtMs }
@@ -131,6 +112,7 @@ internal struct FullTelemetryState {
     BucketTelemetryPoint(
       capturedAtMs: capturedAtMs,
       boardId: boardId,
+      recordingId: recordingId ?? LEGACY_RIDE_RECORDING_ID,
       speedCentiKmh: telemetryCenti(t.speed),
       batteryVoltageMv: telemetryMilli(t.batteryVoltage),
       motorCurrentMa: telemetryMilli(t.motorCurrent),
@@ -138,16 +120,7 @@ internal struct FullTelemetryState {
       dutyPermille: telemetryMilli(t.dutyCycle),
       odometerCm: t.odometer.map { Int64(($0 * 100.0).rounded()) },
       tempMosfetDeciC: t.tempMosfet.map { telemetryDeci($0) },
-      tempMotorDeciC: t.tempMotor.map { telemetryDeci($0) },
-      gpsSpeedCentiMps: location?.speedMps.map { telemetryCenti($0) },
-      gpsTimestampMs: location?.timestamp,
-      gpsAccuracyCm: location?.accuracyM.map { telemetryCenti($0) },
-      latitudeE7: location.map { Int64(($0.latitude * 10_000_000.0).rounded()) },
-      longitudeE7: location.map { Int64(($0.longitude * 10_000_000.0).rounded()) },
-      bearingCentiDeg: location?.bearingDeg.map { telemetryCenti($0) },
-      altitudeCm: location?.altitudeM.map { telemetryCenti($0) },
-      preciseGps: location?.precise ?? false
+      tempMotorDeciC: t.tempMotor.map { telemetryDeci($0) }
     )
   }
 }
-

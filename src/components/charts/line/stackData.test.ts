@@ -1,10 +1,11 @@
 import { expect, test } from 'bun:test'
+import { theme, resolveAdaptiveColor } from '@/constants/theme'
 
 import { toScrubTargets } from '@/components/charts/line/scrubTargets'
 import type { PreparedChart } from '@/components/charts/line/stackData'
 
 test('resolves chart colors before passing scrub targets to Skia', () => {
-  const adaptiveColor = { resource_paths: ['@color/vescape_telemetry_speed'] } as unknown as string
+  const adaptiveColor = theme.telemetry.speed
   const chart: PreparedChart = {
     key: 'speed',
     height: 100,
@@ -19,7 +20,7 @@ test('resolves chart colors before passing scrub targets to Skia', () => {
     ],
   }
 
-  const targets = toScrubTargets(chart, (color) => (color === adaptiveColor ? '#0369a1' : color))
+  const targets = toScrubTargets(chart, 'light')
 
-  expect(targets[0].color).toBe('#0369a1')
+  expect(targets[0].color).toBe(resolveAdaptiveColor(adaptiveColor, 'light'))
 })

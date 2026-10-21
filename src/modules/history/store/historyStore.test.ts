@@ -39,6 +39,7 @@ function sessionFromBucket(bucket: TelemetryMinuteBucket): RideHistorySession {
       : []
   return {
     id: `${bucket.boardId ?? 'unknown'}:${bucket.startAtMs}:${bucket.endAtMs}`,
+    recordingId: bucket.recordingId,
     boardId: bucket.boardId,
     boardName: bucket.boardName,
     startAtMs: bucket.startAtMs,
@@ -103,6 +104,7 @@ const getSettings = mock(async () => ({
   satelliteMapImageryOpacity: 1,
   satelliteImagerySaturation: -0.35,
   hideTelemetryMapDetails: true,
+  showHistoryMapMarkers: false,
   mapOrientationMode: 'northUp',
   historyMetricGradientsEnabled: true,
   historyMetricHotRanges: {},
@@ -161,6 +163,27 @@ beforeEach(async () => {
   })
 })
 
+test('failed initial read clears prior history instead of presenting it as current', async () => {
+  const prior = block({ id: 'prior', startAtMs: 1_000, endAtMs: 2_000 })
+  getRideHistoryPage.mockRejectedValueOnce(new Error('Could not load ride history'))
+  const { useHistoryStore } = await import('@/modules/history/store/historyStore')
+  useHistoryStore.setState({
+    blocks: [prior],
+    sessions: [sessionFromBucket(prior)],
+    summary,
+  })
+
+  await useHistoryStore.getState().loadInitial()
+
+  expect(useHistoryStore.getState()).toMatchObject({
+    blocks: [],
+    sessions: [],
+    summary: null,
+    loading: false,
+    error: 'Could not load ride history',
+  })
+})
+
 test('removes selected session from history and selects next ride', async () => {
   const newest = block({
     id: 'newest',
@@ -169,6 +192,7 @@ test('removes selected session from history and selects next ride', async () => 
   })
   const selected = block({
     id: 'selected',
+    recordingId: 'recording-selected',
     startAtMs: 5_000_000,
     endAtMs: 5_060_000,
   })
@@ -186,12 +210,20 @@ test('removes selected session from history and selects next ride', async () => 
 
   await useHistoryStore.getState().loadInitial()
   await useHistoryStore.getState().selectSession(useHistoryStore.getState().sessions[1])
+  expect(getHistoryRange).toHaveBeenCalledWith({
+    fromMs: selected.startAtMs,
+    toMs: selected.endAtMs,
+    boardId: selected.boardId,
+    recordingId: 'recording-selected',
+    limit: 10_000,
+  })
   await useHistoryStore.getState().removeSelectedSession()
 
   expect(deleteTelemetryRange).toHaveBeenCalledWith({
     fromMs: selected.startAtMs,
     toMs: selected.endAtMs,
     boardId: selected.boardId,
+    recordingId: 'recording-selected',
   })
   expect(useHistoryStore.getState().blocks.map((b) => b.id)).toEqual(['newest', 'oldest'])
   expect(useHistoryStore.getState().sessions.map((s) => s.id)).toHaveLength(2)
@@ -276,8 +308,8 @@ test('selects ride immediately while loading its full route', async () => {
       accuracyM: null,
       altitudeM: null,
       timestamp: next.startAtMs + index,
+      recordingId: null,
       distanceFromPreviousM: null,
-      precise: true,
     })),
     markers: [],
   })
@@ -340,6 +372,7 @@ test('loads a small GPS preview when selected ride has no bucket coordinate', as
     endAtMs: 1_060_000,
     sampleCount: 500,
     gpsPointCount: 2,
+    preciseGpsPointCount: 2,
     firstLatitude: null,
     firstLongitude: null,
   })
@@ -355,8 +388,8 @@ test('loads a small GPS preview when selected ride has no bucket coordinate', as
     accuracyM: null,
     altitudeM: null,
     timestamp: ride.startAtMs,
+    recordingId: null,
     distanceFromPreviousM: null,
-    precise: true,
   }
   let resolvePreviewRange: (value: HistoryRangeResult) => void = () => {}
   let resolveFullRange: (value: HistoryRangeResult) => void = () => {}

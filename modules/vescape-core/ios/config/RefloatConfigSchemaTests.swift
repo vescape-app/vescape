@@ -2,6 +2,15 @@ import XCTest
 @testable import VescapeCore
 
 final class RefloatConfigSchemaTests: XCTestCase {
+  func testDocumentTypeDetectionIgnoresCommentsAndCdata() {
+    XCTAssertFalse(RefloatConfigSchemaParser.containsDocumentType(
+      "<root><!-- <!DOCTYPE fake> --><![CDATA[<!DOCTYPE fake>]]></root>"
+    ))
+    XCTAssertTrue(RefloatConfigSchemaParser.containsDocumentType("<!DOCTYPE root><root/>"))
+    XCTAssertTrue(RefloatConfigSchemaParser.containsDocumentType(
+      "<!DOCTYPE root SYSTEM 'https://example.invalid/entity'><root/>"
+    ))
+  }
   func testParsesParamsFromVescStyleXml() throws {
     let xml = """
       <CustomConfiguration>

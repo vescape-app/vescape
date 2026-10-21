@@ -1,4 +1,4 @@
-import { liveTelemetryRuntime } from '@/modules/board/lib/liveTelemetryRuntime'
+import { useLocationStore } from '@/modules/location/store/locationStore'
 import { MAP_DEFAULTS } from '@/modules/map/constants/mapStyles'
 
 export const DEFAULT_ZONE_ZOOM = 15
@@ -16,7 +16,7 @@ export function zoomFromRadius(radiusM: number, circleRadiusPx: number, latitude
 }
 
 export function currentLocation(): [number, number] {
-  const snap = liveTelemetryRuntime.getSnapshot()
+  const snap = useLocationStore.getState()
   const loc = snap.latestApproximateLocation
   if (loc) return [loc.longitude, loc.latitude]
   return MAP_DEFAULTS.fallbackCoordinate

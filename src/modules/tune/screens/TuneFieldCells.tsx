@@ -2,7 +2,7 @@ import { useRef } from 'react'
 import type { View } from 'react-native'
 import type { RefloatConfigField, TuneProfileFieldValue } from 'vescape-core'
 
-import { theme } from '@/constants/theme'
+import { theme, type ThemeColor } from '@/constants/theme'
 import { BasicSliderCell } from '@/modules/tune/components/BasicSliderCell'
 import { basicSliderColor, basicSliderIcon } from '@/modules/tune/components/basicSliderIcons'
 import { TuneConfigCell } from '@/modules/tune/components/TuneConfigCell'
@@ -43,7 +43,7 @@ export interface TuneFieldCellProps {
   profileValue: TuneProfileFieldValue | undefined
   dirty: boolean
   boardChanged: boolean
-  onPress: (field: RefloatConfigField, ref: { current: View | null }, color: string) => void
+  onPress: (field: RefloatConfigField, ref: { current: View | null }, color: ThemeColor) => void
   onRevert: () => void
   onAcceptBoard: () => void
 }

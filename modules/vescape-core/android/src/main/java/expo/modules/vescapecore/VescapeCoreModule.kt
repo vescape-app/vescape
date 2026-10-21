@@ -1,5 +1,15 @@
 package expo.modules.vescapecore
 
+import expo.modules.vescapecore.watch.WatchLastBatteryPusher
+import expo.modules.kotlin.functions.Queues
+import expo.modules.kotlin.modules.ModuleDefinitionBuilder
+
+import expo.modules.vescapecore.diagnostics.UnexpectedNativeError
+import expo.modules.vescapecore.telemetry.FavoriteMediaCleanupException
+
+import expo.modules.vescapecore.accessory.AccessoryDiscovery
+import expo.modules.vescapecore.accessory.AccessorySessionManager
+import expo.modules.vescapecore.alerts.CustomAppSounds
 import expo.modules.vescapecore.alerts.AlertFeedback
 import expo.modules.vescapecore.alerts.normalizedAlertBeepCount
 import expo.modules.vescapecore.alerts.normalizedAlertRepeatSeconds
@@ -14,6 +24,8 @@ import expo.modules.vescapecore.service.CompanionPresence
 import expo.modules.vescapecore.service.CompanionRestartGate
 import expo.modules.vescapecore.service.CoreForegroundService
 import expo.modules.vescapecore.recording.DebugRecordingStore
+import expo.modules.vescapecore.recording.RecordingStorageFailure
+import expo.modules.vescapecore.recording.StorageOutageEventBridge
 import expo.modules.vescapecore.replay.ReplayRecordings
 import expo.modules.vescapecore.diagnostics.DiagnosticReporter
 import expo.modules.vescapecore.service.ManualDisconnectAutoStartGate
@@ -22,8 +34,10 @@ import expo.modules.vescapecore.connection.TransportDetection
 import expo.modules.vescapecore.connection.PendingLinkConnect
 import expo.modules.vescapecore.connection.buildSessionConfig
 
+import expo.modules.vescapecore.maptiles.MapTiles
 import expo.modules.vescapecore.navigation.NavigationController
 import expo.modules.vescapecore.navigation.NavigationProfile
+import expo.modules.vescapecore.watch.WATCH_SOURCE_SETTING_KEYS
 import expo.modules.vescapecore.watch.WatchRouteMirror
 import expo.modules.vescapecore.faults.VescFaultCaptureCoordinator
 import expo.modules.vescapecore.faults.VescFaultCoordinator
@@ -54,18 +68,24 @@ import expo.modules.vescapecore.ow.OwGattClient
 import expo.modules.vescapecore.telemetry.AppDataRepository
 import expo.modules.vescapecore.telemetry.DatabaseBackupManager
 import expo.modules.vescapecore.telemetry.ProfileStatsRepository
+import expo.modules.vescapecore.telemetry.RideExport
 import expo.modules.vescapecore.telemetry.RideHistoryRepository
 import expo.modules.vescapecore.telemetry.TELEMETRY_DATABASE_NAME
 import expo.modules.vescapecore.telemetry.TelemetryRepository
+import expo.modules.vescapecore.telemetry.TelemetryDatabase
 import expo.modules.vescapecore.telemetry.AlertRuleEntity
+import expo.modules.vescapecore.telemetry.AlertPresetPersistence
 import expo.modules.vescapecore.location.LegalPolicyResolver
+import expo.modules.vescapecore.location.LegalPolicyResolution
 import expo.modules.vescapecore.location.LegalPolicyCatalog
 import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.withContext
 import java.util.concurrent.ConcurrentHashMap
 
 private const val TAG = "VescapeCore"
@@ -140,7 +160,11 @@ class VescapeCoreModule : Module() {
     Name("VescapeCore")
 
     CoreForegroundService.emitEvent = { name, body ->
-      if (name == "onLiveState" && shouldEmitToFrontend("onLiveState")) {
+      // Durable-data invalidation must bypass the live-telemetry subscription gate.
+      // @parity /modules/vescape-core/ios/VescapeCoreModule.swift `sendAppDataChanged`
+      if (name == "onAppDataChanged") {
+        mainHandler.post { sendEvent(name, body) }
+      } else if (name == "onLiveState" && shouldEmitToFrontend("onLiveState")) {
         mainHandler.post {
           if (shouldEmitToFrontend("onLiveState")) sendEvent("onLiveState", liveStateWithScan(body))
         }
@@ -188,7 +212,24 @@ class VescapeCoreModule : Module() {
       "onNavigation",
       "onRouteProgress",
       "onWeather",
+      "onAccessoryDevice",
+      "onAccessoryScanError",
+      "onAccessoryState",
+      "onAccessoryReading",
     )
+
+    // Accessory discovery pushes devices as the radio finds them; the module is only the pipe.
+    // @parity /modules/vescape-core/ios/VescapeCoreModule.swift `AccessoryDiscovery`
+    AccessoryDiscovery.emit = { name, body ->
+      mainHandler.post { if (shouldEmitToFrontend(name)) sendEvent(name, body) }
+    }
+
+    // Enrolled Accessory sessions are native-owned and outlive this module; the bridge only mirrors
+    // their state while a JS runtime happens to exist.
+    // @parity /modules/vescape-core/ios/VescapeCoreModule.swift `AccessorySessionController`
+    AccessorySessionManager.emit = { name, body ->
+      mainHandler.post { if (shouldEmitToFrontend(name)) sendEvent(name, body) }
+    }
 
     // Native owns App Status truth; JS mirrors it. Push every successful refresh (late subscribers
     // pull the current snapshot below and through `getAppStatus`).
@@ -368,8 +409,23 @@ class VescapeCoreModule : Module() {
       sendEvent("onWeather", mapOf("weather" to WeatherCoordinator.get().current?.toMap()))
     }
     OnStopObserving("onWeather") { stopObserving("onWeather") }
+    OnStartObserving("onAccessoryDevice") { startObserving("onAccessoryDevice") }
+    OnStopObserving("onAccessoryDevice") { stopObserving("onAccessoryDevice") }
+    OnStartObserving("onAccessoryScanError") { startObserving("onAccessoryScanError") }
+    OnStopObserving("onAccessoryScanError") { stopObserving("onAccessoryScanError") }
+    OnStartObserving("onAccessoryState") { startObserving("onAccessoryState") }
+    OnStopObserving("onAccessoryState") { stopObserving("onAccessoryState") }
+    OnStartObserving("onAccessoryReading") { startObserving("onAccessoryReading") }
+    OnStopObserving("onAccessoryReading") { stopObserving("onAccessoryReading") }
 
     OnCreate {
+      val storageOutageEvents = StorageOutageEventBridge(
+        shouldEmit = { shouldEmitToFrontend("onLiveState") },
+        emit = {
+          CoreForegroundService.emitEvent?.invoke("onLiveState", CoreForegroundService.storageUnavailableLiveState())
+        },
+      )
+      RecordingStorageFailure.observeOutage(storageOutageEvents::onOutage)
       // Cold start: fetch App Status before JS asks. A foreground event arriving right after is
       // coalesced into this request.
       AppStatusCoordinator.get(context).refresh()
@@ -379,15 +435,21 @@ class VescapeCoreModule : Module() {
       frontendActive = true
       // User opened the app again — re-arm companion auto start immediately.
       CompanionRestartGate.clear(context.applicationContext)
+      CoreForegroundService.setAppVisible(context.applicationContext, true)
       AppStatusCoordinator.get(context).refresh()
     }
     OnActivityEntersBackground {
       frontendActive = false
+      // Drops GPS demand to `Off` unless a ride or a Group Ride is paying for it. Deliberately not
+      // mirrored in `OnDestroy`: a JS runtime teardown (dev reload, OTA) is not the rider putting
+      // the phone away, and the native session it leaves running still needs its fixes.
+      CoreForegroundService.setAppVisible(context.applicationContext, false)
     }
     OnActivityResult { _, result ->
       companionPresence.onActivityResult(result.requestCode, result.resultCode)
     }
     OnDestroy {
+      RecordingStorageFailure.observeOutage(null)
       frontendActive = false
       observedEvents.clear()
       // Detach the JS-facing emit sink so the process-singleton registry doesn't keep the destroyed
@@ -404,6 +466,16 @@ class VescapeCoreModule : Module() {
       stopAlertTest()
       cancelActiveProbe(null, "module_destroyed")
       owDisconnectInternal()
+      AccessoryDiscovery.emit = null
+      AccessoryDiscovery.stopScan()
+      AccessoryDiscovery.cancelInspection()
+      // Only the mirror is dropped. The sessions belong to the foreground service, and JS going
+      // away is not a reason for an enrolled Accessory to stop working.
+      AccessorySessionManager.emit = null
+      // A preview is the one piece of demand JS owns, so it dies with JS. Without this a runtime
+      // that reloaded or crashed with the sensor screen open would leave the accessory measuring
+      // with nobody watching, and native's own renewals would keep the lease alive forever.
+      AccessorySessionManager.releasePreviews()
       if (CoreForegroundService.emitEvent != null) {
         CoreForegroundService.emitEvent = null
       }
@@ -413,28 +485,89 @@ class VescapeCoreModule : Module() {
     Function("stopScan") { stopScanInternal() }
     Function("owConnect") { deviceId: String -> owConnectInternal(deviceId) }
     Function("owDisconnect") { owDisconnectInternal() }
+
+    // Accessory discovery. Read-only: it scans for the Vescape Accessory service, reads one
+    // manifest, and disconnects. No Board or Accessory control can start from here.
+    // @parity /modules/vescape-core/ios/VescapeCoreModule.swift `startAccessoryScan`
+    // @parity /modules/vescape-core/src/index.ts `startAccessoryScan`
+    Function("startAccessoryScan") { AccessoryDiscovery.startScan(context.applicationContext) }
+    Function("stopAccessoryScan") { AccessoryDiscovery.stopScan() }
+    Function("cancelAccessoryInspection") { AccessoryDiscovery.cancelInspection() }
+    AsyncFunction("inspectAccessory") { deviceId: String, promise: Promise ->
+      AccessoryDiscovery.inspect(context.applicationContext, deviceId) { promise.resolve(it) }
+    }
+
+    // Enrollment and the saved sessions. JS sends the intent and renders the snapshot; identity,
+    // the manifest and the session all stay native.
+    // @parity /modules/vescape-core/ios/VescapeCoreModule.swift `enrollAccessory`
+    // @parity /modules/vescape-core/src/index.ts `enrollAccessory`
+    AsyncFunction("enrollAccessory") { deviceId: String, promise: Promise ->
+      AccessorySessionManager.enroll(context.applicationContext, deviceId) { promise.resolve(it) }
+    }
+    AsyncFunction("forgetAccessory") { accessoryId: String, promise: Promise ->
+      AccessorySessionManager.forget(context.applicationContext, accessoryId) { promise.resolve(it) }
+    }
+    // @parity /modules/vescape-core/ios/VescapeCoreModule.swift `saveBrakeLightSettings`
+    // @parity /modules/vescape-core/src/index.ts `saveBrakeLightSettings`
+    AsyncFunction("saveBrakeLightSettings") { accessoryId: String, capabilityId: String, sensitivity: Int, parked: String, promise: Promise ->
+      AccessorySessionManager.saveBrakeLight(accessoryId, capabilityId, sensitivity, parked) { promise.resolve(it) }
+    }
+    // @parity /modules/vescape-core/ios/VescapeCoreModule.swift `setAccessoryCapabilityEnabled`
+    // @parity /modules/vescape-core/src/index.ts `setAccessoryCapabilityEnabled`
+    AsyncFunction("setAccessoryCapabilityEnabled") { accessoryId: String, capabilityId: String, enabled: Boolean, promise: Promise ->
+      AccessorySessionManager.setCapabilityEnabled(accessoryId, capabilityId, enabled) { promise.resolve(it) }
+    }
+    // @parity /modules/vescape-core/ios/VescapeCoreModule.swift `setAccessorySamplingRate`
+    // @parity /modules/vescape-core/src/index.ts `setAccessorySamplingRate`
+    AsyncFunction("setAccessorySamplingRate") { accessoryId: String, capabilityId: String, rateHz: Double, promise: Promise ->
+      AccessorySessionManager.setSamplingRate(accessoryId, capabilityId, rateHz) { promise.resolve(it) }
+    }
+    // @parity /modules/vescape-core/ios/VescapeCoreModule.swift `setBrakeLightPreview`
+    // @parity /modules/vescape-core/src/index.ts `setBrakeLightPreview`
+    AsyncFunction("setBrakeLightPreview") { accessoryId: String, capabilityId: String, mode: String?, promise: Promise ->
+      AccessorySessionManager.setLightPreview(accessoryId, capabilityId, mode) { promise.resolve(it) }
+    }
+    Function("getAccessories") { AccessorySessionManager.snapshot() }
+
+    // Ground clearance. JS asks for measurements and offers numbers; native decides whether the
+    // sensor runs and whether the numbers are a calibration.
+    // @parity /modules/vescape-core/ios/VescapeCoreModule.swift `setAccessoryPreview`
+    // @parity /modules/vescape-core/src/index.ts `setAccessoryPreview`
+    Function("setAccessoryPreview") { accessoryId: String, capabilityId: String, open: Boolean ->
+      AccessorySessionManager.setPreview(accessoryId, capabilityId, open)
+    }
+    AsyncFunction("saveGroundClearanceCalibration") {
+      accessoryId: String,
+      capabilityId: String,
+      nearCm: Double,
+      farCm: Double,
+      direction: String,
+      strengthPercent: Int,
+      promise: Promise,
+      ->
+      AccessorySessionManager.saveGroundClearance(
+        accessoryId = accessoryId,
+        capabilityId = capabilityId,
+        nearCm = nearCm,
+        farCm = farCm,
+        direction = direction,
+        strengthPercent = strengthPercent,
+      ) { promise.resolve(it) }
+    }
+    AsyncFunction("clearGroundClearanceCalibration") {
+      accessoryId: String,
+      capabilityId: String,
+      promise: Promise,
+      ->
+      AccessorySessionManager.clearGroundClearance(accessoryId, capabilityId) { promise.resolve(it) }
+    }
     Function("exitApp") { CoreForegroundService.exitApp(context.applicationContext) }
-    Function("startLocationUpdates") { startLocationUpdates() }
-    Function("stopLocationUpdates") { stopLocationUpdates() }
-    // @parity /modules/vescape-core/ios/VescapeCoreModule.swift `startGroupRideObserve`
-    Function("startGroupRideObserve") { serverUrl: String ->
-      CoreForegroundService.startGroupRideObserve(context.applicationContext, serverUrl)
-    }
-    Function("stopGroupRideObserve") {
-      CoreForegroundService.stopGroupRideObserve(context.applicationContext)
-    }
-    Function("createGroupRide") { riderId: String, riderName: String, riderColor: String?, name: String?, lat: Double, lng: Double ->
-      CoreForegroundService.createGroupRide(context.applicationContext, riderId, riderName, riderColor, name, lat, lng)
-    }
-    Function("joinGroupRide") { riderId: String, riderName: String, riderColor: String?, rideId: String ->
-      CoreForegroundService.joinGroupRide(context.applicationContext, riderId, riderName, riderColor, rideId)
-    }
-    Function("leaveGroupRide") {
-      CoreForegroundService.leaveGroupRide(context.applicationContext)
-    }
-    Function("updateGroupRideIdentity") { riderId: String, riderName: String, riderColor: String? ->
-      CoreForegroundService.updateGroupRideIdentity(context.applicationContext, riderId, riderName, riderColor)
-    }
+    // Nudge, not a command: native owns whether GPS runs (see `GpsDemand`). JS calls this once the
+    // location permission is answered, because a grant is the one demand input native cannot observe
+    // for itself.
+    // @parity /modules/vescape-core/ios/VescapeCoreModule.swift `refreshLocationDemand`
+    Function("refreshLocationDemand") { refreshLocationDemand() }
+    registerGroupRide()
     Function("setWatchRouteSpanM") { spanM: Double? ->
       WatchRouteMirror.viewportSpanM = spanM
     }
@@ -445,11 +578,22 @@ class VescapeCoreModule : Module() {
     Function("setFocusedSeriesMetrics") { metrics: List<String> ->
       CoreForegroundService.setFocusedSeriesMetrics(metrics)
     }
+    Function("setLiveSeriesMetrics") { metrics: List<String> ->
+      CoreForegroundService.setLiveSeriesMetrics(metrics)
+    }
     Function("reloadAlertRules") {
       CoreForegroundService.reloadAlertRules(context.applicationContext)
     }
     Function("previewAlertSound") { soundType: String ->
       CoreForegroundService.previewAlertSound(context.applicationContext, soundType)
+    }
+    Function("playAppSound") { pack: String, cue: String ->
+      CoreForegroundService.playAppSound(context.applicationContext, pack, cue)
+    }
+    registerCustomAppSounds()
+    // @parity /modules/vescape-core/ios/VescapeCoreModule.swift `mapTile`
+    AsyncFunction("mapTile") Coroutine { z: Int, x: Int, y: Int ->
+      MapTiles.get(context.applicationContext).tile(z, x, y)?.let { Uri.fromFile(it).toString() }
     }
     Function("getAlertSounds") {
       CoreForegroundService.alertSoundPresets()
@@ -457,6 +601,7 @@ class VescapeCoreModule : Module() {
     Function("startGeigerSimulation") { soundType: String, rangeDepth: Double ->
       val feedback = previewAlertFeedback ?: AlertFeedback(context.applicationContext, mainHandler)
         .also { previewAlertFeedback = it }
+      feedback.setAudioSource(kotlinx.coroutines.runBlocking { AppDataRepository.get(context.applicationContext).getTypedSettings().audioSource })
       feedback.updateGeiger("preview", soundType, rangeDepth)
     }
     Function("stopGeigerSimulation") {
@@ -528,12 +673,25 @@ class VescapeCoreModule : Module() {
         Log.w(TAG, "Cannot open the download route: ${e.message}")
       }
     }
-    Function("getRemoteTiltState") {
+    // @parity /modules/vescape-core/ios/VescapeCoreModule.swift `getGroundClearanceTilt`
+    // @parity /modules/vescape-core/src/index.ts `getGroundClearanceTilt`
+    AsyncFunction("getGroundClearanceTilt") {
+      CoreForegroundService.currentGroundClearanceTilt()
+    }.runOnQueue(Queues.MAIN)
+    // @parity /modules/vescape-core/ios/VescapeCoreModule.swift `getRemoteTiltState`
+    // @parity /modules/vescape-core/src/index.ts `getRemoteTiltState`
+    AsyncFunction("getRemoteTiltState") {
       CoreForegroundService.currentRemoteTiltState()
-    }
+    }.runOnQueue(Queues.MAIN)
     Function("setSelectedBoard") { boardId: String? ->
+      try {
+        runBlocking { AppDataRepository.get(context.applicationContext).setSelectedBoardId(boardId) }
+      } catch (error: Exception) {
+        RecordingStorageFailure.report("setting_save", "write_failed", error)
+        throw error
+      }
       ManualDisconnectAutoStartGate.clear(context.applicationContext)
-      runBlocking { AppDataRepository.get(context.applicationContext).setSelectedBoardId(boardId) }
+      WatchLastBatteryPusher.push(context)
       companionPresence.refreshForSelectedBoard()
     }
     Function("setDebugRecordingEnabled") { enabled: Boolean ->
@@ -544,6 +702,7 @@ class VescapeCoreModule : Module() {
         try {
           promise.resolve(DebugRecordingStore(context.applicationContext).list())
         } catch (e: Exception) {
+          UnexpectedNativeError.report("debug_recording_list", "file_metadata_failed", e)
           promise.reject("ERR_LIST_DEBUG_RECORDINGS", e.message, e)
         }
       }
@@ -562,6 +721,7 @@ class VescapeCoreModule : Module() {
         try {
           promise.resolve(DebugRecordingStore(context.applicationContext).export(name))
         } catch (e: Exception) {
+          UnexpectedNativeError.report("debug_recording_export", "file_copy_failed", e)
           promise.reject("ERR_EXPORT_DEBUG_RECORDING", e.message, e)
         }
       }
@@ -572,6 +732,7 @@ class VescapeCoreModule : Module() {
           DebugRecordingStore(context.applicationContext).delete(name)
           promise.resolve(null)
         } catch (e: Exception) {
+          UnexpectedNativeError.report("debug_recording_delete", "file_delete_failed", e)
           promise.reject("ERR_DELETE_DEBUG_RECORDING", e.message, e)
         }
       }
@@ -644,26 +805,87 @@ class VescapeCoreModule : Module() {
       cancelActiveProbe(probeId, "js_cancelled")
     }
     AsyncFunction("getTelemetryHistory") Coroutine { options: Map<String, Any?> ->
-      TelemetryRepository.get(context.applicationContext).getHistory(options)
+      RecordingStorageFailure.requireAvailable()
+      try { TelemetryRepository.get(context.applicationContext).getHistory(options) }
+      catch (error: CancellationException) { throw error }
+      catch (error: Exception) {
+        RecordingStorageFailure.reportRead("history_buckets_read", error)
+        throw CodedException("ERR_HISTORY_READ", "Could not load ride history", error)
+      }
     }
     // @parity /modules/vescape-core/ios/VescapeCoreModule.swift `getRideHistoryPage`
     AsyncFunction("getRideHistoryPage") Coroutine { options: Map<String, Any?> ->
-      RideHistoryRepository.get(context.applicationContext).getPage(options)
+      RecordingStorageFailure.requireAvailable()
+      try {
+        RideHistoryRepository.get(context.applicationContext).getPage(options)
+      } catch (error: CancellationException) { throw error }
+      catch (error: Exception) {
+        RecordingStorageFailure.reportRead("history_page_read", error)
+        throw CodedException("ERR_HISTORY_READ", "Could not load ride history", error)
+      }
     }
     AsyncFunction("getTelemetrySamples") Coroutine { options: Map<String, Any?> ->
-      TelemetryRepository.get(context.applicationContext).getSamples(options)
+      RecordingStorageFailure.requireAvailable()
+      try { TelemetryRepository.get(context.applicationContext).getSamples(options) }
+      catch (error: CancellationException) { throw error }
+      catch (error: Exception) {
+        RecordingStorageFailure.reportRead("history_samples_read", error)
+        throw CodedException("ERR_HISTORY_READ", "Could not load ride history", error)
+      }
+    }
+    // @parity /modules/vescape-core/ios/VescapeCoreModule.swift `exportRideGpx`
+    // @parity /modules/vescape-core/src/index.ts `exportRideGpx`
+    AsyncFunction("exportRideGpx") Coroutine { options: Map<String, Any?> ->
+      RecordingStorageFailure.requireAvailable()
+      try { TelemetryRepository.get(context.applicationContext).exportRideGpx(options) }
+      catch (error: CancellationException) { throw error }
+      catch (error: Exception) { throw CodedException("ERR_RIDE_EXPORT", "Could not export ride", error) }
+    }
+    // @parity /modules/vescape-core/ios/VescapeCoreModule.swift `exportRideCsv`
+    // @parity /modules/vescape-core/src/index.ts `exportRideCsv`
+    AsyncFunction("exportRideCsv") Coroutine { options: Map<String, Any?> ->
+      RecordingStorageFailure.requireAvailable()
+      try { TelemetryRepository.get(context.applicationContext).exportRideCsv(options) }
+      catch (error: CancellationException) { throw error }
+      catch (error: Exception) { throw CodedException("ERR_RIDE_EXPORT", "Could not export ride", error) }
+    }
+    // @parity /modules/vescape-core/ios/VescapeCoreModule.swift `exportLiveTelemetryCsv`
+    // @parity /modules/vescape-core/src/index.ts `exportLiveTelemetryCsv`
+    AsyncFunction("exportLiveTelemetryCsv") Coroutine { ->
+      try {
+        withContext(Dispatchers.IO) {
+          RideExport.liveCsv(CoreForegroundService.recentTelemetry(), context.applicationContext.cacheDir)
+        }
+      }
+      catch (error: CancellationException) { throw error }
+      catch (error: Exception) { throw CodedException("ERR_LIVE_EXPORT", "Could not export live telemetry", error) }
     }
     AsyncFunction("getHistoryRange") Coroutine { options: Map<String, Any?> ->
-      TelemetryRepository.get(context.applicationContext).getRange(options)
+      RecordingStorageFailure.requireAvailable()
+      try { TelemetryRepository.get(context.applicationContext).getRange(options) }
+      catch (error: CancellationException) { throw error }
+      catch (error: Exception) {
+        RecordingStorageFailure.reportRead("history_range_read", error)
+        throw CodedException("ERR_HISTORY_READ", "Could not load ride history", error)
+      }
     }
     AsyncFunction("getTelemetrySummary") {
-      runBlocking { TelemetryRepository.get(context.applicationContext).getSummary() }
+      RecordingStorageFailure.requireAvailable()
+      try { runBlocking { TelemetryRepository.get(context.applicationContext).getSummary() } }
+      catch (error: CancellationException) { throw error }
+      catch (error: Exception) {
+        RecordingStorageFailure.reportRead("history_summary_read", error)
+        throw CodedException("ERR_HISTORY_READ", "Could not load ride history", error)
+      }
     }
     AsyncFunction("getDiagnosticEvents") Coroutine { options: Map<String, Any?> ->
+      RecordingStorageFailure.requireAvailable()
       TelemetryRepository.get(context.applicationContext).getDiagnosticEvents(options)
     }
     AsyncFunction("getBoardWarnings") Coroutine { ->
-      BoardWarningRegistry.get(context).allWarnings().map { it.toMap() }
+      RecordingStorageFailure.requireAvailable()
+      try { BoardWarningRegistry.get(context).allWarnings().map { it.toMap() } }
+      catch (error: Throwable) { if (error is kotlinx.coroutines.CancellationException) throw error; RecordingStorageFailure.reportRead("board_warnings_read", error); throw error }
     }
 
     /**
@@ -672,7 +894,9 @@ class VescapeCoreModule : Module() {
      * @parity /modules/vescape-core/src/index.ts `getVescFaults`
      */
     AsyncFunction("getVescFaults") Coroutine { ->
-      VescFaultCoordinator.get(context).allFaults().map { it.toMap() }
+      RecordingStorageFailure.requireAvailable()
+      try { VescFaultCoordinator.get(context).allFaults().map { it.toMap() } }
+      catch (error: Throwable) { if (error is kotlinx.coroutines.CancellationException) throw error; RecordingStorageFailure.reportRead("vesc_faults_read", error); throw error }
     }
 
     /**
@@ -681,7 +905,9 @@ class VescapeCoreModule : Module() {
      * @parity /modules/vescape-core/src/index.ts `setVescFaultDismissed`
      */
     AsyncFunction("setVescFaultDismissed") Coroutine { id: String, dismissed: Boolean ->
-      VescFaultCoordinator.get(context).setDismissed(id, dismissed)
+      RecordingStorageFailure.requireAvailable()
+      try { VescFaultCoordinator.get(context).setDismissed(id, dismissed) }
+      catch (error: Throwable) { if (error is kotlinx.coroutines.CancellationException) throw error; RecordingStorageFailure.report("vesc_fault_dismiss", "write_failed", error); throw error }
     }
 
     /**
@@ -691,10 +917,11 @@ class VescapeCoreModule : Module() {
      * @parity /modules/vescape-core/src/index.ts `getVescFaultCapture`
      */
     AsyncFunction("getVescFaultCapture") Coroutine { occurrenceId: String ->
-      val captures = VescFaultCaptureCoordinator.get(context)
-      captures.capture(occurrenceId)?.let { capture ->
-        capture.toMap() + mapOf("samples" to captures.samples(occurrenceId).map { it.toMap() })
-      }
+      RecordingStorageFailure.requireAvailable()
+      try {
+        val captures = VescFaultCaptureCoordinator.get(context)
+        captures.capture(occurrenceId)?.let { capture -> capture.toMap() + mapOf("samples" to captures.samples(occurrenceId).map { it.toMap() }) }
+      } catch (error: Throwable) { if (error is kotlinx.coroutines.CancellationException) throw error; RecordingStorageFailure.reportRead("vesc_fault_capture_read", error); throw error }
     }
     /** Manual, ephemeral VESC `faults` terminal output for a connected, stopped Board.
      * @parity /modules/vescape-core/ios/VescapeCoreModule.swift `readVescFaultLog`
@@ -734,7 +961,9 @@ class VescapeCoreModule : Module() {
      * @parity /modules/vescape-core/src/index.ts `MotorConfigValues`
      */
     AsyncFunction("getLastKnownMotorConfigValues") Coroutine { boardId: String ->
-      AppDataRepository.get(context).getLatestMotorConfigValues(boardId)?.toBridgeMap()
+      RecordingStorageFailure.requireAvailable()
+      try { AppDataRepository.get(context).getLatestMotorConfigValues(boardId)?.toBridgeMap() }
+      catch (error: Throwable) { if (error is kotlinx.coroutines.CancellationException) throw error; RecordingStorageFailure.reportRead("motor_config_latest_read", error); throw error }
     }
 
     /**
@@ -744,31 +973,55 @@ class VescapeCoreModule : Module() {
      * @parity /modules/vescape-core/src/index.ts `BoardConfigValues`
      */
     AsyncFunction("getLastKnownBoardConfigValues") Coroutine { boardId: String ->
-      AppDataRepository.get(context).getLatestBoardConfigValues(boardId)?.toBridgeMap()
+      RecordingStorageFailure.requireAvailable()
+      try { AppDataRepository.get(context).getLatestBoardConfigValues(boardId)?.toBridgeMap() }
+      catch (error: Throwable) { if (error is kotlinx.coroutines.CancellationException) throw error; RecordingStorageFailure.reportRead("board_config_latest_read", error); throw error }
     }
-    AsyncFunction("getBoardConfigChangeNotice") Coroutine { boardId: String -> AppDataRepository.get(context).getBoardConfigChangeNotice(boardId)?.toMap() }
-    AsyncFunction("dismissBoardConfigChangeNotice") Coroutine { boardId: String -> AppDataRepository.get(context).dismissBoardConfigChangeNotice(boardId) }
+    AsyncFunction("getBoardConfigChangeNotice") Coroutine { boardId: String ->
+      RecordingStorageFailure.requireAvailable()
+      try { AppDataRepository.get(context).getBoardConfigChangeNotice(boardId)?.toMap() }
+      catch (error: Throwable) { if (error is kotlinx.coroutines.CancellationException) throw error; RecordingStorageFailure.reportRead("board_config_notice_read", error); throw error }
+    }
+    AsyncFunction("dismissBoardConfigChangeNotice") Coroutine { boardId: String ->
+      RecordingStorageFailure.requireAvailable()
+      try { AppDataRepository.get(context).dismissBoardConfigChangeNotice(boardId) }
+      catch (error: Throwable) { if (error is kotlinx.coroutines.CancellationException) throw error; RecordingStorageFailure.report("board_config_notice_dismiss", "write_failed", error); throw error }
+    }
     AsyncFunction("clearBoardWarning") Coroutine { boardId: String, kind: String ->
-      BoardWarningRegistry.get(context).clearWarning(boardId, kind)
+      RecordingStorageFailure.requireAvailable()
+      try { BoardWarningRegistry.get(context).clearWarning(boardId, kind) }
+      catch (error: Throwable) { if (error is kotlinx.coroutines.CancellationException) throw error; RecordingStorageFailure.report("board_warning_clear", "write_failed", error); throw error }
     }
     AsyncFunction("clearAllBoardWarnings") Coroutine { boardId: String ->
-      BoardWarningRegistry.get(context).clearAllWarnings(boardId)
+      RecordingStorageFailure.requireAvailable()
+      try { BoardWarningRegistry.get(context).clearAllWarnings(boardId) }
+      catch (error: Throwable) { if (error is kotlinx.coroutines.CancellationException) throw error; RecordingStorageFailure.report("board_warnings_clear_all", "write_failed", error); throw error }
     }
     AsyncFunction("devInjectBoardWarning") Coroutine { boardId: String, kind: String, severity: String, payloadJson: String ->
+      RecordingStorageFailure.requireAvailable()
       BoardWarningRegistry.get(context)
         .reportFinding(boardId, kind, BoardWarningSeverity.fromWire(severity), payloadJson)
     }
     AsyncFunction("devReportCleanBoardWarning") Coroutine { boardId: String, kind: String ->
+      RecordingStorageFailure.requireAvailable()
       BoardWarningRegistry.get(context).reportCleanEvaluation(boardId, kind)
     }
     AsyncFunction("clearDiagnosticEvents") {
+      RecordingStorageFailure.requireAvailable()
       runBlocking { TelemetryRepository.get(context.applicationContext).clearDiagnosticEvents() }
     }
-    AsyncFunction("getDatabaseSizeBytes") {
+    AsyncFunction("getDatabaseSizeBytes") { promise: Promise ->
+      RecordingStorageFailure.requireAvailable()
       val dbFile = context.applicationContext.getDatabasePath(TELEMETRY_DATABASE_NAME)
-      if (dbFile.exists()) dbFile.length() else 0L
+      try {
+        promise.resolve(TelemetryDatabase.databaseSizeBytes(dbFile))
+      } catch (error: Exception) {
+        RecordingStorageFailure.reportRead("database_size_read", error)
+        promise.reject("APP_STORAGE_READ_FAILED", "Could not read database size", error)
+      }
     }
     AsyncFunction("backupDatabase") { promise: Promise ->
+      RecordingStorageFailure.requireAvailable()
       CoroutineScope(Dispatchers.IO).launch {
         try {
           promise.resolve(DatabaseBackupManager.createBackup(context.applicationContext))
@@ -780,6 +1033,7 @@ class VescapeCoreModule : Module() {
     AsyncFunction("restoreDatabase") Coroutine { uri: String ->
       stopNativeWorkForDatabaseRestore()
       DatabaseBackupManager.restoreBackup(context.applicationContext, uri)
+      WatchLastBatteryPusher.push(context)
     }
     AsyncFunction("getRefloatConfigSnapshot") { promise: Promise ->
       CoreForegroundService.getRefloatConfigSnapshot(
@@ -787,18 +1041,26 @@ class VescapeCoreModule : Module() {
         onError = { code, message -> promise.reject(code, message, null) },
       )
     }
+    // @parity /modules/vescape-core/ios/VescapeCoreModule.swift `setRemoteTilt`
+    // @parity /modules/vescape-core/src/index.ts `setRemoteTilt`
     AsyncFunction("setRemoteTilt") { value: Int ->
       CoreForegroundService.setRemoteTilt(value)
-    }
+    }.runOnQueue(Queues.MAIN)
+    // @parity /modules/vescape-core/ios/VescapeCoreModule.swift `lockRemoteTilt`
+    // @parity /modules/vescape-core/src/index.ts `lockRemoteTilt`
     AsyncFunction("lockRemoteTilt") { value: Int ->
       CoreForegroundService.lockRemoteTilt(value)
-    }
+    }.runOnQueue(Queues.MAIN)
+    // @parity /modules/vescape-core/ios/VescapeCoreModule.swift `releaseRemoteTilt`
+    // @parity /modules/vescape-core/src/index.ts `releaseRemoteTilt`
     AsyncFunction("releaseRemoteTilt") { value: Int, durationMs: Int ->
       CoreForegroundService.releaseRemoteTilt(value, durationMs.toLong())
-    }
+    }.runOnQueue(Queues.MAIN)
+    // @parity /modules/vescape-core/ios/VescapeCoreModule.swift `stopRemoteTilt`
+    // @parity /modules/vescape-core/src/index.ts `stopRemoteTilt`
     AsyncFunction("stopRemoteTilt") {
       CoreForegroundService.stopRemoteTilt()
-    }
+    }.runOnQueue(Queues.MAIN)
     AsyncFunction("setBoardLights") { enabled: Boolean, headlightsEnabled: Boolean ->
       CoreForegroundService.setBoardLights(enabled, headlightsEnabled)
     }
@@ -809,6 +1071,7 @@ class VescapeCoreModule : Module() {
       CoreForegroundService.stopBoardMove()
     }
     AsyncFunction("pushProfileToBoard") { profileId: String, promise: Promise ->
+      RecordingStorageFailure.requireAvailable()
       CoreForegroundService.pushProfileToBoard(
         context.applicationContext,
         profileId,
@@ -817,66 +1080,149 @@ class VescapeCoreModule : Module() {
       )
     }
     AsyncFunction("getTuneProfiles") Coroutine { boardId: String, refloatBaseVersion: String? ->
-      AppDataRepository.get(context.applicationContext).getTuneProfiles(boardId, refloatBaseVersion)
+      RecordingStorageFailure.requireAvailable()
+      try { AppDataRepository.get(context.applicationContext).getTuneProfiles(boardId, refloatBaseVersion) }
+      catch (error: CancellationException) { throw error }
+      catch (error: Throwable) { RecordingStorageFailure.reportRead("tune_profiles_read", error); throw error }
     }
     AsyncFunction("getTuneProfile") Coroutine { profileId: String ->
-      AppDataRepository.get(context.applicationContext).getTuneProfile(profileId)
+      RecordingStorageFailure.requireAvailable()
+      try { AppDataRepository.get(context.applicationContext).getTuneProfile(profileId) }
+      catch (error: CancellationException) { throw error }
+      catch (error: Throwable) { RecordingStorageFailure.reportRead("tune_profile_read", error); throw error }
     }
     AsyncFunction("createProfile") Coroutine { boardId: String, name: String, icon: String, color: String, fields: Map<String, Any?>, refloatBaseVersion: String ->
-      AppDataRepository.get(context.applicationContext).createProfile(boardId, name, icon, color, fields, refloatBaseVersion)
+      RecordingStorageFailure.requireAvailable()
+      try { AppDataRepository.get(context.applicationContext).createProfile(boardId, name, icon, color, fields, refloatBaseVersion) }
+      catch (error: CancellationException) { throw error }
+      catch (error: Throwable) { if (error !is IllegalArgumentException && error !is IllegalStateException) RecordingStorageFailure.report("tune_profile_create", "write_failed", error); throw error }
     }
     AsyncFunction("renameProfile") Coroutine { profileId: String, name: String, icon: String, color: String ->
-      AppDataRepository.get(context.applicationContext).renameProfile(profileId, name, icon, color)
+      RecordingStorageFailure.requireAvailable()
+      try { AppDataRepository.get(context.applicationContext).renameProfile(profileId, name, icon, color) }
+      catch (error: CancellationException) { throw error }
+      catch (error: Throwable) { if (error !is IllegalArgumentException && error !is IllegalStateException) RecordingStorageFailure.report("tune_profile_rename", "write_failed", error); throw error }
     }
     AsyncFunction("deleteProfile") Coroutine { profileId: String ->
-      AppDataRepository.get(context.applicationContext).deleteProfile(profileId)
+      RecordingStorageFailure.requireAvailable()
+      try { AppDataRepository.get(context.applicationContext).deleteProfile(profileId) }
+      catch (error: CancellationException) { throw error }
+      catch (error: Throwable) { if (error !is IllegalArgumentException && error !is IllegalStateException) RecordingStorageFailure.report("tune_profile_delete", "write_failed", error); throw error }
     }
     AsyncFunction("getProfileHistory") Coroutine { profileId: String ->
-      AppDataRepository.get(context.applicationContext).getProfileHistory(profileId)
+      RecordingStorageFailure.requireAvailable()
+      try { AppDataRepository.get(context.applicationContext).getProfileHistory(profileId) }
+      catch (error: CancellationException) { throw error }
+      catch (error: Throwable) { RecordingStorageFailure.reportRead("tune_history_read", error); throw error }
     }
     AsyncFunction("rollbackProfile") Coroutine { profileId: String, historyEntryId: Double ->
-      AppDataRepository.get(context.applicationContext).rollbackProfile(profileId, historyEntryId.toLong())
+      RecordingStorageFailure.requireAvailable()
+      try { AppDataRepository.get(context.applicationContext).rollbackProfile(profileId, historyEntryId.toLong()) }
+      catch (error: CancellationException) { throw error }
+      catch (error: Throwable) { if (error !is IllegalArgumentException && error !is IllegalStateException) RecordingStorageFailure.report("tune_profile_rollback", "write_failed", error); throw error }
     }
     AsyncFunction("copyProfileToBoard") Coroutine { profileId: String, targetBoardId: String, newName: String ->
-      AppDataRepository.get(context.applicationContext).copyProfileToBoard(profileId, targetBoardId, newName)
+      RecordingStorageFailure.requireAvailable()
+      try { AppDataRepository.get(context.applicationContext).copyProfileToBoard(profileId, targetBoardId, newName) }
+      catch (error: CancellationException) { throw error }
+      catch (error: Throwable) { if (error !is IllegalArgumentException && error !is IllegalStateException) RecordingStorageFailure.report("tune_profile_copy", "write_failed", error); throw error }
     }
     AsyncFunction("saveProfile") Coroutine { profileId: String, fields: Map<String, Any?> ->
-      AppDataRepository.get(context.applicationContext).saveProfile(profileId, fields)
+      RecordingStorageFailure.requireAvailable()
+      try { AppDataRepository.get(context.applicationContext).saveProfile(profileId, fields) }
+      catch (error: CancellationException) { throw error }
+      catch (error: Throwable) { if (error !is IllegalArgumentException && error !is IllegalStateException) RecordingStorageFailure.report("tune_profile_save", "write_failed", error); throw error }
     }
     // @parity /modules/vescape-core/ios/VescapeCoreModule.swift `getProfileStatsSnapshot`
     AsyncFunction("getProfileStatsSnapshot") Coroutine { options: Map<String, Any?> ->
-      ProfileStatsRepository.get(context.applicationContext).getProfileStatsSnapshot(options)
+      RecordingStorageFailure.requireAvailable()
+      try {
+        ProfileStatsRepository.get(context.applicationContext).getProfileStatsSnapshot(options)
+      } catch (error: CancellationException) { throw error }
+      catch (error: Exception) {
+        RecordingStorageFailure.reportRead("profile_stats_read", error)
+        throw CodedException("ERR_PROFILE_STATS_READ", "Could not load profile stats", error)
+      }
     }
     // Favorites (ADR 0029). JS supplies only the range and an optional name; identity, timestamps
     // and the denormalized summary are native.
     // @parity /modules/vescape-core/ios/VescapeCoreModule.swift `getFavorites`
     AsyncFunction("getFavorites") Coroutine { ->
-      TelemetryRepository.get(context.applicationContext).getFavorites()
+      RecordingStorageFailure.requireAvailable()
+      try { TelemetryRepository.get(context.applicationContext).getFavorites() }
+      catch (error: CancellationException) { throw error }
+      catch (error: Throwable) {
+        RecordingStorageFailure.reportRead("favorites_read", error)
+        throw CodedException("ERR_FAVORITES_READ", "Could not load Favorites", error)
+      }
     }
     AsyncFunction("createFavorite") Coroutine { options: Map<String, Any?> ->
-      TelemetryRepository.get(context.applicationContext).createFavorite(options)
-        ?: throw CodedException("ERR_CREATE_FAVORITE", "favorite range is invalid or could not be stored", null)
+      RecordingStorageFailure.requireAvailable()
+      val favorite = try {
+        TelemetryRepository.get(context.applicationContext).createFavorite(options)
+      } catch (error: CancellationException) { throw error }
+      catch (error: Throwable) {
+        RecordingStorageFailure.report("favorite_create", "write_failed", error)
+        throw CodedException("ERR_CREATE_FAVORITE", "Favorite could not be stored", error)
+      }
+      favorite ?: throw CodedException("ERR_CREATE_FAVORITE", "favorite range is invalid", null)
     }
     AsyncFunction("updateFavorite") Coroutine { id: String, options: Map<String, Any?> ->
-      TelemetryRepository.get(context.applicationContext).updateFavorite(id, options)
-        ?: throw CodedException("ERR_UPDATE_FAVORITE", "favorite does not exist or could not be stored", null)
+      RecordingStorageFailure.requireAvailable()
+      val favorite = try {
+        TelemetryRepository.get(context.applicationContext).updateFavorite(id, options)
+      } catch (error: CancellationException) { throw error }
+      catch (error: Throwable) {
+        RecordingStorageFailure.report("favorite_update", "write_failed", error)
+        throw CodedException("ERR_UPDATE_FAVORITE", "Favorite could not be stored", error)
+      }
+      favorite ?: throw CodedException("ERR_UPDATE_FAVORITE", "Favorite does not exist or range is invalid", null)
     }
     AsyncFunction("deleteFavorite") Coroutine { id: String ->
-      TelemetryRepository.get(context.applicationContext).deleteFavorite(id)
+      RecordingStorageFailure.requireAvailable()
+      val deleted = try {
+        TelemetryRepository.get(context.applicationContext).deleteFavorite(id)
+      } catch (error: CancellationException) { throw error }
+      catch (error: FavoriteMediaCleanupException) {
+        // @parity /src/modules/history/store/favoriteStore.ts `FAVORITE_MEDIA_CLEANUP_ERROR`
+        UnexpectedNativeError.report("favorite_media_delete", "file_delete_failed", error)
+        throw CodedException("ERR_DELETE_FAVORITE_MEDIA_CLEANUP", "Favorite deleted but its media could not be removed", error)
+      }
+      catch (error: Throwable) {
+        RecordingStorageFailure.report("favorite_delete", "write_failed", error)
+        throw CodedException("ERR_DELETE_FAVORITE", "Favorite could not be deleted", error)
+      }
+      if (!deleted) throw CodedException("ERR_DELETE_FAVORITE", "Favorite does not exist", null)
+      true
     }
     AsyncFunction("getFavoriteMedia") Coroutine { favoriteId: String ->
-      TelemetryRepository.get(context.applicationContext).getFavoriteMedia(favoriteId)
+      RecordingStorageFailure.requireAvailable()
+      try { TelemetryRepository.get(context.applicationContext).getFavoriteMedia(favoriteId) }
+      catch (error: CancellationException) { throw error }
+      catch (error: Throwable) {
+        RecordingStorageFailure.reportRead("favorite_media_read", error)
+        throw CodedException("ERR_FAVORITE_MEDIA_READ", "Could not load Favorite Media", error)
+      }
     }
     AsyncFunction("importFavoriteMedia") Coroutine { options: Map<String, Any?> ->
-      TelemetryRepository.get(context.applicationContext).importFavoriteMedia(options)
+      RecordingStorageFailure.requireAvailable()
+      try { TelemetryRepository.get(context.applicationContext).importFavoriteMedia(options) }
+      catch (error: CancellationException) { throw error }
+      catch (error: Throwable) {
+        RecordingStorageFailure.report("favorite_media_import", "write_failed", error)
+        throw CodedException("ERR_IMPORT_FAVORITE_MEDIA", "Could not save Favorite Media", error)
+      }
     }
     AsyncFunction("deleteTelemetryBefore") Coroutine { beforeMs: Double ->
+      RecordingStorageFailure.requireAvailable()
       TelemetryRepository.get(context.applicationContext).deleteBefore(beforeMs.toLong())
     }
     AsyncFunction("deleteTelemetryRange") Coroutine { options: Map<String, Any?> ->
+      RecordingStorageFailure.requireAvailable()
       TelemetryRepository.get(context.applicationContext).deleteRange(options)
     }
     AsyncFunction("rebuildTelemetryBuckets") { promise: Promise ->
+      RecordingStorageFailure.requireAvailable()
       CoroutineScope(Dispatchers.IO).launch {
         try {
           val appContext = context.applicationContext
@@ -901,48 +1247,107 @@ class VescapeCoreModule : Module() {
       }
     }
     AsyncFunction("clearTelemetryHistory") {
+      RecordingStorageFailure.requireAvailable()
       runBlocking { TelemetryRepository.get(context.applicationContext).clearAll() }
     }
     AsyncFunction("getBoards") {
-      runBlocking { AppDataRepository.get(context.applicationContext).getBoards() }
+      RecordingStorageFailure.requireAvailable()
+      try {
+        runBlocking { AppDataRepository.get(context.applicationContext).getBoards() }
+      } catch (error: Exception) {
+        RecordingStorageFailure.reportRead("boards_read", error)
+        throw error
+      }
     }
     AsyncFunction("upsertBoard") Coroutine { board: Map<String, Any?> ->
-      AppDataRepository.get(context.applicationContext).upsertBoard(board)
-      CoreForegroundService.reloadBoardData()
-      connectSavedBoardLink(board["id"] as? String)
+      RecordingStorageFailure.requireAvailable()
+      try {
+        AppDataRepository.get(context.applicationContext).upsertBoard(board)
+        WatchLastBatteryPusher.push(context)
+        CoreForegroundService.reloadAlertRules(context.applicationContext)
+        CoreForegroundService.reloadBoardData()
+        connectSavedBoardLink(board["id"] as? String)
+      } catch (error: Exception) {
+        RecordingStorageFailure.report("board_save", "write_failed", error)
+        throw error
+      }
     }
     AsyncFunction("deleteBoard") Coroutine { id: String ->
-      AppDataRepository.get(context.applicationContext).deleteBoard(id)
+      RecordingStorageFailure.requireAvailable()
+      try {
+        AppDataRepository.get(context.applicationContext).deleteBoard(id)
+        WatchLastBatteryPusher.push(context)
+      } catch (error: Exception) {
+        RecordingStorageFailure.report("board_delete", "write_failed", error)
+        throw error
+      }
+    }
+    // @parity /modules/vescape-core/ios/VescapeCoreModule.swift `previewAlertPreset`
+    // @parity /modules/vescape-core/src/index.ts `previewAlertPreset`
+    Function("previewAlertPreset") { metric: String, level: String, topSpeedKmh: Double, hasBatteryConfig: Boolean, speedUnitSystem: String ->
+      AlertPresetPersistence.preview(metric, level, topSpeedKmh, hasBatteryConfig, speedUnitSystem).map { rule ->
+        mapOf(
+          "id" to rule.id,
+          "controlId" to rule.controlId,
+          "threshold" to rule.threshold,
+          "thresholdMax" to rule.thresholdMax,
+          "soundType" to rule.soundType,
+          "repeatEverySeconds" to rule.repeatEverySeconds,
+          "beepCount" to rule.beepCount,
+        )
+      }
+    }
+    // @parity /modules/vescape-core/ios/VescapeCoreModule.swift `applyAlertPreset`
+    // @parity /modules/vescape-core/src/index.ts `applyAlertPreset`
+    AsyncFunction("applyAlertPreset") Coroutine { boardId: String, metric: String, action: String, level: String?, matchBoardConfig: Boolean? ->
+      RecordingStorageFailure.requireAvailable()
+      try {
+        AppDataRepository.get(context.applicationContext).applyAlertPreset(boardId, metric, action, level, matchBoardConfig)
+        CoreForegroundService.reloadAlertRules(context.applicationContext)
+      } catch (error: CancellationException) { throw error }
+      catch (error: Throwable) { RecordingStorageFailure.report("alert_preset_apply", "write_failed", error); throw error }
     }
     AsyncFunction("getAlertRules") { boardId: String ->
-      runBlocking { AppDataRepository.get(context.applicationContext).getAlertRules(boardId) }
+      RecordingStorageFailure.requireAvailable()
+      try { runBlocking { AppDataRepository.get(context.applicationContext).getAlertRules(boardId) } }
+      catch (error: Throwable) { RecordingStorageFailure.reportRead("alert_rules_read", error); throw error }
     }
     AsyncFunction("upsertAlertRule") Coroutine { rule: Map<String, Any?> ->
-      AppDataRepository.get(context.applicationContext).upsertAlertRule(rule)
-      CoreForegroundService.reloadAlertRules(context.applicationContext)
+      RecordingStorageFailure.requireAvailable()
+      try { AppDataRepository.get(context.applicationContext).upsertAlertRule(rule); CoreForegroundService.reloadAlertRules(context.applicationContext) }
+      catch (error: CancellationException) { throw error }
+      catch (error: Throwable) { RecordingStorageFailure.report("alert_rule_save", "write_failed", error); throw error }
     }
     AsyncFunction("setAlertRuleEnabled") Coroutine { boardId: String, id: String, enabled: Boolean ->
-      AppDataRepository.get(context.applicationContext).setAlertRuleEnabled(boardId, id, enabled)
-      CoreForegroundService.reloadAlertRules(context.applicationContext)
+      RecordingStorageFailure.requireAvailable()
+      try { AppDataRepository.get(context.applicationContext).setAlertRuleEnabled(boardId, id, enabled); CoreForegroundService.reloadAlertRules(context.applicationContext) }
+      catch (error: CancellationException) { throw error }
+      catch (error: Throwable) { RecordingStorageFailure.report("alert_rule_enable", "write_failed", error); throw error }
     }
     AsyncFunction("deleteAlertRule") Coroutine { boardId: String, id: String ->
-      AppDataRepository.get(context.applicationContext).deleteAlertRule(boardId, id)
-      CoreForegroundService.reloadAlertRules(context.applicationContext)
+      RecordingStorageFailure.requireAvailable()
+      try { AppDataRepository.get(context.applicationContext).deleteAlertRule(boardId, id); CoreForegroundService.reloadAlertRules(context.applicationContext) }
+      catch (error: CancellationException) { throw error }
+      catch (error: Throwable) { RecordingStorageFailure.report("alert_rule_delete", "write_failed", error); throw error }
     }
     AsyncFunction("getPrivacyZones") {
+      RecordingStorageFailure.requireAvailable()
       runBlocking { AppDataRepository.get(context.applicationContext).getPrivacyZones() }
     }
     AsyncFunction("upsertPrivacyZone") Coroutine { zone: Map<String, Any?> ->
+      RecordingStorageFailure.requireAvailable()
       val appCtx = context.applicationContext
       AppDataRepository.get(appCtx).upsertPrivacyZone(zone)
       reloadPrivacyZonesIntoRecorder(appCtx)
     }
     AsyncFunction("setPrivacyZoneEnabled") Coroutine { id: String, enabled: Boolean ->
+      RecordingStorageFailure.requireAvailable()
       val appCtx = context.applicationContext
       AppDataRepository.get(appCtx).setPrivacyZoneEnabled(id, enabled)
       reloadPrivacyZonesIntoRecorder(appCtx)
     }
     AsyncFunction("deletePrivacyZone") Coroutine { id: String ->
+      RecordingStorageFailure.requireAvailable()
       val appCtx = context.applicationContext
       AppDataRepository.get(appCtx).deletePrivacyZone(id)
       reloadPrivacyZonesIntoRecorder(appCtx)
@@ -966,9 +1371,15 @@ class VescapeCoreModule : Module() {
     // The direction target is personal client state, never a Map Point. Native keeps it so Group
     // Ride presence can read it while JS is gone.
     AsyncFunction("setDirectionPoint") Coroutine { latitude: Double?, longitude: Double? ->
+      RecordingStorageFailure.requireAvailable()
       val appCtx = context.applicationContext
       val repository = AppDataRepository.get(appCtx)
-      repository.setDirectionPoint(latitude, longitude)
+      try { repository.setDirectionPoint(latitude, longitude) }
+      catch (error: CancellationException) { throw error }
+      catch (error: Throwable) {
+        RecordingStorageFailure.report("direction_point_save", "write_failed", error)
+        throw error
+      }
       CoreForegroundService.reloadGroupRideTarget(appCtx)
 
       // A Navigation belongs to exactly one Direction Point: setting one asks for a path, clearing
@@ -987,6 +1398,7 @@ class VescapeCoreModule : Module() {
     // @parity /modules/vescape-core/ios/VescapeCoreModule.swift `recomputeNavigation`
     // @parity /modules/vescape-core/src/index.ts `recomputeNavigation`
     AsyncFunction("recomputeNavigation") Coroutine { ->
+      RecordingStorageFailure.requireAvailable()
       recomputeNavigation(context.applicationContext)
     }
     // Switching the Navigation Profile is two things at once: the choice sticks as app data, and the
@@ -995,31 +1407,43 @@ class VescapeCoreModule : Module() {
     // @parity /modules/vescape-core/ios/VescapeCoreModule.swift `setNavigationProfile`
     // @parity /modules/vescape-core/src/index.ts `setNavigationProfile`
     AsyncFunction("setNavigationProfile") Coroutine { profile: String ->
+      RecordingStorageFailure.requireAvailable()
       val appCtx = context.applicationContext
       NavigationController.get(appCtx).selectProfile(NavigationProfile.fromWire(profile))
       recomputeNavigation(appCtx)
     }
     AsyncFunction("getSettings") {
-      runBlocking { AppDataRepository.get(context.applicationContext).getSettings() }
+      RecordingStorageFailure.requireAvailable()
+      try {
+        runBlocking { AppDataRepository.get(context.applicationContext).getSettings() }
+      } catch (error: Exception) {
+        RecordingStorageFailure.reportRead("settings_read", error)
+        throw error
+      }
     }
     // @parity /modules/vescape-core/ios/VescapeCoreModule.swift `refreshLegalPolicy`
     // @parity /modules/vescape-core/src/index.ts `refreshLegalPolicy`
     AsyncFunction("refreshLegalPolicy") Coroutine { ->
+      RecordingStorageFailure.requireAvailable()
       val repository = AppDataRepository.get(context.applicationContext)
       val settings = repository.getTypedSettings()
       val latitude = settings.lastGpsLatitude
       val longitude = settings.lastGpsLongitude
-      val countryCode = if (latitude != null && longitude != null) {
+      val resolution = if (latitude != null && longitude != null) {
         legalPolicyResolver.resolve(latitude, longitude)
       } else {
-        null
+        LegalPolicyResolution.Resolved(null)
       }
-      repository.updateLegalPolicy(countryCode)
+      if (resolution is LegalPolicyResolution.Unavailable) {
+        throw IllegalStateException("Could not resolve Legal Policy")
+      }
+      repository.updateLegalPolicy((resolution as LegalPolicyResolution.Resolved).countryCode)
       CoreForegroundService.reloadAlertRules(context.applicationContext)
     }
     // @parity /modules/vescape-core/ios/VescapeCoreModule.swift `setLegalMode`
     // @parity /modules/vescape-core/src/index.ts `setLegalMode`
     AsyncFunction("setLegalMode") { boardId: String, enabled: Boolean, promise: Promise ->
+      RecordingStorageFailure.requireAvailable()
       CoroutineScope(Dispatchers.IO).launch {
         val repository = AppDataRepository.get(context.applicationContext)
         if (repository.getBoard(boardId) == null) {
@@ -1043,7 +1467,18 @@ class VescapeCoreModule : Module() {
       }
     }
     AsyncFunction("updateSetting") Coroutine { key: String, value: Any? ->
-      AppDataRepository.get(context.applicationContext).updateSetting(key, value)
+      RecordingStorageFailure.requireAvailable()
+      try {
+        AppDataRepository.get(context.applicationContext).updateSetting(key, value)
+      } catch (error: Exception) {
+        RecordingStorageFailure.report("setting_save", "write_failed", error)
+        throw error
+      }
+      if (key == "unitSystem") {
+        CoreForegroundService.reloadAlertRules(context.applicationContext)
+        val units = AppDataRepository.get(context.applicationContext).getTypedSettings().unitSystem
+        mainHandler.post { alertTestCoordinator?.unitSystem = units }
+      }
       if (key == "liveHistoryLimit") {
         CoreForegroundService.setLiveHistoryLimit(value as? Number)
       }
@@ -1055,16 +1490,57 @@ class VescapeCoreModule : Module() {
         key == "freeSpinStationaryBoardCapKmh" ||
         key == "socEstimateWindowSeconds" ||
         key == "telemetryPollRateHz" ||
-        key == "wearPushRateHz" ||
-key == "wearAutoLaunchOnConnect" ||
-        key == "wearNavArrowEnabled" ||
+        key == "wearAutoLaunchOnConnect" ||
         // Mirrored to the wrist by WatchSettingsPusher, which runs off the applied settings.
-        key == "riderColor" ||
+        key in WATCH_SOURCE_SETTING_KEYS ||
         key == "boardWarningsEnabled" ||
-        key == "vescFaultCollectionEnabled"
+        key == "vescFaultCollectionEnabled" ||
+        key == "connectionSoundsEnabled" ||
+        key == "soundPack" ||
+        key == "audioSource"
       ) {
         CoreForegroundService.reloadTelemetrySettings(context.applicationContext)
       }
+    }
+  }
+
+  private fun ModuleDefinitionBuilder.registerGroupRide() {
+    // @parity /modules/vescape-core/ios/VescapeCoreModule.swift `startGroupRideObserve`
+    Function("startGroupRideObserve") { serverUrl: String ->
+      CoreForegroundService.startGroupRideObserve(context.applicationContext, serverUrl)
+    }
+    Function("stopGroupRideObserve") {
+      CoreForegroundService.stopGroupRideObserve(context.applicationContext)
+    }
+    Function("createGroupRide") { riderId: String, riderName: String, riderColor: String?, name: String?, lat: Double, lng: Double, auto: Boolean ->
+      CoreForegroundService.createGroupRide(context.applicationContext, riderId, riderName, riderColor, name, lat, lng, auto)
+    }
+    Function("joinGroupRide") { riderId: String, riderName: String, riderColor: String?, rideId: String ->
+      CoreForegroundService.joinGroupRide(context.applicationContext, riderId, riderName, riderColor, rideId)
+    }
+    Function("leaveGroupRide") {
+      CoreForegroundService.leaveGroupRide(context.applicationContext)
+    }
+    Function("updateGroupRideIdentity") { riderId: String, riderName: String, riderColor: String? ->
+      CoreForegroundService.updateGroupRideIdentity(context.applicationContext, riderId, riderName, riderColor)
+    }
+  }
+
+  private fun ModuleDefinitionBuilder.registerCustomAppSounds() {
+    // @parity /modules/vescape-core/ios/VescapeCoreModule.swift `customAppSoundPacks`
+    AsyncFunction("customAppSoundPacks") { CustomAppSounds.list(context.applicationContext) }
+    AsyncFunction("createAppSoundPack") { name: String -> CustomAppSounds.create(context.applicationContext, name) }
+    AsyncFunction("renameAppSoundPack") { id: String, name: String -> CustomAppSounds.rename(context.applicationContext, id, name) }
+    AsyncFunction("importAppSound") { id: String, cue: String, uri: String -> CustomAppSounds.import(context.applicationContext, id, cue, uri) }
+    AsyncFunction("removeAppSound") { id: String, cue: String -> CustomAppSounds.remove(context.applicationContext, id, cue) }
+    AsyncFunction("deleteAppSoundPack") Coroutine { id: String ->
+      val appContext = context.applicationContext
+      val selected = AppDataRepository.get(appContext).getTypedSettings().soundPack
+      if (selected == id) {
+        AppDataRepository.get(appContext).updateSetting("soundPack", "simple")
+        CoreForegroundService.reloadTelemetrySettings(appContext)
+      }
+      CustomAppSounds.delete(appContext, id)
     }
   }
 
@@ -1075,7 +1551,9 @@ key == "wearAutoLaunchOnConnect" ||
     if (rules.any { it.controlId != controlId }) return
 
     val feedback = AlertFeedback(context.applicationContext, mainHandler)
+    feedback.setAudioSource(kotlinx.coroutines.runBlocking { AppDataRepository.get(context.applicationContext).getTypedSettings().audioSource })
     val coordinator = AlertCoordinator(feedback = { feedback }, vibrateSingles = false)
+    coordinator.unitSystem = kotlinx.coroutines.runBlocking { AppDataRepository.get(context.applicationContext).getTypedSettings().unitSystem }
     coordinator.replaceRules(rules)
     alertTestFeedback = feedback
     alertTestCoordinator = coordinator
@@ -1247,13 +1725,15 @@ key == "wearAutoLaunchOnConnect" ||
     owClient = null
   }
 
-  private fun startLocationUpdates() {
+  private fun refreshLocationDemand() {
     val hasFine = ContextCompat.checkSelfPermission(context, android.Manifest.permission.ACCESS_FINE_LOCATION) ==
       PackageManager.PERMISSION_GRANTED
     if (!hasFine) {
       sendEvent("onError", mapOf("message" to "Location permission not granted"))
       return
     }
+    // Ensures a host exists to arm in. The resolver still decides whether it arms: a permission grant
+    // that lands while the app is backgrounded with no ride running leaves GPS off.
     CoreForegroundService.startGpsMonitoring(context.applicationContext)
   }
 
@@ -1275,6 +1755,8 @@ key == "wearAutoLaunchOnConnect" ||
     ManualDisconnectAutoStartGate.clear(appCtx)
     val config = try {
       buildSessionConfig(appCtx, boardId, requestedDebugRecordingEnabled)
+    } catch (error: kotlinx.coroutines.CancellationException) {
+      throw error
     } catch (error: Throwable) {
       Log.w(TAG, "Board Link saved but session config failed: ${error.message}")
       return
@@ -1289,8 +1771,14 @@ key == "wearAutoLaunchOnConnect" ||
 
   private suspend fun selectBoard(boardId: String) {
     val appCtx = context.applicationContext
+    try {
+      AppDataRepository.get(appCtx).setSelectedBoardId(boardId)
+    } catch (error: Exception) {
+      RecordingStorageFailure.report("setting_save", "write_failed", error)
+      throw error
+    }
+    WatchLastBatteryPusher.push(appCtx)
     ManualDisconnectAutoStartGate.clear(appCtx)
-    AppDataRepository.get(appCtx).setSelectedBoardId(boardId)
     companionPresence.refreshForSelectedBoard()
     val config = buildSessionConfig(appCtx, boardId, requestedDebugRecordingEnabled)
     CoreForegroundService.startBoardSession(
@@ -1518,11 +2006,6 @@ key == "wearAutoLaunchOnConnect" ||
       "transport" to BoardTransport.toBridge(result.resolvedTransport),
       "candidates" to candidates,
     )
-  }
-
-  private fun stopLocationUpdates() {
-    CoreForegroundService.stopGpsMonitoring(context.applicationContext)
-    TelemetryRepository.get(context.applicationContext).flushBlocking()
   }
 
   private fun stopBoardSession(promise: Promise) {

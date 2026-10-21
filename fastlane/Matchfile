@@ -2,7 +2,10 @@ git_url(ENV["MATCH_GIT_URL"])
 storage_mode("git")
 type("appstore")
 
-app_identifier(["app.vescape", "app.vescape.widget"])
+# The watchOS Mirror ships inside the phone IPA, so its App ID needs the same appstore
+# profile as the phone and widget. `.watchkitapp` is appended by the target config
+# (watch/watchos/expo-target.config.js) — this is the production form of that id.
+app_identifier(["app.vescape", "app.vescape.widget", "app.vescape.watchkitapp"])
 team_id(ENV["APPLE_TEAM_ID"])
 
 # In CI the workflow sets CI=true; match runs read-only so no Apple auth is

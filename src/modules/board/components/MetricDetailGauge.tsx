@@ -4,17 +4,12 @@ import type { SharedValue } from 'react-native-reanimated'
 import { SpeakerHighIcon, StopIcon } from 'phosphor-react-native'
 
 import { Button } from '@/components/base/Button'
-import type { DualGaugeAlert } from '@/components/charts/gaugeAlert'
 import { useAlertTest } from '@/modules/alerts/hooks/useAlertTest'
-import { buildMetricAlertRuleSnapshot } from '@/modules/alerts/lib/alertTest'
+import { useResolvedAlertRules } from '@/modules/alerts/hooks/useResolvedAlertRules'
+import { toTestRule } from '@/modules/alerts/lib/alertTest'
 import { SingleGauge } from '@/modules/board/components/SingleGauge'
 import type { TelemetryMetricConfig } from '@/modules/board/constants/telemetry'
-import {
-  getHistoryMetricHotRange,
-  getHistoryMetricKeyForControlId,
-} from '@/modules/history/lib/metricColorScale'
-import { useAlertsStore } from '@/modules/alerts/store/alertsStore'
-import { useSettingsStore } from '@/modules/settings/store/settingsStore'
+import { useMetricGaugeDecor } from '@/modules/board/hooks/useMetricGaugeDecor'
 
 interface MetricDetailGaugeProps {
   metric: TelemetryMetricConfig
@@ -29,37 +24,10 @@ export function MetricDetailGauge({
   min = metric.chartRange.min,
   max = metric.chartRange.max,
 }: MetricDetailGaugeProps) {
-  const alertRules = useAlertsStore((s) => s.rules)
-  const gradientsEnabled = useSettingsStore((s) => s.historyMetricGradientsEnabled)
-  const hotRanges = useSettingsStore((s) => s.historyMetricHotRanges)
-  const hotMetric = getHistoryMetricKeyForControlId(metric.controlId)
-  const hotRange = hotMetric
-    ? getHistoryMetricHotRange(hotMetric, hotRanges, gradientsEnabled)
-    : null
-
-  const alerts = useMemo<DualGaugeAlert[]>(
-    () =>
-      metric.controlId == null
-        ? []
-        : alertRules
-            .filter((rule) => rule.enabled && rule.controlId === metric.controlId)
-            .map((rule) => ({
-              id: rule.id,
-              threshold: rule.threshold,
-              thresholdMax: rule.thresholdMax,
-              repeats: rule.repeatEverySeconds != null,
-            })),
-    [alertRules, metric.controlId],
-  )
+  const { alerts, hotRange } = useMetricGaugeDecor(metric)
+  const alertRules = useResolvedAlertRules()
   const testRules = useMemo(
-    () =>
-      buildMetricAlertRuleSnapshot({
-        metric: null,
-        level: 'custom',
-        rules: alertRules.filter((rule) => rule.controlId === metric.controlId),
-        boardTopSpeedKmh: 0,
-        hasBatteryConfig: true,
-      }),
+    () => alertRules.filter((rule) => rule.controlId === metric.controlId).map(toTestRule),
     [alertRules, metric.controlId],
   )
   const alertTest = useAlertTest({
