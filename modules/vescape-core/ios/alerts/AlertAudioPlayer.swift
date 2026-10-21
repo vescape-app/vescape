@@ -720,7 +720,7 @@ internal final class AlertAudioPlayer {
     Self.log("AlertAudioPlayer.preview: \(spec)")
     if let sound = parseVoiceAlertSound(spec) {
       speakVoice(
-        voiceAnnouncement(sound, controlId: nil, threshold: nil, percentAvailable: true, unitSystem: unitSystem)
+        voiceAnnouncement(sound, controlId: nil, reading: nil, percentAvailable: true, unitSystem: unitSystem)
       )
       return
     }

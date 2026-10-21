@@ -120,8 +120,8 @@ internal data class VoiceAnnouncement(
 
 /**
  * What a `voice` sound says for an alert on [controlId]. The key comes from the sound string or the
- * metric; the value from the sound string or [threshold] (percent for battery only while
- * [percentAvailable]: without a battery config a battery threshold is volts), °C read in °F under
+ * metric; the value from the sound string or [reading] (percent for battery only while
+ * [percentAvailable]: without a battery config a battery reading is volts), °C read in °F under
  * imperial units, km/h read in mph, rounded to the nearest clip. A null key plays the severity sound only.
  *
  * @parity /modules/vescape-core/ios/alerts/VoicePacks.swift `voiceAnnouncement`
@@ -129,12 +129,12 @@ internal data class VoiceAnnouncement(
 internal fun voiceAnnouncement(
     sound: VoiceAlertSound,
     controlId: String?,
-    threshold: Double?,
+    reading: Double?,
     percentAvailable: Boolean,
     unitSystem: String,
 ): VoiceAnnouncement {
     val key = sound.key ?: controlId?.let(::voiceKey)
-    val raw = sound.value ?: threshold?.takeIf { key != "battery" || percentAvailable }
+    val raw = sound.value ?: reading?.takeIf { key != "battery" || percentAvailable }
     val value = when (key?.let { VOICE_KEY_VALUE_TYPES[it] }) {
         "percent" -> raw
         "number" -> raw?.let { if (key == "speed" && unitSystem == "imperial") it / KM_PER_MILE else it }

@@ -95,8 +95,10 @@ internal class AlertCoordinator(
             }?.let { alert ->
                 val voice = parseVoiceAlertSound(alert.spec)
                 if (voice != null) {
+                    // A repeat speaks where the metric is now, not the threshold it crossed.
+                    val spoken = if (alert.controlId == "battery") batteryPercent ?: alert.threshold else alert.value
                     feedback().speakVoice(
-                        voiceAnnouncement(voice, alert.controlId, alert.threshold, batteryPercent != null, unitSystem),
+                        voiceAnnouncement(voice, alert.controlId, spoken, batteryPercent != null, unitSystem),
                     )
                     return@let
                 }

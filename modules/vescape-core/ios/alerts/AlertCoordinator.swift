@@ -105,11 +105,13 @@ internal final class AlertCoordinator {
         $0.thresholdMax == nil && isSpokenSpec($0.spec) && !mutedPresets.contains($0.ruleId)
       }) {
         if let voice = parseVoiceAlertSound(alert.spec) {
+          // A repeat speaks where the metric is now, not the threshold it crossed.
+          let spoken = alert.controlId == "battery" ? batteryPercent ?? alert.threshold : alert.value
           player.speakVoice(
             voiceAnnouncement(
               voice,
               controlId: alert.controlId,
-              threshold: alert.threshold,
+              reading: spoken,
               percentAvailable: batteryPercent != nil,
               unitSystem: unitSystem
             )

@@ -88,19 +88,19 @@ internal struct VoiceAnnouncement: Equatable {
 }
 
 /// What a `voice` sound says for an alert on `controlId`. The key comes from the sound string or the
-/// metric; the value from the sound string or `threshold` (percent for battery only while
-/// `percentAvailable`: without a battery config a battery threshold is volts), °C read in °F under
+/// metric; the value from the sound string or `reading` (percent for battery only while
+/// `percentAvailable`: without a battery config a battery reading is volts), °C read in °F under
 /// imperial units, km/h read in mph, rounded to the nearest clip. A nil key plays the severity sound only.
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/alerts/VoicePacks.kt `voiceAnnouncement`
 internal func voiceAnnouncement(
   _ sound: VoiceAlertSound,
   controlId: String?,
-  threshold: Double?,
+  reading: Double?,
   percentAvailable: Bool,
   unitSystem: String
 ) -> VoiceAnnouncement {
   let key = sound.key ?? controlId.flatMap(voiceKey)
-  let raw = sound.value ?? (key != "battery" || percentAvailable ? threshold : nil)
+  let raw = sound.value ?? (key != "battery" || percentAvailable ? reading : nil)
   let value: Double?
   switch key.flatMap({ voiceKeyValueTypes[$0] ?? nil }) {
   case "percent": value = raw

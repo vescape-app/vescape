@@ -35,37 +35,37 @@ final class VoicePacksTests: XCTestCase {
   func testAnnouncementTakesKeyFromMetricAndValueFromThreshold() {
     let custom = VoiceAlertSound(severity: .info, key: nil, value: nil)
     XCTAssertEqual(
-      voiceAnnouncement(custom, controlId: "battery", threshold: 19.6, percentAvailable: true, unitSystem: "metric"),
+      voiceAnnouncement(custom, controlId: "battery", reading: 19.6, percentAvailable: true, unitSystem: "metric"),
       VoiceAnnouncement(severity: .info, key: "battery", value: 20)
     )
     // Without a battery config the threshold is volts, not a percent.
     XCTAssertEqual(
-      voiceAnnouncement(custom, controlId: "battery", threshold: 42, percentAvailable: false, unitSystem: "metric"),
+      voiceAnnouncement(custom, controlId: "battery", reading: 42, percentAvailable: false, unitSystem: "metric"),
       VoiceAnnouncement(severity: .info, key: "battery", value: nil)
     )
     XCTAssertEqual(
-      voiceAnnouncement(custom, controlId: "power", threshold: 30, percentAvailable: true, unitSystem: "metric"),
+      voiceAnnouncement(custom, controlId: "power", reading: 30, percentAvailable: true, unitSystem: "metric"),
       VoiceAnnouncement(severity: .info, key: nil, value: nil)
     )
     let preset = VoiceAlertSound(severity: .critical, key: "motorTemp", value: nil)
     XCTAssertEqual(
-      voiceAnnouncement(preset, controlId: "motor-temp", threshold: 95, percentAvailable: false, unitSystem: "metric"),
+      voiceAnnouncement(preset, controlId: "motor-temp", reading: 95, percentAvailable: false, unitSystem: "metric"),
       VoiceAnnouncement(severity: .critical, key: "motorTemp", value: 95)
     )
     // °F converts before rounding: 95 °C = 203 °F, −20.6 °C = −5.08 °F.
-    XCTAssertEqual(voiceAnnouncement(preset, controlId: "motor-temp", threshold: 95, percentAvailable: false, unitSystem: "imperial").value, 203)
-    XCTAssertEqual(voiceAnnouncement(preset, controlId: "motor-temp", threshold: -20.6, percentAvailable: false, unitSystem: "imperial").value, -5)
+    XCTAssertEqual(voiceAnnouncement(preset, controlId: "motor-temp", reading: 95, percentAvailable: false, unitSystem: "imperial").value, 203)
+    XCTAssertEqual(voiceAnnouncement(preset, controlId: "motor-temp", reading: -20.6, percentAvailable: false, unitSystem: "imperial").value, -5)
     let explicit = VoiceAlertSound(severity: .warning, key: "battery", value: 10)
-    XCTAssertEqual(voiceAnnouncement(explicit, controlId: "speed", threshold: 50, percentAvailable: false, unitSystem: "metric").value, 10)
+    XCTAssertEqual(voiceAnnouncement(explicit, controlId: "speed", reading: 50, percentAvailable: false, unitSystem: "metric").value, 10)
     // Speed reads in mph under imperial (50 km/h = 31.07 mph); duty stays a percent.
     let speed = VoiceAlertSound(severity: .warning, key: nil, value: nil)
     XCTAssertEqual(
-      voiceAnnouncement(speed, controlId: "speed", threshold: 50, percentAvailable: false, unitSystem: "metric"),
+      voiceAnnouncement(speed, controlId: "speed", reading: 50, percentAvailable: false, unitSystem: "metric"),
       VoiceAnnouncement(severity: .warning, key: "speed", value: 50)
     )
-    XCTAssertEqual(voiceAnnouncement(speed, controlId: "speed", threshold: 50, percentAvailable: false, unitSystem: "imperial").value, 31)
+    XCTAssertEqual(voiceAnnouncement(speed, controlId: "speed", reading: 50, percentAvailable: false, unitSystem: "imperial").value, 31)
     XCTAssertEqual(
-      voiceAnnouncement(speed, controlId: "duty", threshold: 85, percentAvailable: false, unitSystem: "imperial"),
+      voiceAnnouncement(speed, controlId: "duty", reading: 85, percentAvailable: false, unitSystem: "imperial"),
       VoiceAnnouncement(severity: .warning, key: "duty", value: 85)
     )
   }
