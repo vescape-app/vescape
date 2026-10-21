@@ -5,96 +5,191 @@
   "lines": {
     "speed": {
       "start": ["lines/speed.start.0.m4a"],
-      "end": []
+      "full": {
+        "start": ["lines/speed.full.start.0.m4a", "lines/speed.full.start.1.m4a"]
+      }
     },
     "duty": {
       "start": ["lines/duty.start.0.m4a"],
-      "end": []
+      "full": {
+        "start": ["lines/duty.full.start.0.m4a", "lines/duty.full.start.1.m4a"]
+      }
     },
     "battery": {
-      "start": ["lines/battery.start.0.m4a", "lines/battery.start.1.m4a"],
-      "end": []
+      "start": ["lines/battery.start.0.m4a"],
+      "minimal": ["lines/battery.minimal.0.m4a"],
+      "full": {
+        "start": ["lines/battery.full.start.0.m4a", "lines/battery.full.start.1.m4a"]
+      }
     },
     "battery.warning": {
-      "start": ["lines/battery.warning.start.0.m4a", "lines/battery.warning.start.1.m4a"],
-      "end": []
+      "start": ["lines/battery.warning.start.0.m4a"],
+      "full": {
+        "start": [
+          "lines/battery.warning.full.start.0.m4a",
+          "lines/battery.warning.full.start.1.m4a"
+        ],
+        "end": ["lines/battery.warning.full.end.0.m4a"],
+        "endChance": 0.2
+      }
     },
     "battery.critical": {
-      "start": ["lines/battery.critical.start.0.m4a", "lines/battery.critical.start.1.m4a"],
-      "end": ["", "lines/battery.critical.end.1.m4a"]
+      "start": ["lines/battery.critical.start.0.m4a"],
+      "full": {
+        "start": [
+          "lines/battery.critical.full.start.0.m4a",
+          "lines/battery.critical.full.start.1.m4a"
+        ],
+        "end": ["lines/battery.critical.full.end.0.m4a", "lines/battery.critical.full.end.1.m4a"],
+        "endChance": 0.2
+      }
     },
     "motorTemp": {
-      "start": ["lines/motorTemp.start.0.m4a", "lines/motorTemp.start.1.m4a"],
-      "end": []
+      "start": ["lines/motorTemp.start.0.m4a"],
+      "minimal": ["lines/motorTemp.minimal.0.m4a"],
+      "full": {
+        "start": ["lines/motorTemp.full.start.0.m4a", "lines/motorTemp.full.start.1.m4a"]
+      }
     },
     "motorTemp.warning": {
-      "start": ["lines/motorTemp.warning.start.0.m4a", "lines/motorTemp.warning.start.1.m4a"],
-      "end": []
+      "start": ["lines/motorTemp.warning.start.0.m4a"],
+      "full": {
+        "start": [
+          "lines/motorTemp.warning.full.start.0.m4a",
+          "lines/motorTemp.warning.full.start.1.m4a"
+        ],
+        "end": ["lines/motorTemp.warning.full.end.0.m4a"],
+        "endChance": 0.2
+      }
     },
     "motorTemp.critical": {
-      "start": ["lines/motorTemp.critical.start.0.m4a", "lines/motorTemp.critical.start.1.m4a"],
-      "end": ["", "lines/motorTemp.critical.end.1.m4a"]
+      "start": ["lines/motorTemp.critical.start.0.m4a"],
+      "full": {
+        "start": [
+          "lines/motorTemp.critical.full.start.0.m4a",
+          "lines/motorTemp.critical.full.start.1.m4a"
+        ],
+        "end": [
+          "lines/motorTemp.critical.full.end.0.m4a",
+          "lines/motorTemp.critical.full.end.1.m4a"
+        ],
+        "endChance": 0.2
+      }
     },
     "controllerTemp": {
-      "start": ["lines/controllerTemp.start.0.m4a", "lines/controllerTemp.start.1.m4a"],
-      "end": []
+      "start": ["lines/controllerTemp.start.0.m4a"],
+      "minimal": ["lines/controllerTemp.minimal.0.m4a"],
+      "full": {
+        "start": ["lines/controllerTemp.full.start.0.m4a", "lines/controllerTemp.full.start.1.m4a"]
+      }
     },
     "controllerTemp.warning": {
-      "start": [
-        "lines/controllerTemp.warning.start.0.m4a",
-        "lines/controllerTemp.warning.start.1.m4a"
-      ],
-      "end": []
+      "start": ["lines/controllerTemp.warning.start.0.m4a"],
+      "full": {
+        "start": [
+          "lines/controllerTemp.warning.full.start.0.m4a",
+          "lines/controllerTemp.warning.full.start.1.m4a"
+        ],
+        "end": ["lines/controllerTemp.warning.full.end.0.m4a"],
+        "endChance": 0.2
+      }
     },
     "controllerTemp.critical": {
-      "start": [
-        "lines/controllerTemp.critical.start.0.m4a",
-        "lines/controllerTemp.critical.start.1.m4a"
-      ],
-      "end": ["", "lines/controllerTemp.critical.end.1.m4a"]
+      "start": ["lines/controllerTemp.critical.start.0.m4a"],
+      "full": {
+        "start": [
+          "lines/controllerTemp.critical.full.start.0.m4a",
+          "lines/controllerTemp.critical.full.start.1.m4a"
+        ],
+        "end": [
+          "lines/controllerTemp.critical.full.end.0.m4a",
+          "lines/controllerTemp.critical.full.end.1.m4a"
+        ],
+        "endChance": 0.2
+      }
     },
     "link.connected": {
-      "start": ["lines/link.connected.start.0.m4a", "lines/link.connected.start.1.m4a"],
-      "end": []
+      "start": ["lines/link.connected.start.0.m4a"],
+      "full": {
+        "start": [
+          "lines/link.connected.full.start.0.m4a",
+          "lines/link.connected.full.start.1.m4a",
+          "lines/link.connected.full.start.2.m4a"
+        ]
+      }
     },
     "link.lost": {
-      "start": ["lines/link.lost.start.0.m4a", "lines/link.lost.start.1.m4a"],
-      "end": []
+      "start": ["lines/link.lost.start.0.m4a"],
+      "full": {
+        "start": ["lines/link.lost.full.start.0.m4a", "lines/link.lost.full.start.1.m4a"]
+      }
     },
     "system.error": {
-      "start": ["lines/system.error.start.0.m4a", "lines/system.error.start.1.m4a"],
-      "end": []
+      "start": ["lines/system.error.start.0.m4a"],
+      "full": {
+        "start": ["lines/system.error.full.start.0.m4a", "lines/system.error.full.start.1.m4a"]
+      }
     },
     "groupRide.created": {
-      "start": ["lines/groupRide.created.start.0.m4a", "lines/groupRide.created.start.1.m4a"],
-      "end": []
+      "start": ["lines/groupRide.created.start.0.m4a"],
+      "full": {
+        "start": [
+          "lines/groupRide.created.full.start.0.m4a",
+          "lines/groupRide.created.full.start.1.m4a"
+        ]
+      }
     },
     "groupRide.joined": {
-      "start": ["lines/groupRide.joined.start.0.m4a", "lines/groupRide.joined.start.1.m4a"],
-      "end": []
+      "start": ["lines/groupRide.joined.start.0.m4a"],
+      "full": {
+        "start": [
+          "lines/groupRide.joined.full.start.0.m4a",
+          "lines/groupRide.joined.full.start.1.m4a"
+        ]
+      }
     },
     "groupRide.riderJoined": {
-      "start": [
-        "lines/groupRide.riderJoined.start.0.m4a",
-        "lines/groupRide.riderJoined.start.1.m4a"
-      ],
-      "end": []
+      "start": ["lines/groupRide.riderJoined.start.0.m4a"],
+      "full": {
+        "start": [
+          "lines/groupRide.riderJoined.full.start.0.m4a",
+          "lines/groupRide.riderJoined.full.start.1.m4a"
+        ]
+      }
     },
     "groupRide.riderLeft": {
-      "start": ["lines/groupRide.riderLeft.start.0.m4a", "lines/groupRide.riderLeft.start.1.m4a"],
-      "end": []
+      "start": ["lines/groupRide.riderLeft.start.0.m4a"],
+      "full": {
+        "start": [
+          "lines/groupRide.riderLeft.full.start.0.m4a",
+          "lines/groupRide.riderLeft.full.start.1.m4a"
+        ]
+      }
     },
     "groupRide.lost": {
-      "start": ["lines/groupRide.lost.start.0.m4a", "lines/groupRide.lost.start.1.m4a"],
-      "end": []
+      "start": ["lines/groupRide.lost.start.0.m4a"],
+      "full": {
+        "start": ["lines/groupRide.lost.full.start.0.m4a", "lines/groupRide.lost.full.start.1.m4a"]
+      }
     },
     "groupRide.restored": {
-      "start": ["lines/groupRide.restored.start.0.m4a", "lines/groupRide.restored.start.1.m4a"],
-      "end": []
+      "start": ["lines/groupRide.restored.start.0.m4a"],
+      "full": {
+        "start": [
+          "lines/groupRide.restored.full.start.0.m4a",
+          "lines/groupRide.restored.full.start.1.m4a"
+        ]
+      }
     },
     "ride.end": {
-      "start": ["lines/ride.end.start.0.m4a", "lines/ride.end.start.1.m4a"],
-      "end": []
+      "start": ["lines/ride.end.start.0.m4a"],
+      "full": {
+        "start": [
+          "lines/ride.end.full.start.0.m4a",
+          "lines/ride.end.full.start.1.m4a",
+          "lines/ride.end.full.start.2.m4a"
+        ]
+      }
     }
   },
   "values": {
@@ -639,49 +734,83 @@
     }
   },
   "sources": {
+    "lines/speed.full.start.0.m4a": "78eb01ebeee7e4e9",
+    "lines/speed.full.start.1.m4a": "7c370e869a073fbd",
     "lines/speed.start.0.m4a": "78eb01ebeee7e4e9",
+    "lines/duty.full.start.0.m4a": "e465a4752adc30e4",
+    "lines/duty.full.start.1.m4a": "8207e0c2cc432005",
     "lines/duty.start.0.m4a": "e465a4752adc30e4",
+    "lines/battery.full.start.0.m4a": "71d350df968bfa73",
+    "lines/battery.full.start.1.m4a": "4523efe86a8c4129",
     "lines/battery.start.0.m4a": "71d350df968bfa73",
-    "lines/battery.start.1.m4a": "4523efe86a8c4129",
+    "lines/battery.minimal.0.m4a": "7f0149b30ed4de35",
+    "lines/battery.warning.full.start.0.m4a": "f074b301f36a8431",
+    "lines/battery.warning.full.start.1.m4a": "9ee5ff0e0d4a605e",
+    "lines/battery.warning.full.end.0.m4a": "7cc75dbcfee5ea5a",
     "lines/battery.warning.start.0.m4a": "f074b301f36a8431",
-    "lines/battery.warning.start.1.m4a": "9ee5ff0e0d4a605e",
+    "lines/battery.critical.full.start.0.m4a": "d9bf6b854399bb66",
+    "lines/battery.critical.full.start.1.m4a": "f6cab2070e7aa581",
+    "lines/battery.critical.full.end.0.m4a": "26751db1a337a36c",
+    "lines/battery.critical.full.end.1.m4a": "770483bdeca7ef73",
     "lines/battery.critical.start.0.m4a": "d9bf6b854399bb66",
-    "lines/battery.critical.start.1.m4a": "f6cab2070e7aa581",
-    "lines/battery.critical.end.1.m4a": "26751db1a337a36c",
+    "lines/motorTemp.full.start.0.m4a": "12703c4022abf935",
+    "lines/motorTemp.full.start.1.m4a": "831000e5b189f82d",
     "lines/motorTemp.start.0.m4a": "12703c4022abf935",
-    "lines/motorTemp.start.1.m4a": "831000e5b189f82d",
+    "lines/motorTemp.minimal.0.m4a": "a7f6730e60cc53e2",
+    "lines/motorTemp.warning.full.start.0.m4a": "6936b80718db0071",
+    "lines/motorTemp.warning.full.start.1.m4a": "92cbcd4c6b89ccc2",
+    "lines/motorTemp.warning.full.end.0.m4a": "c6b6fe45502fab2a",
     "lines/motorTemp.warning.start.0.m4a": "6936b80718db0071",
-    "lines/motorTemp.warning.start.1.m4a": "92cbcd4c6b89ccc2",
+    "lines/motorTemp.critical.full.start.0.m4a": "586c4bc57739bf61",
+    "lines/motorTemp.critical.full.start.1.m4a": "383377b6d3e43872",
+    "lines/motorTemp.critical.full.end.0.m4a": "c6b6fe45502fab2a",
+    "lines/motorTemp.critical.full.end.1.m4a": "50e78b4c415b0d12",
     "lines/motorTemp.critical.start.0.m4a": "586c4bc57739bf61",
-    "lines/motorTemp.critical.start.1.m4a": "383377b6d3e43872",
-    "lines/motorTemp.critical.end.1.m4a": "c6b6fe45502fab2a",
+    "lines/controllerTemp.full.start.0.m4a": "aa16b916854f56f5",
+    "lines/controllerTemp.full.start.1.m4a": "9176f14770be68f6",
     "lines/controllerTemp.start.0.m4a": "aa16b916854f56f5",
-    "lines/controllerTemp.start.1.m4a": "9176f14770be68f6",
+    "lines/controllerTemp.minimal.0.m4a": "46bb85bcc5aa1a01",
+    "lines/controllerTemp.warning.full.start.0.m4a": "a47a266305d01d44",
+    "lines/controllerTemp.warning.full.start.1.m4a": "6848f20efe410327",
+    "lines/controllerTemp.warning.full.end.0.m4a": "c6b6fe45502fab2a",
     "lines/controllerTemp.warning.start.0.m4a": "a47a266305d01d44",
-    "lines/controllerTemp.warning.start.1.m4a": "6848f20efe410327",
-    "lines/controllerTemp.critical.start.0.m4a": "24062dd8dec2fa6b",
-    "lines/controllerTemp.critical.start.1.m4a": "216e40e6d2f2e8f4",
-    "lines/controllerTemp.critical.end.1.m4a": "c6b6fe45502fab2a",
-    "lines/link.connected.start.0.m4a": "53230011a2ff60f6",
-    "lines/link.connected.start.1.m4a": "881f9d24d4279c3c",
+    "lines/controllerTemp.critical.full.start.0.m4a": "24062dd8dec2fa6b",
+    "lines/controllerTemp.critical.full.start.1.m4a": "216e40e6d2f2e8f4",
+    "lines/controllerTemp.critical.full.end.0.m4a": "c6b6fe45502fab2a",
+    "lines/controllerTemp.critical.full.end.1.m4a": "50e78b4c415b0d12",
+    "lines/controllerTemp.critical.start.0.m4a": "216e40e6d2f2e8f4",
+    "lines/link.connected.full.start.0.m4a": "53230011a2ff60f6",
+    "lines/link.connected.full.start.1.m4a": "881f9d24d4279c3c",
+    "lines/link.connected.full.start.2.m4a": "3bef1f383f9e2795",
+    "lines/link.connected.start.0.m4a": "b59f9329e15695f6",
+    "lines/link.lost.full.start.0.m4a": "7f80ad03f4104006",
+    "lines/link.lost.full.start.1.m4a": "46d0ef6a964373f5",
     "lines/link.lost.start.0.m4a": "7f80ad03f4104006",
-    "lines/link.lost.start.1.m4a": "46d0ef6a964373f5",
-    "lines/system.error.start.0.m4a": "435bfacf14678e3b",
-    "lines/system.error.start.1.m4a": "04efc8b2af243a18",
-    "lines/groupRide.created.start.0.m4a": "e3393c32203d84e7",
-    "lines/groupRide.created.start.1.m4a": "2dc9e4536e411c26",
+    "lines/system.error.full.start.0.m4a": "435bfacf14678e3b",
+    "lines/system.error.full.start.1.m4a": "04efc8b2af243a18",
+    "lines/system.error.start.0.m4a": "fe66261af4190a53",
+    "lines/groupRide.created.full.start.0.m4a": "e3393c32203d84e7",
+    "lines/groupRide.created.full.start.1.m4a": "2dc9e4536e411c26",
+    "lines/groupRide.created.start.0.m4a": "8c09cfe14415280c",
+    "lines/groupRide.joined.full.start.0.m4a": "f3f5de200cac2b85",
+    "lines/groupRide.joined.full.start.1.m4a": "4fc9457ee9834619",
     "lines/groupRide.joined.start.0.m4a": "f3f5de200cac2b85",
-    "lines/groupRide.joined.start.1.m4a": "4fc9457ee9834619",
-    "lines/groupRide.riderJoined.start.0.m4a": "2d8f440e60ac7f32",
-    "lines/groupRide.riderJoined.start.1.m4a": "fd57d408edb7358b",
-    "lines/groupRide.riderLeft.start.0.m4a": "761910dc063f3131",
-    "lines/groupRide.riderLeft.start.1.m4a": "70b7c06f2abfe617",
+    "lines/groupRide.riderJoined.full.start.0.m4a": "2d8f440e60ac7f32",
+    "lines/groupRide.riderJoined.full.start.1.m4a": "fd57d408edb7358b",
+    "lines/groupRide.riderJoined.start.0.m4a": "b15fc0b0fae5e18e",
+    "lines/groupRide.riderLeft.full.start.0.m4a": "761910dc063f3131",
+    "lines/groupRide.riderLeft.full.start.1.m4a": "70b7c06f2abfe617",
+    "lines/groupRide.riderLeft.start.0.m4a": "06d91405e039bdec",
+    "lines/groupRide.lost.full.start.0.m4a": "9a9367f31e543f0a",
+    "lines/groupRide.lost.full.start.1.m4a": "b25ad03387c46082",
     "lines/groupRide.lost.start.0.m4a": "9a9367f31e543f0a",
-    "lines/groupRide.lost.start.1.m4a": "b25ad03387c46082",
+    "lines/groupRide.restored.full.start.0.m4a": "e0cacc7126adb575",
+    "lines/groupRide.restored.full.start.1.m4a": "f7a13a9b9f3e4d9f",
     "lines/groupRide.restored.start.0.m4a": "e0cacc7126adb575",
-    "lines/groupRide.restored.start.1.m4a": "f7a13a9b9f3e4d9f",
+    "lines/ride.end.full.start.0.m4a": "dee989727d4bfe2b",
+    "lines/ride.end.full.start.1.m4a": "3028308a90aaf093",
+    "lines/ride.end.full.start.2.m4a": "e8e3423eb2a93b43",
     "lines/ride.end.start.0.m4a": "dee989727d4bfe2b",
-    "lines/ride.end.start.1.m4a": "3028308a90aaf093",
     "values/percent/0.m4a": "459aab31a55fd27e",
     "values/percent/1.m4a": "bdd4dc362607429a",
     "values/percent/2.m4a": "0f80da7e75fafbd6",

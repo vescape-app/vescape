@@ -27,13 +27,14 @@ internal const val VOICE_PACK_FALLBACK = "clean"
 internal const val VOICE_MATCHING = "matching"
 
 /**
- * Voice level: `off` plays effects only for presets and app sounds, `standard` speaks preset alerts,
- * `full` also speaks app cues and group ride events (#581). Custom rules ignore it.
+ * Voice level: `off` plays effects only for presets and app sounds; `minimal` and `standard` speak
+ * preset alerts; `full` also speaks app cues and group ride events (#581). Each level also picks the
+ * wording ([VoiceWording]). Custom rules speak whatever the level, `off` with standard wording.
  *
  * @parity /modules/vescape-core/ios/alerts/VoicePacks.swift `voiceLevels`
  * @parity /src/modules/settings/lib/appSounds.ts `VOICE_LEVELS`
  */
-internal val VOICE_LEVELS = listOf("off", "standard", "full")
+internal val VOICE_LEVELS = listOf("off", "minimal", "standard", "full")
 internal const val VOICE_LEVEL_DEFAULT = "standard"
 
 /**
@@ -90,8 +91,32 @@ internal fun voiceKey(controlId: String): String? = when (controlId) {
 
 private const val KM_PER_MILE = 1.609344
 
+/**
+ * Which phrases a line speaks: [MINIMAL] the generic line's `minimal` (else `start`), never a
+ * severity line; [STANDARD] the severity line's `start`; [FULL] its `full` pool (else `start`) with
+ * an ending drawn at `endChance`.
+ *
+ * @parity /modules/vescape-core/ios/alerts/VoicePacks.swift `VoiceWording`
+ */
+internal enum class VoiceWording {
+    MINIMAL, STANDARD, FULL;
+
+    companion object {
+        fun of(level: String) = when (level) {
+            "minimal" -> MINIMAL
+            "full" -> FULL
+            else -> STANDARD
+        }
+    }
+}
+
 /** One voice announcement: the severity sound, then the line for [key] with [value] spoken last. */
-internal data class VoiceAnnouncement(val severity: AlertSeverity, val key: String?, val value: Int?)
+internal data class VoiceAnnouncement(
+    val severity: AlertSeverity,
+    val key: String?,
+    val value: Int?,
+    val wording: VoiceWording = VoiceWording.STANDARD,
+)
 
 /**
  * What a `voice` sound says for an alert on [controlId]. The key comes from the sound string or the
@@ -119,13 +144,38 @@ internal fun voiceAnnouncement(
     return VoiceAnnouncement(sound.severity, key, value?.takeIf { it.isFinite() }?.roundToInt())
 }
 
-/** A line: `start` (+ value) (+ `end`); each part lists clip variants, `end` may be empty. */
-internal data class VoiceLine(val start: List<String>, val end: List<String>)
+/**
+ * A line in `pack.json`: `start` phrases, an optional `minimal` phrase set, and an optional `full`
+ * pool whose ending plays at [endChance]. Each list holds clip variants.
+ */
+internal data class VoiceLine(
+    val start: List<String>,
+    val minimal: List<String> = emptyList(),
+    val fullStart: List<String> = emptyList(),
+    val fullEnd: List<String> = emptyList(),
+    val endChance: Double = 1.0,
+) {
+    val files: List<String> get() = start + minimal + fullStart + fullEnd
+}
+
+/** What one announcement can say: `start` (+ value) (+ an `end` at [endChance]). */
+internal data class VoicePhrases(val start: List<String>, val end: List<String>, val endChance: Double)
 
 /** A voice pack's `pack.json`: lines per key, value clip per value type and number. */
 internal class VoicePackManifest(val lines: Map<String, VoiceLine>, val values: Map<String, Map<Int, String>>) {
-    /** Most specific line: `<key>.<severity>`, else the generic `<key>`; null when the pack has neither. */
-    fun line(key: String, severity: AlertSeverity): VoiceLine? = lines["$key.${severity.id}"] ?: lines[key]
+    /**
+     * Phrases for [key] in [wording]: Minimal reads the generic `<key>` line only; Standard and Full
+     * the most specific `<key>.<severity>`, else `<key>`. Null when the pack has no such line.
+     */
+    fun phrases(key: String, severity: AlertSeverity, wording: VoiceWording): VoicePhrases? {
+        val line = (if (wording == VoiceWording.MINIMAL) lines[key] else lines["$key.${severity.id}"] ?: lines[key])
+            ?: return null
+        return when (wording) {
+            VoiceWording.MINIMAL -> VoicePhrases(line.minimal.ifEmpty { line.start }, emptyList(), 0.0)
+            VoiceWording.STANDARD -> VoicePhrases(line.start, emptyList(), 0.0)
+            VoiceWording.FULL -> VoicePhrases(line.fullStart.ifEmpty { line.start }, line.fullEnd, line.endChance)
+        }.takeIf { it.start.isNotEmpty() }
+    }
 
     /** Value clip of [key]'s value type for [value]; null when the pack has no such clip. */
     fun valueClip(key: String, value: Int): String? = VOICE_KEY_VALUE_TYPES[key]?.let { values[it]?.get(value) }
@@ -137,7 +187,16 @@ internal class VoicePackManifest(val lines: Map<String, VoiceLine>, val values: 
             fun list(obj: JSONObject, name: String) = obj.optJSONArray(name)?.let { array -> (0 until array.length()).map(array::getString) }.orEmpty()
             return VoicePackManifest(
                 lines = lines.keys().asSequence().associateWith { key ->
-                    lines.getJSONObject(key).let { VoiceLine(list(it, "start"), list(it, "end")) }
+                    lines.getJSONObject(key).let { line ->
+                        val full = line.optJSONObject("full") ?: JSONObject()
+                        VoiceLine(
+                            start = list(line, "start"),
+                            minimal = list(line, "minimal"),
+                            fullStart = list(full, "start"),
+                            fullEnd = list(full, "end"),
+                            endChance = full.optDouble("endChance", 1.0),
+                        )
+                    }
                 },
                 values = values.keys().asSequence().associateWith { type ->
                     val clips = values.getJSONObject(type)
@@ -149,16 +208,16 @@ internal class VoicePackManifest(val lines: Map<String, VoiceLine>, val values: 
 }
 
 /**
- * Picks one clip per line part at random, never the same `start` twice in a row for a key. The
- * pick after each announcement is made right away, so [next] lets the caller join it ahead.
- * An `end` of `""` is the "none" variant.
+ * Picks one clip per line part at random, never the same `start` twice in a row for a key, and
+ * an `end` only at its `endChance`. The pick after each announcement is made right away, so [next]
+ * lets the caller join it ahead.
  *
  * @parity /modules/vescape-core/ios/alerts/VoicePacks.swift `VoiceVariantPicker`
  */
 internal class VoiceVariantPicker(private val random: (Int) -> Int = { kotlin.random.Random.nextInt(it) }) {
     private data class Choice(val start: Int, val end: Int?) {
         /** False for a pick made against another pack's line (the picker serves every pack). */
-        fun fits(line: VoiceLine) = start < line.start.size && (end?.let { it < line.end.size } ?: line.end.isEmpty())
+        fun fits(line: VoicePhrases) = start < line.start.size && (end?.let { it < line.end.size } ?: true)
     }
 
     private val upcoming = HashMap<String, Choice>()
@@ -167,7 +226,7 @@ internal class VoiceVariantPicker(private val random: (Int) -> Int = { kotlin.ra
     @Synchronized
     fun clips(manifest: VoicePackManifest, announcement: VoiceAnnouncement): List<String>? {
         val (key, line) = resolve(manifest, announcement) ?: return null
-        val lineKey = "$key.${announcement.severity.id}"
+        val lineKey = "$key.${announcement.severity.id}.${announcement.wording}"
         val choice = upcoming[lineKey]?.takeIf { it.fits(line) }
             ?: choose(line, avoid = null)
         upcoming[lineKey] = choose(line, avoid = choice.start)
@@ -178,25 +237,26 @@ internal class VoiceVariantPicker(private val random: (Int) -> Int = { kotlin.ra
     @Synchronized
     fun next(manifest: VoicePackManifest, announcement: VoiceAnnouncement): List<String>? {
         val (key, line) = resolve(manifest, announcement) ?: return null
-        val choice = upcoming["$key.${announcement.severity.id}"]?.takeIf { it.fits(line) } ?: return null
+        val choice = upcoming["$key.${announcement.severity.id}.${announcement.wording}"]?.takeIf { it.fits(line) } ?: return null
         return files(manifest, key, line, choice, announcement.value)
     }
 
-    private fun resolve(manifest: VoicePackManifest, announcement: VoiceAnnouncement): Pair<String, VoiceLine>? {
+    private fun resolve(manifest: VoicePackManifest, announcement: VoiceAnnouncement): Pair<String, VoicePhrases>? {
         val key = announcement.key ?: return null
-        return manifest.line(key, announcement.severity)?.takeIf { it.start.isNotEmpty() }?.let { key to it }
+        return manifest.phrases(key, announcement.severity, announcement.wording)?.let { key to it }
     }
 
-    private fun choose(line: VoiceLine, avoid: Int?): Choice {
+    private fun choose(line: VoicePhrases, avoid: Int?): Choice {
         var start = random(line.start.size)
         if (line.start.size > 1 && start == avoid) start = (start + 1) % line.start.size
-        return Choice(start, line.end.takeIf { it.isNotEmpty() }?.let { random(it.size) })
+        val ends = line.end.isNotEmpty() && random(100) < (line.endChance * 100).roundToInt()
+        return Choice(start, if (ends) random(line.end.size) else null)
     }
 
-    private fun files(manifest: VoicePackManifest, key: String, line: VoiceLine, choice: Choice, value: Int?) = listOfNotNull(
+    private fun files(manifest: VoicePackManifest, key: String, line: VoicePhrases, choice: Choice, value: Int?) = listOfNotNull(
         line.start[choice.start],
         value?.let { manifest.valueClip(key, it) },
-        choice.end?.let { line.end[it] }?.takeIf { it.isNotEmpty() },
+        choice.end?.let { line.end[it] },
     )
 }
 
@@ -249,7 +309,7 @@ internal object VoicePackAssets {
     fun prewarm(context: Context, pack: String) {
         val manifest = manifest(context, pack) ?: return
         val id = if (pack in VOICE_PACK_IDS) pack else VOICE_PACK_FALLBACK
-        manifest.lines.values.flatMap { it.start + it.end }.filter { it.isNotEmpty() }.forEach { decode(context, id, it) }
+        manifest.lines.values.flatMap { it.files }.forEach { decode(context, id, it) }
     }
 
     /**
@@ -260,7 +320,7 @@ internal object VoicePackAssets {
         val id = if (pack in VOICE_PACK_IDS) pack else VOICE_PACK_FALLBACK
         val manifest = manifest(context, id) ?: return null
         val files = picker.clips(manifest, announcement) ?: return null
-        val slot = "$id/${announcement.key}.${announcement.severity.id}"
+        val slot = "$id/${announcement.key}.${announcement.severity.id}.${announcement.wording}"
         val pcm = prepared.remove(slot)?.takeIf { it.first == files }?.second ?: concat(context, id, files)
         // The next pick joins now, so its variant costs the next announcement nothing.
         preparer.execute {

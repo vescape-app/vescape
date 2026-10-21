@@ -10,10 +10,12 @@ class VoicePacksTest {
     private val manifest = VoicePackManifest.parse(JSONObject("""
         {
           "lines": {
-            "battery": { "start": ["b.0"], "end": [] },
-            "battery.critical": { "start": ["bc.0", "bc.1"], "end": ["plug"] },
-            "motorTemp": { "start": ["m.0"], "end": [] },
-            "motorTemp.warning": { "start": ["mw.0"], "end": ["soon", ""] }
+            "battery": { "start": ["b.0"], "minimal": ["bm.0"] },
+            "battery.critical": {
+              "start": ["bc.0"],
+              "full": { "start": ["bcf.0", "bcf.1"], "end": ["plug"], "endChance": 0.2 }
+            },
+            "motorTemp": { "start": ["m.0"] }
           },
           "values": {
             "percent": { "20": "p20" },
@@ -21,6 +23,9 @@ class VoicePacksTest {
           }
         }
     """.trimIndent()))
+
+    private fun battery(severity: AlertSeverity, wording: VoiceWording, value: Int? = 20) =
+        VoiceAnnouncement(severity, "battery", value, wording)
 
     @Test
     fun matchingFollowsTheEffectsPackVoice() {
@@ -53,45 +58,53 @@ class VoicePacksTest {
     }
 
     @Test
-    fun resolvesSeverityVariantThenGenericThenNothing() {
+    fun eachWordingPicksItsPhrasesThenFallsBack() {
         val picker = VoiceVariantPicker { 0 }
-        assertEquals(listOf("bc.0", "p20", "plug"), picker.clips(manifest, VoiceAnnouncement(AlertSeverity.CRITICAL, "battery", 20)))
-        assertEquals(listOf("b.0", "p20"), picker.clips(manifest, VoiceAnnouncement(AlertSeverity.WARNING, "battery", 20)))
+        // Standard: the severity line's start, never an ending.
+        assertEquals(listOf("bc.0", "p20"), picker.clips(manifest, battery(AlertSeverity.CRITICAL, VoiceWording.STANDARD)))
+        assertEquals(listOf("b.0", "p20"), picker.clips(manifest, battery(AlertSeverity.WARNING, VoiceWording.STANDARD)))
+        // Minimal: the generic line's minimal phrase, whatever the severity; start when it has none.
+        assertEquals(listOf("bm.0", "p20"), picker.clips(manifest, battery(AlertSeverity.CRITICAL, VoiceWording.MINIMAL)))
+        assertEquals(listOf("m.0", "dm5"), picker.clips(manifest, VoiceAnnouncement(AlertSeverity.CRITICAL, "motorTemp", -5, VoiceWording.MINIMAL)))
+        // Full: the full pool with its ending; start when the line has no pool.
+        assertEquals(listOf("bcf.0", "p20", "plug"), picker.clips(manifest, battery(AlertSeverity.CRITICAL, VoiceWording.FULL)))
+        assertEquals(listOf("b.0", "p20"), picker.clips(manifest, battery(AlertSeverity.WARNING, VoiceWording.FULL)))
         // A missing value clip is skipped, the line still plays.
-        assertEquals(listOf("b.0"), picker.clips(manifest, VoiceAnnouncement(AlertSeverity.INFO, "battery", 77)))
-        assertEquals(listOf("m.0", "dm5"), picker.clips(manifest, VoiceAnnouncement(AlertSeverity.INFO, "motorTemp", -5)))
+        assertEquals(listOf("b.0"), picker.clips(manifest, battery(AlertSeverity.INFO, VoiceWording.STANDARD, 77)))
         assertNull(picker.clips(manifest, VoiceAnnouncement(AlertSeverity.INFO, "controllerTemp", 80)))
         assertNull(picker.clips(manifest, VoiceAnnouncement(AlertSeverity.INFO, null, null)))
     }
 
     @Test
+    fun anEndingPlaysOnlyAtItsChance() {
+        // Per pick: start variant, then a 0–99 roll that ends the line below 20, then the ending.
+        val picks = ArrayDeque(listOf(0, 19, 0, 0, 20, 0, 99))
+        val picker = VoiceVariantPicker { picks.removeFirst() }
+        val critical = battery(AlertSeverity.CRITICAL, VoiceWording.FULL)
+        assertEquals(listOf("bcf.0", "p20", "plug"), picker.clips(manifest, critical))
+        assertEquals(listOf("bcf.1", "p20"), picker.clips(manifest, critical))
+    }
+
+    @Test
     fun neverRepeatsTheSameStartTwiceInARow() {
         val picker = VoiceVariantPicker { 0 }
-        val critical = VoiceAnnouncement(AlertSeverity.CRITICAL, "battery", null)
-        assertEquals("bc.0", picker.clips(manifest, critical)!!.first())
-        assertEquals("bc.1", picker.clips(manifest, critical)!!.first())
-        assertEquals("bc.0", picker.clips(manifest, critical)!!.first())
+        val critical = battery(AlertSeverity.CRITICAL, VoiceWording.FULL, null)
+        assertEquals("bcf.0", picker.clips(manifest, critical)!!.first())
+        assertEquals("bcf.1", picker.clips(manifest, critical)!!.first())
+        assertEquals("bcf.0", picker.clips(manifest, critical)!!.first())
     }
 
     @Test
     fun nextIsThePickTheFollowingAnnouncementPlays() {
-        val picks = ArrayDeque(listOf(1, 0, 0, 0, 0, 0))
-        val picker = VoiceVariantPicker { picks.removeFirst() }
-        val critical = VoiceAnnouncement(AlertSeverity.CRITICAL, "battery", 20)
+        val picker = VoiceVariantPicker { 0 }
+        val critical = battery(AlertSeverity.CRITICAL, VoiceWording.FULL)
         assertNull(picker.next(manifest, critical))
-        assertEquals(listOf("bc.1", "p20", "plug"), picker.clips(manifest, critical))
+        assertEquals(listOf("bcf.0", "p20", "plug"), picker.clips(manifest, critical))
         val ahead = picker.next(manifest, critical)
-        assertEquals(listOf("bc.0", "p20", "plug"), ahead)
+        assertEquals(listOf("bcf.1", "p20", "plug"), ahead)
         assertEquals(ahead, picker.clips(manifest, critical))
-    }
-
-    @Test
-    fun anEmptyEndIsTheNoneVariant() {
-        val picks = ArrayDeque(listOf(0, 1, 0, 0, 0, 0))
-        val picker = VoiceVariantPicker { picks.removeFirst() }
-        val warning = VoiceAnnouncement(AlertSeverity.WARNING, "motorTemp", null)
-        assertEquals(listOf("mw.0"), picker.clips(manifest, warning))
-        assertEquals(listOf("mw.0", "soon"), picker.clips(manifest, warning))
+        // Wordings keep separate picks.
+        assertNull(picker.next(manifest, battery(AlertSeverity.CRITICAL, VoiceWording.STANDARD)))
     }
 
     @Test

@@ -6,10 +6,12 @@ final class VoicePacksTests: XCTestCase {
   private let manifest = VoicePackManifest.parse(Data("""
     {
       "lines": {
-        "battery": { "start": ["b.0"], "end": [] },
-        "battery.critical": { "start": ["bc.0", "bc.1"], "end": ["plug"] },
-        "motorTemp": { "start": ["m.0"], "end": [] },
-        "motorTemp.warning": { "start": ["mw.0"], "end": ["soon", ""] }
+        "battery": { "start": ["b.0"], "minimal": ["bm.0"] },
+        "battery.critical": {
+          "start": ["bc.0"],
+          "full": { "start": ["bcf.0", "bcf.1"], "end": ["plug"], "endChance": 0.2 }
+        },
+        "motorTemp": { "start": ["m.0"] }
       },
       "values": {
         "percent": { "20": "p20" },
@@ -17,6 +19,10 @@ final class VoicePacksTests: XCTestCase {
       }
     }
     """.utf8))!
+
+  private func battery(_ severity: AlertSeverity, _ wording: VoiceWording, _ value: Int? = 20) -> VoiceAnnouncement {
+    VoiceAnnouncement(severity: severity, key: "battery", value: value, wording: wording)
+  }
 
   func testMatchingFollowsTheEffectsPackVoice() {
     XCTAssertEqual(voicePackId("matching", effectsVoice: "hev"), "hev")
@@ -64,42 +70,53 @@ final class VoicePacksTests: XCTestCase {
     )
   }
 
-  func testResolvesSeverityVariantThenGenericThenNothing() {
+  func testEachWordingPicksItsPhrasesThenFallsBack() {
     let picker = VoiceVariantPicker { _ in 0 }
-    XCTAssertEqual(picker.clips(manifest, VoiceAnnouncement(severity: .critical, key: "battery", value: 20)), ["bc.0", "p20", "plug"])
-    XCTAssertEqual(picker.clips(manifest, VoiceAnnouncement(severity: .warning, key: "battery", value: 20)), ["b.0", "p20"])
+    // Standard: the severity line's start, never an ending.
+    XCTAssertEqual(picker.clips(manifest, battery(.critical, .standard)), ["bc.0", "p20"])
+    XCTAssertEqual(picker.clips(manifest, battery(.warning, .standard)), ["b.0", "p20"])
+    // Minimal: the generic line's minimal phrase, whatever the severity; start when it has none.
+    XCTAssertEqual(picker.clips(manifest, battery(.critical, .minimal)), ["bm.0", "p20"])
+    XCTAssertEqual(
+      picker.clips(manifest, VoiceAnnouncement(severity: .critical, key: "motorTemp", value: -5, wording: .minimal)),
+      ["m.0", "dm5"]
+    )
+    // Full: the full pool with its ending; start when the line has no pool.
+    XCTAssertEqual(picker.clips(manifest, battery(.critical, .full)), ["bcf.0", "p20", "plug"])
+    XCTAssertEqual(picker.clips(manifest, battery(.warning, .full)), ["b.0", "p20"])
     // A missing value clip is skipped, the line still plays.
-    XCTAssertEqual(picker.clips(manifest, VoiceAnnouncement(severity: .info, key: "battery", value: 77)), ["b.0"])
-    XCTAssertEqual(picker.clips(manifest, VoiceAnnouncement(severity: .info, key: "motorTemp", value: -5)), ["m.0", "dm5"])
+    XCTAssertEqual(picker.clips(manifest, battery(.info, .standard, 77)), ["b.0"])
     XCTAssertNil(picker.clips(manifest, VoiceAnnouncement(severity: .info, key: "controllerTemp", value: 80)))
     XCTAssertNil(picker.clips(manifest, VoiceAnnouncement(severity: .info, key: nil, value: nil)))
   }
 
+  func testAnEndingPlaysOnlyAtItsChance() {
+    // Per pick: start variant, then a 0–99 roll that ends the line below 20, then the ending.
+    var picks = [0, 19, 0, 0, 20, 0, 99]
+    let picker = VoiceVariantPicker { _ in picks.removeFirst() }
+    let critical = battery(.critical, .full)
+    XCTAssertEqual(picker.clips(manifest, critical), ["bcf.0", "p20", "plug"])
+    XCTAssertEqual(picker.clips(manifest, critical), ["bcf.1", "p20"])
+  }
+
   func testNeverRepeatsTheSameStartTwiceInARow() {
     let picker = VoiceVariantPicker { _ in 0 }
-    let critical = VoiceAnnouncement(severity: .critical, key: "battery", value: nil)
-    XCTAssertEqual(picker.clips(manifest, critical)?.first, "bc.0")
-    XCTAssertEqual(picker.clips(manifest, critical)?.first, "bc.1")
-    XCTAssertEqual(picker.clips(manifest, critical)?.first, "bc.0")
+    let critical = battery(.critical, .full, nil)
+    XCTAssertEqual(picker.clips(manifest, critical)?.first, "bcf.0")
+    XCTAssertEqual(picker.clips(manifest, critical)?.first, "bcf.1")
+    XCTAssertEqual(picker.clips(manifest, critical)?.first, "bcf.0")
   }
 
   func testNextIsThePickTheFollowingAnnouncementPlays() {
-    var picks = [1, 0, 0, 0, 0, 0]
-    let picker = VoiceVariantPicker { _ in picks.removeFirst() }
-    let critical = VoiceAnnouncement(severity: .critical, key: "battery", value: 20)
+    let picker = VoiceVariantPicker { _ in 0 }
+    let critical = battery(.critical, .full)
     XCTAssertNil(picker.next(manifest, critical))
-    XCTAssertEqual(picker.clips(manifest, critical), ["bc.1", "p20", "plug"])
+    XCTAssertEqual(picker.clips(manifest, critical), ["bcf.0", "p20", "plug"])
     let ahead = picker.next(manifest, critical)
-    XCTAssertEqual(ahead, ["bc.0", "p20", "plug"])
+    XCTAssertEqual(ahead, ["bcf.1", "p20", "plug"])
     XCTAssertEqual(picker.clips(manifest, critical), ahead)
-  }
-
-  func testAnEmptyEndIsTheNoneVariant() {
-    var picks = [0, 1, 0, 0, 0, 0]
-    let picker = VoiceVariantPicker { _ in picks.removeFirst() }
-    let warning = VoiceAnnouncement(severity: .warning, key: "motorTemp", value: nil)
-    XCTAssertEqual(picker.clips(manifest, warning), ["mw.0"])
-    XCTAssertEqual(picker.clips(manifest, warning), ["mw.0", "soon"])
+    // Wordings keep separate picks.
+    XCTAssertNil(picker.next(manifest, battery(.critical, .standard)))
   }
 
   func testTrimsOnlyLeadingPadding() {
@@ -119,7 +136,11 @@ final class VoicePacksTests: XCTestCase {
     for pack in voicePackIds {
       let manifest = try XCTUnwrap(voicePackManifest(root: root, pack: pack), pack)
       for key in ["battery", "motorTemp", "controllerTemp"] {
-        for severity in AlertSeverity.allCases { XCTAssertNotNil(manifest.line(key: key, severity: severity), "\(pack) \(key)") }
+        for severity in AlertSeverity.allCases {
+          for wording in [VoiceWording.minimal, .standard, .full] {
+            XCTAssertNotNil(manifest.phrases(key: key, severity: severity, wording: wording), "\(pack) \(key)")
+          }
+        }
       }
       XCTAssertNotNil(manifest.valueClip(key: "battery", value: 5), pack)
       XCTAssertNotNil(manifest.valueClip(key: "motorTemp", value: -30), pack)

@@ -85,12 +85,15 @@ Speech comes from a second app-wide choice next to Sound effects:
   per message key plus value clips. Unset (`matching`) plays the voice the effects pack's `pack.json`
   names (HEV → HEV; Retro, Simple, Clean → Clean); Settings shows that voice as selected, with no
   separate Matching option. Picking a voice level previews it.
-- **Voice level** (`voiceLevel`: `off`, `standard`, `full`; default `standard`): Off plays effects
-  only for presets, Standard speaks preset alerts. Full also speaks app cues and Group Ride events:
+- **Voice level** (`voiceLevel`: `off`, `minimal`, `standard`, `full`; default `standard`) sets what
+  speaks and how much. Off plays effects only for presets. Minimal and Standard speak preset alerts:
+  Minimal the shortest wording ("Motor… 95 degrees"), Standard with severity ("Motor overheating…
+  95 degrees"). Full speaks Standard's lines with more variety and an occasional ending, and also
+  speaks app cues and Group Ride events:
   the cue's effect, then its voice line (`on` → `link.connected`, `off` → `link.lost`, `error` →
-  `system.error`, `ride.end`, and each `groupRide.*` cue under its own key). Off and Standard play
-  their effect only; settings previews of a pack's cues never speak. Voice level never affects
-  custom rules.
+  `system.error`, `ride.end`, and each `groupRide.*` cue under its own key). Off, Minimal and
+  Standard play their effect only; settings previews of a pack's cues never speak. Custom rules
+  speak whatever the level, with its wording (Off reads as Standard).
 - **Group Ride cues**: `groupRide.created` (a new nearby or own ride; JS fires it, the nearby
   filter lives there), and natively from `GroupRideObserver`: `groupRide.joined` (the rider joined),
   `groupRide.riderJoined` / `groupRide.riderLeft` (someone else in the joined ride's roster),
@@ -113,10 +116,11 @@ stay cached.
   under imperial units. Degrees are °C, converted
   to °F under imperial units before rounding to the nearest clip (degree clips say only
   "degrees", −30…300). A missing value clip is skipped.
-- **Line**: `<key>.<severity>`, else the generic `<key>`, else none (severity sound only, never
-  silence). The fallback resolves first, then variants are picked at random per part (`start` and
-  `end` independently; an `end` of `""` is "none"); the same `start` never repeats twice in a row
-  for a key and severity. The pick for the next announcement of a line is made and joined in the
+- **Line**: Minimal reads the generic `<key>` only; Standard and Full read `<key>.<severity>`, else
+  `<key>`; no line plays the severity sound only (never silence). The level then picks the phrases:
+  Minimal `minimal` (else `start`), Standard `start`, Full `full.start` (else `start`) and then one
+  of `full.end` at `full.endChance` (default 1). Only Full ever adds an ending. Variants are picked
+  at random; the same `start` never repeats twice in a row for a key, severity and level. The pick for the next announcement of a line is made and joined in the
   background right after each one plays, so variety adds no latency.
 
 **Presets** (battery, motor and controller temperature) expand into `voice(<severity>):<key>`
@@ -127,7 +131,7 @@ the rest `warning`, and a one-point ladder is `critical`.
 on the Message tab. Its **TTS** switch turns on the text template (`tts(<severity>):<text>`).
 Other metrics have no voice lines: TTS is forced on and the switch is hidden. Preview plays the
 severity sound and the voice line with the threshold as value, or the TTS text. Custom rules use
-the Voice pack but ignore Voice level.
+the Voice pack and the Voice level's wording.
 
 Presets play the app-wide effects and voice packs; there is no per-preset pack choice.
 
@@ -166,14 +170,15 @@ shared/alerts/packs/
   (number), `link.connected`,
   `link.lost`, `system.error`, `groupRide.created|joined|riderJoined|riderLeft|lost|restored`,
   `ride.end`. Each key needs a
-  generic line; `<key>.<severity>` variants are optional. A line is `start` (+ value) (+ `end`),
-  each part a list of variants, one Kokoro call per sentence; `""` in `end` is the "none" variant
-  and gets no clip. HEV and Clean ship two `start` variants per line and an optional `end` on
-  critical lines.
+  generic line; `<key>.<severity>` lines are optional. A line has `start` (one fixed phrase in HEV
+  and Clean), an optional `minimal` (generic lines only; a short form such as "Motor…"), and an
+  optional `full` pool `{ start, end, endChance }` holding the varied phrases, endings and easter
+  eggs. Every phrase is one Kokoro call; the validator rejects empty phrases. Endings ship at
+  `endChance` 0.2 so they stay a surprise.
 - **Value clips**: one clip per number with its unit, spelled out (`minus five degrees.`):
   percent 0–100, degrees −30…300 (the clip says only "degrees", shared by °C and °F), number
-  0–100 with no unit. Speed and duty use bare numbers and one generic line ("Speed…"), no
-  severity variants: the alert is time-critical, so it stays as short as possible.
+  0–100 with no unit. Speed and duty use bare numbers and a generic line ("Speed…") with no
+  severity lines: the alert is time-critical, so it stays as short as possible.
 - **Format**: AAC-LC in `.m4a`, mono 22 050 Hz, 40 kbit/s, for both effects and voice. Android
   `MediaCodec` and iOS `AVAudioFile` both decode it; Ogg Opus has no iOS decoder. Native must drop
   the AAC encoder priming (~1024 samples of leading silence) before joining clips. Intermediate

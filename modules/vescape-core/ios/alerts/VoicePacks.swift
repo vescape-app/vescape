@@ -13,11 +13,12 @@ internal let voicePackFallback = "clean"
 /// `voice` setting that follows the voice the selected effects pack names.
 internal let voiceMatching = "matching"
 
-/// Voice level: `off` plays effects only for presets and app sounds, `standard` speaks preset
-/// alerts, `full` also speaks app cues and group ride events (#581). Custom rules ignore it.
+/// Voice level: `off` plays effects only for presets and app sounds; `minimal` and `standard` speak
+/// preset alerts; `full` also speaks app cues and group ride events (#581). Each level also picks
+/// the wording (`VoiceWording`). Custom rules speak whatever the level, `off` with standard wording.
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/alerts/VoicePacks.kt `VOICE_LEVELS`
 /// @parity /src/modules/settings/lib/appSounds.ts `VOICE_LEVELS`
-internal let voiceLevels = ["off", "standard", "full"]
+internal let voiceLevels = ["off", "minimal", "standard", "full"]
 internal let voiceLevelDefault = "standard"
 
 /// Voice pack the `voice` setting plays: a named pack, or the one `effectsVoice` names.
@@ -66,11 +67,24 @@ internal func voiceKey(_ controlId: String) -> String? {
 
 private let kmPerMile = 1.609344
 
+/// Which phrases a line speaks: `minimal` the generic line's `minimal` (else `start`), never a
+/// severity line; `standard` the severity line's `start`; `full` its `full` pool (else `start`) with
+/// an ending drawn at `endChance`.
+/// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/alerts/VoicePacks.kt `VoiceWording`
+internal enum VoiceWording: String {
+  case minimal, standard, full
+
+  init(level: String) {
+    self = VoiceWording(rawValue: level) ?? .standard
+  }
+}
+
 /// One voice announcement: the severity sound, then the line for `key` with `value` spoken last.
 internal struct VoiceAnnouncement: Equatable {
   let severity: AlertSeverity
   let key: String?
   let value: Int?
+  var wording: VoiceWording = .standard
 }
 
 /// What a `voice` sound says for an alert on `controlId`. The key comes from the sound string or the
@@ -101,10 +115,23 @@ internal func voiceAnnouncement(
   )
 }
 
-/// A line: `start` (+ value) (+ `end`); each part lists clip variants, `end` may be empty.
+/// A line in `pack.json`: `start` phrases, an optional `minimal` phrase set, and an optional `full`
+/// pool whose ending plays at `endChance`. Each list holds clip variants.
 internal struct VoiceLine: Equatable {
   let start: [String]
+  var minimal: [String] = []
+  var fullStart: [String] = []
+  var fullEnd: [String] = []
+  var endChance = 1.0
+
+  var files: [String] { start + minimal + fullStart + fullEnd }
+}
+
+/// What one announcement can say: `start` (+ value) (+ an `end` at `endChance`).
+internal struct VoicePhrases: Equatable {
+  let start: [String]
   let end: [String]
+  let endChance: Double
 }
 
 /// A voice pack's `pack.json`: lines per key, value clip per value type and number.
@@ -112,9 +139,19 @@ internal struct VoicePackManifest {
   let lines: [String: VoiceLine]
   let values: [String: [Int: String]]
 
-  /// Most specific line: `<key>.<severity>`, else the generic `<key>`; nil when the pack has neither.
-  func line(key: String, severity: AlertSeverity) -> VoiceLine? {
-    lines["\(key).\(severity.rawValue)"] ?? lines[key]
+  /// Phrases for `key` in `wording`: Minimal reads the generic `<key>` line only; Standard and Full
+  /// the most specific `<key>.<severity>`, else `<key>`. Nil when the pack has no such line.
+  func phrases(key: String, severity: AlertSeverity, wording: VoiceWording) -> VoicePhrases? {
+    guard let line = wording == .minimal ? lines[key] : lines["\(key).\(severity.rawValue)"] ?? lines[key]
+    else { return nil }
+    let phrases: VoicePhrases
+    switch wording {
+    case .minimal: phrases = VoicePhrases(start: line.minimal.isEmpty ? line.start : line.minimal, end: [], endChance: 0)
+    case .standard: phrases = VoicePhrases(start: line.start, end: [], endChance: 0)
+    case .full:
+      phrases = VoicePhrases(start: line.fullStart.isEmpty ? line.start : line.fullStart, end: line.fullEnd, endChance: line.endChance)
+    }
+    return phrases.start.isEmpty ? nil : phrases
   }
 
   /// Value clip of `key`'s value type for `value`; nil when the pack has no such clip.
@@ -127,11 +164,20 @@ internal struct VoicePackManifest {
     // intentional-suppression: an unreadable manifest plays the severity sound only
     guard
       let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-      let lines = json["lines"] as? [String: [String: [String]]]
+      let lines = json["lines"] as? [String: [String: Any]]
     else { return nil }
     let values = (json["values"] as? [String: [String: String]]) ?? [:]
     return VoicePackManifest(
-      lines: lines.mapValues { VoiceLine(start: $0["start"] ?? [], end: $0["end"] ?? []) },
+      lines: lines.mapValues { line in
+        let full = line["full"] as? [String: Any] ?? [:]
+        return VoiceLine(
+          start: line["start"] as? [String] ?? [],
+          minimal: line["minimal"] as? [String] ?? [],
+          fullStart: full["start"] as? [String] ?? [],
+          fullEnd: full["end"] as? [String] ?? [],
+          endChance: full["endChance"] as? Double ?? 1
+        )
+      },
       values: values.mapValues { clips in
         Dictionary(uniqueKeysWithValues: clips.compactMap { number, file in Int(number).map { ($0, file) } })
       }
@@ -139,9 +185,9 @@ internal struct VoicePackManifest {
   }
 }
 
-/// Picks one clip per line part at random, never the same `start` twice in a row for a key. The
-/// pick after each announcement is made right away, so `next` lets the caller join it ahead.
-/// An `end` of `""` is the "none" variant.
+/// Picks one clip per line part at random, never the same `start` twice in a row for a key, and
+/// an `end` only at its `endChance`. The pick after each announcement is made right away, so `next`
+/// lets the caller join it ahead.
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/alerts/VoicePacks.kt `VoiceVariantPicker`
 internal final class VoiceVariantPicker {
   private struct Choice {
@@ -149,8 +195,8 @@ internal final class VoiceVariantPicker {
     let end: Int?
 
     /// False for a pick made against another pack's line (the picker serves every pack).
-    func fits(_ line: VoiceLine) -> Bool {
-      start < line.start.count && (end.map { $0 < line.end.count } ?? line.end.isEmpty)
+    func fits(_ line: VoicePhrases) -> Bool {
+      start < line.start.count && (end.map { $0 < line.end.count } ?? true)
     }
   }
 
@@ -167,7 +213,7 @@ internal final class VoiceVariantPicker {
     guard let (key, line) = resolve(manifest, announcement) else { return nil }
     lock.lock()
     defer { lock.unlock() }
-    let lineKey = "\(key).\(announcement.severity.rawValue)"
+    let lineKey = "\(key).\(announcement.severity.rawValue).\(announcement.wording.rawValue)"
     let choice = upcoming[lineKey].flatMap { $0.fits(line) ? $0 : nil } ?? choose(line, avoid: nil)
     upcoming[lineKey] = choose(line, avoid: choice.start)
     return files(manifest, key, line, choice, announcement.value)
@@ -178,27 +224,29 @@ internal final class VoiceVariantPicker {
     guard let (key, line) = resolve(manifest, announcement) else { return nil }
     lock.lock()
     defer { lock.unlock() }
-    guard let choice = upcoming["\(key).\(announcement.severity.rawValue)"], choice.fits(line) else { return nil }
+    guard let choice = upcoming["\(key).\(announcement.severity.rawValue).\(announcement.wording.rawValue)"],
+      choice.fits(line) else { return nil }
     return files(manifest, key, line, choice, announcement.value)
   }
 
-  private func resolve(_ manifest: VoicePackManifest, _ announcement: VoiceAnnouncement) -> (String, VoiceLine)? {
+  private func resolve(_ manifest: VoicePackManifest, _ announcement: VoiceAnnouncement) -> (String, VoicePhrases)? {
     guard let key = announcement.key,
-      let line = manifest.line(key: key, severity: announcement.severity), !line.start.isEmpty
+      let line = manifest.phrases(key: key, severity: announcement.severity, wording: announcement.wording)
     else { return nil }
     return (key, line)
   }
 
-  private func choose(_ line: VoiceLine, avoid: Int?) -> Choice {
+  private func choose(_ line: VoicePhrases, avoid: Int?) -> Choice {
     var start = random(line.start.count)
     if line.start.count > 1, start == avoid { start = (start + 1) % line.start.count }
-    return Choice(start: start, end: line.end.isEmpty ? nil : random(line.end.count))
+    let ends = !line.end.isEmpty && random(100) < Int((line.endChance * 100).rounded())
+    return Choice(start: start, end: ends ? random(line.end.count) : nil)
   }
 
-  private func files(_ manifest: VoicePackManifest, _ key: String, _ line: VoiceLine, _ choice: Choice, _ value: Int?) -> [String] {
+  private func files(_ manifest: VoicePackManifest, _ key: String, _ line: VoicePhrases, _ choice: Choice, _ value: Int?) -> [String] {
     var clips = [line.start[choice.start]]
     if let value, let clip = manifest.valueClip(key: key, value: value) { clips.append(clip) }
-    if let end = choice.end, !line.end[end].isEmpty { clips.append(line.end[end]) }
+    if let end = choice.end { clips.append(line.end[end]) }
     return clips
   }
 }

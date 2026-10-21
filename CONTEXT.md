@@ -320,7 +320,7 @@ The name of what an announcement says (`battery`, `motorTemp`, `controllerTemp`)
 _Avoid_: message text, template
 
 **Voice Level**:
-The app-wide amount of speech for preset alerts and app sounds: Off, Standard, or Full. Custom **Alert Rules** ignore it.
+The app-wide amount of speech for preset alerts and app sounds: Off, Minimal, Standard, or Full. It sets which events speak and how much each says, from the shortest wording (Minimal) to varied lines with occasional endings (Full). Custom **Alert Rules** always speak, in its wording.
 _Avoid_: verbosity, voice volume
 
 **Watch Mirror**:

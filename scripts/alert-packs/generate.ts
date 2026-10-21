@@ -87,15 +87,24 @@ function generateVoice(manifest: VoiceManifest, dir: string, tmp: string) {
   const clips: { text: string; file: string }[] = []
   const lines: VoicePack['lines'] = {}
   for (const [key, line] of Object.entries(manifest.lines)) {
-    const part = (name: 'start' | 'end') =>
-      (line[name] ?? []).map((text, i) => {
-        // An empty `end` is the "none" variant: no clip, native plays start + value only.
-        if (!text) return ''
+    const part = (name: string, texts: string[] | undefined) => {
+      if (!texts?.length) return undefined
+      return texts.map((text, i) => {
         const file = `lines/${key}.${name}.${i}${CLIP_EXTENSION}`
         clips.push({ text, file })
         return file
       })
-    lines[key] = { start: part('start'), end: part('end') }
+    }
+    const full = line.full && {
+      start: part('full.start', line.full.start),
+      end: part('full.end', line.full.end),
+      endChance: line.full.endChance,
+    }
+    lines[key] = {
+      start: part('start', line.start) ?? [],
+      minimal: part('minimal', line.minimal),
+      full,
+    }
   }
   const values: VoicePack['values'] = {}
   const types = new Set(

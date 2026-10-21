@@ -802,7 +802,8 @@ internal class AlertFeedback(
     /**
      * Speak [announcement]: [slot] (its severity sound by default) once, then the voice pack line
      * joined with its value into one buffer, starting once the sound has finished. A key the pack
-     * has no line for plays the sound only. Voice level is the caller's ([presetVoiceEnabled]).
+     * has no line for plays the sound only. Whether to speak is the caller's ([presetVoiceEnabled]); the
+     * voice level picks the wording.
      *
      * @parity /modules/vescape-core/ios/alerts/AlertAudioPlayer.swift `speakVoice`
      */
@@ -836,7 +837,7 @@ internal class AlertFeedback(
         val pack = voicePack()
         // Decoding runs off the audio looper while the severity sound covers it.
         voiceExecutor.execute {
-            val pcm = VoicePackAssets.join(context, pack, announcement) ?: return@execute
+            val pcm = VoicePackAssets.join(context, pack, announcement.copy(wording = VoiceWording.of(voiceLevel))) ?: return@execute
             handler.post { line = pcm; speakWhenDue() }
         }
     }
@@ -1060,6 +1061,7 @@ internal class AlertFeedback(
             val settings = kotlinx.coroutines.runBlocking { AppDataRepository.get(context).getTypedSettings() }
             parseVoiceAlertSound(spec)?.let { sound ->
                 val announcement = voiceAnnouncement(sound, null, null, percentAvailable = true, unitSystem = settings.unitSystem)
+                    .copy(wording = VoiceWording.of(settings.voiceLevel))
                 val pack = voicePackId(settings.voice, EffectsPackAssets.voice(context, settings.soundPack))
                 var pcm: VoicePcm? = null
                 var soundDone = false

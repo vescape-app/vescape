@@ -55,6 +55,7 @@ export function resolvedVoiceId(voice: string, soundPack: string): VoicePackId {
  */
 export const VOICE_LEVELS = [
   { value: 'off', label: 'Off' },
+  { value: 'minimal', label: 'Minimal' },
   { value: 'standard', label: 'Standard' },
   { value: 'full', label: 'Full' },
 ] as const
@@ -68,13 +69,18 @@ export const VOICE_LEVEL_INFO: Record<
     description: 'Built-in alerts play their sound only, no speech.',
     preview: 'alert(1):warning',
   },
+  minimal: {
+    description: 'Built-in alerts name the metric and value, as short as possible: "Motor… 95°".',
+    preview: 'voice(critical):motorTemp:95',
+  },
   standard: {
-    description: 'Built-in alerts say what is wrong after their sound, like "Battery low… 20%".',
-    preview: 'voice(warning):battery:20',
+    description: 'Built-in alerts say how serious it is too: "Motor overheating… 95°".',
+    preview: 'voice(critical):motorTemp:95',
   },
   full: {
-    description: 'Standard, plus spoken connection, ride end and Group Ride events.',
-    preview: 'voice(info):link.connected',
+    description:
+      'Standard with varied lines and the odd remark, plus connection, ride end and Group Ride events.',
+    preview: 'voice(critical):motorTemp:95',
   },
 }
 

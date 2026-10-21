@@ -596,7 +596,8 @@ internal final class AlertAudioPlayer {
 
   /// Speak `announcement`: `slot` (its severity sound by default) once, then the voice pack line
   /// joined with its value into one buffer, starting once the sound has finished. A key the pack has
-  /// no line for plays the sound only. Voice level is the caller's (`presetVoiceEnabled`).
+  /// no line for plays the sound only. Whether to speak is the caller's (`presetVoiceEnabled`); the
+  /// voice level picks the wording.
   /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/alerts/AlertEngine.kt `speakVoice`
   func speakVoice(_ announcement: VoiceAnnouncement, slot: String? = nil) {
     guard !isReleased else { return }
@@ -668,16 +669,18 @@ internal final class AlertAudioPlayer {
   private func prewarmVoice(_ pack: String) {
     guard let manifest = voiceManifest(pack) else { return }
     let id = voicePackIds.contains(pack) ? pack : voicePackFallback
-    for line in manifest.lines.values { for file in line.start + line.end where !file.isEmpty { _ = voiceClip(id, file) } }
+    for line in manifest.lines.values { for file in line.files { _ = voiceClip(id, file) } }
   }
 
   /// `announcement` joined into one buffer from `pack`, or nil when the pack has no line for its key.
   /// The next pick joins right after on a utility queue, so its variant costs the next announcement
   /// nothing.
-  private func joinedVoice(_ announcement: VoiceAnnouncement, pack: String) -> AVAudioPCMBuffer? {
+  private func joinedVoice(_ spoken: VoiceAnnouncement, pack: String) -> AVAudioPCMBuffer? {
+    var announcement = spoken
+    announcement.wording = VoiceWording(level: voiceLevel)
     let id = voicePackIds.contains(pack) ? pack : voicePackFallback
     guard let manifest = voiceManifest(id), let files = voicePicker.clips(manifest, announcement) else { return nil }
-    let slot = "\(id)/\(announcement.key ?? "").\(announcement.severity.rawValue)"
+    let slot = "\(id)/\(announcement.key ?? "").\(announcement.severity.rawValue).\(announcement.wording.rawValue)"
     voiceLock.lock()
     let prepared = preparedVoice.removeValue(forKey: slot)
     voiceLock.unlock()

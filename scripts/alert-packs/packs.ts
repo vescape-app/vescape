@@ -16,10 +16,15 @@ export interface Catalog {
   valueRanges: Record<ValueType, { min: number; max: number }>
 }
 
-/** `start` + value + `end`; each part lists variants picked at random, `""` in `end` is "none". */
+/**
+ * A line, by voice level: Minimal speaks `minimal` (else `start`) on the generic key only; Standard
+ * speaks `start`; Full speaks `full.start` (else `start`) and then one of `full.end` at
+ * `full.endChance` (default 1). Each list holds variants picked at random.
+ */
 export interface Line {
   start: string[]
-  end?: string[]
+  minimal?: string[]
+  full?: { start?: string[]; end?: string[]; endChance?: number }
 }
 
 export interface VoiceManifest {
@@ -36,7 +41,7 @@ export interface VoicePack {
   id: string
   kind: 'voice'
   format: string
-  lines: Record<string, { start: string[]; end: string[] }>
+  lines: Record<string, Line>
   values: Partial<Record<ValueType, Record<string, string>>>
   /** Clip path → hash of its text, Kokoro settings, and fx; unchanged clips are not re-synthesized. */
   sources: Record<string, string>
@@ -64,13 +69,27 @@ export function baseKey(catalog: Catalog, key: string): string | null {
   return base in catalog.voiceKeys && catalog.severities.includes(key.slice(dot + 1)) ? base : null
 }
 
+/** Every phrase of a line: clip paths in a pack, texts in a manifest. */
+export const lineTexts = (line: Line) => [
+  ...line.start,
+  ...(line.minimal ?? []),
+  ...(line.full?.start ?? []),
+  ...(line.full?.end ?? []),
+]
+
 export function validateManifest(catalog: Catalog, manifest: VoiceManifest) {
   const errors: string[] = []
   for (const key of Object.keys(catalog.voiceKeys)) {
     if (!manifest.lines[key]?.start.length) errors.push(`missing line ${key}`)
   }
-  for (const key of Object.keys(manifest.lines)) {
+  for (const [key, line] of Object.entries(manifest.lines)) {
     if (!baseKey(catalog, key)) errors.push(`unknown line ${key}`)
+    if (line.minimal && key !== baseKey(catalog, key))
+      errors.push(`minimal on severity line ${key}`)
+    if (lineTexts(line).some((text) => !text.trim())) errors.push(`empty phrase in ${key}`)
+    const chance = line.full?.endChance
+    if (chance != null && !(chance > 0 && chance <= 1))
+      errors.push(`endChance out of (0, 1] in ${key}`)
   }
   return errors.map((error) => `${manifest.kind}-${manifest.id}: ${error}`)
 }
@@ -91,8 +110,7 @@ export function validatePack(catalog: Catalog, dir: string): string[] {
       if (!clips[n]) errors.push(`missing value ${type}.${n}`)
     }
   }
-  for (const line of Object.values(pack.lines))
-    files.push(...line.start, ...line.end.filter(Boolean))
+  for (const line of Object.values(pack.lines)) files.push(...lineTexts(line))
   for (const clips of Object.values(pack.values)) files.push(...Object.values(clips ?? {}))
   for (const file of files) {
     if (!existsSync(join(dir, file))) errors.push(`missing file ${file}`)

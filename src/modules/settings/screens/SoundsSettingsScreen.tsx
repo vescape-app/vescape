@@ -257,10 +257,13 @@ export default function SoundsSettingsScreen() {
               <SegmentedToggle
                 options={[...VOICE_LEVELS]}
                 value={voiceLevel}
-                onChange={(next) => {
-                  void set('voiceLevel', next)
-                  previewAlertSound(VOICE_LEVEL_INFO[next].preview)
-                }}
+                onChange={(next) =>
+                  // The preview speaks with the new level's wording once native has it.
+                  void set('voiceLevel', next).then(
+                    () => previewAlertSound(VOICE_LEVEL_INFO[next].preview),
+                    () => undefined,
+                  )
+                }
                 accent={theme.settingsIcon.sounds}
               />
               <Text style={styles.voiceDescription}>
