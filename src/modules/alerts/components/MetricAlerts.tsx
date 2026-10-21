@@ -1,15 +1,12 @@
-import { type ReactNode, useMemo } from 'react'
+import type { ReactNode } from 'react'
 import { StyleSheet, View } from 'react-native'
 import type { SharedValue } from 'react-native-reanimated'
 
 import { Text } from '@/components/base/Text'
 import { theme } from '@/constants/theme'
-import { deriveBatteryConfig } from '@/modules/battery/lib'
-import type { DerivedBatteryConfig } from '@/modules/battery/lib/types'
 import { AlertPresetControl } from '@/modules/alerts/components/AlertPresetControl'
 import { AlertRuleList } from '@/modules/alerts/components/AlertRuleList'
 import type { MetricAlertsController } from '@/modules/alerts/hooks/useMetricAlerts'
-import { useBoardStore } from '@/modules/board/store/boardStore'
 
 /** Structural mirror of the gauge hot-range span; keeps this module clear of the history module. */
 interface MetricAlertsHotRange {
@@ -42,8 +39,6 @@ export function MetricAlerts({
   hotRange,
   controlsHeader,
 }: MetricAlertsProps) {
-  const batteryConfig = useBatteryConfig(controller?.controlId)
-
   if (!controller) return <NoBoardNotice />
 
   const { metric, level, hasBatteryConfig } = controller
@@ -65,12 +60,15 @@ export function MetricAlerts({
           onGeigerSoundChange={controller.setGeigerSound}
           configBases={controller.configBases}
           hotRange={hotRange}
-          disabled={batteryBlocked}
-          ruleSnapshot={controller.ruleSnapshot}
+          levelDisabled={batteryBlocked}
+          // Without a config, battery rider rules are volts and cannot sit on the % gauge.
+          ruleSnapshot={batteryBlocked ? controller.presetRules : controller.ruleSnapshot}
           presetRules={controller.presetRules}
           controlsHeader={controlsHeader}
         />
       ) : null}
+
+      {controller.presetError ? <Text style={styles.error}>{controller.presetError}</Text> : null}
 
       {batteryBlocked ? (
         <Text style={styles.note}>
@@ -80,20 +78,14 @@ export function MetricAlerts({
       ) : null}
 
       <View style={styles.rules}>
-        <AlertRuleList controller={controller} unit={unit} batteryConfig={batteryConfig} />
+        <AlertRuleList
+          controller={controller}
+          unit={unit}
+          batteryConfig={controller.batteryConfig}
+        />
       </View>
     </View>
   )
-}
-
-/** Battery rules are state-of-charge %, so the list and form need the board's derived config. */
-function useBatteryConfig(controlId: string | undefined): DerivedBatteryConfig | null {
-  const board = useBoardStore((s) => s.boards.find((b) => b.id === s.activeBoardId))
-  return useMemo(() => {
-    if (controlId !== 'battery') return null
-    const derived = deriveBatteryConfig(board?.batteryConfig ?? null)
-    return derived.warning == null ? derived : null
-  }, [controlId, board?.batteryConfig])
 }
 
 /** The section header already carries the alert bell and the screen its own add-board path, so
@@ -112,6 +104,11 @@ const styles = StyleSheet.create({
   },
   rules: {
     gap: 8,
+  },
+  error: {
+    color: theme.status.error.text,
+    fontSize: 12,
+    lineHeight: 16,
   },
   note: {
     color: theme.neutral.textMuted,

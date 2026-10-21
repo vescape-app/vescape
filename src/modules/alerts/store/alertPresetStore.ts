@@ -8,6 +8,8 @@ import { useBoardStore } from '@/modules/board/store/boardStore'
 
 interface AlertPresetState {
   syncing: boolean
+  /** Last preset write failure; rider-rule errors stay on the Alerts store. */
+  error: string | null
 }
 
 interface AlertPresetActions {
@@ -25,14 +27,13 @@ export const useAlertPresetStore = create<AlertPresetState & AlertPresetActions>
     const boardId = useBoardStore.getState().activeBoardId
     if (!boardId) return
     pending++
-    set({ syncing: true })
-    useAlertsStore.setState({ error: null })
+    set({ syncing: true, error: null })
     try {
       await write(boardId)
       if (useAlertsStore.getState().boardId === boardId)
         await useAlertsStore.getState().load(boardId)
     } catch (error) {
-      useAlertsStore.setState({ error: errorMessage(error, 'Unable to save Alert Preset.') })
+      set({ error: errorMessage(error, 'Unable to save Alert Preset.') })
       throw error
     } finally {
       pending--
@@ -43,6 +44,7 @@ export const useAlertPresetStore = create<AlertPresetState & AlertPresetActions>
     run((boardId) => applyAlertPreset(boardId, metric, intent))
   return {
     syncing: false,
+    error: null,
     setLevel: (metric, level) => apply(metric, { level }),
     setMatchBoardConfig: (metric, enabled) => apply(metric, { match: enabled }),
     setGeigerSound: async (metric, soundType) => {

@@ -125,8 +125,8 @@ interface AlertPresetControlProps {
   configBases?: BoardConfigBases
   /** History hot-range gradient for the gauge arc (kept in sync with the detail gauge). */
   hotRange?: PresetGaugeHotRange | null
-  /** Blocks slider interaction and dims it (e.g. battery without a valid config). */
-  disabled?: boolean
+  /** Blocks the level switch and dims it (e.g. battery without a valid config). */
+  levelDisabled?: boolean
   /** Exact visible rules (preset and rider) to evaluate while the synthetic needle sweeps the gauge. */
   ruleSnapshot: AlertTestRule[]
   /** The preset's own expanded points, which the description speaks for. */
@@ -147,7 +147,7 @@ export function AlertPresetControl({
   onGeigerSoundChange,
   configBases,
   hotRange,
-  disabled,
+  levelDisabled,
   ruleSnapshot,
   presetRules,
   controlsHeader,
@@ -229,7 +229,7 @@ export function AlertPresetControl({
           icon={alertTest.running ? StopIcon : SpeakerHighIcon}
           variant="caution"
           size="sm"
-          disabled={disabled || !alertTest.canRun}
+          disabled={!alertTest.canRun}
           onPress={alertTest.running ? alertTest.stop : alertTest.start}
           testID={`alert-test-${metric}`}
           style={styles.testButton}
@@ -245,7 +245,12 @@ export function AlertPresetControl({
         />
       ) : null}
       <PresetGeigerSound soundType={geigerSound} onChange={onGeigerSoundChange} />
-      <LevelSlider metric={metric} value={level} onChange={onLevelChange} disabled={disabled} />
+      <LevelSlider
+        metric={metric}
+        value={level}
+        onChange={onLevelChange}
+        disabled={levelDisabled}
+      />
     </View>
   )
 }
@@ -357,7 +362,7 @@ function LevelSlider({ metric, value, onChange, disabled }: LevelSliderProps) {
     normal: accents.green,
     minimal: accents.yellow,
   }
-  const activeIndex = Math.max(0, ALL_LEVELS.indexOf(value))
+  const activeIndex = ALL_LEVELS.indexOf(value)
   const tone = tones[value]
   const progress = useSharedValue(activeIndex)
 

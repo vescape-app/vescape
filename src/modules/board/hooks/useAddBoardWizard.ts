@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import { router } from 'expo-router'
 import { useShallow } from 'zustand/react/shallow'
 import type { BatteryConfig, BoardLink } from 'vescape-core'
@@ -13,6 +13,7 @@ import { formatAlertPresetSpec } from '@/modules/alerts/lib/alertSoundString'
 import { DEFAULT_BOARD_TOP_SPEED_KMH } from '@/modules/alerts/lib/boardAlertSettings'
 import { useAlertsStore } from '@/modules/alerts/store/alertsStore'
 import { DEFAULT_BATTERY_CONFIG, deriveBatteryConfig } from '@/modules/battery/lib'
+import type { DerivedBatteryConfig } from '@/modules/battery/lib/types'
 import {
   type BatteryMode,
   type BatterySummary,
@@ -72,6 +73,8 @@ interface AddBoardWizardState {
   alertSetup: DraftAlertSetupBag
   /** True when the draft battery config is usable (gates SoC %-based presets). */
   hasBatteryConfig: boolean
+  /** The draft's derived battery config when valid, for SoC %-scaled battery rules. */
+  batteryConfig: DerivedBatteryConfig | null
   canSave: boolean
 }
 
@@ -170,17 +173,21 @@ export function useAddBoardWizard(): UseAddBoardWizard {
     setRailId(option.railId)
   }
 
-  const previewConfig: BatteryConfig =
-    batteryMode === 'preset'
-      ? { mode: 'preset', cellPresetId, seriesCount, parallelCount }
-      : {
-          mode: 'manual',
-          minVoltage: parseVoltage(manualMinVoltage) ?? 0,
-          maxVoltage: parseVoltage(manualMaxVoltage) ?? 0,
-        }
-  const derivedBattery = deriveBatteryConfig(previewConfig)
+  // Memoized on the draft inputs so draft alert controllers only rebuild when the battery changes.
+  const derivedBattery = useMemo(() => {
+    const previewConfig: BatteryConfig =
+      batteryMode === 'preset'
+        ? { mode: 'preset', cellPresetId, seriesCount, parallelCount }
+        : {
+            mode: 'manual',
+            minVoltage: parseVoltage(manualMinVoltage) ?? 0,
+            maxVoltage: parseVoltage(manualMaxVoltage) ?? 0,
+          }
+    return deriveBatteryConfig(previewConfig)
+  }, [batteryMode, cellPresetId, seriesCount, parallelCount, manualMinVoltage, manualMaxVoltage])
   const batteryWarning = derivedBattery.warning
   const hasBatteryConfig = batteryWarning == null
+  const draftBatteryConfig = hasBatteryConfig ? derivedBattery : null
   const canSave = Boolean(name.trim()) && batteryWarning == null
   const batterySummary = getBatterySummary(
     false,
@@ -287,6 +294,7 @@ export function useAddBoardWizard(): UseAddBoardWizard {
     topSpeedKmh,
     alertSetup,
     hasBatteryConfig,
+    batteryConfig: draftBatteryConfig,
     canSave,
     setStep,
     next,

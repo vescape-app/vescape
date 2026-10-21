@@ -381,9 +381,7 @@ marker comes from it until the board supplies a value.
 The rider's own Alert Rules for the same metric sit beside the preset row and fire together with
 its points. The metric screen shows the level switch (and Soft / Mid / Hard for geiger metrics),
 then the rider's rules, then **+ Add alert**. There is no edit of a preset's points: to replace
-them, set the preset Off and add rules. Until the metric screen is reworked (#592) it still offers
-a **Custom** level: choosing it copies the expanded points into the rider's rules and sets the
-preset Off, and a metric whose preset is Off while it has rider rules reads as Custom.
+them, set the preset Off and add rules.
 
 Schema v51 turned the earlier per-Board settings into these rows: each live Board gets one row per
 metric from its old `alertPreset` level (none or `custom` became `off`, so nothing new started
@@ -441,12 +439,17 @@ onto the `Board` object (like `batteryConfig`). Missing keys normalize to displa
 
 ### Setup surfaces
 
-The same setup (Board Top Speed + all five sliders, `AlertPresetSetup`) is reached two ways:
+One block, `MetricAlerts`, renders a metric's whole alert setup: the preset gauge and level switch
+(`AlertPresetControl`), then the rider's own rules (`AlertRuleList`) and **+ Add alert**. It renders
+a `MetricAlertsController` and is reached two ways:
 
-- **Add-board wizard** — a `presets` step shown for every new Board (each Board gets its own guided
-  setup). The step edits draft preset strings; on save they are written as the new Board's preset
-  rows. Completing sets that Board's `alertPresetsOnboarded`.
-- **Settings › Alerts** — the durable home for the active Board, always available.
+- **Add-board wizard** — the alerts step (`AlertsStep`) sets Board Top Speed, then one sub-step per
+  preset metric, each a `MetricAlerts` over the wizard's in-memory draft (`useDraftMetricAlerts`).
+  On save the levels and draft rules are written to the new Board, which is marked
+  `alertPresetsOnboarded`.
+- **`/control` details** — each control's detail screen shows `MetricAlerts` for the active Board
+  (`useBoardMetricAlerts`), writing presets through `applyAlertPreset` and rules through the Alerts
+  store.
 
 ## JS side
 

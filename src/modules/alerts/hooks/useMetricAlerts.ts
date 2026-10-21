@@ -25,6 +25,15 @@ import {
 } from '@/modules/alerts/lib/alertSoundString'
 import { useAlertsStore, type AlertRuleDraft } from '@/modules/alerts/store/alertsStore'
 import { useBoardStore } from '@/modules/board/store/boardStore'
+import { deriveBatteryConfig } from '@/modules/battery/lib'
+import type { DerivedBatteryConfig } from '@/modules/battery/lib/types'
+import type { BatteryConfig } from 'vescape-core'
+
+/** The derived battery config, or null when it is missing or invalid. */
+export function validBatteryConfig(config: BatteryConfig | null): DerivedBatteryConfig | null {
+  const derived = deriveBatteryConfig(config)
+  return derived.warning == null ? derived : null
+}
 
 /**
  * Everything the alert block of a control needs, independent of where the setup is stored.
@@ -35,7 +44,10 @@ import { useBoardStore } from '@/modules/board/store/boardStore'
  * editing as `/control` before a Board exists to own the rules.
  */
 export interface MetricAlertsController {
+  /** Failure of a rider-rule write, shown with the rules and the rule form. */
   error: string | null
+  /** Failure of a preset write or expansion, shown under the preset control. */
+  presetError: string | null
   /** The preset metric this control maps to, or `null` when it only supports custom rules. */
   metric: AlertPresetMetric | null
   controlId: string
@@ -50,6 +62,8 @@ export interface MetricAlertsController {
   configBases: BoardConfigBases
   topSpeedKmh: number
   hasBatteryConfig: boolean
+  /** Battery rules are state-of-charge %: the backing's own derived config, set only for a valid battery control. */
+  batteryConfig: DerivedBatteryConfig | null
   /** Metrics this Board follows its own configuration for. */
   matchBoardConfig: Partial<Record<AlertPresetMetric, boolean>>
   setMatchBoardConfig(enabled: boolean): void
@@ -88,6 +102,12 @@ export function useBoardMetricAlerts(controlId: string): MetricAlertsController 
   const allRules = useAlertsStore((s) => s.rules)
   const presetSpecs = useAlertsStore((s) => s.presets)
   const error = useAlertsStore((s) => s.error)
+  const presetError = useAlertPresetStore((s) => s.error)
+  const boardBatteryConfig = board?.batteryConfig
+  const batteryConfig = useMemo(
+    () => (controlId === 'battery' ? validBatteryConfig(boardBatteryConfig ?? null) : null),
+    [controlId, boardBatteryConfig],
+  )
   const { add, update, toggle, remove } = useAlertsStore(
     useShallow((s) => ({ add: s.add, update: s.update, toggle: s.toggle, remove: s.remove })),
   )
@@ -121,6 +141,7 @@ export function useBoardMetricAlerts(controlId: string): MetricAlertsController 
     return {
       metric,
       error,
+      presetError,
       controlId,
       level,
       rules,
@@ -129,9 +150,10 @@ export function useBoardMetricAlerts(controlId: string): MetricAlertsController 
       configBases,
       topSpeedKmh: boardTopSpeedKmh(board),
       hasBatteryConfig: boardHasBatteryConfig(board),
+      batteryConfig,
       matchBoardConfig,
       setMatchBoardConfig: (enabled) => {
-        // intentional-suppression: the Alerts store error is rendered by MetricAlerts.
+        // intentional-suppression: the Alert Preset store error renders under the preset control.
         if (metric)
           void presets()
             .setMatchBoardConfig(metric, enabled)
@@ -139,14 +161,14 @@ export function useBoardMetricAlerts(controlId: string): MetricAlertsController 
       },
       geigerSound,
       setGeigerSound: (soundType) => {
-        // intentional-suppression: the Alerts store error is rendered by MetricAlerts.
+        // intentional-suppression: the Alert Preset store error renders under the preset control.
         if (metric)
           void presets()
             .setGeigerSound(metric, soundType)
             .catch(() => undefined)
       },
       setLevel: (next) => {
-        // intentional-suppression: the Alerts store error is rendered by MetricAlerts.
+        // intentional-suppression: the Alert Preset store error renders under the preset control.
         if (metric)
           void presets()
             .setLevel(metric, next)
@@ -164,6 +186,8 @@ export function useBoardMetricAlerts(controlId: string): MetricAlertsController 
     level,
     rules,
     error,
+    presetError,
+    batteryConfig,
     add,
     update,
     toggle,
@@ -186,6 +210,8 @@ interface DraftMetricAlertsSource {
   setup: DraftAlertSetup
   topSpeedKmh: number
   hasBatteryConfig: boolean
+  /** The draft's derived battery config when valid; must be referentially stable. */
+  batteryConfig: DerivedBatteryConfig | null
   onChange(next: DraftAlertSetup): void
 }
 
@@ -196,7 +222,7 @@ interface DraftMetricAlertsSource {
  */
 export function useDraftMetricAlerts(
   metric: AlertPresetMetric,
-  { setup, topSpeedKmh, hasBatteryConfig, onChange }: DraftMetricAlertsSource,
+  { setup, topSpeedKmh, hasBatteryConfig, batteryConfig, onChange }: DraftMetricAlertsSource,
 ): MetricAlertsController {
   const units = useUnitSystem()
   const preview = useMemo(
@@ -216,7 +242,9 @@ export function useDraftMetricAlerts(
 
     return {
       metric,
-      error: preview.error,
+      // Draft rules live in memory, so only the preset preview can fail.
+      error: null,
+      presetError: preview.error,
       controlId: metric,
       level: setup.level,
       rules: setup.rules,
@@ -225,6 +253,7 @@ export function useDraftMetricAlerts(
       configBases: {},
       topSpeedKmh,
       hasBatteryConfig,
+      batteryConfig: metric === 'battery' ? batteryConfig : null,
       // The wizard has no Board yet, so no config has been read to match against.
       matchBoardConfig: {},
       setMatchBoardConfig: () => {},
@@ -244,5 +273,5 @@ export function useDraftMetricAlerts(
       toggleRule: async (id) => mapRule(id, (rule) => ({ ...rule, enabled: !rule.enabled })),
       removeRule: async (id) => withRules(setup.rules.filter((rule) => rule.id !== id)),
     }
-  }, [metric, setup, topSpeedKmh, hasBatteryConfig, onChange, preview])
+  }, [metric, setup, topSpeedKmh, hasBatteryConfig, batteryConfig, onChange, preview])
 }

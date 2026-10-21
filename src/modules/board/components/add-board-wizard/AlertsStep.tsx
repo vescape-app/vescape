@@ -104,6 +104,7 @@ function DraftMetricAlerts({
     setup: wizard.alertSetup[metric],
     topSpeedKmh: wizard.topSpeedKmh,
     hasBatteryConfig: wizard.hasBatteryConfig,
+    batteryConfig: wizard.batteryConfig,
     onChange,
   })
 
