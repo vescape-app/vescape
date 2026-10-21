@@ -1,6 +1,7 @@
 import { describe, expect, test } from 'bun:test'
 
-import { createCameraEngine, type EngineCamera } from './engine'
+import { CAMERA_ENGINE_DEFAULT_OMEGA, createCameraEngine, type EngineCamera } from './engine'
+import { GPS_HEADING_CAMERA_OMEGA } from '@/modules/map/constants/gpsHeadingMotion'
 import {
   createSpring,
   nearestBearingTarget,
@@ -105,6 +106,26 @@ const camera = (center: [number, number], zoom = 14, heading = 0, pitch = 0): En
 })
 
 describe('cameraEngine', () => {
+  test('compass keeps its original fast response; changing GPS response does not snap the camera', () => {
+    const slow = createTestEngine()
+    const fast = createTestEngine()
+    for (const { engine } of [slow, fast]) {
+      engine.reset(camera([21, 52]))
+      engine.setTarget({ heading: 90 })
+    }
+    slow.engine.setOmega({ heading: GPS_HEADING_CAMERA_OMEGA })
+    slow.run(30)
+    fast.run(30)
+    expect(CAMERA_ENGINE_DEFAULT_OMEGA.heading).toBe(8)
+    expect(fast.engine.getCamera().heading).toBeGreaterThan(75)
+    expect(slow.engine.getCamera().heading).toBeLessThan(15)
+    const before = slow.engine.getCamera()
+    slow.engine.setOmega({ heading: CAMERA_ENGINE_DEFAULT_OMEGA.heading })
+    expect(slow.engine.getCamera()).toEqual(before)
+    slow.run(60)
+    expect(slow.engine.getCamera().heading).toBeGreaterThan(89)
+  })
+
   test('can resume after a development effect cleanup', () => {
     const { engine, run, hasPending } = createTestEngine()
     engine.reset(camera([21, 52]))
@@ -136,7 +157,7 @@ describe('cameraEngine', () => {
     const { engine, frames, run } = createTestEngine({ holdAfterTargetMs: 0 })
     engine.reset(camera([21, 52], 14, 0, 28))
     engine.setTarget({ heading: 45 })
-    run(600)
+    run(2_400)
 
     expect(frames.length).toBeGreaterThan(10)
     expect(frames.at(-1)?.heading).toBeCloseTo(45, 6)
@@ -468,7 +489,7 @@ describe('cameraEngine', () => {
     const { engine, frames, run } = createTestEngine()
     engine.reset(camera([21, 52], 14, 350))
     engine.setTarget({ heading: 10 })
-    run(600)
+    run(2_400)
     expect(engine.getCamera().heading).toBeCloseTo(10, 2)
     for (const frame of frames) {
       const inArc = frame.heading >= 350 || frame.heading <= 10.001

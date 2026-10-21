@@ -426,11 +426,39 @@ export interface AccessoryEnrollment {
   error: AccessoryInspectionError | 'storage-unavailable' | null
 }
 
+/** Session-only display controls.
+ * @parity /modules/vescape-core/ios/location/GpsDisplaySmoother.swift `GpsDisplaySmoother`
+ * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/location/GpsDisplaySmoother.kt `GpsDisplaySmoother`
+ */
+export interface GpsDisplaySettings {
+  smoothingPercent: number
+  predictionPercent: number
+}
+
+/** A native-owned display segment, independent of measured GPS and recording.
+ * @parity /modules/vescape-core/ios/location/GpsDisplaySmoother.swift `GpsDisplayMotion`
+ * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/location/GpsDisplaySmoother.kt `GpsDisplayMotion`
+ */
+export interface GpsDisplayMotion {
+  fromLatitude: number
+  fromLongitude: number
+  toLatitude: number
+  toLongitude: number
+  startsAtMs: number
+  endsAtMs: number
+  resetPosition?: boolean
+  latitudePerMs?: number
+  longitudePerMs?: number
+  velocityExpiresAtMs?: number
+}
+
 /**
  * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/protocol/VescTelemetryModels.kt `LocationSnapshot`
  * @parity /modules/vescape-core/ios/telemetry/TelemetryPipeline.swift `TelemetryLocationCapture`
  */
 export interface LocationEvent {
+  /** Present only on live display events. Never replaces measured coordinates. */
+  displayMotion?: GpsDisplayMotion | null
   latitude: number
   longitude: number
   speedMps: number | null
@@ -855,6 +883,7 @@ export type MapPointErrorCode =
   | 'MAP_POINT_UNREACHABLE'
 
 export interface TelemetryEvent {
+  displayMotion?: GpsDisplayMotion | null
   generation?: number
   /** Native remote-tilt snapshot paired with this telemetry tick. */
   remoteTilt?: RemoteTiltState | null
@@ -1022,6 +1051,7 @@ export interface LiveStateEvent {
     phase: GpsPhase
     /** What the fixes cost right now — and, by implication, why they are flowing. */
     mode: GpsPowerMode
+    displayMotion?: GpsDisplayMotion | null
     latestFix: LocationEvent | null
     latestApproximateFix?: LocationEvent | null
     latestPreciseFix?: LocationEvent | null
@@ -2839,6 +2869,21 @@ type VescapeCoreNativeModule = NativeEventEmitter<VescapeCoreEvents> & {
   reportUiError(message: string, source?: string | null, stack?: string | null): void
   reportDiagnosticTest(): DiagnosticStatus
   getDiagnosticStatus(): DiagnosticStatus
+  getGpsDisplaySettings(): GpsDisplaySettings
+  setGpsDisplaySettings(smoothingPercent: number, predictionPercent: number): void
+  updateGpsDisplayPreviewSpeed(speedMps: number): GpsDisplayMotion | null
+  resetGpsDisplayPreview(): void
+  setGpsDisplayPreviewSettings(
+    smoothingPercent: number,
+    predictionPercent: number,
+  ): GpsDisplayMotion | null
+  updateGpsDisplayPreview(
+    latitude: number,
+    longitude: number,
+    speed: number,
+    course: number,
+    timestamp: number,
+  ): GpsDisplayMotion | null
   getLiveState(): LiveStateEvent
   getAppStatus(): AppStatus | null
   getWeather(): Weather | null
@@ -4525,6 +4570,31 @@ export function addBmsSeriesListener(cb: (event: BmsSeriesUpdate) => void): Even
   })
 }
 
+export function getGpsDisplaySettings(): GpsDisplaySettings {
+  return native.getGpsDisplaySettings()
+}
+export function setGpsDisplaySettings(settings: GpsDisplaySettings): void {
+  native.setGpsDisplaySettings(settings.smoothingPercent, settings.predictionPercent)
+}
+/** Isolated native preview: synthetic inputs never reach real GPS consumers or recording. */
+export function resetGpsDisplayPreview(): void {
+  native.resetGpsDisplayPreview()
+}
+export function setGpsDisplayPreviewSettings(
+  settings: GpsDisplaySettings,
+): GpsDisplayMotion | null {
+  return native.setGpsDisplayPreviewSettings(settings.smoothingPercent, settings.predictionPercent)
+}
+export function updateGpsDisplayPreview(
+  latitude: number,
+  longitude: number,
+  speed: number,
+  course: number,
+  timestamp: number,
+): GpsDisplayMotion | null {
+  return native.updateGpsDisplayPreview(latitude, longitude, speed, course, timestamp)
+}
+
 export function addLocationListener(cb: (event: LocationEvent) => void): EventSubscription {
   return emitter.addListener('onLocation', cb)
 }
@@ -4660,4 +4730,8 @@ export function setBrakeLightPreview(
   mode: BrakeLightMode | null,
 ): Promise<boolean> {
   return native.setBrakeLightPreview(accessoryId, capabilityId, mode)
+}
+
+export function updateGpsDisplayPreviewSpeed(speedMps: number): GpsDisplayMotion | null {
+  return native.updateGpsDisplayPreviewSpeed(speedMps)
 }

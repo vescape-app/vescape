@@ -3,6 +3,7 @@ package app.vescape.wear
 import expo.modules.vescapecore.watch.WatchMapPosition
 import expo.modules.vescapecore.watch.WatchTrailPoint
 import expo.modules.vescapecore.watch.WatchTrailCodec
+import expo.modules.vescapecore.location.GpsDisplayMotion
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
 
@@ -85,6 +86,7 @@ data class WatchFrame(
     val remoteTilt: Int? = null,
     val tiltControl: WatchTiltControl = WatchTiltControl.FREE,
     val trail: List<WatchTrailPoint> = emptyList(),
+    val displayMotion: GpsDisplayMotion? = null,
     val mapPosition: WatchMapPosition? = null,
 )
 
@@ -120,6 +122,7 @@ object WatchFrameDecoder {
             remoteTilt = lanes[11].orNull()?.toInt()?.coerceIn(0, 255),
             tiltControl = WatchTiltControl.fromWire(lanes[12].orNull()),
             trail = trail.points,
+            displayMotion = trail.displayMotion,
             mapPosition = trail.position,
         )
     }

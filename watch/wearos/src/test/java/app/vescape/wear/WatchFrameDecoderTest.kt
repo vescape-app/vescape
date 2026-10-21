@@ -7,6 +7,23 @@ import org.junit.Assert.assertNull
 import org.junit.Test
 
 class WatchFrameDecoderTest {
+    @Test fun `display segment roundtrips through phone encoder and wrist decoder`() {
+        val motion = expo.modules.vescapecore.location.GpsDisplayMotion(52.0, 21.0, 52.001, 21.001,
+            1_700_000_000_000, 1_700_000_001_000, true, 0.00000001, 0.00000002, 1_700_000_001_000)
+        val snapshot = expo.modules.vescapecore.watch.WatchSnapshot(speed = 12.0, dutyCycle = null,
+            dutyExcluded = false, batterySoc = null, motorTemp = null, ctrlTemp = null,
+            displayMotion = motion, mapPosition = expo.modules.vescapecore.watch.WatchMapPosition(52.001, 21.001))
+        val bytes = expo.modules.vescapecore.watch.WatchFrameBuilder.encode(
+            expo.modules.vescapecore.watch.WatchFrameBuilder.build(snapshot, false))
+        val frame = WatchFrameDecoder.decode(bytes)!!
+        assertEquals(motion, frame.displayMotion)
+        assertEquals(snapshot.mapPosition, frame.mapPosition)
+        assertEquals(12.0, frame.speed!!, 0.0)
+        val truncated = WatchFrameDecoder.decode(bytes.copyOf(bytes.size - 1))!!
+        assertNull(truncated.displayMotion)
+        assertEquals(12.0, truncated.speed!!, 0.0)
+    }
+
     @Test
     fun `reads nav lanes when the phone sends them`() {
         val frame = WatchFrameDecoder.decode(encode(12.0, 20f, 80f, 33f, 5f, 42f, 1350f))!!

@@ -12,13 +12,13 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.withFrameNanos
-import android.os.SystemClock
+import expo.modules.vescapecore.location.GpsDisplayMotion
 import expo.modules.vescapecore.watch.WatchMapPosition
 import expo.modules.vescapecore.watch.WatchTrailPoint
 
 /**
- * The heading-up map's position, zoom and course as the wrist currently draws them, eased towards the latest
- * target. Route and trail share position motion; Group Ride shares zoom and course, so a Rider on the route
+ * The heading-up map's position, zoom and course as the wrist currently draws them.
+ * Position samples the phone's native display segment; zoom and course ease towards their targets. Route and trail share position motion; Group Ride shares zoom and course, so a Rider on the route
  * stays on it mid-zoom and mid-turn. Read [spanM] and [courseDeg] in a draw scope: an easing then
  * repaints the map layers without recomposing anything.
  *
@@ -34,9 +34,9 @@ internal class WatchMapView(spanM: Float, courseDeg: Float) {
     val positionOffset: WatchTrailPoint get() = motion.offsetAt(motionTimeMs)
 
     // Retarget in the same composition as the new geometry, before either layer can draw it.
-    fun moveTo(position: WatchMapPosition?, nowMs: Long, animate: Boolean) {
-        if (position != motion.position || !animate) {
-            motion = motion.retarget(position, nowMs, animate)
+    fun moveTo(position: WatchMapPosition?, nowMs: Long, animate: Boolean, displayMotion: GpsDisplayMotion?) {
+        if (position != motion.position || motion.sourceDisplayMotion != displayMotion || !animate) {
+            motion = motion.retarget(position, nowMs, animate, displayMotion)
             motionTimeMs = nowMs
         }
     }
@@ -68,12 +68,12 @@ internal class WatchMapView(spanM: Float, courseDeg: Float) {
  * @parity /modules/vescape-core/ios/watch/WatchMapView.swift `retarget`
  */
 @Composable
-internal fun rememberWatchMapView(targetSpanM: Float, targetCourseDeg: Float?, animate: Boolean, position: WatchMapPosition? = null): WatchMapView {
+internal fun rememberWatchMapView(targetSpanM: Float, targetCourseDeg: Float?, animate: Boolean, position: WatchMapPosition? = null, displayMotion: GpsDisplayMotion? = null): WatchMapView {
     val view = remember { WatchMapView(targetSpanM, targetCourseDeg ?: 0f) }
-    view.moveTo(position, SystemClock.uptimeMillis(), animate)
+    view.moveTo(position, System.currentTimeMillis(), animate, displayMotion)
     LaunchedEffect(view.motion) {
         while (view.motionTimeMs < view.motion.endsAtMs) {
-            withFrameNanos { view.motionTimeMs = SystemClock.uptimeMillis() }
+            withFrameNanos { view.motionTimeMs = System.currentTimeMillis() }
         }
     }
     LaunchedEffect(targetSpanM, animate) { view.zoomTo(targetSpanM, animate) }
@@ -95,7 +95,7 @@ private const val MAP_ZOOM_EASE_MS = 350
 /** @parity /modules/vescape-core/ios/watch/WatchMapView.swift `turnEase` */
 private const val MAP_TURN_EASE_MS = 300
 
-/** Remaining camera translation relative to the latest GPS fix. One clock for both paths.
+/** Camera translation relative to the frame's absolute map anchor. One clock for both paths.
  * The anchor is absolute: rerouting, history trimming and skipped frames cannot change its origin.
  * @parity /modules/vescape-core/ios/watch/WatchMapView.swift `WatchMapMotion`
  */
@@ -104,14 +104,39 @@ internal data class WatchMapMotion(
     private val from: WatchTrailPoint = WatchTrailPoint(0.0, 0.0),
     private val startsAtMs: Long = 0,
     val endsAtMs: Long = 0,
+    val displayMotion: GpsDisplayMotion? = null,
+    val sourceDisplayMotion: GpsDisplayMotion? = null,
 ) {
     fun offsetAt(nowMs: Long): WatchTrailPoint {
+        if (displayMotion != null && position != null) {
+            val (lat, lng) = displayMotion.positionAt(nowMs)
+            return position.offsetFrom(WatchMapPosition(lat, lng))
+        }
         val remaining = if (endsAtMs <= startsAtMs) 0.0 else
             ((endsAtMs - nowMs).toDouble() / (endsAtMs - startsAtMs)).coerceIn(0.0, 1.0)
         return WatchTrailPoint(from.eastM * remaining, from.northM * remaining)
     }
 
-    fun retarget(target: WatchMapPosition?, nowMs: Long, animate: Boolean): WatchMapMotion {
+    fun retarget(target: WatchMapPosition?, nowMs: Long, animate: Boolean, displayMotion: GpsDisplayMotion? = null): WatchMapMotion {
+        if (animate && target != null && displayMotion != null) {
+            if (sourceDisplayMotion == displayMotion && position == target) return this
+            val current = this.displayMotion?.positionAt(nowMs) ?: position?.let { anchor ->
+                val offset = offsetAt(nowMs)
+                Pair(anchor.latitude - offset.northM / 110_574,
+                    anchor.longitude - offset.eastM / (111_320 * maxOf(0.001, kotlin.math.cos(Math.toRadians(anchor.latitude)))))
+            } ?: displayMotion.positionAt(nowMs)
+            val duration = maxOf(GpsDisplayMotion.MIN_CORRECTION_MS, displayMotion.endsAtMs - nowMs)
+            val desired = displayMotion.positionAt(nowMs)
+            val remaining = if (displayMotion.endsAtMs > nowMs && displayMotion.endsAtMs > displayMotion.startsAtMs)
+                (displayMotion.endsAtMs - nowMs).toDouble() / (displayMotion.endsAtMs - displayMotion.startsAtMs) else 0.0
+            val local = if (displayMotion.resetPosition) displayMotion else GpsDisplayMotion(current.first, current.second,
+                desired.first + (displayMotion.toLatitude - displayMotion.fromLatitude) * remaining,
+                desired.second + GpsDisplayMotion.longitudeDelta(displayMotion.fromLongitude, displayMotion.toLongitude) * remaining,
+                nowMs, nowMs + duration, false, displayMotion.latitudePerMs, displayMotion.longitudePerMs,
+                displayMotion.velocityExpiresAtMs)
+            return WatchMapMotion(position = target, endsAtMs = maxOf(nowMs + duration, if (displayMotion.latitudePerMs != 0.0 || displayMotion.longitudePerMs != 0.0) displayMotion.velocityExpiresAtMs else nowMs),
+                displayMotion = local, sourceDisplayMotion = displayMotion)
+        }
         if (!animate || target == null || position == null) return WatchMapMotion(position = target)
         if (target == position) return this
         val movement = target.offsetFrom(position)

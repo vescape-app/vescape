@@ -465,6 +465,17 @@ class CoreForegroundService : Service() {
             instance?.controller?.setFocusedSeriesMetrics(metrics)
         }
 
+        @Volatile var gpsDisplaySmoothingPercent = 100.0
+            private set
+        @Volatile var gpsDisplayPredictionPercent = 50.0
+            private set
+        fun setGpsDisplaySettings(smoothing: Double, prediction: Double) {
+            if (!smoothing.isFinite() || !prediction.isFinite()) return
+            gpsDisplaySmoothingPercent = smoothing.coerceIn(0.0, 200.0)
+            gpsDisplayPredictionPercent = prediction.coerceIn(0.0, 100.0)
+            instance?.controller?.setGpsDisplaySettings(gpsDisplaySmoothingPercent, gpsDisplayPredictionPercent)
+        }
+
         fun setLiveSeriesMetrics(metrics: List<String>) {
             instance?.controller?.setLiveSeriesMetrics(metrics)
         }

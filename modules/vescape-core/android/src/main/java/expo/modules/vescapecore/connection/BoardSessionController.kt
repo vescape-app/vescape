@@ -399,6 +399,8 @@ internal class BoardSessionController(private val service: CoreForegroundService
             record = ::recordWatchDiagnostic,
         )
     }
+    private var lastDisplayPublishedAt = 0L
+    private var lastDisplayPublishedSpeed = -1.0
     private val locationTracker by lazy {
         LocationTracker(
             service.applicationContext,
@@ -406,7 +408,10 @@ internal class BoardSessionController(private val service: CoreForegroundService
             ::emitEvent,
             recordingCoordinator,
             telemetryPipeline,
-        )
+            { Pair(telemetry?.speed?.let { kotlin.math.abs(it) / 3.6 * sessionClock.speed }, telemetryPipeline.lastTelemetryAt?.let { it + System.currentTimeMillis() - nowMs() }) },
+            { nowMs() },
+        ).also { it.displaySmoother.configure(CoreForegroundService.gpsDisplaySmoothingPercent,
+            CoreForegroundService.gpsDisplayPredictionPercent, System.currentTimeMillis()) }
     }
     private val configController by lazy {
         ConfigRWController(
@@ -1581,6 +1586,8 @@ internal class BoardSessionController(private val service: CoreForegroundService
             markBoardReady()
             startLinkIntegrityProbe(sessionToken)
             telemetry = parsed
+            val displayNow = System.currentTimeMillis()
+            locationTracker.displaySmoother.updateSpeed(kotlin.math.abs(parsed.speed) / 3.6 * sessionClock.speed, displayNow, displayNow)
             val batteryPct = BatterySocEstimator.estimateBatteryPercent(
                 parsed.batteryVoltage,
                 batteryConfigCache,
@@ -1603,7 +1610,13 @@ internal class BoardSessionController(private val service: CoreForegroundService
             } else eventMap
                 refreshNotification(telemetry = parsed, batteryPercent = batteryEstimate)
                 // Hot path: tiny scalar tick every frame drives the live gauges (SharedValues, no React render).
-                emitEvent("onLiveTick", buildLiveTick(parsed, processed, batteryEstimate, currentSessionId, firedAlerts))
+                val displaySpeed = kotlin.math.abs(parsed.speed) / 3.6 * sessionClock.speed
+                val displayUpdate = if (kotlin.math.abs(displaySpeed - lastDisplayPublishedSpeed) >= 0.1 || displayNow - lastDisplayPublishedAt >= 500) {
+                    lastDisplayPublishedAt = displayNow
+                    lastDisplayPublishedSpeed = displaySpeed
+                    mapOf("displayMotion" to locationTracker.displayMotion?.toMap())
+                } else emptyMap()
+                emitEvent("onLiveTick", buildLiveTick(parsed, processed, batteryEstimate, currentSessionId, firedAlerts) + displayUpdate)
                 // Cold path: full samples buffered and flushed in batches for history/charts.
                 liveSeriesEmitter.enqueueHistorySample(historySample)
                 // First sample of the session also drives the first sparkline frame immediately.
@@ -2341,11 +2354,15 @@ internal class BoardSessionController(private val service: CoreForegroundService
         val progress = NavigationController.get(service.applicationContext).currentProgress
         val origin = WatchRouteMirror.origin
         val rider = locationTracker.riderPosition
+        // One visual anchor for route, trail and tiles, including held poor fixes and prediction.
+        val mapPosition = locationTracker.displayMotion?.let {
+            expo.modules.vescapecore.watch.WatchMapPosition(it.toLatitude, it.toLongitude)
+        } ?: rider?.let { expo.modules.vescapecore.watch.WatchMapPosition(it.latitude, it.longitude) }
         // Measured from the origin of the route the watch actually holds, not from the current
         // Navigation's first point: a recompute landing between the push and this tick would
         // otherwise place the rider against an origin the wrist has never seen.
-        val offset = if (progress != null && origin != null && rider != null) {
-            offsetMeters(origin, GeoPoint(rider.latitude, rider.longitude))
+        val offset = if (progress != null && origin != null && mapPosition != null) {
+            offsetMeters(origin, GeoPoint(mapPosition.latitude, mapPosition.longitude))
         } else {
             null
         }
@@ -2366,10 +2383,11 @@ internal class BoardSessionController(private val service: CoreForegroundService
             routeSpanM = WatchRouteMirror.viewportSpanM,
             remoteTilt = if (current != null) remoteTiltController.currentValue else null,
             tiltControl = watchTiltControl(),
-            mapPosition = rider?.let { expo.modules.vescapecore.watch.WatchMapPosition(it.latitude, it.longitude) },
+            displayMotion = locationTracker.displayMotion,
+            mapPosition = mapPosition,
             riderSpeedMps = rider?.speedMps,
             trail = expo.modules.vescapecore.watch.watchTrail(
-                rider?.let { GeoPoint(it.latitude, it.longitude) },
+                mapPosition?.let { GeoPoint(it.latitude, it.longitude) },
                 locationTracker.recentLocations(),
             ),
         )
@@ -2771,6 +2789,14 @@ internal class BoardSessionController(private val service: CoreForegroundService
      * @parity /modules/vescape-core/ios/connection/BoardSessionController.swift `riderPosition`
      */
     fun riderPosition(): LocationSnapshot? = locationTracker.riderPosition
+
+    /** @parity /modules/vescape-core/ios/connection/BoardSessionController.swift `setGpsDisplaySettings` */
+    fun setGpsDisplaySettings(smoothingPercent: Double, predictionPercent: Double) {
+        scheduler.post {
+            locationTracker.displaySmoother.configure(smoothingPercent, predictionPercent, System.currentTimeMillis())
+            emitState()
+        }
+    }
 
     fun remoteTiltState(): Map<String, Any?>? =
         remoteTiltWire(
@@ -3463,6 +3489,7 @@ internal class BoardSessionController(private val service: CoreForegroundService
                 latestLocation = locationTracker.latestLocation,
                 latestPreciseLocation = locationTracker.latestPreciseLocation,
                 recentLocations = recentLocationsValue,
+                displayMotion = locationTracker.displayMotion,
                 gpsError = gpsError,
                 recordingEnabled = recordingCoordinator.telemetryRecordingEnabled,
                 recordingPaused = idlePauseDetector.isPaused,

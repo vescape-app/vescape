@@ -2,6 +2,9 @@ import { create } from 'zustand'
 import type { LocationEvent } from 'vescape-core'
 
 export interface NavigationDiagnosticsState {
+  /** Session-only map debug overlay; never changes GPS acquisition or recording. */
+  showRawGps: boolean
+  setShowRawGps: (visible: boolean) => void
   gpsFix: LocationEvent | null
   retainedGpsBearingDeg: number | null
   retainedGpsBearingAt: number | null
@@ -39,6 +42,8 @@ const INITIAL_SNAPSHOT: NavigationDiagnosticsSnapshot = {
 
 export const useNavigationDiagnosticsStore = create<NavigationDiagnosticsState>((set) => ({
   ...INITIAL_SNAPSHOT,
+  showRawGps: true,
+  setShowRawGps: (showRawGps) => set({ showRawGps }),
   updatedAt: null,
   update(next) {
     set({ ...next, updatedAt: Date.now() })

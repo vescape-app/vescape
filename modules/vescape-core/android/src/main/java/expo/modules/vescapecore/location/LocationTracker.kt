@@ -18,9 +18,13 @@ internal class LocationTracker(
     private val emitEvent: (String, Map<String, Any?>) -> Unit,
     private val recordingCoordinator: RecordingCoordinator,
     private val telemetryPipeline: TelemetryPipeline,
+    private val boardSpeed: () -> Pair<Double?, Long?> = { Pair(null, null) },
+    private val sessionNow: () -> Long = { System.currentTimeMillis() },
 ) {
     private val recentLocations = ArrayDeque<Map<String, Any?>>()
     private val courseDeriver = GpsCourseDeriver()
+    val displaySmoother = GpsDisplaySmoother()
+    val displayMotion: GpsDisplayMotion? get() = displaySmoother.motion
     var latestLocation: LocationSnapshot? = null
         private set
     var latestPreciseLocation: LocationSnapshot? = null
@@ -74,6 +78,11 @@ internal class LocationTracker(
             courseDeg = course?.bearingDeg,
             courseSourceTimestamp = course?.sourceTimestamp,
         )
+        val speed = boardSpeed()
+        val displayNow = System.currentTimeMillis()
+        displaySmoother.update(snapshot.latitude, snapshot.longitude, snapshot.timestamp + displayNow - sessionNow(), snapshot.precise,
+            snapshot.accuracyM, snapshot.speedMps, snapshot.courseDeg, snapshot.courseSourceTimestamp,
+            speed.first, speed.second, displayNow)
         latestLocation = snapshot
         // Every fix moves Route Progress, approximate ones included: the same rule as
         // [riderPosition], where freshness beats accuracy. The bearing comes off the path rather
@@ -82,14 +91,14 @@ internal class LocationTracker(
         NavigationController.get(applicationContext)
             .onFix(snapshot.latitude, snapshot.longitude, snapshot.speedMps)
         if (!snapshot.precise) {
-            emitEvent("onLocation", snapshot.toMap())
+            emitEvent("onLocation", snapshot.toMap() + ("displayMotion" to displayMotion?.toMap()))
             return snapshot
         }
         latestPreciseLocation = snapshot
         persistLastGpsLocation(snapshot)
         recentLocations.addLast(snapshot.toMap())
         pruneRecentLocations(snapshot.timestamp)
-        emitEvent("onLocation", snapshot.toMap())
+        emitEvent("onLocation", snapshot.toMap() + ("displayMotion" to displayMotion?.toMap()))
         recordingCoordinator.recordLocation(snapshot)
         return snapshot
     }
@@ -113,6 +122,7 @@ internal class LocationTracker(
         latestLocation = null
         latestPreciseLocation = null
         courseDeriver.reset()
+        displaySmoother.reset()
         recentLocations.clear()
     }
 

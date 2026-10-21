@@ -5,6 +5,43 @@ import XCTest
 ///
 /// @parity /watch/wearos/src/test/java/app/vescape/wear/WatchMapViewTest.kt
 final class WatchMapViewTests: XCTestCase {
+  func testVelocityContinuesAfterCorrectionAndExplicitResetIsHonored() {
+    let model = GpsDisplayMotion(fromLatitude: 0, fromLongitude: 0, toLatitude: 0, toLongitude: 0,
+      startsAtMs: 10_000, endsAtMs: 10_000, resetPosition: true,
+      latitudePerMs: 0.01 / 110_574, velocityExpiresAtMs: 11_000)
+    let anchor = WatchMapPosition(latitude: 0, longitude: 0)
+    let motion = WatchMapMotion().retarget(anchor, at: Date(timeIntervalSince1970: 10.2), animate: true, displayMotion: model)
+    XCTAssertEqual(motion.offset(at: Date(timeIntervalSince1970: 10.5)).northM, -5, accuracy: 0.001)
+    XCTAssertEqual(motion.offset(at: Date(timeIntervalSince1970: 12)).northM, -10, accuracy: 0.001)
+    XCTAssertEqual(motion.endsAt, Date(timeIntervalSince1970: 11))
+  }
+
+  func testDelayedRetargetAndExpiredSegmentKeepVisiblePositionContinuous() {
+    let anchor = WatchMapPosition(latitude: 0, longitude: 0.001)
+    let first = GpsDisplayMotion(fromLatitude: 0, fromLongitude: 0, toLatitude: 0,
+      toLongitude: 0.001, startsAtMs: 10_000, endsAtMs: 11_000)
+    let old = WatchMapMotion().retarget(anchor, at: Date(timeIntervalSince1970: 10), animate: true, displayMotion: first)
+    let receipt = Date(timeIntervalSince1970: 10.7)
+    let delayed = GpsDisplayMotion(fromLatitude: 0, fromLongitude: 0.0005, toLatitude: 0,
+      toLongitude: 0.002, startsAtMs: 10_500, endsAtMs: 10_600)
+    let next = old.retarget(anchor, at: receipt, animate: true, displayMotion: delayed)
+    XCTAssertEqual(next.offset(at: receipt).eastM, old.offset(at: receipt).eastM, accuracy: 0.001)
+    XCTAssertGreaterThan(next.endsAt, receipt)
+  }
+
+  func testNativeDisplaySegmentUsesOriginalClockWithoutAnotherEaseAndHoldsPrediction() {
+    let segment = GpsDisplayMotion(fromLatitude: 0, fromLongitude: 0, toLatitude: 10 / 110_574,
+      toLongitude: 0, startsAtMs: 10_000, endsAtMs: 11_000)
+    let anchor = WatchMapPosition(latitude: 8 / 110_574, longitude: 0)
+    // Received halfway through the original segment, with a 2m prediction beyond the measured fix.
+    let motion = WatchMapMotion().retarget(anchor, at: Date(timeIntervalSince1970: 10.5),
+      animate: true, displayMotion: segment)
+    XCTAssertEqual(motion.offset(at: Date(timeIntervalSince1970: 10.5)).northM, 3, accuracy: 0.001)
+    XCTAssertEqual(motion.offset(at: Date(timeIntervalSince1970: 11)).northM, -2, accuracy: 0.001)
+    XCTAssertEqual(motion.offset(at: Date(timeIntervalSince1970: 99)).northM, -2, accuracy: 0.001)
+    XCTAssertEqual(motion.endsAt, Date(timeIntervalSince1970: 11))
+  }
+
   private let start = Date(timeIntervalSinceReferenceDate: 1_000)
 
   private func at(_ seconds: TimeInterval) -> Date { start.addingTimeInterval(seconds) }

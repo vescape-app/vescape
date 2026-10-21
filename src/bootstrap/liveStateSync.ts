@@ -1,6 +1,7 @@
 import { AppState } from 'react-native'
 import {
   addLiveStateListener,
+  addLiveTickListener,
   addLocationListener,
   getLiveState,
   isReplayBoardId,
@@ -51,6 +52,10 @@ export function refreshGpsDemand(): void {
 export function startLiveStateSync(): () => void {
   stopSync?.()
   const stopBoard = startBoardLiveStreams()
+  const motionSub = addLiveTickListener((tick) => {
+    if (tick.displayMotion !== undefined)
+      useLocationStore.getState().ingestDisplayMotion(tick.displayMotion)
+  })
   const stateSub = addLiveStateListener((state) => applyLiveState(state, 'event'))
   const locationSub = addLocationListener((location) => {
     useLocationStore.getState().ingestLocation(location, getLiveWindowMs())
@@ -69,6 +74,7 @@ export function startLiveStateSync(): () => void {
     if (stopped) return
     stopped = true
     stopBoard()
+    motionSub.remove()
     stateSub.remove()
     locationSub.remove()
     lifecycleSub.remove()

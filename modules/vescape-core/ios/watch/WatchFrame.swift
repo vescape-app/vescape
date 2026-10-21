@@ -98,6 +98,7 @@ struct WatchFrame: Equatable {
   var remoteTilt: Int?
   var tiltControl: WatchTiltControl
   var trail: [WatchTrailPoint]
+  var displayMotion: GpsDisplayMotion?
   var mapPosition: WatchMapPosition?
 
   init(
@@ -117,6 +118,7 @@ struct WatchFrame: Equatable {
     remoteTilt: Int? = nil,
     tiltControl: WatchTiltControl = .free,
     trail: [WatchTrailPoint] = [],
+    displayMotion: GpsDisplayMotion? = nil,
     mapPosition: WatchMapPosition? = nil
   ) {
     self.speed = speed
@@ -135,6 +137,7 @@ struct WatchFrame: Equatable {
     self.remoteTilt = remoteTilt
     self.tiltControl = tiltControl
     self.trail = trail
+    self.displayMotion = displayMotion
     self.mapPosition = mapPosition
   }
 }
@@ -158,6 +161,7 @@ struct WatchSnapshot {
   var remoteTilt: Int?
   var tiltControl: WatchTiltControl
   var trail: [WatchTrailPoint]
+  var displayMotion: GpsDisplayMotion?
   var mapPosition: WatchMapPosition?
   /// GPS ground speed, for the street-map lookahead. Phone-side only; not on the wire.
   var riderSpeedMps: Double?
@@ -178,6 +182,7 @@ struct WatchSnapshot {
     remoteTilt: Int? = nil,
     tiltControl: WatchTiltControl = .free,
     trail: [WatchTrailPoint] = [],
+    displayMotion: GpsDisplayMotion? = nil,
     mapPosition: WatchMapPosition? = nil,
     riderSpeedMps: Double? = nil
   ) {
@@ -196,6 +201,7 @@ struct WatchSnapshot {
     self.remoteTilt = remoteTilt
     self.tiltControl = tiltControl
     self.trail = trail
+    self.displayMotion = displayMotion
     self.mapPosition = mapPosition
     self.riderSpeedMps = riderSpeedMps
   }
@@ -224,6 +230,7 @@ enum WatchFrameBuilder {
       remoteTilt: snapshot.remoteTilt,
       tiltControl: snapshot.tiltControl,
       trail: snapshot.trail,
+      displayMotion: snapshot.displayMotion,
       mapPosition: snapshot.mapPosition
     )
   }
@@ -238,7 +245,7 @@ enum WatchFrameBuilder {
       let value = Float(frame[keyPath: lane] ?? .nan)
       withUnsafeBytes(of: value.bitPattern.littleEndian) { data.append(contentsOf: $0) }
     }
-    data.append(WatchTrailCodec.encode(frame.trail, position: frame.mapPosition))
+    data.append(WatchTrailCodec.encode(frame.trail, position: frame.mapPosition, displayMotion: frame.displayMotion))
     return data
   }
 
@@ -264,6 +271,7 @@ enum WatchFrameBuilder {
     let trail = WatchTrailCodec.decode(data, offset: WATCH_FRAME_BYTES)
     frame.trail = trail.points
     frame.mapPosition = trail.position
+    frame.displayMotion = trail.displayMotion
     return frame
   }
 

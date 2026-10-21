@@ -1,3 +1,4 @@
+import { GpsDisplayControls } from '@/modules/map/components/GpsDisplayControls'
 import Mapbox, { Camera, MapView } from '@rnmapbox/maps'
 import { SlidersHorizontalIcon } from 'phosphor-react-native'
 import { useCallback, useRef, useState, type ComponentRef } from 'react'
@@ -127,6 +128,7 @@ export default function MapComponentsShowcase() {
         {isSatellite && <SatelliteImageryLayer paint={getSatelliteImageryPaint()} />}
         {/* historyActive=false renders buildings/raster/weather + live pins/GPS puck/riders */}
         <MainMapLayers
+          gpsPositionAnimator={null}
           historyActive={false}
           expandSelectedMapPoints
           isMapy={isMapy}
@@ -242,6 +244,7 @@ export default function MapComponentsShowcase() {
             if (match) setActiveHistoryMapMetric(match.key)
           }}
         />
+        <GpsDisplayControls />
         <ValueRow label="Last interaction" value={lastEvent ?? DASH} />
         <Text style={styles.hint}>
           Tap a pin to expand its label + delete button. Buildings 3D follows the style (Outdoors,

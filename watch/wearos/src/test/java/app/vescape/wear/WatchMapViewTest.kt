@@ -7,6 +7,34 @@ import expo.modules.vescapecore.watch.WatchTrailPoint
 
 /** @parity /modules/vescape-core/ios/watch/WatchMapViewTests.swift */
 class WatchMapViewTest {
+    @Test fun `velocity continues after correction and explicit reset is honored`() {
+        val model = expo.modules.vescapecore.location.GpsDisplayMotion(0.0, 0.0, 0.0, 0.0,
+            10_000, 10_000, true, 0.01 / 110_574, 0.0, 11_000)
+        val motion = WatchMapMotion().retarget(WatchMapPosition(0.0, 0.0), 10_200, true, model)
+        assertEquals(-5.0, motion.offsetAt(10_500).northM, 0.001)
+        assertEquals(-10.0, motion.offsetAt(12_000).northM, 0.001)
+        assertEquals(11_000L, motion.endsAtMs)
+    }
+    @Test fun `delayed retarget and expired segment keep visible position continuous`() {
+        val anchor = WatchMapPosition(0.0, 0.001)
+        val first = expo.modules.vescapecore.location.GpsDisplayMotion(0.0, 0.0, 0.0, 0.001, 10_000, 11_000)
+        val old = WatchMapMotion().retarget(anchor, 10_000, true, first)
+        val delayed = expo.modules.vescapecore.location.GpsDisplayMotion(0.0, 0.0005, 0.0, 0.002, 10_500, 10_600)
+        val next = old.retarget(anchor, 10_700, true, delayed)
+        assertEquals(old.offsetAt(10_700).eastM, next.offsetAt(10_700).eastM, 0.001)
+        org.junit.Assert.assertTrue(next.endsAtMs > 10_700)
+    }
+
+    @Test fun `native segment uses original clock without another ease and holds prediction`() {
+        val segment = expo.modules.vescapecore.location.GpsDisplayMotion(0.0, 0.0, 10.0 / 110_574, 0.0, 10_000, 11_000)
+        val anchor = WatchMapPosition(8.0 / 110_574, 0.0)
+        val motion = WatchMapMotion().retarget(anchor, 10_500, true, segment)
+        assertEquals(3.0, motion.offsetAt(10_500).northM, 0.001)
+        assertEquals(-2.0, motion.offsetAt(11_000).northM, 0.001)
+        assertEquals(-2.0, motion.offsetAt(99_000).northM, 0.001)
+        assertEquals(11_000L, motion.endsAtMs)
+    }
+
     @Test
     fun `course crosses north using shortest turn`() {
         assertEquals(1f, shortestAngleDelta(359f, 0f), 0.001f)

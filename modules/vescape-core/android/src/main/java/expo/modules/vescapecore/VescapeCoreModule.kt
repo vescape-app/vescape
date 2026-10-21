@@ -118,6 +118,7 @@ private fun Map<String, Any?>.toAlertTestRule(): AlertRuleEntity? {
  */
 @SuppressLint("MissingPermission") // permissions are requested at the JS/RN layer
 class VescapeCoreModule : Module() {
+  private val gpsDisplayPreview = expo.modules.vescapecore.location.GpsDisplaySmoother()
   private class ActiveBoardProbe(
     val id: String,
     val result: CompletableDeferred<TransportDetection.Result>,
@@ -625,6 +626,8 @@ class VescapeCoreModule : Module() {
     Function("stopAlertTest") {
       stopAlertTest()
     }
+    registerGpsDisplay()
+
     Function("getLiveState") {
       liveStateWithScan(CoreForegroundService.currentLiveState(context.applicationContext))
     }
@@ -1502,6 +1505,29 @@ class VescapeCoreModule : Module() {
         CoreForegroundService.reloadTelemetrySettings(context.applicationContext)
       }
     }
+  }
+
+  private fun ModuleDefinitionBuilder.registerGpsDisplay() {
+    Function("getGpsDisplaySettings") {
+      mapOf("smoothingPercent" to CoreForegroundService.gpsDisplaySmoothingPercent,
+        "predictionPercent" to CoreForegroundService.gpsDisplayPredictionPercent)
+    }
+    Function("setGpsDisplaySettings") { smoothing: Double, prediction: Double ->
+      CoreForegroundService.setGpsDisplaySettings(smoothing, prediction)
+    }
+    Function("resetGpsDisplayPreview") { gpsDisplayPreview.reset() }
+    Function("setGpsDisplayPreviewSettings") { smoothing: Double, prediction: Double ->
+      gpsDisplayPreview.configure(smoothing, prediction, System.currentTimeMillis())?.toMap()
+    }
+    Function("updateGpsDisplayPreviewSpeed") { speed: Double ->
+      val now = System.currentTimeMillis()
+      gpsDisplayPreview.updateSpeed(speed, now, now)?.toMap()
+    }
+    Function("updateGpsDisplayPreview") { latitude: Double, longitude: Double, speed: Double, course: Double, timestamp: Long ->
+      gpsDisplayPreview.update(latitude, longitude, timestamp, true, 5.0, speed, course, timestamp,
+        speed, timestamp, System.currentTimeMillis())?.toMap()
+    }
+
   }
 
   private fun ModuleDefinitionBuilder.registerGroupRide() {

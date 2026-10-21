@@ -1,7 +1,13 @@
+import { useHeadingMotionStore } from '@/modules/map/store/headingMotionStore'
+import { GPS_HEADING_CAMERA_OMEGA } from '@/modules/map/constants/gpsHeadingMotion'
 import type { Camera as CameraRef } from '@rnmapbox/maps'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useWindowDimensions } from 'react-native'
 
+import { useGpsDisplayCameraTarget } from '@/modules/map/hooks/useGpsDisplayCameraTarget'
+import { useAppActive } from '@/hooks/useAppActive'
+import { useLocationStore } from '@/modules/location/store/locationStore'
+import { gpsDisplayPosition } from '@/modules/map/lib/gpsDisplayMotion'
 import { zoomLevelForDelta } from '@/helpers/mapGeometry'
 import { MAP_DEFAULTS } from '@/modules/map/constants/mapStyles'
 import {
@@ -10,7 +16,11 @@ import {
   reduceMapCameraIntent,
   type MapCameraMode,
 } from '@/modules/map/lib/cameraController'
-import { createCameraEngine, type EngineCamera } from '@/modules/map/lib/cameraEngine/engine'
+import {
+  CAMERA_ENGINE_DEFAULT_OMEGA,
+  createCameraEngine,
+  type EngineCamera,
+} from '@/modules/map/lib/cameraEngine/engine'
 import {
   getMapCameraProfileForOrientationMode,
   getPitchForProfileZoom,
@@ -45,6 +55,8 @@ export function useCameraControls({
   onPerspectiveChange,
 }: UseCameraControlsParams) {
   const { getFollowDeg, phoneReady, resetOnRecenter } = heading
+  const appActive = useAppActive()
+  const displayMotion = useLocationStore((state) => state.displayMotion)
   const {
     active: historyActive,
     preview: historyPreview,
@@ -59,6 +71,8 @@ export function useCameraControls({
   const lastFollowKeyRef = useRef<string | null>(null)
   const followZoomLevelRef = useRef<number | null>(null)
   const previewPanActiveRef = useRef(false)
+  const gpsCameraSpeed = useHeadingMotionStore((s) => s.gpsCameraSpeedPercent)
+  const compassCameraSpeed = useHeadingMotionStore((s) => s.compassCameraSpeedPercent)
   const previousOrientationModeRef = useRef(mapOrientationMode)
   const recenterLiveRef = useRef<
     ((options?: { resetPadding?: boolean; animationDuration?: number }) => void) | null
@@ -92,6 +106,16 @@ export function useCameraControls({
     engine.resume()
     return () => engine.destroy()
   }, [engine])
+  useEffect(() => {
+    engine.setOmega({
+      heading:
+        mapOrientationMode === 'gpsHeading'
+          ? (GPS_HEADING_CAMERA_OMEGA * gpsCameraSpeed) / 100
+          : mapOrientationMode === 'phoneHeading'
+            ? (CAMERA_ENGINE_DEFAULT_OMEGA.heading * compassCameraSpeed) / 100
+            : CAMERA_ENGINE_DEFAULT_OMEGA.heading,
+    })
+  }, [engine, mapOrientationMode, gpsCameraSpeed, compassCameraSpeed])
   const cameraRefs = useMemo(
     () => ({
       cameraRef,
@@ -200,7 +224,13 @@ export function useCameraControls({
       mapOrientationMode === 'phoneHeading' && !phoneReady ? 'freeRotate' : mapOrientationMode
     const effect = reduceMapCameraIntent(controllerStateRef.current, {
       type: 'FollowLive',
-      gpsCamera: { ...gpsCamera, zoomLevel: baseZoomLevel },
+      gpsCamera: {
+        ...gpsCamera,
+        centerCoordinate: displayMotion
+          ? gpsDisplayPosition(displayMotion, Date.now())
+          : gpsCamera.centerCoordinate,
+        zoomLevel: baseZoomLevel,
+      },
       followHeadingDeg: getFollowDeg(),
       orientationMode: effectiveOrientationMode,
       perspectiveEnabled,
@@ -216,6 +246,7 @@ export function useCameraControls({
     }
   }, [
     gpsCamera,
+    displayMotion,
     getFollowDeg,
     mapOrientationMode,
     phoneReady,
@@ -342,6 +373,7 @@ export function useCameraControls({
   useEffect(() => {
     if (
       !cameraFix ||
+      !appActive ||
       !followGps ||
       historyActive ||
       !liveFollowUpdatesEnabled ||
@@ -355,6 +387,7 @@ export function useCameraControls({
     applyLiveFollowCamera()
   }, [
     applyLiveFollowCamera,
+    appActive,
     cameraFix,
     followGps,
     getLiveFollowCamera,
@@ -362,6 +395,21 @@ export function useCameraControls({
     liveFollowUpdatesEnabled,
     previewGestures.previewPanActiveRef,
   ])
+
+  const followDisplayedCenter = useCallback(
+    (coordinate: [number, number]) => {
+      if (controllerStateRef.current.mode.kind !== 'liveFollow' || previewPanActiveRef.current)
+        return false
+      engine.setTarget({ center: coordinate })
+      return true
+    },
+    [engine],
+  )
+  useGpsDisplayCameraTarget(
+    displayMotion,
+    appActive && followGps && !historyActive,
+    followDisplayedCenter,
+  )
 
   // Every orientation change has to reach the camera, not only the ones that enter or leave GPS
   // heading. Compass drives the heading straight into the engine, so switching away from it leaves

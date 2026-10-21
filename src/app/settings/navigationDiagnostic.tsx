@@ -1,8 +1,12 @@
+import { GpsDisplayControls } from '@/modules/map/components/GpsDisplayControls'
+import { Switch } from '@/components/controls/Switch'
+import { SettingsCard } from '@/components/settings/SettingsCard'
+import { SettingsRow } from '@/components/settings/SettingsRow'
 import { useEffect, useMemo, useState } from 'react'
 import { ScrollView, StyleSheet, View } from 'react-native'
 import { Text } from '@/components/base/Text'
 import { SafeAreaView } from 'react-native-safe-area-context'
-import { CompassIcon } from 'phosphor-react-native'
+import { CompassIcon, MapPinIcon } from 'phosphor-react-native'
 import { useShallow } from 'zustand/react/shallow'
 
 import { theme } from '@/constants/theme'
@@ -15,6 +19,8 @@ import { useNavigationDiagnosticsStore } from '@/modules/map/store/navigationDia
 import { useSettingsStore } from '@/modules/settings/store/settingsStore'
 
 export default function NavigationDiagnosticScreen() {
+  const showRawGps = useNavigationDiagnosticsStore((s) => s.showRawGps)
+  const setShowRawGps = useNavigationDiagnosticsStore((s) => s.setShowRawGps)
   const mapOrientationMode = useSettingsStore((s) => s.mapOrientationMode)
   const mapStyleKey = useSettingsStore((s) => s.mapStyleKey)
   const [now, setNow] = useState(() => Date.now())
@@ -50,6 +56,17 @@ export default function NavigationDiagnosticScreen() {
   return (
     <SafeAreaView style={styles.container} edges={['bottom']}>
       <ScrollView contentContainerStyle={styles.content}>
+        <Text style={styles.sectionTitle}>GPS display · this session</Text>
+        <SettingsCard>
+          <SettingsRow
+            icon={MapPinIcon}
+            iconColor={theme.palette.amber.color}
+            label="Raw GPS point"
+            hint="Show the latest unmodified GPS fix on the map"
+            right={<Switch value={showRawGps} onValueChange={setShowRawGps} />}
+          />
+          <GpsDisplayControls />
+        </SettingsCard>
         <IconHero icon={CompassIcon} description="Live map heading, GPS, and fallback evidence." />
         <Text style={styles.sectionTitle}>Navigation</Text>
         <View style={styles.card}>
