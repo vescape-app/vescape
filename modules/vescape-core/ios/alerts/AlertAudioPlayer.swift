@@ -557,7 +557,11 @@ internal final class AlertAudioPlayer {
         guard owner.isCurrentSpeech(generation) else { return }
         owner.synthesizer.stopSpeaking(at: .immediate)
         owner.stopVoiceOnQueue()
+        // A `goIdle()` pending or already done behind the lead sound (a disconnect, a ride end)
+        // still applies: the line restarts the engine, so stand it down again once the line ends.
+        let idle = owner.idleRequested || !owner.started
         owner.voiceNode = owner.playBufferOnQueue(line, label: "voice/\(announcement.key ?? "")")
+        if idle { owner.idleRequested = true }
       }
     }
   }

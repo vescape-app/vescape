@@ -1012,9 +1012,17 @@ internal final class BoardSessionController: VescGattListener {
 
   // MARK: - Group Ride
 
+  /// App sounds switch and sound packs, read by every cue whether or not a board is connected.
+  private func applyAppSoundSettings(_ settings: [String: Any?]) {
+    connectionSoundsEnabled = settings["connectionSoundsEnabled"] as? Bool ?? true
+    alertAudioPlayer.applySoundSettings(settings)
+  }
+
   /// Open the observe socket and refresh the presence egress caches it reads on every fix.
   /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/connection/BoardSessionController.kt `consumePendingGroupRideObserve`
   func startGroupRideObserve(_ url: String) {
+    do { applyAppSoundSettings(try appData.getSettings()) }
+    catch { RecordingStorageFailure.reportRead(operation: "group_ride_sound_settings", error: error) }
     loadPrivacyZones()
     loadGroupRideTarget()
     groupRideObserver.start(url)
@@ -1198,13 +1206,15 @@ internal final class BoardSessionController: VescGattListener {
   /// Re-read mutable app settings that affect live native work while a session is already running.
   /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/connection/BoardSessionController.kt `loadTelemetrySettings`
   func reloadTelemetrySettings() {
-    guard let current = config else { return }
     let settings: [String: Any?]
     do { settings = try appData.getSettings() }
     catch {
       RecordingStorageFailure.reportRead(operation: "telemetry_settings_read", error: error)
       return
     }
+    // Group Ride cues and JS app cues play without a Board Session, so sound settings apply always.
+    applyAppSoundSettings(settings)
+    guard let current = config else { return }
     let hz = AppDataRepository.intValue(settings["telemetryPollRateHz"] ?? nil) ?? 0
     let liveHistoryLimit = AppDataRepository.liveHistoryLimitMinutes(settings["liveHistoryLimit"] ?? nil)
       ?? current.liveHistoryLimitMinutes
@@ -1239,9 +1249,7 @@ internal final class BoardSessionController: VescGattListener {
       lastFaultDispatchAtMs = 0
     }
     boardWarningsEnabled = settings["boardWarningsEnabled"] as? Bool ?? true
-    connectionSoundsEnabled = settings["connectionSoundsEnabled"] as? Bool ?? true
     alertCoordinator.unitSystem = settings["unitSystem"] as? String ?? "metric"
-    alertAudioPlayer.applySoundSettings(settings)
     // Disabled→enabled with an already-trusted link: link integrity won't transition again, so
     // schedule the config-safety read here.
     if !warningsWereEnabled, boardWarningsEnabled, lastEmittedLinkIntegrity == .trusted {
