@@ -62,6 +62,7 @@ internal enum MySounds {
   private static let audioExtensions = ["wav", "m4a", "mp3"]
 
   /// File name of a My sound's audio: `<uuid>.<wav|m4a|mp3>`.
+  /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/alerts/MySoundFileName.kt `mySoundFileName`
   private static func isFileName(_ name: String) -> Bool {
     name.range(of: "^[0-9a-fA-F-]{36}\\.(wav|m4a|mp3)$", options: .regularExpression) != nil
   }

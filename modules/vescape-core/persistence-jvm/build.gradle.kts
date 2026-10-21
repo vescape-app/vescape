@@ -15,6 +15,7 @@ val extractProductionPersistence by tasks.registering {
     listOf(
       "expo/modules/vescapecore/alerts/ConfigRelativeFields.kt",
       "expo/modules/vescapecore/alerts/AlertSoundString.kt",
+      "expo/modules/vescapecore/alerts/MySoundFileName.kt",
       "expo/modules/vescapecore/telemetry/AlertPresetPersistence.kt",
       "expo/modules/vescapecore/telemetry/AlertPresetGenerator.kt",
       "expo/modules/vescapecore/alerts/SoundPackFileSwap.kt",

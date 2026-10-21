@@ -40,8 +40,6 @@ internal object MySounds {
   private const val MANIFEST = "my-sounds.json"
   private const val LEGACY_MANIFEST = "packs.json"
   private val AUDIO_EXTENSIONS = listOf("wav", "m4a", "mp3")
-  /** File name of a My sound's audio: `<uuid>.<wav|m4a|mp3>`. */
-  internal val fileName = Regex("[0-9a-fA-F-]{36}\\.(wav|m4a|mp3)")
 
   /** Extension for an audio file starting with [header], null when it is not WAV, M4A or MP3. */
   internal fun audioExtension(header: ByteArray): String? {
@@ -60,7 +58,7 @@ internal object MySounds {
 
   /** Name of My sound [id]'s audio in [dir], null when it has none. */
   private fun audioName(dir: File, id: String): String? =
-    AUDIO_EXTENSIONS.map { "$id.$it" }.firstOrNull { fileName.matches(it) && File(dir, it).isFile }
+    AUDIO_EXTENSIONS.map { "$id.$it" }.firstOrNull { mySoundFileName.matches(it) && File(dir, it).isFile }
   /**
    * Legacy pack cue → (override slot, label); its `join` was another rider joining. Error and
    * rider joined have no override slot, so they migrate as plain library sounds.
@@ -114,7 +112,7 @@ internal object MySounds {
       for ((cue, target) in legacyCues) {
         val (slot, label) = target
         val file = cues.optString(cue)
-        if (!fileName.matches(file) || !File(dir, file).isFile) continue
+        if (!mySoundFileName.matches(file) || !File(dir, file).isFile) continue
         val id = file.substringBeforeLast('.')
         sounds += Sound(id, "${pack.optString("name")} $label".trim().take(60))
         if (slot != null) slots[slot] = id
