@@ -384,7 +384,7 @@ The edge drawer behind the top-right button on the main screen: the **Vescape Ac
 _Avoid_: settings menu, settings popover, quick settings
 
 **Board Setting**:
-A rider-adjustable preference or soft state scoped to one **Board**, stored schemalessly per Board (key-value). Distinct from Board identity and probe-confirmed facts (name, **Board Link**), which are structured Board fields. Examples: battery configuration, **Alert Preset** levels, **Board Top Speed**.
+A rider-adjustable preference or soft state scoped to one **Board**, stored schemalessly per Board (key-value). Distinct from Board identity and probe-confirmed facts (name, **Board Link**), which are structured Board fields. Examples: battery configuration, **Board Top Speed**, dismissed **Board Warnings**.
 _Avoid_: Board config, per-board App Setting
 
 **Release Policy**:

@@ -720,7 +720,7 @@ try tuneQueue!.write { db in
 }
 _ = try tuneStore.saveProfile(profileId: tuneId, fields: ["kp": 2])
 var alertPersistence = AlertRulePersistence(writer: tuneQueue!)
-try alertPersistence.save(PersistedAlertRule(boardId: tuneAlertBoardId, id: alertValues["id"] as! String, controlId: alertValues["controlId"] as! String, threshold: alertValues["threshold"] as! Double, thresholdMax: nil, enabled: true, soundType: alertValues["soundType"] as! String, createdAt: 1, repeatEverySeconds: nil, thresholdKind: "fixed", configFieldId: nil, thresholdOffset: nil, thresholdMaxOffset: nil))
+try alertPersistence.save(PersistedAlertRule(boardId: tuneAlertBoardId, id: alertValues["id"] as! String, controlId: alertValues["controlId"] as! String, threshold: alertValues["threshold"] as! Double, thresholdMax: nil, enabled: true, spec: alertValues["soundType"] as! String, createdAt: 1, repeatEverySeconds: nil, thresholdKind: "fixed", configFieldId: nil, thresholdOffset: nil, thresholdMaxOffset: nil))
 try alertPersistence.setEnabled(boardId: tuneAlertBoardId, id: alertValues["id"] as! String, enabled: false)
 try tuneQueue!.close()
 tuneQueue = try DatabaseQueue(path: tuneURL.path)
@@ -747,7 +747,7 @@ try require(reopenedTune?["boardId"] as? String == tuneAlertBoardId, "Tune Profi
 try require((reopenedTune?["fields"] as? [String: Any])?["kp"] as? Int == 2, "Tune Profile values/reopen")
 try require(reopenedTuneHistory.count == int(tuneAlertExpected["historyCount"]), "Tune History/reopen")
 // The Board has no preset rows, so the app-default presets expand beside the rider's rule.
-let reopenedAlerts = try alertPersistence.rules(boardId: tuneAlertBoardId).filter { !AlertPresetPersistence.isPresetId($0.id) }
+let reopenedAlerts = try alertPersistence.rules(boardId: tuneAlertBoardId, reportPresetFailure: unexpectedPresetFailure).filter { !AlertPresetPersistence.isPresetId($0.id) }
 try require(reopenedAlerts.count == int(tuneAlertExpected["alertCount"]), "Alert count/reopen")
 try require(reopenedAlerts.first?.id == alertValues["id"] as? String, "Alert identity/reopen")
 try require(reopenedAlerts.first?.enabled == tuneAlertExpected["alertEnabled"] as? Bool, "Alert update/reopen")
@@ -768,7 +768,7 @@ do { _ = try tuneStore.getTuneProfile(tuneId) } catch { malformedTuneFailed = tr
 try require(malformedTuneFailed, "malformed Tune became empty")
 try tuneQueue!.write { db in try db.drop(table: "alerts") }
 var alertQueryFailed = false
-do { _ = try alertPersistence.rules(boardId: tuneAlertBoardId) } catch { alertQueryFailed = true }
+do { _ = try alertPersistence.rules(boardId: tuneAlertBoardId, reportPresetFailure: unexpectedPresetFailure) } catch { alertQueryFailed = true }
 try require(alertQueryFailed, "Alert query failure became empty")
 try tuneQueue!.close()
 try FileManager.default.removeItem(at: tuneURL)

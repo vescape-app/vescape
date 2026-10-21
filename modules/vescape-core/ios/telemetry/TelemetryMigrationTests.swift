@@ -231,6 +231,66 @@ final class TelemetryMigrationTests: XCTestCase {
     XCTAssertTrue(keys.isDisjoint(with: ["alertPreset", "alertPresetSound", "matchBoardConfig"]))
   }
 
+  /// v51 folds each live Board's own settings and old preset rows: nothing leaks between Boards, a
+  /// tombstone gets no preset rows, geiger falls back to the old rows, and a metric whose old preset
+  /// points were all disabled becomes Off while a partly disabled ladder keeps its level.
+  /// @parity /modules/vescape-core/persistence-jvm/src/test/kotlin/expo/modules/vescapecore/telemetry/TelemetryMigrationMatrixHostTest.kt `presetRowsMigrationKeepsBoardsApartAndHonoursDisabledPoints`
+  func testPresetRowsMigrationKeepsBoardsApartAndHonoursDisabledPoints() throws {
+    try migrate(upTo: "v50_alert_sound_count")
+    try queue.write { db in
+      try db.execute(sql: """
+        INSERT INTO boards (id, name, ble_id, created_at, deleted_at)
+        VALUES ('board-1', 'One', NULL, 1, NULL), ('board-2', 'Two', NULL, 2, NULL), ('board-3', 'Three', NULL, 3, 4)
+        """)
+      for (board, key, json) in [
+        ("board-1", "alertPreset", #"{"speed":"minimal","battery":"safe"}"#),
+        ("board-1", "alertPresetSound", #"{"speed":{"geiger":"geiger:hard"}}"#),
+        ("board-2", "alertPreset", #"{"speed":"normal","duty":"normal"}"#),
+        ("board-2", "matchBoardConfig", #"{"duty":true}"#),
+        ("board-3", "alertPreset", #"{"speed":"safe"}"#),
+      ] {
+        try db.execute(sql: "INSERT INTO board_settings VALUES (?, ?, ?, 1)", arguments: [board, key, json])
+      }
+      for (board, id, control, enabled, sound, source) in [
+        ("board-1", "preset:speed:0", "speed", false, "geiger:soft", "preset" as String?),
+        ("board-1", "preset:speed:1", "speed", true, "geiger:soft", "preset"),
+        ("board-1", "preset:battery:0", "battery", false, "tts:Battery {percent}%", "preset"),
+        ("board-1", "preset:battery:1", "battery", false, "tts:Battery {percent}%", "preset"),
+        ("board-2", "preset:duty:0", "duty", false, "geiger:mid", "preset"),
+        ("board-2", "preset:duty:1", "duty", false, "geiger:mid", "preset"),
+        ("board-3", "preset:speed:0", "speed", true, "geiger:soft", "preset"),
+        ("board-3", "rider-3", "speed", true, "alert(1):warning", nil),
+      ] {
+        try db.execute(
+          sql: """
+            INSERT INTO alerts (board_id, id, control_id, threshold, threshold_max, enabled, sound_type, created_at, source)
+            VALUES (?, ?, ?, 20, NULL, ?, ?, 1, ?)
+            """,
+          arguments: [board, id, control, enabled, sound, source]
+        )
+      }
+    }
+
+    try migrate()
+
+    func specs(_ board: String) throws -> [String: String] {
+      try queue.read { db in
+        try Dictionary(uniqueKeysWithValues: Row.fetchAll(db, sql: "SELECT id, spec FROM alerts WHERE board_id = ?", arguments: [board]).map {
+          ($0["id"] as String, $0["spec"] as String)
+        })
+      }
+    }
+    XCTAssertEqual(try specs("board-1"), [
+      "preset:speed": "preset(minimal):geiger=hard", "preset:duty": "preset(off)",
+      "preset:motor-temp": "preset(off)", "preset:controller-temp": "preset(off)", "preset:battery": "preset(off)",
+    ])
+    XCTAssertEqual(try specs("board-2"), [
+      "preset:speed": "preset(normal)", "preset:duty": "preset(off):geiger=mid,match=on",
+      "preset:motor-temp": "preset(off)", "preset:controller-temp": "preset(off)", "preset:battery": "preset(off)",
+    ])
+    XCTAssertEqual(try specs("board-3"), ["rider-3": "alert(1):warning"])
+  }
+
   func testBoardIdMigrationRebuildsLegacyGlobalAlertsAndDropsTheirRows() throws {
     try migrate(upTo: "v26_alert_source")
     try replaceAlertsWithLegacyGlobalTable()

@@ -176,7 +176,7 @@ internal fun withLegalModeOverlay(
         threshold = warningSpeedKmh,
         thresholdMax = limitSpeedKmh,
         enabled = true,
-        soundType = "geiger:soft",
+        spec = "geiger:soft",
         createdAt = 0L,
     )
 }
@@ -299,7 +299,7 @@ internal class AlertEngine(private val now: () -> Long = { System.currentTimeMil
         value = value,
         threshold = effective.first,
         thresholdMax = effective.second,
-        soundType = soundType,
+        soundType = spec,
         rangeDepth = rangeDepth,
         firedAt = now,
     )

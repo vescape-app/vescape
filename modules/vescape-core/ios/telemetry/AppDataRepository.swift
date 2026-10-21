@@ -89,7 +89,10 @@ final class AppDataRepository {
     Self.onDataChanged?(AppDataScope.alerts.rawValue)
   }
 
-  func upsertBoard(_ board: [String: Any?]) throws {
+  /// Saves the Board; `initialAlerts` (`presets` metric → spec, `rules` rider rules) is a new Board's
+  /// alert setup, written in the same transaction.
+  /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/AppDataRepository.kt `upsertBoard`
+  func upsertBoard(_ board: [String: Any?], initialAlerts: [String: Any]? = nil) throws {
     guard let id = board["id"] as? String else { return }
     let name = board["name"] as? String ?? ""
     let createdAt = Self.longValue(board["createdAt"] ?? nil) ?? nowMs()
@@ -120,7 +123,8 @@ final class AppDataRepository {
     try boardSettingsPersistence().upsertBoard(
       PersistedBoard(id: id, name: name, bleId: bleId, transport: transport, createdAt: createdAt, deletedAt: nil),
       settings: encoded,
-      deletedKeys: deletedKeys
+      deletedKeys: deletedKeys,
+      alerts: try initialAlerts.map { try Self.initialAlertRows(boardId: id, $0, now: updatedAt) } ?? []
     )
     notifyDataChanged(.boards)
     notifyDataChanged(.alerts)
@@ -267,7 +271,7 @@ final class AppDataRepository {
 
   func getAlertRules(_ boardId: String) throws -> [[String: Any?]] {
     guard let writer else { throw StorageUnavailable.databaseNotOpen }
-    return try AlertRulePersistence(writer: writer).rules(boardId: boardId).map { row in
+    return try AlertRulePersistence(writer: writer).rules(boardId: boardId, reportPresetFailure: Self.reportPresetFailure).map { row in
         [
           "boardId": row.boardId, "id": row.id, "controlId": row.controlId,
           "threshold": row.threshold, "thresholdMax": row.thresholdMax,
@@ -275,10 +279,14 @@ final class AppDataRepository {
             "kind": "config-relative", "fieldId": row.configFieldId,
             "thresholdOffset": row.thresholdOffset, "thresholdMaxOffset": row.thresholdMaxOffset
           ] : ["kind": "fixed"],
-          "enabled": row.enabled, "soundType": row.soundType, "createdAt": row.createdAt,
+          "enabled": row.enabled, "soundType": row.spec, "createdAt": row.createdAt,
           "repeatEverySeconds": row.repeatEverySeconds,
         ]
     }
+  }
+
+  private static func reportPresetFailure(_ error: Error) {
+    RecordingStorageFailure.reportRead(operation: "alert_preset_expand", error: error)
   }
 
   /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/AppDataRepository.kt `getAlertPresets`
@@ -293,7 +301,7 @@ final class AppDataRepository {
   /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/AppDataRepository.kt `getEnabledAlertRuleEntities`
   func getEnabledAlertRules(_ boardId: String) throws -> [AlertRule] {
     guard let writer else { throw StorageUnavailable.databaseNotOpen }
-    return try AlertRulePersistence(writer: writer).rules(boardId: boardId).filter(\.enabled).map { row in
+    return try AlertRulePersistence(writer: writer).rules(boardId: boardId, reportPresetFailure: Self.reportPresetFailure).filter(\.enabled).map { row in
       AlertRule(
         boardId: row.boardId,
         id: row.id,
@@ -305,14 +313,33 @@ final class AppDataRepository {
         thresholdOffset: row.thresholdOffset,
         thresholdMaxOffset: row.thresholdMaxOffset,
         enabled: row.enabled,
-        soundType: row.soundType,
+        soundType: row.spec,
         createdAt: row.createdAt,
         repeatEverySeconds: row.repeatEverySeconds
       )
     }
   }
 
+  private static func initialAlertRows(boardId: String, _ alerts: [String: Any], now createdAt: Int64) throws -> [PersistedAlertRule] {
+    let presets = try (alerts["presets"] as? [String: Any] ?? [:]).map { metric, spec in
+      guard let spec = spec as? String else { throw AlertPresetPersistence.InvalidPreset.invalidIntent }
+      return try AlertPresetPersistence.presetRow(boardId: boardId, metric: metric, spec: spec, createdAt: createdAt)
+    }
+    let rules = try (alerts["rules"] as? [[String: Any?]] ?? []).map { raw in
+      let rule = try alertRuleRecord(raw, now: createdAt)
+      try AlertRulePersistence.requireRiderRule(rule)
+      guard rule.boardId == boardId else { throw InvalidInput.alertRuleIdentity }
+      return rule
+    }
+    return presets + rules
+  }
+
   func upsertAlertRule(_ rule: [String: Any?]) throws {
+    guard let writer else { throw StorageUnavailable.databaseNotOpen }
+    try AlertRulePersistence(writer: writer).save(try Self.alertRuleRecord(rule, now: nowMs()))
+  }
+
+  private static func alertRuleRecord(_ rule: [String: Any?], now: Int64) throws -> PersistedAlertRule {
     guard
       let boardId = rule["boardId"] as? String,
       let id = rule["id"] as? String,
@@ -322,16 +349,14 @@ final class AppDataRepository {
     let thresholdMax = Self.doubleValue(rule["thresholdMax"] ?? nil)
     let enabled = (rule["enabled"] as? Bool) ?? false
     let soundType = rule["soundType"] as? String ?? "default"
-    let createdAt = Self.longValue(rule["createdAt"] ?? nil) ?? nowMs()
+    let createdAt = Self.longValue(rule["createdAt"] ?? nil) ?? now
     let repeatEverySeconds = normalizedAlertRepeatSeconds(Self.doubleValue(rule["repeatEverySeconds"] ?? nil))
     let thresholdRule = rule["thresholdRule"] as? [String: Any]
     let thresholdKind = thresholdRule?["kind"] as? String ?? "fixed"
     let configFieldId = thresholdRule?["fieldId"] as? String
     let thresholdOffset = Self.doubleValue(thresholdRule?["thresholdOffset"])
     let thresholdMaxOffset = Self.doubleValue(thresholdRule?["thresholdMaxOffset"])
-    guard let writer else { throw StorageUnavailable.databaseNotOpen }
-    let record = PersistedAlertRule(boardId: boardId, id: id, controlId: controlId, threshold: threshold, thresholdMax: thresholdMax, enabled: enabled, soundType: soundType, createdAt: createdAt, repeatEverySeconds: repeatEverySeconds, thresholdKind: thresholdKind, configFieldId: configFieldId, thresholdOffset: thresholdOffset, thresholdMaxOffset: thresholdMaxOffset)
-    try AlertRulePersistence(writer: writer).save(record)
+    return PersistedAlertRule(boardId: boardId, id: id, controlId: controlId, threshold: threshold, thresholdMax: thresholdMax, enabled: enabled, spec: soundType, createdAt: createdAt, repeatEverySeconds: repeatEverySeconds, thresholdKind: thresholdKind, configFieldId: configFieldId, thresholdOffset: thresholdOffset, thresholdMaxOffset: thresholdMaxOffset)
   }
 
   func setAlertRuleEnabled(_ boardId: String, _ id: String, _ enabled: Bool) throws {

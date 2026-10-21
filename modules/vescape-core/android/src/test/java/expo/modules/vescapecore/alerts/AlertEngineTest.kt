@@ -33,7 +33,7 @@ class AlertEngineTest {
         thresholdKind = thresholdKind, configFieldId = configFieldId,
         thresholdOffset = thresholdOffset, thresholdMaxOffset = thresholdMaxOffset,
         enabled = true,
-        soundType = soundType,
+        spec = soundType,
         createdAt = 0L,
         repeatEverySeconds = repeatEverySeconds,
     )
@@ -134,7 +134,7 @@ class AlertEngineTest {
         assertEquals("speed", rules[0].controlId)
         assertEquals(15.0, rules[0].threshold, 0.0)
         assertEquals(20.0, rules[0].thresholdMax!!, 0.0)
-        assertEquals("geiger:soft", rules[0].soundType)
+        assertEquals("geiger:soft", rules[0].spec)
     }
 
     @Test

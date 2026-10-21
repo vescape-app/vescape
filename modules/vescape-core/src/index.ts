@@ -635,6 +635,17 @@ export interface Board {
  */
 export type BoardInput = Omit<Board, 'deletedAt'>
 
+/**
+ * A new Board's alert setup, written by {@link upsertBoard} in the Board's own transaction: each
+ * metric's `preset(…)` spec and the rider's custom rules.
+ * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/AppDataRepository.kt `initialAlertRows`
+ * @parity /modules/vescape-core/ios/telemetry/AppDataRepository.swift `initialAlertRows`
+ */
+export interface InitialBoardAlerts {
+  presets: Partial<Record<AlertPresetMetric, string>>
+  rules: AlertRule[]
+}
+
 export interface LastBattery {
   percent: number
   voltage: number | null
@@ -2876,7 +2887,7 @@ type VescapeCoreNativeModule = NativeEventEmitter<VescapeCoreEvents> & {
   deleteTelemetryRange(options: TelemetryDeleteRangeOptions): Promise<number>
   clearTelemetryHistory(): Promise<void>
   getBoards(): Promise<Board[]>
-  upsertBoard(board: BoardInput): Promise<void>
+  upsertBoard(board: BoardInput, initialAlerts: InitialBoardAlerts | null): Promise<void>
   deleteBoard(id: string): Promise<void>
   getAlertRules(boardId: string): Promise<AlertRule[]>
   getAlertPresets(boardId: string): Promise<Record<AlertPresetMetric, string>>
@@ -4063,12 +4074,20 @@ export async function getBoards(): Promise<Board[]> {
   return native.getBoards()
 }
 
-export async function upsertBoard(board: BoardInput): Promise<void> {
+export async function upsertBoard(
+  board: BoardInput,
+  initialAlerts?: InitialBoardAlerts,
+): Promise<void> {
   if (E2E_ENABLED) {
     e2eFake.upsertBoard(board)
     return
   }
-  return native.upsertBoard(board)
+  return native.upsertBoard(
+    board,
+    initialAlerts
+      ? { presets: initialAlerts.presets, rules: initialAlerts.rules.map(bridgeableAlertRule) }
+      : null,
+  )
 }
 
 export async function deleteBoard(id: string): Promise<void> {

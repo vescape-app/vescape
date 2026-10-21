@@ -168,6 +168,7 @@ describe('parseAlertPresetSpec', () => {
     ['preset(safe):future=a=b,bare,=x', { level: 'safe', options: [['future', 'a=b']] }],
     ['preset(normal):', { level: 'normal', options: [] }],
     ['preset:normal', null],
+    ['preset(normal)\n', null],
     ['geiger:mid', null],
   ])('%s', (raw, expected) => {
     expect(parseAlertPresetSpec(raw)).toEqual(expected as never)

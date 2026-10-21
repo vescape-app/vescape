@@ -228,6 +228,64 @@ class TelemetryMigrationMatrixHostTest {
     assertEquals(TelemetryMigrations.all.map { it.startVersion to it.endVersion }.toSet(), reached)
   }
 
+  /**
+   * v51 folds each live Board's own settings and old preset rows (#591): nothing leaks between
+   * Boards, a tombstone gets no preset rows, geiger falls back to the old rows, and a metric whose
+   * old preset points were all disabled becomes Off while a partly disabled ladder keeps its level.
+   * @parity /modules/vescape-core/ios/telemetry/TelemetryMigrationTests.swift `testPresetRowsMigrationKeepsBoardsApartAndHonoursDisabledPoints`
+   */
+  @Test fun presetRowsMigrationKeepsBoardsApartAndHonoursDisabledPoints() {
+    val path = Files.createTempFile("vescape-v50-presets-", ".db")
+    BundledSQLiteDriver().open(path.toString()).use { db ->
+      createAuthenticV3(db)
+      migrate(db, 3, 50, mutableSetOf())
+      db.exec("DELETE FROM alerts")
+      db.exec("DELETE FROM board_settings")
+      db.exec("INSERT INTO boards (id,name,ble_id,created_at,deleted_at) VALUES ('board-1','One',NULL,1,NULL),('board-2','Two',NULL,2,NULL),('board-3','Three',NULL,3,4)")
+      db.exec("""INSERT INTO board_settings VALUES ('board-1','alertPreset','{"speed":"minimal","battery":"safe"}',1),('board-1','alertPresetSound','{"speed":{"geiger":"geiger:hard"}}',1),('board-2','alertPreset','{"speed":"normal","duty":"normal"}',1),('board-2','matchBoardConfig','{"duty":true}',1),('board-3','alertPreset','{"speed":"safe"}',1)""")
+      for ((board, id, control, enabled, sound, source) in listOf(
+        Row6("board-1", "preset:speed:0", "speed", 0, "geiger:soft", "'preset'"),
+        Row6("board-1", "preset:speed:1", "speed", 1, "geiger:soft", "'preset'"),
+        Row6("board-1", "preset:battery:0", "battery", 0, "tts:Battery {percent}%", "'preset'"),
+        Row6("board-1", "preset:battery:1", "battery", 0, "tts:Battery {percent}%", "'preset'"),
+        Row6("board-2", "preset:duty:0", "duty", 0, "geiger:mid", "'preset'"),
+        Row6("board-2", "preset:duty:1", "duty", 0, "geiger:mid", "'preset'"),
+        Row6("board-3", "preset:speed:0", "speed", 1, "geiger:soft", "'preset'"),
+        Row6("board-3", "rider-3", "speed", 1, "alert(1):warning", "NULL"),
+      )) {
+        db.exec("INSERT INTO alerts (board_id,id,control_id,threshold,threshold_max,enabled,sound_type,created_at,source) VALUES ('$board','$id','$control',20,NULL,$enabled,'$sound',1,$source)")
+      }
+      migrate(db, 50, 51, mutableSetOf())
+      fun specs(board: String) = db.prepare("SELECT id, spec FROM alerts WHERE board_id='$board'").use { statement ->
+        buildMap { while (statement.step()) put(statement.getText(0), statement.getText(1)) }
+      }
+      assertEquals(
+        mapOf(
+          "preset:speed" to "preset(minimal):geiger=hard",
+          "preset:duty" to "preset(off)",
+          "preset:motor-temp" to "preset(off)",
+          "preset:controller-temp" to "preset(off)",
+          "preset:battery" to "preset(off)",
+        ),
+        specs("board-1"),
+      )
+      assertEquals(
+        mapOf(
+          "preset:speed" to "preset(normal)",
+          "preset:duty" to "preset(off):geiger=mid,match=on",
+          "preset:motor-temp" to "preset(off)",
+          "preset:controller-temp" to "preset(off)",
+          "preset:battery" to "preset(off)",
+        ),
+        specs("board-2"),
+      )
+      assertEquals(mapOf("rider-3" to "alert(1):warning"), specs("board-3"))
+    }
+    Files.deleteIfExists(path)
+  }
+
+  private data class Row6(val board: String, val id: String, val control: String, val enabled: Int, val sound: String, val source: String)
+
   @Test fun missingAndUnsupportedStartsFailWithoutCreatingTargetData() {
     for (start in listOf(1, 2, 37, 38, 39, TELEMETRY_DATABASE_VERSION + 1)) {
       val path = Files.createTempFile("vescape-unsupported-v$start-", ".db")

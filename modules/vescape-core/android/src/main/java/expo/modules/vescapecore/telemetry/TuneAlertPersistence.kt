@@ -22,14 +22,17 @@ internal class TuneAlertPersistence(private val dao: TelemetryDao) {
 
   /** Rider rules only: preset rows change through `applyAlertPreset`, expanded points never. */
   suspend fun saveAlert(rule: AlertRuleEntity) = dao.upsertAlertRule(riderRule(rule))
-  suspend fun alertRules(boardId: String): List<AlertRuleEntity> = AlertPresetPersistence.expandedRules(dao, boardId)
+  suspend fun alertRules(boardId: String, reportPresetFailure: (Throwable) -> Unit): List<AlertRuleEntity> =
+    AlertPresetPersistence.expandedRules(dao, boardId, reportPresetFailure)
   suspend fun setAlertEnabled(boardId: String, id: String, enabled: Boolean) = dao.setAlertRuleEnabled(boardId, riderId(id), enabled)
   suspend fun deleteAlert(boardId: String, id: String) = dao.deleteAlertRule(boardId, riderId(id))
 
   private fun riderId(id: String) = id.also { require(!AlertPresetPersistence.isPresetId(it)) { "Alert Preset rules are not editable" } }
-  private fun riderRule(rule: AlertRuleEntity) = rule.also {
+
+  /** [rule] when it is a rider's rule: not a preset id and not a preset spec. */
+  fun riderRule(rule: AlertRuleEntity) = rule.also {
     riderId(it.id)
-    require(AlertPresetSpec.parse(it.soundType) == null) { "A rider rule cannot hold a preset spec" }
+    require(AlertPresetSpec.parse(it.spec) == null) { "A rider rule cannot hold a preset spec" }
   }
 }
 

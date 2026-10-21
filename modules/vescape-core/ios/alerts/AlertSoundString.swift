@@ -209,7 +209,7 @@ internal struct AlertPresetSpec: Equatable {
   }
 
   private static let pattern = try! NSRegularExpression(
-    pattern: "^preset\\(([^()]*)\\)(?::(.*))?$",
+    pattern: "^preset\\(([^()]*)\\)(?::(.*))?\\z",
     options: [.dotMatchesLineSeparators]
   )
 

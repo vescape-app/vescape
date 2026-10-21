@@ -387,7 +387,9 @@ preset Off, and a metric whose preset is Off while it has rider rules reads as C
 
 Schema v51 turned the earlier per-Board settings into these rows: each live Board gets one row per
 metric from its old `alertPreset` level (none or `custom` became `off`, so nothing new started
-firing), the geiger level it had chosen, and `match=on` where it matched its board config. The
+firing; a metric whose old preset points were all disabled became `off` too, while a partly
+disabled ladder kept its level), the geiger level it had chosen, and `match=on` where it matched
+its board config. The
 copied preset rows, the `source` column, and the `alertPreset`, `matchBoardConfig`, and
 `alertPresetSound` Board Settings went; `sound_type` became `spec`.
 

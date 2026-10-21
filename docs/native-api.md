@@ -362,11 +362,15 @@ Rides computed from buckets + markers:
 
 ## Boards
 
-| fn                   | sync  | returns                            |
-| -------------------- | ----- | ---------------------------------- |
-| `getBoards()`        | async | `Board[]` sorted by created_at ASC |
-| `upsertBoard(board)` | async | void                               |
-| `deleteBoard(id)`    | async | void                               |
+| fn                                   | sync  | returns                            |
+| ------------------------------------ | ----- | ---------------------------------- |
+| `getBoards()`                        | async | `Board[]` sorted by created_at ASC |
+| `upsertBoard(board, initialAlerts?)` | async | void                               |
+| `deleteBoard(id)`                    | async | void                               |
+
+`initialAlerts` (`{ presets: metric → preset spec, rules: AlertRule[] }`) is a new Board's alert
+setup from the add-board wizard. Native writes the Board, its settings, the `preset:<metric>` rows,
+and the rider rules in one transaction, so no session sees the Board on default presets.
 
 `upsertBoard` also starts the real Board Session when the Board being written is the one that just
 proved a link in `finalizeBoardLink` — linking connects over a throwaway probe session and drops it,

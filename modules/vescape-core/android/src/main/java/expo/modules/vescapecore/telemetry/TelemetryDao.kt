@@ -716,11 +716,24 @@ interface TelemetryDao {
   @Query("DELETE FROM board_settings WHERE board_id = :boardId AND key = :key")
   suspend fun deleteBoardSetting(boardId: String, key: String)
 
+  /**
+   * The Board, its settings, and any [alerts] rows (a new Board's preset rows and rider rules) in
+   * one transaction, so no reader sees the Board without its alert setup.
+   * @parity /modules/vescape-core/ios/telemetry/BoardSettingsPersistence.swift `upsertBoard`
+   */
   @Transaction
-  suspend fun upsertBoardWithSettings(board: BoardEntity, settings: List<BoardSettingEntity>, deletedKeys: List<String>) {
+  suspend fun upsertBoardWithSettings(
+    board: BoardEntity,
+    settings: List<BoardSettingEntity>,
+    deletedKeys: List<String>,
+    alerts: List<AlertRuleEntity>,
+  ) {
     upsertBoard(board)
     deletedKeys.forEach { deleteBoardSetting(board.id, it) }
     settings.forEach { upsertBoardSetting(it) }
+    if (alerts.isEmpty()) return
+    require(getBoardDeletedAt(board.id) == null) { "Board not found" }
+    alerts.forEach { upsertAlertRule(it) }
   }
 
   /** @parity /modules/vescape-core/ios/telemetry/AlertPresetPersistence.swift `apply` */

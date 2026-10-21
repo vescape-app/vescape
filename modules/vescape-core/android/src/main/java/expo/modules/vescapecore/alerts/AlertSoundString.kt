@@ -201,10 +201,10 @@ internal data class AlertPresetSpec(val level: String, val options: List<Pair<St
         "preset($level)" + if (options.isEmpty()) "" else options.joinToString(",", prefix = ":") { "${it.first}=${it.second}" }
 
     companion object {
-        private val pattern = Regex("^preset\\(([^()]*)\\)(?::(.*))?$", RegexOption.DOT_MATCHES_ALL)
+        private val pattern = Regex("preset\\(([^()]*)\\)(?::(.*))?", RegexOption.DOT_MATCHES_ALL)
 
         fun parse(raw: String): AlertPresetSpec? {
-            val match = pattern.find(raw) ?: return null
+            val match = pattern.matchEntire(raw) ?: return null
             val options = match.groupValues[2].split(',').mapNotNull { entry ->
                 val separator = entry.indexOf('=')
                 if (separator <= 0) null else entry.substring(0, separator) to entry.substring(separator + 1)

@@ -49,30 +49,39 @@ final class AlertPresetPersistence {
   /// Each metric's stored spec, or the app default when it has no row.
   static func specs(_ db: Database, boardId: String) throws -> [String: String] {
     let presets = presetRows(try rows(db, boardId))
-    return Dictionary(uniqueKeysWithValues: metrics.map { ($0, presets[$0]?.soundType ?? defaultSpec.encode()) })
+    return Dictionary(uniqueKeysWithValues: metrics.map { ($0, presets[$0]?.spec ?? defaultSpec.encode()) })
   }
 
   /// The Board's rules as native evaluates them and JS reads them: rider rules plus expanded presets.
-  static func expandedRules(_ db: Database, boardId: String) throws -> [PersistedAlertRule] {
+  /// A missing or tombstoned Board expands nothing. A metric that fails to expand is passed to
+  /// `reportFailure` and skipped, so the rider rules and the other metrics still load.
+  static func expandedRules(_ db: Database, boardId: String, reportFailure: (Error) -> Void) throws -> [PersistedAlertRule] {
     let stored = try rows(db, boardId)
+    let riderRules = stored.filter { !isPresetId($0.id) }
+    guard let board = try PersistedBoard.fetchOne(db, key: boardId), board.deletedAt == nil else { return riderRules }
     let presets = presetRows(stored)
     let values = try settings(db, boardId)
     let rawUnits = try PersistedAppSetting.fetchOne(db, key: "unitSystem")
     let units = validUnitSystem(try rawUnits.map { try decode($0.valueJson) } as? String) ?? "metric"
-    let expanded = try metrics.flatMap { metric -> [PersistedAlertRule] in
-      // A row this app cannot read expands to nothing rather than the default.
-      let spec = presets[metric].map { AlertPresetSpec.parse($0.soundType) ?? AlertPresetSpec(level: "off") } ?? defaultSpec
-      let field = spec.option("match") == "on" ? try AlertPresetGenerator.matchField(metric) : nil
-      let input = PresetInput(
-        topSpeedKmh: (values["topSpeedKmh"] as? NSNumber)?.doubleValue ?? 50,
-        hasBatteryConfig: try AlertPresetGenerator.validBattery(values["batteryConfig"]),
-        speedUnitSystem: units,
-        configBase: try field.flatMap { try resolveBase(db, boardId, $0) }
-      )
-      let rules = try AlertPresetGenerator.generate(metric: metric, spec: spec, input: input)
-      return records(boardId: boardId, metric: metric, specs: rules, createdAt: presets[metric]?.createdAt ?? 0)
+    let expanded = metrics.flatMap { metric -> [PersistedAlertRule] in
+      do {
+        // A row this app cannot read expands to nothing rather than the default.
+        let spec = presets[metric].map { AlertPresetSpec.parse($0.spec) ?? AlertPresetSpec(level: "off") } ?? defaultSpec
+        let field = spec.option("match") == "on" ? try AlertPresetGenerator.matchField(metric) : nil
+        let input = PresetInput(
+          topSpeedKmh: (values["topSpeedKmh"] as? NSNumber)?.doubleValue ?? 50,
+          hasBatteryConfig: try AlertPresetGenerator.validBattery(values["batteryConfig"]),
+          speedUnitSystem: units,
+          configBase: try field.flatMap { try resolveBase(db, boardId, $0) }
+        )
+        let rules = try AlertPresetGenerator.generate(metric: metric, spec: spec, input: input)
+        return records(boardId: boardId, metric: metric, specs: rules, createdAt: presets[metric]?.createdAt ?? 0)
+      } catch {
+        reportFailure(error)
+        return []
+      }
     }
-    return stored.filter { !isPresetId($0.id) } + expanded
+    return riderRules + expanded
   }
 
   /// Rewrite `metric`'s preset row with exactly one of a new level, geiger level, or match choice.
@@ -93,14 +102,20 @@ final class AlertPresetPersistence {
         guard try AlertPresetGenerator.matchField(metric) != nil else { throw InvalidPreset.invalidIntent }
         next = current.withOption("match", match == true ? "on" : nil)
       }
-      try PersistedAlertRule(
-        boardId: boardId, id: Self.rowId(metric), controlId: metric,
-        threshold: 0, thresholdMax: nil, enabled: true,
-        soundType: next.encode(), createdAt: Int64(Date().timeIntervalSince1970 * 1000),
-        repeatEverySeconds: nil, thresholdKind: "fixed", configFieldId: nil,
-        thresholdOffset: nil, thresholdMaxOffset: nil
-      ).save(db)
+      try Self.presetRow(boardId: boardId, metric: metric, spec: next.encode(), createdAt: Int64(Date().timeIntervalSince1970 * 1000)).save(db)
     }
+  }
+
+  /// `metric`'s stored preset row holding `spec`; rejects an unknown metric or a non-preset spec.
+  static func presetRow(boardId: String, metric: String, spec: String, createdAt: Int64) throws -> PersistedAlertRule {
+    guard metrics.contains(metric), AlertPresetSpec.parse(spec) != nil else { throw InvalidPreset.invalidIntent }
+    return PersistedAlertRule(
+      boardId: boardId, id: rowId(metric), controlId: metric,
+      threshold: 0, thresholdMax: nil, enabled: true,
+      spec: spec, createdAt: createdAt,
+      repeatEverySeconds: nil, thresholdKind: "fixed", configFieldId: nil,
+      thresholdOffset: nil, thresholdMaxOffset: nil
+    )
   }
 
   private static func resolveBase(_ db: Database, _ boardId: String, _ field: String) throws -> Double? {
@@ -125,7 +140,7 @@ final class AlertPresetPersistence {
         threshold: spec.point.threshold,
         thresholdMax: spec.point.thresholdMax,
         enabled: true,
-        soundType: spec.soundType,
+        spec: spec.soundType,
         createdAt: createdAt,
         repeatEverySeconds: spec.point.repeatEverySeconds,
         thresholdKind: spec.relation == nil ? "fixed" : "config-relative",

@@ -70,7 +70,10 @@ final class BoardSettingsPersistence {
     }
   }
 
-  func upsertBoard(_ board: PersistedBoard, settings: [PersistedBoardSetting], deletedKeys: [String]) throws {
+  /// The Board, its settings, and any `alerts` rows (a new Board's preset rows and rider rules) in
+  /// one transaction, so no reader sees the Board without its alert setup.
+  /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/TelemetryDao.kt `upsertBoardWithSettings`
+  func upsertBoard(_ board: PersistedBoard, settings: [PersistedBoardSetting], deletedKeys: [String], alerts: [PersistedAlertRule] = []) throws {
     try writer.write { db in
       let tombstone = try PersistedBoard.fetchOne(db, key: board.id)?.deletedAt
       try PersistedBoard(
@@ -83,6 +86,9 @@ final class BoardSettingsPersistence {
           .deleteAll(db)
       }
       for setting in settings { try setting.save(db) }
+      guard !alerts.isEmpty else { return }
+      guard tombstone == nil && board.deletedAt == nil else { throw AlertPresetPersistence.InvalidPreset.missingBoard }
+      for alert in alerts { try alert.save(db) }
     }
   }
 

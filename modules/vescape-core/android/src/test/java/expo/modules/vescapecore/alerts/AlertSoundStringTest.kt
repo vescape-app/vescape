@@ -112,6 +112,7 @@ class AlertSoundStringTest {
             "preset(safe):future=a=b,bare,=x" to AlertPresetSpec("safe", listOf("future" to "a=b")),
             "preset(normal):" to AlertPresetSpec("normal"),
             "preset:normal" to null,
+            "preset(normal)\n" to null,
             "geiger:mid" to null,
         )
         for ((raw, expected) in cases) assertEquals(raw, expected, AlertPresetSpec.parse(raw))

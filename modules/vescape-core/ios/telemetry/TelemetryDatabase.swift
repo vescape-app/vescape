@@ -956,7 +956,7 @@ enum TelemetryDatabase {
       'preset(' || level || ')' || CASE WHEN options = '' THEN '' ELSE ':' || options END, 0
     FROM (
       SELECT board_id, metric,
-        CASE level WHEN 'safe' THEN 'safe' WHEN 'normal' THEN 'normal' WHEN 'minimal' THEN 'minimal' ELSE 'off' END AS level,
+        CASE WHEN all_disabled = 1 THEN 'off' WHEN level IN ('safe', 'normal', 'minimal') THEN level ELSE 'off' END AS level,
         ltrim(
           CASE WHEN geiger IN ('soft', 'mid', 'hard') THEN ',geiger=' || geiger ELSE '' END ||
           CASE WHEN matched = 1 AND metric IN ('duty', 'motor-temp', 'controller-temp') THEN ',match=on' ELSE '' END,
@@ -973,7 +973,10 @@ enum TelemetryDatabase {
               AND source = 'preset' AND sound_type LIKE 'geiger:%' LIMIT 1)
           ), length('geiger:') + 1) AS geiger,
           (SELECT json_extract(value_json, '$."' || metrics.metric || '"') FROM board_settings
-            WHERE board_id = boards.id AND key = 'matchBoardConfig' AND json_valid(value_json)) AS matched
+            WHERE board_id = boards.id AND key = 'matchBoardConfig' AND json_valid(value_json)) AS matched,
+          -- Every old preset point disabled: the rider had silenced the metric.
+          (SELECT COUNT(*) > 0 AND SUM(enabled) = 0 FROM alerts WHERE alerts.board_id = boards.id
+            AND control_id = metrics.metric AND source = 'preset') AS all_disabled
         FROM boards
         CROSS JOIN (SELECT 'speed' AS metric UNION ALL SELECT 'duty' UNION ALL SELECT 'motor-temp'
           UNION ALL SELECT 'controller-temp' UNION ALL SELECT 'battery') AS metrics

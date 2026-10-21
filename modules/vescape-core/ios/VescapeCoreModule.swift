@@ -1306,10 +1306,10 @@ public class VescapeCoreModule: Module {
       }
     }
 
-    AsyncFunction("upsertBoard") { (board: [String: Any], promise: Promise) in
+    AsyncFunction("upsertBoard") { (board: [String: Any], initialAlerts: [String: Any]?, promise: Promise) in
       try RecordingStorageFailure.requireAvailable()
       do {
-        try self.appData.upsertBoard(board)
+        try self.appData.upsertBoard(board, initialAlerts: initialAlerts)
         self.coordinator.pushWatchLastBattery()
         self.coordinator.reloadAlertRules()
         self.coordinator.reloadBoardDataForActiveBoard()
@@ -1348,7 +1348,7 @@ public class VescapeCoreModule: Module {
           "controlId": rule.controlId,
           "threshold": rule.threshold,
           "thresholdMax": rule.thresholdMax,
-          "soundType": rule.soundType,
+          "soundType": rule.spec,
           "repeatEverySeconds": rule.repeatEverySeconds,
         ]
       }

@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { router } from 'expo-router'
 import { useShallow } from 'zustand/react/shallow'
-import { applyAlertPreset, type BatteryConfig, type BoardLink } from 'vescape-core'
+import type { BatteryConfig, BoardLink } from 'vescape-core'
 
 import {
   ALERT_PRESET_FALLBACK_LEVEL,
@@ -9,6 +9,7 @@ import {
   type AlertPresetMetric,
 } from '@/modules/alerts/lib/alertPresets'
 import type { DraftAlertSetup } from '@/modules/alerts/hooks/useMetricAlerts'
+import { formatAlertPresetSpec } from '@/modules/alerts/lib/alertSoundString'
 import { DEFAULT_BOARD_TOP_SPEED_KMH } from '@/modules/alerts/lib/boardAlertSettings'
 import { useAlertsStore } from '@/modules/alerts/store/alertsStore'
 import { DEFAULT_BATTERY_CONFIG, deriveBatteryConfig } from '@/modules/battery/lib'
@@ -233,6 +234,20 @@ export function useAddBoardWizard(): UseAddBoardWizard {
       manualMinVoltage,
       manualMaxVoltage,
     )
+    // Each draft level becomes the Board's preset row; `custom` is Off plus its draft rules. Both
+    // are saved with the Board, so no session ever sees it on the default presets.
+    const presets = Object.fromEntries(
+      ALERT_PRESET_METRICS.map((metric) => {
+        const { level } = alertSetup[metric]
+        return [
+          metric,
+          formatAlertPresetSpec({ level: level === 'custom' ? 'off' : level, options: [] }),
+        ]
+      }),
+    )
+    const rules = Object.values(alertSetup).flatMap((setup) =>
+      setup.rules.map((rule) => ({ ...rule, boardId })),
+    )
     const board = await addBoard({
       id: boardId,
       name: name.trim(),
@@ -242,20 +257,10 @@ export function useAddBoardWizard(): UseAddBoardWizard {
       batteryConfig,
       topSpeedKmh,
       alertPresetsOnboarded: true,
+      alerts: { presets, rules },
     })
-    // Each draft level becomes the Board's preset row; `custom` is Off plus its draft rules.
-    for (const metric of ALERT_PRESET_METRICS) {
-      const { level } = alertSetup[metric]
-      await applyAlertPreset(board.id, metric, { level: level === 'custom' ? 'off' : level })
-    }
     setActiveBoard(board.id)
     await useAlertsStore.getState().load(board.id)
-    // Custom draft rules carry no Board id until the Board exists.
-    for (const { rules } of Object.values(alertSetup)) {
-      for (const rule of rules) {
-        await useAlertsStore.getState().upsert({ ...rule, boardId: board.id })
-      }
-    }
     router.dismissAll()
   }
 

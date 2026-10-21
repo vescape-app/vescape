@@ -103,7 +103,7 @@ private fun Map<String, Any?>.toAlertTestRule(): AlertRuleEntity? {
     threshold = threshold,
     thresholdMax = thresholdMax,
     enabled = true,
-    soundType = soundType,
+    spec = soundType,
     createdAt = 0,
     repeatEverySeconds = normalizedAlertRepeatSeconds((this["repeatEverySeconds"] as? Number)?.toDouble()),
   )
@@ -1249,10 +1249,10 @@ class VescapeCoreModule : Module() {
         throw error
       }
     }
-    AsyncFunction("upsertBoard") Coroutine { board: Map<String, Any?> ->
+    AsyncFunction("upsertBoard") Coroutine { board: Map<String, Any?>, initialAlerts: Map<String, Any?>? ->
       RecordingStorageFailure.requireAvailable()
       try {
-        AppDataRepository.get(context.applicationContext).upsertBoard(board)
+        AppDataRepository.get(context.applicationContext).upsertBoard(board, initialAlerts)
         WatchLastBatteryPusher.push(context)
         CoreForegroundService.reloadAlertRules(context.applicationContext)
         CoreForegroundService.reloadBoardData()
@@ -1281,7 +1281,7 @@ class VescapeCoreModule : Module() {
           "controlId" to rule.controlId,
           "threshold" to rule.threshold,
           "thresholdMax" to rule.thresholdMax,
-          "soundType" to rule.soundType,
+          "soundType" to rule.spec,
           "repeatEverySeconds" to rule.repeatEverySeconds,
         )
       }

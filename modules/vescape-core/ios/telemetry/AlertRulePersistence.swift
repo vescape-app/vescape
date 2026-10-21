@@ -10,7 +10,7 @@ struct PersistedAlertRule: Codable, FetchableRecord, PersistableRecord {
   let thresholdMax: Double?
   let enabled: Bool
   /// Sound string, or the `preset(<level>)…` spec of an Alert Preset row (see `AlertPresetSpec`).
-  var soundType: String
+  var spec: String
   let createdAt: Int64
   let repeatEverySeconds: Int64?
   let thresholdKind: String
@@ -20,7 +20,7 @@ struct PersistedAlertRule: Codable, FetchableRecord, PersistableRecord {
 
   enum CodingKeys: String, CodingKey {
     case boardId = "board_id", id, controlId = "control_id", threshold
-    case thresholdMax = "threshold_max", enabled, soundType = "spec", createdAt = "created_at"
+    case thresholdMax = "threshold_max", enabled, spec, createdAt = "created_at"
     case repeatEverySeconds = "repeat_every_seconds"
     case thresholdKind = "threshold_kind", configFieldId = "config_field_id"
     case thresholdOffset = "threshold_offset", thresholdMaxOffset = "threshold_max_offset"
@@ -35,8 +35,8 @@ struct AlertRulePersistence {
   enum PresetRuleEdit: Error { case notEditable }
 
   /// Rider rules plus expanded Alert Presets, the list every rule reader uses.
-  func rules(boardId: String) throws -> [PersistedAlertRule] {
-    try writer.read { db in try AlertPresetPersistence.expandedRules(db, boardId: boardId) }
+  func rules(boardId: String, reportPresetFailure: (Error) -> Void) throws -> [PersistedAlertRule] {
+    try writer.read { db in try AlertPresetPersistence.expandedRules(db, boardId: boardId, reportFailure: reportPresetFailure) }
   }
 
   /// Each preset metric's stored `preset(…)` spec, the app default where the Board has no row.
@@ -46,9 +46,14 @@ struct AlertRulePersistence {
 
   /// Rider rules only: preset rows change through `applyAlertPreset`, expanded points never.
   func save(_ rule: PersistedAlertRule) throws {
-    try Self.requireRider(rule.id)
-    guard AlertPresetSpec.parse(rule.soundType) == nil else { throw PresetRuleEdit.notEditable }
+    try Self.requireRiderRule(rule)
     try writer.write { db in try rule.save(db) }
+  }
+
+  /// Throws unless `rule` is a rider's rule: not a preset id and not a preset spec.
+  static func requireRiderRule(_ rule: PersistedAlertRule) throws {
+    try requireRider(rule.id)
+    guard AlertPresetSpec.parse(rule.spec) == nil else { throw PresetRuleEdit.notEditable }
   }
 
   private static func requireRider(_ id: String) throws {

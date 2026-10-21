@@ -91,6 +91,7 @@ final class AlertSoundStringTests: XCTestCase {
       ("preset(safe):future=a=b,bare,=x", AlertPresetSpec(level: "safe", options: [Option(key: "future", value: "a=b")])),
       ("preset(normal):", AlertPresetSpec(level: "normal")),
       ("preset:normal", nil),
+      ("preset(normal)\n", nil),
       ("geiger:mid", nil),
     ]
     for (raw, expected) in cases { XCTAssertEqual(AlertPresetSpec.parse(raw), expected, raw) }

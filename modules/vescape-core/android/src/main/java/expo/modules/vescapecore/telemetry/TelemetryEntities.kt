@@ -411,7 +411,7 @@ data class AlertRuleEntity(
   val enabled: Boolean,
   /** Sound string, or the `preset(<level>)…` spec of an Alert Preset row (see `AlertPresetSpec`). */
   @ColumnInfo(name = "spec")
-  val soundType: String,
+  val spec: String,
   @ColumnInfo(name = "created_at")
   val createdAt: Long,
   /**

@@ -1627,8 +1627,9 @@ internal object TelemetryMigrations {
      * An Alert Preset becomes one `preset:<metric>` row (#591) whose `spec` is
      * `preset(<level>)[:geiger=<level>][,match=on]`; native expands it at load, so the copied
      * `source = 'preset'` rows go. Existing Boards keep what fired: a missing level or `custom` is
-     * `off` (custom's rider rules stay), the geiger choice comes from `alertPresetSound` or else the
-     * old preset rows, and `matchBoardConfig` becomes `match=on`. The column `sound_type` is renamed
+     * `off` (custom's rider rules stay), as is a metric whose old preset points were all disabled
+     * (a partly disabled ladder keeps its level; per-point disable is dropped), the geiger choice
+     * comes from `alertPresetSound` or else the old preset rows, and `matchBoardConfig` becomes `match=on`. The column `sound_type` is renamed
      * `spec`, `source` is dropped by copy, and the three obsolete Board Settings are deleted.
      *
      * @parity /modules/vescape-core/ios/telemetry/TelemetryDatabase.swift `v51_preset_rows`
@@ -1681,7 +1682,7 @@ internal object TelemetryMigrations {
         'preset(' || level || ')' || CASE WHEN options = '' THEN '' ELSE ':' || options END, 0
       FROM (
         SELECT board_id, metric,
-          CASE level WHEN 'safe' THEN 'safe' WHEN 'normal' THEN 'normal' WHEN 'minimal' THEN 'minimal' ELSE 'off' END AS level,
+          CASE WHEN all_disabled = 1 THEN 'off' WHEN level IN ('safe', 'normal', 'minimal') THEN level ELSE 'off' END AS level,
           ltrim(
             CASE WHEN geiger IN ('soft', 'mid', 'hard') THEN ',geiger=' || geiger ELSE '' END ||
             CASE WHEN matched = 1 AND metric IN ('duty', 'motor-temp', 'controller-temp') THEN ',match=on' ELSE '' END,
@@ -1698,7 +1699,10 @@ internal object TelemetryMigrations {
                 AND source = 'preset' AND sound_type LIKE 'geiger:%' LIMIT 1)
             ), length('geiger:') + 1) AS geiger,
             (SELECT json_extract(value_json, '$."' || metrics.metric || '"') FROM board_settings
-              WHERE board_id = boards.id AND key = 'matchBoardConfig' AND json_valid(value_json)) AS matched
+              WHERE board_id = boards.id AND key = 'matchBoardConfig' AND json_valid(value_json)) AS matched,
+            -- Every old preset point disabled: the rider had silenced the metric.
+            (SELECT COUNT(*) > 0 AND SUM(enabled) = 0 FROM alerts WHERE alerts.board_id = boards.id
+              AND control_id = metrics.metric AND source = 'preset') AS all_disabled
           FROM boards
           CROSS JOIN (SELECT 'speed' AS metric UNION ALL SELECT 'duty' UNION ALL SELECT 'motor-temp'
             UNION ALL SELECT 'controller-temp' UNION ALL SELECT 'battery') AS metrics

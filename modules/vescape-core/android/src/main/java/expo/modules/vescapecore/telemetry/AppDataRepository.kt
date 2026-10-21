@@ -3,6 +3,7 @@ package expo.modules.vescapecore.telemetry
 import expo.modules.vescapecore.config.BoardConfigValues
 import expo.modules.vescapecore.config.MotorConfigValues
 import expo.modules.vescapecore.config.BoardConfigChangeNotice
+import expo.modules.vescapecore.recording.RecordingStorageFailure
 import expo.modules.vescapecore.config.RefloatConfigSnapshot
 
 import expo.modules.vescapecore.diagnostics.DiagnosticReporter
@@ -210,10 +211,16 @@ class AppDataRepository private constructor(private val context: Context) {
     boardSettings.getBoard(id)?.toMap(boardSettings.getBoardSettings(id))
   }
 
-  suspend fun upsertBoard(board: Map<String, Any?>): Unit = withContext(Dispatchers.IO) {
+  /**
+   * Saves the Board; [initialAlerts] (`presets` metric → spec, `rules` rider rules) is a new Board's
+   * alert setup, written in the same transaction.
+   * @parity /modules/vescape-core/ios/telemetry/AppDataRepository.swift `upsertBoard`
+   */
+  suspend fun upsertBoard(board: Map<String, Any?>, initialAlerts: Map<String, Any?>?): Unit = withContext(Dispatchers.IO) {
     val boardId = board.getString("id")
     val (settings, deletedKeys) = board.toBoardSettingEntities(boardId)
-    boardSettings.upsertBoard(board.toBoardEntity(), settings, deletedKeys)
+    val alerts = initialAlerts?.let { initialAlertRows(boardId, it) }.orEmpty()
+    boardSettings.upsertBoard(board.toBoardEntity(), settings, deletedKeys, alerts)
     notifyDataChanged(AppDataScope.BOARDS)
     notifyDataChanged(AppDataScope.ALERTS)
   }
@@ -366,8 +373,22 @@ class AppDataRepository private constructor(private val context: Context) {
 
   /** Rider rules plus expanded Alert Presets, the list every rule reader uses. */
   suspend fun getAlertRules(boardId: String): List<Map<String, Any?>> = withContext(Dispatchers.IO) {
-    tuneAlerts.alertRules(boardId).map { it.toMap() }
+    tuneAlerts.alertRules(boardId, ::reportPresetFailure).map { it.toMap() }
   }
+
+  @Suppress("UNCHECKED_CAST")
+  private fun initialAlertRows(boardId: String, alerts: Map<String, Any?>): List<AlertRuleEntity> {
+    val createdAt = System.currentTimeMillis()
+    val presets = (alerts["presets"] as? Map<String, Any?>).orEmpty().map { (metric, spec) ->
+      AlertPresetPersistence.presetRow(boardId, metric, requireNotNull(spec as? String) { "Invalid preset spec" }, createdAt)
+    }
+    val rules = (alerts["rules"] as? List<Map<String, Any?>>).orEmpty().map { raw ->
+      tuneAlerts.riderRule(raw.toAlertRuleEntity()).also { require(it.boardId == boardId) { "Alert Rule belongs to another Board" } }
+    }
+    return presets + rules
+  }
+
+  private fun reportPresetFailure(error: Throwable) = RecordingStorageFailure.reportRead("alert_preset_expand", error)
 
   /** Each preset metric's stored `preset(…)` spec, the app default where the Board has no row. */
   suspend fun getAlertPresets(boardId: String): Map<String, String> = withContext(Dispatchers.IO) {
@@ -377,7 +398,7 @@ class AppDataRepository private constructor(private val context: Context) {
   /** The given Board's enabled rules — the alert engine evaluates only the connected Board's rules. */
   suspend fun getEnabledAlertRuleEntities(boardId: String): List<AlertRuleEntity> =
     withContext(Dispatchers.IO) {
-      tuneAlerts.alertRules(boardId).filter { it.enabled }
+      tuneAlerts.alertRules(boardId, ::reportPresetFailure).filter { it.enabled }
     }
 
   suspend fun upsertAlertRule(rule: Map<String, Any?>): Unit = withContext(Dispatchers.IO) {
@@ -1050,7 +1071,7 @@ fun AlertRuleEntity.toMap(): Map<String, Any?> = mapOf(
     "thresholdOffset" to thresholdOffset, "thresholdMaxOffset" to thresholdMaxOffset,
   ) else mapOf("kind" to "fixed"),
   "enabled" to enabled,
-  "soundType" to soundType,
+  "soundType" to spec,
   "createdAt" to createdAt,
   "repeatEverySeconds" to repeatEverySeconds,
 )
@@ -1349,7 +1370,7 @@ private fun Map<String, Any?>.toAlertRuleEntity(): AlertRuleEntity = AlertRuleEn
   thresholdOffset = ((get("thresholdRule") as? Map<*, *>)?.get("thresholdOffset") as? Number)?.toDouble(),
   thresholdMaxOffset = ((get("thresholdRule") as? Map<*, *>)?.get("thresholdMaxOffset") as? Number)?.toDouble(),
   enabled = getBoolean("enabled"),
-  soundType = get("soundType") as? String ?: "default",
+  spec = get("soundType") as? String ?: "default",
   createdAt = getLong("createdAt"),
   repeatEverySeconds = normalizedAlertRepeatSeconds(getDoubleOrNull("repeatEverySeconds")),
 )

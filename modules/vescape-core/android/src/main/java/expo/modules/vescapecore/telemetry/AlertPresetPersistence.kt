@@ -4,6 +4,7 @@ import expo.modules.vescapecore.alerts.AlertPresetSpec
 import expo.modules.vescapecore.alerts.GeigerLevel
 import expo.modules.vescapecore.alerts.PRESET_RULE_PREFIX
 import expo.modules.vescapecore.alerts.resolveConfigRelativeBase
+import kotlin.coroutines.cancellation.CancellationException
 import org.json.JSONObject
 
 /**
@@ -40,28 +41,42 @@ internal object AlertPresetPersistence {
   /** Each metric's stored spec, or the app default when it has no row. */
   suspend fun specs(dao: TelemetryDao, boardId: String): Map<String, String> {
     val rows = presetRows(dao.getAlertRules(boardId))
-    return metrics.associateWith { rows[it]?.soundType ?: DEFAULT_SPEC.encode() }
+    return metrics.associateWith { rows[it]?.spec ?: DEFAULT_SPEC.encode() }
   }
 
-  /** The Board's rules as native evaluates them and JS reads them: rider rules plus expanded presets. */
-  suspend fun expandedRules(dao: TelemetryDao, boardId: String): List<AlertRuleEntity> {
+  /**
+   * The Board's rules as native evaluates them and JS reads them: rider rules plus expanded presets.
+   * A missing or tombstoned Board expands nothing. A metric that fails to expand is passed to
+   * [reportFailure] and skipped, so the rider rules and the other metrics still load.
+   */
+  suspend fun expandedRules(dao: TelemetryDao, boardId: String, reportFailure: (Throwable) -> Unit): List<AlertRuleEntity> {
     val rows = dao.getAlertRules(boardId)
+    val riderRules = rows.filterNot { isPresetId(it.id) }
+    val board = dao.getBoard(boardId)
+    if (board == null || board.deletedAt != null) return riderRules
     val presets = presetRows(rows)
     val settings = dao.getBoardSettings(boardId).associate { it.key to decodeSettingJson(it.valueJson) }
     val units = validUnitSystem(dao.getAppSetting("unitSystem")?.let { decodeSettingJson(it.valueJson) }) ?: "metric"
     val expanded = metrics.flatMap { metric ->
-      // A row this app cannot read expands to nothing rather than the default.
-      val spec = presets[metric]?.let { AlertPresetSpec.parse(it.soundType) ?: AlertPresetSpec("off") } ?: DEFAULT_SPEC
-      val field = AlertPresetGenerator.matchField(metric).takeIf { spec.option("match") == "on" }
-      val input = PresetInput(
-        topSpeedKmh = (settings["topSpeedKmh"] as? Number)?.toDouble() ?: 50.0,
-        hasBatteryConfig = AlertPresetGenerator.validBattery(settings["batteryConfig"]),
-        speedUnitSystem = units,
-        configBase = field?.let { resolveBase(dao, boardId, it) },
-      )
-      records(boardId, metric, AlertPresetGenerator.generate(metric, spec, input), presets[metric]?.createdAt ?: 0)
+      try {
+        // A row this app cannot read expands to nothing rather than the default.
+        val spec = presets[metric]?.let { AlertPresetSpec.parse(it.spec) ?: AlertPresetSpec("off") } ?: DEFAULT_SPEC
+        val field = AlertPresetGenerator.matchField(metric).takeIf { spec.option("match") == "on" }
+        val input = PresetInput(
+          topSpeedKmh = (settings["topSpeedKmh"] as? Number)?.toDouble() ?: 50.0,
+          hasBatteryConfig = AlertPresetGenerator.validBattery(settings["batteryConfig"]),
+          speedUnitSystem = units,
+          configBase = field?.let { resolveBase(dao, boardId, it) },
+        )
+        records(boardId, metric, AlertPresetGenerator.generate(metric, spec, input), presets[metric]?.createdAt ?: 0)
+      } catch (error: CancellationException) {
+        throw error
+      } catch (error: Exception) {
+        reportFailure(error)
+        emptyList()
+      }
     }
-    return rows.filterNot { isPresetId(it.id) } + expanded
+    return riderRules + expanded
   }
 
   /** Rewrite [metric]'s preset row with exactly one of a new level, geiger level, or match choice. */
@@ -85,17 +100,22 @@ internal object AlertPresetPersistence {
         current.withOption("match", if (match == true) "on" else null)
       }
     }
-    dao.upsertAlertRule(
-      AlertRuleEntity(
-        boardId = boardId,
-        id = rowId(metric),
-        controlId = metric,
-        threshold = 0.0,
-        thresholdMax = null,
-        enabled = true,
-        soundType = next.encode(),
-        createdAt = System.currentTimeMillis(),
-      ),
+    dao.upsertAlertRule(presetRow(boardId, metric, next.encode(), System.currentTimeMillis()))
+  }
+
+  /** [metric]'s stored preset row holding [spec]; rejects an unknown metric or a non-preset spec. */
+  fun presetRow(boardId: String, metric: String, spec: String, createdAt: Long): AlertRuleEntity {
+    require(metric in metrics) { "Unknown alert preset metric" }
+    require(AlertPresetSpec.parse(spec) != null) { "Invalid preset spec" }
+    return AlertRuleEntity(
+      boardId = boardId,
+      id = rowId(metric),
+      controlId = metric,
+      threshold = 0.0,
+      thresholdMax = null,
+      enabled = true,
+      spec = spec,
+      createdAt = createdAt,
     )
   }
 
@@ -125,7 +145,7 @@ internal object AlertPresetPersistence {
         thresholdOffset = spec.relation?.offset,
         thresholdMaxOffset = spec.relation?.maxOffset,
         enabled = true,
-        soundType = spec.soundType,
+        spec = spec.soundType,
         createdAt = createdAt,
         repeatEverySeconds = spec.point.repeatSeconds,
       )
