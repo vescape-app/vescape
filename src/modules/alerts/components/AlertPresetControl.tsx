@@ -39,8 +39,8 @@ import {
 import { theme, type ThemeColor } from '@/constants/theme'
 import { useResolvedAccentColors, useResolvedNeutralColors } from '@/hooks/useTheme'
 import { useAlertTest } from '@/modules/alerts/hooks/useAlertTest'
-import { SoundPicker } from '@/components/forms/SoundPicker'
-import { geigerPickerSound, getPresetsForCategory } from '@/modules/alerts/lib/alertFormDefaults'
+import type { PresetSoundSlot } from '@/modules/alerts/lib/boardAlertSettings'
+import { PresetSoundControls } from '@/modules/alerts/components/PresetSoundControls'
 
 /** Controlled preset selection and gauge. The caller supplies one resolved rule snapshot for
  * markers, descriptions and the sound preview; saved Boards never regenerate rules here. */
@@ -129,6 +129,10 @@ interface AlertPresetControlProps {
   geigerSound?: string | null
   /** Pick the geiger sound of a range preset; omitted hides the select. */
   onGeigerSoundChange?: (soundType: string) => void
+  /** Packs this preset pins; an absent slot follows the app-wide choice. */
+  soundPins?: Partial<Record<PresetSoundSlot, string>>
+  /** Pin a slot to a pack, or null for Default; omitted hides the selects. */
+  onSoundPinChange?: (slot: PresetSoundSlot, pack: string | null) => void
   /** The board's decoded configs, for resolving what a matched preset lands on right now. */
   configBases?: BoardConfigBases
   /** History hot-range gradient for the gauge arc (kept in sync with the detail gauge). */
@@ -156,6 +160,8 @@ export function AlertPresetControl({
   onMatchBoardConfigChange,
   geigerSound,
   onGeigerSoundChange,
+  soundPins,
+  onSoundPinChange,
   configBases,
   hotRange,
   disabled,
@@ -201,8 +207,10 @@ export function AlertPresetControl({
 
   const isCustom = level === 'custom'
   const editAction = isCustom ? onDiscardCustom : onCustomize
+  const presetSound = useMemo(() => ({ [metric]: soundPins ?? {} }), [metric, soundPins])
   const alertTest = useAlertTest({
     rules: ruleSnapshot,
+    presetSound,
     min: gauge.min,
     max,
     alertAbove: metric !== 'battery',
@@ -258,7 +266,13 @@ export function AlertPresetControl({
         />
       ) : null}
       {isCustom ? null : (
-        <PresetGeigerSound soundType={geigerSound} onChange={onGeigerSoundChange} />
+        <PresetSoundControls
+          ruleSnapshot={ruleSnapshot}
+          geigerSound={geigerSound}
+          onGeigerSoundChange={onGeigerSoundChange}
+          pins={soundPins}
+          onPinChange={onSoundPinChange}
+        />
       )}
       <View style={styles.levelRow}>
         {isCustom ? (
@@ -276,21 +290,6 @@ export function AlertPresetControl({
         ) : null}
       </View>
     </View>
-  )
-}
-
-/** Soft / Mid / Hard for a range preset's ticks. */
-function PresetGeigerSound({
-  soundType,
-  onChange,
-}: {
-  soundType?: string | null
-  onChange?: (soundType: string) => void
-}) {
-  const sounds = useMemo(() => getPresetsForCategory('geiger'), [])
-  if (!soundType || !onChange) return null
-  return (
-    <SoundPicker presets={sounds} selected={geigerPickerSound(soundType)} onSelect={onChange} />
   )
 }
 

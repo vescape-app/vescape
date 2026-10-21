@@ -556,8 +556,11 @@ snapshot (`latestBms`); UI derives min/max/spread via `summarizeBms` in `src/mod
 
 `applyAlertPreset(boardId, metric, intent)` switches a saved Board's alert setup. Intents are
 `{ action: 'select', level }`, `{ action: 'customize' }`, `{ action: 'discard-custom' }`, and
-`{ action: 'match-board-config', enabled }`, and `{ action: 'geiger-sound', soundType }` (a
-`geiger:<level>` string written onto the metric's preset tick rules and kept across regeneration).
+`{ action: 'match-board-config', enabled }`, `{ action: 'geiger-sound', soundType }` (a
+`geiger:<level>` string for the metric's preset tick rules), and
+`{ action: 'effects-pack' | 'voice-pack', pack }` (pin a pack; `null` is Default). The sound choices
+persist in the board's `alertPresetSound` setting, so regeneration and Off-and-back restore them.
+`startAlertTest(rules, presetSound?)` takes that bag so a preset preview plays its pinned packs.
 Selection and generated rule changes commit together
 in native storage. JS does not send generated rules or run a regeneration sequence. Board saves
 also update affected preset rules atomically when their inputs change. Successful writes publish

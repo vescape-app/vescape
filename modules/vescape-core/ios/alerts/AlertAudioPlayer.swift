@@ -53,6 +53,7 @@ private func alertNowMs() -> Int64 { Int64(Date().timeIntervalSince1970 * 1000) 
 /// timer whose interval depends on the current `rangeDepth`.
 private final class GeigerLoop {
   let soundType: String
+  let pin: PresetSoundPin?
   var rangeDepth: Double
   let sustained: Bool
   var workItem: Cancellable?
@@ -62,8 +63,9 @@ private final class GeigerLoop {
   var sustainedPlaying = false
   var sustainedNode: AVAudioPlayerNode?
 
-  init(soundType: String, rangeDepth: Double, sustained: Bool) {
+  init(soundType: String, pin: PresetSoundPin?, rangeDepth: Double, sustained: Bool) {
     self.soundType = soundType
+    self.pin = pin
     self.rangeDepth = rangeDepth
     self.sustained = sustained
   }
@@ -433,12 +435,18 @@ internal final class AlertAudioPlayer {
     soundPack = settings["soundPack"] as? String ?? soundPack
     voice = settings["voice"] as? String ?? voice
     voiceLevel = settings["voiceLevel"] as? String ?? voiceLevel
-    let pack = voicePack
+    let pack = voicePack()
     DispatchQueue.global(qos: .utility).async { [weak self] in self?.prewarmVoice(pack) }
   }
 
-  /// Voice pack the `voice` setting plays with the active effects pack.
-  private var voicePack: String { voicePackId(voice, effectsVoice: effectsVoices[effectsPackId(soundPack)]) }
+  /// Effects pack a sound plays from: the preset's `pin`, else the app-wide one.
+  private func effectsPack(_ pin: PresetSoundPin?) -> String { pin?.effects ?? soundPack }
+
+  /// Voice pack a line speaks with: the preset's `pin`, else the `voice` setting, where Matching
+  /// follows the effects pack the same sound plays from.
+  private func voicePack(_ pin: PresetSoundPin? = nil) -> String {
+    pin?.voice ?? voicePackId(voice, effectsVoice: effectsVoices[effectsPackId(effectsPack(pin))])
+  }
 
   // MARK: - Connection sounds
 
@@ -478,14 +486,14 @@ internal final class AlertAudioPlayer {
   /// Play one announcement: an `alert(count):severity` rule's severity sound from the active
   /// effects pack, `count` times, `alertBeepSpacingMs` apart.
   /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/alerts/AlertEngine.kt `playSingle`
-  func playSingle(soundType: String) {
-    playSeverity(parseSlotAlertSound(soundType), my: mySoundId(soundType))
+  func playSingle(soundType: String, pin: PresetSoundPin? = nil) {
+    playSeverity(parseSlotAlertSound(soundType), my: mySoundId(soundType), pack: effectsPack(pin))
   }
 
-  /// `sound`'s severity slot, or My sound `my` in its place, `sound.count` times.
-  private func playSeverity(_ sound: SlotAlertSound, my: String? = nil) {
+  /// `sound`'s severity slot from `pack`, or My sound `my` in its place, `sound.count` times.
+  private func playSeverity(_ sound: SlotAlertSound, my: String? = nil, pack: String? = nil) {
     guard !isReleased else { return }
-    let key = clipKey(sound.severity.slot, my: my)
+    let key = clipKey(sound.severity.slot, my: my, pack: pack)
     play(key)
     guard sound.count > 1 else { return }
     // A sound longer than the spacing (a pack's multi-beep severity) repeats once it ends.
@@ -541,16 +549,17 @@ internal final class AlertAudioPlayer {
 
   /// Speak `announcement`: `slot` (its severity sound by default) once, then the voice pack line
   /// joined with its value into one buffer, starting once the sound has finished. A key the pack has
-  /// no line for plays the sound only. Voice level is the caller's (`presetVoiceEnabled`).
+  /// no line for plays the sound only. Voice level is the caller's (`presetVoiceEnabled`). A preset's
+  /// `pin` picks the packs both play from.
   /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/alerts/AlertEngine.kt `speakVoice`
-  func speakVoice(_ announcement: VoiceAnnouncement, slot: String? = nil) {
+  func speakVoice(_ announcement: VoiceAnnouncement, slot: String? = nil, pin: PresetSoundPin? = nil) {
     guard !isReleased else { return }
     pendingSpeech?.cancel()
     pendingSpeech = nil
     let generation = nextSpeechGeneration()
-    let lead = clipKey(slot ?? announcement.severity.slot)
+    let lead = clipKey(slot ?? announcement.severity.slot, pack: effectsPack(pin))
     play(lead)
-    guard let line = joinedVoice(announcement, pack: voicePack) else { return }
+    guard let line = joinedVoice(announcement, pack: voicePack(pin)) else { return }
     let delay = max(alertSpeechDelayMs, clipDurationMs(lead))
     pendingSpeech = scheduler.postDelayed(delay) { [weak self] in
       self?.onGeigerQueue { owner in
@@ -684,19 +693,19 @@ internal final class AlertAudioPlayer {
 
   // MARK: - Geiger
 
-  func updateGeiger(ruleId: String, soundType: String, rangeDepth: Double) {
+  func updateGeiger(ruleId: String, soundType: String, rangeDepth: Double, pin: PresetSoundPin? = nil) {
     guard !isReleased else { return }
     geigerQueue.async { [weak self] in
       // Re-check on the queue: `release()` can land between the check above and this block, and a
       // loop created afterwards would re-arm its tick forever against a torn-down engine.
       guard let self, !self.isReleased else { return }
-      self.updateGeigerSync(ruleId: ruleId, soundType: soundType, rangeDepth: rangeDepth)
+      self.updateGeigerSync(ruleId: ruleId, soundType: soundType, rangeDepth: rangeDepth, pin: pin)
     }
   }
 
-  private func updateGeigerSync(ruleId: String, soundType: String, rangeDepth: Double) {
+  private func updateGeigerSync(ruleId: String, soundType: String, rangeDepth: Double, pin: PresetSoundPin?) {
     let depth = min(max(rangeDepth, 0.0), 1.0)
-    let tickKey = clipKey(geigerSlot(soundType), my: mySoundId(soundType))
+    let tickKey = clipKey(geigerSlot(soundType), my: mySoundId(soundType), pack: effectsPack(pin))
     let existing = geigerLoops[ruleId]
 
     if depth >= 1.0 {
@@ -705,7 +714,7 @@ internal final class AlertAudioPlayer {
         return
       }
       stopSustained(ruleId: ruleId)
-      let loop = GeigerLoop(soundType: soundType, rangeDepth: depth, sustained: true)
+      let loop = GeigerLoop(soundType: soundType, pin: pin, rangeDepth: depth, sustained: true)
       geigerLoops[ruleId] = loop
       scheduleSustainedLoop(loop: loop, ruleId: ruleId, clipKey: tickKey)
       return
@@ -714,12 +723,12 @@ internal final class AlertAudioPlayer {
     if existing?.sustained == true {
       stopSustained(ruleId: ruleId)
     }
-    if let existing, !existing.sustained, existing.soundType == soundType {
+    if let existing, !existing.sustained, existing.soundType == soundType, existing.pin == pin {
       existing.rangeDepth = depth
       return
     }
     existing?.workItem?.cancel()
-    let loop = GeigerLoop(soundType: soundType, rangeDepth: depth, sustained: false)
+    let loop = GeigerLoop(soundType: soundType, pin: pin, rangeDepth: depth, sustained: false)
     geigerLoops[ruleId] = loop
     scheduleGeigerTick(loop: loop, ruleId: ruleId, slot: geigerSlot(soundType))
   }
@@ -757,7 +766,7 @@ internal final class AlertAudioPlayer {
     loop.workItem = scheduler.postDelayed(Int64(delayMs)) { [weak self] in
       self?.onGeigerQueue { owner in
         guard let existing = owner.geigerLoops[ruleId], existing === loop, !existing.sustained else { return }
-        owner.playOnQueue(owner.clipKey(slot, my: mySoundId(loop.soundType)))
+        owner.playOnQueue(owner.clipKey(slot, my: mySoundId(loop.soundType), pack: owner.effectsPack(loop.pin)))
         let interval = owner.geigerIntervalMs(rangeDepth: loop.rangeDepth)
         owner.scheduleGeigerTick(loop: loop, ruleId: ruleId, slot: slot, delayMs: interval)
       }

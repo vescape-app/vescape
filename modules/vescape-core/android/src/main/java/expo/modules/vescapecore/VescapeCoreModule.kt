@@ -11,6 +11,7 @@ import expo.modules.vescapecore.accessory.AccessoryDiscovery
 import expo.modules.vescapecore.accessory.AccessorySessionManager
 import expo.modules.vescapecore.alerts.MySounds
 import expo.modules.vescapecore.alerts.AlertFeedback
+import expo.modules.vescapecore.alerts.PresetSoundPin
 import expo.modules.vescapecore.alerts.normalizedAlertRepeatSeconds
 import expo.modules.vescapecore.alerts.AlertCoordinator
 import expo.modules.vescapecore.appstatus.AppStatusCoordinator
@@ -600,8 +601,8 @@ class VescapeCoreModule : Module() {
     }
     // @parity /modules/vescape-core/ios/VescapeCoreModule.swift `startAlertTest`
     // @parity /modules/vescape-core/src/index.ts `startAlertTest`
-    Function("startAlertTest") { rules: List<Map<String, Any?>> ->
-      startAlertTest(rules)
+    Function("startAlertTest") { rules: List<Map<String, Any?>>, presetSound: Map<String, Any?>? ->
+      startAlertTest(rules, presetSound)
     }
     Function("updateAlertTest") { value: Double ->
       val controlId = alertTestControlId ?: return@Function
@@ -1527,7 +1528,8 @@ class VescapeCoreModule : Module() {
     AsyncFunction("setSoundOverride") { slot: String, id: String? -> MySounds.setOverride(context.applicationContext, slot, id) }
   }
 
-  private fun startAlertTest(ruleMaps: List<Map<String, Any?>>) {
+  /** [presetSound]: the board's `alertPresetSound` bag, so a pinned preset previews with its packs. */
+  private fun startAlertTest(ruleMaps: List<Map<String, Any?>>, presetSound: Map<String, Any?>?) {
     stopAlertTest()
     val rules = ruleMaps.mapNotNull { it.toAlertTestRule() }
     val controlId = rules.firstOrNull()?.controlId ?: return
@@ -1539,7 +1541,7 @@ class VescapeCoreModule : Module() {
     feedback.setSoundSettings(settings)
     val coordinator = AlertCoordinator(feedback = { feedback }, vibrateSingles = false)
     coordinator.unitSystem = settings.unitSystem
-    coordinator.replaceRules(rules)
+    coordinator.replaceRules(rules, PresetSoundPin.from(presetSound))
     alertTestFeedback = feedback
     alertTestCoordinator = coordinator
     alertTestControlId = controlId

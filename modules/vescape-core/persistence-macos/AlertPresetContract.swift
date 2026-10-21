@@ -123,6 +123,26 @@ func runAlertPresetContract() throws {
   failed = false
   do { try apply("speed", "geiger-sound", "alert:warning") } catch { failed = true }
   try require(failed, "non-geiger sound rejected")
+  try apply("speed", "select", "off")
+  try apply("speed", "select", "normal")
+  try require(try sound("speed") == "geiger:mid", "geiger sound survives Off and back")
+  func pins() throws -> [String: Any] {
+    let json = try queue.read { try String.fetchOne($0, sql: "SELECT value_json FROM board_settings WHERE board_id = 'board' AND key = 'alertPresetSound'") }
+    return try json.map { try JSONSerialization.jsonObject(with: Data($0.utf8)) as? [String: Any] ?? [:] } ?? [:]
+  }
+  try apply("battery", "effects-pack", "hev")
+  try apply("battery", "voice-pack", "clean")
+  let battery = try pins()["battery"] as? [String: Any]
+  try require(battery?["effects"] as? String == "hev" && battery?["voice"] as? String == "clean", "packs pinned per preset")
+  try require((try pins()["speed"] as? [String: Any])?["geiger"] as? String == "geiger:mid", "geiger level kept in sound setting")
+  try apply("battery", "effects-pack", nil)
+  try apply("battery", "voice-pack", nil)
+  try require(try pins()["battery"] == nil, "Default clears the pin")
+  try BoardSettingsPersistence(writer: queue).upsertBoard(board, settings: [setting("alertPresetSound", "{}")], deletedKeys: ["alertPresetSound"])
+  try require((try pins()["speed"] as? [String: Any])?["geiger"] as? String == "geiger:mid", "board upsert keeps native sound setting")
+  failed = false
+  do { try apply("battery", "voice-pack", "../x") } catch { failed = true }
+  try require(failed, "malformed pack id rejected")
   try apply("duty", "match-board-config", nil, true)
   try queue.write { try $0.execute(sql: "DELETE FROM alerts WHERE board_id = 'board' AND control_id = 'duty'") }
   try require(try AlertPresetPersistence(writer: queue).repairMissingRelations(boardId: board.id), "legacy missing relation repair")

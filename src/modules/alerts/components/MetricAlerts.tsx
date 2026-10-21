@@ -67,6 +67,8 @@ export function MetricAlerts({
           onMatchBoardConfigChange={controller.setMatchBoardConfig}
           geigerSound={controller.geigerSound}
           onGeigerSoundChange={controller.setGeigerSound}
+          soundPins={controller.soundPins}
+          onSoundPinChange={controller.setSoundPin}
           configBases={controller.configBases}
           hotRange={hotRange}
           disabled={batteryBlocked}

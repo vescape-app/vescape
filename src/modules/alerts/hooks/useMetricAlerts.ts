@@ -19,7 +19,9 @@ import {
   boardAlertPresetSelection,
   boardHasBatteryConfig,
   boardMatchBoardConfig,
+  boardPresetPins,
   boardTopSpeedKmh,
+  type PresetSoundSlot,
 } from '@/modules/alerts/lib/boardAlertSettings'
 import {
   customRulesForControl,
@@ -60,6 +62,10 @@ export interface MetricAlertsController {
   geigerSound?: string | null
   /** Pick the preset's geiger sound. Absent where it cannot be stored (the add-board wizard). */
   setGeigerSound?(soundType: string): void
+  /** Packs this preset pins; an absent slot follows the app-wide choice. */
+  soundPins?: Partial<Record<PresetSoundSlot, string>>
+  /** Pin a slot (null: Default). Absent where it cannot be stored (the add-board wizard). */
+  setSoundPin?(slot: PresetSoundSlot, pack: string | null): void
   setLevel(level: AlertPresetLevel): void
   /** Copy the current level's rules into {@link rules} and switch to `custom`. */
   customize(): void
@@ -133,6 +139,14 @@ export function useBoardMetricAlerts(controlId: string): MetricAlertsController 
         if (metric)
           void presets()
             .setGeigerSound(metric, soundType)
+            .catch(() => undefined)
+      },
+      soundPins: metric ? boardPresetPins(board, metric) : {},
+      setSoundPin: (slot, pack) => {
+        // intentional-suppression: the Alerts store error is rendered by MetricAlerts.
+        if (metric)
+          void presets()
+            .setSoundPin(metric, slot, pack)
             .catch(() => undefined)
       },
       setLevel: (next) => {

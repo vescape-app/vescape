@@ -50,6 +50,7 @@ import {
   mySoundRef,
 } from '@/modules/alerts/lib/alertSoundString'
 import { useMySounds } from '@/modules/alerts/hooks/useMySounds'
+import { usePinnedPresetCount } from '@/modules/alerts/hooks/usePinnedPresetCount'
 
 /** What an effects pack's preview strip plays: its app cues, then its severity sounds. */
 const cuePreview = (cue: (typeof APP_SOUND_CUES)[number]) => ({
@@ -89,6 +90,7 @@ export default function SoundsSettingsScreen() {
   const voiceLevel = useSettingsStore((state) => state.voiceLevel)
   const enabled = useSettingsStore((state) => state.connectionSoundsEnabled)
   const set = useSettingsStore((state) => state.set)
+  const pinned = usePinnedPresetCount()
   const { state: library, setState: setLibrary, loadError } = useMySounds()
   const [editingId, setEditingId] = useState<string | null>(null)
   const [name, setName] = useState('')
@@ -176,6 +178,11 @@ export default function SoundsSettingsScreen() {
         </SettingsCard>
 
         <SettingsSectionTitle>Sound effects</SettingsSectionTitle>
+        {pinned > 0 && (
+          <Text style={styles.pinnedNote}>
+            {pinned === 1 ? '1 alert uses its own sound' : `${pinned} alerts use their own sound`}
+          </Text>
+        )}
         <View
           style={[styles.packList, !enabled && styles.disabledPacks]}
           pointerEvents={enabled ? 'auto' : 'none'}
@@ -414,6 +421,12 @@ const styles = StyleSheet.create({
     marginBottom: 14,
   },
   voiceSelect: { width: 170 },
+  pinnedNote: {
+    color: theme.neutral.textMuted,
+    fontSize: 12,
+    fontWeight: '500',
+    marginHorizontal: 14,
+  },
   voiceLevel: { gap: 8, marginLeft: 58, marginRight: 14, marginBottom: 14 },
   voiceDescription: { color: theme.neutral.textMuted, fontSize: 12, fontWeight: '500' },
   disabledPacks: { opacity: 0.5 },

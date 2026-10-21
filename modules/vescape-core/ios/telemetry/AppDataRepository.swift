@@ -113,6 +113,7 @@ final class AppDataRepository {
       ("alertPreset", Self.normalizeMetricBag(board["alertPreset"] ?? nil)),
       ("alertPresetsOnboarded", board["alertPresetsOnboarded"] as? Bool),
       ("matchBoardConfig", Self.normalizeMetricBag(board["matchBoardConfig"] ?? nil)),
+      ("alertPresetSound", Self.normalizeMetricBag(board["alertPresetSound"] ?? nil)),
       // Legal Mode changes only through the dedicated native intent.
     ] + linkSettings.filter { $0.0 != "transport" }
     let transport = linkSettings.first { $0.0 == "transport" }?.1 as? String
@@ -187,6 +188,7 @@ final class AppDataRepository {
       "alertPreset": values["alertPreset"],
       "alertPresetsOnboarded": values["alertPresetsOnboarded"] ?? false,
       "matchBoardConfig": values["matchBoardConfig"] ?? nil,
+      "alertPresetSound": values["alertPresetSound"] ?? nil,
       "legalMode": values["legalMode"] ?? ["enabled": false],
       "link": link,
       "deletedAt": row["deleted_at"] as Int64?,
@@ -206,7 +208,8 @@ final class AppDataRepository {
       "lastBattery": values["lastBattery"], "dismissedWarnings": values["dismissedWarnings"],
       "topSpeedKmh": values["topSpeedKmh"] ?? defaultTopSpeedKmh,
       "alertPreset": values["alertPreset"], "alertPresetsOnboarded": values["alertPresetsOnboarded"] ?? false,
-      "matchBoardConfig": values["matchBoardConfig"], "legalMode": values["legalMode"] ?? ["enabled": false],
+      "matchBoardConfig": values["matchBoardConfig"], "alertPresetSound": values["alertPresetSound"],
+      "legalMode": values["legalMode"] ?? ["enabled": false],
       "link": link, "deletedAt": board.deletedAt,
     ]
   }
@@ -236,7 +239,7 @@ final class AppDataRepository {
       return normalizeMetricBag(raw)
     case "alertPresetsOnboarded":
       return raw as? Bool
-    case "matchBoardConfig":
+    case "matchBoardConfig", "alertPresetSound":
       return normalizeMetricBag(raw)
     case "legalMode":
       return normalizeLegalMode(raw)
@@ -245,8 +248,8 @@ final class AppDataRepository {
     }
   }
 
-  /// A durable per-metric Alert Preset bag — the level selection, and which metrics match the
-  /// board's own configuration. JS owns behavior; native persists each as an opaque object.
+  /// A durable per-metric Alert Preset bag — the level selection, which metrics match the board's
+  /// own configuration, and each preset's sound choices (pinned packs, geiger level). JS owns behavior; native persists each as an opaque object.
   /// Non-object/empty payloads normalize away (row removed).
   /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/AppDataRepository.kt `normalizeMetricBag`
   /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/AppDataRepository.kt `normalizePersonalization`

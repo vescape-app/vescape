@@ -963,6 +963,7 @@ fun BoardEntity.toMap(settings: List<BoardSettingEntity>): Map<String, Any?> {
     "alertPreset" to values["alertPreset"],
     "alertPresetsOnboarded" to (values["alertPresetsOnboarded"] ?: false),
     "matchBoardConfig" to values["matchBoardConfig"],
+    "alertPresetSound" to values["alertPresetSound"],
     "legalMode" to (values["legalMode"] ?: mapOf("enabled" to false)),
     "link" to link,
     "deletedAt" to deletedAt,
@@ -1219,6 +1220,7 @@ internal fun Map<String, Any?>.toBoardSettingEntities(boardId: String): Pair<Lis
   putOrDelete("alertPreset", normalizeMetricBag(get("alertPreset")))
   putOrDelete("alertPresetsOnboarded", get("alertPresetsOnboarded") as? Boolean)
   putOrDelete("matchBoardConfig", normalizeMetricBag(get("matchBoardConfig")))
+  putOrDelete("alertPresetSound", normalizeMetricBag(get("alertPresetSound")))
   // Legal Mode changes only through the dedicated native intent.
   val link = normalizedBoardLink()
   putOrDelete("transport", BoardTransport.encode(BoardTransport.fromBridge(link?.get("transport"))))
@@ -1252,7 +1254,7 @@ private fun BoardSettingEntity.decodeBoardSetting(): Pair<String, Any?>? {
     "topSpeedKmh" -> validTopSpeedKmh(raw)?.let { key to it }
     "alertPreset" -> normalizeMetricBag(raw)?.let { key to it }
     "alertPresetsOnboarded" -> (raw as? Boolean)?.let { key to it }
-    "matchBoardConfig" -> normalizeMetricBag(raw)?.let { key to it }
+    "matchBoardConfig", "alertPresetSound" -> normalizeMetricBag(raw)?.let { key to it }
     "legalMode" -> normalizeLegalMode(raw)?.let { key to it }
     else -> null
   }
@@ -1271,8 +1273,8 @@ private fun normalizeLegalMode(raw: Any?): Map<String, Boolean>? =
   (raw.asStringKeyMap()?.get("enabled") as? Boolean)?.let { mapOf("enabled" to it) }
 
 /**
- * A durable per-metric Alert Preset bag — the level selection, and which metrics match the board's
- * own configuration. JS owns behavior; native persists each as an opaque object. Non-object/empty
+ * A durable per-metric Alert Preset bag — the level selection, which metrics match the board's
+ * own configuration, and each preset's sound choices (pinned packs, geiger level). JS owns behavior; native persists each as an opaque object. Non-object/empty
  * payloads normalize away (row removed).
  * @parity /modules/vescape-core/ios/telemetry/AppDataRepository.swift `normalizeMetricBag`
  */

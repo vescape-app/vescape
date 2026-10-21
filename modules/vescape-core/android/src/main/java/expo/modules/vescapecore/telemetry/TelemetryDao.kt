@@ -719,7 +719,7 @@ interface TelemetryDao {
   @Transaction
   suspend fun upsertBoardWithSettings(board: BoardEntity, settings: List<BoardSettingEntity>, deletedKeys: List<String>) {
     val existing = getBoard(board.id) != null
-    val presetKeys = setOf("alertPreset", "matchBoardConfig")
+    val presetKeys = setOf("alertPreset", "matchBoardConfig", AlertPresetPersistence.SOUND_KEY)
     val previousSettings = getBoardSettings(board.id).associate { it.key to decodeSettingJson(it.valueJson) }
     upsertBoard(board)
     deletedKeys.filterNot { existing && it in presetKeys }.forEach { deleteBoardSetting(board.id, it) }

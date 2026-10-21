@@ -108,7 +108,16 @@ Other metrics have no voice lines: TTS is forced on and the switch is hidden. Pr
 severity sound and the voice line with the threshold as value, or the TTS text. Custom rules use
 the Voice pack but ignore Voice level.
 
-Planned (not implemented): per-preset pinned effects/voice packs. All sounds that can fire during a ride stay decoded in memory for the
+**Pinned packs** (#583): each preset has a **Sound effects** select and, for presets that speak,
+a **Voice** select. `Default` follows the app-wide choice; a pack pins the preset to it, so changing
+the app-wide pack leaves it alone. Resolution per slot: My sound override > pinned pack > app-wide.
+A Default voice with Matching follows the effects pack that preset plays, pinned or not. Sounds
+settings shows how many sounding presets pin a pack. Pins and the geiger level live in the
+board's `alertPresetSound` setting (`{ <metric>: { effects?, voice?, geiger? } }`), not in the
+sound strings; native hands them to the player with the rules, and an unknown pack id plays the
+default. Keeping the geiger level there means a preset switched Off and back keeps it.
+
+Planned (not implemented): all sounds that can fire during a ride stay decoded in memory for the
 session (#576).
 
 ### Built-in packs

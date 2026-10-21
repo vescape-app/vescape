@@ -1,5 +1,6 @@
 import { resolvedAlertRules } from '@/modules/alerts/lib/resolvedAlertRules'
 import { parseGeigerAlertSound } from '@/modules/alerts/lib/alertSoundString'
+import type { PresetSoundSlot } from '@/modules/alerts/lib/boardAlertSettings'
 import { toTestRule } from '@/modules/alerts/lib/alertTest'
 import type { DraftAlertRule } from '@/modules/alerts/lib/customAlertRules'
 import { useUnitSystem } from '@/hooks/useUnitSystem'
@@ -156,6 +157,7 @@ export function AlertPresetControlShowcase() {
   const [match, setMatch] = useState(false)
   const [configOff, setConfigOff] = useState(false)
   const [geigerSound, setGeigerSound] = useState<string | null>(null)
+  const [soundPins, setSoundPins] = useState<Partial<Record<PresetSoundSlot, string>>>({})
   const configBases = configOff ? SHOWCASE_CONFIG_BASES_OFF : SHOWCASE_CONFIG_BASES
   const setMatched = (enabled: boolean) => {
     setMatch(enabled)
@@ -251,6 +253,10 @@ export function AlertPresetControlShowcase() {
           preview.rules.find((rule) => parseGeigerAlertSound(rule.soundType))?.soundType
         }
         onGeigerSoundChange={setGeigerSound}
+        soundPins={soundPins}
+        onSoundPinChange={(slot, pack) =>
+          setSoundPins(({ [slot]: _, ...rest }) => (pack ? { ...rest, [slot]: pack } : rest))
+        }
         onCustomize={editable ? () => setLevel('custom') : undefined}
         onDiscardCustom={editable ? () => setLevel('normal') : undefined}
       />
