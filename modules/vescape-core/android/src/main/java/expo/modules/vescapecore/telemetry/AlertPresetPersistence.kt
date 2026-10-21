@@ -100,13 +100,18 @@ internal object AlertPresetPersistence {
         current.withOption("match", if (match == true) "on" else null)
       }
     }
-    dao.upsertAlertRule(presetRow(boardId, metric, next.encode(), System.currentTimeMillis()))
+    val row = presetRow(boardId, metric, next.encode(), System.currentTimeMillis())
+    if (row == null) dao.deleteAlertRule(boardId, rowId(metric)) else dao.upsertAlertRule(row)
   }
 
-  /** [metric]'s stored preset row holding [spec]; rejects an unknown metric or a non-preset spec. */
-  fun presetRow(boardId: String, metric: String, spec: String, createdAt: Long): AlertRuleEntity {
+  /**
+   * [metric]'s stored preset row holding [spec], or null when [spec] is the app default: a row exists
+   * only when it differs from the default. Rejects an unknown metric or a non-preset spec.
+   */
+  fun presetRow(boardId: String, metric: String, spec: String, createdAt: Long): AlertRuleEntity? {
     require(metric in metrics) { "Unknown alert preset metric" }
-    require(AlertPresetSpec.parse(spec) != null) { "Invalid preset spec" }
+    val parsed = requireNotNull(AlertPresetSpec.parse(spec)) { "Invalid preset spec" }
+    if (parsed == DEFAULT_SPEC) return null
     return AlertRuleEntity(
       boardId = boardId,
       id = rowId(metric),

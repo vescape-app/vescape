@@ -379,7 +379,7 @@ class AppDataRepository private constructor(private val context: Context) {
   @Suppress("UNCHECKED_CAST")
   private fun initialAlertRows(boardId: String, alerts: Map<String, Any?>): List<AlertRuleEntity> {
     val createdAt = System.currentTimeMillis()
-    val presets = (alerts["presets"] as? Map<String, Any?>).orEmpty().map { (metric, spec) ->
+    val presets = (alerts["presets"] as? Map<String, Any?>).orEmpty().mapNotNull { (metric, spec) ->
       AlertPresetPersistence.presetRow(boardId, metric, requireNotNull(spec as? String) { "Invalid preset spec" }, createdAt)
     }
     val rules = (alerts["rules"] as? List<Map<String, Any?>>).orEmpty().map { raw ->

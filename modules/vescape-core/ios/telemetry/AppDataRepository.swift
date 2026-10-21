@@ -321,7 +321,7 @@ final class AppDataRepository {
   }
 
   private static func initialAlertRows(boardId: String, _ alerts: [String: Any], now createdAt: Int64) throws -> [PersistedAlertRule] {
-    let presets = try (alerts["presets"] as? [String: Any] ?? [:]).map { metric, spec in
+    let presets = try (alerts["presets"] as? [String: Any] ?? [:]).compactMap { metric, spec in
       guard let spec = spec as? String else { throw AlertPresetPersistence.InvalidPreset.invalidIntent }
       return try AlertPresetPersistence.presetRow(boardId: boardId, metric: metric, spec: spec, createdAt: createdAt)
     }

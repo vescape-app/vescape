@@ -241,8 +241,8 @@ export function useAddBoardWizard(): UseAddBoardWizard {
       manualMinVoltage,
       manualMaxVoltage,
     )
-    // Each draft level becomes the Board's preset row, saved with its draft rider rules, so no
-    // session ever sees the Board on the default presets.
+    // Each draft level is saved with its draft rider rules in one write; native stores a preset
+    // row only for a level that differs from the default.
     const presets = Object.fromEntries(
       ALERT_PRESET_METRICS.map((metric) => {
         const { level } = alertSetup[metric]

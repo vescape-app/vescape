@@ -376,9 +376,12 @@ reaches every rider with no migration. Options:
 | `geiger` | `soft` · `mid` · `hard` | tick level for the preset's geiger points                  |
 | `match`  | `on`                    | config-relative points follow the board config (see below) |
 
-Unknown keys are ignored and kept, so an older app reads a newer row. A metric without a preset
-row is `preset(normal)`, the app default; Off is `preset(off)`, never a deleted row, so the app can
-tell "turned off" from "never set". Battery needs a valid battery config before its preset expands.
+Unknown keys are ignored and kept, so an older app reads a newer row. A row exists only when it
+differs from the app default, `preset(normal)` with no options: a metric without a row is the
+default, and picking Normal with no options deletes the row. Board creation and migrations follow
+the same rule, so defaults stay observable. Off is `preset(off)`, never a deleted row, so the app
+can tell "turned off" from "never set". Battery needs a valid battery config before its preset
+expands.
 
 Native expands preset rows whenever it loads rules: the session evaluator, gauge markers,
 descriptions, chart references, and previews all read the expanded list, and JS never expands.

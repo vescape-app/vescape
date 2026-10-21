@@ -102,13 +102,19 @@ final class AlertPresetPersistence {
         guard try AlertPresetGenerator.matchField(metric) != nil else { throw InvalidPreset.invalidIntent }
         next = current.withOption("match", match == true ? "on" : nil)
       }
-      try Self.presetRow(boardId: boardId, metric: metric, spec: next.encode(), createdAt: Int64(Date().timeIntervalSince1970 * 1000)).save(db)
+      if let row = try Self.presetRow(boardId: boardId, metric: metric, spec: next.encode(), createdAt: Int64(Date().timeIntervalSince1970 * 1000)) {
+        try row.save(db)
+      } else {
+        _ = try PersistedAlertRule.deleteOne(db, key: ["board_id": boardId, "id": Self.rowId(metric)])
+      }
     }
   }
 
-  /// `metric`'s stored preset row holding `spec`; rejects an unknown metric or a non-preset spec.
-  static func presetRow(boardId: String, metric: String, spec: String, createdAt: Int64) throws -> PersistedAlertRule {
-    guard metrics.contains(metric), AlertPresetSpec.parse(spec) != nil else { throw InvalidPreset.invalidIntent }
+  /// `metric`'s stored preset row holding `spec`, or nil when `spec` is the app default: a row exists
+  /// only when it differs from the default. Rejects an unknown metric or a non-preset spec.
+  static func presetRow(boardId: String, metric: String, spec: String, createdAt: Int64) throws -> PersistedAlertRule? {
+    guard metrics.contains(metric), let parsed = AlertPresetSpec.parse(spec) else { throw InvalidPreset.invalidIntent }
+    if parsed == defaultSpec { return nil }
     return PersistedAlertRule(
       boardId: boardId, id: rowId(metric), controlId: metric,
       threshold: 0, thresholdMax: nil, enabled: true,

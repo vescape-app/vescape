@@ -141,7 +141,7 @@ class AlertPresetPersistenceHostTest {
     val dao = db.telemetryDao()
     val persistence = BoardSettingsPersistence(dao)
     val rider = AlertRuleEntity("new", "rider", "battery", 20.0, null, enabled = true, spec = "alert:warning", createdAt = 1)
-    val alerts = listOf(AlertPresetPersistence.presetRow("new", "speed", "preset(safe)", 1), rider)
+    val alerts = listOf(AlertPresetPersistence.presetRow("new", "speed", "preset(safe)", 1)!!, rider)
     db.useWriterConnection { it.execSQL("CREATE TRIGGER fail_rider BEFORE INSERT ON alerts WHEN NEW.id = 'rider' BEGIN SELECT RAISE(ABORT, 'test'); END") }
     var failed = false
     try { persistence.upsertBoard(BoardEntity("new", "New", null, 1), emptyList(), emptyList(), alerts) } catch (_: Exception) { failed = true }
@@ -152,6 +152,7 @@ class AlertPresetPersistenceHostTest {
     persistence.upsertBoard(BoardEntity("new", "New", null, 1), emptyList(), emptyList(), alerts)
     assertEquals("preset(safe)", AlertPresetPersistence.specs(dao, "new").getValue("speed"))
     assertTrue(rider in AlertPresetPersistence.expandedRules(dao, "new") { throw it })
+    assertNull("a default spec writes no row", AlertPresetPersistence.presetRow("new", "duty", "preset(normal)", 1))
     var rejected = false
     try { AlertPresetPersistence.presetRow("new", "speed", "geiger:mid", 1) } catch (_: IllegalArgumentException) { rejected = true }
     assertTrue("non-preset spec rejected", rejected)
@@ -183,11 +184,18 @@ class AlertPresetPersistenceHostTest {
     assertEquals("preset(safe)", spec("speed"))
     assertNotEquals(30.577536, expanded("speed").single { it.id == "preset:speed:0" }.threshold, 0.0000001)
 
+    // Normal with no options is the default: no row.
+    dao.applyAlertPreset(board.id, "speed", "normal", null, null)
+    assertTrue(dao.getAlertRules(board.id).none { it.id == "preset:speed" })
+    assertEquals("preset(normal)", spec("speed"))
+    dao.applyAlertPreset(board.id, "speed", "safe", null, null)
+
     dao.applyAlertPreset(board.id, "speed", null, "mid", null)
     dao.applyAlertPreset(board.id, "speed", "off", null, null)
     assertEquals("preset(off):geiger=mid", spec("speed"))
     assertEquals(listOf(manual), expanded("speed"))
     dao.applyAlertPreset(board.id, "speed", "normal", null, null)
+    assertEquals("Normal with an option keeps its row", 1, dao.getAlertRules(board.id).count { it.id == "preset:speed" })
     assertEquals("geiger:mid", expanded("speed").single { it.id == "preset:speed:0" }.spec)
 
     dao.upsertAlertRule(AlertRuleEntity(board.id, "preset:duty", "duty", 0.0, null, enabled = true, spec = "preset(normal):future=1", createdAt = 1))

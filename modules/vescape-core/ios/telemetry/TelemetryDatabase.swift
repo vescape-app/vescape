@@ -983,6 +983,8 @@ enum TelemetryDatabase {
         WHERE boards.deleted_at IS NULL
       )
     )
+    -- The app default has no row.
+    WHERE NOT (level = 'normal' AND options = '')
     """
 
   /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/TelemetryMigrations.kt `ALERT_SOUND_COUNT_SQL`

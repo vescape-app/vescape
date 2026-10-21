@@ -122,11 +122,19 @@ func runAlertPresetContract() throws {
   try require(try spec("speed") == "preset(safe)", "board save keeps the row")
   try require(abs(try expanded("speed").first { $0.id == "preset:speed:0" }!.threshold - 30.577536) > 0.000001, "top speed read at expansion")
 
+  func hasRow(_ metric: String) throws -> Bool {
+    try queue.read { try Int.fetchOne($0, sql: "SELECT count(*) FROM alerts WHERE board_id = 'board' AND id = ?", arguments: ["preset:" + metric]) } == 1
+  }
+  try apply("speed", level: "normal")
+  try require(try !hasRow("speed") && spec("speed") == "preset(normal)", "Normal with no options removes the row")
+  try apply("speed", level: "safe")
+
   try apply("speed", geiger: "mid")
   try apply("speed", level: "off")
   try require(try spec("speed") == "preset(off):geiger=mid", "Off keeps options")
   try require(try expanded("speed").map(\.id) == ["manual"], "Off expands to none")
   try apply("speed", level: "normal")
+  try require(try hasRow("speed"), "Normal with an option keeps its row")
   try require(try expanded("speed").first { $0.id == "preset:speed:0" }!.spec == "geiger:mid", "geiger option survives Off and back")
 
   try queue.write { try presetRow(board.id, "duty", "preset(normal):future=1").save($0) }
@@ -238,7 +246,7 @@ func runAlertPresetBoardLifecycleContract() throws {
   try require(isolated.contains("rider") && isolated.contains("preset:speed:0") && !isolated.contains { $0.hasPrefix("preset:duty") }, "failing metric skipped, the rest expand")
 
   let fresh = PersistedBoard(id: "new", name: "New", bleId: nil, transport: nil, createdAt: 1, deletedAt: nil)
-  let alerts = [try AlertPresetPersistence.presetRow(boardId: "new", metric: "speed", spec: "preset(safe)", createdAt: 1), rider("new")]
+  let alerts = [try AlertPresetPersistence.presetRow(boardId: "new", metric: "speed", spec: "preset(safe)", createdAt: 1)!, rider("new")]
   try queue.write { try $0.execute(sql: "CREATE TRIGGER fail_rider BEFORE INSERT ON alerts WHEN NEW.id = 'rider' BEGIN SELECT RAISE(ABORT, 'test'); END") }
   var failed = false
   do { try boards.upsertBoard(fresh, settings: [], deletedKeys: [], alerts: alerts) } catch { failed = true }
@@ -248,6 +256,7 @@ func runAlertPresetBoardLifecycleContract() throws {
   try boards.upsertBoard(fresh, settings: [], deletedKeys: [], alerts: alerts)
   try require(try AlertRulePersistence(writer: queue).presets(boardId: "new")["speed"] == "preset(safe)", "initial preset saved")
   try require(try expanded("new").contains("rider"), "initial rider rule saved")
+  try require(try AlertPresetPersistence.presetRow(boardId: "new", metric: "duty", spec: "preset(normal)", createdAt: 1) == nil, "a default spec writes no row")
   var rejected = false
   do { _ = try AlertPresetPersistence.presetRow(boardId: "new", metric: "speed", spec: "geiger:mid", createdAt: 1) } catch { rejected = true }
   try require(rejected, "non-preset spec rejected")

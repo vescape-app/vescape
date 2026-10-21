@@ -232,6 +232,7 @@ class TelemetryMigrationMatrixHostTest {
    * v51 folds each live Board's own settings and old preset rows (#591): nothing leaks between
    * Boards, a tombstone gets no preset rows, geiger falls back to the old rows, and a metric whose
    * old preset points were all disabled becomes Off while a partly disabled ladder keeps its level.
+   * A plain Normal level is the app default and writes no row; an unset level stays an explicit Off.
    * @parity /modules/vescape-core/ios/telemetry/TelemetryMigrationTests.swift `testPresetRowsMigrationKeepsBoardsApartAndHonoursDisabledPoints`
    */
   @Test fun presetRowsMigrationKeepsBoardsApartAndHonoursDisabledPoints() {
@@ -271,7 +272,7 @@ class TelemetryMigrationMatrixHostTest {
       )
       assertEquals(
         mapOf(
-          "preset:speed" to "preset(normal)",
+          // Normal with no options is the app default: no row.
           "preset:duty" to "preset(off):geiger=mid,match=on",
           "preset:motor-temp" to "preset(off)",
           "preset:controller-temp" to "preset(off)",

@@ -234,6 +234,7 @@ final class TelemetryMigrationTests: XCTestCase {
   /// v51 folds each live Board's own settings and old preset rows: nothing leaks between Boards, a
   /// tombstone gets no preset rows, geiger falls back to the old rows, and a metric whose old preset
   /// points were all disabled becomes Off while a partly disabled ladder keeps its level.
+  /// A plain Normal level is the app default and writes no row; an unset level stays an explicit Off.
   /// @parity /modules/vescape-core/persistence-jvm/src/test/kotlin/expo/modules/vescapecore/telemetry/TelemetryMigrationMatrixHostTest.kt `presetRowsMigrationKeepsBoardsApartAndHonoursDisabledPoints`
   func testPresetRowsMigrationKeepsBoardsApartAndHonoursDisabledPoints() throws {
     try migrate(upTo: "v50_alert_sound_count")
@@ -285,7 +286,8 @@ final class TelemetryMigrationTests: XCTestCase {
       "preset:motor-temp": "preset(off)", "preset:controller-temp": "preset(off)", "preset:battery": "preset(off)",
     ])
     XCTAssertEqual(try specs("board-2"), [
-      "preset:speed": "preset(normal)", "preset:duty": "preset(off):geiger=mid,match=on",
+      // Normal with no options is the app default: no row.
+      "preset:duty": "preset(off):geiger=mid,match=on",
       "preset:motor-temp": "preset(off)", "preset:controller-temp": "preset(off)", "preset:battery": "preset(off)",
     ])
     XCTAssertEqual(try specs("board-3"), ["rider-3": "alert(1):warning"])

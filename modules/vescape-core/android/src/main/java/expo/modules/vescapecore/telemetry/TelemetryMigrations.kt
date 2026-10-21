@@ -1709,6 +1709,8 @@ internal object TelemetryMigrations {
           WHERE boards.deleted_at IS NULL
         )
       )
+      -- The app default has no row.
+      WHERE NOT (level = 'normal' AND options = '')
     """.trimIndent()
 
     /** Every migration registered with Room, in the graph's production order. */
