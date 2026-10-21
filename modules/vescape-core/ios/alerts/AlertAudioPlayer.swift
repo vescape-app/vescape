@@ -61,7 +61,9 @@ private final class GeigerLoop {
   /// UUID means the completion-handler should keep looping; a changed/removed loop stops it.
   var sustainToken: UUID?
   var sustainedPlaying = false
-  var sustainedNode: AVAudioPlayerNode?
+  var sustainedNode: LeasedNode?
+  /// Clip a sustained loop plays; a different one (a pack switch) restarts it.
+  var sustainedKey: String?
 
   init(soundType: String, pin: PresetSoundPin?, rangeDepth: Double, sustained: Bool) {
     self.soundType = soundType
@@ -70,6 +72,17 @@ private final class GeigerLoop {
     self.sustained = sustained
   }
 }
+
+/// A pooled player node and the lease it is out on. A lease that is no longer current means the
+/// node went back to the pool, so a late completion or stop must leave it alone.
+private struct LeasedNode {
+  let node: AVAudioPlayerNode
+  let lease: UUID
+}
+
+/// A sound starting this late after its request records an `alert_audio_latency` Diagnostic Event.
+/// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/alerts/AlertEngine.kt `ALERT_AUDIO_LATENCY_REPORT_MS`
+internal let alertAudioLatencyReportMs: Int64 = 150
 
 /// Alert audio feedback via `AVAudioEngine` with pre-loaded PCM buffers (low latency) plus
 /// `AVSpeechSynthesizer` for Alert Message Templates. Mirrors Android `AlertFeedback`
@@ -118,9 +131,19 @@ internal final class AlertAudioPlayer {
   /// `voiceLock`.
   private var preparedVoice: [String: (files: [String], buffer: AVAudioPCMBuffer)] = [:]
   /// Voice line playing now; a newer line stops it. Owned by `geigerQueue`.
-  private var voiceNode: AVAudioPlayerNode?
+  private var voiceNode: LeasedNode?
   private var geigerLoops: [String: GeigerLoop] = [:]
   private var activeOneShotNodes: [AVAudioPlayerNode] = []
+  /// Every node attached to the engine, and the format it is connected with. A sound leases one
+  /// instead of attaching its own, so a one-shot costs no graph change. Owned by `geigerQueue`.
+  private var attachedNodes: [ObjectIdentifier: (node: AVAudioPlayerNode, format: AVAudioFormat)] = [:]
+  private var idleNodes: [AVAudioPlayerNode] = []
+  private var nodeLeases: [ObjectIdentifier: UUID] = [:]
+  private static let idleNodeLimit = 8
+  /// Sounds already reported late since `wake()`, one Diagnostic Event each. Owned by `geigerQueue`.
+  private var lateReported: Set<String> = []
+  /// Records a Diagnostic Event; called on `geigerQueue`.
+  var onDiagnostic: (String, [String: Any?]) -> Void = { _, _ in }
   private var started = false
   /// A `goIdle()` waiting for in-flight sound to finish. Guarded by `geigerQueue`.
   private var idleRequested = false
@@ -270,6 +293,34 @@ internal final class AlertAudioPlayer {
       guard let self, !self.isReleased else { return }
       self.idleRequested = true
       self.idleIfQuietOnQueue()
+    }
+  }
+
+  /// Bring the engine and session up for a Board Session, ahead of its first sound. The running
+  /// engine renders silence between sounds, which keeps the output route (and a Bluetooth link)
+  /// awake, so the first sound after a quiet stretch is not clipped. Stays up until `goIdle()`.
+  /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/alerts/AlertEngine.kt `wake`
+  func wake() {
+    onGeigerQueue { owner in
+      owner.lateReported.removeAll()
+      owner.startIfNeeded()
+    }
+  }
+
+  /// Decode everything `soundTypes` and preset `pins` can play before the first alert: My sounds for
+  /// every rule and slot override, and every pinned voice pack's lines. Built-in pack slots load in
+  /// `init`.
+  /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/alerts/AlertEngine.kt `prepare`
+  func prepare(soundTypes: [String], pins: [PresetSoundPin]) {
+    onGeigerQueue { owner in
+      let slots = Set(owner.buffersBySlot.keys.compactMap { $0.split(separator: "/").last.map(String.init) })
+      let voices = Set(pins.map { owner.voicePack($0) } + [owner.voicePack()])
+      DispatchQueue.global(qos: .utility).async { [weak owner] in
+        guard let owner else { return }
+        for slot in slots { _ = owner.clipKey(slot) }
+        for soundType in soundTypes { if let url = mySoundId(soundType).flatMap(MySounds.file) { _ = owner.myBufferKey(url) } }
+        for pack in voices { owner.prewarmVoice(pack) }
+      }
     }
   }
 
@@ -569,15 +620,15 @@ internal final class AlertAudioPlayer {
         // A `goIdle()` pending or already done behind the lead sound (a disconnect, a ride end)
         // still applies: the line restarts the engine, so stand it down again once the line ends.
         let idle = owner.idleRequested || !owner.started
-        owner.voiceNode = owner.playBufferOnQueue(line, label: "voice/\(announcement.key ?? "")")
+        owner.voiceNode = owner.playBufferOnQueue(line, label: "voice/\(announcement.key ?? "")", requestedAt: DispatchTime.now())
         if idle { owner.idleRequested = true }
       }
     }
   }
 
-  /// Must run on `geigerQueue`. A finished line's node is already detached and needs no stop.
+  /// Must run on `geigerQueue`. A finished line's node is already back in the pool and is left alone.
   private func stopVoiceOnQueue() {
-    if let node = voiceNode, node.engine != nil { node.stop() }
+    if let voiceNode { returnNode(voiceNode) }
     voiceNode = nil
   }
 
@@ -710,7 +761,7 @@ internal final class AlertAudioPlayer {
 
     if depth >= 1.0 {
       existing?.workItem?.cancel()
-      if existing?.sustained == true && existing?.sustainedPlaying == true {
+      if existing?.sustained == true && existing?.sustainedPlaying == true && existing?.sustainedKey == tickKey {
         return
       }
       stopSustained(ruleId: ruleId)
@@ -777,16 +828,18 @@ internal final class AlertAudioPlayer {
   private func scheduleSustainedLoop(loop: GeigerLoop, ruleId: String, clipKey: String) {
     let token = UUID()
     loop.sustainToken = token
+    loop.sustainedKey = clipKey
     scheduleSustainedBuffer(loop: loop, ruleId: ruleId, clipKey: clipKey, token: token)
   }
 
   private func scheduleSustainedBuffer(loop: GeigerLoop, ruleId: String, clipKey: String, token: UUID) {
     guard let buffer = buffer(clipKey) else { return }
     startIfNeeded()
-    let node = loop.sustainedNode ?? makePlayerNode(format: buffer.format)
-    loop.sustainedNode = node
+    let leased = loop.sustainedNode ?? leaseNode(format: buffer.format)
+    let node = leased.node
+    loop.sustainedNode = leased
     loop.sustainedPlaying = true
-    node.scheduleBuffer(buffer, at: nil, options: [], completionHandler: { [weak self, weak node] in
+    node.scheduleBuffer(buffer, at: nil, options: [], completionHandler: { [weak self] in
       // Re-arm only if the loop is still registered and its token hasn't changed (i.e. not
       // cancelled or replaced). Dispatch back to the geiger queue so loop state mutations stay
       // single-threaded.
@@ -796,7 +849,7 @@ internal final class AlertAudioPlayer {
           let current = self.geigerLoops[ruleId],
           current === loop, current.sustainToken == token
         else {
-          if let node { self.detachPlayerNode(node) }
+          self.returnNode(leased)
           return
         }
         self.scheduleSustainedBuffer(loop: loop, ruleId: ruleId, clipKey: clipKey, token: token)
@@ -815,9 +868,8 @@ internal final class AlertAudioPlayer {
     // Bump the token so any in-flight completion handler short-circuits instead of re-arming.
     loop.sustainToken = nil
     loop.sustainedPlaying = false
-    if let node = loop.sustainedNode {
-      node.stop()
-      detachPlayerNode(node)
+    if let leased = loop.sustainedNode {
+      returnNode(leased)
       loop.sustainedNode = nil
     }
   }
@@ -898,10 +950,14 @@ internal final class AlertAudioPlayer {
       stopSustainedPlaybackForLoop(loop)
     }
     geigerLoops.removeAll(keepingCapacity: true)
-    for node in activeOneShotNodes {
+    for (node, _) in attachedNodes.values {
       node.stop()
       detachPlayerNode(node)
     }
+    attachedNodes.removeAll()
+    idleNodes.removeAll()
+    nodeLeases.removeAll()
+    voiceNode = nil
     activeOneShotNodes.removeAll(keepingCapacity: true)
     if engine.isRunning { engine.stop() }
     started = false
@@ -914,46 +970,85 @@ internal final class AlertAudioPlayer {
   /// of `activeOneShotNodes`.
   private func play(_ clipKey: String) {
     guard !isReleased else { return }
+    let requestedAt = DispatchTime.now()
     geigerQueue.async { [weak self] in
-      self?.playOnQueue(clipKey)
+      self?.playOnQueue(clipKey, requestedAt: requestedAt)
     }
   }
 
   /// Must run on `geigerQueue`.
-  private func playOnQueue(_ clipKey: String) {
+  private func playOnQueue(_ clipKey: String, requestedAt: DispatchTime = .now()) {
     guard !isReleased else { return }
     guard let buffer = buffer(clipKey) else {
       Self.log("AlertAudioPlayer.play: NO BUFFER for \(clipKey)")
       return
     }
-    playBufferOnQueue(buffer, label: clipKey)
+    playBufferOnQueue(buffer, label: clipKey, requestedAt: requestedAt)
   }
 
   @discardableResult
-  private func playBufferOnQueue(_ buffer: AVAudioPCMBuffer, label: String) -> AVAudioPlayerNode? {
+  private func playBufferOnQueue(_ buffer: AVAudioPCMBuffer, label: String, requestedAt: DispatchTime) -> LeasedNode? {
     guard !isReleased else { return nil }
     startIfNeeded()
-    Self.log("AlertAudioPlayer.play: schedule \(label) engine.running=\(engine.isRunning) frames=\(buffer.frameLength)")
-    let node = makePlayerNode(format: buffer.format)
+    let leased = leaseNode(format: buffer.format)
+    let node = leased.node
     activeOneShotNodes.append(node)
-    node.scheduleBuffer(buffer, at: nil, options: [], completionHandler: { [weak self, weak node] in
-      guard let self, let node else { return }
+    node.scheduleBuffer(buffer, at: nil, options: [], completionHandler: { [weak self] in
+      guard let self else { return }
       self.geigerQueue.async {
-        self.activeOneShotNodes.removeAll { $0 === node }
-        self.detachPlayerNode(node)
+        self.returnNode(leased)
         // A teardown may have asked to idle while this was still sounding.
         self.idleIfQuietOnQueue()
       }
     })
     node.play()
-    return node
+    reportLatency(label, requestedAt: requestedAt)
+    return leased
   }
 
-  private func makePlayerNode(format: AVAudioFormat) -> AVAudioPlayerNode {
-    let node = AVAudioPlayerNode()
-    engine.attach(node)
-    engine.connect(node, to: engine.mainMixerNode, format: format)
-    return node
+  /// Report `sound` once per session when it started `alertAudioLatencyReportMs` or more after
+  /// `requestedAt`. Must run on `geigerQueue`.
+  private func reportLatency(_ sound: String, requestedAt: DispatchTime) {
+    let latencyMs = Int64((DispatchTime.now().uptimeNanoseconds - requestedAt.uptimeNanoseconds) / 1_000_000)
+    guard latencyMs >= alertAudioLatencyReportMs, lateReported.insert(sound).inserted else { return }
+    onDiagnostic("alert_audio_latency", ["sound": sound, "latency_ms": latencyMs, "path": "ready"])
+  }
+
+  /// An idle attached node of `format`, else a newly attached one. Must run on `geigerQueue`.
+  private func leaseNode(format: AVAudioFormat) -> LeasedNode {
+    let node: AVAudioPlayerNode
+    if let index = idleNodes.firstIndex(where: { attachedNodes[ObjectIdentifier($0)]?.format == format }) {
+      node = idleNodes.remove(at: index)
+    } else {
+      node = AVAudioPlayerNode()
+      engine.attach(node)
+      engine.connect(node, to: engine.mainMixerNode, format: format)
+      attachedNodes[ObjectIdentifier(node)] = (node, format)
+    }
+    let lease = UUID()
+    nodeLeases[ObjectIdentifier(node)] = lease
+    return LeasedNode(node: node, lease: lease)
+  }
+
+  /// Stop `leased` and put it back in the pool, detaching it past `idleNodeLimit`. A lease that is
+  /// no longer current is a no-op, so a late completion never touches a node already reused.
+  /// Must run on `geigerQueue`.
+  private func returnNode(_ leased: LeasedNode) {
+    let id = ObjectIdentifier(leased.node)
+    guard nodeLeases[id] == leased.lease else { return }
+    nodeLeases[id] = nil
+    activeOneShotNodes.removeAll { $0 === leased.node }
+    guard leased.node.engine != nil else {
+      attachedNodes[id] = nil
+      return
+    }
+    leased.node.stop()
+    if idleNodes.count < Self.idleNodeLimit {
+      idleNodes.append(leased.node)
+    } else {
+      detachPlayerNode(leased.node)
+      attachedNodes[id] = nil
+    }
   }
 
   /// Detach is idempotent: `release()` and a pending completion handler can both reach the same

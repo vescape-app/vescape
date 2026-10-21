@@ -57,6 +57,7 @@ internal final class AlertCoordinator {
     activeGeigerRuleIds = activeGeigerRuleIds.intersection(geigerRuleIds).subtracting(stale)
     rules = value
     pins = presetPins
+    player.prepare(soundTypes: value.map(\.soundType), pins: Array(presetPins.values))
     engine.resetAlertState()
   }
 

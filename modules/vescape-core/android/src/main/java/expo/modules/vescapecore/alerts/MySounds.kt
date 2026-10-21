@@ -244,16 +244,17 @@ internal object MySounds {
   /**
    * Play My sound [file] once through MediaPlayer, which takes a whole accepted clip (SoundPool
    * caps a decoded sample near 1 MB, about 6 s of 44.1 kHz stereo). [onDone] runs on completion
-   * with `failed` true when it could not play, so the caller falls back to the pack slot.
+   * with `failed` true when it could not play, so the caller falls back to the pack slot. [onStart]
+   * runs once playback has started.
    */
-  fun play(file: File, source: String, owner: Any? = null, onDone: (failed: Boolean) -> Unit) {
+  fun play(file: File, source: String, owner: Any? = null, onStart: () -> Unit = {}, onDone: (failed: Boolean) -> Unit) {
     val player = MediaPlayer()
     synchronized(activePlayers) { activePlayers[player] = owner }
     try {
       player.setAudioAttributes(audioAttributes(source, AudioAttributes.CONTENT_TYPE_SONIFICATION))
       player.setDataSource(file.path)
       player.setOnPreparedListener {
-        try { it.start() }
+        try { it.start(); onStart() }
         catch (_: Exception) { finish(it, true, onDone) }
       }
       player.setOnCompletionListener { finish(it, false, onDone) }

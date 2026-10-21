@@ -274,7 +274,11 @@ internal final class BoardSessionController: VescGattListener {
   /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/connection/BoardSessionController.kt `telemetry`
   private var latestTelemetry: RefloatTelemetry?
 
-  private lazy var alertAudioPlayer = AlertAudioPlayer()
+  private lazy var alertAudioPlayer: AlertAudioPlayer = {
+    let player = AlertAudioPlayer()
+    player.onDiagnostic = { name, props in DiagnosticsRecorder.shared.record(eventName: name, properties: props) }
+    return player
+  }()
   private lazy var alertCoordinator = AlertCoordinator(player: alertAudioPlayer)
   private let legalPolicyCatalog = LegalPolicyCatalog()
   /// Persistent Board Session status surface (Live Activity) — the iOS peer of Android's foreground
@@ -1558,6 +1562,8 @@ internal final class BoardSessionController: VescGattListener {
     connectionSoundsEnabled = sessionSettings["connectionSoundsEnabled"] as? Bool ?? true
     alertCoordinator.unitSystem = sessionSettings["unitSystem"] as? String ?? "metric"
     alertAudioPlayer.applySoundSettings(sessionSettings)
+    // Engine and session up for the whole ride, before the first alert can fire; `goIdle()` at its end.
+    alertAudioPlayer.wake()
     recordingCoordinator.beginBoardSession(config: config, restoredRecordingId: restoredRecordingId)
     beginGpsSessionDiagnostics()
     // Reset per-session Board Warning breadcrumb bookkeeping (one Diagnostic Event per kind per

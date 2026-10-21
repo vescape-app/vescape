@@ -27,6 +27,7 @@ internal class SoundSampleQueue {
   fun complete(sampleId: Int, success: Boolean) {
     states[sampleId] = if (success) State.READY else State.FAILED
     val waiting = pending.remove(sampleId).orEmpty()
-    if (success) waiting.forEach { it() }
+    // Run on failure too: each play re-checks the state, so a caller waiting on its start hears back.
+    waiting.forEach { it() }
   }
 }

@@ -265,6 +265,25 @@ The latch and repeat clock are cleared only when a new Board Session starts — 
 preset regeneration, idle pause, or backgrounding. Preset rule ids are deterministic, so changing a
 preset level keeps a rule latched.
 
+### Ready audio
+
+Every sound a ride can play is in memory before the first alert fires, so first plays carry no load
+delay:
+
+- Starting a Board Session brings the player up (`wake`) and keeps it up until the session ends
+  (`goIdle`). Android plays a looping silent track; iOS keeps its engine and `.playback` session
+  running. Either way the output route, Bluetooth included, stays awake between sounds and the
+  first sound after a quiet stretch is not clipped. Loaded sounds survive `goIdle`.
+- All built-in effects pack slots load when the player is created (Android: on its own audio thread,
+  which also runs geiger ticks, off the main looper). Installing rules (`prepare`) decodes My sounds
+  for slot overrides and `my:` rules, prepares a MediaPlayer per one-shot My sound on Android, and
+  decodes every pinned voice pack's lines.
+- A sound that still has to wait on a load queues and plays once ready; speech after it is timed
+  from the sound's actual start, so the two never overlap.
+- iOS sounds lease a player node from a pool of attached nodes instead of attaching one per sound.
+- A sound starting 150 ms or more after its request (`ALERT_AUDIO_LATENCY_REPORT_MS`) records one
+  `alert_audio_latency` Diagnostic Event (`sound`, `latency_ms`, `path`) per sound per session.
+
 When multiple alerts fire on the same packet, SoundPool lets their clips or geiger loops overlap.
 Within a single evaluation, the most urgent alert is sorted first for telemetry display
 (Geiger over simple; higher threshold for above-direction controls, lower threshold for below-direction).

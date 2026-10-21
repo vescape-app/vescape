@@ -371,14 +371,17 @@ internal class AlertEngine(private val now: () -> Long = { System.currentTimeMil
 
 internal class AlertFeedback(
     private val context: Context,
+    /** Audio looper every method hops to. A Board Session passes a dedicated thread, off main. */
     private val handler: Handler,
+    /** Records a Diagnostic Event: a sound that started [ALERT_AUDIO_LATENCY_REPORT_MS] or more late. */
+    private val onDiagnostic: (String, Map<String, Any?>) -> Unit = { _, _ -> },
 ) {
     // @parity /modules/vescape-core/ios/alerts/AlertAudioPlayer.swift
     // @platform-diff Android selects alarm/media streams; iOS retains its playback session.
     private var tts: TextToSpeech? = null
     private var ttsReady = false
     private var ttsPendingText: String? = null
-    private var released = false
+    @Volatile private var released = false
 
     private var audioSource = "alarm"
     private fun newSoundPool() = SoundPool.Builder().setMaxStreams(8)
@@ -386,8 +389,16 @@ internal class AlertFeedback(
     private var soundPool = newSoundPool()
     /** SoundPool sample per `"<pack>/<slot>"` of every built-in effects pack. */
     private val soundIds = HashMap<String, Int>()
-    /** SoundPool sample per My sound file path, loaded on first play. */
+    /** SoundPool sample per My sound file path, loaded by [prepare] or on first play. */
     private val fileSamples = HashMap<String, Int>()
+    /** Prepared MediaPlayer per My sound file path, so a one-shot My sound starts without a load. */
+    private val readyMine = HashMap<String, ReadyClip>()
+    /** Silent track holding audio output open between sounds while [wake]; null when idle. */
+    private var warmTrack: AudioTrack? = null
+    /** Sounds already reported late since [wake], one Diagnostic Event each. */
+    private val lateReported = HashSet<String>()
+    /** Last [prepare] input, replayed when the pool is rebuilt for a new audio source. */
+    private var prepared: Pair<List<String>, Collection<PresetSoundPin>> = emptyList<String>() to emptyList()
     private val geigerLoops = HashMap<String, GeigerLoop>()
     private val samples = SoundSampleQueue()
     private val pendingGeiger = HashMap<String, PendingGeiger>()
@@ -426,7 +437,124 @@ internal class AlertFeedback(
         voiceExecutor.execute { VoicePackAssets.prewarm(context, pack) }
     }
 
-    init { loadAssets() }
+    // Off the constructing thread: decoding every pack's slots must not hold up the caller.
+    init { handler.post { loadAssets() } }
+
+    /**
+     * Ready everything [soundTypes] and preset [pins] can play before the first alert: My sound
+     * samples and players for every rule and slot override, and every pinned voice pack's lines.
+     * Built-in pack slots are always loaded.
+     *
+     * @parity /modules/vescape-core/ios/alerts/AlertAudioPlayer.swift `prepare`
+     */
+    fun prepare(soundTypes: List<String>, pins: Collection<PresetSoundPin>) {
+        if (android.os.Looper.myLooper() != handler.looper) {
+            handler.post { prepare(soundTypes, pins) }
+            return
+        }
+        if (released) return
+        prepared = soundTypes to pins
+        val packs = (pins.mapNotNull { it.effects } + soundPack).distinct()
+        val slots = EffectsPackAssets.slots(context).keys.map { it.substringAfter('/') }.distinct()
+        val mine = HashSet<java.io.File>()
+        for (pack in packs) {
+            for (slot in slots) {
+                if (slotSample(slot, pack) != 0) (slotClip(context, pack, slot) as? SlotClip.Mine)?.let { mine += it.file }
+            }
+            for (soundType in soundTypes) {
+                val my = mySoundId(soundType) ?: continue
+                val slot = if (isGeigerSoundType(soundType)) geigerSlot(soundType) else parseSlotAlertSound(soundType).severity.slot
+                slotSample(slot, pack, my)
+                (slotClip(context, pack, slot, my) as? SlotClip.Mine)?.let { mine += it.file }
+            }
+        }
+        for (path in readyMine.keys - mine.map { it.path }.toSet()) readyMine.remove(path)?.player?.release()
+        for (file in mine) if (file.path !in readyMine) readyMine[file.path] = prepareMine(file)
+        val voices = (pins.map { voicePack(it) } + voicePack()).distinct()
+        voiceExecutor.execute { voices.forEach { VoicePackAssets.prewarm(context, it) } }
+    }
+
+    private class ReadyClip(val player: android.media.MediaPlayer) { var ready = false }
+
+    private fun prepareMine(file: java.io.File): ReadyClip {
+        val clip = ReadyClip(android.media.MediaPlayer())
+        try {
+            clip.player.setAudioAttributes(audioAttributes(audioSource, AudioAttributes.CONTENT_TYPE_SONIFICATION))
+            clip.player.setDataSource(file.path)
+            clip.player.setOnPreparedListener { clip.ready = true }
+            clip.player.setOnErrorListener { _, _, _ -> clip.ready = false; true }
+            clip.player.prepareAsync()
+        } catch (e: Exception) {
+            // intentional-suppression: an unprepared My sound plays through MySounds.play instead
+            Log.w(VESC_SESSION_TAG, "My sound prepare failed: ${e.message}")
+        }
+        return clip
+    }
+
+    private fun releaseMine() {
+        readyMine.values.forEach { it.player.release() }
+        readyMine.clear()
+    }
+
+    /**
+     * Hold audio output open for a Board Session: a looping silent track keeps the output (and a
+     * Bluetooth link) from sleeping between sounds, so the first sound after a quiet stretch is not
+     * clipped. [goIdle] lets it go.
+     *
+     * @parity /modules/vescape-core/ios/alerts/AlertAudioPlayer.swift `wake`
+     */
+    fun wake() {
+        if (android.os.Looper.myLooper() != handler.looper) {
+            handler.post { wake() }
+            return
+        }
+        if (released) return
+        lateReported.clear()
+        if (warmTrack == null) warmTrack = startWarmTrack()
+    }
+
+    /**
+     * Let audio output sleep between Board Sessions. Loaded sounds stay ready.
+     *
+     * @parity /modules/vescape-core/ios/alerts/AlertAudioPlayer.swift `goIdle`
+     */
+    fun goIdle() {
+        if (android.os.Looper.myLooper() != handler.looper) {
+            handler.post { goIdle() }
+            return
+        }
+        warmTrack?.let(::releaseTrack)
+        warmTrack = null
+    }
+
+    private fun startWarmTrack(): AudioTrack? = try {
+        val rate = 8_000
+        val frames = rate / 2
+        AudioTrack.Builder()
+            .setAudioAttributes(audioAttributes(audioSource, AudioAttributes.CONTENT_TYPE_SONIFICATION))
+            .setAudioFormat(
+                AudioFormat.Builder().setEncoding(AudioFormat.ENCODING_PCM_16BIT).setSampleRate(rate)
+                    .setChannelMask(AudioFormat.CHANNEL_OUT_MONO).build()
+            )
+            .setTransferMode(AudioTrack.MODE_STATIC)
+            .setBufferSizeInBytes(frames * 2)
+            .build()
+            .apply {
+                write(ShortArray(frames), 0, frames)
+                setLoopPoints(0, frames, -1)
+                play()
+            }
+    } catch (e: Exception) {
+        UnexpectedNativeError.report("alert_audio_warm_start", "audio_start_failed", e)
+        null
+    }
+
+    /** Report [sound] once per session when it started [ALERT_AUDIO_LATENCY_REPORT_MS] or more after [requestedAt]. */
+    private fun reportLatency(sound: String, requestedAt: Long, path: String) {
+        val latency = SystemClock.uptimeMillis() - requestedAt
+        if (latency < ALERT_AUDIO_LATENCY_REPORT_MS || !lateReported.add(sound)) return
+        onDiagnostic("alert_audio_latency", mapOf("sound" to sound, "latency_ms" to latency, "path" to path))
+    }
 
     private fun loadAssets() {
         soundIds.clear()
@@ -487,6 +615,9 @@ internal class AlertFeedback(
         pendingGeiger.putAll(loops)
         loadAssets()
         waitingPlays.forEach { it() }
+        releaseMine()
+        prepare(prepared.first, prepared.second)
+        if (warmTrack != null) { goIdle(); wake() }
         tts?.stop()
         tts?.setAudioAttributes(audioAttributes(audioSource, AudioAttributes.CONTENT_TYPE_SPEECH))
     }
@@ -516,23 +647,52 @@ internal class AlertFeedback(
      * Play [slot] once (see [slotClip]): a My sound through [MySounds.play], whole, falling back to
      * the pack's clip if it cannot play; otherwise the pack's sample.
      */
-    private fun playOnce(slot: String, pack: String = soundPack, my: String? = null) {
+    /**
+     * [onStart] runs once the sound starts, or gives up, so whatever follows it never starts early.
+     */
+    private fun playOnce(
+        slot: String,
+        pack: String = soundPack,
+        my: String? = null,
+        requestedAt: Long = SystemClock.uptimeMillis(),
+        onStart: () -> Unit = {},
+    ) {
         if (released) return
         val mine = slotClip(context, pack, slot, my) as? SlotClip.Mine
         if (mine == null) {
-            playPackSlot(slot, pack)
+            playPackSlot(slot, pack, requestedAt, onStart)
             return
         }
-        MySounds.play(mine.file, audioSource, this) { failed -> if (failed) handler.post { playPackSlot(slot, pack) } }
+        val ready = readyMine[mine.file.path]
+        if (ready != null && ready.ready && !ready.player.isPlaying) {
+            try {
+                ready.player.seekTo(0)
+                ready.player.start()
+                reportLatency("my/$slot", requestedAt, "prepared")
+                onStart()
+                return
+            } catch (e: Exception) {
+                // intentional-suppression: a refused prepared player plays a fresh one instead
+                ready.ready = false
+            }
+        }
+        var started = false
+        MySounds.play(mine.file, audioSource, this, onStart = {
+            handler.post { started = true; reportLatency("my/$slot", requestedAt, "load"); onStart() }
+        }) { failed -> if (failed) handler.post { if (!started) playPackSlot(slot, pack, requestedAt, onStart) } }
     }
 
-    private fun playPackSlot(slot: String, pack: String) {
+    private fun playPackSlot(slot: String, pack: String, requestedAt: Long = SystemClock.uptimeMillis(), onStart: () -> Unit = {}) {
         if (released) return
         val sample = slotSample(slot, pack, mine = false)
         when (samples.state(sample)) {
-            SoundSampleQueue.State.READY -> playRaw(sample)
-            SoundSampleQueue.State.PENDING -> samples.enqueue(sample) { playPackSlot(slot, pack) }
-            SoundSampleQueue.State.FAILED -> Unit
+            SoundSampleQueue.State.READY -> {
+                playRaw(sample)
+                reportLatency("$pack/$slot", requestedAt, "ready")
+                onStart()
+            }
+            SoundSampleQueue.State.PENDING -> samples.enqueue(sample) { playPackSlot(slot, pack, requestedAt, onStart) }
+            SoundSampleQueue.State.FAILED -> onStart()
         }
     }
 
@@ -561,23 +721,8 @@ internal class AlertFeedback(
         val existing = tts
         if (existing == null) {
             ttsPendingText = text
-            tts = TextToSpeech(context) { status ->
-                if (released) {
-                    tts?.shutdown()
-                    tts = null
-                    return@TextToSpeech
-                }
-                if (status == TextToSpeech.SUCCESS) {
-                    tts?.setAudioAttributes(audioAttributes(audioSource, AudioAttributes.CONTENT_TYPE_SPEECH))
-                    ttsReady = true
-                    val pending = ttsPendingText
-                    ttsPendingText = null
-                    if (pending != null) speakNow(pending)
-                } else {
-                    Log.w(VESC_SESSION_TAG, "TTS init failed status=$status")
-                    UnexpectedNativeError.report("alert_audio_tts_init", "audio_start_failed", IllegalStateException("TTS status $status"))
-                }
-            }
+            // The engine reports on the main looper; its state belongs to the audio one.
+            tts = TextToSpeech(context) { status -> handler.post { onTtsInit(status) } }
             return
         }
         if (!ttsReady) {
@@ -585,6 +730,24 @@ internal class AlertFeedback(
             return
         }
         speakNow(text)
+    }
+
+    private fun onTtsInit(status: Int) {
+        if (released) {
+            tts?.shutdown()
+            tts = null
+            return
+        }
+        if (status == TextToSpeech.SUCCESS) {
+            tts?.setAudioAttributes(audioAttributes(audioSource, AudioAttributes.CONTENT_TYPE_SPEECH))
+            ttsReady = true
+            val pending = ttsPendingText
+            ttsPendingText = null
+            if (pending != null) speakNow(pending)
+        } else {
+            Log.w(VESC_SESSION_TAG, "TTS init failed status=$status")
+            UnexpectedNativeError.report("alert_audio_tts_init", "audio_start_failed", IllegalStateException("TTS status $status"))
+        }
     }
 
     private fun speakNow(text: String) {
@@ -607,12 +770,12 @@ internal class AlertFeedback(
     }
 
     /** [sound]'s severity slot from [pack], or My sound [my] in its place, [SlotAlertSound.count] times. */
-    private fun playSeverity(sound: SlotAlertSound, my: String? = null, pack: String = soundPack) {
+    private fun playSeverity(sound: SlotAlertSound, my: String? = null, pack: String = soundPack, onStart: () -> Unit = {}) {
         try {
             val slot = sound.severity.slot
             val duration = slotClip(context, pack, slot, my)?.durationMs(context) ?: 0L
             val interval = if (duration > ALERT_BEEP_SPACING_MS) duration + ALERT_BEEP_SPACING_MS else ALERT_BEEP_SPACING_MS
-            playOnce(slot, pack, my)
+            playOnce(slot, pack, my, onStart = onStart)
             for (index in 1 until sound.count) {
                 handler.postDelayed({ playOnce(slot, pack, my) }, index * interval)
             }
@@ -635,11 +798,16 @@ internal class AlertFeedback(
         }
         // A newer announcement supersedes speech still waiting out an older one's sound.
         pendingSpeech?.let { handler.removeCallbacks(it) }
-        voiceGeneration++
-        playSeverity(SlotAlertSound(1, severity))
-        val speech = Runnable { pendingSpeech = null; speakMessage(text) }
-        pendingSpeech = speech
-        handler.postDelayed(speech, speechDelayMs(context, soundPack, severity.slot))
+        pendingSpeech = null
+        val generation = ++voiceGeneration
+        val delay = speechDelayMs(context, soundPack, severity.slot)
+        // Timed from the sound's actual start, so a sound still loading never overlaps the speech.
+        playSeverity(SlotAlertSound(1, severity)) {
+            if (released || generation != voiceGeneration) return@playSeverity
+            val speech = Runnable { pendingSpeech = null; if (generation == voiceGeneration) speakMessage(text) }
+            pendingSpeech = speech
+            handler.postDelayed(speech, delay)
+        }
     }
 
     private var pendingSpeech: Runnable? = null
@@ -662,18 +830,25 @@ internal class AlertFeedback(
         pendingSpeech = null
         val generation = ++voiceGeneration
         val effects = effectsPack(pin)
-        playOnce(slot, effects)
-        val due = SystemClock.uptimeMillis() + speechDelayMs(context, effects, slot)
+        val delay = speechDelayMs(context, effects, slot)
+        // The line is due [delay] after the sound actually starts, so a sound still loading never
+        // overlaps it; both callbacks land on the audio looper.
+        var due: Long? = null
+        var line: VoicePcm? = null
+        fun speakWhenDue() {
+            val at = due ?: return
+            val pcm = line ?: return
+            if (released || generation != voiceGeneration) return
+            val speech = Runnable { pendingSpeech = null; if (generation == voiceGeneration) playVoice(pcm) }
+            pendingSpeech = speech
+            handler.postAtTime(speech, maxOf(at, SystemClock.uptimeMillis()))
+        }
+        playOnce(slot, effects) { due = SystemClock.uptimeMillis() + delay; speakWhenDue() }
         val pack = voicePack(pin)
         // Decoding runs off the audio looper while the severity sound covers it.
         voiceExecutor.execute {
             val pcm = VoicePackAssets.join(context, pack, announcement) ?: return@execute
-            handler.post {
-                if (released || generation != voiceGeneration) return@post
-                val speech = Runnable { pendingSpeech = null; if (generation == voiceGeneration) playVoice(pcm) }
-                pendingSpeech = speech
-                handler.postAtTime(speech, maxOf(due, SystemClock.uptimeMillis()))
-            }
+            handler.post { line = pcm; speakWhenDue() }
         }
     }
 
@@ -729,10 +904,11 @@ internal class AlertFeedback(
             val existing = geigerLoops[ruleId]
             if (depth >= 1.0) {
                 existing?.runnable?.let { handler.removeCallbacks(it) }
-                if (existing?.sustained == true) return
+                // A pack switch changes the sample, so the loop restarts on the new one.
+                if (existing?.sustained == true && existing.sample == sample) return
                 existing?.streamId?.let { soundPool.stop(it) }
                 val streamId = playSlot(tickSlot, loop = -1, my = my, pack = pack)
-                geigerLoops[ruleId] = GeigerLoop(soundType, pin, depth, sustained = true, streamId = streamId)
+                geigerLoops[ruleId] = GeigerLoop(soundType, pin, depth, sustained = true, streamId = streamId, sample = sample)
                 return
             }
 
@@ -792,6 +968,9 @@ internal class AlertFeedback(
         stopAllGeiger()
         voiceTrack?.let(::releaseTrack)
         voiceTrack = null
+        warmTrack?.let(::releaseTrack)
+        warmTrack = null
+        releaseMine()
         samples.reset()
         MySounds.releasePlayers(this)
         soundPool.release()
@@ -816,16 +995,17 @@ internal class AlertFeedback(
         }
     }
 
-    private fun playSlot(slot: String, loop: Int = 0, my: String? = null, pack: String = soundPack): Int {
+    private fun playSlot(slot: String, loop: Int = 0, my: String? = null, pack: String = soundPack, requestedAt: Long = SystemClock.uptimeMillis()): Int {
         if (released) return 0
         val soundId = slotSample(slot, pack, my)
         if (soundId == 0 || samples.state(soundId) == SoundSampleQueue.State.FAILED) return 0
         if (samples.state(soundId) == SoundSampleQueue.State.PENDING) {
-            samples.enqueue(soundId) { playSlot(slot, loop, my, pack) }
+            samples.enqueue(soundId) { playSlot(slot, loop, my, pack, requestedAt) }
             return 0
         }
         return soundPool.play(soundId, 1f, 1f, 1, loop, 1f)
           .also { check(it != 0) { "SoundPool refused playback" } }
+          .also { reportLatency("$pack/$slot", requestedAt, "ready") }
     }
 
     private fun geigerIntervalMs(rangeDepth: Double): Long =
@@ -840,6 +1020,8 @@ internal class AlertFeedback(
         val sustained: Boolean,
         val streamId: Int? = null,
         var runnable: Runnable? = null,
+        /** Sample a sustained loop plays. */
+        val sample: Int = 0,
     )
 
     companion object {
@@ -1023,3 +1205,10 @@ private const val ALERT_CATEGORY_SINGLE = "single"
 // @parity /modules/vescape-core/ios/alerts/AlertAudioPlayer.swift `alertCategoryGeiger`
 // @parity /modules/vescape-core/src/index.ts `AlertSoundCategory`
 private const val ALERT_CATEGORY_GEIGER = "geiger"
+
+/**
+ * A sound starting this late after its request records an `alert_audio_latency` Diagnostic Event.
+ *
+ * @parity /modules/vescape-core/ios/alerts/AlertAudioPlayer.swift `alertAudioLatencyReportMs`
+ */
+internal const val ALERT_AUDIO_LATENCY_REPORT_MS = 150L

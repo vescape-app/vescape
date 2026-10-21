@@ -302,7 +302,13 @@ internal class BoardSessionController(private val service: CoreForegroundService
         )
     }
     private val notificationGate = NotificationUpdateGate(NOTIFICATION_TELEMETRY_INTERVAL_MS)
-    private val alertFeedback by lazy { AlertFeedback(service, mainHandler) }
+    /** Alert audio runs here, so geiger ticks never wait on the main looper. */
+    private val alertAudioThread by lazy { android.os.HandlerThread("vescape-alert-audio", android.os.Process.THREAD_PRIORITY_URGENT_AUDIO).apply { start() } }
+    private val alertFeedback by lazy {
+        AlertFeedback(service, android.os.Handler(alertAudioThread.looper)) { name, props ->
+            mainHandler.post { recordLocalDiagnostic(name, boardConfig, "alert_audio", props) }
+        }
+    }
     private val alertCoordinator by lazy { AlertCoordinator(feedback = { alertFeedback }) }
     private val legalPolicyCatalog by lazy { LegalPolicyCatalog(service.applicationContext) }
     private val diagnosticsRecorder: DiagnosticsRecorder by lazy {
@@ -984,6 +990,7 @@ internal class BoardSessionController(private val service: CoreForegroundService
             stopCurrentBoardSession(emitDisconnected = false)
         }
         alertFeedback.release()
+        alertAudioThread.quitSafely()
         forceStopGps()
         groupRideObserver.stop()
         service.stopForeground(Service.STOP_FOREGROUND_REMOVE)
@@ -1157,6 +1164,8 @@ internal class BoardSessionController(private val service: CoreForegroundService
         // Load rules only after boardConfig is assigned — the engine scopes to the connected Board's
         // rules (#254), so reading before assignment would install the wrong Board's (or no) rules.
         CoreForegroundService.reloadAlertRules(service.applicationContext)
+        // Loads every sound and holds output open before the first alert can fire.
+        alertFeedback.wake()
         replayTransport = start.boardConfig.replayRecordingName?.let {
             ReplayTransport(
                 context = service,
@@ -2798,6 +2807,7 @@ internal class BoardSessionController(private val service: CoreForegroundService
         // and the next session must not still be reading time from the past.
         sessionClock = SystemSessionClock
         alertCoordinator.stopAllGeiger()
+        alertFeedback.goIdle()
         recordGpsSessionSummary(stoppedConfig)
         recordingCoordinator.finishBoardSession(
             status = if (emitDisconnected) "disconnected" else "stopped",
