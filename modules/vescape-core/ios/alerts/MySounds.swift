@@ -10,9 +10,10 @@ internal let soundOverrideSlots = [
   "cue.on", "cue.off", "cue.groupRide.created", "cue.groupRide.joined",
 ]
 
-/// My sounds: the rider's WAV library (≤2 MB, ≤15 s) in `custom-app-sounds/`, plus the override
-/// slots that point at it. `my-sounds.json` holds `{ sounds: [{id, name}], overrides: {slot: id} }`;
-/// each sound's audio is `<id>.wav`.
+/// My sounds: the rider's audio library (WAV, M4A or MP3, ≤2 MB, ≤15 s) in `custom-app-sounds/`,
+/// plus the override slots that point at it. `my-sounds.json` holds
+/// `{ sounds: [{id, name}], overrides: {slot: id} }`; each sound's audio is `<id>.<wav|m4a|mp3>`,
+/// the extension taken from the imported file's header.
 ///
 /// The custom app sound packs this replaces (`packs.json`) migrate on first read: every pack cue
 /// becomes a My sound, and the pack that was selected becomes overrides once `adoptLegacyPack` sees
@@ -58,8 +59,34 @@ internal enum MySounds {
     return base.appendingPathComponent("custom-app-sounds", isDirectory: true)
   }
 
+  private static let audioExtensions = ["wav", "m4a", "mp3"]
+
+  /// File name of a My sound's audio: `<uuid>.<wav|m4a|mp3>`.
   private static func isFileName(_ name: String) -> Bool {
-    name.range(of: "^[0-9a-fA-F-]{36}\\.wav$", options: .regularExpression) != nil
+    name.range(of: "^[0-9a-fA-F-]{36}\\.(wav|m4a|mp3)$", options: .regularExpression) != nil
+  }
+
+  /// Extension for an audio file starting with `header`, nil when it is not WAV, M4A or MP3.
+  internal static func audioExtension(_ header: Data) -> String? {
+    let bytes = [UInt8](header)
+    func ascii(_ from: Int, _ to: Int) -> String {
+      bytes.count >= to ? String(decoding: bytes[from..<to], as: UTF8.self) : ""
+    }
+    if ascii(0, 4) == "RIFF" && ascii(8, 12) == "WAVE" { return "wav" }
+    if ascii(4, 8) == "ftyp" { return "m4a" }
+    if ascii(0, 3) == "ID3" { return "mp3" }
+    // MPEG audio frame sync with a nonzero layer (layer 0 is AAC ADTS).
+    if bytes.count >= 2, bytes[0] == 0xFF, bytes[1] & 0xE0 == 0xE0, (bytes[1] >> 1) & 3 != 0 { return "mp3" }
+    return nil
+  }
+
+  /// Name of My sound `id`'s audio among `names`, nil when it has none.
+  private static func audioName(_ id: String, in names: (String) -> Bool) -> String? {
+    audioExtensions.map { "\(id).\($0)" }.first { isFileName($0) && names($0) }
+  }
+
+  private static func audioName(_ id: String, at dir: URL = directory) -> String? {
+    audioName(id) { FileManager.default.fileExists(atPath: dir.appendingPathComponent($0).path) }
   }
 
   /// Custom app sound packs → My sounds; each pack's cues are kept for `adoptLegacyPack`.
@@ -73,7 +100,7 @@ internal enum MySounds {
         guard let file = pack.sounds[cue], isFileName(file),
           FileManager.default.fileExists(atPath: dir.appendingPathComponent(file).path)
         else { continue }
-        let id = String(file.dropLast(".wav".count))
+        let id = (file as NSString).deletingPathExtension
         store.sounds.append(Sound(id: id, name: String("\(pack.name) \(label)".trimmingCharacters(in: .whitespaces).prefix(60))))
         if let slot { slots[slot] = id }
       }
@@ -136,37 +163,41 @@ internal enum MySounds {
     guard let source = URL(string: uri), source.isFileURL else { throw error("Could not open audio file") }
     try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
     let id = UUID().uuidString.lowercased()
-    let destination = directory.appendingPathComponent("\(id).wav")
+    let staged = directory.appendingPathComponent("\(id).import")
+    var destination = staged
     do {
-      try FileManager.default.copyItem(at: source, to: destination)
-      let attrs = try FileManager.default.attributesOfItem(atPath: destination.path)
-      guard let size = attrs[.size] as? Int, size > 0, size <= maxBytes else { throw error("WAV must be under 2 MB") }
-      let handle = try FileHandle(forReadingFrom: destination)
+      try FileManager.default.copyItem(at: source, to: staged)
+      let attrs = try FileManager.default.attributesOfItem(atPath: staged.path)
+      guard let size = attrs[.size] as? Int, size > 0, size <= maxBytes else { throw error("Audio must be under 2 MB") }
+      let handle = try FileHandle(forReadingFrom: staged)
       let header = handle.readData(ofLength: 12)
       try handle.close()
-      guard header.count == 12, String(data: header.prefix(4), encoding: .ascii) == "RIFF",
-        String(data: header.suffix(4), encoding: .ascii) == "WAVE" else { throw error("Only WAV files are supported") }
+      guard let ext = audioExtension(header) else { throw error("Use a WAV, M4A or MP3 file") }
+      // AVAudioFile picks its parser from the extension.
+      destination = directory.appendingPathComponent("\(id).\(ext)")
+      try FileManager.default.moveItem(at: staged, to: destination)
       let audio: AVAudioFile
       do { audio = try AVAudioFile(forReading: destination) }
-      catch { throw Self.error("WAV audio could not be decoded") }
+      catch { throw Self.error("Audio could not be decoded") }
       guard audio.processingFormat.sampleRate >= 8_000,
         audio.processingFormat.sampleRate <= 192_000,
-        audio.length <= 2_880_000 else { throw error("Unsupported WAV audio format") }
+        audio.length <= 2_880_000 else { throw error("Unsupported audio format") }
       let duration = Double(audio.length) / audio.processingFormat.sampleRate
       guard duration > 0, duration <= maxDuration else { throw error("Audio must be 15 seconds or shorter") }
       guard let buffer = AVAudioPCMBuffer(
         pcmFormat: audio.processingFormat,
         frameCapacity: AVAudioFrameCount(audio.length)
-      ) else { throw error("WAV audio could not be decoded") }
+      ) else { throw error("Audio could not be decoded") }
       do { try audio.read(into: buffer) }
-      catch { throw Self.error("WAV audio could not be decoded") }
-      guard buffer.frameLength > 0 else { throw error("WAV audio could not be decoded") }
+      catch { throw Self.error("Audio could not be decoded") }
+      guard buffer.frameLength > 0 else { throw error("Audio could not be decoded") }
       var store = read()
       store.sounds.append(Sound(id: id, name: clean))
       try save(store)
     } catch {
       // intentional-suppression: cleanup after failed import is best effort; original error is rethrown
       try? FileManager.default.removeItem(at: destination)
+      try? FileManager.default.removeItem(at: staged)
       throw error
     }
     return state()
@@ -192,7 +223,7 @@ internal enum MySounds {
     store.legacyPacks = store.legacyPacks?.mapValues { $0.filter { $0.value != id } }
     try save(store)
     // intentional-suppression: deleting metadata is authoritative; a leftover file is inert
-    try? FileManager.default.removeItem(at: directory.appendingPathComponent("\(id).wav"))
+    if let name = audioName(id) { try? FileManager.default.removeItem(at: directory.appendingPathComponent(name)) }
     return state()
   }
 
@@ -226,8 +257,8 @@ internal enum MySounds {
   /// Audio of My sound `id`, nil when it is gone or unreadable.
   static func file(_ id: String) -> URL? {
     lock.lock(); defer { lock.unlock() }
-    guard read().sounds.contains(where: { $0.id == id }), isFileName("\(id).wav") else { return nil }
-    let url = directory.appendingPathComponent("\(id).wav")
+    guard read().sounds.contains(where: { $0.id == id }), let name = audioName(id) else { return nil }
+    let url = directory.appendingPathComponent(name)
     // intentional-suppression: a missing file or unreadable attributes fall back to the pack
     guard let size = try? FileManager.default.attributesOfItem(atPath: url.path)[.size] as? Int,
       size > 0, size <= maxBytes else { return nil }
@@ -247,8 +278,9 @@ internal enum MySounds {
     var entries: [String: Data] = [:]
     for sound in store.sounds {
       // intentional-suppression: unreadable audio is omitted and its sound is pruned on restore
-      if let data = try? Data(contentsOf: directory.appendingPathComponent("\(sound.id).wav")), data.count <= maxBytes {
-        entries["\(sound.id).wav"] = data
+      if let name = audioName(sound.id), let data = try? Data(contentsOf: directory.appendingPathComponent(name)),
+        data.count <= maxBytes {
+        entries[name] = data
       }
     }
     // intentional-suppression: an unencodable manifest leaves the backup without sounds
@@ -279,7 +311,7 @@ internal enum MySounds {
     }
     var store = try entries[manifestName].map { try JSONDecoder().decode(Store.self, from: $0) }
     if var candidate = store {
-      candidate.sounds = candidate.sounds.filter { hasAudio("\($0.id).wav") }
+      candidate.sounds = candidate.sounds.filter { audioName($0.id, in: hasAudio) != nil }
       let ids = Set(candidate.sounds.map(\.id))
       candidate.overrides = candidate.overrides.filter { soundOverrideSlots.contains($0.key) && ids.contains($0.value) }
       candidate.legacyPacks = candidate.legacyPacks?.mapValues { $0.filter { ids.contains($0.value) } }
@@ -287,7 +319,7 @@ internal enum MySounds {
     }
     let legacy = store == nil ? entries[legacyManifestName] : nil
     let audio = entries.keys.filter { name in
-      hasAudio(name) && (store?.sounds.contains { "\($0.id).wav" == name } ?? (legacy != nil))
+      hasAudio(name) && (store?.sounds.contains { audioName($0.id, in: hasAudio) == name } ?? (legacy != nil))
     }
     let old = targetDirectory.deletingLastPathComponent().appendingPathComponent("custom-app-sounds-old")
     guard !FileManager.default.fileExists(atPath: old.path) else {

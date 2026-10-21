@@ -21,6 +21,8 @@ internal let voiceLevels = ["off", "standard", "full"]
 internal let voiceLevelDefault = "standard"
 
 /// Voice pack the `voice` setting plays: a named pack, or the one `effectsVoice` names.
+/// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/alerts/VoicePacks.kt `voicePackId`
+/// @parity /src/modules/settings/lib/appSounds.ts `resolvedVoiceId`
 internal func voicePackId(_ voice: String, effectsVoice: String?) -> String {
   if voicePackIds.contains(voice) { return voice }
   if let effectsVoice, voicePackIds.contains(effectsVoice) { return effectsVoice }
@@ -34,6 +36,8 @@ internal let voiceKeyValueTypes: [String: String?] = [
   "battery": "percent",
   "motorTemp": "degrees",
   "controllerTemp": "degrees",
+  "speed": "number",
+  "duty": "number",
   "link.connected": nil,
   "link.lost": nil,
   "system.error": nil,
@@ -54,9 +58,13 @@ internal func voiceKey(_ controlId: String) -> String? {
   case "battery": return "battery"
   case "motor-temp": return "motorTemp"
   case "controller-temp": return "controllerTemp"
+  case "speed": return "speed"
+  case "duty": return "duty"
   default: return nil
   }
 }
+
+private let kmPerMile = 1.609344
 
 /// One voice announcement: the severity sound, then the line for `key` with `value` spoken last.
 internal struct VoiceAnnouncement: Equatable {
@@ -68,7 +76,7 @@ internal struct VoiceAnnouncement: Equatable {
 /// What a `voice` sound says for an alert on `controlId`. The key comes from the sound string or the
 /// metric; the value from the sound string or `threshold` (percent for battery only while
 /// `percentAvailable`: without a battery config a battery threshold is volts), °C read in °F under
-/// imperial units, rounded to the nearest clip. A nil key plays the severity sound only.
+/// imperial units, km/h read in mph, rounded to the nearest clip. A nil key plays the severity sound only.
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/alerts/VoicePacks.kt `voiceAnnouncement`
 internal func voiceAnnouncement(
   _ sound: VoiceAlertSound,
@@ -82,6 +90,7 @@ internal func voiceAnnouncement(
   let value: Double?
   switch key.flatMap({ voiceKeyValueTypes[$0] ?? nil }) {
   case "percent": value = raw
+  case "number": value = raw.map { key == "speed" && unitSystem == "imperial" ? $0 / kmPerMile : $0 }
   case "degrees": value = raw.map { unitSystem == "imperial" ? $0 * 9 / 5 + 32 : $0 }
   default: value = nil
   }

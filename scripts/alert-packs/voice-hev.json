@@ -5,6 +5,8 @@
   "fx": "pitch -120 sinc 280-3600 flanger 0 0.6 0 40 0.4 sine equalizer 2500 1.2q +6 compand 0.003,0.08 -70,-70,-50,-10,-20,-4,0,-2 gain -n -0.3 overdrive 4 gain -n -0.5 compand 0.001,0.05 -6,-6,0,-1 gain -n -0.3",
   "units": { "percent": ["percent", "percent"], "degrees": ["degree", "degrees"] },
   "lines": {
+    "speed": { "start": ["Speed..."] },
+    "duty": { "start": ["Duty..."] },
     "battery": { "start": ["Power reserve...", "Reserve at..."] },
     "battery.warning": {
       "start": ["Caution. Power reserve low...", "Caution. Reserve dropping..."]

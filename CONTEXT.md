@@ -312,7 +312,7 @@ A user-authored spoken phrase on a single-threshold **Alert Rule** that may incl
 _Avoid_: TTS sound, voice preset, notification text
 
 **Voice Pack**:
-A bundled set of pre-generated spoken lines per **Message Key** plus value clips, chosen app-wide by the Voice setting (or Matching, the voice the selected effects pack names). A voice announcement plays the severity sound, then the line with its value; it never contains beeps.
+A bundled set of pre-generated spoken lines per **Message Key** plus value clips, chosen app-wide by the Voice setting (by default the voice the selected effects pack names). A voice announcement plays the severity sound, then the line with its value; it never contains beeps.
 _Avoid_: TTS, voice preset, sound pack
 
 **Message Key**:

@@ -103,4 +103,27 @@ class MySoundsSnapshotTest {
     assertNull(MySounds.overrideFile(context, "severity.warning"))
     assertNull(MySounds.file(context, onId))
   }
+
+  @Test fun recognizesWavM4aAndMp3Headers() {
+    fun header(vararg parts: Any) = parts.flatMap { if (it is String) it.toByteArray().toList() else listOf((it as Int).toByte()) }.toByteArray()
+    assertEquals("wav", MySounds.audioExtension(header("RIFF", 0, 0, 0, 0, "WAVE")))
+    assertEquals("m4a", MySounds.audioExtension(header(0, 0, 0, 32, "ftypM4A ")))
+    assertEquals("mp3", MySounds.audioExtension(header("ID3", 4, 0)))
+    assertEquals("mp3", MySounds.audioExtension(header(0xFF, 0xFB, 0x90, 0)))
+    // AAC ADTS shares the frame sync but has layer 0; OGG is not decodable on iOS.
+    assertNull(MySounds.audioExtension(header(0xFF, 0xF1, 0x50, 0)))
+    assertNull(MySounds.audioExtension(header("OggS", 0, 2)))
+    assertNull(MySounds.audioExtension(header("RI")))
+  }
+
+  @Test fun soundsResolveWhicheverFormatWasImported() = withStore { context, live ->
+    live.resolve("$onId.m4a").writeBytes(byteArrayOf(1))
+    live.resolve("my-sounds.json").writeText("""{"sounds":[{"id":"$onId","name":"Beep"}],"overrides":{}}""")
+    assertEquals(live.resolve("$onId.m4a"), MySounds.file(context, onId))
+    val snapshot = live.parentFile!!.resolve("snapshot")
+    MySounds.snapshotForBackup(context, snapshot)
+    assertTrue(snapshot.resolve("$onId.m4a").isFile)
+    MySounds.delete(context, onId)
+    assertFalse(live.resolve("$onId.m4a").exists())
+  }
 }

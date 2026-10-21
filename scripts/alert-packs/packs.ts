@@ -7,7 +7,8 @@ export const PACKS_DIR = join(ROOT, 'shared', 'alerts', 'packs')
 export const MANIFESTS = ['voice-hev', 'voice-clean'] as const
 export const CLIP_EXTENSION = '.m4a'
 
-export type ValueType = 'percent' | 'degrees'
+/** `number` is a bare number: speed and duty skip the unit so the line stays short. */
+export type ValueType = 'percent' | 'degrees' | 'number'
 
 export interface Catalog {
   severities: string[]
@@ -26,7 +27,7 @@ export interface VoiceManifest {
   kind: 'voice'
   kokoro: { voice: string; speed: number }
   fx: string
-  units: Record<ValueType, [singular: string, plural: string]>
+  units: Record<Exclude<ValueType, 'number'>, [singular: string, plural: string]>
   lines: Record<string, Line>
 }
 
@@ -133,6 +134,7 @@ export function numberWords(n: number): string {
 }
 
 export function valueText(manifest: VoiceManifest, type: ValueType, n: number) {
+  if (type === 'number') return `${numberWords(n)}.`
   const [singular, plural] = manifest.units[type]
   return `${numberWords(n)} ${Math.abs(n) === 1 ? singular : plural}.`
 }

@@ -42,11 +42,11 @@ ended.
 
 ### My sounds and overrides
 
-**My sounds** is the rider's library of named WAVs: add (import), rename, delete, preview. Imports
-accept decodable WAV up to 2 MB and 15 seconds; the document picker source is copied, so its URI is
+**My sounds** is the rider's library of named sounds: add (import), rename, delete, preview. Imports
+accept decodable WAV, M4A or MP3 (recognized by the file header) up to 2 MB and 15 seconds; the document picker source is copied, so its URI is
 never used for later playback. Native owns the store (`MySounds.kt`, `MySounds.swift`):
 `custom-app-sounds/my-sounds.json` (`{ sounds: [{id, name}], overrides: {slot: id} }`) plus one
-`<id>.wav` per sound.
+`<id>.<wav|m4a|mp3>` per sound.
 
 **Overrides** are a fixed list of slots, each optionally set to a My sound that wins over the
 effects pack: `severity.positive` (app cues), the `severity.info|warning|critical` sounds (alert
@@ -82,8 +82,9 @@ migrates as above. A restored sound whose file is absent is dropped with its ove
 Speech comes from a second app-wide choice next to Sound effects:
 
 - **Voice** (`voice` setting: `matching`, `hev`, `clean`; default `matching`): whole-sentence lines
-  per message key plus value clips. `Matching` plays the voice the effects pack's `pack.json` names
-  (HEV → HEV; Retro, Simple, Clean → Clean).
+  per message key plus value clips. Unset (`matching`) plays the voice the effects pack's `pack.json`
+  names (HEV → HEV; Retro, Simple, Clean → Clean); Settings shows that voice as selected, with no
+  separate Matching option. Picking a voice level previews it.
 - **Voice level** (`voiceLevel`: `off`, `standard`, `full`; default `standard`): Off plays effects
   only for presets, Standard speaks preset alerts. Full also speaks app cues and Group Ride events:
   the cue's effect, then its voice line (`on` → `link.connected`, `off` → `link.lost`, `error` →
@@ -106,9 +107,10 @@ voice are decoded in the background when sound settings apply; value clips decod
 stay cached.
 
 - **Key**: from the sound string, else from the rule's metric (`battery` → `battery`, `motor-temp` →
-  `motorTemp`, `controller-temp` → `controllerTemp`). No key: severity sound only.
+  `motorTemp`, `controller-temp` → `controllerTemp`, `speed`, `duty`). No key: severity sound only.
 - **Value**: from the sound string, else the rule's (effective) threshold. Battery speaks a
-  percent, so a battery rule without a battery percent speaks no value. Degrees are °C, converted
+  percent, so a battery rule without a battery percent speaks no value. Speed is km/h, read in mph
+  under imperial units. Degrees are °C, converted
   to °F under imperial units before rounding to the nearest clip (degree clips say only
   "degrees", −30…300). A missing value clip is skipped.
 - **Line**: `<key>.<severity>`, else the generic `<key>`, else none (severity sound only, never
@@ -160,7 +162,8 @@ shared/alerts/packs/
   `cue.groupRide.created|joined`, each falling back as in [Sound effects](#sound-effects). All four
   built-in packs fill every optional slot today.
   Effects packs never contain voice; `pack.json` names the matching voice pack.
-- **Voice keys**: `battery` (percent), `motorTemp`, `controllerTemp` (degrees), `link.connected`,
+- **Voice keys**: `battery` (percent), `motorTemp`, `controllerTemp` (degrees), `speed`, `duty`
+  (number), `link.connected`,
   `link.lost`, `system.error`, `groupRide.created|joined|riderJoined|riderLeft|lost|restored`,
   `ride.end`. Each key needs a
   generic line; `<key>.<severity>` variants are optional. A line is `start` (+ value) (+ `end`),
@@ -168,7 +171,9 @@ shared/alerts/packs/
   and gets no clip. HEV and Clean ship two `start` variants per line and an optional `end` on
   critical lines.
 - **Value clips**: one clip per number with its unit, spelled out (`minus five degrees.`):
-  percent 0–100, degrees −30…300 (the clip says only "degrees", shared by °C and °F).
+  percent 0–100, degrees −30…300 (the clip says only "degrees", shared by °C and °F), number
+  0–100 with no unit. Speed and duty use bare numbers and one generic line ("Speed…"), no
+  severity variants: the alert is time-critical, so it stays as short as possible.
 - **Format**: AAC-LC in `.m4a`, mono 22 050 Hz, 40 kbit/s, for both effects and voice. Android
   `MediaCodec` and iOS `AVAudioFile` both decode it; Ogg Opus has no iOS decoder. Native must drop
   the AAC encoder priming (~1024 samples of leading silence) before joining clips. Intermediate

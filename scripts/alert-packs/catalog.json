@@ -4,6 +4,8 @@
     "battery": "percent",
     "motorTemp": "degrees",
     "controllerTemp": "degrees",
+    "speed": "number",
+    "duty": "number",
     "link.connected": null,
     "link.lost": null,
     "system.error": null,
@@ -17,6 +19,7 @@
   },
   "valueRanges": {
     "percent": { "min": 0, "max": 100 },
-    "degrees": { "min": -30, "max": 300 }
+    "degrees": { "min": -30, "max": 300 },
+    "number": { "min": 0, "max": 100 }
   }
 }

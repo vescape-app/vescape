@@ -56,7 +56,7 @@ export function formatTtsAlertSound(severity: AlertSeverity, text: string): stri
 /**
  * `voice(severity):key:value` — the severity sound once, then the voice pack's line for `key` with
  * `value` spoken last. A custom rule stores `voice(severity):`: key from its metric, value from its
- * threshold. A `value` is in the key's metric unit (%, °C).
+ * threshold. A `value` is in the key's metric unit (%, °C, km/h).
  *
  * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/alerts/AlertSoundString.kt `parseVoiceAlertSound`
  * @parity /modules/vescape-core/ios/alerts/AlertSoundString.swift `parseVoiceAlertSound`
@@ -98,6 +98,8 @@ export const VOICE_KEY_BY_CONTROL: Partial<Record<string, string>> = {
   battery: 'battery',
   'motor-temp': 'motorTemp',
   'controller-temp': 'controllerTemp',
+  speed: 'speed',
+  duty: 'duty',
 }
 
 /**

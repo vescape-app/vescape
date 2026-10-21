@@ -38,7 +38,7 @@ final class VoicePacksTests: XCTestCase {
       VoiceAnnouncement(severity: .info, key: "battery", value: nil)
     )
     XCTAssertEqual(
-      voiceAnnouncement(custom, controlId: "speed", threshold: 30, percentAvailable: true, unitSystem: "metric"),
+      voiceAnnouncement(custom, controlId: "power", threshold: 30, percentAvailable: true, unitSystem: "metric"),
       VoiceAnnouncement(severity: .info, key: nil, value: nil)
     )
     let preset = VoiceAlertSound(severity: .critical, key: "motorTemp", value: nil)
@@ -51,6 +51,17 @@ final class VoicePacksTests: XCTestCase {
     XCTAssertEqual(voiceAnnouncement(preset, controlId: "motor-temp", threshold: -20.6, percentAvailable: false, unitSystem: "imperial").value, -5)
     let explicit = VoiceAlertSound(severity: .warning, key: "battery", value: 10)
     XCTAssertEqual(voiceAnnouncement(explicit, controlId: "speed", threshold: 50, percentAvailable: false, unitSystem: "metric").value, 10)
+    // Speed reads in mph under imperial (50 km/h = 31.07 mph); duty stays a percent.
+    let speed = VoiceAlertSound(severity: .warning, key: nil, value: nil)
+    XCTAssertEqual(
+      voiceAnnouncement(speed, controlId: "speed", threshold: 50, percentAvailable: false, unitSystem: "metric"),
+      VoiceAnnouncement(severity: .warning, key: "speed", value: 50)
+    )
+    XCTAssertEqual(voiceAnnouncement(speed, controlId: "speed", threshold: 50, percentAvailable: false, unitSystem: "imperial").value, 31)
+    XCTAssertEqual(
+      voiceAnnouncement(speed, controlId: "duty", threshold: 85, percentAvailable: false, unitSystem: "imperial"),
+      VoiceAnnouncement(severity: .warning, key: "duty", value: 85)
+    )
   }
 
   func testResolvesSeverityVariantThenGenericThenNothing() {

@@ -3300,7 +3300,7 @@ export interface MySoundsState {
   overrides: Partial<Record<SoundOverrideSlot, string>>
 }
 export const mySounds = (): Promise<MySoundsState> => native.mySounds()
-/** Import a picked WAV (≤2 MB, ≤15 s) under `name`; native validates and stores it. */
+/** Import a picked WAV, M4A or MP3 (≤2 MB, ≤15 s) under `name`; native validates and stores it. */
 export const importMySound = (uri: string, name: string): Promise<MySoundsState> =>
   native.importMySound(uri, name)
 export const renameMySound = (id: string, name: string): Promise<MySoundsState> =>

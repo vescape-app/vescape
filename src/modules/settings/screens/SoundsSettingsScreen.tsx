@@ -37,7 +37,8 @@ import { interaction, theme } from '@/constants/theme'
 import {
   EFFECTS_PACKS,
   PACK_PREVIEW_ROWS,
-  matchingVoiceName,
+  resolvedVoiceId,
+  VOICE_LEVEL_INFO,
   SOUND_OVERRIDE_SLOTS,
   VOICE_LEVELS,
   VOICE_PACKS,
@@ -50,7 +51,7 @@ import { useMySounds } from '@/modules/alerts/hooks/useMySounds'
 function soundName(fileName: string | undefined): string {
   return (
     (fileName ?? '')
-      .replace(/\.wav$/i, '')
+      .replace(/\.(wav|m4a|mp3)$/i, '')
       .trim()
       .slice(0, 60) || 'My sound'
   )
@@ -87,7 +88,15 @@ export default function SoundsSettingsScreen() {
   const addSound = () => {
     void run(async () => {
       const result = await DocumentPicker.getDocumentAsync({
-        type: ['audio/wav', 'audio/x-wav'],
+        type: [
+          'audio/wav',
+          'audio/x-wav',
+          'audio/mp4',
+          'audio/x-m4a',
+          'audio/m4a',
+          'audio/mpeg',
+          'audio/mp3',
+        ],
         copyToCacheDirectory: true,
       })
       if (result.canceled) return null
@@ -226,12 +235,15 @@ export default function SoundsSettingsScreen() {
             label="Voice"
             right={
               <Select
-                options={[
-                  { label: `Matching (${matchingVoiceName(soundPack)})`, value: 'matching' },
-                  ...VOICE_PACKS.map((pack) => ({ label: pack.name, value: pack.id })),
-                ]}
-                value={voice}
-                onChange={(next) => void set('voice', next)}
+                options={VOICE_PACKS.map((pack) => ({ label: pack.name, value: pack.id }))}
+                value={resolvedVoiceId(voice, soundPack)}
+                onChange={(next) =>
+                  // Preview once native has the new voice; a failed write shows in the storage banner.
+                  void set('voice', next).then(
+                    () => previewAlertSound(VOICE_LEVEL_INFO.standard.preview),
+                    () => undefined,
+                  )
+                }
                 style={styles.voiceSelect}
               />
             }
@@ -245,19 +257,15 @@ export default function SoundsSettingsScreen() {
               <SegmentedToggle
                 options={[...VOICE_LEVELS]}
                 value={voiceLevel}
-                onChange={(next) => void set('voiceLevel', next)}
+                onChange={(next) => {
+                  void set('voiceLevel', next)
+                  previewAlertSound(VOICE_LEVEL_INFO[next].preview)
+                }}
                 accent={theme.settingsIcon.sounds}
               />
               <Text style={styles.voiceDescription}>
-                Only affects built-in alerts and app sounds. Custom alert rules always play as
-                configured.
+                {VOICE_LEVEL_INFO[voiceLevel].description} Custom alerts always play as configured.
               </Text>
-              {voiceLevel === 'full' && (
-                <Text style={styles.voiceDescription}>
-                  Speaks connection and group ride events too. Pick Full with HEV for the complete
-                  HEV suit experience.
-                </Text>
-              )}
             </View>
           </SettingsRow>
         </SettingsCard>
@@ -335,7 +343,7 @@ export default function SoundsSettingsScreen() {
           </Pressable>
         </View>
         <Text style={styles.sectionNote}>
-          WAV up to 2 MB and 15 seconds. Custom alerts can play any of these.
+          WAV, M4A or MP3, up to 2 MB and 15 seconds. Custom alerts can play any of these.
         </Text>
 
         {library.sounds.length > 0 && (

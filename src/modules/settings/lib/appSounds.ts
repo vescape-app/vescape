@@ -32,10 +32,19 @@ export const VOICE_PACKS = [
   { id: 'clean', name: 'Clean' },
 ] as const
 
-/** Name of the voice `Matching` plays with effects pack `soundPack` (its `pack.json` `voice`). */
-export function matchingVoiceName(soundPack: string): string {
-  const id = EFFECTS_PACKS.find((pack) => pack.id === soundPack)?.voice ?? 'clean'
-  return VOICE_PACKS.find((pack) => pack.id === id)?.name ?? 'Clean'
+type VoicePackId = (typeof VOICE_PACKS)[number]['id']
+
+/**
+ * Voice pack the `voice` setting plays: `matching` (the default) follows effects pack `soundPack`
+ * (its `pack.json` `voice`).
+ *
+ * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/alerts/VoicePacks.kt `voicePackId`
+ * @parity /modules/vescape-core/ios/alerts/VoicePacks.swift `voicePackId`
+ */
+export function resolvedVoiceId(voice: string, soundPack: string): VoicePackId {
+  const named = VOICE_PACKS.find((pack) => pack.id === voice)
+  if (named) return named.id
+  return EFFECTS_PACKS.find((pack) => pack.id === soundPack)?.voice ?? 'clean'
 }
 
 /**
@@ -49,6 +58,25 @@ export const VOICE_LEVELS = [
   { value: 'standard', label: 'Standard' },
   { value: 'full', label: 'Full' },
 ] as const
+
+/** What each voice level does, and the spec previewed when it is picked. */
+export const VOICE_LEVEL_INFO: Record<
+  (typeof VOICE_LEVELS)[number]['value'],
+  { description: string; preview: string }
+> = {
+  off: {
+    description: 'Built-in alerts play their sound only, no speech.',
+    preview: 'alert(1):warning',
+  },
+  standard: {
+    description: 'Built-in alerts say what is wrong after their sound, like "Battery low… 20%".',
+    preview: 'voice(warning):battery:20',
+  },
+  full: {
+    description: 'Standard, plus spoken connection, ride end and Group Ride events.',
+    preview: 'voice(info):link.connected',
+  },
+}
 
 const SLOT_LABELS: Record<PackSoundSlot, string> = {
   'severity.positive': 'Positive',

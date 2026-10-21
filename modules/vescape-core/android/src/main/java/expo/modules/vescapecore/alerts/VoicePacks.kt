@@ -36,7 +36,12 @@ internal const val VOICE_MATCHING = "matching"
 internal val VOICE_LEVELS = listOf("off", "standard", "full")
 internal const val VOICE_LEVEL_DEFAULT = "standard"
 
-/** Voice pack the [voice] setting plays: a named pack, or the one effects pack [effectsVoice] names. */
+/**
+ * Voice pack the [voice] setting plays: a named pack, or the one effects pack [effectsVoice] names.
+ *
+ * @parity /modules/vescape-core/ios/alerts/VoicePacks.swift `voicePackId`
+ * @parity /src/modules/settings/lib/appSounds.ts `resolvedVoiceId`
+ */
 internal fun voicePackId(voice: String, effectsVoice: String?): String = when {
     voice in VOICE_PACK_IDS -> voice
     effectsVoice in VOICE_PACK_IDS -> effectsVoice!!
@@ -54,6 +59,8 @@ internal val VOICE_KEY_VALUE_TYPES: Map<String, String?> = mapOf(
     "battery" to "percent",
     "motorTemp" to "degrees",
     "controllerTemp" to "degrees",
+    "speed" to "number",
+    "duty" to "number",
     "link.connected" to null,
     "link.lost" to null,
     "system.error" to null,
@@ -76,8 +83,12 @@ internal fun voiceKey(controlId: String): String? = when (controlId) {
     "battery" -> "battery"
     "motor-temp" -> "motorTemp"
     "controller-temp" -> "controllerTemp"
+    "speed" -> "speed"
+    "duty" -> "duty"
     else -> null
 }
+
+private const val KM_PER_MILE = 1.609344
 
 /** One voice announcement: the severity sound, then the line for [key] with [value] spoken last. */
 internal data class VoiceAnnouncement(val severity: AlertSeverity, val key: String?, val value: Int?)
@@ -86,7 +97,7 @@ internal data class VoiceAnnouncement(val severity: AlertSeverity, val key: Stri
  * What a `voice` sound says for an alert on [controlId]. The key comes from the sound string or the
  * metric; the value from the sound string or [threshold] (percent for battery only while
  * [percentAvailable]: without a battery config a battery threshold is volts), °C read in °F under
- * imperial units, rounded to the nearest clip. A null key plays the severity sound only.
+ * imperial units, km/h read in mph, rounded to the nearest clip. A null key plays the severity sound only.
  *
  * @parity /modules/vescape-core/ios/alerts/VoicePacks.swift `voiceAnnouncement`
  */
@@ -101,6 +112,7 @@ internal fun voiceAnnouncement(
     val raw = sound.value ?: threshold?.takeIf { key != "battery" || percentAvailable }
     val value = when (key?.let { VOICE_KEY_VALUE_TYPES[it] }) {
         "percent" -> raw
+        "number" -> raw?.let { if (key == "speed" && unitSystem == "imperial") it / KM_PER_MILE else it }
         "degrees" -> raw?.let { if (unitSystem == "imperial") it * 9.0 / 5.0 + 32.0 else it }
         else -> null
     }

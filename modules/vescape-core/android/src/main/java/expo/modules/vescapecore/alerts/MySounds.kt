@@ -23,9 +23,10 @@ internal val SOUND_OVERRIDE_SLOTS = listOf(
 )
 
 /**
- * My sounds: the rider's WAV library (≤2 MB, ≤15 s) in `custom-app-sounds/`, plus the override
- * slots that point at it. `my-sounds.json` holds `{ sounds: [{id, name}], overrides: {slot: id} }`;
- * each sound's audio is `<id>.wav`.
+ * My sounds: the rider's audio library (WAV, M4A or MP3, ≤2 MB, ≤15 s) in `custom-app-sounds/`,
+ * plus the override slots that point at it. `my-sounds.json` holds
+ * `{ sounds: [{id, name}], overrides: {slot: id} }`; each sound's audio is `<id>.<wav|m4a|mp3>`,
+ * the extension taken from the imported file's header.
  *
  * The custom app sound packs this replaces (`packs.json`) migrate on first read: every pack cue
  * becomes a My sound, and the pack that was selected becomes overrides once [adoptLegacyPack] sees
@@ -38,7 +39,28 @@ internal object MySounds {
   private const val MAX_DURATION_MS = 15_000L
   private const val MANIFEST = "my-sounds.json"
   private const val LEGACY_MANIFEST = "packs.json"
-  private val fileName = Regex("[0-9a-fA-F-]{36}\\.wav")
+  private val AUDIO_EXTENSIONS = listOf("wav", "m4a", "mp3")
+  /** File name of a My sound's audio: `<uuid>.<wav|m4a|mp3>`. */
+  internal val fileName = Regex("[0-9a-fA-F-]{36}\\.(wav|m4a|mp3)")
+
+  /** Extension for an audio file starting with [header], null when it is not WAV, M4A or MP3. */
+  internal fun audioExtension(header: ByteArray): String? {
+    fun ascii(from: Int, to: Int) = if (header.size >= to) String(header, from, to - from, Charsets.US_ASCII) else ""
+    val b0 = header.getOrNull(0)?.toInt()?.and(0xFF)
+    val b1 = header.getOrNull(1)?.toInt()?.and(0xFF)
+    return when {
+      ascii(0, 4) == "RIFF" && ascii(8, 12) == "WAVE" -> "wav"
+      ascii(4, 8) == "ftyp" -> "m4a"
+      ascii(0, 3) == "ID3" -> "mp3"
+      // MPEG audio frame sync with a nonzero layer (layer 0 is AAC ADTS).
+      b0 == 0xFF && b1 != null && b1 and 0xE0 == 0xE0 && (b1 shr 1) and 3 != 0 -> "mp3"
+      else -> null
+    }
+  }
+
+  /** Name of My sound [id]'s audio in [dir], null when it has none. */
+  private fun audioName(dir: File, id: String): String? =
+    AUDIO_EXTENSIONS.map { "$id.$it" }.firstOrNull { fileName.matches(it) && File(dir, it).isFile }
   /**
    * Legacy pack cue → (override slot, label); its `join` was another rider joining. Error and
    * rider joined have no override slot, so they migrate as plain library sounds.
@@ -93,7 +115,7 @@ internal object MySounds {
         val (slot, label) = target
         val file = cues.optString(cue)
         if (!fileName.matches(file) || !File(dir, file).isFile) continue
-        val id = file.removeSuffix(".wav")
+        val id = file.substringBeforeLast('.')
         sounds += Sound(id, "${pack.optString("name")} $label".trim().take(60))
         if (slot != null) slots[slot] = id
       }
@@ -141,30 +163,33 @@ internal object MySounds {
   @Synchronized fun import(context: Context, uri: String, name: String): Map<String, Any> {
     val clean = validatedName(name)
     val id = UUID.randomUUID().toString()
-    val target = File(directory(context), "$id.wav")
+    val staged = File(directory(context), "$id.import")
+    var target = staged
     try {
       context.contentResolver.openInputStream(Uri.parse(uri)).use { input ->
         requireNotNull(input) { "Could not open audio file" }
-        target.outputStream().use { output ->
+        staged.outputStream().use { output ->
           val buffer = ByteArray(8192)
           var bytes = 0L
           while (true) {
             val count = input.read(buffer)
             if (count < 0) break
             bytes += count
-            require(bytes <= MAX_BYTES) { "WAV must be under 2 MB" }
+            require(bytes <= MAX_BYTES) { "Audio must be under 2 MB" }
             output.write(buffer, 0, count)
           }
-          require(bytes > 0) { "Empty WAV file" }
+          require(bytes > 0) { "Empty audio file" }
         }
       }
       val header = ByteArray(12)
-      target.inputStream().use { require(it.read(header) == 12) { "Invalid WAV file" } }
-      require(String(header, 0, 4) == "RIFF" && String(header, 8, 4) == "WAVE") { "Only WAV files are supported" }
+      val read = staged.inputStream().use { it.read(header) }
+      val extension = requireNotNull(audioExtension(header.copyOf(maxOf(read, 0)))) { "Use a WAV, M4A or MP3 file" }
+      target = File(directory(context), "$id.$extension")
+      check(staged.renameTo(target)) { "Could not save audio file" }
       val retriever = MediaMetadataRetriever()
       try {
         try { retriever.setDataSource(target.absolutePath) }
-        catch (_: Exception) { throw IllegalArgumentException("WAV audio could not be decoded") }
+        catch (_: Exception) { throw IllegalArgumentException("Audio could not be decoded") }
         val duration = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_DURATION)?.toLongOrNull()
         require(duration != null && duration in 1..MAX_DURATION_MS) { "Audio must be 15 seconds or shorter" }
       } finally { retriever.release() }
@@ -173,12 +198,13 @@ internal object MySounds {
         decoder.setDataSource(target.absolutePath)
         decoder.prepare()
       } catch (_: Exception) {
-        throw IllegalArgumentException("WAV audio could not be decoded")
+        throw IllegalArgumentException("Audio could not be decoded")
       } finally { decoder.release() }
       val store = read(context)
       save(context, store.copy(sounds = store.sounds + Sound(id, clean)))
     } catch (error: Exception) {
       target.delete()
+      staged.delete()
       throw error
     }
     return state(context)
@@ -201,7 +227,7 @@ internal object MySounds {
       overrides = store.overrides.filterValues { it != id },
       legacyPacks = store.legacyPacks.mapValues { (_, slots) -> slots.filterValues { it != id } },
     ))
-    File(directory(context), "$id.wav").delete()
+    audioName(directory(context), id)?.let { File(directory(context), it).delete() }
     return state(context)
   }
 
@@ -227,7 +253,8 @@ internal object MySounds {
   /** Audio of My sound [id], null when it is gone or unreadable. */
   @Synchronized fun file(context: Context, id: String): File? {
     if (read(context).sounds.none { it.id == id }) return null
-    return File(directory(context), "$id.wav").takeIf { it.isFile && it.length() in 1..MAX_BYTES }
+    val dir = directory(context)
+    return audioName(dir, id)?.let { File(dir, it) }?.takeIf { it.length() in 1..MAX_BYTES }
   }
 
   /** Audio overriding effects [slot], null when the slot follows the pack. */
@@ -302,8 +329,7 @@ internal object MySounds {
     check(target.mkdirs()) { "Could not stage sound snapshot" }
     val source = directory(context)
     for (sound in store.sounds) {
-      val name = "${sound.id}.wav"
-      require(fileName.matches(name)) { "Invalid sound file name" }
+      val name = requireNotNull(audioName(source, sound.id)) { "Sound file missing or invalid" }
       val file = File(source, name)
       require(file.isFile && file.length() in 1..MAX_BYTES) { "Sound file missing or invalid" }
       file.copyTo(File(target, name))
@@ -329,7 +355,7 @@ internal object MySounds {
     val manifest = File(staged, MANIFEST)
     if (!manifest.exists()) return
     val store = decode(manifest.readText())
-    val present = store.sounds.filter { fileName.matches("${it.id}.wav") && File(staged, "${it.id}.wav").isFile }
+    val present = store.sounds.filter { audioName(staged, it.id) != null }
     val ids = present.map { it.id }.toSet()
     manifest.writeText(encode(store.copy(
       sounds = present,
