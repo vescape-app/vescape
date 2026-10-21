@@ -69,6 +69,7 @@ public class VescapeCoreModule: Module {
   /// only detaches the emit sink.
   /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/VescapeCoreModule.kt
   private let coordinator = BoardSessionController.shared
+  private let gpsDisplayPreview = GpsDisplaySmoother()
 
   // MARK: - App data state
 
@@ -628,6 +629,25 @@ public class VescapeCoreModule: Module {
     }
 
     // MARK: Board session
+
+    Function("getGpsDisplaySettings") { self.coordinator.gpsDisplaySettings() }
+    Function("setGpsDisplaySettings") { (smoothing: Double, prediction: Double) in
+      self.coordinator.setGpsDisplaySettings(smoothingPercent: smoothing, predictionPercent: prediction)
+    }
+    Function("resetGpsDisplayPreview") { self.gpsDisplayPreview.reset() }
+    Function("setGpsDisplayPreviewSettings") { (smoothing: Double, prediction: Double) in
+      self.gpsDisplayPreview.configure(smoothingPercent: smoothing, predictionPercent: prediction,
+        now: Int64(Date().timeIntervalSince1970 * 1000))?.map
+    }
+    Function("updateGpsDisplayPreviewSpeed") { (speed: Double) in
+      let now = Int64(Date().timeIntervalSince1970 * 1000)
+      return self.gpsDisplayPreview.updateSpeed(speedMps: speed, timestamp: now, now: now)?.map
+    }
+    Function("updateGpsDisplayPreview") { (latitude: Double, longitude: Double, speed: Double, course: Double, timestamp: Int64) in
+      self.gpsDisplayPreview.update(latitude: latitude, longitude: longitude, timestamp: timestamp,
+        precise: true, accuracyM: 5, gpsSpeedMps: speed, courseDeg: course, courseTimestamp: timestamp,
+        boardSpeedMps: speed, boardSpeedTimestamp: timestamp, now: Int64(Date().timeIntervalSince1970 * 1000))?.map
+    }
 
     Function("getLiveState") {
       self.liveState(includeRecent: true)
@@ -2052,6 +2072,7 @@ public class VescapeCoreModule: Module {
       "gps": [
         "phase": coordinator.gpsPhase(),
         "mode": coordinator.gpsMode(),
+        "displayMotion": coordinator.gpsDisplayMotion()?.map,
         "latestFix": coordinator.gpsLatestPreciseLocation(),
         "latestApproximateFix": coordinator.gpsLatestLocation(),
         "latestPreciseFix": coordinator.gpsLatestPreciseLocation(),

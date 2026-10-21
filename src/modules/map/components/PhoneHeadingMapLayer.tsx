@@ -1,5 +1,7 @@
+import type { GpsDisplayAnimator } from '@/modules/map/hooks/useGpsDisplayAnimator'
 import { Images, ShapeSource, SymbolLayer } from '@rnmapbox/maps'
-import { memo, useEffect, useRef } from 'react'
+import { usePuckHeadingSpring } from '@/modules/map/hooks/usePuckHeadingSpring'
+import { memo, useEffect, useRef, useState } from 'react'
 
 import { theme } from '@/constants/theme'
 import { useAppActive } from '@/hooks/useAppActive'
@@ -18,25 +20,20 @@ interface PhoneHeadingMapLayerProps {
   active: boolean
   /** Compass source. The caller picks it so a replay can supply the recorded stream instead. */
   followCamera: boolean
-  coordinate: { longitude: number; latitude: number } | null
+  coordinate: {
+    longitude: number
+    latitude: number
+  } | null
+  positionAnimator: GpsDisplayAnimator | null
   /** Called with each compass heading while the camera follows the phone. */
   onFollowHeading: (headingDeg: number) => void
   onHeadingChange: (headingDeg: number | null) => void
   onStatusChange: (status: PhoneHeadingStatus | 'idle') => void
 }
 
-/**
- * The cone's on-screen angle is the heading minus the camera bearing. While the camera follows the
- * heading those two are the same number, but they reach the map by different routes — the bearing
- * through `setCameraDirect`, the icon through a shape update — and land a frame apart, so a
- * continuously moving heading leaves the cone wobbling a few degrees around the puck. Following
- * means the answer is a constant: pin the icon to the viewport pointing up and the skew cannot
- * show. Only a camera that is not tracking the heading needs the map-space bearing.
- */
 function phoneHeadingShape(
   coordinate: PhoneHeadingMapLayerProps['coordinate'],
   headingDeg: number | null,
-  followCamera: boolean,
 ): GeoJSON.FeatureCollection {
   return {
     type: 'FeatureCollection',
@@ -49,7 +46,7 @@ function phoneHeadingShape(
                 type: 'Point',
                 coordinates: [coordinate.longitude, coordinate.latitude],
               },
-              properties: { bearing: followCamera ? 0 : headingDeg },
+              properties: {},
             },
           ]
         : [],
@@ -60,6 +57,7 @@ export const PhoneHeadingMapLayer = memo(function PhoneHeadingMapLayer({
   active,
   followCamera,
   coordinate,
+  positionAnimator,
   onFollowHeading,
   onHeadingChange,
   onStatusChange,
@@ -69,6 +67,9 @@ export const PhoneHeadingMapLayer = memo(function PhoneHeadingMapLayer({
   // against a map nobody could see, and the retargets came due all at once on unlock.
   const appActive = useAppActive()
   const subscribed = active && appActive
+  const [hasHeading, setHasHeading] = useState(false)
+  const movingPositionRef = useRef(false)
+  const { layerRef: headingLayerRef, setHeading } = usePuckHeadingSpring(null, subscribed)
   const sourceRef = useRef<ShapeSource>(null)
   const headingDegRef = useRef<number | null>(null)
   const coordinateRef = useRef(coordinate)
@@ -87,21 +88,35 @@ export const PhoneHeadingMapLayer = memo(function PhoneHeadingMapLayer({
   useEffect(() => {
     coordinateRef.current = coordinate
     followCameraRef.current = followCamera
+    movingPositionRef.current = positionAnimator != null
+    if (headingDegRef.current != null) setHeading(headingDegRef.current)
+    if (positionAnimator) {
+      headingLayerRef.current?.setNativeProps({
+        style: {
+          visibility: subscribed && headingDegRef.current != null ? 'visible' : 'none',
+        },
+      })
+      return
+    }
     sourceRef.current?.setNativeProps({
       id: 'center-phone-heading-source',
-      shape: JSON.stringify(phoneHeadingShape(coordinate, headingDegRef.current, followCamera)),
+      shape: JSON.stringify(phoneHeadingShape(coordinate, headingDegRef.current)),
     })
-  }, [coordinate, followCamera])
+  }, [coordinate, followCamera, positionAnimator, subscribed, setHeading, headingLayerRef])
 
   useEffect(() => {
     if (!subscribed) {
       headingDegRef.current = null
+      setHasHeading(false)
       onHeadingChangeRef.current(null)
       onStatusChangeRef.current('idle')
-      sourceRef.current?.setNativeProps({
-        id: 'center-phone-heading-source',
-        shape: JSON.stringify(phoneHeadingShape(null, null, false)),
-      })
+      if (movingPositionRef.current) {
+        headingLayerRef.current?.setNativeProps({ style: { visibility: 'none' } })
+      } else
+        sourceRef.current?.setNativeProps({
+          id: 'center-phone-heading-source',
+          shape: JSON.stringify(phoneHeadingShape(null, null)),
+        })
       return
     }
 
@@ -113,27 +128,30 @@ export const PhoneHeadingMapLayer = memo(function PhoneHeadingMapLayer({
       const headingDeg = deadBandPhoneHeading(headingDegRef.current, rawHeadingDeg)
       if (headingDeg === headingDegRef.current) return
 
-      // Until the first heading arrives the collection is empty and there is no cone to pin, so
-      // that one write has to happen even while following.
+      // The first valid sensor sample makes the arrow visible.
       const hadHeading = headingDegRef.current != null
+      if (!hadHeading) setHasHeading(true)
       headingDegRef.current = headingDeg
+      setHeading(headingDeg)
       onHeadingChangeRef.current(headingDeg)
 
-      if (followCameraRef.current && hadHeading) {
-        // The cone is pinned to the viewport while following, so its shape does not depend on the
-        // heading — see `phoneHeadingShape`. Rewriting the source per sample re-serialized and
-        // re-tiled a feature collection that had not changed, sixty times a second, in the one mode
-        // where the main thread is already the scarce resource.
-        onFollowHeadingRef.current(headingDeg)
+      if (hadHeading) {
+        // Position is unchanged by a compass sample. Only the angular spring needs retargeting.
+        if (followCameraRef.current) onFollowHeadingRef.current(headingDeg)
         return
       }
 
-      sourceRef.current?.setNativeProps({
-        id: 'center-phone-heading-source',
-        shape: JSON.stringify(
-          phoneHeadingShape(coordinateRef.current, headingDeg, followCameraRef.current),
-        ),
-      })
+      if (movingPositionRef.current) {
+        headingLayerRef.current?.setNativeProps({
+          style: {
+            visibility: 'visible',
+          },
+        })
+      } else
+        sourceRef.current?.setNativeProps({
+          id: 'center-phone-heading-source',
+          shape: JSON.stringify(phoneHeadingShape(coordinateRef.current, headingDeg)),
+        })
       if (followCameraRef.current) onFollowHeadingRef.current(headingDeg)
     }).then((subscription) => {
       if (disposed) {
@@ -148,7 +166,7 @@ export const PhoneHeadingMapLayer = memo(function PhoneHeadingMapLayer({
       disposed = true
       remove?.()
     }
-  }, [subscribed])
+  }, [subscribed, setHeading, headingLayerRef])
 
   return (
     <>
@@ -156,16 +174,18 @@ export const PhoneHeadingMapLayer = memo(function PhoneHeadingMapLayer({
       <ShapeSource
         ref={sourceRef}
         id="center-phone-heading-source"
-        shape={phoneHeadingShape(coordinate, headingDegRef.current, followCamera)}
+        shape={positionAnimator ?? phoneHeadingShape(coordinate, headingDegRef.current)}
       >
         <SymbolLayer
+          ref={headingLayerRef}
           id="center-phone-heading-outline"
           style={{
             iconImage: GPS_HEADING_ICON_ID,
-            iconRotate: ['get', 'bearing'],
+            // The spring owns rotation; renders preserve acquired sensor visibility.
+            visibility: subscribed && hasHeading ? 'visible' : 'none',
             iconAllowOverlap: true,
             iconIgnorePlacement: true,
-            iconRotationAlignment: followCamera ? 'viewport' : 'map',
+            iconRotationAlignment: 'map',
             iconSize: 0.95,
             iconOffset: [0, -10],
             iconColor: theme.palette.mono.white,

@@ -327,8 +327,11 @@ newest end, measured along the full retained path. The lower peak than the phone
 the trail from the planned route. It uses the Rider's colour or the phone dark-map
 violet by default. There is no watch-only distance cutoff or shortened fade. At a close zoom the
 old, transparent end may be offscreen, just as on the phone. It shares the route/group map's heading
-and zoom. Route and trail also share one 300 ms position animation, driven by an absolute GPS
-anchor in the same frame. It works without Navigation and survives route-origin changes and
+and zoom. Route and trail share the native GPS display segment and its original epoch clock, driven by
+an absolute display-endpoint anchor in the same frame. Route/trail offsets and tile planning use
+that same visual anchor; Navigation calculations still use measured fixes. On receipt, each wrist retargets from its actual displayed position over the remaining segment
+duration, with a 100 ms correction minimum. This preserves continuity through transport delay and
+slider changes rather than replacing the displayed position with a phone-time estimate. Frames without display motion retain the legacy 300 ms animation. It works without Navigation and survives route-origin changes and
 history trimming. The trail tip stays pinned to the Rider while the newest segment grows.
 Overlapping stroke joins composite once, avoiding bright dotted joins. The ring sits above
 paths and other Riders. Ambient continues to skip the map.
@@ -341,9 +344,17 @@ fixes can move the Rider but do not enter the precise history or extend its line
 
 The fixed 13-lane telemetry header is unchanged. A trailer follows it: ASCII `TR`, version `2`,
 unsigned point count, Float64 Rider latitude/longitude, then Float32 east/north pairs, all
-little-endian. Two NaNs mean no GPS anchor. Older wrists ignore the trailer;
-new wrists show no trail for absent, unknown, malformed, or non-finite trail data and keep decoding
-telemetry. This adds at most 980 bytes per frame and stores nothing on the watch.
+little-endian. Version `3` appends six Float64 values: display from latitude/longitude, display to
+latitude/longitude, correction start epoch ms and correction end epoch ms. Version `4` appends four
+more Float64 values: latitude degrees/ms, longitude degrees/ms, velocity expiry epoch ms, and an
+explicit position reset flag (0 or 1). Correction and VESC velocity are independent: 100% prediction
+advances at full board speed along the last two accurate GPS positions. Velocity stops after one
+second without telemetry or five seconds without an accurate GPS fix. Wrists sample this bounded
+model locally and preserve rendered position when retargeting; smoothing 0% explicitly resets to a
+fresh GPS fix. Versions 2 and 3 remain readable. Version 4 adds 80 bytes. Two NaNs mean no GPS anchor.
+Older wrists ignore unknown trailers; new wrists show no trail for absent, unknown, malformed, or
+non-finite trail data and keep decoding telemetry. This adds at most 1,060 bytes per frame and stores
+nothing on the watch.
 
 Both replay commands accept `--no-telemetry-trail` to verify the disabled telemetry setting while
 the map page retains its trail.

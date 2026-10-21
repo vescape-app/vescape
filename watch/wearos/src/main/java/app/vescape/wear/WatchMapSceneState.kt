@@ -32,6 +32,7 @@ internal class WatchMapSceneState(
     val target = WatchMapTarget(
         spanM = WatchMapSpan.clamp(if (!hasNavigation && group != null) group.spanM else frame.routeSpanM),
         courseDeg = (if (!hasNavigation && group != null) group.courseDeg else frame.courseDeg)?.toFloat(),
+        displayMotion = frame.displayMotion,
         position = frame.mapPosition,
     )
 
@@ -64,6 +65,6 @@ internal class WatchMapSceneState(
         if (!drawStreetMap) 0f else mapGaugesAlpha + (1f - mapGaugesAlpha) * navFocus.coerceIn(0f, 1f)
 }
 
-internal data class WatchMapTarget(val spanM: Float, val courseDeg: Float?, val position: WatchMapPosition?)
+internal data class WatchMapTarget(val spanM: Float, val courseDeg: Float?, val position: WatchMapPosition?, val displayMotion: expo.modules.vescapecore.location.GpsDisplayMotion? = null)
 
 internal data class WatchMapNavigation(val bearingDeg: Double, val distanceM: Double)

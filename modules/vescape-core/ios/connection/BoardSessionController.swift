@@ -204,6 +204,8 @@ internal final class BoardSessionController: VescGattListener {
   private(set) var bleId: String?
   private(set) var boardName: String?
   private(set) var connectionSeq: Int64 = 0
+  private var lastDisplayPublishedAt: Int64 = 0
+  private var lastDisplayPublishedSpeed: Double = -1
   private(set) var lastTelemetryAt: Int64?
   private(set) var boardError: String?
   var linkIntegrity: LinkIntegrity { session?.linkIntegrity ?? .unknown }
@@ -886,6 +888,20 @@ internal final class BoardSessionController: VescGattListener {
     guard let location = locationTracker.riderPosition else { return nil }
     return (location.latitude, location.longitude)
   }
+  /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/connection/BoardSessionController.kt `setGpsDisplaySettings`
+  func setGpsDisplaySettings(smoothingPercent: Double, predictionPercent: Double) {
+    scheduler.post { [weak self] in
+      guard let self else { return }
+      self.locationTracker.displaySmoother.configure(smoothingPercent: smoothingPercent,
+        predictionPercent: predictionPercent, now: Int64(Date().timeIntervalSince1970 * 1000))
+      self.onStateChanged?()
+    }
+  }
+  func gpsDisplaySettings() -> [String: Double] {
+    ["smoothingPercent": locationTracker.displaySmoother.smoothingPercent,
+      "predictionPercent": locationTracker.displaySmoother.predictionPercent]
+  }
+  func gpsDisplayMotion() -> GpsDisplayMotion? { locationTracker.displayMotion }
   func gpsRecentLocations() -> [[String: Any?]] { locationTracker.recentLocations }
   /// Recent raw-tick window for JS live-chart rehydrate. Backed by the live-series buffer.
   /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/TelemetryPipeline.kt `recentSnapshot`
@@ -2606,6 +2622,15 @@ internal final class BoardSessionController: VescGattListener {
     latestBatterySoc = batteryEstimate
     latestBatteryVoltage = telemetry.batteryVoltage
     latestTelemetry = telemetry
+    let displayNow = Int64(Date().timeIntervalSince1970 * 1000)
+    let displayMotion = locationTracker.displaySmoother.updateSpeed(speedMps: abs(telemetry.speed) / 3.6 * sessionClock.speed,
+      timestamp: displayNow, now: displayNow)
+    let displaySpeed = abs(telemetry.speed) / 3.6 * sessionClock.speed
+    if abs(displaySpeed - lastDisplayPublishedSpeed) >= 0.1 || displayNow - lastDisplayPublishedAt >= 500 {
+      tick["displayMotion"] = displayMotion?.map
+      lastDisplayPublishedAt = displayNow
+      lastDisplayPublishedSpeed = displaySpeed
+    }
     persistLastBattery(percent: batteryEstimate, voltage: telemetry.batteryVoltage, now: telemetry.lastPacketAt)
     tick["generation"] = connectionSeq
     tick["remoteTilt"] = remoteTiltState()
@@ -2748,14 +2773,19 @@ internal final class BoardSessionController: VescGattListener {
     // Navigation lanes require Route Progress; course and trail stay live independently.
     let progress = NavigationController.shared.currentProgress
     let rider = locationTracker.riderPosition
+    // Visual geometry and tile planning share the display endpoint as their absolute anchor.
+    // This also keeps a poor measured fix from moving the tile atlas away from the held display.
+    let mapPosition = locationTracker.displayMotion.map {
+      WatchMapPosition(latitude: $0.toLatitude, longitude: $0.toLongitude)
+    } ?? rider.map { WatchMapPosition(latitude: $0.latitude, longitude: $0.longitude) }
     // Measured from the origin of the route the wrist actually holds, not from the current
     // Navigation's first point: a recompute landing between the push and this tick would otherwise
     // place the rider against an origin the wrist has never seen.
     let offset: (east: Double, north: Double)? = {
-      guard progress != nil, let origin = WatchRouteMirror.shared.origin, let rider else { return nil }
+      guard progress != nil, let origin = WatchRouteMirror.shared.origin, let mapPosition else { return nil }
       return watchOffsetMeters(
         origin: origin,
-        point: WatchGeoPoint(latitude: rider.latitude, longitude: rider.longitude)
+        point: WatchGeoPoint(latitude: mapPosition.latitude, longitude: mapPosition.longitude)
       )
     }()
     return WatchSnapshot(
@@ -2779,10 +2809,11 @@ internal final class BoardSessionController: VescGattListener {
       remoteTilt: current != nil ? remoteTiltController.currentValue : nil,
       tiltControl: watchTiltControl(),
       trail: watchTrail(
-        rider: rider.map { WatchGeoPoint(latitude: $0.latitude, longitude: $0.longitude) },
+        rider: mapPosition.map { WatchGeoPoint(latitude: $0.latitude, longitude: $0.longitude) },
         history: locationTracker.recentLocations
       ),
-      mapPosition: rider.map { WatchMapPosition(latitude: $0.latitude, longitude: $0.longitude) },
+      displayMotion: locationTracker.displayMotion,
+      mapPosition: mapPosition,
       riderSpeedMps: rider?.speedMps
     )
   }
@@ -3136,7 +3167,16 @@ internal final class BoardSessionController: VescGattListener {
     // Offered on every Fix; the coordinator owns the freshness and distance gates.
     WeatherCoordinator.shared.onPosition(latitude: location.latitude, longitude: location.longitude)
     latestRiderPresence().map(groupRideObserver.pushPresence)
-    emit?("onLocation", location.map)
+    let displayNow = Int64(Date().timeIntervalSince1970 * 1000)
+    let displayOffset = displayNow - nowMs()
+    locationTracker.displaySmoother.update(latitude: location.latitude, longitude: location.longitude,
+      timestamp: location.timestamp + displayOffset, precise: location.precise, accuracyM: location.accuracyM,
+      gpsSpeedMps: location.speedMps, courseDeg: location.courseDeg, courseTimestamp: location.courseSourceTimestamp,
+      boardSpeedMps: latestTelemetry.map { abs($0.speed) / 3.6 * sessionClock.speed }, boardSpeedTimestamp: lastTelemetryAt.map { $0 + displayOffset },
+      now: displayNow)
+    var displayEvent = location.map
+    displayEvent["displayMotion"] = locationTracker.displayMotion?.map
+    emit?("onLocation", displayEvent)
   }
 
   /// Offer the fix that just arrived to the **Ride Track**.

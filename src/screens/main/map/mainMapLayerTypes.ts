@@ -1,4 +1,5 @@
-import type { MapPoint, MapPointCategory } from 'vescape-core'
+import type { GpsDisplayAnimator } from '@/modules/map/hooks/useGpsDisplayAnimator'
+import type { GpsDisplayMotion, MapPoint, MapPointCategory } from 'vescape-core'
 
 import type { makeCircleFeature, makeTrailLineString } from '@/helpers/mapGeometry'
 import type { RosterRider } from '@/modules/group-ride/lib/roster'
@@ -18,6 +19,7 @@ import type { MapSelection } from '@/modules/map/lib/mapSelection'
 import type { DirectionPoint } from '@/modules/map/store/mapStore'
 
 export interface MainMapLayersProps {
+  gpsPositionAnimator: GpsDisplayAnimator | null
   historyActive: boolean
   expandSelectedMapPoints: boolean
   isMapy: boolean
@@ -32,7 +34,12 @@ export interface MainMapLayersProps {
     geometry: { type: 'LineString'; coordinates: [number, number][] }
     properties: Record<string, never>
   } | null
-  accuracyFix: { longitude: number; latitude: number } | null
+  accuracyFix: {
+    longitude: number
+    latitude: number
+    accuracyM?: number | null
+    displayMotion?: GpsDisplayMotion | null
+  } | null
   accuracyShape: ReturnType<typeof makeCircleFeature> | null
   gpsPuckBearingDeg: number | null
   riders: RosterRider[]

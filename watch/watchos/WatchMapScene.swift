@@ -119,10 +119,10 @@ struct WatchMapScene<Gauges: View, Readouts: View>: View {
           .opacity(navStackAlpha * scene.groupAlpha(navFocus: navFocus))
       }
     }
-    .onAppear { retargetMap(animate: false) }
+    .onAppear { retargetMap(animate: scene.drawMap) }
     .onChange(of: scene.target) { retargetMap(animate: scene.drawMap) }
     // Ambient lands a map mid-ease, as Wear's relaunched effect does.
-    .onChange(of: scene.drawMap) { if !scene.drawMap { retargetMap(animate: false) } }
+    .onChange(of: scene.drawMap) { retargetMap(animate: scene.drawMap) }
     // Stops the layers' timelines once the map has landed, so a still map never redraws.
     .task(id: mapView.settlesAt) {
       let remaining = mapView.settlesAt.timeIntervalSinceNow
@@ -136,7 +136,7 @@ struct WatchMapScene<Gauges: View, Readouts: View>: View {
 
   private func retargetMap(animate: Bool) {
     let now = Date()
-    mapView.retarget(spanM: scene.target.spanM, courseDeg: scene.target.courseDeg, at: now, animate: animate, position: scene.target.position)
+    mapView.retarget(spanM: scene.target.spanM, courseDeg: scene.target.courseDeg, at: now, animate: animate, position: scene.target.position, displayMotion: scene.target.displayMotion)
     mapMoving = mapView.settlesAt > now
   }
 

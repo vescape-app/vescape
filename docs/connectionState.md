@@ -97,6 +97,61 @@ consumers. Replay teardown alone clears recorded fixes.
 App-level state is not the same as an always-on radio. Whether the monitor runs, and how hard, is
 resolved from demand — see below.
 
+### GPS display motion
+
+`GpsDisplaySmoother` owns a display-only position estimate. Measured GPS Fixes, Ride Track writes,
+Navigation and all other nonvisual consumers keep their existing inputs. The live-follow camera samples the display estimate as the target of its existing position
+spring. Heading, zoom and pitch retain their independent targets and spring settings. Manual
+browsing and Ride History do not follow the display estimate. The position marker,
+heading glyphs and accuracy visualization retain their existing appearance.
+
+Display motion has two independent parts:
+
+- **Prediction** advances the estimate between GPS Fixes, using Board speed magnitude and the
+  geographic direction derived from the last two usable GPS positions. At 100% it moves at the
+  current VESC speed; at 0% that forward movement is disabled. New Board telemetry updates speed
+  independently of GPS, so braking and stopping do not wait for another fix. Motor sign alone does
+  not establish geographic direction.
+- **Smoothing** controls how long a newly measured position takes to correct the displayed
+  estimate. The duration is a percentage of the observed GPS interval; 100% means one interval.
+  At 0%, each accepted GPS Fix corrects position immediately, then prediction continues from it.
+  Above 0%, the correction is blended while prediction keeps moving; changing the target must not
+  reset or pause the forward-motion component.
+
+Settings → Developer → Dev tools → **GPS display** exposes session-only smoothing (0–200%) and
+prediction (0–100%) controls, shared with Camera playground. Defaults are 100% smoothing and 50%
+prediction. Prediction is a fraction of movement speed, not an ahead-of-fix target that the point
+reaches and waits at. In particular, 0% smoothing with 100% prediction means full-speed continuous
+VESC-driven travel with immediate corrections on each GPS Fix.
+
+Cadence uses recent valid measurement intervals. Missing, inaccurate, out-of-order or stale GPS
+must not establish a new direction; missing or stale Board speed must not drive indefinite motion.
+The native model bounds prediction using input freshness. Once those inputs expire, forward motion
+stops rather than drifting without limit. First acquisition and explicit replay/preview reset may
+initialize position instantly. With nonzero smoothing, subsequent corrections preserve visible
+position continuity, including changes of settings and delayed delivery to a watch. Turns and
+wheel slip can make prediction wrong; no predicted position is persisted as a measured fix.
+
+The existing Camera playground sends synthetic GPS and speed through an isolated instance of the
+same native algorithm. Violet shows the measured synthetic fix and blue the displayed estimate.
+Synthetic input never reaches real GPS, recording or Navigation. The playground can switch the
+existing camera spring between raw GPS and the displayed point. Display-follow samples the motion
+model each frame without React state updates; the normal map uses the same display-follow target
+while live-follow is active.
+
+Native owns the motion model; phone and watch renderers evaluate it locally. Position movement is
+independent of map orientation, compass subscription and whether the camera follows the rider.
+Hidden or backgrounded renderers stop display-only animation. Motion descriptions travel on the
+existing native/JS and watch channels; there are no per-frame position messages.
+
+The live trail's measured history remains batched. The phone map appends the latest raw GPS Fix
+for display immediately, removing duplicate joins when history catches up. Its newest two measured
+segments fade from the regular trail opacity to transparent at the newest fix. The fading tail
+has no dark high-contrast casing, so its color fades directly into the map. The older body and fading tail share one anchor and never overlap a segment.
+This detached dust effect does not connect to the smoothed/predicted marker, which can be behind
+the newest fix during a correction. It updates only when GPS/history changes and never enters
+Ride Track storage. Watch trails retain their full-path gradient.
+
 ### GPS demand
 
 `GpsDemand.resolve` is the one place that decides the **GPS Power Mode**, on both platforms, from

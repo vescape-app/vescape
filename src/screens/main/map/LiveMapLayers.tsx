@@ -1,8 +1,13 @@
 import { CircleLayer, FillLayer, Images, LineLayer, ShapeSource, SymbolLayer } from '@rnmapbox/maps'
 import { useMemo } from 'react'
+import type { GpsDisplayAnimator } from '@/modules/map/hooks/useGpsDisplayAnimator'
 import { processColor } from 'react-native'
 
 import { theme } from '@/constants/theme'
+import { usePuckHeadingSpring } from '@/modules/map/hooks/usePuckHeadingSpring'
+import { useNavigationDiagnosticsStore } from '@/modules/map/store/navigationDiagnosticsStore'
+import { liveTrailParts } from '@/modules/map/lib/liveTrailPrefix'
+import { useLocationStore } from '@/modules/location/store/locationStore'
 import { useResolvedAccentColors, useResolvedNeutralColors } from '@/hooks/useTheme'
 import { RiderPresencePin, RiderTrail } from '@/modules/group-ride/components/RiderMapLayers'
 import { useSelectedBoardRailColor } from '@/modules/group-ride/lib/selectedBoardRailColor'
@@ -15,6 +20,7 @@ const GPS_HEADING_ICON = require('@rnmapbox/maps/src/assets/heading.png')
 export function LiveMapLayers({
   liveTrailShape,
   accuracyFix,
+  positionAnimator,
   accuracyShape,
   gpsPuckBearingDeg,
   riders,
@@ -22,11 +28,31 @@ export function LiveMapLayers({
 }: {
   liveTrailShape: MainMapLayersProps['liveTrailShape']
   accuracyFix: MainMapLayersProps['accuracyFix']
+  positionAnimator: GpsDisplayAnimator | null
   accuracyShape: MainMapLayersProps['accuracyShape']
   gpsPuckBearingDeg: MainMapLayersProps['gpsPuckBearingDeg']
   riders: MainMapLayersProps['riders']
   highContrastRoutes: boolean
 }) {
+  const { layerRef: gpsHeadingLayerRef } = usePuckHeadingSpring(gpsPuckBearingDeg)
+  const showRawGps = useNavigationDiagnosticsStore((s) => s.showRawGps)
+  const rawFix = useLocationStore((state) => state.latestRawLocation)
+  // @platform-diff Phone adds a detached two-segment dust fade; watch keeps its full-path gradient.
+  const { body: trailBodyShape, tail: tailShape } = useMemo(
+    () => liveTrailParts(liveTrailShape, rawFix),
+    [liveTrailShape, rawFix],
+  )
+  const rawGpsShape = useMemo(
+    () =>
+      rawFix
+        ? ({
+            type: 'Feature',
+            geometry: { type: 'Point', coordinates: [rawFix.longitude, rawFix.latitude] },
+            properties: {},
+          } as GeoJSON.Feature<GeoJSON.Point>)
+        : null,
+    [rawFix],
+  )
   const riderColor = useSelectedBoardRailColor()
   const neutral = useResolvedNeutralColors()
   const accents = useResolvedAccentColors()
@@ -76,8 +102,8 @@ export function LiveMapLayers({
 
   return (
     <>
-      {liveTrailShape && (
-        <ShapeSource id="center-live-trail-source" shape={liveTrailShape} lineMetrics>
+      {trailBodyShape && (
+        <ShapeSource id="center-live-trail-source" shape={trailBodyShape} lineMetrics>
           <LineLayer
             id="center-live-trail-casing"
             style={{
@@ -109,6 +135,28 @@ export function LiveMapLayers({
           />
         </ShapeSource>
       )}
+      {tailShape && (
+        <ShapeSource id="center-live-trail-tail-source" shape={tailShape} lineMetrics>
+          <LineLayer
+            id="center-live-trail-tail-line"
+            style={{
+              lineColor: trailGradientEnd,
+              lineGradient: [
+                'interpolate',
+                ['linear'],
+                ['line-progress'],
+                0,
+                trailGradientEnd,
+                1,
+                trailGradientStart,
+              ],
+              lineWidth: MAP_DEFAULTS.trailWidth,
+              lineCap: 'round',
+              lineJoin: 'round',
+            }}
+          />
+        </ShapeSource>
+      )}
       {accuracyFix && (
         <>
           {accuracyShape && (
@@ -120,7 +168,10 @@ export function LiveMapLayers({
             </ShapeSource>
           )}
           {gpsPuckPositionShape && (
-            <ShapeSource id="center-gps-puck-position-source" shape={gpsPuckPositionShape}>
+            <ShapeSource
+              id="center-gps-puck-position-source"
+              shape={positionAnimator ?? gpsPuckPositionShape}
+            >
               <CircleLayer
                 id="center-gps-puck-core"
                 style={{
@@ -135,12 +186,15 @@ export function LiveMapLayers({
           {gpsPuckShape && (
             <>
               <Images images={{ [GPS_HEADING_ICON_ID]: { image: GPS_HEADING_ICON, sdf: true } }} />
-              <ShapeSource id="center-gps-puck-heading-source" shape={gpsPuckShape}>
+              <ShapeSource
+                id="center-gps-puck-heading-source"
+                shape={positionAnimator ?? gpsPuckShape}
+              >
                 <SymbolLayer
+                  ref={gpsHeadingLayerRef}
                   id="center-gps-puck-heading-outline"
                   style={{
                     iconImage: GPS_HEADING_ICON_ID,
-                    iconRotate: ['get', 'bearing'],
                     iconAllowOverlap: true,
                     iconIgnorePlacement: true,
                     iconRotationAlignment: 'map',
@@ -153,6 +207,20 @@ export function LiveMapLayers({
             </>
           )}
         </>
+      )}
+      {showRawGps && rawGpsShape && (
+        <ShapeSource id="center-raw-gps-source" shape={rawGpsShape}>
+          <CircleLayer
+            id="center-raw-gps-ring"
+            style={{
+              circleRadius: 13,
+              circleColor: 'transparent',
+              circleStrokeWidth: 2,
+              circleStrokeColor: accents.amber.color,
+              circlePitchAlignment: 'viewport',
+            }}
+          />
+        </ShapeSource>
       )}
       {riders.map((rider, index) =>
         rider.trail && rider.trail.length >= 2 ? (

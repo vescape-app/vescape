@@ -1,12 +1,3 @@
-diff --git a/node_modules/@rnmapbox/maps/.bun-tag-3bd3aaf4602e417 b/.bun-tag-3bd3aaf4602e417
-new file mode 100644
-index 0000000000000000000000000000000000000000..e69de29bb2d1d6434b8b29ae775ad8c2e48c5391
-diff --git a/node_modules/@rnmapbox/maps/.bun-tag-42190af1d87f72d2 b/.bun-tag-42190af1d87f72d2
-new file mode 100644
-index 0000000000000000000000000000000000000000..e69de29bb2d1d6434b8b29ae775ad8c2e48c5391
-diff --git a/node_modules/@rnmapbox/maps/.bun-tag-cc37716a93542075 b/.bun-tag-cc37716a93542075
-new file mode 100644
-index 0000000000000000000000000000000000000000..e69de29bb2d1d6434b8b29ae775ad8c2e48c5391
 diff --git a/android/src/main/java/com/rnmapbox/rnmbx/components/camera/RNMBXCamera.kt b/android/src/main/java/com/rnmapbox/rnmbx/components/camera/RNMBXCamera.kt
 index a471e13ca74a7e7b47626da77accb6fada753f65..a402b2a23fa34f5043f151ea244342ebd0af5e45 100644
 --- a/android/src/main/java/com/rnmapbox/rnmbx/components/camera/RNMBXCamera.kt
@@ -171,6 +162,104 @@ index 9043e025629638d25d3cef4bc4774c2cbf278b4a..33b45602d5003b061afbf2a1bb443f4f
          }
          val gestures = WritableNativeMap()
          gestures.putBoolean("isGestureActive", wasGestureActive/*mCameraChangeTracker.isUserInteraction*/)
+diff --git a/android/src/main/java/com/rnmapbox/rnmbx/shapeAnimators/RNMBXMovePointShapeAnimatorModule.kt b/android/src/main/java/com/rnmapbox/rnmbx/shapeAnimators/RNMBXMovePointShapeAnimatorModule.kt
+--- a/android/src/main/java/com/rnmapbox/rnmbx/shapeAnimators/RNMBXMovePointShapeAnimatorModule.kt
++++ b/android/src/main/java/com/rnmapbox/rnmbx/shapeAnimators/RNMBXMovePointShapeAnimatorModule.kt
+@@ -14,6 +14,7 @@
+ import com.rnmapbox.rnmbx.utils.ViewRefTag
+ 
+ class MovePointShapeAnimator(tag: Tag, coordinate: Point) : ShapeAnimatorCommon(tag) {
++    private var displayMotion: DoubleArray? = null
+     private var point = AnimatableElement<Point>(
+         coordinate,
+         coordinate,
+@@ -24,27 +25,67 @@
+         { a, b -> TurfMeasurement.distance(a, b) }
+     )
+ 
++    @Synchronized
+     override fun getAnimatedShape(animatorAgeSec: Double): GeoJson {
++        displayMotion?.let { motion ->
++            val now = System.currentTimeMillis().toDouble()
++            val coordinate = motionPosition(motion, now)
++            point.progress = coordinate
++            val velocityEnd = if (motion[6] != 0.0 || motion[7] != 0.0) motion[8] else motion[4]
++            if (now >= maxOf(motion[5], velocityEnd)) stop()
++            return coordinate
++        }
+         val line = LineString.fromLngLats(listOf(point.source, point.target))
+         val lineLength = TurfMeasurement.length(line, UNIT_METERS)
+         if (lineLength == 0.0) {
+             stop()
+         }
+ 
+-        val ratio = point.durationRatio()
++        val ratio = if (point.totalDurationSec > 0)
++            maxOf(0.0, animatorAgeSec - point.startedAtSec) / point.totalDurationSec else 1.0
+         if (ratio >= 0 && ratio < 1) {
+             point.setProgress(
+                 TurfMeasurement.along(line, lineLength * ratio, UNIT_METERS),
+                 animatorAgeSec
+             )
+         } else if (ratio >= 1) {
++            point.setProgress(point.target, animatorAgeSec)
+             stop()
+         }
+ 
+         return point.progress
+     }
+ 
++    // @parity /node_modules/@rnmapbox/maps/ios/RNMBX/ShapeAnimators/RNMBXMovePointShapeAnimatorModule.swift `motionPosition`
++    private fun motionPosition(m: DoubleArray, now: Double): Point {
++        val t = if (m[5] > m[4]) ((now - m[4]) / (m[5] - m[4])).coerceIn(0.0, 1.0) else 1.0
++        val elapsed = maxOf(0.0, minOf(now, m[8]) - m[4])
++        val delta = (m[2] - m[0] + 540) % 360 - 180
++        return Point.fromLngLat((m[0] + delta * t + m[6] * elapsed + 540) % 360 - 180,
++            m[1] + (m[3] - m[1]) * t + m[7] * elapsed)
++    }
++
++    @Synchronized
++    fun setMotion(incoming: DoubleArray) {
++        val now = System.currentTimeMillis().toDouble()
++        val current = displayMotion?.let { motionPosition(it, now) } ?: point.progress
++        val elapsed = maxOf(0.0, minOf(now, incoming[8]) - incoming[4])
++        val duration = if (incoming[5] > incoming[4]) maxOf(100.0, incoming[5] - now) else 0.0
++        val from = if (incoming[9] == 1.0) motionPosition(incoming, now) else current
++        val local = incoming.copyOf()
++        local[0] = from.longitude(); local[1] = from.latitude()
++        local[2] = if (duration > 0) incoming[2] + incoming[6] * elapsed else from.longitude()
++        local[3] = if (duration > 0) incoming[3] + incoming[7] * elapsed else from.latitude()
++        local[4] = now; local[5] = now + duration
++        displayMotion = local
++        point.progress = from
++        start()
++        refresh()
++    }
++
++    @Synchronized
+     fun moveTo(coordinate: Point, durationSec: Double) {
++        displayMotion = null
+         if (durationSec == 0.0) {
+             point.reset(
+                 coordinate,
+@@ -92,6 +133,17 @@
+     }
+ 
+     @ReactMethod
++    override fun setMotion(tag: ViewRefTag, motion: ReadableArray, promise: Promise) {
++        if (motion.size() != 10) { promise.reject("invalid-motion", "GPS motion must contain ten values"); return }
++        val values = DoubleArray(10) { motion.getDouble(it) }
++        if (values.any { !it.isFinite() }) { promise.reject("invalid-motion", "GPS motion must be finite"); return }
++        val animator = shapeAnimatorManager.get(tag.toLong()) as? MovePointShapeAnimator
++        if (animator == null) { promise.reject("missing-animator", "GPS animator not found"); return }
++        animator.setMotion(values)
++        promise.resolve(tag.toInt())
++    }
++
++    @ReactMethod
+     override fun moveTo(
+         tag: ViewRefTag,
+         coordinate: ReadableArray?,
 diff --git a/ios/RNMBX/RNMBXCamera.swift b/ios/RNMBX/RNMBXCamera.swift
 index bc3f6321a79d21ed1294b2e23c6d661dd1b8f50d..9b7d3a42a05d66e4e05db9925cf884bb3f1f3682 100644
 --- a/ios/RNMBX/RNMBXCamera.swift
@@ -341,6 +430,125 @@ index 4ffb4266e9fe1c2f5e111094ca5b758051c8b333..331bd6276010f09925e132f3c21f380d
    }
  
    public func gestureManager(_ gestureManager: GestureManager, didEndAnimatingFor gestureType: GestureType) {
+diff --git a/ios/RNMBX/ShapeAnimators/RNMBXMovePointShapeAnimatorModule.mm b/ios/RNMBX/ShapeAnimators/RNMBXMovePointShapeAnimatorModule.mm
+--- a/ios/RNMBX/ShapeAnimators/RNMBXMovePointShapeAnimatorModule.mm
++++ b/ios/RNMBX/ShapeAnimators/RNMBXMovePointShapeAnimatorModule.mm
+@@ -33,10 +33,14 @@
+   [MovePointShapeAnimator moveToTag:tag coordinate:coordinate durationMs:durationMs resolve:resolve reject:reject];
+ }
+ 
++RCT_EXPORT_METHOD(setMotion:(nonnull NSNumber*)tag motion:(nonnull NSArray*)motion resolve:(RCTPromiseResolveBlock)resolve reject:(RCTPromiseRejectBlock)reject) {
++  [MovePointShapeAnimator setMotionTag:tag motion:motion resolve:resolve reject:reject];
++}
++
+ - (std::shared_ptr<facebook::react::TurboModule>)getTurboModule:
+     (const facebook::react::ObjCTurboModule::InitParams &)params
+ {
+-    return std::make_shared<facebook::react::NativeRNMBXPointAnnotationModuleSpecJSI>(params);
++    return std::make_shared<facebook::react::NativeRNMBXMovePointShapeAnimatorModuleSpecJSI>(params);
+ }
+ 
+ @end
+diff --git a/ios/RNMBX/ShapeAnimators/RNMBXMovePointShapeAnimatorModule.swift b/ios/RNMBX/ShapeAnimators/RNMBXMovePointShapeAnimatorModule.swift
+--- a/ios/RNMBX/ShapeAnimators/RNMBXMovePointShapeAnimatorModule.swift
++++ b/ios/RNMBX/ShapeAnimators/RNMBXMovePointShapeAnimatorModule.swift
+@@ -4,6 +4,7 @@
+ 
+ @objc
+ public class MovePointShapeAnimator: ShapeAnimatorCommon {
++  private var displayMotion: [Double]?
+   private var point: AnimatableElement<LocationCoordinate2D>
+   
+   init(tag: Int, coordinate: LocationCoordinate2D) {
+@@ -21,27 +22,67 @@
+   }
+   
+   override func getShape() -> GeoJSONObject {
++    if let displayMotion { return .geometry(.point(.init(motionPosition(displayMotion, now: Date().timeIntervalSince1970 * 1000)))) }
+     return .geometry(.point(.init(point.progress)))
+   }
+-  
++
+   override func getAnimatedShape(animatorAgeSec: TimeInterval) -> GeoJSONObject {
++    if let motion = displayMotion {
++      let now = Date().timeIntervalSince1970 * 1000
++      let coordinate = motionPosition(motion, now: now)
++      point.progress = coordinate
++      let velocityEnd = motion[6] != 0 || motion[7] != 0 ? motion[8] : motion[4]
++      if now >= max(motion[5], velocityEnd) { stop() }
++      return .geometry(.point(.init(coordinate)))
++    }
+     let line = LineString([point.source, point.target])
+     let lineLength = line.distance() ?? 0
+     if lineLength == 0 {
+       stop()
+     }
+     
+-    let ratio = point.durationRatio()
++    let ratio = point.totalDurationSec > 0
++      ? max(0, animatorAgeSec - point.startedAtSec) / point.totalDurationSec
++      : 1
+     if ratio >= 0, ratio < 1, let progressCoordinate = line.coordinateFromStart(distance: lineLength * ratio) {
+       point.setProgress(value: progressCoordinate, animatorAgeSec: animatorAgeSec)
+     } else if (ratio >= 1) {
++      point.setProgress(value: point.target, animatorAgeSec: animatorAgeSec)
+       stop()
+     }
+     
+     return .geometry(.point(.init(point.progress)))
+   }
+   
++  // @parity /node_modules/@rnmapbox/maps/android/src/main/java/com/rnmapbox/rnmbx/shapeAnimators/RNMBXMovePointShapeAnimatorModule.kt `motionPosition`
++  private func motionPosition(_ m: [Double], now: Double) -> LocationCoordinate2D {
++    let t = m[5] > m[4] ? min(1, max(0, (now - m[4]) / (m[5] - m[4]))) : 1
++    let elapsed = max(0, min(now, m[8]) - m[4])
++    let delta = (m[2] - m[0] + 540).truncatingRemainder(dividingBy: 360) - 180
++    return LocationCoordinate2D(latitude: m[1] + (m[3] - m[1]) * t + m[7] * elapsed,
++      longitude: (m[0] + delta * t + m[6] * elapsed + 540).truncatingRemainder(dividingBy: 360) - 180)
++  }
++
++  private func setMotion(_ incoming: [Double]) {
++    let now = Date().timeIntervalSince1970 * 1000
++    let current = displayMotion.map { motionPosition($0, now: now) } ?? point.progress
++    let elapsed = max(0, min(now, incoming[8]) - incoming[4])
++    let reset = incoming[9] == 1
++    let duration = incoming[5] > incoming[4] ? max(100, incoming[5] - now) : 0
++    let from = reset ? motionPosition(incoming, now: now) : current
++    var local = incoming
++    local[0] = from.longitude; local[1] = from.latitude
++    local[2] = duration > 0 ? incoming[2] + incoming[6] * elapsed : from.longitude
++    local[3] = duration > 0 ? incoming[3] + incoming[7] * elapsed : from.latitude
++    local[4] = now; local[5] = now + duration
++    displayMotion = local
++    point.progress = from
++    start()
++    refresh()
++  }
++
+   private func moveTo(coordinate: LocationCoordinate2D, durationSec: TimeInterval) {
++    displayMotion = nil
+     if durationSec == 0 {
+       point.reset(
+         _source: coordinate,
+@@ -92,6 +133,18 @@
+     return animator
+   }
+ 
++  @objc(setMotionTag:motion:resolve:reject:)
++  public static func setMotion(tag: NSNumber, motion: NSArray, resolve: @escaping RCTPromiseResolveBlock, reject: @escaping RCTPromiseRejectBlock) {
++    guard motion.count == 10, let values = motion as? [Double], values.allSatisfy({ $0.isFinite }) else {
++      reject("invalid-motion", "GPS motion must contain ten finite values", nil); return
++    }
++    DispatchQueue.main.async {
++      guard let animator = getAnimator(tag: tag) else { reject("missing-animator", "GPS animator not found", nil); return }
++      animator.setMotion(values)
++      resolve(tag)
++    }
++  }
++
+   @objc
+   public static func moveTo(tag: NSNumber, coordinate: NSArray, durationMs: NSNumber, resolve: RCTPromiseResolveBlock, reject: @escaping (_ code: String, _ message: String, _ error: NSError) -> Void) {
+     guard let lng = coordinate[0] as? Double, let lat = coordinate[1] as? Double else {
 diff --git a/lib/module/components/Camera.js b/lib/module/components/Camera.js
 index da6b273215f41d316fdb1d638ede2de5c73384a1..a0d34365cb58cad345d21628e9d499d50c1722ff 100644
 --- a/lib/module/components/Camera.js
@@ -367,6 +575,23 @@ index da6b273215f41d316fdb1d638ede2de5c73384a1..a0d34365cb58cad345d21628e9d499d5
      /**
       * Set the camera position to enclose the provided bounds, with optional
       * padding and duration.
+diff --git a/lib/module/shapeAnimators/MovePointShapeAnimator.js b/lib/module/shapeAnimators/MovePointShapeAnimator.js
+--- a/lib/module/shapeAnimators/MovePointShapeAnimator.js
++++ b/lib/module/shapeAnimators/MovePointShapeAnimator.js
+@@ -8,6 +8,13 @@
+     NativeRNMBXMovePointShapeAnimatorModule.generate(tag, [startCoordinate[0], startCoordinate[1]]);
+     this.__nativeTag = tag;
+   }
++  setMotion(motion) {
++    return NativeRNMBXMovePointShapeAnimatorModule.setMotion(this.__nativeTag, [
++      motion.fromLongitude, motion.fromLatitude, motion.toLongitude, motion.toLatitude,
++      motion.startsAtMs, motion.endsAtMs, motion.longitudePerMs ?? 0, motion.latitudePerMs ?? 0,
++      motion.velocityExpiresAtMs ?? motion.startsAtMs, motion.resetPosition ? 1 : 0,
++    ]);
++  }
+   moveTo(args) {
+     NativeRNMBXMovePointShapeAnimatorModule.moveTo(this.__nativeTag, args.coordinate, args.durationMs);
+   }
 diff --git a/lib/typescript/src/components/Camera.d.ts b/lib/typescript/src/components/Camera.d.ts
 index 5ba484344d14d55f17afa8dd11f2bc02904f8aaf..58b06579a45a1bce99d526b6815738697c86525b 100644
 --- a/lib/typescript/src/components/Camera.d.ts
@@ -404,6 +629,21 @@ index 7d4dc79ac02f1193cf763fcc2f47d4ccbfb070bb..9d74436b5621cf79e595481c7113002f
              ne: GeoJSON.Position;
              sw: GeoJSON.Position;
          };
+diff --git a/lib/typescript/src/shapeAnimators/MovePointShapeAnimator.d.ts b/lib/typescript/src/shapeAnimators/MovePointShapeAnimator.d.ts
+--- a/lib/typescript/src/shapeAnimators/MovePointShapeAnimator.d.ts
++++ b/lib/typescript/src/shapeAnimators/MovePointShapeAnimator.d.ts
+@@ -3,6 +3,11 @@
+ export default class MovePointShapeAnimator implements ShapeAnimatorInterface {
+     __nativeTag: number;
+     constructor(startCoordinate: Position);
++    setMotion(motion: {
++      fromLongitude: number; fromLatitude: number; toLongitude: number; toLatitude: number;
++      startsAtMs: number; endsAtMs: number; longitudePerMs?: number; latitudePerMs?: number;
++      velocityExpiresAtMs?: number; resetPosition?: boolean;
++    }): Promise<void>;
+     moveTo(args: {
+         coordinate: Position;
+         durationMs: number;
 diff --git a/lib/typescript/src/specs/NativeRNMBXCameraModule.d.ts b/lib/typescript/src/specs/NativeRNMBXCameraModule.d.ts
 index 3fda8aa42ab2d96329be85791bee4dd0f8141557..791753e915793465da3c2398b025c0300d529c5f 100644
 --- a/lib/typescript/src/specs/NativeRNMBXCameraModule.d.ts
@@ -417,6 +657,19 @@ index 3fda8aa42ab2d96329be85791bee4dd0f8141557..791753e915793465da3c2398b025c030
      moveBy: (viewRef: ViewRef, x: number, y: number, animationMode: number, animationDuration: number) => Promise<void>;
      scaleBy: (viewRef: ViewRef, x: number, y: number, animationMode: number, animationDuration: number, scaleFactor: number) => Promise<void>;
  }
+diff --git a/lib/typescript/src/specs/NativeRNMBXMovePointShapeAnimatorModule.d.ts b/lib/typescript/src/specs/NativeRNMBXMovePointShapeAnimatorModule.d.ts
+--- a/lib/typescript/src/specs/NativeRNMBXMovePointShapeAnimatorModule.d.ts
++++ b/lib/typescript/src/specs/NativeRNMBXMovePointShapeAnimatorModule.d.ts
+@@ -2,7 +2,8 @@
+ import { Int32, Double } from 'react-native/Libraries/Types/CodegenTypes';
+ type AnimatorTag = Int32;
+ export interface Spec extends TurboModule {
+-    generate(tag: AnimatorTag, coordinate: ReadonlyArray<Double>): Promise<void>;
++  generate(tag: AnimatorTag, coordinate: ReadonlyArray<Double>): Promise<void>;
++    setMotion(tag: AnimatorTag, motion: ReadonlyArray<Double>): Promise<void>;
+     moveTo(tag: AnimatorTag, coordinate: ReadonlyArray<Double>, duration: Double): Promise<void>;
+ }
+ declare const _default: Spec;
 diff --git a/src/components/Camera.tsx b/src/components/Camera.tsx
 index c8e61a0d9e528bf74e869e14153e9a5be5894be7..6bfa604a4747a7029bb9fdd3649581d91c2943c5 100644
 --- a/src/components/Camera.tsx
@@ -503,6 +756,29 @@ index d7b5bf5029094bdc818a90040a6ee0ea7876c48c..ebef6586e46821df91afd3e2939d2af2
        ne: GeoJSON.Position;
        sw: GeoJSON.Position;
      };
+diff --git a/src/shapeAnimators/MovePointShapeAnimator.ts b/src/shapeAnimators/MovePointShapeAnimator.ts
+--- a/src/shapeAnimators/MovePointShapeAnimator.ts
++++ b/src/shapeAnimators/MovePointShapeAnimator.ts
+@@ -17,6 +17,19 @@
+     this.__nativeTag = tag;
+   }
+ 
++  /** GPS correction anchors plus velocity in degrees/ms; native evaluates each frame. */
++  setMotion(motion: {
++    fromLongitude: number; fromLatitude: number; toLongitude: number; toLatitude: number;
++    startsAtMs: number; endsAtMs: number; longitudePerMs?: number; latitudePerMs?: number;
++    velocityExpiresAtMs?: number; resetPosition?: boolean;
++  }) {
++    return NativeRNMBXMovePointShapeAnimatorModule.setMotion(this.__nativeTag, [
++      motion.fromLongitude, motion.fromLatitude, motion.toLongitude, motion.toLatitude,
++      motion.startsAtMs, motion.endsAtMs, motion.longitudePerMs ?? 0, motion.latitudePerMs ?? 0,
++      motion.velocityExpiresAtMs ?? motion.startsAtMs, motion.resetPosition ? 1 : 0,
++    ]);
++  }
++
+   moveTo(args: { coordinate: Position; durationMs: number }) {
+     NativeRNMBXMovePointShapeAnimatorModule.moveTo(
+       this.__nativeTag,
 diff --git a/src/specs/NativeRNMBXCameraModule.ts b/src/specs/NativeRNMBXCameraModule.ts
 index 51e22647de0011459dee4bd160ede4fcca1f4263..142cbea411d7569f5c1e0ac422e999e4faa81b13 100644
 --- a/src/specs/NativeRNMBXCameraModule.ts
@@ -527,3 +803,14 @@ index 51e22647de0011459dee4bd160ede4fcca1f4263..142cbea411d7569f5c1e0ac422e999e4
    moveBy: (
      viewRef: ViewRef,
      x: number,
+diff --git a/src/specs/NativeRNMBXMovePointShapeAnimatorModule.ts b/src/specs/NativeRNMBXMovePointShapeAnimatorModule.ts
+--- a/src/specs/NativeRNMBXMovePointShapeAnimatorModule.ts
++++ b/src/specs/NativeRNMBXMovePointShapeAnimatorModule.ts
+@@ -9,6 +9,7 @@
+ 
+ export interface Spec extends TurboModule {
+   generate(tag: AnimatorTag, coordinate: ReadonlyArray<Double>): Promise<void>;
++  setMotion(tag: AnimatorTag, motion: ReadonlyArray<Double>): Promise<void>;
+   moveTo(
+     tag: AnimatorTag,
+     coordinate: ReadonlyArray<Double>,

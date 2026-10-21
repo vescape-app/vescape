@@ -34,6 +34,7 @@ internal data class VescLiveStateSnapshot(
     val remoteTiltOwner: RemoteInputOwner,
     val linkIntegrity: LinkIntegrity,
     val settings: AppSettings,
+    val displayMotion: expo.modules.vescapecore.location.GpsDisplayMotion? = null,
 )
 
 /**
@@ -87,6 +88,7 @@ internal fun buildLiveState(snapshot: VescLiveStateSnapshot): Map<String, Any?> 
         "gps" to mapOf(
             "phase" to snapshot.gpsPhase.wireValue,
             "mode" to snapshot.gpsMode.slug,
+            "displayMotion" to snapshot.displayMotion?.toMap(),
             "latestFix" to snapshot.latestPreciseLocation?.toMap(),
             "latestApproximateFix" to snapshot.latestLocation?.toMap(),
             "latestPreciseFix" to snapshot.latestPreciseLocation?.toMap(),

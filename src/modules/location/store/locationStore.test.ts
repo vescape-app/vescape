@@ -85,7 +85,9 @@ test('authoritative snapshots replace history and empty snapshots clear even unp
 
 test('coalesces a burst of native fixes into one publication within a second', async () => {
   let publications = 0
-  const unsubscribe = store.subscribe(() => publications++)
+  const unsubscribe = store.subscribe((next, previous) => {
+    if (next.liveLocationHistory !== previous.liveLocationHistory) publications++
+  })
   for (const time of [10_000, 20_000, 30_000]) store.getState().ingestLocation(fix(time), WINDOW_MS)
   expect(publications).toBe(0)
   await Bun.sleep(1_050)
@@ -96,7 +98,9 @@ test('coalesces a burst of native fixes into one publication within a second', a
 
 test('status publishes buffered fixes immediately and cancels the old timer', async () => {
   let publications = 0
-  const unsubscribe = store.subscribe(() => publications++)
+  const unsubscribe = store.subscribe((next, previous) => {
+    if (next.liveLocationHistory !== previous.liveLocationHistory) publications++
+  })
   store.getState().ingestLocation(fix(10_000), WINDOW_MS)
   store.getState().applyStatus(gps({ latestFix: fix(20_000) }), WINDOW_MS)
   expect(publications).toBe(1)
@@ -130,4 +134,59 @@ test('cancelPending prevents publication without discarding buffered native fixe
   expect(store.getState().liveLocationHistory).toEqual([])
   store.getState().applyStatus(gps(), WINDOW_MS)
   expect(store.getState().liveLocationHistory).toEqual([fix(10_000)])
+})
+
+test('display motion bypasses trail batching and resets independently of measured fixes', () => {
+  const displayMotion = {
+    fromLatitude: 50,
+    fromLongitude: 19,
+    toLatitude: 50.001,
+    toLongitude: 19.001,
+    startsAtMs: 10_000,
+    endsAtMs: 11_000,
+  }
+  store.getState().ingestLocation({ ...fix(10_000), displayMotion }, WINDOW_MS)
+  expect(store.getState().displayMotion).toEqual(displayMotion)
+  // The expensive trail remains batched; motion must already be available for this segment.
+  expect(store.getState().liveLocationHistory).toEqual([])
+  store.getState().flushPending()
+  expect(store.getState().liveLocationHistory[0].latitude).toBe(50)
+  store.getState().applyStatus(gps(), WINDOW_MS)
+  expect(store.getState().displayMotion).toEqual(displayMotion)
+  store.getState().applySnapshot(gps({ displayMotion }), WINDOW_MS)
+  expect(store.getState().displayMotion).toEqual(displayMotion)
+  store.getState().reset()
+  expect(store.getState().displayMotion).toBeNull()
+})
+
+test('raw GPS publishes every measured fix immediately without waiting for trail or using prediction', () => {
+  const first = fix(10_000)
+  store.getState().ingestLocation(first, WINDOW_MS)
+  expect(store.getState().latestRawLocation).toBe(first)
+  expect(store.getState().liveLocationHistory).toEqual([])
+  const approximate = { ...fix(11_000, false), longitude: 19.5 }
+  store.getState().ingestLocation(approximate, WINDOW_MS)
+  expect(store.getState().latestRawLocation).toBe(approximate)
+  store.getState().ingestLocation(first, WINDOW_MS)
+  expect(store.getState().latestRawLocation).toBe(approximate)
+  store.getState().reset()
+  expect(store.getState().latestRawLocation).toBeNull()
+})
+
+test('camera can consume each precise fix immediately even if an approximate fix arrives before trail publication', () => {
+  const first = fix(10_000)
+  store.getState().ingestLocation(first, WINDOW_MS)
+  expect(store.getState().latestPreciseLocation).toBe(first)
+  const second = { ...fix(10_500), latitude: 50.001 }
+  store.getState().ingestLocation(second, WINDOW_MS)
+  expect(store.getState().latestPreciseLocation).toBe(second)
+  expect(store.getState().liveLocationHistory).toEqual([])
+  const approximate = fix(10_600, false)
+  store.getState().ingestLocation(approximate, WINDOW_MS)
+  expect(store.getState().latestRawLocation).toBe(approximate)
+  expect(store.getState().latestPreciseLocation).toBe(second)
+  store.getState().ingestLocation(first, WINDOW_MS)
+  expect(store.getState().latestPreciseLocation).toBe(second)
+  store.getState().reset()
+  expect(store.getState().latestPreciseLocation).toBeNull()
 })
