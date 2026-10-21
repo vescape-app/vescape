@@ -4,28 +4,6 @@ import Foundation
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/alerts/AlertCoordinator.kt `PRESET_RULE_PREFIX`
 internal let presetRulePrefix = "preset:"
 
-/// Packs one preset pins (#583), from the board's `alertPresetSound` setting; nil follows the
-/// app-wide choice. Resolution per slot: My sound override > pinned pack > app-wide.
-/// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/alerts/AlertCoordinator.kt `PresetSoundPin`
-internal struct PresetSoundPin: Equatable {
-  var effects: String?
-  var voice: String?
-
-  /// Pins per preset metric in a decoded `alertPresetSound` setting; unknown pack ids follow the default.
-  static func from(_ raw: Any?) -> [String: PresetSoundPin] {
-    var pins: [String: PresetSoundPin] = [:]
-    for (metric, value) in raw as? [String: Any] ?? [:] {
-      guard let sound = value as? [String: Any] else { continue }
-      let pin = PresetSoundPin(
-        effects: (sound["effects"] as? String).flatMap { effectsPackIds.contains($0) ? $0 : nil },
-        voice: (sound["voice"] as? String).flatMap { voicePackIds.contains($0) ? $0 : nil }
-      )
-      if pin != PresetSoundPin() { pins[metric] = pin }
-    }
-    return pins
-  }
-}
-
 /// Bridges the pure alert evaluator with the side-effectful audio player. Each telemetry frame is
 /// evaluated against the loaded rules; geiger loops update/stop to track live rule activity, and
 /// one-shot alerts play a triple-beep pattern (plus optional TTS message). Returns the fired
@@ -38,7 +16,6 @@ internal final class AlertCoordinator {
   private let player: AlertAudioPlayer
   private let vibrateSingles: Bool
   private var rules: [AlertRule] = []
-  private var pins: [String: PresetSoundPin] = [:]
   private var activeGeigerRuleIds: Set<String> = []
   func updateBoardConfigValues(_ values: [String: Any]) { engine.updateBoardConfigValues(values) }
 
@@ -49,15 +26,13 @@ internal final class AlertCoordinator {
     self.vibrateSingles = vibrateSingles
   }
 
-  func replaceRules(_ value: [AlertRule], presetPins: [String: PresetSoundPin] = [:]) {
+  func replaceRules(_ value: [AlertRule]) {
     let geigerRuleIds = Set(value.compactMap { $0.thresholdMax == nil ? nil : $0.id })
-    // A changed pin restarts every loop: a running (sustained) one would keep its old pack.
-    let stale = presetPins != pins ? activeGeigerRuleIds : activeGeigerRuleIds.subtracting(geigerRuleIds)
+    let stale = activeGeigerRuleIds.subtracting(geigerRuleIds)
     for ruleId in stale { player.stopGeiger(ruleId: ruleId) }
     activeGeigerRuleIds = activeGeigerRuleIds.intersection(geigerRuleIds).subtracting(stale)
     rules = value
-    pins = presetPins
-    player.prepare(soundTypes: value.map(\.soundType), pins: Array(presetPins.values))
+    player.prepare(soundTypes: value.map(\.soundType))
     engine.resetAlertState()
   }
 
@@ -119,7 +94,7 @@ internal final class AlertCoordinator {
     }
     activeGeigerRuleIds = ids
     for alert in geiger {
-      player.updateGeiger(ruleId: alert.ruleId, soundType: alert.soundType, rangeDepth: alert.rangeDepth ?? 0, pin: pin(alert))
+      player.updateGeiger(ruleId: alert.ruleId, soundType: alert.soundType, rangeDepth: alert.rangeDepth ?? 0)
     }
 
     let single = fired.filter { $0.rangeDepth == nil }
@@ -141,8 +116,7 @@ internal final class AlertCoordinator {
               threshold: alert.threshold,
               percentAvailable: batteryPercent != nil,
               unitSystem: unitSystem
-            ),
-            pin: pin(alert)
+            )
           )
         } else if let tts = parseTtsAlertSound(alert.soundType) {
           let text = renderAlertMessageTemplate(tts.text, alert: alert, batteryPercent: batteryPercent, onDiagnostic: onDiagnostic, unitSystem: unitSystem)
@@ -151,17 +125,12 @@ internal final class AlertCoordinator {
       }
       for alert in single where !isSpokenSoundType(alert.soundType) || mutedPresets.contains(alert.ruleId) {
         let severity = parseVoiceAlertSound(alert.soundType)?.severity
-        player.playSingle(soundType: severity.map { "alert:\($0.rawValue)" } ?? alert.soundType, pin: pin(alert))
+        player.playSingle(soundType: severity.map { "alert:\($0.rawValue)" } ?? alert.soundType)
       }
       if vibrateSingles { player.vibrate(rangeDepth: nil) }
     }
 
     return fired.map { $0.toMap() }
-  }
-
-  /// The pin of `alert`'s preset; custom rules never follow one.
-  private func pin(_ alert: FiredAlert) -> PresetSoundPin? {
-    alert.ruleId.hasPrefix(presetRulePrefix) ? pins[alert.controlId] : nil
   }
 
   func stopAllGeiger() {

@@ -2,7 +2,6 @@ import { create } from 'zustand'
 import { applyAlertPreset, type AlertPresetIntent } from 'vescape-core'
 import { errorMessage } from '@/helpers/error'
 import type { AlertPresetLevel, AlertPresetMetric } from '@/modules/alerts/lib/alertPresets'
-import type { PresetSoundSlot } from '@/modules/alerts/lib/boardAlertSettings'
 import { useAlertsStore } from '@/modules/alerts/store/alertsStore'
 import { useBoardStore } from '@/modules/board/store/boardStore'
 
@@ -16,13 +15,6 @@ interface AlertPresetActions {
   discardCustom(metric: AlertPresetMetric, boardId?: string): Promise<void>
   setMatchBoardConfig(metric: AlertPresetMetric, enabled: boolean, boardId?: string): Promise<void>
   setGeigerSound(metric: AlertPresetMetric, soundType: string, boardId?: string): Promise<void>
-  /** Pin `slot` to `pack`; null follows the app-wide choice again. */
-  setSoundPin(
-    metric: AlertPresetMetric,
-    slot: PresetSoundSlot,
-    pack: string | null,
-    boardId?: string,
-  ): Promise<void>
 }
 
 let pending = 0
@@ -65,7 +57,5 @@ export const useAlertPresetStore = create<AlertPresetState & AlertPresetActions>
       apply(metric, { action: 'match-board-config', enabled }, boardId),
     setGeigerSound: (metric, soundType, boardId) =>
       apply(metric, { action: 'geiger-sound', soundType }, boardId),
-    setSoundPin: (metric, slot, pack, boardId) =>
-      apply(metric, { action: slot === 'effects' ? 'effects-pack' : 'voice-pack', pack }, boardId),
   }
 })

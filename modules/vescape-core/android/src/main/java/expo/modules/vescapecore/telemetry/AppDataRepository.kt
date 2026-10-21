@@ -1274,7 +1274,7 @@ private fun normalizeLegalMode(raw: Any?): Map<String, Boolean>? =
 
 /**
  * A durable per-metric Alert Preset bag — the level selection, which metrics match the board's
- * own configuration, and each preset's sound choices (pinned packs, geiger level). JS owns behavior; native persists each as an opaque object. Non-object/empty
+ * own configuration, and each preset's sound choices (the geiger level). JS owns behavior; native persists each as an opaque object. Non-object/empty
  * payloads normalize away (row removed).
  * @parity /modules/vescape-core/ios/telemetry/AppDataRepository.swift `normalizeMetricBag`
  */

@@ -398,7 +398,7 @@ internal class AlertFeedback(
     /** Sounds already reported late since [wake], one Diagnostic Event each. */
     private val lateReported = HashSet<String>()
     /** Last [prepare] input, replayed when the pool is rebuilt for a new audio source. */
-    private var prepared: Pair<List<String>, Collection<PresetSoundPin>> = emptyList<String>() to emptyList()
+    private var prepared: List<String> = emptyList()
     private val geigerLoops = HashMap<String, GeigerLoop>()
     private val samples = SoundSampleQueue()
     private val pendingGeiger = HashMap<String, PendingGeiger>()
@@ -413,15 +413,8 @@ internal class AlertFeedback(
     /** Bumped per voice announcement, so a line still decoding for an older one never plays. */
     private var voiceGeneration = 0
 
-    /** Effects pack a sound plays from: the preset's [pin], else the app-wide one. */
-    private fun effectsPack(pin: PresetSoundPin?): String = pin?.effects ?: soundPack
-
-    /**
-     * Voice pack a line speaks with: the preset's [pin], else the `voice` setting, where Matching
-     * follows the effects pack the same sound plays from.
-     */
-    private fun voicePack(pin: PresetSoundPin? = null): String =
-        pin?.voice ?: voicePackId(voice, EffectsPackAssets.voice(context, effectsPack(pin)))
+    /** Voice pack a line speaks with: the `voice` setting, where Matching follows the effects pack. */
+    private fun voicePack(): String = voicePackId(voice, EffectsPackAssets.voice(context, soundPack))
 
     fun setSoundSettings(settings: AppSettings) {
         if (android.os.Looper.myLooper() != handler.looper) {
@@ -441,37 +434,35 @@ internal class AlertFeedback(
     init { handler.post { loadAssets() } }
 
     /**
-     * Ready everything [soundTypes] and preset [pins] can play before the first alert: My sound
-     * samples and players for every rule and slot override, and every pinned voice pack's lines.
-     * Built-in pack slots are always loaded.
+     * Ready everything [soundTypes] can play before the first alert: My sound samples and players
+     * for every rule and slot override, and the voice pack's lines. Built-in pack slots are always
+     * loaded.
      *
      * @parity /modules/vescape-core/ios/alerts/AlertAudioPlayer.swift `prepare`
      */
-    fun prepare(soundTypes: List<String>, pins: Collection<PresetSoundPin>) {
+    fun prepare(soundTypes: List<String>) {
         if (android.os.Looper.myLooper() != handler.looper) {
-            handler.post { prepare(soundTypes, pins) }
+            handler.post { prepare(soundTypes) }
             return
         }
         if (released) return
-        prepared = soundTypes to pins
-        val packs = (pins.mapNotNull { it.effects } + soundPack).distinct()
+        prepared = soundTypes
+        val pack = soundPack
         val slots = EffectsPackAssets.slots(context).keys.map { it.substringAfter('/') }.distinct()
         val mine = HashSet<java.io.File>()
-        for (pack in packs) {
-            for (slot in slots) {
-                if (slotSample(slot, pack) != 0) (slotClip(context, pack, slot) as? SlotClip.Mine)?.let { mine += it.file }
-            }
-            for (soundType in soundTypes) {
-                val my = mySoundId(soundType) ?: continue
-                val slot = if (isGeigerSoundType(soundType)) geigerSlot(soundType) else parseSlotAlertSound(soundType).severity.slot
-                slotSample(slot, pack, my)
-                (slotClip(context, pack, slot, my) as? SlotClip.Mine)?.let { mine += it.file }
-            }
+        for (slot in slots) {
+            if (slotSample(slot, pack) != 0) (slotClip(context, pack, slot) as? SlotClip.Mine)?.let { mine += it.file }
+        }
+        for (soundType in soundTypes) {
+            val my = mySoundId(soundType) ?: continue
+            val slot = if (isGeigerSoundType(soundType)) geigerSlot(soundType) else parseSlotAlertSound(soundType).severity.slot
+            slotSample(slot, pack, my)
+            (slotClip(context, pack, slot, my) as? SlotClip.Mine)?.let { mine += it.file }
         }
         for (path in readyMine.keys - mine.map { it.path }.toSet()) readyMine.remove(path)?.player?.release()
         for (file in mine) if (file.path !in readyMine) readyMine[file.path] = prepareMine(file)
-        val voices = (pins.map { voicePack(it) } + voicePack()).distinct()
-        voiceExecutor.execute { voices.forEach { VoicePackAssets.prewarm(context, it) } }
+        val voice = voicePack()
+        voiceExecutor.execute { VoicePackAssets.prewarm(context, voice) }
     }
 
     private class ReadyClip(val player: android.media.MediaPlayer) { var ready = false }
@@ -569,7 +560,7 @@ internal class AlertFeedback(
                 samples.complete(sampleId, status == 0)
                 val loops = pendingGeiger.toMap()
                 pendingGeiger.clear()
-                for ((id, request) in loops) updateGeiger(id, request.soundType, request.rangeDepth, request.pin)
+                for ((id, request) in loops) updateGeiger(id, request.soundType, request.rangeDepth)
             }
         }
         try {
@@ -605,7 +596,7 @@ internal class AlertFeedback(
         }
         val selected = if (source == "media") "media" else "alarm"
         if (released || audioSource == selected) return
-        val loops = geigerLoops.mapValues { (_, loop) -> PendingGeiger(loop.soundType, loop.rangeDepth, loop.pin) } + pendingGeiger
+        val loops = geigerLoops.mapValues { (_, loop) -> PendingGeiger(loop.soundType, loop.rangeDepth) } + pendingGeiger
         val waitingPlays = samples.takePending()
         stopAllGeiger()
         soundPool.release()
@@ -616,7 +607,7 @@ internal class AlertFeedback(
         loadAssets()
         waitingPlays.forEach { it() }
         releaseMine()
-        prepare(prepared.first, prepared.second)
+        prepare(prepared)
         if (warmTrack != null) { goIdle(); wake() }
         tts?.stop()
         tts?.setAudioAttributes(audioAttributes(audioSource, AudioAttributes.CONTENT_TYPE_SPEECH))
@@ -761,12 +752,12 @@ internal class AlertFeedback(
      * Play one announcement: an `alert(count):severity` rule's severity sound from the active effects
      * pack, [count][SlotAlertSound.count] times, [ALERT_BEEP_SPACING_MS] apart.
      */
-    fun playSingle(soundType: String, pin: PresetSoundPin? = null, requestedAt: Long = SystemClock.uptimeMillis()) {
+    fun playSingle(soundType: String, requestedAt: Long = SystemClock.uptimeMillis()) {
         if (android.os.Looper.myLooper() != handler.looper) {
-            handler.post { playSingle(soundType, pin, requestedAt) }
+            handler.post { playSingle(soundType, requestedAt) }
             return
         }
-        playSeverity(parseSlotAlertSound(soundType), mySoundId(soundType), effectsPack(pin), requestedAt)
+        playSeverity(parseSlotAlertSound(soundType), mySoundId(soundType), soundPack, requestedAt)
     }
 
     /** [sound]'s severity slot from [pack], or My sound [my] in its place, [SlotAlertSound.count] times. */
@@ -821,26 +812,24 @@ internal class AlertFeedback(
     /**
      * Speak [announcement]: [slot] (its severity sound by default) once, then the voice pack line
      * joined with its value into one buffer, starting once the sound has finished. A key the pack
-     * has no line for plays the sound only. Voice level is the caller's ([presetVoiceEnabled]). A
-     * preset's [pin] picks the packs both play from.
+     * has no line for plays the sound only. Voice level is the caller's ([presetVoiceEnabled]).
      *
      * @parity /modules/vescape-core/ios/alerts/AlertAudioPlayer.swift `speakVoice`
      */
     fun speakVoice(
         announcement: VoiceAnnouncement,
         slot: String = announcement.severity.slot,
-        pin: PresetSoundPin? = null,
         requestedAt: Long = SystemClock.uptimeMillis(),
     ) {
         if (android.os.Looper.myLooper() != handler.looper) {
-            handler.post { speakVoice(announcement, slot, pin, requestedAt) }
+            handler.post { speakVoice(announcement, slot, requestedAt) }
             return
         }
         if (released) return
         pendingSpeech?.let { handler.removeCallbacks(it) }
         pendingSpeech = null
         val generation = ++voiceGeneration
-        val effects = effectsPack(pin)
+        val effects = soundPack
         val delay = speechDelayMs(context, effects, slot)
         // The line is due [delay] after the sound actually starts, so a sound still loading never
         // overlaps it; both callbacks land on the audio looper.
@@ -855,7 +844,7 @@ internal class AlertFeedback(
             handler.postAtTime(speech, maxOf(at, SystemClock.uptimeMillis()))
         }
         playOnce(slot, effects, requestedAt = requestedAt) { due = SystemClock.uptimeMillis() + delay; speakWhenDue() }
-        val pack = voicePack(pin)
+        val pack = voicePack()
         // Decoding runs off the audio looper while the severity sound covers it.
         voiceExecutor.execute {
             val pcm = VoicePackAssets.join(context, pack, announcement) ?: return@execute
@@ -895,19 +884,19 @@ internal class AlertFeedback(
         }
     }
 
-    fun updateGeiger(ruleId: String, soundType: String, rangeDepth: Double, pin: PresetSoundPin? = null) {
+    fun updateGeiger(ruleId: String, soundType: String, rangeDepth: Double) {
         if (android.os.Looper.myLooper() != handler.looper) {
-            handler.post { updateGeiger(ruleId, soundType, rangeDepth, pin) }
+            handler.post { updateGeiger(ruleId, soundType, rangeDepth) }
             return
         }
         if (released) return
         val tickSlot = geigerSlot(soundType)
         val my = mySoundId(soundType)
-        val pack = effectsPack(pin)
+        val pack = soundPack
         val sample = slotSample(tickSlot, pack, my)
         if (samples.state(sample) == SoundSampleQueue.State.FAILED) { stopGeiger(ruleId); return }
         if (samples.state(sample) == SoundSampleQueue.State.PENDING) {
-            pendingGeiger[ruleId] = PendingGeiger(soundType, rangeDepth, pin)
+            pendingGeiger[ruleId] = PendingGeiger(soundType, rangeDepth)
             return
         }
         try {
@@ -919,24 +908,24 @@ internal class AlertFeedback(
                 if (existing?.sustained == true && existing.sample == sample) return
                 existing?.streamId?.let { soundPool.stop(it) }
                 val streamId = playSlot(tickSlot, loop = -1, my = my, pack = pack)
-                geigerLoops[ruleId] = GeigerLoop(soundType, pin, depth, sustained = true, streamId = streamId, sample = sample)
+                geigerLoops[ruleId] = GeigerLoop(soundType, depth, sustained = true, streamId = streamId, sample = sample)
                 return
             }
 
             if (existing?.sustained == true) {
                 existing.streamId?.let { soundPool.stop(it) }
             }
-            if (existing != null && !existing.sustained && existing.soundType == soundType && existing.pin == pin) {
+            if (existing != null && !existing.sustained && existing.soundType == soundType) {
                 existing.rangeDepth = depth
                 return
             }
             existing?.runnable?.let { handler.removeCallbacks(it) }
-            val loop = GeigerLoop(soundType, pin, depth, sustained = false)
+            val loop = GeigerLoop(soundType, depth, sustained = false)
             val runnable = object : Runnable {
                 override fun run() {
                     if (released || geigerLoops[ruleId] !== loop) return
                     // Resolved per tick, so an app-wide pack switch mid-loop takes effect.
-                    playSlot(tickSlot, my = my, pack = effectsPack(pin))
+                    playSlot(tickSlot, my = my, pack = soundPack)
                     handler.postDelayed(this, geigerIntervalMs(loop.rangeDepth))
                 }
             }
@@ -1022,11 +1011,10 @@ internal class AlertFeedback(
     private fun geigerIntervalMs(rangeDepth: Double): Long =
         (800L - (740L * rangeDepth.coerceIn(0.0, 1.0))).toLong().coerceIn(60L, 800L)
 
-    private data class PendingGeiger(val soundType: String, val rangeDepth: Double, val pin: PresetSoundPin?)
+    private data class PendingGeiger(val soundType: String, val rangeDepth: Double)
 
     private data class GeigerLoop(
         val soundType: String,
-        val pin: PresetSoundPin?,
         var rangeDepth: Double,
         val sustained: Boolean,
         val streamId: Int? = null,

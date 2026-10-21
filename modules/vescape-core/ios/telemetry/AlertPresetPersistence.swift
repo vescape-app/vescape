@@ -7,10 +7,8 @@ final class AlertPresetPersistence {
   let writer: any DatabaseWriter
   init(writer: any DatabaseWriter) { self.writer = writer }
   static let metrics = AlertPresetGenerator.metrics
-  /// Board setting holding each preset's sound choices: pinned packs and the geiger level.
+  /// Board setting holding each preset's sound choices: the geiger level.
   static let soundKey = "alertPresetSound"
-  /// Per-metric sound slots in `soundKey` a rider can pin to a pack.
-  private static let pinActions = ["effects-pack": "effects", "voice-pack": "voice"]
   private static let levels = AlertPresetGenerator.levels
   enum InvalidPreset: Error { case invalidIntent, missingBoard }
 
@@ -104,22 +102,13 @@ final class AlertPresetPersistence {
     object(object(settings[soundKey])[metric])
   }
 
-  /// Set (or with a nil `value`, clear back to the default) one of `metric`'s sound choices.
-  private static func saveSound(_ db: Database, _ boardId: String, _ settings: [String: Any], _ metric: String, _ slot: String, _ value: String?) throws {
+  /// Set one of `metric`'s sound choices.
+  private static func saveSound(_ db: Database, _ boardId: String, _ settings: [String: Any], _ metric: String, _ slot: String, _ value: String) throws {
     var all = object(settings[soundKey])
     var sound = presetSound(settings, metric)
     sound[slot] = value
-    all[metric] = sound.isEmpty ? nil : sound
-    if all.isEmpty {
-      _ = try PersistedBoardSetting.filter(Column("board_id") == boardId && Column("key") == soundKey).deleteAll(db)
-    } else {
-      try save(db, boardId, soundKey, all)
-    }
-  }
-
-  /// Shape of a pack id. Which packs ship is the player's call: an unknown pin plays the default.
-  private static func validPackId(_ id: String) -> Bool {
-    (1...40).contains(id.count) && id.allSatisfy { $0.isLetter || $0.isNumber || $0 == "-" || $0 == "_" }
+    all[metric] = sound
+    try save(db, boardId, soundKey, all)
   }
 
   /// The geiger sound on a metric's saved preset rules, for boards whose choice predates `soundKey`. Only a
@@ -168,9 +157,6 @@ final class AlertPresetPersistence {
         guard let sound = level, Self.isGeigerGrammar(sound) else { throw InvalidPreset.invalidIntent }
         // Kept in the setting, not only on the rules, so a level with no rules (Off) loses nothing.
         try Self.saveSound(db, boardId, values, metric, "geiger", sound)
-      case let pin where Self.pinActions[pin] != nil:
-        guard level.map(Self.validPackId) ?? true else { throw InvalidPreset.invalidIntent }
-        try Self.saveSound(db, boardId, values, metric, Self.pinActions[pin]!, level)
       case "match-board-config":
         guard let matchBoardConfig, try AlertPresetGenerator.matchField(metric) != nil else { throw InvalidPreset.invalidIntent }
         var match = Self.object(values["matchBoardConfig"])

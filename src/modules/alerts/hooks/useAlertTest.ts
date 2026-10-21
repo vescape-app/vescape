@@ -7,13 +7,7 @@ import {
   withSequence,
   withTiming,
 } from 'react-native-reanimated'
-import {
-  startAlertTest,
-  stopAlertTest,
-  updateAlertTest,
-  type AlertTestRule,
-  type Board,
-} from 'vescape-core'
+import { startAlertTest, stopAlertTest, updateAlertTest, type AlertTestRule } from 'vescape-core'
 
 import {
   batteryDrainAlertTestEasing,
@@ -30,8 +24,6 @@ const SAMPLE_INTERVAL_MS = 100
 
 interface AlertTestOptions {
   rules: AlertTestRule[]
-  /** The board's preset sound choices, so preset rules preview with their pinned packs. */
-  presetSound?: Board['alertPresetSound']
   min: number
   max: number
   /** Battery alerts below their threshold, so their natural test starts full and sweeps down. */
@@ -45,7 +37,6 @@ interface AlertTestOptions {
 /** Own the synthetic gauge sweep and its isolated native alert-engine lifecycle. */
 export function useAlertTest({
   rules,
-  presetSound,
   min,
   max,
   alertAbove,
@@ -110,7 +101,7 @@ export function useAlertTest({
             }),
           ),
     )
-    startAlertTest(rules, presetSound)
+    startAlertTest(rules)
     updateAlertTest(startValue)
     setRunning(true)
 
@@ -135,7 +126,7 @@ export function useAlertTest({
       const to = outbound ? turnValue : startValue
       updateAlertTest(from + (to - from) * eased)
     }, SAMPLE_INTERVAL_MS)
-  }, [alertAbove, lingerNearMax, max, min, presetSound, rules, slowForMessages, stop, value])
+  }, [alertAbove, lingerNearMax, max, min, rules, slowForMessages, stop, value])
 
   // A route can blur without unmounting. Blur cleanup guarantees no test survives leaving a page.
   useFocusEffect(useCallback(() => stop, [stop]))

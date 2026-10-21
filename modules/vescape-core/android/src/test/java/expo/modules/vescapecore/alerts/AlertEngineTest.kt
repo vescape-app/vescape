@@ -734,14 +734,4 @@ class VescAlertTemplateTest {
         assertEquals("°", alertControlUnit("imu"))
         assertEquals("", alertControlUnit("footpad"))
     }
-
-    @Test
-    fun presetSoundPinsDropUnknownPacks() {
-        val pins = PresetSoundPin.from(mapOf(
-            "battery" to mapOf("effects" to "hev", "voice" to "gone", "geiger" to "geiger:mid"),
-            "speed" to mapOf("geiger" to "geiger:hard"),
-            "duty" to "junk",
-        ))
-        assertEquals(mapOf("battery" to PresetSoundPin(effects = "hev")), pins)
-    }
 }

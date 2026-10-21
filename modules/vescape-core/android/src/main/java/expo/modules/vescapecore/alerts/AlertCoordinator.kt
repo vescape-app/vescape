@@ -7,26 +7,6 @@ import expo.modules.vescapecore.telemetry.AlertRuleEntity
 /** Id prefix of generated preset rules (`preset:<metric>:<index>`), the rules Voice level applies to. */
 internal const val PRESET_RULE_PREFIX = "preset:"
 
-/**
- * Packs one preset pins (#583), from the board's `alertPresetSound` setting; null follows the
- * app-wide choice. Resolution per slot: My sound override > pinned pack > app-wide.
- *
- * @parity /modules/vescape-core/ios/alerts/AlertCoordinator.swift `PresetSoundPin`
- */
-internal data class PresetSoundPin(val effects: String? = null, val voice: String? = null) {
-    companion object {
-        /** Pins per preset metric in a decoded `alertPresetSound` setting; unknown pack ids follow the default. */
-        fun from(raw: Any?): Map<String, PresetSoundPin> = (raw as? Map<*, *>).orEmpty().mapNotNull { (metric, value) ->
-            val sound = value as? Map<*, *> ?: return@mapNotNull null
-            val pin = PresetSoundPin(
-                effects = (sound["effects"] as? String)?.takeIf { it in EFFECTS_PACK_IDS },
-                voice = (sound["voice"] as? String)?.takeIf { it in VOICE_PACK_IDS },
-            )
-            if (pin == PresetSoundPin()) null else (metric as? String ?: return@mapNotNull null) to pin
-        }.toMap()
-    }
-}
-
 internal class AlertCoordinator(
     private val feedback: () -> AlertFeedback,
     /** Test feedback must not start a system vibration that cannot be cancelled per source. */
@@ -36,24 +16,21 @@ internal class AlertCoordinator(
     var unitSystem: String = "metric"
     private val engine = AlertEngine()
     private var rules: List<AlertRuleEntity> = emptyList()
-    private var pins: Map<String, PresetSoundPin> = emptyMap()
     private var activeGeigerRuleIds: Set<String> = emptySet()
     fun updateBoardConfigValues(values: Map<String, Any>) = engine.updateBoardConfigValues(values)
 
     fun updateMotorConfigValues(values: Map<String, Any>) = engine.updateMotorConfigValues(values)
 
-    fun replaceRules(value: List<AlertRuleEntity>, presetPins: Map<String, PresetSoundPin> = emptyMap()) {
+    fun replaceRules(value: List<AlertRuleEntity>) {
         val geigerRuleIds = value
             .asSequence()
             .filter { it.thresholdMax != null }
             .mapTo(mutableSetOf()) { it.id }
-        // A changed pin restarts every loop: a running (sustained) one would keep its old pack.
-        val stale = if (presetPins != pins) activeGeigerRuleIds else activeGeigerRuleIds - geigerRuleIds
+        val stale = activeGeigerRuleIds - geigerRuleIds
         for (ruleId in stale) feedback().stopGeiger(ruleId)
         activeGeigerRuleIds = activeGeigerRuleIds.intersect(geigerRuleIds) - stale
         rules = value
-        pins = presetPins
-        feedback().prepare(value.map { it.soundType }, presetPins.values)
+        feedback().prepare(value.map { it.soundType })
         engine.resetAlertState()
     }
 
@@ -106,7 +83,7 @@ internal class AlertCoordinator(
         val ids = geiger.mapTo(HashSet()) { it.ruleId }
         for (ruleId in activeGeigerRuleIds - ids) feedback().stopGeiger(ruleId)
         activeGeigerRuleIds = ids
-        for (alert in geiger) feedback().updateGeiger(alert.ruleId, alert.soundType, alert.rangeDepth ?: 0.0, pin(alert))
+        for (alert in geiger) feedback().updateGeiger(alert.ruleId, alert.soundType, alert.rangeDepth ?: 0.0)
 
         val single = fired.filter { it.rangeDepth == null }
         if (single.isNotEmpty()) {
@@ -123,7 +100,6 @@ internal class AlertCoordinator(
                 if (voice != null) {
                     feedback().speakVoice(
                         voiceAnnouncement(voice, alert.controlId, alert.threshold, batteryPercent != null, unitSystem),
-                        pin = pin(alert),
                     )
                     return@let
                 }
@@ -132,19 +108,15 @@ internal class AlertCoordinator(
                 if (text.isNotEmpty()) feedback().speakAfterSeverity(tts.severity, text)
             }
             for (alert in single) {
-                if (!isSpokenSoundType(alert.soundType)) feedback().playSingle(alert.soundType, pin(alert))
+                if (!isSpokenSoundType(alert.soundType)) feedback().playSingle(alert.soundType)
                 else if (alert.ruleId in mutedPresets) {
-                    feedback().playSingle("alert:${parseVoiceAlertSound(alert.soundType)!!.severity.id}", pin(alert))
+                    feedback().playSingle("alert:${parseVoiceAlertSound(alert.soundType)!!.severity.id}")
                 }
             }
             if (vibrateSingles) feedback().vibrate(null)
         }
         return fired.map { it.toMap() }
     }
-
-    /** The pin of [alert]'s preset; custom rules never follow one. */
-    private fun pin(alert: FiredAlert): PresetSoundPin? =
-        if (alert.ruleId.startsWith(PRESET_RULE_PREFIX)) pins[alert.controlId] else null
 
     fun stopAllGeiger() {
         feedback().stopAllGeiger()

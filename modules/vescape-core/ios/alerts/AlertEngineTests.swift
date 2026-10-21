@@ -673,13 +673,4 @@ final class AlertTemplateTests: XCTestCase {
     XCTAssertEqual("°", alertControlUnit("imu"))
     XCTAssertEqual("", alertControlUnit("footpad"))
   }
-
-  func testPresetSoundPinsDropUnknownPacks() {
-    let pins = PresetSoundPin.from([
-      "battery": ["effects": "hev", "voice": "gone", "geiger": "geiger:mid"],
-      "speed": ["geiger": "geiger:hard"],
-      "duty": "junk",
-    ] as [String: Any])
-    XCTAssertEqual(pins, ["battery": PresetSoundPin(effects: "hev")])
-  }
 }

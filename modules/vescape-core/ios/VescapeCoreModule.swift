@@ -555,8 +555,8 @@ public class VescapeCoreModule: Module {
 
     // @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/VescapeCoreModule.kt `startAlertTest`
     // @parity /modules/vescape-core/src/index.ts `startAlertTest`
-    Function("startAlertTest") { (ruleMaps: [[String: Any]], presetSound: [String: Any]?) in
-      self.startAlertTest(ruleMaps, presetSound: presetSound)
+    Function("startAlertTest") { (ruleMaps: [[String: Any]]) in
+      self.startAlertTest(ruleMaps)
     }
 
     Function("updateAlertTest") { (value: Double) in
@@ -1655,8 +1655,7 @@ public class VescapeCoreModule: Module {
     }
   }
 
-  /// `presetSound`: the board's `alertPresetSound` bag, so a pinned preset previews with its packs.
-  private func startAlertTest(_ ruleMaps: [[String: Any]], presetSound: [String: Any]?) {
+  private func startAlertTest(_ ruleMaps: [[String: Any]]) {
     stopAlertTest()
     let rules = ruleMaps.compactMap(Self.alertTestRule)
     guard let controlId = rules.first?.controlId else { return }
@@ -1670,7 +1669,7 @@ public class VescapeCoreModule: Module {
     player.applySoundSettings(settings)
     let coordinator = AlertCoordinator(player: player, vibrateSingles: false)
     coordinator.unitSystem = settings["unitSystem"] as? String ?? "metric"
-    coordinator.replaceRules(rules, presetPins: PresetSoundPin.from(presetSound))
+    coordinator.replaceRules(rules)
     alertTestPlayer = player
     alertTestCoordinator = coordinator
     alertTestControlId = controlId

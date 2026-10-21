@@ -624,8 +624,8 @@ export interface Board {
    */
   matchBoardConfig?: Record<string, unknown> | null
   /**
-   * Native-owned per-metric preset sound choices: `effects` / `voice` pin a pack (absent follows
-   * the app-wide choice), `geiger` keeps the tick level across level changes. Changed only through
+   * Native-owned per-metric preset sound choices: `geiger` keeps the tick level across level
+   * changes; presets play the app-wide effects and voice packs. Changed only through
    * applyAlertPreset. Absent ⇒ every preset follows the defaults.
    * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/AlertPresetPersistence.kt `SOUND_KEY`
    * @parity /modules/vescape-core/ios/telemetry/AlertPresetPersistence.swift `soundKey`
@@ -2768,7 +2768,7 @@ type VescapeCoreNativeModule = NativeEventEmitter<VescapeCoreEvents> & {
 
   startGeigerSimulation(soundType: string, rangeDepth: number): void
   stopGeigerSimulation(): void
-  startAlertTest(rules: AlertTestRule[], presetSound: Board['alertPresetSound']): void
+  startAlertTest(rules: AlertTestRule[]): void
   updateAlertTest(value: number): void
   stopAlertTest(): void
   selectBoard(boardId: string): Promise<void>
@@ -3363,16 +3363,10 @@ export function stopGeigerSimulation(): void {
   }
 }
 
-/**
- * Start an isolated alert-engine test from an exact JS rule snapshot (saved or wizard draft).
- * `presetSound` is the board's bag, so preset rules play their pinned packs.
- */
-export function startAlertTest(
-  rules: AlertTestRule[],
-  presetSound: Board['alertPresetSound'] = null,
-): void {
+/** Start an isolated alert-engine test from an exact JS rule snapshot (saved or wizard draft). */
+export function startAlertTest(rules: AlertTestRule[]): void {
   try {
-    native.startAlertTest(rules, presetSound ?? null)
+    native.startAlertTest(rules)
   } catch {
     // Older development clients may not expose the test bridge yet; the visual sweep still runs.
   }
@@ -4118,13 +4112,9 @@ export type AlertPresetIntent =
   | { action: 'match-board-config'; enabled: boolean }
   /** Geiger sound (`geiger:<level>`) for the metric's preset ticks; kept across regeneration. */
   | { action: 'geiger-sound'; soundType: string }
-  /** Pin the metric's effects or voice pack; null returns it to the app-wide choice. */
-  | { action: 'effects-pack' | 'voice-pack'; pack: string | null }
 
 /** One preset's sound choices in {@link Board.alertPresetSound}. */
 export interface AlertPresetSound {
-  effects?: string
-  voice?: string
   geiger?: string
 }
 
@@ -4165,9 +4155,7 @@ export async function applyAlertPreset(
       ? intent.level
       : intent.action === 'geiger-sound'
         ? intent.soundType
-        : intent.action === 'effects-pack' || intent.action === 'voice-pack'
-          ? intent.pack
-          : null,
+        : null,
     intent.action === 'match-board-config' ? intent.enabled : null,
   )
 }

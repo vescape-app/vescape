@@ -1160,7 +1160,7 @@ internal final class BoardSessionController: VescGattListener {
       enabled: enabled,
       warningSpeedKmh: speeds?.warningSpeedKmh,
       limitSpeedKmh: speeds?.limitSpeedKmh
-    ), presetPins: PresetSoundPin.from(board?["alertPresetSound"] ?? nil))
+    ))
   }
 
   func legalModeEnableError(boardId: String) -> (String, String)? {
@@ -1606,7 +1606,7 @@ internal final class BoardSessionController: VescGattListener {
       enabled: legalModeEnabled,
       warningSpeedKmh: legalSpeeds?.warningSpeedKmh,
       limitSpeedKmh: legalSpeeds?.limitSpeedKmh
-    ), presetPins: PresetSoundPin.from(board?["alertPresetSound"] ?? nil))
+    ))
     connectionSeq = sessionSequence
     connectedBoardId = config.appBoardId
     bleId = config.bleId

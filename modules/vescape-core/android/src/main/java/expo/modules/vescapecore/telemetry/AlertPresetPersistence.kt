@@ -9,10 +9,8 @@ import java.util.UUID
  */
 internal object AlertPresetPersistence {
   val metrics = AlertPresetGenerator.metrics
-  /** Board setting holding each preset's sound choices: pinned packs and the geiger level. */
+  /** Board setting holding each preset's sound choices: the geiger level. */
   const val SOUND_KEY = "alertPresetSound"
-  /** Per-metric sound slots in [SOUND_KEY] a rider can pin to a pack. */
-  private val pinActions = mapOf("effects-pack" to "effects", "voice-pack" to "voice")
   private val levels = AlertPresetGenerator.levels
   private fun json(value: Any?) = JSONObject(value as? Map<*, *> ?: emptyMap<String, Any>())
 
@@ -122,10 +120,6 @@ internal object AlertPresetPersistence {
         // Kept in the setting, not only on the rules, so a level with no rules (Off) loses nothing.
         saveSound(dao, boardId, settings, metric, "geiger", sound, now)
       }
-      in pinActions -> {
-        require(level == null || validPackId(level)) { "Invalid sound pack" }
-        saveSound(dao, boardId, settings, metric, pinActions.getValue(action), level, now)
-      }
       "match-board-config" -> {
         require(AlertPresetGenerator.matchField(metric) != null && matchBoardConfig != null) { "Metric cannot match board config" }
         val match = json(settings["matchBoardConfig"]).put(metric, matchBoardConfig)
@@ -142,26 +136,19 @@ internal object AlertPresetPersistence {
   private fun presetSound(settings: Map<String, Any?>, metric: String): JSONObject =
     json(settings[SOUND_KEY]).optJSONObject(metric) ?: JSONObject()
 
-  /** Set (or with a null [value], clear back to the default) one of [metric]'s sound choices. */
+  /** Set one of [metric]'s sound choices. */
   private suspend fun saveSound(
     dao: TelemetryDao,
     boardId: String,
     settings: Map<String, Any?>,
     metric: String,
     slot: String,
-    value: String?,
+    value: String,
     now: Long,
   ) {
-    val all = json(settings[SOUND_KEY])
-    val sound = presetSound(settings, metric)
-    if (value == null) sound.remove(slot) else sound.put(slot, value)
-    if (sound.length() == 0) all.remove(metric) else all.put(metric, sound)
-    if (all.length() == 0) dao.deleteBoardSetting(boardId, SOUND_KEY)
-    else dao.upsertBoardSetting(BoardSettingEntity(boardId, SOUND_KEY, all.toString(), now))
+    val all = json(settings[SOUND_KEY]).put(metric, presetSound(settings, metric).put(slot, value))
+    dao.upsertBoardSetting(BoardSettingEntity(boardId, SOUND_KEY, all.toString(), now))
   }
-
-  /** Shape of a pack id. Which packs ship is the player's call: an unknown pin plays the default. */
-  private fun validPackId(id: String) = id.length in 1..40 && id.all { it.isLetterOrDigit() || it == '-' || it == '_' }
 
   /**
    * The geiger sound on a metric's saved preset rules, for boards whose choice predates [SOUND_KEY]. Only a

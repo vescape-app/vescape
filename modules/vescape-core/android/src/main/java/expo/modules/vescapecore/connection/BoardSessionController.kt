@@ -8,7 +8,6 @@ import expo.modules.vescapecore.service.ACTION_DISCONNECT_FROM_NOTIFICATION
 import expo.modules.vescapecore.service.ACTION_EXIT_FROM_NOTIFICATION
 import expo.modules.vescapecore.alerts.AlertCoordinator
 import expo.modules.vescapecore.alerts.AlertFeedback
-import expo.modules.vescapecore.alerts.PresetSoundPin
 import expo.modules.vescapecore.alerts.withLegalModeOverlay
 import expo.modules.vescapecore.location.LegalPolicyCatalog
 import expo.modules.vescapecore.recording.RecordingStorageFailure
@@ -3480,7 +3479,7 @@ internal class BoardSessionController(private val service: CoreForegroundService
                 speeds?.limitSpeedKmh,
             )
             if (!CoreForegroundService.isLatestAlertRulesGeneration(generation)) return
-            alertCoordinator.replaceRules(rules, PresetSoundPin.from(board?.get("alertPresetSound")))
+            alertCoordinator.replaceRules(rules)
             Log.d(VESC_SESSION_TAG, "Loaded ${rules.size} alert rule(s)")
         } catch (e: kotlinx.coroutines.CancellationException) {
             throw e

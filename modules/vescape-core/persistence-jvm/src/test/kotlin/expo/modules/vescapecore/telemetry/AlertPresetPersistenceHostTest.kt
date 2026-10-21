@@ -177,14 +177,7 @@ class AlertPresetPersistenceHostTest {
     dao.applyAlertPreset(board.id, "speed", "select", "normal", null)
     assertEquals("geiger:mid", sound("speed"))
     suspend fun pins() = dao.getBoardSettings(board.id).firstOrNull { it.key == "alertPresetSound" }?.let { JSONObject(it.valueJson) }
-    dao.applyAlertPreset(board.id, "battery", "effects-pack", "hev", null)
-    dao.applyAlertPreset(board.id, "battery", "voice-pack", "clean", null)
-    assertEquals("hev", pins()!!.getJSONObject("battery").getString("effects"))
-    assertEquals("clean", pins()!!.getJSONObject("battery").getString("voice"))
     assertEquals("geiger:mid", pins()!!.getJSONObject("speed").getString("geiger"))
-    dao.applyAlertPreset(board.id, "battery", "effects-pack", null, null)
-    dao.applyAlertPreset(board.id, "battery", "voice-pack", null, null)
-    assertFalse(pins()!!.has("battery"))
     dao.upsertBoardWithSettings(board, listOf(setting("alertPresetSound", "{}")), listOf("alertPresetSound"))
     assertEquals("geiger:mid", pins()!!.getJSONObject("speed").getString("geiger"))
     dao.upsertAlertRule(dao.getAlertRules(board.id).single { it.controlId == "duty" && it.source == "preset" }.copy(soundType = "geiger:soft"))
@@ -192,9 +185,6 @@ class AlertPresetPersistenceHostTest {
     dao.applyAlertPreset(board.id, "duty", "select", "normal", null)
     assertEquals("geiger:soft", sound("duty"))
     assertEquals("geiger:mid", pins()!!.getJSONObject("speed").getString("geiger"))
-    rejected = false
-    try { dao.applyAlertPreset(board.id, "battery", "voice-pack", "../x", null) } catch (_: IllegalArgumentException) { rejected = true }
-    assertTrue(rejected)
     dao.applyAlertPreset(board.id, "duty", "match-board-config", null, true)
     val dormant = dao.getAlertRules(board.id).single { it.controlId == "duty" }
     assertEquals("config-relative", dormant.thresholdKind); assertEquals(-10.0, dormant.thresholdOffset!!, 0.0)
