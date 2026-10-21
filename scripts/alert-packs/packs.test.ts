@@ -23,7 +23,8 @@ describe('alert packs', () => {
   test('effects packs never contain voice', () => {
     for (const name of MANIFESTS.filter((name) => name.startsWith('effects-'))) {
       const pack = JSON.parse(readFileSync(join(packDir(loadManifest(name)), 'pack.json'), 'utf8'))
-      expect(Object.keys(pack.slots).sort()).toEqual([...catalog.effectSlots].sort())
+      const known = [...catalog.effectSlots, ...Object.keys(catalog.optionalEffectSlots)]
+      expect(Object.keys(pack.slots).filter((slot) => !known.includes(slot))).toEqual([])
     }
   })
 

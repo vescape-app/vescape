@@ -2744,7 +2744,7 @@ type VescapeCoreNativeModule = NativeEventEmitter<VescapeCoreEvents> & {
   requestCriticalRideNotificationPermission(): Promise<CriticalRideNotificationPermissionStatus>
   getAlertSounds(): AlertSound[]
   previewAlertSound(soundType: AlertSoundType): void
-  playAppSound(pack: string, cue: AppSoundCueId): void
+  playPackSound(pack: string, slot: PackSoundSlot): void
   playAppCue(cue: AppSoundCueId): void
   mapTile(z: number, x: number, y: number): Promise<string | null>
   mySounds(): Promise<MySoundsState>
@@ -3269,20 +3269,19 @@ export type AppSoundCueId =
   | 'groupRide.lost'
   | 'groupRide.restored'
 
+/** Effects pack slot Settings previews: the overridable slots plus ride end. */
+export type PackSoundSlot = SoundOverrideSlot | 'cue.ride.end'
+
 /** Effects slot a My sound can override; see `SOUND_OVERRIDE_SLOTS` in the settings module. */
 export type SoundOverrideSlot =
+  | 'severity.positive'
   | 'severity.info'
   | 'severity.warning'
   | 'severity.critical'
   | 'cue.on'
   | 'cue.off'
-  | 'cue.error'
   | 'cue.groupRide.created'
   | 'cue.groupRide.joined'
-  | 'cue.groupRide.riderJoined'
-  | 'cue.groupRide.riderLeft'
-  | 'cue.groupRide.lost'
-  | 'cue.groupRide.restored'
 
 /**
  * The My sounds library and the override slots pointing into it. Rules name a sound as
@@ -3317,11 +3316,11 @@ export const mapTile = (z: number, x: number, y: number): Promise<string | null>
   native.mapTile(z, x, y)
 
 /**
- * Preview an app cue's effect: its My sounds override when set, else `pack`'s clip. `ride.end` is
- * not overridable and always comes from the pack. Never speaks.
+ * Preview a pack slot: its My sounds override when set, else `pack`'s clip (an optional slot the
+ * pack leaves out plays its fallback). `cue.ride.end` is not overridable. Never speaks.
  */
-export function playAppSound(pack: string, cue: AppSoundCueId): void {
-  native.playAppSound(pack, cue)
+export function playPackSound(pack: string, slot: PackSoundSlot): void {
+  native.playPackSound(pack, slot)
 }
 
 /**

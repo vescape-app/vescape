@@ -1050,9 +1050,8 @@ internal class AlertFeedback(
             track.release()
         }
 
-        /** Preview without requiring a running board session. */
-        fun previewAppSound(context: Context, pack: String, cue: String, source: String) {
-            val slot = appCueSlot(cue) ?: return
+        /** Preview [pack]'s [slot] (or its override) without requiring a running board session. */
+        fun previewPackSound(context: Context, pack: String, slot: String, source: String) {
             previewClip(context, Handler(contextMainLooper()), pack, slot, source = source)
         }
 

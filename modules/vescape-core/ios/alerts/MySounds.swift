@@ -6,9 +6,8 @@ import Foundation
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/alerts/MySounds.kt `SOUND_OVERRIDE_SLOTS`
 /// @parity /src/modules/settings/lib/appSounds.ts `SOUND_OVERRIDE_SLOTS`
 internal let soundOverrideSlots = [
-  "severity.info", "severity.warning", "severity.critical",
-  "cue.on", "cue.off", "cue.error", "cue.groupRide.created", "cue.groupRide.joined",
-  "cue.groupRide.riderJoined", "cue.groupRide.riderLeft", "cue.groupRide.lost", "cue.groupRide.restored",
+  "severity.positive", "severity.info", "severity.warning", "severity.critical",
+  "cue.on", "cue.off", "cue.groupRide.created", "cue.groupRide.joined",
 ]
 
 /// My sounds: the rider's WAV library (≤2 MB, ≤15 s) in `custom-app-sounds/`, plus the override
@@ -25,11 +24,11 @@ internal enum MySounds {
   private static let maxDuration = 15.0
   private static let manifestName = "my-sounds.json"
   private static let legacyManifestName = "packs.json"
-  private static let legacyCues = [
-    ("on", "cue.on", "Connect"), ("off", "cue.off", "Disconnect"), ("error", "cue.error", "Error"),
-    ("created", "cue.groupRide.created", "New Group Ride"),
-    // The legacy `join` cue was another rider joining.
-    ("join", "cue.groupRide.riderJoined", "Rider joined"),
+  /// Legacy pack cue → (override slot, label). Error and rider joined (the legacy `join` was
+  /// another rider joining) have no override slot, so they migrate as plain library sounds.
+  private static let legacyCues: [(String, String?, String)] = [
+    ("on", "cue.on", "Connect"), ("off", "cue.off", "Disconnect"), ("error", nil, "Error"),
+    ("created", "cue.groupRide.created", "New Group Ride"), ("join", nil, "Rider joined"),
   ]
   private static let lock = NSRecursiveLock()
 
@@ -76,7 +75,7 @@ internal enum MySounds {
         else { continue }
         let id = String(file.dropLast(".wav".count))
         store.sounds.append(Sound(id: id, name: String("\(pack.name) \(label)".trimmingCharacters(in: .whitespaces).prefix(60))))
-        slots[slot] = id
+        if let slot { slots[slot] = id }
       }
       if !slots.isEmpty { legacy[pack.id] = slots }
     }
@@ -93,6 +92,10 @@ internal enum MySounds {
     if let data = try? Data(contentsOf: manifest) {
       // intentional-suppression: an unreadable library reads as empty; pack slots keep playing
       store = (try? JSONDecoder().decode(Store.self, from: data)) ?? Store()
+      // Overrides for slots that no longer exist are dropped.
+      let known = { (slot: String, _: String) in soundOverrideSlots.contains(slot) }
+      store.overrides = store.overrides.filter(known)
+      store.legacyPacks = store.legacyPacks?.mapValues { $0.filter(known) }
       // intentional-suppression: an unreadable pack manifest stays on disk and reads as empty
     } else if let data = try? Data(contentsOf: legacy) {
       if let migrated = try? migrate(data, in: dir), (try? save(migrated, at: dir)) != nil {

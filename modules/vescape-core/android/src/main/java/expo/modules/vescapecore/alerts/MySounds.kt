@@ -18,9 +18,8 @@ import java.util.UUID
  * @parity /src/modules/settings/lib/appSounds.ts `SOUND_OVERRIDE_SLOTS`
  */
 internal val SOUND_OVERRIDE_SLOTS = listOf(
-  "severity.info", "severity.warning", "severity.critical",
-  "cue.on", "cue.off", "cue.error", "cue.groupRide.created", "cue.groupRide.joined",
-  "cue.groupRide.riderJoined", "cue.groupRide.riderLeft", "cue.groupRide.lost", "cue.groupRide.restored",
+  "severity.positive", "severity.info", "severity.warning", "severity.critical",
+  "cue.on", "cue.off", "cue.groupRide.created", "cue.groupRide.joined",
 )
 
 /**
@@ -40,10 +39,13 @@ internal object MySounds {
   private const val MANIFEST = "my-sounds.json"
   private const val LEGACY_MANIFEST = "packs.json"
   private val fileName = Regex("[0-9a-fA-F-]{36}\\.wav")
-  /** Legacy pack cue → (slot, label); its `join` was another rider joining. */
-  private val legacyCues = listOf(
-    "on" to ("cue.on" to "Connect"), "off" to ("cue.off" to "Disconnect"), "error" to ("cue.error" to "Error"),
-    "created" to ("cue.groupRide.created" to "New Group Ride"), "join" to ("cue.groupRide.riderJoined" to "Rider joined"),
+  /**
+   * Legacy pack cue → (override slot, label); its `join` was another rider joining. Error and
+   * rider joined have no override slot, so they migrate as plain library sounds.
+   */
+  private val legacyCues = listOf<Pair<String, Pair<String?, String>>>(
+    "on" to ("cue.on" to "Connect"), "off" to ("cue.off" to "Disconnect"), "error" to (null to "Error"),
+    "created" to ("cue.groupRide.created" to "New Group Ride"), "join" to (null to "Rider joined"),
   )
 
   private data class Sound(val id: String, val name: String)
@@ -62,11 +64,13 @@ internal object MySounds {
     val json = JSONObject(text)
     val sounds = json.optJSONArray("sounds") ?: JSONArray()
     fun stringMap(obj: JSONObject?) = obj?.keys()?.asSequence()?.associateWith { obj.getString(it) }.orEmpty()
+    // Overrides for slots that no longer exist are dropped.
+    fun slotMap(obj: JSONObject?) = stringMap(obj).filterKeys { it in SOUND_OVERRIDE_SLOTS }
     val legacy = json.optJSONObject("legacyPacks")
     return Store(
       sounds = (0 until sounds.length()).map { sounds.getJSONObject(it).let { s -> Sound(s.getString("id"), s.getString("name")) } },
-      overrides = stringMap(json.optJSONObject("overrides")),
-      legacyPacks = legacy?.keys()?.asSequence()?.associateWith { stringMap(legacy.getJSONObject(it)) }.orEmpty(),
+      overrides = slotMap(json.optJSONObject("overrides")),
+      legacyPacks = legacy?.keys()?.asSequence()?.associateWith { slotMap(legacy.getJSONObject(it)) }.orEmpty(),
     )
   }
 
@@ -91,7 +95,7 @@ internal object MySounds {
         if (!fileName.matches(file) || !File(dir, file).isFile) continue
         val id = file.removeSuffix(".wav")
         sounds += Sound(id, "${pack.optString("name")} $label".trim().take(60))
-        slots[slot] = id
+        if (slot != null) slots[slot] = id
       }
       if (slots.isNotEmpty()) legacy[pack.optString("id")] = slots
     }

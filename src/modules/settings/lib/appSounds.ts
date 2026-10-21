@@ -1,8 +1,14 @@
-import { playAppCue, type AppSoundCueId, type SoundOverrideSlot } from 'vescape-core'
+import {
+  playAppCue,
+  type AppSoundCueId,
+  type PackSoundSlot,
+  type SoundOverrideSlot,
+} from 'vescape-core'
 import { useSettingsStore } from '@/modules/settings/store/settingsStore'
 
 /**
- * Built-in effects packs: each fills every severity, cue, and geiger slot, and names the voice
+ * Built-in effects packs: each fills the positive/info/warning/critical and geiger slots (optional
+ * cue slots fall back to one of those natively), and names the voice
  * `Matching` plays (its `pack.json` `voice`). The `soundPack` setting names one of them.
  *
  * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/alerts/EffectsPacks.kt
@@ -44,25 +50,19 @@ export const VOICE_LEVELS = [
   { value: 'full', label: 'Full' },
 ] as const
 
-/**
- * App cues the app plays by id (`playAppSound`, `playAppCue`): board and ride cues, then Group
- * Ride events.
- *
- * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/alerts/EffectsPacks.kt `appCueSlot`
- * @parity /modules/vescape-core/ios/alerts/EffectsPacks.swift `appCueSlot`
- */
-export const APP_SOUND_CUES: { id: AppSoundCueId; label: string; groupRide?: true }[] = [
-  { id: 'on', label: 'Connect' },
-  { id: 'off', label: 'Disconnect' },
-  { id: 'error', label: 'Error' },
-  { id: 'ride.end', label: 'Ride end' },
-  { id: 'groupRide.created', label: 'New Group Ride', groupRide: true },
-  { id: 'groupRide.joined', label: 'Joined Group Ride', groupRide: true },
-  { id: 'groupRide.riderJoined', label: 'Rider joined', groupRide: true },
-  { id: 'groupRide.riderLeft', label: 'Rider left', groupRide: true },
-  { id: 'groupRide.lost', label: 'Group Ride lost', groupRide: true },
-  { id: 'groupRide.restored', label: 'Group Ride restored', groupRide: true },
-]
+const SLOT_LABELS: Record<PackSoundSlot, string> = {
+  'severity.positive': 'Positive',
+  'severity.info': 'Info',
+  'severity.warning': 'Warning',
+  'severity.critical': 'Critical',
+  'cue.on': 'Connect',
+  'cue.off': 'Disconnect',
+  'cue.ride.end': 'Ride end',
+  'cue.groupRide.created': 'New Group Ride',
+  'cue.groupRide.joined': 'Joined Group Ride',
+}
+
+const labeled = <T extends PackSoundSlot>(slot: T) => ({ slot, label: SLOT_LABELS[slot] })
 
 /**
  * Effects slots a My sound can override, in settings order.
@@ -70,19 +70,26 @@ export const APP_SOUND_CUES: { id: AppSoundCueId; label: string; groupRide?: tru
  * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/alerts/MySounds.kt `SOUND_OVERRIDE_SLOTS`
  * @parity /modules/vescape-core/ios/alerts/MySounds.swift `soundOverrideSlots`
  */
-export const SOUND_OVERRIDE_SLOTS: { slot: SoundOverrideSlot; label: string }[] = [
-  { slot: 'severity.info', label: 'Info' },
-  { slot: 'severity.warning', label: 'Warning' },
-  { slot: 'severity.critical', label: 'Critical' },
-  { slot: 'cue.on', label: 'Connect' },
-  { slot: 'cue.off', label: 'Disconnect' },
-  { slot: 'cue.error', label: 'Error' },
-  { slot: 'cue.groupRide.created', label: 'New Group Ride' },
-  { slot: 'cue.groupRide.joined', label: 'Joined Group Ride' },
-  { slot: 'cue.groupRide.riderJoined', label: 'Rider joined Group Ride' },
-  { slot: 'cue.groupRide.riderLeft', label: 'Rider left Group Ride' },
-  { slot: 'cue.groupRide.lost', label: 'Group Ride lost' },
-  { slot: 'cue.groupRide.restored', label: 'Group Ride restored' },
+export const SOUND_OVERRIDE_SLOTS: { slot: SoundOverrideSlot; label: string }[] = (
+  [
+    'severity.positive',
+    'severity.info',
+    'severity.warning',
+    'severity.critical',
+    'cue.on',
+    'cue.off',
+    'cue.groupRide.created',
+    'cue.groupRide.joined',
+  ] as const
+).map(labeled)
+
+/** Rows of an effects pack's preview strip in Settings › Sounds: its cues, then its severity sounds. */
+export const PACK_PREVIEW_ROWS: { slot: PackSoundSlot; label: string }[][] = [
+  (['cue.on', 'cue.off', 'cue.ride.end'] as const).map(labeled),
+  (['cue.groupRide.created', 'cue.groupRide.joined'] as const).map(labeled),
+  (['severity.positive', 'severity.info', 'severity.warning', 'severity.critical'] as const).map(
+    labeled,
+  ),
 ]
 
 /** Play `cue` as the app does (effect, then voice at Full) unless app sounds are off. */

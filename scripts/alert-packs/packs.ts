@@ -20,7 +20,10 @@ export type ValueType = 'percent' | 'degrees'
 
 export interface Catalog {
   severities: string[]
+  /** Slots every effects pack fills. */
   effectSlots: string[]
+  /** Slots a pack may leave out → the required slot that plays instead. */
+  optionalEffectSlots: Record<string, string>
   voiceKeys: Record<string, ValueType | null>
   valueRanges: Record<ValueType, { min: number; max: number }>
 }
@@ -109,7 +112,8 @@ export function validateManifest(catalog: Catalog, manifest: EffectsManifest | V
       if (!manifest.sounds[slot]?.length) errors.push(`missing slot ${slot}`)
     }
     for (const [slot, segments] of Object.entries(manifest.sounds)) {
-      if (!catalog.effectSlots.includes(slot)) errors.push(`unknown slot ${slot}`)
+      if (!catalog.effectSlots.includes(slot) && !(slot in catalog.optionalEffectSlots))
+        errors.push(`unknown slot ${slot}`)
       for (const segment of segments) {
         if (segment.beep && !manifest.beep) errors.push(`${slot}: beep without a beep tone`)
         if (segment.file && !existsSync(join(SOURCES_DIR, segment.file))) {
@@ -139,6 +143,10 @@ export function validatePack(catalog: Catalog, dir: string): string[] {
   if (pack.kind === 'effects') {
     for (const slot of catalog.effectSlots) {
       if (!pack.slots[slot]) errors.push(`missing slot ${slot}`)
+    }
+    for (const slot of Object.keys(pack.slots)) {
+      if (!catalog.effectSlots.includes(slot) && !(slot in catalog.optionalEffectSlots))
+        errors.push(`unknown slot ${slot}`)
     }
     files.push(...Object.values(pack.slots))
   } else {

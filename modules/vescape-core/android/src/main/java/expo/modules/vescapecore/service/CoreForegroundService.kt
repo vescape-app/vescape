@@ -526,8 +526,8 @@ class CoreForegroundService : Service() {
             instance?.controller?.previewAlertSound(soundType) ?: AlertFeedback.preview(context, soundType, kotlinx.coroutines.runBlocking { AppDataRepository.get(context).getTypedSettings().audioSource })
         }
 
-        fun playAppSound(context: Context, pack: String, cue: String) {
-            AlertFeedback.previewAppSound(context, pack, cue, kotlinx.coroutines.runBlocking { AppDataRepository.get(context).getTypedSettings().audioSource })
+        fun playPackSound(context: Context, pack: String, slot: String) {
+            AlertFeedback.previewPackSound(context, pack, slot, kotlinx.coroutines.runBlocking { AppDataRepository.get(context).getTypedSettings().audioSource })
         }
 
         /** App cue [cue] from the active pack, its voice line after at Voice level `full`. */

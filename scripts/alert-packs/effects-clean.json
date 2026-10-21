@@ -3,6 +3,11 @@
   "kind": "effects",
   "voice": "clean",
   "sounds": {
+    "severity.positive": [
+      { "synth": "sine 659", "dur": 0.12, "vol": 0.5, "fade": [0.01, 0.06] },
+      { "gap": 0.02 },
+      { "synth": "sine 988", "dur": 0.24, "vol": 0.5, "fade": [0.01, 0.18] }
+    ],
     "severity.info": [{ "beep": 1 }],
     "severity.warning": [{ "beep": 2 }],
     "severity.critical": [{ "beep": 3 }],
@@ -16,11 +21,6 @@
       { "gap": 0.02 },
       { "synth": "sine 587", "dur": 0.26, "fade": [0.01, 0.2] }
     ],
-    "cue.error": [
-      { "synth": "triangle 330", "dur": 0.18, "fade": [0.01, 0.08] },
-      { "gap": 0.05 },
-      { "synth": "triangle 277", "dur": 0.3, "fade": [0.01, 0.2] }
-    ],
     "cue.groupRide.created": [
       { "synth": "sine 523", "dur": 0.12, "fade": [0.01, 0.06] },
       { "synth": "sine 659", "dur": 0.12, "fade": [0.01, 0.06] },
@@ -30,24 +30,6 @@
       { "synth": "sine 784", "dur": 0.1, "fade": [0.01, 0.06] },
       { "gap": 0.03 },
       { "synth": "sine 1047", "dur": 0.22, "fade": [0.01, 0.18] }
-    ],
-    "cue.groupRide.riderJoined": [
-      { "synth": "sine 659", "dur": 0.1, "fade": [0.01, 0.06] },
-      { "synth": "sine 880", "dur": 0.18, "fade": [0.01, 0.14] }
-    ],
-    "cue.groupRide.riderLeft": [
-      { "synth": "sine 880", "dur": 0.1, "fade": [0.01, 0.06] },
-      { "synth": "sine 659", "dur": 0.18, "fade": [0.01, 0.14] }
-    ],
-    "cue.groupRide.lost": [
-      { "synth": "triangle 440", "dur": 0.14, "fade": [0.01, 0.08] },
-      { "gap": 0.04 },
-      { "synth": "triangle 349", "dur": 0.26, "fade": [0.01, 0.2] }
-    ],
-    "cue.groupRide.restored": [
-      { "synth": "sine 440", "dur": 0.1, "fade": [0.01, 0.06] },
-      { "synth": "sine 554", "dur": 0.1, "fade": [0.01, 0.06] },
-      { "synth": "sine 659", "dur": 0.22, "fade": [0.01, 0.18] }
     ],
     "cue.ride.end": [
       { "synth": "sine 784", "dur": 0.12, "fade": [0.01, 0.06] },

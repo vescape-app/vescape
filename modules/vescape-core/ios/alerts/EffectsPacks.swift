@@ -1,7 +1,8 @@
 import Foundation
 
-/// Built-in effects packs (`shared/alerts/packs/effects-<id>`): every pack fills every slot of
-/// `scripts/alert-packs/catalog.json` — severity beeps, app cues, geiger ticks. The `soundPack`
+/// Built-in effects packs (`shared/alerts/packs/effects-<id>`): every pack fills the required slots
+/// of `scripts/alert-packs/catalog.json` (positive/info/warning/critical sounds, geiger ticks) and
+/// may fill the optional cue slots (`optionalSlotFallback`). The `soundPack`
 /// setting names one of them; My sounds overrides (`soundOverrideSlots`) win over its slots.
 ///
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/alerts/EffectsPacks.kt
@@ -15,10 +16,19 @@ internal func effectsPackId(_ pack: String) -> String {
   effectsPackIds.contains(pack) ? pack : effectsPackFallback
 }
 
-/// Group Ride events with their own app cue, each `cue.<event>` in every effects pack and a line
-/// under the same key in every voice pack.
+/// Optional effects slot → the required slot a pack that leaves it out plays instead.
+/// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/alerts/EffectsPacks.kt `OPTIONAL_SLOT_FALLBACK`
+internal let optionalSlotFallback = [
+  "cue.on": "severity.positive",
+  "cue.off": "severity.warning",
+  "cue.ride.end": "severity.info",
+  "cue.groupRide.created": "severity.positive",
+  "cue.groupRide.joined": "severity.positive",
+]
+
+/// Group Ride events with an app cue and a line under the same key in every voice pack.
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/alerts/EffectsPacks.kt `GROUP_RIDE_CUES`
-/// @parity /src/modules/settings/lib/appSounds.ts `APP_SOUND_CUES`
+/// @parity /modules/vescape-core/src/index.ts `AppSoundCueId`
 internal let groupRideCues = [
   "groupRide.created",
   "groupRide.joined",
@@ -28,16 +38,21 @@ internal let groupRideCues = [
   "groupRide.restored",
 ]
 
-/// App cue id (the `playAppSound` / `playAppCue` cue names) → effects slot.
+/// App cue id (the `playAppCue` cue names) → effects slot. Error and the rider and link Group Ride
+/// events have no slot of their own and play a fixed severity sound.
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/alerts/EffectsPacks.kt `appCueSlot`
-/// @parity /src/modules/settings/lib/appSounds.ts `APP_SOUND_CUES`
+/// @parity /modules/vescape-core/src/index.ts `AppSoundCueId`
 internal func appCueSlot(_ cue: String) -> String? {
   switch cue {
   case "on": return "cue.on"
   case "off": return "cue.off"
-  case "error": return "cue.error"
+  case "error": return "severity.critical"
   case "ride.end": return "cue.ride.end"
-  default: return groupRideCues.contains(cue) ? "cue.\(cue)" : nil
+  case "groupRide.created", "groupRide.joined": return "cue.\(cue)"
+  case "groupRide.riderJoined": return "severity.info"
+  case "groupRide.riderLeft", "groupRide.lost": return "severity.warning"
+  case "groupRide.restored": return "severity.positive"
+  default: return nil
   }
 }
 
@@ -54,7 +69,8 @@ internal func appCueVoiceKey(_ cue: String) -> String? {
 }
 
 /// Clip files of every built-in pack's slots under `root` (the folder holding `effects-<id>/`),
-/// keyed `"<pack>/<slot>"`. A pack whose manifest cannot be read contributes nothing.
+/// keyed `"<pack>/<slot>"`; an optional slot the pack leaves out maps to its `optionalSlotFallback`
+/// clip. A pack whose manifest cannot be read contributes nothing.
 internal func effectsPackSlotFiles(root: URL) -> [String: URL] {
   var files: [String: URL] = [:]
   for pack in effectsPackIds {
@@ -65,6 +81,9 @@ internal func effectsPackSlotFiles(root: URL) -> [String: URL] {
       let manifest = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
       let slots = manifest["slots"] as? [String: String]
     else { continue }
+    for (slot, fallback) in optionalSlotFallback where slots[slot] == nil {
+      if let file = slots[fallback] { files["\(pack)/\(slot)"] = dir.appendingPathComponent(file) }
+    }
     for (slot, file) in slots { files["\(pack)/\(slot)"] = dir.appendingPathComponent(file) }
   }
   return files

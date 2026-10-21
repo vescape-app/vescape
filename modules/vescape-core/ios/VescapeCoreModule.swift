@@ -523,8 +523,8 @@ public class VescapeCoreModule: Module {
     Function("previewAlertSound") { (soundType: String) in
       self.coordinator.previewAlertSound(soundType)
     }
-    Function("playAppSound") { (pack: String, cue: String) in
-      self.coordinator.playAppSound(pack: pack, cue: cue)
+    Function("playPackSound") { (pack: String, slot: String) in
+      self.coordinator.playPackSound(pack: pack, slot: slot)
     }
     // @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/VescapeCoreModule.kt `playAppCue`
     Function("playAppCue") { (cue: String) in

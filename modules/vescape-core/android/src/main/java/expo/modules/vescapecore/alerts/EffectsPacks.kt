@@ -5,8 +5,9 @@ import android.media.MediaMetadataRetriever
 import org.json.JSONObject
 
 /**
- * Built-in effects packs (`shared/alerts/packs/effects-<id>`): every pack fills every slot of
- * `scripts/alert-packs/catalog.json` — severity beeps, app cues, geiger ticks. The `soundPack`
+ * Built-in effects packs (`shared/alerts/packs/effects-<id>`): every pack fills the required slots
+ * of `scripts/alert-packs/catalog.json` (positive/info/warning/critical sounds, geiger ticks) and
+ * may fill the optional cue slots ([OPTIONAL_SLOT_FALLBACK]). The `soundPack`
  * setting names one of them; My sounds overrides ([SOUND_OVERRIDE_SLOTS]) win over its slots.
  *
  * @parity /modules/vescape-core/ios/alerts/EffectsPacks.swift
@@ -20,11 +21,23 @@ internal const val EFFECTS_PACK_FALLBACK = "simple"
 internal fun effectsPackId(pack: String): String = if (pack in EFFECTS_PACK_IDS) pack else EFFECTS_PACK_FALLBACK
 
 /**
- * Group Ride events with their own app cue, each `cue.<event>` in every effects pack and a line
- * under the same key in every voice pack.
+ * Optional effects slot → the required slot a pack that leaves it out plays instead.
+ *
+ * @parity /modules/vescape-core/ios/alerts/EffectsPacks.swift `optionalSlotFallback`
+ */
+internal val OPTIONAL_SLOT_FALLBACK = mapOf(
+    "cue.on" to "severity.positive",
+    "cue.off" to "severity.warning",
+    "cue.ride.end" to "severity.info",
+    "cue.groupRide.created" to "severity.positive",
+    "cue.groupRide.joined" to "severity.positive",
+)
+
+/**
+ * Group Ride events with an app cue and a line under the same key in every voice pack.
  *
  * @parity /modules/vescape-core/ios/alerts/EffectsPacks.swift `groupRideCues`
- * @parity /src/modules/settings/lib/appSounds.ts `APP_SOUND_CUES`
+ * @parity /modules/vescape-core/src/index.ts `AppSoundCueId`
  */
 internal val GROUP_RIDE_CUES = listOf(
     "groupRide.created",
@@ -36,17 +49,21 @@ internal val GROUP_RIDE_CUES = listOf(
 )
 
 /**
- * App cue id (the `playAppSound` / `playAppCue` cue names) → effects slot.
+ * App cue id (the `playAppCue` cue names) → effects slot. Error and the rider and link Group Ride
+ * events have no slot of their own and play a fixed severity sound.
  *
  * @parity /modules/vescape-core/ios/alerts/EffectsPacks.swift `appCueSlot`
- * @parity /src/modules/settings/lib/appSounds.ts `APP_SOUND_CUES`
+ * @parity /modules/vescape-core/src/index.ts `AppSoundCueId`
  */
 internal fun appCueSlot(cue: String): String? = when (cue) {
     "on" -> "cue.on"
     "off" -> "cue.off"
-    "error" -> "cue.error"
+    "error" -> "severity.critical"
     "ride.end" -> "cue.ride.end"
-    in GROUP_RIDE_CUES -> "cue.$cue"
+    "groupRide.created", "groupRide.joined" -> "cue.$cue"
+    "groupRide.riderJoined" -> "severity.info"
+    "groupRide.riderLeft", "groupRide.lost" -> "severity.warning"
+    "groupRide.restored" -> "severity.positive"
     else -> null
 }
 
@@ -94,7 +111,10 @@ internal fun SlotClip.durationMs(context: Context): Long = when (this) {
     is SlotClip.Asset -> EffectsPackAssets.durationMs(context, path)
 }
 
-/** Asset paths of every built-in pack's slots, `"<pack>/<slot>"` → asset path. Read once. */
+/**
+ * Asset paths of every built-in pack's slots, `"<pack>/<slot>"` → asset path; an optional slot
+ * the pack leaves out maps to its [OPTIONAL_SLOT_FALLBACK] clip. Read once.
+ */
 internal object EffectsPackAssets {
     private const val ROOT = "alert-packs"
 
@@ -105,7 +125,9 @@ internal object EffectsPackAssets {
             val dir = "$ROOT/effects-$pack"
             val manifest = context.assets.open("$dir/pack.json").bufferedReader().use { JSONObject(it.readText()) }
             val slots = manifest.getJSONObject("slots")
-            slots.keys().asSequence().map { slot -> "$pack/$slot" to "$dir/${slots.getString(slot)}" }.toList()
+            val files = slots.keys().asSequence().associateWith { "$dir/${slots.getString(it)}" }
+            val fallbacks = OPTIONAL_SLOT_FALLBACK.mapNotNull { (slot, fallback) -> files[fallback]?.let { slot to it } }
+            (fallbacks.toMap() + files).map { (slot, path) -> "$pack/$slot" to path }
         }.toMap().also { cached = it }
     }
 

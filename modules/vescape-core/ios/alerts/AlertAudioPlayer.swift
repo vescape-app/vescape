@@ -519,9 +519,8 @@ internal final class AlertAudioPlayer {
     }
   }
 
-  /// Settings preview of `pack`'s clip for `cue`: the effect only, whatever the Voice level.
-  func playAppSound(pack: String, cue: String) {
-    guard let slot = appCueSlot(cue) else { return }
+  /// Settings preview of `pack`'s `slot` (or its override): the effect only, whatever the Voice level.
+  func playPackSound(pack: String, slot: String) {
     play(clipKey(slot, pack: pack))
   }
 

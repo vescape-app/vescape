@@ -85,7 +85,8 @@ class MySoundsSnapshotTest {
     assertEquals(emptyMap<String, String>(), MySounds.state(context)["overrides"])
 
     MySounds.adoptLegacyPack(context, "a")
-    assertEquals(mapOf("cue.on" to onId, "cue.error" to errorId), MySounds.state(context)["overrides"])
+    // Error has no override slot any more: it stays a plain library sound.
+    assertEquals(mapOf("cue.on" to onId), MySounds.state(context)["overrides"])
     assertEquals(live.resolve("$onId.wav"), MySounds.overrideFile(context, "cue.on"))
 
     // Adoption is one-shot: the other pack's cues stay plain library sounds.

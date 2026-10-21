@@ -18,12 +18,27 @@ The app-wide **Sound effects** setting (`soundPack`, default `retro`) picks one 
 pack: Retro, Simple, HEV, or Clean. The selected pack supplies every sound native plays: app cues,
 the severity sounds of alert rules and speech, and geiger ticks (see
 [Built-in packs](#built-in-packs)). Retro and Simple are today's sound themes turned into packs, so
-a saved theme keeps its id and sounds the same. Settings previews the selected pack's cues and its
-Info/Warning/Critical sounds.
+a saved theme keeps its id and sounds the same. Settings previews the selected pack's slots: its
+cues and its Positive/Info/Warning/Critical sounds.
 
-App cues: Connect (`cue.on`), Disconnect (`cue.off`), Error, New Group Ride, Rider joined Group
-Ride, and Ride end (`cue.ride.end`), which plays when the ride dropout grace expires after a lost
-link, the point at which a Board Session ride is treated as ended.
+Every effects pack fills four required sound slots, `severity.positive|info|warning|critical`.
+`positive` exists only for app cues: it is not an alert severity, so alert rules, `alert(<count>):`
+and `tts(…)` stay info/warning/critical. App cues with an optional slot of their own fall back to a
+required slot when the pack leaves theirs out:
+
+| App cue           | Slot                    | Missing ⇒ |
+| ----------------- | ----------------------- | --------- |
+| Connect           | `cue.on`                | positive  |
+| Disconnect        | `cue.off`               | warning   |
+| Ride end          | `cue.ride.end`          | info      |
+| New Group Ride    | `cue.groupRide.created` | positive  |
+| Joined Group Ride | `cue.groupRide.joined`  | positive  |
+
+The other app cues have no slot and always play a fixed severity sound: Error ⇒ critical, Rider
+joined ⇒ info, Rider left ⇒ warning, Group Ride lost ⇒ warning, Group Ride restored ⇒ positive.
+Their voice lines are unchanged and still speak at Voice level Full. Ride end plays when the ride
+dropout grace expires after a lost link, the point at which a Board Session ride is treated as
+ended.
 
 ### My sounds and overrides
 
@@ -34,9 +49,10 @@ never used for later playback. Native owns the store (`MySounds.kt`, `MySounds.s
 `<id>.wav` per sound.
 
 **Overrides** are a fixed list of slots, each optionally set to a My sound that wins over the
-effects pack: the `severity.info|warning|critical` sounds (alert rules and the sound before TTS
-speech), `cue.on`, `cue.off`, `cue.error`, and every `cue.groupRide.*` slot. Clearing
-one returns the slot to the pack. Ride end and geiger ticks are not overridable. Deleting a sound
+effects pack: `severity.positive` (app cues), the `severity.info|warning|critical` sounds (alert
+rules, app cues, and the sound before TTS speech), `cue.on`, `cue.off`, `cue.groupRide.created`,
+and `cue.groupRide.joined`. Clearing one returns the slot to the pack. Native drops stored overrides
+for slots that are no longer in the list. Ride end and geiger ticks are not overridable. Deleting a sound
 clears its overrides.
 
 Custom rules can pick any My sound: `alert(<count>):my:<id>` for single rules, `geiger:my:<id>` for
@@ -122,20 +138,21 @@ way and decoded per clip (see [Voice](#voice)).
 
 ```text
 scripts/alert-packs/
-  catalog.json          required effect slots, voice keys + value type, value ranges
+  catalog.json          required + optional (with fallback) effect slots, voice keys + value type, value ranges
   effects-<id>.json     segments per slot: sox synth tones or recorded `sources/` clips
   sources/              recorded WAVs behind Retro and Simple (today's sounds)
   voice-<id>.json       Kokoro voice + speed, sox voice fx chain, unit words, lines per key
   generate.ts           manifests → packs;  kokoro.py  TTS helper;  packs.ts  shared checks
 shared/alerts/packs/
-  effects-<id>/pack.json + <slot>.m4a            severity.*, cue.*, geiger.*
+  effects-<id>/pack.json + <slot>.m4a            severity.*, optional cue.*, geiger.*
   voice-<id>/pack.json + lines/<key>.<start|end>.<i>.m4a + values/<type>/<n>.m4a
 ```
 
-- **Effect slots**: `severity.info|warning|critical` (HEV/Clean: 1/2/3 beeps; Retro/Simple: the
-  former Notify, Beep, and Urgent sounds), `cue.on`, `cue.off`,
-  `cue.error`, `cue.groupRide.created|joined|riderJoined|riderLeft|lost|restored`, `cue.ride.end`,
-  `geiger.soft|mid|hard`.
+- **Effect slots**: required `severity.positive` (a short rising two- or three-note chime),
+  `severity.info|warning|critical` (HEV/Clean: 1/2/3 beeps; Retro/Simple: the former Notify, Beep,
+  and Urgent sounds), and `geiger.soft|mid|hard`; optional `cue.on`, `cue.off`, `cue.ride.end`,
+  `cue.groupRide.created|joined`, each falling back as in [Sound effects](#sound-effects). All four
+  built-in packs fill every optional slot today.
   Effects packs never contain voice; `pack.json` names the matching voice pack.
 - **Voice keys**: `battery` (percent), `motorTemp`, `controllerTemp` (degrees), `link.connected`,
   `link.lost`, `system.error`, `groupRide.created|joined|riderJoined|riderLeft|lost|restored`,

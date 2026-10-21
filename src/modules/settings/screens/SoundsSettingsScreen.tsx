@@ -16,7 +16,7 @@ import {
   deleteMySound,
   importMySound,
   type MySoundsState,
-  playAppSound,
+  playPackSound,
   previewAlertSound,
   renameMySound,
   setSoundOverride,
@@ -35,37 +35,16 @@ import { SegmentedToggle } from '@/components/controls/SegmentedToggle'
 import { Switch } from '@/components/controls/Switch'
 import { interaction, theme } from '@/constants/theme'
 import {
-  APP_SOUND_CUES,
   EFFECTS_PACKS,
+  PACK_PREVIEW_ROWS,
   matchingVoiceName,
   SOUND_OVERRIDE_SLOTS,
   VOICE_LEVELS,
   VOICE_PACKS,
 } from '@/modules/settings/lib/appSounds'
 import { useSettingsStore } from '@/modules/settings/store/settingsStore'
-import {
-  ALERT_SEVERITIES,
-  ALERT_SEVERITY_LABELS,
-  formatSlotAlertSound,
-  mySoundRef,
-} from '@/modules/alerts/lib/alertSoundString'
+import { formatSlotAlertSound, mySoundRef } from '@/modules/alerts/lib/alertSoundString'
 import { useMySounds } from '@/modules/alerts/hooks/useMySounds'
-
-/** What an effects pack's preview strip plays: its app cues, then its severity sounds. */
-const cuePreview = (cue: (typeof APP_SOUND_CUES)[number]) => ({
-  label: cue.label,
-  play: (pack: string) => playAppSound(pack, cue.id),
-})
-
-const PREVIEW_ROWS: { label: string; play: (pack: string) => void }[][] = [
-  APP_SOUND_CUES.filter((cue) => !cue.groupRide).map(cuePreview),
-  APP_SOUND_CUES.filter((cue) => cue.groupRide).map(cuePreview),
-  ALERT_SEVERITIES.map((severity) => ({
-    label: ALERT_SEVERITY_LABELS[severity],
-    // Alert sounds come from the selected pack, which is the one previewing, or their override.
-    play: () => previewAlertSound(`alert:${severity}`),
-  })),
-]
 
 /** Picked file name without its extension, as a starting name for the sound. */
 function soundName(fileName: string | undefined): string {
@@ -205,7 +184,7 @@ export default function SoundsSettingsScreen() {
                 </Pressable>
                 {active && (
                   <View style={styles.previewStrip}>
-                    {PREVIEW_ROWS.map((row, rowIndex) => (
+                    {PACK_PREVIEW_ROWS.map((row, rowIndex) => (
                       <View
                         key={rowIndex}
                         style={[styles.previewRow, rowIndex > 0 && styles.previewRowDivider]}
@@ -215,7 +194,7 @@ export default function SoundsSettingsScreen() {
                             key={cue.label}
                             accessibilityRole="button"
                             accessibilityLabel={`Play ${cue.label}`}
-                            onPress={() => cue.play(pack.id)}
+                            onPress={() => playPackSound(pack.id, cue.slot)}
                             style={({ pressed }) => [
                               styles.preview,
                               index > 0 && styles.previewDivider,

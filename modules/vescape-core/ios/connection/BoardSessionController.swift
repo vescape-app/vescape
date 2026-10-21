@@ -1284,8 +1284,8 @@ internal final class BoardSessionController: VescGattListener {
     } catch { RecordingStorageFailure.reportRead(operation: "alert_preview_settings", error: error) }
   }
 
-  func playAppSound(pack: String, cue: String) {
-    alertAudioPlayer.playAppSound(pack: pack, cue: cue)
+  func playPackSound(pack: String, slot: String) {
+    alertAudioPlayer.playPackSound(pack: pack, slot: slot)
   }
 
   func playAppCue(_ cue: String) {
