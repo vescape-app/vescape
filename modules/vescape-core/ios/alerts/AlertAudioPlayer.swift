@@ -535,9 +535,9 @@ internal final class AlertAudioPlayer {
   }
 
   /// `sound`'s severity slot from `pack`, or My sound `my` in its place, `sound.count` times.
-  private func playSeverity(_ sound: SlotAlertSound, my: String? = nil, pack: String? = nil) {
+  private func playSeverity(_ sound: SlotAlertSound, my: String? = nil) {
     guard !isReleased else { return }
-    let key = clipKey(sound.severity.slot, my: my, pack: pack)
+    let key = clipKey(sound.severity.slot, my: my)
     play(key)
     guard sound.count > 1 else { return }
     // A sound longer than the spacing (a pack's multi-beep severity) repeats once it ends.

@@ -643,12 +643,12 @@ internal class AlertFeedback(
      */
     private fun playOnce(
         slot: String,
-        pack: String = soundPack,
         my: String? = null,
         requestedAt: Long = SystemClock.uptimeMillis(),
         onStart: () -> Unit = {},
     ) {
         if (released) return
+        val pack = soundPack
         val mine = slotClip(context, pack, slot, my) as? SlotClip.Mine
         if (mine == null) {
             playPackSlot(slot, pack, requestedAt, onStart)
@@ -757,24 +757,23 @@ internal class AlertFeedback(
             handler.post { playSingle(soundType, requestedAt) }
             return
         }
-        playSeverity(parseSlotAlertSound(soundType), mySoundId(soundType), soundPack, requestedAt)
+        playSeverity(parseSlotAlertSound(soundType), mySoundId(soundType), requestedAt)
     }
 
-    /** [sound]'s severity slot from [pack], or My sound [my] in its place, [SlotAlertSound.count] times. */
+    /** [sound]'s severity slot from the effects pack, or My sound [my] in its place, [SlotAlertSound.count] times. */
     private fun playSeverity(
         sound: SlotAlertSound,
         my: String? = null,
-        pack: String = soundPack,
         requestedAt: Long = SystemClock.uptimeMillis(),
         onStart: () -> Unit = {},
     ) {
         try {
             val slot = sound.severity.slot
-            val duration = slotClip(context, pack, slot, my)?.durationMs(context) ?: 0L
+            val duration = slotClip(context, soundPack, slot, my)?.durationMs(context) ?: 0L
             val interval = if (duration > ALERT_BEEP_SPACING_MS) duration + ALERT_BEEP_SPACING_MS else ALERT_BEEP_SPACING_MS
-            playOnce(slot, pack, my, requestedAt, onStart)
+            playOnce(slot, my, requestedAt, onStart)
             for (index in 1 until sound.count) {
-                handler.postDelayed({ playOnce(slot, pack, my) }, index * interval)
+                handler.postDelayed({ playOnce(slot, my) }, index * interval)
             }
         } catch (e: Exception) {
             Log.w(VESC_SESSION_TAG, "Alert sound failed: ${e.message}")
@@ -829,8 +828,7 @@ internal class AlertFeedback(
         pendingSpeech?.let { handler.removeCallbacks(it) }
         pendingSpeech = null
         val generation = ++voiceGeneration
-        val effects = soundPack
-        val delay = speechDelayMs(context, effects, slot)
+        val delay = speechDelayMs(context, soundPack, slot)
         // The line is due [delay] after the sound actually starts, so a sound still loading never
         // overlaps it; both callbacks land on the audio looper.
         var due: Long? = null
@@ -843,7 +841,7 @@ internal class AlertFeedback(
             pendingSpeech = speech
             handler.postAtTime(speech, maxOf(at, SystemClock.uptimeMillis()))
         }
-        playOnce(slot, effects, requestedAt = requestedAt) { due = SystemClock.uptimeMillis() + delay; speakWhenDue() }
+        playOnce(slot, requestedAt = requestedAt) { due = SystemClock.uptimeMillis() + delay; speakWhenDue() }
         val pack = voicePack()
         // Decoding runs off the audio looper while the severity sound covers it.
         voiceExecutor.execute {
@@ -892,8 +890,7 @@ internal class AlertFeedback(
         if (released) return
         val tickSlot = geigerSlot(soundType)
         val my = mySoundId(soundType)
-        val pack = soundPack
-        val sample = slotSample(tickSlot, pack, my)
+        val sample = slotSample(tickSlot, my = my)
         if (samples.state(sample) == SoundSampleQueue.State.FAILED) { stopGeiger(ruleId); return }
         if (samples.state(sample) == SoundSampleQueue.State.PENDING) {
             pendingGeiger[ruleId] = PendingGeiger(soundType, rangeDepth)
@@ -907,7 +904,7 @@ internal class AlertFeedback(
                 // A pack switch changes the sample, so the loop restarts on the new one.
                 if (existing?.sustained == true && existing.sample == sample) return
                 existing?.streamId?.let { soundPool.stop(it) }
-                val streamId = playSlot(tickSlot, loop = -1, my = my, pack = pack)
+                val streamId = playSlot(tickSlot, loop = -1, my = my)
                 geigerLoops[ruleId] = GeigerLoop(soundType, depth, sustained = true, streamId = streamId, sample = sample)
                 return
             }
@@ -925,7 +922,7 @@ internal class AlertFeedback(
                 override fun run() {
                     if (released || geigerLoops[ruleId] !== loop) return
                     // Resolved per tick, so an app-wide pack switch mid-loop takes effect.
-                    playSlot(tickSlot, my = my, pack = soundPack)
+                    playSlot(tickSlot, my = my)
                     handler.postDelayed(this, geigerIntervalMs(loop.rangeDepth))
                 }
             }
@@ -995,17 +992,17 @@ internal class AlertFeedback(
         }
     }
 
-    private fun playSlot(slot: String, loop: Int = 0, my: String? = null, pack: String = soundPack, requestedAt: Long = SystemClock.uptimeMillis()): Int {
+    private fun playSlot(slot: String, loop: Int = 0, my: String? = null, requestedAt: Long = SystemClock.uptimeMillis()): Int {
         if (released) return 0
-        val soundId = slotSample(slot, pack, my)
+        val soundId = slotSample(slot, my = my)
         if (soundId == 0 || samples.state(soundId) == SoundSampleQueue.State.FAILED) return 0
         if (samples.state(soundId) == SoundSampleQueue.State.PENDING) {
-            samples.enqueue(soundId) { playSlot(slot, loop, my, pack, requestedAt) }
+            samples.enqueue(soundId) { playSlot(slot, loop, my, requestedAt) }
             return 0
         }
         return soundPool.play(soundId, 1f, 1f, 1, loop, 1f)
           .also { check(it != 0) { "SoundPool refused playback" } }
-          .also { reportLatency("$pack/$slot", requestedAt, "ready") }
+          .also { reportLatency("$soundPack/$slot", requestedAt, "ready") }
     }
 
     private fun geigerIntervalMs(rangeDepth: Double): Long =
