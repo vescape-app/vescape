@@ -77,7 +77,7 @@ func runAlertPresetContract() throws {
       try require(rule.configFieldId == point["fieldId"] as? String, name + " field")
       try require(rule.thresholdOffset == (point["thresholdOffset"] as? NSNumber)?.doubleValue, name + " offset")
       try require(rule.thresholdMaxOffset == (point["thresholdMaxOffset"] as? NSNumber)?.doubleValue, name + " max offset")
-      if let sound = point["soundType"] as? String { try require(rule.spec == sound, name + " sound") }
+      if let sound = point["spec"] as? String { try require(rule.spec == sound, name + " sound") }
     }
   }
   for top in [5.0, 10.0, 50.0] {

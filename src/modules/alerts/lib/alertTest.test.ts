@@ -30,7 +30,7 @@ test('chart thresholds include range ceilings once in numeric order', () => {
         controlId: 'duty',
         threshold: 80,
         thresholdMax: 90,
-        soundType: 'preset:tick',
+        spec: 'preset:tick',
         repeatEverySeconds: null,
       },
       {
@@ -38,7 +38,7 @@ test('chart thresholds include range ceilings once in numeric order', () => {
         controlId: 'duty',
         threshold: 90,
         thresholdMax: null,
-        soundType: 'preset:beep',
+        spec: 'preset:beep',
         repeatEverySeconds: null,
       },
     ]),

@@ -522,8 +522,8 @@ class CoreForegroundService : Service() {
             }
         }
 
-        fun previewAlertSound(context: Context, soundType: String) {
-            instance?.controller?.previewAlertSound(soundType) ?: AlertFeedback.preview(context, soundType, kotlinx.coroutines.runBlocking { AppDataRepository.get(context).getTypedSettings().audioSource })
+        fun previewAlertSound(context: Context, spec: String) {
+            instance?.controller?.previewAlertSound(spec) ?: AlertFeedback.preview(context, spec, kotlinx.coroutines.runBlocking { AppDataRepository.get(context).getTypedSettings().audioSource })
         }
 
         fun playPackSound(context: Context, pack: String, slot: String) {

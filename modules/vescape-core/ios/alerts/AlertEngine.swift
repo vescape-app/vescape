@@ -34,7 +34,7 @@ internal struct AlertRule {
   var thresholdOffset: Double? = nil
   var thresholdMaxOffset: Double? = nil
   let enabled: Bool
-  let soundType: String
+  let spec: String
   let createdAt: Int64
   /// Repeat cadence in seconds for a single-threshold rule; nil is one-shot. Ignored for range
   /// rules. Mirrors TS `AlertRule.repeatEverySeconds`.
@@ -67,7 +67,7 @@ internal func withLegalModeOverlay(
       thresholdMax: limitSpeedKmh,
       thresholdKind: "fixed", configFieldId: nil, thresholdOffset: nil, thresholdMaxOffset: nil,
       enabled: true,
-      soundType: "geiger:soft",
+      spec: "geiger:soft",
       createdAt: 0
     ),
   ]
@@ -81,7 +81,7 @@ internal struct FiredAlert {
   let value: Double
   let threshold: Double
   let thresholdMax: Double?
-  let soundType: String
+  let spec: String
   let rangeDepth: Double?
   let firedAt: Int64
 
@@ -92,7 +92,7 @@ internal struct FiredAlert {
       "value": value,
       "threshold": threshold,
       "thresholdMax": thresholdMax,
-      "soundType": soundType,
+      "spec": spec,
       "rangeDepth": rangeDepth,
       "firedAt": firedAt,
     ]
@@ -382,7 +382,7 @@ internal final class AlertEngine {
       value: value,
       threshold: thresholds.0,
       thresholdMax: thresholds.1,
-      soundType: rule.soundType,
+      spec: rule.spec,
       rangeDepth: rangeDepth,
       firedAt: now
     )

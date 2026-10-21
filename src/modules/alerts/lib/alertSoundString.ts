@@ -1,5 +1,5 @@
 /**
- * A rule's `soundType` read through the sound string grammar `kind(variant):sound`. Only the first
+ * A rule's `spec` read through the sound string grammar `kind(variant):sound`. Only the first
  * `:` after the kind and optional variant splits, so the sound part (TTS text) may contain `:`.
  * Strings outside the grammar (no `kind:` prefix) parse to null.
  *
@@ -42,8 +42,8 @@ export interface TtsAlertSound {
   text: string
 }
 
-export function parseTtsAlertSound(soundType: string): TtsAlertSound | null {
-  const parsed = parseAlertSoundString(soundType)
+export function parseTtsAlertSound(spec: string): TtsAlertSound | null {
+  const parsed = parseAlertSoundString(spec)
   if (parsed?.kind !== 'tts') return null
   const severity = ALERT_SEVERITIES.find((it) => it === parsed.variant) ?? ALERT_SEVERITY_DEFAULT
   return { severity, text: parsed.sound }
@@ -67,8 +67,8 @@ export interface VoiceAlertSound {
   value: number | null
 }
 
-export function parseVoiceAlertSound(soundType: string): VoiceAlertSound | null {
-  const parsed = parseAlertSoundString(soundType)
+export function parseVoiceAlertSound(spec: string): VoiceAlertSound | null {
+  const parsed = parseAlertSoundString(spec)
   if (parsed?.kind !== 'voice') return null
   const split = parsed.sound.indexOf(':')
   const key = split < 0 ? parsed.sound : parsed.sound.slice(0, split)
@@ -124,7 +124,7 @@ const LEGACY_SEVERITY: Record<string, AlertSeverity> = {
 }
 
 /**
- * Read any non-TTS single-alert `soundType` as a slot sound. `alert:` means one play. Strings from
+ * Read any non-TTS single-alert `spec` as a slot sound. `alert:` means one play. Strings from
  * before the grammar map onto the matching severity (`preset:notify|beep|urgent` → info, warning,
  * critical, played once); anything unknown plays the warning sound once, so a rule is never silent.
  * A `my:<id>` sound reads as warning too: the fallback when that My sound is gone (see `mySoundId`).
@@ -132,8 +132,8 @@ const LEGACY_SEVERITY: Record<string, AlertSeverity> = {
  * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/alerts/AlertSoundString.kt `parseSlotAlertSound`
  * @parity /modules/vescape-core/ios/alerts/AlertSoundString.swift `parseSlotAlertSound`
  */
-export function parseSlotAlertSound(soundType: string): SlotAlertSound {
-  const parsed = parseAlertSoundString(soundType)
+export function parseSlotAlertSound(spec: string): SlotAlertSound {
+  const parsed = parseAlertSoundString(spec)
   if (parsed?.kind === 'alert') {
     const raw =
       parsed.variant != null && /^[+-]?\d+$/.test(parsed.variant) ? Number(parsed.variant) : 1
@@ -141,7 +141,7 @@ export function parseSlotAlertSound(soundType: string): SlotAlertSound {
     const severity = ALERT_SEVERITIES.find((it) => it === parsed.sound) ?? ALERT_SEVERITY_DEFAULT
     return { count, severity }
   }
-  return { count: 1, severity: LEGACY_SEVERITY[soundType] ?? ALERT_SEVERITY_DEFAULT }
+  return { count: 1, severity: LEGACY_SEVERITY[spec] ?? ALERT_SEVERITY_DEFAULT }
 }
 
 /** `sound` is a severity or a `my:<id>` My sound. */
@@ -156,9 +156,9 @@ export const ALERT_SEVERITY_LABELS: Record<AlertSeverity, string> = {
 }
 
 /** Short single rule summary, e.g. `3× Warning` or `2× My sound`. */
-export function slotAlertSoundLabel(soundType: string): string {
-  const { count, severity } = parseSlotAlertSound(soundType)
-  return `${count}× ${mySoundId(soundType) ? 'My sound' : ALERT_SEVERITY_LABELS[severity]}`
+export function slotAlertSoundLabel(spec: string): string {
+  const { count, severity } = parseSlotAlertSound(spec)
+  return `${count}× ${mySoundId(spec) ? 'My sound' : ALERT_SEVERITY_LABELS[severity]}`
 }
 
 /**
@@ -178,17 +178,17 @@ const LEGACY_GEIGER: Record<string, GeigerLevel> = {
 }
 
 /**
- * `geiger:level` — a range rule's tick level, or null when `soundType` is not a geiger sound.
+ * `geiger:level` — a range rule's tick level, or null when `spec` is not a geiger sound.
  * Strings from before the grammar map `preset:tick|tick_hard|gamma|sustained` → soft, mid, hard,
  * hard. An unknown level ticks soft, as does `geiger:my:<id>` when that My sound is gone.
  *
  * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/alerts/AlertSoundString.kt `parseGeigerAlertSound`
  * @parity /modules/vescape-core/ios/alerts/AlertSoundString.swift `parseGeigerAlertSound`
  */
-export function parseGeigerAlertSound(soundType: string): GeigerLevel | null {
-  const legacy = LEGACY_GEIGER[soundType]
+export function parseGeigerAlertSound(spec: string): GeigerLevel | null {
+  const legacy = LEGACY_GEIGER[spec]
   if (legacy) return legacy
-  const parsed = parseAlertSoundString(soundType)
+  const parsed = parseAlertSoundString(spec)
   if (parsed?.kind !== 'geiger') return null
   return GEIGER_LEVELS.find((it) => it === parsed.sound) ?? 'soft'
 }
@@ -205,9 +205,9 @@ export function mySoundRef(id: string): MySoundRef {
 }
 
 /** Sound part of a single rule: its My sound when it names one, else its severity. */
-export function slotSoundPart(soundType: string): AlertSeverity | MySoundRef {
-  const id = mySoundId(soundType)
-  return id ? mySoundRef(id) : parseSlotAlertSound(soundType).severity
+export function slotSoundPart(spec: string): AlertSeverity | MySoundRef {
+  const id = mySoundId(spec)
+  return id ? mySoundRef(id) : parseSlotAlertSound(spec).severity
 }
 
 /**
@@ -217,8 +217,8 @@ export function slotSoundPart(soundType: string): AlertSeverity | MySoundRef {
  * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/alerts/AlertSoundString.kt `mySoundId`
  * @parity /modules/vescape-core/ios/alerts/AlertSoundString.swift `mySoundId`
  */
-export function mySoundId(soundType: string): string | null {
-  const parsed = parseAlertSoundString(soundType)
+export function mySoundId(spec: string): string | null {
+  const parsed = parseAlertSoundString(spec)
   if (parsed?.kind !== 'alert' && parsed?.kind !== 'geiger') return null
   if (!parsed.sound.startsWith('my:')) return null
   return parsed.sound.slice(3) || null

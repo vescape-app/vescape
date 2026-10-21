@@ -279,7 +279,7 @@ final class AppDataRepository {
             "kind": "config-relative", "fieldId": row.configFieldId,
             "thresholdOffset": row.thresholdOffset, "thresholdMaxOffset": row.thresholdMaxOffset
           ] : ["kind": "fixed"],
-          "enabled": row.enabled, "soundType": row.spec, "createdAt": row.createdAt,
+          "enabled": row.enabled, "spec": row.spec, "createdAt": row.createdAt,
           "repeatEverySeconds": row.repeatEverySeconds,
         ]
     }
@@ -313,7 +313,7 @@ final class AppDataRepository {
         thresholdOffset: row.thresholdOffset,
         thresholdMaxOffset: row.thresholdMaxOffset,
         enabled: row.enabled,
-        soundType: row.spec,
+        spec: row.spec,
         createdAt: row.createdAt,
         repeatEverySeconds: row.repeatEverySeconds
       )
@@ -348,7 +348,7 @@ final class AppDataRepository {
     let threshold = Self.doubleValue(rule["threshold"] ?? nil) ?? 0
     let thresholdMax = Self.doubleValue(rule["thresholdMax"] ?? nil)
     let enabled = (rule["enabled"] as? Bool) ?? false
-    let soundType = rule["soundType"] as? String ?? "default"
+    let spec = rule["spec"] as? String ?? "default"
     let createdAt = Self.longValue(rule["createdAt"] ?? nil) ?? now
     let repeatEverySeconds = normalizedAlertRepeatSeconds(Self.doubleValue(rule["repeatEverySeconds"] ?? nil))
     let thresholdRule = rule["thresholdRule"] as? [String: Any]
@@ -356,7 +356,7 @@ final class AppDataRepository {
     let configFieldId = thresholdRule?["fieldId"] as? String
     let thresholdOffset = Self.doubleValue(thresholdRule?["thresholdOffset"])
     let thresholdMaxOffset = Self.doubleValue(thresholdRule?["thresholdMaxOffset"])
-    return PersistedAlertRule(boardId: boardId, id: id, controlId: controlId, threshold: threshold, thresholdMax: thresholdMax, enabled: enabled, spec: soundType, createdAt: createdAt, repeatEverySeconds: repeatEverySeconds, thresholdKind: thresholdKind, configFieldId: configFieldId, thresholdOffset: thresholdOffset, thresholdMaxOffset: thresholdMaxOffset)
+    return PersistedAlertRule(boardId: boardId, id: id, controlId: controlId, threshold: threshold, thresholdMax: thresholdMax, enabled: enabled, spec: spec, createdAt: createdAt, repeatEverySeconds: repeatEverySeconds, thresholdKind: thresholdKind, configFieldId: configFieldId, thresholdOffset: thresholdOffset, thresholdMaxOffset: thresholdMaxOffset)
   }
 
   func setAlertRuleEnabled(_ boardId: String, _ id: String, _ enabled: Bool) throws {

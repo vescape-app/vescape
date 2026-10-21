@@ -83,12 +83,12 @@ internal fun appCueVoiceKey(cue: String): String? = when (cue) {
 }
 
 /**
- * Slot a one-shot preview of [soundType] plays: a geiger tick, or the severity sound once.
+ * Slot a one-shot preview of [spec] plays: a geiger tick, or the severity sound once.
  *
  * @parity /modules/vescape-core/ios/alerts/AlertAudioPlayer.swift `previewSlot`
  */
-internal fun previewSlot(soundType: String): String =
-    if (isGeigerSoundType(soundType)) geigerSlot(soundType) else parseSlotAlertSound(soundType).severity.slot
+internal fun previewSlot(spec: String): String =
+    if (isGeigerSpec(spec)) geigerSlot(spec) else parseSlotAlertSound(spec).severity.slot
 
 /**
  * Slot whose clip [slot] plays: [slot] itself when it has a My sound override or the pack fills it,

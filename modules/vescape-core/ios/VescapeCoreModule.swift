@@ -520,8 +520,8 @@ public class VescapeCoreModule: Module {
       }
     }
 
-    Function("previewAlertSound") { (soundType: String) in
-      self.coordinator.previewAlertSound(soundType)
+    Function("previewAlertSound") { (spec: String) in
+      self.coordinator.previewAlertSound(spec)
     }
     // @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/VescapeCoreModule.kt `playPackSound`
     Function("playPackSound") { (pack: String, slot: String) in
@@ -546,8 +546,8 @@ public class VescapeCoreModule: Module {
       self.alertPresets
     }
 
-    Function("startGeigerSimulation") { (soundType: String, rangeDepth: Double) in
-      self.coordinator.startGeigerSimulation(soundType: soundType, rangeDepth: rangeDepth)
+    Function("startGeigerSimulation") { (spec: String, rangeDepth: Double) in
+      self.coordinator.startGeigerSimulation(spec: spec, rangeDepth: rangeDepth)
     }
 
     Function("stopGeigerSimulation") {
@@ -1349,7 +1349,7 @@ public class VescapeCoreModule: Module {
           "controlId": rule.controlId,
           "threshold": rule.threshold,
           "thresholdMax": rule.thresholdMax,
-          "soundType": rule.spec,
+          "spec": rule.spec,
           "repeatEverySeconds": rule.repeatEverySeconds,
         ]
       }
@@ -1696,7 +1696,7 @@ public class VescapeCoreModule: Module {
       let id = value["id"] as? String,
       let controlId = value["controlId"] as? String,
       let threshold = (value["threshold"] as? NSNumber)?.doubleValue,
-      let soundType = value["soundType"] as? String
+      let spec = value["spec"] as? String
     else { return nil }
     return AlertRule(
       boardId: "alert-test",
@@ -1705,7 +1705,7 @@ public class VescapeCoreModule: Module {
       threshold: threshold,
       thresholdMax: (value["thresholdMax"] as? NSNumber)?.doubleValue,
       enabled: true,
-      soundType: soundType,
+      spec: spec,
       createdAt: 0,
       repeatEverySeconds: normalizedAlertRepeatSeconds((value["repeatEverySeconds"] as? NSNumber)?.doubleValue)
     )

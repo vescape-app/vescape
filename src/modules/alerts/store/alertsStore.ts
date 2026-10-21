@@ -6,13 +6,13 @@ import {
   type AlertPresetMetric,
   setAlertRuleEnabled,
   type AlertRule,
-  type AlertSoundType,
+  type AlertSpec,
   upsertAlertRule,
 } from 'vescape-core'
 import { generateId } from '@/helpers/id'
 import { errorMessage } from '@/helpers/error'
 
-export type { AlertSoundType } from 'vescape-core'
+export type { AlertSpec } from 'vescape-core'
 
 interface AlertsState {
   /**
@@ -36,7 +36,7 @@ interface AlertsState {
 export interface AlertRuleDraft {
   threshold: number
   thresholdMax: number | null
-  soundType: AlertSoundType
+  spec: AlertSpec
   /** Seconds between repeats while past the threshold; `null` ⇒ announce once per crossing. */
   repeatEverySeconds: number | null
 }

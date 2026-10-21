@@ -95,7 +95,7 @@ private fun Map<String, Any?>.toAlertTestRule(): AlertRuleEntity? {
   val controlId = this["controlId"] as? String ?: return null
   val threshold = (this["threshold"] as? Number)?.toDouble() ?: return null
   val thresholdMax = (this["thresholdMax"] as? Number)?.toDouble()
-  val soundType = this["soundType"] as? String ?: return null
+  val spec = this["spec"] as? String ?: return null
   return AlertRuleEntity(
     boardId = "alert-test",
     id = id,
@@ -103,7 +103,7 @@ private fun Map<String, Any?>.toAlertTestRule(): AlertRuleEntity? {
     threshold = threshold,
     thresholdMax = thresholdMax,
     enabled = true,
-    spec = soundType,
+    spec = spec,
     createdAt = 0,
     repeatEverySeconds = normalizedAlertRepeatSeconds((this["repeatEverySeconds"] as? Number)?.toDouble()),
   )
@@ -569,8 +569,8 @@ class VescapeCoreModule : Module() {
     Function("reloadAlertRules") {
       CoreForegroundService.reloadAlertRules(context.applicationContext)
     }
-    Function("previewAlertSound") { soundType: String ->
-      CoreForegroundService.previewAlertSound(context.applicationContext, soundType)
+    Function("previewAlertSound") { spec: String ->
+      CoreForegroundService.previewAlertSound(context.applicationContext, spec)
     }
     // @parity /modules/vescape-core/ios/VescapeCoreModule.swift `playPackSound`
     Function("playPackSound") { pack: String, slot: String ->
@@ -588,12 +588,12 @@ class VescapeCoreModule : Module() {
     Function("getAlertSounds") {
       CoreForegroundService.alertSoundPresets()
     }
-    Function("startGeigerSimulation") { soundType: String, rangeDepth: Double ->
+    Function("startGeigerSimulation") { spec: String, rangeDepth: Double ->
       val feedback = previewAlertFeedback ?: AlertFeedback(context.applicationContext, mainHandler)
         .also { previewAlertFeedback = it }
       val settings = kotlinx.coroutines.runBlocking { AppDataRepository.get(context.applicationContext).getTypedSettings() }
       feedback.setSoundSettings(settings)
-      feedback.updateGeiger("preview", soundType, rangeDepth)
+      feedback.updateGeiger("preview", spec, rangeDepth)
     }
     Function("stopGeigerSimulation") {
       previewAlertFeedback?.stopGeiger("preview")
@@ -1282,7 +1282,7 @@ class VescapeCoreModule : Module() {
           "controlId" to rule.controlId,
           "threshold" to rule.threshold,
           "thresholdMax" to rule.thresholdMax,
-          "soundType" to rule.spec,
+          "spec" to rule.spec,
           "repeatEverySeconds" to rule.repeatEverySeconds,
         )
       }

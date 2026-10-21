@@ -46,7 +46,7 @@
         {
           "threshold": 75,
           "thresholdMax": 90,
-          "soundType": "geiger:hard"
+          "spec": "geiger:hard"
         }
       ]
     },
@@ -58,13 +58,13 @@
         {
           "threshold": 85,
           "thresholdMax": null,
-          "soundType": "voice(info):motorTemp"
+          "spec": "voice(info):motorTemp"
         },
         {
           "threshold": 95,
           "thresholdMax": null,
           "repeatEverySeconds": 10,
-          "soundType": "voice(critical):motorTemp"
+          "spec": "voice(critical):motorTemp"
         }
       ]
     },
@@ -266,7 +266,7 @@
         {
           "threshold": 80,
           "thresholdMax": 90,
-          "soundType": "geiger:mid"
+          "spec": "geiger:mid"
         }
       ]
     },
@@ -285,7 +285,7 @@
           "threshold": 95,
           "thresholdMax": null,
           "repeatEverySeconds": 10,
-          "soundType": "voice(critical):motorTemp"
+          "spec": "voice(critical):motorTemp"
         }
       ]
     }

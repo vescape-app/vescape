@@ -3678,8 +3678,8 @@ internal class BoardSessionController(private val service: CoreForegroundService
         telemetryPipeline.metricSanitizerConfig = settings.toMetricSanitizerConfig()
     }
 
-    fun previewAlertSound(soundType: String) {
-        alertFeedback.preview(soundType)
+    fun previewAlertSound(spec: String) {
+        alertFeedback.preview(spec)
     }
 
     fun playAppCue(cue: String) {

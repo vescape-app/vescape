@@ -53,7 +53,7 @@ class AlertPresetPersistenceHostTest {
         assertEquals(target.optString("fieldId", "").ifEmpty { null }, rule.configFieldId)
         if (target.has("thresholdOffset")) assertEquals(target.getDouble("thresholdOffset"), rule.thresholdOffset!!, 0.0)
         if (target.has("thresholdMaxOffset")) assertEquals(target.getDouble("thresholdMaxOffset"), rule.thresholdMaxOffset!!, 0.0)
-        if (target.has("soundType")) assertEquals(id, target.getString("soundType"), rule.spec)
+        if (target.has("spec")) assertEquals(id, target.getString("spec"), rule.spec)
       }
     }
     db.close()

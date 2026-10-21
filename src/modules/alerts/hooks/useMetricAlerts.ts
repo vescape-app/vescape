@@ -70,7 +70,7 @@ export interface MetricAlertsController {
   /** Tick sound of this metric's preset: the rider's choice, else its expanded rules'; null without either. */
   geigerSound?: string | null
   /** Pick the preset's geiger sound. Absent where it cannot be stored (the add-board wizard). */
-  setGeigerSound?(soundType: string): void
+  setGeigerSound?(spec: string): void
   setLevel(level: AlertPresetLevel): void
   addRule(draft: AlertRuleDraft): Promise<void>
   updateRule(id: string, draft: AlertRuleDraft): Promise<void>
@@ -125,8 +125,8 @@ export function useBoardMetricAlerts(controlId: string): MetricAlertsController 
             (rule) =>
               rule.controlId === controlId &&
               isPresetAlertRule(rule) &&
-              parseGeigerAlertSound(rule.soundType),
-          )?.soundType ?? null),
+              parseGeigerAlertSound(rule.spec),
+          )?.spec ?? null),
     [allRules, controlId, presetGeiger],
   )
   const level = preset?.level ?? null
@@ -160,11 +160,11 @@ export function useBoardMetricAlerts(controlId: string): MetricAlertsController 
             .catch(() => undefined)
       },
       geigerSound,
-      setGeigerSound: (soundType) => {
+      setGeigerSound: (spec) => {
         // intentional-suppression: the Alert Preset store error renders under the preset control.
         if (metric)
           void presets()
-            .setGeigerSound(metric, soundType)
+            .setGeigerSound(metric, spec)
             .catch(() => undefined)
       },
       setLevel: (next) => {

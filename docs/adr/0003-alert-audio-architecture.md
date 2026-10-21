@@ -4,7 +4,7 @@ Alert feedback replaces `ToneGenerator` with `SoundPool` playing bundled audio p
 
 Each audio preset belongs to exactly one category: `single` or `geiger`. Single presets are for one-threshold alerts (voice clips, beeps, notification sounds). Geiger presets are short ticks designed for rapid repetition in range alerts. No preset spans both categories. The UI shows only the relevant list based on whether `thresholdMax` is set.
 
-The `soundType` column stores a URI-scheme identifier: `preset:beep`, `preset:tick`, etc. Future sources use their own scheme: `file:<uuid>` for user uploads, `tts:<key>` for generated speech. Native resolver splits on prefix to locate the audio. Existing bare values (`"default"`, `"urgent"`, `"pulse"`) are treated as `preset:` implicitly for backwards compatibility. The `rangeDepth != null` check (derived from `thresholdMax` presence) determines geiger vs single playback.
+The `spec` column stores a URI-scheme identifier: `preset:beep`, `preset:tick`, etc. Future sources use their own scheme: `file:<uuid>` for user uploads, `tts:<key>` for generated speech. Native resolver splits on prefix to locate the audio. Existing bare values (`"default"`, `"urgent"`, `"pulse"`) are treated as `preset:` implicitly for backwards compatibility. The `rangeDepth != null` check (derived from `thresholdMax` presence) determines geiger vs single playback.
 
 Audio assets live in `shared/alerts/`. A copy script (`bun run copy:shared`) places them into `android/src/main/res/raw/` (and later the iOS bundle). Format: OGG Vorbis, short clips (50–200ms for ticks, longer for voice clips).
 
@@ -18,5 +18,5 @@ The feedback layer (`AlertFeedback`) owns the geiger tick loop via `Handler.post
 - **Separate `playbackMode` column.** Rejected because `thresholdMax` presence already implies range/geiger behavior. Adding a column would duplicate intent and require migration.
 - **User-uploaded custom sounds.** Deferred — file management, permissions, and format validation are too much surface for now. URI scheme (`file:<uuid>`) is ready for it.
 - **Flat preset keys in DB.** Rejected — not extensible to user uploads or TTS without schema changes. URI scheme (`preset:`, `file:`, `tts:`) handles all sources in one column.
-- **Two columns (soundType + soundFileId).** Rejected — redundant, one always null. URI scheme is cleaner.
+- **Two columns (spec + soundFileId).** Rejected — redundant, one always null. URI scheme is cleaner.
 - **Priority system for concurrent alerts.** Rejected in favor of mixing. `SoundPool` handles concurrent playback natively. Simpler and avoids suppressing important alerts.

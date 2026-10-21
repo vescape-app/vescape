@@ -1071,7 +1071,7 @@ fun AlertRuleEntity.toMap(): Map<String, Any?> = mapOf(
     "thresholdOffset" to thresholdOffset, "thresholdMaxOffset" to thresholdMaxOffset,
   ) else mapOf("kind" to "fixed"),
   "enabled" to enabled,
-  "soundType" to spec,
+  "spec" to spec,
   "createdAt" to createdAt,
   "repeatEverySeconds" to repeatEverySeconds,
 )
@@ -1370,7 +1370,7 @@ private fun Map<String, Any?>.toAlertRuleEntity(): AlertRuleEntity = AlertRuleEn
   thresholdOffset = ((get("thresholdRule") as? Map<*, *>)?.get("thresholdOffset") as? Number)?.toDouble(),
   thresholdMaxOffset = ((get("thresholdRule") as? Map<*, *>)?.get("thresholdMaxOffset") as? Number)?.toDouble(),
   enabled = getBoolean("enabled"),
-  spec = get("soundType") as? String ?: "default",
+  spec = get("spec") as? String ?: "default",
   createdAt = getLong("createdAt"),
   repeatEverySeconds = normalizedAlertRepeatSeconds(getDoubleOrNull("repeatEverySeconds")),
 )

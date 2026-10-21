@@ -116,13 +116,13 @@ internal fun renderAlertMessageTemplate(
     return text.trim()
 }
 
-private fun ttsSampleAlert(soundType: String) = FiredAlert(
+private fun ttsSampleAlert(spec: String) = FiredAlert(
     ruleId = "preview",
     controlId = "battery",
     value = 48.0,
     threshold = 50.0,
     thresholdMax = null,
-    soundType = soundType,
+    spec = spec,
     rangeDepth = null,
     firedAt = System.currentTimeMillis(),
 )
@@ -139,7 +139,7 @@ internal data class FiredAlert(
     val value: Double,
     val threshold: Double,
     val thresholdMax: Double?,
-    val soundType: String,
+    val spec: String,
     val rangeDepth: Double?,
     val firedAt: Long,
 ) {
@@ -149,7 +149,7 @@ internal data class FiredAlert(
         "value" to value,
         "threshold" to threshold,
         "thresholdMax" to thresholdMax,
-        "soundType" to soundType,
+        "spec" to spec,
         "rangeDepth" to rangeDepth,
         "firedAt" to firedAt,
     )
@@ -299,7 +299,7 @@ internal class AlertEngine(private val now: () -> Long = { System.currentTimeMil
         value = value,
         threshold = effective.first,
         thresholdMax = effective.second,
-        soundType = spec,
+        spec = spec,
         rangeDepth = rangeDepth,
         firedAt = now,
     )
@@ -425,28 +425,28 @@ internal class AlertFeedback(
     init { handler.post { loadAssets() } }
 
     /**
-     * Ready everything [soundTypes] can play before the first alert: My sound samples and players
+     * Ready everything [Specs] can play before the first alert: My sound samples and players
      * for every rule and slot override, and the voice pack's lines. Built-in pack slots are always
      * loaded.
      *
      * @parity /modules/vescape-core/ios/alerts/AlertAudioPlayer.swift `prepare`
      */
-    fun prepare(soundTypes: List<String>) {
+    fun prepare(Specs: List<String>) {
         if (android.os.Looper.myLooper() != handler.looper) {
-            handler.post { prepare(soundTypes) }
+            handler.post { prepare(Specs) }
             return
         }
         if (released) return
-        prepared = soundTypes
+        prepared = Specs
         val pack = soundPack
         val slots = (EffectsPackAssets.slots(context).keys.map { it.substringAfter('/') } + OPTIONAL_SLOT_FALLBACK.keys).distinct()
         val mine = HashSet<java.io.File>()
         for (slot in slots) {
             if (slotSample(slot, pack) != 0) (slotClip(context, pack, slot) as? SlotClip.Mine)?.let { mine += it.file }
         }
-        for (soundType in soundTypes) {
-            val my = mySoundId(soundType) ?: continue
-            val slot = if (isGeigerSoundType(soundType)) geigerSlot(soundType) else parseSlotAlertSound(soundType).severity.slot
+        for (spec in Specs) {
+            val my = mySoundId(spec) ?: continue
+            val slot = if (isGeigerSpec(spec)) geigerSlot(spec) else parseSlotAlertSound(spec).severity.slot
             slotSample(slot, pack, my)
             (slotClip(context, pack, slot, my) as? SlotClip.Mine)?.let { mine += it.file }
         }
@@ -551,7 +551,7 @@ internal class AlertFeedback(
                 samples.complete(sampleId, status == 0)
                 val loops = pendingGeiger.toMap()
                 pendingGeiger.clear()
-                for ((id, request) in loops) updateGeiger(id, request.soundType, request.rangeDepth)
+                for ((id, request) in loops) updateGeiger(id, request.spec, request.rangeDepth)
             }
         }
         try {
@@ -587,7 +587,7 @@ internal class AlertFeedback(
         }
         val selected = if (source == "media") "media" else "alarm"
         if (released || audioSource == selected) return
-        val loops = geigerLoops.mapValues { (_, loop) -> PendingGeiger(loop.soundType, loop.rangeDepth) } + pendingGeiger
+        val loops = geigerLoops.mapValues { (_, loop) -> PendingGeiger(loop.spec, loop.rangeDepth) } + pendingGeiger
         val waitingPlays = samples.takePending()
         stopAllGeiger()
         soundPool.release()
@@ -743,12 +743,12 @@ internal class AlertFeedback(
      * Play one announcement: an `alert(count):severity` rule's severity sound from the active effects
      * pack, [count][SlotAlertSound.count] times, [ALERT_BEEP_SPACING_MS] apart.
      */
-    fun playSingle(soundType: String, requestedAt: Long = SystemClock.uptimeMillis()) {
+    fun playSingle(spec: String, requestedAt: Long = SystemClock.uptimeMillis()) {
         if (android.os.Looper.myLooper() != handler.looper) {
-            handler.post { playSingle(soundType, requestedAt) }
+            handler.post { playSingle(spec, requestedAt) }
             return
         }
-        playSeverity(parseSlotAlertSound(soundType), mySoundId(soundType), requestedAt)
+        playSeverity(parseSlotAlertSound(spec), mySoundId(spec), requestedAt)
     }
 
     /** [sound]'s severity slot from the effects pack, or My sound [my] in its place, [SlotAlertSound.count] times. */
@@ -849,42 +849,42 @@ internal class AlertFeedback(
         voiceTrack = playPcm(pcm, audioSource, handler) { track -> if (voiceTrack === track) voiceTrack = null }
     }
 
-    fun preview(soundType: String) {
+    fun preview(spec: String) {
         if (android.os.Looper.myLooper() != handler.looper) {
-            handler.post { preview(soundType) }
+            handler.post { preview(spec) }
             return
         }
-        parseVoiceAlertSound(soundType)?.let { sound ->
+        parseVoiceAlertSound(spec)?.let { sound ->
             val unitSystem = kotlinx.coroutines.runBlocking { AppDataRepository.get(context).getTypedSettings().unitSystem }
             speakVoice(voiceAnnouncement(sound, null, null, percentAvailable = true, unitSystem = unitSystem))
             return
         }
-        val tts = parseTtsAlertSound(soundType)
+        val tts = parseTtsAlertSound(spec)
         if (tts != null) {
-            val text = renderAlertMessageTemplate(tts.text, ttsSampleAlert(soundType), batteryPercent = 42.0, unitSystem = kotlinx.coroutines.runBlocking { AppDataRepository.get(context).getTypedSettings().unitSystem })
+            val text = renderAlertMessageTemplate(tts.text, ttsSampleAlert(spec), batteryPercent = 42.0, unitSystem = kotlinx.coroutines.runBlocking { AppDataRepository.get(context).getTypedSettings().unitSystem })
             if (text.isNotEmpty()) speakAfterSeverity(tts.severity, text)
             return
         }
         try {
-            playOnce(previewSlot(soundType), my = mySoundId(soundType))
+            playOnce(previewSlot(spec), my = mySoundId(spec))
         } catch (e: Exception) {
             Log.w(VESC_SESSION_TAG, "Alert preview failed: ${e.message}")
             UnexpectedNativeError.report("alert_audio_preview", "audio_play_failed", e)
         }
     }
 
-    fun updateGeiger(ruleId: String, soundType: String, rangeDepth: Double) {
+    fun updateGeiger(ruleId: String, spec: String, rangeDepth: Double) {
         if (android.os.Looper.myLooper() != handler.looper) {
-            handler.post { updateGeiger(ruleId, soundType, rangeDepth) }
+            handler.post { updateGeiger(ruleId, spec, rangeDepth) }
             return
         }
         if (released) return
-        val tickSlot = geigerSlot(soundType)
-        val my = mySoundId(soundType)
+        val tickSlot = geigerSlot(spec)
+        val my = mySoundId(spec)
         val sample = slotSample(tickSlot, my = my)
         if (samples.state(sample) == SoundSampleQueue.State.FAILED) { stopGeiger(ruleId); return }
         if (samples.state(sample) == SoundSampleQueue.State.PENDING) {
-            pendingGeiger[ruleId] = PendingGeiger(soundType, rangeDepth)
+            pendingGeiger[ruleId] = PendingGeiger(spec, rangeDepth)
             return
         }
         try {
@@ -896,19 +896,19 @@ internal class AlertFeedback(
                 if (existing?.sustained == true && existing.sample == sample) return
                 existing?.streamId?.let { soundPool.stop(it) }
                 val streamId = playSlot(tickSlot, loop = -1, my = my)
-                geigerLoops[ruleId] = GeigerLoop(soundType, depth, sustained = true, streamId = streamId, sample = sample)
+                geigerLoops[ruleId] = GeigerLoop(spec, depth, sustained = true, streamId = streamId, sample = sample)
                 return
             }
 
             if (existing?.sustained == true) {
                 existing.streamId?.let { soundPool.stop(it) }
             }
-            if (existing != null && !existing.sustained && existing.soundType == soundType) {
+            if (existing != null && !existing.sustained && existing.spec == spec) {
                 existing.rangeDepth = depth
                 return
             }
             existing?.runnable?.let { handler.removeCallbacks(it) }
-            val loop = GeigerLoop(soundType, depth, sustained = false)
+            val loop = GeigerLoop(spec, depth, sustained = false)
             val runnable = object : Runnable {
                 override fun run() {
                     if (released || geigerLoops[ruleId] !== loop) return
@@ -999,10 +999,10 @@ internal class AlertFeedback(
     private fun geigerIntervalMs(rangeDepth: Double): Long =
         (800L - (740L * rangeDepth.coerceIn(0.0, 1.0))).toLong().coerceIn(60L, 800L)
 
-    private data class PendingGeiger(val soundType: String, val rangeDepth: Double)
+    private data class PendingGeiger(val spec: String, val rangeDepth: Double)
 
     private data class GeigerLoop(
-        val soundType: String,
+        val spec: String,
         var rangeDepth: Double,
         val sustained: Boolean,
         val streamId: Int? = null,
@@ -1055,10 +1055,10 @@ internal class AlertFeedback(
             previewClip(context, Handler(contextMainLooper()), pack, slot, source = source)
         }
 
-        fun preview(context: Context, soundType: String, source: String) {
+        fun preview(context: Context, spec: String, source: String) {
             val handler = Handler(contextMainLooper())
             val settings = kotlinx.coroutines.runBlocking { AppDataRepository.get(context).getTypedSettings() }
-            parseVoiceAlertSound(soundType)?.let { sound ->
+            parseVoiceAlertSound(spec)?.let { sound ->
                 val announcement = voiceAnnouncement(sound, null, null, percentAvailable = true, unitSystem = settings.unitSystem)
                 val pack = voicePackId(settings.voice, EffectsPackAssets.voice(context, settings.soundPack))
                 var pcm: VoicePcm? = null
@@ -1077,9 +1077,9 @@ internal class AlertFeedback(
                 }
                 return
             }
-            val tts = parseTtsAlertSound(soundType)
+            val tts = parseTtsAlertSound(spec)
             if (tts != null) {
-                val text = renderAlertMessageTemplate(tts.text, ttsSampleAlert(soundType), batteryPercent = 42.0, unitSystem = settings.unitSystem)
+                val text = renderAlertMessageTemplate(tts.text, ttsSampleAlert(spec), batteryPercent = 42.0, unitSystem = settings.unitSystem)
                 if (text.isEmpty()) return
                 // Speech waits for both the engine and the severity sound, whichever is later. Both
                 // callbacks land on the main looper, so the flags need no locking.
@@ -1106,7 +1106,7 @@ internal class AlertFeedback(
                 }
                 return
             }
-            previewClip(context, handler, settings.soundPack, previewSlot(soundType), mySoundId(soundType), source)
+            previewClip(context, handler, settings.soundPack, previewSlot(spec), mySoundId(spec), source)
         }
 
         /**

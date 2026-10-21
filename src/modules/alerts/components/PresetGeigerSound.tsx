@@ -5,15 +5,13 @@ import { geigerPickerSound, getPresetsForCategory } from '@/modules/alerts/lib/a
 
 /** Soft / Mid / Hard for a range preset's ticks; hidden without a geiger sound or handler. */
 export function PresetGeigerSound({
-  soundType,
+  spec,
   onChange,
 }: {
-  soundType?: string | null
-  onChange?: (soundType: string) => void
+  spec?: string | null
+  onChange?: (spec: string) => void
 }) {
   const sounds = useMemo(() => getPresetsForCategory('geiger'), [])
-  if (!soundType || !onChange) return null
-  return (
-    <SoundPicker presets={sounds} selected={geigerPickerSound(soundType)} onSelect={onChange} />
-  )
+  if (!spec || !onChange) return null
+  return <SoundPicker presets={sounds} selected={geigerPickerSound(spec)} onSelect={onChange} />
 }

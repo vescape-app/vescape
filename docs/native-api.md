@@ -403,23 +403,23 @@ only stable identity (`id`, `name`, `ble_id`, `created_at`).
 
 ## Alert rules
 
-| fn                                            | sync  | returns                                                       |
-| --------------------------------------------- | ----- | ------------------------------------------------------------- |
-| `getAlertRules(boardId)`                      | async | `AlertRule[]`: rider rules, then expanded presets             |
-| `getAlertPresets(boardId)`                    | async | each metric's `preset(…)` spec; `preset(normal)` when unset   |
-| `upsertAlertRule(rule)`                       | async | void. Reloads foreground service rules                        |
-| `setAlertRuleEnabled(id,enabled)`             | async | void. Reloads rules                                           |
-| `deleteAlertRule(id)`                         | async | void. Reloads rules                                           |
-| `getAlertSounds()`                            | sync  | `AlertSound[]`. Falls back to hardcoded if native unavailable |
-| `previewAlertSound(soundType)`                | sync  | void                                                          |
-| `startGeigerSimulation(soundType,rangeDepth)` | sync  | void                                                          |
-| `stopGeigerSimulation()`                      | sync  | void                                                          |
-| `reloadAlertRules()`                          | sync  | void. Force foreground service re-read                        |
+| fn                                       | sync  | returns                                                       |
+| ---------------------------------------- | ----- | ------------------------------------------------------------- |
+| `getAlertRules(boardId)`                 | async | `AlertRule[]`: rider rules, then expanded presets             |
+| `getAlertPresets(boardId)`               | async | each metric's `preset(…)` spec; `preset(normal)` when unset   |
+| `upsertAlertRule(rule)`                  | async | void. Reloads foreground service rules                        |
+| `setAlertRuleEnabled(id,enabled)`        | async | void. Reloads rules                                           |
+| `deleteAlertRule(id)`                    | async | void. Reloads rules                                           |
+| `getAlertSounds()`                       | sync  | `AlertSound[]`. Falls back to hardcoded if native unavailable |
+| `previewAlertSound(spec)`                | sync  | void                                                          |
+| `startGeigerSimulation(spec,rangeDepth)` | sync  | void                                                          |
+| `stopGeigerSimulation()`                 | sync  | void                                                          |
+| `reloadAlertRules()`                     | sync  | void. Force foreground service re-read                        |
 
 ### AlertRule shape
 
 ```ts
-{ id, controlId, threshold, thresholdMax?, enabled, soundType, createdAt }
+{ id, controlId, threshold, thresholdMax?, enabled, spec, createdAt }
 ```
 
 Single threshold -> one-shot alert. Both threshold+thresholdMax -> geiger (progressive ticking).

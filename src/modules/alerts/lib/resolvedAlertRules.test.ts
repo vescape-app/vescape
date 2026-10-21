@@ -12,7 +12,7 @@ const saved: AlertRule = {
   enabled: true,
   threshold: 50,
   thresholdMax: 60,
-  soundType: 'preset:tick',
+  spec: 'preset:tick',
   repeatEverySeconds: null,
   createdAt: 0,
 }
@@ -30,7 +30,7 @@ test('saved thresholds drive markers, description and preview without reconstruc
   const rules = resolvedAlertRules([saved, { ...saved, id: 'disabled', enabled: false }], {})
   const snapshot = rules.map(toTestRule)
   expect(getAlertThresholdValues(snapshot)).toEqual([50, 60])
-  expect(snapshot[0]).toMatchObject({ threshold: 50, thresholdMax: 60, soundType: 'preset:tick' })
+  expect(snapshot[0]).toMatchObject({ threshold: 50, thresholdMax: 60, spec: 'preset:tick' })
   expect(describeAlertRules('duty', snapshot)).toContain('from 50%')
   expect(describeAlertRules('duty', snapshot)).toContain('at 60%')
   expect(resolvedAlertRules([], {})).toEqual([])

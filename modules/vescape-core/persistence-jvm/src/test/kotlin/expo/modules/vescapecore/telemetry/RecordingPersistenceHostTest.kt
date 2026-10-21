@@ -286,7 +286,7 @@ class RecordingPersistenceHostTest {
       persistence.createProfile(profile.copy(id = "compat-$index", boardId = "compat-board", refloatBaseVersion = versions.getString(index)))
     }
     persistence.saveProfile(profile.id, profileValues.getString("updatedFieldsJson"), 2)
-    persistence.saveAlert(AlertRuleEntity(boardId, alertValues.getString("id"), alertValues.getString("controlId"), alertValues.getDouble("threshold"), null, enabled = true, spec = alertValues.getString("soundType"), createdAt = 1))
+    persistence.saveAlert(AlertRuleEntity(boardId, alertValues.getString("id"), alertValues.getString("controlId"), alertValues.getDouble("threshold"), null, enabled = true, spec = alertValues.getString("spec"), createdAt = 1))
     persistence.setAlertEnabled(boardId, alertValues.getString("id"), false)
     db.close()
 

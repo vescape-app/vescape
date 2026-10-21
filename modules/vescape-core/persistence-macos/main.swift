@@ -720,7 +720,7 @@ try tuneQueue!.write { db in
 }
 _ = try tuneStore.saveProfile(profileId: tuneId, fields: ["kp": 2])
 var alertPersistence = AlertRulePersistence(writer: tuneQueue!)
-try alertPersistence.save(PersistedAlertRule(boardId: tuneAlertBoardId, id: alertValues["id"] as! String, controlId: alertValues["controlId"] as! String, threshold: alertValues["threshold"] as! Double, thresholdMax: nil, enabled: true, spec: alertValues["soundType"] as! String, createdAt: 1, repeatEverySeconds: nil, thresholdKind: "fixed", configFieldId: nil, thresholdOffset: nil, thresholdMaxOffset: nil))
+try alertPersistence.save(PersistedAlertRule(boardId: tuneAlertBoardId, id: alertValues["id"] as! String, controlId: alertValues["controlId"] as! String, threshold: alertValues["threshold"] as! Double, thresholdMax: nil, enabled: true, spec: alertValues["spec"] as! String, createdAt: 1, repeatEverySeconds: nil, thresholdKind: "fixed", configFieldId: nil, thresholdOffset: nil, thresholdMaxOffset: nil))
 try alertPersistence.setEnabled(boardId: tuneAlertBoardId, id: alertValues["id"] as! String, enabled: false)
 try tuneQueue!.close()
 tuneQueue = try DatabaseQueue(path: tuneURL.path)

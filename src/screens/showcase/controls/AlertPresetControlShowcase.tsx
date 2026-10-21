@@ -63,7 +63,7 @@ const MATCHED_NORMAL_FIXTURES: Partial<Record<AlertPresetMetric, DraftAlertRule[
       },
       enabled: true,
       createdAt: 0,
-      soundType: 'geiger:soft',
+      spec: 'geiger:soft',
       repeatEverySeconds: null,
     },
   ],
@@ -81,7 +81,7 @@ const MATCHED_NORMAL_FIXTURES: Partial<Record<AlertPresetMetric, DraftAlertRule[
       },
       enabled: true,
       createdAt: 0,
-      soundType: 'voice(info):motorTemp',
+      spec: 'voice(info):motorTemp',
       repeatEverySeconds: null,
     },
     {
@@ -97,7 +97,7 @@ const MATCHED_NORMAL_FIXTURES: Partial<Record<AlertPresetMetric, DraftAlertRule[
       },
       enabled: true,
       createdAt: 0,
-      soundType: 'voice(critical):motorTemp',
+      spec: 'voice(critical):motorTemp',
       repeatEverySeconds: 10,
     },
   ],
@@ -115,7 +115,7 @@ const MATCHED_NORMAL_FIXTURES: Partial<Record<AlertPresetMetric, DraftAlertRule[
       },
       enabled: true,
       createdAt: 0,
-      soundType: 'voice(info):controllerTemp',
+      spec: 'voice(info):controllerTemp',
       repeatEverySeconds: null,
     },
     {
@@ -131,7 +131,7 @@ const MATCHED_NORMAL_FIXTURES: Partial<Record<AlertPresetMetric, DraftAlertRule[
       },
       enabled: true,
       createdAt: 0,
-      soundType: 'voice(critical):controllerTemp',
+      spec: 'voice(critical):controllerTemp',
       repeatEverySeconds: 10,
     },
   ],
@@ -168,7 +168,7 @@ export function AlertPresetControlShowcase() {
           controlId: metric,
           thresholdMax: null,
           enabled: true,
-          soundType: metric === 'speed' || metric === 'duty' ? 'geiger:soft' : 'alert(3):warning',
+          spec: metric === 'speed' || metric === 'duty' ? 'geiger:soft' : 'alert(3):warning',
           repeatEverySeconds: null,
           createdAt: 0,
         }))
@@ -245,15 +245,14 @@ export function AlertPresetControlShowcase() {
         ruleSnapshot={
           geigerSound
             ? preview.rules.map((rule) =>
-                presetIds.has(rule.id) && parseGeigerAlertSound(rule.soundType)
-                  ? { ...rule, soundType: geigerSound }
+                presetIds.has(rule.id) && parseGeigerAlertSound(rule.spec)
+                  ? { ...rule, spec: geigerSound }
                   : rule,
               )
             : preview.rules
         }
         geigerSound={
-          geigerSound ??
-          preview.presetRules.find((rule) => parseGeigerAlertSound(rule.soundType))?.soundType
+          geigerSound ?? preview.presetRules.find((rule) => parseGeigerAlertSound(rule.spec))?.spec
         }
         presetRules={preview.presetRules}
         onGeigerSoundChange={setGeigerSound}

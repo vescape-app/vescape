@@ -1275,12 +1275,12 @@ internal final class BoardSessionController: VescGattListener {
   /// Play a preset once for UI preview, or speak a `tts:` template. Mirrors Android
   /// `previewAlertSound`.
   /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/connection/BoardSessionController.kt `previewAlertSound`
-  func previewAlertSound(_ soundType: String) {
+  func previewAlertSound(_ spec: String) {
     do {
       let settings = try appData.getSettings()
       // Without a Board Session nothing else keeps the player on the selected pack.
       alertAudioPlayer.applySoundSettings(settings)
-      alertAudioPlayer.preview(soundType: soundType, unitSystem: settings["unitSystem"] as? String ?? "metric")
+      alertAudioPlayer.preview(spec: spec, unitSystem: settings["unitSystem"] as? String ?? "metric")
     } catch { RecordingStorageFailure.reportRead(operation: "alert_preview_settings", error: error) }
   }
 
@@ -1293,10 +1293,10 @@ internal final class BoardSessionController: VescGattListener {
   }
 
   /// Drive a geiger preview loop without a connected board — UI slider over `rangeDepth`.
-  func startGeigerSimulation(soundType: String, rangeDepth: Double) {
+  func startGeigerSimulation(spec: String, rangeDepth: Double) {
     do { alertAudioPlayer.applySoundSettings(try appData.getSettings()) }
     catch { RecordingStorageFailure.reportRead(operation: "geiger_preview_settings", error: error) }
-    alertAudioPlayer.updateGeiger(ruleId: geigerSimulationId, soundType: soundType, rangeDepth: rangeDepth)
+    alertAudioPlayer.updateGeiger(ruleId: geigerSimulationId, spec: spec, rangeDepth: rangeDepth)
   }
 
   func stopGeigerSimulation() {

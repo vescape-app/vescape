@@ -29,7 +29,7 @@ final class AlertPresetPersistence {
     guard let parsed = AlertPresetSpec.parse(spec) else { throw InvalidPreset.invalidIntent }
     let input = PresetInput(topSpeedKmh: topSpeedKmh ?? 50, hasBatteryConfig: hasBatteryConfig, speedUnitSystem: speedUnitSystem)
     let specs = try AlertPresetGenerator.generate(metric: metric, spec: parsed, input: input)
-    return records(boardId: "", metric: metric, specs: specs, createdAt: 0)
+    return records(boardId: "", metric: metric, rules: specs, createdAt: 0)
   }
 
   private static func object(_ value: Any?) -> [String: Any] { value as? [String: Any] ?? [:] }
@@ -75,7 +75,7 @@ final class AlertPresetPersistence {
           configBase: try field.flatMap { try resolveBase(db, boardId, $0) }
         )
         let rules = try AlertPresetGenerator.generate(metric: metric, spec: spec, input: input)
-        return records(boardId: boardId, metric: metric, specs: rules, createdAt: presets[metric]?.createdAt ?? 0)
+        return records(boardId: boardId, metric: metric, rules: rules, createdAt: presets[metric]?.createdAt ?? 0)
       } catch {
         reportFailure(error)
         return []
@@ -129,24 +129,24 @@ final class AlertPresetPersistence {
   private static func records(
     boardId: String,
     metric: String,
-    specs: [GeneratedPresetRule],
+    rules: [GeneratedPresetRule],
     createdAt: Int64
   ) -> [PersistedAlertRule] {
-    specs.enumerated().map { index, spec in
+    rules.enumerated().map { index, rule in
       PersistedAlertRule(
         boardId: boardId,
         id: "\(rowId(metric)):\(index)",
         controlId: metric,
-        threshold: spec.point.threshold,
-        thresholdMax: spec.point.thresholdMax,
+        threshold: rule.point.threshold,
+        thresholdMax: rule.point.thresholdMax,
         enabled: true,
-        spec: spec.soundType,
+        spec: rule.spec,
         createdAt: createdAt,
-        repeatEverySeconds: spec.point.repeatEverySeconds,
-        thresholdKind: spec.relation == nil ? "fixed" : "config-relative",
-        configFieldId: spec.relation?.fieldId,
-        thresholdOffset: spec.relation?.offset,
-        thresholdMaxOffset: spec.relation?.maxOffset
+        repeatEverySeconds: rule.point.repeatEverySeconds,
+        thresholdKind: rule.relation == nil ? "fixed" : "config-relative",
+        configFieldId: rule.relation?.fieldId,
+        thresholdOffset: rule.relation?.offset,
+        thresholdMaxOffset: rule.relation?.maxOffset
       )
     }
   }

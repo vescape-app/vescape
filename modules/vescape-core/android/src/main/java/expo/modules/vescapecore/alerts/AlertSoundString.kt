@@ -17,7 +17,7 @@ val ALERT_BEEP_COUNT_RANGE = 1..5
 internal const val PRESET_RULE_PREFIX = "preset:"
 
 /**
- * A rule's `soundType` read through the sound string grammar `kind(variant):sound`. Only the first
+ * A rule's `spec` read through the sound string grammar `kind(variant):sound`. Only the first
  * `:` after the kind and optional variant splits, so the sound part (TTS text) may contain `:`.
  * Strings outside the grammar (no `kind:` prefix) parse to null.
  *
@@ -62,8 +62,8 @@ internal enum class AlertSeverity(val id: String) {
 /** `tts(severity):text` — the severity sound once, then system TTS speaking [text]. */
 internal data class TtsAlertSound(val severity: AlertSeverity, val text: String)
 
-internal fun parseTtsAlertSound(soundType: String): TtsAlertSound? {
-    val parsed = AlertSoundString.parse(soundType) ?: return null
+internal fun parseTtsAlertSound(spec: String): TtsAlertSound? {
+    val parsed = AlertSoundString.parse(spec) ?: return null
     if (parsed.kind != "tts") return null
     return TtsAlertSound(AlertSeverity.from(parsed.variant), parsed.sound)
 }
@@ -78,23 +78,23 @@ internal fun parseTtsAlertSound(soundType: String): TtsAlertSound? {
  */
 internal data class VoiceAlertSound(val severity: AlertSeverity, val key: String?, val value: Double?)
 
-internal fun parseVoiceAlertSound(soundType: String): VoiceAlertSound? {
-    val parsed = AlertSoundString.parse(soundType) ?: return null
+internal fun parseVoiceAlertSound(spec: String): VoiceAlertSound? {
+    val parsed = AlertSoundString.parse(spec) ?: return null
     if (parsed.kind != "voice") return null
     val key = parsed.sound.substringBefore(':').ifEmpty { null }
     val value = parsed.sound.substringAfter(':', "").toDoubleOrNull()?.takeIf { it.isFinite() }
     return VoiceAlertSound(AlertSeverity.from(parsed.variant), key, value)
 }
 
-/** True for a `soundType` spoken after its severity sound: system TTS or a voice line. */
-internal fun isSpokenSoundType(soundType: String): Boolean =
-    parseTtsAlertSound(soundType) != null || parseVoiceAlertSound(soundType) != null
+/** True for a `spec` spoken after its severity sound: system TTS or a voice line. */
+internal fun isSpokenSpec(spec: String): Boolean =
+    parseTtsAlertSound(spec) != null || parseVoiceAlertSound(spec) != null
 
 /** `alert(count):severity` — the active effects pack's severity sound, [count] times. */
 internal data class SlotAlertSound(val count: Int, val severity: AlertSeverity)
 
 /**
- * Read any non-TTS single-alert `soundType` as a slot sound. `alert:` means one play. Strings from
+ * Read any non-TTS single-alert `spec` as a slot sound. `alert:` means one play. Strings from
  * before the grammar map onto the matching severity (`preset:notify|beep|urgent` → info, warning,
  * critical, played once); anything unknown plays the warning sound once, so a rule is never silent.
  * A `my:<id>` sound reads as warning too: the fallback when that My sound is gone (see [mySoundId]).
@@ -102,13 +102,13 @@ internal data class SlotAlertSound(val count: Int, val severity: AlertSeverity)
  * @parity /src/modules/alerts/lib/alertSoundString.ts `parseSlotAlertSound`
  * @parity /modules/vescape-core/ios/alerts/AlertSoundString.swift `parseSlotAlertSound`
  */
-internal fun parseSlotAlertSound(soundType: String): SlotAlertSound {
-    val parsed = AlertSoundString.parse(soundType)
+internal fun parseSlotAlertSound(spec: String): SlotAlertSound {
+    val parsed = AlertSoundString.parse(spec)
     if (parsed?.kind == "alert") {
         val count = parsed.variant?.toIntOrNull()?.coerceIn(ALERT_BEEP_COUNT_RANGE.first, ALERT_BEEP_COUNT_RANGE.last) ?: 1
         return SlotAlertSound(count, AlertSeverity.entries.firstOrNull { it.id == parsed.sound } ?: AlertSeverity.WARNING)
     }
-    val legacy = when (soundType) {
+    val legacy = when (spec) {
         "preset:notify", "notify", "pulse" -> AlertSeverity.INFO
         "preset:urgent", "urgent" -> AlertSeverity.CRITICAL
         else -> AlertSeverity.WARNING
@@ -138,30 +138,30 @@ private val LEGACY_GEIGER = mapOf(
 )
 
 /**
- * `geiger:level` — a range rule's tick level, or null when [soundType] is not a geiger sound.
+ * `geiger:level` — a range rule's tick level, or null when [spec] is not a geiger sound.
  * Strings from before the grammar map `preset:tick|tick_hard|gamma|sustained` → soft, mid, hard,
  * hard. An unknown level ticks soft, as does `geiger:my:<id>` when that My sound is gone.
  *
  * @parity /src/modules/alerts/lib/alertSoundString.ts `parseGeigerAlertSound`
  * @parity /modules/vescape-core/ios/alerts/AlertSoundString.swift `parseGeigerAlertSound`
  */
-internal fun parseGeigerAlertSound(soundType: String): GeigerLevel? {
-    LEGACY_GEIGER[soundType]?.let { return it }
-    val parsed = AlertSoundString.parse(soundType)
+internal fun parseGeigerAlertSound(spec: String): GeigerLevel? {
+    LEGACY_GEIGER[spec]?.let { return it }
+    val parsed = AlertSoundString.parse(spec)
     if (parsed?.kind != "geiger") return null
     return GeigerLevel.entries.firstOrNull { it.id == parsed.sound } ?: GeigerLevel.SOFT
 }
 
 /**
- * Geiger slot for a range rule's `soundType` (see [parseGeigerAlertSound]); a non-geiger string
+ * Geiger slot for a range rule's `spec` (see [parseGeigerAlertSound]); a non-geiger string
  * ticks soft.
  *
  * @parity /modules/vescape-core/ios/alerts/AlertSoundString.swift `geigerSlot`
  */
-internal fun geigerSlot(soundType: String): String = (parseGeigerAlertSound(soundType) ?: GeigerLevel.SOFT).slot
+internal fun geigerSlot(spec: String): String = (parseGeigerAlertSound(spec) ?: GeigerLevel.SOFT).slot
 
-/** True for a `soundType` that names a geiger tick rather than a single alert sound. */
-internal fun isGeigerSoundType(soundType: String): Boolean = parseGeigerAlertSound(soundType) != null
+/** True for a `spec` that names a geiger tick rather than a single alert sound. */
+internal fun isGeigerSpec(spec: String): Boolean = parseGeigerAlertSound(spec) != null
 
 /**
  * My sound id of an `alert(count):my:<id>` or `geiger:my:<id>` sound, else null. The player uses it
@@ -170,8 +170,8 @@ internal fun isGeigerSoundType(soundType: String): Boolean = parseGeigerAlertSou
  * @parity /src/modules/alerts/lib/alertSoundString.ts `mySoundId`
  * @parity /modules/vescape-core/ios/alerts/AlertSoundString.swift `mySoundId`
  */
-internal fun mySoundId(soundType: String): String? {
-    val parsed = AlertSoundString.parse(soundType) ?: return null
+internal fun mySoundId(spec: String): String? {
+    val parsed = AlertSoundString.parse(spec) ?: return null
     if (parsed.kind != "alert" && parsed.kind != "geiger") return null
     return parsed.sound.removePrefix("my:").takeIf { parsed.sound.startsWith("my:") && it.isNotEmpty() }
 }

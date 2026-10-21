@@ -16,7 +16,7 @@ interface AlertPresetActions {
   setLevel(metric: AlertPresetMetric, level: AlertPresetLevel): Promise<void>
   setMatchBoardConfig(metric: AlertPresetMetric, enabled: boolean): Promise<void>
   /** Pick the tick level from a `geiger:<level>` sound string. */
-  setGeigerSound(metric: AlertPresetMetric, soundType: string): Promise<void>
+  setGeigerSound(metric: AlertPresetMetric, spec: string): Promise<void>
 }
 
 let pending = 0
@@ -47,8 +47,8 @@ export const useAlertPresetStore = create<AlertPresetState & AlertPresetActions>
     error: null,
     setLevel: (metric, level) => apply(metric, { level }),
     setMatchBoardConfig: (metric, enabled) => apply(metric, { match: enabled }),
-    setGeigerSound: async (metric, soundType) => {
-      const geiger = parseGeigerAlertSound(soundType)
+    setGeigerSound: async (metric, spec) => {
+      const geiger = parseGeigerAlertSound(spec)
       if (geiger) await apply(metric, { geiger })
     },
   }

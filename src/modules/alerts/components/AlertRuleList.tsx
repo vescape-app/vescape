@@ -148,14 +148,14 @@ function AlertRuleRow({
       ? formatSpeedWithUnit(value, 1)
       : formatAlertValue(value, batteryConfig, unit)
   const isGeiger = rule.thresholdMax != null
-  const tts = parseTtsAlertSound(rule.soundType)
-  const voice = parseVoiceAlertSound(rule.soundType)
+  const tts = parseTtsAlertSound(rule.spec)
+  const voice = parseVoiceAlertSound(rule.spec)
   const spokenText = tts?.text ?? (voice ? 'Voice line' : null)
   const TypeIcon = isGeiger ? RadioactiveIcon : spokenText != null ? ChatTextIcon : WaveformIcon
   const detail = [
     rule.repeatEverySeconds == null ? null : `every ${rule.repeatEverySeconds}s`,
     voice ? ALERT_SEVERITY_LABELS[voice.severity] : null,
-    isGeiger || spokenText != null ? null : slotAlertSoundLabel(rule.soundType),
+    isGeiger || spokenText != null ? null : slotAlertSoundLabel(rule.spec),
   ]
     .filter(Boolean)
     .join(' · ')

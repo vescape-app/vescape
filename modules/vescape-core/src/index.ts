@@ -477,7 +477,7 @@ export interface FiredAlert {
   value: number
   threshold: number
   thresholdMax: number | null
-  soundType: string
+  spec: string
   /** 0..1 depth into the threshold→thresholdMax range for geiger alerts; `null` for single. */
   rangeDepth?: number | null
   firedAt: number
@@ -668,7 +668,7 @@ export interface BatteryManualConfig {
   maxVoltage: number
 }
 
-export type AlertSoundType = string
+export type AlertSpec = string
 
 /**
  * @parity /modules/vescape-core/ios/alerts/AlertAudioPlayer.swift `alertCategorySingle`, `alertCategoryGeiger`
@@ -693,7 +693,7 @@ export interface AlertTestRule {
   controlId: string
   threshold: number
   thresholdMax: number | null
-  soundType: AlertSoundType
+  spec: AlertSpec
   /** Carried so a test sounds like the real rule: same cadence. */
   repeatEverySeconds: number | null
 }
@@ -717,7 +717,7 @@ export interface AlertRule {
         thresholdMaxOffset: number | null
       }
   enabled: boolean
-  soundType: AlertSoundType
+  spec: AlertSpec
   createdAt: number
   /**
    * Repeat cadence for a single-threshold rule, in seconds. `null` ⇒ one-shot: it announces once
@@ -2743,7 +2743,7 @@ type VescapeCoreNativeModule = NativeEventEmitter<VescapeCoreEvents> & {
   getCriticalRideNotificationPermissionStatus(): Promise<CriticalRideNotificationPermissionStatus>
   requestCriticalRideNotificationPermission(): Promise<CriticalRideNotificationPermissionStatus>
   getAlertSounds(): AlertSound[]
-  previewAlertSound(soundType: AlertSoundType): void
+  previewAlertSound(spec: AlertSpec): void
   playPackSound(pack: string, slot: PackSoundSlot): void
   playAppCue(cue: AppSoundCueId): void
   mapTile(z: number, x: number, y: number): Promise<string | null>
@@ -2753,7 +2753,7 @@ type VescapeCoreNativeModule = NativeEventEmitter<VescapeCoreEvents> & {
   deleteMySound(id: string): Promise<MySoundsState>
   setSoundOverride(slot: SoundOverrideSlot, id: string | null): Promise<MySoundsState>
 
-  startGeigerSimulation(soundType: string, rangeDepth: number): void
+  startGeigerSimulation(spec: string, rangeDepth: number): void
   stopGeigerSimulation(): void
   startAlertTest(rules: AlertTestRule[]): void
   updateAlertTest(value: number): void
@@ -3251,8 +3251,8 @@ export function getAlertSounds(): AlertSound[] {
   }
 }
 
-export function previewAlertSound(soundType: AlertSoundType): void {
-  native.previewAlertSound(soundType)
+export function previewAlertSound(spec: AlertSpec): void {
+  native.previewAlertSound(spec)
 }
 
 /** @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/alerts/EffectsPacks.kt `appCueSlot`
@@ -3339,9 +3339,9 @@ export function playAppCue(cue: AppSoundCueId): void {
   native.playAppCue(cue)
 }
 
-export function startGeigerSimulation(soundType: string, rangeDepth: number): void {
+export function startGeigerSimulation(spec: string, rangeDepth: number): void {
   try {
-    native.startGeigerSimulation(soundType, rangeDepth)
+    native.startGeigerSimulation(spec, rangeDepth)
   } catch {
     // Native geiger simulation not yet available
   }

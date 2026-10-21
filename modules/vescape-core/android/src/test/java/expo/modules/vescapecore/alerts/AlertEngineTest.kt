@@ -18,7 +18,7 @@ class AlertEngineTest {
         controlId: String = "duty",
         threshold: Double = 70.0,
         thresholdMax: Double? = null,
-        soundType: String = "default",
+        spec: String = "default",
         repeatEverySeconds: Long? = null,
         thresholdKind: String = "fixed",
         configFieldId: String? = null,
@@ -33,7 +33,7 @@ class AlertEngineTest {
         thresholdKind = thresholdKind, configFieldId = configFieldId,
         thresholdOffset = thresholdOffset, thresholdMaxOffset = thresholdMaxOffset,
         enabled = true,
-        spec = soundType,
+        spec = spec,
         createdAt = 0L,
         repeatEverySeconds = repeatEverySeconds,
     )
@@ -635,7 +635,7 @@ class VescAlertTemplateTest {
         value = value,
         threshold = threshold,
         thresholdMax = thresholdMax,
-        soundType = "tts:test",
+        spec = "tts:test",
         rangeDepth = null,
         firedAt = 0L,
     )

@@ -10,7 +10,7 @@ final class AlertEngineTests: XCTestCase {
     controlId: String = "duty",
     threshold: Double = 70.0,
     thresholdMax: Double? = nil,
-    soundType: String = "default",
+    spec: String = "default",
     repeatEverySeconds: Int64? = nil,
     thresholdKind: String = "fixed", configFieldId: String? = nil,
     thresholdOffset: Double? = nil, thresholdMaxOffset: Double? = nil
@@ -24,7 +24,7 @@ final class AlertEngineTests: XCTestCase {
       thresholdKind: thresholdKind, configFieldId: configFieldId,
       thresholdOffset: thresholdOffset, thresholdMaxOffset: thresholdMaxOffset,
       enabled: true,
-      soundType: soundType,
+      spec: spec,
       createdAt: 0,
       repeatEverySeconds: repeatEverySeconds
     )
@@ -125,7 +125,7 @@ final class AlertEngineTests: XCTestCase {
     XCTAssertEqual("speed", rules[0].controlId)
     XCTAssertEqual(15, rules[0].threshold)
     XCTAssertEqual(20, rules[0].thresholdMax)
-    XCTAssertEqual("geiger:soft", rules[0].soundType)
+    XCTAssertEqual("geiger:soft", rules[0].spec)
   }
 
   func testLegalModeOverlayUsesLatestSpeedSettings() {
@@ -581,7 +581,7 @@ final class AlertTemplateTests: XCTestCase {
       value: value,
       threshold: threshold,
       thresholdMax: thresholdMax,
-      soundType: "tts:test",
+      spec: "tts:test",
       rangeDepth: nil,
       firedAt: 0
     )

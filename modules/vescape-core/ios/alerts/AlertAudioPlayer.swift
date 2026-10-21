@@ -27,21 +27,21 @@ internal func alertSoundChoices() -> [[String: Any]] {
   ].map { ["name": $0.0, "uri": $0.1, "category": $0.2] }
 }
 
-/// Slot a one-shot preview of `soundType` plays: a geiger tick, or the severity sound once.
+/// Slot a one-shot preview of `spec` plays: a geiger tick, or the severity sound once.
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/alerts/EffectsPacks.kt `previewSlot`
-internal func previewSlot(_ soundType: String) -> String {
-  isGeigerSoundType(soundType) ? geigerSlot(soundType) : parseSlotAlertSound(soundType).severity.slot
+internal func previewSlot(_ spec: String) -> String {
+  isGeigerSpec(spec) ? geigerSlot(spec) : parseSlotAlertSound(spec).severity.slot
 }
 
 /// A fired sample alert used for TTS preview rendering, mirroring Android `ttsSampleAlert`.
-private func ttsSampleAlert(soundType: String) -> FiredAlert {
+private func ttsSampleAlert(spec: String) -> FiredAlert {
   FiredAlert(
     ruleId: "preview",
     controlId: "battery",
     value: 48.0,
     threshold: 50.0,
     thresholdMax: nil,
-    soundType: soundType,
+    spec: spec,
     rangeDepth: nil,
     firedAt: alertNowMs()
   )
@@ -52,7 +52,7 @@ private func alertNowMs() -> Int64 { Int64(Date().timeIntervalSince1970 * 1000) 
 /// One running geiger loop for a rule. Sustained loops a buffer continuously; ticking re-arms a
 /// timer whose interval depends on the current `rangeDepth`.
 private final class GeigerLoop {
-  let soundType: String
+  let spec: String
   var rangeDepth: Double
   let sustained: Bool
   var workItem: Cancellable?
@@ -64,8 +64,8 @@ private final class GeigerLoop {
   /// Clip a sustained loop plays; a different one (a pack switch) restarts it.
   var sustainedKey: String?
 
-  init(soundType: String, rangeDepth: Double, sustained: Bool) {
-    self.soundType = soundType
+  init(spec: String, rangeDepth: Double, sustained: Bool) {
+    self.spec = spec
     self.rangeDepth = rangeDepth
     self.sustained = sustained
   }
@@ -305,10 +305,10 @@ internal final class AlertAudioPlayer {
     }
   }
 
-  /// Decode everything `soundTypes` can play before the first alert: My sounds for every rule and
+  /// Decode everything `Specs` can play before the first alert: My sounds for every rule and
   /// slot override, and the voice pack's lines. Built-in pack slots load in `init`.
   /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/alerts/AlertEngine.kt `prepare`
-  func prepare(soundTypes: [String]) {
+  func prepare(Specs: [String]) {
     onGeigerQueue { owner in
       let slots = Set(owner.buffersBySlot.keys.compactMap { $0.split(separator: "/").last.map(String.init) })
         .union(optionalSlotFallback.keys)
@@ -316,7 +316,7 @@ internal final class AlertAudioPlayer {
       DispatchQueue.global(qos: .utility).async { [weak owner] in
         guard let owner else { return }
         for slot in slots { _ = owner.clipKey(slot) }
-        for soundType in soundTypes { if let url = mySoundId(soundType).flatMap(MySounds.file) { _ = owner.myBufferKey(url) } }
+        for spec in Specs { if let url = mySoundId(spec).flatMap(MySounds.file) { _ = owner.myBufferKey(url) } }
         owner.prewarmVoice(voice)
       }
     }
@@ -533,8 +533,8 @@ internal final class AlertAudioPlayer {
   /// Play one announcement: an `alert(count):severity` rule's severity sound from the active
   /// effects pack, `count` times, `alertBeepSpacingMs` apart.
   /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/alerts/AlertEngine.kt `playSingle`
-  func playSingle(soundType: String) {
-    playSeverity(parseSlotAlertSound(soundType), my: mySoundId(soundType))
+  func playSingle(spec: String) {
+    playSeverity(parseSlotAlertSound(spec), my: mySoundId(spec))
   }
 
   /// `sound`'s severity slot from `pack`, or My sound `my` in its place, `sound.count` times.
@@ -712,19 +712,19 @@ internal final class AlertAudioPlayer {
 
   /// Play a preset once for UI preview, or speak a `tts` template with a sample fired alert after
   /// its severity sound.
-  func preview(soundType: String, unitSystem: String = "metric") {
+  func preview(spec: String, unitSystem: String = "metric") {
     guard !isReleased else { return }
-    Self.log("AlertAudioPlayer.preview: \(soundType)")
-    if let sound = parseVoiceAlertSound(soundType) {
+    Self.log("AlertAudioPlayer.preview: \(spec)")
+    if let sound = parseVoiceAlertSound(spec) {
       speakVoice(
         voiceAnnouncement(sound, controlId: nil, threshold: nil, percentAvailable: true, unitSystem: unitSystem)
       )
       return
     }
-    if let tts = parseTtsAlertSound(soundType) {
+    if let tts = parseTtsAlertSound(spec) {
       let text = renderAlertMessageTemplate(
         tts.text,
-        alert: ttsSampleAlert(soundType: soundType),
+        alert: ttsSampleAlert(spec: spec),
         batteryPercent: 42.0,
         unitSystem: unitSystem
       )
@@ -732,26 +732,26 @@ internal final class AlertAudioPlayer {
       if !text.isEmpty { speakAfterSeverity(tts.severity, text: text) }
       return
     }
-    let key = clipKey(previewSlot(soundType), my: mySoundId(soundType))
+    let key = clipKey(previewSlot(spec), my: mySoundId(spec))
     Self.log("AlertAudioPlayer.preview resolved=\(key)")
     play(key)
   }
 
   // MARK: - Geiger
 
-  func updateGeiger(ruleId: String, soundType: String, rangeDepth: Double) {
+  func updateGeiger(ruleId: String, spec: String, rangeDepth: Double) {
     guard !isReleased else { return }
     geigerQueue.async { [weak self] in
       // Re-check on the queue: `release()` can land between the check above and this block, and a
       // loop created afterwards would re-arm its tick forever against a torn-down engine.
       guard let self, !self.isReleased else { return }
-      self.updateGeigerSync(ruleId: ruleId, soundType: soundType, rangeDepth: rangeDepth)
+      self.updateGeigerSync(ruleId: ruleId, spec: spec, rangeDepth: rangeDepth)
     }
   }
 
-  private func updateGeigerSync(ruleId: String, soundType: String, rangeDepth: Double) {
+  private func updateGeigerSync(ruleId: String, spec: String, rangeDepth: Double) {
     let depth = min(max(rangeDepth, 0.0), 1.0)
-    let tickKey = clipKey(geigerSlot(soundType), my: mySoundId(soundType))
+    let tickKey = clipKey(geigerSlot(spec), my: mySoundId(spec))
     let existing = geigerLoops[ruleId]
 
     if depth >= 1.0 {
@@ -760,7 +760,7 @@ internal final class AlertAudioPlayer {
         return
       }
       stopSustained(ruleId: ruleId)
-      let loop = GeigerLoop(soundType: soundType, rangeDepth: depth, sustained: true)
+      let loop = GeigerLoop(spec: spec, rangeDepth: depth, sustained: true)
       geigerLoops[ruleId] = loop
       scheduleSustainedLoop(loop: loop, ruleId: ruleId, clipKey: tickKey)
       return
@@ -769,14 +769,14 @@ internal final class AlertAudioPlayer {
     if existing?.sustained == true {
       stopSustained(ruleId: ruleId)
     }
-    if let existing, !existing.sustained, existing.soundType == soundType {
+    if let existing, !existing.sustained, existing.spec == spec {
       existing.rangeDepth = depth
       return
     }
     existing?.workItem?.cancel()
-    let loop = GeigerLoop(soundType: soundType, rangeDepth: depth, sustained: false)
+    let loop = GeigerLoop(spec: spec, rangeDepth: depth, sustained: false)
     geigerLoops[ruleId] = loop
-    scheduleGeigerTick(loop: loop, ruleId: ruleId, slot: geigerSlot(soundType))
+    scheduleGeigerTick(loop: loop, ruleId: ruleId, slot: geigerSlot(spec))
   }
 
   func stopGeiger(ruleId: String) {
@@ -812,7 +812,7 @@ internal final class AlertAudioPlayer {
     loop.workItem = scheduler.postDelayed(Int64(delayMs)) { [weak self] in
       self?.onGeigerQueue { owner in
         guard let existing = owner.geigerLoops[ruleId], existing === loop, !existing.sustained else { return }
-        owner.playOnQueue(owner.clipKey(slot, my: mySoundId(loop.soundType)))
+        owner.playOnQueue(owner.clipKey(slot, my: mySoundId(loop.spec)))
         let interval = owner.geigerIntervalMs(rangeDepth: loop.rangeDepth)
         owner.scheduleGeigerTick(loop: loop, ruleId: ruleId, slot: slot, delayMs: interval)
       }

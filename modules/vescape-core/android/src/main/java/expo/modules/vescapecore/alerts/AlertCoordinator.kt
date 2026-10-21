@@ -80,34 +80,34 @@ internal class AlertCoordinator(
         val ids = geiger.mapTo(HashSet()) { it.ruleId }
         for (ruleId in activeGeigerRuleIds - ids) feedback().stopGeiger(ruleId)
         activeGeigerRuleIds = ids
-        for (alert in geiger) feedback().updateGeiger(alert.ruleId, alert.soundType, alert.rangeDepth ?: 0.0)
+        for (alert in geiger) feedback().updateGeiger(alert.ruleId, alert.spec, alert.rangeDepth ?: 0.0)
 
         val single = fired.filter { it.rangeDepth == null }
         if (single.isNotEmpty()) {
             // Preset voice rules at Voice level Off play their severity sound only and leave the
             // spoken slot to the rest.
             val mutedPresets = if (feedback().presetVoiceEnabled) emptySet() else single.filter {
-                it.ruleId.startsWith(PRESET_RULE_PREFIX) && parseVoiceAlertSound(it.soundType) != null
+                it.ruleId.startsWith(PRESET_RULE_PREFIX) && parseVoiceAlertSound(it.spec) != null
             }.mapTo(HashSet()) { it.ruleId }
             // One spoken announcement per evaluation: the most severe, which sorts first.
             single.firstOrNull {
-                it.thresholdMax == null && isSpokenSoundType(it.soundType) && it.ruleId !in mutedPresets
+                it.thresholdMax == null && isSpokenSpec(it.spec) && it.ruleId !in mutedPresets
             }?.let { alert ->
-                val voice = parseVoiceAlertSound(alert.soundType)
+                val voice = parseVoiceAlertSound(alert.spec)
                 if (voice != null) {
                     feedback().speakVoice(
                         voiceAnnouncement(voice, alert.controlId, alert.threshold, batteryPercent != null, unitSystem),
                     )
                     return@let
                 }
-                val tts = parseTtsAlertSound(alert.soundType) ?: return@let
+                val tts = parseTtsAlertSound(alert.spec) ?: return@let
                 val text = renderAlertMessageTemplate(tts.text, alert, batteryPercent, onDiagnostic, unitSystem)
                 if (text.isNotEmpty()) feedback().speakAfterSeverity(tts.severity, text)
             }
             for (alert in single) {
-                if (!isSpokenSoundType(alert.soundType)) feedback().playSingle(alert.soundType)
+                if (!isSpokenSpec(alert.spec)) feedback().playSingle(alert.spec)
                 else if (alert.ruleId in mutedPresets) {
-                    feedback().playSingle("alert:${parseVoiceAlertSound(alert.soundType)!!.severity.id}")
+                    feedback().playSingle("alert:${parseVoiceAlertSound(alert.spec)!!.severity.id}")
                 }
             }
             if (vibrateSingles) feedback().vibrate(null)

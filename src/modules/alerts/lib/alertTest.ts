@@ -37,7 +37,7 @@ export function toTestRule(rule: DraftAlertRule): AlertTestRule {
     controlId: rule.controlId,
     threshold: rule.threshold,
     thresholdMax: rule.thresholdMax,
-    soundType: rule.soundType,
+    spec: rule.spec,
     repeatEverySeconds: rule.repeatEverySeconds,
   }
 }

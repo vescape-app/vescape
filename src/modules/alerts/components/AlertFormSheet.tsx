@@ -9,7 +9,7 @@ import {
   RadioactiveIcon,
   WaveformIcon,
 } from 'phosphor-react-native'
-import { ALERT_BEEP_COUNT_DEFAULT, ALERT_BEEP_COUNT_RANGE, type AlertSoundType } from 'vescape-core'
+import { ALERT_BEEP_COUNT_DEFAULT, ALERT_BEEP_COUNT_RANGE, type AlertSpec } from 'vescape-core'
 
 import { Button } from '@/components/base/Button'
 import { Text } from '@/components/base/Text'
@@ -61,7 +61,7 @@ interface AlertFormSheetProps {
  * A Message tab rule: the TTS template, or the voice line of its metric. Metrics without voice
  * lines (no `voiceKey`) speak through TTS only.
  */
-function messageSoundType(
+function messageSpec(
   tts: boolean,
   voiceKey: string | null,
   severity: AlertSeverity,
@@ -96,14 +96,14 @@ export function AlertFormSheet({
   const singlePresets = useMemo(() => getPresetsForCategory('single'), [])
   const geigerPresets = useMemo(() => getPresetsForCategory('geiger'), [])
   const { sounds: library } = useMySounds().state
-  const defaultSoundType: AlertSoundType =
+  const defaultSpec: AlertSpec =
     singlePresets.find((p) => p.uri === 'alert:warning')?.uri ?? 'alert:warning'
-  const geigerDefaultSoundType: AlertSoundType = geigerPresets[0]?.uri ?? 'geiger:soft'
+  const geigerDefaultSpec: AlertSpec = geigerPresets[0]?.uri ?? 'geiger:soft'
 
   const [tab, setTab] = useState<AlertTab>('single')
   const [threshold, setThreshold] = useState(dialConfig.min)
   const [thresholdMax, setThresholdMax] = useState(dialConfig.max)
-  const [soundType, setSoundType] = useState<AlertSoundType>(defaultSoundType)
+  const [spec, setSpec] = useState<AlertSpec>(defaultSpec)
   const [messageTemplate, setMessageTemplate] = useState(
     getDefaultMessageTemplate(controlId, batteryConfig),
   )
@@ -120,8 +120,8 @@ export function AlertFormSheet({
       ? getEditFormDefaults(editRule, dialConfig, batteryConfig)
       : getNewFormDefaults(
           dialConfig,
-          defaultSoundType,
-          geigerDefaultSoundType,
+          defaultSpec,
+          geigerDefaultSpec,
           controlId,
           batteryConfig,
           units,
@@ -129,7 +129,7 @@ export function AlertFormSheet({
     setTab(defaults.tab)
     setThreshold(defaults.threshold)
     setThresholdMax(defaults.thresholdMax)
-    setSoundType(defaults.soundType)
+    setSpec(defaults.spec)
     setMessageTemplate(defaults.messageTemplate)
     setRepeatEverySeconds(defaults.repeatEverySeconds)
     setBeepCount(defaults.beepCount)
@@ -147,10 +147,10 @@ export function AlertFormSheet({
         setMessageTemplate(getDefaultMessageTemplate(controlId, batteryConfig))
         setMessageTts(false)
       } else {
-        setSoundType(next === 'single' ? defaultSoundType : geigerDefaultSoundType)
+        setSpec(next === 'single' ? defaultSpec : geigerDefaultSpec)
       }
     },
-    [defaultSoundType, geigerDefaultSoundType, controlId, batteryConfig],
+    [defaultSpec, geigerDefaultSpec, controlId, batteryConfig],
   )
 
   const handleSave = useCallback(() => {
@@ -161,12 +161,12 @@ export function AlertFormSheet({
     void onSave({
       threshold,
       thresholdMax: isRange ? thresholdMax : null,
-      soundType:
+      spec:
         tab === 'message'
-          ? messageSoundType(messageTts, voiceKey, severity, messageTemplate)
+          ? messageSpec(messageTts, voiceKey, severity, messageTemplate)
           : tab === 'single'
-            ? formatSlotAlertSound(beepCount, slotSoundPart(soundType))
-            : soundType,
+            ? formatSlotAlertSound(beepCount, slotSoundPart(spec))
+            : spec,
       // A range rule's cadence follows range depth — it has no repeat interval to honor.
       repeatEverySeconds: isRange ? null : repeatEverySeconds,
     })
@@ -176,7 +176,7 @@ export function AlertFormSheet({
     tab,
     threshold,
     thresholdMax,
-    soundType,
+    spec,
     messageTemplate,
     repeatEverySeconds,
     beepCount,
@@ -288,8 +288,8 @@ export function AlertFormSheet({
           <View style={styles.cardField}>
             <SoundPicker
               presets={pickerSounds(tab === 'single' ? 'single' : 'geiger', library)}
-              selected={soundType}
-              onSelect={setSoundType}
+              selected={spec}
+              onSelect={setSpec}
             />
           </View>
         )}

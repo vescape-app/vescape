@@ -97,7 +97,7 @@ test('failed Alert Rule save does not publish optimistic state', async () => {
     useAlertsStore.getState().add('duty', {
       threshold: 70,
       thresholdMax: null,
-      soundType: 'preset:beep',
+      spec: 'preset:beep',
       repeatEverySeconds: null,
     }),
   ).rejects.toThrow('disk unavailable')

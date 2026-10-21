@@ -130,24 +130,24 @@ internal object AlertPresetPersistence {
   private fun records(
     boardId: String,
     metric: String,
-    specs: List<GeneratedPresetRule>,
+    rules: List<GeneratedPresetRule>,
     createdAt: Long,
   ): List<AlertRuleEntity> =
-    specs.mapIndexed { index, spec ->
+    rules.mapIndexed { index, rule ->
       AlertRuleEntity(
         boardId = boardId,
         id = "${rowId(metric)}:$index",
         controlId = metric,
-        threshold = spec.point.threshold,
-        thresholdMax = spec.point.thresholdMax,
-        thresholdKind = if (spec.relation == null) "fixed" else "config-relative",
-        configFieldId = spec.relation?.fieldId,
-        thresholdOffset = spec.relation?.offset,
-        thresholdMaxOffset = spec.relation?.maxOffset,
+        threshold = rule.point.threshold,
+        thresholdMax = rule.point.thresholdMax,
+        thresholdKind = if (rule.relation == null) "fixed" else "config-relative",
+        configFieldId = rule.relation?.fieldId,
+        thresholdOffset = rule.relation?.offset,
+        thresholdMaxOffset = rule.relation?.maxOffset,
         enabled = true,
-        spec = spec.soundType,
+        spec = rule.spec,
         createdAt = createdAt,
-        repeatEverySeconds = spec.point.repeatSeconds,
+        repeatEverySeconds = rule.point.repeatSeconds,
       )
     }
 }

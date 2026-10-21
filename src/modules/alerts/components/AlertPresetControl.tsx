@@ -120,7 +120,7 @@ interface AlertPresetControlProps {
   /** Sound of the saved preset's geiger rules; null when the level has none (off, discrete). */
   geigerSound?: string | null
   /** Pick the geiger sound of a range preset; omitted hides the select. */
-  onGeigerSoundChange?: (soundType: string) => void
+  onGeigerSoundChange?: (spec: string) => void
   /** The board's decoded configs, for resolving what a matched preset lands on right now. */
   configBases?: BoardConfigBases
   /** History hot-range gradient for the gauge arc (kept in sync with the detail gauge). */
@@ -244,7 +244,7 @@ export function AlertPresetControl({
           onChange={onMatchBoardConfigChange}
         />
       ) : null}
-      <PresetGeigerSound soundType={geigerSound} onChange={onGeigerSoundChange} />
+      <PresetGeigerSound spec={geigerSound} onChange={onGeigerSoundChange} />
       <LevelSlider
         metric={metric}
         value={level}

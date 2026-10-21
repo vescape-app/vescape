@@ -7,7 +7,7 @@ import kotlin.math.floor
 
 internal data class PresetPoint(val threshold: Double, val thresholdMax: Double? = null, val repeatSeconds: Long? = null)
 internal data class PresetRelation(val fieldId: String, val offset: Double, val maxOffset: Double?)
-internal data class GeneratedPresetRule(val point: PresetPoint, val soundType: String, val relation: PresetRelation? = null)
+internal data class GeneratedPresetRule(val point: PresetPoint, val spec: String, val relation: PresetRelation? = null)
 internal data class PresetInput(
   val topSpeedKmh: Double = 50.0,
   val hasBatteryConfig: Boolean = false,
@@ -17,7 +17,7 @@ internal data class PresetInput(
 )
 
 internal data class PresetDefinition(
-  val soundType: String,
+  val spec: String,
   val levels: Map<String, List<PresetPoint>>,
   val scaledByTopSpeed: Boolean,
   val requiresBatteryConfig: Boolean,
@@ -45,7 +45,7 @@ internal object AlertPresetGenerator {
       val scaled = optionalBoolean(value, "scaledByTopSpeed")
       require(!scaled || value.getString("family") == "geiger") { "Scaled preset must be a range" }
       PresetDefinition(
-        soundType = value.getString("soundType"),
+        spec = value.getString("spec"),
         levels = parseLevels(value),
         scaledByTopSpeed = scaled,
         requiresBatteryConfig = optionalBoolean(value, "requiresBatteryConfig"),
@@ -115,7 +115,7 @@ internal object AlertPresetGenerator {
   }
 
   /** True when [metric]'s definition ticks, so its spec may carry a `geiger=` option. */
-  fun hasGeiger(metric: String): Boolean = definitions[metric]?.soundType?.startsWith("geiger:") == true
+  fun hasGeiger(metric: String): Boolean = definitions[metric]?.spec?.startsWith("geiger:") == true
 
   /**
    * The rules [spec] stands for. `off`, an unknown level (from a newer app), or a guard failure
@@ -127,28 +127,28 @@ internal object AlertPresetGenerator {
     val level = spec.level.takeIf { it in activeLevels } ?: return emptyList()
     val definition = definitions.getValue(metric)
     val geiger = spec.option("geiger")?.takeIf { value -> GeigerLevel.entries.any { it.id == value } }
-    val soundType = if (geiger != null && definition.soundType.startsWith("geiger:")) "geiger:$geiger" else definition.soundType
+    val ruleSpec = if (geiger != null && definition.spec.startsWith("geiger:")) "geiger:$geiger" else definition.spec
     val match = matches[metric].takeIf { spec.option("match") == "on" }
-    if (match != null) return relativeRules(soundType, match, level, input.configBase)
+    if (match != null) return relativeRules(ruleSpec, match, level, input.configBase)
     if (definition.requiresBatteryConfig && !input.hasBatteryConfig) return emptyList()
-    return fixedRules(definition, soundType, level, input)
+    return fixedRules(definition, ruleSpec, level, input)
   }
 
   private fun fixedRules(
     definition: PresetDefinition,
-    soundType: String,
+    spec: String,
     level: String,
     input: PresetInput,
   ): List<GeneratedPresetRule> =
     definition.levels.getValue(level).let { points ->
       points.mapIndexed { index, point ->
         val threshold = if (definition.scaledByTopSpeed) speedRange(point, input) else point
-        GeneratedPresetRule(threshold, pointSoundType(soundType, index, points.size))
+        GeneratedPresetRule(threshold, pointSpec(spec, index, points.size))
       }
     }
 
   private fun relativeRules(
-    soundType: String,
+    spec: String,
     match: PresetMatchDefinition,
     level: String,
     base: Double?,
@@ -165,7 +165,7 @@ internal object AlertPresetGenerator {
           repeatSeconds = offset.repeatSeconds,
         )
       }
-      GeneratedPresetRule(point, pointSoundType(soundType, index, offsets.size), relation)
+      GeneratedPresetRule(point, pointSpec(spec, index, offsets.size), relation)
     } }
 
   /**
@@ -173,16 +173,16 @@ internal object AlertPresetGenerator {
    * severity by rank: the last (most severe) point `critical`, the first `info`, the rest `warning`;
    * a one-point ladder is `critical`.
    *
-   * @parity /modules/vescape-core/ios/telemetry/AlertPresetGenerator.swift `pointSoundType`
+   * @parity /modules/vescape-core/ios/telemetry/AlertPresetGenerator.swift `pointSpec`
    */
-  private fun pointSoundType(soundType: String, index: Int, count: Int): String {
-    if (!soundType.startsWith("voice:")) return soundType
+  private fun pointSpec(spec: String, index: Int, count: Int): String {
+    if (!spec.startsWith("voice:")) return spec
     val severity = when (index) {
       count - 1 -> "critical"
       0 -> "info"
       else -> "warning"
     }
-    return "voice($severity):${soundType.removePrefix("voice:")}"
+    return "voice($severity):${spec.removePrefix("voice:")}"
   }
 
   private fun speedRange(point: PresetPoint, input: PresetInput): PresetPoint {

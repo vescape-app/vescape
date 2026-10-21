@@ -10,7 +10,7 @@ const nativeSnapshot: AlertTestRule[] = [
     controlId: 'speed',
     threshold: 12.345,
     thresholdMax: 45.678,
-    soundType: 'preset:gamma',
+    spec: 'preset:gamma',
     repeatEverySeconds: null,
   },
 ]

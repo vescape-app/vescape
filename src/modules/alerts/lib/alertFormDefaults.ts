@@ -10,7 +10,7 @@ import {
   getAlertSounds,
   type AlertSound,
   type AlertSoundCategory,
-  type AlertSoundType,
+  type AlertSpec,
 } from 'vescape-core'
 
 import type { DerivedBatteryConfig } from '@/modules/battery/lib/types'
@@ -121,9 +121,9 @@ export function getAlertDialConfig(controlId: string, batteryConfig: DerivedBatt
 }
 
 /** A geiger rule's picker shows its level; a pre-grammar tick name reads as its equivalent level. */
-export function geigerPickerSound(soundType: string): string {
-  if (parseAlertSoundString(soundType)?.kind === 'geiger') return soundType
-  return formatGeigerAlertSound(parseGeigerAlertSound(soundType) ?? 'soft')
+export function geigerPickerSound(spec: string): string {
+  if (parseAlertSoundString(spec)?.kind === 'geiger') return spec
+  return formatGeigerAlertSound(parseGeigerAlertSound(spec) ?? 'soft')
 }
 
 export function getEditFormDefaults(
@@ -131,22 +131,22 @@ export function getEditFormDefaults(
   dialConfig: ReturnType<typeof getAlertDialConfig>,
   batteryConfig: DerivedBatteryConfig | null,
 ) {
-  const tts = parseTtsAlertSound(editRule.soundType)
-  const voice = parseVoiceAlertSound(editRule.soundType)
+  const tts = parseTtsAlertSound(editRule.spec)
+  const voice = parseVoiceAlertSound(editRule.spec)
   const tab = (
     tts || voice ? 'message' : editRule.thresholdMax != null ? 'geiger' : 'single'
   ) as AlertTab
   // A single rule's picker shows the pack slot or My sound; its count lives in the beep stepper.
-  const slot = tab === 'single' ? parseSlotAlertSound(editRule.soundType) : null
+  const slot = tab === 'single' ? parseSlotAlertSound(editRule.spec) : null
   return {
     tab,
     threshold: editRule.threshold,
     thresholdMax: editRule.thresholdMax ?? dialConfig.max,
-    soundType: slot
-      ? `alert:${slotSoundPart(editRule.soundType)}`
+    spec: slot
+      ? `alert:${slotSoundPart(editRule.spec)}`
       : tab === 'geiger'
-        ? geigerPickerSound(editRule.soundType)
-        : editRule.soundType,
+        ? geigerPickerSound(editRule.spec)
+        : editRule.spec,
     messageTemplate: tts?.text ?? getDefaultMessageTemplate(editRule.controlId, batteryConfig),
     severity: tts?.severity ?? voice?.severity ?? ALERT_SEVERITY_DEFAULT,
     messageTts: tts != null,
@@ -157,8 +157,8 @@ export function getEditFormDefaults(
 
 export function getNewFormDefaults(
   dialConfig: ReturnType<typeof getAlertDialConfig>,
-  defaultSoundType: AlertSoundType,
-  geigerSoundType: AlertSoundType,
+  defaultSpec: AlertSpec,
+  geigerSpec: AlertSpec,
   controlId: string,
   batteryConfig: DerivedBatteryConfig | null,
   units: UnitSystem = 'metric',
@@ -187,7 +187,7 @@ export function getNewFormDefaults(
       tab: preset.tab,
       threshold: snap(preset.threshold),
       thresholdMax: preset.thresholdMax != null ? snap(preset.thresholdMax) : high,
-      soundType: preset.tab === 'geiger' ? geigerSoundType : defaultSoundType,
+      spec: preset.tab === 'geiger' ? geigerSpec : defaultSpec,
       messageTemplate: getDefaultMessageTemplate(controlId, batteryConfig),
       repeatEverySeconds: null,
       beepCount: ALERT_BEEP_COUNT_DEFAULT,
@@ -200,7 +200,7 @@ export function getNewFormDefaults(
     tab: 'single' as AlertTab,
     threshold: snap((dialConfig.min + dialConfig.max) / 2),
     thresholdMax: high,
-    soundType: defaultSoundType,
+    spec: defaultSpec,
     messageTemplate: getDefaultMessageTemplate(controlId, batteryConfig),
     repeatEverySeconds: null,
     beepCount: ALERT_BEEP_COUNT_DEFAULT,
