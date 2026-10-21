@@ -311,6 +311,7 @@ internal final class AlertAudioPlayer {
   func prepare(soundTypes: [String]) {
     onGeigerQueue { owner in
       let slots = Set(owner.buffersBySlot.keys.compactMap { $0.split(separator: "/").last.map(String.init) })
+        .union(optionalSlotFallback.keys)
       let voice = owner.voicePack()
       DispatchQueue.global(qos: .utility).async { [weak owner] in
         guard let owner else { return }
@@ -381,12 +382,15 @@ internal final class AlertAudioPlayer {
     "\(effectsPackId(pack ?? soundPack))/\(slot)"
   }
 
-  /// Key `slot` plays from: My sound `my` when it still exists, else the slot's override, else the
-  /// pack's clip. A missing or undecodable My sound falls back to the pack, never silence.
+  /// Key `slot` plays from: My sound `my` when it still exists, else the override or pack clip of the
+  /// slot `lookupSlot` picks. A missing or undecodable My sound falls back to the pack, never silence.
   /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/alerts/EffectsPacks.kt `slotClip`
   private func clipKey(_ slot: String, my: String? = nil, pack: String? = nil) -> String {
-    if let url = my.flatMap(MySounds.file) ?? MySounds.overrideFile(slot), let key = myBufferKey(url) { return key }
-    return slotKey(slot, pack: pack)
+    if let key = my.flatMap(MySounds.file).flatMap(myBufferKey) { return key }
+    let packHas = { self.buffersBySlot[self.slotKey($0, pack: pack)] != nil }
+    let target = lookupSlot(slot, hasOverride: { MySounds.overrideFile($0) != nil }, packHas: packHas)
+    if let key = MySounds.overrideFile(target).flatMap(myBufferKey) { return key }
+    return slotKey(lookupSlot(slot, hasOverride: { _ in false }, packHas: packHas), pack: pack)
   }
 
   /// Key of the decoded My sound at `url`, decoding it on first use; nil when it cannot decode.

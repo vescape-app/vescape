@@ -439,7 +439,7 @@ internal class AlertFeedback(
         if (released) return
         prepared = soundTypes
         val pack = soundPack
-        val slots = EffectsPackAssets.slots(context).keys.map { it.substringAfter('/') }.distinct()
+        val slots = (EffectsPackAssets.slots(context).keys.map { it.substringAfter('/') } + OPTIONAL_SLOT_FALLBACK.keys).distinct()
         val mine = HashSet<java.io.File>()
         for (slot in slots) {
             if (slotSample(slot, pack) != 0) (slotClip(context, pack, slot) as? SlotClip.Mine)?.let { mine += it.file }
@@ -570,7 +570,7 @@ internal class AlertFeedback(
      * sounds go through [playOnce], since SoundPool truncates long clips.
      */
     private fun slotSample(slot: String, pack: String = soundPack, my: String? = null, mine: Boolean = true): Int {
-        val packSample = soundIds["${effectsPackId(pack)}/$slot"] ?: 0
+        val packSample = soundIds["${effectsPackId(pack)}/${EffectsPackAssets.packSlot(context, pack, slot)}"] ?: 0
         if (!mine) return packSample
         val clip = slotClip(context, pack, slot, my) as? SlotClip.Mine ?: return packSample
         val sample = fileSamples.getOrPut(clip.file.path) {

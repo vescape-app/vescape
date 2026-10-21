@@ -572,6 +572,7 @@ class VescapeCoreModule : Module() {
     Function("previewAlertSound") { soundType: String ->
       CoreForegroundService.previewAlertSound(context.applicationContext, soundType)
     }
+    // @parity /modules/vescape-core/ios/VescapeCoreModule.swift `playPackSound`
     Function("playPackSound") { pack: String, slot: String ->
       CoreForegroundService.playPackSound(context.applicationContext, pack, slot)
     }

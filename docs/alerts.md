@@ -55,6 +55,11 @@ and `cue.groupRide.joined`. Clearing one returns the slot to the pack. Native dr
 for slots that are no longer in the list. Ride end and geiger ticks are not overridable. Deleting a sound
 clears its overrides.
 
+Optional cue slots resolve at lookup: the slot's own override, else the pack's clip, else (when the
+pack leaves the slot out) the same lookup for its fallback slot. So a Positive, Info, or Warning
+override also covers the cues that fall back to it, e.g. Connect in a pack without `cue.on` plays
+the Positive override.
+
 Custom rules can pick any My sound: `alert(<count>):my:<id>` for single rules, `geiger:my:<id>` for
 range rules. A sound that is gone or fails to decode falls back to the parsed pack slot (`warning`
 or `soft`), never silence. Previews and alert tests resolve the same way. One-shot My sounds play whole (Android

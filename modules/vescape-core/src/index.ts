@@ -3269,7 +3269,12 @@ export type AppSoundCueId =
   | 'groupRide.lost'
   | 'groupRide.restored'
 
-/** Effects pack slot Settings previews: the overridable slots plus ride end. */
+/**
+ * Effects pack slot Settings previews: the overridable slots plus ride end.
+ *
+ * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/alerts/EffectsPacks.kt
+ * @parity /modules/vescape-core/ios/alerts/EffectsPacks.swift
+ */
 export type PackSoundSlot = SoundOverrideSlot | 'cue.ride.end'
 
 /** Effects slot a My sound can override; see `SOUND_OVERRIDE_SLOTS` in the settings module. */
@@ -3317,7 +3322,7 @@ export const mapTile = (z: number, x: number, y: number): Promise<string | null>
 
 /**
  * Preview a pack slot: its My sounds override when set, else `pack`'s clip (an optional slot the
- * pack leaves out plays its fallback). `cue.ride.end` is not overridable. Never speaks.
+ * pack leaves out plays its fallback slot's override or clip). `cue.ride.end` is not overridable. Never speaks.
  */
 export function playPackSound(pack: string, slot: PackSoundSlot): void {
   native.playPackSound(pack, slot)

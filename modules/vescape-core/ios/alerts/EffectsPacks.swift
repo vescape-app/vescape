@@ -18,6 +18,7 @@ internal func effectsPackId(_ pack: String) -> String {
 
 /// Optional effects slot → the required slot a pack that leaves it out plays instead.
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/alerts/EffectsPacks.kt `OPTIONAL_SLOT_FALLBACK`
+/// @parity /scripts/alert-packs/catalog.json `optionalEffectSlots`
 internal let optionalSlotFallback = [
   "cue.on": "severity.positive",
   "cue.off": "severity.warning",
@@ -25,6 +26,15 @@ internal let optionalSlotFallback = [
   "cue.groupRide.created": "severity.positive",
   "cue.groupRide.joined": "severity.positive",
 ]
+
+/// Slot whose clip `slot` plays: `slot` itself when it has a My sound override or the pack fills it,
+/// else the same lookup for its `optionalSlotFallback` slot. An override on the fallback slot so
+/// also covers optional cues the pack leaves out.
+/// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/alerts/EffectsPacks.kt `lookupSlot`
+internal func lookupSlot(_ slot: String, hasOverride: (String) -> Bool, packHas: (String) -> Bool) -> String {
+  if hasOverride(slot) || packHas(slot) { return slot }
+  return optionalSlotFallback[slot].map { lookupSlot($0, hasOverride: hasOverride, packHas: packHas) } ?? slot
+}
 
 /// Group Ride events with an app cue and a line under the same key in every voice pack.
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/alerts/EffectsPacks.kt `GROUP_RIDE_CUES`
@@ -69,8 +79,7 @@ internal func appCueVoiceKey(_ cue: String) -> String? {
 }
 
 /// Clip files of every built-in pack's slots under `root` (the folder holding `effects-<id>/`),
-/// keyed `"<pack>/<slot>"`; an optional slot the pack leaves out maps to its `optionalSlotFallback`
-/// clip. A pack whose manifest cannot be read contributes nothing.
+/// keyed `"<pack>/<slot>"`. A pack whose manifest cannot be read contributes nothing.
 internal func effectsPackSlotFiles(root: URL) -> [String: URL] {
   var files: [String: URL] = [:]
   for pack in effectsPackIds {
@@ -81,9 +90,6 @@ internal func effectsPackSlotFiles(root: URL) -> [String: URL] {
       let manifest = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
       let slots = manifest["slots"] as? [String: String]
     else { continue }
-    for (slot, fallback) in optionalSlotFallback where slots[slot] == nil {
-      if let file = slots[fallback] { files["\(pack)/\(slot)"] = dir.appendingPathComponent(file) }
-    }
     for (slot, file) in slots { files["\(pack)/\(slot)"] = dir.appendingPathComponent(file) }
   }
   return files

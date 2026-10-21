@@ -24,6 +24,7 @@ internal fun effectsPackId(pack: String): String = if (pack in EFFECTS_PACK_IDS)
  * Optional effects slot → the required slot a pack that leaves it out plays instead.
  *
  * @parity /modules/vescape-core/ios/alerts/EffectsPacks.swift `optionalSlotFallback`
+ * @parity /scripts/alert-packs/catalog.json `optionalEffectSlots`
  */
 internal val OPTIONAL_SLOT_FALLBACK = mapOf(
     "cue.on" to "severity.positive",
@@ -89,6 +90,18 @@ internal fun appCueVoiceKey(cue: String): String? = when (cue) {
 internal fun previewSlot(soundType: String): String =
     if (isGeigerSoundType(soundType)) geigerSlot(soundType) else parseSlotAlertSound(soundType).severity.slot
 
+/**
+ * Slot whose clip [slot] plays: [slot] itself when it has a My sound override or the pack fills it,
+ * else the same lookup for its [OPTIONAL_SLOT_FALLBACK] slot. An override on the fallback slot so
+ * also covers optional cues the pack leaves out.
+ *
+ * @parity /modules/vescape-core/ios/alerts/EffectsPacks.swift `lookupSlot`
+ */
+internal fun lookupSlot(slot: String, hasOverride: (String) -> Boolean, packHas: (String) -> Boolean): String {
+    if (hasOverride(slot) || packHas(slot)) return slot
+    return OPTIONAL_SLOT_FALLBACK[slot]?.let { lookupSlot(it, hasOverride, packHas) } ?: slot
+}
+
 /** Where a slot plays from: a My sound file, or a built-in pack clip at an asset path. */
 internal sealed interface SlotClip {
     data class Mine(val file: java.io.File) : SlotClip
@@ -96,14 +109,17 @@ internal sealed interface SlotClip {
 }
 
 /**
- * Clip [slot] plays: My sound [my] when it still exists, else the slot's override, else [pack]'s
- * clip. A missing My sound falls back to the pack, never silence.
+ * Clip [slot] plays: My sound [my] when it still exists, else the override or [pack] clip of the
+ * slot [lookupSlot] picks. A missing My sound falls back to the pack, never silence.
  *
  * @parity /modules/vescape-core/ios/alerts/AlertAudioPlayer.swift `clipKey`
  */
-internal fun slotClip(context: Context, pack: String, slot: String, my: String? = null): SlotClip? =
-    (my?.let { MySounds.file(context, it) } ?: MySounds.overrideFile(context, slot))?.let(SlotClip::Mine)
-        ?: EffectsPackAssets.path(context, pack, slot)?.let(SlotClip::Asset)
+internal fun slotClip(context: Context, pack: String, slot: String, my: String? = null): SlotClip? {
+    my?.let { MySounds.file(context, it) }?.let { return SlotClip.Mine(it) }
+    val target = lookupSlot(slot, { MySounds.overrideFile(context, it) != null }) { EffectsPackAssets.has(context, pack, it) }
+    return MySounds.overrideFile(context, target)?.let(SlotClip::Mine)
+        ?: EffectsPackAssets.path(context, pack, target)?.let(SlotClip::Asset)
+}
 
 /** Length of the clip, 0 when unreadable. */
 internal fun SlotClip.durationMs(context: Context): Long = when (this) {
@@ -112,8 +128,7 @@ internal fun SlotClip.durationMs(context: Context): Long = when (this) {
 }
 
 /**
- * Asset paths of every built-in pack's slots, `"<pack>/<slot>"` → asset path; an optional slot
- * the pack leaves out maps to its [OPTIONAL_SLOT_FALLBACK] clip. Read once.
+ * Asset paths of every built-in pack's own slots, `"<pack>/<slot>"` → asset path. Read once.
  */
 internal object EffectsPackAssets {
     private const val ROOT = "alert-packs"
@@ -125,13 +140,18 @@ internal object EffectsPackAssets {
             val dir = "$ROOT/effects-$pack"
             val manifest = context.assets.open("$dir/pack.json").bufferedReader().use { JSONObject(it.readText()) }
             val slots = manifest.getJSONObject("slots")
-            val files = slots.keys().asSequence().associateWith { "$dir/${slots.getString(it)}" }
-            val fallbacks = OPTIONAL_SLOT_FALLBACK.mapNotNull { (slot, fallback) -> files[fallback]?.let { slot to it } }
-            (fallbacks.toMap() + files).map { (slot, path) -> "$pack/$slot" to path }
+            slots.keys().asSequence().map { "$pack/$it" to "$dir/${slots.getString(it)}" }.toList()
         }.toMap().also { cached = it }
     }
 
-    fun path(context: Context, pack: String, slot: String): String? = slots(context)["${effectsPackId(pack)}/$slot"]
+    fun has(context: Context, pack: String, slot: String): Boolean = "${effectsPackId(pack)}/$slot" in slots(context)
+
+    /** [pack]'s own slot standing in for [slot], overrides aside (see [lookupSlot]). */
+    fun packSlot(context: Context, pack: String, slot: String): String = lookupSlot(slot, { false }) { has(context, pack, it) }
+
+    /** Asset path of [pack]'s clip for [slot], through its optional-slot fallback. */
+    fun path(context: Context, pack: String, slot: String): String? =
+        slots(context)["${effectsPackId(pack)}/${packSlot(context, pack, slot)}"]
 
     @Volatile private var voices: Map<String, String?>? = null
 
