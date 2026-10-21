@@ -10,6 +10,7 @@ import {
   PathIcon,
   PlayIcon,
   RecordIcon,
+  SpeakerHighIcon,
   SwatchesIcon,
   ToolboxIcon,
   type Icon,
@@ -52,6 +53,12 @@ const DEV_PAGE_SHORTCUTS = [
     route: routes.devRailGeneratorPrototype,
     icon: PathIcon,
     iconColor: theme.palette.cyan.color,
+  },
+  {
+    label: 'Alert sounds',
+    route: routes.settingsAlertSounds,
+    icon: SpeakerHighIcon,
+    iconColor: theme.settingsIcon.sounds,
   },
   {
     label: 'Other',
@@ -241,9 +248,10 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     gap: 4,
   },
+  // Shortcuts share the row so any count fits the fixed-width menu.
   shortcut: {
-    width: 42,
-    height: 42,
+    flex: 1,
+    height: 38,
     borderRadius: 9,
     alignItems: 'center',
     justifyContent: 'center',

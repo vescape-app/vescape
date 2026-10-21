@@ -198,6 +198,10 @@ function RootLayout() {
                 />
                 <Stack.Screen name={stackScreens.settingsOther} options={{ title: 'Other' }} />
                 <Stack.Screen
+                  name={stackScreens.settingsAlertSounds}
+                  options={{ title: 'Alert sounds' }}
+                />
+                <Stack.Screen
                   name={stackScreens.settingsRawSettings}
                   options={{ title: 'Raw settings' }}
                 />
