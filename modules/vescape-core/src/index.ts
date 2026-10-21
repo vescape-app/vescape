@@ -2749,7 +2749,8 @@ type VescapeCoreNativeModule = NativeEventEmitter<VescapeCoreEvents> & {
   requestCriticalRideNotificationPermission(): Promise<CriticalRideNotificationPermissionStatus>
   getAlertSounds(): AlertSound[]
   previewAlertSound(soundType: AlertSoundType): void
-  playAppSound(pack: string, cue: AppSoundCueId | 'ride.end'): void
+  playAppSound(pack: string, cue: AppSoundCueId): void
+  playAppCue(cue: AppSoundCueId): void
   mapTile(z: number, x: number, y: number): Promise<string | null>
   mySounds(): Promise<MySoundsState>
   importMySound(uri: string, name: string): Promise<MySoundsState>
@@ -3260,7 +3261,17 @@ export function previewAlertSound(soundType: AlertSoundType): void {
 
 /** @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/alerts/EffectsPacks.kt `appCueSlot`
  * @parity /modules/vescape-core/ios/alerts/EffectsPacks.swift `appCueSlot` */
-export type AppSoundCueId = 'on' | 'off' | 'created' | 'join' | 'error'
+export type AppSoundCueId =
+  | 'on'
+  | 'off'
+  | 'error'
+  | 'ride.end'
+  | 'groupRide.created'
+  | 'groupRide.joined'
+  | 'groupRide.riderJoined'
+  | 'groupRide.riderLeft'
+  | 'groupRide.lost'
+  | 'groupRide.restored'
 
 /** Effects slot a My sound can override; see `SOUND_OVERRIDE_SLOTS` in the settings module. */
 export type SoundOverrideSlot =
@@ -3272,6 +3283,10 @@ export type SoundOverrideSlot =
   | 'cue.error'
   | 'cue.groupRide.created'
   | 'cue.groupRide.joined'
+  | 'cue.groupRide.riderJoined'
+  | 'cue.groupRide.riderLeft'
+  | 'cue.groupRide.lost'
+  | 'cue.groupRide.restored'
 
 /**
  * The My sounds library and the override slots pointing into it. Rules name a sound as
@@ -3306,11 +3321,22 @@ export const mapTile = (z: number, x: number, y: number): Promise<string | null>
   native.mapTile(z, x, y)
 
 /**
- * Play an app cue: its My sounds override when set, else `pack`'s clip. `ride.end` is not
- * overridable and always comes from the pack.
+ * Preview an app cue's effect: its My sounds override when set, else `pack`'s clip. `ride.end` is
+ * not overridable and always comes from the pack. Never speaks.
  */
-export function playAppSound(pack: string, cue: AppSoundCueId | 'ride.end'): void {
+export function playAppSound(pack: string, cue: AppSoundCueId): void {
   native.playAppSound(pack, cue)
+}
+
+/**
+ * Play an app cue as the app does: the active pack's effect (or its override), then its voice line
+ * at Voice level Full.
+ *
+ * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/VescapeCoreModule.kt `playAppCue`
+ * @parity /modules/vescape-core/ios/VescapeCoreModule.swift `playAppCue`
+ */
+export function playAppCue(cue: AppSoundCueId): void {
+  native.playAppCue(cue)
 }
 
 export function startGeigerSimulation(soundType: string, rangeDepth: number): void {

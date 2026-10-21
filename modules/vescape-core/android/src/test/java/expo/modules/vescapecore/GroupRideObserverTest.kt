@@ -31,4 +31,15 @@ class GroupRideObserverTest {
     fun `no presence leaves the rider unplaced`() {
         assertNull(rider(null)?.position)
     }
+
+    @Test
+    fun `roster changes cue other riders joining before leaving, never the rider`() {
+        val cue = GroupRideObserver::rosterCue
+        assertNull(cue(emptyList(), listOf("me", "ola"), "me"))
+        assertEquals("groupRide.riderJoined", cue(listOf("me"), listOf("me", "ola"), "me"))
+        assertEquals("groupRide.riderLeft", cue(listOf("me", "ola"), listOf("me"), "me"))
+        assertEquals("groupRide.riderJoined", cue(listOf("me", "ola"), listOf("me", "kai"), "me"))
+        assertNull(cue(listOf("ola"), listOf("me", "ola"), "me"))
+        assertNull(cue(listOf("me", "ola"), listOf("ola", "me"), "me"))
+    }
 }

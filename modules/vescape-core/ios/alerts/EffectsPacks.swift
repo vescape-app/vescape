@@ -15,7 +15,20 @@ internal func effectsPackId(_ pack: String) -> String {
   effectsPackIds.contains(pack) ? pack : effectsPackFallback
 }
 
-/// App cue id (the `playAppSound` cue names) → effects slot.
+/// Group Ride events with their own app cue, each `cue.<event>` in every effects pack and a line
+/// under the same key in every voice pack.
+/// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/alerts/EffectsPacks.kt `GROUP_RIDE_CUES`
+/// @parity /src/modules/settings/lib/appSounds.ts `APP_SOUND_CUES`
+internal let groupRideCues = [
+  "groupRide.created",
+  "groupRide.joined",
+  "groupRide.riderJoined",
+  "groupRide.riderLeft",
+  "groupRide.lost",
+  "groupRide.restored",
+]
+
+/// App cue id (the `playAppSound` / `playAppCue` cue names) → effects slot.
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/alerts/EffectsPacks.kt `appCueSlot`
 /// @parity /src/modules/settings/lib/appSounds.ts `APP_SOUND_CUES`
 internal func appCueSlot(_ cue: String) -> String? {
@@ -23,10 +36,20 @@ internal func appCueSlot(_ cue: String) -> String? {
   case "on": return "cue.on"
   case "off": return "cue.off"
   case "error": return "cue.error"
-  case "created": return "cue.groupRide.created"
-  case "join": return "cue.groupRide.joined"
   case "ride.end": return "cue.ride.end"
-  default: return nil
+  default: return groupRideCues.contains(cue) ? "cue.\(cue)" : nil
+  }
+}
+
+/// Voice key app cue `cue` speaks after its effect at Voice level `full`.
+/// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/alerts/EffectsPacks.kt `appCueVoiceKey`
+internal func appCueVoiceKey(_ cue: String) -> String? {
+  switch cue {
+  case "on": return "link.connected"
+  case "off": return "link.lost"
+  case "error": return "system.error"
+  case "ride.end": return "ride.end"
+  default: return groupRideCues.contains(cue) ? cue : nil
   }
 }
 

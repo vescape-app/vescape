@@ -113,9 +113,9 @@ beforeEach(async () => {
   getSettings.mockImplementation(async () => ({ riderId: null, riderName: null }))
   updateSetting.mockReset()
   updateSetting.mockImplementation(async () => {})
-  const { setGroupRideSoundPlayer, useGroupRideStore } =
+  const { setGroupRideCreatedSoundPlayer, useGroupRideStore } =
     await import('@/modules/group-ride/store/groupRideStore')
-  setGroupRideSoundPlayer(playGroupRideSound)
+  setGroupRideCreatedSoundPlayer(playGroupRideSound)
   const { useRiderStore } = await import('@/modules/group-ride/store/riderStore')
   useGroupRideStore.setState({
     connection: 'idle',
@@ -367,7 +367,7 @@ test('selected Board rail color follows Board and appearance; no Board clears it
   expect(selectedBoardRailColor(useThemeStore.getState().resolvedTheme)).toBeNull()
 })
 
-test('new nearby ride and new roster member request their sounds once', async () => {
+test('new nearby ride requests its sound once', async () => {
   const { useGroupRideStore } = await import('@/modules/group-ride/store/groupRideStore')
   const { useRiderStore } = await import('@/modules/group-ride/store/riderStore')
   useRiderStore.setState({ riderId: 'self' })
@@ -377,13 +377,4 @@ test('new nearby ride and new roster member request their sounds once', async ()
   createdListeners.forEach((listener) => listener({ ride: ride('new') }))
   createdListeners.forEach((listener) => listener({ ride: ride('new') }))
   expect(playGroupRideSound).toHaveBeenCalledTimes(1)
-  expect(playGroupRideSound).toHaveBeenCalledWith('created')
-
-  const self = { id: 'self', name: 'Me', color: null, presence: null, stale: false, lastSeen: 1 }
-  const peer = { ...self, id: 'peer', name: 'Peer' }
-  useGroupRideStore.setState({ activeRideId: 'new', roster: [self] })
-  rosterListeners.forEach((listener) => listener({ rideId: 'new', riders: [self, peer] }))
-  rosterListeners.forEach((listener) => listener({ rideId: 'new', riders: [self, peer] }))
-  expect(playGroupRideSound).toHaveBeenCalledTimes(2)
-  expect(playGroupRideSound).toHaveBeenLastCalledWith('join')
 })

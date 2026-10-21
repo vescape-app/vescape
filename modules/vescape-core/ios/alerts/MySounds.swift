@@ -8,6 +8,7 @@ import Foundation
 internal let soundOverrideSlots = [
   "severity.info", "severity.warning", "severity.critical",
   "cue.on", "cue.off", "cue.error", "cue.groupRide.created", "cue.groupRide.joined",
+  "cue.groupRide.riderJoined", "cue.groupRide.riderLeft", "cue.groupRide.lost", "cue.groupRide.restored",
 ]
 
 /// My sounds: the rider's WAV library (≤2 MB, ≤15 s) in `custom-app-sounds/`, plus the override
@@ -25,8 +26,10 @@ internal enum MySounds {
   private static let manifestName = "my-sounds.json"
   private static let legacyManifestName = "packs.json"
   private static let legacyCues = [
-    ("on", "Connect"), ("off", "Disconnect"), ("error", "Error"),
-    ("created", "New Group Ride"), ("join", "Rider joined"),
+    ("on", "cue.on", "Connect"), ("off", "cue.off", "Disconnect"), ("error", "cue.error", "Error"),
+    ("created", "cue.groupRide.created", "New Group Ride"),
+    // The legacy `join` cue was another rider joining.
+    ("join", "cue.groupRide.riderJoined", "Rider joined"),
   ]
   private static let lock = NSRecursiveLock()
 
@@ -67,10 +70,10 @@ internal enum MySounds {
     var legacy: [String: [String: String]] = [:]
     for pack in packs {
       var slots: [String: String] = [:]
-      for (cue, label) in legacyCues {
+      for (cue, slot, label) in legacyCues {
         guard let file = pack.sounds[cue], isFileName(file),
-          FileManager.default.fileExists(atPath: dir.appendingPathComponent(file).path),
-          let slot = appCueSlot(cue) else { continue }
+          FileManager.default.fileExists(atPath: dir.appendingPathComponent(file).path)
+        else { continue }
         let id = String(file.dropLast(".wav".count))
         store.sounds.append(Sound(id: id, name: String("\(pack.name) \(label)".trimmingCharacters(in: .whitespaces).prefix(60))))
         slots[slot] = id

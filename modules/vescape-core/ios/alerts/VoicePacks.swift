@@ -39,6 +39,10 @@ internal let voiceKeyValueTypes: [String: String?] = [
   "system.error": nil,
   "groupRide.created": nil,
   "groupRide.joined": nil,
+  "groupRide.riderJoined": nil,
+  "groupRide.riderLeft": nil,
+  "groupRide.lost": nil,
+  "groupRide.restored": nil,
   "ride.end": nil,
 ]
 

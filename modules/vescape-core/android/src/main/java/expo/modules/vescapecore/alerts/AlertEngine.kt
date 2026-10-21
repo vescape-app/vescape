@@ -66,8 +66,8 @@ fun normalizedAlertRepeatSeconds(raw: Double?): Long? {
 internal const val ALERT_SPEECH_DELAY_MS = 350L
 
 /** When speech may start after [severity]'s sound (its override, else [pack]'s) starts playing. */
-internal fun speechDelayMs(context: Context, pack: String, severity: AlertSeverity): Long =
-    maxOf(ALERT_SPEECH_DELAY_MS, slotClip(context, pack, severity.slot)?.durationMs(context) ?: 0L)
+internal fun speechDelayMs(context: Context, pack: String, slot: String): Long =
+    maxOf(ALERT_SPEECH_DELAY_MS, slotClip(context, pack, slot)?.durationMs(context) ?: 0L)
 
 internal fun alertControlUnit(controlId: String): String =
     telemetryMetricByControlId[controlId]?.unit ?: ""
@@ -484,22 +484,25 @@ internal class AlertFeedback(
         tts?.setAudioAttributes(audioAttributes(audioSource, AudioAttributes.CONTENT_TYPE_SPEECH))
     }
 
-    fun playConnect() {
-        if (android.os.Looper.myLooper() != handler.looper) { handler.post { playConnect() }; return }
-        playAppSound(soundPack, "on")
-    }
+    fun playConnect() = playAppCue("on")
 
-    fun playDisconnect() {
-        if (android.os.Looper.myLooper() != handler.looper) { handler.post { playDisconnect() }; return }
-        playAppSound(soundPack, "off")
-    }
+    fun playDisconnect() = playAppCue("off")
 
-    fun playAppSound(pack: String, cue: String) {
+    /**
+     * Play app cue [cue] from the active effects pack; at Voice level `full` its voice line follows
+     * once the effect has finished. Standard and Off play the effect only.
+     *
+     * @parity /modules/vescape-core/ios/alerts/AlertAudioPlayer.swift `playAppCue`
+     */
+    fun playAppCue(cue: String) {
         if (android.os.Looper.myLooper() != handler.looper) {
-            handler.post { playAppSound(pack, cue) }
+            handler.post { playAppCue(cue) }
             return
         }
-        playOnce(appCueSlot(cue) ?: return, pack)
+        val slot = appCueSlot(cue) ?: return
+        val key = appCueVoiceKey(cue)
+        if (voiceLevel == "full" && key != null) speakVoice(VoiceAnnouncement(AlertSeverity.INFO, key, null), slot)
+        else playOnce(slot)
     }
 
     /**
@@ -582,10 +585,7 @@ internal class AlertFeedback(
     }
 
     /** Play when the Board Session ride ends. */
-    fun playRideEnd() {
-        if (android.os.Looper.myLooper() != handler.looper) { handler.post { playRideEnd() }; return }
-        playAppSound(soundPack, "ride.end")
-    }
+    fun playRideEnd() = playAppCue("ride.end")
 
     /**
      * Play one announcement: an `alert(count):severity` rule's severity sound from the active effects
@@ -632,29 +632,29 @@ internal class AlertFeedback(
         playSeverity(SlotAlertSound(1, severity))
         val speech = Runnable { pendingSpeech = null; speakMessage(text) }
         pendingSpeech = speech
-        handler.postDelayed(speech, speechDelayMs(context, soundPack, severity))
+        handler.postDelayed(speech, speechDelayMs(context, soundPack, severity.slot))
     }
 
     private var pendingSpeech: Runnable? = null
 
     /**
-     * Speak [announcement]: its severity sound once, then the voice pack line joined with its value
-     * into one buffer, starting once the sound has finished. A key the pack has no line for plays
-     * the severity sound only. Voice level is the caller's ([presetVoiceEnabled]).
+     * Speak [announcement]: [slot] (its severity sound by default) once, then the voice pack line
+     * joined with its value into one buffer, starting once the sound has finished. A key the pack
+     * has no line for plays the sound only. Voice level is the caller's ([presetVoiceEnabled]).
      *
      * @parity /modules/vescape-core/ios/alerts/AlertAudioPlayer.swift `speakVoice`
      */
-    fun speakVoice(announcement: VoiceAnnouncement) {
+    fun speakVoice(announcement: VoiceAnnouncement, slot: String = announcement.severity.slot) {
         if (android.os.Looper.myLooper() != handler.looper) {
-            handler.post { speakVoice(announcement) }
+            handler.post { speakVoice(announcement, slot) }
             return
         }
         if (released) return
         pendingSpeech?.let { handler.removeCallbacks(it) }
         pendingSpeech = null
         val generation = ++voiceGeneration
-        playSeverity(SlotAlertSound(1, announcement.severity))
-        val due = SystemClock.uptimeMillis() + speechDelayMs(context, soundPack, announcement.severity)
+        playOnce(slot)
+        val due = SystemClock.uptimeMillis() + speechDelayMs(context, soundPack, slot)
         val pack = voicePack
         // Decoding runs off the audio looper while the severity sound covers it.
         voiceExecutor.execute {
@@ -889,7 +889,7 @@ internal class AlertFeedback(
                     val joined = VoicePackAssets.join(context, pack, announcement) ?: return@execute
                     handler.post { pcm = joined; speakWhenReady() }
                 }
-                previewClip(context, handler, settings.soundPack, sound.severity.slot, source = source, doneAfterMs = speechDelayMs(context, settings.soundPack, sound.severity)) {
+                previewClip(context, handler, settings.soundPack, sound.severity.slot, source = source, doneAfterMs = speechDelayMs(context, settings.soundPack, sound.severity.slot)) {
                     soundDone = true
                     speakWhenReady()
                 }
@@ -910,7 +910,7 @@ internal class AlertFeedback(
                     t.speak(text, TextToSpeech.QUEUE_FLUSH, null, "preview")
                     handler.postDelayed({ t.stop(); t.shutdown() }, 5_000)
                 }
-                previewClip(context, handler, settings.soundPack, tts.severity.slot, source = source, doneAfterMs = speechDelayMs(context, settings.soundPack, tts.severity)) {
+                previewClip(context, handler, settings.soundPack, tts.severity.slot, source = source, doneAfterMs = speechDelayMs(context, settings.soundPack, tts.severity.slot)) {
                     soundDone = true
                     speakWhenReady()
                 }

@@ -31,11 +31,14 @@ import { useThemeStore } from '@/hooks/useTheme'
 import { selectedBoardRailColor } from '@/modules/group-ride/lib/selectedBoardRailColor'
 import { SERVER_WS_URL } from '@/config/server'
 
-type GroupRideSoundCue = 'created' | 'join'
-let playGroupRideSound: ((cue: GroupRideSoundCue) => void) | null = null
+/**
+ * Plays the `groupRide.created` cue. Native plays every other Group Ride cue itself; this one needs
+ * the nearby filter, which lives here.
+ */
+let playRideCreatedSound: (() => void) | null = null
 
-export function setGroupRideSoundPlayer(player: ((cue: GroupRideSoundCue) => void) | null) {
-  playGroupRideSound = player
+export function setGroupRideCreatedSoundPlayer(player: (() => void) | null) {
+  playRideCreatedSound = player
 }
 
 type TimerHandle = ReturnType<typeof setInterval>
@@ -129,7 +132,7 @@ export const useGroupRideStore = create<GroupRideState>((set, get) => ({
           (ride.creator.id === useRiderStore.getState().riderId ||
             next.nearby.some((nearby) => nearby.ride.id === ride.id))
         ) {
-          playGroupRideSound?.('created')
+          playRideCreatedSound?.()
         }
         set({ ...next, error: null })
       }),
@@ -160,17 +163,6 @@ export const useGroupRideStore = create<GroupRideState>((set, get) => ({
             return { ...deriveRoster({ activeRideId: null, roster: [] }, state), error: null }
           }
           if (state.activeRideId && state.activeRideId !== rideId) return state
-          if (
-            state.activeRideId === rideId &&
-            state.roster.length > 0 &&
-            riders.some(
-              (rider) =>
-                rider.id !== useRiderStore.getState().riderId &&
-                !state.roster.some((known) => known.id === rider.id),
-            )
-          ) {
-            playGroupRideSound?.('join')
-          }
           return { ...deriveRoster({ activeRideId: rideId, roster: riders }, state), error: null }
         }),
       ),

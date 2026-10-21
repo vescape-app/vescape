@@ -31,6 +31,24 @@
       { "gap": 0.03 },
       { "synth": "sine 1047", "dur": 0.22, "fade": [0.01, 0.18] }
     ],
+    "cue.groupRide.riderJoined": [
+      { "synth": "sine 659", "dur": 0.1, "fade": [0.01, 0.06] },
+      { "synth": "sine 880", "dur": 0.18, "fade": [0.01, 0.14] }
+    ],
+    "cue.groupRide.riderLeft": [
+      { "synth": "sine 880", "dur": 0.1, "fade": [0.01, 0.06] },
+      { "synth": "sine 659", "dur": 0.18, "fade": [0.01, 0.14] }
+    ],
+    "cue.groupRide.lost": [
+      { "synth": "triangle 440", "dur": 0.14, "fade": [0.01, 0.08] },
+      { "gap": 0.04 },
+      { "synth": "triangle 349", "dur": 0.26, "fade": [0.01, 0.2] }
+    ],
+    "cue.groupRide.restored": [
+      { "synth": "sine 440", "dur": 0.1, "fade": [0.01, 0.06] },
+      { "synth": "sine 554", "dur": 0.1, "fade": [0.01, 0.06] },
+      { "synth": "sine 659", "dur": 0.22, "fade": [0.01, 0.18] }
+    ],
     "cue.ride.end": [
       { "synth": "sine 784", "dur": 0.12, "fade": [0.01, 0.06] },
       { "synth": "sine 659", "dur": 0.12, "fade": [0.01, 0.06] },

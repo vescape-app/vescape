@@ -254,7 +254,11 @@ internal final class BoardSessionController: VescGattListener {
     online: AppStatusCoordinator.shared,
     scheduler: scheduler,
     // Participation is a GPS demand input, and most of the ways it ends are not rider-initiated.
-    onParticipationChanged: { [weak self] in self?.refreshGpsDemand() }
+    onParticipationChanged: { [weak self] in self?.refreshGpsDemand() },
+    onCue: { [weak self] cue in
+      guard let self, self.connectionSoundsEnabled else { return }
+      self.alertAudioPlayer.playAppCue(cue)
+    }
   )
 
   /// Enabled Privacy Zones cached for the Group Ride presence egress gate (issue #144). Refreshed
@@ -1270,6 +1274,10 @@ internal final class BoardSessionController: VescGattListener {
 
   func playAppSound(pack: String, cue: String) {
     alertAudioPlayer.playAppSound(pack: pack, cue: cue)
+  }
+
+  func playAppCue(_ cue: String) {
+    alertAudioPlayer.playAppCue(cue)
   }
 
   /// Drive a geiger preview loop without a connected board — UI slider over `rangeDepth`.

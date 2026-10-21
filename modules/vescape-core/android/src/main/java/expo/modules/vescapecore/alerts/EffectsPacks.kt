@@ -20,7 +20,23 @@ internal const val EFFECTS_PACK_FALLBACK = "simple"
 internal fun effectsPackId(pack: String): String = if (pack in EFFECTS_PACK_IDS) pack else EFFECTS_PACK_FALLBACK
 
 /**
- * App cue id (the `playAppSound` cue names) → effects slot.
+ * Group Ride events with their own app cue, each `cue.<event>` in every effects pack and a line
+ * under the same key in every voice pack.
+ *
+ * @parity /modules/vescape-core/ios/alerts/EffectsPacks.swift `groupRideCues`
+ * @parity /src/modules/settings/lib/appSounds.ts `APP_SOUND_CUES`
+ */
+internal val GROUP_RIDE_CUES = listOf(
+    "groupRide.created",
+    "groupRide.joined",
+    "groupRide.riderJoined",
+    "groupRide.riderLeft",
+    "groupRide.lost",
+    "groupRide.restored",
+)
+
+/**
+ * App cue id (the `playAppSound` / `playAppCue` cue names) → effects slot.
  *
  * @parity /modules/vescape-core/ios/alerts/EffectsPacks.swift `appCueSlot`
  * @parity /src/modules/settings/lib/appSounds.ts `APP_SOUND_CUES`
@@ -29,9 +45,22 @@ internal fun appCueSlot(cue: String): String? = when (cue) {
     "on" -> "cue.on"
     "off" -> "cue.off"
     "error" -> "cue.error"
-    "created" -> "cue.groupRide.created"
-    "join" -> "cue.groupRide.joined"
     "ride.end" -> "cue.ride.end"
+    in GROUP_RIDE_CUES -> "cue.$cue"
+    else -> null
+}
+
+/**
+ * Voice key app cue [cue] speaks after its effect at Voice level `full`.
+ *
+ * @parity /modules/vescape-core/ios/alerts/EffectsPacks.swift `appCueVoiceKey`
+ */
+internal fun appCueVoiceKey(cue: String): String? = when (cue) {
+    "on" -> "link.connected"
+    "off" -> "link.lost"
+    "error" -> "system.error"
+    "ride.end" -> "ride.end"
+    in GROUP_RIDE_CUES -> cue
     else -> null
 }
 

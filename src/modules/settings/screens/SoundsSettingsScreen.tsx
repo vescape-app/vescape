@@ -52,18 +52,14 @@ import {
 import { useMySounds } from '@/modules/alerts/hooks/useMySounds'
 
 /** What an effects pack's preview strip plays: its app cues, then its severity sounds. */
+const cuePreview = (cue: (typeof APP_SOUND_CUES)[number]) => ({
+  label: cue.label,
+  play: (pack: string) => playAppSound(pack, cue.id),
+})
+
 const PREVIEW_ROWS: { label: string; play: (pack: string) => void }[][] = [
-  APP_SOUND_CUES.slice(0, 3).map((cue) => ({
-    label: cue.label,
-    play: (pack: string) => playAppSound(pack, cue.id),
-  })),
-  [
-    ...APP_SOUND_CUES.slice(3).map((cue) => ({
-      label: cue.label,
-      play: (pack: string) => playAppSound(pack, cue.id),
-    })),
-    { label: 'Ride end', play: (pack: string) => playAppSound(pack, 'ride.end') },
-  ],
+  APP_SOUND_CUES.filter((cue) => !cue.groupRide).map(cuePreview),
+  APP_SOUND_CUES.filter((cue) => cue.groupRide).map(cuePreview),
   ALERT_SEVERITIES.map((severity) => ({
     label: ALERT_SEVERITY_LABELS[severity],
     // Alert sounds come from the selected pack, which is the one previewing, or their override.

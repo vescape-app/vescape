@@ -59,6 +59,10 @@ internal val VOICE_KEY_VALUE_TYPES: Map<String, String?> = mapOf(
     "system.error" to null,
     "groupRide.created" to null,
     "groupRide.joined" to null,
+    "groupRide.riderJoined" to null,
+    "groupRide.riderLeft" to null,
+    "groupRide.lost" to null,
+    "groupRide.restored" to null,
     "ride.end" to null,
 )
 

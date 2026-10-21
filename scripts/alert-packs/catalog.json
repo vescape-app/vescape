@@ -9,6 +9,10 @@
     "cue.error",
     "cue.groupRide.created",
     "cue.groupRide.joined",
+    "cue.groupRide.riderJoined",
+    "cue.groupRide.riderLeft",
+    "cue.groupRide.lost",
+    "cue.groupRide.restored",
     "cue.ride.end",
     "geiger.soft",
     "geiger.mid",
@@ -23,6 +27,10 @@
     "system.error": null,
     "groupRide.created": null,
     "groupRide.joined": null,
+    "groupRide.riderJoined": null,
+    "groupRide.riderLeft": null,
+    "groupRide.lost": null,
+    "groupRide.restored": null,
     "ride.end": null
   },
   "valueRanges": {

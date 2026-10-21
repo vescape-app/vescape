@@ -526,6 +526,10 @@ public class VescapeCoreModule: Module {
     Function("playAppSound") { (pack: String, cue: String) in
       self.coordinator.playAppSound(pack: pack, cue: cue)
     }
+    // @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/VescapeCoreModule.kt `playAppCue`
+    Function("playAppCue") { (cue: String) in
+      self.coordinator.playAppCue(cue)
+    }
 
     // @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/VescapeCoreModule.kt `mySounds`
     AsyncFunction("mySounds") { MySounds.state() }

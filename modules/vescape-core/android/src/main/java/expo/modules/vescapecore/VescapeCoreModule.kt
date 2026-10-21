@@ -576,6 +576,10 @@ class VescapeCoreModule : Module() {
     Function("playAppSound") { pack: String, cue: String ->
       CoreForegroundService.playAppSound(context.applicationContext, pack, cue)
     }
+    // @parity /modules/vescape-core/ios/VescapeCoreModule.swift `playAppCue`
+    Function("playAppCue") { cue: String ->
+      CoreForegroundService.playAppCue(cue)
+    }
     registerMySounds()
     // @parity /modules/vescape-core/ios/VescapeCoreModule.swift `mapTile`
     AsyncFunction("mapTile") Coroutine { z: Int, x: Int, y: Int ->

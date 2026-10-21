@@ -443,18 +443,31 @@ internal final class AlertAudioPlayer {
   // MARK: - Connection sounds
 
   func playConnect() {
-    playAppSound(pack: soundPack, cue: "on")
+    playAppCue("on")
   }
 
   func playDisconnect() {
-    playAppSound(pack: soundPack, cue: "off")
+    playAppCue("off")
   }
 
   /// Play when the Board Session ride ends.
   func playRideEnd() {
-    playAppSound(pack: soundPack, cue: "ride.end")
+    playAppCue("ride.end")
   }
 
+  /// Play app cue `cue` from the active effects pack; at Voice level `full` its voice line follows
+  /// once the effect has finished. Standard and Off play the effect only.
+  /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/alerts/AlertEngine.kt `playAppCue`
+  func playAppCue(_ cue: String) {
+    guard let slot = appCueSlot(cue) else { return }
+    if voiceLevel == "full", let key = appCueVoiceKey(cue) {
+      speakVoice(VoiceAnnouncement(severity: .info, key: key, value: nil), slot: slot)
+    } else {
+      play(clipKey(slot))
+    }
+  }
+
+  /// Settings preview of `pack`'s clip for `cue`: the effect only, whatever the Voice level.
   func playAppSound(pack: String, cue: String) {
     guard let slot = appCueSlot(cue) else { return }
     play(clipKey(slot, pack: pack))
@@ -526,18 +539,19 @@ internal final class AlertAudioPlayer {
   /// False at Voice level `off`: preset voice rules then play their severity sound only.
   var presetVoiceEnabled: Bool { voiceLevel != "off" }
 
-  /// Speak `announcement`: its severity sound once, then the voice pack line joined with its value
-  /// into one buffer, starting once the sound has finished. A key the pack has no line for plays the
-  /// severity sound only. Voice level is the caller's (`presetVoiceEnabled`).
+  /// Speak `announcement`: `slot` (its severity sound by default) once, then the voice pack line
+  /// joined with its value into one buffer, starting once the sound has finished. A key the pack has
+  /// no line for plays the sound only. Voice level is the caller's (`presetVoiceEnabled`).
   /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/alerts/AlertEngine.kt `speakVoice`
-  func speakVoice(_ announcement: VoiceAnnouncement) {
+  func speakVoice(_ announcement: VoiceAnnouncement, slot: String? = nil) {
     guard !isReleased else { return }
     pendingSpeech?.cancel()
     pendingSpeech = nil
     let generation = nextSpeechGeneration()
-    playSeverity(SlotAlertSound(count: 1, severity: announcement.severity))
+    let lead = clipKey(slot ?? announcement.severity.slot)
+    play(lead)
     guard let line = joinedVoice(announcement, pack: voicePack) else { return }
-    let delay = max(alertSpeechDelayMs, clipDurationMs(clipKey(announcement.severity.slot)))
+    let delay = max(alertSpeechDelayMs, clipDurationMs(lead))
     pendingSpeech = scheduler.postDelayed(delay) { [weak self] in
       self?.onGeigerQueue { owner in
         guard owner.isCurrentSpeech(generation) else { return }

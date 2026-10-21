@@ -35,7 +35,7 @@ never used for later playback. Native owns the store (`MySounds.kt`, `MySounds.s
 
 **Overrides** are a fixed list of slots, each optionally set to a My sound that wins over the
 effects pack: the `severity.info|warning|critical` sounds (alert rules and the sound before TTS
-speech), `cue.on`, `cue.off`, `cue.error`, `cue.groupRide.created`, `cue.groupRide.joined`. Clearing
+speech), `cue.on`, `cue.off`, `cue.error`, and every `cue.groupRide.*` slot. Clearing
 one returns the slot to the pack. Ride end and geiger ticks are not overridable. Deleting a sound
 clears its overrides.
 
@@ -64,9 +64,16 @@ Speech comes from a second app-wide choice next to Sound effects:
   per message key plus value clips. `Matching` plays the voice the effects pack's `pack.json` names
   (HEV → HEV; Retro, Simple, Clean → Clean).
 - **Voice level** (`voiceLevel`: `off`, `standard`, `full`; default `standard`): Off plays effects
-  only for presets, Standard speaks preset alerts. Full is stored and shown with its hint; speaking
-  app cues and group ride events at Full is #581 and not implemented yet. Voice level never affects
+  only for presets, Standard speaks preset alerts. Full also speaks app cues and Group Ride events:
+  the cue's effect, then its voice line (`on` → `link.connected`, `off` → `link.lost`, `error` →
+  `system.error`, `ride.end`, and each `groupRide.*` cue under its own key). Off and Standard play
+  their effect only; settings previews of a pack's cues never speak. Voice level never affects
   custom rules.
+- **Group Ride cues**: `groupRide.created` (a new nearby or own ride; JS fires it, the nearby
+  filter lives there), and natively from `GroupRideObserver`: `groupRide.joined` (the rider joined),
+  `groupRide.riderJoined` / `groupRide.riderLeft` (someone else in the joined ride's roster),
+  `groupRide.lost` (the joined ride's relay socket dropped), `groupRide.restored` (rejoined after a
+  loss). All are gated by the app sounds switch (`connectionSoundsEnabled`).
 
 A `voice(<severity>):<key>:<value>` sound plays the effects pack's `severity.<severity>` sound
 once, then the voice line, starting once the sound has finished (the same timing as TTS). Native
@@ -101,8 +108,7 @@ Other metrics have no voice lines: TTS is forced on and the switch is hidden. Pr
 severity sound and the voice line with the threshold as value, or the TTS text. Custom rules use
 the Voice pack but ignore Voice level.
 
-Planned (not implemented): per-preset pinned effects/voice packs, app cue and group ride lines at
-Voice level Full (#581). All sounds that can fire during a ride stay decoded in memory for the
+Planned (not implemented): per-preset pinned effects/voice packs. All sounds that can fire during a ride stay decoded in memory for the
 session (#576).
 
 ### Built-in packs
@@ -128,10 +134,12 @@ shared/alerts/packs/
 
 - **Effect slots**: `severity.info|warning|critical` (HEV/Clean: 1/2/3 beeps; Retro/Simple: the
   former Notify, Beep, and Urgent sounds), `cue.on`, `cue.off`,
-  `cue.error`, `cue.groupRide.created`, `cue.groupRide.joined`, `cue.ride.end`, `geiger.soft|mid|hard`.
+  `cue.error`, `cue.groupRide.created|joined|riderJoined|riderLeft|lost|restored`, `cue.ride.end`,
+  `geiger.soft|mid|hard`.
   Effects packs never contain voice; `pack.json` names the matching voice pack.
 - **Voice keys**: `battery` (percent), `motorTemp`, `controllerTemp` (degrees), `link.connected`,
-  `link.lost`, `system.error`, `groupRide.created`, `groupRide.joined`, `ride.end`. Each key needs a
+  `link.lost`, `system.error`, `groupRide.created|joined|riderJoined|riderLeft|lost|restored`,
+  `ride.end`. Each key needs a
   generic line; `<key>.<severity>` variants are optional. A line is `start` (+ value) (+ `end`),
   each part a list of variants, one Kokoro call per sentence; `""` in `end` is the "none" variant
   and gets no clip. HEV and Clean ship two `start` variants per line and an optional `end` on

@@ -40,9 +40,13 @@
     "groupRide.created": {
       "start": ["Group ride initiated. Awaiting riders.", "Squad channel open. Awaiting riders."]
     },
-    "groupRide.joined": {
-      "start": ["Rider joined. Squad link active.", "Squad link established."]
+    "groupRide.joined": { "start": ["Squad link established.", "Joined squad channel."] },
+    "groupRide.riderJoined": {
+      "start": ["Rider joined. Squad link active.", "New rider on squad channel."]
     },
+    "groupRide.riderLeft": { "start": ["Rider left squad channel.", "Squad member disconnected."] },
+    "groupRide.lost": { "start": ["Warning. Squad link lost.", "Warning. Squad channel offline."] },
+    "groupRide.restored": { "start": ["Squad link restored.", "Squad channel back online."] },
     "ride.end": { "start": ["Ride session terminated.", "Ride logged. Standing down."] }
   }
 }

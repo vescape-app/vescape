@@ -65,6 +65,25 @@
       "start": ["lines/groupRide.joined.start.0.m4a", "lines/groupRide.joined.start.1.m4a"],
       "end": []
     },
+    "groupRide.riderJoined": {
+      "start": [
+        "lines/groupRide.riderJoined.start.0.m4a",
+        "lines/groupRide.riderJoined.start.1.m4a"
+      ],
+      "end": []
+    },
+    "groupRide.riderLeft": {
+      "start": ["lines/groupRide.riderLeft.start.0.m4a", "lines/groupRide.riderLeft.start.1.m4a"],
+      "end": []
+    },
+    "groupRide.lost": {
+      "start": ["lines/groupRide.lost.start.0.m4a", "lines/groupRide.lost.start.1.m4a"],
+      "end": []
+    },
+    "groupRide.restored": {
+      "start": ["lines/groupRide.restored.start.0.m4a", "lines/groupRide.restored.start.1.m4a"],
+      "end": []
+    },
     "ride.end": {
       "start": ["lines/ride.end.start.0.m4a", "lines/ride.end.start.1.m4a"],
       "end": []
@@ -538,8 +557,16 @@
     "lines/system.error.start.1.m4a": "04efc8b2af243a18",
     "lines/groupRide.created.start.0.m4a": "e3393c32203d84e7",
     "lines/groupRide.created.start.1.m4a": "2dc9e4536e411c26",
-    "lines/groupRide.joined.start.0.m4a": "2d8f440e60ac7f32",
-    "lines/groupRide.joined.start.1.m4a": "f3f5de200cac2b85",
+    "lines/groupRide.joined.start.0.m4a": "f3f5de200cac2b85",
+    "lines/groupRide.joined.start.1.m4a": "4fc9457ee9834619",
+    "lines/groupRide.riderJoined.start.0.m4a": "2d8f440e60ac7f32",
+    "lines/groupRide.riderJoined.start.1.m4a": "fd57d408edb7358b",
+    "lines/groupRide.riderLeft.start.0.m4a": "761910dc063f3131",
+    "lines/groupRide.riderLeft.start.1.m4a": "70b7c06f2abfe617",
+    "lines/groupRide.lost.start.0.m4a": "9a9367f31e543f0a",
+    "lines/groupRide.lost.start.1.m4a": "b25ad03387c46082",
+    "lines/groupRide.restored.start.0.m4a": "e0cacc7126adb575",
+    "lines/groupRide.restored.start.1.m4a": "f7a13a9b9f3e4d9f",
     "lines/ride.end.start.0.m4a": "dee989727d4bfe2b",
     "lines/ride.end.start.1.m4a": "3028308a90aaf093",
     "values/percent/0.m4a": "459aab31a55fd27e",

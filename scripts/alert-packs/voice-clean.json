@@ -30,6 +30,18 @@
     "system.error": { "start": ["Something went wrong.", "An error occurred."] },
     "groupRide.created": { "start": ["Group ride created.", "Your group ride is ready."] },
     "groupRide.joined": { "start": ["You joined the group ride.", "Joined the group ride."] },
+    "groupRide.riderJoined": {
+      "start": ["A rider joined the group ride.", "Someone joined the group ride."]
+    },
+    "groupRide.riderLeft": {
+      "start": ["A rider left the group ride.", "Someone left the group ride."]
+    },
+    "groupRide.lost": {
+      "start": ["Group ride connection lost.", "Lost the group ride connection."]
+    },
+    "groupRide.restored": {
+      "start": ["Group ride connection restored.", "Back in the group ride."]
+    },
     "ride.end": { "start": ["Ride ended.", "Ride finished."] }
   }
 }

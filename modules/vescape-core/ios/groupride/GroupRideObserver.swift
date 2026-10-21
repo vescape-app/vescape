@@ -31,7 +31,14 @@ internal final class GroupRideObserver: NSObject {
   private var riderName: String?
   private var riderColor: String?
   private var joinedRideId: String? { didSet { notifyParticipationIfChanged() } }
-  private var desiredRideId: String? { didSet { notifyParticipationIfChanged() } }
+  private var desiredRideId: String? {
+    didSet {
+      if desiredRideId != oldValue { rideLinkLost = false }
+      notifyParticipationIfChanged()
+    }
+  }
+  /// The joined ride's socket dropped; its next `joined` is a restore, not a fresh join.
+  private var rideLinkLost = false
   /// Last `participating` value handed to the owner, so only real transitions are reported.
   private var lastParticipating = false
   private var lastPresence: RiderPresence?
@@ -57,12 +64,19 @@ internal final class GroupRideObserver: NSObject {
   /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/GroupRideObserver.kt `onParticipationChanged`
   private let onParticipationChanged: () -> Void
 
+  /// Plays a Group Ride app cue (`groupRide.joined`, `riderJoined`, `riderLeft`, `lost`,
+  /// `restored`) as the joined ride changes. `groupRide.created` is JS's: it needs the nearby filter.
+  /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/GroupRideObserver.kt `onCue`
+  private let onCue: (String) -> Void
+
   init(
     emit: @escaping (String, [String: Any?]) -> Void,
     online: OnlineCapability,
     scheduler: Scheduler = MainQueueScheduler(),
-    onParticipationChanged: @escaping () -> Void = {}
+    onParticipationChanged: @escaping () -> Void = {},
+    onCue: @escaping (String) -> Void = { _ in }
   ) {
+    self.onCue = onCue
     self.emit = emit
     self.online = online
     self.onParticipationChanged = onParticipationChanged
@@ -329,6 +343,10 @@ internal final class GroupRideObserver: NSObject {
     webSocket = nil
     stopPing()
     if stopped { return }
+    if joinedRideId != nil {
+      rideLinkLost = true
+      onCue("groupRide.lost")
+    }
     joinedRideId = nil
     stopHeartbeat()
     emitConnection("disconnected")
@@ -378,6 +396,8 @@ internal final class GroupRideObserver: NSObject {
       }
     case "joined":
       guard let rideId = json["rideId"] as? String, !rideId.isEmpty else { return }
+      if rideId != joinedRideId { onCue(rideLinkLost ? "groupRide.restored" : "groupRide.joined") }
+      rideLinkLost = false
       joinedRideId = rideId
       desiredRideId = rideId
       startHeartbeat()
@@ -515,6 +535,19 @@ internal final class GroupRideObserver: NSObject {
     ]
   }
 
+  /// Cue for a joined ride's roster going from `previous` to `next` rider ids: `riderJoined` when
+  /// someone else arrived, else `riderLeft` when someone else left. An empty `previous` is the first
+  /// roster after joining, so nobody "joined" then.
+  /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/GroupRideObserver.kt `rosterCue`
+  static func rosterCue(previous: [String], next: [String], ownRiderId: String?) -> String? {
+    if previous.isEmpty { return nil }
+    let before = Set(previous.filter { $0 != ownRiderId })
+    let after = Set(next.filter { $0 != ownRiderId })
+    if !after.subtracting(before).isEmpty { return "groupRide.riderJoined" }
+    if !before.subtracting(after).isEmpty { return "groupRide.riderLeft" }
+    return nil
+  }
+
   /// A `riderView` map as the typed entry native keeps; nil when it carries no id. No presence
   /// leaves the Rider unplaced.
   ///
@@ -547,6 +580,15 @@ internal final class GroupRideObserver: NSObject {
   }
 
   private func emitRoster(_ rideId: String?, _ riders: [[String: Any?]]) {
+    if let rideId, rideId == joinedRideId, rideId == lastRosterRideId,
+      let cue = Self.rosterCue(
+        previous: lastRoster.compactMap { $0["id"] as? String },
+        next: riders.compactMap { $0["id"] as? String },
+        ownRiderId: riderId
+      )
+    {
+      onCue(cue)
+    }
     lastRosterRideId = rideId
     lastRoster = riders
     lastRosterRiders = riders.compactMap(Self.rosterRider)

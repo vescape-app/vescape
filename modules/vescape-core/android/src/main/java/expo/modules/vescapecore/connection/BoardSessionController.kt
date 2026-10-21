@@ -453,6 +453,7 @@ internal class BoardSessionController(private val service: CoreForegroundService
             // rider-initiated. Reporting from inside the observer also lands after its `handler.post`
             // has actually mutated the state, which a caller refreshing inline cannot.
             onParticipationChanged = ::refreshGpsDemand,
+            onCue = { cue -> if (connectionSoundsEnabled) alertFeedback.playAppCue(cue) },
         )
     }
 
@@ -3666,6 +3667,10 @@ internal class BoardSessionController(private val service: CoreForegroundService
 
     fun previewAlertSound(soundType: String) {
         alertFeedback.preview(soundType)
+    }
+
+    fun playAppCue(cue: String) {
+        alertFeedback.playAppCue(cue)
     }
 
     private fun closeAppTask() {

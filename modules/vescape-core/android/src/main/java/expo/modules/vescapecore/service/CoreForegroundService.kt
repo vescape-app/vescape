@@ -530,6 +530,11 @@ class CoreForegroundService : Service() {
             AlertFeedback.previewAppSound(context, pack, cue, kotlinx.coroutines.runBlocking { AppDataRepository.get(context).getTypedSettings().audioSource })
         }
 
+        /** App cue [cue] from the active pack, its voice line after at Voice level `full`. */
+        fun playAppCue(cue: String) {
+            instance?.controller?.playAppCue(cue)
+        }
+
         fun alertSoundPresets(): List<Map<String, Any>> = alertSoundMaps()
 
         fun currentLiveState(context: Context): Map<String, Any?> {

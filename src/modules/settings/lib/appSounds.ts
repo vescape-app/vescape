@@ -1,4 +1,4 @@
-import { playAppSound, type SoundOverrideSlot } from 'vescape-core'
+import { playAppCue, type AppSoundCueId, type SoundOverrideSlot } from 'vescape-core'
 import { useSettingsStore } from '@/modules/settings/store/settingsStore'
 
 /**
@@ -45,18 +45,24 @@ export const VOICE_LEVELS = [
 ] as const
 
 /**
- * App cues the app plays by id (`playAppSound`).
+ * App cues the app plays by id (`playAppSound`, `playAppCue`): board and ride cues, then Group
+ * Ride events.
  *
  * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/alerts/EffectsPacks.kt `appCueSlot`
  * @parity /modules/vescape-core/ios/alerts/EffectsPacks.swift `appCueSlot`
  */
-export const APP_SOUND_CUES = [
+export const APP_SOUND_CUES: { id: AppSoundCueId; label: string; groupRide?: true }[] = [
   { id: 'on', label: 'Connect' },
   { id: 'off', label: 'Disconnect' },
   { id: 'error', label: 'Error' },
-  { id: 'created', label: 'New Group Ride' },
-  { id: 'join', label: 'Rider joined Group Ride' },
-] as const
+  { id: 'ride.end', label: 'Ride end' },
+  { id: 'groupRide.created', label: 'New Group Ride', groupRide: true },
+  { id: 'groupRide.joined', label: 'Joined Group Ride', groupRide: true },
+  { id: 'groupRide.riderJoined', label: 'Rider joined', groupRide: true },
+  { id: 'groupRide.riderLeft', label: 'Rider left', groupRide: true },
+  { id: 'groupRide.lost', label: 'Group Ride lost', groupRide: true },
+  { id: 'groupRide.restored', label: 'Group Ride restored', groupRide: true },
+]
 
 /**
  * Effects slots a My sound can override, in settings order.
@@ -72,12 +78,14 @@ export const SOUND_OVERRIDE_SLOTS: { slot: SoundOverrideSlot; label: string }[] 
   { slot: 'cue.off', label: 'Disconnect' },
   { slot: 'cue.error', label: 'Error' },
   { slot: 'cue.groupRide.created', label: 'New Group Ride' },
-  { slot: 'cue.groupRide.joined', label: 'Rider joined Group Ride' },
+  { slot: 'cue.groupRide.joined', label: 'Joined Group Ride' },
+  { slot: 'cue.groupRide.riderJoined', label: 'Rider joined Group Ride' },
+  { slot: 'cue.groupRide.riderLeft', label: 'Rider left Group Ride' },
+  { slot: 'cue.groupRide.lost', label: 'Group Ride lost' },
+  { slot: 'cue.groupRide.restored', label: 'Group Ride restored' },
 ]
 
-export type AppSoundCue = (typeof APP_SOUND_CUES)[number]['id']
-
-export function playSelectedAppSound(cue: AppSoundCue) {
-  const { connectionSoundsEnabled, soundPack } = useSettingsStore.getState()
-  if (connectionSoundsEnabled) playAppSound(soundPack, cue)
+/** Play `cue` as the app does (effect, then voice at Full) unless app sounds are off. */
+export function playSelectedAppSound(cue: AppSoundCueId) {
+  if (useSettingsStore.getState().connectionSoundsEnabled) playAppCue(cue)
 }

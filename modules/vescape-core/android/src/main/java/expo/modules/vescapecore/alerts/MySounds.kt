@@ -20,6 +20,7 @@ import java.util.UUID
 internal val SOUND_OVERRIDE_SLOTS = listOf(
   "severity.info", "severity.warning", "severity.critical",
   "cue.on", "cue.off", "cue.error", "cue.groupRide.created", "cue.groupRide.joined",
+  "cue.groupRide.riderJoined", "cue.groupRide.riderLeft", "cue.groupRide.lost", "cue.groupRide.restored",
 )
 
 /**
@@ -39,8 +40,11 @@ internal object MySounds {
   private const val MANIFEST = "my-sounds.json"
   private const val LEGACY_MANIFEST = "packs.json"
   private val fileName = Regex("[0-9a-fA-F-]{36}\\.wav")
-  private val legacyCues = listOf("on" to "Connect", "off" to "Disconnect", "error" to "Error",
-    "created" to "New Group Ride", "join" to "Rider joined")
+  /** Legacy pack cue → (slot, label); its `join` was another rider joining. */
+  private val legacyCues = listOf(
+    "on" to ("cue.on" to "Connect"), "off" to ("cue.off" to "Disconnect"), "error" to ("cue.error" to "Error"),
+    "created" to ("cue.groupRide.created" to "New Group Ride"), "join" to ("cue.groupRide.riderJoined" to "Rider joined"),
+  )
 
   private data class Sound(val id: String, val name: String)
   private data class Store(
@@ -81,12 +85,13 @@ internal object MySounds {
       val pack = packs.getJSONObject(i)
       val cues = pack.optJSONObject("sounds") ?: continue
       val slots = mutableMapOf<String, String>()
-      for ((cue, label) in legacyCues) {
+      for ((cue, target) in legacyCues) {
+        val (slot, label) = target
         val file = cues.optString(cue)
         if (!fileName.matches(file) || !File(dir, file).isFile) continue
         val id = file.removeSuffix(".wav")
         sounds += Sound(id, "${pack.optString("name")} $label".trim().take(60))
-        slots[appCueSlot(cue) ?: continue] = id
+        slots[slot] = id
       }
       if (slots.isNotEmpty()) legacy[pack.optString("id")] = slots
     }

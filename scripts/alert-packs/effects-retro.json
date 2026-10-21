@@ -43,6 +43,28 @@
         "file": "retro_gr_join.wav"
       }
     ],
+    "cue.groupRide.riderJoined": [
+      { "synth": "square 784", "dur": 0.07, "vol": 0.3 },
+      { "gap": 0.03 },
+      { "synth": "square 1047", "dur": 0.12, "vol": 0.3 }
+    ],
+    "cue.groupRide.riderLeft": [
+      { "synth": "square 1047", "dur": 0.07, "vol": 0.3 },
+      { "gap": 0.03 },
+      { "synth": "square 784", "dur": 0.12, "vol": 0.3 }
+    ],
+    "cue.groupRide.lost": [
+      { "synth": "square 392", "dur": 0.12, "vol": 0.3 },
+      { "gap": 0.03 },
+      { "synth": "square 294", "dur": 0.22, "vol": 0.3 }
+    ],
+    "cue.groupRide.restored": [
+      { "synth": "square 523", "dur": 0.07, "vol": 0.3 },
+      { "gap": 0.03 },
+      { "synth": "square 659", "dur": 0.07, "vol": 0.3 },
+      { "gap": 0.03 },
+      { "synth": "square 784", "dur": 0.12, "vol": 0.3 }
+    ],
     "cue.ride.end": [
       {
         "synth": "sine 967",
