@@ -12,17 +12,12 @@ import { generateId } from '@/helpers/id'
 import {
   alertPresetState,
   asAlertPresetMetric,
-  ALERT_PRESET_FALLBACK_LEVEL,
   isPresetAlertRule,
   type AlertPresetLevel,
   type AlertPresetMetric,
 } from '@/modules/alerts/lib/alertPresets'
 import { boardHasBatteryConfig, boardTopSpeedKmh } from '@/modules/alerts/lib/boardAlertSettings'
-import {
-  customRulesForControl,
-  materializePresetRules,
-  type DraftAlertRule,
-} from '@/modules/alerts/lib/customAlertRules'
+import { customRulesForControl, type DraftAlertRule } from '@/modules/alerts/lib/customAlertRules'
 import { useAlertPresetStore } from '@/modules/alerts/store/alertPresetStore'
 import {
   formatGeigerAlertSound,
@@ -44,12 +39,14 @@ export interface MetricAlertsController {
   /** The preset metric this control maps to, or `null` when it only supports custom rules. */
   metric: AlertPresetMetric | null
   controlId: string
-  /** `custom` ⇒ {@link rules} are the rider's; a generated level ⇒ they are derived. */
-  level: AlertPresetLevel
-  /** Rider-owned rules for this control. Preset-generated rules never appear here. */
+  /** The metric's preset level; `null` when {@link metric} is. */
+  level: AlertPresetLevel | null
+  /** Rider-owned rules for this control. They fire alongside the preset's; preset rules never appear here. */
   rules: DraftAlertRule[]
-  /** One resolved snapshot for markers, descriptions, chart lines, and sound preview. */
+  /** Preset and rider rules together: gauge markers, chart lines, and sound preview. */
   ruleSnapshot: AlertTestRule[]
+  /** The preset's own expanded points, for its description. */
+  presetRules: AlertTestRule[]
   configBases: BoardConfigBases
   topSpeedKmh: number
   hasBatteryConfig: boolean
@@ -61,10 +58,6 @@ export interface MetricAlertsController {
   /** Pick the preset's geiger sound. Absent where it cannot be stored (the add-board wizard). */
   setGeigerSound?(soundType: string): void
   setLevel(level: AlertPresetLevel): void
-  /** Copy the current level's rules into {@link rules} and switch to `custom`. */
-  customize(): void
-  /** Drop every rule in {@link rules} and return to a generated level. */
-  discardCustom(): void
   addRule(draft: AlertRuleDraft): Promise<void>
   updateRule(id: string, draft: AlertRuleDraft): Promise<void>
   toggleRule(id: string): Promise<void>
@@ -84,8 +77,8 @@ export function useBoardMetricAlerts(controlId: string): MetricAlertsController 
     () => resolvedRules.filter((rule) => rule.controlId === controlId).map(toTestRule),
     [resolvedRules, controlId],
   )
-  // The points native expanded from this metric's preset, the copy `custom` starts from.
-  const presetSnapshot = useMemo(
+  // The points native expanded from this metric's preset.
+  const presetRules = useMemo(
     () =>
       resolvedRules
         .filter((rule) => rule.controlId === controlId && isPresetAlertRule(rule))
@@ -101,7 +94,7 @@ export function useBoardMetricAlerts(controlId: string): MetricAlertsController 
 
   const metric = asAlertPresetMetric(controlId)
   const rules = useMemo(() => customRulesForControl(allRules, controlId), [allRules, controlId])
-  const preset = metric ? alertPresetState(presetSpecs[metric], rules.length > 0) : null
+  const preset = metric ? alertPresetState(presetSpecs[metric]) : null
   const presetGeiger = preset?.geiger
   // Only expanded preset rules hold the preset's sound; the rider's own rules carry their own.
   const geigerSound = useMemo(
@@ -116,8 +109,7 @@ export function useBoardMetricAlerts(controlId: string): MetricAlertsController 
           )?.soundType ?? null),
     [allRules, controlId, presetGeiger],
   )
-  // Controls without presets are always rider-owned, so they read as `custom` with no way back.
-  const level = preset?.level ?? 'custom'
+  const level = preset?.level ?? null
   const matchBoardConfig = useMemo(
     () => (metric && preset?.match ? { [metric]: true } : {}),
     [metric, preset?.match],
@@ -133,6 +125,7 @@ export function useBoardMetricAlerts(controlId: string): MetricAlertsController 
       level,
       rules,
       ruleSnapshot,
+      presetRules,
       configBases,
       topSpeedKmh: boardTopSpeedKmh(board),
       hasBatteryConfig: boardHasBatteryConfig(board),
@@ -156,21 +149,7 @@ export function useBoardMetricAlerts(controlId: string): MetricAlertsController 
         // intentional-suppression: the Alerts store error is rendered by MetricAlerts.
         if (metric)
           void presets()
-            .setLevel(metric, next, presetSnapshot)
-            .catch(() => undefined)
-      },
-      customize: () => {
-        // intentional-suppression: the Alerts store error is rendered by MetricAlerts.
-        if (metric)
-          void presets()
-            .customize(metric, presetSnapshot)
-            .catch(() => undefined)
-      },
-      discardCustom: () => {
-        // intentional-suppression: the Alerts store error is rendered by MetricAlerts.
-        if (metric)
-          void presets()
-            .discardCustom(metric)
+            .setLevel(metric, next)
             .catch(() => undefined)
       },
       addRule: (draft) => add(controlId, draft),
@@ -193,7 +172,7 @@ export function useBoardMetricAlerts(controlId: string): MetricAlertsController 
     configBases,
     geigerSound,
     matchBoardConfig,
-    presetSnapshot,
+    presetRules,
   ])
 }
 
@@ -242,6 +221,7 @@ export function useDraftMetricAlerts(
       level: setup.level,
       rules: setup.rules,
       ruleSnapshot: preview.rules,
+      presetRules: preview.presetRules,
       configBases: {},
       topSpeedKmh,
       hasBatteryConfig,
@@ -249,15 +229,6 @@ export function useDraftMetricAlerts(
       matchBoardConfig: {},
       setMatchBoardConfig: () => {},
       setLevel: (level) => onChange({ ...setup, level }),
-      customize: () => {
-        if (preview.error) return
-        onChange({
-          ...setup,
-          level: 'custom',
-          rules: materializePresetRules(preview.presetRules, setup.rules),
-        })
-      },
-      discardCustom: () => onChange({ level: ALERT_PRESET_FALLBACK_LEVEL, rules: [] }),
       addRule: async (draft) =>
         withRules([
           ...setup.rules,

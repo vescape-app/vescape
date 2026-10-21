@@ -37,7 +37,7 @@ const PRESET_DEMO_MAX: Record<AlertPresetMetric, number> = {
   'controller-temp': 80,
 }
 
-// A couple of custom (non-preset) markers so the showcase demonstrates preset + custom layering.
+// A couple of rider (non-preset) markers so the showcase demonstrates preset + rider rules together.
 const PRESET_DEMO_CUSTOM_ALERTS: Record<AlertPresetMetric, { id: string; threshold: number }[]> = {
   speed: [{ id: 'demo-speed', threshold: 45 }],
   duty: [{ id: 'demo-duty', threshold: 92 }],
@@ -151,7 +151,6 @@ export function AlertPresetControlShowcase() {
   const [level, setLevel] = useState<AlertPresetLevel>('normal')
   const [live, setLive] = useState(false)
   const [custom, setCustom] = useState(false)
-  const [editable, setEditable] = useState(true)
   const [disabled, setDisabled] = useState(false)
   const [match, setMatch] = useState(false)
   const [configOff, setConfigOff] = useState(false)
@@ -163,22 +162,22 @@ export function AlertPresetControlShowcase() {
   }
   const liveValue = useSharedValue<number | null>(null)
   const preview = useMemo(() => {
-    const manual: DraftAlertRule[] =
-      level === 'custom' || custom
-        ? PRESET_DEMO_CUSTOM_ALERTS[metric].map((rule) => ({
-            ...rule,
-            controlId: metric,
-            thresholdMax: null,
-            enabled: true,
-            soundType: metric === 'speed' || metric === 'duty' ? 'geiger:soft' : 'alert(3):warning',
-            repeatEverySeconds: null,
-            createdAt: 0,
-          }))
-        : []
+    const manual: DraftAlertRule[] = custom
+      ? PRESET_DEMO_CUSTOM_ALERTS[metric].map((rule) => ({
+          ...rule,
+          controlId: metric,
+          thresholdMax: null,
+          enabled: true,
+          soundType: metric === 'speed' || metric === 'duty' ? 'geiger:soft' : 'alert(3):warning',
+          repeatEverySeconds: null,
+          createdAt: 0,
+        }))
+      : []
     const fixture = match && level === 'normal' ? MATCHED_NORMAL_FIXTURES[metric] : undefined
     if (fixture)
       return {
         rules: resolvedAlertRules([...fixture, ...manual], configBases).map(toTestRule),
+        presetRules: resolvedAlertRules(fixture, configBases).map(toTestRule),
         error: null,
       }
     return draftAlertPreview(
@@ -215,8 +214,7 @@ export function AlertPresetControlShowcase() {
             onSelect={(v) => setMetric(v as AlertPresetMetric)}
           />
           <ToggleRow label="live session" value={live} onToggle={setLive} />
-          <ToggleRow label="custom markers" value={custom} onToggle={setCustom} />
-          <ToggleRow label="editable" value={editable} onToggle={setEditable} />
+          <ToggleRow label="rider rules" value={custom} onToggle={setCustom} />
           <ToggleRow label="disabled" value={disabled} onToggle={setDisabled} />
           <ToggleRow label="saved config-match fixture" value={match} onToggle={setMatched} />
           <ToggleRow label="VESC protection off" value={configOff} onToggle={setConfigOff} />
@@ -250,9 +248,8 @@ export function AlertPresetControlShowcase() {
           geigerSound ??
           preview.rules.find((rule) => parseGeigerAlertSound(rule.soundType))?.soundType
         }
+        presetRules={preview.presetRules}
         onGeigerSoundChange={setGeigerSound}
-        onCustomize={editable ? () => setLevel('custom') : undefined}
-        onDiscardCustom={editable ? () => setLevel('normal') : undefined}
       />
     </ShowcaseCard>
   )

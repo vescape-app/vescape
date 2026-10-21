@@ -1,20 +1,18 @@
 import { expect, test } from 'bun:test'
 import { describeAlertRules, formatAlertPresetSummary, alertPresetState } from './alertPresets'
 
-test('stored spec reads as level and options; Off with rider rules is custom', () => {
-  expect(alertPresetState(undefined, false)).toEqual({
+test('stored spec reads as level and options', () => {
+  expect(alertPresetState(undefined)).toEqual({
     level: 'normal',
     geiger: null,
     match: false,
   })
-  expect(alertPresetState('preset(off):geiger=mid,match=on,future=1', false)).toEqual({
+  expect(alertPresetState('preset(off):geiger=mid,match=on,future=1')).toEqual({
     level: 'off',
     geiger: 'mid',
     match: true,
   })
-  expect(alertPresetState('preset(off)', true).level).toBe('custom')
-  expect(alertPresetState('preset(safe)', true).level).toBe('safe')
-  expect(alertPresetState('preset(louder):geiger=loud', false)).toEqual({
+  expect(alertPresetState('preset(louder):geiger=loud')).toEqual({
     level: 'off',
     geiger: null,
     match: false,

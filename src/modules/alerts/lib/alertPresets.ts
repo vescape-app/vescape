@@ -1,27 +1,16 @@
 import definitions from '@/../modules/vescape-core/shared/alert-preset-definitions.json'
 import { formatSpeedValue, speedUnit, type UnitSystem } from '@/helpers/units'
-import type {
-  AlertRule,
-  AlertTestRule,
-  AlertPresetLevel as StoredPresetLevel,
-  AlertPresetMetric,
-} from 'vescape-core'
+import type { AlertRule, AlertTestRule, AlertPresetLevel, AlertPresetMetric } from 'vescape-core'
 import {
   GEIGER_LEVELS,
   parseAlertPresetSpec,
   presetSpecOption,
   type GeigerLevel,
 } from '@/modules/alerts/lib/alertSoundString'
-export type { AlertPresetMetric } from 'vescape-core'
-
-/**
- * A metric's level as the setup UI shows it: a stored preset level, or `custom` — the preset Off
- * with the rider's own rules for the metric — until the metric screen drops it (#592).
- */
-export type AlertPresetLevel = StoredPresetLevel | 'custom'
+export type { AlertPresetLevel, AlertPresetMetric } from 'vescape-core'
 
 /** Native expands presets; JS reads each metric's stored spec and formats the expanded rules. */
-export const ALERT_PRESET_FALLBACK_LEVEL: StoredPresetLevel = 'normal'
+export const ALERT_PRESET_FALLBACK_LEVEL: AlertPresetLevel = 'normal'
 
 export type AlertRulePresentation = Pick<
   AlertTestRule,
@@ -109,7 +98,7 @@ export function describeAlertRules(
 /** Every metric that carries a preset, in the stable rider-facing order. */
 export const ALERT_PRESET_METRICS = Object.keys(definitions.metrics) as AlertPresetMetric[]
 
-const STORED_LEVELS: StoredPresetLevel[] = ['off', 'safe', 'normal', 'minimal']
+const STORED_LEVELS: AlertPresetLevel[] = ['off', 'safe', 'normal', 'minimal']
 
 /** Narrow a control id to the preset metric it names, or `null` when it has no presets. */
 export function asAlertPresetMetric(controlId: string | undefined): AlertPresetMetric | null {
@@ -141,17 +130,14 @@ export interface AlertPresetState {
 
 /**
  * Read a stored spec (`preset(normal)` when the Board has none). A level this app does not know
- * reads as Off, the way native expands it. Off with rider rules reads as `custom`.
+ * reads as Off, the way native expands it.
  */
-export function alertPresetState(
-  spec: string | undefined,
-  hasRiderRules: boolean,
-): AlertPresetState {
+export function alertPresetState(spec: string | undefined): AlertPresetState {
   const parsed = parseAlertPresetSpec(spec ?? `preset(${ALERT_PRESET_FALLBACK_LEVEL})`)
   const stored = STORED_LEVELS.find((level) => level === parsed?.level) ?? 'off'
   const geiger = parsed && presetSpecOption(parsed, 'geiger')
   return {
-    level: stored === 'off' && hasRiderRules ? 'custom' : stored,
+    level: stored,
     geiger: GEIGER_LEVELS.find((level) => level === geiger) ?? null,
     match: parsed != null && presetSpecOption(parsed, 'match') === 'on',
   }

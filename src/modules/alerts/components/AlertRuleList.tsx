@@ -78,7 +78,7 @@ export function AlertRuleList({
         />
       ))}
 
-      {controller.rules.length === 0 ? (
+      {controller.rules.length === 0 && !controller.metric ? (
         <Text style={styles.emptyHintText}>
           No alerts yet — get notified when this crosses a threshold
         </Text>

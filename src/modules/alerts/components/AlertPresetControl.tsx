@@ -3,14 +3,7 @@ import { useUnitSystem } from '@/hooks/useUnitSystem'
 import { speedFromKmh, speedUnit } from '@/helpers/units'
 import { type ReactNode, useEffect, useMemo } from 'react'
 import { Pressable, StyleSheet, View } from 'react-native'
-import {
-  PencilSimpleIcon,
-  SlidersHorizontalIcon,
-  SpeakerHighIcon,
-  StopIcon,
-  TrashIcon,
-  CheckIcon,
-} from 'phosphor-react-native'
+import { SpeakerHighIcon, StopIcon, CheckIcon } from 'phosphor-react-native'
 import type { AlertTestRule } from 'vescape-core'
 import Animated, {
   useAnimatedStyle,
@@ -19,7 +12,6 @@ import Animated, {
   type SharedValue,
 } from 'react-native-reanimated'
 
-import { IconButton } from '@/components/base/IconButton'
 import { Button } from '@/components/base/Button'
 import { Text } from '@/components/base/Text'
 import type { DualGaugeAlert } from '@/components/charts/gaugeAlert'
@@ -41,8 +33,9 @@ import { useResolvedAccentColors, useResolvedNeutralColors } from '@/hooks/useTh
 import { useAlertTest } from '@/modules/alerts/hooks/useAlertTest'
 import { PresetGeigerSound } from '@/modules/alerts/components/PresetGeigerSound'
 
-/** Controlled preset selection and gauge. The caller supplies one resolved rule snapshot for
- * markers, descriptions and the sound preview; saved Boards never regenerate rules here. */
+/** Controlled preset selection and gauge. The caller supplies one resolved rule snapshot (preset
+ * and rider rules) for markers and the sound preview, and the preset's own points for its
+ * description; saved Boards never regenerate rules here. */
 
 interface PresetGaugeDescriptor {
   color: ThemeColor
@@ -134,15 +127,12 @@ interface AlertPresetControlProps {
   hotRange?: PresetGaugeHotRange | null
   /** Blocks slider interaction and dims it (e.g. battery without a valid config). */
   disabled?: boolean
-  /** Exact visible rules to evaluate while the synthetic needle sweeps the gauge. */
+  /** Exact visible rules (preset and rider) to evaluate while the synthetic needle sweeps the gauge. */
   ruleSnapshot: AlertTestRule[]
+  /** The preset's own expanded points, which the description speaks for. */
+  presetRules: AlertTestRule[]
   /** Detail-screen Alerts heading, placed directly below the gauge. */
   controlsHeader?: ReactNode
-  /** Take ownership of this level's rules. Omitted where custom rules aren't offered (the gauge
-   * preview in board settings), which also hides the action button. */
-  onCustomize?: () => void
-  /** Give the metric back to the presets. Only reachable while `level` is `custom`. */
-  onDiscardCustom?: () => void
 }
 
 export function AlertPresetControl({
@@ -159,9 +149,8 @@ export function AlertPresetControl({
   hotRange,
   disabled,
   ruleSnapshot,
+  presetRules,
   controlsHeader,
-  onCustomize,
-  onDiscardCustom,
 }: AlertPresetControlProps) {
   const units = useUnitSystem()
   const { formatSpeedWithUnit } = useFormat()
@@ -198,8 +187,6 @@ export function AlertPresetControl({
   // A stable null placeholder so the gauge always has a SharedValue; the needle is hidden offline.
   const placeholder = useSharedValue<number | null>(null)
 
-  const isCustom = level === 'custom'
-  const editAction = isCustom ? onDiscardCustom : onCustomize
   const alertTest = useAlertTest({
     rules: ruleSnapshot,
     min: gauge.min,
@@ -210,13 +197,14 @@ export function AlertPresetControl({
   })
   const gaugeValue = alertTest.running ? alertTest.value : liveValue
   // Says what this level actually sounds like — the ramp is otherwise learned by riding it.
-  const description = isCustom
-    ? 'Your own rules — edit them below.'
-    : ruleSnapshot.length === 0
-      ? level === 'off'
-        ? 'No sound from this metric.'
+  const description =
+    presetRules.length > 0
+      ? describeRules(metric, presetRules)
+      : level === 'off'
+        ? ruleSnapshot.length === 0
+          ? 'No sound from this metric.'
+          : 'Preset off — only your own alerts below sound.'
         : null
-      : describeRules(metric, ruleSnapshot)
 
   return (
     <View style={styles.container}>
@@ -248,7 +236,7 @@ export function AlertPresetControl({
         />
       </View>
       {description ? <Text style={styles.description}>{description}</Text> : null}
-      {supportsBoardConfigMatch(metric) && !isCustom ? (
+      {supportsBoardConfigMatch(metric) ? (
         <BoardConfigMatchControl
           metric={metric}
           checked={matchBoardConfig?.[metric] === true}
@@ -256,24 +244,8 @@ export function AlertPresetControl({
           onChange={onMatchBoardConfigChange}
         />
       ) : null}
-      {isCustom ? null : (
-        <PresetGeigerSound soundType={geigerSound} onChange={onGeigerSoundChange} />
-      )}
-      <View style={styles.levelRow}>
-        {isCustom ? (
-          <CustomLabel />
-        ) : (
-          <LevelSlider metric={metric} value={level} onChange={onLevelChange} disabled={disabled} />
-        )}
-        {editAction && !disabled ? (
-          <IconButton
-            icon={isCustom ? TrashIcon : PencilSimpleIcon}
-            destructive={isCustom}
-            accessibilityLabel={isCustom ? 'Discard custom alerts' : 'Edit alerts'}
-            onPress={editAction}
-          />
-        ) : null}
-      </View>
+      <PresetGeigerSound soundType={geigerSound} onChange={onGeigerSoundChange} />
+      <LevelSlider metric={metric} value={level} onChange={onLevelChange} disabled={disabled} />
     </View>
   )
 }
@@ -349,20 +321,6 @@ function BoardConfigMatchControl({
   )
 }
 
-/**
- * Stands in for the level slider once the rider owns the metric's rules — there is no level.
- * Deliberately flat and unfilled: it is a status label, and anything pill-shaped in this row
- * reads as a button the rider then taps to no effect.
- */
-function CustomLabel() {
-  return (
-    <View style={styles.customLabel}>
-      <SlidersHorizontalIcon size={14} color={theme.neutral.textMuted} weight="bold" />
-      <Text style={styles.customLabelText}>Custom alerts</Text>
-    </View>
-  )
-}
-
 interface LevelTone {
   bg: string
   border: ThemeColor
@@ -398,7 +356,6 @@ function LevelSlider({ metric, value, onChange, disabled }: LevelSliderProps) {
     safe: accents.blue,
     normal: accents.green,
     minimal: accents.yellow,
-    custom: { bg: neutral.surface, border: neutral.border, color: neutral.textMuted },
   }
   const activeIndex = Math.max(0, ALL_LEVELS.indexOf(value))
   const tone = tones[value]
@@ -476,11 +433,6 @@ const styles = StyleSheet.create({
     fontSize: 12,
     lineHeight: 16,
   },
-  levelRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-  },
   matchRow: { flexDirection: 'row', alignItems: 'center', gap: 8, minHeight: 34 },
   matchRowDisabled: { opacity: 0.45 },
   checkbox: {
@@ -503,20 +455,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 10,
     flexShrink: 0,
   },
-  customLabel: {
-    flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    height: 38,
-  },
-  customLabelText: {
-    color: theme.neutral.textMuted,
-    fontSize: 13,
-    fontWeight: '700',
-  },
   slider: {
-    flex: 1,
     flexDirection: 'row',
     height: 38,
     borderRadius: 19,

@@ -14,7 +14,7 @@ export function draftAlertPreview(
   customRules: readonly DraftAlertRule[] = [],
 ): { rules: AlertTestRule[]; presetRules: AlertTestRule[]; error: string | null } {
   const manual = customRules.filter((rule) => rule.enabled).map(toTestRule)
-  if (level === 'custom' || level === 'off') return { rules: manual, presetRules: [], error: null }
+  if (level === 'off') return { rules: manual, presetRules: [], error: null }
   try {
     const presetRules = previewAlertPreset(
       metric,

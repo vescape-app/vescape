@@ -1,9 +1,8 @@
-import { type ReactNode, useMemo, useState } from 'react'
+import { type ReactNode, useMemo } from 'react'
 import { StyleSheet, View } from 'react-native'
 import type { SharedValue } from 'react-native-reanimated'
 
 import { Text } from '@/components/base/Text'
-import { ConfirmModal } from '@/components/modals/ConfirmModal'
 import { theme } from '@/constants/theme'
 import { deriveBatteryConfig } from '@/modules/battery/lib'
 import type { DerivedBatteryConfig } from '@/modules/battery/lib/types'
@@ -29,9 +28,9 @@ interface MetricAlertsProps {
 }
 
 /**
- * A control's whole alert setup: preset levels with their gauge, or — once the rider hits edit —
- * their own rules. One block, one source of truth per metric, used by `/control` details and by
- * the add-board wizard through their respective {@link MetricAlertsController}s.
+ * A control's whole alert setup: preset level with its gauge, then the rider's own rules and
+ * **+ Add alert**. Both fire together. One block, used by `/control` details and by the add-board
+ * wizard through their respective {@link MetricAlertsController}s.
  *
  * A `null` controller means no Board: Alert Rules are board-owned (#254), so instead of controls
  * that would silently write nowhere, the block explains that and offers the way forward.
@@ -43,8 +42,6 @@ export function MetricAlerts({
   hotRange,
   controlsHeader,
 }: MetricAlertsProps) {
-  const [confirmingDiscard, setConfirmingDiscard] = useState(false)
-
   const batteryConfig = useBatteryConfig(controller?.controlId)
 
   if (!controller) return <NoBoardNotice />
@@ -52,11 +49,10 @@ export function MetricAlerts({
   const { metric, level, hasBatteryConfig } = controller
   // Battery presets are SoC %-based — a hard block, not a prompt, without a valid battery config.
   const batteryBlocked = metric === 'battery' && !hasBatteryConfig
-  const isCustom = level === 'custom'
 
   return (
     <View style={styles.container}>
-      {metric ? (
+      {metric && level ? (
         <AlertPresetControl
           metric={metric}
           level={level}
@@ -71,14 +67,9 @@ export function MetricAlerts({
           hotRange={hotRange}
           disabled={batteryBlocked}
           ruleSnapshot={controller.ruleSnapshot}
+          presetRules={controller.presetRules}
           controlsHeader={controlsHeader}
-          onCustomize={controller.customize}
-          onDiscardCustom={() => setConfirmingDiscard(true)}
         />
-      ) : null}
-
-      {controller.error && !isCustom && metric ? (
-        <Text style={styles.error}>{controller.error}</Text>
       ) : null}
 
       {batteryBlocked ? (
@@ -88,26 +79,9 @@ export function MetricAlerts({
         </Text>
       ) : null}
 
-      {isCustom || !metric ? (
-        <View style={styles.rules}>
-          <AlertRuleList controller={controller} unit={unit} batteryConfig={batteryConfig} />
-        </View>
-      ) : null}
-
-      <ConfirmModal
-        visible={confirmingDiscard}
-        title="Discard custom alerts"
-        message={`Delete ${controller.rules.length} custom ${
-          controller.rules.length === 1 ? 'alert' : 'alerts'
-        } and return to presets?`}
-        confirmLabel="Discard"
-        destructive
-        onConfirm={() => {
-          controller.discardCustom()
-          setConfirmingDiscard(false)
-        }}
-        onCancel={() => setConfirmingDiscard(false)}
-      />
+      <View style={styles.rules}>
+        <AlertRuleList controller={controller} unit={unit} batteryConfig={batteryConfig} />
+      </View>
     </View>
   )
 }
@@ -136,7 +110,6 @@ const styles = StyleSheet.create({
   container: {
     gap: 10,
   },
-  error: { color: theme.status.error.color, fontSize: 12 },
   rules: {
     gap: 8,
   },

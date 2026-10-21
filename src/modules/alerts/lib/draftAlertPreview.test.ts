@@ -43,11 +43,9 @@ test('draft preview forwards native options and preserves returned thresholds wi
   })
 })
 
-test('custom and off drafts retain manual rules without requesting generated rules', () => {
+test('off drafts retain manual rules without requesting generated rules', () => {
   const spy = stubPreview()
-  for (const level of ['custom', 'off'] as const) {
-    expect(draftAlertPreview('speed', level, options, [manual]).rules).toHaveLength(1)
-  }
+  expect(draftAlertPreview('speed', 'off', options, [manual]).rules).toHaveLength(1)
   expect(spy).not.toHaveBeenCalled()
 })
 

@@ -50,18 +50,6 @@ beforeEach(async () => {
   getAlertRules.mockImplementation(async () => [])
 })
 
-const rule = (id: string, controlId: string): AlertRule => ({
-  boardId: BOARD_ID,
-  id,
-  controlId,
-  threshold: 80,
-  thresholdMax: 90,
-  enabled: true,
-  soundType: 'geiger:hard',
-  createdAt: 1,
-  repeatEverySeconds: null,
-})
-
 test('preset actions rewrite the row through one native intent and reload rules', async () => {
   const { useAlertPresetStore } = await setup()
   await useAlertPresetStore.getState().setLevel('speed', 'normal')
@@ -74,34 +62,6 @@ test('preset actions rewrite the row through one native intent and reload rules'
   ])
   expect(getAlertRules).toHaveBeenCalledTimes(3)
   expect(upsertAlertRule).not.toHaveBeenCalled()
-})
-
-test('custom copies the expanded points into rider rules and turns the preset Off', async () => {
-  const { useAlertPresetStore } = await setup()
-  const {
-    id: _id,
-    boardId: _board,
-    enabled: _enabled,
-    createdAt: _created,
-    ...point
-  } = rule('preset:duty:0', 'duty')
-  await useAlertPresetStore
-    .getState()
-    .setLevel('duty', 'custom', [{ id: 'preset:duty:0', ...point }])
-  expect(upsertAlertRule).toHaveBeenCalledTimes(1)
-  expect(upsertAlertRule.mock.calls[0][0].id.startsWith('preset:')).toBe(false)
-  expect(applyAlertPreset.mock.calls).toEqual([[BOARD_ID, 'duty', { level: 'off' }]])
-})
-
-test('discarding custom deletes only rider rules and returns to the default level', async () => {
-  const { useAlertPresetStore } = await setup([
-    rule('mine', 'duty'),
-    rule('preset:duty:0', 'duty'),
-    rule('other', 'speed'),
-  ])
-  await useAlertPresetStore.getState().discardCustom('duty')
-  expect(deleteAlertRule.mock.calls).toEqual([[BOARD_ID, 'mine']])
-  expect(applyAlertPreset.mock.calls).toEqual([[BOARD_ID, 'duty', { level: 'normal' }]])
 })
 
 test('failed native switch leaves the rendered selection and rules intact and reports the error', async () => {
