@@ -134,7 +134,9 @@ session (#576).
 
 ### Built-in packs
 
-Packs are generated and committed under `shared/alerts/packs/`. `bun run copy:shared` copies the
+Packs are committed under `shared/alerts/packs/`: effects packs are made by hand in a DAW (slots,
+format, `pack.json`, adding a pack, and the HEV/Clean sox recipes are in
+[`scripts/alert-packs/EFFECTS.md`](../scripts/alert-packs/EFFECTS.md)); voice packs are generated. `bun run copy:shared` copies the
 effects and voice packs, keeping their `<pack>/pack.json` layout, to Android `assets/alert-packs/` and to
 `modules/vescape-core/ios/alert-packs/`, which the podspec bundles as a folder in
 `VescapeCoreAssets.bundle`. Native reads each `pack.json` and decodes every slot of every effects
@@ -143,11 +145,10 @@ way and decoded per clip (see [Voice](#voice)).
 
 ```text
 scripts/alert-packs/
-  catalog.json          required + optional (with fallback) effect slots, voice keys + value type, value ranges
-  effects-<id>.json     segments per slot: sox synth tones or recorded `sources/` clips
-  sources/              recorded WAVs behind Retro and Simple (today's sounds)
+  EFFECTS.md            effects pack slots, format, and sox recipes (hand-made, not generated)
+  catalog.json          voice keys + value type, value ranges
   voice-<id>.json       Kokoro voice + speed, sox voice fx chain, unit words, lines per key
-  generate.ts           manifests → packs;  kokoro.py  TTS helper;  packs.ts  shared checks
+  generate.ts           voice manifests → packs;  kokoro.py  TTS helper;  packs.ts  shared checks
 shared/alerts/packs/
   effects-<id>/pack.json + <slot>.m4a            severity.*, optional cue.*, geiger.*
   voice-<id>/pack.json + lines/<key>.<start|end>.<i>.m4a + values/<type>/<n>.m4a
@@ -168,24 +169,24 @@ shared/alerts/packs/
   critical lines.
 - **Value clips**: one clip per number with its unit, spelled out (`minus five degrees.`):
   percent 0–100, degrees −30…300 (the clip says only "degrees", shared by °C and °F).
-- **Format**: AAC-LC in `.m4a`, mono 22 050 Hz, 40 kbit/s. Android `MediaCodec` and iOS
-  `AVAudioFile` both decode it; Ogg Opus has no iOS decoder. Native must drop the AAC encoder
-  priming (~1024 samples of leading silence) before joining clips. Intermediate WAVs are not kept.
+- **Format**: AAC-LC in `.m4a`, mono 22 050 Hz, 40 kbit/s, for both effects and voice. Android
+  `MediaCodec` and iOS `AVAudioFile` both decode it; Ogg Opus has no iOS decoder. Native must drop
+  the AAC encoder priming (~1024 samples of leading silence) before joining clips. Intermediate
+  WAVs are not kept.
 
-Regenerate on a Mac dev machine with sox, ffmpeg, and a Python that has `mlx_audio`:
+Regenerate voice packs on a Mac dev machine with sox, ffmpeg, and a Python that has `mlx_audio`:
 
 ```sh
-KOKORO_PYTHON=/path/to/venv/bin/python bun run alerts:packs            # all packs
+KOKORO_PYTHON=/path/to/venv/bin/python bun run alerts:packs            # all voice packs
 KOKORO_PYTHON=/path/to/venv/bin/python bun run alerts:packs voice-hev  # one manifest
 KOKORO_PYTHON=/path/to/venv/bin/python bun run alerts:packs --force    # re-synthesize every voice clip
 ```
 
 The generator validates the manifests against `catalog.json` before generating, builds into a
-`<pack>.staging` directory, and replaces the committed pack only after the result validates. `bun test scripts/alert-packs` fails when a committed pack misses a slot, a
+`<pack>.staging` directory, and replaces the committed pack only after the result validates. `bun test scripts/alert-packs` fails when a committed voice pack misses a
 key's generic line, a value clip, or a listed file. Kokoro is not bit-stable run to run, so a
 voice `pack.json` records a `sources` hash per clip (text, Kokoro settings, fx) and only clips whose
-hash changed are re-synthesized; effects encoding is bitexact, so an unchanged manifest regenerates
-identical files. Kokoro mispronounces "error"; HEV wording says "failure".
+hash changed are re-synthesized. Kokoro mispronounces "error"; HEV wording says "failure".
 
 ## Per-board ownership
 

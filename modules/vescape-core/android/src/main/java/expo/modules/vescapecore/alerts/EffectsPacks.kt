@@ -6,7 +6,7 @@ import org.json.JSONObject
 
 /**
  * Built-in effects packs (`shared/alerts/packs/effects-<id>`): every pack fills the required slots
- * of `scripts/alert-packs/catalog.json` (positive/info/warning/critical sounds, geiger ticks) and
+ * of `scripts/alert-packs/EFFECTS.md` (positive/info/warning/critical sounds, geiger ticks) and
  * may fill the optional cue slots ([OPTIONAL_SLOT_FALLBACK]). The `soundPack`
  * setting names one of them; My sounds overrides ([SOUND_OVERRIDE_SLOTS]) win over its slots.
  *
@@ -24,7 +24,6 @@ internal fun effectsPackId(pack: String): String = if (pack in EFFECTS_PACK_IDS)
  * Optional effects slot → the required slot a pack that leaves it out plays instead.
  *
  * @parity /modules/vescape-core/ios/alerts/EffectsPacks.swift `optionalSlotFallback`
- * @parity /scripts/alert-packs/catalog.json `optionalEffectSlots`
  */
 internal val OPTIONAL_SLOT_FALLBACK = mapOf(
     "cue.on" to "severity.positive",

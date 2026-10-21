@@ -1,6 +1,6 @@
 /**
- * Regenerates the built-in effects and voice packs under `shared/alerts/packs/` from the manifests
- * in this directory. Dev-machine only: needs sox, ffmpeg, and a Python with mlx_audio (Kokoro)
+ * Regenerates the built-in voice packs under `shared/alerts/packs/` from the manifests
+ * in this directory (effects packs are made in a DAW, see EFFECTS.md). Dev-machine only: needs sox, ffmpeg, and a Python with mlx_audio (Kokoro)
  * as `KOKORO_PYTHON` (default `python3`). See docs/alerts.md.
  *
  *   bun run alerts:packs            all packs
@@ -23,15 +23,11 @@ import { tmpdir } from 'os'
 import { join } from 'path'
 import {
   CLIP_EXTENSION,
-  type EffectsManifest,
-  type EffectsPack,
   loadCatalog,
   loadManifest,
   MANIFESTS,
   MANIFEST_DIR,
   packDir,
-  type Segment,
-  SOURCES_DIR,
   validateManifest,
   validatePack,
   valueRange,
@@ -65,55 +61,6 @@ function run(command: string, args: string[], input?: string) {
   }
 }
 
-const silence = (out: string, seconds: number) =>
-  run('sox', [
-    '-D',
-    '-R',
-    '-n',
-    '-r',
-    RATE,
-    '-b',
-    '16',
-    '-c',
-    '1',
-    out,
-    'trim',
-    '0',
-    String(seconds),
-  ])
-
-function tone(out: string, segment: Segment) {
-  const [fadeIn, fadeOut] = segment.fade ?? [0.005, 0.02]
-  const dur = segment.dur ?? 0.1
-  run('sox', [
-    '-D',
-    '-R',
-    '-n',
-    '-r',
-    RATE,
-    '-b',
-    '16',
-    '-c',
-    '1',
-    out,
-    'synth',
-    String(dur),
-    ...segment.synth!.split(' '),
-    ...(segment.fx ?? []),
-    'fade',
-    't',
-    String(fadeIn),
-    String(dur),
-    String(fadeOut),
-    'vol',
-    String(segment.vol ?? 0.5),
-  ])
-}
-
-/** A recorded clip resampled to the pack format. */
-const recorded = (out: string, file: string) =>
-  run('sox', ['-D', '-R', join(SOURCES_DIR, file), '-r', RATE, '-b', '16', '-c', '1', out])
-
 /** Fixed bitrate and bitexact muxing keep re-encoding byte-identical. */
 const encode = (wav: string, out: string) =>
   run('ffmpeg', [
@@ -134,41 +81,6 @@ const encode = (wav: string, out: string) =>
     '+bitexact',
     out,
   ])
-
-function generateEffects(manifest: EffectsManifest, dir: string, tmp: string) {
-  const slots: Record<string, string> = {}
-  for (const [slot, segments] of Object.entries(manifest.sounds)) {
-    const parts: string[] = []
-    const add = (make: (out: string) => void) => {
-      const out = join(tmp, `${parts.length}.wav`)
-      make(out)
-      parts.push(out)
-    }
-    for (const segment of segments) {
-      const beep = manifest.beep
-      if (segment.gap) add((out) => silence(out, segment.gap!))
-      else if (segment.file) add((out) => recorded(out, segment.file!))
-      else if (segment.beep && beep) {
-        for (let i = 0; i < segment.beep; i++) {
-          if (i) add((out) => silence(out, beep.gap))
-          add((out) => tone(out, beep))
-        }
-      } else add((out) => tone(out, segment))
-    }
-    const wav = join(tmp, 'slot.wav')
-    run('sox', ['-D', '-R', ...parts, wav])
-    slots[slot] = `${slot}${CLIP_EXTENSION}`
-    encode(wav, join(dir, slots[slot]))
-  }
-  const pack: EffectsPack = {
-    id: manifest.id,
-    kind: 'effects',
-    voice: manifest.voice,
-    format: FORMAT,
-    slots,
-  }
-  return pack
-}
 
 function generateVoice(manifest: VoiceManifest, dir: string, tmp: string) {
   const catalog = loadCatalog()
@@ -276,10 +188,7 @@ for (const manifest of manifests) {
     rmSync(staging, { recursive: true, force: true })
     mkdirSync(staging, { recursive: true })
     console.log(`${manifest.kind}-${manifest.id}…`)
-    const pack =
-      manifest.kind === 'effects'
-        ? generateEffects(manifest, staging, tmp)
-        : generateVoice(manifest, staging, tmp)
+    const pack = generateVoice(manifest, staging, tmp)
     writeFileSync(join(staging, 'pack.json'), `${JSON.stringify(pack, null, 2)}\n`)
     const errors = validatePack(catalog, staging)
     if (errors.length) throw new Error(errors.join('\n'))

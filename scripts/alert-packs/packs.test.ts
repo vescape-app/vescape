@@ -20,14 +20,6 @@ describe('alert packs', () => {
     expect(validatePack(catalog, packDir(manifest))).toEqual([])
   })
 
-  test('effects packs never contain voice', () => {
-    for (const name of MANIFESTS.filter((name) => name.startsWith('effects-'))) {
-      const pack = JSON.parse(readFileSync(join(packDir(loadManifest(name)), 'pack.json'), 'utf8'))
-      const known = [...catalog.effectSlots, ...Object.keys(catalog.optionalEffectSlots)]
-      expect(Object.keys(pack.slots).filter((slot) => !known.includes(slot))).toEqual([])
-    }
-  })
-
   test('a pack missing a slot, line, or value fails the check', () => {
     const dir = mkdtempSync(join(tmpdir(), 'alert-pack-test-'))
     try {
@@ -44,8 +36,8 @@ describe('alert packs', () => {
         'voice-hev: missing file lines/gone.m4a',
       ])
 
-      const effects = { ...loadManifest('effects-hev'), sounds: {} }
-      expect(validateManifest(catalog, effects)).toContain('effects-hev: missing slot geiger.hard')
+      const voice = { ...loadManifest('voice-hev'), lines: {} }
+      expect(validateManifest(catalog, voice)).toContain('voice-hev: missing line link.lost')
     } finally {
       rmSync(dir, { recursive: true, force: true })
     }

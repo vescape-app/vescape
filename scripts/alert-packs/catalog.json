@@ -1,21 +1,5 @@
 {
   "severities": ["info", "warning", "critical"],
-  "effectSlots": [
-    "severity.positive",
-    "severity.info",
-    "severity.warning",
-    "severity.critical",
-    "geiger.soft",
-    "geiger.mid",
-    "geiger.hard"
-  ],
-  "optionalEffectSlots": {
-    "cue.on": "severity.positive",
-    "cue.off": "severity.warning",
-    "cue.ride.end": "severity.info",
-    "cue.groupRide.created": "severity.positive",
-    "cue.groupRide.joined": "severity.positive"
-  },
   "voiceKeys": {
     "battery": "percent",
     "motorTemp": "degrees",

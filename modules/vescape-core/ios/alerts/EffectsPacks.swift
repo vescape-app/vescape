@@ -1,7 +1,7 @@
 import Foundation
 
 /// Built-in effects packs (`shared/alerts/packs/effects-<id>`): every pack fills the required slots
-/// of `scripts/alert-packs/catalog.json` (positive/info/warning/critical sounds, geiger ticks) and
+/// of `scripts/alert-packs/EFFECTS.md` (positive/info/warning/critical sounds, geiger ticks) and
 /// may fill the optional cue slots (`optionalSlotFallback`). The `soundPack`
 /// setting names one of them; My sounds overrides (`soundOverrideSlots`) win over its slots.
 ///
@@ -18,7 +18,6 @@ internal func effectsPackId(_ pack: String) -> String {
 
 /// Optional effects slot → the required slot a pack that leaves it out plays instead.
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/alerts/EffectsPacks.kt `OPTIONAL_SLOT_FALLBACK`
-/// @parity /scripts/alert-packs/catalog.json `optionalEffectSlots`
 internal let optionalSlotFallback = [
   "cue.on": "severity.positive",
   "cue.off": "severity.warning",
