@@ -47,10 +47,10 @@ internal class AlertCoordinator(
             .asSequence()
             .filter { it.thresholdMax != null }
             .mapTo(mutableSetOf()) { it.id }
-        for (ruleId in activeGeigerRuleIds - geigerRuleIds) {
-            feedback().stopGeiger(ruleId)
-        }
-        activeGeigerRuleIds = activeGeigerRuleIds.intersect(geigerRuleIds)
+        // A changed pin restarts every loop: a running (sustained) one would keep its old pack.
+        val stale = if (presetPins != pins) activeGeigerRuleIds else activeGeigerRuleIds - geigerRuleIds
+        for (ruleId in stale) feedback().stopGeiger(ruleId)
+        activeGeigerRuleIds = activeGeigerRuleIds.intersect(geigerRuleIds) - stale
         rules = value
         pins = presetPins
         engine.resetAlertState()

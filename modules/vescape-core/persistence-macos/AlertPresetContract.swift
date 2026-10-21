@@ -140,6 +140,11 @@ func runAlertPresetContract() throws {
   try require(try pins()["battery"] == nil, "Default clears the pin")
   try BoardSettingsPersistence(writer: queue).upsertBoard(board, settings: [setting("alertPresetSound", "{}")], deletedKeys: ["alertPresetSound"])
   try require((try pins()["speed"] as? [String: Any])?["geiger"] as? String == "geiger:mid", "board upsert keeps native sound setting")
+  try queue.write { try $0.execute(sql: "UPDATE alerts SET sound_type = 'geiger:soft' WHERE board_id = 'board' AND control_id = 'duty' AND source = 'preset'") }
+  try apply("duty", "select", "off")
+  try apply("duty", "select", "normal")
+  try require(try sound("duty") == "geiger:soft", "legacy rule-only geiger choice survives Off")
+  try require((try pins()["speed"] as? [String: Any])?["geiger"] as? String == "geiger:mid", "other presets keep their choice")
   failed = false
   do { try apply("battery", "voice-pack", "../x") } catch { failed = true }
   try require(failed, "malformed pack id rejected")

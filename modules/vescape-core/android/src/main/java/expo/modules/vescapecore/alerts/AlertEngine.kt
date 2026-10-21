@@ -748,7 +748,8 @@ internal class AlertFeedback(
             val runnable = object : Runnable {
                 override fun run() {
                     if (released || geigerLoops[ruleId] !== loop) return
-                    playSlot(tickSlot, my = my, pack = pack)
+                    // Resolved per tick, so an app-wide pack switch mid-loop takes effect.
+                    playSlot(tickSlot, my = my, pack = effectsPack(pin))
                     handler.postDelayed(this, geigerIntervalMs(loop.rangeDepth))
                 }
             }

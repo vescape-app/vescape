@@ -83,11 +83,14 @@ final class AlertPresetPersistence {
   }
 
   static func regenerate(_ db: Database, boardId: String, metric: String? = nil) throws {
-    let values = try settings(db, boardId)
-    let selection = object(values["alertPreset"])
     for metric in metric.map({ [$0] }) ?? metrics {
-      let pinned = (presetSound(values, metric)["geiger"] as? String).flatMap { isGeigerGrammar($0) ? $0 : nil }
-      let chosen = try pinned ?? chosenGeigerSound(db, boardId: boardId, metric: metric)
+      // Read per metric: moving a legacy geiger choice below rewrites the sound setting.
+      let values = try settings(db, boardId)
+      let selection = object(values["alertPreset"])
+      let stored = (presetSound(values, metric)["geiger"] as? String).flatMap { isGeigerGrammar($0) ? $0 : nil }
+      let chosen = try stored ?? chosenGeigerSound(db, boardId: boardId, metric: metric)
+      // A choice only on legacy rules moves into the setting before the rules go (Off keeps it).
+      if stored == nil, let chosen { try saveSound(db, boardId, values, metric, "geiger", chosen) }
       try db.execute(sql: "DELETE FROM alerts WHERE board_id = ? AND control_id = ? AND source = 'preset'", arguments: [boardId, metric])
       for var rule in try generate(db, boardId: boardId, metric: metric, level: selection[metric] as? String ?? "off", settings: values) {
         if let chosen, isGeigerGrammar(rule.soundType) { rule.soundType = chosen }

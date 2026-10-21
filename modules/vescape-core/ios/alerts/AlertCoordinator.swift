@@ -51,10 +51,10 @@ internal final class AlertCoordinator {
 
   func replaceRules(_ value: [AlertRule], presetPins: [String: PresetSoundPin] = [:]) {
     let geigerRuleIds = Set(value.compactMap { $0.thresholdMax == nil ? nil : $0.id })
-    for ruleId in activeGeigerRuleIds.subtracting(geigerRuleIds) {
-      player.stopGeiger(ruleId: ruleId)
-    }
-    activeGeigerRuleIds.formIntersection(geigerRuleIds)
+    // A changed pin restarts every loop: a running (sustained) one would keep its old pack.
+    let stale = presetPins != pins ? activeGeigerRuleIds : activeGeigerRuleIds.subtracting(geigerRuleIds)
+    for ruleId in stale { player.stopGeiger(ruleId: ruleId) }
+    activeGeigerRuleIds = activeGeigerRuleIds.intersection(geigerRuleIds).subtracting(stale)
     rules = value
     pins = presetPins
     engine.resetAlertState()

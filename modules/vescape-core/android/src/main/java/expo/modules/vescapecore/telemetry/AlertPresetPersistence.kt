@@ -69,11 +69,15 @@ internal object AlertPresetPersistence {
   }
 
   suspend fun regenerate(dao: TelemetryDao, boardId: String, onlyMetric: String? = null) {
-    val settings = dao.getBoardSettings(boardId).associate { it.key to decodeSettingJson(it.valueJson) }
-    val selection = json(settings["alertPreset"])
     for (metric in onlyMetric?.let { listOf(it) } ?: metrics) {
+      // Read per metric: moving a legacy geiger choice below rewrites the sound setting.
+      val settings = dao.getBoardSettings(boardId).associate { it.key to decodeSettingJson(it.valueJson) }
+      val selection = json(settings["alertPreset"])
       val saved = dao.getAlertRules(boardId).filter { it.controlId == metric && it.source == "preset" }
-      val chosen = presetSound(settings, metric).optString("geiger").takeIf(::isGeigerGrammar) ?: chosenGeigerSound(saved)
+      val stored = presetSound(settings, metric).optString("geiger").takeIf(::isGeigerGrammar)
+      val chosen = stored ?: chosenGeigerSound(saved)
+      // A choice only on legacy rules moves into the setting before the rules go (Off keeps it).
+      if (stored == null && chosen != null) saveSound(dao, boardId, settings, metric, "geiger", chosen, System.currentTimeMillis())
       saved.forEach { dao.deleteAlertRule(boardId, it.id) }
       generate(dao, boardId, metric, selection.optString(metric, "off"), settings)
         .map { rule -> if (chosen != null && isGeigerGrammar(rule.soundType)) rule.copy(soundType = chosen) else rule }

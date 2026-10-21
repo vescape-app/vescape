@@ -187,6 +187,11 @@ class AlertPresetPersistenceHostTest {
     assertFalse(pins()!!.has("battery"))
     dao.upsertBoardWithSettings(board, listOf(setting("alertPresetSound", "{}")), listOf("alertPresetSound"))
     assertEquals("geiger:mid", pins()!!.getJSONObject("speed").getString("geiger"))
+    dao.upsertAlertRule(dao.getAlertRules(board.id).single { it.controlId == "duty" && it.source == "preset" }.copy(soundType = "geiger:soft"))
+    dao.applyAlertPreset(board.id, "duty", "select", "off", null)
+    dao.applyAlertPreset(board.id, "duty", "select", "normal", null)
+    assertEquals("geiger:soft", sound("duty"))
+    assertEquals("geiger:mid", pins()!!.getJSONObject("speed").getString("geiger"))
     rejected = false
     try { dao.applyAlertPreset(board.id, "battery", "voice-pack", "../x", null) } catch (_: IllegalArgumentException) { rejected = true }
     assertTrue(rejected)
