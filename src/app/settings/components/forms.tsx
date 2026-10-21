@@ -100,11 +100,25 @@ function SoundPickerShowcase() {
     ],
     [],
   )
+  const mockMySounds = useMemo<AlertSound[]>(
+    () =>
+      ['Horn', 'Air raid siren', 'Bell', 'Duck'].map((name, index) => ({
+        name,
+        uri: `alert:my:${index}`,
+        category: 'single',
+      })),
+    [],
+  )
   const [selected, setSelected] = useState('chime')
 
   return (
     <ShowcaseCard name="SoundPicker">
-      <SoundPicker presets={mockPresets} selected={selected} onSelect={setSelected} />
+      <SoundPicker
+        presets={mockPresets}
+        mySounds={mockMySounds}
+        selected={selected}
+        onSelect={setSelected}
+      />
     </ShowcaseCard>
   )
 }

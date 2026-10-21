@@ -27,7 +27,7 @@ import {
   getEditFormDefaults,
   getNewFormDefaults,
   getPresetsForCategory,
-  pickerSounds,
+  mySoundOptions,
 } from '@/modules/alerts/lib/alertFormDefaults'
 import { useMySounds } from '@/modules/alerts/hooks/useMySounds'
 import {
@@ -101,6 +101,7 @@ export function AlertFormSheet({
   const geigerDefaultSpec: AlertSpec = geigerPresets[0]?.uri ?? 'geiger:soft'
 
   const [tab, setTab] = useState<AlertTab>('single')
+  const soundCategory = tab === 'geiger' ? 'geiger' : 'single'
   const [threshold, setThreshold] = useState(dialConfig.min)
   const [thresholdMax, setThresholdMax] = useState(dialConfig.max)
   const [spec, setSpec] = useState<AlertSpec>(defaultSpec)
@@ -254,19 +255,6 @@ export function AlertFormSheet({
           </View>
         )}
 
-        {tab === 'single' && (
-          <View style={styles.cardField}>
-            <Text style={styles.fieldLabel}>BEEPS</Text>
-            <Stepper
-              value={beepCount}
-              min={ALERT_BEEP_COUNT_RANGE.min}
-              max={ALERT_BEEP_COUNT_RANGE.max}
-              onChange={setBeepCount}
-              style={styles.beepStepper}
-            />
-          </View>
-        )}
-
         {tab === 'message' ? (
           <View style={styles.cardField}>
             <AlertMessageField
@@ -287,9 +275,23 @@ export function AlertFormSheet({
         ) : (
           <View style={styles.cardField}>
             <SoundPicker
-              presets={pickerSounds(tab === 'single' ? 'single' : 'geiger', library)}
+              presets={getPresetsForCategory(soundCategory)}
+              mySounds={mySoundOptions(soundCategory, library)}
               selected={spec}
               onSelect={setSpec}
+            />
+          </View>
+        )}
+
+        {tab === 'single' && (
+          <View style={styles.cardField}>
+            <Text style={styles.fieldLabel}>REPEAT SOUND</Text>
+            <Stepper
+              value={beepCount}
+              min={ALERT_BEEP_COUNT_RANGE.min}
+              max={ALERT_BEEP_COUNT_RANGE.max}
+              onChange={setBeepCount}
+              style={styles.beepStepper}
             />
           </View>
         )}

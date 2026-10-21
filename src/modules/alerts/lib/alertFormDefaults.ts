@@ -35,16 +35,13 @@ export function getPresetsForCategory(category: AlertSoundCategory): AlertSound[
   return getAlertSounds().filter((p) => p.category === category)
 }
 
-/** Picker options of `category`: the pack sounds, then My sounds as `alert:my:<id>` / `geiger:my:<id>`. */
-export function pickerSounds(
+/** My sounds as `category` picker options: `alert:my:<id>` / `geiger:my:<id>`. */
+export function mySoundOptions(
   category: AlertSoundCategory,
   mySounds: { id: string; name: string }[],
 ): AlertSound[] {
   const kind = category === 'single' ? 'alert' : 'geiger'
-  return [
-    ...getPresetsForCategory(category),
-    ...mySounds.map((sound) => ({ name: sound.name, uri: `${kind}:my:${sound.id}`, category })),
-  ]
+  return mySounds.map((sound) => ({ name: sound.name, uri: `${kind}:my:${sound.id}`, category }))
 }
 
 export function getDefaultMessageTemplate(

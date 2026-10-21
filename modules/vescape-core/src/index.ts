@@ -745,8 +745,8 @@ export const ALERT_REPEAT_MIN_SECONDS = 3
  */
 export const ALERT_BEEP_COUNT_RANGE = { min: 1, max: 5 } as const
 
-/** Count a new alert rule starts with — matches the sound before counts were configurable. */
-export const ALERT_BEEP_COUNT_DEFAULT = 3
+/** Count a new alert rule starts with — one play, the same as a sound string without a count. */
+export const ALERT_BEEP_COUNT_DEFAULT = 1
 
 export type PrivacyZonePreset = 'home' | 'work' | 'custom'
 
