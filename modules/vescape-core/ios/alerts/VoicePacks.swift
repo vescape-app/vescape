@@ -38,9 +38,9 @@ internal let voiceKeyValueTypes: [String: String?] = [
   "motorTemp": "degrees",
   "controllerTemp": "degrees",
   "speed": "number",
-  "duty": "number",
-  "link.connected": nil,
-  "link.lost": nil,
+  "dutyCycle": "number",
+  "boardConnection.connected": nil,
+  "boardConnection.lost": nil,
   "system.error": nil,
   "groupRide.created": nil,
   "groupRide.joined": nil,
@@ -60,7 +60,7 @@ internal func voiceKey(_ controlId: String) -> String? {
   case "motor-temp": return "motorTemp"
   case "controller-temp": return "controllerTemp"
   case "speed": return "speed"
-  case "duty": return "duty"
+  case "duty": return "dutyCycle"
   default: return nil
   }
 }

@@ -73,8 +73,8 @@ internal fun appCueSlot(cue: String): String? = when (cue) {
  * @parity /modules/vescape-core/ios/alerts/EffectsPacks.swift `appCueVoiceKey`
  */
 internal fun appCueVoiceKey(cue: String): String? = when (cue) {
-    "on" -> "link.connected"
-    "off" -> "link.lost"
+    "on" -> "boardConnection.connected"
+    "off" -> "boardConnection.lost"
     "error" -> "system.error"
     "ride.end" -> "ride.end"
     in GROUP_RIDE_CUES -> cue

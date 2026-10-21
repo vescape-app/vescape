@@ -61,9 +61,9 @@ internal val VOICE_KEY_VALUE_TYPES: Map<String, String?> = mapOf(
     "motorTemp" to "degrees",
     "controllerTemp" to "degrees",
     "speed" to "number",
-    "duty" to "number",
-    "link.connected" to null,
-    "link.lost" to null,
+    "dutyCycle" to "number",
+    "boardConnection.connected" to null,
+    "boardConnection.lost" to null,
     "system.error" to null,
     "groupRide.created" to null,
     "groupRide.joined" to null,
@@ -85,7 +85,7 @@ internal fun voiceKey(controlId: String): String? = when (controlId) {
     "motor-temp" -> "motorTemp"
     "controller-temp" -> "controllerTemp"
     "speed" -> "speed"
-    "duty" -> "duty"
+    "duty" -> "dutyCycle"
     else -> null
 }
 

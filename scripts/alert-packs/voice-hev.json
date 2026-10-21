@@ -17,7 +17,7 @@
         "start": ["Speed...", "Velocity..."]
       }
     },
-    "duty": {
+    "dutyCycle": {
       "start": ["Duty..."],
       "full": {
         "start": ["Duty...", "Duty cycle..."]
@@ -95,7 +95,7 @@
         "endChance": 0.2
       }
     },
-    "link.connected": {
+    "boardConnection.connected": {
       "start": ["Board online."],
       "full": {
         "start": [
@@ -105,7 +105,7 @@
         ]
       }
     },
-    "link.lost": {
+    "boardConnection.lost": {
       "start": ["Warning. Board link lost."],
       "full": {
         "start": ["Warning. Board link lost.", "Warning. Board signal lost."]

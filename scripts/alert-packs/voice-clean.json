@@ -17,7 +17,7 @@
         "start": ["Speed...", "Speed check..."]
       }
     },
-    "duty": {
+    "dutyCycle": {
       "start": ["Duty..."],
       "full": {
         "start": ["Duty...", "Duty cycle..."]
@@ -91,13 +91,13 @@
         "endChance": 0.2
       }
     },
-    "link.connected": {
+    "boardConnection.connected": {
       "start": ["Board connected."],
       "full": {
         "start": ["Board connected.", "Board is connected.", "Board connected. Have a good ride."]
       }
     },
-    "link.lost": {
+    "boardConnection.lost": {
       "start": ["Board disconnected."],
       "full": {
         "start": ["Board disconnected.", "Lost the board."]

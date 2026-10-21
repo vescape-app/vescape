@@ -9,10 +9,10 @@
         "start": ["lines/speed.full.start.0.m4a", "lines/speed.full.start.1.m4a"]
       }
     },
-    "duty": {
-      "start": ["lines/duty.start.0.m4a"],
+    "dutyCycle": {
+      "start": ["lines/dutyCycle.start.0.m4a"],
       "full": {
-        "start": ["lines/duty.full.start.0.m4a", "lines/duty.full.start.1.m4a"]
+        "start": ["lines/dutyCycle.full.start.0.m4a", "lines/dutyCycle.full.start.1.m4a"]
       }
     },
     "battery": {
@@ -107,20 +107,23 @@
         "endChance": 0.2
       }
     },
-    "link.connected": {
-      "start": ["lines/link.connected.start.0.m4a"],
+    "boardConnection.connected": {
+      "start": ["lines/boardConnection.connected.start.0.m4a"],
       "full": {
         "start": [
-          "lines/link.connected.full.start.0.m4a",
-          "lines/link.connected.full.start.1.m4a",
-          "lines/link.connected.full.start.2.m4a"
+          "lines/boardConnection.connected.full.start.0.m4a",
+          "lines/boardConnection.connected.full.start.1.m4a",
+          "lines/boardConnection.connected.full.start.2.m4a"
         ]
       }
     },
-    "link.lost": {
-      "start": ["lines/link.lost.start.0.m4a"],
+    "boardConnection.lost": {
+      "start": ["lines/boardConnection.lost.start.0.m4a"],
       "full": {
-        "start": ["lines/link.lost.full.start.0.m4a", "lines/link.lost.full.start.1.m4a"]
+        "start": [
+          "lines/boardConnection.lost.full.start.0.m4a",
+          "lines/boardConnection.lost.full.start.1.m4a"
+        ]
       }
     },
     "system.error": {
@@ -736,9 +739,9 @@
     "lines/speed.full.start.0.m4a": "c7b183d10cfed3aa",
     "lines/speed.full.start.1.m4a": "060e3ee77da714bd",
     "lines/speed.start.0.m4a": "c7b183d10cfed3aa",
-    "lines/duty.full.start.0.m4a": "f79bcad652e0fe84",
-    "lines/duty.full.start.1.m4a": "9592655e990e4b48",
-    "lines/duty.start.0.m4a": "f79bcad652e0fe84",
+    "lines/dutyCycle.full.start.0.m4a": "f79bcad652e0fe84",
+    "lines/dutyCycle.full.start.1.m4a": "9592655e990e4b48",
+    "lines/dutyCycle.start.0.m4a": "f79bcad652e0fe84",
     "lines/battery.full.start.0.m4a": "19eeaab5065c1cc8",
     "lines/battery.full.start.1.m4a": "6269a3a4d2702724",
     "lines/battery.start.0.m4a": "19eeaab5065c1cc8",
@@ -777,13 +780,13 @@
     "lines/controllerTemp.critical.full.end.0.m4a": "ce078e7b47bd0d51",
     "lines/controllerTemp.critical.full.end.1.m4a": "548a1b1427f29f4e",
     "lines/controllerTemp.critical.start.0.m4a": "1ecdc5a0c2541d0c",
-    "lines/link.connected.full.start.0.m4a": "26383b1654d9921b",
-    "lines/link.connected.full.start.1.m4a": "e8a4d04aec71e465",
-    "lines/link.connected.full.start.2.m4a": "83c70a1c78e15e83",
-    "lines/link.connected.start.0.m4a": "26383b1654d9921b",
-    "lines/link.lost.full.start.0.m4a": "2f7ba52be6148c31",
-    "lines/link.lost.full.start.1.m4a": "41d56275f6c49e73",
-    "lines/link.lost.start.0.m4a": "2f7ba52be6148c31",
+    "lines/boardConnection.connected.full.start.0.m4a": "26383b1654d9921b",
+    "lines/boardConnection.connected.full.start.1.m4a": "e8a4d04aec71e465",
+    "lines/boardConnection.connected.full.start.2.m4a": "83c70a1c78e15e83",
+    "lines/boardConnection.connected.start.0.m4a": "26383b1654d9921b",
+    "lines/boardConnection.lost.full.start.0.m4a": "2f7ba52be6148c31",
+    "lines/boardConnection.lost.full.start.1.m4a": "41d56275f6c49e73",
+    "lines/boardConnection.lost.start.0.m4a": "2f7ba52be6148c31",
     "lines/system.error.full.start.0.m4a": "ba3427190f57e5c7",
     "lines/system.error.full.start.1.m4a": "36566757bc80f866",
     "lines/system.error.start.0.m4a": "ba3427190f57e5c7",

@@ -69,8 +69,8 @@ internal func appCueSlot(_ cue: String) -> String? {
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/alerts/EffectsPacks.kt `appCueVoiceKey`
 internal func appCueVoiceKey(_ cue: String) -> String? {
   switch cue {
-  case "on": return "link.connected"
-  case "off": return "link.lost"
+  case "on": return "boardConnection.connected"
+  case "off": return "boardConnection.lost"
   case "error": return "system.error"
   case "ride.end": return "ride.end"
   default: return groupRideCues.contains(cue) ? cue : nil

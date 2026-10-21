@@ -99,7 +99,7 @@ export const VOICE_KEY_BY_CONTROL: Partial<Record<string, string>> = {
   'motor-temp': 'motorTemp',
   'controller-temp': 'controllerTemp',
   speed: 'speed',
-  duty: 'duty',
+  duty: 'dutyCycle',
 }
 
 /**

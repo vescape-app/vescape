@@ -90,7 +90,7 @@ Speech comes from a second app-wide choice next to Sound effects:
   Minimal the shortest wording ("Motor… 95 degrees"), Standard with severity ("Motor overheating…
   95 degrees"). Full speaks Standard's lines with more variety and an occasional ending, and also
   speaks app cues and Group Ride events:
-  the cue's effect, then its voice line (`on` → `link.connected`, `off` → `link.lost`, `error` →
+  the cue's effect, then its voice line (`on` → `boardConnection.connected`, `off` → `boardConnection.lost`, `error` →
   `system.error`, `ride.end`, and each `groupRide.*` cue under its own key). Off, Minimal and
   Standard play their effect only; settings previews of a pack's cues never speak. Custom rules
   speak whatever the level, with its wording (Off reads as Standard).
@@ -110,8 +110,8 @@ voice are decoded in the background when sound settings apply; value clips decod
 stay cached.
 
 - **Key**: from the sound string, else from the rule's metric (`battery` → `battery`, `motor-temp` →
-  `motorTemp`, `controller-temp` → `controllerTemp`, `speed`, `duty`). No key: severity sound only.
-- **Value**: from the sound string, else the rule's (effective) threshold. Battery speaks a
+  `motorTemp`, `controller-temp` → `controllerTemp`, `speed`, `duty` → `dutyCycle`). No key: severity sound only.
+- **Value**: from the sound string, else the metric's current reading, so a repeat says where it is now. Battery speaks a
   percent, so a battery rule without a battery percent speaks no value. Speed is km/h, read in mph
   under imperial units. Degrees are °C, converted
   to °F under imperial units before rounding to the nearest clip (degree clips say only
@@ -166,9 +166,9 @@ shared/alerts/packs/
   `cue.groupRide.created|joined`, each falling back as in [Sound effects](#sound-effects). All four
   built-in packs fill every optional slot today.
   Effects packs never contain voice; `pack.json` names the matching voice pack.
-- **Voice keys**: `battery` (percent), `motorTemp`, `controllerTemp` (degrees), `speed`, `duty`
-  (number), `link.connected`,
-  `link.lost`, `system.error`, `groupRide.created|joined|riderJoined|riderLeft|lost|restored`,
+- **Voice keys**: `battery` (percent), `motorTemp`, `controllerTemp` (degrees), `speed`, `dutyCycle`
+  (number), `boardConnection.connected`,
+  `boardConnection.lost`, `system.error`, `groupRide.created|joined|riderJoined|riderLeft|lost|restored`,
   `ride.end`. Each key needs a
   generic line; `<key>.<severity>` lines are optional. A line has `start` (one fixed phrase in HEV
   and Clean), an optional `minimal` (generic lines only; a short form such as "Motor…"), and an

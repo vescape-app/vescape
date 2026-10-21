@@ -66,7 +66,7 @@ final class VoicePacksTests: XCTestCase {
     XCTAssertEqual(voiceAnnouncement(speed, controlId: "speed", reading: 50, percentAvailable: false, unitSystem: "imperial").value, 31)
     XCTAssertEqual(
       voiceAnnouncement(speed, controlId: "duty", reading: 85, percentAvailable: false, unitSystem: "imperial"),
-      VoiceAnnouncement(severity: .warning, key: "duty", value: 85)
+      VoiceAnnouncement(severity: .warning, key: "dutyCycle", value: 85)
     )
   }
 

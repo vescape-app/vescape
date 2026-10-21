@@ -54,7 +54,7 @@ class VoicePacksTest {
         val speed = VoiceAlertSound(AlertSeverity.WARNING, null, null)
         assertEquals(VoiceAnnouncement(AlertSeverity.WARNING, "speed", 50), voiceAnnouncement(speed, "speed", 50.0, false, "metric"))
         assertEquals(31, voiceAnnouncement(speed, "speed", 50.0, false, "imperial").value)
-        assertEquals(VoiceAnnouncement(AlertSeverity.WARNING, "duty", 85), voiceAnnouncement(speed, "duty", 85.0, false, "imperial"))
+        assertEquals(VoiceAnnouncement(AlertSeverity.WARNING, "dutyCycle", 85), voiceAnnouncement(speed, "duty", 85.0, false, "imperial"))
     }
 
     @Test

@@ -26,18 +26,20 @@ describe('alert packs', () => {
       cpSync(packDir(loadManifest('voice-hev')), dir, { recursive: true })
       const path = join(dir, 'pack.json')
       const pack = JSON.parse(readFileSync(path, 'utf8'))
-      delete pack.lines['link.lost']
+      delete pack.lines['boardConnection.lost']
       delete pack.values.percent['42']
       pack.lines.battery.start = ['lines/gone.m4a']
       writeFileSync(path, JSON.stringify(pack))
       expect(validatePack(catalog, dir)).toEqual([
         'voice-hev: missing value percent.42',
-        'voice-hev: missing line link.lost',
+        'voice-hev: missing line boardConnection.lost',
         'voice-hev: missing file lines/gone.m4a',
       ])
 
       const voice = { ...loadManifest('voice-hev'), lines: {} }
-      expect(validateManifest(catalog, voice)).toContain('voice-hev: missing line link.lost')
+      expect(validateManifest(catalog, voice)).toContain(
+        'voice-hev: missing line boardConnection.lost',
+      )
     } finally {
       rmSync(dir, { recursive: true, force: true })
     }
