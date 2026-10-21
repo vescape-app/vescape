@@ -1607,6 +1607,7 @@ export interface AppSettings {
   hideTelemetryMapDetails: boolean
   /** Draw Ride History Markers (pauses, connection changes, errors, gaps) on the history route. */
   showHistoryMapMarkers: boolean
+  navigationRerouteDistanceMeters: number
   mapOrientationMode: 'northUp' | 'gpsHeading' | 'phoneHeading' | 'freeRotate'
   historyMetricGradientsEnabled: boolean
   historyMetricHotRanges: Partial<
@@ -2504,7 +2505,7 @@ export interface WeatherEvent {
 
 /**
  * The rideable path from the rider to their Direction Point, computed natively. JS renders it and
- * nothing else: there is no routing logic on this side, and a Navigation never changes on its own.
+ * nothing else: there is no routing logic on this side, and native owns automatic path recalculation.
  *
  * `coordinates` are GeoJSON `[longitude, latitude]` pairs — the opposite order from
  * `setDirectionPoint(latitude, longitude)` — so they feed a `ShapeSource` unmodified.
@@ -2523,6 +2524,8 @@ export interface Navigation {
    */
   profile: NavigationProfile
   computedAtMs: number
+  /** Process-local framing revision. Automatic replacements keep it; never persisted. */
+  cameraRevision: number
   status: NavigationStatus
   /**
    * How far the path runs and how long the routing service thinks it takes. Both are `0` unless
@@ -2596,6 +2599,11 @@ export interface NavigationEvent {
  * @parity /modules/vescape-core/ios/navigation/RouteProgress.swift `RouteProgress`
  */
 export interface RouteProgress {
+  /** Selected native segment and clamped fraction; rendering must use this same projection. */
+  segmentIndex: number
+  segmentFraction: number
+  /** Rider-to-projection distance, also used for native automatic recalculation. */
+  deviationMeters: number
   /** The point on the path nearest to the rider. */
   latitude: number
   longitude: number
@@ -2604,6 +2612,8 @@ export interface RouteProgress {
    * onto the path's end, it is the straight line from the rider to that end.
    */
   remainingMeters: number
+  /** Routing-service duration × remaining/total distance. Null without timing or beyond the path end. */
+  remainingDurationSeconds: number | null
   /**
    * Absolute degrees clockwise from north, aimed a short way further along the path, or at the
    * path's end once the rider is projected onto it. Absolute, not relative to where the rider is
@@ -4314,9 +4324,7 @@ export async function setDirectionPoint(
  * Asks native to compute the Navigation again, from the rider's current position to the Direction
  * Point they already have. A no-op when no Direction Point is set.
  *
- * The rider's own action, and the only way a Navigation is ever replaced: nothing in the app may
- * call this automatically, on a timer, on reconnect or on a new fix. A path that appears mid-ride
- * without being asked for is exactly what Navigation is designed not to do.
+ * Explicit rider request. Native also recalculates automatically beyond the configured deviation.
  *
  * A request that finds no path leaves a drawn one in place — asking for a better path never costs
  * the rider the one they had.

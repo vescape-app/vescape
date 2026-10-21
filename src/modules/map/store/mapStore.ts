@@ -107,9 +107,16 @@ export const useMapStore = create<MapState & MapActions>((set, get) => {
       set((state) => ({
         navigation,
         navigationComputing: computing,
+        routeProgress:
+          state.navigation?.computedAtMs === navigation?.computedAtMs ? state.routeProgress : null,
         acceptedNavigationComputedAtMs:
-          state.acceptedNavigationComputedAtMs === navigation?.computedAtMs
-            ? state.acceptedNavigationComputedAtMs
+          state.acceptedNavigationComputedAtMs != null &&
+          navigation?.status === 'ready' &&
+          state.navigation?.computedAtMs === state.acceptedNavigationComputedAtMs &&
+          state.navigation.target.latitude === navigation.target.latitude &&
+          state.navigation.target.longitude === navigation.target.longitude &&
+          state.navigation.profile === navigation.profile
+            ? navigation.computedAtMs
             : null,
       }))
     },

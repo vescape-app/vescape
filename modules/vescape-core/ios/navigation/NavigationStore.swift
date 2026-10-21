@@ -7,6 +7,7 @@ import Foundation
 ///
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/navigation/NavigationStore.kt `NavigationStore`
 protocol NavigationStore {
+  func loadRerouteDistanceMeters() async -> Double
   /// The stored Navigation, or `nil` when none was ever written or the row is unreadable.
   func load() async -> Navigation?
 
@@ -22,6 +23,10 @@ protocol NavigationStore {
   func loadProfile() async -> NavigationProfile?
 
   func saveProfile(_ profile: NavigationProfile) async
+}
+
+extension NavigationStore {
+  func loadRerouteDistanceMeters() async -> Double { 50.0 }
 }
 
 /// Wire form of a stored Navigation. The path rides as its `polyline6` body rather than as a
@@ -106,6 +111,11 @@ enum NavigationJson {
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/navigation/NavigationStore.kt `AppDataNavigationStore`
 struct AppDataNavigationStore: NavigationStore {
   private let repository = AppDataRepository.shared
+
+  func loadRerouteDistanceMeters() async -> Double {
+    do { return (try repository.getSettings())["navigationRerouteDistanceMeters"] as? Double ?? 50.0 }
+    catch { RecordingStorageFailure.reportRead(operation: "navigation_threshold_read", error: error); return 50.0 }
+  }
 
   func load() async -> Navigation? {
     let stored: String?

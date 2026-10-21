@@ -19,6 +19,102 @@ import java.util.concurrent.atomic.AtomicInteger
  */
 class NavigationControllerTest {
 
+    @Test
+    fun `automatic threshold pending success and clear ordering`() {
+        val routes = GatedRoutes()
+        val old = Navigation(RIDER_LAT + 0.1, RIDER_LNG + 0.1, NavigationProfile.WALKING,
+            1L, NavigationStatus.READY, 1000.0, 600.0,
+            listOf(RIDER_LAT to RIDER_LNG, RIDER_LAT + 0.1 to RIDER_LNG + 0.1))
+        val controller = NavigationController(routes, FakeStore(old, old.targetLatitude to old.targetLongitude), nowMillis = { 0L })
+        controller.restore()
+        Thread.sleep(SETTLE_MS)
+        val cameraRevision = controller.current!!.cameraRevision
+        controller.setRerouteDistanceMeters(1000.0)
+        val offLatitude = RIDER_LAT + 0.001
+        controller.onFix(offLatitude, RIDER_LNG, 0.0)
+        val distance = controller.currentProgress!!.deviationMeters
+        controller.setRerouteDistanceMeters(distance)
+        controller.onFix(offLatitude, RIDER_LNG, 0.0)
+        assertTrue(!controller.computing)
+        controller.setRerouteDistanceMeters(distance - 0.1)
+        controller.onFix(offLatitude, RIDER_LNG, 0.0)
+        assertTrue(routes.started.await(WAIT_SECONDS, TimeUnit.SECONDS))
+        repeat(10) { controller.onFix(offLatitude, RIDER_LNG, 0.0) }
+        assertEquals(1, routes.calls.get())
+        assertEquals(old, controller.current)
+        routes.gate(old.targetLatitude).countDown()
+        Thread.sleep(SETTLE_MS)
+        assertTrue(!controller.computing)
+        assertEquals(cameraRevision, controller.current!!.cameraRevision)
+        assertEquals(offLatitude, controller.current!!.points.first().first, 0.0)
+        assertEquals(0.0, controller.currentProgress!!.deviationMeters, 0.01)
+        controller.clear()
+        controller.onFix(offLatitude, RIDER_LNG, 0.0)
+        assertNull(controller.current)
+        assertEquals(1, routes.calls.get())
+    }
+
+    @Test
+    fun `failed automatic replacement keeps path and waits before retry`() {
+        var now = 0L
+        val routes = FixedRoutes(DirectionsResult.Failed)
+        val old = Navigation(TARGET_LAT, TARGET_LNG, NavigationProfile.WALKING,
+            1L, NavigationStatus.READY, 1000.0, 600.0,
+            listOf(RIDER_LAT to RIDER_LNG, TARGET_LAT to TARGET_LNG))
+        val controller = NavigationController(routes, FakeStore(old, TARGET_LAT to TARGET_LNG), nowMillis = { now })
+        controller.restore()
+        Thread.sleep(SETTLE_MS)
+        controller.onFix(RIDER_LAT + 0.01, RIDER_LNG, 0.0)
+        Thread.sleep(SETTLE_MS)
+        assertEquals(old, controller.current)
+        assertEquals(1, routes.calls.get())
+        repeat(10) { controller.onFix(RIDER_LAT + 0.01, RIDER_LNG, 0.0) }
+        Thread.sleep(SETTLE_MS)
+        assertEquals(1, routes.calls.get())
+        now = 30_000L
+        controller.onFix(RIDER_LAT + 0.01, RIDER_LNG, 0.0)
+        Thread.sleep(SETTLE_MS)
+        assertEquals(2, routes.calls.get())
+    }
+
+    @Test
+    fun `profile change invalidates pending automatic result`() {
+        val routes = GatedRoutes()
+        val old = Navigation(TARGET_LAT, TARGET_LNG, NavigationProfile.WALKING,
+            1L, NavigationStatus.READY, 1000.0, 600.0,
+            listOf(RIDER_LAT to RIDER_LNG, TARGET_LAT to TARGET_LNG))
+        val controller = NavigationController(routes, FakeStore(old, TARGET_LAT to TARGET_LNG), nowMillis = { 0L })
+        controller.restore()
+        Thread.sleep(SETTLE_MS)
+        controller.onFix(RIDER_LAT + 0.01, RIDER_LNG, 0.0)
+        assertTrue(routes.started.await(WAIT_SECONDS, TimeUnit.SECONDS))
+        controller.selectProfile(NavigationProfile.CYCLING)
+        routes.gate(TARGET_LAT).countDown()
+        Thread.sleep(SETTLE_MS)
+        assertEquals(old, controller.current)
+        assertEquals(NavigationProfile.CYCLING, controller.currentProfile)
+    }
+
+    @Test
+    fun `replacement replays unchanged projection for new path identity`() {
+        val old = Navigation(TARGET_LAT, TARGET_LNG, NavigationProfile.WALKING,
+            1L, NavigationStatus.READY, 1000.0, 600.0,
+            listOf(RIDER_LAT to RIDER_LNG, TARGET_LAT to TARGET_LNG))
+        val routes = FixedRoutes(DirectionsResult.Path(old.points, old.distanceMeters, old.durationSeconds))
+        val controller = NavigationController(routes, FakeStore(old, TARGET_LAT to TARGET_LNG))
+        controller.restore()
+        Thread.sleep(SETTLE_MS)
+        val cameraRevision = controller.current!!.cameraRevision
+        val projections = AtomicInteger(0)
+        controller.onProgressChange = { if (it != null) projections.incrementAndGet() }
+        controller.onFix(RIDER_LAT, RIDER_LNG, 0.0)
+        controller.recompute(TARGET_LAT, TARGET_LNG, RIDER_LAT, RIDER_LNG)
+        Thread.sleep(SETTLE_MS)
+        assertTrue(controller.current!!.cameraRevision > cameraRevision)
+        assertEquals(2, projections.get())
+        assertTrue(controller.current!!.computedAtMs != old.computedAtMs)
+    }
+
     /** Routing stub whose calls finish only when the test says so. */
     private class GatedRoutes : DirectionsRoutes {
         private val gates = mutableMapOf<Double, CountDownLatch>()
@@ -48,13 +144,14 @@ class NavigationControllerTest {
 
     /** Routing stub that answers immediately with whatever the test hands it. */
     private class FixedRoutes(private val result: DirectionsResult) : DirectionsRoutes {
+        val calls = AtomicInteger(0)
         override suspend fun route(
             fromLatitude: Double,
             fromLongitude: Double,
             toLatitude: Double,
             toLongitude: Double,
             profile: String,
-        ): DirectionsResult = result
+        ): DirectionsResult { calls.incrementAndGet(); return result }
     }
 
     /** In-memory stand-in for the App Settings rows, so restore and write-through need no database. */

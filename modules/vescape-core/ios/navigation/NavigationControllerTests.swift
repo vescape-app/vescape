@@ -49,6 +49,9 @@ final class NavigationControllerTests: XCTestCase {
   /// Routing stub that answers immediately with whatever the test hands it.
   private final class FixedRoutes: DirectionsRoutes, @unchecked Sendable {
     private let result: DirectionsResult
+    private let callLock = NSLock()
+    private var count = 0
+    var calls: Int { callLock.withLock { count } }
 
     init(_ result: DirectionsResult) { self.result = result }
 
@@ -58,7 +61,10 @@ final class NavigationControllerTests: XCTestCase {
       toLatitude: Double,
       toLongitude: Double,
       profile: String
-    ) async -> DirectionsResult { result }
+    ) async -> DirectionsResult {
+      callLock.withLock { count += 1 }
+      return result
+    }
   }
 
   /// In-memory stand-in for the App Settings rows, so restore and write-through need no database.
@@ -148,6 +154,95 @@ final class NavigationControllerTests: XCTestCase {
       durationSeconds: 600,
       points: [(riderLatitude, riderLongitude), (targetLatitude, targetLongitude)]
     )
+  }
+
+  func testAutomaticThresholdPendingSuccessAndClearOrdering() throws {
+    let routes = GatedRoutes()
+    let old = navigation(targetLatitude: targetLatitude)
+    let controller = NavigationController(api: routes,
+      store: FakeStore(stored: old, directionPoint: (targetLatitude, targetLongitude)))
+    controller.restore()
+    settle()
+    let cameraRevision = controller.current?.cameraRevision
+    controller.setRerouteDistanceMeters(1000)
+    let offLatitude = riderLatitude + 0.001
+    controller.onFix(latitude: offLatitude, longitude: riderLongitude, speedMps: 0)
+    let distance = try XCTUnwrap(controller.currentProgress).deviationMeters
+    controller.setRerouteDistanceMeters(distance)
+    controller.onFix(latitude: offLatitude, longitude: riderLongitude, speedMps: 0)
+    XCTAssertFalse(controller.computing) // Strictly greater, including when the projection is unchanged.
+    controller.setRerouteDistanceMeters(distance - 0.1)
+    controller.onFix(latitude: offLatitude, longitude: riderLongitude, speedMps: 0)
+    wait(for: [routes.started], timeout: 2)
+    for _ in 0..<10 { controller.onFix(latitude: offLatitude, longitude: riderLongitude, speedMps: 0) }
+    XCTAssertEqual(routes.calls, 1)
+    XCTAssertEqual(controller.current?.computedAtMs, old.computedAtMs)
+    routes.release(targetLatitude)
+    settle()
+    XCTAssertFalse(controller.computing)
+    XCTAssertEqual(controller.current?.cameraRevision, cameraRevision)
+    XCTAssertEqual(controller.current?.points.first?.latitude, offLatitude)
+    XCTAssertEqual(controller.currentProgress?.deviationMeters ?? 999, 0, accuracy: 0.01)
+    controller.clear()
+    controller.onFix(latitude: offLatitude, longitude: riderLongitude, speedMps: 0)
+    XCTAssertNil(controller.current)
+    XCTAssertEqual(routes.calls, 1)
+  }
+
+  func testFailedAutomaticReplacementKeepsPathAndWaitsBeforeRetry() throws {
+    var now = 0.0
+    let routes = FixedRoutes(.failed)
+    let old = navigation(targetLatitude: targetLatitude)
+    let controller = NavigationController(api: routes,
+      store: FakeStore(stored: old, directionPoint: (targetLatitude, targetLongitude)), nowMillis: { now })
+    controller.restore()
+    settle()
+    controller.onFix(latitude: riderLatitude + 0.01, longitude: riderLongitude, speedMps: 0)
+    settle()
+    XCTAssertEqual(controller.current?.computedAtMs, old.computedAtMs)
+    XCTAssertEqual(routes.calls, 1)
+    for _ in 0..<10 { controller.onFix(latitude: riderLatitude + 0.01, longitude: riderLongitude, speedMps: 0) }
+    settle()
+    XCTAssertEqual(routes.calls, 1)
+    now = 30_000
+    controller.onFix(latitude: riderLatitude + 0.01, longitude: riderLongitude, speedMps: 0)
+    settle()
+    XCTAssertEqual(routes.calls, 2)
+  }
+
+  func testProfileChangeInvalidatesPendingAutomaticResult() {
+    let routes = GatedRoutes()
+    let old = navigation(targetLatitude: targetLatitude)
+    let controller = NavigationController(api: routes,
+      store: FakeStore(stored: old, directionPoint: (targetLatitude, targetLongitude)))
+    controller.restore()
+    settle()
+    controller.onFix(latitude: riderLatitude + 0.01, longitude: riderLongitude, speedMps: 0)
+    wait(for: [routes.started], timeout: 2)
+    controller.selectProfile(.cycling)
+    routes.release(targetLatitude)
+    settle()
+    XCTAssertEqual(controller.current?.computedAtMs, old.computedAtMs)
+    XCTAssertEqual(controller.currentProfile, .cycling)
+  }
+
+  func testReplacementReplaysUnchangedProjectionForNewPathIdentity() {
+    let old = navigation(targetLatitude: targetLatitude)
+    let routes = FixedRoutes(.path(points: old.points, distanceMeters: old.distanceMeters, durationSeconds: old.durationSeconds))
+    let controller = NavigationController(api: routes,
+      store: FakeStore(stored: old, directionPoint: (targetLatitude, targetLongitude)))
+    controller.restore()
+    settle()
+    let cameraRevision = controller.current?.cameraRevision ?? 0
+    var projections = 0
+    controller.onProgressChange = { if $0 != nil { projections += 1 } }
+    controller.onFix(latitude: riderLatitude, longitude: riderLongitude, speedMps: 0)
+    controller.recompute(toLatitude: targetLatitude, toLongitude: targetLongitude,
+      fromLatitude: riderLatitude, fromLongitude: riderLongitude)
+    settle()
+    XCTAssertGreaterThan(controller.current?.cameraRevision ?? 0, cameraRevision)
+    XCTAssertEqual(projections, 2)
+    XCTAssertNotEqual(controller.current?.computedAtMs, old.computedAtMs)
   }
 
   func testSelectedRouteUsesLatestFixWithoutWaitingForMovement() {

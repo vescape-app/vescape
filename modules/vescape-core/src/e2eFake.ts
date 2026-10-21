@@ -75,6 +75,7 @@ const e2eSettings: AppSettings = {
   satelliteImagerySaturation: -0.35,
   hideTelemetryMapDetails: true,
   showHistoryMapMarkers: false,
+  navigationRerouteDistanceMeters: 50,
   mapOrientationMode: 'gpsHeading',
   historyMetricGradientsEnabled: true,
   historyMetricHotRanges: {},

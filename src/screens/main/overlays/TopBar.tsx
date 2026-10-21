@@ -200,6 +200,7 @@ export function TopBar({
               targetTitle={activeNavigationTarget.title}
               targetIcon={navigationTargetIcon}
               distanceLabel={navigationDistance}
+              remainingDurationSeconds={routeProgress?.remainingDurationSeconds}
               riderColor={riderColor}
               onNavigationPress={onNavigationPress}
               onCancel={onCancelNavigation}

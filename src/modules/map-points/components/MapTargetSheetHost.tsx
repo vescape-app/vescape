@@ -31,6 +31,7 @@ interface MapTargetSheetHostProps {
   /** Reopens the full path/profile chooser from the compact active state. */
   onEditActiveNavigation: () => void
   navigationRemainingDistanceMeters: number | null
+  navigationRemainingDurationSeconds: number | null
   /** How the path to the active target ended up. `null` while there is no Navigation at all. */
   navigationStatus: NavigationStatus | null
   /** How far the drawn path runs and how long it takes. `null` while no path is drawn. */
@@ -45,7 +46,7 @@ interface MapTargetSheetHostProps {
    * the switcher has nothing to be the current state of and is not shown.
    */
   navigationProfile: NavigationProfile | null
-  /** Rider-initiated recompute. The only thing that ever replaces a Navigation. */
+  /** Explicit rider request for a replacement path; native also recalculates on deviation. */
   onRecomputeNavigation: () => void
   onSelectNavigationProfile: (profile: NavigationProfile) => void
   onDismissSelected: () => void
@@ -78,6 +79,7 @@ export function MapTargetSheetHost({
   activeNavigationAccepted,
   onEditActiveNavigation,
   navigationRemainingDistanceMeters,
+  navigationRemainingDurationSeconds,
   navigationStatus,
   navigationPath,
   navigationComputing,
@@ -161,7 +163,7 @@ export function MapTargetSheetHost({
         target={activeTarget}
         bottom={bottom}
         remainingDistanceMeters={navigationRemainingDistanceMeters}
-        durationSeconds={navigationPath?.durationSeconds ?? 0}
+        durationSeconds={navigationRemainingDurationSeconds ?? 0}
         targetColor={actionColor}
         targetTextColor={actionTextColor}
         accentColor={accents.purple.light}

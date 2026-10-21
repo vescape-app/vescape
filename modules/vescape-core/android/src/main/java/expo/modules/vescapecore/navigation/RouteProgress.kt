@@ -9,9 +9,8 @@ import kotlin.math.min
  * Where the rider is along their Navigation right now: the point on the path nearest to them, how
  * far is left along the path from there, and which way the path goes next.
  *
- * Derived, never stored. It is recomputed from the fixed path on every GPS Fix and it dies with the
- * Navigation it belongs to — see the glossary entry in `CONTEXT.md`. Nothing here recomputes or
- * reroutes the Navigation itself, which stays computed-once.
+ * Derived, never stored. It is recomputed from the current path on every GPS Fix and it dies with the
+ * Navigation it belongs to — see the glossary entry in `CONTEXT.md`. The controller uses this same projection for automatic recalculation.
  *
  * Attachment is unconditional: the nearest point on the path is always taken, there is no off-route
  * state and no threshold. A rider who loops away and comes back re-attaches by itself. The accepted
@@ -25,6 +24,9 @@ data class RouteProgress(
   /** The point on the path nearest to the rider, projected onto a segment rather than a vertex. */
   val latitude: Double,
   val longitude: Double,
+  val segmentIndex: Int,
+  val segmentFraction: Double,
+  val deviationMeters: Double,
   /**
    * Metres left to the Direction Point measured **along** the path from the projection: the rest of
    * the projected segment plus every segment after it. Not the straight line — a target 679 m away
@@ -32,6 +34,8 @@ data class RouteProgress(
    * nothing left along it, it is the straight line from the rider to that end.
    */
   val remainingMeters: Double,
+  /** Profile-based estimate scaled by remaining distance; null without timing or past the end. */
+  val remainingDurationSeconds: Double?,
   /**
    * Absolute degrees clockwise from north, from the projection to an aim point a short way further
    * along the path, or from the rider to the path's end once projected onto it. Absolute on
@@ -43,7 +47,11 @@ data class RouteProgress(
   fun toMap(): Map<String, Any?> = mapOf(
     "latitude" to latitude,
     "longitude" to longitude,
+    "segmentIndex" to segmentIndex,
+    "segmentFraction" to segmentFraction,
+    "deviationMeters" to deviationMeters,
     "remainingMeters" to remainingMeters,
+    "remainingDurationSeconds" to remainingDurationSeconds,
     "bearingDeg" to bearingDeg,
   )
 
@@ -67,6 +75,8 @@ data class RouteProgress(
       riderLatitude: Double,
       riderLongitude: Double,
       speedMps: Double?,
+      routeDistanceMeters: Double = 0.0,
+      routeDurationSeconds: Double = 0.0,
     ): RouteProgress? {
       if (points.size < 2) return null
 
@@ -118,6 +128,11 @@ data class RouteProgress(
           GeoMath.distanceMeters(previousLatitude, previousLongitude, nextLatitude, nextLongitude)
       }
 
+      val remainingDurationSeconds = if (routeDistanceMeters.isFinite() && routeDistanceMeters > 0 &&
+        routeDurationSeconds.isFinite() && routeDurationSeconds > 0) {
+        routeDurationSeconds * (remainingMeters / routeDistanceMeters).coerceIn(0.0, 1.0)
+      } else null
+
       // Walk forward from the projection until the aim budget runs out. Running off the end of the
       // path instead leaves the aim on the Direction Point, which is the right answer for the last
       // few metres of a ride.
@@ -155,7 +170,11 @@ data class RouteProgress(
         return RouteProgress(
           latitude = latitude,
           longitude = longitude,
+          segmentIndex = bestIndex,
+          segmentFraction = bestFraction,
+          deviationMeters = GeoMath.distanceMeters(riderLatitude, riderLongitude, latitude, longitude),
           remainingMeters = pastEndMeters,
+          remainingDurationSeconds = null,
           bearingDeg =
             GeoMath.travelBearingDeg(riderLatitude, riderLongitude, targetLatitude, targetLongitude),
         )
@@ -176,7 +195,11 @@ data class RouteProgress(
       return RouteProgress(
         latitude = latitude,
         longitude = longitude,
+        segmentIndex = bestIndex,
+        segmentFraction = bestFraction,
+        deviationMeters = GeoMath.distanceMeters(riderLatitude, riderLongitude, latitude, longitude),
         remainingMeters = remainingMeters,
+        remainingDurationSeconds = remainingDurationSeconds,
         bearingDeg = bearingDeg,
       )
     }

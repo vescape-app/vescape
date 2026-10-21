@@ -5,6 +5,8 @@ export interface NavigationDiagnosticsState {
   /** Session-only map debug overlay; never changes GPS acquisition or recording. */
   showRawGps: boolean
   setShowRawGps: (visible: boolean) => void
+  showProjectionConnector: boolean
+  setShowProjectionConnector: (show: boolean) => void
   gpsFix: LocationEvent | null
   retainedGpsBearingDeg: number | null
   retainedGpsBearingAt: number | null
@@ -44,6 +46,10 @@ export const useNavigationDiagnosticsStore = create<NavigationDiagnosticsState>(
   ...INITIAL_SNAPSHOT,
   showRawGps: true,
   setShowRawGps: (showRawGps) => set({ showRawGps }),
+  showProjectionConnector: false,
+  setShowProjectionConnector(show) {
+    set({ showProjectionConnector: show })
+  },
   updatedAt: null,
   update(next) {
     set({ ...next, updatedAt: Date.now() })
