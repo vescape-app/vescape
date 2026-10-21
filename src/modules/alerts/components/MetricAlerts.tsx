@@ -26,7 +26,7 @@ interface MetricAlertsProps {
 
 /**
  * A control's whole alert setup: preset level with its gauge, then the rider's own rules and
- * **+ Add alert**. Both fire together. One block, used by `/control` details and by the add-board
+ * **+ Add custom alert** under a Custom alerts heading. Both fire together. One block, used by `/control` details and by the add-board
  * wizard through their respective {@link MetricAlertsController}s.
  *
  * A `null` controller means no Board: Alert Rules are board-owned (#254), so instead of controls
@@ -78,6 +78,7 @@ export function MetricAlerts({
       ) : null}
 
       <View style={styles.rules}>
+        <Text style={styles.heading}>CUSTOM ALERTS</Text>
         <AlertRuleList
           controller={controller}
           unit={unit}
@@ -104,6 +105,13 @@ const styles = StyleSheet.create({
   },
   rules: {
     gap: 8,
+  },
+  // Matches the SOUND field label above, so presets and custom rules read as sibling sections.
+  heading: {
+    color: theme.neutral.textMuted,
+    fontSize: 10,
+    fontWeight: '600',
+    letterSpacing: 0.5,
   },
   error: {
     color: theme.status.error.text,

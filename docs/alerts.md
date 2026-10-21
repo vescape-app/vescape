@@ -416,7 +416,7 @@ marker comes from it until the board supplies a value.
 
 The rider's own Alert Rules for the same metric sit beside the preset row and fire together with
 its points. The metric screen shows the level switch (and Soft / Mid / Hard for geiger metrics),
-then the rider's rules, then **+ Add alert**. There is no edit of a preset's points: to replace
+then the rider's rules, then **+ Add custom alert**. There is no edit of a preset's points: to replace
 them, set the preset Off and add rules.
 
 Schema v51 turned the earlier per-Board settings into these rows: each live Board gets one row per
@@ -476,7 +476,7 @@ onto the `Board` object (like `batteryConfig`). Missing keys normalize to displa
 ### Setup surfaces
 
 One block, `MetricAlerts`, renders a metric's whole alert setup: the preset gauge and level switch
-(`AlertPresetControl`), then the rider's own rules (`AlertRuleList`) and **+ Add alert**. It renders
+(`AlertPresetControl`), then the rider's own rules (`AlertRuleList`) and **+ Add custom alert**. It renders
 a `MetricAlertsController` and is reached two ways:
 
 - **Add-board wizard** — the alerts step (`AlertsStep`) sets Board Top Speed, then one sub-step per

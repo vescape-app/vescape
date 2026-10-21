@@ -242,13 +242,16 @@ export function AlertPresetControl({
           onChange={onMatchBoardConfigChange}
         />
       ) : null}
-      <PresetGeigerSound spec={geigerSound} onChange={onGeigerSoundChange} />
       <LevelSlider
         metric={metric}
         value={level}
         onChange={onLevelChange}
         disabled={levelDisabled}
       />
+      {/* Ticks belong to the level picked above; Off has none to shape. */}
+      {level === 'off' ? null : (
+        <PresetGeigerSound spec={geigerSound} onChange={onGeigerSoundChange} />
+      )}
     </View>
   )
 }

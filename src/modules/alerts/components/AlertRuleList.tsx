@@ -88,7 +88,7 @@ export function AlertRuleList({
 
       <View style={styles.addButtonRow} ref={addButtonRef} collapsable={false}>
         <Button
-          label="Add alert"
+          label="Add custom alert"
           icon={PlusIcon}
           variant="secondary"
           size="sm"
