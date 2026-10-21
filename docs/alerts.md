@@ -96,11 +96,9 @@ stay cached.
   for a key and severity. The pick for the next announcement of a line is made and joined in the
   background right after each one plays, so variety adds no latency.
 
-**Presets** (battery, motor and controller temperature) emit `voice(<severity>):<key>`; the
-generator ranks severity per ladder point: last (most severe) `critical`, first `info`, the rest
-`warning`, and a one-point ladder is `critical`. Schema v51 rewrote the previously generated preset
-templates (`tts:Battery {percent}%`, `tts:Motor {value} {unit}`, `tts:Controller {value} {unit}`)
-the same way; custom rules with the same text keep it.
+**Presets** (battery, motor and controller temperature) expand into `voice(<severity>):<key>`
+points; severity is the point's rank in its ladder: last (most severe) `critical`, first `info`,
+the rest `warning`, and a one-point ladder is `critical`.
 
 **Custom rules** on battery (with a battery config) and temperature default to `voice(<severity>):`
 on the Message tab. Its **TTS** switch turns on the text template (`tts(<severity>):<text>`).
@@ -108,14 +106,7 @@ Other metrics have no voice lines: TTS is forced on and the switch is hidden. Pr
 severity sound and the voice line with the threshold as value, or the TTS text. Custom rules use
 the Voice pack but ignore Voice level.
 
-**Pinned packs** (#583): each preset has a **Sound effects** select and, for presets that speak,
-a **Voice** select. `Default` follows the app-wide choice; a pack pins the preset to it, so changing
-the app-wide pack leaves it alone. Resolution per slot: My sound override > pinned pack > app-wide.
-A Default voice with Matching follows the effects pack that preset plays, pinned or not. Sounds
-settings shows how many sounding presets pin a pack. Pins and the geiger level live in the
-board's `alertPresetSound` setting (`{ <metric>: { effects?, voice?, geiger? } }`), not in the
-sound strings; native hands them to the player with the rules, and an unknown pack id plays the
-default. Keeping the geiger level there means a preset switched Off and back keeps it.
+Presets play the app-wide effects and voice packs; there is no per-preset pack choice.
 
 Planned (not implemented): all sounds that can fire during a ride stay decoded in memory for the
 session (#576).
@@ -181,7 +172,7 @@ enabled rules at session start (and on any rule edit), so switching Boards switc
 set — engine and UI both. Deleting a Board deletes its rules. Rules for a non-connected Board never
 evaluate.
 
-Preset rule ids (`preset:<metric>:<index>`) repeat across Boards; uniqueness is per Board via the
+Preset row ids (`preset:<metric>`) repeat across Boards; uniqueness is per Board via the
 composite primary key `(board_id, id)`.
 
 Legal Mode is durable per-Board state in `board_settings`, independent of Board-owned Alert Rule
@@ -190,21 +181,24 @@ and adds a virtual geiger speed rule whenever rules load. Nothing is written to 
 
 ## Schema — `alerts` table
 
-| column                 | type             | notes                                                                         |
-| ---------------------- | ---------------- | ----------------------------------------------------------------------------- |
-| `board_id`             | TEXT             | owning Board; PK is `(board_id, id)`                                          |
-| `id`                   | TEXT             | UUID or `preset:<metric>:<index>`                                             |
-| `control_id`           | TEXT             | see Control IDs below                                                         |
-| `threshold`            | REAL             | trigger point                                                                 |
-| `threshold_max`        | REAL nullable    | range upper bound (Geiger mode)                                               |
-| `enabled`              | INTEGER 0/1      | toggled by user                                                               |
-| `sound_type`           | TEXT             | sound string, e.g. `alert(3):warning`, `voice(info):battery`, `tts:Slow down` |
-| `created_at`           | INTEGER          | ms epoch                                                                      |
-| `repeat_every_seconds` | INTEGER nullable | repeat cadence for a single-threshold rule; NULL is one-shot                  |
-| `threshold_kind`       | TEXT             | `fixed` or `config-relative`                                                  |
-| `config_field_id`      | TEXT nullable    | VESC config field used by a relative rule                                     |
-| `threshold_offset`     | REAL nullable    | start offset in alert units                                                   |
-| `threshold_max_offset` | REAL nullable    | range ceiling offset in alert units                                           |
+| column                 | type             | notes                                                                    |
+| ---------------------- | ---------------- | ------------------------------------------------------------------------ |
+| `board_id`             | TEXT             | owning Board; PK is `(board_id, id)`                                     |
+| `id`                   | TEXT             | UUID, or `preset:<metric>` for an Alert Preset row                       |
+| `control_id`           | TEXT             | see Control IDs below                                                    |
+| `threshold`            | REAL             | trigger point                                                            |
+| `threshold_max`        | REAL nullable    | range upper bound (Geiger mode)                                          |
+| `enabled`              | INTEGER 0/1      | toggled by user                                                          |
+| `spec`                 | TEXT             | sound string, e.g. `alert(3):warning`, `tts:Slow down`, `preset(normal)` |
+| `created_at`           | INTEGER          | ms epoch                                                                 |
+| `repeat_every_seconds` | INTEGER nullable | repeat cadence for a single-threshold rule; NULL is one-shot             |
+| `threshold_kind`       | TEXT             | `fixed` or `config-relative`                                             |
+| `config_field_id`      | TEXT nullable    | VESC config field used by a relative rule                                |
+| `threshold_offset`     | REAL nullable    | start offset in alert units                                              |
+| `threshold_max_offset` | REAL nullable    | range ceiling offset in alert units                                      |
+
+A preset row uses only `board_id`, `id`, `control_id`, `spec`, and `created_at`; threshold,
+repeat, enabled, and config-relative columns are ignored, because the preset definition owns them.
 
 ## Control IDs & implicit direction
 
@@ -231,10 +225,9 @@ saved before the sound string grammar keep working through the parser: `preset:t
 `geiger:my:<id>` ticks with that My sound, or soft once it is gone.
 
 The speed and duty cycle presets and the custom geiger form offer a Soft / Mid / Hard select.
-Preset defaults: speed `geiger:soft`, duty cycle `geiger:hard`. A picked level is stored on the
-metric's preset rules and carried across regeneration (level, top speed, or config-match changes);
-legacy `preset:` names on preset rules count as generated defaults and give way to the current
-default on the next regeneration. The interval shrinks linearly:
+On a preset it is the `geiger=<level>` option of the preset string, applied to every geiger point
+the definition gives that metric; without it the definition's default plays (speed soft, duty cycle
+hard). `preset(off)` keeps its options, so Off and back keeps the level. The interval shrinks linearly:
 
 - at `threshold` → about 800 ms between ticks
 - at `threshold_max` → the tick loops continuously
@@ -262,8 +255,8 @@ folded the former `beep_count` column into the string (`preset:beep` + 3 → `al
 dropped it; `tts` and geiger strings were left unchanged.
 
 The latch and repeat clock are cleared only when a new Board Session starts — not on rule edits,
-preset regeneration, idle pause, or backgrounding. Preset rule ids are deterministic, so changing a
-preset level keeps a rule latched.
+preset changes, idle pause, or backgrounding. Expanded preset rules get deterministic ids
+(`preset:<metric>:<index>`), so changing a preset level keeps a rule latched.
 
 ### Ready audio
 
@@ -277,7 +270,7 @@ delay:
 - All built-in effects pack slots load when the player is created (Android: on its own audio thread,
   which also runs geiger ticks, off the main looper). Installing rules (`prepare`) decodes My sounds
   for slot overrides and `my:` rules, prepares a MediaPlayer per one-shot My sound on Android, and
-  decodes every pinned voice pack's lines.
+  decodes the selected voice pack's lines.
 - A sound that still has to wait on a load queues and plays once ready; speech after it is timed
   from the sound's actual start, so the two never overlap.
 - iOS sounds lease a player node from a pool of attached nodes instead of attaching one per sound.
@@ -342,14 +335,39 @@ Runtime behavior:
 
 ## Alert Presets
 
-Native generates and persists preset Alert Rules. JS sends preset intents and renders saved rules.
-Unsaved add-board drafts call the synchronous native `previewAlertPreset` operation, which uses
-the same generator without reading or writing the database. Fixed rules carry concrete thresholds;
-a preset the rider opts into matching carries a durable relationship to a board config field instead. Native resolves that
-field from Last Known Board Config Values (Refloat) or Last Known Motor Config Values (MCCONF) and
-follows fresh reads/writes without rewriting the rule.
+> Agreed design, being implemented on PR #586. Until it lands, native still copies preset points
+> into `source = "preset"` rows and keeps the level in the `alertPreset` Board Setting.
 
-Per-metric opt-in, persisted in the Board's `matchBoardConfig` bag:
+An Alert Preset is one row in `alerts` per Board and metric, id `preset:<metric>`, whose `spec` is
+a preset string:
+
+```
+preset(<level>)[:<key>=<value>[,<key>=<value>…]]
+preset(normal)
+preset(normal):geiger=mid
+preset(off):geiger=mid,match=on
+```
+
+The row holds only what the rider chose: the level and options. Every point's threshold and sound
+come from `modules/vescape-core/shared/alert-preset-definitions.json`, so a changed definition
+reaches every rider with no migration. Options:
+
+| key      | values                  | meaning                                                    |
+| -------- | ----------------------- | ---------------------------------------------------------- |
+| `geiger` | `soft` · `mid` · `hard` | tick level for the preset's geiger points                  |
+| `match`  | `on`                    | config-relative points follow the board config (see below) |
+
+Unknown keys are ignored and kept, so an older app reads a newer row. A metric without a preset
+row is `preset(normal)`, the app default; Off is `preset(off)`, never a deleted row, so the app can
+tell "turned off" from "never set". Battery needs a valid battery config before its preset expands.
+
+Native expands preset rows whenever it loads rules: the session evaluator, gauge markers,
+descriptions, chart references, and previews all read the expanded list, and JS never expands.
+Unsaved add-board drafts call the synchronous native `previewAlertPreset` operation, which expands
+a draft preset string without touching the database. Fixed points carry concrete thresholds; with
+`match=on` a point carries a relationship to a board config field instead, resolved from Last Known
+Board Config Values (Refloat) or Last Known Motor Config Values (MCCONF) and following fresh
+reads/writes:
 
 | metric            | field                | config  | units    |
 | ----------------- | -------------------- | ------- | -------- |
@@ -360,19 +378,22 @@ Per-metric opt-in, persisted in the Board's `matchBoardConfig` bag:
 What a field id means — which config it lives in, its scale, and the value at which the board's own
 protection is off (duty `1.0`) — is a property of the field, not of the rule, so it lives in one
 table mirrored across TS and both platforms (`configRelativeFields`) rather than on every row. A
-field that is missing, unread, or disabled leaves the relationship inactive: the rule persists, and
-neither a sound nor a gauge marker comes from it until the board supplies a value.
+field that is missing, unread, or disabled leaves the relationship inactive: no sound or gauge
+marker comes from it until the board supplies a value.
 
-A rider picks one **level** per **metric**. `applyAlertPreset` accepts a select, customize,
-discard-custom, or match-board-config intent. Native reads that Board's persisted settings and
-configuration, then commits the selection and rule changes in one database transaction. A failure
-rolls the whole operation back; neither the selected level nor part of its rule set survives alone.
+The rider's own Alert Rules for the same metric sit beside the preset row and fire together with
+its points. The metric screen shows the level switch (and Soft / Mid / Hard for geiger metrics),
+then the rider's rules, then **+ Add alert**. There is no custom level and no edit of a preset's
+points: to replace them, set the preset Off and add rules.
+
+`applyAlertPreset` sets the level or an option. Native rewrites the preset row in one database
+transaction, reloads evaluation, and publishes an `alerts` data-change event.
 
 ### Levels
 
 Four levels, safest first: **Off**, **Safe**, **Normal**, **Minimal**. `off` (and any guard failure)
-generates no rules. Safer levels add more warning points and start earlier; Minimal warns late and only at
-the extreme.
+expands to no rules. Safer levels add more warning points and start earlier; Minimal warns late and
+only at the extreme.
 
 ### Metrics & families
 
@@ -391,43 +412,22 @@ Five metrics, in two feedback families:
 - **geiger** → one range rule (`threshold` → `thresholdMax`); the start drops with protection while the
   ceiling stays fixed.
 
-Preset values, sound types, and config-relative offsets live in
-`modules/vescape-core/shared/alert-preset-definitions.json`. Both native generators consume this
-single definition. Edit that file to change preset values. JS formats returned rule snapshots and
-does not implement preset generation.
-
-### Provenance & regeneration
-
-Preset rules carry `source = "preset"` (`ALERT_PRESET_SOURCE`) with deterministic ids
-(`preset:<metric>:<index>`) and the owning Board's `board_id`. Changing a level replaces that
-metric's preset rows inside the same transaction that updates the durable `alertPreset` Board
-Settings bag. Manual rules and other metrics survive. Native also updates affected presets in the
-Board-save transaction when their generation inputs change.
-
-Saved-board markers, descriptions, chart references, and sound previews read saved Alert Rules.
-Config-relative values are resolved for display from the Board's current configuration; unresolved
-relations remain stored but do not draw markers or fire. JS never regenerates persisted rules when
-configuration arrives. Before session evaluation, native restores missing matched-preset relations
-left by older JS saves, preserving existing rules and disabled states. Native reloads evaluation
-after committed writes and publishes an `alerts`
-data-change event; JS reloads after that event and on foreground catch-up.
+Both native expanders consume the single preset definition; edit that file to change preset values.
 
 ### Board Top Speed
 
 `topSpeedKmh` (a **Board Settings** key, renamed from the former profile-level Rider Top Speed) scales
 the speed preset's thresholds and the speed gauge full-scale — it is the rider's self-assessed top speed
-for that Board, not a legal or firmware limit. Changing it regenerates the speed preset. Missing ⇒
+for that Board, not a legal or firmware limit. The speed preset reads it at expansion. Missing ⇒
 display default 50 km/h.
 
 ### Board Settings keys
 
-Four per-Board keys drive Alert Presets and Legal Mode, backed by the `board_settings` table and composed onto the
-`Board` object (like `batteryConfig`). Missing keys normalize to display defaults; no preset rules are
-generated until the rider touches setup:
+Three per-Board keys sit beside the preset rows, backed by the `board_settings` table and composed
+onto the `Board` object (like `batteryConfig`). Missing keys normalize to display defaults:
 
 | key                     | default  | meaning                                          |
 | ----------------------- | -------- | ------------------------------------------------ |
-| `alertPreset`           | null     | per-metric level selection bag (null ⇒ all Off)  |
 | `topSpeedKmh`           | 50       | Board Top Speed (km/h)                           |
 | `alertPresetsOnboarded` | false    | one-time guided-setup gate for this Board        |
 | `legalMode`             | disabled | native-owned `{ enabled }` Legal Mode activation |
@@ -437,8 +437,8 @@ generated until the rider touches setup:
 The same setup (Board Top Speed + all five sliders, `AlertPresetSetup`) is reached two ways:
 
 - **Add-board wizard** — a `presets` step shown for every new Board (each Board gets its own guided
-  setup). The step edits a draft; on save the draft is persisted onto the new Board and its preset rules
-  are generated. Completing sets that Board's `alertPresetsOnboarded`.
+  setup). The step edits draft preset strings; on save they are written as the new Board's preset
+  rows. Completing sets that Board's `alertPresetsOnboarded`.
 - **Settings › Alerts** — the durable home for the active Board, always available.
 
 ## JS side
@@ -451,7 +451,7 @@ store.toggle(id)
 store.remove(id)
 
 // native API is board-scoped
-applyAlertPreset(boardId, metric, { action: 'select', level: 'normal' })
+applyAlertPreset(boardId, metric, { level: 'normal' })   // or { geiger: 'mid' } / { match: true }
 getAlertRules(boardId)
 upsertAlertRule(rule)                    // rule carries boardId
 setAlertRuleEnabled(boardId, id, enabled)
