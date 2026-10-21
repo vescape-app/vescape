@@ -376,5 +376,8 @@ test('VESC ticks update only display motion between measured GPS fixes', () => {
   }
   onMotionTick({ displayMotion } as TelemetryEvent)
   expect(useLocationStore.getState().displayMotion).toEqual(displayMotion)
+  const older = { ...displayMotion, startsAtMs: displayMotion.startsAtMs - 100 }
+  onMotionTick({ displayMotion: older } as TelemetryEvent)
+  expect(useLocationStore.getState().displayMotion).toEqual(displayMotion)
   expect(useLocationStore.getState().liveLocationHistory).toBe(measured)
 })

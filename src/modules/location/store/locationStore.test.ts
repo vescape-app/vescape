@@ -190,3 +190,28 @@ test('camera can consume each precise fix immediately even if an approximate fix
   store.getState().reset()
   expect(store.getState().latestPreciseLocation).toBeNull()
 })
+
+test('delayed location and status events cannot replace newer velocity motion; snapshots can reset clocks', () => {
+  const motion = (startsAtMs: number) => ({
+    fromLatitude: 50,
+    fromLongitude: 19,
+    toLatitude: 50.001,
+    toLongitude: 19.001,
+    startsAtMs,
+    endsAtMs: startsAtMs + 1_000,
+  })
+  const first = motion(10_000)
+  const velocityUpdate = motion(10_500)
+  store.getState().ingestLocation({ ...fix(10_000), displayMotion: first }, WINDOW_MS)
+  store.getState().applyStatus(gps({ displayMotion: velocityUpdate }), WINDOW_MS)
+  store.getState().ingestLocation({ ...fix(9_000), displayMotion: first }, WINDOW_MS)
+  expect(store.getState().displayMotion).toBe(velocityUpdate)
+  expect(store.getState().latestRawLocation?.timestamp).toBe(10_000)
+  store.getState().applyStatus(gps({ displayMotion: first }), WINDOW_MS)
+  expect(store.getState().displayMotion).toBe(velocityUpdate)
+  store.getState().applySnapshot(gps({ displayMotion: first, latestFix: fix(1_000) }), WINDOW_MS)
+  expect(store.getState().displayMotion).toBe(first)
+  expect(store.getState().latestRawLocation?.timestamp).toBe(1_000)
+  store.getState().applyStatus(gps({ displayMotion: null }), WINDOW_MS)
+  expect(store.getState().displayMotion).toBeNull()
+})

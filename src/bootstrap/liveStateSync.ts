@@ -54,7 +54,7 @@ export function startLiveStateSync(): () => void {
   const stopBoard = startBoardLiveStreams()
   const motionSub = addLiveTickListener((tick) => {
     if (tick.displayMotion !== undefined)
-      useLocationStore.setState({ displayMotion: tick.displayMotion })
+      useLocationStore.getState().ingestDisplayMotion(tick.displayMotion)
   })
   const stateSub = addLiveStateListener((state) => applyLiveState(state, 'event'))
   const locationSub = addLocationListener((location) => {
