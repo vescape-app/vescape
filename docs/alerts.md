@@ -285,13 +285,13 @@ latch silently — they are past their thresholds, so they are spent rather than
 
 ## Message mode
 
-Single-threshold alerts may use native text-to-speech by storing the spoken template directly in `sound_type`, with a severity variant:
+Single-threshold alerts may use native text-to-speech by storing the spoken template directly in `spec`, with a severity variant:
 
 ```text
 tts(warning):Battery {voltage} volts, {percent}%
 ```
 
-`sound_type` is read by one sound string parser per platform (`AlertSoundString.kt`,
+`spec` is read by one sound string parser per platform (`AlertSoundString.kt`,
 `AlertSoundString.swift`, `src/modules/alerts/lib/alertSoundString.ts`): `kind(variant):sound`,
 split on the first `:` after the kind and optional variant, so colons inside the message are part
 of the message.
@@ -334,9 +334,6 @@ Runtime behavior:
 - There is no app-level template length limit beyond what native storage and the platform can handle.
 
 ## Alert Presets
-
-> Agreed design, being implemented on PR #586. Until it lands, native still copies preset points
-> into `source = "preset"` rows and keeps the level in the `alertPreset` Board Setting.
 
 An Alert Preset is one row in `alerts` per Board and metric, id `preset:<metric>`, whose `spec` is
 a preset string:
@@ -383,8 +380,16 @@ marker comes from it until the board supplies a value.
 
 The rider's own Alert Rules for the same metric sit beside the preset row and fire together with
 its points. The metric screen shows the level switch (and Soft / Mid / Hard for geiger metrics),
-then the rider's rules, then **+ Add alert**. There is no custom level and no edit of a preset's
-points: to replace them, set the preset Off and add rules.
+then the rider's rules, then **+ Add alert**. There is no edit of a preset's points: to replace
+them, set the preset Off and add rules. Until the metric screen is reworked (#592) it still offers
+a **Custom** level: choosing it copies the expanded points into the rider's rules and sets the
+preset Off, and a metric whose preset is Off while it has rider rules reads as Custom.
+
+Schema v51 turned the earlier per-Board settings into these rows: each live Board gets one row per
+metric from its old `alertPreset` level (none or `custom` became `off`, so nothing new started
+firing), the geiger level it had chosen, and `match=on` where it matched its board config. The
+copied preset rows, the `source` column, and the `alertPreset`, `matchBoardConfig`, and
+`alertPresetSound` Board Settings went; `sound_type` became `spec`.
 
 `applyAlertPreset` sets the level or an option. Native rewrites the preset row in one database
 transaction, reloads evaluation, and publishes an `alerts` data-change event.

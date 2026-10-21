@@ -1,9 +1,5 @@
 import Foundation
 
-/// Id prefix of generated preset rules (`preset:<metric>:<index>`), the rules Voice level applies to.
-/// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/alerts/AlertCoordinator.kt `PRESET_RULE_PREFIX`
-internal let presetRulePrefix = "preset:"
-
 /// Bridges the pure alert evaluator with the side-effectful audio player. Each telemetry frame is
 /// evaluated against the loaded rules; geiger loops update/stop to track live rule activity, and
 /// one-shot alerts play a triple-beep pattern (plus optional TTS message). Returns the fired

@@ -223,3 +223,37 @@ export function mySoundId(soundType: string): string | null {
   if (!parsed.sound.startsWith('my:')) return null
   return parsed.sound.slice(3) || null
 }
+
+/**
+ * `preset(level):key=value,…` — an Alert Preset row's spec: the rider's level plus options, nothing
+ * else (the shipped definition owns every point). Unknown keys are kept in order, so rewriting one
+ * option never drops what a newer app stored. An entry without `=` is not an option and is dropped.
+ *
+ * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/alerts/AlertSoundString.kt `AlertPresetSpec`
+ * @parity /modules/vescape-core/ios/alerts/AlertSoundString.swift `AlertPresetSpec`
+ */
+export interface AlertPresetSpec {
+  level: string
+  options: [key: string, value: string][]
+}
+
+const PRESET_PATTERN = /^preset\(([^()]*)\)(?::([\s\S]*))?$/
+
+export function parseAlertPresetSpec(raw: string): AlertPresetSpec | null {
+  const match = PRESET_PATTERN.exec(raw)
+  if (!match) return null
+  const options = (match[2] ?? '').split(',').flatMap((entry): [string, string][] => {
+    const separator = entry.indexOf('=')
+    return separator > 0 ? [[entry.slice(0, separator), entry.slice(separator + 1)]] : []
+  })
+  return { level: match[1], options }
+}
+
+export function presetSpecOption(spec: AlertPresetSpec, key: string): string | null {
+  return spec.options.find(([name]) => name === key)?.[1] ?? null
+}
+
+export function formatAlertPresetSpec({ level, options }: AlertPresetSpec): string {
+  const tail = options.map(([key, value]) => `${key}=${value}`).join(',')
+  return `preset(${level})${tail ? `:${tail}` : ''}`
+}

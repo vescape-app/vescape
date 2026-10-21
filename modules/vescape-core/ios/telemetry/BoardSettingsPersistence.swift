@@ -72,21 +72,17 @@ final class BoardSettingsPersistence {
 
   func upsertBoard(_ board: PersistedBoard, settings: [PersistedBoardSetting], deletedKeys: [String]) throws {
     try writer.write { db in
-      let existing = try PersistedBoard.fetchOne(db, key: board.id) != nil
-      let presetKeys = ["alertPreset", "matchBoardConfig", AlertPresetPersistence.soundKey]
-      let previousSettings = try AlertPresetPersistence.settings(db, board.id)
       let tombstone = try PersistedBoard.fetchOne(db, key: board.id)?.deletedAt
       try PersistedBoard(
         id: board.id, name: board.name, bleId: board.bleId, transport: board.transport,
         createdAt: board.createdAt, deletedAt: tombstone ?? board.deletedAt
       ).save(db)
-      for key in deletedKeys where !(existing && presetKeys.contains(key)) {
+      for key in deletedKeys {
         _ = try PersistedBoardSetting
           .filter(Column("board_id") == board.id && Column("key") == key)
           .deleteAll(db)
       }
-      for setting in settings where !(existing && presetKeys.contains(setting.key)) { try setting.save(db) }
-      try AlertPresetPersistence.regenerateChanged(db, boardId: board.id, before: previousSettings)
+      for setting in settings { try setting.save(db) }
     }
   }
 
@@ -124,15 +120,8 @@ final class BoardSettingsPersistence {
   func updateUnitSystem(_ units: String) throws {
     precondition(["metric", "imperial"].contains(units))
     try writer.write { db in
-      let previous = try PersistedAppSetting.fetchOne(db, key: "unitSystem")
-      let oldUnits = try previous.map { try JSONSerialization.jsonObject(with: Data($0.valueJson.utf8), options: [.fragmentsAllowed]) as? String } ?? "metric"
       let json = String(decoding: try JSONSerialization.data(withJSONObject: units, options: [.fragmentsAllowed]), as: UTF8.self)
       try PersistedAppSetting(key: "unitSystem", valueJson: json, updatedAt: Int64(Date().timeIntervalSince1970 * 1000)).save(db)
-      if oldUnits != units {
-        for board in try PersistedBoard.filter(Column("deleted_at") == nil).fetchAll(db) {
-          try AlertPresetPersistence.regenerate(db, boardId: board.id, metric: "speed")
-        }
-      }
     }
   }
 

@@ -31,7 +31,7 @@ test('draft preview forwards native options and preserves returned thresholds wi
     manual,
     { ...manual, id: 'muted', enabled: false },
   ])
-  expect(spy).toHaveBeenCalledWith('speed', 'normal', options)
+  expect(spy).toHaveBeenCalledWith('speed', 'preset(normal)', options)
   expect(result.error).toBeNull()
   expect(result.presetRules).toEqual(nativeSnapshot)
   expect(result.rules).toHaveLength(2)

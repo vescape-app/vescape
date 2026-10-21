@@ -4,9 +4,6 @@ import expo.modules.vescapecore.protocol.RefloatTelemetry
 
 import expo.modules.vescapecore.telemetry.AlertRuleEntity
 
-/** Id prefix of generated preset rules (`preset:<metric>:<index>`), the rules Voice level applies to. */
-internal const val PRESET_RULE_PREFIX = "preset:"
-
 internal class AlertCoordinator(
     private val feedback: () -> AlertFeedback,
     /** Test feedback must not start a system vibration that cannot be cancelled per source. */

@@ -19,7 +19,7 @@ struct PresetInput {
   var topSpeedKmh: Double = 50
   var hasBatteryConfig = false
   var speedUnitSystem = "metric"
-  var matchBoardConfig = false
+  /// Base of the metric's config-relative points; read only when its spec has `match=on`.
   var configBase: Double? = nil
 }
 
@@ -61,12 +61,12 @@ private struct PresetDefinition: Decodable {
   }
 }
 
-/// Typed catalog and pure calculation shared by persisted presets and unsaved wizard previews.
+/// Typed catalog and pure expansion of a preset spec, shared by saved rows and unsaved wizard previews.
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/AlertPresetGenerator.kt
 final class AlertPresetGenerator {
   static let metrics = ["speed", "duty", "motor-temp", "controller-temp", "battery"]
   static let activeLevels = ["safe", "normal", "minimal"]
-  static let levels = activeLevels + ["off", "custom"]
+  static let levels = activeLevels + ["off"]
   private static let kmhPerMph = 1.609344
   enum InvalidPreset: Error { case invalidIntent, invalidDefinition, missingResource }
   private struct Catalog: Decodable {
@@ -110,28 +110,37 @@ final class AlertPresetGenerator {
     }
   }
 
-  static func generate(metric: String, level: String, input: PresetInput) throws -> [GeneratedPresetRule] {
-    guard metrics.contains(metric), levels.contains(level), ["metric", "imperial"].contains(input.speedUnitSystem) else { throw InvalidPreset.invalidIntent }
-    guard activeLevels.contains(level) else { return [] }
-    let catalog = try catalog.get()
-    guard let definition = catalog.metrics[metric] else { throw InvalidPreset.invalidDefinition }
-    if input.matchBoardConfig, let match = catalog.match[metric] {
-      return relativeRules(definition, match: match, level: level, base: input.configBase)
-    }
-    if definition.requiresBatteryConfig && !input.hasBatteryConfig { return [] }
-    return fixedRules(definition, level: level, input: input)
+  /// True when `metric`'s definition ticks, so its spec may carry a `geiger=` option.
+  static func hasGeiger(_ metric: String) throws -> Bool {
+    try catalog.get().metrics[metric]?.soundType?.hasPrefix("geiger:") == true
   }
 
-  private static func fixedRules(_ definition: PresetDefinition, level: String, input: PresetInput) -> [GeneratedPresetRule] {
+  /// The rules `spec` stands for. `off`, an unknown level (from a newer app), or a guard failure
+  /// expands to none. `match=on` gives config-relative points; `geiger=` replaces the tick level.
+  static func generate(metric: String, spec: AlertPresetSpec, input: PresetInput) throws -> [GeneratedPresetRule] {
+    guard metrics.contains(metric), ["metric", "imperial"].contains(input.speedUnitSystem) else { throw InvalidPreset.invalidIntent }
+    guard activeLevels.contains(spec.level) else { return [] }
+    let catalog = try catalog.get()
+    guard let definition = catalog.metrics[metric], let defaultSound = definition.soundType else { throw InvalidPreset.invalidDefinition }
+    let geiger = spec.option("geiger").flatMap(GeigerLevel.init(rawValue:))
+    let soundType = geiger != nil && defaultSound.hasPrefix("geiger:") ? "geiger:\(geiger!.rawValue)" : defaultSound
+    if spec.option("match") == "on", let match = catalog.match[metric] {
+      return relativeRules(soundType, match: match, level: spec.level, base: input.configBase)
+    }
+    if definition.requiresBatteryConfig && !input.hasBatteryConfig { return [] }
+    return fixedRules(definition, soundType: soundType, level: spec.level, input: input)
+  }
+
+  private static func fixedRules(_ definition: PresetDefinition, soundType: String, level: String, input: PresetInput) -> [GeneratedPresetRule] {
     let points = definition.levels[level]!
     return points.enumerated().map { index, point in
       let threshold = definition.scaledByTopSpeed ? speedRange(point, input: input) : point
-      return GeneratedPresetRule(point: threshold, soundType: pointSoundType(definition.soundType!, index: index, count: points.count))
+      return GeneratedPresetRule(point: threshold, soundType: pointSoundType(soundType, index: index, count: points.count))
     }
   }
 
   private static func relativeRules(
-    _ definition: PresetDefinition,
+    _ soundType: String,
     match: PresetDefinition,
     level: String,
     base: Double?
@@ -147,22 +156,22 @@ final class AlertPresetGenerator {
           repeatEverySeconds: offset.repeatEverySeconds
         )
       } else {
-        // No anchor yet: persist the relationship, but no firing threshold.
+        // No anchor yet: keep the relationship, but no firing threshold.
         point = PresetPoint(threshold: 0, repeatEverySeconds: offset.repeatEverySeconds)
       }
       return GeneratedPresetRule(
         point: point,
-        soundType: pointSoundType(definition.soundType!, index: index, count: offsets.count),
+        soundType: pointSoundType(soundType, index: index, count: offsets.count),
         relation: relation
       )
     }
   }
 
   /// Sound of a ladder's point `index` of `count`. A `voice:<key>` definition speaks each point with a
-  /// severity by rank: the last (most severe) point `critical`, the first `info`, the rest `warning`.
+  /// severity by rank: the last (most severe) point `critical`, the first `info`, the rest `warning`;
+  /// a one-point ladder is `critical`.
   /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/AlertPresetGenerator.kt `pointSoundType`
-  /// @parity /modules/vescape-core/ios/telemetry/TelemetryDatabase.swift `presetVoiceSql`
-  static func pointSoundType(_ soundType: String, index: Int, count: Int) -> String {
+  private static func pointSoundType(_ soundType: String, index: Int, count: Int) -> String {
     guard soundType.hasPrefix("voice:") else { return soundType }
     let severity = index == count - 1 ? "critical" : index == 0 ? "info" : "warning"
     return "voice(\(severity)):\(soundType.dropFirst("voice:".count))"

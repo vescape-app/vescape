@@ -1,5 +1,7 @@
 package expo.modules.vescapecore.telemetry
 
+import expo.modules.vescapecore.alerts.AlertPresetSpec
+import expo.modules.vescapecore.alerts.GeigerLevel
 import org.json.JSONObject
 import kotlin.math.floor
 
@@ -10,7 +12,7 @@ internal data class PresetInput(
   val topSpeedKmh: Double = 50.0,
   val hasBatteryConfig: Boolean = false,
   val speedUnitSystem: String = "metric",
-  val matchBoardConfig: Boolean = false,
+  /** Base of the metric's config-relative points; read only when its spec has `match=on`. */
   val configBase: Double? = null,
 )
 
@@ -22,13 +24,13 @@ internal data class PresetDefinition(
 )
 internal data class PresetMatchDefinition(val fieldId: String, val levels: Map<String, List<PresetPoint>>)
 
-/** Typed catalog and pure calculation shared by saved presets and unsaved wizard previews.
+/** Typed catalog and pure expansion of a preset spec, shared by saved rows and unsaved wizard previews.
  * @parity /modules/vescape-core/ios/telemetry/AlertPresetGenerator.swift
  */
 internal object AlertPresetGenerator {
   val metrics = listOf("speed", "duty", "motor-temp", "controller-temp", "battery")
   val activeLevels = setOf("safe", "normal", "minimal")
-  val levels = activeLevels + setOf("off", "custom")
+  val levels = activeLevels + "off"
   private const val KMH_PER_MPH = 1.609344
 
   private fun resource(name: String): JSONObject {
@@ -112,32 +114,41 @@ internal object AlertPresetGenerator {
     }
   }
 
-  fun generate(metric: String, level: String, input: PresetInput): List<GeneratedPresetRule> {
+  /** True when [metric]'s definition ticks, so its spec may carry a `geiger=` option. */
+  fun hasGeiger(metric: String): Boolean = definitions[metric]?.soundType?.startsWith("geiger:") == true
+
+  /**
+   * The rules [spec] stands for. `off`, an unknown level (from a newer app), or a guard failure
+   * expands to none. `match=on` gives config-relative points; `geiger=` replaces the tick level.
+   */
+  fun generate(metric: String, spec: AlertPresetSpec, input: PresetInput): List<GeneratedPresetRule> {
     require(metric in metrics) { "Unknown alert preset metric" }
-    require(level in levels) { "Invalid preset level" }
     require(input.speedUnitSystem in setOf("metric", "imperial")) { "Invalid unit system" }
-    if (level !in activeLevels) return emptyList()
+    val level = spec.level.takeIf { it in activeLevels } ?: return emptyList()
     val definition = definitions.getValue(metric)
-    val match = matches[metric].takeIf { input.matchBoardConfig }
-    if (match != null) return relativeRules(definition, match, level, input.configBase)
+    val geiger = spec.option("geiger")?.takeIf { value -> GeigerLevel.entries.any { it.id == value } }
+    val soundType = if (geiger != null && definition.soundType.startsWith("geiger:")) "geiger:$geiger" else definition.soundType
+    val match = matches[metric].takeIf { spec.option("match") == "on" }
+    if (match != null) return relativeRules(soundType, match, level, input.configBase)
     if (definition.requiresBatteryConfig && !input.hasBatteryConfig) return emptyList()
-    return fixedRules(definition, level, input)
+    return fixedRules(definition, soundType, level, input)
   }
 
   private fun fixedRules(
     definition: PresetDefinition,
+    soundType: String,
     level: String,
     input: PresetInput,
   ): List<GeneratedPresetRule> =
     definition.levels.getValue(level).let { points ->
       points.mapIndexed { index, point ->
         val threshold = if (definition.scaledByTopSpeed) speedRange(point, input) else point
-        GeneratedPresetRule(threshold, pointSoundType(definition.soundType, index, points.size))
+        GeneratedPresetRule(threshold, pointSoundType(soundType, index, points.size))
       }
     }
 
   private fun relativeRules(
-    definition: PresetDefinition,
+    soundType: String,
     match: PresetMatchDefinition,
     level: String,
     base: Double?,
@@ -145,7 +156,7 @@ internal object AlertPresetGenerator {
     match.levels.getValue(level).let { offsets -> offsets.mapIndexed { index, offset ->
       val relation = PresetRelation(match.fieldId, offset.threshold, offset.thresholdMax)
       val point = if (base == null) {
-        // No anchor yet: persist the relationship, but no firing threshold.
+        // No anchor yet: keep the relationship, but no firing threshold.
         PresetPoint(threshold = 0.0, repeatSeconds = offset.repeatSeconds)
       } else {
         PresetPoint(
@@ -154,17 +165,17 @@ internal object AlertPresetGenerator {
           repeatSeconds = offset.repeatSeconds,
         )
       }
-      GeneratedPresetRule(point, pointSoundType(definition.soundType, index, offsets.size), relation)
+      GeneratedPresetRule(point, pointSoundType(soundType, index, offsets.size), relation)
     } }
 
   /**
    * Sound of a ladder's point [index] of [count]. A `voice:<key>` definition speaks each point with a
-   * severity by rank: the last (most severe) point `critical`, the first `info`, the rest `warning`.
+   * severity by rank: the last (most severe) point `critical`, the first `info`, the rest `warning`;
+   * a one-point ladder is `critical`.
    *
    * @parity /modules/vescape-core/ios/telemetry/AlertPresetGenerator.swift `pointSoundType`
-   * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/TelemetryMigrations.kt `PRESET_VOICE_SQL`
    */
-  fun pointSoundType(soundType: String, index: Int, count: Int): String {
+  private fun pointSoundType(soundType: String, index: Int, count: Int): String {
     if (!soundType.startsWith("voice:")) return soundType
     val severity = when (index) {
       count - 1 -> "critical"

@@ -286,7 +286,7 @@ class RecordingPersistenceHostTest {
       persistence.createProfile(profile.copy(id = "compat-$index", boardId = "compat-board", refloatBaseVersion = versions.getString(index)))
     }
     persistence.saveProfile(profile.id, profileValues.getString("updatedFieldsJson"), 2)
-    persistence.saveAlert(AlertRuleEntity(boardId, alertValues.getString("id"), alertValues.getString("controlId"), alertValues.getDouble("threshold"), null, enabled = true, soundType = alertValues.getString("soundType"), createdAt = 1, source = alertValues.getString("source")))
+    persistence.saveAlert(AlertRuleEntity(boardId, alertValues.getString("id"), alertValues.getString("controlId"), alertValues.getDouble("threshold"), null, enabled = true, soundType = alertValues.getString("soundType"), createdAt = 1))
     persistence.setAlertEnabled(boardId, alertValues.getString("id"), false)
     db.close()
 
@@ -306,8 +306,10 @@ class RecordingPersistenceHostTest {
     assertTrue(lastDeleteFailed)
     assertEquals(1, persistence.history("compat-3").size)
     assertEquals(expected.getInt("historyCount"), dao.getTuneHistoryEntries(profile.id).size)
-    assertEquals(alertValues.getString("id"), persistence.alertRules(boardId).single().id)
-    assertEquals(expected.getBoolean("alertEnabled"), persistence.alertRules(boardId).single().enabled)
+    // The Board has no preset rows, so the app-default presets expand beside the rider's rule.
+    val riderRule = persistence.alertRules(boardId).single { !AlertPresetPersistence.isPresetId(it.id) }
+    assertEquals(alertValues.getString("id"), riderRule.id)
+    assertEquals(expected.getBoolean("alertEnabled"), riderRule.enabled)
     assertEquals(null, persistence.profile("absent"))
     db.close()
 

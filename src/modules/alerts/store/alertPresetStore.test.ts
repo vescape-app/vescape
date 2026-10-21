@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, expect, mock, test } from 'bun:test'
+import { beforeEach, expect, mock, test } from 'bun:test'
 import type { AlertRule, Board, AlertPresetIntent } from 'vescape-core'
 
 const actualVescapeCore = await import('@/../modules/vescape-core/src/index')
@@ -6,12 +6,16 @@ const applyAlertPreset = mock(
   async (_boardId: string, _metric: string, _intent: AlertPresetIntent) => {},
 )
 const upsertAlertRule = mock(async (_rule: AlertRule) => {})
+const deleteAlertRule = mock(async (_boardId: string, _id: string) => {})
 const getAlertRules = mock(async (_boardId: string) => [] as AlertRule[])
+const getAlertPresets = mock(async (_boardId: string) => ({}))
 mock.module('vescape-core', () => ({
   ...actualVescapeCore,
   applyAlertPreset,
   upsertAlertRule,
+  deleteAlertRule,
   getAlertRules,
+  getAlertPresets,
 }))
 
 const BOARD_ID = 'board-1'
@@ -23,18 +27,14 @@ const board: Board = {
   deletedAt: null,
   batteryConfig: { mode: 'manual', minVoltage: 40, maxVoltage: 50 },
   topSpeedKmh: 50,
-  alertPreset: { speed: 'safe' },
   alertPresetsOnboarded: true,
   link: null,
 }
-const boardLoad = mock(async () => {})
-let restore = () => {}
-
-async function setup(_options?: { seedRules: AlertRule[] }) {
+async function setup(rules: AlertRule[] = []) {
   const { useAlertsStore } = await import('@/modules/alerts/store/alertsStore')
   const { useBoardStore } = await import('@/modules/board/store/boardStore')
   const { useAlertPresetStore } = await import('@/modules/alerts/store/alertPresetStore')
-  useAlertsStore.setState({ boardId: BOARD_ID, rules: [], error: null })
+  useAlertsStore.setState({ boardId: BOARD_ID, rules, presets: {}, error: null })
   useBoardStore.setState({ boards: [board], activeBoardId: BOARD_ID })
   return { useAlertsStore, useBoardStore, useAlertPresetStore }
 }
@@ -44,32 +44,64 @@ beforeEach(async () => {
   applyAlertPreset.mockImplementation(async () => {})
   upsertAlertRule.mockReset()
   upsertAlertRule.mockImplementation(async () => {})
+  deleteAlertRule.mockReset()
+  deleteAlertRule.mockImplementation(async () => {})
   getAlertRules.mockReset()
   getAlertRules.mockImplementation(async () => [])
-  boardLoad.mockReset()
-  boardLoad.mockImplementation(async () => {})
-  const { useBoardStore } = await import('@/modules/board/store/boardStore')
-  const oldLoad = useBoardStore.getState().load
-  useBoardStore.setState({ load: boardLoad })
-  restore = () => useBoardStore.setState({ load: oldLoad })
 })
-afterEach(() => restore())
 
-test('preset actions send one native intent and reload committed state without JS rule writes', async () => {
+const rule = (id: string, controlId: string): AlertRule => ({
+  boardId: BOARD_ID,
+  id,
+  controlId,
+  threshold: 80,
+  thresholdMax: 90,
+  enabled: true,
+  soundType: 'geiger:hard',
+  createdAt: 1,
+  repeatEverySeconds: null,
+})
+
+test('preset actions rewrite the row through one native intent and reload rules', async () => {
   const { useAlertPresetStore } = await setup()
   await useAlertPresetStore.getState().setLevel('speed', 'normal')
-  await useAlertPresetStore.getState().customize('duty')
-  await useAlertPresetStore.getState().discardCustom('motor-temp')
   await useAlertPresetStore.getState().setMatchBoardConfig('duty', true)
+  await useAlertPresetStore.getState().setGeigerSound('speed', 'geiger:mid')
   expect(applyAlertPreset.mock.calls).toEqual([
-    [BOARD_ID, 'speed', { action: 'select', level: 'normal' }],
-    [BOARD_ID, 'duty', { action: 'customize' }],
-    [BOARD_ID, 'motor-temp', { action: 'discard-custom' }],
-    [BOARD_ID, 'duty', { action: 'match-board-config', enabled: true }],
+    [BOARD_ID, 'speed', { level: 'normal' }],
+    [BOARD_ID, 'duty', { match: true }],
+    [BOARD_ID, 'speed', { geiger: 'mid' }],
   ])
-  expect(boardLoad).toHaveBeenCalledTimes(4)
-  expect(getAlertRules).toHaveBeenCalledTimes(4)
+  expect(getAlertRules).toHaveBeenCalledTimes(3)
   expect(upsertAlertRule).not.toHaveBeenCalled()
+})
+
+test('custom copies the expanded points into rider rules and turns the preset Off', async () => {
+  const { useAlertPresetStore } = await setup()
+  const {
+    id: _id,
+    boardId: _board,
+    enabled: _enabled,
+    createdAt: _created,
+    ...point
+  } = rule('preset:duty:0', 'duty')
+  await useAlertPresetStore
+    .getState()
+    .setLevel('duty', 'custom', [{ id: 'preset:duty:0', ...point }])
+  expect(upsertAlertRule).toHaveBeenCalledTimes(1)
+  expect(upsertAlertRule.mock.calls[0][0].id.startsWith('preset:')).toBe(false)
+  expect(applyAlertPreset.mock.calls).toEqual([[BOARD_ID, 'duty', { level: 'off' }]])
+})
+
+test('discarding custom deletes only rider rules and returns to the default level', async () => {
+  const { useAlertPresetStore } = await setup([
+    rule('mine', 'duty'),
+    rule('preset:duty:0', 'duty'),
+    rule('other', 'speed'),
+  ])
+  await useAlertPresetStore.getState().discardCustom('duty')
+  expect(deleteAlertRule.mock.calls).toEqual([[BOARD_ID, 'mine']])
+  expect(applyAlertPreset.mock.calls).toEqual([[BOARD_ID, 'duty', { level: 'normal' }]])
 })
 
 test('failed native switch leaves the rendered selection and rules intact and reports the error', async () => {
@@ -82,20 +114,8 @@ test('failed native switch leaves the rendered selection and rules intact and re
   expect(useBoardStore.getState().boards).toEqual([board])
   expect(useAlertsStore.getState().rules).toBe(beforeRules)
   expect(useAlertsStore.getState().error).toBe('transaction failed')
-  expect(boardLoad).not.toHaveBeenCalled()
   expect(getAlertRules).not.toHaveBeenCalled()
   expect(useAlertPresetStore.getState().syncing).toBe(false)
-})
-
-test('switching an inactive Board does not replace the active Board rules', async () => {
-  const { useAlertPresetStore } = await setup()
-  await useAlertPresetStore.getState().setLevel('speed', 'normal', 'other-board')
-  expect(applyAlertPreset).toHaveBeenCalledWith('other-board', 'speed', {
-    action: 'select',
-    level: 'normal',
-  })
-  expect(boardLoad).toHaveBeenCalledTimes(1)
-  expect(getAlertRules).not.toHaveBeenCalled()
 })
 
 test('a read failure after commit is reported without inventing local rules', async () => {
@@ -125,7 +145,7 @@ test('failed Alert Rule save does not publish optimistic state', async () => {
 })
 
 test('failed Alert Rule read remains distinct from an empty result', async () => {
-  const { useAlertsStore } = await setup({ seedRules: [] })
+  const { useAlertsStore } = await setup()
   getAlertRules.mockRejectedValueOnce(new Error('query failed'))
 
   await expect(useAlertsStore.getState().load(BOARD_ID)).rejects.toThrow('query failed')

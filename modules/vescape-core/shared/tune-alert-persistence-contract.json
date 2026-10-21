@@ -13,8 +13,7 @@
     "id": "alert-1",
     "controlId": "speed",
     "threshold": 42,
-    "soundType": "beep",
-    "source": "manual"
+    "soundType": "beep"
   },
   "expected": {
     "historyCount": 2,

@@ -1,26 +1,34 @@
 import Foundation
 import GRDB
 
-/// Native-owned preset intent, persisted with its rules in one transaction.
+/// An Alert Preset is one `alerts` row per Board and metric, id `preset:<metric>`, whose spec is
+/// `preset(<level>)[:key=value,…]`. Native expands the rows whenever it loads rules; the expanded
+/// rules are never stored.
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/AlertPresetPersistence.kt
 final class AlertPresetPersistence {
   let writer: any DatabaseWriter
   init(writer: any DatabaseWriter) { self.writer = writer }
   static let metrics = AlertPresetGenerator.metrics
-  /// Board setting holding each preset's sound choices: the geiger level.
-  static let soundKey = "alertPresetSound"
-  private static let levels = AlertPresetGenerator.levels
+  /// A metric without a preset row: the app default.
+  private static let defaultSpec = AlertPresetSpec(level: "normal")
   enum InvalidPreset: Error { case invalidIntent, missingBoard }
 
+  private static func rowId(_ metric: String) -> String { presetRulePrefix + metric }
+
+  /// True for a stored preset row or an expanded preset rule: neither is a rider's rule.
+  static func isPresetId(_ id: String) -> Bool { id.hasPrefix(presetRulePrefix) }
+
+  /// Expand an unsaved draft `spec` for the add-board wizard, without touching the database.
   static func preview(
     metric: String,
-    level: String,
+    spec: String,
     topSpeedKmh: Double?,
     hasBatteryConfig: Bool,
     speedUnitSystem: String
   ) throws -> [PersistedAlertRule] {
+    guard let parsed = AlertPresetSpec.parse(spec) else { throw InvalidPreset.invalidIntent }
     let input = PresetInput(topSpeedKmh: topSpeedKmh ?? 50, hasBatteryConfig: hasBatteryConfig, speedUnitSystem: speedUnitSystem)
-    let specs = try AlertPresetGenerator.generate(metric: metric, level: level, input: input)
+    let specs = try AlertPresetGenerator.generate(metric: metric, spec: parsed, input: input)
     return records(boardId: "", metric: metric, specs: specs, createdAt: 0)
   }
 
@@ -28,196 +36,79 @@ final class AlertPresetPersistence {
   private static func decode(_ json: String) throws -> Any {
     try JSONSerialization.jsonObject(with: Data(json.utf8), options: .fragmentsAllowed)
   }
-  static func settings(_ db: Database, _ boardId: String) throws -> [String: Any] {
+  private static func settings(_ db: Database, _ boardId: String) throws -> [String: Any] {
     try Dictionary(uniqueKeysWithValues: PersistedBoardSetting.filter(Column("board_id") == boardId).fetchAll(db).map { ($0.key, try decode($0.valueJson)) })
   }
-  private static func save(_ db: Database, _ boardId: String, _ key: String, _ value: Any) throws {
-    let data = try JSONSerialization.data(withJSONObject: value, options: [.fragmentsAllowed, .sortedKeys])
-    try PersistedBoardSetting(boardId: boardId, key: key, valueJson: String(decoding: data, as: UTF8.self), updatedAt: Int64(Date().timeIntervalSince1970 * 1000)).save(db)
+  private static func rows(_ db: Database, _ boardId: String) throws -> [PersistedAlertRule] {
+    try PersistedAlertRule.filter(Column("board_id") == boardId).order(Column("created_at")).fetchAll(db)
   }
-  /// Legacy JS omitted unresolved relations; repair missing slots without replacing existing rules.
-  func repairMissingRelations(boardId: String) throws -> Bool {
-    try writer.write { try Self.repairMissingRelations($0, boardId: boardId) }
+  private static func presetRows(_ rows: [PersistedAlertRule]) -> [String: PersistedAlertRule] {
+    Dictionary(rows.filter { $0.id == rowId($0.controlId) }.map { ($0.controlId, $0) }, uniquingKeysWith: { first, _ in first })
   }
-  private static func repairMissingRelations(_ db: Database, boardId: String) throws -> Bool {
+
+  /// Each metric's stored spec, or the app default when it has no row.
+  static func specs(_ db: Database, boardId: String) throws -> [String: String] {
+    let presets = presetRows(try rows(db, boardId))
+    return Dictionary(uniqueKeysWithValues: metrics.map { ($0, presets[$0]?.soundType ?? defaultSpec.encode()) })
+  }
+
+  /// The Board's rules as native evaluates them and JS reads them: rider rules plus expanded presets.
+  static func expandedRules(_ db: Database, boardId: String) throws -> [PersistedAlertRule] {
+    let stored = try rows(db, boardId)
+    let presets = presetRows(stored)
     let values = try settings(db, boardId)
-    let selection = object(values["alertPreset"])
-    let match = object(values["matchBoardConfig"])
-    let ids = Set(try PersistedAlertRule.filter(Column("board_id") == boardId).fetchAll(db).map(\.id))
-    var changed = false
-    for metric in metrics where match[metric] as? Bool == true {
-      for rule in try generate(db, boardId: boardId, metric: metric, level: selection[metric] as? String ?? "off", settings: values) {
-        if rule.thresholdKind == "config-relative", !ids.contains(rule.id) {
-          try rule.save(db)
-          changed = true
-        }
-      }
-    }
-    return changed
-  }
-  static func regenerateChanged(_ db: Database, boardId: String, before: [String: Any]) throws {
-    let after = try settings(db, boardId)
-    for metric in metrics where inputsChanged(metric, before: before, after: after) {
-      try regenerate(db, boardId: boardId, metric: metric)
-    }
-  }
-
-  private static func inputsChanged(_ metric: String, before: [String: Any], after: [String: Any]) -> Bool {
-    let previous = object(before["alertPreset"])
-    let next = object(after["alertPreset"])
-    if (previous[metric] as? String ?? "off") != (next[metric] as? String ?? "off") { return true }
-    let oldMatch = object(before["matchBoardConfig"])[metric] as? Bool ?? false
-    let newMatch = object(after["matchBoardConfig"])[metric] as? Bool ?? false
-    if oldMatch != newMatch { return true }
-    switch metric {
-    case "speed":
-      let oldTop = (before["topSpeedKmh"] as? NSNumber)?.doubleValue
-      let newTop = (after["topSpeedKmh"] as? NSNumber)?.doubleValue
-      return oldTop != newTop
-    case "battery":
-      return !NSDictionary(dictionary: object(before["batteryConfig"])).isEqual(to: object(after["batteryConfig"]))
-    default: return false
-    }
-  }
-
-  static func regenerate(_ db: Database, boardId: String, metric: String? = nil) throws {
-    for metric in metric.map({ [$0] }) ?? metrics {
-      // Read per metric: moving a legacy geiger choice below rewrites the sound setting.
-      let values = try settings(db, boardId)
-      let selection = object(values["alertPreset"])
-      let stored = (presetSound(values, metric)["geiger"] as? String).flatMap { isGeigerGrammar($0) ? $0 : nil }
-      let chosen = try stored ?? chosenGeigerSound(db, boardId: boardId, metric: metric)
-      // A choice only on legacy rules moves into the setting before the rules go (Off keeps it).
-      if stored == nil, let chosen { try saveSound(db, boardId, values, metric, "geiger", chosen) }
-      try db.execute(sql: "DELETE FROM alerts WHERE board_id = ? AND control_id = ? AND source = 'preset'", arguments: [boardId, metric])
-      for var rule in try generate(db, boardId: boardId, metric: metric, level: selection[metric] as? String ?? "off", settings: values) {
-        if let chosen, isGeigerGrammar(rule.soundType) { rule.soundType = chosen }
-        try rule.save(db)
-      }
-    }
-  }
-
-  /// `metric`'s sound choices in the `soundKey` setting; empty when it follows every default.
-  private static func presetSound(_ settings: [String: Any], _ metric: String) -> [String: Any] {
-    object(object(settings[soundKey])[metric])
-  }
-
-  /// Set one of `metric`'s sound choices.
-  private static func saveSound(_ db: Database, _ boardId: String, _ settings: [String: Any], _ metric: String, _ slot: String, _ value: String) throws {
-    var all = object(settings[soundKey])
-    var sound = presetSound(settings, metric)
-    sound[slot] = value
-    all[metric] = sound
-    try save(db, boardId, soundKey, all)
-  }
-
-  /// The geiger sound on a metric's saved preset rules, for boards whose choice predates `soundKey`. Only a
-  /// grammar string (`geiger:<level>`) counts: legacy `preset:` names were generated defaults, never
-  /// a choice, so they give way to the current default.
-  private static func chosenGeigerSound(_ db: Database, boardId: String, metric: String) throws -> String? {
-    try savedPresetRules(db, boardId: boardId, metric: metric)
-      .lazy.map(\.soundType).first(where: isGeigerGrammar)
-  }
-
-  /// A `geiger:<sound>` string. Generated preset ticks always use the grammar.
-  private static func isGeigerGrammar(_ soundType: String) -> Bool { soundType.hasPrefix("geiger:") }
-
-  private static func savedPresetRules(_ db: Database, boardId: String, metric: String) throws -> [PersistedAlertRule] {
-    try PersistedAlertRule
-      .filter(Column("board_id") == boardId && Column("control_id") == metric && Column("source") == "preset")
-      .fetchAll(db)
-  }
-  func apply(
-    boardId: String,
-    metric: String,
-    action: String,
-    level: String?,
-    matchBoardConfig: Bool?
-  ) throws {
-    try writer.write { db in
-      guard Self.metrics.contains(metric) else { throw InvalidPreset.invalidIntent }
-      guard let board = try PersistedBoard.fetchOne(db, key: boardId), board.deletedAt == nil else { throw InvalidPreset.missingBoard }
-      let values = try Self.settings(db, boardId)
-      var selection = Self.object(values["alertPreset"])
-      for key in Self.metrics where !Self.levels.contains(selection[key] as? String ?? "") { selection[key] = "off" }
-      var customized: [PersistedAlertRule] = []
-      switch action {
-      case "select":
-        guard let level, Self.levels.contains(level), level != "custom" else { throw InvalidPreset.invalidIntent }
-        selection[metric] = level
-      case "customize":
-        _ = try Self.repairMissingRelations(db, boardId: boardId)
-        if selection[metric] as? String == "custom" { return }
-        customized = try Self.materializeRules(db, boardId: boardId, metric: metric)
-        selection[metric] = "custom"
-      case "discard-custom":
-        try db.execute(sql: "DELETE FROM alerts WHERE board_id = ? AND control_id = ? AND (source IS NULL OR source != 'preset')", arguments: [boardId, metric])
-        selection[metric] = "normal"
-      case "geiger-sound":
-        guard let sound = level, Self.isGeigerGrammar(sound) else { throw InvalidPreset.invalidIntent }
-        // Kept in the setting, not only on the rules, so a level with no rules (Off) loses nothing.
-        try Self.saveSound(db, boardId, values, metric, "geiger", sound)
-      case "match-board-config":
-        guard let matchBoardConfig, try AlertPresetGenerator.matchField(metric) != nil else { throw InvalidPreset.invalidIntent }
-        var match = Self.object(values["matchBoardConfig"])
-        match[metric] = matchBoardConfig
-        try Self.save(db, boardId, "matchBoardConfig", match)
-      default: throw InvalidPreset.invalidIntent
-      }
-      try Self.save(db, boardId, "alertPreset", selection)
-      try Self.regenerate(db, boardId: boardId, metric: metric)
-      for rule in customized { try rule.save(db) }
-    }
-  }
-  private static func materializeRules(_ db: Database, boardId: String, metric: String) throws -> [PersistedAlertRule] {
-    let saved = try savedPresetRules(db, boardId: boardId, metric: metric)
-    return try saved.compactMap { rule in
-      var threshold = rule.threshold
-      var thresholdMax = rule.thresholdMax
-      if rule.thresholdKind == "config-relative" {
-        guard let base = try resolveBase(db, boardId, rule.configFieldId), let offset = rule.thresholdOffset else { return nil }
-        threshold = base + offset
-        thresholdMax = rule.thresholdMaxOffset.map { base + $0 }
-      }
-      return PersistedAlertRule(
-        boardId: boardId, id: UUID().uuidString, controlId: metric,
-        threshold: threshold, thresholdMax: thresholdMax, enabled: rule.enabled,
-        soundType: rule.soundType, createdAt: rule.createdAt,
-        repeatEverySeconds: rule.repeatEverySeconds,
-        source: nil, thresholdKind: "fixed", configFieldId: nil,
-        thresholdOffset: nil, thresholdMaxOffset: nil
+    let rawUnits = try PersistedAppSetting.fetchOne(db, key: "unitSystem")
+    let units = validUnitSystem(try rawUnits.map { try decode($0.valueJson) } as? String) ?? "metric"
+    let expanded = try metrics.flatMap { metric -> [PersistedAlertRule] in
+      // A row this app cannot read expands to nothing rather than the default.
+      let spec = presets[metric].map { AlertPresetSpec.parse($0.soundType) ?? AlertPresetSpec(level: "off") } ?? defaultSpec
+      let field = spec.option("match") == "on" ? try AlertPresetGenerator.matchField(metric) : nil
+      let input = PresetInput(
+        topSpeedKmh: (values["topSpeedKmh"] as? NSNumber)?.doubleValue ?? 50,
+        hasBatteryConfig: try AlertPresetGenerator.validBattery(values["batteryConfig"]),
+        speedUnitSystem: units,
+        configBase: try field.flatMap { try resolveBase(db, boardId, $0) }
       )
+      let rules = try AlertPresetGenerator.generate(metric: metric, spec: spec, input: input)
+      return records(boardId: boardId, metric: metric, specs: rules, createdAt: presets[metric]?.createdAt ?? 0)
+    }
+    return stored.filter { !isPresetId($0.id) } + expanded
+  }
+
+  /// Rewrite `metric`'s preset row with exactly one of a new level, geiger level, or match choice.
+  func apply(boardId: String, metric: String, level: String?, geiger: String?, match: Bool?) throws {
+    try writer.write { db in
+      guard Self.metrics.contains(metric),
+            [level != nil, geiger != nil, match != nil].filter({ $0 }).count == 1 else { throw InvalidPreset.invalidIntent }
+      guard let board = try PersistedBoard.fetchOne(db, key: boardId), board.deletedAt == nil else { throw InvalidPreset.missingBoard }
+      let current = AlertPresetSpec.parse(try Self.specs(db, boardId: boardId)[metric]!) ?? Self.defaultSpec
+      var next = current
+      if let level {
+        guard AlertPresetGenerator.levels.contains(level) else { throw InvalidPreset.invalidIntent }
+        next.level = level
+      } else if let geiger {
+        guard try AlertPresetGenerator.hasGeiger(metric), GeigerLevel(rawValue: geiger) != nil else { throw InvalidPreset.invalidIntent }
+        next = current.withOption("geiger", geiger)
+      } else {
+        guard try AlertPresetGenerator.matchField(metric) != nil else { throw InvalidPreset.invalidIntent }
+        next = current.withOption("match", match == true ? "on" : nil)
+      }
+      try PersistedAlertRule(
+        boardId: boardId, id: Self.rowId(metric), controlId: metric,
+        threshold: 0, thresholdMax: nil, enabled: true,
+        soundType: next.encode(), createdAt: Int64(Date().timeIntervalSince1970 * 1000),
+        repeatEverySeconds: nil, thresholdKind: "fixed", configFieldId: nil,
+        thresholdOffset: nil, thresholdMaxOffset: nil
+      ).save(db)
     }
   }
 
-  private static func resolveBase(_ db: Database, _ boardId: String, _ field: String?) throws -> Double? {
+  private static func resolveBase(_ db: Database, _ boardId: String, _ field: String) throws -> Double? {
     func values(_ table: String) throws -> [String: Any] {
       let json = try String.fetchOne(db, sql: "SELECT values_json FROM \(table) WHERE board_id = ? ORDER BY captured_at DESC LIMIT 1", arguments: [boardId])
       return try json.map { object(try decode($0)) } ?? [:]
     }
     return try resolveConfigRelativeBase(field, refloat: values("board_config_values"), motor: values("motor_config_values"))
-  }
-  static func generate(
-    _ db: Database,
-    boardId: String,
-    metric: String,
-    level: String,
-    settings: [String: Any]
-  ) throws -> [PersistedAlertRule] {
-    let rawUnits = try PersistedAppSetting.fetchOne(db, key: "unitSystem")
-    let units = try rawUnits.map { try decode($0.valueJson) } as? String
-    let matched = object(settings["matchBoardConfig"])[metric] as? Bool == true
-    let field = matched ? try AlertPresetGenerator.matchField(metric) : nil
-    let input = PresetInput(
-      topSpeedKmh: (settings["topSpeedKmh"] as? NSNumber)?.doubleValue ?? 50,
-      hasBatteryConfig: try AlertPresetGenerator.validBattery(settings["batteryConfig"]),
-      speedUnitSystem: validUnitSystem(units) ?? "metric",
-      matchBoardConfig: matched,
-      configBase: try field.flatMap { try resolveBase(db, boardId, $0) }
-    )
-    let savedLevel = levels.contains(level) ? level : "off"
-    let specs = try AlertPresetGenerator.generate(metric: metric, level: savedLevel, input: input)
-    return records(boardId: boardId, metric: metric, specs: specs, createdAt: Int64(Date().timeIntervalSince1970 * 1000))
   }
 
   private static func records(
@@ -229,7 +120,7 @@ final class AlertPresetPersistence {
     specs.enumerated().map { index, spec in
       PersistedAlertRule(
         boardId: boardId,
-        id: "preset:\(metric):\(index)",
+        id: "\(rowId(metric)):\(index)",
         controlId: metric,
         threshold: spec.point.threshold,
         thresholdMax: spec.point.thresholdMax,
@@ -237,7 +128,6 @@ final class AlertPresetPersistence {
         soundType: spec.soundType,
         createdAt: createdAt,
         repeatEverySeconds: spec.point.repeatEverySeconds,
-        source: "preset",
         thresholdKind: spec.relation == nil ? "fixed" : "config-relative",
         configFieldId: spec.relation?.fieldId,
         thresholdOffset: spec.relation?.offset,

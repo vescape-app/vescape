@@ -35,14 +35,6 @@ import kotlin.math.abs
 const val ALERT_REPEAT_MIN_SECONDS = 3L
 
 /**
- * Inclusive bounds on the count of an `alert(count):severity` sound.
- *
- * @parity /modules/vescape-core/src/index.ts `ALERT_BEEP_COUNT_RANGE`
- * @parity /modules/vescape-core/ios/alerts/AlertEngine.swift `alertBeepCountRange`
- */
-val ALERT_BEEP_COUNT_RANGE = 1..5
-
-/**
  * Gap between beeps of one announcement — tight enough that a burst reads as a single signal. A
  * sound longer than this (a pack's multi-beep severity) repeats once it ends, this far apart.
  */
@@ -186,7 +178,6 @@ internal fun withLegalModeOverlay(
         enabled = true,
         soundType = "geiger:soft",
         createdAt = 0L,
-        source = null,
     )
 }
 

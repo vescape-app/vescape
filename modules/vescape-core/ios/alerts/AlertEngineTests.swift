@@ -26,8 +26,7 @@ final class AlertEngineTests: XCTestCase {
       enabled: true,
       soundType: soundType,
       createdAt: 0,
-      repeatEverySeconds: repeatEverySeconds,
-      source: nil
+      repeatEverySeconds: repeatEverySeconds
     )
   }
 
@@ -127,7 +126,6 @@ final class AlertEngineTests: XCTestCase {
     XCTAssertEqual(15, rules[0].threshold)
     XCTAssertEqual(20, rules[0].thresholdMax)
     XCTAssertEqual("geiger:soft", rules[0].soundType)
-    XCTAssertNil(rules[0].source)
   }
 
   func testLegalModeOverlayUsesLatestSpeedSettings() {

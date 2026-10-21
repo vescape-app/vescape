@@ -13,7 +13,6 @@ const saved: AlertRule = {
   threshold: 50,
   thresholdMax: 60,
   soundType: 'preset:tick',
-  source: 'preset',
   repeatEverySeconds: null,
   createdAt: 0,
 }

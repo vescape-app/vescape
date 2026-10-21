@@ -1,214 +1,110 @@
 package expo.modules.vescapecore.telemetry
 
+import expo.modules.vescapecore.alerts.AlertPresetSpec
+import expo.modules.vescapecore.alerts.GeigerLevel
+import expo.modules.vescapecore.alerts.PRESET_RULE_PREFIX
 import expo.modules.vescapecore.alerts.resolveConfigRelativeBase
 import org.json.JSONObject
-import java.util.UUID
 
-/** Native owns the preset selection and generated rules in one Room transaction.
+/**
+ * An Alert Preset is one `alerts` row per Board and metric, id `preset:<metric>`, whose spec is
+ * `preset(<level>)[:key=value,…]`. Native expands the rows whenever it loads rules; the expanded
+ * rules are never stored.
+ *
  * @parity /modules/vescape-core/ios/telemetry/AlertPresetPersistence.swift
  */
 internal object AlertPresetPersistence {
   val metrics = AlertPresetGenerator.metrics
-  /** Board setting holding each preset's sound choices: the geiger level. */
-  const val SOUND_KEY = "alertPresetSound"
-  private val levels = AlertPresetGenerator.levels
-  private fun json(value: Any?) = JSONObject(value as? Map<*, *> ?: emptyMap<String, Any>())
 
+  /** A metric without a preset row: the app default. */
+  private val DEFAULT_SPEC = AlertPresetSpec("normal")
+
+  private fun rowId(metric: String) = "$PRESET_RULE_PREFIX$metric"
+
+  /** True for a stored preset row or an expanded preset rule: neither is a rider's rule. */
+  fun isPresetId(id: String) = id.startsWith(PRESET_RULE_PREFIX)
+
+  /** Expand an unsaved draft [spec] for the add-board wizard, without touching the database. */
   fun preview(
     metric: String,
-    level: String,
+    spec: String,
     topSpeedKmh: Double?,
     hasBatteryConfig: Boolean,
     speedUnitSystem: String,
   ): List<AlertRuleEntity> {
+    val parsed = requireNotNull(AlertPresetSpec.parse(spec)) { "Invalid preset spec" }
     val input = PresetInput(topSpeedKmh ?: 50.0, hasBatteryConfig, speedUnitSystem)
-    return records("", metric, AlertPresetGenerator.generate(metric, level, input), createdAt = 0)
+    return records("", metric, AlertPresetGenerator.generate(metric, parsed, input), createdAt = 0)
   }
 
-  /** Older JS skipped unresolved matched specs. Restore only missing relationships, never replace rider state. */
-  suspend fun repairMissingRelations(dao: TelemetryDao, boardId: String): Boolean {
+  /** Each metric's stored spec, or the app default when it has no row. */
+  suspend fun specs(dao: TelemetryDao, boardId: String): Map<String, String> {
+    val rows = presetRows(dao.getAlertRules(boardId))
+    return metrics.associateWith { rows[it]?.soundType ?: DEFAULT_SPEC.encode() }
+  }
+
+  /** The Board's rules as native evaluates them and JS reads them: rider rules plus expanded presets. */
+  suspend fun expandedRules(dao: TelemetryDao, boardId: String): List<AlertRuleEntity> {
+    val rows = dao.getAlertRules(boardId)
+    val presets = presetRows(rows)
     val settings = dao.getBoardSettings(boardId).associate { it.key to decodeSettingJson(it.valueJson) }
-    val selection = json(settings["alertPreset"])
-    val match = json(settings["matchBoardConfig"])
-    val existingIds = dao.getAlertRules(boardId).map { it.id }.toSet()
-    var changed = false
-    for (metric in metrics.filter { match.optBoolean(it) }) {
-      for (rule in generate(dao, boardId, metric, selection.optString(metric, "off"), settings)) {
-        if (rule.thresholdKind == "config-relative" && rule.id !in existingIds) {
-          dao.upsertAlertRule(rule)
-          changed = true
-        }
-      }
+    val units = validUnitSystem(dao.getAppSetting("unitSystem")?.let { decodeSettingJson(it.valueJson) }) ?: "metric"
+    val expanded = metrics.flatMap { metric ->
+      // A row this app cannot read expands to nothing rather than the default.
+      val spec = presets[metric]?.let { AlertPresetSpec.parse(it.soundType) ?: AlertPresetSpec("off") } ?: DEFAULT_SPEC
+      val field = AlertPresetGenerator.matchField(metric).takeIf { spec.option("match") == "on" }
+      val input = PresetInput(
+        topSpeedKmh = (settings["topSpeedKmh"] as? Number)?.toDouble() ?: 50.0,
+        hasBatteryConfig = AlertPresetGenerator.validBattery(settings["batteryConfig"]),
+        speedUnitSystem = units,
+        configBase = field?.let { resolveBase(dao, boardId, it) },
+      )
+      records(boardId, metric, AlertPresetGenerator.generate(metric, spec, input), presets[metric]?.createdAt ?: 0)
     }
-    return changed
+    return rows.filterNot { isPresetId(it.id) } + expanded
   }
 
-  suspend fun regenerateChanged(dao: TelemetryDao, boardId: String, before: Map<String, Any?>) {
-    val after = dao.getBoardSettings(boardId).associate { it.key to decodeSettingJson(it.valueJson) }
-    for (metric in metrics) {
-      if (inputsChanged(metric, before, after)) regenerate(dao, boardId, metric)
-    }
-  }
-
-  private fun inputsChanged(metric: String, before: Map<String, Any?>, after: Map<String, Any?>): Boolean {
-    val previous = json(before["alertPreset"])
-    val next = json(after["alertPreset"])
-    if (previous.optString(metric, "off") != next.optString(metric, "off")) return true
-    if (json(before["matchBoardConfig"]).optBoolean(metric) != json(after["matchBoardConfig"]).optBoolean(metric)) return true
-    return when (metric) {
-      "speed" -> {
-        val oldTop = (before["topSpeedKmh"] as? Number)?.toDouble()
-        val newTop = (after["topSpeedKmh"] as? Number)?.toDouble()
-        oldTop != newTop
-      }
-      "battery" -> before["batteryConfig"] != after["batteryConfig"]
-      else -> false
-    }
-  }
-
-  suspend fun regenerate(dao: TelemetryDao, boardId: String, onlyMetric: String? = null) {
-    for (metric in onlyMetric?.let { listOf(it) } ?: metrics) {
-      // Read per metric: moving a legacy geiger choice below rewrites the sound setting.
-      val settings = dao.getBoardSettings(boardId).associate { it.key to decodeSettingJson(it.valueJson) }
-      val selection = json(settings["alertPreset"])
-      val saved = dao.getAlertRules(boardId).filter { it.controlId == metric && it.source == "preset" }
-      val stored = presetSound(settings, metric).optString("geiger").takeIf(::isGeigerGrammar)
-      val chosen = stored ?: chosenGeigerSound(saved)
-      // A choice only on legacy rules moves into the setting before the rules go (Off keeps it).
-      if (stored == null && chosen != null) saveSound(dao, boardId, settings, metric, "geiger", chosen, System.currentTimeMillis())
-      saved.forEach { dao.deleteAlertRule(boardId, it.id) }
-      generate(dao, boardId, metric, selection.optString(metric, "off"), settings)
-        .map { rule -> if (chosen != null && isGeigerGrammar(rule.soundType)) rule.copy(soundType = chosen) else rule }
-        .forEach { dao.upsertAlertRule(it) }
-    }
-  }
-
-  suspend fun apply(
-    dao: TelemetryDao,
-    boardId: String,
-    metric: String,
-    action: String,
-    level: String?,
-    matchBoardConfig: Boolean?,
-  ) {
+  /** Rewrite [metric]'s preset row with exactly one of a new level, geiger level, or match choice. */
+  suspend fun apply(dao: TelemetryDao, boardId: String, metric: String, level: String?, geiger: String?, match: Boolean?) {
     require(metric in metrics) { "Unknown alert preset metric" }
+    require(listOfNotNull(level, geiger, match).size == 1) { "Expected one preset change" }
     val board = dao.getBoard(boardId)
     require(board != null && board.deletedAt == null) { "Board not found" }
-    val settings = dao.getBoardSettings(boardId).associate { it.key to decodeSettingJson(it.valueJson) }.toMutableMap()
-    val selection = json(settings["alertPreset"])
-    metrics.forEach { if (selection.optString(it) !in levels) selection.put(it, "off") }
-    val now = System.currentTimeMillis()
-    var customized = emptyList<AlertRuleEntity>()
-    when (action) {
-      "select" -> {
-        require(level in levels && level != "custom") { "Invalid preset level" }
-        selection.put(metric, level)
+    val current = AlertPresetSpec.parse(specs(dao, boardId).getValue(metric)) ?: DEFAULT_SPEC
+    val next = when {
+      level != null -> {
+        require(level in AlertPresetGenerator.levels) { "Invalid preset level" }
+        current.copy(level = level)
       }
-      "customize" -> {
-        repairMissingRelations(dao, boardId)
-        if (selection.optString(metric) == "custom") return
-        customized = materializeRules(dao, boardId, metric)
-        selection.put(metric, "custom")
+      geiger != null -> {
+        require(AlertPresetGenerator.hasGeiger(metric) && GeigerLevel.entries.any { it.id == geiger }) { "Invalid geiger level" }
+        current.withOption("geiger", geiger)
       }
-      "discard-custom" -> {
-        dao.getAlertRules(boardId).filter { it.controlId == metric && it.source != "preset" }.forEach { dao.deleteAlertRule(boardId, it.id) }
-        selection.put(metric, "normal")
+      else -> {
+        require(AlertPresetGenerator.matchField(metric) != null) { "Metric cannot match board config" }
+        current.withOption("match", if (match == true) "on" else null)
       }
-      "geiger-sound" -> {
-        val sound = level
-        require(sound != null && isGeigerGrammar(sound)) { "Invalid geiger sound" }
-        // Kept in the setting, not only on the rules, so a level with no rules (Off) loses nothing.
-        saveSound(dao, boardId, settings, metric, "geiger", sound, now)
-      }
-      "match-board-config" -> {
-        require(AlertPresetGenerator.matchField(metric) != null && matchBoardConfig != null) { "Metric cannot match board config" }
-        val match = json(settings["matchBoardConfig"]).put(metric, matchBoardConfig)
-        dao.upsertBoardSetting(BoardSettingEntity(boardId, "matchBoardConfig", match.toString(), now))
-      }
-      else -> error("Unknown alert preset action")
     }
-    dao.upsertBoardSetting(BoardSettingEntity(boardId, "alertPreset", selection.toString(), now))
-    regenerate(dao, boardId, metric)
-    customized.forEach { dao.upsertAlertRule(it) }
+    dao.upsertAlertRule(
+      AlertRuleEntity(
+        boardId = boardId,
+        id = rowId(metric),
+        controlId = metric,
+        threshold = 0.0,
+        thresholdMax = null,
+        enabled = true,
+        soundType = next.encode(),
+        createdAt = System.currentTimeMillis(),
+      ),
+    )
   }
 
-  /** [metric]'s sound choices in the [SOUND_KEY] setting; empty when it follows every default. */
-  private fun presetSound(settings: Map<String, Any?>, metric: String): JSONObject =
-    json(settings[SOUND_KEY]).optJSONObject(metric) ?: JSONObject()
+  private fun presetRows(rows: List<AlertRuleEntity>): Map<String, AlertRuleEntity> =
+    rows.filter { it.id == rowId(it.controlId) }.associateBy { it.controlId }
 
-  /** Set one of [metric]'s sound choices. */
-  private suspend fun saveSound(
-    dao: TelemetryDao,
-    boardId: String,
-    settings: Map<String, Any?>,
-    metric: String,
-    slot: String,
-    value: String,
-    now: Long,
-  ) {
-    val all = json(settings[SOUND_KEY]).put(metric, presetSound(settings, metric).put(slot, value))
-    dao.upsertBoardSetting(BoardSettingEntity(boardId, SOUND_KEY, all.toString(), now))
-  }
-
-  /**
-   * The geiger sound on a metric's saved preset rules, for boards whose choice predates [SOUND_KEY]. Only a
-   * grammar string (`geiger:<level>`) counts: legacy `preset:` names were generated defaults, never
-   * a choice, so they give way to the current default.
-   */
-  private fun chosenGeigerSound(saved: List<AlertRuleEntity>): String? =
-    saved.firstNotNullOfOrNull { rule -> rule.soundType.takeIf(::isGeigerGrammar) }
-
-  /** A `geiger:<sound>` string. Generated preset ticks always use the grammar. */
-  private fun isGeigerGrammar(soundType: String) = soundType.startsWith("geiger:")
-
-  private suspend fun materializeRules(dao: TelemetryDao, boardId: String, metric: String): List<AlertRuleEntity> {
-    val saved = dao.getAlertRules(boardId).filter { it.controlId == metric && it.source == "preset" }
-    return saved.mapNotNull { rule ->
-      var threshold = rule.threshold
-      var thresholdMax = rule.thresholdMax
-      if (rule.thresholdKind == "config-relative") {
-        val base = resolveBase(dao, boardId, rule.configFieldId) ?: return@mapNotNull null
-        val offset = rule.thresholdOffset ?: return@mapNotNull null
-        threshold = base + offset
-        thresholdMax = rule.thresholdMaxOffset?.let { base + it }
-      }
-      rule.copy(
-        id = UUID.randomUUID().toString(),
-        source = null,
-        threshold = threshold,
-        thresholdMax = thresholdMax,
-        thresholdKind = "fixed",
-        configFieldId = null,
-        thresholdOffset = null,
-        thresholdMaxOffset = null,
-      )
-    }
-  }
-
-  private suspend fun resolveBase(dao: TelemetryDao, boardId: String, fieldId: String?): Double? {
+  private suspend fun resolveBase(dao: TelemetryDao, boardId: String, fieldId: String): Double? {
     fun values(raw: String?) = raw?.let { jsonValue(JSONObject(it)) as? Map<String, Any> } ?: emptyMap()
     return resolveConfigRelativeBase(fieldId, values(dao.getLatestBoardConfigValues(boardId)?.valuesJson), values(dao.getLatestMotorConfigValues(boardId)?.valuesJson))
-  }
-
-  suspend fun generate(
-    dao: TelemetryDao,
-    boardId: String,
-    metric: String,
-    level: String,
-    settings: Map<String, Any?>,
-  ): List<AlertRuleEntity> {
-    val units = dao.getAppSetting("unitSystem")?.let { decodeSettingJson(it.valueJson) }
-    val matched = json(settings["matchBoardConfig"]).optBoolean(metric)
-    val field = AlertPresetGenerator.matchField(metric).takeIf { matched }
-    val input = PresetInput(
-      topSpeedKmh = (settings["topSpeedKmh"] as? Number)?.toDouble() ?: 50.0,
-      hasBatteryConfig = AlertPresetGenerator.validBattery(settings["batteryConfig"]),
-      speedUnitSystem = validUnitSystem(units) ?: "metric",
-      matchBoardConfig = matched,
-      configBase = field?.let { resolveBase(dao, boardId, it) },
-    )
-    val savedLevel = level.takeIf { it in levels } ?: "off"
-    return records(boardId, metric, AlertPresetGenerator.generate(metric, savedLevel, input), System.currentTimeMillis())
   }
 
   private fun records(
@@ -220,7 +116,7 @@ internal object AlertPresetPersistence {
     specs.mapIndexed { index, spec ->
       AlertRuleEntity(
         boardId = boardId,
-        id = "preset:$metric:$index",
+        id = "${rowId(metric)}:$index",
         controlId = metric,
         threshold = spec.point.threshold,
         thresholdMax = spec.point.thresholdMax,
@@ -232,7 +128,6 @@ internal object AlertPresetPersistence {
         soundType = spec.soundType,
         createdAt = createdAt,
         repeatEverySeconds = spec.point.repeatSeconds,
-        source = "preset",
       )
     }
 }

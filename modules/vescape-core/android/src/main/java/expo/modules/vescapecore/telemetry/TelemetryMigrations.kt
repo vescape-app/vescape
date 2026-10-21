@@ -1624,30 +1624,86 @@ internal object TelemetryMigrations {
     """.trimIndent()
 
     /**
-     * Preset battery and temperature alerts speak voice lines (#580): their generated `tts:`
-     * templates become `voice(<severity>):<key>`, severity by the rule's rank in its ladder (see
-     * [AlertPresetGenerator.pointSoundType]). Only the three exact generated templates match; this is
-     * the one place text matching is accepted. Custom rules keep their TTS text.
+     * An Alert Preset becomes one `preset:<metric>` row (#591) whose `spec` is
+     * `preset(<level>)[:geiger=<level>][,match=on]`; native expands it at load, so the copied
+     * `source = 'preset'` rows go. Existing Boards keep what fired: a missing level or `custom` is
+     * `off` (custom's rider rules stay), the geiger choice comes from `alertPresetSound` or else the
+     * old preset rows, and `matchBoardConfig` becomes `match=on`. The column `sound_type` is renamed
+     * `spec`, `source` is dropped by copy, and the three obsolete Board Settings are deleted.
      *
-     * @parity /modules/vescape-core/ios/telemetry/TelemetryDatabase.swift `v51_preset_voice`
+     * @parity /modules/vescape-core/ios/telemetry/TelemetryDatabase.swift `v51_preset_rows`
      */
-    internal val MIGRATION_50_51 = migration(50, 51) { db -> db.execSQL(PRESET_VOICE_SQL) }
+    internal val MIGRATION_50_51 = migration(50, 51) { db ->
+        db.execSQL(
+          """
+          CREATE TABLE alerts_new (
+            board_id TEXT NOT NULL,
+            id TEXT NOT NULL,
+            control_id TEXT NOT NULL,
+            threshold REAL NOT NULL,
+            threshold_max REAL,
+            enabled INTEGER NOT NULL,
+            spec TEXT NOT NULL,
+            created_at INTEGER NOT NULL,
+            repeat_every_seconds INTEGER,
+            threshold_kind TEXT NOT NULL DEFAULT 'fixed',
+            config_field_id TEXT,
+            threshold_offset REAL,
+            threshold_max_offset REAL,
+            PRIMARY KEY (board_id, id)
+          )
+          """.trimIndent(),
+        )
+        db.execSQL(
+          """
+          INSERT INTO alerts_new (board_id, id, control_id, threshold, threshold_max, enabled, spec,
+            created_at, repeat_every_seconds, threshold_kind, config_field_id, threshold_offset,
+            threshold_max_offset)
+          SELECT board_id, id, control_id, threshold, threshold_max, enabled, sound_type, created_at,
+            repeat_every_seconds, threshold_kind, config_field_id, threshold_offset, threshold_max_offset
+          FROM alerts WHERE source IS NULL OR source != 'preset'
+          """.trimIndent(),
+        )
+        db.execSQL(PRESET_ROWS_SQL)
+        db.execSQL("DROP TABLE alerts")
+        db.execSQL("ALTER TABLE alerts_new RENAME TO alerts")
+        db.execSQL("CREATE INDEX IF NOT EXISTS index_alerts_board_id ON alerts(board_id)")
+        db.execSQL("CREATE INDEX IF NOT EXISTS index_alerts_control_id ON alerts(control_id)")
+        db.execSQL("CREATE INDEX IF NOT EXISTS index_alerts_enabled ON alerts(enabled)")
+        db.execSQL("CREATE INDEX IF NOT EXISTS index_alerts_created_at ON alerts(created_at)")
+        db.execSQL("DELETE FROM board_settings WHERE key IN ('alertPreset', 'matchBoardConfig', 'alertPresetSound')")
+    }
 
-    /** @parity /modules/vescape-core/ios/telemetry/TelemetryDatabase.swift `presetVoiceSql` */
-    private val PRESET_VOICE_SQL = """
-      UPDATE alerts SET sound_type = 'voice(' ||
-        CASE CAST(substr(id, length('preset:' || control_id || ':') + 1) AS INTEGER)
-          WHEN (SELECT COUNT(*) - 1 FROM alerts AS ladder
-            WHERE ladder.board_id = alerts.board_id AND ladder.control_id = alerts.control_id AND ladder.source = 'preset')
-            THEN 'critical'
-          WHEN 0 THEN 'info'
-          ELSE 'warning'
-        END || '):' ||
-        CASE control_id WHEN 'battery' THEN 'battery' WHEN 'motor-temp' THEN 'motorTemp' ELSE 'controllerTemp' END
-      WHERE source = 'preset' AND (
-        (control_id = 'battery' AND sound_type = 'tts:Battery {percent}%') OR
-        (control_id = 'motor-temp' AND sound_type = 'tts:Motor {value} {unit}') OR
-        (control_id = 'controller-temp' AND sound_type = 'tts:Controller {value} {unit}')
+    /** @parity /modules/vescape-core/ios/telemetry/TelemetryDatabase.swift `presetRowsSql` */
+    private val PRESET_ROWS_SQL = """
+      INSERT OR REPLACE INTO alerts_new (board_id, id, control_id, threshold, threshold_max, enabled, spec, created_at)
+      SELECT board_id, 'preset:' || metric, metric, 0, NULL, 1,
+        'preset(' || level || ')' || CASE WHEN options = '' THEN '' ELSE ':' || options END, 0
+      FROM (
+        SELECT board_id, metric,
+          CASE level WHEN 'safe' THEN 'safe' WHEN 'normal' THEN 'normal' WHEN 'minimal' THEN 'minimal' ELSE 'off' END AS level,
+          ltrim(
+            CASE WHEN geiger IN ('soft', 'mid', 'hard') THEN ',geiger=' || geiger ELSE '' END ||
+            CASE WHEN matched = 1 AND metric IN ('duty', 'motor-temp', 'controller-temp') THEN ',match=on' ELSE '' END,
+            ','
+          ) AS options
+        FROM (
+          SELECT boards.id AS board_id, metrics.metric AS metric,
+            (SELECT json_extract(value_json, '$."' || metrics.metric || '"') FROM board_settings
+              WHERE board_id = boards.id AND key = 'alertPreset' AND json_valid(value_json)) AS level,
+            substr(COALESCE(
+              (SELECT json_extract(value_json, '$."' || metrics.metric || '".geiger') FROM board_settings
+                WHERE board_id = boards.id AND key = 'alertPresetSound' AND json_valid(value_json)),
+              (SELECT sound_type FROM alerts WHERE alerts.board_id = boards.id AND control_id = metrics.metric
+                AND source = 'preset' AND sound_type LIKE 'geiger:%' LIMIT 1)
+            ), length('geiger:') + 1) AS geiger,
+            (SELECT json_extract(value_json, '$."' || metrics.metric || '"') FROM board_settings
+              WHERE board_id = boards.id AND key = 'matchBoardConfig' AND json_valid(value_json)) AS matched
+          FROM boards
+          CROSS JOIN (SELECT 'speed' AS metric UNION ALL SELECT 'duty' UNION ALL SELECT 'motor-temp'
+            UNION ALL SELECT 'controller-temp' UNION ALL SELECT 'battery') AS metrics
+          WHERE boards.deleted_at IS NULL
+        )
       )
     """.trimIndent()
 

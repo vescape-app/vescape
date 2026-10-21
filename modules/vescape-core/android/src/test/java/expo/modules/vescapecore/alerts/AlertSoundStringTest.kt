@@ -103,4 +103,21 @@ class AlertSoundStringTest {
         )
         for ((raw, expected) in cases) assertEquals(raw, expected, mySoundId(raw))
     }
+
+    @Test
+    fun parsesAndRewritesPresetSpecs() {
+        val cases = listOf(
+            "preset(normal)" to AlertPresetSpec("normal"),
+            "preset(off):geiger=mid,match=on" to AlertPresetSpec("off", listOf("geiger" to "mid", "match" to "on")),
+            "preset(safe):future=a=b,bare,=x" to AlertPresetSpec("safe", listOf("future" to "a=b")),
+            "preset(normal):" to AlertPresetSpec("normal"),
+            "preset:normal" to null,
+            "geiger:mid" to null,
+        )
+        for ((raw, expected) in cases) assertEquals(raw, expected, AlertPresetSpec.parse(raw))
+        val spec = AlertPresetSpec.parse("preset(normal):geiger=soft,future=1")!!
+        assertEquals("preset(normal):geiger=mid,future=1", spec.withOption("geiger", "mid").encode())
+        assertEquals("preset(normal):future=1,match=on", spec.withOption("geiger", null).withOption("match", "on").encode())
+        assertEquals("preset(off):geiger=soft,future=1", spec.copy(level = "off").encode())
+    }
 }

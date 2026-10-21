@@ -82,4 +82,23 @@ final class AlertSoundStringTests: XCTestCase {
     ]
     for (raw, expected) in cases { XCTAssertEqual(mySoundId(raw), expected, raw) }
   }
+
+  func testParsesAndRewritesPresetSpecs() {
+    typealias Option = AlertPresetSpec.Option
+    let cases: [(String, AlertPresetSpec?)] = [
+      ("preset(normal)", AlertPresetSpec(level: "normal")),
+      ("preset(off):geiger=mid,match=on", AlertPresetSpec(level: "off", options: [Option(key: "geiger", value: "mid"), Option(key: "match", value: "on")])),
+      ("preset(safe):future=a=b,bare,=x", AlertPresetSpec(level: "safe", options: [Option(key: "future", value: "a=b")])),
+      ("preset(normal):", AlertPresetSpec(level: "normal")),
+      ("preset:normal", nil),
+      ("geiger:mid", nil),
+    ]
+    for (raw, expected) in cases { XCTAssertEqual(AlertPresetSpec.parse(raw), expected, raw) }
+    let spec = AlertPresetSpec.parse("preset(normal):geiger=soft,future=1")!
+    XCTAssertEqual(spec.withOption("geiger", "mid").encode(), "preset(normal):geiger=mid,future=1")
+    XCTAssertEqual(spec.withOption("geiger", nil).withOption("match", "on").encode(), "preset(normal):future=1,match=on")
+    var off = spec
+    off.level = "off"
+    XCTAssertEqual(off.encode(), "preset(off):geiger=soft,future=1")
+  }
 }

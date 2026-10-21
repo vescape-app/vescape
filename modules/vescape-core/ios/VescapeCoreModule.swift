@@ -1335,10 +1335,10 @@ public class VescapeCoreModule: Module {
 
     // @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/VescapeCoreModule.kt `previewAlertPreset`
     // @parity /modules/vescape-core/src/index.ts `previewAlertPreset`
-    Function("previewAlertPreset") { (metric: String, level: String, topSpeedKmh: Double, hasBatteryConfig: Bool, speedUnitSystem: String) -> [[String: Any?]] in
+    Function("previewAlertPreset") { (metric: String, spec: String, topSpeedKmh: Double, hasBatteryConfig: Bool, speedUnitSystem: String) -> [[String: Any?]] in
       try AlertPresetPersistence.preview(
         metric: metric,
-        level: level,
+        spec: spec,
         topSpeedKmh: topSpeedKmh,
         hasBatteryConfig: hasBatteryConfig,
         speedUnitSystem: speedUnitSystem
@@ -1355,10 +1355,10 @@ public class VescapeCoreModule: Module {
     }
     // @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/VescapeCoreModule.kt `applyAlertPreset`
     // @parity /modules/vescape-core/src/index.ts `applyAlertPreset`
-    AsyncFunction("applyAlertPreset") { (boardId: String, metric: String, action: String, level: String?, matchBoardConfig: Bool?, promise: Promise) in
+    AsyncFunction("applyAlertPreset") { (boardId: String, metric: String, level: String?, geiger: String?, match: Bool?, promise: Promise) in
       try RecordingStorageFailure.requireAvailable()
       do {
-        try self.appData.applyAlertPreset(boardId, metric, action, level, matchBoardConfig)
+        try self.appData.applyAlertPreset(boardId, metric, level, geiger, match)
         self.coordinator.reloadAlertRules()
         promise.resolve(nil)
       } catch {
@@ -1370,6 +1370,13 @@ public class VescapeCoreModule: Module {
       try RecordingStorageFailure.requireAvailable()
       do { promise.resolve(try self.appData.getAlertRules(boardId)) }
       catch { RecordingStorageFailure.reportRead(operation: "alert_rules_read", error: error); promise.reject("ERR_ALERT_RULES_READ", "Could not load Alert Rules", cause: error) }
+    }
+    // @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/VescapeCoreModule.kt `getAlertPresets`
+    // @parity /modules/vescape-core/src/index.ts `getAlertPresets`
+    AsyncFunction("getAlertPresets") { (boardId: String, promise: Promise) in
+      try RecordingStorageFailure.requireAvailable()
+      do { promise.resolve(try self.appData.getAlertPresets(boardId)) }
+      catch { RecordingStorageFailure.reportRead(operation: "alert_rules_read", error: error); promise.reject("ERR_ALERT_RULES_READ", "Could not load Alert Presets", cause: error) }
     }
 
     AsyncFunction("upsertAlertRule") { (rule: [String: Any], promise: Promise) in
@@ -1699,8 +1706,7 @@ public class VescapeCoreModule: Module {
       enabled: true,
       soundType: soundType,
       createdAt: 0,
-      repeatEverySeconds: normalizedAlertRepeatSeconds((value["repeatEverySeconds"] as? NSNumber)?.doubleValue),
-      source: nil
+      repeatEverySeconds: normalizedAlertRepeatSeconds((value["repeatEverySeconds"] as? NSNumber)?.doubleValue)
     )
   }
 

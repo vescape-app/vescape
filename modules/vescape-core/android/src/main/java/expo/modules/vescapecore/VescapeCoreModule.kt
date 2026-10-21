@@ -106,7 +106,6 @@ private fun Map<String, Any?>.toAlertTestRule(): AlertRuleEntity? {
     soundType = soundType,
     createdAt = 0,
     repeatEverySeconds = normalizedAlertRepeatSeconds((this["repeatEverySeconds"] as? Number)?.toDouble()),
-    source = null,
   )
 }
 
@@ -1275,8 +1274,8 @@ class VescapeCoreModule : Module() {
     }
     // @parity /modules/vescape-core/ios/VescapeCoreModule.swift `previewAlertPreset`
     // @parity /modules/vescape-core/src/index.ts `previewAlertPreset`
-    Function("previewAlertPreset") { metric: String, level: String, topSpeedKmh: Double, hasBatteryConfig: Boolean, speedUnitSystem: String ->
-      AlertPresetPersistence.preview(metric, level, topSpeedKmh, hasBatteryConfig, speedUnitSystem).map { rule ->
+    Function("previewAlertPreset") { metric: String, spec: String, topSpeedKmh: Double, hasBatteryConfig: Boolean, speedUnitSystem: String ->
+      AlertPresetPersistence.preview(metric, spec, topSpeedKmh, hasBatteryConfig, speedUnitSystem).map { rule ->
         mapOf(
           "id" to rule.id,
           "controlId" to rule.controlId,
@@ -1289,10 +1288,10 @@ class VescapeCoreModule : Module() {
     }
     // @parity /modules/vescape-core/ios/VescapeCoreModule.swift `applyAlertPreset`
     // @parity /modules/vescape-core/src/index.ts `applyAlertPreset`
-    AsyncFunction("applyAlertPreset") Coroutine { boardId: String, metric: String, action: String, level: String?, matchBoardConfig: Boolean? ->
+    AsyncFunction("applyAlertPreset") Coroutine { boardId: String, metric: String, level: String?, geiger: String?, match: Boolean? ->
       RecordingStorageFailure.requireAvailable()
       try {
-        AppDataRepository.get(context.applicationContext).applyAlertPreset(boardId, metric, action, level, matchBoardConfig)
+        AppDataRepository.get(context.applicationContext).applyAlertPreset(boardId, metric, level, geiger, match)
         CoreForegroundService.reloadAlertRules(context.applicationContext)
       } catch (error: CancellationException) { throw error }
       catch (error: Throwable) { RecordingStorageFailure.report("alert_preset_apply", "write_failed", error); throw error }
@@ -1300,6 +1299,13 @@ class VescapeCoreModule : Module() {
     AsyncFunction("getAlertRules") { boardId: String ->
       RecordingStorageFailure.requireAvailable()
       try { runBlocking { AppDataRepository.get(context.applicationContext).getAlertRules(boardId) } }
+      catch (error: Throwable) { RecordingStorageFailure.reportRead("alert_rules_read", error); throw error }
+    }
+    // @parity /modules/vescape-core/ios/VescapeCoreModule.swift `getAlertPresets`
+    // @parity /modules/vescape-core/src/index.ts `getAlertPresets`
+    AsyncFunction("getAlertPresets") { boardId: String ->
+      RecordingStorageFailure.requireAvailable()
+      try { runBlocking { AppDataRepository.get(context.applicationContext).getAlertPresets(boardId) } }
       catch (error: Throwable) { RecordingStorageFailure.reportRead("alert_rules_read", error); throw error }
     }
     AsyncFunction("upsertAlertRule") Coroutine { rule: Map<String, Any?> ->

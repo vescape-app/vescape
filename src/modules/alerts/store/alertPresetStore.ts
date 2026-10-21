@@ -1,7 +1,14 @@
 import { create } from 'zustand'
-import { applyAlertPreset, type AlertPresetIntent } from 'vescape-core'
+import { applyAlertPreset, type AlertPresetIntent, type AlertTestRule } from 'vescape-core'
 import { errorMessage } from '@/helpers/error'
-import type { AlertPresetLevel, AlertPresetMetric } from '@/modules/alerts/lib/alertPresets'
+import {
+  ALERT_PRESET_FALLBACK_LEVEL,
+  isPresetAlertRule,
+  type AlertPresetLevel,
+  type AlertPresetMetric,
+} from '@/modules/alerts/lib/alertPresets'
+import { parseGeigerAlertSound } from '@/modules/alerts/lib/alertSoundString'
+import { materializePresetRules } from '@/modules/alerts/lib/customAlertRules'
 import { useAlertsStore } from '@/modules/alerts/store/alertsStore'
 import { useBoardStore } from '@/modules/board/store/boardStore'
 
@@ -10,31 +17,35 @@ interface AlertPresetState {
 }
 
 interface AlertPresetActions {
-  setLevel(metric: AlertPresetMetric, level: AlertPresetLevel, boardId?: string): Promise<void>
-  customize(metric: AlertPresetMetric, boardId?: string): Promise<void>
-  discardCustom(metric: AlertPresetMetric, boardId?: string): Promise<void>
-  setMatchBoardConfig(metric: AlertPresetMetric, enabled: boolean, boardId?: string): Promise<void>
-  setGeigerSound(metric: AlertPresetMetric, soundType: string, boardId?: string): Promise<void>
+  /** `custom` copies the expanded points, as {@link customize}. */
+  setLevel(
+    metric: AlertPresetMetric,
+    level: AlertPresetLevel,
+    presetRules?: readonly AlertTestRule[],
+  ): Promise<void>
+  /** Copy the metric's expanded preset points into rider rules, then set the preset Off. */
+  customize(metric: AlertPresetMetric, presetRules: readonly AlertTestRule[]): Promise<void>
+  /** Drop the metric's rider rules and return to the app default level. */
+  discardCustom(metric: AlertPresetMetric): Promise<void>
+  setMatchBoardConfig(metric: AlertPresetMetric, enabled: boolean): Promise<void>
+  /** Pick the tick level from a `geiger:<level>` sound string. */
+  setGeigerSound(metric: AlertPresetMetric, soundType: string): Promise<void>
 }
 
 let pending = 0
 
-/** JS sends intents; native commits the selection and its rules as one operation. */
+/** JS sends intents for the active Board; native rewrites the metric's one preset row. */
 export const useAlertPresetStore = create<AlertPresetState & AlertPresetActions>((set) => {
-  const apply = async (metric: AlertPresetMetric, intent: AlertPresetIntent, boardId?: string) => {
-    const targetId = boardId ?? useBoardStore.getState().activeBoardId
-    if (!targetId) return
+  const run = async (write: (boardId: string) => Promise<void>) => {
+    const boardId = useBoardStore.getState().activeBoardId
+    if (!boardId) return
     pending++
     set({ syncing: true })
     useAlertsStore.setState({ error: null })
     try {
-      await applyAlertPreset(targetId, metric, intent)
-      await Promise.all([
-        useBoardStore.getState().load(),
-        useAlertsStore.getState().boardId === targetId
-          ? useAlertsStore.getState().load(targetId)
-          : Promise.resolve(),
-      ])
+      await write(boardId)
+      if (useAlertsStore.getState().boardId === boardId)
+        await useAlertsStore.getState().load(boardId)
     } catch (error) {
       useAlertsStore.setState({ error: errorMessage(error, 'Unable to save Alert Preset.') })
       throw error
@@ -43,19 +54,31 @@ export const useAlertPresetStore = create<AlertPresetState & AlertPresetActions>
       set({ syncing: pending > 0 })
     }
   }
+  const apply = (metric: AlertPresetMetric, intent: AlertPresetIntent) =>
+    run((boardId) => applyAlertPreset(boardId, metric, intent))
+  const customize = (metric: AlertPresetMetric, presetRules: readonly AlertTestRule[]) =>
+    run(async (boardId) => {
+      for (const rule of materializePresetRules(presetRules, []))
+        await useAlertsStore.getState().upsert({ ...rule, boardId })
+      await applyAlertPreset(boardId, metric, { level: 'off' })
+    })
   return {
     syncing: false,
-    setLevel: (metric, level, boardId) =>
-      apply(
-        metric,
-        level === 'custom' ? { action: 'customize' } : { action: 'select', level },
-        boardId,
-      ),
-    customize: (metric, boardId) => apply(metric, { action: 'customize' }, boardId),
-    discardCustom: (metric, boardId) => apply(metric, { action: 'discard-custom' }, boardId),
-    setMatchBoardConfig: (metric, enabled, boardId) =>
-      apply(metric, { action: 'match-board-config', enabled }, boardId),
-    setGeigerSound: (metric, soundType, boardId) =>
-      apply(metric, { action: 'geiger-sound', soundType }, boardId),
+    setLevel: (metric, level, presetRules = []) =>
+      level === 'custom' ? customize(metric, presetRules) : apply(metric, { level }),
+    customize,
+    discardCustom: (metric) =>
+      run(async (boardId) => {
+        const custom = useAlertsStore
+          .getState()
+          .rules.filter((rule) => rule.controlId === metric && !isPresetAlertRule(rule))
+        for (const rule of custom) await useAlertsStore.getState().remove(rule.id)
+        await applyAlertPreset(boardId, metric, { level: ALERT_PRESET_FALLBACK_LEVEL })
+      }),
+    setMatchBoardConfig: (metric, enabled) => apply(metric, { match: enabled }),
+    setGeigerSound: async (metric, soundType) => {
+      const geiger = parseGeigerAlertSound(soundType)
+      if (geiger) await apply(metric, { geiger })
+    },
   }
 })

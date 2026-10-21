@@ -183,19 +183,14 @@ test('updated battery config survives a store reload from native boards', async 
   expect(upsertBoard).toHaveBeenCalledWith(expect.objectContaining({ batteryConfig }))
 })
 
-test('board edits render native-owned preset settings instead of echoing stale input', async () => {
+test('board edits render the native-normalized Board instead of echoing stale input', async () => {
   const { useBoardStore } = await import('@/modules/board/store/boardStore')
   const board = await useBoardStore.getState().addBoard({ name: 'ADV' })
   upsertBoard.mockImplementationOnce(async (input) => {
-    persistedBoards = [{ ...input, alertPreset: { speed: 'normal' } }]
+    persistedBoards = [{ ...input, topSpeedKmh: 50 }]
   })
-  await useBoardStore
-    .getState()
-    .updateBoard({ ...board, name: 'Renamed', alertPreset: { speed: 'safe' } })
-  expect(useBoardStore.getState().boards[0]).toMatchObject({
-    name: 'Renamed',
-    alertPreset: { speed: 'normal' },
-  })
+  await useBoardStore.getState().updateBoard({ ...board, name: 'Renamed', topSpeedKmh: -1 })
+  expect(useBoardStore.getState().boards[0]).toMatchObject({ name: 'Renamed', topSpeedKmh: 50 })
 })
 
 test('removing the active Board moves the native selection to a remaining Board', async () => {

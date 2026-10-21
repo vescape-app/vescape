@@ -401,7 +401,8 @@ only stable identity (`id`, `name`, `ble_id`, `created_at`).
 
 | fn                                            | sync  | returns                                                       |
 | --------------------------------------------- | ----- | ------------------------------------------------------------- |
-| `getAlertRules()`                             | async | `AlertRule[]` by created_at ASC                               |
+| `getAlertRules(boardId)`                      | async | `AlertRule[]`: rider rules, then expanded presets             |
+| `getAlertPresets(boardId)`                    | async | each metric's `preset(…)` spec; `preset(normal)` when unset   |
 | `upsertAlertRule(rule)`                       | async | void. Reloads foreground service rules                        |
 | `setAlertRuleEnabled(id,enabled)`             | async | void. Reloads rules                                           |
 | `deleteAlertRule(id)`                         | async | void. Reloads rules                                           |
@@ -554,20 +555,21 @@ snapshot (`latestBms`); UI derives min/max/spread via `summarizeBms` in `src/mod
 
 ## Alert preset intents
 
-`applyAlertPreset(boardId, metric, intent)` switches a saved Board's alert setup. Intents are
-`{ action: 'select', level }`, `{ action: 'customize' }`, `{ action: 'discard-custom' }`, and
-`{ action: 'match-board-config', enabled }`, `{ action: 'geiger-sound', soundType }` (a
-`geiger:<level>` string for the metric's preset tick rules). The bag in the board's
-`alertPresetSound` setting holds only that geiger level, so regeneration and Off-and-back restore it.
+`applyAlertPreset(boardId, metric, intent)` rewrites the metric's one `preset:<metric>` row in a
+database transaction. An intent changes exactly one thing: `{ level }` (`off`, `safe`, `normal`,
+`minimal`), `{ geiger }` (`soft`, `mid`, `hard`; geiger metrics only), or `{ match }` (metrics with a
+board config field). Other options in the row, including keys this app does not know, are kept.
+Success publishes the `alerts` data-change scope and reloads native alert evaluation.
 `startAlertTest(rules)` plays the app-wide effects and voice packs.
-Selection and generated rule changes commit together
-in native storage. JS does not send generated rules or run a regeneration sequence. Board saves
-also update affected preset rules atomically when their inputs change. Successful writes publish
-`boards` and `alerts` data-change scopes and reload native alert evaluation.
 
-`previewAlertPreset(metric, level, { topSpeedKmh, hasBatteryConfig, speedUnitSystem? })` returns
-`AlertTestRule[]` synchronously for an unsaved add-board draft. It uses the same native generator
-as persistence, with explicit draft inputs and no database access, events, or alert-engine changes.
-Units default to metric; `off` and `custom` return no generated rules. The wizard has no Board
-configuration to match, so this operation only returns fixed thresholds. JS uses these snapshots
-for markers, summaries, sound previews, and copying a preset into editable draft rules.
+Native expands preset rows whenever it loads rules, reading Board Top Speed, the battery config,
+units, and board config at that moment; `getAlertRules` returns the expanded rules
+(`preset:<metric>:<index>`), and `upsertAlertRule`, `setAlertRuleEnabled`, and `deleteAlertRule`
+reject preset ids. JS never expands a preset.
+
+`previewAlertPreset(metric, spec, { topSpeedKmh, hasBatteryConfig, speedUnitSystem? })` returns
+`AlertTestRule[]` synchronously for an unsaved add-board draft spec such as `preset(normal)`. It uses
+the same native expander as saved rows, with explicit draft inputs and no database access, events,
+or alert-engine changes. Units default to metric; `off` returns no rules. The wizard has no Board
+configuration to match, so drafts carry no `match=on`. JS uses these snapshots for markers,
+summaries, sound previews, and copying a preset into editable draft rules.

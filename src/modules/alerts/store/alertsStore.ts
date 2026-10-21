@@ -1,7 +1,9 @@
 import { create } from 'zustand'
 import {
   deleteAlertRule,
+  getAlertPresets,
   getAlertRules,
+  type AlertPresetMetric,
   setAlertRuleEnabled,
   type AlertRule,
   type AlertSoundType,
@@ -19,7 +21,10 @@ interface AlertsState {
    * the active Board's rules, and reloads whenever the active Board changes. `null` ⇒ no Board.
    */
   boardId: string | null
+  /** The rider's rules plus every Alert Preset as native expanded it. */
   rules: AlertRule[]
+  /** Each preset metric's stored `preset(…)` spec. Empty until the Board's presets load. */
+  presets: Partial<Record<AlertPresetMetric, string>>
   error: string | null
 }
 
@@ -54,6 +59,7 @@ let loadGeneration = 0
 export const useAlertsStore = create<AlertsState & AlertsActions>((set, get) => ({
   boardId: null,
   rules: [],
+  presets: {},
   error: null,
 
   async load(boardId) {
@@ -61,11 +67,18 @@ export const useAlertsStore = create<AlertsState & AlertsActions>((set, get) => 
     const previous = get()
     // Clear immediately on bind so the UI never shows the previous Board's rules as the new Board's
     // (their deterministic preset ids overlap, so a stray toggle/delete would target the wrong rows).
-    set({ boardId, rules: previous.boardId === boardId ? previous.rules : [], error: null })
+    const same = previous.boardId === boardId
+    set({
+      boardId,
+      rules: same ? previous.rules : [],
+      presets: same ? previous.presets : {},
+      error: null,
+    })
     if (!boardId) return
     try {
-      const rules = await getAlertRules(boardId)
-      if (request === loadGeneration && get().boardId === boardId) set({ rules, error: null })
+      const [rules, presets] = await Promise.all([getAlertRules(boardId), getAlertPresets(boardId)])
+      if (request === loadGeneration && get().boardId === boardId)
+        set({ rules, presets, error: null })
     } catch (error) {
       if (request === loadGeneration && get().boardId === boardId) {
         set({ error: errorMessage(error, 'Unable to load Alert Rules.') })

@@ -174,8 +174,8 @@ final class TelemetryMigrationTests: XCTestCase {
 
     XCTAssertFalse(try columnNames("alerts").contains("beep_count"))
     let sounds = try queue.read { db in
-      try Dictionary(uniqueKeysWithValues: Row.fetchAll(db, sql: "SELECT id, sound_type FROM alerts").map {
-        ($0["id"] as String, $0["sound_type"] as String)
+      try Dictionary(uniqueKeysWithValues: Row.fetchAll(db, sql: "SELECT id, spec FROM alerts").map {
+        ($0["id"] as String, $0["spec"] as String)
       })
     }
     XCTAssertEqual(sounds, [
@@ -186,40 +186,49 @@ final class TelemetryMigrationTests: XCTestCase {
     XCTAssertEqual(primaryKey, ["board_id", "id"])
   }
 
-  /// Preset speech templates become voice lines ranked by ladder position (#580); a custom rule
-  /// with the same text keeps it.
-  func testPresetVoiceMigrationRanksPresetSpeechBySeverity() throws {
+  /// Each Board's Alert Presets become one `preset:<metric>` row (#591): the old level (missing or
+  /// custom is Off), geiger choice, and match setting; copied preset rows and the settings go.
+  func testPresetRowsMigrationFoldsSettingsIntoOneRowPerMetric() throws {
     try migrate(upTo: "v50_alert_sound_count")
     try queue.write { db in
-      for (id, control, sound, source) in [
-        ("preset:battery:0", "battery", "tts:Battery {percent}%", "preset" as String?),
-        ("preset:battery:1", "battery", "tts:Battery {percent}%", "preset"),
-        ("preset:battery:2", "battery", "tts:Battery {percent}%", "preset"),
-        ("preset:controller-temp:0", "controller-temp", "tts:Controller {value} {unit}", "preset"),
-        ("custom", "battery", "tts:Battery {percent}%", nil),
+      try db.execute(sql: "INSERT INTO boards (id, name, ble_id, created_at) VALUES ('board-1', 'Board', NULL, 1000)")
+      for (key, json) in [
+        ("alertPreset", #"{"speed":"safe","duty":"custom","motor-temp":"normal"}"#),
+        ("alertPresetSound", #"{"speed":{"geiger":"geiger:mid"}}"#),
+        ("matchBoardConfig", #"{"motor-temp":true}"#),
+      ] {
+        try db.execute(sql: "INSERT INTO board_settings VALUES ('board-1', ?, ?, 1000)", arguments: [key, json])
+      }
+      for (id, control, max, sound, source) in [
+        ("preset:duty:0", "duty", 90.0 as Double?, "geiger:soft", "preset" as String?),
+        ("preset:battery:0", "battery", nil, "tts:Battery {percent}%", "preset"),
+        ("custom", "battery", nil, "tts:Battery {percent}%", nil),
       ] {
         try db.execute(
           sql: """
             INSERT INTO alerts (board_id, id, control_id, threshold, threshold_max, enabled, sound_type, created_at, source)
-            VALUES ('board-1', ?, ?, 20, NULL, 1, ?, 1000, ?)
+            VALUES ('board-1', ?, ?, 20, ?, 1, ?, 1000, ?)
             """,
-          arguments: [id, control, sound, source]
+          arguments: [id, control, max, sound, source]
         )
       }
     }
 
     try migrate()
 
-    let sounds = try queue.read { db in
-      try Dictionary(uniqueKeysWithValues: Row.fetchAll(db, sql: "SELECT id, sound_type FROM alerts").map {
-        ($0["id"] as String, $0["sound_type"] as String)
+    let specs = try queue.read { db in
+      try Dictionary(uniqueKeysWithValues: Row.fetchAll(db, sql: "SELECT id, spec FROM alerts").map {
+        ($0["id"] as String, $0["spec"] as String)
       })
     }
-    XCTAssertEqual(sounds, [
-      "preset:battery:0": "voice(info):battery", "preset:battery:1": "voice(warning):battery",
-      "preset:battery:2": "voice(critical):battery", "preset:controller-temp:0": "voice(critical):controllerTemp",
-      "custom": "tts:Battery {percent}%",
+    XCTAssertEqual(specs, [
+      "preset:speed": "preset(safe):geiger=mid", "preset:duty": "preset(off):geiger=soft",
+      "preset:motor-temp": "preset(normal):match=on", "preset:controller-temp": "preset(off)",
+      "preset:battery": "preset(off)", "custom": "tts:Battery {percent}%",
     ])
+    XCTAssertFalse(try columnNames("alerts").contains("source"))
+    let keys = try queue.read { db in try String.fetchSet(db, sql: "SELECT key FROM board_settings") }
+    XCTAssertTrue(keys.isDisjoint(with: ["alertPreset", "alertPresetSound", "matchBoardConfig"]))
   }
 
   func testBoardIdMigrationRebuildsLegacyGlobalAlertsAndDropsTheirRows() throws {
@@ -347,7 +356,7 @@ final class TelemetryMigrationTests: XCTestCase {
       try db.execute(
         sql: """
           INSERT INTO alerts (board_id, id, control_id, threshold, threshold_max, enabled, sound_type, created_at, source)
-          VALUES ('board-1', 'rule-1', 'speed', 30.0, NULL, 1, 'beep', 1000, 'preset')
+          VALUES ('board-1', 'rule-1', 'speed', 30.0, NULL, 1, 'beep', 1000, 'manual')
           """
       )
     }

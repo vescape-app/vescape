@@ -10,24 +10,24 @@ import { useShallow } from 'zustand/react/shallow'
 
 import { generateId } from '@/helpers/id'
 import {
+  alertPresetState,
   asAlertPresetMetric,
   ALERT_PRESET_FALLBACK_LEVEL,
+  isPresetAlertRule,
   type AlertPresetLevel,
   type AlertPresetMetric,
 } from '@/modules/alerts/lib/alertPresets'
-import {
-  boardAlertPresetSelection,
-  boardHasBatteryConfig,
-  boardMatchBoardConfig,
-  boardTopSpeedKmh,
-} from '@/modules/alerts/lib/boardAlertSettings'
+import { boardHasBatteryConfig, boardTopSpeedKmh } from '@/modules/alerts/lib/boardAlertSettings'
 import {
   customRulesForControl,
   materializePresetRules,
   type DraftAlertRule,
 } from '@/modules/alerts/lib/customAlertRules'
 import { useAlertPresetStore } from '@/modules/alerts/store/alertPresetStore'
-import { parseGeigerAlertSound } from '@/modules/alerts/lib/alertSoundString'
+import {
+  formatGeigerAlertSound,
+  parseGeigerAlertSound,
+} from '@/modules/alerts/lib/alertSoundString'
 import { useAlertsStore, type AlertRuleDraft } from '@/modules/alerts/store/alertsStore'
 import { useBoardStore } from '@/modules/board/store/boardStore'
 
@@ -56,7 +56,7 @@ export interface MetricAlertsController {
   /** Metrics this Board follows its own configuration for. */
   matchBoardConfig: Partial<Record<AlertPresetMetric, boolean>>
   setMatchBoardConfig(enabled: boolean): void
-  /** Sound of this metric's saved preset geiger rules; null without any. */
+  /** Tick sound of this metric's preset: the rider's choice, else its expanded rules'; null without either. */
   geigerSound?: string | null
   /** Pick the preset's geiger sound. Absent where it cannot be stored (the add-board wizard). */
   setGeigerSound?(soundType: string): void
@@ -84,7 +84,16 @@ export function useBoardMetricAlerts(controlId: string): MetricAlertsController 
     () => resolvedRules.filter((rule) => rule.controlId === controlId).map(toTestRule),
     [resolvedRules, controlId],
   )
+  // The points native expanded from this metric's preset, the copy `custom` starts from.
+  const presetSnapshot = useMemo(
+    () =>
+      resolvedRules
+        .filter((rule) => rule.controlId === controlId && isPresetAlertRule(rule))
+        .map(toTestRule),
+    [resolvedRules, controlId],
+  )
   const allRules = useAlertsStore((s) => s.rules)
+  const presetSpecs = useAlertsStore((s) => s.presets)
   const error = useAlertsStore((s) => s.error)
   const { add, update, toggle, remove } = useAlertsStore(
     useShallow((s) => ({ add: s.add, update: s.update, toggle: s.toggle, remove: s.remove })),
@@ -92,19 +101,27 @@ export function useBoardMetricAlerts(controlId: string): MetricAlertsController 
 
   const metric = asAlertPresetMetric(controlId)
   const rules = useMemo(() => customRulesForControl(allRules, controlId), [allRules, controlId])
-  // Only generated rules hold the preset's sound; the rider's own rules carry their own.
+  const preset = metric ? alertPresetState(presetSpecs[metric], rules.length > 0) : null
+  const presetGeiger = preset?.geiger
+  // Only expanded preset rules hold the preset's sound; the rider's own rules carry their own.
   const geigerSound = useMemo(
     () =>
-      allRules.find(
-        (rule) =>
-          rule.controlId === controlId &&
-          rule.source === 'preset' &&
-          parseGeigerAlertSound(rule.soundType),
-      )?.soundType ?? null,
-    [allRules, controlId],
+      presetGeiger
+        ? formatGeigerAlertSound(presetGeiger)
+        : (allRules.find(
+            (rule) =>
+              rule.controlId === controlId &&
+              isPresetAlertRule(rule) &&
+              parseGeigerAlertSound(rule.soundType),
+          )?.soundType ?? null),
+    [allRules, controlId, presetGeiger],
   )
   // Controls without presets are always rider-owned, so they read as `custom` with no way back.
-  const level = board && metric ? boardAlertPresetSelection(board)[metric] : 'custom'
+  const level = preset?.level ?? 'custom'
+  const matchBoardConfig = useMemo(
+    () => (metric && preset?.match ? { [metric]: true } : {}),
+    [metric, preset?.match],
+  )
 
   return useMemo(() => {
     if (!board) return null
@@ -119,7 +136,7 @@ export function useBoardMetricAlerts(controlId: string): MetricAlertsController 
       configBases,
       topSpeedKmh: boardTopSpeedKmh(board),
       hasBatteryConfig: boardHasBatteryConfig(board),
-      matchBoardConfig: boardMatchBoardConfig(board),
+      matchBoardConfig,
       setMatchBoardConfig: (enabled) => {
         // intentional-suppression: the Alerts store error is rendered by MetricAlerts.
         if (metric)
@@ -139,14 +156,14 @@ export function useBoardMetricAlerts(controlId: string): MetricAlertsController 
         // intentional-suppression: the Alerts store error is rendered by MetricAlerts.
         if (metric)
           void presets()
-            .setLevel(metric, next)
+            .setLevel(metric, next, presetSnapshot)
             .catch(() => undefined)
       },
       customize: () => {
         // intentional-suppression: the Alerts store error is rendered by MetricAlerts.
         if (metric)
           void presets()
-            .customize(metric)
+            .customize(metric, presetSnapshot)
             .catch(() => undefined)
       },
       discardCustom: () => {
@@ -175,6 +192,8 @@ export function useBoardMetricAlerts(controlId: string): MetricAlertsController 
     ruleSnapshot,
     configBases,
     geigerSound,
+    matchBoardConfig,
+    presetSnapshot,
   ])
 }
 

@@ -33,7 +33,6 @@ interface BoardActions {
     link?: BoardLink | null
     batteryConfig?: BatteryConfig | null
     topSpeedKmh?: number
-    alertPreset?: Record<string, unknown> | null
     alertPresetsOnboarded?: boolean
   }) => Promise<Board>
   updateBoard: (board: Board) => Promise<void>
@@ -85,7 +84,6 @@ export const useBoardStore = create<BoardState & BoardActions>((set, get) => ({
     link,
     batteryConfig,
     topSpeedKmh,
-    alertPreset,
     alertPresetsOnboarded,
   }) {
     const board: Board = {
@@ -97,7 +95,6 @@ export const useBoardStore = create<BoardState & BoardActions>((set, get) => ({
       deletedAt: null,
       batteryConfig: batteryConfig ?? DEFAULT_BATTERY_CONFIG,
       topSpeedKmh,
-      alertPreset: alertPreset ?? null,
       alertPresetsOnboarded: alertPresetsOnboarded ?? false,
       legalMode: { enabled: false },
       link: link ?? null,

@@ -82,6 +82,14 @@ class TelemetryMigrationMatrixHostTest {
         db.exec("INSERT INTO alerts (board_id,id,control_id,threshold,enabled,sound_type,created_at,beep_count) VALUES ('board-era3','custom-battery-era32','battery',25,1,'tts:Battery {percent}%',3206,3)")
       }
       33 -> db.exec("INSERT INTO board_config_values VALUES ('board-era3','2.0','{\"motor_current_max\":55.5}',3300)")
+      50 -> {
+        // The v50 Alert Preset Board Settings and copied preset rows that v51 folds into one row per metric.
+        db.exec("INSERT INTO board_settings VALUES ('board-era3','alertPreset','{\"speed\":\"safe\",\"duty\":\"custom\",\"motor-temp\":\"normal\"}',5000)")
+        db.exec("INSERT INTO board_settings VALUES ('board-era3','alertPresetSound','{\"speed\":{\"geiger\":\"geiger:mid\"}}',5000)")
+        db.exec("INSERT INTO board_settings VALUES ('board-era3','matchBoardConfig','{\"motor-temp\":true,\"speed\":true}',5000)")
+        db.exec("INSERT INTO alerts (board_id,id,control_id,threshold,threshold_max,enabled,sound_type,created_at,source) VALUES ('board-era3','preset:speed:0','speed',36,45,1,'geiger:hard',5001,'preset')")
+        db.exec("INSERT INTO alerts (board_id,id,control_id,threshold,threshold_max,enabled,sound_type,created_at,source) VALUES ('board-era3','preset:duty:0','duty',80,90,1,'geiger:soft',5002,'preset')")
+      }
     }
   }
 
@@ -191,17 +199,27 @@ class TelemetryMigrationMatrixHostTest {
         if (start >= 30) assertEquals("Favorite", db.text("SELECT name FROM favorites WHERE id='favorite-era30'"))
         // Single alerts carry their beep count in the sound string (#578); the column is gone.
         if (start >= 32) {
-          assertEquals("tts:Slow down", db.text("SELECT sound_type FROM alerts WHERE id='speech-era32'"))
-          assertEquals("alert(2):warning", db.text("SELECT sound_type FROM alerts WHERE id='beep-era32'"))
-          assertEquals("alert(5):critical", db.text("SELECT sound_type FROM alerts WHERE id='urgent-era32'"))
-          assertEquals("preset:tick", db.text("SELECT sound_type FROM alerts WHERE id='tick-era32'"))
-          // Preset speech templates become voice lines ranked by ladder position (#580).
-          assertEquals("voice(info):battery", db.text("SELECT sound_type FROM alerts WHERE id='preset:battery:0'"))
-          assertEquals("voice(warning):battery", db.text("SELECT sound_type FROM alerts WHERE id='preset:battery:1'"))
-          assertEquals("voice(critical):battery", db.text("SELECT sound_type FROM alerts WHERE id='preset:battery:2'"))
-          assertEquals("voice(critical):motorTemp", db.text("SELECT sound_type FROM alerts WHERE id='preset:motor-temp:0'"))
-          assertEquals("tts:Battery {percent}%", db.text("SELECT sound_type FROM alerts WHERE id='custom-battery-era32'"))
+          assertEquals("tts:Slow down", db.text("SELECT spec FROM alerts WHERE id='speech-era32'"))
+          assertEquals("alert(2):warning", db.text("SELECT spec FROM alerts WHERE id='beep-era32'"))
+          assertEquals("alert(5):critical", db.text("SELECT spec FROM alerts WHERE id='urgent-era32'"))
+          assertEquals("preset:tick", db.text("SELECT spec FROM alerts WHERE id='tick-era32'"))
+          assertEquals("tts:Battery {percent}%", db.text("SELECT spec FROM alerts WHERE id='custom-battery-era32'"))
         }
+        // One preset row per metric (#591). Before v50's settings existed nothing was selected, so
+        // every metric is Off and nothing new starts firing; copied preset rows are gone.
+        val presets = mapOf(
+          "speed" to "preset(safe):geiger=mid",
+          "duty" to "preset(off):geiger=soft",
+          "motor-temp" to "preset(normal):match=on",
+          "controller-temp" to "preset(off)",
+          "battery" to "preset(off)",
+        )
+        for ((metric, spec) in presets) {
+          assertEquals(metric, if (start >= 50) spec else "preset(off)", db.text("SELECT spec FROM alerts WHERE id='preset:$metric'"))
+        }
+        assertEquals(0L, db.long("SELECT COUNT(*) FROM alerts WHERE id LIKE 'preset:%:%'"))
+        assertEquals(0L, db.long("SELECT COUNT(*) FROM board_settings WHERE key IN ('alertPreset','matchBoardConfig','alertPresetSound')"))
+        assertEquals(0L, db.long("SELECT COUNT(*) FROM pragma_table_info('alerts') WHERE name IN ('source','sound_type')"))
         assertEquals(0L, db.long("SELECT COUNT(*) FROM pragma_table_info('alerts') WHERE name='beep_count'"))
         if (start >= 33) assertEquals("{\"motor_current_max\":55.5}", db.text("SELECT values_json FROM board_config_values WHERE board_id='board-era3'"))
       }

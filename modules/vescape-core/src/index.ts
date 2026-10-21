@@ -613,25 +613,6 @@ export interface Board {
    */
   topSpeedKmh?: number
   /**
-   * Native-owned per-metric Alert Preset selection. Initial Board creation accepts this bag;
-   * existing Boards change it through applyAlertPreset. Absent ⇒ all metrics Off.
-   */
-  alertPreset?: Record<string, unknown> | null
-  /**
-   * Per-metric opt-in: which Alert Presets follow the board's own configuration instead of fixed
-   * values. Like alertPreset, native owns this bag; existing Boards use applyAlertPreset to
-   * change it. Absent ⇒ no metric matches.
-   */
-  matchBoardConfig?: Record<string, unknown> | null
-  /**
-   * Native-owned per-metric preset sound choices: `geiger` keeps the tick level across level
-   * changes; presets play the app-wide effects and voice packs. Changed only through
-   * applyAlertPreset. Absent ⇒ every preset follows the defaults.
-   * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/AlertPresetPersistence.kt `SOUND_KEY`
-   * @parity /modules/vescape-core/ios/telemetry/AlertPresetPersistence.swift `soundKey`
-   */
-  alertPresetSound?: Record<string, AlertPresetSound> | null
-  /**
    * One-time gate for the guided Alert Preset step in the add-board wizard, per Board. False until
    * the rider completes that step for this Board. The durable setup home is the Alerts settings
    * entry regardless of this flag.
@@ -733,11 +714,6 @@ export interface AlertRule {
    * whose cadence follows range depth. Native clamps to {@link ALERT_REPEAT_MIN_SECONDS}.
    */
   repeatEverySeconds: number | null
-  /**
-   * Provenance tag. `manual` (or absent) = rider-authored. `preset` rules are generated + owned
-   * by native preset generation. JS sends selection intents and renders the saved rules.
-   */
-  source?: 'manual' | 'preset'
 }
 
 /**
@@ -753,8 +729,8 @@ export const ALERT_REPEAT_MIN_SECONDS = 3
  * Inclusive bounds on the count of an `alert(count):severity` sound. Past 5 the beeps stop being
  * countable by ear at riding speed, which is the only thing the count is for.
  *
- * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/alerts/AlertEngine.kt `ALERT_BEEP_COUNT_RANGE`
- * @parity /modules/vescape-core/ios/alerts/AlertEngine.swift `alertBeepCountRange`
+ * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/alerts/AlertSoundString.kt `ALERT_BEEP_COUNT_RANGE`
+ * @parity /modules/vescape-core/ios/alerts/AlertSoundString.swift `alertBeepCountRange`
  */
 export const ALERT_BEEP_COUNT_RANGE = { min: 1, max: 5 } as const
 
@@ -2903,9 +2879,10 @@ type VescapeCoreNativeModule = NativeEventEmitter<VescapeCoreEvents> & {
   upsertBoard(board: BoardInput): Promise<void>
   deleteBoard(id: string): Promise<void>
   getAlertRules(boardId: string): Promise<AlertRule[]>
+  getAlertPresets(boardId: string): Promise<Record<AlertPresetMetric, string>>
   previewAlertPreset(
     metric: AlertPresetMetric,
-    level: AlertPresetLevel,
+    spec: string,
     topSpeedKmh: number,
     hasBatteryConfig: boolean,
     speedUnitSystem: 'metric' | 'imperial',
@@ -2913,9 +2890,9 @@ type VescapeCoreNativeModule = NativeEventEmitter<VescapeCoreEvents> & {
   applyAlertPreset(
     boardId: string,
     metric: string,
-    action: AlertPresetIntent['action'],
     level: string | null,
-    matchBoardConfig: boolean | null,
+    geiger: string | null,
+    match: boolean | null,
   ): Promise<void>
   upsertAlertRule(rule: AlertRule): Promise<void>
   setAlertRuleEnabled(boardId: string, id: string, enabled: boolean): Promise<void>
@@ -4099,34 +4076,29 @@ export async function deleteBoard(id: string): Promise<void> {
 }
 
 /**
- * Native owns preset selection, generation, and atomic rule replacement.
+ * An Alert Preset is one row per Board and metric holding `preset(<level>)[:key=value,…]`; native
+ * expands it into rules whenever it loads them, and JS never expands.
  * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/VescapeCoreModule.kt `applyAlertPreset`
  * @parity /modules/vescape-core/ios/VescapeCoreModule.swift `applyAlertPreset`
  */
 export type AlertPresetMetric = 'battery' | 'speed' | 'duty' | 'motor-temp' | 'controller-temp'
-export type AlertPresetLevel = 'off' | 'safe' | 'normal' | 'minimal' | 'custom'
+export type AlertPresetLevel = 'off' | 'safe' | 'normal' | 'minimal'
 
+/** One change to a metric's preset row: its level, its geiger tick level, or board-config match. */
 export type AlertPresetIntent =
-  | { action: 'select'; level: Exclude<AlertPresetLevel, 'custom'> }
-  | { action: 'customize' | 'discard-custom' }
-  | { action: 'match-board-config'; enabled: boolean }
-  /** Geiger sound (`geiger:<level>`) for the metric's preset ticks; kept across regeneration. */
-  | { action: 'geiger-sound'; soundType: string }
-
-/** One preset's sound choices in {@link Board.alertPresetSound}. */
-export interface AlertPresetSound {
-  geiger?: string
-}
+  | { level: AlertPresetLevel }
+  | { geiger: 'soft' | 'mid' | 'hard' }
+  | { match: boolean }
 
 /**
- * Calculate an unsaved wizard preset with the same native generator used when saving it.
+ * Expand an unsaved draft preset `spec` with the same native expander saved rows use.
  * Synchronous, deterministic, and independent of the database or active Board.
  * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/VescapeCoreModule.kt `previewAlertPreset`
  * @parity /modules/vescape-core/ios/VescapeCoreModule.swift `previewAlertPreset`
  */
 export function previewAlertPreset(
   metric: AlertPresetMetric,
-  level: AlertPresetLevel,
+  spec: string,
   options: {
     topSpeedKmh: number
     hasBatteryConfig: boolean
@@ -4135,13 +4107,14 @@ export function previewAlertPreset(
 ): AlertTestRule[] {
   return native.previewAlertPreset(
     metric,
-    level,
+    spec,
     options.topSpeedKmh,
     options.hasBatteryConfig,
     options.speedUnitSystem ?? 'metric',
   )
 }
 
+/** Rewrite one metric's preset row in a transaction; native reloads evaluation. */
 export async function applyAlertPreset(
   boardId: string,
   metric: AlertPresetMetric,
@@ -4150,16 +4123,22 @@ export async function applyAlertPreset(
   return native.applyAlertPreset(
     boardId,
     metric,
-    intent.action,
-    intent.action === 'select'
-      ? intent.level
-      : intent.action === 'geiger-sound'
-        ? intent.soundType
-        : null,
-    intent.action === 'match-board-config' ? intent.enabled : null,
+    'level' in intent ? intent.level : null,
+    'geiger' in intent ? intent.geiger : null,
+    'match' in intent ? intent.match : null,
   )
 }
 
+/**
+ * Each preset metric's stored `preset(…)` spec; `preset(normal)` where the Board has no row.
+ * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/VescapeCoreModule.kt `getAlertPresets`
+ * @parity /modules/vescape-core/ios/VescapeCoreModule.swift `getAlertPresets`
+ */
+export async function getAlertPresets(boardId: string): Promise<Record<AlertPresetMetric, string>> {
+  return native.getAlertPresets(boardId)
+}
+
+/** Rider rules plus every Alert Preset expanded (`preset:<metric>:<index>`), by created_at. */
 export async function getAlertRules(boardId: string): Promise<AlertRule[]> {
   return native.getAlertRules(boardId)
 }

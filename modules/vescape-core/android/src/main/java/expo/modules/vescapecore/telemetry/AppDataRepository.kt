@@ -218,13 +218,8 @@ class AppDataRepository private constructor(private val context: Context) {
     notifyDataChanged(AppDataScope.ALERTS)
   }
 
-  suspend fun repairMissingAlertPresetRelations(boardId: String): Unit = withContext(Dispatchers.IO) {
-    if (dao.repairMissingAlertPresetRelations(boardId)) notifyDataChanged(AppDataScope.ALERTS)
-  }
-
-  suspend fun applyAlertPreset(boardId: String, metric: String, action: String, level: String?, matchBoardConfig: Boolean?): Unit = withContext(Dispatchers.IO) {
-    dao.applyAlertPreset(boardId, metric, action, level, matchBoardConfig)
-    notifyDataChanged(AppDataScope.BOARDS)
+  suspend fun applyAlertPreset(boardId: String, metric: String, level: String?, geiger: String?, match: Boolean?): Unit = withContext(Dispatchers.IO) {
+    dao.applyAlertPreset(boardId, metric, level, geiger, match)
     notifyDataChanged(AppDataScope.ALERTS)
   }
 
@@ -369,14 +364,20 @@ class AppDataRepository private constructor(private val context: Context) {
     dao.clearBoardConfigState(boardId)
   }
 
+  /** Rider rules plus expanded Alert Presets, the list every rule reader uses. */
   suspend fun getAlertRules(boardId: String): List<Map<String, Any?>> = withContext(Dispatchers.IO) {
     tuneAlerts.alertRules(boardId).map { it.toMap() }
+  }
+
+  /** Each preset metric's stored `preset(…)` spec, the app default where the Board has no row. */
+  suspend fun getAlertPresets(boardId: String): Map<String, String> = withContext(Dispatchers.IO) {
+    AlertPresetPersistence.specs(dao, boardId)
   }
 
   /** The given Board's enabled rules — the alert engine evaluates only the connected Board's rules. */
   suspend fun getEnabledAlertRuleEntities(boardId: String): List<AlertRuleEntity> =
     withContext(Dispatchers.IO) {
-      dao.getEnabledAlertRules(boardId)
+      tuneAlerts.alertRules(boardId).filter { it.enabled }
     }
 
   suspend fun upsertAlertRule(rule: Map<String, Any?>): Unit = withContext(Dispatchers.IO) {
@@ -956,14 +957,10 @@ fun BoardEntity.toMap(settings: List<BoardSettingEntity>): Map<String, Any?> {
     "batteryConfig" to values["batteryConfig"],
     "lastBattery" to values["lastBattery"],
     "dismissedWarnings" to values["dismissedWarnings"],
-    // Alert Preset board settings, normalized to display defaults when the row is absent so JS
-    // always reads a concrete Board Top Speed / onboarded flag. `alertPreset` stays null until the
-    // rider touches setup — no preset rules generate before then.
+    // Normalized to display defaults when the row is absent so JS always reads a concrete Board
+    // Top Speed / onboarded flag.
     "topSpeedKmh" to (values["topSpeedKmh"] ?: DEFAULT_TOP_SPEED_KMH),
-    "alertPreset" to values["alertPreset"],
     "alertPresetsOnboarded" to (values["alertPresetsOnboarded"] ?: false),
-    "matchBoardConfig" to values["matchBoardConfig"],
-    "alertPresetSound" to values["alertPresetSound"],
     "legalMode" to (values["legalMode"] ?: mapOf("enabled" to false)),
     "link" to link,
     "deletedAt" to deletedAt,
@@ -1056,7 +1053,6 @@ fun AlertRuleEntity.toMap(): Map<String, Any?> = mapOf(
   "soundType" to soundType,
   "createdAt" to createdAt,
   "repeatEverySeconds" to repeatEverySeconds,
-  "source" to source,
 )
 
 fun TuneProfileEntity.toMap(): Map<String, Any?> = mapOf(
@@ -1217,10 +1213,7 @@ internal fun Map<String, Any?>.toBoardSettingEntities(boardId: String): Pair<Lis
   putOrDelete("batteryConfig", normalizeBatteryConfig(get("batteryConfig")))
   putOrDelete("dismissedWarnings", normalizeDismissedWarnings(get("dismissedWarnings")))
   putOrDelete("topSpeedKmh", validTopSpeedKmh(get("topSpeedKmh")))
-  putOrDelete("alertPreset", normalizeMetricBag(get("alertPreset")))
   putOrDelete("alertPresetsOnboarded", get("alertPresetsOnboarded") as? Boolean)
-  putOrDelete("matchBoardConfig", normalizeMetricBag(get("matchBoardConfig")))
-  putOrDelete("alertPresetSound", normalizeMetricBag(get("alertPresetSound")))
   // Legal Mode changes only through the dedicated native intent.
   val link = normalizedBoardLink()
   putOrDelete("transport", BoardTransport.encode(BoardTransport.fromBridge(link?.get("transport"))))
@@ -1252,9 +1245,7 @@ private fun BoardSettingEntity.decodeBoardSetting(): Pair<String, Any?>? {
     "lastBattery" -> decodeLastBattery(raw)?.let { key to it }
     "dismissedWarnings" -> normalizeDismissedWarnings(raw)?.let { key to it }
     "topSpeedKmh" -> validTopSpeedKmh(raw)?.let { key to it }
-    "alertPreset" -> normalizeMetricBag(raw)?.let { key to it }
     "alertPresetsOnboarded" -> (raw as? Boolean)?.let { key to it }
-    "matchBoardConfig", "alertPresetSound" -> normalizeMetricBag(raw)?.let { key to it }
     "legalMode" -> normalizeLegalMode(raw)?.let { key to it }
     else -> null
   }
@@ -1271,17 +1262,6 @@ private fun normalizePersonalization(raw: Any?): Map<String, String>? {
 
 private fun normalizeLegalMode(raw: Any?): Map<String, Boolean>? =
   (raw.asStringKeyMap()?.get("enabled") as? Boolean)?.let { mapOf("enabled" to it) }
-
-/**
- * A durable per-metric Alert Preset bag — the level selection, which metrics match the board's
- * own configuration, and each preset's sound choices (the geiger level). JS owns behavior; native persists each as an opaque object. Non-object/empty
- * payloads normalize away (row removed).
- * @parity /modules/vescape-core/ios/telemetry/AppDataRepository.swift `normalizeMetricBag`
- */
-private fun normalizeMetricBag(raw: Any?): Map<String, Any?>? {
-  val map = raw.asStringKeyMap() ?: return null
-  return map.ifEmpty { null }
-}
 
 /**
  * Dismissed Board Warning kinds persisted as a board setting: a non-empty list of kind slugs, or
@@ -1372,7 +1352,6 @@ private fun Map<String, Any?>.toAlertRuleEntity(): AlertRuleEntity = AlertRuleEn
   soundType = get("soundType") as? String ?: "default",
   createdAt = getLong("createdAt"),
   repeatEverySeconds = normalizedAlertRepeatSeconds(getDoubleOrNull("repeatEverySeconds")),
-  source = get("source") as? String,
 )
 
 private fun Map<String, Any?>.getString(key: String): String =

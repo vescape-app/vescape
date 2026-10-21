@@ -409,7 +409,8 @@ data class AlertRuleEntity(
   @ColumnInfo(name = "threshold_offset") val thresholdOffset: Double? = null,
   @ColumnInfo(name = "threshold_max_offset") val thresholdMaxOffset: Double? = null,
   val enabled: Boolean,
-  @ColumnInfo(name = "sound_type")
+  /** Sound string, or the `preset(<level>)…` spec of an Alert Preset row (see `AlertPresetSpec`). */
+  @ColumnInfo(name = "spec")
   val soundType: String,
   @ColumnInfo(name = "created_at")
   val createdAt: Long,
@@ -419,11 +420,6 @@ data class AlertRuleEntity(
    */
   @ColumnInfo(name = "repeat_every_seconds")
   val repeatEverySeconds: Long? = null,
-  /**
-   * Free-text provenance tag mirroring TS `AlertRule.source`: `manual` (or null) or `preset`.
-   * Native owns preset generation; JS submits selection intents.
-   */
-  val source: String?,
 )
 
 @Entity(

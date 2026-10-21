@@ -83,15 +83,9 @@ final class AppDataRepository {
     return Self.composeBoard(board, settings: settings)
   }
 
-  func repairMissingAlertPresetRelations(_ boardId: String) throws {
+  func applyAlertPreset(_ boardId: String, _ metric: String, _ level: String?, _ geiger: String?, _ match: Bool?) throws {
     guard let writer else { throw StorageUnavailable.databaseNotOpen }
-    if try AlertPresetPersistence(writer: writer).repairMissingRelations(boardId: boardId) { notifyDataChanged(.alerts) }
-  }
-
-  func applyAlertPreset(_ boardId: String, _ metric: String, _ action: String, _ level: String?, _ matchBoardConfig: Bool?) throws {
-    guard let writer else { throw StorageUnavailable.databaseNotOpen }
-    try AlertPresetPersistence(writer: writer).apply(boardId: boardId, metric: metric, action: action, level: level, matchBoardConfig: matchBoardConfig)
-    Self.onDataChanged?(AppDataScope.boards.rawValue)
+    try AlertPresetPersistence(writer: writer).apply(boardId: boardId, metric: metric, level: level, geiger: geiger, match: match)
     Self.onDataChanged?(AppDataScope.alerts.rawValue)
   }
 
@@ -110,10 +104,7 @@ final class AppDataRepository {
       ("batteryConfig", Self.normalizeBatteryConfig(board["batteryConfig"] ?? nil)),
       ("dismissedWarnings", Self.normalizeDismissedWarnings(board["dismissedWarnings"] ?? nil)),
       ("topSpeedKmh", Self.topSpeedKmh(board["topSpeedKmh"] ?? nil)),
-      ("alertPreset", Self.normalizeMetricBag(board["alertPreset"] ?? nil)),
       ("alertPresetsOnboarded", board["alertPresetsOnboarded"] as? Bool),
-      ("matchBoardConfig", Self.normalizeMetricBag(board["matchBoardConfig"] ?? nil)),
-      ("alertPresetSound", Self.normalizeMetricBag(board["alertPresetSound"] ?? nil)),
       // Legal Mode changes only through the dedicated native intent.
     ] + linkSettings.filter { $0.0 != "transport" }
     let transport = linkSettings.first { $0.0 == "transport" }?.1 as? String
@@ -181,14 +172,10 @@ final class AppDataRepository {
       "batteryConfig": values["batteryConfig"],
       "lastBattery": values["lastBattery"],
       "dismissedWarnings": values["dismissedWarnings"],
-      // Alert Preset board settings, normalized to display defaults when the row is absent so JS
-      // always reads a concrete Board Top Speed / onboarded flag. `alertPreset` stays nil until the
-      // rider touches setup — no preset rules generate before then.
+      // Normalized to display defaults when the row is absent so JS always reads a concrete Board
+      // Top Speed / onboarded flag.
       "topSpeedKmh": values["topSpeedKmh"] ?? defaultTopSpeedKmh,
-      "alertPreset": values["alertPreset"],
       "alertPresetsOnboarded": values["alertPresetsOnboarded"] ?? false,
-      "matchBoardConfig": values["matchBoardConfig"] ?? nil,
-      "alertPresetSound": values["alertPresetSound"] ?? nil,
       "legalMode": values["legalMode"] ?? ["enabled": false],
       "link": link,
       "deletedAt": row["deleted_at"] as Int64?,
@@ -207,8 +194,7 @@ final class AppDataRepository {
       "createdAt": board.createdAt, "batteryConfig": values["batteryConfig"],
       "lastBattery": values["lastBattery"], "dismissedWarnings": values["dismissedWarnings"],
       "topSpeedKmh": values["topSpeedKmh"] ?? defaultTopSpeedKmh,
-      "alertPreset": values["alertPreset"], "alertPresetsOnboarded": values["alertPresetsOnboarded"] ?? false,
-      "matchBoardConfig": values["matchBoardConfig"], "alertPresetSound": values["alertPresetSound"],
+      "alertPresetsOnboarded": values["alertPresetsOnboarded"] ?? false,
       "legalMode": values["legalMode"] ?? ["enabled": false],
       "link": link, "deletedAt": board.deletedAt,
     ]
@@ -235,12 +221,8 @@ final class AppDataRepository {
       return normalizeDismissedWarnings(raw)
     case "topSpeedKmh":
       return topSpeedKmh(raw)
-    case "alertPreset":
-      return normalizeMetricBag(raw)
     case "alertPresetsOnboarded":
       return raw as? Bool
-    case "matchBoardConfig", "alertPresetSound":
-      return normalizeMetricBag(raw)
     case "legalMode":
       return normalizeLegalMode(raw)
     default:
@@ -248,10 +230,6 @@ final class AppDataRepository {
     }
   }
 
-  /// A durable per-metric Alert Preset bag — the level selection, which metrics match the board's
-  /// own configuration, and each preset's sound choices (the geiger level). JS owns behavior; native persists each as an opaque object.
-  /// Non-object/empty payloads normalize away (row removed).
-  /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/AppDataRepository.kt `normalizeMetricBag`
   /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/AppDataRepository.kt `normalizePersonalization`
   /// @parity /modules/vescape-core/src/index.ts `Board.personalization`
   private static func normalizePersonalization(_ raw: Any?) -> [String: String]? {
@@ -260,11 +238,6 @@ final class AppDataRepository {
           let railColorId = map["railColorId"] as? String, !railColorId.isEmpty
     else { return nil }
     return ["railId": railId, "railColorId": railColorId]
-  }
-
-  private static func normalizeMetricBag(_ raw: Any?) -> [String: Any]? {
-    guard let map = raw as? [String: Any], !map.isEmpty else { return nil }
-    return map
   }
 
   private static func normalizeLegalMode(_ raw: Any?) -> [String: Bool]? {
@@ -303,9 +276,15 @@ final class AppDataRepository {
             "thresholdOffset": row.thresholdOffset, "thresholdMaxOffset": row.thresholdMaxOffset
           ] : ["kind": "fixed"],
           "enabled": row.enabled, "soundType": row.soundType, "createdAt": row.createdAt,
-          "repeatEverySeconds": row.repeatEverySeconds, "source": row.source,
+          "repeatEverySeconds": row.repeatEverySeconds,
         ]
     }
+  }
+
+  /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/AppDataRepository.kt `getAlertPresets`
+  func getAlertPresets(_ boardId: String) throws -> [String: String] {
+    guard let writer else { throw StorageUnavailable.databaseNotOpen }
+    return try AlertRulePersistence(writer: writer).presets(boardId: boardId)
   }
 
   /// The given Board's enabled rules materialized as `AlertRule` for the alert engine. The engine
@@ -314,29 +293,22 @@ final class AppDataRepository {
   /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/AppDataRepository.kt `getEnabledAlertRuleEntities`
   func getEnabledAlertRules(_ boardId: String) throws -> [AlertRule] {
     guard let writer else { throw StorageUnavailable.databaseNotOpen }
-    return try writer.read { db in
-      try Row.fetchAll(
-        db,
-        sql: "SELECT * FROM alerts WHERE board_id = ? AND enabled = 1 ORDER BY created_at ASC",
-        arguments: [boardId]
-      ).map { row in
-        AlertRule(
-          boardId: row["board_id"] as String,
-          id: row["id"] as String,
-          controlId: row["control_id"] as String,
-          threshold: row["threshold"] as Double,
-          thresholdMax: row["threshold_max"] as Double?,
-          thresholdKind: row["threshold_kind"] as String? ?? "fixed",
-          configFieldId: row["config_field_id"] as String?,
-          thresholdOffset: row["threshold_offset"] as Double?,
-          thresholdMaxOffset: row["threshold_max_offset"] as Double?,
-          enabled: (row["enabled"] as Int64) != 0,
-          soundType: row["sound_type"] as String,
-          createdAt: row["created_at"] as Int64,
-          repeatEverySeconds: row["repeat_every_seconds"] as Int64?,
-          source: row["source"] as String?
-        )
-      }
+    return try AlertRulePersistence(writer: writer).rules(boardId: boardId).filter(\.enabled).map { row in
+      AlertRule(
+        boardId: row.boardId,
+        id: row.id,
+        controlId: row.controlId,
+        threshold: row.threshold,
+        thresholdMax: row.thresholdMax,
+        thresholdKind: row.thresholdKind,
+        configFieldId: row.configFieldId,
+        thresholdOffset: row.thresholdOffset,
+        thresholdMaxOffset: row.thresholdMaxOffset,
+        enabled: row.enabled,
+        soundType: row.soundType,
+        createdAt: row.createdAt,
+        repeatEverySeconds: row.repeatEverySeconds
+      )
     }
   }
 
@@ -352,14 +324,13 @@ final class AppDataRepository {
     let soundType = rule["soundType"] as? String ?? "default"
     let createdAt = Self.longValue(rule["createdAt"] ?? nil) ?? nowMs()
     let repeatEverySeconds = normalizedAlertRepeatSeconds(Self.doubleValue(rule["repeatEverySeconds"] ?? nil))
-    let source = rule["source"] as? String
     let thresholdRule = rule["thresholdRule"] as? [String: Any]
     let thresholdKind = thresholdRule?["kind"] as? String ?? "fixed"
     let configFieldId = thresholdRule?["fieldId"] as? String
     let thresholdOffset = Self.doubleValue(thresholdRule?["thresholdOffset"])
     let thresholdMaxOffset = Self.doubleValue(thresholdRule?["thresholdMaxOffset"])
     guard let writer else { throw StorageUnavailable.databaseNotOpen }
-    let record = PersistedAlertRule(boardId: boardId, id: id, controlId: controlId, threshold: threshold, thresholdMax: thresholdMax, enabled: enabled, soundType: soundType, createdAt: createdAt, repeatEverySeconds: repeatEverySeconds, source: source, thresholdKind: thresholdKind, configFieldId: configFieldId, thresholdOffset: thresholdOffset, thresholdMaxOffset: thresholdMaxOffset)
+    let record = PersistedAlertRule(boardId: boardId, id: id, controlId: controlId, threshold: threshold, thresholdMax: thresholdMax, enabled: enabled, soundType: soundType, createdAt: createdAt, repeatEverySeconds: repeatEverySeconds, thresholdKind: thresholdKind, configFieldId: configFieldId, thresholdOffset: thresholdOffset, thresholdMaxOffset: thresholdMaxOffset)
     try AlertRulePersistence(writer: writer).save(record)
   }
 

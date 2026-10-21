@@ -12,7 +12,7 @@ Legal map labels, country-list values, and country-detail speed readouts also us
 
 ## Conversion
 
-Keep existing metric storage, telemetry contracts, and calculations. Convert at presentation and input boundaries. A unit switch preserves recorded measurements and custom alert thresholds. Speed presets are regenerated with whole-number thresholds in the newly selected units. Existing history uses the currently selected display units.
+Keep existing metric storage, telemetry contracts, and calculations. Convert at presentation and input boundaries. A unit switch preserves recorded measurements and custom alert thresholds. Speed presets expand with whole-number thresholds in the newly selected units. Existing history uses the currently selected display units.
 
 Metric distance formatting keeps the existing meters-below-1-km convention. Imperial short-distance labels use feet below 0.1 mile, then miles. Ride totals use miles in imperial mode. Imperial speed uses mph.
 
@@ -34,18 +34,15 @@ Examples:
 Speed presets use whole-number range endpoints in the current app units, then store canonical
 km/h equivalents. The ceiling stays within Board Top Speed and the start stays at least one
 selected speed unit below the ceiling for supported Board Top Speeds. At low top speeds, preset
-levels can share a range. The same calculation serves native persistence and unsaved wizard previews.
+levels can share a range. The same calculation serves saved preset rows and unsaved wizard previews.
 
-Changing display units regenerates speed preset rules for every live Board in the same transaction
-as the preference change. This changes actual firing speeds: Normal at a Board Top Speed of
-50 km/h uses 36–45 km/h in metric and exactly 22–28 mph in imperial. Regeneration starts from
-Board Top Speed and the preset definition, so repeated switches do not accumulate rounding drift.
-Selecting a preset or changing Board Top Speed uses the current app units too.
-
-The Board's `alertPreset` bag stores only the selected levels. Legacy `speedUnitSystem` metadata
-is ignored. Saved-board previews and chart markers use persisted rules. Customization freezes
-those rules at their current thresholds; neither custom nor manual alert thresholds are rounded
-when units change. Their converted labels can show one decimal.
+Native expands the speed preset from Board Top Speed, the preset definition, and the current
+display units every time it loads rules, so changing units changes actual firing speeds: Normal at
+a Board Top Speed of 50 km/h uses 36–45 km/h in metric and exactly 22–28 mph in imperial. The preset
+row stores no thresholds, so repeated switches cannot accumulate rounding drift. Saved-board
+previews and chart markers use the expanded rules. Customization freezes the expanded rules at
+their current thresholds; neither custom nor manual alert thresholds are rounded when units change.
+Their converted labels can show one decimal.
 
 ## Spoken alerts
 
@@ -74,7 +71,7 @@ the same pure native conversion helper on each platform; shared distance fixture
 
 ## Implementation checks
 
-- Switching units repeatedly preserves measurements and custom thresholds; preset rules regenerate without cumulative drift.
+- Switching units repeatedly preserves measurements and custom thresholds; preset rules expand without cumulative drift.
 - Editing an imperial threshold stores the corresponding metric value and fires at the same physical speed on Android and iOS.
 - Phone and companion displays use the same preference; native spoken alerts honor it while JS is suspended.
 - Converted values, chart scales, and unit labels agree.

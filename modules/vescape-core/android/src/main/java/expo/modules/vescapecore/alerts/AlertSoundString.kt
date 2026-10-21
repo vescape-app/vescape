@@ -1,6 +1,22 @@
 package expo.modules.vescapecore.alerts
 
 /**
+ * Inclusive bounds on the count of an `alert(count):severity` sound.
+ *
+ * @parity /modules/vescape-core/src/index.ts `ALERT_BEEP_COUNT_RANGE`
+ * @parity /modules/vescape-core/ios/alerts/AlertSoundString.swift `alertBeepCountRange`
+ */
+val ALERT_BEEP_COUNT_RANGE = 1..5
+
+/**
+ * Id prefix of Alert Preset rows (`preset:<metric>`) and the rules they expand to
+ * (`preset:<metric>:<index>`), the rules Voice level applies to.
+ *
+ * @parity /modules/vescape-core/ios/alerts/AlertSoundString.swift `presetRulePrefix`
+ */
+internal const val PRESET_RULE_PREFIX = "preset:"
+
+/**
  * A rule's `soundType` read through the sound string grammar `kind(variant):sound`. Only the first
  * `:` after the kind and optional variant splits, so the sound part (TTS text) may contain `:`.
  * Strings outside the grammar (no `kind:` prefix) parse to null.
@@ -158,4 +174,42 @@ internal fun mySoundId(soundType: String): String? {
     val parsed = AlertSoundString.parse(soundType) ?: return null
     if (parsed.kind != "alert" && parsed.kind != "geiger") return null
     return parsed.sound.removePrefix("my:").takeIf { parsed.sound.startsWith("my:") && it.isNotEmpty() }
+}
+
+/**
+ * `preset(level):key=value,…` — an Alert Preset row's spec: the rider's level plus options, nothing
+ * else (the shipped definition owns every point). Unknown keys are kept in order, so rewriting one
+ * option never drops what a newer app stored. An entry without `=` is not an option and is dropped.
+ *
+ * @parity /src/modules/alerts/lib/alertSoundString.ts `parseAlertPresetSpec`
+ * @parity /modules/vescape-core/ios/alerts/AlertSoundString.swift `AlertPresetSpec`
+ */
+internal data class AlertPresetSpec(val level: String, val options: List<Pair<String, String>> = emptyList()) {
+    fun option(key: String): String? = options.firstOrNull { it.first == key }?.second
+
+    /** This spec with [key] set to [value] in place, appended when new, or removed when null. */
+    fun withOption(key: String, value: String?): AlertPresetSpec {
+        val next = options.filterNot { it.first == key }.toMutableList()
+        if (value != null) {
+            val index = options.indexOfFirst { it.first == key }
+            next.add(if (index < 0) next.size else index, key to value)
+        }
+        return copy(options = next)
+    }
+
+    fun encode(): String =
+        "preset($level)" + if (options.isEmpty()) "" else options.joinToString(",", prefix = ":") { "${it.first}=${it.second}" }
+
+    companion object {
+        private val pattern = Regex("^preset\\(([^()]*)\\)(?::(.*))?$", RegexOption.DOT_MATCHES_ALL)
+
+        fun parse(raw: String): AlertPresetSpec? {
+            val match = pattern.find(raw) ?: return null
+            val options = match.groupValues[2].split(',').mapNotNull { entry ->
+                val separator = entry.indexOf('=')
+                if (separator <= 0) null else entry.substring(0, separator) to entry.substring(separator + 1)
+            }
+            return AlertPresetSpec(match.groupValues[1], options)
+        }
+    }
 }

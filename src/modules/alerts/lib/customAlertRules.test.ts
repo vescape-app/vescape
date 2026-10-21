@@ -25,7 +25,6 @@ test('customizing a native preview preserves every authored setting with fresh o
   })
   expect(rules[0]!.id).not.toBe(preview[0]!.id)
   expect(rules[0]!.id).not.toBe(other[0]!.id)
-  expect(rules[0]!.source).toBeUndefined()
   expect(preview[0]!.id).toBe('preview:speed:0')
 })
 

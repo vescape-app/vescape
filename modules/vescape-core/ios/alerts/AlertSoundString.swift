@@ -1,5 +1,15 @@
 import Foundation
 
+/// Inclusive bounds on the count of an `alert(count):severity` sound.
+/// @parity /modules/vescape-core/src/index.ts `ALERT_BEEP_COUNT_RANGE`
+/// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/alerts/AlertSoundString.kt `ALERT_BEEP_COUNT_RANGE`
+internal let alertBeepCountRange = 1...5
+
+/// Id prefix of Alert Preset rows (`preset:<metric>`) and the rules they expand to
+/// (`preset:<metric>:<index>`), the rules Voice level applies to.
+/// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/alerts/AlertSoundString.kt `PRESET_RULE_PREFIX`
+internal let presetRulePrefix = "preset:"
+
 /// A rule's `soundType` read through the sound string grammar `kind(variant):sound`. Only the first
 /// `:` after the kind and optional variant splits, so the sound part (TTS text) may contain `:`.
 /// Strings outside the grammar (no `kind:` prefix) parse to nil.
@@ -165,4 +175,54 @@ internal func mySoundId(_ soundType: String) -> String? {
     parsed.sound.hasPrefix("my:") else { return nil }
   let id = String(parsed.sound.dropFirst("my:".count))
   return id.isEmpty ? nil : id
+}
+
+/// `preset(level):key=value,…` — an Alert Preset row's spec: the rider's level plus options, nothing
+/// else (the shipped definition owns every point). Unknown keys are kept in order, so rewriting one
+/// option never drops what a newer app stored. An entry without `=` is not an option and is dropped.
+///
+/// @parity /src/modules/alerts/lib/alertSoundString.ts `parseAlertPresetSpec`
+/// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/alerts/AlertSoundString.kt `AlertPresetSpec`
+internal struct AlertPresetSpec: Equatable {
+  struct Option: Equatable {
+    let key: String
+    let value: String
+  }
+
+  var level: String
+  var options: [Option] = []
+
+  func option(_ key: String) -> String? { options.first { $0.key == key }?.value }
+
+  /// This spec with `key` set to `value` in place, appended when new, or removed when nil.
+  func withOption(_ key: String, _ value: String?) -> AlertPresetSpec {
+    var next = options.filter { $0.key != key }
+    if let value {
+      let index = options.firstIndex { $0.key == key } ?? next.count
+      next.insert(Option(key: key, value: value), at: index)
+    }
+    return AlertPresetSpec(level: level, options: next)
+  }
+
+  func encode() -> String {
+    "preset(\(level))" + (options.isEmpty ? "" : ":" + options.map { "\($0.key)=\($0.value)" }.joined(separator: ","))
+  }
+
+  private static let pattern = try! NSRegularExpression(
+    pattern: "^preset\\(([^()]*)\\)(?::(.*))?$",
+    options: [.dotMatchesLineSeparators]
+  )
+
+  static func parse(_ raw: String) -> AlertPresetSpec? {
+    let range = NSRange(raw.startIndex..., in: raw)
+    guard let match = pattern.firstMatch(in: raw, range: range),
+      let level = Range(match.range(at: 1), in: raw)
+    else { return nil }
+    let tail = Range(match.range(at: 2), in: raw).map { String(raw[$0]) } ?? ""
+    let options = tail.split(separator: ",", omittingEmptySubsequences: false).compactMap { entry -> Option? in
+      guard let separator = entry.firstIndex(of: "="), separator != entry.startIndex else { return nil }
+      return Option(key: String(entry[..<separator]), value: String(entry[entry.index(after: separator)...]))
+    }
+    return AlertPresetSpec(level: String(raw[level]), options: options)
+  }
 }

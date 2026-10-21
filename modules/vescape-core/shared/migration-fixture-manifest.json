@@ -49,7 +49,7 @@
       "v48_accessory_sampling_rate",
       "v49_bucket_route_preview",
       "v50_alert_sound_count",
-      "v51_preset_voice"
+      "v51_preset_rows"
     ],
     "historicalVariants": [
       { "migration": "v1", "source": "db6e9b9", "shape": "global_alerts_and_legacy_fault_columns" }

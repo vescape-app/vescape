@@ -1,6 +1,9 @@
 import { describe, expect, test } from 'bun:test'
 
 import {
+  formatAlertPresetSpec,
+  parseAlertPresetSpec,
+  presetSpecOption,
   formatGeigerAlertSound,
   formatSlotAlertSound,
   mySoundId,
@@ -145,5 +148,35 @@ describe('mySoundId', () => {
 
   test('round-trips through formatSlotAlertSound', () => {
     expect(mySoundId(formatSlotAlertSound(2, 'my:beep'))).toBe('beep')
+  })
+})
+
+// @parity /modules/vescape-core/android/src/test/java/expo/modules/vescapecore/alerts/AlertSoundStringTest.kt `parsesAndRewritesPresetSpecs`
+describe('parseAlertPresetSpec', () => {
+  test.each([
+    ['preset(normal)', { level: 'normal', options: [] }],
+    [
+      'preset(off):geiger=mid,match=on',
+      {
+        level: 'off',
+        options: [
+          ['geiger', 'mid'],
+          ['match', 'on'],
+        ],
+      },
+    ],
+    ['preset(safe):future=a=b,bare,=x', { level: 'safe', options: [['future', 'a=b']] }],
+    ['preset(normal):', { level: 'normal', options: [] }],
+    ['preset:normal', null],
+    ['geiger:mid', null],
+  ])('%s', (raw, expected) => {
+    expect(parseAlertPresetSpec(raw)).toEqual(expected as never)
+  })
+
+  test('reads options and round-trips unknown keys', () => {
+    const spec = parseAlertPresetSpec('preset(off):geiger=mid,future=1')!
+    expect(presetSpecOption(spec, 'geiger')).toBe('mid')
+    expect(presetSpecOption(spec, 'match')).toBeNull()
+    expect(formatAlertPresetSpec(spec)).toBe('preset(off):geiger=mid,future=1')
   })
 })

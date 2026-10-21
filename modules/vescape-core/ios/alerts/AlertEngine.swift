@@ -5,11 +5,6 @@ import Foundation
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/alerts/AlertEngine.kt `ALERT_REPEAT_MIN_SECONDS`
 internal let alertRepeatMinSeconds: Int64 = 3
 
-/// Inclusive bounds on the count of an `alert(count):severity` sound.
-/// @parity /modules/vescape-core/src/index.ts `ALERT_BEEP_COUNT_RANGE`
-/// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/alerts/AlertEngine.kt `ALERT_BEEP_COUNT_RANGE`
-internal let alertBeepCountRange = 1...5
-
 /// Gap between beeps of one announcement — tight enough that a burst reads as a single signal.
 internal let alertBeepSpacingMs: Double = 200
 
@@ -44,9 +39,6 @@ internal struct AlertRule {
   /// Repeat cadence in seconds for a single-threshold rule; nil is one-shot. Ignored for range
   /// rules. Mirrors TS `AlertRule.repeatEverySeconds`.
   var repeatEverySeconds: Int64? = nil
-  /// Free-text provenance tag mirroring TS `AlertRule.source`: `manual` (or nil) or `preset`.
-  /// JS authors and regenerates preset rules; native only persists the string.
-  let source: String?
 }
 
 /// Adds Legal Mode's per-Board speed warning to in-memory rules. No Alert Rule row is materialized.
@@ -76,8 +68,7 @@ internal func withLegalModeOverlay(
       thresholdKind: "fixed", configFieldId: nil, thresholdOffset: nil, thresholdMaxOffset: nil,
       enabled: true,
       soundType: "geiger:soft",
-      createdAt: 0,
-      source: nil
+      createdAt: 0
     ),
   ]
 }
