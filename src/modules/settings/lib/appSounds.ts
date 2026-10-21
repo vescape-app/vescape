@@ -66,20 +66,20 @@ export const VOICE_LEVEL_INFO: Record<
   { description: string; preview: string }
 > = {
   off: {
-    description: 'Built-in alerts play their sound only, no speech.',
-    preview: 'alert(1):warning',
+    description: 'Alert sounds only, no speech.',
+    preview: 'alert(1):critical',
   },
   minimal: {
-    description: 'Built-in alerts name the metric and value, as short as possible: "Motor… 95°".',
+    description: 'As short as possible.',
     preview: 'voice(critical):motorTemp:95',
   },
   standard: {
-    description: 'Built-in alerts say how serious it is too: "Motor overheating… 95°".',
+    description: 'Clear, informative lines that also say how serious it is.',
     preview: 'voice(critical):motorTemp:95',
   },
   full: {
     description:
-      'Standard with varied lines and the odd remark, plus connection, ride end and Group Ride events.',
+      'More variety and the odd remark. Also speaks connection, ride end and Group Ride.',
     preview: 'voice(critical):motorTemp:95',
   },
 }

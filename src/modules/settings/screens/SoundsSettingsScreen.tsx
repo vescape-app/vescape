@@ -267,7 +267,7 @@ export default function SoundsSettingsScreen() {
                 accent={theme.settingsIcon.sounds}
               />
               <Text style={styles.voiceDescription}>
-                {VOICE_LEVEL_INFO[voiceLevel].description} Custom alerts always play as configured.
+                {VOICE_LEVEL_INFO[voiceLevel].description}
               </Text>
             </View>
           </SettingsRow>
