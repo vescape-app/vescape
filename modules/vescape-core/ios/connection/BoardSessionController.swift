@@ -2613,6 +2613,8 @@ internal final class BoardSessionController: VescGattListener {
       // Auto-recording may have just started the recording; the resume marker must agree.
       syncResumeMarkerRecording()
     }
+    // Engine back up after a dropout grace idled it.
+    alertAudioPlayer.wake()
     if connectionSoundsEnabled { alertAudioPlayer.playConnect() }
     // Telemetry is flowing again: a reconnect that landed inside the grace restores a full ride, and
     // one that landed outside it raises demand back to `ride`.

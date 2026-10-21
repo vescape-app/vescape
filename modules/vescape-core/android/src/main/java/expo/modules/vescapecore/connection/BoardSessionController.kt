@@ -2481,6 +2481,8 @@ internal class BoardSessionController(private val service: CoreForegroundService
             mapOf("message" to "Board telemetry received"),
         )
         boardConfig?.let { recordingCoordinator.markBoardReady(it) }
+        // Output held open again after a dropout grace let it sleep.
+        alertFeedback.wake()
         if (connectionSoundsEnabled) alertFeedback.playConnect()
         watchMirror.boardConnected(currentSessionId)
         // Telemetry is flowing again: a reconnect that landed inside the grace restores a full ride,
@@ -3166,6 +3168,8 @@ internal class BoardSessionController(private val service: CoreForegroundService
             dropoutGraceHandle = null
             // Past the grace the board is treated as powered off: that is how a ride ends.
             if (connectionSoundsEnabled) alertFeedback.playRideEnd()
+            // Nothing can alert until the board is back; let audio output sleep.
+            alertFeedback.goIdle()
             refreshGpsDemand()
         }
         refreshGpsDemand()

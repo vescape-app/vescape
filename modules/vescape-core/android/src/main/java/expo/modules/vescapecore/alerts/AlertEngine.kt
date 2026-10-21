@@ -761,21 +761,27 @@ internal class AlertFeedback(
      * Play one announcement: an `alert(count):severity` rule's severity sound from the active effects
      * pack, [count][SlotAlertSound.count] times, [ALERT_BEEP_SPACING_MS] apart.
      */
-    fun playSingle(soundType: String, pin: PresetSoundPin? = null) {
+    fun playSingle(soundType: String, pin: PresetSoundPin? = null, requestedAt: Long = SystemClock.uptimeMillis()) {
         if (android.os.Looper.myLooper() != handler.looper) {
-            handler.post { playSingle(soundType, pin) }
+            handler.post { playSingle(soundType, pin, requestedAt) }
             return
         }
-        playSeverity(parseSlotAlertSound(soundType), mySoundId(soundType), effectsPack(pin))
+        playSeverity(parseSlotAlertSound(soundType), mySoundId(soundType), effectsPack(pin), requestedAt)
     }
 
     /** [sound]'s severity slot from [pack], or My sound [my] in its place, [SlotAlertSound.count] times. */
-    private fun playSeverity(sound: SlotAlertSound, my: String? = null, pack: String = soundPack, onStart: () -> Unit = {}) {
+    private fun playSeverity(
+        sound: SlotAlertSound,
+        my: String? = null,
+        pack: String = soundPack,
+        requestedAt: Long = SystemClock.uptimeMillis(),
+        onStart: () -> Unit = {},
+    ) {
         try {
             val slot = sound.severity.slot
             val duration = slotClip(context, pack, slot, my)?.durationMs(context) ?: 0L
             val interval = if (duration > ALERT_BEEP_SPACING_MS) duration + ALERT_BEEP_SPACING_MS else ALERT_BEEP_SPACING_MS
-            playOnce(slot, pack, my, onStart = onStart)
+            playOnce(slot, pack, my, requestedAt, onStart)
             for (index in 1 until sound.count) {
                 handler.postDelayed({ playOnce(slot, pack, my) }, index * interval)
             }
@@ -791,9 +797,9 @@ internal class AlertFeedback(
      *
      * @parity /modules/vescape-core/ios/alerts/AlertAudioPlayer.swift `speakAfterSeverity`
      */
-    fun speakAfterSeverity(severity: AlertSeverity, text: String) {
+    fun speakAfterSeverity(severity: AlertSeverity, text: String, requestedAt: Long = SystemClock.uptimeMillis()) {
         if (android.os.Looper.myLooper() != handler.looper) {
-            handler.post { speakAfterSeverity(severity, text) }
+            handler.post { speakAfterSeverity(severity, text, requestedAt) }
             return
         }
         // A newer announcement supersedes speech still waiting out an older one's sound.
@@ -802,7 +808,7 @@ internal class AlertFeedback(
         val generation = ++voiceGeneration
         val delay = speechDelayMs(context, soundPack, severity.slot)
         // Timed from the sound's actual start, so a sound still loading never overlaps the speech.
-        playSeverity(SlotAlertSound(1, severity)) {
+        playSeverity(SlotAlertSound(1, severity), requestedAt = requestedAt) {
             if (released || generation != voiceGeneration) return@playSeverity
             val speech = Runnable { pendingSpeech = null; if (generation == voiceGeneration) speakMessage(text) }
             pendingSpeech = speech
@@ -820,9 +826,14 @@ internal class AlertFeedback(
      *
      * @parity /modules/vescape-core/ios/alerts/AlertAudioPlayer.swift `speakVoice`
      */
-    fun speakVoice(announcement: VoiceAnnouncement, slot: String = announcement.severity.slot, pin: PresetSoundPin? = null) {
+    fun speakVoice(
+        announcement: VoiceAnnouncement,
+        slot: String = announcement.severity.slot,
+        pin: PresetSoundPin? = null,
+        requestedAt: Long = SystemClock.uptimeMillis(),
+    ) {
         if (android.os.Looper.myLooper() != handler.looper) {
-            handler.post { speakVoice(announcement, slot, pin) }
+            handler.post { speakVoice(announcement, slot, pin, requestedAt) }
             return
         }
         if (released) return
@@ -843,7 +854,7 @@ internal class AlertFeedback(
             pendingSpeech = speech
             handler.postAtTime(speech, maxOf(at, SystemClock.uptimeMillis()))
         }
-        playOnce(slot, effects) { due = SystemClock.uptimeMillis() + delay; speakWhenDue() }
+        playOnce(slot, effects, requestedAt = requestedAt) { due = SystemClock.uptimeMillis() + delay; speakWhenDue() }
         val pack = voicePack(pin)
         // Decoding runs off the audio looper while the severity sound covers it.
         voiceExecutor.execute {
