@@ -53,6 +53,8 @@ internal let voiceKeyValueTypes: [String: String?] = [
   "groupRide.lost": nil,
   "groupRide.restored": nil,
   "ride.end": nil,
+  "weather.rain": nil,
+  "weather.rain.now": nil,
 ]
 
 /// Voice key an alert on `controlId` speaks; nil for metrics without voice lines.

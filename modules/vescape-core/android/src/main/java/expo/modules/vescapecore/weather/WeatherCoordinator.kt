@@ -25,7 +25,7 @@ fun interface WeatherTransport {
  * result for the life of the process.
  *
  * It lives native rather than in JS because the two consumers that matter outlive the JS runtime:
- * the wrist mirror keeps rendering through a backgrounded phone, and Weather Alerts (a later slice)
+ * the wrist mirror keeps rendering through a backgrounded phone, and Weather Alerts
  * have to fire while nobody is looking at a screen.
  *
  * Failure semantics match App Status: a failed refresh never clears a known forecast, and nothing is
@@ -137,6 +137,9 @@ class WeatherCoordinator internal constructor(
         /** Hours of forecast requested — one wrist page plus the phone's hourly strip. */
         const val FORECAST_HOURS = 12
 
+        /** Quarter-hours of `minutely_15` requested: the 3 h Weather Alert horizon. */
+        const val FORECAST_QUARTER_HOURS = 12
+
         /**
          * Open-Meteo forecast endpoint. Public and keyless, which is why it is called directly
          * rather than through [expo.modules.vescapecore.api.VescapeApi].
@@ -144,13 +147,18 @@ class WeatherCoordinator internal constructor(
          * `timezone=auto` resolves the zone of the **forecast location**, which is what the hour
          * labels claim to be. The device zone would be a different thing the moment a rider crosses
          * a border or turns automatic time off.
+         *
+         * `forecast_hours` and `forecast_minutely_15` count from now and override `forecast_days`, so
+         * the window runs past local midnight.
          * @parity /modules/vescape-core/ios/weather/WeatherCoordinator.swift `forecastUrl`
          */
         fun forecastUrl(latitude: Double, longitude: Double): String =
             "https://api.open-meteo.com/v1/forecast" +
                 "?latitude=$latitude&longitude=$longitude" +
                 "&current=temperature_2m,weather_code,precipitation_probability" +
-                "&hourly=temperature_2m,weather_code,precipitation_probability" +
+                "&hourly=temperature_2m,weather_code,precipitation_probability,precipitation,wind_gusts_10m" +
+                "&minutely_15=precipitation,weather_code,wind_gusts_10m" +
+                "&forecast_minutely_15=$FORECAST_QUARTER_HOURS" +
                 "&daily=sunrise,sunset" +
                 "&forecast_hours=$FORECAST_HOURS&forecast_days=1" +
                 "&timezone=auto"

@@ -58,12 +58,12 @@ private final class IOSWatchMirrorSources: WatchMirrorSources {
     weatherChanged: @escaping (WatchWeather) -> Void,
     routePayload: @escaping ([String: Any]) -> Void
   ) -> () -> Void {
-    WeatherCoordinator.shared.onNativeChange = { weatherChanged($0.watchWeather) }
+    let removeWeather = WeatherCoordinator.shared.addNativeChangeListener { weatherChanged($0.watchWeather) }
     if let known = WeatherCoordinator.shared.current { weatherChanged(known.watchWeather) }
     NavigationController.shared.onWatchChange = routeChanged
     WatchRouteMirror.shared.attach(to: NavigationController.shared, push: routePayload)
     return {
-      WeatherCoordinator.shared.onNativeChange = nil
+      removeWeather()
       NavigationController.shared.onWatchChange = nil
       WatchRouteMirror.shared.detach(from: NavigationController.shared)
     }

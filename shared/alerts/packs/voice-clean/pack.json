@@ -192,6 +192,23 @@
           "lines/ride.end.full.start.2.m4a"
         ]
       }
+    },
+    "weather.rain": {
+      "start": ["lines/weather.rain.start.0.m4a"],
+      "minimal": ["lines/weather.rain.minimal.0.m4a"],
+      "full": {
+        "start": ["lines/weather.rain.full.start.0.m4a", "lines/weather.rain.full.start.1.m4a"]
+      }
+    },
+    "weather.rain.now": {
+      "start": ["lines/weather.rain.now.start.0.m4a"],
+      "minimal": ["lines/weather.rain.now.minimal.0.m4a"],
+      "full": {
+        "start": [
+          "lines/weather.rain.now.full.start.0.m4a",
+          "lines/weather.rain.now.full.start.1.m4a"
+        ]
+      }
     }
   },
   "values": {
@@ -822,6 +839,14 @@
     "lines/ride.end.full.start.1.m4a": "0b546e4430ac18b6",
     "lines/ride.end.full.start.2.m4a": "924c51ce435a9136",
     "lines/ride.end.start.0.m4a": "f671de2333ce3970",
+    "lines/weather.rain.full.start.0.m4a": "864491dbe3c5157d",
+    "lines/weather.rain.full.start.1.m4a": "5ea0a18417221fe9",
+    "lines/weather.rain.start.0.m4a": "864491dbe3c5157d",
+    "lines/weather.rain.minimal.0.m4a": "bf946facc05aac8a",
+    "lines/weather.rain.now.full.start.0.m4a": "fd39deff08963d99",
+    "lines/weather.rain.now.full.start.1.m4a": "03b0ae8ac2825c28",
+    "lines/weather.rain.now.start.0.m4a": "fd39deff08963d99",
+    "lines/weather.rain.now.minimal.0.m4a": "a8b5cbaeda95ee8f",
     "values/percent/0.m4a": "37e741bba95ce8be",
     "values/percent/1.m4a": "585ae469c89297d0",
     "values/percent/2.m4a": "9a49747b8b17823e",

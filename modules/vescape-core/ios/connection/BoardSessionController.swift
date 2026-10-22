@@ -283,6 +283,13 @@ internal final class BoardSessionController: VescGattListener {
     return player
   }()
   private lazy var alertCoordinator = AlertCoordinator(player: alertAudioPlayer)
+  /// Weather Alerts: spoken only while telemetry flows, held across dropouts within a ride.
+  /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/connection/BoardSessionController.kt `weatherAlerts`
+  private lazy var weatherAlerts = WeatherAlertMonitor(
+    isLive: { [weak self] in self?.phase == .connected },
+    speak: { [weak self] line in self?.alertAudioPlayer.speakAdvisory(line.voiceAnnouncement) }
+  )
+  private var removeWeatherListener: (() -> Void)?
   private let legalPolicyCatalog = LegalPolicyCatalog()
   /// Persistent Board Session status surface (Live Activity) — the iOS peer of Android's foreground
   /// notification. Native-driven so it survives screen-off and a dead JS runtime.
@@ -399,6 +406,13 @@ internal final class BoardSessionController: VescGattListener {
     self.scheduler = scheduler
     self.suppliedTransport = transport
     self.makeGatt = makeGatt
+    removeWeatherListener = WeatherCoordinator.shared.addNativeChangeListener { [weak self] weather in
+      self?.weatherAlerts.evaluate(weather)
+    }
+  }
+
+  deinit {
+    removeWeatherListener?()
   }
 
   // MARK: - Scan API
@@ -967,6 +981,7 @@ internal final class BoardSessionController: VescGattListener {
       self.dropoutGraceTimer = nil
       // Past the grace the board is treated as powered off: that is how a ride ends.
       if self.connectionSoundsEnabled { self.alertAudioPlayer.playRideEnd() }
+      self.weatherAlerts.rideEnded()
       self.refreshGpsDemand()
     }
     refreshGpsDemand()
@@ -2620,6 +2635,8 @@ internal final class BoardSessionController: VescGattListener {
     setLinkLost(false)
     // The Live Activity flips to "connected" via setPhase → refreshLiveActivity below.
     setPhase(.connected)
+    // A forecast already known at connect speaks now if fresh; a stale one waits for the refresh.
+    weatherAlerts.evaluate(WeatherCoordinator.shared.current)
   }
 
   private func emitTelemetry(_ telemetry: RefloatTelemetry) {

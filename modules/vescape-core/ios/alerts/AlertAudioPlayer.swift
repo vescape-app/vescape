@@ -761,6 +761,21 @@ internal final class AlertAudioPlayer {
     speakVoiceTracked(announcement, slot: slot, done: track(critical(onDone)))
   }
 
+  /// Queue `announcement` on the Announcement Queue at advisory priority (Weather Alerts). At Voice
+  /// level `off` nothing plays: a bare severity sound would carry none of the line's information.
+  /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/alerts/AlertEngine.kt `speakAdvisory`
+  func speakAdvisory(_ announcement: VoiceAnnouncement, onDone: @escaping PlaybackDone = { _ in }) {
+    onGeigerQueue { player in
+      guard player.presetVoiceEnabled else {
+        onDone(.cancelled)
+        return
+      }
+      player.announce(priority: .advisory, onDone: onDone) { [weak player] done in
+        player?.speakVoiceTracked(announcement, slot: nil, done: done)
+      }
+    }
+  }
+
   /// `done` ends with the line, or with the lead sound when the pack has no line for the key.
   private func speakVoiceTracked(_ announcement: VoiceAnnouncement, slot: String?, done: PlaybackCompletion) {
     guard !isReleased else {

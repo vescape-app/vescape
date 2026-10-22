@@ -1016,6 +1016,23 @@ internal class AlertFeedback(
         speakVoiceTracked(announcement, slot, requestedAt, track(critical(onDone)))
     }
 
+    /**
+     * Queue [announcement] on the Announcement Queue at advisory priority (Weather Alerts). At Voice
+     * level `off` nothing plays: a bare severity sound would carry none of the line's information.
+     *
+     * @parity /modules/vescape-core/ios/alerts/AlertAudioPlayer.swift `speakAdvisory`
+     */
+    fun speakAdvisory(announcement: VoiceAnnouncement, onDone: PlaybackDone = {}) {
+        if (android.os.Looper.myLooper() != handler.looper) {
+            handler.post { speakAdvisory(announcement, onDone) }
+            return
+        }
+        if (!presetVoiceEnabled) { onDone(PlaybackOutcome.CANCELLED); return }
+        announce(AnnouncementPriority.ADVISORY, onDone) { done ->
+            speakVoiceTracked(announcement, announcement.severity.slot, SystemClock.uptimeMillis(), done)
+        }
+    }
+
     /** [done] ends with the line, or with the sound when the pack has no line for the key. */
     private fun speakVoiceTracked(announcement: VoiceAnnouncement, slot: String, requestedAt: Long, done: PlaybackCompletion) {
         if (released) { done.finish(PlaybackOutcome.CANCELLED); return }

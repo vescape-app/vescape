@@ -304,8 +304,12 @@ A bundled audio asset used for alert feedback, belonging to exactly one category
 _Avoid_: Alert Preset (now the rider's intensity concept), sound effect, ringtone, tone
 
 **Announcement Queue**:
-The native, phone-only line every non-critical cue and voice line waits in — connection cues, ride end, Group Ride cues, later weather and battery lines. Plays one item at a time by priority (connection › advisory › social), drops items that waited past their expiry, holds non-connection items for a settle window after connect, and yields to telemetry **Alert Rule** sounds and speech, resuming after a quiet gap. **Geiger Alert Rule** ticks never hold it.
+The native, phone-only line every non-critical cue and voice line waits in — connection cues, ride end, Group Ride cues, **Weather Alert** lines, later battery lines. Plays one item at a time by priority (connection › advisory › social), drops items that waited past their expiry, holds non-connection items for a settle window after connect, and yields to telemetry **Alert Rule** sounds and speech, resuming after a quiet gap. **Geiger Alert Rule** ticks never hold it.
 _Avoid_: audio queue, sound queue, TTS queue
+
+**Weather Alert**:
+An app-authored, forecast-driven voice line about one kind of weather (rain today; storm and wind planned) coming at the rider's location within 3 h, spoken through the **Voice Pack** at advisory priority on the **Announcement Queue**, only while a Board is connected. One tracked event per kind: the first line speaks the real lead time, then a ladder of closer rungs (2 h, 1 h, 30, 15 min, now), each once; a downgrade or delay is silent and the kind re-arms after 30 min clear. Not an **Alert Rule**, not an **Alert Preset**, not a **Board Warning**; it has no visual.
+_Avoid_: weather warning, weather notification, rain alert rule
 
 **Alert Preset**:
 A rider-selected intensity level for one telemetry metric (battery, speed, duty, motor temperature, controller temperature), stored as one **Alert Rule** row whose sound string is `preset(<level>):<key>=<value>,…` — the level plus the rider's options (e.g. `geiger=mid`), nothing else. Native expands it at load into one rule per point of the shipped preset definition, which owns every point's threshold and sound, so changing the definition updates every rider without a migration. Each Board has at most one preset row per metric, stored only when it differs from the app default `preset(normal)` with no options; a missing row means that default (picking Normal with no options removes the row), and Off is `preset(off)` with its options kept. The rider's own **Alert Rules** for the same metric sit beside it and fire together. Motor and controller temperature are independent presets.

@@ -15,7 +15,9 @@
     "groupRide.riderLeft": null,
     "groupRide.lost": null,
     "groupRide.restored": null,
-    "ride.end": null
+    "ride.end": null,
+    "weather.rain": null,
+    "weather.rain.now": null
   },
   "values": {
     "percent": { "min": 0, "max": 100 },

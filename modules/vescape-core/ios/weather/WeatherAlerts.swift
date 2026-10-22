@@ -1,0 +1,211 @@
+import Foundation
+
+/// Older forecasts speak nothing: a rider offline must not be warned from old data.
+/// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/weather/WeatherAlerts.kt `WEATHER_ALERT_MAX_FORECAST_AGE_MS`
+let weatherAlertMaxForecastAgeMs: Int64 = 30 * 60 * 1_000
+
+private let minuteMs: Int64 = 60_000
+private let horizonMin = 180
+/// At or under this lead the evaluator reads `minutely_15`, above it hourly.
+private let quarterHourWindowMin = 60
+/// Above `quarterHourWindowMin`, a rung this soon after the previous weather line is skipped.
+private let lineGapMs: Int64 = 30 * minuteMs
+/// A kind with no slot over its threshold for this long forgets its event.
+private let rearmMs: Int64 = 30 * minuteMs
+
+/// The condition a Weather Alert is about. Declaration order is speaking priority, highest first.
+/// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/weather/WeatherAlerts.kt `WeatherAlertKind`
+enum WeatherAlertKind: String, CaseIterable {
+  case rain = "weather.rain"
+
+  var voiceKey: String { rawValue }
+}
+
+/// Rain gate: probability applies to hourly slots only, intensity to both.
+struct RainThresholds: Equatable {
+  let minProbabilityPercent: Int
+  let minMmPerHour: Double
+}
+
+/// How bad weather must be to speak. Native-owned so thresholds retune without a migration.
+/// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/weather/WeatherAlerts.kt `WeatherAlertLevel`
+enum WeatherAlertLevel {
+  case sensitive, normal, severe
+
+  var rain: RainThresholds {
+    switch self {
+    case .sensitive: return RainThresholds(minProbabilityPercent: 30, minMmPerHour: 0.3)
+    case .normal: return RainThresholds(minProbabilityPercent: 50, minMmPerHour: 1.0)
+    case .severe: return RainThresholds(minProbabilityPercent: 70, minMmPerHour: 4.0)
+    }
+  }
+}
+
+/// One line due: `leadMinutes` until the event starts (0 is "now"), `percent` its chance on far rungs.
+/// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/weather/WeatherAlerts.kt `WeatherAlertLine`
+struct WeatherAlertLine: Equatable {
+  let kind: WeatherAlertKind
+  let leadMinutes: Int
+  let percent: Int?
+
+  var voiceAnnouncement: VoiceAnnouncement {
+    if leadMinutes == 0 {
+      return VoiceAnnouncement(severity: .warning, key: "\(kind.voiceKey).now")
+    }
+    var values = [VoiceValue(type: "duration", value: leadMinutes)]
+    if let percent { values.append(VoiceValue(type: "percent", value: percent)) }
+    return VoiceAnnouncement(severity: .warning, key: kind.voiceKey, values: values)
+  }
+}
+
+/// The tracked event of one kind: the closest lead already spoken (or skipped), and when it was last seen.
+struct WeatherEventState: Equatable {
+  let spokenMinutes: Int
+  let lastSeenMs: Int64
+}
+
+/// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/weather/WeatherAlerts.kt `WeatherAlertState`
+struct WeatherAlertState: Equatable {
+  var events: [WeatherAlertKind: WeatherEventState] = [:]
+  var lastLineAtMs: Int64?
+}
+
+/// Weather Alert Evaluator: what to say about `weather` at `nowMs`, given what was said before.
+/// Pure; the caller owns the clock, the live-connection gate and the state.
+///
+/// Per kind, the event is its earliest slot over `level` within 3 h. The first line speaks the lead
+/// rounded down; after it only a closer ladder rung (2h, 1h, 30, 15, now) speaks, once. An event that
+/// vanishes keeps its state, so a downgrade is silent and a reappearance only escalates.
+/// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/weather/WeatherAlerts.kt `evaluateWeatherAlerts`
+func evaluateWeatherAlerts(
+  _ weather: Weather,
+  level: WeatherAlertLevel,
+  nowMs: Int64,
+  state: WeatherAlertState
+) -> (lines: [WeatherAlertLine], state: WeatherAlertState) {
+  guard nowMs - weather.fetchedAtMs <= weatherAlertMaxForecastAgeMs else { return ([], state) }
+  var next = state
+  var lines: [WeatherAlertLine] = []
+  for kind in WeatherAlertKind.allCases {
+    let prior = next.events[kind]
+    guard let event = nextEvent(kind, weather: weather, level: level, nowMs: nowMs) else {
+      if let prior, nowMs - prior.lastSeenMs >= rearmMs { next.events[kind] = nil }
+      continue
+    }
+    let lead = max(0, Int((event.startMs - nowMs) / minuteMs))
+    let spoken: Int?
+    let stored: Int
+    if let prior {
+      if let rung = ladderRung(lead), rung < prior.spokenMinutes {
+        // Skipped rungs are consumed, so a late line never names a rung already passed.
+        if rung > quarterHourWindowMin, let last = next.lastLineAtMs, nowMs - last < lineGapMs {
+          spoken = nil
+        } else {
+          spoken = rung
+        }
+        stored = rung
+      } else {
+        spoken = nil
+        stored = prior.spokenMinutes
+      }
+    } else {
+      spoken = firstLeadMinutes(lead)
+      stored = firstLeadMinutes(lead)
+    }
+    next.events[kind] = WeatherEventState(spokenMinutes: stored, lastSeenMs: nowMs)
+    if let spoken {
+      let percent = spoken > quarterHourWindowMin ? event.probability.map(percentClip) : nil
+      lines.append(WeatherAlertLine(kind: kind, leadMinutes: spoken, percent: percent))
+      next.lastLineAtMs = nowMs
+    }
+  }
+  return (lines, next)
+}
+
+/// First line: above 1 h down to 30 min (capped at 3 h), from 15 min down to 15 min, under it "now".
+/// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/weather/WeatherAlerts.kt `firstLeadMinutes`
+func firstLeadMinutes(_ lead: Int) -> Int {
+  if lead > quarterHourWindowMin { return min(horizonMin, lead / 30 * 30) }
+  if lead >= 15 { return lead / 15 * 15 }
+  return 0
+}
+
+/// Closest ladder rung `lead` has crossed, or nil while it is still beyond 2 h.
+private func ladderRung(_ lead: Int) -> Int? {
+  switch lead {
+  case ...0: return 0
+  case ...15: return 15
+  case ...30: return 30
+  case ...60: return 60
+  case ...120: return 120
+  default: return nil
+  }
+}
+
+/// Nearest ten, 10–100: the `percent` clips a line can speak.
+private func percentClip(_ probability: Int) -> Int {
+  min(100, max(10, Int((Double(probability) / 10).rounded()) * 10))
+}
+
+private func nextEvent(
+  _ kind: WeatherAlertKind,
+  weather: Weather,
+  level: WeatherAlertLevel,
+  nowMs: Int64
+) -> (startMs: Int64, probability: Int?)? {
+  let window = Int64(quarterHourWindowMin) * minuteMs
+  let near = weather.quarterHourSlots.filter {
+    $0.endMs > nowMs && $0.startMs - nowMs <= window && qualifies(kind, $0, level: level, hourly: false)
+  }
+  let far = weather.hourlySlots.filter {
+    let lead = $0.startMs - nowMs
+    return lead > window && lead <= Int64(horizonMin) * minuteMs && qualifies(kind, $0, level: level, hourly: true)
+  }
+  guard let first = (near + far).min(by: { $0.startMs < $1.startMs }) else { return nil }
+  return (first.startMs, first.precipitationProbability)
+}
+
+private func qualifies(_ kind: WeatherAlertKind, _ slot: WeatherSlot, level: WeatherAlertLevel, hourly: Bool) -> Bool {
+  switch kind {
+  case .rain:
+    let gate = level.rain
+    return slot.precipitationMmPerHour >= gate.minMmPerHour
+      && (!hourly || (slot.precipitationProbability ?? 0) >= gate.minProbabilityPercent)
+  }
+}
+
+/// Runs the evaluator against the live forecast while a Board is connected and hands due lines to
+/// `speak`. State lives as long as this monitor (the Board Session, per app process), so a Bluetooth
+/// dropout and reconnect never re-announces; `rideEnded` forgets it. Main thread only.
+/// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/weather/WeatherAlerts.kt `WeatherAlertMonitor`
+final class WeatherAlertMonitor {
+  /// Fixed until rider-set levels land (#600).
+  private static let level = WeatherAlertLevel.normal
+
+  private let isLive: () -> Bool
+  private let speak: (WeatherAlertLine) -> Void
+  private let nowMs: () -> Int64
+  private var state = WeatherAlertState()
+
+  init(
+    isLive: @escaping () -> Bool,
+    speak: @escaping (WeatherAlertLine) -> Void,
+    nowMs: @escaping () -> Int64 = { Int64(Date().timeIntervalSince1970 * 1000) }
+  ) {
+    self.isLive = isLive
+    self.speak = speak
+    self.nowMs = nowMs
+  }
+
+  /// Evaluate `weather` (a refresh, or the known forecast at connect); silent off a live link.
+  func evaluate(_ weather: Weather?) {
+    guard let weather, isLive() else { return }
+    let result = evaluateWeatherAlerts(weather, level: Self.level, nowMs: nowMs(), state: state)
+    state = result.state
+    result.lines.forEach(speak)
+  }
+
+  func rideEnded() {
+    state = WeatherAlertState()
+  }
+}

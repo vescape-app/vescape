@@ -331,10 +331,11 @@ Everything that is not a telemetry alert plays through the native **Announcement
 (`AnnouncementQueue.kt` / `AnnouncementQueue.swift`, one per alert player, confined to its audio
 thread). See [ADR-0040](./adr/0040-announcement-queue-serializes-non-critical-audio.md).
 
-- **Members today:** every app cue — `on`, `off`, `error`, `ride.end`, every `groupRide.*`. Weather
-  and battery-at-connect lines are planned producers. Phone only; the watch is unaffected.
+- **Members today:** every app cue — `on`, `off`, `error`, `ride.end`, every `groupRide.*` — and
+  [Weather Alert](#weather-alerts) lines. Battery-at-connect lines are a planned producer. Phone
+  only; the watch is unaffected.
 - **Priority** (`AnnouncementPriority`), then oldest first: `CONNECTION` (`on`, `off`, `error`;
-  expires after 10 s) › `ADVISORY` (`ride.end`; 30 s) › `SOCIAL` (`groupRide.*`; 20 s). An item still
+  expires after 10 s) › `ADVISORY` (`ride.end`, weather lines; 30 s) › `SOCIAL` (`groupRide.*`; 20 s). An item still
   waiting at its expiry is dropped, never played late.
 - **One at a time:** the next item starts once the current one reports its `PlaybackOutcome`
   (effect, then voice line at Full).
@@ -355,6 +356,36 @@ Within a single evaluation, the most urgent alert is sorted first for telemetry 
 (Geiger over simple; higher threshold for above-direction controls, lower threshold for below-direction).
 Single-threshold alerts then coalesce per control: only the most urgent announces, and the rest
 latch silently — they are past their thresholds, so they are spent rather than pending.
+
+### Weather Alerts
+
+Forecast-driven voice lines about weather coming at the rider within 3 h. Native only:
+`WeatherAlerts.kt` / `WeatherAlerts.swift` hold the pure **Weather Alert Evaluator**
+(`evaluateWeatherAlerts`) and the `WeatherAlertMonitor` the Board Session owns.
+
+- **Kinds:** rain only today (`WeatherAlertKind`; declaration order is speaking priority, storm and
+  wind come ahead of it). The level is fixed at Normal until rider settings land
+  (`WeatherAlertLevel`, native-owned thresholds).
+- **Data:** the Weather Coordinator's Open-Meteo forecast adds hourly `precipitation`,
+  `wind_gusts_10m` and 12 `minutely_15` slots (`precipitation`, `weather_code`, `wind_gusts_10m`).
+  Slots are absolute epoch times (`utc_offset_seconds`); each value describes the period before its
+  timestamp, so a slot starts at timestamp − period. `minutely_15` precipitation is ×4 to mm/h.
+- **Gate (rain, Normal):** a slot more than 1 h out counts from the hourly series at ≥50 % and
+  ≥1 mm/h; at 1 h or less from `minutely_15` at ≥1 mm/h, no probability gate. The event is the
+  earliest counting slot; its lead is measured to the slot's start.
+- **Ladder:** the first line speaks the lead rounded down — to 30 min above 1 h (capped at 3 h), to
+  15 min from 15 to 60 min, "now" under 15 or already raining. It consumes every rung at or above
+  it. After that only a closer rung (2 h, 1 h, 30, 15 min, now) speaks, once; a jump closer speaks
+  the new rung only.
+- **Gap:** a rung above 1 h less than 30 min after the previous weather line is skipped (consumed).
+- **Escalation only:** a downgrade, delay or vanished event (also across the 1 h series handover)
+  is silent and keeps the state. After 30 min with no slot over the threshold the kind re-arms.
+- **Stale guard:** a forecast older than `WEATHER_ALERT_MAX_FORECAST_AGE_MS` (30 min) is silent.
+- **Lifecycle:** evaluated on board-ready and on every forecast refresh, only while the Board is
+  `Connected`. State survives Bluetooth dropouts and is cleared when the dropout grace ends the ride.
+- **Voice:** `weather.rain` + `duration` (+ `percent`, nearest 10, 10–100, on lines above 1 h) and
+  `weather.rain.now`, at `warning` severity through `speakAdvisory`. Silent at Voice level Off. HEV
+  adds "seek shelter" endings at Full; Clean has none.
 
 ## Message mode
 

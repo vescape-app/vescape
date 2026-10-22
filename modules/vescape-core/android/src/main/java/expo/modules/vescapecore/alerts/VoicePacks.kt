@@ -54,8 +54,8 @@ internal fun voicePackId(voice: String, effectsVoice: String?): String = when {
 
 /**
  * Voice keys of built-in alerts and the value type a single-value alert on each speaks (null: no
- * value). Mirrors `scripts/alert-packs/catalog.json` `voiceKeys`. Multi-value lines carry their
- * types on each [VoiceValue] instead.
+ * value). Mirrors `scripts/alert-packs/catalog.json` `voiceKeys`. Multi-value lines (`weather.*`)
+ * carry their types on each [VoiceValue] instead.
  *
  * @parity /modules/vescape-core/ios/alerts/VoicePacks.swift `voiceKeyValueTypes`
  * @parity /src/modules/alerts/lib/alertSoundString.ts `VOICE_KEY_BY_CONTROL`
@@ -76,6 +76,8 @@ internal val VOICE_KEY_VALUE_TYPES: Map<String, String?> = mapOf(
     "groupRide.lost" to null,
     "groupRide.restored" to null,
     "ride.end" to null,
+    "weather.rain" to null,
+    "weather.rain.now" to null,
 )
 
 /**

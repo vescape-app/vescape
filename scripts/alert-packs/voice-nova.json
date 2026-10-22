@@ -150,6 +150,20 @@
       "full": {
         "start": ["Ride ended.", "Ride finished.", "Ride finished. Nice one."]
       }
+    },
+    "weather.rain": {
+      "start": ["Rain expected..."],
+      "minimal": ["Rain..."],
+      "full": {
+        "start": ["Rain expected...", "Rain coming..."]
+      }
+    },
+    "weather.rain.now": {
+      "start": ["Rain starting now."],
+      "minimal": ["Rain now."],
+      "full": {
+        "start": ["Rain starting now.", "Rain is here."]
+      }
     }
   }
 }
