@@ -29,7 +29,8 @@ final class VoicePacksTests: XCTestCase {
     XCTAssertEqual(voicePackId("matching", effectsVoice: nil), "nova")
     XCTAssertEqual(voicePackId("matching", effectsVoice: "santa"), "nova")
     XCTAssertEqual(voicePackId("radio", effectsVoice: "nova"), "radio")
-    XCTAssertEqual(voicePackId("nicole", effectsVoice: nil), "nova")
+    XCTAssertEqual(voicePackId("nicole", effectsVoice: nil), "nicole")
+    XCTAssertEqual(voicePackId("santa", effectsVoice: nil), "nova")
   }
 
   func testAnnouncementTakesKeyFromMetricAndValueFromThreshold() {

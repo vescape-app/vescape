@@ -18,7 +18,7 @@ import kotlin.math.roundToInt
  * @parity /modules/vescape-core/ios/alerts/VoicePacks.swift
  * @parity /src/modules/settings/lib/appSounds.ts `VOICE_PACKS`
  */
-internal val VOICE_PACK_IDS = listOf("nova", "radio")
+internal val VOICE_PACK_IDS = listOf("nova", "radio", "nicole")
 
 /** Former voice id → its new id; a saved one reads as the renamed voice. */
 internal val RENAMED_VOICE_PACK_IDS = mapOf("clean" to "nova", "hev" to "radio")

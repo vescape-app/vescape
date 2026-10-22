@@ -81,7 +81,7 @@ migrates as above. A restored sound whose file is absent is dropped with its ove
 
 Speech comes from a second app-wide choice next to Sound effects:
 
-- **Voice** (`voice` setting: `matching`, `nova`, `radio`; default `matching`; a saved `clean` or `hev` reads as `nova` or `radio`): whole-sentence lines
+- **Voice** (`voice` setting: `matching`, `nova`, `radio`, `nicole`; default `matching`; a saved `clean` or `hev` reads as `nova` or `radio`): whole-sentence lines
   per message key plus value clips. Unset (`matching`) plays the voice the effects pack's `pack.json`
   names (HEV → Radio; Arc, Pulse → Nova); Settings shows that voice as selected, with no
   separate Matching option. Picking an effects pack resets Voice to `matching`, so it always
@@ -140,6 +140,10 @@ Planned (not implemented): all sounds that can fire during a ride stay decoded i
 session (#576).
 
 ### Built-in packs
+
+The voice picker offers Nova, Radio, and Nicole. Nicole uses Kokoro `af_nicole` with
+playful Full-level lines, including occasional battery and temperature remarks. She is
+selected manually; no effects pack selects her through Matching, and defaults stay unchanged.
 
 Packs are committed under `shared/alerts/packs/`: effects packs are made by hand in a DAW (slots,
 format, `pack.json`, adding a pack, and the HEV/Pulse sox recipes are in

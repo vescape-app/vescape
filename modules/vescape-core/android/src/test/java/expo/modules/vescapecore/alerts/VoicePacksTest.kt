@@ -33,7 +33,8 @@ class VoicePacksTest {
         assertEquals("nova", voicePackId("matching", null))
         assertEquals("nova", voicePackId("matching", "santa"))
         assertEquals("radio", voicePackId("radio", "nova"))
-        assertEquals("nova", voicePackId("nicole", null))
+        assertEquals("nicole", voicePackId("nicole", null))
+        assertEquals("nova", voicePackId("santa", null))
     }
 
     @Test

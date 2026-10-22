@@ -29,6 +29,7 @@ export const EFFECTS_PACKS = [
 export const VOICE_PACKS = [
   { id: 'nova', name: 'Nova' },
   { id: 'radio', name: 'Radio' },
+  { id: 'nicole', name: 'Nicole' },
 ] as const
 
 type VoicePackId = (typeof VOICE_PACKS)[number]['id']

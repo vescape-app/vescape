@@ -5,7 +5,7 @@ import Foundation
 ///
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/alerts/VoicePacks.kt
 /// @parity /src/modules/settings/lib/appSounds.ts `VOICE_PACKS`
-internal let voicePackIds = ["nova", "radio"]
+internal let voicePackIds = ["nova", "radio", "nicole"]
 
 /// Former voice id → its new id; a saved one reads as the renamed voice.
 internal let renamedVoicePackIds = ["clean": "nova", "hev": "radio"]

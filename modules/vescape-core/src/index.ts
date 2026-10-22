@@ -1591,7 +1591,7 @@ export interface AppSettings {
   /** `matching` (the voice the effects pack names) or a voice pack id. */
   /** @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/TelemetryEntities.kt `AppSettings` */
   /** @parity /modules/vescape-core/ios/telemetry/AppDataRepository.swift `defaultSettings` */
-  voice: 'matching' | 'nova' | 'radio'
+  voice: 'matching' | 'nova' | 'radio' | 'nicole'
   /** Speech for presets and app sounds; custom rules ignore it. */
   /** @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/alerts/VoicePacks.kt `VOICE_LEVELS` */
   /** @parity /modules/vescape-core/ios/alerts/VoicePacks.swift `voiceLevels` */
