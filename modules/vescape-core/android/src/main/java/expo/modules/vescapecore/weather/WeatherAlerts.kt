@@ -17,7 +17,7 @@ private const val HORIZON_MIN = 180
 private const val QUARTER_HOUR_WINDOW_MIN = 60
 /** Above [QUARTER_HOUR_WINDOW_MIN], a rung this soon after the previous weather line is skipped. */
 private const val LINE_GAP_MS = 30 * MINUTE_MS
-/** A kind with no slot over its threshold for this long forgets its event. */
+/** A kind clear this long forgets its event: nothing over its threshold, or its event over and the next not yet begun. */
 private const val REARM_MS = 30 * MINUTE_MS
 
 /**
@@ -103,8 +103,11 @@ internal data class WeatherAlertLine(val kind: WeatherAlertKind, val leadMinutes
         )
 }
 
-/** The tracked event of one kind: the closest lead already spoken (or skipped), and when it was last seen. */
-internal data class WeatherEventState(val spokenMinutes: Int, val lastSeenMs: Long)
+/**
+ * The tracked event of one kind: the closest lead already spoken (or skipped), when it was last
+ * seen in the window, and when it was last underway (null until it starts).
+ */
+internal data class WeatherEventState(val spokenMinutes: Int, val lastSeenMs: Long, val lastUnderwayMs: Long? = null)
 
 /** @parity /modules/vescape-core/ios/weather/WeatherAlerts.swift `WeatherAlertState` */
 internal data class WeatherAlertState(
@@ -146,13 +149,17 @@ internal fun evaluateWeatherAlerts(
             events = events - kind
             continue
         }
-        val prior = events[kind]
         val event = nextEvent(kind, weather, settings, nowMs)
         if (event == null) {
+            val prior = events[kind]
             if (prior != null && nowMs - prior.lastSeenMs >= REARM_MS) events = events - kind
             continue
         }
         val lead = ((event.startMs - nowMs) / MINUTE_MS).toInt().coerceAtLeast(0)
+        // A later event after 30 min clear of the one underway is a new event, even with it already in the window.
+        val prior = events[kind]?.takeUnless {
+            lead > 0 && it.lastUnderwayMs != null && nowMs - it.lastUnderwayMs >= REARM_MS
+        }
         val spoken: Int?
         val stored: Int
         if (prior == null) {
@@ -168,7 +175,8 @@ internal fun evaluateWeatherAlerts(
                 else -> { spoken = rung; stored = rung }
             }
         }
-        events = events + (kind to WeatherEventState(stored, nowMs))
+        val lastUnderwayMs = if (lead == 0) nowMs else prior?.lastUnderwayMs
+        events = events + (kind to WeatherEventState(stored, nowMs, lastUnderwayMs))
         val suppressed = higherActive
         higherActive = true
         if (spoken != null && !suppressed) {
@@ -207,8 +215,10 @@ private fun percentClip(probability: Int): Int = ((probability / 10.0).roundToIn
 
 private fun nextEvent(kind: WeatherAlertKind, weather: Weather, settings: WeatherAlertSettings, nowMs: Long): WeatherEvent? {
     val window = QUARTER_HOUR_WINDOW_MIN * MINUTE_MS
-    val near = weather.quarterHourSlots.filter {
-        it.endMs > nowMs && it.startMs - nowMs <= window && qualifies(kind, it, settings, hourly = false)
+    // Without a `minutely_15` series the hourly one covers the near hour too, gate and all.
+    val quarters = weather.quarterHourSlots.isNotEmpty()
+    val near = (if (quarters) weather.quarterHourSlots else weather.hourlySlots).filter {
+        it.endMs > nowMs && it.startMs - nowMs <= window && qualifies(kind, it, settings, hourly = !quarters)
     }
     val far = weather.hourlySlots.filter {
         val lead = it.startMs - nowMs
@@ -242,8 +252,8 @@ internal class WeatherAlertMonitor(
 ) {
     private var state = WeatherAlertState()
 
-    /** The rider's levels, applied from App Settings; read at the next evaluation. */
-    var settings = WeatherAlertSettings()
+    /** The rider's levels, applied from App Settings (off the main thread); read at the next evaluation. */
+    @Volatile var settings = WeatherAlertSettings()
 
     /** Evaluate [weather] (a refresh, or the known forecast at connect); silent off a live link. */
     fun evaluate(weather: Weather?) {

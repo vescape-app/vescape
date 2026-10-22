@@ -111,10 +111,12 @@ struct WeatherAlertLine: Equatable {
   }
 }
 
-/// The tracked event of one kind: the closest lead already spoken (or skipped), and when it was last seen.
+/// The tracked event of one kind: the closest lead already spoken (or skipped), when it was last
+/// seen in the window, and when it was last underway (nil until it starts).
 struct WeatherEventState: Equatable {
   let spokenMinutes: Int
   let lastSeenMs: Int64
+  var lastUnderwayMs: Int64?
 }
 
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/weather/WeatherAlerts.kt `WeatherAlertState`
@@ -149,12 +151,14 @@ func evaluateWeatherAlerts(
       next.events[kind] = nil
       continue
     }
-    let prior = next.events[kind]
     guard let event = nextEvent(kind, weather: weather, settings: settings, nowMs: nowMs) else {
-      if let prior, nowMs - prior.lastSeenMs >= rearmMs { next.events[kind] = nil }
+      if let prior = next.events[kind], nowMs - prior.lastSeenMs >= rearmMs { next.events[kind] = nil }
       continue
     }
     let lead = max(0, Int((event.startMs - nowMs) / minuteMs))
+    // A later event after 30 min clear of the one underway is a new event, even with it already in the window.
+    var prior = next.events[kind]
+    if lead > 0, let underway = prior?.lastUnderwayMs, nowMs - underway >= rearmMs { prior = nil }
     let spoken: Int?
     let stored: Int
     if let prior {
@@ -174,7 +178,8 @@ func evaluateWeatherAlerts(
       spoken = firstLeadMinutes(lead)
       stored = firstLeadMinutes(lead)
     }
-    next.events[kind] = WeatherEventState(spokenMinutes: stored, lastSeenMs: nowMs)
+    next.events[kind] = WeatherEventState(
+      spokenMinutes: stored, lastSeenMs: nowMs, lastUnderwayMs: lead == 0 ? nowMs : prior?.lastUnderwayMs)
     let suppressed = higherActive
     higherActive = true
     if let spoken, !suppressed {
@@ -218,8 +223,10 @@ private func nextEvent(
   nowMs: Int64
 ) -> (startMs: Int64, probability: Int?)? {
   let window = Int64(quarterHourWindowMin) * minuteMs
-  let near = weather.quarterHourSlots.filter {
-    $0.endMs > nowMs && $0.startMs - nowMs <= window && qualifies(kind, $0, settings: settings, hourly: false)
+  // Without a `minutely_15` series the hourly one covers the near hour too, gate and all.
+  let quarters = !weather.quarterHourSlots.isEmpty
+  let near = (quarters ? weather.quarterHourSlots : weather.hourlySlots).filter {
+    $0.endMs > nowMs && $0.startMs - nowMs <= window && qualifies(kind, $0, settings: settings, hourly: !quarters)
   }
   let far = weather.hourlySlots.filter {
     let lead = $0.startMs - nowMs

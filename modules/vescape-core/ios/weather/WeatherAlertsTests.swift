@@ -120,9 +120,15 @@ final class WeatherAlertsTests: XCTestCase {
     XCTAssertEqual(eval(weather(hourly: [hour(120, probability: 40)]), 0), [])
     XCTAssertEqual(eval(weather(hourly: [hour(120, mm: 0.5)]), 0), [])
     // An hourly slot at or under 1 h out is the quarter-hour series' job.
-    XCTAssertEqual(eval(weather(hourly: [hour(30)]), 0), [])
+    XCTAssertEqual(eval(weather(hourly: [hour(30)], quarters: [quarter(30, mmPerHour: 0)]), 0), [])
     XCTAssertEqual(eval(weather(quarters: [quarter(30, mmPerHour: 0.8)]), 0), [])
     XCTAssertEqual(eval(weather(quarters: [quarter(30, mmPerHour: 1.0)]), 0), [Said(30)])
+  }
+
+  func testWithoutAQuarterHourSeriesTheHourlyGateCoversTheNearHour() {
+    XCTAssertEqual(eval(weather(hourly: [hour(30, probability: 40)]), 0), [])
+    XCTAssertEqual(eval(weather(hourly: [hour(30)]), 0), [Said(30)])
+    XCTAssertEqual(eval(weather(hourly: [hour(-10)], fetchedAtMs: t0 + 30 * minuteMs), 30), [Said(0)])
   }
 
   func testAnEventLostAtTheHourHandoverKeepsItsStateAndOnlyEscalatesOnReturn() {
@@ -142,6 +148,15 @@ final class WeatherAlertsTests: XCTestCase {
     // 30 min with nothing over the threshold.
     XCTAssertEqual(eval(weather(fetchedAtMs: t0 + 79 * minuteMs), 79), [])
     XCTAssertEqual(eval(rainAt(200, 80), 80), [Said(120, 80)])
+  }
+
+  func testALaterEventAlreadyInTheWindowReArms30MinutesAfterTheOneUnderway() {
+    XCTAssertEqual(eval(rainAt(-10, 0), 0), [Said(0)])
+    XCTAssertEqual(eval(rainAt(-10, 20), 20), [])
+    // The rain stopped and the next shower is already visible: same event until 30 min clear.
+    XCTAssertEqual(eval(rainAt(130, 40), 40), [])
+    XCTAssertEqual(eval(rainAt(130, 50), 50), [Said(60)])
+    XCTAssertEqual(eval(rainAt(130, 100), 100), [Said(30)])
   }
 
   func testAForecastOlderThan30MinutesSaysNothing() {

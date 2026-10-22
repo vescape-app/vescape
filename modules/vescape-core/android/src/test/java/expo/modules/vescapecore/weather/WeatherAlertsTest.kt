@@ -103,9 +103,19 @@ class WeatherAlertsTest {
         assertEquals(emptyList<Pair<Int, Int?>>(), eval(weather(hourly = listOf(hour(120, probability = 40))), 0))
         assertEquals(emptyList<Pair<Int, Int?>>(), eval(weather(hourly = listOf(hour(120, mm = 0.5))), 0))
         // An hourly slot at or under 1 h out is the quarter-hour series' job.
-        assertEquals(emptyList<Pair<Int, Int?>>(), eval(weather(hourly = listOf(hour(30))), 0))
+        assertEquals(
+            emptyList<Pair<Int, Int?>>(),
+            eval(weather(hourly = listOf(hour(30)), quarters = listOf(quarter(30, mmPerHour = 0.0))), 0),
+        )
         assertEquals(emptyList<Pair<Int, Int?>>(), eval(weather(quarters = listOf(quarter(30, mmPerHour = 0.8))), 0))
         assertEquals(listOf(30 to null), eval(weather(quarters = listOf(quarter(30, mmPerHour = 1.0))), 0))
+    }
+
+    @Test
+    fun `without a quarter-hour series the hourly gate covers the near hour`() {
+        assertEquals(emptyList<Pair<Int, Int?>>(), eval(weather(hourly = listOf(hour(30, probability = 40))), 0))
+        assertEquals(listOf(30 to null), eval(weather(hourly = listOf(hour(30))), 0))
+        assertEquals(listOf(0 to null), eval(weather(hourly = listOf(hour(-10)), fetchedAtMs = T0 + 30 * MIN), 30))
     }
 
     @Test
@@ -127,6 +137,16 @@ class WeatherAlertsTest {
         // 30 min with nothing over the threshold.
         assertEquals(emptyList<Pair<Int, Int?>>(), eval(weather(fetchedAtMs = T0 + 79 * MIN), 79))
         assertEquals(listOf(120 to 80), eval(rainAt(200, 80), 80))
+    }
+
+    @Test
+    fun `a later event already in the window re-arms 30 minutes after the one underway`() {
+        assertEquals(listOf(0 to null), eval(rainAt(-10, 0), 0))
+        assertEquals(emptyList<Pair<Int, Int?>>(), eval(rainAt(-10, 20), 20))
+        // The rain stopped and the next shower is already visible: same event until 30 min clear.
+        assertEquals(emptyList<Pair<Int, Int?>>(), eval(rainAt(130, 40), 40))
+        assertEquals(listOf(60 to null), eval(rainAt(130, 50), 50))
+        assertEquals(listOf(30 to null), eval(rainAt(130, 100), 100))
     }
 
     @Test
