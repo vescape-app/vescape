@@ -85,7 +85,7 @@ export function WeatherAlertsSettingsView({
         <SettingsRow
           icon={CloudLightningIcon}
           label="Storm"
-          hint="Warns of thunderstorms and freezing rain."
+          hint="Warns of thunderstorms."
           right={<Switch value={storm} onValueChange={onStormChange} />}
         />
       </SettingsCard>

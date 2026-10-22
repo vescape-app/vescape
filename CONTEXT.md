@@ -308,7 +308,7 @@ The native, phone-only line every non-critical cue and voice line waits in — c
 _Avoid_: audio queue, sound queue, TTS queue
 
 **Weather Alert**:
-An app-authored, forecast-driven voice line about one kind of weather (rain today; storm and wind planned) coming at the rider's location within 3 h, spoken through the **Voice Pack** at advisory priority on the **Announcement Queue**, only while a Board is connected. One tracked event per kind: the first line speaks the real lead time, then a ladder of closer rungs (2 h, 1 h, 30, 15 min, now), each once; a downgrade or delay is silent and the kind re-arms after 30 min clear. Not an **Alert Rule**, not an **Alert Preset**, not a **Board Warning**; it has no visual.
+An app-authored, forecast-driven voice line about one kind of weather (storm, rain, wind) coming at the rider's location within 3 h, spoken through the **Voice Pack** at advisory priority on the **Announcement Queue**, only while a Board is connected. Storm and rain share one line, storm first; wind runs independently. One tracked event per kind: the first line speaks the real lead time, then a ladder of closer rungs (2 h, 1 h, 30, 15 min, now), each once; a downgrade or delay is silent and the kind re-arms after 30 min clear. Not an **Alert Rule**, not an **Alert Preset**, not a **Board Warning**; it has no visual.
 _Avoid_: weather warning, weather notification, rain alert rule
 
 **Alert Preset**:

@@ -363,17 +363,20 @@ Forecast-driven voice lines about weather coming at the rider within 3 h. Native
 `WeatherAlerts.kt` / `WeatherAlerts.swift` hold the pure **Weather Alert Evaluator**
 (`evaluateWeatherAlerts`) and the `WeatherAlertMonitor` the Board Session owns.
 
-- **Kinds:** storm, wind, rain (`WeatherAlertKind`; declaration order is speaking priority).
+- **Kinds:** storm, rain, wind (`WeatherAlertKind`), on two independent tracks (`WeatherAlertTrack`):
+  storm/rain and wind.
 - **Settings:** App Settings `weatherRainAlertLevel` and `weatherWindAlertLevel`
   (`off` / `sensitive` / `normal` / `severe`, default `normal`) and `weatherStormAlertEnabled`
   (default on), set from the Weather Alerts sheet behind the gear at the top right of Weather mode.
   Native owns each level's thresholds (`WeatherAlertLevel`) and applies the settings live
   (`WeatherAlertSettings`); the sheet shows the gust gates in the rider's speed unit via
   `getWeatherAlertGustThresholdsKmh`. A kind turned off forgets its event and never suppresses a
-  lower kind.
-- **Priority:** only the highest enabled kind with an active event speaks (storm > wind > rain). A lower
-  kind under an active higher one still tracks its ladder, so rungs it passes are consumed silently
-  and it never speaks a stale rung once the higher kind clears.
+  different kind.
+- **Priority:** storm and rain are exclusive: while storm has an active event, rain is silent but
+  still tracks its ladder, so rungs it passes are consumed and it never speaks a stale rung once the
+  storm clears. Wind is independent: its own event, ladder and re-arm; it neither suppresses nor is
+  suppressed by storm/rain. When both tracks have a line due in one evaluation, the storm/rain line
+  is enqueued first, then wind.
 - **Data:** the Weather Coordinator's Open-Meteo forecast adds hourly `precipitation`,
   `wind_gusts_10m` and 12 `minutely_15` slots (`precipitation`, `weather_code`, `wind_gusts_10m`).
   Slots are absolute epoch times (`utc_offset_seconds`); each value describes the period before its
@@ -382,15 +385,16 @@ Forecast-driven voice lines about weather coming at the rider within 3 h. Native
   intensity (Sensitive ≥30 %, ≥0.3 mm/h; Normal ≥50 %, ≥1 mm/h; Severe only ≥70 %, ≥4 mm/h); at 1 h
   or less from `minutely_15` at the intensity alone, no probability gate. The event is the
   earliest counting slot; its lead is measured to the slot's start.
-- **Gate (storm):** `weather_code` 95/96/99 (thunderstorm) or 56/57/66/67 (freezing drizzle/rain),
-  no probability gate, in both series.
+- **Gate (storm):** `weather_code` 95/96/99 (thunderstorm only), no probability gate, in both
+  series. Freezing drizzle/rain (56/57/66/67) is not storm; it counts as rain only through the rain gate.
 - **Gate (wind):** `wind_gusts_10m` (peak over the slot) ≥40 / ≥55 / ≥70 km/h at Sensitive /
   Normal / Severe, no probability gate.
 - **Ladder:** the first line speaks the lead rounded down — to 30 min above 1 h (capped at 3 h), to
   15 min from 15 to 60 min, "now" under 15 or already raining. It consumes every rung at or above
   it. After that only a closer rung (2 h, 1 h, 30, 15 min, now) speaks, once; a jump closer speaks
   the new rung only.
-- **Gap:** a rung above 1 h less than 30 min after the previous weather line is skipped (consumed).
+- **Gap:** a rung above 1 h less than 30 min after the previous line of the same track is skipped
+  (consumed). Per track, so a wind line never starves a storm/rain rung or the reverse.
 - **Escalation only:** a downgrade, delay or vanished event (also across the 1 h series handover)
   is silent and keeps the state. After 30 min with no slot over the threshold the kind re-arms.
 - **Stale guard:** a forecast older than `WEATHER_ALERT_MAX_FORECAST_AGE_MS` (30 min) is silent.
@@ -401,7 +405,8 @@ Forecast-driven voice lines about weather coming at the rider within 3 h. Native
   so it plays when both are done; it is queued only on landing, so the 30 s advisory expiry never
   runs while the fetch is out. A failed fetch is silent; the next Fix past the gate retries. State survives Bluetooth dropouts and is cleared when the dropout grace ends the ride.
 - **Voice:** `weather.<kind>` + `duration` and `weather.<kind>.now` for `storm`, `wind`, `rain`;
-  only rain adds `percent` (nearest 10, 10–100) on lines above 1 h. At `warning` severity through `speakAdvisory`. Silent at Voice level Off. HEV
+  storm and rain add `percent` (the slot's precipitation probability, nearest 10, 10–100) on lines
+  above 1 h; nearer lines read `minutely_15`, which has no probability, and `.now` lines never do. At `warning` severity through `speakAdvisory`. Silent at Voice level Off. HEV
   adds endings at Full ("seek shelter", "reduce speed"); Clean has none.
 
 ## Message mode

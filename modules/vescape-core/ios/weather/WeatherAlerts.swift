@@ -8,24 +8,37 @@ private let minuteMs: Int64 = 60_000
 private let horizonMin = 180
 /// At or under this lead the evaluator reads `minutely_15`, above it hourly.
 private let quarterHourWindowMin = 60
-/// Above `quarterHourWindowMin`, a rung this soon after the previous weather line is skipped.
+/// Above `quarterHourWindowMin`, a rung this soon after the previous line of its track is skipped.
 private let lineGapMs: Int64 = 30 * minuteMs
 /// A kind with no slot over its threshold for this long forgets its event.
 private let rearmMs: Int64 = 30 * minuteMs
 
-/// The condition a Weather Alert is about. Declaration order is speaking priority, highest first.
+/// An independent Weather Alert line: its own events, gap and priority. Declaration order is
+/// enqueue order when both speak in one evaluation.
+/// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/weather/WeatherAlerts.kt `WeatherAlertTrack`
+enum WeatherAlertTrack: Hashable {
+  case precipitation, wind
+}
+
+/// The condition a Weather Alert is about. Within a `track`, declaration order is speaking
+/// priority, highest first: storm outranks rain; wind is a track of its own.
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/weather/WeatherAlerts.kt `WeatherAlertKind`
 /// @parity /modules/vescape-core/src/index.ts `WeatherAlertPreviewKind`
 enum WeatherAlertKind: String, CaseIterable {
   case storm = "weather.storm"
-  case wind = "weather.wind"
   case rain = "weather.rain"
+  case wind = "weather.wind"
 
   var voiceKey: String { rawValue }
+
+  var track: WeatherAlertTrack { self == .wind ? .wind : .precipitation }
+
+  /// Storm and rain lines add the slot's precipitation chance; wind has none to speak.
+  var speaksPercent: Bool { self != .wind }
 }
 
-/// Thunderstorm (95/96/99) and freezing drizzle/rain (56/57/66/67): storm-grade, no probability gate.
-private let stormWeatherCodes: Set<Int> = [56, 57, 66, 67, 95, 96, 99]
+/// Thunderstorm only (95/96/99): storm-grade, no probability gate.
+private let stormWeatherCodes: Set<Int> = [95, 96, 99]
 
 /// Rain gate: probability applies to hourly slots only, intensity to both.
 struct RainThresholds: Equatable {
@@ -115,7 +128,7 @@ struct WeatherAlertLine: Equatable {
   /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/weather/WeatherAlerts.kt `WeatherAlertLine.preview`
   static func preview(kind: String, leadMinutes: Int, percent: Int?) -> WeatherAlertLine? {
     guard let kind = WeatherAlertKind(rawValue: "weather.\(kind.lowercased())") else { return nil }
-    return WeatherAlertLine(kind: kind, leadMinutes: max(leadMinutes, 0), percent: kind == .rain ? percent : nil)
+    return WeatherAlertLine(kind: kind, leadMinutes: max(leadMinutes, 0), percent: kind.speaksPercent ? percent : nil)
   }
 }
 
@@ -130,7 +143,8 @@ struct WeatherEventState: Equatable {
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/weather/WeatherAlerts.kt `WeatherAlertState`
 struct WeatherAlertState: Equatable {
   var events: [WeatherAlertKind: WeatherEventState] = [:]
-  var lastLineAtMs: Int64?
+  /// When each track last spoke, for the 30 min gap above 1 h.
+  var lastLineAtMs: [WeatherAlertTrack: Int64] = [:]
 }
 
 /// Weather Alert Evaluator: what to say about `weather` at `nowMs`, given what was said before.
@@ -140,9 +154,10 @@ struct WeatherAlertState: Equatable {
 /// rounded down; after it only a closer ladder rung (2h, 1h, 30, 15, now) speaks, once. An event that
 /// vanishes keeps its state, so a downgrade is silent and a reappearance only escalates.
 ///
-/// Only the highest active kind speaks (storm > wind > rain). A lower kind under an active higher one
-/// still tracks its ladder, so its passed rungs are consumed silently rather than spoken late. A kind
-/// turned off forgets its event and never suppresses a lower one.
+/// Tracks are independent: storm/rain and wind each keep their own events and gap, and storm/rain
+/// lines are enqueued before wind. Within storm/rain only the highest active kind speaks (storm >
+/// rain); rain under an active storm still tracks its ladder, so its passed rungs are consumed
+/// silently rather than spoken late. A kind turned off forgets its event and never suppresses another.
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/weather/WeatherAlerts.kt `evaluateWeatherAlerts`
 func evaluateWeatherAlerts(
   _ weather: Weather,
@@ -153,7 +168,7 @@ func evaluateWeatherAlerts(
   guard nowMs - weather.fetchedAtMs <= weatherAlertMaxForecastAgeMs else { return ([], state) }
   var next = state
   var lines: [WeatherAlertLine] = []
-  var higherActive = false
+  var activeTracks: Set<WeatherAlertTrack> = []
   for kind in WeatherAlertKind.allCases {
     guard settings.enabled(kind) else {
       next.events[kind] = nil
@@ -172,7 +187,7 @@ func evaluateWeatherAlerts(
     if let prior {
       if let rung = ladderRung(lead), rung < prior.spokenMinutes {
         // Skipped rungs are consumed, so a late line never names a rung already passed.
-        if rung > quarterHourWindowMin, let last = next.lastLineAtMs, nowMs - last < lineGapMs {
+        if rung > quarterHourWindowMin, let last = next.lastLineAtMs[kind.track], nowMs - last < lineGapMs {
           spoken = nil
         } else {
           spoken = rung
@@ -188,12 +203,11 @@ func evaluateWeatherAlerts(
     }
     next.events[kind] = WeatherEventState(
       spokenMinutes: stored, lastSeenMs: nowMs, lastUnderwayMs: lead == 0 ? nowMs : prior?.lastUnderwayMs)
-    let suppressed = higherActive
-    higherActive = true
-    if let spoken, !suppressed {
-      let percent = kind == .rain && spoken > quarterHourWindowMin ? event.probability.map(percentClip) : nil
+    // `inserted` is false when a higher kind of the track is already active.
+    if activeTracks.insert(kind.track).inserted, let spoken {
+      let percent = kind.speaksPercent && spoken > quarterHourWindowMin ? event.probability.map(percentClip) : nil
       lines.append(WeatherAlertLine(kind: kind, leadMinutes: spoken, percent: percent))
-      next.lastLineAtMs = nowMs
+      next.lastLineAtMs[kind.track] = nowMs
     }
   }
   return (lines, next)

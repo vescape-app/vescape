@@ -3280,7 +3280,7 @@ export function previewAlertSound(spec: AlertSpec): void {
 export type WeatherAlertPreviewKind = 'storm' | 'wind' | 'rain'
 
 /**
- * Speak the Weather Alert line the evaluator would say: lead 0 is "now", percent applies to rain only.
+ * Speak the Weather Alert line the evaluator would say: lead 0 is "now", percent applies to storm and rain.
  * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/VescapeCoreModule.kt `previewWeatherAlert`
  * @parity /modules/vescape-core/ios/VescapeCoreModule.swift `previewWeatherAlert`
  */

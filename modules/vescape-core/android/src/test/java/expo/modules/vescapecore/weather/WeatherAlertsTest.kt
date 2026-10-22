@@ -202,13 +202,21 @@ class WeatherAlertsTest {
     }
 
     @Test
-    fun `thunderstorm and freezing rain codes are storm without a probability gate`() {
-        for (code in listOf(95, 96, 99, 56, 57, 66, 67)) {
+    fun `only thunderstorm codes are storm, without a probability gate`() {
+        for (code in listOf(95, 96, 99)) {
             state = WeatherAlertState()
             assertEquals(listOf(WeatherAlertKind.STORM to 90), kinds(weather(hourly = listOf(dryHour(100, code))), 0))
         }
-        state = WeatherAlertState()
-        assertEquals(emptyList<Any>(), kinds(weather(hourly = listOf(dryHour(100, 80))), 0))
+        for (code in listOf(56, 57, 66, 67, 80)) {
+            state = WeatherAlertState()
+            assertEquals(emptyList<Any>(), kinds(weather(hourly = listOf(dryHour(100, code))), 0))
+        }
+    }
+
+    @Test
+    fun `freezing rain counts as rain only through the rain gate`() {
+        val freezing = WeatherSlot(T0 + 100 * MIN, T0 + 160 * MIN, 2.0, 80, 67, null)
+        assertEquals(listOf(WeatherAlertKind.RAIN to 90), kinds(weather(hourly = listOf(freezing)), 0))
     }
 
     @Test
@@ -218,26 +226,50 @@ class WeatherAlertsTest {
     }
 
     @Test
-    fun `storm and wind lines carry no percent`() {
-        val line = evaluateWeatherAlerts(weather(hourly = listOf(dryHour(100, 95))), WeatherAlertSettings(), T0, state).lines.single()
-        assertEquals(listOf("duration" to 90), line.voiceAnnouncement().values.map { it.type to it.value })
+    fun `storm speaks percent above an hour like rain, wind never`() {
+        val storm = WeatherSlot(T0 + 100 * MIN, T0 + 160 * MIN, 0.0, 68, 95, null)
+        val far = evaluateWeatherAlerts(weather(hourly = listOf(storm)), WeatherAlertSettings(), T0, state)
+        assertEquals(listOf(WeatherAlertKind.STORM to 70), far.lines.map { it.kind to it.percent })
+        assertEquals(listOf("duration" to 90, "percent" to 70), far.lines.single().voiceAnnouncement().values.map { it.type to it.value })
+        val near = WeatherSlot(T0 + 30 * MIN, T0 + 45 * MIN, 0.0, null, 95, null)
+        assertEquals(listOf(30 to null), eval(weather(quarters = listOf(near)), 0))
         assertEquals("weather.storm.now", WeatherAlertLine(WeatherAlertKind.STORM, 0, null).voiceAnnouncement().key)
+        state = WeatherAlertState()
+        assertEquals(listOf(90 to null), eval(weather(hourly = listOf(dryHour(100, gustKmh = 60.0))), 0))
+        assertEquals(70, WeatherAlertLine.preview("storm", 30, 70)?.percent)
+        assertEquals(null, WeatherAlertLine.preview("wind", 30, 70)?.percent)
     }
 
     @Test
-    fun `only the highest active kind speaks and a suppressed kind consumes its rungs`() {
+    fun `storm outranks rain and a suppressed rain consumes its rungs`() {
+        val stormRain = WeatherSlot(T0 + 100 * MIN, T0 + 160 * MIN, 2.0, 80, 95, null)
+        assertEquals(listOf(WeatherAlertKind.STORM to 90), kinds(weather(hourly = listOf(stormRain)), 0))
+        // Storm gone, rain alone: its 90 min rung was consumed, so it waits for the 1 h rung.
+        assertEquals(emptyList<Any>(), kinds(weather(hourly = listOf(hour(100))), 10))
+        assertEquals(listOf(WeatherAlertKind.RAIN to 60), kinds(rainAt(100, 40), 40))
+    }
+
+    @Test
+    fun `wind is independent of storm and rain and speaks after them`() {
         val all = WeatherSlot(T0 + 100 * MIN, T0 + 160 * MIN, 2.0, 80, 95, 60.0)
-        assertEquals(listOf(WeatherAlertKind.STORM to 90), kinds(weather(hourly = listOf(all)), 0))
-        // Rain and wind alone, storm gone: wind outranks rain, but its 90 min rung was consumed.
+        assertEquals(listOf(WeatherAlertKind.STORM to 90, WeatherAlertKind.WIND to 90), kinds(weather(hourly = listOf(all)), 0))
+        state = WeatherAlertState()
         val windRain = WeatherSlot(T0 + 100 * MIN, T0 + 160 * MIN, 2.0, 80, 61, 60.0)
-        assertEquals(emptyList<Any>(), kinds(weather(hourly = listOf(windRain)), 10))
-        assertEquals(listOf(WeatherAlertKind.WIND to 60), kinds(weather(quarters = listOf(
-            WeatherSlot(T0 + 100 * MIN, T0 + 115 * MIN, 2.0, null, 61, 60.0),
-        ), fetchedAtMs = T0 + 40 * MIN), 40))
+        assertEquals(listOf(WeatherAlertKind.RAIN to 90, WeatherAlertKind.WIND to 90), kinds(weather(hourly = listOf(windRain)), 0))
     }
 
     @Test
-    fun `a kind turned off says nothing and never blocks a lower kind`() {
+    fun `the 30 minute gap is per track`() {
+        assertEquals(listOf(WeatherAlertKind.RAIN to 180), kinds(weather(hourly = listOf(hour(180))), 0))
+        val gust = dryHour(185, gustKmh = 60.0)
+        val both = { nowMin: Int -> weather(hourly = listOf(hour(180), gust), fetchedAtMs = T0 + nowMin * MIN) }
+        assertEquals(listOf(WeatherAlertKind.WIND to 120), kinds(both(55), 55))
+        // Wind spoke 5 min ago; rain's own last line was an hour ago, so its 2 h rung speaks.
+        assertEquals(listOf(WeatherAlertKind.RAIN to 120), kinds(both(60), 60))
+    }
+
+    @Test
+    fun `a kind turned off says nothing and never blocks another`() {
         val all = weather(hourly = listOf(WeatherSlot(T0 + 100 * MIN, T0 + 160 * MIN, 2.0, 80, 95, 60.0)))
         val off = WeatherAlertSettings(rain = WeatherAlertLevel.NORMAL, wind = null, storm = false)
         assertEquals(listOf(WeatherAlertKind.RAIN to 90), kinds(all, 0, off))

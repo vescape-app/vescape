@@ -15,25 +15,34 @@ private const val MINUTE_MS = 60_000L
 private const val HORIZON_MIN = 180
 /** At or under this lead the evaluator reads `minutely_15`, above it hourly. */
 private const val QUARTER_HOUR_WINDOW_MIN = 60
-/** Above [QUARTER_HOUR_WINDOW_MIN], a rung this soon after the previous weather line is skipped. */
+/** Above [QUARTER_HOUR_WINDOW_MIN], a rung this soon after the previous line of its track is skipped. */
 private const val LINE_GAP_MS = 30 * MINUTE_MS
 /** A kind clear this long forgets its event: nothing over its threshold, or its event over and the next not yet begun. */
 private const val REARM_MS = 30 * MINUTE_MS
 
 /**
- * The condition a Weather Alert is about. Declaration order is speaking priority, highest first.
+ * An independent Weather Alert line: its own events, gap and priority. Declaration order is
+ * enqueue order when both speak in one evaluation.
+ *
+ * @parity /modules/vescape-core/ios/weather/WeatherAlerts.swift `WeatherAlertTrack`
+ */
+internal enum class WeatherAlertTrack { PRECIPITATION, WIND }
+
+/**
+ * The condition a Weather Alert is about. Within a [track], declaration order is speaking
+ * priority, highest first: storm outranks rain; wind is a track of its own.
  *
  * @parity /modules/vescape-core/ios/weather/WeatherAlerts.swift `WeatherAlertKind`
  * @parity /modules/vescape-core/src/index.ts `WeatherAlertPreviewKind`
  */
-internal enum class WeatherAlertKind(val voiceKey: String) {
-    STORM("weather.storm"),
-    WIND("weather.wind"),
-    RAIN("weather.rain"),
+internal enum class WeatherAlertKind(val voiceKey: String, val track: WeatherAlertTrack) {
+    STORM("weather.storm", WeatherAlertTrack.PRECIPITATION),
+    RAIN("weather.rain", WeatherAlertTrack.PRECIPITATION),
+    WIND("weather.wind", WeatherAlertTrack.WIND),
 }
 
-/** Thunderstorm (95/96/99) and freezing drizzle/rain (56/57/66/67): storm-grade, no probability gate. */
-private val STORM_WEATHER_CODES = setOf(56, 57, 66, 67, 95, 96, 99)
+/** Thunderstorm only (95/96/99): storm-grade, no probability gate. */
+private val STORM_WEATHER_CODES = setOf(95, 96, 99)
 
 /** Rain gate: probability applies to hourly slots only, intensity to both. */
 internal data class RainThresholds(val minProbabilityPercent: Int, val minMmPerHour: Double)
@@ -110,7 +119,7 @@ internal data class WeatherAlertLine(val kind: WeatherAlertKind, val leadMinutes
          */
         fun preview(kind: String, leadMinutes: Int, percent: Int?): WeatherAlertLine? =
             WeatherAlertKind.entries.firstOrNull { it.name.equals(kind, ignoreCase = true) }
-                ?.let { WeatherAlertLine(it, leadMinutes.coerceAtLeast(0), percent.takeIf { _ -> it == WeatherAlertKind.RAIN }) }
+                ?.let { WeatherAlertLine(it, leadMinutes.coerceAtLeast(0), percent.takeIf { _ -> it.speaksPercent }) }
     }
 }
 
@@ -120,10 +129,14 @@ internal data class WeatherAlertLine(val kind: WeatherAlertKind, val leadMinutes
  */
 internal data class WeatherEventState(val spokenMinutes: Int, val lastSeenMs: Long, val lastUnderwayMs: Long? = null)
 
+/** Storm and rain lines add the slot's precipitation chance; wind has none to speak. */
+private val WeatherAlertKind.speaksPercent: Boolean get() = this != WeatherAlertKind.WIND
+
 /** @parity /modules/vescape-core/ios/weather/WeatherAlerts.swift `WeatherAlertState` */
 internal data class WeatherAlertState(
     val events: Map<WeatherAlertKind, WeatherEventState> = emptyMap(),
-    val lastLineAtMs: Long? = null,
+    /** When each track last spoke, for the 30 min gap above 1 h. */
+    val lastLineAtMs: Map<WeatherAlertTrack, Long> = emptyMap(),
 )
 
 internal data class WeatherAlertResult(val lines: List<WeatherAlertLine>, val state: WeatherAlertState)
@@ -138,9 +151,10 @@ private class WeatherEvent(val startMs: Long, val probability: Int?)
  * rounded down; after it only a closer ladder rung (2h, 1h, 30, 15, now) speaks, once. An event
  * that vanishes keeps its state, so a downgrade is silent and a reappearance only escalates.
  *
- * Only the highest active kind speaks (storm > wind > rain). A lower kind under an active higher one
- * still tracks its ladder, so its passed rungs are consumed silently rather than spoken late. A kind
- * turned off forgets its event and never suppresses a lower one.
+ * Tracks are independent: storm/rain and wind each keep their own events and gap, and storm/rain
+ * lines are enqueued before wind. Within storm/rain only the highest active kind speaks (storm >
+ * rain); rain under an active storm still tracks its ladder, so its passed rungs are consumed
+ * silently rather than spoken late. A kind turned off forgets its event and never suppresses another.
  *
  * @parity /modules/vescape-core/ios/weather/WeatherAlerts.swift `evaluateWeatherAlerts`
  */
@@ -152,10 +166,11 @@ internal fun evaluateWeatherAlerts(
 ): WeatherAlertResult {
     if (nowMs - weather.fetchedAtMs > WEATHER_ALERT_MAX_FORECAST_AGE_MS) return WeatherAlertResult(emptyList(), state)
     var events = state.events
-    var lastLineAtMs = state.lastLineAtMs
+    var lastLines = state.lastLineAtMs
     val lines = mutableListOf<WeatherAlertLine>()
-    var higherActive = false
+    val activeTracks = mutableSetOf<WeatherAlertTrack>()
     for (kind in WeatherAlertKind.entries) {
+        val lastLineAtMs = lastLines[kind.track]
         if (!settings.enabled(kind)) {
             events = events - kind
             continue
@@ -188,17 +203,16 @@ internal fun evaluateWeatherAlerts(
         }
         val lastUnderwayMs = if (lead == 0) nowMs else prior?.lastUnderwayMs
         events = events + (kind to WeatherEventState(stored, nowMs, lastUnderwayMs))
-        val suppressed = higherActive
-        higherActive = true
-        if (spoken != null && !suppressed) {
+        // `add` is false when a higher kind of the track is already active.
+        if (activeTracks.add(kind.track) && spoken != null) {
             val percent = event.probability
-                ?.takeIf { kind == WeatherAlertKind.RAIN && spoken > QUARTER_HOUR_WINDOW_MIN }
+                ?.takeIf { kind.speaksPercent && spoken > QUARTER_HOUR_WINDOW_MIN }
                 ?.let(::percentClip)
             lines += WeatherAlertLine(kind, spoken, percent)
-            lastLineAtMs = nowMs
+            lastLines = lastLines + (kind.track to nowMs)
         }
     }
-    return WeatherAlertResult(lines, WeatherAlertState(events, lastLineAtMs))
+    return WeatherAlertResult(lines, WeatherAlertState(events, lastLines))
 }
 
 /**

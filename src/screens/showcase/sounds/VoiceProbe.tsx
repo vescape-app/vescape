@@ -24,6 +24,8 @@ const VOICE_KEYS = (Object.entries(catalog.voiceKeys) as [string, string | null]
 const WEATHER_KINDS: WeatherAlertPreviewKind[] = ['storm', 'wind', 'rain']
 const WEATHER_LEADS = [0, 15, 30, 45, 60, 90, 120, 150, 180]
 const WEATHER_PERCENTS = [30, 50, 70, 90]
+/** Kinds whose lines speak a percent; wind has none. */
+const speaksPercent = (kind: WeatherAlertPreviewKind) => kind !== 'wind'
 /** Range value types; the voice keys speak only these. */
 const VALUE_RANGES: Record<string, { min: number; max: number }> = Object.fromEntries(
   Object.entries(catalog.values).filter(
@@ -147,7 +149,7 @@ export function WeatherProbe() {
   const [percent, setPercent] = useState(30)
 
   const play = (nextKind: WeatherAlertPreviewKind, nextLead: number, nextPercent: number) =>
-    previewWeatherAlert(nextKind, nextLead, nextKind === 'rain' ? nextPercent : null)
+    previewWeatherAlert(nextKind, nextLead, speaksPercent(nextKind) ? nextPercent : null)
 
   const playRandom = () => {
     const nextKind = pick(WEATHER_KINDS)
@@ -189,7 +191,7 @@ export function WeatherProbe() {
             />
           ))}
         </View>
-        {kind === 'rain' && (
+        {speaksPercent(kind) && (
           <View style={styles.keys}>
             {WEATHER_PERCENTS.map((it) => (
               <Chip
