@@ -26,21 +26,29 @@ private const val REARM_MS = 30 * MINUTE_MS
  * @parity /modules/vescape-core/ios/weather/WeatherAlerts.swift `WeatherAlertKind`
  */
 internal enum class WeatherAlertKind(val voiceKey: String) {
+    STORM("weather.storm"),
+    WIND("weather.wind"),
     RAIN("weather.rain"),
 }
 
+/** Thunderstorm (95/96/99) and freezing drizzle/rain (56/57/66/67): storm-grade, no probability gate. */
+private val STORM_WEATHER_CODES = setOf(56, 57, 66, 67, 95, 96, 99)
+
 /** Rain gate: probability applies to hourly slots only, intensity to both. */
 internal data class RainThresholds(val minProbabilityPercent: Int, val minMmPerHour: Double)
+
+/** Wind gate: the slot's peak gust, km/h. */
+internal data class WindThresholds(val minGustKmh: Double)
 
 /**
  * How bad weather must be to speak. Native-owned so thresholds retune without a migration.
  *
  * @parity /modules/vescape-core/ios/weather/WeatherAlerts.swift `WeatherAlertLevel`
  */
-internal enum class WeatherAlertLevel(val rain: RainThresholds) {
-    SENSITIVE(RainThresholds(30, 0.3)),
-    NORMAL(RainThresholds(50, 1.0)),
-    SEVERE(RainThresholds(70, 4.0)),
+internal enum class WeatherAlertLevel(val rain: RainThresholds, val wind: WindThresholds) {
+    SENSITIVE(RainThresholds(30, 0.3), WindThresholds(40.0)),
+    NORMAL(RainThresholds(50, 1.0), WindThresholds(55.0)),
+    SEVERE(RainThresholds(70, 4.0), WindThresholds(70.0)),
 }
 
 /**
@@ -79,6 +87,9 @@ private class WeatherEvent(val startMs: Long, val probability: Int?)
  * rounded down; after it only a closer ladder rung (2h, 1h, 30, 15, now) speaks, once. An event
  * that vanishes keeps its state, so a downgrade is silent and a reappearance only escalates.
  *
+ * Only the highest active kind speaks (storm > wind > rain). A lower kind under an active higher one
+ * still tracks its ladder, so its passed rungs are consumed silently rather than spoken late.
+ *
  * @parity /modules/vescape-core/ios/weather/WeatherAlerts.swift `evaluateWeatherAlerts`
  */
 internal fun evaluateWeatherAlerts(
@@ -91,6 +102,7 @@ internal fun evaluateWeatherAlerts(
     var events = state.events
     var lastLineAtMs = state.lastLineAtMs
     val lines = mutableListOf<WeatherAlertLine>()
+    var higherActive = false
     for (kind in WeatherAlertKind.entries) {
         val prior = events[kind]
         val event = nextEvent(kind, weather, level, nowMs)
@@ -115,8 +127,12 @@ internal fun evaluateWeatherAlerts(
             }
         }
         events = events + (kind to WeatherEventState(stored, nowMs))
-        if (spoken != null) {
-            val percent = event.probability?.takeIf { spoken > QUARTER_HOUR_WINDOW_MIN }?.let(::percentClip)
+        val suppressed = higherActive
+        higherActive = true
+        if (spoken != null && !suppressed) {
+            val percent = event.probability
+                ?.takeIf { kind == WeatherAlertKind.RAIN && spoken > QUARTER_HOUR_WINDOW_MIN }
+                ?.let(::percentClip)
             lines += WeatherAlertLine(kind, spoken, percent)
             lastLineAtMs = nowMs
         }
@@ -162,6 +178,8 @@ private fun nextEvent(kind: WeatherAlertKind, weather: Weather, level: WeatherAl
 
 private fun qualifies(kind: WeatherAlertKind, slot: WeatherSlot, level: WeatherAlertLevel, hourly: Boolean): Boolean =
     when (kind) {
+        WeatherAlertKind.STORM -> slot.weatherCode in STORM_WEATHER_CODES
+        WeatherAlertKind.WIND -> (slot.windGustsKmh ?: 0.0) >= level.wind.minGustKmh
         WeatherAlertKind.RAIN -> {
             val gate = level.rain
             slot.precipitationMmPerHour >= gate.minMmPerHour &&

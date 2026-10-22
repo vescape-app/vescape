@@ -33,6 +33,14 @@ private func rainAt(_ startMin: Int64, _ nowMin: Int64, fetchedAtMs: Int64? = ni
   return weather(quarters: stride(from: startMin, to: startMin + 60, by: 15).map { quarter($0) }, fetchedAtMs: fetched)
 }
 
+/// A dry hourly slot carrying only a weather code and a gust.
+private func dryHour(_ startMin: Int64, code: Int = 3, gustKmh: Double? = nil) -> WeatherSlot {
+  WeatherSlot(
+    startMs: t0 + startMin * minuteMs, endMs: t0 + (startMin + 60) * minuteMs, precipitationMmPerHour: 0,
+    precipitationProbability: 0, weatherCode: code, windGustsKmh: gustKmh
+  )
+}
+
 private struct Said: Equatable {
   let lead: Int
   let percent: Int?
@@ -172,5 +180,47 @@ final class WeatherAlertsTests: XCTestCase {
     monitor.rideEnded()
     monitor.evaluate(rainAt(100, 5))
     XCTAssertEqual(spoken, [90, 90])
+  }
+
+  private func kinds(_ weather: Weather, _ nowMin: Int64) -> [String] {
+    let result = evaluateWeatherAlerts(weather, level: .normal, nowMs: t0 + nowMin * minuteMs, state: state)
+    state = result.state
+    return result.lines.map { "\($0.kind.voiceKey) \($0.leadMinutes)" }
+  }
+
+  func testThunderstormAndFreezingRainCodesAreStormWithoutAProbabilityGate() {
+    for code in [95, 96, 99, 56, 57, 66, 67] {
+      state = WeatherAlertState()
+      XCTAssertEqual(kinds(weather(hourly: [dryHour(100, code: code)]), 0), ["weather.storm 90"])
+    }
+    state = WeatherAlertState()
+    XCTAssertEqual(kinds(weather(hourly: [dryHour(100, code: 80)]), 0), [])
+  }
+
+  func testWindSpeaksFrom55KmhGustsAtNormal() {
+    XCTAssertEqual(kinds(weather(hourly: [dryHour(100, gustKmh: 54.9)]), 0), [])
+    XCTAssertEqual(kinds(weather(hourly: [dryHour(100, gustKmh: 55)]), 0), ["weather.wind 90"])
+  }
+
+  func testStormAndWindLinesCarryNoPercent() {
+    let lines = evaluateWeatherAlerts(weather(hourly: [dryHour(100, code: 95)]), level: .normal, nowMs: t0, state: state).lines
+    XCTAssertEqual(lines.first?.voiceAnnouncement.values, [VoiceValue(type: "duration", value: 90)])
+    XCTAssertEqual(WeatherAlertLine(kind: .storm, leadMinutes: 0, percent: nil).voiceAnnouncement.key, "weather.storm.now")
+  }
+
+  func testOnlyTheHighestActiveKindSpeaksAndASuppressedKindConsumesItsRungs() {
+    func slot(_ start: Int64, _ end: Int64, probability: Int?, code: Int) -> WeatherSlot {
+      WeatherSlot(
+        startMs: t0 + start * minuteMs, endMs: t0 + end * minuteMs, precipitationMmPerHour: 2,
+        precipitationProbability: probability, weatherCode: code, windGustsKmh: 60
+      )
+    }
+    XCTAssertEqual(kinds(weather(hourly: [slot(100, 160, probability: 80, code: 95)]), 0), ["weather.storm 90"])
+    // Rain and wind alone, storm gone: wind outranks rain, but its 90 min rung was consumed.
+    XCTAssertEqual(kinds(weather(hourly: [slot(100, 160, probability: 80, code: 61)], fetchedAtMs: t0 + 10 * minuteMs), 10), [])
+    XCTAssertEqual(
+      kinds(weather(quarters: [slot(100, 115, probability: nil, code: 61)], fetchedAtMs: t0 + 40 * minuteMs), 40),
+      ["weather.wind 60"]
+    )
   }
 }

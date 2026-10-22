@@ -16,15 +16,25 @@ private let rearmMs: Int64 = 30 * minuteMs
 /// The condition a Weather Alert is about. Declaration order is speaking priority, highest first.
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/weather/WeatherAlerts.kt `WeatherAlertKind`
 enum WeatherAlertKind: String, CaseIterable {
+  case storm = "weather.storm"
+  case wind = "weather.wind"
   case rain = "weather.rain"
 
   var voiceKey: String { rawValue }
 }
 
+/// Thunderstorm (95/96/99) and freezing drizzle/rain (56/57/66/67): storm-grade, no probability gate.
+private let stormWeatherCodes: Set<Int> = [56, 57, 66, 67, 95, 96, 99]
+
 /// Rain gate: probability applies to hourly slots only, intensity to both.
 struct RainThresholds: Equatable {
   let minProbabilityPercent: Int
   let minMmPerHour: Double
+}
+
+/// Wind gate: the slot's peak gust, km/h.
+struct WindThresholds: Equatable {
+  let minGustKmh: Double
 }
 
 /// How bad weather must be to speak. Native-owned so thresholds retune without a migration.
@@ -37,6 +47,14 @@ enum WeatherAlertLevel {
     case .sensitive: return RainThresholds(minProbabilityPercent: 30, minMmPerHour: 0.3)
     case .normal: return RainThresholds(minProbabilityPercent: 50, minMmPerHour: 1.0)
     case .severe: return RainThresholds(minProbabilityPercent: 70, minMmPerHour: 4.0)
+    }
+  }
+
+  var wind: WindThresholds {
+    switch self {
+    case .sensitive: return WindThresholds(minGustKmh: 40)
+    case .normal: return WindThresholds(minGustKmh: 55)
+    case .severe: return WindThresholds(minGustKmh: 70)
     }
   }
 }
@@ -76,6 +94,9 @@ struct WeatherAlertState: Equatable {
 /// Per kind, the event is its earliest slot over `level` within 3 h. The first line speaks the lead
 /// rounded down; after it only a closer ladder rung (2h, 1h, 30, 15, now) speaks, once. An event that
 /// vanishes keeps its state, so a downgrade is silent and a reappearance only escalates.
+///
+/// Only the highest active kind speaks (storm > wind > rain). A lower kind under an active higher one
+/// still tracks its ladder, so its passed rungs are consumed silently rather than spoken late.
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/weather/WeatherAlerts.kt `evaluateWeatherAlerts`
 func evaluateWeatherAlerts(
   _ weather: Weather,
@@ -86,6 +107,7 @@ func evaluateWeatherAlerts(
   guard nowMs - weather.fetchedAtMs <= weatherAlertMaxForecastAgeMs else { return ([], state) }
   var next = state
   var lines: [WeatherAlertLine] = []
+  var higherActive = false
   for kind in WeatherAlertKind.allCases {
     let prior = next.events[kind]
     guard let event = nextEvent(kind, weather: weather, level: level, nowMs: nowMs) else {
@@ -113,8 +135,10 @@ func evaluateWeatherAlerts(
       stored = firstLeadMinutes(lead)
     }
     next.events[kind] = WeatherEventState(spokenMinutes: stored, lastSeenMs: nowMs)
-    if let spoken {
-      let percent = spoken > quarterHourWindowMin ? event.probability.map(percentClip) : nil
+    let suppressed = higherActive
+    higherActive = true
+    if let spoken, !suppressed {
+      let percent = kind == .rain && spoken > quarterHourWindowMin ? event.probability.map(percentClip) : nil
       lines.append(WeatherAlertLine(kind: kind, leadMinutes: spoken, percent: percent))
       next.lastLineAtMs = nowMs
     }
@@ -167,6 +191,10 @@ private func nextEvent(
 
 private func qualifies(_ kind: WeatherAlertKind, _ slot: WeatherSlot, level: WeatherAlertLevel, hourly: Bool) -> Bool {
   switch kind {
+  case .storm:
+    return slot.weatherCode.map(stormWeatherCodes.contains) ?? false
+  case .wind:
+    return (slot.windGustsKmh ?? 0) >= level.wind.minGustKmh
   case .rain:
     let gate = level.rain
     return slot.precipitationMmPerHour >= gate.minMmPerHour

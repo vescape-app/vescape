@@ -76,6 +76,10 @@ internal val VOICE_KEY_VALUE_TYPES: Map<String, String?> = mapOf(
     "groupRide.lost" to null,
     "groupRide.restored" to null,
     "ride.end" to null,
+    "weather.storm" to null,
+    "weather.storm.now" to null,
+    "weather.wind" to null,
+    "weather.wind.now" to null,
     "weather.rain" to null,
     "weather.rain.now" to null,
 )

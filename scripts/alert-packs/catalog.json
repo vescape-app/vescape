@@ -16,6 +16,10 @@
     "groupRide.lost": null,
     "groupRide.restored": null,
     "ride.end": null,
+    "weather.storm": null,
+    "weather.storm.now": null,
+    "weather.wind": null,
+    "weather.wind.now": null,
     "weather.rain": null,
     "weather.rain.now": null
   },

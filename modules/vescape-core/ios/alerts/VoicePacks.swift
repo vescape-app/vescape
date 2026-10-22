@@ -53,6 +53,10 @@ internal let voiceKeyValueTypes: [String: String?] = [
   "groupRide.lost": nil,
   "groupRide.restored": nil,
   "ride.end": nil,
+  "weather.storm": nil,
+  "weather.storm.now": nil,
+  "weather.wind": nil,
+  "weather.wind.now": nil,
   "weather.rain": nil,
   "weather.rain.now": nil,
 ]

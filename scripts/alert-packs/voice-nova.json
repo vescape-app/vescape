@@ -151,6 +151,34 @@
         "start": ["Ride ended.", "Ride finished.", "Ride finished. Nice one."]
       }
     },
+    "weather.storm": {
+      "start": ["Storm expected..."],
+      "minimal": ["Storm..."],
+      "full": {
+        "start": ["Storm expected...", "Storm coming..."]
+      }
+    },
+    "weather.storm.now": {
+      "start": ["Storm starting now."],
+      "minimal": ["Storm now."],
+      "full": {
+        "start": ["Storm starting now.", "Storm is here."]
+      }
+    },
+    "weather.wind": {
+      "start": ["Strong wind expected..."],
+      "minimal": ["Strong wind..."],
+      "full": {
+        "start": ["Strong wind expected...", "Strong gusts coming..."]
+      }
+    },
+    "weather.wind.now": {
+      "start": ["Strong wind now."],
+      "minimal": ["Wind now."],
+      "full": {
+        "start": ["Strong wind now.", "Strong gusts are here."]
+      }
+    },
     "weather.rain": {
       "start": ["Rain expected..."],
       "minimal": ["Rain..."],

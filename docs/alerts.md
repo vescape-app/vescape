@@ -363,9 +363,11 @@ Forecast-driven voice lines about weather coming at the rider within 3 h. Native
 `WeatherAlerts.kt` / `WeatherAlerts.swift` hold the pure **Weather Alert Evaluator**
 (`evaluateWeatherAlerts`) and the `WeatherAlertMonitor` the Board Session owns.
 
-- **Kinds:** rain only today (`WeatherAlertKind`; declaration order is speaking priority, storm and
-  wind come ahead of it). The level is fixed at Normal until rider settings land
-  (`WeatherAlertLevel`, native-owned thresholds).
+- **Kinds:** storm, wind, rain (`WeatherAlertKind`; declaration order is speaking priority). The
+  level is fixed at Normal until rider settings land (`WeatherAlertLevel`, native-owned thresholds).
+- **Priority:** only the highest kind with an active event speaks (storm > wind > rain). A lower
+  kind under an active higher one still tracks its ladder, so rungs it passes are consumed silently
+  and it never speaks a stale rung once the higher kind clears.
 - **Data:** the Weather Coordinator's Open-Meteo forecast adds hourly `precipitation`,
   `wind_gusts_10m` and 12 `minutely_15` slots (`precipitation`, `weather_code`, `wind_gusts_10m`).
   Slots are absolute epoch times (`utc_offset_seconds`); each value describes the period before its
@@ -373,6 +375,10 @@ Forecast-driven voice lines about weather coming at the rider within 3 h. Native
 - **Gate (rain, Normal):** a slot more than 1 h out counts from the hourly series at ≥50 % and
   ≥1 mm/h; at 1 h or less from `minutely_15` at ≥1 mm/h, no probability gate. The event is the
   earliest counting slot; its lead is measured to the slot's start.
+- **Gate (storm):** `weather_code` 95/96/99 (thunderstorm) or 56/57/66/67 (freezing drizzle/rain),
+  no probability gate, in both series.
+- **Gate (wind):** `wind_gusts_10m` (peak over the slot) ≥40 / ≥55 / ≥70 km/h at Sensitive /
+  Normal / Severe, no probability gate.
 - **Ladder:** the first line speaks the lead rounded down — to 30 min above 1 h (capped at 3 h), to
   15 min from 15 to 60 min, "now" under 15 or already raining. It consumes every rung at or above
   it. After that only a closer rung (2 h, 1 h, 30, 15 min, now) speaks, once; a jump closer speaks
@@ -383,9 +389,9 @@ Forecast-driven voice lines about weather coming at the rider within 3 h. Native
 - **Stale guard:** a forecast older than `WEATHER_ALERT_MAX_FORECAST_AGE_MS` (30 min) is silent.
 - **Lifecycle:** evaluated on board-ready and on every forecast refresh, only while the Board is
   `Connected`. State survives Bluetooth dropouts and is cleared when the dropout grace ends the ride.
-- **Voice:** `weather.rain` + `duration` (+ `percent`, nearest 10, 10–100, on lines above 1 h) and
-  `weather.rain.now`, at `warning` severity through `speakAdvisory`. Silent at Voice level Off. HEV
-  adds "seek shelter" endings at Full; Clean has none.
+- **Voice:** `weather.<kind>` + `duration` and `weather.<kind>.now` for `storm`, `wind`, `rain`;
+  only rain adds `percent` (nearest 10, 10–100) on lines above 1 h. At `warning` severity through `speakAdvisory`. Silent at Voice level Off. HEV
+  adds endings at Full ("seek shelter", "reduce speed"); Clean has none.
 
 ## Message mode
 
