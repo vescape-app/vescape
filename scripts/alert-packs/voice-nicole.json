@@ -31,13 +31,13 @@
       }
     },
     "battery.warning": {
-      "start": ["Ooh... battery low..."],
+      "start": ["Battery low..."],
       "full": {
         "start": ["Mmm... I'm running low...", "Ooh... getting tired over here. Battery..."]
       }
     },
     "battery.critical": {
-      "start": ["Battery critical. Take me home..."],
+      "start": ["Battery critical..."],
       "full": {
         "start": ["Battery critical...", "I'm almost empty..."],
         "end": ["Take me home and plug me in.", "A charger would be very romantic right now."],
@@ -60,7 +60,7 @@
       }
     },
     "motorTemp.critical": {
-      "start": ["Motor overheating. Take it easy..."],
+      "start": ["Motor overheating..."],
       "full": {
         "start": ["Motor overheating..."],
         "end": ["I need a break, not encouragement.", "Hot is cute. This is too hot."],
@@ -83,7 +83,7 @@
       }
     },
     "controllerTemp.critical": {
-      "start": ["Controller overheating. Take it easy..."],
+      "start": ["Controller overheating..."],
       "full": {
         "start": ["Controller overheating..."],
         "end": ["I need a moment to cool down.", "I like your enthusiasm, but slow down."],
@@ -172,7 +172,7 @@
       }
     },
     "weather.rain": {
-      "start": ["Ooh... rain expected..."],
+      "start": ["Rain expected..."],
       "minimal": ["Rain..."],
       "full": {
         "start": ["Mmm... rain is coming...", "Ooh... rain expected..."],
@@ -181,7 +181,7 @@
       }
     },
     "weather.rain.now": {
-      "start": ["Ooh... rain starting now."],
+      "start": ["Rain starting now."],
       "minimal": ["Rain now."],
       "full": {
         "start": ["Ooh... rain is here.", "Rain starting now. So much for staying dry."],

@@ -65,16 +65,16 @@ export const VOICE_LEVEL_INFO: Record<
   },
   minimal: {
     description: 'As short as possible.',
-    preview: 'voice(critical):motorTemp:95',
+    preview: 'voice(warning):motorTemp:75',
   },
   standard: {
     description: 'Clear, informative lines that also say how serious it is.',
-    preview: 'voice(critical):motorTemp:95',
+    preview: 'voice(warning):motorTemp:75',
   },
   full: {
     description:
       'More variety and the odd remark. Also speaks connection, ride end and Group Ride.',
-    preview: 'voice(critical):motorTemp:95',
+    preview: 'voice(warning):motorTemp:75',
   },
 }
 

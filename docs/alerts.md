@@ -151,6 +151,9 @@ session (#576).
 The voice picker offers Nova, Radio, and Nicole. Nicole uses Kokoro `af_nicole` with
 playful Full-level lines, including occasional battery and temperature remarks. She is
 selected manually; no effects pack selects her through Matching, and defaults stay unchanged.
+Her Standard lines use factual wording; interjections and personal remarks belong to Full.
+The Sounds settings voice preview uses a motor-temperature warning at 75 degrees, whose Nicole
+Full starts demonstrate the playful wording without waiting for a random ending.
 
 Packs are committed under `shared/alerts/packs/`: effects packs are made by hand in a DAW (slots,
 format, `pack.json`, adding a pack, and the HEV/Pulse sox recipes are in
