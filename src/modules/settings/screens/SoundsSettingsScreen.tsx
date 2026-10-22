@@ -176,7 +176,11 @@ export default function SoundsSettingsScreen() {
                   accessibilityRole="radio"
                   accessibilityState={{ checked: active, disabled: !enabled }}
                   accessibilityLabel={pack.name}
-                  onPress={() => void set('soundPack', pack.id)}
+                  onPress={() => {
+                    // A picked effects pack brings its own voice; Voice can still override it after.
+                    void set('soundPack', pack.id)
+                    void set('voice', 'matching')
+                  }}
                   style={({ pressed }) => [styles.packHeader, pressed && styles.pressed]}
                 >
                   <View style={styles.packIcon}>

@@ -84,7 +84,8 @@ Speech comes from a second app-wide choice next to Sound effects:
 - **Voice** (`voice` setting: `matching`, `nova`, `radio`; default `matching`; a saved `clean` or `hev` reads as `nova` or `radio`): whole-sentence lines
   per message key plus value clips. Unset (`matching`) plays the voice the effects pack's `pack.json`
   names (HEV → Radio; Arc, Pulse → Nova); Settings shows that voice as selected, with no
-  separate Matching option. Picking a voice level previews it.
+  separate Matching option. Picking an effects pack resets Voice to `matching`, so it always
+  switches to that pack's voice. Picking a voice level previews it.
 - **Voice level** (`voiceLevel`: `off`, `minimal`, `standard`, `full`; default `standard`) sets what
   speaks and how much. Off plays effects only for presets. Minimal and Standard speak preset alerts:
   Minimal the shortest wording ("Motor… 95 degrees"), Standard with severity ("Motor overheating…
