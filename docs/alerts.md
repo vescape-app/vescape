@@ -95,8 +95,8 @@ Speech comes from a second app-wide choice next to Sound effects:
   `system.error`, `ride.end`, and each `groupRide.*` cue under its own key). Off, Minimal and
   Standard play their effect only; settings previews of a pack's cues never speak. Custom rules
   speak whatever the level, with its wording (Off reads as Standard).
-- **Group Ride cues**: `groupRide.created` (a new nearby or own ride; JS fires it, the nearby
-  filter lives there), and natively from `GroupRideObserver`: `groupRide.joined` (the rider joined),
+- **Group Ride cues**, all native from `GroupRideObserver`: `groupRide.created` (a new ride the
+  rider created, or one within the 40 km nearby radius of the latest GPS position), `groupRide.joined` (the rider joined),
   `groupRide.riderJoined` / `groupRide.riderLeft` (someone else in the joined ride's roster),
   `groupRide.lost` (the joined ride's relay socket dropped), `groupRide.restored` (rejoined after a
   loss). All are gated by the app sounds switch (`connectionSoundsEnabled`).
@@ -313,6 +313,31 @@ delay:
 - iOS sounds lease a player node from a pool of attached nodes instead of attaching one per sound.
 - A sound starting 150 ms or more after its request (`ALERT_AUDIO_LATENCY_REPORT_MS`) records one
   `alert_audio_latency` Diagnostic Event (`sound`, `latency_ms`, `path`) per sound per session.
+
+### Announcement Queue
+
+Everything that is not a telemetry alert plays through the native **Announcement Queue**
+(`AnnouncementQueue.kt` / `AnnouncementQueue.swift`, one per alert player, confined to its audio
+thread). See [ADR-0040](./adr/0040-announcement-queue-serializes-non-critical-audio.md).
+
+- **Members today:** every app cue — `on`, `off`, `error`, `ride.end`, every `groupRide.*`. Weather
+  and battery-at-connect lines are planned producers. Phone only; the watch is unaffected.
+- **Priority** (`AnnouncementPriority`), then oldest first: `CONNECTION` (`on`, `off`, `error`;
+  expires after 10 s) › `ADVISORY` (`ride.end`; 30 s) › `SOCIAL` (`groupRide.*`; 20 s). An item still
+  waiting at its expiry is dropped, never played late.
+- **One at a time:** the next item starts once the current one reports its `PlaybackOutcome`
+  (effect, then voice line at Full).
+- **Settle window:** a connect opens a 4 s window (`ANNOUNCEMENT_SETTLE_MS`). Connection items play
+  in it; everything else waits until it ends and the connect cue has finished.
+- **Pre-emption:** a single-threshold alert's severity sound or spoken line (`playSingle`,
+  `speakVoice`, `speakAfterSeverity`) plays immediately and holds the queue while it plays. The queued
+  item playing at that moment is stopped (its speech cut; a short effect may tail out), then put back
+  once unless it expired. The queue resumes 2 s (`ANNOUNCEMENT_QUIET_GAP_MS`) after the last critical
+  item ends.
+- **Geiger ticks and sustained tones never hold the queue** — they run continuously, so holding on
+  them would starve it.
+- **Disconnect** drops everything queued (the playing item included) before queuing `off`;
+  releasing the player drops it all.
 
 When multiple alerts fire on the same packet, SoundPool lets their clips or geiger loops overlap.
 Within a single evaluation, the most urgent alert is sorted first for telemetry display

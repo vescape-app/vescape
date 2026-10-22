@@ -2745,7 +2745,6 @@ type VescapeCoreNativeModule = NativeEventEmitter<VescapeCoreEvents> & {
   getAlertSounds(): AlertSound[]
   previewAlertSound(spec: AlertSpec): void
   playPackSound(pack: string, slot: PackSoundSlot): void
-  playAppCue(cue: AppSoundCueId): void
   mapTile(z: number, x: number, y: number): Promise<string | null>
   mySounds(): Promise<MySoundsState>
   importMySound(uri: string, name: string): Promise<MySoundsState>
@@ -3255,20 +3254,6 @@ export function previewAlertSound(spec: AlertSpec): void {
   native.previewAlertSound(spec)
 }
 
-/** @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/alerts/EffectsPacks.kt `appCueSlot`
- * @parity /modules/vescape-core/ios/alerts/EffectsPacks.swift `appCueSlot` */
-export type AppSoundCueId =
-  | 'on'
-  | 'off'
-  | 'error'
-  | 'ride.end'
-  | 'groupRide.created'
-  | 'groupRide.joined'
-  | 'groupRide.riderJoined'
-  | 'groupRide.riderLeft'
-  | 'groupRide.lost'
-  | 'groupRide.restored'
-
 /**
  * Effects pack slot Settings previews: the overridable slots plus ride end.
  *
@@ -3326,17 +3311,6 @@ export const mapTile = (z: number, x: number, y: number): Promise<string | null>
  */
 export function playPackSound(pack: string, slot: PackSoundSlot): void {
   native.playPackSound(pack, slot)
-}
-
-/**
- * Play an app cue as the app does: the active pack's effect (or its override), then its voice line
- * at Voice level Full.
- *
- * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/VescapeCoreModule.kt `playAppCue`
- * @parity /modules/vescape-core/ios/VescapeCoreModule.swift `playAppCue`
- */
-export function playAppCue(cue: AppSoundCueId): void {
-  native.playAppCue(cue)
 }
 
 export function startGeigerSimulation(spec: string, rangeDepth: number): void {

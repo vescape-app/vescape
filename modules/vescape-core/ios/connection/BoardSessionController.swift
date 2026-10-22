@@ -258,6 +258,9 @@ internal final class BoardSessionController: VescGattListener {
     onCue: { [weak self] cue in
       guard let self, self.connectionSoundsEnabled else { return }
       self.alertAudioPlayer.playAppCue(cue)
+    },
+    ownLocation: { [weak self] in
+      self?.locationTracker.latestLocation.map { (lat: $0.latitude, lng: $0.longitude) }
     }
   )
 
@@ -1286,10 +1289,6 @@ internal final class BoardSessionController: VescGattListener {
 
   func playPackSound(pack: String, slot: String) {
     alertAudioPlayer.playPackSound(pack: pack, slot: slot)
-  }
-
-  func playAppCue(_ cue: String) {
-    alertAudioPlayer.playAppCue(cue)
   }
 
   /// Drive a geiger preview loop without a connected board — UI slider over `rangeDepth`.

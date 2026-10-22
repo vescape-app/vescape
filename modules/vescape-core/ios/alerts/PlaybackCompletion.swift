@@ -86,6 +86,13 @@ final class PlaybackTracker {
     if let previous, previous !== completion { previous.finish(.cancelled) }
   }
 
+  /// True while `completion` is the current speech item.
+  func isSpeech(_ completion: PlaybackCompletion) -> Bool {
+    lock.lock()
+    defer { lock.unlock() }
+    return speech === completion && !completion.isDone
+  }
+
   func cancelAll() {
     lock.lock()
     let all = Array(live.values)

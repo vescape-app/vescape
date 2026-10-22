@@ -66,6 +66,9 @@ internal class PlaybackTracker(private val deliver: (() -> Unit) -> Unit) {
         speech = completion
     }
 
+    /** True while [completion] is the current speech item. */
+    fun isSpeech(completion: PlaybackCompletion): Boolean = speech === completion && !completion.isDone
+
     fun cancelAll() {
         speech = null
         for (completion in live.toList()) completion.finish(PlaybackOutcome.CANCELLED)

@@ -31,16 +31,6 @@ import { useThemeStore } from '@/hooks/useTheme'
 import { selectedBoardRailColor } from '@/modules/group-ride/lib/selectedBoardRailColor'
 import { SERVER_WS_URL } from '@/config/server'
 
-/**
- * Plays the `groupRide.created` cue. Native plays every other Group Ride cue itself; this one needs
- * the nearby filter, which lives here.
- */
-let playRideCreatedSound: (() => void) | null = null
-
-export function setGroupRideCreatedSoundPlayer(player: (() => void) | null) {
-  playRideCreatedSound = player
-}
-
 type TimerHandle = ReturnType<typeof setInterval>
 
 interface GroupRideState {
@@ -124,18 +114,12 @@ export const useGroupRideStore = create<GroupRideState>((set, get) => ({
             : { activeRideId: null, roster: [], rosterRows: [] }),
         })),
       ),
-      addGroupRideCreatedListener(({ ride }) => {
-        const state = get()
-        const next = deriveNearby({ rides: upsertRide(state.rides, ride) }, state)
-        if (
-          !state.rides.some((known) => known.id === ride.id) &&
-          (ride.creator.id === useRiderStore.getState().riderId ||
-            next.nearby.some((nearby) => nearby.ride.id === ride.id))
-        ) {
-          playRideCreatedSound?.()
-        }
-        set({ ...next, error: null })
-      }),
+      addGroupRideCreatedListener(({ ride }) =>
+        set((state) => ({
+          ...deriveNearby({ rides: upsertRide(state.rides, ride) }, state),
+          error: null,
+        })),
+      ),
       addGroupRideUpdatedListener(({ ride }) =>
         set((state) => ({
           ...deriveNearby({ rides: upsertRide(state.rides, ride) }, state),

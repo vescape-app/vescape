@@ -40,7 +40,6 @@ internal func lookupSlot(_ slot: String, hasOverride: (String) -> Bool, packHas:
 
 /// Group Ride events with an app cue and a line under the same key in every voice pack.
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/alerts/EffectsPacks.kt `GROUP_RIDE_CUES`
-/// @parity /modules/vescape-core/src/index.ts `AppSoundCueId`
 internal let groupRideCues = [
   "groupRide.created",
   "groupRide.joined",
@@ -53,7 +52,6 @@ internal let groupRideCues = [
 /// App cue id (the `playAppCue` cue names) → effects slot. Error and the rider and link Group Ride
 /// events have no slot of their own and play a fixed severity sound.
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/alerts/EffectsPacks.kt `appCueSlot`
-/// @parity /modules/vescape-core/src/index.ts `AppSoundCueId`
 internal func appCueSlot(_ cue: String) -> String? {
   switch cue {
   case "on": return "cue.on"

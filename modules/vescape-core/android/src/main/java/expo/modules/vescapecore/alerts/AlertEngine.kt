@@ -623,13 +623,29 @@ internal class AlertFeedback(
         tts?.setAudioAttributes(audioAttributes(audioSource, AudioAttributes.CONTENT_TYPE_SPEECH))
     }
 
-    fun playConnect() = playAppCue("on")
+    /** Connect cue; opens the Announcement Queue's settle window. */
+    fun playConnect() {
+        if (android.os.Looper.myLooper() != handler.looper) {
+            handler.post { playConnect() }
+            return
+        }
+        announcements.connected(SystemClock.uptimeMillis())
+        playAppCue("on")
+    }
 
-    fun playDisconnect() = playAppCue("off")
+    /** Disconnect cue; whatever the Board Session still had queued is dropped first. */
+    fun playDisconnect() {
+        if (android.os.Looper.myLooper() != handler.looper) {
+            handler.post { playDisconnect() }
+            return
+        }
+        clearAnnouncements()
+        playAppCue("off")
+    }
 
     /**
-     * Play app cue [cue] from the active effects pack; at Voice level `full` its voice line follows
-     * once the effect has finished. Standard and Off play the effect only.
+     * Queue app cue [cue] on the Announcement Queue at its [appCuePriority]; [onDone] reports how it
+     * ended, [PlaybackOutcome.CANCELLED] when it expired or the queue was cleared first.
      *
      * @parity /modules/vescape-core/ios/alerts/AlertAudioPlayer.swift `playAppCue`
      */
@@ -638,11 +654,105 @@ internal class AlertFeedback(
             handler.post { playAppCue(cue, onDone) }
             return
         }
-        val done = track(onDone)
+        val priority = appCuePriority(cue) ?: run { onDone(PlaybackOutcome.FAILED); return }
+        announce(priority, onDone) { done -> playAppCueNow(cue, done) }
+    }
+
+    /**
+     * Play app cue [cue] from the active effects pack; at Voice level `full` its voice line follows
+     * once the effect has finished. Standard and Off play the effect only.
+     */
+    private fun playAppCueNow(cue: String, done: PlaybackCompletion) {
         val slot = appCueSlot(cue) ?: run { done.finish(PlaybackOutcome.FAILED); return }
         val key = appCueVoiceKey(cue)
         if (voiceLevel == "full" && key != null) speakVoiceTracked(VoiceAnnouncement(AlertSeverity.INFO, key, null), slot, SystemClock.uptimeMillis(), done)
         else playOnce(slot, onDone = { done.finish(it) })
+    }
+
+    /** One Announcement Queue item: how to play it, and who hears its final outcome. */
+    private class QueuedAnnouncement(val play: (PlaybackCompletion) -> Unit, val onDone: PlaybackDone) {
+        /** The current attempt; a pre-empted item gets a fresh one when it plays again. */
+        var attempt: PlaybackCompletion? = null
+    }
+
+    private val announcements = AnnouncementQueue<QueuedAnnouncement>()
+    private val pumpRunnable = Runnable { pumpAnnouncements() }
+
+    /**
+     * The Announcement Queue seam every non-critical producer goes through: [play] runs once the
+     * queue gives the item its turn and must finish the completion it is handed. Audio looper only.
+     *
+     * @parity /modules/vescape-core/ios/alerts/AlertAudioPlayer.swift `announce`
+     */
+    private fun announce(
+        priority: AnnouncementPriority,
+        onDone: PlaybackDone,
+        ttlMs: Long = priority.ttlMs,
+        play: (PlaybackCompletion) -> Unit,
+    ) {
+        if (released) { onDone(PlaybackOutcome.CANCELLED); return }
+        announcements.enqueue(QueuedAnnouncement(play, onDone), priority, SystemClock.uptimeMillis(), ttlMs)
+        pumpAnnouncements()
+    }
+
+    private fun pumpAnnouncements() {
+        handler.removeCallbacks(pumpRunnable)
+        if (released) return
+        val now = SystemClock.uptimeMillis()
+        when (val step = announcements.next(now) { it.onDone(PlaybackOutcome.CANCELLED) }) {
+            is AnnouncementStep.Play -> {
+                val item = step.item
+                val attempt = track { outcome ->
+                    // A cleared item was already reported; only the playing one advances the queue.
+                    if (announcements.playing !== item) return@track
+                    announcements.finished(outcome, SystemClock.uptimeMillis())?.onDone?.invoke(outcome)
+                    pumpAnnouncements()
+                }
+                item.attempt = attempt
+                item.play(attempt)
+            }
+            is AnnouncementStep.WaitUntil -> handler.postAtTime(pumpRunnable, step.at)
+            AnnouncementStep.Idle -> Unit
+        }
+    }
+
+    /** Stop [item]'s attempt playing now, reporting it cancelled. */
+    private fun stopAnnouncement(item: QueuedAnnouncement) {
+        val attempt = item.attempt ?: return
+        if (playback.isSpeech(attempt)) stopSpeech()
+        attempt.finish(PlaybackOutcome.CANCELLED)
+    }
+
+    private fun clearAnnouncements() {
+        handler.removeCallbacks(pumpRunnable)
+        for (item in announcements.clear()) {
+            stopAnnouncement(item)
+            item.onDone(PlaybackOutcome.CANCELLED)
+        }
+    }
+
+    /**
+     * Wrap a critical alert's [onDone]: while it plays the Announcement Queue holds, and the item it
+     * pre-empts stops. Geiger ticks never come through here. Audio looper only.
+     */
+    private fun critical(onDone: PlaybackDone): PlaybackDone {
+        announcements.criticalStarted()?.let(::stopAnnouncement)
+        return { outcome ->
+            announcements.criticalEnded(SystemClock.uptimeMillis())
+            pumpAnnouncements()
+            onDone(outcome)
+        }
+    }
+
+    /** Silence the speech item playing or waiting on its lead sound. */
+    private fun stopSpeech() {
+        pendingSpeech?.let { handler.removeCallbacks(it) }
+        pendingSpeech = null
+        voiceGeneration++
+        voiceTrack?.let(::releaseTrack)
+        voiceTrack = null
+        ttsPending = null
+        tts?.stop()
     }
 
     /**
@@ -809,7 +919,7 @@ internal class AlertFeedback(
         handler.post { utterances.remove(id)?.finish(outcome) }
     }
 
-    /** Play when the Board Session ride ends. */
+    /** Queue the Board Session ride-end cue. */
     fun playRideEnd() = playAppCue("ride.end")
 
     /**
@@ -821,7 +931,7 @@ internal class AlertFeedback(
             handler.post { playSingle(spec, requestedAt, onDone) }
             return
         }
-        val done = track(onDone)
+        val done = track(critical(onDone))
         playSeverity(parseSlotAlertSound(spec), mySoundId(spec), requestedAt, onDone = { done.finish(it) })
     }
 
@@ -866,7 +976,7 @@ internal class AlertFeedback(
             handler.post { speakAfterSeverity(severity, text, requestedAt, onDone) }
             return
         }
-        val done = track(onDone)
+        val done = track(critical(onDone))
         if (released) { done.finish(PlaybackOutcome.CANCELLED); return }
         // A newer announcement supersedes speech still waiting out an older one's sound.
         pendingSpeech?.let { handler.removeCallbacks(it) }
@@ -903,7 +1013,7 @@ internal class AlertFeedback(
             handler.post { speakVoice(announcement, slot, requestedAt, onDone) }
             return
         }
-        speakVoiceTracked(announcement, slot, requestedAt, track(onDone))
+        speakVoiceTracked(announcement, slot, requestedAt, track(critical(onDone)))
     }
 
     /** [done] ends with the line, or with the sound when the pack has no line for the key. */
@@ -1058,6 +1168,7 @@ internal class AlertFeedback(
             return
         }
         if (released) return
+        clearAnnouncements()
         released = true
         playback.cancelAll()
         utterances.clear()

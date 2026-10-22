@@ -32,11 +32,7 @@ import { BoardConfigChangeNoticeModal } from '@/modules/board/components/BoardCo
 import { startTuneSnapshotSessionSync } from '@/modules/tune/store/tuneSnapshotStore'
 import { startBoardWarningsSync } from '@/modules/board/store/boardWarningsStore'
 import { startVescFaultsSync } from '@/modules/board/store/vescFaultsStore'
-import {
-  setGroupRideCreatedSoundPlayer,
-  useGroupRideStore,
-} from '@/modules/group-ride/store/groupRideStore'
-import { playSelectedAppSound } from '@/modules/settings/lib/appSounds'
+import { useGroupRideStore } from '@/modules/group-ride/store/groupRideStore'
 import { useRiderStore } from '@/modules/group-ride/store/riderStore'
 import { ReleaseSurfaces } from '@/modules/release/components/ReleaseSurfaces'
 import { startNavigationSync } from '@/modules/map/store/mapStore'
@@ -99,7 +95,6 @@ function RootLayout() {
     if (!fixturesReady) return
     void useSettingsStore.getState().load()
     void useRiderStore.getState().load()
-    setGroupRideCreatedSoundPlayer(() => playSelectedAppSound('groupRide.created'))
     useGroupRideStore.getState().startObserving()
     const stopLiveStateSync = startLiveStateSync()
     const stopAppDataSync = startAppDataSync()
@@ -116,7 +111,6 @@ function RootLayout() {
     const stopAccessoryStateMirror = startAccessoryStateMirror()
     return () => {
       useGroupRideStore.getState().stopObserving()
-      setGroupRideCreatedSoundPlayer(null)
       stopLiveStateSync()
       stopAppDataSync()
       stopBoardWarningsSync()

@@ -460,6 +460,7 @@ internal class BoardSessionController(private val service: CoreForegroundService
             // has actually mutated the state, which a caller refreshing inline cannot.
             onParticipationChanged = ::refreshGpsDemand,
             onCue = { cue -> if (connectionSoundsEnabled) alertFeedback.playAppCue(cue) },
+            ownLocation = { locationTracker.latestLocation?.let { it.latitude to it.longitude } },
         )
     }
 
@@ -3680,10 +3681,6 @@ internal class BoardSessionController(private val service: CoreForegroundService
 
     fun previewAlertSound(spec: String) {
         alertFeedback.preview(spec)
-    }
-
-    fun playAppCue(cue: String) {
-        alertFeedback.playAppCue(cue)
     }
 
     private fun closeAppTask() {
