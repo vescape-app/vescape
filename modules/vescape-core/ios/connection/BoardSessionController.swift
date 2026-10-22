@@ -446,6 +446,8 @@ internal final class BoardSessionController: VescGattListener {
     replayTransport?.disconnect()
     replayTransport = nil
     releaseGpsFromSession(wasReplay: replacedReplay)
+    // A session ended on purpose ends the ride; only a dropout keeps the evaluator's memory.
+    weatherAlerts.rideEnded()
     // Starting a replay while a live board is connected: tear the live GATT link down first, or
     // its callbacks keep feeding real frames into the replay session. A live→live connect needs
     // no such step — `gatt.connect` clears its own previous peripheral.
@@ -1736,6 +1738,8 @@ internal final class BoardSessionController: VescGattListener {
     boardError = error
     lastTelemetryAt = nil
     releaseGpsFromSession(wasReplay: wasReplay)
+    // A session ended on purpose ends the ride; only a dropout keeps the evaluator's memory.
+    weatherAlerts.rideEnded()
     endLiveActivity()
     settleConnect(success: false, code: error == nil ? nil : "DISCONNECTED", message: error)
     setPhase(phase)
@@ -1903,6 +1907,8 @@ internal final class BoardSessionController: VescGattListener {
     // the next session must not still be reading time from the past.
     sessionClock = SystemSessionClock.shared
     releaseGpsFromSession(wasReplay: wasReplay)
+    // A session ended on purpose ends the ride; only a dropout keeps the evaluator's memory.
+    weatherAlerts.rideEnded()
     endLiveActivity()
     emit?("onError", ["message": message])
     setPhase(.error)
@@ -1937,7 +1943,7 @@ internal final class BoardSessionController: VescGattListener {
       operation: "connect",
       message: "Board disconnected unexpectedly"
     )
-    if wasConnected && connectionSoundsEnabled { alertAudioPlayer.playDisconnect() }
+    if wasConnected { alertAudioPlayer.boardDisconnected(playCue: connectionSoundsEnabled) }
     // The session survives the drop, so the Live Activity is *not* ended — setPhase(.reconnecting)
     // below refreshes it to the reconnect state, mirroring Android mutating the persistent chip.
     session?.invalidate()
@@ -2631,7 +2637,7 @@ internal final class BoardSessionController: VescGattListener {
     }
     // Engine back up after a dropout grace idled it.
     alertAudioPlayer.wake()
-    if connectionSoundsEnabled { alertAudioPlayer.playConnect() }
+    alertAudioPlayer.boardConnected(playCue: connectionSoundsEnabled)
     // Telemetry is flowing again: a reconnect that landed inside the grace restores a full ride, and
     // one that landed outside it raises demand back to `ride`.
     setLinkLost(false)

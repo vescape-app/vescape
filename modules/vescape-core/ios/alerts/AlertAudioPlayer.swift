@@ -504,19 +504,21 @@ internal final class AlertAudioPlayer {
 
   // MARK: - Connection sounds
 
-  /// Connect cue; opens the Announcement Queue's settle window.
-  func playConnect() {
+  /// The Board link came up: opens the Announcement Queue's settle window, cue or not.
+  /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/alerts/AlertEngine.kt `boardConnected`
+  func boardConnected(playCue: Bool) {
     onGeigerQueue { player in
       player.announcements.connected(now: Self.uptimeMs())
-      player.enqueueAppCue("on", onDone: { _ in })
+      if playCue { player.enqueueAppCue("on", onDone: { _ in }) }
     }
   }
 
-  /// Disconnect cue; whatever the Board Session still had queued is dropped first.
-  func playDisconnect() {
+  /// The live Board link was lost: whatever the Board Session still had queued is dropped, cue or not.
+  /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/alerts/AlertEngine.kt `boardDisconnected`
+  func boardDisconnected(playCue: Bool) {
     onGeigerQueue { player in
       player.clearAnnouncementsOnQueue()
-      player.enqueueAppCue("off", onDone: { _ in })
+      if playCue { player.enqueueAppCue("off", onDone: { _ in }) }
     }
   }
 
@@ -623,15 +625,18 @@ internal final class AlertAudioPlayer {
     }
   }
 
-  /// Stop `item`'s attempt playing now, reporting it cancelled. Must run on `geigerQueue`.
+  /// Stop `item`'s attempt playing now. Cut speech reports cancelled and plays again; an effect
+  /// cannot be cut, tails out and reports completed, so it never plays twice. Must run on `geigerQueue`.
   private func stopAnnouncement(_ item: QueuedAnnouncement) {
     guard let attempt = item.attempt else { return }
-    if playback.isSpeech(attempt) {
-      // A newer generation keeps a line still waiting on its lead sound from starting.
-      _ = nextSpeechGeneration()
-      synthesizer.stopSpeaking(at: .immediate)
-      stopVoiceOnQueue()
+    guard playback.isSpeech(attempt) else {
+      attempt.finish(.completed)
+      return
     }
+    // A newer generation keeps a line still waiting on its lead sound from starting.
+    _ = nextSpeechGeneration()
+    synthesizer.stopSpeaking(at: .immediate)
+    stopVoiceOnQueue()
     attempt.finish(.cancelled)
   }
 
@@ -645,13 +650,29 @@ internal final class AlertAudioPlayer {
     }
   }
 
-  /// Wrap a critical alert's `onDone`: while it plays the Announcement Queue holds, and the item it
-  /// pre-empts stops. Geiger ticks never come through here.
-  private func critical(_ onDone: @escaping PlaybackDone) -> PlaybackDone {
-    onGeigerQueue { player in
-      if let item = player.announcements.criticalStarted() { player.stopAnnouncement(item) }
+  /// Start a critical alert on `geigerQueue`, handing `start` its tracked completion. The item it
+  /// pre-empts stops before `start` claims speech, so a queued line never talks over it, and every
+  /// write to speech state stays on the queue. Geiger ticks never come through here.
+  private func startCritical(
+    _ onDone: @escaping PlaybackDone,
+    _ start: @escaping (AlertAudioPlayer, PlaybackCompletion) -> Void
+  ) {
+    geigerQueue.async { [weak self] in
+      guard let self else { return onDone(.cancelled) }
+      let done = self.track(self.critical(onDone))
+      guard !self.isReleased else {
+        done.finish(.cancelled)
+        return
+      }
+      start(self, done)
     }
-    // Tracked completions deliver on `geigerQueue`, after the start above.
+  }
+
+  /// Wrap a critical alert's `onDone`: while it plays the Announcement Queue holds, and the item it
+  /// pre-empts stops. Must run on `geigerQueue`.
+  private func critical(_ onDone: @escaping PlaybackDone) -> PlaybackDone {
+    if let item = announcements.criticalStarted() { stopAnnouncement(item) }
+    // Tracked completions deliver on `geigerQueue`.
     return { [weak self] outcome in
       if let self {
         self.announcements.criticalEnded(now: Self.uptimeMs())
@@ -681,8 +702,9 @@ internal final class AlertAudioPlayer {
   /// effects pack, `count` times, `alertBeepSpacingMs` apart.
   /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/alerts/AlertEngine.kt `playSingle`
   func playSingle(spec: String, onDone: @escaping PlaybackDone = { _ in }) {
-    let done = track(critical(onDone))
-    playSeverity(parseSlotAlertSound(spec), my: mySoundId(spec)) { done.finish($0) }
+    startCritical(onDone) { player, done in
+      player.playSeverity(parseSlotAlertSound(spec), my: mySoundId(spec)) { done.finish($0) }
+    }
   }
 
   /// `sound`'s severity slot from `pack`, or My sound `my` in its place, `sound.count` times.
@@ -712,17 +734,17 @@ internal final class AlertAudioPlayer {
   /// sound has finished, so the two never overlap.
   /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/alerts/AlertEngine.kt `speakAfterSeverity`
   func speakAfterSeverity(_ severity: AlertSeverity, text: String, onDone: @escaping PlaybackDone = { _ in }) {
-    let done = track(critical(onDone))
-    guard !isReleased else {
-      done.finish(.cancelled)
-      return
-    }
+    startCritical(onDone) { player, done in player.speakAfterSeverityOnQueue(severity, text: text, done: done) }
+  }
+
+  /// Must run on `geigerQueue`.
+  private func speakAfterSeverityOnQueue(_ severity: AlertSeverity, text: String, done: PlaybackCompletion) {
     // A newer announcement supersedes speech still waiting out an older one's sound.
     pendingSpeech?.cancel()
     playback.claimSpeech(done)
     let generation = nextSpeechGeneration()
     playSeverity(SlotAlertSound(count: 1, severity: severity))
-    // Written only from the announcing caller; cancelling an already-run item is a no-op.
+    // Only touched on `geigerQueue`; cancelling an already-run item is a no-op.
     let delay = speechDelayMs(clipDurationMs(clipKey(severity.slot)))
     pendingSpeech = scheduler.postDelayed(delay) { [weak self] in
       guard let self, self.isCurrentSpeech(generation) else { return }
@@ -730,6 +752,7 @@ internal final class AlertAudioPlayer {
     }
   }
 
+  /// Owned by `geigerQueue`.
   private var pendingSpeech: Cancellable?
   /// Bumped per spoken announcement; speech whose timer already fired checks it before starting,
   /// so a newer announcement supersedes it even after cancellation comes too late.
@@ -758,7 +781,7 @@ internal final class AlertAudioPlayer {
   /// voice level picks the wording.
   /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/alerts/AlertEngine.kt `speakVoice`
   func speakVoice(_ announcement: VoiceAnnouncement, slot: String? = nil, onDone: @escaping PlaybackDone = { _ in }) {
-    speakVoiceTracked(announcement, slot: slot, done: track(critical(onDone)))
+    startCritical(onDone) { player, done in player.speakVoiceTracked(announcement, slot: slot, done: done) }
   }
 
   /// Queue `announcement` on the Announcement Queue at advisory priority (Weather Alerts). At Voice
@@ -777,6 +800,7 @@ internal final class AlertAudioPlayer {
   }
 
   /// `done` ends with the line, or with the lead sound when the pack has no line for the key.
+  /// Must run on `geigerQueue`.
   private func speakVoiceTracked(_ announcement: VoiceAnnouncement, slot: String?, done: PlaybackCompletion) {
     guard !isReleased else {
       done.finish(.cancelled)
@@ -810,7 +834,7 @@ internal final class AlertAudioPlayer {
         owner.voiceNode = owner.playBufferOnQueue(
           line, label: "voice/\(announcement.key ?? "")", requestedAt: DispatchTime.now()
         ) { done.finish($0) }
-        if owner.voiceNode == nil { done.finish(.cancelled) }
+        if owner.voiceNode == nil { done.finish(.failed) }
         if idle { owner.idleRequested = true }
       }
     }
@@ -1072,14 +1096,6 @@ internal final class AlertAudioPlayer {
   }
 
   // MARK: - TTS
-
-  /// Speak `text` through TTS, pre-empting any speech item still playing.
-  /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/alerts/AlertEngine.kt `speakMessage`
-  func speakMessage(_ text: String, onDone: @escaping PlaybackDone = { _ in }) {
-    let done = track(onDone)
-    playback.claimSpeech(done)
-    speakTracked(text, done: done)
-  }
 
   private func speakTracked(_ text: String, done: PlaybackCompletion) {
     guard !isReleased else {

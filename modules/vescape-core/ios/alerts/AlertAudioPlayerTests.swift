@@ -27,7 +27,7 @@ final class AlertAudioPlayerTests: XCTestCase {
     player.playSingle(spec: "alert(3):warning")
     player.preview(spec: "alert:critical")
     player.playRideEnd()
-    player.playConnect()
+    player.boardConnected(playCue: true)
 
     // Let buffers actually start so completion handlers are pending when release lands.
     Thread.sleep(forTimeInterval: 0.15)

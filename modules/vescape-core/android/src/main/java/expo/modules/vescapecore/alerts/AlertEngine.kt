@@ -623,24 +623,32 @@ internal class AlertFeedback(
         tts?.setAudioAttributes(audioAttributes(audioSource, AudioAttributes.CONTENT_TYPE_SPEECH))
     }
 
-    /** Connect cue; opens the Announcement Queue's settle window. */
-    fun playConnect() {
+    /**
+     * The Board link came up: opens the Announcement Queue's settle window, cue or not.
+     *
+     * @parity /modules/vescape-core/ios/alerts/AlertAudioPlayer.swift `boardConnected`
+     */
+    fun boardConnected(playCue: Boolean) {
         if (android.os.Looper.myLooper() != handler.looper) {
-            handler.post { playConnect() }
+            handler.post { boardConnected(playCue) }
             return
         }
         announcements.connected(SystemClock.uptimeMillis())
-        playAppCue("on")
+        if (playCue) playAppCue("on")
     }
 
-    /** Disconnect cue; whatever the Board Session still had queued is dropped first. */
-    fun playDisconnect() {
+    /**
+     * The live Board link was lost: whatever the Board Session still had queued is dropped, cue or not.
+     *
+     * @parity /modules/vescape-core/ios/alerts/AlertAudioPlayer.swift `boardDisconnected`
+     */
+    fun boardDisconnected(playCue: Boolean) {
         if (android.os.Looper.myLooper() != handler.looper) {
-            handler.post { playDisconnect() }
+            handler.post { boardDisconnected(playCue) }
             return
         }
         clearAnnouncements()
-        playAppCue("off")
+        if (playCue) playAppCue("off")
     }
 
     /**
@@ -716,10 +724,15 @@ internal class AlertFeedback(
         }
     }
 
-    /** Stop [item]'s attempt playing now, reporting it cancelled. */
+    /** Stop [item]'s attempt playing now: cut speech reports cancelled and plays again. */
     private fun stopAnnouncement(item: QueuedAnnouncement) {
         val attempt = item.attempt ?: return
-        if (playback.isSpeech(attempt)) stopSpeech()
+        // An effect cannot be cut: it tails out and counts as played, so it never plays twice.
+        if (!playback.isSpeech(attempt)) {
+            attempt.finish(PlaybackOutcome.COMPLETED)
+            return
+        }
+        stopSpeech()
         attempt.finish(PlaybackOutcome.CANCELLED)
     }
 
@@ -840,21 +853,6 @@ internal class AlertFeedback(
             UnexpectedNativeError.report("alert_audio_connection_play", "audio_play_failed", e)
             false
         }
-    }
-
-    /**
-     * Speak [text] through TTS, pre-empting any speech item still playing.
-     *
-     * @parity /modules/vescape-core/ios/alerts/AlertAudioPlayer.swift `speakMessage`
-     */
-    fun speakMessage(text: String, onDone: PlaybackDone = {}) {
-        if (android.os.Looper.myLooper() != handler.looper) {
-            handler.post { speakMessage(text, onDone) }
-            return
-        }
-        val done = track(onDone)
-        playback.claimSpeech(done)
-        speakTracked(text, done)
     }
 
     private fun speakTracked(text: String, done: PlaybackCompletion) {

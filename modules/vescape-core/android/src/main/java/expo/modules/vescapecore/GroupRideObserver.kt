@@ -648,12 +648,6 @@ internal class GroupRideObserver(
         }
 
         /**
-         * A [riderView] map as the typed entry native keeps; null when it carries no id. No presence
-         * leaves the Rider unplaced.
-         *
-         * @parity /modules/vescape-core/ios/groupride/GroupRideObserver.swift `rosterRider`
-         */
-        /**
          * Discovery radius for nearby Group Rides.
          *
          * @parity /src/modules/group-ride/lib/nearby.ts `NEARBY_RADIUS_M`
@@ -697,6 +691,12 @@ internal class GroupRideObserver(
             }
         }
 
+        /**
+         * A [riderView] map as the typed entry native keeps; null when it carries no id. No presence
+         * leaves the Rider unplaced.
+         *
+         * @parity /modules/vescape-core/ios/groupride/GroupRideObserver.swift `rosterRider`
+         */
         internal fun rosterRider(view: Map<String, Any?>): GroupRideRosterRider? {
             val id = view["id"] as? String ?: return null
             val presence = view["presence"] as? Map<*, *>

@@ -1517,13 +1517,6 @@ export interface LegalPolicyReference {
 }
 
 /**
- * Durable app-scoped settings. The keys here are a TS/Android/iOS parity triangle — every field is
- * persisted natively and projected back through {@link getSettings}/{@link updateSetting}. The
- * container tag covers all keys; individual literals are not tagged separately (see AGENTS.md).
- * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/TelemetryEntities.kt `AppSettings`
- * @parity /modules/vescape-core/ios/telemetry/AppDataRepository.swift `defaultSettings`
- */
-/**
  * Stored rain/wind Weather Alert level: `off` or a native-owned threshold set.
  * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/weather/WeatherAlerts.kt `WEATHER_ALERT_LEVEL_SETTINGS`
  * @parity /modules/vescape-core/ios/weather/WeatherAlerts.swift `weatherAlertLevelSettings`
@@ -1531,6 +1524,13 @@ export interface LegalPolicyReference {
 export type WeatherAlertLevelSetting = 'off' | WeatherAlertLevel
 export type WeatherAlertLevel = 'sensitive' | 'normal' | 'severe'
 
+/**
+ * Durable app-scoped settings. The keys here are a TS/Android/iOS parity triangle — every field is
+ * persisted natively and projected back through {@link getSettings}/{@link updateSetting}. The
+ * container tag covers all keys; individual literals are not tagged separately (see AGENTS.md).
+ * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/TelemetryEntities.kt `AppSettings`
+ * @parity /modules/vescape-core/ios/telemetry/AppDataRepository.swift `defaultSettings`
+ */
 export interface AppSettings {
   liveHistoryLimit: number
   autoConnect: boolean
@@ -3517,17 +3517,17 @@ export function getWeather(): Weather | null {
   return native.getWeather()
 }
 
-/**
- * Refetch the forecast where the last one was fetched — the rider asking for fresh weather. Fire and
- * forget: the result lands on `onWeather` like every other refresh, and a call before the first
- * forecast exists does nothing.
- */
 /** Native-owned gust gate of each wind Weather Alert level, km/h; empty under E2E. */
 export function getWeatherAlertGustThresholdsKmh(): Partial<Record<WeatherAlertLevel, number>> {
   if (E2E_ENABLED) return {}
   return native.getWeatherAlertGustThresholdsKmh()
 }
 
+/**
+ * Refetch the forecast where the last one was fetched — the rider asking for fresh weather. Fire and
+ * forget: the result lands on `onWeather` like every other refresh, and a call before the first
+ * forecast exists does nothing.
+ */
 export function refreshWeather(): void {
   if (E2E_ENABLED) return
   native.refreshWeather()

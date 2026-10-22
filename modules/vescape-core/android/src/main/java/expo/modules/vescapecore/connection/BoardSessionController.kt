@@ -2493,7 +2493,7 @@ internal class BoardSessionController(private val service: CoreForegroundService
         boardConfig?.let { recordingCoordinator.markBoardReady(it) }
         // Output held open again after a dropout grace let it sleep.
         alertFeedback.wake()
-        if (connectionSoundsEnabled) alertFeedback.playConnect()
+        alertFeedback.boardConnected(playCue = connectionSoundsEnabled)
         watchMirror.boardConnected(currentSessionId)
         // Telemetry is flowing again: a reconnect that landed inside the grace restores a full ride,
         // and one that landed outside it raises demand back to `Ride`.
@@ -2822,6 +2822,8 @@ internal class BoardSessionController(private val service: CoreForegroundService
         sessionClock = SystemSessionClock
         alertCoordinator.stopAllGeiger()
         alertFeedback.goIdle()
+        // A session ended on purpose ends the ride; only a dropout keeps the evaluator's memory.
+        weatherAlerts.rideEnded()
         recordGpsSessionSummary(stoppedConfig)
         recordingCoordinator.finishBoardSession(
             status = if (emitDisconnected) "disconnected" else "stopped",
@@ -3021,8 +3023,8 @@ internal class BoardSessionController(private val service: CoreForegroundService
         resetIdlePause()
         // Lost a live link (telemetry was flowing) — signal the rider we're now without telemetry.
         // Fires once at loss: subsequent reconnect attempts enter here as Reconnecting/Rescanning.
-        if (connectionSoundsEnabled && (boardStatus == BoardPhase.Connected || boardStatus == BoardPhase.Stale)) {
-            alertFeedback.playDisconnect()
+        if (boardStatus == BoardPhase.Connected || boardStatus == BoardPhase.Stale) {
+            alertFeedback.boardDisconnected(playCue = connectionSoundsEnabled)
         }
         // Starts the ride dropout grace: GPS stays at `Ride` strength across the drop so the Ride
         // Track survives it, and steps down once the grace says this is an ended ride, not a dropout.
