@@ -4,7 +4,7 @@
  * as `KOKORO_PYTHON` (default `python3`). See docs/alerts.md.
  *
  *   bun run alerts:packs            all packs
- *   bun run alerts:packs voice-hev  one manifest
+ *   bun run alerts:packs voice-radio  one manifest
  *   bun run alerts:packs --force    re-synthesize every voice clip
  */
 import { spawnSync } from 'child_process'

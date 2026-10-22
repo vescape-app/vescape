@@ -112,7 +112,7 @@ internal final class AlertAudioPlayer {
   /// from any thread, so it carries its own lock.
   private var myBuffers: [String: AVAudioPCMBuffer?] = [:]
   private let myBuffersLock = NSLock()
-  var soundPack = "retro"
+  var soundPack = effectsPackFallback
   private var voice = voiceMatching
   private var voiceLevel = voiceLevelDefault
   /// Folder holding `effects-<id>/` and `voice-<id>/`; nil when the bundle is missing.

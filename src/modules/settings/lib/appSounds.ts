@@ -15,10 +15,9 @@ import { useSettingsStore } from '@/modules/settings/store/settingsStore'
  * @parity /modules/vescape-core/ios/alerts/EffectsPacks.swift
  */
 export const EFFECTS_PACKS = [
-  { id: 'retro', name: 'Retro', voice: 'clean' },
-  { id: 'simple', name: 'Simple', voice: 'clean' },
-  { id: 'hev', name: 'HEV', voice: 'hev' },
-  { id: 'clean', name: 'Clean', voice: 'clean' },
+  { id: 'arc', name: 'Arc', voice: 'nova' },
+  { id: 'pulse', name: 'Pulse', voice: 'nova' },
+  { id: 'hev', name: 'HEV', voice: 'radio' },
 ] as const
 
 /**
@@ -28,8 +27,8 @@ export const EFFECTS_PACKS = [
  * @parity /modules/vescape-core/ios/alerts/VoicePacks.swift
  */
 export const VOICE_PACKS = [
-  { id: 'hev', name: 'HEV' },
-  { id: 'clean', name: 'Clean' },
+  { id: 'nova', name: 'Nova' },
+  { id: 'radio', name: 'Radio' },
 ] as const
 
 type VoicePackId = (typeof VOICE_PACKS)[number]['id']
@@ -44,7 +43,7 @@ type VoicePackId = (typeof VOICE_PACKS)[number]['id']
 export function resolvedVoiceId(voice: string, soundPack: string): VoicePackId {
   const named = VOICE_PACKS.find((pack) => pack.id === voice)
   if (named) return named.id
-  return EFFECTS_PACKS.find((pack) => pack.id === soundPack)?.voice ?? 'clean'
+  return EFFECTS_PACKS.find((pack) => pack.id === soundPack)?.voice ?? 'nova'
 }
 
 /**

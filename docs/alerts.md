@@ -14,11 +14,11 @@ No separate event. No JS-side audio. Native storage is the source of truth.
 
 ## Sound effects
 
-The app-wide **Sound effects** setting (`soundPack`, default `retro`) picks one built-in effects
-pack: Retro, Simple, HEV, or Clean. The selected pack supplies every sound native plays: app cues,
+The app-wide **Sound effects** setting (`soundPack`, default `arc`) picks one built-in effects
+pack: Arc, Pulse, or HEV. The selected pack supplies every sound native plays: app cues,
 the severity sounds of alert rules and speech, and geiger ticks (see
-[Built-in packs](#built-in-packs)). Retro and Simple are the former sound themes turned into packs, so
-a saved theme keeps its id; Retro has since been re-recorded. Settings previews the selected pack's slots: its
+[Built-in packs](#built-in-packs)). A saved
+id that is unknown or retired (`retro`, `simple`) reads as Arc; a saved `clean` reads as Pulse. Settings previews the selected pack's slots: its
 cues and its Positive/Info/Warning/Critical sounds.
 
 Every effects pack fills four required sound slots, `severity.positive|info|warning|critical`.
@@ -69,7 +69,7 @@ caps a decoded clip near 1 MB (about 6 s of 44.1 kHz stereo).
 The custom app sound packs My sounds replaced (`custom-app-sounds/packs.json`) migrate on first
 read: every assigned cue becomes a My sound named `<pack> <cue>`, reusing its file. On the next
 settings read, the pack the `soundPack` setting still named becomes overrides for its cues and the
-setting resolves to Simple; the other packs' sounds stay plain library entries.
+setting resolves to Arc; the other packs' sounds stay plain library entries.
 
 Database backups include the manifest and audio files under `custom-app-sounds/`. Android copies the
 files and manifest under the store lock before writing the archive. Restore retains the previous
@@ -81,9 +81,9 @@ migrates as above. A restored sound whose file is absent is dropped with its ove
 
 Speech comes from a second app-wide choice next to Sound effects:
 
-- **Voice** (`voice` setting: `matching`, `hev`, `clean`; default `matching`): whole-sentence lines
+- **Voice** (`voice` setting: `matching`, `nova`, `radio`; default `matching`; a saved `clean` or `hev` reads as `nova` or `radio`): whole-sentence lines
   per message key plus value clips. Unset (`matching`) plays the voice the effects pack's `pack.json`
-  names (HEV → HEV; Retro, Simple, Clean → Clean); Settings shows that voice as selected, with no
+  names (HEV → Radio; Arc, Pulse → Nova); Settings shows that voice as selected, with no
   separate Matching option. Picking a voice level previews it.
 - **Voice level** (`voiceLevel`: `off`, `minimal`, `standard`, `full`; default `standard`) sets what
   speaks and how much. Off plays effects only for presets. Minimal and Standard speak preset alerts:
@@ -141,7 +141,7 @@ session (#576).
 ### Built-in packs
 
 Packs are committed under `shared/alerts/packs/`: effects packs are made by hand in a DAW (slots,
-format, `pack.json`, adding a pack, and the HEV/Clean sox recipes are in
+format, `pack.json`, adding a pack, and the HEV/Pulse sox recipes are in
 [`scripts/alert-packs/EFFECTS.md`](../scripts/alert-packs/EFFECTS.md)); voice packs are generated. `bun run copy:shared` copies the
 effects and voice packs, keeping their `<pack>/pack.json` layout, to Android `assets/alert-packs/` and to
 `modules/vescape-core/ios/alert-packs/`, which the podspec bundles as a folder in
@@ -161,17 +161,16 @@ shared/alerts/packs/
 ```
 
 - **Effect slots**: required `severity.positive` (a short rising two- or three-note chime),
-  `severity.info|warning|critical` (HEV/Clean: 1/2/3 beeps; Retro: recorded effects with a reverb tail; Simple: the former Notify, Beep,
-  and Urgent sounds), and `geiger.soft|mid|hard`; optional `cue.on`, `cue.off`, `cue.ride.end`,
-  `cue.groupRide.created|joined`, each falling back as in [Sound effects](#sound-effects). All four
+  `severity.info|warning|critical` (HEV/Pulse: 1/2/3 beeps; Arc: recorded effects with a reverb tail), and `geiger.soft|mid|hard`; optional `cue.on`, `cue.off`, `cue.ride.end`,
+  `cue.groupRide.created|joined`, each falling back as in [Sound effects](#sound-effects). All three
   built-in packs fill every optional slot today.
   Effects packs never contain voice; `pack.json` names the matching voice pack.
 - **Voice keys**: `battery` (percent), `motorTemp`, `controllerTemp` (degrees), `speed`, `dutyCycle`
   (number), `boardConnection.connected`,
   `boardConnection.lost`, `system.error`, `groupRide.created|joined|riderJoined|riderLeft|lost|restored`,
   `ride.end`. Each key needs a
-  generic line; `<key>.<severity>` lines are optional. A line has `start` (one fixed phrase in HEV
-  and Clean), an optional `minimal` (generic lines only; a short form such as "Motor…"), and an
+  generic line; `<key>.<severity>` lines are optional. A line has `start` (one fixed phrase in Radio
+  and Nova), an optional `minimal` (generic lines only; a short form such as "Motor…"), and an
   optional `full` pool `{ start, end, endChance }` holding the varied phrases, endings and easter
   eggs. Every phrase is one Kokoro call; the validator rejects empty phrases. Endings ship at
   `endChance` 0.2 so they stay a surprise.
@@ -188,7 +187,7 @@ Regenerate voice packs on a Mac dev machine with sox, ffmpeg, and a Python that 
 
 ```sh
 KOKORO_PYTHON=/path/to/venv/bin/python bun run alerts:packs            # all voice packs
-KOKORO_PYTHON=/path/to/venv/bin/python bun run alerts:packs voice-hev  # one manifest
+KOKORO_PYTHON=/path/to/venv/bin/python bun run alerts:packs voice-radio  # one manifest
 KOKORO_PYTHON=/path/to/venv/bin/python bun run alerts:packs --force    # re-synthesize every voice clip
 ```
 
@@ -196,7 +195,7 @@ The generator validates the manifests against `catalog.json` before generating, 
 `<pack>.staging` directory, and replaces the committed pack only after the result validates. `bun test scripts/alert-packs` fails when a committed voice pack misses a
 key's generic line, a value clip, or a listed file. Kokoro is not bit-stable run to run, so a
 voice `pack.json` records a `sources` hash per clip (text, Kokoro settings, fx) and only clips whose
-hash changed are re-synthesized. Kokoro mispronounces "error"; HEV wording says "failure".
+hash changed are re-synthesized. Kokoro mispronounces "error"; Radio wording says "failure".
 
 ## Per-board ownership
 

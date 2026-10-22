@@ -5,10 +5,13 @@ import Foundation
 ///
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/alerts/VoicePacks.kt
 /// @parity /src/modules/settings/lib/appSounds.ts `VOICE_PACKS`
-internal let voicePackIds = ["hev", "clean"]
+internal let voicePackIds = ["nova", "radio"]
+
+/// Former voice id → its new id; a saved one reads as the renamed voice.
+internal let renamedVoicePackIds = ["clean": "nova", "hev": "radio"]
 
 /// Voice an effects pack without its own voice matches, and the stand-in for an unknown id.
-internal let voicePackFallback = "clean"
+internal let voicePackFallback = "nova"
 
 /// `voice` setting that follows the voice the selected effects pack names.
 internal let voiceMatching = "matching"

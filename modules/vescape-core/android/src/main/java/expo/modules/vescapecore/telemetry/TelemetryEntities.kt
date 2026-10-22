@@ -509,7 +509,7 @@ data class AppSettings(
   val socEstimateWindowSeconds: Int = 20,
   val boardMoveStrengthPercent: Int = 60,
   val connectionSoundsEnabled: Boolean = true,
-  val soundPack: String = "retro",
+  val soundPack: String = "arc",
   // @parity /modules/vescape-core/ios/telemetry/AppDataRepository.swift `defaultSettings`
   // @parity /modules/vescape-core/src/index.ts `AppSettings`
   val audioSource: String = "alarm",

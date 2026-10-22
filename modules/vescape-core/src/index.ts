@@ -1580,7 +1580,7 @@ export interface AppSettings {
   boardMoveStrengthPercent: number
   /** Play on/off sounds on board connect and involuntary disconnect. */
   connectionSoundsEnabled: boolean
-  /** Selected built-in effects pack. Missing saved value defaults to retro. */
+  /** Selected built-in effects pack. Missing, unknown, or retired (`retro`, `simple`) saved values read as arc. */
   /** @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/alerts/EffectsPacks.kt */
   /** @parity /modules/vescape-core/ios/alerts/EffectsPacks.swift */
   soundPack: string
@@ -1591,7 +1591,7 @@ export interface AppSettings {
   /** `matching` (the voice the effects pack names) or a voice pack id. */
   /** @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/TelemetryEntities.kt `AppSettings` */
   /** @parity /modules/vescape-core/ios/telemetry/AppDataRepository.swift `defaultSettings` */
-  voice: 'matching' | 'hev' | 'clean'
+  voice: 'matching' | 'nova' | 'radio'
   /** Speech for presets and app sounds; custom rules ignore it. */
   /** @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/alerts/VoicePacks.kt `VOICE_LEVELS` */
   /** @parity /modules/vescape-core/ios/alerts/VoicePacks.swift `voiceLevels` */

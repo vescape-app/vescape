@@ -395,7 +395,7 @@ internal class AlertFeedback(
     private val geigerLoops = HashMap<String, GeigerLoop>()
     private val samples = SoundSampleQueue()
     private val pendingGeiger = HashMap<String, PendingGeiger>()
-    var soundPack: String = "retro"
+    var soundPack: String = EFFECTS_PACK_FALLBACK
     private var voice: String = VOICE_MATCHING
     @Volatile private var voiceLevel: String = VOICE_LEVEL_DEFAULT
 

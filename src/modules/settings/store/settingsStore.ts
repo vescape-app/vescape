@@ -46,7 +46,7 @@ const DEFAULTS: AppSettings = {
   socEstimateWindowSeconds: 20,
   boardMoveStrengthPercent: 60,
   connectionSoundsEnabled: true,
-  soundPack: 'retro',
+  soundPack: 'arc',
   audioSource: 'alarm',
   voice: 'matching',
   voiceLevel: 'standard',

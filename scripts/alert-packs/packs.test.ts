@@ -23,7 +23,7 @@ describe('alert packs', () => {
   test('a pack missing a slot, line, or value fails the check', () => {
     const dir = mkdtempSync(join(tmpdir(), 'alert-pack-test-'))
     try {
-      cpSync(packDir(loadManifest('voice-hev')), dir, { recursive: true })
+      cpSync(packDir(loadManifest('voice-radio')), dir, { recursive: true })
       const path = join(dir, 'pack.json')
       const pack = JSON.parse(readFileSync(path, 'utf8'))
       delete pack.lines['boardConnection.lost']
@@ -31,14 +31,14 @@ describe('alert packs', () => {
       pack.lines.battery.start = ['lines/gone.m4a']
       writeFileSync(path, JSON.stringify(pack))
       expect(validatePack(catalog, dir)).toEqual([
-        'voice-hev: missing value percent.42',
-        'voice-hev: missing line boardConnection.lost',
-        'voice-hev: missing file lines/gone.m4a',
+        'voice-radio: missing value percent.42',
+        'voice-radio: missing line boardConnection.lost',
+        'voice-radio: missing file lines/gone.m4a',
       ])
 
-      const voice = { ...loadManifest('voice-hev'), lines: {} }
+      const voice = { ...loadManifest('voice-radio'), lines: {} }
       expect(validateManifest(catalog, voice)).toContain(
-        'voice-hev: missing line boardConnection.lost',
+        'voice-radio: missing line boardConnection.lost',
       )
     } finally {
       rmSync(dir, { recursive: true, force: true })

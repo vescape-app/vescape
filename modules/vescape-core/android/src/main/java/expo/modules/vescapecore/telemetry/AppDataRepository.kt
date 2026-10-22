@@ -12,7 +12,11 @@ import expo.modules.vescapecore.service.CoreForegroundService
 
 import expo.modules.vescapecore.connection.BoardTransport
 import expo.modules.vescapecore.alerts.MySounds
+import expo.modules.vescapecore.alerts.EFFECTS_PACK_FALLBACK
 import expo.modules.vescapecore.alerts.EFFECTS_PACK_IDS
+import expo.modules.vescapecore.alerts.RENAMED_EFFECTS_PACK_IDS
+import expo.modules.vescapecore.alerts.RENAMED_VOICE_PACK_IDS
+import expo.modules.vescapecore.alerts.RETIRED_EFFECTS_PACK_IDS
 import expo.modules.vescapecore.alerts.VOICE_LEVELS
 import expo.modules.vescapecore.alerts.VOICE_LEVEL_DEFAULT
 import expo.modules.vescapecore.alerts.VOICE_MATCHING
@@ -37,7 +41,7 @@ internal enum class AppDataScope(val wire: String) {
 
 /** `matching` or a built-in voice pack id. @parity /modules/vescape-core/ios/telemetry/AppDataRepository.swift `voice` */
 internal fun validVoice(value: Any?): String? =
-  (value as? String)?.takeIf { it == VOICE_MATCHING || it in VOICE_PACK_IDS }
+  (value as? String)?.let { RENAMED_VOICE_PACK_IDS[it] ?: it }?.takeIf { it == VOICE_MATCHING || it in VOICE_PACK_IDS }
 
 internal fun validMapStyleKey(value: Any?): String? =
   (value as? String)?.takeIf { it in setOf("onedark", "outdoors", "satellite", "mapy") }
@@ -465,9 +469,12 @@ class AppDataRepository private constructor(private val context: Context) {
       socEstimateWindowSeconds = req("socEstimateWindowSeconds", 20, ::validSocEstimateWindowSeconds),
       boardMoveStrengthPercent = req("boardMoveStrengthPercent", 60, ::validBoardMoveStrengthPercent),
       connectionSoundsEnabled = req("connectionSoundsEnabled", true) { it as? Boolean },
-      soundPack = req("soundPack", if ("soundPack" in map) "simple" else "retro") {
-        // A custom app sound pack id from before My sounds turns into overrides, then reads as invalid.
-        (it as? String)?.also { pack -> MySounds.adoptLegacyPack(context, pack) }?.takeIf { pack -> pack in EFFECTS_PACK_IDS }
+      soundPack = req("soundPack", EFFECTS_PACK_FALLBACK) {
+        // A custom app sound pack id from before My sounds turns into overrides, then reads as invalid;
+        // a retired built-in id reads as the default, a renamed one as its new id.
+        (it as? String)?.also { pack -> MySounds.adoptLegacyPack(context, pack) }
+          ?.let { pack -> if (pack in RETIRED_EFFECTS_PACK_IDS) EFFECTS_PACK_FALLBACK else RENAMED_EFFECTS_PACK_IDS[pack] ?: pack }
+          ?.takeIf { pack -> pack in EFFECTS_PACK_IDS }
       },
       audioSource = req("audioSource", "alarm") { (it as? String)?.takeIf { source -> source == "alarm" || source == "media" } },
       voice = req("voice", VOICE_MATCHING, ::validVoice),
@@ -505,7 +512,7 @@ class AppDataRepository private constructor(private val context: Context) {
     if (badKeys.isNotEmpty()) {
       for (key in badKeys) {
         if (key == "soundPack") {
-          dao.upsertAppSetting(AppSettingEntity(key, encodeSettingJson("simple"), System.currentTimeMillis()))
+          dao.upsertAppSetting(AppSettingEntity(key, encodeSettingJson(EFFECTS_PACK_FALLBACK), System.currentTimeMillis()))
         } else dao.deleteAppSetting(key)
       }
       DiagnosticReporter.get(context).capture(

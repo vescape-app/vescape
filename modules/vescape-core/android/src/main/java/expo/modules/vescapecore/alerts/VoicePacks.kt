@@ -18,10 +18,13 @@ import kotlin.math.roundToInt
  * @parity /modules/vescape-core/ios/alerts/VoicePacks.swift
  * @parity /src/modules/settings/lib/appSounds.ts `VOICE_PACKS`
  */
-internal val VOICE_PACK_IDS = listOf("hev", "clean")
+internal val VOICE_PACK_IDS = listOf("nova", "radio")
+
+/** Former voice id → its new id; a saved one reads as the renamed voice. */
+internal val RENAMED_VOICE_PACK_IDS = mapOf("clean" to "nova", "hev" to "radio")
 
 /** Voice an effects pack without its own voice matches, and the stand-in for an unknown id. */
-internal const val VOICE_PACK_FALLBACK = "clean"
+internal const val VOICE_PACK_FALLBACK = "nova"
 
 /** `voice` setting that follows the voice the selected effects pack names. */
 internal const val VOICE_MATCHING = "matching"

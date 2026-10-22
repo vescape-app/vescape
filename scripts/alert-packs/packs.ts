@@ -4,7 +4,7 @@ import { join } from 'path'
 export const ROOT = join(import.meta.dir, '..', '..')
 export const MANIFEST_DIR = import.meta.dir
 export const PACKS_DIR = join(ROOT, 'shared', 'alerts', 'packs')
-export const MANIFESTS = ['voice-hev', 'voice-clean'] as const
+export const MANIFESTS = ['voice-nova', 'voice-radio'] as const
 export const CLIP_EXTENSION = '.m4a'
 
 /** `number` is a bare number: speed and duty skip the unit so the line stays short. */

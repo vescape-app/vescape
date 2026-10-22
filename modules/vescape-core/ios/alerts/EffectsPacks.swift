@@ -7,10 +7,13 @@ import Foundation
 ///
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/alerts/EffectsPacks.kt
 /// @parity /src/modules/settings/lib/appSounds.ts `EFFECTS_PACKS`
-internal let effectsPackIds = ["retro", "simple", "hev", "clean"]
+internal let effectsPackIds = ["arc", "pulse", "hev"]
 
-/// Pack standing in for an unknown id.
-internal let effectsPackFallback = "simple"
+/// Default pack, and the one standing in for an unknown or retired id (`retro`, `simple`).
+internal let effectsPackFallback = "arc"
+
+/// Former effects pack id → its new id; a saved one reads as the renamed pack.
+internal let renamedEffectsPackIds = ["clean": "pulse"]
 
 internal func effectsPackId(_ pack: String) -> String {
   effectsPackIds.contains(pack) ? pack : effectsPackFallback

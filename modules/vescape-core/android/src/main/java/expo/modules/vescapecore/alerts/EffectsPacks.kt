@@ -13,10 +13,16 @@ import org.json.JSONObject
  * @parity /modules/vescape-core/ios/alerts/EffectsPacks.swift
  * @parity /src/modules/settings/lib/appSounds.ts `EFFECTS_PACKS`
  */
-internal val EFFECTS_PACK_IDS = listOf("retro", "simple", "hev", "clean")
+internal val EFFECTS_PACK_IDS = listOf("arc", "pulse", "hev")
 
-/** Pack standing in for an unknown id. */
-internal const val EFFECTS_PACK_FALLBACK = "simple"
+/** Default pack, and the one standing in for an unknown or retired id (`retro`, `simple`). */
+internal const val EFFECTS_PACK_FALLBACK = "arc"
+
+/** Built-in ids no longer shipped; a saved one reads as [EFFECTS_PACK_FALLBACK]. */
+internal val RETIRED_EFFECTS_PACK_IDS = setOf("retro", "simple")
+
+/** Former effects pack id → its new id; a saved one reads as the renamed pack. */
+internal val RENAMED_EFFECTS_PACK_IDS = mapOf("clean" to "pulse")
 
 internal fun effectsPackId(pack: String): String = if (pack in EFFECTS_PACK_IDS) pack else EFFECTS_PACK_FALLBACK
 

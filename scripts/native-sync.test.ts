@@ -34,7 +34,7 @@ beforeEach(() => {
   write('app.config.ts', 'export default {}')
   write('package.json', '{}')
   write('assets/images/icon.png', 'icon')
-  write('shared/alerts/packs/effects-retro/severity.warning.m4a', 'beep')
+  write('shared/alerts/packs/effects-arc/severity.warning.m4a', 'beep')
   write('shared/data/cell-presets.json', '{}')
   write('modules/vescape-core/expo-module.config.json', '{}')
   write('modules/vescape-core/ios/VescapeCore.podspec', 'spec')
@@ -167,8 +167,8 @@ describe('prebuildFingerprint', () => {
 describe('shared assets', () => {
   it('reports every copy as missing before copy:shared runs', () => {
     expect(missingSharedOutputs(root)).toEqual([
-      'modules/vescape-core/android/src/main/assets/alert-packs/effects-retro/severity.warning.m4a',
-      'modules/vescape-core/ios/alert-packs/effects-retro/severity.warning.m4a',
+      'modules/vescape-core/android/src/main/assets/alert-packs/effects-arc/severity.warning.m4a',
+      'modules/vescape-core/ios/alert-packs/effects-arc/severity.warning.m4a',
       'modules/vescape-core/android/src/main/assets/data/cell-presets.json',
       'modules/vescape-core/android/src/test/resources/data/cell-presets.json',
     ])
@@ -185,24 +185,24 @@ describe('shared assets', () => {
     unlinkSync(
       join(
         root,
-        'modules/vescape-core/android/src/main/assets/alert-packs/effects-retro/severity.warning.m4a',
+        'modules/vescape-core/android/src/main/assets/alert-packs/effects-arc/severity.warning.m4a',
       ),
     )
 
     expect(missingSharedOutputs(root)).toEqual([
-      'modules/vescape-core/android/src/main/assets/alert-packs/effects-retro/severity.warning.m4a',
+      'modules/vescape-core/android/src/main/assets/alert-packs/effects-arc/severity.warning.m4a',
     ])
   })
 
   it('copies effects and voice packs only, keeping their directory layout', () => {
-    write('shared/alerts/packs/voice-hev/values/percent/5.m4a', 'five')
+    write('shared/alerts/packs/voice-radio/values/percent/5.m4a', 'five')
     write('shared/alerts/packs/effects-hev/pack.json', '{}')
     write('shared/alerts/packs/sources/notes.json', '{}')
 
     const missing = missingSharedOutputs(root)
     expect(missing).toContain('modules/vescape-core/ios/alert-packs/effects-hev/pack.json')
     expect(missing).toContain(
-      'modules/vescape-core/android/src/main/assets/alert-packs/voice-hev/values/percent/5.m4a',
+      'modules/vescape-core/android/src/main/assets/alert-packs/voice-radio/values/percent/5.m4a',
     )
     expect(missing.some((path) => path.includes('notes.json'))).toBe(false)
 
@@ -227,7 +227,7 @@ describe('shared assets', () => {
 
     expect(sharedFingerprint(root)).toEqual(before)
 
-    write('shared/alerts/packs/effects-retro/severity.warning.m4a', 'louder beep')
+    write('shared/alerts/packs/effects-arc/severity.warning.m4a', 'louder beep')
     expect(sharedFingerprint(root)).not.toEqual(before)
   })
 })
@@ -332,12 +332,12 @@ describe('planSync', () => {
 
   it('copies shared assets when the shared source changed', () => {
     const base = synced('android')
-    write('shared/alerts/packs/effects-retro/severity.warning.m4a', 'louder beep')
+    write('shared/alerts/packs/effects-arc/severity.warning.m4a', 'louder beep')
 
     const steps = planSync({ ...base, next: state('android') })
 
     expect(steps).toEqual([
-      { action: 'shared', reasons: ['~ shared/alerts/packs/effects-retro/severity.warning.m4a'] },
+      { action: 'shared', reasons: ['~ shared/alerts/packs/effects-arc/severity.warning.m4a'] },
     ])
   })
 
@@ -346,7 +346,7 @@ describe('planSync', () => {
     unlinkSync(
       join(
         root,
-        'modules/vescape-core/android/src/main/assets/alert-packs/effects-retro/severity.warning.m4a',
+        'modules/vescape-core/android/src/main/assets/alert-packs/effects-arc/severity.warning.m4a',
       ),
     )
 
@@ -356,7 +356,7 @@ describe('planSync', () => {
       {
         action: 'shared',
         reasons: [
-          '! modules/vescape-core/android/src/main/assets/alert-packs/effects-retro/severity.warning.m4a is missing',
+          '! modules/vescape-core/android/src/main/assets/alert-packs/effects-arc/severity.warning.m4a is missing',
         ],
       },
     ])
@@ -364,9 +364,7 @@ describe('planSync', () => {
 
   it('copies shared assets for iOS too, which bundles the copied alert packs', () => {
     const base = synced('ios')
-    unlinkSync(
-      join(root, 'modules/vescape-core/ios/alert-packs/effects-retro/severity.warning.m4a'),
-    )
+    unlinkSync(join(root, 'modules/vescape-core/ios/alert-packs/effects-arc/severity.warning.m4a'))
 
     const steps = planSync({ ...base, missingSharedOutputs: missingSharedOutputs(root) })
 
@@ -374,7 +372,7 @@ describe('planSync', () => {
       {
         action: 'shared',
         reasons: [
-          '! modules/vescape-core/ios/alert-packs/effects-retro/severity.warning.m4a is missing',
+          '! modules/vescape-core/ios/alert-packs/effects-arc/severity.warning.m4a is missing',
         ],
       },
     ])
@@ -382,7 +380,7 @@ describe('planSync', () => {
 
   it('copies shared assets before prebuilding', () => {
     const base = synced('android')
-    write('shared/alerts/packs/effects-retro/severity.warning.m4a', 'louder beep')
+    write('shared/alerts/packs/effects-arc/severity.warning.m4a', 'louder beep')
     write('app.config.ts', 'export default { name: "vescape" }')
 
     const steps = planSync({ ...base, next: state('android') })

@@ -25,11 +25,11 @@ final class VoicePacksTests: XCTestCase {
   }
 
   func testMatchingFollowsTheEffectsPackVoice() {
-    XCTAssertEqual(voicePackId("matching", effectsVoice: "hev"), "hev")
-    XCTAssertEqual(voicePackId("matching", effectsVoice: nil), "clean")
-    XCTAssertEqual(voicePackId("matching", effectsVoice: "santa"), "clean")
-    XCTAssertEqual(voicePackId("hev", effectsVoice: "clean"), "hev")
-    XCTAssertEqual(voicePackId("nicole", effectsVoice: nil), "clean")
+    XCTAssertEqual(voicePackId("matching", effectsVoice: "radio"), "radio")
+    XCTAssertEqual(voicePackId("matching", effectsVoice: nil), "nova")
+    XCTAssertEqual(voicePackId("matching", effectsVoice: "santa"), "nova")
+    XCTAssertEqual(voicePackId("radio", effectsVoice: "nova"), "radio")
+    XCTAssertEqual(voicePackId("nicole", effectsVoice: nil), "nova")
   }
 
   func testAnnouncementTakesKeyFromMetricAndValueFromThreshold() {
@@ -146,7 +146,7 @@ final class VoicePacksTests: XCTestCase {
       XCTAssertNotNil(manifest.valueClip(key: "motorTemp", value: -30), pack)
       XCTAssertNotNil(manifest.valueClip(key: "motorTemp", value: 203), pack)
     }
-    XCTAssertEqual(effectsPackVoices(root: root)["retro"], "clean")
-    XCTAssertEqual(effectsPackVoices(root: root)["hev"], "hev")
+    XCTAssertEqual(effectsPackVoices(root: root)["arc"], "nova")
+    XCTAssertEqual(effectsPackVoices(root: root)["hev"], "radio")
   }
 }

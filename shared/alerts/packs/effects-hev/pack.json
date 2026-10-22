@@ -1,7 +1,7 @@
 {
   "id": "hev",
   "kind": "effects",
-  "voice": "hev",
+  "voice": "radio",
   "format": "aac-lc m4a, mono 22050 Hz",
   "slots": {
     "severity.positive": "severity.positive.m4a",

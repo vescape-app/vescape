@@ -678,7 +678,7 @@ final class AppDataRepository {
     "wearTiltRatePercent": 20,
     "boardMoveStrengthPercent": 60,
     "connectionSoundsEnabled": true,
-    "soundPack": "retro",
+    "soundPack": effectsPackFallback,
     // @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/TelemetryEntities.kt `AppSettings`
     // @parity /modules/vescape-core/src/index.ts `AppSettings`
     // @platform-diff iOS has no Android alarm/media stream selection; stored for shared settings and backups.
@@ -706,7 +706,9 @@ final class AppDataRepository {
 
   /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/AppDataRepository.kt `validVoice`
   static func voice(_ value: Any?) -> String? {
-    guard let voice = value as? String, voice == voiceMatching || voicePackIds.contains(voice) else { return nil }
+    guard let raw = value as? String else { return nil }
+    let voice = renamedVoicePackIds[raw] ?? raw
+    guard voice == voiceMatching || voicePackIds.contains(voice) else { return nil }
     return voice
   }
 
@@ -724,9 +726,10 @@ final class AppDataRepository {
     normalized["audioSource"] = audioSource(settings["audioSource"]) ?? "alarm"
     normalized["voice"] = voice(settings["voice"]) ?? voiceMatching
     normalized["voiceLevel"] = voiceLevel(settings["voiceLevel"]) ?? voiceLevelDefault
-    let pack = settings["soundPack"] as? String ?? "retro"
+    let saved = settings["soundPack"] as? String ?? effectsPackFallback
+    let pack = renamedEffectsPackIds[saved] ?? saved
     // A custom app sound pack id from before My sounds turns into overrides, then reads as the fallback.
-    MySounds.adoptLegacyPack(pack)
+    MySounds.adoptLegacyPack(saved)
     normalized["soundPack"] = effectsPackIds.contains(pack) ? pack : effectsPackFallback
     normalized["satelliteImageryOpacity"] =
       satelliteImageryOpacity(settings["satelliteImageryOpacity"]) ?? defaultSettings["satelliteImageryOpacity"]

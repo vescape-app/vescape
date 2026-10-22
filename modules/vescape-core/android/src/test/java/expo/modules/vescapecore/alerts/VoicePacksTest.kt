@@ -29,11 +29,11 @@ class VoicePacksTest {
 
     @Test
     fun matchingFollowsTheEffectsPackVoice() {
-        assertEquals("hev", voicePackId("matching", "hev"))
-        assertEquals("clean", voicePackId("matching", null))
-        assertEquals("clean", voicePackId("matching", "santa"))
-        assertEquals("hev", voicePackId("hev", "clean"))
-        assertEquals("clean", voicePackId("nicole", null))
+        assertEquals("radio", voicePackId("matching", "radio"))
+        assertEquals("nova", voicePackId("matching", null))
+        assertEquals("nova", voicePackId("matching", "santa"))
+        assertEquals("radio", voicePackId("radio", "nova"))
+        assertEquals("nova", voicePackId("nicole", null))
     }
 
     @Test
