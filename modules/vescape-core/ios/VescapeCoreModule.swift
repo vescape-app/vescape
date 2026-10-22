@@ -523,6 +523,12 @@ public class VescapeCoreModule: Module {
     Function("previewAlertSound") { (spec: String) in
       self.coordinator.previewAlertSound(spec)
     }
+    // @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/VescapeCoreModule.kt `previewWeatherAlert`
+    // @parity /modules/vescape-core/src/index.ts `previewWeatherAlert`
+    Function("previewWeatherAlert") { (kind: String, leadMinutes: Int, percent: Int?) in
+      guard let line = WeatherAlertLine.preview(kind: kind, leadMinutes: leadMinutes, percent: percent) else { return }
+      self.coordinator.previewWeatherAlert(line)
+    }
     // @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/VescapeCoreModule.kt `playPackSound`
     Function("playPackSound") { (pack: String, slot: String) in
       self.coordinator.playPackSound(pack: pack, slot: slot)

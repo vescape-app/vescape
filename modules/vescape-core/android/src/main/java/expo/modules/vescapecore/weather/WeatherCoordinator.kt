@@ -56,6 +56,9 @@ class WeatherCoordinator internal constructor(
      */
     private var pendingPosition: Pair<Double, Double>? = null
 
+    /** The newest position offered, even one whose fetch failed: where a forced [refresh] asks. */
+    private var lastPosition: Pair<Double, Double>? = null
+
     /** Register a change listener (the JS mirror and the wrist pusher); returns a remover. */
     fun addChangeListener(listener: (Weather?) -> Unit): () -> Unit {
         listeners.add(listener)
@@ -69,6 +72,7 @@ class WeatherCoordinator internal constructor(
      */
     fun onPosition(latitude: Double, longitude: Double) {
         if (!latitude.isFinite() || !longitude.isFinite()) return
+        lastPosition = latitude to longitude
         val known = current
         val stale = known == null ||
             nowMs() - known.fetchedAtMs >= FORECAST_TTL_MS ||
@@ -79,13 +83,14 @@ class WeatherCoordinator internal constructor(
     }
 
     /**
-     * Refetch where the last forecast was fetched, ignoring the freshness gate — the rider asking
-     * for fresh weather. A no-op before the first fetch: there is no position to ask about, and the
-     * next GPS Fix will bring one.
+     * Refetch at the newest known position, ignoring the freshness gate — the rider asking for
+     * fresh weather, or a Board connect that must not announce from a cached forecast. A no-op
+     * before the first GPS Fix: with nothing known, that Fix fetches anyway.
+     * @parity /modules/vescape-core/ios/weather/WeatherCoordinator.swift `refresh`
      */
     fun refresh() {
-        val known = current ?: return
-        refresh(known.latitude, known.longitude)
+        val (latitude, longitude) = lastPosition ?: return
+        refresh(latitude, longitude)
     }
 
     /**

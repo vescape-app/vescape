@@ -1290,27 +1290,35 @@ internal class AlertFeedback(
             previewClip(context, Handler(contextMainLooper()), pack, slot, source = source)
         }
 
+        /**
+         * Speak [voice] after its severity sound without requiring a running board session.
+         */
+        fun previewVoice(context: Context, voice: VoiceAnnouncement, source: String) {
+            val handler = Handler(contextMainLooper())
+            val settings = kotlinx.coroutines.runBlocking { AppDataRepository.get(context).getTypedSettings() }
+            val announcement = voice.copy(wording = VoiceWording.of(settings.voiceLevel))
+            val pack = voicePackId(settings.voice, EffectsPackAssets.voice(context, settings.soundPack))
+            var pcm: VoicePcm? = null
+            var soundDone = false
+            fun speakWhenReady() {
+                if (!soundDone) return
+                pcm?.let { pcm = null; playPcm(it, source, handler) }
+            }
+            voiceExecutor.execute {
+                val joined = VoicePackAssets.join(context, pack, announcement) ?: return@execute
+                handler.post { pcm = joined; speakWhenReady() }
+            }
+            previewClip(context, handler, settings.soundPack, announcement.severity.slot, source = source, doneAfterMs = speechDelayMs(context, settings.soundPack, announcement.severity.slot)) {
+                soundDone = true
+                speakWhenReady()
+            }
+        }
+
         fun preview(context: Context, spec: String, source: String) {
             val handler = Handler(contextMainLooper())
             val settings = kotlinx.coroutines.runBlocking { AppDataRepository.get(context).getTypedSettings() }
             parseVoiceAlertSound(spec)?.let { sound ->
-                val announcement = voiceAnnouncement(sound, null, null, percentAvailable = true, unitSystem = settings.unitSystem)
-                    .copy(wording = VoiceWording.of(settings.voiceLevel))
-                val pack = voicePackId(settings.voice, EffectsPackAssets.voice(context, settings.soundPack))
-                var pcm: VoicePcm? = null
-                var soundDone = false
-                fun speakWhenReady() {
-                    if (!soundDone) return
-                    pcm?.let { pcm = null; playPcm(it, source, handler) }
-                }
-                voiceExecutor.execute {
-                    val joined = VoicePackAssets.join(context, pack, announcement) ?: return@execute
-                    handler.post { pcm = joined; speakWhenReady() }
-                }
-                previewClip(context, handler, settings.soundPack, sound.severity.slot, source = source, doneAfterMs = speechDelayMs(context, settings.soundPack, sound.severity.slot)) {
-                    soundDone = true
-                    speakWhenReady()
-                }
+                previewVoice(context, voiceAnnouncement(sound, null, null, percentAvailable = true, unitSystem = settings.unitSystem), source)
                 return
             }
             val tts = parseTtsAlertSound(spec)

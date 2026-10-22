@@ -2757,6 +2757,11 @@ type VescapeCoreNativeModule = NativeEventEmitter<VescapeCoreEvents> & {
   requestCriticalRideNotificationPermission(): Promise<CriticalRideNotificationPermissionStatus>
   getAlertSounds(): AlertSound[]
   previewAlertSound(spec: AlertSpec): void
+  previewWeatherAlert(
+    kind: WeatherAlertPreviewKind,
+    leadMinutes: number,
+    percent: number | null,
+  ): void
   playPackSound(pack: string, slot: PackSoundSlot): void
   mapTile(z: number, x: number, y: number): Promise<string | null>
   mySounds(): Promise<MySoundsState>
@@ -3266,6 +3271,25 @@ export function getAlertSounds(): AlertSound[] {
 
 export function previewAlertSound(spec: AlertSpec): void {
   native.previewAlertSound(spec)
+}
+
+/**
+ * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/weather/WeatherAlerts.kt `WeatherAlertKind`
+ * @parity /modules/vescape-core/ios/weather/WeatherAlerts.swift `WeatherAlertKind`
+ */
+export type WeatherAlertPreviewKind = 'storm' | 'wind' | 'rain'
+
+/**
+ * Speak the Weather Alert line the evaluator would say: lead 0 is "now", percent applies to rain only.
+ * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/VescapeCoreModule.kt `previewWeatherAlert`
+ * @parity /modules/vescape-core/ios/VescapeCoreModule.swift `previewWeatherAlert`
+ */
+export function previewWeatherAlert(
+  kind: WeatherAlertPreviewKind,
+  leadMinutes: number,
+  percent: number | null,
+): void {
+  native.previewWeatherAlert(kind, leadMinutes, percent)
 }
 
 /**

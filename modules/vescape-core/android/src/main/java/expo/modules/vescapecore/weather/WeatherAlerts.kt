@@ -24,6 +24,7 @@ private const val REARM_MS = 30 * MINUTE_MS
  * The condition a Weather Alert is about. Declaration order is speaking priority, highest first.
  *
  * @parity /modules/vescape-core/ios/weather/WeatherAlerts.swift `WeatherAlertKind`
+ * @parity /modules/vescape-core/src/index.ts `WeatherAlertPreviewKind`
  */
 internal enum class WeatherAlertKind(val voiceKey: String) {
     STORM("weather.storm"),
@@ -101,6 +102,16 @@ internal data class WeatherAlertLine(val kind: WeatherAlertKind, val leadMinutes
             kind.voiceKey,
             listOfNotNull(VoiceValue("duration", leadMinutes), percent?.let { VoiceValue("percent", it) }),
         )
+
+    companion object {
+        /**
+         * The line the evaluator would speak for [kind] (`storm`/`wind`/`rain`), for the dev preview.
+         * @parity /modules/vescape-core/ios/weather/WeatherAlerts.swift `WeatherAlertLine.preview`
+         */
+        fun preview(kind: String, leadMinutes: Int, percent: Int?): WeatherAlertLine? =
+            WeatherAlertKind.entries.firstOrNull { it.name.equals(kind, ignoreCase = true) }
+                ?.let { WeatherAlertLine(it, leadMinutes.coerceAtLeast(0), percent.takeIf { _ -> it == WeatherAlertKind.RAIN }) }
+    }
 }
 
 /**

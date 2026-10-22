@@ -1305,6 +1305,13 @@ internal final class BoardSessionController: VescGattListener {
     } catch { RecordingStorageFailure.reportRead(operation: "alert_preview_settings", error: error) }
   }
 
+  /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/connection/BoardSessionController.kt `previewWeatherAlert`
+  func previewWeatherAlert(_ line: WeatherAlertLine) {
+    do { alertAudioPlayer.applySoundSettings(try appData.getSettings()) }
+    catch { RecordingStorageFailure.reportRead(operation: "alert_preview_settings", error: error) }
+    alertAudioPlayer.speakVoice(line.voiceAnnouncement)
+  }
+
   func playPackSound(pack: String, slot: String) {
     alertAudioPlayer.playPackSound(pack: pack, slot: slot)
   }
@@ -2643,8 +2650,9 @@ internal final class BoardSessionController: VescGattListener {
     setLinkLost(false)
     // The Live Activity flips to "connected" via setPhase → refreshLiveActivity below.
     setPhase(.connected)
-    // A forecast already known at connect speaks now if fresh; a stale one waits for the refresh.
-    weatherAlerts.evaluate(WeatherCoordinator.shared.current)
+    // Weather Alerts never announce from a cached forecast at connect: fetch fresh, and the native
+    // listener evaluates it when it lands, queued behind the connection cues.
+    WeatherCoordinator.shared.refresh()
   }
 
   private func emitTelemetry(_ telemetry: RefloatTelemetry) {

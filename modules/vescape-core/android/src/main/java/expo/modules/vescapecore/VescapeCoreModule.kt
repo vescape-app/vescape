@@ -1,6 +1,7 @@
 package expo.modules.vescapecore
 
 import expo.modules.vescapecore.weather.WeatherAlertLevel
+import expo.modules.vescapecore.weather.WeatherAlertLine
 import expo.modules.vescapecore.watch.WatchLastBatteryPusher
 import expo.modules.kotlin.functions.Queues
 import expo.modules.kotlin.modules.ModuleDefinitionBuilder
@@ -572,6 +573,11 @@ class VescapeCoreModule : Module() {
     }
     Function("previewAlertSound") { spec: String ->
       CoreForegroundService.previewAlertSound(context.applicationContext, spec)
+    }
+    // @parity /modules/vescape-core/ios/VescapeCoreModule.swift `previewWeatherAlert`
+    // @parity /modules/vescape-core/src/index.ts `previewWeatherAlert`
+    Function("previewWeatherAlert") { kind: String, leadMinutes: Int, percent: Int? ->
+      WeatherAlertLine.preview(kind, leadMinutes, percent)?.let { CoreForegroundService.previewWeatherAlert(context.applicationContext, it) }
     }
     // @parity /modules/vescape-core/ios/VescapeCoreModule.swift `playPackSound`
     Function("playPackSound") { pack: String, slot: String ->

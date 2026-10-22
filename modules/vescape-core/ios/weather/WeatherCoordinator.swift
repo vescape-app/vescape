@@ -61,6 +61,9 @@ final class WeatherCoordinator {
   /// started if GPS then stops. Re-evaluated once the in-flight request lands.
   private var pendingPosition: (latitude: Double, longitude: Double)?
 
+  /// The newest position offered, even one whose fetch failed: where a forced `refresh()` asks.
+  private var lastPosition: (latitude: Double, longitude: Double)?
+
   init(
     transport: @escaping WeatherTransport,
     nowMs: @escaping () -> Int64 = { Int64(Date().timeIntervalSince1970 * 1000) }
@@ -82,6 +85,7 @@ final class WeatherCoordinator {
   /// the current forecast was fetched for.
   func onPosition(latitude: Double, longitude: Double) {
     guard latitude.isFinite, longitude.isFinite else { return }
+    lastPosition = (latitude, longitude)
     if let known = current,
        nowMs() - known.fetchedAtMs < Self.forecastTtlMs,
        abs(known.latitude - latitude) < Self.refetchDeltaDeg,
@@ -91,12 +95,13 @@ final class WeatherCoordinator {
     refresh(latitude: latitude, longitude: longitude)
   }
 
-  /// Refetch where the last forecast was fetched, ignoring the freshness gate — the rider asking for
-  /// fresh weather. A no-op before the first fetch: there is no position to ask about, and the next
-  /// GPS Fix will bring one.
+  /// Refetch at the newest known position, ignoring the freshness gate — the rider asking for fresh
+  /// weather, or a Board connect that must not announce from a cached forecast. A no-op before the
+  /// first GPS Fix: with nothing known, that Fix fetches anyway.
+  /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/weather/WeatherCoordinator.kt `refresh`
   func refresh() {
-    guard let known = current else { return }
-    refresh(latitude: known.latitude, longitude: known.longitude)
+    guard let position = lastPosition else { return }
+    refresh(latitude: position.latitude, longitude: position.longitude)
   }
 
   /// Fetch now for an explicit position, ignoring the freshness gate. A refresh asked for while one

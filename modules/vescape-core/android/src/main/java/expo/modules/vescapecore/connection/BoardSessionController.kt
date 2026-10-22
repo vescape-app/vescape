@@ -95,6 +95,7 @@ import expo.modules.vescapecore.watch.WatchRouteMirror
 import expo.modules.vescapecore.watch.WatchSnapshot
 import expo.modules.vescapecore.watch.WatchTiltControl
 import expo.modules.vescapecore.weather.Weather
+import expo.modules.vescapecore.weather.WeatherAlertLine
 import expo.modules.vescapecore.weather.WeatherAlertMonitor
 import expo.modules.vescapecore.weather.WeatherAlertSettings
 import expo.modules.vescapecore.weather.WeatherCoordinator
@@ -2499,8 +2500,9 @@ internal class BoardSessionController(private val service: CoreForegroundService
         // and one that landed outside it raises demand back to `Ride`.
         setLinkLost(false)
         transitionBoardPhase(BoardPhase.Connected)
-        // A forecast already known at connect speaks now if fresh; a stale one waits for the refresh.
-        weatherAlerts.evaluate(weatherCoordinator.current)
+        // Weather Alerts never announce from a cached forecast at connect: fetch fresh, and the
+        // change listener evaluates it when it lands, queued behind the connection cues.
+        weatherCoordinator.refresh()
     }
 
     /** @parity /modules/vescape-core/ios/connection/BoardSessionController.swift `onTelemetryStaleFired` */
@@ -3702,6 +3704,11 @@ internal class BoardSessionController(private val service: CoreForegroundService
 
     fun previewAlertSound(spec: String) {
         alertFeedback.preview(spec)
+    }
+
+    /** @parity /modules/vescape-core/ios/connection/BoardSessionController.swift `previewWeatherAlert` */
+    internal fun previewWeatherAlert(line: WeatherAlertLine) {
+        alertFeedback.speakVoice(line.voiceAnnouncement())
     }
 
     private fun closeAppTask() {

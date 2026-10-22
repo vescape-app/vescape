@@ -109,6 +109,24 @@ final class WeatherCoordinatorTests: XCTestCase {
     XCTAssertEqual(transport.urls.count, 0)
   }
 
+  func testAConnectRefreshAnnouncesOnlyTheFreshForecastNeverTheCachedOne() {
+    coordinator.onPosition(latitude: 52.2, longitude: 21.0)
+    transport.resolveLast(forecastBody(20))
+    var seen: [Int] = []
+    _ = coordinator.addNativeChangeListener { seen.append($0.temperatureC) }
+    // The last Fix failed to fetch, but it is still where the rider is.
+    coordinator.onPosition(latitude: 52.4, longitude: 21.0)
+    transport.resolveLast(nil)
+
+    // Inside the freshness gate, yet the connect fetches anew and stays quiet until it lands.
+    coordinator.refresh()
+    XCTAssertTrue(transport.urls.last?.contains("latitude=52.4") == true)
+    XCTAssertEqual(seen, [])
+
+    transport.resolveLast(forecastBody(14))
+    XCTAssertEqual(seen, [14])
+  }
+
   func testNotifiesListenersOnEverySuccessfulRefreshOnly() {
     var seen: [Int?] = []
     coordinator.onChange = { seen.append($0?.temperatureC) }

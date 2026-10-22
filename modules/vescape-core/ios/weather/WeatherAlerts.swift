@@ -15,6 +15,7 @@ private let rearmMs: Int64 = 30 * minuteMs
 
 /// The condition a Weather Alert is about. Declaration order is speaking priority, highest first.
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/weather/WeatherAlerts.kt `WeatherAlertKind`
+/// @parity /modules/vescape-core/src/index.ts `WeatherAlertPreviewKind`
 enum WeatherAlertKind: String, CaseIterable {
   case storm = "weather.storm"
   case wind = "weather.wind"
@@ -108,6 +109,13 @@ struct WeatherAlertLine: Equatable {
     var values = [VoiceValue(type: "duration", value: leadMinutes)]
     if let percent { values.append(VoiceValue(type: "percent", value: percent)) }
     return VoiceAnnouncement(severity: .warning, key: kind.voiceKey, values: values)
+  }
+
+  /// The line the evaluator would speak for `kind` (`storm`/`wind`/`rain`), for the dev preview.
+  /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/weather/WeatherAlerts.kt `WeatherAlertLine.preview`
+  static func preview(kind: String, leadMinutes: Int, percent: Int?) -> WeatherAlertLine? {
+    guard let kind = WeatherAlertKind(rawValue: "weather.\(kind.lowercased())") else { return nil }
+    return WeatherAlertLine(kind: kind, leadMinutes: max(leadMinutes, 0), percent: kind == .rain ? percent : nil)
   }
 }
 

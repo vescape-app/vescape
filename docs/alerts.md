@@ -394,8 +394,12 @@ Forecast-driven voice lines about weather coming at the rider within 3 h. Native
 - **Escalation only:** a downgrade, delay or vanished event (also across the 1 h series handover)
   is silent and keeps the state. After 30 min with no slot over the threshold the kind re-arms.
 - **Stale guard:** a forecast older than `WEATHER_ALERT_MAX_FORECAST_AGE_MS` (30 min) is silent.
-- **Lifecycle:** evaluated on board-ready and on every forecast refresh, only while the Board is
-  `Connected`. State survives Bluetooth dropouts and is cleared when the dropout grace ends the ride.
+- **Lifecycle:** evaluated on every forecast refresh, only while the Board is `Connected`. Board-ready
+  never evaluates the cached forecast: it forces a fresh fetch at the newest GPS Fix past the
+  10 min / 1 km gate (`WeatherCoordinator.refresh`; before any Fix, the first Fix fetches), and the
+  result is evaluated when it lands. Its line queues behind the connection cues and settle window,
+  so it plays when both are done; it is queued only on landing, so the 30 s advisory expiry never
+  runs while the fetch is out. A failed fetch is silent; the next Fix past the gate retries. State survives Bluetooth dropouts and is cleared when the dropout grace ends the ride.
 - **Voice:** `weather.<kind>` + `duration` and `weather.<kind>.now` for `storm`, `wind`, `rain`;
   only rain adds `percent` (nearest 10, 10–100) on lines above 1 h. At `warning` severity through `speakAdvisory`. Silent at Voice level Off. HEV
   adds endings at Full ("seek shelter", "reduce speed"); Clean has none.
