@@ -3,6 +3,8 @@ import type { LocationEvent } from 'vescape-core'
 
 export interface NavigationDiagnosticsState {
   /** Session-only map debug overlay; never changes GPS acquisition or recording. */
+  showDisplayTrail: boolean
+  setShowDisplayTrail: (visible: boolean) => void
   showRawGps: boolean
   setShowRawGps: (visible: boolean) => void
   showProjectionConnector: boolean
@@ -44,6 +46,8 @@ const INITIAL_SNAPSHOT: NavigationDiagnosticsSnapshot = {
 
 export const useNavigationDiagnosticsStore = create<NavigationDiagnosticsState>((set) => ({
   ...INITIAL_SNAPSHOT,
+  showDisplayTrail: true,
+  setShowDisplayTrail: (showDisplayTrail) => set({ showDisplayTrail }),
   showRawGps: true,
   setShowRawGps: (showRawGps) => set({ showRawGps }),
   showProjectionConnector: false,

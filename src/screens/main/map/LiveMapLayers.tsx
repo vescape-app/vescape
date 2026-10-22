@@ -4,6 +4,7 @@ import type { GpsDisplayAnimator } from '@/modules/map/hooks/useGpsDisplayAnimat
 import { processColor } from 'react-native'
 
 import { theme } from '@/constants/theme'
+import { GpsDisplayTrail } from '@/screens/main/map/GpsDisplayTrail'
 import { usePuckHeadingSpring } from '@/modules/map/hooks/usePuckHeadingSpring'
 import { useNavigationDiagnosticsStore } from '@/modules/map/store/navigationDiagnosticsStore'
 import { liveTrailParts } from '@/modules/map/lib/liveTrailPrefix'
@@ -157,6 +158,7 @@ export function LiveMapLayers({
           />
         </ShapeSource>
       )}
+      <GpsDisplayTrail />
       {accuracyFix && (
         <>
           {accuracyShape && (

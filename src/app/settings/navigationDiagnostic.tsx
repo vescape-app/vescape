@@ -20,6 +20,8 @@ import { useNavigationDiagnosticsStore } from '@/modules/map/store/navigationDia
 import { useSettingsStore } from '@/modules/settings/store/settingsStore'
 
 export default function NavigationDiagnosticScreen() {
+  const showDisplayTrail = useNavigationDiagnosticsStore((s) => s.showDisplayTrail)
+  const setShowDisplayTrail = useNavigationDiagnosticsStore((s) => s.setShowDisplayTrail)
   const showRawGps = useNavigationDiagnosticsStore((s) => s.showRawGps)
   const setShowRawGps = useNavigationDiagnosticsStore((s) => s.setShowRawGps)
   const progress = useMapStore((s) => s.routeProgress)
@@ -68,6 +70,12 @@ export default function NavigationDiagnosticScreen() {
             label="Raw GPS point"
             hint="Show the latest unmodified GPS fix on the map"
             right={<Switch value={showRawGps} onValueChange={setShowRawGps} />}
+          />
+          <SettingsRow
+            icon={MapPinIcon}
+            label="White display trail"
+            hint="20 Hz display-model trace · last 5 minutes · toggle off to clear"
+            right={<Switch value={showDisplayTrail} onValueChange={setShowDisplayTrail} />}
           />
           <GpsDisplayControls />
         </SettingsCard>

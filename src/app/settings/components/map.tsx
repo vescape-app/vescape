@@ -1,3 +1,4 @@
+import { GpsDisplayTrailLayer } from '@/modules/map/components/GpsDisplayTrailLayer'
 import { GpsDisplayControls } from '@/modules/map/components/GpsDisplayControls'
 import Mapbox, { Camera, MapView } from '@rnmapbox/maps'
 import { SlidersHorizontalIcon } from 'phosphor-react-native'
@@ -46,6 +47,20 @@ import { MainMapLayers, HistoryMapLayers } from '@/screens/main/map/MainMapLayer
 import { SatelliteImageryLayer } from '@/screens/main/map/SatelliteImageryLayer'
 import { DASH } from '@/helpers/format'
 
+const DISPLAY_TRAIL_FIXTURE: GeoJSON.Feature<GeoJSON.MultiLineString> = {
+  type: 'Feature',
+  properties: {},
+  geometry: {
+    type: 'MultiLineString',
+    coordinates: [
+      (FIXTURE_LIVE_TRAIL_SHAPE?.geometry.coordinates ?? []).map(([lng, lat], i) => [
+        lng + Math.sin(i * 0.6) * 0.00004,
+        lat + 0.00003,
+      ]),
+    ],
+  },
+}
+
 Mapbox.setAccessToken(MAPBOX_ACCESS_TOKEN)
 
 const HISTORY_METRIC_OPTIONS: { key: HistoryMetricKey; label: string }[] = [
@@ -62,6 +77,7 @@ export default function MapComponentsShowcase() {
   const [styleKey, setStyleKey] = useState<MapStyleKey>('onedark')
   const resolvedTheme = useThemeStore((state) => state.resolvedTheme)
   const [styleExpanded, setStyleExpanded] = useState(false)
+  const [showDisplayTrail, setShowDisplayTrail] = useState(true)
   const [weatherActive, setWeatherActive] = useState(false)
   const [legalLimitsActive, setLegalLimitsActive] = useState(false)
   const [mapPoints] = useState<MapPoint[]>(FIXTURE_MAP_POINTS)
@@ -187,6 +203,7 @@ export default function MapComponentsShowcase() {
           onOpenMedia={(asset) => setLastEvent(`Media: ${asset.filename}`)}
           highContrastRoutes={isSatellite}
         />
+        {showDisplayTrail && <GpsDisplayTrailLayer shape={DISPLAY_TRAIL_FIXTURE} />}
       </MapView>
 
       <View style={styles.topRight} pointerEvents="box-none">
@@ -231,6 +248,11 @@ export default function MapComponentsShowcase() {
         title="Map options"
         onClose={() => setSheetVisible(false)}
       >
+        <ToggleRow
+          label="White display trail"
+          value={showDisplayTrail}
+          onToggle={setShowDisplayTrail}
+        />
         <ToggleRow label="Weather radar" value={weatherActive} onToggle={setWeatherActive} />
         <ToggleRow label="Legal limits" value={legalLimitsActive} onToggle={setLegalLimitsActive} />
         <ChipRow
