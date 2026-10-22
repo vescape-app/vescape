@@ -6,7 +6,7 @@ import { IconHero } from '@/components/settings/IconHero'
 import { theme } from '@/constants/theme'
 import { AlertSoundProbe } from '@/screens/showcase/sounds/AlertSoundProbe'
 import { TtsProbe } from '@/screens/showcase/sounds/TtsProbe'
-import { VoiceProbe } from '@/screens/showcase/sounds/VoiceProbe'
+import { VoiceProbe, WeatherProbe } from '@/screens/showcase/sounds/VoiceProbe'
 
 export default function AlertSoundsDevScreen() {
   return (
@@ -17,6 +17,7 @@ export default function AlertSoundsDevScreen() {
           description="Severity sounds, Geiger, voice lines and TTS, played without a board."
         />
         <VoiceProbe />
+        <WeatherProbe />
         <AlertSoundProbe />
         <TtsProbe />
       </ScrollView>

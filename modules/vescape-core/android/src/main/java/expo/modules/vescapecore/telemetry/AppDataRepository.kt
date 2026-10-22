@@ -1,5 +1,7 @@
 package expo.modules.vescapecore.telemetry
 
+import expo.modules.vescapecore.weather.WEATHER_ALERT_LEVEL_DEFAULT
+import expo.modules.vescapecore.weather.WEATHER_ALERT_LEVEL_SETTINGS
 import expo.modules.vescapecore.config.BoardConfigValues
 import expo.modules.vescapecore.config.MotorConfigValues
 import expo.modules.vescapecore.config.BoardConfigChangeNotice
@@ -479,6 +481,8 @@ class AppDataRepository private constructor(private val context: Context) {
       audioSource = req("audioSource", "alarm") { (it as? String)?.takeIf { source -> source == "alarm" || source == "media" } },
       voice = req("voice", VOICE_MATCHING, ::validVoice),
       voiceLevel = req("voiceLevel", VOICE_LEVEL_DEFAULT) { (it as? String)?.takeIf { level -> level in VOICE_LEVELS } },
+      weatherRainAlertLevel = req("weatherRainAlertLevel", WEATHER_ALERT_LEVEL_DEFAULT, ::validWeatherAlertLevel),
+      weatherWindAlertLevel = req("weatherWindAlertLevel", WEATHER_ALERT_LEVEL_DEFAULT, ::validWeatherAlertLevel),
       telemetryPollRateHz = req("telemetryPollRateHz", 20, ::validTelemetryPollRateHz),
       wearPushRateHz = req("wearPushRateHz", 4, ::validWearPushRateHz),
       wearAutoLaunchOnConnect = req("wearAutoLaunchOnConnect", true) { it as? Boolean },
@@ -574,6 +578,7 @@ class AppDataRepository private constructor(private val context: Context) {
       "audioSource" -> (value as? String)?.takeIf { it == "alarm" || it == "media" } ?: return@withContext
       "voice" -> validVoice(value) ?: return@withContext
       "voiceLevel" -> (value as? String)?.takeIf { it in VOICE_LEVELS } ?: return@withContext
+      "weatherRainAlertLevel", "weatherWindAlertLevel" -> validWeatherAlertLevel(value) ?: return@withContext
       "telemetryPollRateHz" ->
         validTelemetryPollRateHz(value) ?: return@withContext
       "wearPushRateHz" ->
@@ -643,6 +648,8 @@ class AppDataRepository private constructor(private val context: Context) {
         "audioSource" -> d.audioSource
         "voice" -> d.voice
         "voiceLevel" -> d.voiceLevel
+        "weatherRainAlertLevel" -> d.weatherRainAlertLevel
+        "weatherWindAlertLevel" -> d.weatherWindAlertLevel
         "telemetryPollRateHz" -> d.telemetryPollRateHz
         "wearPushRateHz" -> d.wearPushRateHz
         "wearAutoLaunchOnConnect" -> d.wearAutoLaunchOnConnect
@@ -1026,6 +1033,8 @@ fun AppSettings.toMap(): Map<String, Any?> = mapOf(
   "audioSource" to audioSource,
   "voice" to voice,
   "voiceLevel" to voiceLevel,
+  "weatherRainAlertLevel" to weatherRainAlertLevel,
+  "weatherWindAlertLevel" to weatherWindAlertLevel,
   "telemetryPollRateHz" to telemetryPollRateHz,
   "wearPushRateHz" to wearPushRateHz,
   "wearAutoLaunchOnConnect" to wearAutoLaunchOnConnect,
@@ -1050,6 +1059,9 @@ fun AppSettings.toMap(): Map<String, Any?> = mapOf(
   "legalPolicy" to legalPolicy,
   "dismissedCommunityMessageIds" to dismissedCommunityMessageIds,
 )
+
+private fun validWeatherAlertLevel(value: Any?): String? =
+  (value as? String)?.takeIf { it in WEATHER_ALERT_LEVEL_SETTINGS }
 
 private fun normalizeLegalPolicy(raw: Any): Map<String, String>? {
   val code = (raw.asStringKeyMap()?.get("jurisdictionCode") as? String)

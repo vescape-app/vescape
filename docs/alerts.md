@@ -95,15 +95,15 @@ Speech comes from a second app-wide choice next to Sound effects:
   `system.error`, `ride.end`, and each `groupRide.*` cue under its own key). Off, Minimal and
   Standard play their effect only; settings previews of a pack's cues never speak. Custom rules
   speak whatever the level, with its wording (Off reads as Standard).
-- **Group Ride cues**: `groupRide.created` (a new nearby or own ride; JS fires it, the nearby
-  filter lives there), and natively from `GroupRideObserver`: `groupRide.joined` (the rider joined),
+- **Group Ride cues**, all native from `GroupRideObserver`: `groupRide.created` (a new ride the
+  rider created, or one within the 40 km nearby radius of the latest GPS position), `groupRide.joined` (the rider joined),
   `groupRide.riderJoined` / `groupRide.riderLeft` (someone else in the joined ride's roster),
   `groupRide.lost` (the joined ride's relay socket dropped), `groupRide.restored` (rejoined after a
   loss). All are gated by the app sounds switch (`connectionSoundsEnabled`).
 
 A `voice(<severity>):<key>:<value>` sound plays the effects pack's `severity.<severity>` sound
 once, then the voice line, starting once the sound has finished, or 1.5 s after it starts if it runs longer (the same timing as TTS). Native
-joins the line's `start` clip, the value clip, and the `end` clip into one PCM buffer
+joins the line's `start` clip, its value clips in order, and the `end` clip into one PCM buffer
 (`VoicePacks.kt`, `VoicePacks.swift`) and plays it: Android through a static `AudioTrack` on the
 selected alarm/media stream, iOS through the player's `AVAudioEngine`. Leading encoder priming and
 silence (at most 2048 frames) is trimmed from each clip before joining. Line clips of the selected
@@ -117,6 +117,13 @@ stay cached.
   under imperial units. Degrees are °C, converted
   to °F under imperial units before rounding to the nearest clip (degree clips say only
   "degrees", −30…300). A missing value clip is skipped.
+- **Multi-value lines**: a `VoiceAnnouncement` carries an ordered list of `VoiceValue(type, value)`;
+  the type travels with each value, so one line can say "Rain" + "in two and a half hours" +
+  "thirty percent". Alerts from a sound string carry one value, typed by the key (`voiceKeys` in
+  `catalog.json`). The voice layer plays the exact clip of each value or skips it when the pack has
+  none; the rest of the line still plays. Mapping a raw number onto the declared clip set is the
+  caller's job. The joined buffer plays as one item, so its completion fires once after the last
+  clip (or once on interrupt).
 - **Line**: Minimal reads the generic `<key>` only; Standard and Full read `<key>.<severity>`, else
   `<key>`; no line plays the severity sound only (never silence). The level then picks the phrases:
   Minimal `minimal` (else `start`), Standard `start`, Full `full.start` (else `start`) and then one
@@ -157,7 +164,7 @@ way and decoded per clip (see [Voice](#voice)).
 ```text
 scripts/alert-packs/
   EFFECTS.md            effects pack slots, format, and sox recipes (hand-made, not generated)
-  catalog.json          voice keys + value type, value ranges
+  catalog.json          voice keys + value type, clip set per value type
   voice-<id>.json       Kokoro voice + speed, sox voice fx chain, unit words, lines per key
   generate.ts           voice manifests → packs;  kokoro.py  TTS helper;  packs.ts  shared checks
 shared/alerts/packs/
@@ -181,7 +188,11 @@ shared/alerts/packs/
   `endChance` 0.2 so they stay a surprise.
 - **Value clips**: one clip per number with its unit, spelled out (`minus five degrees.`):
   percent 0–100, degrees −30…300 (the clip says only "degrees", shared by °C and °F), number
-  0–100 with no unit. Speed and duty use bare numbers and a generic line ("Speed…") with no
+  0–100 with no unit, and duration 15, 30, 45, 60, 90, 120, 150, 180 minutes with its preposition
+  (`in forty-five minutes.`, `in one hour.`, `in two and a half hours.`). `catalog.json` `values`
+  declares each type's clip set: a `{ min, max }` range, or a list (`duration`). A pack's `pack.json`
+  `values` maps each type to `{ "<n>": "values/<type>/<n>.m4a" }`; `duration` is keyed by minutes
+  (`"15"`…`"180"`), the same shape as `percent`. Every pack carries every declared clip. Speed and duty use bare numbers and a generic line ("Speed…") with no
   severity lines: the alert is time-critical, so it stays as short as possible.
 - **Format**: AAC-LC in `.m4a`, mono 22 050 Hz, 40 kbit/s, for both effects and voice. Android
   `MediaCodec` and iOS `AVAudioFile` both decode it; Ogg Opus has no iOS decoder. Native must drop
@@ -314,11 +325,90 @@ delay:
 - A sound starting 150 ms or more after its request (`ALERT_AUDIO_LATENCY_REPORT_MS`) records one
   `alert_audio_latency` Diagnostic Event (`sound`, `latency_ms`, `path`) per sound per session.
 
+### Announcement Queue
+
+Everything that is not a telemetry alert plays through the native **Announcement Queue**
+(`AnnouncementQueue.kt` / `AnnouncementQueue.swift`, one per alert player, confined to its audio
+thread). See [ADR-0040](./adr/0040-announcement-queue-serializes-non-critical-audio.md).
+
+- **Members today:** every app cue — `on`, `off`, `error`, `ride.end`, every `groupRide.*` — and
+  [Weather Alert](#weather-alerts) lines. Battery-at-connect lines are a planned producer. Phone
+  only; the watch is unaffected.
+- **Priority** (`AnnouncementPriority`), then oldest first: `CONNECTION` (`on`, `off`, `error`;
+  expires after 10 s) › `ADVISORY` (`ride.end`, weather lines; 30 s) › `SOCIAL` (`groupRide.*`; 20 s). An item still
+  waiting at its expiry is dropped, never played late.
+- **One at a time:** the next item starts once the current one reports its `PlaybackOutcome`
+  (effect, then voice line at Full).
+- **Settle window:** a connect opens a 4 s window (`ANNOUNCEMENT_SETTLE_MS`). Connection items play
+  in it; everything else waits until it ends and the connect cue has finished.
+- **Pre-emption:** a single-threshold alert's severity sound or spoken line (`playSingle`,
+  `speakVoice`, `speakAfterSeverity`) plays immediately and holds the queue while it plays. The queued
+  item playing at that moment is stopped (its speech cut; a short effect may tail out), then put back
+  once unless it expired. The queue resumes 2 s (`ANNOUNCEMENT_QUIET_GAP_MS`) after the last critical
+  item ends.
+- **Geiger ticks and sustained tones never hold the queue** — they run continuously, so holding on
+  them would starve it.
+- **Disconnect** drops everything queued (the playing item included) before queuing `off`;
+  releasing the player drops it all.
+
 When multiple alerts fire on the same packet, SoundPool lets their clips or geiger loops overlap.
 Within a single evaluation, the most urgent alert is sorted first for telemetry display
 (Geiger over simple; higher threshold for above-direction controls, lower threshold for below-direction).
 Single-threshold alerts then coalesce per control: only the most urgent announces, and the rest
 latch silently — they are past their thresholds, so they are spent rather than pending.
+
+### Weather Alerts
+
+Forecast-driven voice lines about weather coming at the rider within 3 h. Native only:
+`WeatherAlerts.kt` / `WeatherAlerts.swift` hold the pure **Weather Alert Evaluator**
+(`evaluateWeatherAlerts`) and the `WeatherAlertMonitor` the Board Session owns.
+
+- **Kinds:** storm, rain, wind (`WeatherAlertKind`), on two independent tracks (`WeatherAlertTrack`):
+  storm/rain and wind.
+- **Settings:** App Settings `weatherRainAlertLevel` and `weatherWindAlertLevel`
+  (`off` / `sensitive` / `normal` / `extreme`, default `normal`), set from the Weather settings
+  sheet behind the "…" button at the top right of Weather mode. Storms have no setting: they always speak.
+  Native owns each level's thresholds (`WeatherAlertLevel`) and applies the settings live
+  (`WeatherAlertSettings`); the sheet shows the gust gates (in the rider's speed unit) and rain chance via
+  `getWeatherAlertThresholds`. A kind turned off forgets its event and never suppresses a
+  different kind.
+- **Priority:** storm and rain are exclusive: while storm has an active event, rain is silent but
+  still tracks its ladder, so rungs it passes are consumed and it never speaks a stale rung once the
+  storm clears. Wind is independent: its own event, ladder and re-arm; it neither suppresses nor is
+  suppressed by storm/rain. When both tracks have a line due in one evaluation, the storm/rain line
+  is enqueued first, then wind.
+- **Data:** the Weather Coordinator's Open-Meteo forecast adds hourly `precipitation`,
+  `wind_gusts_10m` and 12 `minutely_15` slots (`precipitation`, `weather_code`, `wind_gusts_10m`).
+  Slots are absolute epoch times (`utc_offset_seconds`); each value describes the period before its
+  timestamp, so a slot starts at timestamp − period. `minutely_15` precipitation is ×4 to mm/h.
+- **Gate (rain):** a slot more than 1 h out counts from the hourly series at the level's chance and
+  intensity (Sensitive ≥30 %, ≥0.3 mm/h; Normal ≥50 %, ≥1 mm/h; Extreme ≥70 %, ≥4 mm/h); at 1 h
+  or less from `minutely_15` at the intensity alone, no probability gate. The event is the
+  earliest counting slot; its lead is measured to the slot's start.
+- **Gate (storm):** `weather_code` 95/96/99 (thunderstorm only), no probability gate, in both
+  series. Freezing drizzle/rain (56/57/66/67) is not storm; it counts as rain only through the rain gate.
+- **Gate (wind):** `wind_gusts_10m` (peak over the slot) ≥40 / ≥55 / ≥70 km/h at Sensitive /
+  Normal / Severe, no probability gate.
+- **Ladder:** the first line speaks the lead rounded down — to 30 min above 1 h (capped at 3 h), to
+  15 min from 15 to 60 min, "now" under 15 or already raining. It consumes every rung at or above
+  it. After that only a closer rung (2 h, 1 h, 30, 15 min, now) speaks, once; a jump closer speaks
+  the new rung only.
+- **Gap:** a rung above 1 h less than 30 min after the previous line of the same track is skipped
+  (consumed). Per track, so a wind line never starves a storm/rain rung or the reverse.
+- **Escalation only:** a downgrade, delay or vanished event (also across the 1 h series handover)
+  is silent and keeps the state. After 30 min with no slot over the threshold the kind re-arms.
+- **Stale guard:** a forecast older than `WEATHER_ALERT_MAX_FORECAST_AGE_MS` (30 min) is silent.
+- **Lifecycle:** evaluated on every forecast refresh, only while the Board is `Connected`. Board-ready
+  never evaluates the cached forecast: it forces a fresh fetch at the newest GPS Fix past the
+  10 min / 1 km gate (`WeatherCoordinator.refresh`; before any Fix, the first Fix fetches), and the
+  result is evaluated when it lands. Its line queues behind the connection cues and settle window,
+  so it plays when both are done; it is queued only on landing, so the 30 s advisory expiry never
+  runs while the fetch is out. A failed fetch is silent; the next Fix past the gate retries. State survives Bluetooth dropouts and is cleared when the dropout grace ends the ride.
+- **Voice:** `weather.<kind>` + `duration` and `weather.<kind>.now` for `storm`, `wind`, `rain`;
+  storm and rain add `percent` (the slot's precipitation probability, nearest 10, 10–100) on lines
+  above 1 h; nearer lines read `minutely_15`, which has no probability, and `.now` lines never do. At `warning` severity through `speakAdvisory`. Silent at Voice level Off. Radio
+  adds endings at Full ("seek shelter", "reduce speed"); Nova has none. Nicole adds
+  playful Full variants and occasional endings while keeping the weather kind and lead time explicit.
 
 ## Message mode
 

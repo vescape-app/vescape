@@ -115,6 +115,25 @@ class WeatherCoordinatorTest {
     }
 
     @Test
+    fun `a connect refresh announces only the fresh forecast, never the cached one`() {
+        coordinator.onPosition(52.2, 21.0)
+        transport.resolveLast(forecastBody(20))
+        val seen = mutableListOf<Int?>()
+        coordinator.addChangeListener { seen.add(it?.temperatureC) }
+        // The last Fix failed to fetch, but it is still where the rider is.
+        coordinator.onPosition(52.4, 21.0)
+        transport.resolveLast(null)
+
+        // Inside the freshness gate, yet the connect fetches anew and stays quiet until it lands.
+        coordinator.refresh()
+        assertTrue(transport.urls.last().contains("latitude=52.4"))
+        assertEquals(emptyList<Int?>(), seen)
+
+        transport.resolveLast(forecastBody(14))
+        assertEquals(listOf<Int?>(14), seen)
+    }
+
+    @Test
     fun `notifies listeners on every successful refresh only`() {
         val seen = mutableListOf<Int?>()
         coordinator.addChangeListener { seen.add(it?.temperatureC) }

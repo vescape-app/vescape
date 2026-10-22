@@ -3,6 +3,7 @@ package expo.modules.vescapecore.service
 import expo.modules.vescapecore.accessory.AccessorySessionManager
 import expo.modules.vescapecore.alerts.AlertFeedback
 import expo.modules.vescapecore.connection.BoardSessionController
+import expo.modules.vescapecore.weather.WeatherAlertLine
 import expo.modules.vescapecore.connection.BoardTransport
 import expo.modules.vescapecore.notification.NotificationController
 import expo.modules.vescapecore.config.PendingConfigRead
@@ -526,13 +527,12 @@ class CoreForegroundService : Service() {
             instance?.controller?.previewAlertSound(spec) ?: AlertFeedback.preview(context, spec, kotlinx.coroutines.runBlocking { AppDataRepository.get(context).getTypedSettings().audioSource })
         }
 
-        fun playPackSound(context: Context, pack: String, slot: String) {
-            AlertFeedback.previewPackSound(context, pack, slot, kotlinx.coroutines.runBlocking { AppDataRepository.get(context).getTypedSettings().audioSource })
+        internal fun previewWeatherAlert(context: Context, line: WeatherAlertLine) {
+            instance?.controller?.previewWeatherAlert(line) ?: AlertFeedback.previewVoice(context, line.voiceAnnouncement(), kotlinx.coroutines.runBlocking { AppDataRepository.get(context).getTypedSettings().audioSource })
         }
 
-        /** App cue [cue] from the active pack, its voice line after at Voice level `full`. */
-        fun playAppCue(cue: String) {
-            instance?.controller?.playAppCue(cue)
+        fun playPackSound(context: Context, pack: String, slot: String) {
+            AlertFeedback.previewPackSound(context, pack, slot, kotlinx.coroutines.runBlocking { AppDataRepository.get(context).getTypedSettings().audioSource })
         }
 
         fun alertSoundPresets(): List<Map<String, Any>> = alertSoundMaps()

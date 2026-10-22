@@ -1,10 +1,4 @@
-import {
-  playAppCue,
-  type AppSoundCueId,
-  type PackSoundSlot,
-  type SoundOverrideSlot,
-} from 'vescape-core'
-import { useSettingsStore } from '@/modules/settings/store/settingsStore'
+import type { PackSoundSlot, SoundOverrideSlot } from 'vescape-core'
 
 /**
  * Built-in effects packs: each fills the positive/info/warning/critical and geiger slots (optional
@@ -125,8 +119,3 @@ export const PACK_PREVIEW_ROWS: { slot: PackSoundSlot; label: string }[][] = [
     labeled,
   ),
 ]
-
-/** Play `cue` as the app does (effect, then voice at Full) unless app sounds are off. */
-export function playSelectedAppSound(cue: AppSoundCueId) {
-  if (useSettingsStore.getState().connectionSoundsEnabled) playAppCue(cue)
-}

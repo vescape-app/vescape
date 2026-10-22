@@ -1,5 +1,7 @@
 package expo.modules.vescapecore
 
+import expo.modules.vescapecore.weather.WeatherAlertLevel
+import expo.modules.vescapecore.weather.WeatherAlertLine
 import expo.modules.vescapecore.watch.WatchLastBatteryPusher
 import expo.modules.kotlin.functions.Queues
 import expo.modules.kotlin.modules.ModuleDefinitionBuilder
@@ -572,13 +574,14 @@ class VescapeCoreModule : Module() {
     Function("previewAlertSound") { spec: String ->
       CoreForegroundService.previewAlertSound(context.applicationContext, spec)
     }
+    // @parity /modules/vescape-core/ios/VescapeCoreModule.swift `previewWeatherAlert`
+    // @parity /modules/vescape-core/src/index.ts `previewWeatherAlert`
+    Function("previewWeatherAlert") { kind: String, leadMinutes: Int, percent: Int? ->
+      WeatherAlertLine.preview(kind, leadMinutes, percent)?.let { CoreForegroundService.previewWeatherAlert(context.applicationContext, it) }
+    }
     // @parity /modules/vescape-core/ios/VescapeCoreModule.swift `playPackSound`
     Function("playPackSound") { pack: String, slot: String ->
       CoreForegroundService.playPackSound(context.applicationContext, pack, slot)
-    }
-    // @parity /modules/vescape-core/ios/VescapeCoreModule.swift `playAppCue`
-    Function("playAppCue") { cue: String ->
-      CoreForegroundService.playAppCue(cue)
     }
     registerMySounds()
     // @parity /modules/vescape-core/ios/VescapeCoreModule.swift `mapTile`
@@ -627,6 +630,12 @@ class VescapeCoreModule : Module() {
     // @parity /modules/vescape-core/ios/VescapeCoreModule.swift `getWeather`
     Function("getWeather") {
       WeatherCoordinator.get().current?.toMap()
+    }
+    // @parity /modules/vescape-core/ios/VescapeCoreModule.swift `getWeatherAlertThresholds`
+    Function("getWeatherAlertThresholds") {
+      WeatherAlertLevel.entries.associate {
+        it.key to mapOf("gustKmh" to it.wind.minGustKmh, "rainPercent" to it.rain.minProbabilityPercent)
+      }
     }
     // @parity /modules/vescape-core/ios/VescapeCoreModule.swift `refreshWeather`
     Function("refreshWeather") {
@@ -1496,7 +1505,9 @@ class VescapeCoreModule : Module() {
         key == "soundPack" ||
         key == "audioSource" ||
         key == "voice" ||
-        key == "voiceLevel"
+        key == "voiceLevel" ||
+        key == "weatherRainAlertLevel" ||
+        key == "weatherWindAlertLevel"
       ) {
         CoreForegroundService.reloadTelemetrySettings(context.applicationContext)
       }

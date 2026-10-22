@@ -162,6 +162,60 @@
           "Have a very safe day."
         ]
       }
+    },
+    "weather.storm": {
+      "start": ["Warning. Electrical storm detected..."],
+      "minimal": ["Storm..."],
+      "full": {
+        "start": ["Warning. Electrical storm detected...", "Caution. Storm front approaching..."],
+        "end": ["Seek shelter.", "Locate cover immediately."],
+        "endChance": 0.5
+      }
+    },
+    "weather.storm.now": {
+      "start": ["Warning. Storm imminent."],
+      "minimal": ["Storm imminent."],
+      "full": {
+        "start": ["Warning. Storm imminent.", "Warning. Storm in progress."],
+        "end": ["Seek shelter immediately."],
+        "endChance": 0.7
+      }
+    },
+    "weather.wind": {
+      "start": ["Warning. High winds detected..."],
+      "minimal": ["High winds..."],
+      "full": {
+        "start": ["Warning. High winds detected...", "Caution. Wind shear incoming..."],
+        "end": ["Reduce speed.", "Brace for gusts."],
+        "endChance": 0.3
+      }
+    },
+    "weather.wind.now": {
+      "start": ["Warning. High winds imminent."],
+      "minimal": ["High winds imminent."],
+      "full": {
+        "start": ["Warning. High winds imminent.", "Warning. Wind shear in progress."],
+        "end": ["Reduce speed."],
+        "endChance": 0.5
+      }
+    },
+    "weather.rain": {
+      "start": ["Warning. Precipitation detected..."],
+      "minimal": ["Precipitation..."],
+      "full": {
+        "start": ["Warning. Precipitation detected...", "Caution. Incoming precipitation..."],
+        "end": ["Seek shelter.", "Locate cover."],
+        "endChance": 0.3
+      }
+    },
+    "weather.rain.now": {
+      "start": ["Warning. Precipitation imminent."],
+      "minimal": ["Precipitation imminent."],
+      "full": {
+        "start": ["Warning. Precipitation imminent.", "Warning. Precipitation in progress."],
+        "end": ["Seek shelter."],
+        "endChance": 0.5
+      }
     }
   }
 }

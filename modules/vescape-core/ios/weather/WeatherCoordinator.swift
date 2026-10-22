@@ -9,7 +9,7 @@ typealias WeatherTransport = (_ url: String, _ onResult: @escaping (Data?) -> Vo
 /// result for the life of the process.
 ///
 /// It lives native rather than in JS because the consumers that matter outlive the JS runtime: the
-/// wrist mirror keeps rendering through a backgrounded phone, and Weather Alerts (a later slice) have
+/// wrist mirror keeps rendering through a backgrounded phone, and Weather Alerts have
 /// to fire while nobody is looking at a screen.
 ///
 /// Failure semantics match App Status: a failed refresh never clears a known forecast, and nothing is
@@ -33,6 +33,9 @@ final class WeatherCoordinator {
   /// Hours of forecast requested — one wrist page plus the phone's hourly strip.
   static let forecastHours = 12
 
+  /// Quarter-hours of `minutely_15` requested: the 3 h Weather Alert horizon.
+  static let forecastQuarterHours = 12
+
   private static let callTimeoutSeconds: TimeInterval = 10
 
   /// Process singleton — its in-memory forecast must outlive JS runtime reloads.
@@ -44,12 +47,10 @@ final class WeatherCoordinator {
   /// Notified on every change so the module can mirror it to JS.
   var onChange: ((Weather?) -> Void)?
 
-  /// Notified on every change for consumers that must keep working while the JS runtime is gone.
+  /// Consumers that must keep working while the JS runtime is gone (wrist mirror, Weather Alerts).
   /// Separate from `onChange` because that slot belongs to the Expo module and is re-assigned on
-  /// every JS reload: the wrist mirror is process scoped and must not be unsubscribed by one.
-  ///
-  /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/watch/AndroidWatchMirror.kt
-  var onNativeChange: ((Weather) -> Void)?
+  /// every JS reload.
+  private var nativeListeners: [UUID: (Weather) -> Void] = [:]
 
   private let transport: WeatherTransport
   private let nowMs: () -> Int64
@@ -60,6 +61,9 @@ final class WeatherCoordinator {
   /// started if GPS then stops. Re-evaluated once the in-flight request lands.
   private var pendingPosition: (latitude: Double, longitude: Double)?
 
+  /// The newest position offered, even one whose fetch failed: where a forced `refresh()` asks.
+  private var lastPosition: (latitude: Double, longitude: Double)?
+
   init(
     transport: @escaping WeatherTransport,
     nowMs: @escaping () -> Int64 = { Int64(Date().timeIntervalSince1970 * 1000) }
@@ -68,11 +72,20 @@ final class WeatherCoordinator {
     self.nowMs = nowMs
   }
 
+  /// Register a process-scoped change listener; returns a remover.
+  /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/weather/WeatherCoordinator.kt `addChangeListener`
+  func addNativeChangeListener(_ listener: @escaping (Weather) -> Void) -> () -> Void {
+    let id = UUID()
+    nativeListeners[id] = listener
+    return { [weak self] in self?.nativeListeners[id] = nil }
+  }
+
   /// Offer the rider's current position. Cheap to call per GPS Fix: it refetches only when nothing is
   /// known yet, when the forecast has aged past `forecastTtlMs`, or when the rider has left the area
   /// the current forecast was fetched for.
   func onPosition(latitude: Double, longitude: Double) {
     guard latitude.isFinite, longitude.isFinite else { return }
+    lastPosition = (latitude, longitude)
     if let known = current,
        nowMs() - known.fetchedAtMs < Self.forecastTtlMs,
        abs(known.latitude - latitude) < Self.refetchDeltaDeg,
@@ -82,12 +95,13 @@ final class WeatherCoordinator {
     refresh(latitude: latitude, longitude: longitude)
   }
 
-  /// Refetch where the last forecast was fetched, ignoring the freshness gate — the rider asking for
-  /// fresh weather. A no-op before the first fetch: there is no position to ask about, and the next
-  /// GPS Fix will bring one.
+  /// Refetch at the newest known position, ignoring the freshness gate — the rider asking for fresh
+  /// weather, or a Board connect that must not announce from a cached forecast. A no-op before the
+  /// first GPS Fix: with nothing known, that Fix fetches anyway.
+  /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/weather/WeatherCoordinator.kt `refresh`
   func refresh() {
-    guard let known = current else { return }
-    refresh(latitude: known.latitude, longitude: known.longitude)
+    guard let position = lastPosition else { return }
+    refresh(latitude: position.latitude, longitude: position.longitude)
   }
 
   /// Fetch now for an explicit position, ignoring the freshness gate. A refresh asked for while one
@@ -115,7 +129,7 @@ final class WeatherCoordinator {
        ) {
       current = weather
       onChange?(weather)
-      onNativeChange?(weather)
+      nativeListeners.values.forEach { $0(weather) }
     }
     // The ride moved while this request was in flight. Re-offer the newest position through the
     // normal gate, so it refetches only if it actually left the area this forecast describes.
@@ -130,12 +144,17 @@ final class WeatherCoordinator {
   /// `timezone=auto` resolves the zone of the **forecast location**, which is what the hour labels
   /// claim to be. The device zone would be a different thing the moment a rider crosses a border or
   /// turns automatic time off.
+  ///
+  /// `forecast_hours` and `forecast_minutely_15` count from now and override `forecast_days`, so the
+  /// window runs past local midnight.
   /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/weather/WeatherCoordinator.kt `forecastUrl`
   static func forecastUrl(latitude: Double, longitude: Double) -> String {
     "https://api.open-meteo.com/v1/forecast"
       + "?latitude=\(latitude)&longitude=\(longitude)"
       + "&current=temperature_2m,weather_code,precipitation_probability"
-      + "&hourly=temperature_2m,weather_code,precipitation_probability"
+      + "&hourly=temperature_2m,weather_code,precipitation_probability,precipitation,wind_gusts_10m"
+      + "&minutely_15=precipitation,weather_code,wind_gusts_10m"
+      + "&forecast_minutely_15=\(forecastQuarterHours)"
       + "&daily=sunrise,sunset"
       + "&forecast_hours=\(forecastHours)&forecast_days=1"
       + "&timezone=auto"

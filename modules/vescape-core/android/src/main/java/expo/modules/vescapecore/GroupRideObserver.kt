@@ -3,6 +3,7 @@ package expo.modules.vescapecore
 import android.os.Handler
 import android.util.Log
 import expo.modules.vescapecore.appstatus.OnlineCapability
+import expo.modules.vescapecore.geo.GeoMath
 import expo.modules.vescapecore.watch.GeoPoint
 import expo.modules.vescapecore.watch.GroupRideRoster
 import expo.modules.vescapecore.watch.GroupRideRosterRider
@@ -40,12 +41,14 @@ internal class GroupRideObserver(
      */
     private val onParticipationChanged: () -> Unit = {},
     /**
-     * Plays a Group Ride app cue (`groupRide.joined`, `riderJoined`, `riderLeft`, `lost`,
-     * `restored`) as the joined ride changes. `groupRide.created` is JS's: it needs the nearby filter.
+     * Plays a Group Ride app cue: `groupRide.created` for a new ride the rider created or one
+     * nearby, and `joined`, `riderJoined`, `riderLeft`, `lost`, `restored` as the joined ride changes.
      *
      * @parity /modules/vescape-core/ios/groupride/GroupRideObserver.swift `onCue`
      */
     private val onCue: (String) -> Unit = {},
+    /** The device's latest position (lat, lng), for the nearby test of `groupRide.created`. */
+    private val ownLocation: () -> Pair<Double, Double>? = { null },
 ) {
     private val client = OkHttpClient.Builder()
         .pingInterval(PING_INTERVAL_SECONDS, TimeUnit.SECONDS)
@@ -415,7 +418,15 @@ internal class GroupRideObserver(
                 emit("onGroupRideSnapshot", mapOf("rides" to rides))
             }
             "ride-created" -> rideSummary(json.optJSONObject("ride"))?.let {
+                val isNew = it["id"] !in knownRides
                 rememberRide(it)
+                val location = it["location"] as? Map<*, *>
+                val lat = location?.get("lat") as? Double
+                val lng = location?.get("lng") as? Double
+                val creatorId = (it["creator"] as? Map<*, *>)?.get("id") as? String
+                if (isNew && lat != null && lng != null && rideCreatedAudible(creatorId, riderId, lat, lng, ownLocation())) {
+                    onCue("groupRide.created")
+                }
                 emit("onGroupRideCreated", mapOf("ride" to it))
             }
             "ride-updated" -> rideSummary(json.optJSONObject("ride"))?.let {
@@ -637,11 +648,30 @@ internal class GroupRideObserver(
         }
 
         /**
-         * A [riderView] map as the typed entry native keeps; null when it carries no id. No presence
-         * leaves the Rider unplaced.
+         * Discovery radius for nearby Group Rides.
          *
-         * @parity /modules/vescape-core/ios/groupride/GroupRideObserver.swift `rosterRider`
+         * @parity /src/modules/group-ride/lib/nearby.ts `NEARBY_RADIUS_M`
          */
+        internal const val NEARBY_RADIUS_M = 40_000.0
+
+        /**
+         * Whether a ride just created plays `groupRide.created`: the rider created it, or it lies
+         * within [NEARBY_RADIUS_M] of [own]. Without a position only the rider's own ride counts.
+         *
+         * @parity /modules/vescape-core/ios/groupride/GroupRideObserver.swift `rideCreatedAudible`
+         */
+        internal fun rideCreatedAudible(
+            creatorId: String?,
+            ownRiderId: String?,
+            rideLat: Double,
+            rideLng: Double,
+            own: Pair<Double, Double>?,
+        ): Boolean {
+            if (ownRiderId != null && creatorId == ownRiderId) return true
+            own ?: return false
+            return GeoMath.distanceMeters(own.first, own.second, rideLat, rideLng) <= NEARBY_RADIUS_M
+        }
+
         /**
          * Cue for a joined ride's roster going from [previous] to [next] rider ids: `riderJoined`
          * when someone else arrived, else `riderLeft` when someone else left. An empty [previous]
@@ -661,6 +691,12 @@ internal class GroupRideObserver(
             }
         }
 
+        /**
+         * A [riderView] map as the typed entry native keeps; null when it carries no id. No presence
+         * leaves the Rider unplaced.
+         *
+         * @parity /modules/vescape-core/ios/groupride/GroupRideObserver.swift `rosterRider`
+         */
         internal fun rosterRider(view: Map<String, Any?>): GroupRideRosterRider? {
             val id = view["id"] as? String ?: return null
             val presence = view["presence"] as? Map<*, *>

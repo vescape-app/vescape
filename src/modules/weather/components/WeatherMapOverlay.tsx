@@ -1,4 +1,5 @@
-import { ArrowLeftIcon, ArrowsClockwiseIcon } from 'phosphor-react-native'
+import { useEffect } from 'react'
+import { ArrowLeftIcon } from 'phosphor-react-native'
 import { StyleSheet, View } from 'react-native'
 import { refreshWeather } from 'vescape-core'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
@@ -6,6 +7,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { IconButton } from '@/components/base/IconButton'
 import { Text } from '@/components/base/Text'
 import { theme } from '@/constants/theme'
+import { WeatherAlertsButton } from '@/modules/weather/components/WeatherAlertsSettings'
 import { WeatherHourlyStrip } from '@/modules/weather/components/WeatherHourlyStrip'
 import { WeatherPill } from '@/modules/weather/components/WeatherPill'
 import { WeatherRadarTimeline } from '@/modules/weather/components/WeatherRadarTimeline'
@@ -13,7 +15,7 @@ import { useRainViewerRadarStore } from '@/modules/weather/store/rainViewerRadar
 
 interface WeatherMapOverlayProps {
   visible: boolean
-  /** Top of the map's control row, so the back and refresh buttons line up with the mode tabs. */
+  /** Top of the map's control row, so the back and settings buttons line up with the mode tabs. */
   top: number
   /** Just below the mode tabs, where the expanded forecast pill sits. */
   pillTop: number
@@ -23,9 +25,15 @@ interface WeatherMapOverlayProps {
 /** Everything the map shows in weather mode: forecast pill, radar timeline and the hourly strip. */
 export function WeatherMapOverlay({ visible, top, pillTop, onExit }: WeatherMapOverlayProps) {
   const insets = useSafeAreaInsets()
-  const radarLoading = useRainViewerRadarStore((s) => s.loading)
   const radarError = useRainViewerRadarStore((s) => s.error)
   const refreshRadar = useRainViewerRadarStore((s) => s.fetch)
+
+  // Every visit shows fresh weather: refetch the forecast and radar whenever the view opens.
+  useEffect(() => {
+    if (!visible) return
+    refreshWeather()
+    refreshRadar(true)
+  }, [visible, refreshRadar])
 
   return (
     <View
@@ -40,15 +48,7 @@ export function WeatherMapOverlay({ visible, top, pillTop, onExit }: WeatherMapO
         onPress={onExit}
         style={[styles.mapTopBackButton, { top }]}
       />
-      <IconButton
-        icon={ArrowsClockwiseIcon}
-        onPress={() => {
-          refreshWeather()
-          refreshRadar(true)
-        }}
-        loading={radarLoading}
-        style={[styles.weatherRefreshButton, { top }]}
-      />
+      <WeatherAlertsButton style={[styles.weatherAlertsButton, { top }]} />
       <View pointerEvents="none" style={[styles.weatherExpandedPill, { top: pillTop }]}>
         <WeatherPill expanded onPress={() => undefined} />
         {radarError ? <Text style={styles.radarError}>{radarError}</Text> : null}
@@ -84,7 +84,7 @@ const styles = StyleSheet.create({
     left: 12,
     zIndex: 32,
   },
-  weatherRefreshButton: {
+  weatherAlertsButton: {
     position: 'absolute',
     right: 10,
     zIndex: 30,

@@ -30,9 +30,9 @@ import {
   packDir,
   validateManifest,
   validatePack,
-  valueRange,
+  valueClips,
   valueText,
-  type ValueType,
+  valueTypes,
   type VoiceManifest,
   type VoicePack,
 } from './packs'
@@ -107,12 +107,10 @@ function generateVoice(manifest: VoiceManifest, dir: string, tmp: string) {
     }
   }
   const values: VoicePack['values'] = {}
-  const types = new Set(
-    Object.values(catalog.voiceKeys).filter((type): type is ValueType => !!type),
-  )
+  const types = valueTypes(catalog)
   for (const type of types) {
     const set: Record<string, string> = {}
-    for (const n of valueRange(catalog, type)) {
+    for (const n of valueClips(catalog, type)) {
       set[n] = `values/${type}/${n}${CLIP_EXTENSION}`
       clips.push({ text: valueText(manifest, type, n), file: set[n] })
     }

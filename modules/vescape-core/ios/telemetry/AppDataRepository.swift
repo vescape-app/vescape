@@ -565,6 +565,9 @@ final class AppDataRepository {
     } else if key == "voiceLevel" {
       guard let level = Self.voiceLevel(rawValue) else { return }
       value = level
+    } else if key == "weatherRainAlertLevel" || key == "weatherWindAlertLevel" {
+      guard let level = Self.weatherAlertLevel(rawValue) else { return }
+      value = level
     } else if key == "themeMode" {
       guard let mode = Self.themeMode(rawValue) else { return }
       value = mode
@@ -686,6 +689,8 @@ final class AppDataRepository {
     // @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/TelemetryEntities.kt `AppSettings`
     "voice": voiceMatching,
     "voiceLevel": voiceLevelDefault,
+    "weatherRainAlertLevel": weatherAlertLevelDefault,
+    "weatherWindAlertLevel": weatherAlertLevelDefault,
     "historyMetricGradientsEnabled": true,
     "historyMetricHotRanges": [
       "speed": ["start": 30, "end": 40],
@@ -717,6 +722,12 @@ final class AppDataRepository {
     return level
   }
 
+  /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/AppDataRepository.kt `validWeatherAlertLevel`
+  static func weatherAlertLevel(_ value: Any?) -> String? {
+    guard let level = value as? String, weatherAlertLevelSettings.contains(level) else { return nil }
+    return level
+  }
+
   static func normalizeSettings(_ settings: [String: Any]) -> [String: Any] {
     var normalized = settings
     normalized["liveHistoryLimit"] =
@@ -726,6 +737,8 @@ final class AppDataRepository {
     normalized["audioSource"] = audioSource(settings["audioSource"]) ?? "alarm"
     normalized["voice"] = voice(settings["voice"]) ?? voiceMatching
     normalized["voiceLevel"] = voiceLevel(settings["voiceLevel"]) ?? voiceLevelDefault
+    normalized["weatherRainAlertLevel"] = weatherAlertLevel(settings["weatherRainAlertLevel"]) ?? weatherAlertLevelDefault
+    normalized["weatherWindAlertLevel"] = weatherAlertLevel(settings["weatherWindAlertLevel"]) ?? weatherAlertLevelDefault
     let saved = settings["soundPack"] as? String ?? effectsPackFallback
     let pack = renamedEffectsPackIds[saved] ?? saved
     // A custom app sound pack id from before My sounds turns into overrides, then reads as the fallback.

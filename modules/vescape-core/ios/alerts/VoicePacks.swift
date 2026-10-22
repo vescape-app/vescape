@@ -33,8 +33,9 @@ internal func voicePackId(_ voice: String, effectsVoice: String?) -> String {
   return voicePackFallback
 }
 
-/// Voice keys of built-in alerts and the value type each speaks (nil: no value). Mirrors
-/// `scripts/alert-packs/catalog.json` `voiceKeys`.
+/// Voice keys of built-in alerts and the value type a single-value alert on each speaks (nil: no
+/// value). Mirrors `scripts/alert-packs/catalog.json` `voiceKeys`. Multi-value lines carry their
+/// types on each `VoiceValue` instead.
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/alerts/VoicePacks.kt `VOICE_KEY_VALUE_TYPES`
 internal let voiceKeyValueTypes: [String: String?] = [
   "battery": "percent",
@@ -52,6 +53,12 @@ internal let voiceKeyValueTypes: [String: String?] = [
   "groupRide.lost": nil,
   "groupRide.restored": nil,
   "ride.end": nil,
+  "weather.storm": nil,
+  "weather.storm.now": nil,
+  "weather.wind": nil,
+  "weather.wind.now": nil,
+  "weather.rain": nil,
+  "weather.rain.now": nil,
 ]
 
 /// Voice key an alert on `controlId` speaks; nil for metrics without voice lines.
@@ -82,11 +89,22 @@ internal enum VoiceWording: String {
   }
 }
 
-/// One voice announcement: the severity sound, then the line for `key` with `value` spoken last.
+/// One value a line speaks: the clip `value` of value type `type` (`percent`, `degrees`, `number`,
+/// `duration` in minutes). The voice layer plays that exact clip or skips it; mapping a raw reading
+/// onto the pack's clip set is the caller's job.
+/// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/alerts/VoicePacks.kt `VoiceValue`
+internal struct VoiceValue: Equatable {
+  let type: String
+  let value: Int
+}
+
+/// One voice announcement: the severity sound, then the line for `key` with `values` spoken in order
+/// after its start ("Rain" + "in two and a half hours" + "thirty percent").
+/// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/alerts/VoicePacks.kt `VoiceAnnouncement`
 internal struct VoiceAnnouncement: Equatable {
   let severity: AlertSeverity
   let key: String?
-  let value: Int?
+  var values: [VoiceValue] = []
   var wording: VoiceWording = .standard
 }
 
@@ -104,17 +122,19 @@ internal func voiceAnnouncement(
 ) -> VoiceAnnouncement {
   let key = sound.key ?? controlId.flatMap(voiceKey)
   let raw = sound.value ?? (key != "battery" || percentAvailable ? reading : nil)
+  let type = key.flatMap { voiceKeyValueTypes[$0] ?? nil }
   let value: Double?
-  switch key.flatMap({ voiceKeyValueTypes[$0] ?? nil }) {
+  switch type {
   case "percent": value = raw
   case "number": value = raw.map { key == "speed" && unitSystem == "imperial" ? $0 / kmPerMile : $0 }
   case "degrees": value = raw.map { unitSystem == "imperial" ? $0 * 9 / 5 + 32 : $0 }
   default: value = nil
   }
+  let clip = value.flatMap { $0.isFinite ? Int($0.rounded()) : nil }
   return VoiceAnnouncement(
     severity: sound.severity,
     key: key,
-    value: value.flatMap { $0.isFinite ? Int($0.rounded()) : nil }
+    values: type.flatMap { type in clip.map { [VoiceValue(type: type, value: $0)] } } ?? []
   )
 }
 
@@ -130,7 +150,7 @@ internal struct VoiceLine: Equatable {
   var files: [String] { start + minimal + fullStart + fullEnd }
 }
 
-/// What one announcement can say: `start` (+ value) (+ an `end` at `endChance`).
+/// What one announcement can say: `start` (+ values) (+ an `end` at `endChance`).
 internal struct VoicePhrases: Equatable {
   let start: [String]
   let end: [String]
@@ -157,10 +177,9 @@ internal struct VoicePackManifest {
     return phrases.start.isEmpty ? nil : phrases
   }
 
-  /// Value clip of `key`'s value type for `value`; nil when the pack has no such clip.
-  func valueClip(key: String, value: Int) -> String? {
-    guard let type = voiceKeyValueTypes[key] ?? nil else { return nil }
-    return values[type]?[value]
+  /// Clip for `value`; nil when the pack has no such clip.
+  func valueClip(_ value: VoiceValue) -> String? {
+    values[value.type]?[value.value]
   }
 
   static func parse(_ data: Data) -> VoicePackManifest? {
@@ -211,7 +230,8 @@ internal final class VoiceVariantPicker {
     self.random = random
   }
 
-  /// Clip files of `announcement` in play order (start, value, end); nil when the pack has no line.
+  /// Clip files of `announcement` in play order (start, values, end); nil when the pack has no line.
+  /// A value without a clip is skipped; the rest of the line still plays.
   func clips(_ manifest: VoicePackManifest, _ announcement: VoiceAnnouncement) -> [String]? {
     guard let (key, line) = resolve(manifest, announcement) else { return nil }
     lock.lock()
@@ -219,7 +239,7 @@ internal final class VoiceVariantPicker {
     let lineKey = "\(key).\(announcement.severity.rawValue).\(announcement.wording.rawValue)"
     let choice = upcoming[lineKey].flatMap { $0.fits(line) ? $0 : nil } ?? choose(line, avoid: nil)
     upcoming[lineKey] = choose(line, avoid: choice.start)
-    return files(manifest, key, line, choice, announcement.value)
+    return files(manifest, line, choice, announcement.values)
   }
 
   /// Clip files the next `clips` call for `announcement` returns, without consuming the pick.
@@ -229,7 +249,7 @@ internal final class VoiceVariantPicker {
     defer { lock.unlock() }
     guard let choice = upcoming["\(key).\(announcement.severity.rawValue).\(announcement.wording.rawValue)"],
       choice.fits(line) else { return nil }
-    return files(manifest, key, line, choice, announcement.value)
+    return files(manifest, line, choice, announcement.values)
   }
 
   private func resolve(_ manifest: VoicePackManifest, _ announcement: VoiceAnnouncement) -> (String, VoicePhrases)? {
@@ -246,9 +266,8 @@ internal final class VoiceVariantPicker {
     return Choice(start: start, end: ends ? random(line.end.count) : nil)
   }
 
-  private func files(_ manifest: VoicePackManifest, _ key: String, _ line: VoicePhrases, _ choice: Choice, _ value: Int?) -> [String] {
-    var clips = [line.start[choice.start]]
-    if let value, let clip = manifest.valueClip(key: key, value: value) { clips.append(clip) }
+  private func files(_ manifest: VoicePackManifest, _ line: VoicePhrases, _ choice: Choice, _ values: [VoiceValue]) -> [String] {
+    var clips = [line.start[choice.start]] + values.compactMap(manifest.valueClip)
     if let end = choice.end { clips.append(line.end[end]) }
     return clips
   }

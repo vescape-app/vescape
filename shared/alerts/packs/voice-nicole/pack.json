@@ -186,6 +186,69 @@
           "lines/ride.end.full.start.2.m4a"
         ]
       }
+    },
+    "weather.rain": {
+      "start": ["lines/weather.rain.start.0.m4a"],
+      "minimal": ["lines/weather.rain.minimal.0.m4a"],
+      "full": {
+        "start": ["lines/weather.rain.full.start.0.m4a", "lines/weather.rain.full.start.1.m4a"],
+        "end": ["lines/weather.rain.full.end.0.m4a", "lines/weather.rain.full.end.1.m4a"],
+        "endChance": 0.2
+      }
+    },
+    "weather.rain.now": {
+      "start": ["lines/weather.rain.now.start.0.m4a"],
+      "minimal": ["lines/weather.rain.now.minimal.0.m4a"],
+      "full": {
+        "start": [
+          "lines/weather.rain.now.full.start.0.m4a",
+          "lines/weather.rain.now.full.start.1.m4a"
+        ],
+        "end": ["lines/weather.rain.now.full.end.0.m4a"],
+        "endChance": 0.2
+      }
+    },
+    "weather.storm": {
+      "start": ["lines/weather.storm.start.0.m4a"],
+      "minimal": ["lines/weather.storm.minimal.0.m4a"],
+      "full": {
+        "start": ["lines/weather.storm.full.start.0.m4a", "lines/weather.storm.full.start.1.m4a"],
+        "end": ["lines/weather.storm.full.end.0.m4a", "lines/weather.storm.full.end.1.m4a"],
+        "endChance": 0.3
+      }
+    },
+    "weather.storm.now": {
+      "start": ["lines/weather.storm.now.start.0.m4a"],
+      "minimal": ["lines/weather.storm.now.minimal.0.m4a"],
+      "full": {
+        "start": [
+          "lines/weather.storm.now.full.start.0.m4a",
+          "lines/weather.storm.now.full.start.1.m4a"
+        ],
+        "end": ["lines/weather.storm.now.full.end.0.m4a"],
+        "endChance": 0.2
+      }
+    },
+    "weather.wind": {
+      "start": ["lines/weather.wind.start.0.m4a"],
+      "minimal": ["lines/weather.wind.minimal.0.m4a"],
+      "full": {
+        "start": ["lines/weather.wind.full.start.0.m4a", "lines/weather.wind.full.start.1.m4a"],
+        "end": ["lines/weather.wind.full.end.0.m4a", "lines/weather.wind.full.end.1.m4a"],
+        "endChance": 0.2
+      }
+    },
+    "weather.wind.now": {
+      "start": ["lines/weather.wind.now.start.0.m4a"],
+      "minimal": ["lines/weather.wind.now.minimal.0.m4a"],
+      "full": {
+        "start": [
+          "lines/weather.wind.now.full.start.0.m4a",
+          "lines/weather.wind.now.full.start.1.m4a"
+        ],
+        "end": ["lines/weather.wind.now.full.end.0.m4a"],
+        "endChance": 0.2
+      }
     }
   },
   "values": {
@@ -727,6 +790,16 @@
       "98": "values/number/98.m4a",
       "99": "values/number/99.m4a",
       "100": "values/number/100.m4a"
+    },
+    "duration": {
+      "15": "values/duration/15.m4a",
+      "30": "values/duration/30.m4a",
+      "45": "values/duration/45.m4a",
+      "60": "values/duration/60.m4a",
+      "90": "values/duration/90.m4a",
+      "120": "values/duration/120.m4a",
+      "150": "values/duration/150.m4a",
+      "180": "values/duration/180.m4a"
     }
   },
   "sources": {
@@ -803,6 +876,39 @@
     "lines/ride.end.full.start.1.m4a": "9cb39cac013d8b7c",
     "lines/ride.end.full.start.2.m4a": "e321fe9aa53104d8",
     "lines/ride.end.start.0.m4a": "538e804d71f53efa",
+    "lines/weather.rain.full.start.0.m4a": "a9f5340e7459c6d9",
+    "lines/weather.rain.full.start.1.m4a": "34cd325c0bdbd7b1",
+    "lines/weather.rain.full.end.0.m4a": "e7346f96b6d91ca8",
+    "lines/weather.rain.full.end.1.m4a": "445dc45fd241fccc",
+    "lines/weather.rain.start.0.m4a": "34cd325c0bdbd7b1",
+    "lines/weather.rain.minimal.0.m4a": "b2bbd3619e3722c7",
+    "lines/weather.rain.now.full.start.0.m4a": "243a5d9f080038ec",
+    "lines/weather.rain.now.full.start.1.m4a": "6af63fe6e7107117",
+    "lines/weather.rain.now.full.end.0.m4a": "72e5a7bf34636897",
+    "lines/weather.rain.now.start.0.m4a": "277bc0db9f6631e0",
+    "lines/weather.rain.now.minimal.0.m4a": "984f06ef85348909",
+    "lines/weather.storm.full.start.0.m4a": "0c525cedf141b1ac",
+    "lines/weather.storm.full.start.1.m4a": "96ea8e29304d1abc",
+    "lines/weather.storm.full.end.0.m4a": "b724b8c115233dff",
+    "lines/weather.storm.full.end.1.m4a": "6801f350fb5f2c71",
+    "lines/weather.storm.start.0.m4a": "93566d1e3f1934ce",
+    "lines/weather.storm.minimal.0.m4a": "2c725d0eedeb6a99",
+    "lines/weather.storm.now.full.start.0.m4a": "c9d03aeaaf4f4e9e",
+    "lines/weather.storm.now.full.start.1.m4a": "601912d39b3fc397",
+    "lines/weather.storm.now.full.end.0.m4a": "58acd5bd4b8a234a",
+    "lines/weather.storm.now.start.0.m4a": "b559842fbf2e3f99",
+    "lines/weather.storm.now.minimal.0.m4a": "5ed87821280620d4",
+    "lines/weather.wind.full.start.0.m4a": "8243b681f1d33465",
+    "lines/weather.wind.full.start.1.m4a": "d63107da4a27f1d7",
+    "lines/weather.wind.full.end.0.m4a": "ebd4b45b44b746dd",
+    "lines/weather.wind.full.end.1.m4a": "d9d8ccb24e39c7a8",
+    "lines/weather.wind.start.0.m4a": "2ca36bda8c9ba671",
+    "lines/weather.wind.minimal.0.m4a": "532b27ae7a4f07fe",
+    "lines/weather.wind.now.full.start.0.m4a": "2094452ea4b24c80",
+    "lines/weather.wind.now.full.start.1.m4a": "52255b5b2241e838",
+    "lines/weather.wind.now.full.end.0.m4a": "d9d8ccb24e39c7a8",
+    "lines/weather.wind.now.start.0.m4a": "4d9414154e9883f4",
+    "lines/weather.wind.now.minimal.0.m4a": "c8f0544d2f506b0c",
     "values/percent/0.m4a": "bdfad10c8023ccfd",
     "values/percent/1.m4a": "f7a97c6c25680550",
     "values/percent/2.m4a": "d116b14e2a30c70e",
@@ -1335,6 +1441,14 @@
     "values/number/97.m4a": "14abcbb4d295da93",
     "values/number/98.m4a": "95d16fac71b359d6",
     "values/number/99.m4a": "c0d06c4b4ed2bf7a",
-    "values/number/100.m4a": "5de3bf37c76d3c34"
+    "values/number/100.m4a": "5de3bf37c76d3c34",
+    "values/duration/15.m4a": "254c1da803b6be0b",
+    "values/duration/30.m4a": "d99a4ac3ddcd2b06",
+    "values/duration/45.m4a": "861a58d80fc116a1",
+    "values/duration/60.m4a": "28f18ee6b91b9a1a",
+    "values/duration/90.m4a": "3cda784cd2fed1f5",
+    "values/duration/120.m4a": "9e490ae8fc31ffdb",
+    "values/duration/150.m4a": "0556b1e40a92b52c",
+    "values/duration/180.m4a": "d46d6ae4d23c9925"
   }
 }

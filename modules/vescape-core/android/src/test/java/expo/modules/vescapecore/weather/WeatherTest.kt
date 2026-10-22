@@ -99,4 +99,55 @@ class WeatherTest {
     assertEquals(WeatherIcon.MOON, weather.icon)
     assertNull(weather.sunriseMinuteOfDay)
   }
+
+  @Test
+  fun `builds absolute period-start slots across local midnight`() {
+    // 23:00 local at UTC+2; the window runs into the next day.
+    val json = """
+      {
+        "utc_offset_seconds": 7200,
+        "current": {"time":"2026-06-10T23:00","temperature_2m":15.0,"weather_code":61},
+        "hourly": {
+          "time": ["2026-06-11T00:00", "2026-06-11T01:00"],
+          "temperature_2m": [15.0, 14.0],
+          "weather_code": [61, 63],
+          "precipitation_probability": [60, null],
+          "precipitation": [1.2, 3.0],
+          "wind_gusts_10m": [30.5, null]
+        },
+        "minutely_15": {
+          "time": ["2026-06-10T23:15", "2026-06-10T23:30", "2026-06-10T23:45"],
+          "precipitation": [0.5, null, 0.1],
+          "weather_code": [61, 61, 61],
+          "wind_gusts_10m": [20.0, 21.0, 22.0]
+        }
+      }
+    """
+    val weather = parseOpenMeteoWeather(json, 0.0, 0.0, fetchedAtMs = 1_000)!!
+    val midnightUtcMs = 1_781_128_800_000L // 2026-06-10T22:00Z = 2026-06-11T00:00+02:00
+
+    assertEquals(listOf(midnightUtcMs - 3_600_000, midnightUtcMs), weather.hourlySlots.map { it.startMs })
+    assertEquals(midnightUtcMs, weather.hourlySlots[0].endMs)
+    assertEquals(60, weather.hourlySlots[0].precipitationProbability)
+    assertNull(weather.hourlySlots[1].precipitationProbability)
+    assertEquals(3.0, weather.hourlySlots[1].precipitationMmPerHour, 1e-9)
+    // A quarter-hour value is mm per 15 min; the null one is dropped, not read as dry.
+    assertEquals(listOf(2.0, 0.4), weather.quarterHourSlots.map { it.precipitationMmPerHour })
+    assertEquals(midnightUtcMs - 60 * 60_000, weather.quarterHourSlots[0].startMs)
+    assertNull(weather.quarterHourSlots[0].precipitationProbability)
+  }
+
+  @Test
+  fun `has no alert slots without a UTC offset to anchor them`() {
+    val json = """
+      {
+        "current": {"time":"2026-06-10T12:00","temperature_2m":20.0,"weather_code":3},
+        "hourly": {"time":["2026-06-10T13:00"],"temperature_2m":[20.0],"weather_code":[3],"precipitation":[2.0]}
+      }
+    """
+    val weather = parseOpenMeteoWeather(json, 0.0, 0.0, fetchedAtMs = 1_000)!!
+
+    assertEquals(1, weather.hourly.size)
+    assertEquals(emptyList<WeatherSlot>(), weather.hourlySlots)
+  }
 }

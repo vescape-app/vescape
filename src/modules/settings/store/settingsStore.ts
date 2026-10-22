@@ -50,6 +50,8 @@ const DEFAULTS: AppSettings = {
   audioSource: 'alarm',
   voice: 'matching',
   voiceLevel: 'standard',
+  weatherRainAlertLevel: 'normal',
+  weatherWindAlertLevel: 'normal',
   companionPresenceEnabled: false,
   boardWarningsEnabled: true,
   vescFaultCollectionEnabled: true,

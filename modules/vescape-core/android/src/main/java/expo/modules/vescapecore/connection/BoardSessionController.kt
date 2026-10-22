@@ -95,6 +95,9 @@ import expo.modules.vescapecore.watch.WatchRouteMirror
 import expo.modules.vescapecore.watch.WatchSnapshot
 import expo.modules.vescapecore.watch.WatchTiltControl
 import expo.modules.vescapecore.weather.Weather
+import expo.modules.vescapecore.weather.WeatherAlertLine
+import expo.modules.vescapecore.weather.WeatherAlertMonitor
+import expo.modules.vescapecore.weather.WeatherAlertSettings
 import expo.modules.vescapecore.weather.WeatherCoordinator
 import expo.modules.vescapecore.watch.offsetMeters
 import expo.modules.vescapecore.watch.toWatchSettings
@@ -384,6 +387,14 @@ internal class BoardSessionController(private val service: CoreForegroundService
         )
     }
     private val weatherCoordinator = WeatherCoordinator.get()
+    /**
+     * Weather Alerts: spoken only while telemetry flows, held across dropouts within a ride.
+     * @parity /modules/vescape-core/ios/connection/BoardSessionController.swift `weatherAlerts`
+     */
+    private val weatherAlerts = WeatherAlertMonitor(
+        isLive = { boardStatus == BoardPhase.Connected },
+        speak = { line -> alertFeedback.speakAdvisory(line.voiceAnnouncement()) },
+    )
     private var weatherUnsubscribe: (() -> Unit)? = null
     private val watchMoveRelay by lazy {
         WatchMoveRelay(
@@ -460,6 +471,7 @@ internal class BoardSessionController(private val service: CoreForegroundService
             // has actually mutated the state, which a caller refreshing inline cannot.
             onParticipationChanged = ::refreshGpsDemand,
             onCue = { cue -> if (connectionSoundsEnabled) alertFeedback.playAppCue(cue) },
+            ownLocation = { locationTracker.latestLocation?.let { it.latitude to it.longitude } },
         )
     }
 
@@ -2482,12 +2494,15 @@ internal class BoardSessionController(private val service: CoreForegroundService
         boardConfig?.let { recordingCoordinator.markBoardReady(it) }
         // Output held open again after a dropout grace let it sleep.
         alertFeedback.wake()
-        if (connectionSoundsEnabled) alertFeedback.playConnect()
+        alertFeedback.boardConnected(playCue = connectionSoundsEnabled)
         watchMirror.boardConnected(currentSessionId)
         // Telemetry is flowing again: a reconnect that landed inside the grace restores a full ride,
         // and one that landed outside it raises demand back to `Ride`.
         setLinkLost(false)
         transitionBoardPhase(BoardPhase.Connected)
+        // Weather Alerts never announce from a cached forecast at connect: fetch fresh, and the
+        // change listener evaluates it when it lands, queued behind the connection cues.
+        weatherCoordinator.refresh()
     }
 
     /** @parity /modules/vescape-core/ios/connection/BoardSessionController.swift `onTelemetryStaleFired` */
@@ -2809,6 +2824,8 @@ internal class BoardSessionController(private val service: CoreForegroundService
         sessionClock = SystemSessionClock
         alertCoordinator.stopAllGeiger()
         alertFeedback.goIdle()
+        // A session ended on purpose ends the ride; only a dropout keeps the evaluator's memory.
+        weatherAlerts.rideEnded()
         recordGpsSessionSummary(stoppedConfig)
         recordingCoordinator.finishBoardSession(
             status = if (emitDisconnected) "disconnected" else "stopped",
@@ -3008,8 +3025,8 @@ internal class BoardSessionController(private val service: CoreForegroundService
         resetIdlePause()
         // Lost a live link (telemetry was flowing) — signal the rider we're now without telemetry.
         // Fires once at loss: subsequent reconnect attempts enter here as Reconnecting/Rescanning.
-        if (connectionSoundsEnabled && (boardStatus == BoardPhase.Connected || boardStatus == BoardPhase.Stale)) {
-            alertFeedback.playDisconnect()
+        if (boardStatus == BoardPhase.Connected || boardStatus == BoardPhase.Stale) {
+            alertFeedback.boardDisconnected(playCue = connectionSoundsEnabled)
         }
         // Starts the ride dropout grace: GPS stays at `Ride` strength across the drop so the Ride
         // Track survives it, and steps down once the grace says this is an ended ride, not a dropout.
@@ -3167,6 +3184,7 @@ internal class BoardSessionController(private val service: CoreForegroundService
             dropoutGraceHandle = null
             // Past the grace the board is treated as powered off: that is how a ride ends.
             if (connectionSoundsEnabled) alertFeedback.playRideEnd()
+            weatherAlerts.rideEnded()
             // Nothing can alert until the board is back; let audio output sleep.
             alertFeedback.goIdle()
             refreshGpsDemand()
@@ -3328,6 +3346,7 @@ internal class BoardSessionController(private val service: CoreForegroundService
     private fun onWeatherChanged(weather: Weather?) {
         if (weather == null) return
         emitEvent("onWeather", mapOf("weather" to weather.toMap()))
+        weatherAlerts.evaluate(weather)
     }
 
     /** @parity /modules/vescape-core/ios/connection/BoardSessionController.swift `latestRiderPresence` */
@@ -3591,6 +3610,10 @@ internal class BoardSessionController(private val service: CoreForegroundService
         connectionSoundsEnabled = settings.connectionSoundsEnabled
         alertCoordinator.unitSystem = settings.unitSystem
         alertFeedback.setSoundSettings(settings)
+        weatherAlerts.settings = WeatherAlertSettings.of(
+            settings.weatherRainAlertLevel,
+            settings.weatherWindAlertLevel,
+        )
         // `VESC Fault Collection` is its own kill switch — deliberately not gated on
         // `boardWarningsEnabled`, so turning warnings off keeps fault evidence flowing.
         val coordinator = VescFaultCoordinator.get(service.applicationContext)
@@ -3682,8 +3705,9 @@ internal class BoardSessionController(private val service: CoreForegroundService
         alertFeedback.preview(spec)
     }
 
-    fun playAppCue(cue: String) {
-        alertFeedback.playAppCue(cue)
+    /** @parity /modules/vescape-core/ios/connection/BoardSessionController.swift `previewWeatherAlert` */
+    internal fun previewWeatherAlert(line: WeatherAlertLine) {
+        alertFeedback.speakVoice(line.voiceAnnouncement())
     }
 
     private fun closeAppTask() {

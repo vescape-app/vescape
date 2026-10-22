@@ -43,7 +43,6 @@ internal val OPTIONAL_SLOT_FALLBACK = mapOf(
  * Group Ride events with an app cue and a line under the same key in every voice pack.
  *
  * @parity /modules/vescape-core/ios/alerts/EffectsPacks.swift `groupRideCues`
- * @parity /modules/vescape-core/src/index.ts `AppSoundCueId`
  */
 internal val GROUP_RIDE_CUES = listOf(
     "groupRide.created",
@@ -59,7 +58,6 @@ internal val GROUP_RIDE_CUES = listOf(
  * events have no slot of their own and play a fixed severity sound.
  *
  * @parity /modules/vescape-core/ios/alerts/EffectsPacks.swift `appCueSlot`
- * @parity /modules/vescape-core/src/index.ts `AppSoundCueId`
  */
 internal fun appCueSlot(cue: String): String? = when (cue) {
     "on" -> "cue.on"

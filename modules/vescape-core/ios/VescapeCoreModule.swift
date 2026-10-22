@@ -523,13 +523,15 @@ public class VescapeCoreModule: Module {
     Function("previewAlertSound") { (spec: String) in
       self.coordinator.previewAlertSound(spec)
     }
+    // @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/VescapeCoreModule.kt `previewWeatherAlert`
+    // @parity /modules/vescape-core/src/index.ts `previewWeatherAlert`
+    Function("previewWeatherAlert") { (kind: String, leadMinutes: Int, percent: Int?) in
+      guard let line = WeatherAlertLine.preview(kind: kind, leadMinutes: leadMinutes, percent: percent) else { return }
+      self.coordinator.previewWeatherAlert(line)
+    }
     // @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/VescapeCoreModule.kt `playPackSound`
     Function("playPackSound") { (pack: String, slot: String) in
       self.coordinator.playPackSound(pack: pack, slot: slot)
-    }
-    // @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/VescapeCoreModule.kt `playAppCue`
-    Function("playAppCue") { (cue: String) in
-      self.coordinator.playAppCue(cue)
     }
 
     // @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/VescapeCoreModule.kt `mySounds`
@@ -586,6 +588,13 @@ public class VescapeCoreModule: Module {
     // @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/VescapeCoreModule.kt `getWeather`
     Function("getWeather") { () -> [String: Any?]? in
       WeatherCoordinator.shared.current?.map
+    }
+
+    // @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/VescapeCoreModule.kt `getWeatherAlertThresholds`
+    Function("getWeatherAlertThresholds") { () -> [String: [String: Double]] in
+      Dictionary(uniqueKeysWithValues: WeatherAlertLevel.allCases.map {
+        ($0.rawValue, ["gustKmh": $0.wind.minGustKmh, "rainPercent": Double($0.rain.minProbabilityPercent)])
+      })
     }
 
     // @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/VescapeCoreModule.kt `refreshWeather`
@@ -1649,6 +1658,8 @@ public class VescapeCoreModule: Module {
         "soundPack",
         "voice",
         "voiceLevel",
+        "weatherRainAlertLevel",
+        "weatherWindAlertLevel",
       ].contains(key) {
         self.coordinator.reloadTelemetrySettings()
       }

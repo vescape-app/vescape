@@ -36,6 +36,7 @@
 - [alerts.md](./alerts.md) — telemetry alerts: storage, native evaluation, Geiger mode
 - [safety.md](./safety.md) — safety warnings & thresholds: firmware pushbacks, faults, voltage cutoffs
 - [board-warnings.md](./board-warnings.md) — Board Warnings catalog: every kind's slug, title, severity, trigger, payload, clear semantics
+- [Announcement Queue](./adr/0040-announcement-queue-serializes-non-critical-audio.md) — non-critical cues and lines play one at a time by priority; telemetry alerts pre-empt
 - [VESC fault evidence](./adr/0037-vesc-faults-are-board-owned-evidence.md) — live occurrences, past telemetry captures, and the on-demand Controller Fault Log
 - [Board tombstones](./adr/0027-boards-are-tombstoned-never-deleted.md) — deleting a Board keeps its row so Ride History can still name it
 - [Telemetry keyed on board id](./adr/0028-telemetry-is-keyed-on-board-id.md) — every telemetry table keys on the Board, not the BLE identifier

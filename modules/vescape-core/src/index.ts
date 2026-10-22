@@ -1517,6 +1517,14 @@ export interface LegalPolicyReference {
 }
 
 /**
+ * Stored rain/wind Weather Alert level: `off` or a native-owned threshold set.
+ * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/weather/WeatherAlerts.kt `WEATHER_ALERT_LEVEL_SETTINGS`
+ * @parity /modules/vescape-core/ios/weather/WeatherAlerts.swift `weatherAlertLevelSettings`
+ */
+export type WeatherAlertLevelSetting = 'off' | WeatherAlertLevel
+export type WeatherAlertLevel = 'sensitive' | 'normal' | 'extreme'
+
+/**
  * Durable app-scoped settings. The keys here are a TS/Android/iOS parity triangle — every field is
  * persisted natively and projected back through {@link getSettings}/{@link updateSetting}. The
  * container tag covers all keys; individual literals are not tagged separately (see AGENTS.md).
@@ -1596,6 +1604,10 @@ export interface AppSettings {
   /** @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/alerts/VoicePacks.kt `VOICE_LEVELS` */
   /** @parity /modules/vescape-core/ios/alerts/VoicePacks.swift `voiceLevels` */
   voiceLevel: 'off' | 'minimal' | 'standard' | 'full'
+  /** Rain Weather Alert gate; native owns each level's thresholds. */
+  weatherRainAlertLevel: WeatherAlertLevelSetting
+  /** Gust Weather Alert gate; native owns each level's thresholds. */
+  weatherWindAlertLevel: WeatherAlertLevelSetting
   /** Android-only: use CompanionDeviceManager presence to connect associated boards when nearby. */
   companionPresenceEnabled: boolean
   /**
@@ -2744,8 +2756,12 @@ type VescapeCoreNativeModule = NativeEventEmitter<VescapeCoreEvents> & {
   requestCriticalRideNotificationPermission(): Promise<CriticalRideNotificationPermissionStatus>
   getAlertSounds(): AlertSound[]
   previewAlertSound(spec: AlertSpec): void
+  previewWeatherAlert(
+    kind: WeatherAlertPreviewKind,
+    leadMinutes: number,
+    percent: number | null,
+  ): void
   playPackSound(pack: string, slot: PackSoundSlot): void
-  playAppCue(cue: AppSoundCueId): void
   mapTile(z: number, x: number, y: number): Promise<string | null>
   mySounds(): Promise<MySoundsState>
   importMySound(uri: string, name: string): Promise<MySoundsState>
@@ -2783,6 +2799,7 @@ type VescapeCoreNativeModule = NativeEventEmitter<VescapeCoreEvents> & {
   getAppStatus(): AppStatus | null
   getWeather(): Weather | null
   refreshWeather(): void
+  getWeatherAlertThresholds(): WeatherAlertThresholds
   provisionDeviceCredential(
     serverUrl: string,
     deviceToken: string,
@@ -3255,19 +3272,24 @@ export function previewAlertSound(spec: AlertSpec): void {
   native.previewAlertSound(spec)
 }
 
-/** @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/alerts/EffectsPacks.kt `appCueSlot`
- * @parity /modules/vescape-core/ios/alerts/EffectsPacks.swift `appCueSlot` */
-export type AppSoundCueId =
-  | 'on'
-  | 'off'
-  | 'error'
-  | 'ride.end'
-  | 'groupRide.created'
-  | 'groupRide.joined'
-  | 'groupRide.riderJoined'
-  | 'groupRide.riderLeft'
-  | 'groupRide.lost'
-  | 'groupRide.restored'
+/**
+ * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/weather/WeatherAlerts.kt `WeatherAlertKind`
+ * @parity /modules/vescape-core/ios/weather/WeatherAlerts.swift `WeatherAlertKind`
+ */
+export type WeatherAlertPreviewKind = 'storm' | 'wind' | 'rain'
+
+/**
+ * Speak the Weather Alert line the evaluator would say: lead 0 is "now", percent applies to storm and rain.
+ * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/VescapeCoreModule.kt `previewWeatherAlert`
+ * @parity /modules/vescape-core/ios/VescapeCoreModule.swift `previewWeatherAlert`
+ */
+export function previewWeatherAlert(
+  kind: WeatherAlertPreviewKind,
+  leadMinutes: number,
+  percent: number | null,
+): void {
+  native.previewWeatherAlert(kind, leadMinutes, percent)
+}
 
 /**
  * Effects pack slot Settings previews: the overridable slots plus ride end.
@@ -3326,17 +3348,6 @@ export const mapTile = (z: number, x: number, y: number): Promise<string | null>
  */
 export function playPackSound(pack: string, slot: PackSoundSlot): void {
   native.playPackSound(pack, slot)
-}
-
-/**
- * Play an app cue as the app does: the active pack's effect (or its override), then its voice line
- * at Voice level Full.
- *
- * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/VescapeCoreModule.kt `playAppCue`
- * @parity /modules/vescape-core/ios/VescapeCoreModule.swift `playAppCue`
- */
-export function playAppCue(cue: AppSoundCueId): void {
-  native.playAppCue(cue)
 }
 
 export function startGeigerSimulation(spec: string, rangeDepth: number): void {
@@ -3527,6 +3538,21 @@ export function getAppStatus(): AppStatus | null {
 export function getWeather(): Weather | null {
   if (E2E_ENABLED) return null
   return native.getWeather()
+}
+
+/**
+ * Native-owned gates of each Weather Alert level, for display only.
+ * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/VescapeCoreModule.kt `getWeatherAlertThresholds`
+ * @parity /modules/vescape-core/ios/VescapeCoreModule.swift `getWeatherAlertThresholds`
+ */
+export type WeatherAlertThresholds = Partial<
+  Record<WeatherAlertLevel, { gustKmh: number; rainPercent: number }>
+>
+
+/** Native-owned gust (km/h) and rain-chance (%) gates per Weather Alert level; empty under E2E. */
+export function getWeatherAlertThresholds(): WeatherAlertThresholds {
+  if (E2E_ENABLED) return {}
+  return native.getWeatherAlertThresholds()
 }
 
 /**
