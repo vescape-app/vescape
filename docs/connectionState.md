@@ -109,7 +109,7 @@ Display motion has two independent parts:
 
 - **Prediction** advances the estimate between GPS Fixes, using Board speed magnitude and the
   geographic direction derived from the last two usable GPS positions. At 100% it moves at the
-  current VESC speed; at 0% that forward movement is disabled. New Board telemetry updates speed
+  current Board speed; at 0% that forward movement is disabled. New Board telemetry updates speed
   independently of GPS, so braking and stopping do not wait for another fix. Motor sign alone does
   not establish geographic direction.
 - **Smoothing** controls how long a newly measured position takes to correct the displayed
@@ -118,11 +118,14 @@ Display motion has two independent parts:
   Above 0%, the correction is blended while prediction keeps moving; changing the target must not
   reset or pause the forward-motion component.
 
+Android VESC and Future Motion sessions share the Board-speed input and motion publication path.
+FM speed freshness follows the RPM notification; battery or temperature updates do not renew it.
+
 Settings → Developer → Dev tools → **GPS display** exposes session-only smoothing (0–200%) and
 prediction (0–100%) controls, shared with Camera playground. Defaults are 100% smoothing and 50%
 prediction. Prediction is a fraction of movement speed, not an ahead-of-fix target that the point
 reaches and waits at. In particular, 0% smoothing with 100% prediction means full-speed continuous
-VESC-driven travel with immediate corrections on each GPS Fix.
+Board-driven travel with immediate corrections on each GPS Fix.
 
 Cadence uses recent valid measurement intervals. Missing, inaccurate, out-of-order or stale GPS
 must not establish a new direction; missing or stale Board speed must not drive indefinite motion.

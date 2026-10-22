@@ -145,6 +145,7 @@ internal class OwGattClient(
   private var serial: Int? = null
   private var rideMode: Int? = null
   private var speedKmh: Double? = null
+  private var speedAtMs: Long? = null
   private var batteryPercent: Int? = null
   private var stateMessage: String? = null
 
@@ -456,6 +457,7 @@ internal class OwGattClient(
       OW_CHAR_RPM -> {
         rpm = beU16(value)
         speedKmh = rpm?.let { owSpeedKmh(it) }
+        speedAtMs = speedKmh?.let { System.currentTimeMillis() }
       }
       0xf316 -> batteryVoltage = beU16(value)?.let { it / 10.0 }
       0xf312 -> batteryCurrent = beU16(value)?.let { it.toShort().toInt() * 0.002 }
@@ -488,6 +490,7 @@ internal class OwGattClient(
     atMs = System.currentTimeMillis(),
     rpm = rpm,
     speedKmh = speedKmh,
+    speedAtMs = speedAtMs,
     batteryPercent = batteryPercent,
     batteryVoltage = batteryVoltage,
     batteryCurrent = batteryCurrent,

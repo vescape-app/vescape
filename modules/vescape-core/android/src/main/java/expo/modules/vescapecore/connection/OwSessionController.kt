@@ -12,6 +12,8 @@ import expo.modules.vescapecore.alerts.AlertCoordinator
 import expo.modules.vescapecore.alerts.AlertFeedback
 import expo.modules.vescapecore.buildLiveState
 import expo.modules.vescapecore.location.GpsPhase
+import expo.modules.vescapecore.location.GpsDisplayTelemetry
+import expo.modules.vescapecore.ow.liveTick
 import expo.modules.vescapecore.ow.OwFrame
 import expo.modules.vescapecore.ow.OwGattClient
 import expo.modules.vescapecore.ow.OwPhase
@@ -52,6 +54,7 @@ private const val TRANSPORT_STALE_MS = 20_000L
 internal class OwSessionController(
   private val context: Context,
   private val handler: Handler,
+  private val gpsDisplay: GpsDisplayTelemetry,
   private val gpsState: (Boolean) -> Any?,
 ) {
   private val scheduler = HandlerScheduler(handler)
@@ -264,12 +267,7 @@ internal class OwSessionController(
     // consumers see it, matching the VESC path's estimated battery percentage plumbing.
     val eventMap = processed.eventMap
     eventMap["batteryPercent"] = batteryPercent
-    val tick = parsed.toMap().toMutableMap()
-    tick.remove("location")
-    tick["batteryPercent"] = batteryPercent
-    tick["generation"] = currentSession.id
-    if (firedAlerts.isNotEmpty()) tick["firedAlerts"] = firedAlerts
-    emitEvent("onLiveTick", tick)
+    emitEvent("onLiveTick", frame.liveTick(parsed, currentSession.id, firedAlerts, gpsDisplay, System.currentTimeMillis()))
     liveSeriesEmitter.enqueueHistorySample(eventMap)
     liveSeriesEmitter.primeLiveSeriesIfNeeded()
     recordingCoordinator.recordTelemetry(processed.capture)

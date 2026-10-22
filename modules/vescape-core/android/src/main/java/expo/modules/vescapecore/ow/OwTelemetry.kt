@@ -1,5 +1,6 @@
 package expo.modules.vescapecore.ow
 
+import expo.modules.vescapecore.location.GpsDisplayTelemetry
 import expo.modules.vescapecore.protocol.RefloatTelemetry
 
 /**
@@ -10,6 +11,8 @@ internal data class OwFrame(
   val atMs: Long,
   val rpm: Int? = null,
   val speedKmh: Double? = null,
+  /** Time of the RPM notification, not of an unrelated channel refreshing the frame. */
+  val speedAtMs: Long? = null,
   val batteryPercent: Int? = null,
   val batteryVoltage: Double? = null,
   val batteryCurrent: Double? = null,
@@ -75,3 +78,20 @@ internal fun OwFrame.toRefloatTelemetry(): RefloatTelemetry = RefloatTelemetry(
   lastPacketAt = atMs,
   location = null,
 )
+
+/** The FM live-tick boundary: gauges and map motion must consume the same Board frame. */
+internal fun OwFrame.liveTick(
+  telemetry: RefloatTelemetry,
+  generation: Long,
+  firedAlerts: List<Map<String, Any?>>,
+  gpsDisplay: GpsDisplayTelemetry,
+  now: Long,
+): Map<String, Any?> {
+  val tick = telemetry.toMap().toMutableMap()
+  tick.remove("location")
+  tick["batteryPercent"] = batteryPercent?.toDouble()
+  tick["generation"] = generation
+  tick.putAll(gpsDisplay.update(speedKmh, speedAtMs, now))
+  if (firedAlerts.isNotEmpty()) tick["firedAlerts"] = firedAlerts
+  return tick
+}

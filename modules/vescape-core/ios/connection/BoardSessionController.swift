@@ -2608,6 +2608,7 @@ internal final class BoardSessionController: VescGattListener {
     setPhase(.connected)
   }
 
+  // @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/location/GpsDisplayTelemetry.kt
   private func emitTelemetry(_ telemetry: RefloatTelemetry) {
     // Hot path: a scalar tick every frame drives the live gauges.
     var tick = telemetry.toMap()

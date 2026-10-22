@@ -37,6 +37,7 @@ import expo.modules.vescapecore.config.BoardConfigFlagField
 import expo.modules.vescapecore.config.BoardConfigOperationOrigin
 import expo.modules.vescapecore.service.CoreForegroundService
 import expo.modules.vescapecore.diagnostics.DiagnosticReporter
+import expo.modules.vescapecore.location.GpsDisplayTelemetry
 import expo.modules.vescapecore.location.GpsDemand
 import expo.modules.vescapecore.location.GpsMonitor
 import expo.modules.vescapecore.location.GpsPowerMode
@@ -231,8 +232,10 @@ internal suspend fun reloadGroupRideTarget(
 @SuppressLint("MissingPermission")
 internal class BoardSessionController(private val service: CoreForegroundService) {
     private val mainHandler = Handler(Looper.getMainLooper())
-    private val owSessionController = OwSessionController(service.applicationContext, mainHandler) { includeRecent ->
-        liveStateMapWithoutStorage(lastAppliedSettings, includeRecent)["gps"]
+    private val owSessionController by lazy {
+        OwSessionController(service.applicationContext, mainHandler, gpsDisplayTelemetry) { includeRecent ->
+            liveStateMapWithoutStorage(lastAppliedSettings, includeRecent)["gps"]
+        }
     }
     private val scheduler: Scheduler = HandlerScheduler(mainHandler)
     private val packetReassembler = VescPacketReassembler()
@@ -399,8 +402,9 @@ internal class BoardSessionController(private val service: CoreForegroundService
             record = ::recordWatchDiagnostic,
         )
     }
-    private var lastDisplayPublishedAt = 0L
-    private var lastDisplayPublishedSpeed = -1.0
+    private val gpsDisplayTelemetry: GpsDisplayTelemetry by lazy {
+        GpsDisplayTelemetry(locationTracker.displaySmoother)
+    }
     private val locationTracker by lazy {
         LocationTracker(
             service.applicationContext,
@@ -408,7 +412,7 @@ internal class BoardSessionController(private val service: CoreForegroundService
             ::emitEvent,
             recordingCoordinator,
             telemetryPipeline,
-            { Pair(telemetry?.speed?.let { kotlin.math.abs(it) / 3.6 * sessionClock.speed }, telemetryPipeline.lastTelemetryAt?.let { it + System.currentTimeMillis() - nowMs() }) },
+            { gpsDisplayTelemetry.speedSample },
             { nowMs() },
         ).also { it.displaySmoother.configure(CoreForegroundService.gpsDisplaySmoothingPercent,
             CoreForegroundService.gpsDisplayPredictionPercent, System.currentTimeMillis()) }
@@ -1587,7 +1591,7 @@ internal class BoardSessionController(private val service: CoreForegroundService
             startLinkIntegrityProbe(sessionToken)
             telemetry = parsed
             val displayNow = System.currentTimeMillis()
-            locationTracker.displaySmoother.updateSpeed(kotlin.math.abs(parsed.speed) / 3.6 * sessionClock.speed, displayNow, displayNow)
+            val displayUpdate = gpsDisplayTelemetry.update(parsed.speed, displayNow, displayNow, sessionClock.speed)
             val batteryPct = BatterySocEstimator.estimateBatteryPercent(
                 parsed.batteryVoltage,
                 batteryConfigCache,
@@ -1610,12 +1614,6 @@ internal class BoardSessionController(private val service: CoreForegroundService
             } else eventMap
                 refreshNotification(telemetry = parsed, batteryPercent = batteryEstimate)
                 // Hot path: tiny scalar tick every frame drives the live gauges (SharedValues, no React render).
-                val displaySpeed = kotlin.math.abs(parsed.speed) / 3.6 * sessionClock.speed
-                val displayUpdate = if (kotlin.math.abs(displaySpeed - lastDisplayPublishedSpeed) >= 0.1 || displayNow - lastDisplayPublishedAt >= 500) {
-                    lastDisplayPublishedAt = displayNow
-                    lastDisplayPublishedSpeed = displaySpeed
-                    mapOf("displayMotion" to locationTracker.displayMotion?.toMap())
-                } else emptyMap()
                 emitEvent("onLiveTick", buildLiveTick(parsed, processed, batteryEstimate, currentSessionId, firedAlerts) + displayUpdate)
                 // Cold path: full samples buffered and flushed in batches for history/charts.
                 liveSeriesEmitter.enqueueHistorySample(historySample)
@@ -2828,6 +2826,7 @@ internal class BoardSessionController(private val service: CoreForegroundService
     }
 
     private fun stopCurrentBoardSession(emitDisconnected: Boolean) {
+        gpsDisplayTelemetry.clear(System.currentTimeMillis())
         if (boardConfig?.boardKind == BoardKind.OneWheel) {
             owSessionController.stop(emitDisconnected)
             boardConfig = null
