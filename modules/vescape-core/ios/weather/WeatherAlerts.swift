@@ -77,6 +77,7 @@ enum WeatherAlertLevel: String, CaseIterable {
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/weather/WeatherAlerts.kt `WEATHER_ALERT_LEVEL_SETTINGS`
 /// @parity /modules/vescape-core/src/index.ts `WeatherAlertLevelSetting`
 let weatherAlertLevelSettings = ["off"] + WeatherAlertLevel.allCases.map(\.rawValue)
+// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/weather/WeatherAlertDefaults.kt `WEATHER_ALERT_LEVEL_DEFAULT`
 let weatherAlertLevelDefault = "normal"
 
 /// The rider's Weather Alert settings: a nil level turns that kind off. Storms always speak.

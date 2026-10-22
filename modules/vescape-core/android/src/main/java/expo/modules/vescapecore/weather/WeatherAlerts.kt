@@ -74,7 +74,6 @@ internal enum class WeatherAlertLevel(val key: String, val rain: RainThresholds,
  * @parity /modules/vescape-core/src/index.ts `WeatherAlertLevelSetting`
  */
 internal val WEATHER_ALERT_LEVEL_SETTINGS = listOf("off") + WeatherAlertLevel.entries.map { it.key }
-internal const val WEATHER_ALERT_LEVEL_DEFAULT = "normal"
 
 /**
  * The rider's Weather Alert settings: a null level turns that kind off. Storms always speak.
