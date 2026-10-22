@@ -8,10 +8,17 @@ internal let alertRepeatMinSeconds: Int64 = 3
 /// Gap between beeps of one announcement — tight enough that a burst reads as a single signal.
 internal let alertBeepSpacingMs: Double = 200
 
-/// Earliest speech start after the severity sound starts. A longer sound (a multi-beep pack
-/// severity) delays speech to its end, so the two never overlap.
+/// Speech starts once the sound before it ends, but no earlier than `alertSpeechDelayMs` and no
+/// later than `alertSpeechMaxDelayMs` after it starts: a long recorded effect keeps its tail
+/// (reverb, a fade) playing under the voice instead of holding the voice back.
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/alerts/AlertEngine.kt `ALERT_SPEECH_DELAY_MS`
 internal let alertSpeechDelayMs: Int64 = 350
+internal let alertSpeechMaxDelayMs: Int64 = 1500
+
+/// When speech may start after a sound lasting `durationMs` starts playing.
+internal func speechDelayMs(_ durationMs: Int64) -> Int64 {
+  min(max(alertSpeechDelayMs, durationMs), alertSpeechMaxDelayMs)
+}
 
 /// Clamp a repeat cadence coming from JS. Anything non-positive means one-shot; everything else is
 /// floored, so no rule written by any path can announce fast enough to become noise.

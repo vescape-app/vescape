@@ -2,10 +2,10 @@
   "id": "clean",
   "kind": "voice",
   "kokoro": {
-    "voice": "bf_emma",
+    "voice": "af_heart",
     "speed": 0.9
   },
-  "fx": "highpass 90 equalizer 3000 1.5q +4 compand 0.002,0.08 -70,-70,-50,-8,-20,-3,0,-1.5 gain -n -0.3 compand 0.0005,0.03 -10,-10,-3,-2,0,-1 gain -n -0.3 compand 0.001,0.05 -6,-6,0,-1 gain -n -0.3",
+  "fx": "highpass 90 equalizer 3000 1.5q +4 compand 0.002,0.08 -70,-70,-50,-8,-20,-3,0,-1.5 gain -n -0.3 compand 0.0005,0.03 -10,-10,-3,-2,0,-1 gain -n -0.3 compand 0.001,0.05 -6,-6,0,-1 gain -n -4.4",
   "units": {
     "percent": ["percent", "percent"],
     "degrees": ["degree", "degrees"]

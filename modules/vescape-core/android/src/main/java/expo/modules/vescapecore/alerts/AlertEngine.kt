@@ -50,16 +50,18 @@ fun normalizedAlertRepeatSeconds(raw: Double?): Long? {
 }
 
 /**
- * Earliest speech start after the severity sound starts. A longer sound (a multi-beep pack
- * severity) delays speech to its end, so the two never overlap.
+ * Speech starts once the sound before it ends, but no earlier than [ALERT_SPEECH_DELAY_MS] and no
+ * later than [ALERT_SPEECH_MAX_DELAY_MS] after it starts: a long recorded effect keeps its tail
+ * (reverb, a fade) playing under the voice instead of holding the voice back.
  *
  * @parity /modules/vescape-core/ios/alerts/AlertEngine.swift `alertSpeechDelayMs`
  */
 internal const val ALERT_SPEECH_DELAY_MS = 350L
+internal const val ALERT_SPEECH_MAX_DELAY_MS = 1500L
 
 /** When speech may start after [severity]'s sound (its override, else [pack]'s) starts playing. */
 internal fun speechDelayMs(context: Context, pack: String, slot: String): Long =
-    maxOf(ALERT_SPEECH_DELAY_MS, slotClip(context, pack, slot)?.durationMs(context) ?: 0L)
+    (slotClip(context, pack, slot)?.durationMs(context) ?: 0L).coerceIn(ALERT_SPEECH_DELAY_MS, ALERT_SPEECH_MAX_DELAY_MS)
 
 internal fun alertControlUnit(controlId: String): String =
     telemetryMetricByControlId[controlId]?.unit ?: ""

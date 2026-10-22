@@ -39,7 +39,8 @@ All four built-in packs fill every optional slot. Effects packs never contain vo
 - No loudness normalization is applied anywhere. Match the existing packs by ear: synthesized
   tones sit around −6 dBFS peak (sox `vol 0.5`), recorded clips peak just below 0 dBFS. Keep peaks
   under 0 dBFS.
-- No length limit is enforced. Severity sounds and ticks stay short (≤ ~1.1 s, ticks ~10–25 ms);
+- No length limit is enforced. Severity sounds stay short (≤ ~1.1 s) except Retro's, whose recorded
+  tails run up to ~5 s under the voice (speech starts at most 1.5 s in); ticks ~10–25 ms;
   the longest cue today is 4.3 s (Retro `cue.groupRide.created`). Every slot is decoded into
   memory at player start, so keep files short.
 
@@ -76,6 +77,16 @@ pack the `matching` Voice setting plays (`hev` or `clean`).
    (`src/modules/settings/lib/appSounds.ts`, display name and matching voice).
 3. Run `bun run copy:shared` (or `bun run android` / `bun run ios`) to copy packs into the native
    asset folders.
+
+## Retro recordings
+
+Retro's severity sounds and cues are recordings, mastered in mono to raise their average level
+before the AAC encode above:
+
+```sh
+sox -D -R input.wav -r 22050 -b 16 -c 1 slot.wav channels 1 rate 22050 \
+  compand 0,0.1 '6:-80,-80,-40,-25,-20,-12,0,-10' norm -1.5
+```
 
 ## Sox recipes (HEV, Clean)
 
@@ -117,7 +128,7 @@ tone 3.wav 0.08 "sine 830" 0.5 0.005 0.02
 tone 5.wav 0.16 "sine 967" 0.5 0.005 0.02; sox -D -R 1.wav 2.wav 3.wav 2.wav 5.wav slot.wav
 # cue.groupRide.joined
 tone 1.wav 0.07 "sine 967" 0.5 0.005 0.02; gap 2.wav 0.04; sox -D -R 1.wav 2.wav 1.wav slot.wav
-# cue.ride.end (also Retro's and Simple's)
+# cue.ride.end (also Simple's)
 tone 1.wav 0.1 "sine 967" 0.5 0.005 0.02; gap 2.wav 0.03
 tone 3.wav 0.1 "sine 830" 0.5 0.005 0.02
 tone 5.wav 0.24 "sine 660" 0.5 0.005 0.02; sox -D -R 1.wav 2.wav 3.wav 2.wav 5.wav slot.wav

@@ -565,7 +565,7 @@ internal final class AlertAudioPlayer {
     let generation = nextSpeechGeneration()
     playSeverity(SlotAlertSound(count: 1, severity: severity))
     // Written only from the announcing caller; cancelling an already-run item is a no-op.
-    let delay = max(alertSpeechDelayMs, clipDurationMs(clipKey(severity.slot)))
+    let delay = speechDelayMs(clipDurationMs(clipKey(severity.slot)))
     pendingSpeech = scheduler.postDelayed(delay) { [weak self] in
       guard let self, self.isCurrentSpeech(generation) else { return }
       self.speakMessage(text)
@@ -607,7 +607,7 @@ internal final class AlertAudioPlayer {
     let lead = clipKey(slot ?? announcement.severity.slot)
     play(lead)
     guard let line = joinedVoice(announcement, pack: voicePack()) else { return }
-    let delay = max(alertSpeechDelayMs, clipDurationMs(lead))
+    let delay = speechDelayMs(clipDurationMs(lead))
     pendingSpeech = scheduler.postDelayed(delay) { [weak self] in
       self?.onGeigerQueue { owner in
         guard owner.isCurrentSpeech(generation) else { return }

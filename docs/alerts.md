@@ -17,8 +17,8 @@ No separate event. No JS-side audio. Native storage is the source of truth.
 The app-wide **Sound effects** setting (`soundPack`, default `retro`) picks one built-in effects
 pack: Retro, Simple, HEV, or Clean. The selected pack supplies every sound native plays: app cues,
 the severity sounds of alert rules and speech, and geiger ticks (see
-[Built-in packs](#built-in-packs)). Retro and Simple are today's sound themes turned into packs, so
-a saved theme keeps its id and sounds the same. Settings previews the selected pack's slots: its
+[Built-in packs](#built-in-packs)). Retro and Simple are the former sound themes turned into packs, so
+a saved theme keeps its id; Retro has since been re-recorded. Settings previews the selected pack's slots: its
 cues and its Positive/Info/Warning/Critical sounds.
 
 Every effects pack fills four required sound slots, `severity.positive|info|warning|critical`.
@@ -101,7 +101,7 @@ Speech comes from a second app-wide choice next to Sound effects:
   loss). All are gated by the app sounds switch (`connectionSoundsEnabled`).
 
 A `voice(<severity>):<key>:<value>` sound plays the effects pack's `severity.<severity>` sound
-once, then the voice line, starting once the sound has finished (the same timing as TTS). Native
+once, then the voice line, starting once the sound has finished, or 1.5 s after it starts if it runs longer (the same timing as TTS). Native
 joins the line's `start` clip, the value clip, and the `end` clip into one PCM buffer
 (`VoicePacks.kt`, `VoicePacks.swift`) and plays it: Android through a static `AudioTrack` on the
 selected alarm/media stream, iOS through the player's `AVAudioEngine`. Leading encoder priming and
@@ -161,7 +161,7 @@ shared/alerts/packs/
 ```
 
 - **Effect slots**: required `severity.positive` (a short rising two- or three-note chime),
-  `severity.info|warning|critical` (HEV/Clean: 1/2/3 beeps; Retro/Simple: the former Notify, Beep,
+  `severity.info|warning|critical` (HEV/Clean: 1/2/3 beeps; Retro: recorded effects with a reverb tail; Simple: the former Notify, Beep,
   and Urgent sounds), and `geiger.soft|mid|hard`; optional `cue.on`, `cue.off`, `cue.ride.end`,
   `cue.groupRide.created|joined`, each falling back as in [Sound effects](#sound-effects). All four
   built-in packs fill every optional slot today.
@@ -305,7 +305,7 @@ delay:
   for slot overrides and `my:` rules, prepares a MediaPlayer per one-shot My sound on Android, and
   decodes the selected voice pack's lines.
 - A sound that still has to wait on a load queues and plays once ready; speech after it is timed
-  from the sound's actual start, so the two never overlap.
+  from the sound's actual start, so a short sound never overlaps it.
 - iOS sounds lease a player node from a pool of attached nodes instead of attaching one per sound.
 - A sound starting 150 ms or more after its request (`ALERT_AUDIO_LATENCY_REPORT_MS`) records one
   `alert_audio_latency` Diagnostic Event (`sound`, `latency_ms`, `path`) per sound per session.
@@ -338,8 +338,9 @@ of the message.
 
 The form's **Severity** select (Info/Warning/Critical, default Warning) on the Message tab sets the
 variant, which plays the selected effects pack's `severity.<variant>` sound once. Speech starts
-once the sound has played, and no earlier than 350 ms after it starts (`ALERT_SPEECH_DELAY_MS`), so
-the two never overlap, even for a pack's three-beep critical sound; a newer announcement cancels speech still waiting on an older one's sound.
+once the sound has played, no earlier than 350 ms after it starts (`ALERT_SPEECH_DELAY_MS`) and no
+later than 1.5 s (`ALERT_SPEECH_MAX_DELAY_MS`): a short sound, even a pack's three-beep critical, never
+overlaps the speech, while a longer recorded effect keeps its tail playing under it. A newer announcement cancels speech still waiting on an older one's sound.
 
 Message mode is single-threshold only (one-shot or repeating). Geiger/range alerts (`threshold_max != null`) use geiger presets and must not use `tts:`. Native should guard against invalid stored combinations.
 
