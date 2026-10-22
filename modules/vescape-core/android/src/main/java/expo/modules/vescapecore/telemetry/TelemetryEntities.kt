@@ -5,7 +5,6 @@ import androidx.room.Entity
 import androidx.room.ForeignKey
 import androidx.room.Index
 import androidx.room.PrimaryKey
-import expo.modules.vescapecore.alerts.ALERT_BEEP_COUNT_DEFAULT
 
 // @parity /modules/vescape-core/ios/alerts/AlertEngine.swift
 const val TELEMETRY_FLAG_KEYFRAME = 1
@@ -410,8 +409,9 @@ data class AlertRuleEntity(
   @ColumnInfo(name = "threshold_offset") val thresholdOffset: Double? = null,
   @ColumnInfo(name = "threshold_max_offset") val thresholdMaxOffset: Double? = null,
   val enabled: Boolean,
-  @ColumnInfo(name = "sound_type")
-  val soundType: String,
+  /** Sound string, or the `preset(<level>)…` spec of an Alert Preset row (see `AlertPresetSpec`). */
+  @ColumnInfo(name = "spec")
+  val spec: String,
   @ColumnInfo(name = "created_at")
   val createdAt: Long,
   /**
@@ -420,14 +420,6 @@ data class AlertRuleEntity(
    */
   @ColumnInfo(name = "repeat_every_seconds")
   val repeatEverySeconds: Long? = null,
-  /** Sound repeats per announcement. Mirrors TS `AlertRule.beepCount`. */
-  @ColumnInfo(name = "beep_count")
-  val beepCount: Int = ALERT_BEEP_COUNT_DEFAULT,
-  /**
-   * Free-text provenance tag mirroring TS `AlertRule.source`: `manual` (or null) or `preset`.
-   * Native owns preset generation; JS submits selection intents.
-   */
-  val source: String?,
 )
 
 @Entity(
@@ -517,10 +509,14 @@ data class AppSettings(
   val socEstimateWindowSeconds: Int = 20,
   val boardMoveStrengthPercent: Int = 60,
   val connectionSoundsEnabled: Boolean = true,
-  val soundPack: String = "retro",
+  val soundPack: String = "arc",
   // @parity /modules/vescape-core/ios/telemetry/AppDataRepository.swift `defaultSettings`
   // @parity /modules/vescape-core/src/index.ts `AppSettings`
   val audioSource: String = "alarm",
+  /** `matching` or a voice pack id. @parity /modules/vescape-core/ios/telemetry/AppDataRepository.swift `defaultSettings` */
+  val voice: String = "matching",
+  /** `off` / `standard` / `full`. @parity /modules/vescape-core/ios/telemetry/AppDataRepository.swift `defaultSettings` */
+  val voiceLevel: String = "standard",
   val telemetryPollRateHz: Int = 20,
   val wearPushRateHz: Int = 4,
   val wearAutoLaunchOnConnect: Boolean = true,

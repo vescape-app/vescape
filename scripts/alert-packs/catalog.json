@@ -1,0 +1,25 @@
+{
+  "severities": ["info", "warning", "critical"],
+  "voiceKeys": {
+    "battery": "percent",
+    "motorTemp": "degrees",
+    "controllerTemp": "degrees",
+    "speed": "number",
+    "dutyCycle": "number",
+    "boardConnection.connected": null,
+    "boardConnection.lost": null,
+    "system.error": null,
+    "groupRide.created": null,
+    "groupRide.joined": null,
+    "groupRide.riderJoined": null,
+    "groupRide.riderLeft": null,
+    "groupRide.lost": null,
+    "groupRide.restored": null,
+    "ride.end": null
+  },
+  "valueRanges": {
+    "percent": { "min": 0, "max": 100 },
+    "degrees": { "min": -30, "max": 300 },
+    "number": { "min": 0, "max": 100 }
+  }
+}

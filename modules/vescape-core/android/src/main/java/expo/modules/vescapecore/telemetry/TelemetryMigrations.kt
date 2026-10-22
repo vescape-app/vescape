@@ -1,7 +1,6 @@
 package expo.modules.vescapecore.telemetry
 
 import androidx.sqlite.SQLiteConnection
-import expo.modules.vescapecore.alerts.ALERT_BEEP_COUNT_DEFAULT
 
 // @parity /modules/vescape-core/ios/VescapeCoreModule.swift
 internal const val TELEMETRY_DATABASE_NAME = "vescape.db"
@@ -1267,7 +1266,7 @@ internal object TelemetryMigrations {
           db.execSQL("ALTER TABLE alerts ADD COLUMN repeat_every_seconds INTEGER")
         }
         if (!hasColumn(db, "alerts", "beep_count")) {
-          db.execSQL("ALTER TABLE alerts ADD COLUMN beep_count INTEGER NOT NULL DEFAULT $ALERT_BEEP_COUNT_DEFAULT")
+          db.execSQL("ALTER TABLE alerts ADD COLUMN beep_count INTEGER NOT NULL DEFAULT 3")
         }
     }
 
@@ -1562,6 +1561,158 @@ internal object TelemetryMigrations {
       db.execSQL("ALTER TABLE telemetry_minute_buckets ADD COLUMN route_preview TEXT")
     }
 
+    /**
+     * A single alert's beep count moves into its sound string (#578): `preset:beep` with
+     * `beep_count` 3 becomes `alert(3):warning`, playing the effects pack's severity slot. Legacy
+     * `preset:beep|urgent|notify` (and the older bare names) map to warning, critical, info. TTS,
+     * geiger, and unknown strings keep their sound. `beep_count` is then dropped; SQLite before
+     * 3.35 has no `DROP COLUMN`, so the table is rebuilt by copy.
+     *
+     * @parity /modules/vescape-core/ios/telemetry/TelemetryDatabase.swift `v50_alert_sound_count`
+     */
+    internal val MIGRATION_49_50 = migration(49, 50) { db ->
+        db.execSQL(ALERT_SOUND_COUNT_SQL)
+        db.execSQL(
+          """
+          CREATE TABLE alerts_new (
+            board_id TEXT NOT NULL,
+            id TEXT NOT NULL,
+            control_id TEXT NOT NULL,
+            threshold REAL NOT NULL,
+            threshold_max REAL,
+            enabled INTEGER NOT NULL,
+            sound_type TEXT NOT NULL,
+            created_at INTEGER NOT NULL,
+            source TEXT,
+            repeat_every_seconds INTEGER,
+            threshold_kind TEXT NOT NULL DEFAULT 'fixed',
+            config_field_id TEXT,
+            threshold_offset REAL,
+            threshold_max_offset REAL,
+            PRIMARY KEY (board_id, id)
+          )
+          """.trimIndent(),
+        )
+        db.execSQL(
+          """
+          INSERT INTO alerts_new (board_id, id, control_id, threshold, threshold_max, enabled, sound_type,
+            created_at, source, repeat_every_seconds, threshold_kind, config_field_id, threshold_offset,
+            threshold_max_offset)
+          SELECT board_id, id, control_id, threshold, threshold_max, enabled, sound_type, created_at,
+            source, repeat_every_seconds, threshold_kind, config_field_id, threshold_offset,
+            threshold_max_offset
+          FROM alerts
+          """.trimIndent(),
+        )
+        db.execSQL("DROP TABLE alerts")
+        db.execSQL("ALTER TABLE alerts_new RENAME TO alerts")
+        db.execSQL("CREATE INDEX IF NOT EXISTS index_alerts_board_id ON alerts(board_id)")
+        db.execSQL("CREATE INDEX IF NOT EXISTS index_alerts_control_id ON alerts(control_id)")
+        db.execSQL("CREATE INDEX IF NOT EXISTS index_alerts_enabled ON alerts(enabled)")
+        db.execSQL("CREATE INDEX IF NOT EXISTS index_alerts_created_at ON alerts(created_at)")
+    }
+
+    /** @parity /modules/vescape-core/ios/telemetry/TelemetryDatabase.swift `alertSoundCountSql` */
+    private val ALERT_SOUND_COUNT_SQL = """
+      UPDATE alerts SET sound_type = 'alert(' || MAX(1, MIN(5, beep_count)) || '):' ||
+        CASE sound_type
+          WHEN 'preset:urgent' THEN 'critical' WHEN 'urgent' THEN 'critical'
+          WHEN 'preset:notify' THEN 'info' WHEN 'notify' THEN 'info' WHEN 'pulse' THEN 'info'
+          ELSE 'warning'
+        END
+      WHERE sound_type IN ('preset:beep', 'preset:urgent', 'preset:notify', 'default', 'beep', 'urgent', 'notify', 'pulse')
+    """.trimIndent()
+
+    /**
+     * An Alert Preset becomes one `preset:<metric>` row (#591) whose `spec` is
+     * `preset(<level>)[:geiger=<level>][,match=on]`; native expands it at load, so the copied
+     * `source = 'preset'` rows go. Existing Boards keep what fired: a missing level or `custom` is
+     * `off` (custom's rider rules stay), as is a metric whose old preset points were all disabled
+     * (a partly disabled ladder keeps its level; per-point disable is dropped), the geiger choice
+     * comes from `alertPresetSound` or else the old preset rows, and `matchBoardConfig` becomes `match=on`. The column `sound_type` is renamed
+     * `spec`, `source` is dropped by copy, and the three obsolete Board Settings are deleted.
+     *
+     * @parity /modules/vescape-core/ios/telemetry/TelemetryDatabase.swift `v51_preset_rows`
+     */
+    internal val MIGRATION_50_51 = migration(50, 51) { db ->
+        db.execSQL(
+          """
+          CREATE TABLE alerts_new (
+            board_id TEXT NOT NULL,
+            id TEXT NOT NULL,
+            control_id TEXT NOT NULL,
+            threshold REAL NOT NULL,
+            threshold_max REAL,
+            enabled INTEGER NOT NULL,
+            spec TEXT NOT NULL,
+            created_at INTEGER NOT NULL,
+            repeat_every_seconds INTEGER,
+            threshold_kind TEXT NOT NULL DEFAULT 'fixed',
+            config_field_id TEXT,
+            threshold_offset REAL,
+            threshold_max_offset REAL,
+            PRIMARY KEY (board_id, id)
+          )
+          """.trimIndent(),
+        )
+        db.execSQL(
+          """
+          INSERT INTO alerts_new (board_id, id, control_id, threshold, threshold_max, enabled, spec,
+            created_at, repeat_every_seconds, threshold_kind, config_field_id, threshold_offset,
+            threshold_max_offset)
+          SELECT board_id, id, control_id, threshold, threshold_max, enabled, sound_type, created_at,
+            repeat_every_seconds, threshold_kind, config_field_id, threshold_offset, threshold_max_offset
+          FROM alerts WHERE source IS NULL OR source != 'preset'
+          """.trimIndent(),
+        )
+        db.execSQL(PRESET_ROWS_SQL)
+        db.execSQL("DROP TABLE alerts")
+        db.execSQL("ALTER TABLE alerts_new RENAME TO alerts")
+        db.execSQL("CREATE INDEX IF NOT EXISTS index_alerts_board_id ON alerts(board_id)")
+        db.execSQL("CREATE INDEX IF NOT EXISTS index_alerts_control_id ON alerts(control_id)")
+        db.execSQL("CREATE INDEX IF NOT EXISTS index_alerts_enabled ON alerts(enabled)")
+        db.execSQL("CREATE INDEX IF NOT EXISTS index_alerts_created_at ON alerts(created_at)")
+        db.execSQL("DELETE FROM board_settings WHERE key IN ('alertPreset', 'matchBoardConfig', 'alertPresetSound')")
+    }
+
+    /** @parity /modules/vescape-core/ios/telemetry/TelemetryDatabase.swift `presetRowsSql` */
+    private val PRESET_ROWS_SQL = """
+      INSERT OR REPLACE INTO alerts_new (board_id, id, control_id, threshold, threshold_max, enabled, spec, created_at)
+      SELECT board_id, 'preset:' || metric, metric, 0, NULL, 1,
+        'preset(' || level || ')' || CASE WHEN options = '' THEN '' ELSE ':' || options END, 0
+      FROM (
+        SELECT board_id, metric,
+          CASE WHEN all_disabled = 1 THEN 'off' WHEN level IN ('safe', 'normal', 'minimal') THEN level ELSE 'off' END AS level,
+          ltrim(
+            CASE WHEN geiger IN ('soft', 'mid', 'hard') THEN ',geiger=' || geiger ELSE '' END ||
+            CASE WHEN matched = 1 AND metric IN ('duty', 'motor-temp', 'controller-temp') THEN ',match=on' ELSE '' END,
+            ','
+          ) AS options
+        FROM (
+          SELECT boards.id AS board_id, metrics.metric AS metric,
+            (SELECT json_extract(value_json, '$."' || metrics.metric || '"') FROM board_settings
+              WHERE board_id = boards.id AND key = 'alertPreset' AND json_valid(value_json)) AS level,
+            substr(COALESCE(
+              (SELECT json_extract(value_json, '$."' || metrics.metric || '".geiger') FROM board_settings
+                WHERE board_id = boards.id AND key = 'alertPresetSound' AND json_valid(value_json)),
+              (SELECT sound_type FROM alerts WHERE alerts.board_id = boards.id AND control_id = metrics.metric
+                AND source = 'preset' AND sound_type LIKE 'geiger:%' LIMIT 1)
+            ), length('geiger:') + 1) AS geiger,
+            (SELECT json_extract(value_json, '$."' || metrics.metric || '"') FROM board_settings
+              WHERE board_id = boards.id AND key = 'matchBoardConfig' AND json_valid(value_json)) AS matched,
+            -- Every old preset point disabled: the rider had silenced the metric.
+            (SELECT COUNT(*) > 0 AND SUM(enabled) = 0 FROM alerts WHERE alerts.board_id = boards.id
+              AND control_id = metrics.metric AND source = 'preset') AS all_disabled
+          FROM boards
+          CROSS JOIN (SELECT 'speed' AS metric UNION ALL SELECT 'duty' UNION ALL SELECT 'motor-temp'
+            UNION ALL SELECT 'controller-temp' UNION ALL SELECT 'battery') AS metrics
+          WHERE boards.deleted_at IS NULL
+        )
+      )
+      -- The app default has no row.
+      WHERE NOT (level = 'normal' AND options = '')
+    """.trimIndent()
+
     /** Every migration registered with Room, in the graph's production order. */
     val all = listOf(
       MIGRATION_3_4,
@@ -1607,6 +1758,8 @@ internal object TelemetryMigrations {
       MIGRATION_46_47,
       MIGRATION_47_48,
       MIGRATION_48_49,
+      MIGRATION_49_50,
+      MIGRATION_50_51,
     )
 
 }

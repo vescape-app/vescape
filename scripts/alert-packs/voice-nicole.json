@@ -1,0 +1,175 @@
+{
+  "id": "nicole",
+  "kind": "voice",
+  "kokoro": {
+    "voice": "af_nicole",
+    "speed": 0.9
+  },
+  "fx": "highpass 90 equalizer 3000 1.5q +4 compand 0.002,0.08 -70,-70,-50,-8,-20,-3,0,-1.5 gain -n -0.3 compand 0.0005,0.03 -10,-10,-3,-2,0,-1 gain -n -0.3 compand 0.001,0.05 -6,-6,0,-1 gain -n -4.4",
+  "units": {
+    "percent": ["percent", "percent"],
+    "degrees": ["degree", "degrees"]
+  },
+  "lines": {
+    "speed": {
+      "start": ["Speed..."],
+      "full": {
+        "start": ["Easy, tiger. Speed...", "In a hurry? Speed..."]
+      }
+    },
+    "dutyCycle": {
+      "start": ["Duty cycle..."],
+      "full": {
+        "start": ["I'm working hard...", "Easy on me. Duty..."]
+      },
+      "minimal": ["Duty..."]
+    },
+    "battery": {
+      "start": ["Battery..."],
+      "full": {
+        "start": ["Still yours. Battery...", "Checking my energy..."]
+      }
+    },
+    "battery.warning": {
+      "start": ["Ooh... battery low..."],
+      "full": {
+        "start": ["Mmm... I'm running low...", "Ooh... getting tired over here. Battery..."]
+      }
+    },
+    "battery.critical": {
+      "start": ["Battery critical. Take me home..."],
+      "full": {
+        "start": ["Battery critical...", "I'm almost empty..."],
+        "end": ["Take me home and plug me in.", "A charger would be very romantic right now."],
+        "endChance": 0.2
+      }
+    },
+    "motorTemp": {
+      "start": ["Motor temperature..."],
+      "minimal": ["Motor..."],
+      "full": {
+        "start": ["Let's see how hot I am. Motor...", "Motor temperature..."],
+        "end": ["Just checking."],
+        "endChance": 0.2
+      }
+    },
+    "motorTemp.warning": {
+      "start": ["Motor getting hot..."],
+      "full": {
+        "start": ["You're making me hot. Motor...", "Easy. Motor getting hot..."]
+      }
+    },
+    "motorTemp.critical": {
+      "start": ["Motor overheating. Take it easy..."],
+      "full": {
+        "start": ["Motor overheating..."],
+        "end": ["I need a break, not encouragement.", "Hot is cute. This is too hot."],
+        "endChance": 0.2
+      }
+    },
+    "controllerTemp": {
+      "start": ["Controller temperature..."],
+      "minimal": ["Controller..."],
+      "full": {
+        "start": ["Let's check my temperature. Controller..."]
+      }
+    },
+    "controllerTemp.warning": {
+      "start": ["Controller getting hot..."],
+      "full": {
+        "start": ["I'm getting a little too warm. Controller...", "Controller getting hot..."],
+        "end": ["Let's take it easy."],
+        "endChance": 0.2
+      }
+    },
+    "controllerTemp.critical": {
+      "start": ["Controller overheating. Take it easy..."],
+      "full": {
+        "start": ["Controller overheating..."],
+        "end": ["I need a moment to cool down.", "I like your enthusiasm, but slow down."],
+        "endChance": 0.2
+      }
+    },
+    "boardConnection.connected": {
+      "start": ["Board connected."],
+      "full": {
+        "start": [
+          "Mmm, there you are. I was waiting for you.",
+          "Hey, you. Take me somewhere nice.",
+          "Connected. You bring the balance, I'll bring the personality."
+        ]
+      }
+    },
+    "boardConnection.lost": {
+      "start": ["Board disconnected."],
+      "full": {
+        "start": [
+          "Leaving already? Come back soon.",
+          "Disconnected. I'll try not to take it personally.",
+          "Fine. Go spend time with your other devices."
+        ]
+      }
+    },
+    "system.error": {
+      "start": ["Something went wrong."],
+      "full": {
+        "start": [
+          "Something went wrong. That wasn't part of my charm.",
+          "Oh. We have a little problem."
+        ]
+      }
+    },
+    "groupRide.created": {
+      "start": ["Group ride created."],
+      "full": {
+        "start": [
+          "Group ride ready. Try to invite someone who can keep up.",
+          "We're hosting. I'll try to behave."
+        ]
+      }
+    },
+    "groupRide.joined": {
+      "start": ["Joined the group ride."],
+      "full": {
+        "start": ["We're in. Let's make a good impression.", "Group ride joined. Try to look cool."]
+      }
+    },
+    "groupRide.riderJoined": {
+      "start": ["A rider joined."],
+      "full": {
+        "start": ["Someone new just joined us. How exciting.", "We have company. Behave yourself."]
+      }
+    },
+    "groupRide.riderLeft": {
+      "start": ["A rider left."],
+      "full": {
+        "start": [
+          "Someone left. Was it something I said?",
+          "One less rider. More attention for me."
+        ]
+      }
+    },
+    "groupRide.lost": {
+      "start": ["Group ride connection lost."],
+      "full": {
+        "start": ["We lost the group. I preferred getting lost together."]
+      }
+    },
+    "groupRide.restored": {
+      "start": ["Group ride connection restored."],
+      "full": {
+        "start": ["There they are. Act natural.", "Back together. I knew they'd miss us."]
+      }
+    },
+    "ride.end": {
+      "start": ["Ride ended."],
+      "full": {
+        "start": [
+          "That was lovely. Same time tomorrow?",
+          "Home safe. Now that deserves a recharge.",
+          "Nice ride. We make a good team."
+        ]
+      }
+    }
+  }
+}

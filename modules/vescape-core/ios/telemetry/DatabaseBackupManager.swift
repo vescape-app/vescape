@@ -7,7 +7,7 @@ import GRDB
 /// `TelemetryDatabase.migrator`.
 ///
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/TelemetryRoomDatabase.kt `TELEMETRY_DATABASE_VERSION`
-internal let TELEMETRY_SCHEMA_VERSION = 49
+internal let TELEMETRY_SCHEMA_VERSION = 51
 
 /// Released schema generations that have a complete production path to the current schema.
 /// 37–39 never shipped as standalone migrations: Android deliberately jumps 36→40.
@@ -76,7 +76,7 @@ enum DatabaseBackupManager {
 
     let dbData = try Data(contentsOf: sqliteExport)
     let manifestData = try manifest(dbSizeBytes: Int64(dbData.count), sourceURL: dbURL)
-    let zipData = DatabaseBackupArchive.archive(database: dbData, manifest: manifestData, sounds: CustomAppSounds.archiveEntries())
+    let zipData = DatabaseBackupArchive.archive(database: dbData, manifest: manifestData, sounds: MySounds.archiveEntries())
     try zipData.write(to: zipExport, options: .atomic)
     // intentional-suppression: temporary-file cleanup is best effort and invalid backup is returned explicitly
     try? fm.removeItem(at: sqliteExport)
@@ -100,26 +100,15 @@ enum DatabaseBackupManager {
 
     TelemetryRepository.shared.beginDatabaseSwap()
     defer { TelemetryRepository.shared.endDatabaseSwap() }
-    try TelemetryDatabase.replaceDatabase(withFileAt: staged.database, schemaVersion: staged.roomVersion) { pool in
-      let saved = try pool.read { db in
-        try String.fetchOne(db, sql: "SELECT value_json FROM app_settings WHERE key = 'soundPack'")
-      }
-      if let saved,
-        // intentional-suppression: malformed selected-pack JSON follows normal settings validation
-        let pack = try? JSONSerialization.jsonObject(with: Data(saved.utf8)) as? String,
-        pack != "simple", pack != "retro", !CustomAppSounds.backupContains(staged.sounds, pack) {
-        try pool.write { db in
-          try db.execute(sql: "UPDATE app_settings SET value_json = ? WHERE key = 'soundPack'", arguments: ["\"simple\""])
-        }
-      }
-      try CustomAppSounds.replaceFromBackup(staged.sounds)
+    try TelemetryDatabase.replaceDatabase(withFileAt: staged.database, schemaVersion: staged.roomVersion) { _ in
+      try MySounds.replaceFromBackup(staged.sounds)
     }
   }
 
   /// Portable archive/manifest/database validation used by restore and host contracts.
   internal static func stageBackupArchive(_ zipData: Data, in workDir: URL) throws -> (database: URL, roomVersion: Int, sounds: [String: Data]) {
     let (manifestData, dbData, sounds) = try DatabaseBackupArchive.extract(zipData)
-    try CustomAppSounds.validateBackup(sounds)
+    try MySounds.validateBackup(sounds)
     let schema = try validateManifest(manifestData)
     let restoredDb = workDir.appendingPathComponent("restored.sqlite")
     try dbData.write(to: restoredDb, options: .atomic)

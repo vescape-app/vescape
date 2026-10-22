@@ -70,7 +70,26 @@ class TelemetryMigrationMatrixHostTest {
       4 -> db.exec("INSERT INTO app_settings (id,live_history_limit,auto_connect,auto_recording) VALUES (1,17,0,1)")
       12 -> db.exec("INSERT INTO app_settings VALUES ('era-setting','\"preserved\"',1200)")
       30 -> db.exec("INSERT INTO favorites VALUES ('favorite-era30','board-era3','Favorite',900,1100,30,31,2,1,20,100,1200,1234,3)")
+      32 -> {
+        db.exec("INSERT INTO alerts (board_id,id,control_id,threshold,enabled,sound_type,created_at,beep_count) VALUES ('board-era3','speech-era32','speed',20,1,'tts:Slow down',3200,3)")
+        db.exec("INSERT INTO alerts (board_id,id,control_id,threshold,enabled,sound_type,created_at,beep_count) VALUES ('board-era3','beep-era32','speed',25,1,'preset:beep',3201,2)")
+        db.exec("INSERT INTO alerts (board_id,id,control_id,threshold,enabled,sound_type,created_at,beep_count) VALUES ('board-era3','urgent-era32','speed',30,1,'preset:urgent',3202,5)")
+        db.exec("INSERT INTO alerts (board_id,id,control_id,threshold,threshold_max,enabled,sound_type,created_at,beep_count) VALUES ('board-era3','tick-era32','duty',80,90,1,'preset:tick',3203,3)")
+        for (index in 0..2) {
+          db.exec("INSERT INTO alerts (board_id,id,control_id,threshold,enabled,sound_type,created_at,source,beep_count) VALUES ('board-era3','preset:battery:$index','battery',${30 - index * 10},1,'tts:Battery {percent}%',3204,'preset',3)")
+        }
+        db.exec("INSERT INTO alerts (board_id,id,control_id,threshold,enabled,sound_type,created_at,source,beep_count) VALUES ('board-era3','preset:motor-temp:0','motor-temp',95,1,'tts:Motor {value} {unit}',3205,'preset',3)")
+        db.exec("INSERT INTO alerts (board_id,id,control_id,threshold,enabled,sound_type,created_at,beep_count) VALUES ('board-era3','custom-battery-era32','battery',25,1,'tts:Battery {percent}%',3206,3)")
+      }
       33 -> db.exec("INSERT INTO board_config_values VALUES ('board-era3','2.0','{\"motor_current_max\":55.5}',3300)")
+      50 -> {
+        // The v50 Alert Preset Board Settings and copied preset rows that v51 folds into one row per metric.
+        db.exec("INSERT INTO board_settings VALUES ('board-era3','alertPreset','{\"speed\":\"safe\",\"duty\":\"custom\",\"motor-temp\":\"normal\"}',5000)")
+        db.exec("INSERT INTO board_settings VALUES ('board-era3','alertPresetSound','{\"speed\":{\"geiger\":\"geiger:mid\"}}',5000)")
+        db.exec("INSERT INTO board_settings VALUES ('board-era3','matchBoardConfig','{\"motor-temp\":true,\"speed\":true}',5000)")
+        db.exec("INSERT INTO alerts (board_id,id,control_id,threshold,threshold_max,enabled,sound_type,created_at,source) VALUES ('board-era3','preset:speed:0','speed',36,45,1,'geiger:hard',5001,'preset')")
+        db.exec("INSERT INTO alerts (board_id,id,control_id,threshold,threshold_max,enabled,sound_type,created_at,source) VALUES ('board-era3','preset:duty:0','duty',80,90,1,'geiger:soft',5002,'preset')")
+      }
     }
   }
 
@@ -178,12 +197,95 @@ class TelemetryMigrationMatrixHostTest {
         assertEquals(null, db.long("SELECT moving_speed_sample_count FROM telemetry_minute_buckets WHERE bucket_start_ms=960"))
         if (start >= 12) assertEquals("\"preserved\"", db.text("SELECT value_json FROM app_settings WHERE key='era-setting'"))
         if (start >= 30) assertEquals("Favorite", db.text("SELECT name FROM favorites WHERE id='favorite-era30'"))
+        // Single alerts carry their beep count in the sound string (#578); the column is gone.
+        if (start >= 32) {
+          assertEquals("tts:Slow down", db.text("SELECT spec FROM alerts WHERE id='speech-era32'"))
+          assertEquals("alert(2):warning", db.text("SELECT spec FROM alerts WHERE id='beep-era32'"))
+          assertEquals("alert(5):critical", db.text("SELECT spec FROM alerts WHERE id='urgent-era32'"))
+          assertEquals("preset:tick", db.text("SELECT spec FROM alerts WHERE id='tick-era32'"))
+          assertEquals("tts:Battery {percent}%", db.text("SELECT spec FROM alerts WHERE id='custom-battery-era32'"))
+        }
+        // One preset row per metric (#591). Before v50's settings existed nothing was selected, so
+        // every metric is Off and nothing new starts firing; copied preset rows are gone.
+        val presets = mapOf(
+          "speed" to "preset(safe):geiger=mid",
+          "duty" to "preset(off):geiger=soft",
+          "motor-temp" to "preset(normal):match=on",
+          "controller-temp" to "preset(off)",
+          "battery" to "preset(off)",
+        )
+        for ((metric, spec) in presets) {
+          assertEquals(metric, if (start >= 50) spec else "preset(off)", db.text("SELECT spec FROM alerts WHERE id='preset:$metric'"))
+        }
+        assertEquals(0L, db.long("SELECT COUNT(*) FROM alerts WHERE id LIKE 'preset:%:%'"))
+        assertEquals(0L, db.long("SELECT COUNT(*) FROM board_settings WHERE key IN ('alertPreset','matchBoardConfig','alertPresetSound')"))
+        assertEquals(0L, db.long("SELECT COUNT(*) FROM pragma_table_info('alerts') WHERE name IN ('source','sound_type')"))
+        assertEquals(0L, db.long("SELECT COUNT(*) FROM pragma_table_info('alerts') WHERE name='beep_count'"))
         if (start >= 33) assertEquals("{\"motor_current_max\":55.5}", db.text("SELECT values_json FROM board_config_values WHERE board_id='board-era3'"))
       }
       Files.deleteIfExists(path)
     }
     assertEquals(TelemetryMigrations.all.map { it.startVersion to it.endVersion }.toSet(), reached)
   }
+
+  /**
+   * v51 folds each live Board's own settings and old preset rows (#591): nothing leaks between
+   * Boards, a tombstone gets no preset rows, geiger falls back to the old rows, and a metric whose
+   * old preset points were all disabled becomes Off while a partly disabled ladder keeps its level.
+   * A plain Normal level is the app default and writes no row; an unset level stays an explicit Off.
+   * @parity /modules/vescape-core/ios/telemetry/TelemetryMigrationTests.swift `testPresetRowsMigrationKeepsBoardsApartAndHonoursDisabledPoints`
+   */
+  @Test fun presetRowsMigrationKeepsBoardsApartAndHonoursDisabledPoints() {
+    val path = Files.createTempFile("vescape-v50-presets-", ".db")
+    BundledSQLiteDriver().open(path.toString()).use { db ->
+      createAuthenticV3(db)
+      migrate(db, 3, 50, mutableSetOf())
+      db.exec("DELETE FROM alerts")
+      db.exec("DELETE FROM board_settings")
+      db.exec("INSERT INTO boards (id,name,ble_id,created_at,deleted_at) VALUES ('board-1','One',NULL,1,NULL),('board-2','Two',NULL,2,NULL),('board-3','Three',NULL,3,4)")
+      db.exec("""INSERT INTO board_settings VALUES ('board-1','alertPreset','{"speed":"minimal","battery":"safe"}',1),('board-1','alertPresetSound','{"speed":{"geiger":"geiger:hard"}}',1),('board-2','alertPreset','{"speed":"normal","duty":"normal"}',1),('board-2','matchBoardConfig','{"duty":true}',1),('board-3','alertPreset','{"speed":"safe"}',1)""")
+      for ((board, id, control, enabled, sound, source) in listOf(
+        Row6("board-1", "preset:speed:0", "speed", 0, "geiger:soft", "'preset'"),
+        Row6("board-1", "preset:speed:1", "speed", 1, "geiger:soft", "'preset'"),
+        Row6("board-1", "preset:battery:0", "battery", 0, "tts:Battery {percent}%", "'preset'"),
+        Row6("board-1", "preset:battery:1", "battery", 0, "tts:Battery {percent}%", "'preset'"),
+        Row6("board-2", "preset:duty:0", "duty", 0, "geiger:mid", "'preset'"),
+        Row6("board-2", "preset:duty:1", "duty", 0, "geiger:mid", "'preset'"),
+        Row6("board-3", "preset:speed:0", "speed", 1, "geiger:soft", "'preset'"),
+        Row6("board-3", "rider-3", "speed", 1, "alert(1):warning", "NULL"),
+      )) {
+        db.exec("INSERT INTO alerts (board_id,id,control_id,threshold,threshold_max,enabled,sound_type,created_at,source) VALUES ('$board','$id','$control',20,NULL,$enabled,'$sound',1,$source)")
+      }
+      migrate(db, 50, 51, mutableSetOf())
+      fun specs(board: String) = db.prepare("SELECT id, spec FROM alerts WHERE board_id='$board'").use { statement ->
+        buildMap { while (statement.step()) put(statement.getText(0), statement.getText(1)) }
+      }
+      assertEquals(
+        mapOf(
+          "preset:speed" to "preset(minimal):geiger=hard",
+          "preset:duty" to "preset(off)",
+          "preset:motor-temp" to "preset(off)",
+          "preset:controller-temp" to "preset(off)",
+          "preset:battery" to "preset(off)",
+        ),
+        specs("board-1"),
+      )
+      assertEquals(
+        mapOf(
+          // Normal with no options is the app default: no row.
+          "preset:duty" to "preset(off):geiger=mid,match=on",
+          "preset:motor-temp" to "preset(off)",
+          "preset:controller-temp" to "preset(off)",
+          "preset:battery" to "preset(off)",
+        ),
+        specs("board-2"),
+      )
+      assertEquals(mapOf("rider-3" to "alert(1):warning"), specs("board-3"))
+    }
+    Files.deleteIfExists(path)
+  }
+
+  private data class Row6(val board: String, val id: String, val control: String, val enabled: Int, val sound: String, val source: String)
 
   @Test fun missingAndUnsupportedStartsFailWithoutCreatingTargetData() {
     for (start in listOf(1, 2, 37, 38, 39, TELEMETRY_DATABASE_VERSION + 1)) {

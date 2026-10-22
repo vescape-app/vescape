@@ -2,7 +2,7 @@
   "metrics": {
     "speed": {
       "family": "geiger",
-      "soundType": "preset:gamma",
+      "spec": "geiger:soft",
       "scaledByTopSpeed": true,
       "levels": {
         "safe": {
@@ -21,7 +21,7 @@
     },
     "duty": {
       "family": "geiger",
-      "soundType": "preset:tick",
+      "spec": "geiger:hard",
       "levels": {
         "safe": {
           "start": 75,
@@ -39,7 +39,7 @@
     },
     "motor-temp": {
       "family": "discrete",
-      "soundType": "tts:Motor {value} {unit}",
+      "spec": "voice:motorTemp",
       "levels": {
         "safe": [
           {
@@ -75,7 +75,7 @@
     },
     "controller-temp": {
       "family": "discrete",
-      "soundType": "tts:Controller {value} {unit}",
+      "spec": "voice:controllerTemp",
       "levels": {
         "safe": [
           {
@@ -111,7 +111,7 @@
     },
     "battery": {
       "family": "discrete",
-      "soundType": "tts:Battery {percent}%",
+      "spec": "voice:battery",
       "requiresBatteryConfig": true,
       "levels": {
         "safe": [

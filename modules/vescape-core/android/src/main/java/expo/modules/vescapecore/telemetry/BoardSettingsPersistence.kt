@@ -24,7 +24,8 @@ internal class BoardSettingsPersistence(private val dao: TelemetryDao) {
     board: BoardEntity,
     settings: List<BoardSettingEntity>,
     deletedKeys: List<String>,
-  ) = dao.upsertBoardWithSettings(board, settings, deletedKeys)
+    alerts: List<AlertRuleEntity> = emptyList(),
+  ) = dao.upsertBoardWithSettings(board, settings, deletedKeys, alerts)
 
   suspend fun deleteBoard(id: String, deletedAt: Long) = dao.deleteBoardWithSettings(id, deletedAt)
   suspend fun getSettings(): List<AppSettingEntity> = dao.getAllAppSettings()

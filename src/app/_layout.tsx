@@ -33,7 +33,7 @@ import { startTuneSnapshotSessionSync } from '@/modules/tune/store/tuneSnapshotS
 import { startBoardWarningsSync } from '@/modules/board/store/boardWarningsStore'
 import { startVescFaultsSync } from '@/modules/board/store/vescFaultsStore'
 import {
-  setGroupRideSoundPlayer,
+  setGroupRideCreatedSoundPlayer,
   useGroupRideStore,
 } from '@/modules/group-ride/store/groupRideStore'
 import { playSelectedAppSound } from '@/modules/settings/lib/appSounds'
@@ -99,7 +99,7 @@ function RootLayout() {
     if (!fixturesReady) return
     void useSettingsStore.getState().load()
     void useRiderStore.getState().load()
-    setGroupRideSoundPlayer(playSelectedAppSound)
+    setGroupRideCreatedSoundPlayer(() => playSelectedAppSound('groupRide.created'))
     useGroupRideStore.getState().startObserving()
     const stopLiveStateSync = startLiveStateSync()
     const stopAppDataSync = startAppDataSync()
@@ -116,7 +116,7 @@ function RootLayout() {
     const stopAccessoryStateMirror = startAccessoryStateMirror()
     return () => {
       useGroupRideStore.getState().stopObserving()
-      setGroupRideSoundPlayer(null)
+      setGroupRideCreatedSoundPlayer(null)
       stopLiveStateSync()
       stopAppDataSync()
       stopBoardWarningsSync()
@@ -197,6 +197,10 @@ function RootLayout() {
                   options={{ title: 'Event log' }}
                 />
                 <Stack.Screen name={stackScreens.settingsOther} options={{ title: 'Other' }} />
+                <Stack.Screen
+                  name={stackScreens.settingsAlertSounds}
+                  options={{ title: 'Alert sounds' }}
+                />
                 <Stack.Screen
                   name={stackScreens.settingsRawSettings}
                   options={{ title: 'Raw settings' }}

@@ -9,7 +9,7 @@ import {
   RadioactiveIcon,
   WaveformIcon,
 } from 'phosphor-react-native'
-import { ALERT_BEEP_COUNT_DEFAULT, ALERT_BEEP_COUNT_RANGE, type AlertSoundType } from 'vescape-core'
+import { ALERT_BEEP_COUNT_DEFAULT, ALERT_BEEP_COUNT_RANGE, type AlertSpec } from 'vescape-core'
 
 import { Button } from '@/components/base/Button'
 import { Text } from '@/components/base/Text'
@@ -27,7 +27,18 @@ import {
   getEditFormDefaults,
   getNewFormDefaults,
   getPresetsForCategory,
+  mySoundOptions,
 } from '@/modules/alerts/lib/alertFormDefaults'
+import { useMySounds } from '@/modules/alerts/hooks/useMySounds'
+import {
+  ALERT_SEVERITY_DEFAULT,
+  type AlertSeverity,
+  formatSlotAlertSound,
+  customVoiceKey,
+  formatTtsAlertSound,
+  formatVoiceAlertSound,
+  slotSoundPart,
+} from '@/modules/alerts/lib/alertSoundString'
 import type { AlertRuleDraft } from '@/modules/alerts/store/alertsStore'
 import type { DraftAlertRule } from '@/modules/alerts/lib/customAlertRules'
 import type { DerivedBatteryConfig } from '@/modules/battery/lib/types'
@@ -44,6 +55,21 @@ interface AlertFormSheetProps {
   error: string | null
   onClose(): void
   onSave(draft: AlertRuleDraft): Promise<void>
+}
+
+/**
+ * A Message tab rule: the TTS template, or the voice line of its metric. Metrics without voice
+ * lines (no `voiceKey`) speak through TTS only.
+ */
+function messageSpec(
+  tts: boolean,
+  voiceKey: string | null,
+  severity: AlertSeverity,
+  template: string,
+): string {
+  return tts || voiceKey == null
+    ? formatTtsAlertSound(severity, template)
+    : formatVoiceAlertSound(severity)
 }
 
 /** Writes one alert rule: its threshold, how it sounds, and how often it repeats. */
@@ -69,18 +95,24 @@ export function AlertFormSheet({
 
   const singlePresets = useMemo(() => getPresetsForCategory('single'), [])
   const geigerPresets = useMemo(() => getPresetsForCategory('geiger'), [])
-  const defaultSoundType: AlertSoundType = singlePresets[0]?.uri ?? 'preset:beep'
-  const geigerDefaultSoundType: AlertSoundType = geigerPresets[0]?.uri ?? 'preset:beep'
+  const { sounds: library } = useMySounds().state
+  const defaultSpec: AlertSpec =
+    singlePresets.find((p) => p.uri === 'alert:warning')?.uri ?? 'alert:warning'
+  const geigerDefaultSpec: AlertSpec = geigerPresets[0]?.uri ?? 'geiger:soft'
 
   const [tab, setTab] = useState<AlertTab>('single')
+  const soundCategory = tab === 'geiger' ? 'geiger' : 'single'
   const [threshold, setThreshold] = useState(dialConfig.min)
   const [thresholdMax, setThresholdMax] = useState(dialConfig.max)
-  const [soundType, setSoundType] = useState<AlertSoundType>(defaultSoundType)
+  const [spec, setSpec] = useState<AlertSpec>(defaultSpec)
   const [messageTemplate, setMessageTemplate] = useState(
     getDefaultMessageTemplate(controlId, batteryConfig),
   )
   const [repeatEverySeconds, setRepeatEverySeconds] = useState<number | null>(null)
   const [beepCount, setBeepCount] = useState(ALERT_BEEP_COUNT_DEFAULT)
+  const [severity, setSeverity] = useState<AlertSeverity>(ALERT_SEVERITY_DEFAULT)
+  const [messageTts, setMessageTts] = useState(false)
+  const voiceKey = customVoiceKey(controlId, batteryConfig != null)
   const [prevVisible, setPrevVisible] = useState(visible)
   const [saving, setSaving] = useState(false)
 
@@ -89,8 +121,8 @@ export function AlertFormSheet({
       ? getEditFormDefaults(editRule, dialConfig, batteryConfig)
       : getNewFormDefaults(
           dialConfig,
-          defaultSoundType,
-          geigerDefaultSoundType,
+          defaultSpec,
+          geigerDefaultSpec,
           controlId,
           batteryConfig,
           units,
@@ -98,10 +130,12 @@ export function AlertFormSheet({
     setTab(defaults.tab)
     setThreshold(defaults.threshold)
     setThresholdMax(defaults.thresholdMax)
-    setSoundType(defaults.soundType)
+    setSpec(defaults.spec)
     setMessageTemplate(defaults.messageTemplate)
     setRepeatEverySeconds(defaults.repeatEverySeconds)
     setBeepCount(defaults.beepCount)
+    setSeverity(defaults.severity)
+    setMessageTts(defaults.messageTts)
   }
   if (visible !== prevVisible) {
     setPrevVisible(visible)
@@ -112,12 +146,12 @@ export function AlertFormSheet({
       setTab(next)
       if (next === 'message') {
         setMessageTemplate(getDefaultMessageTemplate(controlId, batteryConfig))
+        setMessageTts(false)
       } else {
-        const presets = next === 'single' ? singlePresets : geigerPresets
-        setSoundType(presets[0]?.uri ?? 'preset:beep')
+        setSpec(next === 'single' ? defaultSpec : geigerDefaultSpec)
       }
     },
-    [singlePresets, geigerPresets, controlId, batteryConfig],
+    [defaultSpec, geigerDefaultSpec, controlId, batteryConfig],
   )
 
   const handleSave = useCallback(() => {
@@ -128,11 +162,14 @@ export function AlertFormSheet({
     void onSave({
       threshold,
       thresholdMax: isRange ? thresholdMax : null,
-      soundType: tab === 'message' ? `tts:${messageTemplate}` : soundType,
-      // A range rule's cadence follows range depth, and text-to-speech speaks once per
-      // announcement — neither has a beep count or a repeat interval to honor.
+      spec:
+        tab === 'message'
+          ? messageSpec(messageTts, voiceKey, severity, messageTemplate)
+          : tab === 'single'
+            ? formatSlotAlertSound(beepCount, slotSoundPart(spec))
+            : spec,
+      // A range rule's cadence follows range depth — it has no repeat interval to honor.
       repeatEverySeconds: isRange ? null : repeatEverySeconds,
-      beepCount,
     })
       .catch(() => undefined) // The alerts store owns the error rendered below.
       .finally(() => setSaving(false))
@@ -140,10 +177,13 @@ export function AlertFormSheet({
     tab,
     threshold,
     thresholdMax,
-    soundType,
+    spec,
     messageTemplate,
     repeatEverySeconds,
     beepCount,
+    severity,
+    messageTts,
+    voiceKey,
     onSave,
     saving,
   ])
@@ -215,22 +255,14 @@ export function AlertFormSheet({
           </View>
         )}
 
-        {tab === 'single' && (
-          <View style={styles.cardField}>
-            <Text style={styles.fieldLabel}>BEEPS</Text>
-            <Stepper
-              value={beepCount}
-              min={ALERT_BEEP_COUNT_RANGE.min}
-              max={ALERT_BEEP_COUNT_RANGE.max}
-              onChange={setBeepCount}
-              style={styles.beepStepper}
-            />
-          </View>
-        )}
-
         {tab === 'message' ? (
           <View style={styles.cardField}>
             <AlertMessageField
+              severity={severity}
+              onChangeSeverity={setSeverity}
+              voiceKey={voiceKey}
+              tts={messageTts}
+              onChangeTts={setMessageTts}
               controlId={controlId}
               unit={unit}
               threshold={threshold}
@@ -243,9 +275,23 @@ export function AlertFormSheet({
         ) : (
           <View style={styles.cardField}>
             <SoundPicker
-              presets={tab === 'single' ? singlePresets : geigerPresets}
-              selected={soundType}
-              onSelect={setSoundType}
+              presets={getPresetsForCategory(soundCategory)}
+              mySounds={mySoundOptions(soundCategory, library)}
+              selected={spec}
+              onSelect={setSpec}
+            />
+          </View>
+        )}
+
+        {tab === 'single' && (
+          <View style={styles.cardField}>
+            <Text style={styles.fieldLabel}>REPEAT SOUND</Text>
+            <Stepper
+              value={beepCount}
+              min={ALERT_BEEP_COUNT_RANGE.min}
+              max={ALERT_BEEP_COUNT_RANGE.max}
+              onChange={setBeepCount}
+              style={styles.beepStepper}
             />
           </View>
         )}

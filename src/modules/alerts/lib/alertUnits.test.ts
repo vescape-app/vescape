@@ -58,9 +58,8 @@ test('open form retains exact range endpoints through live unit switches and unr
     controlId: 'speed',
     enabled: true,
     createdAt: 0,
-    soundType: 'preset:tick',
+    spec: 'preset:tick',
     repeatEverySeconds: null,
-    beepCount: 1,
     threshold: 40.2336,
     thresholdMax: 50.123456789,
   }
@@ -72,7 +71,7 @@ test('open form retains exact range endpoints through live unit switches and unr
     expect(speedInputToKmh(displayedMax, draft.thresholdMax, units)).toBe(rule.thresholdMax)
     draft = {
       ...draft,
-      soundType: 'preset:tick',
+      spec: 'preset:tick',
       repeatEverySeconds: 12,
       messageTemplate: 'literal mph',
     }

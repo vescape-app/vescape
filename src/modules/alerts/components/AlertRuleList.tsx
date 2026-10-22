@@ -18,6 +18,12 @@ import { theme } from '@/constants/theme'
 import type { DerivedBatteryConfig } from '@/modules/battery/lib/types'
 import { AlertFormSheet } from '@/modules/alerts/components/AlertFormSheet'
 import type { DraftAlertRule } from '@/modules/alerts/lib/customAlertRules'
+import {
+  ALERT_SEVERITY_LABELS,
+  parseTtsAlertSound,
+  parseVoiceAlertSound,
+  slotAlertSoundLabel,
+} from '@/modules/alerts/lib/alertSoundString'
 import type { MetricAlertsController } from '@/modules/alerts/hooks/useMetricAlerts'
 import type { AlertRuleDraft } from '@/modules/alerts/store/alertsStore'
 
@@ -72,7 +78,7 @@ export function AlertRuleList({
         />
       ))}
 
-      {controller.rules.length === 0 ? (
+      {controller.rules.length === 0 && !controller.metric ? (
         <Text style={styles.emptyHintText}>
           No alerts yet — get notified when this crosses a threshold
         </Text>
@@ -82,7 +88,7 @@ export function AlertRuleList({
 
       <View style={styles.addButtonRow} ref={addButtonRef} collapsable={false}>
         <Button
-          label="Add alert"
+          label="Add custom alert"
           icon={PlusIcon}
           variant="secondary"
           size="sm"
@@ -142,11 +148,14 @@ function AlertRuleRow({
       ? formatSpeedWithUnit(value, 1)
       : formatAlertValue(value, batteryConfig, unit)
   const isGeiger = rule.thresholdMax != null
-  const isTts = rule.soundType.startsWith('tts:')
-  const TypeIcon = isGeiger ? RadioactiveIcon : isTts ? ChatTextIcon : WaveformIcon
+  const tts = parseTtsAlertSound(rule.spec)
+  const voice = parseVoiceAlertSound(rule.spec)
+  const spokenText = tts?.text ?? (voice ? 'Voice line' : null)
+  const TypeIcon = isGeiger ? RadioactiveIcon : spokenText != null ? ChatTextIcon : WaveformIcon
   const detail = [
     rule.repeatEverySeconds == null ? null : `every ${rule.repeatEverySeconds}s`,
-    isGeiger || isTts ? null : `${rule.beepCount}×`,
+    voice ? ALERT_SEVERITY_LABELS[voice.severity] : null,
+    isGeiger || spokenText != null ? null : slotAlertSoundLabel(rule.spec),
   ]
     .filter(Boolean)
     .join(' · ')
@@ -167,12 +176,12 @@ function AlertRuleRow({
             ? `${format(rule.threshold)} – ${format(rule.thresholdMax!)}`
             : format(rule.threshold)}
         </Text>
-        {isTts && (
+        {spokenText != null && (
           <Text
             style={[styles.ruleTtsTemplate, !rule.enabled && styles.ruleTextDisabled]}
             numberOfLines={1}
           >
-            {rule.soundType.slice(4)}
+            {spokenText}
           </Text>
         )}
         {detail ? (

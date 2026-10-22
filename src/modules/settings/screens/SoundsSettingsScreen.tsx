@@ -1,28 +1,25 @@
-import { useCallback, useRef, useState } from 'react'
-import { useFocusEffect } from 'expo-router'
+import { useState } from 'react'
 import * as DocumentPicker from 'expo-document-picker'
 import { Alert, Platform, Pressable, ScrollView, StyleSheet, TextInput, View } from 'react-native'
-import type { ScrollView as ScrollViewType } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import {
+  ChatTextIcon,
   PencilSimpleIcon,
-  PaperclipIcon,
   PlusIcon,
   SpeakerHighIcon,
   SpeakerSimpleHighIcon,
   TrashSimpleIcon,
   VibrateIcon,
-  XIcon,
+  WaveformIcon,
 } from 'phosphor-react-native'
 import {
-  createAppSoundPack,
-  customAppSoundPacks,
-  deleteAppSoundPack,
-  importAppSound,
-  playAppSound,
-  removeAppSound,
-  renameAppSoundPack,
-  type CustomAppSoundPack,
+  deleteMySound,
+  importMySound,
+  type MySoundsState,
+  playPackSound,
+  previewAlertSound,
+  renameMySound,
+  setSoundOverride,
 } from 'vescape-core'
 
 import { Text } from '@/components/base/Text'
@@ -34,111 +31,95 @@ import { SettingsCard } from '@/components/settings/SettingsCard'
 import { SettingsRow } from '@/components/settings/SettingsRow'
 import { SettingsSectionTitle } from '@/components/settings/SettingsSectionTitle'
 import { RadioIndicator } from '@/components/controls/RadioIndicator'
+import { SegmentedToggle } from '@/components/controls/SegmentedToggle'
 import { Switch } from '@/components/controls/Switch'
 import { interaction, theme } from '@/constants/theme'
-import { APP_SOUND_CUES } from '@/modules/settings/lib/appSounds'
+import {
+  EFFECTS_PACKS,
+  PACK_PREVIEW_ROWS,
+  resolvedVoiceId,
+  VOICE_LEVEL_INFO,
+  SOUND_OVERRIDE_SLOTS,
+  VOICE_LEVELS,
+  VOICE_PACKS,
+} from '@/modules/settings/lib/appSounds'
 import { useSettingsStore } from '@/modules/settings/store/settingsStore'
+import { formatSlotAlertSound, mySoundRef } from '@/modules/alerts/lib/alertSoundString'
+import { useMySounds } from '@/modules/alerts/hooks/useMySounds'
 
-const PACKS = [
-  { id: 'retro', name: 'Retro' },
-  { id: 'simple', name: 'Classic' },
-] as const
+/** Picked file name without its extension, as a starting name for the sound. */
+function soundName(fileName: string | undefined): string {
+  return (
+    (fileName ?? '')
+      .replace(/\.(wav|m4a|mp3)$/i, '')
+      .trim()
+      .slice(0, 60) || 'My sound'
+  )
+}
 
-const NEW_PACK_NAME = 'Unnamed'
+/** One-shot preview of My sound `id`. */
+const previewMySound = (id: string) => previewAlertSound(formatSlotAlertSound(1, mySoundRef(id)))
+
+const PACK_OPTION = ''
 
 export default function SoundsSettingsScreen() {
   const soundPack = useSettingsStore((state) => state.soundPack)
   const audioSource = useSettingsStore((state) => state.audioSource)
+  const voice = useSettingsStore((state) => state.voice)
+  const voiceLevel = useSettingsStore((state) => state.voiceLevel)
   const enabled = useSettingsStore((state) => state.connectionSoundsEnabled)
   const set = useSettingsStore((state) => state.set)
-  const [customPacks, setCustomPacks] = useState<CustomAppSoundPack[]>([])
+  const { state: library, setState: setLibrary, loadError } = useMySounds()
   const [editingId, setEditingId] = useState<string | null>(null)
-  const [newPackId, setNewPackId] = useState<string | null>(null)
   const [name, setName] = useState('')
   const [busy, setBusy] = useState(false)
   const [deleteId, setDeleteId] = useState<string | null>(null)
-  const [packLoadError, setPackLoadError] = useState(false)
-  const scrollRef = useRef<ScrollViewType>(null)
-  const newPackRef = useRef<View | null>(null)
-  const revealNewPack = () => {
-    requestAnimationFrame(() => {
-      newPackRef.current?.measureInWindow((_x, y, _w, h) => {
-        scrollRef.current?.scrollTo({ y: Math.max(0, y - 16 - 60), animated: true })
-      })
-    })
-  }
-  useFocusEffect(
-    useCallback(() => {
-      void customAppSoundPacks()
-        .then((packs) => {
-          setCustomPacks(packs)
-          setPackLoadError(false)
-        })
-        .catch(() => setPackLoadError(true))
-    }, []),
-  )
-  const refresh = async () => setCustomPacks(await customAppSoundPacks())
-  const run = async (action: () => Promise<unknown>) => {
+  const run = async (action: () => Promise<MySoundsState | null>) => {
     setBusy(true)
     try {
-      await action()
-      await refresh()
+      const next = await action()
+      if (next) setLibrary(next)
     } catch (error) {
-      Alert.alert(
-        'Sound pack',
-        error instanceof Error ? error.message : 'Could not save sound pack',
-      )
+      Alert.alert('My sounds', error instanceof Error ? error.message : 'Could not save sound')
     } finally {
       setBusy(false)
     }
   }
-  const pick = (id: string, cue: (typeof APP_SOUND_CUES)[number]['id']) => {
+  const addSound = () => {
     void run(async () => {
       const result = await DocumentPicker.getDocumentAsync({
-        type: ['audio/wav', 'audio/x-wav'],
+        type: [
+          'audio/wav',
+          'audio/x-wav',
+          'audio/mp4',
+          'audio/x-m4a',
+          'audio/m4a',
+          'audio/mpeg',
+          'audio/mp3',
+        ],
         copyToCacheDirectory: true,
       })
-      if (result.canceled) return
-      const uri = result.assets[0]?.uri
-      if (!uri) throw new Error('No audio file selected')
-      await importAppSound(id, cue, uri)
-    })
-  }
-  const addPack = () => {
-    void run(async () => {
-      const packs = await createAppSoundPack(NEW_PACK_NAME)
-      setCustomPacks(packs)
-      const created = packs[packs.length - 1]
-      if (created) {
-        void set('soundPack', created.id)
-        setNewPackId(created.id)
-        setEditingId(created.id)
-        setName('')
-        revealNewPack()
-      }
+      if (result.canceled) return null
+      const asset = result.assets[0]
+      if (!asset?.uri) throw new Error('No audio file selected')
+      return importMySound(asset.uri, soundName(asset.name))
     })
   }
   const commitName = (id: string, currentName: string) => {
     if (editingId !== id) return
     setEditingId(null)
     const trimmed = name.trim()
-    const isNew = id === newPackId
-    if (isNew) setNewPackId(null)
-    if (!trimmed && !isNew) return
-    if (trimmed === currentName) return
-    void run(async () => {
-      await renameAppSoundPack(id, isNew ? trimmed || NEW_PACK_NAME : trimmed)
-    })
+    if (!trimmed || trimmed === currentName) return
+    void run(() => renameMySound(id, trimmed))
   }
-  const packs: { id: string; name: string; sounds?: CustomAppSoundPack['sounds'] }[] = [
-    ...PACKS,
-    ...customPacks,
+  const overrideOptions = [
+    { label: 'Pack', value: PACK_OPTION },
+    ...library.sounds.map((sound) => ({ label: sound.name, value: sound.id })),
   ]
 
   return (
     <SafeAreaView style={styles.container} edges={['bottom']}>
       <ScrollView
-        ref={scrollRef}
         contentContainerStyle={styles.content}
         keyboardShouldPersistTaps="handled"
         automaticallyAdjustKeyboardInsets
@@ -182,29 +163,24 @@ export default function SoundsSettingsScreen() {
           )}
         </SettingsCard>
 
-        <SettingsSectionTitle>Sound packs</SettingsSectionTitle>
-        {packLoadError && (
-          <Text>Sound packs could not be loaded. Try opening this screen again.</Text>
-        )}
+        <SettingsSectionTitle>Sound effects</SettingsSectionTitle>
         <View
           style={[styles.packList, !enabled && styles.disabledPacks]}
           pointerEvents={enabled ? 'auto' : 'none'}
         >
-          {packs.map((pack) => {
+          {EFFECTS_PACKS.map((pack) => {
             const active = soundPack === pack.id
-            const custom = pack.sounds !== undefined
-            const editingName = editingId === pack.id
             return (
-              <View
-                key={pack.id}
-                ref={pack.id === newPackId ? newPackRef : undefined}
-                style={[styles.pack, active && styles.activePack]}
-              >
+              <View key={pack.id} style={[styles.pack, active && styles.activePack]}>
                 <Pressable
                   accessibilityRole="radio"
                   accessibilityState={{ checked: active, disabled: !enabled }}
                   accessibilityLabel={pack.name}
-                  onPress={() => void set('soundPack', pack.id)}
+                  onPress={() => {
+                    // A picked effects pack brings its own voice; Voice can still override it after.
+                    void set('soundPack', pack.id)
+                    void set('voice', 'matching')
+                  }}
                   style={({ pressed }) => [styles.packHeader, pressed && styles.pressed]}
                 >
                   <View style={styles.packIcon}>
@@ -214,70 +190,24 @@ export default function SoundsSettingsScreen() {
                       weight="duotone"
                     />
                   </View>
-                  {editingName ? (
-                    <TextInput
-                      value={name}
-                      onChangeText={setName}
-                      maxLength={60}
-                      placeholder={pack.id === newPackId ? '' : pack.name}
-                      placeholderTextColor={theme.neutral.textMuted}
-                      style={styles.nameInput}
-                      autoFocus
-                      onBlur={() => commitName(pack.id, pack.name)}
-                      onSubmitEditing={() => commitName(pack.id, pack.name)}
-                    />
-                  ) : (
-                    <Text style={[styles.packName, active && styles.activePackName]}>
-                      {pack.name}
-                    </Text>
-                  )}
-                  {custom && !editingName && (
-                    <Pressable
-                      accessibilityRole="button"
-                      accessibilityLabel={`Rename ${pack.name}`}
-                      disabled={!active}
-                      onPress={() => {
-                        setName(pack.name)
-                        setEditingId(pack.id)
-                      }}
-                      hitSlop={8}
-                      style={({ pressed }) => [styles.pencil, pressed && styles.pressed]}
-                    >
-                      <PencilSimpleIcon
-                        size={17}
-                        color={theme.neutral.textMuted}
-                        weight="duotone"
-                      />
-                    </Pressable>
-                  )}
-                  {editingName ? (
-                    <Button
-                      label="Save"
-                      size="sm"
-                      disabled={busy || !name.trim()}
-                      onPress={() => commitName(pack.id, pack.name)}
-                    />
-                  ) : (
-                    <RadioIndicator
-                      selected={active}
-                      accent={theme.settingsIcon.sounds}
-                      size="lg"
-                    />
-                  )}
+                  <Text style={[styles.packName, active && styles.activePackName]}>
+                    {pack.name}
+                  </Text>
+                  <RadioIndicator selected={active} accent={theme.settingsIcon.sounds} size="lg" />
                 </Pressable>
-                {active && !custom && (
+                {active && (
                   <View style={styles.previewStrip}>
-                    {[APP_SOUND_CUES.slice(0, 3), APP_SOUND_CUES.slice(3)].map((row, rowIndex) => (
+                    {PACK_PREVIEW_ROWS.map((row, rowIndex) => (
                       <View
                         key={rowIndex}
                         style={[styles.previewRow, rowIndex > 0 && styles.previewRowDivider]}
                       >
                         {row.map((cue, index) => (
                           <Pressable
-                            key={cue.id}
+                            key={cue.label}
                             accessibilityRole="button"
                             accessibilityLabel={`Play ${cue.label}`}
-                            onPress={() => playAppSound(pack.id, cue.id)}
+                            onPress={() => playPackSound(pack.id, cue.slot)}
                             style={({ pressed }) => [
                               styles.preview,
                               index > 0 && styles.previewDivider,
@@ -296,80 +226,168 @@ export default function SoundsSettingsScreen() {
                     ))}
                   </View>
                 )}
-                {active && custom && (
-                  <View style={styles.editor}>
-                    {APP_SOUND_CUES.map((cue) => (
-                      <View key={cue.id} style={styles.cueRow}>
-                        <Text style={styles.cueName}>{cue.label}</Text>
-                        {pack.sounds?.[cue.id] ? (
-                          <>
-                            <IconButton
-                              icon={SpeakerHighIcon}
-                              accessibilityLabel={`Play ${cue.label}`}
-                              onPress={() => playAppSound(pack.id, cue.id)}
-                            />
-                            <IconButton
-                              icon={XIcon}
-                              accessibilityLabel={`Remove ${cue.label} sound`}
-                              disabled={busy}
-                              onPress={() => void run(() => removeAppSound(pack.id, cue.id))}
-                            />
-                          </>
-                        ) : (
-                          <IconButton
-                            icon={PaperclipIcon}
-                            accessibilityLabel={`Add ${cue.label} sound`}
-                            disabled={busy}
-                            onPress={() => pick(pack.id, cue.id)}
-                          />
-                        )}
-                      </View>
-                    ))}
-                    <View style={styles.editorFooter}>
-                      <Button
-                        label="Delete pack"
-                        size="sm"
-                        variant="destructive"
-                        icon={TrashSimpleIcon}
-                        onPress={() => setDeleteId(pack.id)}
-                      />
-                    </View>
-                  </View>
+              </View>
+            )
+          })}
+        </View>
+
+        <SettingsSectionTitle>Voice</SettingsSectionTitle>
+        <SettingsCard>
+          <SettingsRow
+            icon={ChatTextIcon}
+            iconColor={theme.settingsIcon.sounds}
+            label="Voice"
+            right={
+              <Select
+                options={VOICE_PACKS.map((pack) => ({ label: pack.name, value: pack.id }))}
+                value={resolvedVoiceId(voice, soundPack)}
+                onChange={(next) =>
+                  // Preview once native has the new voice; a failed write shows in the storage banner.
+                  void set('voice', next).then(
+                    () => previewAlertSound(VOICE_LEVEL_INFO.standard.preview),
+                    () => undefined,
+                  )
+                }
+                style={styles.voiceSelect}
+              />
+            }
+          />
+          <SettingsRow
+            icon={WaveformIcon}
+            iconColor={theme.settingsIcon.sounds}
+            label="Voice level"
+          >
+            <View style={styles.voiceLevel}>
+              <SegmentedToggle
+                options={[...VOICE_LEVELS]}
+                value={voiceLevel}
+                onChange={(next) =>
+                  // The preview speaks with the new level's wording once native has it.
+                  void set('voiceLevel', next).then(
+                    () => previewAlertSound(VOICE_LEVEL_INFO[next].preview),
+                    () => undefined,
+                  )
+                }
+                accent={theme.settingsIcon.sounds}
+              />
+              <Text style={styles.voiceDescription}>
+                {VOICE_LEVEL_INFO[voiceLevel].description}
+              </Text>
+            </View>
+          </SettingsRow>
+        </SettingsCard>
+
+        <SettingsSectionTitle>My sounds</SettingsSectionTitle>
+        {loadError && <Text>My sounds could not be loaded. Try opening this screen again.</Text>}
+        <View style={styles.pack}>
+          {library.sounds.map((sound) => {
+            const editingName = editingId === sound.id
+            return (
+              <View key={sound.id} style={styles.soundRow}>
+                {editingName ? (
+                  <TextInput
+                    value={name}
+                    onChangeText={setName}
+                    maxLength={60}
+                    placeholder={sound.name}
+                    placeholderTextColor={theme.neutral.textMuted}
+                    style={styles.nameInput}
+                    autoFocus
+                    onBlur={() => commitName(sound.id, sound.name)}
+                    onSubmitEditing={() => commitName(sound.id, sound.name)}
+                  />
+                ) : (
+                  <Text style={styles.soundName} numberOfLines={1}>
+                    {sound.name}
+                  </Text>
+                )}
+                {editingName ? (
+                  <Button
+                    label="Save"
+                    size="sm"
+                    disabled={busy || !name.trim()}
+                    onPress={() => commitName(sound.id, sound.name)}
+                  />
+                ) : (
+                  <>
+                    <IconButton
+                      icon={SpeakerHighIcon}
+                      accessibilityLabel={`Play ${sound.name}`}
+                      onPress={() => previewMySound(sound.id)}
+                    />
+                    <IconButton
+                      icon={PencilSimpleIcon}
+                      accessibilityLabel={`Rename ${sound.name}`}
+                      disabled={busy}
+                      onPress={() => {
+                        setName(sound.name)
+                        setEditingId(sound.id)
+                      }}
+                    />
+                    <IconButton
+                      icon={TrashSimpleIcon}
+                      accessibilityLabel={`Delete ${sound.name}`}
+                      disabled={busy}
+                      onPress={() => setDeleteId(sound.id)}
+                    />
+                  </>
                 )}
               </View>
             )
           })}
-
           <Pressable
             accessibilityRole="button"
-            accessibilityLabel="Add sound pack"
-            accessibilityState={{ disabled: !enabled || busy }}
+            accessibilityLabel="Add sound"
+            accessibilityState={{ disabled: busy }}
             disabled={busy}
-            onPress={addPack}
+            onPress={addSound}
             style={({ pressed }) => [styles.addRow, pressed && styles.pressed]}
           >
             <View style={styles.addIcon}>
               <PlusIcon size={19} color={theme.settingsIcon.sounds} weight="bold" />
             </View>
-            <Text style={styles.addText}>Add sound pack</Text>
+            <Text style={styles.addText}>Add sound</Text>
           </Pressable>
         </View>
+        <Text style={styles.sectionNote}>
+          WAV, M4A or MP3, up to 2 MB and 15 seconds. Custom alerts can play any of these.
+        </Text>
+
+        {library.sounds.length > 0 && (
+          <>
+            <SettingsSectionTitle>Overrides</SettingsSectionTitle>
+            <View style={styles.pack}>
+              {SOUND_OVERRIDE_SLOTS.map(({ slot, label }) => (
+                <View key={slot} style={styles.soundRow}>
+                  <Text style={styles.soundName}>{label}</Text>
+                  <Select
+                    options={overrideOptions}
+                    value={library.overrides[slot] ?? PACK_OPTION}
+                    onChange={(id) =>
+                      void run(() => setSoundOverride(slot, id === PACK_OPTION ? null : id))
+                    }
+                    style={styles.overrideSelect}
+                  />
+                </View>
+              ))}
+            </View>
+            <Text style={styles.sectionNote}>
+              A set override plays instead of the selected pack's sound.
+            </Text>
+          </>
+        )}
       </ScrollView>
       <ConfirmModal
         visible={deleteId !== null}
-        title="Delete sound pack"
-        message="Delete this pack and its imported sounds?"
+        title="Delete sound"
+        message="Delete this sound? Its overrides return to the pack, and alerts using it play the pack sound."
         confirmLabel="Delete"
         destructive
         onCancel={() => setDeleteId(null)}
         onConfirm={() => {
           const id = deleteId
           setDeleteId(null)
-          if (id)
-            void run(async () => {
-              await deleteAppSoundPack(id)
-              if (soundPack === id) await useSettingsStore.getState().load()
-            })
+          if (id) void run(() => deleteMySound(id))
         }}
       />
     </SafeAreaView>
@@ -389,6 +407,9 @@ const styles = StyleSheet.create({
     marginRight: 14,
     marginBottom: 14,
   },
+  voiceSelect: { width: 170 },
+  voiceLevel: { gap: 8, marginLeft: 58, marginRight: 14, marginBottom: 14 },
+  voiceDescription: { color: theme.neutral.textMuted, fontSize: 12, fontWeight: '500' },
   disabledPacks: { opacity: 0.5 },
   pack: {
     borderRadius: 14,
@@ -410,13 +431,6 @@ const styles = StyleSheet.create({
     height: 38,
     borderRadius: 10,
     backgroundColor: theme.neutral.surface,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  pencil: {
-    width: 30,
-    height: 30,
-    borderRadius: 15,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -461,18 +475,17 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   addText: { color: theme.settingsIcon.sounds, fontSize: 15, fontWeight: '600' },
-  editor: { padding: 14, gap: 10, borderTopWidth: 1, borderTopColor: theme.neutral.border },
-  cueRow: {
+  soundRow: {
+    minHeight: 56,
+    paddingHorizontal: 16,
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
-    paddingVertical: 4,
+    borderBottomWidth: 1,
+    borderBottomColor: theme.neutral.border,
   },
-  cueName: { flex: 1, color: theme.neutral.textPrimary, fontSize: 13 },
-  editorFooter: {
-    flexDirection: 'row',
-    justifyContent: 'flex-end',
-    paddingTop: 10,
-  },
+  soundName: { flex: 1, color: theme.neutral.textPrimary, fontSize: 14, fontWeight: '600' },
+  overrideSelect: { width: 170 },
+  sectionNote: { color: theme.neutral.textMuted, fontSize: 12, marginHorizontal: 4 },
   pressed: { backgroundColor: interaction.pressedBg },
 })

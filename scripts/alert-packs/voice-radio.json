@@ -1,0 +1,167 @@
+{
+  "id": "radio",
+  "kind": "voice",
+  "kokoro": {
+    "voice": "bf_emma",
+    "speed": 0.9
+  },
+  "fx": "pitch -120 sinc 280-3600 flanger 0 0.6 0 40 0.4 sine equalizer 2500 1.2q +6 compand 0.003,0.08 -70,-70,-50,-10,-20,-4,0,-2 gain -n -0.3 overdrive 4 gain -n -0.5 compand 0.001,0.05 -6,-6,0,-1 gain -n -4.4",
+  "units": {
+    "percent": ["percent", "percent"],
+    "degrees": ["degree", "degrees"]
+  },
+  "lines": {
+    "speed": {
+      "start": ["Speed..."],
+      "full": {
+        "start": ["Speed...", "Velocity..."]
+      }
+    },
+    "dutyCycle": {
+      "start": ["Duty..."],
+      "full": {
+        "start": ["Duty...", "Duty cycle..."]
+      }
+    },
+    "battery": {
+      "start": ["Power reserve..."],
+      "minimal": ["Reserve..."],
+      "full": {
+        "start": ["Power reserve...", "Reserve at..."]
+      }
+    },
+    "battery.warning": {
+      "start": ["Caution. Power reserve low..."],
+      "full": {
+        "start": ["Caution. Power reserve low...", "Caution. Reserve dropping..."],
+        "end": ["Locate a power station."],
+        "endChance": 0.2
+      }
+    },
+    "battery.critical": {
+      "start": ["Warning. Power level critical..."],
+      "full": {
+        "start": ["Warning. Power level critical...", "Warning. Reserve nearly depleted..."],
+        "end": ["Recharge advised.", "Seek a charging station immediately."],
+        "endChance": 0.2
+      }
+    },
+    "motorTemp": {
+      "start": ["Motor temperature..."],
+      "minimal": ["Motor..."],
+      "full": {
+        "start": ["Motor temperature...", "Motor reading..."]
+      }
+    },
+    "motorTemp.warning": {
+      "start": ["Caution. Motor heat elevated..."],
+      "full": {
+        "start": ["Caution. Motor heat elevated...", "Caution. Motor running hot..."],
+        "end": ["Reduce load."],
+        "endChance": 0.2
+      }
+    },
+    "motorTemp.critical": {
+      "start": ["Warning. Motor overheat imminent..."],
+      "full": {
+        "start": ["Warning. Motor overheat imminent...", "Warning. Motor heat critical..."],
+        "end": ["Reduce load.", "Thermal shutdown is not recommended."],
+        "endChance": 0.2
+      }
+    },
+    "controllerTemp": {
+      "start": ["Controller temperature..."],
+      "minimal": ["Controller..."],
+      "full": {
+        "start": ["Controller temperature...", "Controller reading..."]
+      }
+    },
+    "controllerTemp.warning": {
+      "start": ["Caution. Controller heat elevated..."],
+      "full": {
+        "start": ["Caution. Controller heat elevated...", "Caution. Controller running hot..."],
+        "end": ["Reduce load."],
+        "endChance": 0.2
+      }
+    },
+    "controllerTemp.critical": {
+      "start": ["Warning. Controller heat critical..."],
+      "full": {
+        "start": [
+          "Warning. Controller thermal limit approaching...",
+          "Warning. Controller heat critical..."
+        ],
+        "end": ["Reduce load.", "Thermal shutdown is not recommended."],
+        "endChance": 0.2
+      }
+    },
+    "boardConnection.connected": {
+      "start": ["Board online."],
+      "full": {
+        "start": [
+          "Board link established. All systems nominal.",
+          "Board online. Systems nominal.",
+          "Welcome to the Vescape transit system."
+        ]
+      }
+    },
+    "boardConnection.lost": {
+      "start": ["Warning. Board link lost."],
+      "full": {
+        "start": ["Warning. Board link lost.", "Warning. Board signal lost."]
+      }
+    },
+    "system.error": {
+      "start": ["Warning. System fault."],
+      "full": {
+        "start": ["Warning. System failure.", "Warning. System fault detected."]
+      }
+    },
+    "groupRide.created": {
+      "start": ["Group ride initiated."],
+      "full": {
+        "start": ["Group ride initiated. Awaiting riders.", "Squad channel open. Awaiting riders."]
+      }
+    },
+    "groupRide.joined": {
+      "start": ["Squad link established."],
+      "full": {
+        "start": ["Squad link established.", "Joined squad channel."]
+      }
+    },
+    "groupRide.riderJoined": {
+      "start": ["Rider joined."],
+      "full": {
+        "start": ["Rider joined. Squad link active.", "New rider on squad channel."]
+      }
+    },
+    "groupRide.riderLeft": {
+      "start": ["Rider left."],
+      "full": {
+        "start": ["Rider left squad channel.", "Squad member disconnected."]
+      }
+    },
+    "groupRide.lost": {
+      "start": ["Warning. Squad link lost."],
+      "full": {
+        "start": ["Warning. Squad link lost.", "Warning. Squad channel offline."]
+      }
+    },
+    "groupRide.restored": {
+      "start": ["Squad link restored."],
+      "full": {
+        "start": ["Squad link restored.", "Squad channel back online."]
+      }
+    },
+    "ride.end": {
+      "start": ["Ride session terminated."],
+      "full": {
+        "start": [
+          "Ride session terminated.",
+          "Ride logged. Standing down.",
+          "Have a very safe day."
+        ]
+      }
+    }
+  }
+}

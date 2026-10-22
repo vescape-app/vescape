@@ -716,23 +716,30 @@ interface TelemetryDao {
   @Query("DELETE FROM board_settings WHERE board_id = :boardId AND key = :key")
   suspend fun deleteBoardSetting(boardId: String, key: String)
 
+  /**
+   * The Board, its settings, and any [alerts] rows (a new Board's preset rows and rider rules) in
+   * one transaction, so no reader sees the Board without its alert setup.
+   * @parity /modules/vescape-core/ios/telemetry/BoardSettingsPersistence.swift `upsertBoard`
+   */
   @Transaction
-  suspend fun upsertBoardWithSettings(board: BoardEntity, settings: List<BoardSettingEntity>, deletedKeys: List<String>) {
-    val existing = getBoard(board.id) != null
-    val presetKeys = setOf("alertPreset", "matchBoardConfig")
-    val previousSettings = getBoardSettings(board.id).associate { it.key to decodeSettingJson(it.valueJson) }
+  suspend fun upsertBoardWithSettings(
+    board: BoardEntity,
+    settings: List<BoardSettingEntity>,
+    deletedKeys: List<String>,
+    alerts: List<AlertRuleEntity>,
+  ) {
     upsertBoard(board)
-    deletedKeys.filterNot { existing && it in presetKeys }.forEach { deleteBoardSetting(board.id, it) }
-    settings.filterNot { existing && it.key in presetKeys }.forEach { upsertBoardSetting(it) }
-    AlertPresetPersistence.regenerateChanged(this, board.id, previousSettings)
+    deletedKeys.forEach { deleteBoardSetting(board.id, it) }
+    settings.forEach { upsertBoardSetting(it) }
+    if (alerts.isEmpty()) return
+    require(getBoardDeletedAt(board.id) == null) { "Board not found" }
+    alerts.forEach { upsertAlertRule(it) }
   }
 
+  /** @parity /modules/vescape-core/ios/telemetry/AlertPresetPersistence.swift `apply` */
   @Transaction
-  suspend fun repairMissingAlertPresetRelations(boardId: String): Boolean = AlertPresetPersistence.repairMissingRelations(this, boardId)
-
-  @Transaction
-  suspend fun applyAlertPreset(boardId: String, metric: String, action: String, level: String?, matchBoardConfig: Boolean?) {
-    AlertPresetPersistence.apply(this, boardId, metric, action, level, matchBoardConfig)
+  suspend fun applyAlertPreset(boardId: String, metric: String, level: String?, geiger: String?, match: Boolean?) {
+    AlertPresetPersistence.apply(this, boardId, metric, level, geiger, match)
   }
 
   @Query("DELETE FROM board_settings WHERE board_id = :boardId")
@@ -759,9 +766,6 @@ interface TelemetryDao {
   @Query("SELECT * FROM alerts WHERE board_id = :boardId ORDER BY created_at ASC")
   suspend fun getAlertRules(boardId: String): List<AlertRuleEntity>
 
-  @Query("SELECT * FROM alerts WHERE board_id = :boardId AND enabled = 1 ORDER BY created_at ASC")
-  suspend fun getEnabledAlertRules(boardId: String): List<AlertRuleEntity>
-
   @Insert(onConflict = OnConflictStrategy.REPLACE)
   suspend fun upsertAlertRule(rule: AlertRuleEntity)
 
@@ -787,11 +791,7 @@ interface TelemetryDao {
   @Transaction
   suspend fun updateUnitSystem(units: String) {
     require(units in setOf("metric", "imperial")) { "Invalid unit system" }
-    val previous = getAppSetting("unitSystem")?.let { decodeSettingJson(it.valueJson) } ?: "metric"
     upsertAppSetting(AppSettingEntity("unitSystem", JSONObject.quote(units), System.currentTimeMillis()))
-    if (previous != units) {
-      getBoards().forEach { AlertPresetPersistence.regenerate(this, it.id, "speed") }
-    }
   }
 
   @Query("DELETE FROM app_settings WHERE key = :key")

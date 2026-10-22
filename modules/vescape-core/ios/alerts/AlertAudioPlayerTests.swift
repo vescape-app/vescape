@@ -7,9 +7,12 @@ import XCTest
 /// drive the paths where `release()` and pending `scheduleBuffer` completion handlers overlap, so
 /// a regression shows up as a crashed test run rather than a Sentry report from a rider.
 final class AlertAudioPlayerTests: XCTestCase {
-  /// The SPM test target has no `VescapeCoreAssets.bundle`; the wavs live next to the source.
+  /// The SPM test target has no `VescapeCoreAssets.bundle`; read the effects packs from `shared/`.
   private var assetsDirectory: URL {
-    URL(fileURLWithPath: #filePath).deletingLastPathComponent()
+    URL(fileURLWithPath: #filePath)
+      .deletingLastPathComponent()
+      .appendingPathComponent("../../../../shared/alerts/packs")
+      .standardizedFileURL
   }
 
   private func makePlayer() -> AlertAudioPlayer {
@@ -19,10 +22,11 @@ final class AlertAudioPlayerTests: XCTestCase {
 
   func testReleaseWhileOneShotAndSustainedPlaybackAreInFlight() {
     let player = makePlayer()
-    player.updateGeiger(ruleId: "sustained", soundType: "preset:sustained", rangeDepth: 1.0)
-    player.updateGeiger(ruleId: "ticking", soundType: "preset:tick", rangeDepth: 0.9)
-    player.playSingle(soundType: "preset:beep", beepCount: 3)
-    player.preview(soundType: "preset:urgent")
+    player.updateGeiger(ruleId: "sustained", spec: "preset:sustained", rangeDepth: 1.0)
+    player.updateGeiger(ruleId: "ticking", spec: "preset:tick", rangeDepth: 0.9)
+    player.playSingle(spec: "alert(3):warning")
+    player.preview(spec: "alert:critical")
+    player.playRideEnd()
     player.playConnect()
 
     // Let buffers actually start so completion handlers are pending when release lands.
@@ -34,12 +38,12 @@ final class AlertAudioPlayerTests: XCTestCase {
 
   func testReleaseIsIdempotentAndPlaybackAfterReleaseIsInert() {
     let player = makePlayer()
-    player.playSingle(soundType: "preset:beep")
+    player.playSingle(spec: "preset:beep")
     player.release()
     player.release()
-    player.playSingle(soundType: "preset:beep")
-    player.preview(soundType: "preset:tick")
-    player.updateGeiger(ruleId: "r", soundType: "preset:tick", rangeDepth: 0.5)
+    player.playSingle(spec: "preset:beep")
+    player.preview(spec: "preset:tick")
+    player.updateGeiger(ruleId: "r", spec: "preset:tick", rangeDepth: 0.5)
     player.stopAllGeiger()
     Thread.sleep(forTimeInterval: 0.1)
   }
@@ -50,8 +54,8 @@ final class AlertAudioPlayerTests: XCTestCase {
     for _ in 0..<5 {
       autoreleasepool {
         let player = makePlayer()
-        player.updateGeiger(ruleId: "sustained", soundType: "preset:sustained", rangeDepth: 1.0)
-        player.playSingle(soundType: "preset:beep", beepCount: 2)
+        player.updateGeiger(ruleId: "sustained", spec: "preset:sustained", rangeDepth: 1.0)
+        player.playSingle(spec: "alert(2):critical")
       }
       Thread.sleep(forTimeInterval: 0.05)
     }
@@ -63,8 +67,8 @@ final class AlertAudioPlayerTests: XCTestCase {
     for index in 0..<8 {
       DispatchQueue.global(qos: .userInitiated).async(group: group) {
         for _ in 0..<10 {
-          player.preview(soundType: index.isMultiple(of: 2) ? "preset:beep" : "preset:tick")
-          player.updateGeiger(ruleId: "rule-\(index)", soundType: "preset:tick", rangeDepth: 0.95)
+          player.preview(spec: index.isMultiple(of: 2) ? "preset:beep" : "preset:tick")
+          player.updateGeiger(ruleId: "rule-\(index)", spec: "preset:tick", rangeDepth: 0.95)
         }
       }
     }

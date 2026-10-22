@@ -40,10 +40,10 @@ export function ConfirmStep({ wizard }: { wizard: UseAddBoardWizard }) {
         rules,
       )
       if (preview.error) errors.push(`${ALERT_METRIC_META[metric].name}: ${preview.error}`)
-      const summary =
-        level === 'custom'
-          ? `${rules.length} custom ${rules.length === 1 ? 'alert' : 'alerts'}`
-          : formatSummary(metric, preview.rules)
+      const ownCount = rules.filter((rule) => rule.enabled).length
+      const own = ownCount > 0 ? `${ownCount} own alert${ownCount === 1 ? '' : 's'}` : null
+      const presetSummary = formatSummary(metric, preview.presetRules)
+      const summary = presetSummary && own ? `${presetSummary} + ${own}` : (presetSummary ?? own)
       return { metric, summary }
     }).filter((row): row is { metric: AlertPresetMetric; summary: string } => row.summary != null)
     return { alertSummaries: summaries, previewErrors: errors }

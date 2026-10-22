@@ -1,18 +1,19 @@
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import { router } from 'expo-router'
 import { useShallow } from 'zustand/react/shallow'
 import type { BatteryConfig, BoardLink } from 'vescape-core'
 
 import {
+  ALERT_PRESET_FALLBACK_LEVEL,
   ALERT_PRESET_METRICS,
-  NEW_BOARD_ALERT_PRESET_SELECTION,
   type AlertPresetMetric,
-  type AlertPresetSelection,
 } from '@/modules/alerts/lib/alertPresets'
 import type { DraftAlertSetup } from '@/modules/alerts/hooks/useMetricAlerts'
+import { formatAlertPresetSpec } from '@/modules/alerts/lib/alertSoundString'
 import { DEFAULT_BOARD_TOP_SPEED_KMH } from '@/modules/alerts/lib/boardAlertSettings'
 import { useAlertsStore } from '@/modules/alerts/store/alertsStore'
 import { DEFAULT_BATTERY_CONFIG, deriveBatteryConfig } from '@/modules/battery/lib'
+import type { DerivedBatteryConfig } from '@/modules/battery/lib/types'
 import {
   type BatteryMode,
   type BatterySummary,
@@ -32,16 +33,9 @@ export type DraftAlertSetupBag = Record<AlertPresetMetric, DraftAlertSetup>
 const DEFAULT_DRAFT_ALERT_SETUP = Object.fromEntries(
   ALERT_PRESET_METRICS.map((metric): [AlertPresetMetric, DraftAlertSetup] => [
     metric,
-    { level: NEW_BOARD_ALERT_PRESET_SELECTION[metric], rules: [] },
+    { level: ALERT_PRESET_FALLBACK_LEVEL, rules: [] },
   ]),
 ) as DraftAlertSetupBag
-
-/** The durable `alertPreset` bag a draft setup persists as — its levels, without the draft rules. */
-export function draftAlertPresetSelection(setup: DraftAlertSetupBag): AlertPresetSelection {
-  return Object.fromEntries(
-    ALERT_PRESET_METRICS.map((metric) => [metric, setup[metric].level]),
-  ) as AlertPresetSelection
-}
 
 /** Canonical step order. `presets` is the per-board Alert Preset setup step. */
 export const WIZARD_STEPS = ['scan', 'name', 'battery', 'presets', 'confirm'] as const
@@ -79,6 +73,8 @@ interface AddBoardWizardState {
   alertSetup: DraftAlertSetupBag
   /** True when the draft battery config is usable (gates SoC %-based presets). */
   hasBatteryConfig: boolean
+  /** The draft's derived battery config when valid, for SoC %-scaled battery rules. */
+  batteryConfig: DerivedBatteryConfig | null
   canSave: boolean
 }
 
@@ -177,17 +173,21 @@ export function useAddBoardWizard(): UseAddBoardWizard {
     setRailId(option.railId)
   }
 
-  const previewConfig: BatteryConfig =
-    batteryMode === 'preset'
-      ? { mode: 'preset', cellPresetId, seriesCount, parallelCount }
-      : {
-          mode: 'manual',
-          minVoltage: parseVoltage(manualMinVoltage) ?? 0,
-          maxVoltage: parseVoltage(manualMaxVoltage) ?? 0,
-        }
-  const derivedBattery = deriveBatteryConfig(previewConfig)
+  // Memoized on the draft inputs so draft alert controllers only rebuild when the battery changes.
+  const derivedBattery = useMemo(() => {
+    const previewConfig: BatteryConfig =
+      batteryMode === 'preset'
+        ? { mode: 'preset', cellPresetId, seriesCount, parallelCount }
+        : {
+            mode: 'manual',
+            minVoltage: parseVoltage(manualMinVoltage) ?? 0,
+            maxVoltage: parseVoltage(manualMaxVoltage) ?? 0,
+          }
+    return deriveBatteryConfig(previewConfig)
+  }, [batteryMode, cellPresetId, seriesCount, parallelCount, manualMinVoltage, manualMaxVoltage])
   const batteryWarning = derivedBattery.warning
   const hasBatteryConfig = batteryWarning == null
+  const draftBatteryConfig = hasBatteryConfig ? derivedBattery : null
   const canSave = Boolean(name.trim()) && batteryWarning == null
   const batterySummary = getBatterySummary(
     false,
@@ -241,6 +241,17 @@ export function useAddBoardWizard(): UseAddBoardWizard {
       manualMinVoltage,
       manualMaxVoltage,
     )
+    // Each draft level is saved with its draft rider rules in one write; native stores a preset
+    // row only for a level that differs from the default.
+    const presets = Object.fromEntries(
+      ALERT_PRESET_METRICS.map((metric) => {
+        const { level } = alertSetup[metric]
+        return [metric, formatAlertPresetSpec({ level, options: [] })]
+      }),
+    )
+    const rules = Object.values(alertSetup).flatMap((setup) =>
+      setup.rules.map((rule) => ({ ...rule, boardId })),
+    )
     const board = await addBoard({
       id: boardId,
       name: name.trim(),
@@ -248,19 +259,12 @@ export function useAddBoardWizard(): UseAddBoardWizard {
       personalization: { railId, railColorId },
       link: draftLink,
       batteryConfig,
-      // Native saves the Board and its generated preset rules together.
       topSpeedKmh,
-      alertPreset: draftAlertPresetSelection(alertSetup),
       alertPresetsOnboarded: true,
+      alerts: { presets, rules },
     })
     setActiveBoard(board.id)
     await useAlertsStore.getState().load(board.id)
-    // Custom draft rules carry no Board id until the Board exists.
-    for (const { rules } of Object.values(alertSetup)) {
-      for (const rule of rules) {
-        await useAlertsStore.getState().upsert({ ...rule, boardId: board.id })
-      }
-    }
     router.dismissAll()
   }
 
@@ -290,6 +294,7 @@ export function useAddBoardWizard(): UseAddBoardWizard {
     topSpeedKmh,
     alertSetup,
     hasBatteryConfig,
+    batteryConfig: draftBatteryConfig,
     canSave,
     setStep,
     next,

@@ -24,4 +24,14 @@ final class GroupRideObserverTests: XCTestCase {
   func testNoPresenceLeavesTheRiderUnplaced() {
     XCTAssertNil(rider(presence: nil)?.position)
   }
+
+  func testRosterChangesCueOtherRidersJoiningBeforeLeavingNeverTheRider() {
+    let cue = GroupRideObserver.rosterCue
+    XCTAssertNil(cue([], ["me", "ola"], "me"))
+    XCTAssertEqual(cue(["me"], ["me", "ola"], "me"), "groupRide.riderJoined")
+    XCTAssertEqual(cue(["me", "ola"], ["me"], "me"), "groupRide.riderLeft")
+    XCTAssertEqual(cue(["me", "ola"], ["me", "kai"], "me"), "groupRide.riderJoined")
+    XCTAssertNil(cue(["ola"], ["me", "ola"], "me"))
+    XCTAssertNil(cue(["me", "ola"], ["ola", "me"], "me"))
+  }
 }

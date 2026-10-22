@@ -10,9 +10,8 @@ const nativeSnapshot: AlertTestRule[] = [
     controlId: 'speed',
     threshold: 12.345,
     thresholdMax: 45.678,
-    soundType: 'preset:gamma',
+    spec: 'preset:gamma',
     repeatEverySeconds: null,
-    beepCount: 3,
   },
 ]
 const options = { topSpeedKmh: 50, hasBatteryConfig: true, speedUnitSystem: 'imperial' as const }
@@ -32,7 +31,7 @@ test('draft preview forwards native options and preserves returned thresholds wi
     manual,
     { ...manual, id: 'muted', enabled: false },
   ])
-  expect(spy).toHaveBeenCalledWith('speed', 'normal', options)
+  expect(spy).toHaveBeenCalledWith('speed', 'preset(normal)', options)
   expect(result.error).toBeNull()
   expect(result.presetRules).toEqual(nativeSnapshot)
   expect(result.rules).toHaveLength(2)
@@ -44,11 +43,9 @@ test('draft preview forwards native options and preserves returned thresholds wi
   })
 })
 
-test('custom and off drafts retain manual rules without requesting generated rules', () => {
+test('off drafts retain manual rules without requesting generated rules', () => {
   const spy = stubPreview()
-  for (const level of ['custom', 'off'] as const) {
-    expect(draftAlertPreview('speed', level, options, [manual]).rules).toHaveLength(1)
-  }
+  expect(draftAlertPreview('speed', 'off', options, [manual]).rules).toHaveLength(1)
   expect(spy).not.toHaveBeenCalled()
 })
 

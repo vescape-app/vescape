@@ -254,7 +254,11 @@ internal final class BoardSessionController: VescGattListener {
     online: AppStatusCoordinator.shared,
     scheduler: scheduler,
     // Participation is a GPS demand input, and most of the ways it ends are not rider-initiated.
-    onParticipationChanged: { [weak self] in self?.refreshGpsDemand() }
+    onParticipationChanged: { [weak self] in self?.refreshGpsDemand() },
+    onCue: { [weak self] cue in
+      guard let self, self.connectionSoundsEnabled else { return }
+      self.alertAudioPlayer.playAppCue(cue)
+    }
   )
 
   /// Enabled Privacy Zones cached for the Group Ride presence egress gate (issue #144). Refreshed
@@ -270,7 +274,11 @@ internal final class BoardSessionController: VescGattListener {
   /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/connection/BoardSessionController.kt `telemetry`
   private var latestTelemetry: RefloatTelemetry?
 
-  private lazy var alertAudioPlayer = AlertAudioPlayer()
+  private lazy var alertAudioPlayer: AlertAudioPlayer = {
+    let player = AlertAudioPlayer()
+    player.onDiagnostic = { name, props in DiagnosticsRecorder.shared.record(eventName: name, properties: props) }
+    return player
+  }()
   private lazy var alertCoordinator = AlertCoordinator(player: alertAudioPlayer)
   private let legalPolicyCatalog = LegalPolicyCatalog()
   /// Persistent Board Session status surface (Live Activity) — the iOS peer of Android's foreground
@@ -952,8 +960,11 @@ internal final class BoardSessionController: VescGattListener {
     linkLostAtMs = nowMs()
     dropoutGraceTimer?.cancel()
     dropoutGraceTimer = scheduler.postDelayed(RIDE_DROPOUT_GRACE_MS) { [weak self] in
-      self?.dropoutGraceTimer = nil
-      self?.refreshGpsDemand()
+      guard let self else { return }
+      self.dropoutGraceTimer = nil
+      // Past the grace the board is treated as powered off: that is how a ride ends.
+      if self.connectionSoundsEnabled { self.alertAudioPlayer.playRideEnd() }
+      self.refreshGpsDemand()
     }
     refreshGpsDemand()
   }
@@ -1005,9 +1016,17 @@ internal final class BoardSessionController: VescGattListener {
 
   // MARK: - Group Ride
 
+  /// App sounds switch and sound packs, read by every cue whether or not a board is connected.
+  private func applyAppSoundSettings(_ settings: [String: Any?]) {
+    connectionSoundsEnabled = settings["connectionSoundsEnabled"] as? Bool ?? true
+    alertAudioPlayer.applySoundSettings(settings)
+  }
+
   /// Open the observe socket and refresh the presence egress caches it reads on every fix.
   /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/connection/BoardSessionController.kt `consumePendingGroupRideObserve`
   func startGroupRideObserve(_ url: String) {
+    do { applyAppSoundSettings(try appData.getSettings()) }
+    catch { RecordingStorageFailure.reportRead(operation: "group_ride_sound_settings", error: error) }
     loadPrivacyZones()
     loadGroupRideTarget()
     groupRideObserver.start(url)
@@ -1133,7 +1152,7 @@ internal final class BoardSessionController: VescGattListener {
       ((settings["legalPolicy"] ?? nil) as? [String: Any])?["jurisdictionCode"] as? String
     let speeds = jurisdictionCode.flatMap(legalPolicyCatalog.speeds)
     let alertRules: [AlertRule]
-    do { try appData.repairMissingAlertPresetRelations(boardId); alertRules = try appData.getEnabledAlertRules(boardId) }
+    do { alertRules = try appData.getEnabledAlertRules(boardId) }
     catch { RecordingStorageFailure.reportRead(operation: "enabled_alert_rules_read", error: error); return }
     alertCoordinator.replaceRules(withLegalModeOverlay(
       alertRules,
@@ -1191,13 +1210,15 @@ internal final class BoardSessionController: VescGattListener {
   /// Re-read mutable app settings that affect live native work while a session is already running.
   /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/connection/BoardSessionController.kt `loadTelemetrySettings`
   func reloadTelemetrySettings() {
-    guard let current = config else { return }
     let settings: [String: Any?]
     do { settings = try appData.getSettings() }
     catch {
       RecordingStorageFailure.reportRead(operation: "telemetry_settings_read", error: error)
       return
     }
+    // Group Ride cues and JS app cues play without a Board Session, so sound settings apply always.
+    applyAppSoundSettings(settings)
+    guard let current = config else { return }
     let hz = AppDataRepository.intValue(settings["telemetryPollRateHz"] ?? nil) ?? 0
     let liveHistoryLimit = AppDataRepository.liveHistoryLimitMinutes(settings["liveHistoryLimit"] ?? nil)
       ?? current.liveHistoryLimitMinutes
@@ -1232,9 +1253,7 @@ internal final class BoardSessionController: VescGattListener {
       lastFaultDispatchAtMs = 0
     }
     boardWarningsEnabled = settings["boardWarningsEnabled"] as? Bool ?? true
-    connectionSoundsEnabled = settings["connectionSoundsEnabled"] as? Bool ?? true
     alertCoordinator.unitSystem = settings["unitSystem"] as? String ?? "metric"
-    alertAudioPlayer.soundPack = settings["soundPack"] as? String ?? "retro"
     // Disabled→enabled with an already-trusted link: link integrity won't transition again, so
     // schedule the config-safety read here.
     if !warningsWereEnabled, boardWarningsEnabled, lastEmittedLinkIntegrity == .trusted {
@@ -1256,20 +1275,28 @@ internal final class BoardSessionController: VescGattListener {
   /// Play a preset once for UI preview, or speak a `tts:` template. Mirrors Android
   /// `previewAlertSound`.
   /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/connection/BoardSessionController.kt `previewAlertSound`
-  func previewAlertSound(_ soundType: String) {
+  func previewAlertSound(_ spec: String) {
     do {
       let settings = try appData.getSettings()
-      alertAudioPlayer.preview(soundType: soundType, unitSystem: settings["unitSystem"] as? String ?? "metric")
+      // Without a Board Session nothing else keeps the player on the selected pack.
+      alertAudioPlayer.applySoundSettings(settings)
+      alertAudioPlayer.preview(spec: spec, unitSystem: settings["unitSystem"] as? String ?? "metric")
     } catch { RecordingStorageFailure.reportRead(operation: "alert_preview_settings", error: error) }
   }
 
-  func playAppSound(pack: String, cue: String) {
-    alertAudioPlayer.playAppSound(pack: pack, cue: cue)
+  func playPackSound(pack: String, slot: String) {
+    alertAudioPlayer.playPackSound(pack: pack, slot: slot)
+  }
+
+  func playAppCue(_ cue: String) {
+    alertAudioPlayer.playAppCue(cue)
   }
 
   /// Drive a geiger preview loop without a connected board — UI slider over `rangeDepth`.
-  func startGeigerSimulation(soundType: String, rangeDepth: Double) {
-    alertAudioPlayer.updateGeiger(ruleId: geigerSimulationId, soundType: soundType, rangeDepth: rangeDepth)
+  func startGeigerSimulation(spec: String, rangeDepth: Double) {
+    do { alertAudioPlayer.applySoundSettings(try appData.getSettings()) }
+    catch { RecordingStorageFailure.reportRead(operation: "geiger_preview_settings", error: error) }
+    alertAudioPlayer.updateGeiger(ruleId: geigerSimulationId, spec: spec, rangeDepth: rangeDepth)
   }
 
   func stopGeigerSimulation() {
@@ -1534,7 +1561,9 @@ internal final class BoardSessionController: VescGattListener {
     boardWarningsEnabled = sessionSettings["boardWarningsEnabled"] as? Bool ?? true
     connectionSoundsEnabled = sessionSettings["connectionSoundsEnabled"] as? Bool ?? true
     alertCoordinator.unitSystem = sessionSettings["unitSystem"] as? String ?? "metric"
-    alertAudioPlayer.soundPack = sessionSettings["soundPack"] as? String ?? "retro"
+    alertAudioPlayer.applySoundSettings(sessionSettings)
+    // Engine and session up for the whole ride, before the first alert can fire; `goIdle()` at its end.
+    alertAudioPlayer.wake()
     recordingCoordinator.beginBoardSession(config: config, restoredRecordingId: restoredRecordingId)
     beginGpsSessionDiagnostics()
     // Reset per-session Board Warning breadcrumb bookkeeping (one Diagnostic Event per kind per
@@ -1569,7 +1598,7 @@ internal final class BoardSessionController: VescGattListener {
       ((sessionSettings["legalPolicy"] ?? nil) as? [String: Any])?["jurisdictionCode"] as? String
     let legalSpeeds = jurisdictionCode.flatMap(legalPolicyCatalog.speeds)
     let alertRules: [AlertRule]
-    do { try appData.repairMissingAlertPresetRelations(config.appBoardId); alertRules = try appData.getEnabledAlertRules(config.appBoardId) }
+    do { alertRules = try appData.getEnabledAlertRules(config.appBoardId) }
     catch { RecordingStorageFailure.reportRead(operation: "enabled_alert_rules_read", error: error); return }
     alertCoordinator.replaceRules(withLegalModeOverlay(
       alertRules,
@@ -2584,6 +2613,8 @@ internal final class BoardSessionController: VescGattListener {
       // Auto-recording may have just started the recording; the resume marker must agree.
       syncResumeMarkerRecording()
     }
+    // Engine back up after a dropout grace idled it.
+    alertAudioPlayer.wake()
     if connectionSoundsEnabled { alertAudioPlayer.playConnect() }
     // Telemetry is flowing again: a reconnect that landed inside the grace restores a full ride, and
     // one that landed outside it raises demand back to `ride`.

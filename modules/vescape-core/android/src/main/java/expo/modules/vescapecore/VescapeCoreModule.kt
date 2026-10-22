@@ -9,9 +9,8 @@ import expo.modules.vescapecore.telemetry.FavoriteMediaCleanupException
 
 import expo.modules.vescapecore.accessory.AccessoryDiscovery
 import expo.modules.vescapecore.accessory.AccessorySessionManager
-import expo.modules.vescapecore.alerts.CustomAppSounds
+import expo.modules.vescapecore.alerts.MySounds
 import expo.modules.vescapecore.alerts.AlertFeedback
-import expo.modules.vescapecore.alerts.normalizedAlertBeepCount
 import expo.modules.vescapecore.alerts.normalizedAlertRepeatSeconds
 import expo.modules.vescapecore.alerts.AlertCoordinator
 import expo.modules.vescapecore.appstatus.AppStatusCoordinator
@@ -96,7 +95,7 @@ private fun Map<String, Any?>.toAlertTestRule(): AlertRuleEntity? {
   val controlId = this["controlId"] as? String ?: return null
   val threshold = (this["threshold"] as? Number)?.toDouble() ?: return null
   val thresholdMax = (this["thresholdMax"] as? Number)?.toDouble()
-  val soundType = this["soundType"] as? String ?: return null
+  val spec = this["spec"] as? String ?: return null
   return AlertRuleEntity(
     boardId = "alert-test",
     id = id,
@@ -104,11 +103,9 @@ private fun Map<String, Any?>.toAlertTestRule(): AlertRuleEntity? {
     threshold = threshold,
     thresholdMax = thresholdMax,
     enabled = true,
-    soundType = soundType,
+    spec = spec,
     createdAt = 0,
     repeatEverySeconds = normalizedAlertRepeatSeconds((this["repeatEverySeconds"] as? Number)?.toDouble()),
-    beepCount = normalizedAlertBeepCount((this["beepCount"] as? Number)?.toInt()),
-    source = null,
   )
 }
 
@@ -572,13 +569,18 @@ class VescapeCoreModule : Module() {
     Function("reloadAlertRules") {
       CoreForegroundService.reloadAlertRules(context.applicationContext)
     }
-    Function("previewAlertSound") { soundType: String ->
-      CoreForegroundService.previewAlertSound(context.applicationContext, soundType)
+    Function("previewAlertSound") { spec: String ->
+      CoreForegroundService.previewAlertSound(context.applicationContext, spec)
     }
-    Function("playAppSound") { pack: String, cue: String ->
-      CoreForegroundService.playAppSound(context.applicationContext, pack, cue)
+    // @parity /modules/vescape-core/ios/VescapeCoreModule.swift `playPackSound`
+    Function("playPackSound") { pack: String, slot: String ->
+      CoreForegroundService.playPackSound(context.applicationContext, pack, slot)
     }
-    registerCustomAppSounds()
+    // @parity /modules/vescape-core/ios/VescapeCoreModule.swift `playAppCue`
+    Function("playAppCue") { cue: String ->
+      CoreForegroundService.playAppCue(cue)
+    }
+    registerMySounds()
     // @parity /modules/vescape-core/ios/VescapeCoreModule.swift `mapTile`
     AsyncFunction("mapTile") Coroutine { z: Int, x: Int, y: Int ->
       MapTiles.get(context.applicationContext).tile(z, x, y)?.let { Uri.fromFile(it).toString() }
@@ -586,11 +588,12 @@ class VescapeCoreModule : Module() {
     Function("getAlertSounds") {
       CoreForegroundService.alertSoundPresets()
     }
-    Function("startGeigerSimulation") { soundType: String, rangeDepth: Double ->
+    Function("startGeigerSimulation") { spec: String, rangeDepth: Double ->
       val feedback = previewAlertFeedback ?: AlertFeedback(context.applicationContext, mainHandler)
         .also { previewAlertFeedback = it }
-      feedback.setAudioSource(kotlinx.coroutines.runBlocking { AppDataRepository.get(context.applicationContext).getTypedSettings().audioSource })
-      feedback.updateGeiger("preview", soundType, rangeDepth)
+      val settings = kotlinx.coroutines.runBlocking { AppDataRepository.get(context.applicationContext).getTypedSettings() }
+      feedback.setSoundSettings(settings)
+      feedback.updateGeiger("preview", spec, rangeDepth)
     }
     Function("stopGeigerSimulation") {
       previewAlertFeedback?.stopGeiger("preview")
@@ -1247,10 +1250,10 @@ class VescapeCoreModule : Module() {
         throw error
       }
     }
-    AsyncFunction("upsertBoard") Coroutine { board: Map<String, Any?> ->
+    AsyncFunction("upsertBoard") Coroutine { board: Map<String, Any?>, initialAlerts: Map<String, Any?>? ->
       RecordingStorageFailure.requireAvailable()
       try {
-        AppDataRepository.get(context.applicationContext).upsertBoard(board)
+        AppDataRepository.get(context.applicationContext).upsertBoard(board, initialAlerts)
         WatchLastBatteryPusher.push(context)
         CoreForegroundService.reloadAlertRules(context.applicationContext)
         CoreForegroundService.reloadBoardData()
@@ -1272,25 +1275,24 @@ class VescapeCoreModule : Module() {
     }
     // @parity /modules/vescape-core/ios/VescapeCoreModule.swift `previewAlertPreset`
     // @parity /modules/vescape-core/src/index.ts `previewAlertPreset`
-    Function("previewAlertPreset") { metric: String, level: String, topSpeedKmh: Double, hasBatteryConfig: Boolean, speedUnitSystem: String ->
-      AlertPresetPersistence.preview(metric, level, topSpeedKmh, hasBatteryConfig, speedUnitSystem).map { rule ->
+    Function("previewAlertPreset") { metric: String, spec: String, topSpeedKmh: Double, hasBatteryConfig: Boolean, speedUnitSystem: String ->
+      AlertPresetPersistence.preview(metric, spec, topSpeedKmh, hasBatteryConfig, speedUnitSystem).map { rule ->
         mapOf(
           "id" to rule.id,
           "controlId" to rule.controlId,
           "threshold" to rule.threshold,
           "thresholdMax" to rule.thresholdMax,
-          "soundType" to rule.soundType,
+          "spec" to rule.spec,
           "repeatEverySeconds" to rule.repeatEverySeconds,
-          "beepCount" to rule.beepCount,
         )
       }
     }
     // @parity /modules/vescape-core/ios/VescapeCoreModule.swift `applyAlertPreset`
     // @parity /modules/vescape-core/src/index.ts `applyAlertPreset`
-    AsyncFunction("applyAlertPreset") Coroutine { boardId: String, metric: String, action: String, level: String?, matchBoardConfig: Boolean? ->
+    AsyncFunction("applyAlertPreset") Coroutine { boardId: String, metric: String, level: String?, geiger: String?, match: Boolean? ->
       RecordingStorageFailure.requireAvailable()
       try {
-        AppDataRepository.get(context.applicationContext).applyAlertPreset(boardId, metric, action, level, matchBoardConfig)
+        AppDataRepository.get(context.applicationContext).applyAlertPreset(boardId, metric, level, geiger, match)
         CoreForegroundService.reloadAlertRules(context.applicationContext)
       } catch (error: CancellationException) { throw error }
       catch (error: Throwable) { RecordingStorageFailure.report("alert_preset_apply", "write_failed", error); throw error }
@@ -1298,6 +1300,13 @@ class VescapeCoreModule : Module() {
     AsyncFunction("getAlertRules") { boardId: String ->
       RecordingStorageFailure.requireAvailable()
       try { runBlocking { AppDataRepository.get(context.applicationContext).getAlertRules(boardId) } }
+      catch (error: Throwable) { RecordingStorageFailure.reportRead("alert_rules_read", error); throw error }
+    }
+    // @parity /modules/vescape-core/ios/VescapeCoreModule.swift `getAlertPresets`
+    // @parity /modules/vescape-core/src/index.ts `getAlertPresets`
+    AsyncFunction("getAlertPresets") { boardId: String ->
+      RecordingStorageFailure.requireAvailable()
+      try { runBlocking { AppDataRepository.get(context.applicationContext).getAlertPresets(boardId) } }
       catch (error: Throwable) { RecordingStorageFailure.reportRead("alert_rules_read", error); throw error }
     }
     AsyncFunction("upsertAlertRule") Coroutine { rule: Map<String, Any?> ->
@@ -1485,7 +1494,9 @@ class VescapeCoreModule : Module() {
         key == "vescFaultCollectionEnabled" ||
         key == "connectionSoundsEnabled" ||
         key == "soundPack" ||
-        key == "audioSource"
+        key == "audioSource" ||
+        key == "voice" ||
+        key == "voiceLevel"
       ) {
         CoreForegroundService.reloadTelemetrySettings(context.applicationContext)
       }
@@ -1514,22 +1525,13 @@ class VescapeCoreModule : Module() {
     }
   }
 
-  private fun ModuleDefinitionBuilder.registerCustomAppSounds() {
-    // @parity /modules/vescape-core/ios/VescapeCoreModule.swift `customAppSoundPacks`
-    AsyncFunction("customAppSoundPacks") { CustomAppSounds.list(context.applicationContext) }
-    AsyncFunction("createAppSoundPack") { name: String -> CustomAppSounds.create(context.applicationContext, name) }
-    AsyncFunction("renameAppSoundPack") { id: String, name: String -> CustomAppSounds.rename(context.applicationContext, id, name) }
-    AsyncFunction("importAppSound") { id: String, cue: String, uri: String -> CustomAppSounds.import(context.applicationContext, id, cue, uri) }
-    AsyncFunction("removeAppSound") { id: String, cue: String -> CustomAppSounds.remove(context.applicationContext, id, cue) }
-    AsyncFunction("deleteAppSoundPack") Coroutine { id: String ->
-      val appContext = context.applicationContext
-      val selected = AppDataRepository.get(appContext).getTypedSettings().soundPack
-      if (selected == id) {
-        AppDataRepository.get(appContext).updateSetting("soundPack", "simple")
-        CoreForegroundService.reloadTelemetrySettings(appContext)
-      }
-      CustomAppSounds.delete(appContext, id)
-    }
+  private fun ModuleDefinitionBuilder.registerMySounds() {
+    // @parity /modules/vescape-core/ios/VescapeCoreModule.swift `mySounds`
+    AsyncFunction("mySounds") { MySounds.state(context.applicationContext) }
+    AsyncFunction("importMySound") { uri: String, name: String -> MySounds.import(context.applicationContext, uri, name) }
+    AsyncFunction("renameMySound") { id: String, name: String -> MySounds.rename(context.applicationContext, id, name) }
+    AsyncFunction("deleteMySound") { id: String -> MySounds.delete(context.applicationContext, id) }
+    AsyncFunction("setSoundOverride") { slot: String, id: String? -> MySounds.setOverride(context.applicationContext, slot, id) }
   }
 
   private fun startAlertTest(ruleMaps: List<Map<String, Any?>>) {
@@ -1539,9 +1541,11 @@ class VescapeCoreModule : Module() {
     if (rules.any { it.controlId != controlId }) return
 
     val feedback = AlertFeedback(context.applicationContext, mainHandler)
-    feedback.setAudioSource(kotlinx.coroutines.runBlocking { AppDataRepository.get(context.applicationContext).getTypedSettings().audioSource })
+    val settings = kotlinx.coroutines.runBlocking { AppDataRepository.get(context.applicationContext).getTypedSettings() }
+    // A test sounds like the real rule: same effects pack, same output.
+    feedback.setSoundSettings(settings)
     val coordinator = AlertCoordinator(feedback = { feedback }, vibrateSingles = false)
-    coordinator.unitSystem = kotlinx.coroutines.runBlocking { AppDataRepository.get(context.applicationContext).getTypedSettings().unitSystem }
+    coordinator.unitSystem = settings.unitSystem
     coordinator.replaceRules(rules)
     alertTestFeedback = feedback
     alertTestCoordinator = coordinator

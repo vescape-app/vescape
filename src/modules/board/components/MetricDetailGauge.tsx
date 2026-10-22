@@ -35,8 +35,6 @@ export function MetricDetailGauge({
     min,
     max,
     alertAbove: true,
-    lingerNearMax: false,
-    slowForMessages: true,
   })
   const gaugeValue = alertTest.running ? alertTest.value : value
 

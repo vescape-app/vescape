@@ -304,12 +304,24 @@ A bundled audio asset used for alert feedback, belonging to exactly one category
 _Avoid_: Alert Preset (now the rider's intensity concept), sound effect, ringtone, tone
 
 **Alert Preset**:
-A rider-selected intensity level for one telemetry metric (battery, speed, duty, motor temperature, controller temperature) that expands into a set of **Alert Rules** at once. Motor and controller temperature are independent presets. Held per-**Board** as a **Board Setting** — each Board carries its own levels. The level is durable truth; the rules it produces are virtual — derived from the level, tagged by source, and regenerated as a whole when the level changes, never hand-edited one by one. Manual **Alert Rules** may coexist alongside a preset's rules for the same metric. A metric with the preset disabled has no preset-sourced rules.
+A rider-selected intensity level for one telemetry metric (battery, speed, duty, motor temperature, controller temperature), stored as one **Alert Rule** row whose sound string is `preset(<level>):<key>=<value>,…` — the level plus the rider's options (e.g. `geiger=mid`), nothing else. Native expands it at load into one rule per point of the shipped preset definition, which owns every point's threshold and sound, so changing the definition updates every rider without a migration. Each Board has at most one preset row per metric, stored only when it differs from the app default `preset(normal)` with no options; a missing row means that default (picking Normal with no options removes the row), and Off is `preset(off)` with its options kept. The rider's own **Alert Rules** for the same metric sit beside it and fire together. Motor and controller temperature are independent presets.
 _Avoid_: Alert Sound (the audio asset), Alert Level as a rules concept, warning pack
 
 **Alert Message Template**:
 A user-authored spoken phrase on a single-threshold **Alert Rule** that may include current alert-value placeholders and is spoken by native text-to-speech when the rule fires.
 _Avoid_: TTS sound, voice preset, notification text
+
+**Voice Pack**:
+A bundled set of pre-generated spoken lines per **Message Key** plus value clips, chosen app-wide by the Voice setting (by default the voice the selected effects pack names). A voice announcement plays the severity sound, then the line with its value; it never contains beeps.
+_Avoid_: TTS, voice preset, sound pack
+
+**Message Key**:
+The name of what an announcement says (`battery`, `motorTemp`, `controllerTemp`), resolved by the **Voice Pack** to its most specific line: `<key>.<severity>`, else the generic `<key>`, else the severity sound only.
+_Avoid_: message text, template
+
+**Voice Level**:
+The app-wide amount of speech for preset alerts and app sounds: Off, Minimal, Standard, or Full. It sets which events speak and how much each says, from the shortest wording (Minimal) to varied lines with occasional endings (Full). Custom **Alert Rules** always speak, in its wording.
+_Avoid_: verbosity, voice volume
 
 **Watch Mirror**:
 The app on the rider's wrist that mirrors phone-owned live state and provides rider controls. Navigation and Group Ride can remain live without a Board Session. The wrist sends rider commands and reports its own awake state. Implemented by the **Wear OS Mirror** on Android and the **watchOS Mirror** on Apple Watch.
@@ -372,7 +384,7 @@ The edge drawer behind the top-right button on the main screen: the **Vescape Ac
 _Avoid_: settings menu, settings popover, quick settings
 
 **Board Setting**:
-A rider-adjustable preference or soft state scoped to one **Board**, stored schemalessly per Board (key-value). Distinct from Board identity and probe-confirmed facts (name, **Board Link**), which are structured Board fields. Examples: battery configuration, **Alert Preset** levels, **Board Top Speed**.
+A rider-adjustable preference or soft state scoped to one **Board**, stored schemalessly per Board (key-value). Distinct from Board identity and probe-confirmed facts (name, **Board Link**), which are structured Board fields. Examples: battery configuration, **Board Top Speed**, dismissed **Board Warnings**.
 _Avoid_: Board config, per-board App Setting
 
 **Release Policy**:
@@ -527,8 +539,8 @@ _Avoid_: Position update, presence ping, location share, group telemetry
 - Deleting a **Board** leaves a **Board Tombstone**: its configuration goes, its **Ride History** and **Tune Profiles** stay, and the row stays resolvable by id so history can still name it (ADR 0027).
 - Every durable record that belongs to a **Board** identifies it by **Board** id, never by BLE identifier. The BLE address survives in exactly one place, the **Board Link**'s `ble_id`, where it is a reachability detail of that Board and not a key anything else joins on (ADR 0028).
 - **Ride History** resolves the **Board** name by lookup rather than reading a copy stored at capture time, so renaming a **Board** relabels its whole history (ADR 0028).
-- An **Alert Preset** is set per metric and produces zero or more **Alert Rules** for that metric; those rules are regenerated wholesale when its level changes and coexist with the rider's manual **Alert Rules**.
-- A speed **Alert Preset** resolves its km/h thresholds from **Board Top Speed**; changing **Board Top Speed** regenerates the speed preset's **Alert Rules**.
+- An **Alert Preset** is one **Alert Rule** row per metric that native expands into zero or more rules from the preset definition; it is never copied into rows, and it coexists with the rider's own **Alert Rules** for that metric.
+- A speed **Alert Preset** resolves its km/h thresholds from **Board Top Speed** at expansion, so a changed **Board Top Speed** applies on the next rule load.
 - An **Alert Message Template** belongs to one **Alert Rule**.
 - A **Watch Mirror** receives **Watch Frames** from the phone and can send rider commands and its own awake state back; it is not a **Board**, a **Board Session**, or a source of **Telemetry Samples**.
 - A **Watch Frame** is derived from **Live State** and is pushed whenever the phone feeds an awake **Watch Mirror**, with or without a **Board Session**; without one its Board readings are empty (ADR 0039).

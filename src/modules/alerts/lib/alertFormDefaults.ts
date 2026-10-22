@@ -10,7 +10,7 @@ import {
   getAlertSounds,
   type AlertSound,
   type AlertSoundCategory,
-  type AlertSoundType,
+  type AlertSpec,
 } from 'vescape-core'
 
 import type { DerivedBatteryConfig } from '@/modules/battery/lib/types'
@@ -20,9 +20,28 @@ import {
   type TelemetryAlertTab as AlertTab,
 } from '@/modules/board/constants/telemetryThresholds'
 import type { DraftAlertRule } from '@/modules/alerts/lib/customAlertRules'
+import {
+  ALERT_SEVERITY_DEFAULT,
+  formatGeigerAlertSound,
+  parseAlertSoundString,
+  parseGeigerAlertSound,
+  parseSlotAlertSound,
+  parseTtsAlertSound,
+  parseVoiceAlertSound,
+  slotSoundPart,
+} from '@/modules/alerts/lib/alertSoundString'
 
 export function getPresetsForCategory(category: AlertSoundCategory): AlertSound[] {
   return getAlertSounds().filter((p) => p.category === category)
+}
+
+/** My sounds as `category` picker options: `alert:my:<id>` / `geiger:my:<id>`. */
+export function mySoundOptions(
+  category: AlertSoundCategory,
+  mySounds: { id: string; name: string }[],
+): AlertSound[] {
+  const kind = category === 'single' ? 'alert' : 'geiger'
+  return mySounds.map((sound) => ({ name: sound.name, uri: `${kind}:my:${sound.id}`, category }))
 }
 
 export function getDefaultMessageTemplate(
@@ -98,29 +117,45 @@ export function getAlertDialConfig(controlId: string, batteryConfig: DerivedBatt
   }
 }
 
+/** A geiger rule's picker shows its level; a pre-grammar tick name reads as its equivalent level. */
+export function geigerPickerSound(spec: string): string {
+  if (parseAlertSoundString(spec)?.kind === 'geiger') return spec
+  return formatGeigerAlertSound(parseGeigerAlertSound(spec) ?? 'soft')
+}
+
 export function getEditFormDefaults(
   editRule: DraftAlertRule,
   dialConfig: ReturnType<typeof getAlertDialConfig>,
   batteryConfig: DerivedBatteryConfig | null,
 ) {
-  const isTts = editRule.soundType.startsWith('tts:')
+  const tts = parseTtsAlertSound(editRule.spec)
+  const voice = parseVoiceAlertSound(editRule.spec)
+  const tab = (
+    tts || voice ? 'message' : editRule.thresholdMax != null ? 'geiger' : 'single'
+  ) as AlertTab
+  // A single rule's picker shows the pack slot or My sound; its count lives in the beep stepper.
+  const slot = tab === 'single' ? parseSlotAlertSound(editRule.spec) : null
   return {
-    tab: (isTts ? 'message' : editRule.thresholdMax != null ? 'geiger' : 'single') as AlertTab,
+    tab,
     threshold: editRule.threshold,
     thresholdMax: editRule.thresholdMax ?? dialConfig.max,
-    soundType: editRule.soundType,
-    messageTemplate: isTts
-      ? editRule.soundType.slice(4)
-      : getDefaultMessageTemplate(editRule.controlId, batteryConfig),
+    spec: slot
+      ? `alert:${slotSoundPart(editRule.spec)}`
+      : tab === 'geiger'
+        ? geigerPickerSound(editRule.spec)
+        : editRule.spec,
+    messageTemplate: tts?.text ?? getDefaultMessageTemplate(editRule.controlId, batteryConfig),
+    severity: tts?.severity ?? voice?.severity ?? ALERT_SEVERITY_DEFAULT,
+    messageTts: tts != null,
     repeatEverySeconds: editRule.repeatEverySeconds,
-    beepCount: editRule.beepCount,
+    beepCount: slot?.count ?? ALERT_BEEP_COUNT_DEFAULT,
   }
 }
 
 export function getNewFormDefaults(
   dialConfig: ReturnType<typeof getAlertDialConfig>,
-  defaultSoundType: AlertSoundType,
-  geigerSoundType: AlertSoundType,
+  defaultSpec: AlertSpec,
+  geigerSpec: AlertSpec,
   controlId: string,
   batteryConfig: DerivedBatteryConfig | null,
   units: UnitSystem = 'metric',
@@ -149,10 +184,12 @@ export function getNewFormDefaults(
       tab: preset.tab,
       threshold: snap(preset.threshold),
       thresholdMax: preset.thresholdMax != null ? snap(preset.thresholdMax) : high,
-      soundType: preset.tab === 'geiger' ? geigerSoundType : defaultSoundType,
+      spec: preset.tab === 'geiger' ? geigerSpec : defaultSpec,
       messageTemplate: getDefaultMessageTemplate(controlId, batteryConfig),
       repeatEverySeconds: null,
       beepCount: ALERT_BEEP_COUNT_DEFAULT,
+      severity: ALERT_SEVERITY_DEFAULT,
+      messageTts: false,
     }
   }
 
@@ -160,9 +197,11 @@ export function getNewFormDefaults(
     tab: 'single' as AlertTab,
     threshold: snap((dialConfig.min + dialConfig.max) / 2),
     thresholdMax: high,
-    soundType: defaultSoundType,
+    spec: defaultSpec,
     messageTemplate: getDefaultMessageTemplate(controlId, batteryConfig),
     repeatEverySeconds: null,
     beepCount: ALERT_BEEP_COUNT_DEFAULT,
+    severity: ALERT_SEVERITY_DEFAULT,
+    messageTts: false,
   }
 }

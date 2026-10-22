@@ -8,8 +8,8 @@ class SoundSampleQueueHostTest {
   @Test fun failedAppSoundDoesNotBlockAnotherAlert() {
     val samples = SoundSampleQueue()
     val played = mutableListOf<String>()
-    samples.enqueue(11) { played += "app" }
-    samples.enqueue(22) { played += "alert" }
+    samples.enqueue(11) { if (samples.state(11) == SoundSampleQueue.State.READY) played += "app" }
+    samples.enqueue(22) { if (samples.state(22) == SoundSampleQueue.State.READY) played += "alert" }
 
     samples.complete(11, success = false)
     samples.complete(22, success = true)

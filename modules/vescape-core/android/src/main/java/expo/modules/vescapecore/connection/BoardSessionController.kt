@@ -301,7 +301,13 @@ internal class BoardSessionController(private val service: CoreForegroundService
         )
     }
     private val notificationGate = NotificationUpdateGate(NOTIFICATION_TELEMETRY_INTERVAL_MS)
-    private val alertFeedback by lazy { AlertFeedback(service, mainHandler) }
+    /** Alert audio runs here, so geiger ticks never wait on the main looper. */
+    private val alertAudioThread by lazy { android.os.HandlerThread("vescape-alert-audio", android.os.Process.THREAD_PRIORITY_URGENT_AUDIO).apply { start() } }
+    private val alertFeedback by lazy {
+        AlertFeedback(service, android.os.Handler(alertAudioThread.looper)) { name, props ->
+            mainHandler.post { recordLocalDiagnostic(name, boardConfig, "alert_audio", props) }
+        }
+    }
     private val alertCoordinator by lazy { AlertCoordinator(feedback = { alertFeedback }) }
     private val legalPolicyCatalog by lazy { LegalPolicyCatalog(service.applicationContext) }
     private val diagnosticsRecorder: DiagnosticsRecorder by lazy {
@@ -453,6 +459,7 @@ internal class BoardSessionController(private val service: CoreForegroundService
             // rider-initiated. Reporting from inside the observer also lands after its `handler.post`
             // has actually mutated the state, which a caller refreshing inline cannot.
             onParticipationChanged = ::refreshGpsDemand,
+            onCue = { cue -> if (connectionSoundsEnabled) alertFeedback.playAppCue(cue) },
         )
     }
 
@@ -982,6 +989,7 @@ internal class BoardSessionController(private val service: CoreForegroundService
             stopCurrentBoardSession(emitDisconnected = false)
         }
         alertFeedback.release()
+        alertAudioThread.quitSafely()
         forceStopGps()
         groupRideObserver.stop()
         service.stopForeground(Service.STOP_FOREGROUND_REMOVE)
@@ -1155,6 +1163,8 @@ internal class BoardSessionController(private val service: CoreForegroundService
         // Load rules only after boardConfig is assigned — the engine scopes to the connected Board's
         // rules (#254), so reading before assignment would install the wrong Board's (or no) rules.
         CoreForegroundService.reloadAlertRules(service.applicationContext)
+        // Loads every sound and holds output open before the first alert can fire.
+        alertFeedback.wake()
         replayTransport = start.boardConfig.replayRecordingName?.let {
             ReplayTransport(
                 context = service,
@@ -2470,6 +2480,8 @@ internal class BoardSessionController(private val service: CoreForegroundService
             mapOf("message" to "Board telemetry received"),
         )
         boardConfig?.let { recordingCoordinator.markBoardReady(it) }
+        // Output held open again after a dropout grace let it sleep.
+        alertFeedback.wake()
         if (connectionSoundsEnabled) alertFeedback.playConnect()
         watchMirror.boardConnected(currentSessionId)
         // Telemetry is flowing again: a reconnect that landed inside the grace restores a full ride,
@@ -2796,6 +2808,7 @@ internal class BoardSessionController(private val service: CoreForegroundService
         // and the next session must not still be reading time from the past.
         sessionClock = SystemSessionClock
         alertCoordinator.stopAllGeiger()
+        alertFeedback.goIdle()
         recordGpsSessionSummary(stoppedConfig)
         recordingCoordinator.finishBoardSession(
             status = if (emitDisconnected) "disconnected" else "stopped",
@@ -3152,6 +3165,10 @@ internal class BoardSessionController(private val service: CoreForegroundService
         dropoutGraceHandle?.cancel()
         dropoutGraceHandle = scheduler.postDelayed(RIDE_DROPOUT_GRACE_MS) {
             dropoutGraceHandle = null
+            // Past the grace the board is treated as powered off: that is how a ride ends.
+            if (connectionSoundsEnabled) alertFeedback.playRideEnd()
+            // Nothing can alert until the board is back; let audio output sleep.
+            alertFeedback.goIdle()
             refreshGpsDemand()
         }
         refreshGpsDemand()
@@ -3449,7 +3466,6 @@ internal class BoardSessionController(private val service: CoreForegroundService
         }
         try {
             val repo = AppDataRepository.get(context)
-            repo.repairMissingAlertPresetRelations(boardId)
             val board = repo.getBoard(boardId)
             val enabled = ((board?.get("legalMode") as? Map<*, *>)?.get("enabled") as? Boolean) == true
             val jurisdictionCode = repo.getTypedSettings().legalPolicy?.get("jurisdictionCode")
@@ -3574,7 +3590,7 @@ internal class BoardSessionController(private val service: CoreForegroundService
         socWindow.windowMs = settings.socEstimateWindowSeconds * 1000L
         connectionSoundsEnabled = settings.connectionSoundsEnabled
         alertCoordinator.unitSystem = settings.unitSystem
-        alertFeedback.setSoundSettings(settings.soundPack, settings.audioSource)
+        alertFeedback.setSoundSettings(settings)
         // `VESC Fault Collection` is its own kill switch — deliberately not gated on
         // `boardWarningsEnabled`, so turning warnings off keeps fault evidence flowing.
         val coordinator = VescFaultCoordinator.get(service.applicationContext)
@@ -3662,8 +3678,12 @@ internal class BoardSessionController(private val service: CoreForegroundService
         telemetryPipeline.metricSanitizerConfig = settings.toMetricSanitizerConfig()
     }
 
-    fun previewAlertSound(soundType: String) {
-        alertFeedback.preview(soundType)
+    fun previewAlertSound(spec: String) {
+        alertFeedback.preview(spec)
+    }
+
+    fun playAppCue(cue: String) {
+        alertFeedback.playAppCue(cue)
     }
 
     private fun closeAppTask() {

@@ -39,6 +39,13 @@ internal class GroupRideObserver(
      * @parity /modules/vescape-core/ios/groupride/GroupRideObserver.swift `onParticipationChanged`
      */
     private val onParticipationChanged: () -> Unit = {},
+    /**
+     * Plays a Group Ride app cue (`groupRide.joined`, `riderJoined`, `riderLeft`, `lost`,
+     * `restored`) as the joined ride changes. `groupRide.created` is JS's: it needs the nearby filter.
+     *
+     * @parity /modules/vescape-core/ios/groupride/GroupRideObserver.swift `onCue`
+     */
+    private val onCue: (String) -> Unit = {},
 ) {
     private val client = OkHttpClient.Builder()
         .pingInterval(PING_INTERVAL_SECONDS, TimeUnit.SECONDS)
@@ -62,9 +69,12 @@ internal class GroupRideObserver(
         }
     private var desiredRideId: String? = null
         set(value) {
+            if (value != field) rideLinkLost = false
             field = value
             notifyParticipationIfChanged()
         }
+    /** The joined ride's socket dropped; its next `joined` is a restore, not a fresh join. */
+    private var rideLinkLost = false
 
     /** Last `participating` value handed to the owner, so only real transitions are reported. */
     private var lastParticipating = false
@@ -372,6 +382,10 @@ internal class GroupRideObserver(
     private fun scheduleReconnect() {
         webSocket = null
         if (stopped) return
+        if (joinedRideId != null) {
+            rideLinkLost = true
+            onCue("groupRide.lost")
+        }
         joinedRideId = null
         stopHeartbeat()
         emitConnection("disconnected")
@@ -425,6 +439,9 @@ internal class GroupRideObserver(
             "joined" -> {
                 val rideId = json.optString("rideId")
                 if (rideId.isNotEmpty()) {
+                    val restored = rideLinkLost
+                    if (rideId != joinedRideId) onCue(if (restored) "groupRide.restored" else "groupRide.joined")
+                    rideLinkLost = false
                     joinedRideId = rideId
                     desiredRideId = rideId
                     startHeartbeat()
@@ -557,6 +574,10 @@ internal class GroupRideObserver(
     }
 
     private fun emitRoster(rideId: String?, riders: List<Map<String, Any?>>) {
+        if (rideId != null && rideId == joinedRideId && rideId == lastRosterRideId) {
+            rosterCue(lastRoster.mapNotNull { it["id"] as? String }, riders.mapNotNull { it["id"] as? String }, riderId)
+                ?.let(onCue)
+        }
         lastRosterRideId = rideId
         lastRoster = riders
         lastRosterRiders = riders.mapNotNull(::rosterRider)
@@ -621,6 +642,25 @@ internal class GroupRideObserver(
          *
          * @parity /modules/vescape-core/ios/groupride/GroupRideObserver.swift `rosterRider`
          */
+        /**
+         * Cue for a joined ride's roster going from [previous] to [next] rider ids: `riderJoined`
+         * when someone else arrived, else `riderLeft` when someone else left. An empty [previous]
+         * is the first roster after joining, so nobody "joined" then.
+         *
+         * @parity /modules/vescape-core/ios/groupride/GroupRideObserver.swift `rosterCue`
+         */
+        internal fun rosterCue(previous: List<String>, next: List<String>, ownRiderId: String?): String? {
+            if (previous.isEmpty()) return null
+            val others = { ids: List<String> -> ids.filter { it != ownRiderId }.toSet() }
+            val before = others(previous)
+            val after = others(next)
+            return when {
+                (after - before).isNotEmpty() -> "groupRide.riderJoined"
+                (before - after).isNotEmpty() -> "groupRide.riderLeft"
+                else -> null
+            }
+        }
+
         internal fun rosterRider(view: Map<String, Any?>): GroupRideRosterRider? {
             val id = view["id"] as? String ?: return null
             val presence = view["presence"] as? Map<*, *>

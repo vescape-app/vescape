@@ -45,11 +45,13 @@ Pod::Spec.new do |s|
   # capture run. Unlike `cell-presets.json` it is a generated copy (`bun run copy:shared`), not a
   # symlink: CocoaPods resolves a symlinked file under the pod root but does not expand a glob
   # through a symlinked directory, so `fixtures/*.jsonl` silently matched nothing.
+  # `alert-packs/` is a generated copy of the built-in effects packs (`bun run copy:shared`), bundled
+  # as a folder so every `<pack>/pack.json` keeps its slot file names.
   s.resource_bundles = {
     'VescapeCoreAssets' => [
       'cell-presets.json', 'alert-preset-definitions.json',
       'legal-policies.json',
-      'alerts/*.wav',
+      'alert-packs',
       'fixtures/*.jsonl'
     ]
   }

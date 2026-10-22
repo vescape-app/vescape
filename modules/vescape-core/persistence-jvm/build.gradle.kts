@@ -13,8 +13,9 @@ val extractProductionPersistence by tasks.registering {
     val output = generatedProduction.get().asFile
     delete(output)
     listOf(
-      "expo/modules/vescapecore/alerts/AlertDefaults.kt",
       "expo/modules/vescapecore/alerts/ConfigRelativeFields.kt",
+      "expo/modules/vescapecore/alerts/AlertSoundString.kt",
+      "expo/modules/vescapecore/alerts/MySoundFileName.kt",
       "expo/modules/vescapecore/telemetry/AlertPresetPersistence.kt",
       "expo/modules/vescapecore/telemetry/AlertPresetGenerator.kt",
       "expo/modules/vescapecore/alerts/SoundPackFileSwap.kt",

@@ -71,6 +71,7 @@ test('new boards default to Molicel P50B 20S2P preset battery config', async () 
   expect(board.batteryConfig).toEqual(DEFAULT_BATTERY_CONFIG)
   expect(upsertBoard).toHaveBeenCalledWith(
     expect.objectContaining({ batteryConfig: DEFAULT_BATTERY_CONFIG }),
+    undefined,
   )
 })
 
@@ -91,7 +92,7 @@ test('new boards start unlinked (no Board Link)', async () => {
   const board = await useBoardStore.getState().addBoard({ name: 'ADV' })
 
   expect(board.link).toBeNull()
-  expect(upsertBoard).toHaveBeenCalledWith(expect.objectContaining({ link: null }))
+  expect(upsertBoard).toHaveBeenCalledWith(expect.objectContaining({ link: null }), undefined)
 })
 
 test('new boards persist their visual personalization', async () => {
@@ -101,7 +102,7 @@ test('new boards persist their visual personalization', async () => {
   const board = await useBoardStore.getState().addBoard({ name: 'ADV', personalization })
 
   expect(board.personalization).toEqual(personalization)
-  expect(upsertBoard).toHaveBeenCalledWith(expect.objectContaining({ personalization }))
+  expect(upsertBoard).toHaveBeenCalledWith(expect.objectContaining({ personalization }), undefined)
 })
 
 test('new boards can be created with a draft Board Link', async () => {
@@ -114,6 +115,7 @@ test('new boards can be created with a draft Board Link', async () => {
   expect(board.link).toEqual({ bleId: 'AA:BB', transport: 36 })
   expect(upsertBoard).toHaveBeenCalledWith(
     expect.objectContaining({ link: { bleId: 'AA:BB', transport: 36 } }),
+    undefined,
   )
 })
 
@@ -123,7 +125,19 @@ test('new boards retain a preallocated id used during Board Link finalization', 
   const board = await useBoardStore.getState().addBoard({ id: 'probe-board', name: 'ADV' })
 
   expect(board.id).toBe('probe-board')
-  expect(upsertBoard).toHaveBeenCalledWith(expect.objectContaining({ id: 'probe-board' }))
+  expect(upsertBoard).toHaveBeenCalledWith(
+    expect.objectContaining({ id: 'probe-board' }),
+    undefined,
+  )
+})
+
+test('new boards save their initial alerts with the Board', async () => {
+  const { useBoardStore } = await import('@/modules/board/store/boardStore')
+  const alerts = { presets: { speed: 'preset(safe)' }, rules: [] }
+
+  await useBoardStore.getState().addBoard({ name: 'ADV', alerts })
+
+  expect(upsertBoard).toHaveBeenCalledWith(expect.objectContaining({ name: 'ADV' }), alerts)
 })
 
 test('stored Board Link survives a store reload from native boards', async () => {
@@ -153,7 +167,7 @@ test('new boards can use manual battery config', async () => {
   const board = await useBoardStore.getState().addBoard({ name: 'ADV', batteryConfig })
 
   expect(board.batteryConfig).toEqual(batteryConfig)
-  expect(upsertBoard).toHaveBeenCalledWith(expect.objectContaining({ batteryConfig }))
+  expect(upsertBoard).toHaveBeenCalledWith(expect.objectContaining({ batteryConfig }), undefined)
 })
 
 test('updated battery config survives a store reload from native boards', async () => {
@@ -183,19 +197,14 @@ test('updated battery config survives a store reload from native boards', async 
   expect(upsertBoard).toHaveBeenCalledWith(expect.objectContaining({ batteryConfig }))
 })
 
-test('board edits render native-owned preset settings instead of echoing stale input', async () => {
+test('board edits render the native-normalized Board instead of echoing stale input', async () => {
   const { useBoardStore } = await import('@/modules/board/store/boardStore')
   const board = await useBoardStore.getState().addBoard({ name: 'ADV' })
   upsertBoard.mockImplementationOnce(async (input) => {
-    persistedBoards = [{ ...input, alertPreset: { speed: 'normal' } }]
+    persistedBoards = [{ ...input, topSpeedKmh: 50 }]
   })
-  await useBoardStore
-    .getState()
-    .updateBoard({ ...board, name: 'Renamed', alertPreset: { speed: 'safe' } })
-  expect(useBoardStore.getState().boards[0]).toMatchObject({
-    name: 'Renamed',
-    alertPreset: { speed: 'normal' },
-  })
+  await useBoardStore.getState().updateBoard({ ...board, name: 'Renamed', topSpeedKmh: -1 })
+  expect(useBoardStore.getState().boards[0]).toMatchObject({ name: 'Renamed', topSpeedKmh: 50 })
 })
 
 test('removing the active Board moves the native selection to a remaining Board', async () => {

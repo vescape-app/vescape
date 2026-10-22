@@ -24,11 +24,11 @@ internal final class AlertCoordinator {
 
   func replaceRules(_ value: [AlertRule]) {
     let geigerRuleIds = Set(value.compactMap { $0.thresholdMax == nil ? nil : $0.id })
-    for ruleId in activeGeigerRuleIds.subtracting(geigerRuleIds) {
-      player.stopGeiger(ruleId: ruleId)
-    }
-    activeGeigerRuleIds.formIntersection(geigerRuleIds)
+    let stale = activeGeigerRuleIds.subtracting(geigerRuleIds)
+    for ruleId in stale { player.stopGeiger(ruleId: ruleId) }
+    activeGeigerRuleIds = activeGeigerRuleIds.intersection(geigerRuleIds).subtracting(stale)
     rules = value
+    player.prepare(Specs: value.map(\.spec))
     engine.resetAlertState()
   }
 
@@ -90,18 +90,40 @@ internal final class AlertCoordinator {
     }
     activeGeigerRuleIds = ids
     for alert in geiger {
-      player.updateGeiger(ruleId: alert.ruleId, soundType: alert.soundType, rangeDepth: alert.rangeDepth ?? 0)
+      player.updateGeiger(ruleId: alert.ruleId, spec: alert.spec, rangeDepth: alert.rangeDepth ?? 0)
     }
 
     let single = fired.filter { $0.rangeDepth == nil }
     if !single.isEmpty {
-      if let alert = single.first(where: { $0.soundType.hasPrefix("tts:") && $0.thresholdMax == nil }) {
-        let template = String(alert.soundType.dropFirst("tts:".count))
-        let text = renderAlertMessageTemplate(template, alert: alert, batteryPercent: batteryPercent, onDiagnostic: onDiagnostic, unitSystem: unitSystem)
-        if !text.isEmpty { player.speakMessage(text) }
+      // Preset voice rules at Voice level Off play their severity sound only and leave the spoken
+      // slot to the rest.
+      let mutedPresets = player.presetVoiceEnabled ? [] : single.filter {
+        $0.ruleId.hasPrefix(presetRulePrefix) && parseVoiceAlertSound($0.spec) != nil
+      }.map(\.ruleId)
+      // One spoken announcement per evaluation: the most severe, which sorts first.
+      if let alert = single.first(where: {
+        $0.thresholdMax == nil && isSpokenSpec($0.spec) && !mutedPresets.contains($0.ruleId)
+      }) {
+        if let voice = parseVoiceAlertSound(alert.spec) {
+          // A repeat speaks where the metric is now, not the threshold it crossed.
+          let spoken = alert.controlId == "battery" ? batteryPercent ?? alert.threshold : alert.value
+          player.speakVoice(
+            voiceAnnouncement(
+              voice,
+              controlId: alert.controlId,
+              reading: spoken,
+              percentAvailable: batteryPercent != nil,
+              unitSystem: unitSystem
+            )
+          )
+        } else if let tts = parseTtsAlertSound(alert.spec) {
+          let text = renderAlertMessageTemplate(tts.text, alert: alert, batteryPercent: batteryPercent, onDiagnostic: onDiagnostic, unitSystem: unitSystem)
+          if !text.isEmpty { player.speakAfterSeverity(tts.severity, text: text) }
+        }
       }
-      for alert in single where !alert.soundType.hasPrefix("tts:") {
-        player.playSingle(soundType: alert.soundType, beepCount: alert.beepCount)
+      for alert in single where !isSpokenSpec(alert.spec) || mutedPresets.contains(alert.ruleId) {
+        let severity = parseVoiceAlertSound(alert.spec)?.severity
+        player.playSingle(spec: severity.map { "alert:\($0.rawValue)" } ?? alert.spec)
       }
       if vibrateSingles { player.vibrate(rangeDepth: nil) }
     }
