@@ -170,6 +170,66 @@
           "Nice ride. We make a good team."
         ]
       }
+    },
+    "weather.rain": {
+      "start": ["Ooh... rain expected..."],
+      "minimal": ["Rain..."],
+      "full": {
+        "start": ["Mmm... rain is coming...", "Ooh... rain expected..."],
+        "end": ["Maybe we should stay in tonight.", "You did bring something waterproof, right?"],
+        "endChance": 0.2
+      }
+    },
+    "weather.rain.now": {
+      "start": ["Ooh... rain starting now."],
+      "minimal": ["Rain now."],
+      "full": {
+        "start": ["Ooh... rain is here.", "Rain starting now. So much for staying dry."],
+        "end": ["Let's find somewhere dry."],
+        "endChance": 0.2
+      }
+    },
+    "weather.storm": {
+      "start": ["Thunderstorm expected..."],
+      "minimal": ["Thunderstorm..."],
+      "full": {
+        "start": ["Thunderstorm approaching...", "Ooh... thunderstorm expected..."],
+        "end": [
+          "Let's find shelter. I'm not that adventurous.",
+          "Time to find cover. Lightning isn't my type."
+        ],
+        "endChance": 0.3
+      }
+    },
+    "weather.storm.now": {
+      "start": ["Thunderstorm nearby. Find shelter."],
+      "minimal": ["Thunderstorm now."],
+      "full": {
+        "start": [
+          "Thunderstorm nearby. Let's find shelter.",
+          "Thunderstorm arriving now. Time to find cover."
+        ],
+        "end": ["Lightning isn't my type."],
+        "endChance": 0.2
+      }
+    },
+    "weather.wind": {
+      "start": ["Strong gusts expected..."],
+      "minimal": ["Strong wind..."],
+      "full": {
+        "start": ["Strong gusts coming...", "Ooh... strong wind expected..."],
+        "end": ["Hold on to me.", "I'm a board, not a kite."],
+        "endChance": 0.2
+      }
+    },
+    "weather.wind.now": {
+      "start": ["Strong gusts now."],
+      "minimal": ["Wind now."],
+      "full": {
+        "start": ["Ooh... strong gusts now. Take it easy.", "Strong wind is here. Hold on to me."],
+        "end": ["I'm a board, not a kite."],
+        "endChance": 0.2
+      }
     }
   }
 }

@@ -192,6 +192,57 @@
           "lines/ride.end.full.start.2.m4a"
         ]
       }
+    },
+    "weather.storm": {
+      "start": ["lines/weather.storm.start.0.m4a"],
+      "minimal": ["lines/weather.storm.minimal.0.m4a"],
+      "full": {
+        "start": ["lines/weather.storm.full.start.0.m4a", "lines/weather.storm.full.start.1.m4a"]
+      }
+    },
+    "weather.storm.now": {
+      "start": ["lines/weather.storm.now.start.0.m4a"],
+      "minimal": ["lines/weather.storm.now.minimal.0.m4a"],
+      "full": {
+        "start": [
+          "lines/weather.storm.now.full.start.0.m4a",
+          "lines/weather.storm.now.full.start.1.m4a"
+        ]
+      }
+    },
+    "weather.wind": {
+      "start": ["lines/weather.wind.start.0.m4a"],
+      "minimal": ["lines/weather.wind.minimal.0.m4a"],
+      "full": {
+        "start": ["lines/weather.wind.full.start.0.m4a", "lines/weather.wind.full.start.1.m4a"]
+      }
+    },
+    "weather.wind.now": {
+      "start": ["lines/weather.wind.now.start.0.m4a"],
+      "minimal": ["lines/weather.wind.now.minimal.0.m4a"],
+      "full": {
+        "start": [
+          "lines/weather.wind.now.full.start.0.m4a",
+          "lines/weather.wind.now.full.start.1.m4a"
+        ]
+      }
+    },
+    "weather.rain": {
+      "start": ["lines/weather.rain.start.0.m4a"],
+      "minimal": ["lines/weather.rain.minimal.0.m4a"],
+      "full": {
+        "start": ["lines/weather.rain.full.start.0.m4a", "lines/weather.rain.full.start.1.m4a"]
+      }
+    },
+    "weather.rain.now": {
+      "start": ["lines/weather.rain.now.start.0.m4a"],
+      "minimal": ["lines/weather.rain.now.minimal.0.m4a"],
+      "full": {
+        "start": [
+          "lines/weather.rain.now.full.start.0.m4a",
+          "lines/weather.rain.now.full.start.1.m4a"
+        ]
+      }
     }
   },
   "values": {
@@ -733,6 +784,16 @@
       "98": "values/number/98.m4a",
       "99": "values/number/99.m4a",
       "100": "values/number/100.m4a"
+    },
+    "duration": {
+      "15": "values/duration/15.m4a",
+      "30": "values/duration/30.m4a",
+      "45": "values/duration/45.m4a",
+      "60": "values/duration/60.m4a",
+      "90": "values/duration/90.m4a",
+      "120": "values/duration/120.m4a",
+      "150": "values/duration/150.m4a",
+      "180": "values/duration/180.m4a"
     }
   },
   "sources": {
@@ -812,6 +873,30 @@
     "lines/ride.end.full.start.1.m4a": "bad4375f5a85e1bb",
     "lines/ride.end.full.start.2.m4a": "acc839f91950bfbe",
     "lines/ride.end.start.0.m4a": "d15e6eebd6b7842e",
+    "lines/weather.storm.full.start.0.m4a": "31cb14b01949dfe8",
+    "lines/weather.storm.full.start.1.m4a": "a6095ac87ff31e26",
+    "lines/weather.storm.start.0.m4a": "31cb14b01949dfe8",
+    "lines/weather.storm.minimal.0.m4a": "0b097eb25c7a404e",
+    "lines/weather.storm.now.full.start.0.m4a": "7cb3df736ea8774f",
+    "lines/weather.storm.now.full.start.1.m4a": "7cb5d5f2c5a2e72f",
+    "lines/weather.storm.now.start.0.m4a": "7cb3df736ea8774f",
+    "lines/weather.storm.now.minimal.0.m4a": "471bb73abb898494",
+    "lines/weather.wind.full.start.0.m4a": "c5e91aa7af9efbb9",
+    "lines/weather.wind.full.start.1.m4a": "c05c22e1d8d4ad45",
+    "lines/weather.wind.start.0.m4a": "c5e91aa7af9efbb9",
+    "lines/weather.wind.minimal.0.m4a": "e7bc85ce1b5dcc4c",
+    "lines/weather.wind.now.full.start.0.m4a": "50b3da988361162b",
+    "lines/weather.wind.now.full.start.1.m4a": "e9f492f3172f1250",
+    "lines/weather.wind.now.start.0.m4a": "50b3da988361162b",
+    "lines/weather.wind.now.minimal.0.m4a": "85908022e72c7176",
+    "lines/weather.rain.full.start.0.m4a": "367ef7481ee283e5",
+    "lines/weather.rain.full.start.1.m4a": "55c6decac60db8de",
+    "lines/weather.rain.start.0.m4a": "367ef7481ee283e5",
+    "lines/weather.rain.minimal.0.m4a": "ae09ca358da6aace",
+    "lines/weather.rain.now.full.start.0.m4a": "eb674de00777db75",
+    "lines/weather.rain.now.full.start.1.m4a": "e67bf953a18c10d7",
+    "lines/weather.rain.now.start.0.m4a": "eb674de00777db75",
+    "lines/weather.rain.now.minimal.0.m4a": "91436a059be94f64",
     "values/percent/0.m4a": "2c4fc1d32d796f86",
     "values/percent/1.m4a": "ba874bcd94ba26e1",
     "values/percent/2.m4a": "5203c0e78eb1884b",
@@ -1344,6 +1429,14 @@
     "values/number/97.m4a": "4eb2d5a612dc94ef",
     "values/number/98.m4a": "702d1b8cc8f7cc9a",
     "values/number/99.m4a": "ccfe904326b0d0c8",
-    "values/number/100.m4a": "b12eee0baffc4601"
+    "values/number/100.m4a": "b12eee0baffc4601",
+    "values/duration/15.m4a": "c2db75a2af556839",
+    "values/duration/30.m4a": "3db0a9b64ec4d93f",
+    "values/duration/45.m4a": "b2f11f1a952f47e8",
+    "values/duration/60.m4a": "bb89efd93c5d4db2",
+    "values/duration/90.m4a": "2b79b2d7fc7020ab",
+    "values/duration/120.m4a": "d37f26cf8c55170d",
+    "values/duration/150.m4a": "dccabf2e24e28a24",
+    "values/duration/180.m4a": "d3482929a3f53823"
   }
 }

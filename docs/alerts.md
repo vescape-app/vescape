@@ -406,8 +406,9 @@ Forecast-driven voice lines about weather coming at the rider within 3 h. Native
   runs while the fetch is out. A failed fetch is silent; the next Fix past the gate retries. State survives Bluetooth dropouts and is cleared when the dropout grace ends the ride.
 - **Voice:** `weather.<kind>` + `duration` and `weather.<kind>.now` for `storm`, `wind`, `rain`;
   storm and rain add `percent` (the slot's precipitation probability, nearest 10, 10–100) on lines
-  above 1 h; nearer lines read `minutely_15`, which has no probability, and `.now` lines never do. At `warning` severity through `speakAdvisory`. Silent at Voice level Off. HEV
-  adds endings at Full ("seek shelter", "reduce speed"); Clean has none.
+  above 1 h; nearer lines read `minutely_15`, which has no probability, and `.now` lines never do. At `warning` severity through `speakAdvisory`. Silent at Voice level Off. Radio
+  adds endings at Full ("seek shelter", "reduce speed"); Nova has none. Nicole adds
+  playful Full variants and occasional endings while keeping the weather kind and lead time explicit.
 
 ## Message mode
 
