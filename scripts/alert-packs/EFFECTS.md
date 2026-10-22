@@ -1,6 +1,6 @@
 # Effects packs
 
-Effects packs (Arc, Pulse, HEV) are made by hand in a DAW and committed as finished
+Effects packs (Arc, Pulse, HEV) are authored or imported and committed as finished
 files under `shared/alerts/packs/effects-<id>/`. Nothing generates them; `bun run alerts:packs`
 builds voice packs only. Runtime behavior (slot fallbacks, previews) is in
 [docs/alerts.md](../../docs/alerts.md#sound-effects).
@@ -9,15 +9,15 @@ builds voice packs only. Runtime behavior (slot fallbacks, previews) is in
 
 Required in every pack:
 
-| Slot                | Sound                                             |
-| ------------------- | ------------------------------------------------- |
-| `severity.positive` | short rising two- or three-note chime (cues only) |
-| `severity.info`     | info alert (HEV/Pulse: 1 beep)                    |
-| `severity.warning`  | warning alert (HEV/Pulse: 2 beeps)                |
-| `severity.critical` | critical alert (HEV/Pulse: 3 beeps)               |
-| `geiger.soft`       | lightest geiger tick                              |
-| `geiger.mid`        | middle geiger tick                                |
-| `geiger.hard`       | hardest geiger tick                               |
+| Slot                | Sound                                |
+| ------------------- | ------------------------------------ |
+| `severity.positive` | short confirmation sound (cues only) |
+| `severity.info`     | info alert (HEV/Pulse: 1 beep)       |
+| `severity.warning`  | warning alert (HEV/Pulse: 2 beeps)   |
+| `severity.critical` | critical alert (HEV/Pulse: 3 beeps)  |
+| `geiger.soft`       | lightest geiger tick                 |
+| `geiger.mid`        | middle geiger tick                   |
+| `geiger.hard`       | hardest geiger tick                  |
 
 Optional; a missing slot plays its fallback (native `OPTIONAL_SLOT_FALLBACK` /
 `optionalSlotFallback` in `EffectsPacks.kt` / `EffectsPacks.swift`):
@@ -88,10 +88,45 @@ sox -D -R input.wav -r 22050 -b 16 -c 1 slot.wav channels 1 rate 22050 \
   compand 0,0.1 '6:-80,-80,-40,-25,-20,-12,0,-10' norm -1.5
 ```
 
+## HEV temporary resynthesis
+
+TODO: Replace the six Half-Life 2-derived sounds below with independently designed sounds.
+All six use spectral resynthesis rather than direct recordings. Permission to redistribute
+these derived assets has not been established.
+Source: [HL2 Soundlist](https://hl2sounds.ceifa.dev/), audio under `/hl2/sound/<path>`.
+
+| HEV slot                | Reference recording         | Processing                                             |
+| ----------------------- | --------------------------- | ------------------------------------------------------ |
+| `cue.on`                | `items/suitchargeok1.wav`   | Spectral resynthesis                                   |
+| `cue.off`               | `items/suitchargeok1.wav`   | Resynthesis with descending ticks and lower buzz       |
+| `severity.positive`     | `common/warning.wav`        | Resynthesis with rising pulses                         |
+| `cue.ride.end`          | `common/warning.wav`        | Resynthesis with a descending step and repeated finish |
+| `cue.groupRide.created` | `ui/buttonclick.wav`        | Spectral resynthesis                                   |
+| `cue.groupRide.joined`  | `ui/buttonclickrelease.wav` | Spectral resynthesis                                   |
+
+The base recreations use Griffin–Lim reconstruction from magnitude spectra at 22 050 Hz,
+with a 1024-sample Hann window, 128-sample hop, random initial phase, and 180 iterations.
+They retain the reference duration.
+
+Disconnect uses the Connect reconstruction in the same event order: its three opening ticks are
+shifted by +2, 0, and −2 semitones over 0–112, 112–224, and 224–352 ms respectively; the buzz
+from 352 ms onward is shifted down four semitones. Pitch shifts preserve each segment's duration,
+with short fades at segment boundaries. Both connection cues are about 1.48 seconds long.
+
+Ride end and Positive repitch the warning reconstruction's three pulses directly, retaining its
+sharp texture and pulse onsets at 0, 78, and 174 ms. Ride end applies +2, 0, and 0 semitones;
+Positive applies 0, +2, and +4 semitones. These pitch shifts use resampling: the shifted pulses
+shorten slightly, while their onset positions and total cue duration of about 278 ms remain fixed.
+No harmonic smoothing, added notes, or EQ is applied.
+
+The connection pair shares gain adjusted to −6 dBFS maximum peak before AAC encoding. The other
+four recreated sounds are individually adjusted to −6 dBFS peak before encoding.
+Info, Warning, Critical, and the Geiger ticks retain the synthesis below.
+
 ## Sox recipes (HEV, Pulse)
 
-HEV and Pulse were synthesized with sox; these commands reproduce each slot. Arc is
-recorded, and so are Pulse's two Group Ride cues (no recipe below). Build the WAV, then encode it as above.
+The remaining HEV severity alerts and ticks, and Pulse's tones, were synthesized with sox.
+Arc and Pulse's two Group Ride cues are recordings. Build the WAV, then encode it as above.
 
 ```sh
 R="-D -R -r 22050 -b 16 -c 1"
@@ -109,29 +144,10 @@ Defaults where a slot gives none: vol 0.5, fade in 0.005, fade out 0.02.
 Beep: `tone b.wav 0.24 "sine 967" 0.5 0.01 0.02`, beeps separated by `gap g.wav 0.18`.
 
 ```sh
-# severity.positive
-tone 1.wav 0.08 "sine 967" 0.5 0.005 0.02; gap 2.wav 0.03
-tone 3.wav 0.16 "sine 1292" 0.5 0.01 0.06; sox -D -R 1.wav 2.wav 3.wav slot.wav
 # severity.info / warning / critical: 1 / 2 / 3 beeps
 sox -D -R b.wav slot.wav
 sox -D -R b.wav g.wav b.wav slot.wav
 sox -D -R b.wav g.wav b.wav g.wav b.wav slot.wav
-# cue.on
-tone 1.wav 0.1 "sine 660" 0.5 0.005 0.02; gap 2.wav 0.04
-tone 3.wav 0.18 "sine 967" 0.5 0.005 0.02; sox -D -R 1.wav 2.wav 3.wav slot.wav
-# cue.off
-tone 1.wav 0.1 "sine 967" 0.5 0.005 0.02; gap 2.wav 0.04
-tone 3.wav 0.18 "sine 660" 0.5 0.005 0.02; sox -D -R 1.wav 2.wav 3.wav slot.wav
-# cue.groupRide.created
-tone 1.wav 0.08 "sine 660" 0.5 0.005 0.02; gap 2.wav 0.03
-tone 3.wav 0.08 "sine 830" 0.5 0.005 0.02
-tone 5.wav 0.16 "sine 967" 0.5 0.005 0.02; sox -D -R 1.wav 2.wav 3.wav 2.wav 5.wav slot.wav
-# cue.groupRide.joined
-tone 1.wav 0.07 "sine 967" 0.5 0.005 0.02; gap 2.wav 0.04; sox -D -R 1.wav 2.wav 1.wav slot.wav
-# cue.ride.end
-tone 1.wav 0.1 "sine 967" 0.5 0.005 0.02; gap 2.wav 0.03
-tone 3.wav 0.1 "sine 830" 0.5 0.005 0.02
-tone 5.wav 0.24 "sine 660" 0.5 0.005 0.02; sox -D -R 1.wav 2.wav 3.wav 2.wav 5.wav slot.wav
 # geiger.soft / mid / hard
 tone slot.wav 0.012 "sine 1800" 0.35 0.001 0.008
 tone slot.wav 0.008 whitenoise 0.6 0 0.006 highpass 1500
