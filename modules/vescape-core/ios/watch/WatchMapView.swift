@@ -1,7 +1,7 @@
 import Foundation
 
-/// The heading-up map's position, zoom and course as the wrist currently draws them, eased towards the latest
-/// target. Route and trail share position motion; Group Ride shares zoom and course.
+/// The heading-up map's position, zoom and course as the wrist currently draws them.
+/// Position samples the phone's native display segment; zoom and course ease towards their targets. Route and trail share position motion; Group Ride shares zoom and course.
 /// Both paths sample one camera translation at each instant.
 ///
 /// A value, read at a date: the wrist's map layers each sample it on their own `TimelineView`, which
@@ -39,8 +39,8 @@ struct WatchMapView: Equatable {
   /// course holds the last one (a stop, an approximate fix). Without `animate` it lands at once.
   ///
   /// @parity /watch/wearos/src/main/java/app/vescape/wear/WatchMapView.kt `rememberWatchMapView`
-  mutating func retarget(spanM: Double, courseDeg: Double?, at now: Date, animate: Bool, position: WatchMapPosition? = nil) {
-    motion = motion.retarget(position, at: now, animate: animate)
+  mutating func retarget(spanM: Double, courseDeg: Double?, at now: Date, animate: Bool, position: WatchMapPosition? = nil, displayMotion: GpsDisplayMotion? = nil) {
+    motion = motion.retarget(position, at: now, animate: animate, displayMotion: displayMotion)
     span.retarget(spanM, at: now, duration: animate ? Self.zoomEase : 0, curve: fastOutSlowIn)
     if let courseDeg {
       let from = course.value(at: now) { $0 }
@@ -110,21 +110,53 @@ func shortestAngleDelta(from: Double, to: Double) -> Double {
   (((to - from + 180).truncatingRemainder(dividingBy: 360) + 360).truncatingRemainder(dividingBy: 360)) - 180
 }
 
-/// Remaining camera translation relative to the latest GPS fix. One clock for both paths.
+/// Camera translation relative to the frame's absolute map anchor. One clock for both paths.
 /// The absolute anchor survives rerouting, history trimming and skipped frames.
 /// @parity /watch/wearos/src/main/java/app/vescape/wear/WatchMapView.kt `WatchMapMotion`
 struct WatchMapMotion: Equatable {
   var position: WatchMapPosition?
+  private var displayMotion: GpsDisplayMotion?
+  private var sourceDisplayMotion: GpsDisplayMotion?
   private var from = WatchTrailPoint(eastM: 0, northM: 0)
   private var startsAt = Date.distantPast
   private(set) var endsAt = Date.distantPast
 
   func offset(at date: Date) -> WatchTrailPoint {
+    if let displayMotion, let position {
+      let display = displayMotion.position(at: Int64(date.timeIntervalSince1970 * 1000))
+      return position.offset(from: WatchMapPosition(latitude: display.latitude, longitude: display.longitude))
+    }
     let remaining = endsAt > startsAt ? min(1, max(0, endsAt.timeIntervalSince(date) / endsAt.timeIntervalSince(startsAt))) : 0
     return WatchTrailPoint(eastM: from.eastM * remaining, northM: from.northM * remaining)
   }
 
-  func retarget(_ target: WatchMapPosition?, at now: Date, animate: Bool) -> WatchMapMotion {
+  func retarget(_ target: WatchMapPosition?, at now: Date, animate: Bool, displayMotion: GpsDisplayMotion? = nil) -> WatchMapMotion {
+    if animate, let target, let displayMotion {
+      if sourceDisplayMotion == displayMotion && position == target { return self }
+      let nowMs = Int64(now.timeIntervalSince1970 * 1000)
+      let current: (latitude: Double, longitude: Double)
+      if let local = self.displayMotion {
+        current = local.position(at: nowMs)
+      } else if let position {
+        let remaining = offset(at: now)
+        current = (position.latitude - remaining.northM / 110_574,
+          position.longitude - remaining.eastM / (111_320 * max(0.001, cos(position.latitude * .pi / 180))))
+      } else { current = displayMotion.position(at: nowMs) }
+      let duration = max(GpsDisplayMotion.minimumCorrectionMs, displayMotion.endsAtMs - nowMs)
+      var next = WatchMapMotion(position: target)
+      next.sourceDisplayMotion = displayMotion
+      let desired = displayMotion.position(at: nowMs)
+      let remaining = displayMotion.endsAtMs > nowMs && displayMotion.endsAtMs > displayMotion.startsAtMs
+        ? Double(displayMotion.endsAtMs - nowMs) / Double(displayMotion.endsAtMs - displayMotion.startsAtMs) : 0
+      next.displayMotion = displayMotion.resetPosition ? displayMotion : GpsDisplayMotion(
+        fromLatitude: current.latitude, fromLongitude: current.longitude,
+        toLatitude: desired.latitude + (displayMotion.toLatitude - displayMotion.fromLatitude) * remaining,
+        toLongitude: desired.longitude + GpsDisplayMotion.longitudeDelta(displayMotion.fromLongitude, displayMotion.toLongitude) * remaining,
+        startsAtMs: nowMs, endsAtMs: nowMs + duration, latitudePerMs: displayMotion.latitudePerMs,
+        longitudePerMs: displayMotion.longitudePerMs, velocityExpiresAtMs: displayMotion.velocityExpiresAtMs)
+      next.endsAt = Date(timeIntervalSince1970: Double(max(nowMs + duration, displayMotion.latitudePerMs != 0 || displayMotion.longitudePerMs != 0 ? displayMotion.velocityExpiresAtMs : nowMs)) / 1000)
+      return next
+    }
     guard animate, let target, let position else { return WatchMapMotion(position: target) }
     guard target != position else { return self }
     let movement = target.offset(from: position)

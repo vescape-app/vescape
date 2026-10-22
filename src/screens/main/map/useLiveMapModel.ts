@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import type { LocationEvent, MapPoint, MapPointCategory } from 'vescape-core'
 
+import { useLocationStore } from '@/modules/location/store/locationStore'
 import { useGroupRideStore } from '@/modules/group-ride/store/groupRideStore'
 import { useSelectedBoardRailColor } from '@/modules/group-ride/lib/selectedBoardRailColor'
 import { getLiveGpsPresentation } from '@/helpers/liveGpsPresentation'
@@ -57,7 +58,13 @@ export function useLiveMapModel({
 }) {
   const accents = useResolvedAccentColors()
   const [initialApproximateFix, setInitialApproximateFix] = useState<LocationEvent | null>(null)
-  const gpsFix = liveLocations.at(-1) ?? null
+  const retainedGpsFix = liveLocations.at(-1) ?? null
+  const latestPreciseLocation = useLocationStore((s) => s.latestPreciseLocation)
+  // The camera follows each measured fix immediately; trail publication stays batched.
+  const gpsFix =
+    latestPreciseLocation && latestPreciseLocation.timestamp >= (retainedGpsFix?.timestamp ?? 0)
+      ? latestPreciseLocation
+      : retainedGpsFix
   const gpsPresentation = useMemo(
     () =>
       getLiveGpsPresentation({
@@ -67,7 +74,15 @@ export function useLiveMapModel({
       }),
     [gpsFix, initialApproximateFix, latestApproximateLocation],
   )
-  const { cameraFix, accuracyFix, accuracyRadiusM, directionBearingDeg } = gpsPresentation
+  const displayMotion = useLocationStore((s) => s.displayMotion)
+  const { cameraFix, accuracyRadiusM, directionBearingDeg } = gpsPresentation
+  const accuracyFix = useMemo(
+    () =>
+      gpsPresentation.accuracyFix
+        ? { ...gpsPresentation.accuracyFix, displayMotion, accuracyM: accuracyRadiusM }
+        : null,
+    [gpsPresentation.accuracyFix, displayMotion, accuracyRadiusM],
+  )
   const approximateGpsPuckActive =
     gpsPresentation.degraded ||
     (gpsFix == null && (latestApproximateLocation != null || initialApproximateFix != null))

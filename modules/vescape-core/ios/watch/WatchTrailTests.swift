@@ -3,6 +3,22 @@ import XCTest
 @testable import VescapeCore
 
 final class WatchTrailTests: XCTestCase {
+  func testDisplaySegmentSurvivesFrameTransportAndMalformedMotionCannotBreakTelemetry() throws {
+    let motion = GpsDisplayMotion(fromLatitude: 52, fromLongitude: 21, toLatitude: 52.001,
+      toLongitude: 21.001, startsAtMs: 1_700_000_000_000, endsAtMs: 1_700_000_001_000, resetPosition: true, latitudePerMs: 0.00000001,
+      longitudePerMs: 0.00000002, velocityExpiresAtMs: 1_700_000_001_000)
+    let frame = WatchFrameBuilder.build(snapshot: WatchSnapshot(speed: 12, displayMotion: motion,
+      mapPosition: WatchMapPosition(latitude: 52.001, longitude: 21.001)), stale: false)
+    let encoded = WatchFrameBuilder.encode(frame)
+    let decoded = try XCTUnwrap(WatchFrameBuilder.decode(encoded))
+    XCTAssertEqual(decoded.displayMotion, motion)
+    XCTAssertEqual(decoded.mapPosition, frame.mapPosition)
+    XCTAssertEqual(decoded.speed, 12)
+    let truncated = try XCTUnwrap(WatchFrameBuilder.decode(encoded.dropLast()))
+    XCTAssertNil(truncated.displayMotion)
+    XCTAssertEqual(truncated.speed, 12)
+  }
+
   func testSnapshotIsRelativeToCurrentRiderAndRetainsBothEndsWhenBounded() {
     let rider = WatchGeoPoint(latitude: 52, longitude: 21)
     let history: [[String: Any?]] = (0...500).map { ["latitude": 52.0, "longitude": 21.0 + Double($0) * 0.00001] }

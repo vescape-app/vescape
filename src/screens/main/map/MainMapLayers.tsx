@@ -146,6 +146,7 @@ export function MainMapLayers(props: MainMapLayersProps) {
           <LiveMapLayers
             liveTrailShape={props.liveTrailShape}
             accuracyFix={props.accuracyFix}
+            positionAnimator={props.gpsPositionAnimator}
             accuracyShape={props.accuracyShape}
             gpsPuckBearingDeg={props.gpsPuckBearingDeg}
             riders={riders}

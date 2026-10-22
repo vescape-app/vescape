@@ -179,6 +179,7 @@ interface EngineSprings {
 
 export interface CameraEngine {
   /** React development remounts effects while preserving state; make the retained engine usable again. */
+  setOmega: (omega: Partial<CameraEngineOmega>) => void
   resume: () => void
   /** Initialize springs at rest on a known camera. Until called, targets snap. */
   reset: (camera: EngineCamera) => void
@@ -629,6 +630,10 @@ export function createCameraEngine(config: CameraEngineConfig): CameraEngine {
   return {
     resume: () => {
       destroyed = false
+    },
+    /** Change response speed without resetting any spring's position or velocity. */
+    setOmega: (next: Partial<CameraEngineOmega>) => {
+      Object.assign(omega, next)
     },
     reset,
     setTarget,

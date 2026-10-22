@@ -8,6 +8,8 @@ internal final class LocationTracker {
   private(set) var latestPreciseLocation: TelemetryLocationCapture?
   private(set) var recentLocations: [[String: Any?]] = []
   private let courseDeriver = GpsCourseDeriver()
+  let displaySmoother = GpsDisplaySmoother()
+  var displayMotion: GpsDisplayMotion? { displaySmoother.motion }
   private let recentWindowMs: () -> Int64
   private let recordLocation: (TelemetryLocationCapture) -> Void
   private let navigationFix: (TelemetryLocationCapture) -> Void
@@ -74,6 +76,7 @@ internal final class LocationTracker {
     latestLocation = nil
     latestPreciseLocation = nil
     courseDeriver.reset()
+    displaySmoother.reset()
     recentLocations.removeAll(keepingCapacity: true)
   }
 }

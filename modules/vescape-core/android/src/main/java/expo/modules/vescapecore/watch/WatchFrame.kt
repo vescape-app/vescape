@@ -1,5 +1,6 @@
 package expo.modules.vescapecore.watch
 
+import expo.modules.vescapecore.location.GpsDisplayMotion
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
 import kotlin.math.abs
@@ -88,6 +89,7 @@ internal data class WatchFrame(
     val remoteTilt: Int? = null,
     val tiltControl: WatchTiltControl = WatchTiltControl.FREE,
     val trail: List<WatchTrailPoint> = emptyList(),
+    val displayMotion: GpsDisplayMotion? = null,
     val mapPosition: WatchMapPosition? = null,
 )
 
@@ -110,6 +112,7 @@ internal data class WatchSnapshot(
     val remoteTilt: Int? = null,
     val tiltControl: WatchTiltControl = WatchTiltControl.FREE,
     val trail: List<WatchTrailPoint> = emptyList(),
+    val displayMotion: GpsDisplayMotion? = null,
     val mapPosition: WatchMapPosition? = null,
     /** GPS ground speed, for the street-map lookahead. Phone-side only; not on the wire. */
     val riderSpeedMps: Double? = null,
@@ -137,6 +140,7 @@ internal object WatchFrameBuilder {
         remoteTilt = snapshot.remoteTilt,
         tiltControl = snapshot.tiltControl,
         trail = snapshot.trail,
+        displayMotion = snapshot.displayMotion,
         mapPosition = snapshot.mapPosition,
     )
 
@@ -161,7 +165,7 @@ internal object WatchFrameBuilder {
             putFloat(frame.routeSpanM.toLaneFloat())
             putFloat(frame.remoteTilt?.toDouble().toLaneFloat())
             putFloat(frame.tiltControl.wire.toFloat())
-        }.array() + WatchTrailCodec.encode(frame.trail, frame.mapPosition)
+        }.array() + WatchTrailCodec.encode(frame.trail, frame.mapPosition, frame.displayMotion)
 
     private fun Double?.toLaneFloat(): Float = this?.toFloat() ?: Float.NaN
 }

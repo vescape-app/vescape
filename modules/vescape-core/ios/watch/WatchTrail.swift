@@ -7,7 +7,7 @@ struct WatchTrailPoint: Equatable {
   let northM: Double
 }
 
-/// Absolute GPS anchor for map motion, independent of the route origin and history retention.
+/// Absolute display anchor for map motion, independent of the route origin and history retention.
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/watch/WatchTrail.kt `WatchMapPosition`
 struct WatchMapPosition: Equatable {
   let latitude: Double
@@ -25,6 +25,7 @@ struct WatchMapPosition: Equatable {
 struct WatchTrailSnapshot: Equatable {
   var points: [WatchTrailPoint] = []
   var position: WatchMapPosition?
+  var displayMotion: GpsDisplayMotion?
 }
 
 /// Snapshot: ASCII TR, version 2, count, Float64 rider latitude/longitude (NaN if absent), then
@@ -33,15 +34,22 @@ struct WatchTrailSnapshot: Equatable {
 enum WatchTrailCodec {
   static let maxPoints = 120
 
-  static func encode(_ points: [WatchTrailPoint], position: WatchMapPosition? = nil) -> Data {
+  static func encode(_ points: [WatchTrailPoint], position: WatchMapPosition? = nil, displayMotion: GpsDisplayMotion? = nil) -> Data {
     precondition(points.count <= maxPoints)
-    var data = Data([84, 82, 2, UInt8(points.count)])
+    var data = Data([84, 82, displayMotion == nil ? 2 : 4, UInt8(points.count)])
     for value in [position?.latitude ?? .nan, position?.longitude ?? .nan] {
       withUnsafeBytes(of: value.bitPattern.littleEndian) { data.append(contentsOf: $0) }
     }
     for point in points {
       for value in [point.eastM, point.northM] {
         withUnsafeBytes(of: Float(value).bitPattern.littleEndian) { data.append(contentsOf: $0) }
+      }
+    }
+    if let motion = displayMotion {
+      for value in [motion.fromLatitude, motion.fromLongitude, motion.toLatitude, motion.toLongitude,
+        Double(motion.startsAtMs), Double(motion.endsAtMs), motion.latitudePerMs, motion.longitudePerMs,
+        Double(motion.velocityExpiresAtMs), motion.resetPosition ? 1.0 : 0.0] {
+        withUnsafeBytes(of: value.bitPattern.littleEndian) { data.append(contentsOf: $0) }
       }
     }
     return data
@@ -51,10 +59,11 @@ enum WatchTrailCodec {
     let bytes = [UInt8](data)
     let empty = WatchTrailSnapshot()
     guard offset >= 0, bytes.count - offset >= 20,
-      bytes[offset] == 84, bytes[offset + 1] == 82, bytes[offset + 2] == 2
+      bytes[offset] == 84, bytes[offset + 1] == 82, (2...4).contains(bytes[offset + 2])
     else { return empty }
     let count = Int(bytes[offset + 3])
-    guard count <= maxPoints, bytes.count - offset - 20 == count * 8 else { return empty }
+    let motionBytes = bytes[offset + 2] == 4 ? 80 : (bytes[offset + 2] == 3 ? 48 : 0)
+    guard count <= maxPoints, bytes.count - offset - 20 == count * 8 + motionBytes else { return empty }
     func raw(_ at: Int, _ count: Int) -> UInt64 {
       (0..<count).reduce(0) { $0 | UInt64(bytes[at + $1]) << ($1 * 8) }
     }
@@ -72,7 +81,22 @@ enum WatchTrailCodec {
       )
     }
     guard points.allSatisfy({ $0.eastM.isFinite && $0.northM.isFinite }) else { return empty }
-    return WatchTrailSnapshot(points: points, position: position)
+    var motion: GpsDisplayMotion?
+    if motionBytes > 0 {
+      let at = offset + 20 + count * 8
+      let values = (0..<(motionBytes / 8)).map { Double(bitPattern: raw(at + $0 * 8, 8)) }
+      if values.allSatisfy({ $0.isFinite }), abs(values[0]) <= 90, abs(values[1]) <= 180,
+        abs(values[2]) <= 90, abs(values[3]) <= 180, values[4] >= 0,
+        values[5] >= values[4], values[5] - values[4] <= 10_000, values[5] < Double(Int64.max),
+        values.count == 6 || (values[8] >= 0 && values[8] < Double(Int64.max) && values[8] <= values[4] + 5_000 && (values[9] == 0 || values[9] == 1)) {
+        motion = GpsDisplayMotion(fromLatitude: values[0], fromLongitude: values[1],
+          toLatitude: values[2], toLongitude: values[3], startsAtMs: Int64(values[4]), endsAtMs: Int64(values[5]),
+          resetPosition: values.count > 6 ? values[9] == 1 : false,
+          latitudePerMs: values.count > 6 ? values[6] : 0, longitudePerMs: values.count > 6 ? values[7] : 0,
+          velocityExpiresAtMs: values.count > 6 ? Int64(values[8]) : 0)
+      }
+    }
+    return WatchTrailSnapshot(points: points, position: position, displayMotion: motion)
   }
 }
 

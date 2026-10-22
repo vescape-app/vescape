@@ -55,6 +55,7 @@ internal fun WatchMapScene(
         targetCourseDeg = scene.target.courseDeg,
         animate = scene.drawMap,
         position = scene.target.position,
+        displayMotion = scene.target.displayMotion,
     )
     Box(Modifier.fillMaxSize()) {
         if (scene.drawMap) {
