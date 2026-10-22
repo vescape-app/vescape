@@ -665,7 +665,7 @@ internal class AlertFeedback(
     private fun playAppCueNow(cue: String, done: PlaybackCompletion) {
         val slot = appCueSlot(cue) ?: run { done.finish(PlaybackOutcome.FAILED); return }
         val key = appCueVoiceKey(cue)
-        if (voiceLevel == "full" && key != null) speakVoiceTracked(VoiceAnnouncement(AlertSeverity.INFO, key, null), slot, SystemClock.uptimeMillis(), done)
+        if (voiceLevel == "full" && key != null) speakVoiceTracked(VoiceAnnouncement(AlertSeverity.INFO, key), slot, SystemClock.uptimeMillis(), done)
         else playOnce(slot, onDone = { done.finish(it) })
     }
 

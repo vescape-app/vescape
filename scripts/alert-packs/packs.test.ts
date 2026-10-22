@@ -28,11 +28,13 @@ describe('alert packs', () => {
       const pack = JSON.parse(readFileSync(path, 'utf8'))
       delete pack.lines['boardConnection.lost']
       delete pack.values.percent['42']
+      delete pack.values.duration['90']
       pack.lines.battery.start = ['lines/gone.m4a']
       writeFileSync(path, JSON.stringify(pack))
       expect(validatePack(catalog, dir)).toEqual([
-        'voice-radio: missing value percent.42',
         'voice-radio: missing line boardConnection.lost',
+        'voice-radio: missing value percent.42',
+        'voice-radio: missing value duration.90',
         'voice-radio: missing file lines/gone.m4a',
       ])
 

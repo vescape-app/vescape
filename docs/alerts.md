@@ -103,7 +103,7 @@ Speech comes from a second app-wide choice next to Sound effects:
 
 A `voice(<severity>):<key>:<value>` sound plays the effects pack's `severity.<severity>` sound
 once, then the voice line, starting once the sound has finished, or 1.5 s after it starts if it runs longer (the same timing as TTS). Native
-joins the line's `start` clip, the value clip, and the `end` clip into one PCM buffer
+joins the line's `start` clip, its value clips in order, and the `end` clip into one PCM buffer
 (`VoicePacks.kt`, `VoicePacks.swift`) and plays it: Android through a static `AudioTrack` on the
 selected alarm/media stream, iOS through the player's `AVAudioEngine`. Leading encoder priming and
 silence (at most 2048 frames) is trimmed from each clip before joining. Line clips of the selected
@@ -117,6 +117,13 @@ stay cached.
   under imperial units. Degrees are °C, converted
   to °F under imperial units before rounding to the nearest clip (degree clips say only
   "degrees", −30…300). A missing value clip is skipped.
+- **Multi-value lines**: a `VoiceAnnouncement` carries an ordered list of `VoiceValue(type, value)`;
+  the type travels with each value, so one line can say "Rain" + "in two and a half hours" +
+  "thirty percent". Alerts from a sound string carry one value, typed by the key (`voiceKeys` in
+  `catalog.json`). The voice layer plays the exact clip of each value or skips it when the pack has
+  none; the rest of the line still plays. Mapping a raw number onto the declared clip set is the
+  caller's job. The joined buffer plays as one item, so its completion fires once after the last
+  clip (or once on interrupt).
 - **Line**: Minimal reads the generic `<key>` only; Standard and Full read `<key>.<severity>`, else
   `<key>`; no line plays the severity sound only (never silence). The level then picks the phrases:
   Minimal `minimal` (else `start`), Standard `start`, Full `full.start` (else `start`) and then one
@@ -157,7 +164,7 @@ way and decoded per clip (see [Voice](#voice)).
 ```text
 scripts/alert-packs/
   EFFECTS.md            effects pack slots, format, and sox recipes (hand-made, not generated)
-  catalog.json          voice keys + value type, value ranges
+  catalog.json          voice keys + value type, clip set per value type
   voice-<id>.json       Kokoro voice + speed, sox voice fx chain, unit words, lines per key
   generate.ts           voice manifests → packs;  kokoro.py  TTS helper;  packs.ts  shared checks
 shared/alerts/packs/
@@ -181,7 +188,11 @@ shared/alerts/packs/
   `endChance` 0.2 so they stay a surprise.
 - **Value clips**: one clip per number with its unit, spelled out (`minus five degrees.`):
   percent 0–100, degrees −30…300 (the clip says only "degrees", shared by °C and °F), number
-  0–100 with no unit. Speed and duty use bare numbers and a generic line ("Speed…") with no
+  0–100 with no unit, and duration 15, 30, 45, 60, 90, 120, 150, 180 minutes with its preposition
+  (`in forty-five minutes.`, `in one hour.`, `in two and a half hours.`). `catalog.json` `values`
+  declares each type's clip set: a `{ min, max }` range, or a list (`duration`). A pack's `pack.json`
+  `values` maps each type to `{ "<n>": "values/<type>/<n>.m4a" }`; `duration` is keyed by minutes
+  (`"15"`…`"180"`), the same shape as `percent`. Every pack carries every declared clip. Speed and duty use bare numbers and a generic line ("Speed…") with no
   severity lines: the alert is time-critical, so it stays as short as possible.
 - **Format**: AAC-LC in `.m4a`, mono 22 050 Hz, 40 kbit/s, for both effects and voice. Android
   `MediaCodec` and iOS `AVAudioFile` both decode it; Ogg Opus has no iOS decoder. Native must drop

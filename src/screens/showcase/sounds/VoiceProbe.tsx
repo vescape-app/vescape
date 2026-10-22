@@ -18,7 +18,12 @@ import { useSettingsStore } from '@/modules/settings/store/settingsStore'
 import catalog from '../../../../scripts/alert-packs/catalog.json'
 
 const VOICE_KEYS = Object.entries(catalog.voiceKeys) as [string, string | null][]
-const VALUE_RANGES: Record<string, { min: number; max: number }> = catalog.valueRanges
+/** Range value types; the voice keys speak only these. */
+const VALUE_RANGES: Record<string, { min: number; max: number }> = Object.fromEntries(
+  Object.entries(catalog.values).filter(
+    (entry): entry is [string, { min: number; max: number }] => !Array.isArray(entry[1]),
+  ),
+)
 
 const randomInt = (min: number, max: number) => min + Math.floor(Math.random() * (max - min + 1))
 

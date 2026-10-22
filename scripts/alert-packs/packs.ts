@@ -7,13 +7,17 @@ export const PACKS_DIR = join(ROOT, 'shared', 'alerts', 'packs')
 export const MANIFESTS = ['voice-nova', 'voice-radio', 'voice-nicole'] as const
 export const CLIP_EXTENSION = '.m4a'
 
-/** `number` is a bare number: speed and duty skip the unit so the line stays short. */
-export type ValueType = 'percent' | 'degrees' | 'number'
+/**
+ * `number` is a bare number: speed and duty skip the unit so the line stays short. `duration` is
+ * minutes from now, spoken with its preposition ("in two hours").
+ */
+export type ValueType = 'percent' | 'degrees' | 'number' | 'duration'
 
 export interface Catalog {
   severities: string[]
   voiceKeys: Record<string, ValueType | null>
-  valueRanges: Record<ValueType, { min: number; max: number }>
+  /** Clip set per value type: every integer of a range, or the listed values. */
+  values: Record<ValueType, { min: number; max: number } | number[]>
 }
 
 /**
@@ -32,7 +36,7 @@ export interface VoiceManifest {
   kind: 'voice'
   kokoro: { voice: string; speed: number }
   fx: string
-  units: Record<Exclude<ValueType, 'number'>, [singular: string, plural: string]>
+  units: Record<'percent' | 'degrees', [singular: string, plural: string]>
   lines: Record<string, Line>
 }
 
@@ -55,9 +59,12 @@ export const loadManifest = (name: string) =>
 export const packDir = (manifest: { kind: string; id: string }) =>
   join(PACKS_DIR, `${manifest.kind}-${manifest.id}`)
 
-export function valueRange(catalog: Catalog, type: ValueType): number[] {
-  const { min, max } = catalog.valueRanges[type]
-  return Array.from({ length: max - min + 1 }, (_, i) => min + i)
+export const valueTypes = (catalog: Catalog) => Object.keys(catalog.values) as ValueType[]
+
+export function valueClips(catalog: Catalog, type: ValueType): number[] {
+  const set = catalog.values[type]
+  if (Array.isArray(set)) return set
+  return Array.from({ length: set.max - set.min + 1 }, (_, i) => set.min + i)
 }
 
 /** Key a line variant falls back to: `battery.critical` → `battery`. */
@@ -102,11 +109,12 @@ export function validatePack(catalog: Catalog, dir: string): string[] {
   const name = `${pack.kind}-${pack.id}`
   const errors: string[] = []
   const files: string[] = []
-  for (const [key, type] of Object.entries(catalog.voiceKeys)) {
+  for (const key of Object.keys(catalog.voiceKeys)) {
     if (!pack.lines[key]?.start.length) errors.push(`missing line ${key}`)
-    if (!type) continue
+  }
+  for (const type of valueTypes(catalog)) {
     const clips = pack.values[type] ?? {}
-    for (const n of valueRange(catalog, type)) {
+    for (const n of valueClips(catalog, type)) {
       if (!clips[n]) errors.push(`missing value ${type}.${n}`)
     }
   }
@@ -151,8 +159,19 @@ export function numberWords(n: number): string {
   return `${ONES[Math.floor(n / 100)]} hundred${rest ? ` ${numberWords(rest)}` : ''}`
 }
 
+/** `in forty-five minutes.`, `in one hour.`, `in two and a half hours.` */
+export function durationText(minutes: number) {
+  if (minutes < 60) return `in ${numberWords(minutes)} minutes.`
+  const hours = Math.floor(minutes / 60)
+  const half = minutes % 60 === 30
+  if (minutes % 60 && !half) throw new Error(`no wording for a ${minutes} minute duration`)
+  if (half) return `in ${numberWords(hours)} and a half hours.`
+  return `in ${numberWords(hours)} ${hours === 1 ? 'hour' : 'hours'}.`
+}
+
 export function valueText(manifest: VoiceManifest, type: ValueType, n: number) {
   if (type === 'number') return `${numberWords(n)}.`
+  if (type === 'duration') return durationText(n)
   const [singular, plural] = manifest.units[type]
   return `${numberWords(n)} ${Math.abs(n) === 1 ? singular : plural}.`
 }

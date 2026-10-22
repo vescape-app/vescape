@@ -553,7 +553,7 @@ internal final class AlertAudioPlayer {
       return
     }
     if voiceLevel == "full", let key = appCueVoiceKey(cue) {
-      speakVoiceTracked(VoiceAnnouncement(severity: .info, key: key, value: nil), slot: slot, done: done)
+      speakVoiceTracked(VoiceAnnouncement(severity: .info, key: key), slot: slot, done: done)
     } else {
       play(clipKey(slot)) { done.finish($0) }
     }

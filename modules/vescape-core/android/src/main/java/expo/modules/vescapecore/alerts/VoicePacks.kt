@@ -53,8 +53,9 @@ internal fun voicePackId(voice: String, effectsVoice: String?): String = when {
 }
 
 /**
- * Voice keys of built-in alerts and the value type each speaks (null: no value). Mirrors
- * `scripts/alert-packs/catalog.json` `voiceKeys`.
+ * Voice keys of built-in alerts and the value type a single-value alert on each speaks (null: no
+ * value). Mirrors `scripts/alert-packs/catalog.json` `voiceKeys`. Multi-value lines carry their
+ * types on each [VoiceValue] instead.
  *
  * @parity /modules/vescape-core/ios/alerts/VoicePacks.swift `voiceKeyValueTypes`
  * @parity /src/modules/alerts/lib/alertSoundString.ts `VOICE_KEY_BY_CONTROL`
@@ -113,11 +114,25 @@ internal enum class VoiceWording {
     }
 }
 
-/** One voice announcement: the severity sound, then the line for [key] with [value] spoken last. */
+/**
+ * One value a line speaks: the clip [value] of value type [type] (`percent`, `degrees`, `number`,
+ * `duration` in minutes). The voice layer plays that exact clip or skips it; mapping a raw reading
+ * onto the pack's clip set is the caller's job.
+ *
+ * @parity /modules/vescape-core/ios/alerts/VoicePacks.swift `VoiceValue`
+ */
+internal data class VoiceValue(val type: String, val value: Int)
+
+/**
+ * One voice announcement: the severity sound, then the line for [key] with [values] spoken in order
+ * after its start ("Rain" + "in two and a half hours" + "thirty percent").
+ *
+ * @parity /modules/vescape-core/ios/alerts/VoicePacks.swift `VoiceAnnouncement`
+ */
 internal data class VoiceAnnouncement(
     val severity: AlertSeverity,
     val key: String?,
-    val value: Int?,
+    val values: List<VoiceValue> = emptyList(),
     val wording: VoiceWording = VoiceWording.STANDARD,
 )
 
@@ -138,13 +153,15 @@ internal fun voiceAnnouncement(
 ): VoiceAnnouncement {
     val key = sound.key ?: controlId?.let(::voiceKey)
     val raw = sound.value ?: reading?.takeIf { key != "battery" || percentAvailable }
-    val value = when (key?.let { VOICE_KEY_VALUE_TYPES[it] }) {
+    val type = key?.let { VOICE_KEY_VALUE_TYPES[it] }
+    val value = when (type) {
         "percent" -> raw
         "number" -> raw?.let { if (key == "speed" && unitSystem == "imperial") it / KM_PER_MILE else it }
         "degrees" -> raw?.let { if (unitSystem == "imperial") it * 9.0 / 5.0 + 32.0 else it }
         else -> null
     }
-    return VoiceAnnouncement(sound.severity, key, value?.takeIf { it.isFinite() }?.roundToInt())
+    val clip = value?.takeIf { it.isFinite() }?.roundToInt()
+    return VoiceAnnouncement(sound.severity, key, listOfNotNull(type?.let { t -> clip?.let { VoiceValue(t, it) } }))
 }
 
 /**
@@ -161,7 +178,7 @@ internal data class VoiceLine(
     val files: List<String> get() = start + minimal + fullStart + fullEnd
 }
 
-/** What one announcement can say: `start` (+ value) (+ an `end` at [endChance]). */
+/** What one announcement can say: `start` (+ values) (+ an `end` at [endChance]). */
 internal data class VoicePhrases(val start: List<String>, val end: List<String>, val endChance: Double)
 
 /** A voice pack's `pack.json`: lines per key, value clip per value type and number. */
@@ -180,8 +197,8 @@ internal class VoicePackManifest(val lines: Map<String, VoiceLine>, val values: 
         }.takeIf { it.start.isNotEmpty() }
     }
 
-    /** Value clip of [key]'s value type for [value]; null when the pack has no such clip. */
-    fun valueClip(key: String, value: Int): String? = VOICE_KEY_VALUE_TYPES[key]?.let { values[it]?.get(value) }
+    /** Clip for [value]; null when the pack has no such clip. */
+    fun valueClip(value: VoiceValue): String? = values[value.type]?.get(value.value)
 
     companion object {
         fun parse(json: JSONObject): VoicePackManifest {
@@ -225,7 +242,10 @@ internal class VoiceVariantPicker(private val random: (Int) -> Int = { kotlin.ra
 
     private val upcoming = HashMap<String, Choice>()
 
-    /** Clip files of [announcement] in play order (start, value, end); null when [manifest] has no line. */
+    /**
+     * Clip files of [announcement] in play order (start, values, end); null when [manifest] has no
+     * line. A value without a clip is skipped; the rest of the line still plays.
+     */
     @Synchronized
     fun clips(manifest: VoicePackManifest, announcement: VoiceAnnouncement): List<String>? {
         val (key, line) = resolve(manifest, announcement) ?: return null
@@ -233,7 +253,7 @@ internal class VoiceVariantPicker(private val random: (Int) -> Int = { kotlin.ra
         val choice = upcoming[lineKey]?.takeIf { it.fits(line) }
             ?: choose(line, avoid = null)
         upcoming[lineKey] = choose(line, avoid = choice.start)
-        return files(manifest, key, line, choice, announcement.value)
+        return files(manifest, line, choice, announcement.values)
     }
 
     /** Clip files the next [clips] call for [announcement] returns, without consuming the pick. */
@@ -241,7 +261,7 @@ internal class VoiceVariantPicker(private val random: (Int) -> Int = { kotlin.ra
     fun next(manifest: VoicePackManifest, announcement: VoiceAnnouncement): List<String>? {
         val (key, line) = resolve(manifest, announcement) ?: return null
         val choice = upcoming["$key.${announcement.severity.id}.${announcement.wording}"]?.takeIf { it.fits(line) } ?: return null
-        return files(manifest, key, line, choice, announcement.value)
+        return files(manifest, line, choice, announcement.values)
     }
 
     private fun resolve(manifest: VoicePackManifest, announcement: VoiceAnnouncement): Pair<String, VoicePhrases>? {
@@ -256,11 +276,8 @@ internal class VoiceVariantPicker(private val random: (Int) -> Int = { kotlin.ra
         return Choice(start, if (ends) random(line.end.size) else null)
     }
 
-    private fun files(manifest: VoicePackManifest, key: String, line: VoicePhrases, choice: Choice, value: Int?) = listOfNotNull(
-        line.start[choice.start],
-        value?.let { manifest.valueClip(key, it) },
-        choice.end?.let { line.end[it] },
-    )
+    private fun files(manifest: VoicePackManifest, line: VoicePhrases, choice: Choice, values: List<VoiceValue>) =
+        listOf(line.start[choice.start]) + values.mapNotNull(manifest::valueClip) + listOfNotNull(choice.end?.let { line.end[it] })
 }
 
 /**
