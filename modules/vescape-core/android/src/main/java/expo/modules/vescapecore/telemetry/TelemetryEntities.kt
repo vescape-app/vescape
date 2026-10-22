@@ -521,7 +521,6 @@ data class AppSettings(
   /** `off` or a Weather Alert level. @parity /modules/vescape-core/ios/telemetry/AppDataRepository.swift `defaultSettings` */
   val weatherRainAlertLevel: String = WEATHER_ALERT_LEVEL_DEFAULT,
   val weatherWindAlertLevel: String = WEATHER_ALERT_LEVEL_DEFAULT,
-  val weatherStormAlertEnabled: Boolean = true,
   val telemetryPollRateHz: Int = 20,
   val wearPushRateHz: Int = 4,
   val wearAutoLaunchOnConnect: Boolean = true,

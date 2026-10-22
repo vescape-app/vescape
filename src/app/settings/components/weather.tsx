@@ -42,8 +42,12 @@ const LABELS: Record<WeatherIconSlug, string> = {
   'cloud-lightning': 'Thunderstorm',
 }
 
-/** Mock of the native gust gates; the app reads them from native. */
-const MOCK_GUSTS_KMH = { sensitive: 40, normal: 55, severe: 70 }
+/** Mock of the native level gates; the app reads them from native. */
+const MOCK_THRESHOLDS = {
+  sensitive: { gustKmh: 40, rainPercent: 30 },
+  normal: { gustKmh: 55, rainPercent: 50 },
+  extreme: { gustKmh: 70, rainPercent: 70 },
+}
 
 const MOCK_SUNRISE_MINUTE = 5 * 60 + 12
 const MOCK_SUNSET_MINUTE = 21 * 60 + 34
@@ -99,7 +103,6 @@ export default function WeatherPage() {
   const [expanded, setExpanded] = useState(false)
   const [rainLevel, setRainLevel] = useState<WeatherAlertLevelSetting>('normal')
   const [windLevel, setWindLevel] = useState<WeatherAlertLevelSetting>('normal')
-  const [storm, setStorm] = useState(true)
   const [units, setUnits] = useState<UnitSystem>('metric')
 
   const precipProbability = precip ? 40 : 0
@@ -191,12 +194,10 @@ export default function WeatherPage() {
           <WeatherAlertsSettingsView
             rain={rainLevel}
             wind={windLevel}
-            storm={storm}
             units={units}
-            gustsKmh={MOCK_GUSTS_KMH}
+            thresholds={MOCK_THRESHOLDS}
             onRainChange={setRainLevel}
             onWindChange={setWindLevel}
-            onStormChange={setStorm}
           />
         </ShowcaseCard>
       </ScrollView>

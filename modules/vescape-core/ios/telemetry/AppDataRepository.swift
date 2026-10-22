@@ -568,9 +568,6 @@ final class AppDataRepository {
     } else if key == "weatherRainAlertLevel" || key == "weatherWindAlertLevel" {
       guard let level = Self.weatherAlertLevel(rawValue) else { return }
       value = level
-    } else if key == "weatherStormAlertEnabled" {
-      guard let flag = rawValue as? Bool else { return }
-      value = flag
     } else if key == "themeMode" {
       guard let mode = Self.themeMode(rawValue) else { return }
       value = mode
@@ -694,7 +691,6 @@ final class AppDataRepository {
     "voiceLevel": voiceLevelDefault,
     "weatherRainAlertLevel": weatherAlertLevelDefault,
     "weatherWindAlertLevel": weatherAlertLevelDefault,
-    "weatherStormAlertEnabled": true,
     "historyMetricGradientsEnabled": true,
     "historyMetricHotRanges": [
       "speed": ["start": 30, "end": 40],

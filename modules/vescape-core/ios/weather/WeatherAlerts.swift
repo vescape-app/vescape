@@ -54,13 +54,13 @@ struct WindThresholds: Equatable {
 /// How bad weather must be to speak. Native-owned so thresholds retune without a migration.
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/weather/WeatherAlerts.kt `WeatherAlertLevel`
 enum WeatherAlertLevel: String, CaseIterable {
-  case sensitive, normal, severe
+  case sensitive, normal, extreme
 
   var rain: RainThresholds {
     switch self {
     case .sensitive: return RainThresholds(minProbabilityPercent: 30, minMmPerHour: 0.3)
     case .normal: return RainThresholds(minProbabilityPercent: 50, minMmPerHour: 1.0)
-    case .severe: return RainThresholds(minProbabilityPercent: 70, minMmPerHour: 4.0)
+    case .extreme: return RainThresholds(minProbabilityPercent: 70, minMmPerHour: 4.0)
     }
   }
 
@@ -68,7 +68,7 @@ enum WeatherAlertLevel: String, CaseIterable {
     switch self {
     case .sensitive: return WindThresholds(minGustKmh: 40)
     case .normal: return WindThresholds(minGustKmh: 55)
-    case .severe: return WindThresholds(minGustKmh: 70)
+    case .extreme: return WindThresholds(minGustKmh: 70)
     }
   }
 }
@@ -79,32 +79,29 @@ enum WeatherAlertLevel: String, CaseIterable {
 let weatherAlertLevelSettings = ["off"] + WeatherAlertLevel.allCases.map(\.rawValue)
 let weatherAlertLevelDefault = "normal"
 
-/// The rider's Weather Alert settings: a nil level turns that kind off.
+/// The rider's Weather Alert settings: a nil level turns that kind off. Storms always speak.
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/weather/WeatherAlerts.kt `WeatherAlertSettings`
 struct WeatherAlertSettings: Equatable {
   var rain: WeatherAlertLevel? = .normal
   var wind: WeatherAlertLevel? = .normal
-  var storm = true
 
   func enabled(_ kind: WeatherAlertKind) -> Bool {
     switch kind {
-    case .storm: return storm
+    case .storm: return true
     case .wind: return wind != nil
     case .rain: return rain != nil
     }
   }
 
-  /// From App Settings; `off` and unknown level values read as off, a missing storm flag as on.
+  /// From App Settings; `off` and unknown level values read as off.
   init(settings: [String: Any?]) {
     rain = (settings["weatherRainAlertLevel"] as? String).flatMap(WeatherAlertLevel.init(rawValue:))
     wind = (settings["weatherWindAlertLevel"] as? String).flatMap(WeatherAlertLevel.init(rawValue:))
-    storm = settings["weatherStormAlertEnabled"] as? Bool ?? true
   }
 
-  init(rain: WeatherAlertLevel? = .normal, wind: WeatherAlertLevel? = .normal, storm: Bool = true) {
+  init(rain: WeatherAlertLevel? = .normal, wind: WeatherAlertLevel? = .normal) {
     self.rain = rain
     self.wind = wind
-    self.storm = storm
   }
 }
 

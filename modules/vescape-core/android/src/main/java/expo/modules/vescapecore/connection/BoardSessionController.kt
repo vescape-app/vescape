@@ -3613,7 +3613,6 @@ internal class BoardSessionController(private val service: CoreForegroundService
         weatherAlerts.settings = WeatherAlertSettings.of(
             settings.weatherRainAlertLevel,
             settings.weatherWindAlertLevel,
-            settings.weatherStormAlertEnabled,
         )
         // `VESC Fault Collection` is its own kill switch — deliberately not gated on
         // `boardWarningsEnabled`, so turning warnings off keeps fault evidence flowing.

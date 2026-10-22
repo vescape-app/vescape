@@ -276,13 +276,21 @@ final class WeatherAlertsTests: XCTestCase {
   }
 
   func testAKindTurnedOffSaysNothingAndNeverBlocksAnother() {
-    let all = weather(hourly: [WeatherSlot(
+    let wet = weather(hourly: [WeatherSlot(
       startMs: t0 + 100 * minuteMs, endMs: t0 + 160 * minuteMs, precipitationMmPerHour: 2,
-      precipitationProbability: 80, weatherCode: 95, windGustsKmh: 60
+      precipitationProbability: 80, weatherCode: 61, windGustsKmh: 60
     )])
-    XCTAssertEqual(kinds(all, 0, WeatherAlertSettings(rain: .normal, wind: nil, storm: false)), ["weather.rain 90"])
+    XCTAssertEqual(kinds(wet, 0, WeatherAlertSettings(rain: nil)), ["weather.wind 90"])
     state = WeatherAlertState()
-    XCTAssertEqual(kinds(all, 0, WeatherAlertSettings(rain: nil, wind: nil, storm: false)), [])
+    XCTAssertEqual(kinds(wet, 0, WeatherAlertSettings(rain: nil, wind: nil)), [])
+  }
+
+  func testStormsSpeakWithRainAndWindOff() {
+    let storm = weather(hourly: [WeatherSlot(
+      startMs: t0 + 100 * minuteMs, endMs: t0 + 160 * minuteMs, precipitationMmPerHour: 2,
+      precipitationProbability: 80, weatherCode: 95, windGustsKmh: 0
+    )])
+    XCTAssertEqual(kinds(storm, 0, WeatherAlertSettings(rain: nil, wind: nil)), ["weather.storm 90"])
   }
 
   func testLevelsMoveTheRainAndWindGates() {
@@ -290,14 +298,14 @@ final class WeatherAlertsTests: XCTestCase {
     XCTAssertEqual(kinds(gust, 0), [])
     XCTAssertEqual(kinds(gust, 0, WeatherAlertSettings(wind: .sensitive)), ["weather.wind 90"])
     state = WeatherAlertState()
-    XCTAssertEqual(kinds(rainAt(100, 0), 0, WeatherAlertSettings(rain: .severe)), [])
+    XCTAssertEqual(kinds(rainAt(100, 0), 0, WeatherAlertSettings(rain: .extreme)), [])
   }
 
   func testSettingsReadOffAndUnknownLevelsAsOff() {
     let settings = WeatherAlertSettings(settings: [
-      "weatherRainAlertLevel": "off", "weatherWindAlertLevel": "severe", "weatherStormAlertEnabled": false,
+      "weatherRainAlertLevel": "off", "weatherWindAlertLevel": "extreme",
     ])
-    XCTAssertEqual(settings, WeatherAlertSettings(rain: nil, wind: .severe, storm: false))
+    XCTAssertEqual(settings, WeatherAlertSettings(rain: nil, wind: .extreme))
     XCTAssertNil(WeatherAlertSettings(settings: ["weatherRainAlertLevel": "loud"]).rain)
   }
 }

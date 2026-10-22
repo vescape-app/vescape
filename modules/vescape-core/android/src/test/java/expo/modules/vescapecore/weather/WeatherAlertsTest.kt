@@ -270,11 +270,16 @@ class WeatherAlertsTest {
 
     @Test
     fun `a kind turned off says nothing and never blocks another`() {
-        val all = weather(hourly = listOf(WeatherSlot(T0 + 100 * MIN, T0 + 160 * MIN, 2.0, 80, 95, 60.0)))
-        val off = WeatherAlertSettings(rain = WeatherAlertLevel.NORMAL, wind = null, storm = false)
-        assertEquals(listOf(WeatherAlertKind.RAIN to 90), kinds(all, 0, off))
+        val wet = weather(hourly = listOf(WeatherSlot(T0 + 100 * MIN, T0 + 160 * MIN, 2.0, 80, 61, 60.0)))
+        assertEquals(listOf(WeatherAlertKind.WIND to 90), kinds(wet, 0, WeatherAlertSettings(rain = null)))
         state = WeatherAlertState()
-        assertEquals(emptyList<Any>(), kinds(all, 0, WeatherAlertSettings(null, null, false)))
+        assertEquals(emptyList<Any>(), kinds(wet, 0, WeatherAlertSettings(null, null)))
+    }
+
+    @Test
+    fun `storms speak with rain and wind off`() {
+        val storm = weather(hourly = listOf(WeatherSlot(T0 + 100 * MIN, T0 + 160 * MIN, 2.0, 80, 95, 0.0)))
+        assertEquals(listOf(WeatherAlertKind.STORM to 90), kinds(storm, 0, WeatherAlertSettings(null, null)))
     }
 
     @Test
@@ -283,12 +288,12 @@ class WeatherAlertsTest {
         assertEquals(emptyList<Any>(), kinds(gust, 0))
         assertEquals(listOf(WeatherAlertKind.WIND to 90), kinds(gust, 0, WeatherAlertSettings(wind = WeatherAlertLevel.SENSITIVE)))
         state = WeatherAlertState()
-        assertEquals(emptyList<Any>(), kinds(rainAt(100, 0), 0, WeatherAlertSettings(rain = WeatherAlertLevel.SEVERE)))
+        assertEquals(emptyList<Any>(), kinds(rainAt(100, 0), 0, WeatherAlertSettings(rain = WeatherAlertLevel.EXTREME)))
     }
 
     @Test
     fun `settings read off and unknown levels as off`() {
-        assertEquals(WeatherAlertSettings(null, WeatherAlertLevel.SEVERE, false), WeatherAlertSettings.of("off", "severe", false))
-        assertEquals(null, WeatherAlertSettings.of("loud", "normal", true).rain)
+        assertEquals(WeatherAlertSettings(null, WeatherAlertLevel.EXTREME), WeatherAlertSettings.of("off", "extreme"))
+        assertEquals(null, WeatherAlertSettings.of("loud", "normal").rain)
     }
 }

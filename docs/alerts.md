@@ -366,11 +366,11 @@ Forecast-driven voice lines about weather coming at the rider within 3 h. Native
 - **Kinds:** storm, rain, wind (`WeatherAlertKind`), on two independent tracks (`WeatherAlertTrack`):
   storm/rain and wind.
 - **Settings:** App Settings `weatherRainAlertLevel` and `weatherWindAlertLevel`
-  (`off` / `sensitive` / `normal` / `severe`, default `normal`) and `weatherStormAlertEnabled`
-  (default on), set from the Weather Alerts sheet behind the gear at the top right of Weather mode.
+  (`off` / `sensitive` / `normal` / `extreme`, default `normal`), set from the Weather settings
+  sheet behind the "…" button at the top right of Weather mode. Storms have no setting: they always speak.
   Native owns each level's thresholds (`WeatherAlertLevel`) and applies the settings live
-  (`WeatherAlertSettings`); the sheet shows the gust gates in the rider's speed unit via
-  `getWeatherAlertGustThresholdsKmh`. A kind turned off forgets its event and never suppresses a
+  (`WeatherAlertSettings`); the sheet shows the gust gates (in the rider's speed unit) and rain chance via
+  `getWeatherAlertThresholds`. A kind turned off forgets its event and never suppresses a
   different kind.
 - **Priority:** storm and rain are exclusive: while storm has an active event, rain is silent but
   still tracks its ladder, so rungs it passes are consumed and it never speaks a stale rung once the
@@ -382,7 +382,7 @@ Forecast-driven voice lines about weather coming at the rider within 3 h. Native
   Slots are absolute epoch times (`utc_offset_seconds`); each value describes the period before its
   timestamp, so a slot starts at timestamp − period. `minutely_15` precipitation is ×4 to mm/h.
 - **Gate (rain):** a slot more than 1 h out counts from the hourly series at the level's chance and
-  intensity (Sensitive ≥30 %, ≥0.3 mm/h; Normal ≥50 %, ≥1 mm/h; Severe only ≥70 %, ≥4 mm/h); at 1 h
+  intensity (Sensitive ≥30 %, ≥0.3 mm/h; Normal ≥50 %, ≥1 mm/h; Extreme ≥70 %, ≥4 mm/h); at 1 h
   or less from `minutely_15` at the intensity alone, no probability gate. The event is the
   earliest counting slot; its lead is measured to the slot's start.
 - **Gate (storm):** `weather_code` 95/96/99 (thunderstorm only), no probability gate, in both

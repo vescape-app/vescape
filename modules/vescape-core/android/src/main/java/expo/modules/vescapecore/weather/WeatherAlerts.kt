@@ -58,7 +58,7 @@ internal data class WindThresholds(val minGustKmh: Double)
 internal enum class WeatherAlertLevel(val key: String, val rain: RainThresholds, val wind: WindThresholds) {
     SENSITIVE("sensitive", RainThresholds(30, 0.3), WindThresholds(40.0)),
     NORMAL("normal", RainThresholds(50, 1.0), WindThresholds(55.0)),
-    SEVERE("severe", RainThresholds(70, 4.0), WindThresholds(70.0)),
+    EXTREME("extreme", RainThresholds(70, 4.0), WindThresholds(70.0)),
     ;
 
     companion object {
@@ -77,24 +77,23 @@ internal val WEATHER_ALERT_LEVEL_SETTINGS = listOf("off") + WeatherAlertLevel.en
 internal const val WEATHER_ALERT_LEVEL_DEFAULT = "normal"
 
 /**
- * The rider's Weather Alert settings: a null level turns that kind off.
+ * The rider's Weather Alert settings: a null level turns that kind off. Storms always speak.
  *
  * @parity /modules/vescape-core/ios/weather/WeatherAlerts.swift `WeatherAlertSettings`
  */
 internal data class WeatherAlertSettings(
     val rain: WeatherAlertLevel? = WeatherAlertLevel.NORMAL,
     val wind: WeatherAlertLevel? = WeatherAlertLevel.NORMAL,
-    val storm: Boolean = true,
 ) {
     fun enabled(kind: WeatherAlertKind): Boolean = when (kind) {
-        WeatherAlertKind.STORM -> storm
+        WeatherAlertKind.STORM -> true
         WeatherAlertKind.WIND -> wind != null
         WeatherAlertKind.RAIN -> rain != null
     }
 
     companion object {
-        fun of(rainLevel: String, windLevel: String, stormEnabled: Boolean) =
-            WeatherAlertSettings(WeatherAlertLevel.of(rainLevel), WeatherAlertLevel.of(windLevel), stormEnabled)
+        fun of(rainLevel: String, windLevel: String) =
+            WeatherAlertSettings(WeatherAlertLevel.of(rainLevel), WeatherAlertLevel.of(windLevel))
     }
 }
 

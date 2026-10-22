@@ -1522,7 +1522,7 @@ export interface LegalPolicyReference {
  * @parity /modules/vescape-core/ios/weather/WeatherAlerts.swift `weatherAlertLevelSettings`
  */
 export type WeatherAlertLevelSetting = 'off' | WeatherAlertLevel
-export type WeatherAlertLevel = 'sensitive' | 'normal' | 'severe'
+export type WeatherAlertLevel = 'sensitive' | 'normal' | 'extreme'
 
 /**
  * Durable app-scoped settings. The keys here are a TS/Android/iOS parity triangle — every field is
@@ -1608,7 +1608,6 @@ export interface AppSettings {
   weatherRainAlertLevel: WeatherAlertLevelSetting
   /** Gust Weather Alert gate; native owns each level's thresholds. */
   weatherWindAlertLevel: WeatherAlertLevelSetting
-  weatherStormAlertEnabled: boolean
   /** Android-only: use CompanionDeviceManager presence to connect associated boards when nearby. */
   companionPresenceEnabled: boolean
   /**
@@ -2800,7 +2799,7 @@ type VescapeCoreNativeModule = NativeEventEmitter<VescapeCoreEvents> & {
   getAppStatus(): AppStatus | null
   getWeather(): Weather | null
   refreshWeather(): void
-  getWeatherAlertGustThresholdsKmh(): Partial<Record<WeatherAlertLevel, number>>
+  getWeatherAlertThresholds(): WeatherAlertThresholds
   provisionDeviceCredential(
     serverUrl: string,
     deviceToken: string,
@@ -3541,10 +3540,19 @@ export function getWeather(): Weather | null {
   return native.getWeather()
 }
 
-/** Native-owned gust gate of each wind Weather Alert level, km/h; empty under E2E. */
-export function getWeatherAlertGustThresholdsKmh(): Partial<Record<WeatherAlertLevel, number>> {
+/**
+ * Native-owned gates of each Weather Alert level, for display only.
+ * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/VescapeCoreModule.kt `getWeatherAlertThresholds`
+ * @parity /modules/vescape-core/ios/VescapeCoreModule.swift `getWeatherAlertThresholds`
+ */
+export type WeatherAlertThresholds = Partial<
+  Record<WeatherAlertLevel, { gustKmh: number; rainPercent: number }>
+>
+
+/** Native-owned gust (km/h) and rain-chance (%) gates per Weather Alert level; empty under E2E. */
+export function getWeatherAlertThresholds(): WeatherAlertThresholds {
   if (E2E_ENABLED) return {}
-  return native.getWeatherAlertGustThresholdsKmh()
+  return native.getWeatherAlertThresholds()
 }
 
 /**

@@ -590,9 +590,11 @@ public class VescapeCoreModule: Module {
       WeatherCoordinator.shared.current?.map
     }
 
-    // @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/VescapeCoreModule.kt `getWeatherAlertGustThresholdsKmh`
-    Function("getWeatherAlertGustThresholdsKmh") { () -> [String: Double] in
-      Dictionary(uniqueKeysWithValues: WeatherAlertLevel.allCases.map { ($0.rawValue, $0.wind.minGustKmh) })
+    // @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/VescapeCoreModule.kt `getWeatherAlertThresholds`
+    Function("getWeatherAlertThresholds") { () -> [String: [String: Double]] in
+      Dictionary(uniqueKeysWithValues: WeatherAlertLevel.allCases.map {
+        ($0.rawValue, ["gustKmh": $0.wind.minGustKmh, "rainPercent": Double($0.rain.minProbabilityPercent)])
+      })
     }
 
     // @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/VescapeCoreModule.kt `refreshWeather`
@@ -1658,7 +1660,6 @@ public class VescapeCoreModule: Module {
         "voiceLevel",
         "weatherRainAlertLevel",
         "weatherWindAlertLevel",
-        "weatherStormAlertEnabled",
       ].contains(key) {
         self.coordinator.reloadTelemetrySettings()
       }

@@ -631,9 +631,11 @@ class VescapeCoreModule : Module() {
     Function("getWeather") {
       WeatherCoordinator.get().current?.toMap()
     }
-    // @parity /modules/vescape-core/ios/VescapeCoreModule.swift `getWeatherAlertGustThresholdsKmh`
-    Function("getWeatherAlertGustThresholdsKmh") {
-      WeatherAlertLevel.entries.associate { it.key to it.wind.minGustKmh }
+    // @parity /modules/vescape-core/ios/VescapeCoreModule.swift `getWeatherAlertThresholds`
+    Function("getWeatherAlertThresholds") {
+      WeatherAlertLevel.entries.associate {
+        it.key to mapOf("gustKmh" to it.wind.minGustKmh, "rainPercent" to it.rain.minProbabilityPercent)
+      }
     }
     // @parity /modules/vescape-core/ios/VescapeCoreModule.swift `refreshWeather`
     Function("refreshWeather") {
@@ -1505,8 +1507,7 @@ class VescapeCoreModule : Module() {
         key == "voice" ||
         key == "voiceLevel" ||
         key == "weatherRainAlertLevel" ||
-        key == "weatherWindAlertLevel" ||
-        key == "weatherStormAlertEnabled"
+        key == "weatherWindAlertLevel"
       ) {
         CoreForegroundService.reloadTelemetrySettings(context.applicationContext)
       }

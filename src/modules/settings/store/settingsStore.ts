@@ -52,7 +52,6 @@ const DEFAULTS: AppSettings = {
   voiceLevel: 'standard',
   weatherRainAlertLevel: 'normal',
   weatherWindAlertLevel: 'normal',
-  weatherStormAlertEnabled: true,
   companionPresenceEnabled: false,
   boardWarningsEnabled: true,
   vescFaultCollectionEnabled: true,

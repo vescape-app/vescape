@@ -1,15 +1,14 @@
 import { useMemo, useRef, useState } from 'react'
 import { StyleSheet, View, type StyleProp, type ViewStyle } from 'react-native'
-import { CloudLightningIcon, CloudRainIcon, GearSixIcon, WindIcon } from 'phosphor-react-native'
+import { CloudRainIcon, DotsThreeIcon, GearSixIcon, WindIcon } from 'phosphor-react-native'
 import {
-  getWeatherAlertGustThresholdsKmh,
-  type WeatherAlertLevel,
+  getWeatherAlertThresholds,
+  type WeatherAlertThresholds,
   type WeatherAlertLevelSetting,
 } from 'vescape-core'
 
 import { IconButton } from '@/components/base/IconButton'
 import { Text } from '@/components/base/Text'
-import { Switch } from '@/components/controls/Switch'
 import { PillChoiceRow } from '@/components/forms/PillChoiceRow'
 import { EdgeDrawer } from '@/components/overlays/EdgeDrawer'
 import { SettingsCard } from '@/components/settings/SettingsCard'
@@ -22,23 +21,31 @@ const LEVEL_OPTIONS: readonly { value: WeatherAlertLevelSetting; label: string }
   { value: 'off', label: 'Off' },
   { value: 'sensitive', label: 'Sensitive' },
   { value: 'normal', label: 'Normal' },
-  { value: 'severe', label: 'Severe only' },
+  { value: 'extreme', label: 'Extreme' },
 ]
 
 const RAIN_HINTS: Record<WeatherAlertLevelSetting, string> = {
   off: 'No rain alerts.',
-  sensitive: 'Warns of light showers too.',
-  normal: 'Warns of steady rain.',
-  severe: 'Warns only of downpours.',
+  sensitive: 'Warns of light showers too',
+  normal: 'Warns of steady rain',
+  extreme: 'Warns only of downpours',
+}
+
+function rainHint(level: WeatherAlertLevelSetting, thresholds: WeatherAlertThresholds): string {
+  if (level === 'off') return RAIN_HINTS.off
+  const percent = thresholds[level]?.rainPercent
+  return percent == null
+    ? `${RAIN_HINTS[level]}.`
+    : `${RAIN_HINTS[level]}, from ${percent}% chance.`
 }
 
 function windHint(
   level: WeatherAlertLevelSetting,
-  gustsKmh: Partial<Record<WeatherAlertLevel, number>>,
+  thresholds: WeatherAlertThresholds,
   units: UnitSystem,
 ): string {
   if (level === 'off') return 'No wind alerts.'
-  const kmh = gustsKmh[level]
+  const kmh = thresholds[level]?.gustKmh
   return kmh == null
     ? 'Warns of strong gusts.'
     : `Warns of gusts from ${formatSpeedKmh(kmh, units)}.`
@@ -47,72 +54,71 @@ function windHint(
 export interface WeatherAlertsSettingsViewProps {
   rain: WeatherAlertLevelSetting
   wind: WeatherAlertLevelSetting
-  storm: boolean
   units: UnitSystem
-  /** Native-owned gust gate per level, km/h. */
-  gustsKmh: Partial<Record<WeatherAlertLevel, number>>
+  /** Native-owned gates per level. */
+  thresholds: WeatherAlertThresholds
   onRainChange: (level: WeatherAlertLevelSetting) => void
   onWindChange: (level: WeatherAlertLevelSetting) => void
-  onStormChange: (enabled: boolean) => void
   error?: string | null
 }
 
-/** Rider-set Weather Alert levels: rain, wind gusts and storms. */
+/** Rider-set Weather Alert levels for rain and wind gusts; storms always speak. */
 export function WeatherAlertsSettingsView({
   rain,
   wind,
-  storm,
   units,
-  gustsKmh,
+  thresholds,
   onRainChange,
   onWindChange,
-  onStormChange,
   error,
 }: WeatherAlertsSettingsViewProps) {
   return (
     <View style={styles.content}>
       <SettingsCard>
-        <SettingsRow icon={CloudRainIcon} label="Rain" hint={RAIN_HINTS[rain]}>
+        <SettingsRow
+          icon={CloudRainIcon}
+          iconColor={theme.status.warning.color}
+          label="Rain alert"
+          hint={rainHint(rain, thresholds)}
+        >
           <View style={styles.choices}>
             <PillChoiceRow options={LEVEL_OPTIONS} value={rain} onChange={onRainChange} />
           </View>
         </SettingsRow>
-        <SettingsRow icon={WindIcon} label="Wind" hint={windHint(wind, gustsKmh, units)}>
+        <SettingsRow
+          icon={WindIcon}
+          iconColor={theme.status.warning.color}
+          label="Wind alert"
+          hint={windHint(wind, thresholds, units)}
+        >
           <View style={styles.choices}>
             <PillChoiceRow options={LEVEL_OPTIONS} value={wind} onChange={onWindChange} />
           </View>
         </SettingsRow>
-        <SettingsRow
-          icon={CloudLightningIcon}
-          label="Storm"
-          hint="Warns of thunderstorms."
-          right={<Switch value={storm} onValueChange={onStormChange} />}
-        />
       </SettingsCard>
       {error ? <Text style={styles.error}>{error}</Text> : null}
     </View>
   )
 }
 
-/** Gear button that opens the Weather Alerts sheet, bound to App Settings. */
+/** Dots button that opens the Weather settings sheet, bound to App Settings. */
 export function WeatherAlertsButton({ style }: { style?: StyleProp<ViewStyle> }) {
   const triggerRef = useRef<View>(null)
   const [open, setOpen] = useState(false)
   const rain = useSettingsStore((s) => s.weatherRainAlertLevel)
   const wind = useSettingsStore((s) => s.weatherWindAlertLevel)
-  const storm = useSettingsStore((s) => s.weatherStormAlertEnabled)
   const units = useSettingsStore((s) => s.unitSystem)
   const writeError = useSettingsStore((s) => s.writeError)
   const set = useSettingsStore((s) => s.set)
-  const gustsKmh = useMemo(() => (open ? getWeatherAlertGustThresholdsKmh() : {}), [open])
+  const thresholds = useMemo(() => (open ? getWeatherAlertThresholds() : {}), [open])
 
   return (
     <>
       <View ref={triggerRef} collapsable={false} style={style}>
         <IconButton
-          icon={GearSixIcon}
+          icon={DotsThreeIcon}
           testID="weather-alerts-settings"
-          accessibilityLabel="Weather alert settings"
+          accessibilityLabel="Weather settings"
           onPress={() => setOpen(true)}
         />
       </View>
@@ -120,19 +126,17 @@ export function WeatherAlertsButton({ style }: { style?: StyleProp<ViewStyle> })
         visible={open}
         triggerRef={triggerRef}
         edge="bottom"
-        title="Weather Alerts"
-        icon={CloudLightningIcon}
+        title="Weather settings"
+        icon={GearSixIcon}
         onClose={() => setOpen(false)}
       >
         <WeatherAlertsSettingsView
           rain={rain}
           wind={wind}
-          storm={storm}
           units={units}
-          gustsKmh={gustsKmh}
+          thresholds={thresholds}
           onRainChange={(level) => void set('weatherRainAlertLevel', level)}
           onWindChange={(level) => void set('weatherWindAlertLevel', level)}
-          onStormChange={(enabled) => void set('weatherStormAlertEnabled', enabled)}
           error={writeError}
         />
       </EdgeDrawer>
