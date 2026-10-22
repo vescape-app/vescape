@@ -1,5 +1,6 @@
 package expo.modules.vescapecore
 
+import expo.modules.vescapecore.weather.WeatherAlertLevel
 import expo.modules.vescapecore.watch.WatchLastBatteryPusher
 import expo.modules.kotlin.functions.Queues
 import expo.modules.kotlin.modules.ModuleDefinitionBuilder
@@ -623,6 +624,10 @@ class VescapeCoreModule : Module() {
     // @parity /modules/vescape-core/ios/VescapeCoreModule.swift `getWeather`
     Function("getWeather") {
       WeatherCoordinator.get().current?.toMap()
+    }
+    // @parity /modules/vescape-core/ios/VescapeCoreModule.swift `getWeatherAlertGustThresholdsKmh`
+    Function("getWeatherAlertGustThresholdsKmh") {
+      WeatherAlertLevel.entries.associate { it.key to it.wind.minGustKmh }
     }
     // @parity /modules/vescape-core/ios/VescapeCoreModule.swift `refreshWeather`
     Function("refreshWeather") {
@@ -1492,7 +1497,10 @@ class VescapeCoreModule : Module() {
         key == "soundPack" ||
         key == "audioSource" ||
         key == "voice" ||
-        key == "voiceLevel"
+        key == "voiceLevel" ||
+        key == "weatherRainAlertLevel" ||
+        key == "weatherWindAlertLevel" ||
+        key == "weatherStormAlertEnabled"
       ) {
         CoreForegroundService.reloadTelemetrySettings(context.applicationContext)
       }

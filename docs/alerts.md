@@ -363,17 +363,24 @@ Forecast-driven voice lines about weather coming at the rider within 3 h. Native
 `WeatherAlerts.kt` / `WeatherAlerts.swift` hold the pure **Weather Alert Evaluator**
 (`evaluateWeatherAlerts`) and the `WeatherAlertMonitor` the Board Session owns.
 
-- **Kinds:** storm, wind, rain (`WeatherAlertKind`; declaration order is speaking priority). The
-  level is fixed at Normal until rider settings land (`WeatherAlertLevel`, native-owned thresholds).
-- **Priority:** only the highest kind with an active event speaks (storm > wind > rain). A lower
+- **Kinds:** storm, wind, rain (`WeatherAlertKind`; declaration order is speaking priority).
+- **Settings:** App Settings `weatherRainAlertLevel` and `weatherWindAlertLevel`
+  (`off` / `sensitive` / `normal` / `severe`, default `normal`) and `weatherStormAlertEnabled`
+  (default on), set from the Weather Alerts sheet behind the gear at the top right of Weather mode.
+  Native owns each level's thresholds (`WeatherAlertLevel`) and applies the settings live
+  (`WeatherAlertSettings`); the sheet shows the gust gates in the rider's speed unit via
+  `getWeatherAlertGustThresholdsKmh`. A kind turned off forgets its event and never suppresses a
+  lower kind.
+- **Priority:** only the highest enabled kind with an active event speaks (storm > wind > rain). A lower
   kind under an active higher one still tracks its ladder, so rungs it passes are consumed silently
   and it never speaks a stale rung once the higher kind clears.
 - **Data:** the Weather Coordinator's Open-Meteo forecast adds hourly `precipitation`,
   `wind_gusts_10m` and 12 `minutely_15` slots (`precipitation`, `weather_code`, `wind_gusts_10m`).
   Slots are absolute epoch times (`utc_offset_seconds`); each value describes the period before its
   timestamp, so a slot starts at timestamp − period. `minutely_15` precipitation is ×4 to mm/h.
-- **Gate (rain, Normal):** a slot more than 1 h out counts from the hourly series at ≥50 % and
-  ≥1 mm/h; at 1 h or less from `minutely_15` at ≥1 mm/h, no probability gate. The event is the
+- **Gate (rain):** a slot more than 1 h out counts from the hourly series at the level's chance and
+  intensity (Sensitive ≥30 %, ≥0.3 mm/h; Normal ≥50 %, ≥1 mm/h; Severe only ≥70 %, ≥4 mm/h); at 1 h
+  or less from `minutely_15` at the intensity alone, no probability gate. The event is the
   earliest counting slot; its lead is measured to the slot's start.
 - **Gate (storm):** `weather_code` 95/96/99 (thunderstorm) or 56/57/66/67 (freezing drizzle/rain),
   no probability gate, in both series.

@@ -56,7 +56,7 @@ final class WeatherAlertsTests: XCTestCase {
   private var state = WeatherAlertState()
 
   private func eval(_ weather: Weather, _ nowMin: Int64) -> [Said] {
-    let result = evaluateWeatherAlerts(weather, level: .normal, nowMs: t0 + nowMin * minuteMs, state: state)
+    let result = evaluateWeatherAlerts(weather, settings: WeatherAlertSettings(), nowMs: t0 + nowMin * minuteMs, state: state)
     state = result.state
     return result.lines.map { Said($0.leadMinutes, $0.percent) }
   }
@@ -182,8 +182,8 @@ final class WeatherAlertsTests: XCTestCase {
     XCTAssertEqual(spoken, [90, 90])
   }
 
-  private func kinds(_ weather: Weather, _ nowMin: Int64) -> [String] {
-    let result = evaluateWeatherAlerts(weather, level: .normal, nowMs: t0 + nowMin * minuteMs, state: state)
+  private func kinds(_ weather: Weather, _ nowMin: Int64, _ settings: WeatherAlertSettings = WeatherAlertSettings()) -> [String] {
+    let result = evaluateWeatherAlerts(weather, settings: settings, nowMs: t0 + nowMin * minuteMs, state: state)
     state = result.state
     return result.lines.map { "\($0.kind.voiceKey) \($0.leadMinutes)" }
   }
@@ -203,7 +203,7 @@ final class WeatherAlertsTests: XCTestCase {
   }
 
   func testStormAndWindLinesCarryNoPercent() {
-    let lines = evaluateWeatherAlerts(weather(hourly: [dryHour(100, code: 95)]), level: .normal, nowMs: t0, state: state).lines
+    let lines = evaluateWeatherAlerts(weather(hourly: [dryHour(100, code: 95)]), settings: WeatherAlertSettings(), nowMs: t0, state: state).lines
     XCTAssertEqual(lines.first?.voiceAnnouncement.values, [VoiceValue(type: "duration", value: 90)])
     XCTAssertEqual(WeatherAlertLine(kind: .storm, leadMinutes: 0, percent: nil).voiceAnnouncement.key, "weather.storm.now")
   }
@@ -222,5 +222,31 @@ final class WeatherAlertsTests: XCTestCase {
       kinds(weather(quarters: [slot(100, 115, probability: nil, code: 61)], fetchedAtMs: t0 + 40 * minuteMs), 40),
       ["weather.wind 60"]
     )
+  }
+
+  func testAKindTurnedOffSaysNothingAndNeverBlocksALowerKind() {
+    let all = weather(hourly: [WeatherSlot(
+      startMs: t0 + 100 * minuteMs, endMs: t0 + 160 * minuteMs, precipitationMmPerHour: 2,
+      precipitationProbability: 80, weatherCode: 95, windGustsKmh: 60
+    )])
+    XCTAssertEqual(kinds(all, 0, WeatherAlertSettings(rain: .normal, wind: nil, storm: false)), ["weather.rain 90"])
+    state = WeatherAlertState()
+    XCTAssertEqual(kinds(all, 0, WeatherAlertSettings(rain: nil, wind: nil, storm: false)), [])
+  }
+
+  func testLevelsMoveTheRainAndWindGates() {
+    let gust = weather(hourly: [dryHour(100, gustKmh: 45)])
+    XCTAssertEqual(kinds(gust, 0), [])
+    XCTAssertEqual(kinds(gust, 0, WeatherAlertSettings(wind: .sensitive)), ["weather.wind 90"])
+    state = WeatherAlertState()
+    XCTAssertEqual(kinds(rainAt(100, 0), 0, WeatherAlertSettings(rain: .severe)), [])
+  }
+
+  func testSettingsReadOffAndUnknownLevelsAsOff() {
+    let settings = WeatherAlertSettings(settings: [
+      "weatherRainAlertLevel": "off", "weatherWindAlertLevel": "severe", "weatherStormAlertEnabled": false,
+    ])
+    XCTAssertEqual(settings, WeatherAlertSettings(rain: nil, wind: .severe, storm: false))
+    XCTAssertNil(WeatherAlertSettings(settings: ["weatherRainAlertLevel": "loud"]).rain)
   }
 }

@@ -96,6 +96,7 @@ import expo.modules.vescapecore.watch.WatchSnapshot
 import expo.modules.vescapecore.watch.WatchTiltControl
 import expo.modules.vescapecore.weather.Weather
 import expo.modules.vescapecore.weather.WeatherAlertMonitor
+import expo.modules.vescapecore.weather.WeatherAlertSettings
 import expo.modules.vescapecore.weather.WeatherCoordinator
 import expo.modules.vescapecore.watch.offsetMeters
 import expo.modules.vescapecore.watch.toWatchSettings
@@ -3605,6 +3606,11 @@ internal class BoardSessionController(private val service: CoreForegroundService
         connectionSoundsEnabled = settings.connectionSoundsEnabled
         alertCoordinator.unitSystem = settings.unitSystem
         alertFeedback.setSoundSettings(settings)
+        weatherAlerts.settings = WeatherAlertSettings.of(
+            settings.weatherRainAlertLevel,
+            settings.weatherWindAlertLevel,
+            settings.weatherStormAlertEnabled,
+        )
         // `VESC Fault Collection` is its own kill switch — deliberately not gated on
         // `boardWarningsEnabled`, so turning warnings off keeps fault evidence flowing.
         val coordinator = VescFaultCoordinator.get(service.applicationContext)

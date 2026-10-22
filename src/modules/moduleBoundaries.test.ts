@@ -23,6 +23,8 @@ const ALLOWED_EDGES = new Set([
   'board -> settings',
   'history -> settings',
   'legal -> settings',
+  // Weather Alert levels are App Settings set from the Weather mode sheet
+  'weather -> settings',
   // release reads/persists dismissed Community Message IDs through App Settings
   'release -> settings',
   // settings defaults sourced from owning domains

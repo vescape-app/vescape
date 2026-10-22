@@ -39,7 +39,7 @@ struct WindThresholds: Equatable {
 
 /// How bad weather must be to speak. Native-owned so thresholds retune without a migration.
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/weather/WeatherAlerts.kt `WeatherAlertLevel`
-enum WeatherAlertLevel {
+enum WeatherAlertLevel: String, CaseIterable {
   case sensitive, normal, severe
 
   var rain: RainThresholds {
@@ -56,6 +56,41 @@ enum WeatherAlertLevel {
     case .normal: return WindThresholds(minGustKmh: 55)
     case .severe: return WindThresholds(minGustKmh: 70)
     }
+  }
+}
+
+/// Stored values of the rain and wind alert level settings: `off` or a `WeatherAlertLevel` raw value.
+/// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/weather/WeatherAlerts.kt `WEATHER_ALERT_LEVEL_SETTINGS`
+/// @parity /modules/vescape-core/src/index.ts `WeatherAlertLevelSetting`
+let weatherAlertLevelSettings = ["off"] + WeatherAlertLevel.allCases.map(\.rawValue)
+let weatherAlertLevelDefault = "normal"
+
+/// The rider's Weather Alert settings: a nil level turns that kind off.
+/// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/weather/WeatherAlerts.kt `WeatherAlertSettings`
+struct WeatherAlertSettings: Equatable {
+  var rain: WeatherAlertLevel? = .normal
+  var wind: WeatherAlertLevel? = .normal
+  var storm = true
+
+  func enabled(_ kind: WeatherAlertKind) -> Bool {
+    switch kind {
+    case .storm: return storm
+    case .wind: return wind != nil
+    case .rain: return rain != nil
+    }
+  }
+
+  /// From App Settings; `off` and unknown level values read as off, a missing storm flag as on.
+  init(settings: [String: Any?]) {
+    rain = (settings["weatherRainAlertLevel"] as? String).flatMap(WeatherAlertLevel.init(rawValue:))
+    wind = (settings["weatherWindAlertLevel"] as? String).flatMap(WeatherAlertLevel.init(rawValue:))
+    storm = settings["weatherStormAlertEnabled"] as? Bool ?? true
+  }
+
+  init(rain: WeatherAlertLevel? = .normal, wind: WeatherAlertLevel? = .normal, storm: Bool = true) {
+    self.rain = rain
+    self.wind = wind
+    self.storm = storm
   }
 }
 
@@ -91,16 +126,17 @@ struct WeatherAlertState: Equatable {
 /// Weather Alert Evaluator: what to say about `weather` at `nowMs`, given what was said before.
 /// Pure; the caller owns the clock, the live-connection gate and the state.
 ///
-/// Per kind, the event is its earliest slot over `level` within 3 h. The first line speaks the lead
+/// Per enabled kind, the event is its earliest slot over its `settings` level within 3 h. The first line speaks the lead
 /// rounded down; after it only a closer ladder rung (2h, 1h, 30, 15, now) speaks, once. An event that
 /// vanishes keeps its state, so a downgrade is silent and a reappearance only escalates.
 ///
 /// Only the highest active kind speaks (storm > wind > rain). A lower kind under an active higher one
-/// still tracks its ladder, so its passed rungs are consumed silently rather than spoken late.
+/// still tracks its ladder, so its passed rungs are consumed silently rather than spoken late. A kind
+/// turned off forgets its event and never suppresses a lower one.
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/weather/WeatherAlerts.kt `evaluateWeatherAlerts`
 func evaluateWeatherAlerts(
   _ weather: Weather,
-  level: WeatherAlertLevel,
+  settings: WeatherAlertSettings,
   nowMs: Int64,
   state: WeatherAlertState
 ) -> (lines: [WeatherAlertLine], state: WeatherAlertState) {
@@ -109,8 +145,12 @@ func evaluateWeatherAlerts(
   var lines: [WeatherAlertLine] = []
   var higherActive = false
   for kind in WeatherAlertKind.allCases {
+    guard settings.enabled(kind) else {
+      next.events[kind] = nil
+      continue
+    }
     let prior = next.events[kind]
-    guard let event = nextEvent(kind, weather: weather, level: level, nowMs: nowMs) else {
+    guard let event = nextEvent(kind, weather: weather, settings: settings, nowMs: nowMs) else {
       if let prior, nowMs - prior.lastSeenMs >= rearmMs { next.events[kind] = nil }
       continue
     }
@@ -174,29 +214,30 @@ private func percentClip(_ probability: Int) -> Int {
 private func nextEvent(
   _ kind: WeatherAlertKind,
   weather: Weather,
-  level: WeatherAlertLevel,
+  settings: WeatherAlertSettings,
   nowMs: Int64
 ) -> (startMs: Int64, probability: Int?)? {
   let window = Int64(quarterHourWindowMin) * minuteMs
   let near = weather.quarterHourSlots.filter {
-    $0.endMs > nowMs && $0.startMs - nowMs <= window && qualifies(kind, $0, level: level, hourly: false)
+    $0.endMs > nowMs && $0.startMs - nowMs <= window && qualifies(kind, $0, settings: settings, hourly: false)
   }
   let far = weather.hourlySlots.filter {
     let lead = $0.startMs - nowMs
-    return lead > window && lead <= Int64(horizonMin) * minuteMs && qualifies(kind, $0, level: level, hourly: true)
+    return lead > window && lead <= Int64(horizonMin) * minuteMs && qualifies(kind, $0, settings: settings, hourly: true)
   }
   guard let first = (near + far).min(by: { $0.startMs < $1.startMs }) else { return nil }
   return (first.startMs, first.precipitationProbability)
 }
 
-private func qualifies(_ kind: WeatherAlertKind, _ slot: WeatherSlot, level: WeatherAlertLevel, hourly: Bool) -> Bool {
+private func qualifies(_ kind: WeatherAlertKind, _ slot: WeatherSlot, settings: WeatherAlertSettings, hourly: Bool) -> Bool {
   switch kind {
   case .storm:
     return slot.weatherCode.map(stormWeatherCodes.contains) ?? false
   case .wind:
+    guard let level = settings.wind else { return false }
     return (slot.windGustsKmh ?? 0) >= level.wind.minGustKmh
   case .rain:
-    let gate = level.rain
+    guard let gate = settings.rain?.rain else { return false }
     return slot.precipitationMmPerHour >= gate.minMmPerHour
       && (!hourly || (slot.precipitationProbability ?? 0) >= gate.minProbabilityPercent)
   }
@@ -207,13 +248,12 @@ private func qualifies(_ kind: WeatherAlertKind, _ slot: WeatherSlot, level: Wea
 /// dropout and reconnect never re-announces; `rideEnded` forgets it. Main thread only.
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/weather/WeatherAlerts.kt `WeatherAlertMonitor`
 final class WeatherAlertMonitor {
-  /// Fixed until rider-set levels land (#600).
-  private static let level = WeatherAlertLevel.normal
-
   private let isLive: () -> Bool
   private let speak: (WeatherAlertLine) -> Void
   private let nowMs: () -> Int64
   private var state = WeatherAlertState()
+  /// The rider's levels, applied from App Settings; read at the next evaluation.
+  var settings = WeatherAlertSettings()
 
   init(
     isLive: @escaping () -> Bool,
@@ -228,7 +268,7 @@ final class WeatherAlertMonitor {
   /// Evaluate `weather` (a refresh, or the known forecast at connect); silent off a live link.
   func evaluate(_ weather: Weather?) {
     guard let weather, isLive() else { return }
-    let result = evaluateWeatherAlerts(weather, level: Self.level, nowMs: nowMs(), state: state)
+    let result = evaluateWeatherAlerts(weather, settings: settings, nowMs: nowMs(), state: state)
     state = result.state
     result.lines.forEach(speak)
   }

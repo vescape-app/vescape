@@ -1,5 +1,6 @@
 package expo.modules.vescapecore.telemetry
 
+import expo.modules.vescapecore.weather.WEATHER_ALERT_LEVEL_DEFAULT
 import androidx.room.ColumnInfo
 import androidx.room.Entity
 import androidx.room.ForeignKey
@@ -517,6 +518,10 @@ data class AppSettings(
   val voice: String = "matching",
   /** `off` / `standard` / `full`. @parity /modules/vescape-core/ios/telemetry/AppDataRepository.swift `defaultSettings` */
   val voiceLevel: String = "standard",
+  /** `off` or a Weather Alert level. @parity /modules/vescape-core/ios/telemetry/AppDataRepository.swift `defaultSettings` */
+  val weatherRainAlertLevel: String = WEATHER_ALERT_LEVEL_DEFAULT,
+  val weatherWindAlertLevel: String = WEATHER_ALERT_LEVEL_DEFAULT,
+  val weatherStormAlertEnabled: Boolean = true,
   val telemetryPollRateHz: Int = 20,
   val wearPushRateHz: Int = 4,
   val wearAutoLaunchOnConnect: Boolean = true,

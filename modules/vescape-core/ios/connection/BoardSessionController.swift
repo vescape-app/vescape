@@ -1271,6 +1271,7 @@ internal final class BoardSessionController: VescGattListener {
       lastFaultDispatchAtMs = 0
     }
     boardWarningsEnabled = settings["boardWarningsEnabled"] as? Bool ?? true
+    weatherAlerts.settings = WeatherAlertSettings(settings: settings)
     alertCoordinator.unitSystem = settings["unitSystem"] as? String ?? "metric"
     // Disabled→enabled with an already-trusted link: link integrity won't transition again, so
     // schedule the config-safety read here.
@@ -1573,6 +1574,7 @@ internal final class BoardSessionController: VescGattListener {
     VescFaultCoordinator.shared.collectionEnabled = sessionSettings["vescFaultCollectionEnabled"] as? Bool ?? true
     wireFaultCaptures()
     boardWarningsEnabled = sessionSettings["boardWarningsEnabled"] as? Bool ?? true
+    weatherAlerts.settings = WeatherAlertSettings(settings: sessionSettings)
     connectionSoundsEnabled = sessionSettings["connectionSoundsEnabled"] as? Bool ?? true
     alertCoordinator.unitSystem = sessionSettings["unitSystem"] as? String ?? "metric"
     alertAudioPlayer.applySoundSettings(sessionSettings)

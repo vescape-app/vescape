@@ -1523,6 +1523,14 @@ export interface LegalPolicyReference {
  * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/TelemetryEntities.kt `AppSettings`
  * @parity /modules/vescape-core/ios/telemetry/AppDataRepository.swift `defaultSettings`
  */
+/**
+ * Stored rain/wind Weather Alert level: `off` or a native-owned threshold set.
+ * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/weather/WeatherAlerts.kt `WEATHER_ALERT_LEVEL_SETTINGS`
+ * @parity /modules/vescape-core/ios/weather/WeatherAlerts.swift `weatherAlertLevelSettings`
+ */
+export type WeatherAlertLevelSetting = 'off' | WeatherAlertLevel
+export type WeatherAlertLevel = 'sensitive' | 'normal' | 'severe'
+
 export interface AppSettings {
   liveHistoryLimit: number
   autoConnect: boolean
@@ -1596,6 +1604,11 @@ export interface AppSettings {
   /** @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/alerts/VoicePacks.kt `VOICE_LEVELS` */
   /** @parity /modules/vescape-core/ios/alerts/VoicePacks.swift `voiceLevels` */
   voiceLevel: 'off' | 'minimal' | 'standard' | 'full'
+  /** Rain Weather Alert gate; native owns each level's thresholds. */
+  weatherRainAlertLevel: WeatherAlertLevelSetting
+  /** Gust Weather Alert gate; native owns each level's thresholds. */
+  weatherWindAlertLevel: WeatherAlertLevelSetting
+  weatherStormAlertEnabled: boolean
   /** Android-only: use CompanionDeviceManager presence to connect associated boards when nearby. */
   companionPresenceEnabled: boolean
   /**
@@ -2782,6 +2795,7 @@ type VescapeCoreNativeModule = NativeEventEmitter<VescapeCoreEvents> & {
   getAppStatus(): AppStatus | null
   getWeather(): Weather | null
   refreshWeather(): void
+  getWeatherAlertGustThresholdsKmh(): Partial<Record<WeatherAlertLevel, number>>
   provisionDeviceCredential(
     serverUrl: string,
     deviceToken: string,
@@ -3508,6 +3522,12 @@ export function getWeather(): Weather | null {
  * forget: the result lands on `onWeather` like every other refresh, and a call before the first
  * forecast exists does nothing.
  */
+/** Native-owned gust gate of each wind Weather Alert level, km/h; empty under E2E. */
+export function getWeatherAlertGustThresholdsKmh(): Partial<Record<WeatherAlertLevel, number>> {
+  if (E2E_ENABLED) return {}
+  return native.getWeatherAlertGustThresholdsKmh()
+}
+
 export function refreshWeather(): void {
   if (E2E_ENABLED) return
   native.refreshWeather()

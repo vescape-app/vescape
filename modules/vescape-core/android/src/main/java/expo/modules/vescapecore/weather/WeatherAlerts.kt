@@ -45,10 +45,47 @@ internal data class WindThresholds(val minGustKmh: Double)
  *
  * @parity /modules/vescape-core/ios/weather/WeatherAlerts.swift `WeatherAlertLevel`
  */
-internal enum class WeatherAlertLevel(val rain: RainThresholds, val wind: WindThresholds) {
-    SENSITIVE(RainThresholds(30, 0.3), WindThresholds(40.0)),
-    NORMAL(RainThresholds(50, 1.0), WindThresholds(55.0)),
-    SEVERE(RainThresholds(70, 4.0), WindThresholds(70.0)),
+internal enum class WeatherAlertLevel(val key: String, val rain: RainThresholds, val wind: WindThresholds) {
+    SENSITIVE("sensitive", RainThresholds(30, 0.3), WindThresholds(40.0)),
+    NORMAL("normal", RainThresholds(50, 1.0), WindThresholds(55.0)),
+    SEVERE("severe", RainThresholds(70, 4.0), WindThresholds(70.0)),
+    ;
+
+    companion object {
+        /** Stored setting value to level; `off` and unknown values are null. */
+        fun of(key: String): WeatherAlertLevel? = entries.firstOrNull { it.key == key }
+    }
+}
+
+/**
+ * Stored values of the rain and wind alert level settings: `off` or a [WeatherAlertLevel] key.
+ *
+ * @parity /modules/vescape-core/ios/weather/WeatherAlerts.swift `weatherAlertLevelSettings`
+ * @parity /modules/vescape-core/src/index.ts `WeatherAlertLevelSetting`
+ */
+internal val WEATHER_ALERT_LEVEL_SETTINGS = listOf("off") + WeatherAlertLevel.entries.map { it.key }
+internal const val WEATHER_ALERT_LEVEL_DEFAULT = "normal"
+
+/**
+ * The rider's Weather Alert settings: a null level turns that kind off.
+ *
+ * @parity /modules/vescape-core/ios/weather/WeatherAlerts.swift `WeatherAlertSettings`
+ */
+internal data class WeatherAlertSettings(
+    val rain: WeatherAlertLevel? = WeatherAlertLevel.NORMAL,
+    val wind: WeatherAlertLevel? = WeatherAlertLevel.NORMAL,
+    val storm: Boolean = true,
+) {
+    fun enabled(kind: WeatherAlertKind): Boolean = when (kind) {
+        WeatherAlertKind.STORM -> storm
+        WeatherAlertKind.WIND -> wind != null
+        WeatherAlertKind.RAIN -> rain != null
+    }
+
+    companion object {
+        fun of(rainLevel: String, windLevel: String, stormEnabled: Boolean) =
+            WeatherAlertSettings(WeatherAlertLevel.of(rainLevel), WeatherAlertLevel.of(windLevel), stormEnabled)
+    }
 }
 
 /**
@@ -83,18 +120,19 @@ private class WeatherEvent(val startMs: Long, val probability: Int?)
  * Weather Alert Evaluator: what to say about [weather] at [nowMs], given what was said before.
  * Pure; the caller owns the clock, the live-connection gate and the state.
  *
- * Per kind, the event is its earliest slot over [level] within 3 h. The first line speaks the lead
+ * Per enabled kind, the event is its earliest slot over its [settings] level within 3 h. The first line speaks the lead
  * rounded down; after it only a closer ladder rung (2h, 1h, 30, 15, now) speaks, once. An event
  * that vanishes keeps its state, so a downgrade is silent and a reappearance only escalates.
  *
  * Only the highest active kind speaks (storm > wind > rain). A lower kind under an active higher one
- * still tracks its ladder, so its passed rungs are consumed silently rather than spoken late.
+ * still tracks its ladder, so its passed rungs are consumed silently rather than spoken late. A kind
+ * turned off forgets its event and never suppresses a lower one.
  *
  * @parity /modules/vescape-core/ios/weather/WeatherAlerts.swift `evaluateWeatherAlerts`
  */
 internal fun evaluateWeatherAlerts(
     weather: Weather,
-    level: WeatherAlertLevel,
+    settings: WeatherAlertSettings,
     nowMs: Long,
     state: WeatherAlertState,
 ): WeatherAlertResult {
@@ -104,8 +142,12 @@ internal fun evaluateWeatherAlerts(
     val lines = mutableListOf<WeatherAlertLine>()
     var higherActive = false
     for (kind in WeatherAlertKind.entries) {
+        if (!settings.enabled(kind)) {
+            events = events - kind
+            continue
+        }
         val prior = events[kind]
-        val event = nextEvent(kind, weather, level, nowMs)
+        val event = nextEvent(kind, weather, settings, nowMs)
         if (event == null) {
             if (prior != null && nowMs - prior.lastSeenMs >= REARM_MS) events = events - kind
             continue
@@ -163,28 +205,27 @@ private fun ladderRung(lead: Int): Int? = when {
 /** Nearest ten, 10–100: the `percent` clips a line can speak. */
 private fun percentClip(probability: Int): Int = ((probability / 10.0).roundToInt() * 10).coerceIn(10, 100)
 
-private fun nextEvent(kind: WeatherAlertKind, weather: Weather, level: WeatherAlertLevel, nowMs: Long): WeatherEvent? {
+private fun nextEvent(kind: WeatherAlertKind, weather: Weather, settings: WeatherAlertSettings, nowMs: Long): WeatherEvent? {
     val window = QUARTER_HOUR_WINDOW_MIN * MINUTE_MS
     val near = weather.quarterHourSlots.filter {
-        it.endMs > nowMs && it.startMs - nowMs <= window && qualifies(kind, it, level, hourly = false)
+        it.endMs > nowMs && it.startMs - nowMs <= window && qualifies(kind, it, settings, hourly = false)
     }
     val far = weather.hourlySlots.filter {
         val lead = it.startMs - nowMs
-        lead > window && lead <= HORIZON_MIN * MINUTE_MS && qualifies(kind, it, level, hourly = true)
+        lead > window && lead <= HORIZON_MIN * MINUTE_MS && qualifies(kind, it, settings, hourly = true)
     }
     val first = (near + far).minByOrNull { it.startMs } ?: return null
     return WeatherEvent(first.startMs, first.precipitationProbability)
 }
 
-private fun qualifies(kind: WeatherAlertKind, slot: WeatherSlot, level: WeatherAlertLevel, hourly: Boolean): Boolean =
+private fun qualifies(kind: WeatherAlertKind, slot: WeatherSlot, settings: WeatherAlertSettings, hourly: Boolean): Boolean =
     when (kind) {
         WeatherAlertKind.STORM -> slot.weatherCode in STORM_WEATHER_CODES
-        WeatherAlertKind.WIND -> (slot.windGustsKmh ?: 0.0) >= level.wind.minGustKmh
-        WeatherAlertKind.RAIN -> {
-            val gate = level.rain
+        WeatherAlertKind.WIND -> settings.wind?.let { (slot.windGustsKmh ?: 0.0) >= it.wind.minGustKmh } ?: false
+        WeatherAlertKind.RAIN -> settings.rain?.rain?.let { gate ->
             slot.precipitationMmPerHour >= gate.minMmPerHour &&
                 (!hourly || (slot.precipitationProbability ?: 0) >= gate.minProbabilityPercent)
-        }
+        } ?: false
     }
 
 /**
@@ -201,20 +242,18 @@ internal class WeatherAlertMonitor(
 ) {
     private var state = WeatherAlertState()
 
+    /** The rider's levels, applied from App Settings; read at the next evaluation. */
+    var settings = WeatherAlertSettings()
+
     /** Evaluate [weather] (a refresh, or the known forecast at connect); silent off a live link. */
     fun evaluate(weather: Weather?) {
         if (weather == null || !isLive()) return
-        val result = evaluateWeatherAlerts(weather, LEVEL, nowMs(), state)
+        val result = evaluateWeatherAlerts(weather, settings, nowMs(), state)
         state = result.state
         result.lines.forEach(speak)
     }
 
     fun rideEnded() {
         state = WeatherAlertState()
-    }
-
-    private companion object {
-        /** Fixed until rider-set levels land (#600). */
-        val LEVEL = WeatherAlertLevel.NORMAL
     }
 }

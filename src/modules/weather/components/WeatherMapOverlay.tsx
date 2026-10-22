@@ -6,6 +6,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { IconButton } from '@/components/base/IconButton'
 import { Text } from '@/components/base/Text'
 import { theme } from '@/constants/theme'
+import { WeatherAlertsButton } from '@/modules/weather/components/WeatherAlertsSettings'
 import { WeatherHourlyStrip } from '@/modules/weather/components/WeatherHourlyStrip'
 import { WeatherPill } from '@/modules/weather/components/WeatherPill'
 import { WeatherRadarTimeline } from '@/modules/weather/components/WeatherRadarTimeline'
@@ -49,6 +50,7 @@ export function WeatherMapOverlay({ visible, top, pillTop, onExit }: WeatherMapO
         loading={radarLoading}
         style={[styles.weatherRefreshButton, { top }]}
       />
+      <WeatherAlertsButton style={[styles.weatherAlertsButton, { top }]} />
       <View pointerEvents="none" style={[styles.weatherExpandedPill, { top: pillTop }]}>
         <WeatherPill expanded onPress={() => undefined} />
         {radarError ? <Text style={styles.radarError}>{radarError}</Text> : null}
@@ -85,6 +87,11 @@ const styles = StyleSheet.create({
     zIndex: 32,
   },
   weatherRefreshButton: {
+    position: 'absolute',
+    right: 56,
+    zIndex: 30,
+  },
+  weatherAlertsButton: {
     position: 'absolute',
     right: 10,
     zIndex: 30,
