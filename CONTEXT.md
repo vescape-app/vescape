@@ -135,6 +135,10 @@ _Avoid_: Save area, safe area, hidden zone
 The persisted list of past ride recordings and their derived samples, routes, markers, and summaries.
 _Avoid_: Playback, logs
 
+**Maintenance Job**:
+App-owned work that brings already-stored data up to date with the current app, such as rebuilding ride summaries or filling in missing ride weather. Each job has its own version; a job whose stored data predates its version is stale and runs again on its own, without the Rider asking. Jobs run one at a time and never change the ride being recorded.
+_Avoid_: Background job, data upgrade, migration, rebuild history, task
+
 **Ride History Marker**:
 A map-visible point in Ride History that explains a ride boundary, connection loss, interruption, or notable recording condition.
 _Avoid_: Telemetry marker, debug marker, log point
