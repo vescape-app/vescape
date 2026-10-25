@@ -5,14 +5,14 @@ description: Record a short Android emulator demo for Discord and propose a casu
 
 # Clip
 
-Produce a short, upload-ready MP4 with app audio and one ready-to-copy Discord message. Record silently only when the user requests it.
+Produce a short, upload-ready MP4 with app audio and two ready-to-copy Discord messages, one in Polish and one in English. Record silently only when the user requests it.
 
 ## Choose the flow
 
 - Use the user's instructions first, then infer the feature, starting screen, interactions, and caption from the conversation. Ask only when the intended demo remains ambiguous.
 - Default to a 5–15 second clip showing one feature. Hold the starting screen for at least 1 second; leave at least 1 second between interactions and after the last interaction. Allow transitions to finish and the result to be readable. Honor longer requested holds.
 - If the flow needs more time, shorten its scope or split into clips rather than speeding through interactions. Keep playback at normal speed.
-- Draft text from supplied wording and relevant context. Match the user's language and casual voice, with light humor when it fits. Prefer 1–3 short sentences, no greeting or sign-off, and at most a couple of emojis. Mention only supported capabilities; distinguish what the video shows from contextual extras.
+- Draft Polish and English versions from supplied wording and relevant context. Keep the same meaning in both and match the user's casual voice, with light humor when it fits. Prefer 1–3 short sentences per version, no greeting or sign-off, and at most a couple of emojis. Mention only supported capabilities; distinguish what the video shows from contextual extras.
 
 ## Record
 
@@ -31,6 +31,6 @@ Produce a short, upload-ready MP4 with app audio and one ready-to-copy Discord m
 
 ## Deliver
 
-Return a clickable local video link, duration and file size, followed by the proposed Discord message. Keep the response short. Reveal the file in the file manager only when asked. Posting to Discord requires an explicit request to send it.
+After verifying the final export, reveal the finished MP4 in Finder with `open -R <absolute-path>` so the user can send it right away. Return a clickable local video link, duration and file size, followed by the two proposed Discord messages labeled `PL` and `EN`. Keep the response short. Posting to Discord requires an explicit request to send it.
 
 Example invocation: `/clip 1s on telemetry, tap weather, 4s in weather. Caption: idk if you know, weather is also on the watch.`
