@@ -546,6 +546,7 @@ interface TelemetryDao {
     clearDiagnosticEvents()
     clearExclusions()
     clearRideTrackPoints()
+    clearWeatherObservations()
   }
 
   @Transaction
@@ -555,7 +556,58 @@ interface TelemetryDao {
     subtractProtectedTelemetryRanges(requested, protectedRanges).forEach { range ->
       deleteRangeAllDevices(range.startMs, range.endMs)
     }
+    // A Favorite keeps the rows its weather reads: every row inside it, and an applicable start row.
+    val weatherProtected = protectedRanges.map {
+      TelemetryTimeRange(it.startMs - WEATHER_OBSERVATION_FRESHNESS_MS, it.endMs)
+    }
+    subtractProtectedTelemetryRanges(requested, weatherProtected).forEach { range ->
+      deleteWeatherObservations(range.startMs, range.endMs)
+    }
     clearDiagnosticEvents()
+  }
+
+  // Weather Observations (`weather_observations`)
+
+  @Query("DELETE FROM weather_observations")
+  suspend fun clearWeatherObservations()
+
+  @Query("DELETE FROM weather_observations WHERE observed_at_ms >= :startMs AND observed_at_ms <= :endMs")
+  suspend fun deleteWeatherObservations(startMs: Long, endMs: Long)
+
+  /** @parity /modules/vescape-core/ios/telemetry/WeatherObservations.swift `latestWeatherObservation` */
+  @Query("SELECT * FROM weather_observations WHERE observed_at_ms <= :atMs ORDER BY observed_at_ms DESC LIMIT 1")
+  suspend fun getLatestWeatherObservation(atMs: Long): WeatherObservationEntity?
+
+  @Insert(onConflict = OnConflictStrategy.IGNORE)
+  suspend fun insertWeatherObservation(row: WeatherObservationEntity): Long
+
+  /**
+   * The last row at or before [startMs] plus every row up to [endMs]: what a ride, a Favorite or a
+   * whole History page spans.
+   * @parity /modules/vescape-core/ios/telemetry/WeatherObservations.swift `weatherObservationsSpanning`
+   */
+  @Query(
+    """
+    SELECT * FROM weather_observations
+    WHERE observed_at_ms <= :endMs
+      AND observed_at_ms >= COALESCE(
+        (SELECT MAX(observed_at_ms) FROM weather_observations WHERE observed_at_ms <= :startMs),
+        :startMs)
+    ORDER BY observed_at_ms
+    """,
+  )
+  suspend fun getWeatherObservationsSpanning(startMs: Long, endMs: Long): List<WeatherObservationEntity>
+
+  /**
+   * Store [observation] when it earns a row after the newest one at or before it. The read and
+   * the insert share one transaction so two writers cannot both decide on a stale previous row.
+   * @parity /modules/vescape-core/ios/telemetry/WeatherObservations.swift `storeWeatherObservation`
+   */
+  @Transaction
+  suspend fun storeWeatherObservation(observation: WeatherObservation, force: Boolean): Boolean {
+    val previous = getLatestWeatherObservation(observation.observedAtMs)?.toObservation()
+    if (!shouldStoreWeatherObservation(previous, observation, force)) return false
+    return insertWeatherObservation(WeatherObservationEntity.of(observation)) != -1L
   }
 
   @Transaction

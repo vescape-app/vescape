@@ -1316,6 +1316,8 @@ export interface Favorite {
   batteryUsedWh: number
   /** Native coarse route projection; available without loading the surrounding History page. */
   routePoints: RideRoutePoint[]
+  /** Weather over the pinned range, or null when no stored observation applies. */
+  weather: RideWeather | null
 }
 
 /**
@@ -1492,6 +1494,26 @@ export interface RideHistorySession {
   maxLongitude: number | null
   boundaryBefore: TelemetryMinuteBucket['boundaryBefore']
   routePoints: RideRoutePoint[]
+  /** Weather over the ride, or null when no stored observation applies. */
+  weather: RideWeather | null
+}
+
+/**
+ * Weather of a ride or Favorite, folded natively from stored Weather Observations. Approximate by
+ * design: the conditions the app last fetched, not a measurement on the Board.
+ *
+ * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/WeatherObservations.kt `RideWeather`
+ * @parity /modules/vescape-core/ios/telemetry/WeatherObservations.swift `RideWeather`
+ */
+export interface RideWeather {
+  /** Time-dominant condition; the night form when most of the ride was after dark. */
+  icon: WeatherIconSlug
+  minTemperatureC: number
+  maxTemperatureC: number
+  /** Strongest gust, km/h in 5 km/h steps; null when no observation carried one. */
+  maxGustKmh: number | null
+  /** Minutes under a rain, drizzle or storm code. */
+  rainMinutes: number
 }
 
 /**

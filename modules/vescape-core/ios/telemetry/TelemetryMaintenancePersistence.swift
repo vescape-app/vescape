@@ -55,6 +55,7 @@ struct TelemetryMaintenancePersistence {
         try db.execute(sql: "DELETE FROM telemetry_markers")
         try db.execute(sql: "DELETE FROM metric_exclusion_ranges")
         try db.execute(sql: "DELETE FROM diagnostic_events")
+        try db.execute(sql: "DELETE FROM weather_observations")
       }
     } else {
       let ranges = subtractProtectedTelemetryRanges(
@@ -68,6 +69,13 @@ struct TelemetryMaintenancePersistence {
           try db.execute(sql: "DELETE FROM telemetry_minute_buckets WHERE last_sample_at_ms >= ? AND first_sample_at_ms <= ?", arguments: [range.startMs, range.endMs])
           try db.execute(sql: "DELETE FROM telemetry_markers WHERE occurred_at_ms >= ? AND occurred_at_ms <= ?", arguments: [range.startMs, range.endMs])
           try db.execute(sql: "DELETE FROM metric_exclusion_ranges WHERE end_ms >= ? AND start_ms <= ?", arguments: [range.startMs, range.endMs])
+        }
+        // A Favorite keeps the rows its weather reads: every row inside it, and an applicable start row.
+        let weatherProtected = protectedRanges.map {
+          TelemetryTimeRange(startMs: $0.startMs - weatherObservationFreshnessMs, endMs: $0.endMs)
+        }
+        for range in subtractProtectedTelemetryRanges(deleteRange: .init(startMs: Int64.min, endMs: Int64.max), protectedRanges: weatherProtected) {
+          try db.execute(sql: "DELETE FROM weather_observations WHERE observed_at_ms >= ? AND observed_at_ms <= ?", arguments: [range.startMs, range.endMs])
         }
       }
     }

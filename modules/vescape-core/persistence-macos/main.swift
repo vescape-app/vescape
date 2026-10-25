@@ -1324,6 +1324,7 @@ try runRideExportContract()
 try runRideCsvContract()
 try runBucketRoutePreviewContract()
 try runRecordingFlushTimerContract()
+try runWeatherObservationContract()
 
 print("recording-contract macOS runtimeMs=\(Int(Date().timeIntervalSince(started) * 1000)) scenario=\(fixture["scenario"]!)")
 

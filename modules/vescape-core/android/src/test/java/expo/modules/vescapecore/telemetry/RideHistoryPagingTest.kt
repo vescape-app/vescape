@@ -150,7 +150,7 @@ class RideHistoryPagingTest {
   @Test
   fun bridgeIdentityIsBoardAndTimeRange() {
     val session = groupRideSessions(listOf(bucket(start = base, end = base + 10_000L)), emptyList(), gapMs)
-      .map { rideSessionMap(it, emptyMap()) }.single()
+      .map { rideSessionMap(it, emptyMap(), weather = null) }.single()
     assertEquals("board-1:$base:${base + 10_000L}", session["id"])
     assertEquals(false, session.containsKey("recordingId"))
   }

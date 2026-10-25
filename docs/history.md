@@ -50,6 +50,46 @@ Main files:
 - `gap`: long persistence gap, currently more than `90_000ms`.
 - `error`: explicit board/session error.
 
+## Ride weather
+
+Each ride and Favorite carries the weather it was ridden in, so range can be compared against
+conditions. It is an add-on, not ride data: missing or approximate weather is expected.
+
+**Storage.** `weather_observations` holds one row per stored observation of current conditions,
+keyed on the Open-Meteo `current.time` (epoch ms): whole `temperature_c`, WMO `weather_code`,
+`gust_kmh` rounded to 5 km/h (null when the response omits it) and `is_day`. Rows carry no Board,
+ride or coordinates, so Privacy Zones never apply. `WeatherCoordinator` stays the only source; every
+successful refresh, Board connected or not, offers its conditions to the process-wide
+`WeatherObservationRecorder`, which writes off the main thread:
+
+- the first successful refresh after process launch writes a row;
+- later refreshes write only when the normalized conditions (temperature, code, gust, day/night)
+  differ from the newest stored row at or before them, or when that row is at least 24 h older;
+- an observation timestamp already stored is the same observation and is never written again, so a
+  cached API answer does not renew freshness; a failed fetch writes nothing.
+
+Restore and Clear all go through `WeatherObservationFence`: a write whose observation landed before
+the fence is dropped rather than reaching the replacement database. Clear all removes observations
+except those a Favorite reads (inside it, or up to 24 h before its start). Backups carry the table
+like any other.
+
+**Read.** A ride's weather is the last row at or before its start plus every row inside it. The
+History page reads the rows spanning the whole page once and assigns them in memory; Favorites read
+their own range. Native folds the rows into `weather` on the ride/Favorite payload, each row in
+effect until the next row or the ride end:
+
+- `icon`: the native `weatherIcon()` slug with the most time in the ride; the night form when most of
+  that time had `is_day = 0`. Five minutes of rain in a two-hour sunny ride shows sun.
+- `minTemperatureC`/`maxTemperatureC`, `maxGustKmh`, and `rainMinutes` (time under a rain, drizzle
+  or storm code).
+
+A start row older than 24 h does not apply; with no other row inside the ride, `weather` is null.
+
+**Display.** The ride card date line and the list row show the icon and temperature, one value when
+the spread is under 3 °C (`14°C`) and a range otherwise (`8–20°C`). The ride stats bar adds
+temperature, max gust and rain minutes (when above zero). Units follow the rider's unit setting.
+Nothing renders without weather.
+
 ## Recording Rules
 
 A Ride Recording is started by a Board, and captures both streams: board telemetry while the Board is connected, and the Ride Track for as long as the recording is open.

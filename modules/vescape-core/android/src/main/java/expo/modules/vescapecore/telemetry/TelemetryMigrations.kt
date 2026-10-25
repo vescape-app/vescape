@@ -1734,6 +1734,26 @@ internal object TelemetryMigrations {
         db.execSQL("DROP TABLE IF EXISTS ride_recordings")
     }
 
+    /**
+     * Weather Observations: rows of current conditions keyed on observation time, tied to no
+     * Board, ride or place.
+     * @parity /modules/vescape-core/ios/telemetry/PersistenceSchema.swift `createWeatherObservations`
+     */
+    internal val MIGRATION_52_53 = migration(52, 53) { db ->
+        db.execSQL(
+          """
+          CREATE TABLE IF NOT EXISTS weather_observations (
+            observed_at_ms INTEGER NOT NULL,
+            temperature_c INTEGER NOT NULL,
+            weather_code INTEGER NOT NULL,
+            gust_kmh INTEGER,
+            is_day INTEGER NOT NULL,
+            PRIMARY KEY(observed_at_ms)
+          )
+          """.trimIndent(),
+        )
+    }
+
     /** @parity /modules/vescape-core/ios/telemetry/TelemetryDatabase.swift `rebuildRideTrackWithoutRecordingId` */
     private fun rebuildRideTrackWithoutRecordingId(db: TelemetryMigrationDatabase) {
       val columns = "id, board_id, fix_at_ms, latitude_e7, longitude_e7, accuracy_cm, " +
@@ -1954,6 +1974,7 @@ internal object TelemetryMigrations {
       MIGRATION_49_50,
       MIGRATION_50_51,
       MIGRATION_51_52,
+      MIGRATION_52_53,
     )
 
 }

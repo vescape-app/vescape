@@ -92,8 +92,13 @@ internal suspend fun readRideHistoryPage(
       val cutoff = sorted.getOrNull(limit - 1)?.firstBucketStartMs
       val page = if (cutoff == null) sorted else sorted.filter { it.firstBucketStartMs >= cutoff }
       val hasMore = hasOlderBuckets || (cutoff != null && sorted.any { it.firstBucketStartMs < cutoff })
+      // One weather read per page; each ride picks its rows from the page span in memory.
+      val weather = if (page.isEmpty()) emptyList() else dao.getWeatherObservationsSpanning(
+        page.minOf { it.startAtMs },
+        page.maxOf { it.endAtMs },
+      ).map { it.toObservation() }
       return mapOf(
-        "sessions" to page.map { rideSessionMap(it, boardNames) },
+        "sessions" to page.map { rideSessionMap(it, boardNames, summarizeRideWeather(weather, it.startAtMs, it.endAtMs)) },
         "hasMore" to hasMore,
         "nextCursorBeforeMs" to if (hasMore) page.lastOrNull()?.firstBucketStartMs else null,
       )
@@ -237,7 +242,11 @@ private fun rideDistanceDeltaM(bucket: TelemetryMinuteBucketEntity): Double? {
 }
 
 /** @parity /modules/vescape-core/src/index.ts `RideHistorySession` */
-internal fun rideSessionMap(session: RideSessionAggregate, boardNames: Map<String, String>): Map<String, Any?> {
+internal fun rideSessionMap(
+  session: RideSessionAggregate,
+  boardNames: Map<String, String>,
+  weather: RideWeather?,
+): Map<String, Any?> {
   val avgSpeed = if (session.avgSpeedSampleCount > 0) session.avgSpeedWeightedSum / session.avgSpeedSampleCount else 0.0
   return mapOf(
     "id" to "${session.boardId.ifBlank { "unknown" }}:${session.startAtMs}:${session.endAtMs}",
@@ -258,6 +267,7 @@ internal fun rideSessionMap(session: RideSessionAggregate, boardNames: Map<Strin
     "minLatitude" to session.minLatitude, "maxLatitude" to session.maxLatitude,
     "minLongitude" to session.minLongitude, "maxLongitude" to session.maxLongitude,
     "boundaryBefore" to session.boundaryBefore,
+    "weather" to weather?.toMap(),
     "routePoints" to session.routePoints.map { buildMap<String, Any> { put("latitude", it.latitude); put("longitude", it.longitude); if (it.breakBefore) put("breakBefore", true) } },
   )
 }

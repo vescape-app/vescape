@@ -7,6 +7,8 @@ import { HistoryRideLabel } from '@/modules/history/components/HistoryRideLabel'
 import { RouteSparkline } from '@/modules/history/components/RouteSparkline'
 import { HISTORY_RIDE_ROW_HEIGHT } from '@/modules/history/lib/historyList'
 import type { RoutePoint } from '@/modules/history/lib/routePreview'
+import { RideWeatherLabel } from '@/modules/history/components/RideWeatherLabel'
+import type { RideWeather } from 'vescape-core'
 
 const PREVIEW_WIDTH = 86
 const ROW_HEIGHT = HISTORY_RIDE_ROW_HEIGHT
@@ -21,12 +23,24 @@ interface HistoryRideRowProps {
   accent?: ThemeColor
   onPress: () => void
   testID?: string
+  /** Ride weather beside the stats; null renders nothing. */
+  weather?: RideWeather | null
 }
 
 /** One ride as a list row: route thumbnail, identity, chevron. The ride list and the History drawer
  *  share it so a ride looks the same wherever it is listed. */
 export const HistoryRideRow = forwardRef<View, HistoryRideRowProps>(function HistoryRideRow(
-  { title, subtitle, details, routePoints, selected = false, accent, onPress, testID },
+  {
+    title,
+    subtitle,
+    details,
+    routePoints,
+    selected = false,
+    accent,
+    onPress,
+    testID,
+    weather = null,
+  },
   ref,
 ) {
   return (
@@ -56,6 +70,9 @@ export const HistoryRideRow = forwardRef<View, HistoryRideRowProps>(function His
       <View style={styles.main}>
         <HistoryRideLabel title={title} subtitle={subtitle} details={details} fill={false} />
       </View>
+      {weather ? (
+        <RideWeatherLabel weather={weather} color={theme.neutral.textSecondary} fontSize={12} />
+      ) : null}
       <CaretRightIcon size={16} color={theme.neutral.textDim} weight="bold" />
     </Pressable>
   )

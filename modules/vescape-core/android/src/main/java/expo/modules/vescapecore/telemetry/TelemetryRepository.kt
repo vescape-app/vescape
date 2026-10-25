@@ -685,7 +685,7 @@ class TelemetryRepository private constructor(context: Context) {
     favoriteMediaStore.reconcileAll()
     val boardNames = dao.getBoards().associate { it.id to it.name }
     dao.getFavorites().map { favorite ->
-      favorite.toMap(boardNames[favorite.boardId], favoriteRoutePoints(favorite))
+      favorite.toMap(boardNames[favorite.boardId], favoriteRoutePoints(favorite), dao.rideWeather(favorite.startMs, favorite.endMs))
     }
   }
 
@@ -714,6 +714,7 @@ class TelemetryRepository private constructor(context: Context) {
     favorite.toMap(
       boardId?.let { boardNamesById()[it] },
       favoriteRoutePoints(favorite),
+      dao.rideWeather(favorite.startMs, favorite.endMs),
     )
   }
 
@@ -740,6 +741,7 @@ class TelemetryRepository private constructor(context: Context) {
     updated.toMap(
       dao.getBoards().firstOrNull { it.id == updated.boardId }?.name,
       favoriteRoutePoints(updated),
+      dao.rideWeather(updated.startMs, updated.endMs),
     )
   }
 
@@ -815,7 +817,7 @@ class TelemetryRepository private constructor(context: Context) {
     if (protected.isNotEmpty()) {
       promoteProtectedRangeStarts(protected, boardId = null)
     }
-    maintenancePersistence.clear(protected)
+    WeatherObservationFence.process.fence { maintenancePersistence.clear(protected) }
     synchronized(lock) {
       pending.clear()
       pendingMarkers.clear()

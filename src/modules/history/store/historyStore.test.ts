@@ -68,6 +68,7 @@ function sessionFromBucket(bucket: TelemetryMinuteBucket): RideHistorySession {
     maxLongitude: bucket.firstLongitude,
     boundaryBefore: bucket.boundaryBefore,
     routePoints: point,
+    weather: null,
   }
 }
 interface HistoryRangeResult {
@@ -432,6 +433,7 @@ test('loads a small GPS preview when selected ride has no bucket coordinate', as
     minLongitude: null,
     maxLongitude: null,
     routePoints: [],
+    weather: null,
     id: `${ride.boardId}:${ride.startAtMs}:${ride.endAtMs}`,
   })
   await Promise.resolve()

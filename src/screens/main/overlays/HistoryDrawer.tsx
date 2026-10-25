@@ -205,6 +205,7 @@ export function HistoryDrawer({
                     subtitle={details}
                     routePoints={session.routePoints}
                     color={theme.palette.purple.color}
+                    weather={session.weather}
                     onPress={() => openRide(session)}
                   />
                 )

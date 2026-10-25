@@ -109,7 +109,7 @@ final class RideHistoryGroupingTests: XCTestCase {
   func testBridgeIdentityIsBoardAndTimeRange() throws {
     let session = try XCTUnwrap(
       try groupRideSessions(buckets: [bucket(start: base, end: base + 10_000)], markers: [], gapMs: gapMs).first)
-    let map = rideSessionMap(session, boardNames: [:])
+    let map = rideSessionMap(session, boardNames: [:], weather: nil)
     XCTAssertEqual(map["id"] as? String, "board-1:\(base):\(base + 10_000)")
     XCTAssertFalse(map.keys.contains("recordingId"))
   }

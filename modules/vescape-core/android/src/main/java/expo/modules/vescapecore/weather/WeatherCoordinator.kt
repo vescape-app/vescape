@@ -160,7 +160,7 @@ class WeatherCoordinator internal constructor(
         fun forecastUrl(latitude: Double, longitude: Double): String =
             "https://api.open-meteo.com/v1/forecast" +
                 "?latitude=$latitude&longitude=$longitude" +
-                "&current=temperature_2m,weather_code,precipitation_probability" +
+                "&current=temperature_2m,weather_code,precipitation_probability,wind_gusts_10m,is_day" +
                 "&hourly=temperature_2m,weather_code,precipitation_probability,precipitation,wind_gusts_10m" +
                 "&minutely_15=precipitation,weather_code,wind_gusts_10m" +
                 "&forecast_minutely_15=$FORECAST_QUARTER_HOURS" +

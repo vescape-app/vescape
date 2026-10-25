@@ -135,6 +135,10 @@ _Avoid_: Save area, safe area, hidden zone
 The persisted list of past ride recordings and their derived samples, routes, markers, and summaries.
 _Avoid_: Playback, logs
 
+**Ride Weather**:
+The weather a ride or **Favorite** was ridden in, folded natively from stored Weather Observations over its time range: the time-dominant condition, the temperature range, the strongest gust and the minutes of rain. Approximate by design: it is the conditions the app last fetched for the area, belongs to time rather than to a **Board** or place, and a ride without an applicable observation simply has none.
+_Avoid_: ride forecast, weather log
+
 **Maintenance Job**:
 App-owned work that brings already-stored data up to date with the current app, such as rebuilding ride summaries or filling in missing ride weather. Each job has its own version; a job whose stored data predates its version is stale and runs again on its own, without the Rider asking. Jobs run one at a time and never change the ride being recorded.
 _Avoid_: Background job, data upgrade, migration, rebuild history, task

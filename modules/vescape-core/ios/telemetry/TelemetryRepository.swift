@@ -340,8 +340,16 @@ internal final class TelemetryRepository {
     return try FavoriteStore.shared.list().map { favorite in
       favorite.toMap(
         boardName: favorite.boardId.flatMap { boardNames[$0] },
-        routePoints: try favoriteRoutePoints(favorite)
+        routePoints: try favoriteRoutePoints(favorite),
+        weather: try favoriteWeather(favorite)
       )
+    }
+  }
+
+  /// Ride weather over the pinned range, read like a History ride's.
+  private func favoriteWeather(_ favorite: Favorite) throws -> RideWeather? {
+    try TelemetryDatabase.requirePool().read { db in
+      try rideWeather(db, startMs: favorite.startMs, endMs: favorite.endMs)
     }
   }
 
@@ -379,7 +387,8 @@ internal final class TelemetryRepository {
     let boardNames = try Self.boardNamesById()
     return favorite.toMap(
       boardName: favorite.boardId.flatMap { boardNames[$0] },
-      routePoints: try favoriteRoutePoints(favorite)
+      routePoints: try favoriteRoutePoints(favorite),
+      weather: try favoriteWeather(favorite)
     )
   }
 
@@ -432,7 +441,8 @@ internal final class TelemetryRepository {
     let boardNames = try Self.boardNamesById()
     return stored.toMap(
       boardName: stored.boardId.flatMap { boardNames[$0] },
-      routePoints: try favoriteRoutePoints(stored)
+      routePoints: try favoriteRoutePoints(stored),
+      weather: try favoriteWeather(stored)
     )
   }
 
@@ -556,7 +566,9 @@ internal final class TelemetryRepository {
     flushBlocking()
     let pool = try TelemetryDatabase.requirePool()
     let protected = favoriteTelemetryRanges()
-    try TelemetryMaintenancePersistence(writer: pool).clear(protectedRanges: protected)
+    try WeatherObservationFence.process.fence {
+      try TelemetryMaintenancePersistence(writer: pool).clear(protectedRanges: protected)
+    }
     queue.sync {
       pendingStates.removeAll()
       pendingPersisted.removeAll()
