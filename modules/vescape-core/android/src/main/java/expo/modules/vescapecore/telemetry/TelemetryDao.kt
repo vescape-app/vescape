@@ -558,7 +558,7 @@ interface TelemetryDao {
     }
     // A Favorite keeps the rows its weather reads: every row inside it, and an applicable start row.
     val weatherProtected = protectedRanges.map {
-      TelemetryTimeRange(it.startMs - WEATHER_OBSERVATION_FRESHNESS_MS, it.endMs)
+      TelemetryTimeRange(weatherProtectionStart(it.startMs), it.endMs)
     }
     subtractProtectedTelemetryRanges(requested, weatherProtected).forEach { range ->
       deleteWeatherObservations(range.startMs, range.endMs)

@@ -14,6 +14,14 @@ import kotlin.math.roundToInt
  */
 internal const val WEATHER_OBSERVATION_FRESHNESS_MS = 24 * 60 * 60 * 1_000L
 
+/**
+ * Earliest observation a Favorite starting at [startMs] may read; saturates for the protect-all range.
+ * @parity /modules/vescape-core/ios/telemetry/WeatherObservations.swift `weatherProtectionStart`
+ */
+internal fun weatherProtectionStart(startMs: Long): Long =
+  if (startMs < Long.MIN_VALUE + WEATHER_OBSERVATION_FRESHNESS_MS) Long.MIN_VALUE
+  else startMs - WEATHER_OBSERVATION_FRESHNESS_MS
+
 /** Gusts are stored at this granularity so forecast noise does not read as a condition change. */
 private const val GUST_STEP_KMH = 5
 

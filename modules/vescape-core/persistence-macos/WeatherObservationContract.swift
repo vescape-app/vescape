@@ -60,6 +60,8 @@ func runWeatherObservationContract() throws {
   }
   try TelemetryMaintenancePersistence(writer: queue).clear(protectedRanges: [TelemetryTimeRange(startMs: 21 * day, endMs: 22 * day)])
   try require(try stored().map(\.observedAtMs) == [20 * day + 1, 21 * day], "clear keeps Favorite weather")
+  try TelemetryMaintenancePersistence(writer: queue).clear(protectedRanges: [TelemetryTimeRange(startMs: Int64.min, endMs: Int64.max)])
+  try require(try stored().count == 2, "protect-all clear does not overflow")
 
   // Ride weather: five minutes of rain in a two-hour sunny ride shows sun; a stale start row alone is nothing.
   try queue.write { db in

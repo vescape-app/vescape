@@ -86,6 +86,9 @@ class WeatherObservationHostTest {
     for (at in listOf(0L, 10 * day, 20 * day + 1, 21 * day, 30 * day)) dao.insertWeatherObservation(WeatherObservationEntity.of(obs(at)))
     dao.clearExcept(listOf(TelemetryTimeRange(21 * day, 22 * day)))
     assertEquals(listOf(20 * day + 1, 21 * day), dao.getWeatherObservationsSpanning(0, 40 * day).map { it.observedAtMs })
+    // The protect-all fallback range must not wrap and delete everything.
+    dao.clearExcept(listOf(TelemetryTimeRange(Long.MIN_VALUE, Long.MAX_VALUE)))
+    assertEquals(2, dao.getWeatherObservationsSpanning(0, 40 * day).size)
     db.close()
   }
 

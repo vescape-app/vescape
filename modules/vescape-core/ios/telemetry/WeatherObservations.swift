@@ -7,6 +7,13 @@ import GRDB
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/WeatherObservations.kt `WEATHER_OBSERVATION_FRESHNESS_MS`
 internal let weatherObservationFreshnessMs: Int64 = 24 * 60 * 60 * 1_000
 
+/// Earliest observation a Favorite starting at `startMs` may read; saturates for the protect-all range.
+/// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/WeatherObservations.kt `weatherProtectionStart`
+internal func weatherProtectionStart(_ startMs: Int64) -> Int64 {
+  let (value, overflow) = startMs.subtractingReportingOverflow(weatherObservationFreshnessMs)
+  return overflow ? Int64.min : value
+}
+
 /// Gusts are stored at this granularity so forecast noise does not read as a condition change.
 private let gustStepKmh = 5.0
 
@@ -128,27 +135,32 @@ final class WeatherObservationFence {
   /// The one fence every production writer, Restore and Clear all share.
   static let process = WeatherObservationFence()
 
-  private let lock = NSLock()
+  /// Serializes writes and fences; held across database work, never taken on the main thread.
+  private let workLock = NSLock()
+  /// Guards only `generation`, so the main-thread `ticket()` never waits on a write or a restore.
+  private let generationLock = NSLock()
   private var generation: Int64 = 0
 
   func ticket() -> Int64 {
-    lock.lock()
-    defer { lock.unlock() }
+    generationLock.lock()
+    defer { generationLock.unlock() }
     return generation
   }
 
   /// Run `block` only if nothing fenced since `ticket`; nil when the write was fenced off.
   func write<T>(ticket: Int64, _ block: () throws -> T) rethrows -> T? {
-    lock.lock()
-    defer { lock.unlock() }
-    guard ticket == generation else { return nil }
+    workLock.lock()
+    defer { workLock.unlock() }
+    guard ticket == self.ticket() else { return nil }
     return try block()
   }
 
   func fence<T>(_ block: () throws -> T) rethrows -> T {
-    lock.lock()
-    defer { lock.unlock() }
+    workLock.lock()
+    defer { workLock.unlock() }
+    generationLock.lock()
     generation += 1
+    generationLock.unlock()
     return try block()
   }
 }
