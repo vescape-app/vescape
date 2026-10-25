@@ -128,7 +128,13 @@ export function EdgeDrawer({
   if (!mounted) return null
 
   const emptyDismissArea = (
-    <Pressable style={{ height: dismissAreaHeight }} onPress={close} accessible={false} />
+    // Locate the exposed dismiss area: the full-screen scrim also extends behind drawer content.
+    <Pressable
+      testID={backdropTestID}
+      style={{ height: dismissAreaHeight }}
+      onPress={close}
+      accessible={false}
+    />
   )
 
   const drawerTitle = header ? (
@@ -191,7 +197,7 @@ export function EdgeDrawer({
       <GestureHandlerRootView style={styles.modalGestureRoot}>
         <View style={styles.drawer}>
           <Reanimated.View style={[StyleSheet.absoluteFill, scrimStyle, backdropStyle]}>
-            <Pressable testID={backdropTestID} style={StyleSheet.absoluteFill} onPress={close} />
+            <Pressable style={StyleSheet.absoluteFill} onPress={close} />
           </Reanimated.View>
         </View>
         <Reanimated.View style={[styles.drawer, presenceStyle]}>
