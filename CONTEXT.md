@@ -120,7 +120,7 @@ ends — and GPS stands down even though the Ride Recording and the reconnect lo
 _Avoid_: Reconnect timeout, GPS grace period, disconnect window
 
 **Ride Recording**:
-A single persisted capture of one **Board**'s ride, begun while that Board is connected and retaining its identity through data gaps until explicitly ended, with independent **Telemetry Samples** and an optional **Ride Track**.
+One **Board**'s ride as Ride History derives it from recorded data: that Board's **Telemetry Samples**, with an optional **Ride Track**. A new Ride Recording starts on a Board change, when consecutive Telemetry Samples are more than `rideSplitGapMinutes` apart, or at an explicit Stop Recording; disconnects, app kills and Idle Pause do not split it. GPS-only stretches attach to the preceding ride and never start one. There is no stored recording identity (ADR-0041).
 _Avoid_: Session recording, raw recording
 
 **Ride Track**:

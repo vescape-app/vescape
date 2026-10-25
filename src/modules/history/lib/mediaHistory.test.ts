@@ -24,7 +24,6 @@ function gps(id: number, capturedAtMs: number, latitude = 52, longitude = 21): H
     accuracyM: null,
     altitudeM: null,
     timestamp: capturedAtMs,
-    recordingId: null,
     distanceFromPreviousM: null,
   }
 }
@@ -51,15 +50,12 @@ function marker(occurredAtMs: number, type: HistoryMarker['type']): HistoryMarke
 }
 
 describe('matchMediaHistoryAssets', () => {
-  test.each(['disconnected', 'gap', 'error'] as const)(
+  test.each(['disconnected', 'gap', 'error', 'app_stop'] as const)(
     'matches continuous Ride Track across a telemetry %s marker',
     (type) => {
       const result = matchMediaHistoryAssets({
         assets: [asset('photo', 6_000)],
-        gpsSamples: [
-          { ...gps(1, 1_000), recordingId: 'ride-1' },
-          { ...gps(2, 9_000), recordingId: 'ride-1' },
-        ],
+        gpsSamples: [gps(1, 1_000), gps(2, 9_000)],
         markers: [marker(5_000, type)],
         startAtMs: 1_000,
         endAtMs: 9_000,
@@ -68,44 +64,35 @@ describe('matchMediaHistoryAssets', () => {
     },
   )
 
-  test('legacy GPS still respects BLE disconnect markers', () => {
+  test('Stop Recording breaks the GPS span', () => {
     expect(
       matchMediaHistoryAssets({
         assets: [asset('photo', 6_000)],
         gpsSamples: [gps(1, 1_000), gps(2, 9_000)],
-        markers: [marker(5_000, 'disconnected')],
+        markers: [marker(5_000, 'recording_stop')],
         startAtMs: 1_000,
         endAtMs: 9_000,
       }),
     ).toEqual([])
   })
 
-  test.each(['ride-2', null])(
-    'rejects a recording boundary to %s without a marker',
-    (recordingId) => {
-      expect(
-        matchMediaHistoryAssets({
-          assets: [asset('between', 6_000)],
-          gpsSamples: [
-            { ...gps(1, 1_000), recordingId: 'ride-1' },
-            { ...gps(2, 9_000), recordingId },
-          ],
-          markers: [],
-          startAtMs: 1_000,
-          endAtMs: 9_000,
-        }),
-      ).toEqual([])
-    },
-  )
+  test('rejects a Board change between adjacent fixes', () => {
+    expect(
+      matchMediaHistoryAssets({
+        assets: [asset('between', 6_000)],
+        gpsSamples: [gps(1, 1_000), { ...gps(2, 9_000), boardId: 'other' }],
+        markers: [],
+        startAtMs: 1_000,
+        endAtMs: 9_000,
+      }),
+    ).toEqual([])
+  })
 
-  test('same recording still rejects a real gap in precise GPS fixes', () => {
+  test('rejects a real gap in precise GPS fixes', () => {
     expect(
       matchMediaHistoryAssets({
         assets: [asset('in-gap', 20_000), asset('outside-ride', 50_000)],
-        gpsSamples: [
-          { ...gps(1, 1_000), recordingId: 'ride-1' },
-          { ...gps(2, 40_000), recordingId: 'ride-1' },
-        ],
+        gpsSamples: [gps(1, 1_000), gps(2, 40_000)],
         markers: [],
         startAtMs: 1_000,
         endAtMs: 40_000,
@@ -124,13 +111,13 @@ describe('matchMediaHistoryAssets', () => {
     expect(result.map((item) => item.id)).toEqual(['start', 'middle', 'end'])
   })
 
-  test('rejects asset outside GPS span or across explicit gap', () => {
+  test('rejects asset outside GPS span or across Stop Recording', () => {
     const samples = [gps(1, 1_000), gps(2, 9_000), gps(3, 30_000), gps(4, 38_000)]
     expect(
       matchMediaHistoryAssets({
         assets: [asset('before', 500), asset('gap', 25_000), asset('marker-gap', 35_000)],
         gpsSamples: samples,
-        markers: [marker(27_000, 'gap'), marker(34_000, 'gap')],
+        markers: [marker(27_000, 'recording_stop'), marker(34_000, 'recording_stop')],
         startAtMs: 0,
         endAtMs: 40_000,
       }),
@@ -141,7 +128,7 @@ describe('matchMediaHistoryAssets', () => {
     const result = matchMediaHistoryAssets({
       assets: [asset('outside', 500), asset('too-far', 110_000), asset('gap', 75_000)],
       gpsSamples: [gps(1, 1_000), gps(2, 9_000), gps(3, 19_000), gps(4, 70_000), gps(5, 78_000)],
-      markers: [marker(74_000, 'gap')],
+      markers: [marker(74_000, 'recording_stop')],
       startAtMs: 1_000,
       endAtMs: 110_000,
     })

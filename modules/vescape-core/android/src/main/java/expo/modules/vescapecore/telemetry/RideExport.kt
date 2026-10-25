@@ -34,9 +34,9 @@ internal object RideExport {
     val toMs = (options["toMs"] as? Number)?.toLong() ?: error("Missing export end")
     require(fromMs <= toMs) { "Invalid export range" }
     return write(directory, "vescape-ride", csv) { writer ->
-      if (csv) writeCsv(dao, writer, fromMs, toMs, options["boardId"] as? String, options["recordingId"] as? String)
+      if (csv) writeCsv(dao, writer, fromMs, toMs, options["boardId"] as? String)
       else writeGpx(dao, writer, fromMs, toMs, options["boardId"] as? String,
-        options["recordingId"] as? String, options["name"] as? String ?: "Vescape ride")
+        options["name"] as? String ?: "Vescape ride")
     }
   }
 
@@ -59,13 +59,13 @@ internal object RideExport {
 
   // Caller holds a database snapshot for the complete export.
   suspend fun writeGpx(dao: TelemetryDao, writer: Writer, fromMs: Long, toMs: Long,
-    boardId: String?, recordingId: String?, name: String) {
+    boardId: String?, name: String) {
     writer.write("<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n")
     writer.write("<gpx version=\"1.1\" creator=\"Vescape\" xmlns=\"http://www.topografix.com/GPX/1/1\" xmlns:gpxtpx=\"http://www.garmin.com/xmlschemas/TrackPointExtension/v2\"><trk><name>${xml(name)}</name><trkseg>\n")
     var afterMs = fromMs
     var afterId = Long.MIN_VALUE
     while (true) {
-      val rows = dao.getRideExportTrackPage(fromMs, toMs, boardId, recordingId, afterMs, afterId, BATCH_SIZE)
+      val rows = dao.getRideExportTrackPage(fromMs, toMs, boardId, afterMs, afterId, BATCH_SIZE)
       if (rows.isEmpty()) break
       for (p in rows) {
         if (!p.isPrecise()) continue
@@ -91,25 +91,22 @@ internal object RideExport {
     if (text.any { it == ',' || it == '"' || it == '\r' || it == '\n' }) "\"${text.replace("\"", "\"\"")}\"" else text
   } + "\r\n"
 
-  suspend fun writeCsv(dao: TelemetryDao, writer: Writer, fromMs: Long, toMs: Long,
-    boardId: String?, recordingId: String?) {
+  suspend fun writeCsv(dao: TelemetryDao, writer: Writer, fromMs: Long, toMs: Long, boardId: String?) {
     writer.write(csvLine(csvHeaders))
-    val gps = TrackCursor(dao, fromMs, toMs, boardId, recordingId)
+    val gps = TrackCursor(dao, fromMs, toMs, boardId)
     var currentGps = gps.next()
     var nextGps = gps.next()
-    val keyframe = dao.getRideExportKeyframe(fromMs, boardId, recordingId)
+    val keyframe = dao.getRideExportKeyframe(fromMs, boardId)
     val start = keyframe?.capturedAtMs ?: fromMs
     var afterMs = start
     // Include every row at the start timestamp, including keyframes sharing that timestamp.
     var afterId = Long.MIN_VALUE
     val values = arrayOfNulls<Number>(17)
-    var previousRecording: String? = null
     while (true) {
-      val rows = dao.getRideExportTelemetryPage(start, toMs, boardId, recordingId, afterMs, afterId, BATCH_SIZE)
+      val rows = dao.getRideExportTelemetryPage(start, toMs, boardId, afterMs, afterId, BATCH_SIZE)
       if (rows.isEmpty()) break
       for (f in rows) {
-        if (f.flags and TELEMETRY_FLAG_KEYFRAME != 0 || f.recordingId != previousRecording) values.fill(null)
-        previousRecording = f.recordingId
+        if (f.flags and TELEMETRY_FLAG_KEYFRAME != 0) values.fill(null)
         // Storage mask bit order. A set bit with NULL explicitly clears an optional reading.
         val delta = arrayOf<Number?>(f.speedCentiKmh, f.batteryVoltageMv, f.motorCurrentMa, f.batteryCurrentMa,
           f.dutyPermille, f.pitchCentiDeg, f.rollCentiDeg, f.balancePitchCentiDeg, f.balanceCurrentMa,
@@ -157,7 +154,7 @@ internal object RideExport {
   }
 
   private class TrackCursor(val dao: TelemetryDao, val fromMs: Long, val toMs: Long,
-    val boardId: String?, val recordingId: String?) {
+    val boardId: String?) {
     var rows = emptyList<RideTrackPointEntity>()
     var index = 0
     var afterMs = fromMs
@@ -166,7 +163,7 @@ internal object RideExport {
     suspend fun next(): RideTrackPointEntity? {
       while (!finished) {
         if (index == rows.size) {
-          rows = dao.getRideExportTrackPage(fromMs, toMs, boardId, recordingId, afterMs, afterId, BATCH_SIZE)
+          rows = dao.getRideExportTrackPage(fromMs, toMs, boardId, afterMs, afterId, BATCH_SIZE)
           index = 0
           if (rows.isEmpty()) { finished = true; return null }
           afterMs = rows.last().fixAtMs; afterId = rows.last().id

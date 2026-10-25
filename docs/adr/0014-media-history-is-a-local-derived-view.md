@@ -11,7 +11,7 @@ Media History displays phone photos and videos alongside a selected Ride Recordi
 - A video's creation timestamp is interpreted as its playback start timestamp.
 - Asset GPS metadata is ignored.
 - Map position is the nearest recording-backed GPS fix to asset capture time, with a maximum absolute difference of `30_000ms`.
-- A continuous recording-backed GPS span contains adjacent GPS fixes no more than `30_000ms` apart. Explicit Ride History `gap` markers and ride-boundary markers (`disconnected`, `app_stop`, or `error`) always split spans. Span coverage starts at its first fix and ends at its last fix; it does not extend by the matching tolerance.
+- A continuous recording-backed GPS span contains adjacent GPS fixes no more than `30_000ms` apart. Adjacent fixes must belong to the same Board, and an explicit Stop Recording (`recording_stop`) marker splits a span; disconnect and telemetry gap markers do not, since the Ride Track continues through them (ADR-0041). Span coverage starts at its first fix and ends at its last fix; it does not extend by the matching tolerance.
 - Asset capture time and its candidate GPS fix must be inside the same continuous recording-backed GPS span. A match is rejected when no such fix is within tolerance. These rules prevent matching into or across unsupported spans such as GPS outages and Privacy Zone gaps.
 
 ## Permission And Availability

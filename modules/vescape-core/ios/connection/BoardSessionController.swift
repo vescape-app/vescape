@@ -553,9 +553,6 @@ internal final class BoardSessionController: VescGattListener {
   @discardableResult
   func stopBoard() -> Bool {
     guard session != nil || pendingResume != nil || SessionResumeStore.shared.pending != nil else { return false }
-    // Cancelling restoration also replaces its expiry cleanup: no resumed coordinator will close
-    // the recording the previous process left open.
-    if session == nil { TelemetryRepository.shared.closeAbandonedRideRecordings() }
     endSession(phase: .idle, error: nil)
     return true
   }
@@ -1366,10 +1363,6 @@ internal final class BoardSessionController: VescGattListener {
       return
     }
     pendingResume = nil
-    // No restoration came, so nothing will ever rejoin the recording the dead process left open.
-    // Close it now rather than at the next mint, which may never happen: the reader only shows a
-    // recording with `ended_at_ms`, so an unswept row is a ride missing from history entirely.
-    TelemetryRepository.shared.closeAbandonedRideRecordings()
     reapOrphanLiveActivities()
   }
 
@@ -1439,8 +1432,8 @@ internal final class BoardSessionController: VescGattListener {
   /// Rebuild the Board Session that was live when the process died. Reuses the ordinary session
   /// wiring (`beginSession`) rather than duplicating it, so recording, GPS, alerts and the Live
   /// Activity resume exactly as a foreground connect starts them — the only differences are where
-  /// the link comes from (a restored peripheral instead of a fresh connect) and that the recording
-  /// keeps appending to the open recording.
+  /// the link comes from (a restored peripheral instead of a fresh connect) and that capture re-arms
+  /// when the previous process was recording.
   private func resumeSession(marker: SessionResumeMarker, restoredPeripheralIds: [String]) {
     guard session == nil else { return }
     guard let config = BoardConnectConfig.resolve(boardId: marker.appBoardId, appData: appData) else {
@@ -1457,20 +1450,14 @@ internal final class BoardSessionController: VescGattListener {
     liveSeries.speed = { [weak self] in self?.sessionClock.speed ?? 1.0 }
     liveSeries.setWindowMinutes(config.liveHistoryLimitMinutes)
     // Re-arm the recording request *before* the session begins so `beginBoardSession` enables the
-    // telemetry store on its normal path, and it begins with `resume: true` so that enable rejoins
-    // the Ride Recording left open rather than minting a second identity for one ride (#450).
-    //
-    // The marker names the recording that was open; whether it is *still* open is the database's
-    // answer, and an explicitly stopped or disconnected one carries an `ended_at_ms` no restoration
-    // can clear. Naming it is what keeps a relaunch days later from adopting some other abandoned
-    // ride. The dead interval stays a real gap in both streams.
+    // telemetry store on its normal path. Whether the result is one ride or two is decided by the
+    // recorded data alone (ADR 0041); the dead interval stays a real gap in both streams.
     if marker.recordingActive {
       _ = recordingCoordinator.setTelemetryRecordingEnabled(true)
     }
     beginSession(
       config: config,
       resume: true,
-      restoredRecordingId: marker.recordingActive ? marker.recordingId : nil,
       onSuccess: {},
       onError: { _, _ in }
     )
@@ -1504,8 +1491,7 @@ internal final class BoardSessionController: VescGattListener {
   private func syncResumeMarkerRecording() {
     guard session != nil, replayTransport == nil else { return }
     SessionResumeStore.shared.setRecording(
-      active: recordingCoordinator.telemetryRecordingEnabled,
-      recordingId: recordingCoordinator.activeRideRecordingId
+      active: recordingCoordinator.telemetryRecordingEnabled
     )
   }
 
@@ -1514,7 +1500,6 @@ internal final class BoardSessionController: VescGattListener {
   private func beginSession(
     config: BoardConnectConfig,
     resume: Bool = false,
-    restoredRecordingId: String? = nil,
     onSuccess: @escaping () -> Void,
     onError: @escaping (String, String) -> Void
   ) {
@@ -1589,7 +1574,7 @@ internal final class BoardSessionController: VescGattListener {
     alertAudioPlayer.applySoundSettings(sessionSettings)
     // Engine and session up for the whole ride, before the first alert can fire; `goIdle()` at its end.
     alertAudioPlayer.wake()
-    recordingCoordinator.beginBoardSession(config: config, restoredRecordingId: restoredRecordingId)
+    recordingCoordinator.beginBoardSession(config: config)
     beginGpsSessionDiagnostics()
     // Reset per-session Board Warning breadcrumb bookkeeping (one Diagnostic Event per kind per
     // Board Session). Detectors that fire warnings this session land in later slices.
@@ -1661,8 +1646,7 @@ internal final class BoardSessionController: VescGattListener {
       SessionResumeStore.shared.save(
         appBoardId: config.appBoardId,
         bleId: config.bleId,
-        recordingActive: recordingCoordinator.telemetryRecordingEnabled,
-        recordingId: recordingCoordinator.activeRideRecordingId
+        recordingActive: recordingCoordinator.telemetryRecordingEnabled
       )
     }
     // Start the Live Activity while foreground (connect is user-initiated); it then updates from

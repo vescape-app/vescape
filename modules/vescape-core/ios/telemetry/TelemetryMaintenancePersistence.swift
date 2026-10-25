@@ -15,23 +15,14 @@ struct TelemetryMaintenancePersistence {
       try db.execute(sql: "DELETE FROM telemetry_markers WHERE occurred_at_ms < ?", arguments: [beforeMs])
       try db.execute(sql: "DELETE FROM diagnostic_events WHERE occurred_at_ms < ?", arguments: [beforeMs])
       try db.execute(sql: "DELETE FROM metric_exclusion_ranges WHERE end_ms < ?", arguments: [beforeMs])
-      try pruneOrphanRideRecordings(db)
       return count
     }
   }
 
-  func deleteRanges(_ ranges: [TelemetryTimeRange], boardId: String?, allBoards: Bool, recordingId: String? = nil) throws -> Int {
+  func deleteRanges(_ ranges: [TelemetryTimeRange], boardId: String?, allBoards: Bool) throws -> Int {
     try writer.write { db in
       var count = 0
       for range in ranges {
-        if let recordingId {
-          count += try Int.fetchOne(db, sql: "SELECT COUNT(*) FROM telemetry_frames WHERE captured_at_ms BETWEEN ? AND ? AND recording_id = ?", arguments: [range.startMs, range.endMs, recordingId]) ?? 0
-          try db.execute(sql: "DELETE FROM telemetry_frames WHERE captured_at_ms BETWEEN ? AND ? AND recording_id = ?", arguments: [range.startMs, range.endMs, recordingId])
-          try db.execute(sql: "DELETE FROM ride_track_points WHERE fix_at_ms BETWEEN ? AND ? AND recording_id = ?", arguments: [range.startMs, range.endMs, recordingId])
-          try db.execute(sql: "DELETE FROM telemetry_minute_buckets WHERE last_sample_at_ms >= ? AND first_sample_at_ms <= ? AND recording_id = ?", arguments: [range.startMs, range.endMs, recordingId])
-          // Markers/exclusions have no recording identity. Keep them for overlapping recordings.
-          continue
-        }
         if allBoards {
           count += try Int.fetchOne(db, sql: "SELECT COUNT(*) FROM telemetry_frames WHERE captured_at_ms >= ? AND captured_at_ms <= ?", arguments: [range.startMs, range.endMs]) ?? 0
           try db.execute(sql: "DELETE FROM ride_track_points WHERE fix_at_ms >= ? AND fix_at_ms <= ?", arguments: [range.startMs, range.endMs])
@@ -51,7 +42,6 @@ struct TelemetryMaintenancePersistence {
           try db.execute(sql: "DELETE FROM metric_exclusion_ranges WHERE end_ms >= ? AND start_ms <= ? AND ((? IS NOT NULL AND board_id = ?) OR (? IS NULL AND board_id IS NULL))", arguments: [range.startMs, range.endMs, boardId, boardId, boardId])
         }
       }
-      try pruneOrphanRideRecordings(db)
       return count
     }
   }
@@ -60,7 +50,6 @@ struct TelemetryMaintenancePersistence {
     if protectedRanges.isEmpty {
       try writer.write { db in
         try db.execute(sql: "DELETE FROM ride_track_points")
-        try db.execute(sql: "DELETE FROM ride_recordings")
         try db.execute(sql: "DELETE FROM telemetry_frames")
         try db.execute(sql: "DELETE FROM telemetry_minute_buckets")
         try db.execute(sql: "DELETE FROM telemetry_markers")
@@ -80,7 +69,6 @@ struct TelemetryMaintenancePersistence {
           try db.execute(sql: "DELETE FROM telemetry_markers WHERE occurred_at_ms >= ? AND occurred_at_ms <= ?", arguments: [range.startMs, range.endMs])
           try db.execute(sql: "DELETE FROM metric_exclusion_ranges WHERE end_ms >= ? AND start_ms <= ?", arguments: [range.startMs, range.endMs])
         }
-        try pruneOrphanRideRecordings(db)
       }
     }
   }
@@ -115,7 +103,7 @@ struct TelemetryMaintenancePersistence {
         for range in sanitization.exclusions { try insertExclusion(db, range) }
         for bucket in buildTelemetryBuckets(points, locationPoints: rideTrackBucketPoints(track, previous: previousTrackPoint, movingThresholdCentiKmh: config.movingSpeedThresholdCentiKmh)) {
           try upsertBucket(db, bucket)
-          try refreshBucketRoutePreview(db, bucketStartMs: bucket.bucketStartMs, boardId: bucket.boardId, recordingId: bucket.recordingId)
+          try refreshBucketRoutePreview(db, bucketStartMs: bucket.bucketStartMs, boardId: bucket.boardId)
           rebuilt += 1
         }
         previousTrackPoint = track.last(where: rideTrackFixIsPrecise) ?? previousTrackPoint
@@ -151,7 +139,6 @@ internal func bucketPoint(_ row: Row) -> BucketTelemetryPoint? {
   BucketTelemetryPoint(
     capturedAtMs: row["captured_at_ms"] as Int64,
     boardId: row["board_id"] as String?,
-    recordingId: (row["recording_id"] as String?) ?? LEGACY_RIDE_RECORDING_ID,
     speedCentiKmh: row["speed_centi_kmh"] as Int? ?? 0,
     batteryVoltageMv: row["battery_voltage_mv"] as Int? ?? 0,
     motorCurrentMa: row["motor_current_ma"] as Int? ?? 0,

@@ -8,7 +8,10 @@ same recording if the Board comes back.
 
 ## Status
 
-Accepted. Supersedes the storage half of ADR-0004.
+Accepted. Supersedes the storage half of ADR-0004. The "Recording identity and history boundaries"
+section, and the recording-identity parts of the read composition, are superseded by
+[ADR-0041](./0041-ride-boundaries-are-derived-from-recorded-data.md): ride boundaries are derived
+from recorded data and `ride_recordings` / `recording_id` are gone.
 
 ADR-0004 bundled two decisions. The first — _store GPS only with telemetry_ — is reversed here. The
 second — _standalone GPS does not create a Ride Recording_ — still stands: a Board still starts a ride,
@@ -69,6 +72,8 @@ Ride Track persistence follows the Ride Recording state: Idle Pause pauses both 
 Privacy Zones keep the current drop-on-write behavior for this release. Reuse existing reader gap checks without adding continuity flags, segment identities, privacy markers, or new privacy-specific gap detection. Short filtered spans retain the existing continuity limitations. Recording inside zones, sharing prevention/warnings, and Group Ride invisibility belong to a future Privacy Zone rework, outside #452. See the interim scope in ADR-0009.
 
 ## Recording identity and history boundaries
+
+_Superseded by [ADR-0041](./0041-ride-boundaries-are-derived-from-recorded-data.md). Kept for the history of the decision._
 
 New Ride Recordings have a durable identity and explicit start/end boundaries, independent of their Board Sessions and sample arrival. `board_id` remains Board attribution; it does not distinguish two recordings of the same Board. Both streams and their precomputed summaries must remain attributable to the recording that captured them.
 

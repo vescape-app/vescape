@@ -12,12 +12,17 @@ export const MEDIA_CLUSTER_DISTANCE_M = 12
 const MEDIA_TELEMETRY_TOLERANCE_MS = 5_000
 const MEDIA_TELEMETRY_SPAN_GAP_MS = 10_000
 
+// Telemetry continuity for video overlays: a telemetry gap or a lost link breaks the sample run.
 const SPAN_BREAK_MARKERS = new Set<HistoryMarker['type']>([
   'gap',
   'disconnected',
   'app_stop',
+  'recording_stop',
   'error',
 ])
+// The Ride Track keeps landing through BLE loss, so only an explicit Stop Recording breaks a GPS
+// span — the same marker that splits a ride (ADR 0041).
+const GPS_SPAN_BREAK_MARKERS = new Set<HistoryMarker['type']>(['recording_stop'])
 
 export interface MediaAssetInput {
   id: string
@@ -72,10 +77,15 @@ export function resolvePickedAssetCreationTime({
   return toEpochMs(match.slice(1).map(Number), filename.startsWith('PXL_'))
 }
 
-function hasBreakBetween(markers: readonly HistoryMarker[], fromMs: number, toMs: number) {
+function hasBreakBetween(
+  markers: readonly HistoryMarker[],
+  fromMs: number,
+  toMs: number,
+  breaks: ReadonlySet<HistoryMarker['type']> = SPAN_BREAK_MARKERS,
+) {
   return markers.some(
     (marker) =>
-      SPAN_BREAK_MARKERS.has(marker.type) &&
+      breaks.has(marker.type) &&
       marker.occurredAtMs > Math.min(fromMs, toMs) &&
       marker.occurredAtMs <= Math.max(fromMs, toMs),
   )
@@ -99,12 +109,13 @@ function belongsToGpsSpan(
   if (!adjacent) return false
   if (Math.abs(adjacent.capturedAtMs - sample.capturedAtMs) > MEDIA_PRECISE_GPS_SPAN_GAP_MS)
     return false
-  // Recording identity owns new Ride Track boundaries. BLE/telemetry markers can occur while
-  // precise GPS continues; they only define GPS continuity for legacy fixes without an identity.
-  if (sample.recordingId != null || adjacent.recordingId != null) {
-    return sample.recordingId === adjacent.recordingId && sample.boardId === adjacent.boardId
-  }
-  return !hasBreakBetween(markers, adjacent.capturedAtMs, sample.capturedAtMs)
+  if (sample.boardId !== adjacent.boardId) return false
+  return !hasBreakBetween(
+    markers,
+    adjacent.capturedAtMs,
+    sample.capturedAtMs,
+    GPS_SPAN_BREAK_MARKERS,
+  )
 }
 
 export function matchMediaHistoryAssets({

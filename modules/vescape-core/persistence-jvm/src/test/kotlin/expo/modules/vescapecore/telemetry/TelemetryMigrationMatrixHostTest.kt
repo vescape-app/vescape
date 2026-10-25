@@ -285,6 +285,54 @@ class TelemetryMigrationMatrixHostTest {
     Files.deleteIfExists(path)
   }
 
+  /**
+   * v52 drops durable recording identity (ADR 0041): two recordings of one Board in one minute fold
+   * into one bucket, legacy fixes without accuracy keep reading as precise, and Room opens the
+   * result against the production entities.
+   * @parity /modules/vescape-core/ios/telemetry/TelemetryMigrationTests.swift `testDropRideRecordingsFoldsSharedMinutes`
+   */
+  @Test fun dropRideRecordingsFoldsSharedMinutes() {
+    val path = Files.createTempFile("vescape-v51-recordings-", ".db")
+    BundledSQLiteDriver().open(path.toString()).use { db ->
+      createAuthenticV3(db)
+      migrate(db, 3, 51, mutableSetOf())
+      db.exec("INSERT INTO ride_recordings VALUES ('ride-a','board-era3',60000,61000,'stopped'),('ride-b','board-era3',61500,NULL,NULL)")
+      db.exec("INSERT INTO telemetry_frames (captured_at_ms,elapsed_realtime_ms,board_id,recording_id,flags,changed_mask_1,changed_mask_2,speed_centi_kmh) VALUES (60500,1,'board-era3','ride-a',1,1,0,900),(61800,2,'board-era3','ride-b',1,1,0,1100)")
+      db.exec("INSERT INTO ride_track_points (recording_id,board_id,fix_at_ms,latitude_e7,longitude_e7,accuracy_cm) VALUES (NULL,'board-era3',500,1,1,NULL),('ride-a','board-era3',60600,2,2,NULL),('ride-b','board-era3',61900,3,3,400)")
+      val columns = "bucket_start_ms,board_id,recording_id,sample_count,first_sample_at_ms,last_sample_at_ms,sum_abs_speed_centi_kmh,moving_speed_sample_count,sum_moving_abs_speed_centi_kmh,max_abs_speed_centi_kmh,min_battery_voltage_mv,max_motor_current_abs_ma,max_battery_current_abs_ma,battery_used_wh_milli,battery_regen_wh_milli,max_duty_abs_permille,first_odometer_cm,last_odometer_cm,gps_point_count,precise_gps_point_count,gps_distance_cm,max_gps_speed_centi_mps,first_latitude_e7,first_longitude_e7,route_preview"
+      db.exec("INSERT INTO telemetry_minute_buckets ($columns) VALUES (60000,'board-era3','ride-a',2,60500,61000,1800,2,1800,900,50000,100,200,10,1,300,1000,1100,1,1,50,300,NULL,NULL,'[]')")
+      db.exec("INSERT INTO telemetry_minute_buckets ($columns) VALUES (60000,'board-era3','ride-b',3,61800,62000,3300,3,3300,1100,49000,300,100,20,2,400,1100,1300,1,1,70,500,520000000,170000000,'[]')")
+      db.exec("INSERT INTO telemetry_minute_buckets ($columns) VALUES (120000,'board-era3','ride-b',1,120500,120500,1000,1,1000,1000,49000,0,0,0,0,0,1300,1300,0,0,0,NULL,NULL,NULL,'[[1,2,\"?\"]]')")
+      migrate(db, 51, 52, mutableSetOf())
+      db.exec("PRAGMA user_version = 52")
+
+      assertFalse(db.prepare("SELECT 1 FROM sqlite_master WHERE name='ride_recordings'").use { it.step() })
+      for (table in listOf("telemetry_frames", "ride_track_points", "telemetry_minute_buckets")) {
+        assertEquals(table, 0L, db.long("SELECT COUNT(*) FROM pragma_table_info('$table') WHERE name='recording_id'"))
+      }
+      assertEquals(2L, db.long("SELECT COUNT(*) FROM telemetry_frames WHERE board_id='board-era3' AND captured_at_ms > 60000"))
+      assertEquals("legacy fix stays precise", 2000L, db.long("SELECT accuracy_cm FROM ride_track_points WHERE fix_at_ms=500"))
+      assertEquals("live fix without accuracy stays unknown", null, db.long("SELECT accuracy_cm FROM ride_track_points WHERE fix_at_ms=60600"))
+      assertEquals(1L, db.long("SELECT COUNT(*) FROM telemetry_minute_buckets WHERE bucket_start_ms=60000"))
+      fun folded(column: String) = db.long("SELECT $column FROM telemetry_minute_buckets WHERE bucket_start_ms=60000")
+      assertEquals(5L, folded("sample_count"))
+      assertEquals(60500L, folded("first_sample_at_ms"))
+      assertEquals(62000L, folded("last_sample_at_ms"))
+      assertEquals(5100L, folded("sum_abs_speed_centi_kmh"))
+      assertEquals(1100L, folded("max_abs_speed_centi_kmh"))
+      assertEquals(49000L, folded("min_battery_voltage_mv"))
+      assertEquals(30L, folded("battery_used_wh_milli"))
+      assertEquals(1000L, folded("first_odometer_cm"))
+      assertEquals(1300L, folded("last_odometer_cm"))
+      assertEquals(120L, folded("gps_distance_cm"))
+      assertEquals("anchor from the earliest row that has one", 520000000L, folded("first_latitude_e7"))
+      assertEquals("a folded minute regenerates its preview", null, db.text("SELECT route_preview FROM telemetry_minute_buckets WHERE bucket_start_ms=60000"))
+      assertEquals("[[1,2,\"?\"]]", db.text("SELECT route_preview FROM telemetry_minute_buckets WHERE bucket_start_ms=120000"))
+    }
+    openWithProductionGraph(path.toString(), mutableSetOf())
+    Files.deleteIfExists(path)
+  }
+
   private data class Row6(val board: String, val id: String, val control: String, val enabled: Int, val sound: String, val source: String)
 
   @Test fun missingAndUnsupportedStartsFailWithoutCreatingTargetData() {

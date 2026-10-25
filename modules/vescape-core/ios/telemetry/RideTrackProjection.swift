@@ -10,18 +10,16 @@ import GRDB
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/HistoryGpsProjection.kt `RIDE_TRACK_PRECISE_ACCURACY_CM`
 internal let rideTrackPreciseAccuracyCm = Int(MAX_RECORDING_ACCURACY_M * 100.0)
 
-/// A fix with no reported accuracy is precise only when it predates durable recording identity.
-/// Legacy rows were persisted through the old write-time `precise && freshEnoughToRecord` gate, so
-/// a migrated row without `accuracy_cm` was stored *because* it was precise — reading it as
-/// imprecise would silently strip route quality the ride actually had. A live fix carries whatever
-/// the platform reported, so a missing accuracy there is genuinely unknown and does not count.
-internal func rideTrackFixIsPrecise(accuracyCm: Int?, recordingId: String?) -> Bool {
-  guard let accuracyCm else { return recordingId == nil }
+/// A fix with no reported accuracy is genuinely unknown and does not count. Legacy fixes migrated
+/// out of `telemetry_frames` passed the old write-time precision gate; migration v52 stamps them
+/// with `rideTrackPreciseAccuracyCm` so they keep reading as precise.
+internal func rideTrackFixIsPrecise(accuracyCm: Int?) -> Bool {
+  guard let accuracyCm else { return false }
   return accuracyCm <= rideTrackPreciseAccuracyCm
 }
 
 internal func rideTrackFixIsPrecise(_ point: RideTrackPoint) -> Bool {
-  rideTrackFixIsPrecise(accuracyCm: point.accuracyCm, recordingId: point.recordingId)
+  rideTrackFixIsPrecise(accuracyCm: point.accuracyCm)
 }
 
 /// Does this fix evidence movement? The fix's **own reported speed**, checked after the accuracy
@@ -45,30 +43,25 @@ internal func gpsSpeedCentiMpsToCentiKmh(_ centiMps: Int) -> Int { (centiMps * 3
 /// a route, never anchors a marker and never contributes a step distance, so the rule is applied
 /// exactly once, here, instead of in every JS consumer.
 ///
-/// Distance is measured only between two qualifying fixes of the same Ride Recording **and the
-/// same Board** — a new recording never continues the previous one's geometry, and legacy rows
-/// (which all share a nil recording) never chain across Boards.
+/// Distance is measured only between two qualifying fixes of the same Board.
 ///
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/HistoryGpsProjection.kt `toGpsSampleMaps`
 /// @parity /modules/vescape-core/src/index.ts `HistoryGpsSample`
 internal func rideTrackGpsMaps(_ rows: [Row], boardNames: [String: String]) -> [[String: Any?]] {
-  var previousByBoard: [String: (recordingId: String?, lat: Double, lon: Double)] = [:]
+  var previousByBoard: [String: (lat: Double, lon: Double)] = [:]
   return rows.compactMap { row in
-    let recordingId = row["recording_id"] as String?
     let accuracyCm = row["accuracy_cm"] as Int?
-    guard rideTrackFixIsPrecise(accuracyCm: accuracyCm, recordingId: recordingId) else { return nil }
+    guard rideTrackFixIsPrecise(accuracyCm: accuracyCm) else { return nil }
     let latitude = Double(row["latitude_e7"] as Int64) / 10_000_000.0
     let longitude = Double(row["longitude_e7"] as Int64) / 10_000_000.0
     let boardId = row["board_id"] as String?
     let boardKey = boardId ?? UNKNOWN_TELEMETRY_BOARD_ID
-    let step = previousByBoard[boardKey].flatMap { previous -> Double? in
-      guard previous.recordingId == recordingId else { return nil }
-      return telemetryHaversineM(previous.lat, previous.lon, latitude, longitude)
+    let step = previousByBoard[boardKey].map { previous in
+      telemetryHaversineM(previous.lat, previous.lon, latitude, longitude)
     }
-    previousByBoard[boardKey] = (recordingId, latitude, longitude)
+    previousByBoard[boardKey] = (latitude, longitude)
     return [
       "id": row["id"] as Int64,
-      "recordingId": recordingId,
       "capturedAtMs": row["fix_at_ms"] as Int64,
       "boardId": boardId,
       "boardName": boardId.flatMap { boardNames[$0] } ?? UNKNOWN_TELEMETRY_BOARD_NAME,
@@ -103,9 +96,7 @@ internal func rideTrackBucketPoints(
   return points.map { point in
     let precise = rideTrackFixIsPrecise(point)
     let boardKey = point.boardId ?? UNKNOWN_TELEMETRY_BOARD_ID
-    let from = precise
-      ? lastByBoard[boardKey].flatMap { $0.recordingId == point.recordingId ? $0 : nil }
-      : nil
+    let from = precise ? lastByBoard[boardKey] : nil
     let step = from.map {
       telemetryHaversineM(
         Double($0.latitudeE7) / 10_000_000.0,
@@ -118,7 +109,6 @@ internal func rideTrackBucketPoints(
     return BucketLocationPoint(
       capturedAtMs: point.fixAtMs,
       boardId: point.boardId,
-      recordingId: point.recordingId ?? LEGACY_RIDE_RECORDING_ID,
       precise: precise,
       moving: rideTrackFixIsMovement(point, movingThresholdCentiKmh: movingThresholdCentiKmh),
       distanceFromPreviousCm: step.map { Int64(($0 * 100.0).rounded()) },
@@ -131,7 +121,6 @@ internal func rideTrackBucketPoints(
 
 internal func rideTrackPoint(_ row: Row) -> RideTrackPoint {
   RideTrackPoint(
-    recordingId: row["recording_id"] as String?,
     boardId: row["board_id"] as String?,
     fixAtMs: row["fix_at_ms"] as Int64,
     latitudeE7: row["latitude_e7"] as Int64,

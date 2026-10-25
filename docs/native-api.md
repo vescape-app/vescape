@@ -276,7 +276,7 @@ Field omitted (null) when change < threshold from previous:
   distanceDeltaM?, gpsDistanceM?,
   maxTempMosfet?, maxTempMotor?,
   firstLatitude?, firstLongitude?,
-  boundaryBefore: 'none'|'connected'|'disconnected'|'error'|'gap'|'app_stop',
+  boundaryBefore: 'none'|'connected'|'disconnected'|'error'|'gap'|'app_stop'|'recording_stop',
   boundaryMessage?, gapBeforeMs?
 }
 ```
@@ -355,7 +355,7 @@ it never creates occurrences, warnings, baselines, or persisted register snapsho
 
 Rides computed from buckets + markers:
 
-- New session on: device change, gap >10min, or boundary marker (`disconnected`/`app_stop`/`error`)
+- New session on: Board change, a Telemetry Sample gap over `rideSplitGapMinutes` (default 30), or a `recording_stop` marker; GPS-only buckets only attach to the preceding ride (ADR-0041)
 - Moving avg speed uses `movingSpeedThresholdKmh` setting (default 3.0 km/h) to exclude stopped samples
 - Distance prefers odometer delta, falls back to GPS distance
 - Energy: trapezoidal integration (V*I*dt), max 5s sample gap

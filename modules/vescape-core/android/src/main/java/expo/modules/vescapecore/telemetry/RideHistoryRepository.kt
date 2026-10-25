@@ -2,7 +2,6 @@ package expo.modules.vescapecore.telemetry
 
 private const val RIDE_BUCKET_BATCH_SIZE = 100
 private const val MAX_RIDE_PAGE_SIZE = 50
-private val RIDE_BREAK_BOUNDARIES = setOf("disconnected", "app_stop", "error")
 
 // @parity /modules/vescape-core/ios/telemetry/RideHistoryRepository.swift `RideRoutePoint`
 // @parity /modules/vescape-core/src/index.ts `RideRoutePoint`
@@ -11,11 +10,6 @@ internal data class RideRoutePoint(val latitude: Double, val longitude: Double, 
 internal data class RideSessionAggregate(
   /** Owning Board (`boards.id`), blank when the buckets match no saved Board (ADR 0028). */
   val boardId: String,
-  /**
-   * Owning Ride Recording, or [LEGACY_RIDE_RECORDING_ID] for buckets with no durable identity.
-   * A real recording *is* the history entry: gap length and disconnect markers never split it.
-   */
-  val recordingId: String,
   var boundaryBefore: String,
   var firstBucketStartMs: Long,
   var startAtMs: Long,
@@ -50,6 +44,8 @@ internal data class RideSessionAggregate(
   var maxLongitude: Double?,
   val routePoints: MutableList<RideRoutePoint>,
   var lastRouteAtMs: Long? = null,
+  /** Last Telemetry Sample bucket of the ride; GPS-only buckets never move it. */
+  var lastFrameAtMs: Long,
 ) {
   val distanceM: Double?
     get() = when {
@@ -73,7 +69,7 @@ internal suspend fun readRideHistoryPage(
       var complete = emptyList<RideSessionAggregate>()
 
       while (hasOlderBuckets && complete.size < limit) {
-        // The limit is soft: include every recording and Board in the boundary minute.
+        // The limit is soft: include every Board in the boundary minute.
         val batch = dao.getRideBuckets(beforeExclusive, RIDE_BUCKET_BATCH_SIZE)
         if (batch.isEmpty()) {
           hasOlderBuckets = false
@@ -115,6 +111,11 @@ internal fun completeRideSessions(
 
 /**
  * Native source of Ride boundaries and aggregates used by both History pages and Profile stats.
+ *
+ * Boundaries come from recorded data only (ADR 0041). A ride is one Board's Telemetry Samples; a
+ * new one starts on a Board change, when consecutive Telemetry Samples are more than [gapMs]
+ * apart, or at an explicit Stop Recording. GPS-only buckets never start or extend a ride on their
+ * own: they attach to the preceding ride of their Board.
  * @parity /modules/vescape-core/ios/telemetry/RideHistoryRepository.swift `groupRideSessions`
  */
 internal fun groupRideSessions(
@@ -124,32 +125,37 @@ internal fun groupRideSessions(
 ): List<RideSessionAggregate> {
   val sessions = mutableListOf<RideSessionAggregate>()
   var current: RideSessionAggregate? = null
-  var previous: TelemetryMinuteBucketEntity? = null
+  val stops = markers.filter { it.type == RECORDING_STOP_MARKER }
 
   for (bucket in buckets.sortedBy { it.firstSampleAtMs }) {
-    val boundary = rideBoundaryForBucket(bucket, markers)
-    // Legacy rows have no recording identity, so they keep reconstructing rides from gaps and
-    // break markers. A row that carries one needs neither: the recording *is* the entry, and a
-    // dropout of any length inside it stays one ride (ADR 0038).
-    val legacy = bucket.recordingId == LEGACY_RIDE_RECORDING_ID
-    val split = current == null || current.boardId != bucket.boardId ||
-      current.recordingId != bucket.recordingId ||
-      (legacy && previous != null && bucket.firstSampleAtMs - previous.lastSampleAtMs > gapMs) ||
-      (legacy && RIDE_BREAK_BOUNDARIES.contains(boundary))
-    if (split) {
-      current?.let(sessions::add)
-      current = newRideAggregate(bucket, boundary)
+    val open = current
+    if (bucket.sampleCount == 0) {
+      // A GPS-only minute belongs to the ride its Board was just recording, or to nothing.
+      if (open != null && open.boardId == bucket.boardId &&
+        bucket.firstSampleAtMs - open.lastFrameAtMs <= gapMs &&
+        !stoppedBetween(stops, bucket.boardId, open.lastFrameAtMs, bucket.firstSampleAtMs)
+      ) mergeRideBucket(open, bucket)
+      continue
     }
-    mergeRideBucket(current ?: continue, bucket)
-    previous = bucket
+    val split = open == null || open.boardId != bucket.boardId ||
+      bucket.firstSampleAtMs - open.lastFrameAtMs > gapMs ||
+      stoppedBetween(stops, bucket.boardId, open.lastFrameAtMs, bucket.firstSampleAtMs)
+    val session = if (split) {
+      open?.let(sessions::add)
+      newRideAggregate(bucket, rideBoundaryForBucket(bucket, markers)).also { current = it }
+    } else open!!
+    mergeRideBucket(session, bucket)
+    session.lastFrameAtMs = maxOf(session.lastFrameAtMs, bucket.lastSampleAtMs)
   }
   current?.let(sessions::add)
   return sessions
 }
 
+private fun stoppedBetween(stops: List<TelemetryMarkerEntity>, boardId: String, afterMs: Long, untilMs: Long) =
+  stops.any { it.occurredAtMs in afterMs..untilMs && (it.boardId ?: "") == boardId }
+
 private fun newRideAggregate(bucket: TelemetryMinuteBucketEntity, boundary: String) = RideSessionAggregate(
   boardId = bucket.boardId,
-  recordingId = bucket.recordingId,
   boundaryBefore = boundary,
   firstBucketStartMs = bucket.bucketStartMs,
   startAtMs = bucket.firstSampleAtMs,
@@ -162,14 +168,15 @@ private fun newRideAggregate(bucket: TelemetryMinuteBucketEntity, boundary: Stri
   batteryRegenWh = 0.0, firstLatitude = null, firstLongitude = null, latitudeSum = 0.0,
   longitudeSum = 0.0, coordinateCount = 0, minLatitude = null, maxLatitude = null,
   minLongitude = null, maxLongitude = null, routePoints = mutableListOf(),
+  lastFrameAtMs = bucket.lastSampleAtMs,
 )
 
 private fun mergeRideBucket(session: RideSessionAggregate, bucket: TelemetryMinuteBucketEntity) {
   session.firstBucketStartMs = minOf(session.firstBucketStartMs, bucket.bucketStartMs)
   session.startAtMs = minOf(session.startAtMs, bucket.firstSampleAtMs)
   session.endAtMs = maxOf(session.endAtMs, bucket.lastSampleAtMs)
-  // Same identity `getHistory` gives a bucket: two recordings of one Board can share a minute.
-  session.blockIds.add("${bucket.boardId}:${bucket.recordingId}:${bucket.bucketStartMs}")
+  // Same identity `getHistory` gives a bucket.
+  session.blockIds.add("${bucket.boardId}:${bucket.bucketStartMs}")
   session.blockCount++
   session.sampleCount += bucket.sampleCount
   session.gpsPointCount += bucket.gpsPointCount
@@ -233,8 +240,7 @@ private fun rideDistanceDeltaM(bucket: TelemetryMinuteBucketEntity): Double? {
 internal fun rideSessionMap(session: RideSessionAggregate, boardNames: Map<String, String>): Map<String, Any?> {
   val avgSpeed = if (session.avgSpeedSampleCount > 0) session.avgSpeedWeightedSum / session.avgSpeedSampleCount else 0.0
   return mapOf(
-    "id" to session.recordingId.ifBlank { "${session.boardId.ifBlank { "unknown" }}:${session.startAtMs}:${session.endAtMs}" },
-    "recordingId" to session.recordingId.ifBlank { null },
+    "id" to "${session.boardId.ifBlank { "unknown" }}:${session.startAtMs}:${session.endAtMs}",
     "boardId" to session.boardId.ifBlank { null },
     "boardName" to (boardNames[session.boardId] ?: UNKNOWN_TELEMETRY_BOARD_NAME),
     "startAtMs" to session.startAtMs, "endAtMs" to session.endAtMs,

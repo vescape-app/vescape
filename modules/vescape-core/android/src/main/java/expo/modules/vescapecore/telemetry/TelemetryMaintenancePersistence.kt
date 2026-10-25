@@ -19,16 +19,16 @@ internal class TelemetryMaintenancePersistence(
 }
 
 private data class RebuildState(
-  val at: Long, val boardId: String?, val recordingId: String?, val speed: Int, val voltage: Int,
+  val at: Long, val boardId: String?, val speed: Int, val voltage: Int,
   val motorCurrent: Int, val batteryCurrent: Int, val duty: Int, val odometer: Long?,
   val tempMosfet: Int?, val tempMotor: Int?,
 ) {
-  fun point() = BucketTelemetryPoint(at, boardId, recordingId ?: LEGACY_RIDE_RECORDING_ID,
+  fun point() = BucketTelemetryPoint(at, boardId,
     speed, voltage, motorCurrent, batteryCurrent, duty, odometer, tempMosfet, tempMotor)
   companion object {
     fun apply(previous: RebuildState?, frame: TelemetryFrameEntity): RebuildState? {
-      val old = previous?.takeIf { frame.flags and TELEMETRY_FLAG_KEYFRAME == 0 && it.recordingId == frame.recordingId && it.boardId == frame.boardId }
-      return RebuildState(frame.capturedAtMs, frame.boardId, frame.recordingId,
+      val old = previous?.takeIf { frame.flags and TELEMETRY_FLAG_KEYFRAME == 0 && it.boardId == frame.boardId }
+      return RebuildState(frame.capturedAtMs, frame.boardId,
         frame.speedCentiKmh ?: old?.speed ?: return null,
         frame.batteryVoltageMv ?: old?.voltage ?: return null,
         frame.motorCurrentMa ?: old?.motorCurrent ?: return null,
@@ -52,13 +52,13 @@ internal suspend fun TelemetryDao.rebuildTelemetryBucketsImpl(
   var rebuilt = 0
   onProgress(0, chunks)
   var previousTrack: RideTrackPointEntity? = null
-  val latestStates = mutableMapOf<Pair<String?, String?>, RebuildState>()
+  val latestStates = mutableMapOf<String?, RebuildState>()
   for (index in 0 until chunks) {
     val from = first + index * chunkMs; val to = minOf(from + chunkMs - 1, last)
     val states = mutableListOf<RebuildState>()
     // Carry each independent delta chain across chunks, including unattributed legacy samples.
     for (row in getFrames(from, to, null, Int.MAX_VALUE)) {
-      val key = row.boardId to row.recordingId
+      val key = row.boardId
       val current = RebuildState.apply(latestStates[key], row) ?: continue
       latestStates[key] = current
       states += current
@@ -78,7 +78,7 @@ internal suspend fun TelemetryDao.rebuildTelemetryBucketsImpl(
     upsertExclusionRanges(sanitization.exclusions)
     val buckets = buildTelemetryBuckets(sanitized, locations)
     upsertBuckets(buckets)
-    for (bucket in buckets) refreshBucketRoutePreview(bucket.bucketStartMs, bucket.boardId, bucket.recordingId)
+    for (bucket in buckets) refreshBucketRoutePreview(bucket.bucketStartMs, bucket.boardId)
     rebuilt += buckets.size
     onProgress(index + 1, chunks)
   }

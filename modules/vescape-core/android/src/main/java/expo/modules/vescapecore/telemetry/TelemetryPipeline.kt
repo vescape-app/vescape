@@ -313,7 +313,7 @@ internal class TelemetryPipeline(
 
         val capture = captureBuilder(parsed, cfg, canId)
         val baseEventMap = parsed.toMap().toMutableMap()
-        val state = FullTelemetryState.from(capture, recordingId = null)
+        val state = FullTelemetryState.from(capture)
         val bucketPoint = state.toBucketPoint()
         val updates = synchronized(liveLock) {
             liveTelemetryPoints.addLast(LivePoint(bucketPoint, baseEventMap, state.toLiveTrackPoint()))

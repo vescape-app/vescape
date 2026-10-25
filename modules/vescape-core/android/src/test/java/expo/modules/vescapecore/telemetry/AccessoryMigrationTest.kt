@@ -30,7 +30,7 @@ class AccessoryMigrationTest {
 
   @Test
   fun theAccessoryEdgesAreContiguousThroughSamplingSettings() {
-    assertEquals(51, TELEMETRY_DATABASE_VERSION)
+    assertEquals(52, TELEMETRY_DATABASE_VERSION)
     assertEquals(43, TelemetryMigrations.MIGRATION_43_44.startVersion)
     assertEquals(44, TelemetryMigrations.MIGRATION_43_44.endVersion)
     assertEquals(44, TelemetryMigrations.MIGRATION_44_45.startVersion)

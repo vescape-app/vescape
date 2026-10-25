@@ -691,8 +691,8 @@ final class TelemetryMigrationTests: XCTestCase {
 
     XCTAssertEqual(
       try queue.read { db in try db.primaryKey("telemetry_minute_buckets").columns },
-      // The Ride Track migration adds the third key column (ADR 0038).
-      ["bucket_start_ms", "board_id", "recording_id"]
+      // v43 added `recording_id` to the key and v52 took it out again (ADR 0041).
+      ["bucket_start_ms", "board_id"]
     )
     let columns = try columnNames("telemetry_minute_buckets")
     XCTAssertFalse(columns.contains("device_id"))
@@ -758,8 +758,6 @@ final class TelemetryMigrationTests: XCTestCase {
     XCTAssertEqual(rows[0]["accuracy_cm"] as Int?, 500)
     XCTAssertEqual(rows[0]["gps_speed_centi_mps"] as Int?, 250)
     XCTAssertEqual(rows[0]["altitude_cm"] as Int?, 12_000)
-    // Legacy rows get no invented recording identity; `rideSplitGapMinutes` still groups them.
-    XCTAssertNil(rows[0]["recording_id"] as String?)
   }
 
   /// A ride recorded without GPS migrates to an empty track, and keeps its telemetry.
@@ -837,7 +835,7 @@ final class TelemetryMigrationTests: XCTestCase {
     ] {
       XCTAssertFalse(columns.contains(retired), "telemetry_frames kept \(retired)")
     }
-    XCTAssertTrue(columns.contains("recording_id"))
+    XCTAssertFalse(columns.contains("recording_id"))
     XCTAssertTrue(columns.contains("speed_centi_kmh"))
     XCTAssertEqual(
       try queue.read { db in try Int.fetchOne(db, sql: "SELECT COUNT(*) FROM telemetry_frames") },
@@ -845,60 +843,39 @@ final class TelemetryMigrationTests: XCTestCase {
     )
   }
 
-  /// Existing buckets keep their grouping: one legacy recording id, so nothing splits or merges.
-  func testExistingBucketsKeepLegacyGrouping() throws {
-    try migrate(upTo: Self.beforeBoardId)
-    try insertBoard(id: "board-1", name: "ADV", bleId: "ble-a")
-    try insertLegacyBucket(deviceId: "ble-a", deviceName: "ADV", bucketStartMs: 60_000)
-
-    try migrate()
-
-    let rows = try queue.read { db in
-      try Row.fetchAll(db, sql: "SELECT * FROM telemetry_minute_buckets")
-    }
-    XCTAssertEqual(rows.count, 1)
-    XCTAssertEqual(rows[0]["recording_id"] as String, "")
-  }
-
-  /// Two recordings of one Board inside one minute must stay two rows.
-  func testOneMinuteHoldsTwoRecordingsSeparately() throws {
-    try migrate()
+  /// v52 drops durable recording identity (ADR 0041): two recordings of one Board in one minute
+  /// fold into one bucket, and legacy fixes without accuracy keep reading as precise.
+  /// @parity /modules/vescape-core/persistence-jvm/src/test/kotlin/expo/modules/vescapecore/telemetry/TelemetryMigrationMatrixHostTest.kt `dropRideRecordingsFoldsSharedMinutes`
+  func testDropRideRecordingsFoldsSharedMinutes() throws {
+    try migrate(upTo: "v51_preset_rows")
     try queue.write { db in
-      try insertRideRecording(
-        db,
-        RideRecording(id: "rec-a", boardId: "board-1", startedAtMs: 60_000, endedAtMs: nil, endedReason: nil)
-      )
-      try insertRideRecording(
-        db,
-        RideRecording(id: "rec-b", boardId: "board-1", startedAtMs: 60_500, endedAtMs: nil, endedReason: nil)
-      )
-      for recordingId in ["rec-a", "rec-b"] {
-        var bucket = TelemetryBucket(bucketStartMs: 60_000, boardId: "board-1", recordingId: recordingId)
-        bucket.add(
-          BucketTelemetryPoint(
-            capturedAtMs: 60_000,
-            boardId: "board-1",
-            recordingId: recordingId,
-            speedCentiKmh: 1_000,
-            batteryVoltageMv: 50_000,
-            motorCurrentMa: 0,
-            batteryCurrentMa: 0,
-            dutyPermille: 0,
-            odometerCm: nil,
-            tempMosfetDeciC: nil,
-            tempMotorDeciC: nil
-          )
-        )
-        try upsertBucket(db, bucket)
-      }
+      try db.execute(sql: "INSERT INTO ride_recordings VALUES ('ride-a','board-1',60000,61000,'stopped'),('ride-b','board-1',61500,NULL,NULL)")
+      try db.execute(sql: "INSERT INTO ride_track_points (recording_id,board_id,fix_at_ms,latitude_e7,longitude_e7,accuracy_cm) VALUES (NULL,'board-1',500,1,1,NULL),('ride-a','board-1',60600,2,2,NULL)")
+      let columns = "bucket_start_ms,board_id,recording_id,sample_count,first_sample_at_ms,last_sample_at_ms,sum_abs_speed_centi_kmh,moving_speed_sample_count,sum_moving_abs_speed_centi_kmh,max_abs_speed_centi_kmh,min_battery_voltage_mv,max_motor_current_abs_ma,max_battery_current_abs_ma,battery_used_wh_milli,battery_regen_wh_milli,max_duty_abs_permille,first_odometer_cm,last_odometer_cm,gps_point_count,precise_gps_point_count,gps_distance_cm,max_gps_speed_centi_mps,first_latitude_e7,first_longitude_e7,route_preview"
+      try db.execute(sql: "INSERT INTO telemetry_minute_buckets (\(columns)) VALUES (60000,'board-1','ride-a',2,60500,61000,1800,2,1800,900,50000,100,200,10,1,300,1000,1100,1,1,50,300,NULL,NULL,'[]')")
+      try db.execute(sql: "INSERT INTO telemetry_minute_buckets (\(columns)) VALUES (60000,'board-1','ride-b',3,61800,62000,3300,3,3300,1100,49000,300,100,20,2,400,1100,1300,1,1,70,500,520000000,170000000,'[]')")
     }
 
-    let ids = try queue.read { db in
-      try String.fetchAll(
-        db,
-        sql: "SELECT recording_id FROM telemetry_minute_buckets ORDER BY recording_id"
-      )
+    try migrate()
+
+    try queue.read { db in
+      XCTAssertFalse(try db.tableExists("ride_recordings"))
+      for table in ["telemetry_frames", "ride_track_points", "telemetry_minute_buckets"] {
+        XCTAssertFalse(try db.columns(in: table).map(\.name).contains("recording_id"), table)
+      }
+      XCTAssertEqual(try Int.fetchOne(db, sql: "SELECT accuracy_cm FROM ride_track_points WHERE fix_at_ms = 500"), 2000)
+      XCTAssertNil(try Int.fetchOne(db, sql: "SELECT accuracy_cm FROM ride_track_points WHERE fix_at_ms = 60600"))
+      let rows = try Row.fetchAll(db, sql: "SELECT * FROM telemetry_minute_buckets")
+      XCTAssertEqual(rows.count, 1)
+      XCTAssertEqual(rows[0]["sample_count"] as Int, 5)
+      XCTAssertEqual(rows[0]["first_sample_at_ms"] as Int64, 60_500)
+      XCTAssertEqual(rows[0]["last_sample_at_ms"] as Int64, 62_000)
+      XCTAssertEqual(rows[0]["sum_abs_speed_centi_kmh"] as Int64, 5_100)
+      XCTAssertEqual(rows[0]["min_battery_voltage_mv"] as Int, 49_000)
+      XCTAssertEqual(rows[0]["first_odometer_cm"] as Int64, 1_000)
+      XCTAssertEqual(rows[0]["last_odometer_cm"] as Int64, 1_300)
+      XCTAssertEqual(rows[0]["first_latitude_e7"] as Int64, 520_000_000)
+      XCTAssertNil(rows[0]["route_preview"] as String?)
     }
-    XCTAssertEqual(ids, ["rec-a", "rec-b"])
   }
 }

@@ -22,7 +22,7 @@ internal object BucketRoutePreview {
     for (point in track.filter { it.isPrecise() }.sortedBy { it.fixAtMs }) {
       val previous = segments.lastOrNull()?.lastOrNull()
       if (previous == null || point.fixAtMs - previous.fixAtMs > GAP_MS ||
-        point.recordingId != previous.recordingId || point.boardId != previous.boardId) {
+        point.boardId != previous.boardId) {
         segments.add(mutableListOf())
       }
       segments.last().add(point)
@@ -119,12 +119,11 @@ internal suspend fun TelemetryDao.favoriteRoutePreview(startMs: Long, endMs: Lon
   val buckets = getFavoriteRouteBuckets(startMs - startMs % TELEMETRY_BUCKET_SIZE_MS, endMs, boardId ?: UNKNOWN_TELEMETRY_BOARD_ID)
   val result = mutableListOf<Map<String, Any>>()
   var previousEnd: Long? = null
-  var previousRecording: String? = null
   for (bucket in buckets) {
     val minuteEnd = bucket.bucketStartMs + TELEMETRY_BUCKET_SIZE_MS
     val segments = if (startMs > bucket.bucketStartMs || endMs < minuteEnd - 1) {
       val track = getBucketRouteTrack(maxOf(startMs, bucket.bucketStartMs), minOf(endMs, minuteEnd - 1) + 1,
-        boardId, bucket.recordingId.takeUnless { it == LEGACY_RIDE_RECORDING_ID })
+        boardId)
       BucketRoutePreview.decode(BucketRoutePreview.build(track))
     } else if (bucket.routePreview != null) BucketRoutePreview.decode(bucket.routePreview)
     else if (bucket.firstLatitudeE7 != null && bucket.firstLongitudeE7 != null) listOf(
@@ -132,7 +131,7 @@ internal suspend fun TelemetryDao.favoriteRoutePreview(startMs: Long, endMs: Lon
         listOf(BucketRoutePreview.Coordinate(bucket.firstLatitudeE7.toLong(), bucket.firstLongitudeE7.toLong())))
     ) else emptyList()
     for ((segmentIndex, segment) in segments.withIndex()) {
-      val gap = previousEnd != null && (segmentIndex > 0 || segment.firstAtMs - previousEnd > BucketRoutePreview.GAP_MS || previousRecording != bucket.recordingId)
+      val gap = previousEnd != null && (segmentIndex > 0 || segment.firstAtMs - previousEnd > BucketRoutePreview.GAP_MS)
       for ((index, point) in segment.points.withIndex()) {
         result.add(buildMap {
           put("latitude", point.latitudeE7 / 1e7)
@@ -141,7 +140,6 @@ internal suspend fun TelemetryDao.favoriteRoutePreview(startMs: Long, endMs: Lon
         })
       }
       previousEnd = segment.lastAtMs
-      previousRecording = bucket.recordingId
     }
   }
   return result

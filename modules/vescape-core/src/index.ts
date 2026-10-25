@@ -1052,8 +1052,6 @@ export interface TelemetryDeleteRangeOptions {
   fromMs: number
   toMs: number
   boardId?: string | null
-  /** Restrict deletion to one native Ride Recording. Omitted for legacy time-range operations. */
-  recordingId?: string | null
 }
 
 export interface TelemetryMinuteBucket {
@@ -1063,15 +1061,6 @@ export interface TelemetryMinuteBucket {
   bucketStartMs: number
   /** Owning Board (`boards.id`), or null when the samples match no saved Board. */
   boardId: string | null
-  /**
-   * Owning Ride Recording, or null for buckets aggregated before durable recording identity
-   * existed. Board attribution and recording identity are separate facts: two recordings of one
-   * Board can share a minute and stay two buckets (ADR 0038).
-   *
-   * @parity /modules/vescape-core/ios/telemetry/TelemetryDao.swift `historyMap`
-   * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/TelemetryRepository.kt `getHistory`
-   */
-  recordingId: string | null
   /** Resolved from `boards` on read, never stored on the row — a rename relabels history. */
   boardName: string
   sampleCount: number
@@ -1103,6 +1092,7 @@ export interface TelemetryMinuteBucket {
     | 'error'
     | 'gap'
     | 'app_stop'
+    | 'recording_stop'
   boundaryMessage?: string | null
   gapBeforeMs?: number | null
 }
@@ -1142,8 +1132,6 @@ export interface TelemetrySample {
  */
 export interface HistoryGpsSample {
   id: number
-  /** Owning Ride Recording; null for migrated legacy fixes. */
-  recordingId: string | null
   capturedAtMs: number
   boardId: string | null
   boardName: string
@@ -1157,6 +1145,11 @@ export interface HistoryGpsSample {
   distanceFromPreviousM: number | null
 }
 
+/**
+ * `recording_stop` is the explicit rider Stop Recording, the only marker that splits a ride.
+ * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/TelemetryEntities.kt `RECORDING_STOP_MARKER`
+ * @parity /modules/vescape-core/ios/telemetry/RideHistoryRepository.swift `recordingStopMarker`
+ */
 export interface HistoryMarker {
   id: number
   occurredAtMs: number
@@ -1167,6 +1160,7 @@ export interface HistoryMarker {
     | 'error'
     | 'gap'
     | 'app_stop'
+    | 'recording_stop'
     | 'auto_pause'
   /** Owning Board (`boards.id`); null when the Marker was written with no Board connected. */
   boardId: string | null
@@ -1467,8 +1461,6 @@ export interface RideRoutePoint {
  */
 export interface RideHistorySession {
   id: string
-  /** Durable Ride Recording identity; null/absent for reconstructed legacy sessions. */
-  recordingId?: string | null
   /** Owning Board (`boards.id`), or null when the ride matches no saved Board. */
   boardId: string | null
   /** Resolved from `boards` on read, never stored on the row — a rename relabels history. */
@@ -2831,7 +2823,6 @@ type VescapeCoreNativeModule = NativeEventEmitter<VescapeCoreEvents> & {
     fromMs: number
     toMs: number
     boardId?: string
-    recordingId?: string
     limit?: number
   }): Promise<NativeHistoryRange>
   getTelemetrySummary(): Promise<TelemetrySummary>
@@ -3660,7 +3651,6 @@ export async function getTelemetrySamples(options: {
 
 /**
  * Exact stored range. Omitted Board means unassigned Board, not all Boards.
- * Omit recordingId for Favorites and legacy Board/time selections.
  * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/RideExport.kt
  * @parity /modules/vescape-core/ios/telemetry/RideExport.swift
  */
@@ -3668,7 +3658,6 @@ export interface RideExportOptions {
   fromMs: number
   toMs: number
   boardId?: string
-  recordingId?: string
   name?: string
 }
 
@@ -3713,7 +3702,6 @@ export async function getHistoryRange(options: {
   fromMs: number
   toMs: number
   boardId?: string
-  recordingId?: string
   limit?: number
 }): Promise<HistoryRange> {
   const range: NativeHistoryRange = E2E_ENABLED

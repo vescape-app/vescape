@@ -170,7 +170,6 @@ export const useHistoryStore = create<HistoryStore>((set, get) => ({
         fromMs: selectedSession.startAtMs,
         toMs: selectedSession.endAtMs,
         boardId: selectedSession.boardId,
-        ...(selectedSession.recordingId ? { recordingId: selectedSession.recordingId } : {}),
       })
       const selectedIndex = sessions.findIndex((session) => session.id === selectedSession.id)
       const [blocks, page] = await Promise.all([

@@ -283,9 +283,8 @@ try FileManager.default.removeItem(at: maintenanceURL)
 let trackURL = FileManager.default.temporaryDirectory.appendingPathComponent("vescape-track-\(UUID().uuidString).db")
 var trackQueue = try DatabaseQueue(path: trackURL.path)
 try TelemetryDatabase.migrator.migrate(trackQueue)
-let trackPoint = RideTrackPoint(recordingId: "ride-a", boardId: "board-a", fixAtMs: 2000, latitudeE7: 510000000, longitudeE7: 170000000, accuracyCm: 3500, gpsSpeedCentiMps: 400, bearingCentiDeg: nil, altitudeCm: nil)
+let trackPoint = RideTrackPoint(boardId: "board-a", fixAtMs: 2000, latitudeE7: 510000000, longitudeE7: 170000000, accuracyCm: 3500, gpsSpeedCentiMps: 400, bearingCentiDeg: nil, altitudeCm: nil)
 try trackQueue.write { db in
-  try insertRideRecording(db, RideRecording(id: "ride-a", boardId: "board-a", startedAtMs: 1000, endedAtMs: nil, endedReason: nil))
   for bucket in buildTelemetryBuckets([], locationPoints: rideTrackBucketPoints([trackPoint])) {
     try db.execute(sql: RecordingPersistenceSQL.upsertBucket, arguments: RecordingPersistenceSQL.bucketArguments(bucket))
   }
@@ -302,7 +301,7 @@ try trackQueue.read { db in
 try trackQueue.write { db in
   try db.execute(sql: "CREATE TRIGGER reject_track BEFORE INSERT ON ride_track_points BEGIN SELECT RAISE(FAIL, 'track failure'); END")
 }
-let lateTrackPoint = RideTrackPoint(recordingId: "ride-a", boardId: "board-a", fixAtMs: 62000, latitudeE7: 510000000, longitudeE7: 170000000, accuracyCm: 500, gpsSpeedCentiMps: 400, bearingCentiDeg: nil, altitudeCm: nil)
+let lateTrackPoint = RideTrackPoint(boardId: "board-a", fixAtMs: 62000, latitudeE7: 510000000, longitudeE7: 170000000, accuracyCm: 500, gpsSpeedCentiMps: 400, bearingCentiDeg: nil, altitudeCm: nil)
 var trackCommitFailed = false
 do {
   try trackQueue.write { db in
@@ -322,30 +321,24 @@ try trackQueue.read { db in
 }
 try trackQueue.close()
 
-// Identical timestamps belong to separate recordings, including queries with a small limit.
-let identityQueue = try DatabaseQueue(path: trackURL.path)
-try identityQueue.write { db in
+// Ride reads and deletes scope to Board and time only (ADR 0041).
+let scopeQueue = try DatabaseQueue(path: trackURL.path)
+try scopeQueue.write { db in
   try db.execute(sql: "DROP TRIGGER reject_track")
-  try insertRideRecording(db, RideRecording(id: "ride-b", boardId: "board-a", startedAtMs: 1000, endedAtMs: 3000, endedReason: "stopped"))
-  let other = RideTrackPoint(recordingId: "ride-b", boardId: "board-a", fixAtMs: 2000, latitudeE7: 510000000, longitudeE7: 170000000, accuracyCm: 500, gpsSpeedCentiMps: 400, bearingCentiDeg: nil, altitudeCm: nil)
+  let other = RideTrackPoint(boardId: "board-b", fixAtMs: 2000, latitudeE7: 510000000, longitudeE7: 170000000, accuracyCm: 500, gpsSpeedCentiMps: 400, bearingCentiDeg: nil, altitudeCm: nil)
   try insertRideTrackPoint(db, other)
   for bucket in buildTelemetryBuckets([], locationPoints: rideTrackBucketPoints([other])) {
     try db.execute(sql: RecordingPersistenceSQL.upsertBucket, arguments: RecordingPersistenceSQL.bucketArguments(bucket))
   }
 }
-try identityQueue.read { db in
-  let selected = try fetchRideTrack(db, fromMs: 0, toMs: 10000, boardId: "board-a", recordingId: "ride-b", limit: 1)
-  try require(selected.count == 1 && selected[0]["recording_id"] as String? == "ride-b", "Recording filter applied after limit")
+_ = try TelemetryMaintenancePersistence(writer: scopeQueue).deleteRanges([TelemetryTimeRange(startMs: 0, endMs: 10000)], boardId: "board-a", allBoards: false)
+try scopeQueue.read { db in
+  let remaining = try fetchRideTrack(db, fromMs: 0, toMs: 10000, boardId: nil)
+  try require(remaining.count == 1 && remaining[0]["board_id"] as String? == "board-b", "Board deletion removed another Board's GPS")
+  let boards = try String.fetchAll(db, sql: "SELECT board_id FROM telemetry_minute_buckets")
+  try require(boards == ["board-b"], "Board deletion removed another Board's bucket")
 }
-let identityMaintenance = TelemetryMaintenancePersistence(writer: identityQueue)
-_ = try identityMaintenance.deleteRanges([TelemetryTimeRange(startMs: 0, endMs: 10000)], boardId: "board-a", allBoards: false, recordingId: "ride-a")
-try identityQueue.read { db in
-  let remaining = try fetchRideTrack(db, fromMs: 0, toMs: 10000, boardId: "board-a")
-  try require(remaining.count == 1 && remaining[0]["recording_id"] as String? == "ride-b", "Recording deletion removed adjacent GPS")
-  let ids = try String.fetchAll(db, sql: "SELECT recording_id FROM telemetry_minute_buckets")
-  try require(ids == ["ride-b"], "Recording deletion removed adjacent bucket")
-}
-try identityQueue.close()
+try scopeQueue.close()
 try FileManager.default.removeItem(at: trackURL)
 
 let fixtureURL = root.appendingPathComponent("shared/recording-persistence-contract.json")
@@ -966,14 +959,11 @@ if let exchangePath = ProcessInfo.processInfo.environment["VESCAPE_BACKUP_EXCHAN
     try require(speed == 2468, "Android archive lost Ride Recording on iOS")
     let track = try fetchRideTrack(db, fromMs: 0, toMs: 2000, boardId: "cross-board")
     try require(track.count == 1, "Android archive lost independent GPS fix")
-    try require(track.first?["recording_id"] as String? == "cross-recording", "Android archive lost GPS recording identity")
     try require(track.first?["accuracy_cm"] as Int? == 3500, "Android archive discarded poor GPS accuracy")
-    let endReason = try String.fetchOne(db, sql: "SELECT ended_reason FROM ride_recordings WHERE id='cross-recording'")
-    try require(endReason == "stopped", "Android archive lost recording end intent")
     let previewFixes = try bucketPreviewFixes()
     for (minute, points) in Dictionary(grouping: previewFixes, by: { $0.fixAtMs / 60000 * 60000 }) {
-      let preview = try String.fetchOne(db, sql: "SELECT route_preview FROM telemetry_minute_buckets WHERE bucket_start_ms = ? AND board_id = ? AND recording_id = ?",
-        arguments: [minute, points[0].boardId, points[0].recordingId])!
+      let preview = try String.fetchOne(db, sql: "SELECT route_preview FROM telemetry_minute_buckets WHERE bucket_start_ms = ? AND board_id = ?",
+        arguments: [minute, points[0].boardId])!
       let expected = try BucketRoutePreview.decode(BucketRoutePreview.build(points))
       try require(try BucketRoutePreview.decode(preview) == expected, "Android preview geometry survives iOS restore")
     }
@@ -1051,10 +1041,8 @@ if let exchangePath = ProcessInfo.processInfo.environment["VESCAPE_BACKUP_EXCHAN
     try db.execute(sql: "INSERT INTO vesc_fault_occurrences VALUES ('cross-fault','cross-board',7,1000,1001,NULL,0)")
     try db.execute(sql: "INSERT INTO vesc_fault_captures VALUES ('cross-fault','cross-board',900,1000,1)")
     try db.execute(sql: "INSERT INTO vesc_fault_capture_samples (occurrence_id,captured_at,speed,state) VALUES ('cross-fault',1000,24.68,1)")
-    try insertRideRecording(db, RideRecording(id: "cross-recording", boardId: "cross-board", startedAtMs: 900, endedAtMs: 1500, endedReason: "stopped"))
-    try insertRideTrackPoint(db, RideTrackPoint(recordingId: "cross-recording", boardId: "cross-board", fixAtMs: 1200, latitudeE7: 510000000, longitudeE7: 170000000, accuracyCm: 3500, gpsSpeedCentiMps: 400, bearingCentiDeg: 9000, altitudeCm: 12300))
+    try insertRideTrackPoint(db, RideTrackPoint(boardId: "cross-board", fixAtMs: 1200, latitudeE7: 510000000, longitudeE7: 170000000, accuracyCm: 3500, gpsSpeedCentiMps: 400, bearingCentiDeg: 9000, altitudeCm: 12300))
     let previewFixes = try bucketPreviewFixes()
-    try insertRideRecording(db, RideRecording(id: previewFixes[0].recordingId!, boardId: previewFixes[0].boardId!, startedAtMs: 0, endedAtMs: 62000, endedReason: "stopped"))
     try RecordingPersistenceSQL.insertTrackAndBuckets(db, track: previewFixes, buckets: buildTelemetryBuckets([], locationPoints: rideTrackBucketPoints(previewFixes)))
     try db.execute(sql: "PRAGMA user_version = \(TELEMETRY_SCHEMA_VERSION)")
   }

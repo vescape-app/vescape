@@ -62,8 +62,8 @@ export default function HistorySettingsScreen() {
         <SettingsCard>
           <SettingsRow
             icon={PathIcon}
-            label="Split older rides after"
-            hint={`Older rides only. A stop longer than this splits them into separate rides.\nRides recorded now keep their own start and end, whatever happens in between.\nDefault: ${DEFAULT_RIDE_SPLIT_GAP_MINUTES} min.`}
+            label="Split rides after"
+            hint={`A stop longer than this starts a new ride. Disconnects and app restarts in between do not.\nDefault: ${DEFAULT_RIDE_SPLIT_GAP_MINUTES} min.`}
             right={
               <Stepper
                 value={rideSplitGapMinutes}
