@@ -396,7 +396,7 @@ An app-wide preference for the units used to show, enter, and announce speed and
 _Avoid_: Board units, telemetry units
 
 **Settings Drawer**:
-The edge drawer behind the top-right button on the main screen: the **Vescape Account**, the app's live self-status (backup, version, storage), the few settings worth one tap, and one link to Advanced settings for everything else. Its button wears whatever inside it needs attention — a required update, or a running backup with its progress — the way the Social button wears an active **Group Ride**.
+The edge drawer behind the top-right button on the main screen: the **Vescape Account**, the app's live self-status (backup, version, storage), the few settings worth one tap, and one link to More settings for everything else. Its button wears whatever inside it needs attention — a required update, or a running backup with its progress — the way the Social button wears an active **Group Ride**.
 _Avoid_: settings menu, settings popover, quick settings
 
 **Board Setting**:

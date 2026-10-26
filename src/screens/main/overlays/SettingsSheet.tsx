@@ -141,8 +141,8 @@ export function SettingsSheet({ backup, onNavigate }: SettingsSheetProps) {
       <LinkWidget
         icon={WrenchIcon}
         accent={theme.settingsIcon.advanced}
-        label="Advanced settings"
-        hint="Diagnostics, map, filters, and developer tools"
+        label="More settings"
+        hint="Sounds, map, devices, and more"
         onPress={() => go(routes.settings)}
       />
     </View>
