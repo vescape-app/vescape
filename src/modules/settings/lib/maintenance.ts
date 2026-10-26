@@ -56,6 +56,13 @@ const STATUS_LABELS: Record<MaintenanceJobState['status'], string> = {
   failed: 'Failed',
 }
 
+/** Jobs often finish in seconds, which ride-duration minutes would round up to "1 min". */
+function fmtJobDuration(ms: number): string {
+  if (ms < 1000) return '< 1 s'
+  if (ms < 60_000) return `${Math.round(ms / 1000)} s`
+  return fmtRideDuration(ms / 1000)
+}
+
 /** One job's Database screen line: status, items left, last run, duration and last error. */
 export function maintenanceJobDetail(job: MaintenanceJobState, nowMs = Date.now()): string {
   const parts = [STATUS_LABELS[job.status]]
@@ -64,7 +71,7 @@ export function maintenanceJobDetail(job: MaintenanceJobState, nowMs = Date.now(
   }
   if (job.lastRunAtMs != null) parts.push(`last run ${fmtTimeAgo(job.lastRunAtMs, nowMs)}`)
   if (job.lastDurationMs != null && job.status !== 'running') {
-    parts.push(`took ${fmtRideDuration(job.lastDurationMs / 1000)}`)
+    parts.push(`took ${fmtJobDuration(job.lastDurationMs)}`)
   }
   const line = parts.join(' · ')
   return job.lastError ? `${line}\n${job.lastError}` : line

@@ -60,3 +60,13 @@ test('job detail lists what is left, the last run and its error', () => {
     ),
   ).toBe('Failed · last run 10m ago · took 2 min\ndisk I/O')
 })
+
+test('sub-minute job durations show seconds, not a rounded-up minute', () => {
+  const now = 10 * 60_000
+  expect(
+    maintenanceJobDetail(job({ status: 'done', lastRunAtMs: now, lastDurationMs: 11 }), now),
+  ).toBe('Done · last run now · took < 1 s')
+  expect(
+    maintenanceJobDetail(job({ status: 'done', lastRunAtMs: now, lastDurationMs: 12_400 }), now),
+  ).toBe('Done · last run now · took 12 s')
+})

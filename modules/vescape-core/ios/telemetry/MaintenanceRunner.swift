@@ -231,10 +231,10 @@ final class MaintenanceRunner {
   private func fail(_ job: MaintenanceJob, fingerprint: String, error: Error, startedAt: Date) {
     Self.log.error("Maintenance Job \(job.id, privacy: .public) failed: \(error.localizedDescription, privacy: .public)")
 #if canImport(Sentry)
-    SentrySDK.capture(error: error) { scope in
-      scope.setTag(value: job.id, key: "maintenance.job")
-      scope.setExtra(value: fingerprint, key: "maintenance.fingerprint")
-    }
+    let event = Event(error: error)
+    event.tags = ["maintenance.job": job.id]
+    event.extra = ["maintenance.fingerprint": fingerprint]
+    SentrySDK.capture(event: event)
 #endif
     finishRun(job.id, startedAt: startedAt) {
       $0.status = .failed
