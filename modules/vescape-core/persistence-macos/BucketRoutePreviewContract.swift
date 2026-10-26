@@ -88,7 +88,7 @@ func runBucketRoutePreviewContract() throws {
   try require(sessions.count == 1, "GPS-only tail joins the preceding ride")
   try require(sessions[0].routePoints.count == 8, "preview joined point count")
   try require(sessions[0].routePoints.enumerated().compactMap { $0.element.breakBefore ? $0.offset : nil } == [5], "preview joins minutes without bridging gaps")
-  _ = try TelemetryMaintenancePersistence(writer: queue).rebuild(config: MetricSanitizerConfig(), onProgress: { _, _ in })
+  try rebuildRideSummaries(queue)
   try require(try readPreviews() == previews, "explicit rebuild backfills original geometry")
   try queue.write { db in
     try db.execute(sql: "CREATE TRIGGER reject_preview BEFORE UPDATE OF route_preview ON telemetry_minute_buckets BEGIN SELECT RAISE(FAIL, 'preview failure'); END")

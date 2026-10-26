@@ -122,6 +122,13 @@ function RidePreviewCardShowcase() {
           routePoints={PREVIEW_ROUTES[route]}
           color={theme.palette.purple.color}
           map={false}
+          weather={{
+            icon: 'cloud',
+            minTemperatureC: 8,
+            maxTemperatureC: 20,
+            maxGustKmh: 30,
+            rainMinutes: 0,
+          }}
           onPress={() => undefined}
         />
         <RidePreviewCard

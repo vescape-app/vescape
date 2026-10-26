@@ -371,6 +371,7 @@ function getRideHistoryPage(options: { limit?: number; cursorBeforeMs?: number }
       bucket.firstLatitude != null && bucket.firstLongitude != null
         ? [{ latitude: bucket.firstLatitude, longitude: bucket.firstLongitude }]
         : [],
+    weather: null,
   }))
   const limit = Math.max(1, options.limit ?? 10)
   const page = sessions.slice(0, limit)

@@ -5,6 +5,8 @@ import { theme, type ThemeColor } from '@/constants/theme'
 import { useResolvedNeutralColors } from '@/hooks/useTheme'
 import { RouteSparkline } from '@/modules/history/components/RouteSparkline'
 import type { RoutePoint } from '@/modules/history/lib/routePreview'
+import { RideWeatherLabel } from '@/modules/history/components/RideWeatherLabel'
+import type { RideWeather } from 'vescape-core'
 
 const CARD_WIDTH = 172
 const CARD_PADDING = 8
@@ -19,6 +21,8 @@ interface RidePreviewCardProps {
   onPress: () => void
   testID?: string
   map?: boolean
+  /** Shown after the date; null renders nothing. */
+  weather?: RideWeather | null
 }
 
 /** Compact ride tile shared by recent rides and Favorites in the History drawer. */
@@ -31,6 +35,7 @@ export function RidePreviewCard({
   onPress,
   testID,
   map = true,
+  weather = null,
 }: RidePreviewCardProps) {
   const neutral = useResolvedNeutralColors()
 
@@ -62,9 +67,12 @@ export function RidePreviewCard({
         <Text style={[styles.title, { color: neutral.textPrimary }]} numberOfLines={1}>
           {title}
         </Text>
-        <Text style={[styles.date, { color: neutral.textSecondary }]} numberOfLines={1}>
-          {date}
-        </Text>
+        <View style={styles.dateRow}>
+          <Text style={[styles.date, { color: neutral.textSecondary }]} numberOfLines={1}>
+            {weather ? `${date} ·` : date}
+          </Text>
+          {weather ? <RideWeatherLabel weather={weather} color={neutral.textSecondary} /> : null}
+        </View>
         <Text style={[styles.subtitle, { color: neutral.textSecondary }]} numberOfLines={1}>
           {subtitle}
         </Text>
@@ -97,7 +105,13 @@ const styles = StyleSheet.create({
     lineHeight: 18,
     fontVariant: ['tabular-nums'],
   },
+  dateRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+  },
   date: {
+    flexShrink: 1,
     fontSize: 11,
     lineHeight: 15,
   },

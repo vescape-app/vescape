@@ -248,7 +248,8 @@ let maintenanceFavoriteStore = FavoriteStore(dbWriter: maintenanceQueue!)
 try maintenanceFavoriteStore.insert(.init(id: "pin", boardId: "board-b", name: nil, startMs: Int64(int(favoriteRange["fromMs"])), endMs: Int64(int(favoriteRange["toMs"])), createdAtMs: 4_000, updatedAtMs: 4_000, summary: .init()))
 let pins = try maintenanceFavoriteStore.list().map { expandTelemetryRangeToBuckets(.init(startMs: $0.startMs, endMs: $0.endMs)) }
 try maintenance.clear(protectedRanges: pins)
-let rebuilt = try maintenance.rebuild(config: .init(), onProgress: { _, _ in })
+try rebuildRideSummaries(maintenanceQueue!)
+let rebuilt = try maintenanceQueue!.read { try Int.fetchOne($0, sql: "SELECT COUNT(*) FROM telemetry_minute_buckets") ?? 0 }
 try require(rebuilt == 1, "maintenance rebuild count")
 try maintenanceQueue!.write { db in
   for at in [Int64(245_000), 305_000] {
@@ -1324,6 +1325,9 @@ try runRideExportContract()
 try runRideCsvContract()
 try runBucketRoutePreviewContract()
 try runRecordingFlushTimerContract()
+try runWeatherObservationContract()
+try runMaintenanceJobsContract()
+try runRideWeatherBackfillContract()
 
 print("recording-contract macOS runtimeMs=\(Int(Date().timeIntervalSince(started) * 1000)) scenario=\(fixture["scenario"]!)")
 

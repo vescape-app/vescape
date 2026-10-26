@@ -20,6 +20,7 @@ function favorite(overrides: Partial<Favorite> & Pick<Favorite, 'id' | 'startMs'
     maxSpeedKmh: 32,
     batteryUsedWh: 12.5,
     routePoints: [],
+    weather: null,
     ...overrides,
   }
 }

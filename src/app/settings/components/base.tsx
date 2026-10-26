@@ -15,6 +15,7 @@ import {
   ArrowsClockwiseIcon,
   CheckIcon,
   CubeIcon,
+  DatabaseIcon,
   FadersIcon,
   GearSixIcon,
   BellRingingIcon,
@@ -50,8 +51,9 @@ function IconButtonShowcase() {
       : takeover === 'update'
         ? { icon: ArrowFatLinesUpIcon, accent: theme.settingsIcon.update }
         : {
-            icon: ArrowsClockwiseIcon,
-            accent: theme.settingsIcon.sync,
+            icon: takeover === 'maintenance' ? DatabaseIcon : ArrowsClockwiseIcon,
+            accent:
+              takeover === 'maintenance' ? theme.settingsIcon.database : theme.settingsIcon.sync,
             progress: progress === 'none' ? undefined : Number.parseInt(progress, 10) / 100,
           }
 
@@ -65,7 +67,7 @@ function IconButtonShowcase() {
           <ToggleRow label="dot" value={dot} onToggle={setDot} />
           <ChipRow
             label="takeover"
-            options={['none', 'update', 'backup']}
+            options={['none', 'update', 'backup', 'maintenance']}
             selected={takeover}
             onSelect={setTakeover}
           />

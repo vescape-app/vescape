@@ -118,3 +118,12 @@ export function lengthInputToMeters(
   if (nextDisplay >= lengthFromMeters(maxMeters, units)) return maxMeters
   return lengthToMeters(nextDisplay, units)
 }
+
+/** Weather temperatures are canonical °C. */
+export function temperatureFromC(celsius: number, units: UnitSystem): number {
+  return units === 'imperial' ? (celsius * 9) / 5 + 32 : celsius
+}
+
+export function temperatureUnit(units: UnitSystem): '°C' | '°F' {
+  return units === 'imperial' ? '°F' : '°C'
+}

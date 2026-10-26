@@ -7,16 +7,18 @@ export interface SettingsTriggerInput {
   /** A newer version exists, with nothing forcing the Rider's hand. */
   updateAvailable: boolean
   backup: BackupSlot
+  /** A running Maintenance Job, with its 0–1 progress when known; null while none runs. */
+  maintenance: { progress: number | null } | null
 }
 
 /** Which state, if any, is important enough to wear the Settings button. */
-export type SettingsTriggerTakeover = 'update' | 'backup' | null
+export type SettingsTriggerTakeover = 'update' | 'backup' | 'maintenance' | null
 
 export interface SettingsTriggerState {
   takeover: SettingsTriggerTakeover
   /** Accent for the takeover; undefined while resting. */
   accent: ThemeColor | undefined
-  /** 0–1 ring, only for a measurable backup drain. */
+  /** 0–1 ring, only for measurable work: a backup drain or a Maintenance Job. */
   progress: number | undefined
   /** Badge color for a state worth noticing but not worth wearing the whole button. */
   dot: ThemeColor | undefined
@@ -28,12 +30,14 @@ export interface SettingsTriggerState {
  *
  * One rule, in priority order: a blocked or warned version outranks everything (the app may stop
  * working), a running backup outranks a merely available update (it is happening now and has
- * progress to show), and an available update stays a quiet dot the Rider can ignore.
+ * progress to show), a running Maintenance Job ranks below the backup, and an available update
+ * stays a quiet dot the Rider can ignore.
  */
 export function settingsTriggerState({
   versionWarning,
   updateAvailable,
   backup,
+  maintenance,
 }: SettingsTriggerInput): SettingsTriggerState {
   if (versionWarning) {
     return {
@@ -54,6 +58,16 @@ export function settingsTriggerState({
       progress: backupProgressFraction(backup) ?? undefined,
       dot,
       accessibilityLabel: 'Settings, backing up rides',
+    }
+  }
+
+  if (maintenance) {
+    return {
+      takeover: 'maintenance',
+      accent: theme.settingsIcon.database,
+      progress: maintenance.progress ?? undefined,
+      dot,
+      accessibilityLabel: 'Settings, updating ride data',
     }
   }
 

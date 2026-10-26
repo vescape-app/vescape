@@ -166,8 +166,16 @@ internal final class RideHistoryRepository {
       let cutoff = sorted.indices.contains(limit - 1) ? sorted[limit - 1].firstBucketStartMs : nil
       let page = cutoff.map { value in sorted.filter { $0.firstBucketStartMs >= value } } ?? sorted
       let hasMore = hasOlderBuckets || cutoff.map { value in sorted.contains { $0.firstBucketStartMs < value } } == true
+      // One weather read per page; each ride picks its rows from the page span in memory.
+      let weather = page.isEmpty ? [] : try weatherObservationsSpanning(
+        db,
+        startMs: page.map(\.startAtMs).min()!,
+        endMs: page.map(\.endAtMs).max()!
+      )
       return [
-        "sessions": page.map { rideSessionMap($0, boardNames: boardNames) },
+        "sessions": page.map {
+          rideSessionMap($0, boardNames: boardNames, weather: summarizeRideWeather(weather, startMs: $0.startAtMs, endMs: $0.endAtMs))
+        },
         "hasMore": hasMore,
         "nextCursorBeforeMs": hasMore ? page.last?.firstBucketStartMs : nil,
       ]
@@ -308,7 +316,11 @@ private func rideDistanceDeltaM(_ bucket: Row) -> Double? {
 }
 
 /// @parity /modules/vescape-core/src/index.ts `RideHistorySession`
-internal func rideSessionMap(_ session: RideSessionAggregate, boardNames: [String: String]) -> [String: Any?] {
+internal func rideSessionMap(
+  _ session: RideSessionAggregate,
+  boardNames: [String: String],
+  weather: RideWeather?
+) -> [String: Any?] {
   let average = session.avgSpeedSampleCount > 0 ? session.avgSpeedWeightedSum / Double(session.avgSpeedSampleCount) : 0
   return [
     "id": "\(session.boardId.isEmpty ? "unknown" : session.boardId):\(session.startAtMs):\(session.endAtMs)",
@@ -326,6 +338,7 @@ internal func rideSessionMap(_ session: RideSessionAggregate, boardNames: [Strin
     "centerLongitude": session.coordinateCount > 0 ? session.longitudeSum / Double(session.coordinateCount) : nil,
     "minLatitude": session.minLatitude, "maxLatitude": session.maxLatitude, "minLongitude": session.minLongitude,
     "maxLongitude": session.maxLongitude, "boundaryBefore": session.boundaryBefore,
+    "weather": weather?.map,
     "routePoints": session.routePoints.map { point -> [String: Any] in
       var value: [String: Any] = ["latitude": point.latitude, "longitude": point.longitude]
       if point.breakBefore { value["breakBefore"] = true }

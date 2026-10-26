@@ -64,7 +64,8 @@ class RecordingPersistenceHostTest {
       type = "m-delta", boardId = delta.getString("boardId"), message = null, gapMs = null,
     )))
     assertEquals(listOf("m3", "m-delta"), dao.getMarkers(0, Long.MAX_VALUE, null).map { it.type })
-    assertEquals(fixture.getInt("expectedRebuiltBuckets"), maintenance.rebuild(MetricSanitizerConfig()))
+    rebuildRideSummaries(dao)
+    assertEquals(fixture.getInt("expectedRebuiltBuckets"), dao.getAllHistoryBucketsAsc().size)
     assertEquals(fixture.getInt("expectedRebuiltSampleCount"), dao.getAllHistoryBucketsAsc().single().sampleCount)
     val rollback = fixture.getJSONArray("rollbackRanges")
     val lateTimes = (0 until rollback.length()).map { index ->

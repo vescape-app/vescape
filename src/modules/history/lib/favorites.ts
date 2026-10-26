@@ -100,6 +100,7 @@ export function favoriteToSession(
     maxLongitude: maxOrNull(longitudes),
     boundaryBefore: 'none',
     routePoints,
+    weather: favorite.weather,
   }
 }
 

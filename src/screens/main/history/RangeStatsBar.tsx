@@ -46,6 +46,8 @@ export function RangeStatsBar({ session, samples, gpsSamples, trimming }: RangeS
       endAtMs: range.endMs,
       movingStartAtMs: range.startMs,
       movingEndAtMs: range.endMs,
+      // Weather is folded natively for the whole ride; it does not describe a narrower stretch.
+      weather: null,
       ...stats,
     }
   }, [range, session, sortedGps, sortedSamples])

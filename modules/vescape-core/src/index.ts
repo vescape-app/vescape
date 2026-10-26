@@ -1316,6 +1316,8 @@ export interface Favorite {
   batteryUsedWh: number
   /** Native coarse route projection; available without loading the surrounding History page. */
   routePoints: RideRoutePoint[]
+  /** Weather over the pinned range, or null when no stored observation applies. */
+  weather: RideWeather | null
 }
 
 /**
@@ -1492,6 +1494,26 @@ export interface RideHistorySession {
   maxLongitude: number | null
   boundaryBefore: TelemetryMinuteBucket['boundaryBefore']
   routePoints: RideRoutePoint[]
+  /** Weather over the ride, or null when no stored observation applies. */
+  weather: RideWeather | null
+}
+
+/**
+ * Weather of a ride or Favorite, folded natively from stored Weather Observations. Approximate by
+ * design: the conditions the app last fetched, not a measurement on the Board.
+ *
+ * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/WeatherObservations.kt `RideWeather`
+ * @parity /modules/vescape-core/ios/telemetry/WeatherObservations.swift `RideWeather`
+ */
+export interface RideWeather {
+  /** Time-dominant condition; the night form when most of the ride was after dark. */
+  icon: WeatherIconSlug
+  minTemperatureC: number
+  maxTemperatureC: number
+  /** Strongest gust, km/h in 5 km/h steps; null when no observation carried one. */
+  maxGustKmh: number | null
+  /** Minutes under a rain, drizzle or storm code. */
+  rainMinutes: number
 }
 
 /**
@@ -1761,9 +1783,36 @@ export interface LocalDiagnosticEvent {
   propertiesJson: string
 }
 
-export interface TelemetryRebuildProgressEvent {
-  current: number
+/**
+ * One Maintenance Job's runner state. Native owns it; run history is per process, the durable truth
+ * is the job's done fingerprint.
+ * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/MaintenanceRunner.kt `MaintenanceJobState`
+ * @parity /modules/vescape-core/ios/telemetry/MaintenanceRunner.swift `MaintenanceJobState`
+ */
+export interface MaintenanceJobState {
+  /** Declared job id, e.g. `rideSummaries`. */
+  id: string
+  /** `pending`: not checked yet, or stale until a ride closes or the next launch. */
+  status: 'pending' | 'running' | 'done' | 'waitingForNetwork' | 'failed'
+  /** Items handled in the current or last run, in the job's own unit (hours for ride summaries). */
+  done: number
   total: number
+  lastRunAtMs: number | null
+  lastDurationMs: number | null
+  lastError: string | null
+}
+
+/**
+ * The Maintenance Job runner, as JS renders it.
+ * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/MaintenanceRunner.kt `buildSnapshot`
+ * @parity /modules/vescape-core/ios/telemetry/MaintenanceRunner.swift `buildSnapshot`
+ */
+export interface MaintenanceState {
+  running: boolean
+  /** Bumped, throttled, after committed chunks changed Ride History; open history views re-read. */
+  historyRevision: number
+  /** Every declared job, in run order. */
+  jobs: MaintenanceJobState[]
 }
 
 export interface DatabaseBackupResult {
@@ -2628,7 +2677,7 @@ type VescapeCoreEvents = {
   onBms: (event: BmsEvent) => void
   onBmsSeries: (event: NativeBmsSeriesEvent) => void
   onLocation: (event: LocationEvent) => void
-  onTelemetryRebuildProgress: (event: TelemetryRebuildProgressEvent) => void
+  onMaintenanceState: (event: MaintenanceState) => void
   onBoardProbeProgress: (event: BoardProbeProgressEvent) => void
   /** Observe WebSocket connection state to the Group Ride relay. */
   onGroupRideConnection: (event: GroupRideConnectionEvent) => void
@@ -2890,7 +2939,7 @@ type VescapeCoreNativeModule = NativeEventEmitter<VescapeCoreEvents> & {
   ): Promise<TuneProfile>
   pushProfileToBoard(profileId: string): Promise<RefloatConfigSnapshot>
   getProfileStatsSnapshot(options: Partial<ProfileStatsMonth>): Promise<ProfileStatsSnapshot>
-  rebuildTelemetryBuckets(): Promise<number>
+  getMaintenanceState(): MaintenanceState
   deleteTelemetryBefore(beforeMs: number): Promise<number>
   deleteTelemetryRange(options: TelemetryDeleteRangeOptions): Promise<number>
   clearTelemetryHistory(): Promise<void>
@@ -4065,8 +4114,13 @@ export async function getProfileStatsSnapshot(
   return native.getProfileStatsSnapshot(options ?? {})
 }
 
-export async function rebuildTelemetryBuckets(): Promise<number> {
-  return native.rebuildTelemetryBuckets()
+/**
+ * The Maintenance Job runner's current state; pushes follow on `onMaintenanceState`.
+ * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/VescapeCoreModule.kt `getMaintenanceState`
+ * @parity /modules/vescape-core/ios/VescapeCoreModule.swift `getMaintenanceState`
+ */
+export function getMaintenanceState(): MaintenanceState {
+  return native.getMaintenanceState()
 }
 
 export async function deleteTelemetryBefore(beforeMs: number): Promise<number> {
@@ -4557,10 +4611,10 @@ export function setWatchRouteSpanM(spanM: number | null): void {
   native.setWatchRouteSpanM(spanM)
 }
 
-export function addTelemetryRebuildProgressListener(
-  cb: (event: TelemetryRebuildProgressEvent) => void,
+export function addMaintenanceStateListener(
+  cb: (event: MaintenanceState) => void,
 ): EventSubscription {
-  return emitter.addListener('onTelemetryRebuildProgress', cb)
+  return emitter.addListener('onMaintenanceState', cb)
 }
 
 export function addBoardProbeProgressListener(

@@ -16,6 +16,7 @@ const route: RoutePoint[] = [
 export function HistoryRideRowShowcase() {
   const [selected, setSelected] = useState(false)
   const [loading, setLoading] = useState(false)
+  const [weather, setWeather] = useState(true)
   return (
     <ShowcaseCard
       name="HistoryRideRow"
@@ -23,6 +24,7 @@ export function HistoryRideRowShowcase() {
         <>
           <ToggleRow label="selected" value={selected} onToggle={setSelected} />
           <ToggleRow label="loading" value={loading} onToggle={setLoading} />
+          <ToggleRow label="weather" value={weather} onToggle={setWeather} />
         </>
       }
     >
@@ -34,6 +36,17 @@ export function HistoryRideRowShowcase() {
           subtitle="13 min · 4.14 km · VESC Board"
           routePoints={route}
           selected={selected}
+          weather={
+            weather
+              ? {
+                  icon: 'cloud-sun',
+                  minTemperatureC: 8,
+                  maxTemperatureC: 20,
+                  maxGustKmh: 35,
+                  rainMinutes: 0,
+                }
+              : null
+          }
           onPress={() => undefined}
         />
       )}
@@ -47,6 +60,17 @@ export function HistoryRideRowShowcase() {
           routePoints={route}
           selected={selected}
           accent={theme.palette.amber.color}
+          weather={
+            weather
+              ? {
+                  icon: 'cloud-rain',
+                  minTemperatureC: 13,
+                  maxTemperatureC: 14,
+                  maxGustKmh: 40,
+                  rainMinutes: 12,
+                }
+              : null
+          }
           onPress={() => undefined}
         />
       )}

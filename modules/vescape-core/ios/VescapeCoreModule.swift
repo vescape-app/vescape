@@ -90,7 +90,7 @@ public class VescapeCoreModule: Module {
 
     // @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/VescapeCoreModule.kt `Events`
     // @parity /modules/vescape-core/src/index.ts `VescapeCoreEvents`
-    Events("onDevice", "onError", "onLiveState", "onLiveTick", "onLiveSeries", "onFocusedSeries", "onTelemetryHistory", "onBms", "onBmsSeries", "onLocation", "onReplayPhoneHeading", "onTelemetryRebuildProgress", "onBoardProbeProgress", "onAppDataChanged", "onGroupRideConnection", "onGroupRideSnapshot", "onGroupRideCreated", "onGroupRideUpdated", "onGroupRideEnded", "onGroupRideJoined", "onGroupRideRoster", "onGroupRideError", "onBoardWarnings", "onVescFaults", "onBoardConfigValues", "onMotorConfigValues", "onBoardConfigChangeNotice", "onBoardLights", "onAppStatus", "onNavigation", "onRouteProgress", "onWeather", "onAccessoryDevice", "onAccessoryScanError", "onAccessoryState", "onAccessoryReading")
+    Events("onDevice", "onError", "onLiveState", "onLiveTick", "onLiveSeries", "onFocusedSeries", "onTelemetryHistory", "onBms", "onBmsSeries", "onLocation", "onReplayPhoneHeading", "onMaintenanceState", "onBoardProbeProgress", "onAppDataChanged", "onGroupRideConnection", "onGroupRideSnapshot", "onGroupRideCreated", "onGroupRideUpdated", "onGroupRideEnded", "onGroupRideJoined", "onGroupRideRoster", "onGroupRideError", "onBoardWarnings", "onVescFaults", "onBoardConfigValues", "onMotorConfigValues", "onBoardConfigChangeNotice", "onBoardLights", "onAppStatus", "onNavigation", "onRouteProgress", "onWeather", "onAccessoryDevice", "onAccessoryScanError", "onAccessoryState", "onAccessoryReading")
 
     // Track per-event JS listeners so native skips emitting into the void, and gate the whole
     // firehose on app foreground (see `frontendActive`). Mirrors Android's observing + lifecycle
@@ -115,8 +115,11 @@ public class VescapeCoreModule: Module {
     OnStopObserving("onBmsSeries") { self.observedEvents.remove("onBmsSeries") }
     OnStartObserving("onLocation") { self.observedEvents.insert("onLocation") }
     OnStopObserving("onLocation") { self.observedEvents.remove("onLocation") }
-    OnStartObserving("onTelemetryRebuildProgress") { self.observedEvents.insert("onTelemetryRebuildProgress") }
-    OnStopObserving("onTelemetryRebuildProgress") { self.observedEvents.remove("onTelemetryRebuildProgress") }
+    OnStartObserving("onMaintenanceState") {
+      self.observedEvents.insert("onMaintenanceState")
+      self.emitMaintenanceState(MaintenanceRunner.shared.snapshot())
+    }
+    OnStopObserving("onMaintenanceState") { self.observedEvents.remove("onMaintenanceState") }
     // @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/VescapeCoreModule.kt `onGroupRideConnection`
     OnStartObserving("onGroupRideConnection") { self.observedEvents.insert("onGroupRideConnection") }
     OnStopObserving("onGroupRideConnection") { self.observedEvents.remove("onGroupRideConnection") }
@@ -269,12 +272,16 @@ public class VescapeCoreModule: Module {
         self?.sendBoardWarnings(boardId, warnings)
       }
       BoardConfigStore.onNoticeChanged = { [weak self] notice in self?.sendEvent("onBoardConfigChangeNotice", ["notice": notice?.toMap()]) }
+      MaintenanceRunner.shared.onChange = { [weak self] state in self?.emitMaintenanceState(state) }
+      MaintenanceRunner.shared.start()
     }
 
     OnAppEntersForeground {
       self.frontendActive = true
       self.coordinator.appVisible = true
       AppStatusCoordinator.shared.refresh()
+      // Emits were gated while hidden; the screen must not keep a stale running state.
+      self.emitMaintenanceState(MaintenanceRunner.shared.snapshot())
     }
     OnAppEntersBackground {
       self.frontendActive = false
@@ -293,6 +300,7 @@ public class VescapeCoreModule: Module {
       // @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/VescapeCoreModule.kt
       self.detachFromCoordinator()
       AppDataRepository.onDataChanged = nil
+      MaintenanceRunner.shared.onChange = nil
       BoardWarningRegistry.shared.onChange = nil
       VescFaultCoordinator.shared.onChange = nil
       BoardConfigStore.onNoticeChanged = nil
@@ -1031,6 +1039,7 @@ public class VescapeCoreModule: Module {
       self.coordinator.stopLocationUpdates()
       DispatchQueue.global(qos: .userInitiated).async {
         do {
+          defer { MaintenanceRunner.shared.onDatabaseReplaced() }
           try DatabaseBackupManager.restoreBackup(uriString: uri)
           self.coordinator.pushWatchLastBattery()
           promise.resolve(nil)
@@ -1285,24 +1294,13 @@ public class VescapeCoreModule: Module {
       catch { RecordingStorageFailure.report(operation: "telemetry_range_delete", category: "write_failed", error: error); promise.reject("APP_STORAGE_WRITE_FAILED", "Could not delete telemetry", cause: error) }
     }
 
-    // Gate progress on foreground + active listener and hop to main, like every other JS emit. The
-    // rebuild callback fires from a background queue; skip the void when JS isn't listening.
-    // @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/VescapeCoreModule.kt `rebuildTelemetryBuckets`
-    AsyncFunction("rebuildTelemetryBuckets") { (promise: Promise) in
-      try RecordingStorageFailure.requireAvailable()
-      do { let count = try TelemetryRepository.shared.rebuildBuckets { current, total in
-        guard self.shouldEmitToFrontend("onTelemetryRebuildProgress") else { return }
-        DispatchQueue.main.async {
-          guard self.shouldEmitToFrontend("onTelemetryRebuildProgress") else { return }
-          self.sendEvent("onTelemetryRebuildProgress", ["current": current, "total": total])
-        }
-      }
-      promise.resolve(count) }
-      catch { RecordingStorageFailure.report(operation: "telemetry_rebuild", category: "write_failed", error: error); promise.reject("APP_STORAGE_WRITE_FAILED", "Could not rebuild telemetry", cause: error) }
-    }
+    // @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/VescapeCoreModule.kt `getMaintenanceState`
+    // @parity /modules/vescape-core/src/index.ts `getMaintenanceState`
+    Function("getMaintenanceState") { () -> [String: Any?] in MaintenanceRunner.shared.snapshot() }
 
     AsyncFunction("clearTelemetryHistory") { (promise: Promise) in
       try RecordingStorageFailure.requireAvailable()
+      defer { MaintenanceRunner.shared.onDatabaseReplaced() }
       do { try TelemetryRepository.shared.clearAll(); promise.resolve(nil) }
       catch { RecordingStorageFailure.report(operation: "telemetry_clear", category: "write_failed", error: error); promise.reject("APP_STORAGE_WRITE_FAILED", "Could not clear telemetry", cause: error) }
     }
@@ -1664,6 +1662,7 @@ public class VescapeCoreModule: Module {
         self.coordinator.reloadTelemetrySettings()
       }
       if key == "unitSystem" { self.coordinator.reloadAlertRules() }
+      MaintenanceRunner.shared.onSettingChanged(key)
       // The Watch Mirror is process scoped, not session scoped, so its settings reload cannot ride
       // on `reloadTelemetrySettings` — that one returns early with no Board Session.
       // @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/VescapeCoreModule.kt `updateSetting`
@@ -2097,6 +2096,15 @@ public class VescapeCoreModule: Module {
   /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/VescapeCoreModule.kt `shouldEmitToFrontend`
   private func shouldEmitToFrontend(_ name: String) -> Bool {
     frontendActive && observedEvents.contains(name)
+  }
+
+  /// Called from the maintenance queue; hops to main like every other JS emit.
+  /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/VescapeCoreModule.kt `emitMaintenanceState`
+  private func emitMaintenanceState(_ state: [String: Any?]) {
+    DispatchQueue.main.async {
+      guard self.shouldEmitToFrontend("onMaintenanceState") else { return }
+      self.sendEvent("onMaintenanceState", state)
+    }
   }
 
   /// Push the current enabled Privacy Zones into the recording store so mid-ride edits take effect
