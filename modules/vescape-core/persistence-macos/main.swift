@@ -1,29 +1,6 @@
 import Foundation
 import GRDB
 
-// Offline database sanitization previews the same native presets as the app, without opening a DB.
-if CommandLine.arguments.dropFirst().first == "--preview-alert-presets" {
-  let args = Array(CommandLine.arguments.dropFirst(2))
-  guard args.count == 3, let topSpeed = Double(args[0]), ["true", "false"].contains(args[1]) else {
-    fatalError("Expected --preview-alert-presets <topSpeedKmh> <true|false> <output-json-path>")
-  }
-  var output: [[String: Any]] = []
-  for metric in AlertPresetPersistence.metrics {
-    let rules = try AlertPresetPersistence.preview(
-      metric: metric, level: "normal", topSpeedKmh: topSpeed,
-      hasBatteryConfig: args[1] == "true", speedUnitSystem: "metric"
-    )
-    output += rules.map { rule in
-      ["id": rule.id, "controlId": rule.controlId, "threshold": rule.threshold,
-       "thresholdMax": rule.thresholdMax as Any? ?? NSNull(), "soundType": rule.soundType,
-       "repeatEverySeconds": rule.repeatEverySeconds as Any? ?? NSNull(), "beepCount": rule.beepCount]
-    }
-  }
-  let data = try JSONSerialization.data(withJSONObject: output, options: [.sortedKeys])
-  try data.write(to: URL(fileURLWithPath: args[2]))
-  exit(0)
-}
-
 struct Failure: Error, CustomStringConvertible {
   let description: String
 }
@@ -306,9 +283,8 @@ try FileManager.default.removeItem(at: maintenanceURL)
 let trackURL = FileManager.default.temporaryDirectory.appendingPathComponent("vescape-track-\(UUID().uuidString).db")
 var trackQueue = try DatabaseQueue(path: trackURL.path)
 try TelemetryDatabase.migrator.migrate(trackQueue)
-let trackPoint = RideTrackPoint(recordingId: "ride-a", boardId: "board-a", fixAtMs: 2000, latitudeE7: 510000000, longitudeE7: 170000000, accuracyCm: 3500, gpsSpeedCentiMps: 400, bearingCentiDeg: nil, altitudeCm: nil)
+let trackPoint = RideTrackPoint(boardId: "board-a", fixAtMs: 2000, latitudeE7: 510000000, longitudeE7: 170000000, accuracyCm: 3500, gpsSpeedCentiMps: 400, bearingCentiDeg: nil, altitudeCm: nil)
 try trackQueue.write { db in
-  try insertRideRecording(db, RideRecording(id: "ride-a", boardId: "board-a", startedAtMs: 1000, endedAtMs: nil, endedReason: nil))
   for bucket in buildTelemetryBuckets([], locationPoints: rideTrackBucketPoints([trackPoint])) {
     try db.execute(sql: RecordingPersistenceSQL.upsertBucket, arguments: RecordingPersistenceSQL.bucketArguments(bucket))
   }
@@ -325,7 +301,7 @@ try trackQueue.read { db in
 try trackQueue.write { db in
   try db.execute(sql: "CREATE TRIGGER reject_track BEFORE INSERT ON ride_track_points BEGIN SELECT RAISE(FAIL, 'track failure'); END")
 }
-let lateTrackPoint = RideTrackPoint(recordingId: "ride-a", boardId: "board-a", fixAtMs: 62000, latitudeE7: 510000000, longitudeE7: 170000000, accuracyCm: 500, gpsSpeedCentiMps: 400, bearingCentiDeg: nil, altitudeCm: nil)
+let lateTrackPoint = RideTrackPoint(boardId: "board-a", fixAtMs: 62000, latitudeE7: 510000000, longitudeE7: 170000000, accuracyCm: 500, gpsSpeedCentiMps: 400, bearingCentiDeg: nil, altitudeCm: nil)
 var trackCommitFailed = false
 do {
   try trackQueue.write { db in
@@ -345,30 +321,24 @@ try trackQueue.read { db in
 }
 try trackQueue.close()
 
-// Identical timestamps belong to separate recordings, including queries with a small limit.
-let identityQueue = try DatabaseQueue(path: trackURL.path)
-try identityQueue.write { db in
+// Ride reads and deletes scope to Board and time only (ADR 0041).
+let scopeQueue = try DatabaseQueue(path: trackURL.path)
+try scopeQueue.write { db in
   try db.execute(sql: "DROP TRIGGER reject_track")
-  try insertRideRecording(db, RideRecording(id: "ride-b", boardId: "board-a", startedAtMs: 1000, endedAtMs: 3000, endedReason: "stopped"))
-  let other = RideTrackPoint(recordingId: "ride-b", boardId: "board-a", fixAtMs: 2000, latitudeE7: 510000000, longitudeE7: 170000000, accuracyCm: 500, gpsSpeedCentiMps: 400, bearingCentiDeg: nil, altitudeCm: nil)
+  let other = RideTrackPoint(boardId: "board-b", fixAtMs: 2000, latitudeE7: 510000000, longitudeE7: 170000000, accuracyCm: 500, gpsSpeedCentiMps: 400, bearingCentiDeg: nil, altitudeCm: nil)
   try insertRideTrackPoint(db, other)
   for bucket in buildTelemetryBuckets([], locationPoints: rideTrackBucketPoints([other])) {
     try db.execute(sql: RecordingPersistenceSQL.upsertBucket, arguments: RecordingPersistenceSQL.bucketArguments(bucket))
   }
 }
-try identityQueue.read { db in
-  let selected = try fetchRideTrack(db, fromMs: 0, toMs: 10000, boardId: "board-a", recordingId: "ride-b", limit: 1)
-  try require(selected.count == 1 && selected[0]["recording_id"] as String? == "ride-b", "Recording filter applied after limit")
+_ = try TelemetryMaintenancePersistence(writer: scopeQueue).deleteRanges([TelemetryTimeRange(startMs: 0, endMs: 10000)], boardId: "board-a", allBoards: false)
+try scopeQueue.read { db in
+  let remaining = try fetchRideTrack(db, fromMs: 0, toMs: 10000, boardId: nil)
+  try require(remaining.count == 1 && remaining[0]["board_id"] as String? == "board-b", "Board deletion removed another Board's GPS")
+  let boards = try String.fetchAll(db, sql: "SELECT board_id FROM telemetry_minute_buckets")
+  try require(boards == ["board-b"], "Board deletion removed another Board's bucket")
 }
-let identityMaintenance = TelemetryMaintenancePersistence(writer: identityQueue)
-_ = try identityMaintenance.deleteRanges([TelemetryTimeRange(startMs: 0, endMs: 10000)], boardId: "board-a", allBoards: false, recordingId: "ride-a")
-try identityQueue.read { db in
-  let remaining = try fetchRideTrack(db, fromMs: 0, toMs: 10000, boardId: "board-a")
-  try require(remaining.count == 1 && remaining[0]["recording_id"] as String? == "ride-b", "Recording deletion removed adjacent GPS")
-  let ids = try String.fetchAll(db, sql: "SELECT recording_id FROM telemetry_minute_buckets")
-  try require(ids == ["ride-b"], "Recording deletion removed adjacent bucket")
-}
-try identityQueue.close()
+try scopeQueue.close()
 try FileManager.default.removeItem(at: trackURL)
 
 let fixtureURL = root.appendingPathComponent("shared/recording-persistence-contract.json")
@@ -752,7 +722,7 @@ try tuneQueue!.write { db in
 }
 _ = try tuneStore.saveProfile(profileId: tuneId, fields: ["kp": 2])
 var alertPersistence = AlertRulePersistence(writer: tuneQueue!)
-try alertPersistence.save(PersistedAlertRule(boardId: tuneAlertBoardId, id: alertValues["id"] as! String, controlId: alertValues["controlId"] as! String, threshold: alertValues["threshold"] as! Double, thresholdMax: nil, enabled: true, soundType: alertValues["soundType"] as! String, createdAt: 1, repeatEverySeconds: nil, beepCount: 1, source: alertValues["source"] as? String, thresholdKind: "fixed", configFieldId: nil, thresholdOffset: nil, thresholdMaxOffset: nil))
+try alertPersistence.save(PersistedAlertRule(boardId: tuneAlertBoardId, id: alertValues["id"] as! String, controlId: alertValues["controlId"] as! String, threshold: alertValues["threshold"] as! Double, thresholdMax: nil, enabled: true, spec: alertValues["spec"] as! String, createdAt: 1, repeatEverySeconds: nil, thresholdKind: "fixed", configFieldId: nil, thresholdOffset: nil, thresholdMaxOffset: nil))
 try alertPersistence.setEnabled(boardId: tuneAlertBoardId, id: alertValues["id"] as! String, enabled: false)
 try tuneQueue!.close()
 tuneQueue = try DatabaseQueue(path: tuneURL.path)
@@ -778,7 +748,8 @@ let reopenedTuneHistory = try tuneStore.getProfileHistory(tuneId)
 try require(reopenedTune?["boardId"] as? String == tuneAlertBoardId, "Tune Profile ownership/reopen")
 try require((reopenedTune?["fields"] as? [String: Any])?["kp"] as? Int == 2, "Tune Profile values/reopen")
 try require(reopenedTuneHistory.count == int(tuneAlertExpected["historyCount"]), "Tune History/reopen")
-let reopenedAlerts = try alertPersistence.rules(boardId: tuneAlertBoardId)
+// The Board has no preset rows, so the app-default presets expand beside the rider's rule.
+let reopenedAlerts = try alertPersistence.rules(boardId: tuneAlertBoardId, reportPresetFailure: unexpectedPresetFailure).filter { !AlertPresetPersistence.isPresetId($0.id) }
 try require(reopenedAlerts.count == int(tuneAlertExpected["alertCount"]), "Alert count/reopen")
 try require(reopenedAlerts.first?.id == alertValues["id"] as? String, "Alert identity/reopen")
 try require(reopenedAlerts.first?.enabled == tuneAlertExpected["alertEnabled"] as? Bool, "Alert update/reopen")
@@ -799,7 +770,7 @@ do { _ = try tuneStore.getTuneProfile(tuneId) } catch { malformedTuneFailed = tr
 try require(malformedTuneFailed, "malformed Tune became empty")
 try tuneQueue!.write { db in try db.drop(table: "alerts") }
 var alertQueryFailed = false
-do { _ = try alertPersistence.rules(boardId: tuneAlertBoardId) } catch { alertQueryFailed = true }
+do { _ = try alertPersistence.rules(boardId: tuneAlertBoardId, reportPresetFailure: unexpectedPresetFailure) } catch { alertQueryFailed = true }
 try require(alertQueryFailed, "Alert query failure became empty")
 try tuneQueue!.close()
 try FileManager.default.removeItem(at: tuneURL)
@@ -822,7 +793,8 @@ for start in migrationIdentifiers {
   let available = try migrationQueue.write { db -> (tune: Bool, favorite: Bool, config: Bool) in
     try db.execute(sql: "INSERT INTO boards (id,name,ble_id,created_at) VALUES ('matrix-board','Matrix Board','matrix-ble',100)")
     try db.execute(sql: "INSERT INTO app_settings VALUES ('matrix-setting','\"preserved\"',101)")
-    try db.execute(sql: "INSERT INTO alerts (board_id,id,control_id,threshold,enabled,sound_type,created_at) VALUES ('matrix-board','matrix-alert','speed',24.5,1,'beep',102)")
+    let soundColumn = try db.columns(in: "alerts").contains { $0.name == "spec" } ? "spec" : "sound_type"
+    try db.execute(sql: "INSERT INTO alerts (board_id,id,control_id,threshold,enabled,\(soundColumn),created_at) VALUES ('matrix-board','matrix-alert','speed',24.5,1,'beep',102)")
     let frameColumns = try db.columns(in: "telemetry_frames").map(\.name)
     if frameColumns.contains("board_id") {
       try db.execute(sql: "INSERT INTO telemetry_frames (captured_at_ms,elapsed_realtime_ms,board_id,flags,changed_mask_1,changed_mask_2,speed_centi_kmh) VALUES (1000,10,'matrix-board',1,1,0,2468)")
@@ -885,7 +857,7 @@ try authenticV1.write { db in
 }
 try TelemetryDatabase.migrator.migrate(authenticV1)
 try authenticV1.read { db in
-  let alertCount = try Int.fetchOne(db, sql: "SELECT COUNT(*) FROM alerts")
+  let alertCount = try Int.fetchOne(db, sql: "SELECT COUNT(*) FROM alerts WHERE id = 'legacy-global'")
   let frameBoard = try String.fetchOne(db, sql: "SELECT board_id FROM telemetry_frames WHERE captured_at_ms=1000")
   let frameColumns = try db.columns(in: "telemetry_frames").map(\.name)
   let ledger = try TelemetryDatabase.migrator.appliedIdentifiers(db)
@@ -895,6 +867,38 @@ try authenticV1.read { db in
   try require(ledger == Set(migrationIdentifiers), "authentic v1 final ledger")
 }
 try authenticV1.close()
+
+// v51 folds the v50 Alert Preset Board Settings and copied preset rows into one row per metric.
+// @parity /modules/vescape-core/persistence-jvm/src/test/kotlin/expo/modules/vescapecore/telemetry/TelemetryMigrationMatrixHostTest.kt
+let presetRowsQueue = try DatabaseQueue()
+try TelemetryDatabase.migrator.migrate(presetRowsQueue, upTo: "v50_alert_sound_count")
+try presetRowsQueue.write { db in
+  for id in ["chosen", "untouched"] {
+    try db.execute(sql: "INSERT INTO boards (id,name,ble_id,created_at) VALUES (?,?,NULL,100)", arguments: [id, id])
+  }
+  try db.execute(sql: "INSERT INTO boards (id,name,ble_id,created_at,deleted_at) VALUES ('gone','gone',NULL,100,200)")
+  try db.execute(sql: "INSERT INTO board_settings VALUES ('chosen','alertPreset','{\"speed\":\"safe\",\"duty\":\"custom\",\"motor-temp\":\"normal\"}',5000)")
+  try db.execute(sql: "INSERT INTO board_settings VALUES ('chosen','alertPresetSound','{\"speed\":{\"geiger\":\"geiger:mid\"}}',5000)")
+  try db.execute(sql: "INSERT INTO board_settings VALUES ('chosen','matchBoardConfig','{\"motor-temp\":true,\"speed\":true}',5000)")
+  try db.execute(sql: "INSERT INTO board_settings VALUES ('untouched','alertPreset','not json',5000)")
+  try db.execute(sql: "INSERT INTO alerts (board_id,id,control_id,threshold,threshold_max,enabled,sound_type,created_at,source) VALUES ('chosen','preset:speed:0','speed',36,45,1,'geiger:hard',5001,'preset')")
+  try db.execute(sql: "INSERT INTO alerts (board_id,id,control_id,threshold,threshold_max,enabled,sound_type,created_at,source) VALUES ('chosen','preset:duty:0','duty',80,90,1,'geiger:soft',5002,'preset')")
+  try db.execute(sql: "INSERT INTO alerts (board_id,id,control_id,threshold,threshold_max,enabled,sound_type,created_at,source) VALUES ('chosen','rider-duty','duty',70,NULL,0,'tts:Duty',5003,NULL)")
+}
+try TelemetryDatabase.migrator.migrate(presetRowsQueue)
+try presetRowsQueue.read { db in
+  let expected = ["speed": "preset(safe):geiger=mid", "duty": "preset(off):geiger=soft", "motor-temp": "preset(normal):match=on", "controller-temp": "preset(off)", "battery": "preset(off)"]
+  for (metric, spec) in expected {
+    try require(try String.fetchOne(db, sql: "SELECT spec FROM alerts WHERE board_id='chosen' AND id=?", arguments: ["preset:\(metric)"]) == spec, "v51 \(metric) preset row")
+    try require(try String.fetchOne(db, sql: "SELECT spec FROM alerts WHERE board_id='untouched' AND id=?", arguments: ["preset:\(metric)"]) == "preset(off)", "v51 unselected Board stays Off")
+  }
+  try require(try Int.fetchOne(db, sql: "SELECT COUNT(*) FROM alerts WHERE board_id='gone'") == 0, "v51 skips tombstones")
+  try require(try Int.fetchOne(db, sql: "SELECT COUNT(*) FROM alerts WHERE id LIKE 'preset:%:%'") == 0, "v51 drops copied preset rows")
+  try require(try String.fetchOne(db, sql: "SELECT spec FROM alerts WHERE id='rider-duty'") == "tts:Duty", "v51 keeps rider rules")
+  try require(try Int.fetchOne(db, sql: "SELECT COUNT(*) FROM board_settings WHERE key IN ('alertPreset','matchBoardConfig','alertPresetSound')") == 0, "v51 drops preset settings")
+  try require(try !db.columns(in: "alerts").contains { ["source", "sound_type"].contains($0.name) }, "v51 drops source and renames sound_type")
+}
+try presetRowsQueue.close()
 
 let swapDirectory = FileManager.default.temporaryDirectory
   .appendingPathComponent("vescape-host-swap-\(UUID().uuidString)", isDirectory: true)
@@ -964,14 +968,11 @@ if let exchangePath = ProcessInfo.processInfo.environment["VESCAPE_BACKUP_EXCHAN
     try require(speed == 2468, "Android archive lost Ride Recording on iOS")
     let track = try fetchRideTrack(db, fromMs: 0, toMs: 2000, boardId: "cross-board")
     try require(track.count == 1, "Android archive lost independent GPS fix")
-    try require(track.first?["recording_id"] as String? == "cross-recording", "Android archive lost GPS recording identity")
     try require(track.first?["accuracy_cm"] as Int? == 3500, "Android archive discarded poor GPS accuracy")
-    let endReason = try String.fetchOne(db, sql: "SELECT ended_reason FROM ride_recordings WHERE id='cross-recording'")
-    try require(endReason == "stopped", "Android archive lost recording end intent")
     let previewFixes = try bucketPreviewFixes()
     for (minute, points) in Dictionary(grouping: previewFixes, by: { $0.fixAtMs / 60000 * 60000 }) {
-      let preview = try String.fetchOne(db, sql: "SELECT route_preview FROM telemetry_minute_buckets WHERE bucket_start_ms = ? AND board_id = ? AND recording_id = ?",
-        arguments: [minute, points[0].boardId, points[0].recordingId])!
+      let preview = try String.fetchOne(db, sql: "SELECT route_preview FROM telemetry_minute_buckets WHERE bucket_start_ms = ? AND board_id = ?",
+        arguments: [minute, points[0].boardId])!
       let expected = try BucketRoutePreview.decode(BucketRoutePreview.build(points))
       try require(try BucketRoutePreview.decode(preview) == expected, "Android preview geometry survives iOS restore")
     }
@@ -1049,10 +1050,8 @@ if let exchangePath = ProcessInfo.processInfo.environment["VESCAPE_BACKUP_EXCHAN
     try db.execute(sql: "INSERT INTO vesc_fault_occurrences VALUES ('cross-fault','cross-board',7,1000,1001,NULL,0)")
     try db.execute(sql: "INSERT INTO vesc_fault_captures VALUES ('cross-fault','cross-board',900,1000,1)")
     try db.execute(sql: "INSERT INTO vesc_fault_capture_samples (occurrence_id,captured_at,speed,state) VALUES ('cross-fault',1000,24.68,1)")
-    try insertRideRecording(db, RideRecording(id: "cross-recording", boardId: "cross-board", startedAtMs: 900, endedAtMs: 1500, endedReason: "stopped"))
-    try insertRideTrackPoint(db, RideTrackPoint(recordingId: "cross-recording", boardId: "cross-board", fixAtMs: 1200, latitudeE7: 510000000, longitudeE7: 170000000, accuracyCm: 3500, gpsSpeedCentiMps: 400, bearingCentiDeg: 9000, altitudeCm: 12300))
+    try insertRideTrackPoint(db, RideTrackPoint(boardId: "cross-board", fixAtMs: 1200, latitudeE7: 510000000, longitudeE7: 170000000, accuracyCm: 3500, gpsSpeedCentiMps: 400, bearingCentiDeg: 9000, altitudeCm: 12300))
     let previewFixes = try bucketPreviewFixes()
-    try insertRideRecording(db, RideRecording(id: previewFixes[0].recordingId!, boardId: previewFixes[0].boardId!, startedAtMs: 0, endedAtMs: 62000, endedReason: "stopped"))
     try RecordingPersistenceSQL.insertTrackAndBuckets(db, track: previewFixes, buckets: buildTelemetryBuckets([], locationPoints: rideTrackBucketPoints(previewFixes)))
     try db.execute(sql: "PRAGMA user_version = \(TELEMETRY_SCHEMA_VERSION)")
   }

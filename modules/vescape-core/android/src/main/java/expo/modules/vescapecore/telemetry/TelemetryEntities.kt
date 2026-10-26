@@ -1,11 +1,11 @@
 package expo.modules.vescapecore.telemetry
 
+import expo.modules.vescapecore.weather.WEATHER_ALERT_LEVEL_DEFAULT
 import androidx.room.ColumnInfo
 import androidx.room.Entity
 import androidx.room.ForeignKey
 import androidx.room.Index
 import androidx.room.PrimaryKey
-import expo.modules.vescapecore.alerts.ALERT_BEEP_COUNT_DEFAULT
 
 // @parity /modules/vescape-core/ios/alerts/AlertEngine.swift
 const val TELEMETRY_FLAG_KEYFRAME = 1
@@ -33,7 +33,6 @@ const val TELEMETRY_MASK_TEMP_MOTOR = 1 shl 16
   indices = [
     Index(value = ["captured_at_ms"]),
     Index(value = ["board_id", "captured_at_ms"]),
-    Index(value = ["recording_id", "captured_at_ms"]),
   ],
 )
 data class TelemetryFrameEntity(
@@ -50,13 +49,6 @@ data class TelemetryFrameEntity(
    */
   @ColumnInfo(name = "board_id")
   val boardId: String?,
-  /**
-   * Owning Ride Recording (`ride_recordings.id`), or null for rows recorded before durable
-   * recording identity existed. Board attribution and recording identity are separate facts: one
-   * Board produces many recordings, and two of them can share a minute (ADR 0038).
-   */
-  @ColumnInfo(name = "recording_id")
-  val recordingId: String? = null,
   @ColumnInfo(name = "can_id")
   val canId: Int?,
   val flags: Int,
@@ -99,56 +91,7 @@ data class TelemetryFrameEntity(
 )
 
 /**
- * One **Ride Recording**: durable identity and explicit start/end boundaries for a capture, held
- * apart from the Board that produced it (ADR 0038).
- *
- * `board_id` stays Board attribution — it says *which Board*, never *which recording*. Two
- * recordings of one Board minutes (or seconds) apart are two rows here, which is what keeps their
- * frames, track and minute buckets from being merged on read.
- *
- * [endedAtMs] is null while the recording is open. Only an explicit rider Stop Recording or
- * Disconnect closes it: an unexpected drop, an Idle Pause, a process restart or an hour of silence
- * in both streams leave it open.
- *
- * @parity /modules/vescape-core/ios/telemetry/RideTrackStore.swift `RideRecording`
- */
-@Entity(
-  tableName = "ride_recordings",
-  indices = [
-    Index(value = ["started_at_ms"]),
-    Index(value = ["board_id", "started_at_ms"]),
-  ],
-)
-data class RideRecordingEntity(
-  @PrimaryKey
-  val id: String,
-  /** Owning Board (`boards.id`), or null when the recording matched no saved Board. */
-  @ColumnInfo(name = "board_id")
-  val boardId: String?,
-  @ColumnInfo(name = "started_at_ms")
-  val startedAtMs: Long,
-  /** Null while the recording is open. */
-  @ColumnInfo(name = "ended_at_ms")
-  val endedAtMs: Long? = null,
-  /**
-   * Why the recording ended: [RIDE_RECORDING_END_STOPPED], [RIDE_RECORDING_END_DISCONNECTED] or
-   * [RIDE_RECORDING_END_BOARD_CHANGE]. Null while open.
-   */
-  @ColumnInfo(name = "ended_reason")
-  val endedReason: String? = null,
-)
-
-/** Rider stopped recording explicitly. */
-const val RIDE_RECORDING_END_STOPPED = "stopped"
-
-/** Rider disconnected the Board explicitly. */
-const val RIDE_RECORDING_END_DISCONNECTED = "disconnected"
-
-/** An explicit connection attempt to another Board ended this one, however that attempt turned out. */
-const val RIDE_RECORDING_END_BOARD_CHANGE = "board_change"
-
-/**
- * One point of a **Ride Track**: a single GPS Fix recorded during a Ride Recording, on the GPS
+ * One point of a **Ride Track**: a single GPS Fix recorded while recording, on the GPS
  * clock (ADR 0038).
  *
  * Every admitted fix is stored with the accuracy the platform reported, poor ones included — the
@@ -167,19 +110,11 @@ const val RIDE_RECORDING_END_BOARD_CHANGE = "board_change"
   indices = [
     Index(value = ["fix_at_ms"]),
     Index(value = ["board_id", "fix_at_ms"]),
-    Index(value = ["recording_id", "fix_at_ms"]),
   ],
 )
 data class RideTrackPointEntity(
   @PrimaryKey(autoGenerate = true)
   val id: Long = 0,
-  /**
-   * Owning Ride Recording (`ride_recordings.id`), or null for points migrated out of
-   * `telemetry_frames`, which predate durable recording identity. Legacy history keeps its
-   * gap-based grouping (`rideSplitGapMinutes`) rather than having recordings invented for it.
-   */
-  @ColumnInfo(name = "recording_id")
-  val recordingId: String?,
   /** Owning Board (`boards.id`), or null when the fix matched no saved Board (ADR 0028). */
   @ColumnInfo(name = "board_id")
   val boardId: String?,
@@ -202,18 +137,9 @@ data class RideTrackPointEntity(
   val altitudeCm: Int?,
 )
 
-/**
- * Stand-in Ride Recording id for minute buckets aggregated from rows without durable recording
- * identity. `recording_id` is part of the bucket primary key, so legacy rows need a value rather
- * than null.
- *
- * @parity /modules/vescape-core/ios/telemetry/RideTrackStore.swift `LEGACY_RIDE_RECORDING_ID`
- */
-const val LEGACY_RIDE_RECORDING_ID = ""
-
 @Entity(
   tableName = "telemetry_minute_buckets",
-  primaryKeys = ["bucket_start_ms", "board_id", "recording_id"],
+  primaryKeys = ["bucket_start_ms", "board_id"],
   indices = [Index(value = ["bucket_start_ms"])],
 )
 data class TelemetryMinuteBucketEntity(
@@ -226,13 +152,6 @@ data class TelemetryMinuteBucketEntity(
    */
   @ColumnInfo(name = "board_id")
   val boardId: String,
-  /**
-   * Owning Ride Recording (`ride_recordings.id`), or [LEGACY_RIDE_RECORDING_ID] for buckets built
-   * before durable recording identity. Part of the key so two recordings of one Board inside one
-   * minute aggregate separately instead of being merged (ADR 0038).
-   */
-  @ColumnInfo(name = "recording_id")
-  val recordingId: String = LEGACY_RIDE_RECORDING_ID,
   @ColumnInfo(name = "sample_count")
   val sampleCount: Int,
   @ColumnInfo(name = "first_sample_at_ms")
@@ -287,6 +206,15 @@ data class TelemetryMinuteBucketEntity(
   @ColumnInfo(name = "route_preview")
   val routePreview: String? = null,
 )
+
+/**
+ * Ride History Marker for an explicit rider Stop Recording — the only marker that splits a ride
+ * (ADR 0041). Distinct from `app_stop`, which an ordinary Board Session stop writes.
+ *
+ * @parity /modules/vescape-core/ios/telemetry/RideHistoryRepository.swift `recordingStopMarker`
+ * @parity /modules/vescape-core/src/index.ts `HistoryMarker`
+ */
+const val RECORDING_STOP_MARKER = "recording_stop"
 
 @Entity(
   tableName = "telemetry_markers",
@@ -410,8 +338,9 @@ data class AlertRuleEntity(
   @ColumnInfo(name = "threshold_offset") val thresholdOffset: Double? = null,
   @ColumnInfo(name = "threshold_max_offset") val thresholdMaxOffset: Double? = null,
   val enabled: Boolean,
-  @ColumnInfo(name = "sound_type")
-  val soundType: String,
+  /** Sound string, or the `preset(<level>)…` spec of an Alert Preset row (see `AlertPresetSpec`). */
+  @ColumnInfo(name = "spec")
+  val spec: String,
   @ColumnInfo(name = "created_at")
   val createdAt: Long,
   /**
@@ -420,14 +349,6 @@ data class AlertRuleEntity(
    */
   @ColumnInfo(name = "repeat_every_seconds")
   val repeatEverySeconds: Long? = null,
-  /** Sound repeats per announcement. Mirrors TS `AlertRule.beepCount`. */
-  @ColumnInfo(name = "beep_count")
-  val beepCount: Int = ALERT_BEEP_COUNT_DEFAULT,
-  /**
-   * Free-text provenance tag mirroring TS `AlertRule.source`: `manual` (or null) or `preset`.
-   * Native owns preset generation; JS submits selection intents.
-   */
-  val source: String?,
 )
 
 @Entity(
@@ -518,10 +439,17 @@ data class AppSettings(
   val socEstimateWindowSeconds: Int = 20,
   val boardMoveStrengthPercent: Int = 60,
   val connectionSoundsEnabled: Boolean = true,
-  val soundPack: String = "retro",
+  val soundPack: String = "arc",
   // @parity /modules/vescape-core/ios/telemetry/AppDataRepository.swift `defaultSettings`
   // @parity /modules/vescape-core/src/index.ts `AppSettings`
   val audioSource: String = "alarm",
+  /** `matching` or a voice pack id. @parity /modules/vescape-core/ios/telemetry/AppDataRepository.swift `defaultSettings` */
+  val voice: String = "matching",
+  /** `off` / `standard` / `full`. @parity /modules/vescape-core/ios/telemetry/AppDataRepository.swift `defaultSettings` */
+  val voiceLevel: String = "standard",
+  /** `off` or a Weather Alert level. @parity /modules/vescape-core/ios/telemetry/AppDataRepository.swift `defaultSettings` */
+  val weatherRainAlertLevel: String = WEATHER_ALERT_LEVEL_DEFAULT,
+  val weatherWindAlertLevel: String = WEATHER_ALERT_LEVEL_DEFAULT,
   val telemetryPollRateHz: Int = 20,
   val wearPushRateHz: Int = 4,
   val wearAutoLaunchOnConnect: Boolean = true,

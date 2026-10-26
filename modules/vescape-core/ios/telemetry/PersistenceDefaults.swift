@@ -1,6 +1,5 @@
 import Foundation
 
-internal let alertBeepCountDefault = 3
 internal func telemetryNowMs() -> Int64 { Int64(Date().timeIntervalSince1970 * 1000.0) }
 
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/PersistenceDefaults.kt `validUnitSystem`

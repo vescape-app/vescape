@@ -276,7 +276,7 @@ Field omitted (null) when change < threshold from previous:
   distanceDeltaM?, gpsDistanceM?,
   maxTempMosfet?, maxTempMotor?,
   firstLatitude?, firstLongitude?,
-  boundaryBefore: 'none'|'connected'|'disconnected'|'error'|'gap'|'app_stop',
+  boundaryBefore: 'none'|'connected'|'disconnected'|'error'|'gap'|'app_stop'|'recording_stop',
   boundaryMessage?, gapBeforeMs?
 }
 ```
@@ -355,18 +355,22 @@ it never creates occurrences, warnings, baselines, or persisted register snapsho
 
 Rides computed from buckets + markers:
 
-- New session on: device change, gap >10min, or boundary marker (`disconnected`/`app_stop`/`error`)
+- New session on: Board change, a Telemetry Sample gap over `rideSplitGapMinutes` (default 30), or a `recording_stop` marker; GPS-only buckets only attach to the preceding ride (ADR-0041)
 - Moving avg speed uses `movingSpeedThresholdKmh` setting (default 3.0 km/h) to exclude stopped samples
 - Distance prefers odometer delta, falls back to GPS distance
 - Energy: trapezoidal integration (V*I*dt), max 5s sample gap
 
 ## Boards
 
-| fn                   | sync  | returns                            |
-| -------------------- | ----- | ---------------------------------- |
-| `getBoards()`        | async | `Board[]` sorted by created_at ASC |
-| `upsertBoard(board)` | async | void                               |
-| `deleteBoard(id)`    | async | void                               |
+| fn                                   | sync  | returns                            |
+| ------------------------------------ | ----- | ---------------------------------- |
+| `getBoards()`                        | async | `Board[]` sorted by created_at ASC |
+| `upsertBoard(board, initialAlerts?)` | async | void                               |
+| `deleteBoard(id)`                    | async | void                               |
+
+`initialAlerts` (`{ presets: metric → preset spec, rules: AlertRule[] }`) is a new Board's alert
+setup from the add-board wizard. Native writes the Board, its settings, the `preset:<metric>` rows,
+and the rider rules in one transaction, so no session sees the Board on default presets.
 
 `upsertBoard` also starts the real Board Session when the Board being written is the one that just
 proved a link in `finalizeBoardLink` — linking connects over a throwaway probe session and drops it,
@@ -399,22 +403,23 @@ only stable identity (`id`, `name`, `ble_id`, `created_at`).
 
 ## Alert rules
 
-| fn                                            | sync  | returns                                                       |
-| --------------------------------------------- | ----- | ------------------------------------------------------------- |
-| `getAlertRules()`                             | async | `AlertRule[]` by created_at ASC                               |
-| `upsertAlertRule(rule)`                       | async | void. Reloads foreground service rules                        |
-| `setAlertRuleEnabled(id,enabled)`             | async | void. Reloads rules                                           |
-| `deleteAlertRule(id)`                         | async | void. Reloads rules                                           |
-| `getAlertSounds()`                            | sync  | `AlertSound[]`. Falls back to hardcoded if native unavailable |
-| `previewAlertSound(soundType)`                | sync  | void                                                          |
-| `startGeigerSimulation(soundType,rangeDepth)` | sync  | void                                                          |
-| `stopGeigerSimulation()`                      | sync  | void                                                          |
-| `reloadAlertRules()`                          | sync  | void. Force foreground service re-read                        |
+| fn                                       | sync  | returns                                                       |
+| ---------------------------------------- | ----- | ------------------------------------------------------------- |
+| `getAlertRules(boardId)`                 | async | `AlertRule[]`: rider rules, then expanded presets             |
+| `getAlertPresets(boardId)`               | async | each metric's `preset(…)` spec; `preset(normal)` when unset   |
+| `upsertAlertRule(rule)`                  | async | void. Reloads foreground service rules                        |
+| `setAlertRuleEnabled(id,enabled)`        | async | void. Reloads rules                                           |
+| `deleteAlertRule(id)`                    | async | void. Reloads rules                                           |
+| `getAlertSounds()`                       | sync  | `AlertSound[]`. Falls back to hardcoded if native unavailable |
+| `previewAlertSound(spec)`                | sync  | void                                                          |
+| `startGeigerSimulation(spec,rangeDepth)` | sync  | void                                                          |
+| `stopGeigerSimulation()`                 | sync  | void                                                          |
+| `reloadAlertRules()`                     | sync  | void. Force foreground service re-read                        |
 
 ### AlertRule shape
 
 ```ts
-{ id, controlId, threshold, thresholdMax?, enabled, soundType, createdAt }
+{ id, controlId, threshold, thresholdMax?, enabled, spec, createdAt }
 ```
 
 Single threshold -> one-shot alert. Both threshold+thresholdMax -> geiger (progressive ticking).
@@ -425,7 +430,7 @@ Single threshold -> one-shot alert. Both threshold+thresholdMax -> geiger (progr
 { name, uri, category: 'single'|'geiger' }
 ```
 
-Presets: beep, urgent, notify (single); tick, tick_hard, gamma (geiger)
+Sounds: `alert:info|warning|critical` (single); `geiger:soft|mid|hard` (geiger)
 
 ## Tune profiles
 
@@ -554,16 +559,21 @@ snapshot (`latestBms`); UI derives min/max/spread via `summarizeBms` in `src/mod
 
 ## Alert preset intents
 
-`applyAlertPreset(boardId, metric, intent)` switches a saved Board's alert setup. Intents are
-`{ action: 'select', level }`, `{ action: 'customize' }`, `{ action: 'discard-custom' }`, and
-`{ action: 'match-board-config', enabled }`. Selection and generated rule changes commit together
-in native storage. JS does not send generated rules or run a regeneration sequence. Board saves
-also update affected preset rules atomically when their inputs change. Successful writes publish
-`boards` and `alerts` data-change scopes and reload native alert evaluation.
+`applyAlertPreset(boardId, metric, intent)` rewrites the metric's one `preset:<metric>` row in a
+database transaction. An intent changes exactly one thing: `{ level }` (`off`, `safe`, `normal`,
+`minimal`), `{ geiger }` (`soft`, `mid`, `hard`; geiger metrics only), or `{ match }` (metrics with a
+board config field). Other options in the row, including keys this app does not know, are kept.
+Success publishes the `alerts` data-change scope and reloads native alert evaluation.
+`startAlertTest(rules)` plays the app-wide effects and voice packs.
 
-`previewAlertPreset(metric, level, { topSpeedKmh, hasBatteryConfig, speedUnitSystem? })` returns
-`AlertTestRule[]` synchronously for an unsaved add-board draft. It uses the same native generator
-as persistence, with explicit draft inputs and no database access, events, or alert-engine changes.
-Units default to metric; `off` and `custom` return no generated rules. The wizard has no Board
-configuration to match, so this operation only returns fixed thresholds. JS uses these snapshots
-for markers, summaries, sound previews, and copying a preset into editable draft rules.
+Native expands preset rows whenever it loads rules, reading Board Top Speed, the battery config,
+units, and board config at that moment; `getAlertRules` returns the expanded rules
+(`preset:<metric>:<index>`), and `upsertAlertRule`, `setAlertRuleEnabled`, and `deleteAlertRule`
+reject preset ids. JS never expands a preset.
+
+`previewAlertPreset(metric, spec, { topSpeedKmh, hasBatteryConfig, speedUnitSystem? })` returns
+`AlertTestRule[]` synchronously for an unsaved add-board draft spec such as `preset(normal)`. It uses
+the same native expander as saved rows, with explicit draft inputs and no database access, events,
+or alert-engine changes. Units default to metric; `off` returns no rules. The wizard has no Board
+configuration to match, so drafts carry no `match=on`. JS uses these snapshots for markers,
+summaries, sound previews, and copying a preset into editable draft rules.

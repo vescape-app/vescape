@@ -24,6 +24,9 @@ final class WatchTelemetryPusher: NSObject, WCSessionDelegate {
   private var session: WCSession?
   private var activeIssue: String?
   private var lastReachable: Bool?
+  private var desiredBattery: WatchLastBattery?
+  private var wakeGate = WatchBatteryWakeGate()
+  private var budgetExhausted = false
 
   /// Cold-state channels (settings today, route and weather later). Lazily built so it reads the
   /// live session rather than a copy taken before activation.
@@ -93,6 +96,26 @@ final class WatchTelemetryPusher: NSObject, WCSessionDelegate {
     set { coldState.onDelivered = newValue }
   }
 
+  func pushLastBattery(_ battery: WatchLastBattery?) {
+    desiredBattery = battery
+    pushColdState(channel: watchLastBatteryChannel, payload: battery?.payload ?? [:])
+    wakeComplication()
+  }
+
+  private func wakeComplication() {
+    guard let session, session.activationState == .activated,
+      session.isPaired, session.isWatchAppInstalled, session.isComplicationEnabled else { return }
+    let remaining = session.remainingComplicationUserInfoTransfers
+    if remaining <= WatchBatteryWakeGate.reserve {
+      if !budgetExhausted { record("watch_complication_budget_exhausted", ["remaining": remaining]) }
+      budgetExhausted = true
+      return
+    }
+    budgetExhausted = false
+    guard wakeGate.shouldSend(desiredBattery) else { return }
+    session.transferCurrentComplicationUserInfo([watchLastBatteryChannel: desiredBattery?.payload ?? [:]])
+  }
+
   var onColdStateFailed: ((String) -> Void)? {
     get { coldState.onFailed }
     set { coldState.onFailed = newValue }
@@ -151,7 +174,7 @@ final class WatchTelemetryPusher: NSObject, WCSessionDelegate {
     )
     // The cold-state channels the process knew about before the session would accept them. Cold
     // start is the one moment they are guaranteed to be waiting.
-    if activationState == .activated { coldState.flush() }
+    if activationState == .activated { coldState.flush(); wakeComplication() }
   }
 
   /// Wrist commands (ADR-0033). Two bytes, decoded off the delegate queue and handed to the owner;

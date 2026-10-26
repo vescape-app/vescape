@@ -1,0 +1,20 @@
+{
+  "id": "arc",
+  "kind": "effects",
+  "voice": "nova",
+  "format": "aac-lc m4a, mono 22050 Hz",
+  "slots": {
+    "severity.positive": "severity.positive.m4a",
+    "severity.info": "severity.info.m4a",
+    "severity.warning": "severity.warning.m4a",
+    "severity.critical": "severity.critical.m4a",
+    "cue.on": "cue.on.m4a",
+    "cue.off": "cue.off.m4a",
+    "cue.groupRide.created": "cue.groupRide.created.m4a",
+    "cue.groupRide.joined": "cue.groupRide.joined.m4a",
+    "cue.ride.end": "cue.ride.end.m4a",
+    "geiger.soft": "geiger.soft.m4a",
+    "geiger.mid": "geiger.mid.m4a",
+    "geiger.hard": "geiger.hard.m4a"
+  }
+}

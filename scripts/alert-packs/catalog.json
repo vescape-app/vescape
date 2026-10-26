@@ -1,0 +1,32 @@
+{
+  "severities": ["info", "warning", "critical"],
+  "voiceKeys": {
+    "battery": "percent",
+    "motorTemp": "degrees",
+    "controllerTemp": "degrees",
+    "speed": "number",
+    "dutyCycle": "number",
+    "boardConnection.connected": null,
+    "boardConnection.lost": null,
+    "system.error": null,
+    "groupRide.created": null,
+    "groupRide.joined": null,
+    "groupRide.riderJoined": null,
+    "groupRide.riderLeft": null,
+    "groupRide.lost": null,
+    "groupRide.restored": null,
+    "ride.end": null,
+    "weather.storm": null,
+    "weather.storm.now": null,
+    "weather.wind": null,
+    "weather.wind.now": null,
+    "weather.rain": null,
+    "weather.rain.now": null
+  },
+  "values": {
+    "percent": { "min": 0, "max": 100 },
+    "degrees": { "min": -30, "max": 300 },
+    "number": { "min": 0, "max": 100 },
+    "duration": [15, 30, 45, 60, 90, 120, 150, 180]
+  }
+}

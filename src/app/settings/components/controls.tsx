@@ -12,6 +12,7 @@ import {
   SegmentedToggleShowcase,
 } from '@/screens/showcase/controls/ButtonShowcases'
 import { ExpandableCircleMenuShowcase } from '@/screens/showcase/controls/ExpandableCircleMenuShowcase'
+import { MetricAlertsShowcase } from '@/screens/showcase/controls/MetricAlertsShowcase'
 import { RadioIndicatorShowcase } from '@/screens/showcase/controls/RadioIndicatorShowcase'
 import { SwitchShowcase } from '@/screens/showcase/controls/SwitchShowcase'
 import { ZonePillsShowcase } from '@/screens/showcase/controls/ZonePillsShowcase'
@@ -24,11 +25,12 @@ export default function ControlsPage() {
       <ScrollView contentContainerStyle={styles.content}>
         <IconHero
           icon={SwatchesIcon}
-          description="Switch, RadioIndicator, CircleButton, ExpandableCircleMenu, FloatingBar, PrevNextSelector, PillSelector, AlertPresetControl."
+          description="Switch, RadioIndicator, CircleButton, ExpandableCircleMenu, FloatingBar, PrevNextSelector, PillSelector, AlertPresetControl, MetricAlerts."
         />
         <SwitchShowcase />
         <RadioIndicatorShowcase />
         <AlertPresetControlShowcase />
+        <MetricAlertsShowcase />
         <CircleButtonShowcase />
         <NavigationTopBarShowcase />
         <FloatingBarShowcase />

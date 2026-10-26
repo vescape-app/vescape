@@ -31,7 +31,14 @@ internal final class GroupRideObserver: NSObject {
   private var riderName: String?
   private var riderColor: String?
   private var joinedRideId: String? { didSet { notifyParticipationIfChanged() } }
-  private var desiredRideId: String? { didSet { notifyParticipationIfChanged() } }
+  private var desiredRideId: String? {
+    didSet {
+      if desiredRideId != oldValue { rideLinkLost = false }
+      notifyParticipationIfChanged()
+    }
+  }
+  /// The joined ride's socket dropped; its next `joined` is a restore, not a fresh join.
+  private var rideLinkLost = false
   /// Last `participating` value handed to the owner, so only real transitions are reported.
   private var lastParticipating = false
   private var lastPresence: RiderPresence?
@@ -57,12 +64,23 @@ internal final class GroupRideObserver: NSObject {
   /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/GroupRideObserver.kt `onParticipationChanged`
   private let onParticipationChanged: () -> Void
 
+  /// Plays a Group Ride app cue: `groupRide.created` for a new ride the rider created or one
+  /// nearby, and `joined`, `riderJoined`, `riderLeft`, `lost`, `restored` as the joined ride changes.
+  /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/GroupRideObserver.kt `onCue`
+  private let onCue: (String) -> Void
+  /// The device's latest position (lat, lng), for the nearby test of `groupRide.created`.
+  private let ownLocation: () -> (lat: Double, lng: Double)?
+
   init(
     emit: @escaping (String, [String: Any?]) -> Void,
     online: OnlineCapability,
     scheduler: Scheduler = MainQueueScheduler(),
-    onParticipationChanged: @escaping () -> Void = {}
+    onParticipationChanged: @escaping () -> Void = {},
+    onCue: @escaping (String) -> Void = { _ in },
+    ownLocation: @escaping () -> (lat: Double, lng: Double)? = { nil }
   ) {
+    self.onCue = onCue
+    self.ownLocation = ownLocation
     self.emit = emit
     self.online = online
     self.onParticipationChanged = onParticipationChanged
@@ -329,6 +347,10 @@ internal final class GroupRideObserver: NSObject {
     webSocket = nil
     stopPing()
     if stopped { return }
+    if joinedRideId != nil {
+      rideLinkLost = true
+      onCue("groupRide.lost")
+    }
     joinedRideId = nil
     stopHeartbeat()
     emitConnection("disconnected")
@@ -357,7 +379,15 @@ internal final class GroupRideObserver: NSObject {
       emit("onGroupRideSnapshot", ["rides": rides])
     case "ride-created":
       if let ride = rideSummary(json["ride"] as? [String: Any]) {
+        let isNew = !knownRides.contains { $0.id == ride["id"] as? String }
         rememberRide(ride)
+        let location = ride["location"] as? [String: Double]
+        let creatorId = (ride["creator"] as? [String: String])?["id"]
+        if isNew, let lat = location?["lat"], let lng = location?["lng"],
+          Self.rideCreatedAudible(creatorId: creatorId, ownRiderId: riderId, rideLat: lat, rideLng: lng, own: ownLocation())
+        {
+          onCue("groupRide.created")
+        }
         emit("onGroupRideCreated", ["ride": ride])
       }
     case "ride-updated":
@@ -378,6 +408,8 @@ internal final class GroupRideObserver: NSObject {
       }
     case "joined":
       guard let rideId = json["rideId"] as? String, !rideId.isEmpty else { return }
+      if rideId != joinedRideId { onCue(rideLinkLost ? "groupRide.restored" : "groupRide.joined") }
+      rideLinkLost = false
       joinedRideId = rideId
       desiredRideId = rideId
       startHeartbeat()
@@ -515,6 +547,38 @@ internal final class GroupRideObserver: NSObject {
     ]
   }
 
+  /// Discovery radius for nearby Group Rides.
+  /// @parity /src/modules/group-ride/lib/nearby.ts `NEARBY_RADIUS_M`
+  static let nearbyRadiusM = 40_000.0
+
+  /// Whether a ride just created plays `groupRide.created`: the rider created it, or it lies within
+  /// `nearbyRadiusM` of `own`. Without a position only the rider's own ride counts.
+  /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/GroupRideObserver.kt `rideCreatedAudible`
+  static func rideCreatedAudible(
+    creatorId: String?,
+    ownRiderId: String?,
+    rideLat: Double,
+    rideLng: Double,
+    own: (lat: Double, lng: Double)?
+  ) -> Bool {
+    if let ownRiderId, creatorId == ownRiderId { return true }
+    guard let own else { return false }
+    return GeoMath.distanceMeters(own.lat, own.lng, rideLat, rideLng) <= nearbyRadiusM
+  }
+
+  /// Cue for a joined ride's roster going from `previous` to `next` rider ids: `riderJoined` when
+  /// someone else arrived, else `riderLeft` when someone else left. An empty `previous` is the first
+  /// roster after joining, so nobody "joined" then.
+  /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/GroupRideObserver.kt `rosterCue`
+  static func rosterCue(previous: [String], next: [String], ownRiderId: String?) -> String? {
+    if previous.isEmpty { return nil }
+    let before = Set(previous.filter { $0 != ownRiderId })
+    let after = Set(next.filter { $0 != ownRiderId })
+    if !after.subtracting(before).isEmpty { return "groupRide.riderJoined" }
+    if !before.subtracting(after).isEmpty { return "groupRide.riderLeft" }
+    return nil
+  }
+
   /// A `riderView` map as the typed entry native keeps; nil when it carries no id. No presence
   /// leaves the Rider unplaced.
   ///
@@ -547,6 +611,15 @@ internal final class GroupRideObserver: NSObject {
   }
 
   private func emitRoster(_ rideId: String?, _ riders: [[String: Any?]]) {
+    if let rideId, rideId == joinedRideId, rideId == lastRosterRideId,
+      let cue = Self.rosterCue(
+        previous: lastRoster.compactMap { $0["id"] as? String },
+        next: riders.compactMap { $0["id"] as? String },
+        ownRiderId: riderId
+      )
+    {
+      onCue(cue)
+    }
     lastRosterRideId = rideId
     lastRoster = riders
     lastRosterRiders = riders.compactMap(Self.rosterRider)

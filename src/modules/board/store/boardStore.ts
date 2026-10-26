@@ -8,6 +8,7 @@ import {
   type BatteryConfig,
   type Board,
   type BoardLink,
+  type InitialBoardAlerts,
   upsertBoard,
 } from 'vescape-core'
 
@@ -33,8 +34,9 @@ interface BoardActions {
     link?: BoardLink | null
     batteryConfig?: BatteryConfig | null
     topSpeedKmh?: number
-    alertPreset?: Record<string, unknown> | null
     alertPresetsOnboarded?: boolean
+    /** Alert setup saved with the Board in one transaction. */
+    alerts?: InitialBoardAlerts
   }) => Promise<Board>
   updateBoard: (board: Board) => Promise<void>
   /** Dismiss (acknowledge) or restore a Board Warning kind; persisted on the board record. */
@@ -85,8 +87,8 @@ export const useBoardStore = create<BoardState & BoardActions>((set, get) => ({
     link,
     batteryConfig,
     topSpeedKmh,
-    alertPreset,
     alertPresetsOnboarded,
+    alerts,
   }) {
     const board: Board = {
       id: id ?? generateId(),
@@ -97,12 +99,11 @@ export const useBoardStore = create<BoardState & BoardActions>((set, get) => ({
       deletedAt: null,
       batteryConfig: batteryConfig ?? DEFAULT_BATTERY_CONFIG,
       topSpeedKmh,
-      alertPreset: alertPreset ?? null,
       alertPresetsOnboarded: alertPresetsOnboarded ?? false,
       legalMode: { enabled: false },
       link: link ?? null,
     }
-    await upsertBoard(board)
+    await upsertBoard(board, alerts)
     set((state) => ({
       boards: [...state.boards, board],
       activeBoardId: state.activeBoardId ?? board.id,
@@ -135,14 +136,10 @@ export const useBoardStore = create<BoardState & BoardActions>((set, get) => ({
 
   async removeBoard(id) {
     await nativeDeleteBoard(id)
-    set((state) => {
-      const remaining = state.boards.filter((b) => b.id !== id)
-      return {
-        boards: remaining,
-        activeBoardId:
-          state.activeBoardId === id ? (remaining[0]?.id ?? null) : state.activeBoardId,
-      }
-    })
+    const remaining = get().boards.filter((b) => b.id !== id)
+    set({ boards: remaining })
+    // Native owns the selection; leaving it on the deleted Board would keep it on the wrist.
+    if (get().activeBoardId === id) get().setActiveBoard(remaining[0]?.id ?? null)
   },
 
   setActiveBoard(id) {

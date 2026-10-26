@@ -1,0 +1,197 @@
+{
+  "id": "nova",
+  "kind": "voice",
+  "kokoro": {
+    "voice": "af_heart",
+    "speed": 0.9
+  },
+  "fx": "highpass 90 equalizer 3000 1.5q +4 compand 0.002,0.08 -70,-70,-50,-8,-20,-3,0,-1.5 gain -n -0.3 compand 0.0005,0.03 -10,-10,-3,-2,0,-1 gain -n -0.3 compand 0.001,0.05 -6,-6,0,-1 gain -n -4.4",
+  "units": {
+    "percent": ["percent", "percent"],
+    "degrees": ["degree", "degrees"]
+  },
+  "lines": {
+    "speed": {
+      "start": ["Speed..."],
+      "full": {
+        "start": ["Speed...", "Speed check..."]
+      }
+    },
+    "dutyCycle": {
+      "start": ["Duty..."],
+      "full": {
+        "start": ["Duty...", "Duty cycle..."]
+      }
+    },
+    "battery": {
+      "start": ["Battery..."],
+      "full": {
+        "start": ["Battery...", "Battery at..."]
+      }
+    },
+    "battery.warning": {
+      "start": ["Battery low..."],
+      "full": {
+        "start": ["Battery low...", "Battery getting low..."],
+        "end": ["Plan your way home."],
+        "endChance": 0.2
+      }
+    },
+    "battery.critical": {
+      "start": ["Battery critical..."],
+      "full": {
+        "start": ["Battery critical...", "Battery almost empty..."],
+        "end": ["Time to charge.", "Find a charger soon."],
+        "endChance": 0.2
+      }
+    },
+    "motorTemp": {
+      "start": ["Motor temperature..."],
+      "minimal": ["Motor..."],
+      "full": {
+        "start": ["Motor temperature...", "Motor at..."]
+      }
+    },
+    "motorTemp.warning": {
+      "start": ["Motor getting hot..."],
+      "full": {
+        "start": ["Motor getting hot...", "Motor warming up..."],
+        "end": ["Take it easy."],
+        "endChance": 0.2
+      }
+    },
+    "motorTemp.critical": {
+      "start": ["Motor overheating..."],
+      "full": {
+        "start": ["Motor overheating...", "Motor too hot..."],
+        "end": ["Ease off.", "Give it a break."],
+        "endChance": 0.2
+      }
+    },
+    "controllerTemp": {
+      "start": ["Controller temperature..."],
+      "minimal": ["Controller..."],
+      "full": {
+        "start": ["Controller temperature...", "Controller at..."]
+      }
+    },
+    "controllerTemp.warning": {
+      "start": ["Controller getting hot..."],
+      "full": {
+        "start": ["Controller getting hot...", "Controller warming up..."],
+        "end": ["Take it easy."],
+        "endChance": 0.2
+      }
+    },
+    "controllerTemp.critical": {
+      "start": ["Controller overheating..."],
+      "full": {
+        "start": ["Controller overheating...", "Controller too hot..."],
+        "end": ["Ease off.", "Give it a break."],
+        "endChance": 0.2
+      }
+    },
+    "boardConnection.connected": {
+      "start": ["Board connected."],
+      "full": {
+        "start": ["Board connected.", "Board is connected.", "Board connected. Have a good ride."]
+      }
+    },
+    "boardConnection.lost": {
+      "start": ["Board disconnected."],
+      "full": {
+        "start": ["Board disconnected.", "Lost the board."]
+      }
+    },
+    "system.error": {
+      "start": ["Something went wrong."],
+      "full": {
+        "start": ["Something went wrong.", "An error occurred."]
+      }
+    },
+    "groupRide.created": {
+      "start": ["Group ride created."],
+      "full": {
+        "start": ["Group ride created.", "Your group ride is ready."]
+      }
+    },
+    "groupRide.joined": {
+      "start": ["Joined the group ride."],
+      "full": {
+        "start": ["You joined the group ride.", "Joined the group ride."]
+      }
+    },
+    "groupRide.riderJoined": {
+      "start": ["A rider joined."],
+      "full": {
+        "start": ["A rider joined the group ride.", "Someone joined the group ride."]
+      }
+    },
+    "groupRide.riderLeft": {
+      "start": ["A rider left."],
+      "full": {
+        "start": ["A rider left the group ride.", "Someone left the group ride."]
+      }
+    },
+    "groupRide.lost": {
+      "start": ["Group ride connection lost."],
+      "full": {
+        "start": ["Group ride connection lost.", "Lost the group ride connection."]
+      }
+    },
+    "groupRide.restored": {
+      "start": ["Group ride connection restored."],
+      "full": {
+        "start": ["Group ride connection restored.", "Back in the group ride."]
+      }
+    },
+    "ride.end": {
+      "start": ["Ride ended."],
+      "full": {
+        "start": ["Ride ended.", "Ride finished.", "Ride finished. Nice one."]
+      }
+    },
+    "weather.storm": {
+      "start": ["Storm expected..."],
+      "minimal": ["Storm..."],
+      "full": {
+        "start": ["Storm expected...", "Storm coming..."]
+      }
+    },
+    "weather.storm.now": {
+      "start": ["Storm starting now."],
+      "minimal": ["Storm now."],
+      "full": {
+        "start": ["Storm starting now.", "Storm is here."]
+      }
+    },
+    "weather.wind": {
+      "start": ["Strong wind expected..."],
+      "minimal": ["Strong wind..."],
+      "full": {
+        "start": ["Strong wind expected...", "Strong gusts coming..."]
+      }
+    },
+    "weather.wind.now": {
+      "start": ["Strong wind now."],
+      "minimal": ["Wind now."],
+      "full": {
+        "start": ["Strong wind now.", "Strong gusts are here."]
+      }
+    },
+    "weather.rain": {
+      "start": ["Rain expected..."],
+      "minimal": ["Rain..."],
+      "full": {
+        "start": ["Rain expected...", "Rain coming..."]
+      }
+    },
+    "weather.rain.now": {
+      "start": ["Rain starting now."],
+      "minimal": ["Rain now."],
+      "full": {
+        "start": ["Rain starting now.", "Rain is here."]
+      }
+    }
+  }
+}

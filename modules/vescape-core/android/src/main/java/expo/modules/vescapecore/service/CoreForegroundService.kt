@@ -3,12 +3,13 @@ package expo.modules.vescapecore.service
 import expo.modules.vescapecore.accessory.AccessorySessionManager
 import expo.modules.vescapecore.alerts.AlertFeedback
 import expo.modules.vescapecore.connection.BoardSessionController
+import expo.modules.vescapecore.weather.WeatherAlertLine
 import expo.modules.vescapecore.connection.BoardTransport
 import expo.modules.vescapecore.notification.NotificationController
 import expo.modules.vescapecore.config.PendingConfigRead
 import expo.modules.vescapecore.config.PendingConfigWrite
 import expo.modules.vescapecore.config.RefloatConfigErrorCode
-import expo.modules.vescapecore.alerts.alertSoundPresetMaps
+import expo.modules.vescapecore.alerts.alertSoundMaps
 
 import android.annotation.SuppressLint
 import android.app.Service
@@ -522,15 +523,19 @@ class CoreForegroundService : Service() {
             }
         }
 
-        fun previewAlertSound(context: Context, soundType: String) {
-            instance?.controller?.previewAlertSound(soundType) ?: AlertFeedback.preview(context, soundType, kotlinx.coroutines.runBlocking { AppDataRepository.get(context).getTypedSettings().audioSource })
+        fun previewAlertSound(context: Context, spec: String) {
+            instance?.controller?.previewAlertSound(spec) ?: AlertFeedback.preview(context, spec, kotlinx.coroutines.runBlocking { AppDataRepository.get(context).getTypedSettings().audioSource })
         }
 
-        fun playAppSound(context: Context, pack: String, cue: String) {
-            AlertFeedback.previewAppSound(context, pack, cue, kotlinx.coroutines.runBlocking { AppDataRepository.get(context).getTypedSettings().audioSource })
+        internal fun previewWeatherAlert(context: Context, line: WeatherAlertLine) {
+            instance?.controller?.previewWeatherAlert(line) ?: AlertFeedback.previewVoice(context, line.voiceAnnouncement(), kotlinx.coroutines.runBlocking { AppDataRepository.get(context).getTypedSettings().audioSource })
         }
 
-        fun alertSoundPresets(): List<Map<String, Any>> = alertSoundPresetMaps()
+        fun playPackSound(context: Context, pack: String, slot: String) {
+            AlertFeedback.previewPackSound(context, pack, slot, kotlinx.coroutines.runBlocking { AppDataRepository.get(context).getTypedSettings().audioSource })
+        }
+
+        fun alertSoundPresets(): List<Map<String, Any>> = alertSoundMaps()
 
         fun currentLiveState(context: Context): Map<String, Any?> {
             RecordingStorageFailure.initialize(context.applicationContext)

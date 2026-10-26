@@ -30,12 +30,14 @@
 - [accessories.md](./accessories.md) — in-progress accessory design: ground-clearance tilt sensor and brake light
 - [accessory-protocol.md](./accessory-protocol.md) — JSON/BLE protocol v1: discovery implemented against shared fixtures; commands, readings, and failure handling still draft
 - [history.md](./history.md) — ride history persistence, grouping, markers, and map rendering
+- [Ride boundaries from data](./adr/0041-ride-boundaries-are-derived-from-recorded-data.md) — a ride is one Board's Telemetry Samples; frame gap, Board change or Stop Recording split it
 - [tune.md](./tune.md) — Refloat tune screen behavior, basic slider formulas, field groups
 - [tune-preview-pl.md](./tune-preview-pl.md) — Tune vs Tune Preview, explained (Polish)
 - [remote-tilt.md](./remote-tilt.md) — Remote Tilt gesture ownership, native command timing, and latency checks
 - [alerts.md](./alerts.md) — telemetry alerts: storage, native evaluation, Geiger mode
 - [safety.md](./safety.md) — safety warnings & thresholds: firmware pushbacks, faults, voltage cutoffs
 - [board-warnings.md](./board-warnings.md) — Board Warnings catalog: every kind's slug, title, severity, trigger, payload, clear semantics
+- [Announcement Queue](./adr/0040-announcement-queue-serializes-non-critical-audio.md) — non-critical cues and lines play one at a time by priority; telemetry alerts pre-empt
 - [VESC fault evidence](./adr/0037-vesc-faults-are-board-owned-evidence.md) — live occurrences, past telemetry captures, and the on-demand Controller Fault Log
 - [Board tombstones](./adr/0027-boards-are-tombstoned-never-deleted.md) — deleting a Board keeps its row so Ride History can still name it
 - [Telemetry keyed on board id](./adr/0028-telemetry-is-keyed-on-board-id.md) — every telemetry table keys on the Board, not the BLE identifier

@@ -18,7 +18,6 @@ class TelemetryBucketBuilderTest {
         BucketLocationPoint(
           capturedAtMs = 120_500L,
           boardId = "board-1",
-          recordingId = "recording-1",
           precise = true,
           distanceFromPreviousCm = null,
           gpsSpeedCentiMps = 900,
@@ -28,7 +27,6 @@ class TelemetryBucketBuilderTest {
         BucketLocationPoint(
           capturedAtMs = 130_000L,
           boardId = "board-1",
-          recordingId = "recording-1",
           precise = true,
           distanceFromPreviousCm = 4_200L,
           gpsSpeedCentiMps = 1_100,
@@ -40,7 +38,6 @@ class TelemetryBucketBuilderTest {
 
     val bucket = buckets.single()
     assertEquals(120_000L, bucket.bucketStartMs)
-    assertEquals("recording-1", bucket.recordingId)
     assertEquals(0, bucket.sampleCount)
     assertEquals(2, bucket.gpsPointCount)
     assertEquals(2, bucket.preciseGpsPointCount)
@@ -263,7 +260,6 @@ class TelemetryBucketBuilderTest {
         BucketTelemetryPoint(
           capturedAtMs = 1_000L,
           boardId = "board-1",
-          recordingId = "recording-1",
           speedCentiKmh = 1_200,
           batteryVoltageMv = 70_000,
           motorCurrentMa = 0,
@@ -288,7 +284,6 @@ class TelemetryBucketBuilderTest {
   private fun locationPoint(capturedAtMs: Long, moving: Boolean) = BucketLocationPoint(
     capturedAtMs = capturedAtMs,
     boardId = "board-1",
-    recordingId = "recording-1",
     precise = true,
     moving = moving,
     distanceFromPreviousCm = null,

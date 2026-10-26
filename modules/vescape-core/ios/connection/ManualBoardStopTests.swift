@@ -173,7 +173,7 @@ final class ManualBoardStopTests: XCTestCase {
     })
     let boardId = "widget-stop-restoring"
     SessionResumeStore.shared.save(
-      appBoardId: boardId, bleId: UUID().uuidString, recordingActive: false, recordingId: nil
+      appBoardId: boardId, bleId: UUID().uuidString, recordingActive: false
     )
     defer {
       SessionResumeStore.shared.clear()

@@ -76,10 +76,8 @@ public class VescapeCoreModule: Module {
   private let legalPolicyResolver = LegalPolicyResolver()
   private let legalPolicyCatalog = LegalPolicyCatalog()
 
-  /// Bundled alert sounds surfaced to JS through `getAlertSounds`. Mirrors Android
-  /// `alertSoundPresetMaps()`.
-  /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/alerts/AlertEngine.kt `alertSoundPresetMaps`
-  private let alertPresets: [[String: Any]] = alertSoundPresetMaps()
+  /// Alert sounds surfaced to JS through `getAlertSounds`.
+  private let alertPresets: [[String: Any]] = alertSoundChoices()
   /// UI alert tests never share evaluator or audio state with the live Board Session.
   private var alertTestPlayer: AlertAudioPlayer?
   private var alertTestCoordinator: AlertCoordinator?
@@ -522,26 +520,26 @@ public class VescapeCoreModule: Module {
       }
     }
 
-    Function("previewAlertSound") { (soundType: String) in
-      self.coordinator.previewAlertSound(soundType)
+    Function("previewAlertSound") { (spec: String) in
+      self.coordinator.previewAlertSound(spec)
     }
-    Function("playAppSound") { (pack: String, cue: String) in
-      self.coordinator.playAppSound(pack: pack, cue: cue)
+    // @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/VescapeCoreModule.kt `previewWeatherAlert`
+    // @parity /modules/vescape-core/src/index.ts `previewWeatherAlert`
+    Function("previewWeatherAlert") { (kind: String, leadMinutes: Int, percent: Int?) in
+      guard let line = WeatherAlertLine.preview(kind: kind, leadMinutes: leadMinutes, percent: percent) else { return }
+      self.coordinator.previewWeatherAlert(line)
+    }
+    // @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/VescapeCoreModule.kt `playPackSound`
+    Function("playPackSound") { (pack: String, slot: String) in
+      self.coordinator.playPackSound(pack: pack, slot: slot)
     }
 
-    // @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/VescapeCoreModule.kt `customAppSoundPacks`
-    AsyncFunction("customAppSoundPacks") { CustomAppSounds.list() }
-    AsyncFunction("createAppSoundPack") { (name: String) in try CustomAppSounds.create(name) }
-    AsyncFunction("renameAppSoundPack") { (id: String, name: String) in try CustomAppSounds.rename(id, name: name) }
-    AsyncFunction("importAppSound") { (id: String, cue: String, uri: String) in try CustomAppSounds.import(id, cue: cue, uri: uri) }
-    AsyncFunction("removeAppSound") { (id: String, cue: String) in try CustomAppSounds.remove(id, cue: cue) }
-    AsyncFunction("deleteAppSoundPack") { (id: String) in
-      if (try self.appData.getSettings())["soundPack"] as? String == id {
-        try self.appData.updateSetting("soundPack", rawValue: "simple")
-        self.coordinator.reloadTelemetrySettings()
-      }
-      try CustomAppSounds.delete(id)
-    }
+    // @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/VescapeCoreModule.kt `mySounds`
+    AsyncFunction("mySounds") { MySounds.state() }
+    AsyncFunction("importMySound") { (uri: String, name: String) in try MySounds.import(uri: uri, name: name) }
+    AsyncFunction("renameMySound") { (id: String, name: String) in try MySounds.rename(id, name: name) }
+    AsyncFunction("deleteMySound") { (id: String) in try MySounds.delete(id) }
+    AsyncFunction("setSoundOverride") { (slot: String, id: String?) in try MySounds.setOverride(slot, id: id) }
     // @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/VescapeCoreModule.kt `mapTile`
     AsyncFunction("mapTile") { (z: Int, x: Int, y: Int) async -> String? in
       await MapTiles.shared.tile(z: z, x: x, y: y)?.absoluteString
@@ -550,8 +548,8 @@ public class VescapeCoreModule: Module {
       self.alertPresets
     }
 
-    Function("startGeigerSimulation") { (soundType: String, rangeDepth: Double) in
-      self.coordinator.startGeigerSimulation(soundType: soundType, rangeDepth: rangeDepth)
+    Function("startGeigerSimulation") { (spec: String, rangeDepth: Double) in
+      self.coordinator.startGeigerSimulation(spec: spec, rangeDepth: rangeDepth)
     }
 
     Function("stopGeigerSimulation") {
@@ -590,6 +588,13 @@ public class VescapeCoreModule: Module {
     // @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/VescapeCoreModule.kt `getWeather`
     Function("getWeather") { () -> [String: Any?]? in
       WeatherCoordinator.shared.current?.map
+    }
+
+    // @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/VescapeCoreModule.kt `getWeatherAlertThresholds`
+    Function("getWeatherAlertThresholds") { () -> [String: [String: Double]] in
+      Dictionary(uniqueKeysWithValues: WeatherAlertLevel.allCases.map {
+        ($0.rawValue, ["gustKmh": $0.wind.minGustKmh, "rainPercent": Double($0.rain.minProbabilityPercent)])
+      })
     }
 
     // @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/VescapeCoreModule.kt `refreshWeather`
@@ -649,6 +654,7 @@ public class VescapeCoreModule: Module {
         try self.appData.updateSetting("selectedBoardId", rawValue: boardId)
         self.clearManualDisconnectAutoStartGate()
         self.selectedBoardId = boardId
+        self.coordinator.pushWatchLastBattery()
       } catch {
         RecordingStorageFailure.report(operation: "setting_save", category: "write_failed", error: error)
         throw error
@@ -732,6 +738,7 @@ public class VescapeCoreModule: Module {
         try self.appData.updateSetting("selectedBoardId", rawValue: boardId)
         self.clearManualDisconnectAutoStartGate()
         self.selectedBoardId = boardId
+        self.coordinator.pushWatchLastBattery()
       } catch {
         RecordingStorageFailure.report(operation: "setting_save", category: "write_failed", error: error)
         promise.reject("APP_STORAGE_WRITE_FAILED", "Could not select Board")
@@ -1025,6 +1032,7 @@ public class VescapeCoreModule: Module {
       DispatchQueue.global(qos: .userInitiated).async {
         do {
           try DatabaseBackupManager.restoreBackup(uriString: uri)
+          self.coordinator.pushWatchLastBattery()
           promise.resolve(nil)
         } catch {
           promise.reject("ERR_RESTORE_DATABASE", error.localizedDescription)
@@ -1308,10 +1316,11 @@ public class VescapeCoreModule: Module {
       }
     }
 
-    AsyncFunction("upsertBoard") { (board: [String: Any], promise: Promise) in
+    AsyncFunction("upsertBoard") { (board: [String: Any], initialAlerts: [String: Any]?, promise: Promise) in
       try RecordingStorageFailure.requireAvailable()
       do {
-        try self.appData.upsertBoard(board)
+        try self.appData.upsertBoard(board, initialAlerts: initialAlerts)
+        self.coordinator.pushWatchLastBattery()
         self.coordinator.reloadAlertRules()
         self.coordinator.reloadBoardDataForActiveBoard()
         self.connectSavedBoardLink(boardId: board["id"] as? String)
@@ -1326,6 +1335,7 @@ public class VescapeCoreModule: Module {
       try RecordingStorageFailure.requireAvailable()
       do {
         try self.appData.deleteBoard(id)
+        self.coordinator.pushWatchLastBattery()
         promise.resolve(nil)
       } catch {
         RecordingStorageFailure.report(operation: "board_delete", category: "write_failed", error: error)
@@ -1335,10 +1345,10 @@ public class VescapeCoreModule: Module {
 
     // @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/VescapeCoreModule.kt `previewAlertPreset`
     // @parity /modules/vescape-core/src/index.ts `previewAlertPreset`
-    Function("previewAlertPreset") { (metric: String, level: String, topSpeedKmh: Double, hasBatteryConfig: Bool, speedUnitSystem: String) -> [[String: Any?]] in
+    Function("previewAlertPreset") { (metric: String, spec: String, topSpeedKmh: Double, hasBatteryConfig: Bool, speedUnitSystem: String) -> [[String: Any?]] in
       try AlertPresetPersistence.preview(
         metric: metric,
-        level: level,
+        spec: spec,
         topSpeedKmh: topSpeedKmh,
         hasBatteryConfig: hasBatteryConfig,
         speedUnitSystem: speedUnitSystem
@@ -1348,18 +1358,17 @@ public class VescapeCoreModule: Module {
           "controlId": rule.controlId,
           "threshold": rule.threshold,
           "thresholdMax": rule.thresholdMax,
-          "soundType": rule.soundType,
+          "spec": rule.spec,
           "repeatEverySeconds": rule.repeatEverySeconds,
-          "beepCount": rule.beepCount,
         ]
       }
     }
     // @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/VescapeCoreModule.kt `applyAlertPreset`
     // @parity /modules/vescape-core/src/index.ts `applyAlertPreset`
-    AsyncFunction("applyAlertPreset") { (boardId: String, metric: String, action: String, level: String?, matchBoardConfig: Bool?, promise: Promise) in
+    AsyncFunction("applyAlertPreset") { (boardId: String, metric: String, level: String?, geiger: String?, match: Bool?, promise: Promise) in
       try RecordingStorageFailure.requireAvailable()
       do {
-        try self.appData.applyAlertPreset(boardId, metric, action, level, matchBoardConfig)
+        try self.appData.applyAlertPreset(boardId, metric, level, geiger, match)
         self.coordinator.reloadAlertRules()
         promise.resolve(nil)
       } catch {
@@ -1371,6 +1380,13 @@ public class VescapeCoreModule: Module {
       try RecordingStorageFailure.requireAvailable()
       do { promise.resolve(try self.appData.getAlertRules(boardId)) }
       catch { RecordingStorageFailure.reportRead(operation: "alert_rules_read", error: error); promise.reject("ERR_ALERT_RULES_READ", "Could not load Alert Rules", cause: error) }
+    }
+    // @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/VescapeCoreModule.kt `getAlertPresets`
+    // @parity /modules/vescape-core/src/index.ts `getAlertPresets`
+    AsyncFunction("getAlertPresets") { (boardId: String, promise: Promise) in
+      try RecordingStorageFailure.requireAvailable()
+      do { promise.resolve(try self.appData.getAlertPresets(boardId)) }
+      catch { RecordingStorageFailure.reportRead(operation: "alert_rules_read", error: error); promise.reject("ERR_ALERT_RULES_READ", "Could not load Alert Presets", cause: error) }
     }
 
     AsyncFunction("upsertAlertRule") { (rule: [String: Any], promise: Promise) in
@@ -1640,6 +1656,10 @@ public class VescapeCoreModule: Module {
         "vescFaultCollectionEnabled",
         "connectionSoundsEnabled",
         "soundPack",
+        "voice",
+        "voiceLevel",
+        "weatherRainAlertLevel",
+        "weatherWindAlertLevel",
       ].contains(key) {
         self.coordinator.reloadTelemetrySettings()
       }
@@ -1664,10 +1684,14 @@ public class VescapeCoreModule: Module {
     guard let controlId = rules.first?.controlId else { return }
     guard rules.allSatisfy({ $0.controlId == controlId }) else { return }
 
-    let player = AlertAudioPlayer()
-    let coordinator = AlertCoordinator(player: player, vibrateSingles: false)
-    do { coordinator.unitSystem = try appData.getSettings()["unitSystem"] as? String ?? "metric" }
+    let settings: [String: Any?]
+    do { settings = try appData.getSettings() }
     catch { RecordingStorageFailure.reportRead(operation: "alert_test_settings", error: error); return }
+    let player = AlertAudioPlayer()
+    // A test sounds like the real rule: same effects pack.
+    player.applySoundSettings(settings)
+    let coordinator = AlertCoordinator(player: player, vibrateSingles: false)
+    coordinator.unitSystem = settings["unitSystem"] as? String ?? "metric"
     coordinator.replaceRules(rules)
     alertTestPlayer = player
     alertTestCoordinator = coordinator
@@ -1687,7 +1711,7 @@ public class VescapeCoreModule: Module {
       let id = value["id"] as? String,
       let controlId = value["controlId"] as? String,
       let threshold = (value["threshold"] as? NSNumber)?.doubleValue,
-      let soundType = value["soundType"] as? String
+      let spec = value["spec"] as? String
     else { return nil }
     return AlertRule(
       boardId: "alert-test",
@@ -1696,11 +1720,9 @@ public class VescapeCoreModule: Module {
       threshold: threshold,
       thresholdMax: (value["thresholdMax"] as? NSNumber)?.doubleValue,
       enabled: true,
-      soundType: soundType,
+      spec: spec,
       createdAt: 0,
-      repeatEverySeconds: normalizedAlertRepeatSeconds((value["repeatEverySeconds"] as? NSNumber)?.doubleValue),
-      beepCount: normalizedAlertBeepCount((value["beepCount"] as? NSNumber)?.intValue),
-      source: nil
+      repeatEverySeconds: normalizedAlertRepeatSeconds((value["repeatEverySeconds"] as? NSNumber)?.doubleValue)
     )
   }
 

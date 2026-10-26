@@ -398,7 +398,6 @@ class MetricSanitizerTest {
   ) = Captured(
     point(capturedAtMs, boardId, speedCentiKmh, dutyPermille).point,
     RideTrackPointEntity(
-      recordingId = "recording-1",
       boardId = boardId,
       fixAtMs = gpsTimestampMs,
       latitudeE7 = 500_000_000,

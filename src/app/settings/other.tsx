@@ -4,10 +4,8 @@ import { ToolboxIcon } from 'phosphor-react-native'
 
 import { IconHero } from '@/components/settings/IconHero'
 import { theme } from '@/constants/theme'
-import { AlertSoundProbe } from '@/screens/showcase/other/AlertSoundProbe'
 import { BoardWarningProbe } from '@/screens/showcase/other/BoardWarningProbe'
 import { HapticsProbe } from '@/screens/showcase/other/HapticsProbe'
-import { TtsProbe } from '@/screens/showcase/other/TtsProbe'
 
 export default function OtherSettingsScreen() {
   return (
@@ -16,8 +14,6 @@ export default function OtherSettingsScreen() {
         <IconHero icon={ToolboxIcon} description="Small platform probes and local experiments." />
         <BoardWarningProbe />
         <HapticsProbe />
-        <AlertSoundProbe />
-        <TtsProbe />
       </ScrollView>
     </SafeAreaView>
   )

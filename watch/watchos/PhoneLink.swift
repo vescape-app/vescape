@@ -1,5 +1,6 @@
 import Foundation
 import WatchConnectivity
+import WidgetKit
 
 /// Wrist-side end of the Watch Frame path (ADR-0019). Receives the frames `WatchTelemetryPusher`
 /// sends from `vescape-core`, reduces them to a Mirror State, and publishes that alongside the
@@ -18,6 +19,8 @@ import WatchConnectivity
 /// @parity /watch/wearos/src/main/java/app/vescape/wear/TelemetryState.kt
 /// @parity /watch/wearos/src/main/java/app/vescape/wear/PhoneLinkMonitor.kt
 final class PhoneLink: NSObject, ObservableObject, WCSessionDelegate {
+  static let shared = PhoneLink()
+  var onActivation: (() -> Void)?
   /// What the wrist draws: the reduced state, never the raw frame. A view that read `frame`
   /// directly would render a reading the reducer has already declared too old to trust.
   @Published private(set) var mirror = MirrorStateReducer.reduce(frame: nil, lastFrameAtMs: nil, nowMs: 0)
@@ -75,6 +78,7 @@ final class PhoneLink: NSObject, ObservableObject, WCSessionDelegate {
   ///
   /// @parity /watch/wearos/src/main/java/app/vescape/wear/WatchBoard.kt `BoardState`
   @Published private(set) var board = WatchBoardLights()
+  @Published private(set) var lastBattery = WatchBatteryDefaults.value
 
   /// The joined Group Ride, as last pushed; nil when the Rider is in none or the frames stopped.
   /// Hot state like the Watch Frame, so it ages out in `refresh()` instead of surviving a restart.
@@ -352,6 +356,7 @@ final class PhoneLink: NSObject, ObservableObject, WCSessionDelegate {
   }
 
   private func acceptColdState(_ context: [String: Any]) {
+    refreshLastBatteryContext()
     intake.restoreColdState(context)
     publishIntake()
   }
@@ -375,6 +380,21 @@ final class PhoneLink: NSObject, ObservableObject, WCSessionDelegate {
     publishIntake()
   }
 
+  /// Also called before completing a connectivity background task, so shared storage is current
+  /// even when the system's pending-content observation arrives before the delegate's UI work.
+  func refreshLastBatteryContext() {
+    guard WatchBatteryDefaults.receiveLatestContext({ WCSession.default.receivedApplicationContext }) else { return }
+    lastBattery = WatchBatteryDefaults.value
+    WidgetCenter.shared.reloadTimelines(ofKind: WatchBatteryDefaults.widgetKind)
+  }
+
+  func session(_ session: WCSession, didReceiveUserInfo userInfo: [String: Any]) {
+    guard userInfo[watchLastBatteryChannel] != nil else { return }
+    // Transfers can wait behind newer contexts, including Board switches and clears. Never apply
+    // their snapshot. If this wake arrives first, the later context callback applies the reading.
+    DispatchQueue.main.async { self.refreshLastBatteryContext() }
+  }
+
   /// The pushed forecast while it is still worth believing, else nil.
   ///
   /// @parity /watch/wearos/src/main/java/app/vescape/wear/WatchWeather.kt `freshWeather`
@@ -390,7 +410,10 @@ final class PhoneLink: NSObject, ObservableObject, WCSessionDelegate {
     activationDidCompleteWith activationState: WCSessionActivationState,
     error: Error?
   ) {
-    DispatchQueue.main.async { self.syncCounterpart(session) }
+    DispatchQueue.main.async {
+      self.syncCounterpart(session)
+      self.onActivation?()
+    }
   }
 
   func sessionReachabilityDidChange(_ session: WCSession) {
@@ -404,7 +427,7 @@ final class PhoneLink: NSObject, ObservableObject, WCSessionDelegate {
   }
 
   func session(_ session: WCSession, didReceiveApplicationContext applicationContext: [String: Any]) {
-    DispatchQueue.main.async { self.acceptColdState(applicationContext) }
+    DispatchQueue.main.async { self.acceptColdState(session.receivedApplicationContext) }
   }
 
   func sessionCompanionAppInstalledDidChange(_ session: WCSession) {

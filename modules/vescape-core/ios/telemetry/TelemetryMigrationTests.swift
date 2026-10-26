@@ -150,6 +150,149 @@ final class TelemetryMigrationTests: XCTestCase {
     XCTAssertEqual(primaryKey, ["board_id", "id"])
   }
 
+  /// The beep count moves into the sound string and its column goes (#578); speech, geiger, and
+  /// rule identity survive the table rebuild.
+  func testAlertSoundCountMigrationFoldsBeepCountIntoTheSoundString() throws {
+    try migrate(upTo: "v49_bucket_route_preview")
+    try queue.write { db in
+      for (id, threshold, max, sound, count) in [
+        ("speech", 20.0, nil, "tts:Slow down", 3), ("beep", 25.0, nil, "preset:beep", 2),
+        ("urgent", 30.0, nil, "preset:urgent", 9), ("notify", 35.0, nil, "notify", 1),
+        ("tick", 80.0, 90.0 as Double?, "preset:tick", 3),
+      ] {
+        try db.execute(
+          sql: """
+            INSERT INTO alerts (board_id, id, control_id, threshold, threshold_max, enabled, sound_type, created_at, beep_count)
+            VALUES ('board-1', ?, 'speed', ?, ?, 1, ?, 1000, ?)
+            """,
+          arguments: [id, threshold, max, sound, count]
+        )
+      }
+    }
+
+    try migrate()
+
+    XCTAssertFalse(try columnNames("alerts").contains("beep_count"))
+    let sounds = try queue.read { db in
+      try Dictionary(uniqueKeysWithValues: Row.fetchAll(db, sql: "SELECT id, spec FROM alerts").map {
+        ($0["id"] as String, $0["spec"] as String)
+      })
+    }
+    XCTAssertEqual(sounds, [
+      "speech": "tts:Slow down", "beep": "alert(2):warning", "urgent": "alert(5):critical",
+      "notify": "alert(1):info", "tick": "preset:tick",
+    ])
+    let primaryKey = try queue.read { db in try db.primaryKey("alerts").columns }
+    XCTAssertEqual(primaryKey, ["board_id", "id"])
+  }
+
+  /// Each Board's Alert Presets become one `preset:<metric>` row (#591): the old level (missing or
+  /// custom is Off), geiger choice, and match setting; copied preset rows and the settings go.
+  func testPresetRowsMigrationFoldsSettingsIntoOneRowPerMetric() throws {
+    try migrate(upTo: "v50_alert_sound_count")
+    try queue.write { db in
+      try db.execute(sql: "INSERT INTO boards (id, name, ble_id, created_at) VALUES ('board-1', 'Board', NULL, 1000)")
+      for (key, json) in [
+        ("alertPreset", #"{"speed":"safe","duty":"custom","motor-temp":"normal"}"#),
+        ("alertPresetSound", #"{"speed":{"geiger":"geiger:mid"}}"#),
+        ("matchBoardConfig", #"{"motor-temp":true}"#),
+      ] {
+        try db.execute(sql: "INSERT INTO board_settings VALUES ('board-1', ?, ?, 1000)", arguments: [key, json])
+      }
+      for (id, control, max, sound, source) in [
+        ("preset:duty:0", "duty", 90.0 as Double?, "geiger:soft", "preset" as String?),
+        ("preset:battery:0", "battery", nil, "tts:Battery {percent}%", "preset"),
+        ("custom", "battery", nil, "tts:Battery {percent}%", nil),
+      ] {
+        try db.execute(
+          sql: """
+            INSERT INTO alerts (board_id, id, control_id, threshold, threshold_max, enabled, sound_type, created_at, source)
+            VALUES ('board-1', ?, ?, 20, ?, 1, ?, 1000, ?)
+            """,
+          arguments: [id, control, max, sound, source]
+        )
+      }
+    }
+
+    try migrate()
+
+    let specs = try queue.read { db in
+      try Dictionary(uniqueKeysWithValues: Row.fetchAll(db, sql: "SELECT id, spec FROM alerts").map {
+        ($0["id"] as String, $0["spec"] as String)
+      })
+    }
+    XCTAssertEqual(specs, [
+      "preset:speed": "preset(safe):geiger=mid", "preset:duty": "preset(off):geiger=soft",
+      "preset:motor-temp": "preset(normal):match=on", "preset:controller-temp": "preset(off)",
+      "preset:battery": "preset(off)", "custom": "tts:Battery {percent}%",
+    ])
+    XCTAssertFalse(try columnNames("alerts").contains("source"))
+    let keys = try queue.read { db in try String.fetchSet(db, sql: "SELECT key FROM board_settings") }
+    XCTAssertTrue(keys.isDisjoint(with: ["alertPreset", "alertPresetSound", "matchBoardConfig"]))
+  }
+
+  /// v51 folds each live Board's own settings and old preset rows: nothing leaks between Boards, a
+  /// tombstone gets no preset rows, geiger falls back to the old rows, and a metric whose old preset
+  /// points were all disabled becomes Off while a partly disabled ladder keeps its level.
+  /// A plain Normal level is the app default and writes no row; an unset level stays an explicit Off.
+  /// @parity /modules/vescape-core/persistence-jvm/src/test/kotlin/expo/modules/vescapecore/telemetry/TelemetryMigrationMatrixHostTest.kt `presetRowsMigrationKeepsBoardsApartAndHonoursDisabledPoints`
+  func testPresetRowsMigrationKeepsBoardsApartAndHonoursDisabledPoints() throws {
+    try migrate(upTo: "v50_alert_sound_count")
+    try queue.write { db in
+      try db.execute(sql: """
+        INSERT INTO boards (id, name, ble_id, created_at, deleted_at)
+        VALUES ('board-1', 'One', NULL, 1, NULL), ('board-2', 'Two', NULL, 2, NULL), ('board-3', 'Three', NULL, 3, 4)
+        """)
+      for (board, key, json) in [
+        ("board-1", "alertPreset", #"{"speed":"minimal","battery":"safe"}"#),
+        ("board-1", "alertPresetSound", #"{"speed":{"geiger":"geiger:hard"}}"#),
+        ("board-2", "alertPreset", #"{"speed":"normal","duty":"normal"}"#),
+        ("board-2", "matchBoardConfig", #"{"duty":true}"#),
+        ("board-3", "alertPreset", #"{"speed":"safe"}"#),
+      ] {
+        try db.execute(sql: "INSERT INTO board_settings VALUES (?, ?, ?, 1)", arguments: [board, key, json])
+      }
+      for (board, id, control, enabled, sound, source) in [
+        ("board-1", "preset:speed:0", "speed", false, "geiger:soft", "preset" as String?),
+        ("board-1", "preset:speed:1", "speed", true, "geiger:soft", "preset"),
+        ("board-1", "preset:battery:0", "battery", false, "tts:Battery {percent}%", "preset"),
+        ("board-1", "preset:battery:1", "battery", false, "tts:Battery {percent}%", "preset"),
+        ("board-2", "preset:duty:0", "duty", false, "geiger:mid", "preset"),
+        ("board-2", "preset:duty:1", "duty", false, "geiger:mid", "preset"),
+        ("board-3", "preset:speed:0", "speed", true, "geiger:soft", "preset"),
+        ("board-3", "rider-3", "speed", true, "alert(1):warning", nil),
+      ] {
+        try db.execute(
+          sql: """
+            INSERT INTO alerts (board_id, id, control_id, threshold, threshold_max, enabled, sound_type, created_at, source)
+            VALUES (?, ?, ?, 20, NULL, ?, ?, 1, ?)
+            """,
+          arguments: [board, id, control, enabled, sound, source]
+        )
+      }
+    }
+
+    try migrate()
+
+    func specs(_ board: String) throws -> [String: String] {
+      try queue.read { db in
+        try Dictionary(uniqueKeysWithValues: Row.fetchAll(db, sql: "SELECT id, spec FROM alerts WHERE board_id = ?", arguments: [board]).map {
+          ($0["id"] as String, $0["spec"] as String)
+        })
+      }
+    }
+    XCTAssertEqual(try specs("board-1"), [
+      "preset:speed": "preset(minimal):geiger=hard", "preset:duty": "preset(off)",
+      "preset:motor-temp": "preset(off)", "preset:controller-temp": "preset(off)", "preset:battery": "preset(off)",
+    ])
+    XCTAssertEqual(try specs("board-2"), [
+      // Normal with no options is the app default: no row.
+      "preset:duty": "preset(off):geiger=mid,match=on",
+      "preset:motor-temp": "preset(off)", "preset:controller-temp": "preset(off)", "preset:battery": "preset(off)",
+    ])
+    XCTAssertEqual(try specs("board-3"), ["rider-3": "alert(1):warning"])
+  }
+
   func testBoardIdMigrationRebuildsLegacyGlobalAlertsAndDropsTheirRows() throws {
     try migrate(upTo: "v26_alert_source")
     try replaceAlertsWithLegacyGlobalTable()
@@ -275,7 +418,7 @@ final class TelemetryMigrationTests: XCTestCase {
       try db.execute(
         sql: """
           INSERT INTO alerts (board_id, id, control_id, threshold, threshold_max, enabled, sound_type, created_at, source)
-          VALUES ('board-1', 'rule-1', 'speed', 30.0, NULL, 1, 'beep', 1000, 'preset')
+          VALUES ('board-1', 'rule-1', 'speed', 30.0, NULL, 1, 'beep', 1000, 'manual')
           """
       )
     }
@@ -548,8 +691,8 @@ final class TelemetryMigrationTests: XCTestCase {
 
     XCTAssertEqual(
       try queue.read { db in try db.primaryKey("telemetry_minute_buckets").columns },
-      // The Ride Track migration adds the third key column (ADR 0038).
-      ["bucket_start_ms", "board_id", "recording_id"]
+      // v43 added `recording_id` to the key and v52 took it out again (ADR 0041).
+      ["bucket_start_ms", "board_id"]
     )
     let columns = try columnNames("telemetry_minute_buckets")
     XCTAssertFalse(columns.contains("device_id"))
@@ -615,8 +758,6 @@ final class TelemetryMigrationTests: XCTestCase {
     XCTAssertEqual(rows[0]["accuracy_cm"] as Int?, 500)
     XCTAssertEqual(rows[0]["gps_speed_centi_mps"] as Int?, 250)
     XCTAssertEqual(rows[0]["altitude_cm"] as Int?, 12_000)
-    // Legacy rows get no invented recording identity; `rideSplitGapMinutes` still groups them.
-    XCTAssertNil(rows[0]["recording_id"] as String?)
   }
 
   /// A ride recorded without GPS migrates to an empty track, and keeps its telemetry.
@@ -694,7 +835,7 @@ final class TelemetryMigrationTests: XCTestCase {
     ] {
       XCTAssertFalse(columns.contains(retired), "telemetry_frames kept \(retired)")
     }
-    XCTAssertTrue(columns.contains("recording_id"))
+    XCTAssertFalse(columns.contains("recording_id"))
     XCTAssertTrue(columns.contains("speed_centi_kmh"))
     XCTAssertEqual(
       try queue.read { db in try Int.fetchOne(db, sql: "SELECT COUNT(*) FROM telemetry_frames") },
@@ -702,60 +843,39 @@ final class TelemetryMigrationTests: XCTestCase {
     )
   }
 
-  /// Existing buckets keep their grouping: one legacy recording id, so nothing splits or merges.
-  func testExistingBucketsKeepLegacyGrouping() throws {
-    try migrate(upTo: Self.beforeBoardId)
-    try insertBoard(id: "board-1", name: "ADV", bleId: "ble-a")
-    try insertLegacyBucket(deviceId: "ble-a", deviceName: "ADV", bucketStartMs: 60_000)
-
-    try migrate()
-
-    let rows = try queue.read { db in
-      try Row.fetchAll(db, sql: "SELECT * FROM telemetry_minute_buckets")
-    }
-    XCTAssertEqual(rows.count, 1)
-    XCTAssertEqual(rows[0]["recording_id"] as String, "")
-  }
-
-  /// Two recordings of one Board inside one minute must stay two rows.
-  func testOneMinuteHoldsTwoRecordingsSeparately() throws {
-    try migrate()
+  /// v52 drops durable recording identity (ADR 0041): two recordings of one Board in one minute
+  /// fold into one bucket, and legacy fixes without accuracy keep reading as precise.
+  /// @parity /modules/vescape-core/persistence-jvm/src/test/kotlin/expo/modules/vescapecore/telemetry/TelemetryMigrationMatrixHostTest.kt `dropRideRecordingsFoldsSharedMinutes`
+  func testDropRideRecordingsFoldsSharedMinutes() throws {
+    try migrate(upTo: "v51_preset_rows")
     try queue.write { db in
-      try insertRideRecording(
-        db,
-        RideRecording(id: "rec-a", boardId: "board-1", startedAtMs: 60_000, endedAtMs: nil, endedReason: nil)
-      )
-      try insertRideRecording(
-        db,
-        RideRecording(id: "rec-b", boardId: "board-1", startedAtMs: 60_500, endedAtMs: nil, endedReason: nil)
-      )
-      for recordingId in ["rec-a", "rec-b"] {
-        var bucket = TelemetryBucket(bucketStartMs: 60_000, boardId: "board-1", recordingId: recordingId)
-        bucket.add(
-          BucketTelemetryPoint(
-            capturedAtMs: 60_000,
-            boardId: "board-1",
-            recordingId: recordingId,
-            speedCentiKmh: 1_000,
-            batteryVoltageMv: 50_000,
-            motorCurrentMa: 0,
-            batteryCurrentMa: 0,
-            dutyPermille: 0,
-            odometerCm: nil,
-            tempMosfetDeciC: nil,
-            tempMotorDeciC: nil
-          )
-        )
-        try upsertBucket(db, bucket)
-      }
+      try db.execute(sql: "INSERT INTO ride_recordings VALUES ('ride-a','board-1',60000,61000,'stopped'),('ride-b','board-1',61500,NULL,NULL)")
+      try db.execute(sql: "INSERT INTO ride_track_points (recording_id,board_id,fix_at_ms,latitude_e7,longitude_e7,accuracy_cm) VALUES (NULL,'board-1',500,1,1,NULL),('ride-a','board-1',60600,2,2,NULL)")
+      let columns = "bucket_start_ms,board_id,recording_id,sample_count,first_sample_at_ms,last_sample_at_ms,sum_abs_speed_centi_kmh,moving_speed_sample_count,sum_moving_abs_speed_centi_kmh,max_abs_speed_centi_kmh,min_battery_voltage_mv,max_motor_current_abs_ma,max_battery_current_abs_ma,battery_used_wh_milli,battery_regen_wh_milli,max_duty_abs_permille,first_odometer_cm,last_odometer_cm,gps_point_count,precise_gps_point_count,gps_distance_cm,max_gps_speed_centi_mps,first_latitude_e7,first_longitude_e7,route_preview"
+      try db.execute(sql: "INSERT INTO telemetry_minute_buckets (\(columns)) VALUES (60000,'board-1','ride-a',2,60500,61000,1800,2,1800,900,50000,100,200,10,1,300,1000,1100,1,1,50,300,NULL,NULL,'[]')")
+      try db.execute(sql: "INSERT INTO telemetry_minute_buckets (\(columns)) VALUES (60000,'board-1','ride-b',3,61800,62000,3300,3,3300,1100,49000,300,100,20,2,400,1100,1300,1,1,70,500,520000000,170000000,'[]')")
     }
 
-    let ids = try queue.read { db in
-      try String.fetchAll(
-        db,
-        sql: "SELECT recording_id FROM telemetry_minute_buckets ORDER BY recording_id"
-      )
+    try migrate()
+
+    try queue.read { db in
+      XCTAssertFalse(try db.tableExists("ride_recordings"))
+      for table in ["telemetry_frames", "ride_track_points", "telemetry_minute_buckets"] {
+        XCTAssertFalse(try db.columns(in: table).map(\.name).contains("recording_id"), table)
+      }
+      XCTAssertEqual(try Int.fetchOne(db, sql: "SELECT accuracy_cm FROM ride_track_points WHERE fix_at_ms = 500"), 2000)
+      XCTAssertNil(try Int.fetchOne(db, sql: "SELECT accuracy_cm FROM ride_track_points WHERE fix_at_ms = 60600"))
+      let rows = try Row.fetchAll(db, sql: "SELECT * FROM telemetry_minute_buckets")
+      XCTAssertEqual(rows.count, 1)
+      XCTAssertEqual(rows[0]["sample_count"] as Int, 5)
+      XCTAssertEqual(rows[0]["first_sample_at_ms"] as Int64, 60_500)
+      XCTAssertEqual(rows[0]["last_sample_at_ms"] as Int64, 62_000)
+      XCTAssertEqual(rows[0]["sum_abs_speed_centi_kmh"] as Int64, 5_100)
+      XCTAssertEqual(rows[0]["min_battery_voltage_mv"] as Int, 49_000)
+      XCTAssertEqual(rows[0]["first_odometer_cm"] as Int64, 1_000)
+      XCTAssertEqual(rows[0]["last_odometer_cm"] as Int64, 1_300)
+      XCTAssertEqual(rows[0]["first_latitude_e7"] as Int64, 520_000_000)
+      XCTAssertNil(rows[0]["route_preview"] as String?)
     }
-    XCTAssertEqual(ids, ["rec-a", "rec-b"])
   }
 }

@@ -1,5 +1,6 @@
 package expo.modules.vescapecore.telemetry
 
+import expo.modules.vescapecore.alerts.AlertPresetSpec
 import org.json.JSONObject
 
 /** Production Tune History and Alert operations shared by AppDataRepository and host contracts. */
@@ -19,10 +20,20 @@ internal class TuneAlertPersistence(private val dao: TelemetryDao) {
     entries.forEach { JSONObject(it.fieldsJson) }
   }
 
-  suspend fun saveAlert(rule: AlertRuleEntity) = dao.upsertAlertRule(rule)
-  suspend fun alertRules(boardId: String): List<AlertRuleEntity> = dao.getAlertRules(boardId)
-  suspend fun setAlertEnabled(boardId: String, id: String, enabled: Boolean) = dao.setAlertRuleEnabled(boardId, id, enabled)
-  suspend fun deleteAlert(boardId: String, id: String) = dao.deleteAlertRule(boardId, id)
+  /** Rider rules only: preset rows change through `applyAlertPreset`, expanded points never. */
+  suspend fun saveAlert(rule: AlertRuleEntity) = dao.upsertAlertRule(riderRule(rule))
+  suspend fun alertRules(boardId: String, reportPresetFailure: (Throwable) -> Unit): List<AlertRuleEntity> =
+    AlertPresetPersistence.expandedRules(dao, boardId, reportPresetFailure)
+  suspend fun setAlertEnabled(boardId: String, id: String, enabled: Boolean) = dao.setAlertRuleEnabled(boardId, riderId(id), enabled)
+  suspend fun deleteAlert(boardId: String, id: String) = dao.deleteAlertRule(boardId, riderId(id))
+
+  private fun riderId(id: String) = id.also { require(!AlertPresetPersistence.isPresetId(it)) { "Alert Preset rules are not editable" } }
+
+  /** [rule] when it is a rider's rule: not a preset id and not a preset spec. */
+  fun riderRule(rule: AlertRuleEntity) = rule.also {
+    riderId(it.id)
+    require(AlertPresetSpec.parse(it.spec) == null) { "A rider rule cannot hold a preset spec" }
+  }
 }
 
 /** Tune compatibility ignores patch and suffix; Board Link identity retains both.

@@ -18,7 +18,7 @@ internal enum BucketRoutePreview {
     var segments: [[RideTrackPoint]] = []
     for point in track.filter(rideTrackFixIsPrecise).sorted(by: { $0.fixAtMs < $1.fixAtMs }) {
       if let previous = segments.last?.last {
-        if point.fixAtMs - previous.fixAtMs > gapMs || point.recordingId != previous.recordingId || point.boardId != previous.boardId {
+        if point.fixAtMs - previous.fixAtMs > gapMs || point.boardId != previous.boardId {
           segments.append([])
         }
       } else { segments.append([]) }
@@ -113,18 +113,17 @@ internal enum BucketRoutePreview {
 /// Called inside recording/rebuild transactions after their raw fixes have been inserted.
 /// Re-read one indexed minute, so restarts and late fixes need no separate cache recovery.
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/TelemetryDao.kt `refreshBucketRoutePreview`
-internal func refreshBucketRoutePreview(_ db: Database, bucketStartMs: Int64, boardId: String, recordingId: String) throws {
+internal func refreshBucketRoutePreview(_ db: Database, bucketStartMs: Int64, boardId: String) throws {
   let rows = try Row.fetchAll(db, sql: """
     SELECT * FROM ride_track_points WHERE fix_at_ms >= ? AND fix_at_ms < ?
-      AND board_id IS ? AND recording_id IS ? ORDER BY fix_at_ms, id
+      AND board_id IS ? ORDER BY fix_at_ms, id
     """, arguments: [bucketStartMs, bucketStartMs + TELEMETRY_BUCKET_SIZE_MS,
-      boardId == UNKNOWN_TELEMETRY_BOARD_ID ? nil : boardId,
-      recordingId == LEGACY_RIDE_RECORDING_ID ? nil : recordingId])
+      boardId == UNKNOWN_TELEMETRY_BOARD_ID ? nil : boardId])
   let points = rows.map(rideTrackPoint)
   try db.execute(sql: """
     UPDATE telemetry_minute_buckets SET route_preview = ?
-    WHERE bucket_start_ms = ? AND board_id = ? AND recording_id = ?
-    """, arguments: [try BucketRoutePreview.build(points), bucketStartMs, boardId, recordingId])
+    WHERE bucket_start_ms = ? AND board_id = ?
+    """, arguments: [try BucketRoutePreview.build(points), bucketStartMs, boardId])
 }
 
 /// Full minutes reuse previews; only trimmed edge minutes need original fixes for exact boundaries.
@@ -133,23 +132,20 @@ internal func favoriteRoutePreview(_ db: Database, startMs: Int64, endMs: Int64,
   let buckets = try Row.fetchAll(db, sql: """
     SELECT * FROM telemetry_minute_buckets
     WHERE board_id = ? AND bucket_start_ms >= ? AND bucket_start_ms <= ?
-    ORDER BY first_sample_at_ms, bucket_start_ms, recording_id
+    ORDER BY first_sample_at_ms, bucket_start_ms
     """, arguments: [boardId ?? UNKNOWN_TELEMETRY_BOARD_ID, startMs - startMs % TELEMETRY_BUCKET_SIZE_MS, endMs])
   var result: [[String: Any]] = []
   var previousEnd: Int64?
-  var previousRecording: String?
   for bucket in buckets {
     let minuteStart: Int64 = bucket["bucket_start_ms"]
     let minuteEnd = minuteStart + TELEMETRY_BUCKET_SIZE_MS
-    let recording: String = bucket["recording_id"]
     let preview: String? = bucket["route_preview"]
     let segments: [BucketRoutePreview.Segment]
     if startMs > minuteStart || endMs < minuteEnd - 1 {
       let rows = try Row.fetchAll(db, sql: """
         SELECT * FROM ride_track_points WHERE fix_at_ms >= ? AND fix_at_ms < ?
-          AND board_id IS ? AND recording_id IS ? ORDER BY fix_at_ms, id
-        """, arguments: [max(startMs, minuteStart), min(endMs, minuteEnd - 1) + 1,
-          boardId, recording == LEGACY_RIDE_RECORDING_ID ? nil : recording])
+          AND board_id IS ? ORDER BY fix_at_ms, id
+        """, arguments: [max(startMs, minuteStart), min(endMs, minuteEnd - 1) + 1, boardId])
       segments = try BucketRoutePreview.decode(BucketRoutePreview.build(rows.map(rideTrackPoint)))
     } else if let preview { segments = try BucketRoutePreview.decode(preview) }
     else if let latitude: Int64 = bucket["first_latitude_e7"], let longitude: Int64 = bucket["first_longitude_e7"] {
@@ -157,14 +153,13 @@ internal func favoriteRoutePreview(_ db: Database, startMs: Int64, endMs: Int64,
         points: [BucketRoutePreview.Coordinate(latitudeE7: latitude, longitudeE7: longitude)])]
     } else { segments = [] }
     for (segmentIndex, segment) in segments.enumerated() {
-      let gap = previousEnd.map { segmentIndex > 0 || segment.firstAtMs - $0 > BucketRoutePreview.gapMs || previousRecording != recording } ?? false
+      let gap = previousEnd.map { segmentIndex > 0 || segment.firstAtMs - $0 > BucketRoutePreview.gapMs } ?? false
       for (index, point) in segment.points.enumerated() {
         var value: [String: Any] = ["latitude": Double(point.latitudeE7) / 1e7, "longitude": Double(point.longitudeE7) / 1e7]
         if index == 0 && gap { value["breakBefore"] = true }
         result.append(value)
       }
       previousEnd = segment.lastAtMs
-      previousRecording = recording
     }
   }
   return result

@@ -76,6 +76,21 @@ struct WeatherHour {
   }
 }
 
+/// One forecast period in absolute time, the shape the Weather Alert Evaluator reads. Open-Meteo
+/// values describe the period *before* their timestamp, so `startMs` is that timestamp minus the
+/// period. Precipitation is normalised to mm/h whatever the period; probability exists hourly only.
+/// Native-only: the JS payload keeps `WeatherHour`.
+///
+/// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/weather/Weather.kt `WeatherSlot`
+struct WeatherSlot: Equatable {
+  let startMs: Int64
+  let endMs: Int64
+  let precipitationMmPerHour: Double
+  let precipitationProbability: Int?
+  let weatherCode: Int?
+  let windGustsKmh: Double?
+}
+
 /// The weather where the rider is. Native truth: fetched, cached and aged natively so every consumer
 /// keeps seeing it while the JS runtime is gone.
 ///
@@ -93,6 +108,10 @@ struct Weather {
   let latitude: Double
   let longitude: Double
   let fetchedAtMs: Int64
+  /// Hourly series as absolute slots, for Weather Alerts. Not mirrored to JS.
+  var hourlySlots: [WeatherSlot] = []
+  /// `minutely_15` series as absolute slots, for Weather Alerts. Not mirrored to JS.
+  var quarterHourSlots: [WeatherSlot] = []
 
   var label: String { weatherLabel(code: weatherCode) }
 
@@ -121,6 +140,51 @@ func minuteOfDay(_ isoLocalTime: String) -> Int? {
     return nil
   }
   return hour * 60 + minute
+}
+
+/// Epoch ms of an Open-Meteo local `YYYY-MM-DDTHH:MM` stamp at the response's `utc_offset_seconds`.
+/// One offset covers the whole window, so a slot past a DST change inside it is off by that hour.
+///
+/// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/weather/Weather.kt `epochMs`
+func epochMs(_ isoLocalTime: String, utcOffsetSeconds: Int) -> Int64? {
+  let formatter = DateFormatter()
+  formatter.locale = Locale(identifier: "en_US_POSIX")
+  formatter.timeZone = TimeZone(secondsFromGMT: utcOffsetSeconds)
+  formatter.dateFormat = "yyyy-MM-dd'T'HH:mm"
+  guard let date = formatter.date(from: isoLocalTime) else { return nil }
+  return Int64((date.timeIntervalSince1970 * 1000).rounded())
+}
+
+/// One Open-Meteo series into `WeatherSlot`s of `periodMinutes`; `precipitationScale` turns the
+/// series' per-period precipitation into mm/h. A slot without a precipitation value is dropped.
+///
+/// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/weather/Weather.kt `weatherSlots`
+private func weatherSlots(
+  _ series: [String: Any]?,
+  utcOffsetSeconds: Int?,
+  periodMinutes: Int64,
+  precipitationScale: Double
+) -> [WeatherSlot] {
+  guard let series, let utcOffsetSeconds, let times = series["time"] as? [String],
+        let precips = series["precipitation"] as? [Double?]
+  else { return [] }
+  let probabilities = (series["precipitation_probability"] as? [Int?]) ?? []
+  let codes = (series["weather_code"] as? [Int?]) ?? []
+  let gusts = (series["wind_gusts_10m"] as? [Double?]) ?? []
+  func at<T>(_ values: [T?], _ index: Int) -> T? { index < values.count ? values[index] : nil }
+  return times.enumerated().compactMap { index, time in
+    guard let endMs = epochMs(time, utcOffsetSeconds: utcOffsetSeconds), let precip = at(precips, index) else {
+      return nil
+    }
+    return WeatherSlot(
+      startMs: endMs - periodMinutes * 60_000,
+      endMs: endMs,
+      precipitationMmPerHour: precip * precipitationScale,
+      precipitationProbability: at(probabilities, index),
+      weatherCode: at(codes, index),
+      windGustsKmh: at(gusts, index)
+    )
+  }
 }
 
 /// Whether a local time falls outside daylight. Sunrise/sunset come from the same forecast, so a
@@ -187,6 +251,7 @@ func parseOpenMeteoWeather(
   }
 
   let currentMinute = (current["time"] as? String).flatMap(minuteOfDay)
+  let utcOffsetSeconds = root["utc_offset_seconds"] as? Int
   return Weather(
     temperatureC: Int(temperature.rounded()),
     weatherCode: currentCode,
@@ -204,6 +269,14 @@ func parseOpenMeteoWeather(
     sunsetMinuteOfDay: sunsetMinute,
     latitude: latitude,
     longitude: longitude,
-    fetchedAtMs: fetchedAtMs
+    fetchedAtMs: fetchedAtMs,
+    hourlySlots: weatherSlots(hourlyJson, utcOffsetSeconds: utcOffsetSeconds, periodMinutes: 60, precipitationScale: 1),
+    // `minutely_15` precipitation is mm per 15 min.
+    quarterHourSlots: weatherSlots(
+      root["minutely_15"] as? [String: Any],
+      utcOffsetSeconds: utcOffsetSeconds,
+      periodMinutes: 15,
+      precipitationScale: 4
+    )
   )
 }

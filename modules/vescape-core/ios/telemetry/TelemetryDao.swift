@@ -12,7 +12,7 @@ private struct TelemetryFrameRecord: PersistableRecord {
   func encode(to row: inout PersistenceContainer) {
     let t = state.t
     row["captured_at_ms"] = state.capturedAtMs; row["elapsed_realtime_ms"] = state.elapsedRealtimeMs
-    row["board_id"] = state.boardId; row["recording_id"] = state.recordingId; row["can_id"] = state.capture.canId
+    row["board_id"] = state.boardId; row["can_id"] = state.capture.canId
     row["flags"] = TELEMETRY_FLAG_KEYFRAME
     row["changed_mask_1"] = Int.max; row["changed_mask_2"] = 0
     row["speed_centi_kmh"] = telemetryCenti(t.speed); row["battery_voltage_mv"] = telemetryMilli(t.batteryVoltage)
@@ -47,13 +47,11 @@ internal func historyMap(_ row: Row, markers: [Row], boardNames: [String: String
     return Double(max(0, last - first)) / 100.0
   }()
   return [
-    // Two recordings of one Board can share a minute, so the recording is part of the identity.
-    "id": "\(row["board_id"] as String):\(row["recording_id"] as String):\(row["bucket_start_ms"] as Int64)",
+    "id": "\(row["board_id"] as String):\(row["bucket_start_ms"] as Int64)",
     "startAtMs": row["first_sample_at_ms"] as Int64,
     "endAtMs": row["last_sample_at_ms"] as Int64,
     "bucketStartMs": row["bucket_start_ms"] as Int64,
     "boardId": (row["board_id"] as String).isEmpty ? nil : row["board_id"] as String,
-    "recordingId": (row["recording_id"] as String).isEmpty ? nil : row["recording_id"] as String,
     "boardName": boardNames[row["board_id"] as String] ?? UNKNOWN_TELEMETRY_BOARD_NAME,
     "sampleCount": sampleCount,
     "gpsPointCount": row["gps_point_count"] as Int,

@@ -37,14 +37,15 @@ Main files:
 
 `telemetry_frames` stores board telemetry samples, without position. Frames are delta encoded with periodic keyframes. Queries reconstruct full samples from nearest keyframe before requested range.
 
-`ride_track_points` stores the Ride Track: every admitted GPS fix on its own clock, with the accuracy the platform reported. `ride_recordings` stores durable recording identity and explicit boundaries.
+`ride_track_points` stores the Ride Track: every admitted GPS fix on its own clock, with the accuracy the platform reported. There is no recording identity table; ride boundaries are derived from the data (ADR-0041).
 
-`telemetry_minute_buckets` stores minute-level summaries used by history lists, keyed on `(bucket_start_ms, board_id, recording_id)`. Buckets include sample counts, GPS counts, distance, speed, battery/current summaries and the combined Moving Window. A minute with Ride Track fixes and no frame still gets a bucket. VESC faults live in separate Board-owned storage and are never counted or retained by Ride History.
+`telemetry_minute_buckets` stores minute-level summaries used by history lists, keyed on `(bucket_start_ms, board_id)`. Buckets include sample counts, GPS counts, distance, speed, battery/current summaries and the combined Moving Window. A minute with Ride Track fixes and no frame still gets a bucket. VESC faults live in separate Board-owned storage and are never counted or retained by Ride History.
 
 `telemetry_markers` stores ride boundaries and abnormal events. Current marker types include:
 
 - `connected`: board became ready or recording was enabled.
-- `app_stop`: recording or board session stopped intentionally.
+- `app_stop`: board session stopped intentionally.
+- `recording_stop`: rider pressed Stop Recording. The only marker that splits a ride.
 - `disconnected`: board session stopped after disconnect.
 - `gap`: long persistence gap, currently more than `90_000ms`.
 - `error`: explicit board/session error.
@@ -137,7 +138,7 @@ For each selected-ride Media History read:
 4. Find the nearest GPS fix in `sessionGpsSamples`.
 5. Show the asset only when that recording-backed GPS fix is at most `30_000ms` from capture time and belongs to the same continuous recording-backed GPS span.
 
-A continuous recording-backed GPS span contains adjacent GPS fixes no more than `30_000ms` apart. For new Ride Track fixes, both fixes must belong to the same Ride Recording and Board. BLE disconnects and telemetry gap/error markers do not split otherwise continuous GPS within that recording. Different recording identities, including a transition between legacy and new fixes, split the span even without a marker. Legacy fixes without recording identity retain marker-based breaks (`gap`, `disconnected`, `app_stop`, or `error`). Span coverage begins at its first GPS fix and ends at its last GPS fix; matching tolerance does not extend it. Video telemetry overlays still respect telemetry gaps and disconnect markers.
+A continuous recording-backed GPS span contains adjacent GPS fixes no more than `30_000ms` apart that belong to the same Board. A `recording_stop` marker between them splits the span; BLE disconnects and telemetry gap/error markers do not. Span coverage begins at its first GPS fix and ends at its last GPS fix; matching tolerance does not extend it. Video telemetry overlays still respect telemetry gaps and disconnect markers.
 
 No valid nearby recording-backed GPS fix means no map pin. Media cannot match into or across a gap detected by the span rules above, even when a fix on its other side is within `30_000ms`. Privacy Zone filtering stores no explicit break: a short filtered span below the time-gap threshold may still be treated as continuous. The Ride Track work in #448, #449, and #450 retains this limitation and does not introduce privacy-specific continuity metadata. See [ADR-0009](./adr/0009-privacy-zones-drop-ride-recording-samples.md).
 
@@ -156,26 +157,31 @@ See ADR 0014 for the ownership and matching decision.
 
 ## Ride grouping
 
-### Accepted Ride Track behavior, pending #448, #449, and #450
-
-New recordings use durable recording identity and explicit boundaries. An open recording remains one history entry through BLE loss, Idle Pause, and gaps in both streams, regardless of their duration. Explicit stop followed by a new start produces separate recordings even within one minute. The movement visibility rule still applies. An internal gap between two movement observations counts toward Time without implying capture during that gap.
-
-An explicit connection attempt to a different Board ends the previous recording immediately. A recording started after the new Board connects is a separate capture under that Board, even within the same minute; a failed connection does not reopen the previous recording. Browsing or selecting another Board alone does not end capture.
-
-The `rideSplitGapMinutes` setting, labelled "Split older rides after" in History settings, applies only to legacy history without durable recording boundaries. Migration preserves the existing legacy grouping behavior; it must not infer old recording identities. See [ADR-0038](./adr/0038-ride-track-is-a-separate-durable-gps-stream.md).
-
-### Current implementation and retained legacy grouping
-
+Ride boundaries are derived from recorded data only ([ADR-0041](./adr/0041-ride-boundaries-are-derived-from-recorded-data.md)).
 `RideHistoryRepository` groups minute buckets oldest-first inside one database snapshot. The same
-native grouping implementation feeds both Ride History pages and Profile Stats.
+native grouping implementation feeds both Ride History pages and Profile Stats, for old and new rides
+alike.
 
-Session breaks happen when:
+A ride is one Board's Telemetry Samples. A new ride starts when:
 
-- Board id changes
-- gap between adjacent buckets exceeds the rider's `rideSplitGapMinutes` setting (default 30)
-- bucket `boundaryBefore` is one of `disconnected`, `app_stop`, or `error`
+- the Board id changes
+- the gap between the last Telemetry Sample bucket of the ride and the next one exceeds the rider's
+  `rideSplitGapMinutes` setting ("Split rides after" in History settings, default 30)
+- a `recording_stop` marker of that Board lies between them (explicit Stop Recording)
 
-Important limitation: grouping only sees `boundaryBefore` attached near bucket start. A marker inside a minute bucket does not necessarily split a session.
+Idle Pause halts frame writes while the board is disengaged, so a long stop while connected splits
+on the frame gap. Disconnect, app kill, auto close, BLE loss and process restart do not split.
+`disconnected`, `app_stop`, `connection_lost` and `error` markers stay visible as Ride History
+Markers and as `boundaryBefore`, but never split.
+
+GPS-only buckets (Ride Track fixes, no Telemetry Sample) never start a ride and never move the
+split baseline. They attach to the preceding ride of their Board when inside the split window and
+before any Stop Recording — in practice the Ride Dropout Grace tail after the last frame — and
+otherwise belong to no ride. Inside a ride they still widen the Moving Window and the route.
+
+Boundaries have minute-bucket resolution: a Stop Recording and restart inside the same minute
+cannot split. Boards without Refloat state record frames while standing, so a long stop while
+connected stays one ride for them.
 
 ## Map Rendering
 
@@ -216,21 +222,20 @@ When history map looks wrong:
 
 - Render only actionable marker types (`gap`, `error`) on history map.
 - Style lifecycle markers (`connected`, `app_stop`) differently or hide them by default.
-- Split history sessions using markers inside buckets, not only `boundaryBefore`.
 
 ### Persistence integration
 
 Ride Track uses schema generation 43 on both platforms. The production migration graph moves legacy
-GPS fields into the independent stream; new frames carry recording identity and no GPS columns.
+GPS fields into the independent stream; frames carry no GPS columns. Schema generation 52 removes
+`ride_recordings` and every `recording_id` column again and folds minute buckets that two recordings
+shared (ADR-0041).
 GPS fixes and their minute buckets share the recording transaction and storage failure gate.
 
-Identified history entries use the recording ID as their UI identity. Opening or deleting one passes
-that ID to native queries, so a same-Board recording at a shared timestamp stays separate. Legacy
-entries and Favorites retain their time-range semantics. Markers and metric exclusions currently
-belong to Board/time ranges; deleting one identified recording preserves those shared annotations.
+History entries are identified by Board and time range. Opening, exporting or deleting one passes
+that Board and range to native queries, exactly as Favorites do.
 
 `bun run test:persistence` checks real Room/GRDB storage and exchanges production archives in both
-directions, including independent GPS fixes and recording end intent. Native lifecycle tests and
+directions, including independent GPS fixes. Native lifecycle tests and
 full app builds cover integration beyond the database hosts. Real-device background GPS behavior
 still requires a device smoke test.
 
@@ -243,8 +248,7 @@ Decisions from the 2026-09-20 design discussion:
 - Replace the Delete button with a three-dot menu containing **Export GPX**, **Export CSV**, and
   **Delete**, for both Ride History entries and Favorites. The two exports are direct menu items;
   there is no intermediate format picker.
-- Export a history entry's full stored range, scoped to its Board and recording identity where
-  available. Export a Favorite's exact saved Board/time range. Chart zoom and playback position do
+- Export a history entry's full stored range, scoped to its Board. Export a Favorite's exact saved Board/time range. Chart zoom and playback position do
   not change the export range.
 - Keep both export items enabled without querying data availability. Empty input may produce an
   empty export; do not add button-disable logic for missing GPS or telemetry.
@@ -320,8 +324,7 @@ or the Favorite's exact saved range, independently of movement, chart zoom, and 
 `exportRideGpx` accepts `RideExportOptions` and returns a closed `RideExportFile`. Native reads
 raw Ride Track fixes in pages of 1,000 ordered by `(fix_at_ms, id)` inside one database snapshot.
 The cursor advances past the last raw fix, even when an entire page fails precision filtering.
-Board attribution is exact, including an unassigned Board; optional recording identity further
-restricts identified entries. Favorites and legacy entries use Board/time scope.
+Board attribution is exact, including an unassigned Board. Every export uses Board/time scope.
 
 The writer emits UTF-8 GPX 1.1, escaped track names, coordinates in degrees, optional altitude
 in metres, UTC timestamps with millisecond precision, and optional GPS speed in metres per second

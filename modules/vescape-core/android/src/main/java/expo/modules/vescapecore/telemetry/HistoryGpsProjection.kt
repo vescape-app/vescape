@@ -19,14 +19,12 @@ import kotlin.math.sqrt
 internal val RIDE_TRACK_PRECISE_ACCURACY_CM = (MAX_RECORDING_ACCURACY_M * 100.0).toInt()
 
 /**
- * A fix with no reported accuracy is precise only when it predates durable recording identity.
- * Legacy rows were persisted through the old write-time `precise && freshEnoughToRecord` gate, so a
- * migrated row without `accuracy_cm` was stored *because* it was precise — reading it as imprecise
- * would silently strip route quality the ride actually had. A live fix carries whatever the
- * platform reported, so a missing accuracy there is genuinely unknown and does not count.
+ * A fix with no reported accuracy is genuinely unknown and does not count. Legacy fixes migrated
+ * out of `telemetry_frames` passed the old write-time precision gate; migration 52 stamps them
+ * with [RIDE_TRACK_PRECISE_ACCURACY_CM] so they keep reading as precise.
  */
 internal fun RideTrackPointEntity.isPrecise(): Boolean =
-  if (accuracyCm == null) recordingId == null else accuracyCm <= RIDE_TRACK_PRECISE_ACCURACY_CM
+  accuracyCm != null && accuracyCm <= RIDE_TRACK_PRECISE_ACCURACY_CM
 
 /**
  * Does this fix evidence movement? The fix's **own reported speed**, checked after the accuracy
@@ -51,7 +49,6 @@ internal data class RideTrackProjectionPoint(
   // @parity /modules/vescape-core/ios/telemetry/RideTrackProjection.swift `rideTrackGpsMaps`
   fun toSampleMap(boardNames: Map<String, String>): Map<String, Any?> = mapOf(
     "id" to point.id,
-    "recordingId" to point.recordingId,
     "capturedAtMs" to point.fixAtMs,
     "boardId" to point.boardId,
     "boardName" to (point.boardId?.let { boardNames[it] } ?: UNKNOWN_TELEMETRY_BOARD_NAME),
@@ -70,7 +67,6 @@ internal data class RideTrackProjectionPoint(
     return BucketLocationPoint(
       capturedAtMs = point.fixAtMs,
       boardId = point.boardId,
-      recordingId = point.recordingId ?: LEGACY_RIDE_RECORDING_ID,
       precise = precise,
       moving = point.isMovementEvidence(movingThresholdCentiKmh),
       distanceFromPreviousCm = distanceFromPreviousCm,
@@ -85,10 +81,8 @@ internal data class RideTrackProjectionPoint(
  * Project a Ride Track into points carrying their step distance. [previous] continues the sequence
  * across a batch boundary so the first fix of a flush is not silently free of distance.
  *
- * Distance is only measured between two **qualifying** fixes of the same Ride Recording **and the
- * same Board**. Legacy rows carry no recording, so recording equality alone would chain every
- * migrated fix to every other one regardless of Board; the predecessor is therefore tracked per
- * Board, exactly as the frame columns this replaced did.
+ * Distance is only measured between two **qualifying** fixes of the same Board; the predecessor
+ * is tracked per Board, exactly as the frame columns this replaced did.
  */
 internal fun List<RideTrackPointEntity>.toRideTrackProjection(
   previous: RideTrackPointEntity? = null,
@@ -99,8 +93,7 @@ internal fun List<RideTrackPointEntity>.toRideTrackProjection(
   previous?.takeIf { it.isPrecise() }?.let { lastByBoard[it.boardId] = it }
   for (point in this) {
     val precise = point.isPrecise()
-    val from = lastByBoard[point.boardId]
-      ?.takeIf { precise && it.recordingId == point.recordingId }
+    val from = lastByBoard[point.boardId]?.takeIf { precise }
     points.add(
       RideTrackProjectionPoint(point, from?.let { distanceCm(it, point) }, movingThresholdCentiKmh),
     )

@@ -267,40 +267,34 @@ writes during startup.
 
 ## Recording
 
-Recording means real Ride Recording. A connected Board starts it; from then on it is a capture with
-its own durable identity, not a property of the Board Link.
+Recording means real Ride Recording capture. A connected Board arms it; what becomes a ride in
+history is decided afterwards from the recorded data alone (ADR 0041).
 
-- A connected Board must have started it. Standalone GPS never starts one — GPS without a Board is
+- A connected Board must have armed it. Standalone GPS never starts one — GPS without a Board is
   map/status only, and creates no ride history.
 - It saves Board telemetry **and** a Ride Track of GPS fixes, on two separate clocks (ADR 0038).
-- **It outlives the Board Link.** An unexpected drop does not end it, and telemetry rejoins the same
-  recording when the Board returns — one ride, one history entry, with an honest gap where the
-  telemetry was missing. GPS fixes keep landing in that recording for the **Ride Dropout Grace**;
-  past it the phone stops producing fixes, so the Ride Track ends there even though the recording and
-  the reconnect loop both continue. A board that is simply off is how a ride ends, and a track of the
-  rider walking home is not what the recording is for.
-- There is no hard timeout and no GPS-based Idle Pause. Neither elapsed disconnection time nor GPS
-  inactivity ends or pauses a recording.
-- It ends only on **explicit rider Stop Recording**, **explicit Disconnect**, a fatal board error, or
-  service stop — plus an explicit Connect to a **different** Board (below).
+- **It outlives the Board Link.** An unexpected drop does not disarm capture, and telemetry resumes
+  when the Board returns. GPS fixes keep landing for the **Ride Dropout Grace**; past it the phone
+  stops producing fixes, so the Ride Track ends there even though capture and the reconnect loop
+  both continue. A board that is simply off is how a ride ends.
+- There is no hard timeout and no GPS-based Idle Pause.
+- Capture is disarmed by **explicit rider Stop Recording**, **explicit Disconnect**, a fatal board
+  error, or service stop. Only Stop Recording writes the `recording_stop` marker that splits a ride;
+  everything else just stops writing, and the frame gap decides.
 
-### Persisted end intent
+### Ride boundaries
 
-`ride_recordings.ended_at_ms` is the durable record that a recording ended, and nothing clears it.
-Only a row with `ended_at_ms IS NULL` can be rejoined, which is what stops a late reconnect callback,
-a stale delegate call, or an iOS state-restoration relaunch from reviving a ride the rider ended.
-Starting again after a stop mints a new identity, even within the same minute.
+There is no stored recording identity or end time. Ride History starts a new ride on a Board change,
+when consecutive Telemetry Samples are more than `rideSplitGapMinutes` apart, or at a
+`recording_stop` marker. A disconnect, app kill, auto close or process restart followed by riding
+again inside the split window stays one ride on both platforms; an iOS state-restoration relaunch
+simply re-arms capture when the previous process was recording.
 
-Within a live Board Session the same intent is held in memory: auto-recording fires at the **first**
-board-ready of a session only, so a reconnect's board-ready never restarts a recording the rider
-stopped, nor mints a second one beside the recording still open across the drop. Auto-recording is
-therefore a _connect_ rule: enabling the setting mid-session does not start a recording, and a later
-reconnect's board-ready does not either. The next Board Session picks it up.
-
-A recording left open by a process that died is closed as `disconnected` at the first moment nothing
-can rejoin it — on Android at process start, on iOS when the launch resume window expires without a
-state restoration — and its end is stamped at its own last durable write, not at the sweep. Ride
-History only shows finished recordings, so a row left open is a ride missing from history.
+Within a live Board Session the rider's stop intent is held in memory: auto-recording fires at the
+**first** board-ready of a session only, so a reconnect's board-ready never restarts a recording the
+rider stopped. Auto-recording is therefore a _connect_ rule: enabling the setting mid-session does
+not start a recording, and a later reconnect's board-ready does not either. The next Board Session
+picks it up.
 
 ### Idle Pause and disconnection
 
@@ -317,17 +311,13 @@ stops it. On reconnection the detector takes over again from the next board-read
 ### Changing Boards
 
 An explicit Connect targeting the **same** Board — the rider tapping Connect to hurry a reconnect
-loop along — rejoins the recording still open for that Board rather than ending it. One ride stays
-one identity and one history entry, and nothing is labelled `stopped` that the rider never stopped.
-Capture stays armed from that connect, not from the board-ready after it, so no GPS Fix is dropped
-in between.
+loop along — keeps capture armed from that connect, not from the board-ready after it, so no GPS Fix
+is dropped in between.
 
-An explicit Connect targeting a different Board ends the previous Board Session and Ride Recording
-immediately, as `board_change` — including while the old Board is disconnected and reconnecting, and
-even if the new connection then fails. Merely browsing or selecting another Board does not end capture. Writes
-already admitted are flushed under their original Board and recording identities; fixes captured
-between two recordings are never backfilled into either. Old reconnect work is cancelled and late
-callbacks for the old Board cannot revive its recording or contaminate the new one.
+An explicit Connect targeting a different Board ends the previous Board Session. The Board change
+alone starts a new ride in history. Writes already admitted are flushed under their original Board;
+GPS Fixes always carry the Board being recorded. Old reconnect work is cancelled and late callbacks
+for the old Board cannot contaminate the new one.
 
 Stopping a recording releases only its own GPS demand. An independent live GPS consumer — Group Ride,
 the map — keeps its own lifetime and stays armed.
@@ -345,16 +335,10 @@ service truth, not from cached JS status.
 ### iOS state-restoration relaunch
 
 A CoreBluetooth state-restoration relaunch (ADR 0034) rebuilds the Board Session that was live when
-the process died, and its recording **rejoins the open Ride Recording** instead of starting a second
-one — a process death the rider never asked for must not split their ride into two history entries.
-
-The resume marker only says the rider had recording on; whether a recording is still open is the
-database's answer, so an explicitly stopped or disconnected recording is not revived and a new one is
-started instead. The dead interval stays a real gap in both streams: nothing is fabricated for time
-the process could not run.
-
-A recording left open by a process that died and was never restored is closed (`disconnected`) when
-the next recording is minted — the one moment it is known to be unrejoinable.
+the process died, and re-arms capture when the resume marker says recording was on. Whether that
+makes one ride or two is decided by the recorded data (ADR 0041): riding again inside the split
+window stays one ride. The dead interval stays a real gap in both streams: nothing is fabricated for
+time the process could not run.
 
 @platform-diff Android has no peer. `CoreForegroundService` keeps the process alive, so there is no
 restoration relaunch, and its launch auto-connect is an ordinary cold start that may be days later.

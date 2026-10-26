@@ -62,80 +62,107 @@ class RideHistoryPagingTest {
     assertEquals(2, session.avgSpeedSampleCount)
   }
 
-  /** A recording is the entry: a dropout inside it never splits, however long it runs. */
+  /** Disconnect, app kill or auto close, then riding again inside the split window: one ride. */
   @Test
-  fun oneRecordingSpanningAnHourWithoutEitherStreamStaysOneEntry() {
+  fun disconnectMarkersNoLongerSplitARide() {
     val buckets = listOf(
-      bucket(start = base, end = base + 30_000L, recordingId = "recording-1"),
-      bucket(
-        start = base + 3_600_000L,
-        end = base + 3_600_000L + 30_000L,
-        recordingId = "recording-1",
-      ),
+      bucket(start = base, end = base + 10_000L),
+      bucket(start = base + 20 * 60_000L, end = base + 20 * 60_000L + 10_000L),
     )
-
-    val grouped = groupRideSessions(buckets, emptyList(), gapMs)
-
-    assertEquals(1, grouped.size)
-    assertEquals(base + 3_600_000L + 30_000L, grouped.single().endAtMs)
-  }
-
-  @Test
-  fun recordingsWithIdenticalTimeBoundsHaveDistinctBridgeIdentities() {
-    val sessions = groupRideSessions(listOf(
-      bucket(start = base, end = base + 10_000L, recordingId = "recording-1"),
-      bucket(start = base, end = base + 10_000L, recordingId = "recording-2"),
-    ), emptyList(), gapMs).map { rideSessionMap(it, emptyMap()) }
-    assertEquals(listOf("recording-1", "recording-2"), sessions.map { it["id"] })
-    assertEquals(listOf("recording-1", "recording-2"), sessions.map { it["recordingId"] })
-  }
-
-  /** Stop then start again inside one minute: two recordings, two entries. */
-  @Test
-  fun separateRecordingsInsideOneMinuteStaySeparateEntries() {
-    val buckets = listOf(
-      bucket(start = base, end = base + 10_000L, recordingId = "recording-1"),
-      bucket(start = base + 20_000L, end = base + 30_000L, recordingId = "recording-2"),
-    )
-
-    val grouped = groupRideSessions(buckets, emptyList(), gapMs)
-
-    assertEquals(2, grouped.size)
-    assertEquals(listOf("recording-1", "recording-2"), grouped.map { it.recordingId })
-  }
-
-  /** A disconnect mid-recording is informational; it does not end the recording. */
-  @Test
-  fun aBreakMarkerInsideOneRecordingDoesNotSplitIt() {
-    val buckets = listOf(
-      bucket(start = base, end = base + 10_000L, recordingId = "recording-1"),
-      bucket(start = base + 60_000L, end = base + 70_000L, recordingId = "recording-1"),
-    )
-    val markers = listOf(
-      TelemetryMarkerEntity(
-        occurredAtMs = base + 60_000L,
-        elapsedRealtimeMs = 0L,
-        type = "disconnected",
-        boardId = "board-1",
-        message = null,
-        gapMs = null,
-      ),
-    )
+    val markers = listOf("disconnected", "app_stop", "error", "connection_lost").map {
+      marker(base + 15 * 60_000L, it)
+    }
 
     assertEquals(1, groupRideSessions(buckets, markers, gapMs).size)
   }
 
-  /** Legacy rows have no recording identity, so they still split on `rideSplitGapMinutes`. */
+  /** A long stop while still connected (Idle Pause writes no frames) splits on the frame gap. */
   @Test
-  fun legacyRowsStillGroupOnTheSplitGap() {
+  fun aFrameGapLongerThanTheSplitWindowStartsANewRide() {
     val buckets = listOf(
       bucket(start = base, end = base + 30_000L),
-      bucket(start = base + 3_600_000L, end = base + 3_600_000L + 30_000L),
+      bucket(start = base + 2 * 3_600_000L, end = base + 2 * 3_600_000L + 30_000L),
     )
 
     assertEquals(2, groupRideSessions(buckets, emptyList(), gapMs).size)
-    assertEquals(1, groupRideSessions(buckets, emptyList(), 2 * 3_600_000L).size)
+    assertEquals(1, groupRideSessions(buckets, emptyList(), 3 * 3_600_000L).size)
   }
+
+  @Test
+  fun stopRecordingSplitsInsideTheSplitWindow() {
+    val buckets = listOf(
+      bucket(start = base, end = base + 10_000L),
+      bucket(start = base + 2 * 60_000L, end = base + 2 * 60_000L + 10_000L),
+    )
+
+    assertEquals(2, groupRideSessions(buckets, listOf(marker(base + 60_000L, RECORDING_STOP_MARKER)), gapMs).size)
+    assertEquals(
+      "another Board's stop does not split this ride",
+      1,
+      groupRideSessions(buckets, listOf(marker(base + 60_000L, RECORDING_STOP_MARKER, "board-2")), gapMs).size,
+    )
+  }
+
+  @Test
+  fun aBoardChangeStartsANewRide() {
+    val buckets = listOf(
+      bucket(start = base, end = base + 10_000L),
+      bucket(start = base + 60_000L, end = base + 70_000L).copy(boardId = "board-2"),
+    )
+
+    assertEquals(listOf("board-1", "board-2"), groupRideSessions(buckets, emptyList(), gapMs).map { it.boardId })
+  }
+
+  /** The Ride Dropout Grace tail after the last frame belongs to that ride. */
+  @Test
+  fun aGpsOnlyTailAttachesToThePrecedingRide() {
+    val buckets = listOf(
+      bucket(start = base, end = base + 30_000L),
+      trackOnlyBucket(start = base + 60_000L, end = base + 90_000L),
+    )
+
+    val session = groupRideSessions(buckets, emptyList(), gapMs).single()
+    assertEquals(base + 90_000L, session.endAtMs)
+    assertEquals(2, session.blockCount)
+  }
+
+  @Test
+  fun gpsOnlyMinutesNeverCreateOrExtendARideOnTheirOwn() {
+    assertEquals(
+      emptyList<RideSessionAggregate>(),
+      groupRideSessions(listOf(trackOnlyBucket(start = base, end = base + 30_000L)), emptyList(), gapMs),
+    )
+    // GPS 20 min after the last frame does not move the split baseline: frames 40 min apart split.
+    val buckets = listOf(
+      bucket(start = base, end = base + 10_000L),
+      trackOnlyBucket(start = base + 20 * 60_000L, end = base + 20 * 60_000L + 10_000L),
+      bucket(start = base + 40 * 60_000L, end = base + 40 * 60_000L + 10_000L),
+    )
+    assertEquals(2, groupRideSessions(buckets, emptyList(), gapMs).size)
+    // Another Board's GPS never joins this ride.
+    val foreign = groupRideSessions(listOf(
+      bucket(start = base, end = base + 10_000L),
+      trackOnlyBucket(start = base + 60_000L, end = base + 70_000L).copy(boardId = "board-2"),
+    ), emptyList(), gapMs).single()
+    assertEquals(1, foreign.blockCount)
+  }
+
+  @Test
+  fun bridgeIdentityIsBoardAndTimeRange() {
+    val session = groupRideSessions(listOf(bucket(start = base, end = base + 10_000L)), emptyList(), gapMs)
+      .map { rideSessionMap(it, emptyMap()) }.single()
+    assertEquals("board-1:$base:${base + 10_000L}", session["id"])
+    assertEquals(false, session.containsKey("recordingId"))
+  }
+
+  private fun marker(at: Long, type: String, boardId: String = "board-1") = TelemetryMarkerEntity(
+    occurredAtMs = at,
+    elapsedRealtimeMs = 0L,
+    type = type,
+    boardId = boardId,
+    message = null,
+    gapMs = null,
+  )
 
   private fun trackOnlyBucket(start: Long, end: Long) = bucket(start, end).copy(
     sampleCount = 0,
@@ -150,10 +177,9 @@ class RideHistoryPagingTest {
     preciseGpsPointCount = 2,
   )
 
-  private fun bucket(start: Long, end: Long, recordingId: String = LEGACY_RIDE_RECORDING_ID) = TelemetryMinuteBucketEntity(
+  private fun bucket(start: Long, end: Long) = TelemetryMinuteBucketEntity(
     bucketStartMs = start - (start % TELEMETRY_BUCKET_SIZE_MS),
     boardId = "board-1",
-    recordingId = recordingId,
     sampleCount = 1,
     firstSampleAtMs = start,
     lastSampleAtMs = end,

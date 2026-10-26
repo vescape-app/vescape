@@ -1,23 +1,21 @@
 import { expect, test } from 'bun:test'
-import {
-  describeAlertRules,
-  formatAlertPresetSummary,
-  normalizeAlertPresetSelection,
-} from './alertPresets'
+import { describeAlertRules, formatAlertPresetSummary, alertPresetState } from './alertPresets'
 
-test('saved selection preserves custom ownership and drops legacy unit metadata and garbage levels', () => {
-  expect(
-    normalizeAlertPresetSelection({
-      battery: 'custom',
-      speed: 'nonsense',
-      speedUnitSystem: 'imperial',
-    }),
-  ).toEqual({
-    battery: 'custom',
-    speed: 'off',
-    duty: 'off',
-    'motor-temp': 'off',
-    'controller-temp': 'off',
+test('stored spec reads as level and options', () => {
+  expect(alertPresetState(undefined)).toEqual({
+    level: 'normal',
+    geiger: null,
+    match: false,
+  })
+  expect(alertPresetState('preset(off):geiger=mid,match=on,future=1')).toEqual({
+    level: 'off',
+    geiger: 'mid',
+    match: true,
+  })
+  expect(alertPresetState('preset(louder):geiger=loud')).toEqual({
+    level: 'off',
+    geiger: null,
+    match: false,
   })
 })
 

@@ -82,8 +82,12 @@ const e2eSettings: AppSettings = {
   socEstimateWindowSeconds: 20,
   boardMoveStrengthPercent: 60,
   connectionSoundsEnabled: true,
-  soundPack: 'retro',
+  soundPack: 'arc',
   audioSource: 'alarm',
+  voice: 'matching',
+  voiceLevel: 'standard',
+  weatherRainAlertLevel: 'normal',
+  weatherWindAlertLevel: 'normal',
   companionPresenceEnabled: false,
   boardWarningsEnabled: true,
   vescFaultCollectionEnabled: true,
@@ -336,7 +340,6 @@ function getRideHistoryPage(options: { limit?: number; cursorBeforeMs?: number }
   )
   const sessions: RideHistorySession[] = buckets.map((bucket) => ({
     id: `${bucket.boardId ?? 'unknown'}:${bucket.startAtMs}:${bucket.endAtMs}`,
-    recordingId: bucket.recordingId,
     boardId: bucket.boardId,
     boardName: bucket.boardName,
     startAtMs: bucket.startAtMs,
@@ -439,7 +442,6 @@ function getHistoryRange(options: {
   fromMs: number
   toMs: number
   boardId?: string
-  recordingId?: string
   limit?: number
 }): {
   boardColumns: ArrayBuffer
@@ -465,9 +467,6 @@ function getHistoryRange(options: {
   )
   if (options.boardId != null) {
     gps = gps.filter((g) => g.boardId === options.boardId)
-  }
-  if (options.recordingId != null) {
-    gps = gps.filter((g) => g.recordingId === options.recordingId)
   }
 
   let markers = historyMarkers.filter(
@@ -563,7 +562,6 @@ function addHistoryRide(
 
   const bucket: TelemetryMinuteBucket = {
     id: `e2e-bucket-${rideStartMs}`,
-    recordingId: null,
     startAtMs: rideStartMs,
     endAtMs: rideEndMs,
     bucketStartMs: rideStartMs,
@@ -637,7 +635,6 @@ function addHistoryRide(
       accuracyM: 3,
       altitudeM: 120,
       timestamp: rideStartMs + progress * durationMs,
-      recordingId: null,
       distanceFromPreviousM: i === 0 ? null : ride.distanceM / (gpsPointCount - 1),
     })
   }

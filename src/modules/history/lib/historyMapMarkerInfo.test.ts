@@ -12,7 +12,7 @@ test('legacy marker accuracy keeps fixed feet, missing accuracy stays absent', (
   const selection = {
     marker: { id: 1, occurredAtMs: 1000, type: 'gap', boardId: null, message: null, gapMs: 5000 },
     gps: {
-      id: 1, recordingId: null, capturedAtMs: 1000, boardId: null, boardName: '',
+      id: 1, capturedAtMs: 1000, boardId: null, boardName: '',
       latitude: 52, longitude: 21, speedMps: null, bearingDeg: null, accuracyM: 1000,
       altitudeM: null, timestamp: 1000, distanceFromPreviousM: null,
     },

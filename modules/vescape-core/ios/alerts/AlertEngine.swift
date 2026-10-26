@@ -5,17 +5,20 @@ import Foundation
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/alerts/AlertEngine.kt `ALERT_REPEAT_MIN_SECONDS`
 internal let alertRepeatMinSeconds: Int64 = 3
 
-/// Inclusive bounds on an Alert Rule's beep count.
-/// @parity /modules/vescape-core/src/index.ts `ALERT_BEEP_COUNT_RANGE`
-/// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/alerts/AlertEngine.kt `ALERT_BEEP_COUNT_RANGE`
-internal let alertBeepCountRange = 1...5
-
-/// Beeps per announcement when nothing says otherwise.
-/// @parity /modules/vescape-core/src/index.ts `ALERT_BEEP_COUNT_DEFAULT`
-/// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/alerts/AlertEngine.kt `ALERT_BEEP_COUNT_DEFAULT`
-
 /// Gap between beeps of one announcement — tight enough that a burst reads as a single signal.
 internal let alertBeepSpacingMs: Double = 200
+
+/// Speech starts once the sound before it ends, but no earlier than `alertSpeechDelayMs` and no
+/// later than `alertSpeechMaxDelayMs` after it starts: a long recorded effect keeps its tail
+/// (reverb, a fade) playing under the voice instead of holding the voice back.
+/// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/alerts/AlertEngine.kt `ALERT_SPEECH_DELAY_MS`
+internal let alertSpeechDelayMs: Int64 = 350
+internal let alertSpeechMaxDelayMs: Int64 = 1500
+
+/// When speech may start after a sound lasting `durationMs` starts playing.
+internal func speechDelayMs(_ durationMs: Int64) -> Int64 {
+  min(max(alertSpeechDelayMs, durationMs), alertSpeechMaxDelayMs)
+}
 
 /// Clamp a repeat cadence coming from JS. Anything non-positive means one-shot; everything else is
 /// floored, so no rule written by any path can announce fast enough to become noise.
@@ -23,13 +26,6 @@ internal let alertBeepSpacingMs: Double = 200
 internal func normalizedAlertRepeatSeconds(_ raw: Double?) -> Int64? {
   guard let raw, raw.isFinite, raw > 0 else { return nil }
   return max(alertRepeatMinSeconds, Int64(raw.rounded()))
-}
-
-/// Clamp a beep count coming from JS; absent or out of range falls back to the default.
-/// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/alerts/AlertEngine.kt `normalizedAlertBeepCount`
-internal func normalizedAlertBeepCount(_ raw: Int?) -> Int {
-  guard let raw else { return alertBeepCountDefault }
-  return min(max(raw, alertBeepCountRange.lowerBound), alertBeepCountRange.upperBound)
 }
 
 /// Alert rule persisted in GRDB (`alerts` table). Mirrors Android `AlertRuleEntity`.
@@ -45,16 +41,11 @@ internal struct AlertRule {
   var thresholdOffset: Double? = nil
   var thresholdMaxOffset: Double? = nil
   let enabled: Bool
-  let soundType: String
+  let spec: String
   let createdAt: Int64
   /// Repeat cadence in seconds for a single-threshold rule; nil is one-shot. Ignored for range
   /// rules. Mirrors TS `AlertRule.repeatEverySeconds`.
   var repeatEverySeconds: Int64? = nil
-  /// Sound repeats per announcement. Mirrors TS `AlertRule.beepCount`.
-  var beepCount: Int = alertBeepCountDefault
-  /// Free-text provenance tag mirroring TS `AlertRule.source`: `manual` (or nil) or `preset`.
-  /// JS authors and regenerates preset rules; native only persists the string.
-  let source: String?
 }
 
 /// Adds Legal Mode's per-Board speed warning to in-memory rules. No Alert Rule row is materialized.
@@ -83,9 +74,8 @@ internal func withLegalModeOverlay(
       thresholdMax: limitSpeedKmh,
       thresholdKind: "fixed", configFieldId: nil, thresholdOffset: nil, thresholdMaxOffset: nil,
       enabled: true,
-      soundType: "preset:tick",
-      createdAt: 0,
-      source: nil
+      spec: "geiger:soft",
+      createdAt: 0
     ),
   ]
 }
@@ -98,9 +88,8 @@ internal struct FiredAlert {
   let value: Double
   let threshold: Double
   let thresholdMax: Double?
-  let soundType: String
+  let spec: String
   let rangeDepth: Double?
-  let beepCount: Int
   let firedAt: Int64
 
   func toMap() -> [String: Any?] {
@@ -110,9 +99,8 @@ internal struct FiredAlert {
       "value": value,
       "threshold": threshold,
       "thresholdMax": thresholdMax,
-      "soundType": soundType,
+      "spec": spec,
       "rangeDepth": rangeDepth,
-      "beepCount": beepCount,
       "firedAt": firedAt,
     ]
   }
@@ -401,9 +389,8 @@ internal final class AlertEngine {
       value: value,
       threshold: thresholds.0,
       thresholdMax: thresholds.1,
-      soundType: rule.soundType,
+      spec: rule.spec,
       rangeDepth: rangeDepth,
-      beepCount: rule.beepCount,
       firedAt: now
     )
   }

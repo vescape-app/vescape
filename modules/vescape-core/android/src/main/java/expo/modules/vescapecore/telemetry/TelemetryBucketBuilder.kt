@@ -27,8 +27,6 @@ internal data class BucketTelemetryPoint(
   val capturedAtMs: Long,
   /** Owning Board (`boards.id`); the durable identity telemetry is keyed on (ADR 0028). */
   val boardId: String?,
-  /** Owning Ride Recording, or [LEGACY_RIDE_RECORDING_ID] for rows without durable identity. */
-  val recordingId: String = LEGACY_RIDE_RECORDING_ID,
   val speedCentiKmh: Int,
   val batteryVoltageMv: Int,
   val motorCurrentMa: Int,
@@ -45,7 +43,6 @@ internal data class BucketTelemetryPoint(
 internal data class BucketLocationPoint(
   val capturedAtMs: Long,
   val boardId: String?,
-  val recordingId: String = LEGACY_RIDE_RECORDING_ID,
   val precise: Boolean,
   /** GPS movement evidence: precise, with a reported speed at or above the rider's threshold. */
   val moving: Boolean = false,
@@ -60,23 +57,21 @@ internal fun buildTelemetryBuckets(
   telemetryPoints: List<BucketTelemetryPoint>,
   locationPoints: List<BucketLocationPoint>,
 ): Collection<TelemetryMinuteBucketEntity> {
-  // Keyed on the Ride Recording as well as the Board and the minute: two recordings of one Board
-  // can share a minute, and merging them would fabricate one ride out of two (ADR 0038).
-  val buckets = linkedMapOf<Triple<Long, String, String>, MutableBucket>()
+  val buckets = linkedMapOf<Pair<Long, String>, MutableBucket>()
   for (point in telemetryPoints) {
     val bucketStart = point.capturedAtMs - (point.capturedAtMs % TELEMETRY_BUCKET_SIZE_MS)
     val boardId = point.boardId ?: UNKNOWN_TELEMETRY_BOARD_ID
-    val key = Triple(bucketStart, boardId, point.recordingId)
-    val bucket = buckets.getOrPut(key) { MutableBucket(bucketStart, boardId, point.recordingId) }
+    val key = bucketStart to boardId
+    val bucket = buckets.getOrPut(key) { MutableBucket(bucketStart, boardId) }
     bucket.add(point)
   }
   for (point in locationPoints) {
     val bucketStart = point.capturedAtMs - (point.capturedAtMs % TELEMETRY_BUCKET_SIZE_MS)
     val boardId = point.boardId ?: UNKNOWN_TELEMETRY_BOARD_ID
-    val key = Triple(bucketStart, boardId, point.recordingId)
+    val key = bucketStart to boardId
     // A minute can hold fixes and no frame at all — a board dropout is exactly when the Ride Track
     // matters most — so the track creates its own bucket rather than being discarded (ADR 0038).
-    val bucket = buckets.getOrPut(key) { MutableBucket(bucketStart, boardId, point.recordingId) }
+    val bucket = buckets.getOrPut(key) { MutableBucket(bucketStart, boardId) }
     bucket.addLocation(point)
   }
   return buckets.values.map { it.toEntity() }
@@ -85,7 +80,6 @@ internal fun buildTelemetryBuckets(
 private class MutableBucket(
   private val bucketStartMs: Long,
   private val boardId: String,
-  private val recordingId: String,
 ) {
   private var sampleCount = 0
   private var firstSampleAtMs = Long.MAX_VALUE
@@ -184,7 +178,6 @@ private class MutableBucket(
   fun toEntity(): TelemetryMinuteBucketEntity = TelemetryMinuteBucketEntity(
     bucketStartMs = bucketStartMs,
     boardId = boardId,
-    recordingId = recordingId,
     sampleCount = sampleCount,
     firstSampleAtMs = firstSampleAtMs,
     lastSampleAtMs = lastSampleAtMs,

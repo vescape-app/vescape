@@ -4,14 +4,13 @@ import GRDB
 /// Raw keyset page, ordered by timestamp and row id so equal timestamps cannot lose fixes.
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/TelemetryDao.kt `getRideExportTrackPage`
 internal func rideExportTrackPage(_ db: Database, fromMs: Int64, toMs: Int64, boardId: String?,
-  recordingId: String?, afterMs: Int64, afterId: Int64) throws -> [Row] {
+  afterMs: Int64, afterId: Int64) throws -> [Row] {
   try Row.fetchAll(db, sql: """
     SELECT * FROM ride_track_points
     WHERE fix_at_ms >= ? AND fix_at_ms <= ? AND board_id IS ?
-      AND (? IS NULL OR recording_id = ?)
       AND (fix_at_ms > ? OR (fix_at_ms = ? AND id > ?))
     ORDER BY fix_at_ms, id LIMIT ?
-    """, arguments: [fromMs, toMs, boardId, recordingId, recordingId, afterMs, afterMs, afterId, RideExport.batchSize])
+    """, arguments: [fromMs, toMs, boardId, afterMs, afterMs, afterId, RideExport.batchSize])
 }
 
 /// Caller holds one database snapshot across every page; only the file crosses the bridge.
@@ -35,10 +34,10 @@ internal enum RideExport {
     return try write(directory: directory, prefix: "vescape-ride", csv: csv) { write in
       if csv {
         try writeCsv(db, fromMs: from.int64Value, toMs: to.int64Value,
-          boardId: options["boardId"] as? String, recordingId: options["recordingId"] as? String, write: write)
+          boardId: options["boardId"] as? String, write: write)
       } else {
         try writeGpx(db, fromMs: from.int64Value, toMs: to.int64Value,
-          boardId: options["boardId"] as? String, recordingId: options["recordingId"] as? String,
+          boardId: options["boardId"] as? String,
           name: options["name"] as? String ?? "Vescape ride", write: write)
       }
     }
@@ -81,7 +80,7 @@ internal enum RideExport {
   }
 
   static func writeGpx(_ db: Database, fromMs: Int64, toMs: Int64, boardId: String?,
-    recordingId: String?, name: String, write: (String) throws -> Void) throws {
+    name: String, write: (String) throws -> Void) throws {
     let time = DateFormatter()
     time.locale = Locale(identifier: "en_US_POSIX")
     time.calendar = Calendar(identifier: .gregorian)
@@ -92,7 +91,7 @@ internal enum RideExport {
     var afterMs = fromMs, afterId = Int64.min
     while true {
       let rows = try rideExportTrackPage(db, fromMs: fromMs, toMs: toMs, boardId: boardId,
-        recordingId: recordingId, afterMs: afterMs, afterId: afterId)
+        afterMs: afterMs, afterId: afterId)
       guard let last = rows.last else { break }
       var batch = ""
       for row in rows {
@@ -129,15 +128,15 @@ internal enum RideExport {
   /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/TelemetryDao.kt `getRideExportKeyframe`
   /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/TelemetryDao.kt `getRideExportTelemetryPage`
   static func writeCsv(_ db: Database, fromMs: Int64, toMs: Int64, boardId: String?,
-    recordingId: String?, write: (String) throws -> Void) throws {
+    write: (String) throws -> Void) throws {
     try write(csvLine(csvHeaders))
-    let gps = TrackCursor(db, fromMs: fromMs, toMs: toMs, boardId: boardId, recordingId: recordingId)
+    let gps = TrackCursor(db, fromMs: fromMs, toMs: toMs, boardId: boardId)
     var currentGps = try gps.next(), nextGps = try gps.next()
     let keyframe = try Row.fetchOne(db, sql: """
       SELECT * FROM telemetry_frames WHERE captured_at_ms < ? AND board_id IS ?
-        AND (? IS NULL OR recording_id = ?) AND (flags & 1) != 0
+        AND (flags & 1) != 0
       ORDER BY captured_at_ms DESC, id DESC LIMIT 1
-      """, arguments: [fromMs, boardId, recordingId, recordingId])
+      """, arguments: [fromMs, boardId])
     let start: Int64 = keyframe?["captured_at_ms"] ?? fromMs
     var afterMs = start, afterId = Int64.min
     // Storage mask bit order; NULL with a set bit explicitly clears an optional reading.
@@ -145,21 +144,18 @@ internal enum RideExport {
       "duty_permille", "pitch_centi_deg", "roll_centi_deg", "balance_pitch_centi_deg", "balance_current_ma",
       "erpm", "state", "switch_state", "adc1_milli", "adc2_milli", "odometer_cm", "temp_mosfet_deci_c", "temp_motor_deci_c"]
     var values = [Int64?](repeating: nil, count: columns.count)
-    var previousRecording: String?
     while true {
       let rows = try Row.fetchAll(db, sql: """
         SELECT * FROM telemetry_frames WHERE captured_at_ms >= ? AND captured_at_ms <= ?
-          AND board_id IS ? AND (? IS NULL OR recording_id = ?)
+          AND board_id IS ?
           AND (captured_at_ms > ? OR (captured_at_ms = ? AND id > ?))
         ORDER BY captured_at_ms, id LIMIT ?
-        """, arguments: [start, toMs, boardId, recordingId, recordingId, afterMs, afterMs, afterId, batchSize])
+        """, arguments: [start, toMs, boardId, afterMs, afterMs, afterId, batchSize])
       guard let last = rows.last else { break }
       var batch = ""
       for row in rows {
         let timestamp: Int64 = row["captured_at_ms"], flags: Int = row["flags"], mask: Int = row["changed_mask_1"]
-        let recording: String? = row["recording_id"]
-        if flags & 1 != 0 || recording != previousRecording { values = [Int64?](repeating: nil, count: columns.count) }
-        previousRecording = recording
+        if flags & 1 != 0 { values = [Int64?](repeating: nil, count: columns.count) }
         for i in columns.indices where flags & 1 != 0 || mask & (1 << i) != 0 { values[i] = row[columns[i]] }
         if timestamp < fromMs { continue }
         while let next = nextGps, next.fixAtMs <= timestamp { currentGps = next; nextGps = try gps.next() }
@@ -210,19 +206,19 @@ internal enum RideExport {
   }
 
   private final class TrackCursor {
-    let db: Database, fromMs: Int64, toMs: Int64, boardId: String?, recordingId: String?
+    let db: Database, fromMs: Int64, toMs: Int64, boardId: String?
     var rows: [Row] = [], index = 0
     var afterMs: Int64, afterId = Int64.min
     var finished = false
-    init(_ db: Database, fromMs: Int64, toMs: Int64, boardId: String?, recordingId: String?) {
-      self.db = db; self.fromMs = fromMs; self.toMs = toMs; self.boardId = boardId; self.recordingId = recordingId
+    init(_ db: Database, fromMs: Int64, toMs: Int64, boardId: String?) {
+      self.db = db; self.fromMs = fromMs; self.toMs = toMs; self.boardId = boardId
       afterMs = fromMs
     }
     func next() throws -> RideTrackPoint? {
       while !finished {
         if index == rows.count {
           rows = try rideExportTrackPage(db, fromMs: fromMs, toMs: toMs, boardId: boardId,
-            recordingId: recordingId, afterMs: afterMs, afterId: afterId)
+            afterMs: afterMs, afterId: afterId)
           index = 0
           guard let last = rows.last else { finished = true; return nil }
           afterMs = last["fix_at_ms"]; afterId = last["id"]

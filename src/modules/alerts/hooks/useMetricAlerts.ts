@@ -10,25 +10,30 @@ import { useShallow } from 'zustand/react/shallow'
 
 import { generateId } from '@/helpers/id'
 import {
+  alertPresetState,
   asAlertPresetMetric,
-  ALERT_PRESET_FALLBACK_LEVEL,
+  isPresetAlertRule,
   type AlertPresetLevel,
   type AlertPresetMetric,
 } from '@/modules/alerts/lib/alertPresets'
-import {
-  boardAlertPresetSelection,
-  boardHasBatteryConfig,
-  boardMatchBoardConfig,
-  boardTopSpeedKmh,
-} from '@/modules/alerts/lib/boardAlertSettings'
-import {
-  customRulesForControl,
-  materializePresetRules,
-  type DraftAlertRule,
-} from '@/modules/alerts/lib/customAlertRules'
+import { boardHasBatteryConfig, boardTopSpeedKmh } from '@/modules/alerts/lib/boardAlertSettings'
+import { customRulesForControl, type DraftAlertRule } from '@/modules/alerts/lib/customAlertRules'
 import { useAlertPresetStore } from '@/modules/alerts/store/alertPresetStore'
+import {
+  formatGeigerAlertSound,
+  parseGeigerAlertSound,
+} from '@/modules/alerts/lib/alertSoundString'
 import { useAlertsStore, type AlertRuleDraft } from '@/modules/alerts/store/alertsStore'
 import { useBoardStore } from '@/modules/board/store/boardStore'
+import { deriveBatteryConfig } from '@/modules/battery/lib'
+import type { DerivedBatteryConfig } from '@/modules/battery/lib/types'
+import type { BatteryConfig } from 'vescape-core'
+
+/** The derived battery config, or null when it is missing or invalid. */
+export function validBatteryConfig(config: BatteryConfig | null): DerivedBatteryConfig | null {
+  const derived = deriveBatteryConfig(config)
+  return derived.warning == null ? derived : null
+}
 
 /**
  * Everything the alert block of a control needs, independent of where the setup is stored.
@@ -39,27 +44,34 @@ import { useBoardStore } from '@/modules/board/store/boardStore'
  * editing as `/control` before a Board exists to own the rules.
  */
 export interface MetricAlertsController {
+  /** Failure of a rider-rule write, shown with the rules and the rule form. */
   error: string | null
+  /** Failure of a preset write or expansion, shown under the preset control. */
+  presetError: string | null
   /** The preset metric this control maps to, or `null` when it only supports custom rules. */
   metric: AlertPresetMetric | null
   controlId: string
-  /** `custom` ⇒ {@link rules} are the rider's; a generated level ⇒ they are derived. */
-  level: AlertPresetLevel
-  /** Rider-owned rules for this control. Preset-generated rules never appear here. */
+  /** The metric's preset level; `null` when {@link metric} is. */
+  level: AlertPresetLevel | null
+  /** Rider-owned rules for this control. They fire alongside the preset's; preset rules never appear here. */
   rules: DraftAlertRule[]
-  /** One resolved snapshot for markers, descriptions, chart lines, and sound preview. */
+  /** Preset and rider rules together: gauge markers, chart lines, and sound preview. */
   ruleSnapshot: AlertTestRule[]
+  /** The preset's own expanded points, for its description. */
+  presetRules: AlertTestRule[]
   configBases: BoardConfigBases
   topSpeedKmh: number
   hasBatteryConfig: boolean
+  /** Battery rules are state-of-charge %: the backing's own derived config, set only for a valid battery control. */
+  batteryConfig: DerivedBatteryConfig | null
   /** Metrics this Board follows its own configuration for. */
   matchBoardConfig: Partial<Record<AlertPresetMetric, boolean>>
   setMatchBoardConfig(enabled: boolean): void
+  /** Tick sound of this metric's preset: the rider's choice, else its expanded rules'; null without either. */
+  geigerSound?: string | null
+  /** Pick the preset's geiger sound. Absent where it cannot be stored (the add-board wizard). */
+  setGeigerSound?(spec: string): void
   setLevel(level: AlertPresetLevel): void
-  /** Copy the current level's rules into {@link rules} and switch to `custom`. */
-  customize(): void
-  /** Drop every rule in {@link rules} and return to a generated level. */
-  discardCustom(): void
   addRule(draft: AlertRuleDraft): Promise<void>
   updateRule(id: string, draft: AlertRuleDraft): Promise<void>
   toggleRule(id: string): Promise<void>
@@ -79,16 +91,49 @@ export function useBoardMetricAlerts(controlId: string): MetricAlertsController 
     () => resolvedRules.filter((rule) => rule.controlId === controlId).map(toTestRule),
     [resolvedRules, controlId],
   )
+  // The points native expanded from this metric's preset.
+  const presetRules = useMemo(
+    () =>
+      resolvedRules
+        .filter((rule) => rule.controlId === controlId && isPresetAlertRule(rule))
+        .map(toTestRule),
+    [resolvedRules, controlId],
+  )
   const allRules = useAlertsStore((s) => s.rules)
+  const presetSpecs = useAlertsStore((s) => s.presets)
   const error = useAlertsStore((s) => s.error)
+  const presetError = useAlertPresetStore((s) => s.error)
+  const boardBatteryConfig = board?.batteryConfig
+  const batteryConfig = useMemo(
+    () => (controlId === 'battery' ? validBatteryConfig(boardBatteryConfig ?? null) : null),
+    [controlId, boardBatteryConfig],
+  )
   const { add, update, toggle, remove } = useAlertsStore(
     useShallow((s) => ({ add: s.add, update: s.update, toggle: s.toggle, remove: s.remove })),
   )
 
   const metric = asAlertPresetMetric(controlId)
   const rules = useMemo(() => customRulesForControl(allRules, controlId), [allRules, controlId])
-  // Controls without presets are always rider-owned, so they read as `custom` with no way back.
-  const level = board && metric ? boardAlertPresetSelection(board)[metric] : 'custom'
+  const preset = metric ? alertPresetState(presetSpecs[metric]) : null
+  const presetGeiger = preset?.geiger
+  // Only expanded preset rules hold the preset's sound; the rider's own rules carry their own.
+  const geigerSound = useMemo(
+    () =>
+      presetGeiger
+        ? formatGeigerAlertSound(presetGeiger)
+        : (allRules.find(
+            (rule) =>
+              rule.controlId === controlId &&
+              isPresetAlertRule(rule) &&
+              parseGeigerAlertSound(rule.spec),
+          )?.spec ?? null),
+    [allRules, controlId, presetGeiger],
+  )
+  const level = preset?.level ?? null
+  const matchBoardConfig = useMemo(
+    () => (metric && preset?.match ? { [metric]: true } : {}),
+    [metric, preset?.match],
+  )
 
   return useMemo(() => {
     if (!board) return null
@@ -96,40 +141,37 @@ export function useBoardMetricAlerts(controlId: string): MetricAlertsController 
     return {
       metric,
       error,
+      presetError,
       controlId,
       level,
       rules,
       ruleSnapshot,
+      presetRules,
       configBases,
       topSpeedKmh: boardTopSpeedKmh(board),
       hasBatteryConfig: boardHasBatteryConfig(board),
-      matchBoardConfig: boardMatchBoardConfig(board),
+      batteryConfig,
+      matchBoardConfig,
       setMatchBoardConfig: (enabled) => {
-        // intentional-suppression: the Alerts store error is rendered by MetricAlerts.
+        // intentional-suppression: the Alert Preset store error renders under the preset control.
         if (metric)
           void presets()
             .setMatchBoardConfig(metric, enabled)
             .catch(() => undefined)
       },
+      geigerSound,
+      setGeigerSound: (spec) => {
+        // intentional-suppression: the Alert Preset store error renders under the preset control.
+        if (metric)
+          void presets()
+            .setGeigerSound(metric, spec)
+            .catch(() => undefined)
+      },
       setLevel: (next) => {
-        // intentional-suppression: the Alerts store error is rendered by MetricAlerts.
+        // intentional-suppression: the Alert Preset store error renders under the preset control.
         if (metric)
           void presets()
             .setLevel(metric, next)
-            .catch(() => undefined)
-      },
-      customize: () => {
-        // intentional-suppression: the Alerts store error is rendered by MetricAlerts.
-        if (metric)
-          void presets()
-            .customize(metric)
-            .catch(() => undefined)
-      },
-      discardCustom: () => {
-        // intentional-suppression: the Alerts store error is rendered by MetricAlerts.
-        if (metric)
-          void presets()
-            .discardCustom(metric)
             .catch(() => undefined)
       },
       addRule: (draft) => add(controlId, draft),
@@ -144,12 +186,17 @@ export function useBoardMetricAlerts(controlId: string): MetricAlertsController 
     level,
     rules,
     error,
+    presetError,
+    batteryConfig,
     add,
     update,
     toggle,
     remove,
     ruleSnapshot,
     configBases,
+    geigerSound,
+    matchBoardConfig,
+    presetRules,
   ])
 }
 
@@ -163,6 +210,8 @@ interface DraftMetricAlertsSource {
   setup: DraftAlertSetup
   topSpeedKmh: number
   hasBatteryConfig: boolean
+  /** The draft's derived battery config when valid; must be referentially stable. */
+  batteryConfig: DerivedBatteryConfig | null
   onChange(next: DraftAlertSetup): void
 }
 
@@ -173,7 +222,7 @@ interface DraftMetricAlertsSource {
  */
 export function useDraftMetricAlerts(
   metric: AlertPresetMetric,
-  { setup, topSpeedKmh, hasBatteryConfig, onChange }: DraftMetricAlertsSource,
+  { setup, topSpeedKmh, hasBatteryConfig, batteryConfig, onChange }: DraftMetricAlertsSource,
 ): MetricAlertsController {
   const units = useUnitSystem()
   const preview = useMemo(
@@ -193,27 +242,22 @@ export function useDraftMetricAlerts(
 
     return {
       metric,
-      error: preview.error,
+      // Draft rules live in memory, so only the preset preview can fail.
+      error: null,
+      presetError: preview.error,
       controlId: metric,
       level: setup.level,
       rules: setup.rules,
       ruleSnapshot: preview.rules,
+      presetRules: preview.presetRules,
       configBases: {},
       topSpeedKmh,
       hasBatteryConfig,
+      batteryConfig: metric === 'battery' ? batteryConfig : null,
       // The wizard has no Board yet, so no config has been read to match against.
       matchBoardConfig: {},
       setMatchBoardConfig: () => {},
       setLevel: (level) => onChange({ ...setup, level }),
-      customize: () => {
-        if (preview.error) return
-        onChange({
-          ...setup,
-          level: 'custom',
-          rules: materializePresetRules(preview.presetRules, setup.rules),
-        })
-      },
-      discardCustom: () => onChange({ level: ALERT_PRESET_FALLBACK_LEVEL, rules: [] }),
       addRule: async (draft) =>
         withRules([
           ...setup.rules,
@@ -229,5 +273,5 @@ export function useDraftMetricAlerts(
       toggleRule: async (id) => mapRule(id, (rule) => ({ ...rule, enabled: !rule.enabled })),
       removeRule: async (id) => withRules(setup.rules.filter((rule) => rule.id !== id)),
     }
-  }, [metric, setup, topSpeedKmh, hasBatteryConfig, onChange, preview])
+  }, [metric, setup, topSpeedKmh, hasBatteryConfig, batteryConfig, onChange, preview])
 }

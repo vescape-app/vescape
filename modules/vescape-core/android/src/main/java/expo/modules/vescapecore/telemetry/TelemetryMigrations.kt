@@ -1,7 +1,6 @@
 package expo.modules.vescapecore.telemetry
 
 import androidx.sqlite.SQLiteConnection
-import expo.modules.vescapecore.alerts.ALERT_BEEP_COUNT_DEFAULT
 
 // @parity /modules/vescape-core/ios/VescapeCoreModule.swift
 internal const val TELEMETRY_DATABASE_NAME = "vescape.db"
@@ -1267,7 +1266,7 @@ internal object TelemetryMigrations {
           db.execSQL("ALTER TABLE alerts ADD COLUMN repeat_every_seconds INTEGER")
         }
         if (!hasColumn(db, "alerts", "beep_count")) {
-          db.execSQL("ALTER TABLE alerts ADD COLUMN beep_count INTEGER NOT NULL DEFAULT $ALERT_BEEP_COUNT_DEFAULT")
+          db.execSQL("ALTER TABLE alerts ADD COLUMN beep_count INTEGER NOT NULL DEFAULT 3")
         }
     }
 
@@ -1433,7 +1432,7 @@ internal object TelemetryMigrations {
 
     /**
      * The bucket primary key gains `recording_id`, so two recordings of one Board inside one minute
-     * stop aggregating into a single row. Existing buckets take [LEGACY_RIDE_RECORDING_ID] and keep
+     * stop aggregating into a single row. Existing buckets take an empty recording id and keep
      * grouping exactly as they did.
      *
      * @parity /modules/vescape-core/ios/telemetry/TelemetryDatabase.swift `rebuildBucketsOnRecordingId`
@@ -1487,7 +1486,7 @@ internal object TelemetryMigrations {
       db.execSQL(
         """
         INSERT INTO telemetry_minute_buckets_new ($columns, recording_id)
-        SELECT $columns, '$LEGACY_RIDE_RECORDING_ID'
+        SELECT $columns, ''
         FROM telemetry_minute_buckets
         """.trimIndent(),
       )
@@ -1562,6 +1561,351 @@ internal object TelemetryMigrations {
       db.execSQL("ALTER TABLE telemetry_minute_buckets ADD COLUMN route_preview TEXT")
     }
 
+    /**
+     * A single alert's beep count moves into its sound string (#578): `preset:beep` with
+     * `beep_count` 3 becomes `alert(3):warning`, playing the effects pack's severity slot. Legacy
+     * `preset:beep|urgent|notify` (and the older bare names) map to warning, critical, info. TTS,
+     * geiger, and unknown strings keep their sound. `beep_count` is then dropped; SQLite before
+     * 3.35 has no `DROP COLUMN`, so the table is rebuilt by copy.
+     *
+     * @parity /modules/vescape-core/ios/telemetry/TelemetryDatabase.swift `v50_alert_sound_count`
+     */
+    internal val MIGRATION_49_50 = migration(49, 50) { db ->
+        db.execSQL(ALERT_SOUND_COUNT_SQL)
+        db.execSQL(
+          """
+          CREATE TABLE alerts_new (
+            board_id TEXT NOT NULL,
+            id TEXT NOT NULL,
+            control_id TEXT NOT NULL,
+            threshold REAL NOT NULL,
+            threshold_max REAL,
+            enabled INTEGER NOT NULL,
+            sound_type TEXT NOT NULL,
+            created_at INTEGER NOT NULL,
+            source TEXT,
+            repeat_every_seconds INTEGER,
+            threshold_kind TEXT NOT NULL DEFAULT 'fixed',
+            config_field_id TEXT,
+            threshold_offset REAL,
+            threshold_max_offset REAL,
+            PRIMARY KEY (board_id, id)
+          )
+          """.trimIndent(),
+        )
+        db.execSQL(
+          """
+          INSERT INTO alerts_new (board_id, id, control_id, threshold, threshold_max, enabled, sound_type,
+            created_at, source, repeat_every_seconds, threshold_kind, config_field_id, threshold_offset,
+            threshold_max_offset)
+          SELECT board_id, id, control_id, threshold, threshold_max, enabled, sound_type, created_at,
+            source, repeat_every_seconds, threshold_kind, config_field_id, threshold_offset,
+            threshold_max_offset
+          FROM alerts
+          """.trimIndent(),
+        )
+        db.execSQL("DROP TABLE alerts")
+        db.execSQL("ALTER TABLE alerts_new RENAME TO alerts")
+        db.execSQL("CREATE INDEX IF NOT EXISTS index_alerts_board_id ON alerts(board_id)")
+        db.execSQL("CREATE INDEX IF NOT EXISTS index_alerts_control_id ON alerts(control_id)")
+        db.execSQL("CREATE INDEX IF NOT EXISTS index_alerts_enabled ON alerts(enabled)")
+        db.execSQL("CREATE INDEX IF NOT EXISTS index_alerts_created_at ON alerts(created_at)")
+    }
+
+    /** @parity /modules/vescape-core/ios/telemetry/TelemetryDatabase.swift `alertSoundCountSql` */
+    private val ALERT_SOUND_COUNT_SQL = """
+      UPDATE alerts SET sound_type = 'alert(' || MAX(1, MIN(5, beep_count)) || '):' ||
+        CASE sound_type
+          WHEN 'preset:urgent' THEN 'critical' WHEN 'urgent' THEN 'critical'
+          WHEN 'preset:notify' THEN 'info' WHEN 'notify' THEN 'info' WHEN 'pulse' THEN 'info'
+          ELSE 'warning'
+        END
+      WHERE sound_type IN ('preset:beep', 'preset:urgent', 'preset:notify', 'default', 'beep', 'urgent', 'notify', 'pulse')
+    """.trimIndent()
+
+    /**
+     * An Alert Preset becomes one `preset:<metric>` row (#591) whose `spec` is
+     * `preset(<level>)[:geiger=<level>][,match=on]`; native expands it at load, so the copied
+     * `source = 'preset'` rows go. Existing Boards keep what fired: a missing level or `custom` is
+     * `off` (custom's rider rules stay), as is a metric whose old preset points were all disabled
+     * (a partly disabled ladder keeps its level; per-point disable is dropped), the geiger choice
+     * comes from `alertPresetSound` or else the old preset rows, and `matchBoardConfig` becomes `match=on`. The column `sound_type` is renamed
+     * `spec`, `source` is dropped by copy, and the three obsolete Board Settings are deleted.
+     *
+     * @parity /modules/vescape-core/ios/telemetry/TelemetryDatabase.swift `v51_preset_rows`
+     */
+    internal val MIGRATION_50_51 = migration(50, 51) { db ->
+        db.execSQL(
+          """
+          CREATE TABLE alerts_new (
+            board_id TEXT NOT NULL,
+            id TEXT NOT NULL,
+            control_id TEXT NOT NULL,
+            threshold REAL NOT NULL,
+            threshold_max REAL,
+            enabled INTEGER NOT NULL,
+            spec TEXT NOT NULL,
+            created_at INTEGER NOT NULL,
+            repeat_every_seconds INTEGER,
+            threshold_kind TEXT NOT NULL DEFAULT 'fixed',
+            config_field_id TEXT,
+            threshold_offset REAL,
+            threshold_max_offset REAL,
+            PRIMARY KEY (board_id, id)
+          )
+          """.trimIndent(),
+        )
+        db.execSQL(
+          """
+          INSERT INTO alerts_new (board_id, id, control_id, threshold, threshold_max, enabled, spec,
+            created_at, repeat_every_seconds, threshold_kind, config_field_id, threshold_offset,
+            threshold_max_offset)
+          SELECT board_id, id, control_id, threshold, threshold_max, enabled, sound_type, created_at,
+            repeat_every_seconds, threshold_kind, config_field_id, threshold_offset, threshold_max_offset
+          FROM alerts WHERE source IS NULL OR source != 'preset'
+          """.trimIndent(),
+        )
+        db.execSQL(PRESET_ROWS_SQL)
+        db.execSQL("DROP TABLE alerts")
+        db.execSQL("ALTER TABLE alerts_new RENAME TO alerts")
+        db.execSQL("CREATE INDEX IF NOT EXISTS index_alerts_board_id ON alerts(board_id)")
+        db.execSQL("CREATE INDEX IF NOT EXISTS index_alerts_control_id ON alerts(control_id)")
+        db.execSQL("CREATE INDEX IF NOT EXISTS index_alerts_enabled ON alerts(enabled)")
+        db.execSQL("CREATE INDEX IF NOT EXISTS index_alerts_created_at ON alerts(created_at)")
+        db.execSQL("DELETE FROM board_settings WHERE key IN ('alertPreset', 'matchBoardConfig', 'alertPresetSound')")
+    }
+
+    /** @parity /modules/vescape-core/ios/telemetry/TelemetryDatabase.swift `presetRowsSql` */
+    private val PRESET_ROWS_SQL = """
+      INSERT OR REPLACE INTO alerts_new (board_id, id, control_id, threshold, threshold_max, enabled, spec, created_at)
+      SELECT board_id, 'preset:' || metric, metric, 0, NULL, 1,
+        'preset(' || level || ')' || CASE WHEN options = '' THEN '' ELSE ':' || options END, 0
+      FROM (
+        SELECT board_id, metric,
+          CASE WHEN all_disabled = 1 THEN 'off' WHEN level IN ('safe', 'normal', 'minimal') THEN level ELSE 'off' END AS level,
+          ltrim(
+            CASE WHEN geiger IN ('soft', 'mid', 'hard') THEN ',geiger=' || geiger ELSE '' END ||
+            CASE WHEN matched = 1 AND metric IN ('duty', 'motor-temp', 'controller-temp') THEN ',match=on' ELSE '' END,
+            ','
+          ) AS options
+        FROM (
+          SELECT boards.id AS board_id, metrics.metric AS metric,
+            (SELECT json_extract(value_json, '$."' || metrics.metric || '"') FROM board_settings
+              WHERE board_id = boards.id AND key = 'alertPreset' AND json_valid(value_json)) AS level,
+            substr(COALESCE(
+              (SELECT json_extract(value_json, '$."' || metrics.metric || '".geiger') FROM board_settings
+                WHERE board_id = boards.id AND key = 'alertPresetSound' AND json_valid(value_json)),
+              (SELECT sound_type FROM alerts WHERE alerts.board_id = boards.id AND control_id = metrics.metric
+                AND source = 'preset' AND sound_type LIKE 'geiger:%' LIMIT 1)
+            ), length('geiger:') + 1) AS geiger,
+            (SELECT json_extract(value_json, '$."' || metrics.metric || '"') FROM board_settings
+              WHERE board_id = boards.id AND key = 'matchBoardConfig' AND json_valid(value_json)) AS matched,
+            -- Every old preset point disabled: the rider had silenced the metric.
+            (SELECT COUNT(*) > 0 AND SUM(enabled) = 0 FROM alerts WHERE alerts.board_id = boards.id
+              AND control_id = metrics.metric AND source = 'preset') AS all_disabled
+          FROM boards
+          CROSS JOIN (SELECT 'speed' AS metric UNION ALL SELECT 'duty' UNION ALL SELECT 'motor-temp'
+            UNION ALL SELECT 'controller-temp' UNION ALL SELECT 'battery') AS metrics
+          WHERE boards.deleted_at IS NULL
+        )
+      )
+      -- The app default has no row.
+      WHERE NOT (level = 'normal' AND options = '')
+    """.trimIndent()
+
+    /**
+     * Ride boundaries move from durable recording identity to the recorded data (ADR 0041):
+     * `ride_recordings` and every `recording_id` column go, and the bucket key returns to
+     * `(bucket_start_ms, board_id)`. Two recordings of one Board that shared a minute fold into one
+     * bucket. Legacy fixes with no reported accuracy read as precise only through their missing
+     * recording id, so they are stamped with the 20 m precision threshold first — a literal, so a
+     * later threshold change cannot rewrite what this step did.
+     *
+     * @parity /modules/vescape-core/ios/telemetry/TelemetryDatabase.swift `v52_drop_ride_recordings`
+     */
+    internal val MIGRATION_51_52 = migration(51, 52) { db ->
+        db.execSQL(
+          "UPDATE ride_track_points SET accuracy_cm = 2000 " +
+            "WHERE recording_id IS NULL AND accuracy_cm IS NULL",
+        )
+        rebuildRideTrackWithoutRecordingId(db)
+        rebuildFramesWithoutRecordingId(db)
+        foldBucketsWithoutRecordingId(db)
+        db.execSQL("DROP TABLE IF EXISTS ride_recordings")
+    }
+
+    /** @parity /modules/vescape-core/ios/telemetry/TelemetryDatabase.swift `rebuildRideTrackWithoutRecordingId` */
+    private fun rebuildRideTrackWithoutRecordingId(db: TelemetryMigrationDatabase) {
+      val columns = "id, board_id, fix_at_ms, latitude_e7, longitude_e7, accuracy_cm, " +
+        "gps_speed_centi_mps, bearing_centi_deg, altitude_cm"
+      db.execSQL("DROP INDEX IF EXISTS index_ride_track_points_fix_at_ms")
+      db.execSQL("DROP INDEX IF EXISTS index_ride_track_points_board_id_fix_at_ms")
+      db.execSQL("DROP INDEX IF EXISTS index_ride_track_points_recording_id_fix_at_ms")
+      db.execSQL(
+        """
+        CREATE TABLE ride_track_points_new (
+          id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+          board_id TEXT,
+          fix_at_ms INTEGER NOT NULL,
+          latitude_e7 INTEGER NOT NULL,
+          longitude_e7 INTEGER NOT NULL,
+          accuracy_cm INTEGER,
+          gps_speed_centi_mps INTEGER,
+          bearing_centi_deg INTEGER,
+          altitude_cm INTEGER
+        )
+        """.trimIndent(),
+      )
+      db.execSQL("INSERT INTO ride_track_points_new ($columns) SELECT $columns FROM ride_track_points")
+      db.execSQL("DROP TABLE ride_track_points")
+      db.execSQL("ALTER TABLE ride_track_points_new RENAME TO ride_track_points")
+      db.execSQL("CREATE INDEX IF NOT EXISTS index_ride_track_points_fix_at_ms ON ride_track_points(fix_at_ms)")
+      db.execSQL(
+        "CREATE INDEX IF NOT EXISTS index_ride_track_points_board_id_fix_at_ms " +
+          "ON ride_track_points(board_id, fix_at_ms)",
+      )
+    }
+
+    /** @parity /modules/vescape-core/ios/telemetry/TelemetryDatabase.swift `rebuildFramesWithoutRecordingId` */
+    private fun rebuildFramesWithoutRecordingId(db: TelemetryMigrationDatabase) {
+      val columns =
+        "id, captured_at_ms, elapsed_realtime_ms, board_id, can_id, flags, changed_mask_1, " +
+          "changed_mask_2, speed_centi_kmh, battery_voltage_mv, motor_current_ma, " +
+          "battery_current_ma, duty_permille, pitch_centi_deg, roll_centi_deg, " +
+          "balance_pitch_centi_deg, balance_current_ma, erpm, state, switch_state, adc1_milli, " +
+          "adc2_milli, odometer_cm, temp_mosfet_deci_c, temp_motor_deci_c"
+      db.execSQL("DROP INDEX IF EXISTS index_telemetry_frames_captured_at_ms")
+      db.execSQL("DROP INDEX IF EXISTS index_telemetry_frames_board_id_captured_at_ms")
+      db.execSQL("DROP INDEX IF EXISTS index_telemetry_frames_recording_id_captured_at_ms")
+      db.execSQL(
+        """
+        CREATE TABLE telemetry_frames_new (
+          id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+          captured_at_ms INTEGER NOT NULL,
+          elapsed_realtime_ms INTEGER NOT NULL,
+          board_id TEXT,
+          can_id INTEGER,
+          flags INTEGER NOT NULL,
+          changed_mask_1 INTEGER NOT NULL,
+          changed_mask_2 INTEGER NOT NULL,
+          speed_centi_kmh INTEGER,
+          battery_voltage_mv INTEGER,
+          motor_current_ma INTEGER,
+          battery_current_ma INTEGER,
+          duty_permille INTEGER,
+          pitch_centi_deg INTEGER,
+          roll_centi_deg INTEGER,
+          balance_pitch_centi_deg INTEGER,
+          balance_current_ma INTEGER,
+          erpm INTEGER,
+          state INTEGER,
+          switch_state INTEGER,
+          adc1_milli INTEGER,
+          adc2_milli INTEGER,
+          odometer_cm INTEGER,
+          temp_mosfet_deci_c INTEGER,
+          temp_motor_deci_c INTEGER
+        )
+        """.trimIndent(),
+      )
+      db.execSQL("INSERT INTO telemetry_frames_new ($columns) SELECT $columns FROM telemetry_frames")
+      db.execSQL("DROP TABLE telemetry_frames")
+      db.execSQL("ALTER TABLE telemetry_frames_new RENAME TO telemetry_frames")
+      db.execSQL("CREATE INDEX IF NOT EXISTS index_telemetry_frames_captured_at_ms ON telemetry_frames(captured_at_ms)")
+      db.execSQL(
+        "CREATE INDEX IF NOT EXISTS index_telemetry_frames_board_id_captured_at_ms " +
+          "ON telemetry_frames(board_id, captured_at_ms)",
+      )
+    }
+
+    /**
+     * Rows of one Board and minute fold like an upsert merge: additive lanes sum, peaks take the
+     * extreme, and the position anchor comes from the earliest row that has one. A folded minute's
+     * route preview is dropped — it was built per recording — and falls back to the anchor until
+     * history maintenance rebuilds it.
+     *
+     * @parity /modules/vescape-core/ios/telemetry/TelemetryDatabase.swift `foldBucketsWithoutRecordingId`
+     */
+    private fun foldBucketsWithoutRecordingId(db: TelemetryMigrationDatabase) {
+      db.execSQL("DROP INDEX IF EXISTS index_telemetry_minute_buckets_bucket_start_ms")
+      db.execSQL("ALTER TABLE telemetry_minute_buckets RENAME TO telemetry_minute_buckets_old")
+      db.execSQL(
+        """
+        CREATE TABLE telemetry_minute_buckets (
+          bucket_start_ms INTEGER NOT NULL,
+          board_id TEXT NOT NULL,
+          sample_count INTEGER NOT NULL,
+          first_sample_at_ms INTEGER NOT NULL,
+          last_sample_at_ms INTEGER NOT NULL,
+          sum_abs_speed_centi_kmh INTEGER NOT NULL,
+          moving_speed_sample_count INTEGER,
+          sum_moving_abs_speed_centi_kmh INTEGER,
+          max_abs_speed_centi_kmh INTEGER NOT NULL,
+          min_battery_voltage_mv INTEGER,
+          max_motor_current_abs_ma INTEGER NOT NULL,
+          max_battery_current_abs_ma INTEGER NOT NULL,
+          battery_used_wh_milli INTEGER NOT NULL,
+          battery_regen_wh_milli INTEGER NOT NULL,
+          max_duty_abs_permille INTEGER NOT NULL,
+          first_odometer_cm INTEGER,
+          last_odometer_cm INTEGER,
+          gps_point_count INTEGER NOT NULL,
+          precise_gps_point_count INTEGER NOT NULL,
+          gps_distance_cm INTEGER NOT NULL,
+          max_gps_speed_centi_mps INTEGER,
+          max_temp_mosfet_deci_c INTEGER,
+          max_temp_motor_deci_c INTEGER,
+          first_latitude_e7 INTEGER,
+          first_longitude_e7 INTEGER,
+          first_moving_at_ms INTEGER,
+          last_moving_at_ms INTEGER,
+          route_preview TEXT,
+          PRIMARY KEY (bucket_start_ms, board_id)
+        )
+        """.trimIndent(),
+      )
+      db.execSQL(FOLD_BUCKETS_SQL)
+      db.execSQL("DROP TABLE telemetry_minute_buckets_old")
+      db.execSQL(
+        "CREATE INDEX IF NOT EXISTS index_telemetry_minute_buckets_bucket_start_ms " +
+          "ON telemetry_minute_buckets(bucket_start_ms)",
+      )
+    }
+
+    /** @parity /modules/vescape-core/ios/telemetry/TelemetryDatabase.swift `foldBucketsSql` */
+    private val FOLD_BUCKETS_SQL = """
+      INSERT INTO telemetry_minute_buckets (
+        bucket_start_ms, board_id, sample_count, first_sample_at_ms, last_sample_at_ms,
+        sum_abs_speed_centi_kmh, moving_speed_sample_count, sum_moving_abs_speed_centi_kmh,
+        max_abs_speed_centi_kmh, min_battery_voltage_mv, max_motor_current_abs_ma,
+        max_battery_current_abs_ma, battery_used_wh_milli, battery_regen_wh_milli,
+        max_duty_abs_permille, first_odometer_cm, last_odometer_cm, gps_point_count,
+        precise_gps_point_count, gps_distance_cm, max_gps_speed_centi_mps, max_temp_mosfet_deci_c,
+        max_temp_motor_deci_c, first_latitude_e7, first_longitude_e7, first_moving_at_ms,
+        last_moving_at_ms, route_preview
+      )
+      SELECT
+        b.bucket_start_ms, b.board_id, SUM(b.sample_count), MIN(b.first_sample_at_ms),
+        MAX(b.last_sample_at_ms), SUM(b.sum_abs_speed_centi_kmh), SUM(b.moving_speed_sample_count),
+        SUM(b.sum_moving_abs_speed_centi_kmh), MAX(b.max_abs_speed_centi_kmh),
+        MIN(b.min_battery_voltage_mv), MAX(b.max_motor_current_abs_ma),
+        MAX(b.max_battery_current_abs_ma), SUM(b.battery_used_wh_milli),
+        SUM(b.battery_regen_wh_milli), MAX(b.max_duty_abs_permille), MIN(b.first_odometer_cm),
+        MAX(b.last_odometer_cm), SUM(b.gps_point_count), SUM(b.precise_gps_point_count),
+        SUM(b.gps_distance_cm), MAX(b.max_gps_speed_centi_mps), MAX(b.max_temp_mosfet_deci_c),
+        MAX(b.max_temp_motor_deci_c),
+        (SELECT a.first_latitude_e7 FROM telemetry_minute_buckets_old a
+          WHERE a.bucket_start_ms = b.bucket_start_ms AND a.board_id = b.board_id
+            AND a.first_latitude_e7 IS NOT NULL ORDER BY a.first_sample_at_ms LIMIT 1),
+        (SELECT a.first_longitude_e7 FROM telemetry_minute_buckets_old a
+          WHERE a.bucket_start_ms = b.bucket_start_ms AND a.board_id = b.board_id
+            AND a.first_latitude_e7 IS NOT NULL ORDER BY a.first_sample_at_ms LIMIT 1),
+        MIN(b.first_moving_at_ms), MAX(b.last_moving_at_ms),
+        CASE WHEN COUNT(*) = 1 THEN MAX(b.route_preview) END
+      FROM telemetry_minute_buckets_old b
+      GROUP BY b.bucket_start_ms, b.board_id
+    """.trimIndent()
+
     /** Every migration registered with Room, in the graph's production order. */
     val all = listOf(
       MIGRATION_3_4,
@@ -1607,6 +1951,9 @@ internal object TelemetryMigrations {
       MIGRATION_46_47,
       MIGRATION_47_48,
       MIGRATION_48_49,
+      MIGRATION_49_50,
+      MIGRATION_50_51,
+      MIGRATION_51_52,
     )
 
 }

@@ -7,9 +7,9 @@ func bucketPreviewFixture() throws -> [String: Any] {
 
 func bucketPreviewFixes() throws -> [RideTrackPoint] {
   let fixture = try bucketPreviewFixture()
-  let board = fixture["boardId"] as! String, recording = fixture["recordingId"] as! String
+  let board = fixture["boardId"] as! String
   return (fixture["fixes"] as! [[NSNumber]]).map { p in
-    RideTrackPoint(recordingId: recording, boardId: board, fixAtMs: p[0].int64Value,
+    RideTrackPoint(boardId: board, fixAtMs: p[0].int64Value,
       latitudeE7: p[1].int64Value, longitudeE7: p[2].int64Value, accuracyCm: p[3].intValue,
       gpsSpeedCentiMps: 400, bearingCentiDeg: nil, altitudeCm: nil)
   }
@@ -17,13 +17,12 @@ func bucketPreviewFixes() throws -> [RideTrackPoint] {
 
 func runBucketRoutePreviewContract() throws {
   let fixture = try bucketPreviewFixture()
-  let board = fixture["boardId"] as! String, recording = fixture["recordingId"] as! String
+  let board = fixture["boardId"] as! String
   let fixes = try bucketPreviewFixes()
   let url = FileManager.default.temporaryDirectory.appendingPathComponent("bucket-preview-\(UUID().uuidString).db")
   defer { try? FileManager.default.removeItem(at: url) }
   var queue = try DatabaseQueue(path: url.path)
   try TelemetryDatabase.migrator.migrate(queue)
-  try queue.write { db in try insertRideRecording(db, RideRecording(id: recording, boardId: board, startedAtMs: 0)) }
   func flush(_ points: [RideTrackPoint]) throws {
     try queue.write { db in
       try RecordingPersistenceSQL.insertTrackAndBuckets(db, track: points, buckets: buildTelemetryBuckets([], locationPoints: rideTrackBucketPoints(points)))
@@ -52,9 +51,6 @@ func runBucketRoutePreviewContract() throws {
       try require(segment.firstAtMs == (value["firstMs"] as! NSNumber).int64Value && segment.lastAtMs == (value["lastMs"] as! NSNumber).int64Value, "preview segment endpoints")
     }
   }
-  let session = try groupRideSessions(buckets: rows, markers: [], gapMs: 1_800_000).first!
-  try require(session.routePoints.count == 8, "preview joined point count")
-  try require(session.routePoints.enumerated().compactMap { $0.element.breakBefore ? $0.offset : nil } == [5], "preview joins minutes without bridging gaps")
   try queue.read { db in
     let route = try favoriteRoutePreview(db, startMs: 0, endMs: 119999, boardId: board)
     try require(route.count == 8, "favorite retains within-minute corners")
@@ -69,28 +65,35 @@ func runBucketRoutePreviewContract() throws {
   }
   try queue.write { db in
     let sequence = [Int64(65000), 70000, 125000].enumerated().map { index, time in
-      RideTrackPoint(recordingId: index == 0 ? "z" : "a", boardId: "sequence", fixAtMs: time,
+      RideTrackPoint(boardId: "sequence", fixAtMs: time,
         latitudeE7: fixes[index].latitudeE7, longitudeE7: fixes[index].longitudeE7, accuracyCm: 500,
         gpsSpeedCentiMps: 400, bearingCentiDeg: nil, altitudeCm: nil)
     }
     try RecordingPersistenceSQL.insertTrackAndBuckets(db, track: sequence, buckets: buildTelemetryBuckets([], locationPoints: rideTrackBucketPoints(sequence)))
     let route = try favoriteRoutePreview(db, startMs: 60000, endMs: 179999, boardId: "sequence")
-    try require(route.compactMap { $0["longitude"] as? Double } == sequence.map { Double($0.longitudeE7) / 1e7 }, "favorite orders recordings by capture time")
+    try require(route.compactMap { $0["longitude"] as? Double } == sequence.map { Double($0.longitudeE7) / 1e7 }, "favorite orders fixes by capture time")
     try db.execute(sql: "DELETE FROM telemetry_minute_buckets WHERE board_id = 'sequence'")
     try db.execute(sql: "DELETE FROM ride_track_points WHERE board_id = 'sequence'")
   }
   let previews = rows.map { $0["route_preview"] as String }
-  let telemetry = BucketTelemetryPoint(capturedAtMs: 3000, boardId: board, recordingId: recording, speedCentiKmh: 1500,
+  let telemetry = BucketTelemetryPoint(capturedAtMs: 3000, boardId: board, speedCentiKmh: 1500,
     batteryVoltageMv: 80000, motorCurrentMa: 1000, batteryCurrentMa: 500, dutyPermille: 100, odometerCm: nil, tempMosfetDeciC: nil, tempMotorDeciC: nil)
   try queue.write { db in try RecordingPersistenceSQL.insertTrackAndBuckets(db, track: [], buckets: buildTelemetryBuckets([telemetry])) }
   func readPreviews() throws -> [String] { try queue.read { try String.fetchAll($0, sql: "SELECT route_preview FROM telemetry_minute_buckets ORDER BY bucket_start_ms") } }
   try require(try readPreviews() == previews, "telemetry-only flush preserves preview")
+  // The GPS-only second minute is the ride's tail: one ride, one route.
+  let sessions = try queue.read { db in
+    try groupRideSessions(buckets: try Row.fetchAll(db, sql: "SELECT * FROM telemetry_minute_buckets ORDER BY bucket_start_ms"), markers: [], gapMs: 1_800_000)
+  }
+  try require(sessions.count == 1, "GPS-only tail joins the preceding ride")
+  try require(sessions[0].routePoints.count == 8, "preview joined point count")
+  try require(sessions[0].routePoints.enumerated().compactMap { $0.element.breakBefore ? $0.offset : nil } == [5], "preview joins minutes without bridging gaps")
   _ = try TelemetryMaintenancePersistence(writer: queue).rebuild(config: MetricSanitizerConfig(), onProgress: { _, _ in })
   try require(try readPreviews() == previews, "explicit rebuild backfills original geometry")
   try queue.write { db in
     try db.execute(sql: "CREATE TRIGGER reject_preview BEFORE UPDATE OF route_preview ON telemetry_minute_buckets BEGIN SELECT RAISE(FAIL, 'preview failure'); END")
   }
-  let later = RideTrackPoint(recordingId: recording, boardId: board, fixAtMs: 63000, latitudeE7: 520030000,
+  let later = RideTrackPoint(boardId: board, fixAtMs: 63000, latitudeE7: 520030000,
     longitudeE7: 180030000, accuracyCm: 500, gpsSpeedCentiMps: 400, bearingCentiDeg: nil, altitudeCm: nil)
   var failures = 0
   do { try flush([later]) } catch { failures += 1 }
@@ -102,7 +105,7 @@ func runBucketRoutePreviewContract() throws {
   }
   try queue.close()
 
-  let straight = (0..<60).map { i in RideTrackPoint(recordingId: recording, boardId: board, fixAtMs: Int64(i * 1000), latitudeE7: -520000001,
+  let straight = (0..<60).map { i in RideTrackPoint(boardId: board, fixAtMs: Int64(i * 1000), latitudeE7: -520000001,
     longitudeE7: Int64(-180000003 + i * 100), accuracyCm: 500, gpsSpeedCentiMps: 400, bearingCentiDeg: nil, altitudeCm: nil) }
   let encoded = try BucketRoutePreview.build(straight)
   let decoded = try BucketRoutePreview.decode(encoded)

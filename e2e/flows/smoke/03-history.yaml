@@ -75,11 +75,9 @@ appId: ${APP_ID}
     visible:
       id: history-session-sheet
     timeout: 10000
-# A point, not the element — the same trap `../fixture/_home.yaml` documents for the social drawer.
-# The backdrop is a full-screen `Pressable` *behind* the sheet, so tapping its centre lands on the
-# sheet content and the sheet stays open, leaving the run stranded on History.
+# The selector covers the exposed dismiss area, so its centre cannot hit a ride row.
 - tapOn:
-    point: 50%, 80%
+    id: history-session-sheet-backdrop
 # Wait for the sheet to be *gone*, not just tapped. It slides out over several frames, and while any
 # of it is still on screen it covers the header — so `history-back` is not visible, every branch in
 # `_home.yaml` skips, and the run dies on `battery-bar` with History still underneath. Asserting the

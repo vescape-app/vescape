@@ -14,6 +14,7 @@ final class WatchMirrorCoordinatorTests: XCTestCase {
     var groups = 0
     var statuses = 0
     var settings = 0
+    var batteries: [WatchLastBattery?] = []
     var receive: ((WatchCommand) -> Void)?
     func start(command: @escaping (WatchCommand) -> Void) { starts += 1; receive = command }
     func stop() { stops += 1; receive = nil }
@@ -24,6 +25,7 @@ final class WatchMirrorCoordinatorTests: XCTestCase {
     func pushWeather(_ weather: WatchWeather) {}
     func pushRoute(_ payload: [String: Any]) {}
     func pushBoard(_ board: WatchBoardLights) {}
+    func pushLastBattery(_ battery: WatchLastBattery?) { batteries.append(battery) }
   }
   private final class Sources: WatchMirrorSources {
     var subscribed = 0
@@ -63,6 +65,20 @@ final class WatchMirrorCoordinatorTests: XCTestCase {
       mapTiles: { self.mapTiles.append($0) }
     )
     func active() { coordinator.start(); coordinator.acceptWakeLevel(.active) }
+  }
+
+  func testPersistedBatteryAndSelectionClearBypassLiveStreamWakeGate() {
+    let h = Harness()
+    h.transport.reachable = false
+    h.coordinator.start()
+    let battery = WatchLastBattery(boardId: "board", boardName: "X7", percent: 78, at: 1_000)
+    h.coordinator.pushLastBattery(battery)
+    h.coordinator.pushLastBattery(nil)
+    h.scheduler.advance(1000)
+    XCTAssertEqual(h.transport.batteries.count, 2)
+    XCTAssertEqual(h.transport.batteries[0], battery)
+    XCTAssertNil(h.transport.batteries[1])
+    XCTAssertEqual(h.transport.frames.count, 0)
   }
 
   func testLifetimeIsIdempotentAndSurvivesBoardDisconnect() {

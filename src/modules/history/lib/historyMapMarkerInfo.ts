@@ -18,13 +18,14 @@ export interface SelectedHistoryMarker {
 }
 
 export const HISTORY_MARKER_LABELS: Record<HistoryMarker['type'], string> = {
-  app_stop: 'Recording stopped',
+  app_stop: 'Board session stopped',
   auto_pause: 'Recording paused — idle',
   connected: 'Board connected',
   connection_lost: 'Board connection lost',
   disconnected: 'Board disconnected',
   error: 'Error',
   gap: 'History gap',
+  recording_stop: 'Recording stopped',
 }
 
 export const HISTORY_MARKER_ICONS: Record<HistoryMarker['type'], Icon> = {
@@ -35,6 +36,7 @@ export const HISTORY_MARKER_ICONS: Record<HistoryMarker['type'], Icon> = {
   disconnected: LinkBreakIcon,
   error: WarningCircleIcon,
   gap: ClockCountdownIcon,
+  recording_stop: StopIcon,
 }
 
 export const HISTORY_MARKER_COLORS: Record<HistoryMarker['type'], ThemeColor> = {
@@ -45,6 +47,7 @@ export const HISTORY_MARKER_COLORS: Record<HistoryMarker['type'], ThemeColor> = 
   disconnected: theme.status.warning.color,
   error: theme.status.error.color,
   gap: theme.palette.yellow.color,
+  recording_stop: theme.palette.yellow.color,
 }
 
 function formatMarkerTime(ms: number): string {

@@ -286,7 +286,7 @@ class RecordingPersistenceHostTest {
       persistence.createProfile(profile.copy(id = "compat-$index", boardId = "compat-board", refloatBaseVersion = versions.getString(index)))
     }
     persistence.saveProfile(profile.id, profileValues.getString("updatedFieldsJson"), 2)
-    persistence.saveAlert(AlertRuleEntity(boardId, alertValues.getString("id"), alertValues.getString("controlId"), alertValues.getDouble("threshold"), null, enabled = true, soundType = alertValues.getString("soundType"), createdAt = 1, source = alertValues.getString("source")))
+    persistence.saveAlert(AlertRuleEntity(boardId, alertValues.getString("id"), alertValues.getString("controlId"), alertValues.getDouble("threshold"), null, enabled = true, spec = alertValues.getString("spec"), createdAt = 1))
     persistence.setAlertEnabled(boardId, alertValues.getString("id"), false)
     db.close()
 
@@ -306,8 +306,10 @@ class RecordingPersistenceHostTest {
     assertTrue(lastDeleteFailed)
     assertEquals(1, persistence.history("compat-3").size)
     assertEquals(expected.getInt("historyCount"), dao.getTuneHistoryEntries(profile.id).size)
-    assertEquals(alertValues.getString("id"), persistence.alertRules(boardId).single().id)
-    assertEquals(expected.getBoolean("alertEnabled"), persistence.alertRules(boardId).single().enabled)
+    // The Board has no preset rows, so the app-default presets expand beside the rider's rule.
+    val riderRule = persistence.alertRules(boardId) { throw it }.single { !AlertPresetPersistence.isPresetId(it.id) }
+    assertEquals(alertValues.getString("id"), riderRule.id)
+    assertEquals(expected.getBoolean("alertEnabled"), riderRule.enabled)
     assertEquals(null, persistence.profile("absent"))
     db.close()
 
@@ -335,7 +337,7 @@ class RecordingPersistenceHostTest {
     connection.close()
     db = open(); persistence = TuneAlertPersistence(db.telemetryDao())
     var queryFailed = false
-    try { persistence.alertRules(boardId) } catch (_: Exception) { queryFailed = true }
+    try { persistence.alertRules(boardId) { throw it } } catch (_: Exception) { queryFailed = true }
     assertTrue(queryFailed)
     db.close()
     Files.deleteIfExists(path)
@@ -350,7 +352,7 @@ class RecordingPersistenceHostTest {
     val samples = input.getJSONArray("samples")
     val points = (0 until samples.length()).map { index ->
       val sample = samples.getJSONObject(index)
-      BucketTelemetryPoint(sample.getLong("capturedAtMs"), null, LEGACY_RIDE_RECORDING_ID, sample.getInt("speedCentiKmh"),
+      BucketTelemetryPoint(sample.getLong("capturedAtMs"), null, sample.getInt("speedCentiKmh"),
         80_000, 0, 0, 100, sample.getLong("odometerCm"), 300, 300)
     }
     val summary = buildFavoriteSummary(buildTelemetryBuckets(points, emptyList()))
@@ -561,7 +563,7 @@ class RecordingPersistenceHostTest {
     val samples = recording.getJSONArray("samples")
     val points = (0 until samples.length()).map { index ->
       val sample = samples.getJSONObject(index)
-      BucketTelemetryPoint(sample.getLong("capturedAtMs"), boardId, LEGACY_RIDE_RECORDING_ID, sample.getInt("speedCentiKmh"),
+      BucketTelemetryPoint(sample.getLong("capturedAtMs"), boardId, sample.getInt("speedCentiKmh"),
         sample.getInt("batteryVoltageMv"), 5000, 2000, 200, sample.getLong("odometerCm"), 300, 350)
     }
     val current = buildTelemetryBuckets(points, emptyList()).single()
@@ -697,7 +699,7 @@ class RecordingPersistenceHostTest {
     val expected = fixture.getJSONObject("expected")
     val points = (0 until samples.length()).map { index ->
       val sample = samples.getJSONObject(index)
-      BucketTelemetryPoint(sample.getLong("capturedAtMs"), boardId, LEGACY_RIDE_RECORDING_ID, sample.getInt("speedCentiKmh"),
+      BucketTelemetryPoint(sample.getLong("capturedAtMs"), boardId, sample.getInt("speedCentiKmh"),
         sample.getInt("batteryVoltageMv"), 5000, 2000, 200, sample.getLong("odometerCm"), 300, 350)
     }
     val buckets = buildTelemetryBuckets(points, emptyList())
