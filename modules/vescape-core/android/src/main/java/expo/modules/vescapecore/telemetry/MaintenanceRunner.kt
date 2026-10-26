@@ -139,6 +139,9 @@ internal object MaintenanceRunner {
     )
     var next: MaintenanceJobState
     try {
+      // The old fingerprint goes before the first chunk: a run that ends partway must leave the job
+      // stale, even if the inputs change back to the ones the old fingerprint names.
+      runScope.chunk { it.deleteAppSetting(maintenanceJobKey(job.id)) }
       val outcome = job.run(runScope, settings)
       next = when (outcome) {
         MaintenanceJobOutcome.Completed -> {

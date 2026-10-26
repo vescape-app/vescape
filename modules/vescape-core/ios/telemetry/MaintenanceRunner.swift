@@ -194,6 +194,9 @@ final class MaintenanceRunner {
     )
     var status: MaintenanceJobStatus
     do {
+      // The old fingerprint goes before the first chunk: a run that ends partway must leave the job
+      // stale, even if the inputs change back to the ones the old fingerprint names.
+      try scope.chunk { try $0.execute(sql: "DELETE FROM app_settings WHERE key = ?", arguments: [maintenanceJobKey(job.id)]) }
       switch try job.run(scope, settings: settings) {
       case .completed:
         try scope.chunk { try publishMaintenanceFingerprint($0, id: job.id, fingerprint: fingerprint, nowMs: scope.nowMs()) }
