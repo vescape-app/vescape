@@ -12,6 +12,7 @@ import {
 import { theme } from '@/constants/theme'
 import { SettingsCard } from '@/components/settings/SettingsCard'
 import { SettingsRow } from '@/components/settings/SettingsRow'
+import { SettingsSectionTitle } from '@/components/settings/SettingsSectionTitle'
 import { Button } from '@/components/base/Button'
 import { ConfirmModal } from '@/components/modals/ConfirmModal'
 import { useSettingsDatabaseOps } from '@/modules/settings/hooks/useSettingsDatabaseOps'
@@ -33,33 +34,9 @@ export default function DatabaseSettingsScreen() {
       <ScrollView contentContainerStyle={styles.content}>
         <IconHero
           icon={DatabaseIcon}
-          description="Back up and restore your ride history database. Ride data updates itself in the background."
+          description="Back up and restore your ride history database."
         />
         {db.dbSizeError ? <Text style={styles.error}>{db.dbSizeError}</Text> : null}
-        <SettingsCard>
-          {progress ? (
-            <View style={styles.progress}>
-              <View style={styles.progressTrack}>
-                <View
-                  style={[
-                    styles.progressFill,
-                    { width: `${Math.round((progress.fraction ?? 0) * 100)}%` },
-                  ]}
-                />
-              </View>
-              <Text style={styles.progressText}>{progress.statusLine}</Text>
-            </View>
-          ) : null}
-          {(maintenance?.jobs ?? []).map((job) => (
-            <SettingsRow
-              key={job.id}
-              icon={job.status === 'failed' ? WarningCircleIcon : ClockCounterClockwiseIcon}
-              iconColor={job.status === 'failed' ? theme.status.warning.color : undefined}
-              label={maintenanceJobTitle(job.id)}
-              hint={maintenanceJobDetail(job)}
-            />
-          ))}
-        </SettingsCard>
         <SettingsCard>
           <SettingsRow
             icon={DownloadSimpleIcon}
@@ -94,6 +71,36 @@ export default function DatabaseSettingsScreen() {
             }
           />
         </SettingsCard>
+        <SettingsSectionTitle>Background updates</SettingsSectionTitle>
+        <Text style={styles.sectionHint}>
+          Past rides are kept up to date in the background: summaries are recalculated after filter
+          changes or app updates, and weather is added to rides that are missing it. Nothing to do
+          here.
+        </Text>
+        <SettingsCard>
+          {progress ? (
+            <View style={styles.progress}>
+              <View style={styles.progressTrack}>
+                <View
+                  style={[
+                    styles.progressFill,
+                    { width: `${Math.round((progress.fraction ?? 0) * 100)}%` },
+                  ]}
+                />
+              </View>
+              <Text style={styles.progressText}>{progress.statusLine}</Text>
+            </View>
+          ) : null}
+          {(maintenance?.jobs ?? []).map((job) => (
+            <SettingsRow
+              key={job.id}
+              icon={job.status === 'failed' ? WarningCircleIcon : ClockCounterClockwiseIcon}
+              iconColor={job.status === 'failed' ? theme.status.warning.color : undefined}
+              label={maintenanceJobTitle(job.id)}
+              hint={maintenanceJobDetail(job)}
+            />
+          ))}
+        </SettingsCard>
       </ScrollView>
       <ConfirmModal
         visible={db.restoreConfirmVisible}
@@ -121,6 +128,12 @@ const styles = StyleSheet.create({
     color: theme.status.error.text,
     fontSize: 12,
     textAlign: 'center',
+  },
+  sectionHint: {
+    color: theme.neutral.textMuted,
+    fontSize: 12,
+    marginHorizontal: 4,
+    marginBottom: 4,
   },
   progress: {
     gap: 6,

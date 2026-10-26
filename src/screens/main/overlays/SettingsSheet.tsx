@@ -218,9 +218,7 @@ interface StorageCellProps {
 export function StorageCell({ bytes, progress, failed, onPress }: StorageCellProps) {
   const accent = theme.settingsIcon.database
   const value = progress
-    ? progress.fraction != null
-      ? `${Math.round(progress.fraction * 100)}%`
-      : 'Updating'
+    ? `${Math.round((progress.fraction ?? 0) * 100)}%`
     : bytes != null
       ? formatBytes(bytes)
       : DASH
@@ -230,7 +228,8 @@ export function StorageCell({ bytes, progress, failed, onPress }: StorageCellPro
       accent={accent}
       value={value}
       valueColor={progress ? accent : undefined}
-      label="Storage"
+      // While a job runs the percentage is update progress, not storage used.
+      label={progress ? 'Updating' : 'Storage'}
       dot={failed ? theme.status.warning.color : undefined}
       onPress={onPress}
       accessibilityLabel={
