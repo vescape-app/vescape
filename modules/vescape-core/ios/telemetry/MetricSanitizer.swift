@@ -8,7 +8,7 @@ internal let EXCLUSION_REASON_LOW_SPEED = "low_speed"
 internal let EXCLUSION_REASON_FREE_SPIN = "free_spin"
 private let EXCLUSION_RANGE_MERGE_GAP_MS: Int64 = 2_000
 private let FREE_SPIN_LOW_GPS_CUTOFF_CENTI_KMH = 700
-private let FREE_SPIN_NEAREST_GPS_MAX_AGE_MS: Int64 = 10_000
+internal let FREE_SPIN_NEAREST_GPS_MAX_AGE_MS: Int64 = 10_000
 internal let DEFAULT_FREE_SPIN_MAX_SPEED_DELTA_KMH = 12.0
 internal let DEFAULT_FREE_SPIN_STATIONARY_BOARD_CAP_KMH = 15.0
 
@@ -19,9 +19,9 @@ internal struct MetricSanitizerConfig {
 
   static func from(settings: [String: Any?]) -> MetricSanitizerConfig {
     MetricSanitizerConfig(
-      movingSpeedThresholdCentiKmh: max(0, Int(((settings["movingSpeedThresholdKmh"] as? NSNumber)?.doubleValue ?? 3.0) * 100.0)),
-      freeSpinMaxSpeedDeltaCentiKmh: max(0, Int(((settings["freeSpinMaxSpeedDeltaKmh"] as? NSNumber)?.doubleValue ?? DEFAULT_FREE_SPIN_MAX_SPEED_DELTA_KMH) * 100.0)),
-      freeSpinStationaryBoardCapCentiKmh: max(0, Int(((settings["freeSpinStationaryBoardCapKmh"] as? NSNumber)?.doubleValue ?? DEFAULT_FREE_SPIN_STATIONARY_BOARD_CAP_KMH) * 100.0))
+      movingSpeedThresholdCentiKmh: max(0, Int((((settings["movingSpeedThresholdKmh"] as? NSNumber)?.doubleValue ?? 3.0) * 100.0).rounded())),
+      freeSpinMaxSpeedDeltaCentiKmh: max(0, Int((((settings["freeSpinMaxSpeedDeltaKmh"] as? NSNumber)?.doubleValue ?? DEFAULT_FREE_SPIN_MAX_SPEED_DELTA_KMH) * 100.0).rounded())),
+      freeSpinStationaryBoardCapCentiKmh: max(0, Int((((settings["freeSpinStationaryBoardCapKmh"] as? NSNumber)?.doubleValue ?? DEFAULT_FREE_SPIN_STATIONARY_BOARD_CAP_KMH) * 100.0).rounded()))
     )
   }
 }

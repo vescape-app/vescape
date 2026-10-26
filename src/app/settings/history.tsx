@@ -85,7 +85,8 @@ export default function HistorySettingsScreen() {
 
         <SettingsSectionTitle>Filters</SettingsSectionTitle>
         <Text style={styles.sectionHint}>
-          Changes apply to new rides only. Rebuild history to reprocess past rides.
+          Changing this updates all past rides in the background. It can take a while, and until it
+          finishes some rides still show values from the old setting.
         </Text>
 
         <SettingsCard>

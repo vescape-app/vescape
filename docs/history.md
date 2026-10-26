@@ -68,7 +68,7 @@ successful refresh, Board connected or not, offers its conditions to the process
 - an observation timestamp already stored is the same observation and is never written again, so a
   cached API answer does not renew freshness; a failed fetch writes nothing.
 
-Restore and Clear all go through `WeatherObservationFence`: a write whose observation landed before
+Restore and Clear all go through `DatabaseReplacementFence`: a write whose observation landed before
 the fence is dropped rather than reaching the replacement database. Clear all removes observations
 except those a Favorite reads (inside it, or up to 24 h before its start). Backups carry the table
 like any other.
@@ -108,11 +108,62 @@ Older pages use native's opaque `nextCursorBeforeMs`. A page boundary is always 
 Ride, never through an arbitrary minute bucket. Native concatenates the precomputed bucket route
 segments for list thumbnails, so JS neither groups buckets nor loads raw tracks per row.
 
+### Maintenance Jobs
+
+History reads stay precomputed (ADR-0005). Bringing old summaries up to date with the current app is
+the job of **Maintenance Jobs**, which native runs by itself. There is no Rebuild history button.
+
+- **Declaration.** `MAINTENANCE_JOBS` in `MaintenanceJobs.kt` and `maintenanceJobs` in
+  `MaintenanceJobs.swift` list every job in run order. A job declares a `version`, the setting keys
+  its output depends on (`inputKeys`, normalized by `inputs`), and `requiresNetwork`.
+- **Done state.** A job is done when the `app_settings` row `maintenanceJob.<id>` holds its
+  fingerprint `version|inputs`, e.g. `1|moving=300|freeSpinDelta=1200|freeSpinCap=1500`. Anything
+  else is stale. A done job costs one row read. Fingerprints travel with backups, so restoring an
+  older backup makes its jobs stale again. There is no progress cursor and no pending-work state: a
+  run that stops early restarts from zero, and the missing fingerprint is the only obligation.
+- **Runner.** `MaintenanceRunner` runs stale jobs one at a time, in declaration order, on one
+  low-priority thread or queue. A failed or waiting job does not block the next. It checks after
+  launch (10 s after startup), when the network comes back (network jobs only), 3 s after the last
+  change to an input setting (a running pass is cancelled and restarted with the new values), when
+  a skipped active ride closes, and after Restore or Clear all.
+- **Restore and Clear all.** Every job write is a chunk under `DatabaseReplacementFence`. A fence
+  waits for the in-flight chunk, and the next chunk of a run that started before it stops the run.
+  The runner then checks again against the resulting database, also when the restore failed.
+- **Active ride.** A job never touches the ride that may still be recording. Under ADR-0041 that is
+  every sample, on any Board and either stream, chained back from the newest one by gaps shorter
+  than `rideSplitGapMinutes`, while the newest is younger than that gap. A run that had to skip it
+  returns without its fingerprint and the runner checks again once the gap has passed, or on the
+  next launch.
+- **State.** `getMaintenanceState()` and `onMaintenanceState` carry each job's status (`pending`,
+  `running`, `done`, `waitingForNetwork`, `failed`), progress, last run, duration and last error,
+  plus a `historyRevision` bumped at most every 3 s after committed chunks. JS re-reads open history
+  pages and Favorites on a new revision. Failures are reported to Sentry; start, chunk, finish and
+  cancel leave breadcrumbs and log lines.
+- **UI.** A running job takes over the Settings button (database icon and progress ring, below
+  update and backup) and replaces the drawer Storage cell's size with its progress. A failed job
+  puts a warning dot on the Storage cell; waiting for network does not. The Database screen lists
+  every job.
+
+**Ride summaries** is the first job. Its inputs are the Metric Sanitizer settings. It rebuilds
+minute buckets, exclusion ranges and route previews oldest first, one transaction per owned chunk:
+whole minutes, half-open `[from, to)`, at most one clock hour. Inside the transaction it reads the
+frames and Ride Track of the chunk, plus read-only context: each Board's delta chain and the last
+precise fix from the previous chunk (dropped when a ride deletion removed them) and fixes up to 10 s
+outside the chunk for the free-spin sanitizer. It then replaces the chunk's buckets and the chunk's
+portion of every exclusion range, keeping portions outside it. Rebuilt ranges are plain inserts and
+never merge across a chunk edge, so rebuilding twice gives identical rows. History stays complete
+throughout: a mix of old and new hours, never a missing ride.
+
+Retired one-shot jobs and their keys may be removed once the Release Policy minimum supported version
+is past the version that shipped them. Ride summaries is not one-shot: sanitizer changes must keep
+rebuilding history.
+
 ### Bucket route previews
 
 Favorite cards use the same simplified geometry as ride cards. Fully selected minutes read their
 stored previews; partially selected edge minutes simplify original fixes inside the exact Favorite
-range. Full minutes without a generated preview retain coarse anchors until Rebuild history. Reads are scoped to the
+range. Full minutes without a generated preview retain coarse anchors until the Ride summaries Maintenance
+Job regenerates them. Reads are scoped to the
 Favorite's board and preserve GPS/recording gaps. An empty native route stays empty in JS.
 
 Schema 49 adds nullable `telemetry_minute_buckets.route_preview`. Each value is a JSON array of
@@ -149,10 +200,10 @@ once every tile it needs is on disk; until then, and offline, it shows the plain
 ignores Privacy Zones, so it is for on-device display only. The 30-second gap rule shares the existing limitation around short
 Privacy Zone spans: no explicit privacy-break metadata is stored.
 
-Older buckets keep their first-coordinate fallback until the rider runs the existing **Rebuild
-history** operation in database settings. That explicit maintenance operation regenerates previews
-from retained Ride Track fixes, alongside the other summaries. Schema migration and ordinary reads
-never scan historical tracks or mutate them. Backups preserve the preview column across platforms.
+Older buckets keep their first-coordinate fallback until the Ride summaries Maintenance Job runs. It
+regenerates previews from retained Ride Track fixes, alongside the other summaries. Schema migration
+and ordinary reads never scan historical tracks or mutate them. Backups preserve the preview column
+across platforms.
 
 `historyStore.selectSession(session)` loads:
 

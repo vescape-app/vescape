@@ -4,8 +4,10 @@ import {
   ArrowFatLinesUpIcon,
   BroadcastIcon,
   ArrowsClockwiseIcon,
+  DatabaseIcon,
   GearSixIcon,
   UsersThreeIcon,
+  type Icon,
 } from 'phosphor-react-native'
 import { router } from 'expo-router'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
@@ -31,7 +33,12 @@ import type { Board } from '@/modules/board/store/boardStore'
 import { useGroupRideStore } from '@/modules/group-ride/store/groupRideStore'
 import { theme } from '@/constants/theme'
 import { selectAvailableUpdate } from '@/modules/release/lib/availableUpdate'
-import { settingsTriggerState } from '@/screens/main/overlays/settingsTrigger'
+import {
+  settingsTriggerState,
+  type SettingsTriggerTakeover,
+} from '@/screens/main/overlays/settingsTrigger'
+import { maintenanceProgress } from '@/modules/settings/lib/maintenance'
+import { useMaintenanceStore } from '@/modules/settings/store/maintenanceStore'
 import { useAppStatusStore } from '@/modules/release/store/appStatusStore'
 import { useBackupSlot } from '@/modules/profile/hooks/useBackupSlot'
 import type { MapSelection } from '@/modules/map/lib/mapSelection'
@@ -57,6 +64,12 @@ interface TopBarProps {
   activeNavigationTarget: MapSelection | null
   onNavigationPress: () => void
   onCancelNavigation: () => void
+}
+
+const TAKEOVER_ICONS: Record<NonNullable<SettingsTriggerTakeover>, Icon> = {
+  update: ArrowFatLinesUpIcon,
+  backup: ArrowsClockwiseIcon,
+  maintenance: DatabaseIcon,
 }
 
 export function TopBar({
@@ -111,10 +124,17 @@ export function TopBar({
   const versionWarning =
     appStatus?.version.status === 'update-warning' || appStatus?.version.status === 'online-blocked'
   const backup = useBackupSlot()
+  // Primitives, rounded to whole percent, so a running job re-renders the bar only when the ring moves.
+  const maintenanceRunning = useMaintenanceStore((s) => maintenanceProgress(s.state) !== null)
+  const maintenanceFraction = useMaintenanceStore((s) => {
+    const fraction = maintenanceProgress(s.state)?.fraction
+    return fraction == null ? null : Math.round(fraction * 100) / 100
+  })
   const trigger = settingsTriggerState({
     versionWarning,
     updateAvailable: availableUpdate !== null,
     backup,
+    maintenance: maintenanceRunning ? { progress: maintenanceFraction } : null,
   })
   const navigationTargetIcon =
     activeNavigationTarget?.type === 'mapPoint'
@@ -223,15 +243,15 @@ export function TopBar({
             onConnect={onConnect}
           />
         )}
-        {/* The gear wears whatever is happening inside the drawer — a required update, or a
-            running backup with its progress — the same way Social wears an active Group Ride. */}
+        {/* The gear wears whatever is happening inside the drawer — a required update, a running
+            backup or Maintenance Job with its progress — the same way Social wears an active Group Ride. */}
         <View ref={settingsRef} collapsable={false} style={styles.iconRight}>
           <IconButton
             icon={GearSixIcon}
             takeover={
               trigger.takeover
                 ? {
-                    icon: trigger.takeover === 'update' ? ArrowFatLinesUpIcon : ArrowsClockwiseIcon,
+                    icon: TAKEOVER_ICONS[trigger.takeover],
                     accent: trigger.accent,
                     progress: trigger.progress,
                   }

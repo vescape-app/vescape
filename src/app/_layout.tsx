@@ -24,6 +24,7 @@ import { startAccessoryStateMirror } from '@/modules/accessories/store/accessory
 import { startAlertsBoardSync } from '@/bootstrap/alertsBoardSync'
 import { startLiveStateSync } from '@/bootstrap/liveStateSync'
 import { startAppDataSync } from '@/bootstrap/appDataSync'
+import { startMaintenanceSync } from '@/bootstrap/maintenanceSync'
 import { useSessionFixtures } from '@/bootstrap/sessionFixtures'
 import { startBoardConfigValuesSync } from '@/modules/board/store/boardConfigValuesStore'
 import { startMotorConfigValuesSync } from '@/modules/board/store/motorConfigValuesStore'
@@ -98,6 +99,7 @@ function RootLayout() {
     useGroupRideStore.getState().startObserving()
     const stopLiveStateSync = startLiveStateSync()
     const stopAppDataSync = startAppDataSync()
+    const stopMaintenanceSync = startMaintenanceSync()
     const stopBoardWarningsSync = startBoardWarningsSync()
     const stopVescFaultsSync = startVescFaultsSync()
     const stopBoardConfigValuesSync = startBoardConfigValuesSync()
@@ -113,6 +115,7 @@ function RootLayout() {
       useGroupRideStore.getState().stopObserving()
       stopLiveStateSync()
       stopAppDataSync()
+      stopMaintenanceSync()
       stopBoardWarningsSync()
       stopVescFaultsSync()
       stopBoardConfigValuesSync()

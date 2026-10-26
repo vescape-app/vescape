@@ -1,12 +1,12 @@
-import { View, StyleSheet, ScrollView, Pressable } from 'react-native'
+import { View, StyleSheet, ScrollView } from 'react-native'
 import { Text } from '@/components/base/Text'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import {
   ClockCounterClockwiseIcon,
-  CheckCircleIcon,
   DownloadSimpleIcon,
   UploadSimpleIcon,
   DatabaseIcon,
+  WarningCircleIcon,
 } from 'phosphor-react-native'
 
 import { theme } from '@/constants/theme'
@@ -16,64 +16,51 @@ import { Button } from '@/components/base/Button'
 import { ConfirmModal } from '@/components/modals/ConfirmModal'
 import { useSettingsDatabaseOps } from '@/modules/settings/hooks/useSettingsDatabaseOps'
 import { IconHero } from '@/components/settings/IconHero'
+import {
+  maintenanceJobDetail,
+  maintenanceJobTitle,
+  maintenanceProgress,
+} from '@/modules/settings/lib/maintenance'
+import { useMaintenanceStore } from '@/modules/settings/store/maintenanceStore'
 
 export default function DatabaseSettingsScreen() {
   const db = useSettingsDatabaseOps()
+  const maintenance = useMaintenanceStore((s) => s.state)
+  const progress = maintenanceProgress(maintenance)
 
   return (
     <SafeAreaView style={styles.container} edges={['bottom']}>
       <ScrollView contentContainerStyle={styles.content}>
         <IconHero
           icon={DatabaseIcon}
-          description="Back up, restore, and rebuild your ride history database."
+          description="Back up and restore your ride history database. Ride data updates itself in the background."
         />
         {db.dbSizeError ? <Text style={styles.error}>{db.dbSizeError}</Text> : null}
         <SettingsCard>
-          <SettingsRow
-            icon={ClockCounterClockwiseIcon}
-            label="Rebuild history"
-            hint={db.rebuildHint}
-            right={
-              <Pressable
-                style={[
-                  styles.rebuildButton,
-                  db.rebuildState === 'running' && styles.rebuildButtonDisabled,
-                  db.rebuildState === 'done' && styles.rebuildButtonDone,
-                ]}
-                onPress={() => void db.handleRebuildBuckets()}
-                disabled={db.rebuildState === 'running'}
-              >
-                {db.rebuildState === 'done' && (
-                  <CheckCircleIcon size={13} color={theme.palette.green.text} weight="fill" />
-                )}
-                <Text style={styles.rebuildButtonText}>
-                  {db.rebuildState === 'running'
-                    ? 'Rebuilding...'
-                    : db.rebuildState === 'done'
-                      ? 'Done'
-                      : 'Rebuild'}
-                </Text>
-              </Pressable>
-            }
-          >
-            {db.rebuildState === 'running' && (
-              <View style={styles.rebuildProgress}>
-                <View style={styles.rebuildProgressTrack}>
-                  <View
-                    style={[
-                      styles.rebuildProgressFill,
-                      {
-                        width: `${Math.round(db.rebuildProgressValue * 100)}%`,
-                      },
-                    ]}
-                  />
-                </View>
-                {db.rebuildProgressLabel ? (
-                  <Text style={styles.rebuildProgressText}>{db.rebuildProgressLabel}</Text>
-                ) : null}
+          {progress ? (
+            <View style={styles.progress}>
+              <View style={styles.progressTrack}>
+                <View
+                  style={[
+                    styles.progressFill,
+                    { width: `${Math.round((progress.fraction ?? 0) * 100)}%` },
+                  ]}
+                />
               </View>
-            )}
-          </SettingsRow>
+              <Text style={styles.progressText}>{progress.statusLine}</Text>
+            </View>
+          ) : null}
+          {(maintenance?.jobs ?? []).map((job) => (
+            <SettingsRow
+              key={job.id}
+              icon={job.status === 'failed' ? WarningCircleIcon : ClockCounterClockwiseIcon}
+              iconColor={job.status === 'failed' ? theme.status.warning.color : undefined}
+              label={maintenanceJobTitle(job.id)}
+              hint={maintenanceJobDetail(job)}
+            />
+          ))}
+        </SettingsCard>
+        <SettingsCard>
           <SettingsRow
             icon={DownloadSimpleIcon}
             iconColor={theme.palette.green.color}
@@ -85,7 +72,7 @@ export default function DatabaseSettingsScreen() {
                 size="sm"
                 variant="secondary"
                 loading={db.backupState === 'running'}
-                disabled={db.restoreState === 'running' || db.rebuildState === 'running'}
+                disabled={db.restoreState === 'running'}
                 onPress={db.handleBackupDatabase}
               />
             }
@@ -101,7 +88,7 @@ export default function DatabaseSettingsScreen() {
                 size="sm"
                 variant="destructive"
                 loading={db.restoreState === 'running'}
-                disabled={db.backupState === 'running' || db.rebuildState === 'running'}
+                disabled={db.backupState === 'running'}
                 onPress={() => void db.handleRestoreDatabase()}
               />
             }
@@ -135,52 +122,25 @@ const styles = StyleSheet.create({
     fontSize: 12,
     textAlign: 'center',
   },
-  rebuildButton: {
-    backgroundColor: theme.neutral.surfaceDeep,
-    borderWidth: 1,
-    borderColor: theme.neutral.border,
-    borderRadius: 8,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 5,
-    paddingHorizontal: 10,
-    paddingVertical: 8,
-  },
-  rebuildButtonDisabled: {
-    opacity: 0.5,
-  },
-  rebuildButtonDone: {
-    borderColor: theme.palette.green.border,
-    backgroundColor: theme.palette.green.bg,
-  },
-  rebuildButtonText: {
-    color: theme.neutral.textSecondary,
-    fontSize: 12,
-    fontWeight: '700',
-  },
-  rebuildProgress: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
+  progress: {
+    gap: 6,
     marginHorizontal: 14,
-    marginBottom: 12,
+    marginTop: 12,
+    marginBottom: 4,
   },
-  rebuildProgressTrack: {
-    flex: 1,
+  progressTrack: {
     height: 3,
     backgroundColor: theme.neutral.surfaceDeep,
     borderRadius: 999,
     overflow: 'hidden',
   },
-  rebuildProgressFill: {
+  progressFill: {
     height: '100%',
-    backgroundColor: theme.status.warning.color,
+    backgroundColor: theme.settingsIcon.database,
   },
-  rebuildProgressText: {
-    minWidth: 44,
+  progressText: {
     color: theme.neutral.textMuted,
     fontSize: 11,
     fontWeight: '700',
-    textAlign: 'right',
   },
 })

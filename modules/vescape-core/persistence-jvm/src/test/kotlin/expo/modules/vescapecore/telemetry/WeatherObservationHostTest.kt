@@ -28,7 +28,7 @@ class WeatherObservationHostTest {
 
   @Test fun launchRefreshWritesThenOnlyChangesAndFreshnessDo(): Unit = withDb { _, open ->
     var db = open()
-    val first = WeatherObservationRecorder({ db.telemetryDao() }, WeatherObservationFence())
+    val first = WeatherObservationRecorder({ db.telemetryDao() }, DatabaseReplacementFence())
     assertTrue("first refresh after launch", first.record(obs(0), first.ticket()))
     assertFalse("unchanged an hour later", first.record(obs(hour), first.ticket()))
     assertFalse("unchanged just under a day", first.record(obs(day - 1), first.ticket()))
@@ -39,7 +39,7 @@ class WeatherObservationHostTest {
 
     // A new process: its first refresh writes even when nothing changed, then the rules resume.
     db = open()
-    val relaunched = WeatherObservationRecorder({ db.telemetryDao() }, WeatherObservationFence())
+    val relaunched = WeatherObservationRecorder({ db.telemetryDao() }, DatabaseReplacementFence())
     assertTrue(relaunched.record(obs(2 * day + 2 * hour, temp = 15), relaunched.ticket()))
     assertFalse(relaunched.record(obs(2 * day + 3 * hour, temp = 15), relaunched.ticket()))
     assertEquals(4, db.telemetryDao().getWeatherObservationsSpanning(0, 10 * day).size)
@@ -48,7 +48,7 @@ class WeatherObservationHostTest {
 
   @Test fun repeatedApiTimestampNeverRenewsOrDuplicates(): Unit = withDb { _, open ->
     val db = open()
-    val recorder = WeatherObservationRecorder({ db.telemetryDao() }, WeatherObservationFence())
+    val recorder = WeatherObservationRecorder({ db.telemetryDao() }, DatabaseReplacementFence())
     assertTrue(recorder.record(obs(0), recorder.ticket()))
     assertFalse("same observation, new conditions", recorder.record(obs(0, temp = 30), recorder.ticket()))
     assertFalse(recorder.record(obs(day - hour), recorder.ticket()))
@@ -70,7 +70,7 @@ class WeatherObservationHostTest {
 
   @Test fun restoreOrClearFencesALateWrite(): Unit = withDb { _, open ->
     val db = open()
-    val fence = WeatherObservationFence()
+    val fence = DatabaseReplacementFence()
     val recorder = WeatherObservationRecorder({ db.telemetryDao() }, fence)
     val staleTicket = recorder.ticket()
     fence.fence { db.telemetryDao().clearAll() }

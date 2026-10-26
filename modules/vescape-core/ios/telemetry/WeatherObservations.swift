@@ -127,44 +127,6 @@ internal func storeWeatherObservation(_ db: Database, _ observation: WeatherObse
   return db.changesCount > 0
 }
 
-/// Serializes observation writes against Restore and Clear all. A writer takes a `ticket()` when its
-/// observation lands; a fence bumps the generation, so a write whose ticket predates a restore or a
-/// clear is dropped instead of reaching the replacement database.
-/// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/WeatherObservations.kt `WeatherObservationFence`
-final class WeatherObservationFence {
-  /// The one fence every production writer, Restore and Clear all share.
-  static let process = WeatherObservationFence()
-
-  /// Serializes writes and fences; held across database work, never taken on the main thread.
-  private let workLock = NSLock()
-  /// Guards only `generation`, so the main-thread `ticket()` never waits on a write or a restore.
-  private let generationLock = NSLock()
-  private var generation: Int64 = 0
-
-  func ticket() -> Int64 {
-    generationLock.lock()
-    defer { generationLock.unlock() }
-    return generation
-  }
-
-  /// Run `block` only if nothing fenced since `ticket`; nil when the write was fenced off.
-  func write<T>(ticket: Int64, _ block: () throws -> T) rethrows -> T? {
-    workLock.lock()
-    defer { workLock.unlock() }
-    guard ticket == self.ticket() else { return nil }
-    return try block()
-  }
-
-  func fence<T>(_ block: () throws -> T) rethrows -> T {
-    workLock.lock()
-    defer { workLock.unlock() }
-    generationLock.lock()
-    generation += 1
-    generationLock.unlock()
-    return try block()
-  }
-}
-
 /// The write seam for every observation writer: live refreshes now, the history backfill later.
 /// Holds the "first successful refresh after launch" flag, so one instance lives per process.
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/WeatherObservations.kt `WeatherObservationRecorder`
@@ -174,11 +136,11 @@ final class WeatherObservationRecorder {
   static let process = WeatherObservationRecorder(writer: { try TelemetryDatabase.requirePool() })
 
   private let writer: () throws -> any DatabaseWriter
-  private let fence: WeatherObservationFence
+  private let fence: DatabaseReplacementFence
   /// Guarded by the fence lock: only touched inside `fence.write`.
   private var storedThisProcess = false
 
-  init(writer: @escaping () throws -> any DatabaseWriter, fence: WeatherObservationFence = .process) {
+  init(writer: @escaping () throws -> any DatabaseWriter, fence: DatabaseReplacementFence = .process) {
     self.writer = writer
     self.fence = fence
   }

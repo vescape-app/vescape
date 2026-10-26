@@ -497,6 +497,8 @@ final class AppDataRepository {
     var merged = try boardSettingsPersistence().settings(defaults: Self.defaultSettings)
     merged.removeValue(forKey: Self.navigationPathKey)
     merged.removeValue(forKey: Self.navigationProfileKey)
+    // Maintenance Job fingerprints are native-owned state, not settings.
+    for key in merged.keys where key.hasPrefix(MAINTENANCE_JOB_KEY_PREFIX) { merged.removeValue(forKey: key) }
     if merged["movingSpeedThresholdKmh"] == nil {
       if let legacy = merged["avgSpeedCutoffKmh"] ?? merged["movingAvgSpeedThresholdKmh"] {
         merged["movingSpeedThresholdKmh"] = legacy
@@ -524,7 +526,8 @@ final class AppDataRepository {
     // profile through `setNavigationProfile`, never by writing these rows.
     guard
       key != "legalPolicy", key != "legalMode",
-      key != Self.navigationPathKey, key != Self.navigationProfileKey
+      key != Self.navigationPathKey, key != Self.navigationProfileKey,
+      !key.hasPrefix(MAINTENANCE_JOB_KEY_PREFIX)
     else { return }
     if key == "unitSystem" {
       let units = rawValue == nil || rawValue is NSNull ? "metric" : validUnitSystem(rawValue)

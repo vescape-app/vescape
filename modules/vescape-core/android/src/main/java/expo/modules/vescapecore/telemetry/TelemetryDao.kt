@@ -610,11 +610,33 @@ interface TelemetryDao {
     return insertWeatherObservation(WeatherObservationEntity.of(observation)) != -1L
   }
 
+  /** One Ride summaries Maintenance Job chunk, read and replaced in a single transaction. */
   @Transaction
-  suspend fun rebuildTelemetryBuckets(
+  suspend fun rebuildRideSummariesChunk(
+    fromMs: Long,
+    context: RideSummariesContext,
     config: MetricSanitizerConfig,
-    onProgress: (Int, Int) -> Unit,
-  ): Int = rebuildTelemetryBucketsImpl(config, onProgress)
+    gapMs: Long,
+    nowMs: Long,
+  ): RideSummariesChunkResult = rebuildRideSummariesChunkImpl(fromMs, context, config, gapMs, nowMs)
+
+  @Query("DELETE FROM telemetry_minute_buckets WHERE bucket_start_ms >= :fromMs AND bucket_start_ms < :toMs")
+  suspend fun deleteBucketsRange(fromMs: Long, toMs: Long)
+
+  @Query("DELETE FROM metric_exclusion_ranges WHERE id = :id")
+  suspend fun deleteExclusionRange(id: Long)
+
+  @Query("SELECT MIN(captured_at_ms) FROM telemetry_frames WHERE captured_at_ms >= :fromMs")
+  suspend fun firstFrameAtOrAfter(fromMs: Long): Long?
+
+  @Query("SELECT MIN(fix_at_ms) FROM ride_track_points WHERE fix_at_ms >= :fromMs")
+  suspend fun firstRideTrackAtOrAfter(fromMs: Long): Long?
+
+  @Query("SELECT EXISTS(SELECT 1 FROM telemetry_frames WHERE captured_at_ms = :atMs AND board_id IS :boardId)")
+  suspend fun frameExists(atMs: Long, boardId: String?): Boolean
+
+  @Query("SELECT EXISTS(SELECT 1 FROM ride_track_points WHERE id = :id)")
+  suspend fun rideTrackPointExists(id: Long): Boolean
 
   /** Live Boards only — a tombstoned Board is gone from every Rider-facing list (ADR 0027). */
   @Query("SELECT * FROM boards WHERE deleted_at IS NULL ORDER BY created_at ASC")

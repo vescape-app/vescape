@@ -18,7 +18,7 @@ func runWeatherObservationContract() throws {
   }
 
   // Launch refresh, unchanged refreshes across 24 h, changed conditions.
-  let first = WeatherObservationRecorder(writer: { queue }, fence: WeatherObservationFence())
+  let first = WeatherObservationRecorder(writer: { queue }, fence: DatabaseReplacementFence())
   try require(try first.record(obs(0), ticket: first.ticket()), "first refresh after launch")
   try require(!(try first.record(obs(hour), ticket: first.ticket())), "unchanged an hour later")
   try require(!(try first.record(obs(day - 1), ticket: first.ticket())), "unchanged just under a day")
@@ -27,7 +27,7 @@ func runWeatherObservationContract() throws {
   try require(try first.record(obs(2 * day - 1 + hour, temp: 15), ticket: first.ticket()), "a day after the last stored row")
   try queue.close()
   queue = try DatabaseQueue(path: url.path)
-  let relaunched = WeatherObservationRecorder(writer: { queue }, fence: WeatherObservationFence())
+  let relaunched = WeatherObservationRecorder(writer: { queue }, fence: DatabaseReplacementFence())
   try require(try relaunched.record(obs(2 * day + 2 * hour, temp: 15), ticket: relaunched.ticket()), "relaunch writes")
   try require(!(try relaunched.record(obs(2 * day + 3 * hour, temp: 15), ticket: relaunched.ticket())), "relaunch then unchanged")
   try require(try stored().count == 4, "launch/change/freshness rows")
@@ -45,7 +45,7 @@ func runWeatherObservationContract() throws {
   try require(parsed == obs(1_792_933_200_000, temp: 13, code: 61, gust: 25, isDay: false), "normalized observation")
 
   // Restore or Clear all fences a write that landed before it.
-  let fence = WeatherObservationFence()
+  let fence = DatabaseReplacementFence()
   let fenced = WeatherObservationRecorder(writer: { queue }, fence: fence)
   let staleTicket = fenced.ticket()
   try fence.fence { try TelemetryMaintenancePersistence(writer: queue).clear(protectedRanges: []) }

@@ -114,6 +114,28 @@ export const useHistoryStore = create<HistoryStore>((set, get) => ({
     }
   },
 
+  async reloadLoadedSessions() {
+    const loaded = get().sessions.length
+    if (loaded === 0) return
+    try {
+      const [summary, page] = await Promise.all([
+        getTelemetrySummary(),
+        getRideHistoryPage({ limit: Math.max(RIDE_PAGE_SIZE, loaded) }),
+      ])
+      set((state) => ({
+        summary,
+        sessions: page.sessions,
+        selectedSession: state.selectedSession
+          ? (matchRideSession(page.sessions, state.selectedSession) ?? state.selectedSession)
+          : state.selectedSession,
+        hasMore: page.hasMore,
+        nextCursorBeforeMs: page.nextCursorBeforeMs,
+      }))
+    } catch (err) {
+      set({ error: err instanceof Error ? err.message : String(err) })
+    }
+  },
+
   async loadMore() {
     const { sessions: loadedSessions, hasMore, loading, nextCursorBeforeMs } = get()
     if (loading || !hasMore || nextCursorBeforeMs == null) return

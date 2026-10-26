@@ -55,7 +55,7 @@ object DatabaseBackupManager {
   internal suspend fun restoreBackup(context: Context, uriString: String) =
     TelemetryDatabase.rideExportMutex.withLock {
       // A weather observation fetched before the swap must not land in the restored database.
-      WeatherObservationFence.process.fence { restoreBackupLocked(context, uriString) }
+      DatabaseReplacementFence.process.fence { restoreBackupLocked(context, uriString) }
     }
 
   private fun restoreBackupLocked(context: Context, uriString: String) {

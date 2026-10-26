@@ -807,17 +807,13 @@ class TelemetryRepository private constructor(context: Context) {
     )
   }
 
-  suspend fun rebuildBuckets(onProgress: (current: Int, total: Int) -> Unit = { _, _ -> }): Int = withContext(Dispatchers.IO) {
-    maintenancePersistence.rebuild(metricSanitizerConfig, onProgress)
-  }
-
   suspend fun clearAll() = withContext(Dispatchers.IO) {
     flushNow()
     val protected = favoriteTelemetryRanges()
     if (protected.isNotEmpty()) {
       promoteProtectedRangeStarts(protected, boardId = null)
     }
-    WeatherObservationFence.process.fence { maintenancePersistence.clear(protected) }
+    DatabaseReplacementFence.process.fence { maintenancePersistence.clear(protected) }
     synchronized(lock) {
       pending.clear()
       pendingMarkers.clear()

@@ -101,7 +101,7 @@ enum DatabaseBackupManager {
     TelemetryRepository.shared.beginDatabaseSwap()
     defer { TelemetryRepository.shared.endDatabaseSwap() }
     // A weather observation fetched before the swap must not land in the restored database.
-    try WeatherObservationFence.process.fence {
+    try DatabaseReplacementFence.process.fence {
       try TelemetryDatabase.replaceDatabase(withFileAt: staged.database, schemaVersion: staged.roomVersion) { _ in
         try MySounds.replaceFromBackup(staged.sounds)
       }

@@ -36,6 +36,8 @@ export interface HistoryActions {
   loadInitial: () => Promise<void>
   loadMore: () => Promise<void>
   refreshRecent: () => Promise<void>
+  /** Re-read every loaded ride in place after native rewrote summaries; keeps the selection. */
+  reloadLoadedSessions: () => Promise<void>
   selectBlock: (block: TelemetryMinuteBucket | null) => Promise<void>
   selectSession: (session: HistorySession | null) => Promise<void>
   refreshSummary: () => Promise<void>

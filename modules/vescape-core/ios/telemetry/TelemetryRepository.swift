@@ -556,17 +556,11 @@ internal final class TelemetryRepository {
     return try TelemetryMaintenancePersistence(writer: pool).deleteRanges(deletable, boardId: boardId, allBoards: false)
   }
 
-  func rebuildBuckets(onProgress: (Int, Int) -> Void = { _, _ in }) throws -> Int {
-    flushBlocking()
-    let pool = try TelemetryDatabase.requirePool()
-    return try TelemetryMaintenancePersistence(writer: pool).rebuild(config: metricConfig, onProgress: onProgress)
-  }
-
   func clearAll() throws {
     flushBlocking()
     let pool = try TelemetryDatabase.requirePool()
     let protected = favoriteTelemetryRanges()
-    try WeatherObservationFence.process.fence {
+    try DatabaseReplacementFence.process.fence {
       try TelemetryMaintenancePersistence(writer: pool).clear(protectedRanges: protected)
     }
     queue.sync {
