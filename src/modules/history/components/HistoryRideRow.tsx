@@ -3,6 +3,7 @@ import { Pressable, StyleSheet, View } from 'react-native'
 import { CaretRightIcon } from 'phosphor-react-native'
 
 import { interaction, theme, type ThemeColor } from '@/constants/theme'
+import { useResolvedNeutralColors } from '@/hooks/useTheme'
 import { HistoryRideLabel } from '@/modules/history/components/HistoryRideLabel'
 import { RouteSparkline } from '@/modules/history/components/RouteSparkline'
 import { HISTORY_RIDE_ROW_HEIGHT } from '@/modules/history/lib/historyList'
@@ -43,6 +44,8 @@ export const HistoryRideRow = forwardRef<View, HistoryRideRowProps>(function His
   },
   ref,
 ) {
+  // Resolved in render: iOS bakes a border color once, so an adaptive token goes stale in a Modal.
+  const neutral = useResolvedNeutralColors()
   return (
     <Pressable
       ref={ref}
@@ -52,6 +55,7 @@ export const HistoryRideRow = forwardRef<View, HistoryRideRowProps>(function His
       accessibilityLabel={title}
       style={({ pressed }) => [
         styles.row,
+        { borderColor: neutral.border },
         selected && styles.rowSelected,
         pressed && styles.rowPressed,
       ]}
@@ -80,9 +84,10 @@ export const HistoryRideRow = forwardRef<View, HistoryRideRowProps>(function His
 
 /** Same footprint as a ride row so paging can extend the scroll area while native reads. */
 export function HistoryRideRowSkeleton() {
+  const neutral = useResolvedNeutralColors()
   return (
     <View
-      style={styles.row}
+      style={[styles.row, { borderColor: neutral.border }]}
       accessibilityElementsHidden
       importantForAccessibility="no-hide-descendants"
     >
@@ -117,7 +122,6 @@ const styles = StyleSheet.create({
     height: ROW_HEIGHT,
     borderRadius: 12,
     borderWidth: 1,
-    borderColor: theme.neutral.border,
     backgroundColor: theme.neutral.surfaceDeep,
     paddingRight: 12,
     flexDirection: 'row',

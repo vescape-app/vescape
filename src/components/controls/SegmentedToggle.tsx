@@ -2,6 +2,7 @@ import { Pressable, StyleSheet, View, type StyleProp, type ViewStyle } from 'rea
 
 import { Text } from '@/components/base/Text'
 import { interaction, theme, type ThemeColor } from '@/constants/theme'
+import { useResolvedControlColors, useResolvedNeutralColors } from '@/hooks/useTheme'
 
 export interface SegmentedOption<T extends string> {
   value: T
@@ -34,9 +35,16 @@ export function SegmentedToggle<T extends string>({
   testID,
 }: SegmentedToggleProps<T>) {
   const secondary = variant === 'secondary'
+  // Resolved in render: iOS bakes a border color once, so an adaptive token goes stale in a Modal.
+  const neutral = useResolvedNeutralColors()
+  const control = useResolvedControlColors()
+  const borderColor = secondary ? neutral.border : control.border
 
   return (
-    <View style={[styles.track, secondary && styles.secondaryTrack, style]} testID={testID}>
+    <View
+      style={[styles.track, secondary && styles.secondaryTrack, { borderColor }, style]}
+      testID={testID}
+    >
       {options.map((option) => {
         const selected = option.value === value
         return (
@@ -75,7 +83,6 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignSelf: 'flex-start',
     backgroundColor: theme.control.background,
-    borderColor: theme.control.border,
     borderWidth: 1,
     borderRadius: 999,
     padding: 3,
@@ -99,7 +106,6 @@ const styles = StyleSheet.create({
   },
   secondaryTrack: {
     backgroundColor: theme.neutral.bg,
-    borderColor: theme.neutral.border,
   },
   secondaryLabel: {
     color: theme.neutral.textSecondary,
