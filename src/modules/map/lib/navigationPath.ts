@@ -7,7 +7,13 @@ function splitNavigationPath(navigation: Navigation | null, progress: RouteProgr
   if (!navigation || navigation.status !== 'ready' || navigation.coordinates.length < 2) return null
   const coordinates = navigation.coordinates
   const segment = progress?.segmentIndex
-  if (!progress || segment == null || segment < 0 || segment >= coordinates.length - 1) {
+  if (
+    !progress ||
+    progress.navigationRevision !== navigation.revision ||
+    segment == null ||
+    segment < 0 ||
+    segment >= coordinates.length - 1
+  ) {
     return { passed: [] as Coordinate[], remaining: coordinates }
   }
   const split: Coordinate = [progress.longitude, progress.latitude]

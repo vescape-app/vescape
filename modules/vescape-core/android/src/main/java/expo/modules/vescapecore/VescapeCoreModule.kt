@@ -1481,8 +1481,7 @@ class VescapeCoreModule : Module() {
         throw error
       }
       if (key == "navigationRerouteDistanceMeters") {
-        NavigationController.get(context.applicationContext).setRerouteDistanceMeters(
-          AppDataRepository.get(context.applicationContext).getTypedSettings().navigationRerouteDistanceMeters)
+        NavigationController.get(context.applicationContext).reloadRerouteDistance()
       }
       if (key == "unitSystem") {
         CoreForegroundService.reloadAlertRules(context.applicationContext)

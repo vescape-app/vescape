@@ -8,6 +8,7 @@ import {
   SlidersHorizontalIcon,
 } from 'phosphor-react-native'
 import { useShallow } from 'zustand/react/shallow'
+import { NAVIGATION_REROUTE_DISTANCE } from 'vescape-core'
 
 import { IconHero } from '@/components/settings/IconHero'
 import { SettingsCard } from '@/components/settings/SettingsCard'
@@ -18,6 +19,8 @@ import { Stepper } from '@/components/forms/Stepper'
 import { lengthFromMeters, lengthInputToMeters, lengthUnit } from '@/helpers/units'
 import { theme } from '@/constants/theme'
 import { useSettingsStore } from '@/modules/settings/store/settingsStore'
+
+const { minMeters, maxMeters } = NAVIGATION_REROUTE_DISTANCE
 
 export default function MapSettingsScreen() {
   const {
@@ -79,8 +82,8 @@ export default function MapSettingsScreen() {
               <Stepper
                 value={Math.round(lengthFromMeters(navigationRerouteDistanceMeters, unitSystem))}
                 unit={lengthUnit(unitSystem)}
-                min={Math.ceil(lengthFromMeters(1, unitSystem))}
-                max={Math.floor(lengthFromMeters(1000, unitSystem))}
+                min={Math.ceil(lengthFromMeters(minMeters, unitSystem))}
+                max={Math.floor(lengthFromMeters(maxMeters, unitSystem))}
                 step={unitSystem === 'imperial' ? 25 : 10}
                 onChange={(value) =>
                   void set(
@@ -89,8 +92,8 @@ export default function MapSettingsScreen() {
                       value,
                       navigationRerouteDistanceMeters,
                       unitSystem,
-                      1,
-                      1000,
+                      minMeters,
+                      maxMeters,
                     ),
                   )
                 }

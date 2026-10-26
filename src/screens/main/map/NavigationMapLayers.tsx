@@ -110,7 +110,10 @@ export function NavigationMapLayers({
   const navigationFailed = navigation != null && navigation.status !== 'ready'
   const progress = useMapStore((state) => state.routeProgress)
   const showConnector = useNavigationDiagnosticsStore((state) => state.showProjectionConnector)
-  const gpsFix = useNavigationDiagnosticsStore((state) => state.gpsFix)
+  // Subscribed only while the connector is on: otherwise every GPS fix would re-render the layers.
+  const gpsFix = useNavigationDiagnosticsStore((state) =>
+    state.showProjectionConnector ? state.gpsFix : null,
+  )
   const navigationShape = useMemo(
     () => navigationPathShape(navigation, progress),
     [navigation, progress],
@@ -139,7 +142,7 @@ export function NavigationMapLayers({
     <>
       {showDirectionPoint &&
         navigationShape && (
-          // Both dots and halo share the native projection split.
+          // Passed and remaining sections are split at native's projection, see navigationPath.ts.
           <ShapeSource id="center-navigation-source" shape={navigationShape} lineMetrics>
             <LineLayer
               id="center-navigation-casing"

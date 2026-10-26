@@ -6,7 +6,8 @@ const navigation: Navigation = {
   target: { latitude: 1, longitude: 2 },
   profile: 'walking',
   computedAtMs: 1,
-  cameraRevision: 1,
+  revision: 1,
+  automatic: false,
   status: 'ready',
   distanceMeters: 100,
   durationSeconds: 10,
@@ -18,6 +19,7 @@ const navigation: Navigation = {
   ],
 }
 const progress: RouteProgress = {
+  navigationRevision: 1,
   latitude: 0.5,
   longitude: 1,
   segmentIndex: 1,
@@ -107,4 +109,9 @@ test('camera uses the whole path before GPS and focuses only the destination at 
     }),
   ).toEqual([[2, 1]])
   expect(navigationCameraPath(null, progress)).toEqual([])
+})
+
+test('progress projected on another revision does not split the path', () => {
+  const features = navigationPathShape(navigation, { ...progress, navigationRevision: 2 })!.features
+  expect(features.map((f) => f.geometry.coordinates)).toEqual([navigation.coordinates])
 })

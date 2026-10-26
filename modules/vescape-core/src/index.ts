@@ -2464,6 +2464,15 @@ export interface WeatherEvent {
 }
 
 /**
+ * Reroute Distance setting contract: how far the rider may be from the Navigation path before
+ * native recalculates it.
+ *
+ * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/navigation/RerouteDistance.kt
+ * @parity /modules/vescape-core/ios/navigation/NavigationController.swift `defaultRerouteDistanceMeters`
+ */
+export const NAVIGATION_REROUTE_DISTANCE = { defaultMeters: 50, minMeters: 1, maxMeters: 1000 }
+
+/**
  * The rideable path from the rider to their Direction Point, computed natively. JS renders it and
  * nothing else: there is no routing logic on this side, and native owns automatic path recalculation.
  *
@@ -2484,8 +2493,13 @@ export interface Navigation {
    */
   profile: NavigationProfile
   computedAtMs: number
-  /** Process-local framing revision. Automatic replacements keep it; never persisted. */
-  cameraRevision: number
+  /**
+   * Process-local identity of this published Navigation; changes on every publish. Route Progress
+   * carries the revision it was projected on. Never persisted.
+   */
+  revision: number
+  /** Published by native automatic recalculation rather than a rider intent. */
+  automatic: boolean
   status: NavigationStatus
   /**
    * How far the path runs and how long the routing service thinks it takes. Both are `0` unless
@@ -2559,6 +2573,8 @@ export interface NavigationEvent {
  * @parity /modules/vescape-core/ios/navigation/RouteProgress.swift `RouteProgress`
  */
 export interface RouteProgress {
+  /** The `Navigation.revision` this was projected on; the segment indexes into that path only. */
+  navigationRevision: number
   /** Selected native segment and clamped fraction; rendering must use this same projection. */
   segmentIndex: number
   segmentFraction: number
@@ -4296,7 +4312,8 @@ export async function setDirectionPoint(
  * Asks native to compute the Navigation again, from the rider's current position to the Direction
  * Point they already have. A no-op when no Direction Point is set.
  *
- * Explicit rider request. Native also recalculates automatically beyond the configured deviation.
+ * The rider's explicit request. Native also recalculates on its own once the rider is farther from
+ * the path than the Reroute Distance setting.
  *
  * A request that finds no path leaves a drawn one in place — asking for a better path never costs
  * the rider the one they had.
