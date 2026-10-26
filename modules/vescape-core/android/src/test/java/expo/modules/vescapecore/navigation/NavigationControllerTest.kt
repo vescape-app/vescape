@@ -20,6 +20,56 @@ import java.util.concurrent.atomic.AtomicInteger
 class NavigationControllerTest {
 
     @Test
+    fun `valid detour away from target does not reroute and replacement resets best progress`() {
+        val old = Navigation(RIDER_LAT, RIDER_LNG + 0.02, NavigationProfile.WALKING,
+            1L, NavigationStatus.READY, 3600.0, 600.0,
+            listOf(RIDER_LAT to RIDER_LNG, RIDER_LAT + 0.01 to RIDER_LNG,
+                RIDER_LAT + 0.01 to RIDER_LNG + 0.02, RIDER_LAT to RIDER_LNG + 0.02))
+        val routes = GatedRoutes(DirectionsResult.Path(old.points, old.distanceMeters, old.durationSeconds))
+        val controller = NavigationController(routes, FakeStore(old, old.targetLatitude to old.targetLongitude), nowMillis = { 0L })
+        controller.restore()
+        Thread.sleep(SETTLE_MS)
+        for (offset in listOf(0.001, 0.003, 0.005)) {
+            controller.onFix(RIDER_LAT + offset, RIDER_LNG, 5.0)
+        }
+        Thread.sleep(SETTLE_MS)
+        assertEquals(0, routes.calls.get()) // Straight-line distance grows on a valid detour.
+        controller.recompute(old.targetLatitude, old.targetLongitude, RIDER_LAT + 0.005, RIDER_LNG)
+        assertTrue(routes.started.await(WAIT_SECONDS, TimeUnit.SECONDS))
+        controller.onFix(RIDER_LAT + 0.002, RIDER_LNG, 5.0)
+        routes.gate(old.targetLatitude).countDown()
+        Thread.sleep(SETTLE_MS)
+        controller.onFix(RIDER_LAT + 0.0021, RIDER_LNG, 5.0)
+        Thread.sleep(SETTLE_MS)
+        assertEquals(1, routes.calls.get()) // New Navigation starts from latest fix, not old best.
+    }
+
+    @Test
+    fun `riding backwards on path reroutes only after threshold from best progress`() {
+        val routes = FixedRoutes(DirectionsResult.Failed)
+        val old = Navigation(RIDER_LAT + 0.01, RIDER_LNG, NavigationProfile.WALKING,
+            1L, NavigationStatus.READY, 1112.0, 600.0,
+            listOf(RIDER_LAT to RIDER_LNG, RIDER_LAT + 0.01 to RIDER_LNG))
+        val controller = NavigationController(routes, FakeStore(old, old.targetLatitude to old.targetLongitude), nowMillis = { 0L })
+        controller.restore()
+        Thread.sleep(SETTLE_MS)
+        // Forward, small backward jitter, then forward again: no cumulative jitter penalty.
+        for (offset in listOf(0.005, 0.0049, 0.0055, 0.0054, 0.0051)) {
+            controller.onFix(RIDER_LAT + offset, RIDER_LNG, 5.0)
+        }
+        Thread.sleep(SETTLE_MS)
+        assertEquals(0, routes.calls.get())
+        controller.onFix(RIDER_LAT + 0.0049, RIDER_LNG, 5.0)
+        Thread.sleep(SETTLE_MS)
+        assertEquals(1, routes.calls.get())
+        assertEquals(0.0, controller.currentProgress!!.deviationMeters, 0.01)
+        assertEquals(old, controller.current)
+        repeat(10) { controller.onFix(RIDER_LAT + 0.0048, RIDER_LNG, 5.0) }
+        Thread.sleep(SETTLE_MS)
+        assertEquals(1, routes.calls.get()) // Existing failure cooldown still applies.
+    }
+
+    @Test
     fun `automatic threshold pending success and clear ordering`() {
         val routes = GatedRoutes()
         val old = Navigation(RIDER_LAT + 0.1, RIDER_LNG + 0.1, NavigationProfile.WALKING,
@@ -116,7 +166,7 @@ class NavigationControllerTest {
     }
 
     /** Routing stub whose calls finish only when the test says so. */
-    private class GatedRoutes : DirectionsRoutes {
+    private class GatedRoutes(private val result: DirectionsResult? = null) : DirectionsRoutes {
         private val gates = mutableMapOf<Double, CountDownLatch>()
         val started = CountDownLatch(1)
         val calls = AtomicInteger(0)
@@ -134,7 +184,7 @@ class NavigationControllerTest {
             calls.incrementAndGet()
             started.countDown()
             gate(toLatitude).await(WAIT_SECONDS, TimeUnit.SECONDS)
-            return DirectionsResult.Path(
+            return result ?: DirectionsResult.Path(
                 listOf(fromLatitude to fromLongitude, toLatitude to toLongitude),
                 distanceMeters = 1_000.0,
                 durationSeconds = 600.0,

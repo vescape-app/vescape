@@ -248,6 +248,8 @@ class NavigationController(
 
   // @parity /modules/vescape-core/ios/navigation/NavigationController.swift `onFix`
   private var rerouteDistanceMeters = 50.0
+  // Lowest remaining path distance on this Navigation; jitter does not accumulate.
+  private var bestRemainingMeters: Double? = null
   private var thresholdChosen = false
   private var automaticRequest: Int? = null
   private var nextAutomaticAtMs = 0L
@@ -267,9 +269,14 @@ class NavigationController(
         progress = next
         onProgressChange?.invoke(next)
       }
+      if (next != null) {
+        bestRemainingMeters = minOf(bestRemainingMeters ?: next.remainingMeters, next.remainingMeters)
+      }
+      val backwardsMeters = if (next == null) 0.0 else next.remainingMeters - (bestRemainingMeters ?: next.remainingMeters)
       val navigation = state
       if (next == null || navigation == null || computingRequest != null || automaticRequest != null ||
-        next.deviationMeters <= rerouteDistanceMeters || nowMillis() < nextAutomaticAtMs) return
+        (next.deviationMeters <= rerouteDistanceMeters && backwardsMeters <= rerouteDistanceMeters) ||
+        nowMillis() < nextAutomaticAtMs) return
       // Reserve synchronously with the decision: another fix cannot launch a duplicate, and a
       // subsequent target/profile/clear intent invalidates this token before the coroutine runs.
       val request = claimRequest()
@@ -556,6 +563,7 @@ class NavigationController(
       // delivering another fix, but selecting a route must work while standing still.
       val previousProgress = progress
       progress = progressAtLatestFix()
+      bestRemainingMeters = progress?.remainingMeters
       onChange?.invoke(state)
       if (previousProgress != progress || progress != null) onProgressChange?.invoke(progress)
       val nextPath = ridePath(state)

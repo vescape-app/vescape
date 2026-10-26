@@ -230,6 +230,8 @@ final class NavigationController {
 
   // @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/navigation/NavigationController.kt `onFix`
   private var rerouteDistanceMeters = 50.0
+  // Lowest remaining path distance on this Navigation; jitter does not accumulate.
+  private var bestRemainingMeters: Double?
   private var thresholdChosen = false
   private var automaticRequest: Int?
   private var nextAutomaticAtMs = 0.0
@@ -251,8 +253,13 @@ final class NavigationController {
         progress = next
         onProgressChange?(next)
       }
+      if let next {
+        bestRemainingMeters = min(bestRemainingMeters ?? next.remainingMeters, next.remainingMeters)
+      }
+      let backwardsMeters = next.map { $0.remainingMeters - (bestRemainingMeters ?? $0.remainingMeters) } ?? 0
       guard let next, let navigation = state, computingRequest == nil, automaticRequest == nil,
-        next.deviationMeters > rerouteDistanceMeters, nowMillis() >= nextAutomaticAtMs
+        next.deviationMeters > rerouteDistanceMeters || backwardsMeters > rerouteDistanceMeters,
+        nowMillis() >= nextAutomaticAtMs
       else { return nil }
       // Reserve in the same critical section as the decision; later rider intents supersede it.
       generation += 1
@@ -538,6 +545,7 @@ final class NavigationController {
       // Reproject immediately: foreground GPS may not deliver another fix until the rider moves.
       let previousProgress = progress
       progress = progressAtLatestFix()
+      bestRemainingMeters = progress?.remainingMeters
       onChange?(state)
       if previousProgress != progress || progress != nil { onProgressChange?(progress) }
       let nextPath = ridePath(state)

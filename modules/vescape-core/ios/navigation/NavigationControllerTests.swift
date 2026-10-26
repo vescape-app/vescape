@@ -19,6 +19,9 @@ final class NavigationControllerTests: XCTestCase {
     private var released: Set<Double> = []
     private var callCount = 0
     let started = XCTestExpectation(description: "route started")
+    private let result: DirectionsResult?
+
+    init(_ result: DirectionsResult? = nil) { self.result = result }
 
     var calls: Int { lock.withLock { callCount } }
 
@@ -38,7 +41,7 @@ final class NavigationControllerTests: XCTestCase {
       while !lock.withLock({ released.contains(toLatitude) }) {
         try? await Task.sleep(nanoseconds: 5_000_000)
       }
-      return .path(
+      return result ?? .path(
         points: [(fromLatitude, fromLongitude), (toLatitude, toLongitude)],
         distanceMeters: 1_000,
         durationSeconds: 600
@@ -154,6 +157,58 @@ final class NavigationControllerTests: XCTestCase {
       durationSeconds: 600,
       points: [(riderLatitude, riderLongitude), (targetLatitude, targetLongitude)]
     )
+  }
+
+  func testValidDetourAndReplacementResetsBestProgress() {
+    let old = Navigation(targetLatitude: riderLatitude, targetLongitude: riderLongitude + 0.02,
+      profile: .walking, computedAtMs: 1, status: .ready, distanceMeters: 3600,
+      durationSeconds: 600, points: [(riderLatitude, riderLongitude), (riderLatitude + 0.01, riderLongitude),
+        (riderLatitude + 0.01, riderLongitude + 0.02), (riderLatitude, riderLongitude + 0.02)])
+    let routes = GatedRoutes(.path(points: old.points, distanceMeters: old.distanceMeters, durationSeconds: old.durationSeconds))
+    let controller = NavigationController(api: routes,
+      store: FakeStore(stored: old, directionPoint: (old.targetLatitude, old.targetLongitude)), nowMillis: { 0 })
+    controller.restore()
+    settle()
+    for offset in [0.001, 0.003, 0.005] {
+      controller.onFix(latitude: riderLatitude + offset, longitude: riderLongitude, speedMps: 5)
+    }
+    settle()
+    XCTAssertEqual(routes.calls, 0)
+    controller.recompute(toLatitude: old.targetLatitude, toLongitude: old.targetLongitude,
+      fromLatitude: riderLatitude + 0.005, fromLongitude: riderLongitude)
+    wait(for: [routes.started], timeout: 2)
+    controller.onFix(latitude: riderLatitude + 0.002, longitude: riderLongitude, speedMps: 5)
+    routes.release(old.targetLatitude)
+    settle()
+    controller.onFix(latitude: riderLatitude + 0.0021, longitude: riderLongitude, speedMps: 5)
+    settle()
+    XCTAssertEqual(routes.calls, 1)
+  }
+
+  func testRidingBackwardsOnPathReroutesAfterThresholdFromBestProgress() {
+    let routes = FixedRoutes(.failed)
+    let old = Navigation(targetLatitude: riderLatitude + 0.01, targetLongitude: riderLongitude,
+      profile: .walking, computedAtMs: 1, status: .ready, distanceMeters: 1112,
+      durationSeconds: 600, points: [(riderLatitude, riderLongitude), (riderLatitude + 0.01, riderLongitude)])
+    let controller = NavigationController(api: routes,
+      store: FakeStore(stored: old, directionPoint: (old.targetLatitude, old.targetLongitude)), nowMillis: { 0 })
+    controller.restore()
+    settle()
+    for offset in [0.005, 0.0049, 0.0055, 0.0054, 0.0051] {
+      controller.onFix(latitude: riderLatitude + offset, longitude: riderLongitude, speedMps: 5)
+    }
+    settle()
+    XCTAssertEqual(routes.calls, 0)
+    controller.onFix(latitude: riderLatitude + 0.0049, longitude: riderLongitude, speedMps: 5)
+    settle()
+    XCTAssertEqual(routes.calls, 1)
+    XCTAssertEqual(controller.currentProgress?.deviationMeters ?? -1, 0, accuracy: 0.01)
+    XCTAssertEqual(controller.current?.computedAtMs, old.computedAtMs)
+    for _ in 0..<10 {
+      controller.onFix(latitude: riderLatitude + 0.0048, longitude: riderLongitude, speedMps: 5)
+    }
+    settle()
+    XCTAssertEqual(routes.calls, 1)
   }
 
   func testAutomaticThresholdPendingSuccessAndClearOrdering() throws {

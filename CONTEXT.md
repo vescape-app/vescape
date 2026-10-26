@@ -164,7 +164,7 @@ One rider's private navigation target on the map, stored on the phone only. It i
 _Avoid_: Direction map point, navigation Map Point, destination marker
 
 **Navigation**:
-The rideable path from the rider to their **Direction Point**, following real ways rather than a straight line. Navigation exists exactly while a Direction Point is set and is native-owned so it survives backgrounding. Native recalculates it from the current GPS Fix when the nearest path is farther away than the configurable threshold (50 m by default), retaining the usable path if replacement fails. It describes where the rider could go and is never **Ride History**, which records where they did go.
+The rideable path from the rider to their **Direction Point**, following real ways rather than a straight line. Navigation exists exactly while a Direction Point is set and is native-owned so it survives backgrounding. Native recalculates it from the current GPS Fix when the nearest path is farther away than the configurable threshold (50 m by default), or when remaining path distance grows by more than that threshold from the best progress on the current Navigation. This detects riding backward along a nearby path without treating valid detours away from the target as wrong turns. A replacement resets that progress baseline; failed replacements retain the usable path, with automatic attempts at least 30 seconds apart. It describes where the rider could go and is never **Ride History**, which records where they did go.
 _Avoid_: Route, ride route, navigation mode, guidance, directions
 
 **Route Progress**:
