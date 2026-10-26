@@ -303,10 +303,11 @@ func weatherBackfillPage(_ db: Database, cursor: WeatherBackfillCursor, nowMs: I
       ridesAfterMs: max(cursor.ridesAfterMs, grouped.first?.endAtMs ?? cursor.ridesAfterMs)
     )
   }
-  let rides = kept.filter { $0.avgSpeedSampleCount > 0 && $0.endAtMs > cursor.ridesAfterMs }
+  // Stationary sessions are settled with the rest; only moving rides get weather.
+  let rides = kept.filter { $0.endAtMs > cursor.ridesAfterMs }
     .enumerated().sorted { ($0.element.endAtMs, $0.offset) < ($1.element.endAtMs, $1.offset) }.map(\.element)
   var segments: [WeatherBackfillSegment] = []
-  for (index, ride) in rides.enumerated() {
+  for (index, ride) in rides.enumerated() where ride.avgSpeedSampleCount > 0 {
     var day = floorDay(ride.startAtMs)
     while day <= ride.endAtMs {
       let start = max(ride.startAtMs, day)
@@ -370,6 +371,9 @@ final class RideWeatherJob: MaintenanceJob {
   /// Consecutive runs that ended on a temporary miss, for the backoff. Maintenance work queue only.
   private var failedRuns = 0
 
+  /// A 429 deadline: no trigger fetches before it, network back included. Maintenance work queue only.
+  private var rateLimitedUntilMs = Int64.min
+
   func inputs(_ settings: [String: Any?]) -> String { "" }
 
   /// Settles every ride before the first one needing a fetch; stale only when one exists.
@@ -383,7 +387,8 @@ final class RideWeatherJob: MaintenanceJob {
   func complete(_ scope: MaintenanceJobScope, settings: [String: Any?]) throws {}
 
   func run(_ scope: MaintenanceJobScope, settings: [String: Any?]) throws -> MaintenanceJobOutcome {
-    try pass(scope, settings: settings, fetch: true)
+    if scope.nowMs() < rateLimitedUntilMs { return .deferred(retryAtMs: rateLimitedUntilMs) }
+    return try pass(scope, settings: settings, fetch: true)
   }
 
   /// One pass from the watermark. Without `fetch` it stops at the first segment needing weather and
@@ -400,6 +405,7 @@ final class RideWeatherJob: MaintenanceJob {
     var temporaryMisses = 0
     var retryAfterMs: Int64?
     var stopped = false
+    var rateLimited = false
     var activeRetryAtMs: Int64?
     var done = 0
     var total = 0
@@ -443,7 +449,7 @@ final class RideWeatherJob: MaintenanceJob {
           } else {
             temporaryMisses += 1
             if let retryAfter { retryAfterMs = max(retryAfterMs ?? 0, retryAfter) }
-            if stopRun { stopped = true }
+            if stopRun { stopped = true; rateLimited = true }
           }
         }
         if temporaryMisses >= WEATHER_BACKFILL_MAX_TEMPORARY_MISSES { stopped = true }
@@ -463,11 +469,13 @@ final class RideWeatherJob: MaintenanceJob {
       cursor = page.next
     }
     if !fetch { return activeRetryAtMs.map { .deferred(retryAtMs: $0) } ?? .completed }
-    if !blocked { failedRuns = 0 }
+    if !blocked { failedRuns = 0; rateLimitedUntilMs = Int64.min }
     if blocked {
       failedRuns += 1
       let backoff = min(WEATHER_BACKFILL_BACKOFF_BASE_MS << Int64(min(failedRuns - 1, 20)), WEATHER_BACKFILL_BACKOFF_MAX_MS)
-      return .deferred(retryAtMs: scope.nowMs() + max(backoff, retryAfterMs ?? 0))
+      let retryAtMs = scope.nowMs() + max(backoff, retryAfterMs ?? 0)
+      if rateLimited { rateLimitedUntilMs = retryAtMs }
+      return .deferred(retryAtMs: retryAtMs)
     }
     if let activeRetryAtMs { return .deferred(retryAtMs: activeRetryAtMs) }
     return .completed

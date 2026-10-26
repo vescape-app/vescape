@@ -173,11 +173,16 @@ class RideWeatherBackfillHostTest {
     assertEquals(MaintenanceJobOutcome.Deferred(now + 600_000), RideWeatherJob.run(scope(dao, http), AppSettings()))
     assertEquals(1, http.urls.size)
     assertNull(dao.watermark())
+    // No trigger fetches before the 429 deadline.
+    val early = FakeOpenMeteo()
+    assertEquals(MaintenanceJobOutcome.Deferred(now + 600_000), RideWeatherJob.run(scope(dao, early), AppSettings()))
+    assertTrue(early.urls.isEmpty())
     // A transport failure is temporary too, and the backoff grows.
+    val later = now + 600_001
     val offline = FakeOpenMeteo { throw IOException("offline") }
-    val outcome = RideWeatherJob.run(scope(dao, offline), AppSettings()) as MaintenanceJobOutcome.Deferred
-    assertTrue(outcome.retryAtMs > now)
-    assertEquals(MaintenanceJobOutcome.Completed, RideWeatherJob.run(scope(dao, FakeOpenMeteo()), AppSettings()))
+    val outcome = RideWeatherJob.run(scope(dao, offline, at = later), AppSettings()) as MaintenanceJobOutcome.Deferred
+    assertTrue(outcome.retryAtMs > later)
+    assertEquals(MaintenanceJobOutcome.Completed, RideWeatherJob.run(scope(dao, FakeOpenMeteo(), at = later), AppSettings()))
     db.close()
   }
 

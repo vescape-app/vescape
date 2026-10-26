@@ -363,7 +363,7 @@ private final class URLSessionMaintenanceHttp: MaintenanceHttp {
       if let error {
         result = .failure(error)
       } else if let http = response as? HTTPURLResponse {
-        let retryAfter = (http.value(forHTTPHeaderField: "Retry-After")).flatMap { Int64($0.trimmingCharacters(in: .whitespaces)) }
+        let retryAfter = http.value(forHTTPHeaderField: "Retry-After").flatMap(Self.retryAfterSeconds)
         result = .success(MaintenanceHttpResponse(status: http.statusCode, body: data, retryAfterSeconds: retryAfter))
       } else {
         result = .failure(URLError(.badServerResponse))
@@ -378,5 +378,21 @@ private final class URLSessionMaintenanceHttp: MaintenanceHttp {
       }
     }
     return try result.get()
+  }
+
+  private static let httpDate: DateFormatter = {
+    let formatter = DateFormatter()
+    formatter.locale = Locale(identifier: "en_US_POSIX")
+    formatter.timeZone = TimeZone(identifier: "GMT")
+    formatter.dateFormat = "EEE, dd MMM yyyy HH:mm:ss zzz"
+    return formatter
+  }()
+
+  /// Retry-After as delay seconds or an HTTP-date (RFC 9110), as seconds from now.
+  private static func retryAfterSeconds(_ header: String) -> Int64? {
+    let value = header.trimmingCharacters(in: .whitespaces)
+    if let seconds = Int64(value) { return seconds }
+    guard let date = httpDate.date(from: value) else { return nil }
+    return max(0, Int64(date.timeIntervalSinceNow))
   }
 }

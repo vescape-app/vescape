@@ -347,7 +347,7 @@ private class OkHttpMaintenanceHttp : MaintenanceHttp {
       override fun onResponse(call: Call, response: Response) {
         val result = try {
           response.use {
-            MaintenanceHttpResponse(it.code, it.body?.string(), it.header("Retry-After")?.trim()?.toLongOrNull())
+            MaintenanceHttpResponse(it.code, it.body?.string(), retryAfterSeconds(it))
           }
         } catch (error: IOException) {
           if (continuation.isActive) continuation.resumeWithException(error)
@@ -356,5 +356,13 @@ private class OkHttpMaintenanceHttp : MaintenanceHttp {
         if (continuation.isActive) continuation.resume(result)
       }
     })
+  }
+
+  /** Retry-After as delay seconds or an HTTP-date (RFC 9110), as seconds from now. */
+  private fun retryAfterSeconds(response: Response): Long? {
+    val value = response.header("Retry-After")?.trim() ?: return null
+    value.toLongOrNull()?.let { return it }
+    val date = response.headers.getDate("Retry-After") ?: return null
+    return ((date.time - System.currentTimeMillis()) / 1_000).coerceAtLeast(0)
   }
 }

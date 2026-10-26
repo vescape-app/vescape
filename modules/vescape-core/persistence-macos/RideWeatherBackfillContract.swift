@@ -83,8 +83,8 @@ func runRideWeatherBackfillContract() throws {
   func summarize(_ queue: DatabaseQueue) throws {
     try require(try rebuildRideSummaries(queue) == .completed, "summaries rebuilt")
   }
-  func scope(_ queue: DatabaseQueue, _ http: MaintenanceHttp, fence: DatabaseReplacementFence = DatabaseReplacementFence()) -> MaintenanceJobScope {
-    MaintenanceJobScope(writer: { queue }, fence: fence, ticket: fence.ticket(), nowMs: { now }, http: http)
+  func scope(_ queue: DatabaseQueue, _ http: MaintenanceHttp, fence: DatabaseReplacementFence = DatabaseReplacementFence(), at: Int64 = now) -> MaintenanceJobScope {
+    MaintenanceJobScope(writer: { queue }, fence: fence, ticket: fence.ticket(), nowMs: { at }, http: http)
   }
   func watermark(_ queue: DatabaseQueue) throws -> Int64? {
     parseWeatherBackfillWatermark(try queue.read { try storedMaintenanceFingerprint($0, id: job.id) }, version: job.version)
@@ -95,8 +95,8 @@ func runRideWeatherBackfillContract() throws {
   func observations(_ queue: DatabaseQueue, _ start: Int64, _ end: Int64) throws -> [WeatherObservation] {
     try queue.read { try weatherObservationsSpanning($0, startMs: start, endMs: end) }
   }
-  func run(_ queue: DatabaseQueue, _ http: MaintenanceHttp) throws -> MaintenanceJobOutcome {
-    try job.run(scope(queue, http), settings: [:])
+  func run(_ queue: DatabaseQueue, _ http: MaintenanceHttp, at: Int64 = now) throws -> MaintenanceJobOutcome {
+    try job.run(scope(queue, http, at: at), settings: [:])
   }
 
   // Fills missing days, then settles without another scan. Midnight-crossing ride; no-GPS ride.
@@ -176,9 +176,12 @@ func runRideWeatherBackfillContract() throws {
     try require(try run(queue, limited) == .deferred(retryAtMs: now + 600_000), "retry-after honored")
     try require(limited.urls.count == 1, "429 stops the run")
     try require(try watermark(queue) == nil, "no watermark after 429")
+    let early = FakeOpenMeteo()
+    try require(try run(queue, early) == .deferred(retryAtMs: now + 600_000) && early.urls.isEmpty, "no fetch before the 429 deadline")
+    let later = now + 600_001
     let offline = FakeOpenMeteo { _ in throw URLError(.notConnectedToInternet) }
-    guard case .deferred(let retryAt) = try run(queue, offline), retryAt > now else { throw Failure(description: "offline defers") }
-    try require(try run(queue, FakeOpenMeteo()) == .completed, "online completes")
+    guard case .deferred(let retryAt) = try run(queue, offline, at: later), retryAt > later else { throw Failure(description: "offline defers") }
+    try require(try run(queue, FakeOpenMeteo(), at: later) == .completed, "online completes")
   }
 
   // Multi-year history uses bounded windows and the archive before the forecast range.

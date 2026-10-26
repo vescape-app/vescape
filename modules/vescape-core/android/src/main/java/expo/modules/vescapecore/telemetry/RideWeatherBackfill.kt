@@ -263,9 +263,11 @@ internal suspend fun TelemetryDao.weatherBackfillPageImpl(
       maxOf(cursor.ridesAfterMs, grouped.single().endAtMs),
     )
   }
-  val rides = kept.filter { it.avgSpeedSampleCount > 0 && it.endAtMs > cursor.ridesAfterMs }.sortedBy { it.endAtMs }
+  // Stationary sessions are settled with the rest; only moving rides get weather.
+  val rides = kept.filter { it.endAtMs > cursor.ridesAfterMs }.sortedBy { it.endAtMs }
   val segments = mutableListOf<WeatherBackfillSegment>()
   rides.forEachIndexed { index, ride ->
+    if (ride.avgSpeedSampleCount == 0) return@forEachIndexed
     var day = floorDay(ride.startAtMs)
     while (day <= ride.endAtMs) {
       val start = maxOf(ride.startAtMs, day)
@@ -314,6 +316,9 @@ internal object RideWeatherJob : MaintenanceJob {
   /** Consecutive runs that ended on a temporary miss, for the backoff. Maintenance thread only. */
   private var failedRuns = 0
 
+  /** A 429 deadline: no trigger fetches before it, network back included. Maintenance thread only. */
+  private var rateLimitedUntilMs = Long.MIN_VALUE
+
   override fun inputs(settings: AppSettings) = ""
 
   /** Settles every ride before the first one needing a fetch; stale only when one exists. */
@@ -326,7 +331,8 @@ internal object RideWeatherJob : MaintenanceJob {
   override suspend fun complete(scope: MaintenanceJobScope, settings: AppSettings) = Unit
 
   override suspend fun run(scope: MaintenanceJobScope, settings: AppSettings): MaintenanceJobOutcome =
-    pass(scope, settings, fetch = true)
+    if (scope.nowMs() < rateLimitedUntilMs) MaintenanceJobOutcome.Deferred(rateLimitedUntilMs)
+    else pass(scope, settings, fetch = true)
 
   /**
    * One pass from the watermark. Without [fetch] it stops at the first segment needing weather and
@@ -342,6 +348,7 @@ internal object RideWeatherJob : MaintenanceJob {
     var temporaryMisses = 0
     var retryAfterMs: Long? = null
     var stopped = false
+    var rateLimited = false
     var activeRetryAtMs: Long? = null
     var done = 0
     var total = 0
@@ -386,7 +393,10 @@ internal object RideWeatherJob : MaintenanceJob {
             } else {
               temporaryMisses++
               fetched.retryAfterMs?.let { retryAfterMs = maxOf(retryAfterMs ?: 0, it) }
-              if (fetched.stopRun) stopped = true
+              if (fetched.stopRun) {
+                stopped = true
+                rateLimited = true
+              }
             }
           }
         }
@@ -408,12 +418,17 @@ internal object RideWeatherJob : MaintenanceJob {
       cursor = page.next
     }
     if (!fetch) return if (activeRetryAtMs != null) MaintenanceJobOutcome.Deferred(activeRetryAtMs) else MaintenanceJobOutcome.Completed
-    if (!blocked) failedRuns = 0
+    if (!blocked) {
+      failedRuns = 0
+      rateLimitedUntilMs = Long.MIN_VALUE
+    }
     return when {
       blocked -> {
         failedRuns++
         val backoff = minOf(WEATHER_BACKFILL_BACKOFF_BASE_MS shl minOf(failedRuns - 1, 20), WEATHER_BACKFILL_BACKOFF_MAX_MS)
-        MaintenanceJobOutcome.Deferred(scope.nowMs() + maxOf(backoff, retryAfterMs ?: 0))
+        val retryAtMs = scope.nowMs() + maxOf(backoff, retryAfterMs ?: 0)
+        if (rateLimited) rateLimitedUntilMs = retryAtMs
+        MaintenanceJobOutcome.Deferred(retryAtMs)
       }
       activeRetryAtMs != null -> MaintenanceJobOutcome.Deferred(activeRetryAtMs)
       else -> MaintenanceJobOutcome.Completed
