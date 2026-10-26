@@ -6,7 +6,7 @@ appId: ${APP_ID}
 - extendedWaitUntil:
     visible: DEVELOPMENT SERVERS
     timeout: 15000
-- tapOn: 'http://.*:8081'
+- tapOn: "${'http://.*:' + (typeof METRO_PORT === 'undefined' ? '8081' : METRO_PORT)}"
 - extendedWaitUntil:
     visible: No board
     # `clearState` drops the dev-client's cached bundle, so every flow pays a cold Metro fetch

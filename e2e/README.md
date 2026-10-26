@@ -10,16 +10,21 @@ the pin or when the version check asks for it.
 
 1. Install the pinned Maestro CLI: `bun run maestro:setup`
 2. Start an emulator.
-3. Build/install the app in E2E mode:
+3. Build/install the app in E2E mode and run all public E2E flows:
 
 ```sh
-bun run android:e2e
+bun run e2e
 ```
 
-4. Run all E2E flows:
+The command starts its own Metro server, waits for the Android app to connect, runs the flows,
+then stops the processes it started. An existing Metro session can stay running.
+Flows may clear the selected app's data. This runs the dev-client suite; the native fixture suite
+is still the separate `bun run smoke` command below.
+
+Run all flows again against an already prepared E2E app and Metro server:
 
 ```sh
-bun run e2e --all
+bun run e2e:run
 ```
 
 Run one flow by file name:
@@ -28,14 +33,15 @@ Run one flow by file name:
 bun run e2e --flow connect-board
 ```
 
-Run without flags to pick from an interactive selector:
+Skip build/setup when rerunning one flow:
 
 ```sh
-bun run e2e
+bun run e2e:run --flow connect-board
 ```
 
-Public flows live in `e2e/flows/*.yaml`. Helper flows start with `_` and are hidden from
-the selector.
+Both commands run all flows by default; `--all` is also accepted. Public flows live in
+`e2e/flows/*.yaml`. Helper flows start with `_` and the legacy `e2e.yaml` aggregate is excluded.
+`e2e:run` uses Metro port 8081 by default; set `E2E_METRO_PORT` when reusing another port.
 
 The first example clears app state, opens the board selector, taps Add new board, uses `EXPO_PUBLIC_E2E=1` to surface a fake BLE scan result named `E2E VESC Board`, creates `E2E Board`, keeps default battery config, saves, then checks the board name appears on the main screen.
 
