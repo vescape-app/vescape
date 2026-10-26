@@ -7,10 +7,11 @@ import org.json.JSONObject
 /**
  * A Maintenance Job: app-owned work that brings stored data up to date with the current app.
  *
- * A job is done when its `app_settings` fingerprint equals `version|inputs`. A mismatch makes it
- * stale and the runner runs it. There is no progress cursor: a run that stops early restarts from
- * zero, so [run] must be idempotent, and a run that could not handle everything simply does not
- * publish its fingerprint.
+ * By default a job is done when its `app_settings` fingerprint equals `version|inputs`. A mismatch
+ * makes it stale and the runner runs it. There is no progress cursor: a run that stops early
+ * restarts from zero, so [run] must be idempotent, and a run that could not handle everything
+ * simply does not publish its fingerprint. A job may own its done state instead by overriding
+ * [hasWork], [begin] and [complete], as the Ride weather watermark does.
  *
  * @parity /modules/vescape-core/ios/telemetry/MaintenanceJobs.swift `MaintenanceJob`
  */
@@ -29,18 +30,47 @@ internal interface MaintenanceJob {
 
   /** One run over the whole data set. Writes only through [MaintenanceJobScope.chunk]. */
   suspend fun run(scope: MaintenanceJobScope, settings: AppSettings): MaintenanceJobOutcome
+
+  /** Whether the job is stale. Runs on every trigger, so it must stay a small bounded check. */
+  suspend fun hasWork(scope: MaintenanceJobScope, settings: AppSettings): Boolean =
+    scope.chunk { it.storedMaintenanceFingerprint(id) } != fingerprint(settings)
+
+  /**
+   * Before the first chunk. The old fingerprint goes first: a run that ends partway must leave the
+   * job stale, even if the inputs change back to the ones the old fingerprint names.
+   */
+  suspend fun begin(scope: MaintenanceJobScope, settings: AppSettings) {
+    scope.chunk { it.deleteAppSetting(maintenanceJobKey(id)) }
+  }
+
+  /** After a [MaintenanceJobOutcome.Completed] run. */
+  suspend fun complete(scope: MaintenanceJobScope, settings: AppSettings) {
+    scope.chunk { it.publishMaintenanceFingerprint(id, fingerprint(settings), scope.nowMs()) }
+  }
 }
 
 /** @parity /modules/vescape-core/ios/telemetry/MaintenanceJobs.swift `MaintenanceJobOutcome` */
 internal sealed class MaintenanceJobOutcome {
   /** Everything handled: the runner publishes the run's fingerprint. */
   data object Completed : MaintenanceJobOutcome()
-  /** Some data is still being recorded; stay stale and check again at [retryAtMs]. */
+  /** Some data is still being recorded or a fetch must be retried; stay stale and check again at [retryAtMs]. */
   data class Deferred(val retryAtMs: Long) : MaintenanceJobOutcome()
 }
 
 /** Restore or Clear all replaced the database under the run; nothing more may be written. */
 internal class MaintenanceRunFenced : Exception("Database replaced during maintenance")
+
+/**
+ * One HTTP GET as a network job sees it. [body] is null when the response carried none; a transport
+ * failure (offline, timeout) throws `java.io.IOException` instead.
+ * @parity /modules/vescape-core/ios/telemetry/MaintenanceJobs.swift `MaintenanceHttpResponse`
+ */
+internal data class MaintenanceHttpResponse(val status: Int, val body: String?, val retryAfterSeconds: Long?)
+
+/** @parity /modules/vescape-core/ios/telemetry/MaintenanceJobs.swift `MaintenanceHttp` */
+internal fun interface MaintenanceHttp {
+  suspend fun get(url: String): MaintenanceHttpResponse
+}
 
 /**
  * What a running job may touch. Every write goes through [chunk], one short transaction under the
@@ -56,6 +86,8 @@ internal class MaintenanceJobScope(
   val progress: (done: Int, total: Int) -> Unit = { _, _ -> },
   /** A chunk that changed Ride History committed. */
   val committed: () -> Unit = {},
+  /** Network access for jobs with [MaintenanceJob.requiresNetwork]; off the main thread, cancellable. */
+  val http: MaintenanceHttp = MaintenanceHttp { throw java.io.IOException("No network transport") },
 ) {
   /** Run [block] under the fence; throws [MaintenanceRunFenced] once the database was replaced. */
   suspend fun <T> chunk(block: suspend (TelemetryDao) -> T): T {
@@ -86,7 +118,7 @@ internal suspend fun TelemetryDao.publishMaintenanceFingerprint(id: String, fing
  * Every Maintenance Job, in run order. A new job is declared here and nowhere else.
  * @parity /modules/vescape-core/ios/telemetry/MaintenanceJobs.swift `maintenanceJobs`
  */
-internal val MAINTENANCE_JOBS: List<MaintenanceJob> = listOf(RideSummariesJob)
+internal val MAINTENANCE_JOBS: List<MaintenanceJob> = listOf(RideSummariesJob, RideWeatherJob)
 
 /**
  * Ride summaries: minute buckets, exclusion ranges and route previews rebuilt from the raw frames

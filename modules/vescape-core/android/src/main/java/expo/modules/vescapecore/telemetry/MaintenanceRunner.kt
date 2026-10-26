@@ -19,6 +19,16 @@ import kotlinx.coroutines.asCoroutineDispatcher
 import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.suspendCancellableCoroutine
+import okhttp3.Call
+import okhttp3.Callback
+import okhttp3.OkHttpClient
+import okhttp3.Request
+import okhttp3.Response
+import java.io.IOException
+import java.util.concurrent.TimeUnit
+import kotlin.coroutines.resume
+import kotlin.coroutines.resumeWithException
 
 private const val TAG = "MaintenanceRunner"
 /** Startup settles before the first pass: JS, BLE and the first flushes go first. */
@@ -52,6 +62,8 @@ internal object MaintenanceRunner {
   private var rerun = false
   private var debounce: Job? = null
   private var closureCheck: Job? = null
+  private var closureCheckAtMs = Long.MAX_VALUE
+  private val http = OkHttpMaintenanceHttp()
   @Volatile private var online = false
 
   private val states = jobs.associate { it.id to MaintenanceJobState(it.id) }.toMutableMap()
@@ -114,8 +126,30 @@ internal object MaintenanceRunner {
   private suspend fun runIfStale(job: MaintenanceJob, settings: AppSettings) {
     val state = states.getValue(job.id)
     val fingerprint = job.fingerprint(settings)
-    val dao = TelemetryDatabase.get(appContext).telemetryDao()
-    if (dao.storedMaintenanceFingerprint(job.id) == fingerprint) {
+    val fence = DatabaseReplacementFence.process
+    val ticket = fence.ticket()
+    val runScope = MaintenanceJobScope(
+      dao = { TelemetryDatabase.get(appContext).telemetryDao() },
+      fence = fence,
+      ticket = ticket,
+      progress = { done, total -> progress(job.id, done, total) },
+      committed = ::chunkCommitted,
+      http = http,
+    )
+    val stale = try {
+      job.hasWork(runScope, settings)
+    } catch (fenced: MaintenanceRunFenced) {
+      rerun = true
+      return
+    } catch (cancelled: CancellationException) {
+      throw cancelled
+    } catch (error: Throwable) {
+      Log.e(TAG, "Maintenance Job ${job.id} check failed", error)
+      Sentry.captureException(error)
+      update(state.copy(status = MaintenanceJobStatus.FAILED, lastError = error.message ?: error.javaClass.simpleName))
+      return
+    }
+    if (!stale) {
       update(state.copy(status = MaintenanceJobStatus.DONE, done = 0, total = 0))
       return
     }
@@ -123,36 +157,29 @@ internal object MaintenanceRunner {
       update(state.copy(status = MaintenanceJobStatus.WAITING_FOR_NETWORK))
       return
     }
-    val fence = DatabaseReplacementFence.process
-    val ticket = fence.ticket()
     val startedAt = System.currentTimeMillis()
     val clock = SystemClock.elapsedRealtime()
     runningId = job.id
     update(state.copy(status = MaintenanceJobStatus.RUNNING, done = 0, total = 0, lastRunAtMs = startedAt, lastError = null))
     breadcrumb("start", mapOf("job" to job.id, "fingerprint" to fingerprint))
-    val runScope = MaintenanceJobScope(
-      dao = { TelemetryDatabase.get(appContext).telemetryDao() },
-      fence = fence,
-      ticket = ticket,
-      progress = { done, total -> progress(job.id, done, total) },
-      committed = ::chunkCommitted,
-    )
     var next: MaintenanceJobState
     try {
-      // The old fingerprint goes before the first chunk: a run that ends partway must leave the job
-      // stale, even if the inputs change back to the ones the old fingerprint names.
-      runScope.chunk { it.deleteAppSetting(maintenanceJobKey(job.id)) }
+      job.begin(runScope, settings)
       val outcome = job.run(runScope, settings)
       next = when (outcome) {
         MaintenanceJobOutcome.Completed -> {
-          runScope.chunk { it.publishMaintenanceFingerprint(job.id, fingerprint, System.currentTimeMillis()) }
+          job.complete(runScope, settings)
           breadcrumb("finish", mapOf("job" to job.id))
           states.getValue(job.id).copy(status = MaintenanceJobStatus.DONE)
         }
         is MaintenanceJobOutcome.Deferred -> {
           breadcrumb("deferred", mapOf("job" to job.id, "retryAtMs" to outcome.retryAtMs))
           scheduleClosureCheck(outcome.retryAtMs)
-          states.getValue(job.id).copy(status = MaintenanceJobStatus.PENDING)
+          // A fetch that failed because the network went away waits for it, with no warning.
+          val waiting = job.requiresNetwork && !online
+          states.getValue(job.id).copy(
+            status = if (waiting) MaintenanceJobStatus.WAITING_FOR_NETWORK else MaintenanceJobStatus.PENDING,
+          )
         }
       }
     } catch (fenced: MaintenanceRunFenced) {
@@ -184,8 +211,11 @@ internal object MaintenanceRunner {
     if (revisionPending) bumpHistoryRevision()
   }
 
+  /** One pending check serves every job: an earlier retry is never pushed back by a later one. */
   private fun scheduleClosureCheck(retryAtMs: Long) {
+    if (closureCheck?.isActive == true && closureCheckAtMs <= retryAtMs) return
     closureCheck?.cancel()
+    closureCheckAtMs = retryAtMs
     closureCheck = scope.launch {
       delay((retryAtMs - System.currentTimeMillis()).coerceAtLeast(0) + 1_000L)
       trigger("ride_closure")
@@ -296,4 +326,35 @@ internal data class MaintenanceJobState(
     "lastDurationMs" to lastDurationMs,
     "lastError" to lastError,
   )
+}
+
+/**
+ * OkHttp GET for network Maintenance Jobs. Asynchronous, so the maintenance thread is never blocked,
+ * and cancelling the run cancels the call: a late response cannot reach the database.
+ * @parity /modules/vescape-core/ios/telemetry/MaintenanceRunner.swift `urlSessionMaintenanceHttp`
+ */
+private class OkHttpMaintenanceHttp : MaintenanceHttp {
+  private val client = OkHttpClient.Builder().callTimeout(30, TimeUnit.SECONDS).build()
+
+  override suspend fun get(url: String): MaintenanceHttpResponse = suspendCancellableCoroutine { continuation ->
+    val call = client.newCall(Request.Builder().url(url).build())
+    continuation.invokeOnCancellation { call.cancel() }
+    call.enqueue(object : Callback {
+      override fun onFailure(call: Call, e: IOException) {
+        if (continuation.isActive) continuation.resumeWithException(e)
+      }
+
+      override fun onResponse(call: Call, response: Response) {
+        val result = try {
+          response.use {
+            MaintenanceHttpResponse(it.code, it.body?.string(), it.header("Retry-After")?.trim()?.toLongOrNull())
+          }
+        } catch (error: IOException) {
+          if (continuation.isActive) continuation.resumeWithException(error)
+          return
+        }
+        if (continuation.isActive) continuation.resume(result)
+      }
+    })
+  }
 }

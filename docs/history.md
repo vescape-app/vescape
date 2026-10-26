@@ -120,7 +120,9 @@ the job of **Maintenance Jobs**, which native runs by itself. There is no Rebuil
   fingerprint `version|inputs`, e.g. `1|moving=300|freeSpinDelta=1200|freeSpinCap=1500`. Anything
   else is stale. A done job costs one row read. Fingerprints travel with backups, so restoring an
   older backup makes its jobs stale again. There is no progress cursor and no pending-work state: a
-  run that stops early restarts from zero, and the missing fingerprint is the only obligation.
+  run that stops early restarts from zero, and the missing fingerprint is the only obligation. A job
+  may own its done state instead (`hasWork`, `begin`, `complete`); Ride weather does, with a
+  watermark.
 - **Runner.** `MaintenanceRunner` runs stale jobs one at a time, in declaration order, on one
   low-priority thread or queue. A failed or waiting job does not block the next. It checks after
   launch (10 s after startup), when the network comes back (network jobs only), 3 s after the last
@@ -153,6 +155,37 @@ outside the chunk for the free-spin sanitizer. It then replaces the chunk's buck
 portion of every exclusion range, keeping portions outside it. Rebuilt ranges are plain inserts and
 never merge across a chunk edge, so rebuilding twice gives identical rows. History stays complete
 throughout: a mix of old and new hours, never a missing ride.
+
+**Ride weather** (`rideWeather`, network) fills `weather_observations` for past ride days that
+have no usable weather under the Ride weather read and 24-hour freshness rule: rides from before
+weather was stored and rides recorded offline. Its `app_settings` row holds a watermark,
+`version|doneThroughMs`, not a fingerprint. Rides ending at or before it are settled; every trigger
+scans only closed rides after it, so a done job costs one bounded query and a version bump rescans
+all history once.
+
+- **Candidates.** Each UTC day a closed derived ride touches is a candidate when that part of the
+  ride has no usable weather and has a precise Ride Track fix. Days without GPS never are. A
+  midnight-crossing ride checks both days. Earlier same-day weather (an offline evening ride after
+  a live morning refresh) is enough.
+- **Fetch.** One representative fix per day (its first precise fix); days grouped by 0.1° area;
+  one request per area and window of at most 14 days, one at a time. Hourly
+  `temperature_2m`, `weather_code`, `wind_gusts_10m`, `is_day` as UTC unix time from the
+  historical forecast API, or the ERA5 archive API for days before 2022. Days before 1940 are a
+  permanent miss. Null samples are dropped, duplicates keep the first.
+- **Write.** Each area's response is filtered to its own days and ride spans: the fresh hour at or
+  before the ride start plus the hours inside it, change-only against the previous sample. One
+  transaction per window rechecks eligibility first, so a live row committed during the request
+  wins and live rows are never overwritten.
+- **Outcomes.** Fetched rows, or a validated 4xx, settle the day. A transport failure, 408, 429,
+  5xx, an unparseable body, or no data for a day under 7 days old is temporary: the watermark stops
+  before that ride (later rides may still be filled), the run backs off (1 min doubling to 1 h, at
+  least `Retry-After`; a 429 stops the run) and retries while online, and network-back retries as
+  well. Offline it shows waiting for network, without a warning.
+- **Fencing.** The watermark only advances inside fenced chunks, and the HTTP call is cancelled
+  with the run, so Restore or Clear all mid-fetch leaves no late rows or watermark.
+
+Open-Meteo's free API is for non-commercial use; the licensing position must be confirmed before
+this ships.
 
 Retired one-shot jobs and their keys may be removed once the Release Policy minimum supported version
 is past the version that shipped them. Ride summaries is not one-shot: sanitizer changes must keep

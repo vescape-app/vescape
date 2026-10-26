@@ -610,6 +610,32 @@ interface TelemetryDao {
     return insertWeatherObservation(WeatherObservationEntity.of(observation)) != -1L
   }
 
+  /** One Ride weather scan page, read in a single transaction. */
+  @Transaction
+  suspend fun weatherBackfillPage(cursor: WeatherBackfillCursor, nowMs: Long, gapMs: Long): WeatherBackfillPage =
+    weatherBackfillPageImpl(cursor, nowMs, gapMs)
+
+  /** One Ride weather window, rechecked and written in a single transaction. */
+  @Transaction
+  suspend fun storeWeatherBackfill(segments: List<WeatherBackfillSegment>, samples: List<WeatherObservation>): List<Boolean> =
+    storeWeatherBackfillImpl(segments, samples)
+
+  // @parity /modules/vescape-core/ios/telemetry/RideWeatherBackfill.swift `weatherBackfillBuckets`
+  @Query("""
+    SELECT * FROM telemetry_minute_buckets
+    WHERE bucket_start_ms >= :fromMs AND bucket_start_ms < :beforeMs
+    ORDER BY bucket_start_ms, board_id LIMIT :limit
+  """)
+  suspend fun getWeatherBackfillBuckets(fromMs: Long, beforeMs: Long, limit: Int): List<TelemetryMinuteBucketEntity>
+
+  // @parity /modules/vescape-core/ios/telemetry/RideWeatherBackfill.swift `firstPreciseRideTrackFix`
+  @Query("""
+    SELECT * FROM ride_track_points
+    WHERE fix_at_ms >= :fromMs AND fix_at_ms <= :toMs AND accuracy_cm IS NOT NULL AND accuracy_cm <= :maxAccuracyCm
+    ORDER BY fix_at_ms, id LIMIT 1
+  """)
+  suspend fun getFirstPreciseRideTrackFix(fromMs: Long, toMs: Long, maxAccuracyCm: Int): RideTrackPointEntity?
+
   /** One Ride summaries Maintenance Job chunk, read and replaced in a single transaction. */
   @Transaction
   suspend fun rebuildRideSummariesChunk(

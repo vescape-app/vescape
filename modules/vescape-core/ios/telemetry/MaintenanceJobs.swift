@@ -3,10 +3,11 @@ import GRDB
 
 /// A Maintenance Job: app-owned work that brings stored data up to date with the current app.
 ///
-/// A job is done when its `app_settings` fingerprint equals `version|inputs`. A mismatch makes it
-/// stale and the runner runs it. There is no progress cursor: a run that stops early restarts from
-/// zero, so `run` must be idempotent, and a run that could not handle everything simply does not
-/// publish its fingerprint.
+/// By default a job is done when its `app_settings` fingerprint equals `version|inputs`. A mismatch
+/// makes it stale and the runner runs it. There is no progress cursor: a run that stops early
+/// restarts from zero, so `run` must be idempotent, and a run that could not handle everything
+/// simply does not publish its fingerprint. A job may own its done state instead by implementing
+/// `hasWork`, `begin` and `complete`, as the Ride weather watermark does.
 ///
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/MaintenanceJobs.kt `MaintenanceJob`
 protocol MaintenanceJob {
@@ -24,13 +25,40 @@ protocol MaintenanceJob {
 
   /// One run over the whole data set. Writes only through `MaintenanceJobScope.chunk`.
   func run(_ scope: MaintenanceJobScope, settings: [String: Any?]) throws -> MaintenanceJobOutcome
+
+  /// Whether the job is stale. Runs on every trigger, so it must stay a small bounded check.
+  func hasWork(_ scope: MaintenanceJobScope, settings: [String: Any?]) throws -> Bool
+
+  /// Before the first chunk.
+  func begin(_ scope: MaintenanceJobScope, settings: [String: Any?]) throws
+
+  /// After a `.completed` run.
+  func complete(_ scope: MaintenanceJobScope, settings: [String: Any?]) throws
+}
+
+extension MaintenanceJob {
+  func hasWork(_ scope: MaintenanceJobScope, settings: [String: Any?]) throws -> Bool {
+    try scope.chunk { try storedMaintenanceFingerprint($0, id: id) } != maintenanceFingerprint(self, settings: settings)
+  }
+
+  /// The old fingerprint goes first: a run that ends partway must leave the job stale, even if the
+  /// inputs change back to the ones the old fingerprint names.
+  func begin(_ scope: MaintenanceJobScope, settings: [String: Any?]) throws {
+    try scope.chunk { try $0.execute(sql: "DELETE FROM app_settings WHERE key = ?", arguments: [maintenanceJobKey(id)]) }
+  }
+
+  func complete(_ scope: MaintenanceJobScope, settings: [String: Any?]) throws {
+    let fingerprint = maintenanceFingerprint(self, settings: settings)
+    let nowMs = scope.nowMs()
+    try scope.chunk { try publishMaintenanceFingerprint($0, id: id, fingerprint: fingerprint, nowMs: nowMs) }
+  }
 }
 
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/MaintenanceJobs.kt `MaintenanceJobOutcome`
 enum MaintenanceJobOutcome: Equatable {
   /// Everything handled: the runner publishes the run's fingerprint.
   case completed
-  /// Some data is still being recorded; stay stale and check again at `retryAtMs`.
+  /// Some data is still being recorded or a fetch must be retried; stay stale and check again at `retryAtMs`.
   case deferred(retryAtMs: Int64)
 }
 
@@ -40,6 +68,27 @@ struct MaintenanceRunFenced: Error {}
 /// The runner asked the run to stop: an input changed and the run restarts with the new values.
 struct MaintenanceRunCancelled: Error {}
 
+/// One HTTP GET as a network job sees it. `body` is nil when the response carried none; a transport
+/// failure (offline, timeout) throws instead.
+/// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/MaintenanceJobs.kt `MaintenanceHttpResponse`
+struct MaintenanceHttpResponse {
+  let status: Int
+  let body: Data?
+  let retryAfterSeconds: Int64?
+}
+
+/// Blocking GET for the maintenance work queue. Must return promptly once `isCancelled` turns true.
+/// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/MaintenanceJobs.kt `MaintenanceHttp`
+protocol MaintenanceHttp {
+  func get(_ url: String, isCancelled: @escaping () -> Bool) throws -> MaintenanceHttpResponse
+}
+
+struct NoMaintenanceHttp: MaintenanceHttp {
+  func get(_ url: String, isCancelled: @escaping () -> Bool) throws -> MaintenanceHttpResponse {
+    throw URLError(.notConnectedToInternet)
+  }
+}
+
 /// What a running job may touch. Every write goes through `chunk`, one short transaction under the
 /// `DatabaseReplacementFence` ticket the run started with.
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/MaintenanceJobs.kt `MaintenanceJobScope`
@@ -47,12 +96,14 @@ final class MaintenanceJobScope {
   private let writer: () throws -> any DatabaseWriter
   private let fence: DatabaseReplacementFence
   private let ticket: Int64
-  private let isCancelled: () -> Bool
+  let isCancelled: () -> Bool
   let nowMs: () -> Int64
   /// Items handled so far and the current total, in the job's own unit.
   let progress: (Int, Int) -> Void
   /// A chunk that changed Ride History committed.
   let committed: () -> Void
+  /// Network access for jobs with `requiresNetwork`; off the main thread, cancellable.
+  let http: MaintenanceHttp
 
   init(
     writer: @escaping () throws -> any DatabaseWriter,
@@ -61,7 +112,8 @@ final class MaintenanceJobScope {
     isCancelled: @escaping () -> Bool = { false },
     nowMs: @escaping () -> Int64 = { Int64(Date().timeIntervalSince1970 * 1000) },
     progress: @escaping (Int, Int) -> Void = { _, _ in },
-    committed: @escaping () -> Void = {}
+    committed: @escaping () -> Void = {},
+    http: MaintenanceHttp = NoMaintenanceHttp()
   ) {
     self.writer = writer
     self.fence = fence
@@ -70,6 +122,7 @@ final class MaintenanceJobScope {
     self.nowMs = nowMs
     self.progress = progress
     self.committed = committed
+    self.http = http
   }
 
   /// Run `block` in one write transaction under the fence; throws `MaintenanceRunFenced` once the
@@ -113,7 +166,7 @@ func publishMaintenanceFingerprint(_ db: Database, id: String, fingerprint: Stri
 
 /// Every Maintenance Job, in run order. A new job is declared here and nowhere else.
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/MaintenanceJobs.kt `MAINTENANCE_JOBS`
-let maintenanceJobs: [MaintenanceJob] = [RideSummariesJob()]
+let maintenanceJobs: [MaintenanceJob] = [RideSummariesJob(), RideWeatherJob.shared]
 
 /// Ride summaries: minute buckets, exclusion ranges and route previews rebuilt from the raw frames
 /// and Ride Track, one owned hour per transaction, oldest first. History stays complete throughout:

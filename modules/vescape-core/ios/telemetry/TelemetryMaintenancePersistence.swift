@@ -111,7 +111,7 @@ private func floorTo(_ ms: Int64, _ size: Int64) -> Int64 {
 private func floorMinute(_ ms: Int64) -> Int64 { floorTo(ms, TELEMETRY_BUCKET_SIZE_MS) }
 private func floorChunk(_ ms: Int64) -> Int64 { floorTo(ms, RIDE_SUMMARIES_CHUNK_MS) }
 
-private func lastSampleAt(_ db: Database) throws -> Int64? {
+internal func lastSampleAt(_ db: Database) throws -> Int64? {
   [try Int64.fetchOne(db, sql: "SELECT MAX(captured_at_ms) FROM telemetry_frames"),
    try Int64.fetchOne(db, sql: "SELECT MAX(fix_at_ms) FROM ride_track_points")].compactMap { $0 }.max()
 }

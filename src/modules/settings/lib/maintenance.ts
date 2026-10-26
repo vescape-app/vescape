@@ -5,11 +5,13 @@ import { fmtRideDuration, fmtTimeAgo } from '@/helpers/format'
 /** Rider-facing names for the declared Maintenance Jobs; an unknown id falls back to itself. */
 const JOB_TITLES: Record<string, string> = {
   rideSummaries: 'Ride summaries',
+  rideWeather: 'Ride weather',
 }
 
 /** Unit each job counts its progress in. */
 const JOB_UNITS: Record<string, string> = {
   rideSummaries: 'hours',
+  rideWeather: 'ride days',
 }
 
 export function maintenanceJobTitle(id: string): string {

@@ -63,6 +63,8 @@ final class MaintenanceRunner {
   private var runGeneration = 0
   private var debounce: DispatchWorkItem?
   private var closureCheck: DispatchWorkItem?
+  private var closureCheckAtMs = Int64.max
+  private let http = URLSessionMaintenanceHttp()
   private var online = false
 
   private var states: [String: MaintenanceJobState]
@@ -160,14 +162,30 @@ final class MaintenanceRunner {
 
   private func runIfStale(_ job: MaintenanceJob, settings: [String: Any?], generation: Int) {
     let fingerprint = maintenanceFingerprint(job, settings: settings)
-    let stored: String?
+    let fence = DatabaseReplacementFence.process
+    let ticket = fence.ticket()
+    let scope = MaintenanceJobScope(
+      writer: { try TelemetryDatabase.requirePool() },
+      fence: fence,
+      ticket: ticket,
+      isCancelled: { [unowned self] in onQueue { runGeneration != generation } },
+      progress: { [unowned self] done, total in progress(job.id, done: done, total: total) },
+      committed: { [unowned self] in chunkCommitted() },
+      http: http
+    )
+    let stale: Bool
     do {
-      stored = try TelemetryDatabase.requirePool().read { try storedMaintenanceFingerprint($0, id: job.id) }
+      stale = try job.hasWork(scope, settings: settings)
+    } catch is MaintenanceRunFenced {
+      onQueue { rerun = true }
+      return
+    } catch is MaintenanceRunCancelled {
+      return
     } catch {
       fail(job, fingerprint: fingerprint, error: error, startedAt: Date())
       return
     }
-    if stored == fingerprint {
+    if !stale {
       update(job.id) { $0.status = .done; $0.done = 0; $0.total = 0 }
       return
     }
@@ -175,8 +193,6 @@ final class MaintenanceRunner {
       update(job.id) { $0.status = .waitingForNetwork }
       return
     }
-    let fence = DatabaseReplacementFence.process
-    let ticket = fence.ticket()
     let startedAt = Date()
     onQueue { runningId = job.id }
     update(job.id) {
@@ -184,28 +200,19 @@ final class MaintenanceRunner {
       $0.lastRunAtMs = Int64(startedAt.timeIntervalSince1970 * 1000); $0.lastError = nil
     }
     breadcrumb("start", ["job": job.id, "fingerprint": fingerprint])
-    let scope = MaintenanceJobScope(
-      writer: { try TelemetryDatabase.requirePool() },
-      fence: fence,
-      ticket: ticket,
-      isCancelled: { [unowned self] in onQueue { runGeneration != generation } },
-      progress: { [unowned self] done, total in progress(job.id, done: done, total: total) },
-      committed: { [unowned self] in chunkCommitted() }
-    )
     var status: MaintenanceJobStatus
     do {
-      // The old fingerprint goes before the first chunk: a run that ends partway must leave the job
-      // stale, even if the inputs change back to the ones the old fingerprint names.
-      try scope.chunk { try $0.execute(sql: "DELETE FROM app_settings WHERE key = ?", arguments: [maintenanceJobKey(job.id)]) }
+      try job.begin(scope, settings: settings)
       switch try job.run(scope, settings: settings) {
       case .completed:
-        try scope.chunk { try publishMaintenanceFingerprint($0, id: job.id, fingerprint: fingerprint, nowMs: scope.nowMs()) }
+        try job.complete(scope, settings: settings)
         breadcrumb("finish", ["job": job.id])
         status = .done
       case .deferred(let retryAtMs):
         breadcrumb("deferred", ["job": job.id, "retryAtMs": retryAtMs])
         scheduleClosureCheck(retryAtMs)
-        status = .pending
+        // A fetch that failed because the network went away waits for it, with no warning.
+        status = job.requiresNetwork && !onQueue({ online }) ? .waitingForNetwork : .pending
       }
     } catch is MaintenanceRunFenced {
       breadcrumb("cancel", ["job": job.id, "reason": "database_replaced"])
@@ -248,10 +255,17 @@ final class MaintenanceRunner {
     }
   }
 
+  /// One pending check serves every job: an earlier retry is never pushed back by a later one.
   private func scheduleClosureCheck(_ retryAtMs: Int64) {
     queue.async {
+      if let pending = self.closureCheck, !pending.isCancelled, self.closureCheckAtMs <= retryAtMs { return }
       self.closureCheck?.cancel()
-      let item = DispatchWorkItem { self.triggerLocked("ride_closure") }
+      self.closureCheckAtMs = retryAtMs
+      let item = DispatchWorkItem {
+        self.closureCheck = nil
+        self.closureCheckAtMs = Int64.max
+        self.triggerLocked("ride_closure")
+      }
       self.closureCheck = item
       let delay = max(0, TimeInterval(retryAtMs) / 1000 - Date().timeIntervalSince1970) + 1
       self.queue.asyncAfter(deadline: .now() + delay, execute: item)
@@ -327,5 +341,42 @@ final class MaintenanceRunner {
     crumb.data = data
     SentrySDK.addBreadcrumb(crumb)
 #endif
+  }
+}
+
+/// URLSession GET for network Maintenance Jobs, blocking the maintenance work queue only. Polls the
+/// run's cancellation so a cancelled run stops waiting and its late response is dropped.
+/// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/MaintenanceRunner.kt `OkHttpMaintenanceHttp`
+private final class URLSessionMaintenanceHttp: MaintenanceHttp {
+  private let session: URLSession = {
+    let configuration = URLSessionConfiguration.ephemeral
+    configuration.timeoutIntervalForRequest = 30
+    configuration.timeoutIntervalForResource = 30
+    return URLSession(configuration: configuration)
+  }()
+
+  func get(_ url: String, isCancelled: @escaping () -> Bool) throws -> MaintenanceHttpResponse {
+    guard let requestUrl = URL(string: url) else { throw URLError(.badURL) }
+    let done = DispatchSemaphore(value: 0)
+    var result: Result<MaintenanceHttpResponse, Error> = .failure(URLError(.unknown))
+    let task = session.dataTask(with: requestUrl) { data, response, error in
+      if let error {
+        result = .failure(error)
+      } else if let http = response as? HTTPURLResponse {
+        let retryAfter = (http.value(forHTTPHeaderField: "Retry-After")).flatMap { Int64($0.trimmingCharacters(in: .whitespaces)) }
+        result = .success(MaintenanceHttpResponse(status: http.statusCode, body: data, retryAfterSeconds: retryAfter))
+      } else {
+        result = .failure(URLError(.badServerResponse))
+      }
+      done.signal()
+    }
+    task.resume()
+    while done.wait(timeout: .now() + 0.5) == .timedOut {
+      if isCancelled() {
+        task.cancel()
+        throw MaintenanceRunCancelled()
+      }
+    }
+    return try result.get()
   }
 }
