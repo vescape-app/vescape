@@ -43,9 +43,9 @@ Both commands run all flows by default; `--all` is also accepted. Public flows l
 `e2e/flows/*.yaml`. Helper flows start with `_` and the legacy `e2e.yaml` aggregate is excluded.
 `e2e:run` uses Metro port 8081 by default; set `E2E_METRO_PORT` when reusing another port.
 
-The first example clears app state, opens the board selector, taps Add new board, uses `EXPO_PUBLIC_E2E=1` to surface a fake BLE scan result named `E2E VESC Board`, creates `E2E Board`, keeps default battery config, saves, then checks the board name appears on the main screen.
+The setup-board flow clears app state, discovers `E2E VESC Board` through `EXPO_PUBLIC_E2E=1`, reviews and saves its Direct link, names it `E2E Board`, adjusts the battery config, skips alert customization, and saves. It then connects the saved board and checks that telemetry appears.
 
-Because this repo currently installs an Expo development build, the flow first selects the local Metro server from the Expo dev-client launcher. The dev-client config hides the tools button, skips onboarding, and prevents the dev menu from opening at launch. Those settings are native config plugin values, so rebuild the Android app after changing them.
+Because this repo currently installs an Expo development build, the launch helper waits for the Expo dev-client launcher, then opens this run's Metro URL directly. The dev-client config hides the tools button, skips onboarding, and prevents the dev menu from opening at launch. Those settings are native config plugin values, so rebuild the Android app after changing them.
 
 ## Component-library smoke
 
@@ -75,7 +75,7 @@ The seed requires an E2E build and a Metro server:
 bun run android:e2e
 ```
 
-Run the helper flow to clear app state, select Metro, seed/connect the fake board, and land on the
+Run the helper flow to clear app state, open Metro, seed/connect the fake board, and land on the
 live telemetry screen:
 
 ```sh
@@ -89,7 +89,7 @@ maestro test e2e/flows/_perf-home.yaml
 vescape://e2e-seed?flow=connect-board
 ```
 
-Do not use the deep link alone for perf baselines: it does not clear prior app state or select the
+Do not use the deep link alone for perf baselines: it does not clear prior app state or open the
 dev-client Metro server. Use `_perf-home.yaml` first.
 
 Measure a seeded telemetry screen with the bundled harness:

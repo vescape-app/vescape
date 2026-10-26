@@ -83,6 +83,9 @@ export function useEdgeDrawerDismissal({
   const [keyboardInset, setKeyboardInset] = useDrawerKeyboardInset(mounted)
   const scrollRef = useRef<ScrollView | FlatList<unknown>>(null)
   const positionedRef = useRef(false)
+  // Layout callbacks can race UI-thread shared-value writes. Keep the requested JS position
+  // authoritative until native acknowledges it through onScroll.
+  const openingScrollPendingRef = useRef(false)
   const indexedFocusAppliedRef = useRef(false)
   const openStartedRef = useRef(false)
   const dismissRangeRef = useRef(0)
@@ -95,6 +98,9 @@ export function useEdgeDrawerDismissal({
   const presence = useSharedValue(0)
   /** Scroll-driven dismissal only arms once the drawer has taken its opening position. */
   const dismissArmed = useSharedValue(false)
+  // Native can deliver its initial zero-offset event after JS requests the opening scroll.
+  // Keep that event from overwriting the position used by content-resize handling.
+  const openingScrollTarget = useSharedValue(-1)
   const dismissTriggered = useSharedValue(false)
   const animatedDismissRange = useSharedValue(1)
   const nativeScrollGesture = useMemo(() => Gesture.Native(), [])
@@ -128,6 +134,7 @@ export function useEdgeDrawerDismissal({
       setCloseRequested(false)
       dismissRangeRef.current = 0
       positionedRef.current = false
+      openingScrollPendingRef.current = false
       indexedFocusAppliedRef.current = false
       previousContentHeightRef.current = 0
       setKeyboardInset(0)
@@ -136,6 +143,7 @@ export function useEdgeDrawerDismissal({
       scrollOffset.value = 0
       openStartedRef.current = false
       dismissArmed.value = false
+      openingScrollTarget.value = -1
       dismissTriggered.value = false
       presence.value = 0
     }
@@ -154,6 +162,7 @@ export function useEdgeDrawerDismissal({
     edge,
     height,
     presence,
+    openingScrollTarget,
     scrollOffset,
     setKeyboardInset,
     triggerRef,
@@ -164,7 +173,15 @@ export function useEdgeDrawerDismissal({
    * The Modal window appears a frame or more after mount, so the opening animation is started by
    * `onShow` — kicked off any earlier it would already be over by the time anything is on screen.
    */
-  const startOpen = useDrawerOpenAnimation(openStartedRef, presence)
+  const animateOpen = useDrawerOpenAnimation(openStartedRef, presence)
+  const startOpen = useCallback(() => {
+    animateOpen()
+    // Content layout can run before the Modal's native scroll view is attached. Reapply its
+    // latest opening position once onShow confirms that the window is visible.
+    requestAnimationFrame(() => {
+      if (positionedRef.current) scrollToOffset(scrollOffsetRef.current, false)
+    })
+  }, [animateOpen, scrollToOffset])
 
   const finishClose = useCallback(() => {
     setCloseRequested(false)
@@ -177,6 +194,9 @@ export function useEdgeDrawerDismissal({
 
   const close = useCallback(() => {
     setCloseRequested(true)
+  }, [])
+  const finishOpeningScroll = useCallback(() => {
+    openingScrollPendingRef.current = false
   }, [])
 
   useEffect(() => {
@@ -191,61 +211,17 @@ export function useEdgeDrawerDismissal({
     )
   }, [closing, finishClose, mounted, presence])
 
-  const scrollHandler = useAnimatedScrollHandler({
-    onScroll: (event) => {
-      const offset = event.contentOffset.y
-      scrollOffset.value = offset
-
-      if (!dismissArmed.value || dismissTriggered.value) return
-
-      // Commit to closing mid-drag, the moment the drawer passes the point of no return.
-      const fraction = edgeDrawerVisibleFraction({
-        offset,
-        range: animatedDismissRange.value,
-        height,
-        opensFromTop,
-      })
-      if (edgeDrawerHasCommitted(fraction)) {
-        dismissTriggered.value = true
-        scheduleOnRN(close)
-      }
-    },
-  })
-
-  // The scrim rides the same curve as the panel. Left on the raw fraction it is still half dark at
-  // the commit mark, and killing that in one timed step reads as the whole overlay popping out.
-  const backdropStyle = useAnimatedStyle(() => {
-    'worklet'
-    const dismissed = edgeDrawerDismissOpacity(
-      edgeDrawerVisibleFraction({
-        offset: scrollOffset.value,
-        range: animatedDismissRange.value,
-        height,
-        opensFromTop,
-      }),
-    )
-    return { opacity: presence.value * dismissed }
-  })
-
-  const presenceStyle = useAnimatedStyle(() => {
-    'worklet'
-    const hidden = 1 - presence.value
-    const dismissed = edgeDrawerDismissOpacity(
-      edgeDrawerVisibleFraction({
-        offset: scrollOffset.value,
-        range: animatedDismissRange.value,
-        height,
-        opensFromTop,
-      }),
-    )
-    return {
-      opacity: presence.value * dismissed,
-      transform: [
-        {
-          translateY: hidden * (opensFromTop ? -DRAWER_OPEN_TRANSLATE_Y : DRAWER_OPEN_TRANSLATE_Y),
-        },
-      ],
-    }
+  const { scrollHandler, backdropStyle, presenceStyle } = useDrawerScrollAnimation({
+    openingScrollTarget,
+    scrollOffset,
+    dismissArmed,
+    dismissTriggered,
+    animatedDismissRange,
+    height,
+    opensFromTop,
+    presence,
+    close,
+    finishOpeningScroll,
   })
 
   const handleContentSizeChange = useCallback(
@@ -272,6 +248,8 @@ export function useEdgeDrawerDismissal({
           : opensFromTop
             ? 0
             : initialOpenOffset
+        openingScrollTarget.value = initialOffset > 0 ? initialOffset : -1
+        openingScrollPendingRef.current = initialOffset > 0
         scrollOffsetRef.current = initialOffset
         scrollOffset.value = initialOffset
         requestAnimationFrame(() => {
@@ -279,9 +257,10 @@ export function useEdgeDrawerDismissal({
           // the default opening offset from an earlier content-size callback.
           if (!indexedFocusAppliedRef.current) {
             if (focus) indexedFocusAppliedRef.current = true
-            scrollToOffset(initialOffset, false)
+            // Content may have grown since this callback was queued. Use its latest target.
+            scrollToOffset(scrollOffsetRef.current, false)
           }
-          dismissArmed.value = true
+          if (!openingScrollPendingRef.current) dismissArmed.value = true
           if (!initialFocusRef?.current) return
           requestAnimationFrame(() => {
             const nativeScrollRef = scrollRef.current?.getNativeScrollRef() as
@@ -300,6 +279,7 @@ export function useEdgeDrawerDismissal({
                 })
                 scrollOffsetRef.current = focusedOffset
                 scrollOffset.value = focusedOffset
+                if (openingScrollPendingRef.current) openingScrollTarget.value = focusedOffset
                 scrollToOffset(focusedOffset, false)
               },
             )
@@ -324,13 +304,14 @@ export function useEdgeDrawerDismissal({
         !initialFocusLayout
       if (pinsToOwnEdge) {
         const pinnedOffset = edgeDrawerContentResizeOffset({
-          offset: scrollOffset.value,
+          offset: openingScrollPendingRef.current ? scrollOffsetRef.current : scrollOffset.value,
           range,
           previousRange,
           height,
         })
         scrollOffsetRef.current = pinnedOffset
         scrollOffset.value = pinnedOffset
+        if (openingScrollPendingRef.current) openingScrollTarget.value = pinnedOffset
         scrollToOffset(pinnedOffset, false)
         return
       }
@@ -354,6 +335,7 @@ export function useEdgeDrawerDismissal({
       initialFocusLayout,
       virtualized,
       opensFromTop,
+      openingScrollTarget,
       scrollOffset,
       scrollToOffset,
       scrollToContentStart,
@@ -386,6 +368,7 @@ export function useEdgeDrawerDismissal({
       })
       indexedFocusAppliedRef.current = true
       scrollOffsetRef.current = target
+      if (openingScrollPendingRef.current) openingScrollTarget.value = target
       scrollOffset.value = target
       scrollToOffset(target, false)
     })
@@ -398,6 +381,7 @@ export function useEdgeDrawerDismissal({
     focusHeight,
     height,
     opensFromTop,
+    openingScrollTarget,
     scrollOffset,
     scrollToOffset,
   ])
@@ -499,6 +483,95 @@ export function useEdgeDrawerDismissal({
     handleScrollEndDrag,
     dismissAreaHeight: height,
   }
+}
+
+function useDrawerScrollAnimation({
+  openingScrollTarget,
+  scrollOffset,
+  dismissArmed,
+  dismissTriggered,
+  animatedDismissRange,
+  height,
+  opensFromTop,
+  presence,
+  close,
+  finishOpeningScroll,
+}: {
+  openingScrollTarget: SharedValue<number>
+  scrollOffset: SharedValue<number>
+  dismissArmed: SharedValue<boolean>
+  dismissTriggered: SharedValue<boolean>
+  animatedDismissRange: SharedValue<number>
+  height: number
+  opensFromTop: boolean
+  presence: SharedValue<number>
+  close: () => void
+  finishOpeningScroll: () => void
+}) {
+  const scrollHandler = useAnimatedScrollHandler({
+    onScroll: (event) => {
+      const offset = event.contentOffset.y
+      if (openingScrollTarget.value >= 0) {
+        if (Math.abs(offset - openingScrollTarget.value) > 1) return
+        openingScrollTarget.value = -1
+        dismissArmed.value = true
+        scheduleOnRN(finishOpeningScroll)
+      }
+      scrollOffset.value = offset
+
+      if (!dismissArmed.value || dismissTriggered.value) return
+
+      // Commit to closing mid-drag, the moment the drawer passes the point of no return.
+      const fraction = edgeDrawerVisibleFraction({
+        offset,
+        range: animatedDismissRange.value,
+        height,
+        opensFromTop,
+      })
+      if (edgeDrawerHasCommitted(fraction)) {
+        dismissTriggered.value = true
+        scheduleOnRN(close)
+      }
+    },
+  })
+
+  // The scrim rides the same curve as the panel. Left on the raw fraction it is still half dark at
+  // the commit mark, and killing that in one timed step reads as the whole overlay popping out.
+  const backdropStyle = useAnimatedStyle(() => {
+    'worklet'
+    const dismissed = edgeDrawerDismissOpacity(
+      edgeDrawerVisibleFraction({
+        offset: scrollOffset.value,
+        range: animatedDismissRange.value,
+        height,
+        opensFromTop,
+      }),
+    )
+    return { opacity: presence.value * dismissed }
+  })
+
+  const presenceStyle = useAnimatedStyle(() => {
+    'worklet'
+    const hidden = 1 - presence.value
+    const dismissed = edgeDrawerDismissOpacity(
+      edgeDrawerVisibleFraction({
+        offset: scrollOffset.value,
+        range: animatedDismissRange.value,
+        height,
+        opensFromTop,
+      }),
+    )
+    return {
+      opacity: presence.value * dismissed,
+      transform: [
+        {
+          translateY: hidden * (opensFromTop ? -DRAWER_OPEN_TRANSLATE_Y : DRAWER_OPEN_TRANSLATE_Y),
+        },
+      ],
+    }
+  })
+
+  return { scrollHandler, backdropStyle, presenceStyle }
 }
 
 function useDrawerKeyboardInset(mounted: boolean) {

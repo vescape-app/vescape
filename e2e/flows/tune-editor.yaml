@@ -37,7 +37,7 @@ appId: ${APP_ID}
 - assertVisible:
     id: 'tune-editor-apply'
     enabled: true
-- takeScreenshot: /tmp/tune-manual-warning
+- takeScreenshot: tune-manual-warning
 - tapOn:
     id: 'tune-editor-apply'
 - assertVisible: 'Applied value: 6'
@@ -48,7 +48,7 @@ appId: ${APP_ID}
 - eraseText
 - inputText: '1.7'
 - pressKey: Enter
-- takeScreenshot: /tmp/tune-manual-valid
+- takeScreenshot: tune-manual-valid
 - tapOn:
     id: 'tune-editor-apply'
 - assertVisible: 'Applied value: 1.7'

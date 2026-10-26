@@ -49,7 +49,7 @@ zsh -lc 'bun run e2e'
 Most public flows clear app state through `_launch.yaml`. Component and tune editor checks
 reuse the app already opened by setup.
 
-The package comes from `src/config/appVariant.ts` (`app.vescape.dev` for development). Flow selects local Metro server from the dev-client launcher, then exercises add-board happy path.
+The package comes from `src/config/appVariant.ts` (`app.vescape.dev` for development). The launch helper waits for the dev-client launcher, then opens the intended Metro URL directly.
 
 Expected fake BLE board:
 
