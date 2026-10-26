@@ -177,87 +177,109 @@ function weatherStats(weather: RideWeather | null, units: UnitSystem): StatItem[
   return stats
 }
 
+/** Weather and gusts take the last column's slots so they stack together; the stats they displace move after. */
+const WEATHER_SLOTS: Record<string, string> = { weather: 'maxDuty', gust: 'samples' }
+
+function withWeather(stats: StatItem[], weather: StatItem[]): StatItem[] {
+  const placed = [...stats]
+  const displaced: StatItem[] = []
+  const rest: StatItem[] = []
+  for (const item of weather) {
+    const index = placed.findIndex((stat) => stat.key === WEATHER_SLOTS[item.key])
+    if (index === -1) {
+      rest.push(item)
+      continue
+    }
+    displaced.push(placed[index]!)
+    placed[index] = item
+  }
+  return [...placed, ...displaced, ...rest]
+}
+
 function useSessionStats(session: HistorySession): StatItem[] {
   const { formatSpeed, speedUnit } = useFormat()
   const { formatHistoryDistance } = useRideFormat()
   const units = useUnitSystem()
   return useMemo(
-    () => [
-      {
-        key: 'distance',
-        label: 'Distance',
-        ...formatHistoryDistance(session.distanceM),
-        icon: RoadHorizonIcon,
-        accent: theme.palette.sky.color,
-      },
-      {
-        key: 'rideTime',
-        label: 'Time',
-        ...formatDuration(rideDurationMs(session)),
-        icon: ClockCountdownIcon,
-        accent: theme.palette.purple.color,
-      },
-      {
-        key: 'topSpeed',
-        label: 'Top Speed',
-        value: formatSpeed(session.maxSpeedKmh),
-        unit: speedUnit,
-        icon: GaugeIcon,
-        accent: theme.telemetry.speed,
-      },
-      {
-        key: 'avgSpeed',
-        label: 'Avg Speed',
-        value: formatSpeed(session.avgSpeedKmh),
-        unit: speedUnit,
-        icon: RepeatIcon,
-        accent: theme.palette.sky.light,
-      },
-      {
-        key: 'maxDuty',
-        label: 'Max Duty',
-        value: formatDuty(session.maxDuty),
-        unit: '%',
-        icon: LightningIcon,
-        accent: theme.telemetry.duty,
-      },
-      {
-        key: 'mosfetTemp',
-        label: 'Ctrl Max',
-        ...formatTemp(session.maxTempMosfet),
-        icon: ThermometerHotIcon,
-        accent: theme.telemetry.controllerTemp,
-      },
-      {
-        key: 'motorTemp',
-        label: 'Motor Max',
-        ...formatTemp(session.maxTempMotor),
-        icon: ThermometerSimpleIcon,
-        accent: theme.telemetry.motorTemp,
-      },
-      {
-        key: 'batteryUsed',
-        label: 'Used',
-        ...formatWh(session.batteryUsedWh),
-        icon: BatteryMediumIcon,
-        accent: theme.status.warning.color,
-      },
-      {
-        key: 'batteryRegen',
-        label: 'Regen',
-        ...formatWh(session.batteryRegenWh),
-        icon: BatteryChargingIcon,
-        accent: theme.palette.green.color,
-      },
-      {
-        key: 'samples',
-        label: 'Points',
-        value: formatCount(session.sampleCount),
-        icon: WaveformIcon,
-        accent: theme.palette.cyan.color,
-      },
-      ...weatherStats(session.weather, units),
-    ],
+    () =>
+      withWeather(
+        [
+          {
+            key: 'distance',
+            label: 'Distance',
+            ...formatHistoryDistance(session.distanceM),
+            icon: RoadHorizonIcon,
+            accent: theme.palette.sky.color,
+          },
+          {
+            key: 'rideTime',
+            label: 'Time',
+            ...formatDuration(rideDurationMs(session)),
+            icon: ClockCountdownIcon,
+            accent: theme.palette.purple.color,
+          },
+          {
+            key: 'topSpeed',
+            label: 'Top Speed',
+            value: formatSpeed(session.maxSpeedKmh),
+            unit: speedUnit,
+            icon: GaugeIcon,
+            accent: theme.telemetry.speed,
+          },
+          {
+            key: 'avgSpeed',
+            label: 'Avg Speed',
+            value: formatSpeed(session.avgSpeedKmh),
+            unit: speedUnit,
+            icon: RepeatIcon,
+            accent: theme.palette.sky.light,
+          },
+          {
+            key: 'maxDuty',
+            label: 'Max Duty',
+            value: formatDuty(session.maxDuty),
+            unit: '%',
+            icon: LightningIcon,
+            accent: theme.telemetry.duty,
+          },
+          {
+            key: 'mosfetTemp',
+            label: 'Ctrl Max',
+            ...formatTemp(session.maxTempMosfet),
+            icon: ThermometerHotIcon,
+            accent: theme.telemetry.controllerTemp,
+          },
+          {
+            key: 'motorTemp',
+            label: 'Motor Max',
+            ...formatTemp(session.maxTempMotor),
+            icon: ThermometerSimpleIcon,
+            accent: theme.telemetry.motorTemp,
+          },
+          {
+            key: 'batteryUsed',
+            label: 'Used',
+            ...formatWh(session.batteryUsedWh),
+            icon: BatteryMediumIcon,
+            accent: theme.status.warning.color,
+          },
+          {
+            key: 'batteryRegen',
+            label: 'Regen',
+            ...formatWh(session.batteryRegenWh),
+            icon: BatteryChargingIcon,
+            accent: theme.palette.green.color,
+          },
+          {
+            key: 'samples',
+            label: 'Points',
+            value: formatCount(session.sampleCount),
+            icon: WaveformIcon,
+            accent: theme.palette.cyan.color,
+          },
+        ],
+        weatherStats(session.weather, units),
+      ),
     [session, formatHistoryDistance, formatSpeed, speedUnit, units],
   )
 }

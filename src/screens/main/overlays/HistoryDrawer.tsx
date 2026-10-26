@@ -1,5 +1,4 @@
 import { useRideFormat } from '@/modules/history/hooks/useRideFormat'
-import { useFormat } from '@/hooks/useFormat'
 import { useCallback, useEffect, useMemo, useState, type RefObject } from 'react'
 import { router } from 'expo-router'
 import {
@@ -45,7 +44,6 @@ export function HistoryDrawer({
   onOpenRide,
   onOpenFavorite,
 }: HistoryDrawerProps) {
-  const { formatSpeedWithUnit } = useFormat()
   const { formatRideDetails } = useRideFormat()
   const [listMode, setListMode] = useState<ListMode>(null)
   const [ridesLoaded, setRidesLoaded] = useState(false)
@@ -188,10 +186,11 @@ export function HistoryDrawer({
                   startMs: session.startAtMs,
                   endMs: session.endAtMs,
                 }
-                const details = [
-                  formatRideDetails(window.endMs - window.startMs, session.distanceM, null),
-                  formatSpeedWithUnit(session.maxSpeedKmh),
-                ].join(' · ')
+                const details = formatRideDetails(
+                  window.endMs - window.startMs,
+                  session.distanceM,
+                  null,
+                )
                 return (
                   <RidePreviewCard
                     key={session.id}
