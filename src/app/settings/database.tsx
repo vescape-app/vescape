@@ -73,9 +73,7 @@ export default function DatabaseSettingsScreen() {
         </SettingsCard>
         <SettingsSectionTitle>Background updates</SettingsSectionTitle>
         <Text style={styles.sectionHint}>
-          Past rides are kept up to date in the background: summaries are recalculated after filter
-          changes or app updates, and weather is added to rides that are missing it. Nothing to do
-          here.
+          Runs automatically in the background. Nothing to do here.
         </Text>
         <SettingsCard>
           {progress ? (
