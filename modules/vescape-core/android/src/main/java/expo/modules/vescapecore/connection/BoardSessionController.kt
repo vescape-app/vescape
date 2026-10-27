@@ -1195,6 +1195,7 @@ internal class BoardSessionController(private val service: CoreForegroundService
             reassertForeground()
             refreshGpsDemand()
             owSessionController.start(start.boardConfig)
+            owSessionController.applyAlertSettings(lastAppliedSettings)
             start.onSuccess()
             return
         }
@@ -3330,7 +3331,13 @@ internal class BoardSessionController(private val service: CoreForegroundService
      */
     private fun recordRideTrackFix(snapshot: LocationSnapshot) {
         if (idlePauseDetector.isPaused) return
-        recordingCoordinator.recordGpsFix(snapshot.toCapture())
+        val capture = snapshot.toCapture()
+        if (boardConfig?.boardKind == BoardKind.OneWheel) {
+            // OneWheel owns a separate recorder alongside its telemetry pipeline.
+            owSessionController.recordGpsFix(capture)
+        } else {
+            recordingCoordinator.recordGpsFix(capture)
+        }
     }
 
     /**
@@ -3695,6 +3702,9 @@ internal class BoardSessionController(private val service: CoreForegroundService
         connectionSoundsEnabled = settings.connectionSoundsEnabled
         alertCoordinator.distanceUnit = settings.distanceUnit
         alertCoordinator.temperatureUnit = settings.temperatureUnit
+        if (boardConfig?.boardKind == BoardKind.OneWheel) {
+            owSessionController.applyAlertSettings(settings)
+        }
         alertFeedback.setSoundSettings(settings)
         weatherAlerts.settings = WeatherAlertSettings.of(
             settings.weatherRainAlertLevel,

@@ -14,6 +14,7 @@ internal data class PresetInput(
   val distanceUnit: String = "km",
   /** Base of the metric's config-relative points; read only when its spec has `match=on`. */
   val configBase: Double? = null,
+  val hasNativeBatteryPercent: Boolean = false,
 )
 
 internal data class PresetDefinition(
@@ -130,7 +131,7 @@ internal object AlertPresetGenerator {
     val ruleSpec = if (geiger != null && definition.spec.startsWith("geiger:")) "geiger:$geiger" else definition.spec
     val match = matches[metric].takeIf { spec.option("match") == "on" }
     if (match != null) return relativeRules(ruleSpec, match, level, input.configBase)
-    if (definition.requiresBatteryConfig && !input.hasBatteryConfig) return emptyList()
+    if (definition.requiresBatteryConfig && !input.hasBatteryConfig && !input.hasNativeBatteryPercent) return emptyList()
     return fixedRules(definition, ruleSpec, level, input)
   }
 

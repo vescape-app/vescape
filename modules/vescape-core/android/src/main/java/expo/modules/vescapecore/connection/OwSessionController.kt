@@ -27,7 +27,9 @@ import expo.modules.vescapecore.runtime.LinkIntegrity
 import expo.modules.vescapecore.service.CoreForegroundService
 import expo.modules.vescapecore.service.SessionConfig
 import expo.modules.vescapecore.telemetry.AppDataRepository
+import expo.modules.vescapecore.telemetry.AppSettings
 import expo.modules.vescapecore.telemetry.LiveSeriesEmitter
+import expo.modules.vescapecore.telemetry.TelemetryLocationCapture
 import expo.modules.vescapecore.telemetry.TelemetryPipeline
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
@@ -318,6 +320,19 @@ internal class OwSessionController(
     emitEvent("onLiveState", liveStateMap(includeRecent = false))
   }
 
+  /** GPS and board telemetry must enter the same OneWheel-owned recorder for Ride History. */
+  fun recordGpsFix(location: TelemetryLocationCapture) {
+    recordingCoordinator.recordGpsFix(location)
+  }
+
+  fun applyAlertSettings(settings: AppSettings) {
+    alertCoordinator?.let {
+      it.distanceUnit = settings.distanceUnit
+      it.temperatureUnit = settings.temperatureUnit
+    }
+    alertFeedback?.setSoundSettings(settings)
+  }
+
   private fun loadAlertRules(boardId: String?) {
     val coordinator = alertCoordinator
     if (boardId == null || coordinator == null) {
@@ -325,7 +340,10 @@ internal class OwSessionController(
       return
     }
     CoreForegroundService.appDataScope.launch {
-      val rules = AppDataRepository.get(context).getEnabledAlertRuleEntities(boardId)
+      val rules = AppDataRepository.get(context).getEnabledAlertRuleEntities(
+        boardId,
+        hasNativeBatteryPercent = true,
+      )
       handler.post { alertCoordinator?.replaceRules(rules) }
     }
   }

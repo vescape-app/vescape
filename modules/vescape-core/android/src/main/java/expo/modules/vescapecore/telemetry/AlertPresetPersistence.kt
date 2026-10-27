@@ -49,7 +49,14 @@ internal object AlertPresetPersistence {
    * A missing or tombstoned Board expands nothing. A metric that fails to expand is passed to
    * [reportFailure] and skipped, so the rider rules and the other metrics still load.
    */
-  suspend fun expandedRules(dao: TelemetryDao, boardId: String, reportFailure: (Throwable) -> Unit): List<AlertRuleEntity> {
+  // @parity /modules/vescape-core/ios/telemetry/AlertPresetPersistence.swift `expandedRules`
+  // @platform-diff Android OneWheel provides native battery SoC; the iOS OneWheel session is unsupported.
+  suspend fun expandedRules(
+    dao: TelemetryDao,
+    boardId: String,
+    reportFailure: (Throwable) -> Unit,
+    hasNativeBatteryPercent: Boolean = false,
+  ): List<AlertRuleEntity> {
     val rows = dao.getAlertRules(boardId)
     val riderRules = rows.filterNot { isPresetId(it.id) }
     val board = dao.getBoard(boardId)
@@ -65,6 +72,7 @@ internal object AlertPresetPersistence {
         val input = PresetInput(
           topSpeedKmh = (settings["topSpeedKmh"] as? Number)?.toDouble() ?: 50.0,
           hasBatteryConfig = AlertPresetGenerator.validBattery(settings["batteryConfig"]),
+          hasNativeBatteryPercent = hasNativeBatteryPercent,
           distanceUnit = units,
           configBase = field?.let { resolveBase(dao, boardId, it) },
         )

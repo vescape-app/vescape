@@ -21,6 +21,7 @@ struct PresetInput {
   var distanceUnit = "km"
   /// Base of the metric's config-relative points; read only when its spec has `match=on`.
   var configBase: Double? = nil
+  var hasNativeBatteryPercent = false
 }
 
 private struct PresetDefinition: Decodable {
@@ -127,7 +128,7 @@ final class AlertPresetGenerator {
     if spec.option("match") == "on", let match = catalog.match[metric] {
       return relativeRules(ruleSpec, match: match, level: spec.level, base: input.configBase)
     }
-    if definition.requiresBatteryConfig && !input.hasBatteryConfig { return [] }
+    if definition.requiresBatteryConfig && !input.hasBatteryConfig && !input.hasNativeBatteryPercent { return [] }
     return fixedRules(definition, spec: ruleSpec, level: spec.level, input: input)
   }
 

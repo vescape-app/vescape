@@ -1,6 +1,8 @@
 package expo.modules.vescapecore.alerts
 
 import expo.modules.vescapecore.protocol.RefloatTelemetry
+import expo.modules.vescapecore.ow.OwFrame
+import expo.modules.vescapecore.ow.toRefloatTelemetry
 
 import expo.modules.vescapecore.telemetry.AlertRuleEntity
 import org.junit.Assert.assertEquals
@@ -37,6 +39,24 @@ class AlertEngineTest {
         createdAt = 0L,
         repeatEverySeconds = repeatEverySeconds,
     )
+
+    @Test fun `OneWheel SoC and mapped temperatures fire their battery and temperature rules`() {
+        val rules = listOf(
+            rule(id = "battery", controlId = "battery", threshold = 25.0),
+            rule(id = "motor-temp", controlId = "motor-temp", threshold = 80.0),
+            rule(id = "controller-temp", controlId = "controller-temp", threshold = 90.0),
+        )
+
+        val frame = OwFrame(
+            atMs = 1L,
+            batteryPercent = 20,
+            controllerTempC = 92.0,
+            motorTempC = 82.0,
+        )
+        val fired = AlertEngine().evaluate(rules, frame.toRefloatTelemetry(), frame.batteryPercent?.toDouble())
+
+        assertEquals(setOf("battery", "motor-temp", "controller-temp"), fired.map { it.controlId }.toSet())
+    }
 
     @Test fun `config relative duty resolves fraction and follows updates`() {
         val relative = rule(thresholdKind = "config-relative", configFieldId = "tiltback_duty", thresholdOffset = -10.0, thresholdMaxOffset = 0.0)

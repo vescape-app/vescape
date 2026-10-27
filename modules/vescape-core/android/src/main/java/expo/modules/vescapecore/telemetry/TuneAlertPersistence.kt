@@ -22,8 +22,12 @@ internal class TuneAlertPersistence(private val dao: TelemetryDao) {
 
   /** Rider rules only: preset rows change through `applyAlertPreset`, expanded points never. */
   suspend fun saveAlert(rule: AlertRuleEntity) = dao.upsertAlertRule(riderRule(rule))
-  suspend fun alertRules(boardId: String, reportPresetFailure: (Throwable) -> Unit): List<AlertRuleEntity> =
-    AlertPresetPersistence.expandedRules(dao, boardId, reportPresetFailure)
+  suspend fun alertRules(
+    boardId: String,
+    reportPresetFailure: (Throwable) -> Unit,
+    hasNativeBatteryPercent: Boolean = false,
+  ): List<AlertRuleEntity> =
+    AlertPresetPersistence.expandedRules(dao, boardId, reportPresetFailure, hasNativeBatteryPercent)
   suspend fun setAlertEnabled(boardId: String, id: String, enabled: Boolean) = dao.setAlertRuleEnabled(boardId, riderId(id), enabled)
   suspend fun deleteAlert(boardId: String, id: String) = dao.deleteAlertRule(boardId, riderId(id))
 

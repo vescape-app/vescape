@@ -402,9 +402,12 @@ class AppDataRepository private constructor(private val context: Context) {
   }
 
   /** The given Board's enabled rules — the alert engine evaluates only the connected Board's rules. */
-  suspend fun getEnabledAlertRuleEntities(boardId: String): List<AlertRuleEntity> =
+  suspend fun getEnabledAlertRuleEntities(
+    boardId: String,
+    hasNativeBatteryPercent: Boolean = false,
+  ): List<AlertRuleEntity> =
     withContext(Dispatchers.IO) {
-      tuneAlerts.alertRules(boardId, ::reportPresetFailure).filter { it.enabled }
+      tuneAlerts.alertRules(boardId, ::reportPresetFailure, hasNativeBatteryPercent).filter { it.enabled }
     }
 
   suspend fun upsertAlertRule(rule: Map<String, Any?>): Unit = withContext(Dispatchers.IO) {
