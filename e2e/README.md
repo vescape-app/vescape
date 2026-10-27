@@ -110,21 +110,29 @@ the first step of that: it boots from fixtures and a replay instead of `e2eFake`
 
 ## Smoke
 
-`bun run smoke` walks the screens a rider actually opens — live telemetry and persisted alerts,
+`bun run smoke` walks the screens a rider actually opens — live telemetry, custom alerts alongside persisted presets,
 map modes, Ride History, Profile stats, and the add-board wizard — and asserts on them on Android
 and iOS.
 
 ```sh
 bun run smoke                      # picks a device, builds, runs every flow
 bun run smoke --no-build           # reuse the smoke build already installed
-bun run smoke --flow 03-history    # one flow against the installed build
+bun run smoke --flow 03-history    # build and run one flow
+bun run smoke --no-build --flow 02-alerts # alerts against an installed smoke build
 bun run smoke --device <serial>    # skip the picker
 bun run smoke --platform ios       # use an iOS simulator
 bun run smoke --build-only --output .expo/smoke/app.apk
 bun run smoke --app .expo/smoke/app.apk --flow 03-history
 ```
 
-CI builds one Release artifact per platform without booting a device. Each platform's five flows
+`02-alerts` saves a custom speed Geiger rule, changes Normal → Safe → Off, and reopens
+Speed to check that the custom range and Off selection survive navigation. It restores Normal
+before checking battery presets: Normal and Safe expand to their charge-percentage voice points,
+Safe survives reopening, and Off disables preview. It restores battery Normal before returning
+home. Each runner invocation restores fresh fixtures; this checks native writes
+and screen reopening, not persistence across app restarts.
+
+CI builds one Release artifact per platform without booting a device. Each platform's six flows
 then run in parallel jobs, each installing that artifact and starting a fresh fixture session.
 The iOS app travels in a tar archive to preserve its bundle permissions and symlinks. Gradle's build
 cache and iOS CocoaPods dependencies are separate from app artifacts. iOS caches the compiled
