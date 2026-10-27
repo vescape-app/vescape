@@ -45,3 +45,13 @@ export async function appUi(serial: string, packageName: string) {
     ]),
   }
 }
+
+/** Release only this run's device-side listeners; host ports alone do not describe ownership. */
+export async function removeReversePorts(serial: string, ports: readonly number[], command = adb) {
+  const owned = new Set(ports.map((port) => `tcp:${port}`))
+  const reverses = new TextDecoder().decode(await command(serial, 'reverse', '--list'))
+  for (const line of reverses.trim().split('\n')) {
+    const [, devicePort] = line.trim().split(/\s+/)
+    if (owned.has(devicePort)) await command(serial, 'reverse', '--remove', devicePort)
+  }
+}

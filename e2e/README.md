@@ -98,8 +98,7 @@ from the relay roster and remove the wrist group page.
 
 Android UI Automator checks the Wear UI; Maestro drives the phone. Logs, the peer's protocol
 transcript, phone Maestro artifacts, and watch XML/screenshots are saved under
-`.expo/group-ride-e2e/<timestamp>/`. Failures exit nonzero. Owned server/Metro processes stop at
-the end; installed apps remain. Already running emulators are left running. This suite is separate from smoke, regular fake
+`.expo/group-ride-e2e/<timestamp>/`. Failures exit nonzero. Owned server/Metro processes stop and their ADB reverse tunnels are removed on success or failure; installed apps remain. Already running emulators are left running. This suite is separate from smoke, regular fake
 phone E2E, and `e2e:watch`. Apple Watch, BLE reception, reconnect, public auto-join and Privacy
 Zone suppression are outside this flow.
 

@@ -4,7 +4,7 @@ import { join, resolve } from 'path'
 import { applicationId } from '../src/config/appVariant.ts'
 import { listAdbDevices } from './lib/devices.ts'
 import { maestroCommand } from './lib/maestro.ts'
-import { adb, appUi } from './lib/androidUiE2e.ts'
+import { adb, appUi, removeReversePorts } from './lib/androidUiE2e.ts'
 import { GroupRidePeer, PHONE_FIX } from './lib/groupRidePeer.ts'
 import { version } from '../package.json'
 
@@ -21,6 +21,7 @@ const artifacts = join(
 )
 mkdirSync(artifacts, { recursive: true })
 const children: Bun.Subprocess[] = []
+const reversePorts: number[] = []
 let peer: GroupRidePeer | undefined
 let interrupted = false
 let gpsTimer: ReturnType<typeof setInterval> | undefined
@@ -103,9 +104,12 @@ try {
   if (!revision.success) throw new Error(`Missing server checkout: ${serverRoot}`)
   await Bun.write(join(artifacts, 'server-revision.txt'), revision.stdout)
   const relayPort = freePort()
+  reversePorts.push(relayPort)
   env.GROUP_RIDE_PORT = String(relayPort)
   env.EXPO_PUBLIC_SERVER_URL = `http://127.0.0.1:${relayPort}`
-  env.E2E_METRO_PORT = String(freePort())
+  const metroPort = freePort()
+  reversePorts.push(metroPort)
+  env.E2E_METRO_PORT = String(metroPort)
   const relay = start(['bun', 'run', 'scripts/lib/groupRideRelayHost.ts'], 'relay.log')
   await ready(`${env.EXPO_PUBLIC_SERVER_URL}/health`, relay)
   peer = new GroupRidePeer(`ws://127.0.0.1:${relayPort}/ws/group-rides`, version)
@@ -250,6 +254,18 @@ try {
   console.error(error)
 } finally {
   clearInterval(gpsTimer)
+  // adb reverse binds a listener on the device. Leaking one can make a later Maestro
+  // driver fail to bind that port even though the old host server has already exited.
+  try {
+    const results = await Promise.allSettled(
+      listAdbDevices().map((device) => removeReversePorts(device.serial, reversePorts)),
+    )
+    const failures = results.filter((result) => result.status === 'rejected')
+    if (failures.length) throw new AggregateError(failures.map((result) => result.reason))
+  } catch (error) {
+    process.exitCode = 1
+    console.error('Group Ride E2E reverse cleanup failed:', error)
+  }
   if (peer) {
     await Bun.write(join(artifacts, 'peer.json'), JSON.stringify(peer.transcript, null, 2))
     peer.close()
