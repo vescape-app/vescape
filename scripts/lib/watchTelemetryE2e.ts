@@ -1,3 +1,4 @@
+import { adb, appNodes } from './androidUiE2e.ts'
 import { mkdirSync } from 'fs'
 import { join } from 'path'
 
@@ -12,16 +13,7 @@ function readouts(xml: string, packageName: string): Readouts | null {
   let speed: number | undefined
   let unit = ''
   let duty: number | undefined
-  // UI Automator emits each node's attributes on one tag. Only numeric, entity-free labels
-  // are read here; this is not a general XML parser.
-  for (const [node] of xml.matchAll(/<node\b[^>]*>/g)) {
-    const attrs = Object.fromEntries(
-      [...node.matchAll(/([\w-]+)="([^"]*)"/g)].map((match) => [match[1], match[2]]),
-    )
-    if (attrs.package !== packageName) continue
-    const bounds = attrs.bounds?.match(/^\[(\d+),(\d+)\]\[(\d+),(\d+)\]$/)
-    if (!bounds || Number(bounds[3]) <= Number(bounds[1]) || Number(bounds[4]) <= Number(bounds[2]))
-      continue
+  for (const attrs of appNodes(xml, packageName)) {
     const speedMatch = attrs['content-desc']?.match(/^Speed (\d+) (km\/h|mph)$/)
     const dutyMatch = attrs['content-desc']?.match(/^Duty (\d+) %$/)
     if (speedMatch) {
@@ -49,18 +41,6 @@ export class WatchTelemetryCheck {
     }
     return current.speed !== this.first.speed ? { first: this.first, current } : null
   }
-}
-
-async function adb(serial: string, ...args: string[]): Promise<Uint8Array> {
-  const command = ['adb', '-s', serial, ...args]
-  const child = Bun.spawn(command, { stdout: 'pipe', stderr: 'pipe', timeout: 20_000 })
-  const [stdout, stderr, code] = await Promise.all([
-    new Response(child.stdout).bytes(),
-    new Response(child.stderr).text(),
-    child.exited,
-  ])
-  if (code !== 0) throw new Error(`${command.join(' ')} failed (${code}): ${stderr.trim()}`)
-  return stdout
 }
 
 /** Real-device UI assertions, independent of Maestro's phone-only device discovery. */

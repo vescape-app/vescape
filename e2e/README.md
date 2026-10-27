@@ -71,6 +71,38 @@ placeholders, and another app's UI do not match. UI dumps and a screenshot are s
 Maestro is not used here because its Android device discovery excludes the Wear emulator. The development apps and replay remain running for inspection.
 Apple Watch is not covered by this command.
 
+## Group Ride E2E, phone + Wear OS
+
+```sh
+bun run e2e:group --device Medium_Phone
+```
+
+Requires the sibling `../vescape-server` checkout with its Bun dependencies installed, Maestro,
+and a paired phone + Wear OS emulator with Google Play services. Set `GROUP_RIDE_SERVER_DIR` for
+another server checkout and `WEAR_AVD` for another watch AVD. Run with exactly one phone emulator
+and one watch emulator. Initial pairing follows [watch emulator setup](../docs/agents/watch-emulators.md).
+
+The command owns an isolated Metro and a local server process on temporary ports. It rebuilds
+both current development apps and sets emulator GPS. Phone state is cleared before starting the
+Mirror, with location, nearby-device, activity and notification permissions granted for the test. The UI
+flow preserves that state and the established phone/watch connection. It mounts
+the server's real Group Ride relay, protocol validation, version gate, and App Status routes using
+`MemoryStore`. No database, Redis, server credentials, production rooms, JS native fake, or watch
+fixture replay are used. The sibling server revision is the implementation under test.
+
+A simulated WebSocket rider creates a nearby ride. Maestro sets the phone's rider name and joins
+through Social. The peer must receive native phone GPS presence without a Board Session. The
+watch's real roster must show that peer and battery. Changing the peer's presence must update
+the phone board name/battery and wrist battery/distance. Leaving through Social must remove the phone
+from the relay roster and remove the wrist group page.
+
+Android UI Automator checks the Wear UI; Maestro drives the phone. Logs, the peer's protocol
+transcript, phone Maestro artifacts, and watch XML/screenshots are saved under
+`.expo/group-ride-e2e/<timestamp>/`. Failures exit nonzero. Owned server/Metro processes stop at
+the end; installed apps remain. Already running emulators are left running. This suite is separate from smoke, regular fake
+phone E2E, and `e2e:watch`. Apple Watch, BLE reception, reconnect, public auto-join and Privacy
+Zone suppression are outside this flow.
+
 ## Component-library smoke
 
 `components.yaml` opens the base, chart, and typography previews and exercises the

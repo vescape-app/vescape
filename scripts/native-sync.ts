@@ -93,7 +93,9 @@ function hashFiles(paths: string[], root: string, into: Fingerprint) {
 }
 
 export function prebuildFingerprint(platform: Platform, root = ROOT): Fingerprint {
-  const fingerprint: Fingerprint = {}
+  const fingerprint: Fingerprint = {
+    'env:EXPO_PUBLIC_SERVER_URL': process.env.EXPO_PUBLIC_SERVER_URL || 'https://api.vescape.app',
+  }
   if (platform === 'android') {
     fingerprint['env:EXPO_PUBLIC_SMOKE'] = process.env.EXPO_PUBLIC_SMOKE === '1' ? '1' : '0'
   }

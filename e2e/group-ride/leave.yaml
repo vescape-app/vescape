@@ -1,0 +1,7 @@
+appId: ${APP_ID}
+---
+- tapOn: Leave group ride
+- extendedWaitUntil:
+    visible: Join nearest group ride
+    timeout: 15000
+- assertNotVisible: E2E Board Beta

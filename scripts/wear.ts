@@ -524,7 +524,12 @@ async function isOnMetro(phone: AdbDevice, packageName: string) {
 }
 
 /** Installs the phone dev build when missing, then makes sure its JS is running from Metro. */
-async function ensurePhoneApp(phone: AdbDevice, packageName: string, rebuild = false) {
+async function ensurePhoneApp(
+  phone: AdbDevice,
+  packageName: string,
+  rebuild = false,
+  grantTestPermissions = false,
+) {
   const installed = capture(['adb', '-s', phone.serial, 'shell', 'pm', 'list', 'packages'])
     .split('\n')
     .includes(`package:${packageName}`)
@@ -534,6 +539,27 @@ async function ensurePhoneApp(phone: AdbDevice, packageName: string, rebuild = f
     })
   }
 
+  if (grantTestPermissions) {
+    const sdk = Number(
+      capture(['adb', '-s', phone.serial, 'shell', 'getprop', 'ro.build.version.sdk']),
+    )
+    const permissions = ['ACCESS_COARSE_LOCATION', 'ACCESS_FINE_LOCATION', 'ACTIVITY_RECOGNITION']
+    if (sdk >= 31) permissions.push('BLUETOOTH_SCAN', 'BLUETOOTH_CONNECT')
+    if (sdk >= 33) permissions.push('POST_NOTIFICATIONS')
+    for (const permission of permissions) {
+      run([
+        'adb',
+        '-s',
+        phone.serial,
+        'shell',
+        'pm',
+        'grant',
+        packageName,
+        `android.permission.${permission}`,
+      ])
+    }
+  }
+
   const metro = await fetch(`${METRO_URL}/status`, { signal: AbortSignal.timeout(5000) })
     .then((response) => response.text())
     .catch(() => '')
@@ -541,12 +567,20 @@ async function ensurePhoneApp(phone: AdbDevice, packageName: string, rebuild = f
     fail(`Metro is not running on ${METRO_URL} — start it with \`bun run start\`, then re-run`)
   }
   // The reverse dies with an adb server restart, like the pairing forward.
-  run(['adb', '-s', phone.serial, 'reverse', 'tcp:8081', 'tcp:8081'])
+  run([
+    'adb',
+    '-s',
+    phone.serial,
+    'reverse',
+    `tcp:${new URL(METRO_URL).port}`,
+    `tcp:${new URL(METRO_URL).port}`,
+  ])
   if (await isOnMetro(phone, packageName)) {
     console.log(`wear: ${packageName} is running from Metro`)
     return
   }
 
+  run(['adb', '-s', phone.serial, 'shell', 'am', 'force-stop', packageName])
   run([
     'adb',
     '-s',
@@ -557,7 +591,7 @@ async function ensurePhoneApp(phone: AdbDevice, packageName: string, rebuild = f
     '-a',
     'android.intent.action.VIEW',
     '-d',
-    devClientUrl('vescape'),
+    devClientUrl('exp+vescape'),
     packageName,
   ])
   if (
@@ -615,7 +649,7 @@ async function waitForFirstFrame(watch: AdbDevice, phone: AdbDevice, packageName
  * mirroring, with frames on the wrist. Each step checks before it acts, so a re-run with both up
  * only proves the frames again.
  */
-async function up(requestedPhone: string | null, rebuildPhone = false) {
+async function up(requestedPhone: string | null, rebuildPhone = false, clearPhone = false) {
   begin('boot emulators')
   const { phone, watch } = await bootEmulators(requestedPhone)
 
@@ -630,7 +664,13 @@ async function up(requestedPhone: string | null, rebuildPhone = false) {
   const packageName = applicationId()
 
   begin('phone app')
-  await ensurePhoneApp(phone, packageName, rebuildPhone)
+  if (
+    clearPhone &&
+    capture(['adb', '-s', phone.serial, 'shell', 'pm', 'path', packageName]).startsWith('package:')
+  ) {
+    run(['adb', '-s', phone.serial, 'shell', 'pm', 'clear', packageName])
+  }
+  await ensurePhoneApp(phone, packageName, rebuildPhone, clearPhone)
 
   begin('watch app')
   ensureWatchApp(watch, packageName)
@@ -774,7 +814,7 @@ if (command === 'pair') {
 }
 
 if (command === 'up') {
-  await up(requested)
+  await up(requested, args.includes('--rebuild-phone'), args.includes('--clear-phone'))
   process.exit(0)
 }
 

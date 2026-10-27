@@ -34,6 +34,7 @@
     "wear:emulator": "bun run scripts/wear.ts emulator",
     "wear:pair": "bun run scripts/wear.ts pair",
     "wear:replay": "bun run scripts/wear.ts replay",
+    "e2e:group": "bun run scripts/group-ride-e2e.ts",
     "e2e:watch": "bun run scripts/wear.ts e2e",
     "wear:ride": "bun run scripts/wear.ts ride",
     "relay:reverse": "bun run scripts/relay-reverse.ts",
