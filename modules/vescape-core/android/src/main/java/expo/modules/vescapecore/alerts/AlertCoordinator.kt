@@ -10,7 +10,8 @@ internal class AlertCoordinator(
     private val vibrateSingles: Boolean = true,
 ) {
     // @parity /modules/vescape-core/ios/alerts/AlertCoordinator.swift
-    var unitSystem: String = "metric"
+    var distanceUnit: String = "km"
+    var temperatureUnit: String = "celsius"
     private val engine = AlertEngine()
     private var rules: List<AlertRuleEntity> = emptyList()
     private var activeGeigerRuleIds: Set<String> = emptySet()
@@ -23,11 +24,11 @@ internal class AlertCoordinator(
             .asSequence()
             .filter { it.thresholdMax != null }
             .mapTo(mutableSetOf()) { it.id }
-        for (ruleId in activeGeigerRuleIds - geigerRuleIds) {
-            feedback().stopGeiger(ruleId)
-        }
-        activeGeigerRuleIds = activeGeigerRuleIds.intersect(geigerRuleIds)
+        val stale = activeGeigerRuleIds - geigerRuleIds
+        for (ruleId in stale) feedback().stopGeiger(ruleId)
+        activeGeigerRuleIds = activeGeigerRuleIds.intersect(geigerRuleIds) - stale
         rules = value
+        feedback().prepare(value.map { it.spec })
         engine.resetAlertState()
     }
 
@@ -80,15 +81,38 @@ internal class AlertCoordinator(
         val ids = geiger.mapTo(HashSet()) { it.ruleId }
         for (ruleId in activeGeigerRuleIds - ids) feedback().stopGeiger(ruleId)
         activeGeigerRuleIds = ids
-        for (alert in geiger) feedback().updateGeiger(alert.ruleId, alert.soundType, alert.rangeDepth ?: 0.0)
+        for (alert in geiger) feedback().updateGeiger(alert.ruleId, alert.spec, alert.rangeDepth ?: 0.0)
 
         val single = fired.filter { it.rangeDepth == null }
         if (single.isNotEmpty()) {
-            single.firstOrNull { it.soundType.startsWith("tts:") && it.thresholdMax == null }?.let { alert ->
-                val text = renderAlertMessageTemplate(alert.soundType.removePrefix("tts:"), alert, batteryPercent, onDiagnostic, unitSystem)
-                if (text.isNotEmpty()) feedback().speakMessage(text)
+            // Preset voice rules at Voice level Off play their severity sound only and leave the
+            // spoken slot to the rest.
+            val mutedPresets = if (feedback().presetVoiceEnabled) emptySet() else single.filter {
+                it.ruleId.startsWith(PRESET_RULE_PREFIX) && parseVoiceAlertSound(it.spec) != null
+            }.mapTo(HashSet()) { it.ruleId }
+            // One spoken announcement per evaluation: the most severe, which sorts first.
+            single.firstOrNull {
+                it.thresholdMax == null && isSpokenSpec(it.spec) && it.ruleId !in mutedPresets
+            }?.let { alert ->
+                val voice = parseVoiceAlertSound(alert.spec)
+                if (voice != null) {
+                    // A repeat speaks where the metric is now, not the threshold it crossed.
+                    val spoken = if (alert.controlId == "battery") batteryPercent ?: alert.threshold else alert.value
+                    feedback().speakVoice(
+                        voiceAnnouncement(voice, alert.controlId, spoken, batteryPercent != null, distanceUnit, temperatureUnit),
+                    )
+                    return@let
+                }
+                val tts = parseTtsAlertSound(alert.spec) ?: return@let
+                val text = renderAlertMessageTemplate(tts.text, alert, batteryPercent, onDiagnostic, distanceUnit)
+                if (text.isNotEmpty()) feedback().speakAfterSeverity(tts.severity, text)
             }
-            for (alert in single) if (!alert.soundType.startsWith("tts:")) feedback().playSingle(alert.soundType, alert.beepCount)
+            for (alert in single) {
+                if (!isSpokenSpec(alert.spec)) feedback().playSingle(alert.spec)
+                else if (alert.ruleId in mutedPresets) {
+                    feedback().playSingle("alert:${parseVoiceAlertSound(alert.spec)!!.severity.id}")
+                }
+            }
             if (vibrateSingles) feedback().vibrate(null)
         }
         return fired.map { it.toMap() }

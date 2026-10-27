@@ -21,9 +21,14 @@ internal func historyBatteryConfigs(_ db: Database) throws -> [String: [String: 
 
 private let rideBucketBatchSize = 100
 private let maxRidePageSize = 50
-private let rideBreakBoundaries: Set<String> = ["disconnected", "app_stop", "error"]
+/// Ride History Marker for an explicit rider Stop Recording — the only marker that splits a ride
+/// (ADR 0041). Distinct from `app_stop`, which an ordinary Board Session stop writes.
+///
+/// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/TelemetryEntities.kt `RECORDING_STOP_MARKER`
+/// @parity /modules/vescape-core/src/index.ts `HistoryMarker`
+internal let recordingStopMarker = "recording_stop"
 
-/// Keep every recording and Board in the boundary minute; the bucket limit is a soft limit.
+/// Keep every Board in the boundary minute; the bucket limit is a soft limit.
 /// Both queries run in the caller's read transaction so the cursor and lookahead share a snapshot.
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/TelemetryDao.kt `getRideBuckets`
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/TelemetryDao.kt `hasRideBucketsBefore`
@@ -66,9 +71,6 @@ internal struct RideRoutePoint {
 internal struct RideSessionAggregate {
   /// Owning Board (`boards.id`), empty when the buckets match no saved Board (ADR 0028).
   let boardId: String
-  /// Owning Ride Recording, or `LEGACY_RIDE_RECORDING_ID` for buckets with no durable identity.
-  /// A real recording *is* the history entry: gap length and disconnect markers never split it.
-  let recordingId: String
   var boundaryBefore: String
   var firstBucketStartMs: Int64
   var startAtMs: Int64
@@ -103,6 +105,8 @@ internal struct RideSessionAggregate {
   var maxLongitude: Double?
   var routePoints: [RideRoutePoint] = []
   var lastRouteAtMs: Int64?
+  /// Last Telemetry Sample bucket of the ride; GPS-only buckets never move it.
+  var lastFrameAtMs: Int64
 
   var distanceM: Double? {
     if distanceDeltaCount > 0 { return distanceDeltaM }
@@ -162,8 +166,16 @@ internal final class RideHistoryRepository {
       let cutoff = sorted.indices.contains(limit - 1) ? sorted[limit - 1].firstBucketStartMs : nil
       let page = cutoff.map { value in sorted.filter { $0.firstBucketStartMs >= value } } ?? sorted
       let hasMore = hasOlderBuckets || cutoff.map { value in sorted.contains { $0.firstBucketStartMs < value } } == true
+      // One weather read per page; each ride picks its rows from the page span in memory.
+      let weather = page.isEmpty ? [] : try weatherObservationsSpanning(
+        db,
+        startMs: page.map(\.startAtMs).min()!,
+        endMs: page.map(\.endAtMs).max()!
+      )
       return [
-        "sessions": page.map { rideSessionMap($0, boardNames: boardNames) },
+        "sessions": page.map {
+          rideSessionMap($0, boardNames: boardNames, weather: summarizeRideWeather(weather, startMs: $0.startAtMs, endMs: $0.endAtMs))
+        },
         "hasMore": hasMore,
         "nextCursorBeforeMs": hasMore ? page.last?.firstBucketStartMs : nil,
       ]
@@ -183,35 +195,55 @@ internal func completeRideSessions(
 }
 
 /// Native Ride boundaries/aggregates shared by History pages and Profile stats.
+///
+/// Boundaries come from recorded data only (ADR 0041). A ride is one Board's Telemetry Samples; a
+/// new one starts on a Board change, when consecutive Telemetry Samples are more than `gapMs`
+/// apart, or at an explicit Stop Recording. GPS-only buckets never start or extend a ride on their
+/// own: they attach to the preceding ride of their Board.
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/RideHistoryRepository.kt `groupRideSessions`
 internal func groupRideSessions(buckets: [Row], markers: [Row], gapMs: Int64) throws -> [RideSessionAggregate] {
   var sessions: [RideSessionAggregate] = []
   var current: RideSessionAggregate?
-  var previous: Row?
+  let stops = markers.filter { ($0["type"] as String) == recordingStopMarker }
+  func stoppedBetween(_ boardId: String, _ afterMs: Int64, _ untilMs: Int64) -> Bool {
+    stops.contains { marker in
+      let occurred = marker["occurred_at_ms"] as Int64
+      return occurred >= afterMs && occurred <= untilMs && ((marker["board_id"] as String?) ?? "") == boardId
+    }
+  }
   for bucket in buckets.sorted(by: { ($0["first_sample_at_ms"] as Int64) < ($1["first_sample_at_ms"] as Int64) }) {
-    let boundary = rideBoundaryForBucket(bucket, markers: markers)
     let boardId = bucket["board_id"] as String
-    let recordingId = bucket["recording_id"] as String
-    // Legacy rows have no recording identity, so they keep reconstructing rides from gaps and
-    // break markers. A row that carries one needs neither: the recording *is* the entry, and a
-    // dropout of any length inside it stays one ride (ADR 0038).
-    let legacy = recordingId == LEGACY_RIDE_RECORDING_ID
-    let split = current == nil || current?.boardId != boardId || current?.recordingId != recordingId ||
-      (legacy && (previous.map { (bucket["first_sample_at_ms"] as Int64) - ($0["last_sample_at_ms"] as Int64) > gapMs } ?? false)) ||
-      (legacy && rideBreakBoundaries.contains(boundary))
+    let firstAt = bucket["first_sample_at_ms"] as Int64
+    let lastAt = bucket["last_sample_at_ms"] as Int64
+    if (bucket["sample_count"] as Int) == 0 {
+      // A GPS-only minute belongs to the ride its Board was just recording, or to nothing.
+      if var open = current, open.boardId == boardId, firstAt - open.lastFrameAtMs <= gapMs,
+        !stoppedBetween(boardId, open.lastFrameAtMs, firstAt) {
+        try mergeRideBucket(bucket, into: &open)
+        current = open
+      }
+      continue
+    }
+    let split = current.map { open in
+      open.boardId != boardId || firstAt - open.lastFrameAtMs > gapMs ||
+        stoppedBetween(boardId, open.lastFrameAtMs, firstAt)
+    } ?? true
     if split {
       if let current { sessions.append(current) }
       current = RideSessionAggregate(
         boardId: boardId,
-        recordingId: recordingId,
-        boundaryBefore: boundary,
+        boundaryBefore: rideBoundaryForBucket(bucket, markers: markers),
         firstBucketStartMs: bucket["bucket_start_ms"] as Int64,
-        startAtMs: bucket["first_sample_at_ms"] as Int64,
-        endAtMs: bucket["last_sample_at_ms"] as Int64
+        startAtMs: firstAt,
+        endAtMs: lastAt,
+        lastFrameAtMs: lastAt
       )
     }
-    if var aggregate = current { try mergeRideBucket(bucket, into: &aggregate); current = aggregate }
-    previous = bucket
+    if var aggregate = current {
+      try mergeRideBucket(bucket, into: &aggregate)
+      aggregate.lastFrameAtMs = max(aggregate.lastFrameAtMs, lastAt)
+      current = aggregate
+    }
   }
   if let current { sessions.append(current) }
   return sessions
@@ -222,8 +254,8 @@ private func mergeRideBucket(_ bucket: Row, into session: inout RideSessionAggre
   session.firstBucketStartMs = min(session.firstBucketStartMs, bucketStart)
   session.startAtMs = min(session.startAtMs, bucket["first_sample_at_ms"] as Int64)
   session.endAtMs = max(session.endAtMs, bucket["last_sample_at_ms"] as Int64)
-  // Same identity `getHistory` gives a bucket: two recordings of one Board can share a minute.
-  session.blockIds.append("\(session.boardId):\(session.recordingId):\(bucketStart)")
+  // Same identity `getHistory` gives a bucket.
+  session.blockIds.append("\(session.boardId):\(bucketStart)")
   session.blockCount += 1
   session.sampleCount += bucket["sample_count"] as Int
   session.gpsPointCount += bucket["gps_point_count"] as Int
@@ -284,11 +316,14 @@ private func rideDistanceDeltaM(_ bucket: Row) -> Double? {
 }
 
 /// @parity /modules/vescape-core/src/index.ts `RideHistorySession`
-internal func rideSessionMap(_ session: RideSessionAggregate, boardNames: [String: String]) -> [String: Any?] {
+internal func rideSessionMap(
+  _ session: RideSessionAggregate,
+  boardNames: [String: String],
+  weather: RideWeather?
+) -> [String: Any?] {
   let average = session.avgSpeedSampleCount > 0 ? session.avgSpeedWeightedSum / Double(session.avgSpeedSampleCount) : 0
   return [
-    "id": session.recordingId.isEmpty ? "\(session.boardId.isEmpty ? "unknown" : session.boardId):\(session.startAtMs):\(session.endAtMs)" : session.recordingId,
-    "recordingId": session.recordingId.isEmpty ? nil : session.recordingId,
+    "id": "\(session.boardId.isEmpty ? "unknown" : session.boardId):\(session.startAtMs):\(session.endAtMs)",
     "boardId": session.boardId.isEmpty ? nil : session.boardId,
     "boardName": boardNames[session.boardId] ?? UNKNOWN_TELEMETRY_BOARD_NAME,
     "startAtMs": session.startAtMs, "endAtMs": session.endAtMs, "movingStartAtMs": session.movingStartAtMs,
@@ -303,6 +338,7 @@ internal func rideSessionMap(_ session: RideSessionAggregate, boardNames: [Strin
     "centerLongitude": session.coordinateCount > 0 ? session.longitudeSum / Double(session.coordinateCount) : nil,
     "minLatitude": session.minLatitude, "maxLatitude": session.maxLatitude, "minLongitude": session.minLongitude,
     "maxLongitude": session.maxLongitude, "boundaryBefore": session.boundaryBefore,
+    "weather": weather?.map,
     "routePoints": session.routePoints.map { point -> [String: Any] in
       var value: [String: Any] = ["latitude": point.latitude, "longitude": point.longitude]
       if point.breakBefore { value["breakBefore"] = true }

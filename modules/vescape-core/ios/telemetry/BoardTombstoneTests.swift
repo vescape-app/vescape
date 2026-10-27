@@ -81,7 +81,7 @@ final class BoardTombstoneTests: XCTestCase {
       "controlId": "speed",
       "threshold": 40.0,
       "enabled": true,
-      "soundType": "beep",
+      "spec": "beep",
       "createdAt": Int64(1000),
     ])
     try queue.write { db in

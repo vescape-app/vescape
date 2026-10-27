@@ -27,71 +27,109 @@ final class RideHistoryGroupingTests: XCTestCase {
     XCTAssertEqual(sessions.first?.avgSpeedSampleCount, 2)
   }
 
-  /// A recording is the entry: a dropout inside it never splits, however long it runs.
-  func testOneRecordingSpanningAnHourWithoutEitherStreamStaysOneEntry() throws {
+  /// Disconnect, app kill or auto close, then riding again inside the split window: one ride.
+  func testDisconnectMarkersNoLongerSplitARide() throws {
     let buckets = [
-      bucket(start: base, end: base + 30_000, recordingId: "recording-1"),
-      bucket(start: base + 3_600_000, end: base + 3_600_000 + 30_000, recordingId: "recording-1"),
+      bucket(start: base, end: base + 10_000),
+      bucket(start: base + 20 * 60_000, end: base + 20 * 60_000 + 10_000),
     ]
-
-    let sessions = try groupRideSessions(buckets: buckets, markers: [], gapMs: gapMs)
-
-    XCTAssertEqual(sessions.count, 1)
-    XCTAssertEqual(sessions.first?.endAtMs, base + 3_600_000 + 30_000)
-  }
-
-  /// Stop then start again inside one minute: two recordings, two entries.
-  func testSeparateRecordingsInsideOneMinuteStaySeparateEntries() throws {
-    let buckets = [
-      bucket(start: base, end: base + 10_000, recordingId: "recording-1"),
-      bucket(start: base + 20_000, end: base + 30_000, recordingId: "recording-2"),
-    ]
-
-    let sessions = try groupRideSessions(buckets: buckets, markers: [], gapMs: gapMs)
-
-    XCTAssertEqual(sessions.map { $0.recordingId }, ["recording-1", "recording-2"])
-  }
-
-  /// A disconnect mid-recording is informational; it does not end the recording.
-  func testABreakMarkerInsideOneRecordingDoesNotSplitIt() throws {
-    let buckets = [
-      bucket(start: base, end: base + 10_000, recordingId: "recording-1"),
-      bucket(start: base + 60_000, end: base + 70_000, recordingId: "recording-1"),
-    ]
-    let markers = [
-      Row([
-        "occurred_at_ms": base + 60_000,
-        "type": "disconnected",
-        "board_id": "board-1",
-      ])
-    ]
+    let markers = ["disconnected", "app_stop", "error", "connection_lost"].map { marker(base + 15 * 60_000, $0) }
 
     XCTAssertEqual(try groupRideSessions(buckets: buckets, markers: markers, gapMs: gapMs).count, 1)
   }
 
-  /// Legacy rows have no recording identity, so they still split on `rideSplitGapMinutes`.
-  func testLegacyRowsStillGroupOnTheSplitGap() throws {
+  /// A long stop while still connected (Idle Pause writes no frames) splits on the frame gap.
+  func testAFrameGapLongerThanTheSplitWindowStartsANewRide() throws {
     let buckets = [
       bucket(start: base, end: base + 30_000),
-      bucket(start: base + 3_600_000, end: base + 3_600_000 + 30_000),
+      bucket(start: base + 2 * 3_600_000, end: base + 2 * 3_600_000 + 30_000),
     ]
 
     XCTAssertEqual(try groupRideSessions(buckets: buckets, markers: [], gapMs: gapMs).count, 2)
-    XCTAssertEqual(try groupRideSessions(buckets: buckets, markers: [], gapMs: 2 * 3_600_000).count, 1)
+    XCTAssertEqual(try groupRideSessions(buckets: buckets, markers: [], gapMs: 3 * 3_600_000).count, 1)
   }
 
-  /// The 100th and 101st buckets share a minute. Neither recording may be skipped by the cursor.
+  func testStopRecordingSplitsInsideTheSplitWindow() throws {
+    let buckets = [
+      bucket(start: base, end: base + 10_000),
+      bucket(start: base + 2 * 60_000, end: base + 2 * 60_000 + 10_000),
+    ]
+
+    XCTAssertEqual(
+      try groupRideSessions(buckets: buckets, markers: [marker(base + 60_000, recordingStopMarker)], gapMs: gapMs).count, 2)
+    XCTAssertEqual(
+      try groupRideSessions(
+        buckets: buckets, markers: [marker(base + 60_000, recordingStopMarker, boardId: "board-2")], gapMs: gapMs
+      ).count,
+      1,
+      "another Board's stop does not split this ride"
+    )
+  }
+
+  func testABoardChangeStartsANewRide() throws {
+    let buckets = [
+      bucket(start: base, end: base + 10_000),
+      bucket(start: base + 60_000, end: base + 70_000, boardId: "board-2"),
+    ]
+
+    XCTAssertEqual(try groupRideSessions(buckets: buckets, markers: [], gapMs: gapMs).map(\.boardId), ["board-1", "board-2"])
+  }
+
+  /// The Ride Dropout Grace tail after the last frame belongs to that ride.
+  func testAGpsOnlyTailAttachesToThePrecedingRide() throws {
+    let sessions = try groupRideSessions(
+      buckets: [bucket(start: base, end: base + 30_000), trackOnlyBucket(start: base + 60_000, end: base + 90_000)],
+      markers: [], gapMs: gapMs
+    )
+
+    XCTAssertEqual(sessions.count, 1)
+    XCTAssertEqual(sessions.first?.endAtMs, base + 90_000)
+    XCTAssertEqual(sessions.first?.blockCount, 2)
+  }
+
+  func testGpsOnlyMinutesNeverCreateOrExtendARideOnTheirOwn() throws {
+    XCTAssertTrue(
+      try groupRideSessions(buckets: [trackOnlyBucket(start: base, end: base + 30_000)], markers: [], gapMs: gapMs).isEmpty)
+    // GPS 20 min after the last frame does not move the split baseline: frames 40 min apart split.
+    let buckets = [
+      bucket(start: base, end: base + 10_000),
+      trackOnlyBucket(start: base + 20 * 60_000, end: base + 20 * 60_000 + 10_000),
+      bucket(start: base + 40 * 60_000, end: base + 40 * 60_000 + 10_000),
+    ]
+    XCTAssertEqual(try groupRideSessions(buckets: buckets, markers: [], gapMs: gapMs).count, 2)
+    // Another Board's GPS never joins this ride.
+    let foreign = try groupRideSessions(
+      buckets: [bucket(start: base, end: base + 10_000), trackOnlyBucket(start: base + 60_000, end: base + 70_000, boardId: "board-2")],
+      markers: [], gapMs: gapMs
+    )
+    XCTAssertEqual(foreign.count, 1)
+    XCTAssertEqual(foreign.first?.blockCount, 1)
+  }
+
+  func testBridgeIdentityIsBoardAndTimeRange() throws {
+    let session = try XCTUnwrap(
+      try groupRideSessions(buckets: [bucket(start: base, end: base + 10_000)], markers: [], gapMs: gapMs).first)
+    let map = rideSessionMap(session, boardNames: [:], weather: nil)
+    XCTAssertEqual(map["id"] as? String, "board-1:\(base):\(base + 10_000)")
+    XCTAssertFalse(map.keys.contains("recordingId"))
+  }
+
+  private func marker(_ at: Int64, _ type: String, boardId: String = "board-1") -> Row {
+    Row(["occurred_at_ms": at, "type": type, "board_id": boardId])
+  }
+
+  /// The 100th and 101st buckets share a minute. Neither Board may be skipped by the cursor.
   /// @parity /modules/vescape-core/android/src/androidTest/java/expo/modules/vescapecore/telemetry/RideReadQueriesTest.kt
   func testBucketPagingIncludesTheWholeBoundaryMinute() throws {
     let database = try DatabaseQueue()
     try TelemetryDatabase.migrator.migrate(database)
     try database.write { db in
       for minute in 2...100 {
-        try insertPagingBucket(db, start: base + Int64(minute) * 60_000, recordingId: "newer")
+        try insertPagingBucket(db, start: base + Int64(minute) * 60_000, boardId: "board-newer")
       }
-      try insertPagingBucket(db, start: base + 60_000, recordingId: "boundary-a")
-      try insertPagingBucket(db, start: base + 80_000, recordingId: "boundary-b")
-      try insertPagingBucket(db, start: base, recordingId: "boundary-a")
+      try insertPagingBucket(db, start: base + 60_000, boardId: "board-a")
+      try insertPagingBucket(db, start: base + 80_000, boardId: "board-b")
+      try insertPagingBucket(db, start: base, boardId: "board-a")
     }
     try database.read { db in
       let first = try fetchRideHistoryBucketBatch(db, beforeMs: Int64.max)
@@ -104,19 +142,19 @@ final class RideHistoryGroupingTests: XCTestCase {
       XCTAssertFalse(second.hasOlder)
       let sessions = try groupRideSessions(buckets: first.buckets + second.buckets, markers: [], gapMs: gapMs)
       XCTAssertEqual(sessions.count, 3)
-      XCTAssertEqual(sessions.first { $0.recordingId == "newer" }?.sampleCount, 99)
-      XCTAssertEqual(sessions.first { $0.recordingId == "boundary-a" }?.sampleCount, 2)
-      XCTAssertEqual(sessions.first { $0.recordingId == "boundary-b" }?.sampleCount, 1)
+      XCTAssertEqual(sessions.first { $0.boardId == "board-newer" }?.sampleCount, 99)
+      XCTAssertEqual(sessions.first { $0.boardId == "board-a" }?.sampleCount, 2)
+      XCTAssertEqual(sessions.first { $0.boardId == "board-b" }?.sampleCount, 1)
       let empty = try fetchRideHistoryBucketBatch(db, beforeMs: base)
       XCTAssertTrue(empty.buckets.isEmpty)
       XCTAssertFalse(empty.hasOlder)
     }
   }
 
-  private func insertPagingBucket(_ db: Database, start: Int64, recordingId: String) throws {
+  private func insertPagingBucket(_ db: Database, start: Int64, boardId: String) throws {
     var bucket = TelemetryBucket(
       bucketStartMs: start - start % TELEMETRY_BUCKET_SIZE_MS,
-      boardId: "board-1", recordingId: recordingId
+      boardId: boardId
     )
     bucket.sampleCount = 1
     bucket.firstSampleAtMs = start
@@ -128,10 +166,11 @@ final class RideHistoryGroupingTests: XCTestCase {
     try upsertBucket(db, bucket)
   }
 
-  private func trackOnlyBucket(start: Int64, end: Int64) -> Row {
+  private func trackOnlyBucket(start: Int64, end: Int64, boardId: String = "board-1") -> Row {
     bucket(
       start: start,
       end: end,
+      boardId: boardId,
       sampleCount: 0,
       movingSpeedSampleCount: 0,
       hasOdometer: false
@@ -141,15 +180,14 @@ final class RideHistoryGroupingTests: XCTestCase {
   private func bucket(
     start: Int64,
     end: Int64,
-    recordingId: String = LEGACY_RIDE_RECORDING_ID,
+    boardId: String = "board-1",
     sampleCount: Int = 1,
     movingSpeedSampleCount: Int = 1,
     hasOdometer: Bool = true
   ) -> Row {
     Row([
       "bucket_start_ms": start - (start % TELEMETRY_BUCKET_SIZE_MS),
-      "board_id": "board-1",
-      "recording_id": recordingId,
+      "board_id": boardId,
       "sample_count": sampleCount,
       "first_sample_at_ms": start,
       "last_sample_at_ms": end,

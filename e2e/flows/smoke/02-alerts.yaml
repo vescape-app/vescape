@@ -1,0 +1,192 @@
+# Presets and rider-owned rules coexist through the real native alert store.
+# Run before add-board, which changes the selected board and ends the replay.
+appId: ${APP_ID}
+---
+# One non-default effects/voice pair, then the normal alert workflow. Picking
+# HEV also picks its matching Radio voice; explicitly override it with Nicole.
+- tapOn:
+    id: settings-drawer-trigger
+    waitToSettleTimeoutMs: 1000
+- scrollUntilVisible:
+    element:
+      text: 'More settings'
+    direction: DOWN
+- tapOn:
+    text: 'More settings'
+    waitToSettleTimeoutMs: 1000
+- scrollUntilVisible:
+    element:
+      text: 'Sounds'
+    direction: DOWN
+- tapOn:
+    text: 'Sounds'
+    waitToSettleTimeoutMs: 1000
+- extendedWaitUntil:
+    visible: 'Sound effects'
+    timeout: 15000
+- scrollUntilVisible:
+    element:
+      text: 'HEV'
+    direction: DOWN
+- tapOn:
+    text: 'HEV'
+    waitToSettleTimeoutMs: 1000
+- scrollUntilVisible:
+    element:
+      text: 'Play Warning'
+    direction: DOWN
+- tapOn:
+    text: 'Play Warning'
+    waitToSettleTimeoutMs: 1000
+- scrollUntilVisible:
+    element:
+      text: 'Radio'
+    direction: DOWN
+- tapOn: 'Radio'
+- tapOn: 'Nicole'
+- assertVisible: 'Nicole'
+# Return through both settings routes using the same controls on Android/iOS.
+- tapOn:
+    id: header-back
+    waitToSettleTimeoutMs: 1000
+- assertVisible: 'Sounds'
+- runFlow:
+    file: ../fixture/_home.yaml
+    env:
+      HOME_EXIT_ID: header-back
+- runFlow: ../fixture/_speed.yaml
+- assertVisible: 'Normal, selected'
+# The fixture has no custom speed rule at this range. Keep the default Geiger
+# range so this tests saving and preset independence rather than ruler gestures.
+- assertNotVisible: '35 km/h – 45 km/h'
+- scrollUntilVisible:
+    element:
+      text: 'Add custom alert'
+    direction: DOWN
+- tapOn:
+    text: 'Add custom alert'
+    waitToSettleTimeoutMs: 1000
+- assertVisible: 'Add Alert'
+# Maestro text matching ignores case by default; distinguish the save button
+# from the drawer title "Add Alert".
+- scrollUntilVisible:
+    element:
+      text: '(?-i:Add alert)'
+    direction: DOWN
+- tapOn:
+    text: '(?-i:Add alert)'
+    waitToSettleTimeoutMs: 1000
+- extendedWaitUntil:
+    visible: '35 km/h – 45 km/h'
+    timeout: 15000
+- scrollUntilVisible:
+    element:
+      id: alert-level-speed-safe
+    direction: UP
+- tapOn:
+    id: alert-level-speed-safe
+    waitToSettleTimeoutMs: 1000
+- assertVisible: 'Safe, selected'
+- assertVisible: '35 km/h – 45 km/h'
+- tapOn:
+    id: alert-level-speed-off
+    waitToSettleTimeoutMs: 1000
+- assertVisible: 'Off, selected'
+- assertVisible: '35 km/h – 45 km/h'
+- runFlow:
+    file: ../fixture/_home.yaml
+    env:
+      HOME_EXIT_ID: header-back
+- runFlow: ../fixture/_speed.yaml
+- extendedWaitUntil:
+    visible: 'Off, selected'
+    timeout: 15000
+- scrollUntilVisible:
+    element:
+      text: '35 km/h – 45 km/h'
+    direction: DOWN
+- assertVisible: '35 km/h – 45 km/h'
+# Restore the preset used by the other smoke flows.
+- scrollUntilVisible:
+    element:
+      id: alert-level-speed-normal
+    direction: UP
+- tapOn:
+    id: alert-level-speed-normal
+    waitToSettleTimeoutMs: 1000
+- assertVisible: 'Normal, selected'
+- runFlow:
+    file: ../fixture/_home.yaml
+    env:
+      HOME_EXIT_ID: header-back
+
+# Battery expands to discrete SoC voice points using the fixture Board's battery
+# config, rather than speed's Geiger range. Verify the resolved points, not only
+# the selected slider label.
+- tapOn:
+    id: battery-bar
+    waitToSettleTimeoutMs: 1000
+- extendedWaitUntil:
+    visible: 'Battery'
+    timeout: 15000
+- scrollUntilVisible:
+    element:
+      id: alert-level-battery-safe
+    direction: DOWN
+- assertVisible: 'Normal, selected'
+- assertVisible: 'Speaks the charge left at 50%, 35%, 20%, 10% and 5%.'
+- assertVisible:
+    id: alert-test-battery
+    enabled: true
+# Let the native preview sweep finish with the selected effects and voice.
+# The following preset change and reopen must still work after playback.
+- tapOn:
+    id: alert-test-battery
+    waitToSettleTimeoutMs: 1000
+- extendedWaitUntil:
+    visible: 'Stop'
+    timeout: 15000
+- extendedWaitUntil:
+    visible: 'Preview'
+    timeout: 60000
+- tapOn:
+    id: alert-level-battery-safe
+    waitToSettleTimeoutMs: 1000
+- assertVisible: 'Safe, selected'
+- assertVisible: 'Speaks the charge left at 50%, 40%, 30%, 20%, 15%, 10% and 5%.'
+- runFlow:
+    file: ../fixture/_home.yaml
+    env:
+      HOME_EXIT_ID: header-back
+- tapOn:
+    id: battery-bar
+    waitToSettleTimeoutMs: 1000
+- extendedWaitUntil:
+    visible: 'Battery'
+    timeout: 15000
+- scrollUntilVisible:
+    element:
+      id: alert-level-battery-safe
+    direction: DOWN
+- assertVisible: 'Safe, selected'
+- assertVisible: 'Speaks the charge left at 50%, 40%, 30%, 20%, 15%, 10% and 5%.'
+- tapOn:
+    id: alert-level-battery-off
+    waitToSettleTimeoutMs: 1000
+- assertVisible: 'Off, selected'
+- assertVisible: 'No sound from this metric.'
+- assertVisible:
+    id: alert-test-battery
+    enabled: false
+- tapOn:
+    id: alert-level-battery-normal
+    waitToSettleTimeoutMs: 1000
+- assertVisible: 'Normal, selected'
+- assertVisible: 'Speaks the charge left at 50%, 35%, 20%, 10% and 5%.'
+- assertVisible:
+    id: alert-test-battery
+    enabled: true
+- runFlow:
+    file: ../fixture/_home.yaml
+    env:
+      HOME_EXIT_ID: header-back

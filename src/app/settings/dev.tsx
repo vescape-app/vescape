@@ -6,6 +6,7 @@ import {
   PathIcon,
   CodeIcon,
   RecordIcon,
+  SpeakerHighIcon,
   SwatchesIcon,
   ToolboxIcon,
 } from 'phosphor-react-native'
@@ -45,6 +46,13 @@ const DEV_PAGE_SHORTCUTS = [
     route: routes.devRailGeneratorPrototype,
     icon: PathIcon,
     iconColor: theme.palette.cyan.color,
+  },
+  {
+    label: 'Alert sounds',
+    hint: 'Play severity sounds, Geiger, voice lines and TTS',
+    route: routes.settingsAlertSounds,
+    icon: SpeakerHighIcon,
+    iconColor: theme.settingsIcon.sounds,
   },
   {
     label: 'Other',

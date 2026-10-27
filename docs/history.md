@@ -37,17 +37,58 @@ Main files:
 
 `telemetry_frames` stores board telemetry samples, without position. Frames are delta encoded with periodic keyframes. Queries reconstruct full samples from nearest keyframe before requested range.
 
-`ride_track_points` stores the Ride Track: every admitted GPS fix on its own clock, with the accuracy the platform reported. `ride_recordings` stores durable recording identity and explicit boundaries.
+`ride_track_points` stores the Ride Track: every admitted GPS fix on its own clock, with the accuracy the platform reported. There is no recording identity table; ride boundaries are derived from the data (ADR-0041).
 
-`telemetry_minute_buckets` stores minute-level summaries used by history lists, keyed on `(bucket_start_ms, board_id, recording_id)`. Buckets include sample counts, GPS counts, distance, speed, battery/current summaries and the combined Moving Window. A minute with Ride Track fixes and no frame still gets a bucket. VESC faults live in separate Board-owned storage and are never counted or retained by Ride History.
+`telemetry_minute_buckets` stores minute-level summaries used by history lists, keyed on `(bucket_start_ms, board_id)`. Buckets include sample counts, GPS counts, distance, speed, battery/current summaries and the combined Moving Window. A minute with Ride Track fixes and no frame still gets a bucket. VESC faults live in separate Board-owned storage and are never counted or retained by Ride History.
 
 `telemetry_markers` stores ride boundaries and abnormal events. Current marker types include:
 
 - `connected`: board became ready or recording was enabled.
-- `app_stop`: recording or board session stopped intentionally.
+- `app_stop`: board session stopped intentionally.
+- `recording_stop`: rider pressed Stop Recording. The only marker that splits a ride.
 - `disconnected`: board session stopped after disconnect.
 - `gap`: long persistence gap, currently more than `90_000ms`.
 - `error`: explicit board/session error.
+
+## Ride weather
+
+Each ride and Favorite carries the weather it was ridden in, so range can be compared against
+conditions. It is an add-on, not ride data: missing or approximate weather is expected.
+
+**Storage.** `weather_observations` holds one row per stored observation of current conditions,
+keyed on the Open-Meteo `current.time` (epoch ms): whole `temperature_c`, WMO `weather_code`,
+`gust_kmh` rounded to 5 km/h (null when the response omits it) and `is_day`. Rows carry no Board,
+ride or coordinates, so Privacy Zones never apply. `WeatherCoordinator` stays the only source; every
+successful refresh, Board connected or not, offers its conditions to the process-wide
+`WeatherObservationRecorder`, which writes off the main thread:
+
+- the first successful refresh after process launch writes a row;
+- later refreshes write only when the normalized conditions (temperature, code, gust, day/night)
+  differ from the newest stored row at or before them, or when that row is at least 24 h older;
+- an observation timestamp already stored is the same observation and is never written again, so a
+  cached API answer does not renew freshness; a failed fetch writes nothing.
+
+Restore and Clear all go through `DatabaseReplacementFence`: a write whose observation landed before
+the fence is dropped rather than reaching the replacement database. Clear all removes observations
+except those a Favorite reads (inside it, or up to 24 h before its start). Backups carry the table
+like any other.
+
+**Read.** A ride's weather is the last row at or before its start plus every row inside it. The
+History page reads the rows spanning the whole page once and assigns them in memory; Favorites read
+their own range. Native folds the rows into `weather` on the ride/Favorite payload, each row in
+effect until the next row or the ride end:
+
+- `icon`: the native `weatherIcon()` slug with the most time in the ride; the night form when most of
+  that time had `is_day = 0`. Five minutes of rain in a two-hour sunny ride shows sun.
+- `minTemperatureC`/`maxTemperatureC`, `maxGustKmh`, and `rainMinutes` (time under a rain, drizzle
+  or storm code).
+
+A start row older than 24 h does not apply; with no other row inside the ride, `weather` is null.
+
+**Display.** The ride card date line and the list row show the icon and temperature, one value when
+the spread is under 3 °C (`14°C`) and a range otherwise (`8–20°C`). The ride stats bar adds
+temperature, max gust and rain minutes (when above zero). Units follow the rider's unit setting.
+Nothing renders without weather.
 
 ## Recording Rules
 
@@ -67,11 +108,95 @@ Older pages use native's opaque `nextCursorBeforeMs`. A page boundary is always 
 Ride, never through an arbitrary minute bucket. Native concatenates the precomputed bucket route
 segments for list thumbnails, so JS neither groups buckets nor loads raw tracks per row.
 
+### Maintenance Jobs
+
+History reads stay precomputed (ADR-0005). Bringing old summaries up to date with the current app is
+the job of **Maintenance Jobs**, which native runs by itself. There is no Rebuild history button.
+
+- **Declaration.** `MAINTENANCE_JOBS` in `MaintenanceJobs.kt` and `maintenanceJobs` in
+  `MaintenanceJobs.swift` list every job in run order. A job declares a `version`, the setting keys
+  its output depends on (`inputKeys`, normalized by `inputs`), and `requiresNetwork`.
+- **Done state.** A job is done when the `app_settings` row `maintenanceJob.<id>` holds its
+  fingerprint `version|inputs`, e.g. `1|moving=300|freeSpinDelta=1200|freeSpinCap=1500`. Anything
+  else is stale. A done job costs one row read. Fingerprints travel with backups, so restoring an
+  older backup makes its jobs stale again. There is no progress cursor and no pending-work state: a
+  run that stops early restarts from zero, and the missing fingerprint is the only obligation. A job
+  may own its done state instead (`hasWork`, `begin`, `complete`); Ride weather does, with a
+  watermark.
+- **Runner.** `MaintenanceRunner` runs stale jobs one at a time, in declaration order, on one
+  low-priority thread or queue. A failed or waiting job does not block the next. It checks after
+  launch (10 s after startup), when the network comes back (network jobs only), 3 s after the last
+  change to an input setting (a running pass is cancelled and restarted with the new values), when
+  a skipped active ride closes, and after Restore or Clear all.
+- **Restore and Clear all.** Every job write is a chunk under `DatabaseReplacementFence`. A fence
+  waits for the in-flight chunk, and the next chunk of a run that started before it stops the run.
+  The runner then checks again against the resulting database, also when the restore failed.
+- **Active ride.** A job never touches the ride that may still be recording. Under ADR-0041 that is
+  every sample, on any Board and either stream, chained back from the newest one by gaps shorter
+  than `rideSplitGapMinutes`, while the newest is younger than that gap. A run that had to skip it
+  returns without its fingerprint and the runner checks again once the gap has passed, or on the
+  next launch.
+- **State.** `getMaintenanceState()` and `onMaintenanceState` carry each job's status (`pending`,
+  `running`, `done`, `waitingForNetwork`, `failed`), progress, last run, duration and last error,
+  plus a `historyRevision` bumped at most every 3 s after committed chunks. JS re-reads open history
+  pages and Favorites on a new revision. Failures are reported to Sentry; start, chunk, finish and
+  cancel leave breadcrumbs and log lines.
+- **UI.** A running job takes over the Settings button (database icon and progress ring, below
+  update and backup) and replaces the drawer Storage cell's size with its progress. A failed job
+  puts a warning dot on the Storage cell; waiting for network does not. The Database screen lists
+  every job.
+
+**Ride summaries** is the first job. Its inputs are the Metric Sanitizer settings. It rebuilds
+minute buckets, exclusion ranges and route previews oldest first, one transaction per owned chunk:
+whole minutes, half-open `[from, to)`, at most one clock hour. Inside the transaction it reads the
+frames and Ride Track of the chunk, plus read-only context: each Board's delta chain and the last
+precise fix from the previous chunk (dropped when a ride deletion removed them) and fixes up to 10 s
+outside the chunk for the free-spin sanitizer. It then replaces the chunk's buckets and the chunk's
+portion of every exclusion range, keeping portions outside it. Rebuilt ranges are plain inserts and
+never merge across a chunk edge, so rebuilding twice gives identical rows. History stays complete
+throughout: a mix of old and new hours, never a missing ride.
+
+**Ride weather** (`rideWeather`, network) fills `weather_observations` for past ride days that
+have no usable weather under the Ride weather read and 24-hour freshness rule: rides from before
+weather was stored and rides recorded offline. Its `app_settings` row holds a watermark,
+`version|doneThroughMs`, not a fingerprint. Rides ending at or before it are settled; every trigger
+scans only closed rides after it, so a done job costs one bounded query and a version bump rescans
+all history once.
+
+- **Candidates.** Each UTC day a closed derived ride touches is a candidate when that part of the
+  ride has no usable weather and has a precise Ride Track fix. Days without GPS never are. A
+  midnight-crossing ride checks both days. Earlier same-day weather (an offline evening ride after
+  a live morning refresh) is enough.
+- **Fetch.** One representative fix per day (its first precise fix); days grouped by 0.1° area;
+  one request per area and window of at most 14 days, one at a time. Hourly
+  `temperature_2m`, `weather_code`, `wind_gusts_10m`, `is_day` as UTC unix time from the
+  historical forecast API, or the ERA5 archive API for days before 2022. Days before 1940 are a
+  permanent miss. Null samples are dropped, duplicates keep the first.
+- **Write.** Each area's response is filtered to its own days and ride spans: the fresh hour at or
+  before the ride start plus the hours inside it, change-only against the previous sample. One
+  transaction per window rechecks eligibility first, so a live row committed during the request
+  wins and live rows are never overwritten.
+- **Outcomes.** Fetched rows, or a validated 4xx, settle the day. A transport failure, 408, 429,
+  5xx, an unparseable body, or no data for a day under 7 days old is temporary: the watermark stops
+  before that ride (later rides may still be filled), the run backs off (1 min doubling to 1 h, at
+  least `Retry-After`; a 429 stops the run) and retries while online, and network-back retries as
+  well. Offline it shows waiting for network, without a warning.
+- **Fencing.** The watermark only advances inside fenced chunks, and the HTTP call is cancelled
+  with the run, so Restore or Clear all mid-fetch leaves no late rows or watermark.
+
+Open-Meteo's free API is for non-commercial use; the licensing position must be confirmed before
+this ships.
+
+Retired one-shot jobs and their keys may be removed once the Release Policy minimum supported version
+is past the version that shipped them. Ride summaries is not one-shot: sanitizer changes must keep
+rebuilding history.
+
 ### Bucket route previews
 
 Favorite cards use the same simplified geometry as ride cards. Fully selected minutes read their
 stored previews; partially selected edge minutes simplify original fixes inside the exact Favorite
-range. Full minutes without a generated preview retain coarse anchors until Rebuild history. Reads are scoped to the
+range. Full minutes without a generated preview retain coarse anchors until the Ride summaries Maintenance
+Job regenerates them. Reads are scoped to the
 Favorite's board and preserve GPS/recording gaps. An empty native route stays empty in JS.
 
 Schema 49 adds nullable `telemetry_minute_buckets.route_preview`. Each value is a JSON array of
@@ -108,10 +233,10 @@ once every tile it needs is on disk; until then, and offline, it shows the plain
 ignores Privacy Zones, so it is for on-device display only. The 30-second gap rule shares the existing limitation around short
 Privacy Zone spans: no explicit privacy-break metadata is stored.
 
-Older buckets keep their first-coordinate fallback until the rider runs the existing **Rebuild
-history** operation in database settings. That explicit maintenance operation regenerates previews
-from retained Ride Track fixes, alongside the other summaries. Schema migration and ordinary reads
-never scan historical tracks or mutate them. Backups preserve the preview column across platforms.
+Older buckets keep their first-coordinate fallback until the Ride summaries Maintenance Job runs. It
+regenerates previews from retained Ride Track fixes, alongside the other summaries. Schema migration
+and ordinary reads never scan historical tracks or mutate them. Backups preserve the preview column
+across platforms.
 
 `historyStore.selectSession(session)` loads:
 
@@ -137,7 +262,7 @@ For each selected-ride Media History read:
 4. Find the nearest GPS fix in `sessionGpsSamples`.
 5. Show the asset only when that recording-backed GPS fix is at most `30_000ms` from capture time and belongs to the same continuous recording-backed GPS span.
 
-A continuous recording-backed GPS span contains adjacent GPS fixes no more than `30_000ms` apart. For new Ride Track fixes, both fixes must belong to the same Ride Recording and Board. BLE disconnects and telemetry gap/error markers do not split otherwise continuous GPS within that recording. Different recording identities, including a transition between legacy and new fixes, split the span even without a marker. Legacy fixes without recording identity retain marker-based breaks (`gap`, `disconnected`, `app_stop`, or `error`). Span coverage begins at its first GPS fix and ends at its last GPS fix; matching tolerance does not extend it. Video telemetry overlays still respect telemetry gaps and disconnect markers.
+A continuous recording-backed GPS span contains adjacent GPS fixes no more than `30_000ms` apart that belong to the same Board. A `recording_stop` marker between them splits the span; BLE disconnects and telemetry gap/error markers do not. Span coverage begins at its first GPS fix and ends at its last GPS fix; matching tolerance does not extend it. Video telemetry overlays still respect telemetry gaps and disconnect markers.
 
 No valid nearby recording-backed GPS fix means no map pin. Media cannot match into or across a gap detected by the span rules above, even when a fix on its other side is within `30_000ms`. Privacy Zone filtering stores no explicit break: a short filtered span below the time-gap threshold may still be treated as continuous. The Ride Track work in #448, #449, and #450 retains this limitation and does not introduce privacy-specific continuity metadata. See [ADR-0009](./adr/0009-privacy-zones-drop-ride-recording-samples.md).
 
@@ -156,26 +281,31 @@ See ADR 0014 for the ownership and matching decision.
 
 ## Ride grouping
 
-### Accepted Ride Track behavior, pending #448, #449, and #450
-
-New recordings use durable recording identity and explicit boundaries. An open recording remains one history entry through BLE loss, Idle Pause, and gaps in both streams, regardless of their duration. Explicit stop followed by a new start produces separate recordings even within one minute. The movement visibility rule still applies. An internal gap between two movement observations counts toward Time without implying capture during that gap.
-
-An explicit connection attempt to a different Board ends the previous recording immediately. A recording started after the new Board connects is a separate capture under that Board, even within the same minute; a failed connection does not reopen the previous recording. Browsing or selecting another Board alone does not end capture.
-
-The `rideSplitGapMinutes` setting, labelled "Split older rides after" in History settings, applies only to legacy history without durable recording boundaries. Migration preserves the existing legacy grouping behavior; it must not infer old recording identities. See [ADR-0038](./adr/0038-ride-track-is-a-separate-durable-gps-stream.md).
-
-### Current implementation and retained legacy grouping
-
+Ride boundaries are derived from recorded data only ([ADR-0041](./adr/0041-ride-boundaries-are-derived-from-recorded-data.md)).
 `RideHistoryRepository` groups minute buckets oldest-first inside one database snapshot. The same
-native grouping implementation feeds both Ride History pages and Profile Stats.
+native grouping implementation feeds both Ride History pages and Profile Stats, for old and new rides
+alike.
 
-Session breaks happen when:
+A ride is one Board's Telemetry Samples. A new ride starts when:
 
-- Board id changes
-- gap between adjacent buckets exceeds the rider's `rideSplitGapMinutes` setting (default 30)
-- bucket `boundaryBefore` is one of `disconnected`, `app_stop`, or `error`
+- the Board id changes
+- the gap between the last Telemetry Sample bucket of the ride and the next one exceeds the rider's
+  `rideSplitGapMinutes` setting ("Split rides after" in History settings, default 30)
+- a `recording_stop` marker of that Board lies between them (explicit Stop Recording)
 
-Important limitation: grouping only sees `boundaryBefore` attached near bucket start. A marker inside a minute bucket does not necessarily split a session.
+Idle Pause halts frame writes while the board is disengaged, so a long stop while connected splits
+on the frame gap. Disconnect, app kill, auto close, BLE loss and process restart do not split.
+`disconnected`, `app_stop`, `connection_lost` and `error` markers stay visible as Ride History
+Markers and as `boundaryBefore`, but never split.
+
+GPS-only buckets (Ride Track fixes, no Telemetry Sample) never start a ride and never move the
+split baseline. They attach to the preceding ride of their Board when inside the split window and
+before any Stop Recording — in practice the Ride Dropout Grace tail after the last frame — and
+otherwise belong to no ride. Inside a ride they still widen the Moving Window and the route.
+
+Boundaries have minute-bucket resolution: a Stop Recording and restart inside the same minute
+cannot split. Boards without Refloat state record frames while standing, so a long stop while
+connected stays one ride for them.
 
 ## Map Rendering
 
@@ -216,21 +346,20 @@ When history map looks wrong:
 
 - Render only actionable marker types (`gap`, `error`) on history map.
 - Style lifecycle markers (`connected`, `app_stop`) differently or hide them by default.
-- Split history sessions using markers inside buckets, not only `boundaryBefore`.
 
 ### Persistence integration
 
 Ride Track uses schema generation 43 on both platforms. The production migration graph moves legacy
-GPS fields into the independent stream; new frames carry recording identity and no GPS columns.
+GPS fields into the independent stream; frames carry no GPS columns. Schema generation 52 removes
+`ride_recordings` and every `recording_id` column again and folds minute buckets that two recordings
+shared (ADR-0041).
 GPS fixes and their minute buckets share the recording transaction and storage failure gate.
 
-Identified history entries use the recording ID as their UI identity. Opening or deleting one passes
-that ID to native queries, so a same-Board recording at a shared timestamp stays separate. Legacy
-entries and Favorites retain their time-range semantics. Markers and metric exclusions currently
-belong to Board/time ranges; deleting one identified recording preserves those shared annotations.
+History entries are identified by Board and time range. Opening, exporting or deleting one passes
+that Board and range to native queries, exactly as Favorites do.
 
 `bun run test:persistence` checks real Room/GRDB storage and exchanges production archives in both
-directions, including independent GPS fixes and recording end intent. Native lifecycle tests and
+directions, including independent GPS fixes. Native lifecycle tests and
 full app builds cover integration beyond the database hosts. Real-device background GPS behavior
 still requires a device smoke test.
 
@@ -243,8 +372,7 @@ Decisions from the 2026-09-20 design discussion:
 - Replace the Delete button with a three-dot menu containing **Export GPX**, **Export CSV**, and
   **Delete**, for both Ride History entries and Favorites. The two exports are direct menu items;
   there is no intermediate format picker.
-- Export a history entry's full stored range, scoped to its Board and recording identity where
-  available. Export a Favorite's exact saved Board/time range. Chart zoom and playback position do
+- Export a history entry's full stored range, scoped to its Board. Export a Favorite's exact saved Board/time range. Chart zoom and playback position do
   not change the export range.
 - Keep both export items enabled without querying data availability. Empty input may produce an
   empty export; do not add button-disable logic for missing GPS or telemetry.
@@ -320,8 +448,7 @@ or the Favorite's exact saved range, independently of movement, chart zoom, and 
 `exportRideGpx` accepts `RideExportOptions` and returns a closed `RideExportFile`. Native reads
 raw Ride Track fixes in pages of 1,000 ordered by `(fix_at_ms, id)` inside one database snapshot.
 The cursor advances past the last raw fix, even when an entire page fails precision filtering.
-Board attribution is exact, including an unassigned Board; optional recording identity further
-restricts identified entries. Favorites and legacy entries use Board/time scope.
+Board attribution is exact, including an unassigned Board. Every export uses Board/time scope.
 
 The writer emits UTF-8 GPX 1.1, escaped track names, coordinates in degrees, optional altitude
 in metres, UTC timestamps with millisecond precision, and optional GPS speed in metres per second

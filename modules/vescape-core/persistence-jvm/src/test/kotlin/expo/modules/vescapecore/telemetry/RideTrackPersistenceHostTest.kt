@@ -10,22 +10,22 @@ import org.junit.Test
 
 /** GPS-only commits use the same production atomic batch as telemetry. */
 class RideTrackPersistenceHostTest {
-  @Test fun sameTimestampRecordingsReadAndDeleteIndependently(): Unit = runBlocking {
-    val path = Files.createTempFile("vescape-track-identity", ".db")
+  /** Ride reads and deletes use Board and time only (ADR 0041). */
+  @Test fun trackReadsAndDeletesScopeToBoardAndTime(): Unit = runBlocking {
+    val path = Files.createTempFile("vescape-track-scope", ".db")
     Files.deleteIfExists(path)
     val db = Room.databaseBuilder<TelemetryRoomDatabase>(path.toString()).setDriver(BundledSQLiteDriver()).build()
     val dao = db.telemetryDao()
-    for (id in listOf("ride-a", "ride-b")) {
-      dao.insertRideRecording(RideRecordingEntity(id, "board-a", 1000, 3000, "stopped"))
-      val point = RideTrackPointEntity(recordingId = id, boardId = "board-a", fixAtMs = 2000,
+    for (board in listOf("board-a", "board-b")) {
+      val point = RideTrackPointEntity(boardId = board, fixAtMs = 2000,
         latitudeE7 = 510000000, longitudeE7 = 170000000, accuracyCm = 500,
         gpsSpeedCentiMps = 400, bearingCentiDeg = null, altitudeCm = null)
       RecordingPersistence(dao).commit(emptyList(), buildTelemetryBuckets(emptyList(), listOf(point).toBucketLocationPoints()), emptyList(), trackPoints = listOf(point))
     }
-    assertEquals(listOf("ride-b"), dao.getRideTrackPoints(0, 10000, "board-a", 1, recordingId = "ride-b").map { it.recordingId })
-    dao.deleteRecordingRanges("ride-a", listOf(TelemetryTimeRange(0, 10000)))
-    assertEquals(listOf("ride-b"), dao.getRideTrackPoints(0, 10000, "board-a", 10).map { it.recordingId })
-    assertEquals(listOf("ride-b"), dao.getAllHistoryBucketsAsc().map { it.recordingId })
+    assertEquals(listOf("board-b"), dao.getRideTrackPoints(0, 10000, "board-b", 10).map { it.boardId })
+    dao.deleteRange(0, 10000, "board-a")
+    assertEquals(listOf("board-b"), dao.getRideTrackPoints(0, 10000, null, 10).map { it.boardId })
+    assertEquals(listOf("board-b"), dao.getAllHistoryBucketsAsc().map { it.boardId })
     db.close()
     Files.deleteIfExists(path)
   }
@@ -35,8 +35,7 @@ class RideTrackPersistenceHostTest {
     Files.deleteIfExists(path)
     fun open() = Room.databaseBuilder<TelemetryRoomDatabase>(path.toString()).setDriver(BundledSQLiteDriver()).build()
     var db = open()
-    db.telemetryDao().insertRideRecording(RideRecordingEntity("ride-a", "board-a", 1000))
-    val point = RideTrackPointEntity(recordingId = "ride-a", boardId = "board-a", fixAtMs = 2000,
+    val point = RideTrackPointEntity(boardId = "board-a", fixAtMs = 2000,
       latitudeE7 = 510000000, longitudeE7 = 170000000, accuracyCm = 3500,
       gpsSpeedCentiMps = 400, bearingCentiDeg = null, altitudeCm = null)
     val buckets = buildTelemetryBuckets(emptyList(), listOf(point).toBucketLocationPoints())

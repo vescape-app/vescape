@@ -5,7 +5,8 @@ import XCTest
 
 final class DatabaseBackupArchiveTests: XCTestCase {
   func testMalformedCustomSoundManifestRejectedBeforeSwap() {
-    XCTAssertThrowsError(try CustomAppSounds.validateBackup(["packs.json": Data("not-json".utf8)]))
+    XCTAssertThrowsError(try MySounds.validateBackup(["packs.json": Data("not-json".utf8)]))
+    XCTAssertThrowsError(try MySounds.validateBackup(["my-sounds.json": Data("not-json".utf8)]))
   }
 
   func testCustomSoundEntriesRoundTripWithDatabase() throws {

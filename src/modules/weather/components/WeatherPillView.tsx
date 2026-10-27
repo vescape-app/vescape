@@ -6,7 +6,8 @@ import { Text } from '@/components/base/Text'
 import { WeatherIcon } from '@/modules/weather/components/WeatherIcon'
 import { WeatherStat } from '@/modules/weather/components/WeatherStat'
 import { interaction, theme } from '@/constants/theme'
-import { formatHour, weatherIconColor } from '@/modules/weather/lib/weather'
+import { formatHour } from '@/helpers/format'
+import { weatherIconColor } from '@/modules/weather/lib/weather'
 
 interface WeatherPillProps {
   icon: WeatherIconSlug

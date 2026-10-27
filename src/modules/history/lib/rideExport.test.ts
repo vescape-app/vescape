@@ -3,7 +3,6 @@ import { rideExportOptions } from './rideExport'
 
 const ride = {
   boardId: 'board',
-  recordingId: 'recording',
   boardName: 'Board',
   startAtMs: 100,
   endAtMs: 900,
@@ -11,17 +10,16 @@ const ride = {
   movingEndAtMs: 700,
 }
 
-test('ride export keeps full range and recording identity independent of movement bounds', () => {
+test('ride export keeps the full Board range independent of movement bounds', () => {
   expect(rideExportOptions(ride, null)).toEqual({
     fromMs: 100,
     toMs: 900,
     boardId: 'board',
-    recordingId: 'recording',
     name: 'Board',
   })
 })
 
-test('Favorite export uses exact saved Board/range and omits the opened ride recording identity', () => {
+test('Favorite export uses the exact saved Board/range', () => {
   expect(
     rideExportOptions(ride, {
       boardId: 'favorite-board',
@@ -32,12 +30,11 @@ test('Favorite export uses exact saved Board/range and omits the opened ride rec
   ).toEqual({ fromMs: 250, toMs: 550, boardId: 'favorite-board', name: '../Evening & ride' })
 })
 
-test('legacy and unassigned Board export preserve optional identity', () => {
-  expect(rideExportOptions({ ...ride, boardId: null, recordingId: null }, null)).toEqual({
+test('unassigned Board export omits the Board', () => {
+  expect(rideExportOptions({ ...ride, boardId: null }, null)).toEqual({
     fromMs: 100,
     toMs: 900,
     boardId: undefined,
-    recordingId: undefined,
     name: 'Board',
   })
 })

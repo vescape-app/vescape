@@ -4,11 +4,13 @@ import { SafeAreaView } from 'react-native-safe-area-context'
 import { useState } from 'react'
 
 import { CloudMoonIcon } from 'phosphor-react-native'
-import type { WeatherHour, WeatherIconSlug } from 'vescape-core'
+import type { WeatherAlertLevelSetting, WeatherHour, WeatherIconSlug } from 'vescape-core'
 import { WeatherIcon } from '@/modules/weather/components/WeatherIcon'
 import { WeatherStat } from '@/modules/weather/components/WeatherStat'
 import { WeatherPill } from '@/modules/weather/components/WeatherPillView'
 import { WeatherHourlyStrip } from '@/modules/weather/components/WeatherHourlyStripView'
+import { WeatherAlertsSettingsView } from '@/modules/weather/components/WeatherAlertsSettings'
+import type { DistanceUnit } from '@/helpers/units'
 import { IconHero } from '@/components/settings/IconHero'
 import { ShowcaseCard } from '@/components/dev/ShowcaseCard'
 import { ChipRow, ToggleRow } from '@/components/dev/ShowcaseControls'
@@ -38,6 +40,13 @@ const LABELS: Record<WeatherIconSlug, string> = {
   'cloud-rain': 'Rain',
   'cloud-snow': 'Snow',
   'cloud-lightning': 'Thunderstorm',
+}
+
+/** Mock of the native level gates; the app reads them from native. */
+const MOCK_THRESHOLDS = {
+  sensitive: { gustKmh: 40, rainPercent: 30 },
+  normal: { gustKmh: 55, rainPercent: 50 },
+  extreme: { gustKmh: 70, rainPercent: 70 },
 }
 
 const MOCK_SUNRISE_MINUTE = 5 * 60 + 12
@@ -92,6 +101,9 @@ export default function WeatherPage() {
   const [icon, setIcon] = useState<WeatherIconSlug>('sun')
   const [precip, setPrecip] = useState(true)
   const [expanded, setExpanded] = useState(false)
+  const [rainLevel, setRainLevel] = useState<WeatherAlertLevelSetting>('normal')
+  const [windLevel, setWindLevel] = useState<WeatherAlertLevelSetting>('normal')
+  const [distanceUnit, setUnits] = useState<DistanceUnit>('km')
 
   const precipProbability = precip ? 40 : 0
   const iconColor = weatherIconColor(icon)
@@ -111,7 +123,10 @@ export default function WeatherPage() {
   return (
     <SafeAreaView style={styles.container} edges={['bottom']}>
       <ScrollView contentContainerStyle={styles.content}>
-        <IconHero icon={CloudMoonIcon} description="Weather icons, stat, pill, and hourly strip." />
+        <IconHero
+          icon={CloudMoonIcon}
+          description="Weather icons, stat, pill, hourly strip, and alert settings."
+        />
 
         <ShowcaseCard name="WeatherIcon" controls={sharedControls}>
           <View style={styles.iconPreview}>
@@ -163,6 +178,27 @@ export default function WeatherPage() {
           <View style={styles.stripPreview}>
             <WeatherHourlyStrip hours={MOCK_HOURLY} />
           </View>
+        </ShowcaseCard>
+
+        <ShowcaseCard
+          name="WeatherAlertsSettingsView"
+          controls={
+            <ChipRow
+              label="units"
+              options={['km', 'mi']}
+              selected={distanceUnit}
+              onSelect={(value) => setUnits(value as DistanceUnit)}
+            />
+          }
+        >
+          <WeatherAlertsSettingsView
+            rain={rainLevel}
+            wind={windLevel}
+            distanceUnit={distanceUnit}
+            thresholds={MOCK_THRESHOLDS}
+            onRainChange={setRainLevel}
+            onWindChange={setWindLevel}
+          />
         </ShowcaseCard>
       </ScrollView>
     </SafeAreaView>

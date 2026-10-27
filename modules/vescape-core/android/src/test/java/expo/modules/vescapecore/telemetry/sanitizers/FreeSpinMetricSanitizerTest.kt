@@ -152,7 +152,6 @@ class FreeSpinMetricSanitizerTest {
   ) = Captured(
     point(capturedAtMs, deviceId, speedCentiKmh, dutyPermille).point,
     RideTrackPointEntity(
-      recordingId = "recording-1",
       boardId = deviceId,
       fixAtMs = gpsTimestampMs,
       latitudeE7 = 500_000_000,

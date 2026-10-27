@@ -1,5 +1,5 @@
 import { create } from 'zustand'
-import type { GpsDisplayMotion, GpsPhase, LiveStateEvent, LocationEvent } from 'vescape-core'
+import type { GpsPhase, LiveStateEvent, LocationEvent } from 'vescape-core'
 
 import { appendLocation, createLocationHistory } from '@/modules/location/lib/locationHistory'
 
@@ -8,14 +8,12 @@ type GpsState = LiveStateEvent['gps']
 interface LocationState {
   latestRawLocation: LocationEvent | null
   latestPreciseLocation: LocationEvent | null
-  displayMotion: GpsDisplayMotion | null
   gpsStatus: GpsPhase
   latestApproximateLocation: LocationEvent | null
   liveLocationHistory: LocationEvent[]
 }
 
 interface LocationActions {
-  ingestDisplayMotion: (motion: GpsDisplayMotion | null) => void
   applySnapshot: (gps: GpsState, windowMs: number) => void
   applyStatus: (gps: GpsState, windowMs: number) => void
   ingestLocation: (location: LocationEvent, windowMs: number) => void
@@ -62,19 +60,6 @@ export function createLocationStore() {
       })
     }
 
-    function ingestDisplayMotion(displayMotion: GpsDisplayMotion | null) {
-      set((state) => {
-        // GPS, state and telemetry arrive on separate channels. Only snapshots may rewind clocks.
-        if (
-          displayMotion &&
-          state.displayMotion &&
-          displayMotion.startsAtMs < state.displayMotion.startsAtMs
-        )
-          return state
-        return { displayMotion }
-      })
-    }
-
     function appendLatest(gps: GpsState, windowMs: number) {
       if (gps.latestFix) {
         appendLocation(history, gps.latestFix, windowMs)
@@ -87,17 +72,14 @@ export function createLocationStore() {
     }
 
     return {
-      ingestDisplayMotion,
       latestRawLocation: null,
       latestPreciseLocation: null,
-      displayMotion: null,
       gpsStatus: 'idle',
       liveLocationHistory: [],
       latestApproximateLocation: null,
 
       applySnapshot(gps, windowMs) {
         set({
-          displayMotion: gps.displayMotion ?? null,
           latestRawLocation: null,
           latestPreciseLocation: null,
         })
@@ -110,7 +92,6 @@ export function createLocationStore() {
       },
 
       applyStatus(gps, windowMs) {
-        if (gps.displayMotion !== undefined) ingestDisplayMotion(gps.displayMotion)
         // Routine native status events omit history. They cannot replace the retained trail.
         appendLatest(gps, windowMs)
         publish(gps.phase)
@@ -118,14 +99,12 @@ export function createLocationStore() {
 
       ingestLocation(location, windowMs) {
         publishRaw(location)
-        // Motion has its own native timestamps: do not delay it behind the 1Hz trail batching.
-        if (location.displayMotion !== undefined) ingestDisplayMotion(location.displayMotion)
         appendLocation(history, location, windowMs)
         if (pending === null) pending = setTimeout(() => publish(), PUBLISH_INTERVAL_MS)
       },
 
       reset() {
-        set({ displayMotion: null, latestRawLocation: null, latestPreciseLocation: null })
+        set({ latestRawLocation: null, latestPreciseLocation: null })
         history = createLocationHistory()
         publish('idle')
       },

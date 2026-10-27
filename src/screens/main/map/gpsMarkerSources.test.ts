@@ -37,53 +37,34 @@ test('all orientations and free pan retain the same animated puck and phone-head
         useResolvedNeutralColors: () => ({ surfaceDeep: theme.palette.mono.white }),
         useResolvedAccentColors: () => ({ violet: theme.palette.violet, purple: theme.palette.purple, amber: theme.palette.amber }),
       }))
-      const { useNavigationDiagnosticsStore: diagnosticsStore } = await import('./src/modules/map/store/navigationDiagnosticsStore.ts')
-      // SSR normally reads Zustand's initial snapshot; this harness renders successive live states.
-      mock.module('@/modules/map/store/navigationDiagnosticsStore', () => ({
-        useNavigationDiagnosticsStore: select => select(diagnosticsStore.getState()),
-      }))
       const { LiveMapLayers } = await import('./src/screens/main/map/LiveMapLayers.tsx')
       const { PhoneHeadingMapLayer } = await import('./src/modules/map/components/PhoneHeadingMapLayer.tsx')
       const animator = { __nativeTag: 42, moveTo: () => { throw Error('leaf layers must not drive position') } }
       const coordinate = { latitude: 52, longitude: 21 }
       const measuredTrail = { type: 'Feature', geometry: { type: 'LineString', coordinates: [[16, 47], [17, 48], [18, 49], [19, 50]] }, properties: {} }
       const accuracyShape = { type: 'Feature', geometry: { type: 'Polygon', coordinates: [] }, properties: {} }
-      const motion = { fromLatitude: 52, fromLongitude: 21, toLatitude: 52.001, toLongitude: 21.001, startsAtMs: 1000, endsAtMs: 2000 }
       const noop = () => {}
+      const displayRuntime = { active: true, smoothedTrail: [{ longitude: 18, latitude: 49 }, { longitude: 19, latitude: 50 }, { longitude: 20, latitude: 51 }], motion: { segment: () => ({ from: null, to: null, durationMs: 0, revision: 0 }), position: () => null, pointHeading: () => null }, now: () => 0, duration: ms => ms, subscribe: () => noop }
       for (const mode of ['northUp', 'gpsHeading', 'phoneHeading', 'freeRotate']) {
         for (const follow of [false, true]) {
-        for (const highContrastRoutes of [false, true]) {
-        for (const showRawGps of [true, false]) {
-          diagnosticsStore.getState().setShowRawGps(showRawGps)
+          for (const highContrastRoutes of [false, true]) {
           sources.clear()
           layers.clear()
           renderToStaticMarkup(React.createElement(React.Fragment, null,
             React.createElement(PhoneHeadingMapLayer, {
               active: mode !== 'gpsHeading', followCamera: mode === 'phoneHeading' && follow,
-              coordinate, positionAnimator: animator, onFollowHeading: noop, onHeadingChange: noop, onStatusChange: noop,
+              coordinate, pointAnimator: animator, onFollowHeading: noop, onHeadingChange: noop, onStatusChange: noop,
             }),
             React.createElement(LiveMapLayers, {
-              accuracyFix: { ...coordinate, accuracyM: 12, displayMotion: motion }, positionAnimator: animator, accuracyShape,
+              accuracyFix: coordinate, pointAnimator: animator, displayRuntime, accuracyShape,
               liveTrailShape: measuredTrail, gpsPuckBearingDeg: mode === 'gpsHeading' ? 90 : null,
               riders: [], highContrastRoutes,
             }),
           ))
-          assert.deepEqual(sources.get('center-live-trail-tail-source').geometry.coordinates, [[18, 49], [19, 50], [20, 51]])
-          assert.deepEqual(sources.get('center-live-trail-source').geometry.coordinates, [[16, 47], [17, 48], [18, 49]])
+          assert.deepEqual(sources.get('center-live-trail-source').geometry.coordinates, [[16, 47], [17, 48], [18, 49], [19, 50]])
+          assert.deepEqual(sources.get('center-smoothed-trail-source').geometry.coordinates, [[18, 49], [19, 50], [20, 51]])
           assert.equal(measuredTrail.geometry.coordinates.length, 4)
-          const dust = layers.get('center-live-trail-tail-line').lineGradient
-          assert.equal(dust[3], 0)
-          assert.equal(dust[5], 1)
-          assert.notEqual(dust[4], dust[6])
-          assert.ok(!layers.has('center-live-trail-tail-casing'), 'no dark casing beneath the translucent dust')
-          assert.equal(dust[4], theme.alpha(theme.palette.violet.color, 0.85))
-          assert.equal(dust[6], theme.alpha(theme.palette.violet.color, 0))
-          assert.equal(sources.has('center-raw-gps-source'), showRawGps)
-          assert.equal(layers.has('center-raw-gps-ring'), showRawGps)
-          if (showRawGps) {
-            assert.deepEqual(sources.get('center-raw-gps-source').geometry.coordinates, [20, 51])
-            assert.equal(layers.get('center-raw-gps-ring').circleColor, 'transparent')
-          }
+          assert.equal(layers.get('center-smoothed-trail-line').lineColor, theme.palette.mono.white)
           assert.equal(sources.get('center-gps-accuracy-source'), accuracyShape, mode + ': preserve accuracy polygon')
           assert.ok(layers.has('center-gps-accuracy-fill'), mode + ': preserve FillLayer')
           assert.ok(!layers.has('center-gps-moving-accuracy'), mode + ': no replacement circle')
@@ -91,9 +72,11 @@ test('all orientations and free pan retain the same animated puck and phone-head
           assert.equal(layers.get('center-gps-puck-core').circleStrokeWidth, 3)
           assert.equal(sources.get('center-gps-puck-position-source'), animator, mode + ': puck')
           assert.equal(sources.get('center-phone-heading-source'), animator, mode + ': compass glyph')
-          assert.equal(layers.get('center-phone-heading-outline').iconRotationAlignment, 'map', 'compass arrow must never be pinned to viewport up')
+          assert.equal(
+            layers.get('center-phone-heading-outline').iconRotationAlignment,
+            mode === 'phoneHeading' && follow ? 'viewport' : 'map',
+          )
           if (mode === 'gpsHeading') assert.equal(sources.get('center-gps-puck-heading-source'), animator)
-        }
         }
         }
       }

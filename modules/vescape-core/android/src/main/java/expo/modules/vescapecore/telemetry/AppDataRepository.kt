@@ -1,8 +1,11 @@
 package expo.modules.vescapecore.telemetry
 
+import expo.modules.vescapecore.weather.WEATHER_ALERT_LEVEL_DEFAULT
+import expo.modules.vescapecore.weather.WEATHER_ALERT_LEVEL_SETTINGS
 import expo.modules.vescapecore.config.BoardConfigValues
 import expo.modules.vescapecore.config.MotorConfigValues
 import expo.modules.vescapecore.config.BoardConfigChangeNotice
+import expo.modules.vescapecore.recording.RecordingStorageFailure
 import expo.modules.vescapecore.config.RefloatConfigSnapshot
 
 import expo.modules.vescapecore.diagnostics.DiagnosticReporter
@@ -10,7 +13,16 @@ import expo.modules.vescapecore.diagnostics.DiagnosticReporter
 import expo.modules.vescapecore.service.CoreForegroundService
 
 import expo.modules.vescapecore.connection.BoardTransport
-import expo.modules.vescapecore.alerts.CustomAppSounds
+import expo.modules.vescapecore.alerts.MySounds
+import expo.modules.vescapecore.alerts.EFFECTS_PACK_FALLBACK
+import expo.modules.vescapecore.alerts.EFFECTS_PACK_IDS
+import expo.modules.vescapecore.alerts.RENAMED_EFFECTS_PACK_IDS
+import expo.modules.vescapecore.alerts.RENAMED_VOICE_PACK_IDS
+import expo.modules.vescapecore.alerts.RETIRED_EFFECTS_PACK_IDS
+import expo.modules.vescapecore.alerts.VOICE_LEVELS
+import expo.modules.vescapecore.alerts.VOICE_LEVEL_DEFAULT
+import expo.modules.vescapecore.alerts.VOICE_MATCHING
+import expo.modules.vescapecore.alerts.VOICE_PACK_IDS
 import expo.modules.vescapecore.watch.WatchMapGauges
 import android.content.Context
 import kotlinx.coroutines.Dispatchers
@@ -18,7 +30,6 @@ import kotlinx.coroutines.withContext
 import org.json.JSONArray
 import org.json.JSONObject
 import java.util.UUID
-import expo.modules.vescapecore.alerts.normalizedAlertBeepCount
 import expo.modules.vescapecore.alerts.normalizedAlertRepeatSeconds
 
 // @parity /modules/vescape-core/ios/telemetry/AppDataRepository.swift `AppDataScope`
@@ -29,6 +40,10 @@ internal enum class AppDataScope(val wire: String) {
   ALERTS("alerts"),
   SETTINGS("settings"),
 }
+
+/** `matching` or a built-in voice pack id. @parity /modules/vescape-core/ios/telemetry/AppDataRepository.swift `voice` */
+internal fun validVoice(value: Any?): String? =
+  (value as? String)?.let { RENAMED_VOICE_PACK_IDS[it] ?: it }?.takeIf { it == VOICE_MATCHING || it in VOICE_PACK_IDS }
 
 internal fun validMapStyleKey(value: Any?): String? =
   (value as? String)?.takeIf { it in setOf("onedark", "outdoors", "satellite", "mapy") }
@@ -202,21 +217,22 @@ class AppDataRepository private constructor(private val context: Context) {
     boardSettings.getBoard(id)?.toMap(boardSettings.getBoardSettings(id))
   }
 
-  suspend fun upsertBoard(board: Map<String, Any?>): Unit = withContext(Dispatchers.IO) {
+  /**
+   * Saves the Board; [initialAlerts] (`presets` metric → spec, `rules` rider rules) is a new Board's
+   * alert setup, written in the same transaction.
+   * @parity /modules/vescape-core/ios/telemetry/AppDataRepository.swift `upsertBoard`
+   */
+  suspend fun upsertBoard(board: Map<String, Any?>, initialAlerts: Map<String, Any?>?): Unit = withContext(Dispatchers.IO) {
     val boardId = board.getString("id")
     val (settings, deletedKeys) = board.toBoardSettingEntities(boardId)
-    boardSettings.upsertBoard(board.toBoardEntity(), settings, deletedKeys)
+    val alerts = initialAlerts?.let { initialAlertRows(boardId, it) }.orEmpty()
+    boardSettings.upsertBoard(board.toBoardEntity(), settings, deletedKeys, alerts)
     notifyDataChanged(AppDataScope.BOARDS)
     notifyDataChanged(AppDataScope.ALERTS)
   }
 
-  suspend fun repairMissingAlertPresetRelations(boardId: String): Unit = withContext(Dispatchers.IO) {
-    if (dao.repairMissingAlertPresetRelations(boardId)) notifyDataChanged(AppDataScope.ALERTS)
-  }
-
-  suspend fun applyAlertPreset(boardId: String, metric: String, action: String, level: String?, matchBoardConfig: Boolean?): Unit = withContext(Dispatchers.IO) {
-    dao.applyAlertPreset(boardId, metric, action, level, matchBoardConfig)
-    notifyDataChanged(AppDataScope.BOARDS)
+  suspend fun applyAlertPreset(boardId: String, metric: String, level: String?, geiger: String?, match: Boolean?): Unit = withContext(Dispatchers.IO) {
+    dao.applyAlertPreset(boardId, metric, level, geiger, match)
     notifyDataChanged(AppDataScope.ALERTS)
   }
 
@@ -361,14 +377,34 @@ class AppDataRepository private constructor(private val context: Context) {
     dao.clearBoardConfigState(boardId)
   }
 
+  /** Rider rules plus expanded Alert Presets, the list every rule reader uses. */
   suspend fun getAlertRules(boardId: String): List<Map<String, Any?>> = withContext(Dispatchers.IO) {
-    tuneAlerts.alertRules(boardId).map { it.toMap() }
+    tuneAlerts.alertRules(boardId, ::reportPresetFailure).map { it.toMap() }
+  }
+
+  @Suppress("UNCHECKED_CAST")
+  private fun initialAlertRows(boardId: String, alerts: Map<String, Any?>): List<AlertRuleEntity> {
+    val createdAt = System.currentTimeMillis()
+    val presets = (alerts["presets"] as? Map<String, Any?>).orEmpty().mapNotNull { (metric, spec) ->
+      AlertPresetPersistence.presetRow(boardId, metric, requireNotNull(spec as? String) { "Invalid preset spec" }, createdAt)
+    }
+    val rules = (alerts["rules"] as? List<Map<String, Any?>>).orEmpty().map { raw ->
+      tuneAlerts.riderRule(raw.toAlertRuleEntity()).also { require(it.boardId == boardId) { "Alert Rule belongs to another Board" } }
+    }
+    return presets + rules
+  }
+
+  private fun reportPresetFailure(error: Throwable) = RecordingStorageFailure.reportRead("alert_preset_expand", error)
+
+  /** Each preset metric's stored `preset(…)` spec, the app default where the Board has no row. */
+  suspend fun getAlertPresets(boardId: String): Map<String, String> = withContext(Dispatchers.IO) {
+    AlertPresetPersistence.specs(dao, boardId)
   }
 
   /** The given Board's enabled rules — the alert engine evaluates only the connected Board's rules. */
   suspend fun getEnabledAlertRuleEntities(boardId: String): List<AlertRuleEntity> =
     withContext(Dispatchers.IO) {
-      dao.getEnabledAlertRules(boardId)
+      tuneAlerts.alertRules(boardId, ::reportPresetFailure).filter { it.enabled }
     }
 
   suspend fun upsertAlertRule(rule: Map<String, Any?>): Unit = withContext(Dispatchers.IO) {
@@ -420,7 +456,8 @@ class AppDataRepository private constructor(private val context: Context) {
       movingSpeedThresholdKmh = req("movingSpeedThresholdKmh", 3.0) { (it as? Number)?.toDouble() },
       freeSpinMaxSpeedDeltaKmh = req("freeSpinMaxSpeedDeltaKmh", DEFAULT_FREE_SPIN_MAX_SPEED_DELTA_KMH) { (it as? Number)?.toDouble() },
       freeSpinStationaryBoardCapKmh = req("freeSpinStationaryBoardCapKmh", DEFAULT_FREE_SPIN_STATIONARY_BOARD_CAP_KMH) { (it as? Number)?.toDouble() },
-      unitSystem = req("unitSystem", "metric", ::validUnitSystem),
+      distanceUnit = req("distanceUnit", "km", ::validDistanceUnit),
+      temperatureUnit = req("temperatureUnit", "celsius", ::validTemperatureUnit),
       themeMode = req("themeMode", "system", ::validThemeMode),
       mapStyleKey = req("mapStyleKey", "onedark", ::validMapStyleKey),
       satelliteOverlayEnabled = req("satelliteOverlayEnabled", true) { it as? Boolean },
@@ -436,8 +473,18 @@ class AppDataRepository private constructor(private val context: Context) {
       socEstimateWindowSeconds = req("socEstimateWindowSeconds", 20, ::validSocEstimateWindowSeconds),
       boardMoveStrengthPercent = req("boardMoveStrengthPercent", 60, ::validBoardMoveStrengthPercent),
       connectionSoundsEnabled = req("connectionSoundsEnabled", true) { it as? Boolean },
-      soundPack = req("soundPack", if ("soundPack" in map) "simple" else "retro") { (it as? String)?.takeIf { pack -> pack == "simple" || pack == "retro" || CustomAppSounds.exists(context, pack) } },
+      soundPack = req("soundPack", EFFECTS_PACK_FALLBACK) {
+        // A custom app sound pack id from before My sounds turns into overrides, then reads as invalid;
+        // a retired built-in id reads as the default, a renamed one as its new id.
+        (it as? String)?.also { pack -> MySounds.adoptLegacyPack(context, pack) }
+          ?.let { pack -> if (pack in RETIRED_EFFECTS_PACK_IDS) EFFECTS_PACK_FALLBACK else RENAMED_EFFECTS_PACK_IDS[pack] ?: pack }
+          ?.takeIf { pack -> pack in EFFECTS_PACK_IDS }
+      },
       audioSource = req("audioSource", "alarm") { (it as? String)?.takeIf { source -> source == "alarm" || source == "media" } },
+      voice = req("voice", VOICE_MATCHING, ::validVoice),
+      voiceLevel = req("voiceLevel", VOICE_LEVEL_DEFAULT) { (it as? String)?.takeIf { level -> level in VOICE_LEVELS } },
+      weatherRainAlertLevel = req("weatherRainAlertLevel", WEATHER_ALERT_LEVEL_DEFAULT, ::validWeatherAlertLevel),
+      weatherWindAlertLevel = req("weatherWindAlertLevel", WEATHER_ALERT_LEVEL_DEFAULT, ::validWeatherAlertLevel),
       telemetryPollRateHz = req("telemetryPollRateHz", 20, ::validTelemetryPollRateHz),
       wearPushRateHz = req("wearPushRateHz", 4, ::validWearPushRateHz),
       wearAutoLaunchOnConnect = req("wearAutoLaunchOnConnect", true) { it as? Boolean },
@@ -471,7 +518,7 @@ class AppDataRepository private constructor(private val context: Context) {
     if (badKeys.isNotEmpty()) {
       for (key in badKeys) {
         if (key == "soundPack") {
-          dao.upsertAppSetting(AppSettingEntity(key, encodeSettingJson("simple"), System.currentTimeMillis()))
+          dao.upsertAppSetting(AppSettingEntity(key, encodeSettingJson(EFFECTS_PACK_FALLBACK), System.currentTimeMillis()))
         } else dao.deleteAppSetting(key)
       }
       DiagnosticReporter.get(context).capture(
@@ -506,7 +553,8 @@ class AppDataRepository private constructor(private val context: Context) {
         ((value as? Number)?.toDouble() ?: return@withContext).coerceAtLeast(0.0)
       "freeSpinMaxSpeedDeltaKmh", "freeSpinStationaryBoardCapKmh" ->
         ((value as? Number)?.toDouble() ?: return@withContext).coerceAtLeast(0.0)
-      "unitSystem" -> requireNotNull(validUnitSystem(value)) { "Invalid unitSystem" }
+      "distanceUnit" -> requireNotNull(validDistanceUnit(value)) { "Invalid distanceUnit" }
+      "temperatureUnit" -> validTemperatureUnit(value) ?: return@withContext
       "themeMode" -> validThemeMode(value) ?: return@withContext
       "mapStyleKey" ->
         validMapStyleKey(value) ?: return@withContext
@@ -530,8 +578,11 @@ class AppDataRepository private constructor(private val context: Context) {
       "boardMoveStrengthPercent" ->
         validBoardMoveStrengthPercent(value) ?: return@withContext
       "connectionSoundsEnabled" -> value as? Boolean ?: return@withContext
-      "soundPack" -> (value as? String)?.takeIf { it == "simple" || it == "retro" || CustomAppSounds.exists(context, it) } ?: return@withContext
+      "soundPack" -> (value as? String)?.takeIf { it in EFFECTS_PACK_IDS } ?: return@withContext
       "audioSource" -> (value as? String)?.takeIf { it == "alarm" || it == "media" } ?: return@withContext
+      "voice" -> validVoice(value) ?: return@withContext
+      "voiceLevel" -> (value as? String)?.takeIf { it in VOICE_LEVELS } ?: return@withContext
+      "weatherRainAlertLevel", "weatherWindAlertLevel" -> validWeatherAlertLevel(value) ?: return@withContext
       "telemetryPollRateHz" ->
         validTelemetryPollRateHz(value) ?: return@withContext
       "wearPushRateHz" ->
@@ -582,7 +633,8 @@ class AppDataRepository private constructor(private val context: Context) {
         "movingSpeedThresholdKmh" -> d.movingSpeedThresholdKmh
         "freeSpinMaxSpeedDeltaKmh" -> d.freeSpinMaxSpeedDeltaKmh
         "freeSpinStationaryBoardCapKmh" -> d.freeSpinStationaryBoardCapKmh
-        "unitSystem" -> d.unitSystem
+        "distanceUnit" -> d.distanceUnit
+        "temperatureUnit" -> d.temperatureUnit
         "themeMode" -> d.themeMode
         "mapStyleKey" -> d.mapStyleKey
         "satelliteOverlayEnabled" -> d.satelliteOverlayEnabled
@@ -600,6 +652,10 @@ class AppDataRepository private constructor(private val context: Context) {
         "connectionSoundsEnabled" -> d.connectionSoundsEnabled
         "soundPack" -> d.soundPack
         "audioSource" -> d.audioSource
+        "voice" -> d.voice
+        "voiceLevel" -> d.voiceLevel
+        "weatherRainAlertLevel" -> d.weatherRainAlertLevel
+        "weatherWindAlertLevel" -> d.weatherWindAlertLevel
         "telemetryPollRateHz" -> d.telemetryPollRateHz
         "wearPushRateHz" -> d.wearPushRateHz
         "wearAutoLaunchOnConnect" -> d.wearAutoLaunchOnConnect
@@ -626,8 +682,8 @@ class AppDataRepository private constructor(private val context: Context) {
         else -> null
       }
     }
-    if (normalizedKey == "unitSystem") {
-      dao.updateUnitSystem(coerced as String)
+    if (normalizedKey == "distanceUnit") {
+      dao.updateDistanceUnit(coerced as String)
       notifyDataChanged(AppDataScope.ALERTS)
     } else if (coerced == default) {
       dao.deleteAppSetting(normalizedKey)
@@ -945,13 +1001,10 @@ fun BoardEntity.toMap(settings: List<BoardSettingEntity>): Map<String, Any?> {
     "batteryConfig" to values["batteryConfig"],
     "lastBattery" to values["lastBattery"],
     "dismissedWarnings" to values["dismissedWarnings"],
-    // Alert Preset board settings, normalized to display defaults when the row is absent so JS
-    // always reads a concrete Board Top Speed / onboarded flag. `alertPreset` stays null until the
-    // rider touches setup — no preset rules generate before then.
+    // Normalized to display defaults when the row is absent so JS always reads a concrete Board
+    // Top Speed / onboarded flag.
     "topSpeedKmh" to (values["topSpeedKmh"] ?: DEFAULT_TOP_SPEED_KMH),
-    "alertPreset" to values["alertPreset"],
     "alertPresetsOnboarded" to (values["alertPresetsOnboarded"] ?: false),
-    "matchBoardConfig" to values["matchBoardConfig"],
     "legalMode" to (values["legalMode"] ?: mapOf("enabled" to false)),
     "link" to link,
     "deletedAt" to deletedAt,
@@ -970,7 +1023,8 @@ fun AppSettings.toMap(): Map<String, Any?> = mapOf(
   "movingSpeedThresholdKmh" to movingSpeedThresholdKmh,
   "freeSpinMaxSpeedDeltaKmh" to freeSpinMaxSpeedDeltaKmh,
   "freeSpinStationaryBoardCapKmh" to freeSpinStationaryBoardCapKmh,
-  "unitSystem" to unitSystem,
+  "distanceUnit" to distanceUnit,
+  "temperatureUnit" to temperatureUnit,
   "themeMode" to themeMode,
   "mapStyleKey" to mapStyleKey,
   "satelliteOverlayEnabled" to satelliteOverlayEnabled,
@@ -988,6 +1042,10 @@ fun AppSettings.toMap(): Map<String, Any?> = mapOf(
   "connectionSoundsEnabled" to connectionSoundsEnabled,
   "soundPack" to soundPack,
   "audioSource" to audioSource,
+  "voice" to voice,
+  "voiceLevel" to voiceLevel,
+  "weatherRainAlertLevel" to weatherRainAlertLevel,
+  "weatherWindAlertLevel" to weatherWindAlertLevel,
   "telemetryPollRateHz" to telemetryPollRateHz,
   "wearPushRateHz" to wearPushRateHz,
   "wearAutoLaunchOnConnect" to wearAutoLaunchOnConnect,
@@ -1012,6 +1070,9 @@ fun AppSettings.toMap(): Map<String, Any?> = mapOf(
   "legalPolicy" to legalPolicy,
   "dismissedCommunityMessageIds" to dismissedCommunityMessageIds,
 )
+
+private fun validWeatherAlertLevel(value: Any?): String? =
+  (value as? String)?.takeIf { it in WEATHER_ALERT_LEVEL_SETTINGS }
 
 private fun normalizeLegalPolicy(raw: Any): Map<String, String>? {
   val code = (raw.asStringKeyMap()?.get("jurisdictionCode") as? String)
@@ -1040,11 +1101,9 @@ fun AlertRuleEntity.toMap(): Map<String, Any?> = mapOf(
     "thresholdOffset" to thresholdOffset, "thresholdMaxOffset" to thresholdMaxOffset,
   ) else mapOf("kind" to "fixed"),
   "enabled" to enabled,
-  "soundType" to soundType,
+  "spec" to spec,
   "createdAt" to createdAt,
   "repeatEverySeconds" to repeatEverySeconds,
-  "beepCount" to beepCount,
-  "source" to source,
 )
 
 fun TuneProfileEntity.toMap(): Map<String, Any?> = mapOf(
@@ -1207,9 +1266,7 @@ internal fun Map<String, Any?>.toBoardSettingEntities(boardId: String): Pair<Lis
   putOrDelete("batteryConfig", normalizeBatteryConfig(get("batteryConfig")))
   putOrDelete("dismissedWarnings", normalizeDismissedWarnings(get("dismissedWarnings")))
   putOrDelete("topSpeedKmh", validTopSpeedKmh(get("topSpeedKmh")))
-  putOrDelete("alertPreset", normalizeMetricBag(get("alertPreset")))
   putOrDelete("alertPresetsOnboarded", get("alertPresetsOnboarded") as? Boolean)
-  putOrDelete("matchBoardConfig", normalizeMetricBag(get("matchBoardConfig")))
   // Legal Mode changes only through the dedicated native intent.
   val link = normalizedBoardLink()
   putOrDelete("transport", BoardTransport.encode(BoardTransport.fromBridge(link?.get("transport"))))
@@ -1242,9 +1299,7 @@ private fun BoardSettingEntity.decodeBoardSetting(): Pair<String, Any?>? {
     "lastBattery" -> decodeLastBattery(raw)?.let { key to it }
     "dismissedWarnings" -> normalizeDismissedWarnings(raw)?.let { key to it }
     "topSpeedKmh" -> validTopSpeedKmh(raw)?.let { key to it }
-    "alertPreset" -> normalizeMetricBag(raw)?.let { key to it }
     "alertPresetsOnboarded" -> (raw as? Boolean)?.let { key to it }
-    "matchBoardConfig" -> normalizeMetricBag(raw)?.let { key to it }
     "legalMode" -> normalizeLegalMode(raw)?.let { key to it }
     else -> null
   }
@@ -1261,17 +1316,6 @@ private fun normalizePersonalization(raw: Any?): Map<String, String>? {
 
 private fun normalizeLegalMode(raw: Any?): Map<String, Boolean>? =
   (raw.asStringKeyMap()?.get("enabled") as? Boolean)?.let { mapOf("enabled" to it) }
-
-/**
- * A durable per-metric Alert Preset bag — the level selection, and which metrics match the board's
- * own configuration. JS owns behavior; native persists each as an opaque object. Non-object/empty
- * payloads normalize away (row removed).
- * @parity /modules/vescape-core/ios/telemetry/AppDataRepository.swift `normalizeMetricBag`
- */
-private fun normalizeMetricBag(raw: Any?): Map<String, Any?>? {
-  val map = raw.asStringKeyMap() ?: return null
-  return map.ifEmpty { null }
-}
 
 /**
  * Dismissed Board Warning kinds persisted as a board setting: a non-empty list of kind slugs, or
@@ -1359,11 +1403,9 @@ private fun Map<String, Any?>.toAlertRuleEntity(): AlertRuleEntity = AlertRuleEn
   thresholdOffset = ((get("thresholdRule") as? Map<*, *>)?.get("thresholdOffset") as? Number)?.toDouble(),
   thresholdMaxOffset = ((get("thresholdRule") as? Map<*, *>)?.get("thresholdMaxOffset") as? Number)?.toDouble(),
   enabled = getBoolean("enabled"),
-  soundType = get("soundType") as? String ?: "default",
+  spec = get("spec") as? String ?: "default",
   createdAt = getLong("createdAt"),
   repeatEverySeconds = normalizedAlertRepeatSeconds(getDoubleOrNull("repeatEverySeconds")),
-  beepCount = normalizedAlertBeepCount((get("beepCount") as? Number)?.toInt()),
-  source = get("source") as? String,
 )
 
 private fun Map<String, Any?>.getString(key: String): String =

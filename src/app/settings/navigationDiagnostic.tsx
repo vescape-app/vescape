@@ -1,15 +1,11 @@
-import { GpsDisplayControls } from '@/modules/map/components/GpsDisplayControls'
-import { Switch } from '@/components/controls/Switch'
-import { SettingsCard } from '@/components/settings/SettingsCard'
-import { SettingsRow } from '@/components/settings/SettingsRow'
+import { LiveMotionControls } from '@/modules/map/components/LiveMotionControls'
 import { useEffect, useMemo, useState } from 'react'
 import { ScrollView, StyleSheet, View } from 'react-native'
 import { Text } from '@/components/base/Text'
 import { SafeAreaView } from 'react-native-safe-area-context'
-import { CompassIcon, MapPinIcon } from 'phosphor-react-native'
+import { CompassIcon } from 'phosphor-react-native'
 import { useShallow } from 'zustand/react/shallow'
 
-import { useMapStore } from '@/modules/map/store/mapStore'
 import { theme } from '@/constants/theme'
 import { IconHero } from '@/components/settings/IconHero'
 import {
@@ -20,13 +16,6 @@ import { useNavigationDiagnosticsStore } from '@/modules/map/store/navigationDia
 import { useSettingsStore } from '@/modules/settings/store/settingsStore'
 
 export default function NavigationDiagnosticScreen() {
-  const showDisplayTrail = useNavigationDiagnosticsStore((s) => s.showDisplayTrail)
-  const setShowDisplayTrail = useNavigationDiagnosticsStore((s) => s.setShowDisplayTrail)
-  const showRawGps = useNavigationDiagnosticsStore((s) => s.showRawGps)
-  const setShowRawGps = useNavigationDiagnosticsStore((s) => s.setShowRawGps)
-  const progress = useMapStore((s) => s.routeProgress)
-  const showConnector = useNavigationDiagnosticsStore((s) => s.showProjectionConnector)
-  const setShowConnector = useNavigationDiagnosticsStore((s) => s.setShowProjectionConnector)
   const mapOrientationMode = useSettingsStore((s) => s.mapOrientationMode)
   const mapStyleKey = useSettingsStore((s) => s.mapStyleKey)
   const [now, setNow] = useState(() => Date.now())
@@ -62,23 +51,6 @@ export default function NavigationDiagnosticScreen() {
   return (
     <SafeAreaView style={styles.container} edges={['bottom']}>
       <ScrollView contentContainerStyle={styles.content}>
-        <Text style={styles.sectionTitle}>GPS display · this session</Text>
-        <SettingsCard>
-          <SettingsRow
-            icon={MapPinIcon}
-            iconColor={theme.palette.amber.color}
-            label="Raw GPS point"
-            hint="Show the latest unmodified GPS fix on the map"
-            right={<Switch value={showRawGps} onValueChange={setShowRawGps} />}
-          />
-          <SettingsRow
-            icon={MapPinIcon}
-            label="White display trail"
-            hint="20 Hz display-model trace · last 5 minutes · toggle off to clear"
-            right={<Switch value={showDisplayTrail} onValueChange={setShowDisplayTrail} />}
-          />
-          <GpsDisplayControls />
-        </SettingsCard>
         <IconHero icon={CompassIcon} description="Live map heading, GPS, and fallback evidence." />
         <Text style={styles.sectionTitle}>Navigation</Text>
         <View style={styles.card}>
@@ -89,26 +61,7 @@ export default function NavigationDiagnosticScreen() {
           <DiagnosticRowView label="Diagnostics age" value={vm.updatedAge} />
         </View>
 
-        <View style={styles.card}>
-          <SettingsRow
-            icon={CompassIcon}
-            label="Projection connector"
-            hint="Faint rider-to-path line on the map"
-            right={<Switch value={showConnector} onValueChange={setShowConnector} />}
-          />
-          <DiagnosticRowView
-            label="Path deviation"
-            value={progress ? `${progress.deviationMeters.toFixed(1)} m` : 'unavailable'}
-          />
-          <DiagnosticRowView
-            label="Segment / fraction"
-            value={
-              progress
-                ? `${progress.segmentIndex} / ${progress.segmentFraction.toFixed(4)}`
-                : 'unavailable'
-            }
-          />
-        </View>
+        <LiveMotionControls />
         <DiagnosticSection title="GPS" rows={vm.gpsRows} />
         <DiagnosticSection title="Heading" rows={vm.headingRows} />
         <DiagnosticSection title="Board heading reserved" rows={vm.boardRows} />

@@ -3,10 +3,13 @@ import { Pressable, StyleSheet, View } from 'react-native'
 import { CaretRightIcon } from 'phosphor-react-native'
 
 import { interaction, theme, type ThemeColor } from '@/constants/theme'
+import { useResolvedNeutralColors } from '@/hooks/useTheme'
 import { HistoryRideLabel } from '@/modules/history/components/HistoryRideLabel'
 import { RouteSparkline } from '@/modules/history/components/RouteSparkline'
 import { HISTORY_RIDE_ROW_HEIGHT } from '@/modules/history/lib/historyList'
 import type { RoutePoint } from '@/modules/history/lib/routePreview'
+import { RideWeatherLabel } from '@/modules/history/components/RideWeatherLabel'
+import type { RideWeather } from 'vescape-core'
 
 const PREVIEW_WIDTH = 86
 const ROW_HEIGHT = HISTORY_RIDE_ROW_HEIGHT
@@ -21,14 +24,28 @@ interface HistoryRideRowProps {
   accent?: ThemeColor
   onPress: () => void
   testID?: string
+  /** Ride weather beside the stats; null renders nothing. */
+  weather?: RideWeather | null
 }
 
 /** One ride as a list row: route thumbnail, identity, chevron. The ride list and the History drawer
  *  share it so a ride looks the same wherever it is listed. */
 export const HistoryRideRow = forwardRef<View, HistoryRideRowProps>(function HistoryRideRow(
-  { title, subtitle, details, routePoints, selected = false, accent, onPress, testID },
+  {
+    title,
+    subtitle,
+    details,
+    routePoints,
+    selected = false,
+    accent,
+    onPress,
+    testID,
+    weather = null,
+  },
   ref,
 ) {
+  // Resolved in render: iOS bakes a border color once, so an adaptive token goes stale in a Modal.
+  const neutral = useResolvedNeutralColors()
   return (
     <Pressable
       ref={ref}
@@ -38,6 +55,7 @@ export const HistoryRideRow = forwardRef<View, HistoryRideRowProps>(function His
       accessibilityLabel={title}
       style={({ pressed }) => [
         styles.row,
+        { borderColor: neutral.border },
         selected && styles.rowSelected,
         pressed && styles.rowPressed,
       ]}
@@ -56,6 +74,9 @@ export const HistoryRideRow = forwardRef<View, HistoryRideRowProps>(function His
       <View style={styles.main}>
         <HistoryRideLabel title={title} subtitle={subtitle} details={details} fill={false} />
       </View>
+      {weather ? (
+        <RideWeatherLabel weather={weather} color={theme.neutral.textSecondary} fontSize={12} />
+      ) : null}
       <CaretRightIcon size={16} color={theme.neutral.textDim} weight="bold" />
     </Pressable>
   )
@@ -63,9 +84,10 @@ export const HistoryRideRow = forwardRef<View, HistoryRideRowProps>(function His
 
 /** Same footprint as a ride row so paging can extend the scroll area while native reads. */
 export function HistoryRideRowSkeleton() {
+  const neutral = useResolvedNeutralColors()
   return (
     <View
-      style={styles.row}
+      style={[styles.row, { borderColor: neutral.border }]}
       accessibilityElementsHidden
       importantForAccessibility="no-hide-descendants"
     >
@@ -100,7 +122,6 @@ const styles = StyleSheet.create({
     height: ROW_HEIGHT,
     borderRadius: 12,
     borderWidth: 1,
-    borderColor: theme.neutral.border,
     backgroundColor: theme.neutral.surfaceDeep,
     paddingRight: 12,
     flexDirection: 'row',

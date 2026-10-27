@@ -11,6 +11,7 @@ describe('settingsTriggerState', () => {
       versionWarning: false,
       updateAvailable: false,
       backup: IDLE,
+      maintenance: null,
     })
     expect(state.takeover).toBeNull()
     expect(state.dot).toBeUndefined()
@@ -21,6 +22,7 @@ describe('settingsTriggerState', () => {
       versionWarning: false,
       updateAvailable: true,
       backup: IDLE,
+      maintenance: null,
     })
     expect(state.takeover).toBeNull()
     expect(state.dot).toBe(theme.status.upgrade.color)
@@ -32,6 +34,7 @@ describe('settingsTriggerState', () => {
       versionWarning: true,
       updateAvailable: true,
       backup: SYNCING,
+      maintenance: null,
     })
     expect(state.takeover).toBe('update')
     expect(state.accent).toBe(theme.status.upgrade.color)
@@ -44,6 +47,7 @@ describe('settingsTriggerState', () => {
       versionWarning: false,
       updateAvailable: true,
       backup: SYNCING,
+      maintenance: null,
     })
     expect(state.takeover).toBe('backup')
     expect(state.accent).toBe(theme.settingsIcon.sync)
@@ -56,8 +60,29 @@ describe('settingsTriggerState', () => {
       versionWarning: false,
       updateAvailable: false,
       backup: { kind: 'syncing', current: 0, total: 0 },
+      maintenance: null,
     })
     expect(state.takeover).toBe('backup')
     expect(state.progress).toBeUndefined()
+  })
+
+  test('wears the database ring while a Maintenance Job runs, below a backup', () => {
+    const running = settingsTriggerState({
+      versionWarning: false,
+      updateAvailable: false,
+      backup: IDLE,
+      maintenance: { progress: 0.4 },
+    })
+    expect(running.takeover).toBe('maintenance')
+    expect(running.accent).toBe(theme.settingsIcon.database)
+    expect(running.progress).toBe(0.4)
+    expect(running.accessibilityLabel).toBe('Settings, updating ride data')
+    const withBackup = settingsTriggerState({
+      versionWarning: false,
+      updateAvailable: false,
+      backup: SYNCING,
+      maintenance: { progress: 0.4 },
+    })
+    expect(withBackup.takeover).toBe('backup')
   })
 })

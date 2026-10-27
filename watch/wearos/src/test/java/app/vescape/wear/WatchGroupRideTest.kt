@@ -120,8 +120,8 @@ class WatchGroupRideTest {
 
     @Test
     fun `distance labels drop the space before the unit`() {
-        assertEquals("680m", groupRideDistanceLabel(680.0, "metric"))
-        assertEquals("2.1km", groupRideDistanceLabel(2_100.0, "metric"))
-        assertEquals("1.3mi", groupRideDistanceLabel(2_100.0, "imperial"))
+        assertEquals("680m", groupRideDistanceLabel(680.0, "km"))
+        assertEquals("2.1km", groupRideDistanceLabel(2_100.0, "km"))
+        assertEquals("1.3mi", groupRideDistanceLabel(2_100.0, "mi"))
     }
 }

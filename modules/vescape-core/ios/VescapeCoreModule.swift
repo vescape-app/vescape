@@ -69,7 +69,6 @@ public class VescapeCoreModule: Module {
   /// only detaches the emit sink.
   /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/VescapeCoreModule.kt
   private let coordinator = BoardSessionController.shared
-  private let gpsDisplayPreview = GpsDisplaySmoother()
 
   // MARK: - App data state
 
@@ -77,10 +76,8 @@ public class VescapeCoreModule: Module {
   private let legalPolicyResolver = LegalPolicyResolver()
   private let legalPolicyCatalog = LegalPolicyCatalog()
 
-  /// Bundled alert sounds surfaced to JS through `getAlertSounds`. Mirrors Android
-  /// `alertSoundPresetMaps()`.
-  /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/alerts/AlertEngine.kt `alertSoundPresetMaps`
-  private let alertPresets: [[String: Any]] = alertSoundPresetMaps()
+  /// Alert sounds surfaced to JS through `getAlertSounds`.
+  private let alertPresets: [[String: Any]] = alertSoundChoices()
   /// UI alert tests never share evaluator or audio state with the live Board Session.
   private var alertTestPlayer: AlertAudioPlayer?
   private var alertTestCoordinator: AlertCoordinator?
@@ -93,7 +90,7 @@ public class VescapeCoreModule: Module {
 
     // @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/VescapeCoreModule.kt `Events`
     // @parity /modules/vescape-core/src/index.ts `VescapeCoreEvents`
-    Events("onDevice", "onError", "onLiveState", "onLiveTick", "onLiveSeries", "onFocusedSeries", "onTelemetryHistory", "onBms", "onBmsSeries", "onLocation", "onReplayPhoneHeading", "onTelemetryRebuildProgress", "onBoardProbeProgress", "onAppDataChanged", "onGroupRideConnection", "onGroupRideSnapshot", "onGroupRideCreated", "onGroupRideUpdated", "onGroupRideEnded", "onGroupRideJoined", "onGroupRideRoster", "onGroupRideError", "onBoardWarnings", "onVescFaults", "onBoardConfigValues", "onMotorConfigValues", "onBoardConfigChangeNotice", "onBoardLights", "onAppStatus", "onNavigation", "onRouteProgress", "onWeather", "onAccessoryDevice", "onAccessoryScanError", "onAccessoryState", "onAccessoryReading")
+    Events("onDevice", "onError", "onLiveState", "onLiveTick", "onLiveSeries", "onFocusedSeries", "onTelemetryHistory", "onBms", "onBmsSeries", "onLocation", "onReplayPhoneHeading", "onMaintenanceState", "onBoardProbeProgress", "onAppDataChanged", "onGroupRideConnection", "onGroupRideSnapshot", "onGroupRideCreated", "onGroupRideUpdated", "onGroupRideEnded", "onGroupRideJoined", "onGroupRideRoster", "onGroupRideError", "onBoardWarnings", "onVescFaults", "onBoardConfigValues", "onMotorConfigValues", "onBoardConfigChangeNotice", "onBoardLights", "onAppStatus", "onNavigation", "onRouteProgress", "onWeather", "onAccessoryDevice", "onAccessoryScanError", "onAccessoryState", "onAccessoryReading")
 
     // Track per-event JS listeners so native skips emitting into the void, and gate the whole
     // firehose on app foreground (see `frontendActive`). Mirrors Android's observing + lifecycle
@@ -118,8 +115,11 @@ public class VescapeCoreModule: Module {
     OnStopObserving("onBmsSeries") { self.observedEvents.remove("onBmsSeries") }
     OnStartObserving("onLocation") { self.observedEvents.insert("onLocation") }
     OnStopObserving("onLocation") { self.observedEvents.remove("onLocation") }
-    OnStartObserving("onTelemetryRebuildProgress") { self.observedEvents.insert("onTelemetryRebuildProgress") }
-    OnStopObserving("onTelemetryRebuildProgress") { self.observedEvents.remove("onTelemetryRebuildProgress") }
+    OnStartObserving("onMaintenanceState") {
+      self.observedEvents.insert("onMaintenanceState")
+      self.emitMaintenanceState(MaintenanceRunner.shared.snapshot())
+    }
+    OnStopObserving("onMaintenanceState") { self.observedEvents.remove("onMaintenanceState") }
     // @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/VescapeCoreModule.kt `onGroupRideConnection`
     OnStartObserving("onGroupRideConnection") { self.observedEvents.insert("onGroupRideConnection") }
     OnStopObserving("onGroupRideConnection") { self.observedEvents.remove("onGroupRideConnection") }
@@ -272,12 +272,16 @@ public class VescapeCoreModule: Module {
         self?.sendBoardWarnings(boardId, warnings)
       }
       BoardConfigStore.onNoticeChanged = { [weak self] notice in self?.sendEvent("onBoardConfigChangeNotice", ["notice": notice?.toMap()]) }
+      MaintenanceRunner.shared.onChange = { [weak self] state in self?.emitMaintenanceState(state) }
+      MaintenanceRunner.shared.start()
     }
 
     OnAppEntersForeground {
       self.frontendActive = true
       self.coordinator.appVisible = true
       AppStatusCoordinator.shared.refresh()
+      // Emits were gated while hidden; the screen must not keep a stale running state.
+      self.emitMaintenanceState(MaintenanceRunner.shared.snapshot())
     }
     OnAppEntersBackground {
       self.frontendActive = false
@@ -296,6 +300,7 @@ public class VescapeCoreModule: Module {
       // @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/VescapeCoreModule.kt
       self.detachFromCoordinator()
       AppDataRepository.onDataChanged = nil
+      MaintenanceRunner.shared.onChange = nil
       BoardWarningRegistry.shared.onChange = nil
       VescFaultCoordinator.shared.onChange = nil
       BoardConfigStore.onNoticeChanged = nil
@@ -523,26 +528,26 @@ public class VescapeCoreModule: Module {
       }
     }
 
-    Function("previewAlertSound") { (soundType: String) in
-      self.coordinator.previewAlertSound(soundType)
+    Function("previewAlertSound") { (spec: String) in
+      self.coordinator.previewAlertSound(spec)
     }
-    Function("playAppSound") { (pack: String, cue: String) in
-      self.coordinator.playAppSound(pack: pack, cue: cue)
+    // @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/VescapeCoreModule.kt `previewWeatherAlert`
+    // @parity /modules/vescape-core/src/index.ts `previewWeatherAlert`
+    Function("previewWeatherAlert") { (kind: String, leadMinutes: Int, percent: Int?) in
+      guard let line = WeatherAlertLine.preview(kind: kind, leadMinutes: leadMinutes, percent: percent) else { return }
+      self.coordinator.previewWeatherAlert(line)
+    }
+    // @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/VescapeCoreModule.kt `playPackSound`
+    Function("playPackSound") { (pack: String, slot: String) in
+      self.coordinator.playPackSound(pack: pack, slot: slot)
     }
 
-    // @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/VescapeCoreModule.kt `customAppSoundPacks`
-    AsyncFunction("customAppSoundPacks") { CustomAppSounds.list() }
-    AsyncFunction("createAppSoundPack") { (name: String) in try CustomAppSounds.create(name) }
-    AsyncFunction("renameAppSoundPack") { (id: String, name: String) in try CustomAppSounds.rename(id, name: name) }
-    AsyncFunction("importAppSound") { (id: String, cue: String, uri: String) in try CustomAppSounds.import(id, cue: cue, uri: uri) }
-    AsyncFunction("removeAppSound") { (id: String, cue: String) in try CustomAppSounds.remove(id, cue: cue) }
-    AsyncFunction("deleteAppSoundPack") { (id: String) in
-      if (try self.appData.getSettings())["soundPack"] as? String == id {
-        try self.appData.updateSetting("soundPack", rawValue: "simple")
-        self.coordinator.reloadTelemetrySettings()
-      }
-      try CustomAppSounds.delete(id)
-    }
+    // @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/VescapeCoreModule.kt `mySounds`
+    AsyncFunction("mySounds") { MySounds.state() }
+    AsyncFunction("importMySound") { (uri: String, name: String) in try MySounds.import(uri: uri, name: name) }
+    AsyncFunction("renameMySound") { (id: String, name: String) in try MySounds.rename(id, name: name) }
+    AsyncFunction("deleteMySound") { (id: String) in try MySounds.delete(id) }
+    AsyncFunction("setSoundOverride") { (slot: String, id: String?) in try MySounds.setOverride(slot, id: id) }
     // @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/VescapeCoreModule.kt `mapTile`
     AsyncFunction("mapTile") { (z: Int, x: Int, y: Int) async -> String? in
       await MapTiles.shared.tile(z: z, x: x, y: y)?.absoluteString
@@ -551,8 +556,8 @@ public class VescapeCoreModule: Module {
       self.alertPresets
     }
 
-    Function("startGeigerSimulation") { (soundType: String, rangeDepth: Double) in
-      self.coordinator.startGeigerSimulation(soundType: soundType, rangeDepth: rangeDepth)
+    Function("startGeigerSimulation") { (spec: String, rangeDepth: Double) in
+      self.coordinator.startGeigerSimulation(spec: spec, rangeDepth: rangeDepth)
     }
 
     Function("stopGeigerSimulation") {
@@ -593,6 +598,13 @@ public class VescapeCoreModule: Module {
       WeatherCoordinator.shared.current?.map
     }
 
+    // @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/VescapeCoreModule.kt `getWeatherAlertThresholds`
+    Function("getWeatherAlertThresholds") { () -> [String: [String: Double]] in
+      Dictionary(uniqueKeysWithValues: WeatherAlertLevel.allCases.map {
+        ($0.rawValue, ["gustKmh": $0.wind.minGustKmh, "rainPercent": Double($0.rain.minProbabilityPercent)])
+      })
+    }
+
     // @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/VescapeCoreModule.kt `refreshWeather`
     Function("refreshWeather") {
       WeatherCoordinator.shared.refresh()
@@ -629,25 +641,6 @@ public class VescapeCoreModule: Module {
     }
 
     // MARK: Board session
-
-    Function("getGpsDisplaySettings") { self.coordinator.gpsDisplaySettings() }
-    Function("setGpsDisplaySettings") { (smoothing: Double, prediction: Double) in
-      self.coordinator.setGpsDisplaySettings(smoothingPercent: smoothing, predictionPercent: prediction)
-    }
-    Function("resetGpsDisplayPreview") { self.gpsDisplayPreview.reset() }
-    Function("setGpsDisplayPreviewSettings") { (smoothing: Double, prediction: Double) in
-      self.gpsDisplayPreview.configure(smoothingPercent: smoothing, predictionPercent: prediction,
-        now: Int64(Date().timeIntervalSince1970 * 1000))?.map
-    }
-    Function("updateGpsDisplayPreviewSpeed") { (speed: Double) in
-      let now = Int64(Date().timeIntervalSince1970 * 1000)
-      return self.gpsDisplayPreview.updateSpeed(speedMps: speed, timestamp: now, now: now)?.map
-    }
-    Function("updateGpsDisplayPreview") { (latitude: Double, longitude: Double, speed: Double, course: Double, timestamp: Int64) in
-      self.gpsDisplayPreview.update(latitude: latitude, longitude: longitude, timestamp: timestamp,
-        precise: true, accuracyM: 5, gpsSpeedMps: speed, courseDeg: course, courseTimestamp: timestamp,
-        boardSpeedMps: speed, boardSpeedTimestamp: timestamp, now: Int64(Date().timeIntervalSince1970 * 1000))?.map
-    }
 
     Function("getLiveState") {
       self.liveState(includeRecent: true)
@@ -741,6 +734,10 @@ public class VescapeCoreModule: Module {
     // @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/VescapeCoreModule.kt `setWatchRouteSpanM`
     Function("setWatchRouteSpanM") { (spanM: Double?) in
       WatchRouteMirror.shared.viewportSpanM = spanM
+    }
+    // @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/VescapeCoreModule.kt `setWatchDisplayConfig`
+    Function("setWatchDisplayConfig") { (json: String) in
+      DispatchQueue.main.async { self.coordinator.configureWatchDisplay(json) }
     }
 
     AsyncFunction("stopDebugReplay") { (promise: Promise) in
@@ -1046,6 +1043,7 @@ public class VescapeCoreModule: Module {
       self.coordinator.stopLocationUpdates()
       DispatchQueue.global(qos: .userInitiated).async {
         do {
+          defer { MaintenanceRunner.shared.onDatabaseReplaced() }
           try DatabaseBackupManager.restoreBackup(uriString: uri)
           self.coordinator.pushWatchLastBattery()
           promise.resolve(nil)
@@ -1300,24 +1298,13 @@ public class VescapeCoreModule: Module {
       catch { RecordingStorageFailure.report(operation: "telemetry_range_delete", category: "write_failed", error: error); promise.reject("APP_STORAGE_WRITE_FAILED", "Could not delete telemetry", cause: error) }
     }
 
-    // Gate progress on foreground + active listener and hop to main, like every other JS emit. The
-    // rebuild callback fires from a background queue; skip the void when JS isn't listening.
-    // @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/VescapeCoreModule.kt `rebuildTelemetryBuckets`
-    AsyncFunction("rebuildTelemetryBuckets") { (promise: Promise) in
-      try RecordingStorageFailure.requireAvailable()
-      do { let count = try TelemetryRepository.shared.rebuildBuckets { current, total in
-        guard self.shouldEmitToFrontend("onTelemetryRebuildProgress") else { return }
-        DispatchQueue.main.async {
-          guard self.shouldEmitToFrontend("onTelemetryRebuildProgress") else { return }
-          self.sendEvent("onTelemetryRebuildProgress", ["current": current, "total": total])
-        }
-      }
-      promise.resolve(count) }
-      catch { RecordingStorageFailure.report(operation: "telemetry_rebuild", category: "write_failed", error: error); promise.reject("APP_STORAGE_WRITE_FAILED", "Could not rebuild telemetry", cause: error) }
-    }
+    // @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/VescapeCoreModule.kt `getMaintenanceState`
+    // @parity /modules/vescape-core/src/index.ts `getMaintenanceState`
+    Function("getMaintenanceState") { () -> [String: Any?] in MaintenanceRunner.shared.snapshot() }
 
     AsyncFunction("clearTelemetryHistory") { (promise: Promise) in
       try RecordingStorageFailure.requireAvailable()
+      defer { MaintenanceRunner.shared.onDatabaseReplaced() }
       do { try TelemetryRepository.shared.clearAll(); promise.resolve(nil) }
       catch { RecordingStorageFailure.report(operation: "telemetry_clear", category: "write_failed", error: error); promise.reject("APP_STORAGE_WRITE_FAILED", "Could not clear telemetry", cause: error) }
     }
@@ -1331,10 +1318,10 @@ public class VescapeCoreModule: Module {
       }
     }
 
-    AsyncFunction("upsertBoard") { (board: [String: Any], promise: Promise) in
+    AsyncFunction("upsertBoard") { (board: [String: Any], initialAlerts: [String: Any]?, promise: Promise) in
       try RecordingStorageFailure.requireAvailable()
       do {
-        try self.appData.upsertBoard(board)
+        try self.appData.upsertBoard(board, initialAlerts: initialAlerts)
         self.coordinator.pushWatchLastBattery()
         self.coordinator.reloadAlertRules()
         self.coordinator.reloadBoardDataForActiveBoard()
@@ -1360,31 +1347,30 @@ public class VescapeCoreModule: Module {
 
     // @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/VescapeCoreModule.kt `previewAlertPreset`
     // @parity /modules/vescape-core/src/index.ts `previewAlertPreset`
-    Function("previewAlertPreset") { (metric: String, level: String, topSpeedKmh: Double, hasBatteryConfig: Bool, speedUnitSystem: String) -> [[String: Any?]] in
+    Function("previewAlertPreset") { (metric: String, spec: String, topSpeedKmh: Double, hasBatteryConfig: Bool, distanceUnit: String) -> [[String: Any?]] in
       try AlertPresetPersistence.preview(
         metric: metric,
-        level: level,
+        spec: spec,
         topSpeedKmh: topSpeedKmh,
         hasBatteryConfig: hasBatteryConfig,
-        speedUnitSystem: speedUnitSystem
+        distanceUnit: distanceUnit
       ).map { rule in
         [
           "id": rule.id,
           "controlId": rule.controlId,
           "threshold": rule.threshold,
           "thresholdMax": rule.thresholdMax,
-          "soundType": rule.soundType,
+          "spec": rule.spec,
           "repeatEverySeconds": rule.repeatEverySeconds,
-          "beepCount": rule.beepCount,
         ]
       }
     }
     // @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/VescapeCoreModule.kt `applyAlertPreset`
     // @parity /modules/vescape-core/src/index.ts `applyAlertPreset`
-    AsyncFunction("applyAlertPreset") { (boardId: String, metric: String, action: String, level: String?, matchBoardConfig: Bool?, promise: Promise) in
+    AsyncFunction("applyAlertPreset") { (boardId: String, metric: String, level: String?, geiger: String?, match: Bool?, promise: Promise) in
       try RecordingStorageFailure.requireAvailable()
       do {
-        try self.appData.applyAlertPreset(boardId, metric, action, level, matchBoardConfig)
+        try self.appData.applyAlertPreset(boardId, metric, level, geiger, match)
         self.coordinator.reloadAlertRules()
         promise.resolve(nil)
       } catch {
@@ -1396,6 +1382,13 @@ public class VescapeCoreModule: Module {
       try RecordingStorageFailure.requireAvailable()
       do { promise.resolve(try self.appData.getAlertRules(boardId)) }
       catch { RecordingStorageFailure.reportRead(operation: "alert_rules_read", error: error); promise.reject("ERR_ALERT_RULES_READ", "Could not load Alert Rules", cause: error) }
+    }
+    // @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/VescapeCoreModule.kt `getAlertPresets`
+    // @parity /modules/vescape-core/src/index.ts `getAlertPresets`
+    AsyncFunction("getAlertPresets") { (boardId: String, promise: Promise) in
+      try RecordingStorageFailure.requireAvailable()
+      do { promise.resolve(try self.appData.getAlertPresets(boardId)) }
+      catch { RecordingStorageFailure.reportRead(operation: "alert_rules_read", error: error); promise.reject("ERR_ALERT_RULES_READ", "Could not load Alert Presets", cause: error) }
     }
 
     AsyncFunction("upsertAlertRule") { (rule: [String: Any], promise: Promise) in
@@ -1652,7 +1645,8 @@ public class VescapeCoreModule: Module {
         throw error
       }
       if [
-        "unitSystem",
+        "distanceUnit",
+        "temperatureUnit",
         "liveHistoryLimit",
         "movingSpeedThresholdKmh",
         "avgSpeedCutoffKmh",
@@ -1665,6 +1659,10 @@ public class VescapeCoreModule: Module {
         "vescFaultCollectionEnabled",
         "connectionSoundsEnabled",
         "soundPack",
+        "voice",
+        "voiceLevel",
+        "weatherRainAlertLevel",
+        "weatherWindAlertLevel",
       ].contains(key) {
         self.coordinator.reloadTelemetrySettings()
       }
@@ -1672,11 +1670,13 @@ public class VescapeCoreModule: Module {
         NavigationController.shared.setRerouteDistanceMeters(
           (try self.appData.getSettings())["navigationRerouteDistanceMeters"] as? Double ?? 50.0)
       }
-      if key == "unitSystem" { self.coordinator.reloadAlertRules() }
+      if key == "distanceUnit" { self.coordinator.reloadAlertRules() }
+      MaintenanceRunner.shared.onSettingChanged(key)
       // The Watch Mirror is process scoped, not session scoped, so its settings reload cannot ride
       // on `reloadTelemetrySettings` — that one returns early with no Board Session.
       // @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/VescapeCoreModule.kt `updateSetting`
-      if key == "unitSystem" { self.alertTestCoordinator?.unitSystem = (try self.appData.getSettings())["unitSystem"] as? String ?? "metric" }
+      if key == "distanceUnit" { self.alertTestCoordinator?.distanceUnit = (try self.appData.getSettings())["distanceUnit"] as? String ?? "km" }
+      if key == "temperatureUnit" { self.alertTestCoordinator?.temperatureUnit = (try self.appData.getSettings())["temperatureUnit"] as? String ?? "celsius" }
       if watchSourceSettingKeys.contains(key) {
         self.coordinator.reloadWatchSettings()
       }
@@ -1689,10 +1689,15 @@ public class VescapeCoreModule: Module {
     guard let controlId = rules.first?.controlId else { return }
     guard rules.allSatisfy({ $0.controlId == controlId }) else { return }
 
-    let player = AlertAudioPlayer()
-    let coordinator = AlertCoordinator(player: player, vibrateSingles: false)
-    do { coordinator.unitSystem = try appData.getSettings()["unitSystem"] as? String ?? "metric" }
+    let settings: [String: Any?]
+    do { settings = try appData.getSettings() }
     catch { RecordingStorageFailure.reportRead(operation: "alert_test_settings", error: error); return }
+    let player = AlertAudioPlayer()
+    // A test sounds like the real rule: same effects pack.
+    player.applySoundSettings(settings)
+    let coordinator = AlertCoordinator(player: player, vibrateSingles: false)
+    coordinator.distanceUnit = settings["distanceUnit"] as? String ?? "km"
+    coordinator.temperatureUnit = settings["temperatureUnit"] as? String ?? "celsius"
     coordinator.replaceRules(rules)
     alertTestPlayer = player
     alertTestCoordinator = coordinator
@@ -1712,7 +1717,7 @@ public class VescapeCoreModule: Module {
       let id = value["id"] as? String,
       let controlId = value["controlId"] as? String,
       let threshold = (value["threshold"] as? NSNumber)?.doubleValue,
-      let soundType = value["soundType"] as? String
+      let spec = value["spec"] as? String
     else { return nil }
     return AlertRule(
       boardId: "alert-test",
@@ -1721,11 +1726,9 @@ public class VescapeCoreModule: Module {
       threshold: threshold,
       thresholdMax: (value["thresholdMax"] as? NSNumber)?.doubleValue,
       enabled: true,
-      soundType: soundType,
+      spec: spec,
       createdAt: 0,
-      repeatEverySeconds: normalizedAlertRepeatSeconds((value["repeatEverySeconds"] as? NSNumber)?.doubleValue),
-      beepCount: normalizedAlertBeepCount((value["beepCount"] as? NSNumber)?.intValue),
-      source: nil
+      repeatEverySeconds: normalizedAlertRepeatSeconds((value["repeatEverySeconds"] as? NSNumber)?.doubleValue)
     )
   }
 
@@ -2076,7 +2079,9 @@ public class VescapeCoreModule: Module {
       "gps": [
         "phase": coordinator.gpsPhase(),
         "mode": coordinator.gpsMode(),
-        "displayMotion": coordinator.gpsDisplayMotion()?.map,
+        "displaySourceId": coordinator.gpsDisplaySourceId(),
+        "displayClockMs": coordinator.gpsDisplayClockMs(),
+        "displayClockRate": 1.0,
         "latestFix": coordinator.gpsLatestPreciseLocation(),
         "latestApproximateFix": coordinator.gpsLatestLocation(),
         "latestPreciseFix": coordinator.gpsLatestPreciseLocation(),
@@ -2105,6 +2110,15 @@ public class VescapeCoreModule: Module {
   /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/VescapeCoreModule.kt `shouldEmitToFrontend`
   private func shouldEmitToFrontend(_ name: String) -> Bool {
     frontendActive && observedEvents.contains(name)
+  }
+
+  /// Called from the maintenance queue; hops to main like every other JS emit.
+  /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/VescapeCoreModule.kt `emitMaintenanceState`
+  private func emitMaintenanceState(_ state: [String: Any?]) {
+    DispatchQueue.main.async {
+      guard self.shouldEmitToFrontend("onMaintenanceState") else { return }
+      self.sendEvent("onMaintenanceState", state)
+    }
   }
 
   /// Push the current enabled Privacy Zones into the recording store so mid-ride edits take effect

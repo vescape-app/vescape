@@ -31,13 +31,6 @@ import { useThemeStore } from '@/hooks/useTheme'
 import { selectedBoardRailColor } from '@/modules/group-ride/lib/selectedBoardRailColor'
 import { SERVER_WS_URL } from '@/config/server'
 
-type GroupRideSoundCue = 'created' | 'join'
-let playGroupRideSound: ((cue: GroupRideSoundCue) => void) | null = null
-
-export function setGroupRideSoundPlayer(player: ((cue: GroupRideSoundCue) => void) | null) {
-  playGroupRideSound = player
-}
-
 type TimerHandle = ReturnType<typeof setInterval>
 
 interface GroupRideState {
@@ -121,18 +114,12 @@ export const useGroupRideStore = create<GroupRideState>((set, get) => ({
             : { activeRideId: null, roster: [], rosterRows: [] }),
         })),
       ),
-      addGroupRideCreatedListener(({ ride }) => {
-        const state = get()
-        const next = deriveNearby({ rides: upsertRide(state.rides, ride) }, state)
-        if (
-          !state.rides.some((known) => known.id === ride.id) &&
-          (ride.creator.id === useRiderStore.getState().riderId ||
-            next.nearby.some((nearby) => nearby.ride.id === ride.id))
-        ) {
-          playGroupRideSound?.('created')
-        }
-        set({ ...next, error: null })
-      }),
+      addGroupRideCreatedListener(({ ride }) =>
+        set((state) => ({
+          ...deriveNearby({ rides: upsertRide(state.rides, ride) }, state),
+          error: null,
+        })),
+      ),
       addGroupRideUpdatedListener(({ ride }) =>
         set((state) => ({
           ...deriveNearby({ rides: upsertRide(state.rides, ride) }, state),
@@ -160,17 +147,6 @@ export const useGroupRideStore = create<GroupRideState>((set, get) => ({
             return { ...deriveRoster({ activeRideId: null, roster: [] }, state), error: null }
           }
           if (state.activeRideId && state.activeRideId !== rideId) return state
-          if (
-            state.activeRideId === rideId &&
-            state.roster.length > 0 &&
-            riders.some(
-              (rider) =>
-                rider.id !== useRiderStore.getState().riderId &&
-                !state.roster.some((known) => known.id === rider.id),
-            )
-          ) {
-            playGroupRideSound?.('join')
-          }
           return { ...deriveRoster({ activeRideId: rideId, roster: riders }, state), error: null }
         }),
       ),

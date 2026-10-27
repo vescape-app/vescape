@@ -145,5 +145,5 @@ internal const val GROUP_RIDE_TIMEOUT_MS = 3_500L
  *
  * @parity /modules/vescape-core/ios/watch/WatchGroupRide.swift `groupRideDistanceLabel`
  */
-internal fun groupRideDistanceLabel(distanceM: Double, unitSystem: String): String =
-    UnitPresentation.distance(distanceM, unitSystem).replace(" ", "")
+internal fun groupRideDistanceLabel(distanceM: Double, distanceUnit: String): String =
+    UnitPresentation.distance(distanceM, distanceUnit).replace(" ", "")

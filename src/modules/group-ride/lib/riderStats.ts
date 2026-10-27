@@ -1,5 +1,5 @@
 import { fmtPercent, fmtTempC } from '@/helpers/format'
-import { formatSpeedMps, type UnitSystem } from '@/helpers/units'
+import { formatSpeedMps, type DistanceUnit } from '@/helpers/units'
 import {
   batteryLevel,
   tempLevel,
@@ -23,7 +23,7 @@ interface RiderStats {
 const NORMAL_STAT: RiderStat = { level: 'normal' }
 
 /** Per-Rider telemetry values for the roster stat grid, each carrying its alert level. */
-export function riderStats(p: RosterRider['presence'], units: UnitSystem): RiderStats {
+export function riderStats(p: RosterRider['presence'], distanceUnit: DistanceUnit): RiderStats {
   if (!p)
     return {
       speed: NORMAL_STAT,
@@ -34,7 +34,7 @@ export function riderStats(p: RosterRider['presence'], units: UnitSystem): Rider
     }
   return {
     speed: {
-      value: p.speed != null ? formatSpeedMps(p.speed, units) : undefined,
+      value: p.speed != null ? formatSpeedMps(p.speed, distanceUnit) : undefined,
       level: 'normal',
     },
     soc: {

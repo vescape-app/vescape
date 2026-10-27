@@ -1,14 +1,9 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useState } from 'react'
 import { DevSettings } from 'react-native'
 import * as DocumentPicker from 'expo-document-picker'
 import * as Sharing from 'expo-sharing'
 import * as Updates from 'expo-updates'
-import {
-  addTelemetryRebuildProgressListener,
-  backupDatabase,
-  rebuildTelemetryBuckets,
-  restoreDatabase,
-} from 'vescape-core'
+import { backupDatabase, restoreDatabase } from 'vescape-core'
 
 import { formatBytes } from '@/helpers/format'
 import { useDatabaseSize } from '@/modules/settings/hooks/useDatabaseSize'
@@ -28,42 +23,12 @@ async function reloadRuntime() {
 
 export function useSettingsDatabaseOps() {
   const { bytes: dbSize, error: dbSizeError, refresh: refreshDatabaseSize } = useDatabaseSize()
-  const [rebuildState, setRebuildState] = useState<OpState>('idle')
-  const [rebuildResult, setRebuildResult] = useState<string | null>(null)
   const [backupState, setBackupState] = useState<OpState>('idle')
   const [backupResult, setBackupResult] = useState<string | null>(null)
   const [restoreState, setRestoreState] = useState<OpState>('idle')
   const [restoreResult, setRestoreResult] = useState<string | null>(null)
   const [restoreConfirmVisible, setRestoreConfirmVisible] = useState(false)
   const [pendingRestore, setPendingRestore] = useState<{ uri: string; name: string } | null>(null)
-  const [rebuildProgress, setRebuildProgress] = useState<{
-    current: number
-    total: number
-  } | null>(null)
-
-  useEffect(() => {
-    const subscription = addTelemetryRebuildProgressListener((event) => {
-      setRebuildProgress(event)
-    })
-    return () => subscription.remove()
-  }, [])
-
-  const handleRebuildBuckets = useCallback(async () => {
-    setRebuildState('running')
-    setRebuildResult(null)
-    setRebuildProgress(null)
-    try {
-      await rebuildTelemetryBuckets()
-      setRebuildState('done')
-      setRebuildResult(null)
-      setRebuildProgress(null)
-    } catch (e) {
-      setRebuildState('error')
-      setRebuildResult(errorMessage(e, 'Unknown error'))
-      setRebuildProgress(null)
-    }
-  }, [])
-
   const handleBackupDatabase = useCallback(async () => {
     setBackupState('running')
     setBackupResult(null)
@@ -128,17 +93,6 @@ export function useSettingsDatabaseOps() {
     }
   }, [pendingRestore])
 
-  const rebuildHint =
-    rebuildState === 'error' && rebuildResult
-      ? rebuildResult
-      : 'Refresh historical summaries and route previews with current settings'
-  const rebuildProgressValue =
-    rebuildProgress && rebuildProgress.total > 0
-      ? Math.min(1, rebuildProgress.current / rebuildProgress.total)
-      : 0
-  const rebuildProgressLabel = rebuildProgress
-    ? `${rebuildProgress.current}/${rebuildProgress.total}`
-    : null
   const backupHint =
     backupState === 'error' && backupResult
       ? backupResult
@@ -155,10 +109,6 @@ export function useSettingsDatabaseOps() {
   return {
     dbSize,
     dbSizeError,
-    rebuildState,
-    rebuildHint,
-    rebuildProgressValue,
-    rebuildProgressLabel,
     backupState,
     backupHint,
     restoreState,
@@ -166,7 +116,6 @@ export function useSettingsDatabaseOps() {
     restoreConfirmVisible,
     pendingRestoreName: pendingRestore?.name ?? null,
     cancelRestore,
-    handleRebuildBuckets,
     handleBackupDatabase,
     handleRestoreDatabase,
     handleConfirmRestore,

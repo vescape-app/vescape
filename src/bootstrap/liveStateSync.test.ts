@@ -1,11 +1,10 @@
 import { afterEach, beforeEach, expect, mock, test } from 'bun:test'
-import type { LiveStateEvent, LocationEvent, TelemetryEvent } from 'vescape-core'
+import type { LiveStateEvent, LocationEvent } from 'vescape-core'
 
 import { reactNativeStub } from '../../testSetup'
 
 const actualCore = await import('@/../modules/vescape-core/src/index')
 let state: LiveStateEvent
-let onMotionTick: (tick: TelemetryEvent) => void
 let onLocation: (fix: LocationEvent) => void
 let onAppState: (status: string) => void
 let stopSync: (() => void) | undefined
@@ -52,10 +51,7 @@ mock.module('vescape-core', () => ({
   setBmsSeriesFocused: (focused: boolean) => {
     bmsFocused = focused
   },
-  addLiveTickListener: (listener: (tick: TelemetryEvent) => void) => {
-    onMotionTick = listener
-    return subscribe()
-  },
+  addLiveTickListener: subscribe,
   addLiveSeriesListener: subscribe,
   addBmsListener: subscribe,
   addLocationListener: (listener: (fix: LocationEvent) => void) => {
@@ -357,27 +353,4 @@ test('restarting app synchronization restores held focused and BMS streams', () 
   releaseBmsSeriesStream()
   expect(focusedMetrics).toEqual([])
   expect(bmsFocused).toBe(false)
-})
-
-test('VESC ticks update only display motion between measured GPS fixes', () => {
-  stopSync = startLiveStateSync()
-  const measured = useLocationStore.getState().liveLocationHistory
-  const displayMotion = {
-    fromLatitude: 0,
-    fromLongitude: 0,
-    toLatitude: 0,
-    toLongitude: 0,
-    startsAtMs: 10_000,
-    endsAtMs: 10_000,
-    latitudePerMs: 0.00001,
-    longitudePerMs: 0,
-    velocityExpiresAtMs: 11_000,
-    resetPosition: false,
-  }
-  onMotionTick({ displayMotion } as TelemetryEvent)
-  expect(useLocationStore.getState().displayMotion).toEqual(displayMotion)
-  const older = { ...displayMotion, startsAtMs: displayMotion.startsAtMs - 100 }
-  onMotionTick({ displayMotion: older } as TelemetryEvent)
-  expect(useLocationStore.getState().displayMotion).toEqual(displayMotion)
-  expect(useLocationStore.getState().liveLocationHistory).toBe(measured)
 })

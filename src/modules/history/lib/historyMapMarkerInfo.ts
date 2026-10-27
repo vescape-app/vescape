@@ -1,4 +1,4 @@
-import { formatLengthMeters, type UnitSystem } from '@/helpers/units'
+import { formatLengthMeters, type DistanceUnit } from '@/helpers/units'
 import {
   ClockCountdownIcon,
   LinkBreakIcon,
@@ -18,13 +18,14 @@ export interface SelectedHistoryMarker {
 }
 
 export const HISTORY_MARKER_LABELS: Record<HistoryMarker['type'], string> = {
-  app_stop: 'Recording stopped',
+  app_stop: 'Board session stopped',
   auto_pause: 'Recording paused — idle',
   connected: 'Board connected',
   connection_lost: 'Board connection lost',
   disconnected: 'Board disconnected',
   error: 'Error',
   gap: 'History gap',
+  recording_stop: 'Recording stopped',
 }
 
 export const HISTORY_MARKER_ICONS: Record<HistoryMarker['type'], Icon> = {
@@ -35,6 +36,7 @@ export const HISTORY_MARKER_ICONS: Record<HistoryMarker['type'], Icon> = {
   disconnected: LinkBreakIcon,
   error: WarningCircleIcon,
   gap: ClockCountdownIcon,
+  recording_stop: StopIcon,
 }
 
 export const HISTORY_MARKER_COLORS: Record<HistoryMarker['type'], ThemeColor> = {
@@ -45,6 +47,7 @@ export const HISTORY_MARKER_COLORS: Record<HistoryMarker['type'], ThemeColor> = 
   disconnected: theme.status.warning.color,
   error: theme.status.error.color,
   gap: theme.palette.yellow.color,
+  recording_stop: theme.palette.yellow.color,
 }
 
 function formatMarkerTime(ms: number): string {
@@ -69,7 +72,7 @@ function formatDuration(ms: number): string {
 
 export function buildHistoryMarkerMessage(
   selection: SelectedHistoryMarker,
-  units: UnitSystem,
+  distanceUnit: DistanceUnit,
 ): string {
   const { marker, gps } = selection
   const lines = [
@@ -82,7 +85,7 @@ export function buildHistoryMarkerMessage(
   ]
 
   if (gps.accuracyM != null)
-    lines.push(`GPS accuracy: ${formatLengthMeters(gps.accuracyM, units, 1)}`)
+    lines.push(`GPS accuracy: ${formatLengthMeters(gps.accuracyM, distanceUnit, 1)}`)
   if (marker.gapMs != null) lines.push(`Gap duration: ${formatDuration(marker.gapMs)}`)
   if (marker.message) lines.push(`Message: ${marker.message}`)
 

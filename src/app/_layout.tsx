@@ -1,5 +1,5 @@
 import * as Sentry from '@sentry/react-native'
-import { UnitSystemContext } from '@/hooks/useUnitSystem'
+import { DistanceUnitContext } from '@/hooks/useDistanceUnit'
 import { ClerkProvider } from '@clerk/expo'
 import { tokenCache } from '@clerk/expo/token-cache'
 import { resourceCache } from '@clerk/expo/resource-cache'
@@ -24,6 +24,7 @@ import { startAccessoryStateMirror } from '@/modules/accessories/store/accessory
 import { startAlertsBoardSync } from '@/bootstrap/alertsBoardSync'
 import { startLiveStateSync } from '@/bootstrap/liveStateSync'
 import { startAppDataSync } from '@/bootstrap/appDataSync'
+import { startMaintenanceSync } from '@/bootstrap/maintenanceSync'
 import { useSessionFixtures } from '@/bootstrap/sessionFixtures'
 import { startBoardConfigValuesSync } from '@/modules/board/store/boardConfigValuesStore'
 import { startMotorConfigValuesSync } from '@/modules/board/store/motorConfigValuesStore'
@@ -32,11 +33,7 @@ import { BoardConfigChangeNoticeModal } from '@/modules/board/components/BoardCo
 import { startTuneSnapshotSessionSync } from '@/modules/tune/store/tuneSnapshotStore'
 import { startBoardWarningsSync } from '@/modules/board/store/boardWarningsStore'
 import { startVescFaultsSync } from '@/modules/board/store/vescFaultsStore'
-import {
-  setGroupRideSoundPlayer,
-  useGroupRideStore,
-} from '@/modules/group-ride/store/groupRideStore'
-import { playSelectedAppSound } from '@/modules/settings/lib/appSounds'
+import { useGroupRideStore } from '@/modules/group-ride/store/groupRideStore'
 import { useRiderStore } from '@/modules/group-ride/store/riderStore'
 import { ReleaseSurfaces } from '@/modules/release/components/ReleaseSurfaces'
 import { startNavigationSync } from '@/modules/map/store/mapStore'
@@ -69,7 +66,7 @@ configureReanimatedLogger({ strict: false })
 initSentry()
 
 function RootLayout() {
-  const unitSystem = useSettingsStore((state) => state.unitSystem)
+  const distanceUnit = useSettingsStore((state) => state.distanceUnit)
   const insets = useSafeAreaInsets()
   const resolvedTheme = useThemeStore((state) => state.resolvedTheme)
   const resolvedNeutral = neutralColors[resolvedTheme]
@@ -99,10 +96,10 @@ function RootLayout() {
     if (!fixturesReady) return
     void useSettingsStore.getState().load()
     void useRiderStore.getState().load()
-    setGroupRideSoundPlayer(playSelectedAppSound)
     useGroupRideStore.getState().startObserving()
     const stopLiveStateSync = startLiveStateSync()
     const stopAppDataSync = startAppDataSync()
+    const stopMaintenanceSync = startMaintenanceSync()
     const stopBoardWarningsSync = startBoardWarningsSync()
     const stopVescFaultsSync = startVescFaultsSync()
     const stopBoardConfigValuesSync = startBoardConfigValuesSync()
@@ -116,9 +113,9 @@ function RootLayout() {
     const stopAccessoryStateMirror = startAccessoryStateMirror()
     return () => {
       useGroupRideStore.getState().stopObserving()
-      setGroupRideSoundPlayer(null)
       stopLiveStateSync()
       stopAppDataSync()
+      stopMaintenanceSync()
       stopBoardWarningsSync()
       stopVescFaultsSync()
       stopBoardConfigValuesSync()
@@ -146,7 +143,7 @@ function RootLayout() {
       // blank the account UI or look like a sign-out.
       __experimental_resourceCache={resourceCache}
     >
-      <UnitSystemContext value={unitSystem}>
+      <DistanceUnitContext value={distanceUnit}>
         <DeviceAuthSync />
         <BoardConfigChangeNoticeModal />
         <DiagnosticErrorBoundary>
@@ -198,6 +195,10 @@ function RootLayout() {
                 />
                 <Stack.Screen name={stackScreens.settingsOther} options={{ title: 'Other' }} />
                 <Stack.Screen
+                  name={stackScreens.settingsAlertSounds}
+                  options={{ title: 'Alert sounds' }}
+                />
+                <Stack.Screen
                   name={stackScreens.settingsRawSettings}
                   options={{ title: 'Raw settings' }}
                 />
@@ -219,6 +220,7 @@ function RootLayout() {
                 />
                 <Stack.Screen name={stackScreens.settingsSounds} options={{ title: 'Sounds' }} />
                 <Stack.Screen name={stackScreens.settingsMap} options={{ title: 'Map' }} />
+                <Stack.Screen name={stackScreens.settingsUnits} options={{ title: 'Units' }} />
                 <Stack.Screen name={stackScreens.settingsWatch} options={{ title: 'Watch' }} />
                 <Stack.Screen name={stackScreens.settingsHistory} options={{ title: 'History' }} />
                 <Stack.Screen name={stackScreens.settingsGraphs} options={{ title: 'Graphs' }} />
@@ -291,7 +293,7 @@ function RootLayout() {
             <StatusBar style={resolvedTheme === 'dark' ? 'light' : 'dark'} />
           </GestureHandlerRootView>
         </DiagnosticErrorBoundary>
-      </UnitSystemContext>
+      </DistanceUnitContext>
     </ClerkProvider>
   )
 }

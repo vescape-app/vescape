@@ -113,14 +113,14 @@ describe('cameraEngine', () => {
       engine.reset(camera([21, 52]))
       engine.setTarget({ heading: 90 })
     }
-    slow.engine.setOmega({ heading: GPS_HEADING_CAMERA_OMEGA })
+    slow.engine.configureOmega({ heading: GPS_HEADING_CAMERA_OMEGA })
     slow.run(30)
     fast.run(30)
     expect(CAMERA_ENGINE_DEFAULT_OMEGA.heading).toBe(8)
     expect(fast.engine.getCamera().heading).toBeGreaterThan(75)
     expect(slow.engine.getCamera().heading).toBeLessThan(15)
     const before = slow.engine.getCamera()
-    slow.engine.setOmega({ heading: CAMERA_ENGINE_DEFAULT_OMEGA.heading })
+    slow.engine.configureOmega({ heading: CAMERA_ENGINE_DEFAULT_OMEGA.heading })
     expect(slow.engine.getCamera()).toEqual(before)
     slow.run(60)
     expect(slow.engine.getCamera().heading).toBeGreaterThan(89)
@@ -496,4 +496,29 @@ describe('cameraEngine', () => {
       expect(inArc).toBe(true)
     }
   })
+})
+
+test('continuous follow samples between GPS ticks, keeps deliberate lag and releases to gestures', () => {
+  const { engine, tick, hasPending } = createTestEngine()
+  engine.reset(camera([0, 0]))
+  engine.configureOmega({ center: 3, heading: 3 })
+  let target = 0
+  engine.follow(() => ({ center: [target / 111320, 0], heading: 90 }))
+  const positions: number[] = []
+  for (let i = 0; i < 60; i++) {
+    target += 0.1
+    tick()
+    positions.push(engine.getCamera().centerCoordinate[0] * 111320)
+  }
+  expect(positions[59]).toBeGreaterThan(positions[30]!)
+  expect(positions[59]).toBeLessThan(target)
+  const before = engine.getCamera()
+  engine.configureOmega({ center: 5 })
+  expect(engine.getCamera()).toEqual(before)
+  engine.driveExternal(camera([10 / 111320, 0]), { gesture: true })
+  target = 100
+  tick()
+  expect(engine.getCamera().centerCoordinate[0] * 111320).toBeCloseTo(10, 4)
+  engine.destroy()
+  expect(hasPending()).toBe(false)
 })

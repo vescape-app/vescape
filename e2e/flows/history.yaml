@@ -6,11 +6,7 @@ appId: ${APP_ID}
     visible: E2E History Board
     timeout: 15000
 
-- tapOn:
-    id: history-button
-- extendedWaitUntil:
-    visible: History
-    timeout: 15000
+- runFlow: fixture/_history.yaml
 
 # The drawer opens on riding totals and the ride list; the newest ride has to be opened for its stats.
 - tapOn:
@@ -83,6 +79,10 @@ appId: ${APP_ID}
 # Close the sheet by tapping the backdrop.
 - tapOn:
     id: history-session-sheet-backdrop
+- extendedWaitUntil:
+    notVisible:
+      id: history-session-sheet-backdrop
+    timeout: 10000
 
 # Favorites is a filtered History tab: newest Favorite opens immediately and keeps the same nav.
 - tapOn:
@@ -126,7 +126,14 @@ appId: ${APP_ID}
     timeout: 20000
 - tapOn:
     id: history-session-sheet-backdrop
+- extendedWaitUntil:
+    notVisible:
+      id: history-session-sheet-backdrop
+    timeout: 10000
 - tapOn:
     id: history-tab-history
+- assertVisible:
+    id: history-tab-history
+    selected: true
 - assertNotVisible: No rides yet
 - assertVisible: '1.5'

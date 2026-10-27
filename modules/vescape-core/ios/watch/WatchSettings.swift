@@ -33,7 +33,7 @@ enum WatchSettingsKey {
   static let streetMapEnabled = "streetMapEnabled"
   /// Street map opacity behind the gauges, integer percent from ``WatchMapGauges/steps``.
   static let mapGaugesPercent = "mapGaugesPercent"
-  static let unitSystem = "unitSystem"
+  static let distanceUnit = "distanceUnit"
   /// Tilt stick speed at full deflection, percent of full tilt per second. Applied on the wrist.
   static let tiltRatePercent = "tiltRatePercent"
 }
@@ -65,7 +65,7 @@ let watchSourceSettingKeys: Set<String> = [
   "wearTelemetryRouteEnabled",
   "wearStreetMapEnabled",
   "wearMapGaugesPercent",
-  "unitSystem",
+  "distanceUnit",
   "wearTiltRatePercent",
   "wearPushRateHz",
 ]
@@ -73,6 +73,7 @@ let watchSourceSettingKeys: Set<String> = [
 struct WatchSettings: Equatable {
   /// `#RRGGBB` / `#AARRGGBB` as the phone's rider palette stores it; nil when the rider has none.
   var riderColor: String?
+  var displayMotionJson = ""
   /// Null until a phone new enough to send it has pushed; the wrist then shows no number.
   var boardMoveStrengthPercent: Int?
   /// Off by default: an older phone never sends the key, and the arrow is opt-in until it works.
@@ -82,7 +83,7 @@ struct WatchSettings: Equatable {
   var telemetryRouteEnabled: Bool = true
   var streetMapEnabled: Bool = true
   var mapGaugesPercent: Int = WatchMapGauges.defaultPercent
-  var unitSystem: String = "metric"
+  var distanceUnit: String = "km"
   var tiltRatePercent: Int = watchDefaultTiltRatePercent
 
   /// What the wrist holds before the first push lands, and what a cleared channel reads as.
@@ -95,13 +96,14 @@ struct WatchSettings: Equatable {
   var payload: [String: Any] {
     var payload: [String: Any] = [
       WatchSettingsKey.riderColor: riderColor ?? "",
+      "displayMotion": displayMotionJson,
       WatchSettingsKey.navArrowEnabled: navArrowEnabled,
       WatchSettingsKey.telemetryTrailEnabled: telemetryTrailEnabled,
       WatchSettingsKey.telemetryGroupEnabled: telemetryGroupEnabled,
       WatchSettingsKey.telemetryRouteEnabled: telemetryRouteEnabled,
       WatchSettingsKey.streetMapEnabled: streetMapEnabled,
       WatchSettingsKey.mapGaugesPercent: mapGaugesPercent,
-      WatchSettingsKey.unitSystem: unitSystem,
+      WatchSettingsKey.distanceUnit: distanceUnit,
       WatchSettingsKey.tiltRatePercent: tiltRatePercent,
     ]
     if let boardMoveStrengthPercent { payload[WatchSettingsKey.boardMoveStrengthPercent] = boardMoveStrengthPercent }
@@ -118,6 +120,7 @@ struct WatchSettings: Equatable {
       .trimmingCharacters(in: .whitespaces)
     return WatchSettings(
       riderColor: (color?.isEmpty ?? true) ? nil : color,
+      displayMotionJson: payload["displayMotion"] as? String ?? "",
       boardMoveStrengthPercent: (payload[WatchSettingsKey.boardMoveStrengthPercent] as? NSNumber)?.intValue,
       navArrowEnabled: payload[WatchSettingsKey.navArrowEnabled] as? Bool ?? wristDefaults.navArrowEnabled,
       telemetryTrailEnabled: payload[WatchSettingsKey.telemetryTrailEnabled] as? Bool ?? wristDefaults.telemetryTrailEnabled,
@@ -125,7 +128,7 @@ struct WatchSettings: Equatable {
       telemetryRouteEnabled: payload[WatchSettingsKey.telemetryRouteEnabled] as? Bool ?? wristDefaults.telemetryRouteEnabled,
       streetMapEnabled: payload[WatchSettingsKey.streetMapEnabled] as? Bool ?? wristDefaults.streetMapEnabled,
       mapGaugesPercent: WatchMapGauges.percent(payload[WatchSettingsKey.mapGaugesPercent]) ?? wristDefaults.mapGaugesPercent,
-      unitSystem: payload[WatchSettingsKey.unitSystem] as? String == "imperial" ? "imperial" : "metric",
+      distanceUnit: payload[WatchSettingsKey.distanceUnit] as? String == "mi" ? "mi" : "km",
       // Held to the range the phone repositories accept (1–100) on read too: the wrist integrates
       // this every frame, and a rate from a newer or broken phone must not spin the stick.
       tiltRatePercent: (payload[WatchSettingsKey.tiltRatePercent] as? NSNumber)

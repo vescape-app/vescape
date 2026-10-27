@@ -9,6 +9,7 @@ import {
   type Board,
   type BoardKind,
   type BoardLink,
+  type InitialBoardAlerts,
   upsertBoard,
 } from 'vescape-core'
 
@@ -35,8 +36,9 @@ interface BoardActions {
     link?: BoardLink | null
     batteryConfig?: BatteryConfig | null
     topSpeedKmh?: number
-    alertPreset?: Record<string, unknown> | null
     alertPresetsOnboarded?: boolean
+    /** Alert setup saved with the Board in one transaction. */
+    alerts?: InitialBoardAlerts
   }) => Promise<Board>
   updateBoard: (board: Board) => Promise<void>
   /** Dismiss (acknowledge) or restore a Board Warning kind; persisted on the board record. */
@@ -88,8 +90,8 @@ export const useBoardStore = create<BoardState & BoardActions>((set, get) => ({
     link,
     batteryConfig,
     topSpeedKmh,
-    alertPreset,
     alertPresetsOnboarded,
+    alerts,
   }) {
     const board: Board = {
       id: id ?? generateId(),
@@ -102,12 +104,11 @@ export const useBoardStore = create<BoardState & BoardActions>((set, get) => ({
       // `null` means the board supplies SoC directly (original OneWheel).
       batteryConfig: batteryConfig === undefined ? DEFAULT_BATTERY_CONFIG : batteryConfig,
       topSpeedKmh,
-      alertPreset: alertPreset ?? null,
       alertPresetsOnboarded: alertPresetsOnboarded ?? false,
       legalMode: { enabled: false },
       link: link ?? null,
     }
-    await upsertBoard(board)
+    await upsertBoard(board, alerts)
     set((state) => ({
       boards: [...state.boards, board],
       activeBoardId: state.activeBoardId ?? board.id,

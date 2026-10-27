@@ -90,7 +90,7 @@ internal fun NavPointer(
                 drawMapPin(Offset(size.width / 2f, size.height / 2f), size.minDimension * 0.74f, color)
             }
             Text(
-                text = UnitPresentation.distance(distanceM, SettingsState.settings.value.unitSystem),
+                text = UnitPresentation.distance(distanceM, SettingsState.settings.value.distanceUnit),
                 modifier = Modifier.padding(start = PIN_GAP),
                 style = WatchTypography.mono(MaterialTheme.typography.caption2.copy(fontSize = NAV_READOUT_FONT_SIZE)),
                 color = color,

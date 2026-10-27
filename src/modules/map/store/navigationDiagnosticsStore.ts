@@ -1,14 +1,13 @@
 import { create } from 'zustand'
+import type { MotionDiagnostics } from '@/modules/map/lib/liveMotion/motion'
 import type { LocationEvent } from 'vescape-core'
 
 export interface NavigationDiagnosticsState {
-  /** Session-only map debug overlay; never changes GPS acquisition or recording. */
-  showDisplayTrail: boolean
-  setShowDisplayTrail: (visible: boolean) => void
   showRawGps: boolean
   setShowRawGps: (visible: boolean) => void
   showProjectionConnector: boolean
   setShowProjectionConnector: (show: boolean) => void
+  motion: MotionDiagnostics | null
   gpsFix: LocationEvent | null
   retainedGpsBearingDeg: number | null
   retainedGpsBearingAt: number | null
@@ -46,14 +45,11 @@ const INITIAL_SNAPSHOT: NavigationDiagnosticsSnapshot = {
 
 export const useNavigationDiagnosticsStore = create<NavigationDiagnosticsState>((set) => ({
   ...INITIAL_SNAPSHOT,
-  showDisplayTrail: true,
-  setShowDisplayTrail: (showDisplayTrail) => set({ showDisplayTrail }),
   showRawGps: true,
   setShowRawGps: (showRawGps) => set({ showRawGps }),
   showProjectionConnector: false,
-  setShowProjectionConnector(show) {
-    set({ showProjectionConnector: show })
-  },
+  setShowProjectionConnector: (showProjectionConnector) => set({ showProjectionConnector }),
+  motion: null,
   updatedAt: null,
   update(next) {
     set({ ...next, updatedAt: Date.now() })

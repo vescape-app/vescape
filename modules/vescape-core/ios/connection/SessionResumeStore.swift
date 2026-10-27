@@ -6,12 +6,9 @@ import Foundation
 internal struct SessionResumeMarker: Equatable {
   let appBoardId: String
   let bleId: String
-  /// Whether Ride Recording was writing frames. A resumed session re-enables it so telemetry keeps
-  /// appending to the same open recording (the history gap-splitter explains the dead interval).
+  /// Whether recording was writing frames. A resumed session re-enables it; ride grouping decides
+  /// from the recorded data whether the dead interval splits the ride (ADR 0041).
   let recordingActive: Bool
-  /// Identity of that open Ride Recording. The resume names the recording it means rather than
-  /// searching for one, so a relaunch days later can never adopt an abandoned ride (#450).
-  let recordingId: String?
 }
 
 /// Durable "a Board Session was live" marker, written at session begin and cleared at session end.
@@ -42,36 +39,25 @@ internal final class SessionResumeStore {
     return SessionResumeMarker(
       appBoardId: appBoardId,
       bleId: bleId,
-      recordingActive: raw["recordingActive"] as? Bool ?? false,
-      recordingId: (raw["recordingId"] as? String).flatMap { $0.isEmpty ? nil : $0 }
+      recordingActive: raw["recordingActive"] as? Bool ?? false
     )
   }
 
-  func save(appBoardId: String, bleId: String, recordingActive: Bool, recordingId: String?) {
-    var raw: [String: Any] = [
+  func save(appBoardId: String, bleId: String, recordingActive: Bool) {
+    let raw: [String: Any] = [
       "appBoardId": appBoardId,
       "bleId": bleId,
       "recordingActive": recordingActive,
     ]
-    if let recordingId { raw["recordingId"] = recordingId }
     defaults.set(raw, forKey: key)
   }
 
-  /// Recording is toggled mid-session (auto-recording at board-ready, the JS switch) and its
-  /// identity is minted after the session begins, so both are refreshed in place rather than only
-  /// at session begin.
-  func setRecording(active: Bool, recordingId: String?) {
+  /// Recording is toggled mid-session (auto-recording at board-ready, the JS switch), so the flag
+  /// is refreshed in place rather than only at session begin.
+  func setRecording(active: Bool) {
     guard var raw = defaults.dictionary(forKey: key) else { return }
-    guard
-      (raw["recordingActive"] as? Bool ?? false) != active
-        || (raw["recordingId"] as? String) != recordingId
-    else { return }
+    guard (raw["recordingActive"] as? Bool ?? false) != active else { return }
     raw["recordingActive"] = active
-    if let recordingId {
-      raw["recordingId"] = recordingId
-    } else {
-      raw.removeValue(forKey: "recordingId")
-    }
     defaults.set(raw, forKey: key)
   }
 

@@ -1,4 +1,4 @@
-import { useUnitSystem } from '@/hooks/useUnitSystem'
+import { useDistanceUnit } from '@/hooks/useDistanceUnit'
 import { speedFromKmh, speedInputToKmh, speedUnit } from '@/helpers/units'
 import { stepDelta } from '@/helpers/numberStep'
 import { View, StyleSheet, ScrollView } from 'react-native'
@@ -36,7 +36,7 @@ const HOT_RANGE_METRICS: {
 ]
 
 export default function GraphsSettingsScreen() {
-  const units = useUnitSystem()
+  const distanceUnit = useDistanceUnit()
   const { historyMetricGradientsEnabled, historyMetricHotRanges, set } = useSettingsStore(
     useShallow((s) => ({
       historyMetricGradientsEnabled: s.historyMetricGradientsEnabled,
@@ -84,8 +84,8 @@ export default function GraphsSettingsScreen() {
             const range = historyMetricHotRanges[metric.key] ?? fallback
 
             const isSpeed = metric.key === 'speed'
-            const display = (value: number) => (isSpeed ? speedFromKmh(value, units) : value)
-            const unit = isSpeed ? speedUnit(units) : metric.unit
+            const display = (value: number) => (isSpeed ? speedFromKmh(value, distanceUnit) : value)
+            const unit = isSpeed ? speedUnit(distanceUnit) : metric.unit
             const formatValue = (value: number) => String(Number(value.toFixed(1)))
 
             return (
@@ -108,7 +108,13 @@ export default function GraphsSettingsScreen() {
                     max={display(metric.max)}
                     onChange={(nextValue) => {
                       const clampedValue = isSpeed
-                        ? speedInputToKmh(nextValue, range.start, units, metric.min, metric.max)
+                        ? speedInputToKmh(
+                            nextValue,
+                            range.start,
+                            distanceUnit,
+                            metric.min,
+                            metric.max,
+                          )
                         : Math.min(metric.max, Math.max(metric.min, nextValue))
                       if (clampedValue !== range.start) {
                         setHotRangeValue(metric.key, 'start', clampedValue)
@@ -127,7 +133,13 @@ export default function GraphsSettingsScreen() {
                     max={display(metric.max)}
                     onChange={(nextValue) => {
                       const clampedValue = isSpeed
-                        ? speedInputToKmh(nextValue, range.end, units, metric.min, metric.max)
+                        ? speedInputToKmh(
+                            nextValue,
+                            range.end,
+                            distanceUnit,
+                            metric.min,
+                            metric.max,
+                          )
                         : Math.min(metric.max, Math.max(metric.min, nextValue))
                       if (clampedValue !== range.end) {
                         setHotRangeValue(metric.key, 'end', clampedValue)

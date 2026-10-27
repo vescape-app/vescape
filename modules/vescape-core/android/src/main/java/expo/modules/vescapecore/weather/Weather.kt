@@ -1,6 +1,10 @@
 package expo.modules.vescapecore.weather
 
+import expo.modules.vescapecore.telemetry.WeatherObservation
+import org.json.JSONArray
 import org.json.JSONObject
+import java.time.LocalDateTime
+import java.time.ZoneOffset
 
 /**
  * The condition pictogram a forecast resolves to. Native owns the classification so the phone, the
@@ -83,6 +87,23 @@ data class WeatherHour(
 }
 
 /**
+ * One forecast period in absolute time, the shape the Weather Alert Evaluator reads. Open-Meteo
+ * values describe the period *before* their timestamp, so [startMs] is that timestamp minus the
+ * period. Precipitation is normalised to mm/h whatever the period; probability exists hourly only.
+ * Native-only: the JS payload keeps [WeatherHour].
+ *
+ * @parity /modules/vescape-core/ios/weather/Weather.swift `WeatherSlot`
+ */
+data class WeatherSlot(
+    val startMs: Long,
+    val endMs: Long,
+    val precipitationMmPerHour: Double,
+    val precipitationProbability: Int?,
+    val weatherCode: Int?,
+    val windGustsKmh: Double?,
+)
+
+/**
  * The weather where the rider is. Native truth: fetched, cached and aged natively so the wrist and
  * the recording pipeline keep seeing it while the JS runtime is gone.
  *
@@ -101,8 +122,30 @@ data class Weather(
     val latitude: Double,
     val longitude: Double,
     val fetchedAtMs: Long,
+    /** Hourly series as absolute slots, for Weather Alerts. Not mirrored to JS. */
+    val hourlySlots: List<WeatherSlot> = emptyList(),
+    /** `minutely_15` series as absolute slots, for Weather Alerts. Not mirrored to JS. */
+    val quarterHourSlots: List<WeatherSlot> = emptyList(),
+    /** Open-Meteo `current.time` as epoch ms, or null when the response carried none. */
+    val observedAtMs: Long? = null,
+    /** Current `wind_gusts_10m` in km/h, or null when the response omitted it. */
+    val windGustsKmh: Double? = null,
+    /** Current `is_day`; falls back to the sunrise/sunset night window when omitted. */
+    val isDay: Boolean = true,
+    /** Unrounded current temperature, normalized only when stored. */
+    val currentTemperatureC: Double = temperatureC.toDouble(),
 ) {
     val label: String get() = weatherLabel(weatherCode)
+
+    /**
+     * Normalized current conditions for `weather_observations`, or null without an observation
+     * time: a row must say when the weather was, not when it was fetched.
+     * @parity /modules/vescape-core/ios/weather/Weather.swift `Weather.observation`
+     */
+    fun observation(): WeatherObservation? {
+        val at = observedAtMs ?: return null
+        return WeatherObservation.normalized(at, currentTemperatureC, weatherCode, windGustsKmh, isDay)
+    }
 
     fun toMap(): Map<String, Any?> = mapOf(
         "temperatureC" to temperatureC,
@@ -125,6 +168,55 @@ internal fun minuteOfDay(isoLocalTime: String): Int? {
     val hour = time.substringBefore(':', "").toIntOrNull() ?: return null
     val minute = time.substringAfter(':', "").take(2).toIntOrNull() ?: return null
     return hour * 60 + minute
+}
+
+/**
+ * Epoch ms of an Open-Meteo local `YYYY-MM-DDTHH:MM` stamp at the response's `utc_offset_seconds`.
+ * One offset covers the whole window, so a slot past a DST change inside it is off by that hour.
+ *
+ * @parity /modules/vescape-core/ios/weather/Weather.swift `epochMs`
+ */
+internal fun epochMs(isoLocalTime: String, utcOffsetSeconds: Int): Long? =
+    // intentional-suppression: an unparseable stamp drops only its own slot
+    runCatching {
+        LocalDateTime.parse(isoLocalTime).toEpochSecond(ZoneOffset.ofTotalSeconds(utcOffsetSeconds)) * 1_000
+    }.getOrNull()
+
+/**
+ * One Open-Meteo series into [WeatherSlot]s of [periodMinutes]; [precipitationScale] turns the
+ * series' per-period precipitation into mm/h. A slot without a precipitation value is dropped.
+ *
+ * @parity /modules/vescape-core/ios/weather/Weather.swift `weatherSlots`
+ */
+private fun weatherSlots(
+    series: JSONObject?,
+    utcOffsetSeconds: Int?,
+    periodMinutes: Int,
+    precipitationScale: Double,
+): List<WeatherSlot> {
+    if (series == null || utcOffsetSeconds == null) return emptyList()
+    val times = series.optJSONArray("time") ?: return emptyList()
+    val precips = series.optJSONArray("precipitation") ?: return emptyList()
+    val probabilities = series.optJSONArray("precipitation_probability")
+    val codes = series.optJSONArray("weather_code")
+    val gusts = series.optJSONArray("wind_gusts_10m")
+    fun JSONArray?.present(index: Int) = this != null && index < length() && !isNull(index)
+    return buildList {
+        for (index in 0 until times.length()) {
+            val endMs = epochMs(times.optString(index), utcOffsetSeconds) ?: continue
+            if (!precips.present(index)) continue
+            add(
+                WeatherSlot(
+                    startMs = endMs - periodMinutes * 60_000L,
+                    endMs = endMs,
+                    precipitationMmPerHour = precips.optDouble(index) * precipitationScale,
+                    precipitationProbability = if (probabilities.present(index)) probabilities!!.optInt(index) else null,
+                    weatherCode = if (codes.present(index)) codes!!.optInt(index) else null,
+                    windGustsKmh = if (gusts.present(index)) gusts!!.optDouble(index) else null,
+                ),
+            )
+        }
+    }
 }
 
 /**
@@ -189,15 +281,22 @@ fun parseOpenMeteoWeather(
         }
     }
 
+    val utcOffsetSeconds = if (json.has("utc_offset_seconds")) json.optInt("utc_offset_seconds") else null
     val currentMinute = minuteOfDay(json.optJSONObject("current")?.optString("time").orEmpty())
     val currentCode = current.optInt("weather_code")
+    val currentTemperature = current.optDouble("temperature_2m")
+    val night = isNight(currentMinute ?: hourly.firstOrNull()?.minuteOfDay ?: 12 * 60, sunriseMinute, sunsetMinute)
+    val currentTime = current.optString("time").takeIf { it.isNotEmpty() }
     return Weather(
-        temperatureC = Math.round(current.optDouble("temperature_2m")).toInt(),
+        temperatureC = Math.round(currentTemperature).toInt(),
+        currentTemperatureC = currentTemperature,
         weatherCode = currentCode,
-        icon = weatherIcon(
-            currentCode,
-            isNight(currentMinute ?: hourly.firstOrNull()?.minuteOfDay ?: 12 * 60, sunriseMinute, sunsetMinute),
-        ),
+        icon = weatherIcon(currentCode, night),
+        observedAtMs = if (currentTime != null && utcOffsetSeconds != null) epochMs(currentTime, utcOffsetSeconds) else null,
+        windGustsKmh = if (current.has("wind_gusts_10m") && !current.isNull("wind_gusts_10m")) {
+            current.optDouble("wind_gusts_10m")
+        } else null,
+        isDay = if (current.has("is_day") && !current.isNull("is_day")) current.optInt("is_day") != 0 else !night,
         precipitationProbability = current.optInt("precipitation_probability"),
         hourly = hourly,
         sunriseMinuteOfDay = sunriseMinute,
@@ -205,5 +304,13 @@ fun parseOpenMeteoWeather(
         latitude = latitude,
         longitude = longitude,
         fetchedAtMs = fetchedAtMs,
+        hourlySlots = weatherSlots(hourlyJson, utcOffsetSeconds, periodMinutes = 60, precipitationScale = 1.0),
+        // `minutely_15` precipitation is mm per 15 min.
+        quarterHourSlots = weatherSlots(
+            json.optJSONObject("minutely_15"),
+            utcOffsetSeconds,
+            periodMinutes = 15,
+            precipitationScale = 4.0,
+        ),
     )
 }

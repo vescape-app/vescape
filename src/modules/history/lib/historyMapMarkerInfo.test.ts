@@ -12,15 +12,15 @@ test('legacy marker accuracy keeps fixed feet, missing accuracy stays absent', (
   const selection = {
     marker: { id: 1, occurredAtMs: 1000, type: 'gap', boardId: null, message: null, gapMs: 5000 },
     gps: {
-      id: 1, recordingId: null, capturedAtMs: 1000, boardId: null, boardName: '',
+      id: 1, capturedAtMs: 1000, boardId: null, boardName: '',
       latitude: 52, longitude: 21, speedMps: null, bearingDeg: null, accuracyM: 1000,
       altitudeM: null, timestamp: 1000, distanceFromPreviousM: null,
     },
   }
-  expect(buildHistoryMarkerMessage(selection, 'imperial')).toContain('GPS accuracy: 3280.8 ft')
-  expect(buildHistoryMarkerMessage(selection, 'metric')).toContain('GPS accuracy: 1000.0 m')
+  expect(buildHistoryMarkerMessage(selection, 'mi')).toContain('GPS accuracy: 3280.8 ft')
+  expect(buildHistoryMarkerMessage(selection, 'km')).toContain('GPS accuracy: 1000.0 m')
   expect(selection.gps.accuracyM).toBe(1000)
-  expect(buildHistoryMarkerMessage({ ...selection, gps: { ...selection.gps, accuracyM: null } }, 'imperial')).not.toContain('GPS accuracy:')
+  expect(buildHistoryMarkerMessage({ ...selection, gps: { ...selection.gps, accuracyM: null } }, 'mi')).not.toContain('GPS accuracy:')
   `
   const result = Bun.spawnSync(
     [process.execPath, '--preload', './testSetup.ts', '--eval', script],

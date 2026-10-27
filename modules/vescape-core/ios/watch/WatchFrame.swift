@@ -13,7 +13,7 @@ import Foundation
 /// follows the fixed lanes, so existing wrists can still decode telemetry unchanged.
 ///
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/watch/WatchFrame.kt
-let WATCH_FRAME_FIELD_COUNT = 13
+let WATCH_FRAME_FIELD_COUNT = 23
 
 /// Header (1 byte field-count + 1 byte flags) + Float32 lanes, little-endian.
 let WATCH_FRAME_BYTES = 2 + WATCH_FRAME_FIELD_COUNT * 4
@@ -98,7 +98,7 @@ struct WatchFrame: Equatable {
   var remoteTilt: Int?
   var tiltControl: WatchTiltControl
   var trail: [WatchTrailPoint]
-  var displayMotion: GpsDisplayMotion?
+  var motionFacts: WatchMotionFacts?
   var mapPosition: WatchMapPosition?
 
   init(
@@ -118,7 +118,7 @@ struct WatchFrame: Equatable {
     remoteTilt: Int? = nil,
     tiltControl: WatchTiltControl = .free,
     trail: [WatchTrailPoint] = [],
-    displayMotion: GpsDisplayMotion? = nil,
+    motionFacts: WatchMotionFacts? = nil,
     mapPosition: WatchMapPosition? = nil
   ) {
     self.speed = speed
@@ -137,7 +137,7 @@ struct WatchFrame: Equatable {
     self.remoteTilt = remoteTilt
     self.tiltControl = tiltControl
     self.trail = trail
-    self.displayMotion = displayMotion
+    self.motionFacts = motionFacts
     self.mapPosition = mapPosition
   }
 }
@@ -161,7 +161,7 @@ struct WatchSnapshot {
   var remoteTilt: Int?
   var tiltControl: WatchTiltControl
   var trail: [WatchTrailPoint]
-  var displayMotion: GpsDisplayMotion?
+  var motionFacts: WatchMotionFacts?
   var mapPosition: WatchMapPosition?
   /// GPS ground speed, for the street-map lookahead. Phone-side only; not on the wire.
   var riderSpeedMps: Double?
@@ -182,7 +182,7 @@ struct WatchSnapshot {
     remoteTilt: Int? = nil,
     tiltControl: WatchTiltControl = .free,
     trail: [WatchTrailPoint] = [],
-    displayMotion: GpsDisplayMotion? = nil,
+    motionFacts: WatchMotionFacts? = nil,
     mapPosition: WatchMapPosition? = nil,
     riderSpeedMps: Double? = nil
   ) {
@@ -201,7 +201,7 @@ struct WatchSnapshot {
     self.remoteTilt = remoteTilt
     self.tiltControl = tiltControl
     self.trail = trail
-    self.displayMotion = displayMotion
+    self.motionFacts = motionFacts
     self.mapPosition = mapPosition
     self.riderSpeedMps = riderSpeedMps
   }
@@ -230,7 +230,7 @@ enum WatchFrameBuilder {
       remoteTilt: snapshot.remoteTilt,
       tiltControl: snapshot.tiltControl,
       trail: snapshot.trail,
-      displayMotion: snapshot.displayMotion,
+      motionFacts: snapshot.motionFacts,
       mapPosition: snapshot.mapPosition
     )
   }
@@ -245,34 +245,45 @@ enum WatchFrameBuilder {
       let value = Float(frame[keyPath: lane] ?? .nan)
       withUnsafeBytes(of: value.bitPattern.littleEndian) { data.append(contentsOf: $0) }
     }
-    data.append(WatchTrailCodec.encode(frame.trail, position: frame.mapPosition, displayMotion: frame.displayMotion))
+    for lane in frame.motionFacts?.lanes ?? Array(repeating: Double.nan, count: 10) {
+      withUnsafeBytes(of: Float(lane).bitPattern.littleEndian) { data.append(contentsOf: $0) }
+    }
+    data.append(WatchTrailCodec.encode(frame.trail, position: frame.mapPosition))
     return data
   }
 
   /// Wrist-side decode. Returns nil for anything that is not a frame this build understands: a
   /// truncated message, or a phone encoding a different lane count than this binary was built with.
   static func decode(_ data: Data) -> WatchFrame? {
-    guard data.count >= WATCH_FRAME_BYTES else { return nil }
+    guard data.count >= 2 else { return nil }
     let bytes = [UInt8](data)
-    guard Int(bytes[0]) == WATCH_FRAME_FIELD_COUNT else { return nil }
+    let count = Int(bytes[0])
+    guard count >= 5, data.count >= 2 + count * 4 else { return nil }
+    func value(_ index: Int) -> Double {
+      let offset = 2 + index * 4
+      let raw = UInt32(bytes[offset]) | UInt32(bytes[offset + 1]) << 8 | UInt32(bytes[offset + 2]) << 16 | UInt32(bytes[offset + 3]) << 24
+      return Double(Float(bitPattern: raw))
+    }
     var frame = WatchFrame(
       stale: Int(bytes[1]) & WATCH_FRAME_FLAG_STALE != 0,
       waiting: Int(bytes[1]) & WATCH_FRAME_FLAG_WAITING != 0
     )
-    for (index, lane) in laneOrder.enumerated() {
-      let offset = 2 + index * 4
-      let raw = UInt32(bytes[offset])
-        | UInt32(bytes[offset + 1]) << 8
-        | UInt32(bytes[offset + 2]) << 16
-        | UInt32(bytes[offset + 3]) << 24
-      let value = Float(bitPattern: raw)
-      frame[keyPath: lane] = value.isNaN ? nil : Double(value)
+    for (index, lane) in laneOrder.enumerated() where index < count {
+      let scalar = value(index)
+      frame[keyPath: lane] = scalar.isFinite ? scalar : nil
     }
-    let trail = WatchTrailCodec.decode(data, offset: WATCH_FRAME_BYTES)
+    if count >= 23 { frame.motionFacts = WatchMotionFacts.decode((13..<23).map(value)) }
+    let trail = WatchTrailCodec.decode(data, offset: 2 + count * 4)
     frame.trail = trail.points
     frame.mapPosition = trail.position
-    frame.displayMotion = trail.displayMotion
     return frame
+  }
+
+  /// Older watchOS decoders require exactly 13 lanes. The wake heartbeat's optional third byte
+  /// advertises support; until it arrives, preserve the complete legacy frame and its trail.
+  static func legacyFrame(_ data: Data) -> Data {
+    guard data.count >= WATCH_FRAME_BYTES, data.first == UInt8(WATCH_FRAME_FIELD_COUNT) else { return data }
+    return Data([13]) + data.subdata(in: 1..<54) + data.dropFirst(WATCH_FRAME_BYTES)
   }
 
   /// The lane order, written once. Encoding and decoding disagreeing about it is the one corruption

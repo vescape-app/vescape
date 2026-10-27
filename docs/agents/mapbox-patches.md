@@ -117,18 +117,11 @@ cd android && ./gradlew :app:compileDebugKotlin
 On a device, pinch and release quickly in map mode. Zoom must keep decelerating while pitch follows
 the changing zoom. Also verify normal recentering and navigation-mode camera animations.
 
-## Native GPS point animation
+## Linear point animator endpoints
 
-The display-only GPS marker uses `__experimental.MovePointShapeAnimator.setMotion` to evaluate
-GPS correction and VESC-driven velocity independently on the native render clock. The model carries
-correction anchors/times, latitude/longitude velocity in degrees per millisecond, a velocity expiry,
-and an explicit position-reset flag. A zero-duration correction does not imply a position reset:
-telemetry-only speed changes preserve the visible position, while GPS with zero smoothing requests
-an explicit reset. Nonzero corrections retarget from the actual visible position on receipt; velocity
-continues independently until its input expires. Hidden sources stop their animator.
-
-The added method is declared in the TurboModule spec, the JS wrapper and its distributed type/runtime
-files, and both native implementations. iOS uses the matching move-point TurboModule factory and an
-explicit Objective-C selector. The patch also fixes legacy `moveTo` progress sampling and endpoint
-landing, and Android synchronizes retargeting with its timer callback. This point-source patch does
-not change camera animation or camera APIs.
+`MovePointShapeAnimator.moveTo({ coordinate, durationMs })` remains the stock API. The patch fixes
+two generic interpolation defects on both platforms: compute progress from the current animation
+age (upstream used the previous frame's progress time), and land exactly on the target at expiry
+(upstream stopped on the previous frame). No GPS, speed, prediction or correction logic lives here.
+The production point adapter sends linear segments only on input changes and segment boundaries.
+Native rebuilds are required after changing this patch.

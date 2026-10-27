@@ -13,13 +13,16 @@ Fast loop for local Android Maestro flows. Goal: agents can run E2E often withou
 - Default command:
 
 ```sh
-zsh -lc 'bun run e2e --all'
+zsh -lc 'bun run e2e'
 ```
 
-- `bun run e2e --all` runs every public flow in `e2e/flows/`.
+- `bun run e2e` builds/installs through `android:e2e`, waits for its own Metro and connected app,
+  then runs every public flow in `e2e/flows/`. It stops its processes afterwards.
 - `bun run e2e --flow connect-board` runs one flow by name from `e2e/flows/connect-board.yaml`.
-- `bun run e2e` opens a simple interactive selector.
-- Helper flows start with `_` and are hidden from the selector.
+- `bun run e2e:run` reruns all flows against an already prepared E2E app and running Metro.
+- `bun run e2e:run --flow connect-board` reruns one flow without build/setup.
+- Both commands default to all flows; `--all` remains accepted.
+- Helper flows start with `_`; they and the legacy `e2e.yaml` aggregate are excluded.
 - `bun run smoke` is the separate fixture-backed run: real native, restored database, replayed
   recording, no `e2eFake`. Needs its own build (`EXPO_PUBLIC_SMOKE=1`, produced by the runner), so it
   cannot share a device install with `bun run e2e`. See `e2e/README.md`.
@@ -36,16 +39,17 @@ adb devices
 2. Run E2E:
 
 ```sh
-zsh -lc 'bun run e2e --all'
+zsh -lc 'bun run e2e'
 ```
 
 3. On failure, rerun only the smallest needed command. Do not run full `check`.
 
 ## App State
 
-Public flows clear app state themselves through `_launch.yaml`.
+Most public flows clear app state through `_launch.yaml`. Component and tune editor checks
+reuse the app already opened by setup.
 
-The expected installed app is Expo dev-client package `app.vescape`. Flow selects local Metro server from the dev-client launcher, then exercises add-board happy path.
+The package comes from `src/config/appVariant.ts` (`app.vescape.dev` for development). The launch helper waits for the dev-client launcher, then opens the intended Metro URL directly.
 
 Expected fake BLE board:
 
@@ -61,7 +65,8 @@ E2E Board
 
 ## Rebuild Only When Needed
 
-Do not rebuild by default. Reuse installed app.
+For a fast rerun, reuse the installed E2E app and an E2E Metro server with `bun run e2e:run`.
+The full `bun run e2e` command performs setup every time.
 
 Run this only when app is missing/stale, native code/config changed, or E2E mode was not installed:
 
@@ -69,13 +74,14 @@ Run this only when app is missing/stale, native code/config changed, or E2E mode
 zsh -lc 'bun run android:e2e'
 ```
 
-Then rerun:
+Keep that Metro running, then rerun in another terminal:
 
 ```sh
-zsh -lc 'bun run e2e'
+zsh -lc 'bun run e2e:run'
 ```
 
-E2E mode comes from `EXPO_PUBLIC_E2E=1` in `android:e2e`; it surfaces fake BLE scan data. JS-only UI changes usually do not need reinstall if Metro serves current bundle.
+E2E mode comes from `EXPO_PUBLIC_E2E=1` in `android:e2e`; it surfaces fake BLE scan data. JS-only UI changes usually do not need reinstall if Metro serves the current bundle.
+`e2e:run` defaults to Metro port 8081; set `E2E_METRO_PORT` to reuse another port.
 
 ## Efficient Failure Triage
 

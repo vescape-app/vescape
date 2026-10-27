@@ -10,22 +10,21 @@ func runRideExportContract() throws {
   defer { try? FileManager.default.removeItem(at: directory) }
   let queue = try DatabaseQueue(path: directory.appendingPathComponent("test.db").path)
   try TelemetryDatabase.migrator.migrate(queue)
-  func point(_ i: Int, board: String? = "board", recording: String? = "ride", accuracy: Int? = 2000) -> RideTrackPoint {
-    RideTrackPoint(recordingId: recording, boardId: board, fixAtMs: base + Int64(i / 3),
+  func point(_ i: Int, board: String? = "board", accuracy: Int? = 2000) -> RideTrackPoint {
+    RideTrackPoint(boardId: board, fixAtMs: base + Int64(i / 3),
       latitudeE7: Int64(521234567 + i), longitudeE7: -211234567, accuracyCm: accuracy,
       gpsSpeedCentiMps: i % 2 == 0 ? 456 : nil, bearingCentiDeg: nil, altitudeCm: i % 2 == 0 ? -1234 : nil)
   }
   try queue.write { db in
     for i in 0..<count { try insertRideTrackPoint(db, point(i, accuracy: i < prefix ? 2001 : 2000)) }
-    for p in [point(1200, board: "other"), point(1200, recording: "other"),
-      point(1200, recording: nil, accuracy: nil), point(1200, accuracy: nil), point(1200, board: nil)] {
+    for p in [point(1200, board: "other"), point(1200, accuracy: nil), point(1200, board: nil)] {
       try insertRideTrackPoint(db, p)
     }
   }
   let from = base + 1, to = base + Int64((count - 4) / 3)
-  func export(board: String? = "board", recording: String? = "ride", start: Int64? = nil, end: Int64? = nil) throws -> String {
+  func export(board: String? = "board", start: Int64? = nil, end: Int64? = nil) throws -> String {
     var options: [String: Any] = ["fromMs": start ?? from, "toMs": end ?? to, "name": fixture["name"]!]
-    options["boardId"] = board; options["recordingId"] = recording
+    options["boardId"] = board
     let result = try queue.read { try RideExport.gpx($0, directory: directory, options: options) }
     let file = URL(string: result["uri"] as! String)!
     try require(file.deletingLastPathComponent().path == directory.path, "export safe filename")
@@ -51,13 +50,12 @@ func runRideExportContract() throws {
   let small = try export(start: base + 400, end: base + 400)
   try require(occurrences(small, "<trkpt ") == 3 && occurrences(small, "<ele>") == 2, "equal timestamps and optional fields")
   try require(small.contains("<time>2023-11-14T22:13:20.523Z</time>"), "UTC millisecond timestamp")
-  try require(occurrences(export(recording: nil), "<trkpt ") == expected.count + 2, "legacy missing accuracy and Favorite recording range")
   try require(occurrences(export(board: nil), "<trkpt ") == 1, "null Board scope")
   try require(!export(board: "empty").contains("<trkpt "), "empty range exports valid XML")
   let coordinates = fixture["decimalCoordinates"] as! [[String: Any]]
   try queue.write { db in
     for c in coordinates {
-      try insertRideTrackPoint(db, RideTrackPoint(recordingId: "ride", boardId: "decimal", fixAtMs: base,
+      try insertRideTrackPoint(db, RideTrackPoint(boardId: "decimal", fixAtMs: base,
         latitudeE7: (c["latitudeE7"] as! NSNumber).int64Value, longitudeE7: (c["longitudeE7"] as! NSNumber).int64Value,
         accuracyCm: 100, gpsSpeedCentiMps: nil, bearingCentiDeg: nil, altitudeCm: nil))
     }
@@ -82,7 +80,7 @@ func runRideCsvContract() throws {
   let columns = ["speed_centi_kmh", "battery_voltage_mv", "motor_current_ma", "battery_current_ma",
     "duty_permille", "pitch_centi_deg", "roll_centi_deg", "balance_pitch_centi_deg", "balance_current_ma",
     "erpm", "state", "switch_state", "adc1_milli", "adc2_milli", "odometer_cm", "temp_mosfet_deci_c", "temp_motor_deci_c"]
-  func frame(_ db: Database, _ i: Int, board: String? = "board", recording: String? = "ride") throws {
+  func frame(_ db: Database, _ i: Int, board: String? = "board") throws {
     let key = i % (fixture["keyframeEvery"] as! Int) == 0
     var v: [Int64?] = key ? initial.map { $0 } : [Int64?](repeating: nil, count: 17)
     var mask = key ? (1 << 17) - 1 : 1
@@ -95,26 +93,26 @@ func runRideCsvContract() throws {
     case 1003: v[11] = 243; mask |= 1 << 11
     default: break
     }
-    var arguments: [DatabaseValueConvertible?] = [base + Int64(i / 2), i, board, recording, key ? 1 : 0, mask, 0]
+    var arguments: [DatabaseValueConvertible?] = [base + Int64(i / 2), i, board, key ? 1 : 0, mask, 0]
     arguments += v.map { $0 as DatabaseValueConvertible? }
-    try db.execute(sql: "INSERT INTO telemetry_frames (captured_at_ms, elapsed_realtime_ms, board_id, recording_id, flags, changed_mask_1, changed_mask_2, \(columns.joined(separator: ","))) VALUES (\(Array(repeating: "?", count: arguments.count).joined(separator: ",")))", arguments: StatementArguments(arguments))
+    try db.execute(sql: "INSERT INTO telemetry_frames (captured_at_ms, elapsed_realtime_ms, board_id, flags, changed_mask_1, changed_mask_2, \(columns.joined(separator: ","))) VALUES (\(Array(repeating: "?", count: arguments.count).joined(separator: ",")))", arguments: StatementArguments(arguments))
   }
-  func point(_ j: Int, timestamp: Int64? = nil, recording: String? = "ride", accuracy: Int? = 2000) -> RideTrackPoint {
-    RideTrackPoint(recordingId: recording, boardId: "board", fixAtMs: timestamp ?? base + 100 + Int64(j / 2),
+  func point(_ j: Int, timestamp: Int64? = nil, accuracy: Int? = 2000) -> RideTrackPoint {
+    RideTrackPoint(boardId: "board", fixAtMs: timestamp ?? base + 100 + Int64(j / 2),
       latitudeE7: Int64(521234567 + j), longitudeE7: -211234567, accuracyCm: accuracy,
       gpsSpeedCentiMps: 456, bearingCentiDeg: nil, altitudeCm: -1234)
   }
   try queue.write { db in
     for i in 0..<count { try frame(db, i) }
-    try frame(db, 0, board: "other"); try frame(db, 0, recording: "other"); try frame(db, 0, board: nil)
+    try frame(db, 0, board: "other"); try frame(db, 0, board: nil)
     for _ in 0...1100 { try insertRideTrackPoint(db, point(0, timestamp: base + 10, accuracy: 2001)) }
     for j in 0...1005 { try insertRideTrackPoint(db, point(j)) }
-    try insertRideTrackPoint(db, point(0, timestamp: base + 5, recording: nil, accuracy: nil))
+    try insertRideTrackPoint(db, point(0, timestamp: base + 5, accuracy: nil))
     try insertRideTrackPoint(db, point(0, timestamp: base + 2, accuracy: nil))
   }
-  func export(board: String? = "board", recording: String? = "ride", from: Int64? = nil, to: Int64? = nil) throws -> [[String]] {
+  func export(board: String? = "board", from: Int64? = nil, to: Int64? = nil) throws -> [[String]] {
     var options: [String: Any] = ["fromMs": from ?? base + 1, "toMs": to ?? base + Int64((count - 2) / 2)]
-    options["boardId"] = board; options["recordingId"] = recording
+    options["boardId"] = board
     let result = try queue.read { try RideExport.csv($0, directory: directory, options: options) }
     try require(result["mimeType"] as! String == "text/csv" && result["uti"] as! String == "public.comma-separated-values-text", "CSV share types")
     let text = try String(contentsOf: URL(string: result["uri"] as! String)!, encoding: .utf8)
@@ -142,12 +140,11 @@ func runRideCsvContract() throws {
   let unassigned = try export(board: nil, from: base, to: base)
   try require(unassigned.count == 1 && unassigned[0][17..<23].allSatisfy { $0.isEmpty }, "exact null Board and no GPS retains telemetry")
   try require(export(board: "empty").isEmpty, "empty telemetry header only")
-  try require(Int64(export(recording: nil)[0][22])! == base + 5, "legacy missing accuracy accepted")
   try require(export(from: base + 1200, to: base + 1200)[0][3] == "84.25", "predecessor replay across pages")
   try queue.write { db in
     try frame(db, 0)
     try db.execute(sql: "UPDATE telemetry_frames SET captured_at_ms = ?, battery_voltage_mv = 99000 WHERE id = last_insert_rowid()", arguments: [base + 1200])
-    try insertRideTrackPoint(db, RideTrackPoint(recordingId: "ride", boardId: "gps-only", fixAtMs: base + 100,
+    try insertRideTrackPoint(db, RideTrackPoint(boardId: "gps-only", fixAtMs: base + 100,
       latitudeE7: 521234567, longitudeE7: -211234567, accuracyCm: 2000, gpsSpeedCentiMps: nil, bearingCentiDeg: nil, altitudeCm: nil))
   }
   try require(export(from: base + 1200, to: base + 1200).map { $0[3] } == ["84.25", "84.25", "99.0"], "keyframe at start cannot erase earlier equal-time deltas")

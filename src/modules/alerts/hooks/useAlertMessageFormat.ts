@@ -1,5 +1,5 @@
 import { useCallback } from 'react'
-import { useUnitSystem } from '@/hooks/useUnitSystem'
+import { useDistanceUnit } from '@/hooks/useDistanceUnit'
 import type { DerivedBatteryConfig } from '@/modules/battery/lib/types'
 import {
   renderPreviewTemplate,
@@ -8,7 +8,7 @@ import {
 
 /** Format alert speech previews with the rider's current display units. */
 export function useAlertMessageFormat() {
-  const units = useUnitSystem()
+  const distanceUnit = useDistanceUnit()
   return useCallback(
     (
       template: string,
@@ -18,7 +18,15 @@ export function useAlertMessageFormat() {
       controlId: string,
       batteryConfig: DerivedBatteryConfig | null,
     ) =>
-      renderPreviewTemplate(template, threshold, unit, dialConfig, controlId, batteryConfig, units),
-    [units],
+      renderPreviewTemplate(
+        template,
+        threshold,
+        unit,
+        dialConfig,
+        controlId,
+        batteryConfig,
+        distanceUnit,
+      ),
+    [distanceUnit],
   )
 }

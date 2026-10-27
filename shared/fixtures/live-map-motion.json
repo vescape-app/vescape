@@ -1,0 +1,448 @@
+{
+  "scenarios": [
+    {
+      "name": "linear correction without Board and mid-segment retarget",
+      "events": [
+        {
+          "op": "reset",
+          "now": 0,
+          "source": 1
+        },
+        {
+          "op": "fix",
+          "now": 0,
+          "eastM": 0
+        },
+        {
+          "op": "fix",
+          "now": 1000,
+          "eastM": 10
+        },
+        {
+          "op": "sample",
+          "now": 1250,
+          "eastM": 2.5
+        },
+        {
+          "op": "sample",
+          "now": 1500,
+          "eastM": 5
+        },
+        {
+          "op": "fix",
+          "now": 1500,
+          "eastM": 20
+        },
+        {
+          "op": "sample",
+          "now": 1750,
+          "eastM": 8.75,
+          "cadenceMs": 1000
+        }
+      ]
+    },
+    {
+      "name": "braking, lateral correction and bounded overshoot recovery",
+      "events": [
+        {
+          "op": "reset",
+          "now": 0,
+          "source": 1
+        },
+        {
+          "op": "fix",
+          "now": 0,
+          "eastM": 0
+        },
+        {
+          "op": "fix",
+          "now": 1000,
+          "eastM": 10
+        },
+        {
+          "op": "speed",
+          "now": 1000,
+          "mps": 5.555555555555556
+        },
+        {
+          "op": "speed",
+          "now": 1300,
+          "mps": 2.777777777777778
+        },
+        {
+          "op": "sample",
+          "now": 1300,
+          "eastM": 3.833333333333333
+        },
+        {
+          "op": "speed",
+          "now": 1600,
+          "mps": 0
+        },
+        {
+          "op": "sample",
+          "now": 1600,
+          "eastM": 7.25
+        },
+        {
+          "op": "sample",
+          "now": 2000,
+          "eastM": 11.25
+        },
+        {
+          "op": "fix",
+          "now": 2000,
+          "eastM": 10.5,
+          "northM": 1
+        },
+        {
+          "op": "sample",
+          "now": 2500,
+          "eastM": 11.25,
+          "northM": 0.5,
+          "recovering": false
+        },
+        {
+          "op": "fix",
+          "now": 3000,
+          "eastM": 10.5,
+          "northM": 1
+        },
+        {
+          "op": "fix",
+          "now": 4000,
+          "eastM": 10.5,
+          "northM": 1
+        },
+        {
+          "op": "fix",
+          "now": 5000,
+          "eastM": 10.5,
+          "northM": 1
+        },
+        {
+          "op": "sample",
+          "now": 5500,
+          "eastM": 10.875,
+          "northM": 1,
+          "recovering": true
+        },
+        {
+          "op": "sample",
+          "now": 6000,
+          "eastM": 10.5,
+          "northM": 1
+        }
+      ]
+    },
+    {
+      "name": "real reversal and independent longer camera direction window",
+      "events": [
+        {
+          "op": "reset",
+          "now": 0,
+          "source": 1
+        },
+        {
+          "op": "fix",
+          "now": 0,
+          "eastM": 0
+        },
+        {
+          "op": "fix",
+          "now": 1000,
+          "eastM": 10
+        },
+        {
+          "op": "fix",
+          "now": 2000,
+          "eastM": 20
+        },
+        {
+          "op": "sample",
+          "now": 2000,
+          "eastM": 10,
+          "heading": 90,
+          "cameraHeading": 90
+        },
+        {
+          "op": "fix",
+          "now": 3000,
+          "eastM": 10
+        },
+        {
+          "op": "speed",
+          "now": 3000,
+          "mps": -5
+        },
+        {
+          "op": "sample",
+          "now": 3250,
+          "eastM": 16.875,
+          "heading": 270,
+          "cameraHeading": 270
+        }
+      ]
+    },
+    {
+      "name": "invalid fixes do not anchor cadence; gap clears direction",
+      "events": [
+        {
+          "op": "reset",
+          "now": 0,
+          "source": 1
+        },
+        {
+          "op": "fix",
+          "now": 0,
+          "eastM": 0
+        },
+        {
+          "op": "fix",
+          "now": 1000,
+          "eastM": 10
+        },
+        {
+          "op": "fix",
+          "now": 1500,
+          "eastM": 999,
+          "accuracyM": 100,
+          "accepted": false
+        },
+        {
+          "op": "fix",
+          "now": 1600,
+          "eastM": 9,
+          "timestamp": 900,
+          "accepted": false
+        },
+        {
+          "op": "fix",
+          "now": 1800,
+          "eastM": 999,
+          "timestamp": 1700,
+          "ageMs": 4000,
+          "accepted": false
+        },
+        {
+          "op": "fix",
+          "now": 2000,
+          "eastM": 20
+        },
+        {
+          "op": "sample",
+          "now": 2500,
+          "eastM": 15,
+          "cadenceMs": 1000
+        },
+        {
+          "op": "fix",
+          "now": 10000,
+          "eastM": 100
+        },
+        {
+          "op": "sample",
+          "now": 10500,
+          "eastM": 60,
+          "heading": null,
+          "cadenceMs": 1000
+        }
+      ]
+    },
+    {
+      "name": "clustered noise expires direction, slow travel recovers, unknown heading holds",
+      "events": [
+        {
+          "op": "reset",
+          "now": 0,
+          "source": 1
+        },
+        {
+          "op": "fix",
+          "now": 0,
+          "eastM": 0
+        },
+        {
+          "op": "fix",
+          "now": 1000,
+          "eastM": 10
+        },
+        {
+          "op": "sample",
+          "now": 1000,
+          "heading": 90,
+          "cameraHeading": 90
+        },
+        {
+          "op": "fix",
+          "now": 2000,
+          "eastM": 10.2
+        },
+        {
+          "op": "fix",
+          "now": 3000,
+          "eastM": 9.8
+        },
+        {
+          "op": "sample",
+          "now": 3000,
+          "heading": null,
+          "cameraHeading": 90
+        },
+        {
+          "op": "fix",
+          "now": 4000,
+          "eastM": 10.2
+        },
+        {
+          "op": "fix",
+          "now": 5000,
+          "eastM": 9.8
+        },
+        {
+          "op": "fix",
+          "now": 6000,
+          "eastM": 10.2
+        },
+        {
+          "op": "fix",
+          "now": 7000,
+          "eastM": 11
+        },
+        {
+          "op": "fix",
+          "now": 8000,
+          "eastM": 12.5
+        },
+        {
+          "op": "sample",
+          "now": 8000,
+          "heading": 90
+        }
+      ]
+    },
+    {
+      "name": "settings and speed expiry preserve correction clock",
+      "events": [
+        {
+          "op": "reset",
+          "now": 0,
+          "source": 1
+        },
+        {
+          "op": "fix",
+          "now": 0,
+          "eastM": 0
+        },
+        {
+          "op": "fix",
+          "now": 1000,
+          "eastM": 10
+        },
+        {
+          "op": "speed",
+          "now": 1000,
+          "mps": 5.555555555555556
+        },
+        {
+          "op": "config",
+          "now": 1500,
+          "predictionStrength": 0
+        },
+        {
+          "op": "sample",
+          "now": 1500,
+          "eastM": 6.388888888888889,
+          "prediction": 0
+        },
+        {
+          "op": "sample",
+          "now": 2000,
+          "eastM": 11.38888888888889
+        },
+        {
+          "op": "sample",
+          "now": 10000,
+          "eastM": 11.38888888888889
+        },
+        {
+          "op": "reset",
+          "now": 11000,
+          "source": 2
+        },
+        {
+          "op": "fix",
+          "now": 11000,
+          "eastM": 999,
+          "source": 1,
+          "accepted": false
+        },
+        {
+          "op": "speed",
+          "now": 11000,
+          "mps": 50,
+          "source": 1,
+          "accepted": false
+        },
+        {
+          "op": "fix",
+          "now": 11000,
+          "eastM": 50,
+          "timestamp": 0
+        },
+        {
+          "op": "sample",
+          "now": 12000,
+          "eastM": 50,
+          "heading": null
+        }
+      ]
+    },
+    {
+      "name": "genuine half-metre-per-second movement accumulates across the recent window",
+      "events": [
+        {
+          "op": "reset",
+          "now": 0,
+          "source": 1
+        },
+        {
+          "op": "fix",
+          "now": 0,
+          "eastM": 0.0
+        },
+        {
+          "op": "fix",
+          "now": 1000,
+          "eastM": 0.5
+        },
+        {
+          "op": "fix",
+          "now": 2000,
+          "eastM": 1.0
+        },
+        {
+          "op": "fix",
+          "now": 3000,
+          "eastM": 1.5
+        },
+        {
+          "op": "fix",
+          "now": 4000,
+          "eastM": 2.0
+        },
+        {
+          "op": "fix",
+          "now": 5000,
+          "eastM": 2.5
+        },
+        {
+          "op": "sample",
+          "now": 5000,
+          "heading": 90,
+          "cameraHeading": 90
+        }
+      ]
+    }
+  ]
+}

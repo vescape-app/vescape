@@ -2,8 +2,6 @@ import Mapbox, { Camera } from '@rnmapbox/maps'
 import { Fragment, type ComponentProps, type ComponentRef, type RefObject } from 'react'
 import { ActivityIndicator, Animated, Pressable, StyleSheet, Text, View } from 'react-native'
 
-import { useAppActive } from '@/hooks/useAppActive'
-import { useGpsDisplayAnimator } from '@/modules/map/hooks/useGpsDisplayAnimator'
 import { theme } from '@/constants/theme'
 import { PhoneHeadingMapLayer } from '@/modules/map/components/PhoneHeadingMapLayer'
 import { MAP_DEFAULTS } from '@/modules/map/constants/mapStyles'
@@ -22,6 +20,9 @@ type OverlayProps = ComponentProps<typeof MainMapOverlays>
 type MapViewProps = ComponentProps<typeof Mapbox.MapView>
 
 interface MainMapSceneProps {
+  pointAnimator: LayerProps['pointAnimator']
+  displayActive: boolean
+  displayRuntime: LayerProps['displayRuntime']
   mapOpacity: Animated.Value
   onLayout: ComponentProps<typeof Animated.View>['onLayout']
   onTouchStart: ComponentProps<typeof Animated.View>['onTouchStart']
@@ -75,6 +76,9 @@ interface MainMapSceneProps {
 }
 
 export function MainMapScene({
+  pointAnimator,
+  displayRuntime,
+  displayActive,
   mapOpacity,
   onLayout,
   onTouchStart,
@@ -126,13 +130,6 @@ export function MainMapScene({
   onFocusDirectionPoint,
   overlays,
 }: MainMapSceneProps) {
-  // Position has one owner across GPS/phone heading, north-up, free rotation and free pan.
-  // Compass subscription and camera following never select or drive this animator.
-  const appActive = useAppActive()
-  const gpsPositionAnimator = useGpsDisplayAnimator(
-    accuracyFix?.displayMotion,
-    appActive && !historyActive,
-  )
   return (
     <Animated.View
       style={[styles.container, { opacity: mapOpacity }]}
@@ -186,15 +183,17 @@ export function MainMapScene({
               satelliteRoadLineOpacity={mapStyle.satelliteRoadLineOpacity}
             />
             <PhoneHeadingMapLayer
-              active={!historyActive && !gpsHeadingMode}
+              pointAnimator={pointAnimator}
+              active={displayActive && !historyActive && !gpsHeadingMode}
               followCamera={phoneHeadingMode && followGps}
-              coordinate={accuracyFix}
-              positionAnimator={gpsPositionAnimator}
+              hasPosition={accuracyFix != null}
               onFollowHeading={onPhoneFollowHeading}
               onHeadingChange={onPhoneHeadingChange}
               onStatusChange={onPhoneHeadingStatusChange}
             />
             <MainMapLayers
+              pointAnimator={pointAnimator}
+              displayRuntime={displayRuntime}
               historyActive={historyActive}
               expandSelectedMapPoints={mode === 'map'}
               isMapy={mapStyle.isMapy}
@@ -206,7 +205,6 @@ export function MainMapScene({
               liveTrailShape={liveTrailShape}
               rideRouteShape={rideRouteShape}
               accuracyFix={accuracyFix}
-              gpsPositionAnimator={gpsPositionAnimator}
               accuracyShape={accuracyShape}
               gpsPuckBearingDeg={gpsPuckBearingDeg}
               riders={riders}

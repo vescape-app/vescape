@@ -20,6 +20,8 @@ import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.semantics.clearAndSetSemantics
+import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -181,8 +183,8 @@ internal fun FrameLayout(
             ) {
                 // Ambient keeps the slots, the sizes and the units, and only drains the colour, so
                 // waking lights the numbers where they already were instead of rebuilding the screen.
-                LargeGaugeValue(Modifier.weight(1f), heroValue(frame.speed?.let { UnitPresentation.speedFromKmh(it, SettingsState.settings.value.unitSystem) }, ambientBlind), UnitPresentation.speedUnit(SettingsState.settings.value.unitSystem), speedColor)
-                LargeGaugeValue(Modifier.weight(1f), heroValue(frame.duty, ambientBlind), "%", dutyColor)
+                LargeGaugeValue(Modifier.weight(1f), if (muted) "Stale Speed" else "Speed", heroValue(frame.speed?.let { UnitPresentation.speedFromKmh(it, SettingsState.settings.value.distanceUnit) }, ambientBlind), UnitPresentation.speedUnit(SettingsState.settings.value.distanceUnit), speedColor)
+                LargeGaugeValue(Modifier.weight(1f), if (muted) "Stale Duty" else "Duty", heroValue(frame.duty, ambientBlind), "%", dutyColor)
             }
 
             // ── Bottom: battery % above the bottom gauge ──
@@ -300,8 +302,8 @@ private fun DrawScope.drawGauge(
 
 /** Larger centered hero value + unit for speed and duty. */
 @Composable
-private fun LargeGaugeValue(modifier: Modifier, value: String, unit: String, color: Color) {
-    Column(modifier = modifier, horizontalAlignment = Alignment.CenterHorizontally) {
+private fun LargeGaugeValue(modifier: Modifier, label: String, value: String, unit: String, color: Color) {
+    Column(modifier = modifier.clearAndSetSemantics { contentDescription = "$label $value $unit" }, horizontalAlignment = Alignment.CenterHorizontally) {
         Text(text = value, style = WatchTypography.mono(MaterialTheme.typography.display1), color = color)
         Text(text = unit, style = WatchTypography.mono(MaterialTheme.typography.caption3), color = SecondaryText)
     }

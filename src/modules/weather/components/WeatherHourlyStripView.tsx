@@ -4,7 +4,8 @@ import { Text } from '@/components/base/Text'
 
 import { WeatherIcon } from '@/modules/weather/components/WeatherIcon'
 import { theme } from '@/constants/theme'
-import { formatHour, weatherIconColor } from '@/modules/weather/lib/weather'
+import { formatHour } from '@/helpers/format'
+import { weatherIconColor } from '@/modules/weather/lib/weather'
 
 function HourItem({ item }: { item: WeatherHour }) {
   return (

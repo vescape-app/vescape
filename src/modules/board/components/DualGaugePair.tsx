@@ -1,4 +1,4 @@
-import { useUnitSystem } from '@/hooks/useUnitSystem'
+import { useDistanceUnit } from '@/hooks/useDistanceUnit'
 import { speedFromKmh, speedUnit } from '@/helpers/units'
 import { useMemo, type ReactNode } from 'react'
 import { Pressable, StyleSheet, View } from 'react-native'
@@ -307,7 +307,7 @@ export function GaugePair({
   onPressSpeed,
   onPressDuty,
 }: GaugePairProps) {
-  const units = useUnitSystem()
+  const distanceUnit = useDistanceUnit()
   const telemetryColors = useResolvedTelemetryColors()
   const { size, onLayout } = useCanvasSize()
   const cellWidth = Math.max(0, (size.w - ARC_GAP) / 2)
@@ -348,11 +348,11 @@ export function GaugePair({
             value={speedValue}
             max={speedMax}
             color={telemetryColors.speed}
-            unit={speedUnit(units)}
+            unit={speedUnit(distanceUnit)}
             alerts={speedAlerts}
             hotRange={speedHotRange}
             peak={speedPeak}
-            displayScale={speedFromKmh(1, units)}
+            displayScale={speedFromKmh(1, distanceUnit)}
             transform={leftTransform}
           />
           <QuarterArcLayer
@@ -367,10 +367,10 @@ export function GaugePair({
             transform={rightTransform}
           />
           <GaugeValueLayer
-            displayScale={speedFromKmh(1, units)}
+            displayScale={speedFromKmh(1, distanceUnit)}
             value={speedValue}
             color={telemetryColors.speed}
-            unit={speedUnit(units)}
+            unit={speedUnit(distanceUnit)}
             hotRange={speedHotRange}
             box={{ ...bowl, x: size.w * 0.05 }}
           />

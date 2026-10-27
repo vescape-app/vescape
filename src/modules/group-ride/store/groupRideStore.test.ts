@@ -20,7 +20,6 @@ const leaveGroupRide = mock(() => {})
 const updateGroupRideIdentity = mock(() => {})
 const startGroupRideObserve = mock(() => {})
 const stopGroupRideObserve = mock(() => {})
-const playGroupRideSound = mock(() => {})
 const getSettings = mock(
   async (): Promise<{
     riderId: string | null
@@ -108,14 +107,11 @@ beforeEach(async () => {
   updateGroupRideIdentity.mockClear()
   startGroupRideObserve.mockClear()
   stopGroupRideObserve.mockClear()
-  playGroupRideSound.mockClear()
   getSettings.mockReset()
   getSettings.mockImplementation(async () => ({ riderId: null, riderName: null }))
   updateSetting.mockReset()
   updateSetting.mockImplementation(async () => {})
-  const { setGroupRideSoundPlayer, useGroupRideStore } =
-    await import('@/modules/group-ride/store/groupRideStore')
-  setGroupRideSoundPlayer(playGroupRideSound)
+  const { useGroupRideStore } = await import('@/modules/group-ride/store/groupRideStore')
   const { useRiderStore } = await import('@/modules/group-ride/store/riderStore')
   useGroupRideStore.setState({
     connection: 'idle',
@@ -365,25 +361,4 @@ test('selected Board rail color follows Board and appearance; no Board clears it
   useThemeStore.setState({ resolvedTheme: 'light' })
   useBoardStore.setState({ activeBoardId: null })
   expect(selectedBoardRailColor(useThemeStore.getState().resolvedTheme)).toBeNull()
-})
-
-test('new nearby ride and new roster member request their sounds once', async () => {
-  const { useGroupRideStore } = await import('@/modules/group-ride/store/groupRideStore')
-  const { useRiderStore } = await import('@/modules/group-ride/store/riderStore')
-  useRiderStore.setState({ riderId: 'self' })
-  useGroupRideStore.setState({ ownLocation: { lat: 1, lng: 2 } })
-  useGroupRideStore.getState().startObserving()
-
-  createdListeners.forEach((listener) => listener({ ride: ride('new') }))
-  createdListeners.forEach((listener) => listener({ ride: ride('new') }))
-  expect(playGroupRideSound).toHaveBeenCalledTimes(1)
-  expect(playGroupRideSound).toHaveBeenCalledWith('created')
-
-  const self = { id: 'self', name: 'Me', color: null, presence: null, stale: false, lastSeen: 1 }
-  const peer = { ...self, id: 'peer', name: 'Peer' }
-  useGroupRideStore.setState({ activeRideId: 'new', roster: [self] })
-  rosterListeners.forEach((listener) => listener({ rideId: 'new', riders: [self, peer] }))
-  rosterListeners.forEach((listener) => listener({ rideId: 'new', riders: [self, peer] }))
-  expect(playGroupRideSound).toHaveBeenCalledTimes(2)
-  expect(playGroupRideSound).toHaveBeenLastCalledWith('join')
 })

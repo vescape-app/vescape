@@ -106,7 +106,7 @@ class WatchMirrorIntakeTest {
     fun `disconnect clears hot status and group while cold channels survive for reconnect`() {
         val intake = WatchMirrorIntake()
         intake.acceptRoute(WatchMirrorReplayAdapter.route(route, origin))
-        intake.acceptSettings(mapOf(SETTING_UNIT_SYSTEM to "imperial"))
+        intake.acceptSettings(mapOf(SETTING_DISTANCE_UNIT to "mi"))
         intake.frame(at = 1_000)
         intake.acceptRouteStatus(WatchRouteStatusCodec.encode(WatchRouteStatus(WatchRoutePhase.COMPUTING)))
         intake.acceptGroupRide(GroupRideFrameCodec.encode(GroupRideFrame(90.0, 600.0, emptyList())), 1_000)
@@ -118,7 +118,7 @@ class WatchMirrorIntakeTest {
         assertNull(intake.groupRide)
         assertNull(intake.routeStatus)
         assertNotNull(intake.route)
-        assertEquals("imperial", intake.settings.unitSystem)
+        assertEquals("mi", intake.settings.distanceUnit)
         intake.frame(at = 6_000)
         intake.acceptGroupRide(GroupRideFrameCodec.encode(GroupRideFrame(null, 600.0, emptyList())), 6_000)
         assertEquals(0.0, intake.groupRide!!.courseDeg, 0.0)

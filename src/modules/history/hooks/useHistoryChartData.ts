@@ -1,4 +1,4 @@
-import { useUnitSystem } from '@/hooks/useUnitSystem'
+import { useDistanceUnit } from '@/hooks/useDistanceUnit'
 import { useMemo } from 'react'
 
 import { computeAutoRangeFromValues, toExcludedRanges } from '@/components/charts/chartMath'
@@ -365,9 +365,9 @@ export function useHistoryChartStack({
   metricHeight = METRIC_CHART_HEIGHT,
   gpsGapBands,
 }: HistoryChartStackInput): ChartSpec[] {
-  const units = useUnitSystem()
+  const distanceUnit = useDistanceUnit()
   return useMemo(() => {
-    const speedPresentation = historyChartPresentation('speed', units)
+    const speedPresentation = historyChartPresentation('speed', distanceUnit)
     const speed: ChartSpec = {
       key: 'speed',
       label: SPEED_CHART_DEF.label,
@@ -422,13 +422,13 @@ export function useHistoryChartStack({
                     key: def.key,
                     data: extraSeries[def.key],
                     color: def.color,
-                    ...historyChartPresentation(def.key, units),
+                    ...historyChartPresentation(def.key, distanceUnit),
                     decimals: def.decimals,
                   },
                 ],
                 left: {
                   range: extraRanges[def.key],
-                  displayScale: historyChartPresentation(def.key, units).displayScale,
+                  displayScale: historyChartPresentation(def.key, distanceUnit).displayScale,
                 },
               }) satisfies ChartSpec,
           )
@@ -448,7 +448,7 @@ export function useHistoryChartStack({
     series,
     speedHeight,
     speedOptional,
-    units,
+    distanceUnit,
   ])
 }
 

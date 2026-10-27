@@ -31,7 +31,7 @@ final class FavoriteStoreTests: XCTestCase {
     try database.write { db in
       for index in 0..<(MAX_SAMPLE_LIMIT + 2) {
         try insertRideTrackPoint(db, RideTrackPoint(
-          recordingId: "recording-1", boardId: "board-1",
+          boardId: "board-1",
           fixAtMs: Int64(index) * 60_000, latitudeE7: 500_000_000, longitudeE7: 190_000_000,
           accuracyCm: 300, gpsSpeedCentiMps: index >= MAX_SAMPLE_LIMIT ? 1_000 : 0,
           bearingCentiDeg: nil, altitudeCm: nil

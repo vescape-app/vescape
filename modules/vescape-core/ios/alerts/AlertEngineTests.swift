@@ -10,10 +10,9 @@ final class AlertEngineTests: XCTestCase {
     controlId: String = "duty",
     threshold: Double = 70.0,
     thresholdMax: Double? = nil,
-    soundType: String = "default",
+    spec: String = "default",
     repeatEverySeconds: Int64? = nil,
-    beepCount: Int = alertBeepCountDefault
-    , thresholdKind: String = "fixed", configFieldId: String? = nil,
+    thresholdKind: String = "fixed", configFieldId: String? = nil,
     thresholdOffset: Double? = nil, thresholdMaxOffset: Double? = nil
   ) -> AlertRule {
     AlertRule(
@@ -25,11 +24,9 @@ final class AlertEngineTests: XCTestCase {
       thresholdKind: thresholdKind, configFieldId: configFieldId,
       thresholdOffset: thresholdOffset, thresholdMaxOffset: thresholdMaxOffset,
       enabled: true,
-      soundType: soundType,
+      spec: spec,
       createdAt: 0,
-      repeatEverySeconds: repeatEverySeconds,
-      beepCount: beepCount,
-      source: nil
+      repeatEverySeconds: repeatEverySeconds
     )
   }
 
@@ -128,8 +125,7 @@ final class AlertEngineTests: XCTestCase {
     XCTAssertEqual("speed", rules[0].controlId)
     XCTAssertEqual(15, rules[0].threshold)
     XCTAssertEqual(20, rules[0].thresholdMax)
-    XCTAssertEqual("preset:tick", rules[0].soundType)
-    XCTAssertNil(rules[0].source)
+    XCTAssertEqual("geiger:soft", rules[0].spec)
   }
 
   func testLegalModeOverlayUsesLatestSpeedSettings() {
@@ -563,26 +559,11 @@ final class AlertEngineTests: XCTestCase {
     XCTAssertEqual(2, fired.count)
   }
 
-  func testBeepCountReachesTheFiredAlert() {
-    let fired = engine.evaluate(
-      rules: [rule(threshold: 60.0, beepCount: 2)],
-      telemetry: telemetry(dutyCycle: 0.66)
-    )
-
-    XCTAssertEqual(2, fired[0].beepCount)
-  }
-
   func testRepeatCadenceIsFlooredWhateverJsAsksFor() {
     XCTAssertEqual(alertRepeatMinSeconds, normalizedAlertRepeatSeconds(0.5))
     XCTAssertNil(normalizedAlertRepeatSeconds(0.0))
     XCTAssertNil(normalizedAlertRepeatSeconds(nil))
     XCTAssertEqual(30, normalizedAlertRepeatSeconds(30.0))
-  }
-
-  func testBeepCountIsClampedToItsRange() {
-    XCTAssertEqual(alertBeepCountRange.upperBound, normalizedAlertBeepCount(99))
-    XCTAssertEqual(alertBeepCountRange.lowerBound, normalizedAlertBeepCount(0))
-    XCTAssertEqual(alertBeepCountDefault, normalizedAlertBeepCount(nil))
   }
 }
 
@@ -600,9 +581,8 @@ final class AlertTemplateTests: XCTestCase {
       value: value,
       threshold: threshold,
       thresholdMax: thresholdMax,
-      soundType: "tts:test",
+      spec: "tts:test",
       rangeDepth: nil,
-      beepCount: alertBeepCountDefault,
       firedAt: 0
     )
   }
@@ -611,9 +591,9 @@ final class AlertTemplateTests: XCTestCase {
     let sample = alert(controlId: "speed", value: 40.2336, threshold: 40.0)
     let template = "{value} {unit} over {threshold} {unit}; literal km/h"
     XCTAssertEqual("25 mph over 25 mph; literal km/h",
-      renderAlertMessageTemplate(template, alert: sample, batteryPercent: nil, unitSystem: "imperial"))
+      renderAlertMessageTemplate(template, alert: sample, batteryPercent: nil, distanceUnit: "mi"))
     XCTAssertEqual("40 km/h over 40 km/h; literal km/h",
-      renderAlertMessageTemplate(template, alert: sample, batteryPercent: nil, unitSystem: "metric"))
+      renderAlertMessageTemplate(template, alert: sample, batteryPercent: nil, distanceUnit: "km"))
     XCTAssertEqual(40.0, sample.threshold)
   }
 

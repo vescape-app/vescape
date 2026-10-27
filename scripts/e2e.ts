@@ -1,114 +1,93 @@
-import { readdirSync } from 'fs'
-import { basename, join } from 'path'
+import { join } from 'path'
 import { applicationId } from '../src/config/appVariant.ts'
 import { maestroCommand } from './lib/maestro.ts'
-import { select, SelectCancelled } from './lib/select.ts'
 
 const ROOT = join(import.meta.dir, '..')
-const FLOWS_DIR = join(ROOT, 'e2e', 'flows')
-const LEGACY_ALL_FLOW = 'e2e'
 
-type Args = {
-  all: boolean
-  flow: string | null
-}
-
-function readArgs(argv: string[]): Args {
-  const args: Args = { all: false, flow: null }
-
-  for (let index = 0; index < argv.length; index += 1) {
-    const arg = argv[index]
-    if (arg === '--all') {
-      args.all = true
-      continue
+/** Wait for this run's Metro to have a connected app, not just an open HTTP port. */
+export async function waitForApp(
+  port: number,
+  setup: { exitCode: number | null },
+  signal: AbortSignal,
+  timeoutMs = 15 * 60_000,
+): Promise<void> {
+  const deadline = Date.now() + timeoutMs
+  while (Date.now() < deadline) {
+    signal.throwIfAborted()
+    if (setup.exitCode !== null) {
+      throw new Error(`Android E2E setup exited before the app connected (exit ${setup.exitCode}).`)
     }
-    if (arg === '--flow') {
-      const value = argv[index + 1]
-      if (!value) throw new Error('Missing value for --flow')
-      args.flow = value
-      index += 1
-      continue
+    try {
+      const response = await fetch(`http://127.0.0.1:${port}/json/list`, {
+        signal: AbortSignal.any([signal, AbortSignal.timeout(2000)]),
+      })
+      const targets = (await response.json()) as { appId?: string }[]
+      if (targets.some((target) => target.appId === applicationId)) return
+    } catch {
+      // Metro may not exist yet while Android is building.
     }
-    if (arg.startsWith('--flow=')) {
-      args.flow = arg.slice('--flow='.length)
-      continue
-    }
-    throw new Error(`Unknown argument: ${arg}`)
+    await Bun.sleep(500)
   }
-
-  if (args.all && args.flow) throw new Error('Use --all or --flow, not both')
-  return args
+  throw new Error('Timed out waiting for the Android E2E app to connect to Metro.')
 }
 
-function listFlows(): string[] {
-  return readdirSync(FLOWS_DIR)
-    .filter((file) => file.endsWith('.yaml'))
-    .filter((file) => !file.startsWith('_'))
-    .map((file) => basename(file, '.yaml'))
-    .filter((flow) => flow !== LEGACY_ALL_FLOW)
-    .sort()
-}
-
-async function chooseFlow(flows: string[]): Promise<string> {
-  return select('E2E flow', [
-    { label: 'all', value: 'all', hint: `${flows.length} flows` },
-    ...flows.map((flow) => ({ label: flow, value: flow })),
-  ])
-}
-
-function flowPath(flow: string): string {
-  return join(FLOWS_DIR, `${flow}.yaml`)
-}
-
-async function runFlow(flow: string): Promise<void> {
-  const proc = Bun.spawn(
-    await maestroCommand(
-      'test',
-      '-e',
-      `APP_ID=${applicationId}`,
-      '-e',
-      `E2E_FLOW=${flow}`,
-      flowPath(flow),
-    ),
-    {
+async function main(): Promise<void> {
+  // Fail before building if the test CLI is missing or has the wrong version.
+  await maestroCommand()
+  const reservation = Bun.serve({ port: 0, hostname: '127.0.0.1', fetch: () => new Response() })
+  const port = reservation.port!
+  await reservation.stop(true)
+  const env = { ...process.env, E2E_METRO_PORT: String(port) }
+  const children: Bun.Subprocess[] = []
+  const abort = new AbortController()
+  const interrupt = () => abort.abort(new Error('E2E interrupted.'))
+  process.on('SIGINT', interrupt)
+  process.on('SIGTERM', interrupt)
+  const start = (command: string[]) => {
+    const child = Bun.spawn(command, {
       cwd: ROOT,
+      env,
+      stdin: 'inherit',
       stdout: 'inherit',
       stderr: 'inherit',
-      stdin: 'inherit',
-    },
-  )
-  const code = await proc.exited
-  if (code !== 0) process.exit(code)
-}
-
-async function runAll(flows: string[]): Promise<void> {
-  for (const flow of flows) {
-    await runFlow(flow)
+      detached: true,
+    })
+    children.push(child)
+    return child
   }
+  try {
+    console.log(`› Preparing Android E2E with its own Metro on port ${port}…`)
+    const setup = start(['bun', 'run', 'android:e2e', '--port', String(port)])
+    await waitForApp(port, setup, abort.signal)
+    abort.signal.throwIfAborted()
+    console.log('› App connected. Running E2E flows…')
+    const tests = start(['bun', 'run', 'e2e:run', ...Bun.argv.slice(2)])
+    const code = await Promise.race([
+      tests.exited,
+      new Promise<never>((_, reject) => {
+        abort.signal.addEventListener('abort', () => reject(abort.signal.reason), { once: true })
+      }),
+    ])
+    process.exitCode = code
+  } finally {
+    console.log('› Stopping E2E processes…')
+    for (const child of children.reverse()) {
+      try {
+        // Expo and Maestro have descendants. Stop only process groups owned by this run.
+        process.kill(-child.pid, 'SIGTERM')
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code !== 'ESRCH') throw error
+      }
+    }
+    process.off('SIGINT', interrupt)
+    process.off('SIGTERM', interrupt)
+  }
+  if (process.exitCode === 0) console.log('E2E passed.')
 }
 
-let args: Args
-try {
-  args = readArgs(Bun.argv.slice(2))
-} catch (error) {
-  console.error(error instanceof Error ? error.message : String(error))
-  process.exit(1)
-}
-
-const flows = listFlows()
-let flow: string
-try {
-  flow = args.all ? 'all' : (args.flow ?? (await chooseFlow(flows)))
-} catch (error) {
-  if (error instanceof SelectCancelled) process.exit(130)
-  throw error
-}
-
-if (flow === 'all') {
-  await runAll(flows)
-} else if (!flows.includes(flow)) {
-  console.error(`Unknown flow "${flow}". Available: ${flows.join(', ')}`)
-  process.exit(1)
-} else {
-  await runFlow(flow)
+if (import.meta.main) {
+  main().catch((error: unknown) => {
+    console.error(error instanceof Error ? error.message : String(error))
+    process.exitCode = 1
+  })
 }

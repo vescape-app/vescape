@@ -8,30 +8,18 @@ import org.junit.Test
 
 class HistoryGpsProjectionTest {
   @Test
-  fun routePayloadPreservesRecordingIdentityAndLegacyNull() {
-    val maps = listOf(
-      point(1L, 1_000L, recordingId = "ride-a"),
-      point(2L, 2_000L, recordingId = "ride-b"),
-      point(3L, 3_000L, recordingId = null),
-    ).toGpsSampleMaps(mapOf("board-1" to "Board"))
-
-    assertEquals(listOf("ride-a", "ride-b", null), maps.map { it["recordingId"] })
-    assertTrue(maps[2].containsKey("recordingId"))
-  }
-
-  @Test
-  fun measuresDistanceOnlyWithinOneRecording() {
+  fun measuresDistanceAcrossABoardDropout() {
     val track = listOf(
-      point(1L, 1_000L, latitudeE7 = 500_000_000, recordingId = "a"),
-      point(2L, 2_000L, latitudeE7 = 500_010_000, recordingId = "a"),
-      point(3L, 3_000L, latitudeE7 = 500_020_000, recordingId = "b"),
+      point(1L, 1_000L, latitudeE7 = 500_000_000),
+      point(2L, 2_000L, latitudeE7 = 500_010_000),
+      point(3L, 600_000L, latitudeE7 = 500_020_000),
     )
 
     val points = track.toRideTrackProjection()
 
-    assertNull("first fix of a recording has no predecessor", points[0].distanceFromPreviousCm)
+    assertNull("first fix has no predecessor", points[0].distanceFromPreviousCm)
     assertTrue((points[1].distanceFromPreviousCm ?: 0L) > 0L)
-    assertNull("a new recording never continues the previous track", points[2].distanceFromPreviousCm)
+    assertTrue("ride boundaries are not the projection's concern", (points[2].distanceFromPreviousCm ?: 0L) > 0L)
   }
 
   /** A poor fix stays stored, but the route stream JS reads never contains it. */
@@ -98,16 +86,13 @@ class HistoryGpsProjectionTest {
     assertEquals(500, bucketPoint.gpsSpeedCentiMps)
   }
 
-  /**
-   * All migrated fixes carry a null recording, so recording equality alone makes every legacy pair
-   * "the same recording" — chaining a haversine step from one Board's fix to another's.
-   */
+  /** A haversine step is only ever chained between two fixes of one Board. */
   @Test
   fun neverChainsLegacyDistanceAcrossBoards() {
     val track = listOf(
-      point(1L, 1_000L, latitudeE7 = 500_000_000, recordingId = null, boardId = "board-a"),
-      point(2L, 1_500L, latitudeE7 = 520_000_000, recordingId = null, boardId = "board-b"),
-      point(3L, 2_000L, latitudeE7 = 500_010_000, recordingId = null, boardId = "board-a"),
+      point(1L, 1_000L, latitudeE7 = 500_000_000, boardId = "board-a"),
+      point(2L, 1_500L, latitudeE7 = 520_000_000, boardId = "board-b"),
+      point(3L, 2_000L, latitudeE7 = 500_010_000, boardId = "board-a"),
     )
 
     val points = track.toRideTrackProjection()
@@ -118,17 +103,11 @@ class HistoryGpsProjectionTest {
     assertTrue("board A continues its own track", step in 1L..20_000L)
   }
 
-  /**
-   * A legacy row was persisted through the old write-time precision gate, so a missing accuracy on
-   * it means "precise", not "unknown". A live fix with no accuracy is genuinely unknown.
-   */
+  /** A fix without reported accuracy is unknown, not precise (migration 52 stamps legacy rows). */
   @Test
-  fun readsMigratedFixesWithoutAccuracyAsPrecise() {
-    val legacy = point(1L, 1_000L, accuracyCm = null, recordingId = null)
-    val live = point(2L, 2_000L, accuracyCm = null, recordingId = "recording-1")
-
-    assertTrue(legacy.isPrecise())
-    assertFalse(live.isPrecise())
+  fun readsFixesWithoutAccuracyAsImprecise() {
+    assertFalse(point(1L, 1_000L, accuracyCm = null).isPrecise())
+    assertTrue(point(2L, 2_000L, accuracyCm = RIDE_TRACK_PRECISE_ACCURACY_CM).isPrecise())
   }
 
   private fun point(
@@ -138,11 +117,9 @@ class HistoryGpsProjectionTest {
     longitudeE7: Int = 190_000_000,
     accuracyCm: Int? = 300,
     gpsSpeedCentiMps: Int? = null,
-    recordingId: String? = "recording-1",
     boardId: String? = "board-1",
   ): RideTrackPointEntity = RideTrackPointEntity(
     id = id,
-    recordingId = recordingId,
     boardId = boardId,
     fixAtMs = fixAtMs,
     latitudeE7 = latitudeE7,

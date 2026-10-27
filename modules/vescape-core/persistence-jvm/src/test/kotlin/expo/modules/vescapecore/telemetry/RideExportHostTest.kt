@@ -25,7 +25,7 @@ class RideExportHostTest {
     val reader = db
     try {
       val dao = db.telemetryDao()
-      fun point(i: Int) = RideTrackPointEntity(recordingId = "ride", boardId = "board", fixAtMs = i.toLong(),
+      fun point(i: Int) = RideTrackPointEntity(boardId = "board", fixAtMs = i.toLong(),
         latitudeE7 = i, longitudeE7 = -i, accuracyCm = 100,
         gpsSpeedCentiMps = null, bearingCentiDeg = null, altitudeCm = null)
       val count = RideExport.BATCH_SIZE * 2 + 1
@@ -47,12 +47,12 @@ class RideExportHostTest {
           super.write(text)
         }
       }
-      RideExport.snapshot(reader) { RideExport.writeGpx(it, writer, 0, count.toLong(), "board", "ride", "Snapshot") }
+      RideExport.snapshot(reader) { RideExport.writeGpx(it, writer, 0, count.toLong(), "board", "Snapshot") }
       recording.await()
       assertEquals(count, "<trkpt ".toRegex().findAll(writer.toString()).count())
       // A fresh snapshot sees the committed write that the held snapshot excluded from later pages.
       val fresh = StringWriter()
-      RideExport.snapshot(reader) { RideExport.writeGpx(it, fresh, 0, count.toLong(), "board", "ride", "Fresh") }
+      RideExport.snapshot(reader) { RideExport.writeGpx(it, fresh, 0, count.toLong(), "board", "Fresh") }
       assertEquals(count + 1, "<trkpt ".toRegex().findAll(fresh.toString()).count())
     } finally { db.close(); dir.deleteRecursively() }
   }
@@ -82,23 +82,23 @@ class RideExportHostTest {
           1003 -> { v[11] = 243; mask = mask or (1 shl 11) }
         }
         return TelemetryFrameEntity(capturedAtMs = base + i / 2, elapsedRealtimeMs = i.toLong(), boardId = "board",
-          recordingId = "ride", canId = null, flags = if (key) 1 else 0, changedMask1 = mask, changedMask2 = 0,
+          canId = null, flags = if (key) 1 else 0, changedMask1 = mask, changedMask2 = 0,
           speedCentiKmh = v[0], batteryVoltageMv = v[1], motorCurrentMa = v[2], batteryCurrentMa = v[3],
           dutyPermille = v[4], pitchCentiDeg = v[5], rollCentiDeg = v[6], balancePitchCentiDeg = v[7],
           balanceCurrentMa = v[8], erpm = v[9], state = v[10], switchState = v[11], adc1Milli = v[12],
           adc2Milli = v[13], odometerCm = v[14]?.toLong(), tempMosfetDeciC = v[15], tempMotorDeciC = v[16])
       }
       for (start in 0 until count step 1000) dao.insertFrames((start until minOf(start + 1000, count)).map(::frame))
-      dao.insertFrames(listOf(frame(0).copy(boardId = "other"), frame(0).copy(recordingId = "other"), frame(0).copy(boardId = null)))
-      fun point(j: Int) = RideTrackPointEntity(recordingId = "ride", boardId = "board", fixAtMs = base + 100 + j / 2,
+      dao.insertFrames(listOf(frame(0).copy(boardId = "other"), frame(0).copy(boardId = null)))
+      fun point(j: Int) = RideTrackPointEntity(boardId = "board", fixAtMs = base + 100 + j / 2,
         latitudeE7 = 521234567 + j, longitudeE7 = -211234567, accuracyCm = 2000,
         gpsSpeedCentiMps = 456, bearingCentiDeg = null, altitudeCm = -1234)
       dao.insertRideTrackPoints((0..1100).map { point(0).copy(fixAtMs = base + 10, accuracyCm = 2001) })
       dao.insertRideTrackPoints((0..1005).map(::point))
-      dao.insertRideTrackPoints(listOf(point(0).copy(recordingId = null, accuracyCm = null, fixAtMs = base + 5),
+      dao.insertRideTrackPoints(listOf(point(0).copy(accuracyCm = null, fixAtMs = base + 5),
         point(0).copy(accuracyCm = null, fixAtMs = base + 2)))
-      suspend fun export(board: String? = "board", recording: String? = "ride", from: Long = base + 1, to: Long = base + (count - 2) / 2): List<List<String>> {
-        val result = RideExport.csv(dao, dir, mapOf("fromMs" to from, "toMs" to to, "boardId" to board, "recordingId" to recording))
+      suspend fun export(board: String? = "board", from: Long = base + 1, to: Long = base + (count - 2) / 2): List<List<String>> {
+        val result = RideExport.csv(dao, dir, mapOf("fromMs" to from, "toMs" to to, "boardId" to board))
         assertEquals("text/csv", result["mimeType"]); assertEquals("public.comma-separated-values-text", result["uti"])
         val lines = File(URI(result["uri"] as String)).readText().split("\r\n").dropLast(1)
         assertEquals(fixture.getString("headers"), lines.first())
@@ -125,7 +125,6 @@ class RideExportHostTest {
       assertEquals(1, export(board = null, from = base, to = base).size)
       assertTrue(export(board = null, from = base, to = base).single().subList(17, 23).all { it.isEmpty() })
       assertTrue(export(board = "empty").isEmpty())
-      assertEquals(base + 5, export(recording = null).first()[22].toLong())
       // Range begins mid-chain after more than one page; predecessor is replayed without emitting it.
       assertEquals("84.25", export(from = base + 1200, to = base + 1200).first()[3])
       // A keyframe later at the exact start timestamp must not erase the earlier delta rows' base.
@@ -149,18 +148,17 @@ class RideExportHostTest {
       .setDriver(BundledSQLiteDriver()).build()
     try {
       val dao = db.telemetryDao()
-      fun point(i: Int) = RideTrackPointEntity(recordingId = "ride", boardId = "board", fixAtMs = base + i / 3,
+      fun point(i: Int) = RideTrackPointEntity(boardId = "board", fixAtMs = base + i / 3,
         latitudeE7 = 521234567 + i, longitudeE7 = -211234567, accuracyCm = if (i < prefix) 2001 else 2000,
         gpsSpeedCentiMps = if (i % 2 == 0) 456 else null, bearingCentiDeg = null, altitudeCm = if (i % 2 == 0) -1234 else null)
       dao.insertRideTrackPoints((0 until count).map(::point))
       val other = point(1200)
-      dao.insertRideTrackPoints(listOf(other.copy(boardId = "other"), other.copy(recordingId = "other"),
-        other.copy(recordingId = null, accuracyCm = null), other.copy(accuracyCm = null), other.copy(boardId = null)))
+      dao.insertRideTrackPoints(listOf(other.copy(boardId = "other"), other.copy(accuracyCm = null), other.copy(boardId = null)))
       val from = base + 1
       val to = base + (count - 4) / 3
-      suspend fun export(board: String? = "board", recording: String? = "ride", start: Long = from, end: Long = to): String {
+      suspend fun export(board: String? = "board", start: Long = from, end: Long = to): String {
         val result = RideExport.gpx(dao, dir, mapOf("fromMs" to start, "toMs" to end,
-          "boardId" to board, "recordingId" to recording, "name" to fixture.getString("name")))
+          "boardId" to board, "name" to fixture.getString("name")))
         val file = File(URI(result["uri"] as String))
         assertEquals(dir.canonicalPath, file.parentFile.canonicalPath)
         assertEquals("application/gpx+xml", result["mimeType"])
@@ -187,7 +185,6 @@ class RideExportHostTest {
       assertEquals(3, "<trkpt ".toRegex().findAll(small).count())
       assertEquals(2, "<ele>".toRegex().findAll(small).count())
       assertTrue(small.contains("<time>2023-11-14T22:13:20.523Z</time>"))
-      assertEquals(expected.size + 2, "<trkpt ".toRegex().findAll(export(recording = null)).count())
       assertEquals(1, "<trkpt ".toRegex().findAll(export(board = null)).count())
       assertFalse(export(board = "empty").contains("<trkpt "))
       val coordinates = fixture.getJSONArray("decimalCoordinates")

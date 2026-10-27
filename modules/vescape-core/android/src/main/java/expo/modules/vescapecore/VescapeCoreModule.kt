@@ -1,5 +1,7 @@
 package expo.modules.vescapecore
 
+import expo.modules.vescapecore.weather.WeatherAlertLevel
+import expo.modules.vescapecore.weather.WeatherAlertLine
 import expo.modules.vescapecore.watch.WatchLastBatteryPusher
 import expo.modules.kotlin.functions.Queues
 import expo.modules.kotlin.modules.ModuleDefinitionBuilder
@@ -9,9 +11,8 @@ import expo.modules.vescapecore.telemetry.FavoriteMediaCleanupException
 
 import expo.modules.vescapecore.accessory.AccessoryDiscovery
 import expo.modules.vescapecore.accessory.AccessorySessionManager
-import expo.modules.vescapecore.alerts.CustomAppSounds
+import expo.modules.vescapecore.alerts.MySounds
 import expo.modules.vescapecore.alerts.AlertFeedback
-import expo.modules.vescapecore.alerts.normalizedAlertBeepCount
 import expo.modules.vescapecore.alerts.normalizedAlertRepeatSeconds
 import expo.modules.vescapecore.alerts.AlertCoordinator
 import expo.modules.vescapecore.appstatus.AppStatusCoordinator
@@ -67,6 +68,7 @@ import expo.modules.vescapecore.mappoints.MapPointApi
 import expo.modules.vescapecore.ow.OwGattClient
 import expo.modules.vescapecore.telemetry.AppDataRepository
 import expo.modules.vescapecore.telemetry.DatabaseBackupManager
+import expo.modules.vescapecore.telemetry.MaintenanceRunner
 import expo.modules.vescapecore.telemetry.ProfileStatsRepository
 import expo.modules.vescapecore.telemetry.RideExport
 import expo.modules.vescapecore.telemetry.RideHistoryRepository
@@ -97,7 +99,7 @@ private fun Map<String, Any?>.toAlertTestRule(): AlertRuleEntity? {
   val controlId = this["controlId"] as? String ?: return null
   val threshold = (this["threshold"] as? Number)?.toDouble() ?: return null
   val thresholdMax = (this["thresholdMax"] as? Number)?.toDouble()
-  val soundType = this["soundType"] as? String ?: return null
+  val spec = this["spec"] as? String ?: return null
   return AlertRuleEntity(
     boardId = "alert-test",
     id = id,
@@ -105,11 +107,9 @@ private fun Map<String, Any?>.toAlertTestRule(): AlertRuleEntity? {
     threshold = threshold,
     thresholdMax = thresholdMax,
     enabled = true,
-    soundType = soundType,
+    spec = spec,
     createdAt = 0,
     repeatEverySeconds = normalizedAlertRepeatSeconds((this["repeatEverySeconds"] as? Number)?.toDouble()),
-    beepCount = normalizedAlertBeepCount((this["beepCount"] as? Number)?.toInt()),
-    source = null,
   )
 }
 
@@ -118,7 +118,6 @@ private fun Map<String, Any?>.toAlertTestRule(): AlertRuleEntity? {
  */
 @SuppressLint("MissingPermission") // permissions are requested at the JS/RN layer
 class VescapeCoreModule : Module() {
-  private val gpsDisplayPreview = expo.modules.vescapecore.location.GpsDisplaySmoother()
   private class ActiveBoardProbe(
     val id: String,
     val result: CompletableDeferred<TransportDetection.Result>,
@@ -189,7 +188,7 @@ class VescapeCoreModule : Module() {
       "onBms",
       "onBmsSeries",
       "onLocation",
-      "onTelemetryRebuildProgress",
+      "onMaintenanceState",
       "onBoardProbeProgress",
       "onGroupRideConnection",
       "onGroupRideSnapshot",
@@ -322,8 +321,11 @@ class VescapeCoreModule : Module() {
     OnStopObserving("onBmsSeries") { stopObserving("onBmsSeries") }
     OnStartObserving("onLocation") { startObserving("onLocation") }
     OnStopObserving("onLocation") { stopObserving("onLocation") }
-    OnStartObserving("onTelemetryRebuildProgress") { startObserving("onTelemetryRebuildProgress") }
-    OnStopObserving("onTelemetryRebuildProgress") { stopObserving("onTelemetryRebuildProgress") }
+    OnStartObserving("onMaintenanceState") {
+      startObserving("onMaintenanceState")
+      emitMaintenanceState(MaintenanceRunner.snapshot())
+    }
+    OnStopObserving("onMaintenanceState") { stopObserving("onMaintenanceState") }
     OnStartObserving("onBoardProbeProgress") { startObserving("onBoardProbeProgress") }
     OnStopObserving("onBoardProbeProgress") { stopObserving("onBoardProbeProgress") }
     OnStartObserving("onGroupRideConnection") { startObserving("onGroupRideConnection") }
@@ -430,6 +432,8 @@ class VescapeCoreModule : Module() {
       // Cold start: fetch App Status before JS asks. A foreground event arriving right after is
       // coalesced into this request.
       AppStatusCoordinator.get(context).refresh()
+      MaintenanceRunner.onChange = ::emitMaintenanceState
+      MaintenanceRunner.start(context.applicationContext)
     }
 
     OnActivityEntersForeground {
@@ -438,6 +442,8 @@ class VescapeCoreModule : Module() {
       CompanionRestartGate.clear(context.applicationContext)
       CoreForegroundService.setAppVisible(context.applicationContext, true)
       AppStatusCoordinator.get(context).refresh()
+      // Emits were gated while hidden; the screen must not keep a stale running state.
+      emitMaintenanceState(MaintenanceRunner.snapshot())
     }
     OnActivityEntersBackground {
       frontendActive = false
@@ -450,6 +456,7 @@ class VescapeCoreModule : Module() {
       companionPresence.onActivityResult(result.requestCode, result.resultCode)
     }
     OnDestroy {
+      MaintenanceRunner.onChange = null
       RecordingStorageFailure.observeOutage(null)
       frontendActive = false
       observedEvents.clear()
@@ -569,6 +576,8 @@ class VescapeCoreModule : Module() {
     // @parity /modules/vescape-core/ios/VescapeCoreModule.swift `refreshLocationDemand`
     Function("refreshLocationDemand") { refreshLocationDemand() }
     registerGroupRide()
+    // @parity /modules/vescape-core/ios/VescapeCoreModule.swift `setWatchDisplayConfig`
+    Function("setWatchDisplayConfig") { json: String -> CoreForegroundService.configureWatchDisplay(json) }
     Function("setWatchRouteSpanM") { spanM: Double? ->
       WatchRouteMirror.viewportSpanM = spanM
     }
@@ -585,13 +594,19 @@ class VescapeCoreModule : Module() {
     Function("reloadAlertRules") {
       CoreForegroundService.reloadAlertRules(context.applicationContext)
     }
-    Function("previewAlertSound") { soundType: String ->
-      CoreForegroundService.previewAlertSound(context.applicationContext, soundType)
+    Function("previewAlertSound") { spec: String ->
+      CoreForegroundService.previewAlertSound(context.applicationContext, spec)
     }
-    Function("playAppSound") { pack: String, cue: String ->
-      CoreForegroundService.playAppSound(context.applicationContext, pack, cue)
+    // @parity /modules/vescape-core/ios/VescapeCoreModule.swift `previewWeatherAlert`
+    // @parity /modules/vescape-core/src/index.ts `previewWeatherAlert`
+    Function("previewWeatherAlert") { kind: String, leadMinutes: Int, percent: Int? ->
+      WeatherAlertLine.preview(kind, leadMinutes, percent)?.let { CoreForegroundService.previewWeatherAlert(context.applicationContext, it) }
     }
-    registerCustomAppSounds()
+    // @parity /modules/vescape-core/ios/VescapeCoreModule.swift `playPackSound`
+    Function("playPackSound") { pack: String, slot: String ->
+      CoreForegroundService.playPackSound(context.applicationContext, pack, slot)
+    }
+    registerMySounds()
     // @parity /modules/vescape-core/ios/VescapeCoreModule.swift `mapTile`
     AsyncFunction("mapTile") Coroutine { z: Int, x: Int, y: Int ->
       MapTiles.get(context.applicationContext).tile(z, x, y)?.let { Uri.fromFile(it).toString() }
@@ -599,11 +614,12 @@ class VescapeCoreModule : Module() {
     Function("getAlertSounds") {
       CoreForegroundService.alertSoundPresets()
     }
-    Function("startGeigerSimulation") { soundType: String, rangeDepth: Double ->
+    Function("startGeigerSimulation") { spec: String, rangeDepth: Double ->
       val feedback = previewAlertFeedback ?: AlertFeedback(context.applicationContext, mainHandler)
         .also { previewAlertFeedback = it }
-      feedback.setAudioSource(kotlinx.coroutines.runBlocking { AppDataRepository.get(context.applicationContext).getTypedSettings().audioSource })
-      feedback.updateGeiger("preview", soundType, rangeDepth)
+      val settings = kotlinx.coroutines.runBlocking { AppDataRepository.get(context.applicationContext).getTypedSettings() }
+      feedback.setSoundSettings(settings)
+      feedback.updateGeiger("preview", spec, rangeDepth)
     }
     Function("stopGeigerSimulation") {
       previewAlertFeedback?.stopGeiger("preview")
@@ -626,7 +642,6 @@ class VescapeCoreModule : Module() {
     Function("stopAlertTest") {
       stopAlertTest()
     }
-    registerGpsDisplay()
 
     Function("getLiveState") {
       liveStateWithScan(CoreForegroundService.currentLiveState(context.applicationContext))
@@ -639,6 +654,12 @@ class VescapeCoreModule : Module() {
     // @parity /modules/vescape-core/ios/VescapeCoreModule.swift `getWeather`
     Function("getWeather") {
       WeatherCoordinator.get().current?.toMap()
+    }
+    // @parity /modules/vescape-core/ios/VescapeCoreModule.swift `getWeatherAlertThresholds`
+    Function("getWeatherAlertThresholds") {
+      WeatherAlertLevel.entries.associate {
+        it.key to mapOf("gustKmh" to it.wind.minGustKmh, "rainPercent" to it.rain.minProbabilityPercent)
+      }
     }
     // @parity /modules/vescape-core/ios/VescapeCoreModule.swift `refreshWeather`
     Function("refreshWeather") {
@@ -1035,7 +1056,11 @@ class VescapeCoreModule : Module() {
     }
     AsyncFunction("restoreDatabase") Coroutine { uri: String ->
       stopNativeWorkForDatabaseRestore()
-      DatabaseBackupManager.restoreBackup(context.applicationContext, uri)
+      try {
+        DatabaseBackupManager.restoreBackup(context.applicationContext, uri)
+      } finally {
+        MaintenanceRunner.onDatabaseReplaced()
+      }
       WatchLastBatteryPusher.push(context)
     }
     AsyncFunction("getRefloatConfigSnapshot") { promise: Promise ->
@@ -1224,34 +1249,16 @@ class VescapeCoreModule : Module() {
       RecordingStorageFailure.requireAvailable()
       TelemetryRepository.get(context.applicationContext).deleteRange(options)
     }
-    AsyncFunction("rebuildTelemetryBuckets") { promise: Promise ->
-      RecordingStorageFailure.requireAvailable()
-      CoroutineScope(Dispatchers.IO).launch {
-        try {
-          val appContext = context.applicationContext
-          val repository = TelemetryRepository.get(appContext)
-          repository.applySettings(AppDataRepository.get(appContext).getTypedSettings())
-          val count = repository.rebuildBuckets { current, total ->
-            if (shouldEmitToFrontend("onTelemetryRebuildProgress")) {
-              mainHandler.post {
-                if (shouldEmitToFrontend("onTelemetryRebuildProgress")) {
-                  sendEvent(
-                    "onTelemetryRebuildProgress",
-                    mapOf("current" to current, "total" to total),
-                  )
-                }
-              }
-            }
-          }
-          promise.resolve(count)
-        } catch (e: Exception) {
-          promise.reject("ERR_REBUILD", e.message, e)
-        }
-      }
-    }
+    // @parity /modules/vescape-core/ios/VescapeCoreModule.swift `getMaintenanceState`
+    // @parity /modules/vescape-core/src/index.ts `getMaintenanceState`
+    Function("getMaintenanceState") { MaintenanceRunner.snapshot() }
     AsyncFunction("clearTelemetryHistory") {
       RecordingStorageFailure.requireAvailable()
-      runBlocking { TelemetryRepository.get(context.applicationContext).clearAll() }
+      try {
+        runBlocking { TelemetryRepository.get(context.applicationContext).clearAll() }
+      } finally {
+        MaintenanceRunner.onDatabaseReplaced()
+      }
     }
     AsyncFunction("getBoards") {
       RecordingStorageFailure.requireAvailable()
@@ -1262,10 +1269,10 @@ class VescapeCoreModule : Module() {
         throw error
       }
     }
-    AsyncFunction("upsertBoard") Coroutine { board: Map<String, Any?> ->
+    AsyncFunction("upsertBoard") Coroutine { board: Map<String, Any?>, initialAlerts: Map<String, Any?>? ->
       RecordingStorageFailure.requireAvailable()
       try {
-        AppDataRepository.get(context.applicationContext).upsertBoard(board)
+        AppDataRepository.get(context.applicationContext).upsertBoard(board, initialAlerts)
         WatchLastBatteryPusher.push(context)
         CoreForegroundService.reloadAlertRules(context.applicationContext)
         CoreForegroundService.reloadBoardData()
@@ -1287,25 +1294,24 @@ class VescapeCoreModule : Module() {
     }
     // @parity /modules/vescape-core/ios/VescapeCoreModule.swift `previewAlertPreset`
     // @parity /modules/vescape-core/src/index.ts `previewAlertPreset`
-    Function("previewAlertPreset") { metric: String, level: String, topSpeedKmh: Double, hasBatteryConfig: Boolean, speedUnitSystem: String ->
-      AlertPresetPersistence.preview(metric, level, topSpeedKmh, hasBatteryConfig, speedUnitSystem).map { rule ->
+    Function("previewAlertPreset") { metric: String, spec: String, topSpeedKmh: Double, hasBatteryConfig: Boolean, distanceUnit: String ->
+      AlertPresetPersistence.preview(metric, spec, topSpeedKmh, hasBatteryConfig, distanceUnit).map { rule ->
         mapOf(
           "id" to rule.id,
           "controlId" to rule.controlId,
           "threshold" to rule.threshold,
           "thresholdMax" to rule.thresholdMax,
-          "soundType" to rule.soundType,
+          "spec" to rule.spec,
           "repeatEverySeconds" to rule.repeatEverySeconds,
-          "beepCount" to rule.beepCount,
         )
       }
     }
     // @parity /modules/vescape-core/ios/VescapeCoreModule.swift `applyAlertPreset`
     // @parity /modules/vescape-core/src/index.ts `applyAlertPreset`
-    AsyncFunction("applyAlertPreset") Coroutine { boardId: String, metric: String, action: String, level: String?, matchBoardConfig: Boolean? ->
+    AsyncFunction("applyAlertPreset") Coroutine { boardId: String, metric: String, level: String?, geiger: String?, match: Boolean? ->
       RecordingStorageFailure.requireAvailable()
       try {
-        AppDataRepository.get(context.applicationContext).applyAlertPreset(boardId, metric, action, level, matchBoardConfig)
+        AppDataRepository.get(context.applicationContext).applyAlertPreset(boardId, metric, level, geiger, match)
         CoreForegroundService.reloadAlertRules(context.applicationContext)
       } catch (error: CancellationException) { throw error }
       catch (error: Throwable) { RecordingStorageFailure.report("alert_preset_apply", "write_failed", error); throw error }
@@ -1313,6 +1319,13 @@ class VescapeCoreModule : Module() {
     AsyncFunction("getAlertRules") { boardId: String ->
       RecordingStorageFailure.requireAvailable()
       try { runBlocking { AppDataRepository.get(context.applicationContext).getAlertRules(boardId) } }
+      catch (error: Throwable) { RecordingStorageFailure.reportRead("alert_rules_read", error); throw error }
+    }
+    // @parity /modules/vescape-core/ios/VescapeCoreModule.swift `getAlertPresets`
+    // @parity /modules/vescape-core/src/index.ts `getAlertPresets`
+    AsyncFunction("getAlertPresets") { boardId: String ->
+      RecordingStorageFailure.requireAvailable()
+      try { runBlocking { AppDataRepository.get(context.applicationContext).getAlertPresets(boardId) } }
       catch (error: Throwable) { RecordingStorageFailure.reportRead("alert_rules_read", error); throw error }
     }
     AsyncFunction("upsertAlertRule") Coroutine { rule: Map<String, Any?> ->
@@ -1481,14 +1494,19 @@ class VescapeCoreModule : Module() {
         NavigationController.get(context.applicationContext).setRerouteDistanceMeters(
           AppDataRepository.get(context.applicationContext).getTypedSettings().navigationRerouteDistanceMeters)
       }
-      if (key == "unitSystem") {
+      if (key == "distanceUnit") {
         CoreForegroundService.reloadAlertRules(context.applicationContext)
-        val units = AppDataRepository.get(context.applicationContext).getTypedSettings().unitSystem
-        mainHandler.post { alertTestCoordinator?.unitSystem = units }
+        val units = AppDataRepository.get(context.applicationContext).getTypedSettings().distanceUnit
+        mainHandler.post { alertTestCoordinator?.distanceUnit = units }
+      }
+      if (key == "temperatureUnit") {
+        val unit = AppDataRepository.get(context.applicationContext).getTypedSettings().temperatureUnit
+        mainHandler.post { alertTestCoordinator?.temperatureUnit = unit }
       }
       if (key == "liveHistoryLimit") {
         CoreForegroundService.setLiveHistoryLimit(value as? Number)
       }
+      MaintenanceRunner.onSettingChanged(key)
       if (
         key == "movingSpeedThresholdKmh" ||
         key == "avgSpeedCutoffKmh" ||
@@ -1504,34 +1522,16 @@ class VescapeCoreModule : Module() {
         key == "vescFaultCollectionEnabled" ||
         key == "connectionSoundsEnabled" ||
         key == "soundPack" ||
-        key == "audioSource"
+        key == "audioSource" ||
+        key == "voice" ||
+        key == "voiceLevel" ||
+        key == "weatherRainAlertLevel" ||
+        key == "weatherWindAlertLevel" ||
+        key == "temperatureUnit"
       ) {
         CoreForegroundService.reloadTelemetrySettings(context.applicationContext)
       }
     }
-  }
-
-  private fun ModuleDefinitionBuilder.registerGpsDisplay() {
-    Function("getGpsDisplaySettings") {
-      mapOf("smoothingPercent" to CoreForegroundService.gpsDisplaySmoothingPercent,
-        "predictionPercent" to CoreForegroundService.gpsDisplayPredictionPercent)
-    }
-    Function("setGpsDisplaySettings") { smoothing: Double, prediction: Double ->
-      CoreForegroundService.setGpsDisplaySettings(smoothing, prediction)
-    }
-    Function("resetGpsDisplayPreview") { gpsDisplayPreview.reset() }
-    Function("setGpsDisplayPreviewSettings") { smoothing: Double, prediction: Double ->
-      gpsDisplayPreview.configure(smoothing, prediction, System.currentTimeMillis())?.toMap()
-    }
-    Function("updateGpsDisplayPreviewSpeed") { speed: Double ->
-      val now = System.currentTimeMillis()
-      gpsDisplayPreview.updateSpeed(speed, now, now)?.toMap()
-    }
-    Function("updateGpsDisplayPreview") { latitude: Double, longitude: Double, speed: Double, course: Double, timestamp: Long ->
-      gpsDisplayPreview.update(latitude, longitude, timestamp, true, 5.0, speed, course, timestamp,
-        speed, timestamp, System.currentTimeMillis())?.toMap()
-    }
-
   }
 
   private fun ModuleDefinitionBuilder.registerGroupRide() {
@@ -1556,22 +1556,13 @@ class VescapeCoreModule : Module() {
     }
   }
 
-  private fun ModuleDefinitionBuilder.registerCustomAppSounds() {
-    // @parity /modules/vescape-core/ios/VescapeCoreModule.swift `customAppSoundPacks`
-    AsyncFunction("customAppSoundPacks") { CustomAppSounds.list(context.applicationContext) }
-    AsyncFunction("createAppSoundPack") { name: String -> CustomAppSounds.create(context.applicationContext, name) }
-    AsyncFunction("renameAppSoundPack") { id: String, name: String -> CustomAppSounds.rename(context.applicationContext, id, name) }
-    AsyncFunction("importAppSound") { id: String, cue: String, uri: String -> CustomAppSounds.import(context.applicationContext, id, cue, uri) }
-    AsyncFunction("removeAppSound") { id: String, cue: String -> CustomAppSounds.remove(context.applicationContext, id, cue) }
-    AsyncFunction("deleteAppSoundPack") Coroutine { id: String ->
-      val appContext = context.applicationContext
-      val selected = AppDataRepository.get(appContext).getTypedSettings().soundPack
-      if (selected == id) {
-        AppDataRepository.get(appContext).updateSetting("soundPack", "simple")
-        CoreForegroundService.reloadTelemetrySettings(appContext)
-      }
-      CustomAppSounds.delete(appContext, id)
-    }
+  private fun ModuleDefinitionBuilder.registerMySounds() {
+    // @parity /modules/vescape-core/ios/VescapeCoreModule.swift `mySounds`
+    AsyncFunction("mySounds") { MySounds.state(context.applicationContext) }
+    AsyncFunction("importMySound") { uri: String, name: String -> MySounds.import(context.applicationContext, uri, name) }
+    AsyncFunction("renameMySound") { id: String, name: String -> MySounds.rename(context.applicationContext, id, name) }
+    AsyncFunction("deleteMySound") { id: String -> MySounds.delete(context.applicationContext, id) }
+    AsyncFunction("setSoundOverride") { slot: String, id: String? -> MySounds.setOverride(context.applicationContext, slot, id) }
   }
 
   private fun startAlertTest(ruleMaps: List<Map<String, Any?>>) {
@@ -1581,9 +1572,12 @@ class VescapeCoreModule : Module() {
     if (rules.any { it.controlId != controlId }) return
 
     val feedback = AlertFeedback(context.applicationContext, mainHandler)
-    feedback.setAudioSource(kotlinx.coroutines.runBlocking { AppDataRepository.get(context.applicationContext).getTypedSettings().audioSource })
+    val settings = kotlinx.coroutines.runBlocking { AppDataRepository.get(context.applicationContext).getTypedSettings() }
+    // A test sounds like the real rule: same effects pack, same output.
+    feedback.setSoundSettings(settings)
     val coordinator = AlertCoordinator(feedback = { feedback }, vibrateSingles = false)
-    coordinator.unitSystem = kotlinx.coroutines.runBlocking { AppDataRepository.get(context.applicationContext).getTypedSettings().unitSystem }
+    coordinator.distanceUnit = settings.distanceUnit
+    coordinator.temperatureUnit = settings.temperatureUnit
     coordinator.replaceRules(rules)
     alertTestFeedback = feedback
     alertTestCoordinator = coordinator
@@ -1596,6 +1590,17 @@ class VescapeCoreModule : Module() {
     alertTestControlId = null
     alertTestFeedback?.release()
     alertTestFeedback = null
+  }
+
+  /**
+   * Called from the maintenance thread; hops to main like every other JS emit.
+   * @parity /modules/vescape-core/ios/VescapeCoreModule.swift `emitMaintenanceState`
+   */
+  private fun emitMaintenanceState(state: Map<String, Any?>) {
+    if (!shouldEmitToFrontend("onMaintenanceState")) return
+    mainHandler.post {
+      if (shouldEmitToFrontend("onMaintenanceState")) sendEvent("onMaintenanceState", state)
+    }
   }
 
   private fun shouldEmitToFrontend(name: String): Boolean = frontendActive && observedEvents.contains(name)

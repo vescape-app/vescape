@@ -64,7 +64,8 @@ class RecordingPersistenceHostTest {
       type = "m-delta", boardId = delta.getString("boardId"), message = null, gapMs = null,
     )))
     assertEquals(listOf("m3", "m-delta"), dao.getMarkers(0, Long.MAX_VALUE, null).map { it.type })
-    assertEquals(fixture.getInt("expectedRebuiltBuckets"), maintenance.rebuild(MetricSanitizerConfig()))
+    rebuildRideSummaries(dao)
+    assertEquals(fixture.getInt("expectedRebuiltBuckets"), dao.getAllHistoryBucketsAsc().size)
     assertEquals(fixture.getInt("expectedRebuiltSampleCount"), dao.getAllHistoryBucketsAsc().single().sampleCount)
     val rollback = fixture.getJSONArray("rollbackRanges")
     val lateTimes = (0 until rollback.length()).map { index ->
@@ -286,7 +287,7 @@ class RecordingPersistenceHostTest {
       persistence.createProfile(profile.copy(id = "compat-$index", boardId = "compat-board", refloatBaseVersion = versions.getString(index)))
     }
     persistence.saveProfile(profile.id, profileValues.getString("updatedFieldsJson"), 2)
-    persistence.saveAlert(AlertRuleEntity(boardId, alertValues.getString("id"), alertValues.getString("controlId"), alertValues.getDouble("threshold"), null, enabled = true, soundType = alertValues.getString("soundType"), createdAt = 1, source = alertValues.getString("source")))
+    persistence.saveAlert(AlertRuleEntity(boardId, alertValues.getString("id"), alertValues.getString("controlId"), alertValues.getDouble("threshold"), null, enabled = true, spec = alertValues.getString("spec"), createdAt = 1))
     persistence.setAlertEnabled(boardId, alertValues.getString("id"), false)
     db.close()
 
@@ -306,8 +307,10 @@ class RecordingPersistenceHostTest {
     assertTrue(lastDeleteFailed)
     assertEquals(1, persistence.history("compat-3").size)
     assertEquals(expected.getInt("historyCount"), dao.getTuneHistoryEntries(profile.id).size)
-    assertEquals(alertValues.getString("id"), persistence.alertRules(boardId).single().id)
-    assertEquals(expected.getBoolean("alertEnabled"), persistence.alertRules(boardId).single().enabled)
+    // The Board has no preset rows, so the app-default presets expand beside the rider's rule.
+    val riderRule = persistence.alertRules(boardId) { throw it }.single { !AlertPresetPersistence.isPresetId(it.id) }
+    assertEquals(alertValues.getString("id"), riderRule.id)
+    assertEquals(expected.getBoolean("alertEnabled"), riderRule.enabled)
     assertEquals(null, persistence.profile("absent"))
     db.close()
 
@@ -335,7 +338,7 @@ class RecordingPersistenceHostTest {
     connection.close()
     db = open(); persistence = TuneAlertPersistence(db.telemetryDao())
     var queryFailed = false
-    try { persistence.alertRules(boardId) } catch (_: Exception) { queryFailed = true }
+    try { persistence.alertRules(boardId) { throw it } } catch (_: Exception) { queryFailed = true }
     assertTrue(queryFailed)
     db.close()
     Files.deleteIfExists(path)
@@ -350,7 +353,7 @@ class RecordingPersistenceHostTest {
     val samples = input.getJSONArray("samples")
     val points = (0 until samples.length()).map { index ->
       val sample = samples.getJSONObject(index)
-      BucketTelemetryPoint(sample.getLong("capturedAtMs"), null, LEGACY_RIDE_RECORDING_ID, sample.getInt("speedCentiKmh"),
+      BucketTelemetryPoint(sample.getLong("capturedAtMs"), null, sample.getInt("speedCentiKmh"),
         80_000, 0, 0, 100, sample.getLong("odometerCm"), 300, 300)
     }
     val summary = buildFavoriteSummary(buildTelemetryBuckets(points, emptyList()))
@@ -442,15 +445,11 @@ class RecordingPersistenceHostTest {
     persistence.upsertBoard(BoardEntity(boardId, board.getString("renamed"), "AA:BB", createdAt), emptyList(), emptyList())
     persistence.upsertSetting(AppSettingEntity(setting.getString("key"), setting.getString("updatedValueJson"), createdAt + 1))
     val units = fixture.getJSONObject("units")
-    assertEquals(units.getString("default"), AppSettings().unitSystem)
-    assertEquals("metric", validUnitSystem(null) ?: AppSettings().unitSystem)
+    assertEquals(units.getString("default"), AppSettings().distanceUnit)
+    assertEquals("km", validDistanceUnit(null) ?: AppSettings().distanceUnit)
     val invalidUnits = units.getJSONArray("invalid")
-    for (i in 0 until invalidUnits.length()) assertEquals(null, validUnitSystem(invalidUnits.get(i)))
-    persistence.upsertSetting(AppSettingEntity("unitSystem", JSONObject.quote(checkNotNull(validUnitSystem(units.getString("selected")))), createdAt))
-    val reroute = fixture.getJSONObject("navigationReroute")
-    val rerouteKey = reroute.getString("key")
-    assertEquals(reroute.getDouble("default"), AppSettings().navigationRerouteDistanceMeters, 0.0)
-    persistence.upsertSetting(AppSettingEntity(rerouteKey, reroute.getDouble("selected").toString(), createdAt))
+    for (i in 0 until invalidUnits.length()) assertEquals(null, validDistanceUnit(invalidUnits.get(i)))
+    persistence.upsertSetting(AppSettingEntity("distanceUnit", JSONObject.quote(checkNotNull(validDistanceUnit(units.getString("selected")))), createdAt))
     val trail = fixture.getJSONObject("telemetryTrail")
     val trailKey = trail.getString("key")
     assertEquals(trail.getBoolean("default"), AppSettings().wearTelemetryTrailEnabled)
@@ -460,17 +459,13 @@ class RecordingPersistenceHostTest {
 
     db = open()
     persistence = BoardSettingsPersistence(db.telemetryDao())
-    assertEquals(units.getString("selected"), persistence.getSettings(mapOf("unitSystem" to AppSettings().unitSystem))["unitSystem"])
-    val rerouteDefaults = mapOf(rerouteKey to AppSettings().navigationRerouteDistanceMeters)
-    assertEquals(reroute.getDouble("selected"), (persistence.getSettings(rerouteDefaults)[rerouteKey] as Number).toDouble(), 0.0)
-    persistence.deleteSetting(rerouteKey)
-    assertEquals(reroute.getDouble("default"), (persistence.getSettings(rerouteDefaults)[rerouteKey] as Number).toDouble(), 0.0)
+    assertEquals(units.getString("selected"), persistence.getSettings(mapOf("distanceUnit" to AppSettings().distanceUnit))["distanceUnit"])
     val trailDefaults = mapOf(trailKey to AppSettings().wearTelemetryTrailEnabled)
     assertEquals(trail.getBoolean("selected"), persistence.getSettings(trailDefaults)[trailKey])
     persistence.deleteSetting(trailKey)
     assertEquals(trail.getBoolean("default"), persistence.getSettings(trailDefaults)[trailKey])
-    persistence.deleteSetting("unitSystem")
-    assertEquals(units.getString("default"), persistence.getSettings(mapOf("unitSystem" to AppSettings().unitSystem))["unitSystem"])
+    persistence.deleteSetting("distanceUnit")
+    assertEquals(units.getString("default"), persistence.getSettings(mapOf("distanceUnit" to AppSettings().distanceUnit))["distanceUnit"])
     assertEquals(board.getString("renamed"), persistence.getBoards().single().name)
     assertEquals(JSONObject.quote(board.getString("description")), persistence.getBoardSettings(boardId).single().valueJson)
     assertEquals(setting.getString("updatedValueJson"), persistence.getSettings().single { it.key == setting.getString("key") }.valueJson)
@@ -561,7 +556,7 @@ class RecordingPersistenceHostTest {
     val samples = recording.getJSONArray("samples")
     val points = (0 until samples.length()).map { index ->
       val sample = samples.getJSONObject(index)
-      BucketTelemetryPoint(sample.getLong("capturedAtMs"), boardId, LEGACY_RIDE_RECORDING_ID, sample.getInt("speedCentiKmh"),
+      BucketTelemetryPoint(sample.getLong("capturedAtMs"), boardId, sample.getInt("speedCentiKmh"),
         sample.getInt("batteryVoltageMv"), 5000, 2000, 200, sample.getLong("odometerCm"), 300, 350)
     }
     val current = buildTelemetryBuckets(points, emptyList()).single()
@@ -697,7 +692,7 @@ class RecordingPersistenceHostTest {
     val expected = fixture.getJSONObject("expected")
     val points = (0 until samples.length()).map { index ->
       val sample = samples.getJSONObject(index)
-      BucketTelemetryPoint(sample.getLong("capturedAtMs"), boardId, LEGACY_RIDE_RECORDING_ID, sample.getInt("speedCentiKmh"),
+      BucketTelemetryPoint(sample.getLong("capturedAtMs"), boardId, sample.getInt("speedCentiKmh"),
         sample.getInt("batteryVoltageMv"), 5000, 2000, 200, sample.getLong("odometerCm"), 300, 350)
     }
     val buckets = buildTelemetryBuckets(points, emptyList())

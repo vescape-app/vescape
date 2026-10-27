@@ -12,14 +12,14 @@ struct PresetRelation {
 }
 struct GeneratedPresetRule {
   let point: PresetPoint
-  let soundType: String
+  let spec: String
   var relation: PresetRelation? = nil
 }
 struct PresetInput {
   var topSpeedKmh: Double = 50
   var hasBatteryConfig = false
-  var speedUnitSystem = "metric"
-  var matchBoardConfig = false
+  var distanceUnit = "km"
+  /// Base of the metric's config-relative points; read only when its spec has `match=on`.
   var configBase: Double? = nil
 }
 
@@ -29,16 +29,16 @@ private struct PresetDefinition: Decodable {
     let start: Double
     let ceiling: Double
   }
-  let soundType: String?
+  let spec: String?
   let fieldId: String?
   let scaledByTopSpeed: Bool
   let requiresBatteryConfig: Bool
   let levels: [String: [PresetPoint]]
 
-  enum CodingKeys: String, CodingKey { case family, soundType, fieldId, scaledByTopSpeed, requiresBatteryConfig, levels }
+  enum CodingKeys: String, CodingKey { case family, spec, fieldId, scaledByTopSpeed, requiresBatteryConfig, levels }
   init(from decoder: Decoder) throws {
     let values = try decoder.container(keyedBy: CodingKeys.self)
-    soundType = try values.decodeIfPresent(String.self, forKey: .soundType)
+    spec = try values.decodeIfPresent(String.self, forKey: .spec)
     fieldId = try values.decodeIfPresent(String.self, forKey: .fieldId)
     scaledByTopSpeed = try values.decodeIfPresent(Bool.self, forKey: .scaledByTopSpeed) ?? false
     requiresBatteryConfig = try values.decodeIfPresent(Bool.self, forKey: .requiresBatteryConfig) ?? false
@@ -61,12 +61,12 @@ private struct PresetDefinition: Decodable {
   }
 }
 
-/// Typed catalog and pure calculation shared by persisted presets and unsaved wizard previews.
+/// Typed catalog and pure expansion of a preset spec, shared by saved rows and unsaved wizard previews.
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/AlertPresetGenerator.kt
 final class AlertPresetGenerator {
   static let metrics = ["speed", "duty", "motor-temp", "controller-temp", "battery"]
   static let activeLevels = ["safe", "normal", "minimal"]
-  static let levels = activeLevels + ["off", "custom"]
+  static let levels = activeLevels + ["off"]
   private static let kmhPerMph = 1.609344
   enum InvalidPreset: Error { case invalidIntent, invalidDefinition, missingResource }
   private struct Catalog: Decodable {
@@ -89,7 +89,7 @@ final class AlertPresetGenerator {
   }
   private static let catalog = Result { () throws -> Catalog in
     let value = try resource("alert-preset-definitions", as: Catalog.self)
-    guard metrics.allSatisfy({ value.metrics[$0]?.soundType != nil }),
+    guard metrics.allSatisfy({ value.metrics[$0]?.spec != nil }),
           value.match.allSatisfy({ metrics.contains($0.key) && $0.value.fieldId != nil }) else { throw InvalidPreset.invalidDefinition }
     return value
   }
@@ -110,32 +110,43 @@ final class AlertPresetGenerator {
     }
   }
 
-  static func generate(metric: String, level: String, input: PresetInput) throws -> [GeneratedPresetRule] {
-    guard metrics.contains(metric), levels.contains(level), ["metric", "imperial"].contains(input.speedUnitSystem) else { throw InvalidPreset.invalidIntent }
-    guard activeLevels.contains(level) else { return [] }
-    let catalog = try catalog.get()
-    guard let definition = catalog.metrics[metric] else { throw InvalidPreset.invalidDefinition }
-    if input.matchBoardConfig, let match = catalog.match[metric] {
-      return relativeRules(definition, match: match, level: level, base: input.configBase)
-    }
-    if definition.requiresBatteryConfig && !input.hasBatteryConfig { return [] }
-    return fixedRules(definition, level: level, input: input)
+  /// True when `metric`'s definition ticks, so its spec may carry a `geiger=` option.
+  static func hasGeiger(_ metric: String) throws -> Bool {
+    try catalog.get().metrics[metric]?.spec?.hasPrefix("geiger:") == true
   }
 
-  private static func fixedRules(_ definition: PresetDefinition, level: String, input: PresetInput) -> [GeneratedPresetRule] {
-    definition.levels[level]!.map { point in
+  /// The rules `spec` stands for. `off`, an unknown level (from a newer app), or a guard failure
+  /// expands to none. `match=on` gives config-relative points; `geiger=` replaces the tick level.
+  static func generate(metric: String, spec: AlertPresetSpec, input: PresetInput) throws -> [GeneratedPresetRule] {
+    guard metrics.contains(metric), ["km", "mi"].contains(input.distanceUnit) else { throw InvalidPreset.invalidIntent }
+    guard activeLevels.contains(spec.level) else { return [] }
+    let catalog = try catalog.get()
+    guard let definition = catalog.metrics[metric], let defaultSound = definition.spec else { throw InvalidPreset.invalidDefinition }
+    let geiger = spec.option("geiger").flatMap(GeigerLevel.init(rawValue:))
+    let ruleSpec = geiger != nil && defaultSound.hasPrefix("geiger:") ? "geiger:\(geiger!.rawValue)" : defaultSound
+    if spec.option("match") == "on", let match = catalog.match[metric] {
+      return relativeRules(ruleSpec, match: match, level: spec.level, base: input.configBase)
+    }
+    if definition.requiresBatteryConfig && !input.hasBatteryConfig { return [] }
+    return fixedRules(definition, spec: ruleSpec, level: spec.level, input: input)
+  }
+
+  private static func fixedRules(_ definition: PresetDefinition, spec: String, level: String, input: PresetInput) -> [GeneratedPresetRule] {
+    let points = definition.levels[level]!
+    return points.enumerated().map { index, point in
       let threshold = definition.scaledByTopSpeed ? speedRange(point, input: input) : point
-      return GeneratedPresetRule(point: threshold, soundType: definition.soundType!)
+      return GeneratedPresetRule(point: threshold, spec: pointSpec(spec, index: index, count: points.count))
     }
   }
 
   private static func relativeRules(
-    _ definition: PresetDefinition,
+    _ spec: String,
     match: PresetDefinition,
     level: String,
     base: Double?
   ) -> [GeneratedPresetRule] {
-    match.levels[level]!.map { offset in
+    let offsets = match.levels[level]!
+    return offsets.enumerated().map { index, offset in
       let relation = PresetRelation(fieldId: match.fieldId!, offset: offset.threshold, maxOffset: offset.thresholdMax)
       let point: PresetPoint
       if let base {
@@ -145,16 +156,30 @@ final class AlertPresetGenerator {
           repeatEverySeconds: offset.repeatEverySeconds
         )
       } else {
-        // No anchor yet: persist the relationship, but no firing threshold.
+        // No anchor yet: keep the relationship, but no firing threshold.
         point = PresetPoint(threshold: 0, repeatEverySeconds: offset.repeatEverySeconds)
       }
-      return GeneratedPresetRule(point: point, soundType: definition.soundType!, relation: relation)
+      return GeneratedPresetRule(
+        point: point,
+        spec: pointSpec(spec, index: index, count: offsets.count),
+        relation: relation
+      )
     }
+  }
+
+  /// Sound of a ladder's point `index` of `count`. A `voice:<key>` definition speaks each point with a
+  /// severity by rank: the last (most severe) point `critical`, the first `info`, the rest `warning`;
+  /// a one-point ladder is `critical`.
+  /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/AlertPresetGenerator.kt `pointSpec`
+  private static func pointSpec(_ spec: String, index: Int, count: Int) -> String {
+    guard spec.hasPrefix("voice:") else { return spec }
+    let severity = index == count - 1 ? "critical" : index == 0 ? "info" : "warning"
+    return "voice(\(severity)):\(spec.dropFirst("voice:".count))"
   }
 
   private static func speedRange(_ point: PresetPoint, input: PresetInput) -> PresetPoint {
     let top = input.topSpeedKmh.isFinite && input.topSpeedKmh > 0 ? input.topSpeedKmh : 50
-    let unitScale = input.speedUnitSystem == "imperial" ? kmhPerMph : 1.0
+    let unitScale = input.distanceUnit == "mi" ? kmhPerMph : 1.0
     let ceiling = max(1, min(floor(top / unitScale), floor(point.thresholdMax! * top / unitScale + 0.5)))
     let start = max(0, min(ceiling - 1, floor(point.threshold * top / unitScale + 0.5)))
     return PresetPoint(threshold: start * unitScale, thresholdMax: ceiling * unitScale)

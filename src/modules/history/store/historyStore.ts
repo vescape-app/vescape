@@ -22,6 +22,8 @@ const RECENT_WINDOW_MS = 60 * 60_000
 const RECENT_BUCKET_LIMIT = 120
 let recentRefreshInFlight = false
 let recentRefreshVersion = 0
+/** A maintenance re-read that arrived while a page was loading. */
+let reloadAfterPaging = false
 
 export const useHistoryStore = create<HistoryStore>((set, get) => ({
   ...INITIAL_HISTORY_STATE,
@@ -114,6 +116,47 @@ export const useHistoryStore = create<HistoryStore>((set, get) => ({
     }
   },
 
+  async reloadLoadedSessions() {
+    const { sessions: loadedSessions, loading } = get()
+    if (loadedSessions.length === 0) return
+    // Pagination owns `loading`; re-read once it lands instead of racing its cursor.
+    if (loading) {
+      reloadAfterPaging = true
+      return
+    }
+    set({ loading: true })
+    try {
+      // Native caps a page, so walk cursors until the range the rider already loaded is covered.
+      const summary = await getTelemetrySummary()
+      let page = await getRideHistoryPage({ limit: RIDE_PAGE_SIZE })
+      const sessions = [...page.sessions]
+      while (
+        sessions.length < loadedSessions.length &&
+        page.hasMore &&
+        page.nextCursorBeforeMs != null
+      ) {
+        page = await getRideHistoryPage({
+          limit: RIDE_PAGE_SIZE,
+          cursorBeforeMs: page.nextCursorBeforeMs,
+        })
+        sessions.push(...page.sessions)
+      }
+      set((state) => ({
+        summary,
+        sessions,
+        selectedSession: state.selectedSession
+          ? (matchRideSession(sessions, state.selectedSession) ?? state.selectedSession)
+          : state.selectedSession,
+        hasMore: page.hasMore,
+        nextCursorBeforeMs: page.nextCursorBeforeMs,
+      }))
+    } catch (err) {
+      set({ error: err instanceof Error ? err.message : String(err) })
+    } finally {
+      set({ loading: false })
+    }
+  },
+
   async loadMore() {
     const { sessions: loadedSessions, hasMore, loading, nextCursorBeforeMs } = get()
     if (loading || !hasMore || nextCursorBeforeMs == null) return
@@ -142,6 +185,10 @@ export const useHistoryStore = create<HistoryStore>((set, get) => ({
       set({ error: err instanceof Error ? err.message : String(err) })
     } finally {
       set({ loading: false })
+      if (reloadAfterPaging) {
+        reloadAfterPaging = false
+        void get().reloadLoadedSessions()
+      }
     }
   },
 
@@ -170,7 +217,6 @@ export const useHistoryStore = create<HistoryStore>((set, get) => ({
         fromMs: selectedSession.startAtMs,
         toMs: selectedSession.endAtMs,
         boardId: selectedSession.boardId,
-        ...(selectedSession.recordingId ? { recordingId: selectedSession.recordingId } : {}),
       })
       const selectedIndex = sessions.findIndex((session) => session.id === selectedSession.id)
       const [blocks, page] = await Promise.all([

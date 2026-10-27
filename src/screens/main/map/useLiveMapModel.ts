@@ -74,14 +74,13 @@ export function useLiveMapModel({
       }),
     [gpsFix, initialApproximateFix, latestApproximateLocation],
   )
-  const displayMotion = useLocationStore((s) => s.displayMotion)
   const { cameraFix, accuracyRadiusM, directionBearingDeg } = gpsPresentation
   const accuracyFix = useMemo(
     () =>
       gpsPresentation.accuracyFix
-        ? { ...gpsPresentation.accuracyFix, displayMotion, accuracyM: accuracyRadiusM }
+        ? { ...gpsPresentation.accuracyFix, accuracyM: accuracyRadiusM }
         : null,
-    [gpsPresentation.accuracyFix, displayMotion, accuracyRadiusM],
+    [gpsPresentation.accuracyFix, accuracyRadiusM],
   )
   const approximateGpsPuckActive =
     gpsPresentation.degraded ||

@@ -6,7 +6,7 @@ import androidx.room.useWriterConnection
 import androidx.room.execSQL
 import kotlinx.coroutines.sync.withLock
 import android.content.Context
-import expo.modules.vescapecore.alerts.CustomAppSounds
+import expo.modules.vescapecore.alerts.MySounds
 import android.database.sqlite.SQLiteDatabase
 import android.net.Uri
 import org.json.JSONObject
@@ -35,7 +35,7 @@ object DatabaseBackupManager {
     TelemetryDatabase.get(appContext).useWriterConnection { it.execSQL("VACUUM INTO '$escapedPath'") }
 
     try {
-      CustomAppSounds.snapshotForBackup(appContext, soundSnapshot)
+      MySounds.snapshotForBackup(appContext, soundSnapshot)
       zipExport.outputStream().use { output ->
         DatabaseBackupArchive.write(sqliteExport, manifest(context, sqliteExport.length()), output, soundSnapshot)
       }
@@ -53,7 +53,10 @@ object DatabaseBackupManager {
 
   /** Caller must first await the BoardSessionController-owned stop callback. */
   internal suspend fun restoreBackup(context: Context, uriString: String) =
-    TelemetryDatabase.rideExportMutex.withLock { restoreBackupLocked(context, uriString) }
+    TelemetryDatabase.rideExportMutex.withLock {
+      // A weather observation fetched before the swap must not land in the restored database.
+      DatabaseReplacementFence.process.fence { restoreBackupLocked(context, uriString) }
+    }
 
   private fun restoreBackupLocked(context: Context, uriString: String) {
     val appContext = context.applicationContext
@@ -64,7 +67,7 @@ object DatabaseBackupManager {
     val restoredDb = File(workDir, "restored.sqlite")
     val soundStage = File(workDir, "custom-app-sounds")
     val manifest = extractBackup(appContext, uriString, restoredDb, soundStage)
-    CustomAppSounds.validateBackup(soundStage)
+    MySounds.validateBackup(soundStage)
     val manifestVersion = validateDatabase(restoredDb, validateManifest(manifest))
     if (manifestVersion.platform == "ios") reconcileIosSchema(restoredDb, manifestVersion.bootstrapLegacyTune)
     if (readDatabaseVersion(restoredDb) == 0) {
@@ -81,7 +84,7 @@ object DatabaseBackupManager {
         validateDatabase(installed, manifestVersion.copy(declaredVersion = manifestVersion.roomVersion))
         try {
           verifyRoomDatabase(appContext)
-          CustomAppSounds.replaceFromBackup(appContext, soundStage)
+          MySounds.replaceFromBackup(appContext, soundStage)
         } catch (error: Exception) {
           resetRepositoriesAndCloseDatabase()
           throw error

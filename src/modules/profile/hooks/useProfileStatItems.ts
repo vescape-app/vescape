@@ -1,6 +1,6 @@
 import { useMemo } from 'react'
 import { useFormat } from '@/hooks/useFormat'
-import { useUnitSystem } from '@/hooks/useUnitSystem'
+import { useDistanceUnit } from '@/hooks/useDistanceUnit'
 import {
   BatteryChargingVerticalIcon,
   BatteryPlusVerticalIcon,
@@ -41,14 +41,14 @@ export function useProfileStatItems(
   stats: ProfileStats,
   keys?: ProfileStatKey[],
 ): ProfileStatItem[] {
-  const units = useUnitSystem()
+  const distanceUnit = useDistanceUnit()
   const { formatSpeedWithUnit } = useFormat()
   const items = useMemo<ProfileStatItem[]>(
     () => [
       {
         key: 'distance',
         label: 'Distance',
-        value: formatDistance(stats.distanceM, units),
+        value: formatDistance(stats.distanceM, distanceUnit),
         icon: RoadHorizonIcon,
         accent: theme.palette.sky.color,
       },
@@ -83,7 +83,7 @@ export function useProfileStatItems(
       {
         key: 'longestRide',
         label: 'Longest ride',
-        value: formatDistance(stats.longestRideM, units),
+        value: formatDistance(stats.longestRideM, distanceUnit),
         icon: TrophyIcon,
         accent: theme.palette.yellow.color,
       },
@@ -102,7 +102,7 @@ export function useProfileStatItems(
         accent: theme.palette.green.text,
       },
     ],
-    [stats, units, formatSpeedWithUnit],
+    [stats, distanceUnit, formatSpeedWithUnit],
   )
   return keys ? keys.flatMap((key) => items.filter((item) => item.key === key)) : items
 }

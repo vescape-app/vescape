@@ -1,7 +1,8 @@
 import { resolvedAlertRules } from '@/modules/alerts/lib/resolvedAlertRules'
+import { parseGeigerAlertSound } from '@/modules/alerts/lib/alertSoundString'
 import { toTestRule } from '@/modules/alerts/lib/alertTest'
 import type { DraftAlertRule } from '@/modules/alerts/lib/customAlertRules'
-import { useUnitSystem } from '@/hooks/useUnitSystem'
+import { useDistanceUnit } from '@/hooks/useDistanceUnit'
 import { useEffect, useMemo, useState } from 'react'
 import {
   cancelAnimation,
@@ -11,7 +12,6 @@ import {
   withTiming,
 } from 'react-native-reanimated'
 
-import { ALERT_BEEP_COUNT_DEFAULT } from 'vescape-core'
 import { AlertPresetControl } from '@/modules/alerts/components/AlertPresetControl'
 import { draftAlertPreview } from '@/modules/alerts/lib/draftAlertPreview'
 import { Text } from '@/components/base/Text'
@@ -37,8 +37,8 @@ const PRESET_DEMO_MAX: Record<AlertPresetMetric, number> = {
   'controller-temp': 80,
 }
 
-// A couple of custom (non-preset) markers so the showcase demonstrates preset + custom layering.
-const PRESET_DEMO_CUSTOM_ALERTS: Record<AlertPresetMetric, { id: string; threshold: number }[]> = {
+// A couple of rider (non-preset) markers so the showcase demonstrates preset + rider rules together.
+const PRESET_DEMO_RIDER_ALERTS: Record<AlertPresetMetric, { id: string; threshold: number }[]> = {
   speed: [{ id: 'demo-speed', threshold: 45 }],
   duty: [{ id: 'demo-duty', threshold: 92 }],
   battery: [{ id: 'demo-battery', threshold: 10 }],
@@ -63,9 +63,8 @@ const MATCHED_NORMAL_FIXTURES: Partial<Record<AlertPresetMetric, DraftAlertRule[
       },
       enabled: true,
       createdAt: 0,
-      soundType: 'preset:tick',
+      spec: 'geiger:soft',
       repeatEverySeconds: null,
-      beepCount: ALERT_BEEP_COUNT_DEFAULT,
     },
   ],
   'motor-temp': [
@@ -82,9 +81,8 @@ const MATCHED_NORMAL_FIXTURES: Partial<Record<AlertPresetMetric, DraftAlertRule[
       },
       enabled: true,
       createdAt: 0,
-      soundType: 'tts:Motor {value} {unit}',
+      spec: 'voice(info):motorTemp',
       repeatEverySeconds: null,
-      beepCount: ALERT_BEEP_COUNT_DEFAULT,
     },
     {
       id: 'matched-motor',
@@ -99,9 +97,8 @@ const MATCHED_NORMAL_FIXTURES: Partial<Record<AlertPresetMetric, DraftAlertRule[
       },
       enabled: true,
       createdAt: 0,
-      soundType: 'tts:Motor {value} {unit}',
+      spec: 'voice(critical):motorTemp',
       repeatEverySeconds: 10,
-      beepCount: ALERT_BEEP_COUNT_DEFAULT,
     },
   ],
   'controller-temp': [
@@ -118,9 +115,8 @@ const MATCHED_NORMAL_FIXTURES: Partial<Record<AlertPresetMetric, DraftAlertRule[
       },
       enabled: true,
       createdAt: 0,
-      soundType: 'tts:Controller {value} {unit}',
+      spec: 'voice(info):controllerTemp',
       repeatEverySeconds: null,
-      beepCount: ALERT_BEEP_COUNT_DEFAULT,
     },
     {
       id: 'matched-controller',
@@ -135,9 +131,8 @@ const MATCHED_NORMAL_FIXTURES: Partial<Record<AlertPresetMetric, DraftAlertRule[
       },
       enabled: true,
       createdAt: 0,
-      soundType: 'tts:Controller {value} {unit}',
+      spec: 'voice(critical):controllerTemp',
       repeatEverySeconds: 10,
-      beepCount: ALERT_BEEP_COUNT_DEFAULT,
     },
   ],
 }
@@ -151,15 +146,15 @@ const SHOWCASE_CONFIG_BASES_OFF = {
 }
 
 export function AlertPresetControlShowcase() {
-  const units = useUnitSystem()
+  const distanceUnit = useDistanceUnit()
   const [metric, setMetric] = useState<AlertPresetMetric>('speed')
   const [level, setLevel] = useState<AlertPresetLevel>('normal')
   const [live, setLive] = useState(false)
-  const [custom, setCustom] = useState(false)
-  const [editable, setEditable] = useState(true)
-  const [disabled, setDisabled] = useState(false)
+  const [riderRules, setRiderRules] = useState(false)
+  const [levelDisabled, setLevelDisabled] = useState(false)
   const [match, setMatch] = useState(false)
   const [configOff, setConfigOff] = useState(false)
+  const [geigerSound, setGeigerSound] = useState<string | null>(null)
   const configBases = configOff ? SHOWCASE_CONFIG_BASES_OFF : SHOWCASE_CONFIG_BASES
   const setMatched = (enabled: boolean) => {
     setMatch(enabled)
@@ -167,32 +162,36 @@ export function AlertPresetControlShowcase() {
   }
   const liveValue = useSharedValue<number | null>(null)
   const preview = useMemo(() => {
-    const manual: DraftAlertRule[] =
-      level === 'custom' || custom
-        ? PRESET_DEMO_CUSTOM_ALERTS[metric].map((rule) => ({
-            ...rule,
-            controlId: metric,
-            thresholdMax: null,
-            enabled: true,
-            soundType: metric === 'speed' || metric === 'duty' ? 'preset:tick' : 'preset:beep',
-            repeatEverySeconds: null,
-            beepCount: ALERT_BEEP_COUNT_DEFAULT,
-            createdAt: 0,
-          }))
-        : []
+    const manual: DraftAlertRule[] = riderRules
+      ? PRESET_DEMO_RIDER_ALERTS[metric].map((rule) => ({
+          ...rule,
+          controlId: metric,
+          thresholdMax: null,
+          enabled: true,
+          spec: metric === 'speed' || metric === 'duty' ? 'geiger:soft' : 'alert(3):warning',
+          repeatEverySeconds: null,
+          createdAt: 0,
+        }))
+      : []
     const fixture = match && level === 'normal' ? MATCHED_NORMAL_FIXTURES[metric] : undefined
     if (fixture)
       return {
         rules: resolvedAlertRules([...fixture, ...manual], configBases).map(toTestRule),
+        presetRules: resolvedAlertRules(fixture, configBases).map(toTestRule),
         error: null,
       }
     return draftAlertPreview(
       metric,
       level,
-      { speedUnitSystem: units, topSpeedKmh: 50, hasBatteryConfig: true },
+      { distanceUnit: distanceUnit, topSpeedKmh: 50, hasBatteryConfig: true },
       manual,
     )
-  }, [level, metric, units, custom, match, configBases])
+  }, [level, metric, distanceUnit, riderRules, match, configBases])
+
+  const presetIds = useMemo(
+    () => new Set(preview.presetRules.map((rule) => rule.id)),
+    [preview.presetRules],
+  )
 
   useEffect(() => {
     if (!live) {
@@ -220,9 +219,8 @@ export function AlertPresetControlShowcase() {
             onSelect={(v) => setMetric(v as AlertPresetMetric)}
           />
           <ToggleRow label="live session" value={live} onToggle={setLive} />
-          <ToggleRow label="custom markers" value={custom} onToggle={setCustom} />
-          <ToggleRow label="editable" value={editable} onToggle={setEditable} />
-          <ToggleRow label="disabled" value={disabled} onToggle={setDisabled} />
+          <ToggleRow label="rider rules" value={riderRules} onToggle={setRiderRules} />
+          <ToggleRow label="level disabled" value={levelDisabled} onToggle={setLevelDisabled} />
           <ToggleRow label="saved config-match fixture" value={match} onToggle={setMatched} />
           <ToggleRow label="VESC protection off" value={configOff} onToggle={setConfigOff} />
         </>
@@ -240,13 +238,24 @@ export function AlertPresetControlShowcase() {
         }}
         liveValue={live ? liveValue : undefined}
         boardTopSpeedKmh={50}
-        disabled={disabled}
+        levelDisabled={levelDisabled}
         matchBoardConfig={{ [metric]: match }}
         onMatchBoardConfigChange={setMatched}
         configBases={configBases}
-        ruleSnapshot={preview.rules}
-        onCustomize={editable ? () => setLevel('custom') : undefined}
-        onDiscardCustom={editable ? () => setLevel('normal') : undefined}
+        ruleSnapshot={
+          geigerSound
+            ? preview.rules.map((rule) =>
+                presetIds.has(rule.id) && parseGeigerAlertSound(rule.spec)
+                  ? { ...rule, spec: geigerSound }
+                  : rule,
+              )
+            : preview.rules
+        }
+        geigerSound={
+          geigerSound ?? preview.presetRules.find((rule) => parseGeigerAlertSound(rule.spec))?.spec
+        }
+        presetRules={preview.presetRules}
+        onGeigerSoundChange={setGeigerSound}
       />
     </ShowcaseCard>
   )

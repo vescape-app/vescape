@@ -2,11 +2,11 @@ appId: ${APP_ID}
 ---
 - clearState
 - launchApp
-
 - extendedWaitUntil:
     visible: DEVELOPMENT SERVERS
     timeout: 15000
-- tapOn: 'http://.*:8081'
+# Open this run's Metro directly; discovery can list another workspace or omit localhost servers.
+- openLink: "${'exp+vescape://expo-development-client/?url=' + encodeURIComponent('http://127.0.0.1:' + (typeof METRO_PORT === 'undefined' ? '8081' : METRO_PORT))}"
 - extendedWaitUntil:
     visible: No board
     # `clearState` drops the dev-client's cached bundle, so every flow pays a cold Metro fetch

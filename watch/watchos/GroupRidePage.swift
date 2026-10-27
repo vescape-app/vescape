@@ -25,7 +25,7 @@ struct GroupRidePage: View {
   let group: WatchGroupRide
   /// This page is the settled vertical page: the list may take the crown and the drag.
   let settled: Bool
-  var unitSystem: String = "metric"
+  var distanceUnit: String = "km"
   /// A pull down from the list's top: page the vertical axis back to navigation.
   var onPageBack: () -> Void = {}
 
@@ -62,7 +62,7 @@ struct GroupRidePage: View {
         } else {
           VStack(spacing: 0) {
             ForEach(rows, id: \.rider.id) { row in
-              GroupRideRowView(row: row, unitSystem: unitSystem)
+              GroupRideRowView(row: row, distanceUnit: distanceUnit)
                 .frame(width: width, height: GROUP_ROW_HEIGHT)
             }
           }
@@ -162,7 +162,7 @@ private struct GroupWindowIndicator: View {
 
 private struct GroupRideRowView: View {
   let row: WatchGroupRideRow
-  let unitSystem: String
+  let distanceUnit: String
 
   var body: some View {
     HStack(spacing: 0) {
@@ -182,7 +182,7 @@ private struct GroupRideRowView: View {
         .fill(Palette.secondaryText)
         .frame(width: GROUP_ARROW_BOX, height: GROUP_ARROW_BOX)
         .rotationEffect(.degrees(row.bearingDeg))
-      Text(groupRideDistanceLabel(row.rider.distanceM, unitSystem: unitSystem))
+      Text(groupRideDistanceLabel(row.rider.distanceM, distanceUnit: distanceUnit))
         .font(WatchTypography.mono(size: GROUP_VALUE_FONT_SIZE))
         .foregroundStyle(Palette.primaryText)
         .lineLimit(1)

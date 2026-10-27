@@ -39,7 +39,6 @@ function sessionFromBucket(bucket: TelemetryMinuteBucket): RideHistorySession {
       : []
   return {
     id: `${bucket.boardId ?? 'unknown'}:${bucket.startAtMs}:${bucket.endAtMs}`,
-    recordingId: bucket.recordingId,
     boardId: bucket.boardId,
     boardName: bucket.boardName,
     startAtMs: bucket.startAtMs,
@@ -69,6 +68,7 @@ function sessionFromBucket(bucket: TelemetryMinuteBucket): RideHistorySession {
     maxLongitude: bucket.firstLongitude,
     boundaryBefore: bucket.boundaryBefore,
     routePoints: point,
+    weather: null,
   }
 }
 interface HistoryRangeResult {
@@ -192,7 +192,6 @@ test('removes selected session from history and selects next ride', async () => 
   })
   const selected = block({
     id: 'selected',
-    recordingId: 'recording-selected',
     startAtMs: 5_000_000,
     endAtMs: 5_060_000,
   })
@@ -214,7 +213,6 @@ test('removes selected session from history and selects next ride', async () => 
     fromMs: selected.startAtMs,
     toMs: selected.endAtMs,
     boardId: selected.boardId,
-    recordingId: 'recording-selected',
     limit: 10_000,
   })
   await useHistoryStore.getState().removeSelectedSession()
@@ -223,7 +221,6 @@ test('removes selected session from history and selects next ride', async () => 
     fromMs: selected.startAtMs,
     toMs: selected.endAtMs,
     boardId: selected.boardId,
-    recordingId: 'recording-selected',
   })
   expect(useHistoryStore.getState().blocks.map((b) => b.id)).toEqual(['newest', 'oldest'])
   expect(useHistoryStore.getState().sessions.map((s) => s.id)).toHaveLength(2)
@@ -308,7 +305,6 @@ test('selects ride immediately while loading its full route', async () => {
       accuracyM: null,
       altitudeM: null,
       timestamp: next.startAtMs + index,
-      recordingId: null,
       distanceFromPreviousM: null,
     })),
     markers: [],
@@ -388,7 +384,6 @@ test('loads a small GPS preview when selected ride has no bucket coordinate', as
     accuracyM: null,
     altitudeM: null,
     timestamp: ride.startAtMs,
-    recordingId: null,
     distanceFromPreviousM: null,
   }
   let resolvePreviewRange: (value: HistoryRangeResult) => void = () => {}
@@ -438,6 +433,7 @@ test('loads a small GPS preview when selected ride has no bucket coordinate', as
     minLongitude: null,
     maxLongitude: null,
     routePoints: [],
+    weather: null,
     id: `${ride.boardId}:${ride.startAtMs}:${ride.endAtMs}`,
   })
   await Promise.resolve()

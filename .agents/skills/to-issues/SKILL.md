@@ -194,3 +194,7 @@ Or "None" if this is a standalone issue with no group siblings.
 
 Do NOT close or modify any parent issue.
 Predict the next issue id after creating first one to speed up issue creation with "related" inside. Then update first issue. If IDs differ, update them.
+
+### 6. Offer a plan review
+
+After publishing two or more related slices, ask once: "Run `/judge-plan <PRD#>` (or `/judge-plan <issue#,issue#,…>` when there is no PRD) to have a fresh reviewer check the plan against the code?" Run it only on yes. Skip the question for a single standalone issue.

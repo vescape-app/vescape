@@ -7,8 +7,6 @@ internal struct BucketTelemetryPoint {
   let capturedAtMs: Int64
   /// Owning Board (`boards.id`); the durable identity telemetry is keyed on (ADR 0028).
   let boardId: String?
-  /// Owning Ride Recording, or `LEGACY_RIDE_RECORDING_ID` for rows without durable identity.
-  var recordingId: String = LEGACY_RIDE_RECORDING_ID
   let speedCentiKmh: Int
   let batteryVoltageMv: Int
   let motorCurrentMa: Int
@@ -33,10 +31,6 @@ internal struct TelemetryBucket {
   /// Owning Board (`boards.id`), or `""` when the samples match no saved Board — the column is part
   /// of the bucket primary key, so unattributed rows need a value rather than null (ADR 0028).
   let boardId: String
-  /// Owning Ride Recording, or `LEGACY_RIDE_RECORDING_ID` for buckets built before durable
-  /// recording identity. Part of the key so two recordings of one Board inside one minute aggregate
-  /// separately instead of being merged (ADR 0038).
-  let recordingId: String
   var sampleCount = 0
   var firstSampleAtMs = Int64.max
   var lastSampleAtMs = Int64.min
@@ -125,7 +119,6 @@ internal struct TelemetryBucket {
 internal struct BucketLocationPoint {
   let capturedAtMs: Int64
   let boardId: String?
-  let recordingId: String
   let precise: Bool
   /// GPS movement evidence: precise, with a reported speed at or above the rider's threshold.
   let moving: Bool
@@ -140,26 +133,24 @@ internal func buildTelemetryBuckets(
   _ points: [BucketTelemetryPoint],
   locationPoints: [BucketLocationPoint] = []
 ) -> [TelemetryBucket] {
-  // Keyed on the Ride Recording as well as the Board and the minute: two recordings of one Board
-  // can share a minute, and merging them would fabricate one ride out of two (ADR 0038).
   var buckets: [String: TelemetryBucket] = [:]
   for point in points.sorted(by: { $0.capturedAtMs < $1.capturedAtMs }) {
     let bucketStart = point.capturedAtMs - (point.capturedAtMs % TELEMETRY_BUCKET_SIZE_MS)
     let boardId = point.boardId ?? UNKNOWN_TELEMETRY_BOARD_ID
-    let key = "\(boardId):\(point.recordingId):\(bucketStart)"
+    let key = "\(boardId):\(bucketStart)"
     var bucket = buckets[key]
-      ?? TelemetryBucket(bucketStartMs: bucketStart, boardId: boardId, recordingId: point.recordingId)
+      ?? TelemetryBucket(bucketStartMs: bucketStart, boardId: boardId)
     bucket.add(point)
     buckets[key] = bucket
   }
   for point in locationPoints.sorted(by: { $0.capturedAtMs < $1.capturedAtMs }) {
     let bucketStart = point.capturedAtMs - (point.capturedAtMs % TELEMETRY_BUCKET_SIZE_MS)
     let boardId = point.boardId ?? UNKNOWN_TELEMETRY_BOARD_ID
-    let key = "\(boardId):\(point.recordingId):\(bucketStart)"
+    let key = "\(boardId):\(bucketStart)"
     // A minute can hold fixes and no frame at all — a board dropout is exactly when the Ride Track
     // matters most — so the track creates its own bucket rather than being discarded (ADR 0038).
     var bucket = buckets[key]
-      ?? TelemetryBucket(bucketStartMs: bucketStart, boardId: boardId, recordingId: point.recordingId)
+      ?? TelemetryBucket(bucketStartMs: bucketStart, boardId: boardId)
     bucket.addLocation(point)
     buckets[key] = bucket
   }

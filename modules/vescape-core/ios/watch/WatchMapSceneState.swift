@@ -34,7 +34,6 @@ struct WatchMapSceneState {
     target = WatchMapTarget(
       spanM: WatchMapProjection.clampedSpanM(!hasNavigation ? group?.spanM ?? frame.routeSpanM : frame.routeSpanM),
       courseDeg: !hasNavigation ? group?.courseDeg ?? frame.courseDeg : frame.courseDeg,
-      displayMotion: frame.displayMotion,
       position: frame.mapPosition
     )
   }
@@ -71,7 +70,6 @@ struct WatchMapSceneState {
 struct WatchMapTarget: Equatable {
   let spanM: Double
   let courseDeg: Double?
-  var displayMotion: GpsDisplayMotion? = nil
   let position: WatchMapPosition?
 }
 

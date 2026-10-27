@@ -21,10 +21,13 @@ class WatchSettingsTest {
             "wearTelemetryRouteEnabled" to AppSettings(wearTelemetryRouteEnabled = false),
             "wearStreetMapEnabled" to AppSettings(wearStreetMapEnabled = false),
             "wearMapGaugesPercent" to AppSettings(wearMapGaugesPercent = 90),
-            "unitSystem" to AppSettings(unitSystem = "imperial"),
+            "distanceUnit" to AppSettings(distanceUnit = "mi"),
             "wearTiltRatePercent" to AppSettings(wearTiltRatePercent = 40),
         )
-        val mirroredFields = WatchSettings::class.java.declaredFields.count { !java.lang.reflect.Modifier.isStatic(it.modifiers) }
+        // Display tuning is session-only, outside AppSettings and its persisted reload keys.
+        val mirroredFields = WatchSettings::class.java.declaredFields.count {
+            !java.lang.reflect.Modifier.isStatic(it.modifiers) && it.name != "displayMotionJson"
+        }
         assertEquals(mirroredFields, changedByKey.size)
         assertEquals(WATCH_SOURCE_SETTING_KEYS - "wearPushRateHz", changedByKey.keys)
         for (changed in changedByKey.values) {
@@ -44,11 +47,11 @@ class WatchSettingsTest {
     @Test
     fun `unit preference belongs to cold settings and invalidates equality`() {
         val metric = AppSettings().toWatchSettings()
-        val imperial = AppSettings(unitSystem = "imperial").toWatchSettings()
-        assertEquals("metric", metric.unitSystem)
-        assertEquals("imperial", imperial.unitSystem)
-        org.junit.Assert.assertNotEquals(metric, imperial)
-        assertEquals(imperial, AppSettings(unitSystem = "imperial", telemetryPollRateHz = 5).toWatchSettings())
+        val miles = AppSettings(distanceUnit = "mi").toWatchSettings()
+        assertEquals("km", metric.distanceUnit)
+        assertEquals("mi", miles.distanceUnit)
+        org.junit.Assert.assertNotEquals(metric, miles)
+        assertEquals(miles, AppSettings(distanceUnit = "mi", telemetryPollRateHz = 5).toWatchSettings())
     }
 
     @Test

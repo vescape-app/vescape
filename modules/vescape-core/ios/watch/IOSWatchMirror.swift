@@ -58,12 +58,12 @@ private final class IOSWatchMirrorSources: WatchMirrorSources {
     weatherChanged: @escaping (WatchWeather) -> Void,
     routePayload: @escaping ([String: Any]) -> Void
   ) -> () -> Void {
-    WeatherCoordinator.shared.onNativeChange = { weatherChanged($0.watchWeather) }
+    let removeWeather = WeatherCoordinator.shared.addNativeChangeListener { weatherChanged($0.watchWeather) }
     if let known = WeatherCoordinator.shared.current { weatherChanged(known.watchWeather) }
     NavigationController.shared.onWatchChange = routeChanged
     WatchRouteMirror.shared.attach(to: NavigationController.shared, push: routePayload)
     return {
-      WeatherCoordinator.shared.onNativeChange = nil
+      removeWeather()
       NavigationController.shared.onWatchChange = nil
       WatchRouteMirror.shared.detach(from: NavigationController.shared)
     }
@@ -115,7 +115,7 @@ extension WatchMirrorCoordinator {
       telemetryRouteEnabled: (settings["wearTelemetryRouteEnabled"] ?? nil) as? Bool ?? true,
       streetMapEnabled: (settings["wearStreetMapEnabled"] ?? nil) as? Bool ?? true,
       mapGaugesPercent: WatchMapGauges.percent(settings["wearMapGaugesPercent"] ?? nil) ?? WatchMapGauges.defaultPercent,
-      unitSystem: (settings["unitSystem"] ?? nil) as? String == "imperial" ? "imperial" : "metric",
+      distanceUnit: (settings["distanceUnit"] ?? nil) as? String == "mi" ? "mi" : "km",
       tiltRatePercent: AppDataRepository.wearTiltRatePercent(settings["wearTiltRatePercent"] ?? nil) ?? watchDefaultTiltRatePercent
     ), intervalMs: Int64(1000 / hz))
     return strength

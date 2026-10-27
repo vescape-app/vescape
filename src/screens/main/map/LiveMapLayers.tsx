@@ -1,14 +1,18 @@
+import { startPointAnimation } from '@/modules/map/lib/liveMotion/pointAnimation'
 import { CircleLayer, FillLayer, Images, LineLayer, ShapeSource, SymbolLayer } from '@rnmapbox/maps'
-import { useMemo } from 'react'
-import type { GpsDisplayAnimator } from '@/modules/map/hooks/useGpsDisplayAnimator'
+import { useEffect, useMemo, useRef, useState } from 'react'
+import {
+  createSpring,
+  stepSpring,
+  retargetSpring,
+  springSettled,
+  nearestBearingTarget,
+} from '@/modules/map/lib/cameraEngine/springs'
+import { useLiveMotionSettings } from '@/modules/map/store/liveMotionSettings'
 import { processColor } from 'react-native'
+import { makeTrailLineString } from '@/helpers/mapGeometry'
 
 import { theme } from '@/constants/theme'
-import { GpsDisplayTrail } from '@/screens/main/map/GpsDisplayTrail'
-import { usePuckHeadingSpring } from '@/modules/map/hooks/usePuckHeadingSpring'
-import { useNavigationDiagnosticsStore } from '@/modules/map/store/navigationDiagnosticsStore'
-import { liveTrailParts } from '@/modules/map/lib/liveTrailPrefix'
-import { useLocationStore } from '@/modules/location/store/locationStore'
 import { useResolvedAccentColors, useResolvedNeutralColors } from '@/hooks/useTheme'
 import { RiderPresencePin, RiderTrail } from '@/modules/group-ride/components/RiderMapLayers'
 import { useSelectedBoardRailColor } from '@/modules/group-ride/lib/selectedBoardRailColor'
@@ -19,40 +23,37 @@ const GPS_HEADING_ICON_ID = 'center-gps-heading'
 const GPS_HEADING_ICON = require('@rnmapbox/maps/src/assets/heading.png')
 
 export function LiveMapLayers({
+  pointAnimator,
+  displayRuntime,
   liveTrailShape,
   accuracyFix,
-  positionAnimator,
   accuracyShape,
   gpsPuckBearingDeg,
   riders,
   highContrastRoutes,
 }: {
+  pointAnimator: MainMapLayersProps['pointAnimator']
+  displayRuntime: MainMapLayersProps['displayRuntime']
   liveTrailShape: MainMapLayersProps['liveTrailShape']
   accuracyFix: MainMapLayersProps['accuracyFix']
-  positionAnimator: GpsDisplayAnimator | null
   accuracyShape: MainMapLayersProps['accuracyShape']
   gpsPuckBearingDeg: MainMapLayersProps['gpsPuckBearingDeg']
   riders: MainMapLayersProps['riders']
   highContrastRoutes: boolean
 }) {
-  const { layerRef: gpsHeadingLayerRef } = usePuckHeadingSpring(gpsPuckBearingDeg)
-  const showRawGps = useNavigationDiagnosticsStore((s) => s.showRawGps)
-  const rawFix = useLocationStore((state) => state.latestRawLocation)
-  // @platform-diff Phone adds a detached two-segment dust fade; watch keeps its full-path gradient.
-  const { body: trailBodyShape, tail: tailShape } = useMemo(
-    () => liveTrailParts(liveTrailShape, rawFix),
-    [liveTrailShape, rawFix],
-  )
-  const rawGpsShape = useMemo(
+  useEffect(
     () =>
-      rawFix
-        ? ({
-            type: 'Feature',
-            geometry: { type: 'Point', coordinates: [rawFix.longitude, rawFix.latitude] },
-            properties: {},
-          } as GeoJSON.Feature<GeoJSON.Point>)
-        : null,
-    [rawFix],
+      startPointAnimation({
+        motion: displayRuntime.motion,
+        subscribe: displayRuntime.subscribe,
+        now: displayRuntime.now,
+        isActive: () => displayRuntime.active,
+        moveTo: (coordinate, durationMs) =>
+          pointAnimator.moveTo({ coordinate, durationMs: displayRuntime.duration(durationMs) }),
+        schedule: (callback, ms) => setTimeout(callback, displayRuntime.duration(ms)),
+        cancel: clearTimeout,
+      }),
+    [displayRuntime, pointAnimator],
   )
   const riderColor = useSelectedBoardRailColor()
   const neutral = useResolvedNeutralColors()
@@ -67,44 +68,66 @@ export function LiveMapLayers({
   const trailGradientEnd = riderColor
     ? theme.alpha(riderColor, 0.85)
     : theme.alpha(accents.violet.color, 0.85)
-  const gpsPuckPositionShape = useMemo(
-    () =>
-      accuracyFix
-        ? ({
-            type: 'Feature',
-            geometry: {
-              type: 'Point',
-              coordinates: [accuracyFix.longitude, accuracyFix.latitude],
-            },
-            properties: {},
-          } as GeoJSON.Feature<GeoJSON.Point>)
-        : null,
-    [accuracyFix],
+  const [pointHeading, setPointHeading] = useState<number | null>(gpsPuckBearingDeg)
+  const [trailRevision, setTrailRevision] = useState(0)
+  useEffect(
+    () => displayRuntime.subscribe(() => setTrailRevision((revision) => revision + 1)),
+    [displayRuntime],
   )
-  const gpsPuckShape = useMemo(
+  const smoothedTrailShape = useMemo(
     () =>
-      accuracyFix && gpsPuckBearingDeg != null
-        ? ({
-            type: 'FeatureCollection',
-            features: [
-              {
-                type: 'Feature',
-                geometry: {
-                  type: 'Point',
-                  coordinates: [accuracyFix.longitude, accuracyFix.latitude],
-                },
-                properties: { bearing: gpsPuckBearingDeg },
-              },
-            ],
-          } as GeoJSON.FeatureCollection)
+      displayRuntime.smoothedTrail.length >= 2
+        ? makeTrailLineString(displayRuntime.smoothedTrail)
         : null,
-    [accuracyFix, gpsPuckBearingDeg],
+    [displayRuntime, trailRevision],
   )
+  const arrowRef = useRef<SymbolLayer>(null)
+  const initialArrow = useRef(gpsPuckBearingDeg ?? 0)
+  useEffect(() => {
+    let spring = createSpring(initialArrow.current)
+    let frame: number | null = null
+    let last = performance.now()
+    const animate = (now: number) => {
+      frame = null
+      if (!displayRuntime.active) return
+      spring = stepSpring(
+        spring,
+        useLiveMotionSettings.getState().config.arrowHeadingOmega,
+        Math.min(0.064, (now - last) / 1000),
+      )
+      last = now
+      arrowRef.current?.setNativeProps({ style: { iconRotate: spring.x } })
+      if (!springSettled(spring, 0.05, 0.05)) frame = requestAnimationFrame(animate)
+    }
+    const update = () => {
+      if (!displayRuntime.active) {
+        if (frame != null) cancelAnimationFrame(frame)
+        frame = null
+        return
+      }
+      const heading = displayRuntime.motion.pointHeading(displayRuntime.now())
+      if (heading == null) return
+      setPointHeading((previous) => previous ?? heading)
+      const target = nearestBearingTarget(spring.x, heading)
+      if (target === spring.target && springSettled(spring, 0.05, 0.05)) return
+      spring = retargetSpring(spring, target)
+      if (frame == null) {
+        last = performance.now()
+        frame = requestAnimationFrame(animate)
+      }
+    }
+    const unsubscribe = displayRuntime.subscribe(update)
+    update()
+    return () => {
+      unsubscribe()
+      if (frame != null) cancelAnimationFrame(frame)
+    }
+  }, [displayRuntime])
 
   return (
     <>
-      {trailBodyShape && (
-        <ShapeSource id="center-live-trail-source" shape={trailBodyShape} lineMetrics>
+      {liveTrailShape && (
+        <ShapeSource id="center-live-trail-source" shape={liveTrailShape} lineMetrics>
           <LineLayer
             id="center-live-trail-casing"
             style={{
@@ -136,29 +159,20 @@ export function LiveMapLayers({
           />
         </ShapeSource>
       )}
-      {tailShape && (
-        <ShapeSource id="center-live-trail-tail-source" shape={tailShape} lineMetrics>
+      {smoothedTrailShape && (
+        <ShapeSource id="center-smoothed-trail-source" shape={smoothedTrailShape}>
           <LineLayer
-            id="center-live-trail-tail-line"
+            id="center-smoothed-trail-line"
             style={{
-              lineColor: trailGradientEnd,
-              lineGradient: [
-                'interpolate',
-                ['linear'],
-                ['line-progress'],
-                0,
-                trailGradientEnd,
-                1,
-                trailGradientStart,
-              ],
-              lineWidth: MAP_DEFAULTS.trailWidth,
+              lineColor: theme.palette.mono.white,
+              lineWidth: 2,
+              lineOpacity: 0.9,
               lineCap: 'round',
               lineJoin: 'round',
             }}
           />
         </ShapeSource>
       )}
-      <GpsDisplayTrail />
       {accuracyFix && (
         <>
           {accuracyShape && (
@@ -169,11 +183,8 @@ export function LiveMapLayers({
               />
             </ShapeSource>
           )}
-          {gpsPuckPositionShape && (
-            <ShapeSource
-              id="center-gps-puck-position-source"
-              shape={positionAnimator ?? gpsPuckPositionShape}
-            >
+          {pointAnimator && (
+            <ShapeSource id="center-gps-puck-position-source" shape={pointAnimator}>
               <CircleLayer
                 id="center-gps-puck-core"
                 style={{
@@ -185,18 +196,16 @@ export function LiveMapLayers({
               />
             </ShapeSource>
           )}
-          {gpsPuckShape && (
+          {pointHeading != null && (
             <>
               <Images images={{ [GPS_HEADING_ICON_ID]: { image: GPS_HEADING_ICON, sdf: true } }} />
-              <ShapeSource
-                id="center-gps-puck-heading-source"
-                shape={positionAnimator ?? gpsPuckShape}
-              >
+              <ShapeSource id="center-gps-puck-heading-source" shape={pointAnimator}>
                 <SymbolLayer
-                  ref={gpsHeadingLayerRef}
+                  ref={arrowRef}
                   id="center-gps-puck-heading-outline"
                   style={{
                     iconImage: GPS_HEADING_ICON_ID,
+                    iconRotate: pointHeading,
                     iconAllowOverlap: true,
                     iconIgnorePlacement: true,
                     iconRotationAlignment: 'map',
@@ -209,20 +218,6 @@ export function LiveMapLayers({
             </>
           )}
         </>
-      )}
-      {showRawGps && rawGpsShape && (
-        <ShapeSource id="center-raw-gps-source" shape={rawGpsShape}>
-          <CircleLayer
-            id="center-raw-gps-ring"
-            style={{
-              circleRadius: 13,
-              circleColor: 'transparent',
-              circleStrokeWidth: 2,
-              circleStrokeColor: accents.amber.color,
-              circlePitchAlignment: 'viewport',
-            }}
-          />
-        </ShapeSource>
       )}
       {riders.map((rider, index) =>
         rider.trail && rider.trail.length >= 2 ? (

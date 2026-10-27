@@ -1,6 +1,5 @@
 import { useRideFormat } from '@/modules/history/hooks/useRideFormat'
-import { useFormat } from '@/hooks/useFormat'
-import { useCallback, useEffect, useMemo, useState, type RefObject } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState, type RefObject } from 'react'
 import { router } from 'expo-router'
 import {
   CaretRightIcon,
@@ -45,9 +44,9 @@ export function HistoryDrawer({
   onOpenRide,
   onOpenFavorite,
 }: HistoryDrawerProps) {
-  const { formatSpeedWithUnit } = useFormat()
   const { formatRideDetails } = useRideFormat()
   const [listMode, setListMode] = useState<ListMode>(null)
+  const pendingListRef = useRef<ListMode>(null)
   const [ridesLoaded, setRidesLoaded] = useState(false)
   const [favoritesLoaded, setFavoritesLoaded] = useState(false)
   const blocks = useHistoryStore((state) => state.blocks)
@@ -106,11 +105,20 @@ export function HistoryDrawer({
 
   const showList = useCallback(
     (mode: Exclude<ListMode, null>) => {
-      setListMode(mode)
+      // iOS ignores a Modal presented while another is still on screen, so the list waits for the
+      // drawer's close animation to finish.
+      pendingListRef.current = mode
       onClose()
     },
     [onClose],
   )
+
+  const handleDrawerClosed = useCallback(() => {
+    const pending = pendingListRef.current
+    pendingListRef.current = null
+    if (pending) setListMode(pending)
+    onClose()
+  }, [onClose])
 
   const openStats = useCallback(() => {
     onClose()
@@ -125,7 +133,7 @@ export function HistoryDrawer({
         title="History"
         icon={ClockCounterClockwiseIcon}
         iconColor={theme.palette.purple.color}
-        onClose={onClose}
+        onClose={handleDrawerClosed}
         backdropTestID="history-drawer-backdrop"
       >
         <View style={styles.content} testID="history-drawer">
@@ -188,10 +196,11 @@ export function HistoryDrawer({
                   startMs: session.startAtMs,
                   endMs: session.endAtMs,
                 }
-                const details = [
-                  formatRideDetails(window.endMs - window.startMs, session.distanceM, null),
-                  formatSpeedWithUnit(session.maxSpeedKmh),
-                ].join(' · ')
+                const details = formatRideDetails(
+                  window.endMs - window.startMs,
+                  session.distanceM,
+                  null,
+                )
                 return (
                   <RidePreviewCard
                     key={session.id}
@@ -205,6 +214,7 @@ export function HistoryDrawer({
                     subtitle={details}
                     routePoints={session.routePoints}
                     color={theme.palette.purple.color}
+                    weather={session.weather}
                     onPress={() => openRide(session)}
                   />
                 )

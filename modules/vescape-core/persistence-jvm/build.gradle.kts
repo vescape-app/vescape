@@ -13,8 +13,9 @@ val extractProductionPersistence by tasks.registering {
     val output = generatedProduction.get().asFile
     delete(output)
     listOf(
-      "expo/modules/vescapecore/alerts/AlertDefaults.kt",
       "expo/modules/vescapecore/alerts/ConfigRelativeFields.kt",
+      "expo/modules/vescapecore/alerts/AlertSoundString.kt",
+      "expo/modules/vescapecore/alerts/MySoundFileName.kt",
       "expo/modules/vescapecore/telemetry/AlertPresetPersistence.kt",
       "expo/modules/vescapecore/telemetry/AlertPresetGenerator.kt",
       "expo/modules/vescapecore/alerts/SoundPackFileSwap.kt",
@@ -23,6 +24,7 @@ val extractProductionPersistence by tasks.registering {
       "expo/modules/vescapecore/config/BoardConfigChangeNotice.kt",
       "expo/modules/vescapecore/config/RefloatConfigSchema.kt",
       "expo/modules/vescapecore/telemetry/TelemetryEntities.kt",
+      "expo/modules/vescapecore/weather/WeatherAlertDefaults.kt",
       "expo/modules/vescapecore/telemetry/HistoryGpsProjection.kt",
       "expo/modules/vescapecore/telemetry/RideExport.kt",
       "expo/modules/vescapecore/location/GpsAccuracy.kt",
@@ -49,6 +51,11 @@ val extractProductionPersistence by tasks.registering {
       "expo/modules/vescapecore/telemetry/FavoriteSummaryBuilder.kt",
       "expo/modules/vescapecore/telemetry/TelemetryRangeSubtraction.kt",
       "expo/modules/vescapecore/telemetry/TelemetryMaintenancePersistence.kt",
+      "expo/modules/vescapecore/telemetry/WeatherObservations.kt",
+      "expo/modules/vescapecore/telemetry/DatabaseReplacementFence.kt",
+      "expo/modules/vescapecore/telemetry/MaintenanceJobs.kt",
+      "expo/modules/vescapecore/telemetry/RideWeatherBackfill.kt",
+      "expo/modules/vescapecore/weather/Weather.kt",
     ).forEach { relative ->
       val source = productionRoot.file(relative).asFile.readText()
       output.resolve(relative).apply { parentFile.mkdirs(); writeText(source) }

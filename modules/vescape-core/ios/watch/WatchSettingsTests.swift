@@ -62,13 +62,13 @@ final class WatchSettingsTests: XCTestCase {
 
   func testUnitPreferenceDefaultsAndRoundTripsAfterRestart() {
     for invalid: Any in ["unknown", 1, true, NSNull()] {
-      XCTAssertEqual(WatchSettings.decode([WatchSettingsKey.unitSystem: invalid]).unitSystem, "metric")
+      XCTAssertEqual(WatchSettings.decode([WatchSettingsKey.distanceUnit: invalid]).distanceUnit, "km")
     }
-    XCTAssertEqual(WatchSettings.decode([:]).unitSystem, "metric")
-    let imperial = WatchSettings(unitSystem: "imperial")
-    XCTAssertEqual(WatchSettings.decode(imperial.payload), imperial)
-    XCTAssertEqual(WatchSettings.decode(context: [watchSettingsChannel: imperial.payload]), imperial)
-    XCTAssertEqual(WatchSettings.decode(WatchSettings(unitSystem: "metric").payload).unitSystem, "metric")
+    XCTAssertEqual(WatchSettings.decode([:]).distanceUnit, "km")
+    let miles = WatchSettings(distanceUnit: "mi")
+    XCTAssertEqual(WatchSettings.decode(miles.payload), miles)
+    XCTAssertEqual(WatchSettings.decode(context: [watchSettingsChannel: miles.payload]), miles)
+    XCTAssertEqual(WatchSettings.decode(WatchSettings(distanceUnit: "km").payload).distanceUnit, "km")
   }
 
   func testMissingKeysFallBackToTheWristDefaults() {

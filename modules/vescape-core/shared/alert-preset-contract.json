@@ -3,7 +3,7 @@
     {
       "name": "normal-speed-metric",
       "metric": "speed",
-      "level": "normal",
+      "spec": "preset(normal)",
       "topSpeedKmh": 50,
       "expected": [
         {
@@ -13,11 +13,11 @@
       ]
     },
     {
-      "name": "normal-speed-imperial",
+      "name": "normal-speed-mi",
       "metric": "speed",
-      "level": "normal",
+      "spec": "preset(normal)",
       "topSpeedKmh": 50,
-      "speedUnitSystem": "imperial",
+      "distanceUnit": "mi",
       "expected": [
         {
           "threshold": 35.405568,
@@ -26,11 +26,11 @@
       ]
     },
     {
-      "name": "low-speed-imperial",
+      "name": "low-speed-mi",
       "metric": "speed",
-      "level": "minimal",
+      "spec": "preset(minimal)",
       "topSpeedKmh": 5,
-      "speedUnitSystem": "imperial",
+      "distanceUnit": "mi",
       "expected": [
         {
           "threshold": 3.218688,
@@ -41,34 +41,37 @@
     {
       "name": "safe-duty",
       "metric": "duty",
-      "level": "safe",
+      "spec": "preset(safe)",
       "expected": [
         {
           "threshold": 75,
-          "thresholdMax": 90
+          "thresholdMax": 90,
+          "spec": "geiger:hard"
         }
       ]
     },
     {
       "name": "normal-motor",
       "metric": "motor-temp",
-      "level": "normal",
+      "spec": "preset(normal)",
       "expected": [
         {
           "threshold": 85,
-          "thresholdMax": null
+          "thresholdMax": null,
+          "spec": "voice(info):motorTemp"
         },
         {
           "threshold": 95,
           "thresholdMax": null,
-          "repeatEverySeconds": 10
+          "repeatEverySeconds": 10,
+          "spec": "voice(critical):motorTemp"
         }
       ]
     },
     {
       "name": "safe-controller",
       "metric": "controller-temp",
-      "level": "safe",
+      "spec": "preset(safe)",
       "expected": [
         {
           "threshold": 60,
@@ -88,13 +91,13 @@
     {
       "name": "missing-battery",
       "metric": "battery",
-      "level": "normal",
+      "spec": "preset(normal)",
       "expected": []
     },
     {
       "name": "invalid-battery",
       "metric": "battery",
-      "level": "normal",
+      "spec": "preset(normal)",
       "batteryConfig": {
         "mode": "preset",
         "cellPresetId": "unknown",
@@ -106,7 +109,7 @@
     {
       "name": "normal-battery",
       "metric": "battery",
-      "level": "normal",
+      "spec": "preset(normal)",
       "batteryConfig": {
         "mode": "manual",
         "minVoltage": 60,
@@ -138,8 +141,7 @@
     {
       "name": "dormant-match",
       "metric": "duty",
-      "level": "normal",
-      "matchBoardConfig": true,
+      "spec": "preset(normal):match=on",
       "expected": [
         {
           "threshold": 0,
@@ -153,8 +155,7 @@
     {
       "name": "resolved-match",
       "metric": "duty",
-      "level": "normal",
-      "matchBoardConfig": true,
+      "spec": "preset(normal):match=on",
       "refloat": {
         "tiltback_duty": 0.9
       },
@@ -171,8 +172,7 @@
     {
       "name": "disabled-match",
       "metric": "duty",
-      "level": "normal",
-      "matchBoardConfig": true,
+      "spec": "preset(normal):match=on",
       "refloat": {
         "tiltback_duty": 1
       },
@@ -189,19 +189,19 @@
     {
       "name": "off-speed",
       "metric": "speed",
-      "level": "off",
+      "spec": "preset(off)",
       "expected": []
     },
     {
-      "name": "custom-speed",
+      "name": "unknown-level",
       "metric": "speed",
-      "level": "custom",
+      "spec": "preset(custom)",
       "expected": []
     },
     {
       "name": "valid-cell-battery",
       "metric": "battery",
-      "level": "minimal",
+      "spec": "preset(minimal)",
       "batteryConfig": {
         "mode": "preset",
         "cellPresetId": "molicel:21700:p45b",
@@ -226,8 +226,7 @@
     {
       "name": "negative-half-match",
       "metric": "motor-temp",
-      "level": "normal",
-      "matchBoardConfig": true,
+      "spec": "preset(normal):match=on",
       "motor": {
         "l_temp_motor_start": 1.25
       },
@@ -250,7 +249,7 @@
     {
       "name": "normal-speed-fractional-metric",
       "metric": "speed",
-      "level": "normal",
+      "spec": "preset(normal)",
       "topSpeedKmh": 55,
       "expected": [
         {
@@ -258,12 +257,42 @@
           "thresholdMax": 50
         }
       ]
+    },
+    {
+      "name": "geiger-option-duty",
+      "metric": "duty",
+      "spec": "preset(normal):future=1,geiger=mid",
+      "expected": [
+        {
+          "threshold": 80,
+          "thresholdMax": 90,
+          "spec": "geiger:mid"
+        }
+      ]
+    },
+    {
+      "name": "geiger-option-off",
+      "metric": "duty",
+      "spec": "preset(off):geiger=mid",
+      "expected": []
+    },
+    {
+      "name": "single-point-voice",
+      "metric": "motor-temp",
+      "spec": "preset(minimal)",
+      "expected": [
+        {
+          "threshold": 95,
+          "thresholdMax": null,
+          "repeatEverySeconds": 10,
+          "spec": "voice(critical):motorTemp"
+        }
+      ]
     }
   ],
   "unitSwitch": {
     "topSpeedKmh": 50,
-    "metric": [36, 45],
-    "imperial": [35.405568, 45.061632],
-    "custom": [36.123, 45.987]
+    "km": [36, 45],
+    "mi": [35.405568, 45.061632]
   }
 }

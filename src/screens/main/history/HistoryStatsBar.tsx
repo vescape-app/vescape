@@ -8,6 +8,7 @@ import {
   CaretDownIcon,
   CaretUpIcon,
   ClockCountdownIcon,
+  DropIcon,
   GaugeIcon,
   LightningIcon,
   RepeatIcon,
@@ -15,6 +16,7 @@ import {
   ThermometerHotIcon,
   ThermometerSimpleIcon,
   WaveformIcon,
+  WindIcon,
 } from 'phosphor-react-native'
 import type { Icon } from 'phosphor-react-native'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
@@ -24,6 +26,18 @@ import { useRideFormat } from '@/modules/history/hooks/useRideFormat'
 import { rideDurationMs } from '@/modules/history/lib/sessions'
 import { interaction, theme, type ThemeColor } from '@/constants/theme'
 import { DASH } from '@/helpers/format'
+import {
+  speedUnit as speedUnitFor,
+  temperatureSymbol,
+  type TemperatureUnit,
+  type DistanceUnit,
+} from '@/helpers/units'
+import { useDistanceUnit } from '@/hooks/useDistanceUnit'
+import { useSettingsStore } from '@/modules/settings/store/settingsStore'
+import { rideGustValue, rideTemperatureValue } from '@/modules/history/lib/rideWeather'
+import { weatherIconComponent } from '@/modules/weather/components/WeatherIcon'
+import { weatherIconColor } from '@/modules/weather/lib/weather'
+import type { RideWeather } from 'vescape-core'
 
 interface HistoryStatsBarProps {
   session: HistorySession
@@ -68,12 +82,17 @@ export function HistoryStatsBar({ session }: HistoryStatsBarProps) {
                 </View>
               </View>
             </View>
-            <View style={styles.row}>
-              {secondaryStats.map((item) => (
-                <CompactStat key={item.key} item={item} />
-              ))}
-              <View style={styles.toggleCell} />
-            </View>
+            {chunk(secondaryStats, primaryStats.length).map((row) => (
+              <View key={row[0].key} style={styles.row}>
+                {row.map((item) => (
+                  <CompactStat key={item.key} item={item} />
+                ))}
+                {Array.from({ length: primaryStats.length - row.length }, (_, index) => (
+                  <View key={index} style={styles.compactCell} />
+                ))}
+                <View style={styles.toggleCell} />
+              </View>
+            ))}
           </View>
         ) : (
           <View style={styles.row}>
@@ -120,86 +139,159 @@ function CompactStat({ item }: CompactStatProps) {
   )
 }
 
+function chunk<T>(items: T[], size: number): T[][] {
+  const rows: T[][] = []
+  for (let index = 0; index < items.length; index += size)
+    rows.push(items.slice(index, index + size))
+  return rows
+}
+
+/** Ride weather, when stored observations cover the ride: condition + temperature, gusts, rain. */
+function weatherStats(
+  weather: RideWeather | null,
+  distanceUnit: DistanceUnit,
+  temperatureUnit: TemperatureUnit,
+): StatItem[] {
+  if (!weather) return []
+  const gust = rideGustValue(weather, distanceUnit)
+  const stats: StatItem[] = [
+    {
+      key: 'weather',
+      label: 'Weather',
+      value: rideTemperatureValue(weather, temperatureUnit),
+      unit: temperatureSymbol(temperatureUnit),
+      icon: weatherIconComponent(weather.icon),
+      accent: weatherIconColor(weather.icon),
+    },
+  ]
+  if (gust != null) {
+    stats.push({
+      key: 'gust',
+      label: 'Gusts',
+      value: String(gust),
+      unit: speedUnitFor(distanceUnit),
+      icon: WindIcon,
+      accent: theme.weather.cloud,
+    })
+  }
+  if (weather.rainMinutes > 0) {
+    stats.push({
+      key: 'rain',
+      label: 'Rain',
+      value: String(weather.rainMinutes),
+      unit: 'min',
+      icon: DropIcon,
+      accent: theme.weather.rain,
+    })
+  }
+  return stats
+}
+
+/** Weather and gusts take the last column's slots so they stack together; the stats they displace move after. */
+const WEATHER_SLOTS: Record<string, string> = { weather: 'maxDuty', gust: 'samples' }
+
+function withWeather(stats: StatItem[], weather: StatItem[]): StatItem[] {
+  const placed = [...stats]
+  const displaced: StatItem[] = []
+  const rest: StatItem[] = []
+  for (const item of weather) {
+    const index = placed.findIndex((stat) => stat.key === WEATHER_SLOTS[item.key])
+    if (index === -1) {
+      rest.push(item)
+      continue
+    }
+    displaced.push(placed[index]!)
+    placed[index] = item
+  }
+  return [...placed, ...displaced, ...rest]
+}
+
 function useSessionStats(session: HistorySession): StatItem[] {
   const { formatSpeed, speedUnit } = useFormat()
   const { formatHistoryDistance } = useRideFormat()
+  const distanceUnit = useDistanceUnit()
+  const temperatureUnit = useSettingsStore((state) => state.temperatureUnit)
   return useMemo(
-    () => [
-      {
-        key: 'distance',
-        label: 'Distance',
-        ...formatHistoryDistance(session.distanceM),
-        icon: RoadHorizonIcon,
-        accent: theme.palette.sky.color,
-      },
-      {
-        key: 'rideTime',
-        label: 'Time',
-        ...formatDuration(rideDurationMs(session)),
-        icon: ClockCountdownIcon,
-        accent: theme.palette.purple.color,
-      },
-      {
-        key: 'topSpeed',
-        label: 'Top Speed',
-        value: formatSpeed(session.maxSpeedKmh),
-        unit: speedUnit,
-        icon: GaugeIcon,
-        accent: theme.telemetry.speed,
-      },
-      {
-        key: 'avgSpeed',
-        label: 'Avg Speed',
-        value: formatSpeed(session.avgSpeedKmh),
-        unit: speedUnit,
-        icon: RepeatIcon,
-        accent: theme.palette.sky.light,
-      },
-      {
-        key: 'maxDuty',
-        label: 'Max Duty',
-        value: formatDuty(session.maxDuty),
-        unit: '%',
-        icon: LightningIcon,
-        accent: theme.telemetry.duty,
-      },
-      {
-        key: 'mosfetTemp',
-        label: 'Ctrl Max',
-        ...formatTemp(session.maxTempMosfet),
-        icon: ThermometerHotIcon,
-        accent: theme.telemetry.controllerTemp,
-      },
-      {
-        key: 'motorTemp',
-        label: 'Motor Max',
-        ...formatTemp(session.maxTempMotor),
-        icon: ThermometerSimpleIcon,
-        accent: theme.telemetry.motorTemp,
-      },
-      {
-        key: 'batteryUsed',
-        label: 'Used',
-        ...formatWh(session.batteryUsedWh),
-        icon: BatteryMediumIcon,
-        accent: theme.status.warning.color,
-      },
-      {
-        key: 'batteryRegen',
-        label: 'Regen',
-        ...formatWh(session.batteryRegenWh),
-        icon: BatteryChargingIcon,
-        accent: theme.palette.green.color,
-      },
-      {
-        key: 'samples',
-        label: 'Points',
-        value: formatCount(session.sampleCount),
-        icon: WaveformIcon,
-        accent: theme.palette.cyan.color,
-      },
-    ],
-    [session, formatHistoryDistance, formatSpeed, speedUnit],
+    () =>
+      withWeather(
+        [
+          {
+            key: 'distance',
+            label: 'Distance',
+            ...formatHistoryDistance(session.distanceM),
+            icon: RoadHorizonIcon,
+            accent: theme.palette.sky.color,
+          },
+          {
+            key: 'rideTime',
+            label: 'Time',
+            ...formatDuration(rideDurationMs(session)),
+            icon: ClockCountdownIcon,
+            accent: theme.palette.purple.color,
+          },
+          {
+            key: 'topSpeed',
+            label: 'Top Speed',
+            value: formatSpeed(session.maxSpeedKmh),
+            unit: speedUnit,
+            icon: GaugeIcon,
+            accent: theme.telemetry.speed,
+          },
+          {
+            key: 'avgSpeed',
+            label: 'Avg Speed',
+            value: formatSpeed(session.avgSpeedKmh),
+            unit: speedUnit,
+            icon: RepeatIcon,
+            accent: theme.palette.sky.light,
+          },
+          {
+            key: 'maxDuty',
+            label: 'Max Duty',
+            value: formatDuty(session.maxDuty),
+            unit: '%',
+            icon: LightningIcon,
+            accent: theme.telemetry.duty,
+          },
+          {
+            key: 'mosfetTemp',
+            label: 'Ctrl Max',
+            ...formatTemp(session.maxTempMosfet),
+            icon: ThermometerHotIcon,
+            accent: theme.telemetry.controllerTemp,
+          },
+          {
+            key: 'motorTemp',
+            label: 'Motor Max',
+            ...formatTemp(session.maxTempMotor),
+            icon: ThermometerSimpleIcon,
+            accent: theme.telemetry.motorTemp,
+          },
+          {
+            key: 'batteryUsed',
+            label: 'Used',
+            ...formatWh(session.batteryUsedWh),
+            icon: BatteryMediumIcon,
+            accent: theme.status.warning.color,
+          },
+          {
+            key: 'batteryRegen',
+            label: 'Regen',
+            ...formatWh(session.batteryRegenWh),
+            icon: BatteryChargingIcon,
+            accent: theme.palette.green.color,
+          },
+          {
+            key: 'samples',
+            label: 'Points',
+            value: formatCount(session.sampleCount),
+            icon: WaveformIcon,
+            accent: theme.palette.cyan.color,
+          },
+        ],
+        weatherStats(session.weather, distanceUnit, temperatureUnit),
+      ),
+    [session, formatHistoryDistance, formatSpeed, speedUnit, distanceUnit, temperatureUnit],
   )
 }
 

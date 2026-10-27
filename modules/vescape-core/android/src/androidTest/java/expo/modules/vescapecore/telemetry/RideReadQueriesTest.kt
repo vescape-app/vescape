@@ -40,11 +40,11 @@ class RideReadQueriesTest {
   @Test
   fun bucketPagingIncludesTheWholeBoundaryMinute() = runBlocking {
     val buckets = (2..100).map { minute ->
-      bucket(base + minute * 60_000L, base + minute * 60_000L + 10_000, "newer")
+      bucket(base + minute * 60_000L, base + minute * 60_000L + 10_000, "board-newer")
     } + listOf(
-      bucket(base + 60_000, base + 70_000, "boundary-a"),
-      bucket(base + 80_000, base + 90_000, "boundary-b"),
-      bucket(base, base + 10_000, "boundary-a"),
+      bucket(base + 60_000, base + 70_000, "board-a"),
+      bucket(base + 80_000, base + 90_000, "board-b"),
+      bucket(base, base + 10_000, "board-a"),
     )
     dao.upsertBuckets(buckets)
     database.withTransaction {
@@ -58,9 +58,9 @@ class RideReadQueriesTest {
       assertFalse(dao.hasRideBucketsBefore(second.last().bucketStartMs))
       val sessions = groupRideSessions(first + second, emptyList(), 30 * 60_000L)
       assertEquals(3, sessions.size)
-      assertEquals(99, sessions.single { it.recordingId == "newer" }.sampleCount)
-      assertEquals(2, sessions.single { it.recordingId == "boundary-a" }.sampleCount)
-      assertEquals(1, sessions.single { it.recordingId == "boundary-b" }.sampleCount)
+      assertEquals(99, sessions.single { it.boardId == "board-newer" }.sampleCount)
+      assertEquals(2, sessions.single { it.boardId == "board-a" }.sampleCount)
+      assertEquals(1, sessions.single { it.boardId == "board-b" }.sampleCount)
       assertTrue(dao.getRideBuckets(base, 100).isEmpty())
     }
   }
@@ -69,7 +69,7 @@ class RideReadQueriesTest {
   fun favoriteSummaryReadsMovementBeyondTheDisplayCap() = runBlocking {
     dao.insertRideTrackPoints((0 until displayLimit + 2).map { index ->
       RideTrackPointEntity(
-        recordingId = "recording-1", boardId = "board-1", fixAtMs = index * 60_000L,
+        boardId = "board-1", fixAtMs = index * 60_000L,
         latitudeE7 = 500_000_000, longitudeE7 = 190_000_000, accuracyCm = 300,
         gpsSpeedCentiMps = if (index >= displayLimit) 1_000 else 0,
         bearingCentiDeg = null, altitudeCm = null,
@@ -83,10 +83,9 @@ class RideReadQueriesTest {
     assertEquals(displayLimit + 2, summary.gpsPointCount)
   }
 
-  private fun bucket(start: Long, end: Long, recordingId: String = LEGACY_RIDE_RECORDING_ID) = TelemetryMinuteBucketEntity(
+  private fun bucket(start: Long, end: Long, boardId: String = "board-1") = TelemetryMinuteBucketEntity(
     bucketStartMs = start - (start % TELEMETRY_BUCKET_SIZE_MS),
-    boardId = "board-1",
-    recordingId = recordingId,
+    boardId = boardId,
     sampleCount = 1,
     firstSampleAtMs = start,
     lastSampleAtMs = end,

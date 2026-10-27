@@ -70,8 +70,8 @@ enum WatchGauge {
 
   /// Remaining distance follows the phone preference; geometry remains metric.
   /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/UnitPresentation.kt `distance`
-  static func distance(_ meters: Double, unitSystem: String = "metric") -> String {
-    UnitPresentation.distance(meters, unitSystem: unitSystem)
+  static func distance(_ meters: Double, distanceUnit: String = "km") -> String {
+    UnitPresentation.distance(meters, distanceUnit: distanceUnit)
   }
 }
 

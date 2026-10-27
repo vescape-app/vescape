@@ -1,5 +1,6 @@
 package expo.modules.vescapecore.telemetry
 
+import expo.modules.vescapecore.alerts.mySoundFileName
 import java.io.File
 import java.io.InputStream
 import java.io.OutputStream
@@ -10,6 +11,8 @@ import org.json.JSONObject
 
 internal const val BACKUP_MANIFEST_ENTRY = "manifest.json"
 internal const val BACKUP_DATABASE_ENTRY = "db.sqlite"
+/** My sounds manifest, plus the custom app sound pack manifest older backups carry. */
+private val SOUND_MANIFESTS = setOf("my-sounds.json", "packs.json")
 
 /** Production backup container codec. Android adapters only supply the URI streams. */
 internal object DatabaseBackupArchive {
@@ -33,7 +36,7 @@ internal object DatabaseBackupArchive {
       zip.putNextEntry(ZipEntry(BACKUP_DATABASE_ENTRY))
       database.inputStream().use { it.copyTo(zip) }
       zip.closeEntry()
-      soundDirectory?.listFiles()?.filter { it.name == "packs.json" || Regex("[0-9a-fA-F-]{36}\\.wav").matches(it.name) }?.forEach { file ->
+      soundDirectory?.listFiles()?.filter { it.name in SOUND_MANIFESTS || mySoundFileName.matches(it.name) }?.forEach { file ->
         zip.putNextEntry(ZipEntry("custom-app-sounds/${file.name}"))
         file.inputStream().use { it.copyTo(zip) }
         zip.closeEntry()
@@ -50,7 +53,7 @@ internal object DatabaseBackupArchive {
           BACKUP_DATABASE_ENTRY -> restoredDatabase.outputStream().use { zip.copyTo(it) }
           else -> if (soundDirectory != null && entry.name.startsWith("custom-app-sounds/")) {
             val name = entry.name.removePrefix("custom-app-sounds/")
-            require(name == "packs.json" || Regex("[0-9a-fA-F-]{36}\\.wav").matches(name)) { "Invalid sound file name" }
+            require(name in SOUND_MANIFESTS || mySoundFileName.matches(name)) { "Invalid sound file name" }
             soundDirectory.mkdirs()
             File(soundDirectory, name).outputStream().use { output ->
               val buffer = ByteArray(8192)

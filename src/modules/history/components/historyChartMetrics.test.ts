@@ -60,17 +60,17 @@ test('the ride panel offers speed and a short list, the full-screen page offers 
 })
 
 test('chart axes and scrubs share selected speed and fixed length units', () => {
-  const speed = historyChartPresentation('speed', 'imperial')
+  const speed = historyChartPresentation('speed', 'mi')
   expect(speed.unit).toBe('mph')
   expect(40 * speed.displayScale).toBeCloseTo(24.8548476895)
   for (const key of ['altitude', 'gpsAccuracy'] as const) {
-    const length = historyChartPresentation(key, 'imperial')
+    const length = historyChartPresentation(key, 'mi')
     expect(length.unit).toBe('ft')
     expect(1000 * length.displayScale).toBeCloseTo(3280.839895)
-    expect(historyChartPresentation(key, 'metric')).toEqual({ unit: 'm', displayScale: 1 })
+    expect(historyChartPresentation(key, 'km')).toEqual({ unit: 'm', displayScale: 1 })
   }
-  expect(historyChartPresentation('speed', 'metric')).toEqual({ unit: 'km/h', displayScale: 1 })
-  expect(historyChartPresentation('tempMotor', 'imperial')).toEqual(
-    historyChartPresentation('tempMotor', 'metric'),
+  expect(historyChartPresentation('speed', 'km')).toEqual({ unit: 'km/h', displayScale: 1 })
+  expect(historyChartPresentation('tempMotor', 'mi')).toEqual(
+    historyChartPresentation('tempMotor', 'km'),
   )
 })

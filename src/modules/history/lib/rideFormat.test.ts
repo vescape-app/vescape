@@ -50,13 +50,13 @@ test('a ride still being recorded ends at now instead of a clock time', () => {
 
 test('existing ride totals use miles even below the nearby-distance cutoff', () => {
   const record = Object.freeze({ distanceM: 80, durationMs: 120_000 })
-  expect(formatRideListDetails(record.durationMs, record.distanceM, null, 'imperial')).toBe(
+  expect(formatRideListDetails(record.durationMs, record.distanceM, null, 'mi')).toBe(
     '2 min · 0.05 mi',
   )
-  expect(formatRideListDetails(record.durationMs, record.distanceM, null, 'metric')).toBe(
+  expect(formatRideListDetails(record.durationMs, record.distanceM, null, 'km')).toBe(
     '2 min · 0.08 km',
   )
-  expect(formatRideListDetails(record.durationMs, null, null, 'imperial')).toBe('2 min')
-  expect(formatRideListDetails(0, 0, null, 'imperial')).toBe('1 min · 0.00 mi')
+  expect(formatRideListDetails(record.durationMs, null, null, 'mi')).toBe('2 min')
+  expect(formatRideListDetails(0, 0, null, 'mi')).toBe('1 min · 0.00 mi')
   expect(record.distanceM).toBe(80)
 })

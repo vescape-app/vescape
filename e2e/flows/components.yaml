@@ -6,11 +6,17 @@ appId: ${APP_ID}
 - extendedWaitUntil:
     visible: IconButton
     timeout: 30000
-- tapOn: '10%'
+- tapOn:
+    text: '10%'
+    waitToSettleTimeoutMs: 1000
 - assertVisible: IconButton
-- tapOn: '85%'
+- tapOn:
+    text: '85%'
+    waitToSettleTimeoutMs: 1000
 - assertVisible: IconButton
-- tapOn: '40%'
+- tapOn:
+    text: '40%'
+    waitToSettleTimeoutMs: 1000
 - assertVisible: IconButton
 - openLink: 'vescape://settings/components/charts'
 - extendedWaitUntil:

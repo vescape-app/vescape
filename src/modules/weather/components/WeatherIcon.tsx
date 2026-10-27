@@ -33,6 +33,11 @@ interface WeatherIconProps {
   weight?: 'thin' | 'light' | 'regular' | 'bold' | 'fill' | 'duotone'
 }
 
+/** The Phosphor icon for a condition slug, for surfaces that take an icon component. */
+export function weatherIconComponent(icon: WeatherIconSlug): Icon {
+  return ICON_MAP[icon] ?? CloudIcon
+}
+
 /** The pictogram for a condition slug. Native decided which slug; this only draws it. */
 export function WeatherIcon({
   icon,
@@ -40,6 +45,6 @@ export function WeatherIcon({
   color = theme.neutral.textSecondary,
   weight = 'duotone',
 }: WeatherIconProps) {
-  const IconComponent = ICON_MAP[icon] ?? CloudIcon
+  const IconComponent = weatherIconComponent(icon)
   return <IconComponent size={size} color={color} weight={weight} />
 }

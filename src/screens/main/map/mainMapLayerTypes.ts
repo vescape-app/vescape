@@ -1,5 +1,6 @@
-import type { GpsDisplayAnimator } from '@/modules/map/hooks/useGpsDisplayAnimator'
-import type { GpsDisplayMotion, MapPoint, MapPointCategory } from 'vescape-core'
+import type MapboxTypes from '@rnmapbox/maps'
+import type { LiveGpsRuntime } from '@/screens/main/map/useLiveGpsMotion'
+import type { MapPoint, MapPointCategory } from 'vescape-core'
 
 import type { makeCircleFeature, makeTrailLineString } from '@/helpers/mapGeometry'
 import type { RosterRider } from '@/modules/group-ride/lib/roster'
@@ -18,8 +19,14 @@ import type { LegalLimitCountry } from '@/modules/legal/lib/legalLimits'
 import type { MapSelection } from '@/modules/map/lib/mapSelection'
 import type { DirectionPoint } from '@/modules/map/store/mapStore'
 
+type MovePointShapeAnimator = InstanceType<typeof MapboxTypes.__experimental.MovePointShapeAnimator>
+
 export interface MainMapLayersProps {
-  gpsPositionAnimator: GpsDisplayAnimator | null
+  pointAnimator: MovePointShapeAnimator
+  displayRuntime: Pick<
+    LiveGpsRuntime,
+    'active' | 'motion' | 'now' | 'duration' | 'subscribe' | 'smoothedTrail'
+  >
   historyActive: boolean
   expandSelectedMapPoints: boolean
   isMapy: boolean
@@ -34,12 +41,7 @@ export interface MainMapLayersProps {
     geometry: { type: 'LineString'; coordinates: [number, number][] }
     properties: Record<string, never>
   } | null
-  accuracyFix: {
-    longitude: number
-    latitude: number
-    accuracyM?: number | null
-    displayMotion?: GpsDisplayMotion | null
-  } | null
+  accuracyFix: { longitude: number; latitude: number } | null
   accuracyShape: ReturnType<typeof makeCircleFeature> | null
   gpsPuckBearingDeg: number | null
   riders: RosterRider[]

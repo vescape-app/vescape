@@ -30,10 +30,8 @@ class DatabaseRestoreHostTest {
         dao.upsertTuneProfile(TuneProfileEntity("cross-tune", "cross-board", "2.0", "Cross Tune", fieldsJson = "{\"kp\":2}", createdAt = 103, updatedAt = 104))
         dao.insertFavorite(FavoriteEntity("cross-favorite", "cross-board", "Cross Favorite", 900, 1100, 105, 106, 1, 0, 200, 100, 2400, 2468, 2))
         dao.upsertBoardConfigValues(BoardConfigValuesEntity("cross-board", "2.0", "{\"motor_current_max\":55.5}", 107))
-        dao.insertRideRecording(RideRecordingEntity("cross-recording", "cross-board", 900, 1500, "stopped"))
-        dao.insertRideTrackPoints(listOf(RideTrackPointEntity(recordingId = "cross-recording", boardId = "cross-board", fixAtMs = 1200, latitudeE7 = 510000000, longitudeE7 = 170000000, accuracyCm = 3500, gpsSpeedCentiMps = 400, bearingCentiDeg = 9000, altitudeCm = 12300)))
+        dao.insertRideTrackPoints(listOf(RideTrackPointEntity(boardId = "cross-board", fixAtMs = 1200, latitudeE7 = 510000000, longitudeE7 = 170000000, accuracyCm = 3500, gpsSpeedCentiMps = 400, bearingCentiDeg = 9000, altitudeCm = 12300)))
         val previewFixes = bucketPreviewFixes()
-        dao.insertRideRecording(RideRecordingEntity(previewFixes.first().recordingId!!, previewFixes.first().boardId!!, 0, 62000, "stopped"))
         RecordingPersistence(dao).commit(emptyList(), buildTelemetryBuckets(emptyList(), previewFixes.toBucketLocationPoints()), emptyList(), trackPoints = previewFixes)
         room.close()
         val connection = BundledSQLiteDriver().open(database.path)
@@ -62,7 +60,7 @@ class DatabaseRestoreHostTest {
         assertEquals("Cross Board", dao.getBoard("cross-board")?.name)
         val previewFixes = bucketPreviewFixes()
         for ((minute, points) in previewFixes.groupBy { it.fixAtMs / 60000 * 60000 }) {
-          val stored = dao.getBucket(minute, points.first().boardId!!, points.first().recordingId!!)!!.routePreview!!
+          val stored = dao.getBucket(minute, points.first().boardId!!)!!.routePreview!!
           assertEquals(BucketRoutePreview.decode(BucketRoutePreview.build(points)), BucketRoutePreview.decode(stored))
         }
         assertEquals("\"durable\"", dao.getBoardSettings("cross-board").single { it.key == "description" }.valueJson)
@@ -74,16 +72,9 @@ class DatabaseRestoreHostTest {
         assertEquals(1000L, frame.capturedAtMs)
         assertEquals(2468, frame.speedCentiKmh)
         val track = dao.getRideTrackPoints(0, 2000, "cross-board", 10).single()
-        assertEquals("cross-recording", track.recordingId)
         assertEquals(1200L, track.fixAtMs)
         assertEquals(3500, track.accuracyCm)
         assertEquals(510000000, track.latitudeE7)
-        val verification = BundledSQLiteDriver().open(database.path)
-        verification.prepare("SELECT ended_reason FROM ride_recordings WHERE id='cross-recording'").use { row ->
-          assertTrue(row.step())
-          assertEquals("stopped", row.getText(0))
-        }
-        verification.close()
         assertEquals(listOf(1000L), dao.getVescFaultCaptureSamples("cross-fault").map { it.capturedAtMs })
         room.close()
       }

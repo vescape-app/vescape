@@ -54,11 +54,8 @@ appId: ${APP_ID}
             visible:
               id: social-drawer-backdrop
           commands:
-            # A point, not the element: the backdrop is a full-screen `Pressable` *behind* the drawer, so
-            # tapping its centre lands on the drawer content and the drawer stays open. The lower screen
-            # is backdrop everywhere the drawer does not reach.
             - tapOn:
-                point: 50%, 90%
+                id: social-drawer-backdrop
       - runFlow:
           when:
             visible:

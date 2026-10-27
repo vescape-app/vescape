@@ -1,5 +1,5 @@
 import { expect, test } from 'bun:test'
-import { speedFromKmh, speedInputToKmh, type UnitSystem } from '@/helpers/units'
+import { speedFromKmh, speedInputToKmh, type DistanceUnit } from '@/helpers/units'
 import { stepDelta } from '@/helpers/numberStep'
 import {
   getAlertDialConfig,
@@ -11,35 +11,26 @@ import { describeAlertRules, formatAlertPresetSummary } from './alertPresets'
 
 const config = getAlertDialConfig('speed', null)
 
-test('new imperial speed alerts initialize whole-mph thresholds in canonical km/h', () => {
-  const defaults = getNewFormDefaults(
-    config,
-    'preset:beep',
-    'preset:beep',
-    'speed',
-    null,
-    'imperial',
-  )
-  expect(speedFromKmh(defaults.threshold, 'imperial')).toBeCloseTo(22)
-  expect(speedFromKmh(defaults.thresholdMax, 'imperial')).toBeCloseTo(28)
-  const metric = getNewFormDefaults(config, 'preset:beep', 'preset:beep', 'speed', null, 'metric')
+test('new mi speed alerts initialize whole-mph thresholds in canonical km/h', () => {
+  const defaults = getNewFormDefaults(config, 'preset:beep', 'preset:beep', 'speed', null, 'mi')
+  expect(speedFromKmh(defaults.threshold, 'mi')).toBeCloseTo(22)
+  expect(speedFromKmh(defaults.thresholdMax, 'mi')).toBeCloseTo(28)
+  const metric = getNewFormDefaults(config, 'preset:beep', 'preset:beep', 'speed', null, 'km')
   expect(metric.threshold).toBe(35)
   expect(metric.thresholdMax).toBe(45)
   const batteryConfig = getAlertDialConfig('battery', null)
   expect(
-    getNewFormDefaults(batteryConfig, 'preset:beep', 'preset:beep', 'battery', null, 'imperial'),
-  ).toEqual(
-    getNewFormDefaults(batteryConfig, 'preset:beep', 'preset:beep', 'battery', null, 'metric'),
-  )
+    getNewFormDefaults(batteryConfig, 'preset:beep', 'preset:beep', 'battery', null, 'mi'),
+  ).toEqual(getNewFormDefaults(batteryConfig, 'preset:beep', 'preset:beep', 'battery', null, 'km'))
 })
 
 test('Board Top Speed snaps in either direction and clamps canonical physical bounds', () => {
   const edit = (kmh: number, direction: 1 | -1) => {
-    const display = speedFromKmh(kmh, 'imperial')
+    const display = speedFromKmh(kmh, 'mi')
     return speedInputToKmh(
       display + direction * stepDelta(display, direction, 5),
       kmh,
-      'imperial',
+      'mi',
       5,
       150,
     )
@@ -58,21 +49,20 @@ test('open form retains exact range endpoints through live unit switches and unr
     controlId: 'speed',
     enabled: true,
     createdAt: 0,
-    soundType: 'preset:tick',
+    spec: 'preset:tick',
     repeatEverySeconds: null,
-    beepCount: 1,
     threshold: 40.2336,
     thresholdMax: 50.123456789,
   }
   let draft = getEditFormDefaults(rule, config, null)
-  for (const units of ['imperial', 'metric', 'imperial', 'metric'] as UnitSystem[]) {
-    const displayed = speedFromKmh(draft.threshold, units)
-    const displayedMax = speedFromKmh(draft.thresholdMax, units)
-    expect(speedInputToKmh(displayed, draft.threshold, units)).toBe(rule.threshold)
-    expect(speedInputToKmh(displayedMax, draft.thresholdMax, units)).toBe(rule.thresholdMax)
+  for (const distanceUnit of ['mi', 'km', 'mi', 'km'] as DistanceUnit[]) {
+    const displayed = speedFromKmh(draft.threshold, distanceUnit)
+    const displayedMax = speedFromKmh(draft.thresholdMax, distanceUnit)
+    expect(speedInputToKmh(displayed, draft.threshold, distanceUnit)).toBe(rule.threshold)
+    expect(speedInputToKmh(displayedMax, draft.thresholdMax, distanceUnit)).toBe(rule.thresholdMax)
     draft = {
       ...draft,
-      soundType: 'preset:tick',
+      spec: 'preset:tick',
       repeatEverySeconds: 12,
       messageTemplate: 'literal mph',
     }
@@ -83,21 +73,21 @@ test('open form retains exact range endpoints through live unit switches and unr
 })
 
 test('speed speech previews convert all placeholders, leave literal unit names alone', () => {
-  expect(renderPreviewTemplate('{value}', 18.5, 'km/h', config, 'speed', null, 'metric')).toBe('19')
-  expect(renderPreviewTemplate('{value}', 36, 'km/h', config, 'speed', null, 'imperial')).toBe('22')
+  expect(renderPreviewTemplate('{value}', 18.5, 'km/h', config, 'speed', null, 'km')).toBe('19')
+  expect(renderPreviewTemplate('{value}', 36, 'km/h', config, 'speed', null, 'mi')).toBe('22')
   const template = '{value} {unit} over {threshold} {unit}; literal km/h'
-  expect(renderPreviewTemplate(template, 40, 'km/h', config, 'speed', null, 'imperial')).toBe(
+  expect(renderPreviewTemplate(template, 40, 'km/h', config, 'speed', null, 'mi')).toBe(
     '25 mph over 25 mph; literal km/h',
   )
-  expect(renderPreviewTemplate(template, 40.2336, 'km/h', config, 'speed', null, 'metric')).toBe(
+  expect(renderPreviewTemplate(template, 40.2336, 'km/h', config, 'speed', null, 'km')).toBe(
     '40 km/h over 40 km/h; literal km/h',
   )
 })
 
 test('native snapshot descriptions and wizard summaries follow display units', () => {
   const rules = [{ threshold: 35.405568, thresholdMax: 45.061632, repeatEverySeconds: null }]
-  expect(describeAlertRules('speed', rules, 'imperial')).toContain('22 mph')
-  expect(describeAlertRules('speed', rules, 'imperial')).toContain('28 mph')
-  expect(formatAlertPresetSummary('speed', rules, 'imperial')).toBe('22–28 mph')
-  expect(formatAlertPresetSummary('speed', rules, 'metric')).toBe('35.4–45.1 km/h')
+  expect(describeAlertRules('speed', rules, 'mi')).toContain('22 mph')
+  expect(describeAlertRules('speed', rules, 'mi')).toContain('28 mph')
+  expect(formatAlertPresetSummary('speed', rules, 'mi')).toBe('22–28 mph')
+  expect(formatAlertPresetSummary('speed', rules, 'km')).toBe('35.4–45.1 km/h')
 })

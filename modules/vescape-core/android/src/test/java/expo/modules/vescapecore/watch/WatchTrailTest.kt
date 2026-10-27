@@ -36,7 +36,7 @@ class WatchTrailTest {
         val snapshot = WatchSnapshot(null, null, false, null, null, null, trail = trail, mapPosition = WatchMapPosition(52.0, 21.0))
         val frame = WatchFrameBuilder.build(snapshot, stale = false)
         val bytes = WatchFrameBuilder.encode(frame)
-        assertEquals(13, bytes[0].toInt())
+        assertEquals(23, bytes[0].toInt())
         assertEquals(snapshot.mapPosition, WatchTrailCodec.decode(bytes, WATCH_FRAME_BYTES).position)
         assertEquals(trail, WatchTrailCodec.decode(bytes, WATCH_FRAME_BYTES).points)
         assertTrue(WatchTrailCodec.decode(WatchFrameBuilder.encode(frame.copy(trail = emptyList())), WATCH_FRAME_BYTES).points.isEmpty())

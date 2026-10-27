@@ -1,4 +1,4 @@
-import { speedFromKmh, speedUnit, type UnitSystem } from '@/helpers/units'
+import { speedFromKmh, speedUnit, type DistanceUnit } from '@/helpers/units'
 import { theme, type ThemeColor } from '@/constants/theme'
 
 interface TelemetryChartRange {
@@ -206,10 +206,10 @@ export const telemetryByControlId = Object.fromEntries(
 ) as Record<string, TelemetryMetricConfig>
 
 /** Selected-unit labels, without changing canonical ranges, samples or color thresholds. */
-export function presentTelemetryMetric(metric: TelemetryMetricConfig, units: UnitSystem) {
+export function presentTelemetryMetric(metric: TelemetryMetricConfig, distanceUnit: DistanceUnit) {
   if (metric.unit !== 'km/h') return { ...metric, displayScale: 1 }
-  const displayScale = speedFromKmh(1, units)
-  const unit = speedUnit(units)
+  const displayScale = speedFromKmh(1, distanceUnit)
+  const unit = speedUnit(distanceUnit)
   const format = (value: number) => metric.format(value * displayScale)
   return {
     ...metric,

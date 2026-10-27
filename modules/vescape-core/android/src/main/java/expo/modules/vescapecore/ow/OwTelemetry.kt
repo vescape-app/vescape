@@ -1,6 +1,5 @@
 package expo.modules.vescapecore.ow
 
-import expo.modules.vescapecore.location.GpsDisplayTelemetry
 import expo.modules.vescapecore.protocol.RefloatTelemetry
 
 /**
@@ -79,19 +78,16 @@ internal fun OwFrame.toRefloatTelemetry(): RefloatTelemetry = RefloatTelemetry(
   location = null,
 )
 
-/** The FM live-tick boundary: gauges and map motion must consume the same Board frame. */
+/** The FM live-tick boundary: gauges and map motion consume the same Board frame. */
 internal fun OwFrame.liveTick(
   telemetry: RefloatTelemetry,
   generation: Long,
   firedAlerts: List<Map<String, Any?>>,
-  gpsDisplay: GpsDisplayTelemetry,
-  now: Long,
 ): Map<String, Any?> {
   val tick = telemetry.toMap().toMutableMap()
   tick.remove("location")
   tick["batteryPercent"] = batteryPercent?.toDouble()
   tick["generation"] = generation
-  tick.putAll(gpsDisplay.update(speedKmh, speedAtMs, now))
   if (firedAlerts.isNotEmpty()) tick["firedAlerts"] = firedAlerts
   return tick
 }

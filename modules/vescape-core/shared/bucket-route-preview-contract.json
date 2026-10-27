@@ -1,7 +1,6 @@
 {
   "scenario": "bucket-route-preview-multiple-flushes-reopen-rollback",
   "boardId": "preview-board",
-  "recordingId": "preview-recording",
   "fixes": [
     [1000, 520000000, 180000000, 500],
     [2000, 520000000, 180005000, 500],

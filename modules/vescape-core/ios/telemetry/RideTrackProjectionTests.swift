@@ -10,38 +10,14 @@ import XCTest
 /// @parity /modules/vescape-core/android/src/test/java/expo/modules/vescapecore/telemetry/HistoryGpsProjectionTest.kt
 /// @parity /modules/vescape-core/android/src/test/java/expo/modules/vescapecore/telemetry/TelemetryBucketBuilderTest.kt
 final class RideTrackProjectionTests: XCTestCase {
-  /// The media matcher must distinguish recording boundaries even in a range spanning multiple rides.
-  func testRoutePayloadPreservesRecordingIdentityAndLegacyNull() throws {
-    let database = try DatabaseQueue()
-    try TelemetryDatabase.migrator.migrate(database)
-    try database.write { db in
-      for (index, recordingId) in (["ride-a", "ride-b", nil] as [String?]).enumerated() {
-        try insertRideTrackPoint(db, point(fixAtMs: Int64(index + 1) * 1_000, recordingId: recordingId))
-      }
-    }
-    let maps = try database.read { db in
-      rideTrackGpsMaps(
-        try fetchRideTrack(db, fromMs: 0, toMs: 4_000, boardId: "board-1"),
-        boardNames: ["board-1": "Board"]
-      )
-    }
-    XCTAssertEqual(maps.count, 3)
-    XCTAssertEqual(maps[0]["recordingId"] as? String, "ride-a")
-    XCTAssertEqual(maps[1]["recordingId"] as? String, "ride-b")
-    XCTAssertTrue(maps[2].keys.contains("recordingId"))
-    XCTAssertNil(maps[2]["recordingId"] as? String)
-  }
-
   private func point(
     fixAtMs: Int64,
     latitudeE7: Int64 = 500_000_000,
     accuracyCm: Int? = 300,
     gpsSpeedCentiMps: Int? = nil,
-    recordingId: String? = "recording-1",
     boardId: String? = "board-1"
   ) -> RideTrackPoint {
     RideTrackPoint(
-      recordingId: recordingId,
       boardId: boardId,
       fixAtMs: fixAtMs,
       latitudeE7: latitudeE7,
@@ -66,7 +42,6 @@ final class RideTrackProjectionTests: XCTestCase {
     XCTAssertEqual(buckets.count, 1)
     guard let bucket = buckets.first else { return }
     XCTAssertEqual(bucket.bucketStartMs, 120_000)
-    XCTAssertEqual(bucket.recordingId, "recording-1")
     XCTAssertEqual(bucket.sampleCount, 0)
     XCTAssertEqual(bucket.gpsPointCount, 2)
     XCTAssertEqual(bucket.preciseGpsPointCount, 2)
@@ -76,22 +51,19 @@ final class RideTrackProjectionTests: XCTestCase {
     XCTAssertEqual(bucket.lastSampleAtMs, 130_000)
   }
 
-  /// A legacy row passed the old write-time precision gate, so a missing accuracy on it means
-  /// "precise", not "unknown". A live fix with no accuracy is genuinely unknown.
-  func testMigratedFixesWithoutAccuracyStayPrecise() {
-    XCTAssertTrue(rideTrackFixIsPrecise(accuracyCm: nil, recordingId: nil))
-    XCTAssertFalse(rideTrackFixIsPrecise(accuracyCm: nil, recordingId: "recording-1"))
-    XCTAssertTrue(rideTrackFixIsPrecise(accuracyCm: 300, recordingId: "recording-1"))
-    XCTAssertFalse(rideTrackFixIsPrecise(accuracyCm: 12_000, recordingId: "recording-1"))
+  /// A fix without reported accuracy is unknown, not precise (migration v52 stamps legacy rows).
+  func testFixesWithoutAccuracyAreImprecise() {
+    XCTAssertFalse(rideTrackFixIsPrecise(accuracyCm: nil))
+    XCTAssertTrue(rideTrackFixIsPrecise(accuracyCm: rideTrackPreciseAccuracyCm))
+    XCTAssertFalse(rideTrackFixIsPrecise(accuracyCm: 12_000))
   }
 
-  /// Every migrated fix carries a nil recording, so recording equality alone would chain a
-  /// haversine step from one Board's fix straight to another's.
-  func testLegacyDistanceNeverChainsAcrossBoards() {
+  /// A haversine step is only ever chained between two fixes of one Board.
+  func testDistanceNeverChainsAcrossBoards() {
     let points = rideTrackBucketPoints([
-      point(fixAtMs: 1_000, latitudeE7: 500_000_000, recordingId: nil, boardId: "board-a"),
-      point(fixAtMs: 1_500, latitudeE7: 520_000_000, recordingId: nil, boardId: "board-b"),
-      point(fixAtMs: 2_000, latitudeE7: 500_010_000, recordingId: nil, boardId: "board-a"),
+      point(fixAtMs: 1_000, latitudeE7: 500_000_000, boardId: "board-a"),
+      point(fixAtMs: 1_500, latitudeE7: 520_000_000, boardId: "board-b"),
+      point(fixAtMs: 2_000, latitudeE7: 500_010_000, boardId: "board-a"),
     ])
 
     XCTAssertNil(points[0].distanceFromPreviousCm)

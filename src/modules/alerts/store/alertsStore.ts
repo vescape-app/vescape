@@ -1,16 +1,18 @@
 import { create } from 'zustand'
 import {
   deleteAlertRule,
+  getAlertPresets,
   getAlertRules,
+  type AlertPresetMetric,
   setAlertRuleEnabled,
   type AlertRule,
-  type AlertSoundType,
+  type AlertSpec,
   upsertAlertRule,
 } from 'vescape-core'
 import { generateId } from '@/helpers/id'
 import { errorMessage } from '@/helpers/error'
 
-export type { AlertSoundType } from 'vescape-core'
+export type { AlertSpec } from 'vescape-core'
 
 interface AlertsState {
   /**
@@ -19,22 +21,24 @@ interface AlertsState {
    * the active Board's rules, and reloads whenever the active Board changes. `null` ⇒ no Board.
    */
   boardId: string | null
+  /** The rider's rules plus every Alert Preset as native expanded it. */
   rules: AlertRule[]
+  /** Each preset metric's stored `preset(…)` spec. Empty until the Board's presets load. */
+  presets: Partial<Record<AlertPresetMetric, string>>
   error: string | null
 }
 
 /**
  * Everything the rider can author on a rule. Grouped rather than passed positionally: a rule now
- * carries a shape (threshold / range), a sound, a repeat cadence and a beep count, and every one of
- * those travels together from the form to the store to native.
+ * carries a shape (threshold / range), a sound (with its count), and a repeat cadence, and every one
+ * of those travels together from the form to the store to native.
  */
 export interface AlertRuleDraft {
   threshold: number
   thresholdMax: number | null
-  soundType: AlertSoundType
+  spec: AlertSpec
   /** Seconds between repeats while past the threshold; `null` ⇒ announce once per crossing. */
   repeatEverySeconds: number | null
-  beepCount: number
 }
 
 interface AlertsActions {
@@ -55,6 +59,7 @@ let loadGeneration = 0
 export const useAlertsStore = create<AlertsState & AlertsActions>((set, get) => ({
   boardId: null,
   rules: [],
+  presets: {},
   error: null,
 
   async load(boardId) {
@@ -62,11 +67,18 @@ export const useAlertsStore = create<AlertsState & AlertsActions>((set, get) => 
     const previous = get()
     // Clear immediately on bind so the UI never shows the previous Board's rules as the new Board's
     // (their deterministic preset ids overlap, so a stray toggle/delete would target the wrong rows).
-    set({ boardId, rules: previous.boardId === boardId ? previous.rules : [], error: null })
+    const same = previous.boardId === boardId
+    set({
+      boardId,
+      rules: same ? previous.rules : [],
+      presets: same ? previous.presets : {},
+      error: null,
+    })
     if (!boardId) return
     try {
-      const rules = await getAlertRules(boardId)
-      if (request === loadGeneration && get().boardId === boardId) set({ rules, error: null })
+      const [rules, presets] = await Promise.all([getAlertRules(boardId), getAlertPresets(boardId)])
+      if (request === loadGeneration && get().boardId === boardId)
+        set({ rules, presets, error: null })
     } catch (error) {
       if (request === loadGeneration && get().boardId === boardId) {
         set({ error: errorMessage(error, 'Unable to load Alert Rules.') })

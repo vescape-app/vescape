@@ -1,5 +1,5 @@
-import { GpsDisplayTrailLayer } from '@/modules/map/components/GpsDisplayTrailLayer'
-import { GpsDisplayControls } from '@/modules/map/components/GpsDisplayControls'
+import { DisplayClock } from '@/modules/map/lib/liveMotion/clock'
+import { LiveGpsMotion } from '@/modules/map/lib/liveMotion/motion'
 import Mapbox, { Camera, MapView } from '@rnmapbox/maps'
 import { SlidersHorizontalIcon } from 'phosphor-react-native'
 import { useCallback, useRef, useState, type ComponentRef } from 'react'
@@ -47,20 +47,17 @@ import { MainMapLayers, HistoryMapLayers } from '@/screens/main/map/MainMapLayer
 import { SatelliteImageryLayer } from '@/screens/main/map/SatelliteImageryLayer'
 import { DASH } from '@/helpers/format'
 
-const DISPLAY_TRAIL_FIXTURE: GeoJSON.Feature<GeoJSON.MultiLineString> = {
-  type: 'Feature',
-  properties: {},
-  geometry: {
-    type: 'MultiLineString',
-    coordinates: [
-      (FIXTURE_LIVE_TRAIL_SHAPE?.geometry.coordinates ?? []).map(([lng, lat], i) => [
-        lng + Math.sin(i * 0.6) * 0.00004,
-        lat + 0.00003,
-      ]),
-    ],
-  },
+// Isolated fixture: showcase never subscribes to real GPS or telemetry.
+const showcaseMotion = {
+  clock: new DisplayClock(),
+  now: () => performance.now(),
+  duration: (ms: number) => ms,
+  active: false,
+  motion: new LiveGpsMotion(),
+  smoothedTrail: [],
+  subscribe: () => () => {},
+  changed: () => {},
 }
-
 Mapbox.setAccessToken(MAPBOX_ACCESS_TOKEN)
 
 const HISTORY_METRIC_OPTIONS: { key: HistoryMetricKey; label: string }[] = [
@@ -74,10 +71,17 @@ const HISTORY_METRIC_OPTIONS: { key: HistoryMetricKey; label: string }[] = [
 ]
 
 export default function MapComponentsShowcase() {
+  const [pointAnimator] = useState(
+    () =>
+      new Mapbox.__experimental.MovePointShapeAnimator([
+        FIXTURE_ACCURACY_FIX.longitude,
+        FIXTURE_ACCURACY_FIX.latitude,
+      ]),
+  )
+
   const [styleKey, setStyleKey] = useState<MapStyleKey>('onedark')
   const resolvedTheme = useThemeStore((state) => state.resolvedTheme)
   const [styleExpanded, setStyleExpanded] = useState(false)
-  const [showDisplayTrail, setShowDisplayTrail] = useState(true)
   const [weatherActive, setWeatherActive] = useState(false)
   const [legalLimitsActive, setLegalLimitsActive] = useState(false)
   const [mapPoints] = useState<MapPoint[]>(FIXTURE_MAP_POINTS)
@@ -144,7 +148,8 @@ export default function MapComponentsShowcase() {
         {isSatellite && <SatelliteImageryLayer paint={getSatelliteImageryPaint()} />}
         {/* historyActive=false renders buildings/raster/weather + live pins/GPS puck/riders */}
         <MainMapLayers
-          gpsPositionAnimator={null}
+          displayRuntime={showcaseMotion}
+          pointAnimator={pointAnimator}
           historyActive={false}
           expandSelectedMapPoints
           isMapy={isMapy}
@@ -203,7 +208,6 @@ export default function MapComponentsShowcase() {
           onOpenMedia={(asset) => setLastEvent(`Media: ${asset.filename}`)}
           highContrastRoutes={isSatellite}
         />
-        {showDisplayTrail && <GpsDisplayTrailLayer shape={DISPLAY_TRAIL_FIXTURE} />}
       </MapView>
 
       <View style={styles.topRight} pointerEvents="box-none">
@@ -248,11 +252,6 @@ export default function MapComponentsShowcase() {
         title="Map options"
         onClose={() => setSheetVisible(false)}
       >
-        <ToggleRow
-          label="White display trail"
-          value={showDisplayTrail}
-          onToggle={setShowDisplayTrail}
-        />
         <ToggleRow label="Weather radar" value={weatherActive} onToggle={setWeatherActive} />
         <ToggleRow label="Legal limits" value={legalLimitsActive} onToggle={setLegalLimitsActive} />
         <ChipRow
@@ -266,7 +265,6 @@ export default function MapComponentsShowcase() {
             if (match) setActiveHistoryMapMetric(match.key)
           }}
         />
-        <GpsDisplayControls />
         <ValueRow label="Last interaction" value={lastEvent ?? DASH} />
         <Text style={styles.hint}>
           Tap a pin to expand its label + delete button. Buildings 3D follows the style (Outdoors,

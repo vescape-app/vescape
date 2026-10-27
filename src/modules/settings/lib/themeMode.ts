@@ -74,6 +74,23 @@ export function outdoorLightProgress(date: Date, coordinate: ThemeCoordinate): n
   return linear * linear * (3 - 2 * linear)
 }
 
+/** First moment within the next 24 hours where the `sun` mode flips theme, or null if it never does. */
+export function nextSunThemeSwitch(
+  from: Date,
+  coordinate: ThemeCoordinate,
+): { at: Date; to: ResolvedTheme } | null {
+  const isLightAt = (time: number) =>
+    solarElevationDegrees(new Date(time), coordinate) >= SUNRISE_ELEVATION_DEGREES
+  const startsLight = isLightAt(from.getTime())
+  for (let minute = 1; minute <= 24 * 60; minute++) {
+    const time = from.getTime() + minute * 60_000
+    if (isLightAt(time) !== startsLight) {
+      return { at: new Date(time), to: startsLight ? 'dark' : 'light' }
+    }
+  }
+  return null
+}
+
 export function resolveThemeMode({
   mode,
   systemTheme,

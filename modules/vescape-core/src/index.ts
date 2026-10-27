@@ -28,7 +28,6 @@ export interface DeviceFoundEvent {
   rssi: number
   serviceUUIDs: string[]
 }
-
 export interface ErrorEvent {
   message: string
 }
@@ -426,39 +425,15 @@ export interface AccessoryEnrollment {
   error: AccessoryInspectionError | 'storage-unavailable' | null
 }
 
-/** Session-only display controls.
- * @parity /modules/vescape-core/ios/location/GpsDisplaySmoother.swift `GpsDisplaySmoother`
- * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/location/GpsDisplaySmoother.kt `GpsDisplaySmoother`
- */
-export interface GpsDisplaySettings {
-  smoothingPercent: number
-  predictionPercent: number
-}
-
-/** A native-owned display segment, independent of measured GPS and recording.
- * @parity /modules/vescape-core/ios/location/GpsDisplaySmoother.swift `GpsDisplayMotion`
- * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/location/GpsDisplaySmoother.kt `GpsDisplayMotion`
- */
-export interface GpsDisplayMotion {
-  fromLatitude: number
-  fromLongitude: number
-  toLatitude: number
-  toLongitude: number
-  startsAtMs: number
-  endsAtMs: number
-  resetPosition?: boolean
-  latitudePerMs?: number
-  longitudePerMs?: number
-  velocityExpiresAtMs?: number
-}
-
 /**
  * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/protocol/VescTelemetryModels.kt `LocationSnapshot`
  * @parity /modules/vescape-core/ios/telemetry/TelemetryPipeline.swift `TelemetryLocationCapture`
  */
 export interface LocationEvent {
-  /** Present only on live display events. Never replaces measured coordinates. */
-  displayMotion?: GpsDisplayMotion | null
+  /** Source identity and monotonic display clock, kept separate from measured coordinates. */
+  displaySourceId?: number
+  displayClockMs?: number
+  displayClockRate?: number
   latitude: number
   longitude: number
   speedMps: number | null
@@ -505,7 +480,7 @@ export interface FiredAlert {
   value: number
   threshold: number
   thresholdMax: number | null
-  soundType: string
+  spec: string
   /** 0..1 depth into the threshold→thresholdMax range for geiger alerts; `null` for single. */
   rangeDepth?: number | null
   firedAt: number
@@ -650,17 +625,6 @@ export interface Board {
    */
   topSpeedKmh?: number
   /**
-   * Native-owned per-metric Alert Preset selection. Initial Board creation accepts this bag;
-   * existing Boards change it through applyAlertPreset. Absent ⇒ all metrics Off.
-   */
-  alertPreset?: Record<string, unknown> | null
-  /**
-   * Per-metric opt-in: which Alert Presets follow the board's own configuration instead of fixed
-   * values. Like alertPreset, native owns this bag; existing Boards use applyAlertPreset to
-   * change it. Absent ⇒ no metric matches.
-   */
-  matchBoardConfig?: Record<string, unknown> | null
-  /**
    * One-time gate for the guided Alert Preset step in the add-board wizard, per Board. False until
    * the rider completes that step for this Board. The durable setup home is the Alerts settings
    * entry regardless of this flag.
@@ -682,6 +646,17 @@ export interface Board {
  * upsert never clears the one already on the row, so callers never author `deletedAt`.
  */
 export type BoardInput = Omit<Board, 'deletedAt'>
+
+/**
+ * A new Board's alert setup, written by {@link upsertBoard} in the Board's own transaction: each
+ * metric's `preset(…)` spec and the rider's custom rules.
+ * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/AppDataRepository.kt `initialAlertRows`
+ * @parity /modules/vescape-core/ios/telemetry/AppDataRepository.swift `initialAlertRows`
+ */
+export interface InitialBoardAlerts {
+  presets: Partial<Record<AlertPresetMetric, string>>
+  rules: AlertRule[]
+}
 
 export interface LastBattery {
   percent: number
@@ -705,7 +680,7 @@ export interface BatteryManualConfig {
   maxVoltage: number
 }
 
-export type AlertSoundType = string
+export type AlertSpec = string
 
 /**
  * @parity /modules/vescape-core/ios/alerts/AlertAudioPlayer.swift `alertCategorySingle`, `alertCategoryGeiger`
@@ -730,10 +705,9 @@ export interface AlertTestRule {
   controlId: string
   threshold: number
   thresholdMax: number | null
-  soundType: AlertSoundType
-  /** Carried so a test sounds like the real rule: same cadence, same number of beeps. */
+  spec: AlertSpec
+  /** Carried so a test sounds like the real rule: same cadence. */
   repeatEverySeconds: number | null
-  beepCount: number
 }
 
 // @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/TelemetryEntities.kt `AlertRuleEntity`
@@ -755,7 +729,7 @@ export interface AlertRule {
         thresholdMaxOffset: number | null
       }
   enabled: boolean
-  soundType: AlertSoundType
+  spec: AlertSpec
   createdAt: number
   /**
    * Repeat cadence for a single-threshold rule, in seconds. `null` ⇒ one-shot: it announces once
@@ -763,16 +737,6 @@ export interface AlertRule {
    * whose cadence follows range depth. Native clamps to {@link ALERT_REPEAT_MIN_SECONDS}.
    */
   repeatEverySeconds: number | null
-  /**
-   * How many times the sound plays per announcement, {@link ALERT_BEEP_COUNT_RANGE}. Applies to
-   * preset sounds only — a text-to-speech rule speaks once regardless.
-   */
-  beepCount: number
-  /**
-   * Provenance tag. `manual` (or absent) = rider-authored. `preset` rules are generated + owned
-   * by native preset generation. JS sends selection intents and renders the saved rules.
-   */
-  source?: 'manual' | 'preset'
 }
 
 /**
@@ -785,16 +749,16 @@ export interface AlertRule {
 export const ALERT_REPEAT_MIN_SECONDS = 3
 
 /**
- * Inclusive bounds on {@link AlertRule.beepCount}. Past 5 the beeps stop being countable by ear
- * at riding speed, which is the only thing the count is for.
+ * Inclusive bounds on the count of an `alert(count):severity` sound. Past 5 the beeps stop being
+ * countable by ear at riding speed, which is the only thing the count is for.
  *
- * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/alerts/AlertEngine.kt `ALERT_BEEP_COUNT_RANGE`
- * @parity /modules/vescape-core/ios/alerts/AlertEngine.swift `alertBeepCountRange`
+ * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/alerts/AlertSoundString.kt `ALERT_BEEP_COUNT_RANGE`
+ * @parity /modules/vescape-core/ios/alerts/AlertSoundString.swift `alertBeepCountRange`
  */
 export const ALERT_BEEP_COUNT_RANGE = { min: 1, max: 5 } as const
 
-/** Beeps per announcement when nothing says otherwise — matches the pre-`beepCount` behavior. */
-export const ALERT_BEEP_COUNT_DEFAULT = 3
+/** Count a new alert rule starts with — one play, the same as a sound string without a count. */
+export const ALERT_BEEP_COUNT_DEFAULT = 1
 
 export type PrivacyZonePreset = 'home' | 'work' | 'custom'
 
@@ -883,7 +847,6 @@ export type MapPointErrorCode =
   | 'MAP_POINT_UNREACHABLE'
 
 export interface TelemetryEvent {
-  displayMotion?: GpsDisplayMotion | null
   generation?: number
   /** Native remote-tilt snapshot paired with this telemetry tick. */
   remoteTilt?: RemoteTiltState | null
@@ -1051,7 +1014,9 @@ export interface LiveStateEvent {
     phase: GpsPhase
     /** What the fixes cost right now — and, by implication, why they are flowing. */
     mode: GpsPowerMode
-    displayMotion?: GpsDisplayMotion | null
+    displaySourceId?: number
+    displayClockMs?: number
+    displayClockRate?: number
     latestFix: LocationEvent | null
     latestApproximateFix?: LocationEvent | null
     latestPreciseFix?: LocationEvent | null
@@ -1102,8 +1067,6 @@ export interface TelemetryDeleteRangeOptions {
   fromMs: number
   toMs: number
   boardId?: string | null
-  /** Restrict deletion to one native Ride Recording. Omitted for legacy time-range operations. */
-  recordingId?: string | null
 }
 
 export interface TelemetryMinuteBucket {
@@ -1113,15 +1076,6 @@ export interface TelemetryMinuteBucket {
   bucketStartMs: number
   /** Owning Board (`boards.id`), or null when the samples match no saved Board. */
   boardId: string | null
-  /**
-   * Owning Ride Recording, or null for buckets aggregated before durable recording identity
-   * existed. Board attribution and recording identity are separate facts: two recordings of one
-   * Board can share a minute and stay two buckets (ADR 0038).
-   *
-   * @parity /modules/vescape-core/ios/telemetry/TelemetryDao.swift `historyMap`
-   * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/TelemetryRepository.kt `getHistory`
-   */
-  recordingId: string | null
   /** Resolved from `boards` on read, never stored on the row — a rename relabels history. */
   boardName: string
   sampleCount: number
@@ -1153,6 +1107,7 @@ export interface TelemetryMinuteBucket {
     | 'error'
     | 'gap'
     | 'app_stop'
+    | 'recording_stop'
   boundaryMessage?: string | null
   gapBeforeMs?: number | null
 }
@@ -1192,8 +1147,6 @@ export interface TelemetrySample {
  */
 export interface HistoryGpsSample {
   id: number
-  /** Owning Ride Recording; null for migrated legacy fixes. */
-  recordingId: string | null
   capturedAtMs: number
   boardId: string | null
   boardName: string
@@ -1207,6 +1160,11 @@ export interface HistoryGpsSample {
   distanceFromPreviousM: number | null
 }
 
+/**
+ * `recording_stop` is the explicit rider Stop Recording, the only marker that splits a ride.
+ * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/TelemetryEntities.kt `RECORDING_STOP_MARKER`
+ * @parity /modules/vescape-core/ios/telemetry/RideHistoryRepository.swift `recordingStopMarker`
+ */
 export interface HistoryMarker {
   id: number
   occurredAtMs: number
@@ -1217,6 +1175,7 @@ export interface HistoryMarker {
     | 'error'
     | 'gap'
     | 'app_stop'
+    | 'recording_stop'
     | 'auto_pause'
   /** Owning Board (`boards.id`); null when the Marker was written with no Board connected. */
   boardId: string | null
@@ -1372,6 +1331,8 @@ export interface Favorite {
   batteryUsedWh: number
   /** Native coarse route projection; available without loading the surrounding History page. */
   routePoints: RideRoutePoint[]
+  /** Weather over the pinned range, or null when no stored observation applies. */
+  weather: RideWeather | null
 }
 
 /**
@@ -1517,8 +1478,6 @@ export interface RideRoutePoint {
  */
 export interface RideHistorySession {
   id: string
-  /** Durable Ride Recording identity; null/absent for reconstructed legacy sessions. */
-  recordingId?: string | null
   /** Owning Board (`boards.id`), or null when the ride matches no saved Board. */
   boardId: string | null
   /** Resolved from `boards` on read, never stored on the row — a rename relabels history. */
@@ -1550,6 +1509,26 @@ export interface RideHistorySession {
   maxLongitude: number | null
   boundaryBefore: TelemetryMinuteBucket['boundaryBefore']
   routePoints: RideRoutePoint[]
+  /** Weather over the ride, or null when no stored observation applies. */
+  weather: RideWeather | null
+}
+
+/**
+ * Weather of a ride or Favorite, folded natively from stored Weather Observations. Approximate by
+ * design: the conditions the app last fetched, not a measurement on the Board.
+ *
+ * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/WeatherObservations.kt `RideWeather`
+ * @parity /modules/vescape-core/ios/telemetry/WeatherObservations.swift `RideWeather`
+ */
+export interface RideWeather {
+  /** Time-dominant condition; the night form when most of the ride was after dark. */
+  icon: WeatherIconSlug
+  minTemperatureC: number
+  maxTemperatureC: number
+  /** Strongest gust, km/h in 5 km/h steps; null when no observation carried one. */
+  maxGustKmh: number | null
+  /** Minutes under a rain, drizzle or storm code. */
+  rainMinutes: number
 }
 
 /**
@@ -1565,6 +1544,28 @@ export interface RideHistoryPage {
 export interface LegalPolicyReference {
   jurisdictionCode: string
 }
+
+/**
+ * Stored rain/wind Weather Alert level: `off` or a native-owned threshold set.
+ * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/weather/WeatherAlerts.kt `WEATHER_ALERT_LEVEL_SETTINGS`
+ * @parity /modules/vescape-core/ios/weather/WeatherAlerts.swift `weatherAlertLevelSettings`
+ */
+export type WeatherAlertLevelSetting = 'off' | WeatherAlertLevel
+
+/**
+ * Speed and distance display unit: `km` shows km/h, km, and m; `mi` shows mph, mi, and ft.
+ * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/PersistenceDefaults.kt `validDistanceUnit`
+ * @parity /modules/vescape-core/ios/telemetry/PersistenceDefaults.swift `validDistanceUnit`
+ */
+export type DistanceUnit = 'km' | 'mi'
+
+/**
+ * Stored Temperature Unit setting.
+ * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/PersistenceDefaults.kt `validTemperatureUnit`
+ * @parity /modules/vescape-core/ios/telemetry/PersistenceDefaults.swift `validTemperatureUnit`
+ */
+export type TemperatureUnit = 'celsius' | 'fahrenheit'
+export type WeatherAlertLevel = 'sensitive' | 'normal' | 'extreme'
 
 /**
  * Durable app-scoped settings. The keys here are a TS/Android/iOS parity triangle — every field is
@@ -1592,7 +1593,9 @@ export interface AppSettings {
    */
   rideSplitGapMinutes: number
   /** App appearance source. `sun` resolves from local daylight at the last GPS fix. */
-  unitSystem: 'metric' | 'imperial'
+  distanceUnit: DistanceUnit
+  /** Temperature display and spoken-alert unit; independent of `distanceUnit`. */
+  temperatureUnit: TemperatureUnit
   themeMode: 'system' | 'light' | 'dark' | 'sun'
   mapStyleKey: 'onedark' | 'outdoors' | 'satellite' | 'mapy'
   /** Use the custom satellite overlay style instead of the stock satellite style. */
@@ -1631,16 +1634,26 @@ export interface AppSettings {
   boardMoveStrengthPercent: number
   /** Play on/off sounds on board connect and involuntary disconnect. */
   connectionSoundsEnabled: boolean
-  /** Selected bundled or custom app feedback pack. Missing saved value defaults to retro. */
-  /** @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/alerts/AlertEngine.kt `appSoundResources` */
-  /** @parity /modules/vescape-core/ios/alerts/AlertAudioPlayer.swift `appSoundFiles` */
-  /** @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/alerts/CustomAppSounds.kt */
-  /** @parity /modules/vescape-core/ios/alerts/CustomAppSounds.swift */
+  /** Selected built-in effects pack. Missing, unknown, or retired (`retro`, `simple`) saved values read as arc. */
+  /** @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/alerts/EffectsPacks.kt */
+  /** @parity /modules/vescape-core/ios/alerts/EffectsPacks.swift */
   soundPack: string
   /** Android playback volume stream. iOS retains its playback session. */
   /** @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/TelemetryEntities.kt `AppSettings` */
   /** @parity /modules/vescape-core/ios/telemetry/AppDataRepository.swift `defaultSettings` */
   audioSource: 'alarm' | 'media'
+  /** `matching` (the voice the effects pack names) or a voice pack id. */
+  /** @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/TelemetryEntities.kt `AppSettings` */
+  /** @parity /modules/vescape-core/ios/telemetry/AppDataRepository.swift `defaultSettings` */
+  voice: 'matching' | 'nova' | 'radio' | 'nicole'
+  /** Speech for presets and app sounds; custom rules ignore it. */
+  /** @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/alerts/VoicePacks.kt `VOICE_LEVELS` */
+  /** @parity /modules/vescape-core/ios/alerts/VoicePacks.swift `voiceLevels` */
+  voiceLevel: 'off' | 'minimal' | 'standard' | 'full'
+  /** Rain Weather Alert gate; native owns each level's thresholds. */
+  weatherRainAlertLevel: WeatherAlertLevelSetting
+  /** Gust Weather Alert gate; native owns each level's thresholds. */
+  weatherWindAlertLevel: WeatherAlertLevelSetting
   /** Android-only: use CompanionDeviceManager presence to connect associated boards when nearby. */
   companionPresenceEnabled: boolean
   /**
@@ -1802,9 +1815,36 @@ export interface LocalDiagnosticEvent {
   propertiesJson: string
 }
 
-export interface TelemetryRebuildProgressEvent {
-  current: number
+/**
+ * One Maintenance Job's runner state. Native owns it; run history is per process, the durable truth
+ * is the job's done fingerprint.
+ * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/MaintenanceRunner.kt `MaintenanceJobState`
+ * @parity /modules/vescape-core/ios/telemetry/MaintenanceRunner.swift `MaintenanceJobState`
+ */
+export interface MaintenanceJobState {
+  /** Declared job id, e.g. `rideSummaries`. */
+  id: string
+  /** `pending`: not checked yet, or stale until a ride closes or the next launch. */
+  status: 'pending' | 'running' | 'done' | 'waitingForNetwork' | 'failed'
+  /** Items handled in the current or last run, in the job's own unit (hours for ride summaries). */
+  done: number
   total: number
+  lastRunAtMs: number | null
+  lastDurationMs: number | null
+  lastError: string | null
+}
+
+/**
+ * The Maintenance Job runner, as JS renders it.
+ * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/MaintenanceRunner.kt `buildSnapshot`
+ * @parity /modules/vescape-core/ios/telemetry/MaintenanceRunner.swift `buildSnapshot`
+ */
+export interface MaintenanceState {
+  running: boolean
+  /** Bumped, throttled, after committed chunks changed Ride History; open history views re-read. */
+  historyRevision: number
+  /** Every declared job, in run order. */
+  jobs: MaintenanceJobState[]
 }
 
 export interface DatabaseBackupResult {
@@ -2718,7 +2758,7 @@ type VescapeCoreEvents = {
   onBms: (event: BmsEvent) => void
   onBmsSeries: (event: NativeBmsSeriesEvent) => void
   onLocation: (event: LocationEvent) => void
-  onTelemetryRebuildProgress: (event: TelemetryRebuildProgressEvent) => void
+  onMaintenanceState: (event: MaintenanceState) => void
   onBoardProbeProgress: (event: BoardProbeProgressEvent) => void
   /** Observe WebSocket connection state to the Group Ride relay. */
   onGroupRideConnection: (event: GroupRideConnectionEvent) => void
@@ -2843,17 +2883,21 @@ type VescapeCoreNativeModule = NativeEventEmitter<VescapeCoreEvents> & {
   getCriticalRideNotificationPermissionStatus(): Promise<CriticalRideNotificationPermissionStatus>
   requestCriticalRideNotificationPermission(): Promise<CriticalRideNotificationPermissionStatus>
   getAlertSounds(): AlertSound[]
-  previewAlertSound(soundType: AlertSoundType): void
-  playAppSound(pack: string, cue: 'on' | 'off' | 'created' | 'join' | 'error'): void
+  previewAlertSound(spec: AlertSpec): void
+  previewWeatherAlert(
+    kind: WeatherAlertPreviewKind,
+    leadMinutes: number,
+    percent: number | null,
+  ): void
+  playPackSound(pack: string, slot: PackSoundSlot): void
   mapTile(z: number, x: number, y: number): Promise<string | null>
-  customAppSoundPacks(): Promise<CustomAppSoundPack[]>
-  createAppSoundPack(name: string): Promise<CustomAppSoundPack[]>
-  renameAppSoundPack(id: string, name: string): Promise<void>
-  importAppSound(id: string, cue: AppSoundCueId, uri: string): Promise<void>
-  removeAppSound(id: string, cue: AppSoundCueId): Promise<void>
-  deleteAppSoundPack(id: string): Promise<void>
+  mySounds(): Promise<MySoundsState>
+  importMySound(uri: string, name: string): Promise<MySoundsState>
+  renameMySound(id: string, name: string): Promise<MySoundsState>
+  deleteMySound(id: string): Promise<MySoundsState>
+  setSoundOverride(slot: SoundOverrideSlot, id: string | null): Promise<MySoundsState>
 
-  startGeigerSimulation(soundType: string, rangeDepth: number): void
+  startGeigerSimulation(spec: string, rangeDepth: number): void
   stopGeigerSimulation(): void
   startAlertTest(rules: AlertTestRule[]): void
   updateAlertTest(value: number): void
@@ -2879,25 +2923,12 @@ type VescapeCoreNativeModule = NativeEventEmitter<VescapeCoreEvents> & {
   reportUiError(message: string, source?: string | null, stack?: string | null): void
   reportDiagnosticTest(): DiagnosticStatus
   getDiagnosticStatus(): DiagnosticStatus
-  getGpsDisplaySettings(): GpsDisplaySettings
-  setGpsDisplaySettings(smoothingPercent: number, predictionPercent: number): void
-  updateGpsDisplayPreviewSpeed(speedMps: number): GpsDisplayMotion | null
-  resetGpsDisplayPreview(): void
-  setGpsDisplayPreviewSettings(
-    smoothingPercent: number,
-    predictionPercent: number,
-  ): GpsDisplayMotion | null
-  updateGpsDisplayPreview(
-    latitude: number,
-    longitude: number,
-    speed: number,
-    course: number,
-    timestamp: number,
-  ): GpsDisplayMotion | null
+  setWatchDisplayConfig(json: string): void
   getLiveState(): LiveStateEvent
   getAppStatus(): AppStatus | null
   getWeather(): Weather | null
   refreshWeather(): void
+  getWeatherAlertThresholds(): WeatherAlertThresholds
   provisionDeviceCredential(
     serverUrl: string,
     deviceToken: string,
@@ -2929,7 +2960,6 @@ type VescapeCoreNativeModule = NativeEventEmitter<VescapeCoreEvents> & {
     fromMs: number
     toMs: number
     boardId?: string
-    recordingId?: string
     limit?: number
   }): Promise<NativeHistoryRange>
   getTelemetrySummary(): Promise<TelemetrySummary>
@@ -2997,27 +3027,28 @@ type VescapeCoreNativeModule = NativeEventEmitter<VescapeCoreEvents> & {
   ): Promise<TuneProfile>
   pushProfileToBoard(profileId: string): Promise<RefloatConfigSnapshot>
   getProfileStatsSnapshot(options: Partial<ProfileStatsMonth>): Promise<ProfileStatsSnapshot>
-  rebuildTelemetryBuckets(): Promise<number>
+  getMaintenanceState(): MaintenanceState
   deleteTelemetryBefore(beforeMs: number): Promise<number>
   deleteTelemetryRange(options: TelemetryDeleteRangeOptions): Promise<number>
   clearTelemetryHistory(): Promise<void>
   getBoards(): Promise<Board[]>
-  upsertBoard(board: BoardInput): Promise<void>
+  upsertBoard(board: BoardInput, initialAlerts: InitialBoardAlerts | null): Promise<void>
   deleteBoard(id: string): Promise<void>
   getAlertRules(boardId: string): Promise<AlertRule[]>
+  getAlertPresets(boardId: string): Promise<Record<AlertPresetMetric, string>>
   previewAlertPreset(
     metric: AlertPresetMetric,
-    level: AlertPresetLevel,
+    spec: string,
     topSpeedKmh: number,
     hasBatteryConfig: boolean,
-    speedUnitSystem: 'metric' | 'imperial',
+    distanceUnit: DistanceUnit,
   ): AlertTestRule[]
   applyAlertPreset(
     boardId: string,
     metric: string,
-    action: AlertPresetIntent['action'],
     level: string | null,
-    matchBoardConfig: boolean | null,
+    geiger: string | null,
+    match: boolean | null,
   ): Promise<void>
   upsertAlertRule(rule: AlertRule): Promise<void>
   setAlertRuleEnabled(boardId: string, id: string, enabled: boolean): Promise<void>
@@ -3360,36 +3391,93 @@ export async function requestCriticalRideNotificationPermission(): Promise<Criti
   }
 }
 
-const FALLBACK_PRESETS: AlertSound[] = [
-  { name: 'Beep', uri: 'preset:beep', category: 'single' },
-  { name: 'Urgent', uri: 'preset:urgent', category: 'single' },
-  { name: 'Notify', uri: 'preset:notify', category: 'single' },
-  { name: 'Tick', uri: 'preset:tick', category: 'geiger' },
-  { name: 'Hard Tick', uri: 'preset:tick_hard', category: 'geiger' },
-  { name: 'Gamma', uri: 'preset:gamma', category: 'geiger' },
+/**
+ * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/alerts/AlertEngine.kt `alertSoundMaps`
+ * @parity /modules/vescape-core/ios/alerts/AlertAudioPlayer.swift `alertSoundChoices`
+ */
+const FALLBACK_SOUNDS: AlertSound[] = [
+  { name: 'Info', uri: 'alert:info', category: 'single' },
+  { name: 'Warning', uri: 'alert:warning', category: 'single' },
+  { name: 'Critical', uri: 'alert:critical', category: 'single' },
+  { name: 'Soft', uri: 'geiger:soft', category: 'geiger' },
+  { name: 'Mid', uri: 'geiger:mid', category: 'geiger' },
+  { name: 'Hard', uri: 'geiger:hard', category: 'geiger' },
 ]
 
 export function getAlertSounds(): AlertSound[] {
   try {
     return native.getAlertSounds()
   } catch {
-    return FALLBACK_PRESETS
+    return FALLBACK_SOUNDS
   }
 }
 
-export function previewAlertSound(soundType: AlertSoundType): void {
-  native.previewAlertSound(soundType)
+export function previewAlertSound(spec: AlertSpec): void {
+  native.previewAlertSound(spec)
 }
 
-/** @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/alerts/CustomAppSounds.kt
- * @parity /modules/vescape-core/ios/alerts/CustomAppSounds.swift */
-export type AppSoundCueId = 'on' | 'off' | 'created' | 'join' | 'error'
-export interface CustomAppSoundPack {
-  id: string
-  name: string
-  sounds: Partial<Record<AppSoundCueId, string>>
+/**
+ * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/weather/WeatherAlerts.kt `WeatherAlertKind`
+ * @parity /modules/vescape-core/ios/weather/WeatherAlerts.swift `WeatherAlertKind`
+ */
+export type WeatherAlertPreviewKind = 'storm' | 'wind' | 'rain'
+
+/**
+ * Speak the Weather Alert line the evaluator would say: lead 0 is "now", percent applies to storm and rain.
+ * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/VescapeCoreModule.kt `previewWeatherAlert`
+ * @parity /modules/vescape-core/ios/VescapeCoreModule.swift `previewWeatherAlert`
+ */
+export function previewWeatherAlert(
+  kind: WeatherAlertPreviewKind,
+  leadMinutes: number,
+  percent: number | null,
+): void {
+  native.previewWeatherAlert(kind, leadMinutes, percent)
 }
-export const customAppSoundPacks = (): Promise<CustomAppSoundPack[]> => native.customAppSoundPacks()
+
+/**
+ * Effects pack slot Settings previews: the overridable slots plus ride end.
+ *
+ * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/alerts/EffectsPacks.kt
+ * @parity /modules/vescape-core/ios/alerts/EffectsPacks.swift
+ */
+export type PackSoundSlot = SoundOverrideSlot | 'cue.ride.end'
+
+/** Effects slot a My sound can override; see `SOUND_OVERRIDE_SLOTS` in the settings module. */
+export type SoundOverrideSlot =
+  | 'severity.positive'
+  | 'severity.info'
+  | 'severity.warning'
+  | 'severity.critical'
+  | 'cue.on'
+  | 'cue.off'
+  | 'cue.groupRide.created'
+  | 'cue.groupRide.joined'
+
+/**
+ * The My sounds library and the override slots pointing into it. Rules name a sound as
+ * `alert(n):my:<id>` or `geiger:my:<id>`.
+ *
+ * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/alerts/MySounds.kt
+ * @parity /modules/vescape-core/ios/alerts/MySounds.swift
+ */
+export interface MySoundsState {
+  sounds: { id: string; name: string }[]
+  overrides: Partial<Record<SoundOverrideSlot, string>>
+}
+export const mySounds = (): Promise<MySoundsState> => native.mySounds()
+/** Import a picked WAV, M4A or MP3 (≤2 MB, ≤15 s) under `name`; native validates and stores it. */
+export const importMySound = (uri: string, name: string): Promise<MySoundsState> =>
+  native.importMySound(uri, name)
+export const renameMySound = (id: string, name: string): Promise<MySoundsState> =>
+  native.renameMySound(id, name)
+/** Delete a sound and its overrides; rules still naming it fall back to the pack. */
+export const deleteMySound = (id: string): Promise<MySoundsState> => native.deleteMySound(id)
+/** Point `slot` at My sound `id`, or back to the effects pack with null. */
+export const setSoundOverride = (
+  slot: SoundOverrideSlot,
+  id: string | null,
+): Promise<MySoundsState> => native.setSoundOverride(slot, id)
 
 /**
  * File URI of one 512 px Web Mercator tile (z/x/y) of the hosted thumbnail map style, cached on disk
@@ -3397,24 +3485,18 @@ export const customAppSoundPacks = (): Promise<CustomAppSoundPack[]> => native.c
  */
 export const mapTile = (z: number, x: number, y: number): Promise<string | null> =>
   native.mapTile(z, x, y)
-export const createAppSoundPack = (name: string): Promise<CustomAppSoundPack[]> =>
-  native.createAppSoundPack(name)
-export const renameAppSoundPack = (id: string, name: string): Promise<void> =>
-  native.renameAppSoundPack(id, name)
-export const importAppSound = (id: string, cue: AppSoundCueId, uri: string): Promise<void> =>
-  native.importAppSound(id, cue, uri)
-export const removeAppSound = (id: string, cue: AppSoundCueId): Promise<void> =>
-  native.removeAppSound(id, cue)
-export const deleteAppSoundPack = (id: string): Promise<void> => native.deleteAppSoundPack(id)
 
-/** Play a bundled or custom app cue; native resolves invalid assignments to Classic. */
-export function playAppSound(pack: string, cue: 'on' | 'off' | 'created' | 'join' | 'error'): void {
-  native.playAppSound(pack, cue)
+/**
+ * Preview a pack slot: its My sounds override when set, else `pack`'s clip (an optional slot the
+ * pack leaves out plays its fallback slot's override or clip). `cue.ride.end` is not overridable. Never speaks.
+ */
+export function playPackSound(pack: string, slot: PackSoundSlot): void {
+  native.playPackSound(pack, slot)
 }
 
-export function startGeigerSimulation(soundType: string, rangeDepth: number): void {
+export function startGeigerSimulation(spec: string, rangeDepth: number): void {
   try {
-    native.startGeigerSimulation(soundType, rangeDepth)
+    native.startGeigerSimulation(spec, rangeDepth)
   } catch {
     // Native geiger simulation not yet available
   }
@@ -3603,6 +3685,21 @@ export function getWeather(): Weather | null {
 }
 
 /**
+ * Native-owned gates of each Weather Alert level, for display only.
+ * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/VescapeCoreModule.kt `getWeatherAlertThresholds`
+ * @parity /modules/vescape-core/ios/VescapeCoreModule.swift `getWeatherAlertThresholds`
+ */
+export type WeatherAlertThresholds = Partial<
+  Record<WeatherAlertLevel, { gustKmh: number; rainPercent: number }>
+>
+
+/** Native-owned gust (km/h) and rain-chance (%) gates per Weather Alert level; empty under E2E. */
+export function getWeatherAlertThresholds(): WeatherAlertThresholds {
+  if (E2E_ENABLED) return {}
+  return native.getWeatherAlertThresholds()
+}
+
+/**
  * Refetch the forecast where the last one was fetched — the rider asking for fresh weather. Fire and
  * forget: the result lands on `onWeather` like every other refresh, and a call before the first
  * forecast exists does nothing.
@@ -3707,7 +3804,6 @@ export async function getTelemetrySamples(options: {
 
 /**
  * Exact stored range. Omitted Board means unassigned Board, not all Boards.
- * Omit recordingId for Favorites and legacy Board/time selections.
  * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/RideExport.kt
  * @parity /modules/vescape-core/ios/telemetry/RideExport.swift
  */
@@ -3715,7 +3811,6 @@ export interface RideExportOptions {
   fromMs: number
   toMs: number
   boardId?: string
-  recordingId?: string
   name?: string
 }
 
@@ -3760,7 +3855,6 @@ export async function getHistoryRange(options: {
   fromMs: number
   toMs: number
   boardId?: string
-  recordingId?: string
   limit?: number
 }): Promise<HistoryRange> {
   const range: NativeHistoryRange = E2E_ENABLED
@@ -4124,8 +4218,13 @@ export async function getProfileStatsSnapshot(
   return native.getProfileStatsSnapshot(options ?? {})
 }
 
-export async function rebuildTelemetryBuckets(): Promise<number> {
-  return native.rebuildTelemetryBuckets()
+/**
+ * The Maintenance Job runner's current state; pushes follow on `onMaintenanceState`.
+ * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/VescapeCoreModule.kt `getMaintenanceState`
+ * @parity /modules/vescape-core/ios/VescapeCoreModule.swift `getMaintenanceState`
+ */
+export function getMaintenanceState(): MaintenanceState {
+  return native.getMaintenanceState()
 }
 
 export async function deleteTelemetryBefore(beforeMs: number): Promise<number> {
@@ -4151,12 +4250,20 @@ export async function getBoards(): Promise<Board[]> {
   return native.getBoards()
 }
 
-export async function upsertBoard(board: BoardInput): Promise<void> {
+export async function upsertBoard(
+  board: BoardInput,
+  initialAlerts?: InitialBoardAlerts,
+): Promise<void> {
   if (E2E_ENABLED) {
     e2eFake.upsertBoard(board)
     return
   }
-  return native.upsertBoard(board)
+  return native.upsertBoard(
+    board,
+    initialAlerts
+      ? { presets: initialAlerts.presets, rules: initialAlerts.rules.map(bridgeableAlertRule) }
+      : null,
+  )
 }
 
 export async function deleteBoard(id: string): Promise<void> {
@@ -4164,42 +4271,45 @@ export async function deleteBoard(id: string): Promise<void> {
 }
 
 /**
- * Native owns preset selection, generation, and atomic rule replacement.
+ * An Alert Preset is one row per Board and metric holding `preset(<level>)[:key=value,…]`; native
+ * expands it into rules whenever it loads them, and JS never expands.
  * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/VescapeCoreModule.kt `applyAlertPreset`
  * @parity /modules/vescape-core/ios/VescapeCoreModule.swift `applyAlertPreset`
  */
 export type AlertPresetMetric = 'battery' | 'speed' | 'duty' | 'motor-temp' | 'controller-temp'
-export type AlertPresetLevel = 'off' | 'safe' | 'normal' | 'minimal' | 'custom'
+export type AlertPresetLevel = 'off' | 'safe' | 'normal' | 'minimal'
 
+/** One change to a metric's preset row: its level, its geiger tick level, or board-config match. */
 export type AlertPresetIntent =
-  | { action: 'select'; level: Exclude<AlertPresetLevel, 'custom'> }
-  | { action: 'customize' | 'discard-custom' }
-  | { action: 'match-board-config'; enabled: boolean }
+  | { level: AlertPresetLevel }
+  | { geiger: 'soft' | 'mid' | 'hard' }
+  | { match: boolean }
 
 /**
- * Calculate an unsaved wizard preset with the same native generator used when saving it.
+ * Expand an unsaved draft preset `spec` with the same native expander saved rows use.
  * Synchronous, deterministic, and independent of the database or active Board.
  * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/VescapeCoreModule.kt `previewAlertPreset`
  * @parity /modules/vescape-core/ios/VescapeCoreModule.swift `previewAlertPreset`
  */
 export function previewAlertPreset(
   metric: AlertPresetMetric,
-  level: AlertPresetLevel,
+  spec: string,
   options: {
     topSpeedKmh: number
     hasBatteryConfig: boolean
-    speedUnitSystem?: 'metric' | 'imperial'
+    distanceUnit?: DistanceUnit
   },
 ): AlertTestRule[] {
   return native.previewAlertPreset(
     metric,
-    level,
+    spec,
     options.topSpeedKmh,
     options.hasBatteryConfig,
-    options.speedUnitSystem ?? 'metric',
+    options.distanceUnit ?? 'km',
   )
 }
 
+/** Rewrite one metric's preset row in a transaction; native reloads evaluation. */
 export async function applyAlertPreset(
   boardId: string,
   metric: AlertPresetMetric,
@@ -4208,12 +4318,22 @@ export async function applyAlertPreset(
   return native.applyAlertPreset(
     boardId,
     metric,
-    intent.action,
-    intent.action === 'select' ? intent.level : null,
-    intent.action === 'match-board-config' ? intent.enabled : null,
+    'level' in intent ? intent.level : null,
+    'geiger' in intent ? intent.geiger : null,
+    'match' in intent ? intent.match : null,
   )
 }
 
+/**
+ * Each preset metric's stored `preset(…)` spec; `preset(normal)` where the Board has no row.
+ * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/VescapeCoreModule.kt `getAlertPresets`
+ * @parity /modules/vescape-core/ios/VescapeCoreModule.swift `getAlertPresets`
+ */
+export async function getAlertPresets(boardId: string): Promise<Record<AlertPresetMetric, string>> {
+  return native.getAlertPresets(boardId)
+}
+
+/** Rider rules plus every Alert Preset expanded (`preset:<metric>:<index>`), by created_at. */
 export async function getAlertRules(boardId: string): Promise<AlertRule[]> {
   return native.getAlertRules(boardId)
 }
@@ -4578,29 +4698,9 @@ export function addBmsSeriesListener(cb: (event: BmsSeriesUpdate) => void): Even
   })
 }
 
-export function getGpsDisplaySettings(): GpsDisplaySettings {
-  return native.getGpsDisplaySettings()
-}
-export function setGpsDisplaySettings(settings: GpsDisplaySettings): void {
-  native.setGpsDisplaySettings(settings.smoothingPercent, settings.predictionPercent)
-}
-/** Isolated native preview: synthetic inputs never reach real GPS consumers or recording. */
-export function resetGpsDisplayPreview(): void {
-  native.resetGpsDisplayPreview()
-}
-export function setGpsDisplayPreviewSettings(
-  settings: GpsDisplaySettings,
-): GpsDisplayMotion | null {
-  return native.setGpsDisplayPreviewSettings(settings.smoothingPercent, settings.predictionPercent)
-}
-export function updateGpsDisplayPreview(
-  latitude: number,
-  longitude: number,
-  speed: number,
-  course: number,
-  timestamp: number,
-): GpsDisplayMotion | null {
-  return native.updateGpsDisplayPreview(latitude, longitude, speed, course, timestamp)
+/** @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/VescapeCoreModule.kt `setWatchDisplayConfig` */
+export function setWatchDisplayConfig(config: Record<string, number>): void {
+  if (!E2E_ENABLED) native.setWatchDisplayConfig(JSON.stringify(config))
 }
 
 export function addLocationListener(cb: (event: LocationEvent) => void): EventSubscription {
@@ -4618,10 +4718,10 @@ export function setWatchRouteSpanM(spanM: number | null): void {
   native.setWatchRouteSpanM(spanM)
 }
 
-export function addTelemetryRebuildProgressListener(
-  cb: (event: TelemetryRebuildProgressEvent) => void,
+export function addMaintenanceStateListener(
+  cb: (event: MaintenanceState) => void,
 ): EventSubscription {
-  return emitter.addListener('onTelemetryRebuildProgress', cb)
+  return emitter.addListener('onMaintenanceState', cb)
 }
 
 export function addBoardProbeProgressListener(
@@ -4738,8 +4838,4 @@ export function setBrakeLightPreview(
   mode: BrakeLightMode | null,
 ): Promise<boolean> {
   return native.setBrakeLightPreview(accessoryId, capabilityId, mode)
-}
-
-export function updateGpsDisplayPreviewSpeed(speedMps: number): GpsDisplayMotion | null {
-  return native.updateGpsDisplayPreviewSpeed(speedMps)
 }

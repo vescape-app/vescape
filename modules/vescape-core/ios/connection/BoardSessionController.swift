@@ -204,8 +204,6 @@ internal final class BoardSessionController: VescGattListener {
   private(set) var bleId: String?
   private(set) var boardName: String?
   private(set) var connectionSeq: Int64 = 0
-  private var lastDisplayPublishedAt: Int64 = 0
-  private var lastDisplayPublishedSpeed: Double = -1
   private(set) var lastTelemetryAt: Int64?
   private(set) var boardError: String?
   var linkIntegrity: LinkIntegrity { session?.linkIntegrity ?? .unknown }
@@ -256,7 +254,14 @@ internal final class BoardSessionController: VescGattListener {
     online: AppStatusCoordinator.shared,
     scheduler: scheduler,
     // Participation is a GPS demand input, and most of the ways it ends are not rider-initiated.
-    onParticipationChanged: { [weak self] in self?.refreshGpsDemand() }
+    onParticipationChanged: { [weak self] in self?.refreshGpsDemand() },
+    onCue: { [weak self] cue in
+      guard let self, self.connectionSoundsEnabled else { return }
+      self.alertAudioPlayer.playAppCue(cue)
+    },
+    ownLocation: { [weak self] in
+      self?.locationTracker.latestLocation.map { (lat: $0.latitude, lng: $0.longitude) }
+    }
   )
 
   /// Enabled Privacy Zones cached for the Group Ride presence egress gate (issue #144). Refreshed
@@ -272,8 +277,19 @@ internal final class BoardSessionController: VescGattListener {
   /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/connection/BoardSessionController.kt `telemetry`
   private var latestTelemetry: RefloatTelemetry?
 
-  private lazy var alertAudioPlayer = AlertAudioPlayer()
+  private lazy var alertAudioPlayer: AlertAudioPlayer = {
+    let player = AlertAudioPlayer()
+    player.onDiagnostic = { name, props in DiagnosticsRecorder.shared.record(eventName: name, properties: props) }
+    return player
+  }()
   private lazy var alertCoordinator = AlertCoordinator(player: alertAudioPlayer)
+  /// Weather Alerts: spoken only while telemetry flows, held across dropouts within a ride.
+  /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/connection/BoardSessionController.kt `weatherAlerts`
+  private lazy var weatherAlerts = WeatherAlertMonitor(
+    isLive: { [weak self] in self?.phase == .connected },
+    speak: { [weak self] line in self?.alertAudioPlayer.speakAdvisory(line.voiceAnnouncement) }
+  )
+  private var removeWeatherListener: (() -> Void)?
   private let legalPolicyCatalog = LegalPolicyCatalog()
   /// Persistent Board Session status surface (Live Activity) — the iOS peer of Android's foreground
   /// notification. Native-driven so it survives screen-off and a dead JS runtime.
@@ -390,6 +406,28 @@ internal final class BoardSessionController: VescGattListener {
     self.scheduler = scheduler
     self.suppliedTransport = transport
     self.makeGatt = makeGatt
+    removeWeatherListener = WeatherCoordinator.shared.addNativeChangeListener { [weak self] weather in
+      self?.weatherAlerts.evaluate(weather)
+      Self.storeWeatherObservation(weather)
+    }
+  }
+
+  /// Ride weather (#604): every successful refresh offers its current conditions to the store, off
+  /// the main thread. The ticket is taken here, so a Restore or Clear all that starts before the
+  /// write lands drops it.
+  /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/connection/BoardSessionController.kt `storeWeatherObservation`
+  private static func storeWeatherObservation(_ weather: Weather) {
+    guard let observation = weather.observation else { return }
+    let recorder = WeatherObservationRecorder.process
+    let ticket = recorder.ticket()
+    DispatchQueue.global(qos: .utility).async {
+      do { _ = try recorder.record(observation, ticket: ticket) }
+      catch { RecordingStorageFailure.report(operation: "weather_observations", category: "write_failed", error: error) }
+    }
+  }
+
+  deinit {
+    removeWeatherListener?()
   }
 
   // MARK: - Scan API
@@ -423,6 +461,8 @@ internal final class BoardSessionController: VescGattListener {
     replayTransport?.disconnect()
     replayTransport = nil
     releaseGpsFromSession(wasReplay: replacedReplay)
+    // A session ended on purpose ends the ride; only a dropout keeps the evaluator's memory.
+    weatherAlerts.rideEnded()
     // Starting a replay while a live board is connected: tear the live GATT link down first, or
     // its callbacks keep feeding real frames into the replay session. A live→live connect needs
     // no such step — `gatt.connect` clears its own previous peripheral.
@@ -528,9 +568,6 @@ internal final class BoardSessionController: VescGattListener {
   @discardableResult
   func stopBoard() -> Bool {
     guard session != nil || pendingResume != nil || SessionResumeStore.shared.pending != nil else { return false }
-    // Cancelling restoration also replaces its expiry cleanup: no resumed coordinator will close
-    // the recording the previous process left open.
-    if session == nil { TelemetryRepository.shared.closeAbandonedRideRecordings() }
     endSession(phase: .idle, error: nil)
     return true
   }
@@ -888,20 +925,9 @@ internal final class BoardSessionController: VescGattListener {
     guard let location = locationTracker.riderPosition else { return nil }
     return (location.latitude, location.longitude)
   }
-  /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/connection/BoardSessionController.kt `setGpsDisplaySettings`
-  func setGpsDisplaySettings(smoothingPercent: Double, predictionPercent: Double) {
-    scheduler.post { [weak self] in
-      guard let self else { return }
-      self.locationTracker.displaySmoother.configure(smoothingPercent: smoothingPercent,
-        predictionPercent: predictionPercent, now: Int64(Date().timeIntervalSince1970 * 1000))
-      self.onStateChanged?()
-    }
-  }
-  func gpsDisplaySettings() -> [String: Double] {
-    ["smoothingPercent": locationTracker.displaySmoother.smoothingPercent,
-      "predictionPercent": locationTracker.displaySmoother.predictionPercent]
-  }
-  func gpsDisplayMotion() -> GpsDisplayMotion? { locationTracker.displayMotion }
+  func gpsDisplaySourceId() -> Int64 { locationTracker.displaySourceId }
+  func gpsDisplayClockMs() -> Int64 { Int64(Date().timeIntervalSince1970 * 1000) }
+  func configureWatchDisplay(_ json: String) { watchMirror.configureMotion(json) }
   func gpsRecentLocations() -> [[String: Any?]] { locationTracker.recentLocations }
   /// Recent raw-tick window for JS live-chart rehydrate. Backed by the live-series buffer.
   /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/TelemetryPipeline.kt `recentSnapshot`
@@ -968,8 +994,12 @@ internal final class BoardSessionController: VescGattListener {
     linkLostAtMs = nowMs()
     dropoutGraceTimer?.cancel()
     dropoutGraceTimer = scheduler.postDelayed(RIDE_DROPOUT_GRACE_MS) { [weak self] in
-      self?.dropoutGraceTimer = nil
-      self?.refreshGpsDemand()
+      guard let self else { return }
+      self.dropoutGraceTimer = nil
+      // Past the grace the board is treated as powered off: that is how a ride ends.
+      if self.connectionSoundsEnabled { self.alertAudioPlayer.playRideEnd() }
+      self.weatherAlerts.rideEnded()
+      self.refreshGpsDemand()
     }
     refreshGpsDemand()
   }
@@ -1021,9 +1051,17 @@ internal final class BoardSessionController: VescGattListener {
 
   // MARK: - Group Ride
 
+  /// App sounds switch and sound packs, read by every cue whether or not a board is connected.
+  private func applyAppSoundSettings(_ settings: [String: Any?]) {
+    connectionSoundsEnabled = settings["connectionSoundsEnabled"] as? Bool ?? true
+    alertAudioPlayer.applySoundSettings(settings)
+  }
+
   /// Open the observe socket and refresh the presence egress caches it reads on every fix.
   /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/connection/BoardSessionController.kt `consumePendingGroupRideObserve`
   func startGroupRideObserve(_ url: String) {
+    do { applyAppSoundSettings(try appData.getSettings()) }
+    catch { RecordingStorageFailure.reportRead(operation: "group_ride_sound_settings", error: error) }
     loadPrivacyZones()
     loadGroupRideTarget()
     groupRideObserver.start(url)
@@ -1149,7 +1187,7 @@ internal final class BoardSessionController: VescGattListener {
       ((settings["legalPolicy"] ?? nil) as? [String: Any])?["jurisdictionCode"] as? String
     let speeds = jurisdictionCode.flatMap(legalPolicyCatalog.speeds)
     let alertRules: [AlertRule]
-    do { try appData.repairMissingAlertPresetRelations(boardId); alertRules = try appData.getEnabledAlertRules(boardId) }
+    do { alertRules = try appData.getEnabledAlertRules(boardId) }
     catch { RecordingStorageFailure.reportRead(operation: "enabled_alert_rules_read", error: error); return }
     alertCoordinator.replaceRules(withLegalModeOverlay(
       alertRules,
@@ -1207,13 +1245,15 @@ internal final class BoardSessionController: VescGattListener {
   /// Re-read mutable app settings that affect live native work while a session is already running.
   /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/connection/BoardSessionController.kt `loadTelemetrySettings`
   func reloadTelemetrySettings() {
-    guard let current = config else { return }
     let settings: [String: Any?]
     do { settings = try appData.getSettings() }
     catch {
       RecordingStorageFailure.reportRead(operation: "telemetry_settings_read", error: error)
       return
     }
+    // Group Ride cues and JS app cues play without a Board Session, so sound settings apply always.
+    applyAppSoundSettings(settings)
+    guard let current = config else { return }
     let hz = AppDataRepository.intValue(settings["telemetryPollRateHz"] ?? nil) ?? 0
     let liveHistoryLimit = AppDataRepository.liveHistoryLimitMinutes(settings["liveHistoryLimit"] ?? nil)
       ?? current.liveHistoryLimitMinutes
@@ -1248,9 +1288,9 @@ internal final class BoardSessionController: VescGattListener {
       lastFaultDispatchAtMs = 0
     }
     boardWarningsEnabled = settings["boardWarningsEnabled"] as? Bool ?? true
-    connectionSoundsEnabled = settings["connectionSoundsEnabled"] as? Bool ?? true
-    alertCoordinator.unitSystem = settings["unitSystem"] as? String ?? "metric"
-    alertAudioPlayer.soundPack = settings["soundPack"] as? String ?? "retro"
+    weatherAlerts.settings = WeatherAlertSettings(settings: settings)
+    alertCoordinator.distanceUnit = settings["distanceUnit"] as? String ?? "km"
+    alertCoordinator.temperatureUnit = settings["temperatureUnit"] as? String ?? "celsius"
     // Disabled→enabled with an already-trusted link: link integrity won't transition again, so
     // schedule the config-safety read here.
     if !warningsWereEnabled, boardWarningsEnabled, lastEmittedLinkIntegrity == .trusted {
@@ -1272,20 +1312,35 @@ internal final class BoardSessionController: VescGattListener {
   /// Play a preset once for UI preview, or speak a `tts:` template. Mirrors Android
   /// `previewAlertSound`.
   /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/connection/BoardSessionController.kt `previewAlertSound`
-  func previewAlertSound(_ soundType: String) {
+  func previewAlertSound(_ spec: String) {
     do {
       let settings = try appData.getSettings()
-      alertAudioPlayer.preview(soundType: soundType, unitSystem: settings["unitSystem"] as? String ?? "metric")
+      // Without a Board Session nothing else keeps the player on the selected pack.
+      alertAudioPlayer.applySoundSettings(settings)
+      alertAudioPlayer.preview(
+        spec: spec,
+        distanceUnit: settings["distanceUnit"] as? String ?? "km",
+        temperatureUnit: settings["temperatureUnit"] as? String ?? "celsius"
+      )
     } catch { RecordingStorageFailure.reportRead(operation: "alert_preview_settings", error: error) }
   }
 
-  func playAppSound(pack: String, cue: String) {
-    alertAudioPlayer.playAppSound(pack: pack, cue: cue)
+  /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/connection/BoardSessionController.kt `previewWeatherAlert`
+  func previewWeatherAlert(_ line: WeatherAlertLine) {
+    do { alertAudioPlayer.applySoundSettings(try appData.getSettings()) }
+    catch { RecordingStorageFailure.reportRead(operation: "alert_preview_settings", error: error) }
+    alertAudioPlayer.speakVoice(line.voiceAnnouncement)
+  }
+
+  func playPackSound(pack: String, slot: String) {
+    alertAudioPlayer.playPackSound(pack: pack, slot: slot)
   }
 
   /// Drive a geiger preview loop without a connected board — UI slider over `rangeDepth`.
-  func startGeigerSimulation(soundType: String, rangeDepth: Double) {
-    alertAudioPlayer.updateGeiger(ruleId: geigerSimulationId, soundType: soundType, rangeDepth: rangeDepth)
+  func startGeigerSimulation(spec: String, rangeDepth: Double) {
+    do { alertAudioPlayer.applySoundSettings(try appData.getSettings()) }
+    catch { RecordingStorageFailure.reportRead(operation: "geiger_preview_settings", error: error) }
+    alertAudioPlayer.updateGeiger(ruleId: geigerSimulationId, spec: spec, rangeDepth: rangeDepth)
   }
 
   func stopGeigerSimulation() {
@@ -1331,10 +1386,6 @@ internal final class BoardSessionController: VescGattListener {
       return
     }
     pendingResume = nil
-    // No restoration came, so nothing will ever rejoin the recording the dead process left open.
-    // Close it now rather than at the next mint, which may never happen: the reader only shows a
-    // recording with `ended_at_ms`, so an unswept row is a ride missing from history entirely.
-    TelemetryRepository.shared.closeAbandonedRideRecordings()
     reapOrphanLiveActivities()
   }
 
@@ -1404,8 +1455,8 @@ internal final class BoardSessionController: VescGattListener {
   /// Rebuild the Board Session that was live when the process died. Reuses the ordinary session
   /// wiring (`beginSession`) rather than duplicating it, so recording, GPS, alerts and the Live
   /// Activity resume exactly as a foreground connect starts them — the only differences are where
-  /// the link comes from (a restored peripheral instead of a fresh connect) and that the recording
-  /// keeps appending to the open recording.
+  /// the link comes from (a restored peripheral instead of a fresh connect) and that capture re-arms
+  /// when the previous process was recording.
   private func resumeSession(marker: SessionResumeMarker, restoredPeripheralIds: [String]) {
     guard session == nil else { return }
     guard let config = BoardConnectConfig.resolve(boardId: marker.appBoardId, appData: appData) else {
@@ -1422,20 +1473,14 @@ internal final class BoardSessionController: VescGattListener {
     liveSeries.speed = { [weak self] in self?.sessionClock.speed ?? 1.0 }
     liveSeries.setWindowMinutes(config.liveHistoryLimitMinutes)
     // Re-arm the recording request *before* the session begins so `beginBoardSession` enables the
-    // telemetry store on its normal path, and it begins with `resume: true` so that enable rejoins
-    // the Ride Recording left open rather than minting a second identity for one ride (#450).
-    //
-    // The marker names the recording that was open; whether it is *still* open is the database's
-    // answer, and an explicitly stopped or disconnected one carries an `ended_at_ms` no restoration
-    // can clear. Naming it is what keeps a relaunch days later from adopting some other abandoned
-    // ride. The dead interval stays a real gap in both streams.
+    // telemetry store on its normal path. Whether the result is one ride or two is decided by the
+    // recorded data alone (ADR 0041); the dead interval stays a real gap in both streams.
     if marker.recordingActive {
       _ = recordingCoordinator.setTelemetryRecordingEnabled(true)
     }
     beginSession(
       config: config,
       resume: true,
-      restoredRecordingId: marker.recordingActive ? marker.recordingId : nil,
       onSuccess: {},
       onError: { _, _ in }
     )
@@ -1469,8 +1514,7 @@ internal final class BoardSessionController: VescGattListener {
   private func syncResumeMarkerRecording() {
     guard session != nil, replayTransport == nil else { return }
     SessionResumeStore.shared.setRecording(
-      active: recordingCoordinator.telemetryRecordingEnabled,
-      recordingId: recordingCoordinator.activeRideRecordingId
+      active: recordingCoordinator.telemetryRecordingEnabled
     )
   }
 
@@ -1479,7 +1523,6 @@ internal final class BoardSessionController: VescGattListener {
   private func beginSession(
     config: BoardConnectConfig,
     resume: Bool = false,
-    restoredRecordingId: String? = nil,
     onSuccess: @escaping () -> Void,
     onError: @escaping (String, String) -> Void
   ) {
@@ -1548,10 +1591,14 @@ internal final class BoardSessionController: VescGattListener {
     VescFaultCoordinator.shared.collectionEnabled = sessionSettings["vescFaultCollectionEnabled"] as? Bool ?? true
     wireFaultCaptures()
     boardWarningsEnabled = sessionSettings["boardWarningsEnabled"] as? Bool ?? true
+    weatherAlerts.settings = WeatherAlertSettings(settings: sessionSettings)
     connectionSoundsEnabled = sessionSettings["connectionSoundsEnabled"] as? Bool ?? true
-    alertCoordinator.unitSystem = sessionSettings["unitSystem"] as? String ?? "metric"
-    alertAudioPlayer.soundPack = sessionSettings["soundPack"] as? String ?? "retro"
-    recordingCoordinator.beginBoardSession(config: config, restoredRecordingId: restoredRecordingId)
+    alertCoordinator.distanceUnit = sessionSettings["distanceUnit"] as? String ?? "km"
+    alertCoordinator.temperatureUnit = sessionSettings["temperatureUnit"] as? String ?? "celsius"
+    alertAudioPlayer.applySoundSettings(sessionSettings)
+    // Engine and session up for the whole ride, before the first alert can fire; `goIdle()` at its end.
+    alertAudioPlayer.wake()
+    recordingCoordinator.beginBoardSession(config: config)
     beginGpsSessionDiagnostics()
     // Reset per-session Board Warning breadcrumb bookkeeping (one Diagnostic Event per kind per
     // Board Session). Detectors that fire warnings this session land in later slices.
@@ -1585,7 +1632,7 @@ internal final class BoardSessionController: VescGattListener {
       ((sessionSettings["legalPolicy"] ?? nil) as? [String: Any])?["jurisdictionCode"] as? String
     let legalSpeeds = jurisdictionCode.flatMap(legalPolicyCatalog.speeds)
     let alertRules: [AlertRule]
-    do { try appData.repairMissingAlertPresetRelations(config.appBoardId); alertRules = try appData.getEnabledAlertRules(config.appBoardId) }
+    do { alertRules = try appData.getEnabledAlertRules(config.appBoardId) }
     catch { RecordingStorageFailure.reportRead(operation: "enabled_alert_rules_read", error: error); return }
     alertCoordinator.replaceRules(withLegalModeOverlay(
       alertRules,
@@ -1623,8 +1670,7 @@ internal final class BoardSessionController: VescGattListener {
       SessionResumeStore.shared.save(
         appBoardId: config.appBoardId,
         bleId: config.bleId,
-        recordingActive: recordingCoordinator.telemetryRecordingEnabled,
-        recordingId: recordingCoordinator.activeRideRecordingId
+        recordingActive: recordingCoordinator.telemetryRecordingEnabled
       )
     }
     // Start the Live Activity while foreground (connect is user-initiated); it then updates from
@@ -1707,6 +1753,8 @@ internal final class BoardSessionController: VescGattListener {
     boardError = error
     lastTelemetryAt = nil
     releaseGpsFromSession(wasReplay: wasReplay)
+    // A session ended on purpose ends the ride; only a dropout keeps the evaluator's memory.
+    weatherAlerts.rideEnded()
     endLiveActivity()
     settleConnect(success: false, code: error == nil ? nil : "DISCONNECTED", message: error)
     setPhase(phase)
@@ -1874,6 +1922,8 @@ internal final class BoardSessionController: VescGattListener {
     // the next session must not still be reading time from the past.
     sessionClock = SystemSessionClock.shared
     releaseGpsFromSession(wasReplay: wasReplay)
+    // A session ended on purpose ends the ride; only a dropout keeps the evaluator's memory.
+    weatherAlerts.rideEnded()
     endLiveActivity()
     emit?("onError", ["message": message])
     setPhase(.error)
@@ -1908,7 +1958,7 @@ internal final class BoardSessionController: VescGattListener {
       operation: "connect",
       message: "Board disconnected unexpectedly"
     )
-    if wasConnected && connectionSoundsEnabled { alertAudioPlayer.playDisconnect() }
+    if wasConnected { alertAudioPlayer.boardDisconnected(playCue: connectionSoundsEnabled) }
     // The session survives the drop, so the Live Activity is *not* ended — setPhase(.reconnecting)
     // below refreshes it to the reconnect state, mirroring Android mutating the persistent chip.
     session?.invalidate()
@@ -2600,15 +2650,19 @@ internal final class BoardSessionController: VescGattListener {
       // Auto-recording may have just started the recording; the resume marker must agree.
       syncResumeMarkerRecording()
     }
-    if connectionSoundsEnabled { alertAudioPlayer.playConnect() }
+    // Engine back up after a dropout grace idled it.
+    alertAudioPlayer.wake()
+    alertAudioPlayer.boardConnected(playCue: connectionSoundsEnabled)
     // Telemetry is flowing again: a reconnect that landed inside the grace restores a full ride, and
     // one that landed outside it raises demand back to `ride`.
     setLinkLost(false)
     // The Live Activity flips to "connected" via setPhase → refreshLiveActivity below.
     setPhase(.connected)
+    // Weather Alerts never announce from a cached forecast at connect: fetch fresh, and the native
+    // listener evaluates it when it lands, queued behind the connection cues.
+    WeatherCoordinator.shared.refresh()
   }
 
-  // @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/location/GpsDisplayTelemetry.kt
   private func emitTelemetry(_ telemetry: RefloatTelemetry) {
     // Hot path: a scalar tick every frame drives the live gauges.
     var tick = telemetry.toMap()
@@ -2623,15 +2677,6 @@ internal final class BoardSessionController: VescGattListener {
     latestBatterySoc = batteryEstimate
     latestBatteryVoltage = telemetry.batteryVoltage
     latestTelemetry = telemetry
-    let displayNow = Int64(Date().timeIntervalSince1970 * 1000)
-    let displayMotion = locationTracker.displaySmoother.updateSpeed(speedMps: abs(telemetry.speed) / 3.6 * sessionClock.speed,
-      timestamp: displayNow, now: displayNow)
-    let displaySpeed = abs(telemetry.speed) / 3.6 * sessionClock.speed
-    if abs(displaySpeed - lastDisplayPublishedSpeed) >= 0.1 || displayNow - lastDisplayPublishedAt >= 500 {
-      tick["displayMotion"] = displayMotion?.map
-      lastDisplayPublishedAt = displayNow
-      lastDisplayPublishedSpeed = displaySpeed
-    }
     persistLastBattery(percent: batteryEstimate, voltage: telemetry.batteryVoltage, now: telemetry.lastPacketAt)
     tick["generation"] = connectionSeq
     tick["remoteTilt"] = remoteTiltState()
@@ -2774,11 +2819,7 @@ internal final class BoardSessionController: VescGattListener {
     // Navigation lanes require Route Progress; course and trail stay live independently.
     let progress = NavigationController.shared.currentProgress
     let rider = locationTracker.riderPosition
-    // Visual geometry and tile planning share the display endpoint as their absolute anchor.
-    // This also keeps a poor measured fix from moving the tile atlas away from the held display.
-    let mapPosition = locationTracker.displayMotion.map {
-      WatchMapPosition(latitude: $0.toLatitude, longitude: $0.toLongitude)
-    } ?? rider.map { WatchMapPosition(latitude: $0.latitude, longitude: $0.longitude) }
+    let mapPosition = rider.map { WatchMapPosition(latitude: $0.latitude, longitude: $0.longitude) }
     // Measured from the origin of the route the wrist actually holds, not from the current
     // Navigation's first point: a recompute landing between the push and this tick would otherwise
     // place the rider against an origin the wrist has never seen.
@@ -2813,9 +2854,14 @@ internal final class BoardSessionController: VescGattListener {
         rider: mapPosition.map { WatchGeoPoint(latitude: $0.latitude, longitude: $0.longitude) },
         history: locationTracker.recentLocations
       ),
-      displayMotion: locationTracker.displayMotion,
       mapPosition: mapPosition,
-      riderSpeedMps: rider?.speedMps
+      riderSpeedMps: rider?.speedMps,
+      motionFacts: WatchMotionFacts(
+        sourceId: Double(locationTracker.displaySourceId), fixTimestamp: Double(rider?.timestamp ?? 0),
+        sentAt: Double(nowMs()), gpsAgeMs: rider.map { Double(max(0, nowMs() - $0.timestamp)) } ?? 1e9,
+        boardAgeMs: current.map { Double(max(0, nowMs() - $0.lastPacketAt)) } ?? 1e9,
+        accuracyM: rider?.accuracyM ?? 1e9, clockRate: 1.0
+      )
     )
   }
 
@@ -3168,15 +3214,10 @@ internal final class BoardSessionController: VescGattListener {
     // Offered on every Fix; the coordinator owns the freshness and distance gates.
     WeatherCoordinator.shared.onPosition(latitude: location.latitude, longitude: location.longitude)
     latestRiderPresence().map(groupRideObserver.pushPresence)
-    let displayNow = Int64(Date().timeIntervalSince1970 * 1000)
-    let displayOffset = displayNow - nowMs()
-    locationTracker.displaySmoother.update(latitude: location.latitude, longitude: location.longitude,
-      timestamp: location.timestamp + displayOffset, precise: location.precise, accuracyM: location.accuracyM,
-      gpsSpeedMps: location.speedMps, courseDeg: location.courseDeg, courseTimestamp: location.courseSourceTimestamp,
-      boardSpeedMps: latestTelemetry.map { abs($0.speed) / 3.6 * sessionClock.speed }, boardSpeedTimestamp: lastTelemetryAt.map { $0 + displayOffset },
-      now: displayNow)
     var displayEvent = location.map
-    displayEvent["displayMotion"] = locationTracker.displayMotion?.map
+    displayEvent["displaySourceId"] = locationTracker.displaySourceId
+    displayEvent["displayClockMs"] = nowMs()
+    displayEvent["displayClockRate"] = 1.0
     emit?("onLocation", displayEvent)
   }
 

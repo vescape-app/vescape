@@ -18,13 +18,11 @@ internal class LocationTracker(
     private val emitEvent: (String, Map<String, Any?>) -> Unit,
     private val recordingCoordinator: RecordingCoordinator,
     private val telemetryPipeline: TelemetryPipeline,
-    private val boardSpeed: () -> Pair<Double?, Long?> = { Pair(null, null) },
-    private val sessionNow: () -> Long = { System.currentTimeMillis() },
 ) {
     private val recentLocations = ArrayDeque<Map<String, Any?>>()
     private val courseDeriver = GpsCourseDeriver()
-    val displaySmoother = GpsDisplaySmoother()
-    val displayMotion: GpsDisplayMotion? get() = displaySmoother.motion
+    var displaySourceId: Long = System.currentTimeMillis()
+        private set
     var latestLocation: LocationSnapshot? = null
         private set
     var latestPreciseLocation: LocationSnapshot? = null
@@ -78,11 +76,6 @@ internal class LocationTracker(
             courseDeg = course?.bearingDeg,
             courseSourceTimestamp = course?.sourceTimestamp,
         )
-        val speed = boardSpeed()
-        val displayNow = System.currentTimeMillis()
-        displaySmoother.update(snapshot.latitude, snapshot.longitude, snapshot.timestamp + displayNow - sessionNow(), snapshot.precise,
-            snapshot.accuracyM, snapshot.speedMps, snapshot.courseDeg, snapshot.courseSourceTimestamp,
-            speed.first, speed.second, displayNow)
         latestLocation = snapshot
         // Every fix moves Route Progress, approximate ones included: the same rule as
         // [riderPosition], where freshness beats accuracy. The bearing comes off the path rather
@@ -91,14 +84,14 @@ internal class LocationTracker(
         NavigationController.get(applicationContext)
             .onFix(snapshot.latitude, snapshot.longitude, snapshot.speedMps)
         if (!snapshot.precise) {
-            emitEvent("onLocation", snapshot.toMap() + ("displayMotion" to displayMotion?.toMap()))
+            emitEvent("onLocation", displayLocationMap(snapshot))
             return snapshot
         }
         latestPreciseLocation = snapshot
         persistLastGpsLocation(snapshot)
         recentLocations.addLast(snapshot.toMap())
         pruneRecentLocations(snapshot.timestamp)
-        emitEvent("onLocation", snapshot.toMap() + ("displayMotion" to displayMotion?.toMap()))
+        emitEvent("onLocation", displayLocationMap(snapshot))
         recordingCoordinator.recordLocation(snapshot)
         return snapshot
     }
@@ -122,9 +115,15 @@ internal class LocationTracker(
         latestLocation = null
         latestPreciseLocation = null
         courseDeriver.reset()
-        displaySmoother.reset()
+        displaySourceId = maxOf(displaySourceId + 1, System.currentTimeMillis())
         recentLocations.clear()
     }
+
+    private fun displayLocationMap(location: LocationSnapshot): Map<String, Any?> = location.toMap() + mapOf(
+        "displaySourceId" to displaySourceId,
+        "displayClockMs" to System.currentTimeMillis(),
+        "displayClockRate" to 1.0,
+    )
 
     // @parity /modules/vescape-core/ios/location/LastGpsLocationPersistence.swift `onLocationUpdated`
     private fun persistLastGpsLocation(location: LocationSnapshot) {

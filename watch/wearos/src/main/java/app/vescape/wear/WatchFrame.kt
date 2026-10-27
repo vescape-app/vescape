@@ -3,7 +3,6 @@ package app.vescape.wear
 import expo.modules.vescapecore.watch.WatchMapPosition
 import expo.modules.vescapecore.watch.WatchTrailPoint
 import expo.modules.vescapecore.watch.WatchTrailCodec
-import expo.modules.vescapecore.location.GpsDisplayMotion
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
 
@@ -26,7 +25,7 @@ import java.nio.ByteOrder
  * different app versions still talk: an older phone's shorter frame keeps rendering, it just carries
  * no nav. Only the first [WATCH_FRAME_MIN_FIELD_COUNT] lanes are required.
  */
-private const val WATCH_FRAME_FIELD_COUNT = 13
+private const val WATCH_FRAME_FIELD_COUNT = 23
 private const val WATCH_FRAME_MIN_FIELD_COUNT = 5
 private const val WATCH_FRAME_HEADER_BYTES = 2
 
@@ -86,8 +85,8 @@ data class WatchFrame(
     val remoteTilt: Int? = null,
     val tiltControl: WatchTiltControl = WatchTiltControl.FREE,
     val trail: List<WatchTrailPoint> = emptyList(),
-    val displayMotion: GpsDisplayMotion? = null,
     val mapPosition: WatchMapPosition? = null,
+    val motionFacts: expo.modules.vescapecore.watch.WatchMotionFacts? = null,
 )
 
 /** Pure bytes -> [WatchFrame] decoder. Returns null on a short buffer or too few lanes. */
@@ -122,8 +121,8 @@ object WatchFrameDecoder {
             remoteTilt = lanes[11].orNull()?.toInt()?.coerceIn(0, 255),
             tiltControl = WatchTiltControl.fromWire(lanes[12].orNull()),
             trail = trail.points,
-            displayMotion = trail.displayMotion,
             mapPosition = trail.position,
+            motionFacts = expo.modules.vescapecore.watch.WatchMotionFacts.decode(lanes.drop(13)),
         )
     }
 

@@ -11,7 +11,7 @@ struct GroupRideLayer: View {
   let mapMoving: Bool
   /// Nav-focus progress: the dots grow and the labels fade in as the nav page takes the screen.
   var focus: Double = 0
-  var unitSystem: String = "metric"
+  var distanceUnit: String = "km"
 
   var body: some View {
     GroupRideCanvas(group: group, mapView: mapView, mapMoving: mapMoving) { context, map, staleOpacity in
@@ -22,7 +22,7 @@ struct GroupRideLayer: View {
         context.fill(circle(mark.point, mark.size), with: .color(Color(argb: mark.rider.colorArgb).opacity(opacity)))
       }
       // Labels over every dot, so a neighbour's dot never cuts one.
-      context.drawGroupRideLabels(marks: marks, kind: .dot, map: map, focus: focus, unitSystem: unitSystem)
+      context.drawGroupRideLabels(marks: marks, kind: .dot, map: map, focus: focus, distanceUnit: distanceUnit)
     }
   }
 
@@ -42,7 +42,7 @@ struct GroupRideEdgeLayer: View {
   let mapMoving: Bool
   /// Nav-focus progress: the labels fade in as the nav page takes the screen.
   var focus: Double = 0
-  var unitSystem: String = "metric"
+  var distanceUnit: String = "km"
 
   var body: some View {
     GroupRideCanvas(group: group, mapView: mapView, mapMoving: mapMoving) { context, map, staleOpacity in
@@ -56,7 +56,7 @@ struct GroupRideEdgeLayer: View {
         )
         context.fill(path, with: .color(Color(argb: mark.rider.colorArgb).opacity(opacity)))
       }
-      context.drawGroupRideLabels(marks: marks, kind: .triangle, map: map, focus: focus, unitSystem: unitSystem)
+      context.drawGroupRideLabels(marks: marks, kind: .triangle, map: map, focus: focus, distanceUnit: distanceUnit)
     }
   }
 
@@ -89,10 +89,10 @@ private extension GraphicsContext {
   ///
   /// @parity /watch/wearos/src/main/java/app/vescape/wear/GroupRideLayer.kt `GroupRideLabels`
   func drawGroupRideLabels(
-    marks: [WatchGroupRideMark], kind: WatchGroupRideMarkKind, map: WatchMapProjection, focus: Double, unitSystem: String
+    marks: [WatchGroupRideMark], kind: WatchGroupRideMarkKind, map: WatchMapProjection, focus: Double, distanceUnit: String
   ) {
     guard focus > GROUP_LABEL_MIN_FOCUS else { return }
-    let labels = marks.map { $0.rider.stale ? nil : measureLabel($0.rider, unitSystem: unitSystem) }
+    let labels = marks.map { $0.rider.stale ? nil : measureLabel($0.rider, distanceUnit: distanceUnit) }
     let placed = map.placeLabels(
       marks: marks, labels: labels.map { $0?.size }, gap: GROUP_LABEL_GAP, navFocus: focus
     )
@@ -114,11 +114,11 @@ private extension GraphicsContext {
     }
   }
 
-  func measureLabel(_ rider: GroupRideFrameRider, unitSystem: String) -> GroupRideLabel {
+  func measureLabel(_ rider: GroupRideFrameRider, distanceUnit: String) -> GroupRideLabel {
     let font = WatchTypography.mono(size: GROUP_LABEL_FONT_SIZE)
     let unbounded = CGSize(width: CGFloat.greatestFiniteMagnitude, height: .greatestFiniteMagnitude)
     let distance = resolve(
-      Text(groupRideDistanceLabel(rider.distanceM, unitSystem: unitSystem)).font(font).foregroundColor(Palette.secondaryText)
+      Text(groupRideDistanceLabel(rider.distanceM, distanceUnit: distanceUnit)).font(font).foregroundColor(Palette.secondaryText)
     )
     let distanceSize = distance.measure(in: unbounded)
     var heatColor: Color?

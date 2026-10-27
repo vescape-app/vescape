@@ -36,7 +36,7 @@ class RideExportSnapshotTest {
     val db = TelemetryDatabase.get(context)
     try {
       val dao = db.telemetryDao()
-      fun point(i: Int) = RideTrackPointEntity(recordingId = "ride", boardId = "board", fixAtMs = i.toLong(),
+      fun point(i: Int) = RideTrackPointEntity(boardId = "board", fixAtMs = i.toLong(),
         latitudeE7 = i, longitudeE7 = -i, accuracyCm = 100,
         gpsSpeedCentiMps = null, bearingCentiDeg = null, altitudeCm = null)
       val count = RideExport.BATCH_SIZE * 2 + 1
@@ -59,13 +59,13 @@ class RideExportSnapshotTest {
         }
       }
       TelemetryDatabase.withRideExportSnapshot(context) {
-        RideExport.writeGpx(it, writer, 0, count.toLong(), "board", "ride", "Snapshot")
+        RideExport.writeGpx(it, writer, 0, count.toLong(), "board", "Snapshot")
       }
       recording.await()
       assertEquals(count, "<trkpt ".toRegex().findAll(writer.toString()).count())
       val fresh = StringWriter()
       TelemetryDatabase.withRideExportSnapshot(context) {
-        RideExport.writeGpx(it, fresh, 0, count.toLong(), "board", "ride", "Fresh")
+        RideExport.writeGpx(it, fresh, 0, count.toLong(), "board", "Fresh")
       }
       assertEquals(count + 1, "<trkpt ".toRegex().findAll(fresh.toString()).count())
     } finally {
@@ -80,7 +80,7 @@ class RideExportSnapshotTest {
       RecordingStorageFailure.initialize(context)
       assertNull(RecordingStorageFailure.value())
       val dao = TelemetryDatabase.get(context).telemetryDao()
-      dao.insertRideTrackPoints(listOf(RideTrackPointEntity(recordingId = null, boardId = null, fixAtMs = 123,
+      dao.insertRideTrackPoints(listOf(RideTrackPointEntity(boardId = null, fixAtMs = 123,
         latitudeE7 = 1, longitudeE7 = -1, accuracyCm = 100,
         gpsSpeedCentiMps = null, bearingCentiDeg = null, altitudeCm = null)))
       RideHistoryRepository.get(context).getPage(emptyMap())

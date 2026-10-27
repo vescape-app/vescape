@@ -4,12 +4,11 @@ import Foundation
 /// All calls use the GPS callback's serial execution context.
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/location/LocationTracker.kt
 internal final class LocationTracker {
+  private(set) var displaySourceId = Int64(Date().timeIntervalSince1970 * 1000)
   private(set) var latestLocation: TelemetryLocationCapture?
   private(set) var latestPreciseLocation: TelemetryLocationCapture?
   private(set) var recentLocations: [[String: Any?]] = []
   private let courseDeriver = GpsCourseDeriver()
-  let displaySmoother = GpsDisplaySmoother()
-  var displayMotion: GpsDisplayMotion? { displaySmoother.motion }
   private let recentWindowMs: () -> Int64
   private let recordLocation: (TelemetryLocationCapture) -> Void
   private let navigationFix: (TelemetryLocationCapture) -> Void
@@ -76,7 +75,7 @@ internal final class LocationTracker {
     latestLocation = nil
     latestPreciseLocation = nil
     courseDeriver.reset()
-    displaySmoother.reset()
+    displaySourceId = max(displaySourceId + 1, Int64(Date().timeIntervalSince1970 * 1000))
     recentLocations.removeAll(keepingCapacity: true)
   }
 }
