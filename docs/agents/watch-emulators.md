@@ -14,6 +14,13 @@ bun run wear:ride        # android:up, then the thor301 replay and Navigation
 of each kind is used, and on a cold machine the AVD picker asks (last pick on top). Nothing
 machine-specific is in the repo.
 
+## Ride E2E
+
+With normal Metro running, `bun run e2e:watch` rebuilds the current phone and watch apps, starts a
+phone recording replay without navigation, and runs UI Automator assertions on the watch's speed and
+duty readouts. It requires a positive speed followed by a displayed speed change, so an idle frame
+or a cached screenshot cannot pass. See [E2E commands](../../e2e/README.md#watch-e2e-wear-os).
+
 ## Steps
 
 Each step checks before it acts, so a re-run with both emulators up takes about half a minute: the

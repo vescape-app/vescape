@@ -13,8 +13,8 @@ const DIRECTION_POINT = { latitude: 51.13185, longitude: 16.98653 }
  * caller's: Android targets the package explicitly, while iOS needs the bundle-id scheme because a
  * simulator with the store build beside the dev build would route `vescape://` to either.
  */
-export function watchRideUrl(scheme: string): string {
-  return `${scheme}://dev/watch-ride?replay=${REPLAY}&lat=${DIRECTION_POINT.latitude}&lon=${DIRECTION_POINT.longitude}`
+export function watchRideUrl(scheme: string, navigation = true): string {
+  return `${scheme}://dev/watch-ride?replay=${REPLAY}&lat=${DIRECTION_POINT.latitude}&lon=${DIRECTION_POINT.longitude}${navigation ? '' : '&navigation=off'}`
 }
 
 /** The local Metro server a dev build loads its bundle from. */

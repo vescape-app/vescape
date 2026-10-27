@@ -47,6 +47,30 @@ The setup-board flow clears app state, discovers `E2E VESC Board` through `EXPO_
 
 Because this repo currently installs an Expo development build, the launch helper waits for the Expo dev-client launcher, then opens this run's Metro URL directly. The dev-client config hides the tools button, skips onboarding, and prevents the dev menu from opening at launch. Those settings are native config plugin values, so rebuild the Android app after changing them.
 
+## Watch E2E (Wear OS)
+
+```sh
+bun run start                       # normal development Metro on port 8081
+bun run e2e:watch --device Medium_Phone
+```
+
+Use a paired phone + Wear OS emulator with Google Play services. `--device` selects the phone
+AVD; `WEAR_AVD` selects the watch AVD. Without overrides the shared picker prefers running AVDs.
+First-time pairing may need the Wear OS companion's "Pair with emulator" action; see
+[watch emulator setup](../docs/agents/watch-emulators.md).
+
+This is separate from `bun run e2e` and `bun run smoke`. It rebuilds/installs the current phone
+development app and watch app, checks the real Data Layer link, and starts the thor301 recording
+on the phone. The watch launches normally, without its standalone fixture replay. No database
+backup is restored and navigation is skipped, so Directions is not a prerequisite.
+
+Android UI Automator reads the watch's displayed speed and duty through accessibility. The test
+requires nonzero speed and a subsequent speed change with both readouts still live. Stale readings,
+placeholders, and another app's UI do not match. UI dumps and a screenshot are saved under
+`.expo/watch-e2e/<timestamp>/` on success or failure. Setup, transport, and UI failures exit nonzero.
+Maestro is not used here because its Android device discovery excludes the Wear emulator. The development apps and replay remain running for inspection.
+Apple Watch is not covered by this command.
+
 ## Component-library smoke
 
 `components.yaml` opens the base, chart, and typography previews and exercises the
