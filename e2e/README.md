@@ -125,11 +125,14 @@ bun run smoke --build-only --output .expo/smoke/app.apk
 bun run smoke --app .expo/smoke/app.apk --flow 03-history
 ```
 
-`02-alerts` saves a custom speed Geiger rule, changes Normal → Safe → Off, and reopens
+`02-alerts` selects HEV effects, previews its Warning sound, and overrides the matching Radio
+voice with Nicole. It then saves a custom speed Geiger rule, changes Normal → Safe → Off, and reopens
 Speed to check that the custom range and Off selection survive navigation. It restores Normal
 before checking battery presets: Normal and Safe expand to their charge-percentage voice points,
-Safe survives reopening, and Off disables preview. It restores battery Normal before returning
-home. Each runner invocation restores fresh fixtures; this checks native writes
+the battery preview completes with the selected sound settings, Safe survives reopening, and Off
+disables preview. It restores battery Normal before returning home. This is playback and continued
+navigation coverage, not an assertion on audible output or every pack/voice combination.
+Each runner invocation restores fresh fixtures; this checks native writes
 and screen reopening, not persistence across app restarts.
 
 CI builds one Release artifact per platform without booting a device. Each platform's six flows
