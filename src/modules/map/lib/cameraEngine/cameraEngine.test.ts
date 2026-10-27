@@ -476,3 +476,28 @@ describe('cameraEngine', () => {
     }
   })
 })
+
+test('continuous follow samples between GPS ticks, keeps deliberate lag and releases to gestures', () => {
+  const { engine, tick, hasPending } = createTestEngine()
+  engine.reset(camera([0, 0]))
+  engine.configureOmega({ center: 3, heading: 3 })
+  let target = 0
+  engine.follow(() => ({ center: [target / 111320, 0], heading: 90 }))
+  const positions: number[] = []
+  for (let i = 0; i < 60; i++) {
+    target += 0.1
+    tick()
+    positions.push(engine.getCamera().centerCoordinate[0] * 111320)
+  }
+  expect(positions[59]).toBeGreaterThan(positions[30]!)
+  expect(positions[59]).toBeLessThan(target)
+  const before = engine.getCamera()
+  engine.configureOmega({ center: 5 })
+  expect(engine.getCamera()).toEqual(before)
+  engine.driveExternal(camera([10 / 111320, 0]), { gesture: true })
+  target = 100
+  tick()
+  expect(engine.getCamera().centerCoordinate[0] * 111320).toBeCloseTo(10, 4)
+  engine.destroy()
+  expect(hasPending()).toBe(false)
+})

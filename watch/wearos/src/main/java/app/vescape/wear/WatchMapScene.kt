@@ -55,6 +55,9 @@ internal fun WatchMapScene(
         targetCourseDeg = scene.target.courseDeg,
         animate = scene.drawMap,
         position = scene.target.position,
+        facts = frame.motionFacts,
+        speed = if (frame.stale) null else frame.speed,
+        config = remember(settings.displayMotionJson) { MotionConfig.fromJson(settings.displayMotionJson) },
     )
     Box(Modifier.fillMaxSize()) {
         if (scene.drawMap) {
@@ -75,7 +78,14 @@ internal fun WatchMapScene(
                 }
             }
             if (group != null) GroupRideLayer(group = group, mapView = mapView, navFocus = focus, alpha = groupAlpha)
-            Box(Modifier.fillMaxSize().graphicsLayer { alpha = navStackAlpha() * scene.riderAlpha(focus()) }) {
+            Box(Modifier.fillMaxSize().graphicsLayer {
+                alpha = navStackAlpha() * scene.riderAlpha(focus())
+                val offset = mapView.riderOffset
+                val scale = WatchMapProjection.pixelsPerMetre(size.width, size.height, WatchMapProjection.ROUTE_EDGE_INSET.toPx(), mapView.spanM)
+                val angle = Math.toRadians(mapView.courseDeg.toDouble())
+                translationX = ((offset.eastM * kotlin.math.cos(angle) - offset.northM * kotlin.math.sin(angle)) * scale).toFloat()
+                translationY = ((-offset.eastM * kotlin.math.sin(angle) - offset.northM * kotlin.math.cos(angle)) * scale).toFloat()
+            }) {
                 RiderPosition(if (muted) DimText else navColor(), loading = loading)
             }
         }

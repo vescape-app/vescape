@@ -25,7 +25,7 @@ import java.nio.ByteOrder
  * different app versions still talk: an older phone's shorter frame keeps rendering, it just carries
  * no nav. Only the first [WATCH_FRAME_MIN_FIELD_COUNT] lanes are required.
  */
-private const val WATCH_FRAME_FIELD_COUNT = 13
+private const val WATCH_FRAME_FIELD_COUNT = 23
 private const val WATCH_FRAME_MIN_FIELD_COUNT = 5
 private const val WATCH_FRAME_HEADER_BYTES = 2
 
@@ -86,6 +86,7 @@ data class WatchFrame(
     val tiltControl: WatchTiltControl = WatchTiltControl.FREE,
     val trail: List<WatchTrailPoint> = emptyList(),
     val mapPosition: WatchMapPosition? = null,
+    val motionFacts: expo.modules.vescapecore.watch.WatchMotionFacts? = null,
 )
 
 /** Pure bytes -> [WatchFrame] decoder. Returns null on a short buffer or too few lanes. */
@@ -121,6 +122,7 @@ object WatchFrameDecoder {
             tiltControl = WatchTiltControl.fromWire(lanes[12].orNull()),
             trail = trail.points,
             mapPosition = trail.position,
+            motionFacts = expo.modules.vescapecore.watch.WatchMotionFacts.decode(lanes.drop(13)),
         )
     }
 

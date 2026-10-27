@@ -1,5 +1,14 @@
+import { startPointAnimation } from '@/modules/map/lib/liveMotion/pointAnimation'
 import { CircleLayer, FillLayer, Images, LineLayer, ShapeSource, SymbolLayer } from '@rnmapbox/maps'
-import { useMemo } from 'react'
+import { useEffect, useRef, useState } from 'react'
+import {
+  createSpring,
+  stepSpring,
+  retargetSpring,
+  springSettled,
+  nearestBearingTarget,
+} from '@/modules/map/lib/cameraEngine/springs'
+import { useLiveMotionSettings } from '@/modules/map/store/liveMotionSettings'
 import { processColor } from 'react-native'
 
 import { theme } from '@/constants/theme'
@@ -13,6 +22,8 @@ const GPS_HEADING_ICON_ID = 'center-gps-heading'
 const GPS_HEADING_ICON = require('@rnmapbox/maps/src/assets/heading.png')
 
 export function LiveMapLayers({
+  pointAnimator,
+  displayRuntime,
   liveTrailShape,
   accuracyFix,
   accuracyShape,
@@ -20,6 +31,8 @@ export function LiveMapLayers({
   riders,
   highContrastRoutes,
 }: {
+  pointAnimator: MainMapLayersProps['pointAnimator']
+  displayRuntime: MainMapLayersProps['displayRuntime']
   liveTrailShape: MainMapLayersProps['liveTrailShape']
   accuracyFix: MainMapLayersProps['accuracyFix']
   accuracyShape: MainMapLayersProps['accuracyShape']
@@ -27,6 +40,20 @@ export function LiveMapLayers({
   riders: MainMapLayersProps['riders']
   highContrastRoutes: boolean
 }) {
+  useEffect(
+    () =>
+      startPointAnimation({
+        motion: displayRuntime.motion,
+        subscribe: displayRuntime.subscribe,
+        now: displayRuntime.now,
+        isActive: () => displayRuntime.active,
+        moveTo: (coordinate, durationMs) =>
+          pointAnimator.moveTo({ coordinate, durationMs: displayRuntime.duration(durationMs) }),
+        schedule: (callback, ms) => setTimeout(callback, displayRuntime.duration(ms)),
+        cancel: clearTimeout,
+      }),
+    [displayRuntime, pointAnimator],
+  )
   const riderColor = useSelectedBoardRailColor()
   const neutral = useResolvedNeutralColors()
   const accents = useResolvedAccentColors()
@@ -40,39 +67,49 @@ export function LiveMapLayers({
   const trailGradientEnd = riderColor
     ? theme.alpha(riderColor, 0.85)
     : theme.alpha(accents.violet.color, 0.85)
-  const gpsPuckPositionShape = useMemo(
-    () =>
-      accuracyFix
-        ? ({
-            type: 'Feature',
-            geometry: {
-              type: 'Point',
-              coordinates: [accuracyFix.longitude, accuracyFix.latitude],
-            },
-            properties: {},
-          } as GeoJSON.Feature<GeoJSON.Point>)
-        : null,
-    [accuracyFix],
-  )
-  const gpsPuckShape = useMemo(
-    () =>
-      accuracyFix && gpsPuckBearingDeg != null
-        ? ({
-            type: 'FeatureCollection',
-            features: [
-              {
-                type: 'Feature',
-                geometry: {
-                  type: 'Point',
-                  coordinates: [accuracyFix.longitude, accuracyFix.latitude],
-                },
-                properties: { bearing: gpsPuckBearingDeg },
-              },
-            ],
-          } as GeoJSON.FeatureCollection)
-        : null,
-    [accuracyFix, gpsPuckBearingDeg],
-  )
+  const [pointHeading, setPointHeading] = useState<number | null>(gpsPuckBearingDeg)
+  const arrowRef = useRef<SymbolLayer>(null)
+  const initialArrow = useRef(gpsPuckBearingDeg ?? 0)
+  useEffect(() => {
+    let spring = createSpring(initialArrow.current)
+    let frame: number | null = null
+    let last = performance.now()
+    const animate = (now: number) => {
+      frame = null
+      if (!displayRuntime.active) return
+      spring = stepSpring(
+        spring,
+        useLiveMotionSettings.getState().config.arrowHeadingOmega,
+        Math.min(0.064, (now - last) / 1000),
+      )
+      last = now
+      arrowRef.current?.setNativeProps({ style: { iconRotate: spring.x } })
+      if (!springSettled(spring, 0.05, 0.05)) frame = requestAnimationFrame(animate)
+    }
+    const update = () => {
+      if (!displayRuntime.active) {
+        if (frame != null) cancelAnimationFrame(frame)
+        frame = null
+        return
+      }
+      const heading = displayRuntime.motion.pointHeading(displayRuntime.now())
+      if (heading == null) return
+      setPointHeading((previous) => previous ?? heading)
+      const target = nearestBearingTarget(spring.x, heading)
+      if (target === spring.target && springSettled(spring, 0.05, 0.05)) return
+      spring = retargetSpring(spring, target)
+      if (frame == null) {
+        last = performance.now()
+        frame = requestAnimationFrame(animate)
+      }
+    }
+    const unsubscribe = displayRuntime.subscribe(update)
+    update()
+    return () => {
+      unsubscribe()
+      if (frame != null) cancelAnimationFrame(frame)
+    }
+  }, [displayRuntime])
 
   return (
     <>
@@ -119,8 +156,8 @@ export function LiveMapLayers({
               />
             </ShapeSource>
           )}
-          {gpsPuckPositionShape && (
-            <ShapeSource id="center-gps-puck-position-source" shape={gpsPuckPositionShape}>
+          {pointAnimator && (
+            <ShapeSource id="center-gps-puck-position-source" shape={pointAnimator}>
               <CircleLayer
                 id="center-gps-puck-core"
                 style={{
@@ -132,15 +169,16 @@ export function LiveMapLayers({
               />
             </ShapeSource>
           )}
-          {gpsPuckShape && (
+          {pointHeading != null && (
             <>
               <Images images={{ [GPS_HEADING_ICON_ID]: { image: GPS_HEADING_ICON, sdf: true } }} />
-              <ShapeSource id="center-gps-puck-heading-source" shape={gpsPuckShape}>
+              <ShapeSource id="center-gps-puck-heading-source" shape={pointAnimator}>
                 <SymbolLayer
+                  ref={arrowRef}
                   id="center-gps-puck-heading-outline"
                   style={{
                     iconImage: GPS_HEADING_ICON_ID,
-                    iconRotate: ['get', 'bearing'],
+                    iconRotate: pointHeading,
                     iconAllowOverlap: true,
                     iconIgnorePlacement: true,
                     iconRotationAlignment: 'map',

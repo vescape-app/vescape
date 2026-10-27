@@ -1,4 +1,6 @@
 import Mapbox from '@rnmapbox/maps'
+import { useScreenVisible } from '@/hooks/useScreenVisible'
+import { useLiveGpsMotion } from '@/screens/main/map/useLiveGpsMotion'
 import { forwardRef, memo, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { View } from 'react-native'
 import {
@@ -164,6 +166,7 @@ export const MainMap = memo(
     ref,
   ) {
     const historyActive = history.active
+    const displayActive = useScreenVisible() && !historyActive
     const historyPreview = history.preview
     const mapPoints = mapPointProps.points
     const selectedMapPointId = mapPointProps.selectedId
@@ -226,6 +229,9 @@ export const MainMap = memo(
       directionPoint,
     })
 
+    const displayRuntime = useLiveGpsMotion(displayActive, accuracyFix)
+    const { pointAnimator } = displayRuntime
+
     const chartZoomRoute = useChartZoomRoute(history.gpsSamples)
     // The panel covers the bottom of the map and grows as the rider opens metrics; the route is
     // framed into what is left, so opening one reframes rather than hiding half the ride.
@@ -259,18 +265,18 @@ export const MainMap = memo(
     const headingFollowMode = gpsHeadingMode || phoneHeadingMode
     useRenderRateWarning('MainMap')
     const followHeadingDeg = gpsHeadingMode
-      ? (directionBearingDeg ?? 0)
+      ? (displayRuntime.motion.cameraHeading(displayRuntime.now()) ?? cameraHeading)
       : phoneHeadingMode
         ? cameraHeading
         : 0
     const getFollowHeadingDeg = useCallback(
       () =>
         gpsHeadingMode
-          ? (directionBearingDeg ?? 0)
+          ? (displayRuntime.motion.cameraHeading(displayRuntime.now()) ?? cameraHeading)
           : phoneHeadingMode
             ? (phoneHeadingDegRef.current ?? cameraHeading)
             : 0,
-      [cameraHeading, directionBearingDeg, gpsHeadingMode, phoneHeadingMode],
+      [cameraHeading, displayRuntime, gpsHeadingMode, phoneHeadingMode],
     )
 
     const {
@@ -291,6 +297,9 @@ export const MainMap = memo(
     } = useCameraControls({
       ref,
       cameraFix,
+      displayMotion: displayRuntime.motion,
+      displayNow: displayRuntime.now,
+      displayActive,
       persistedFallback,
       perspectiveEnabled,
       mapViewport: cameraViewport,
@@ -480,6 +489,9 @@ export const MainMap = memo(
           <View testID="map-settled" collapsable={false} pointerEvents="none" />
         )}
         <MainMapScene
+          displayActive={displayActive}
+          displayRuntime={displayRuntime}
+          pointAnimator={pointAnimator}
           mapOpacity={mapOpacity}
           onLayout={handleMapLayout}
           onTouchStart={handleTouchStart}

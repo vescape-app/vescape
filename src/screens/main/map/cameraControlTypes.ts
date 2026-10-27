@@ -1,3 +1,4 @@
+import type { LiveGpsMotion } from '@/modules/map/lib/liveMotion/motion'
 import type { Camera as CameraRef } from '@rnmapbox/maps'
 import type { ForwardedRef, RefObject } from 'react'
 
@@ -28,6 +29,9 @@ export interface CameraControlRefs {
 
 export interface UseCameraControlsParams {
   ref: ForwardedRef<MainMapHandle>
+  displayNow: () => number
+  displayMotion: LiveGpsMotion
+  displayActive: boolean
   cameraFix: GpsFix | null
   persistedFallback: [number, number] | null
   perspectiveEnabled: boolean

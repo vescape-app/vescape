@@ -1,7 +1,9 @@
 import { create } from 'zustand'
+import type { MotionDiagnostics } from '@/modules/map/lib/liveMotion/motion'
 import type { LocationEvent } from 'vescape-core'
 
 export interface NavigationDiagnosticsState {
+  motion: MotionDiagnostics | null
   gpsFix: LocationEvent | null
   retainedGpsBearingDeg: number | null
   retainedGpsBearingAt: number | null
@@ -39,6 +41,7 @@ const INITIAL_SNAPSHOT: NavigationDiagnosticsSnapshot = {
 
 export const useNavigationDiagnosticsStore = create<NavigationDiagnosticsState>((set) => ({
   ...INITIAL_SNAPSHOT,
+  motion: null,
   updatedAt: null,
   update(next) {
     set({ ...next, updatedAt: Date.now() })

@@ -1,3 +1,5 @@
+import type MapboxTypes from '@rnmapbox/maps'
+import type { LiveGpsRuntime } from '@/screens/main/map/useLiveGpsMotion'
 import type { MapPoint, MapPointCategory } from 'vescape-core'
 
 import type { makeCircleFeature, makeTrailLineString } from '@/helpers/mapGeometry'
@@ -17,7 +19,11 @@ import type { LegalLimitCountry } from '@/modules/legal/lib/legalLimits'
 import type { MapSelection } from '@/modules/map/lib/mapSelection'
 import type { DirectionPoint } from '@/modules/map/store/mapStore'
 
+type MovePointShapeAnimator = InstanceType<typeof MapboxTypes.__experimental.MovePointShapeAnimator>
+
 export interface MainMapLayersProps {
+  pointAnimator: MovePointShapeAnimator
+  displayRuntime: Pick<LiveGpsRuntime, 'active' | 'motion' | 'now' | 'duration' | 'subscribe'>
   historyActive: boolean
   expandSelectedMapPoints: boolean
   isMapy: boolean

@@ -18,9 +18,18 @@ internal class LocationTracker(
     private val emitEvent: (String, Map<String, Any?>) -> Unit,
     private val recordingCoordinator: RecordingCoordinator,
     private val telemetryPipeline: TelemetryPipeline,
+    private val clockNow: () -> Long = System::currentTimeMillis,
+    private val clockRate: () -> Double = { 1.0 },
 ) {
     private val recentLocations = ArrayDeque<Map<String, Any?>>()
     private val courseDeriver = GpsCourseDeriver()
+    // Display source identity only. Never written into measured GPS/recording/Navigation.
+    var displaySourceId: Long = System.currentTimeMillis()
+        private set
+    // @parity /modules/vescape-core/src/index.ts `LocationEvent`
+    fun displayMap(fix: LocationSnapshot): Map<String, Any?> = fix.toMap() + mapOf(
+        "displaySourceId" to displaySourceId, "displayClockMs" to clockNow(), "displayClockRate" to clockRate(),
+    )
     var latestLocation: LocationSnapshot? = null
         private set
     var latestPreciseLocation: LocationSnapshot? = null
@@ -82,14 +91,14 @@ internal class LocationTracker(
         NavigationController.get(applicationContext)
             .onFix(snapshot.latitude, snapshot.longitude, snapshot.speedMps)
         if (!snapshot.precise) {
-            emitEvent("onLocation", snapshot.toMap())
+            emitEvent("onLocation", displayMap(snapshot))
             return snapshot
         }
         latestPreciseLocation = snapshot
         persistLastGpsLocation(snapshot)
         recentLocations.addLast(snapshot.toMap())
         pruneRecentLocations(snapshot.timestamp)
-        emitEvent("onLocation", snapshot.toMap())
+        emitEvent("onLocation", displayMap(snapshot))
         recordingCoordinator.recordLocation(snapshot)
         return snapshot
     }
@@ -110,6 +119,7 @@ internal class LocationTracker(
      * @parity /modules/vescape-core/ios/location/LocationTracker.swift `clearReplayLocations`
      */
     fun clearReplayLocations() {
+        displaySourceId = maxOf(displaySourceId + 1, System.currentTimeMillis())
         latestLocation = null
         latestPreciseLocation = null
         courseDeriver.reset()

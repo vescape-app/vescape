@@ -197,10 +197,20 @@ final class WatchMirrorCoordinator {
     applyInterval()
   }
 
+  private var motionJson = ""
+  private var lastSettings: WatchSettings?
+  func configureMotion(_ json: String) {
+    motionJson = json
+    if var settings = lastSettings { settings.displayMotionJson = json; transport.pushSettings(settings) }
+  }
+
   func applySettings(_ settings: WatchSettings, intervalMs: Int64) {
     configuredIntervalMs = intervalMs
     streetMapEnabled = settings.streetMapEnabled
     applyInterval()
+    lastSettings = settings
+    var settings = settings
+    settings.displayMotionJson = motionJson
     transport.pushSettings(settings)
   }
 

@@ -24,7 +24,10 @@ class WatchSettingsTest {
             "distanceUnit" to AppSettings(distanceUnit = "mi"),
             "wearTiltRatePercent" to AppSettings(wearTiltRatePercent = 40),
         )
-        val mirroredFields = WatchSettings::class.java.declaredFields.count { !java.lang.reflect.Modifier.isStatic(it.modifiers) }
+        // Display tuning is session-only, outside AppSettings and its persisted reload keys.
+        val mirroredFields = WatchSettings::class.java.declaredFields.count {
+            !java.lang.reflect.Modifier.isStatic(it.modifiers) && it.name != "displayMotionJson"
+        }
         assertEquals(mirroredFields, changedByKey.size)
         assertEquals(WATCH_SOURCE_SETTING_KEYS - "wearPushRateHz", changedByKey.keys)
         for (changed in changedByKey.values) {

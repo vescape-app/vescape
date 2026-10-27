@@ -422,6 +422,8 @@ internal class BoardSessionController(private val service: CoreForegroundService
             ::emitEvent,
             recordingCoordinator,
             telemetryPipeline,
+            ::nowMs,
+            { sessionClock.speed },
         )
     }
     private val configController by lazy {
@@ -2373,6 +2375,12 @@ internal class BoardSessionController(private val service: CoreForegroundService
             tiltControl = watchTiltControl(),
             mapPosition = rider?.let { expo.modules.vescapecore.watch.WatchMapPosition(it.latitude, it.longitude) },
             riderSpeedMps = rider?.speedMps,
+            motionFacts = expo.modules.vescapecore.watch.WatchMotionFacts(
+                locationTracker.displaySourceId.toDouble(), rider?.timestamp?.toDouble() ?: 0.0, System.currentTimeMillis().toDouble(),
+                rider?.let { maxOf(0L, nowMs() - it.timestamp).toDouble() } ?: 1e9,
+                current?.let { sample -> maxOf(0L, nowMs() - sample.lastPacketAt).toDouble() } ?: 1e9,
+                rider?.accuracyM ?: 1e9, sessionClock.speed,
+            ),
             trail = expo.modules.vescapecore.watch.watchTrail(
                 rider?.let { GeoPoint(it.latitude, it.longitude) },
                 locationTracker.recentLocations(),
@@ -2765,6 +2773,8 @@ internal class BoardSessionController(private val service: CoreForegroundService
         watchTiltRefused = false
         recordWatchDiagnostic("watch_tilt_cancel", mapOf("accepted" to stopRemoteTilt()))
     }
+
+    internal fun configureWatchDisplay(json: String) { scheduler.post { watchMirror.configureMotion(json) } }
 
     internal fun watchMirrorWakeLevel(level: WatchMirrorWakeLevel) {
         // WearableListenerService callbacks arrive off the controller's scheduler.
@@ -3485,6 +3495,9 @@ internal class BoardSessionController(private val service: CoreForegroundService
                 recentTelemetry = recentTelemetryValue,
                 gpsPhase = gpsMonitor.phase,
                 gpsMode = gpsMonitor.mode,
+                displaySourceId = locationTracker.displaySourceId,
+                displayClockMs = nowMs(),
+                displayClockRate = sessionClock.speed,
                 latestLocation = locationTracker.latestLocation,
                 latestPreciseLocation = locationTracker.latestPreciseLocation,
                 recentLocations = recentLocationsValue,

@@ -1,3 +1,5 @@
+import { DisplayClock } from '@/modules/map/lib/liveMotion/clock'
+import { LiveGpsMotion } from '@/modules/map/lib/liveMotion/motion'
 import Mapbox, { Camera, MapView } from '@rnmapbox/maps'
 import { SlidersHorizontalIcon } from 'phosphor-react-native'
 import { useCallback, useRef, useState, type ComponentRef } from 'react'
@@ -45,6 +47,16 @@ import { MainMapLayers, HistoryMapLayers } from '@/screens/main/map/MainMapLayer
 import { SatelliteImageryLayer } from '@/screens/main/map/SatelliteImageryLayer'
 import { DASH } from '@/helpers/format'
 
+// Isolated fixture: showcase never subscribes to real GPS or telemetry.
+const showcaseMotion = {
+  clock: new DisplayClock(),
+  now: () => performance.now(),
+  duration: (ms: number) => ms,
+  active: false,
+  motion: new LiveGpsMotion(),
+  subscribe: () => () => {},
+  changed: () => {},
+}
 Mapbox.setAccessToken(MAPBOX_ACCESS_TOKEN)
 
 const HISTORY_METRIC_OPTIONS: { key: HistoryMetricKey; label: string }[] = [
@@ -58,6 +70,14 @@ const HISTORY_METRIC_OPTIONS: { key: HistoryMetricKey; label: string }[] = [
 ]
 
 export default function MapComponentsShowcase() {
+  const [pointAnimator] = useState(
+    () =>
+      new Mapbox.__experimental.MovePointShapeAnimator([
+        FIXTURE_ACCURACY_FIX.longitude,
+        FIXTURE_ACCURACY_FIX.latitude,
+      ]),
+  )
+
   const [styleKey, setStyleKey] = useState<MapStyleKey>('onedark')
   const resolvedTheme = useThemeStore((state) => state.resolvedTheme)
   const [styleExpanded, setStyleExpanded] = useState(false)
@@ -127,6 +147,8 @@ export default function MapComponentsShowcase() {
         {isSatellite && <SatelliteImageryLayer paint={getSatelliteImageryPaint()} />}
         {/* historyActive=false renders buildings/raster/weather + live pins/GPS puck/riders */}
         <MainMapLayers
+          displayRuntime={showcaseMotion}
+          pointAnimator={pointAnimator}
           historyActive={false}
           expandSelectedMapPoints
           isMapy={isMapy}

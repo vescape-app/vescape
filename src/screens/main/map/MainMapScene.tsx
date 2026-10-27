@@ -20,6 +20,9 @@ type OverlayProps = ComponentProps<typeof MainMapOverlays>
 type MapViewProps = ComponentProps<typeof Mapbox.MapView>
 
 interface MainMapSceneProps {
+  pointAnimator: LayerProps['pointAnimator']
+  displayActive: boolean
+  displayRuntime: LayerProps['displayRuntime']
   mapOpacity: Animated.Value
   onLayout: ComponentProps<typeof Animated.View>['onLayout']
   onTouchStart: ComponentProps<typeof Animated.View>['onTouchStart']
@@ -73,6 +76,9 @@ interface MainMapSceneProps {
 }
 
 export function MainMapScene({
+  pointAnimator,
+  displayRuntime,
+  displayActive,
   mapOpacity,
   onLayout,
   onTouchStart,
@@ -177,14 +183,17 @@ export function MainMapScene({
               satelliteRoadLineOpacity={mapStyle.satelliteRoadLineOpacity}
             />
             <PhoneHeadingMapLayer
-              active={!historyActive && !gpsHeadingMode}
+              pointAnimator={pointAnimator}
+              active={displayActive && !historyActive && !gpsHeadingMode}
               followCamera={phoneHeadingMode && followGps}
-              coordinate={accuracyFix}
+              hasPosition={accuracyFix != null}
               onFollowHeading={onPhoneFollowHeading}
               onHeadingChange={onPhoneHeadingChange}
               onStatusChange={onPhoneHeadingStatusChange}
             />
             <MainMapLayers
+              pointAnimator={pointAnimator}
+              displayRuntime={displayRuntime}
               historyActive={historyActive}
               expandSelectedMapPoints={mode === 'map'}
               isMapy={mapStyle.isMapy}

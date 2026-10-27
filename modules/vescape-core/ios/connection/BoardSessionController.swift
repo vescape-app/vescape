@@ -913,6 +913,9 @@ internal final class BoardSessionController: VescGattListener {
   /// cost and, by implication, why they are flowing at all.
   /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/connection/BoardSessionController.kt `gpsMode`
   func gpsMode() -> String { gpsMonitor.mode.rawValue }
+  func gpsDisplaySourceId() -> Int64 { locationTracker.displaySourceId }
+  func gpsDisplayClockMs() -> Int64 { nowMs() }
+  func gpsDisplayClockRate() -> Double { sessionClock.speed }
   func gpsLatestLocation() -> [String: Any?]? { locationTracker.latestLocation?.map }
   func gpsLatestPreciseLocation() -> [String: Any?]? { locationTracker.latestPreciseLocation?.map }
   /// Where the rider is, for callers that need a position rather than a *good* position —
@@ -2785,6 +2788,8 @@ internal final class BoardSessionController: VescGattListener {
   // MARK: - Watch Mirror inputs and board command boundary
 
   /// Called once by VescapeLaunchSubscriber, independent of Board Session lifetime.
+  func configureWatchDisplay(_ json: String) { watchMirror.configureMotion(json) }
+
   func startWatchMirror() {
     watchMirror.start()
     pushWatchLastBattery()
@@ -2850,6 +2855,10 @@ internal final class BoardSessionController: VescGattListener {
         rider: rider.map { WatchGeoPoint(latitude: $0.latitude, longitude: $0.longitude) },
         history: locationTracker.recentLocations
       ),
+      motionFacts: WatchMotionFacts(
+        sourceId: Double(locationTracker.displaySourceId), fixTimestamp: Double(rider?.timestamp ?? 0), sentAt: floor(Date().timeIntervalSince1970 * 1000),
+        gpsAgeMs: rider.map { Double(max(0, nowMs() - $0.timestamp)) } ?? 1e9,
+        boardAgeMs: current.map { Double(max(0, nowMs() - $0.lastPacketAt)) } ?? 1e9, accuracyM: rider?.accuracyM ?? 1e9, clockRate: sessionClock.speed),
       mapPosition: rider.map { WatchMapPosition(latitude: $0.latitude, longitude: $0.longitude) },
       riderSpeedMps: rider?.speedMps
     )
@@ -3204,7 +3213,7 @@ internal final class BoardSessionController: VescGattListener {
     // Offered on every Fix; the coordinator owns the freshness and distance gates.
     WeatherCoordinator.shared.onPosition(latitude: location.latitude, longitude: location.longitude)
     latestRiderPresence().map(groupRideObserver.pushPresence)
-    emit?("onLocation", location.map)
+    emit?("onLocation", locationTracker.displayMap(location, clockMs: nowMs(), clockRate: sessionClock.speed))
   }
 
   /// Offer the fix that just arrived to the **Ride Track**.

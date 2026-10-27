@@ -8,6 +8,16 @@ internal final class LocationTracker {
   private(set) var latestPreciseLocation: TelemetryLocationCapture?
   private(set) var recentLocations: [[String: Any?]] = []
   private let courseDeriver = GpsCourseDeriver()
+  // Display source identity only; measured consumers keep their original fix.
+  private(set) var displaySourceId = Int64(Date().timeIntervalSince1970 * 1000)
+  // @parity /modules/vescape-core/src/index.ts `LocationEvent`
+  func displayMap(_ fix: TelemetryLocationCapture, clockMs: Int64, clockRate: Double = 1) -> [String: Any?] {
+    var map = fix.map
+    map["displaySourceId"] = displaySourceId
+    map["displayClockMs"] = clockMs
+    map["displayClockRate"] = clockRate
+    return map
+  }
   private let recentWindowMs: () -> Int64
   private let recordLocation: (TelemetryLocationCapture) -> Void
   private let navigationFix: (TelemetryLocationCapture) -> Void
@@ -71,6 +81,7 @@ internal final class LocationTracker {
   /// Clear fixes and course when entering or leaving replay, retaining the persistence throttle.
   /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/location/LocationTracker.kt `clearReplayLocations`
   func clearReplayLocations() {
+    displaySourceId = max(displaySourceId + 1, Int64(Date().timeIntervalSince1970 * 1000))
     latestLocation = nil
     latestPreciseLocation = nil
     courseDeriver.reset()

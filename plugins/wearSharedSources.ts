@@ -10,6 +10,7 @@ const sources = [
   'telemetry/TelemetryLevel.kt',
   'watch/GroupRideFrame.kt',
   'watch/WatchTrail.kt',
+  'watch/WatchMotionFacts.kt',
   'watch/WatchMapTile.kt',
   'watch/WatchRouteStatus.kt',
   'watch/WatchFrame.kt',
