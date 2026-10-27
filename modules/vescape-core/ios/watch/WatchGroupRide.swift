@@ -105,6 +105,6 @@ private let GROUP_ROW_NAME_CHARS = 5
 /// formatting without the space, so the label stays short beside its mark.
 ///
 /// @parity /watch/wearos/src/main/java/app/vescape/wear/WatchGroupRide.kt `groupRideDistanceLabel`
-func groupRideDistanceLabel(_ distanceM: Double, unitSystem: String) -> String {
-  UnitPresentation.distance(distanceM, unitSystem: unitSystem).replacingOccurrences(of: " ", with: "")
+func groupRideDistanceLabel(_ distanceM: Double, distanceUnit: String) -> String {
+  UnitPresentation.distance(distanceM, distanceUnit: distanceUnit).replacingOccurrences(of: " ", with: "")
 }

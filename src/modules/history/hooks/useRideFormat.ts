@@ -1,7 +1,7 @@
 import { useCallback } from 'react'
 import { DASH } from '@/helpers/format'
 import { rideDistanceFromMeters, rideDistanceUnit } from '@/helpers/units'
-import { useUnitSystem } from '@/hooks/useUnitSystem'
+import { useDistanceUnit } from '@/hooks/useDistanceUnit'
 import {
   buildHistoryMarkerMessage,
   type SelectedHistoryMarker,
@@ -15,29 +15,29 @@ interface HistoryDistance {
 
 /** Bind ride-list presentation to the rider's current units. */
 export function useRideFormat() {
-  const units = useUnitSystem()
+  const distanceUnit = useDistanceUnit()
   const formatRideDetails = useCallback(
     (durationMs: number, distanceM: number | null, boardName: string | null) =>
-      formatRideListDetails(durationMs, distanceM, boardName, units),
-    [units],
+      formatRideListDetails(durationMs, distanceM, boardName, distanceUnit),
+    [distanceUnit],
   )
   const formatHistoryDistance = useCallback(
     (meters: number | null): HistoryDistance => {
       if (meters == null) return { value: DASH }
-      if (units === 'imperial') {
+      if (distanceUnit === 'mi') {
         return {
-          value: rideDistanceFromMeters(meters, units).toFixed(1),
-          unit: rideDistanceUnit(units),
+          value: rideDistanceFromMeters(meters, distanceUnit).toFixed(1),
+          unit: rideDistanceUnit(distanceUnit),
         }
       }
       if (meters < 1000) return { value: String(Math.round(meters)), unit: 'm' }
       return { value: (meters / 1000).toFixed(1), unit: 'km' }
     },
-    [units],
+    [distanceUnit],
   )
   const formatHistoryMarker = useCallback(
-    (selection: SelectedHistoryMarker) => buildHistoryMarkerMessage(selection, units),
-    [units],
+    (selection: SelectedHistoryMarker) => buildHistoryMarkerMessage(selection, distanceUnit),
+    [distanceUnit],
   )
   return { formatRideDetails, formatHistoryDistance, formatHistoryMarker }
 }

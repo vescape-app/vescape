@@ -3635,7 +3635,8 @@ internal class BoardSessionController(private val service: CoreForegroundService
         recordingCoordinator.applySettings(settings)
         socWindow.windowMs = settings.socEstimateWindowSeconds * 1000L
         connectionSoundsEnabled = settings.connectionSoundsEnabled
-        alertCoordinator.unitSystem = settings.unitSystem
+        alertCoordinator.distanceUnit = settings.distanceUnit
+        alertCoordinator.temperatureUnit = settings.temperatureUnit
         alertFeedback.setSoundSettings(settings)
         weatherAlerts.settings = WeatherAlertSettings.of(
             settings.weatherRainAlertLevel,

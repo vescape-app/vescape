@@ -1,5 +1,5 @@
 import * as Sentry from '@sentry/react-native'
-import { UnitSystemContext } from '@/hooks/useUnitSystem'
+import { DistanceUnitContext } from '@/hooks/useDistanceUnit'
 import { ClerkProvider } from '@clerk/expo'
 import { tokenCache } from '@clerk/expo/token-cache'
 import { resourceCache } from '@clerk/expo/resource-cache'
@@ -66,7 +66,7 @@ configureReanimatedLogger({ strict: false })
 initSentry()
 
 function RootLayout() {
-  const unitSystem = useSettingsStore((state) => state.unitSystem)
+  const distanceUnit = useSettingsStore((state) => state.distanceUnit)
   const insets = useSafeAreaInsets()
   const resolvedTheme = useThemeStore((state) => state.resolvedTheme)
   const resolvedNeutral = neutralColors[resolvedTheme]
@@ -143,7 +143,7 @@ function RootLayout() {
       // blank the account UI or look like a sign-out.
       __experimental_resourceCache={resourceCache}
     >
-      <UnitSystemContext value={unitSystem}>
+      <DistanceUnitContext value={distanceUnit}>
         <DeviceAuthSync />
         <BoardConfigChangeNoticeModal />
         <DiagnosticErrorBoundary>
@@ -220,6 +220,7 @@ function RootLayout() {
                 />
                 <Stack.Screen name={stackScreens.settingsSounds} options={{ title: 'Sounds' }} />
                 <Stack.Screen name={stackScreens.settingsMap} options={{ title: 'Map' }} />
+                <Stack.Screen name={stackScreens.settingsUnits} options={{ title: 'Units' }} />
                 <Stack.Screen name={stackScreens.settingsWatch} options={{ title: 'Watch' }} />
                 <Stack.Screen name={stackScreens.settingsHistory} options={{ title: 'History' }} />
                 <Stack.Screen name={stackScreens.settingsGraphs} options={{ title: 'Graphs' }} />
@@ -292,7 +293,7 @@ function RootLayout() {
             <StatusBar style={resolvedTheme === 'dark' ? 'light' : 'dark'} />
           </GestureHandlerRootView>
         </DiagnosticErrorBoundary>
-      </UnitSystemContext>
+      </DistanceUnitContext>
     </ClerkProvider>
   )
 }

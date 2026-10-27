@@ -24,10 +24,10 @@ final class AlertPresetPersistence {
     spec: String,
     topSpeedKmh: Double?,
     hasBatteryConfig: Bool,
-    speedUnitSystem: String
+    distanceUnit: String
   ) throws -> [PersistedAlertRule] {
     guard let parsed = AlertPresetSpec.parse(spec) else { throw InvalidPreset.invalidIntent }
-    let input = PresetInput(topSpeedKmh: topSpeedKmh ?? 50, hasBatteryConfig: hasBatteryConfig, speedUnitSystem: speedUnitSystem)
+    let input = PresetInput(topSpeedKmh: topSpeedKmh ?? 50, hasBatteryConfig: hasBatteryConfig, distanceUnit: distanceUnit)
     let specs = try AlertPresetGenerator.generate(metric: metric, spec: parsed, input: input)
     return records(boardId: "", metric: metric, rules: specs, createdAt: 0)
   }
@@ -61,8 +61,8 @@ final class AlertPresetPersistence {
     guard let board = try PersistedBoard.fetchOne(db, key: boardId), board.deletedAt == nil else { return riderRules }
     let presets = presetRows(stored)
     let values = try settings(db, boardId)
-    let rawUnits = try PersistedAppSetting.fetchOne(db, key: "unitSystem")
-    let units = validUnitSystem(try rawUnits.map { try decode($0.valueJson) } as? String) ?? "metric"
+    let rawUnits = try PersistedAppSetting.fetchOne(db, key: "distanceUnit")
+    let units = validDistanceUnit(try rawUnits.map { try decode($0.valueJson) } as? String) ?? "km"
     let expanded = metrics.flatMap { metric -> [PersistedAlertRule] in
       do {
         // A row this app cannot read expands to nothing rather than the default.
@@ -71,7 +71,7 @@ final class AlertPresetPersistence {
         let input = PresetInput(
           topSpeedKmh: (values["topSpeedKmh"] as? NSNumber)?.doubleValue ?? 50,
           hasBatteryConfig: try AlertPresetGenerator.validBattery(values["batteryConfig"]),
-          speedUnitSystem: units,
+          distanceUnit: units,
           configBase: try field.flatMap { try resolveBase(db, boardId, $0) }
         )
         let rules = try AlertPresetGenerator.generate(metric: metric, spec: spec, input: input)

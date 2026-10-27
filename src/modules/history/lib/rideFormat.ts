@@ -1,4 +1,4 @@
-import { formatRideDistanceMeters, type UnitSystem } from '@/helpers/units'
+import { formatRideDistanceMeters, type DistanceUnit } from '@/helpers/units'
 
 export function formatRideTime(startMs: number, endMs: number, live = false): string {
   const start = new Date(startMs)
@@ -36,11 +36,11 @@ export function formatRideListDetails(
   durationMs: number,
   distanceM: number | null,
   boardName: string | null,
-  units: UnitSystem = 'metric',
+  distanceUnit: DistanceUnit = 'km',
 ): string {
   return [
     formatRideListDuration(durationMs),
-    distanceM == null ? null : formatRideDistanceMeters(distanceM, units, 2),
+    distanceM == null ? null : formatRideDistanceMeters(distanceM, distanceUnit, 2),
     boardName?.trim() || null,
   ]
     .filter((part): part is string => part != null)

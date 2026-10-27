@@ -30,7 +30,7 @@ func runAlertPresetContract() throws {
   try TelemetryDatabase.migrator.migrate(queue)
   for item in fixture["cases"] as! [[String: Any]] {
     let name = item["name"] as! String; let metric = item["metric"] as! String; let spec = item["spec"] as! String
-    let units = item["speedUnitSystem"] as? String ?? "metric"
+    let units = item["distanceUnit"] as? String ?? "km"
     try queue.write { db in
       if let refloat = item["refloat"] {
         let json = String(decoding: try JSONSerialization.data(withJSONObject: refloat), as: UTF8.self)
@@ -41,7 +41,7 @@ func runAlertPresetContract() throws {
         try db.execute(sql: "INSERT INTO motor_config_values VALUES (?, 1, 'test', ?, 1)", arguments: [name, json])
       }
       let unitsJson = String(decoding: try JSONSerialization.data(withJSONObject: units, options: [.fragmentsAllowed]), as: UTF8.self)
-      try PersistedAppSetting(key: "unitSystem", valueJson: unitsJson, updatedAt: 1).save(db)
+      try PersistedAppSetting(key: "distanceUnit", valueJson: unitsJson, updatedAt: 1).save(db)
     }
     var settings = [PersistedBoardSetting(boardId: name, key: "topSpeedKmh", valueJson: String((item["topSpeedKmh"] as? NSNumber)?.doubleValue ?? 50), updatedAt: 1)]
     if let battery = item["batteryConfig"] {
@@ -57,7 +57,7 @@ func runAlertPresetContract() throws {
         metric: metric, spec: spec,
         topSpeedKmh: (item["topSpeedKmh"] as? NSNumber)?.doubleValue,
         hasBatteryConfig: AlertPresetGenerator.validBattery(item["batteryConfig"]),
-        speedUnitSystem: units
+        distanceUnit: units
       )
       try require(preview.count == rules.count, name + " preview count")
       for (draft, saved) in zip(preview, rules) {
@@ -82,16 +82,16 @@ func runAlertPresetContract() throws {
   }
   for top in [5.0, 10.0, 50.0] {
     for level in AlertPresetGenerator.activeLevels {
-      let rule = try AlertPresetPersistence.preview(metric: "speed", spec: "preset(\(level))", topSpeedKmh: top, hasBatteryConfig: false, speedUnitSystem: "imperial").first!
+      let rule = try AlertPresetPersistence.preview(metric: "speed", spec: "preset(\(level))", topSpeedKmh: top, hasBatteryConfig: false, distanceUnit: "mi").first!
       let start = rule.threshold / 1.609344
       let end = rule.thresholdMax! / 1.609344
-      try require(abs(start - start.rounded()) < 0.00000001 && abs(end - end.rounded()) < 0.00000001, "imperial preview whole mph")
-      try require(start >= 0 && start < end && rule.thresholdMax! <= top, "imperial preview valid range")
+      try require(abs(start - start.rounded()) < 0.00000001 && abs(end - end.rounded()) < 0.00000001, "miles preview whole mph")
+      try require(start >= 0 && start < end && rule.thresholdMax! <= top, "miles preview valid range")
     }
   }
-  for (metric, spec, units) in [("unknown", "preset(normal)", "metric"), ("speed", "normal", "metric"), ("speed", "preset(normal)", "unknown")] {
+  for (metric, spec, units) in [("unknown", "preset(normal)", "km"), ("speed", "normal", "km"), ("speed", "preset(normal)", "unknown")] {
     var rejected = false
-    do { _ = try AlertPresetPersistence.preview(metric: metric, spec: spec, topSpeedKmh: 50, hasBatteryConfig: false, speedUnitSystem: units) } catch { rejected = true }
+    do { _ = try AlertPresetPersistence.preview(metric: metric, spec: spec, topSpeedKmh: 50, hasBatteryConfig: false, distanceUnit: units) } catch { rejected = true }
     try require(rejected, "invalid preview rejected")
   }
 
@@ -110,11 +110,11 @@ func runAlertPresetContract() throws {
     configFieldId: nil, thresholdOffset: nil, thresholdMaxOffset: nil
   )
   try AlertRulePersistence(writer: queue).save(manual)
-  try queue.write { try $0.execute(sql: "INSERT OR REPLACE INTO app_settings VALUES ('unitSystem', '\"imperial\"', 1)") }
+  try queue.write { try $0.execute(sql: "INSERT OR REPLACE INTO app_settings VALUES ('distanceUnit', '\"mi\"', 1)") }
 
   try apply("speed", level: "safe")
   try require(try spec("speed") == "preset(safe)", "level rewrite")
-  try require(abs(try expanded("speed").first { $0.id == "preset:speed:0" }!.threshold - 30.577536) < 0.000001, "imperial expansion")
+  try require(abs(try expanded("speed").first { $0.id == "preset:speed:0" }!.threshold - 30.577536) < 0.000001, "miles expansion")
   try require(try expanded("speed").contains { $0.id == "manual" }, "rider rule beside preset")
   try require(try queue.read { try Int.fetchOne($0, sql: "SELECT count(*) FROM alerts WHERE board_id = 'board' AND id LIKE 'preset:%'") } == 1, "one preset row")
 
@@ -194,8 +194,8 @@ func runAlertPresetUnitSwitchContract() throws {
   }
   try queue.write { try presetRow("first", "speed", "preset(normal)").save($0) }
   let stored = try ["first", "second"].map { try storedRules(queue, $0) }
-  for units in ["imperial", "metric", "imperial"] {
-    try BoardSettingsPersistence(writer: queue).updateUnitSystem(units)
+  for units in ["mi", "km", "mi"] {
+    try BoardSettingsPersistence(writer: queue).updateDistanceUnit(units)
     let expected = switchCase[units] as! [Double]
     for (index, id) in ["first", "second"].enumerated() {
       // `second` has no row: the app default, normal, expands the same way.

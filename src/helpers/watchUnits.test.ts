@@ -4,7 +4,7 @@ import { formatDistanceMeters } from './units'
 
 test('watch distance fixtures agree with phone presentation', () => {
   for (const fixture of fixtures) {
-    for (const units of ['metric', 'imperial'] as const) {
+    for (const units of ['km', 'mi'] as const) {
       expect(formatDistanceMeters(fixture.meters, units)).toBe(fixture[units])
     }
   }

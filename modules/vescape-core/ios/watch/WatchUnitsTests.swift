@@ -9,12 +9,12 @@ final class WatchUnitsTests: XCTestCase {
     let data = try Data(contentsOf: root.appendingPathComponent("shared/fixtures/rider-units.json"))
     let fixtures = try JSONSerialization.jsonObject(with: data) as! [[String: Any]]
     for fixture in fixtures {
-      for units in ["metric", "imperial"] {
-        XCTAssertEqual(WatchGauge.distance(fixture["meters"] as! Double, unitSystem: units), fixture[units] as? String)
+      for units in ["km", "mi"] {
+        XCTAssertEqual(WatchGauge.distance(fixture["meters"] as! Double, distanceUnit: units), fixture[units] as? String)
       }
     }
-    XCTAssertEqual(WatchGauge.distance(.nan, unitSystem: "imperial"), WatchGauge.dash)
-    XCTAssertEqual(UnitPresentation.speedFromKmh(40.2336, "imperial"), 25, accuracy: 1e-10)
+    XCTAssertEqual(WatchGauge.distance(.nan, distanceUnit: "mi"), WatchGauge.dash)
+    XCTAssertEqual(UnitPresentation.speedFromKmh(40.2336, "mi"), 25, accuracy: 1e-10)
     XCTAssertEqual(WatchGauge.speedFraction(40.2336), 40.2336 / WatchGauge.speedMax)
   }
 }

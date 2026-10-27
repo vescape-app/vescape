@@ -41,22 +41,24 @@ class VoicePacksTest {
     @Test
     fun announcementTakesKeyFromMetricAndValueFromThreshold() {
         val custom = VoiceAlertSound(AlertSeverity.INFO, null, null)
-        assertEquals(VoiceAnnouncement(AlertSeverity.INFO, "battery", listOf(VoiceValue("percent", 20))), voiceAnnouncement(custom, "battery", 19.6, true, "metric"))
+        assertEquals(VoiceAnnouncement(AlertSeverity.INFO, "battery", listOf(VoiceValue("percent", 20))), voiceAnnouncement(custom, "battery", 19.6, true, "km", "celsius"))
         // Without a battery config the threshold is volts, not a percent.
-        assertEquals(VoiceAnnouncement(AlertSeverity.INFO, "battery"), voiceAnnouncement(custom, "battery", 42.0, false, "metric"))
-        assertEquals(VoiceAnnouncement(AlertSeverity.INFO, null), voiceAnnouncement(custom, "power", 30.0, true, "metric"))
+        assertEquals(VoiceAnnouncement(AlertSeverity.INFO, "battery"), voiceAnnouncement(custom, "battery", 42.0, false, "km", "celsius"))
+        assertEquals(VoiceAnnouncement(AlertSeverity.INFO, null), voiceAnnouncement(custom, "power", 30.0, true, "km", "celsius"))
         val preset = VoiceAlertSound(AlertSeverity.CRITICAL, "motorTemp", null)
-        assertEquals(VoiceAnnouncement(AlertSeverity.CRITICAL, "motorTemp", listOf(VoiceValue("degrees", 95))), voiceAnnouncement(preset, "motor-temp", 95.0, false, "metric"))
+        assertEquals(VoiceAnnouncement(AlertSeverity.CRITICAL, "motorTemp", listOf(VoiceValue("degrees", 95))), voiceAnnouncement(preset, "motor-temp", 95.0, false, "km", "celsius"))
         // °F converts before rounding: 95 °C = 203 °F, −20.6 °C = −5.08 °F.
-        assertEquals(203, voiceAnnouncement(preset, "motor-temp", 95.0, false, "imperial").values.single().value)
-        assertEquals(-5, voiceAnnouncement(preset, "motor-temp", -20.6, false, "imperial").values.single().value)
+        assertEquals(203, voiceAnnouncement(preset, "motor-temp", 95.0, false, "km", "fahrenheit").values.single().value)
+        assertEquals(-5, voiceAnnouncement(preset, "motor-temp", -20.6, false, "km", "fahrenheit").values.single().value)
+        // Degrees follow the temperature unit, not the distance unit.
+        assertEquals(95, voiceAnnouncement(preset, "motor-temp", 95.0, false, "mi", "celsius").values.single().value)
         val explicit = VoiceAlertSound(AlertSeverity.WARNING, "battery", 10.0)
-        assertEquals(10, voiceAnnouncement(explicit, "speed", 50.0, false, "metric").values.single().value)
-        // Speed reads in mph under imperial (50 km/h = 31.07 mph); duty stays a percent.
+        assertEquals(10, voiceAnnouncement(explicit, "speed", 50.0, false, "km", "celsius").values.single().value)
+        // Speed reads in mph under mi (50 km/h = 31.07 mph); duty stays a percent.
         val speed = VoiceAlertSound(AlertSeverity.WARNING, null, null)
-        assertEquals(VoiceAnnouncement(AlertSeverity.WARNING, "speed", listOf(VoiceValue("number", 50))), voiceAnnouncement(speed, "speed", 50.0, false, "metric"))
-        assertEquals(31, voiceAnnouncement(speed, "speed", 50.0, false, "imperial").values.single().value)
-        assertEquals(VoiceAnnouncement(AlertSeverity.WARNING, "dutyCycle", listOf(VoiceValue("number", 85))), voiceAnnouncement(speed, "duty", 85.0, false, "imperial"))
+        assertEquals(VoiceAnnouncement(AlertSeverity.WARNING, "speed", listOf(VoiceValue("number", 50))), voiceAnnouncement(speed, "speed", 50.0, false, "km", "celsius"))
+        assertEquals(31, voiceAnnouncement(speed, "speed", 50.0, false, "mi", "celsius").values.single().value)
+        assertEquals(VoiceAnnouncement(AlertSeverity.WARNING, "dutyCycle", listOf(VoiceValue("number", 85))), voiceAnnouncement(speed, "duty", 85.0, false, "mi", "celsius"))
     }
 
     @Test

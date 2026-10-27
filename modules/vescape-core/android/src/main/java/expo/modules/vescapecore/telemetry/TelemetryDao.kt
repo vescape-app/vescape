@@ -781,11 +781,11 @@ interface TelemetryDao {
   @Insert(onConflict = OnConflictStrategy.REPLACE)
   suspend fun upsertAppSetting(setting: AppSettingEntity)
 
-  /** @parity /modules/vescape-core/ios/telemetry/BoardSettingsPersistence.swift `updateUnitSystem` */
+  /** @parity /modules/vescape-core/ios/telemetry/BoardSettingsPersistence.swift `updateDistanceUnit` */
   @Transaction
-  suspend fun updateUnitSystem(units: String) {
-    require(units in setOf("metric", "imperial")) { "Invalid unit system" }
-    upsertAppSetting(AppSettingEntity("unitSystem", JSONObject.quote(units), System.currentTimeMillis()))
+  suspend fun updateDistanceUnit(units: String) {
+    require(units in setOf("km", "mi")) { "Invalid distance unit" }
+    upsertAppSetting(AppSettingEntity("distanceUnit", JSONObject.quote(units), System.currentTimeMillis()))
   }
 
   @Query("DELETE FROM app_settings WHERE key = :key")

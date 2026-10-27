@@ -4,7 +4,7 @@ import { useBoardConfigBases } from '@/modules/alerts/hooks/useBoardConfigBases'
 import { useResolvedAlertRules } from '@/modules/alerts/hooks/useResolvedAlertRules'
 import { toTestRule } from '@/modules/alerts/lib/alertTest'
 import type { BoardConfigBases } from '@/modules/alerts/lib/configRelativeFields'
-import { useUnitSystem } from '@/hooks/useUnitSystem'
+import { useDistanceUnit } from '@/hooks/useDistanceUnit'
 import { useMemo } from 'react'
 import { useShallow } from 'zustand/react/shallow'
 
@@ -224,16 +224,16 @@ export function useDraftMetricAlerts(
   metric: AlertPresetMetric,
   { setup, topSpeedKmh, hasBatteryConfig, batteryConfig, onChange }: DraftMetricAlertsSource,
 ): MetricAlertsController {
-  const units = useUnitSystem()
+  const distanceUnit = useDistanceUnit()
   const preview = useMemo(
     () =>
       draftAlertPreview(
         metric,
         setup.level,
-        { topSpeedKmh, hasBatteryConfig, speedUnitSystem: units },
+        { topSpeedKmh, hasBatteryConfig, distanceUnit: distanceUnit },
         setup.rules,
       ),
-    [metric, setup.level, units, setup.rules, topSpeedKmh, hasBatteryConfig],
+    [metric, setup.level, distanceUnit, setup.rules, topSpeedKmh, hasBatteryConfig],
   )
   return useMemo(() => {
     const withRules = (rules: DraftAlertRule[]) => onChange({ ...setup, rules })

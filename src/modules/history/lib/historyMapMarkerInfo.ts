@@ -1,4 +1,4 @@
-import { formatLengthMeters, type UnitSystem } from '@/helpers/units'
+import { formatLengthMeters, type DistanceUnit } from '@/helpers/units'
 import {
   ClockCountdownIcon,
   LinkBreakIcon,
@@ -72,7 +72,7 @@ function formatDuration(ms: number): string {
 
 export function buildHistoryMarkerMessage(
   selection: SelectedHistoryMarker,
-  units: UnitSystem,
+  distanceUnit: DistanceUnit,
 ): string {
   const { marker, gps } = selection
   const lines = [
@@ -85,7 +85,7 @@ export function buildHistoryMarkerMessage(
   ]
 
   if (gps.accuracyM != null)
-    lines.push(`GPS accuracy: ${formatLengthMeters(gps.accuracyM, units, 1)}`)
+    lines.push(`GPS accuracy: ${formatLengthMeters(gps.accuracyM, distanceUnit, 1)}`)
   if (marker.gapMs != null) lines.push(`Gap duration: ${formatDuration(marker.gapMs)}`)
   if (marker.message) lines.push(`Message: ${marker.message}`)
 

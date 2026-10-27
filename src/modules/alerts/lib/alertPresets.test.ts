@@ -40,8 +40,8 @@ test('presentation describes only supplied native range and cadence snapshots', 
 test('converted custom speed ranges retain decimal labels while whole-mph presets do not', () => {
   const custom = [{ threshold: 36.123, thresholdMax: 45.987, repeatEverySeconds: null }]
   const preset = [{ threshold: 35.405568, thresholdMax: 45.061632, repeatEverySeconds: null }]
-  expect(formatAlertPresetSummary('speed', custom, 'imperial')).toBe('22.4–28.6 mph')
-  expect(formatAlertPresetSummary('speed', preset, 'imperial')).toBe('22–28 mph')
+  expect(formatAlertPresetSummary('speed', custom, 'mi')).toBe('22.4–28.6 mph')
+  expect(formatAlertPresetSummary('speed', preset, 'mi')).toBe('22–28 mph')
   expect(custom[0].threshold).toBe(36.123)
   expect(custom[0].thresholdMax).toBe(45.987)
 })

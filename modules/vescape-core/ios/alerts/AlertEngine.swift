@@ -191,11 +191,11 @@ internal func renderAlertMessageTemplate(
   alert: FiredAlert,
   batteryPercent: Double?,
   onDiagnostic: DiagnosticSink? = nil,
-  unitSystem: String = "metric"
+  distanceUnit: String = "km"
 ) -> String {
   let isBattery = alert.controlId == "battery"
   func format(_ value: Double) -> String {
-    alert.controlId == "speed" ? UnitPresentation.formatSpokenSpeed(value, unitSystem) : formatAlertValue(value, alert.controlId)
+    alert.controlId == "speed" ? UnitPresentation.formatSpokenSpeed(value, distanceUnit) : formatAlertValue(value, alert.controlId)
   }
   var text = template
   text = text.replacingOccurrences(
@@ -206,7 +206,7 @@ internal func renderAlertMessageTemplate(
     of: "{threshold}",
     with: format(alert.threshold)
   )
-  text = text.replacingOccurrences(of: "{unit}", with: alert.controlId == "speed" ? UnitPresentation.speedUnit(unitSystem) : alertControlUnit(alert.controlId))
+  text = text.replacingOccurrences(of: "{unit}", with: alert.controlId == "speed" ? UnitPresentation.speedUnit(distanceUnit) : alertControlUnit(alert.controlId))
   if isBattery {
     text = text.replacingOccurrences(
       of: "{voltage}",

@@ -314,14 +314,14 @@ final class TelemetryMigrationTests: XCTestCase {
 
   func testBoardIdMigrationDropsTheSettingsThatMovedToBoardSettings() throws {
     try migrate(upTo: "v26_alert_source")
-    for key in ["alertPreset", "riderTopSpeedKmh", "alertPresetsOnboarded", "unitSystem"] {
+    for key in ["alertPreset", "riderTopSpeedKmh", "alertPresetsOnboarded", "distanceUnit"] {
       try insertSetting(key)
     }
 
     try migrate()
 
     let keys = try queue.read { db in try String.fetchSet(db, sql: "SELECT key FROM app_settings") }
-    XCTAssertEqual(keys, ["unitSystem"])
+    XCTAssertEqual(keys, ["distanceUnit"])
   }
 
   /// A rider whose database already has the board-owned table must keep their rules: the migration

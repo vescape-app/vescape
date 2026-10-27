@@ -1,5 +1,5 @@
 import { useFormat } from '@/hooks/useFormat'
-import { useUnitSystem } from '@/hooks/useUnitSystem'
+import { useDistanceUnit } from '@/hooks/useDistanceUnit'
 import { speedFromKmh, speedUnit } from '@/helpers/units'
 import { type ReactNode, useEffect, useMemo } from 'react'
 import { Pressable, StyleSheet, View } from 'react-native'
@@ -152,7 +152,7 @@ export function AlertPresetControl({
   presetRules,
   controlsHeader,
 }: AlertPresetControlProps) {
-  const units = useUnitSystem()
+  const distanceUnit = useDistanceUnit()
   const { formatSpeedWithUnit } = useFormat()
   const { describeRules } = useAlertPresetFormat()
   const gauge = useMemo(
@@ -160,11 +160,11 @@ export function AlertPresetControl({
       metric === 'speed'
         ? {
             ...PRESET_GAUGE.speed,
-            unit: speedUnit(units),
+            unit: speedUnit(distanceUnit),
             formatMarker: (value: number) => formatSpeedWithUnit(value, 1),
           }
         : PRESET_GAUGE[metric],
-    [metric, units, formatSpeedWithUnit],
+    [metric, distanceUnit, formatSpeedWithUnit],
   )
   const max =
     metric === 'speed' && boardTopSpeedKmh && boardTopSpeedKmh > 0
@@ -207,7 +207,7 @@ export function AlertPresetControl({
   return (
     <View style={styles.container}>
       <SingleGauge
-        displayScale={metric === 'speed' ? speedFromKmh(1, units) : 1}
+        displayScale={metric === 'speed' ? speedFromKmh(1, distanceUnit) : 1}
         value={gaugeValue ?? placeholder}
         min={gauge.min}
         max={max}

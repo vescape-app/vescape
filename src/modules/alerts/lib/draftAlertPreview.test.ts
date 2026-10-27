@@ -14,7 +14,7 @@ const nativeSnapshot: AlertTestRule[] = [
     repeatEverySeconds: null,
   },
 ]
-const options = { topSpeedKmh: 50, hasBatteryConfig: true, speedUnitSystem: 'imperial' as const }
+const options = { topSpeedKmh: 50, hasBatteryConfig: true, distanceUnit: 'mi' as const }
 const manual: DraftAlertRule = { ...nativeSnapshot[0]!, id: 'manual', enabled: true, createdAt: 1 }
 let restore = () => {}
 afterEach(() => restore())

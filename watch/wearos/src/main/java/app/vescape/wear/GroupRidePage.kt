@@ -94,7 +94,7 @@ import kotlinx.coroutines.launch
 internal fun GroupRidePage(settled: Boolean) {
     val group = GroupRideState.group.value ?: return
     val rows = group.roster()
-    val unitSystem = SettingsState.settings.value.unitSystem
+    val distanceUnit = SettingsState.settings.value.distanceUnit
     // The list's travel in px: 0 shows the nearest Riders, maxValue the last window. A Rider leaving
     // shortens the list, and ScrollState clamps the offset with it.
     val scroll = rememberScrollState()
@@ -168,7 +168,7 @@ internal fun GroupRidePage(settled: Boolean) {
                     rows.forEachIndexed { i, row ->
                         GroupRideRowView(
                             row,
-                            unitSystem,
+                            distanceUnit,
                             // Narrowed to the safe circle's chord at the row's live centre line, read
                             // at layout so a drag re-measures the rows without recomposing them.
                             Modifier.layout { measurable, _ ->
@@ -282,7 +282,7 @@ private class GroupWindowIndicatorState(
 }
 
 @Composable
-private fun GroupRideRowView(row: WatchGroupRideRow, unitSystem: String, modifier: Modifier) {
+private fun GroupRideRowView(row: WatchGroupRideRow, distanceUnit: String, modifier: Modifier) {
     val stale = row.status == WatchGroupRideStatus.Stale
     Row(
         modifier = modifier
@@ -303,7 +303,7 @@ private fun GroupRideRowView(row: WatchGroupRideRow, unitSystem: String, modifie
             rotate(row.bearingDeg.toFloat()) { drawBearingArrow(SecondaryText) }
         }
         Text(
-            text = groupRideDistanceLabel(row.rider.distanceM, unitSystem),
+            text = groupRideDistanceLabel(row.rider.distanceM, distanceUnit),
             style = WatchTypography.mono(MaterialTheme.typography.caption2.copy(fontSize = GROUP_VALUE_FONT)),
             color = PrimaryText,
             textAlign = TextAlign.End,

@@ -111,14 +111,15 @@ internal struct VoiceAnnouncement: Equatable {
 /// What a `voice` sound says for an alert on `controlId`. The key comes from the sound string or the
 /// metric; the value from the sound string or `reading` (percent for battery only while
 /// `percentAvailable`: without a battery config a battery reading is volts), °C read in °F under
-/// imperial units, km/h read in mph, rounded to the nearest clip. A nil key plays the severity sound only.
+/// the Fahrenheit temperature unit, km/h read in mph under the mi distance unit, rounded to the nearest clip. A nil key plays the severity sound only.
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/alerts/VoicePacks.kt `voiceAnnouncement`
 internal func voiceAnnouncement(
   _ sound: VoiceAlertSound,
   controlId: String?,
   reading: Double?,
   percentAvailable: Bool,
-  unitSystem: String
+  distanceUnit: String,
+  temperatureUnit: String
 ) -> VoiceAnnouncement {
   let key = sound.key ?? controlId.flatMap(voiceKey)
   let raw = sound.value ?? (key != "battery" || percentAvailable ? reading : nil)
@@ -126,8 +127,8 @@ internal func voiceAnnouncement(
   let value: Double?
   switch type {
   case "percent": value = raw
-  case "number": value = raw.map { key == "speed" && unitSystem == "imperial" ? $0 / kmPerMile : $0 }
-  case "degrees": value = raw.map { unitSystem == "imperial" ? $0 * 9 / 5 + 32 : $0 }
+  case "number": value = raw.map { key == "speed" && distanceUnit == "mi" ? $0 / kmPerMile : $0 }
+  case "degrees": value = raw.map { temperatureUnit == "fahrenheit" ? $0 * 9 / 5 + 32 : $0 }
   default: value = nil
   }
   let clip = value.flatMap { $0.isFinite ? Int($0.rounded()) : nil }

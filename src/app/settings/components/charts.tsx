@@ -1,5 +1,5 @@
-import { UnitSystemContext, useUnitSystem } from '@/hooks/useUnitSystem'
-import { speedFromKmh, speedUnit, type UnitSystem } from '@/helpers/units'
+import { DistanceUnitContext, useDistanceUnit } from '@/hooks/useDistanceUnit'
+import { speedFromKmh, speedUnit, type DistanceUnit } from '@/helpers/units'
 import { Pressable, ScrollView, StyleSheet, View } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { useCallback, useEffect, useMemo, useState } from 'react'
@@ -239,7 +239,7 @@ function SparklineShowcase() {
 }
 
 function AnimatedSingleGaugeShowcase() {
-  const units = useUnitSystem()
+  const distanceUnit = useDistanceUnit()
   const [metricKey, setMetricKey] = useState<'speed' | 'duty' | 'motorTemp' | 'controllerTemp'>(
     'speed',
   )
@@ -283,12 +283,12 @@ function AnimatedSingleGaugeShowcase() {
       }
     >
       <SingleGauge
-        displayScale={metricKey === 'speed' ? speedFromKmh(1, units) : 1}
+        displayScale={metricKey === 'speed' ? speedFromKmh(1, distanceUnit) : 1}
         value={value}
         min={metric.chartRange.min}
         max={metric.chartRange.max}
         color={metric.color}
-        unit={metricKey === 'speed' ? speedUnit(units) : metric.unit}
+        unit={metricKey === 'speed' ? speedUnit(distanceUnit) : metric.unit}
         decimals={metric.decimals}
         label={metric.label.toUpperCase()}
         hotRange={hotRange}
@@ -551,9 +551,9 @@ function BmsCellVoltagesShowcase() {
 }
 
 export default function ChartsPage() {
-  const [units, setUnits] = useState<UnitSystem>('metric')
+  const [distanceUnit, setUnits] = useState<DistanceUnit>('km')
   return (
-    <UnitSystemContext value={units}>
+    <DistanceUnitContext value={distanceUnit}>
       <SafeAreaView style={styles.container} edges={['bottom']}>
         <ScrollView contentContainerStyle={styles.content}>
           <IconHero
@@ -568,9 +568,9 @@ export default function ChartsPage() {
           <LinearGaugeShowcase />
           <ChipRow
             label="units"
-            options={['metric', 'imperial']}
-            selected={units}
-            onSelect={(value) => setUnits(value as UnitSystem)}
+            options={['km', 'mi']}
+            selected={distanceUnit}
+            onSelect={(value) => setUnits(value as DistanceUnit)}
           />
           <AnimatedSingleGaugeShowcase />
           <AnimatedDualGaugeShowcase />
@@ -582,7 +582,7 @@ export default function ChartsPage() {
           <BmsCellVoltagesShowcase />
         </ScrollView>
       </SafeAreaView>
-    </UnitSystemContext>
+    </DistanceUnitContext>
   )
 }
 

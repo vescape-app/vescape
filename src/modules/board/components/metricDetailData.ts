@@ -1,4 +1,4 @@
-import { speedFromKmh, speedUnit, type UnitSystem } from '@/helpers/units'
+import { speedFromKmh, speedUnit, type DistanceUnit } from '@/helpers/units'
 import type { ExcludedRange } from '@/components/charts/chartMath'
 import type {
   ChartBand,
@@ -121,18 +121,20 @@ export function toLiveChart({
 }
 
 /** Convert only chart text. Unit changes reuse canonical series, ranges, thresholds and keys. */
-export function presentLiveChart(chart: ChartSpec, units: UnitSystem): ChartSpec {
+export function presentLiveChart(chart: ChartSpec, distanceUnit: DistanceUnit): ChartSpec {
   const speed = chart.series.some((series) => series.unit === 'km/h' && series.axis !== 'right')
   const rightSpeed = chart.series.some(
     (series) => series.unit === 'km/h' && series.axis === 'right',
   )
-  const scale = speedFromKmh(1, units)
+  const scale = speedFromKmh(1, distanceUnit)
   return {
     ...chart,
     left: speed ? { ...chart.left, displayScale: scale } : chart.left,
     right: rightSpeed && chart.right ? { ...chart.right, displayScale: scale } : chart.right,
     series: chart.series.map((series) =>
-      series.unit === 'km/h' ? { ...series, displayScale: scale, unit: speedUnit(units) } : series,
+      series.unit === 'km/h'
+        ? { ...series, displayScale: scale, unit: speedUnit(distanceUnit) }
+        : series,
     ),
   }
 }

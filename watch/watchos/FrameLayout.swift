@@ -56,7 +56,7 @@ struct FrameLayout: View {
   var streetMapEnabled: Bool = true
   /// Street map opacity behind the gauges (phone: Settings > Watch > Map behind gauges).
   var mapGaugesPercent: Int = WatchMapGauges.defaultPercent
-  var unitSystem: String = "metric"
+  var distanceUnit: String = "km"
 
   /// Readouts retreat for any page.
   private var focus: Double { max(navFocus, awayFocus) }
@@ -70,7 +70,7 @@ struct FrameLayout: View {
       navColor: navColor, trailColor: trailColor, navArrowEnabled: navArrowEnabled,
       telemetryTrailEnabled: telemetryTrailEnabled, telemetryGroupEnabled: telemetryGroupEnabled,
       telemetryRouteEnabled: telemetryRouteEnabled, streetMapEnabled: streetMapEnabled,
-      mapGaugesPercent: mapGaugesPercent, unitSystem: unitSystem
+      mapGaugesPercent: mapGaugesPercent, distanceUnit: distanceUnit
     ) {
       gauges(blind: blind)
     } readouts: {
@@ -156,7 +156,7 @@ struct FrameLayout: View {
   /// not: full-size digits side by side instead of two numbers squeezed between two arcs.
   private func heroes(blind: Bool) -> some View {
     HStack(alignment: .firstTextBaseline, spacing: 0) {
-      hero(WatchGauge.hero(frame.speed.map { UnitPresentation.speedFromKmh($0, unitSystem) }, blind: blind), unit: UnitPresentation.speedUnit(unitSystem), color: speedColor)
+      hero(WatchGauge.hero(frame.speed.map { UnitPresentation.speedFromKmh($0, distanceUnit) }, blind: blind), unit: UnitPresentation.speedUnit(distanceUnit), color: speedColor)
       hero(WatchGauge.hero(frame.duty, blind: blind), unit: "%", color: dutyColor)
     }
     .padding(.top, HERO_TOP_INSET)

@@ -26,10 +26,10 @@ class AlertPresetPersistenceHostTest {
       val id = case.getString("name")
       val metric = case.getString("metric")
       val spec = case.getString("spec")
-      val units = case.optString("speedUnitSystem", "metric")
+      val units = case.optString("distanceUnit", "km")
       case.optJSONObject("refloat")?.let { dao.upsertBoardConfigValues(BoardConfigValuesEntity(id, "test", it.toString(), 1)) }
       case.optJSONObject("motor")?.let { dao.upsertMotorConfigValues(MotorConfigValuesEntity(id, 1, "test", it.toString(), 1)) }
-      dao.upsertAppSetting(AppSettingEntity("unitSystem", JSONObject.quote(units), 1))
+      dao.upsertAppSetting(AppSettingEntity("distanceUnit", JSONObject.quote(units), 1))
       val settings = mutableListOf(BoardSettingEntity(id, "topSpeedKmh", case.optDouble("topSpeedKmh", 50.0).toString(), 1))
       case.optJSONObject("batteryConfig")?.let { settings += BoardSettingEntity(id, "batteryConfig", it.toString(), 1) }
       dao.upsertBoardWithSettings(BoardEntity(id, id, null, 1), settings, emptyList(), emptyList())
@@ -62,8 +62,8 @@ class AlertPresetPersistenceHostTest {
   @Test fun previewsAreDeterministicAndImperialRangesStayWhole() {
     for (top in listOf(5.0, 10.0, 50.0)) {
       for (level in AlertPresetGenerator.activeLevels) {
-        val first = AlertPresetPersistence.preview("speed", "preset($level)", top, false, "imperial")
-        assertEquals(first, AlertPresetPersistence.preview("speed", "preset($level)", top, false, "imperial"))
+        val first = AlertPresetPersistence.preview("speed", "preset($level)", top, false, "mi")
+        assertEquals(first, AlertPresetPersistence.preview("speed", "preset($level)", top, false, "mi"))
         val rule = first.single()
         val start = rule.threshold / 1.609344
         val end = rule.thresholdMax!! / 1.609344
@@ -73,7 +73,7 @@ class AlertPresetPersistenceHostTest {
         assertTrue(rule.thresholdMax <= top)
       }
     }
-    for ((metric, spec, units) in listOf(Triple("unknown", "preset(normal)", "metric"), Triple("speed", "normal", "metric"), Triple("speed", "preset(normal)", "unknown"))) {
+    for ((metric, spec, units) in listOf(Triple("unknown", "preset(normal)", "km"), Triple("speed", "normal", "km"), Triple("speed", "preset(normal)", "unknown"))) {
       var rejected = false
       try { AlertPresetPersistence.preview(metric, spec, 50.0, false, units) } catch (_: IllegalArgumentException) { rejected = true }
       assertTrue(rejected)
@@ -89,8 +89,8 @@ class AlertPresetPersistenceHostTest {
     }
     dao.upsertAlertRule(presetRow("first", "speed", "preset(normal)"))
     val stored = listOf("first", "second").associateWith { dao.getAlertRules(it) }
-    for (units in listOf("imperial", "metric", "imperial")) {
-      dao.updateUnitSystem(units)
+    for (units in listOf("mi", "km", "mi")) {
+      dao.updateDistanceUnit(units)
       val expected = switch.getJSONArray(units)
       for (id in listOf("first", "second")) {
         // `second` has no row: the app default, normal, expands the same way.
@@ -171,7 +171,7 @@ class AlertPresetPersistenceHostTest {
     assertEquals("geiger:hard", expanded("duty").single().spec)
     val manual = AlertRuleEntity(board.id, "manual", "speed", 12.0, null, enabled = true, spec = "alert:warning", createdAt = 1)
     TuneAlertPersistence(dao).saveAlert(manual)
-    dao.upsertAppSetting(AppSettingEntity("unitSystem", "\"imperial\"", 1))
+    dao.upsertAppSetting(AppSettingEntity("distanceUnit", "\"mi\"", 1))
 
     dao.applyAlertPreset(board.id, "speed", "safe", null, null)
     assertEquals("preset(safe)", spec("speed"))
