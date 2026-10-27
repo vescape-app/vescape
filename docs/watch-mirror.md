@@ -554,7 +554,7 @@ Adding a mirrored setting:
 7. Wrist drawing: watchOS passes it `MirrorScreen` → `FrameLayout` → `WatchMapScene`; Wear OS reads
    `SettingsState`. A rule about what the map draws belongs in `WatchMapSceneState`, tested on both.
 
-Rider Units travels on this channel as `unitSystem`, defaulting to metric for missing or invalid
+Rider Units travels on this channel as `distanceUnit`, defaulting to `km` for missing or invalid
 values. Both wrists convert speed, navigation, radar, and accessibility readouts while frame values,
 route geometry, and gauge proportions stay metric.
 

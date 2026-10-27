@@ -1279,8 +1279,8 @@ class VescapeCoreModule : Module() {
     }
     // @parity /modules/vescape-core/ios/VescapeCoreModule.swift `previewAlertPreset`
     // @parity /modules/vescape-core/src/index.ts `previewAlertPreset`
-    Function("previewAlertPreset") { metric: String, spec: String, topSpeedKmh: Double, hasBatteryConfig: Boolean, speedUnitSystem: String ->
-      AlertPresetPersistence.preview(metric, spec, topSpeedKmh, hasBatteryConfig, speedUnitSystem).map { rule ->
+    Function("previewAlertPreset") { metric: String, spec: String, topSpeedKmh: Double, hasBatteryConfig: Boolean, distanceUnit: String ->
+      AlertPresetPersistence.preview(metric, spec, topSpeedKmh, hasBatteryConfig, distanceUnit).map { rule ->
         mapOf(
           "id" to rule.id,
           "controlId" to rule.controlId,
@@ -1475,10 +1475,14 @@ class VescapeCoreModule : Module() {
         RecordingStorageFailure.report("setting_save", "write_failed", error)
         throw error
       }
-      if (key == "unitSystem") {
+      if (key == "distanceUnit") {
         CoreForegroundService.reloadAlertRules(context.applicationContext)
-        val units = AppDataRepository.get(context.applicationContext).getTypedSettings().unitSystem
-        mainHandler.post { alertTestCoordinator?.unitSystem = units }
+        val units = AppDataRepository.get(context.applicationContext).getTypedSettings().distanceUnit
+        mainHandler.post { alertTestCoordinator?.distanceUnit = units }
+      }
+      if (key == "temperatureUnit") {
+        val unit = AppDataRepository.get(context.applicationContext).getTypedSettings().temperatureUnit
+        mainHandler.post { alertTestCoordinator?.temperatureUnit = unit }
       }
       if (key == "liveHistoryLimit") {
         CoreForegroundService.setLiveHistoryLimit(value as? Number)
@@ -1503,7 +1507,8 @@ class VescapeCoreModule : Module() {
         key == "voice" ||
         key == "voiceLevel" ||
         key == "weatherRainAlertLevel" ||
-        key == "weatherWindAlertLevel"
+        key == "weatherWindAlertLevel" ||
+        key == "temperatureUnit"
       ) {
         CoreForegroundService.reloadTelemetrySettings(context.applicationContext)
       }
@@ -1552,7 +1557,8 @@ class VescapeCoreModule : Module() {
     // A test sounds like the real rule: same effects pack, same output.
     feedback.setSoundSettings(settings)
     val coordinator = AlertCoordinator(feedback = { feedback }, vibrateSingles = false)
-    coordinator.unitSystem = settings.unitSystem
+    coordinator.distanceUnit = settings.distanceUnit
+    coordinator.temperatureUnit = settings.temperatureUnit
     coordinator.replaceRules(rules)
     alertTestFeedback = feedback
     alertTestCoordinator = coordinator

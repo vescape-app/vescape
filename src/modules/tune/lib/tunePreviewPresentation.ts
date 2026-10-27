@@ -3,7 +3,7 @@ import {
   lengthUnit,
   formatSpeedValue,
   speedUnit,
-  type UnitSystem,
+  type DistanceUnit,
 } from '@/helpers/units'
 
 export type HillsPresetId = 'flat' | 'large' | 'small' | 'pumptrack' | 'custom'
@@ -27,25 +27,29 @@ function compact(value: number): string {
   return String(Number(value.toFixed(1)))
 }
 
-export function hillsOptions(units: UnitSystem): { value: HillsPresetId; label: string }[] {
+export function hillsOptions(
+  distanceUnit: DistanceUnit,
+): { value: HillsPresetId; label: string }[] {
   return [
     ...Object.entries(HILLS_PRESETS).map(([value, preset]) => ({
       value: value as HillsPresetId,
       label:
         value === 'flat'
           ? preset.label
-          : `${preset.label} · ${compact(lengthFromMeters(preset.heightMeters, units))} ${lengthUnit(units)} · ${compact(lengthFromMeters(preset.spacingMeters, units))} ${lengthUnit(units)}`,
+          : `${preset.label} · ${compact(lengthFromMeters(preset.heightMeters, distanceUnit))} ${lengthUnit(distanceUnit)} · ${compact(lengthFromMeters(preset.spacingMeters, distanceUnit))} ${lengthUnit(distanceUnit)}`,
     })),
     { value: 'custom', label: 'Enter your own' },
   ]
 }
 
-export function movementOptions(units: UnitSystem): { value: MovementPresetId; label: string }[] {
+export function movementOptions(
+  distanceUnit: DistanceUnit,
+): { value: MovementPresetId; label: string }[] {
   return [
     { value: 'manual', label: 'Manual pitch slider' },
     ...Object.entries(MOVEMENT_RANGES).map(([value, preset]) => ({
       value: value as MovementPresetId,
-      label: `${preset.label} · ${formatSpeedValue(preset.lowKmh, units, 1)}–${formatSpeedValue(preset.highKmh, units, 1)} ${speedUnit(units)}`,
+      label: `${preset.label} · ${formatSpeedValue(preset.lowKmh, distanceUnit, 1)}–${formatSpeedValue(preset.highKmh, distanceUnit, 1)} ${speedUnit(distanceUnit)}`,
     })),
     { value: 'custom', label: 'Custom range' },
   ]

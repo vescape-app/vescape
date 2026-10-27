@@ -45,13 +45,13 @@ class WatchSettingsTest {
     @Test
     fun `settings updates and restart restore the phone preference with lenient defaults`() {
         for (invalid in listOf(null, "unknown", 1, true)) {
-            assertEquals("metric", WatchSettings.decode(mapOf(SETTING_UNIT_SYSTEM to invalid)).unitSystem)
+            assertEquals("km", WatchSettings.decode(mapOf(SETTING_DISTANCE_UNIT to invalid)).distanceUnit)
         }
-        assertEquals("metric", WatchSettings.decode(emptyMap()).unitSystem)
-        val retained = mapOf<String, Any?>(SETTING_UNIT_SYSTEM to "imperial", SETTING_NAV_ARROW to true)
-        assertEquals("imperial", WatchSettings.decode(retained).unitSystem)
+        assertEquals("km", WatchSettings.decode(emptyMap()).distanceUnit)
+        val retained = mapOf<String, Any?>(SETTING_DISTANCE_UNIT to "mi", SETTING_NAV_ARROW to true)
+        assertEquals("mi", WatchSettings.decode(retained).distanceUnit)
         assertEquals(WatchSettings.decode(retained), WatchSettings.decode(retained.toMap()))
-        assertEquals("metric", WatchSettings.decode(retained + (SETTING_UNIT_SYSTEM to "metric")).unitSystem)
+        assertEquals("km", WatchSettings.decode(retained + (SETTING_DISTANCE_UNIT to "km")).distanceUnit)
     }
 
     @Test

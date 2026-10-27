@@ -10,7 +10,7 @@ import { IconButton } from '@/components/base/IconButton'
 import { SectionHeader } from '@/components/base/SectionHeader'
 import { theme } from '@/constants/theme'
 
-import { useUnitSystem } from '@/hooks/useUnitSystem'
+import { useDistanceUnit } from '@/hooks/useDistanceUnit'
 import { LiveMetricCard } from '@/modules/board/components/LiveMetricCard'
 import {
   presentTelemetryMetric,
@@ -156,7 +156,7 @@ export function LiveTelemetryList({ headerStart }: LiveTelemetryListProps) {
   useLiveSeriesMetrics(SERIES_KEYS)
   const series = useLiveSeriesGroup(SERIES_KEYS)
   const windowMs = useLiveWindowMs()
-  const units = useUnitSystem()
+  const distanceUnit = useDistanceUnit()
   const configuredMinutes = useSettingsStore((s) => s.liveHistoryLimit)
   const rateHz = useRoundedPacketRate()
   // How far back the charts actually reach, which is short of the window early in a session.
@@ -167,9 +167,12 @@ export function LiveTelemetryList({ headerStart }: LiveTelemetryListProps) {
   const presented = useMemo(
     () =>
       CARDS.map((card) =>
-        card.lines.map((line) => ({ ...line, metric: presentTelemetryMetric(line.metric, units) })),
+        card.lines.map((line) => ({
+          ...line,
+          metric: presentTelemetryMetric(line.metric, distanceUnit),
+        })),
       ),
-    [units],
+    [distanceUnit],
   )
 
   return (

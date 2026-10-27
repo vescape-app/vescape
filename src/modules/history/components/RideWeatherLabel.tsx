@@ -2,7 +2,7 @@ import { StyleSheet, View } from 'react-native'
 import type { RideWeather } from 'vescape-core'
 
 import { Text } from '@/components/base/Text'
-import { useUnitSystem } from '@/hooks/useUnitSystem'
+import { useSettingsStore } from '@/modules/settings/store/settingsStore'
 import { formatRideTemperature } from '@/modules/history/lib/rideWeather'
 import { WeatherIcon } from '@/modules/weather/components/WeatherIcon'
 import { weatherIconColor } from '@/modules/weather/lib/weather'
@@ -16,8 +16,8 @@ interface RideWeatherLabelProps {
 
 /** Dominant condition icon and temperature of a ride, inline with its other ride text. */
 export function RideWeatherLabel({ weather, color, fontSize = 11 }: RideWeatherLabelProps) {
-  const units = useUnitSystem()
-  const temperature = formatRideTemperature(weather, units)
+  const temperatureUnit = useSettingsStore((state) => state.temperatureUnit)
+  const temperature = formatRideTemperature(weather, temperatureUnit)
   return (
     <View
       style={styles.row}

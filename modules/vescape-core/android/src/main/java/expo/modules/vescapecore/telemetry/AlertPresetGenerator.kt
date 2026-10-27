@@ -11,7 +11,7 @@ internal data class GeneratedPresetRule(val point: PresetPoint, val spec: String
 internal data class PresetInput(
   val topSpeedKmh: Double = 50.0,
   val hasBatteryConfig: Boolean = false,
-  val speedUnitSystem: String = "metric",
+  val distanceUnit: String = "km",
   /** Base of the metric's config-relative points; read only when its spec has `match=on`. */
   val configBase: Double? = null,
 )
@@ -123,7 +123,7 @@ internal object AlertPresetGenerator {
    */
   fun generate(metric: String, spec: AlertPresetSpec, input: PresetInput): List<GeneratedPresetRule> {
     require(metric in metrics) { "Unknown alert preset metric" }
-    require(input.speedUnitSystem in setOf("metric", "imperial")) { "Invalid unit system" }
+    require(input.distanceUnit in setOf("km", "mi")) { "Invalid distance unit" }
     val level = spec.level.takeIf { it in activeLevels } ?: return emptyList()
     val definition = definitions.getValue(metric)
     val geiger = spec.option("geiger")?.takeIf { value -> GeigerLevel.entries.any { it.id == value } }
@@ -187,7 +187,7 @@ internal object AlertPresetGenerator {
 
   private fun speedRange(point: PresetPoint, input: PresetInput): PresetPoint {
     val top = input.topSpeedKmh.takeIf { it.isFinite() && it > 0 } ?: 50.0
-    val unitScale = if (input.speedUnitSystem == "imperial") KMH_PER_MPH else 1.0
+    val unitScale = if (input.distanceUnit == "mi") KMH_PER_MPH else 1.0
     val ceiling = maxOf(1.0, minOf(floor(top / unitScale), floor(checkNotNull(point.thresholdMax) * top / unitScale + 0.5)))
     val start = maxOf(0.0, minOf(ceiling - 1, floor(point.threshold * top / unitScale + 0.5)))
     return PresetPoint(start * unitScale, ceiling * unitScale)

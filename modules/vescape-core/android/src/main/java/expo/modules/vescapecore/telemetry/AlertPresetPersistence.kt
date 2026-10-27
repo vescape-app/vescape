@@ -31,10 +31,10 @@ internal object AlertPresetPersistence {
     spec: String,
     topSpeedKmh: Double?,
     hasBatteryConfig: Boolean,
-    speedUnitSystem: String,
+    distanceUnit: String,
   ): List<AlertRuleEntity> {
     val parsed = requireNotNull(AlertPresetSpec.parse(spec)) { "Invalid preset spec" }
-    val input = PresetInput(topSpeedKmh ?: 50.0, hasBatteryConfig, speedUnitSystem)
+    val input = PresetInput(topSpeedKmh ?: 50.0, hasBatteryConfig, distanceUnit)
     return records("", metric, AlertPresetGenerator.generate(metric, parsed, input), createdAt = 0)
   }
 
@@ -56,7 +56,7 @@ internal object AlertPresetPersistence {
     if (board == null || board.deletedAt != null) return riderRules
     val presets = presetRows(rows)
     val settings = dao.getBoardSettings(boardId).associate { it.key to decodeSettingJson(it.valueJson) }
-    val units = validUnitSystem(dao.getAppSetting("unitSystem")?.let { decodeSettingJson(it.valueJson) }) ?: "metric"
+    val units = validDistanceUnit(dao.getAppSetting("distanceUnit")?.let { decodeSettingJson(it.valueJson) }) ?: "km"
     val expanded = metrics.flatMap { metric ->
       try {
         // A row this app cannot read expands to nothing rather than the default.
@@ -65,7 +65,7 @@ internal object AlertPresetPersistence {
         val input = PresetInput(
           topSpeedKmh = (settings["topSpeedKmh"] as? Number)?.toDouble() ?: 50.0,
           hasBatteryConfig = AlertPresetGenerator.validBattery(settings["batteryConfig"]),
-          speedUnitSystem = units,
+          distanceUnit = units,
           configBase = field?.let { resolveBase(dao, boardId, it) },
         )
         records(boardId, metric, AlertPresetGenerator.generate(metric, spec, input), presets[metric]?.createdAt ?: 0)

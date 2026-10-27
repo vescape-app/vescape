@@ -1343,13 +1343,13 @@ public class VescapeCoreModule: Module {
 
     // @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/VescapeCoreModule.kt `previewAlertPreset`
     // @parity /modules/vescape-core/src/index.ts `previewAlertPreset`
-    Function("previewAlertPreset") { (metric: String, spec: String, topSpeedKmh: Double, hasBatteryConfig: Bool, speedUnitSystem: String) -> [[String: Any?]] in
+    Function("previewAlertPreset") { (metric: String, spec: String, topSpeedKmh: Double, hasBatteryConfig: Bool, distanceUnit: String) -> [[String: Any?]] in
       try AlertPresetPersistence.preview(
         metric: metric,
         spec: spec,
         topSpeedKmh: topSpeedKmh,
         hasBatteryConfig: hasBatteryConfig,
-        speedUnitSystem: speedUnitSystem
+        distanceUnit: distanceUnit
       ).map { rule in
         [
           "id": rule.id,
@@ -1641,7 +1641,8 @@ public class VescapeCoreModule: Module {
         throw error
       }
       if [
-        "unitSystem",
+        "distanceUnit",
+        "temperatureUnit",
         "liveHistoryLimit",
         "movingSpeedThresholdKmh",
         "avgSpeedCutoffKmh",
@@ -1661,12 +1662,13 @@ public class VescapeCoreModule: Module {
       ].contains(key) {
         self.coordinator.reloadTelemetrySettings()
       }
-      if key == "unitSystem" { self.coordinator.reloadAlertRules() }
+      if key == "distanceUnit" { self.coordinator.reloadAlertRules() }
       MaintenanceRunner.shared.onSettingChanged(key)
       // The Watch Mirror is process scoped, not session scoped, so its settings reload cannot ride
       // on `reloadTelemetrySettings` — that one returns early with no Board Session.
       // @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/VescapeCoreModule.kt `updateSetting`
-      if key == "unitSystem" { self.alertTestCoordinator?.unitSystem = (try self.appData.getSettings())["unitSystem"] as? String ?? "metric" }
+      if key == "distanceUnit" { self.alertTestCoordinator?.distanceUnit = (try self.appData.getSettings())["distanceUnit"] as? String ?? "km" }
+      if key == "temperatureUnit" { self.alertTestCoordinator?.temperatureUnit = (try self.appData.getSettings())["temperatureUnit"] as? String ?? "celsius" }
       if watchSourceSettingKeys.contains(key) {
         self.coordinator.reloadWatchSettings()
       }
@@ -1686,7 +1688,8 @@ public class VescapeCoreModule: Module {
     // A test sounds like the real rule: same effects pack.
     player.applySoundSettings(settings)
     let coordinator = AlertCoordinator(player: player, vibrateSingles: false)
-    coordinator.unitSystem = settings["unitSystem"] as? String ?? "metric"
+    coordinator.distanceUnit = settings["distanceUnit"] as? String ?? "km"
+    coordinator.temperatureUnit = settings["temperatureUnit"] as? String ?? "celsius"
     coordinator.replaceRules(rules)
     alertTestPlayer = player
     alertTestCoordinator = coordinator

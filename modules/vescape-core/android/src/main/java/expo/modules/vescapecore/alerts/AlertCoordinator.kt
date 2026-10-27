@@ -10,7 +10,8 @@ internal class AlertCoordinator(
     private val vibrateSingles: Boolean = true,
 ) {
     // @parity /modules/vescape-core/ios/alerts/AlertCoordinator.swift
-    var unitSystem: String = "metric"
+    var distanceUnit: String = "km"
+    var temperatureUnit: String = "celsius"
     private val engine = AlertEngine()
     private var rules: List<AlertRuleEntity> = emptyList()
     private var activeGeigerRuleIds: Set<String> = emptySet()
@@ -98,12 +99,12 @@ internal class AlertCoordinator(
                     // A repeat speaks where the metric is now, not the threshold it crossed.
                     val spoken = if (alert.controlId == "battery") batteryPercent ?: alert.threshold else alert.value
                     feedback().speakVoice(
-                        voiceAnnouncement(voice, alert.controlId, spoken, batteryPercent != null, unitSystem),
+                        voiceAnnouncement(voice, alert.controlId, spoken, batteryPercent != null, distanceUnit, temperatureUnit),
                     )
                     return@let
                 }
                 val tts = parseTtsAlertSound(alert.spec) ?: return@let
-                val text = renderAlertMessageTemplate(tts.text, alert, batteryPercent, onDiagnostic, unitSystem)
+                val text = renderAlertMessageTemplate(tts.text, alert, batteryPercent, onDiagnostic, distanceUnit)
                 if (text.isNotEmpty()) feedback().speakAfterSeverity(tts.severity, text)
             }
             for (alert in single) {

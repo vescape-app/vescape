@@ -571,9 +571,9 @@ units, and board config at that moment; `getAlertRules` returns the expanded rul
 (`preset:<metric>:<index>`), and `upsertAlertRule`, `setAlertRuleEnabled`, and `deleteAlertRule`
 reject preset ids. JS never expands a preset.
 
-`previewAlertPreset(metric, spec, { topSpeedKmh, hasBatteryConfig, speedUnitSystem? })` returns
+`previewAlertPreset(metric, spec, { topSpeedKmh, hasBatteryConfig, distanceUnit? })` returns
 `AlertTestRule[]` synchronously for an unsaved add-board draft spec such as `preset(normal)`. It uses
 the same native expander as saved rows, with explicit draft inputs and no database access, events,
-or alert-engine changes. Units default to metric; `off` returns no rules. The wizard has no Board
+or alert-engine changes. Units default to `km`; `off` returns no rules. The wizard has no Board
 configuration to match, so drafts carry no `match=on`. JS uses these snapshots for markers,
 summaries, sound previews, and copying a preset into editable draft rules.

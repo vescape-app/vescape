@@ -240,7 +240,7 @@ struct MirrorScreen: View {
         forecast: freshWeather,
         onFetchFailed: { link.recordRadarFailure() },
         riderColor: Palette.rider(link.settings.riderColor) ?? Palette.speed,
-        unitSystem: link.settings.unitSystem
+        distanceUnit: link.settings.distanceUnit
       )
     case .weather:
       WeatherScreen(forecast: freshWeather, everReceived: link.weather != nil)
@@ -255,7 +255,7 @@ struct MirrorScreen: View {
         GroupRidePage(
           group: groupRide,
           settled: groupPageSettled,
-          unitSystem: link.settings.unitSystem,
+          distanceUnit: link.settings.distanceUnit,
           onPageBack: { withAnimation { vertical = .nav } }
         )
       } else {
@@ -393,7 +393,7 @@ struct MirrorScreen: View {
       telemetryRouteEnabled: link.settings.telemetryRouteEnabled,
       streetMapEnabled: link.settings.streetMapEnabled,
       mapGaugesPercent: link.settings.mapGaugesPercent,
-      unitSystem: link.settings.unitSystem
+      distanceUnit: link.settings.distanceUnit
     )
   }
 

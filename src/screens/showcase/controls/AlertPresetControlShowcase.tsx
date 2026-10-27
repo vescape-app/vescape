@@ -2,7 +2,7 @@ import { resolvedAlertRules } from '@/modules/alerts/lib/resolvedAlertRules'
 import { parseGeigerAlertSound } from '@/modules/alerts/lib/alertSoundString'
 import { toTestRule } from '@/modules/alerts/lib/alertTest'
 import type { DraftAlertRule } from '@/modules/alerts/lib/customAlertRules'
-import { useUnitSystem } from '@/hooks/useUnitSystem'
+import { useDistanceUnit } from '@/hooks/useDistanceUnit'
 import { useEffect, useMemo, useState } from 'react'
 import {
   cancelAnimation,
@@ -146,7 +146,7 @@ const SHOWCASE_CONFIG_BASES_OFF = {
 }
 
 export function AlertPresetControlShowcase() {
-  const units = useUnitSystem()
+  const distanceUnit = useDistanceUnit()
   const [metric, setMetric] = useState<AlertPresetMetric>('speed')
   const [level, setLevel] = useState<AlertPresetLevel>('normal')
   const [live, setLive] = useState(false)
@@ -183,10 +183,10 @@ export function AlertPresetControlShowcase() {
     return draftAlertPreview(
       metric,
       level,
-      { speedUnitSystem: units, topSpeedKmh: 50, hasBatteryConfig: true },
+      { distanceUnit: distanceUnit, topSpeedKmh: 50, hasBatteryConfig: true },
       manual,
     )
-  }, [level, metric, units, riderRules, match, configBases])
+  }, [level, metric, distanceUnit, riderRules, match, configBases])
 
   const presetIds = useMemo(
     () => new Set(preview.presetRules.map((rule) => rule.id)),

@@ -20,7 +20,7 @@ struct WatchMapScene<Gauges: View, Readouts: View>: View {
   let telemetryRouteEnabled: Bool
   let streetMapEnabled: Bool
   let mapGaugesPercent: Int
-  let unitSystem: String
+  let distanceUnit: String
   @ViewBuilder var gauges: () -> Gauges
   @ViewBuilder var readouts: () -> Readouts
 
@@ -70,7 +70,7 @@ struct WatchMapScene<Gauges: View, Readouts: View>: View {
           mapView: mapView,
           mapMoving: mapMoving,
           focus: navFocus,
-          unitSystem: unitSystem
+          distanceUnit: distanceUnit
         )
         .opacity(navStackAlpha * scene.groupAlpha(navFocus: navFocus))
       }
@@ -92,7 +92,7 @@ struct WatchMapScene<Gauges: View, Readouts: View>: View {
         NavPointer(
           bearingDeg: navigation.bearingDeg,
           distanceM: navigation.distanceM,
-          unitSystem: unitSystem,
+          distanceUnit: distanceUnit,
           focus: navFocus,
           stackAlpha: navStackAlpha,
           arrowEnabled: navArrowEnabled,
@@ -114,7 +114,7 @@ struct WatchMapScene<Gauges: View, Readouts: View>: View {
       // Group Ride edge triangles: over the rim gauges. Hidden in ambient.
       if let groupRide, scene.drawMap {
         GroupRideEdgeLayer(
-          group: groupRide, mapView: mapView, mapMoving: mapMoving, focus: navFocus, unitSystem: unitSystem
+          group: groupRide, mapView: mapView, mapMoving: mapMoving, focus: navFocus, distanceUnit: distanceUnit
         )
           .opacity(navStackAlpha * scene.groupAlpha(navFocus: navFocus))
       }

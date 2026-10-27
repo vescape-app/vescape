@@ -14,8 +14,8 @@ const RANGE_CONFIGS = {
   small: { min: 0, max: 10, step: 0.5 },
   medium: { min: 0, max: 100, step: 1 },
   large: { min: -50, max: 50, step: 5 },
-  imperial: { min: 0, max: 50 / 1.609344, step: 1 },
-  signedImperial: { min: -50 / 1.609344, max: 50 / 1.609344, step: 1 },
+  mph: { min: 0, max: 50 / 1.609344, step: 1 },
+  signedMph: { min: -50 / 1.609344, max: 50 / 1.609344, step: 1 },
 } as const
 
 type RangeKey = keyof typeof RANGE_CONFIGS
@@ -34,7 +34,7 @@ export function TuneDialShowcase() {
       return
     }
     setValue((prev) =>
-      key === 'imperial' || key === 'signedImperial'
+      key === 'mph' || key === 'signedMph'
         ? 24.854847689493358
         : Math.max(c.min, Math.min(c.max, prev)),
     )
@@ -58,15 +58,15 @@ export function TuneDialShowcase() {
       <TuneDial
         value={value}
         previousValue={
-          range === 'imperial' || range === 'signedImperial'
+          range === 'mph' || range === 'signedMph'
             ? 36 / 1.609344
             : config.min + (config.max - config.min) * 0.3
         }
         min={config.min}
         max={config.max}
         step={config.step}
-        displayDecimals={range === 'imperial' || range === 'signedImperial' ? 1 : undefined}
-        unit={range === 'imperial' || range === 'signedImperial' ? 'mph' : undefined}
+        displayDecimals={range === 'mph' || range === 'signedMph' ? 1 : undefined}
+        unit={range === 'mph' || range === 'signedMph' ? 'mph' : undefined}
         onValueChange={setValue}
       />
     </ShowcaseCard>

@@ -1286,7 +1286,8 @@ internal final class BoardSessionController: VescGattListener {
     }
     boardWarningsEnabled = settings["boardWarningsEnabled"] as? Bool ?? true
     weatherAlerts.settings = WeatherAlertSettings(settings: settings)
-    alertCoordinator.unitSystem = settings["unitSystem"] as? String ?? "metric"
+    alertCoordinator.distanceUnit = settings["distanceUnit"] as? String ?? "km"
+    alertCoordinator.temperatureUnit = settings["temperatureUnit"] as? String ?? "celsius"
     // Disabled→enabled with an already-trusted link: link integrity won't transition again, so
     // schedule the config-safety read here.
     if !warningsWereEnabled, boardWarningsEnabled, lastEmittedLinkIntegrity == .trusted {
@@ -1313,7 +1314,11 @@ internal final class BoardSessionController: VescGattListener {
       let settings = try appData.getSettings()
       // Without a Board Session nothing else keeps the player on the selected pack.
       alertAudioPlayer.applySoundSettings(settings)
-      alertAudioPlayer.preview(spec: spec, unitSystem: settings["unitSystem"] as? String ?? "metric")
+      alertAudioPlayer.preview(
+        spec: spec,
+        distanceUnit: settings["distanceUnit"] as? String ?? "km",
+        temperatureUnit: settings["temperatureUnit"] as? String ?? "celsius"
+      )
     } catch { RecordingStorageFailure.reportRead(operation: "alert_preview_settings", error: error) }
   }
 
@@ -1585,7 +1590,8 @@ internal final class BoardSessionController: VescGattListener {
     boardWarningsEnabled = sessionSettings["boardWarningsEnabled"] as? Bool ?? true
     weatherAlerts.settings = WeatherAlertSettings(settings: sessionSettings)
     connectionSoundsEnabled = sessionSettings["connectionSoundsEnabled"] as? Bool ?? true
-    alertCoordinator.unitSystem = sessionSettings["unitSystem"] as? String ?? "metric"
+    alertCoordinator.distanceUnit = sessionSettings["distanceUnit"] as? String ?? "km"
+    alertCoordinator.temperatureUnit = sessionSettings["temperatureUnit"] as? String ?? "celsius"
     alertAudioPlayer.applySoundSettings(sessionSettings)
     // Engine and session up for the whole ride, before the first alert can fire; `goIdle()` at its end.
     alertAudioPlayer.wake()

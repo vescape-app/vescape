@@ -13,11 +13,11 @@
       ]
     },
     {
-      "name": "normal-speed-imperial",
+      "name": "normal-speed-mi",
       "metric": "speed",
       "spec": "preset(normal)",
       "topSpeedKmh": 50,
-      "speedUnitSystem": "imperial",
+      "distanceUnit": "mi",
       "expected": [
         {
           "threshold": 35.405568,
@@ -26,11 +26,11 @@
       ]
     },
     {
-      "name": "low-speed-imperial",
+      "name": "low-speed-mi",
       "metric": "speed",
       "spec": "preset(minimal)",
       "topSpeedKmh": 5,
-      "speedUnitSystem": "imperial",
+      "distanceUnit": "mi",
       "expected": [
         {
           "threshold": 3.218688,
@@ -292,7 +292,7 @@
   ],
   "unitSwitch": {
     "topSpeedKmh": 50,
-    "metric": [36, 45],
-    "imperial": [35.405568, 45.061632]
+    "km": [36, 45],
+    "mi": [35.405568, 45.061632]
   }
 }

@@ -1,10 +1,10 @@
 import { useMemo } from 'react'
-import { useUnitSystem } from '@/hooks/useUnitSystem'
+import { useDistanceUnit } from '@/hooks/useDistanceUnit'
 import { riderStats } from '@/modules/group-ride/lib/riderStats'
 import type { RosterRider } from '@/modules/group-ride/lib/roster'
 
 /** Format one roster rider with the current display units. */
 export function useRiderStats(presence: RosterRider['presence']) {
-  const units = useUnitSystem()
-  return useMemo(() => riderStats(presence, units), [presence, units])
+  const distanceUnit = useDistanceUnit()
+  return useMemo(() => riderStats(presence, distanceUnit), [presence, distanceUnit])
 }

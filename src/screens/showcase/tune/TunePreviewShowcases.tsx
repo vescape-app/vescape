@@ -1,5 +1,5 @@
-import { UnitSystemContext } from '@/hooks/useUnitSystem'
-import type { UnitSystem } from '@/helpers/units'
+import { DistanceUnitContext } from '@/hooks/useDistanceUnit'
+import type { DistanceUnit } from '@/helpers/units'
 import { StyleSheet, View } from 'react-native'
 import { useMemo, useState } from 'react'
 import { useSharedValue } from 'react-native-reanimated'
@@ -122,7 +122,7 @@ export function BasicSliderCellShowcase() {
 }
 
 export function TunePreviewShowcase() {
-  const [units, setUnits] = useState<UnitSystem>('metric')
+  const [distanceUnit, setUnits] = useState<DistanceUnit>('km')
   const pitchInputDegrees = useSharedValue(0)
   const pitchInputActive = useSharedValue(false)
   const previewSpeedKmh = useSharedValue(15)
@@ -181,7 +181,7 @@ export function TunePreviewShowcase() {
   }
 
   return (
-    <UnitSystemContext value={units}>
+    <DistanceUnitContext value={distanceUnit}>
       <ShowcaseCard
         name="Tune Preview"
         controls={
@@ -194,9 +194,9 @@ export function TunePreviewShowcase() {
             />
             <ChipRow
               label="units"
-              options={['metric', 'imperial']}
-              selected={units}
-              onSelect={(next) => setUnits(next as UnitSystem)}
+              options={['km', 'mi']}
+              selected={distanceUnit}
+              onSelect={(next) => setUnits(next as DistanceUnit)}
             />
             <ValueRow label="pitch input" value="hold and drag" />
           </>
@@ -226,7 +226,7 @@ export function TunePreviewShowcase() {
           groundToBoardAngleDegrees={groundToBoardAngleDegrees}
         />
       </ShowcaseCard>
-    </UnitSystemContext>
+    </DistanceUnitContext>
   )
 }
 

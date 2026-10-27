@@ -1536,6 +1536,20 @@ export interface LegalPolicyReference {
  * @parity /modules/vescape-core/ios/weather/WeatherAlerts.swift `weatherAlertLevelSettings`
  */
 export type WeatherAlertLevelSetting = 'off' | WeatherAlertLevel
+
+/**
+ * Speed and distance display unit: `km` shows km/h, km, and m; `mi` shows mph, mi, and ft.
+ * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/PersistenceDefaults.kt `validDistanceUnit`
+ * @parity /modules/vescape-core/ios/telemetry/PersistenceDefaults.swift `validDistanceUnit`
+ */
+export type DistanceUnit = 'km' | 'mi'
+
+/**
+ * Stored Temperature Unit setting.
+ * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/PersistenceDefaults.kt `validTemperatureUnit`
+ * @parity /modules/vescape-core/ios/telemetry/PersistenceDefaults.swift `validTemperatureUnit`
+ */
+export type TemperatureUnit = 'celsius' | 'fahrenheit'
 export type WeatherAlertLevel = 'sensitive' | 'normal' | 'extreme'
 
 /**
@@ -1564,7 +1578,9 @@ export interface AppSettings {
    */
   rideSplitGapMinutes: number
   /** App appearance source. `sun` resolves from local daylight at the last GPS fix. */
-  unitSystem: 'metric' | 'imperial'
+  distanceUnit: DistanceUnit
+  /** Temperature display and spoken-alert unit; independent of `distanceUnit`. */
+  temperatureUnit: TemperatureUnit
   themeMode: 'system' | 'light' | 'dark' | 'sun'
   mapStyleKey: 'onedark' | 'outdoors' | 'satellite' | 'mapy'
   /** Use the custom satellite overlay style instead of the stock satellite style. */
@@ -2953,7 +2969,7 @@ type VescapeCoreNativeModule = NativeEventEmitter<VescapeCoreEvents> & {
     spec: string,
     topSpeedKmh: number,
     hasBatteryConfig: boolean,
-    speedUnitSystem: 'metric' | 'imperial',
+    distanceUnit: DistanceUnit,
   ): AlertTestRule[]
   applyAlertPreset(
     boardId: string,
@@ -4193,7 +4209,7 @@ export function previewAlertPreset(
   options: {
     topSpeedKmh: number
     hasBatteryConfig: boolean
-    speedUnitSystem?: 'metric' | 'imperial'
+    distanceUnit?: DistanceUnit
   },
 ): AlertTestRule[] {
   return native.previewAlertPreset(
@@ -4201,7 +4217,7 @@ export function previewAlertPreset(
     spec,
     options.topSpeedKmh,
     options.hasBatteryConfig,
-    options.speedUnitSystem ?? 'metric',
+    options.distanceUnit ?? 'km',
   )
 }
 

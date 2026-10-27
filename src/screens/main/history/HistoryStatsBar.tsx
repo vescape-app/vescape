@@ -26,8 +26,14 @@ import { useRideFormat } from '@/modules/history/hooks/useRideFormat'
 import { rideDurationMs } from '@/modules/history/lib/sessions'
 import { interaction, theme, type ThemeColor } from '@/constants/theme'
 import { DASH } from '@/helpers/format'
-import { speedUnit as speedUnitFor, temperatureUnit, type UnitSystem } from '@/helpers/units'
-import { useUnitSystem } from '@/hooks/useUnitSystem'
+import {
+  speedUnit as speedUnitFor,
+  temperatureSymbol,
+  type TemperatureUnit,
+  type DistanceUnit,
+} from '@/helpers/units'
+import { useDistanceUnit } from '@/hooks/useDistanceUnit'
+import { useSettingsStore } from '@/modules/settings/store/settingsStore'
 import { rideGustValue, rideTemperatureValue } from '@/modules/history/lib/rideWeather'
 import { weatherIconComponent } from '@/modules/weather/components/WeatherIcon'
 import { weatherIconColor } from '@/modules/weather/lib/weather'
@@ -141,15 +147,19 @@ function chunk<T>(items: T[], size: number): T[][] {
 }
 
 /** Ride weather, when stored observations cover the ride: condition + temperature, gusts, rain. */
-function weatherStats(weather: RideWeather | null, units: UnitSystem): StatItem[] {
+function weatherStats(
+  weather: RideWeather | null,
+  distanceUnit: DistanceUnit,
+  temperatureUnit: TemperatureUnit,
+): StatItem[] {
   if (!weather) return []
-  const gust = rideGustValue(weather, units)
+  const gust = rideGustValue(weather, distanceUnit)
   const stats: StatItem[] = [
     {
       key: 'weather',
       label: 'Weather',
-      value: rideTemperatureValue(weather, units),
-      unit: temperatureUnit(units),
+      value: rideTemperatureValue(weather, temperatureUnit),
+      unit: temperatureSymbol(temperatureUnit),
       icon: weatherIconComponent(weather.icon),
       accent: weatherIconColor(weather.icon),
     },
@@ -159,7 +169,7 @@ function weatherStats(weather: RideWeather | null, units: UnitSystem): StatItem[
       key: 'gust',
       label: 'Gusts',
       value: String(gust),
-      unit: speedUnitFor(units),
+      unit: speedUnitFor(distanceUnit),
       icon: WindIcon,
       accent: theme.weather.cloud,
     })
@@ -199,7 +209,8 @@ function withWeather(stats: StatItem[], weather: StatItem[]): StatItem[] {
 function useSessionStats(session: HistorySession): StatItem[] {
   const { formatSpeed, speedUnit } = useFormat()
   const { formatHistoryDistance } = useRideFormat()
-  const units = useUnitSystem()
+  const distanceUnit = useDistanceUnit()
+  const temperatureUnit = useSettingsStore((state) => state.temperatureUnit)
   return useMemo(
     () =>
       withWeather(
@@ -278,9 +289,9 @@ function useSessionStats(session: HistorySession): StatItem[] {
             accent: theme.palette.cyan.color,
           },
         ],
-        weatherStats(session.weather, units),
+        weatherStats(session.weather, distanceUnit, temperatureUnit),
       ),
-    [session, formatHistoryDistance, formatSpeed, speedUnit, units],
+    [session, formatHistoryDistance, formatSpeed, speedUnit, distanceUnit, temperatureUnit],
   )
 }
 

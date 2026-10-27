@@ -518,11 +518,11 @@ try boardPersistence.upsertBoard(
 try boardPersistence.saveSetting(PersistedAppSetting(key: settingValues["key"] as! String, valueJson: settingValues["updatedValueJson"] as! String, updatedAt: contractCreatedAt + 1))
 let unitFixture = boardFixture["units"] as! [String: Any]
 let metricDefault = unitFixture["default"] as! String
-try require(validUnitSystem(nil) ?? "metric" == metricDefault, "units metric default")
+try require(validDistanceUnit(nil) ?? "km" == metricDefault, "units metric default")
 for invalid in unitFixture["invalid"] as! [Any] {
-  try require(validUnitSystem(invalid) == nil, "invalid units accepted")
+  try require(validDistanceUnit(invalid) == nil, "invalid units accepted")
 }
-try boardPersistence.saveSetting(.init(key: "unitSystem", valueJson: "\"\(validUnitSystem(unitFixture["selected"])!)\"", updatedAt: contractCreatedAt))
+try boardPersistence.saveSetting(.init(key: "distanceUnit", valueJson: "\"\(validDistanceUnit(unitFixture["selected"])!)\"", updatedAt: contractCreatedAt))
 let trailFixture = boardFixture["telemetryTrail"] as! [String: Any]
 let trailKey = trailFixture["key"] as! String
 let trailDefault = trailFixture["default"] as! Bool
@@ -535,11 +535,11 @@ try require(reopenedTrail[trailKey] as? Bool == trailFixture["selected"] as? Boo
 try boardPersistence.deleteSetting(trailKey)
 let defaultTrail = try boardPersistence.settings(defaults: [trailKey: trailDefault])
 try require(defaultTrail[trailKey] as? Bool == trailDefault, "watch trail returns to enabled default")
-let reopenedUnits = try boardPersistence.settings(defaults: ["unitSystem": metricDefault])
-try require(reopenedUnits["unitSystem"] as? String == unitFixture["selected"] as? String, "units survive reopen")
-try boardPersistence.deleteSetting("unitSystem")
-let defaultUnits = try boardPersistence.settings(defaults: ["unitSystem": metricDefault])
-try require(defaultUnits["unitSystem"] as? String == metricDefault, "units return to metric default")
+let reopenedUnits = try boardPersistence.settings(defaults: ["distanceUnit": metricDefault])
+try require(reopenedUnits["distanceUnit"] as? String == unitFixture["selected"] as? String, "units survive reopen")
+try boardPersistence.deleteSetting("distanceUnit")
+let defaultUnits = try boardPersistence.settings(defaults: ["distanceUnit": metricDefault])
+try require(defaultUnits["distanceUnit"] as? String == metricDefault, "units return to metric default")
 let reopenedBoards = try boardPersistence.liveBoards()
 let reopenedBoardSettings = try boardPersistence.boardSettings(ids: [contractBoardId])
 let reopenedSettings = try boardPersistence.settings()

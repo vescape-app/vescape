@@ -122,12 +122,12 @@ final class BoardSettingsPersistence {
     return merged
   }
 
-  /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/TelemetryDao.kt `updateUnitSystem`
-  func updateUnitSystem(_ units: String) throws {
-    precondition(["metric", "imperial"].contains(units))
+  /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/TelemetryDao.kt `updateDistanceUnit`
+  func updateDistanceUnit(_ units: String) throws {
+    precondition(["km", "mi"].contains(units))
     try writer.write { db in
       let json = String(decoding: try JSONSerialization.data(withJSONObject: units, options: [.fragmentsAllowed]), as: UTF8.self)
-      try PersistedAppSetting(key: "unitSystem", valueJson: json, updatedAt: Int64(Date().timeIntervalSince1970 * 1000)).save(db)
+      try PersistedAppSetting(key: "distanceUnit", valueJson: json, updatedAt: Int64(Date().timeIntervalSince1970 * 1000)).save(db)
     }
   }
 

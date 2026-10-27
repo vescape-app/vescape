@@ -125,8 +125,8 @@ private class GroupRideLabels(private val measurer: TextMeasurer) {
 
     private fun DrawScope.measure(rider: GroupRideFrameRider): Label {
         val style = WatchTypography.mono(TextStyle(fontSize = GROUP_LABEL_FONT))
-        val unitSystem = SettingsState.settings.value.unitSystem
-        val distance = measurer.measure(groupRideDistanceLabel(rider.distanceM, unitSystem), style)
+        val distanceUnit = SettingsState.settings.value.distanceUnit
+        val distance = measurer.measure(groupRideDistanceLabel(rider.distanceM, distanceUnit), style)
         val flag = groupRideLabelFlag(rider)
         val heatColor = (flag as? WatchGroupRideStatus.Hot)?.let { telemetryLevelColor(it.level) }
         val battery = (flag as? WatchGroupRideStatus.Battery)?.let { low ->

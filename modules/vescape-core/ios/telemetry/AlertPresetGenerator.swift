@@ -18,7 +18,7 @@ struct GeneratedPresetRule {
 struct PresetInput {
   var topSpeedKmh: Double = 50
   var hasBatteryConfig = false
-  var speedUnitSystem = "metric"
+  var distanceUnit = "km"
   /// Base of the metric's config-relative points; read only when its spec has `match=on`.
   var configBase: Double? = nil
 }
@@ -118,7 +118,7 @@ final class AlertPresetGenerator {
   /// The rules `spec` stands for. `off`, an unknown level (from a newer app), or a guard failure
   /// expands to none. `match=on` gives config-relative points; `geiger=` replaces the tick level.
   static func generate(metric: String, spec: AlertPresetSpec, input: PresetInput) throws -> [GeneratedPresetRule] {
-    guard metrics.contains(metric), ["metric", "imperial"].contains(input.speedUnitSystem) else { throw InvalidPreset.invalidIntent }
+    guard metrics.contains(metric), ["km", "mi"].contains(input.distanceUnit) else { throw InvalidPreset.invalidIntent }
     guard activeLevels.contains(spec.level) else { return [] }
     let catalog = try catalog.get()
     guard let definition = catalog.metrics[metric], let defaultSound = definition.spec else { throw InvalidPreset.invalidDefinition }
@@ -179,7 +179,7 @@ final class AlertPresetGenerator {
 
   private static func speedRange(_ point: PresetPoint, input: PresetInput) -> PresetPoint {
     let top = input.topSpeedKmh.isFinite && input.topSpeedKmh > 0 ? input.topSpeedKmh : 50
-    let unitScale = input.speedUnitSystem == "imperial" ? kmhPerMph : 1.0
+    let unitScale = input.distanceUnit == "mi" ? kmhPerMph : 1.0
     let ceiling = max(1, min(floor(top / unitScale), floor(point.thresholdMax! * top / unitScale + 0.5)))
     let start = max(0, min(ceiling - 1, floor(point.threshold * top / unitScale + 0.5)))
     return PresetPoint(threshold: start * unitScale, thresholdMax: ceiling * unitScale)

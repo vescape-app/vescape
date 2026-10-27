@@ -456,7 +456,8 @@ class AppDataRepository private constructor(private val context: Context) {
       movingSpeedThresholdKmh = req("movingSpeedThresholdKmh", 3.0) { (it as? Number)?.toDouble() },
       freeSpinMaxSpeedDeltaKmh = req("freeSpinMaxSpeedDeltaKmh", DEFAULT_FREE_SPIN_MAX_SPEED_DELTA_KMH) { (it as? Number)?.toDouble() },
       freeSpinStationaryBoardCapKmh = req("freeSpinStationaryBoardCapKmh", DEFAULT_FREE_SPIN_STATIONARY_BOARD_CAP_KMH) { (it as? Number)?.toDouble() },
-      unitSystem = req("unitSystem", "metric", ::validUnitSystem),
+      distanceUnit = req("distanceUnit", "km", ::validDistanceUnit),
+      temperatureUnit = req("temperatureUnit", "celsius", ::validTemperatureUnit),
       themeMode = req("themeMode", "system", ::validThemeMode),
       mapStyleKey = req("mapStyleKey", "onedark", ::validMapStyleKey),
       satelliteOverlayEnabled = req("satelliteOverlayEnabled", true) { it as? Boolean },
@@ -551,7 +552,8 @@ class AppDataRepository private constructor(private val context: Context) {
         ((value as? Number)?.toDouble() ?: return@withContext).coerceAtLeast(0.0)
       "freeSpinMaxSpeedDeltaKmh", "freeSpinStationaryBoardCapKmh" ->
         ((value as? Number)?.toDouble() ?: return@withContext).coerceAtLeast(0.0)
-      "unitSystem" -> requireNotNull(validUnitSystem(value)) { "Invalid unitSystem" }
+      "distanceUnit" -> requireNotNull(validDistanceUnit(value)) { "Invalid distanceUnit" }
+      "temperatureUnit" -> validTemperatureUnit(value) ?: return@withContext
       "themeMode" -> validThemeMode(value) ?: return@withContext
       "mapStyleKey" ->
         validMapStyleKey(value) ?: return@withContext
@@ -629,7 +631,8 @@ class AppDataRepository private constructor(private val context: Context) {
         "movingSpeedThresholdKmh" -> d.movingSpeedThresholdKmh
         "freeSpinMaxSpeedDeltaKmh" -> d.freeSpinMaxSpeedDeltaKmh
         "freeSpinStationaryBoardCapKmh" -> d.freeSpinStationaryBoardCapKmh
-        "unitSystem" -> d.unitSystem
+        "distanceUnit" -> d.distanceUnit
+        "temperatureUnit" -> d.temperatureUnit
         "themeMode" -> d.themeMode
         "mapStyleKey" -> d.mapStyleKey
         "satelliteOverlayEnabled" -> d.satelliteOverlayEnabled
@@ -676,8 +679,8 @@ class AppDataRepository private constructor(private val context: Context) {
         else -> null
       }
     }
-    if (normalizedKey == "unitSystem") {
-      dao.updateUnitSystem(coerced as String)
+    if (normalizedKey == "distanceUnit") {
+      dao.updateDistanceUnit(coerced as String)
       notifyDataChanged(AppDataScope.ALERTS)
     } else if (coerced == default) {
       dao.deleteAppSetting(normalizedKey)
@@ -1014,7 +1017,8 @@ fun AppSettings.toMap(): Map<String, Any?> = mapOf(
   "movingSpeedThresholdKmh" to movingSpeedThresholdKmh,
   "freeSpinMaxSpeedDeltaKmh" to freeSpinMaxSpeedDeltaKmh,
   "freeSpinStationaryBoardCapKmh" to freeSpinStationaryBoardCapKmh,
-  "unitSystem" to unitSystem,
+  "distanceUnit" to distanceUnit,
+  "temperatureUnit" to temperatureUnit,
   "themeMode" to themeMode,
   "mapStyleKey" to mapStyleKey,
   "satelliteOverlayEnabled" to satelliteOverlayEnabled,

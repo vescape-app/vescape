@@ -28,8 +28,8 @@ import {
 import { routes } from '@/navigation/routes'
 import { theme } from '@/constants/theme'
 import { DASH, formatBytes } from '@/helpers/format'
+import { speedUnit, temperatureSymbol } from '@/helpers/units'
 import { IconButton } from '@/components/base/IconButton'
-import { Select } from '@/components/forms/Select'
 import { SettingsCard } from '@/components/settings/SettingsCard'
 import { SettingsRow } from '@/components/settings/SettingsRow'
 import { SettingsSectionTitle } from '@/components/settings/SettingsSectionTitle'
@@ -45,8 +45,8 @@ import { useResolvedNeutralColors } from '@/hooks/useTheme'
 const appVersion = Constants.expoConfig?.version ?? DASH
 
 export default function SettingsScreen() {
-  const unitSystem = useSettingsStore((state) => state.unitSystem)
-  const setSetting = useSettingsStore((state) => state.set)
+  const distanceUnit = useSettingsStore((state) => state.distanceUnit)
+  const temperatureUnit = useSettingsStore((state) => state.temperatureUnit)
   const db = useSettingsDatabaseOps()
   const navigation = useNavigation()
   const appStatus = useAppStatusStore((state) => state.status)
@@ -132,19 +132,8 @@ export default function SettingsScreen() {
             icon={GaugeIcon}
             iconColor={theme.palette.amber.color}
             label="Units"
-            hint={unitSystem === 'metric' ? 'km/h · km · m' : 'mph · mi · ft'}
-            right={
-              <Select
-                options={[
-                  { label: 'Metric', value: 'metric' },
-                  { label: 'Imperial', value: 'imperial' },
-                ]}
-                value={unitSystem}
-                onChange={(value) => void setSetting('unitSystem', value)}
-                style={styles.unitsSelect}
-                testID="unit-system-select"
-              />
-            }
+            hint={`${speedUnit(distanceUnit)} · ${temperatureSymbol(temperatureUnit)}`}
+            onPress={() => router.push(routes.settingsUnits)}
           />
           <SettingsRow
             icon={MapTrifoldIcon}
@@ -238,7 +227,6 @@ const styles = StyleSheet.create({
     padding: 16,
     gap: 8,
   },
-  unitsSelect: { width: 150 },
   headerStats: {
     flexDirection: 'row',
     gap: 20,

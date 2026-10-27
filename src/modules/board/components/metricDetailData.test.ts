@@ -42,17 +42,15 @@ test('unit presentation preserves samples, thresholds, ranges, and chart identit
   const range = { min: 0, max: 50 }
   const thresholds = [40]
   const canonical = toLiveChart({ key: 'speed', metric: telemetry.speed, data, range, thresholds })
-  const imperial = presentLiveChart(canonical, 'imperial')
-  expect(imperial.series[0].data).toBe(data)
-  expect(imperial.left.range).toBe(range)
-  expect(imperial.thresholds).toBe(thresholds)
-  expect(imperial.key).toBe(canonical.key)
-  expect(imperial.series[0].unit).toBe('mph')
-  expect(imperial.left.displayScale).toBe(imperial.series[0].displayScale)
-  expect(data.vs[0] * imperial.series[0].displayScale!).toBeCloseTo(10)
-  expect(presentTelemetryMetric(telemetry.speed, 'imperial').formatWithUnit(-16.09344)).toBe(
-    '10 mph',
-  )
+  const miles = presentLiveChart(canonical, 'mi')
+  expect(miles.series[0].data).toBe(data)
+  expect(miles.left.range).toBe(range)
+  expect(miles.thresholds).toBe(thresholds)
+  expect(miles.key).toBe(canonical.key)
+  expect(miles.series[0].unit).toBe('mph')
+  expect(miles.left.displayScale).toBe(miles.series[0].displayScale)
+  expect(data.vs[0] * miles.series[0].displayScale!).toBeCloseTo(10)
+  expect(presentTelemetryMetric(telemetry.speed, 'mi').formatWithUnit(-16.09344)).toBe('10 mph')
   expect(telemetry.speed.unit).toBe('km/h')
-  expect(presentLiveChart(canonical, 'metric').series[0].data).toBe(data)
+  expect(presentLiveChart(canonical, 'km').series[0].data).toBe(data)
 })

@@ -388,7 +388,7 @@ function LiveMetricCardShowcase() {
           ]
   const lines = series.map((line) => ({
     ...line,
-    metric: presentTelemetryMetric(line.metric, 'metric'),
+    metric: presentTelemetryMetric(line.metric, 'km'),
     onPress: split ? () => {} : undefined,
   }))
 

@@ -3,7 +3,7 @@ import {
   lengthUnit,
   speedFromKmh,
   speedUnit,
-  type UnitSystem,
+  type DistanceUnit,
 } from '@/helpers/units'
 import type { AutoRangeOptions } from '@/components/charts/chartMath'
 import { theme, type ThemeColor } from '@/constants/theme'
@@ -330,14 +330,15 @@ export function toggleOptionalChartMetric<T extends ChartToggleMetric>(
 /** Display metadata only: series, domains and color ramps remain canonical. */
 export function historyChartPresentation(
   key: ChartToggleMetric,
-  units: UnitSystem,
+  distanceUnit: DistanceUnit,
 ): {
   unit: string | undefined
   displayScale: number
 } {
-  if (key === 'speed') return { unit: speedUnit(units), displayScale: speedFromKmh(1, units) }
+  if (key === 'speed')
+    return { unit: speedUnit(distanceUnit), displayScale: speedFromKmh(1, distanceUnit) }
   if (key === 'altitude' || key === 'gpsAccuracy') {
-    return { unit: lengthUnit(units), displayScale: lengthFromMeters(1, units) }
+    return { unit: lengthUnit(distanceUnit), displayScale: lengthFromMeters(1, distanceUnit) }
   }
   const definition = [...OPTIONAL_CHART_METRICS, ...EXTRA_CHART_METRICS].find(
     (def) => def.key === key,
