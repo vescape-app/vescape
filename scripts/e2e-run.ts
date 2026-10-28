@@ -2,6 +2,7 @@ import { readdirSync } from 'fs'
 import { basename, join } from 'path'
 import { applicationId } from '../src/config/appVariant.ts'
 import { maestroCommand } from './lib/maestro.ts'
+import { listAdbDevices, pickDevice } from './lib/devices.ts'
 
 const ROOT = join(import.meta.dir, '..')
 const FLOWS_DIR = join(ROOT, 'e2e', 'flows')
@@ -10,15 +11,22 @@ const LEGACY_ALL_FLOW = 'e2e'
 type Args = {
   all: boolean
   flow: string | null
+  device: string | null
 }
 
 function readArgs(argv: string[]): Args {
-  const args: Args = { all: false, flow: null }
+  const args: Args = { all: false, flow: null, device: null }
 
   for (let index = 0; index < argv.length; index += 1) {
     const arg = argv[index]
     if (arg === '--all') {
       args.all = true
+      continue
+    }
+    if (arg === '--device') {
+      if (!argv[index + 1] || argv[index + 1].startsWith('-'))
+        throw new Error('Missing value for --device')
+      args.device = argv[++index]
       continue
     }
     if (arg === '--flow') {
@@ -55,6 +63,8 @@ function flowPath(flow: string): string {
 async function runFlow(flow: string): Promise<void> {
   const proc = Bun.spawn(
     await maestroCommand(
+      '--device',
+      device.serial,
       'test',
       '-e',
       `APP_ID=${applicationId}`,
@@ -88,6 +98,17 @@ try {
   console.error(error instanceof Error ? error.message : String(error))
   process.exit(1)
 }
+
+const device = await pickDevice({
+  title: 'E2E phone',
+  items: listAdbDevices().filter((device) => !device.isWatch),
+  id: (device) => device.hardware,
+  label: (device) => device.name,
+  aliases: (device) => [device.serial, device.expoName],
+  requested: args.device,
+  cacheKey: 'e2e-phone',
+  emptyMessage: 'No Android phone connected',
+})
 
 const flows = listFlows()
 const flow = args.flow ?? 'all'

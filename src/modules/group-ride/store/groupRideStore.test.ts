@@ -362,3 +362,70 @@ test('selected Board rail color follows Board and appearance; no Board clears it
   useBoardStore.setState({ activeBoardId: null })
   expect(selectedBoardRailColor(useThemeStore.getState().resolvedTheme)).toBeNull()
 })
+
+test('native departure clears membership instead of retaining the previous ride id', async () => {
+  const { useGroupRideStore } = await import('@/modules/group-ride/store/groupRideStore')
+  useGroupRideStore.getState().startObserving()
+  joinedListeners.forEach((listener) => listener({ rideId: 'r1' }))
+  rosterListeners.forEach((listener) =>
+    listener({
+      rideId: 'r1',
+      riders: [
+        {
+          id: 'peer',
+          name: 'Peer',
+          color: null,
+          presence: null,
+          stale: false,
+          lastSeen: Date.now(),
+        },
+      ],
+    }),
+  )
+  expect(useGroupRideStore.getState().rosterRows).toHaveLength(1)
+
+  joinedListeners.forEach((listener) => listener({ rideId: null }))
+  rosterListeners.forEach((listener) => listener({ rideId: null, riders: [] }))
+  expect(useGroupRideStore.getState()).toMatchObject({
+    activeRideId: null,
+    roster: [],
+    rosterRows: [],
+  })
+})
+
+test('queued roster events cannot restore membership after an explicit leave', async () => {
+  const { useGroupRideStore } = await import('@/modules/group-ride/store/groupRideStore')
+  useGroupRideStore.getState().startObserving()
+  const queuedRoster = {
+    rideId: 'r1',
+    riders: [
+      { id: 'peer', name: 'Peer', color: null, presence: null, stale: false, lastSeen: Date.now() },
+    ],
+  }
+  joinedListeners.forEach((listener) => listener({ rideId: 'r1' }))
+  rosterListeners.forEach((listener) => listener(queuedRoster))
+  useGroupRideStore.getState().leaveRide()
+  expect(leaveGroupRide).toHaveBeenCalledTimes(1)
+
+  // Presence was already queued on the bridge when the rider tapped Leave.
+  rosterListeners.forEach((listener) => listener(queuedRoster))
+  expect(useGroupRideStore.getState()).toMatchObject({
+    activeRideId: null,
+    roster: [],
+    rosterRows: [],
+  })
+  joinedListeners.forEach((listener) => listener({ rideId: null }))
+  rosterListeners.forEach((listener) => listener({ rideId: null, riders: [] }))
+  rosterListeners.forEach((listener) => listener(queuedRoster))
+  expect(useGroupRideStore.getState()).toMatchObject({
+    activeRideId: null,
+    roster: [],
+    rosterRows: [],
+  })
+
+  // A subsequent real join still admits the roster for that ride.
+  joinedListeners.forEach((listener) => listener({ rideId: 'r1' }))
+  rosterListeners.forEach((listener) => listener(queuedRoster))
+  expect(useGroupRideStore.getState().activeRideId).toBe('r1')
+  expect(useGroupRideStore.getState().rosterRows).toHaveLength(1)
+})

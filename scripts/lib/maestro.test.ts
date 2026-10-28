@@ -11,7 +11,7 @@ beforeEach(() => {
 })
 afterEach(() => rmSync(directory, { recursive: true, force: true }))
 
-async function commandWithVersion(version: string | null, exitCode = 0) {
+async function commandWithVersion(version: string | null, exitCode = 0, recover = false) {
   if (version !== null) {
     const binary = join(directory, 'maestro')
     writeFileSync(binary, `#!/bin/sh\nprintf '%s\\n' '${version}'\nexit ${exitCode}\n`)
@@ -21,7 +21,14 @@ async function commandWithVersion(version: string | null, exitCode = 0) {
     [
       process.execPath,
       '--eval',
-      `import { maestroCommand } from ${JSON.stringify(join(import.meta.dir, 'maestro.ts'))}; console.log(JSON.stringify(await maestroCommand('test', 'flow.yaml')));`,
+      `import { maestroCommand } from ${JSON.stringify(join(import.meta.dir, 'maestro.ts'))};
+      ${
+        recover
+          ? `try { await maestroCommand() } catch {}
+await Bun.write(${JSON.stringify(join(directory, 'maestro'))}, ${JSON.stringify(`#!/bin/sh\nprintf '%s\\n' '${MAESTRO_VERSION}'\n`)});`
+          : ''
+      }
+      console.log(JSON.stringify(await maestroCommand('test', 'flow.yaml')));`,
     ],
     { env: { ...process.env, PATH: directory }, stdout: 'pipe', stderr: 'pipe' },
   )
@@ -65,4 +72,10 @@ test('missing Maestro gives the setup command before starting tests', async () =
   expect(result.code).not.toBe(0)
   expect(result.stdout).toBe('')
   expect(result.stderr).toContain('Maestro is missing. Run bun run maestro:setup.')
+})
+
+test('installing the pin after a failed check can recheck within the same interactive run', async () => {
+  const result = await commandWithVersion('2.6.0', 0, true)
+  expect(result.code).toBe(0)
+  expect(JSON.parse(result.stdout)).toEqual(['maestro', 'test', 'flow.yaml'])
 })
