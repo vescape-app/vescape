@@ -164,7 +164,7 @@ final class AppDataRepository {
       if let decoded = decodeBoardSetting(key: key, json: json) { values[key] = decoded }
     }
     let bleId: String? = row["ble_id"]
-    let link = BoardLinkPersistence.compose(bleId: bleId, storedTransport: values["transport"] as? String, values: values)
+    let link = BoardLinkPersistence.compose(bleId: bleId, values: values)
     return [
       "id": row["id"] as String,
       "name": row["name"] as String,
@@ -189,7 +189,7 @@ final class AppDataRepository {
     for (key, json) in settings {
       if let decoded = decodeBoardSetting(key: key, json: json) { values[key] = decoded }
     }
-    let link = BoardLinkPersistence.compose(bleId: board.bleId, storedTransport: values["transport"] as? String, values: values)
+    let link = BoardLinkPersistence.compose(bleId: board.bleId, values: values)
     return [
       "id": board.id, "name": board.name, "description": values["description"],
       "personalization": values["personalization"],

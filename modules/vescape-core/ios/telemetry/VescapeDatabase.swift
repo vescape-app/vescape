@@ -944,16 +944,27 @@ enum VescapeDatabase {
     // from the iOS-only `boards.transport` column into the `board_settings` row Android has always
     // used. Android's restore makes the same move for an incoming iOS file. A restored Room v53
     // file has no such column and lacks the `alerts` and `tune_profiles` defaults, so both tables
-    // are rebuilt with the same rows, exactly as Android's v54 does.
+    // are rebuilt with the same rows, exactly as Android's v54 does. Installs from before the
+    // shared schema declared `vesc_fault_capture_samples.id` nullable; that table is rebuilt too.
     // @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/TelemetryMigrations.kt `MIGRATION_53_54`
+    // @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/DatabaseUpgradeContract.kt `iosSchemaReconciliationStatements`
     migrator.registerMigration("v54_shared_schema") { db in
       if try db.columns(in: "boards").contains(where: { $0.name == "transport" }) {
-        try db.execute(sql: "INSERT OR REPLACE INTO board_settings (board_id, key, value_json, updated_at) SELECT id, 'transport', json_quote(transport), created_at FROM boards WHERE transport IS NOT NULL")
+        // A tombstoned Board keeps no settings rows (ADR 0027).
+        try db.execute(sql: "INSERT OR REPLACE INTO board_settings (board_id, key, value_json, updated_at) SELECT id, 'transport', json_quote(transport), created_at FROM boards WHERE transport IS NOT NULL AND deleted_at IS NULL")
         try db.execute(sql: "CREATE TABLE boards_v54 (id TEXT NOT NULL PRIMARY KEY, name TEXT NOT NULL, ble_id TEXT, created_at INTEGER NOT NULL, deleted_at INTEGER)")
         try db.execute(sql: "INSERT INTO boards_v54 (id, name, ble_id, created_at, deleted_at) SELECT id, name, ble_id, created_at, deleted_at FROM boards")
         try db.execute(sql: "DROP TABLE boards")
         try db.execute(sql: "ALTER TABLE boards_v54 RENAME TO boards")
         try db.execute(sql: "CREATE INDEX index_boards_created_at ON boards(created_at)")
+      }
+      let nullableSampleId = try Bool.fetchOne(db, sql: "SELECT \"notnull\" = 0 FROM pragma_table_info('vesc_fault_capture_samples') WHERE name = 'id'") ?? false
+      if nullableSampleId {
+        try db.execute(sql: "DROP INDEX IF EXISTS index_vesc_fault_capture_samples_occurrence_id_captured_at")
+        try db.execute(sql: "ALTER TABLE vesc_fault_capture_samples RENAME TO vesc_fault_capture_samples_v54")
+        try PersistenceSchema.createVescFaultCaptures(db)
+        try db.execute(sql: "INSERT INTO vesc_fault_capture_samples SELECT * FROM vesc_fault_capture_samples_v54")
+        try db.execute(sql: "DROP TABLE vesc_fault_capture_samples_v54")
       }
       for sql in sharedSchemaV54Sql { try db.execute(sql: sql) }
     }

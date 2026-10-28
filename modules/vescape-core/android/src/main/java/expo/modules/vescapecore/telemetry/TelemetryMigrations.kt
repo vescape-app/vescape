@@ -1766,7 +1766,7 @@ internal object TelemetryMigrations {
     }
 
     /** @parity /modules/vescape-core/ios/telemetry/VescapeDatabase.swift `sharedSchemaV54Sql` */
-    internal val SHARED_SCHEMA_V54_SQL = listOf(
+    private val SHARED_SCHEMA_V54_SQL = listOf(
       "CREATE TABLE alerts_v54 (board_id TEXT NOT NULL, id TEXT NOT NULL, control_id TEXT NOT NULL, threshold REAL NOT NULL, threshold_max REAL, threshold_kind TEXT NOT NULL DEFAULT 'fixed', config_field_id TEXT, threshold_offset REAL, threshold_max_offset REAL, enabled INTEGER NOT NULL, spec TEXT NOT NULL, created_at INTEGER NOT NULL, repeat_every_seconds INTEGER, PRIMARY KEY(board_id, id))",
       "INSERT INTO alerts_v54 (board_id, id, control_id, threshold, threshold_max, threshold_kind, config_field_id, threshold_offset, threshold_max_offset, enabled, spec, created_at, repeat_every_seconds) SELECT board_id, id, control_id, threshold, threshold_max, threshold_kind, config_field_id, threshold_offset, threshold_max_offset, enabled, spec, created_at, repeat_every_seconds FROM alerts",
       "DROP TABLE alerts",

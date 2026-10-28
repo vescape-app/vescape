@@ -23,13 +23,16 @@ internal fun requireSupportedAndroidDatabaseVersion(version: Int) {
   }
 }
 
-/** SQL shared by the Android adapter and JVM host when accepting a GRDB-owned schema. */
+/**
+ * SQL shared by the Android adapter and JVM host when accepting a GRDB-owned schema from before v54.
+ * @parity /modules/vescape-core/ios/telemetry/VescapeDatabase.swift `v54_shared_schema`
+ */
 internal fun iosSchemaReconciliationStatements(
   hasDeletedAt: Boolean,
   hasFaultCaptures: Boolean,
   bootstrapLegacyTune: Boolean,
 ): List<String> = buildList {
-  add("""INSERT OR REPLACE INTO board_settings (board_id,key,value_json,updated_at) SELECT id,'transport',json_quote(transport),created_at FROM boards WHERE transport IS NOT NULL""")
+  add("""INSERT OR REPLACE INTO board_settings (board_id,key,value_json,updated_at) SELECT id,'transport',json_quote(transport),created_at FROM boards WHERE transport IS NOT NULL${if (hasDeletedAt) " AND deleted_at IS NULL" else ""}""")
   add("DROP INDEX IF EXISTS index_boards_created_at")
   add("CREATE TABLE boards_room (id TEXT NOT NULL PRIMARY KEY,name TEXT NOT NULL,ble_id TEXT,created_at INTEGER NOT NULL,deleted_at INTEGER)")
   add("INSERT INTO boards_room SELECT id,name,ble_id,created_at,${if (hasDeletedAt) "deleted_at" else "NULL"} FROM boards")

@@ -76,6 +76,24 @@ class DatabaseRestoreHostTest {
         assertEquals(510000000, track.latitudeE7)
         assertEquals(listOf(1000L), dao.getVescFaultCaptureSamples("cross-fault").map { it.capturedAtMs })
         room.close()
+
+        // An archive from an iOS app before the shared schema still carries `boards.transport`.
+        val v53 = exchange.resolve("ios-v53-restored.sqlite")
+        val v53Manifest = exchange.resolve("ios-v53.zip").inputStream().use { DatabaseBackupArchive.extract(it, v53) }
+        assertEquals(53, v53Manifest.getInt("schemaVersion"))
+        BundledSQLiteDriver().open(v53.path).use { connection ->
+          iosSchemaReconciliationStatements(hasDeletedAt = true, hasFaultCaptures = true, bootstrapLegacyTune = false)
+            .forEach(connection::execSQL)
+          TelemetryMigrations.MIGRATION_53_54.migrate(connection)
+          connection.execSQL("PRAGMA user_version = 54")
+        }
+        assertMatchesSharedSchema("restored-ios-v53", v53.toPath())
+        val v53Room = open(v53.path)
+        val v53Dao = v53Room.telemetryDao()
+        assertEquals("\"98\"", v53Dao.getBoardSettings("v53-board").single { it.key == "transport" }.valueJson)
+        assertEquals(emptyList<String>(), v53Dao.getBoardSettings("v53-gone").map { it.key })
+        assertEquals(listOf(1000L), v53Dao.getVescFaultCaptureSamples("v53-fault").map { it.capturedAtMs })
+        v53Room.close()
       }
     }
   }

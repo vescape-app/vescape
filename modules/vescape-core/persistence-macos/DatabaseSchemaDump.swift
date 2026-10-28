@@ -27,12 +27,12 @@ func dumpDatabaseSchema(_ db: Database) throws -> [String: Any] {
       let name: String = index["name"]
       let indexColumns = try Row.fetchAll(db, sql: "PRAGMA index_info(`\(name)`)")
         .sorted { ($0["seqno"] as Int) < ($1["seqno"] as Int) }
-        .map { $0["name"] as String? as Any? ?? NSNull() }
+        .map { $0["name"] as String? }
       let sql = try String.fetchOne(db, sql: "SELECT sql FROM sqlite_master WHERE type='index' AND name=?", arguments: [name])
       // Constraint indexes get generated names, so key them by what they cover instead.
-      let key = origin == "c" ? name : "unique(\(indexColumns.map { "\($0)" }.joined(separator: ",")))"
+      let key = origin == "c" ? name : "unique(\(indexColumns.map { $0 ?? "null" }.joined(separator: ",")))"
       indexes[key] = [
-        "columns": indexColumns,
+        "columns": indexColumns.map { $0 as Any? ?? NSNull() },
         "unique": (index["unique"] as Int) == 1,
         "where": sql.flatMap(partialIndexPredicate) as Any? ?? NSNull(),
       ] as [String: Any]
@@ -59,7 +59,8 @@ func requireSharedSchema(_ label: String, _ db: Database, root: URL) throws {
   let schemaURL = root.appendingPathComponent("schema/database.json")
   let expected = try JSONSerialization.jsonObject(with: Data(contentsOf: schemaURL)) as! [String: Any]
   let actual = try dumpDatabaseSchema(db)
-  if NSDictionary(dictionary: expected).isEqual(to: actual) { return }
+  // Canonical JSON, not NSDictionary equality, which would treat `true` and `1` as the same value.
+  if try canonicalJson(expected) == canonicalJson(actual) { return }
   let written = FileManager.default.temporaryDirectory.appendingPathComponent("database-schema.ios-\(label).json")
   try JSONSerialization.data(withJSONObject: actual, options: [.prettyPrinted, .sortedKeys]).write(to: written)
   let want = expected["tables"] as! [String: [String: Any]]
@@ -87,4 +88,8 @@ private func compact(_ value: NSDictionary?) -> String {
   guard let value else { return "nothing" }
   let data = try? JSONSerialization.data(withJSONObject: value, options: [.sortedKeys])
   return data.map { String(decoding: $0, as: UTF8.self) } ?? "\(value)"
+}
+
+private func canonicalJson(_ value: Any) throws -> Data {
+  try JSONSerialization.data(withJSONObject: value, options: [.sortedKeys])
 }

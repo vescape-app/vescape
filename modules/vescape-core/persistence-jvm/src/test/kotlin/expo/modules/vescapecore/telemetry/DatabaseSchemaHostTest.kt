@@ -11,10 +11,7 @@ import org.json.JSONObject
 import org.junit.Assert.fail
 import org.junit.Test
 
-/**
- * Checks the database Room builds against the neutral schema both platforms must produce.
- * @parity /modules/vescape-core/persistence-macos/DatabaseSchemaDump.swift
- */
+/** Checks the database Room builds against the neutral schema both platforms must produce. */
 class DatabaseSchemaHostTest {
   @Test fun freshDatabaseMatchesTheSharedSchema() {
     val path = Files.createTempFile("vescape-schema-fresh-", ".db").also(Files::delete)
@@ -45,7 +42,10 @@ internal fun assertMatchesSharedSchema(label: String, path: Path) {
 
 private val internalTables = setOf("room_master_table", "android_metadata", "grdb_migrations")
 
-/** Tables, columns, indexes, and foreign keys in a form that does not depend on which platform built them. */
+/**
+ * Tables, columns, indexes, and foreign keys in a form that does not depend on which platform built them.
+ * @parity /modules/vescape-core/persistence-macos/DatabaseSchemaDump.swift `dumpDatabaseSchema`
+ */
 internal fun dumpDatabaseSchema(db: SQLiteConnection): JSONObject {
   fun rows(sql: String): List<Map<String, Any?>> = db.prepare(sql).use { statement ->
     buildList {

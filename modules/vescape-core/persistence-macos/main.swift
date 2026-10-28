@@ -1061,6 +1061,40 @@ if let exchangePath = ProcessInfo.processInfo.environment["VESCAPE_BACKUP_EXCHAN
   )
   try DatabaseBackupArchive.archive(database: iosData, manifest: iosManifest)
     .write(to: exchange.appendingPathComponent("ios.zip"), options: .atomic)
+
+  // The last shape before the shared schema, as an installed iOS app still writes it: transport is a
+  // `boards` column (also on a tombstone), and an install from before #470 declared the capture
+  // sample id nullable. iOS upgrades it here; Android restores the archive in its import phase.
+  let iosV53URL = exchange.appendingPathComponent("ios-v53.sqlite")
+  let iosV53 = try DatabaseQueue(path: iosV53URL.path)
+  try VescapeDatabase.migrator.migrate(iosV53, upTo: "v53_weather_observations")
+  try iosV53.write { db in
+    try db.execute(sql: "INSERT INTO boards (id,name,ble_id,transport,created_at) VALUES ('v53-board','V53 Board','v53-ble','98',100)")
+    try db.execute(sql: "INSERT INTO boards (id,name,ble_id,transport,created_at,deleted_at) VALUES ('v53-gone','Gone','gone-ble','direct',101,200)")
+    try db.execute(sql: "DROP TABLE vesc_fault_capture_samples")
+    try db.execute(sql: "CREATE TABLE vesc_fault_capture_samples (id INTEGER PRIMARY KEY AUTOINCREMENT, occurrence_id TEXT NOT NULL, captured_at INTEGER NOT NULL, speed REAL, duty_cycle REAL, erpm REAL, battery_voltage REAL, battery_current REAL, motor_current REAL, temp_mosfet REAL, temp_motor REAL, pitch REAL, roll REAL, balance_pitch REAL, adc1 REAL, adc2 REAL, state INTEGER)")
+    try db.execute(sql: "CREATE INDEX index_vesc_fault_capture_samples_occurrence_id_captured_at ON vesc_fault_capture_samples(occurrence_id, captured_at)")
+    try db.execute(sql: "INSERT INTO vesc_fault_capture_samples (occurrence_id,captured_at,speed,state) VALUES ('v53-fault',1000,12.5,1)")
+    try db.execute(sql: "PRAGMA user_version = 53")
+  }
+  try iosV53.close()
+  let iosV53Data = try Data(contentsOf: iosV53URL)
+  let iosV53Manifest = try DatabaseBackupArchive.manifest(
+    platform: "ios", schemaVersion: 53, appVersion: "host-v53",
+    dbSizeBytes: Int64(iosV53Data.count), createdAt: 1
+  )
+  try DatabaseBackupArchive.archive(database: iosV53Data, manifest: iosV53Manifest)
+    .write(to: exchange.appendingPathComponent("ios-v53.zip"), options: .atomic)
+  let upgradedV53 = try DatabaseQueue(path: iosV53URL.path)
+  try VescapeDatabase.migrator.migrate(upgradedV53)
+  try upgradedV53.read { db in
+    try requireSharedSchema("upgraded-ios-v53", db, root: root)
+    let transports = try Row.fetchAll(db, sql: "SELECT board_id, value_json FROM board_settings WHERE key = 'transport'")
+    try require(transports.map { $0["board_id"] as String } == ["v53-board"], "v54 moved transport for the wrong Boards")
+    try require(transports.first?["value_json"] as String? == "\"98\"", "v54 changed the transport value")
+    try require(try Int.fetchOne(db, sql: "SELECT COUNT(*) FROM vesc_fault_capture_samples") == 1, "v54 lost a capture sample")
+  }
+  try upgradedV53.close()
 }
 // MARK: - Enrolled Accessories
 //
