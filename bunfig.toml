@@ -10,4 +10,4 @@ semi = false
 printWidth = 100
 singleQuote = true
 jsxSingleQuote = false
-ignorePatterns = [".agents/skills/**"]
+ignorePatterns = [".agents/skills/**", "modules/vescape-core/android/schemas/**"]

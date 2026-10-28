@@ -27,8 +27,10 @@ that can pass while the app's implementation breaks.
 ## Extend the changed behavior
 
 A new Room version needs its regenerated `android/schemas/…/<version>.json` committed; the
-matrix fails without it. Seed new migration cases from that export with `MigrationTestHelper`,
-not new hand-written `CREATE TABLE` SQL.
+matrix fails without it. Write each new Android migration case as its own named test: create the
+old version from its export (`migrateFromExport` / `createFromExport`), seed rows in that version's
+shape, and assert after Room validates the current schema. Never hand-write `CREATE TABLE` SQL for
+an old version; every shipped version already has an export.
 
 Every schema change also updates `modules/vescape-core/schema/database.json` by hand. Both
 platforms compare their fresh, migrated, and restored databases with it, so a column, default,

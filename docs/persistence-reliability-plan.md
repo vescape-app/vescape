@@ -13,17 +13,20 @@ Android compiles the production `VescapeRoomDatabase`, Room-generated `Telemetry
 transaction seam, entities, bucket builder, and `TelemetryMigrations` graph into a plain Kotlin/JVM
 module. Android `Context`, legacy-file rename, the `SupportSQLiteDatabase` adapter, and app lifecycle
 remain in `VescapeDatabase`; every adapter delegates to the same portable migration step that the
-Room 2.8.4 `sqlite-bundled` 2.6.2 host executes. The migration matrix starts from the authentic Room
-v3 entities at `f51663a8^`, derives each graph generation with production edges, separately covers
-the released v22 Tune Profile shape at `10deb46c^`, and lets Room validate every supported result
-against its generated current schema. `shared/migration-fixture-manifest.json` enumerates the exact
-Room versions and GRDB identifiers; versions 37–39 are absent because production jumps 36→40.
+Room 2.8.4 `sqlite-bundled` 2.6.2 host executes. `shared/migration-fixture-manifest.json` enumerates
+the exact Room versions and GRDB identifiers; versions 37–39 are absent because production jumps 36→40.
 
-From v53 Room exports its schema to `android/schemas/` (`exportSchema = true`); the JSON is
-regenerated on every build and committed with the migration that changes it. The matrix also starts
-from each exported schema, exactly as Room created that version, migrates it with `MigrationTestHelper`
-to the current version, and fails if the current version's export is missing. Versions 3–52 have
-no export and stay covered by the frozen SQL starts above.
+Room exports its schema to `android/schemas/` (`exportSchema = true`); the JSON is regenerated on
+every build and committed with the migration that changes it. Exports exist for every version that
+was ever the app's database version on `dev`: 3–9, 11–22, 24–27, 29, 31, 32, 36, 40, 42, 43, 48, 49,
+and 51 onward. The others only existed as an intermediate step inside one change, so no phone was
+ever created at them. Versions before 53 were generated once, by compiling each version's
+`TelemetryEntities.kt` from the newest first-parent `dev` commit at that version with today's Room.
+`TelemetryMigrationMatrixHostTest` creates each export with `MigrationTestHelper`, exactly as Room
+created that version fresh, migrates it to the current version with Room validating every table,
+and fails if the current version's export is missing. Starting at v3 runs every production edge.
+Named tests seed one era's rows in that era's export (v3 Board and telemetry, v12 settings, v32
+alert sounds, v49 Alert Presets, the released v22 Tune Profile) and assert what survives.
 
 `modules/vescape-core/schema/database.json` is the one schema both platforms must build: every
 table's columns, indexes, and foreign keys, normalized so it does not depend on which platform

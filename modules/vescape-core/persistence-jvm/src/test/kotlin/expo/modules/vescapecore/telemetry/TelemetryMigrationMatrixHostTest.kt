@@ -15,12 +15,17 @@ import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
-/** Executes every supported start with the production migration algorithms on real SQLite. */
+/**
+ * Room migration tests that start from the committed schema exports in `android/schemas/`: each one
+ * is the database exactly as Room created it fresh at that version. Versions that only ever existed
+ * as an intermediate step (10, 23, 28, 30, 33–35, 37–39, 41, 44–47, 50) have no export; every
+ * migration edge still runs on the way up from v3.
+ */
 class TelemetryMigrationMatrixHostTest {
-  private val supportedStarts = (3..36).toList() + listOf(40, 41, 42, 43, 44)
+  private val schemas = Path.of("../android/schemas")
 
   private fun manifest() = JSONObject(
-    Files.readString(java.nio.file.Path.of("../shared/migration-fixture-manifest.json")),
+    Files.readString(Path.of("../shared/migration-fixture-manifest.json")),
   )
 
   @Test fun sharedManifestExactlyCoversTheProductionRoomGraph() {
@@ -42,79 +47,19 @@ class TelemetryMigrationMatrixHostTest {
     if (it.step() && !it.isNull(0)) it.getLong(0) else null
   }
 
-  private fun createAuthenticV3(db: SQLiteConnection) {
-    // Derived from f51663a8^, the last production Room v3 entities before MIGRATION_3_4.
-    db.exec("CREATE TABLE telemetry_frames (id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, captured_at_ms INTEGER NOT NULL, elapsed_realtime_ms INTEGER NOT NULL, device_id TEXT, device_name TEXT, can_id INTEGER, flags INTEGER NOT NULL, changed_mask_1 INTEGER NOT NULL, changed_mask_2 INTEGER NOT NULL, speed_centi_kmh INTEGER, battery_voltage_mv INTEGER, motor_current_ma INTEGER, battery_current_ma INTEGER, duty_permille INTEGER, pitch_centi_deg INTEGER, roll_centi_deg INTEGER, balance_pitch_centi_deg INTEGER, balance_current_ma INTEGER, erpm INTEGER, state INTEGER, switch_state INTEGER, adc1_milli INTEGER, adc2_milli INTEGER, odometer_cm INTEGER, temp_mosfet_deci_c INTEGER, temp_motor_deci_c INTEGER, fault_code INTEGER, latitude_e7 INTEGER, longitude_e7 INTEGER, gps_speed_centi_mps INTEGER, bearing_centi_deg INTEGER, accuracy_cm INTEGER, altitude_cm INTEGER, location_timestamp_ms INTEGER)")
-    db.exec("CREATE INDEX index_telemetry_frames_captured_at_ms ON telemetry_frames(captured_at_ms)")
-    db.exec("CREATE INDEX index_telemetry_frames_device_id_captured_at_ms ON telemetry_frames(device_id, captured_at_ms)")
-    db.exec("CREATE INDEX index_telemetry_frames_fault ON telemetry_frames(captured_at_ms) WHERE fault_code IS NOT NULL AND fault_code != 0")
-    db.exec("CREATE TABLE history_locations (id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, captured_at_ms INTEGER NOT NULL, elapsed_realtime_ms INTEGER NOT NULL, device_id TEXT, device_name TEXT, latitude_e7 INTEGER NOT NULL, longitude_e7 INTEGER NOT NULL, gps_speed_centi_mps INTEGER, bearing_centi_deg INTEGER, accuracy_cm INTEGER, altitude_cm INTEGER, location_timestamp_ms INTEGER NOT NULL, precise INTEGER NOT NULL, distance_from_previous_cm INTEGER)")
-    db.exec("CREATE TABLE telemetry_minute_buckets (bucket_start_ms INTEGER NOT NULL, device_id TEXT NOT NULL, device_name TEXT, sample_count INTEGER NOT NULL, first_sample_at_ms INTEGER NOT NULL, last_sample_at_ms INTEGER NOT NULL, sum_abs_speed_centi_kmh INTEGER NOT NULL, max_abs_speed_centi_kmh INTEGER NOT NULL, min_battery_voltage_mv INTEGER, max_motor_current_abs_ma INTEGER NOT NULL, max_battery_current_abs_ma INTEGER NOT NULL, max_duty_abs_permille INTEGER NOT NULL, fault_count INTEGER NOT NULL, first_odometer_cm INTEGER, last_odometer_cm INTEGER, gps_point_count INTEGER NOT NULL, precise_gps_point_count INTEGER NOT NULL, gps_distance_cm INTEGER NOT NULL, max_gps_speed_centi_mps INTEGER, PRIMARY KEY(bucket_start_ms, device_id))")
-    db.exec("CREATE INDEX index_telemetry_minute_buckets_bucket_start_ms ON telemetry_minute_buckets(bucket_start_ms)")
-    db.exec("CREATE TABLE telemetry_markers (id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, occurred_at_ms INTEGER NOT NULL, elapsed_realtime_ms INTEGER NOT NULL, type TEXT NOT NULL, device_id TEXT, device_name TEXT, message TEXT, gap_ms INTEGER)")
-    db.exec("CREATE INDEX index_telemetry_markers_occurred_at_ms ON telemetry_markers(occurred_at_ms)")
-    db.exec("CREATE INDEX index_telemetry_markers_device_id_occurred_at_ms ON telemetry_markers(device_id, occurred_at_ms)")
-    db.exec("CREATE TABLE boards (id TEXT NOT NULL PRIMARY KEY, name TEXT NOT NULL, description TEXT, ble_id TEXT, is_starred INTEGER NOT NULL, created_at INTEGER NOT NULL, min_voltage REAL, max_voltage REAL)")
-    db.exec("CREATE INDEX index_boards_created_at ON boards(created_at)")
-    db.exec("CREATE INDEX index_boards_is_starred ON boards(is_starred)")
-    db.exec("CREATE TABLE alerts (id TEXT NOT NULL PRIMARY KEY, control_id TEXT NOT NULL, threshold REAL NOT NULL, threshold_max REAL, enabled INTEGER NOT NULL, sound_type TEXT NOT NULL, created_at INTEGER NOT NULL)")
-    db.exec("CREATE INDEX index_alerts_control_id ON alerts(control_id)")
-    db.exec("CREATE INDEX index_alerts_enabled ON alerts(enabled)")
-    db.exec("CREATE INDEX index_alerts_created_at ON alerts(created_at)")
-    db.exec("INSERT INTO boards VALUES ('board-era3','Era Three','kept','ble-era3',1,100,42.0,63.0)")
-    db.exec("INSERT INTO alerts VALUES ('alert-era3','speed',21.5,NULL,1,'beep',101)")
-    db.exec("INSERT INTO telemetry_frames (captured_at_ms,elapsed_realtime_ms,device_id,device_name,flags,changed_mask_1,changed_mask_2,speed_centi_kmh) VALUES (1000,10,'ble-era3','Era Three',1,1,0,1234)")
-    db.exec("INSERT INTO telemetry_minute_buckets VALUES (960,'ble-era3','Era Three',2,1000,1010,2400,1300,50000,1200,800,700,0,100,120,1,1,20,300)")
-  }
-
-  private fun seedNewEraValues(db: SQLiteConnection, endVersion: Int) {
-    when (endVersion) {
-      4 -> db.exec("INSERT INTO app_settings (id,live_history_limit,auto_connect,auto_recording) VALUES (1,17,0,1)")
-      12 -> db.exec("INSERT INTO app_settings VALUES ('era-setting','\"preserved\"',1200)")
-      30 -> db.exec("INSERT INTO favorites VALUES ('favorite-era30','board-era3','Favorite',900,1100,30,31,2,1,20,100,1200,1234,3)")
-      32 -> {
-        db.exec("INSERT INTO alerts (board_id,id,control_id,threshold,enabled,sound_type,created_at,beep_count) VALUES ('board-era3','speech-era32','speed',20,1,'tts:Slow down',3200,3)")
-        db.exec("INSERT INTO alerts (board_id,id,control_id,threshold,enabled,sound_type,created_at,beep_count) VALUES ('board-era3','beep-era32','speed',25,1,'preset:beep',3201,2)")
-        db.exec("INSERT INTO alerts (board_id,id,control_id,threshold,enabled,sound_type,created_at,beep_count) VALUES ('board-era3','urgent-era32','speed',30,1,'preset:urgent',3202,5)")
-        db.exec("INSERT INTO alerts (board_id,id,control_id,threshold,threshold_max,enabled,sound_type,created_at,beep_count) VALUES ('board-era3','tick-era32','duty',80,90,1,'preset:tick',3203,3)")
-        for (index in 0..2) {
-          db.exec("INSERT INTO alerts (board_id,id,control_id,threshold,enabled,sound_type,created_at,source,beep_count) VALUES ('board-era3','preset:battery:$index','battery',${30 - index * 10},1,'tts:Battery {percent}%',3204,'preset',3)")
-        }
-        db.exec("INSERT INTO alerts (board_id,id,control_id,threshold,enabled,sound_type,created_at,source,beep_count) VALUES ('board-era3','preset:motor-temp:0','motor-temp',95,1,'tts:Motor {value} {unit}',3205,'preset',3)")
-        db.exec("INSERT INTO alerts (board_id,id,control_id,threshold,enabled,sound_type,created_at,beep_count) VALUES ('board-era3','custom-battery-era32','battery',25,1,'tts:Battery {percent}%',3206,3)")
-      }
-      33 -> db.exec("INSERT INTO board_config_values VALUES ('board-era3','2.0','{\"motor_current_max\":55.5}',3300)")
-      50 -> {
-        // The v50 Alert Preset Board Settings and copied preset rows that v51 folds into one row per metric.
-        db.exec("INSERT INTO board_settings VALUES ('board-era3','alertPreset','{\"speed\":\"safe\",\"duty\":\"custom\",\"motor-temp\":\"normal\"}',5000)")
-        db.exec("INSERT INTO board_settings VALUES ('board-era3','alertPresetSound','{\"speed\":{\"geiger\":\"geiger:mid\"}}',5000)")
-        db.exec("INSERT INTO board_settings VALUES ('board-era3','matchBoardConfig','{\"motor-temp\":true,\"speed\":true}',5000)")
-        db.exec("INSERT INTO alerts (board_id,id,control_id,threshold,threshold_max,enabled,sound_type,created_at,source) VALUES ('board-era3','preset:speed:0','speed',36,45,1,'geiger:hard',5001,'preset')")
-        db.exec("INSERT INTO alerts (board_id,id,control_id,threshold,threshold_max,enabled,sound_type,created_at,source) VALUES ('board-era3','preset:duty:0','duty',80,90,1,'geiger:soft',5002,'preset')")
-      }
-    }
-  }
-
-  private fun migrate(
-    db: SQLiteConnection,
-    from: Int,
-    to: Int,
-    reached: MutableSet<Pair<Int, Int>>,
-    seedFixtureValues: Boolean = false,
-  ) {
+  /** Runs production edges one by one on an open connection, for tests that seed between steps. */
+  private fun migrate(db: SQLiteConnection, from: Int, to: Int) {
     var version = from
     while (version < to) {
       val step = TelemetryMigrations.all.singleOrNull { it.startVersion == version }
         ?: error("No production migration from $version to $to")
       step.migrate(db)
-      reached += step.startVersion to step.endVersion
       version = step.endVersion
-      if (seedFixtureValues) seedNewEraValues(db, version)
     }
     assertEquals(to, version)
   }
 
-  private fun productionMigrations(reached: MutableSet<Pair<Int, Int>>): List<Migration> =
+  private fun productionMigrations(reached: MutableSet<Pair<Int, Int>> = mutableSetOf()): List<Migration> =
     TelemetryMigrations.all.map { step ->
       object : Migration(step.startVersion, step.endVersion) {
         override fun migrate(connection: SQLiteConnection) {
@@ -124,10 +69,10 @@ class TelemetryMigrationMatrixHostTest {
       }
     }
 
-  private fun openWithProductionGraph(path: String, reached: MutableSet<Pair<Int, Int>>) {
+  private fun openWithProductionGraph(path: String) {
     val database = Room.databaseBuilder<VescapeRoomDatabase>(path)
       .setDriver(BundledSQLiteDriver())
-      .addMigrations(*productionMigrations(reached).toTypedArray())
+      .addMigrations(*productionMigrations().toTypedArray())
       .build()
     try {
       runBlocking { database.telemetryDao().getAppSetting("matrix-open") }
@@ -136,122 +81,190 @@ class TelemetryMigrationMatrixHostTest {
     }
   }
 
-  /**
-   * Starts from each committed Room schema export, exactly as Room created that version, and
-   * migrates it to the current version. Exports begin at v53; every later version adds its own file.
-   */
-  @Test fun everyExportedSchemaMigratesToTheCurrentSchema() {
-    val schemas = Path.of("../android/schemas")
-    val versions = Files.list(schemas.resolve(VescapeRoomDatabase::class.qualifiedName!!)).use { files ->
+  private fun exportedVersions(): List<Int> =
+    Files.list(schemas.resolve(VescapeRoomDatabase::class.qualifiedName!!)).use { files ->
       files.map { it.fileName.toString().removeSuffix(".json").toInt() }.toList()
     }.sorted()
+
+  /**
+   * Creates [start] from its export, lets [seed] write rows in that version's shape, migrates to the
+   * current version with Room validating every table, and hands the result to [check].
+   */
+  private fun migrateFromExport(
+    start: Int,
+    reached: MutableSet<Pair<Int, Int>> = mutableSetOf(),
+    seed: SQLiteConnection.() -> Unit = {},
+    check: SQLiteConnection.() -> Unit = {},
+  ): Path {
+    val path = Files.createTempFile("vescape-v$start-", ".db").also(Files::delete)
+    val helper = MigrationTestHelper(schemas, path, BundledSQLiteDriver(), VescapeRoomDatabase::class)
+    helper.createDatabase(start).use { it.seed() }
+    helper.runMigrationsAndValidate(VESCAPE_DATABASE_VERSION, productionMigrations(reached)).use { it.check() }
+    return path
+  }
+
+  /** The v3 rows every era test starts from: one Board, one Alert, one frame, one bucket. */
+  private fun SQLiteConnection.seedV3Board() {
+    exec("INSERT INTO boards VALUES ('board-era3','Era Three','kept','ble-era3',1,100,42.0,63.0)")
+    exec("INSERT INTO alerts VALUES ('alert-era3','speed',21.5,NULL,1,'beep',101)")
+    exec("INSERT INTO telemetry_frames (captured_at_ms,elapsed_realtime_ms,device_id,device_name,flags,changed_mask_1,changed_mask_2,speed_centi_kmh) VALUES (1000,10,'ble-era3','Era Three',1,1,0,1234)")
+    exec("INSERT INTO telemetry_minute_buckets VALUES (960,'ble-era3','Era Three',2,1000,1010,2400,1300,50000,1200,800,700,0,100,120,1,1,20,300)")
+  }
+
+  /** An open connection on [version] exactly as Room created it, for tests that step edge by edge. */
+  private fun createFromExport(version: Int, path: Path): SQLiteConnection =
+    MigrationTestHelper(schemas, path, BundledSQLiteDriver(), VescapeRoomDatabase::class).createDatabase(version)
+
+  @Test fun everyExportedSchemaMigratesToTheCurrentSchema() {
+    val versions = exportedVersions()
     assertEquals("Commit the schema export for the current version", VESCAPE_DATABASE_VERSION, versions.last())
+    assertEquals("The oldest supported start keeps its export", 3, versions.first())
+    val reached = mutableSetOf<Pair<Int, Int>>()
     for (start in versions) {
-      val path = Files.createTempFile("vescape-schema-v$start-", ".db").also(Files::delete)
-      val helper = MigrationTestHelper(schemas, path, BundledSQLiteDriver(), VescapeRoomDatabase::class)
-      helper.createDatabase(start).close()
-      helper.runMigrationsAndValidate(VESCAPE_DATABASE_VERSION, productionMigrations(mutableSetOf())).close()
-      openWithProductionGraph(path.toString(), mutableSetOf())
+      val path = migrateFromExport(start, reached)
+      openWithProductionGraph(path.toString())
       assertMatchesSharedSchema("migrated-from-export-v$start", path)
       Files.deleteIfExists(path)
     }
+    assertEquals(TelemetryMigrations.all.map { it.startVersion to it.endVersion }.toSet(), reached)
   }
 
+  /** A v3 phone that never updated reaches today with its Board, telemetry, and buckets intact. */
+  @Test fun v3BoardTelemetryAndBucketsSurviveTheWholeUpgrade() {
+    val path = migrateFromExport(3, seed = { seedV3Board() }) {
+      assertEquals("Era Three", text("SELECT name FROM boards WHERE id='board-era3'"))
+      assertEquals("\"kept\"", text("SELECT value_json FROM board_settings WHERE board_id='board-era3' AND key='description'"))
+      assertEquals(1234L, long("SELECT speed_centi_kmh FROM telemetry_frames WHERE captured_at_ms=1000"))
+      assertEquals("board-era3", text("SELECT board_id FROM telemetry_frames WHERE captured_at_ms=1000"))
+      assertEquals("board-era3", text("SELECT board_id FROM telemetry_minute_buckets WHERE bucket_start_ms=960"))
+      fun bucket(column: String) = long("SELECT $column FROM telemetry_minute_buckets WHERE bucket_start_ms=960")
+      assertEquals(2L, bucket("sample_count"))
+      assertEquals(2400L, bucket("sum_abs_speed_centi_kmh"))
+      assertEquals(50000L, bucket("min_battery_voltage_mv"))
+      assertEquals(0L, bucket("battery_used_wh_milli"))
+      assertEquals(100L, bucket("first_odometer_cm"))
+      assertEquals(120L, bucket("last_odometer_cm"))
+      assertEquals(20L, bucket("gps_distance_cm"))
+      assertEquals(null, bucket("moving_speed_sample_count"))
+      // Before v50's Alert Presets existed nothing was selected, so every metric is Off (#591).
+      for (metric in listOf("speed", "duty", "motor-temp", "controller-temp", "battery")) {
+        assertEquals(metric, "preset(off)", text("SELECT spec FROM alerts WHERE id='preset:$metric'"))
+      }
+      assertEquals(0L, long("SELECT COUNT(*) FROM pragma_table_info('alerts') WHERE name IN ('source','sound_type','beep_count')"))
+    }
+    Files.deleteIfExists(path)
+  }
+
+  /** v12 replaced the single settings row with key-value settings; the old row is not carried. */
+  @Test fun v4SingletonSettingsGiveWayToKeyValueSettings() {
+    val path = migrateFromExport(4, seed = {
+      exec("INSERT INTO app_settings (id,live_history_limit,auto_connect,auto_recording) VALUES (1,17,0,1)")
+    }) {
+      assertEquals(0L, long("SELECT COUNT(*) FROM app_settings"))
+    }
+    Files.deleteIfExists(path)
+  }
+
+  @Test fun v12AppSettingKeepsItsValue() {
+    val path = migrateFromExport(12, seed = {
+      exec("INSERT INTO app_settings VALUES ('era-setting','\"preserved\"',1200)")
+    }) {
+      assertEquals("\"preserved\"", text("SELECT value_json FROM app_settings WHERE key='era-setting'"))
+    }
+    Files.deleteIfExists(path)
+  }
+
+  @Test fun v31FavoriteSurvives() {
+    val path = migrateFromExport(31, seed = {
+      exec("INSERT INTO favorites VALUES ('favorite-era31','board-era3','Favorite',900,1100,30,31,2,1,20,100,1200,1234,3)")
+    }) {
+      assertEquals("Favorite", text("SELECT name FROM favorites WHERE id='favorite-era31'"))
+    }
+    Files.deleteIfExists(path)
+  }
+
+  /** Single alerts carry their beep count in the sound string (#578); the column is gone. */
+  @Test fun v32AlertSoundsBecomeSpecs() {
+    val path = migrateFromExport(32, seed = {
+      exec("INSERT INTO alerts (board_id,id,control_id,threshold,enabled,sound_type,created_at,beep_count) VALUES ('board-era3','speech-era32','speed',20,1,'tts:Slow down',3200,3)")
+      exec("INSERT INTO alerts (board_id,id,control_id,threshold,enabled,sound_type,created_at,beep_count) VALUES ('board-era3','beep-era32','speed',25,1,'preset:beep',3201,2)")
+      exec("INSERT INTO alerts (board_id,id,control_id,threshold,enabled,sound_type,created_at,beep_count) VALUES ('board-era3','urgent-era32','speed',30,1,'preset:urgent',3202,5)")
+      exec("INSERT INTO alerts (board_id,id,control_id,threshold,threshold_max,enabled,sound_type,created_at,beep_count) VALUES ('board-era3','tick-era32','duty',80,90,1,'preset:tick',3203,3)")
+      for (index in 0..2) {
+        exec("INSERT INTO alerts (board_id,id,control_id,threshold,enabled,sound_type,created_at,source,beep_count) VALUES ('board-era3','preset:battery:$index','battery',${30 - index * 10},1,'tts:Battery {percent}%',3204,'preset',3)")
+      }
+      exec("INSERT INTO alerts (board_id,id,control_id,threshold,enabled,sound_type,created_at,source,beep_count) VALUES ('board-era3','preset:motor-temp:0','motor-temp',95,1,'tts:Motor {value} {unit}',3205,'preset',3)")
+      exec("INSERT INTO alerts (board_id,id,control_id,threshold,enabled,sound_type,created_at,beep_count) VALUES ('board-era3','custom-battery-era32','battery',25,1,'tts:Battery {percent}%',3206,3)")
+    }) {
+      assertEquals("tts:Slow down", text("SELECT spec FROM alerts WHERE id='speech-era32'"))
+      assertEquals("alert(2):warning", text("SELECT spec FROM alerts WHERE id='beep-era32'"))
+      assertEquals("alert(5):critical", text("SELECT spec FROM alerts WHERE id='urgent-era32'"))
+      assertEquals("preset:tick", text("SELECT spec FROM alerts WHERE id='tick-era32'"))
+      assertEquals("tts:Battery {percent}%", text("SELECT spec FROM alerts WHERE id='custom-battery-era32'"))
+      assertEquals(0L, long("SELECT COUNT(*) FROM alerts WHERE id LIKE 'preset:%:%'"))
+    }
+    Files.deleteIfExists(path)
+  }
+
+  @Test fun v36BoardConfigValuesSurvive() {
+    val path = migrateFromExport(36, seed = {
+      exec("INSERT INTO board_config_values VALUES ('board-era3','2.0','{\"motor_current_max\":55.5}',3300)")
+    }) {
+      assertEquals("{\"motor_current_max\":55.5}", text("SELECT values_json FROM board_config_values WHERE board_id='board-era3'"))
+    }
+    Files.deleteIfExists(path)
+  }
+
+  /** The v49 Alert Preset Board Settings and copied preset rows fold into one row per metric (#591). */
+  @Test fun v49AlertPresetSettingsFoldIntoPresetRows() {
+    val path = migrateFromExport(49, seed = {
+      exec("INSERT INTO boards (id,name,created_at) VALUES ('board-era3','Era Three',100)")
+      exec("INSERT INTO board_settings VALUES ('board-era3','alertPreset','{\"speed\":\"safe\",\"duty\":\"custom\",\"motor-temp\":\"normal\"}',5000)")
+      exec("INSERT INTO board_settings VALUES ('board-era3','alertPresetSound','{\"speed\":{\"geiger\":\"geiger:mid\"}}',5000)")
+      exec("INSERT INTO board_settings VALUES ('board-era3','matchBoardConfig','{\"motor-temp\":true,\"speed\":true}',5000)")
+      exec("INSERT INTO alerts (board_id,id,control_id,threshold,threshold_max,enabled,sound_type,created_at,source,threshold_kind,beep_count) VALUES ('board-era3','preset:speed:0','speed',36,45,1,'geiger:hard',5001,'preset','fixed',3)")
+      exec("INSERT INTO alerts (board_id,id,control_id,threshold,threshold_max,enabled,sound_type,created_at,source,threshold_kind,beep_count) VALUES ('board-era3','preset:duty:0','duty',80,90,1,'geiger:soft',5002,'preset','fixed',3)")
+    }) {
+      val presets = mapOf(
+        "speed" to "preset(safe):geiger=mid",
+        "duty" to "preset(off):geiger=soft",
+        "motor-temp" to "preset(normal):match=on",
+        "controller-temp" to "preset(off)",
+        "battery" to "preset(off)",
+      )
+      for ((metric, spec) in presets) {
+        assertEquals(metric, spec, text("SELECT spec FROM alerts WHERE id='preset:$metric'"))
+      }
+      assertEquals(0L, long("SELECT COUNT(*) FROM alerts WHERE id LIKE 'preset:%:%'"))
+      assertEquals(0L, long("SELECT COUNT(*) FROM board_settings WHERE key IN ('alertPreset','matchBoardConfig','alertPresetSound')"))
+    }
+    Files.deleteIfExists(path)
+  }
+
+  /** The first Android backups (v14) and the Privacy Zone era (v18–v20) the iOS host restores. */
   @Test fun exportAuthenticFirstAndroidBackupGenerationForIOSHost() {
     if (System.getenv("VESCAPE_BACKUP_PHASE") != "export-android") return
     val exchange = System.getenv("VESCAPE_BACKUP_EXCHANGE")?.let(::File) ?: return
-    val database = exchange.resolve("android-v14.sqlite")
-    BundledSQLiteDriver().open(database.path).use { db ->
-      createAuthenticV3(db)
-      migrate(db, 3, 14, mutableSetOf(), seedFixtureValues = true)
-      db.exec("INSERT INTO tune_profiles (id,board_id,name,fields_json,created_at,updated_at) VALUES ('v14-tune','board-era3','V14 Tune','{}',1400,1401)")
-      db.exec("PRAGMA user_version = 14")
-    }
-    exchange.resolve("android-v14.zip").outputStream().use { output ->
-      DatabaseBackupArchive.write(
-        database,
-        DatabaseBackupArchive.manifest("android", 14, "first-export", database.length(), 1),
-        output,
-      )
-    }
-    for (version in listOf(18, 19, 20)) {
-      val eraDatabase = exchange.resolve("android-v$version.sqlite")
-      BundledSQLiteDriver().open(eraDatabase.path).use { db ->
-        createAuthenticV3(db)
-        migrate(db, 3, version, mutableSetOf(), seedFixtureValues = true)
-        db.exec("INSERT INTO privacy_zones VALUES ('era-zone','home','Era Zone',1,510000000,170000000,250,1800,1801)")
-        if (version >= 19) {
-          db.exec("UPDATE boards SET battery_config_json='{\"cells\":20}' WHERE id='board-era3'")
+    for (version in listOf(14, 18, 19, 20)) {
+      val database = exchange.resolve("android-v$version.sqlite")
+      MigrationTestHelper(schemas, database.toPath(), BundledSQLiteDriver(), VescapeRoomDatabase::class)
+        .createDatabase(version).use { db ->
+          val battery = if (version >= 19) "'{\"cells\":20}'" else "42.0,63.0"
+          db.exec("INSERT INTO boards VALUES ('board-era3','Era Three','kept','ble-era3',1,100,$battery)")
+          db.exec("INSERT INTO app_settings VALUES ('era-setting','\"preserved\"',1200)")
+          db.exec("INSERT INTO telemetry_frames (captured_at_ms,elapsed_realtime_ms,device_id,device_name,flags,changed_mask_1,changed_mask_2,speed_centi_kmh) VALUES (1000,10,'ble-era3','Era Three',1,1,0,1234)")
+          db.exec("INSERT INTO telemetry_minute_buckets (bucket_start_ms,device_id,device_name,sample_count,first_sample_at_ms,last_sample_at_ms,sum_abs_speed_centi_kmh,max_abs_speed_centi_kmh,min_battery_voltage_mv,max_motor_current_abs_ma,max_battery_current_abs_ma,battery_used_wh_milli,battery_regen_wh_milli,max_duty_abs_permille,fault_count,first_odometer_cm,last_odometer_cm,gps_point_count,precise_gps_point_count,gps_distance_cm,max_gps_speed_centi_mps) VALUES (960,'ble-era3','Era Three',2,1000,1010,2400,1300,50000,1200,800,0,0,700,0,100,120,1,1,20,300)")
+          if (version == 14) {
+            db.exec("INSERT INTO tune_profiles (id,board_id,name,fields_json,created_at,updated_at) VALUES ('v14-tune','board-era3','V14 Tune','{}',1400,1401)")
+          } else {
+            db.exec("INSERT INTO privacy_zones VALUES ('era-zone','home','Era Zone',1,510000000,170000000,250,1800,1801)")
+          }
         }
-        db.exec("PRAGMA user_version = $version")
-      }
+      val kind = if (version == 14) "first-export" else "historical-export"
       exchange.resolve("android-v$version.zip").outputStream().use { output ->
-        DatabaseBackupArchive.write(
-          eraDatabase,
-          DatabaseBackupArchive.manifest("android", version, "historical-export", eraDatabase.length(), 1),
-          output,
-        )
+        DatabaseBackupArchive.write(database, DatabaseBackupArchive.manifest("android", version, kind, database.length(), 1), output)
       }
     }
-  }
-
-  @Test fun everySupportedStartPreservesEraValuesAndReachesEveryEdge() {
-    val reached = mutableSetOf<Pair<Int, Int>>()
-    for (start in supportedStarts) {
-      val path = Files.createTempFile("vescape-v$start-to-v43-", ".db")
-      BundledSQLiteDriver().open(path.toString()).use { db ->
-        createAuthenticV3(db)
-        migrate(db, 3, start, reached, seedFixtureValues = true)
-        db.exec("PRAGMA user_version = $start")
-      }
-      openWithProductionGraph(path.toString(), reached)
-      BundledSQLiteDriver().open(path.toString()).use { db ->
-
-        assertEquals("Era Three", db.text("SELECT name FROM boards WHERE id='board-era3'"))
-        assertEquals("\"kept\"", db.text("SELECT value_json FROM board_settings WHERE board_id='board-era3' AND key='description'"))
-        assertEquals(1234L, db.long("SELECT speed_centi_kmh FROM telemetry_frames WHERE captured_at_ms=1000"))
-        assertEquals("board-era3", db.text("SELECT board_id FROM telemetry_frames WHERE captured_at_ms=1000"))
-        assertEquals("board-era3", db.text("SELECT board_id FROM telemetry_minute_buckets WHERE bucket_start_ms=960"))
-        assertEquals(2L, db.long("SELECT sample_count FROM telemetry_minute_buckets WHERE bucket_start_ms=960"))
-        assertEquals(2400L, db.long("SELECT sum_abs_speed_centi_kmh FROM telemetry_minute_buckets WHERE bucket_start_ms=960"))
-        assertEquals(50000L, db.long("SELECT min_battery_voltage_mv FROM telemetry_minute_buckets WHERE bucket_start_ms=960"))
-        assertEquals(0L, db.long("SELECT battery_used_wh_milli FROM telemetry_minute_buckets WHERE bucket_start_ms=960"))
-        assertEquals(100L, db.long("SELECT first_odometer_cm FROM telemetry_minute_buckets WHERE bucket_start_ms=960"))
-        assertEquals(120L, db.long("SELECT last_odometer_cm FROM telemetry_minute_buckets WHERE bucket_start_ms=960"))
-        assertEquals(20L, db.long("SELECT gps_distance_cm FROM telemetry_minute_buckets WHERE bucket_start_ms=960"))
-        assertEquals(null, db.long("SELECT moving_speed_sample_count FROM telemetry_minute_buckets WHERE bucket_start_ms=960"))
-        if (start >= 12) assertEquals("\"preserved\"", db.text("SELECT value_json FROM app_settings WHERE key='era-setting'"))
-        if (start >= 30) assertEquals("Favorite", db.text("SELECT name FROM favorites WHERE id='favorite-era30'"))
-        // Single alerts carry their beep count in the sound string (#578); the column is gone.
-        if (start >= 32) {
-          assertEquals("tts:Slow down", db.text("SELECT spec FROM alerts WHERE id='speech-era32'"))
-          assertEquals("alert(2):warning", db.text("SELECT spec FROM alerts WHERE id='beep-era32'"))
-          assertEquals("alert(5):critical", db.text("SELECT spec FROM alerts WHERE id='urgent-era32'"))
-          assertEquals("preset:tick", db.text("SELECT spec FROM alerts WHERE id='tick-era32'"))
-          assertEquals("tts:Battery {percent}%", db.text("SELECT spec FROM alerts WHERE id='custom-battery-era32'"))
-        }
-        // One preset row per metric (#591). Before v50's settings existed nothing was selected, so
-        // every metric is Off and nothing new starts firing; copied preset rows are gone.
-        val presets = mapOf(
-          "speed" to "preset(safe):geiger=mid",
-          "duty" to "preset(off):geiger=soft",
-          "motor-temp" to "preset(normal):match=on",
-          "controller-temp" to "preset(off)",
-          "battery" to "preset(off)",
-        )
-        for ((metric, spec) in presets) {
-          assertEquals(metric, if (start >= 50) spec else "preset(off)", db.text("SELECT spec FROM alerts WHERE id='preset:$metric'"))
-        }
-        assertEquals(0L, db.long("SELECT COUNT(*) FROM alerts WHERE id LIKE 'preset:%:%'"))
-        assertEquals(0L, db.long("SELECT COUNT(*) FROM board_settings WHERE key IN ('alertPreset','matchBoardConfig','alertPresetSound')"))
-        assertEquals(0L, db.long("SELECT COUNT(*) FROM pragma_table_info('alerts') WHERE name IN ('source','sound_type')"))
-        assertEquals(0L, db.long("SELECT COUNT(*) FROM pragma_table_info('alerts') WHERE name='beep_count'"))
-        if (start >= 33) assertEquals("{\"motor_current_max\":55.5}", db.text("SELECT values_json FROM board_config_values WHERE board_id='board-era3'"))
-      }
-      assertMatchesSharedSchema("migrated-from-v$start", path)
-      Files.deleteIfExists(path)
-    }
-    assertEquals(TelemetryMigrations.all.map { it.startVersion to it.endVersion }.toSet(), reached)
   }
 
   /**
@@ -262,12 +275,9 @@ class TelemetryMigrationMatrixHostTest {
    * @parity /modules/vescape-core/ios/telemetry/TelemetryMigrationTests.swift `testPresetRowsMigrationKeepsBoardsApartAndHonoursDisabledPoints`
    */
   @Test fun presetRowsMigrationKeepsBoardsApartAndHonoursDisabledPoints() {
-    val path = Files.createTempFile("vescape-v50-presets-", ".db")
-    BundledSQLiteDriver().open(path.toString()).use { db ->
-      createAuthenticV3(db)
-      migrate(db, 3, 50, mutableSetOf())
-      db.exec("DELETE FROM alerts")
-      db.exec("DELETE FROM board_settings")
+    val path = Files.createTempFile("vescape-v50-presets-", ".db").also(Files::delete)
+    createFromExport(49, path).use { db ->
+      migrate(db, 49, 50)
       db.exec("INSERT INTO boards (id,name,ble_id,created_at,deleted_at) VALUES ('board-1','One',NULL,1,NULL),('board-2','Two',NULL,2,NULL),('board-3','Three',NULL,3,4)")
       db.exec("""INSERT INTO board_settings VALUES ('board-1','alertPreset','{"speed":"minimal","battery":"safe"}',1),('board-1','alertPresetSound','{"speed":{"geiger":"geiger:hard"}}',1),('board-2','alertPreset','{"speed":"normal","duty":"normal"}',1),('board-2','matchBoardConfig','{"duty":true}',1),('board-3','alertPreset','{"speed":"safe"}',1)""")
       for ((board, id, control, enabled, sound, source) in listOf(
@@ -282,7 +292,7 @@ class TelemetryMigrationMatrixHostTest {
       )) {
         db.exec("INSERT INTO alerts (board_id,id,control_id,threshold,threshold_max,enabled,sound_type,created_at,source) VALUES ('$board','$id','$control',20,NULL,$enabled,'$sound',1,$source)")
       }
-      migrate(db, 50, 51, mutableSetOf())
+      migrate(db, 50, 51)
       fun specs(board: String) = db.prepare("SELECT id, spec FROM alerts WHERE board_id='$board'").use { statement ->
         buildMap { while (statement.step()) put(statement.getText(0), statement.getText(1)) }
       }
@@ -318,10 +328,8 @@ class TelemetryMigrationMatrixHostTest {
    * @parity /modules/vescape-core/ios/telemetry/TelemetryMigrationTests.swift `testDropRideRecordingsFoldsSharedMinutes`
    */
   @Test fun dropRideRecordingsFoldsSharedMinutes() {
-    val path = Files.createTempFile("vescape-v51-recordings-", ".db")
-    BundledSQLiteDriver().open(path.toString()).use { db ->
-      createAuthenticV3(db)
-      migrate(db, 3, 51, mutableSetOf())
+    val path = Files.createTempFile("vescape-v51-recordings-", ".db").also(Files::delete)
+    createFromExport(51, path).use { db ->
       db.exec("INSERT INTO ride_recordings VALUES ('ride-a','board-era3',60000,61000,'stopped'),('ride-b','board-era3',61500,NULL,NULL)")
       db.exec("INSERT INTO telemetry_frames (captured_at_ms,elapsed_realtime_ms,board_id,recording_id,flags,changed_mask_1,changed_mask_2,speed_centi_kmh) VALUES (60500,1,'board-era3','ride-a',1,1,0,900),(61800,2,'board-era3','ride-b',1,1,0,1100)")
       db.exec("INSERT INTO ride_track_points (recording_id,board_id,fix_at_ms,latitude_e7,longitude_e7,accuracy_cm) VALUES (NULL,'board-era3',500,1,1,NULL),('ride-a','board-era3',60600,2,2,NULL),('ride-b','board-era3',61900,3,3,400)")
@@ -329,7 +337,7 @@ class TelemetryMigrationMatrixHostTest {
       db.exec("INSERT INTO telemetry_minute_buckets ($columns) VALUES (60000,'board-era3','ride-a',2,60500,61000,1800,2,1800,900,50000,100,200,10,1,300,1000,1100,1,1,50,300,NULL,NULL,'[]')")
       db.exec("INSERT INTO telemetry_minute_buckets ($columns) VALUES (60000,'board-era3','ride-b',3,61800,62000,3300,3,3300,1100,49000,300,100,20,2,400,1100,1300,1,1,70,500,520000000,170000000,'[]')")
       db.exec("INSERT INTO telemetry_minute_buckets ($columns) VALUES (120000,'board-era3','ride-b',1,120500,120500,1000,1,1000,1000,49000,0,0,0,0,0,1300,1300,0,0,0,NULL,NULL,NULL,'[[1,2,\"?\"]]')")
-      migrate(db, 51, 52, mutableSetOf())
+      migrate(db, 51, 52)
       db.exec("PRAGMA user_version = 52")
 
       assertFalse(db.prepare("SELECT 1 FROM sqlite_master WHERE name='ride_recordings'").use { it.step() })
@@ -355,7 +363,7 @@ class TelemetryMigrationMatrixHostTest {
       assertEquals("a folded minute regenerates its preview", null, db.text("SELECT route_preview FROM telemetry_minute_buckets WHERE bucket_start_ms=60000"))
       assertEquals("[[1,2,\"?\"]]", db.text("SELECT route_preview FROM telemetry_minute_buckets WHERE bucket_start_ms=120000"))
     }
-    openWithProductionGraph(path.toString(), mutableSetOf())
+    openWithProductionGraph(path.toString())
     Files.deleteIfExists(path)
   }
 
@@ -367,7 +375,7 @@ class TelemetryMigrationMatrixHostTest {
       BundledSQLiteDriver().open(path.toString()).use { db ->
         db.exec("CREATE TABLE sentinel(value TEXT NOT NULL)")
         db.exec("INSERT INTO sentinel VALUES ('original')")
-        val failed = runCatching { migrate(db, start, VESCAPE_DATABASE_VERSION, mutableSetOf()) }.isFailure
+        val failed = runCatching { migrate(db, start, VESCAPE_DATABASE_VERSION) }.isFailure
         assertTrue("v$start must have no migration path", failed)
         assertEquals("original", db.text("SELECT value FROM sentinel"))
         assertFalse(db.prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name='boards'").use { it.step() })
@@ -376,20 +384,13 @@ class TelemetryMigrationMatrixHostTest {
     }
   }
 
+  /** The released v22 Tune Profile had no presentation columns; the upgrade adds them with defaults. */
   @Test fun authenticReleasedV22TuneShapeKeepsRowsWhenAddingPresentationColumns() {
-    val path = Files.createTempFile("vescape-authentic-v22-", ".db")
-    BundledSQLiteDriver().open(path.toString()).use { db ->
-      createAuthenticV3(db)
-      migrate(db, 3, 22, mutableSetOf())
-      // 10deb46c^ is the released v22 entity: these columns did not exist yet. The current 7->8
-      // definition includes them, so reconstruct the historical table rather than mistaking a
-      // graph-generated fixture for the shipped schema.
-      db.exec("ALTER TABLE tune_profiles DROP COLUMN icon")
-      db.exec("ALTER TABLE tune_profiles DROP COLUMN color")
+    val path = Files.createTempFile("vescape-authentic-v22-", ".db").also(Files::delete)
+    createFromExport(22, path).use { db ->
       db.exec("INSERT INTO tune_profiles VALUES ('tune-v22','board-era3','Classic','{}',22,23)")
-      db.exec("PRAGMA user_version = 22")
     }
-    openWithProductionGraph(path.toString(), mutableSetOf())
+    openWithProductionGraph(path.toString())
     BundledSQLiteDriver().open(path.toString()).use { db ->
       assertEquals("Classic", db.text("SELECT name FROM tune_profiles WHERE id='tune-v22'"))
       assertEquals("sliders-horizontal", db.text("SELECT icon FROM tune_profiles WHERE id='tune-v22'"))

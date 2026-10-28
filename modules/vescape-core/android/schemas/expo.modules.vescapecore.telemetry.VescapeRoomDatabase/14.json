@@ -1,0 +1,874 @@
+{
+  "formatVersion": 1,
+  "database": {
+    "version": 14,
+    "identityHash": "d32700ea779b5de1efb549aacca403b4",
+    "entities": [
+      {
+        "tableName": "telemetry_frames",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `captured_at_ms` INTEGER NOT NULL, `elapsed_realtime_ms` INTEGER NOT NULL, `device_id` TEXT, `device_name` TEXT, `can_id` INTEGER, `flags` INTEGER NOT NULL, `changed_mask_1` INTEGER NOT NULL, `changed_mask_2` INTEGER NOT NULL, `speed_centi_kmh` INTEGER, `battery_voltage_mv` INTEGER, `motor_current_ma` INTEGER, `battery_current_ma` INTEGER, `duty_permille` INTEGER, `pitch_centi_deg` INTEGER, `roll_centi_deg` INTEGER, `balance_pitch_centi_deg` INTEGER, `balance_current_ma` INTEGER, `erpm` INTEGER, `state` INTEGER, `switch_state` INTEGER, `adc1_milli` INTEGER, `adc2_milli` INTEGER, `odometer_cm` INTEGER, `temp_mosfet_deci_c` INTEGER, `temp_motor_deci_c` INTEGER, `fault_code` INTEGER, `latitude_e7` INTEGER, `longitude_e7` INTEGER, `gps_speed_centi_mps` INTEGER, `bearing_centi_deg` INTEGER, `accuracy_cm` INTEGER, `altitude_cm` INTEGER, `location_timestamp_ms` INTEGER)",
+        "fields": [
+          {
+            "fieldPath": "id",
+            "columnName": "id",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "capturedAtMs",
+            "columnName": "captured_at_ms",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "elapsedRealtimeMs",
+            "columnName": "elapsed_realtime_ms",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "deviceId",
+            "columnName": "device_id",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "deviceName",
+            "columnName": "device_name",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "canId",
+            "columnName": "can_id",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "flags",
+            "columnName": "flags",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "changedMask1",
+            "columnName": "changed_mask_1",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "changedMask2",
+            "columnName": "changed_mask_2",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "speedCentiKmh",
+            "columnName": "speed_centi_kmh",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "batteryVoltageMv",
+            "columnName": "battery_voltage_mv",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "motorCurrentMa",
+            "columnName": "motor_current_ma",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "batteryCurrentMa",
+            "columnName": "battery_current_ma",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "dutyPermille",
+            "columnName": "duty_permille",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "pitchCentiDeg",
+            "columnName": "pitch_centi_deg",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "rollCentiDeg",
+            "columnName": "roll_centi_deg",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "balancePitchCentiDeg",
+            "columnName": "balance_pitch_centi_deg",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "balanceCurrentMa",
+            "columnName": "balance_current_ma",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "erpm",
+            "columnName": "erpm",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "state",
+            "columnName": "state",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "switchState",
+            "columnName": "switch_state",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "adc1Milli",
+            "columnName": "adc1_milli",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "adc2Milli",
+            "columnName": "adc2_milli",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "odometerCm",
+            "columnName": "odometer_cm",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "tempMosfetDeciC",
+            "columnName": "temp_mosfet_deci_c",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "tempMotorDeciC",
+            "columnName": "temp_motor_deci_c",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "faultCode",
+            "columnName": "fault_code",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "latitudeE7",
+            "columnName": "latitude_e7",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "longitudeE7",
+            "columnName": "longitude_e7",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "gpsSpeedCentiMps",
+            "columnName": "gps_speed_centi_mps",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "bearingCentiDeg",
+            "columnName": "bearing_centi_deg",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "accuracyCm",
+            "columnName": "accuracy_cm",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "altitudeCm",
+            "columnName": "altitude_cm",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "locationTimestampMs",
+            "columnName": "location_timestamp_ms",
+            "affinity": "INTEGER"
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": true,
+          "columnNames": [
+            "id"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_telemetry_frames_captured_at_ms",
+            "unique": false,
+            "columnNames": [
+              "captured_at_ms"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_telemetry_frames_captured_at_ms` ON `${TABLE_NAME}` (`captured_at_ms`)"
+          },
+          {
+            "name": "index_telemetry_frames_device_id_captured_at_ms",
+            "unique": false,
+            "columnNames": [
+              "device_id",
+              "captured_at_ms"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_telemetry_frames_device_id_captured_at_ms` ON `${TABLE_NAME}` (`device_id`, `captured_at_ms`)"
+          }
+        ]
+      },
+      {
+        "tableName": "telemetry_minute_buckets",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`bucket_start_ms` INTEGER NOT NULL, `device_id` TEXT NOT NULL, `device_name` TEXT, `sample_count` INTEGER NOT NULL, `first_sample_at_ms` INTEGER NOT NULL, `last_sample_at_ms` INTEGER NOT NULL, `sum_abs_speed_centi_kmh` INTEGER NOT NULL, `moving_speed_sample_count` INTEGER, `sum_moving_abs_speed_centi_kmh` INTEGER, `max_abs_speed_centi_kmh` INTEGER NOT NULL, `min_battery_voltage_mv` INTEGER, `max_motor_current_abs_ma` INTEGER NOT NULL, `max_battery_current_abs_ma` INTEGER NOT NULL, `battery_used_wh_milli` INTEGER NOT NULL, `battery_regen_wh_milli` INTEGER NOT NULL, `max_duty_abs_permille` INTEGER NOT NULL, `fault_count` INTEGER NOT NULL, `first_odometer_cm` INTEGER, `last_odometer_cm` INTEGER, `gps_point_count` INTEGER NOT NULL, `precise_gps_point_count` INTEGER NOT NULL, `gps_distance_cm` INTEGER NOT NULL, `max_gps_speed_centi_mps` INTEGER, `max_temp_mosfet_deci_c` INTEGER, `max_temp_motor_deci_c` INTEGER, `first_latitude_e7` INTEGER, `first_longitude_e7` INTEGER, PRIMARY KEY(`bucket_start_ms`, `device_id`))",
+        "fields": [
+          {
+            "fieldPath": "bucketStartMs",
+            "columnName": "bucket_start_ms",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "deviceId",
+            "columnName": "device_id",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "deviceName",
+            "columnName": "device_name",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "sampleCount",
+            "columnName": "sample_count",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "firstSampleAtMs",
+            "columnName": "first_sample_at_ms",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "lastSampleAtMs",
+            "columnName": "last_sample_at_ms",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "sumAbsSpeedCentiKmh",
+            "columnName": "sum_abs_speed_centi_kmh",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "movingSpeedSampleCount",
+            "columnName": "moving_speed_sample_count",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "sumMovingAbsSpeedCentiKmh",
+            "columnName": "sum_moving_abs_speed_centi_kmh",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "maxAbsSpeedCentiKmh",
+            "columnName": "max_abs_speed_centi_kmh",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "minBatteryVoltageMv",
+            "columnName": "min_battery_voltage_mv",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "maxMotorCurrentAbsMa",
+            "columnName": "max_motor_current_abs_ma",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "maxBatteryCurrentAbsMa",
+            "columnName": "max_battery_current_abs_ma",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "batteryUsedWhMilli",
+            "columnName": "battery_used_wh_milli",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "batteryRegenWhMilli",
+            "columnName": "battery_regen_wh_milli",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "maxDutyAbsPermille",
+            "columnName": "max_duty_abs_permille",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "faultCount",
+            "columnName": "fault_count",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "firstOdometerCm",
+            "columnName": "first_odometer_cm",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "lastOdometerCm",
+            "columnName": "last_odometer_cm",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "gpsPointCount",
+            "columnName": "gps_point_count",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "preciseGpsPointCount",
+            "columnName": "precise_gps_point_count",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "gpsDistanceCm",
+            "columnName": "gps_distance_cm",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "maxGpsSpeedCentiMps",
+            "columnName": "max_gps_speed_centi_mps",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "maxTempMosfetDeciC",
+            "columnName": "max_temp_mosfet_deci_c",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "maxTempMotorDeciC",
+            "columnName": "max_temp_motor_deci_c",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "firstLatitudeE7",
+            "columnName": "first_latitude_e7",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "firstLongitudeE7",
+            "columnName": "first_longitude_e7",
+            "affinity": "INTEGER"
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "bucket_start_ms",
+            "device_id"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_telemetry_minute_buckets_bucket_start_ms",
+            "unique": false,
+            "columnNames": [
+              "bucket_start_ms"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_telemetry_minute_buckets_bucket_start_ms` ON `${TABLE_NAME}` (`bucket_start_ms`)"
+          }
+        ]
+      },
+      {
+        "tableName": "telemetry_markers",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `occurred_at_ms` INTEGER NOT NULL, `elapsed_realtime_ms` INTEGER NOT NULL, `type` TEXT NOT NULL, `device_id` TEXT, `device_name` TEXT, `message` TEXT, `gap_ms` INTEGER)",
+        "fields": [
+          {
+            "fieldPath": "id",
+            "columnName": "id",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "occurredAtMs",
+            "columnName": "occurred_at_ms",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "elapsedRealtimeMs",
+            "columnName": "elapsed_realtime_ms",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "type",
+            "columnName": "type",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "deviceId",
+            "columnName": "device_id",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "deviceName",
+            "columnName": "device_name",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "message",
+            "columnName": "message",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "gapMs",
+            "columnName": "gap_ms",
+            "affinity": "INTEGER"
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": true,
+          "columnNames": [
+            "id"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_telemetry_markers_occurred_at_ms",
+            "unique": false,
+            "columnNames": [
+              "occurred_at_ms"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_telemetry_markers_occurred_at_ms` ON `${TABLE_NAME}` (`occurred_at_ms`)"
+          },
+          {
+            "name": "index_telemetry_markers_device_id_occurred_at_ms",
+            "unique": false,
+            "columnNames": [
+              "device_id",
+              "occurred_at_ms"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_telemetry_markers_device_id_occurred_at_ms` ON `${TABLE_NAME}` (`device_id`, `occurred_at_ms`)"
+          }
+        ]
+      },
+      {
+        "tableName": "boards",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` TEXT NOT NULL, `name` TEXT NOT NULL, `description` TEXT, `ble_id` TEXT, `is_starred` INTEGER NOT NULL, `created_at` INTEGER NOT NULL, `min_voltage` REAL, `max_voltage` REAL, PRIMARY KEY(`id`))",
+        "fields": [
+          {
+            "fieldPath": "id",
+            "columnName": "id",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "name",
+            "columnName": "name",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "description",
+            "columnName": "description",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "bleId",
+            "columnName": "ble_id",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "isStarred",
+            "columnName": "is_starred",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "createdAt",
+            "columnName": "created_at",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "minVoltage",
+            "columnName": "min_voltage",
+            "affinity": "REAL"
+          },
+          {
+            "fieldPath": "maxVoltage",
+            "columnName": "max_voltage",
+            "affinity": "REAL"
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "id"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_boards_created_at",
+            "unique": false,
+            "columnNames": [
+              "created_at"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_boards_created_at` ON `${TABLE_NAME}` (`created_at`)"
+          },
+          {
+            "name": "index_boards_is_starred",
+            "unique": false,
+            "columnNames": [
+              "is_starred"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_boards_is_starred` ON `${TABLE_NAME}` (`is_starred`)"
+          }
+        ]
+      },
+      {
+        "tableName": "alerts",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` TEXT NOT NULL, `control_id` TEXT NOT NULL, `threshold` REAL NOT NULL, `threshold_max` REAL, `enabled` INTEGER NOT NULL, `sound_type` TEXT NOT NULL, `created_at` INTEGER NOT NULL, PRIMARY KEY(`id`))",
+        "fields": [
+          {
+            "fieldPath": "id",
+            "columnName": "id",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "controlId",
+            "columnName": "control_id",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "threshold",
+            "columnName": "threshold",
+            "affinity": "REAL",
+            "notNull": true
+          },
+          {
+            "fieldPath": "thresholdMax",
+            "columnName": "threshold_max",
+            "affinity": "REAL"
+          },
+          {
+            "fieldPath": "enabled",
+            "columnName": "enabled",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "soundType",
+            "columnName": "sound_type",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "createdAt",
+            "columnName": "created_at",
+            "affinity": "INTEGER",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "id"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_alerts_control_id",
+            "unique": false,
+            "columnNames": [
+              "control_id"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_alerts_control_id` ON `${TABLE_NAME}` (`control_id`)"
+          },
+          {
+            "name": "index_alerts_enabled",
+            "unique": false,
+            "columnNames": [
+              "enabled"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_alerts_enabled` ON `${TABLE_NAME}` (`enabled`)"
+          },
+          {
+            "name": "index_alerts_created_at",
+            "unique": false,
+            "columnNames": [
+              "created_at"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_alerts_created_at` ON `${TABLE_NAME}` (`created_at`)"
+          }
+        ]
+      },
+      {
+        "tableName": "app_settings",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`key` TEXT NOT NULL, `value_json` TEXT NOT NULL, `updated_at` INTEGER NOT NULL, PRIMARY KEY(`key`))",
+        "fields": [
+          {
+            "fieldPath": "key",
+            "columnName": "key",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "valueJson",
+            "columnName": "value_json",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "updatedAt",
+            "columnName": "updated_at",
+            "affinity": "INTEGER",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "key"
+          ]
+        }
+      },
+      {
+        "tableName": "tune_profiles",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` TEXT NOT NULL, `board_id` TEXT NOT NULL, `name` TEXT NOT NULL, `fields_json` TEXT NOT NULL, `created_at` INTEGER NOT NULL, `updated_at` INTEGER NOT NULL, PRIMARY KEY(`id`))",
+        "fields": [
+          {
+            "fieldPath": "id",
+            "columnName": "id",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "boardId",
+            "columnName": "board_id",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "name",
+            "columnName": "name",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "fieldsJson",
+            "columnName": "fields_json",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "createdAt",
+            "columnName": "created_at",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "updatedAt",
+            "columnName": "updated_at",
+            "affinity": "INTEGER",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "id"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_tune_profiles_board_id",
+            "unique": false,
+            "columnNames": [
+              "board_id"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_tune_profiles_board_id` ON `${TABLE_NAME}` (`board_id`)"
+          }
+        ]
+      },
+      {
+        "tableName": "tune_history_entries",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `profile_id` TEXT NOT NULL, `fields_json` TEXT NOT NULL, `created_at` INTEGER NOT NULL)",
+        "fields": [
+          {
+            "fieldPath": "id",
+            "columnName": "id",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "profileId",
+            "columnName": "profile_id",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "fieldsJson",
+            "columnName": "fields_json",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "createdAt",
+            "columnName": "created_at",
+            "affinity": "INTEGER",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": true,
+          "columnNames": [
+            "id"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_tune_history_entries_profile_id",
+            "unique": false,
+            "columnNames": [
+              "profile_id"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_tune_history_entries_profile_id` ON `${TABLE_NAME}` (`profile_id`)"
+          },
+          {
+            "name": "index_tune_history_entries_created_at",
+            "unique": false,
+            "columnNames": [
+              "created_at"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_tune_history_entries_created_at` ON `${TABLE_NAME}` (`created_at`)"
+          }
+        ]
+      },
+      {
+        "tableName": "diagnostic_events",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `occurred_at_ms` INTEGER NOT NULL, `elapsed_realtime_ms` INTEGER NOT NULL, `event_name` TEXT NOT NULL, `operation` TEXT, `phase` TEXT, `device_id` TEXT, `device_name` TEXT, `message` TEXT, `properties_json` TEXT NOT NULL)",
+        "fields": [
+          {
+            "fieldPath": "id",
+            "columnName": "id",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "occurredAtMs",
+            "columnName": "occurred_at_ms",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "elapsedRealtimeMs",
+            "columnName": "elapsed_realtime_ms",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "eventName",
+            "columnName": "event_name",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "operation",
+            "columnName": "operation",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "phase",
+            "columnName": "phase",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "deviceId",
+            "columnName": "device_id",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "deviceName",
+            "columnName": "device_name",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "message",
+            "columnName": "message",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "propertiesJson",
+            "columnName": "properties_json",
+            "affinity": "TEXT",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": true,
+          "columnNames": [
+            "id"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_diagnostic_events_occurred_at_ms",
+            "unique": false,
+            "columnNames": [
+              "occurred_at_ms"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_diagnostic_events_occurred_at_ms` ON `${TABLE_NAME}` (`occurred_at_ms`)"
+          },
+          {
+            "name": "index_diagnostic_events_event_name",
+            "unique": false,
+            "columnNames": [
+              "event_name"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_diagnostic_events_event_name` ON `${TABLE_NAME}` (`event_name`)"
+          },
+          {
+            "name": "index_diagnostic_events_device_id_occurred_at_ms",
+            "unique": false,
+            "columnNames": [
+              "device_id",
+              "occurred_at_ms"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_diagnostic_events_device_id_occurred_at_ms` ON `${TABLE_NAME}` (`device_id`, `occurred_at_ms`)"
+          }
+        ]
+      }
+    ],
+    "setupQueries": [
+      "CREATE TABLE IF NOT EXISTS room_master_table (id INTEGER PRIMARY KEY,identity_hash TEXT)",
+      "INSERT OR REPLACE INTO room_master_table (id,identity_hash) VALUES(42, 'd32700ea779b5de1efb549aacca403b4')"
+    ]
+  }
+}
