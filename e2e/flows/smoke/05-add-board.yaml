@@ -76,19 +76,16 @@ appId: ${APP_ID}
 
 - assertVisible: Personalize your board
 - tapOn:
-    id: add-board-name-input
+    # iOS exposes the pressable name row as "<value>, Name your board" without the input's id.
+    text: '.*Name your board'
     # Match the phone setup flow: backspace starts at the end of the suggested name.
     point: '95%,50%'
 - eraseText
 - inputText: Smoke Board
-- assertVisible:
-    id: add-board-name-input
-    text: Smoke Board
-# Tapping the step's own title blurs the input, which is what dismisses the keyboard. `hideKeyboard`
-# cannot be used here: on Android Maestro implements it as a back press, so on the runs where the
-# keyboard is already down it pops the wizard modal instead and the flow lands back on the main
-# screen with nothing to say why. Blurring is the same intent without the second meaning.
-- tapOn: Personalize your board
+- assertVisible: 'Smoke Board(, Name your board)?'
+# The single-line input's Done key blurs on both platforms. Android Back may pop the wizard,
+# and tapping the heading can hit the keyboard while iOS adjusts the scroll position.
+- pressKey: Enter
 - scrollUntilVisible:
     element:
       id: add-board-name-next
