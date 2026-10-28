@@ -11,6 +11,7 @@ import {
 import { useLiveMotionSettings } from '@/modules/map/store/liveMotionSettings'
 import { processColor } from 'react-native'
 import { makeTrailLineString } from '@/helpers/mapGeometry'
+import { subscribeThrottled } from '@/modules/map/lib/liveMotion/throttledSubscription'
 
 import { theme } from '@/constants/theme'
 import { useResolvedAccentColors, useResolvedNeutralColors } from '@/hooks/useTheme'
@@ -69,18 +70,6 @@ export function LiveMapLayers({
     ? theme.alpha(riderColor, 0.85)
     : theme.alpha(accents.violet.color, 0.85)
   const [pointHeading, setPointHeading] = useState<number | null>(gpsPuckBearingDeg)
-  const [trailRevision, setTrailRevision] = useState(0)
-  useEffect(
-    () => displayRuntime.subscribe(() => setTrailRevision((revision) => revision + 1)),
-    [displayRuntime],
-  )
-  const smoothedTrailShape = useMemo(
-    () =>
-      displayRuntime.smoothedTrail.length >= 2
-        ? makeTrailLineString(displayRuntime.smoothedTrail)
-        : null,
-    [displayRuntime, trailRevision],
-  )
   const arrowRef = useRef<SymbolLayer>(null)
   const initialArrow = useRef(gpsPuckBearingDeg ?? 0)
   useEffect(() => {
@@ -159,20 +148,7 @@ export function LiveMapLayers({
           />
         </ShapeSource>
       )}
-      {smoothedTrailShape && (
-        <ShapeSource id="center-smoothed-trail-source" shape={smoothedTrailShape}>
-          <LineLayer
-            id="center-smoothed-trail-line"
-            style={{
-              lineColor: theme.palette.mono.white,
-              lineWidth: 2,
-              lineOpacity: 0.9,
-              lineCap: 'round',
-              lineJoin: 'round',
-            }}
-          />
-        </ShapeSource>
-      )}
+      {__DEV__ && <DiagnosticSmoothedTrail displayRuntime={displayRuntime} />}
       {accuracyFix && (
         <>
           {accuracyShape && (
@@ -233,5 +209,43 @@ export function LiveMapLayers({
         rider.presence ? <RiderPresencePin key={rider.id} rider={rider} index={index} /> : null,
       )}
     </>
+  )
+}
+
+/** The white developer trail is its own render surface and updates at most 4 Hz. Motion itself
+ * stays in the native point animator; diagnostic refreshes cannot rebuild accuracy or rider layers. */
+function DiagnosticSmoothedTrail({
+  displayRuntime,
+}: {
+  displayRuntime: MainMapLayersProps['displayRuntime']
+}) {
+  const [smoothedTrail, setSmoothedTrail] = useState(displayRuntime.smoothedTrail)
+  useEffect(
+    () =>
+      subscribeThrottled(
+        displayRuntime.subscribe,
+        () => setSmoothedTrail(displayRuntime.smoothedTrail),
+        250,
+      ),
+    [displayRuntime],
+  )
+  const shape = useMemo(
+    () => (smoothedTrail.length >= 2 ? makeTrailLineString(smoothedTrail) : null),
+    [smoothedTrail],
+  )
+  if (!shape) return null
+  return (
+    <ShapeSource id="center-smoothed-trail-source" shape={shape}>
+      <LineLayer
+        id="center-smoothed-trail-line"
+        style={{
+          lineColor: theme.palette.mono.white,
+          lineWidth: 2,
+          lineOpacity: 0.9,
+          lineCap: 'round',
+          lineJoin: 'round',
+        }}
+      />
+    </ShapeSource>
   )
 }

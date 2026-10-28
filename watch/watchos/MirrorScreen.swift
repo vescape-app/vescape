@@ -393,6 +393,7 @@ struct MirrorScreen: View {
       telemetryRouteEnabled: link.settings.telemetryRouteEnabled,
       streetMapEnabled: link.settings.streetMapEnabled,
       mapGaugesPercent: link.settings.mapGaugesPercent,
+      displayMotionJson: link.settings.displayMotionJson,
       distanceUnit: link.settings.distanceUnit
     )
   }

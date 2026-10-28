@@ -14,6 +14,7 @@ test('all orientations and free pan retain the same animated puck and phone-head
       import React from 'react'
       import { renderToStaticMarkup } from 'react-dom/server'
       import { reactNativeStub } from './testSetup.ts'
+      globalThis.__DEV__ = true
       const sources = new Map()
       const layers = new Map()
       const layer = () => null

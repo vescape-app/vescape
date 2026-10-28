@@ -33,6 +33,8 @@ internal class WatchMapSceneState(
         spanM = WatchMapSpan.clamp(if (!hasNavigation && group != null) group.spanM else frame.routeSpanM),
         courseDeg = (if (!hasNavigation && group != null) group.courseDeg else frame.courseDeg)?.toFloat(),
         position = frame.mapPosition,
+        motionFacts = frame.motionFacts,
+        speed = if (frame.stale) null else frame.speed,
     )
 
     fun trailAlpha(navFocus: Float): Float = layerAlpha(telemetryTrailEnabled, navFocus)
@@ -64,6 +66,6 @@ internal class WatchMapSceneState(
         if (!drawStreetMap) 0f else mapGaugesAlpha + (1f - mapGaugesAlpha) * navFocus.coerceIn(0f, 1f)
 }
 
-internal data class WatchMapTarget(val spanM: Float, val courseDeg: Float?, val position: WatchMapPosition?)
+internal data class WatchMapTarget(val spanM: Float, val courseDeg: Float?, val position: WatchMapPosition?, val motionFacts: expo.modules.vescapecore.watch.WatchMotionFacts? = null, val speed: Double? = null)
 
 internal data class WatchMapNavigation(val bearingDeg: Double, val distanceM: Double)

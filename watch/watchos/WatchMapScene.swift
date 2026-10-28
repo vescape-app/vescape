@@ -21,6 +21,7 @@ struct WatchMapScene<Gauges: View, Readouts: View>: View {
   let streetMapEnabled: Bool
   let mapGaugesPercent: Int
   let distanceUnit: String
+  let displayMotionJson: String
   @ViewBuilder var gauges: () -> Gauges
   @ViewBuilder var readouts: () -> Readouts
 
@@ -30,7 +31,8 @@ struct WatchMapScene<Gauges: View, Readouts: View>: View {
   private var scene: WatchMapSceneState {
     WatchMapSceneState(frame: frame, routeId: route?.routeId, routeStatus: routeStatus, group: groupRide,
       ambient: ambient.active, telemetryTrailEnabled: telemetryTrailEnabled, telemetryGroupEnabled: telemetryGroupEnabled,
-      telemetryRouteEnabled: telemetryRouteEnabled, streetMapEnabled: streetMapEnabled, mapGaugesPercent: mapGaugesPercent)
+      telemetryRouteEnabled: telemetryRouteEnabled, streetMapEnabled: streetMapEnabled, mapGaugesPercent: mapGaugesPercent,
+      displayMotionJson: displayMotionJson)
   }
   private var navStackAlpha: Double { fadeOut(awayFocus) }
   private var tiltColor: Color { (muted || ambient.active) ? Palette.dimText : Palette.tilt }
@@ -77,7 +79,8 @@ struct WatchMapScene<Gauges: View, Readouts: View>: View {
 
       if scene.drawMap {
         RiderPosition(color: muted ? Palette.dimText : navColor,
-          loading: scene.notice != nil && scene.notice != .failed && navStackAlpha > 0)
+          loading: scene.notice != nil && scene.notice != .failed && navStackAlpha > 0,
+          mapView: mapView, mapMoving: mapMoving)
           .opacity(navStackAlpha * scene.riderAlpha(navFocus: navFocus))
       }
 
@@ -136,7 +139,9 @@ struct WatchMapScene<Gauges: View, Readouts: View>: View {
 
   private func retargetMap(animate: Bool) {
     let now = Date()
-    mapView.retarget(spanM: scene.target.spanM, courseDeg: scene.target.courseDeg, at: now, animate: animate, position: scene.target.position, displayMotion: scene.target.displayMotion)
+    mapView.retarget(spanM: scene.target.spanM, courseDeg: scene.target.courseDeg, at: now, animate: animate,
+      position: scene.target.position, facts: scene.target.motionFacts, speed: scene.target.speed,
+      config: MotionConfig.fromJson(scene.target.displayMotionJson))
     mapMoving = mapView.settlesAt > now
   }
 

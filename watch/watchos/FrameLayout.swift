@@ -56,6 +56,7 @@ struct FrameLayout: View {
   var streetMapEnabled: Bool = true
   /// Street map opacity behind the gauges (phone: Settings > Watch > Map behind gauges).
   var mapGaugesPercent: Int = WatchMapGauges.defaultPercent
+  var displayMotionJson: String = ""
   var distanceUnit: String = "km"
 
   /// Readouts retreat for any page.
@@ -70,7 +71,7 @@ struct FrameLayout: View {
       navColor: navColor, trailColor: trailColor, navArrowEnabled: navArrowEnabled,
       telemetryTrailEnabled: telemetryTrailEnabled, telemetryGroupEnabled: telemetryGroupEnabled,
       telemetryRouteEnabled: telemetryRouteEnabled, streetMapEnabled: streetMapEnabled,
-      mapGaugesPercent: mapGaugesPercent, distanceUnit: distanceUnit
+      mapGaugesPercent: mapGaugesPercent, distanceUnit: distanceUnit, displayMotionJson: displayMotionJson
     ) {
       gauges(blind: blind)
     } readouts: {

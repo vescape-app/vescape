@@ -926,7 +926,7 @@ internal final class BoardSessionController: VescGattListener {
     return (location.latitude, location.longitude)
   }
   func gpsDisplaySourceId() -> Int64 { locationTracker.displaySourceId }
-  func gpsDisplayClockMs() -> Int64 { Int64(Date().timeIntervalSince1970 * 1000) }
+  func gpsDisplayClockSample() -> DisplayClockSample { sessionClock.displaySample() }
   func configureWatchDisplay(_ json: String) { watchMirror.configureMotion(json) }
   func gpsRecentLocations() -> [[String: Any?]] { locationTracker.recentLocations }
   /// Recent raw-tick window for JS live-chart rehydrate. Backed by the live-series buffer.
@@ -2815,6 +2815,7 @@ internal final class BoardSessionController: VescGattListener {
   ///
   /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/connection/BoardSessionController.kt `watchSnapshot`
   private func watchSnapshot() -> WatchSnapshot {
+    let displayClock = sessionClock.displaySample()
     let current = latestTelemetry
     // Navigation lanes require Route Progress; course and trail stay live independently.
     let progress = NavigationController.shared.currentProgress
@@ -2854,14 +2855,14 @@ internal final class BoardSessionController: VescGattListener {
         rider: mapPosition.map { WatchGeoPoint(latitude: $0.latitude, longitude: $0.longitude) },
         history: locationTracker.recentLocations
       ),
-      mapPosition: mapPosition,
-      riderSpeedMps: rider?.speedMps,
       motionFacts: WatchMotionFacts(
         sourceId: Double(locationTracker.displaySourceId), fixTimestamp: Double(rider?.timestamp ?? 0),
-        sentAt: Double(nowMs()), gpsAgeMs: rider.map { Double(max(0, nowMs() - $0.timestamp)) } ?? 1e9,
-        boardAgeMs: current.map { Double(max(0, nowMs() - $0.lastPacketAt)) } ?? 1e9,
-        accuracyM: rider?.accuracyM ?? 1e9, clockRate: 1.0
-      )
+        sentAt: Double(displayClock.timestampMs), gpsAgeMs: rider.map { Double(max(0, displayClock.timestampMs - $0.timestamp)) } ?? 1e9,
+        boardAgeMs: current.map { Double(max(0, displayClock.timestampMs - $0.lastPacketAt)) } ?? 1e9,
+        accuracyM: rider?.accuracyM ?? 1e9, clockRate: displayClock.rate
+      ),
+      mapPosition: mapPosition,
+      riderSpeedMps: rider?.speedMps
     )
   }
 
@@ -3214,10 +3215,11 @@ internal final class BoardSessionController: VescGattListener {
     // Offered on every Fix; the coordinator owns the freshness and distance gates.
     WeatherCoordinator.shared.onPosition(latitude: location.latitude, longitude: location.longitude)
     latestRiderPresence().map(groupRideObserver.pushPresence)
+    let displayClock = sessionClock.displaySample()
     var displayEvent = location.map
     displayEvent["displaySourceId"] = locationTracker.displaySourceId
-    displayEvent["displayClockMs"] = nowMs()
-    displayEvent["displayClockRate"] = 1.0
+    displayEvent["displayClockMs"] = displayClock.timestampMs
+    displayEvent["displayClockRate"] = displayClock.rate
     emit?("onLocation", displayEvent)
   }
 

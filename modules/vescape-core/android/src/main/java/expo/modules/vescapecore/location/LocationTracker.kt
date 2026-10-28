@@ -8,6 +8,9 @@ import expo.modules.vescapecore.navigation.NavigationController
 import expo.modules.vescapecore.recording.RecordingCoordinator
 import expo.modules.vescapecore.telemetry.AppDataRepository
 import expo.modules.vescapecore.telemetry.TelemetryPipeline
+import expo.modules.vescapecore.runtime.DisplayClockSample
+import expo.modules.vescapecore.runtime.SystemSessionClock
+import expo.modules.vescapecore.runtime.displaySample
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
 
@@ -18,6 +21,7 @@ internal class LocationTracker(
     private val emitEvent: (String, Map<String, Any?>) -> Unit,
     private val recordingCoordinator: RecordingCoordinator,
     private val telemetryPipeline: TelemetryPipeline,
+    private val displayClock: () -> DisplayClockSample = { SystemSessionClock.displaySample() },
 ) {
     private val recentLocations = ArrayDeque<Map<String, Any?>>()
     private val courseDeriver = GpsCourseDeriver()
@@ -119,11 +123,14 @@ internal class LocationTracker(
         recentLocations.clear()
     }
 
-    private fun displayLocationMap(location: LocationSnapshot): Map<String, Any?> = location.toMap() + mapOf(
-        "displaySourceId" to displaySourceId,
-        "displayClockMs" to System.currentTimeMillis(),
-        "displayClockRate" to 1.0,
-    )
+    private fun displayLocationMap(location: LocationSnapshot): Map<String, Any?> {
+        val clock = displayClock()
+        return location.toMap() + mapOf(
+            "displaySourceId" to displaySourceId,
+            "displayClockMs" to clock.timestampMs,
+            "displayClockRate" to clock.rate,
+        )
+    }
 
     // @parity /modules/vescape-core/ios/location/LastGpsLocationPersistence.swift `onLocationUpdated`
     private fun persistLastGpsLocation(location: LocationSnapshot) {

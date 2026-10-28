@@ -16,7 +16,7 @@ struct WatchMapSceneState {
   private let telemetryRouteEnabled: Bool
   private let mapGaugesAlpha: Double
 
-  init(frame: WatchFrame, routeId: UInt32?, routeStatus: WatchRouteStatus?, group: WatchGroupRide?, ambient: Bool, telemetryTrailEnabled: Bool, telemetryGroupEnabled: Bool, telemetryRouteEnabled: Bool, streetMapEnabled: Bool, mapGaugesPercent: Int) {
+  init(frame: WatchFrame, routeId: UInt32?, routeStatus: WatchRouteStatus?, group: WatchGroupRide?, ambient: Bool, telemetryTrailEnabled: Bool, telemetryGroupEnabled: Bool, telemetryRouteEnabled: Bool, streetMapEnabled: Bool, mapGaugesPercent: Int, displayMotionJson: String = "") {
     let hasNavigation = frame.navBearing != nil && frame.navDistanceM != nil && routeStatus?.canDraw(receivedRouteId: routeId) != false
     if hasNavigation, let bearing = frame.navBearing, let distance = frame.navDistanceM {
       navigation = WatchMapNavigation(bearingDeg: bearing, distanceM: distance)
@@ -34,7 +34,10 @@ struct WatchMapSceneState {
     target = WatchMapTarget(
       spanM: WatchMapProjection.clampedSpanM(!hasNavigation ? group?.spanM ?? frame.routeSpanM : frame.routeSpanM),
       courseDeg: !hasNavigation ? group?.courseDeg ?? frame.courseDeg : frame.courseDeg,
-      position: frame.mapPosition
+      position: frame.mapPosition,
+      motionFacts: frame.motionFacts,
+      speed: frame.stale ? nil : frame.speed,
+      displayMotionJson: displayMotionJson
     )
   }
 
@@ -71,6 +74,9 @@ struct WatchMapTarget: Equatable {
   let spanM: Double
   let courseDeg: Double?
   let position: WatchMapPosition?
+  let motionFacts: WatchMotionFacts?
+  let speed: Double?
+  let displayMotionJson: String
 }
 
 struct WatchMapNavigation: Equatable {

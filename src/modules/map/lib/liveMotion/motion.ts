@@ -50,6 +50,15 @@ class TravelDirection {
       Math.max(accuracy, previous.accuracy) * config.accuracyMovementRatio,
     )
     if (distance < minimum) return
+    // A short step against established travel can be one noisy fix. Keep the old anchor so
+    // consistent movement can accumulate into evidence; a second meaningful reverse step (or a
+    // clearly large turn) is still accepted immediately.
+    if (
+      this.last &&
+      dot(displacement, this.last.unit) < 0 &&
+      distance < Math.max(minimum, accuracy + previous.accuracy)
+    )
+      return
     this.points.push({ p, at: now, accuracy })
     this.points = this.points.slice(-window)
     // The newest segment keeps tight turns/reversals responsive; older segments calm the camera.
@@ -107,6 +116,8 @@ export class LiveGpsMotion {
   private cameraDirection = new TravelDirection()
   private heldHeading: number | null = null
   private contradictionAt: number | null = null
+  private contradictionCount = 0
+  private contradictionFix: Vector | null = null
   private predictedM = 0
   private recovery = false
   private gpsUsable = true
@@ -133,6 +144,8 @@ export class LiveGpsMotion {
     this.cameraDirection.reset()
     this.heldHeading = null
     this.contradictionAt = null
+    this.contradictionCount = 0
+    this.contradictionFix = null
     this.predictedM = 0
     this.recovery = false
     this.brakingAxis = null
@@ -176,17 +189,7 @@ export class LiveGpsMotion {
     )
   }
   accept(fix: MotionFix, receivedAt: number, ageMs: number, source: number): boolean {
-    if (
-      source === this.source &&
-      receivedAt >= this.resetAt &&
-      (!this.fix || fix.timestamp > this.fix.timestamp) &&
-      (fix.accuracyM == null ||
-        !Number.isFinite(fix.accuracyM) ||
-        fix.accuracyM > this.config.maxAccuracyM)
-    ) {
-      this.advance(receivedAt)
-      this.gpsUsable = false
-    }
+    this.invalidateNewerUnusableFix(fix, receivedAt, source)
     if (!this.acceptsFix(fix, receivedAt, ageMs, source)) return false
     this.advance(receivedAt)
     const previous = this.fix
@@ -204,6 +207,8 @@ export class LiveGpsMotion {
       this.intervals = []
       this.brakingAxis = null
       this.contradictionAt = null
+      this.contradictionCount = 0
+      this.contradictionFix = null
       this.cadenceMs = 1000
     }
     if (!this.origin) {
@@ -233,30 +238,63 @@ export class LiveGpsMotion {
     if (direction) this.brakingAxis = direction.unit
     const error = add(measured, scale(this.p, -1))
     const axis = direction?.unit ?? this.brakingAxis
-    const behind = axis && dot(error, axis) < -0.25 && fix.accuracyM <= this.config.goodAccuracyM
-    if (behind) this.contradictionAt ??= receivedAt
-    else this.contradictionAt = null
+    const behind = axis && dot(error, axis) < -0.25
+    const consistent =
+      this.contradictionFix &&
+      length(add(measured, scale(this.contradictionFix, -1))) <= Math.max(1, fix.accuracyM * 0.5)
+    if (behind) {
+      if (consistent) this.contradictionCount++
+      else {
+        this.contradictionAt = receivedAt
+        this.contradictionCount = 1
+      }
+      this.contradictionFix = measured
+    } else {
+      this.contradictionAt = null
+      this.contradictionCount = 0
+      this.contradictionFix = null
+    }
     // Stationary reliable fixes also need bounded recovery after the retained direction expires.
     this.recovery =
       this.contradictionAt != null &&
+      (fix.accuracyM <= this.config.goodAccuracyM || this.contradictionCount >= 3) &&
       receivedAt - this.contradictionAt >= this.config.recoveryAfterS * 1000
     this.correction = scale(error, 1000 / this.cadenceMs)
-    if (this.recovery && length(this.correction) > this.config.recoverySpeedMps) {
-      this.correction = scale(
-        this.correction,
-        this.config.recoverySpeedMps / length(this.correction),
-      )
+    const recoveryQuality = Math.max(
+      0.2,
+      Math.min(
+        1,
+        (this.config.maxAccuracyM - fix.accuracyM) /
+          (this.config.maxAccuracyM - this.config.goodAccuracyM),
+      ),
+    )
+    const recoverySpeed = this.config.recoverySpeedMps * recoveryQuality
+    if (this.recovery && length(this.correction) > recoverySpeed) {
+      this.correction = scale(this.correction, recoverySpeed / length(this.correction))
     }
     this.correctionEnd =
       receivedAt +
       (this.recovery
-        ? Math.max(this.cadenceMs, (length(error) / this.config.recoverySpeedMps) * 1000)
+        ? Math.max(this.cadenceMs, (length(error) / recoverySpeed) * 1000)
         : this.cadenceMs)
     if (!previous) {
       this.p = measured
       this.correction = zero()
     }
     return true
+  }
+  private invalidateNewerUnusableFix(fix: MotionFix, receivedAt: number, source: number) {
+    if (
+      source === this.source &&
+      receivedAt >= this.resetAt &&
+      (!this.fix || fix.timestamp > this.fix.timestamp) &&
+      (fix.accuracyM == null ||
+        !Number.isFinite(fix.accuracyM) ||
+        fix.accuracyM > this.config.maxAccuracyM)
+    ) {
+      this.advance(receivedAt)
+      this.gpsUsable = false
+    }
   }
   private toMeters(fix: MotionFix): Vector {
     const origin = this.origin!

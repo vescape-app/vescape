@@ -66,6 +66,7 @@ internal class TravelDirection {
         val distance = displacement.length
         val minimum = max(config.movementM, max(accuracy, previous.accuracy) * config.accuracyMovementRatio)
         if (distance < minimum) return
+        if (last != null && displacement.dot(last!!.unit) < 0 && distance < max(minimum, accuracy + previous.accuracy)) return
         points.add(DirectionPoint(p, now, accuracy)); points = points.takeLast(window).toMutableList()
         val across = p + points.first().p * -1.0
         val direction = if (across.dot(displacement) > 0 && across.length >= minimum) across else displacement
@@ -92,6 +93,8 @@ internal class LiveGpsMotion {
     private val cameraDirection = TravelDirection()
     private var heldHeading: Double? = null
     private var contradictionAt: Double? = null
+    private var contradictionCount = 0
+    private var contradictionFix: MotionVector? = null
     private var predictedM = 0.0
     private var gpsUsable = true
     var recovering = false; private set
@@ -103,7 +106,7 @@ internal class LiveGpsMotion {
         origin = null; fix = null; p = MotionVector(); correction = MotionVector(); correctionEnd = now
         speed = 0.0; speedAt = Double.NEGATIVE_INFINITY; speedRevision = Double.NEGATIVE_INFINITY; fixAt = Double.NEGATIVE_INFINITY
         intervals.clear(); cadenceMs = 1000.0; pointDirection.reset(); cameraDirection.reset(); heldHeading = null
-        contradictionAt = null; predictedM = 0.0; recovering = false; brakingAxis = null; gpsUsable = true
+        contradictionAt = null; contradictionCount = 0; contradictionFix = null; predictedM = 0.0; recovering = false; brakingAxis = null; gpsUsable = true
     }
     fun configure(config: MotionConfig, now: Double) { advance(now); this.config = config }
     fun updateSpeed(mps: Double?, revision: Double, receivedAt: Double, source: Double, ageMs: Double = 0.0): Boolean {
@@ -126,7 +129,7 @@ internal class LiveGpsMotion {
             intervals.add(interval); while (intervals.size > 5) intervals.removeAt(0)
             cadenceMs = intervals.sorted()[intervals.size / 2].coerceIn(100.0, 3000.0)
         }
-        if (gap) { pointDirection.reset(); cameraDirection.reset(); intervals.clear(); brakingAxis = null; contradictionAt = null; cadenceMs = 1000.0 }
+        if (gap) { pointDirection.reset(); cameraDirection.reset(); intervals.clear(); brakingAxis = null; contradictionAt = null; contradictionCount = 0; contradictionFix = null; cadenceMs = 1000.0 }
         if (origin == null) { origin = fix; p = MotionVector() }
         val measured = toMeters(fix)
         this.fix = fix; gpsUsable = true; fixAt = receivedAt - ageMs; predictedM = 0.0
@@ -136,13 +139,17 @@ internal class LiveGpsMotion {
         if (direction != null) brakingAxis = direction.unit
         val error = measured + p * -1.0
         val axis = direction?.unit ?: brakingAxis
-        val behind = axis != null && error.dot(axis) < -0.25 && accuracy <= config.goodAccuracyM
-        if (behind) { if (contradictionAt == null) contradictionAt = receivedAt }
-        else contradictionAt = null
-        recovering = contradictionAt?.let { receivedAt - it >= config.recoveryAfterS * 1000 } ?: false
+        val behind = axis != null && error.dot(axis) < -0.25
+        val consistent = contradictionFix?.let { (measured + it * -1.0).length <= max(1.0, accuracy * 0.5) } ?: false
+        if (behind) {
+            if (consistent) contradictionCount++ else { contradictionAt = receivedAt; contradictionCount = 1 }
+            contradictionFix = measured
+        } else { contradictionAt = null; contradictionCount = 0; contradictionFix = null }
+        recovering = contradictionAt?.let { (accuracy <= config.goodAccuracyM || contradictionCount >= 3) && receivedAt - it >= config.recoveryAfterS * 1000 } ?: false
         correction = error * (1000 / cadenceMs)
-        if (recovering && correction.length > config.recoverySpeedMps) correction = correction * (config.recoverySpeedMps / correction.length)
-        correctionEnd = receivedAt + if (recovering) max(cadenceMs, error.length / config.recoverySpeedMps * 1000) else cadenceMs
+        val recoverySpeed = config.recoverySpeedMps * max(0.2, ((config.maxAccuracyM - accuracy) / (config.maxAccuracyM - config.goodAccuracyM)).coerceIn(0.0, 1.0))
+        if (recovering && correction.length > recoverySpeed) correction = correction * (recoverySpeed / correction.length)
+        correctionEnd = receivedAt + if (recovering) max(cadenceMs, error.length / recoverySpeed * 1000) else cadenceMs
         if (previous == null) { p = measured; correction = MotionVector() }
         return true
     }

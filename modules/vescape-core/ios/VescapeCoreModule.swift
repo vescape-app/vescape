@@ -2061,6 +2061,7 @@ public class VescapeCoreModule: Module {
       RecordingStorageFailure.reportRead(operation: "live_state_settings_read", error: error)
       settings = [:]
     }
+    let displayClock = coordinator.gpsDisplayClockSample()
     return [
       "board": [
         "phase": coordinator.phase.rawValue,
@@ -2080,8 +2081,8 @@ public class VescapeCoreModule: Module {
         "phase": coordinator.gpsPhase(),
         "mode": coordinator.gpsMode(),
         "displaySourceId": coordinator.gpsDisplaySourceId(),
-        "displayClockMs": coordinator.gpsDisplayClockMs(),
-        "displayClockRate": 1.0,
+        "displayClockMs": displayClock.timestampMs,
+        "displayClockRate": displayClock.rate,
         "latestFix": coordinator.gpsLatestPreciseLocation(),
         "latestApproximateFix": coordinator.gpsLatestLocation(),
         "latestPreciseFix": coordinator.gpsLatestPreciseLocation(),

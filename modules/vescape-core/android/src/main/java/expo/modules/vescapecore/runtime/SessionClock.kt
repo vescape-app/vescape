@@ -31,6 +31,11 @@ internal interface SessionClock {
         get() = 1.0
 }
 
+/** One compatible timestamp/rate pair for display consumers adapting replay time. */
+internal data class DisplayClockSample(val timestampMs: Long, val rate: Double)
+
+internal fun SessionClock.displaySample() = DisplayClockSample(nowMs(), speed)
+
 /** Wall time, unshifted: what every session that is not a replay runs on. */
 internal object SystemSessionClock : SessionClock {
     override fun nowMs(): Long = System.currentTimeMillis()

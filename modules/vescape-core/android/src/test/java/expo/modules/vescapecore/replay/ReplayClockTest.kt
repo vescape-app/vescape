@@ -3,6 +3,7 @@ package expo.modules.vescapecore.replay
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import expo.modules.vescapecore.runtime.displaySample
 
 private const val WARMUP_MS = 180_000L
 private const val WARMUP_SPEED = 30.0
@@ -75,11 +76,15 @@ class ReplayClockTest {
         // Short enough that the warmup really elapses inside the test.
         val clock = ReplayClock(warmupMs = 1_000L, warmupSpeed = 20.0)
         clock.startPlayback(System.currentTimeMillis())
+        val accelerated = clock.displaySample()
+        assertEquals(20.0, accelerated.rate, 0.0)
 
         Thread.sleep(80L) // 1000ms of session time at 20x needs 50ms of real time
         clock.delayUntilRecorded(1_000L)
+        val normal = clock.displaySample()
 
-        assertEquals(1.0, clock.speed, 0.0)
+        assertEquals(1.0, normal.rate, 0.0)
+        assertTrue(normal.timestampMs >= accelerated.timestampMs)
         // Past the boundary, playback is real time again: 2s of recording is 2s of waiting.
         val delayMs = clock.delayUntilRecorded(3_000L) - clock.delayUntilRecorded(1_000L)
         assertEquals(2_000.0, delayMs.toDouble(), 100.0)

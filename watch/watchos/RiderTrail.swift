@@ -55,8 +55,25 @@ struct RiderTrail: View {
 struct RiderPosition: View {
   let color: Color
   let loading: Bool
+  var mapView: WatchMapView? = nil
+  var mapMoving = false
   var body: some View {
-    ZStack {
+    GeometryReader { geometry in
+      TimelineView(.animation(minimumInterval: 1.0 / 30, paused: !mapMoving), content: { timeline in
+        rendered(at: timeline.date, size: geometry.size)
+      })
+    }
+    .allowsHitTesting(false)
+  }
+
+  private func rendered(at date: Date, size: CGSize) -> some View {
+    let span = mapView?.spanM(at: date) ?? WatchMapProjection.defaultSpanM
+    let offset = mapView?.motion.display?.riderOffset(date.timeIntervalSince1970 * 1000) ?? WatchTrailPoint(eastM: 0, northM: 0)
+    let angle = (mapView?.courseDeg(at: date) ?? 0) * .pi / 180
+    let scale = WatchMapProjection.pointsPerMetre(size: size, spanM: span)
+    let x = (offset.eastM * cos(angle) - offset.northM * sin(angle)) * scale
+    let y = (-offset.eastM * sin(angle) - offset.northM * cos(angle)) * scale
+    return ZStack {
       Canvas { context, size in
         context.drawRiderDot(at: WatchMapProjection.riderPoint(in: size), color: color)
       }
@@ -66,7 +83,7 @@ struct RiderPosition: View {
           .offset(y: WatchMapProjection.riderDrop)
       }
     }
-    .allowsHitTesting(false)
+    .offset(x: CGFloat(x), y: CGFloat(y))
   }
 }
 
