@@ -54,6 +54,11 @@ repositories {
   google()
 }
 
+// Room writes one schema JSON per version; migration tests start from these committed files.
+ksp {
+  arg("room.schemaLocation", "$projectDir/schemas")
+}
+
 dependencies {
   implementation project(':expo-modules-core')
   implementation "com.squareup.okhttp3:okhttp:4.12.0"

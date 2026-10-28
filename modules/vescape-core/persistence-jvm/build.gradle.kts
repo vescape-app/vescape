@@ -64,6 +64,7 @@ val extractProductionPersistence by tasks.registering {
 }
 
 kotlin.sourceSets.main { kotlin.srcDir(generatedProduction) }
+ksp { arg("room.schemaLocation", "$projectDir/../android/schemas") }
 tasks.named("compileKotlin") { dependsOn(extractProductionPersistence) }
 tasks.matching { it.name.startsWith("ksp") }.configureEach { dependsOn(extractProductionPersistence) }
 dependencies {
@@ -73,6 +74,7 @@ dependencies {
   implementation("org.json:json:20231013")
   ksp("androidx.room:room-compiler:2.8.4")
   testImplementation("junit:junit:4.13.2")
+  testImplementation("androidx.room:room-testing:2.8.4")
 }
 
 tasks.withType<Test>().configureEach {

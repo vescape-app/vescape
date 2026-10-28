@@ -26,6 +26,10 @@ that can pass while the app's implementation breaks.
 
 ## Extend the changed behavior
 
+A new Room version needs its regenerated `android/schemas/…/<version>.json` committed; the
+matrix fails without it. Seed new migration cases from that export with `MigrationTestHelper`,
+not new hand-written `CREATE TABLE` SQL.
+
 Choose assertions that demonstrate the actual risk: save/close/reopen, query ordering or paging,
 failed read versus empty result, preserved old values, or rollback of a multi-write operation.
 For rollback, fail after an earlier write inside the transaction and verify that no partial state

@@ -23,7 +23,7 @@ internal const val TELEMETRY_DATABASE_VERSION = 53
     WeatherObservationEntity::class,
   ],
   version = TELEMETRY_DATABASE_VERSION,
-  exportSchema = false,
+  exportSchema = true,
 )
 abstract class TelemetryRoomDatabase : RoomDatabase() {
   abstract fun telemetryDao(): TelemetryDao

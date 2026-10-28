@@ -19,6 +19,12 @@ the released v22 Tune Profile shape at `10deb46c^`, and lets Room validate every
 against its generated current schema. `shared/migration-fixture-manifest.json` enumerates the exact
 Room versions and GRDB identifiers; versions 37–39 are absent because production jumps 36→40.
 
+From v53 Room exports its schema to `android/schemas/` (`exportSchema = true`); the JSON is
+regenerated on every build and committed with the migration that changes it. The matrix also starts
+from each exported schema, exactly as Room created that version, migrates it with `MigrationTestHelper`
+to the current version, and fails if the current version's export is missing. Versions 3–52 have
+no export and stay covered by the frozen SQL starts above.
+
 Android's live Room database also uses `sqlite-bundled` 2.6.2 with WAL. Ride exports hold a deferred
 reader transaction across keyset pages, allowing recording commits without changing the export's
 snapshot. Export and restore share a mutex so file replacement waits for the reader to close;

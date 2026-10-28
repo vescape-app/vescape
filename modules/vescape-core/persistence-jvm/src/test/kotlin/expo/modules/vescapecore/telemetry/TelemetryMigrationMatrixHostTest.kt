@@ -4,7 +4,9 @@ import androidx.sqlite.SQLiteConnection
 import androidx.sqlite.driver.bundled.BundledSQLiteDriver
 import androidx.room.Room
 import androidx.room.migration.Migration
+import androidx.room.testing.MigrationTestHelper
 import java.nio.file.Files
+import java.nio.file.Path
 import java.io.File
 import kotlinx.coroutines.runBlocking
 import org.json.JSONObject
@@ -112,8 +114,8 @@ class TelemetryMigrationMatrixHostTest {
     assertEquals(to, version)
   }
 
-  private fun openWithProductionGraph(path: String, reached: MutableSet<Pair<Int, Int>>) {
-    val migrations = TelemetryMigrations.all.map { step ->
+  private fun productionMigrations(reached: MutableSet<Pair<Int, Int>>): List<Migration> =
+    TelemetryMigrations.all.map { step ->
       object : Migration(step.startVersion, step.endVersion) {
         override fun migrate(connection: SQLiteConnection) {
           step.migrate(connection)
@@ -121,14 +123,36 @@ class TelemetryMigrationMatrixHostTest {
         }
       }
     }
+
+  private fun openWithProductionGraph(path: String, reached: MutableSet<Pair<Int, Int>>) {
     val database = Room.databaseBuilder<TelemetryRoomDatabase>(path)
       .setDriver(BundledSQLiteDriver())
-      .addMigrations(*migrations.toTypedArray())
+      .addMigrations(*productionMigrations(reached).toTypedArray())
       .build()
     try {
       runBlocking { database.telemetryDao().getAppSetting("matrix-open") }
     } finally {
       database.close()
+    }
+  }
+
+  /**
+   * Starts from each committed Room schema export, exactly as Room created that version, and
+   * migrates it to the current version. Exports begin at v53; every later version adds its own file.
+   */
+  @Test fun everyExportedSchemaMigratesToTheCurrentSchema() {
+    val schemas = Path.of("../android/schemas")
+    val versions = Files.list(schemas.resolve(TelemetryRoomDatabase::class.qualifiedName!!)).use { files ->
+      files.map { it.fileName.toString().removeSuffix(".json").toInt() }.toList()
+    }.sorted()
+    assertEquals("Commit the schema export for the current version", TELEMETRY_DATABASE_VERSION, versions.last())
+    for (start in versions) {
+      val path = Files.createTempFile("vescape-schema-v$start-", ".db").also(Files::delete)
+      val helper = MigrationTestHelper(schemas, path, BundledSQLiteDriver(), TelemetryRoomDatabase::class)
+      helper.createDatabase(start).close()
+      helper.runMigrationsAndValidate(TELEMETRY_DATABASE_VERSION, productionMigrations(mutableSetOf())).close()
+      openWithProductionGraph(path.toString(), mutableSetOf())
+      Files.deleteIfExists(path)
     }
   }
 
