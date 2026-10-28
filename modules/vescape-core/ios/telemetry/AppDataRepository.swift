@@ -6,8 +6,8 @@ import GRDB
 /// mirror the JS contract; persistence uses the same column/table shapes as Android Room.
 ///
 /// A Board Link is whole-or-nothing: it is composed only when a board has both a `ble_id` and a
-/// proven `transport`, and decomposed back into those two persisted columns on upsert. A partial
-/// `ble_id`-without-transport row reads as unlinked (`link == nil`).
+/// proven `transport` setting, and decomposed back into the column and the setting on upsert. A
+/// partial `ble_id`-without-transport row reads as unlinked (`link == nil`).
 ///
 /// Scope of an `onAppDataChanged` emit; mirrors the JS `AppDataChangedEvent['scope']` union.
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/AppDataRepository.kt `AppDataScope`
@@ -109,8 +109,7 @@ final class AppDataRepository {
       ("topSpeedKmh", Self.topSpeedKmh(board["topSpeedKmh"] ?? nil)),
       ("alertPresetsOnboarded", board["alertPresetsOnboarded"] as? Bool),
       // Legal Mode changes only through the dedicated native intent.
-    ] + linkSettings.filter { $0.0 != "transport" }
-    let transport = linkSettings.first { $0.0 == "transport" }?.1 as? String
+    ] + linkSettings
     let updatedAt = nowMs()
 
     let encoded = try settings.compactMap { key, value -> PersistedBoardSetting? in
@@ -121,7 +120,7 @@ final class AppDataRepository {
     }
     let deletedKeys = settings.compactMap { key, value in value == nil ? key : nil }
     try boardSettingsPersistence().upsertBoard(
-      PersistedBoard(id: id, name: name, bleId: bleId, transport: transport, createdAt: createdAt, deletedAt: nil),
+      PersistedBoard(id: id, name: name, bleId: bleId, createdAt: createdAt, deletedAt: nil),
       settings: encoded,
       deletedKeys: deletedKeys,
       alerts: try initialAlerts.map { try Self.initialAlertRows(boardId: id, $0, now: updatedAt) } ?? []
@@ -165,8 +164,7 @@ final class AppDataRepository {
       if let decoded = decodeBoardSetting(key: key, json: json) { values[key] = decoded }
     }
     let bleId: String? = row["ble_id"]
-    let storedTransport: String? = row["transport"]
-    let link = BoardLinkPersistence.compose(bleId: bleId, storedTransport: storedTransport, values: values)
+    let link = BoardLinkPersistence.compose(bleId: bleId, storedTransport: values["transport"] as? String, values: values)
     return [
       "id": row["id"] as String,
       "name": row["name"] as String,
@@ -191,7 +189,7 @@ final class AppDataRepository {
     for (key, json) in settings {
       if let decoded = decodeBoardSetting(key: key, json: json) { values[key] = decoded }
     }
-    let link = BoardLinkPersistence.compose(bleId: board.bleId, storedTransport: board.transport, values: values)
+    let link = BoardLinkPersistence.compose(bleId: board.bleId, storedTransport: values["transport"] as? String, values: values)
     return [
       "id": board.id, "name": board.name, "description": values["description"],
       "personalization": values["personalization"],
@@ -217,7 +215,7 @@ final class AppDataRepository {
       return raw as? Bool
     case "linkVersion":
       return intValue(raw)
-    case "vescFirmwareVersion", "refloatVersion", "refloatBaseVersion":
+    case "vescFirmwareVersion", "refloatVersion", "refloatBaseVersion", "transport":
       return raw as? String
     case "lastBattery":
       return decodeLastBattery(raw)

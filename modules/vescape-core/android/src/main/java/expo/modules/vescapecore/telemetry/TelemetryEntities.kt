@@ -333,7 +333,7 @@ data class AlertRuleEntity(
   val threshold: Double,
   @ColumnInfo(name = "threshold_max")
   val thresholdMax: Double?,
-  @ColumnInfo(name = "threshold_kind") val thresholdKind: String = "fixed",
+  @ColumnInfo(name = "threshold_kind", defaultValue = "fixed") val thresholdKind: String = "fixed",
   @ColumnInfo(name = "config_field_id") val configFieldId: String? = null,
   @ColumnInfo(name = "threshold_offset") val thresholdOffset: Double? = null,
   @ColumnInfo(name = "threshold_max_offset") val thresholdMaxOffset: Double? = null,
@@ -487,10 +487,12 @@ data class TuneProfileEntity(
   val id: String,
   @ColumnInfo(name = "board_id")
   val boardId: String,
-  @ColumnInfo(name = "refloat_base_version")
+  @ColumnInfo(name = "refloat_base_version", defaultValue = "")
   val refloatBaseVersion: String,
   val name: String,
+  @ColumnInfo(defaultValue = "sliders-horizontal")
   val icon: String = "sliders-horizontal",
+  @ColumnInfo(defaultValue = "purple")
   val color: String = "purple",
   @ColumnInfo(name = "fields_json")
   val fieldsJson: String,

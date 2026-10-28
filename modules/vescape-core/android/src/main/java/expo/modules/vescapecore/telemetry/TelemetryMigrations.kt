@@ -1754,6 +1754,35 @@ internal object TelemetryMigrations {
         )
     }
 
+    /**
+     * Align with the shared schema (`schema/database.json`). A Room-created v53 `alerts` and
+     * `tune_profiles` lack the column defaults every migrated database and iOS carry; SQLite cannot
+     * add a default in place, so both tables are rebuilt with the same rows. iOS runs the same SQL
+     * and also folds its `boards.transport` column into the `board_settings` row Android uses (#612).
+     * @parity /modules/vescape-core/ios/telemetry/VescapeDatabase.swift `v54_shared_schema`
+     */
+    internal val MIGRATION_53_54 = migration(53, 54) { db ->
+      SHARED_SCHEMA_V54_SQL.forEach(db::execSQL)
+    }
+
+    /** @parity /modules/vescape-core/ios/telemetry/VescapeDatabase.swift `sharedSchemaV54Sql` */
+    internal val SHARED_SCHEMA_V54_SQL = listOf(
+      "CREATE TABLE alerts_v54 (board_id TEXT NOT NULL, id TEXT NOT NULL, control_id TEXT NOT NULL, threshold REAL NOT NULL, threshold_max REAL, threshold_kind TEXT NOT NULL DEFAULT 'fixed', config_field_id TEXT, threshold_offset REAL, threshold_max_offset REAL, enabled INTEGER NOT NULL, spec TEXT NOT NULL, created_at INTEGER NOT NULL, repeat_every_seconds INTEGER, PRIMARY KEY(board_id, id))",
+      "INSERT INTO alerts_v54 (board_id, id, control_id, threshold, threshold_max, threshold_kind, config_field_id, threshold_offset, threshold_max_offset, enabled, spec, created_at, repeat_every_seconds) SELECT board_id, id, control_id, threshold, threshold_max, threshold_kind, config_field_id, threshold_offset, threshold_max_offset, enabled, spec, created_at, repeat_every_seconds FROM alerts",
+      "DROP TABLE alerts",
+      "ALTER TABLE alerts_v54 RENAME TO alerts",
+      "CREATE INDEX index_alerts_board_id ON alerts(board_id)",
+      "CREATE INDEX index_alerts_control_id ON alerts(control_id)",
+      "CREATE INDEX index_alerts_enabled ON alerts(enabled)",
+      "CREATE INDEX index_alerts_created_at ON alerts(created_at)",
+      "CREATE TABLE tune_profiles_v54 (id TEXT NOT NULL, board_id TEXT NOT NULL, refloat_base_version TEXT NOT NULL DEFAULT '', name TEXT NOT NULL, icon TEXT NOT NULL DEFAULT 'sliders-horizontal', color TEXT NOT NULL DEFAULT 'purple', fields_json TEXT NOT NULL, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL, PRIMARY KEY(id))",
+      "INSERT INTO tune_profiles_v54 (id, board_id, refloat_base_version, name, icon, color, fields_json, created_at, updated_at) SELECT id, board_id, refloat_base_version, name, icon, color, fields_json, created_at, updated_at FROM tune_profiles",
+      "DROP TABLE tune_profiles",
+      "ALTER TABLE tune_profiles_v54 RENAME TO tune_profiles",
+      "CREATE INDEX index_tune_profiles_board_id ON tune_profiles(board_id)",
+      "CREATE INDEX index_tune_profiles_board_id_refloat_base_version ON tune_profiles(board_id, refloat_base_version)",
+    )
+
     /** @parity /modules/vescape-core/ios/telemetry/VescapeDatabase.swift `rebuildRideTrackWithoutRecordingId` */
     private fun rebuildRideTrackWithoutRecordingId(db: TelemetryMigrationDatabase) {
       val columns = "id, board_id, fix_at_ms, latitude_e7, longitude_e7, accuracy_cm, " +
@@ -1975,6 +2004,7 @@ internal object TelemetryMigrations {
       MIGRATION_50_51,
       MIGRATION_51_52,
       MIGRATION_52_53,
+      MIGRATION_53_54,
     )
 
 }

@@ -4,7 +4,7 @@ import androidx.room.Database
 import androidx.room.RoomDatabase
 
 // @parity /modules/vescape-core/ios/telemetry/DatabaseBackupManager.swift `VESCAPE_DATABASE_VERSION`
-internal const val VESCAPE_DATABASE_VERSION = 53
+internal const val VESCAPE_DATABASE_VERSION = 54
 
 /** Production Room schema/DAO, portable to JVM hosts. Android open/migration lifecycle stays in [VescapeDatabase]. */
 @Database(

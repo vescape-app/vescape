@@ -51,10 +51,8 @@ class DatabaseRestoreHostTest {
         val manifest = exchange.resolve("ios.zip").inputStream().use { DatabaseBackupArchive.extract(it, database) }
         assertEquals("ios", manifest.getString("platform"))
         assertEquals(VESCAPE_DATABASE_VERSION, manifest.getInt("schemaVersion"))
-        val connection = BundledSQLiteDriver().open(database.path)
-        iosSchemaReconciliationStatements(hasDeletedAt = true, hasFaultCaptures = true, bootstrapLegacyTune = false)
-          .forEach(connection::execSQL)
-        connection.close()
+        // From v54 iOS writes the shared schema, so the archive needs no reconciliation.
+        assertMatchesSharedSchema("restored-ios", database.toPath())
         val room = open(database.path)
         val dao = room.telemetryDao()
         assertEquals("Cross Board", dao.getBoard("cross-board")?.name)
@@ -64,6 +62,7 @@ class DatabaseRestoreHostTest {
           assertEquals(BucketRoutePreview.decode(BucketRoutePreview.build(points)), BucketRoutePreview.decode(stored))
         }
         assertEquals("\"durable\"", dao.getBoardSettings("cross-board").single { it.key == "description" }.valueJson)
+        assertEquals("\"direct\"", dao.getBoardSettings("cross-board").single { it.key == "transport" }.valueJson)
         assertEquals("Cross Tune", dao.getTuneProfile("cross-tune")?.name)
         assertEquals("Cross Favorite", dao.getFavorite("cross-favorite")?.name)
         assertEquals("{\"motor_current_max\":55.5}", dao.getBoardConfigValues("cross-board", "2.0")?.valuesJson)

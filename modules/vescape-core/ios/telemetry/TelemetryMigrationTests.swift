@@ -370,46 +370,25 @@ final class TelemetryMigrationTests: XCTestCase {
     XCTAssertEqual(try applied(), Set(VescapeDatabase.migrator.migrations))
   }
 
-  /// Android files a Board's proven transport as a `board_settings` row; iOS keeps it as a column on
-  /// `boards`. Rebuild the table without it, the way a restored Room database arrives.
-  private func replaceBoardsWithAndroidShape() throws {
+  /// iOS kept a Board's proven transport as a `boards` column until v54; Android always filed it as
+  /// a `board_settings` row (#612). The move keeps the value and leaves `boards` in the shared shape.
+  func testSharedSchemaMigrationMovesTransportIntoBoardSettings() throws {
+    try migrate(upTo: "v53_weather_observations")
     try queue.write { db in
-      try db.execute(sql: "DROP TABLE boards")
-      try db.execute(sql: """
-        CREATE TABLE boards (
-          id TEXT NOT NULL PRIMARY KEY,
-          name TEXT NOT NULL,
-          ble_id TEXT,
-          created_at INTEGER NOT NULL
-        )
-        """)
-      try db.execute(
-        sql: "INSERT INTO boards (id, name, ble_id, created_at) VALUES ('board-1', 'Thor301', 'A1:B2', 1000)"
-      )
-      try db.execute(sql: """
-        INSERT INTO board_settings (board_id, key, value_json, updated_at)
-        VALUES ('board-1', 'transport', '"98"', 1000)
-        """)
+      try db.execute(sql: "INSERT INTO boards (id, name, ble_id, transport, created_at) VALUES ('board-1', 'Thor301', 'A1:B2', '98', 1000)")
+      try db.execute(sql: "INSERT INTO boards (id, name, created_at) VALUES ('board-2', 'Unlinked', 1001)")
     }
-  }
 
-  /// Without this the restore "succeeded" and every board query threw on the missing column —
-  /// swallowed by the repository's fallback, so the app showed "No board" with a full database.
-  func testAndroidBoardsGainTheTransportColumnFromItsSetting() throws {
     try migrate()
-    try replaceBoardsWithAndroidShape()
-    try dropMigrationLedger()
 
-    try queue.write { db in
-      try VescapeDatabase.stampAppliedMigrations(db, schemaVersion: VESCAPE_DATABASE_VERSION)
-      try VescapeDatabase.reconcileForeignSchema(db)
+    XCTAssertFalse(try columnNames("boards").contains("transport"))
+    let settings = try queue.read { db in
+      try Row.fetchAll(db, sql: "SELECT board_id, value_json FROM board_settings WHERE key = 'transport'")
     }
-
-    XCTAssertTrue(try columnNames("boards").contains("transport"))
-    let transport = try queue.read { db in
-      try String.fetchOne(db, sql: "SELECT transport FROM boards WHERE id = 'board-1'")
-    }
-    XCTAssertEqual(transport, "98")
+    XCTAssertEqual(settings.map { $0["board_id"] as String }, ["board-1"])
+    XCTAssertEqual(settings.first?["value_json"] as String?, "\"98\"")
+    let names = try queue.read { db in try String.fetchAll(db, sql: "SELECT name FROM boards ORDER BY created_at") }
+    XCTAssertEqual(names, ["Thor301", "Unlinked"])
   }
 
   func testBoardIdMigrationKeepsAlreadyBoardOwnedRules() throws {

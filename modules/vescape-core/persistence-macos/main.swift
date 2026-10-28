@@ -502,7 +502,7 @@ var boardPersistence = BoardSettingsPersistence(writer: boardQueue!)
 let contractBoardId = boardValues["id"] as! String
 let contractCreatedAt = Int64(int(boardValues["createdAt"]))
 try boardPersistence.upsertBoard(
-  PersistedBoard(id: contractBoardId, name: boardValues["name"] as! String, bleId: "AA:BB", transport: "direct", createdAt: contractCreatedAt, deletedAt: nil),
+  PersistedBoard(id: contractBoardId, name: boardValues["name"] as! String, bleId: "AA:BB", createdAt: contractCreatedAt, deletedAt: nil),
   settings: [PersistedBoardSetting(boardId: contractBoardId, key: "description", valueJson: "\"\(boardValues["description"] as! String)\"", updatedAt: contractCreatedAt)],
   deletedKeys: []
 )
@@ -512,7 +512,7 @@ try boardQueue!.write { db in
 }
 try boardPersistence.saveSetting(PersistedAppSetting(key: settingValues["key"] as! String, valueJson: settingValues["valueJson"] as! String, updatedAt: contractCreatedAt))
 try boardPersistence.upsertBoard(
-  PersistedBoard(id: contractBoardId, name: boardValues["renamed"] as! String, bleId: "AA:BB", transport: "direct", createdAt: contractCreatedAt, deletedAt: nil),
+  PersistedBoard(id: contractBoardId, name: boardValues["renamed"] as! String, bleId: "AA:BB", createdAt: contractCreatedAt, deletedAt: nil),
   settings: [], deletedKeys: []
 )
 try boardPersistence.saveSetting(PersistedAppSetting(key: settingValues["key"] as! String, valueJson: settingValues["updatedValueJson"] as! String, updatedAt: contractCreatedAt + 1))
@@ -566,7 +566,7 @@ try boardQueue!.write { db in
 }
 do {
   try boardPersistence.upsertBoard(
-    PersistedBoard(id: "rollback", name: "Must Roll Back", bleId: nil, transport: nil, createdAt: contractCreatedAt, deletedAt: nil),
+    PersistedBoard(id: "rollback", name: "Must Roll Back", bleId: nil, createdAt: contractCreatedAt, deletedAt: nil),
     settings: [PersistedBoardSetting(boardId: "rollback", key: "description", valueJson: "\"fail\"", updatedAt: contractCreatedAt)],
     deletedKeys: []
   )
@@ -579,7 +579,7 @@ try boardQueue!.write { db in
   try db.execute(sql: "CREATE TRIGGER fail_board_tombstone BEFORE UPDATE ON boards WHEN NEW.deleted_at IS NOT NULL BEGIN SELECT RAISE(FAIL, 'late delete failure'); END")
 }
 try boardPersistence.upsertBoard(
-  PersistedBoard(id: "delete-rollback", name: "Keep", bleId: nil, transport: nil, createdAt: contractCreatedAt, deletedAt: nil),
+  PersistedBoard(id: "delete-rollback", name: "Keep", bleId: nil, createdAt: contractCreatedAt, deletedAt: nil),
   settings: [PersistedBoardSetting(boardId: "delete-rollback", key: "description", valueJson: "\"keep\"", updatedAt: contractCreatedAt)],
   deletedKeys: []
 )
@@ -1037,7 +1037,8 @@ if let exchangePath = ProcessInfo.processInfo.environment["VESCAPE_BACKUP_EXCHAN
   let iosDatabase = try DatabaseQueue(path: iosDatabaseURL.path)
   try VescapeDatabase.migrator.migrate(iosDatabase)
   try iosDatabase.write { db in
-    try db.execute(sql: "INSERT INTO boards (id,name,ble_id,transport,created_at) VALUES ('cross-board','Cross Board','cross-ble','direct',100)")
+    try db.execute(sql: "INSERT INTO boards (id,name,ble_id,created_at) VALUES ('cross-board','Cross Board','cross-ble',100)")
+    try db.execute(sql: "INSERT INTO board_settings VALUES ('cross-board','transport','\"direct\"',100)")
     try db.execute(sql: "INSERT INTO board_settings VALUES ('cross-board','description','\"durable\"',101)")
     try db.execute(sql: "INSERT INTO app_settings VALUES ('cross-setting','\"ios\"',102)")
     try db.execute(sql: "INSERT INTO tune_profiles (id,board_id,name,icon,color,fields_json,created_at,updated_at,refloat_base_version) VALUES ('cross-tune','cross-board','Cross Tune','gauge','orange','{\"kp\":2}',103,104,'2.0')")

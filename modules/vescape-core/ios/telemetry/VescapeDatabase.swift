@@ -227,29 +227,6 @@ enum VescapeDatabase {
     try db.execute(sql: "PRAGMA user_version = 22")
   }
 
-  /// Bridge the places where the two platforms hold the same fact in different shapes. Stamping
-  /// tells the migrator an incoming Room database is up to date, which it is — for Android. Where
-  /// iOS keeps something Android files elsewhere, nothing else will ever add it, so it is added
-  /// here. Every future divergence belongs in this function.
-  ///
-  /// Today that is one column: a Board's proven transport is a column on `boards` here and a
-  /// `board_settings` row there.
-  ///
-  /// Internal, not private, so the migration tests can reconcile a database the way a restore does.
-  internal static func reconcileForeignSchema(_ db: Database) throws {
-    guard try db.tableExists("boards"),
-          try !db.columns(in: "boards").contains(where: { $0.name == "transport" })
-    else { return }
-    try db.execute(sql: "ALTER TABLE boards ADD COLUMN transport TEXT")
-    // `value_json` is a JSON string ("direct" or a CAN id) and the column stores it bare.
-    try db.execute(sql: """
-      UPDATE boards SET transport = (
-        SELECT TRIM(value_json, '"') FROM board_settings
-        WHERE board_settings.board_id = boards.id AND board_settings.key = 'transport'
-      )
-      """)
-  }
-
   /// Hot-swap the database file with a validated restore, closing the live pool so SQLite releases
   /// the file + WAL sidecars, then reopening (and migrating) at the same path. On any failure the
   /// previous file is rolled back so the app is never left without a database.
@@ -298,7 +275,6 @@ enum VescapeDatabase {
       guard try !db.tableExists(migrationLedgerTable) else { return }
       try upgradeExportedAndroidDatabase(db, from: schemaVersion)
       try stampAppliedMigrations(db, schemaVersion: max(schemaVersion, 22))
-      try reconcileForeignSchema(db)
     }
     try migrator.migrate(pool)
     try pool.read { db in _ = try Int.fetchOne(db, sql: "SELECT 1") }
@@ -964,9 +940,44 @@ enum VescapeDatabase {
     migrator.registerMigration("v53_weather_observations") { db in
       try PersistenceSchema.createWeatherObservations(db)
     }
+    // Align with the shared schema (`schema/database.json`, #612). A Board's proven transport moves
+    // from the iOS-only `boards.transport` column into the `board_settings` row Android has always
+    // used. Android's restore makes the same move for an incoming iOS file. A restored Room v53
+    // file has no such column and lacks the `alerts` and `tune_profiles` defaults, so both tables
+    // are rebuilt with the same rows, exactly as Android's v54 does.
+    // @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/TelemetryMigrations.kt `MIGRATION_53_54`
+    migrator.registerMigration("v54_shared_schema") { db in
+      if try db.columns(in: "boards").contains(where: { $0.name == "transport" }) {
+        try db.execute(sql: "INSERT OR REPLACE INTO board_settings (board_id, key, value_json, updated_at) SELECT id, 'transport', json_quote(transport), created_at FROM boards WHERE transport IS NOT NULL")
+        try db.execute(sql: "CREATE TABLE boards_v54 (id TEXT NOT NULL PRIMARY KEY, name TEXT NOT NULL, ble_id TEXT, created_at INTEGER NOT NULL, deleted_at INTEGER)")
+        try db.execute(sql: "INSERT INTO boards_v54 (id, name, ble_id, created_at, deleted_at) SELECT id, name, ble_id, created_at, deleted_at FROM boards")
+        try db.execute(sql: "DROP TABLE boards")
+        try db.execute(sql: "ALTER TABLE boards_v54 RENAME TO boards")
+        try db.execute(sql: "CREATE INDEX index_boards_created_at ON boards(created_at)")
+      }
+      for sql in sharedSchemaV54Sql { try db.execute(sql: sql) }
+    }
 
     return migrator
   }
+
+  /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/TelemetryMigrations.kt `SHARED_SCHEMA_V54_SQL`
+  private static let sharedSchemaV54Sql = [
+    "CREATE TABLE alerts_v54 (board_id TEXT NOT NULL, id TEXT NOT NULL, control_id TEXT NOT NULL, threshold REAL NOT NULL, threshold_max REAL, threshold_kind TEXT NOT NULL DEFAULT 'fixed', config_field_id TEXT, threshold_offset REAL, threshold_max_offset REAL, enabled INTEGER NOT NULL, spec TEXT NOT NULL, created_at INTEGER NOT NULL, repeat_every_seconds INTEGER, PRIMARY KEY(board_id, id))",
+    "INSERT INTO alerts_v54 (board_id, id, control_id, threshold, threshold_max, threshold_kind, config_field_id, threshold_offset, threshold_max_offset, enabled, spec, created_at, repeat_every_seconds) SELECT board_id, id, control_id, threshold, threshold_max, threshold_kind, config_field_id, threshold_offset, threshold_max_offset, enabled, spec, created_at, repeat_every_seconds FROM alerts",
+    "DROP TABLE alerts",
+    "ALTER TABLE alerts_v54 RENAME TO alerts",
+    "CREATE INDEX index_alerts_board_id ON alerts(board_id)",
+    "CREATE INDEX index_alerts_control_id ON alerts(control_id)",
+    "CREATE INDEX index_alerts_enabled ON alerts(enabled)",
+    "CREATE INDEX index_alerts_created_at ON alerts(created_at)",
+    "CREATE TABLE tune_profiles_v54 (id TEXT NOT NULL, board_id TEXT NOT NULL, refloat_base_version TEXT NOT NULL DEFAULT '', name TEXT NOT NULL, icon TEXT NOT NULL DEFAULT 'sliders-horizontal', color TEXT NOT NULL DEFAULT 'purple', fields_json TEXT NOT NULL, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL, PRIMARY KEY(id))",
+    "INSERT INTO tune_profiles_v54 (id, board_id, refloat_base_version, name, icon, color, fields_json, created_at, updated_at) SELECT id, board_id, refloat_base_version, name, icon, color, fields_json, created_at, updated_at FROM tune_profiles",
+    "DROP TABLE tune_profiles",
+    "ALTER TABLE tune_profiles_v54 RENAME TO tune_profiles",
+    "CREATE INDEX index_tune_profiles_board_id ON tune_profiles(board_id)",
+    "CREATE INDEX index_tune_profiles_board_id_refloat_base_version ON tune_profiles(board_id, refloat_base_version)",
+  ]
 
   /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/TelemetryMigrations.kt `PRESET_ROWS_SQL`
   private static let presetRowsSql = """
