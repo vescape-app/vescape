@@ -38,6 +38,9 @@ pre-commit:
     test-android:
       glob: '*.{kt,kts}'
       run: bun run test:android
+    test-ios:
+      glob: '*.swift'
+      run: bun run test:ios
 
 commit-msg:
   commands:
