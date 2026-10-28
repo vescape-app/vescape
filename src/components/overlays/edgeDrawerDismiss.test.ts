@@ -268,13 +268,15 @@ describe('edgeDrawerDragStartsAtEdge', () => {
     expect(edgeDrawerDragStartsAtEdge(at(MEDIUM_RANGE, MEDIUM_RANGE, false))).toBe(true)
   })
 
-  test('a long drawer dismisses only from its content edge', () => {
+  test('a long drawer dismisses only while its content start is on screen', () => {
     const topEdge = edgeDrawerRestoreOffset(LONG_RANGE, HEIGHT, true)
     expect(edgeDrawerDragStartsAtEdge(at(topEdge, LONG_RANGE, true))).toBe(true)
-    expect(edgeDrawerDragStartsAtEdge(at(topEdge - 200, LONG_RANGE, true))).toBe(false)
+    expect(edgeDrawerDragStartsAtEdge(at(LONG_RANGE - HEIGHT, LONG_RANGE, true))).toBe(true)
+    expect(edgeDrawerDragStartsAtEdge(at(LONG_RANGE - HEIGHT - 200, LONG_RANGE, true))).toBe(false)
     const bottomEdge = edgeDrawerRestoreOffset(LONG_RANGE, HEIGHT, false)
     expect(edgeDrawerDragStartsAtEdge(at(bottomEdge, LONG_RANGE, false))).toBe(true)
-    expect(edgeDrawerDragStartsAtEdge(at(bottomEdge + 200, LONG_RANGE, false))).toBe(false)
+    expect(edgeDrawerDragStartsAtEdge(at(HEIGHT, LONG_RANGE, false))).toBe(true)
+    expect(edgeDrawerDragStartsAtEdge(at(HEIGHT + 200, LONG_RANGE, false))).toBe(false)
   })
 })
 

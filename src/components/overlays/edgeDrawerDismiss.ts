@@ -199,8 +199,8 @@ const DISMISS_EDGE_SLOP = 8
 
 /**
  * Whether a drag starting at this offset may dismiss the drawer. A drawer that fits on screen
- * always may, so a short drawer closes on any pull. A longer one only from its content edge: a
- * fling across the list stops there instead of carrying the drawer off screen.
+ * always may, so a short drawer closes on any pull. A longer one only while the start of its
+ * content is on screen: a fling across the list stops there instead of carrying the drawer off.
  */
 export function edgeDrawerDragStartsAtEdge({
   offset,
@@ -210,8 +210,9 @@ export function edgeDrawerDragStartsAtEdge({
 }: EdgeDrawerGeometry) {
   'worklet'
   if (range <= height) return true
-  const edge = edgeDrawerRestoreOffset(range, height, opensFromTop)
-  return opensFromTop ? offset >= edge - DISMISS_EDGE_SLOP : offset <= edge + DISMISS_EDGE_SLOP
+  return opensFromTop
+    ? offset >= range - height - DISMISS_EDGE_SLOP
+    : offset <= height + DISMISS_EDGE_SLOP
 }
 
 /** Whether a scroll has moved past the content edge into the dismissal travel. */

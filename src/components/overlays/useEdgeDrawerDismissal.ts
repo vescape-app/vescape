@@ -111,12 +111,18 @@ export function useEdgeDrawerDismissal({
 
   const scrollToContentStart = useCallback(
     (range: number) => {
-      const offset = opensFromTop ? 0 : Math.min(range, height)
+      // A bottom drawer keeps the height it had, unless it was scrolled into the old page or would
+      // fade on the new one. The sticky header pins below the status bar; a page starting flush at
+      // the screen top would tuck its first row under it.
+      const contentStart = Math.min(scrollOffsetRef.current, height - insets.top)
+      const offset = opensFromTop
+        ? 0
+        : Math.min(range, Math.max(contentStart, edgeDrawerRestoreOffset(range, height, false)))
       scrollOffsetRef.current = offset
       scrollOffset.value = offset
       requestAnimationFrame(() => scrollToOffset(offset, false))
     },
-    [height, opensFromTop, scrollOffset, scrollToOffset],
+    [height, insets.top, opensFromTop, scrollOffset, scrollToOffset],
   )
 
   useEffect(() => {
