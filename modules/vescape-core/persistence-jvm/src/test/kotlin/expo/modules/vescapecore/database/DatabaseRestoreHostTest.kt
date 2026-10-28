@@ -91,11 +91,8 @@ class DatabaseRestoreHostTest {
             .forEach(connection::execSQL)
           DatabaseMigrations.MIGRATION_53_54.migrate(connection)
           connection.execSQL("PRAGMA user_version = 54")
-          val tables = connection.prepare("SELECT name FROM sqlite_master WHERE type='table'").use { query ->
-            buildList { while (query.step()) add(query.getText(0)) }
-          }
-          assertEquals(listOf("DROP TABLE `stray_from_old_app`"), unknownTableDrops(tables))
-          unknownTableDrops(tables).forEach(connection::execSQL)
+          connection.execSQL("PRAGMA foreign_keys = ON")
+          dropUnknownTables(connection)
         }
         assertMatchesSharedSchema("restored-ios-v53", v53.toPath())
         val v53Room = open(v53.path)

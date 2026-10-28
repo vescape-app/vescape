@@ -1,5 +1,8 @@
 package expo.modules.vescapecore.database
 
+import androidx.sqlite.SQLiteConnection
+import androidx.sqlite.execSQL
+
 /** Schema generations with a complete production Room migration path to the current database. */
 internal val SUPPORTED_ANDROID_DATABASE_VERSIONS: Set<Int> =
   ((3..36) + (40..VESCAPE_DATABASE_VERSION)).toSet()
@@ -48,9 +51,27 @@ internal val SHARED_DATABASE_TABLES: Set<String> = setOf(
 
 private val ENGINE_TABLES = setOf("room_master_table", "android_metadata", "grdb_migrations")
 
-internal fun unknownTableDrops(tables: List<String>): List<String> = tables
-  .filterNot { it in SHARED_DATABASE_TABLES || it in ENGINE_TABLES || it.startsWith("sqlite_") }
-  .map { "DROP TABLE `$it`" }
+/**
+ * Drops every table outside [SHARED_DATABASE_TABLES] in one transaction. Foreign keys are checked
+ * at commit, so stray tables that reference each other drop in any order.
+ * @parity /modules/vescape-core/ios/database/VescapeDatabase.swift `openRestoredDatabase`
+ */
+internal fun dropUnknownTables(connection: SQLiteConnection) {
+  val tables = connection.prepare("SELECT name FROM sqlite_master WHERE type='table'").use { query ->
+    buildList { while (query.step()) add(query.getText(0)) }
+  }
+  connection.execSQL("BEGIN IMMEDIATE")
+  try {
+    connection.execSQL("PRAGMA defer_foreign_keys = ON")
+    tables
+      .filterNot { it in SHARED_DATABASE_TABLES || it in ENGINE_TABLES || it.startsWith("sqlite_") }
+      .forEach { connection.execSQL("DROP TABLE `$it`") }
+    connection.execSQL("COMMIT")
+  } catch (error: Exception) {
+    connection.execSQL("ROLLBACK")
+    throw error
+  }
+}
 
 internal fun roomVersionForBackup(platform: String, version: Int): Int = when (platform) {
   "android" -> version.also { require(it in EXPORTED_ANDROID_DATABASE_VERSIONS) }

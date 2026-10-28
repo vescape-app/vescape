@@ -391,6 +391,28 @@ final class DatabaseMigrationTests: XCTestCase {
     XCTAssertEqual(names, ["Thor301", "Unlinked"])
   }
 
+  /// v54 rebuilds `alerts` and `tune_profiles`; every column keeps its non-default value.
+  func testSharedSchemaMigrationKeepsEveryAlertAndTuneColumn() throws {
+    let alert = "board_id,id,control_id,threshold,threshold_max,threshold_kind,config_field_id,threshold_offset,threshold_max_offset,enabled,spec,created_at,repeat_every_seconds"
+    let tune = "id,board_id,refloat_base_version,name,icon,color,fields_json,created_at,updated_at"
+    try migrate(upTo: "v53_weather_observations")
+    try queue.write { db in
+      try db.execute(sql: "INSERT INTO boards (id, name, created_at) VALUES ('board-v53', 'V53', 100)")
+      try db.execute(sql: "INSERT INTO alerts (\(alert)) VALUES ('board-v53','alert-v53','speed',31.5,42.25,'config','refloat.tiltback_speed',-2.5,3.75,0,'tts:Slow down',5300,45)")
+      try db.execute(sql: "INSERT INTO tune_profiles (\(tune)) VALUES ('tune-v53','board-v53','1.2.1','Trail','mountain','#ff8800','[2.5]',5301,5302)")
+    }
+
+    try migrate()
+
+    let joined = { (columns: String, table: String) in
+      try self.queue.read { db in
+        try String.fetchOne(db, sql: "SELECT \(columns.replacingOccurrences(of: ",", with: "||','||")) FROM \(table)")
+      }
+    }
+    XCTAssertEqual(try joined(alert, "alerts"), "board-v53,alert-v53,speed,31.5,42.25,config,refloat.tiltback_speed,-2.5,3.75,0,tts:Slow down,5300,45")
+    XCTAssertEqual(try joined(tune, "tune_profiles"), "tune-v53,board-v53,1.2.1,Trail,mountain,#ff8800,[2.5],5301,5302")
+  }
+
   func testBoardIdMigrationKeepsAlreadyBoardOwnedRules() throws {
     try migrate(upTo: "v26_alert_source")
     try queue.write { db in

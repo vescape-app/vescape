@@ -253,6 +253,21 @@ class DatabaseMigrationMatrixHostTest {
     Files.deleteIfExists(path)
   }
 
+  /** v54 rebuilds `alerts` and `tune_profiles`; every column keeps its non-default value. */
+  @Test fun v53AlertAndTuneRowsKeepEveryColumnThroughTheRebuild() {
+    val alert = "board_id,id,control_id,threshold,threshold_max,threshold_kind,config_field_id,threshold_offset,threshold_max_offset,enabled,spec,created_at,repeat_every_seconds"
+    val tune = "id,board_id,refloat_base_version,name,icon,color,fields_json,created_at,updated_at"
+    val path = migrateFromExport(53, seed = {
+      exec("INSERT INTO boards (id,name,created_at) VALUES ('board-v53','V53',100)")
+      exec("INSERT INTO alerts ($alert) VALUES ('board-v53','alert-v53','speed',31.5,42.25,'config','refloat.tiltback_speed',-2.5,3.75,0,'tts:Slow down',5300,45)")
+      exec("INSERT INTO tune_profiles ($tune) VALUES ('tune-v53','board-v53','1.2.1','Trail','mountain','#ff8800','[2.5]',5301,5302)")
+    }) {
+      assertEquals("board-v53,alert-v53,speed,31.5,42.25,config,refloat.tiltback_speed,-2.5,3.75,0,tts:Slow down,5300,45", text("SELECT ${alert.replace(",", "||','||")} FROM alerts"))
+      assertEquals("tune-v53,board-v53,1.2.1,Trail,mountain,#ff8800,[2.5],5301,5302", text("SELECT ${tune.replace(",", "||','||")} FROM tune_profiles"))
+    }
+    Files.deleteIfExists(path)
+  }
+
   /** The first Android backups (v14) and the Privacy Zone era (v18–v20) the iOS host restores. */
   @Test fun exportAuthenticFirstAndroidBackupGenerationForIOSHost() {
     if (System.getenv("VESCAPE_BACKUP_PHASE") != "export-android") return

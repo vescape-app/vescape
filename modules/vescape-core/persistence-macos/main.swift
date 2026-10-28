@@ -1079,7 +1079,10 @@ if let exchangePath = ProcessInfo.processInfo.environment["VESCAPE_BACKUP_EXCHAN
     try db.execute(sql: "CREATE TABLE vesc_fault_capture_samples (id INTEGER PRIMARY KEY AUTOINCREMENT, occurrence_id TEXT NOT NULL, captured_at INTEGER NOT NULL, speed REAL, duty_cycle REAL, erpm REAL, battery_voltage REAL, battery_current REAL, motor_current REAL, temp_mosfet REAL, temp_motor REAL, pitch REAL, roll REAL, balance_pitch REAL, adc1 REAL, adc2 REAL, state INTEGER)")
     try db.execute(sql: "CREATE INDEX index_vesc_fault_capture_samples_occurrence_id_captured_at ON vesc_fault_capture_samples(occurrence_id, captured_at)")
     try db.execute(sql: "INSERT INTO vesc_fault_capture_samples (occurrence_id,captured_at,speed,state) VALUES ('v53-fault',1000,12.5,1)")
-    try db.execute(sql: "CREATE TABLE stray_from_old_app (id INTEGER PRIMARY KEY)")
+    try db.execute(sql: "CREATE TABLE stray_parent (id INTEGER PRIMARY KEY)")
+    try db.execute(sql: "CREATE TABLE stray_child (id INTEGER PRIMARY KEY, parent_id INTEGER NOT NULL REFERENCES stray_parent(id))")
+    try db.execute(sql: "INSERT INTO stray_parent (id) VALUES (1)")
+    try db.execute(sql: "INSERT INTO stray_child (id, parent_id) VALUES (1, 1)")
     try db.execute(sql: "PRAGMA user_version = 53")
   }
   try iosV53.close()

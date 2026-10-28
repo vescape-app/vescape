@@ -1,5 +1,6 @@
 package expo.modules.vescapecore.database
 
+import androidx.sqlite.driver.bundled.BundledSQLiteDriver
 import kotlinx.coroutines.runBlocking
 import androidx.room.useReaderConnection
 import androidx.room.useWriterConnection
@@ -88,7 +89,8 @@ object DatabaseBackupManager {
         validateDatabase(installed, manifestVersion.copy(declaredVersion = manifestVersion.roomVersion))
         try {
           verifyRoomDatabase(appContext)
-          dropUnknownTables(appContext)
+          VescapeDatabase.closeAndReset()
+          BundledSQLiteDriver().open(installed.path).use(::dropUnknownTables)
           MySounds.replaceFromBackup(appContext, soundStage)
         } catch (error: Exception) {
           resetRepositoriesAndCloseDatabase()
@@ -107,16 +109,6 @@ object DatabaseBackupManager {
   private fun verifyRoomDatabase(context: Context) = runBlocking {
     VescapeDatabase.get(context).useReaderConnection { reader ->
       reader.usePrepared("SELECT 1") { query -> check(query.step()) }
-    }
-  }
-
-  /** Runs after Room has migrated the restore, so no migration loses a table it still reads. */
-  private fun dropUnknownTables(context: Context) = runBlocking {
-    VescapeDatabase.get(context).useWriterConnection { writer ->
-      val tables = writer.usePrepared("SELECT name FROM sqlite_master WHERE type='table'") { query ->
-        buildList { while (query.step()) add(query.getText(0)) }
-      }
-      unknownTableDrops(tables).forEach { writer.execSQL(it) }
     }
   }
 
