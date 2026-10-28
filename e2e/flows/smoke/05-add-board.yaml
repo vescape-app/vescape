@@ -74,7 +74,7 @@ appId: ${APP_ID}
 - tapOn:
     id: add-board-link-offline
 
-- assertVisible: Name your board
+- assertVisible: Personalize your board
 - tapOn:
     id: add-board-name-input
     # Match the phone setup flow: backspace starts at the end of the suggested name.
@@ -88,7 +88,7 @@ appId: ${APP_ID}
 # cannot be used here: on Android Maestro implements it as a back press, so on the runs where the
 # keyboard is already down it pops the wizard modal instead and the flow lands back on the main
 # screen with nothing to say why. Blurring is the same intent without the second meaning.
-- tapOn: Name your board
+- tapOn: Personalize your board
 - scrollUntilVisible:
     element:
       id: add-board-name-next
