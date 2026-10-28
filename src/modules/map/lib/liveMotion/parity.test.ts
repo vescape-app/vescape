@@ -18,6 +18,7 @@ interface Event {
   heading?: number | null
   cameraHeading?: number | null
   prediction?: number
+  cameraWindow?: number
   predictionStrength?: number
   recovering?: boolean
 }
@@ -49,18 +50,16 @@ for (const scenario of fixtures.scenarios)
         expect(motion.updateSpeed(event.mps!, at, at, event.source ?? source)).toBe(
           event.accepted ?? true,
         )
-      if (event.op === 'config')
-        motion.configure(
-          { ...defaultMotionConfig, predictionStrength: event.predictionStrength! },
-          at,
-        )
+      if (event.op === 'config') motion.configure({ ...defaultMotionConfig, ...event }, at)
       if (event.op !== 'sample') continue
       const coordinate = motion.position(at)!
       if (event.eastM != null) expect(coordinate[0] * 111320).toBeCloseTo(event.eastM, 4)
       if (event.northM != null) expect(coordinate[1] * 110574).toBeCloseTo(event.northM, 4)
       if ('heading' in event) expect(motion.pointHeading(at)).toEqual(event.heading ?? null)
-      if ('cameraHeading' in event)
-        expect(motion.cameraHeading(at)).toEqual(event.cameraHeading ?? null)
+      if ('cameraHeading' in event) {
+        if (event.cameraHeading == null) expect(motion.cameraHeading(at)).toBeNull()
+        else expect(motion.cameraHeading(at)).toBeCloseTo(event.cameraHeading, 4)
+      }
       if (event.cadenceMs != null) expect(motion.cadenceMs).toBe(event.cadenceMs)
       const evidence = motion.diagnostics(at)
       if (event.prediction != null)

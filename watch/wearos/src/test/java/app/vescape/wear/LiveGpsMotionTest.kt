@@ -30,7 +30,7 @@ class LiveGpsMotionTest {
                         if (e.has("eastM")) assertEquals(label, e.getDouble("eastM"), position.first * 111320, 0.0001)
                         if (e.has("northM")) assertEquals(label, e.getDouble("northM"), position.second * 110574, 0.0001)
                         if (e.has("heading")) { if (e.isNull("heading")) assertNull(label, m.pointHeading(at)) else assertEquals(label, e.getDouble("heading"), m.pointHeading(at)!!, 0.0001) }
-                        if (e.has("cameraHeading")) assertEquals(label, e.getDouble("cameraHeading"), m.cameraHeading(at)!!, 0.0001)
+                        if (e.has("cameraHeading")) { if (e.isNull("cameraHeading")) assertNull(label, m.cameraHeading(at)) else assertEquals(label, e.getDouble("cameraHeading"), m.cameraHeading(at)!!, 0.0001) }
                         if (e.has("cadenceMs")) assertEquals(label, e.getDouble("cadenceMs"), m.cadenceMs, 0.0001)
                         if (e.has("prediction")) assertEquals(label, e.getDouble("prediction"), m.effectivePrediction(at), 0.0001)
                         if (e.has("recovering")) assertEquals(label, e.getBoolean("recovering"), m.recovering)

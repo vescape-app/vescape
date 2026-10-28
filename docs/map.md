@@ -19,10 +19,15 @@ Zero Board speed, missing/expired telemetry, unusable GPS or expired direction e
 prediction. Fresh GPS alone still produces linear correction without a Board Session.
 
 A shared travel-direction estimator accepts spatially separated points. Point prediction uses a
-shorter window than camera heading. Its bounded time window lets slow travel accumulate evidence;
-clustered noise does not renew old direction evidence. Curves and reversals remain valid movement.
-Motor sign never chooses geographic direction. Unknown GPS heading holds the last camera heading,
-without selecting compass or north.
+shorter window than camera heading. Camera presentation confirms a candidate from net displacement
+and newly accepted, spatially separated fixes while retaining its last confirmed heading. The
+shared estimator supplies heading through the configurable camera window; repeated stationary
+fixes do not advance confirmation. Defaults require 3 m and
+2 fixes for ordinary turns, and 8 m and 4 fixes for near reversals. With good GPS and 1 Hz fixes, 0.5 m/s travel can supply four meaningful steps in
+16 seconds; poorer accuracy or slower fix delivery can take longer. Rocking contributes little net
+displacement. Candidate evidence survives the estimator's rolling window, but not a data gap or
+source reset. Motor sign never chooses geographic direction. Unknown GPS heading holds the last
+camera heading, without selecting compass or north.
 
 When a fix arrives behind the displayed point, its longitudinal correction consumes subsequent
 forward velocity before allowing backward movement. Lateral correction remains available. This
@@ -62,8 +67,8 @@ adapts Session Clock offset and replay rate at the renderer boundary without rew
 
 Watch Frames append only missing measured facts: source identity, fix time, send time, accuracy and
 GPS/telemetry age and source clock rate. Integer millisecond clocks use two Float32 lanes with a 2²⁰ base. Watches estimate
-the minimum receive-minus-send offset, so arbitrary clock differences do not affect animation and
-excess transport delay ages both inputs. The first frame's one-way transit time cannot be known
+receive-time deltas against session-time deltas scaled by the producer rate, so arbitrary clock
+offsets do not affect animation and excess transport delay ages both inputs. The first frame's one-way transit time cannot be known
 without synchronized clocks. Prediction is bounded even during this initial uncertainty.
 
 Older Wear decoders skip appended lanes. Older watchOS decoders require exactly 13 lanes, so the

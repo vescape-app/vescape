@@ -82,8 +82,35 @@ describe('production display motion', () => {
     expect(m.pointHeading(9000)).toBeCloseTo(0, 3)
     expect(m.cameraHeading(9000)).not.toBeNull()
     m.accept(fix(5, 10000, 5), 10000, 0, 1)
-    expect(m.cameraHeading(10000)).toBeGreaterThanOrEqual(270)
-    expect(m.cameraHeading(10000)).toBeLessThan(360)
+    expect(m.cameraHeading(10000)).toBeCloseTo(m.cameraHeading(9000)!, 3)
+    m.accept(fix(4, 11000, 5), 11000, 0, 1)
+    m.accept(fix(3, 12000, 5), 12000, 0, 1)
+    m.accept(fix(2, 13000, 5), 13000, 0, 1)
+    expect(m.cameraHeading(13000)).not.toBeNull()
+  })
+  test('camera holds through one reverse outlier and confirms sustained slow reverse within 20 seconds', () => {
+    const m = moving()
+    m.accept(fix(-5, 2000), 2000, 0, 1)
+    m.accept(fix(10, 3000), 3000, 0, 1)
+    expect(m.cameraHeading(3000)).toBeCloseTo(90, 3)
+    let confirmedAt = -1
+    for (let t = 4000; t <= 24000; t += 1000) {
+      const x = 10 - (t - 3000) * 0.0005
+      m.accept(fix(x, t), t, 0, 1)
+      if (m.cameraHeading(t)! >= 269 && m.cameraHeading(t)! <= 271) {
+        confirmedAt = t
+        break
+      }
+    }
+    expect(confirmedAt).toBeGreaterThan(3000)
+    expect(confirmedAt).toBeLessThanOrEqual(23000)
+  })
+  test('camera ignores one backward GPS outlier', () => {
+    const m = moving()
+    m.accept(fix(0, 2000), 2000, 0, 1)
+    expect(m.cameraHeading(2000)).toBeCloseTo(90, 3)
+    m.accept(fix(10, 3000), 3000, 0, 1)
+    expect(m.cameraHeading(3000)).toBeCloseTo(90, 3)
   })
   test('unknown camera direction holds last heading; new source rejects old events and gaps discard direction', () => {
     const m = moving()

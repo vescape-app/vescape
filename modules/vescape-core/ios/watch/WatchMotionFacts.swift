@@ -19,11 +19,15 @@ struct WatchMotionFacts: Equatable {
 /// both inputs. The first frame's one-way latency is unknowable without clock sync.
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/watch/WatchMotionFacts.kt `WatchMotionClock`
 final class WatchMotionClock {
-  private var source = -1.0, lastSent = -Double.infinity, offset = Double.infinity
+  private var source = -1.0, lastSent = -Double.infinity, lastReceived = -Double.infinity, lastRate = 1.0, excessDelay = 0.0
   func accept(_ facts: WatchMotionFacts, now: Double) -> Double? {
-    guard facts.sourceId >= source, facts.sourceId != source || facts.sentAt > lastSent else { return nil }
-    if facts.sourceId > source { source = facts.sourceId; lastSent = -.infinity; offset = .infinity }
-    lastSent = facts.sentAt; offset = min(offset, now - facts.sentAt)
-    return max(0, now - facts.sentAt - offset)
+    guard now.isFinite, facts.sourceId >= source, facts.sourceId != source || (facts.sentAt > lastSent && now >= lastReceived) else { return nil }
+    if facts.sourceId > source { source = facts.sourceId; lastSent = -.infinity; excessDelay = 0 }
+    if lastSent.isFinite {
+      let expected = (facts.sentAt - lastSent) / lastRate
+      excessDelay = max(0, excessDelay + (now - lastReceived) - expected)
+    }
+    lastSent = facts.sentAt; lastReceived = now; lastRate = facts.clockRate
+    return excessDelay
   }
 }

@@ -139,7 +139,7 @@ struct WatchMapMotion: Equatable {
     if let display {
       // Settled timelines use distantFuture; land there without integrating an artificial clock.
       if date == .distantFuture {
-        return WatchTrailPoint(eastM: 0, northM: 0)
+        return display.offset(endsAt.timeIntervalSince1970 * 1000)
       }
       return display.offset(date.timeIntervalSince1970 * 1000)
     }

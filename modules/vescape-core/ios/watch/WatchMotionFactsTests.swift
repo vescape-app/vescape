@@ -29,6 +29,21 @@ final class WatchMotionFactsTests: XCTestCase {
     XCTAssertEqual(c.accept(facts(epoch + 1250, source: 1793100000002), now: 12_000), 0)
     XCTAssertNil(c.accept(facts(epoch + 2000), now: 13_000))
   }
+  func testReplayRateClockSeparatesProducerRateFromDeliveryDelay() {
+    let c = WatchMotionClock()
+    let epoch = 1_000_000.0
+    var frame = facts(epoch); frame.clockRate = 4
+    XCTAssertEqual(c.accept(frame, now: 0), 0)
+    frame.sentAt = epoch + 1_000
+    XCTAssertEqual(c.accept(frame, now: 750), 500)
+    frame.sentAt = epoch + 2_000; frame.clockRate = 1
+    XCTAssertEqual(c.accept(frame, now: 1_000), 500)
+    frame.sentAt = epoch + 3_000
+    XCTAssertEqual(c.accept(frame, now: 2_000), 500)
+    XCTAssertNil(c.accept(frame, now: 2_100))
+    frame.sourceId += 1; frame.sentAt += 1_000
+    XCTAssertEqual(c.accept(frame, now: 2_000), 0)
+  }
   func testSpeedFramesNeverRestartGpsCorrectionAndCameraLagsPoint() throws {
     let display = WatchDisplayMotion(), epoch = 1793100000000.0
     func feed(_ east: Double, _ fix: Double, _ now: Double, _ speed: Double) {

@@ -9,6 +9,8 @@ struct MotionConfig: Equatable {
   var movementM = 2.0, accuracyMovementRatio = 0.3, fullConfidenceM = 6.0
   var goodAccuracyM = 5.0, maxAccuracyM = 25.0, gpsFreshnessS = 3.0
   var directionWindowS = 8.0
+  var cameraConfirmM = 3.0, cameraReverseConfirmM = 8.0
+  var cameraConfirmFixes = 2.0, cameraReverseConfirmFixes = 4.0
   var telemetryFreshnessS = 1.0, directionRetentionS = 2.0, predictionHorizonS = 1.5
   var maxPredictionM = 8.0, recoveryAfterS = 3.0, recoverySpeedMps = 2.0
   var cameraPositionOmega = 3.0, cameraHeadingOmega = 3.0, arrowHeadingOmega = 10.0
@@ -31,6 +33,10 @@ struct MotionConfig: Equatable {
       maxAccuracyM: read("maxAccuracyM", defaults.maxAccuracyM, 11, 50),
       gpsFreshnessS: read("gpsFreshnessS", defaults.gpsFreshnessS, 0.5, 10),
       directionWindowS: read("directionWindowS", defaults.directionWindowS, 3, 20),
+      cameraConfirmM: read("cameraConfirmM", defaults.cameraConfirmM, 1, 10),
+      cameraReverseConfirmM: read("cameraReverseConfirmM", defaults.cameraReverseConfirmM, 3, 20),
+      cameraConfirmFixes: read("cameraConfirmFixes", defaults.cameraConfirmFixes, 2, 6),
+      cameraReverseConfirmFixes: read("cameraReverseConfirmFixes", defaults.cameraReverseConfirmFixes, 3, 8),
       telemetryFreshnessS: read("telemetryFreshnessS", defaults.telemetryFreshnessS, 0.25, 3),
       directionRetentionS: read("directionRetentionS", defaults.directionRetentionS, 0.5, 5),
       predictionHorizonS: read("predictionHorizonS", defaults.predictionHorizonS, 0.25, 3),
@@ -66,8 +72,9 @@ final class TravelDirection {
     let displacement = p + previous.p * -1
     let distance = displacement.length
     let minimum = max(config.movementM, max(accuracy, previous.accuracy) * config.accuracyMovementRatio)
-    guard distance >= minimum else { return }
-    if let last, displacement.dot(last.unit) < 0 && distance < max(minimum, accuracy + previous.accuracy) { return }
+    // Meter thresholds tolerate coordinate projection roundoff (one micrometre).
+    guard distance + 1e-6 >= minimum else { return }
+    if let last, now - last.at < config.directionRetentionS * 1000, displacement.dot(last.unit) < 0 && distance < max(minimum, accuracy + previous.accuracy) { return }
     points.append(DirectionPoint(p: p, at: now, accuracy: accuracy)); points = Array(points.suffix(window))
     let across = p + points[0].p * -1
     let direction = across.dot(displacement) > 0 && across.length >= minimum ? across : displacement
@@ -90,7 +97,7 @@ final class LiveGpsMotion {
   private var source = 0.0, resetAt = -Double.infinity
   private var intervals: [Double] = []
   private let pointDirection = TravelDirection(), cameraDirection = TravelDirection()
-  private var heldHeading: Double?, contradictionAt: Double?
+  private var heldHeading: Double?, cameraAnchor: MotionVector?, cameraLastPosition: MotionVector?, cameraCandidate: MotionVector?, cameraCandidateFixes = 0, contradictionAt: Double?
   private var contradictionCount = 0
   private var contradictionFix: MotionVector?
   private var predictedM = 0.0
@@ -104,7 +111,7 @@ final class LiveGpsMotion {
     self.source = source; resetAt = now; time = now
     origin = nil; fix = nil; p = MotionVector(); correction = MotionVector(); correctionEnd = now
     speed = 0; speedAt = -.infinity; speedRevision = -.infinity; fixAt = -.infinity
-    intervals = []; cadenceMs = 1000; pointDirection.reset(); cameraDirection.reset(); heldHeading = nil
+    intervals = []; cadenceMs = 1000; pointDirection.reset(); cameraDirection.reset(); cameraAnchor = nil; cameraLastPosition = nil; cameraCandidate = nil; cameraCandidateFixes = 0
     contradictionAt = nil; contradictionCount = 0; contradictionFix = nil; predictedM = 0; recovering = false; brakingAxis = nil; gpsUsable = true
   }
   func configure(_ config: MotionConfig, now: Double) { advance(now); self.config = config }
@@ -129,12 +136,13 @@ final class LiveGpsMotion {
       intervals.append(interval); intervals = Array(intervals.suffix(5))
       cadenceMs = min(3000, max(100, intervals.sorted()[intervals.count / 2]))
     }
-    if gap { pointDirection.reset(); cameraDirection.reset(); intervals = []; brakingAxis = nil; contradictionAt = nil; contradictionCount = 0; contradictionFix = nil; cadenceMs = 1000 }
+    if gap { pointDirection.reset(); cameraDirection.reset(); cameraAnchor = nil; cameraLastPosition = nil; cameraCandidate = nil; cameraCandidateFixes = 0; intervals = []; brakingAxis = nil; contradictionAt = nil; contradictionCount = 0; contradictionFix = nil; cadenceMs = 1000 }
     if origin == nil { origin = fix; p = MotionVector() }
     let measured = toMeters(fix)
     self.fix = fix; gpsUsable = true; fixAt = receivedAt - ageMs; predictedM = 0
     pointDirection.update(measured, accuracy: accuracy, now: fixAt, window: config.pointWindow, config: config)
     cameraDirection.update(measured, accuracy: accuracy, now: fixAt, window: config.cameraWindow, config: config)
+    updateCameraHeading(measured, accuracy: accuracy)
     let direction = pointDirection.read(receivedAt, config: config)
     if let direction { brakingAxis = direction.unit }
     let error = measured + p * -1
@@ -194,9 +202,29 @@ final class LiveGpsMotion {
     let next = project(now); p = next.p; predictedM = next.predicted; time = now
   }
   func position(_ now: Double) -> (longitude: Double, latitude: Double)? { coordinate(project(max(now, time)).p) }
-  func cameraHeading(_ now: Double) -> Double? {
-    if let direction = cameraDirection.read(now, config: config) { heldHeading = (atan2(direction.unit.x, direction.unit.y) * 180 / .pi + 360).truncatingRemainder(dividingBy: 360) }
-    return heldHeading
+  func cameraHeading(_ now: Double) -> Double? { heldHeading }
+  private func updateCameraHeading(_ p: MotionVector, accuracy: Double) {
+    guard let anchor = cameraAnchor else { cameraAnchor = p; cameraLastPosition = p; return }
+    // Count only newly accepted spatial evidence, never a retained direction at a stationary fix.
+    guard let direction = cameraDirection.read(fixAt, config: config), direction.at == fixAt else { return }
+    let minimum = max(config.movementM, accuracy * config.accuracyMovementRatio)
+    if let candidate = cameraCandidate, let previous = cameraLastPosition {
+      let step = p + previous * -1
+      if step.length >= minimum && step.dot(candidate) < 0 { cameraCandidate = nil; cameraCandidateFixes = 0 }
+    }
+    cameraLastPosition = p
+    let delta = p + anchor * -1, distance = delta.length
+    // Meter thresholds tolerate coordinate projection roundoff (one micrometre).
+    guard distance + 1e-6 >= minimum else { return }
+    if heldHeading == nil { heldHeading = (atan2(direction.unit.x, direction.unit.y) * 180 / .pi + 360).truncatingRemainder(dividingBy: 360); cameraAnchor = p; return }
+    if let candidate = cameraCandidate, delta.dot(candidate) < 0 && distance > minimum * 1.5 { cameraAnchor = p; cameraCandidate = nil; cameraCandidateFixes = 0; return }
+    cameraCandidate = delta * (1 / distance); cameraCandidateFixes += 1
+    let heading = (atan2(direction.unit.x, direction.unit.y) * 180 / .pi + 360).truncatingRemainder(dividingBy: 360)
+    let turn = abs((((heading - heldHeading! + 540).truncatingRemainder(dividingBy: 360)) - 180))
+    let reverse = turn >= 135
+    let neededDistance = reverse ? config.cameraReverseConfirmM : config.cameraConfirmM
+    let neededFixes = reverse ? config.cameraReverseConfirmFixes : config.cameraConfirmFixes
+    if distance + 1e-6 >= neededDistance && Double(cameraCandidateFixes) >= neededFixes { heldHeading = heading; cameraAnchor = p; cameraCandidate = nil; cameraCandidateFixes = 0 }
   }
   func pointHeading(_ now: Double) -> Double? {
     pointDirection.read(now, config: config).map { (atan2($0.unit.x, $0.unit.y) * 180 / .pi + 360).truncatingRemainder(dividingBy: 360) }

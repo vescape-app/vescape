@@ -26,7 +26,8 @@ final class LiveGpsMotionTests: XCTestCase {
           if e["northM"] != nil { XCTAssertEqual(position.latitude * 110574, number("northM"), accuracy: 0.0001, label) }
           if e["heading"] is NSNull { XCTAssertNil(m.pointHeading(at), label) }
           else if e["heading"] != nil { XCTAssertEqual(try XCTUnwrap(m.pointHeading(at)), number("heading"), accuracy: 0.0001, label) }
-          if e["cameraHeading"] != nil { XCTAssertEqual(try XCTUnwrap(m.cameraHeading(at)), number("cameraHeading"), accuracy: 0.0001, label) }
+          if e["cameraHeading"] is NSNull { XCTAssertNil(m.cameraHeading(at), label) }
+          else if e["cameraHeading"] != nil { XCTAssertEqual(try XCTUnwrap(m.cameraHeading(at)), number("cameraHeading"), accuracy: 0.0001, label) }
           if e["cadenceMs"] != nil { XCTAssertEqual(m.cadenceMs, number("cadenceMs"), accuracy: 0.0001, label) }
           if e["prediction"] != nil { XCTAssertEqual(m.effectivePrediction(at), number("prediction"), accuracy: 0.0001, label) }
           if let recovering = e["recovering"] as? Bool { XCTAssertEqual(m.recovering, recovering, label) }

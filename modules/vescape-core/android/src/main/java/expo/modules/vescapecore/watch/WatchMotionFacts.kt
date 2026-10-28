@@ -27,12 +27,17 @@ data class WatchMotionFacts(
 class WatchMotionClock {
     private var source = -1.0
     private var lastSent = Double.NEGATIVE_INFINITY
-    private var offset = Double.POSITIVE_INFINITY
+    private var lastReceived = Double.NEGATIVE_INFINITY
+    private var lastRate = 1.0
+    private var excessDelay = 0.0
     fun accept(facts: WatchMotionFacts, now: Double): Double? {
-        if (facts.sourceId < source || (facts.sourceId == source && facts.sentAt <= lastSent)) return null
-        if (facts.sourceId > source) { source = facts.sourceId; lastSent = Double.NEGATIVE_INFINITY; offset = Double.POSITIVE_INFINITY }
-        lastSent = facts.sentAt
-        offset = minOf(offset, now - facts.sentAt)
-        return maxOf(0.0, now - facts.sentAt - offset)
+        if (!now.isFinite() || facts.sourceId < source || (facts.sourceId == source && (facts.sentAt <= lastSent || now < lastReceived))) return null
+        if (facts.sourceId > source) { source = facts.sourceId; lastSent = Double.NEGATIVE_INFINITY; excessDelay = 0.0 }
+        if (lastSent.isFinite()) {
+            val expected = (facts.sentAt - lastSent) / lastRate
+            excessDelay = maxOf(0.0, excessDelay + (now - lastReceived) - expected)
+        }
+        lastSent = facts.sentAt; lastReceived = now; lastRate = facts.clockRate
+        return excessDelay
     }
 }

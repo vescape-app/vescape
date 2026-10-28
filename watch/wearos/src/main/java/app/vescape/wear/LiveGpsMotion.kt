@@ -11,7 +11,8 @@ internal data class MotionConfig(
     val predictionStrength: Double = 0.5, val pointWindow: Int = 2, val cameraWindow: Int = 3,
     val movementM: Double = 2.0, val accuracyMovementRatio: Double = 0.3, val fullConfidenceM: Double = 6.0,
     val goodAccuracyM: Double = 5.0, val maxAccuracyM: Double = 25.0, val gpsFreshnessS: Double = 3.0,
-    val directionWindowS: Double = 8.0, val telemetryFreshnessS: Double = 1.0, val directionRetentionS: Double = 2.0, val predictionHorizonS: Double = 1.5,
+    val directionWindowS: Double = 8.0, val cameraConfirmM: Double = 3.0, val cameraReverseConfirmM: Double = 8.0,
+    val cameraConfirmFixes: Double = 2.0, val cameraReverseConfirmFixes: Double = 4.0, val telemetryFreshnessS: Double = 1.0, val directionRetentionS: Double = 2.0, val predictionHorizonS: Double = 1.5,
     val maxPredictionM: Double = 8.0, val recoveryAfterS: Double = 3.0, val recoverySpeedMps: Double = 2.0,
     val cameraPositionOmega: Double = 3.0, val cameraHeadingOmega: Double = 3.0, val arrowHeadingOmega: Double = 10.0,
 ) {
@@ -33,6 +34,10 @@ internal data class MotionConfig(
                 gpsFreshnessS = read("gpsFreshnessS", defaults.gpsFreshnessS, 0.5, 10.0),
                 telemetryFreshnessS = read("telemetryFreshnessS", defaults.telemetryFreshnessS, 0.25, 3.0),
                 directionWindowS = read("directionWindowS", defaults.directionWindowS, 3.0, 20.0),
+                cameraConfirmM = read("cameraConfirmM", defaults.cameraConfirmM, 1.0, 10.0),
+                cameraReverseConfirmM = read("cameraReverseConfirmM", defaults.cameraReverseConfirmM, 3.0, 20.0),
+                cameraConfirmFixes = read("cameraConfirmFixes", defaults.cameraConfirmFixes, 2.0, 6.0),
+                cameraReverseConfirmFixes = read("cameraReverseConfirmFixes", defaults.cameraReverseConfirmFixes, 3.0, 8.0),
                 directionRetentionS = read("directionRetentionS", defaults.directionRetentionS, 0.5, 5.0),
                 predictionHorizonS = read("predictionHorizonS", defaults.predictionHorizonS, 0.25, 3.0),
                 maxPredictionM = read("maxPredictionM", defaults.maxPredictionM, 1.0, 15.0),
@@ -65,8 +70,9 @@ internal class TravelDirection {
         val displacement = p + previous.p * -1.0
         val distance = displacement.length
         val minimum = max(config.movementM, max(accuracy, previous.accuracy) * config.accuracyMovementRatio)
-        if (distance < minimum) return
-        if (last != null && displacement.dot(last!!.unit) < 0 && distance < max(minimum, accuracy + previous.accuracy)) return
+        // Meter thresholds tolerate coordinate projection roundoff (one micrometre).
+        if (distance + 1e-6 < minimum) return
+        if (last != null && now - last!!.at < config.directionRetentionS * 1000 && displacement.dot(last!!.unit) < 0 && distance < max(minimum, accuracy + previous.accuracy)) return
         points.add(DirectionPoint(p, now, accuracy)); points = points.takeLast(window).toMutableList()
         val across = p + points.first().p * -1.0
         val direction = if (across.dot(displacement) > 0 && across.length >= minimum) across else displacement
@@ -92,6 +98,10 @@ internal class LiveGpsMotion {
     private val pointDirection = TravelDirection()
     private val cameraDirection = TravelDirection()
     private var heldHeading: Double? = null
+    private var cameraAnchor: MotionVector? = null
+    private var cameraLastPosition: MotionVector? = null
+    private var cameraCandidate: MotionVector? = null
+    private var cameraCandidateFixes = 0
     private var contradictionAt: Double? = null
     private var contradictionCount = 0
     private var contradictionFix: MotionVector? = null
@@ -105,7 +115,7 @@ internal class LiveGpsMotion {
         this.source = source; resetAt = now; time = now
         origin = null; fix = null; p = MotionVector(); correction = MotionVector(); correctionEnd = now
         speed = 0.0; speedAt = Double.NEGATIVE_INFINITY; speedRevision = Double.NEGATIVE_INFINITY; fixAt = Double.NEGATIVE_INFINITY
-        intervals.clear(); cadenceMs = 1000.0; pointDirection.reset(); cameraDirection.reset(); heldHeading = null
+        intervals.clear(); cadenceMs = 1000.0; pointDirection.reset(); cameraDirection.reset(); cameraAnchor = null; cameraLastPosition = null; cameraCandidate = null; cameraCandidateFixes = 0
         contradictionAt = null; contradictionCount = 0; contradictionFix = null; predictedM = 0.0; recovering = false; brakingAxis = null; gpsUsable = true
     }
     fun configure(config: MotionConfig, now: Double) { advance(now); this.config = config }
@@ -129,12 +139,13 @@ internal class LiveGpsMotion {
             intervals.add(interval); while (intervals.size > 5) intervals.removeAt(0)
             cadenceMs = intervals.sorted()[intervals.size / 2].coerceIn(100.0, 3000.0)
         }
-        if (gap) { pointDirection.reset(); cameraDirection.reset(); intervals.clear(); brakingAxis = null; contradictionAt = null; contradictionCount = 0; contradictionFix = null; cadenceMs = 1000.0 }
+        if (gap) { pointDirection.reset(); cameraDirection.reset(); cameraAnchor = null; cameraLastPosition = null; cameraCandidate = null; cameraCandidateFixes = 0; intervals.clear(); brakingAxis = null; contradictionAt = null; contradictionCount = 0; contradictionFix = null; cadenceMs = 1000.0 }
         if (origin == null) { origin = fix; p = MotionVector() }
         val measured = toMeters(fix)
         this.fix = fix; gpsUsable = true; fixAt = receivedAt - ageMs; predictedM = 0.0
         pointDirection.update(measured, accuracy, fixAt, config.pointWindow, config)
         cameraDirection.update(measured, accuracy, fixAt, config.cameraWindow, config)
+        updateCameraHeading(measured, accuracy)
         val direction = pointDirection.read(receivedAt, config)
         if (direction != null) brakingAxis = direction.unit
         val error = measured + p * -1.0
@@ -194,9 +205,32 @@ internal class LiveGpsMotion {
         val next = project(now); p = next.first; predictedM = next.second; time = now
     }
     fun position(now: Double) = coordinate(project(max(now, time)).first)
-    fun cameraHeading(now: Double): Double? {
-        cameraDirection.read(now, config)?.let { heldHeading = (atan2(it.unit.x, it.unit.y) * 180 / PI + 360) % 360 }
-        return heldHeading
+    fun cameraHeading(now: Double): Double? = heldHeading
+    private fun updateCameraHeading(p: MotionVector, accuracy: Double) {
+        val anchor = cameraAnchor
+        if (anchor == null) { cameraAnchor = p; cameraLastPosition = p; return }
+        // Count only newly accepted spatial evidence, never a retained direction at a stationary fix.
+        val direction = cameraDirection.read(fixAt, config)?.takeIf { it.at == fixAt } ?: return
+        val minimum = max(config.movementM, accuracy * config.accuracyMovementRatio)
+        val previous = cameraLastPosition
+        val candidate = cameraCandidate
+        if (candidate != null && previous != null) {
+            val step = p + previous * -1.0
+            if (step.length >= minimum && step.dot(candidate) < 0) { cameraCandidate = null; cameraCandidateFixes = 0 }
+        }
+        cameraLastPosition = p
+        val delta = p + anchor * -1.0; val distance = delta.length
+        // Meter thresholds tolerate coordinate projection roundoff (one micrometre).
+        if (distance + 1e-6 < minimum) return
+        if (heldHeading == null) { heldHeading = (atan2(direction.unit.x, direction.unit.y) * 180 / PI + 360) % 360; cameraAnchor = p; return }
+        if (cameraCandidate != null && delta.dot(cameraCandidate!!) < 0 && distance > minimum * 1.5) { cameraAnchor = p; cameraCandidate = null; cameraCandidateFixes = 0; return }
+        cameraCandidate = delta * (1 / distance); cameraCandidateFixes++
+        val heading = (atan2(direction.unit.x, direction.unit.y) * 180 / PI + 360) % 360
+        val turn = abs((((heading - heldHeading!! + 540) % 360) - 180))
+        val reverse = turn >= 135
+        val neededDistance = if (reverse) config.cameraReverseConfirmM else config.cameraConfirmM
+        val neededFixes = if (reverse) config.cameraReverseConfirmFixes else config.cameraConfirmFixes
+        if (distance + 1e-6 >= neededDistance && cameraCandidateFixes >= neededFixes) { heldHeading = heading; cameraAnchor = p; cameraCandidate = null; cameraCandidateFixes = 0 }
     }
     fun pointHeading(now: Double) = pointDirection.read(now, config)?.let { (atan2(it.unit.x, it.unit.y) * 180 / PI + 360) % 360 }
     fun effectivePrediction(now: Double) = prediction(now).velocity.length / if (speed != 0.0) speed else 1.0

@@ -49,12 +49,14 @@ class TravelDirection {
       config.movementM,
       Math.max(accuracy, previous.accuracy) * config.accuracyMovementRatio,
     )
-    if (distance < minimum) return
+    // Meter thresholds tolerate coordinate projection roundoff (one micrometre).
+    if (distance + 1e-6 < minimum) return
     // A short step against established travel can be one noisy fix. Keep the old anchor so
     // consistent movement can accumulate into evidence; a second meaningful reverse step (or a
     // clearly large turn) is still accepted immediately.
     if (
       this.last &&
+      now - this.last.at < config.directionRetentionS * 1000 &&
       dot(displacement, this.last.unit) < 0 &&
       distance < Math.max(minimum, accuracy + previous.accuracy)
     )
@@ -115,6 +117,10 @@ export class LiveGpsMotion {
   private pointDirection = new TravelDirection()
   private cameraDirection = new TravelDirection()
   private heldHeading: number | null = null
+  private cameraAnchor: Vector | null = null
+  private cameraLastPosition: Vector | null = null
+  private cameraCandidate: Vector | null = null
+  private cameraCandidateFixes = 0
   private contradictionAt: number | null = null
   private contradictionCount = 0
   private contradictionFix: Vector | null = null
@@ -142,7 +148,10 @@ export class LiveGpsMotion {
     this.cadenceMs = 1000
     this.pointDirection.reset()
     this.cameraDirection.reset()
-    this.heldHeading = null
+    this.cameraAnchor = null
+    this.cameraLastPosition = null
+    this.cameraCandidate = null
+    this.cameraCandidateFixes = 0
     this.contradictionAt = null
     this.contradictionCount = 0
     this.contradictionFix = null
@@ -204,6 +213,10 @@ export class LiveGpsMotion {
     if (gap) {
       this.pointDirection.reset()
       this.cameraDirection.reset()
+      this.cameraAnchor = null
+      this.cameraLastPosition = null
+      this.cameraCandidate = null
+      this.cameraCandidateFixes = 0
       this.intervals = []
       this.brakingAxis = null
       this.contradictionAt = null
@@ -234,6 +247,7 @@ export class LiveGpsMotion {
       this.config.cameraWindow,
       this.config,
     )
+    this.updateCameraHeading(measured, fix.accuracyM)
     const direction = this.pointDirection.read(receivedAt, this.config)
     if (direction) this.brakingAxis = direction.unit
     const error = add(measured, scale(this.p, -1))
@@ -416,12 +430,59 @@ export class LiveGpsMotion {
   position(now: number) {
     return this.coordinate(this.project(Math.max(now, this.time)).p)
   }
-  cameraHeading(now: number): number | null {
-    const direction = this.cameraDirection.read(now, this.config)
-    if (direction)
+  cameraHeading(_now: number): number | null {
+    return this.heldHeading
+  }
+  private updateCameraHeading(p: Vector, accuracy: number) {
+    if (!this.cameraAnchor) {
+      this.cameraAnchor = p
+      this.cameraLastPosition = p
+      return
+    }
+    // Only a newly accepted spatial step can confirm travel. A retained direction and fresh
+    // timestamps at the same position are not additional evidence.
+    const direction = this.cameraDirection.read(this.fixAt, this.config)
+    if (!direction || direction.at !== this.fixAt) return
+    const minimum = Math.max(this.config.movementM, accuracy * this.config.accuracyMovementRatio)
+    if (this.cameraCandidate && this.cameraLastPosition) {
+      const step = add(p, scale(this.cameraLastPosition, -1))
+      if (length(step) >= minimum && dot(step, this.cameraCandidate) < 0) {
+        this.cameraCandidate = null
+        this.cameraCandidateFixes = 0
+      }
+    }
+    this.cameraLastPosition = p
+    const delta = add(p, scale(this.cameraAnchor, -1)),
+      distance = length(delta)
+    // Meter thresholds tolerate coordinate projection roundoff (one micrometre).
+    if (distance + 1e-6 < minimum) return
+    if (this.heldHeading == null) {
       this.heldHeading =
         ((Math.atan2(direction.unit.x, direction.unit.y) * 180) / Math.PI + 360) % 360
-    return this.heldHeading
+      this.cameraAnchor = p
+      return
+    }
+    if (this.cameraCandidate && dot(delta, this.cameraCandidate) < 0 && distance > minimum * 1.5) {
+      this.cameraAnchor = p
+      this.cameraCandidate = null
+      this.cameraCandidateFixes = 0
+      return
+    }
+    this.cameraCandidate = scale(delta, 1 / distance)
+    this.cameraCandidateFixes++
+    const heading = ((Math.atan2(direction.unit.x, direction.unit.y) * 180) / Math.PI + 360) % 360
+    const turn = Math.abs(((heading - this.heldHeading + 540) % 360) - 180),
+      reverse = turn >= 135
+    const neededDistance = reverse ? this.config.cameraReverseConfirmM : this.config.cameraConfirmM
+    const neededFixes = reverse
+      ? this.config.cameraReverseConfirmFixes
+      : this.config.cameraConfirmFixes
+    if (distance + 1e-6 >= neededDistance && this.cameraCandidateFixes >= neededFixes) {
+      this.heldHeading = heading
+      this.cameraAnchor = p
+      this.cameraCandidate = null
+      this.cameraCandidateFixes = 0
+    }
   }
   pointHeading(now: number): number | null {
     const direction = this.pointDirection.read(now, this.config)

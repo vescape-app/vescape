@@ -27,6 +27,20 @@ class WatchMotionFactsTest {
         assertEquals(0.0, clock.accept(facts(epoch + 1250, source = epoch + 2), 12_000.0)!!, 0.001)
         assertNull(clock.accept(facts(epoch + 2000), 13_000.0))
     }
+    @Test fun `replay rate separates producer clock from delivery delay`() {
+        val clock = WatchMotionClock()
+        var frame = facts(1_000_000.0).copy(clockRate = 4.0)
+        assertEquals(0.0, clock.accept(frame, 0.0)!!, 0.001)
+        frame = frame.copy(sentAt = 1_001_000.0)
+        assertEquals(500.0, clock.accept(frame, 750.0)!!, 0.001)
+        frame = frame.copy(sentAt = 1_002_000.0, clockRate = 1.0)
+        assertEquals(500.0, clock.accept(frame, 1_000.0)!!, 0.001)
+        frame = frame.copy(sentAt = 1_003_000.0)
+        assertEquals(500.0, clock.accept(frame, 2_000.0)!!, 0.001)
+        assertNull(clock.accept(frame, 2_100.0))
+        frame = frame.copy(sourceId = epoch + 2, sentAt = 1_004_000.0)
+        assertEquals(0.0, clock.accept(frame, 2_000.0)!!, 0.001)
+    }
     @Test fun `speed frames preserve correction and camera lags point`() {
         val display = WatchDisplayMotion()
         fun feed(east: Double, fix: Double, now: Double, speed: Double) {
