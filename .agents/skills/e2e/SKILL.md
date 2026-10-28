@@ -16,16 +16,23 @@ Fast loop for local Android Maestro flows. Goal: agents can run E2E often withou
 zsh -lc 'bun run e2e'
 ```
 
-- `bun run e2e` builds/installs through `android:e2e`, waits for its own Metro and connected app,
-  then runs every public flow in `e2e/flows/`. It stops its processes afterwards.
-- `bun run e2e --flow connect-board` runs one flow by name from `e2e/flows/connect-board.yaml`.
-- `bun run e2e:run` reruns all flows against an already prepared E2E app and running Metro.
-- `bun run e2e:run --flow connect-board` reruns one flow without build/setup.
-- Both commands default to all flows; `--all` remains accepted.
-- Helper flows start with `_`; they and the legacy `e2e.yaml` aggregate are excluded.
-- `bun run smoke` is the separate fixture-backed run: real native, restored database, replayed
-  recording, no `e2eFake`. Needs its own build (`EXPO_PUBLIC_SMOKE=1`, produced by the runner), so it
-  cannot share a device install with `bun run e2e`. See `e2e/README.md`.
+- `bun run e2e` opens the shared workflow picker. Enter selects all: native smoke → phone flows →
+  watch telemetry → group ride, sequentially on one selected phone and Wear pair.
+- Non-interactive runs default to all. Use `--all --device <phone AVD> --watch <Wear AVD>` to skip
+  prompts, or `--suite phone|smoke|watch|group` to select one workflow.
+- `bun run e2e --flow connect-board` selects one fake-board phone flow.
+- Watch/group require paired Google Play AVDs. Group requires sibling `../vescape-server` with deps,
+  or `GROUP_RIDE_SERVER_DIR`. Initial Wear companion pairing may need manual interaction.
+- Each workflow prepares the current build. Dev suites own Metro; group also owns a local relay.
+  Shared teardown stops owned processes and removes temporary reverse listeners on success,
+  failure, and cancellation. Existing Metro and unrelated tunnels stay intact.
+- `bun run e2e:run --device <phone>` reruns public fake-board phone flows against an already prepared
+  E2E build and Metro. `--flow <name>` narrows that rerun. It does not run smoke, watch, or group.
+- Phone helpers start with `_`; they and the legacy `e2e.yaml` aggregate are excluded.
+- `bun run smoke` remains the standalone fixture-backed native suite. It restores the database and
+  replays a recording without `e2eFake`; its Release build differs from the phone E2E dev build.
+- `bun run e2e:watch` owns its Metro, rebuilds both apps, and checks changing live wrist telemetry.
+- See `bun run e2e --help` and `e2e/README.md` for flags, prerequisites, and suite boundaries.
 - Keep project code clean: do not patch `package.json` or source files to solve local tool/env problems.
 
 ## Fast Loop
@@ -46,7 +53,7 @@ zsh -lc 'bun run e2e'
 
 ## App State
 
-Most public flows clear app state through `_launch.yaml`. Component and tune editor checks
+Most public phone flows clear app state through `_launch.yaml`. Component and tune editor checks
 reuse the app already opened by setup.
 
 The package comes from `src/config/appVariant.ts` (`app.vescape.dev` for development). The launch helper waits for the dev-client launcher, then opens the intended Metro URL directly.
@@ -66,7 +73,7 @@ E2E Board
 ## Rebuild Only When Needed
 
 For a fast rerun, reuse the installed E2E app and an E2E Metro server with `bun run e2e:run`.
-The full `bun run e2e` command performs setup every time.
+The full `bun run e2e` command prepares each selected workflow every time.
 
 Run this only when app is missing/stale, native code/config changed, or E2E mode was not installed:
 
@@ -85,8 +92,8 @@ E2E mode comes from `EXPO_PUBLIC_E2E=1` in `android:e2e`; it surfaces fake BLE s
 
 ## Efficient Failure Triage
 
-- Device missing -> ask user to start emulator/connect device.
-- App not installed/stale -> run `bun run android:e2e`.
+- Device missing -> use the shared picker to boot an available AVD, or connect a phone.
+- App not installed/stale -> rerun `bun run e2e --suite phone` for phone setup, or the affected suite.
 - Dev-client server screen stuck -> confirm Metro/app run state; last good step matters.
 - Fake board missing -> app likely not in E2E mode or wrong build installed.
 - Assertion failure -> report failed assertion, last completed Maestro step, screenshot path if Maestro provides one.

@@ -1,10 +1,12 @@
 /** Real local relay → native phone presence → Social UI → Wear Data Layer → wrist roster. */
-import { mkdirSync, openSync, closeSync } from 'fs'
+import { mkdirSync } from 'fs'
 import { join, resolve } from 'path'
 import { applicationId } from '../src/config/appVariant.ts'
 import { listAdbDevices } from './lib/devices.ts'
+import { pickAvd } from './lib/avds.ts'
+import { E2eSession } from './lib/e2eSession.ts'
 import { maestroCommand } from './lib/maestro.ts'
-import { adb, appUi, removeReversePorts } from './lib/androidUiE2e.ts'
+import { adb, appUi } from './lib/androidUiE2e.ts'
 import { GroupRidePeer, PHONE_FIX } from './lib/groupRidePeer.ts'
 import { version } from '../package.json'
 
@@ -20,82 +22,21 @@ const artifacts = join(
   new Date().toISOString().replaceAll(':', '-'),
 )
 mkdirSync(artifacts, { recursive: true })
-const children: Bun.Subprocess[] = []
-const reversePorts: number[] = []
 let peer: GroupRidePeer | undefined
-let interrupted = false
 let gpsTimer: ReturnType<typeof setInterval> | undefined
-const env: NodeJS.ProcessEnv = {
-  ...process.env,
-  REACT_NATIVE_PACKAGER_HOSTNAME: '127.0.0.1',
-  EXPO_NO_DOTENV: '1',
-}
-// This suite exercises native. A caller's fake/smoke env must never silently change that boundary.
-for (const flag of [
-  'EXPO_PUBLIC_E2E',
-  'EXPO_PUBLIC_SMOKE',
-  'EXPO_PUBLIC_PREVIEW',
-  'EXPO_PUBLIC_SCREENSHOTS',
-])
-  env[flag] = '0'
-function freePort() {
-  const server = Bun.serve({ hostname: '127.0.0.1', port: 0, fetch: () => new Response() })
-  const port = server.port!
-  server.stop(true)
-  return port
-}
-function start(command: string[], log?: string) {
-  if (interrupted) throw new Error('Group Ride E2E interrupted')
-  const fd = log ? openSync(join(artifacts, log), 'w') : undefined
-  const child = Bun.spawn(command, {
-    cwd: ROOT,
-    env,
-    detached: true,
-    stdout: fd ?? 'inherit',
-    stderr: fd ?? 'inherit',
-  })
-  if (fd !== undefined) closeSync(fd)
-  children.push(child)
-  return child
-}
-async function run(command: string[], timeout = 30 * 60_000) {
-  const child = start(command)
-  const timer = setTimeout(() => {
-    try {
-      process.kill(-child.pid, 'SIGTERM')
-    } catch {
-      /* exited at the deadline */
-    }
-  }, timeout)
-  try {
-    if ((await child.exited) !== 0) throw new Error(`Failed: ${command.join(' ')}`)
-  } finally {
-    clearTimeout(timer)
-  }
-}
-async function ready(url: string, child: Bun.Subprocess) {
-  const deadline = Date.now() + 90_000
-  while (Date.now() < deadline) {
-    if (child.exitCode !== null)
-      throw new Error(`Server exited before ready: ${url}. See ${artifacts}`)
-    try {
-      if ((await fetch(url, { signal: AbortSignal.timeout(2000) })).ok) return
-    } catch {
-      /* starting */
-    }
-    await Bun.sleep(300)
-  }
-  throw new Error(`Server did not become ready: ${url}`)
-}
-const interrupt = () => {
-  interrupted = true
-  peer?.close()
-  for (const child of children) child.kill('SIGTERM')
-}
+const session = new E2eSession(process.env)
+const env = session.env
+const start = (command: string[], log?: string) =>
+  session.start(command, log ? join(artifacts, log) : undefined)
+const run = (command: string[], timeout?: number) => session.run(command, timeout)
+const interrupt = () => session.abort.abort(new Error('Group Ride E2E interrupted'))
 process.on('SIGINT', interrupt)
 process.on('SIGTERM', interrupt)
 try {
   await maestroCommand()
+  const phoneAvd = await pickAvd(false, requested[1] ?? null)
+  const watchAvd = await pickAvd(true, process.env.WEAR_AVD ?? null)
+  env.WEAR_AVD = watchAvd.name
   const serverRoot = resolve(
     process.env.GROUP_RIDE_SERVER_DIR ?? join(ROOT, '..', 'vescape-server'),
   )
@@ -103,15 +44,13 @@ try {
   const revision = Bun.spawnSync(['git', '-C', serverRoot, 'rev-parse', 'HEAD'])
   if (!revision.success) throw new Error(`Missing server checkout: ${serverRoot}`)
   await Bun.write(join(artifacts, 'server-revision.txt'), revision.stdout)
-  const relayPort = freePort()
-  reversePorts.push(relayPort)
+  const relayPort = await session.port()
   env.GROUP_RIDE_PORT = String(relayPort)
   env.EXPO_PUBLIC_SERVER_URL = `http://127.0.0.1:${relayPort}`
-  const metroPort = freePort()
-  reversePorts.push(metroPort)
+  const metroPort = await session.port()
   env.E2E_METRO_PORT = String(metroPort)
   const relay = start(['bun', 'run', 'scripts/lib/groupRideRelayHost.ts'], 'relay.log')
-  await ready(`${env.EXPO_PUBLIC_SERVER_URL}/health`, relay)
+  await session.ready(`${env.EXPO_PUBLIC_SERVER_URL}/health`, relay)
   peer = new GroupRidePeer(`ws://127.0.0.1:${relayPort}/ws/group-rides`, version)
   await peer.start()
   console.log('group E2E: real local relay and peer ready')
@@ -119,7 +58,7 @@ try {
     ['bunx', 'expo', 'start', '--host', 'lan', '--clear', '--port', env.E2E_METRO_PORT],
     'metro.log',
   )
-  await ready(`http://127.0.0.1:${env.E2E_METRO_PORT}/status`, metro)
+  await session.ready(`http://127.0.0.1:${env.E2E_METRO_PORT}/status`, metro)
   await run([
     'bun',
     'run',
@@ -127,18 +66,13 @@ try {
     'up',
     '--rebuild-phone',
     '--clear-phone',
-    ...requested,
+    '--device',
+    phoneAvd.name,
   ])
   const devices = listAdbDevices()
-  const phone = devices.find((d) => !d.isWatch && d.isEmulator)
-  const watch = devices.find((d) => d.isWatch && d.isEmulator)
-  if (!phone || !watch) throw new Error('Phone and Wear emulators required')
-  // Use the pair selected by wear, rather than silently taking another attached phone.
-  if (
-    devices.filter((d) => !d.isWatch && d.isEmulator).length !== 1 ||
-    devices.filter((d) => d.isWatch && d.isEmulator).length !== 1
-  )
-    throw new Error('Run with exactly one phone and one Wear emulator')
+  const phone = devices.find((d) => !d.isWatch && d.name === phoneAvd.name)
+  const watch = devices.find((d) => d.isWatch && d.name === watchAvd.name)
+  if (!phone || !watch) throw new Error('Selected phone and Wear emulators are not connected')
   const gpsFix = () =>
     adb(phone.serial, 'emu', 'geo', 'fix', String(PHONE_FIX.lng), String(PHONE_FIX.lat))
   await gpsFix()
@@ -166,7 +100,7 @@ try {
     const deadline = Date.now() + 60_000
     let lastError = ''
     while (Date.now() < deadline) {
-      if (interrupted) throw new Error('Group Ride E2E interrupted')
+      session.abort.signal.throwIfAborted()
       try {
         const snapshot = await appUi(watch.serial, applicationId)
         await Bun.write(join(artifacts, `watch-${name}.xml`), snapshot.xml)
@@ -254,28 +188,15 @@ try {
   console.error(error)
 } finally {
   clearInterval(gpsTimer)
-  // adb reverse binds a listener on the device. Leaking one can make a later Maestro
-  // driver fail to bind that port even though the old host server has already exited.
-  try {
-    const results = await Promise.allSettled(
-      listAdbDevices().map((device) => removeReversePorts(device.serial, reversePorts)),
-    )
-    const failures = results.filter((result) => result.status === 'rejected')
-    if (failures.length) throw new AggregateError(failures.map((result) => result.reason))
-  } catch (error) {
-    process.exitCode = 1
-    console.error('Group Ride E2E reverse cleanup failed:', error)
-  }
   if (peer) {
     await Bun.write(join(artifacts, 'peer.json'), JSON.stringify(peer.transcript, null, 2))
     peer.close()
   }
-  for (const child of children.reverse()) {
-    try {
-      process.kill(-child.pid, 'SIGTERM')
-    } catch (error) {
-      if ((error as NodeJS.ErrnoException).code !== 'ESRCH') console.warn(error)
-    }
+  try {
+    await session.close()
+  } catch (error) {
+    process.exitCode = 1
+    console.error('Group Ride E2E cleanup failed:', error)
   }
   process.off('SIGINT', interrupt)
   process.off('SIGTERM', interrupt)

@@ -32,6 +32,9 @@ async function checkVersion(): Promise<void> {
 
 /** Every repository runner checks the same pin once before invoking Maestro. */
 export async function maestroCommand(...args: string[]): Promise<string[]> {
-  await (checked ??= checkVersion())
+  await (checked ??= checkVersion().catch((error) => {
+    checked = undefined
+    throw error
+  }))
   return ['maestro', ...args]
 }

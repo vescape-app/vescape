@@ -698,9 +698,9 @@ const RIDE_START_TIMEOUT_MS = 90_000
  */
 async function startRide(
   requestedPhone: string | null,
-  { navigation = true, rebuildPhone = false } = {},
+  { navigation = true, rebuildPhone = false, clearPhone = false } = {},
 ) {
-  const { watch, phone, packageName } = await up(requestedPhone, rebuildPhone)
+  const { watch, phone, packageName } = await up(requestedPhone, rebuildPhone, clearPhone)
 
   begin('ride')
   run(['adb', '-s', phone.serial, 'logcat', '-c'])
@@ -822,6 +822,7 @@ if (command === 'e2e') {
   const { watch, phone, packageName } = await startRide(requested, {
     navigation: false,
     rebuildPhone: true,
+    clearPhone: true,
   })
   begin('watch telemetry E2E')
   // Discard frames from before this ride. Only a fresh process can prove this session arrives.

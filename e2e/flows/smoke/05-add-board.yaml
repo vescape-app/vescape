@@ -77,8 +77,13 @@ appId: ${APP_ID}
 - assertVisible: Name your board
 - tapOn:
     id: add-board-name-input
+    # Match the phone setup flow: backspace starts at the end of the suggested name.
+    point: '95%,50%'
 - eraseText
 - inputText: Smoke Board
+- assertVisible:
+    id: add-board-name-input
+    text: Smoke Board
 # Tapping the step's own title blurs the input, which is what dismisses the keyboard. `hideKeyboard`
 # cannot be used here: on Android Maestro implements it as a back press, so on the runs where the
 # keyboard is already down it pops the wizard modal instead and the flow lands back on the main
