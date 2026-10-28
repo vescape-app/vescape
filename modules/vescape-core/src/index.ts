@@ -2862,6 +2862,7 @@ type VescapeCoreNativeModule = NativeEventEmitter<VescapeCoreEvents> & {
   }): Promise<TelemetrySample[]>
   exportRideGpx(options: RideExportOptions): Promise<RideExportFile>
   exportRideCsv(options: RideExportOptions): Promise<RideExportFile>
+  exportRideFloaty(options: RideExportOptions): Promise<RideExportFile>
   exportLiveTelemetryCsv(): Promise<RideExportFile>
   getHistoryRange(options: {
     fromMs: number
@@ -3730,6 +3731,15 @@ export async function exportRideGpx(options: RideExportOptions): Promise<RideExp
  */
 export async function exportRideCsv(options: RideExportOptions): Promise<RideExportFile> {
   return native.exportRideCsv(options)
+}
+
+/**
+ * Floaty 3 session JSON (`schemaVersion` 2), importable from Floaty's Sessions list.
+ * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/VescapeCoreModule.kt `exportRideFloaty`
+ * @parity /modules/vescape-core/ios/VescapeCoreModule.swift `exportRideFloaty`
+ */
+export async function exportRideFloaty(options: RideExportOptions): Promise<RideExportFile> {
+  return native.exportRideFloaty(options)
 }
 
 /**

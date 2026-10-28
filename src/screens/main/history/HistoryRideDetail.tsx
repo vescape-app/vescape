@@ -7,7 +7,7 @@ import { theme } from '@/constants/theme'
 import { FadeCardModal } from '@/components/modals/FadeCardModal'
 import { InfoModal } from '@/components/modals/InfoModal'
 import { rideExportOptions } from '@/modules/history/lib/rideExport'
-import { shareRideExport } from '@/modules/history/lib/shareRideExport'
+import { rideExportLabels, shareRideExport } from '@/modules/history/lib/shareRideExport'
 import { ConfirmModal } from '@/components/modals/ConfirmModal'
 import {
   formatFavoriteName,
@@ -198,10 +198,10 @@ export function HistoryRideDetail({
         onDismissed={afterActionsDismissed}
         scrollable={false}
       >
-        {(['gpx', 'csv'] as const).map((format) => (
+        {(['gpx', 'csv', 'floaty'] as const).map((format) => (
           <Button
             key={format}
-            label={`Export ${format.toUpperCase()}`}
+            label={rideExportLabels[format]}
             icon={ExportIcon}
             variant="secondary"
             loading={exporting}

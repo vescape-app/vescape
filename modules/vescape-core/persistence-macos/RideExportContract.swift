@@ -153,3 +153,65 @@ func runRideCsvContract() throws {
   try require(RideExport.csvLine(escape) == fixture["escapeExpected"] as! String, "CSV quote comma newline escaping")
   try queue.close()
 }
+
+func runRideFloatyContract() throws {
+  let root = try JSONSerialization.jsonObject(with: Data(contentsOf: URL(fileURLWithPath: "shared/ride-export-contract.json"))) as! [String: Any]
+  let base = (root["baseMs"] as! NSNumber).int64Value, initial = (root["csv"] as! [String: Any])["initial"] as! [Int64]
+  let directory = FileManager.default.temporaryDirectory.appendingPathComponent("ride-floaty-\(UUID().uuidString)")
+  try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+  defer { try? FileManager.default.removeItem(at: directory) }
+  let queue = try DatabaseQueue(path: directory.appendingPathComponent("test.db").path)
+  try TelemetryDatabase.migrator.migrate(queue)
+  let columns = ["speed_centi_kmh", "battery_voltage_mv", "motor_current_ma", "battery_current_ma",
+    "duty_permille", "pitch_centi_deg", "roll_centi_deg", "balance_pitch_centi_deg", "balance_current_ma",
+    "erpm", "state", "switch_state", "adc1_milli", "adc2_milli", "odometer_cm", "temp_mosfet_deci_c", "temp_motor_deci_c"]
+  // Keyframe, deltas, a duplicate timestamp, a recording gap, and an explicit voltage clear.
+  func frame(_ db: Database, at offset: Int64, mask: Int, _ changes: [Int: Int64?], board: String? = "board") throws {
+    let key = mask == (1 << 17) - 1
+    var v: [Int64?] = key ? initial.map { $0 } : [Int64?](repeating: nil, count: 17)
+    for (i, value) in changes { v[i] = value }
+    var arguments: [DatabaseValueConvertible?] = [base + offset, offset, board, key ? 1 : 0, mask, 0]
+    arguments += v.map { $0 as DatabaseValueConvertible? }
+    try db.execute(sql: "INSERT INTO telemetry_frames (captured_at_ms, elapsed_realtime_ms, board_id, flags, changed_mask_1, changed_mask_2, \(columns.joined(separator: ","))) VALUES (\(Array(repeating: "?", count: arguments.count).joined(separator: ",")))", arguments: StatementArguments(arguments))
+  }
+  try queue.write { db in
+    try frame(db, at: 0, mask: (1 << 17) - 1, [:])
+    try frame(db, at: 0, mask: (1 << 17) - 1, [:], board: "other")
+    try frame(db, at: 100, mask: 1 | 1 << 14, [0: 2500, 14: 124456])
+    try frame(db, at: 100, mask: 1, [0: 9999])
+    try frame(db, at: 6000, mask: 1 << 3, [3: -2000])
+    try frame(db, at: 6100, mask: 1 << 1, [1: nil])
+    try frame(db, at: 6200, mask: 0, [:])
+    for p in [
+      RideTrackPoint(boardId: "board", fixAtMs: base + 50, latitudeE7: 521234567, longitudeE7: -211234567,
+        accuracyCm: 2000, gpsSpeedCentiMps: 456, bearingCentiDeg: nil, altitudeCm: -1234),
+      RideTrackPoint(boardId: "board", fixAtMs: base + 50, latitudeE7: 1, longitudeE7: 1,
+        accuracyCm: 2000, gpsSpeedCentiMps: nil, bearingCentiDeg: nil, altitudeCm: nil),
+      RideTrackPoint(boardId: "board", fixAtMs: base + 80, latitudeE7: 2, longitudeE7: 2,
+        accuracyCm: 2001, gpsSpeedCentiMps: nil, bearingCentiDeg: nil, altitudeCm: nil),
+      RideTrackPoint(boardId: "board", fixAtMs: base + 150, latitudeE7: 521244567, longitudeE7: -211224567,
+        accuracyCm: 500, gpsSpeedCentiMps: nil, bearingCentiDeg: nil, altitudeCm: nil),
+    ] { try insertRideTrackPoint(db, p) }
+  }
+  func export(board: String) throws -> String {
+    let options: [String: Any] = ["fromMs": base, "toMs": base + 6200, "boardId": board, "name": root["name"]!]
+    let result = try queue.read { try RideExport.floaty($0, directory: directory, options: options) { v, a in v - 40 + a } }
+    try require(result["mimeType"] as! String == "application/json" && result["uti"] as! String == "public.json", "Floaty share types")
+    let file = URL(string: result["uri"] as! String)!
+    try require(file.pathExtension == "json", "Floaty extension")
+    return try String(contentsOf: file, encoding: .utf8)
+  }
+  let text = try export(board: "board")
+  let expected = try String(contentsOf: URL(fileURLWithPath: "shared/ride-export-floaty-expected.json"), encoding: .utf8)
+  try require(text == expected, "Floaty JSON matches the cross-platform golden file")
+  let session = try JSONSerialization.jsonObject(with: Data(text.utf8)) as! [String: Any]
+  try require(session["schemaVersion"] as! Int == 2, "Floaty schema version")
+  for key in ["logs", "locations"] {
+    let rows = session[key] as! [[String: Any]]
+    try require(Set(rows.map { $0["timestamp"] as! Int64 }).count == rows.count, "unique \(key) timestamps")
+    try require(rows.allSatisfy { $0.allSatisfy { $0.key == "sessionId" || $0.value is NSNumber } }, "numeric \(key) values")
+  }
+  let empty = try JSONSerialization.jsonObject(with: Data(export(board: "empty").utf8)) as! [String: Any]
+  try require((empty["logs"] as! [Any]).isEmpty && empty["polyline"] is NSNull, "empty Floaty session")
+  try queue.close()
+}
