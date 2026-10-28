@@ -188,7 +188,7 @@ struct FavoriteStore {
   /// database restore). `nil` while the pool failed to open.
   private let resolveWriter: () -> DatabaseWriter?
 
-  static let shared = FavoriteStore { TelemetryDatabase.pool }
+  static let shared = FavoriteStore { VescapeDatabase.pool }
 
   init(_ resolveWriter: @escaping () -> DatabaseWriter?) {
     self.resolveWriter = resolveWriter

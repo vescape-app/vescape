@@ -18,7 +18,7 @@ import org.junit.Test
 class DatabaseSchemaHostTest {
   @Test fun freshDatabaseMatchesTheSharedSchema() {
     val path = Files.createTempFile("vescape-schema-fresh-", ".db").also(Files::delete)
-    val database = Room.databaseBuilder<TelemetryRoomDatabase>(path.toString())
+    val database = Room.databaseBuilder<VescapeRoomDatabase>(path.toString())
       .setDriver(BundledSQLiteDriver())
       .build()
     try {

@@ -70,7 +70,7 @@ struct TuneProfileStore {
 
   /// Bound to the single app-data database. Mirrors Android routing tune ops through the singleton
   /// `AppDataRepository`.
-  static let shared = TuneProfileStore { TelemetryDatabase.pool }
+  static let shared = TuneProfileStore { VescapeDatabase.pool }
 
   init(_ resolveWriter: @escaping () -> DatabaseWriter?) {
     self.resolveWriter = resolveWriter

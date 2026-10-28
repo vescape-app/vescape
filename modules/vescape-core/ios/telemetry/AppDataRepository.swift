@@ -31,7 +31,7 @@ final class AppDataRepository {
   /// app so every access follows the shared pool (including a hot-swap after a restore).
   private let dbWriter: (any DatabaseWriter)?
 
-  private var writer: (any DatabaseWriter)? { dbWriter ?? TelemetryDatabase.pool }
+  private var writer: (any DatabaseWriter)? { dbWriter ?? VescapeDatabase.pool }
 
   private enum StorageUnavailable: Error { case databaseNotOpen }
   private enum InvalidInput: Error { case alertRuleIdentity }

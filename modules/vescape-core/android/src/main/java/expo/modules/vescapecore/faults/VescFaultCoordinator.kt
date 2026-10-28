@@ -1,7 +1,7 @@
 package expo.modules.vescapecore.faults
 
 import android.content.Context
-import expo.modules.vescapecore.telemetry.TelemetryDatabase
+import expo.modules.vescapecore.telemetry.VescapeDatabase
 import expo.modules.vescapecore.telemetry.VescFaultOccurrenceEntity
 import expo.modules.vescapecore.recording.RecordingStorageFailure
 import java.util.UUID
@@ -216,7 +216,7 @@ class VescFaultCoordinator(
       return instance ?: synchronized(this) {
         instance ?: run {
           val appContext = context.applicationContext
-          val dao = TelemetryDatabase.get(appContext).telemetryDao()
+          val dao = VescapeDatabase.get(appContext).telemetryDao()
           VescFaultCoordinator(store = RoomVescFaultStore(dao)).also { instance = it }
         }
       }

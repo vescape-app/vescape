@@ -27,7 +27,7 @@ func runAlertPresetContract() throws {
   let url = FileManager.default.temporaryDirectory.appendingPathComponent("alert-presets-\(UUID()).db")
   defer { try? FileManager.default.removeItem(at: url) }
   var queue = try DatabaseQueue(path: url.path)
-  try TelemetryDatabase.migrator.migrate(queue)
+  try VescapeDatabase.migrator.migrate(queue)
   for item in fixture["cases"] as! [[String: Any]] {
     let name = item["name"] as! String; let metric = item["metric"] as! String; let spec = item["spec"] as! String
     let units = item["distanceUnit"] as? String ?? "km"
@@ -185,7 +185,7 @@ func runAlertPresetUnitSwitchContract() throws {
   let url = FileManager.default.temporaryDirectory.appendingPathComponent("preset-units-\(UUID()).db")
   defer { try? FileManager.default.removeItem(at: url) }
   let queue = try DatabaseQueue(path: url.path)
-  try TelemetryDatabase.migrator.migrate(queue)
+  try VescapeDatabase.migrator.migrate(queue)
   for id in ["first", "second"] {
     let board = PersistedBoard(id: id, name: id, bleId: nil, transport: nil, createdAt: 1, deletedAt: nil)
     try BoardSettingsPersistence(writer: queue).upsertBoard(board, settings: [
@@ -212,7 +212,7 @@ func runAlertPresetUnitSwitchContract() throws {
 /// @parity /modules/vescape-core/persistence-jvm/src/test/kotlin/expo/modules/vescapecore/telemetry/AlertPresetPersistenceHostTest.kt
 func runAlertPresetBoardLifecycleContract() throws {
   let queue = try DatabaseQueue()
-  try TelemetryDatabase.migrator.migrate(queue)
+  try VescapeDatabase.migrator.migrate(queue)
   let boards = BoardSettingsPersistence(writer: queue)
   func rider(_ boardId: String) -> PersistedAlertRule {
     PersistedAlertRule(

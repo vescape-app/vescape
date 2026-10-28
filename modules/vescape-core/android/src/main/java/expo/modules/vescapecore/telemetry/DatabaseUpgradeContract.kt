@@ -2,13 +2,13 @@ package expo.modules.vescapecore.telemetry
 
 /** Schema generations with a complete production Room migration path to the current database. */
 internal val SUPPORTED_ANDROID_DATABASE_VERSIONS: Set<Int> =
-  ((3..36) + (40..TELEMETRY_DATABASE_VERSION)).toSet()
+  ((3..36) + (40..VESCAPE_DATABASE_VERSION)).toSet()
 
 /** Android backup export first shipped with database version 14 (commit dc985d80). */
 internal val EXPORTED_ANDROID_DATABASE_VERSIONS: Set<Int> =
-  ((14..36) + (40..TELEMETRY_DATABASE_VERSION)).toSet()
+  ((14..36) + (40..VESCAPE_DATABASE_VERSION)).toSet()
 internal val EXPORTED_IOS_DATABASE_VERSIONS: Set<Int> =
-  (setOf(1) + (23..36) + (40..TELEMETRY_DATABASE_VERSION)).toSet()
+  (setOf(1) + (23..36) + (40..VESCAPE_DATABASE_VERSION)).toSet()
 
 internal fun roomVersionForBackup(platform: String, version: Int): Int = when (platform) {
   "android" -> version.also { require(it in EXPORTED_ANDROID_DATABASE_VERSIONS) }
@@ -19,7 +19,7 @@ internal fun roomVersionForBackup(platform: String, version: Int): Int = when (p
 
 internal fun requireSupportedAndroidDatabaseVersion(version: Int) {
   require(version in SUPPORTED_ANDROID_DATABASE_VERSIONS) {
-    "Backup schema version $version has no supported migration path to app schema $TELEMETRY_DATABASE_VERSION"
+    "Backup schema version $version has no supported migration path to app schema $VESCAPE_DATABASE_VERSION"
   }
 }
 

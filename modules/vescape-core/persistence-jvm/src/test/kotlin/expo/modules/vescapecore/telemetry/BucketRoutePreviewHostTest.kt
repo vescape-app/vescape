@@ -18,7 +18,7 @@ class BucketRoutePreviewHostTest {
   @Test fun multipleFlushesReopenLateFixesAndRollback(): Unit = runBlocking {
     val path = Files.createTempFile("bucket-preview", ".db")
     Files.delete(path)
-    fun open() = Room.databaseBuilder<TelemetryRoomDatabase>(path.toString()).setDriver(BundledSQLiteDriver()).build()
+    fun open() = Room.databaseBuilder<VescapeRoomDatabase>(path.toString()).setDriver(BundledSQLiteDriver()).build()
     var db = open()
     suspend fun flush(points: List<RideTrackPointEntity>) {
       RecordingPersistence(db.telemetryDao()).commit(emptyList(), buildTelemetryBuckets(emptyList(), points.toBucketLocationPoints()), emptyList(), trackPoints = points)
@@ -72,7 +72,7 @@ class BucketRoutePreviewHostTest {
   }
 
   @Test fun favoritePreviewKeepsCornersAndClipsTheSelectedRange(): Unit = runBlocking {
-    val db = Room.inMemoryDatabaseBuilder<TelemetryRoomDatabase>().setDriver(BundledSQLiteDriver()).build()
+    val db = Room.inMemoryDatabaseBuilder<VescapeRoomDatabase>().setDriver(BundledSQLiteDriver()).build()
     val dao = db.telemetryDao()
     RecordingPersistence(dao).commit(emptyList(), buildTelemetryBuckets(emptyList(), fixes.toBucketLocationPoints()), emptyList(), trackPoints = fixes)
     val route = dao.favoriteRoutePreview(0, 119999, board)
@@ -102,7 +102,7 @@ class BucketRoutePreviewHostTest {
   }
 
   @Test fun boardScopeAndCrossMinuteGaps(): Unit = runBlocking {
-    val db = Room.inMemoryDatabaseBuilder<TelemetryRoomDatabase>().setDriver(BundledSQLiteDriver()).build()
+    val db = Room.inMemoryDatabaseBuilder<VescapeRoomDatabase>().setDriver(BundledSQLiteDriver()).build()
     val points = listOf(fixes[0], fixes[0].copy(fixAtMs = 65000), fixes[2].copy(boardId = "other-board"), fixes[3].copy(boardId = null))
     val dao = db.telemetryDao()
     RecordingPersistence(dao).commit(emptyList(), buildTelemetryBuckets(emptyList(), points.toBucketLocationPoints()), emptyList(), trackPoints = points)

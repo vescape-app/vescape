@@ -11,7 +11,7 @@ import expo.modules.vescapecore.telemetry.AccessoryCapabilitySettingsEntity
 import expo.modules.vescapecore.telemetry.AccessoryGroundClearanceEntity
 import expo.modules.vescapecore.telemetry.AccessoryPersistence
 import expo.modules.vescapecore.telemetry.SavedAccessoryEntity
-import expo.modules.vescapecore.telemetry.TelemetryDatabase
+import expo.modules.vescapecore.telemetry.VescapeDatabase
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -391,7 +391,7 @@ object AccessorySessionManager {
     // MARK: - Internals
 
     private fun persistence(context: Context) =
-        AccessoryPersistence(TelemetryDatabase.get(context).telemetryDao())
+        AccessoryPersistence(VescapeDatabase.get(context).telemetryDao())
 
     private fun link(row: SavedAccessoryEntity): AccessoryLink =
         links.getOrPut(row.accessoryId) {

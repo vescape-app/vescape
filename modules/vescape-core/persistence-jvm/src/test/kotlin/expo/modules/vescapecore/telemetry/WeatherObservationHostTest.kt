@@ -19,10 +19,10 @@ class WeatherObservationHostTest {
   private fun obs(at: Long, temp: Int = 14, code: Int = 3, gust: Int? = 20, isDay: Boolean = true) =
     WeatherObservation(at, temp, code, gust, isDay)
 
-  private fun withDb(block: suspend (path: String, open: () -> TelemetryRoomDatabase) -> Unit): Unit = runBlocking {
+  private fun withDb(block: suspend (path: String, open: () -> VescapeRoomDatabase) -> Unit): Unit = runBlocking {
     val path = Files.createTempFile("vescape-weather", ".db")
     Files.deleteIfExists(path)
-    block(path.toString()) { Room.databaseBuilder<TelemetryRoomDatabase>(path.toString()).setDriver(BundledSQLiteDriver()).build() }
+    block(path.toString()) { Room.databaseBuilder<VescapeRoomDatabase>(path.toString()).setDriver(BundledSQLiteDriver()).build() }
     Files.deleteIfExists(path)
   }
 

@@ -29,7 +29,7 @@ class TelemetryMigrationMatrixHostTest {
       (0 until values.length()).map(values::getInt).toSet()
     }
     assertEquals(SUPPORTED_ANDROID_DATABASE_VERSIONS, declared)
-    assertEquals(TelemetryMigrations.all.map { it.startVersion }.toSet(), declared - TELEMETRY_DATABASE_VERSION)
+    assertEquals(TelemetryMigrations.all.map { it.startVersion }.toSet(), declared - VESCAPE_DATABASE_VERSION)
   }
 
   private fun SQLiteConnection.exec(sql: String) = prepare(sql).use { it.step() }
@@ -125,7 +125,7 @@ class TelemetryMigrationMatrixHostTest {
     }
 
   private fun openWithProductionGraph(path: String, reached: MutableSet<Pair<Int, Int>>) {
-    val database = Room.databaseBuilder<TelemetryRoomDatabase>(path)
+    val database = Room.databaseBuilder<VescapeRoomDatabase>(path)
       .setDriver(BundledSQLiteDriver())
       .addMigrations(*productionMigrations(reached).toTypedArray())
       .build()
@@ -142,15 +142,15 @@ class TelemetryMigrationMatrixHostTest {
    */
   @Test fun everyExportedSchemaMigratesToTheCurrentSchema() {
     val schemas = Path.of("../android/schemas")
-    val versions = Files.list(schemas.resolve(TelemetryRoomDatabase::class.qualifiedName!!)).use { files ->
+    val versions = Files.list(schemas.resolve(VescapeRoomDatabase::class.qualifiedName!!)).use { files ->
       files.map { it.fileName.toString().removeSuffix(".json").toInt() }.toList()
     }.sorted()
-    assertEquals("Commit the schema export for the current version", TELEMETRY_DATABASE_VERSION, versions.last())
+    assertEquals("Commit the schema export for the current version", VESCAPE_DATABASE_VERSION, versions.last())
     for (start in versions) {
       val path = Files.createTempFile("vescape-schema-v$start-", ".db").also(Files::delete)
-      val helper = MigrationTestHelper(schemas, path, BundledSQLiteDriver(), TelemetryRoomDatabase::class)
+      val helper = MigrationTestHelper(schemas, path, BundledSQLiteDriver(), VescapeRoomDatabase::class)
       helper.createDatabase(start).close()
-      helper.runMigrationsAndValidate(TELEMETRY_DATABASE_VERSION, productionMigrations(mutableSetOf())).close()
+      helper.runMigrationsAndValidate(VESCAPE_DATABASE_VERSION, productionMigrations(mutableSetOf())).close()
       openWithProductionGraph(path.toString(), mutableSetOf())
       assertMatchesSharedSchema("migrated-from-export-v$start", path)
       Files.deleteIfExists(path)
@@ -362,12 +362,12 @@ class TelemetryMigrationMatrixHostTest {
   private data class Row6(val board: String, val id: String, val control: String, val enabled: Int, val sound: String, val source: String)
 
   @Test fun missingAndUnsupportedStartsFailWithoutCreatingTargetData() {
-    for (start in listOf(1, 2, 37, 38, 39, TELEMETRY_DATABASE_VERSION + 1)) {
+    for (start in listOf(1, 2, 37, 38, 39, VESCAPE_DATABASE_VERSION + 1)) {
       val path = Files.createTempFile("vescape-unsupported-v$start-", ".db")
       BundledSQLiteDriver().open(path.toString()).use { db ->
         db.exec("CREATE TABLE sentinel(value TEXT NOT NULL)")
         db.exec("INSERT INTO sentinel VALUES ('original')")
-        val failed = runCatching { migrate(db, start, TELEMETRY_DATABASE_VERSION, mutableSetOf()) }.isFailure
+        val failed = runCatching { migrate(db, start, VESCAPE_DATABASE_VERSION, mutableSetOf()) }.isFailure
         assertTrue("v$start must have no migration path", failed)
         assertEquals("original", db.text("SELECT value FROM sentinel"))
         assertFalse(db.prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name='boards'").use { it.step() })

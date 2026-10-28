@@ -14,7 +14,7 @@ class RideTrackPersistenceHostTest {
   @Test fun trackReadsAndDeletesScopeToBoardAndTime(): Unit = runBlocking {
     val path = Files.createTempFile("vescape-track-scope", ".db")
     Files.deleteIfExists(path)
-    val db = Room.databaseBuilder<TelemetryRoomDatabase>(path.toString()).setDriver(BundledSQLiteDriver()).build()
+    val db = Room.databaseBuilder<VescapeRoomDatabase>(path.toString()).setDriver(BundledSQLiteDriver()).build()
     val dao = db.telemetryDao()
     for (board in listOf("board-a", "board-b")) {
       val point = RideTrackPointEntity(boardId = board, fixAtMs = 2000,
@@ -33,7 +33,7 @@ class RideTrackPersistenceHostTest {
   @Test fun gpsOnlyCommitReopensAndLateFailureRollsBackBuckets(): Unit = runBlocking {
     val path = Files.createTempFile("vescape-track-contract", ".db")
     Files.deleteIfExists(path)
-    fun open() = Room.databaseBuilder<TelemetryRoomDatabase>(path.toString()).setDriver(BundledSQLiteDriver()).build()
+    fun open() = Room.databaseBuilder<VescapeRoomDatabase>(path.toString()).setDriver(BundledSQLiteDriver()).build()
     var db = open()
     val point = RideTrackPointEntity(boardId = "board-a", fixAtMs = 2000,
       latitudeE7 = 510000000, longitudeE7 = 170000000, accuracyCm = 3500,

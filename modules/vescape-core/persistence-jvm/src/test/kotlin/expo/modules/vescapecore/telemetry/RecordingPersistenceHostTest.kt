@@ -23,7 +23,7 @@ class RecordingPersistenceHostTest {
     val frames = fixture.getJSONArray("frames")
     val path = Files.createTempFile("vescape-maintenance", ".db")
     Files.deleteIfExists(path)
-    fun open() = Room.databaseBuilder<TelemetryRoomDatabase>(path.toString()).setDriver(BundledSQLiteDriver()).build()
+    fun open() = Room.databaseBuilder<VescapeRoomDatabase>(path.toString()).setDriver(BundledSQLiteDriver()).build()
     var db = open()
     val dao = db.telemetryDao()
     fun frame(at: Long, boardId: String) = TelemetryFrameEntity(
@@ -112,7 +112,7 @@ class RecordingPersistenceHostTest {
     val navigation = fixture.getJSONObject("navigation")
     val path = Files.createTempFile("vescape-remaining-stores", ".db")
     Files.deleteIfExists(path)
-    fun open() = Room.databaseBuilder<TelemetryRoomDatabase>(path.toString()).setDriver(BundledSQLiteDriver()).build()
+    fun open() = Room.databaseBuilder<VescapeRoomDatabase>(path.toString()).setDriver(BundledSQLiteDriver()).build()
     var db = open()
     val navigationAt = 900L
     db.telemetryDao().replaceAppSettings(
@@ -275,7 +275,7 @@ class RecordingPersistenceHostTest {
     val expected = fixture.getJSONObject("expected")
     val path = Files.createTempFile("vescape-tune-alert-contract", ".db")
     Files.deleteIfExists(path)
-    fun open() = Room.databaseBuilder<TelemetryRoomDatabase>(path.toString()).setDriver(BundledSQLiteDriver()).build()
+    fun open() = Room.databaseBuilder<VescapeRoomDatabase>(path.toString()).setDriver(BundledSQLiteDriver()).build()
     val profile = TuneProfileEntity(profileValues.getString("id"), boardId, profileValues.getString("refloatBaseVersion"), profileValues.getString("name"), fieldsJson = profileValues.getString("initialFieldsJson"), createdAt = 1, updatedAt = 1)
     var db = open()
     var dao = db.telemetryDao()
@@ -362,7 +362,7 @@ class RecordingPersistenceHostTest {
     assertEquals(expected.getInt("avgSpeedCentiKmh"), summary.avgSpeedCentiKmh)
     val path = Files.createTempFile("vescape-favorite-contract", ".db")
     Files.deleteIfExists(path)
-    fun open() = Room.databaseBuilder<TelemetryRoomDatabase>(path.toString()).setDriver(BundledSQLiteDriver()).build()
+    fun open() = Room.databaseBuilder<VescapeRoomDatabase>(path.toString()).setDriver(BundledSQLiteDriver()).build()
     var db = open()
     val createdRange = TelemetryTimeRange(input.getLong("startMs"), input.getLong("endMs"))
     val created = persistFavorite(db.telemetryDao(), null, createdRange, input.getString("boardId"), input.getString("name"), input.getLong("startMs"), { input.getString("id") }) { requested, boardId ->
@@ -428,7 +428,7 @@ class RecordingPersistenceHostTest {
     val setting = fixture.getJSONObject("setting")
     val path = Files.createTempFile("vescape-board-settings", ".db")
     Files.deleteIfExists(path)
-    fun open() = Room.databaseBuilder<TelemetryRoomDatabase>(path.toString()).setDriver(BundledSQLiteDriver()).build()
+    fun open() = Room.databaseBuilder<VescapeRoomDatabase>(path.toString()).setDriver(BundledSQLiteDriver()).build()
 
     var db = open()
     var persistence = BoardSettingsPersistence(db.telemetryDao())
@@ -541,7 +541,7 @@ class RecordingPersistenceHostTest {
     val gapMs = contract.getLong("gapMs")
     val path = Files.createTempFile("vescape-history-read", ".db")
     Files.deleteIfExists(path)
-    fun open() = Room.databaseBuilder<TelemetryRoomDatabase>(path.toString()).setDriver(BundledSQLiteDriver()).build()
+    fun open() = Room.databaseBuilder<VescapeRoomDatabase>(path.toString()).setDriver(BundledSQLiteDriver()).build()
 
     var db = open()
     val emptyPage = readRideHistoryPage(db.telemetryDao(), mapOf("limit" to contract.getInt("pageSize")), gapMs)
@@ -621,7 +621,7 @@ class RecordingPersistenceHostTest {
   fun failedTransactionRollsBackAndStopsIngestion(): Unit = runBlocking {
     val path = Files.createTempFile("vescape-recording-failure", ".db")
     Files.deleteIfExists(path)
-    fun open() = Room.databaseBuilder<TelemetryRoomDatabase>(path.toString()).setDriver(BundledSQLiteDriver()).build()
+    fun open() = Room.databaseBuilder<VescapeRoomDatabase>(path.toString()).setDriver(BundledSQLiteDriver()).build()
     var db = open()
     var persistence = RecordingPersistence(db.telemetryDao())
     fun marker(at: Long, type: String) = TelemetryMarkerEntity(
@@ -669,7 +669,7 @@ class RecordingPersistenceHostTest {
     val path = Files.createTempFile("vescape-recording-contract", ".db")
     Files.deleteIfExists(path)
 
-    fun open() = Room.databaseBuilder<TelemetryRoomDatabase>(path.toString())
+    fun open() = Room.databaseBuilder<VescapeRoomDatabase>(path.toString())
       .setDriver(BundledSQLiteDriver())
       .build()
 

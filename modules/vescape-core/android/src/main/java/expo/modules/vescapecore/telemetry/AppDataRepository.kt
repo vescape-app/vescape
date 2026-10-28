@@ -194,7 +194,7 @@ private fun Any?.asStringKeyMap(): Map<String, Any?>? = when (this) {
 
 // @parity /modules/vescape-core/ios/telemetry/AppDataRepository.swift
 class AppDataRepository private constructor(private val context: Context) {
-  private val dao = TelemetryDatabase.get(context).telemetryDao()
+  private val dao = VescapeDatabase.get(context).telemetryDao()
   private val tuneAlerts = TuneAlertPersistence(dao)
   private val boardSettings = BoardSettingsPersistence(dao)
 

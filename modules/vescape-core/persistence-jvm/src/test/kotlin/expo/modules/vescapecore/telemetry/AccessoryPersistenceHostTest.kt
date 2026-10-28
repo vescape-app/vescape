@@ -37,7 +37,7 @@ class AccessoryPersistenceHostTest {
 
     val path = Files.createTempFile("vescape-accessories", ".db")
     Files.deleteIfExists(path)
-    fun open() = Room.databaseBuilder<TelemetryRoomDatabase>(path.toString())
+    fun open() = Room.databaseBuilder<VescapeRoomDatabase>(path.toString())
       .setDriver(BundledSQLiteDriver())
       .build()
 
@@ -132,7 +132,7 @@ class AccessoryPersistenceHostTest {
 
     val path = Files.createTempFile("vescape-ground-clearance", ".db")
     Files.deleteIfExists(path)
-    fun open() = Room.databaseBuilder<TelemetryRoomDatabase>(path.toString())
+    fun open() = Room.databaseBuilder<VescapeRoomDatabase>(path.toString())
       .setDriver(BundledSQLiteDriver())
       .build()
 

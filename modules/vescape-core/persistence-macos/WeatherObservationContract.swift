@@ -12,7 +12,7 @@ func runWeatherObservationContract() throws {
   let url = FileManager.default.temporaryDirectory.appendingPathComponent("weather-\(UUID().uuidString).db")
   defer { try? FileManager.default.removeItem(at: url) }
   var queue = try DatabaseQueue(path: url.path)
-  try TelemetryDatabase.migrator.migrate(queue)
+  try VescapeDatabase.migrator.migrate(queue)
   func stored() throws -> [WeatherObservation] {
     try queue.read { db in try weatherObservationsSpanning(db, startMs: 0, endMs: 100 * day) }
   }

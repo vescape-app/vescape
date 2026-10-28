@@ -4,28 +4,28 @@ import GRDB
 /// Schema generation stamped into backup manifests, and the ceiling a restore accepts. Shared with
 /// Android: the migrators move together, and the number is what tells a restore which migrations
 /// the incoming database already satisfies. It must match the newest migration in
-/// `TelemetryDatabase.migrator`.
+/// `VescapeDatabase.migrator`.
 ///
-/// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/TelemetryRoomDatabase.kt `TELEMETRY_DATABASE_VERSION`
-internal let TELEMETRY_SCHEMA_VERSION = 53
+/// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/VescapeRoomDatabase.kt `VESCAPE_DATABASE_VERSION`
+internal let VESCAPE_DATABASE_VERSION = 53
 
 /// Released schema generations that have a complete production path to the current schema.
 /// 37–39 never shipped as standalone migrations: Android deliberately jumps 36→40.
 /// Android backup export first shipped with database version 14 (commit dc985d80). Room can
 /// upgrade older on-device databases, but those generations could never have produced an archive.
 internal let supportedAndroidDatabaseVersions: Set<Int> =
-  Set(3...36).union(40...TELEMETRY_SCHEMA_VERSION)
+  Set(3...36).union(40...VESCAPE_DATABASE_VERSION)
 internal let exportedAndroidDatabaseVersions: Set<Int> =
-  Set(14...36).union(40...TELEMETRY_SCHEMA_VERSION)
+  Set(14...36).union(40...VESCAPE_DATABASE_VERSION)
 internal let exportedIOSDatabaseVersions: Set<Int> =
-  Set([1]).union(23...36).union(40...TELEMETRY_SCHEMA_VERSION)
+  Set([1]).union(23...36).union(40...VESCAPE_DATABASE_VERSION)
 
 /// Exports/imports the single GRDB database as a shareable `.zip` (manifest.json + db.sqlite),
 /// matching the Android backup format so the JS layer (share sheet / document picker) is identical.
 ///
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/DatabaseBackupManager.kt
 /// @platform-diff iOS returns a `file://` URL (Android returns a content URI) and hot-swaps the
-/// GRDB pool in place; there is no Room `closeAndReset`, so `TelemetryDatabase.replaceDatabase`
+/// GRDB pool in place; there is no Room `closeAndReset`, so `VescapeDatabase.replaceDatabase`
 /// closes and reopens the pool.
 enum DatabaseBackupManager {
   /// `LocalizedError`, because the bridge rejects with `error.localizedDescription`: a bare `Error`
@@ -43,7 +43,7 @@ enum DatabaseBackupManager {
   }
 
   static func createBackup() throws -> [String: Any?] {
-    guard let pool = TelemetryDatabase.pool, let dbURL = TelemetryDatabase.databaseURL else {
+    guard let pool = VescapeDatabase.pool, let dbURL = VescapeDatabase.databaseURL else {
       throw BackupError.databaseUnavailable
     }
     // Land every buffered sample before snapshotting so the export is complete.
@@ -70,7 +70,7 @@ enum DatabaseBackupManager {
     // exported copy so the same artifact can be opened and schema-validated by Android.
     let exportQueue = try DatabaseQueue(path: sqliteExport.path)
     try exportQueue.writeWithoutTransaction { db in
-      try db.execute(sql: "PRAGMA user_version = \(TELEMETRY_SCHEMA_VERSION)")
+      try db.execute(sql: "PRAGMA user_version = \(VESCAPE_DATABASE_VERSION)")
     }
     try exportQueue.close()
 
@@ -102,7 +102,7 @@ enum DatabaseBackupManager {
     defer { TelemetryRepository.shared.endDatabaseSwap() }
     // A weather observation fetched before the swap must not land in the restored database.
     try DatabaseReplacementFence.process.fence {
-      try TelemetryDatabase.replaceDatabase(withFileAt: staged.database, schemaVersion: staged.roomVersion) { _ in
+      try VescapeDatabase.replaceDatabase(withFileAt: staged.database, schemaVersion: staged.roomVersion) { _ in
         try MySounds.replaceFromBackup(staged.sounds)
       }
     }
@@ -151,7 +151,7 @@ enum DatabaseBackupManager {
       : platform == "ios" && exportedIOSDatabaseVersions.contains(schemaVersion)
     guard supported else {
       throw BackupError.invalidBackup(
-        "Backup schema version \(schemaVersion) has no supported migration path to app schema \(TELEMETRY_SCHEMA_VERSION)"
+        "Backup schema version \(schemaVersion) has no supported migration path to app schema \(VESCAPE_DATABASE_VERSION)"
       )
     }
     // iOS v1 shipped alongside Android v22. Later public schema generations use Room's number.
@@ -179,7 +179,7 @@ enum DatabaseBackupManager {
       )
     }
     guard manifest.platform == "ios", validation.1 == 0 else { return manifest }
-    let registered = TelemetryDatabase.migrator.migrations
+    let registered = VescapeDatabase.migrator.migrations
     guard let last = registered.lastIndex(where: { validation.2.contains($0) }) else {
       throw BackupError.invalidBackup("Invalid iOS migration ledger")
     }
@@ -204,7 +204,7 @@ enum DatabaseBackupManager {
   private static func manifest(dbSizeBytes: Int64, sourceURL: URL) throws -> Data {
     try DatabaseBackupArchive.manifest(
       platform: "ios",
-      schemaVersion: TELEMETRY_SCHEMA_VERSION,
+      schemaVersion: VESCAPE_DATABASE_VERSION,
       appVersion: appVersion(),
       dbSizeBytes: dbSizeBytes,
       createdAt: Int64(Date().timeIntervalSince1970 * 1000.0)

@@ -34,7 +34,7 @@ let remainingNavigation = remainingFixture["navigation"] as! [String: Any]
 let remainingMaintenance = remainingFixture["maintenance"] as! [String: Any]
 let remainingURL = FileManager.default.temporaryDirectory.appendingPathComponent("vescape-remaining-\(UUID().uuidString).db")
 var remainingQueue: DatabaseQueue? = try DatabaseQueue(path: remainingURL.path)
-try TelemetryDatabase.migrator.migrate(remainingQueue!)
+try VescapeDatabase.migrator.migrate(remainingQueue!)
 var settingsStore = BoardSettingsPersistence(writer: remainingQueue!)
 func encodedSetting(_ key: String) throws -> PersistedAppSetting {
   let data = try JSONSerialization.data(withJSONObject: remainingNavigation[key]!, options: [.fragmentsAllowed])
@@ -204,7 +204,7 @@ try FileManager.default.removeItem(at: remainingURL)
 
 let maintenanceURL = FileManager.default.temporaryDirectory.appendingPathComponent("vescape-maintenance-\(UUID().uuidString).db")
 var maintenanceQueue: DatabaseQueue? = try DatabaseQueue(path: maintenanceURL.path)
-try TelemetryDatabase.migrator.migrate(maintenanceQueue!)
+try VescapeDatabase.migrator.migrate(maintenanceQueue!)
 let maintenanceFrames = remainingMaintenance["frames"] as! [[String: Any]]
 func maintenanceFrame(_ at: Int64, _ boardId: String) -> RecordingPersistenceSQL.Frame {
   .init(capturedAtMs: at, elapsedRealtimeMs: at, boardId: boardId, canId: nil, flags: 1,
@@ -283,7 +283,7 @@ try FileManager.default.removeItem(at: maintenanceURL)
 // GPS-only writes retain poor fixes and roll back their bucket if a later track insert fails.
 let trackURL = FileManager.default.temporaryDirectory.appendingPathComponent("vescape-track-\(UUID().uuidString).db")
 var trackQueue = try DatabaseQueue(path: trackURL.path)
-try TelemetryDatabase.migrator.migrate(trackQueue)
+try VescapeDatabase.migrator.migrate(trackQueue)
 let trackPoint = RideTrackPoint(boardId: "board-a", fixAtMs: 2000, latitudeE7: 510000000, longitudeE7: 170000000, accuracyCm: 3500, gpsSpeedCentiMps: 400, bearingCentiDeg: nil, altitudeCm: nil)
 try trackQueue.write { db in
   for bucket in buildTelemetryBuckets([], locationPoints: rideTrackBucketPoints([trackPoint])) {
@@ -364,7 +364,7 @@ func require(_ condition: @autoclosure () throws -> Bool, _ message: String) thr
 }
 
 var queue: DatabaseQueue? = try DatabaseQueue(path: databaseURL.path)
-try TelemetryDatabase.migrator.migrate(queue!)
+try VescapeDatabase.migrator.migrate(queue!)
 try queue!.write { db in
   var malformed = RecordingPersistenceSQL.insertFrame
   malformed.replace("?)", with: "?, ?)", maxReplacements: 1)
@@ -424,7 +424,7 @@ let historyExpected = historyFixture["expected"] as! [String: Any]
 let gapMs = Int64(int(historyFixture["gapMs"]))
 let historyURL = FileManager.default.temporaryDirectory.appendingPathComponent("vescape-history-\(UUID().uuidString).db")
 let historyPool = try DatabasePool(path: historyURL.path)
-try TelemetryDatabase.migrator.migrate(historyPool)
+try VescapeDatabase.migrator.migrate(historyPool)
 let history = RideHistoryRepository(poolProvider: { historyPool }, gapMsProvider: { gapMs })
 let profile = ProfileStatsRepository(poolProvider: { historyPool }, gapMsProvider: { gapMs })
 let emptyPage = try history.getPage(["limit": int(historyFixture["pageSize"])])
@@ -497,7 +497,7 @@ let boardValues = boardFixture["board"] as! [String: Any]
 let settingValues = boardFixture["setting"] as! [String: Any]
 let boardURL = FileManager.default.temporaryDirectory.appendingPathComponent("vescape-board-settings-\(UUID().uuidString).db")
 var boardQueue: DatabaseQueue? = try DatabaseQueue(path: boardURL.path)
-try TelemetryDatabase.migrator.migrate(boardQueue!)
+try VescapeDatabase.migrator.migrate(boardQueue!)
 var boardPersistence = BoardSettingsPersistence(writer: boardQueue!)
 let contractBoardId = boardValues["id"] as! String
 let contractCreatedAt = Int64(int(boardValues["createdAt"]))
@@ -607,7 +607,7 @@ let favoriteInput = favoriteFixture["input"] as! [String: Any]
 let favoriteExpected = favoriteFixture["expected"] as! [String: Any]
 let favoriteURL = FileManager.default.temporaryDirectory.appendingPathComponent("vescape-favorite-\(UUID().uuidString).db")
 var favoriteQueue: DatabaseQueue? = try DatabaseQueue(path: favoriteURL.path)
-try TelemetryDatabase.migrator.migrate(favoriteQueue!)
+try VescapeDatabase.migrator.migrate(favoriteQueue!)
 var favoriteStore = FavoriteStore(dbWriter: favoriteQueue!)
 let favoriteId = favoriteInput["id"] as! String
 let favoriteCreatedAt = Int64(int(favoriteInput["startMs"]))
@@ -700,7 +700,7 @@ let tuneValues = tuneAlertFixture["profile"] as! [String: Any]
 let alertValues = tuneAlertFixture["alert"] as! [String: Any]
 let tuneAlertExpected = tuneAlertFixture["expected"] as! [String: Any]
 var tuneQueue: DatabaseQueue? = try DatabaseQueue(path: tuneURL.path)
-try TelemetryDatabase.migrator.migrate(tuneQueue!)
+try VescapeDatabase.migrator.migrate(tuneQueue!)
 var tuneStore = TuneProfileStore(dbWriter: tuneQueue!)
 let tune = try tuneStore.createProfile(boardId: tuneAlertBoardId, name: tuneValues["name"] as! String, fields: ["kp": 1], refloatBaseVersion: tuneValues["refloatBaseVersion"] as! String)
 let tuneId = tune["id"] as! String
@@ -774,17 +774,17 @@ let migrationManifest = try JSONSerialization.jsonObject(
   with: Data(contentsOf: root.appendingPathComponent("shared/migration-fixture-manifest.json"))
 ) as! [String: Any]
 let grdbManifest = migrationManifest["grdb"] as! [String: Any]
-let migrationIdentifiers = TelemetryDatabase.migrator.migrations
+let migrationIdentifiers = VescapeDatabase.migrator.migrations
 try require(
   Set(grdbManifest["migrationIdentifiers"] as! [String]) == Set(migrationIdentifiers),
   "shared GRDB migration manifest differs from production registry"
 )
 let freshSchemaQueue = try DatabaseQueue()
-try TelemetryDatabase.migrator.migrate(freshSchemaQueue)
+try VescapeDatabase.migrator.migrate(freshSchemaQueue)
 try freshSchemaQueue.read { db in try requireSharedSchema("fresh", db, root: root) }
 for start in migrationIdentifiers {
   let migrationQueue = try DatabaseQueue()
-  try TelemetryDatabase.migrator.migrate(migrationQueue, upTo: start)
+  try VescapeDatabase.migrator.migrate(migrationQueue, upTo: start)
   let available = try migrationQueue.write { db -> (tune: Bool, favorite: Bool, config: Bool) in
     try db.execute(sql: "INSERT INTO boards (id,name,ble_id,created_at) VALUES ('matrix-board','Matrix Board','matrix-ble',100)")
     try db.execute(sql: "INSERT INTO app_settings VALUES ('matrix-setting','\"preserved\"',101)")
@@ -816,7 +816,7 @@ for start in migrationIdentifiers {
     }
     return (hasTune, hasFavorite, hasConfig)
   }
-  try TelemetryDatabase.migrator.migrate(migrationQueue)
+  try VescapeDatabase.migrator.migrate(migrationQueue)
   try migrationQueue.read { db in
     let boardName = try String.fetchOne(db, sql: "SELECT name FROM boards WHERE id='matrix-board'")
     let settingValue = try String.fetchOne(db, sql: "SELECT value_json FROM app_settings WHERE key='matrix-setting'")
@@ -831,7 +831,7 @@ for start in migrationIdentifiers {
     if available.tune { let value = try String.fetchOne(db, sql: "SELECT name FROM tune_profiles WHERE id='matrix-tune'"); try require(value == "Matrix Tune", "\(start) lost Tune Profile") }
     if available.favorite { let value = try String.fetchOne(db, sql: "SELECT name FROM favorites WHERE id='matrix-favorite'"); try require(value == "Matrix Favorite", "\(start) lost Favorite") }
     if available.config { let value = try String.fetchOne(db, sql: "SELECT values_json FROM board_config_values WHERE board_id='matrix-board'"); try require(value == "{\"motor_current_max\":55.5}", "\(start) lost config") }
-    let ledger = try TelemetryDatabase.migrator.appliedIdentifiers(db)
+    let ledger = try VescapeDatabase.migrator.appliedIdentifiers(db)
     try require(ledger == Set(migrationIdentifiers), "\(start) final ledger")
     try requireSharedSchema("migrated-from-\(start)", db, root: root)
   }
@@ -841,7 +841,7 @@ for start in migrationIdentifiers {
 // Reconstruct the original db6e9b9 v1 release shape, including global Alert Rules and the legacy
 // telemetry fault columns, then run the real destructive/preserving migrations.
 let authenticV1 = try DatabaseQueue()
-try TelemetryDatabase.migrator.migrate(authenticV1, upTo: "v1")
+try VescapeDatabase.migrator.migrate(authenticV1, upTo: "v1")
 try authenticV1.write { db in
   try db.execute(sql: "DROP TABLE alerts")
   try db.execute(sql: "CREATE TABLE alerts (id TEXT NOT NULL PRIMARY KEY,control_id TEXT NOT NULL,threshold REAL NOT NULL,threshold_max REAL,enabled INTEGER NOT NULL,sound_type TEXT NOT NULL,created_at INTEGER NOT NULL,source TEXT)")
@@ -851,12 +851,12 @@ try authenticV1.write { db in
   try db.execute(sql: "INSERT INTO boards (id,name,ble_id,created_at) VALUES ('historical-board','Historical','historical-ble',100)")
   try db.execute(sql: "INSERT INTO telemetry_frames (captured_at_ms,elapsed_realtime_ms,device_id,device_name,flags,changed_mask_1,changed_mask_2,speed_centi_kmh) VALUES (1000,10,'historical-ble','Historical',1,1,0,2468)")
 }
-try TelemetryDatabase.migrator.migrate(authenticV1)
+try VescapeDatabase.migrator.migrate(authenticV1)
 try authenticV1.read { db in
   let alertCount = try Int.fetchOne(db, sql: "SELECT COUNT(*) FROM alerts WHERE id = 'legacy-global'")
   let frameBoard = try String.fetchOne(db, sql: "SELECT board_id FROM telemetry_frames WHERE captured_at_ms=1000")
   let frameColumns = try db.columns(in: "telemetry_frames").map(\.name)
-  let ledger = try TelemetryDatabase.migrator.appliedIdentifiers(db)
+  let ledger = try VescapeDatabase.migrator.appliedIdentifiers(db)
   try require(alertCount == 0, "authentic v1 retained unowned global Alert Rule")
   try require(frameBoard == "historical-board", "authentic v1 lost telemetry ownership")
   try require(!frameColumns.contains("fault_code"), "authentic v1 retained fault column")
@@ -867,7 +867,7 @@ try authenticV1.close()
 // v51 folds the v50 Alert Preset Board Settings and copied preset rows into one row per metric.
 // @parity /modules/vescape-core/persistence-jvm/src/test/kotlin/expo/modules/vescapecore/telemetry/TelemetryMigrationMatrixHostTest.kt
 let presetRowsQueue = try DatabaseQueue()
-try TelemetryDatabase.migrator.migrate(presetRowsQueue, upTo: "v50_alert_sound_count")
+try VescapeDatabase.migrator.migrate(presetRowsQueue, upTo: "v50_alert_sound_count")
 try presetRowsQueue.write { db in
   for id in ["chosen", "untouched"] {
     try db.execute(sql: "INSERT INTO boards (id,name,ble_id,created_at) VALUES (?,?,NULL,100)", arguments: [id, id])
@@ -881,7 +881,7 @@ try presetRowsQueue.write { db in
   try db.execute(sql: "INSERT INTO alerts (board_id,id,control_id,threshold,threshold_max,enabled,sound_type,created_at,source) VALUES ('chosen','preset:duty:0','duty',80,90,1,'geiger:soft',5002,'preset')")
   try db.execute(sql: "INSERT INTO alerts (board_id,id,control_id,threshold,threshold_max,enabled,sound_type,created_at,source) VALUES ('chosen','rider-duty','duty',70,NULL,0,'tts:Duty',5003,NULL)")
 }
-try TelemetryDatabase.migrator.migrate(presetRowsQueue)
+try VescapeDatabase.migrator.migrate(presetRowsQueue)
 try presetRowsQueue.read { db in
   let expected = ["speed": "preset(safe):geiger=mid", "duty": "preset(off):geiger=soft", "motor-temp": "preset(normal):match=on", "controller-temp": "preset(off)", "battery": "preset(off)"]
   for (metric, spec) in expected {
@@ -922,7 +922,7 @@ try require(swappedWalData == Data("original-wal".utf8), "database swap lost ori
 try require(swappedShmData == Data("original-shm".utf8), "database swap lost original SHM")
 
 let invalidArchiveDatabase = try DatabaseQueue()
-try TelemetryDatabase.migrator.migrate(invalidArchiveDatabase)
+try VescapeDatabase.migrator.migrate(invalidArchiveDatabase)
 let invalidArchiveURL = swapDirectory.appendingPathComponent("archive.sqlite")
 try invalidArchiveDatabase.backup(to: DatabaseQueue(path: invalidArchiveURL.path))
 try invalidArchiveDatabase.close()
@@ -945,7 +945,7 @@ if let exchangePath = ProcessInfo.processInfo.environment["VESCAPE_BACKUP_EXCHAN
   try FileManager.default.createDirectory(at: stage, withIntermediateDirectories: true)
   let androidArchive = try Data(contentsOf: exchange.appendingPathComponent("android.zip"))
   let staged = try DatabaseBackupManager.stageBackupArchive(androidArchive, in: stage)
-  let importedAndroid = try TelemetryDatabase.openRestoredDatabase(
+  let importedAndroid = try VescapeDatabase.openRestoredDatabase(
     at: staged.database,
     schemaVersion: staged.roomVersion
   )
@@ -980,7 +980,7 @@ if let exchangePath = ProcessInfo.processInfo.environment["VESCAPE_BACKUP_EXCHAN
   try FileManager.default.createDirectory(at: v14Stage, withIntermediateDirectories: true)
   let stagedV14 = try DatabaseBackupManager.stageBackupArchive(androidV14Archive, in: v14Stage)
   try require(stagedV14.roomVersion == 14, "first Android archive generation resolved incorrectly")
-  let importedV14 = try TelemetryDatabase.openRestoredDatabase(
+  let importedV14 = try VescapeDatabase.openRestoredDatabase(
     at: stagedV14.database,
     schemaVersion: stagedV14.roomVersion
   )
@@ -993,7 +993,7 @@ if let exchangePath = ProcessInfo.processInfo.environment["VESCAPE_BACKUP_EXCHAN
     let minVoltage = try Int.fetchOne(db, sql: "SELECT min_battery_voltage_mv FROM telemetry_minute_buckets WHERE bucket_start_ms=960")
     let gpsDistance = try Int.fetchOne(db, sql: "SELECT gps_distance_cm FROM telemetry_minute_buckets WHERE bucket_start_ms=960")
     let privacyZonesExist = try db.tableExists("privacy_zones")
-    let ledger = try TelemetryDatabase.migrator.appliedIdentifiers(db)
+    let ledger = try VescapeDatabase.migrator.appliedIdentifiers(db)
     try require(board == "Era Three", "v14 archive lost Board")
     try require(description == "\"kept\"", "v14 archive lost migrated Board setting")
     try require(eraSetting == "\"preserved\"", "v14 archive lost app setting")
@@ -1011,14 +1011,14 @@ if let exchangePath = ProcessInfo.processInfo.environment["VESCAPE_BACKUP_EXCHAN
     let stage = exchange.appendingPathComponent("swift-v\(version)-stage", isDirectory: true)
     try FileManager.default.createDirectory(at: stage, withIntermediateDirectories: true)
     let staged = try DatabaseBackupManager.stageBackupArchive(archive, in: stage)
-    let imported = try TelemetryDatabase.openRestoredDatabase(
+    let imported = try VescapeDatabase.openRestoredDatabase(
       at: staged.database,
       schemaVersion: staged.roomVersion
     )
     try imported.read { db in
       let zone = try Row.fetchOne(db, sql: "SELECT * FROM privacy_zones WHERE id='era-zone'")
       let battery = try String.fetchOne(db, sql: "SELECT value_json FROM board_settings WHERE board_id='board-era3' AND key='batteryConfig'")
-      let ledger = try TelemetryDatabase.migrator.appliedIdentifiers(db)
+      let ledger = try VescapeDatabase.migrator.appliedIdentifiers(db)
       try requireSharedSchema("restored-android-v\(version)", db, root: root)
       try require(zone?["name"] as String? == "Era Zone", "v\(version) archive lost Privacy Zone name")
       try require(zone?["enabled"] as Int? == 1, "v\(version) archive lost Privacy Zone state")
@@ -1035,7 +1035,7 @@ if let exchangePath = ProcessInfo.processInfo.environment["VESCAPE_BACKUP_EXCHAN
 
   let iosDatabaseURL = exchange.appendingPathComponent("ios.sqlite")
   let iosDatabase = try DatabaseQueue(path: iosDatabaseURL.path)
-  try TelemetryDatabase.migrator.migrate(iosDatabase)
+  try VescapeDatabase.migrator.migrate(iosDatabase)
   try iosDatabase.write { db in
     try db.execute(sql: "INSERT INTO boards (id,name,ble_id,transport,created_at) VALUES ('cross-board','Cross Board','cross-ble','direct',100)")
     try db.execute(sql: "INSERT INTO board_settings VALUES ('cross-board','description','\"durable\"',101)")
@@ -1050,12 +1050,12 @@ if let exchangePath = ProcessInfo.processInfo.environment["VESCAPE_BACKUP_EXCHAN
     try insertRideTrackPoint(db, RideTrackPoint(boardId: "cross-board", fixAtMs: 1200, latitudeE7: 510000000, longitudeE7: 170000000, accuracyCm: 3500, gpsSpeedCentiMps: 400, bearingCentiDeg: 9000, altitudeCm: 12300))
     let previewFixes = try bucketPreviewFixes()
     try RecordingPersistenceSQL.insertTrackAndBuckets(db, track: previewFixes, buckets: buildTelemetryBuckets([], locationPoints: rideTrackBucketPoints(previewFixes)))
-    try db.execute(sql: "PRAGMA user_version = \(TELEMETRY_SCHEMA_VERSION)")
+    try db.execute(sql: "PRAGMA user_version = \(VESCAPE_DATABASE_VERSION)")
   }
   try iosDatabase.close()
   let iosData = try Data(contentsOf: iosDatabaseURL)
   let iosManifest = try DatabaseBackupArchive.manifest(
-    platform: "ios", schemaVersion: TELEMETRY_SCHEMA_VERSION, appVersion: "host",
+    platform: "ios", schemaVersion: VESCAPE_DATABASE_VERSION, appVersion: "host",
     dbSizeBytes: Int64(iosData.count), createdAt: 1
   )
   try DatabaseBackupArchive.archive(database: iosData, manifest: iosManifest)
@@ -1079,7 +1079,7 @@ let otherAccessorySpec = accessoryFixture["other"] as! [String: Any]
 let accessoryURL = FileManager.default.temporaryDirectory
   .appendingPathComponent("vescape-accessories-\(UUID().uuidString).db")
 var accessoryQueue: DatabaseQueue? = try DatabaseQueue(path: accessoryURL.path)
-try TelemetryDatabase.migrator.migrate(accessoryQueue!)
+try VescapeDatabase.migrator.migrate(accessoryQueue!)
 var accessoryStore = AccessoryStore(dbWriter: accessoryQueue!)
 
 func savedAccessory(_ spec: [String: Any], overrides: [String: Any] = [:]) -> SavedAccessory {
@@ -1205,7 +1205,7 @@ func savedCalibration(_ owner: String, _ capabilityId: String, _ spec: [String: 
 let clearanceURL = FileManager.default.temporaryDirectory
   .appendingPathComponent("vescape-ground-clearance-\(UUID().uuidString).db")
 var clearanceQueue: DatabaseQueue? = try DatabaseQueue(path: clearanceURL.path)
-try TelemetryDatabase.migrator.migrate(clearanceQueue!)
+try VescapeDatabase.migrator.migrate(clearanceQueue!)
 var clearanceStore = AccessoryStore(dbWriter: clearanceQueue!)
 try clearanceStore.upsert(savedAccessory(accessorySpec))
 try clearanceStore.upsert(savedAccessory(otherAccessorySpec))

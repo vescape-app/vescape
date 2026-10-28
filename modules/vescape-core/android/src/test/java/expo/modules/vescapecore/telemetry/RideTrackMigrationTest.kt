@@ -33,7 +33,7 @@ class RideTrackMigrationTest {
 
   @Test
   fun migrationCoversItsOwnEdgeOfTheGraph() {
-    // Deliberately not pinned to `TELEMETRY_DATABASE_VERSION`: this migration owns one edge, and
+    // Deliberately not pinned to `VESCAPE_DATABASE_VERSION`: this migration owns one edge, and
     // later schema work adds edges after it without changing what this one did.
     assertEquals(42, TelemetryMigrations.MIGRATION_42_43.startVersion)
     assertEquals(43, TelemetryMigrations.MIGRATION_42_43.endVersion)

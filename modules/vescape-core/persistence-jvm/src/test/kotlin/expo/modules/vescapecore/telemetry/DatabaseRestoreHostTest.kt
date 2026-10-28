@@ -13,7 +13,7 @@ import kotlinx.coroutines.runBlocking
 
 class DatabaseRestoreHostTest {
   private fun open(path: String) =
-    Room.databaseBuilder<TelemetryRoomDatabase>(path).setDriver(BundledSQLiteDriver()).build()
+    Room.databaseBuilder<VescapeRoomDatabase>(path).setDriver(BundledSQLiteDriver()).build()
 
   @Test
   fun crossPlatformProductionArchivePipeline(): Unit = runBlocking {
@@ -41,7 +41,7 @@ class DatabaseRestoreHostTest {
         archive.outputStream().use { output ->
           DatabaseBackupArchive.write(
             database,
-            DatabaseBackupArchive.manifest("android", TELEMETRY_DATABASE_VERSION, "host", database.length(), 1),
+            DatabaseBackupArchive.manifest("android", VESCAPE_DATABASE_VERSION, "host", database.length(), 1),
             output,
           )
         }
@@ -50,7 +50,7 @@ class DatabaseRestoreHostTest {
         val database = exchange.resolve("ios-restored.sqlite")
         val manifest = exchange.resolve("ios.zip").inputStream().use { DatabaseBackupArchive.extract(it, database) }
         assertEquals("ios", manifest.getString("platform"))
-        assertEquals(TELEMETRY_DATABASE_VERSION, manifest.getInt("schemaVersion"))
+        assertEquals(VESCAPE_DATABASE_VERSION, manifest.getInt("schemaVersion"))
         val connection = BundledSQLiteDriver().open(database.path)
         iosSchemaReconciliationStatements(hasDeletedAt = true, hasFaultCaptures = true, bootstrapLegacyTune = false)
           .forEach(connection::execSQL)
@@ -84,11 +84,11 @@ class DatabaseRestoreHostTest {
   @Test
   fun productionMigrationGraphRejectsVersionsWithoutAPath() {
     assertTrue((3..36).all { it in SUPPORTED_ANDROID_DATABASE_VERSIONS })
-    assertTrue((40..TELEMETRY_DATABASE_VERSION).all { it in SUPPORTED_ANDROID_DATABASE_VERSIONS })
+    assertTrue((40..VESCAPE_DATABASE_VERSION).all { it in SUPPORTED_ANDROID_DATABASE_VERSIONS })
     // The gap and the generation past the current one: 37-39 never shipped, and a database from a
     // newer app than this one is not something an older migration graph may guess at.
     assertTrue(
-      (listOf(1, 2, 37, 38, 39) + (TELEMETRY_DATABASE_VERSION + 1))
+      (listOf(1, 2, 37, 38, 39) + (VESCAPE_DATABASE_VERSION + 1))
         .all { it !in SUPPORTED_ANDROID_DATABASE_VERSIONS },
     )
     assertTrue((14..36).all { it in EXPORTED_ANDROID_DATABASE_VERSIONS })

@@ -5,11 +5,11 @@ import GRDB
 /// privacy zones, map points, settings) and telemetry tables — mirroring the single Android Room
 /// database. GRDB `DatabasePool` opens in WAL mode by default, matching Room's WAL concurrency.
 ///
-/// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/TelemetryDatabase.kt
+/// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/VescapeDatabase.kt
 /// @platform-diff iOS is greenfield, so the schema starts at a single `v1` migration that creates
 /// the final table shapes directly instead of replaying Android's incremental Room migrations. The
 /// telemetry tables are created schema-only here; their writers land in later slices (#60/#61/#63).
-enum TelemetryDatabase {
+enum VescapeDatabase {
   private static let databaseName = "vescape.db"
   private static let legacyDatabaseName = "telemetry.db"
 
@@ -47,7 +47,7 @@ enum TelemetryDatabase {
   /// One-time file rename from the pre-release "telemetry.db" name. Checkpoints the legacy WAL so
   /// the whole database lives in the main file, then renames it in place. Idempotent: once the new
   /// file exists (or no legacy file is present) this is a no-op.
-  /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/TelemetryDatabase.kt `migrateLegacyDatabaseFile`
+  /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/VescapeDatabase.kt `migrateLegacyDatabaseFile`
   internal static func migrateLegacyDatabaseFile(to url: URL) throws {
     let fm = FileManager.default
     let legacy = url.deletingLastPathComponent().appendingPathComponent(legacyDatabaseName)
@@ -564,7 +564,7 @@ enum TelemetryDatabase {
       }
     }
 
-    // @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/TelemetryDatabase.kt `MIGRATION_26_27`
+    // @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/VescapeDatabase.kt `MIGRATION_26_27`
     // Per-board Alert Rules (#254). Existing global rules are intentionally dropped; the former
     // global alert settings are now board-scoped settings.
     migrator.registerMigration("v27_alert_board_id") { db in
@@ -600,7 +600,7 @@ enum TelemetryDatabase {
     // target it used to hold moves to app settings, which start empty here — a rider re-picks it.
     // GRDB keys migrations by name, so one migration covers both released and feature-branch
     // installs; Room needs two steps because it keys them by version number.
-    // @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/TelemetryDatabase.kt `MIGRATION_28_29`
+    // @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/VescapeDatabase.kt `MIGRATION_28_29`
     migrator.registerMigration("v29_drop_map_points") { db in
       try db.execute(sql: "DROP TABLE IF EXISTS map_point_reactions")
       try db.execute(sql: "DROP TABLE IF EXISTS map_points")
@@ -609,21 +609,21 @@ enum TelemetryDatabase {
     // MARK: Favorites (#287)
     // Durable, optionally named time ranges over Ride History (ADR 0029). Mirrors Android Room
     // migration 29→30.
-    // @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/TelemetryDatabase.kt `MIGRATION_29_30`
+    // @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/VescapeDatabase.kt `MIGRATION_29_30`
     migrator.registerMigration("v30_favorites") { db in
       try PersistenceSchema.createFavorites(db)
     }
 
     // Favorite Media (#291). Native manifest metadata truth; bytes live in canonical Favorite-owned
     // app storage (ADR 0030).
-    // @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/TelemetryDatabase.kt `MIGRATION_30_31`
+    // @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/VescapeDatabase.kt `MIGRATION_30_31`
     migrator.registerMigration("v31_favorite_media") { db in
       try PersistenceSchema.createFavoriteMedia(db)
     }
 
     // Per-rule repeat cadence and beep count (#348). Existing rows land on one-shot with the
     // former hardcoded 3 beeps, so nothing a rider already configured changes how it sounds.
-    // @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/TelemetryDatabase.kt `MIGRATION_31_32`
+    // @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/VescapeDatabase.kt `MIGRATION_31_32`
     migrator.registerMigration("v32_alert_repeat") { db in
       let columns = try db.columns(in: "alerts").map(\.name)
       if !columns.contains("repeat_every_seconds") {
@@ -638,7 +638,7 @@ enum TelemetryDatabase {
 
     // Last Known Board Config Values: latest decoded Refloat config per Board + base version,
     // restored as `lastKnown` on connect (#393).
-    // @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/TelemetryDatabase.kt `MIGRATION_32_33`
+    // @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/VescapeDatabase.kt `MIGRATION_32_33`
     migrator.registerMigration("v33_board_config_values") { db in
       try PersistenceSchema.createBoardConfig(db)
     }
@@ -669,7 +669,7 @@ enum TelemetryDatabase {
     /// Numbered `v40` rather than `v37` because Room reached the same shape at version 40. The
     /// identifiers in between only existed in development builds while the feature was being cut
     /// down; a database that recorded them is beyond this migrator and has to be reinstalled.
-    /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/TelemetryDatabase.kt `MIGRATION_36_40`
+    /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/VescapeDatabase.kt `MIGRATION_36_40`
     migrator.registerMigration("v40_vesc_faults") { db in
       try PersistenceSchema.createVescFaults(db)
       try PersistenceSchema.createVescFaultCaptures(db)
@@ -787,7 +787,7 @@ enum TelemetryDatabase {
     // Board tombstones (#279). Deleting a Board stops removing its row and stamps `deleted_at`
     // instead, so Ride History outlives the Board that produced it (ADR 0027). Additive: existing
     // rows stay null, i.e. alive.
-    // @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/TelemetryDatabase.kt `MIGRATION_40_41`
+    // @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/VescapeDatabase.kt `MIGRATION_40_41`
     migrator.registerMigration("v41_board_deleted_at") { db in
       let hasDeletedAt = try db.columns(in: "boards").contains { $0.name == "deleted_at" }
       if !hasDeletedAt {
@@ -802,7 +802,7 @@ enum TelemetryDatabase {
     //
     // Both tables are rebuilt rather than altered: the bucket primary key moves to
     // `(bucket_start_ms, board_id)`, and the rebuild is what drops the two retired columns.
-    // @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/TelemetryDatabase.kt `MIGRATION_41_42`
+    // @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/VescapeDatabase.kt `MIGRATION_41_42`
     migrator.registerMigration("v42_telemetry_board_id") { db in
       try mintOrphanBoards(db)
       try buildDeviceBoardMap(db)

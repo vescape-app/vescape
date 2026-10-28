@@ -26,14 +26,14 @@ class RideExportSnapshotTest {
     AppDataRepository.resetForDatabaseSwap()
     ProfileStatsRepository.resetForDatabaseSwap()
     RideHistoryRepository.resetForDatabaseSwap()
-    TelemetryDatabase.closeAndReset()
+    VescapeDatabase.closeAndReset()
     context.deleteDatabase(TELEMETRY_DATABASE_NAME)
   }
 
   @Test fun productionSnapshotKeepsRecordingWritable(): Unit = runBlocking {
     // Instrumentation APK context owns disposable data, never the installed application's DB.
     val context = InstrumentationRegistry.getInstrumentation().context
-    val db = TelemetryDatabase.get(context)
+    val db = VescapeDatabase.get(context)
     try {
       val dao = db.telemetryDao()
       fun point(i: Int) = RideTrackPointEntity(boardId = "board", fixAtMs = i.toLong(),
@@ -58,13 +58,13 @@ class RideExportSnapshotTest {
           super.write(text)
         }
       }
-      TelemetryDatabase.withRideExportSnapshot(context) {
+      VescapeDatabase.withRideExportSnapshot(context) {
         RideExport.writeGpx(it, writer, 0, count.toLong(), "board", "Snapshot")
       }
       recording.await()
       assertEquals(count, "<trkpt ".toRegex().findAll(writer.toString()).count())
       val fresh = StringWriter()
-      TelemetryDatabase.withRideExportSnapshot(context) {
+      VescapeDatabase.withRideExportSnapshot(context) {
         RideExport.writeGpx(it, fresh, 0, count.toLong(), "board", "Fresh")
       }
       assertEquals(count + 1, "<trkpt ".toRegex().findAll(fresh.toString()).count())
@@ -79,7 +79,7 @@ class RideExportSnapshotTest {
     try {
       RecordingStorageFailure.initialize(context)
       assertNull(RecordingStorageFailure.value())
-      val dao = TelemetryDatabase.get(context).telemetryDao()
+      val dao = VescapeDatabase.get(context).telemetryDao()
       dao.insertRideTrackPoints(listOf(RideTrackPointEntity(boardId = null, fixAtMs = 123,
         latitudeE7 = 1, longitudeE7 = -1, accuracyCm = 100,
         gpsSpeedCentiMps = null, bearingCentiDeg = null, altitudeCm = null)))
@@ -90,7 +90,7 @@ class RideExportSnapshotTest {
       dao.clearRideTrackPoints()
       assertNull(dao.lastRideTrackAt())
       DatabaseBackupManager.restoreBackup(context, result["uri"] as String)
-      assertEquals(123L, TelemetryDatabase.get(context).telemetryDao().lastRideTrackAt())
+      assertEquals(123L, VescapeDatabase.get(context).telemetryDao().lastRideTrackAt())
     } finally {
       resetDatabase(context)
       backup?.delete()

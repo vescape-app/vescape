@@ -133,7 +133,7 @@ internal func storeWeatherObservation(_ db: Database, _ observation: WeatherObse
 final class WeatherObservationRecorder {
   /// The process's one writer. Resolves the pool per write, so a restored database is the one
   /// written after the fence.
-  static let process = WeatherObservationRecorder(writer: { try TelemetryDatabase.requirePool() })
+  static let process = WeatherObservationRecorder(writer: { try VescapeDatabase.requirePool() })
 
   private let writer: () throws -> any DatabaseWriter
   private let fence: DatabaseReplacementFence

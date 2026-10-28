@@ -27,7 +27,7 @@ final class FavoriteStoreTests: XCTestCase {
   /// @parity /modules/vescape-core/android/src/androidTest/java/expo/modules/vescapecore/telemetry/RideReadQueriesTest.kt
   func testFavoriteSummaryReadsMovementBeyondTheDisplayCap() throws {
     let database = try DatabaseQueue()
-    try TelemetryDatabase.migrator.migrate(database)
+    try VescapeDatabase.migrator.migrate(database)
     try database.write { db in
       for index in 0..<(MAX_SAMPLE_LIMIT + 2) {
         try insertRideTrackPoint(db, RideTrackPoint(

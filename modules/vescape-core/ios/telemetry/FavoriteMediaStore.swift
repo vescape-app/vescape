@@ -74,7 +74,7 @@ struct FavoriteMediaStore {
   private let rootURL: URL
 
   static let shared = FavoriteMediaStore(
-    resolveWriter: { TelemetryDatabase.pool },
+    resolveWriter: { VescapeDatabase.pool },
     rootURL: defaultRootURL
   )
 

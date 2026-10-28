@@ -35,7 +35,7 @@ struct BoardWarningStore {
   private struct InvalidSeverity: Error {}
   private struct WriterUnavailable: Error {}
   private let resolveWriter: () -> DatabaseWriter?
-  static let shared = BoardWarningStore { TelemetryDatabase.pool }
+  static let shared = BoardWarningStore { VescapeDatabase.pool }
   init(_ resolveWriter: @escaping () -> DatabaseWriter?) { self.resolveWriter = resolveWriter }
   init(dbWriter: DatabaseWriter) { self.resolveWriter = { dbWriter } }
 

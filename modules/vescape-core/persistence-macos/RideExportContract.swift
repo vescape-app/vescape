@@ -9,7 +9,7 @@ func runRideExportContract() throws {
   try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
   defer { try? FileManager.default.removeItem(at: directory) }
   let queue = try DatabaseQueue(path: directory.appendingPathComponent("test.db").path)
-  try TelemetryDatabase.migrator.migrate(queue)
+  try VescapeDatabase.migrator.migrate(queue)
   func point(_ i: Int, board: String? = "board", accuracy: Int? = 2000) -> RideTrackPoint {
     RideTrackPoint(boardId: board, fixAtMs: base + Int64(i / 3),
       latitudeE7: Int64(521234567 + i), longitudeE7: -211234567, accuracyCm: accuracy,
@@ -75,7 +75,7 @@ func runRideCsvContract() throws {
   try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
   defer { try? FileManager.default.removeItem(at: directory) }
   let queue = try DatabaseQueue(path: directory.appendingPathComponent("test.db").path)
-  try TelemetryDatabase.migrator.migrate(queue)
+  try VescapeDatabase.migrator.migrate(queue)
   // Seed both full iOS-style keyframes and Android-style deltas, including explicit NULL clears.
   let columns = ["speed_centi_kmh", "battery_voltage_mv", "motor_current_ma", "battery_current_ma",
     "duty_permille", "pitch_centi_deg", "roll_centi_deg", "balance_pitch_centi_deg", "balance_current_ma",

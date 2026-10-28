@@ -24,7 +24,7 @@ class MaintenanceJobsHostTest {
   private val hour = 60 * minute
   private val board = "board-a"
 
-  private fun db() = Room.inMemoryDatabaseBuilder<TelemetryRoomDatabase>().setDriver(BundledSQLiteDriver()).build()
+  private fun db() = Room.inMemoryDatabaseBuilder<VescapeRoomDatabase>().setDriver(BundledSQLiteDriver()).build()
 
   private fun frame(at: Long, speed: Int = 1_000) = TelemetryFrameEntity(
     capturedAtMs = at, elapsedRealtimeMs = at, boardId = board, canId = null,

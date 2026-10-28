@@ -16,7 +16,7 @@ import java.util.concurrent.Executors
 import io.sentry.Sentry
 import io.sentry.SentryLevel
 import expo.modules.vescapecore.diagnostics.NativeFailureReporter
-import expo.modules.vescapecore.telemetry.TelemetryDatabase
+import expo.modules.vescapecore.telemetry.VescapeDatabase
 
 internal enum class RecordingStorageFailureKind(val wireValue: String) {
     WriteFailed("write_failed"),
@@ -103,7 +103,7 @@ internal object RecordingStorageFailure {
       appContext = context.applicationContext
       startupCheck(context) {
         runBlocking {
-          TelemetryDatabase.get(context.applicationContext).useWriterConnection { sqlite ->
+          VescapeDatabase.get(context.applicationContext).useWriterConnection { sqlite ->
             sqlite.immediateTransaction {
               sqlite.execSQL("CREATE TABLE storage_startup_probe (value INTEGER NOT NULL)")
               sqlite.execSQL("INSERT INTO storage_startup_probe (value) VALUES (1)")

@@ -9,10 +9,10 @@ GRDB. Both runners load `modules/vescape-core/shared/recording-persistence-contr
 minute bucket from its moving samples, commit frames and bucket, close SQLite, reopen it, then assert
 explicit durable values. Missing fixture/scenario fails either runner.
 
-Android compiles the production `TelemetryRoomDatabase`, Room-generated `TelemetryDao`, recording
+Android compiles the production `VescapeRoomDatabase`, Room-generated `TelemetryDao`, recording
 transaction seam, entities, bucket builder, and `TelemetryMigrations` graph into a plain Kotlin/JVM
 module. Android `Context`, legacy-file rename, the `SupportSQLiteDatabase` adapter, and app lifecycle
-remain in `TelemetryDatabase`; every adapter delegates to the same portable migration step that the
+remain in `VescapeDatabase`; every adapter delegates to the same portable migration step that the
 Room 2.8.4 `sqlite-bundled` 2.6.2 host executes. The migration matrix starts from the authentic Room
 v3 entities at `f51663a8^`, derives each graph generation with production edges, separately covers
 the released v22 Tune Profile shape at `10deb46c^`, and lets Room validate every supported result
@@ -61,7 +61,7 @@ engine checks Ride Recording, Boards, settings, Tune Profiles, Favorites, and co
 formats, unsupported versions, migration failures, and failed file swaps are rejected before the
 former database and its WAL/SHM recovery files are discarded.
 
-macOS compiles production `TelemetryDatabase.migrator`, `RecordingPersistenceSQL`, and bucket builder
+macOS compiles production `VescapeDatabase.migrator`, `RecordingPersistenceSQL`, and bucket builder
 through a small Swift executable target. App-directory selection and database hot-swap remain in the
 iOS adapter. The host resolves GRDB 6.29.3 because earlier 6.x SPM builds fail to import Darwin on
 current Xcode; the app ships CocoaPods GRDB 6.24.1. This suite verifies SQL/schema behavior, not exact

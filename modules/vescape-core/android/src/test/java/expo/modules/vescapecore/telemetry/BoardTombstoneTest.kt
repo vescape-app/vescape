@@ -62,15 +62,15 @@ class BoardTombstoneTest {
    */
   @Test
   fun migrationAddsNullableDeletedAtColumn() {
-    val sql = migrationSql(TelemetryDatabase.MIGRATION_40_41)
+    val sql = migrationSql(VescapeDatabase.MIGRATION_40_41)
 
     assertEquals(listOf("ALTER TABLE boards ADD COLUMN deleted_at INTEGER"), sql)
   }
 
   @Test
   fun migrationTargetsTheCurrentSchemaVersion() {
-    assertEquals(40, TelemetryDatabase.MIGRATION_40_41.startVersion)
-    assertEquals(41, TelemetryDatabase.MIGRATION_40_41.endVersion)
+    assertEquals(40, VescapeDatabase.MIGRATION_40_41.startVersion)
+    assertEquals(41, VescapeDatabase.MIGRATION_40_41.endVersion)
   }
 
   /** The Rider-facing list drops tombstones; lookup by id keeps them so history can name them. */

@@ -18,7 +18,7 @@ import java.nio.file.NoSuchFileException
 import java.io.IOException
 
 /** Android lifecycle and Room adapters for the portable production migration graph. */
-internal object TelemetryDatabase {
+internal object VescapeDatabase {
   // Only exports and file replacement take this lock. Recording writes never do.
   internal val rideExportMutex = Mutex()
 
@@ -27,7 +27,7 @@ internal object TelemetryDatabase {
       RideExport.snapshot(get(context), block)
     }
 
-  @Volatile private var instance: TelemetryRoomDatabase? = null
+  @Volatile private var instance: VescapeRoomDatabase? = null
 
   private class SupportDatabase(private val db: SupportSQLiteDatabase) : TelemetryMigrationDatabase {
     override fun execSQL(sql: String) = db.execSQL(sql)
@@ -108,12 +108,12 @@ internal object TelemetryDatabase {
     catch (_: NoSuchFileException) { 0L }
   }
 
-  fun get(context: Context): TelemetryRoomDatabase =
+  fun get(context: Context): VescapeRoomDatabase =
     instance ?: synchronized(this) {
       migrateLegacyDatabaseFile(context.applicationContext)
       instance ?: Room.databaseBuilder(
         context.applicationContext,
-        TelemetryRoomDatabase::class.java,
+        VescapeRoomDatabase::class.java,
         TELEMETRY_DATABASE_NAME,
       )
         .setDriver(BundledSQLiteDriver())

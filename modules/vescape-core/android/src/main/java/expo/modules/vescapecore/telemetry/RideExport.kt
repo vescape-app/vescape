@@ -17,7 +17,7 @@ import java.util.UUID
  */
 internal object RideExport {
   // Driver-backed export Room instance: one WAL read snapshot across all generated DAO calls.
-  suspend fun <T> snapshot(db: TelemetryRoomDatabase, block: suspend (TelemetryDao) -> T): T =
+  suspend fun <T> snapshot(db: VescapeRoomDatabase, block: suspend (TelemetryDao) -> T): T =
     db.useReaderConnection { reader -> reader.deferredTransaction { block(db.telemetryDao()) } }
 
   const val BATCH_SIZE = 1000

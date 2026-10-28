@@ -34,7 +34,7 @@ final class DatabaseFileSwapTests: XCTestCase {
     let incoming = directory.appendingPathComponent("incoming.db")
     for (url, value) in [(target, "original"), (incoming, "candidate")] {
       let queue = try DatabaseQueue(path: url.path)
-      try TelemetryDatabase.migrator.migrate(queue)
+      try VescapeDatabase.migrator.migrate(queue)
       try queue.write { db in
         try db.execute(
           sql: "INSERT INTO app_settings (key, value_json, updated_at) VALUES ('sentinel', ?, 1)",

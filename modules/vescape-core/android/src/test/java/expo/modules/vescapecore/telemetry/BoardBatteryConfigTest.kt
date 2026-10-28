@@ -95,7 +95,7 @@ class BoardBatteryConfigTest {
         throw UnsupportedOperationException(method.name)
       }
     } as SupportSQLiteDatabase
-    TelemetryDatabase.MIGRATION_18_19.migrate(db)
+    VescapeDatabase.MIGRATION_18_19.migrate(db)
 
     assertTrue(sql.any { it.contains("CREATE TABLE IF NOT EXISTS boards_new") })
     assertTrue(sql.any { it.contains("battery_config_json TEXT") })
@@ -126,7 +126,7 @@ class BoardBatteryConfigTest {
         throw UnsupportedOperationException(method.name)
       }
     } as SupportSQLiteDatabase
-    TelemetryDatabase.MIGRATION_20_21.migrate(db)
+    VescapeDatabase.MIGRATION_20_21.migrate(db)
 
     assertTrue(sql.any { it.contains("CREATE TABLE IF NOT EXISTS board_settings") })
     assertTrue(sql.any { it.contains("PRIMARY KEY (board_id, key)") })

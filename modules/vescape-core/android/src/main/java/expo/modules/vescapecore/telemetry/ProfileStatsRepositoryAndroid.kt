@@ -6,7 +6,7 @@ import androidx.room.deferredTransaction
 
 /** Android lifecycle adapter around the host-testable production Profile stats query. */
 class ProfileStatsRepository private constructor(private val context: Context) {
-  private val database = TelemetryDatabase.get(context)
+  private val database = VescapeDatabase.get(context)
 
   /** @parity /modules/vescape-core/src/index.ts `ProfileStatsSnapshot` */
   suspend fun getProfileStatsSnapshot(options: Map<String, Any?>): Map<String, Any?> {

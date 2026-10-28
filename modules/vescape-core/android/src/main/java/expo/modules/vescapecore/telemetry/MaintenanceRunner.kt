@@ -129,7 +129,7 @@ internal object MaintenanceRunner {
     val fence = DatabaseReplacementFence.process
     val ticket = fence.ticket()
     val runScope = MaintenanceJobScope(
-      dao = { TelemetryDatabase.get(appContext).telemetryDao() },
+      dao = { VescapeDatabase.get(appContext).telemetryDao() },
       fence = fence,
       ticket = ticket,
       progress = { done, total -> progress(job.id, done, total) },

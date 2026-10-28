@@ -14,7 +14,7 @@ final class BoardTombstoneTests: XCTestCase {
 
   override func setUpWithError() throws {
     queue = try DatabaseQueue()
-    try TelemetryDatabase.migrator.migrate(queue)
+    try VescapeDatabase.migrator.migrate(queue)
     repo = AppDataRepository.forTesting(dbWriter: queue)
   }
 
@@ -60,7 +60,7 @@ final class BoardTombstoneTests: XCTestCase {
   /// Re-running the whole migrator over a migrated database has to be a no-op, not a duplicate
   /// column error.
   func testMigrationIsANoOpOnReRun() throws {
-    XCTAssertNoThrow(try TelemetryDatabase.migrator.migrate(queue))
+    XCTAssertNoThrow(try VescapeDatabase.migrator.migrate(queue))
   }
 
   // MARK: Delete

@@ -8,14 +8,14 @@ import org.junit.Assert.assertFalse
 import org.junit.Assert.assertThrows
 import org.junit.Test
 
-/** @parity /modules/vescape-core/ios/telemetry/TelemetryDatabaseReliabilityTests.swift */
-class TelemetryDatabaseReliabilityTest {
+/** @parity /modules/vescape-core/ios/telemetry/VescapeDatabaseReliabilityTests.swift */
+class VescapeDatabaseReliabilityTest {
   @Test fun `failed legacy move preserves original file`() {
     val root = Files.createTempDirectory("vescape-legacy").toFile()
     val legacy = root.resolve("telemetry.db").apply { writeBytes("original".toByteArray()) }
     val target = root.resolve("missing/vescape.sqlite")
 
-    assertThrows(IOException::class.java) { TelemetryDatabase.moveLegacyDatabaseFile(legacy, target) }
+    assertThrows(IOException::class.java) { VescapeDatabase.moveLegacyDatabaseFile(legacy, target) }
     assertArrayEquals("original".toByteArray(), legacy.readBytes())
     assertFalse(target.exists())
     root.deleteRecursively()
@@ -23,10 +23,10 @@ class TelemetryDatabaseReliabilityTest {
 
   @Test fun `database size distinguishes missing file from metadata failure`() {
     val root = Files.createTempDirectory("vescape-size").toFile()
-    assertEquals(0L, TelemetryDatabase.databaseSizeBytes(root.resolve("missing")))
+    assertEquals(0L, VescapeDatabase.databaseSizeBytes(root.resolve("missing")))
     val existing = root.resolve("vescape.sqlite").apply { writeBytes(byteArrayOf(1)) }
     assertThrows(IOException::class.java) {
-      TelemetryDatabase.databaseSizeBytes(existing) { throw IOException("metadata failed") }
+      VescapeDatabase.databaseSizeBytes(existing) { throw IOException("metadata failed") }
     }
     root.deleteRecursively()
   }

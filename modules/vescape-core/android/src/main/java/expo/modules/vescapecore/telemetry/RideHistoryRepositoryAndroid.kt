@@ -6,7 +6,7 @@ import androidx.room.deferredTransaction
 
 /** Android lifecycle adapter around the host-testable production Ride History query. */
 internal class RideHistoryRepository private constructor(private val context: Context) {
-  private val database = TelemetryDatabase.get(context)
+  private val database = VescapeDatabase.get(context)
 
   /** @parity /modules/vescape-core/src/index.ts `RideHistoryPage` */
   suspend fun getPage(options: Map<String, Any?>): Map<String, Any?> {

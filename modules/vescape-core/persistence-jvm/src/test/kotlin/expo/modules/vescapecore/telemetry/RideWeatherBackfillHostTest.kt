@@ -22,7 +22,7 @@ class RideWeatherBackfillHostTest {
   private val base = 1_710_028_800_000L
   private val now = base + 365 * day
 
-  private fun db() = Room.inMemoryDatabaseBuilder<TelemetryRoomDatabase>().setDriver(BundledSQLiteDriver()).build()
+  private fun db() = Room.inMemoryDatabaseBuilder<VescapeRoomDatabase>().setDriver(BundledSQLiteDriver()).build()
 
   private fun frame(at: Long) = TelemetryFrameEntity(
     capturedAtMs = at, elapsedRealtimeMs = at, boardId = board, canId = null,

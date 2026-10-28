@@ -10,6 +10,6 @@ import android.content.Context
  */
 internal fun weatherObservationRecorder(context: Context): WeatherObservationRecorder =
   processRecorder ?: synchronized(WeatherObservationRecorder::class) {
-    processRecorder ?: WeatherObservationRecorder({ TelemetryDatabase.get(context.applicationContext).telemetryDao() })
+    processRecorder ?: WeatherObservationRecorder({ VescapeDatabase.get(context.applicationContext).telemetryDao() })
       .also { processRecorder = it }
   }

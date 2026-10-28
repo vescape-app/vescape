@@ -29,7 +29,7 @@ import expo.modules.vescapecore.telemetry.AppDataRepository
 import expo.modules.vescapecore.telemetry.DEFAULT_LIVE_HISTORY_LIMIT_MINUTES
 import expo.modules.vescapecore.telemetry.MAX_LIVE_HISTORY_LIMIT_MINUTES
 import expo.modules.vescapecore.telemetry.MIN_LIVE_HISTORY_LIMIT_MINUTES
-import expo.modules.vescapecore.telemetry.TelemetryDatabase
+import expo.modules.vescapecore.telemetry.VescapeDatabase
 import expo.modules.vescapecore.telemetry.TelemetryRepository
 import expo.modules.vescapecore.watch.WatchLightsSwitch
 import expo.modules.vescapecore.watch.WatchMirrorWakeLevel
@@ -238,7 +238,7 @@ class CoreForegroundService : Service() {
             val app = context.applicationContext
             appDataScope.launch {
                 val enrolled = try {
-                    AccessoryPersistence(TelemetryDatabase.get(app).telemetryDao()).getAccessories()
+                    AccessoryPersistence(VescapeDatabase.get(app).telemetryDao()).getAccessories()
                 } catch (e: Exception) {
                     android.util.Log.w(VESC_SESSION_TAG, "Accessory auto-connect read failed: ${e.message}")
                     return@launch

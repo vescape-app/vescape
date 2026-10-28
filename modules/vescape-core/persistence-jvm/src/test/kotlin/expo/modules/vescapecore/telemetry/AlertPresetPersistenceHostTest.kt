@@ -18,7 +18,7 @@ class AlertPresetPersistenceHostTest {
     AlertRuleEntity(boardId, "preset:$metric", metric, 0.0, null, enabled = true, spec = spec, createdAt = 1)
 
   @Test fun sharedExpansionContract(): Unit = runBlocking {
-    val db = Room.inMemoryDatabaseBuilder<TelemetryRoomDatabase>().setDriver(BundledSQLiteDriver()).build()
+    val db = Room.inMemoryDatabaseBuilder<VescapeRoomDatabase>().setDriver(BundledSQLiteDriver()).build()
     val dao = db.telemetryDao()
     val cases = fixture.getJSONArray("cases")
     for (i in 0 until cases.length()) {
@@ -82,7 +82,7 @@ class AlertPresetPersistenceHostTest {
 
   @Test fun unitSwitchChangesExpansionWithoutWrites(): Unit = runBlocking {
     val switch = fixture.getJSONObject("unitSwitch")
-    val db = Room.inMemoryDatabaseBuilder<TelemetryRoomDatabase>().setDriver(BundledSQLiteDriver()).build()
+    val db = Room.inMemoryDatabaseBuilder<VescapeRoomDatabase>().setDriver(BundledSQLiteDriver()).build()
     val dao = db.telemetryDao()
     for (id in listOf("first", "second")) {
       dao.upsertBoardWithSettings(BoardEntity(id, id, null, 1), listOf(BoardSettingEntity(id, "topSpeedKmh", switch.getDouble("topSpeedKmh").toString(), 1)), emptyList(), emptyList())
@@ -105,7 +105,7 @@ class AlertPresetPersistenceHostTest {
 
   /** @parity /modules/vescape-core/persistence-macos/AlertPresetContract.swift `runAlertPresetBoardLifecycleContract` */
   @Test fun missingOrTombstonedBoardExpandsNothing(): Unit = runBlocking {
-    val db = Room.inMemoryDatabaseBuilder<TelemetryRoomDatabase>().setDriver(BundledSQLiteDriver()).build()
+    val db = Room.inMemoryDatabaseBuilder<VescapeRoomDatabase>().setDriver(BundledSQLiteDriver()).build()
     val dao = db.telemetryDao()
     val rider = AlertRuleEntity("ghost", "rider", "speed", 12.0, null, enabled = true, spec = "alert:warning", createdAt = 1)
     dao.upsertAlertRule(rider)
@@ -119,7 +119,7 @@ class AlertPresetPersistenceHostTest {
 
   /** @parity /modules/vescape-core/persistence-macos/AlertPresetContract.swift `runAlertPresetBoardLifecycleContract` */
   @Test fun oneMetricFailingToExpandKeepsTheRest(): Unit = runBlocking {
-    val db = Room.inMemoryDatabaseBuilder<TelemetryRoomDatabase>().setDriver(BundledSQLiteDriver()).build()
+    val db = Room.inMemoryDatabaseBuilder<VescapeRoomDatabase>().setDriver(BundledSQLiteDriver()).build()
     val dao = db.telemetryDao()
     dao.upsertBoardWithSettings(BoardEntity("board", "Board", null, 1), emptyList(), emptyList(), emptyList())
     val rider = AlertRuleEntity("board", "rider", "speed", 12.0, null, enabled = true, spec = "alert:warning", createdAt = 1)
@@ -137,7 +137,7 @@ class AlertPresetPersistenceHostTest {
 
   /** @parity /modules/vescape-core/persistence-macos/AlertPresetContract.swift `runAlertPresetBoardLifecycleContract` */
   @Test fun boardIsSavedWithItsInitialAlertsAtomically(): Unit = runBlocking {
-    val db = Room.inMemoryDatabaseBuilder<TelemetryRoomDatabase>().setDriver(BundledSQLiteDriver()).build()
+    val db = Room.inMemoryDatabaseBuilder<VescapeRoomDatabase>().setDriver(BundledSQLiteDriver()).build()
     val dao = db.telemetryDao()
     val persistence = BoardSettingsPersistence(dao)
     val rider = AlertRuleEntity("new", "rider", "battery", 20.0, null, enabled = true, spec = "alert:warning", createdAt = 1)
@@ -161,7 +161,7 @@ class AlertPresetPersistenceHostTest {
 
   @Test fun presetIntentRewritesOneRowAndSurvivesReopen(): Unit = runBlocking {
     val path = Files.createTempFile("preset-contract", ".db"); Files.delete(path)
-    fun open() = Room.databaseBuilder<TelemetryRoomDatabase>(path.toString()).setDriver(BundledSQLiteDriver()).build()
+    fun open() = Room.databaseBuilder<VescapeRoomDatabase>(path.toString()).setDriver(BundledSQLiteDriver()).build()
     var db = open(); var dao = db.telemetryDao()
     val board = BoardEntity("board", "Board", null, 1)
     suspend fun spec(metric: String) = AlertPresetPersistence.specs(dao, board.id).getValue(metric)

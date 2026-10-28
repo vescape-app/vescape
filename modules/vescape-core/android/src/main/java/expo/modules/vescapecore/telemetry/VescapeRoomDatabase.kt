@@ -3,10 +3,10 @@ package expo.modules.vescapecore.telemetry
 import androidx.room.Database
 import androidx.room.RoomDatabase
 
-// @parity /modules/vescape-core/ios/telemetry/DatabaseBackupManager.swift `TELEMETRY_SCHEMA_VERSION`
-internal const val TELEMETRY_DATABASE_VERSION = 53
+// @parity /modules/vescape-core/ios/telemetry/DatabaseBackupManager.swift `VESCAPE_DATABASE_VERSION`
+internal const val VESCAPE_DATABASE_VERSION = 53
 
-/** Production Room schema/DAO, portable to JVM hosts. Android open/migration lifecycle stays in [TelemetryDatabase]. */
+/** Production Room schema/DAO, portable to JVM hosts. Android open/migration lifecycle stays in [VescapeDatabase]. */
 @Database(
   entities = [
     RideTrackPointEntity::class,
@@ -22,9 +22,9 @@ internal const val TELEMETRY_DATABASE_VERSION = 53
     AccessoryCapabilitySettingsEntity::class,
     WeatherObservationEntity::class,
   ],
-  version = TELEMETRY_DATABASE_VERSION,
+  version = VESCAPE_DATABASE_VERSION,
   exportSchema = true,
 )
-abstract class TelemetryRoomDatabase : RoomDatabase() {
+abstract class VescapeRoomDatabase : RoomDatabase() {
   abstract fun telemetryDao(): TelemetryDao
 }

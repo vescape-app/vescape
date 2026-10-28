@@ -47,7 +47,7 @@ struct VescFaultStore: VescFaultStoring {
   /// database restore). `nil` while the pool failed to open.
   private let resolveWriter: () -> DatabaseWriter?
 
-  static let shared = VescFaultStore { TelemetryDatabase.pool }
+  static let shared = VescFaultStore { VescapeDatabase.pool }
 
   init(_ resolveWriter: @escaping () -> DatabaseWriter?) {
     self.resolveWriter = resolveWriter

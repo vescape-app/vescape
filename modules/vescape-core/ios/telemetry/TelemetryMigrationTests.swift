@@ -2,7 +2,7 @@ import GRDB
 import XCTest
 @testable import VescapeCore
 
-/// Runs the real `TelemetryDatabase` migrator against an in-memory database. This is the guard every
+/// Runs the real `VescapeDatabase` migrator against an in-memory database. This is the guard every
 /// future migration inherits: add a case here rather than shipping a schema change no Swift test has
 /// executed.
 ///
@@ -22,7 +22,7 @@ final class TelemetryMigrationTests: XCTestCase {
     let archiveStarts = Set(room["archiveSupportedStarts"] as! [Int])
     XCTAssertEqual(archiveStarts, exportedAndroidDatabaseVersions)
     let grdb = manifest["grdb"] as! [String: Any]
-    XCTAssertEqual(Set(grdb["migrationIdentifiers"] as! [String]), Set(TelemetryDatabase.migrator.migrations))
+    XCTAssertEqual(Set(grdb["migrationIdentifiers"] as! [String]), Set(VescapeDatabase.migrator.migrations))
   }
 
   override func setUpWithError() throws {
@@ -35,9 +35,9 @@ final class TelemetryMigrationTests: XCTestCase {
 
   private func migrate(upTo version: String? = nil) throws {
     if let version {
-      try TelemetryDatabase.migrator.migrate(queue, upTo: version)
+      try VescapeDatabase.migrator.migrate(queue, upTo: version)
     } else {
-      try TelemetryDatabase.migrator.migrate(queue)
+      try VescapeDatabase.migrator.migrate(queue)
     }
   }
 
@@ -82,8 +82,8 @@ final class TelemetryMigrationTests: XCTestCase {
   func testEveryMigrationAppliesOnAFreshDatabase() throws {
     try migrate()
 
-    let applied = try queue.read { db in try TelemetryDatabase.migrator.appliedIdentifiers(db) }
-    XCTAssertEqual(applied, Set(TelemetryDatabase.migrator.migrations))
+    let applied = try queue.read { db in try VescapeDatabase.migrator.appliedIdentifiers(db) }
+    XCTAssertEqual(applied, Set(VescapeDatabase.migrator.migrations))
   }
 
   func testPublishedBackupGenerationsMatchRealMigrationHistory() {
@@ -335,12 +335,12 @@ final class TelemetryMigrationTests: XCTestCase {
 
   private func stamp(schemaVersion: Int) throws {
     try queue.write { db in
-      try TelemetryDatabase.stampAppliedMigrations(db, schemaVersion: schemaVersion)
+      try VescapeDatabase.stampAppliedMigrations(db, schemaVersion: schemaVersion)
     }
   }
 
   private func applied() throws -> Set<String> {
-    try queue.read { db in try TelemetryDatabase.migrator.appliedIdentifiers(db) }
+    try queue.read { db in try VescapeDatabase.migrator.appliedIdentifiers(db) }
   }
 
   /// Restoring an Android backup used to fail outright: no ledger meant `v1` replayed, and
@@ -349,10 +349,10 @@ final class TelemetryMigrationTests: XCTestCase {
     try migrate()
     try dropMigrationLedger()
 
-    try stamp(schemaVersion: TELEMETRY_SCHEMA_VERSION)
+    try stamp(schemaVersion: VESCAPE_DATABASE_VERSION)
     try migrate()
 
-    XCTAssertEqual(try applied(), Set(TelemetryDatabase.migrator.migrations))
+    XCTAssertEqual(try applied(), Set(VescapeDatabase.migrator.migrations))
   }
 
   /// A backup from an older build must still get the migrations it is missing — stamping is a claim
@@ -367,7 +367,7 @@ final class TelemetryMigrationTests: XCTestCase {
     XCTAssertFalse(stamped.contains("v26_alert_source"))
 
     try migrate()
-    XCTAssertEqual(try applied(), Set(TelemetryDatabase.migrator.migrations))
+    XCTAssertEqual(try applied(), Set(VescapeDatabase.migrator.migrations))
   }
 
   /// Android files a Board's proven transport as a `board_settings` row; iOS keeps it as a column on
@@ -401,8 +401,8 @@ final class TelemetryMigrationTests: XCTestCase {
     try dropMigrationLedger()
 
     try queue.write { db in
-      try TelemetryDatabase.stampAppliedMigrations(db, schemaVersion: TELEMETRY_SCHEMA_VERSION)
-      try TelemetryDatabase.reconcileForeignSchema(db)
+      try VescapeDatabase.stampAppliedMigrations(db, schemaVersion: VESCAPE_DATABASE_VERSION)
+      try VescapeDatabase.reconcileForeignSchema(db)
     }
 
     XCTAssertTrue(try columnNames("boards").contains("transport"))

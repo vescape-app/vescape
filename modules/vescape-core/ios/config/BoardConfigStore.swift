@@ -78,7 +78,7 @@ struct BoardConfigStore {
   /// database restore). `nil` while the pool failed to open.
   private let resolveWriter: () -> DatabaseWriter?
 
-  static let shared = BoardConfigStore { TelemetryDatabase.pool }
+  static let shared = BoardConfigStore { VescapeDatabase.pool }
 
   init(_ resolveWriter: @escaping () -> DatabaseWriter?) {
     self.resolveWriter = resolveWriter

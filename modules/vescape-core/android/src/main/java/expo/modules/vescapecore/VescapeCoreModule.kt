@@ -73,7 +73,7 @@ import expo.modules.vescapecore.telemetry.RideExport
 import expo.modules.vescapecore.telemetry.RideHistoryRepository
 import expo.modules.vescapecore.telemetry.TELEMETRY_DATABASE_NAME
 import expo.modules.vescapecore.telemetry.TelemetryRepository
-import expo.modules.vescapecore.telemetry.TelemetryDatabase
+import expo.modules.vescapecore.telemetry.VescapeDatabase
 import expo.modules.vescapecore.telemetry.AlertRuleEntity
 import expo.modules.vescapecore.telemetry.AlertPresetPersistence
 import expo.modules.vescapecore.location.LegalPolicyResolver
@@ -1023,7 +1023,7 @@ class VescapeCoreModule : Module() {
       RecordingStorageFailure.requireAvailable()
       val dbFile = context.applicationContext.getDatabasePath(TELEMETRY_DATABASE_NAME)
       try {
-        promise.resolve(TelemetryDatabase.databaseSizeBytes(dbFile))
+        promise.resolve(VescapeDatabase.databaseSizeBytes(dbFile))
       } catch (error: Exception) {
         RecordingStorageFailure.reportRead("database_size_read", error)
         promise.reject("APP_STORAGE_READ_FAILED", "Could not read database size", error)

@@ -175,7 +175,7 @@ internal object TelemetryMigrations {
     }
 
     /**
-     * @parity /modules/vescape-core/ios/telemetry/TelemetryDatabase.swift `upgradeExportedAndroidDatabase`
+     * @parity /modules/vescape-core/ios/telemetry/VescapeDatabase.swift `upgradeExportedAndroidDatabase`
      */
     private val MIGRATION_14_15 = migration(14, 15) { db ->
         db.execSQL(
@@ -400,7 +400,7 @@ internal object TelemetryMigrations {
      * keys (Alert Preset selection, Rider Top Speed, onboarding flag) move to Board Settings, so
      * their app_settings rows are dropped.
      *
-     * @parity /modules/vescape-core/ios/telemetry/TelemetryDatabase.swift `v27_alert_board_id`
+     * @parity /modules/vescape-core/ios/telemetry/VescapeDatabase.swift `v27_alert_board_id`
      */
     internal val MIGRATION_26_27 = migration(26, 27) { db ->
         db.execSQL("DROP TABLE IF EXISTS alerts")
@@ -434,7 +434,7 @@ internal object TelemetryMigrations {
      * v27 table. The direction target it used to hold moves to app settings, which start empty
      * here — a rider re-picks it.
      *
-     * @parity /modules/vescape-core/ios/telemetry/TelemetryDatabase.swift `v29_drop_map_points`
+     * @parity /modules/vescape-core/ios/telemetry/VescapeDatabase.swift `v29_drop_map_points`
      */
     internal val MIGRATION_27_28 = migration(27, 28) { db ->
         dropMapPointTables(db)
@@ -445,7 +445,7 @@ internal object TelemetryMigrations {
      * table. Those installs never pass through 27 again, so the same drop runs once more for them.
      * A device that arrived through the migration above finds nothing left to drop.
      *
-     * @parity /modules/vescape-core/ios/telemetry/TelemetryDatabase.swift `v29_drop_map_points`
+     * @parity /modules/vescape-core/ios/telemetry/VescapeDatabase.swift `v29_drop_map_points`
      */
     internal val MIGRATION_28_29 = migration(28, 29) { db ->
         dropMapPointTables(db)
@@ -456,7 +456,7 @@ internal object TelemetryMigrations {
      * instead, so Ride History outlives the Board that produced it (ADR 0027). Additive: existing
      * rows stay null, i.e. alive.
      *
-     * @parity /modules/vescape-core/ios/telemetry/TelemetryDatabase.swift `v41_board_deleted_at`
+     * @parity /modules/vescape-core/ios/telemetry/VescapeDatabase.swift `v41_board_deleted_at`
      */
     internal val MIGRATION_40_41 = migration(40, 41) { db ->
         if (!hasColumn(db, "boards", "deleted_at")) {
@@ -468,7 +468,7 @@ internal object TelemetryMigrations {
      * Scratch table holding migration 41→42's one and only BLE identifier → Board decision. Temp,
      * so it belongs to the connection and never reaches the schema Room validates.
      *
-     * @parity /modules/vescape-core/ios/telemetry/TelemetryDatabase.swift `DEVICE_BOARD_MAP`
+     * @parity /modules/vescape-core/ios/telemetry/VescapeDatabase.swift `DEVICE_BOARD_MAP`
      */
     private const val DEVICE_BOARD_MAP = "telemetry_device_board_map"
 
@@ -478,7 +478,7 @@ internal object TelemetryMigrations {
      * identifiers has to exist before any other table resolves the same identifier, or the two
      * disagree about who owns the history — the defect this migration exists to remove.
      *
-     * @parity /modules/vescape-core/ios/telemetry/TelemetryDatabase.swift `telemetryTablesKeyedOnDeviceId`
+     * @parity /modules/vescape-core/ios/telemetry/VescapeDatabase.swift `telemetryTablesKeyedOnDeviceId`
      */
     private val TELEMETRY_TABLES_KEYED_ON_DEVICE_ID = listOf(
       "telemetry_frames" to "captured_at_ms",
@@ -499,7 +499,7 @@ internal object TelemetryMigrations {
      * oldest supported device ships. The rebuild is a full copy, so it is the expensive step of
      * this upgrade on a phone with a long Ride History.
      *
-     * @parity /modules/vescape-core/ios/telemetry/TelemetryDatabase.swift `v42_telemetry_board_id`
+     * @parity /modules/vescape-core/ios/telemetry/VescapeDatabase.swift `v42_telemetry_board_id`
      */
     internal val MIGRATION_41_42 = migration(41, 42) { db ->
         mintOrphanBoards(db)
@@ -523,7 +523,7 @@ internal object TelemetryMigrations {
      * Rider-facing list, and a null `ble_id` stops it from ever capturing a future re-link. The id
      * is derived from the identifier rather than random so re-running the migration is a no-op.
      */
-    /** @parity /modules/vescape-core/ios/telemetry/TelemetryDatabase.swift `mintOrphanBoards` */
+    /** @parity /modules/vescape-core/ios/telemetry/VescapeDatabase.swift `mintOrphanBoards` */
     private fun mintOrphanBoards(db: TelemetryMigrationDatabase) {
       val now = System.currentTimeMillis()
       for ((name, timeColumn) in TELEMETRY_TABLES_KEYED_ON_DEVICE_ID) {
@@ -576,7 +576,7 @@ internal object TelemetryMigrations {
      * Deliberately not left unattributed: an unowned row is never uploaded and is pruned on age, so
      * "unknown" would quietly destroy the history a merely mis-labelled ride keeps intact.
      *
-     * @parity /modules/vescape-core/ios/telemetry/TelemetryDatabase.swift `buildDeviceBoardMap`
+     * @parity /modules/vescape-core/ios/telemetry/VescapeDatabase.swift `buildDeviceBoardMap`
      */
     private fun buildDeviceBoardMap(db: TelemetryMigrationDatabase) {
       db.execSQL(
@@ -617,7 +617,7 @@ internal object TelemetryMigrations {
       END
       """.trimIndent()
 
-    /** @parity /modules/vescape-core/ios/telemetry/TelemetryDatabase.swift `rebuildFramesOnBoardId` */
+    /** @parity /modules/vescape-core/ios/telemetry/VescapeDatabase.swift `rebuildFramesOnBoardId` */
     private fun rebuildFramesOnBoardId(db: TelemetryMigrationDatabase) {
       val columns =
         "captured_at_ms, elapsed_realtime_ms, can_id, flags, changed_mask_1, changed_mask_2, " +
@@ -689,7 +689,7 @@ internal object TelemetryMigrations {
      * The primary key move from `(bucket_start_ms, device_id)` to `(bucket_start_ms, board_id)` is
      * a table rebuild, not an `ALTER`.
      */
-    /** @parity /modules/vescape-core/ios/telemetry/TelemetryDatabase.swift `rebuildBucketsOnBoardId` */
+    /** @parity /modules/vescape-core/ios/telemetry/VescapeDatabase.swift `rebuildBucketsOnBoardId` */
     private fun rebuildBucketsOnBoardId(db: TelemetryMigrationDatabase) {
       val columns =
         "bucket_start_ms, sample_count, first_sample_at_ms, last_sample_at_ms, " +
@@ -789,7 +789,7 @@ internal object TelemetryMigrations {
      * Board it happened on, and `board_id` stays nullable because a Marker can be written with no
      * Board connected. `device_name` goes with the identifier: the Board holds that text once.
      *
-     * @parity /modules/vescape-core/ios/telemetry/TelemetryDatabase.swift `rebuildMarkersOnBoardId`
+     * @parity /modules/vescape-core/ios/telemetry/VescapeDatabase.swift `rebuildMarkersOnBoardId`
      */
     private fun rebuildMarkersOnBoardId(db: TelemetryMigrationDatabase) {
       db.execSQL("DROP INDEX IF EXISTS index_telemetry_markers_occurred_at_ms")
@@ -831,7 +831,7 @@ internal object TelemetryMigrations {
     }
 
     /**
-     * @parity /modules/vescape-core/ios/telemetry/TelemetryDatabase.swift `rebuildDiagnosticEventsOnBoardId`
+     * @parity /modules/vescape-core/ios/telemetry/VescapeDatabase.swift `rebuildDiagnosticEventsOnBoardId`
      */
     private fun rebuildDiagnosticEventsOnBoardId(db: TelemetryMigrationDatabase) {
       db.execSQL("DROP INDEX IF EXISTS index_diagnostic_events_occurred_at_ms")
@@ -885,7 +885,7 @@ internal object TelemetryMigrations {
      * the column is NOT NULL on both, so both need a value rather than a null, and one sentinel
      * across the two keeps "no Board" a single idea.
      *
-     * @parity /modules/vescape-core/ios/telemetry/TelemetryDatabase.swift `rebuildExclusionRangesOnBoardId`
+     * @parity /modules/vescape-core/ios/telemetry/VescapeDatabase.swift `rebuildExclusionRangesOnBoardId`
      */
     private fun rebuildExclusionRangesOnBoardId(db: TelemetryMigrationDatabase) {
       db.execSQL("DROP INDEX IF EXISTS index_metric_exclusion_ranges_start_ms_end_ms")
@@ -934,7 +934,7 @@ internal object TelemetryMigrations {
      * carries a native-minted UUID id, native-owned timestamps, and the summary stats computed once
      * from the raw samples inside the range.
      *
-     * @parity /modules/vescape-core/ios/telemetry/TelemetryDatabase.swift `v30_favorites`
+     * @parity /modules/vescape-core/ios/telemetry/VescapeDatabase.swift `v30_favorites`
      */
     internal val MIGRATION_29_30 = migration(29, 30) { db ->
         db.execSQL(
@@ -967,7 +967,7 @@ internal object TelemetryMigrations {
      * Favorite Media (#291). Native manifest metadata truth; bytes live in canonical Favorite-owned
      * app storage (ADR 0030).
      *
-     * @parity /modules/vescape-core/ios/telemetry/TelemetryDatabase.swift `v31_favorite_media`
+     * @parity /modules/vescape-core/ios/telemetry/VescapeDatabase.swift `v31_favorite_media`
      */
     internal val MIGRATION_30_31 = migration(30, 31) { db ->
         db.execSQL(
@@ -996,12 +996,12 @@ internal object TelemetryMigrations {
      * Per-rule repeat cadence and beep count (#348). Existing rows land on one-shot with the
      * former hardcoded 3 beeps, so nothing a rider already configured changes how it sounds.
      *
-     * @parity /modules/vescape-core/ios/telemetry/TelemetryDatabase.swift `v32_alert_repeat`
+     * @parity /modules/vescape-core/ios/telemetry/VescapeDatabase.swift `v32_alert_repeat`
      */
     /**
      * Last Known Board Config Values: latest decoded Refloat config per Board + base version,
      * restored as `lastKnown` on connect (#393).
-     * @parity /modules/vescape-core/ios/telemetry/TelemetryDatabase.swift `v33_board_config_values`
+     * @parity /modules/vescape-core/ios/telemetry/VescapeDatabase.swift `v33_board_config_values`
      */
     internal val MIGRATION_32_33 = migration(32, 33) { db ->
         db.execSQL(
@@ -1024,7 +1024,7 @@ internal object TelemetryMigrations {
     /**
      * Last Known Motor Config Values: latest decoded VESC motor config per Board + MCCONF signature,
      * restored as `lastKnown` on connect.
-     * @parity /modules/vescape-core/ios/telemetry/TelemetryDatabase.swift `v36_motor_config_values`
+     * @parity /modules/vescape-core/ios/telemetry/VescapeDatabase.swift `v36_motor_config_values`
      */
     internal val MIGRATION_35_36 = migration(35, 36) { db ->
         db.execSQL(
@@ -1130,7 +1130,7 @@ internal object TelemetryMigrations {
      * 36 to 40 in one step: versions 37 to 39 only ever existed in development builds while the
      * feature was being cut down, and none of their shapes shipped. A database sitting on one of
      * them has no path here and is rebuilt by the destructive fallback.
-     * @parity /modules/vescape-core/ios/telemetry/TelemetryDatabase.swift `v40_vesc_faults`
+     * @parity /modules/vescape-core/ios/telemetry/VescapeDatabase.swift `v40_vesc_faults`
      */
     internal val MIGRATION_36_40 = migration(36, 40) { db ->
         createVescFaultOccurrences(db)
@@ -1277,7 +1277,7 @@ internal object TelemetryMigrations {
         rebuildBucketsOnRecordingId(db)
     }
 
-    /** @parity /modules/vescape-core/ios/telemetry/TelemetryDatabase.swift `createRideRecordingTables` */
+    /** @parity /modules/vescape-core/ios/telemetry/VescapeDatabase.swift `createRideRecordingTables` */
     private fun createRideRecordingTables(db: TelemetryMigrationDatabase) {
       db.execSQL(
         """
@@ -1334,7 +1334,7 @@ internal object TelemetryMigrations {
      * stamped onto. A frame with no coordinates contributes nothing — a ride recorded without GPS
      * migrates to an empty track, not to fabricated points.
      *
-     * @parity /modules/vescape-core/ios/telemetry/TelemetryDatabase.swift `migrateFrameGpsIntoRideTrack`
+     * @parity /modules/vescape-core/ios/telemetry/VescapeDatabase.swift `migrateFrameGpsIntoRideTrack`
      */
     private fun migrateFrameGpsIntoRideTrack(db: TelemetryMigrationDatabase) {
       db.execSQL(
@@ -1364,7 +1364,7 @@ internal object TelemetryMigrations {
      * Drops the seven raw GPS columns and adds `recording_id`. A rebuild rather than an `ALTER`:
      * dropping a column in place needs a SQLite newer than the oldest supported device ships.
      *
-     * @parity /modules/vescape-core/ios/telemetry/TelemetryDatabase.swift `rebuildFramesWithoutGps`
+     * @parity /modules/vescape-core/ios/telemetry/VescapeDatabase.swift `rebuildFramesWithoutGps`
      */
     private fun rebuildFramesWithoutGps(db: TelemetryMigrationDatabase) {
       val columns =
@@ -1435,7 +1435,7 @@ internal object TelemetryMigrations {
      * stop aggregating into a single row. Existing buckets take an empty recording id and keep
      * grouping exactly as they did.
      *
-     * @parity /modules/vescape-core/ios/telemetry/TelemetryDatabase.swift `rebuildBucketsOnRecordingId`
+     * @parity /modules/vescape-core/ios/telemetry/VescapeDatabase.swift `rebuildBucketsOnRecordingId`
      */
     private fun rebuildBucketsOnRecordingId(db: TelemetryMigrationDatabase) {
       val columns =
@@ -1551,12 +1551,12 @@ internal object TelemetryMigrations {
       db.execSQL("CREATE TABLE IF NOT EXISTS accessory_capability_settings (accessory_id TEXT NOT NULL, capability_id TEXT NOT NULL, enabled INTEGER NOT NULL, PRIMARY KEY(accessory_id, capability_id))")
     }
 
-    // @parity /modules/vescape-core/ios/telemetry/TelemetryDatabase.swift `v48_accessory_sampling_rate`
+    // @parity /modules/vescape-core/ios/telemetry/VescapeDatabase.swift `v48_accessory_sampling_rate`
     internal val MIGRATION_47_48 = migration(47, 48) { db ->
       db.execSQL("ALTER TABLE accessory_capability_settings ADD COLUMN sampling_rate_hz REAL")
     }
 
-    // @parity /modules/vescape-core/ios/telemetry/TelemetryDatabase.swift `v49_bucket_route_preview`
+    // @parity /modules/vescape-core/ios/telemetry/VescapeDatabase.swift `v49_bucket_route_preview`
     internal val MIGRATION_48_49 = migration(48, 49) { db ->
       db.execSQL("ALTER TABLE telemetry_minute_buckets ADD COLUMN route_preview TEXT")
     }
@@ -1568,7 +1568,7 @@ internal object TelemetryMigrations {
      * geiger, and unknown strings keep their sound. `beep_count` is then dropped; SQLite before
      * 3.35 has no `DROP COLUMN`, so the table is rebuilt by copy.
      *
-     * @parity /modules/vescape-core/ios/telemetry/TelemetryDatabase.swift `v50_alert_sound_count`
+     * @parity /modules/vescape-core/ios/telemetry/VescapeDatabase.swift `v50_alert_sound_count`
      */
     internal val MIGRATION_49_50 = migration(49, 50) { db ->
         db.execSQL(ALERT_SOUND_COUNT_SQL)
@@ -1612,7 +1612,7 @@ internal object TelemetryMigrations {
         db.execSQL("CREATE INDEX IF NOT EXISTS index_alerts_created_at ON alerts(created_at)")
     }
 
-    /** @parity /modules/vescape-core/ios/telemetry/TelemetryDatabase.swift `alertSoundCountSql` */
+    /** @parity /modules/vescape-core/ios/telemetry/VescapeDatabase.swift `alertSoundCountSql` */
     private val ALERT_SOUND_COUNT_SQL = """
       UPDATE alerts SET sound_type = 'alert(' || MAX(1, MIN(5, beep_count)) || '):' ||
         CASE sound_type
@@ -1632,7 +1632,7 @@ internal object TelemetryMigrations {
      * comes from `alertPresetSound` or else the old preset rows, and `matchBoardConfig` becomes `match=on`. The column `sound_type` is renamed
      * `spec`, `source` is dropped by copy, and the three obsolete Board Settings are deleted.
      *
-     * @parity /modules/vescape-core/ios/telemetry/TelemetryDatabase.swift `v51_preset_rows`
+     * @parity /modules/vescape-core/ios/telemetry/VescapeDatabase.swift `v51_preset_rows`
      */
     internal val MIGRATION_50_51 = migration(50, 51) { db ->
         db.execSQL(
@@ -1675,7 +1675,7 @@ internal object TelemetryMigrations {
         db.execSQL("DELETE FROM board_settings WHERE key IN ('alertPreset', 'matchBoardConfig', 'alertPresetSound')")
     }
 
-    /** @parity /modules/vescape-core/ios/telemetry/TelemetryDatabase.swift `presetRowsSql` */
+    /** @parity /modules/vescape-core/ios/telemetry/VescapeDatabase.swift `presetRowsSql` */
     private val PRESET_ROWS_SQL = """
       INSERT OR REPLACE INTO alerts_new (board_id, id, control_id, threshold, threshold_max, enabled, spec, created_at)
       SELECT board_id, 'preset:' || metric, metric, 0, NULL, 1,
@@ -1721,7 +1721,7 @@ internal object TelemetryMigrations {
      * recording id, so they are stamped with the 20 m precision threshold first — a literal, so a
      * later threshold change cannot rewrite what this step did.
      *
-     * @parity /modules/vescape-core/ios/telemetry/TelemetryDatabase.swift `v52_drop_ride_recordings`
+     * @parity /modules/vescape-core/ios/telemetry/VescapeDatabase.swift `v52_drop_ride_recordings`
      */
     internal val MIGRATION_51_52 = migration(51, 52) { db ->
         db.execSQL(
@@ -1754,7 +1754,7 @@ internal object TelemetryMigrations {
         )
     }
 
-    /** @parity /modules/vescape-core/ios/telemetry/TelemetryDatabase.swift `rebuildRideTrackWithoutRecordingId` */
+    /** @parity /modules/vescape-core/ios/telemetry/VescapeDatabase.swift `rebuildRideTrackWithoutRecordingId` */
     private fun rebuildRideTrackWithoutRecordingId(db: TelemetryMigrationDatabase) {
       val columns = "id, board_id, fix_at_ms, latitude_e7, longitude_e7, accuracy_cm, " +
         "gps_speed_centi_mps, bearing_centi_deg, altitude_cm"
@@ -1786,7 +1786,7 @@ internal object TelemetryMigrations {
       )
     }
 
-    /** @parity /modules/vescape-core/ios/telemetry/TelemetryDatabase.swift `rebuildFramesWithoutRecordingId` */
+    /** @parity /modules/vescape-core/ios/telemetry/VescapeDatabase.swift `rebuildFramesWithoutRecordingId` */
     private fun rebuildFramesWithoutRecordingId(db: TelemetryMigrationDatabase) {
       val columns =
         "id, captured_at_ms, elapsed_realtime_ms, board_id, can_id, flags, changed_mask_1, " +
@@ -1844,7 +1844,7 @@ internal object TelemetryMigrations {
      * route preview is dropped — it was built per recording — and falls back to the anchor until
      * history maintenance rebuilds it.
      *
-     * @parity /modules/vescape-core/ios/telemetry/TelemetryDatabase.swift `foldBucketsWithoutRecordingId`
+     * @parity /modules/vescape-core/ios/telemetry/VescapeDatabase.swift `foldBucketsWithoutRecordingId`
      */
     private fun foldBucketsWithoutRecordingId(db: TelemetryMigrationDatabase) {
       db.execSQL("DROP INDEX IF EXISTS index_telemetry_minute_buckets_bucket_start_ms")
@@ -1892,7 +1892,7 @@ internal object TelemetryMigrations {
       )
     }
 
-    /** @parity /modules/vescape-core/ios/telemetry/TelemetryDatabase.swift `foldBucketsSql` */
+    /** @parity /modules/vescape-core/ios/telemetry/VescapeDatabase.swift `foldBucketsSql` */
     private val FOLD_BUCKETS_SQL = """
       INSERT INTO telemetry_minute_buckets (
         bucket_start_ms, board_id, sample_count, first_sample_at_ms, last_sample_at_ms,

@@ -55,7 +55,7 @@ func runRideWeatherBackfillContract() throws {
 
   func freshQueue() throws -> DatabaseQueue {
     let queue = try DatabaseQueue()
-    try TelemetryDatabase.migrator.migrate(queue)
+    try VescapeDatabase.migrator.migrate(queue)
     return queue
   }
   func frame(_ at: Int64) -> RecordingPersistenceSQL.Frame {

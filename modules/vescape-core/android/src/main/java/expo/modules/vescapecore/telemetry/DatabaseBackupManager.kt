@@ -32,7 +32,7 @@ object DatabaseBackupManager {
     val soundSnapshot = File(exportDir, "sounds-${UUID.randomUUID()}")
 
     val escapedPath = sqliteExport.absolutePath.replace("'", "''")
-    TelemetryDatabase.get(appContext).useWriterConnection { it.execSQL("VACUUM INTO '$escapedPath'") }
+    VescapeDatabase.get(appContext).useWriterConnection { it.execSQL("VACUUM INTO '$escapedPath'") }
 
     try {
       MySounds.snapshotForBackup(appContext, soundSnapshot)
@@ -53,7 +53,7 @@ object DatabaseBackupManager {
 
   /** Caller must first await the BoardSessionController-owned stop callback. */
   internal suspend fun restoreBackup(context: Context, uriString: String) =
-    TelemetryDatabase.rideExportMutex.withLock {
+    VescapeDatabase.rideExportMutex.withLock {
       // A weather observation fetched before the swap must not land in the restored database.
       DatabaseReplacementFence.process.fence { restoreBackupLocked(context, uriString) }
     }
@@ -100,7 +100,7 @@ object DatabaseBackupManager {
   }
 
   private fun verifyRoomDatabase(context: Context) = runBlocking {
-    TelemetryDatabase.get(context).useReaderConnection { reader ->
+    VescapeDatabase.get(context).useReaderConnection { reader ->
       reader.usePrepared("SELECT 1") { query -> check(query.step()) }
     }
   }
@@ -204,7 +204,7 @@ object DatabaseBackupManager {
   private fun manifest(context: Context, dbSizeBytes: Long): JSONObject =
     DatabaseBackupArchive.manifest(
       platform = "android",
-      schemaVersion = TELEMETRY_DATABASE_VERSION,
+      schemaVersion = VESCAPE_DATABASE_VERSION,
       appVersion = appVersion(context),
       dbSizeBytes = dbSizeBytes,
       createdAt = System.currentTimeMillis(),
@@ -220,7 +220,7 @@ object DatabaseBackupManager {
     AppDataRepository.resetForDatabaseSwap()
     ProfileStatsRepository.resetForDatabaseSwap()
     RideHistoryRepository.resetForDatabaseSwap()
-    TelemetryDatabase.closeAndReset()
+    VescapeDatabase.closeAndReset()
   }
 
   private fun utcStamp(): String =

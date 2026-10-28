@@ -21,7 +21,7 @@ class RideExportHostTest {
   @Test fun exportSnapshotAllowsRecordingCommitAndKeepsLaterPagesStable(): Unit = runBlocking {
     val dir = Files.createTempDirectory("ride-export-snapshot").toFile()
     val path = File(dir, "test.db").path
-    val db = Room.databaseBuilder<TelemetryRoomDatabase>(path).setDriver(BundledSQLiteDriver()).build()
+    val db = Room.databaseBuilder<VescapeRoomDatabase>(path).setDriver(BundledSQLiteDriver()).build()
     val reader = db
     try {
       val dao = db.telemetryDao()
@@ -64,7 +64,7 @@ class RideExportHostTest {
     val base = root.getLong("baseMs")
     val initial = fixture.getJSONArray("initial")
     val dir = Files.createTempDirectory("ride-csv").toFile()
-    val db = Room.databaseBuilder<TelemetryRoomDatabase>(File(dir, "test.db").path)
+    val db = Room.databaseBuilder<VescapeRoomDatabase>(File(dir, "test.db").path)
       .setDriver(BundledSQLiteDriver()).build()
     try {
       val dao = db.telemetryDao()
@@ -144,7 +144,7 @@ class RideExportHostTest {
     val prefix = fixture.getInt("imprecisePrefix")
     val base = fixture.getLong("baseMs")
     val dir = Files.createTempDirectory("ride-export").toFile()
-    val db = Room.databaseBuilder<TelemetryRoomDatabase>(File(dir, "test.db").path)
+    val db = Room.databaseBuilder<VescapeRoomDatabase>(File(dir, "test.db").path)
       .setDriver(BundledSQLiteDriver()).build()
     try {
       val dao = db.telemetryDao()

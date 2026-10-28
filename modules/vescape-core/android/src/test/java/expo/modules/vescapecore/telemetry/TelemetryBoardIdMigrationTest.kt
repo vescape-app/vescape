@@ -38,7 +38,7 @@ class TelemetryBoardIdMigrationTest {
         else -> throw UnsupportedOperationException(method.name)
       }
     } as SupportSQLiteDatabase
-    TelemetryDatabase.MIGRATION_41_42.migrate(db)
+    VescapeDatabase.MIGRATION_41_42.migrate(db)
     return sql
   }
 
@@ -63,8 +63,8 @@ class TelemetryBoardIdMigrationTest {
 
   @Test
   fun migrationSpansTheBoardIdSchemaStep() {
-    assertEquals(41, TelemetryDatabase.MIGRATION_41_42.startVersion)
-    assertEquals(42, TelemetryDatabase.MIGRATION_41_42.endVersion)
+    assertEquals(41, VescapeDatabase.MIGRATION_41_42.startVersion)
+    assertEquals(42, VescapeDatabase.MIGRATION_41_42.endVersion)
   }
 
   // MARK: Backfill
