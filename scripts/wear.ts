@@ -534,9 +534,18 @@ async function ensurePhoneApp(
     .split('\n')
     .includes(`package:${packageName}`)
   if (!installed || rebuild) {
-    run(['bun', 'run', 'scripts/android.ts', '--device', phone.serial, '--no-bundler'], {
-      timeoutMs: BUILD_TIMEOUT_MS,
-    })
+    run(
+      [
+        'bun',
+        'run',
+        'scripts/android.ts',
+        '--device',
+        phone.serial,
+        // Expo reuses this run's Metro; --no-bundler hardcodes port 8081.
+        ...(process.env.E2E_METRO_PORT ? ['--port', process.env.E2E_METRO_PORT] : ['--no-bundler']),
+      ],
+      { timeoutMs: BUILD_TIMEOUT_MS },
+    )
   }
 
   if (grantTestPermissions) {

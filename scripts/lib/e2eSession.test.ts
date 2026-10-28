@@ -60,3 +60,18 @@ test('cancellation stops a running command and fixture flags cannot leak across 
     ),
   ).rejects.toThrow('cancelled')
 })
+
+test('cleanup stops descendants even after their launcher has exited', async () => {
+  const io: SessionIO = { devices: () => [], adb: async () => new Uint8Array() }
+  let child: Bun.Subprocess | undefined
+  await withE2eSession(
+    async (session) => {
+      child = session.start(['sh', '-c', 'sleep 60 & exit 0'])
+      expect(await child.exited).toBe(0)
+      expect(() => process.kill(-child!.pid, 0)).not.toThrow()
+    },
+    process.env,
+    io,
+  )
+  expect(() => process.kill(-child!.pid, 0)).toThrow()
+})

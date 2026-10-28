@@ -6,7 +6,7 @@ import { listAdbDevices } from './lib/devices.ts'
 import { pickAvd } from './lib/avds.ts'
 import { E2eSession } from './lib/e2eSession.ts'
 import { maestroCommand } from './lib/maestro.ts'
-import { adb, appUi } from './lib/androidUiE2e.ts'
+import { adb, appNodes, appUi } from './lib/androidUiE2e.ts'
 import { GroupRidePeer, PHONE_FIX } from './lib/groupRidePeer.ts'
 import { version } from '../package.json'
 
@@ -96,12 +96,35 @@ try {
       ),
       5 * 60_000,
     )
+  const swipeUp = async () => {
+    const size = new TextDecoder()
+      .decode(await adb(watch.serial, 'shell', 'wm', 'size'))
+      .match(/(\d+)x(\d+)/)!
+    await adb(
+      watch.serial,
+      'shell',
+      'input',
+      'swipe',
+      String(+size[1] / 2),
+      String(+size[2] * 0.8),
+      String(+size[1] / 2),
+      String(+size[2] * 0.2),
+      '400',
+    )
+  }
   const watchCheck = async (name: string, battery: string | null) => {
     const deadline = Date.now() + 60_000
     let lastError = ''
+    let leftObservations = 0
     while (Date.now() < deadline) {
       session.abort.signal.throwIfAborted()
       try {
+        if (battery === null) {
+          // Ambient returns to gauges. Deliberately visit the last page before asserting removal.
+          await adb(watch.serial, 'shell', 'input', 'keyevent', 'KEYCODE_WAKEUP')
+          await swipeUp()
+          await swipeUp()
+        }
         const snapshot = await appUi(watch.serial, applicationId)
         await Bun.write(join(artifacts, `watch-${name}.xml`), snapshot.xml)
         const foreground = new TextDecoder().decode(
@@ -119,9 +142,15 @@ try {
           throw new Error('Watch app is not in the foreground')
         const groupVisible =
           snapshot.labels.includes('Peer') && snapshot.labels.includes('Group · 1')
+        const left =
+          appNodes(snapshot.xml, applicationId).length > 0 &&
+          !snapshot.labels.some((label) => /^Group · \d+$/.test(label)) &&
+          !snapshot.labels.includes('Peer') &&
+          !snapshot.labels.includes('Waiting for riders')
+        leftObservations = left ? leftObservations + 1 : 0
         if (
           battery === null
-            ? !snapshot.labels.includes('Peer') && !snapshot.labels.includes('Group · 1')
+            ? leftObservations >= 3
             : groupVisible && snapshot.labels.includes(battery)
         ) {
           await Bun.write(
@@ -136,22 +165,10 @@ try {
         }
         // Gauges → navigation focus → group roster, through the actual pager gestures.
         if (battery !== null && !groupVisible) {
-          const size = new TextDecoder()
-            .decode(await adb(watch.serial, 'shell', 'wm', 'size'))
-            .match(/(\d+)x(\d+)/)!
-          await adb(
-            watch.serial,
-            'shell',
-            'input',
-            'swipe',
-            String(+size[1] / 2),
-            String(+size[2] * 0.8),
-            String(+size[1] / 2),
-            String(+size[2] * 0.2),
-            '400',
-          )
+          await swipeUp()
         }
       } catch (error) {
+        leftObservations = 0
         lastError = String(error)
       }
       await Bun.sleep(1000)

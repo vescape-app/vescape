@@ -133,23 +133,25 @@ export class E2eSession {
   async close(): Promise<void> {
     // Ask nested runners to finish their own finally blocks before removing our listeners.
     for (const child of this.children.slice().reverse()) {
-      if (child.exitCode !== null || child.signalCode !== null) continue
-      try {
-        process.kill(-child.pid, 'SIGTERM')
-      } catch (error) {
-        if ((error as NodeJS.ErrnoException).code !== 'ESRCH') console.warn(error)
-      }
-      const exited = await Promise.race([
-        child.exited.then(() => true),
-        Bun.sleep(5000).then(() => false),
-      ])
-      if (!exited) {
+      // A launcher may have exited while its Metro/build descendants are still running.
+      const signalGroup = (signal: NodeJS.Signals | 0) => {
         try {
-          process.kill(-child.pid, 'SIGKILL')
+          process.kill(-child.pid, signal)
+          return true
         } catch (error) {
-          if ((error as NodeJS.ErrnoException).code !== 'ESRCH') console.warn(error)
+          if ((error as NodeJS.ErrnoException).code === 'ESRCH') return false
+          throw error
         }
+      }
+      try {
+        if (!signalGroup('SIGTERM')) continue
+        const deadline = Date.now() + 5000
+        await Promise.race([child.exited, Bun.sleep(5000)])
+        while (signalGroup(0) && Date.now() < deadline) await Bun.sleep(100)
+        signalGroup('SIGKILL')
         await child.exited
+      } catch (error) {
+        console.warn('E2E process cleanup failed:', error)
       }
     }
     const results = await Promise.allSettled(

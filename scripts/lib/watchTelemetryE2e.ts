@@ -1,4 +1,4 @@
-import { adb, appNodes } from './androidUiE2e.ts'
+import { adb, appNodes, appUi } from './androidUiE2e.ts'
 import { mkdirSync } from 'fs'
 import { join } from 'path'
 
@@ -47,17 +47,12 @@ export class WatchTelemetryCheck {
 export async function verifyWatchTelemetry(serial: string, packageName: string, artifacts: string) {
   mkdirSync(artifacts, { recursive: true })
   const check = new WatchTelemetryCheck()
-  const dump = '/data/local/tmp/vescape-watch-e2e.xml'
   const deadline = Date.now() + 90_000
   let lastError = 'No UI snapshot received'
   try {
     while (Date.now() < deadline) {
-      // Waking keeps the readouts visible without changing the user's screen-timeout settings.
-      await adb(serial, 'shell', 'input', 'keyevent', 'KEYCODE_WAKEUP')
-      await adb(serial, 'shell', 'rm', '-f', dump)
       try {
-        await adb(serial, 'shell', 'uiautomator', 'dump', '--compressed', dump)
-        const xml = new TextDecoder().decode(await adb(serial, 'exec-out', 'cat', dump))
+        const { xml } = await appUi(serial, packageName)
         await Bun.write(join(artifacts, 'latest.xml'), xml)
         const result = check.accept(xml, packageName)
         if (result) {
