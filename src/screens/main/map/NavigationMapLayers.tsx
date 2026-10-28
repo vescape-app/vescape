@@ -12,7 +12,6 @@ import {
   getMapPointKindIcon,
   getPlaceCategoryIcon,
 } from '@/modules/map-points/constants/mapPointIcons'
-import { getPlaceCategoryIconKey } from '@/modules/map-points/constants/placeCategoryIcon'
 import type { MapSelection } from '@/modules/map/lib/mapSelection'
 import { useMapStore } from '@/modules/map/store/mapStore'
 import type { MainMapLayersProps } from '@/screens/main/map/mainMapLayerTypes'
@@ -75,10 +74,6 @@ function PendingNavigationTargetPin({
 function getNavigationTargetIcon(target: MapSelection | null) {
   if (target?.type === 'place') return getPlaceCategoryIcon(target.category)
   return getMapPointKindIcon('direction')
-}
-
-function getNavigationTargetIconKey(target: MapSelection | null) {
-  return target?.type === 'place' ? getPlaceCategoryIconKey(target.category) : 'direction'
 }
 
 /** The computed path, the Direction Point pin, and the not-yet-confirmed target pin. */
@@ -153,9 +148,6 @@ export function NavigationMapLayers({
       )}
       {showDirectionPoint && (
         <MapPin
-          // Color in the key: PointAnnotation snapshots its children natively, so a
-          // rider-color or icon change must remount the pin to re-render.
-          key={`center-direction-position-${pinColor}-${navigationFailed ? 'failed' : getNavigationTargetIconKey(activeNavigationTarget)}`}
           id="center-direction-position"
           coordinate={[directionPoint.longitude, directionPoint.latitude]}
           color={pinColor}
