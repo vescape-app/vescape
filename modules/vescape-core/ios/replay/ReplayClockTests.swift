@@ -65,11 +65,15 @@ final class ReplayClockTests: XCTestCase {
     // Short enough that the warmup really elapses inside the test.
     let clock = ReplayClock(warmupMs: 1_000, warmupSpeed: 20.0)
     clock.startPlayback(wallMs: wallMs())
+    let accelerated = clock.displaySample()
+    XCTAssertEqual(accelerated.rate, 20.0)
 
     Thread.sleep(forTimeInterval: 0.08)  // 1000ms of session time at 20x needs 50ms of real time
     _ = clock.delayUntilRecorded(1_000)
+    let normal = clock.displaySample()
 
-    XCTAssertEqual(clock.speed, 1.0)
+    XCTAssertEqual(normal.rate, 1.0)
+    XCTAssertGreaterThanOrEqual(normal.timestampMs, accelerated.timestampMs)
     // Past the boundary, playback is real time again: 2s of recording is 2s of waiting.
     let delayMs = clock.delayUntilRecorded(3_000) - clock.delayUntilRecorded(1_000)
     XCTAssertEqual(Double(delayMs), 2_000, accuracy: 100)

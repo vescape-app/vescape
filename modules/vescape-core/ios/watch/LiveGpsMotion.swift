@@ -67,6 +67,7 @@ final class TravelDirection {
     let distance = displacement.length
     let minimum = max(config.movementM, max(accuracy, previous.accuracy) * config.accuracyMovementRatio)
     guard distance >= minimum else { return }
+    if let last, displacement.dot(last.unit) < 0 && distance < max(minimum, accuracy + previous.accuracy) { return }
     points.append(DirectionPoint(p: p, at: now, accuracy: accuracy)); points = Array(points.suffix(window))
     let across = p + points[0].p * -1
     let direction = across.dot(displacement) > 0 && across.length >= minimum ? across : displacement
@@ -90,6 +91,8 @@ final class LiveGpsMotion {
   private var intervals: [Double] = []
   private let pointDirection = TravelDirection(), cameraDirection = TravelDirection()
   private var heldHeading: Double?, contradictionAt: Double?
+  private var contradictionCount = 0
+  private var contradictionFix: MotionVector?
   private var predictedM = 0.0
   private(set) var recovering = false
   private var gpsUsable = true
@@ -102,7 +105,7 @@ final class LiveGpsMotion {
     origin = nil; fix = nil; p = MotionVector(); correction = MotionVector(); correctionEnd = now
     speed = 0; speedAt = -.infinity; speedRevision = -.infinity; fixAt = -.infinity
     intervals = []; cadenceMs = 1000; pointDirection.reset(); cameraDirection.reset(); heldHeading = nil
-    contradictionAt = nil; predictedM = 0; recovering = false; brakingAxis = nil; gpsUsable = true
+    contradictionAt = nil; contradictionCount = 0; contradictionFix = nil; predictedM = 0; recovering = false; brakingAxis = nil; gpsUsable = true
   }
   func configure(_ config: MotionConfig, now: Double) { advance(now); self.config = config }
   @discardableResult
@@ -126,7 +129,7 @@ final class LiveGpsMotion {
       intervals.append(interval); intervals = Array(intervals.suffix(5))
       cadenceMs = min(3000, max(100, intervals.sorted()[intervals.count / 2]))
     }
-    if gap { pointDirection.reset(); cameraDirection.reset(); intervals = []; brakingAxis = nil; contradictionAt = nil; cadenceMs = 1000 }
+    if gap { pointDirection.reset(); cameraDirection.reset(); intervals = []; brakingAxis = nil; contradictionAt = nil; contradictionCount = 0; contradictionFix = nil; cadenceMs = 1000 }
     if origin == nil { origin = fix; p = MotionVector() }
     let measured = toMeters(fix)
     self.fix = fix; gpsUsable = true; fixAt = receivedAt - ageMs; predictedM = 0
@@ -136,13 +139,17 @@ final class LiveGpsMotion {
     if let direction { brakingAxis = direction.unit }
     let error = measured + p * -1
     let axis = direction?.unit ?? brakingAxis
-    let behind = (axis.map { error.dot($0) < -0.25 } ?? false) && accuracy <= config.goodAccuracyM
-    if behind { if contradictionAt == nil { contradictionAt = receivedAt } }
-    else { contradictionAt = nil }
-    recovering = contradictionAt.map { receivedAt - $0 >= config.recoveryAfterS * 1000 } ?? false
+    let behind = axis.map { error.dot($0) < -0.25 } ?? false
+    let consistent = contradictionFix.map { (measured + $0 * -1).length <= max(1, accuracy * 0.5) } ?? false
+    if behind {
+      if consistent { contradictionCount += 1 } else { contradictionAt = receivedAt; contradictionCount = 1 }
+      contradictionFix = measured
+    } else { contradictionAt = nil; contradictionCount = 0; contradictionFix = nil }
+    recovering = contradictionAt.map { (accuracy <= config.goodAccuracyM || contradictionCount >= 3) && receivedAt - $0 >= config.recoveryAfterS * 1000 } ?? false
     correction = error * (1000 / cadenceMs)
-    if recovering && correction.length > config.recoverySpeedMps { correction = correction * (config.recoverySpeedMps / correction.length) }
-    correctionEnd = receivedAt + (recovering ? max(cadenceMs, error.length / config.recoverySpeedMps * 1000) : cadenceMs)
+    let recoverySpeed = config.recoverySpeedMps * max(0.2, min(1, max(0, (config.maxAccuracyM - accuracy) / (config.maxAccuracyM - config.goodAccuracyM))))
+    if recovering && correction.length > recoverySpeed { correction = correction * (recoverySpeed / correction.length) }
+    correctionEnd = receivedAt + (recovering ? max(cadenceMs, error.length / recoverySpeed * 1000) : cadenceMs)
     if previous == nil { p = measured; correction = MotionVector() }
     return true
   }

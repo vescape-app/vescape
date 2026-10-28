@@ -8,6 +8,9 @@ import expo.modules.vescapecore.navigation.NavigationController
 import expo.modules.vescapecore.recording.RecordingCoordinator
 import expo.modules.vescapecore.telemetry.AppDataRepository
 import expo.modules.vescapecore.telemetry.TelemetryPipeline
+import expo.modules.vescapecore.runtime.DisplayClockSample
+import expo.modules.vescapecore.runtime.SystemSessionClock
+import expo.modules.vescapecore.runtime.displaySample
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
 
@@ -18,8 +21,7 @@ internal class LocationTracker(
     private val emitEvent: (String, Map<String, Any?>) -> Unit,
     private val recordingCoordinator: RecordingCoordinator,
     private val telemetryPipeline: TelemetryPipeline,
-    private val clockNow: () -> Long = System::currentTimeMillis,
-    private val clockRate: () -> Double = { 1.0 },
+    private val displayClock: () -> DisplayClockSample = { SystemSessionClock.displaySample() },
 ) {
     private val recentLocations = ArrayDeque<Map<String, Any?>>()
     private val courseDeriver = GpsCourseDeriver()
@@ -27,9 +29,14 @@ internal class LocationTracker(
     var displaySourceId: Long = System.currentTimeMillis()
         private set
     // @parity /modules/vescape-core/src/index.ts `LocationEvent`
-    fun displayMap(fix: LocationSnapshot): Map<String, Any?> = fix.toMap() + mapOf(
-        "displaySourceId" to displaySourceId, "displayClockMs" to clockNow(), "displayClockRate" to clockRate(),
-    )
+    fun displayMap(fix: LocationSnapshot): Map<String, Any?> {
+        val clock = displayClock()
+        return fix.toMap() + mapOf(
+            "displaySourceId" to displaySourceId,
+            "displayClockMs" to clock.timestampMs,
+            "displayClockRate" to clock.rate,
+        )
+    }
     var latestLocation: LocationSnapshot? = null
         private set
     var latestPreciseLocation: LocationSnapshot? = null

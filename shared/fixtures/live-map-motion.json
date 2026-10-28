@@ -399,6 +399,47 @@
       ]
     },
     {
+      "name": "one noisy backward fix does not reverse direction while braking",
+      "events": [
+        { "op": "reset", "now": 0, "source": 1 },
+        { "op": "fix", "now": 0, "eastM": 0 },
+        { "op": "fix", "now": 1000, "eastM": 10 },
+        { "op": "speed", "now": 1000, "mps": 5.555555555555556 },
+        { "op": "speed", "now": 1300, "mps": 2.777777777777778 },
+        { "op": "speed", "now": 1600, "mps": 0 },
+        { "op": "sample", "now": 2000, "eastM": 11.25 },
+        { "op": "fix", "now": 2000, "eastM": 7 },
+        { "op": "sample", "now": 2000, "eastM": 11.25, "heading": 90 },
+        { "op": "sample", "now": 2500, "eastM": 11.25, "heading": 90 }
+      ]
+    },
+    {
+      "name": "consistent poor-accuracy disagreement recovers while inconsistent noise does not",
+      "events": [
+        { "op": "reset", "now": 0, "source": 1 },
+        { "op": "fix", "now": 0, "eastM": 0 },
+        { "op": "fix", "now": 1000, "eastM": 10 },
+        { "op": "speed", "now": 1000, "mps": 5.555555555555556 },
+        { "op": "speed", "now": 1900, "mps": 0 },
+        { "op": "sample", "now": 2000, "eastM": 12.5 },
+        { "op": "fix", "now": 2000, "eastM": 11, "accuracyM": 6 },
+        { "op": "fix", "now": 3000, "eastM": 11, "accuracyM": 6 },
+        { "op": "fix", "now": 4000, "eastM": 11, "accuracyM": 6 },
+        { "op": "fix", "now": 5000, "eastM": 11, "accuracyM": 6 },
+        { "op": "sample", "now": 5000, "recovering": true },
+        { "op": "reset", "now": 6000, "source": 2 },
+        { "op": "fix", "now": 6000, "eastM": 0, "source": 2 },
+        { "op": "fix", "now": 7000, "eastM": 10, "source": 2 },
+        { "op": "speed", "now": 7000, "mps": 5.555555555555556, "source": 2 },
+        { "op": "speed", "now": 7900, "mps": 0, "source": 2 },
+        { "op": "fix", "now": 8000, "eastM": 11, "accuracyM": 6, "source": 2 },
+        { "op": "fix", "now": 9000, "eastM": 17, "accuracyM": 6, "source": 2 },
+        { "op": "fix", "now": 10000, "eastM": 10, "accuracyM": 6, "source": 2 },
+        { "op": "fix", "now": 11000, "eastM": 16, "accuracyM": 6, "source": 2 },
+        { "op": "sample", "now": 11000, "recovering": false }
+      ]
+    },
+    {
       "name": "genuine half-metre-per-second movement accumulates across the recent window",
       "events": [
         {

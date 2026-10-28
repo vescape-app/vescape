@@ -78,6 +78,7 @@ import expo.modules.vescapecore.protocol.VescGattListener
 import expo.modules.vescapecore.replay.ReplayLocation
 import expo.modules.vescapecore.replay.ReplayClock
 import expo.modules.vescapecore.replay.ReplayTransport
+import expo.modules.vescapecore.runtime.displaySample
 import expo.modules.vescapecore.VescLiveStateSnapshot
 import expo.modules.vescapecore.protocol.VescPacketReassembler
 import expo.modules.vescapecore.navigation.NavigationController
@@ -422,8 +423,7 @@ internal class BoardSessionController(private val service: CoreForegroundService
             ::emitEvent,
             recordingCoordinator,
             telemetryPipeline,
-            ::nowMs,
-            { sessionClock.speed },
+            displayClock = { sessionClock.displaySample() },
         )
     }
     private val configController by lazy {
@@ -2343,6 +2343,7 @@ internal class BoardSessionController(private val service: CoreForegroundService
 
     /** Latest cold-path snapshot: board lanes are empty without telemetry; navigation stays live. */
     private fun watchSnapshot(): WatchSnapshot {
+        val displayClock = sessionClock.displaySample()
         val current = telemetry
         // Navigation lanes require Route Progress; course and trail stay live independently.
         val progress = NavigationController.get(service.applicationContext).currentProgress
@@ -2376,10 +2377,10 @@ internal class BoardSessionController(private val service: CoreForegroundService
             mapPosition = rider?.let { expo.modules.vescapecore.watch.WatchMapPosition(it.latitude, it.longitude) },
             riderSpeedMps = rider?.speedMps,
             motionFacts = expo.modules.vescapecore.watch.WatchMotionFacts(
-                locationTracker.displaySourceId.toDouble(), rider?.timestamp?.toDouble() ?: 0.0, System.currentTimeMillis().toDouble(),
-                rider?.let { maxOf(0L, nowMs() - it.timestamp).toDouble() } ?: 1e9,
-                current?.let { sample -> maxOf(0L, nowMs() - sample.lastPacketAt).toDouble() } ?: 1e9,
-                rider?.accuracyM ?: 1e9, sessionClock.speed,
+                locationTracker.displaySourceId.toDouble(), rider?.timestamp?.toDouble() ?: 0.0,
+                displayClock.timestampMs.toDouble(), rider?.let { maxOf(0L, displayClock.timestampMs - it.timestamp).toDouble() } ?: 1e9,
+                current?.let { maxOf(0L, displayClock.timestampMs - it.lastPacketAt).toDouble() } ?: 1e9,
+                rider?.accuracyM ?: 1e9, displayClock.rate,
             ),
             trail = expo.modules.vescapecore.watch.watchTrail(
                 rider?.let { GeoPoint(it.latitude, it.longitude) },
@@ -3482,6 +3483,7 @@ internal class BoardSessionController(private val service: CoreForegroundService
         settings: AppSettings,
         includeRecent: Boolean,
     ): Map<String, Any?> {
+        val displayClock = sessionClock.displaySample()
         val recentTelemetryValue = if (includeRecent) telemetryPipeline.recentSnapshot() else emptyList()
         val recentLocationsValue = if (includeRecent) locationTracker.recentLocations() else emptyList()
 
@@ -3496,8 +3498,8 @@ internal class BoardSessionController(private val service: CoreForegroundService
                 gpsPhase = gpsMonitor.phase,
                 gpsMode = gpsMonitor.mode,
                 displaySourceId = locationTracker.displaySourceId,
-                displayClockMs = nowMs(),
-                displayClockRate = sessionClock.speed,
+                displayClockMs = displayClock.timestampMs,
+                displayClockRate = displayClock.rate,
                 latestLocation = locationTracker.latestLocation,
                 latestPreciseLocation = locationTracker.latestPreciseLocation,
                 recentLocations = recentLocationsValue,
