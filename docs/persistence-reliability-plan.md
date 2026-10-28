@@ -25,6 +25,14 @@ from each exported schema, exactly as Room created that version, migrates it wit
 to the current version, and fails if the current version's export is missing. Versions 3–52 have
 no export and stay covered by the frozen SQL starts above.
 
+`modules/vescape-core/schema/database.json` is the one schema both platforms must build: every
+table's columns, indexes, and foreign keys, normalized so it does not depend on which platform
+created the file. Neither platform owns it. Android checks a fresh Room database, every matrix start,
+and every exported schema after migration against it (`DatabaseSchemaHostTest`); the macOS host checks
+a fresh GRDB database, every GRDB start, and restored Android archives (`DatabaseSchemaDump.swift`).
+A failure names the table and column or index that differs. A schema change edits the file by hand in
+the same change as both platforms' migrations.
+
 Android's live Room database also uses `sqlite-bundled` 2.6.2 with WAL. Ride exports hold a deferred
 reader transaction across keyset pages, allowing recording commits without changing the export's
 snapshot. Export and restore share a mutex so file replacement waits for the reader to close;

@@ -30,6 +30,10 @@ A new Room version needs its regenerated `android/schemas/…/<version>.json` co
 matrix fails without it. Seed new migration cases from that export with `MigrationTestHelper`,
 not new hand-written `CREATE TABLE` SQL.
 
+Every schema change also updates `modules/vescape-core/schema/database.json` by hand. Both
+platforms compare their fresh, migrated, and restored databases with it, so a column, default,
+or index added on one side only fails `test:persistence`.
+
 Choose assertions that demonstrate the actual risk: save/close/reopen, query ordering or paging,
 failed read versus empty result, preserved old values, or rollback of a multi-write operation.
 For rollback, fail after an earlier write inside the transaction and verify that no partial state

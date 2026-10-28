@@ -152,6 +152,7 @@ class TelemetryMigrationMatrixHostTest {
       helper.createDatabase(start).close()
       helper.runMigrationsAndValidate(TELEMETRY_DATABASE_VERSION, productionMigrations(mutableSetOf())).close()
       openWithProductionGraph(path.toString(), mutableSetOf())
+      assertMatchesSharedSchema("migrated-from-export-v$start", path)
       Files.deleteIfExists(path)
     }
   }
@@ -247,6 +248,7 @@ class TelemetryMigrationMatrixHostTest {
         assertEquals(0L, db.long("SELECT COUNT(*) FROM pragma_table_info('alerts') WHERE name='beep_count'"))
         if (start >= 33) assertEquals("{\"motor_current_max\":55.5}", db.text("SELECT values_json FROM board_config_values WHERE board_id='board-era3'"))
       }
+      assertMatchesSharedSchema("migrated-from-v$start", path)
       Files.deleteIfExists(path)
     }
     assertEquals(TelemetryMigrations.all.map { it.startVersion to it.endVersion }.toSet(), reached)

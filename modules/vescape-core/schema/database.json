@@ -1,0 +1,1708 @@
+{
+  "tables": {
+    "accessories": {
+      "columns": {
+        "accessory_id": {
+          "default": null,
+          "notNull": true,
+          "primaryKey": 1,
+          "type": "TEXT"
+        },
+        "capabilities_json": {
+          "default": null,
+          "notNull": true,
+          "primaryKey": 0,
+          "type": "TEXT"
+        },
+        "device_id": {
+          "default": null,
+          "notNull": false,
+          "primaryKey": 0,
+          "type": "TEXT"
+        },
+        "enrolled_at": {
+          "default": null,
+          "notNull": true,
+          "primaryKey": 0,
+          "type": "INTEGER"
+        },
+        "firmware_version": {
+          "default": null,
+          "notNull": true,
+          "primaryKey": 0,
+          "type": "TEXT"
+        },
+        "last_connected_at": {
+          "default": null,
+          "notNull": false,
+          "primaryKey": 0,
+          "type": "INTEGER"
+        },
+        "name": {
+          "default": null,
+          "notNull": true,
+          "primaryKey": 0,
+          "type": "TEXT"
+        },
+        "protocol_version": {
+          "default": null,
+          "notNull": false,
+          "primaryKey": 0,
+          "type": "INTEGER"
+        }
+      },
+      "foreignKeys": [],
+      "indexes": {}
+    },
+    "accessory_brake_light": {
+      "columns": {
+        "accessory_id": {
+          "default": null,
+          "notNull": true,
+          "primaryKey": 1,
+          "type": "TEXT"
+        },
+        "capability_id": {
+          "default": null,
+          "notNull": true,
+          "primaryKey": 2,
+          "type": "TEXT"
+        },
+        "parked": {
+          "default": null,
+          "notNull": true,
+          "primaryKey": 0,
+          "type": "TEXT"
+        },
+        "sensitivity": {
+          "default": null,
+          "notNull": true,
+          "primaryKey": 0,
+          "type": "INTEGER"
+        }
+      },
+      "foreignKeys": [],
+      "indexes": {}
+    },
+    "accessory_capability_settings": {
+      "columns": {
+        "accessory_id": {
+          "default": null,
+          "notNull": true,
+          "primaryKey": 1,
+          "type": "TEXT"
+        },
+        "capability_id": {
+          "default": null,
+          "notNull": true,
+          "primaryKey": 2,
+          "type": "TEXT"
+        },
+        "enabled": {
+          "default": null,
+          "notNull": true,
+          "primaryKey": 0,
+          "type": "INTEGER"
+        },
+        "sampling_rate_hz": {
+          "default": null,
+          "notNull": false,
+          "primaryKey": 0,
+          "type": "REAL"
+        }
+      },
+      "foreignKeys": [],
+      "indexes": {}
+    },
+    "accessory_ground_clearance": {
+      "columns": {
+        "accessory_id": {
+          "default": null,
+          "notNull": true,
+          "primaryKey": 1,
+          "type": "TEXT"
+        },
+        "capability_id": {
+          "default": null,
+          "notNull": true,
+          "primaryKey": 2,
+          "type": "TEXT"
+        },
+        "direction": {
+          "default": null,
+          "notNull": true,
+          "primaryKey": 0,
+          "type": "TEXT"
+        },
+        "far_cm": {
+          "default": null,
+          "notNull": true,
+          "primaryKey": 0,
+          "type": "REAL"
+        },
+        "near_cm": {
+          "default": null,
+          "notNull": true,
+          "primaryKey": 0,
+          "type": "REAL"
+        },
+        "strength_percent": {
+          "default": null,
+          "notNull": true,
+          "primaryKey": 0,
+          "type": "INTEGER"
+        },
+        "updated_at": {
+          "default": null,
+          "notNull": true,
+          "primaryKey": 0,
+          "type": "INTEGER"
+        }
+      },
+      "foreignKeys": [],
+      "indexes": {}
+    },
+    "alerts": {
+      "columns": {
+        "board_id": {
+          "default": null,
+          "notNull": true,
+          "primaryKey": 1,
+          "type": "TEXT"
+        },
+        "config_field_id": {
+          "default": null,
+          "notNull": false,
+          "primaryKey": 0,
+          "type": "TEXT"
+        },
+        "control_id": {
+          "default": null,
+          "notNull": true,
+          "primaryKey": 0,
+          "type": "TEXT"
+        },
+        "created_at": {
+          "default": null,
+          "notNull": true,
+          "primaryKey": 0,
+          "type": "INTEGER"
+        },
+        "enabled": {
+          "default": null,
+          "notNull": true,
+          "primaryKey": 0,
+          "type": "INTEGER"
+        },
+        "id": {
+          "default": null,
+          "notNull": true,
+          "primaryKey": 2,
+          "type": "TEXT"
+        },
+        "repeat_every_seconds": {
+          "default": null,
+          "notNull": false,
+          "primaryKey": 0,
+          "type": "INTEGER"
+        },
+        "spec": {
+          "default": null,
+          "notNull": true,
+          "primaryKey": 0,
+          "type": "TEXT"
+        },
+        "threshold": {
+          "default": null,
+          "notNull": true,
+          "primaryKey": 0,
+          "type": "REAL"
+        },
+        "threshold_kind": {
+          "default": "'fixed'",
+          "notNull": true,
+          "primaryKey": 0,
+          "type": "TEXT"
+        },
+        "threshold_max": {
+          "default": null,
+          "notNull": false,
+          "primaryKey": 0,
+          "type": "REAL"
+        },
+        "threshold_max_offset": {
+          "default": null,
+          "notNull": false,
+          "primaryKey": 0,
+          "type": "REAL"
+        },
+        "threshold_offset": {
+          "default": null,
+          "notNull": false,
+          "primaryKey": 0,
+          "type": "REAL"
+        }
+      },
+      "foreignKeys": [],
+      "indexes": {
+        "index_alerts_board_id": {
+          "columns": ["board_id"],
+          "unique": false,
+          "where": null
+        },
+        "index_alerts_control_id": {
+          "columns": ["control_id"],
+          "unique": false,
+          "where": null
+        },
+        "index_alerts_created_at": {
+          "columns": ["created_at"],
+          "unique": false,
+          "where": null
+        },
+        "index_alerts_enabled": {
+          "columns": ["enabled"],
+          "unique": false,
+          "where": null
+        }
+      }
+    },
+    "app_settings": {
+      "columns": {
+        "key": {
+          "default": null,
+          "notNull": true,
+          "primaryKey": 1,
+          "type": "TEXT"
+        },
+        "updated_at": {
+          "default": null,
+          "notNull": true,
+          "primaryKey": 0,
+          "type": "INTEGER"
+        },
+        "value_json": {
+          "default": null,
+          "notNull": true,
+          "primaryKey": 0,
+          "type": "TEXT"
+        }
+      },
+      "foreignKeys": [],
+      "indexes": {}
+    },
+    "board_config_change_notices": {
+      "columns": {
+        "board_id": {
+          "default": null,
+          "notNull": true,
+          "primaryKey": 1,
+          "type": "TEXT"
+        },
+        "detected_at": {
+          "default": null,
+          "notNull": true,
+          "primaryKey": 0,
+          "type": "INTEGER"
+        },
+        "diffs_json": {
+          "default": null,
+          "notNull": true,
+          "primaryKey": 0,
+          "type": "TEXT"
+        }
+      },
+      "foreignKeys": [],
+      "indexes": {}
+    },
+    "board_config_values": {
+      "columns": {
+        "board_id": {
+          "default": null,
+          "notNull": true,
+          "primaryKey": 1,
+          "type": "TEXT"
+        },
+        "captured_at": {
+          "default": null,
+          "notNull": true,
+          "primaryKey": 0,
+          "type": "INTEGER"
+        },
+        "refloat_base_version": {
+          "default": null,
+          "notNull": true,
+          "primaryKey": 2,
+          "type": "TEXT"
+        },
+        "values_json": {
+          "default": null,
+          "notNull": true,
+          "primaryKey": 0,
+          "type": "TEXT"
+        }
+      },
+      "foreignKeys": [],
+      "indexes": {
+        "index_board_config_values_board_id": {
+          "columns": ["board_id"],
+          "unique": false,
+          "where": null
+        }
+      }
+    },
+    "board_settings": {
+      "columns": {
+        "board_id": {
+          "default": null,
+          "notNull": true,
+          "primaryKey": 1,
+          "type": "TEXT"
+        },
+        "key": {
+          "default": null,
+          "notNull": true,
+          "primaryKey": 2,
+          "type": "TEXT"
+        },
+        "updated_at": {
+          "default": null,
+          "notNull": true,
+          "primaryKey": 0,
+          "type": "INTEGER"
+        },
+        "value_json": {
+          "default": null,
+          "notNull": true,
+          "primaryKey": 0,
+          "type": "TEXT"
+        }
+      },
+      "foreignKeys": [],
+      "indexes": {
+        "index_board_settings_board_id": {
+          "columns": ["board_id"],
+          "unique": false,
+          "where": null
+        }
+      }
+    },
+    "board_warnings": {
+      "columns": {
+        "board_id": {
+          "default": null,
+          "notNull": true,
+          "primaryKey": 1,
+          "type": "TEXT"
+        },
+        "first_detected_at": {
+          "default": null,
+          "notNull": true,
+          "primaryKey": 0,
+          "type": "INTEGER"
+        },
+        "kind": {
+          "default": null,
+          "notNull": true,
+          "primaryKey": 2,
+          "type": "TEXT"
+        },
+        "last_detected_at": {
+          "default": null,
+          "notNull": true,
+          "primaryKey": 0,
+          "type": "INTEGER"
+        },
+        "payload_json": {
+          "default": null,
+          "notNull": true,
+          "primaryKey": 0,
+          "type": "TEXT"
+        },
+        "severity": {
+          "default": null,
+          "notNull": true,
+          "primaryKey": 0,
+          "type": "TEXT"
+        }
+      },
+      "foreignKeys": [],
+      "indexes": {
+        "index_board_warnings_board_id": {
+          "columns": ["board_id"],
+          "unique": false,
+          "where": null
+        }
+      }
+    },
+    "boards": {
+      "columns": {
+        "ble_id": {
+          "default": null,
+          "notNull": false,
+          "primaryKey": 0,
+          "type": "TEXT"
+        },
+        "created_at": {
+          "default": null,
+          "notNull": true,
+          "primaryKey": 0,
+          "type": "INTEGER"
+        },
+        "deleted_at": {
+          "default": null,
+          "notNull": false,
+          "primaryKey": 0,
+          "type": "INTEGER"
+        },
+        "id": {
+          "default": null,
+          "notNull": true,
+          "primaryKey": 1,
+          "type": "TEXT"
+        },
+        "name": {
+          "default": null,
+          "notNull": true,
+          "primaryKey": 0,
+          "type": "TEXT"
+        }
+      },
+      "foreignKeys": [],
+      "indexes": {
+        "index_boards_created_at": {
+          "columns": ["created_at"],
+          "unique": false,
+          "where": null
+        }
+      }
+    },
+    "diagnostic_events": {
+      "columns": {
+        "board_id": {
+          "default": null,
+          "notNull": false,
+          "primaryKey": 0,
+          "type": "TEXT"
+        },
+        "elapsed_realtime_ms": {
+          "default": null,
+          "notNull": true,
+          "primaryKey": 0,
+          "type": "INTEGER"
+        },
+        "event_name": {
+          "default": null,
+          "notNull": true,
+          "primaryKey": 0,
+          "type": "TEXT"
+        },
+        "id": {
+          "default": null,
+          "notNull": true,
+          "primaryKey": 1,
+          "type": "INTEGER"
+        },
+        "message": {
+          "default": null,
+          "notNull": false,
+          "primaryKey": 0,
+          "type": "TEXT"
+        },
+        "occurred_at_ms": {
+          "default": null,
+          "notNull": true,
+          "primaryKey": 0,
+          "type": "INTEGER"
+        },
+        "operation": {
+          "default": null,
+          "notNull": false,
+          "primaryKey": 0,
+          "type": "TEXT"
+        },
+        "phase": {
+          "default": null,
+          "notNull": false,
+          "primaryKey": 0,
+          "type": "TEXT"
+        },
+        "properties_json": {
+          "default": null,
+          "notNull": true,
+          "primaryKey": 0,
+          "type": "TEXT"
+        }
+      },
+      "foreignKeys": [],
+      "indexes": {
+        "index_diagnostic_events_board_id_occurred_at_ms": {
+          "columns": ["board_id", "occurred_at_ms"],
+          "unique": false,
+          "where": null
+        },
+        "index_diagnostic_events_event_name": {
+          "columns": ["event_name"],
+          "unique": false,
+          "where": null
+        },
+        "index_diagnostic_events_occurred_at_ms": {
+          "columns": ["occurred_at_ms"],
+          "unique": false,
+          "where": null
+        }
+      }
+    },
+    "favorite_media": {
+      "columns": {
+        "byte_count": {
+          "default": null,
+          "notNull": true,
+          "primaryKey": 0,
+          "type": "INTEGER"
+        },
+        "captured_at": {
+          "default": null,
+          "notNull": false,
+          "primaryKey": 0,
+          "type": "INTEGER"
+        },
+        "content_hash": {
+          "default": null,
+          "notNull": true,
+          "primaryKey": 0,
+          "type": "TEXT"
+        },
+        "created_at": {
+          "default": null,
+          "notNull": true,
+          "primaryKey": 0,
+          "type": "INTEGER"
+        },
+        "favorite_id": {
+          "default": null,
+          "notNull": true,
+          "primaryKey": 0,
+          "type": "TEXT"
+        },
+        "id": {
+          "default": null,
+          "notNull": true,
+          "primaryKey": 1,
+          "type": "TEXT"
+        },
+        "media_kind": {
+          "default": null,
+          "notNull": true,
+          "primaryKey": 0,
+          "type": "TEXT"
+        },
+        "mime_type": {
+          "default": null,
+          "notNull": true,
+          "primaryKey": 0,
+          "type": "TEXT"
+        }
+      },
+      "foreignKeys": [],
+      "indexes": {
+        "index_favorite_media_favorite_id_created_at": {
+          "columns": ["favorite_id", "created_at"],
+          "unique": false,
+          "where": null
+        }
+      }
+    },
+    "favorites": {
+      "columns": {
+        "avg_speed_centi_kmh": {
+          "default": null,
+          "notNull": true,
+          "primaryKey": 0,
+          "type": "INTEGER"
+        },
+        "battery_used_wh_milli": {
+          "default": null,
+          "notNull": true,
+          "primaryKey": 0,
+          "type": "INTEGER"
+        },
+        "board_id": {
+          "default": null,
+          "notNull": false,
+          "primaryKey": 0,
+          "type": "TEXT"
+        },
+        "created_at": {
+          "default": null,
+          "notNull": true,
+          "primaryKey": 0,
+          "type": "INTEGER"
+        },
+        "distance_cm": {
+          "default": null,
+          "notNull": false,
+          "primaryKey": 0,
+          "type": "INTEGER"
+        },
+        "end_ms": {
+          "default": null,
+          "notNull": true,
+          "primaryKey": 0,
+          "type": "INTEGER"
+        },
+        "gps_point_count": {
+          "default": null,
+          "notNull": true,
+          "primaryKey": 0,
+          "type": "INTEGER"
+        },
+        "id": {
+          "default": null,
+          "notNull": true,
+          "primaryKey": 1,
+          "type": "TEXT"
+        },
+        "max_speed_centi_kmh": {
+          "default": null,
+          "notNull": true,
+          "primaryKey": 0,
+          "type": "INTEGER"
+        },
+        "moving_duration_ms": {
+          "default": null,
+          "notNull": true,
+          "primaryKey": 0,
+          "type": "INTEGER"
+        },
+        "name": {
+          "default": null,
+          "notNull": false,
+          "primaryKey": 0,
+          "type": "TEXT"
+        },
+        "sample_count": {
+          "default": null,
+          "notNull": true,
+          "primaryKey": 0,
+          "type": "INTEGER"
+        },
+        "start_ms": {
+          "default": null,
+          "notNull": true,
+          "primaryKey": 0,
+          "type": "INTEGER"
+        },
+        "updated_at": {
+          "default": null,
+          "notNull": true,
+          "primaryKey": 0,
+          "type": "INTEGER"
+        }
+      },
+      "foreignKeys": [],
+      "indexes": {
+        "index_favorites_board_id": {
+          "columns": ["board_id"],
+          "unique": false,
+          "where": null
+        },
+        "index_favorites_start_ms_end_ms": {
+          "columns": ["start_ms", "end_ms"],
+          "unique": false,
+          "where": null
+        }
+      }
+    },
+    "metric_exclusion_ranges": {
+      "columns": {
+        "board_id": {
+          "default": null,
+          "notNull": true,
+          "primaryKey": 0,
+          "type": "TEXT"
+        },
+        "end_ms": {
+          "default": null,
+          "notNull": true,
+          "primaryKey": 0,
+          "type": "INTEGER"
+        },
+        "id": {
+          "default": null,
+          "notNull": true,
+          "primaryKey": 1,
+          "type": "INTEGER"
+        },
+        "reason": {
+          "default": null,
+          "notNull": true,
+          "primaryKey": 0,
+          "type": "TEXT"
+        },
+        "sample_count": {
+          "default": null,
+          "notNull": true,
+          "primaryKey": 0,
+          "type": "INTEGER"
+        },
+        "start_ms": {
+          "default": null,
+          "notNull": true,
+          "primaryKey": 0,
+          "type": "INTEGER"
+        }
+      },
+      "foreignKeys": [],
+      "indexes": {
+        "index_metric_exclusion_ranges_board_id_start_ms_end_ms": {
+          "columns": ["board_id", "start_ms", "end_ms"],
+          "unique": false,
+          "where": null
+        },
+        "index_metric_exclusion_ranges_start_ms_end_ms": {
+          "columns": ["start_ms", "end_ms"],
+          "unique": false,
+          "where": null
+        }
+      }
+    },
+    "motor_config_values": {
+      "columns": {
+        "board_id": {
+          "default": null,
+          "notNull": true,
+          "primaryKey": 1,
+          "type": "TEXT"
+        },
+        "captured_at": {
+          "default": null,
+          "notNull": true,
+          "primaryKey": 0,
+          "type": "INTEGER"
+        },
+        "firmware": {
+          "default": null,
+          "notNull": true,
+          "primaryKey": 0,
+          "type": "TEXT"
+        },
+        "mcconf_signature": {
+          "default": null,
+          "notNull": true,
+          "primaryKey": 2,
+          "type": "INTEGER"
+        },
+        "values_json": {
+          "default": null,
+          "notNull": true,
+          "primaryKey": 0,
+          "type": "TEXT"
+        }
+      },
+      "foreignKeys": [],
+      "indexes": {
+        "index_motor_config_values_board_id": {
+          "columns": ["board_id"],
+          "unique": false,
+          "where": null
+        }
+      }
+    },
+    "privacy_zones": {
+      "columns": {
+        "center_latitude_e7": {
+          "default": null,
+          "notNull": true,
+          "primaryKey": 0,
+          "type": "INTEGER"
+        },
+        "center_longitude_e7": {
+          "default": null,
+          "notNull": true,
+          "primaryKey": 0,
+          "type": "INTEGER"
+        },
+        "created_at": {
+          "default": null,
+          "notNull": true,
+          "primaryKey": 0,
+          "type": "INTEGER"
+        },
+        "enabled": {
+          "default": null,
+          "notNull": true,
+          "primaryKey": 0,
+          "type": "INTEGER"
+        },
+        "id": {
+          "default": null,
+          "notNull": true,
+          "primaryKey": 1,
+          "type": "TEXT"
+        },
+        "name": {
+          "default": null,
+          "notNull": true,
+          "primaryKey": 0,
+          "type": "TEXT"
+        },
+        "preset": {
+          "default": null,
+          "notNull": true,
+          "primaryKey": 0,
+          "type": "TEXT"
+        },
+        "radius_meters": {
+          "default": null,
+          "notNull": true,
+          "primaryKey": 0,
+          "type": "INTEGER"
+        },
+        "updated_at": {
+          "default": null,
+          "notNull": true,
+          "primaryKey": 0,
+          "type": "INTEGER"
+        }
+      },
+      "foreignKeys": [],
+      "indexes": {}
+    },
+    "ride_track_points": {
+      "columns": {
+        "accuracy_cm": {
+          "default": null,
+          "notNull": false,
+          "primaryKey": 0,
+          "type": "INTEGER"
+        },
+        "altitude_cm": {
+          "default": null,
+          "notNull": false,
+          "primaryKey": 0,
+          "type": "INTEGER"
+        },
+        "bearing_centi_deg": {
+          "default": null,
+          "notNull": false,
+          "primaryKey": 0,
+          "type": "INTEGER"
+        },
+        "board_id": {
+          "default": null,
+          "notNull": false,
+          "primaryKey": 0,
+          "type": "TEXT"
+        },
+        "fix_at_ms": {
+          "default": null,
+          "notNull": true,
+          "primaryKey": 0,
+          "type": "INTEGER"
+        },
+        "gps_speed_centi_mps": {
+          "default": null,
+          "notNull": false,
+          "primaryKey": 0,
+          "type": "INTEGER"
+        },
+        "id": {
+          "default": null,
+          "notNull": true,
+          "primaryKey": 1,
+          "type": "INTEGER"
+        },
+        "latitude_e7": {
+          "default": null,
+          "notNull": true,
+          "primaryKey": 0,
+          "type": "INTEGER"
+        },
+        "longitude_e7": {
+          "default": null,
+          "notNull": true,
+          "primaryKey": 0,
+          "type": "INTEGER"
+        }
+      },
+      "foreignKeys": [],
+      "indexes": {
+        "index_ride_track_points_board_id_fix_at_ms": {
+          "columns": ["board_id", "fix_at_ms"],
+          "unique": false,
+          "where": null
+        },
+        "index_ride_track_points_fix_at_ms": {
+          "columns": ["fix_at_ms"],
+          "unique": false,
+          "where": null
+        }
+      }
+    },
+    "telemetry_frames": {
+      "columns": {
+        "adc1_milli": {
+          "default": null,
+          "notNull": false,
+          "primaryKey": 0,
+          "type": "INTEGER"
+        },
+        "adc2_milli": {
+          "default": null,
+          "notNull": false,
+          "primaryKey": 0,
+          "type": "INTEGER"
+        },
+        "balance_current_ma": {
+          "default": null,
+          "notNull": false,
+          "primaryKey": 0,
+          "type": "INTEGER"
+        },
+        "balance_pitch_centi_deg": {
+          "default": null,
+          "notNull": false,
+          "primaryKey": 0,
+          "type": "INTEGER"
+        },
+        "battery_current_ma": {
+          "default": null,
+          "notNull": false,
+          "primaryKey": 0,
+          "type": "INTEGER"
+        },
+        "battery_voltage_mv": {
+          "default": null,
+          "notNull": false,
+          "primaryKey": 0,
+          "type": "INTEGER"
+        },
+        "board_id": {
+          "default": null,
+          "notNull": false,
+          "primaryKey": 0,
+          "type": "TEXT"
+        },
+        "can_id": {
+          "default": null,
+          "notNull": false,
+          "primaryKey": 0,
+          "type": "INTEGER"
+        },
+        "captured_at_ms": {
+          "default": null,
+          "notNull": true,
+          "primaryKey": 0,
+          "type": "INTEGER"
+        },
+        "changed_mask_1": {
+          "default": null,
+          "notNull": true,
+          "primaryKey": 0,
+          "type": "INTEGER"
+        },
+        "changed_mask_2": {
+          "default": null,
+          "notNull": true,
+          "primaryKey": 0,
+          "type": "INTEGER"
+        },
+        "duty_permille": {
+          "default": null,
+          "notNull": false,
+          "primaryKey": 0,
+          "type": "INTEGER"
+        },
+        "elapsed_realtime_ms": {
+          "default": null,
+          "notNull": true,
+          "primaryKey": 0,
+          "type": "INTEGER"
+        },
+        "erpm": {
+          "default": null,
+          "notNull": false,
+          "primaryKey": 0,
+          "type": "INTEGER"
+        },
+        "flags": {
+          "default": null,
+          "notNull": true,
+          "primaryKey": 0,
+          "type": "INTEGER"
+        },
+        "id": {
+          "default": null,
+          "notNull": true,
+          "primaryKey": 1,
+          "type": "INTEGER"
+        },
+        "motor_current_ma": {
+          "default": null,
+          "notNull": false,
+          "primaryKey": 0,
+          "type": "INTEGER"
+        },
+        "odometer_cm": {
+          "default": null,
+          "notNull": false,
+          "primaryKey": 0,
+          "type": "INTEGER"
+        },
+        "pitch_centi_deg": {
+          "default": null,
+          "notNull": false,
+          "primaryKey": 0,
+          "type": "INTEGER"
+        },
+        "roll_centi_deg": {
+          "default": null,
+          "notNull": false,
+          "primaryKey": 0,
+          "type": "INTEGER"
+        },
+        "speed_centi_kmh": {
+          "default": null,
+          "notNull": false,
+          "primaryKey": 0,
+          "type": "INTEGER"
+        },
+        "state": {
+          "default": null,
+          "notNull": false,
+          "primaryKey": 0,
+          "type": "INTEGER"
+        },
+        "switch_state": {
+          "default": null,
+          "notNull": false,
+          "primaryKey": 0,
+          "type": "INTEGER"
+        },
+        "temp_mosfet_deci_c": {
+          "default": null,
+          "notNull": false,
+          "primaryKey": 0,
+          "type": "INTEGER"
+        },
+        "temp_motor_deci_c": {
+          "default": null,
+          "notNull": false,
+          "primaryKey": 0,
+          "type": "INTEGER"
+        }
+      },
+      "foreignKeys": [],
+      "indexes": {
+        "index_telemetry_frames_board_id_captured_at_ms": {
+          "columns": ["board_id", "captured_at_ms"],
+          "unique": false,
+          "where": null
+        },
+        "index_telemetry_frames_captured_at_ms": {
+          "columns": ["captured_at_ms"],
+          "unique": false,
+          "where": null
+        }
+      }
+    },
+    "telemetry_markers": {
+      "columns": {
+        "board_id": {
+          "default": null,
+          "notNull": false,
+          "primaryKey": 0,
+          "type": "TEXT"
+        },
+        "elapsed_realtime_ms": {
+          "default": null,
+          "notNull": true,
+          "primaryKey": 0,
+          "type": "INTEGER"
+        },
+        "gap_ms": {
+          "default": null,
+          "notNull": false,
+          "primaryKey": 0,
+          "type": "INTEGER"
+        },
+        "id": {
+          "default": null,
+          "notNull": true,
+          "primaryKey": 1,
+          "type": "INTEGER"
+        },
+        "message": {
+          "default": null,
+          "notNull": false,
+          "primaryKey": 0,
+          "type": "TEXT"
+        },
+        "occurred_at_ms": {
+          "default": null,
+          "notNull": true,
+          "primaryKey": 0,
+          "type": "INTEGER"
+        },
+        "type": {
+          "default": null,
+          "notNull": true,
+          "primaryKey": 0,
+          "type": "TEXT"
+        }
+      },
+      "foreignKeys": [],
+      "indexes": {
+        "index_telemetry_markers_board_id_occurred_at_ms": {
+          "columns": ["board_id", "occurred_at_ms"],
+          "unique": false,
+          "where": null
+        },
+        "index_telemetry_markers_occurred_at_ms": {
+          "columns": ["occurred_at_ms"],
+          "unique": false,
+          "where": null
+        }
+      }
+    },
+    "telemetry_minute_buckets": {
+      "columns": {
+        "battery_regen_wh_milli": {
+          "default": null,
+          "notNull": true,
+          "primaryKey": 0,
+          "type": "INTEGER"
+        },
+        "battery_used_wh_milli": {
+          "default": null,
+          "notNull": true,
+          "primaryKey": 0,
+          "type": "INTEGER"
+        },
+        "board_id": {
+          "default": null,
+          "notNull": true,
+          "primaryKey": 2,
+          "type": "TEXT"
+        },
+        "bucket_start_ms": {
+          "default": null,
+          "notNull": true,
+          "primaryKey": 1,
+          "type": "INTEGER"
+        },
+        "first_latitude_e7": {
+          "default": null,
+          "notNull": false,
+          "primaryKey": 0,
+          "type": "INTEGER"
+        },
+        "first_longitude_e7": {
+          "default": null,
+          "notNull": false,
+          "primaryKey": 0,
+          "type": "INTEGER"
+        },
+        "first_moving_at_ms": {
+          "default": null,
+          "notNull": false,
+          "primaryKey": 0,
+          "type": "INTEGER"
+        },
+        "first_odometer_cm": {
+          "default": null,
+          "notNull": false,
+          "primaryKey": 0,
+          "type": "INTEGER"
+        },
+        "first_sample_at_ms": {
+          "default": null,
+          "notNull": true,
+          "primaryKey": 0,
+          "type": "INTEGER"
+        },
+        "gps_distance_cm": {
+          "default": null,
+          "notNull": true,
+          "primaryKey": 0,
+          "type": "INTEGER"
+        },
+        "gps_point_count": {
+          "default": null,
+          "notNull": true,
+          "primaryKey": 0,
+          "type": "INTEGER"
+        },
+        "last_moving_at_ms": {
+          "default": null,
+          "notNull": false,
+          "primaryKey": 0,
+          "type": "INTEGER"
+        },
+        "last_odometer_cm": {
+          "default": null,
+          "notNull": false,
+          "primaryKey": 0,
+          "type": "INTEGER"
+        },
+        "last_sample_at_ms": {
+          "default": null,
+          "notNull": true,
+          "primaryKey": 0,
+          "type": "INTEGER"
+        },
+        "max_abs_speed_centi_kmh": {
+          "default": null,
+          "notNull": true,
+          "primaryKey": 0,
+          "type": "INTEGER"
+        },
+        "max_battery_current_abs_ma": {
+          "default": null,
+          "notNull": true,
+          "primaryKey": 0,
+          "type": "INTEGER"
+        },
+        "max_duty_abs_permille": {
+          "default": null,
+          "notNull": true,
+          "primaryKey": 0,
+          "type": "INTEGER"
+        },
+        "max_gps_speed_centi_mps": {
+          "default": null,
+          "notNull": false,
+          "primaryKey": 0,
+          "type": "INTEGER"
+        },
+        "max_motor_current_abs_ma": {
+          "default": null,
+          "notNull": true,
+          "primaryKey": 0,
+          "type": "INTEGER"
+        },
+        "max_temp_mosfet_deci_c": {
+          "default": null,
+          "notNull": false,
+          "primaryKey": 0,
+          "type": "INTEGER"
+        },
+        "max_temp_motor_deci_c": {
+          "default": null,
+          "notNull": false,
+          "primaryKey": 0,
+          "type": "INTEGER"
+        },
+        "min_battery_voltage_mv": {
+          "default": null,
+          "notNull": false,
+          "primaryKey": 0,
+          "type": "INTEGER"
+        },
+        "moving_speed_sample_count": {
+          "default": null,
+          "notNull": false,
+          "primaryKey": 0,
+          "type": "INTEGER"
+        },
+        "precise_gps_point_count": {
+          "default": null,
+          "notNull": true,
+          "primaryKey": 0,
+          "type": "INTEGER"
+        },
+        "route_preview": {
+          "default": null,
+          "notNull": false,
+          "primaryKey": 0,
+          "type": "TEXT"
+        },
+        "sample_count": {
+          "default": null,
+          "notNull": true,
+          "primaryKey": 0,
+          "type": "INTEGER"
+        },
+        "sum_abs_speed_centi_kmh": {
+          "default": null,
+          "notNull": true,
+          "primaryKey": 0,
+          "type": "INTEGER"
+        },
+        "sum_moving_abs_speed_centi_kmh": {
+          "default": null,
+          "notNull": false,
+          "primaryKey": 0,
+          "type": "INTEGER"
+        }
+      },
+      "foreignKeys": [],
+      "indexes": {
+        "index_telemetry_minute_buckets_bucket_start_ms": {
+          "columns": ["bucket_start_ms"],
+          "unique": false,
+          "where": null
+        }
+      }
+    },
+    "tune_history_entries": {
+      "columns": {
+        "created_at": {
+          "default": null,
+          "notNull": true,
+          "primaryKey": 0,
+          "type": "INTEGER"
+        },
+        "fields_json": {
+          "default": null,
+          "notNull": true,
+          "primaryKey": 0,
+          "type": "TEXT"
+        },
+        "id": {
+          "default": null,
+          "notNull": true,
+          "primaryKey": 1,
+          "type": "INTEGER"
+        },
+        "profile_id": {
+          "default": null,
+          "notNull": true,
+          "primaryKey": 0,
+          "type": "TEXT"
+        }
+      },
+      "foreignKeys": [],
+      "indexes": {
+        "index_tune_history_entries_created_at": {
+          "columns": ["created_at"],
+          "unique": false,
+          "where": null
+        },
+        "index_tune_history_entries_profile_id": {
+          "columns": ["profile_id"],
+          "unique": false,
+          "where": null
+        }
+      }
+    },
+    "tune_profiles": {
+      "columns": {
+        "board_id": {
+          "default": null,
+          "notNull": true,
+          "primaryKey": 0,
+          "type": "TEXT"
+        },
+        "color": {
+          "default": "'purple'",
+          "notNull": true,
+          "primaryKey": 0,
+          "type": "TEXT"
+        },
+        "created_at": {
+          "default": null,
+          "notNull": true,
+          "primaryKey": 0,
+          "type": "INTEGER"
+        },
+        "fields_json": {
+          "default": null,
+          "notNull": true,
+          "primaryKey": 0,
+          "type": "TEXT"
+        },
+        "icon": {
+          "default": "'sliders-horizontal'",
+          "notNull": true,
+          "primaryKey": 0,
+          "type": "TEXT"
+        },
+        "id": {
+          "default": null,
+          "notNull": true,
+          "primaryKey": 1,
+          "type": "TEXT"
+        },
+        "name": {
+          "default": null,
+          "notNull": true,
+          "primaryKey": 0,
+          "type": "TEXT"
+        },
+        "refloat_base_version": {
+          "default": "''",
+          "notNull": true,
+          "primaryKey": 0,
+          "type": "TEXT"
+        },
+        "updated_at": {
+          "default": null,
+          "notNull": true,
+          "primaryKey": 0,
+          "type": "INTEGER"
+        }
+      },
+      "foreignKeys": [],
+      "indexes": {
+        "index_tune_profiles_board_id": {
+          "columns": ["board_id"],
+          "unique": false,
+          "where": null
+        },
+        "index_tune_profiles_board_id_refloat_base_version": {
+          "columns": ["board_id", "refloat_base_version"],
+          "unique": false,
+          "where": null
+        }
+      }
+    },
+    "vesc_fault_capture_samples": {
+      "columns": {
+        "adc1": {
+          "default": null,
+          "notNull": false,
+          "primaryKey": 0,
+          "type": "REAL"
+        },
+        "adc2": {
+          "default": null,
+          "notNull": false,
+          "primaryKey": 0,
+          "type": "REAL"
+        },
+        "balance_pitch": {
+          "default": null,
+          "notNull": false,
+          "primaryKey": 0,
+          "type": "REAL"
+        },
+        "battery_current": {
+          "default": null,
+          "notNull": false,
+          "primaryKey": 0,
+          "type": "REAL"
+        },
+        "battery_voltage": {
+          "default": null,
+          "notNull": false,
+          "primaryKey": 0,
+          "type": "REAL"
+        },
+        "captured_at": {
+          "default": null,
+          "notNull": true,
+          "primaryKey": 0,
+          "type": "INTEGER"
+        },
+        "duty_cycle": {
+          "default": null,
+          "notNull": false,
+          "primaryKey": 0,
+          "type": "REAL"
+        },
+        "erpm": {
+          "default": null,
+          "notNull": false,
+          "primaryKey": 0,
+          "type": "REAL"
+        },
+        "id": {
+          "default": null,
+          "notNull": true,
+          "primaryKey": 1,
+          "type": "INTEGER"
+        },
+        "motor_current": {
+          "default": null,
+          "notNull": false,
+          "primaryKey": 0,
+          "type": "REAL"
+        },
+        "occurrence_id": {
+          "default": null,
+          "notNull": true,
+          "primaryKey": 0,
+          "type": "TEXT"
+        },
+        "pitch": {
+          "default": null,
+          "notNull": false,
+          "primaryKey": 0,
+          "type": "REAL"
+        },
+        "roll": {
+          "default": null,
+          "notNull": false,
+          "primaryKey": 0,
+          "type": "REAL"
+        },
+        "speed": {
+          "default": null,
+          "notNull": false,
+          "primaryKey": 0,
+          "type": "REAL"
+        },
+        "state": {
+          "default": null,
+          "notNull": false,
+          "primaryKey": 0,
+          "type": "INTEGER"
+        },
+        "temp_mosfet": {
+          "default": null,
+          "notNull": false,
+          "primaryKey": 0,
+          "type": "REAL"
+        },
+        "temp_motor": {
+          "default": null,
+          "notNull": false,
+          "primaryKey": 0,
+          "type": "REAL"
+        }
+      },
+      "foreignKeys": [],
+      "indexes": {
+        "index_vesc_fault_capture_samples_occurrence_id_captured_at": {
+          "columns": ["occurrence_id", "captured_at"],
+          "unique": false,
+          "where": null
+        }
+      }
+    },
+    "vesc_fault_captures": {
+      "columns": {
+        "board_id": {
+          "default": null,
+          "notNull": true,
+          "primaryKey": 0,
+          "type": "TEXT"
+        },
+        "occurrence_id": {
+          "default": null,
+          "notNull": true,
+          "primaryKey": 1,
+          "type": "TEXT"
+        },
+        "opened_at": {
+          "default": null,
+          "notNull": true,
+          "primaryKey": 0,
+          "type": "INTEGER"
+        },
+        "sample_count": {
+          "default": null,
+          "notNull": true,
+          "primaryKey": 0,
+          "type": "INTEGER"
+        },
+        "started_at": {
+          "default": null,
+          "notNull": true,
+          "primaryKey": 0,
+          "type": "INTEGER"
+        }
+      },
+      "foreignKeys": [],
+      "indexes": {
+        "index_vesc_fault_captures_board_id": {
+          "columns": ["board_id"],
+          "unique": false,
+          "where": null
+        }
+      }
+    },
+    "vesc_fault_occurrences": {
+      "columns": {
+        "board_id": {
+          "default": null,
+          "notNull": true,
+          "primaryKey": 0,
+          "type": "TEXT"
+        },
+        "cleared_at": {
+          "default": null,
+          "notNull": false,
+          "primaryKey": 0,
+          "type": "INTEGER"
+        },
+        "code": {
+          "default": null,
+          "notNull": true,
+          "primaryKey": 0,
+          "type": "INTEGER"
+        },
+        "dismissed": {
+          "default": null,
+          "notNull": true,
+          "primaryKey": 0,
+          "type": "INTEGER"
+        },
+        "id": {
+          "default": null,
+          "notNull": true,
+          "primaryKey": 1,
+          "type": "TEXT"
+        },
+        "last_observed_at": {
+          "default": null,
+          "notNull": true,
+          "primaryKey": 0,
+          "type": "INTEGER"
+        },
+        "occurred_at": {
+          "default": null,
+          "notNull": true,
+          "primaryKey": 0,
+          "type": "INTEGER"
+        }
+      },
+      "foreignKeys": [],
+      "indexes": {
+        "index_vesc_fault_occurrences_board_id_occurred_at": {
+          "columns": ["board_id", "occurred_at"],
+          "unique": false,
+          "where": null
+        }
+      }
+    },
+    "weather_observations": {
+      "columns": {
+        "gust_kmh": {
+          "default": null,
+          "notNull": false,
+          "primaryKey": 0,
+          "type": "INTEGER"
+        },
+        "is_day": {
+          "default": null,
+          "notNull": true,
+          "primaryKey": 0,
+          "type": "INTEGER"
+        },
+        "observed_at_ms": {
+          "default": null,
+          "notNull": true,
+          "primaryKey": 1,
+          "type": "INTEGER"
+        },
+        "temperature_c": {
+          "default": null,
+          "notNull": true,
+          "primaryKey": 0,
+          "type": "INTEGER"
+        },
+        "weather_code": {
+          "default": null,
+          "notNull": true,
+          "primaryKey": 0,
+          "type": "INTEGER"
+        }
+      },
+      "foreignKeys": [],
+      "indexes": {}
+    }
+  }
+}

@@ -779,6 +779,9 @@ try require(
   Set(grdbManifest["migrationIdentifiers"] as! [String]) == Set(migrationIdentifiers),
   "shared GRDB migration manifest differs from production registry"
 )
+let freshSchemaQueue = try DatabaseQueue()
+try TelemetryDatabase.migrator.migrate(freshSchemaQueue)
+try freshSchemaQueue.read { db in try requireSharedSchema("fresh", db, root: root) }
 for start in migrationIdentifiers {
   let migrationQueue = try DatabaseQueue()
   try TelemetryDatabase.migrator.migrate(migrationQueue, upTo: start)
@@ -830,6 +833,7 @@ for start in migrationIdentifiers {
     if available.config { let value = try String.fetchOne(db, sql: "SELECT values_json FROM board_config_values WHERE board_id='matrix-board'"); try require(value == "{\"motor_current_max\":55.5}", "\(start) lost config") }
     let ledger = try TelemetryDatabase.migrator.appliedIdentifiers(db)
     try require(ledger == Set(migrationIdentifiers), "\(start) final ledger")
+    try requireSharedSchema("migrated-from-\(start)", db, root: root)
   }
   try migrationQueue.close()
 }
@@ -1015,6 +1019,7 @@ if let exchangePath = ProcessInfo.processInfo.environment["VESCAPE_BACKUP_EXCHAN
       let zone = try Row.fetchOne(db, sql: "SELECT * FROM privacy_zones WHERE id='era-zone'")
       let battery = try String.fetchOne(db, sql: "SELECT value_json FROM board_settings WHERE board_id='board-era3' AND key='batteryConfig'")
       let ledger = try TelemetryDatabase.migrator.appliedIdentifiers(db)
+      try requireSharedSchema("restored-android-v\(version)", db, root: root)
       try require(zone?["name"] as String? == "Era Zone", "v\(version) archive lost Privacy Zone name")
       try require(zone?["enabled"] as Int? == 1, "v\(version) archive lost Privacy Zone state")
       try require(zone?["center_latitude_e7"] as Int64? == 510_000_000, "v\(version) archive lost Privacy Zone latitude")
