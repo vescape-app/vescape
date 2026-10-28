@@ -12,8 +12,6 @@ import { Gesture } from 'react-native-gesture-handler'
 import {
   Easing as ReanimatedEasing,
   type SharedValue,
-  useAnimatedScrollHandler,
-  useAnimatedStyle,
   useSharedValue,
   withTiming,
 } from 'react-native-reanimated'
@@ -24,23 +22,18 @@ import {
   DRAWER_INITIAL_OPEN_FRACTION,
   edgeDrawerContentResizeOffset,
   edgeDrawerFocusOffset,
-  edgeDrawerDismissOpacity,
-  edgeDrawerHasCommitted,
+  edgeDrawerOpaqueFloorOffset,
+  edgeDrawerDragStartsAtEdge,
   edgeDrawerRestoreOffset,
-  edgeDrawerScrollEndAction,
-  edgeDrawerVisibleFraction,
 } from '@/components/overlays/edgeDrawerDismiss'
+import { useDrawerScrollEnd } from '@/components/overlays/edgeDrawerScrollEnd'
+import { useDrawerScrollAnimation } from '@/components/overlays/edgeDrawerScrollAnimation'
 import { measureTrigger } from '@/components/overlays/measureTrigger'
 
-/** Approximate native fling travel from Android's release velocity in points/ms. */
-const DRAWER_FLING_PROJECTION_MS = 250
-const DRAWER_OPEN_TRANSLATE_Y = 42
 const DRAWER_OPEN_DURATION = 200
 /** Dismissal is a fast fade back toward the drawer's own edge, not a scroll home. */
 const DRAWER_CLOSE_DURATION = 170
 const DRAWER_BOTTOM_CONTENT_PADDING = 32
-/** How near the end of the drawer content a settled scroll counts as reaching it. */
-const CONTENT_END_THRESHOLD = 80
 
 export interface EdgeDrawerDismissalOptions {
   visible: boolean
@@ -104,7 +97,17 @@ export function useEdgeDrawerDismissal({
   const dismissTriggered = useSharedValue(false)
   const animatedDismissRange = useSharedValue(1)
   const nativeScrollGesture = useMemo(() => Gesture.Native(), [])
-  const scrollToOffset = useDrawerScrollToOffset(scrollRef)
+  const {
+    dragFromEdge,
+    dragging,
+    flingGuard,
+    chromeDrag,
+    restoreTargetRef,
+    userScrollRef,
+    resetGestures,
+    handleScrollBeginDrag,
+  } = useDismissGestures(openingScrollTarget, dismissRangeRef, height, opensFromTop)
+  const scrollToOffset = useDrawerScrollToOffset(scrollRef, userScrollRef)
 
   const scrollToContentStart = useCallback(
     (range: number) => {
@@ -145,6 +148,7 @@ export function useEdgeDrawerDismissal({
       dismissArmed.value = false
       openingScrollTarget.value = -1
       dismissTriggered.value = false
+      resetGestures()
       presence.value = 0
     }
 
@@ -163,6 +167,7 @@ export function useEdgeDrawerDismissal({
     height,
     presence,
     openingScrollTarget,
+    resetGestures,
     scrollOffset,
     setKeyboardInset,
     triggerRef,
@@ -211,11 +216,28 @@ export function useEdgeDrawerDismissal({
     )
   }, [closing, finishClose, mounted, presence])
 
+  /** Settle a half-faded drawer back to the offset where it is fully opaque again. */
+  const restoreFullyVisible = useCallback(() => {
+    const target = edgeDrawerRestoreOffset(dismissRangeRef.current, height, opensFromTop)
+    // iOS reports a scroll end when a new animated scroll interrupts the running one. Reissuing
+    // the restore from that report interrupts it again, forever, and pins the list in place.
+    // The target is fractional and iOS lands on a pixel; asking again from there loops the same way.
+    if (restoreTargetRef.current === target || Math.abs(scrollOffsetRef.current - target) <= 1)
+      return
+    restoreTargetRef.current = target
+    scrollToOffset(target, true)
+  }, [height, opensFromTop, restoreTargetRef, scrollToOffset])
+
   const { scrollHandler, backdropStyle, presenceStyle } = useDrawerScrollAnimation({
     openingScrollTarget,
     scrollOffset,
     dismissArmed,
     dismissTriggered,
+    dragFromEdge,
+    dragging,
+    flingGuard,
+    chromeDrag,
+    restoreFullyVisible,
     animatedDismissRange,
     height,
     opensFromTop,
@@ -301,13 +323,12 @@ export function useEdgeDrawerDismissal({
         range !== previousRange &&
         !initialFocusRef &&
         !initialFocusLayout
-      if (pinsToOwnEdge) {
-        const pinnedOffset = edgeDrawerContentResizeOffset({
-          offset: openingScrollPendingRef.current ? scrollOffsetRef.current : scrollOffset.value,
-          range,
-          previousRange,
-          height,
-        })
+      const liveOffset = openingScrollPendingRef.current
+        ? scrollOffsetRef.current
+        : scrollOffset.value
+      const resize = { offset: liveOffset, range, previousRange, height }
+      const pinnedOffset = resizedOffset(resize, pinsToOwnEdge, opensFromTop)
+      if (pinsToOwnEdge || pinnedOffset !== liveOffset) {
         scrollOffsetRef.current = pinnedOffset
         scrollOffset.value = pinnedOffset
         if (openingScrollPendingRef.current) openingScrollTarget.value = pinnedOffset
@@ -385,82 +406,27 @@ export function useEdgeDrawerDismissal({
     scrollToOffset,
   ])
 
-  /** Settle a half-faded drawer back to the offset where it is fully opaque again. */
-  const restoreFullyVisible = useCallback(() => {
-    scrollToOffset(edgeDrawerRestoreOffset(dismissRangeRef.current, height, opensFromTop), true)
-  }, [height, opensFromTop, scrollToOffset])
-
   const scrollToOpenEdge = useCallback(() => {
     scrollToOffset(opensFromTop ? 0 : dismissRangeRef.current + height, true)
   }, [height, opensFromTop, scrollToOffset])
 
-  const handleScrollEnd = useCallback(
-    (event: NativeSyntheticEvent<NativeScrollEvent>) => {
-      const offset = event.nativeEvent.contentOffset.y
-      scrollOffsetRef.current = offset
-      // A dismissal fade is already running; let it finish rather than cutting to an unmount.
-      if (closing) return
-      const fullyHidden = opensFromTop ? offset >= dismissRange - 1 : offset <= 1
-      const action = edgeDrawerScrollEndAction({
-        fullyHidden,
-        visibleFraction: edgeDrawerVisibleFraction({
-          offset,
-          range: dismissRange,
-          height,
-          opensFromTop,
-        }),
-      })
-      if (action === 'finish') {
-        finishClose()
-        return
-      }
-
-      const distanceFromEnd =
-        event.nativeEvent.contentSize.height - (offset + event.nativeEvent.layoutMeasurement.height)
-      if (distanceFromEnd <= CONTENT_END_THRESHOLD) onReachContentEnd?.()
-      if (action === 'close') close()
-      if (action === 'restore') restoreFullyVisible()
-    },
-    [
-      close,
-      closing,
-      dismissRange,
-      finishClose,
-      height,
-      onReachContentEnd,
-      opensFromTop,
-      restoreFullyVisible,
-    ],
-  )
-
-  const handleScrollEndDrag = useCallback(
-    (event: NativeSyntheticEvent<NativeScrollEvent>) => {
-      pinContentStartRef.current = false
-      const { contentOffset, targetContentOffset, velocity } = event.nativeEvent
-      scrollOffsetRef.current = contentOffset.y
-      const projectedOffset =
-        targetContentOffset?.y ?? contentOffset.y - (velocity?.y ?? 0) * DRAWER_FLING_PROJECTION_MS
-      const fullyHidden = opensFromTop ? contentOffset.y >= dismissRange - 1 : contentOffset.y <= 1
-      const action = edgeDrawerScrollEndAction({
-        fullyHidden,
-        visibleFraction: edgeDrawerVisibleFraction({
-          offset: projectedOffset,
-          range: dismissRange,
-          height,
-          opensFromTop,
-        }),
-      })
-
-      // Judge the fling by where it is headed instead of waiting for momentum to land.
-      if (action === 'close') {
-        close()
-        return
-      }
-
-      handleScrollEnd(event)
-    },
-    [close, dismissRange, handleScrollEnd, height, opensFromTop],
-  )
+  const { handleScrollEnd, handleScrollEndDrag } = useDrawerScrollEnd({
+    closing,
+    dismissRange,
+    height,
+    opensFromTop,
+    scrollOffsetRef,
+    pinContentStartRef,
+    restoreTargetRef,
+    userScrollRef,
+    dragFromEdge,
+    dragging,
+    flingGuard,
+    close,
+    finishClose,
+    restoreFullyVisible,
+    onReachContentEnd,
+  })
 
   return {
     mounted,
@@ -480,97 +446,93 @@ export function useEdgeDrawerDismissal({
     handleContentSizeChange,
     handleScrollEnd,
     handleScrollEndDrag,
+    handleScrollBeginDrag,
+    chromeDrag,
+    dismissTriggered,
+    scrollOffset,
+    animatedDismissRange,
     dismissAreaHeight: height,
   }
 }
 
-function useDrawerScrollAnimation({
-  openingScrollTarget,
-  scrollOffset,
-  dismissArmed,
-  dismissTriggered,
-  animatedDismissRange,
-  height,
-  opensFromTop,
-  presence,
-  close,
-  finishOpeningScroll,
-}: {
-  openingScrollTarget: SharedValue<number>
-  scrollOffset: SharedValue<number>
-  dismissArmed: SharedValue<boolean>
-  dismissTriggered: SharedValue<boolean>
-  animatedDismissRange: SharedValue<number>
-  height: number
-  opensFromTop: boolean
-  presence: SharedValue<number>
-  close: () => void
-  finishOpeningScroll: () => void
-}) {
-  const scrollHandler = useAnimatedScrollHandler({
-    onScroll: (event) => {
-      const offset = event.contentOffset.y
-      if (openingScrollTarget.value >= 0) {
-        if (Math.abs(offset - openingScrollTarget.value) > 1) return
-        openingScrollTarget.value = -1
-        dismissArmed.value = true
-        scheduleOnRN(finishOpeningScroll)
-      }
-      scrollOffset.value = offset
+/** A bottom drawer's offset after its content resized; see the two policies it picks between. */
+function resizedOffset(
+  resize: { offset: number; range: number; previousRange: number; height: number },
+  pinsToOwnEdge: boolean,
+  opensFromTop: boolean,
+) {
+  if (pinsToOwnEdge) return edgeDrawerContentResizeOffset(resize)
+  if (!opensFromTop && resize.range > resize.previousRange) {
+    return edgeDrawerOpaqueFloorOffset(resize)
+  }
+  return resize.offset
+}
 
-      if (!dismissArmed.value || dismissTriggered.value) return
-
-      // Commit to closing mid-drag, the moment the drawer passes the point of no return.
-      const fraction = edgeDrawerVisibleFraction({
-        offset,
-        range: animatedDismissRange.value,
+/**
+ * Gesture state that decides how a drawer may be dismissed: scroll dismissal arms only for drags
+ * that start at the content edge, and chrome drags move the panel directly.
+ */
+function useDismissGestures(
+  openingScrollTarget: SharedValue<number>,
+  dismissRangeRef: React.RefObject<number>,
+  height: number,
+  opensFromTop: boolean,
+) {
+  /** The current drag began at the content edge, so it may carry the drawer off screen. */
+  const dragFromEdge = useSharedValue(true)
+  /** A finger is on the scroll view. Only a drag commits a dismissal mid-scroll. */
+  const dragging = useSharedValue(false)
+  /** A fling from inside the content is running; stop it where it meets the content edge. */
+  const flingGuard = useSharedValue(false)
+  /** Translation from dragging the drawer's chrome toward its edge. */
+  const chromeDrag = useSharedValue(0)
+  /** The rider's drag, or its momentum, owns the scroll; any programmatic scroll takes it back. */
+  const userScrollRef = useRef(false)
+  /** Offset an animated restore is heading to, until it lands or the rider takes over. */
+  const restoreTargetRef = useRef<number | null>(null)
+  const resetGestures = useCallback(() => {
+    restoreTargetRef.current = null
+    userScrollRef.current = false
+    dragging.value = false
+    dragFromEdge.value = true
+    flingGuard.value = false
+    chromeDrag.value = 0
+  }, [chromeDrag, dragFromEdge, dragging, flingGuard])
+  const handleScrollBeginDrag = useCallback(
+    (event: NativeSyntheticEvent<NativeScrollEvent>) => {
+      // The rider has taken over: an opening scroll still awaiting its native echo is moot.
+      openingScrollTarget.value = -1
+      restoreTargetRef.current = null
+      userScrollRef.current = true
+      dragging.value = true
+      flingGuard.value = false
+      dragFromEdge.value = edgeDrawerDragStartsAtEdge({
+        offset: event.nativeEvent.contentOffset.y,
+        range: dismissRangeRef.current,
         height,
         opensFromTop,
       })
-      if (edgeDrawerHasCommitted(fraction)) {
-        dismissTriggered.value = true
-        scheduleOnRN(close)
-      }
     },
-  })
-
-  // The scrim rides the same curve as the panel. Left on the raw fraction it is still half dark at
-  // the commit mark, and killing that in one timed step reads as the whole overlay popping out.
-  const backdropStyle = useAnimatedStyle(() => {
-    'worklet'
-    const dismissed = edgeDrawerDismissOpacity(
-      edgeDrawerVisibleFraction({
-        offset: scrollOffset.value,
-        range: animatedDismissRange.value,
-        height,
-        opensFromTop,
-      }),
-    )
-    return { opacity: presence.value * dismissed }
-  })
-
-  const presenceStyle = useAnimatedStyle(() => {
-    'worklet'
-    const hidden = 1 - presence.value
-    const dismissed = edgeDrawerDismissOpacity(
-      edgeDrawerVisibleFraction({
-        offset: scrollOffset.value,
-        range: animatedDismissRange.value,
-        height,
-        opensFromTop,
-      }),
-    )
-    return {
-      opacity: presence.value * dismissed,
-      transform: [
-        {
-          translateY: hidden * (opensFromTop ? -DRAWER_OPEN_TRANSLATE_Y : DRAWER_OPEN_TRANSLATE_Y),
-        },
-      ],
-    }
-  })
-
-  return { scrollHandler, backdropStyle, presenceStyle }
+    [
+      dismissRangeRef,
+      dragFromEdge,
+      dragging,
+      flingGuard,
+      height,
+      openingScrollTarget,
+      opensFromTop,
+    ],
+  )
+  return {
+    dragFromEdge,
+    dragging,
+    flingGuard,
+    chromeDrag,
+    restoreTargetRef,
+    userScrollRef,
+    resetGestures,
+    handleScrollBeginDrag,
+  }
 }
 
 function useDrawerKeyboardInset(mounted: boolean) {
@@ -606,15 +568,19 @@ function useDrawerOpenAnimation(
   return startOpen
 }
 
-function useDrawerScrollToOffset(scrollRef: React.RefObject<ScrollView | FlatList | null>) {
+function useDrawerScrollToOffset(
+  scrollRef: React.RefObject<ScrollView | FlatList | null>,
+  userScrollRef: React.RefObject<boolean>,
+) {
   const scrollToOffset = useCallback(
     (y: number, animated: boolean) => {
       const scroll = scrollRef.current
       if (!scroll) return
+      userScrollRef.current = false
       if ('scrollToOffset' in scroll) scroll.scrollToOffset({ offset: y, animated })
       else scroll.scrollTo({ y, animated })
     },
-    [scrollRef],
+    [scrollRef, userScrollRef],
   )
   return scrollToOffset
 }

@@ -16,6 +16,7 @@ import type { Icon } from 'phosphor-react-native'
 
 import { Text } from '@/components/base/Text'
 import { NativeScrollGestureContext } from '@/components/gestures/NativeScrollGestureContext'
+import { GrabZone, StickyChrome, useEdgeDrawerChrome } from '@/components/overlays/EdgeDrawerChrome'
 import { useEdgeDrawerDismissal } from '@/components/overlays/useEdgeDrawerDismissal'
 import {
   useWidgetFocusHost,
@@ -49,6 +50,8 @@ interface EdgeDrawerProps {
   edge?: 'auto' | 'top' | 'bottom'
   /** Custom interactive header, replacing the default title and icon. */
   header?: React.ReactNode
+  /** Action bar after the content, pinned to the bottom of the screen while the content scrolls. */
+  stickyFooter?: React.ReactNode
   title?: string
   /** Optional glyph shown left of a centred title. */
   icon?: Icon
@@ -71,6 +74,9 @@ interface EdgeDrawerProps {
  * A full-width edge drawer, dismissed by dragging it back toward the edge it opened from. It comes
  * from the bottom unless told otherwise: that is where a thumb rests, and top drawers are the rare
  * exception rather than something every caller should have to opt out of.
+ *
+ * Its chrome (grabber, header, sticky footer) stays on screen while long content scrolls, and
+ * dragging the chrome toward the drawer's edge closes it from any scroll position.
  */
 export function EdgeDrawer({
   visible,
@@ -79,6 +85,7 @@ export function EdgeDrawer({
   edge = 'bottom',
   title,
   header,
+  stickyFooter,
   icon: IconComponent,
   iconColor = theme.neutral.textSecondary,
   autoScrollOnContentExpand = false,
@@ -90,6 +97,7 @@ export function EdgeDrawer({
   virtualizedContent,
 }: EdgeDrawerProps) {
   const [listHeaderHeight, setListHeaderHeight] = useState(0)
+  const [chromeHeights, setChromeHeights] = useState({ leading: 0, trailing: 0 })
   const {
     mounted,
     closing,
@@ -105,6 +113,11 @@ export function EdgeDrawer({
     handleContentSizeChange,
     handleScrollEnd,
     handleScrollEndDrag,
+    handleScrollBeginDrag,
+    chromeDrag,
+    dismissTriggered,
+    scrollOffset,
+    animatedDismissRange,
     dismissAreaHeight,
   } = useEdgeDrawerDismissal({
     visible,
@@ -117,6 +130,17 @@ export function EdgeDrawer({
     contentPageKey,
     onClose,
     onReachContentEnd,
+  })
+
+  const chrome = useEdgeDrawerChrome({
+    opensFromTop,
+    scrollOffset,
+    dismissRange: animatedDismissRange,
+    edgePadding,
+    chromeDrag,
+    dismissTriggered,
+    nativeScrollGesture,
+    close,
   })
 
   const focus = useWidgetFocusHost()
@@ -151,20 +175,29 @@ export function EdgeDrawer({
     </Pressable>
   ) : null
 
+  // A virtualized list commits new rows while it scrolls, and Reanimated holds back animated
+  // styles during commits, so chrome pinned inside the list would stutter. There it is drawn over
+  // the list instead, standing still while pinned, with a spacer holding its place in the rows.
+  const overlay = virtualizedContent != null
+  const { leadingChrome, trailingChrome } = drawerChrome({
+    chrome,
+    overlay,
+    opensFromTop,
+    edgePadding,
+    title: drawerTitle,
+    stickyFooter,
+    neutral,
+    setChromeHeights,
+  })
+
   const scrimStyle: StyleProp<ViewStyle> = {
     backgroundColor: theme.alpha(neutral.surfaceDeep, 0.85),
-  }
-  const colorStyle: StyleProp<ViewStyle> = {
-    backgroundColor: theme.alpha(neutral.textSecondary, 0.6),
   }
 
   const listHeader = virtualizedContent ? (
     <View onLayout={(event) => setListHeaderHeight(event.nativeEvent.layout.height)}>
       {!opensFromTop ? emptyDismissArea : null}
-      <View style={[styles.listChrome, opensFromTop && { paddingTop: edgePadding }]}>
-        {!opensFromTop ? <View style={[styles.grabber, colorStyle]} /> : null}
-        {drawerTitle}
-      </View>
+      <View style={[styles.listChrome, { height: chromeHeights.leading }]} />
     </View>
   ) : null
 
@@ -176,9 +209,13 @@ export function EdgeDrawer({
         opensFromTop={opensFromTop}
         height={dismissAreaHeight}
       />
-      <View style={[styles.listChrome, opensFromTop ? undefined : { paddingBottom: edgePadding }]}>
-        {opensFromTop ? <View style={[styles.grabber, colorStyle]} /> : null}
-      </View>
+      <View
+        style={[
+          styles.listChrome,
+          { height: trailingChrome ? chromeHeights.trailing : 0 },
+          opensFromTop ? undefined : { marginBottom: edgePadding },
+        ]}
+      />
       {opensFromTop ? emptyDismissArea : null}
     </>
   ) : null
@@ -215,6 +252,11 @@ export function EdgeDrawer({
                       listHeaderHeight,
                     )}
                     ListHeaderComponent={listHeader}
+                    ListHeaderComponentStyle={styles.stickyCell}
+                    ListFooterComponentStyle={styles.stickyCell}
+                    // Pinned chrome is translated into view from a cell whose layout box has
+                    // scrolled away; Android's default clipping would detach it.
+                    removeClippedSubviews={false}
                     ListEmptyComponent={virtualizedContent.empty}
                     ListFooterComponent={listFooter}
                     ItemSeparatorComponent={virtualizedContent.separator}
@@ -223,6 +265,7 @@ export function EdgeDrawer({
                     onEndReachedThreshold={virtualizedContent.onEndReachedThreshold ?? 0.6}
                     onContentSizeChange={handleContentSizeChange}
                     onScroll={scrollHandler}
+                    onScrollBeginDrag={handleScrollBeginDrag}
                     onScrollEndDrag={handleScrollEndDrag}
                     onMomentumScrollEnd={handleScrollEnd}
                     scrollEnabled={!closing && !focusActive}
@@ -242,6 +285,7 @@ export function EdgeDrawer({
                     }
                     onContentSizeChange={handleContentSizeChange}
                     onScroll={scrollHandler}
+                    onScrollBeginDrag={handleScrollBeginDrag}
                     onScrollEndDrag={handleScrollEndDrag}
                     onMomentumScrollEnd={handleScrollEnd}
                     scrollEnabled={!closing && !focusActive}
@@ -254,27 +298,82 @@ export function EdgeDrawer({
                     <View
                       style={[
                         styles.drawerBody,
-                        opensFromTop ? { paddingTop: edgePadding } : { paddingBottom: edgePadding },
+                        opensFromTop ? undefined : { paddingBottom: edgePadding },
                       ]}
                     >
-                      {!opensFromTop ? <View style={[styles.grabber, colorStyle]} /> : null}
-                      {drawerTitle}
+                      {leadingChrome}
                       <WidgetFocusProvider host={focus}>
                         <View style={styles.drawerContent}>{children}</View>
                       </WidgetFocusProvider>
-                      {opensFromTop ? <View style={[styles.grabber, colorStyle]} /> : null}
+                      {trailingChrome}
                     </View>
                     {opensFromTop ? emptyDismissArea : null}
                   </Reanimated.ScrollView>
                 )}
               </GestureDetector>
             </NativeScrollGestureContext.Provider>
+            {overlay ? leadingChrome : null}
+            {overlay ? trailingChrome : null}
+            <GrabZone {...chrome.grabZone} />
             <WidgetFocusOverlay host={focus} />
           </View>
         </Reanimated.View>
       </GestureHandlerRootView>
     </Modal>
   )
+}
+
+/** The drawer's grabber, header, and sticky footer, split by which end of the content they lead. */
+function drawerChrome({
+  chrome,
+  overlay,
+  opensFromTop,
+  edgePadding,
+  title,
+  stickyFooter,
+  neutral,
+  setChromeHeights,
+}: {
+  chrome: ReturnType<typeof useEdgeDrawerChrome>
+  overlay: boolean
+  opensFromTop: boolean
+  edgePadding: number
+  title: React.ReactNode
+  stickyFooter: React.ReactNode
+  neutral: ReturnType<typeof useResolvedNeutralColors>
+  setChromeHeights: React.Dispatch<React.SetStateAction<{ leading: number; trailing: number }>>
+}) {
+  const grabber = <View style={[styles.grabber, colorStyleFor(neutral.textSecondary)]} />
+  const leadingChrome = (
+    <StickyChrome
+      {...chrome.leading}
+      overlay={overlay}
+      onHeight={(leading) => setChromeHeights((heights) => ({ ...heights, leading }))}
+      background={neutral.surfaceDeep}
+      style={opensFromTop ? { paddingTop: edgePadding } : undefined}
+    >
+      {!opensFromTop ? grabber : null}
+      {title}
+    </StickyChrome>
+  )
+  const trailingChrome =
+    stickyFooter || opensFromTop ? (
+      <StickyChrome
+        {...chrome.trailing}
+        overlay={overlay}
+        onHeight={(trailing) => setChromeHeights((heights) => ({ ...heights, trailing }))}
+        background={neutral.surfaceDeep}
+      >
+        {stickyFooter}
+        {opensFromTop ? grabber : null}
+      </StickyChrome>
+    ) : null
+
+  return { leadingChrome, trailingChrome }
+}
+
+function colorStyleFor(color: string): ViewStyle {
+  return { backgroundColor: theme.alpha(color, 0.6) }
 }
 
 function listFocusLayout(
@@ -349,6 +448,9 @@ const styles = StyleSheet.create({
   },
   drawerContent: {
     gap: 12,
+  },
+  stickyCell: {
+    zIndex: 1,
   },
   grabber: {
     alignSelf: 'center',

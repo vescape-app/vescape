@@ -99,6 +99,7 @@ export function edgeDrawerRestoreOffset(
   height: number,
   opensFromTop: boolean,
 ): number {
+  'worklet'
   const target = edgeDrawerRestingPixels(range, height, opensFromTop)
   return clamp(opensFromTop ? range - target : target, 0, range)
 }
@@ -154,6 +155,27 @@ export function edgeDrawerContentResizeOffset({
   return clamp(pinned, 0, range)
 }
 
+/**
+ * Where a bottom drawer whose rows must not shift belongs after its content grew: a virtualized
+ * list renders over many frames, and a focused row is already placed. Growth only raises the
+ * fully-opaque floor, so a drawer that was opaque stays opaque, and nothing else moves.
+ */
+export function edgeDrawerOpaqueFloorOffset({
+  offset,
+  range,
+  previousRange,
+  height,
+}: {
+  offset: number
+  range: number
+  previousRange: number
+  height: number
+}): number {
+  const wasOpaque = offset >= edgeDrawerRestoreOffset(previousRange, height, false) - 1
+  if (!wasOpaque) return offset
+  return Math.max(offset, edgeDrawerRestoreOffset(range, height, false))
+}
+
 /** Center a known child without entering the drawer's transparent dismissal area. */
 export function edgeDrawerFocusOffset({
   offset,
@@ -170,4 +192,53 @@ export function edgeDrawerFocusOffset({
 }): number {
   const minimum = opensFromTop ? 0 : Math.min(range, height * DRAWER_INITIAL_OPEN_FRACTION)
   return Math.max(minimum, Math.min(range, offset + itemHeight / 2 - height / 2))
+}
+
+/** How near the content edge a drag must start to count as a deliberate dismissal. */
+const DISMISS_EDGE_SLOP = 8
+
+/**
+ * Whether a drag starting at this offset may dismiss the drawer. A drawer that fits on screen
+ * always may, so a short drawer closes on any pull. A longer one only from its content edge: a
+ * fling across the list stops there instead of carrying the drawer off screen.
+ */
+export function edgeDrawerDragStartsAtEdge({
+  offset,
+  range,
+  height,
+  opensFromTop,
+}: EdgeDrawerGeometry) {
+  'worklet'
+  if (range <= height) return true
+  const edge = edgeDrawerRestoreOffset(range, height, opensFromTop)
+  return opensFromTop ? offset >= edge - DISMISS_EDGE_SLOP : offset <= edge + DISMISS_EDGE_SLOP
+}
+
+/** Whether a scroll has moved past the content edge into the dismissal travel. */
+export function edgeDrawerPastEdge({ offset, range, height, opensFromTop }: EdgeDrawerGeometry) {
+  'worklet'
+  const edge = edgeDrawerRestoreOffset(range, height, opensFromTop)
+  return opensFromTop ? offset > edge + 1 : offset < edge - 1
+}
+
+/**
+ * Shift that keeps drawer chrome on screen while its content scrolls. `start` is the chrome's
+ * content offset when it leads the body (pinned below `pinAt`); `end` its bottom offset when it
+ * trails the body (pinned above `pinAt`). `maxShift` stops it before it covers the other chrome.
+ */
+export function edgeDrawerStickyShift({
+  offset,
+  start,
+  end,
+  pinAt,
+  maxShift,
+}: {
+  offset: number
+  pinAt: number
+  maxShift: number
+} & ({ start: number; end?: never } | { end: number; start?: never })) {
+  'worklet'
+  const limit = Math.max(0, maxShift)
+  if (start !== undefined) return clamp(offset + pinAt - start, 0, limit)
+  return -clamp(end - offset - pinAt, 0, limit)
 }
