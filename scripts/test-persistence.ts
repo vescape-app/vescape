@@ -29,7 +29,7 @@ try {
       'modules/vescape-core/persistence-jvm',
       'test',
       '--tests',
-      'expo.modules.vescapecore.telemetry.DatabaseRestoreHostTest.crossPlatformProductionArchivePipeline',
+      'expo.modules.vescapecore.database.DatabaseRestoreHostTest.crossPlatformProductionArchivePipeline',
     ],
     { VESCAPE_BACKUP_EXCHANGE: exchange, VESCAPE_BACKUP_PHASE: 'import-ios' },
   )

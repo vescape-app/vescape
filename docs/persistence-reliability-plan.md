@@ -9,8 +9,8 @@ GRDB. Both runners load `modules/vescape-core/shared/recording-persistence-contr
 minute bucket from its moving samples, commit frames and bucket, close SQLite, reopen it, then assert
 explicit durable values. Missing fixture/scenario fails either runner.
 
-Android compiles the production `VescapeRoomDatabase`, Room-generated `TelemetryDao`, recording
-transaction seam, entities, bucket builder, and `TelemetryMigrations` graph into a plain Kotlin/JVM
+Android compiles the production `VescapeRoomDatabase`, Room-generated `VescapeDao`, recording
+transaction seam, entities, bucket builder, and `DatabaseMigrations` graph into a plain Kotlin/JVM
 module. Android `Context`, legacy-file rename, the `SupportSQLiteDatabase` adapter, and app lifecycle
 remain in `VescapeDatabase`; every adapter delegates to the same portable migration step that the
 Room 2.8.4 `sqlite-bundled` 2.6.2 host executes. `shared/migration-fixture-manifest.json` enumerates
@@ -21,8 +21,8 @@ every build and committed with the migration that changes it. Exports exist for 
 was ever the app's database version on `dev`: 3–9, 11–22, 24–27, 29, 31, 32, 36, 40, 42, 43, 48, 49,
 and 51 onward. The others only existed as an intermediate step inside one change, so no phone was
 ever created at them. Versions before 53 were generated once, by compiling each version's
-`TelemetryEntities.kt` from the newest first-parent `dev` commit at that version with today's Room.
-`TelemetryMigrationMatrixHostTest` creates each export with `MigrationTestHelper`, exactly as Room
+`DatabaseEntities.kt` from the newest first-parent `dev` commit at that version with today's Room.
+`DatabaseMigrationMatrixHostTest` creates each export with `MigrationTestHelper`, exactly as Room
 created that version fresh, migrates it to the current version with Room validating every table,
 and fails if the current version's export is missing. Starting at v3 runs every production edge.
 Named tests seed one era's rows in that era's export (v3 Board and telemetry, v12 settings, v32

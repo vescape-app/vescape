@@ -4,7 +4,7 @@ import GRDB
 private let internalTables: Set<String> = ["room_master_table", "android_metadata", "grdb_migrations"]
 
 /// Tables, columns, indexes, and foreign keys in a form that does not depend on which platform built them.
-/// @parity /modules/vescape-core/persistence-jvm/src/test/kotlin/expo/modules/vescapecore/telemetry/DatabaseSchemaHostTest.kt `dumpDatabaseSchema`
+/// @parity /modules/vescape-core/persistence-jvm/src/test/kotlin/expo/modules/vescapecore/database/DatabaseSchemaHostTest.kt `dumpDatabaseSchema`
 func dumpDatabaseSchema(_ db: Database) throws -> [String: Any] {
   func text(_ row: Row, _ column: String) -> String? { row[column] as String? }
   var tables: [String: Any] = [:]

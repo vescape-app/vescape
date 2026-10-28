@@ -6,12 +6,12 @@ import android.os.Looper
 import android.os.SystemClock
 import expo.modules.vescapecore.recording.RecordingStorageFailure
 import expo.modules.vescapecore.service.CoreForegroundService
-import expo.modules.vescapecore.telemetry.AccessoryBrakeLightEntity
-import expo.modules.vescapecore.telemetry.AccessoryCapabilitySettingsEntity
-import expo.modules.vescapecore.telemetry.AccessoryGroundClearanceEntity
+import expo.modules.vescapecore.database.AccessoryBrakeLightEntity
+import expo.modules.vescapecore.database.AccessoryCapabilitySettingsEntity
+import expo.modules.vescapecore.database.AccessoryGroundClearanceEntity
 import expo.modules.vescapecore.telemetry.AccessoryPersistence
-import expo.modules.vescapecore.telemetry.SavedAccessoryEntity
-import expo.modules.vescapecore.telemetry.VescapeDatabase
+import expo.modules.vescapecore.database.SavedAccessoryEntity
+import expo.modules.vescapecore.database.VescapeDatabase
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -391,7 +391,7 @@ object AccessorySessionManager {
     // MARK: - Internals
 
     private fun persistence(context: Context) =
-        AccessoryPersistence(VescapeDatabase.get(context).telemetryDao())
+        AccessoryPersistence(VescapeDatabase.get(context).vescapeDao())
 
     private fun link(row: SavedAccessoryEntity): AccessoryLink =
         links.getOrPut(row.accessoryId) {

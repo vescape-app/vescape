@@ -2,7 +2,7 @@ import Foundation
 import GRDB
 
 /// Raw keyset page, ordered by timestamp and row id so equal timestamps cannot lose fixes.
-/// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/TelemetryDao.kt `getRideExportTrackPage`
+/// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/database/VescapeDao.kt `getRideExportTrackPage`
 internal func rideExportTrackPage(_ db: Database, fromMs: Int64, toMs: Int64, boardId: String?,
   afterMs: Int64, afterId: Int64) throws -> [Row] {
   try Row.fetchAll(db, sql: """
@@ -125,8 +125,8 @@ internal enum RideExport {
   }
 
   /// Reconstruct the stored mask chain even for Android archives imported on iOS.
-  /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/TelemetryDao.kt `getRideExportKeyframe`
-  /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/TelemetryDao.kt `getRideExportTelemetryPage`
+  /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/database/VescapeDao.kt `getRideExportKeyframe`
+  /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/database/VescapeDao.kt `getRideExportTelemetryPage`
   static func writeCsv(_ db: Database, fromMs: Int64, toMs: Int64, boardId: String?,
     write: (String) throws -> Void) throws {
     try write(csvLine(csvHeaders))

@@ -6,6 +6,7 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 import androidx.sqlite.db.SupportSQLiteDatabase
 import java.lang.reflect.Proxy
+import expo.modules.vescapecore.database.VescapeDatabase
 
 class BoardBatteryConfigTest {
   @Test

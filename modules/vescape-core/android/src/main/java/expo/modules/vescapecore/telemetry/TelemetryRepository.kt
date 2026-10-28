@@ -22,6 +22,35 @@ import kotlin.math.abs
 import kotlin.math.roundToInt
 import kotlin.math.roundToLong
 import expo.modules.vescapecore.recording.RecordingStorageFailure
+import expo.modules.vescapecore.database.AppSettings
+import expo.modules.vescapecore.database.DatabaseReplacementFence
+import expo.modules.vescapecore.database.DiagnosticEventEntity
+import expo.modules.vescapecore.database.FavoriteEntity
+import expo.modules.vescapecore.database.MetricExclusionRangeEntity
+import expo.modules.vescapecore.database.PrivacyZoneEntity
+import expo.modules.vescapecore.database.RideTrackPointEntity
+import expo.modules.vescapecore.database.TELEMETRY_FLAG_KEYFRAME
+import expo.modules.vescapecore.database.TELEMETRY_MASK_ADC1
+import expo.modules.vescapecore.database.TELEMETRY_MASK_ADC2
+import expo.modules.vescapecore.database.TELEMETRY_MASK_BALANCE_CURRENT
+import expo.modules.vescapecore.database.TELEMETRY_MASK_BALANCE_PITCH
+import expo.modules.vescapecore.database.TELEMETRY_MASK_BATTERY_CURRENT
+import expo.modules.vescapecore.database.TELEMETRY_MASK_BATTERY_VOLTAGE
+import expo.modules.vescapecore.database.TELEMETRY_MASK_DUTY
+import expo.modules.vescapecore.database.TELEMETRY_MASK_ERPM
+import expo.modules.vescapecore.database.TELEMETRY_MASK_MOTOR_CURRENT
+import expo.modules.vescapecore.database.TELEMETRY_MASK_ODOMETER
+import expo.modules.vescapecore.database.TELEMETRY_MASK_PITCH
+import expo.modules.vescapecore.database.TELEMETRY_MASK_ROLL
+import expo.modules.vescapecore.database.TELEMETRY_MASK_SPEED
+import expo.modules.vescapecore.database.TELEMETRY_MASK_STATE
+import expo.modules.vescapecore.database.TELEMETRY_MASK_SWITCH_STATE
+import expo.modules.vescapecore.database.TELEMETRY_MASK_TEMP_MOSFET
+import expo.modules.vescapecore.database.TELEMETRY_MASK_TEMP_MOTOR
+import expo.modules.vescapecore.database.TelemetryFrameEntity
+import expo.modules.vescapecore.database.TelemetryMarkerEntity
+import expo.modules.vescapecore.database.TelemetryMinuteBucketEntity
+import expo.modules.vescapecore.database.VescapeDatabase
 
 private const val TAG = "TelemetryStore"
 private const val KEYFRAME_INTERVAL_MS = 60_000L
@@ -94,7 +123,7 @@ data class TelemetryCapture(
 class TelemetryRepository private constructor(context: Context) {
   private val appContext = context.applicationContext
   private val db = VescapeDatabase.get(context)
-  private val dao = db.telemetryDao()
+  private val dao = db.vescapeDao()
   // @parity /modules/vescape-core/ios/telemetry/TelemetryRepository.swift `exportRideGpx`
   suspend fun exportRideGpx(options: Map<String, Any?>): Map<String, Any> = withContext(Dispatchers.IO) {
     VescapeDatabase.withRideExportSnapshot(appContext) { RideExport.gpx(it, appContext.cacheDir, options) }

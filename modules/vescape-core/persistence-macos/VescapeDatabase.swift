@@ -1,1 +1,1 @@
-../ios/telemetry/VescapeDatabase.swift
+../ios/database/VescapeDatabase.swift

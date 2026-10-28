@@ -1,4 +1,4 @@
-package expo.modules.vescapecore.telemetry
+package expo.modules.vescapecore.database
 
 import java.io.File
 

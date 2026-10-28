@@ -1,8 +1,8 @@
 package expo.modules.vescapecore.faults
 
 import android.content.Context
-import expo.modules.vescapecore.telemetry.VescapeDatabase
-import expo.modules.vescapecore.telemetry.VescFaultOccurrenceEntity
+import expo.modules.vescapecore.database.VescapeDatabase
+import expo.modules.vescapecore.database.VescFaultOccurrenceEntity
 import expo.modules.vescapecore.recording.RecordingStorageFailure
 import java.util.UUID
 import kotlin.coroutines.cancellation.CancellationException
@@ -216,7 +216,7 @@ class VescFaultCoordinator(
       return instance ?: synchronized(this) {
         instance ?: run {
           val appContext = context.applicationContext
-          val dao = VescapeDatabase.get(appContext).telemetryDao()
+          val dao = VescapeDatabase.get(appContext).vescapeDao()
           VescFaultCoordinator(store = RoomVescFaultStore(dao)).also { instance = it }
         }
       }
@@ -246,7 +246,7 @@ private fun VescFaultOccurrence.toEntity(): VescFaultOccurrenceEntity = VescFaul
 
 /** Production [VescFaultStore] backed by the shared Room DAO. */
 private class RoomVescFaultStore(
-  private val dao: expo.modules.vescapecore.telemetry.TelemetryDao,
+  private val dao: expo.modules.vescapecore.database.VescapeDao,
 ) : VescFaultStore {
   override suspend fun getForBoard(boardId: String): List<VescFaultOccurrence> =
     dao.getVescFaults(boardId).map { it.toModel() }

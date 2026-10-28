@@ -1,4 +1,4 @@
-package expo.modules.vescapecore.telemetry
+package expo.modules.vescapecore.database
 
 import kotlinx.coroutines.runBlocking
 import androidx.room.useReaderConnection
@@ -16,8 +16,12 @@ import java.util.Date
 import java.util.Locale
 import java.util.TimeZone
 import java.util.UUID
+import expo.modules.vescapecore.telemetry.AppDataRepository
+import expo.modules.vescapecore.telemetry.ProfileStatsRepository
+import expo.modules.vescapecore.telemetry.RideHistoryRepository
+import expo.modules.vescapecore.telemetry.TelemetryRepository
 
-// @parity /modules/vescape-core/ios/telemetry/DatabaseBackupManager.swift
+// @parity /modules/vescape-core/ios/database/DatabaseBackupManager.swift
 object DatabaseBackupManager {
   suspend fun createBackup(context: Context): Map<String, Any?> {
     val appContext = context.applicationContext
@@ -76,7 +80,7 @@ object DatabaseBackupManager {
       }
     }
 
-    val dbFile = appContext.getDatabasePath(TELEMETRY_DATABASE_NAME)
+    val dbFile = appContext.getDatabasePath(DATABASE_NAME)
     dbFile.parentFile?.mkdirs()
     try {
       resetRepositoriesAndCloseDatabase()
@@ -84,6 +88,7 @@ object DatabaseBackupManager {
         validateDatabase(installed, manifestVersion.copy(declaredVersion = manifestVersion.roomVersion))
         try {
           verifyRoomDatabase(appContext)
+          dropUnknownTables(appContext)
           MySounds.replaceFromBackup(appContext, soundStage)
         } catch (error: Exception) {
           resetRepositoriesAndCloseDatabase()
@@ -102,6 +107,16 @@ object DatabaseBackupManager {
   private fun verifyRoomDatabase(context: Context) = runBlocking {
     VescapeDatabase.get(context).useReaderConnection { reader ->
       reader.usePrepared("SELECT 1") { query -> check(query.step()) }
+    }
+  }
+
+  /** Runs after Room has migrated the restore, so no migration loses a table it still reads. */
+  private fun dropUnknownTables(context: Context) = runBlocking {
+    VescapeDatabase.get(context).useWriterConnection { writer ->
+      val tables = writer.usePrepared("SELECT name FROM sqlite_master WHERE type='table'") { query ->
+        buildList { while (query.step()) add(query.getText(0)) }
+      }
+      unknownTableDrops(tables).forEach { writer.execSQL(it) }
     }
   }
 

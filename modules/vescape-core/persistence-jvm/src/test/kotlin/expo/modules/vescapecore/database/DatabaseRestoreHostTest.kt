@@ -1,4 +1,4 @@
-package expo.modules.vescapecore.telemetry
+package expo.modules.vescapecore.database
 
 import androidx.room.Room
 import androidx.sqlite.driver.bundled.BundledSQLiteDriver
@@ -10,6 +10,11 @@ import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import kotlinx.coroutines.runBlocking
+import expo.modules.vescapecore.telemetry.BucketRoutePreview
+import expo.modules.vescapecore.telemetry.RecordingPersistence
+import expo.modules.vescapecore.telemetry.bucketPreviewFixes
+import expo.modules.vescapecore.telemetry.buildTelemetryBuckets
+import expo.modules.vescapecore.telemetry.toBucketLocationPoints
 
 class DatabaseRestoreHostTest {
   private fun open(path: String) =
@@ -23,7 +28,7 @@ class DatabaseRestoreHostTest {
       "export-android" -> {
         val database = exchange.resolve("android.sqlite")
         val room = open(database.path)
-        val dao = room.telemetryDao()
+        val dao = room.vescapeDao()
         dao.upsertBoard(BoardEntity("cross-board", "Cross Board", "cross-ble", 100))
         dao.upsertBoardSetting(BoardSettingEntity("cross-board", "description", "\"durable\"", 101))
         dao.upsertAppSetting(AppSettingEntity("cross-setting", "\"android\"", 102))
@@ -54,7 +59,7 @@ class DatabaseRestoreHostTest {
         // From v54 iOS writes the shared schema, so the archive needs no reconciliation.
         assertMatchesSharedSchema("restored-ios", database.toPath())
         val room = open(database.path)
-        val dao = room.telemetryDao()
+        val dao = room.vescapeDao()
         assertEquals("Cross Board", dao.getBoard("cross-board")?.name)
         val previewFixes = bucketPreviewFixes()
         for ((minute, points) in previewFixes.groupBy { it.fixAtMs / 60000 * 60000 }) {
@@ -84,12 +89,17 @@ class DatabaseRestoreHostTest {
         BundledSQLiteDriver().open(v53.path).use { connection ->
           iosSchemaReconciliationStatements(hasDeletedAt = true, hasFaultCaptures = true, bootstrapLegacyTune = false)
             .forEach(connection::execSQL)
-          TelemetryMigrations.MIGRATION_53_54.migrate(connection)
+          DatabaseMigrations.MIGRATION_53_54.migrate(connection)
           connection.execSQL("PRAGMA user_version = 54")
+          val tables = connection.prepare("SELECT name FROM sqlite_master WHERE type='table'").use { query ->
+            buildList { while (query.step()) add(query.getText(0)) }
+          }
+          assertEquals(listOf("DROP TABLE `stray_from_old_app`"), unknownTableDrops(tables))
+          unknownTableDrops(tables).forEach(connection::execSQL)
         }
         assertMatchesSharedSchema("restored-ios-v53", v53.toPath())
         val v53Room = open(v53.path)
-        val v53Dao = v53Room.telemetryDao()
+        val v53Dao = v53Room.vescapeDao()
         assertEquals("\"98\"", v53Dao.getBoardSettings("v53-board").single { it.key == "transport" }.valueJson)
         assertEquals(emptyList<String>(), v53Dao.getBoardSettings("v53-gone").map { it.key })
         assertEquals(listOf(1000L), v53Dao.getVescFaultCaptureSamples("v53-fault").map { it.capturedAtMs })
@@ -182,16 +192,16 @@ class DatabaseRestoreHostTest {
     val target = directory.resolve("vescape.db")
     val incoming = directory.resolve("incoming.db")
     var database = open(target.path)
-    database.telemetryDao().upsertAppSetting(AppSettingEntity("sentinel", "\"original\"", 1)); database.close()
+    database.vescapeDao().upsertAppSetting(AppSettingEntity("sentinel", "\"original\"", 1)); database.close()
     database = open(incoming.path)
-    database.telemetryDao().upsertAppSetting(AppSettingEntity("sentinel", "\"candidate\"", 2)); database.close()
+    database.vescapeDao().upsertAppSetting(AppSettingEntity("sentinel", "\"candidate\"", 2)); database.close()
 
     var failed = false
     try {
       replaceDatabaseFiles(incoming, target) { installed ->
         database = open(installed.path)
         runBlocking {
-          assertEquals("\"candidate\"", database.telemetryDao().getAppSetting("sentinel")?.valueJson)
+          assertEquals("\"candidate\"", database.vescapeDao().getAppSetting("sentinel")?.valueJson)
         }
         database.close()
         error("forced failure after candidate open")
@@ -200,7 +210,7 @@ class DatabaseRestoreHostTest {
 
     assertTrue(failed)
     database = open(target.path)
-    assertEquals("\"original\"", database.telemetryDao().getAppSetting("sentinel")?.valueJson)
+    assertEquals("\"original\"", database.vescapeDao().getAppSetting("sentinel")?.valueJson)
     database.close()
     directory.deleteRecursively()
   }

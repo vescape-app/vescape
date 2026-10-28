@@ -6,6 +6,10 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import expo.modules.vescapecore.database.FavoriteEntity
+import expo.modules.vescapecore.database.FavoriteMediaEntity
+import expo.modules.vescapecore.database.TelemetryMinuteBucketEntity
+import expo.modules.vescapecore.database.VescapeDatabase
 
 /**
  * Favorites are durable pins over Ride History (ADR 0029). The summary is computed once from the raw

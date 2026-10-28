@@ -1,4 +1,4 @@
-package expo.modules.vescapecore.telemetry
+package expo.modules.vescapecore.database
 
 import androidx.sqlite.SQLiteConnection
 import androidx.sqlite.driver.bundled.BundledSQLiteDriver
@@ -21,7 +21,7 @@ import org.junit.Test
  * as an intermediate step (10, 23, 28, 30, 33–35, 37–39, 41, 44–47, 50) have no export; every
  * migration edge still runs on the way up from v3.
  */
-class TelemetryMigrationMatrixHostTest {
+class DatabaseMigrationMatrixHostTest {
   private val schemas = Path.of("../android/schemas")
 
   private fun manifest() = JSONObject(
@@ -34,7 +34,7 @@ class TelemetryMigrationMatrixHostTest {
       (0 until values.length()).map(values::getInt).toSet()
     }
     assertEquals(SUPPORTED_ANDROID_DATABASE_VERSIONS, declared)
-    assertEquals(TelemetryMigrations.all.map { it.startVersion }.toSet(), declared - VESCAPE_DATABASE_VERSION)
+    assertEquals(DatabaseMigrations.all.map { it.startVersion }.toSet(), declared - VESCAPE_DATABASE_VERSION)
   }
 
   private fun SQLiteConnection.exec(sql: String) = prepare(sql).use { it.step() }
@@ -51,7 +51,7 @@ class TelemetryMigrationMatrixHostTest {
   private fun migrate(db: SQLiteConnection, from: Int, to: Int) {
     var version = from
     while (version < to) {
-      val step = TelemetryMigrations.all.singleOrNull { it.startVersion == version }
+      val step = DatabaseMigrations.all.singleOrNull { it.startVersion == version }
         ?: error("No production migration from $version to $to")
       step.migrate(db)
       version = step.endVersion
@@ -60,7 +60,7 @@ class TelemetryMigrationMatrixHostTest {
   }
 
   private fun productionMigrations(reached: MutableSet<Pair<Int, Int>> = mutableSetOf()): List<Migration> =
-    TelemetryMigrations.all.map { step ->
+    DatabaseMigrations.all.map { step ->
       object : Migration(step.startVersion, step.endVersion) {
         override fun migrate(connection: SQLiteConnection) {
           step.migrate(connection)
@@ -75,7 +75,7 @@ class TelemetryMigrationMatrixHostTest {
       .addMigrations(*productionMigrations().toTypedArray())
       .build()
     try {
-      runBlocking { database.telemetryDao().getAppSetting("matrix-open") }
+      runBlocking { database.vescapeDao().getAppSetting("matrix-open") }
     } finally {
       database.close()
     }
@@ -126,7 +126,19 @@ class TelemetryMigrationMatrixHostTest {
       assertMatchesSharedSchema("migrated-from-export-v$start", path)
       Files.deleteIfExists(path)
     }
-    assertEquals(TelemetryMigrations.all.map { it.startVersion to it.endVersion }.toSet(), reached)
+    assertEquals(DatabaseMigrations.all.map { it.startVersion to it.endVersion }.toSet(), reached)
+  }
+
+  /**
+   * Room rewrites the current export on every build, so a file that is untracked or differs from
+   * git means the version was bumped without committing its export, or entities changed without a
+   * version bump.
+   */
+  @Test fun currentSchemaExportIsCommittedAsBuilt() {
+    val export = schemas.resolve("${VescapeRoomDatabase::class.qualifiedName}/$VESCAPE_DATABASE_VERSION.json").toString()
+    fun git(vararg args: String) = ProcessBuilder("git", *args).inheritIO().start().waitFor()
+    assertEquals("Commit $export", 0, git("ls-files", "--error-unmatch", export))
+    assertEquals("$export changed: bump VESCAPE_DATABASE_VERSION or commit the export", 0, git("diff", "--quiet", "--", export))
   }
 
   /** A v3 phone that never updated reaches today with its Board, telemetry, and buckets intact. */
@@ -272,7 +284,7 @@ class TelemetryMigrationMatrixHostTest {
    * Boards, a tombstone gets no preset rows, geiger falls back to the old rows, and a metric whose
    * old preset points were all disabled becomes Off while a partly disabled ladder keeps its level.
    * A plain Normal level is the app default and writes no row; an unset level stays an explicit Off.
-   * @parity /modules/vescape-core/ios/telemetry/TelemetryMigrationTests.swift `testPresetRowsMigrationKeepsBoardsApartAndHonoursDisabledPoints`
+   * @parity /modules/vescape-core/ios/database/DatabaseMigrationTests.swift `testPresetRowsMigrationKeepsBoardsApartAndHonoursDisabledPoints`
    */
   @Test fun presetRowsMigrationKeepsBoardsApartAndHonoursDisabledPoints() {
     val path = Files.createTempFile("vescape-v50-presets-", ".db").also(Files::delete)
@@ -325,7 +337,7 @@ class TelemetryMigrationMatrixHostTest {
    * v52 drops durable recording identity (ADR 0041): two recordings of one Board in one minute fold
    * into one bucket, legacy fixes without accuracy keep reading as precise, and Room opens the
    * result against the production entities.
-   * @parity /modules/vescape-core/ios/telemetry/TelemetryMigrationTests.swift `testDropRideRecordingsFoldsSharedMinutes`
+   * @parity /modules/vescape-core/ios/database/DatabaseMigrationTests.swift `testDropRideRecordingsFoldsSharedMinutes`
    */
   @Test fun dropRideRecordingsFoldsSharedMinutes() {
     val path = Files.createTempFile("vescape-v51-recordings-", ".db").also(Files::delete)

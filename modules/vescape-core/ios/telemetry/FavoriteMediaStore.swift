@@ -5,7 +5,7 @@ import GRDB
 /// One immutable Favorite Media manifest row. SQLite owns metadata; the canonical file path is
 /// derived only from the Favorite and media ids plus the stored MIME type.
 ///
-/// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/TelemetryEntities.kt `FavoriteMediaEntity`
+/// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/database/DatabaseEntities.kt `FavoriteMediaEntity`
 /// @parity /modules/vescape-core/src/index.ts `FavoriteMedia`
 struct FavoriteMedia {
   let id: String

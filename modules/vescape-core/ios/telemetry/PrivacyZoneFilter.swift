@@ -4,7 +4,7 @@ import Foundation
 /// and their telemetry samples are dropped. Coordinates are e7-scaled integers to match the
 /// stored column shapes and Android's `PrivacyZoneEntity`.
 ///
-/// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/TelemetryEntities.kt `PrivacyZoneEntity`
+/// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/database/DatabaseEntities.kt `PrivacyZoneEntity`
 internal struct PrivacyZoneEntity {
   let id: String
   let enabled: Bool

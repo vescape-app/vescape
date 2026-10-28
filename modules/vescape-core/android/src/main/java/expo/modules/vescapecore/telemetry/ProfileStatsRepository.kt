@@ -2,6 +2,9 @@ package expo.modules.vescapecore.telemetry
 
 import java.time.Instant
 import java.time.ZoneId
+import expo.modules.vescapecore.database.TelemetryMarkerEntity
+import expo.modules.vescapecore.database.TelemetryMinuteBucketEntity
+import expo.modules.vescapecore.database.VescapeDao
 
 /**
  * Minutes without a recorded sample that end a ride, when the rider has set no `rideSplitGapMinutes`.
@@ -12,7 +15,7 @@ data class ProfileStatsMonth(val year: Int, val month: Int)
 
 // @parity /modules/vescape-core/ios/telemetry/ProfileStatsRepository.swift
 internal suspend fun readProfileStatsSnapshot(
-  dao: TelemetryDao,
+  dao: VescapeDao,
   options: Map<String, Any?>,
   gapMs: Long,
 ): Map<String, Any?> {
@@ -33,7 +36,7 @@ internal suspend fun readProfileStatsSnapshot(
 }
 
 private suspend fun readProfileMarkers(
-    dao: TelemetryDao,
+    dao: VescapeDao,
     buckets: List<TelemetryMinuteBucketEntity>,
     gapMs: Long,
   ): List<TelemetryMarkerEntity> {

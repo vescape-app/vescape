@@ -29,6 +29,9 @@ import java.io.IOException
 import java.util.concurrent.TimeUnit
 import kotlin.coroutines.resume
 import kotlin.coroutines.resumeWithException
+import expo.modules.vescapecore.database.AppSettings
+import expo.modules.vescapecore.database.DatabaseReplacementFence
+import expo.modules.vescapecore.database.VescapeDatabase
 
 private const val TAG = "MaintenanceRunner"
 /** Startup settles before the first pass: JS, BLE and the first flushes go first. */
@@ -129,7 +132,7 @@ internal object MaintenanceRunner {
     val fence = DatabaseReplacementFence.process
     val ticket = fence.ticket()
     val runScope = MaintenanceJobScope(
-      dao = { VescapeDatabase.get(appContext).telemetryDao() },
+      dao = { VescapeDatabase.get(appContext).vescapeDao() },
       fence = fence,
       ticket = ticket,
       progress = { done, total -> progress(job.id, done, total) },

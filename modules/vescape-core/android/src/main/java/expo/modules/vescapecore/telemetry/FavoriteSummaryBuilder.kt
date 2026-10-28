@@ -1,5 +1,9 @@
 package expo.modules.vescapecore.telemetry
 
+import expo.modules.vescapecore.database.FavoriteEntity
+import expo.modules.vescapecore.database.TelemetryMinuteBucketEntity
+import expo.modules.vescapecore.database.VescapeDao
+
 /**
  * Denormalized ride stats for one Favorite range, mirroring the history session summary fields.
  *
@@ -19,7 +23,7 @@ internal data class FavoriteSummary(
 /** App-used create/update transaction mapping, injectable only for the host persistence contract. */
 /** @parity /modules/vescape-core/ios/telemetry/FavoriteStore.swift `persistFavorite` */
 internal suspend fun persistFavorite(
-  dao: TelemetryDao,
+  dao: VescapeDao,
   existingId: String?,
   range: TelemetryTimeRange,
   boardId: String?,

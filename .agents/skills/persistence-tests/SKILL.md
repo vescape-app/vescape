@@ -16,7 +16,7 @@ fixture under `modules/vescape-core/shared/` and both platform implementations l
 For design context, consult the relevant section of the
 [reliability plan](../../../docs/persistence-reliability-plan.md).
 
-- Android contracts: `modules/vescape-core/persistence-jvm/src/test/kotlin/expo/modules/vescapecore/telemetry/`.
+- Android contracts: `modules/vescape-core/persistence-jvm/src/test/kotlin/expo/modules/vescapecore/` — `database/` for schema, migration, and backup tests; `telemetry/` for the stores.
 - Swift contracts: `modules/vescape-core/persistence-macos/main.swift`.
 - Orchestration: `scripts/test-persistence.ts`.
 

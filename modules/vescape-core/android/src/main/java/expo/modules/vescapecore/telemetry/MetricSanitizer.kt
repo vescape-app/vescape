@@ -6,6 +6,9 @@ import expo.modules.vescapecore.telemetry.sanitizers.MetricExclusionSample
 import expo.modules.vescapecore.telemetry.sanitizers.MetricSanitizationContext
 import expo.modules.vescapecore.telemetry.sanitizers.preciseGpsTrack
 import kotlin.math.roundToInt
+import expo.modules.vescapecore.database.AppSettings
+import expo.modules.vescapecore.database.MetricExclusionRangeEntity
+import expo.modules.vescapecore.database.RideTrackPointEntity
 
 // @parity /modules/vescape-core/ios/telemetry/MetricSanitizer.swift
 internal const val DEFAULT_MOVING_SPEED_THRESHOLD_CENTI_KMH = 300

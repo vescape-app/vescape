@@ -4,6 +4,7 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Test
 import java.time.ZoneId
+import expo.modules.vescapecore.database.TelemetryMinuteBucketEntity
 
 class ProfileStatsRepositoryTest {
   private val utc = ZoneId.of("UTC")

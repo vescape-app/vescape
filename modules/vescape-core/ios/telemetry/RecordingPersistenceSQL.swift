@@ -81,7 +81,7 @@ enum RecordingPersistenceSQL {
 extension RecordingPersistenceSQL {
   /// The recording transaction calls this after its frame writes. Preview replacement and raw GPS
   /// insertion share the caller's transaction; any later failure rolls both back.
-  /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/TelemetryDao.kt `insertBatch`
+  /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/database/VescapeDao.kt `insertBatch`
   static func insertTrackAndBuckets(_ db: Database, track: [RideTrackPoint], buckets: [TelemetryBucket]) throws {
     for point in track { try insertRideTrackPoint(db, point) }
     for bucket in buckets {

@@ -9,6 +9,8 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.io.File
 import java.lang.reflect.Proxy
+import expo.modules.vescapecore.database.VescapeDao
+import expo.modules.vescapecore.database.VescapeDatabase
 
 /**
  * Board tombstones (ADR 0027): deleting a Board stamps `boards.deleted_at` instead of removing the
@@ -54,7 +56,7 @@ class BoardTombstoneTest {
   } as Cursor
 
   private fun daoSource(): String =
-    File("src/main/java/expo/modules/vescapecore/telemetry/TelemetryDao.kt").readText()
+    File("src/main/java/expo/modules/vescapecore/database/VescapeDao.kt").readText()
 
   /**
    * Additive and nullable: existing rows stay null, which is what "alive" means. A `NOT NULL DEFAULT`

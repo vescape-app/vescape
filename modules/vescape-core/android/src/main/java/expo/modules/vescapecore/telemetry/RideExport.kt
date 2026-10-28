@@ -9,6 +9,10 @@ import java.time.ZoneOffset
 import java.time.format.DateTimeFormatter
 import java.util.Locale
 import java.util.UUID
+import expo.modules.vescapecore.database.RideTrackPointEntity
+import expo.modules.vescapecore.database.TELEMETRY_FLAG_KEYFRAME
+import expo.modules.vescapecore.database.VescapeDao
+import expo.modules.vescapecore.database.VescapeRoomDatabase
 
 /** Export intent and temporary-file result cross the bridge; null Board means unassigned Board.
  * @parity /modules/vescape-core/ios/telemetry/RideExport.swift
@@ -17,19 +21,19 @@ import java.util.UUID
  */
 internal object RideExport {
   // Driver-backed export Room instance: one WAL read snapshot across all generated DAO calls.
-  suspend fun <T> snapshot(db: VescapeRoomDatabase, block: suspend (TelemetryDao) -> T): T =
-    db.useReaderConnection { reader -> reader.deferredTransaction { block(db.telemetryDao()) } }
+  suspend fun <T> snapshot(db: VescapeRoomDatabase, block: suspend (VescapeDao) -> T): T =
+    db.useReaderConnection { reader -> reader.deferredTransaction { block(db.vescapeDao()) } }
 
   const val BATCH_SIZE = 1000
   private val time = DateTimeFormatter.ofPattern("uuuu-MM-dd'T'HH:mm:ss.SSS'Z'", Locale.ROOT).withZone(ZoneOffset.UTC)
 
-  suspend fun gpx(dao: TelemetryDao, directory: File, options: Map<String, Any?>): Map<String, Any> =
+  suspend fun gpx(dao: VescapeDao, directory: File, options: Map<String, Any?>): Map<String, Any> =
     file(dao, directory, options, false)
 
-  suspend fun csv(dao: TelemetryDao, directory: File, options: Map<String, Any?>): Map<String, Any> =
+  suspend fun csv(dao: VescapeDao, directory: File, options: Map<String, Any?>): Map<String, Any> =
     file(dao, directory, options, true)
 
-  private suspend fun file(dao: TelemetryDao, directory: File, options: Map<String, Any?>, csv: Boolean): Map<String, Any> {
+  private suspend fun file(dao: VescapeDao, directory: File, options: Map<String, Any?>, csv: Boolean): Map<String, Any> {
     val fromMs = (options["fromMs"] as? Number)?.toLong() ?: error("Missing export start")
     val toMs = (options["toMs"] as? Number)?.toLong() ?: error("Missing export end")
     require(fromMs <= toMs) { "Invalid export range" }
@@ -58,7 +62,7 @@ internal object RideExport {
   }
 
   // Caller holds a database snapshot for the complete export.
-  suspend fun writeGpx(dao: TelemetryDao, writer: Writer, fromMs: Long, toMs: Long,
+  suspend fun writeGpx(dao: VescapeDao, writer: Writer, fromMs: Long, toMs: Long,
     boardId: String?, name: String) {
     writer.write("<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n")
     writer.write("<gpx version=\"1.1\" creator=\"Vescape\" xmlns=\"http://www.topografix.com/GPX/1/1\" xmlns:gpxtpx=\"http://www.garmin.com/xmlschemas/TrackPointExtension/v2\"><trk><name>${xml(name)}</name><trkseg>\n")
@@ -91,7 +95,7 @@ internal object RideExport {
     if (text.any { it == ',' || it == '"' || it == '\r' || it == '\n' }) "\"${text.replace("\"", "\"\"")}\"" else text
   } + "\r\n"
 
-  suspend fun writeCsv(dao: TelemetryDao, writer: Writer, fromMs: Long, toMs: Long, boardId: String?) {
+  suspend fun writeCsv(dao: VescapeDao, writer: Writer, fromMs: Long, toMs: Long, boardId: String?) {
     writer.write(csvLine(csvHeaders))
     val gps = TrackCursor(dao, fromMs, toMs, boardId)
     var currentGps = gps.next()
@@ -153,7 +157,7 @@ internal object RideExport {
     else -> null
   }
 
-  private class TrackCursor(val dao: TelemetryDao, val fromMs: Long, val toMs: Long,
+  private class TrackCursor(val dao: VescapeDao, val fromMs: Long, val toMs: Long,
     val boardId: String?) {
     var rows = emptyList<RideTrackPointEntity>()
     var index = 0

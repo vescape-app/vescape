@@ -87,7 +87,7 @@ internal func shouldStoreWeatherObservation(
 }
 
 /// The newest stored row at or before `atMs`.
-/// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/TelemetryDao.kt `getLatestWeatherObservation`
+/// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/database/VescapeDao.kt `getLatestWeatherObservation`
 internal func latestWeatherObservation(_ db: Database, atMs: Int64) throws -> WeatherObservation? {
   try Row.fetchOne(
     db,
@@ -98,7 +98,7 @@ internal func latestWeatherObservation(_ db: Database, atMs: Int64) throws -> We
 
 /// The last row at or before `startMs` plus every row up to `endMs`: what a ride, a Favorite or a
 /// whole History page spans.
-/// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/TelemetryDao.kt `getWeatherObservationsSpanning`
+/// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/database/VescapeDao.kt `getWeatherObservationsSpanning`
 internal func weatherObservationsSpanning(_ db: Database, startMs: Int64, endMs: Int64) throws -> [WeatherObservation] {
   try Row.fetchAll(
     db,
@@ -116,7 +116,7 @@ internal func weatherObservationsSpanning(_ db: Database, startMs: Int64, endMs:
 
 /// Store `observation` when it earns a row after the newest one at or before it, inside the
 /// caller's write transaction so two writers cannot both decide on a stale previous row.
-/// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/TelemetryDao.kt `storeWeatherObservation`
+/// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/database/VescapeDao.kt `storeWeatherObservation`
 internal func storeWeatherObservation(_ db: Database, _ observation: WeatherObservation, force: Bool) throws -> Bool {
   let previous = try latestWeatherObservation(db, atMs: observation.observedAtMs)
   guard shouldStoreWeatherObservation(previous: previous, next: observation, force: force) else { return false }

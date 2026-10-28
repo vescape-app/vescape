@@ -5,6 +5,8 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.lang.reflect.Proxy
+import expo.modules.vescapecore.database.TuneProfileEntity
+import expo.modules.vescapecore.database.VescapeDatabase
 
 class TuneProfileCompatibilityTest {
   @Test

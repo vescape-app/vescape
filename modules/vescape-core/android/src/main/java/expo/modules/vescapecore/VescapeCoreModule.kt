@@ -66,15 +66,15 @@ import expo.modules.kotlin.modules.Module
 import expo.modules.kotlin.modules.ModuleDefinition
 import expo.modules.vescapecore.mappoints.MapPointApi
 import expo.modules.vescapecore.telemetry.AppDataRepository
-import expo.modules.vescapecore.telemetry.DatabaseBackupManager
+import expo.modules.vescapecore.database.DatabaseBackupManager
 import expo.modules.vescapecore.telemetry.MaintenanceRunner
 import expo.modules.vescapecore.telemetry.ProfileStatsRepository
 import expo.modules.vescapecore.telemetry.RideExport
 import expo.modules.vescapecore.telemetry.RideHistoryRepository
-import expo.modules.vescapecore.telemetry.TELEMETRY_DATABASE_NAME
+import expo.modules.vescapecore.database.DATABASE_NAME
 import expo.modules.vescapecore.telemetry.TelemetryRepository
-import expo.modules.vescapecore.telemetry.VescapeDatabase
-import expo.modules.vescapecore.telemetry.AlertRuleEntity
+import expo.modules.vescapecore.database.VescapeDatabase
+import expo.modules.vescapecore.database.AlertRuleEntity
 import expo.modules.vescapecore.telemetry.AlertPresetPersistence
 import expo.modules.vescapecore.location.LegalPolicyResolver
 import expo.modules.vescapecore.location.LegalPolicyResolution
@@ -1021,7 +1021,7 @@ class VescapeCoreModule : Module() {
     }
     AsyncFunction("getDatabaseSizeBytes") { promise: Promise ->
       RecordingStorageFailure.requireAvailable()
-      val dbFile = context.applicationContext.getDatabasePath(TELEMETRY_DATABASE_NAME)
+      val dbFile = context.applicationContext.getDatabasePath(DATABASE_NAME)
       try {
         promise.resolve(VescapeDatabase.databaseSizeBytes(dbFile))
       } catch (error: Exception) {

@@ -8,6 +8,8 @@ import java.io.InputStream
 import java.security.DigestInputStream
 import java.security.MessageDigest
 import java.util.UUID
+import expo.modules.vescapecore.database.FavoriteMediaEntity
+import expo.modules.vescapecore.database.VescapeDao
 
 /**
  * Native Favorite Media import and reconciliation (ADR 0030).
@@ -16,10 +18,10 @@ import java.util.UUID
  */
 internal class FavoriteMediaStore(
   private val root: File,
-  private val dao: TelemetryDao,
+  private val dao: VescapeDao,
   private val sourceOpener: (String) -> InputStream,
 ) {
-  constructor(context: Context, dao: TelemetryDao) : this(
+  constructor(context: Context, dao: VescapeDao) : this(
     root = File(context.filesDir, "favoriteMedia"),
     dao = dao,
     sourceOpener = { uri ->

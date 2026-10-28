@@ -1,6 +1,7 @@
 package expo.modules.vescapecore.telemetry
 
 import kotlin.math.cos
+import expo.modules.vescapecore.database.PrivacyZoneEntity
 
 private const val METERS_PER_E7_LATITUDE = 0.0111319
 

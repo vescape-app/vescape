@@ -4,7 +4,7 @@ internal const val METRIC_EXCLUSION_RANGE_MERGE_GAP_MS = 2_000L
 internal const val DEFAULT_FREE_SPIN_MAX_SPEED_DELTA_KMH = 12.0
 internal const val DEFAULT_FREE_SPIN_STATIONARY_BOARD_CAP_KMH = 15.0
 
-/** @parity /modules/vescape-core/ios/telemetry/VescapeDatabase.swift `UNKNOWN_TELEMETRY_BOARD_ID` */
+/** @parity /modules/vescape-core/ios/database/VescapeDatabase.swift `UNKNOWN_TELEMETRY_BOARD_ID` */
 internal const val UNKNOWN_TELEMETRY_BOARD_ID = ""
 
 /**

@@ -3,6 +3,9 @@ package expo.modules.vescapecore.telemetry
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import expo.modules.vescapecore.database.DatabaseMigrations
+import expo.modules.vescapecore.database.MigrationDatabase
+import expo.modules.vescapecore.database.MigrationStep
 
 /**
  * The schema edges that made Accessories, and the rider's calibration for them, durable.
@@ -12,13 +15,13 @@ import org.junit.Test
  * on the capability as well, and that a restored database from an older app reaches this shape
  * without losing the Accessories it never had.
  *
- * @parity /modules/vescape-core/ios/telemetry/PersistenceSchema.swift `createAccessories`
- * @parity /modules/vescape-core/ios/telemetry/PersistenceSchema.swift `createAccessoryGroundClearance`
+ * @parity /modules/vescape-core/ios/database/PersistenceSchema.swift `createAccessories`
+ * @parity /modules/vescape-core/ios/database/PersistenceSchema.swift `createAccessoryGroundClearance`
  */
 class AccessoryMigrationTest {
-  private fun migrationSql(step: TelemetryMigrationStep): List<String> {
+  private fun migrationSql(step: MigrationStep): List<String> {
     val sql = mutableListOf<String>()
-    val db = object : TelemetryMigrationDatabase {
+    val db = object : MigrationDatabase {
       override fun execSQL(statement: String) { sql += statement }
       override fun hasColumn(tableName: String, columnName: String) = false
     }
@@ -26,26 +29,26 @@ class AccessoryMigrationTest {
     return sql
   }
 
-  private fun migrationSql(): List<String> = migrationSql(TelemetryMigrations.MIGRATION_43_44)
+  private fun migrationSql(): List<String> = migrationSql(DatabaseMigrations.MIGRATION_43_44)
 
   @Test
   fun theAccessoryEdgesAreContiguousThroughSamplingSettings() {
-    assertEquals(43, TelemetryMigrations.MIGRATION_43_44.startVersion)
-    assertEquals(44, TelemetryMigrations.MIGRATION_43_44.endVersion)
-    assertEquals(44, TelemetryMigrations.MIGRATION_44_45.startVersion)
-    assertEquals(45, TelemetryMigrations.MIGRATION_44_45.endVersion)
-    assertEquals(45, TelemetryMigrations.MIGRATION_45_46.startVersion)
-    assertEquals(46, TelemetryMigrations.MIGRATION_45_46.endVersion)
-    assertEquals(46, TelemetryMigrations.MIGRATION_46_47.startVersion)
-    assertEquals(47, TelemetryMigrations.MIGRATION_46_47.endVersion)
-    assertEquals(47, TelemetryMigrations.MIGRATION_47_48.startVersion)
-    assertEquals(48, TelemetryMigrations.MIGRATION_47_48.endVersion)
-    assertTrue(TelemetryMigrations.all.contains(TelemetryMigrations.MIGRATION_47_48))
+    assertEquals(43, DatabaseMigrations.MIGRATION_43_44.startVersion)
+    assertEquals(44, DatabaseMigrations.MIGRATION_43_44.endVersion)
+    assertEquals(44, DatabaseMigrations.MIGRATION_44_45.startVersion)
+    assertEquals(45, DatabaseMigrations.MIGRATION_44_45.endVersion)
+    assertEquals(45, DatabaseMigrations.MIGRATION_45_46.startVersion)
+    assertEquals(46, DatabaseMigrations.MIGRATION_45_46.endVersion)
+    assertEquals(46, DatabaseMigrations.MIGRATION_46_47.startVersion)
+    assertEquals(47, DatabaseMigrations.MIGRATION_46_47.endVersion)
+    assertEquals(47, DatabaseMigrations.MIGRATION_47_48.startVersion)
+    assertEquals(48, DatabaseMigrations.MIGRATION_47_48.endVersion)
+    assertTrue(DatabaseMigrations.all.contains(DatabaseMigrations.MIGRATION_47_48))
   }
 
   @Test
   fun aCalibrationIsKeyedOnTheAccessoryAndTheCapability() {
-    val create = migrationSql(TelemetryMigrations.MIGRATION_44_45).single()
+    val create = migrationSql(DatabaseMigrations.MIGRATION_44_45).single()
     // The composite key is the point: one unit may declare a nose sensor and a tail sensor, and
     // they cannot share near/far distances or a correction direction. Keying on the Accessory alone
     // would make the second one overwrite the first.

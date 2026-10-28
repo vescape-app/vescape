@@ -1,4 +1,4 @@
-package expo.modules.vescapecore.telemetry
+package expo.modules.vescapecore.database
 
 import androidx.room.Dao
 import androidx.room.Insert
@@ -8,6 +8,26 @@ import androidx.room.Transaction
 import androidx.room.Update
 import androidx.room.Upsert
 import org.json.JSONObject
+import expo.modules.vescapecore.telemetry.AlertPresetPersistence
+import expo.modules.vescapecore.telemetry.BucketRoutePreview
+import expo.modules.vescapecore.telemetry.METRIC_EXCLUSION_RANGE_MERGE_GAP_MS
+import expo.modules.vescapecore.telemetry.MetricSanitizerConfig
+import expo.modules.vescapecore.telemetry.RideSummariesChunkResult
+import expo.modules.vescapecore.telemetry.RideSummariesContext
+import expo.modules.vescapecore.telemetry.TELEMETRY_BUCKET_SIZE_MS
+import expo.modules.vescapecore.telemetry.TelemetryTimeRange
+import expo.modules.vescapecore.telemetry.UNKNOWN_TELEMETRY_BOARD_ID
+import expo.modules.vescapecore.telemetry.WeatherBackfillCursor
+import expo.modules.vescapecore.telemetry.WeatherBackfillPage
+import expo.modules.vescapecore.telemetry.WeatherBackfillSegment
+import expo.modules.vescapecore.telemetry.WeatherObservation
+import expo.modules.vescapecore.telemetry.rebuildRideSummariesChunkImpl
+import expo.modules.vescapecore.telemetry.shouldStoreWeatherObservation
+import expo.modules.vescapecore.telemetry.storeWeatherBackfillImpl
+import expo.modules.vescapecore.telemetry.subtractProtectedTelemetryRanges
+import expo.modules.vescapecore.telemetry.tuneCompatibilityVersion
+import expo.modules.vescapecore.telemetry.weatherBackfillPageImpl
+import expo.modules.vescapecore.telemetry.weatherProtectionStart
 
 private const val RIDE_TRACK_RANGE_QUERY = """
   SELECT * FROM ride_track_points
@@ -16,9 +36,9 @@ private const val RIDE_TRACK_RANGE_QUERY = """
   ORDER BY fix_at_ms ASC
 """
 
-// @parity /modules/vescape-core/ios/telemetry/TelemetryDao.swift
+// @parity /modules/vescape-core/ios/telemetry/TelemetryRows.swift
 @Dao
-interface TelemetryDao {
+interface VescapeDao {
   @Insert
   suspend fun insertExclusionRange(exclusion: MetricExclusionRangeEntity): Long
 

@@ -1,4 +1,4 @@
-package expo.modules.vescapecore.telemetry
+package expo.modules.vescapecore.database
 
 import expo.modules.vescapecore.weather.WEATHER_ALERT_LEVEL_DEFAULT
 import androidx.room.ColumnInfo
@@ -6,6 +6,12 @@ import androidx.room.Entity
 import androidx.room.ForeignKey
 import androidx.room.Index
 import androidx.room.PrimaryKey
+import expo.modules.vescapecore.telemetry.DEFAULT_FREE_SPIN_MAX_SPEED_DELTA_KMH
+import expo.modules.vescapecore.telemetry.DEFAULT_FREE_SPIN_STATIONARY_BOARD_CAP_KMH
+import expo.modules.vescapecore.telemetry.DEFAULT_HISTORY_METRIC_HOT_RANGES
+import expo.modules.vescapecore.telemetry.DEFAULT_RIDE_SPLIT_GAP_MINUTES
+import expo.modules.vescapecore.telemetry.RideWeather
+import expo.modules.vescapecore.telemetry.WeatherObservation
 
 // @parity /modules/vescape-core/ios/alerts/AlertEngine.swift
 const val TELEMETRY_FLAG_KEYFRAME = 1
@@ -291,7 +297,7 @@ data class BoardEntity(
   val deletedAt: Long? = null,
 )
 
-/** Projection for Ride History name resolution — see `TelemetryDao.getBoardNames`. */
+/** Projection for Ride History name resolution — see `VescapeDao.getBoardNames`. */
 data class BoardNameRow(
   val id: String,
   val name: String,
@@ -935,7 +941,7 @@ data class AccessoryCapabilitySettingsEntity(
  * One stored Weather Observation (`weather_observations`). Keyed on the Open-Meteo observation
  * time: the same observation can never be stored twice.
  *
- * @parity /modules/vescape-core/ios/telemetry/PersistenceSchema.swift `createWeatherObservations`
+ * @parity /modules/vescape-core/ios/database/PersistenceSchema.swift `createWeatherObservations`
  */
 @Entity(tableName = "weather_observations")
 data class WeatherObservationEntity(

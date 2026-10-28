@@ -1,7 +1,7 @@
 package expo.modules.vescapecore.telemetry.sanitizers
 
 import expo.modules.vescapecore.telemetry.BucketTelemetryPoint
-import expo.modules.vescapecore.telemetry.RideTrackPointEntity
+import expo.modules.vescapecore.database.RideTrackPointEntity
 
 /**
  * [track] is the Ride Track over the same span, already reduced to fixes that pass the shared

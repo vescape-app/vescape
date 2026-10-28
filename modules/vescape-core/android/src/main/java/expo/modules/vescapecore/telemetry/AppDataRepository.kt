@@ -31,6 +31,16 @@ import org.json.JSONArray
 import org.json.JSONObject
 import java.util.UUID
 import expo.modules.vescapecore.alerts.normalizedAlertRepeatSeconds
+import expo.modules.vescapecore.database.AlertRuleEntity
+import expo.modules.vescapecore.database.AppSettingEntity
+import expo.modules.vescapecore.database.AppSettings
+import expo.modules.vescapecore.database.BoardConfigValuesEntity
+import expo.modules.vescapecore.database.BoardEntity
+import expo.modules.vescapecore.database.BoardSettingEntity
+import expo.modules.vescapecore.database.PrivacyZoneEntity
+import expo.modules.vescapecore.database.TuneHistoryEntryEntity
+import expo.modules.vescapecore.database.TuneProfileEntity
+import expo.modules.vescapecore.database.VescapeDatabase
 
 // @parity /modules/vescape-core/ios/telemetry/AppDataRepository.swift `AppDataScope`
 // @parity /modules/vescape-core/src/index.ts `AppDataChangedEvent`
@@ -194,7 +204,7 @@ private fun Any?.asStringKeyMap(): Map<String, Any?>? = when (this) {
 
 // @parity /modules/vescape-core/ios/telemetry/AppDataRepository.swift
 class AppDataRepository private constructor(private val context: Context) {
-  private val dao = VescapeDatabase.get(context).telemetryDao()
+  private val dao = VescapeDatabase.get(context).vescapeDao()
   private val tuneAlerts = TuneAlertPersistence(dao)
   private val boardSettings = BoardSettingsPersistence(dao)
 
@@ -236,7 +246,7 @@ class AppDataRepository private constructor(private val context: Context) {
     notifyDataChanged(AppDataScope.ALERTS)
   }
 
-  /** Tombstones the Board and hard-deletes its configuration; see [TelemetryDao.deleteBoardWithSettings]. */
+  /** Tombstones the Board and hard-deletes its configuration; see [VescapeDao.deleteBoardWithSettings]. */
   suspend fun deleteBoard(id: String): Unit = withContext(Dispatchers.IO) {
     boardSettings.deleteBoard(id, System.currentTimeMillis())
     notifyDataChanged(AppDataScope.BOARDS)

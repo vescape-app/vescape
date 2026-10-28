@@ -1,7 +1,7 @@
 import Foundation
 import GRDB
 
-/// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/TelemetryDao.kt
+/// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/database/VescapeDao.kt
 internal func insertFrame(_ db: Database, _ state: FullTelemetryState) throws {
   try TelemetryFrameRecord(state: state).insert(db)
 }

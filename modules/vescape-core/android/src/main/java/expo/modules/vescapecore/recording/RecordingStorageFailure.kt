@@ -16,7 +16,7 @@ import java.util.concurrent.Executors
 import io.sentry.Sentry
 import io.sentry.SentryLevel
 import expo.modules.vescapecore.diagnostics.NativeFailureReporter
-import expo.modules.vescapecore.telemetry.VescapeDatabase
+import expo.modules.vescapecore.database.VescapeDatabase
 
 internal enum class RecordingStorageFailureKind(val wireValue: String) {
     WriteFailed("write_failed"),

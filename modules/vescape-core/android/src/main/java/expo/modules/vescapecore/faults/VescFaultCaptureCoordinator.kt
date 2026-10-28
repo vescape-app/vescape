@@ -1,9 +1,9 @@
 package expo.modules.vescapecore.faults
 
 import android.content.Context
-import expo.modules.vescapecore.telemetry.VescapeDatabase
-import expo.modules.vescapecore.telemetry.VescFaultCaptureEntity
-import expo.modules.vescapecore.telemetry.VescFaultCaptureSampleEntity
+import expo.modules.vescapecore.database.VescapeDatabase
+import expo.modules.vescapecore.database.VescFaultCaptureEntity
+import expo.modules.vescapecore.database.VescFaultCaptureSampleEntity
 
 /**
  * One decoded Board sample retained inside a VESC Fault Capture.
@@ -179,7 +179,7 @@ class VescFaultCaptureCoordinator(
     fun get(context: Context): VescFaultCaptureCoordinator {
       return instance ?: synchronized(this) {
         instance ?: run {
-          val dao = VescapeDatabase.get(context.applicationContext).telemetryDao()
+          val dao = VescapeDatabase.get(context.applicationContext).vescapeDao()
           VescFaultCaptureCoordinator(RoomVescFaultCaptureStore(dao)).also { instance = it }
         }
       }
@@ -189,7 +189,7 @@ class VescFaultCaptureCoordinator(
 
 /** Production [VescFaultCaptureStore] backed by the shared Room DAO. */
 private class RoomVescFaultCaptureStore(
-  private val dao: expo.modules.vescapecore.telemetry.TelemetryDao,
+  private val dao: expo.modules.vescapecore.database.VescapeDao,
 ) : VescFaultCaptureStore {
   override suspend fun saveCapture(capture: VescFaultCapture, samples: List<VescFaultCaptureSample>) = dao.saveVescFaultCapture(
     VescFaultCaptureEntity(

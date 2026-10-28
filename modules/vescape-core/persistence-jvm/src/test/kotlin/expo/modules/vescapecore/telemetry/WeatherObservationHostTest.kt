@@ -7,6 +7,9 @@ import java.nio.file.Files
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.*
 import org.junit.Test
+import expo.modules.vescapecore.database.DatabaseReplacementFence
+import expo.modules.vescapecore.database.VescapeRoomDatabase
+import expo.modules.vescapecore.database.WeatherObservationEntity
 
 /**
  * Ride weather storage (#604) through the production Room DAO, recorder and fence.
@@ -28,7 +31,7 @@ class WeatherObservationHostTest {
 
   @Test fun launchRefreshWritesThenOnlyChangesAndFreshnessDo(): Unit = withDb { _, open ->
     var db = open()
-    val first = WeatherObservationRecorder({ db.telemetryDao() }, DatabaseReplacementFence())
+    val first = WeatherObservationRecorder({ db.vescapeDao() }, DatabaseReplacementFence())
     assertTrue("first refresh after launch", first.record(obs(0), first.ticket()))
     assertFalse("unchanged an hour later", first.record(obs(hour), first.ticket()))
     assertFalse("unchanged just under a day", first.record(obs(day - 1), first.ticket()))
@@ -39,21 +42,21 @@ class WeatherObservationHostTest {
 
     // A new process: its first refresh writes even when nothing changed, then the rules resume.
     db = open()
-    val relaunched = WeatherObservationRecorder({ db.telemetryDao() }, DatabaseReplacementFence())
+    val relaunched = WeatherObservationRecorder({ db.vescapeDao() }, DatabaseReplacementFence())
     assertTrue(relaunched.record(obs(2 * day + 2 * hour, temp = 15), relaunched.ticket()))
     assertFalse(relaunched.record(obs(2 * day + 3 * hour, temp = 15), relaunched.ticket()))
-    assertEquals(4, db.telemetryDao().getWeatherObservationsSpanning(0, 10 * day).size)
+    assertEquals(4, db.vescapeDao().getWeatherObservationsSpanning(0, 10 * day).size)
     db.close()
   }
 
   @Test fun repeatedApiTimestampNeverRenewsOrDuplicates(): Unit = withDb { _, open ->
     val db = open()
-    val recorder = WeatherObservationRecorder({ db.telemetryDao() }, DatabaseReplacementFence())
+    val recorder = WeatherObservationRecorder({ db.vescapeDao() }, DatabaseReplacementFence())
     assertTrue(recorder.record(obs(0), recorder.ticket()))
     assertFalse("same observation, new conditions", recorder.record(obs(0, temp = 30), recorder.ticket()))
     assertFalse(recorder.record(obs(day - hour), recorder.ticket()))
     assertFalse("cached answer a day later", recorder.record(obs(day - hour), recorder.ticket()))
-    val rows = db.telemetryDao().getWeatherObservationsSpanning(0, 10 * day)
+    val rows = db.vescapeDao().getWeatherObservationsSpanning(0, 10 * day)
     assertEquals(listOf(0L), rows.map { it.observedAtMs })
     assertEquals(14, rows.single().temperatureC)
     db.close()
@@ -71,18 +74,18 @@ class WeatherObservationHostTest {
   @Test fun restoreOrClearFencesALateWrite(): Unit = withDb { _, open ->
     val db = open()
     val fence = DatabaseReplacementFence()
-    val recorder = WeatherObservationRecorder({ db.telemetryDao() }, fence)
+    val recorder = WeatherObservationRecorder({ db.vescapeDao() }, fence)
     val staleTicket = recorder.ticket()
-    fence.fence { db.telemetryDao().clearAll() }
+    fence.fence { db.vescapeDao().clearAll() }
     assertFalse("landed before the clear, written after", recorder.record(obs(0), staleTicket))
-    assertTrue(db.telemetryDao().getWeatherObservationsSpanning(0, day).isEmpty())
+    assertTrue(db.vescapeDao().getWeatherObservationsSpanning(0, day).isEmpty())
     assertTrue("the fenced write did not use up the launch write", recorder.record(obs(hour), recorder.ticket()))
     db.close()
   }
 
   @Test fun clearKeepsTheRowsAFavoriteReads(): Unit = withDb { _, open ->
     val db = open()
-    val dao = db.telemetryDao()
+    val dao = db.vescapeDao()
     for (at in listOf(0L, 10 * day, 20 * day + 1, 21 * day, 30 * day)) dao.insertWeatherObservation(WeatherObservationEntity.of(obs(at)))
     dao.clearExcept(listOf(TelemetryTimeRange(21 * day, 22 * day)))
     assertEquals(listOf(20 * day + 1, 21 * day), dao.getWeatherObservationsSpanning(0, 40 * day).map { it.observedAtMs })
@@ -94,7 +97,7 @@ class WeatherObservationHostTest {
 
   @Test fun rideWeatherReadsTheApplicableRows(): Unit = withDb { _, open ->
     val db = open()
-    val dao = db.telemetryDao()
+    val dao = db.vescapeDao()
     // Sun all along, five minutes of rain inside a two-hour ride.
     dao.insertWeatherObservation(WeatherObservationEntity.of(obs(0, temp = 8, code = 0, gust = 15)))
     dao.insertWeatherObservation(WeatherObservationEntity.of(obs(hour, temp = 20, code = 61, gust = 40)))

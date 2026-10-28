@@ -16,6 +16,9 @@ import kotlinx.coroutines.runBlocking
 import org.json.JSONObject
 import org.junit.Assert.*
 import org.junit.Test
+import expo.modules.vescapecore.database.RideTrackPointEntity
+import expo.modules.vescapecore.database.TelemetryFrameEntity
+import expo.modules.vescapecore.database.VescapeRoomDatabase
 
 class RideExportHostTest {
   @Test fun exportSnapshotAllowsRecordingCommitAndKeepsLaterPagesStable(): Unit = runBlocking {
@@ -24,7 +27,7 @@ class RideExportHostTest {
     val db = Room.databaseBuilder<VescapeRoomDatabase>(path).setDriver(BundledSQLiteDriver()).build()
     val reader = db
     try {
-      val dao = db.telemetryDao()
+      val dao = db.vescapeDao()
       fun point(i: Int) = RideTrackPointEntity(boardId = "board", fixAtMs = i.toLong(),
         latitudeE7 = i, longitudeE7 = -i, accuracyCm = 100,
         gpsSpeedCentiMps = null, bearingCentiDeg = null, altitudeCm = null)
@@ -67,7 +70,7 @@ class RideExportHostTest {
     val db = Room.databaseBuilder<VescapeRoomDatabase>(File(dir, "test.db").path)
       .setDriver(BundledSQLiteDriver()).build()
     try {
-      val dao = db.telemetryDao()
+      val dao = db.vescapeDao()
       fun frame(i: Int): TelemetryFrameEntity {
         val key = i % fixture.getInt("keyframeEvery") == 0
         val v = arrayOfNulls<Int>(17)
@@ -147,7 +150,7 @@ class RideExportHostTest {
     val db = Room.databaseBuilder<VescapeRoomDatabase>(File(dir, "test.db").path)
       .setDriver(BundledSQLiteDriver()).build()
     try {
-      val dao = db.telemetryDao()
+      val dao = db.vescapeDao()
       fun point(i: Int) = RideTrackPointEntity(boardId = "board", fixAtMs = base + i / 3,
         latitudeE7 = 521234567 + i, longitudeE7 = -211234567, accuracyCm = if (i < prefix) 2001 else 2000,
         gpsSpeedCentiMps = if (i % 2 == 0) 456 else null, bearingCentiDeg = null, altitudeCm = if (i % 2 == 0) -1234 else null)

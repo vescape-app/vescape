@@ -64,7 +64,7 @@ final class AppDataRepository {
   // MARK: - Boards
 
   /// Live Boards only — a tombstoned Board is gone from every Rider-facing list (ADR 0027).
-  /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/TelemetryDao.kt `getBoards`
+  /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/database/VescapeDao.kt `getBoards`
   func getBoards() throws -> [[String: Any?]] {
     let persistence = try boardSettingsPersistence()
     let boards = try persistence.liveBoards()
@@ -75,7 +75,7 @@ final class AppDataRepository {
 
   /// Resolves tombstones too, deliberately: Ride History still has to name a deleted Board. Callers
   /// that act on a Board rather than describe one check `deletedAt` and refuse.
-  /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/TelemetryDao.kt `getBoard`
+  /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/database/VescapeDao.kt `getBoard`
   func getBoard(_ id: String) throws -> [String: Any?]? {
     let persistence = try boardSettingsPersistence()
     guard let board = try persistence.board(id: id) else { return nil }
@@ -133,7 +133,7 @@ final class AppDataRepository {
   /// Telemetry and Tune Profiles are untouched — both outlive the Board.
   ///
   /// A Board that is not there (or already deleted) is left alone.
-  /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/TelemetryDao.kt `deleteBoardWithSettings`
+  /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/database/VescapeDao.kt `deleteBoardWithSettings`
   func deleteBoard(_ id: String) throws {
     let deletedAt = nowMs()
     try boardSettingsPersistence().tombstoneBoard(id: id, deletedAt: deletedAt)
@@ -635,7 +635,7 @@ final class AppDataRepository {
   /// Durable app-scoped settings shape. A TS/Android/iOS parity triangle — the container tag covers
   /// every key; individual literals are not tagged separately (see AGENTS.md).
   /// @parity /modules/vescape-core/src/index.ts `AppSettings`
-  /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/TelemetryEntities.kt `AppSettings`
+  /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/database/DatabaseEntities.kt `AppSettings`
   static let defaultSettings: [String: Any] = [
     "liveHistoryLimit": 5,
     "autoConnect": true,
@@ -687,11 +687,11 @@ final class AppDataRepository {
     "boardMoveStrengthPercent": 60,
     "connectionSoundsEnabled": true,
     "soundPack": effectsPackFallback,
-    // @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/TelemetryEntities.kt `AppSettings`
+    // @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/database/DatabaseEntities.kt `AppSettings`
     // @parity /modules/vescape-core/src/index.ts `AppSettings`
     // @platform-diff iOS has no Android alarm/media stream selection; stored for shared settings and backups.
     "audioSource": "alarm",
-    // @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/TelemetryEntities.kt `AppSettings`
+    // @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/database/DatabaseEntities.kt `AppSettings`
     "voice": voiceMatching,
     "voiceLevel": voiceLevelDefault,
     "weatherRainAlertLevel": weatherAlertLevelDefault,

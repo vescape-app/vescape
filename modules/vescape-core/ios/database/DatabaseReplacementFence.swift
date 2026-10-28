@@ -4,7 +4,7 @@ import Foundation
 /// `ticket()` when its work starts; a fence bumps the generation, so a write whose ticket predates a
 /// restore or a clear is dropped instead of reaching the replacement database. Weather Observation
 /// writes and every Maintenance Job chunk go through it, so a fence waits for at most one write.
-/// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/DatabaseReplacementFence.kt `DatabaseReplacementFence`
+/// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/database/DatabaseReplacementFence.kt `DatabaseReplacementFence`
 final class DatabaseReplacementFence {
   /// The one fence every production writer, Restore and Clear all share.
   static let process = DatabaseReplacementFence()

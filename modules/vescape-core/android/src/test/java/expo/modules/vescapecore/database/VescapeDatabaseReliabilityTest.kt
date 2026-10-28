@@ -1,4 +1,4 @@
-package expo.modules.vescapecore.telemetry
+package expo.modules.vescapecore.database
 
 import java.io.IOException
 import java.nio.file.Files
@@ -8,7 +8,7 @@ import org.junit.Assert.assertFalse
 import org.junit.Assert.assertThrows
 import org.junit.Test
 
-/** @parity /modules/vescape-core/ios/telemetry/VescapeDatabaseReliabilityTests.swift */
+/** @parity /modules/vescape-core/ios/database/VescapeDatabaseReliabilityTests.swift */
 class VescapeDatabaseReliabilityTest {
   @Test fun `failed legacy move preserves original file`() {
     val root = Files.createTempDirectory("vescape-legacy").toFile()

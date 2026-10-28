@@ -1,4 +1,4 @@
-package expo.modules.vescapecore.telemetry
+package expo.modules.vescapecore.database
 
 /** Schema generations with a complete production Room migration path to the current database. */
 internal val SUPPORTED_ANDROID_DATABASE_VERSIONS: Set<Int> =
@@ -9,6 +9,48 @@ internal val EXPORTED_ANDROID_DATABASE_VERSIONS: Set<Int> =
   ((14..36) + (40..VESCAPE_DATABASE_VERSION)).toSet()
 internal val EXPORTED_IOS_DATABASE_VERSIONS: Set<Int> =
   (setOf(1) + (23..36) + (40..VESCAPE_DATABASE_VERSION)).toSet()
+
+/**
+ * Tables the current schema owns, matching `schema/database.json`. A restored database drops any
+ * other table once its migrations have run, so a stray table from an old or foreign app cannot
+ * survive into this one.
+ * @parity /modules/vescape-core/ios/database/DatabaseBackupManager.swift `sharedDatabaseTables`
+ */
+internal val SHARED_DATABASE_TABLES: Set<String> = setOf(
+  "accessories",
+  "accessory_brake_light",
+  "accessory_capability_settings",
+  "accessory_ground_clearance",
+  "alerts",
+  "app_settings",
+  "board_config_change_notices",
+  "board_config_values",
+  "board_settings",
+  "board_warnings",
+  "boards",
+  "diagnostic_events",
+  "favorite_media",
+  "favorites",
+  "metric_exclusion_ranges",
+  "motor_config_values",
+  "privacy_zones",
+  "ride_track_points",
+  "telemetry_frames",
+  "telemetry_markers",
+  "telemetry_minute_buckets",
+  "tune_history_entries",
+  "tune_profiles",
+  "vesc_fault_capture_samples",
+  "vesc_fault_captures",
+  "vesc_fault_occurrences",
+  "weather_observations",
+)
+
+private val ENGINE_TABLES = setOf("room_master_table", "android_metadata", "grdb_migrations")
+
+internal fun unknownTableDrops(tables: List<String>): List<String> = tables
+  .filterNot { it in SHARED_DATABASE_TABLES || it in ENGINE_TABLES || it.startsWith("sqlite_") }
+  .map { "DROP TABLE `$it`" }
 
 internal fun roomVersionForBackup(platform: String, version: Int): Int = when (platform) {
   "android" -> version.also { require(it in EXPORTED_ANDROID_DATABASE_VERSIONS) }
@@ -25,7 +67,7 @@ internal fun requireSupportedAndroidDatabaseVersion(version: Int) {
 
 /**
  * SQL shared by the Android adapter and JVM host when accepting a GRDB-owned schema from before v54.
- * @parity /modules/vescape-core/ios/telemetry/VescapeDatabase.swift `v54_shared_schema`
+ * @parity /modules/vescape-core/ios/database/VescapeDatabase.swift `v54_shared_schema`
  */
 internal fun iosSchemaReconciliationStatements(
   hasDeletedAt: Boolean,

@@ -5,7 +5,7 @@ import GRDB
 /// privacy zones, map points, settings) and telemetry tables — mirroring the single Android Room
 /// database. GRDB `DatabasePool` opens in WAL mode by default, matching Room's WAL concurrency.
 ///
-/// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/VescapeDatabase.kt
+/// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/database/VescapeDatabase.kt
 /// @platform-diff iOS is greenfield, so the schema starts at a single `v1` migration that creates
 /// the final table shapes directly instead of replaying Android's incremental Room migrations. The
 /// telemetry tables are created schema-only here; their writers land in later slices (#60/#61/#63).
@@ -47,7 +47,7 @@ enum VescapeDatabase {
   /// One-time file rename from the pre-release "telemetry.db" name. Checkpoints the legacy WAL so
   /// the whole database lives in the main file, then renames it in place. Idempotent: once the new
   /// file exists (or no legacy file is present) this is a no-op.
-  /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/VescapeDatabase.kt `migrateLegacyDatabaseFile`
+  /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/database/VescapeDatabase.kt `migrateLegacyDatabaseFile`
   internal static func migrateLegacyDatabaseFile(to url: URL) throws {
     let fm = FileManager.default
     let legacy = url.deletingLastPathComponent().appendingPathComponent(legacyDatabaseName)
@@ -130,7 +130,7 @@ enum VescapeDatabase {
   /// aligned with Room versions. These are the production Room 14→22 operations expressed through
   /// GRDB so an old Android archive follows the same data-preserving path on iOS.
   ///
-  /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/TelemetryMigrations.kt `MIGRATION_14_15` through `MIGRATION_21_22`
+  /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/database/DatabaseMigrations.kt `MIGRATION_14_15` through `MIGRATION_21_22`
   internal static func upgradeExportedAndroidDatabase(_ db: Database, from version: Int) throws {
     guard version < 22 else { return }
     guard version >= 14 else {
@@ -277,7 +277,11 @@ enum VescapeDatabase {
       try stampAppliedMigrations(db, schemaVersion: max(schemaVersion, 22))
     }
     try migrator.migrate(pool)
-    try pool.read { db in _ = try Int.fetchOne(db, sql: "SELECT 1") }
+    try pool.write { db in
+      for table in try String.fetchAll(db, sql: "SELECT name FROM sqlite_master WHERE type='table'") where isUnknownTable(table) {
+        try db.execute(sql: "DROP TABLE `\(table)`")
+      }
+    }
     return pool
   }
 
@@ -540,7 +544,7 @@ enum VescapeDatabase {
       }
     }
 
-    // @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/VescapeDatabase.kt `MIGRATION_26_27`
+    // @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/database/VescapeDatabase.kt `MIGRATION_26_27`
     // Per-board Alert Rules (#254). Existing global rules are intentionally dropped; the former
     // global alert settings are now board-scoped settings.
     migrator.registerMigration("v27_alert_board_id") { db in
@@ -576,7 +580,7 @@ enum VescapeDatabase {
     // target it used to hold moves to app settings, which start empty here — a rider re-picks it.
     // GRDB keys migrations by name, so one migration covers both released and feature-branch
     // installs; Room needs two steps because it keys them by version number.
-    // @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/VescapeDatabase.kt `MIGRATION_28_29`
+    // @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/database/VescapeDatabase.kt `MIGRATION_28_29`
     migrator.registerMigration("v29_drop_map_points") { db in
       try db.execute(sql: "DROP TABLE IF EXISTS map_point_reactions")
       try db.execute(sql: "DROP TABLE IF EXISTS map_points")
@@ -585,21 +589,21 @@ enum VescapeDatabase {
     // MARK: Favorites (#287)
     // Durable, optionally named time ranges over Ride History (ADR 0029). Mirrors Android Room
     // migration 29→30.
-    // @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/VescapeDatabase.kt `MIGRATION_29_30`
+    // @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/database/VescapeDatabase.kt `MIGRATION_29_30`
     migrator.registerMigration("v30_favorites") { db in
       try PersistenceSchema.createFavorites(db)
     }
 
     // Favorite Media (#291). Native manifest metadata truth; bytes live in canonical Favorite-owned
     // app storage (ADR 0030).
-    // @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/VescapeDatabase.kt `MIGRATION_30_31`
+    // @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/database/VescapeDatabase.kt `MIGRATION_30_31`
     migrator.registerMigration("v31_favorite_media") { db in
       try PersistenceSchema.createFavoriteMedia(db)
     }
 
     // Per-rule repeat cadence and beep count (#348). Existing rows land on one-shot with the
     // former hardcoded 3 beeps, so nothing a rider already configured changes how it sounds.
-    // @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/VescapeDatabase.kt `MIGRATION_31_32`
+    // @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/database/VescapeDatabase.kt `MIGRATION_31_32`
     migrator.registerMigration("v32_alert_repeat") { db in
       let columns = try db.columns(in: "alerts").map(\.name)
       if !columns.contains("repeat_every_seconds") {
@@ -614,7 +618,7 @@ enum VescapeDatabase {
 
     // Last Known Board Config Values: latest decoded Refloat config per Board + base version,
     // restored as `lastKnown` on connect (#393).
-    // @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/VescapeDatabase.kt `MIGRATION_32_33`
+    // @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/database/VescapeDatabase.kt `MIGRATION_32_33`
     migrator.registerMigration("v33_board_config_values") { db in
       try PersistenceSchema.createBoardConfig(db)
     }
@@ -645,7 +649,7 @@ enum VescapeDatabase {
     /// Numbered `v40` rather than `v37` because Room reached the same shape at version 40. The
     /// identifiers in between only existed in development builds while the feature was being cut
     /// down; a database that recorded them is beyond this migrator and has to be reinstalled.
-    /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/VescapeDatabase.kt `MIGRATION_36_40`
+    /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/database/VescapeDatabase.kt `MIGRATION_36_40`
     migrator.registerMigration("v40_vesc_faults") { db in
       try PersistenceSchema.createVescFaults(db)
       try PersistenceSchema.createVescFaultCaptures(db)
@@ -763,7 +767,7 @@ enum VescapeDatabase {
     // Board tombstones (#279). Deleting a Board stops removing its row and stamps `deleted_at`
     // instead, so Ride History outlives the Board that produced it (ADR 0027). Additive: existing
     // rows stay null, i.e. alive.
-    // @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/VescapeDatabase.kt `MIGRATION_40_41`
+    // @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/database/VescapeDatabase.kt `MIGRATION_40_41`
     migrator.registerMigration("v41_board_deleted_at") { db in
       let hasDeletedAt = try db.columns(in: "boards").contains { $0.name == "deleted_at" }
       if !hasDeletedAt {
@@ -778,7 +782,7 @@ enum VescapeDatabase {
     //
     // Both tables are rebuilt rather than altered: the bucket primary key moves to
     // `(bucket_start_ms, board_id)`, and the rebuild is what drops the two retired columns.
-    // @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/VescapeDatabase.kt `MIGRATION_41_42`
+    // @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/database/VescapeDatabase.kt `MIGRATION_41_42`
     migrator.registerMigration("v42_telemetry_board_id") { db in
       try mintOrphanBoards(db)
       try buildDeviceBoardMap(db)
@@ -800,7 +804,7 @@ enum VescapeDatabase {
     // a row. Rides recorded before today gain no new points: their tracks come out exactly as
     // sparse as their telemetry was. Legacy rows get no recording identity either;
     // `rideSplitGapMinutes` still groups them.
-    // @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/TelemetryMigrations.kt `MIGRATION_42_43`
+    // @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/database/DatabaseMigrations.kt `MIGRATION_42_43`
     migrator.registerMigration("v43_ride_track") { db in
       try createRideRecordingTables(db)
       try migrateFrameGpsIntoRideTrack(db)
@@ -808,12 +812,12 @@ enum VescapeDatabase {
       try rebuildBucketsOnRecordingId(db)
     }
 
-    // @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/TelemetryMigrations.kt `MIGRATION_43_44`
+    // @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/database/DatabaseMigrations.kt `MIGRATION_43_44`
     migrator.registerMigration("v44_accessories") { db in
       try PersistenceSchema.createAccessories(db)
     }
 
-    // @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/TelemetryMigrations.kt `MIGRATION_44_45`
+    // @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/database/DatabaseMigrations.kt `MIGRATION_44_45`
     migrator.registerMigration("v45_accessory_ground_clearance") { db in
       try PersistenceSchema.createAccessoryGroundClearance(db)
     }
@@ -824,11 +828,11 @@ enum VescapeDatabase {
     migrator.registerMigration("v47_accessory_capability_settings") { db in
       try PersistenceSchema.createAccessoryCapabilitySettings(db)
     }
-    // @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/TelemetryMigrations.kt `MIGRATION_47_48`
+    // @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/database/DatabaseMigrations.kt `MIGRATION_47_48`
     migrator.registerMigration("v48_accessory_sampling_rate") { db in
       try db.execute(sql: "ALTER TABLE accessory_capability_settings ADD COLUMN sampling_rate_hz REAL")
     }
-    // @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/TelemetryMigrations.kt `MIGRATION_48_49`
+    // @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/database/DatabaseMigrations.kt `MIGRATION_48_49`
     migrator.registerMigration("v49_bucket_route_preview") { db in
       try db.execute(sql: "ALTER TABLE telemetry_minute_buckets ADD COLUMN route_preview TEXT")
     }
@@ -838,7 +842,7 @@ enum VescapeDatabase {
     // `preset:beep|urgent|notify` (and the older bare names) map to warning, critical, info. TTS,
     // geiger, and unknown strings keep their sound. `beep_count` is then dropped by copy, matching
     // Android, which cannot rely on `DROP COLUMN`.
-    // @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/TelemetryMigrations.kt `MIGRATION_49_50`
+    // @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/database/DatabaseMigrations.kt `MIGRATION_49_50`
     migrator.registerMigration("v50_alert_sound_count") { db in
       try db.execute(sql: alertSoundCountSql)
       try db.execute(sql: """
@@ -884,7 +888,7 @@ enum VescapeDatabase {
     // old preset rows, and `matchBoardConfig` becomes `match=on`. The column `sound_type` is renamed
     // `spec`, `source` is dropped by copy (matching Android), and the three obsolete Board Settings
     // are deleted.
-    // @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/TelemetryMigrations.kt `MIGRATION_50_51`
+    // @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/database/DatabaseMigrations.kt `MIGRATION_50_51`
     migrator.registerMigration("v51_preset_rows") { db in
       try db.execute(sql: """
         CREATE TABLE alerts_new (
@@ -928,7 +932,7 @@ enum VescapeDatabase {
     // bucket. Legacy fixes with no reported accuracy read as precise only through their missing
     // recording id, so they are stamped with the 20 m precision threshold first — a literal, so a
     // later threshold change cannot rewrite what this step did.
-    // @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/TelemetryMigrations.kt `MIGRATION_51_52`
+    // @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/database/DatabaseMigrations.kt `MIGRATION_51_52`
     migrator.registerMigration("v52_drop_ride_recordings") { db in
       try db.execute(sql: "UPDATE ride_track_points SET accuracy_cm = 2000 WHERE recording_id IS NULL AND accuracy_cm IS NULL")
       try rebuildRideTrackWithoutRecordingId(db)
@@ -936,7 +940,7 @@ enum VescapeDatabase {
       try foldBucketsWithoutRecordingId(db)
       try db.execute(sql: "DROP TABLE IF EXISTS ride_recordings")
     }
-    // @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/TelemetryMigrations.kt `MIGRATION_52_53`
+    // @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/database/DatabaseMigrations.kt `MIGRATION_52_53`
     migrator.registerMigration("v53_weather_observations") { db in
       try PersistenceSchema.createWeatherObservations(db)
     }
@@ -946,8 +950,8 @@ enum VescapeDatabase {
     // file has no such column and lacks the `alerts` and `tune_profiles` defaults, so both tables
     // are rebuilt with the same rows, exactly as Android's v54 does. Installs from before the
     // shared schema declared `vesc_fault_capture_samples.id` nullable; that table is rebuilt too.
-    // @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/TelemetryMigrations.kt `MIGRATION_53_54`
-    // @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/DatabaseUpgradeContract.kt `iosSchemaReconciliationStatements`
+    // @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/database/DatabaseMigrations.kt `MIGRATION_53_54`
+    // @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/database/DatabaseUpgradeContract.kt `iosSchemaReconciliationStatements`
     migrator.registerMigration("v54_shared_schema") { db in
       if try db.columns(in: "boards").contains(where: { $0.name == "transport" }) {
         // A tombstoned Board keeps no settings rows (ADR 0027).
@@ -972,7 +976,7 @@ enum VescapeDatabase {
     return migrator
   }
 
-  /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/TelemetryMigrations.kt `SHARED_SCHEMA_V54_SQL`
+  /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/database/DatabaseMigrations.kt `SHARED_SCHEMA_V54_SQL`
   private static let sharedSchemaV54Sql = [
     "CREATE TABLE alerts_v54 (board_id TEXT NOT NULL, id TEXT NOT NULL, control_id TEXT NOT NULL, threshold REAL NOT NULL, threshold_max REAL, threshold_kind TEXT NOT NULL DEFAULT 'fixed', config_field_id TEXT, threshold_offset REAL, threshold_max_offset REAL, enabled INTEGER NOT NULL, spec TEXT NOT NULL, created_at INTEGER NOT NULL, repeat_every_seconds INTEGER, PRIMARY KEY(board_id, id))",
     "INSERT INTO alerts_v54 (board_id, id, control_id, threshold, threshold_max, threshold_kind, config_field_id, threshold_offset, threshold_max_offset, enabled, spec, created_at, repeat_every_seconds) SELECT board_id, id, control_id, threshold, threshold_max, threshold_kind, config_field_id, threshold_offset, threshold_max_offset, enabled, spec, created_at, repeat_every_seconds FROM alerts",
@@ -990,7 +994,7 @@ enum VescapeDatabase {
     "CREATE INDEX index_tune_profiles_board_id_refloat_base_version ON tune_profiles(board_id, refloat_base_version)",
   ]
 
-  /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/TelemetryMigrations.kt `PRESET_ROWS_SQL`
+  /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/database/DatabaseMigrations.kt `PRESET_ROWS_SQL`
   private static let presetRowsSql = """
     INSERT OR REPLACE INTO alerts_new (board_id, id, control_id, threshold, threshold_max, enabled, spec, created_at)
     SELECT board_id, 'preset:' || metric, metric, 0, NULL, 1,
@@ -1028,7 +1032,7 @@ enum VescapeDatabase {
     WHERE NOT (level = 'normal' AND options = '')
     """
 
-  /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/TelemetryMigrations.kt `ALERT_SOUND_COUNT_SQL`
+  /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/database/DatabaseMigrations.kt `ALERT_SOUND_COUNT_SQL`
   private static let alertSoundCountSql = """
     UPDATE alerts SET sound_type = 'alert(' || MAX(1, MIN(5, beep_count)) || '):' ||
       CASE sound_type
@@ -1060,7 +1064,7 @@ internal let ORPHAN_BOARD_ID_PREFIX = "orphan-"
 ///
 /// The minted row is a tombstone with no Board Link: `deleted_at` keeps it out of every
 /// Rider-facing list, and a null `ble_id` stops it from ever capturing a future re-link.
-/// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/TelemetryMigrations.kt `mintOrphanBoards`
+/// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/database/DatabaseMigrations.kt `mintOrphanBoards`
 internal func mintOrphanBoards(_ db: Database) throws {
   let now = telemetryNowMs()
   for (table, timeColumn) in telemetryTablesKeyedOnDeviceId {
@@ -1097,7 +1101,7 @@ internal func mintOrphanBoards(_ db: Database) throws {
 /// are ordered by. All five are minted for and rebuilt together: a Board minted from one table's
 /// identifiers has to exist before any other table resolves the same identifier, or the two
 /// disagree about who owns the history — the defect this migration exists to remove.
-/// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/TelemetryMigrations.kt `TELEMETRY_TABLES_KEYED_ON_DEVICE_ID`
+/// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/database/DatabaseMigrations.kt `TELEMETRY_TABLES_KEYED_ON_DEVICE_ID`
 private let telemetryTablesKeyedOnDeviceId = [
   ("telemetry_frames", "captured_at_ms"),
   ("telemetry_minute_buckets", "bucket_start_ms"),
@@ -1108,7 +1112,7 @@ private let telemetryTablesKeyedOnDeviceId = [
 
 /// Scratch table holding the board-id migration's one and only BLE identifier → Board decision.
 /// Temp, so it belongs to the connection and never reaches the durable schema.
-/// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/TelemetryMigrations.kt `DEVICE_BOARD_MAP`
+/// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/database/DatabaseMigrations.kt `DEVICE_BOARD_MAP`
 private let DEVICE_BOARD_MAP = "telemetry_device_board_map"
 
 /// One BLE identifier can be claimed by more than one Board — the same peripheral linked twice,
@@ -1126,7 +1130,7 @@ private let DEVICE_BOARD_MAP = "telemetry_device_board_map"
 /// exist, stable because re-running the migration reaches the same answer. Deliberately not left
 /// unattributed: an unowned row is never uploaded and is pruned on age, so "unknown" would quietly
 /// destroy the history a merely mis-labelled ride keeps intact.
-/// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/TelemetryMigrations.kt `buildDeviceBoardMap`
+/// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/database/DatabaseMigrations.kt `buildDeviceBoardMap`
 internal func buildDeviceBoardMap(_ db: Database) throws {
   try db.execute(sql: """
     CREATE TEMP TABLE \(DEVICE_BOARD_MAP) (
@@ -1150,7 +1154,7 @@ internal func buildDeviceBoardMap(_ db: Database) throws {
 ///
 /// The lookup hits a primary key holding one row per identifier, so unlike a scan over `boards` it
 /// cannot resolve the same identifier two ways in two statements.
-/// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/TelemetryMigrations.kt `boardIdFromDeviceId`
+/// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/database/DatabaseMigrations.kt `boardIdFromDeviceId`
 private func boardIdFromDeviceId(_ alias: String, unattributed: String) -> String {
   """
   CASE
@@ -1163,7 +1167,7 @@ private func boardIdFromDeviceId(_ alias: String, unattributed: String) -> Strin
   """
 }
 
-/// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/TelemetryMigrations.kt `rebuildFramesOnBoardId`
+/// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/database/DatabaseMigrations.kt `rebuildFramesOnBoardId`
 private func rebuildFramesOnBoardId(_ db: Database) throws {
   let columns = """
     captured_at_ms, elapsed_realtime_ms, can_id, flags, changed_mask_1, changed_mask_2, \
@@ -1230,7 +1234,7 @@ private func rebuildFramesOnBoardId(_ db: Database) throws {
 
 /// The primary key move from `(bucket_start_ms, device_id)` to `(bucket_start_ms, board_id)` is a
 /// table rebuild, not an `ALTER`.
-/// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/TelemetryMigrations.kt `rebuildBucketsOnBoardId`
+/// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/database/DatabaseMigrations.kt `rebuildBucketsOnBoardId`
 private func rebuildBucketsOnBoardId(_ db: Database) throws {
   let columns = """
     bucket_start_ms, sample_count, first_sample_at_ms, last_sample_at_ms, \
@@ -1325,7 +1329,7 @@ private func rebuildBucketsOnBoardId(_ db: Database) throws {
 /// A Marker notes something that happened while recording — a gap, a resume. It belongs to the
 /// Board it happened on, and `board_id` stays nullable because a Marker can be written with no
 /// Board connected. `device_name` goes with the identifier: the Board holds that text once.
-/// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/TelemetryMigrations.kt `rebuildMarkersOnBoardId`
+/// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/database/DatabaseMigrations.kt `rebuildMarkersOnBoardId`
 private func rebuildMarkersOnBoardId(_ db: Database) throws {
   try db.execute(sql: "DROP INDEX IF EXISTS index_telemetry_markers_occurred_at_ms")
   try db.execute(sql: "DROP INDEX IF EXISTS index_telemetry_markers_device_id_occurred_at_ms")
@@ -1355,7 +1359,7 @@ private func rebuildMarkersOnBoardId(_ db: Database) throws {
   try db.execute(sql: "CREATE INDEX IF NOT EXISTS index_telemetry_markers_board_id_occurred_at_ms ON telemetry_markers(board_id, occurred_at_ms)")
 }
 
-/// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/TelemetryMigrations.kt `rebuildDiagnosticEventsOnBoardId`
+/// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/database/DatabaseMigrations.kt `rebuildDiagnosticEventsOnBoardId`
 private func rebuildDiagnosticEventsOnBoardId(_ db: Database) throws {
   try db.execute(sql: "DROP INDEX IF EXISTS index_diagnostic_events_occurred_at_ms")
   try db.execute(sql: "DROP INDEX IF EXISTS index_diagnostic_events_event_name")
@@ -1394,7 +1398,7 @@ private func rebuildDiagnosticEventsOnBoardId(_ db: Database) throws {
 /// unlike a Marker it has no meaning without one: `board_id` is NOT NULL, as `device_id` was. A row
 /// that never named a device takes the same unattributed sentinel a bucket does — the column is NOT
 /// NULL on both, so one sentinel across the two keeps "no Board" a single idea.
-/// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/TelemetryMigrations.kt `rebuildExclusionRangesOnBoardId`
+/// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/database/DatabaseMigrations.kt `rebuildExclusionRangesOnBoardId`
 private func rebuildExclusionRangesOnBoardId(_ db: Database) throws {
   try db.execute(sql: "DROP INDEX IF EXISTS index_metric_exclusion_ranges_start_ms_end_ms")
   try db.execute(sql: "DROP INDEX IF EXISTS index_metric_exclusion_ranges_device_id_start_ms_end_ms")
@@ -1422,7 +1426,7 @@ private func rebuildExclusionRangesOnBoardId(_ db: Database) throws {
   try db.execute(sql: "CREATE INDEX IF NOT EXISTS index_metric_exclusion_ranges_board_id_start_ms_end_ms ON metric_exclusion_ranges(board_id, start_ms, end_ms)")
 }
 
-/// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/TelemetryMigrations.kt `createRideRecordingTables`
+/// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/database/DatabaseMigrations.kt `createRideRecordingTables`
 internal func createRideRecordingTables(_ db: Database) throws {
   try db.execute(sql: """
     CREATE TABLE IF NOT EXISTS ride_recordings (
@@ -1458,7 +1462,7 @@ internal func createRideRecordingTables(_ db: Database) throws {
 /// clock and is preferred over the frame's capture time, which is the clock the fix was merely
 /// stamped onto. A frame with no coordinates contributes nothing — a ride recorded without GPS
 /// migrates to an empty track, not to fabricated points.
-/// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/TelemetryMigrations.kt `migrateFrameGpsIntoRideTrack`
+/// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/database/DatabaseMigrations.kt `migrateFrameGpsIntoRideTrack`
 internal func migrateFrameGpsIntoRideTrack(_ db: Database) throws {
   try db.execute(sql: """
     INSERT INTO ride_track_points (
@@ -1483,7 +1487,7 @@ internal func migrateFrameGpsIntoRideTrack(_ db: Database) throws {
 
 /// Drops the seven raw GPS columns and adds `recording_id`. A rebuild rather than an `ALTER`, which
 /// keeps the two platforms' migrations shaped the same way.
-/// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/TelemetryMigrations.kt `rebuildFramesWithoutGps`
+/// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/database/DatabaseMigrations.kt `rebuildFramesWithoutGps`
 internal func rebuildFramesWithoutGps(_ db: Database) throws {
   let columns = """
     captured_at_ms, elapsed_realtime_ms, board_id, can_id, flags, changed_mask_1, changed_mask_2, \
@@ -1538,7 +1542,7 @@ internal func rebuildFramesWithoutGps(_ db: Database) throws {
 /// The bucket primary key gains `recording_id`, so two recordings of one Board inside one minute
 /// stop aggregating into a single row. Existing buckets take an empty recording id and keep
 /// grouping exactly as they did.
-/// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/TelemetryMigrations.kt `rebuildBucketsOnRecordingId`
+/// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/database/DatabaseMigrations.kt `rebuildBucketsOnRecordingId`
 internal func rebuildBucketsOnRecordingId(_ db: Database) throws {
   let columns = """
     bucket_start_ms, board_id, sample_count, first_sample_at_ms, last_sample_at_ms, \
@@ -1594,7 +1598,7 @@ internal func rebuildBucketsOnRecordingId(_ db: Database) throws {
   try db.execute(sql: "CREATE INDEX IF NOT EXISTS index_telemetry_minute_buckets_bucket_start_ms ON telemetry_minute_buckets(bucket_start_ms)")
 }
 
-/// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/TelemetryMigrations.kt `rebuildRideTrackWithoutRecordingId`
+/// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/database/DatabaseMigrations.kt `rebuildRideTrackWithoutRecordingId`
 private func rebuildRideTrackWithoutRecordingId(_ db: Database) throws {
   let columns = "id, board_id, fix_at_ms, latitude_e7, longitude_e7, accuracy_cm, " +
     "gps_speed_centi_mps, bearing_centi_deg, altitude_cm"
@@ -1621,7 +1625,7 @@ private func rebuildRideTrackWithoutRecordingId(_ db: Database) throws {
   try db.execute(sql: "CREATE INDEX IF NOT EXISTS index_ride_track_points_board_id_fix_at_ms ON ride_track_points(board_id, fix_at_ms)")
 }
 
-/// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/TelemetryMigrations.kt `rebuildFramesWithoutRecordingId`
+/// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/database/DatabaseMigrations.kt `rebuildFramesWithoutRecordingId`
 private func rebuildFramesWithoutRecordingId(_ db: Database) throws {
   let columns = "id, captured_at_ms, elapsed_realtime_ms, board_id, can_id, flags, changed_mask_1, " +
     "changed_mask_2, speed_centi_kmh, battery_voltage_mv, motor_current_ma, battery_current_ma, " +
@@ -1670,7 +1674,7 @@ private func rebuildFramesWithoutRecordingId(_ db: Database) throws {
 /// extreme, and the position anchor comes from the earliest row that has one. A folded minute's
 /// route preview is dropped — it was built per recording — and falls back to the anchor until
 /// history maintenance rebuilds it.
-/// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/TelemetryMigrations.kt `foldBucketsWithoutRecordingId`
+/// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/database/DatabaseMigrations.kt `foldBucketsWithoutRecordingId`
 private func foldBucketsWithoutRecordingId(_ db: Database) throws {
   try db.execute(sql: "DROP INDEX IF EXISTS index_telemetry_minute_buckets_bucket_start_ms")
   try db.execute(sql: "ALTER TABLE telemetry_minute_buckets RENAME TO telemetry_minute_buckets_old")
@@ -1712,7 +1716,7 @@ private func foldBucketsWithoutRecordingId(_ db: Database) throws {
   try db.execute(sql: "CREATE INDEX IF NOT EXISTS index_telemetry_minute_buckets_bucket_start_ms ON telemetry_minute_buckets(bucket_start_ms)")
 }
 
-/// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/TelemetryMigrations.kt `FOLD_BUCKETS_SQL`
+/// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/database/DatabaseMigrations.kt `FOLD_BUCKETS_SQL`
 private let foldBucketsSql = """
   INSERT INTO telemetry_minute_buckets (
     bucket_start_ms, board_id, sample_count, first_sample_at_ms, last_sample_at_ms,

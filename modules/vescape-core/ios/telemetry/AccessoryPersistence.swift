@@ -14,7 +14,7 @@ import GRDB
 /// reconnect reads the manifest again and compares: a capability whose declared limits moved is a
 /// capability whose saved per-capability settings may no longer fit.
 ///
-/// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/TelemetryEntities.kt `SavedAccessoryEntity`
+/// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/database/DatabaseEntities.kt `SavedAccessoryEntity`
 /// @parity /modules/vescape-core/src/index.ts `SavedAccessory`
 struct SavedAccessory: Equatable {
   let accessoryId: String
@@ -40,7 +40,7 @@ struct SavedAccessory: Equatable {
 /// anything stored here was a usable calibration at the moment it was saved. Whether it is still one
 /// is decided against the live manifest every session.
 ///
-/// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/TelemetryEntities.kt `AccessoryGroundClearanceEntity`
+/// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/database/DatabaseEntities.kt `AccessoryGroundClearanceEntity`
 /// @parity /modules/vescape-core/ios/accessory/GroundClearance.swift `GroundClearanceCalibration`
 struct SavedGroundClearance: Equatable {
   let accessoryId: String
@@ -307,7 +307,7 @@ struct AccessoryStore {
   }
 }
 
-/// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/TelemetryEntities.kt `AccessoryBrakeLightEntity`
+/// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/database/DatabaseEntities.kt `AccessoryBrakeLightEntity`
 struct SavedBrakeLight: Codable, FetchableRecord, PersistableRecord, Equatable {
   static let databaseTableName = "accessory_brake_light"
   let accessoryId: String
@@ -319,7 +319,7 @@ struct SavedBrakeLight: Codable, FetchableRecord, PersistableRecord, Equatable {
   }
 }
 
-/// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/TelemetryEntities.kt `AccessoryCapabilitySettingsEntity`
+/// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/database/DatabaseEntities.kt `AccessoryCapabilitySettingsEntity`
 struct SavedAccessoryCapabilitySettings: Codable, FetchableRecord, PersistableRecord, Equatable {
   static let databaseTableName = "accessory_capability_settings"
   let accessoryId: String

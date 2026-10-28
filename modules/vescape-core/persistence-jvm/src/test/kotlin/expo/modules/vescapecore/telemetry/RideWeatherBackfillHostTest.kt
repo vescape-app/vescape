@@ -8,6 +8,13 @@ import java.time.ZoneOffset
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.*
 import org.junit.Test
+import expo.modules.vescapecore.database.AppSettings
+import expo.modules.vescapecore.database.DatabaseReplacementFence
+import expo.modules.vescapecore.database.RideTrackPointEntity
+import expo.modules.vescapecore.database.TELEMETRY_FLAG_KEYFRAME
+import expo.modules.vescapecore.database.TelemetryFrameEntity
+import expo.modules.vescapecore.database.VescapeDao
+import expo.modules.vescapecore.database.VescapeRoomDatabase
 
 /**
  * Ride weather backfill Maintenance Job (#606) through the production Room DAO and fence.
@@ -40,12 +47,12 @@ class RideWeatherBackfillHostTest {
   )
 
   /** A ride of [length] with frames every 10 s and, unless [gps] is false, precise fixes at [lat]. */
-  private suspend fun TelemetryDao.ride(start: Long, length: Long, lat: Double = 52.0, gps: Boolean = true) {
+  private suspend fun VescapeDao.ride(start: Long, length: Long, lat: Double = 52.0, gps: Boolean = true) {
     insertFrames((start until start + length step 10_000).map(::frame))
     if (gps) insertRideTrackPoints((start until start + length step 60_000).map { fix(it, lat) })
   }
 
-  private suspend fun TelemetryDao.summarize() = assertEquals(MaintenanceJobOutcome.Completed, rebuildRideSummaries(this))
+  private suspend fun VescapeDao.summarize() = assertEquals(MaintenanceJobOutcome.Completed, rebuildRideSummaries(this))
 
   /** Open-Meteo stand-in: hourly samples for the requested UTC days, temperature from the latitude. */
   private class FakeOpenMeteo(var respond: (String) -> MaintenanceHttpResponse? = { null }) : MaintenanceHttp {
@@ -72,16 +79,16 @@ class RideWeatherBackfillHostTest {
     }
   }
 
-  private fun scope(dao: TelemetryDao, http: MaintenanceHttp, fence: DatabaseReplacementFence = DatabaseReplacementFence(), at: Long = now) =
+  private fun scope(dao: VescapeDao, http: MaintenanceHttp, fence: DatabaseReplacementFence = DatabaseReplacementFence(), at: Long = now) =
     MaintenanceJobScope({ dao }, fence, fence.ticket(), { at }, http = http)
 
-  private suspend fun TelemetryDao.watermark() = parseWeatherBackfillWatermark(storedMaintenanceFingerprint(RideWeatherJob.id), RideWeatherJob.version)
+  private suspend fun VescapeDao.watermark() = parseWeatherBackfillWatermark(storedMaintenanceFingerprint(RideWeatherJob.id), RideWeatherJob.version)
 
-  private suspend fun TelemetryDao.weather(start: Long, end: Long) = rideWeather(start, end)
+  private suspend fun VescapeDao.weather(start: Long, end: Long) = rideWeather(start, end)
 
   @Test fun fillsMissingDaysThenSettlesWithoutAnotherScan(): Unit = runBlocking {
     val db = db()
-    val dao = db.telemetryDao()
+    val dao = db.vescapeDao()
     // Midnight-crossing ride: both UTC days are candidates. A no-GPS ride is never one.
     dao.ride(base + day - 30 * minute, hour)
     dao.ride(base + 3 * day + 10 * hour, 20 * minute, gps = false)
@@ -106,7 +113,7 @@ class RideWeatherBackfillHostTest {
 
   @Test fun usableEarlierWeatherIsEnoughAndLiveRowsWin(): Unit = runBlocking {
     val db = db()
-    val dao = db.telemetryDao()
+    val dao = db.vescapeDao()
     // Morning live weather covers an offline evening ride within the freshness rule.
     dao.storeWeatherObservation(WeatherObservation(base + 8 * hour, 5, 0, null, true), force = false)
     dao.ride(base + 19 * hour, 30 * minute)
@@ -127,7 +134,7 @@ class RideWeatherBackfillHostTest {
 
   @Test fun temporaryMissesHoldTheWatermarkAndPermanentMissesSettle(): Unit = runBlocking {
     val db = db()
-    val dao = db.telemetryDao()
+    val dao = db.vescapeDao()
     // Two areas (A at 52°, B at 40°) on travel days; A also before the historical forecast range.
     dao.ride(base, 30 * minute, lat = 52.0)
     dao.ride(base + 2 * day, 30 * minute, lat = 40.0)
@@ -165,7 +172,7 @@ class RideWeatherBackfillHostTest {
 
   @Test fun rateLimitStopsTheRunAndHonorsRetryAfter(): Unit = runBlocking {
     val db = db()
-    val dao = db.telemetryDao()
+    val dao = db.vescapeDao()
     dao.ride(base, 30 * minute, lat = 52.0)
     dao.ride(base + 2 * day, 30 * minute, lat = 40.0)
     dao.summarize()
@@ -188,7 +195,7 @@ class RideWeatherBackfillHostTest {
 
   @Test fun multiYearHistoryUsesBoundedWindowsAndEndpoints(): Unit = runBlocking {
     val db = db()
-    val dao = db.telemetryDao()
+    val dao = db.vescapeDao()
     // 2021-12-25: archive. Then one ride every five days for 60 days from 2022-01-01.
     val first = WEATHER_HISTORICAL_FORECAST_FIRST_DAY_MS
     dao.ride(first - 7 * day + 12 * hour, 20 * minute)
@@ -224,7 +231,7 @@ class RideWeatherBackfillHostTest {
 
   @Test fun fenceDuringFetchPreventsLateWrites(): Unit = runBlocking {
     val db = db()
-    val dao = db.telemetryDao()
+    val dao = db.vescapeDao()
     dao.ride(base, 30 * minute)
     dao.summarize()
     val fence = DatabaseReplacementFence()
@@ -243,7 +250,7 @@ class RideWeatherBackfillHostTest {
 
   @Test fun activeRideIsNeverReadAndDefersToClosure(): Unit = runBlocking {
     val db = db()
-    val dao = db.telemetryDao()
+    val dao = db.vescapeDao()
     dao.ride(now - 20 * minute, 15 * minute)
     dao.summarize()
     val http = FakeOpenMeteo()

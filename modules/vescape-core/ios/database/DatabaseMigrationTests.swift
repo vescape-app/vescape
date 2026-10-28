@@ -9,7 +9,7 @@ import XCTest
 /// `v27_alert_board_id` is the current last migration and the only one with data consequences —
 /// Alert Rules become board-owned, pre-release global rules are dropped rather than reassigned, and
 /// three former global settings keys are deleted from `app_settings`.
-final class TelemetryMigrationTests: XCTestCase {
+final class DatabaseMigrationTests: XCTestCase {
   private var queue: DatabaseQueue!
 
   func testSharedFixtureManifestCoversBothProductionMigrationRegistries() throws {
@@ -235,7 +235,7 @@ final class TelemetryMigrationTests: XCTestCase {
   /// tombstone gets no preset rows, geiger falls back to the old rows, and a metric whose old preset
   /// points were all disabled becomes Off while a partly disabled ladder keeps its level.
   /// A plain Normal level is the app default and writes no row; an unset level stays an explicit Off.
-  /// @parity /modules/vescape-core/persistence-jvm/src/test/kotlin/expo/modules/vescapecore/telemetry/TelemetryMigrationMatrixHostTest.kt `presetRowsMigrationKeepsBoardsApartAndHonoursDisabledPoints`
+  /// @parity /modules/vescape-core/persistence-jvm/src/test/kotlin/expo/modules/vescapecore/database/DatabaseMigrationMatrixHostTest.kt `presetRowsMigrationKeepsBoardsApartAndHonoursDisabledPoints`
   func testPresetRowsMigrationKeepsBoardsApartAndHonoursDisabledPoints() throws {
     try migrate(upTo: "v50_alert_sound_count")
     try queue.write { db in
@@ -824,7 +824,7 @@ final class TelemetryMigrationTests: XCTestCase {
 
   /// v52 drops durable recording identity (ADR 0041): two recordings of one Board in one minute
   /// fold into one bucket, and legacy fixes without accuracy keep reading as precise.
-  /// @parity /modules/vescape-core/persistence-jvm/src/test/kotlin/expo/modules/vescapecore/telemetry/TelemetryMigrationMatrixHostTest.kt `dropRideRecordingsFoldsSharedMinutes`
+  /// @parity /modules/vescape-core/persistence-jvm/src/test/kotlin/expo/modules/vescapecore/database/DatabaseMigrationMatrixHostTest.kt `dropRideRecordingsFoldsSharedMinutes`
   func testDropRideRecordingsFoldsSharedMinutes() throws {
     try migrate(upTo: "v51_preset_rows")
     try queue.write { db in

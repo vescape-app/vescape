@@ -6,7 +6,7 @@ import GRDB
 /// the incoming database already satisfies. It must match the newest migration in
 /// `VescapeDatabase.migrator`.
 ///
-/// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/VescapeRoomDatabase.kt `VESCAPE_DATABASE_VERSION`
+/// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/database/VescapeRoomDatabase.kt `VESCAPE_DATABASE_VERSION`
 internal let VESCAPE_DATABASE_VERSION = 54
 
 /// Released schema generations that have a complete production path to the current schema.
@@ -20,10 +20,51 @@ internal let exportedAndroidDatabaseVersions: Set<Int> =
 internal let exportedIOSDatabaseVersions: Set<Int> =
   Set([1]).union(23...36).union(40...VESCAPE_DATABASE_VERSION)
 
+/// Tables the current schema owns, matching `schema/database.json`. A restored database drops any
+/// other table once its migrations have run, so a stray table from an old or foreign app cannot
+/// survive into this one.
+///
+/// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/database/DatabaseUpgradeContract.kt `SHARED_DATABASE_TABLES`
+internal let sharedDatabaseTables: Set<String> = [
+  "accessories",
+  "accessory_brake_light",
+  "accessory_capability_settings",
+  "accessory_ground_clearance",
+  "alerts",
+  "app_settings",
+  "board_config_change_notices",
+  "board_config_values",
+  "board_settings",
+  "board_warnings",
+  "boards",
+  "diagnostic_events",
+  "favorite_media",
+  "favorites",
+  "metric_exclusion_ranges",
+  "motor_config_values",
+  "privacy_zones",
+  "ride_track_points",
+  "telemetry_frames",
+  "telemetry_markers",
+  "telemetry_minute_buckets",
+  "tune_history_entries",
+  "tune_profiles",
+  "vesc_fault_capture_samples",
+  "vesc_fault_captures",
+  "vesc_fault_occurrences",
+  "weather_observations",
+]
+
+private let engineTables: Set<String> = ["room_master_table", "android_metadata", "grdb_migrations"]
+
+internal func isUnknownTable(_ name: String) -> Bool {
+  !sharedDatabaseTables.contains(name) && !engineTables.contains(name) && !name.hasPrefix("sqlite_")
+}
+
 /// Exports/imports the single GRDB database as a shareable `.zip` (manifest.json + db.sqlite),
 /// matching the Android backup format so the JS layer (share sheet / document picker) is identical.
 ///
-/// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/DatabaseBackupManager.kt
+/// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/database/DatabaseBackupManager.kt
 /// @platform-diff iOS returns a `file://` URL (Android returns a content URI) and hot-swaps the
 /// GRDB pool in place; there is no Room `closeAndReset`, so `VescapeDatabase.replaceDatabase`
 /// closes and reopens the pool.
@@ -129,7 +170,7 @@ enum DatabaseBackupManager {
   /// Returns the backup's schema generation, which the restore needs to reconcile a foreign
   /// database against this app's migrations.
   ///
-  /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/DatabaseBackupManager.kt
+  /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/database/DatabaseBackupManager.kt
   private struct BackupSchema {
     let platform: String
     let declaredVersion: Int

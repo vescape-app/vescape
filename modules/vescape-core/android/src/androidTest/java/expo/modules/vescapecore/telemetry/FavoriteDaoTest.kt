@@ -11,11 +11,14 @@ import org.junit.Assert.assertNull
 import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
+import expo.modules.vescapecore.database.FavoriteEntity
+import expo.modules.vescapecore.database.VescapeDao
+import expo.modules.vescapecore.database.VescapeRoomDatabase
 
 @RunWith(AndroidJUnit4::class)
 class FavoriteDaoTest {
   private lateinit var database: VescapeRoomDatabase
-  private lateinit var dao: TelemetryDao
+  private lateinit var dao: VescapeDao
 
   @Before
   fun setUp() {
@@ -23,7 +26,7 @@ class FavoriteDaoTest {
     database = Room.inMemoryDatabaseBuilder(context, VescapeRoomDatabase::class.java)
       .allowMainThreadQueries()
       .build()
-    dao = database.telemetryDao()
+    dao = database.vescapeDao()
   }
 
   @After

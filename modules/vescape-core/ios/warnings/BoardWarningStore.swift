@@ -30,7 +30,7 @@ struct BoardWarning {
 /// row per active warning per Board. Lifecycle rules live on `BoardWarningRegistry`; this struct is
 /// pure CRUD. Mirrors the Android Room DAO methods behind `BoardWarningStore`.
 ///
-/// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/TelemetryDao.kt
+/// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/database/VescapeDao.kt
 struct BoardWarningStore {
   private struct InvalidSeverity: Error {}
   private struct WriterUnavailable: Error {}

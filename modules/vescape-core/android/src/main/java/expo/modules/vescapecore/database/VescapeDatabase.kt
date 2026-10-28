@@ -1,4 +1,4 @@
-package expo.modules.vescapecore.telemetry
+package expo.modules.vescapecore.database
 
 import android.content.Context
 import android.database.sqlite.SQLiteDatabase
@@ -16,20 +16,21 @@ import java.io.FileInputStream
 import java.nio.file.Files
 import java.nio.file.NoSuchFileException
 import java.io.IOException
+import expo.modules.vescapecore.telemetry.RideExport
 
 /** Android lifecycle and Room adapters for the portable production migration graph. */
 internal object VescapeDatabase {
   // Only exports and file replacement take this lock. Recording writes never do.
   internal val rideExportMutex = Mutex()
 
-  suspend fun <T> withRideExportSnapshot(context: Context, block: suspend (TelemetryDao) -> T): T =
+  suspend fun <T> withRideExportSnapshot(context: Context, block: suspend (VescapeDao) -> T): T =
     rideExportMutex.withLock {
       RideExport.snapshot(get(context), block)
     }
 
   @Volatile private var instance: VescapeRoomDatabase? = null
 
-  private class SupportDatabase(private val db: SupportSQLiteDatabase) : TelemetryMigrationDatabase {
+  private class SupportDatabase(private val db: SupportSQLiteDatabase) : MigrationDatabase {
     override fun execSQL(sql: String) = db.execSQL(sql)
 
     override fun hasColumn(tableName: String, columnName: String): Boolean =
@@ -42,14 +43,14 @@ internal object VescapeDatabase {
       }
   }
 
-  private fun roomMigration(step: TelemetryMigrationStep) =
+  private fun roomMigration(step: MigrationStep) =
     object : Migration(step.startVersion, step.endVersion) {
       override fun migrate(db: SupportSQLiteDatabase) = step.migrate(SupportDatabase(db))
 
       override fun migrate(connection: SQLiteConnection) = step.migrate(connection)
     }
 
-  private val roomMigrations = TelemetryMigrations.all.associate {
+  private val roomMigrations = DatabaseMigrations.all.associate {
     (it.startVersion to it.endVersion) to roomMigration(it)
   }
 
@@ -81,8 +82,8 @@ internal object VescapeDatabase {
   internal val MIGRATION_41_42 = migration(41, 42)
 
   internal fun migrateLegacyDatabaseFile(context: Context) {
-    val target = context.getDatabasePath(TELEMETRY_DATABASE_NAME)
-    val legacy = context.getDatabasePath(LEGACY_TELEMETRY_DATABASE_NAME)
+    val target = context.getDatabasePath(DATABASE_NAME)
+    val legacy = context.getDatabasePath(LEGACY_DATABASE_NAME)
     if (target.exists() || !legacy.exists()) return
     SQLiteDatabase.openDatabase(legacy.path, null, SQLiteDatabase.OPEN_READWRITE).use { db ->
       db.rawQuery("PRAGMA wal_checkpoint(TRUNCATE)", null).close()
@@ -114,7 +115,7 @@ internal object VescapeDatabase {
       instance ?: Room.databaseBuilder(
         context.applicationContext,
         VescapeRoomDatabase::class.java,
-        TELEMETRY_DATABASE_NAME,
+        DATABASE_NAME,
       )
         .setDriver(BundledSQLiteDriver())
         .setJournalMode(androidx.room.RoomDatabase.JournalMode.WRITE_AHEAD_LOGGING)

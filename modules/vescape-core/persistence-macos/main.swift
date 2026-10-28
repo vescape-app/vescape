@@ -782,6 +782,10 @@ try require(
 let freshSchemaQueue = try DatabaseQueue()
 try VescapeDatabase.migrator.migrate(freshSchemaQueue)
 try freshSchemaQueue.read { db in try requireSharedSchema("fresh", db, root: root) }
+let schemaFileTables = try JSONSerialization.jsonObject(
+  with: Data(contentsOf: root.appendingPathComponent("schema/database.json"))
+) as! [String: [String: Any]]
+try require(Set(schemaFileTables["tables"]!.keys) == sharedDatabaseTables, "sharedDatabaseTables differs from schema/database.json")
 for start in migrationIdentifiers {
   let migrationQueue = try DatabaseQueue()
   try VescapeDatabase.migrator.migrate(migrationQueue, upTo: start)
@@ -865,7 +869,7 @@ try authenticV1.read { db in
 try authenticV1.close()
 
 // v51 folds the v50 Alert Preset Board Settings and copied preset rows into one row per metric.
-// @parity /modules/vescape-core/persistence-jvm/src/test/kotlin/expo/modules/vescapecore/telemetry/TelemetryMigrationMatrixHostTest.kt
+// @parity /modules/vescape-core/persistence-jvm/src/test/kotlin/expo/modules/vescapecore/database/DatabaseMigrationMatrixHostTest.kt
 let presetRowsQueue = try DatabaseQueue()
 try VescapeDatabase.migrator.migrate(presetRowsQueue, upTo: "v50_alert_sound_count")
 try presetRowsQueue.write { db in
@@ -1075,6 +1079,7 @@ if let exchangePath = ProcessInfo.processInfo.environment["VESCAPE_BACKUP_EXCHAN
     try db.execute(sql: "CREATE TABLE vesc_fault_capture_samples (id INTEGER PRIMARY KEY AUTOINCREMENT, occurrence_id TEXT NOT NULL, captured_at INTEGER NOT NULL, speed REAL, duty_cycle REAL, erpm REAL, battery_voltage REAL, battery_current REAL, motor_current REAL, temp_mosfet REAL, temp_motor REAL, pitch REAL, roll REAL, balance_pitch REAL, adc1 REAL, adc2 REAL, state INTEGER)")
     try db.execute(sql: "CREATE INDEX index_vesc_fault_capture_samples_occurrence_id_captured_at ON vesc_fault_capture_samples(occurrence_id, captured_at)")
     try db.execute(sql: "INSERT INTO vesc_fault_capture_samples (occurrence_id,captured_at,speed,state) VALUES ('v53-fault',1000,12.5,1)")
+    try db.execute(sql: "CREATE TABLE stray_from_old_app (id INTEGER PRIMARY KEY)")
     try db.execute(sql: "PRAGMA user_version = 53")
   }
   try iosV53.close()
@@ -1085,8 +1090,7 @@ if let exchangePath = ProcessInfo.processInfo.environment["VESCAPE_BACKUP_EXCHAN
   )
   try DatabaseBackupArchive.archive(database: iosV53Data, manifest: iosV53Manifest)
     .write(to: exchange.appendingPathComponent("ios-v53.zip"), options: .atomic)
-  let upgradedV53 = try DatabaseQueue(path: iosV53URL.path)
-  try VescapeDatabase.migrator.migrate(upgradedV53)
+  let upgradedV53 = try VescapeDatabase.openRestoredDatabase(at: iosV53URL, schemaVersion: 53)
   try upgradedV53.read { db in
     try requireSharedSchema("upgraded-ios-v53", db, root: root)
     let transports = try Row.fetchAll(db, sql: "SELECT board_id, value_json FROM board_settings WHERE key = 'transport'")

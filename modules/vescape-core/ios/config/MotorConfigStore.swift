@@ -33,7 +33,7 @@ struct MotorConfigStore {
 
   /// Create the Last Known Motor Config Values table. Called from the app-data `DatabaseMigrator`
   /// and reused by tests so the schema stays single-source.
-  /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/TelemetryEntities.kt
+  /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/database/DatabaseEntities.kt
   static func createTables(_ db: Database) throws {
     try PersistenceSchema.createMotorConfig(db)
   }

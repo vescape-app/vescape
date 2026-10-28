@@ -2,7 +2,7 @@ import Foundation
 import XCTest
 @testable import VescapeCore
 
-/// @parity /modules/vescape-core/android/src/test/java/expo/modules/vescapecore/telemetry/VescapeDatabaseReliabilityTest.kt
+/// @parity /modules/vescape-core/android/src/test/java/expo/modules/vescapecore/database/VescapeDatabaseReliabilityTest.kt
 final class VescapeDatabaseReliabilityTests: XCTestCase {
   func testFailedLegacyMovePreservesOriginalFile() throws {
     let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)

@@ -1,1 +1,1 @@
-../ios/telemetry/DatabaseBackupArchive.swift
+../ios/database/DatabaseBackupArchive.swift

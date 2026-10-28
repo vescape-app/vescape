@@ -5,7 +5,7 @@ import XCTest
 
 /// Durable VESC Fault Occurrence storage: reads come back newest-first per Board, lifecycle updates
 /// preserve dismissal, and removing a Board leaves its fault evidence behind.
-/// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/TelemetryDao.kt
+/// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/database/VescapeDao.kt
 final class VescFaultStoreTests: XCTestCase {
   private var queue: DatabaseQueue!
   private var store: VescFaultStore!

@@ -71,7 +71,7 @@ final class BoardSettingsPersistence {
 
   /// The Board, its settings, and any `alerts` rows (a new Board's preset rows and rider rules) in
   /// one transaction, so no reader sees the Board without its alert setup.
-  /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/TelemetryDao.kt `upsertBoardWithSettings`
+  /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/database/VescapeDao.kt `upsertBoardWithSettings`
   func upsertBoard(_ board: PersistedBoard, settings: [PersistedBoardSetting], deletedKeys: [String], alerts: [PersistedAlertRule] = []) throws {
     try writer.write { db in
       let tombstone = try PersistedBoard.fetchOne(db, key: board.id)?.deletedAt
@@ -121,7 +121,7 @@ final class BoardSettingsPersistence {
     return merged
   }
 
-  /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/TelemetryDao.kt `updateDistanceUnit`
+  /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/database/VescapeDao.kt `updateDistanceUnit`
   func updateDistanceUnit(_ units: String) throws {
     precondition(["km", "mi"].contains(units))
     try writer.write { db in

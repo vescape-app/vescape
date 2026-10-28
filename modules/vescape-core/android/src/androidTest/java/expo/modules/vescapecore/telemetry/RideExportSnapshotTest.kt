@@ -17,6 +17,10 @@ import kotlinx.coroutines.runBlocking
 import org.junit.Assert.*
 import org.junit.Test
 import org.junit.runner.RunWith
+import expo.modules.vescapecore.database.DATABASE_NAME
+import expo.modules.vescapecore.database.DatabaseBackupManager
+import expo.modules.vescapecore.database.RideTrackPointEntity
+import expo.modules.vescapecore.database.VescapeDatabase
 
 @RunWith(AndroidJUnit4::class)
 class RideExportSnapshotTest {
@@ -27,7 +31,7 @@ class RideExportSnapshotTest {
     ProfileStatsRepository.resetForDatabaseSwap()
     RideHistoryRepository.resetForDatabaseSwap()
     VescapeDatabase.closeAndReset()
-    context.deleteDatabase(TELEMETRY_DATABASE_NAME)
+    context.deleteDatabase(DATABASE_NAME)
   }
 
   @Test fun productionSnapshotKeepsRecordingWritable(): Unit = runBlocking {
@@ -35,7 +39,7 @@ class RideExportSnapshotTest {
     val context = InstrumentationRegistry.getInstrumentation().context
     val db = VescapeDatabase.get(context)
     try {
-      val dao = db.telemetryDao()
+      val dao = db.vescapeDao()
       fun point(i: Int) = RideTrackPointEntity(boardId = "board", fixAtMs = i.toLong(),
         latitudeE7 = i, longitudeE7 = -i, accuracyCm = 100,
         gpsSpeedCentiMps = null, bearingCentiDeg = null, altitudeCm = null)
@@ -79,7 +83,7 @@ class RideExportSnapshotTest {
     try {
       RecordingStorageFailure.initialize(context)
       assertNull(RecordingStorageFailure.value())
-      val dao = VescapeDatabase.get(context).telemetryDao()
+      val dao = VescapeDatabase.get(context).vescapeDao()
       dao.insertRideTrackPoints(listOf(RideTrackPointEntity(boardId = null, fixAtMs = 123,
         latitudeE7 = 1, longitudeE7 = -1, accuracyCm = 100,
         gpsSpeedCentiMps = null, bearingCentiDeg = null, altitudeCm = null)))
@@ -90,7 +94,7 @@ class RideExportSnapshotTest {
       dao.clearRideTrackPoints()
       assertNull(dao.lastRideTrackAt())
       DatabaseBackupManager.restoreBackup(context, result["uri"] as String)
-      assertEquals(123L, VescapeDatabase.get(context).telemetryDao().lastRideTrackAt())
+      assertEquals(123L, VescapeDatabase.get(context).vescapeDao().lastRideTrackAt())
     } finally {
       resetDatabase(context)
       backup?.delete()

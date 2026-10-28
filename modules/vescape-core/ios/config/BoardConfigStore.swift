@@ -91,7 +91,7 @@ struct BoardConfigStore {
 
   /// Create the Last Known Board Config Values table. Called from the app-data `DatabaseMigrator` and
   /// reused by tests so the schema stays single-source. Mirrors Android `BoardConfigValuesEntity`.
-  /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/TelemetryEntities.kt
+  /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/database/DatabaseEntities.kt
   static func createTables(_ db: Database) throws {
     try PersistenceSchema.createBoardConfig(db)
   }

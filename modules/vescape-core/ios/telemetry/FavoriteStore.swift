@@ -7,7 +7,7 @@ import GRDB
 /// Summary stats are denormalized at creation/update from raw Telemetry Samples (ADR 0005 style)
 /// because minute buckets are too coarse for a range that cuts mid-bucket.
 ///
-/// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/TelemetryEntities.kt `FavoriteEntity`
+/// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/database/DatabaseEntities.kt `FavoriteEntity`
 /// @parity /modules/vescape-core/src/index.ts `Favorite`
 struct Favorite {
   let id: String
@@ -182,7 +182,7 @@ internal func buildFavoriteSummary(_ buckets: [TelemetryBucket]) -> FavoriteSumm
 /// DB-backed storage for Favorites. Pure CRUD: the range is pinned against telemetry deletion by the
 /// delete paths, not here, and removing a row only unpins (ADR 0029).
 ///
-/// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/TelemetryDao.kt
+/// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/database/VescapeDao.kt
 struct FavoriteStore {
   /// Resolves the shared GRDB writer at call time so it always sees the current pool (swapped on
   /// database restore). `nil` while the pool failed to open.
@@ -203,7 +203,7 @@ struct FavoriteStore {
 
   /// Create the Favorites table. Called from the app-data `DatabaseMigrator` and reused by tests so
   /// the schema stays single-source. Mirrors Android `FavoriteEntity`.
-  /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/TelemetryEntities.kt `FavoriteEntity`
+  /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/database/DatabaseEntities.kt `FavoriteEntity`
   static func createTables(_ db: Database) throws {
     try PersistenceSchema.createFavorites(db)
   }

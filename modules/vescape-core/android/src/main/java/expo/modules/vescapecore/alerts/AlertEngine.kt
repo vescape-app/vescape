@@ -22,8 +22,8 @@ import android.os.Vibrator
 import android.speech.tts.TextToSpeech
 import android.speech.tts.UtteranceProgressListener
 import android.util.Log
-import expo.modules.vescapecore.telemetry.AlertRuleEntity
-import expo.modules.vescapecore.telemetry.AppSettings
+import expo.modules.vescapecore.database.AlertRuleEntity
+import expo.modules.vescapecore.database.AppSettings
 import java.util.concurrent.Executors
 import kotlin.math.abs
 

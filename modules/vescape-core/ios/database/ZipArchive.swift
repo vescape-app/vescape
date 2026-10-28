@@ -9,7 +9,7 @@ import Foundation
 /// is not a general-purpose zip library.
 ///
 /// @platform-diff No Android peer: Android zips via `java.util.zip` inside
-/// `telemetry/DatabaseBackupManager.kt`; iOS ships this minimal pure-Swift implementation so
+/// `database/DatabaseBackupManager.kt`; iOS ships this minimal pure-Swift implementation so
 /// cross-platform backups stay readable on both sides.
 enum ZipArchive {
   struct Entry {

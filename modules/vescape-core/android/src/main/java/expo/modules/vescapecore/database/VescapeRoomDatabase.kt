@@ -1,9 +1,9 @@
-package expo.modules.vescapecore.telemetry
+package expo.modules.vescapecore.database
 
 import androidx.room.Database
 import androidx.room.RoomDatabase
 
-// @parity /modules/vescape-core/ios/telemetry/DatabaseBackupManager.swift `VESCAPE_DATABASE_VERSION`
+// @parity /modules/vescape-core/ios/database/DatabaseBackupManager.swift `VESCAPE_DATABASE_VERSION`
 internal const val VESCAPE_DATABASE_VERSION = 54
 
 /** Production Room schema/DAO, portable to JVM hosts. Android open/migration lifecycle stays in [VescapeDatabase]. */
@@ -26,5 +26,5 @@ internal const val VESCAPE_DATABASE_VERSION = 54
   exportSchema = true,
 )
 abstract class VescapeRoomDatabase : RoomDatabase() {
-  abstract fun telemetryDao(): TelemetryDao
+  abstract fun vescapeDao(): VescapeDao
 }

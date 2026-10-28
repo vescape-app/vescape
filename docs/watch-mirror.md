@@ -546,7 +546,7 @@ Adding a mirrored setting:
    write to any key in that set reloads native settings and republishes to the wrist, even when no
    service or Board Session exists; `WatchSettingsTest` fails when a mirrored field has no key there.
    Native process startup also republishes saved settings.
-5. Persist the app key on the phone: `AppSettings` (`TelemetryEntities.kt`) and `AppDataRepository`
+5. Persist the app key on the phone: `AppSettings` (`DatabaseEntities.kt`) and `AppDataRepository`
    on both platforms (read, write validation, default). On iOS also read it in the settings reload in
    `IOSWatchMirror.swift`, and decode it in Swift `WatchSettings`.
 6. JS: the `AppSettings` field in `modules/vescape-core/src/index.ts` with `@parity`, the settings

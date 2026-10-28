@@ -1,4 +1,4 @@
-package expo.modules.vescapecore.telemetry
+package expo.modules.vescapecore.database
 
 import androidx.room.Room
 import androidx.sqlite.SQLiteConnection
@@ -8,6 +8,7 @@ import java.nio.file.Path
 import kotlinx.coroutines.runBlocking
 import org.json.JSONArray
 import org.json.JSONObject
+import org.junit.Assert.assertEquals
 import org.junit.Assert.fail
 import org.junit.Test
 
@@ -19,12 +20,17 @@ class DatabaseSchemaHostTest {
       .setDriver(BundledSQLiteDriver())
       .build()
     try {
-      runBlocking { database.telemetryDao().getAppSetting("schema-open") }
+      runBlocking { database.vescapeDao().getAppSetting("schema-open") }
     } finally {
       database.close()
     }
     assertMatchesSharedSchema("fresh", path)
     Files.deleteIfExists(path)
+  }
+
+  @Test fun restoreKeepsExactlyTheTablesOfTheSchemaFile() {
+    val tables = JSONObject(Files.readString(Path.of("../schema/database.json"))).getJSONObject("tables")
+    assertEquals(tables.keySet(), SHARED_DATABASE_TABLES)
   }
 }
 
