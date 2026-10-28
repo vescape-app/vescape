@@ -264,8 +264,7 @@ export function useEdgeDrawerDismissal({
           if (!initialFocusRef?.current) return
           requestAnimationFrame(() => {
             const nativeScrollRef = scrollRef.current?.getNativeScrollRef() as
-              | ReactNativeElement
-              | undefined
+              ReactNativeElement | undefined
             if (!initialFocusRef.current || !nativeScrollRef) return
             initialFocusRef.current.measureLayout(
               nativeScrollRef,

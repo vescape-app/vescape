@@ -4,12 +4,7 @@ import type { RailId } from '@/modules/board/lib/railPresets'
 
 export type BoardPresetBrand = 'Fungineers' | 'Floatwheel' | 'Lenco Solutions' | 'GoSmilo'
 export type RailBrand =
-  | 'Future Motion'
-  | 'Fungineers'
-  | 'The Float Life'
-  | 'Floatwheel'
-  | 'Floatboxx'
-  | 'GoSmilo'
+  'Future Motion' | 'Fungineers' | 'The Float Life' | 'Floatwheel' | 'Floatboxx' | 'GoSmilo'
 
 export interface BoardPreset {
   id: string

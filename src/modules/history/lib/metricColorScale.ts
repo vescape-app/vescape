@@ -3,13 +3,7 @@ import { dutyPercent } from '@/helpers/format'
 import type { TelemetrySample } from '@/modules/history/store/historyStore'
 
 export type HistoryMetricKey =
-  | 'speed'
-  | 'duty'
-  | 'battery'
-  | 'tempMotor'
-  | 'tempController'
-  | 'motorCurrent'
-  | 'batteryCurrent'
+  'speed' | 'duty' | 'battery' | 'tempMotor' | 'tempController' | 'motorCurrent' | 'batteryCurrent'
 
 export interface MetricColorRange {
   min: number

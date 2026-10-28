@@ -40,12 +40,7 @@ function rangeOf(
 }
 
 export type OptionalChartMetric =
-  | 'duty'
-  | 'battery'
-  | 'tempMotor'
-  | 'tempController'
-  | 'motorCurrent'
-  | 'batteryCurrent'
+  'duty' | 'battery' | 'tempMotor' | 'tempController' | 'motorCurrent' | 'batteryCurrent'
 
 export interface ChartMetricDef {
   key: HistoryMetricKey
@@ -144,13 +139,7 @@ export const HISTORY_CHART_DEFS: readonly ChartMetricDef[] = [
  * offers them; the map panel would not have the room.
  */
 export type ExtraChartMetric =
-  | 'pitch'
-  | 'roll'
-  | 'balancePitch'
-  | 'footpadAdc1'
-  | 'footpadAdc2'
-  | 'altitude'
-  | 'gpsAccuracy'
+  'pitch' | 'roll' | 'balancePitch' | 'footpadAdc1' | 'footpadAdc2' | 'altitude' | 'gpsAccuracy'
 
 /** Whether a chart-only metric reads the board stream or the phone's own GPS log. */
 export type ExtraChartSource = 'board' | 'gps'

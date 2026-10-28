@@ -18,14 +18,7 @@ import { formatDistance, formatDuration, formatEnergy } from '@/modules/profile/
 import { theme, type ThemeColor } from '@/constants/theme'
 
 export type ProfileStatKey =
-  | 'distance'
-  | 'rides'
-  | 'rideTime'
-  | 'topSpeed'
-  | 'avgSpeed'
-  | 'longestRide'
-  | 'used'
-  | 'regen'
+  'distance' | 'rides' | 'rideTime' | 'topSpeed' | 'avgSpeed' | 'longestRide' | 'used' | 'regen'
 
 export interface ProfileStatItem {
   key: ProfileStatKey

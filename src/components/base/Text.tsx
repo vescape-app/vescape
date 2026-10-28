@@ -34,7 +34,6 @@ export function Text({ style, ...rest }: TextProps) {
         fontVariant: ['lining-nums' as const, ...(flat?.fontVariant ?? [])],
       }
   const color = resolveAdaptiveColor(flat?.color ?? neutral.textPrimary, resolvedTheme) as
-    | TextStyle['color']
-    | undefined
+    TextStyle['color'] | undefined
   return <RNText style={[style, { color }, raleway]} {...rest} />
 }

@@ -185,13 +185,11 @@ try {
   await flow('update')
   const updatedDistance = await watchCheck('updated', '23%')
   // The peer moved from ~111 m to ~334 m north. The wrist must receive position, not just battery.
-  if (
-    !(
-      initialDistance > 0 &&
-      updatedDistance > initialDistance * 2.5 &&
-      updatedDistance < initialDistance * 3.5
-    )
-  ) {
+  if (!(
+    initialDistance > 0 &&
+    updatedDistance > initialDistance * 2.5 &&
+    updatedDistance < initialDistance * 3.5
+  )) {
     throw new Error(`Wrist peer position did not update: ${initialDistance} → ${updatedDistance} m`)
   }
   await flow('leave')
