@@ -140,11 +140,12 @@ internal object RideExport {
     val sessionId = ",\"sessionId\":\"$id\"}"
     writer.write("{\"schemaVersion\":2,\"id\":\"$id\",\"name\":${name?.let(::jsonString) ?: "null"},\"boardId\":${jsonString(boardId ?: "")},\"startTime\":$fromMs,\"endTime\":$toMs,\"stopReason\":null,\"userId\":null,\"groupRideId\":null,\"logs\":[")
     var lastLog: Long? = null
-    var startOdometer: Long? = null
+    var lastOdometer: Long? = null
     var tripCm = 0L
     var previousVoltage: Long? = null
     var previousCurrent: Long? = null
-    // mA·ms and µW·ms stay integral, so both platforms round the same totals.
+    // Consumed counters like VESC's: discharge only, regen never subtracts. mA·ms and µW·ms stay
+    // integral, so both platforms round the same totals.
     var milliAmpMs = 0L
     var microWattMs = 0L
     forEachFrame(dao, fromMs, toMs, boardId) { timestamp, v ->
@@ -152,20 +153,23 @@ internal object RideExport {
       val last = lastLog
       val mv = previousVoltage
       val ma = previousCurrent
-      if (last != null && mv != null && ma != null && timestamp - last <= FLOATY_GAP_MS) {
+      if (last != null && mv != null && ma != null && ma > 0 && timestamp - last <= FLOATY_GAP_MS) {
         milliAmpMs += ma * (timestamp - last); microWattMs += mv * ma * (timestamp - last)
       }
       lastLog = timestamp; previousVoltage = v[1]; previousCurrent = v[3]
+      // Forward deltas only: an odometer reset rebases instead of going negative.
       v[14]?.let { odometer ->
-        if (startOdometer == null) startOdometer = odometer
-        tripCm = odometer - (startOdometer ?: odometer)
+        lastOdometer?.let { previous -> if (odometer > previous) tripCm += odometer - previous }
+        lastOdometer = odometer
       }
       val percent = v[1]?.let { batteryPercent(it / 1000.0, (v[3] ?: 0L) / 1000.0) }
         ?.let { floor(it.coerceIn(0.0, 100.0) * 100 + 0.5).toLong() } ?: 0L
       fun d(i: Int, scale: Int) = decimal(v[i] ?: 0L, scale)
+      // Floaty stores speed and duty unsigned; reverse riding stays positive like GPS speed.
+      fun unsigned(i: Int, scale: Int) = decimal(kotlin.math.abs(v[i] ?: 0L), scale)
       val packedState = v[10] ?: 0L
       val footpad = footpadSwitch(v[11]?.toInt(), v[12]?.div(1000.0), v[13]?.div(1000.0)) ?: 0
-      writer.write((if (last == null) "" else ",") + "{\"timestamp\":$timestamp,\"speed\":${d(0, 2)},\"dutyCycle\":${d(4, 3)},\"batteryVolts\":${d(1, 3)},\"batteryPercent\":${decimal(percent, 4)},\"batteryCurrent\":${d(3, 3)},\"motorCurrent\":${d(2, 3)},\"motorTemp\":${d(16, 1)},\"controllerTemp\":${d(15, 1)},\"tripDistance\":${decimal(tripCm, 5)},\"lifeDistance\":${d(14, 5)},\"remainingDistance\":0,\"rollAngle\":${d(6, 2)},\"pitchAngle\":${d(7, 2)},\"truePitchAngle\":${d(5, 2)},\"inputTilt\":0,\"throttle\":0,\"ampHours\":${decimal(roundDiv(milliAmpMs, 3_600), 6)},\"wattHours\":${decimal(roundDiv(microWattMs, 3_600_000), 6)},\"state\":${packedState and 15},\"switchState\":$footpad,\"setpointAdjustmentType\":${(packedState shr 4) and 15},\"faultCode\":0,\"adc1\":${d(12, 3)},\"adc2\":${d(13, 3)},\"batteryUtilization\":0,\"phaseUtilization\":0" + sessionId)
+      writer.write((if (last == null) "" else ",") + "{\"timestamp\":$timestamp,\"speed\":${unsigned(0, 2)},\"dutyCycle\":${unsigned(4, 3)},\"batteryVolts\":${d(1, 3)},\"batteryPercent\":${decimal(percent, 4)},\"batteryCurrent\":${d(3, 3)},\"motorCurrent\":${d(2, 3)},\"motorTemp\":${d(16, 1)},\"controllerTemp\":${d(15, 1)},\"tripDistance\":${decimal(tripCm, 5)},\"lifeDistance\":${d(14, 5)},\"remainingDistance\":0,\"rollAngle\":${d(6, 2)},\"pitchAngle\":${d(7, 2)},\"truePitchAngle\":${d(5, 2)},\"inputTilt\":0,\"throttle\":0,\"ampHours\":${decimal(roundDiv(milliAmpMs, 3_600), 6)},\"wattHours\":${decimal(roundDiv(microWattMs, 3_600_000), 6)},\"state\":${packedState and 15},\"switchState\":$footpad,\"setpointAdjustmentType\":${(packedState shr 4) and 15},\"faultCode\":0,\"adc1\":${d(12, 3)},\"adc2\":${d(13, 3)},\"batteryUtilization\":0,\"phaseUtilization\":0" + sessionId)
     }
     writer.write("],\"locations\":[")
     val gps = TrackCursor(dao, fromMs, toMs, boardId)

@@ -186,27 +186,31 @@ internal enum RideExport {
     let id = floatyId(fromMs: fromMs, toMs: toMs, boardId: boardId)
     let sessionId = ",\"sessionId\":\"\(id)\"}"
     try write("{\"schemaVersion\":2,\"id\":\"\(id)\",\"name\":\(name.map(jsonString) ?? "null"),\"boardId\":\(jsonString(boardId ?? "")),\"startTime\":\(fromMs),\"endTime\":\(toMs),\"stopReason\":null,\"userId\":null,\"groupRideId\":null,\"logs\":[")
-    var lastLog: Int64?, startOdometer: Int64?, tripCm: Int64 = 0
+    var lastLog: Int64?, lastOdometer: Int64?, tripCm: Int64 = 0
     var previousVoltage: Int64?, previousCurrent: Int64?
-    // mA·ms and µW·ms stay integral, so both platforms round the same totals.
+    // Consumed counters like VESC's: discharge only, regen never subtracts. mA·ms and µW·ms stay
+    // integral, so both platforms round the same totals.
     var milliAmpMs: Int64 = 0, microWattMs: Int64 = 0
     try forEachFrame(db, fromMs: fromMs, toMs: toMs, boardId: boardId) { timestamp, v in
       guard timestamp != lastLog else { return }
-      if let last = lastLog, let mv = previousVoltage, let ma = previousCurrent, timestamp - last <= floatyGapMs {
+      if let last = lastLog, let mv = previousVoltage, let ma = previousCurrent, ma > 0, timestamp - last <= floatyGapMs {
         milliAmpMs += ma * (timestamp - last); microWattMs += mv * ma * (timestamp - last)
       }
       let first = lastLog == nil
       lastLog = timestamp; previousVoltage = v[1]; previousCurrent = v[3]
+      // Forward deltas only: an odometer reset rebases instead of going negative.
       if let odometer = v[14] {
-        if startOdometer == nil { startOdometer = odometer }
-        tripCm = odometer - (startOdometer ?? odometer)
+        if let previous = lastOdometer, odometer > previous { tripCm += odometer - previous }
+        lastOdometer = odometer
       }
       let percent = v[1].flatMap { batteryPercent(Double($0) / 1000, Double(v[3] ?? 0) / 1000) }
         .map { Int64((min(max($0, 0), 100) * 100 + 0.5).rounded(.down)) } ?? 0
       func d(_ i: Int, _ scale: Int) -> String { decimal(v[i] ?? 0, scale) }
+      // Floaty stores speed and duty unsigned; reverse riding stays positive like GPS speed.
+      func unsigned(_ i: Int, _ scale: Int) -> String { decimal(abs(v[i] ?? 0), scale) }
       let packedState = v[10] ?? 0
       let footpad = footpadSwitch(v[11].map { Int($0) }, v[12].map { Double($0) / 1000 }, v[13].map { Double($0) / 1000 }) ?? 0
-      try write((first ? "" : ",") + "{\"timestamp\":\(timestamp),\"speed\":\(d(0, 2)),\"dutyCycle\":\(d(4, 3)),\"batteryVolts\":\(d(1, 3)),\"batteryPercent\":\(decimal(percent, 4)),\"batteryCurrent\":\(d(3, 3)),\"motorCurrent\":\(d(2, 3)),\"motorTemp\":\(d(16, 1)),\"controllerTemp\":\(d(15, 1)),\"tripDistance\":\(decimal(tripCm, 5)),\"lifeDistance\":\(d(14, 5)),\"remainingDistance\":0,\"rollAngle\":\(d(6, 2)),\"pitchAngle\":\(d(7, 2)),\"truePitchAngle\":\(d(5, 2)),\"inputTilt\":0,\"throttle\":0,\"ampHours\":\(decimal(roundDiv(milliAmpMs, 3_600), 6)),\"wattHours\":\(decimal(roundDiv(microWattMs, 3_600_000), 6)),\"state\":\(packedState & 15),\"switchState\":\(footpad),\"setpointAdjustmentType\":\((packedState >> 4) & 15),\"faultCode\":0,\"adc1\":\(d(12, 3)),\"adc2\":\(d(13, 3)),\"batteryUtilization\":0,\"phaseUtilization\":0" + sessionId)
+      try write((first ? "" : ",") + "{\"timestamp\":\(timestamp),\"speed\":\(unsigned(0, 2)),\"dutyCycle\":\(unsigned(4, 3)),\"batteryVolts\":\(d(1, 3)),\"batteryPercent\":\(decimal(percent, 4)),\"batteryCurrent\":\(d(3, 3)),\"motorCurrent\":\(d(2, 3)),\"motorTemp\":\(d(16, 1)),\"controllerTemp\":\(d(15, 1)),\"tripDistance\":\(decimal(tripCm, 5)),\"lifeDistance\":\(d(14, 5)),\"remainingDistance\":0,\"rollAngle\":\(d(6, 2)),\"pitchAngle\":\(d(7, 2)),\"truePitchAngle\":\(d(5, 2)),\"inputTilt\":0,\"throttle\":0,\"ampHours\":\(decimal(roundDiv(milliAmpMs, 3_600), 6)),\"wattHours\":\(decimal(roundDiv(microWattMs, 3_600_000), 6)),\"state\":\(packedState & 15),\"switchState\":\(footpad),\"setpointAdjustmentType\":\((packedState >> 4) & 15),\"faultCode\":0,\"adc1\":\(d(12, 3)),\"adc2\":\(d(13, 3)),\"batteryUtilization\":0,\"phaseUtilization\":0" + sessionId)
     }
     try write("],\"locations\":[")
     let gps = TrackCursor(db, fromMs: fromMs, toMs: toMs, boardId: boardId)

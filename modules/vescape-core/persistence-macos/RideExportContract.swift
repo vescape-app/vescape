@@ -165,7 +165,8 @@ func runRideFloatyContract() throws {
   let columns = ["speed_centi_kmh", "battery_voltage_mv", "motor_current_ma", "battery_current_ma",
     "duty_permille", "pitch_centi_deg", "roll_centi_deg", "balance_pitch_centi_deg", "balance_current_ma",
     "erpm", "state", "switch_state", "adc1_milli", "adc2_milli", "odometer_cm", "temp_mosfet_deci_c", "temp_motor_deci_c"]
-  // Keyframe, deltas, a duplicate timestamp, a recording gap, and an explicit voltage clear.
+  // Keyframe, deltas, a duplicate timestamp, a recording gap, regen, an explicit voltage clear,
+  // reverse speed, and an odometer reset.
   func frame(_ db: Database, at offset: Int64, mask: Int, _ changes: [Int: Int64?], board: String? = "board") throws {
     let key = mask == (1 << 17) - 1
     var v: [Int64?] = key ? initial.map { $0 } : [Int64?](repeating: nil, count: 17)
@@ -181,6 +182,8 @@ func runRideFloatyContract() throws {
     try frame(db, at: 100, mask: 1, [0: 9999])
     try frame(db, at: 6000, mask: 1 << 3, [3: -2000])
     try frame(db, at: 6100, mask: 1 << 1, [1: nil])
+    try frame(db, at: 6150, mask: 1 | 1 << 14, [0: -500, 14: 1000])
+    try frame(db, at: 6180, mask: 1 << 14, [14: 1500])
     try frame(db, at: 6200, mask: 0, [:])
     for p in [
       RideTrackPoint(boardId: "board", fixAtMs: base + 50, latitudeE7: 521234567, longitudeE7: -211234567,

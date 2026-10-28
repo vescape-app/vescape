@@ -521,11 +521,14 @@ leaves out:
 
 - `logs`: one per stored frame. A repeated millisecond keeps only its first frame, because Floaty
   keys logs by `(sessionId, timestamp)`. Missing readings and unsupported columns are 0. `speed`
-  is km/h, `dutyCycle` and `batteryPercent` are 0–1 fractions, and `lifeDistance` and
-  `tripDistance` are km. `tripDistance` is the odometer minus the ride's first odometer reading.
+  is km/h and, like `dutyCycle`, unsigned, so reverse riding agrees with GPS speed.
+  `dutyCycle` and `batteryPercent` are 0–1 fractions, and `lifeDistance` and `tripDistance` are
+  km. `tripDistance` sums forward odometer steps, so an odometer reset rebases instead of going
+  negative.
   `batteryPercent` is the Board's current battery configuration applied to each frame's voltage
-  and current, without smoothing. `ampHours` and `wattHours` accumulate battery current and power
-  between consecutive frames, so regen subtracts. They are not accumulated across gaps over 5 s.
+  and current, without smoothing. `ampHours` and `wattHours` are consumed counters, like VESC's:
+  they accumulate discharge current and power between consecutive frames, and regen never
+  subtracts. They are not accumulated across gaps over 5 s.
 - `locations`: one per precise fix, with unique timestamps. `speed` is km/h, and altitude and
   accuracy are metres.
 - Session: `id` is a UUID v3 of Board and range, so importing the same ride again does not

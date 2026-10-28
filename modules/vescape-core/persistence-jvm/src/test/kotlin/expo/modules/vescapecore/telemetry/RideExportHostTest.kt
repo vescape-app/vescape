@@ -214,7 +214,8 @@ class RideExportHostTest {
       .setDriver(BundledSQLiteDriver()).build()
     try {
       val dao = db.telemetryDao()
-      // Keyframe, deltas, a duplicate timestamp, a recording gap, and an explicit voltage clear.
+      // Keyframe, deltas, a duplicate timestamp, a recording gap, regen, an explicit voltage clear,
+      // reverse speed, and an odometer reset.
       fun frame(offset: Long, mask: Int, changes: Map<Int, Int?> = emptyMap(), board: String? = "board"): TelemetryFrameEntity {
         val key = mask == (1 shl 17) - 1
         val v = arrayOfNulls<Int>(17)
@@ -230,7 +231,8 @@ class RideExportHostTest {
       val full = (1 shl 17) - 1
       dao.insertFrames(listOf(frame(0, full), frame(0, full, board = "other"),
         frame(100, 1 or (1 shl 14), mapOf(0 to 2500, 14 to 124456)), frame(100, 1, mapOf(0 to 9999)),
-        frame(6000, 1 shl 3, mapOf(3 to -2000)), frame(6100, 1 shl 1, mapOf(1 to null)), frame(6200, 0)))
+        frame(6000, 1 shl 3, mapOf(3 to -2000)), frame(6100, 1 shl 1, mapOf(1 to null)),
+        frame(6150, 1 or (1 shl 14), mapOf(0 to -500, 14 to 1000)), frame(6180, 1 shl 14, mapOf(14 to 1500)), frame(6200, 0)))
       fun point(offset: Long, lat: Int, lon: Int, accuracy: Int, speed: Int? = null, altitude: Int? = null) =
         RideTrackPointEntity(boardId = "board", fixAtMs = base + offset, latitudeE7 = lat, longitudeE7 = lon,
           accuracyCm = accuracy, gpsSpeedCentiMps = speed, bearingCentiDeg = null, altitudeCm = altitude)
