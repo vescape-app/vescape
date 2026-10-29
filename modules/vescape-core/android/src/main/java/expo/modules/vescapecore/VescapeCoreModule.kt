@@ -858,6 +858,14 @@ class VescapeCoreModule : Module() {
       catch (error: CancellationException) { throw error }
       catch (error: Exception) { throw CodedException("ERR_RIDE_EXPORT", "Could not export ride", error) }
     }
+    // @parity /modules/vescape-core/ios/VescapeCoreModule.swift `exportRideFloaty`
+    // @parity /modules/vescape-core/src/index.ts `exportRideFloaty`
+    AsyncFunction("exportRideFloaty") Coroutine { options: Map<String, Any?> ->
+      RecordingStorageFailure.requireAvailable()
+      try { TelemetryRepository.get(context.applicationContext).exportRideFloaty(options) }
+      catch (error: CancellationException) { throw error }
+      catch (error: Exception) { throw CodedException("ERR_RIDE_EXPORT", "Could not export ride", error) }
+    }
     // @parity /modules/vescape-core/ios/VescapeCoreModule.swift `exportLiveTelemetryCsv`
     // @parity /modules/vescape-core/src/index.ts `exportLiveTelemetryCsv`
     AsyncFunction("exportLiveTelemetryCsv") Coroutine { ->

@@ -206,4 +206,53 @@ class RideExportHostTest {
       } finally { Locale.setDefault(previousLocale) }
     } finally { db.close(); dir.deleteRecursively() }
   }
+
+  // Byte-identical with the GRDB contract: the golden file is the cross-platform check.
+  @Test fun floatyJsonMatchesSharedGoldenFile(): Unit = runBlocking {
+    val root = JSONObject(File("../shared/ride-export-contract.json").readText())
+    val base = root.getLong("baseMs")
+    val initial = root.getJSONObject("csv").getJSONArray("initial")
+    val dir = Files.createTempDirectory("ride-floaty").toFile()
+    val db = Room.databaseBuilder<VescapeRoomDatabase>(File(dir, "test.db").path)
+      .setDriver(BundledSQLiteDriver()).build()
+    try {
+      val dao = db.vescapeDao()
+      // Keyframe, deltas, a duplicate timestamp, a recording gap, regen, an explicit voltage clear,
+      // reverse speed, and an odometer reset.
+      fun frame(offset: Long, mask: Int, changes: Map<Int, Int?> = emptyMap(), board: String? = "board"): TelemetryFrameEntity {
+        val key = mask == (1 shl 17) - 1
+        val v = arrayOfNulls<Int>(17)
+        if (key) for (j in v.indices) v[j] = initial.getInt(j)
+        for ((i, value) in changes) v[i] = value
+        return TelemetryFrameEntity(capturedAtMs = base + offset, elapsedRealtimeMs = offset, boardId = board,
+          canId = null, flags = if (key) 1 else 0, changedMask1 = mask, changedMask2 = 0,
+          speedCentiKmh = v[0], batteryVoltageMv = v[1], motorCurrentMa = v[2], batteryCurrentMa = v[3],
+          dutyPermille = v[4], pitchCentiDeg = v[5], rollCentiDeg = v[6], balancePitchCentiDeg = v[7],
+          balanceCurrentMa = v[8], erpm = v[9], state = v[10], switchState = v[11], adc1Milli = v[12],
+          adc2Milli = v[13], odometerCm = v[14]?.toLong(), tempMosfetDeciC = v[15], tempMotorDeciC = v[16])
+      }
+      val full = (1 shl 17) - 1
+      dao.insertFrames(listOf(frame(0, full), frame(0, full, board = "other"),
+        frame(100, 1 or (1 shl 14), mapOf(0 to 2500, 14 to 124456)), frame(100, 1, mapOf(0 to 9999)),
+        frame(6000, 1 shl 3, mapOf(3 to -2000)), frame(6100, 1 shl 1, mapOf(1 to null)),
+        frame(6150, 1 or (1 shl 14), mapOf(0 to -500, 14 to 1000)), frame(6180, 1 shl 14, mapOf(14 to 1500)), frame(6200, 0)))
+      fun point(offset: Long, lat: Int, lon: Int, accuracy: Int, speed: Int? = null, altitude: Int? = null) =
+        RideTrackPointEntity(boardId = "board", fixAtMs = base + offset, latitudeE7 = lat, longitudeE7 = lon,
+          accuracyCm = accuracy, gpsSpeedCentiMps = speed, bearingCentiDeg = null, altitudeCm = altitude)
+      dao.insertRideTrackPoints(listOf(point(50, 521234567, -211234567, 2000, 456, -1234), point(50, 1, 1, 2000),
+        point(80, 2, 2, 2001), point(150, 521244567, -211224567, 500)))
+      suspend fun export(board: String): String {
+        val result = RideExport.floaty(dao, dir, mapOf("fromMs" to base, "toMs" to base + 6200,
+          "boardId" to board, "name" to root.getString("name"))) { v, a -> v - 40 + a }
+        assertEquals("application/json", result["mimeType"]); assertEquals("public.json", result["uti"])
+        val file = File(URI(result["uri"] as String))
+        assertEquals("json", file.extension)
+        return file.readText()
+      }
+      assertEquals(File("../shared/ride-export-floaty-expected.json").readText(), export("board"))
+      val empty = JSONObject(export("empty"))
+      assertEquals(0, empty.getJSONArray("logs").length())
+      assertTrue(empty.isNull("polyline"))
+    } finally { db.close(); dir.deleteRecursively() }
+  }
 }

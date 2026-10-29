@@ -441,7 +441,8 @@ v2. These are reference findings, not proof of a successful import into an exter
 
 ### GPX implementation
 
-Ride and Favorite detail offer Export GPX, Export CSV, and Delete in their three-dot menu. Favorite editing
+Ride and Favorite detail offer Export GPX, Export CSV, Export Floaty, and Delete in their three-dot
+menu. Favorite editing
 and unpinning retain their existing behavior. Export uses the selected entry's full stored range,
 or the Favorite's exact saved range, independently of movement, chart zoom, and playback.
 
@@ -509,6 +510,35 @@ mid-chain range starts beyond one page, optional NULL transitions, keyframe rese
 switch decoding, rejected GPS pages, legacy precision, first/previous/final GPS matching,
 missing GPS, exact Board scope, empty telemetry, and escaping. External imports and device
 share sheets remain rider-led tests.
+
+### Floaty JSON implementation
+
+`exportRideFloaty` writes a Floaty 3 session JSON (`schemaVersion: 2`), the only per-ride format
+Floaty imports (Sessions → ⋮ → Import session). It shares the CSV's intent, snapshot, frame
+decoder, and GPS reader, and returns `application/json` / `public.json`. Unlike the CSV, Floaty
+requires a number in every log and location field, so this format fills the columns that the CSV
+leaves out:
+
+- `logs`: one per stored frame. A repeated millisecond keeps only its first frame, because Floaty
+  keys logs by `(sessionId, timestamp)`. Missing readings and unsupported columns are 0. `speed`
+  is km/h and, like `dutyCycle`, unsigned, so reverse riding agrees with GPS speed.
+  `dutyCycle` and `batteryPercent` are 0–1 fractions, and `lifeDistance` and `tripDistance` are
+  km. `tripDistance` sums forward odometer steps, so an odometer reset rebases instead of going
+  negative.
+  `batteryPercent` is the Board's current battery configuration applied to each frame's voltage
+  and current, without smoothing. `ampHours` and `wattHours` are consumed counters, like VESC's:
+  they accumulate discharge current and power between consecutive frames, and regen never
+  subtracts. They are not accumulated across gaps over 5 s.
+- `locations`: one per precise fix, with unique timestamps. `speed` is km/h, and altitude and
+  accuracy are metres.
+- Session: `id` is a UUID v3 of Board and range, so importing the same ride again does not
+  duplicate it. `distance` is the final `tripDistance`. `polyline` (Google encoding, 1e-5°) and
+  the bounding box come from the locations; they are null when there are none.
+
+Logs, then locations, then the session totals are streamed in one pass. Numbers are exact decimals
+of the stored integers, which keeps the output identical across platforms. The Room and GRDB
+contracts compare a fixture export byte for byte against
+`modules/vescape-core/shared/ride-export-floaty-expected.json`.
 
 ### Live telemetry CSV
 

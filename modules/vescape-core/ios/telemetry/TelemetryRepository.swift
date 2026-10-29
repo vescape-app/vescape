@@ -55,6 +55,16 @@ internal final class TelemetryRepository {
     }
   }
 
+  // @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/TelemetryRepository.kt `exportRideFloaty`
+  func exportRideFloaty(_ options: [String: Any]) throws -> [String: Any] {
+    let config = try (options["boardId"] as? String).flatMap { try batteryConfigByBoard()[$0] }
+    return try VescapeDatabase.requirePool().read { db in
+      try RideExport.floaty(db, directory: FileManager.default.temporaryDirectory, options: options) { voltage, current in
+        self.batteryEstimator.estimateBatteryPercent(voltageV: voltage, config: config, batteryCurrentA: current)
+      }
+    }
+  }
+
   private var databaseSwapInProgress = false
   private lazy var flushTimer = RecordingFlushTimer(queue: queue)
   private lazy var recordingCommitBoundary = RecordingCommitBoundary { [weak self] error in

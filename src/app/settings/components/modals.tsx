@@ -5,13 +5,6 @@ import { SquaresFourIcon } from 'phosphor-react-native'
 import { IconHero } from '@/components/settings/IconHero'
 import { theme } from '@/constants/theme'
 import {
-  EdgeDrawerInitialFocusShowcase,
-  EdgeDrawerLongContentShowcase,
-  EdgeDrawerPositionShowcase,
-  EdgeDrawerVirtualizedShowcase,
-  FloatingSheetShowcase,
-} from '@/screens/showcase/modals/DrawerShowcases'
-import {
   AppBlockScreenShowcase,
   ConfirmModalShowcase,
   FadeCardModalShowcase,
@@ -30,7 +23,7 @@ export default function ModalsPage() {
       <ScrollView contentContainerStyle={styles.content}>
         <IconHero
           icon={SquaresFourIcon}
-          description="FadeCardModal, ConfirmModal, InfoModal, VersionNoticeModal, CommunityMessageModal, AppBlockScreen, TextPromptModal, EdgeDrawer, FloatingSheet."
+          description="FadeCardModal, ConfirmModal, InfoModal, VersionNoticeModal, CommunityMessageModal, AppBlockScreen, TextPromptModal."
         />
         <FadeCardModalShowcase />
         <ConfirmModalShowcase />
@@ -40,25 +33,6 @@ export default function ModalsPage() {
         <AppBlockScreenShowcase />
         <TextPromptModalShowcase />
         <TextPromptModalClearableShowcase />
-        <EdgeDrawerPositionShowcase
-          edge="auto"
-          name="EdgeDrawer — automatic edge"
-          description="Chooses top or bottom from the trigger's current screen position."
-        />
-        <EdgeDrawerPositionShowcase
-          edge="top"
-          name="EdgeDrawer — top edge"
-          description="Always opens from the top. The complete drawer follows an upward drag."
-        />
-        <EdgeDrawerPositionShowcase
-          edge="bottom"
-          name="EdgeDrawer — bottom edge"
-          description="Always opens from the bottom. The complete drawer follows a downward drag."
-        />
-        <EdgeDrawerLongContentShowcase />
-        <EdgeDrawerVirtualizedShowcase />
-        <EdgeDrawerInitialFocusShowcase />
-        <FloatingSheetShowcase />
       </ScrollView>
     </SafeAreaView>
   )

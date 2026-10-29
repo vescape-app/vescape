@@ -134,6 +134,16 @@ class TelemetryRepository private constructor(context: Context) {
     VescapeDatabase.withRideExportSnapshot(appContext) { RideExport.csv(it, appContext.cacheDir, options) }
   }
 
+  // @parity /modules/vescape-core/ios/telemetry/TelemetryRepository.swift `exportRideFloaty`
+  suspend fun exportRideFloaty(options: Map<String, Any?>): Map<String, Any> = withContext(Dispatchers.IO) {
+    val config = (options["boardId"] as? String)?.let { batteryConfigByBoard()[it] }
+    VescapeDatabase.withRideExportSnapshot(appContext) { dao ->
+      RideExport.floaty(dao, appContext.cacheDir, options) { voltage, current ->
+        BatterySocEstimator.estimateBatteryPercent(voltage, config, current)
+      }
+    }
+  }
+
   private val recordingPersistence = RecordingPersistence(dao)
   private val maintenancePersistence = TelemetryMaintenancePersistence(dao)
   private val favoriteMediaStore = FavoriteMediaStore(appContext, dao)
