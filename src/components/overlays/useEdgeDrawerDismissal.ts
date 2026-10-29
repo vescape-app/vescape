@@ -338,7 +338,10 @@ export function useEdgeDrawerDismissal({
         scrollOffsetRef.current = pinnedOffset
         scrollOffset.value = pinnedOffset
         if (openingScrollPendingRef.current) openingScrollTarget.value = pinnedOffset
-        scrollToOffset(pinnedOffset, false)
+        // The content layout event can precede the native scroll view's new bounds. Scrolling
+        // immediately can clamp to the previous size and strand late rows below the pinned header.
+        // Like opening and page changes, wait for layout and use the latest requested position.
+        requestAnimationFrame(() => scrollToOffset(scrollOffsetRef.current, false))
         return
       }
 

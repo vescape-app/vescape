@@ -65,6 +65,7 @@ interface EdgeDrawerProps {
   /** Called after scrolling settles near the end of the drawer content. */
   onReachContentEnd?: () => void
   backdropTestID?: string
+  testID?: string
   children?: React.ReactNode
   /** Dedicated FlatList path for long/unknown content; avoids nesting virtualization in a ScrollView. */
   virtualizedContent?: EdgeDrawerVirtualizedContent
@@ -93,6 +94,7 @@ export function EdgeDrawer({
   initialFocusRef,
   onReachContentEnd,
   backdropTestID,
+  testID,
   children,
   virtualizedContent,
 }: EdgeDrawerProps) {
@@ -231,7 +233,7 @@ export function EdgeDrawer({
       onRequestClose={focusActive ? focusController.close : close}
       onShow={startOpen}
     >
-      <GestureHandlerRootView style={styles.modalGestureRoot}>
+      <GestureHandlerRootView testID={testID} style={styles.modalGestureRoot}>
         <View style={styles.drawer}>
           <Reanimated.View style={[StyleSheet.absoluteFill, scrimStyle, backdropStyle]}>
             <Pressable style={StyleSheet.absoluteFill} onPress={close} />
@@ -314,7 +316,7 @@ export function EdgeDrawer({
             </NativeScrollGestureContext.Provider>
             {overlay ? leadingChrome : null}
             {overlay ? trailingChrome : null}
-            <GrabZone {...chrome.grabZone} />
+            <GrabZone {...chrome.grabZone} testID={testID ? `${testID}-grabber` : undefined} />
             <WidgetFocusOverlay host={focus} />
           </View>
         </Reanimated.View>

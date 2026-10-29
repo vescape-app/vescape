@@ -9,6 +9,7 @@ import {
   EdgeDrawerLateRowsShowcase,
   EdgeDrawerLongContentShowcase,
   EdgeDrawerPositionShowcase,
+  EdgeDrawerResizeShowcase,
   EdgeDrawerVirtualizedShowcase,
   FloatingSheetShowcase,
 } from '@/screens/showcase/modals/DrawerShowcases'
@@ -21,6 +22,8 @@ export default function DrawersPage() {
           icon={RowsIcon}
           description="EdgeDrawer and FloatingSheet: edge-anchored sheets, pinned chrome, and drag to dismiss."
         />
+        <EdgeDrawerResizeShowcase edge="bottom" />
+        <EdgeDrawerResizeShowcase edge="top" />
         <EdgeDrawerPositionShowcase
           edge="auto"
           name="EdgeDrawer — automatic edge"

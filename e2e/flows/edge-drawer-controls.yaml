@@ -1,0 +1,126 @@
+# The runner prepares the current workspace's development build and Metro.
+appId: ${APP_ID}
+---
+- runFlow: _launch.yaml
+- openLink: 'vescape://settings/components/drawers'
+- extendedWaitUntil:
+    visible: Open bottom controls
+    timeout: 15000
+- tapOn: Open bottom controls
+- runFlow:
+    file: _edge-drawer-pages.yaml
+    env:
+      EDGE: bottom
+
+# A small, slow content pull must spring back to the same height and opacity.
+- swipe:
+    start: 50%, 45%
+    end: 50%, 50%
+    duration: 1000
+- assertVisible: Virtualized row 1
+- assertScreenshot:
+    path: drawer-bottom-open.png
+    cropOn:
+      id: edge-drawer-controls
+    thresholdPercentage: 99
+    label: Small content pull restores the bottom drawer
+
+# Scroll away from the boundary, then fling back. This gesture must stop at the
+# content start; only a fresh pull from that boundary may dismiss the drawer.
+- swipe:
+    start: 50%, 80%
+    end: 50%, 35%
+    duration: 500
+- assertNotVisible: Virtualized row 1
+- assertVisible: Long
+- assertVisible: Close controls
+- swipe:
+    start: 50%, 35%
+    end: 50%, 92%
+    duration: 300
+- assertVisible: Virtualized row 1
+- assertVisible: Close controls
+- swipe:
+    from:
+      text: Virtualized row 1
+    duration: 700
+    direction: DOWN
+- extendedWaitUntil:
+    notVisible:
+      id: edge-drawer-controls
+    timeout: 5000
+- assertVisible: Open bottom controls
+
+# Reopening must reset the dismissal animation. The pinned grabber also closes
+# a drawer whose list has scrolled well away from the content boundary.
+- tapOn: Open bottom controls
+- assertVisible: Virtualized row 1
+- swipe:
+    start: 50%, 80%
+    end: 50%, 35%
+    duration: 500
+- assertNotVisible: Virtualized row 1
+- swipe:
+    from:
+      id: edge-drawer-controls-grabber
+      # Avoid the dev-client tools badge over the center of the status bar.
+      point: 20%, 75%
+    direction: DOWN
+    duration: 700
+- extendedWaitUntil:
+    notVisible:
+      id: edge-drawer-controls
+    timeout: 5000
+
+- scrollUntilVisible:
+    element: Open top controls
+    direction: DOWN
+- tapOn: Open top controls
+- runFlow:
+    file: _edge-drawer-pages.yaml
+    env:
+      EDGE: top
+- swipe:
+    start: 50%, 70%
+    end: 50%, 30%
+    duration: 500
+- assertNotVisible: Virtualized row 1
+- assertVisible: Close controls
+- tapOn: Short
+- assertVisible: Virtualized row 1
+- assertVisible: Virtualized row 3
+- assertNotVisible: Virtualized row 4
+- swipe:
+    from:
+      id: edge-drawer-controls-grabber
+      point: 20%, 75%
+    direction: UP
+    duration: 700
+- extendedWaitUntil:
+    notVisible:
+      id: edge-drawer-controls
+    timeout: 5000
+
+# Controlled close, Android Back, and the exposed backdrop must all unmount,
+# and each must leave the trigger usable for the next opening.
+- tapOn: Open top controls
+- tapOn: Close controls
+- extendedWaitUntil:
+    notVisible:
+      id: edge-drawer-controls
+    timeout: 5000
+- tapOn: Open top controls
+- back
+- extendedWaitUntil:
+    notVisible:
+      id: edge-drawer-controls
+    timeout: 5000
+- tapOn: Open top controls
+- tapOn: Short
+- tapOn:
+    id: edge-drawer-controls-backdrop
+- extendedWaitUntil:
+    notVisible:
+      id: edge-drawer-controls
+    timeout: 5000
+- assertVisible: Open top controls

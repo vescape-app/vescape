@@ -134,6 +134,29 @@ changing adaptive colors. Visible preview assertions catch render failures even 
 the reconciler error is missing from logcat. This is a smoke check, not coverage of
 every showcase state.
 
+## Drawer controls regression
+
+```sh
+bun run e2e --flow edge-drawer-controls --device Medium_Phone
+```
+
+The drawer showcase has deterministic long, short, and empty pages on both edges. This flow
+switches pages repeatedly while open, checks that the first row returns, scrolls with the header
+and footer pinned, and exercises content dismissal, grabber dismissal, controlled close, Android
+Back, backdrop close, and reopening. A small content pull must spring back; a fling from inside
+the list must stop at its start before a fresh gesture can dismiss it.
+
+Maestro captures a reference of each open drawer during the run and compares the whole modal
+after returning to the same page or releasing the small pull. The 99% image match catches height,
+position, and opacity changes without maintaining device-specific golden images. References and
+failure diffs are saved in Maestro's run artifacts. These comparisons check restoration of the
+rendered state, not animation smoothness or the correctness of the initial reference itself.
+
+`edge-drawer-focus` also checks row 1 through ScrollView expansion and reopening, FlatList focus
+on row 80 outside the initial render window, and rows arriving after opening. Emptying and
+refilling the late list must restore the same rendered height and opacity.
+Both flows join the regular phone suite automatically.
+
 ## Seeded live telemetry
 
 Use the private `e2e-seed` route to put the app into a deterministic connected-board state. It
